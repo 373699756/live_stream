@@ -1,0 +1,152 @@
+#include "udp_endpoint.h"
+
+#include "infra/errno_util.h"
+#include "net_engine_impl.h"
+#include "socket_util.h"
+
+#include <netinet/in.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <utility>
+
+namespace live_stream {
+namespace netframe_internal {
+namespace {
+
+constexpr uint32_t kReadBufferSize = 4096;
+
+}  // namespace
+
+UdpEndpoint::UdpEndpoint(NetEngineImpl* engine,
+                         UdpSocketId id,
+                         const UdpBindOptions& options,
+                         const UdpCallbacks& callbacks)
+    : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
+
+UdpEndpoint::~UdpEndpoint() { Stop(); }
+
+infra::Status UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (running_) {
+    return infra::Status::kOk;
+  }
+  auto addr = ToSockAddr(options_.address);
+  if (!addr.IsOk()) {
+    return addr.status;
+  }
+  infra::UniqueFd fd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+  if (!fd.valid()) {
+    return infra::ErrnoToStatus(errno);
+  }
+  if (options_.recv_buffer_bytes > 0) {
+    const int size = static_cast<int>(options_.recv_buffer_bytes);
+    (void)setsockopt(fd.get(), SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+  }
+  if (options_.send_buffer_bytes > 0) {
+    const int size = static_cast<int>(options_.send_buffer_bytes);
+    (void)setsockopt(fd.get(), SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
+  }
+  infra::Status status = SetNonBlocking(fd.get());
+  if (status != infra::Status::kOk) {
+    return status;
+  }
+  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr.value),
+           sizeof(addr.value)) != 0) {
+    return infra::ErrnoToStatus(errno);
+  }
+  auto local = GetSocketAddress(fd.get(), false);
+  if (!local.IsOk()) {
+    return local.status;
+  }
+  loop_ = loop;
+  fd_ = std::move(fd);
+  local_ = local.value;
+  running_ = true;
+  std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
+  return loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
+    auto self = weak_self.lock();
+    if (self && (events & EPOLLIN) != 0) {
+      self->HandleRead();
+    }
+  });
+}
+
+void UdpEndpoint::Stop() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  running_ = false;
+  if (loop_ && fd_.valid()) {
+    loop_->RemoveFd(fd_.get());
+  }
+  fd_.Reset();
+}
+
+infra::Status UdpEndpoint::SendTo(NetAddress address,
+                                  const uint8_t* data,
+                                  size_t size) {
+  if (data == nullptr && size > 0) {
+    return infra::Status::kInvalidParam;
+  }
+  auto addr = ToSockAddr(address);
+  if (!addr.IsOk()) {
+    return addr.status;
+  }
+  int fd = -1;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || !fd_.valid()) {
+      return infra::Status::kBusy;
+    }
+    fd = fd_.get();
+  }
+  const ssize_t ret = sendto(fd, data, size, 0,
+                             reinterpret_cast<const sockaddr*>(&addr.value),
+                             sizeof(addr.value));
+  if (ret < 0) {
+    return infra::ErrnoToStatus(errno);
+  }
+  engine_->AddUdpTx();
+  return infra::Status::kOk;
+}
+
+NetAddress UdpEndpoint::LocalAddress() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return local_;
+}
+
+void UdpEndpoint::HandleRead() {
+  uint8_t buffer[kReadBufferSize];
+  while (true) {
+    int fd = -1;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!running_ || !fd_.valid()) {
+        return;
+      }
+      fd = fd_.get();
+    }
+    sockaddr_in peer {};
+    socklen_t peer_len = sizeof(peer);
+    const ssize_t n = recvfrom(fd, buffer, sizeof(buffer), 0,
+                               reinterpret_cast<sockaddr*>(&peer),
+                               &peer_len);
+    if (n > 0) {
+      engine_->AddUdpRx();
+      engine_->DispatchUdp(callbacks_, id_, FromSockAddr(peer), buffer,
+                           static_cast<size_t>(n));
+      continue;
+    }
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      return;
+    }
+    return;
+  }
+}
+
+}  // namespace netframe_internal
+}  // namespace live_stream

@@ -1,0 +1,237 @@
+{
+  "video": {
+    "streams": {
+      "main": {
+        "enabled": true,
+        "name": "main",
+        "codec": "h265",
+        "profile": "high",
+        "resolution": "1920x1080",
+        "fps": 25,
+        "bitrate_kbps": 4096,
+        "rate_control": "cbr",
+        "gop": 50,
+        "gop_mode": "smart_p"
+      },
+      "sub": {
+        "enabled": true,
+        "name": "sub",
+        "codec": "h264",
+        "profile": "main",
+        "resolution": "640x360",
+        "fps": 15,
+        "bitrate_kbps": 768,
+        "rate_control": "cbr",
+        "gop": 30,
+        "gop_mode": "normal_p"
+      }
+    },
+    "source": {
+      "sensor": "default"
+    }
+  },
+  "audio": {
+    "enabled": true,
+    "codec": "aac",
+    "sample_rate": 16000,
+    "channels": 1,
+    "bitrate_kbps": 64,
+    "input_gain": 50,
+    "noise_suppression": true
+  },
+  "image": {
+    "basic": {
+      "brightness": 50,
+      "contrast": 50,
+      "saturation": 50,
+      "sharpness": 50,
+      "hue": 50
+    },
+    "exposure": {
+      "mode": "auto",
+      "anti_flicker": "50hz",
+      "exposure_time": "auto",
+      "gain": "auto",
+      "compensation": 50,
+      "slow_shutter": true,
+      "max_exposure_time": "1/25"
+    },
+    "white_balance": {
+      "mode": "auto",
+      "red_gain": 50,
+      "blue_gain": 50
+    },
+    "enhancement": {
+      "denoise_2d": 50,
+      "denoise_3d": 50,
+      "gamma": 50,
+      "defog": false
+    },
+    "backlight": {
+      "mode": "off",
+      "level": 50
+    },
+    "orientation": {
+      "mirror": false,
+      "flip": false
+    },
+    "color_mode": {
+      "mode": "color"
+    }
+  },
+  "rtsp": {
+    "enabled": true,
+    "port": 554,
+    "auth_required": true,
+    "paths": {
+      "main": "/live/main",
+      "sub": "/live/sub"
+    },
+    "max_sessions": 8,
+    "session_timeout_sec": 60
+  },
+  "webrtc": {
+    "enabled": true,
+    "signaling_path": "/api/webrtc",
+    "ice_servers": [],
+    "max_peers": 4,
+    "prefer_tcp": false
+  },
+  "onvif": {
+    "enabled": true,
+    "device_service_port": 8000,
+    "discovery_enabled": true,
+    "manufacturer": "CBinary",
+    "model": "live_stream_ipc",
+    "firmware_version": "0.1.0"
+  },
+  "snapshot": {
+    "enabled": true,
+    "main_path": "/api/snapshot/main.jpg",
+    "sub_path": "/api/snapshot/sub.jpg",
+    "jpeg_quality": 85,
+    "timeout_ms": 2000
+  },
+  "network": {
+    "hostname": "live-stream-ipc",
+    "interfaces": {
+      "eth0": {
+        "enabled": true,
+        "dhcp": true,
+        "static_ipv4": {
+          "address": "192.168.1.100",
+          "netmask": "255.255.255.0",
+          "gateway": "192.168.1.1"
+        },
+        "dns": [
+          "8.8.8.8",
+          "114.114.114.114"
+        ]
+      }
+    },
+    "ports": {
+      "http": 80,
+      "https": 443,
+      "rtsp": 554,
+      "onvif": 8000
+    }
+  },
+  "time": {
+    "timezone": "Asia/Shanghai",
+    "ntp": {
+      "enabled": true,
+      "servers": [
+        "pool.ntp.org",
+        "ntp.aliyun.com"
+      ],
+      "sync_interval_sec": 3600
+    },
+    "manual_sync_allowed": true
+  },
+  "osd": {
+    "enabled": true,
+    "items": {
+      "timestamp": {
+        "enabled": true,
+        "format": "%Y-%m-%d %H:%M:%S",
+        "x": 16,
+        "y": 16
+      },
+      "device_name": {
+        "enabled": true,
+        "text": "IPC Camera",
+        "x": 16,
+        "y": 48
+      }
+    },
+    "font_size": 24,
+    "font_color": "#FFFFFF",
+    "background": true
+  },
+  "alarm": {
+    "motion_detection": {
+      "enabled": false,
+      "sensitivity": 50,
+      "min_duration_ms": 500,
+      "regions": []
+    },
+    "actions": {
+      "snapshot": true,
+      "record": false,
+      "notify": true
+    },
+    "schedule": {
+      "mode": "always",
+      "weekly": []
+    }
+  },
+  "storage": {
+    "root_path": "/mnt/flash/live_stream",
+    "snapshot_path": "/mnt/flash/live_stream/snapshot",
+    "record_path": "/mnt/flash/live_stream/record",
+    "log_path": "/mnt/flash/logs",
+    "max_usage_percent": 80,
+    "retention_days": 7
+  },
+  "user": {
+    "accounts": [],
+    "password_policy": {
+      "min_length": 8,
+      "require_number": true,
+      "require_symbol": false,
+      "lockout_failures": 5,
+      "lockout_seconds": 300
+    },
+    "session": {
+      "token_ttl_seconds": 3600,
+      "max_sessions_per_user": 4
+    }
+  },
+  "system": {
+    "device_name": "IPC Camera",
+    "location": "",
+    "language": "zh-CN",
+    "auto_reboot": {
+      "enabled": false,
+      "time": "03:00",
+      "days": []
+    },
+    "factory_reset_requires_admin": true
+  },
+  "log": {
+    "level": "info",
+    "console_output": true,
+    "file_output": true,
+    "path": "/mnt/flash/logs/runtime.log",
+    "max_file_size_bytes": 1048576,
+    "max_files": 4,
+    "async_write": true
+  },
+  "logger": {
+    "operation_log_path": "/mnt/flash/logs/operation.log",
+    "max_file_size_bytes": 1048576,
+    "max_files": 8,
+    "export_limit": 1000,
+    "mask_sensitive_fields": true
+  }
+}

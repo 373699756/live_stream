@@ -1,0 +1,178 @@
+import type {
+  ImageConfig,
+  NetworkConfig,
+  OsdConfig,
+  SnapshotConfig,
+  StreamStatus,
+  SystemStatus,
+  MediaCapabilities,
+  VideoConfig,
+} from './types';
+
+export const mockVideoConfig: VideoConfig = {
+  streams: {
+    main: {
+      enabled: true,
+      name: 'main',
+      codec: 'h264',
+      profile: 'high',
+      h265_profile: 'main',
+      resolution: '1920x1080',
+      fps: 25,
+      bitrate_kbps: 4096,
+      rate_control: 'cbr',
+      gop: 50,
+      vbr_quality: 60,
+      smart_codec: false,
+    },
+    sub: {
+      enabled: true,
+      name: 'sub',
+      codec: 'h264',
+      profile: 'main',
+      h265_profile: 'main',
+      resolution: '640x360',
+      fps: 15,
+      bitrate_kbps: 768,
+      rate_control: 'cbr',
+      gop: 30,
+      vbr_quality: 55,
+      smart_codec: false,
+    },
+  },
+  source: { sensor: 'default' },
+};
+
+export const mockMediaCapabilities: MediaCapabilities = {
+  streams: {
+    main: {
+      stream: 'main',
+      codecs: [
+        { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
+        { codec: 'h265', profiles: ['main'] },
+      ],
+      resolutions: [
+        { width: 3840, height: 2160 },
+        { width: 2560, height: 1440 },
+        { width: 1920, height: 1080 },
+        { width: 1280, height: 720 },
+      ],
+      fps: { min: 1, max: 30 },
+      bitrate_kbps: { min: 512, max: 8192 },
+      rate_control: ['cbr', 'vbr', 'fixqp'],
+      gop: { min: 1, max: 120 },
+      smart_codec: true,
+    },
+    sub: {
+      stream: 'sub',
+      codecs: [
+        { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
+        { codec: 'h265', profiles: ['main'] },
+      ],
+      resolutions: [
+        { width: 1280, height: 720 },
+        { width: 704, height: 576 },
+        { width: 640, height: 360 },
+        { width: 352, height: 288 },
+      ],
+      fps: { min: 1, max: 30 },
+      bitrate_kbps: { min: 64, max: 2048 },
+      rate_control: ['cbr', 'vbr', 'fixqp'],
+      gop: { min: 1, max: 120 },
+      smart_codec: true,
+    },
+  },
+};
+
+export const mockImageConfig: ImageConfig = {
+  basic: { brightness: 50, contrast: 50, saturation: 50, sharpness: 50, hue: 50 },
+  exposure: {
+    mode: 'auto',
+    anti_flicker: '50hz',
+    exposure_time: 'auto',
+    gain: 'auto',
+    compensation: 50,
+    slow_shutter: true,
+    max_exposure_time: '1/25',
+  },
+  white_balance: { mode: 'auto', red_gain: 50, blue_gain: 50 },
+  enhancement: { denoise_2d: 50, denoise_3d: 50, defog: false, gamma: 50 },
+  backlight: { mode: 'off', level: 50 },
+  orientation: { mirror: false, flip: false },
+  color_mode: { mode: 'color' },
+};
+
+export const mockOsdConfig: OsdConfig = {
+  enabled: true,
+  items: {
+    timestamp: { enabled: true, format: '%Y-%m-%d %H:%M:%S', x: 16, y: 16 },
+    device_name: { enabled: true, text: 'IPC Camera', x: 16, y: 48 },
+  },
+  font_size: 24,
+  font_color: '#FFFFFF',
+  background: true,
+};
+
+export const mockNetworkConfig: NetworkConfig = {
+  hostname: 'live-stream-ipc',
+  interfaces: {
+    eth0: {
+      enabled: true,
+      dhcp: true,
+      static_ipv4: {
+        address: '192.168.1.100',
+        netmask: '255.255.255.0',
+        gateway: '192.168.1.1',
+      },
+    },
+  },
+  ports: { http: 80, https: 443, rtsp: 554, onvif: 8000 },
+};
+
+export const mockSnapshotConfig: SnapshotConfig = {
+  enabled: true,
+  main_path: '/api/snapshot/main.jpg',
+  sub_path: '/api/snapshot/sub.jpg',
+  jpeg_quality: 85,
+  timeout_ms: 2000,
+};
+
+export const mockSystemStatus: SystemStatus = {
+  deviceName: 'IPC Camera',
+  model: 'live_stream_ipc',
+  firmware: '0.1.0',
+  uptime: '3d 06:18:42',
+  cpu: 34,
+  memory: 51,
+  temperature: 48,
+  services: [
+    { name: 'config_service', state: 'running' },
+    { name: 'auth_service', state: 'running' },
+    { name: 'media_service', state: 'pending' },
+    { name: 'http_service', state: 'running' },
+    { name: 'webrtc_service', state: 'pending' },
+  ],
+};
+
+export const mockStreamStatus: StreamStatus[] = [
+  {
+    stream: 'main',
+    codec: 'H.264',
+    resolution: mockVideoConfig.streams.main.resolution,
+    fps: 25,
+    bitrateKbps: 4096,
+    state: 'running',
+  },
+  {
+    stream: 'sub',
+    codec: 'H.264',
+    resolution: mockVideoConfig.streams.sub.resolution,
+    fps: 15,
+    bitrateKbps: 768,
+    state: 'running',
+  },
+];
+
+export function cloneDefaultConfig<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}

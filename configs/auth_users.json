@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "credential_format": "sha256:<salt_hex>:<hash_hex>",
+  "users": [
+    {
+      "user_name": "admin",
+      "role": "admin",
+      "enabled": true,
+      "password_credential": "sha256:00112233445566778899aabbccddeeff:0e14da9d8aadc6fc27decd1b05097cd4312903005cbece01043ee2d4316b2398"
+    },
+    {
+      "user_name": "operator",
+      "role": "operator",
+      "enabled": true,
+      "password_credential": "sha256:102132435465768798a9babbdccdedef:c74db0372f1d7a3fb8e4466284acf4cf4a4ac21704607bdc5bd340ab07b0ea81"
+    },
+    {
+      "user_name": "viewer",
+      "role": "viewer",
+      "enabled": true,
+      "password_credential": "sha256:2031425364758697a8b9cacbdcedfe0f:587e23f20e966bfe690ba5458da4939abded0fa7fc4f9b13028b86c94d78c977"
+    }
+  ]
+}
