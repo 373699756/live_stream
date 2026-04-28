@@ -34,10 +34,24 @@ bool IsValidMediaStream(infra::StreamId stream_id) {
 }
 
 MediaPipeline::MediaPipeline(MediaPipelineConfig config)
-    : config_(std::move(config)) {}
+    : MediaPipeline(std::move(config), &hisisdk::DefaultSdk()) {}
+
+MediaPipeline::MediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk)
+    : sdk_(sdk != nullptr ? sdk : &hisisdk::DefaultSdk()),
+      config_(std::move(config)) {}
+
+void MediaPipeline::SetConfig(const MediaPipelineConfig& config) {
+    config_ = config;
+    BuildChannels();
+}
+
+void MediaPipeline::SetFrameCallback(EncodedFrameCallback callback, void* user) {
+    frame_callback_ = callback;
+    frame_callback_user_ = user;
+}
 
 infra::Result<MediaCapabilities> MediaPipeline::GetCapabilities() const {
-    return hisisdk::DefaultSdk().GetCapabilities();
+    return sdk_->GetCapabilities();
 }
 
 infra::Status MediaPipeline::InitSystem() {
@@ -45,7 +59,7 @@ infra::Status MediaPipeline::InitSystem() {
         return infra::Status::kInvalidParam;
     }
 
-    const infra::Status status = hisisdk::DefaultSdk().InitSystem(config_);
+    const infra::Status status = sdk_->InitSystem(config_);
     if (status != infra::Status::kOk) {
         return status;
     }
@@ -57,7 +71,7 @@ infra::Status MediaPipeline::InitSystem() {
 void MediaPipeline::DeinitSystem() {
     Stop();
     if (system_initialized_) {
-        hisisdk::DefaultSdk().DeinitSystem();
+        sdk_->DeinitSystem();
     }
     system_initialized_ = false;
 }
@@ -67,38 +81,44 @@ infra::Status MediaPipeline::Start() {
         return infra::Status::kBusy;
     }
 
-    infra::Status status = hisisdk::DefaultSdk().StartVi(config_);
+    infra::Status status = sdk_->StartVi(config_);
     if (status != infra::Status::kOk) {
         return status;
     }
     vi_started_ = true;
 
-    status = hisisdk::DefaultSdk().StartVpss(config_);
+    status = sdk_->StartVpss(config_);
     if (status != infra::Status::kOk) {
+        Stop();
         return status;
     }
     vpss_started_ = true;
 
-    status = hisisdk::DefaultSdk().BindViVpss(config_);
+    status = sdk_->BindViVpss(config_);
     if (status != infra::Status::kOk) {
+        Stop();
         return status;
     }
     vi_bound_vpss_ = true;
 
-    status = hisisdk::DefaultSdk().StartVenc(config_);
+    status = sdk_->StartVenc(config_);
     if (status != infra::Status::kOk) {
+        Stop();
         return status;
     }
     venc_started_ = true;
 
-    status = hisisdk::DefaultSdk().BindVpssVenc(config_);
+    status = sdk_->BindVpssVenc(config_);
     if (status != infra::Status::kOk) {
+        Stop();
         return status;
     }
     vpss_bound_venc_ = true;
 
-    status = hisisdk::DefaultSdk().StartVencStream(config_);
+    status = sdk_->StartVencStream(config_, frame_callback_,
+                                   frame_callback_user_);
     if (status != infra::Status::kOk) {
+        Stop();
         return status;
     }
     stream_started_ = true;
@@ -107,27 +127,27 @@ infra::Status MediaPipeline::Start() {
 
 void MediaPipeline::Stop() {
     if (stream_started_) {
-        hisisdk::DefaultSdk().StopVencStream(config_);
+        sdk_->StopVencStream(config_);
         stream_started_ = false;
     }
     if (vpss_bound_venc_) {
-        hisisdk::DefaultSdk().UnbindVpssVenc(config_);
+        sdk_->UnbindVpssVenc(config_);
         vpss_bound_venc_ = false;
     }
     if (venc_started_) {
-        hisisdk::DefaultSdk().StopVenc(config_);
+        sdk_->StopVenc(config_);
         venc_started_ = false;
     }
     if (vi_bound_vpss_) {
-        hisisdk::DefaultSdk().UnbindViVpss(config_);
+        sdk_->UnbindViVpss(config_);
         vi_bound_vpss_ = false;
     }
     if (vpss_started_) {
-        hisisdk::DefaultSdk().StopVpss(config_);
+        sdk_->StopVpss(config_);
         vpss_started_ = false;
     }
     if (vi_started_) {
-        hisisdk::DefaultSdk().StopVi(config_);
+        sdk_->StopVi(config_);
         vi_started_ = false;
     }
 }

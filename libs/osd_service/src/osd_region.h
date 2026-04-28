@@ -4,6 +4,11 @@
 #include "osd_service.h"
 
 namespace live_stream {
+
+namespace hisisdk {
+class IHisiSdk;
+}  // namespace hisisdk
+
 namespace osd_internal {
 
 constexpr uint32_t kMaxRegions = 16;
@@ -32,6 +37,8 @@ class OsdMppAdapter {
 
 class HostOsdMppAdapter final : public OsdMppAdapter {
  public:
+    explicit HostOsdMppAdapter(hisisdk::IHisiSdk* sdk = nullptr);
+
     infra::Status Create(int32_t handle,
                          const OsdRegionConfig& config) override;
     infra::Status Attach(int32_t handle,
@@ -43,6 +50,9 @@ class HostOsdMppAdapter final : public OsdMppAdapter {
     infra::Status UpdateBitmap(int32_t handle,
                                const OsdBitmap& bitmap) override;
     void Destroy(int32_t handle) override;
+
+ private:
+    hisisdk::IHisiSdk* sdk_;
 };
 
 }  // namespace osd_internal

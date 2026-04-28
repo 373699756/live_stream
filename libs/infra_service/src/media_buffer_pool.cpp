@@ -1,5 +1,6 @@
 #include "infra/media_buffer.h"
 
+#include <cstddef>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -11,7 +12,7 @@ struct FixedPoolState {
     explicit FixedPoolState(uint32_t block_capacity, uint32_t block_total)
         : block_size(block_capacity),
           block_count(block_total),
-          blocks(block_total, std::vector<uint8_t>(block_capacity)),
+          data(static_cast<std::size_t>(block_capacity) * block_total),
           in_use(block_total, false) {
         free_indices.reserve(block_total);
         for (uint32_t i = 0; i < block_total; ++i) {
@@ -21,7 +22,7 @@ struct FixedPoolState {
 
     uint32_t block_size = 0;
     uint32_t block_count = 0;
-    std::vector<std::vector<uint8_t>> blocks;
+    std::vector<uint8_t> data;
     std::vector<bool> in_use;
     std::vector<uint32_t> free_indices;
     uint32_t high_water_count = 0;
@@ -37,17 +38,19 @@ class PoolMediaBuffer final : public IMediaBuffer {
     ~PoolMediaBuffer() override { Release(); }
 
     uint8_t* MutableData() override {
-        if (!state_ || index_ >= state_->blocks.size()) {
+        if (!state_ || index_ >= state_->block_count) {
             return nullptr;
         }
-        return state_->blocks[index_].data();
+        return state_->data.data() +
+               static_cast<std::size_t>(index_) * state_->block_size;
     }
 
     const uint8_t* Data() const override {
-        if (!state_ || index_ >= state_->blocks.size()) {
+        if (!state_ || index_ >= state_->block_count) {
             return nullptr;
         }
-        return state_->blocks[index_].data();
+        return state_->data.data() +
+               static_cast<std::size_t>(index_) * state_->block_size;
     }
 
     uint32_t Size() const override { return size_; }

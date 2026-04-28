@@ -1,5 +1,6 @@
 #include "auth_service.h"
 
+#include "config_service.h"
 #include "infra/time.h"
 #include "infra/fs.h"
 
@@ -9,6 +10,83 @@
 #include <vector>
 
 namespace {
+
+class FakeConfigService : public live_stream::IConfigService {
+ public:
+    infra::Status Init() override { return infra::Status::kOk; }
+    infra::Status Start() override { return infra::Status::kOk; }
+    void Stop() override {}
+    void Deinit() override {}
+    const char* Name() const override { return "fake_config"; }
+
+    infra::Status SetValue(const std::string& name,
+                           const live_stream::ConfigJson& value) override {
+        if (name != "user") {
+            return infra::Status::kInvalidParam;
+        }
+        if (verify && verify(value) != infra::Status::kOk) {
+            return infra::Status::kInvalidParam;
+        }
+        return apply ? apply(value) : infra::Status::kOk;
+    }
+    infra::Status GetValue(const std::string& name,
+                           live_stream::ConfigJson* value) override {
+        if (name != "user" || value == nullptr) {
+            return infra::Status::kInvalidParam;
+        }
+        *value = user_config;
+        return infra::Status::kOk;
+    }
+    infra::Status GetDefault(const std::string&,
+                             live_stream::ConfigJson*) override {
+        return infra::Status::kNotFound;
+    }
+    infra::Status RestoreDefaults() override { return infra::Status::kOk; }
+    infra::Status SaveFile() override { return infra::Status::kOk; }
+    infra::Status RegisterApply(const std::string& name,
+                                live_stream::ConfigProc proc) override {
+        if (name != "user") {
+            return infra::Status::kInvalidParam;
+        }
+        apply = proc;
+        return infra::Status::kOk;
+    }
+    infra::Status RegisterVerify(const std::string& name,
+                                 live_stream::ConfigProc proc) override {
+        if (name != "user") {
+            return infra::Status::kInvalidParam;
+        }
+        verify = proc;
+        return infra::Status::kOk;
+    }
+
+    live_stream::ConfigJson user_config = {
+        {"accounts", live_stream::ConfigJson::array()},
+        {"password_policy",
+         {{"min_length", 8},
+          {"require_number", true},
+          {"require_symbol", false},
+          {"lockout_failures", 2},
+          {"lockout_seconds", 1}}},
+        {"session",
+         {{"token_ttl_seconds", 30}, {"max_sessions_per_user", 1}}}};
+    live_stream::ConfigProc verify;
+    live_stream::ConfigProc apply;
+};
+
+class CountingTokenGenerator : public live_stream::IAuthTokenGenerator {
+ public:
+    infra::Result<std::string> GenerateToken() override {
+        ++next;
+        char buffer[80] = {0};
+        std::snprintf(buffer, sizeof(buffer),
+                      "%064llu",
+                      static_cast<unsigned long long>(next));
+        return infra::Result<std::string>::Ok(buffer);
+    }
+
+    uint64_t next = 0;
+};
 
 class TestAuditSink : public live_stream::IAuthAuditSink {
  public:
@@ -34,7 +112,11 @@ int Check(bool condition, int code) {
 
 std::unique_ptr<live_stream::IAuthService> CreateStartedService(
     TestAuditSink* audit_sink,
-    uint32_t token_ttl_seconds) {
+    uint32_t token_ttl_seconds,
+    live_stream::AuthServiceOptions* used_options = nullptr,
+    live_stream::AuthServiceDependencies dependencies =
+        live_stream::AuthServiceDependencies(),
+    live_stream::IAuthTokenGenerator* token_generator = nullptr) {
     std::vector<live_stream::AuthUserRecord> users;
     live_stream::AuthUserRecord admin;
     admin.user_name = "admin";
@@ -51,11 +133,17 @@ std::unique_ptr<live_stream::IAuthService> CreateStartedService(
     live_stream::AuthServiceOptions options;
     options.token_ttl_seconds = token_ttl_seconds;
     options.max_sessions = 4;
+    options.max_sessions_per_user = 4;
+    options.lockout_failures = 5;
+    options.lockout_seconds = 1;
+    if (used_options != nullptr) {
+        options = *used_options;
+    }
 
     std::unique_ptr<live_stream::IAuthService> service =
         live_stream::CreateAuthService(
-            options, live_stream::CreateMemoryAuthUserStore(users),
-            live_stream::CreatePlainTextPasswordVerifier());
+            options, dependencies, live_stream::CreateMemoryAuthUserStore(users),
+            live_stream::CreatePlainTextPasswordVerifier(), token_generator);
     if (service == nullptr || service->Init() != infra::Status::kOk ||
         service->Start() != infra::Status::kOk ||
         service->SetAuditSink(audit_sink) != infra::Status::kOk) {
@@ -87,6 +175,9 @@ int main() {
     if (!login.IsOk() || login.value.token.empty() ||
         login.value.principal.role != live_stream::AuthRole::kAdmin) {
         return 3;
+    }
+    if (login.value.token.size() < 64) {
+        return 23;
     }
     if (audit_sink.count != 1 ||
         audit_sink.last.action != live_stream::AuthAuditAction::kLogin ||
@@ -229,5 +320,84 @@ int main() {
     json_service->Stop();
     json_service->Deinit();
     std::remove(path.c_str());
+
+    TestAuditSink config_audit;
+    FakeConfigService config_service;
+    CountingTokenGenerator token_generator;
+    live_stream::AuthServiceOptions configured_options;
+    configured_options.token_ttl_seconds = 30;
+    configured_options.max_sessions = 4;
+    configured_options.max_sessions_per_user = 2;
+    configured_options.lockout_failures = 2;
+    configured_options.lockout_seconds = 1;
+    live_stream::AuthServiceDependencies dependencies;
+    dependencies.config_service = &config_service;
+    std::unique_ptr<live_stream::IAuthService> configured =
+        CreateStartedService(&config_audit, 30, &configured_options,
+                             dependencies, &token_generator);
+    if (configured == nullptr) {
+        return 24;
+    }
+    live_stream::AuthStats auth_stats = configured->GetStats();
+    if (auth_stats.config_apply_count != 1) {
+        return 25;
+    }
+
+    live_stream::LoginRequest configured_request;
+    configured_request.user_name = "viewer";
+    configured_request.password = "viewer-pass";
+    infra::Result<live_stream::LoginResult> first =
+        configured->Login(configured_request);
+    infra::Result<live_stream::LoginResult> second =
+        configured->Login(configured_request);
+    if (!first.IsOk() || !second.IsOk() ||
+        first.value.token == second.value.token) {
+        return 26;
+    }
+    if (configured->ValidateToken(first.value.token).status !=
+        infra::Status::kUnauthorized) {
+        return 27;
+    }
+    if (!configured->ValidateToken(second.value.token).IsOk()) {
+        return 28;
+    }
+
+    configured_request.password = "wrong-pass";
+    if (configured->Login(configured_request).status !=
+        infra::Status::kUnauthorized ||
+        configured->Login(configured_request).status !=
+            infra::Status::kUnauthorized) {
+        return 29;
+    }
+    configured_request.password = "viewer-pass";
+    if (configured->Login(configured_request).status != infra::Status::kBusy) {
+        return 30;
+    }
+    infra::Time::SleepMillis(1100);
+    if (!configured->Login(configured_request).IsOk()) {
+        return 31;
+    }
+    auth_stats = configured->GetStats();
+    if (auth_stats.lockout_count == 0 || auth_stats.login_failed < 2) {
+        return 32;
+    }
+    config_service.user_config["session"]["token_ttl_seconds"] = 1;
+    if (config_service.SetValue("user", config_service.user_config) !=
+        infra::Status::kOk) {
+        return 33;
+    }
+    if (configured->GetStats().config_apply_count < 2) {
+        return 34;
+    }
+    config_service.user_config["session"]["token_ttl_seconds"] = 0;
+    if (config_service.SetValue("user", config_service.user_config) !=
+        infra::Status::kInvalidParam) {
+        return 35;
+    }
+    config_service.user_config["session"]["token_ttl_seconds"] = "bad";
+    if (config_service.SetValue("user", config_service.user_config) !=
+        infra::Status::kInvalidParam) {
+        return 36;
+    }
     return 0;
 }

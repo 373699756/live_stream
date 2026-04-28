@@ -1,4 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  closeWebrtcPeer,
+  createWebrtcPeer,
+  sendWebrtcCandidate,
+  sendWebrtcOffer,
+  snapshotUrl as buildSnapshotUrl,
+} from '../api/client';
 import type { StreamName, StreamStatus } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 
@@ -11,10 +18,13 @@ interface VideoPreviewProps {
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
   const [mode, setMode] = useState<'webrtc' | 'snapshot'>('snapshot');
   const [snapshotTick, setSnapshotTick] = useState(0);
+  const [webrtcState, setWebrtcState] = useState('等待 WebRTC 视频流');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const peerIdRef = useRef('');
   const active = statuses.find((item) => item.stream === stream);
-  const snapshotUrl = `/api/snapshot/${stream}.jpg?t=${snapshotTick}`;
+  const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -24,8 +34,68 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     return () => window.clearInterval(timer);
   }, [mode]);
 
+  useEffect(() => {
+    if (mode !== 'webrtc') {
+      if (peerRef.current) {
+        peerRef.current.close();
+        peerRef.current = null;
+      }
+      void closeWebrtcPeer(peerIdRef.current);
+      peerIdRef.current = '';
+      setWebrtcState('等待 WebRTC 视频流');
+      return;
+    }
+
+    let closed = false;
+    const pc = new RTCPeerConnection();
+    peerRef.current = pc;
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.ontrack = (event) => {
+      if (videoRef.current && event.streams[0]) {
+        videoRef.current.srcObject = event.streams[0];
+      }
+    };
+    pc.onicecandidate = (event) => {
+      if (event.candidate && peerIdRef.current) {
+        void sendWebrtcCandidate(peerIdRef.current, event.candidate.toJSON());
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      setWebrtcState(pc.connectionState);
+    };
+
+    void (async () => {
+      try {
+        const peer = await createWebrtcPeer(stream);
+        if (!peer.peer_id || closed) {
+          setWebrtcState('WebRTC 后端不可用');
+          return;
+        }
+        peerIdRef.current = peer.peer_id;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '');
+        if (!answer.sdp || closed) {
+          setWebrtcState('WebRTC 应答无效');
+          return;
+        }
+        await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+      } catch {
+        setWebrtcState('WebRTC 连接失败');
+      }
+    })();
+
+    return () => {
+      closed = true;
+      pc.close();
+      peerRef.current = null;
+      void closeWebrtcPeer(peerIdRef.current);
+      peerIdRef.current = '';
+    };
+  }, [mode, stream]);
+
   const openSnapshot = () => {
-    window.open(`/api/snapshot/${stream}.jpg`, '_blank', 'noopener,noreferrer');
+    window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
   };
 
   const requestFullscreen = () => {
@@ -89,8 +159,8 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         )}
         <div className="video-placeholder">
           <div className="lens-ring" />
-          <strong>{mode === 'webrtc' ? '等待 WebRTC 视频流' : '抓图预览'}</strong>
-          <span>后端未接入时显示模拟预览状态</span>
+          <strong>{mode === 'webrtc' ? webrtcState : '抓图预览'}</strong>
+          <span>{mode === 'webrtc' ? '正在建立浏览器拉流会话' : '定时刷新 JPEG 抓图'}</span>
         </div>
       </div>
 

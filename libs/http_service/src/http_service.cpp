@@ -2,6 +2,7 @@
 
 #include "auth_service.h"
 #include "config_service.h"
+#include "http_protocol.h"
 #include "infra/time.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
@@ -9,13 +10,17 @@
 #include "logger_service.h"
 #include "media_service.h"
 #include "netframe_service.h"
+#include "snapshot_service.h"
+#include "webrtc_service.h"
 
-#include "../../../3rdparty/nlohmann_json.hpp"
+#include "nlohmann/json.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <cstring>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -27,58 +32,6 @@ namespace {
 
 constexpr const char* kModuleName = "http_service";
 using Json = nlohmann::json;
-
-std::string ToLower(const std::string& value) {
-    std::string out = value;
-    std::transform(out.begin(), out.end(), out.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return out;
-}
-
-std::string Trim(const std::string& value) {
-    size_t begin = 0;
-    while (begin < value.size() &&
-           std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
-        ++begin;
-    }
-    size_t end = value.size();
-    while (end > begin &&
-           std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
-        --end;
-    }
-    return value.substr(begin, end - begin);
-}
-
-const char* HttpStatusText(int status_code) {
-    switch (status_code) {
-        case 200:
-            return "OK";
-        case 201:
-            return "Created";
-        case 204:
-            return "No Content";
-        case 400:
-            return "Bad Request";
-        case 401:
-            return "Unauthorized";
-        case 403:
-            return "Forbidden";
-        case 404:
-            return "Not Found";
-        case 409:
-            return "Conflict";
-        case 413:
-            return "Payload Too Large";
-        case 500:
-            return "Internal Server Status";
-        case 501:
-            return "Not Implemented";
-        case 503:
-            return "Service Unavailable";
-        default:
-            return "Status";
-    }
-}
 
 int HttpStatusFromInfraStatus(infra::Status status) {
     switch (status) {
@@ -130,16 +83,6 @@ HttpResponse OkResponse() {
     Json root = Json::object();
     root["ok"] = true;
     return JsonResponse(200, root);
-}
-
-std::string GetHeader(const HttpRequest& request, const std::string& name) {
-    const std::string lower_name = ToLower(name);
-    for (const auto& item : request.headers) {
-        if (ToLower(item.first) == lower_name) {
-            return item.second;
-        }
-    }
-    return std::string();
 }
 
 std::string RequestUserAgent(const HttpRequest& request) {
@@ -274,13 +217,19 @@ const VideoStreamCapabilities* FindStreamCapabilities(
 std::string ExtractBearerToken(const HttpRequest& request) {
     const std::string authorization = Trim(GetHeader(request, "Authorization"));
     const std::string prefix = "bearer ";
-    if (authorization.size() <= prefix.size()) {
+    if (authorization.size() > prefix.size() &&
+        ToLower(authorization.substr(0, prefix.size())) == prefix) {
+        return Trim(authorization.substr(prefix.size()));
+    }
+    const std::string key = "token=";
+    size_t pos = request.query_string.find(key);
+    if (pos == std::string::npos) {
         return std::string();
     }
-    if (ToLower(authorization.substr(0, prefix.size())) != prefix) {
-        return std::string();
-    }
-    return Trim(authorization.substr(prefix.size()));
+    pos += key.size();
+    const size_t end = request.query_string.find('&', pos);
+    return request.query_string.substr(
+        pos, end == std::string::npos ? std::string::npos : end - pos);
 }
 
 std::string AuthRoleToJsonString(AuthRole role) {
@@ -315,6 +264,8 @@ const char* VideoCodecToJsonString(infra::VideoCodec codec) {
             return "h264";
         case infra::VideoCodec::kH265:
             return "h265";
+        case infra::VideoCodec::kJpeg:
+            return "jpeg";
         case infra::VideoCodec::kMjpeg:
             return "mjpeg";
     }
@@ -328,6 +279,9 @@ infra::Result<infra::VideoCodec> VideoCodecFromJsonString(
     }
     if (value == "h265") {
         return infra::Result<infra::VideoCodec>::Ok(infra::VideoCodec::kH265);
+    }
+    if (value == "jpeg") {
+        return infra::Result<infra::VideoCodec>::Ok(infra::VideoCodec::kJpeg);
     }
     if (value == "mjpeg") {
         return infra::Result<infra::VideoCodec>::Ok(infra::VideoCodec::kMjpeg);
@@ -420,6 +374,66 @@ Json StreamCapabilitiesToJson(
     return root;
 }
 
+Json NumericControlsToJson(
+    const std::vector<NumericControlCapability>& controls) {
+    Json root = Json::object();
+    for (const NumericControlCapability& control : controls) {
+        Json value = Json::object();
+        value["min"] = control.min;
+        value["max"] = control.max;
+        value["default"] = control.default_value;
+        root[control.name] = value;
+    }
+    return root;
+}
+
+Json OptionControlsToJson(
+    const std::vector<OptionControlCapability>& controls) {
+    Json root = Json::object();
+    for (const OptionControlCapability& control : controls) {
+        Json values = Json::array();
+        for (const std::string& value : control.values) {
+            values.push_back(value);
+        }
+        Json item = Json::object();
+        item["values"] = values;
+        item["default"] = control.default_value;
+        root[control.name] = item;
+    }
+    return root;
+}
+
+Json ImageCapabilitiesToJson(const ImageCapabilities& image) {
+    Json root = Json::object();
+    root["basic"] = NumericControlsToJson(image.basic);
+
+    Json exposure = Json::object();
+    exposure["options"] = OptionControlsToJson(image.exposure_options);
+    exposure["ranges"] = NumericControlsToJson(image.exposure_ranges);
+    root["exposure"] = exposure;
+
+    Json white_balance = Json::object();
+    white_balance["options"] =
+        OptionControlsToJson(image.white_balance_options);
+    white_balance["ranges"] = NumericControlsToJson(image.white_balance_ranges);
+    root["white_balance"] = white_balance;
+
+    Json enhancement = Json::object();
+    enhancement["options"] = OptionControlsToJson(image.enhancement_options);
+    enhancement["ranges"] = NumericControlsToJson(image.enhancement_ranges);
+    root["enhancement"] = enhancement;
+
+    Json backlight = Json::object();
+    backlight["options"] = OptionControlsToJson(image.backlight_options);
+    backlight["ranges"] = NumericControlsToJson(image.backlight_ranges);
+    root["backlight"] = backlight;
+
+    root["color_mode"] = OptionControlsToJson(image.color_mode_options);
+    root["orientation"]["mirror"] = image.mirror_supported;
+    root["orientation"]["flip"] = image.flip_supported;
+    return root;
+}
+
 Json MediaCapabilitiesToJson(
     const MediaCapabilities& capabilities) {
     Json root = Json::object();
@@ -431,6 +445,7 @@ Json MediaCapabilitiesToJson(
         }
     }
     root["streams"] = streams;
+    root["image"] = ImageCapabilitiesToJson(capabilities.image);
     return root;
 }
 
@@ -490,144 +505,6 @@ bool IsUnsafeStaticPath(const std::string& path) {
            lower_path.find("%5c") != std::string::npos;
 }
 
-infra::Result<HttpMethod> ParseMethod(const std::string& value) {
-    if (value == "GET") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kGet);
-    }
-    if (value == "POST") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kPost);
-    }
-    if (value == "PUT") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kPut);
-    }
-    if (value == "DELETE") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kDelete);
-    }
-    return infra::Result<HttpMethod>::Fail(infra::Status::kInvalidParam);
-}
-
-std::string SerializeResponse(const HttpResponse& response) {
-    std::string out = "HTTP/1.1 " + std::to_string(response.status_code) + " " +
-                      HttpStatusText(response.status_code) + "\r\n";
-    bool has_length = false;
-    bool has_connection = false;
-    for (const auto& header : response.headers) {
-        if (ToLower(header.first) == "content-length") {
-            has_length = true;
-        }
-        if (ToLower(header.first) == "connection") {
-            has_connection = true;
-        }
-        out += header.first + ": " + header.second + "\r\n";
-    }
-    if (!has_length) {
-        out += "Content-Length: " + std::to_string(response.body.size()) + "\r\n";
-    }
-    if (!has_connection) {
-        out += "Connection: close\r\n";
-    }
-    out += "\r\n";
-    out += response.body;
-    return out;
-}
-
-enum class RawParseStatus {
-    kComplete,
-    kIncomplete,
-    kBadRequest,
-    kPayloadTooLarge,
-};
-
-struct RawParseResult {
-    RawParseStatus status = RawParseStatus::kBadRequest;
-    HttpRequest request;
-};
-
-RawParseResult ParseRawRequest(const std::string& raw,
-                               uint32_t max_header_bytes,
-                               uint32_t max_body_bytes,
-                               const std::string& client_ip) {
-    const size_t header_end = raw.find("\r\n\r\n");
-    if (header_end == std::string::npos) {
-        return RawParseResult{
-            raw.size() > max_header_bytes ? RawParseStatus::kPayloadTooLarge
-                                          : RawParseStatus::kIncomplete,
-            HttpRequest{}};
-    }
-    if (header_end > max_header_bytes) {
-        return RawParseResult{RawParseStatus::kPayloadTooLarge, HttpRequest{}};
-    }
-    const std::string header_block = raw.substr(0, header_end);
-    const std::string body = raw.substr(header_end + 4);
-    const size_t first_line_end = header_block.find("\r\n");
-    const std::string request_line =
-        first_line_end == std::string::npos
-            ? header_block
-            : header_block.substr(0, first_line_end);
-    const size_t method_end = request_line.find(' ');
-    const size_t target_end =
-        method_end == std::string::npos ? std::string::npos
-                                        : request_line.find(' ', method_end + 1);
-    if (method_end == std::string::npos || target_end == std::string::npos) {
-        return RawParseResult{RawParseStatus::kBadRequest, HttpRequest{}};
-    }
-    infra::Result<HttpMethod> method =
-        ParseMethod(request_line.substr(0, method_end));
-    if (!method.IsOk()) {
-        return RawParseResult{RawParseStatus::kBadRequest, HttpRequest{}};
-    }
-
-    HttpRequest request;
-    request.method = method.value;
-    request.client_ip = client_ip;
-    const std::string target =
-        request_line.substr(method_end + 1, target_end - method_end - 1);
-    const size_t query_pos = target.find('?');
-    request.path = query_pos == std::string::npos ? target : target.substr(0, query_pos);
-    request.query_string =
-        query_pos == std::string::npos ? std::string() : target.substr(query_pos + 1);
-
-    size_t pos = first_line_end == std::string::npos ? header_block.size()
-                                                     : first_line_end + 2;
-    while (pos < header_block.size()) {
-        const size_t line_end = header_block.find("\r\n", pos);
-        const std::string line =
-            line_end == std::string::npos ? header_block.substr(pos)
-                                          : header_block.substr(pos, line_end - pos);
-        const size_t colon = line.find(':');
-        if (colon == std::string::npos) {
-            return RawParseResult{RawParseStatus::kBadRequest, HttpRequest{}};
-        }
-        request.headers[Trim(line.substr(0, colon))] = Trim(line.substr(colon + 1));
-        if (line_end == std::string::npos) {
-            break;
-        }
-        pos = line_end + 2;
-    }
-
-    const std::string content_length_text = GetHeader(request, "Content-Length");
-    size_t expected_body_size = 0;
-    if (!content_length_text.empty()) {
-        char* end = nullptr;
-        const unsigned long parsed =
-            std::strtoul(content_length_text.c_str(), &end, 10);
-        if (end == nullptr || *end != '\0') {
-            return RawParseResult{RawParseStatus::kBadRequest, HttpRequest{}};
-        }
-        expected_body_size = static_cast<size_t>(parsed);
-        if (expected_body_size > max_body_bytes) {
-            return RawParseResult{RawParseStatus::kPayloadTooLarge, HttpRequest{}};
-        }
-        if (body.size() < expected_body_size) {
-            return RawParseResult{RawParseStatus::kIncomplete, HttpRequest{}};
-        }
-        request.body = body.substr(0, expected_body_size);
-    } else if (body.size() > max_body_bytes) {
-        return RawParseResult{RawParseStatus::kPayloadTooLarge, HttpRequest{}};
-    }
-    return RawParseResult{RawParseStatus::kComplete, request};
-}
-
 }  // namespace
 
 class HttpServiceImpl : public IHttpService {
@@ -655,6 +532,10 @@ class HttpServiceImpl : public IHttpService {
             options_.max_request_body_bytes == 0 ||
             options_.max_connections == 0 ||
             options_.request_timeout_ms == 0 ||
+            options_.connection_idle_timeout_ms == 0 ||
+            options_.max_requests_per_connection == 0 ||
+            options_.max_pipelined_requests == 0 ||
+            options_.executor_worker_count == 0 ||
             options_.executor_queue_capacity == 0) {
             return infra::Status::kInvalidParam;
         }
@@ -679,7 +560,7 @@ class HttpServiceImpl : public IHttpService {
             task_executor = task_executor_.get();
         }
         infra::ExecutorOptions executor_options;
-        executor_options.worker_count = 1;
+        executor_options.worker_count = options_.executor_worker_count;
         executor_options.queue_capacity = options_.executor_queue_capacity;
         infra::Status executor_start = task_executor->Start(executor_options);
         if (executor_start != infra::Status::kOk) {
@@ -786,6 +667,23 @@ class HttpServiceImpl : public IHttpService {
             request.method == HttpMethod::kGet) {
             return infra::Result<HttpResponse>::Ok(HandleMediaCapabilities());
         }
+        if (request.path == "/api/status/streams" &&
+            request.method == HttpMethod::kGet) {
+            return infra::Result<HttpResponse>::Ok(HandleStreamStatus(request));
+        }
+        if (request.path == "/api/system/status" &&
+            request.method == HttpMethod::kGet) {
+            return infra::Result<HttpResponse>::Ok(HandleSystemStatus(request));
+        }
+        if (StartsWith(request.path, "/api/snapshot/") &&
+            request.method == HttpMethod::kGet) {
+            return infra::Result<HttpResponse>::Ok(HandleSnapshot(request));
+        }
+        if (StartsWith(request.path, "/api/webrtc") &&
+            (request.method == HttpMethod::kPost ||
+             request.method == HttpMethod::kDelete)) {
+            return infra::Result<HttpResponse>::Ok(HandleWebrtc(request));
+        }
         if (StartsWith(request.path, "/api/config/")) {
             return infra::Result<HttpResponse>::Ok(HandleConfig(request));
         }
@@ -827,6 +725,21 @@ class HttpServiceImpl : public IHttpService {
     }
 
  private:
+    struct PendingRequest {
+        HttpRequest request;
+        bool close_after_response = true;
+    };
+
+    struct HttpSession {
+        std::string recv_buffer;
+        std::string client_ip;
+        std::deque<PendingRequest> pending_requests;
+        uint64_t request_count = 0;
+        uint64_t timeout_generation = 0;
+        bool processing = false;
+        bool closing = false;
+    };
+
     static void HandleAccept(void* user, ConnectionId id, NetAddress peer) {
         HttpServiceImpl* self = static_cast<HttpServiceImpl*>(user);
         if (self != nullptr) {
@@ -1022,6 +935,190 @@ class HttpServiceImpl : public IHttpService {
         return JsonResponse(200, MediaCapabilitiesToJson(capabilities.value));
     }
 
+    HttpResponse HandleStreamStatus(const HttpRequest& request) {
+        infra::Result<AuthPrincipal> principal = Authenticate(request);
+        if (!principal.IsOk()) {
+            return StatusToResponse(principal.status);
+        }
+        if (dependencies_.media_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+
+        Json items = Json::array();
+        ConfigJson video_config;
+        (void)dependencies_.config_service->GetValue("video", &video_config);
+        const char* names[] = {"main", "sub"};
+        for (const char* name : names) {
+            Json item = Json::object();
+            item["stream"] = name;
+            const Json stream =
+                video_config.is_object() && video_config.contains("streams") &&
+                        video_config["streams"].is_object() &&
+                        video_config["streams"].contains(name)
+                    ? video_config["streams"][name]
+                    : Json::object();
+            item["codec"] = stream.value("codec", std::string("h264"));
+            item["resolution"] =
+                stream.value("resolution", std::string("1920x1080"));
+            item["fps"] = stream.value("fps", 25);
+            item["bitrateKbps"] = stream.value("bitrate_kbps", 4096);
+            item["state"] = "running";
+            items.push_back(item);
+        }
+        return JsonResponse(200, items);
+    }
+
+    HttpResponse HandleSystemStatus(const HttpRequest& request) {
+        infra::Result<AuthPrincipal> principal = Authenticate(request);
+        if (!principal.IsOk()) {
+            return StatusToResponse(principal.status);
+        }
+
+        Json root = Json::object();
+        root["deviceName"] = "live-stream-ipc";
+        root["model"] = "live_stream_ipc";
+        root["firmware"] = "0.1.0";
+        root["uptime"] =
+            std::to_string(infra::Time::MonotonicMillis() / 1000) + "s";
+        root["cpu"] = 0;
+        root["memory"] = 0;
+        root["temperature"] = 0;
+        Json services = Json::array();
+        auto add_service = [&services](const char* name, bool running) {
+            Json service = Json::object();
+            service["name"] = name;
+            service["state"] = running ? "running" : "pending";
+            services.push_back(service);
+        };
+        add_service("http_service", true);
+        add_service("media_service", dependencies_.media_service != nullptr);
+        add_service("snapshot_service",
+                    dependencies_.snapshot_service != nullptr);
+        add_service("webrtc_service", dependencies_.webrtc_service != nullptr);
+        root["services"] = services;
+        return JsonResponse(200, root);
+    }
+
+    HttpResponse HandleSnapshot(const HttpRequest& request) {
+        infra::Result<AuthPrincipal> principal = Authenticate(request);
+        if (!principal.IsOk()) {
+            return StatusToResponse(principal.status);
+        }
+        if (dependencies_.snapshot_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        const std::string prefix = "/api/snapshot/";
+        std::string name = request.path.substr(prefix.size());
+        const size_t dot = name.find('.');
+        if (dot != std::string::npos) {
+            name = name.substr(0, dot);
+        }
+        infra::Result<infra::StreamId> stream_id =
+            StreamIdFromJsonString(name);
+        if (!stream_id.IsOk()) {
+            return StatusToResponse(stream_id.status);
+        }
+        CaptureRequest capture_request;
+        capture_request.stream_id = stream_id.value;
+        infra::Result<SnapshotFrame> frame =
+            dependencies_.snapshot_service->Capture(capture_request);
+        if (!frame.IsOk()) {
+            return StatusToResponse(frame.status);
+        }
+        if (!frame.value.buffer || frame.value.offset + frame.value.size >
+                                      frame.value.buffer->Size()) {
+            return StatusResponse(500, "Invalid snapshot frame");
+        }
+        HttpResponse response;
+        response.status_code = 200;
+        response.headers["Content-Type"] = "image/jpeg";
+        const uint8_t* data = frame.value.buffer->Data() + frame.value.offset;
+        response.body.assign(reinterpret_cast<const char*>(data),
+                             frame.value.size);
+        return response;
+    }
+
+    HttpResponse HandleWebrtc(const HttpRequest& request) {
+        infra::Result<AuthPrincipal> principal = Authenticate(request);
+        if (!principal.IsOk()) {
+            return StatusToResponse(principal.status);
+        }
+        if (dependencies_.webrtc_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        Json body = request.body.empty()
+                        ? Json::object()
+                        : Json::parse(request.body, nullptr, false);
+        if (body.is_discarded() || !body.is_object()) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+
+        if (request.path == "/api/webrtc/peers" &&
+            request.method == HttpMethod::kPost) {
+            WebrtcCreatePeerRequest create_request;
+            std::string stream = body.value("stream", std::string("main"));
+            infra::Result<infra::StreamId> stream_id =
+                StreamIdFromJsonString(stream);
+            if (!stream_id.IsOk()) {
+                return StatusToResponse(stream_id.status);
+            }
+            create_request.stream_id = stream_id.value;
+            create_request.client_id =
+                body.value("client_id", std::string("web"));
+            auto peer = dependencies_.webrtc_service->CreatePeer(create_request);
+            if (!peer.IsOk()) {
+                return StatusToResponse(peer.status);
+            }
+            Json root = Json::object();
+            root["peer_id"] = peer.value.peer_id;
+            root["stream"] = StreamIdToJsonString(peer.value.stream_id);
+            return JsonResponse(200, root);
+        }
+        if (request.path == "/api/webrtc/offer" &&
+            request.method == HttpMethod::kPost) {
+            WebrtcOfferRequest offer;
+            if (!GetObjectString(body, "peer_id", &offer.peer_id) ||
+                !GetObjectString(body, "sdp", &offer.sdp)) {
+                return StatusResponse(400, "Missing offer fields");
+            }
+            auto answer = dependencies_.webrtc_service->HandleOffer(offer);
+            if (!answer.IsOk()) {
+                return StatusToResponse(answer.status);
+            }
+            Json root = Json::object();
+            root["peer_id"] = answer.value.peer_id;
+            root["sdp"] = answer.value.sdp;
+            return JsonResponse(200, root);
+        }
+        if (request.path == "/api/webrtc/candidate" &&
+            request.method == HttpMethod::kPost) {
+            WebrtcIceCandidate candidate;
+            if (!GetObjectString(body, "peer_id", &candidate.peer_id) ||
+                !GetObjectString(body, "candidate", &candidate.candidate)) {
+                return StatusResponse(400, "Missing candidate fields");
+            }
+            candidate.sdp_mid = body.value("sdp_mid", std::string("0"));
+            candidate.sdp_mline_index =
+                body.value("sdp_mline_index", static_cast<int32_t>(0));
+            infra::Status status =
+                dependencies_.webrtc_service->AddIceCandidate(candidate);
+            return status == infra::Status::kOk ? OkResponse()
+                                                : StatusToResponse(status);
+        }
+        if (request.path == "/api/webrtc/close" &&
+            request.method == HttpMethod::kPost) {
+            std::string peer_id;
+            if (!GetObjectString(body, "peer_id", &peer_id)) {
+                return StatusResponse(400, "Missing peer_id");
+            }
+            infra::Status status =
+                dependencies_.webrtc_service->ClosePeer(peer_id);
+            return status == infra::Status::kOk ? OkResponse()
+                                                : StatusToResponse(status);
+        }
+        return StatusResponse(404, "Not Found");
+    }
+
     std::string ValidateVideoStreamConfig(
         const Json& stream,
         const VideoStreamCapabilities& capabilities) {
@@ -1122,6 +1219,180 @@ class HttpServiceImpl : public IHttpService {
         return std::string();
     }
 
+    bool ContainsOption(const OptionControlCapability& control,
+                        const std::string& value) {
+        for (const std::string& item : control.values) {
+            if (item == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    std::string ValidateNumericControl(
+        const Json& object,
+        const std::string& section,
+        const NumericControlCapability& control) {
+        if (!object.contains(control.name)) {
+            return std::string();
+        }
+        if (!object[control.name].is_number_integer() &&
+            !object[control.name].is_number_unsigned()) {
+            return section + "." + control.name + ": invalid type";
+        }
+        int64_t value = 0;
+        if (object[control.name].is_number_unsigned()) {
+            const uint64_t unsigned_value =
+                object[control.name].get<uint64_t>();
+            if (unsigned_value > static_cast<uint64_t>(control.max)) {
+                return section + "." + control.name + ": unsupported value";
+            }
+            value = static_cast<int64_t>(unsigned_value);
+        } else {
+            value = object[control.name].get<int64_t>();
+        }
+        if (value < control.min || value > control.max) {
+            return section + "." + control.name + ": unsupported value";
+        }
+        return std::string();
+    }
+
+    std::string ValidateOptionControl(
+        const Json& object,
+        const std::string& section,
+        const OptionControlCapability& control) {
+        if (!object.contains(control.name)) {
+            return std::string();
+        }
+        std::string value;
+        if (object[control.name].is_string()) {
+            value = object[control.name].get<std::string>();
+        } else if (object[control.name].is_boolean()) {
+            value = object[control.name].get<bool>() ? "true" : "false";
+        } else {
+            return section + "." + control.name + ": invalid type";
+        }
+        if (!ContainsOption(control, value)) {
+            return section + "." + control.name + ": unsupported value";
+        }
+        return std::string();
+    }
+
+    std::string ValidateNumericControls(
+        const Json& object,
+        const std::string& section,
+        const std::vector<NumericControlCapability>& controls) {
+        for (const NumericControlCapability& control : controls) {
+            const std::string error =
+                ValidateNumericControl(object, section, control);
+            if (!error.empty()) {
+                return error;
+            }
+        }
+        return std::string();
+    }
+
+    std::string ValidateOptionControls(
+        const Json& object,
+        const std::string& section,
+        const std::vector<OptionControlCapability>& controls) {
+        for (const OptionControlCapability& control : controls) {
+            const std::string error =
+                ValidateOptionControl(object, section, control);
+            if (!error.empty()) {
+                return error;
+            }
+        }
+        return std::string();
+    }
+
+    std::string ValidateOrientationControl(const Json& object,
+                                           const std::string& name,
+                                           bool supported) {
+        if (!object.contains(name)) {
+            return std::string();
+        }
+        if (!object[name].is_boolean()) {
+            return std::string("orientation.") + name + ": invalid type";
+        }
+        if (object[name].get<bool>() && !supported) {
+            return std::string("orientation.") + name + ": unsupported value";
+        }
+        return std::string();
+    }
+
+    std::string ValidateImageConfigAgainstCapabilities(
+        const std::string& body) {
+        if (dependencies_.media_service == nullptr) {
+            return std::string();
+        }
+        infra::Result<MediaCapabilities> capabilities =
+            dependencies_.media_service->GetCapabilities();
+        if (!capabilities.IsOk()) {
+            return infra::StatusToString(capabilities.status);
+        }
+
+        Json parsed = Json::parse(body, nullptr, false);
+        if (parsed.is_discarded() || !parsed.is_object()) {
+            return "invalid image config json";
+        }
+        const ImageCapabilities& image = capabilities.value.image;
+        const struct {
+            const char* name;
+            const std::vector<NumericControlCapability>* ranges;
+            const std::vector<OptionControlCapability>* options;
+        } sections[] = {
+            {"basic", &image.basic, nullptr},
+            {"exposure", &image.exposure_ranges, &image.exposure_options},
+            {"white_balance", &image.white_balance_ranges,
+             &image.white_balance_options},
+            {"enhancement", &image.enhancement_ranges,
+             &image.enhancement_options},
+            {"backlight", &image.backlight_ranges, &image.backlight_options},
+            {"color_mode", nullptr, &image.color_mode_options},
+        };
+        for (const auto& section : sections) {
+            if (!parsed.contains(section.name)) {
+                continue;
+            }
+            if (!parsed[section.name].is_object()) {
+                return std::string(section.name) + ": invalid type";
+            }
+            if (section.ranges != nullptr) {
+                const std::string error = ValidateNumericControls(
+                    parsed[section.name], section.name, *section.ranges);
+                if (!error.empty()) {
+                    return error;
+                }
+            }
+            if (section.options != nullptr) {
+                const std::string error = ValidateOptionControls(
+                    parsed[section.name], section.name, *section.options);
+                if (!error.empty()) {
+                    return error;
+                }
+            }
+        }
+        if (parsed.contains("orientation") &&
+            !parsed["orientation"].is_object()) {
+            return "orientation: invalid type";
+        }
+        if (parsed.contains("orientation")) {
+            const Json& orientation = parsed["orientation"];
+            std::string error = ValidateOrientationControl(
+                orientation, "mirror", image.mirror_supported);
+            if (!error.empty()) {
+                return error;
+            }
+            error = ValidateOrientationControl(
+                orientation, "flip", image.flip_supported);
+            if (!error.empty()) {
+                return error;
+            }
+        }
+        return std::string();
+    }
+
     HttpResponse HandleConfig(const HttpRequest& request) {
         const std::string name = request.path.substr(std::string("/api/config/").size());
         if (name.empty()) {
@@ -1153,6 +1424,13 @@ class HttpServiceImpl : public IHttpService {
             if (name == "video") {
                 const std::string validation_error =
                     ValidateVideoConfigAgainstCapabilities(request.body);
+                if (!validation_error.empty()) {
+                    return StatusResponse(400, validation_error);
+                }
+            }
+            if (name == "image") {
+                const std::string validation_error =
+                    ValidateImageConfigAgainstCapabilities(request.body);
                 if (!validation_error.empty()) {
                     return StatusResponse(400, validation_error);
                 }
@@ -1229,37 +1507,14 @@ class HttpServiceImpl : public IHttpService {
     }
 
     void OnConnection(ConnectionId connection_id, NetAddress peer) {
-        NetEngine* net_engine = nullptr;
         {
             infra::MutexGuard guard(&mutex_);
             HttpSession session;
             session.client_ip = std::move(peer.ip);
             sessions_[connection_id] = session;
             ++stats_.active_connections;
-            net_engine = dependencies_.net_engine;
         }
-        if (net_engine != nullptr) {
-            (void)net_engine->RunOnIoAfter(
-                options_.request_timeout_ms, [this, connection_id]() {
-                bool should_close = false;
-                {
-                    infra::MutexGuard guard(&mutex_);
-                    auto iter = sessions_.find(connection_id);
-                    should_close = iter != sessions_.end() &&
-                                   !iter->second.request_posted;
-                }
-                if (should_close) {
-                    NetEngine* engine = nullptr;
-                    {
-                        infra::MutexGuard guard(&mutex_);
-                        engine = dependencies_.net_engine;
-                    }
-                    if (engine != nullptr) {
-                        (void)engine->Close(connection_id);
-                    }
-                }
-            });
-        }
+        ArmSessionTimer(connection_id, options_.request_timeout_ms);
     }
 
     void OnClose(ConnectionId connection_id) {
@@ -1275,62 +1530,68 @@ class HttpServiceImpl : public IHttpService {
         if (data == nullptr) {
             return;
         }
-        RawParseResult parsed;
-        bool should_handle = false;
+        HttpResponse close_response;
         bool should_close = false;
         {
             infra::MutexGuard guard(&mutex_);
             auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end() || iter->second.request_posted) {
+            if (iter == sessions_.end() || iter->second.closing) {
                 return;
             }
+            ++iter->second.timeout_generation;
             iter->second.recv_buffer.append(reinterpret_cast<const char*>(data), size);
-            if (iter->second.recv_buffer.size() >
-                static_cast<size_t>(options_.max_request_header_bytes) + 4 +
-                    options_.max_request_body_bytes) {
-                parsed.status = RawParseStatus::kPayloadTooLarge;
-            } else {
-                parsed = ParseRawRequest(iter->second.recv_buffer,
-                                         options_.max_request_header_bytes,
-                                         options_.max_request_body_bytes,
-                                         iter->second.client_ip);
-            }
-            if (parsed.status == RawParseStatus::kIncomplete) {
-                return;
-            }
-            iter->second.request_posted = true;
-            should_handle = parsed.status == RawParseStatus::kComplete;
-            should_close = !should_handle;
+            should_close = !ParsePendingRequestsLocked(iter, &close_response);
         }
 
         if (should_close) {
             IncrementParseFailures();
-            const HttpResponse response =
-                parsed.status == RawParseStatus::kPayloadTooLarge
-                    ? StatusResponse(413, "Payload Too Large")
-                    : StatusResponse(400, "Bad Request");
-            SendResponseAndClose(connection_id, response);
+            SendResponse(connection_id, close_response, true);
             return;
         }
+        ArmSessionTimer(connection_id, options_.request_timeout_ms);
+        TryPostNextRequest(connection_id);
+    }
 
+    void TryPostNextRequest(ConnectionId connection_id) {
+        PendingRequest pending;
         infra::Executor* task_executor = nullptr;
+        bool has_request = false;
         {
             infra::MutexGuard guard(&mutex_);
+            auto iter = sessions_.find(connection_id);
+            if (iter == sessions_.end() || iter->second.processing ||
+                iter->second.pending_requests.empty()) {
+                return;
+            }
+            pending = std::move(iter->second.pending_requests.front());
+            iter->second.pending_requests.pop_front();
+            iter->second.processing = true;
+            has_request = true;
             task_executor = task_executor_.get();
         }
+        if (!has_request) {
+            return;
+        }
         if (task_executor == nullptr ||
-            task_executor->Post([this, connection_id, request = parsed.request]() {
-                infra::Result<HttpResponse> handled = HandleRequest(request);
+            task_executor->Post([this, connection_id, pending = std::move(pending)]() mutable {
+                infra::Result<HttpResponse> handled =
+                    HandleRequest(pending.request);
                 const HttpResponse response =
                     handled.IsOk() ? handled.value : StatusToResponse(handled.status);
-                SendResponseAndClose(connection_id, response);
+                SendResponse(connection_id, response, pending.close_after_response);
             }) != infra::Status::kOk) {
-            SendResponseAndClose(connection_id,
-                                 StatusResponse(503, "Service Unavailable"));
+            SendResponse(connection_id, StatusResponse(503, "Service Unavailable"),
+                         true);
         }
     }
 
     void SendResponseAndClose(ConnectionId connection_id, const HttpResponse& response) {
+        SendResponse(connection_id, response, true);
+    }
+
+    void SendResponse(ConnectionId connection_id,
+                      const HttpResponse& response,
+                      bool close_after_response) {
         NetEngine* net_engine = nullptr;
         {
             infra::MutexGuard guard(&mutex_);
@@ -1339,22 +1600,137 @@ class HttpServiceImpl : public IHttpService {
         if (net_engine == nullptr) {
             return;
         }
-        const std::string serialized = SerializeResponse(response);
+        HttpResponse response_copy = response;
+        response_copy.headers["Connection"] =
+            close_after_response ? "close" : "keep-alive";
+        const std::string serialized = SerializeResponse(response_copy);
         infra::Status send_error = net_engine->Send(
             connection_id, reinterpret_cast<const uint8_t*>(serialized.data()),
             serialized.size());
-        if (send_error == infra::Status::kOk) {
+        if (send_error != infra::Status::kOk) {
+            (void)net_engine->Close(connection_id);
+            return;
+        }
+        if (close_after_response) {
             (void)net_engine->CloseAfterSend(connection_id);
             return;
         }
-        (void)net_engine->Close(connection_id);
+        CompleteKeepAliveRequest(connection_id);
     }
 
-    struct HttpSession {
-        std::string recv_buffer;
-        std::string client_ip;
-        bool request_posted = false;
-    };
+    void CompleteKeepAliveRequest(ConnectionId connection_id) {
+        HttpResponse close_response;
+        bool should_close = false;
+        bool has_pending = false;
+        {
+            infra::MutexGuard guard(&mutex_);
+            auto iter = sessions_.find(connection_id);
+            if (iter == sessions_.end()) {
+                return;
+            }
+            iter->second.processing = false;
+            should_close = !ParsePendingRequestsLocked(iter, &close_response);
+            has_pending = !iter->second.pending_requests.empty();
+        }
+        if (should_close) {
+            IncrementParseFailures();
+            SendResponse(connection_id, close_response, true);
+            return;
+        }
+        if (has_pending) {
+            TryPostNextRequest(connection_id);
+            return;
+        }
+        ArmSessionTimer(connection_id, options_.connection_idle_timeout_ms);
+    }
+
+    bool ParsePendingRequestsLocked(
+        std::map<ConnectionId, HttpSession>::iterator iter,
+        HttpResponse* close_response) {
+        HttpSession& session = iter->second;
+        const size_t max_buffer_size =
+            static_cast<size_t>(options_.max_request_header_bytes) + 4 +
+            options_.max_request_body_bytes;
+        size_t parsed_count = 0;
+        while (!session.closing &&
+               parsed_count < static_cast<size_t>(options_.max_pipelined_requests)) {
+            if (session.recv_buffer.empty()) {
+                return true;
+            }
+            if (session.recv_buffer.size() > max_buffer_size) {
+                session.closing = true;
+                if (close_response != nullptr) {
+                    *close_response = StatusResponse(413, "Payload Too Large");
+                }
+                return false;
+            }
+            RawParseResult parsed = ParseRawRequest(
+                session.recv_buffer, options_.max_request_header_bytes,
+                options_.max_request_body_bytes, session.client_ip);
+            if (parsed.status == RawParseStatus::kIncomplete) {
+                return true;
+            }
+            if (parsed.status != RawParseStatus::kComplete ||
+                parsed.consumed_bytes == 0 ||
+                parsed.consumed_bytes > session.recv_buffer.size()) {
+                session.closing = true;
+                if (close_response != nullptr) {
+                    *close_response =
+                        parsed.status == RawParseStatus::kPayloadTooLarge
+                            ? StatusResponse(413, "Payload Too Large")
+                            : StatusResponse(400, "Bad Request");
+                }
+                return false;
+            }
+
+            session.recv_buffer.erase(0, parsed.consumed_bytes);
+            ++session.request_count;
+            PendingRequest pending;
+            pending.request = std::move(parsed.request);
+            pending.close_after_response =
+                !options_.enable_keep_alive || !parsed.keep_alive ||
+                session.request_count >= options_.max_requests_per_connection;
+            session.pending_requests.push_back(std::move(pending));
+            ++parsed_count;
+            if (session.pending_requests.back().close_after_response) {
+                session.closing = true;
+                session.recv_buffer.clear();
+                return true;
+            }
+        }
+        return true;
+    }
+
+    void ArmSessionTimer(ConnectionId connection_id, uint32_t delay_ms) {
+        NetEngine* net_engine = nullptr;
+        uint64_t generation = 0;
+        {
+            infra::MutexGuard guard(&mutex_);
+            auto iter = sessions_.find(connection_id);
+            if (iter == sessions_.end()) {
+                return;
+            }
+            generation = ++iter->second.timeout_generation;
+            net_engine = dependencies_.net_engine;
+        }
+        if (net_engine == nullptr) {
+            return;
+        }
+        (void)net_engine->RunOnIoAfter(delay_ms, [this, connection_id, generation]() {
+            NetEngine* engine = nullptr;
+            bool should_close = false;
+            {
+                infra::MutexGuard guard(&mutex_);
+                auto iter = sessions_.find(connection_id);
+                should_close = iter != sessions_.end() &&
+                               iter->second.timeout_generation == generation;
+                engine = dependencies_.net_engine;
+            }
+            if (should_close && engine != nullptr) {
+                (void)engine->Close(connection_id);
+            }
+        });
+    }
 
     HttpServiceOptions options_;
     HttpServiceDependencies dependencies_;

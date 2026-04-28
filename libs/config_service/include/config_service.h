@@ -11,7 +11,7 @@
 #include "infra/status.h"
 #include "infra/service.h"
 
-#include "../../../3rdparty/nlohmann_json.hpp"
+#include "nlohmann/json.hpp"
 
 #include <functional>
 #include <memory>

@@ -103,6 +103,9 @@ hisisdk::Bitmap ToHisiBitmap(const OsdBitmap& bitmap) {
 
 }  // namespace
 
+HostOsdMppAdapter::HostOsdMppAdapter(hisisdk::IHisiSdk* sdk)
+    : sdk_(sdk != nullptr ? sdk : &hisisdk::DefaultSdk()) {}
+
 bool IsValidChannel(const MppChannel& channel) {
     return channel.device >= 0 && channel.channel >= 0;
 }
@@ -158,8 +161,7 @@ infra::Status HostOsdMppAdapter::Create(
     if (handle < 0 || !IsValidRegionConfig(config)) {
         return infra::Status::kInvalidParam;
     }
-    return hisisdk::DefaultSdk().CreateRegion(
-        handle, ToHisiRegionConfig(config));
+    return sdk_->CreateRegion(handle, ToHisiRegionConfig(config));
 }
 
 infra::Status HostOsdMppAdapter::Attach(
@@ -167,8 +169,7 @@ infra::Status HostOsdMppAdapter::Attach(
     if (handle < 0 || !IsValidRegionConfig(config)) {
         return infra::Status::kInvalidParam;
     }
-    return hisisdk::DefaultSdk().AttachRegion(
-        handle, ToHisiRegionConfig(config));
+    return sdk_->AttachRegion(handle, ToHisiRegionConfig(config));
 }
 
 infra::Status HostOsdMppAdapter::Detach(
@@ -176,8 +177,7 @@ infra::Status HostOsdMppAdapter::Detach(
     if (handle < 0) {
         return infra::Status::kInvalidParam;
     }
-    return hisisdk::DefaultSdk().DetachRegion(
-        handle, ToHisiRegionConfig(config));
+    return sdk_->DetachRegion(handle, ToHisiRegionConfig(config));
 }
 
 infra::Status HostOsdMppAdapter::SetDisplay(
@@ -185,8 +185,7 @@ infra::Status HostOsdMppAdapter::SetDisplay(
     if (handle < 0 || !IsValidRegionConfig(config)) {
         return infra::Status::kInvalidParam;
     }
-    return hisisdk::DefaultSdk().SetRegionDisplay(
-        handle, ToHisiRegionConfig(config));
+    return sdk_->SetRegionDisplay(handle, ToHisiRegionConfig(config));
 }
 
 infra::Status HostOsdMppAdapter::UpdateBitmap(
@@ -194,11 +193,11 @@ infra::Status HostOsdMppAdapter::UpdateBitmap(
     if (handle < 0 || !IsValidBitmap(bitmap)) {
         return infra::Status::kInvalidParam;
     }
-    return hisisdk::DefaultSdk().SetRegionBitmap(handle, ToHisiBitmap(bitmap));
+    return sdk_->SetRegionBitmap(handle, ToHisiBitmap(bitmap));
 }
 
 void HostOsdMppAdapter::Destroy(int32_t handle) {
-    hisisdk::DefaultSdk().DestroyRegion(handle);
+    sdk_->DestroyRegion(handle);
 }
 
 }  // namespace osd_internal

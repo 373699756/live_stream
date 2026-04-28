@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AppShell } from './components/AppShell';
+import { hasToken } from './api/client';
 import { ImageConfigPage } from './pages/ImageConfigPage';
 import { LiveViewPage } from './pages/LiveViewPage';
 import { LoginPage } from './pages/LoginPage';
@@ -33,7 +34,7 @@ function renderPage(page: PageId) {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const [authenticated, setAuthenticated] = useState(hasToken());
   const [page, setPage] = useState<PageId>('live');
 
   if (!authenticated) {

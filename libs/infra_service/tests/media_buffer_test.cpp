@@ -1,5 +1,6 @@
 #include "infra/encoded_frame.h"
 
+#include <cstdint>
 #include <cstring>
 
 int main() {
@@ -55,6 +56,26 @@ int main() {
     stats = pool->Stats();
     if (stats.in_use_count != 1U || stats.free_count != 1U) {
         return 8;
+    }
+    pooled_b.reset();
+    stats = pool->Stats();
+    if (stats.in_use_count != 0U || stats.free_count != 2U ||
+        stats.high_water_count != 2U) {
+        return 9;
+    }
+
+    pooled_a = pool->Acquire();
+    pooled_b = pool->Acquire();
+    if (!pooled_a || !pooled_b) {
+        return 10;
+    }
+    const uintptr_t first =
+        reinterpret_cast<uintptr_t>(pooled_a->MutableData());
+    const uintptr_t second =
+        reinterpret_cast<uintptr_t>(pooled_b->MutableData());
+    const uintptr_t diff = first > second ? first - second : second - first;
+    if (first == 0U || second == 0U || diff != 8U) {
+        return 11;
     }
 
     return 0;

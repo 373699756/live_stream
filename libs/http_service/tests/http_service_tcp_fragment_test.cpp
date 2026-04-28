@@ -206,7 +206,7 @@ int main() {
     close(fd);
     http->Stop();
     http->Deinit();
-    netframe->Deinit();
+    netframe.value->Stop();
 
     if (!Contains(response, "HTTP/1.1 200 OK") ||
         !Contains(response, "admin-token") ||

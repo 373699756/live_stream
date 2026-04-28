@@ -2,14 +2,14 @@
 
 #include "auth_service.h"
 #include "event_service.h"
+#include "media/frame_source.h"
+#include "media_service.h"
 #include "netframe_service.h"
+#include "rtp_packetizer.h"
+#include "rtsp_protocol.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cstdio>
-#include <cstring>
 #include <map>
-#include <sstream>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -17,9 +17,6 @@ namespace live_stream {
 namespace {
 
 constexpr const char* kServiceName = "rtsp_service";
-constexpr uint8_t kPayloadTypeH264 = 96;
-constexpr uint8_t kPayloadTypeH265 = 98;
-constexpr uint32_t kRtpClockRate = 90000;
 constexpr uint32_t kDefaultSsrcBase = 0x52545350;
 
 enum class ServiceState {
@@ -37,253 +34,27 @@ enum class SessionState {
     kClosed,
 };
 
-struct RtspRequest {
-    std::string method;
-    std::string uri;
-    std::map<std::string, std::string> headers;
-};
-
-std::string Trim(const std::string& value) {
-    size_t begin = 0;
-    while (begin < value.size() &&
-           std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
-        ++begin;
-    }
-    size_t end = value.size();
-    while (end > begin &&
-           std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
-        --end;
-    }
-    return value.substr(begin, end - begin);
-}
-
-std::string Lower(std::string value) {
-    for (char& ch : value) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return value;
-}
-
-bool ContainsNoCase(const std::string& value, const std::string& needle) {
-    return Lower(value).find(Lower(needle)) != std::string::npos;
-}
-
-std::string HeaderValue(const RtspRequest& request, const std::string& name) {
-    const auto it = request.headers.find(Lower(name));
-    if (it == request.headers.end()) {
-        return std::string();
-    }
-    return it->second;
-}
-
-bool ParseRtspRequest(const std::string& raw, RtspRequest* request) {
-    if (request == nullptr) {
-        return false;
-    }
-    std::istringstream input(raw);
-    std::string line;
-    if (!std::getline(input, line)) {
-        return false;
-    }
-    if (!line.empty() && line.back() == '\r') {
-        line.pop_back();
-    }
-    std::istringstream start(line);
-    std::string version;
-    if (!(start >> request->method >> request->uri >> version) ||
-        version != "RTSP/1.0") {
-        return false;
-    }
-
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.empty()) {
-            break;
-        }
-        const size_t colon = line.find(':');
-        if (colon == std::string::npos) {
-            return false;
-        }
-        request->headers[Lower(Trim(line.substr(0, colon)))] =
-            Trim(line.substr(colon + 1));
-    }
-    return true;
-}
-
-std::string CSeq(const RtspRequest& request) {
-    const std::string cseq = HeaderValue(request, "CSeq");
-    return cseq.empty() ? "1" : cseq;
-}
-
-std::string RtspStatusText(int status) {
-    switch (status) {
-        case 200:
-            return "OK";
-        case 400:
-            return "Bad Request";
-        case 401:
-            return "Unauthorized";
-        case 403:
-            return "Forbidden";
-        case 404:
-            return "Not Found";
-        case 454:
-            return "Session Not Found";
-        case 455:
-            return "Method Not Valid in This State";
-        case 461:
-            return "Unsupported Transport";
-        case 500:
-            return "Internal Server Status";
-        default:
-            return "Status";
-    }
-}
-
-std::string BuildRtspResponse(int status,
-                              const std::string& cseq,
-                              const std::map<std::string, std::string>& headers,
-                              const std::string& body) {
-    std::ostringstream output;
-    output << "RTSP/1.0 " << status << " " << RtspStatusText(status) << "\r\n";
-    output << "CSeq: " << cseq << "\r\n";
-    for (const auto& entry : headers) {
-        output << entry.first << ": " << entry.second << "\r\n";
-    }
-    if (!body.empty()) {
-        output << "Content-Length: " << body.size() << "\r\n";
-    }
-    output << "\r\n";
-    output << body;
-    return output.str();
-}
-
-bool PathToStreamId(const std::string& uri, infra::StreamId* stream_id) {
-    const size_t scheme = uri.find("://");
-    std::string path = uri;
-    if (scheme != std::string::npos) {
-        const size_t slash = uri.find('/', scheme + 3);
-        path = (slash == std::string::npos) ? std::string() : uri.substr(slash);
-    }
-    const size_t query = path.find('?');
-    if (query != std::string::npos) {
-        path = path.substr(0, query);
-    }
-    if (path == "/live/main") {
-        *stream_id = infra::StreamId::kMain;
-        return true;
-    }
-    if (path == "/live/sub") {
-        *stream_id = infra::StreamId::kSub;
-        return true;
-    }
-    return false;
-}
-
-const char* StreamPath(infra::StreamId stream_id) {
-    return stream_id == infra::StreamId::kSub ? "/live/sub" : "/live/main";
-}
-
-uint8_t PayloadType(infra::VideoCodec codec) {
-    return codec == infra::VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
-}
-
-uint32_t RtpTimestamp(const infra::EncodedFrame& frame) {
-    return static_cast<uint32_t>((frame.pts_us * kRtpClockRate) / 1000000);
-}
-
-void AppendU16(std::vector<uint8_t>* out, uint16_t value) {
-    out->push_back(static_cast<uint8_t>((value >> 8) & 0xff));
-    out->push_back(static_cast<uint8_t>(value & 0xff));
-}
-
-void AppendU32(std::vector<uint8_t>* out, uint32_t value) {
-    out->push_back(static_cast<uint8_t>((value >> 24) & 0xff));
-    out->push_back(static_cast<uint8_t>((value >> 16) & 0xff));
-    out->push_back(static_cast<uint8_t>((value >> 8) & 0xff));
-    out->push_back(static_cast<uint8_t>(value & 0xff));
-}
-
-std::string BuildSdp(const RtspListenAddress& address, infra::StreamId stream_id) {
-    std::ostringstream sdp;
-    sdp << "v=0\r\n";
-    sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";
-    sdp << "s=live_stream\r\n";
-    sdp << "c=IN IP4 0.0.0.0\r\n";
-    sdp << "t=0 0\r\n";
-    sdp << "a=control:*\r\n";
-    sdp << "m=video 0 RTP/AVP " << static_cast<int>(kPayloadTypeH264) << "\r\n";
-    sdp << "a=rtpmap:" << static_cast<int>(kPayloadTypeH264)
-        << " H264/90000\r\n";
-    sdp << "a=control:" << StreamPath(stream_id) << "\r\n";
-    return sdp.str();
-}
-
-int ParseClientRtpPort(const std::string& transport) {
-    const std::string key = "client_port=";
-    const size_t pos = Lower(transport).find(key);
-    if (pos == std::string::npos) {
-        return 0;
-    }
-    const size_t begin = pos + key.size();
-    const size_t end = transport.find_first_of("-;\r\n", begin);
-    const std::string value = transport.substr(begin, end - begin);
-    return std::atoi(value.c_str());
-}
-
-std::string BasicRealmHeader() {
-    return "Basic realm=\"live_stream\"";
-}
-
-int Base64Value(char ch) {
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A';
-    }
-    if (ch >= 'a' && ch <= 'z') {
-        return ch - 'a' + 26;
-    }
-    if (ch >= '0' && ch <= '9') {
-        return ch - '0' + 52;
-    }
-    if (ch == '+') {
-        return 62;
-    }
-    if (ch == '/') {
-        return 63;
-    }
-    return -1;
-}
-
-bool DecodeBase64(const std::string& encoded, std::string* decoded) {
-    int bits = 0;
-    int value = 0;
-    decoded->clear();
-    for (char ch : encoded) {
-        if (ch == '=') {
-            break;
-        }
-        if (std::isspace(static_cast<unsigned char>(ch)) != 0) {
-            continue;
-        }
-        const int digit = Base64Value(ch);
-        if (digit < 0) {
-            return false;
-        }
-        value = (value << 6) | digit;
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            decoded->push_back(static_cast<char>((value >> bits) & 0xff));
-        }
-    }
-    return true;
-}
-
 }  // namespace
 
-class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
+using rtsp_internal::BasicRealmHeader;
+using rtsp_internal::AppendU16;
+using rtsp_internal::BuildRtspResponse;
+using rtsp_internal::BuildSdp;
+using rtsp_internal::CSeq;
+using rtsp_internal::ContainsNoCase;
+using rtsp_internal::DecodeBase64;
+using rtsp_internal::HeaderValue;
+using rtsp_internal::ParseClientRtpPort;
+using rtsp_internal::ParseRtspRequest;
+using rtsp_internal::PathToStreamId;
+using rtsp_internal::RtpPacket;
+using rtsp_internal::RtpPacketizer;
+using rtsp_internal::RtspRequest;
+using rtsp_internal::StreamPath;
+
+class RtspServiceImpl : public IRtspService,
+                        public IRtspFrameSink,
+                        public IFrameSink {
  public:
     RtspServiceImpl(RtspServiceOptions options,
                     RtspServiceDependencies dependencies)
@@ -364,6 +135,25 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
                                                          this);
             (void)dependencies_.frame_source->AttachSink(infra::StreamId::kSub,
                                                          this);
+        } else if (dependencies_.media_service != nullptr) {
+            FrameSubscribeOptions main_options;
+            main_options.stream_id = infra::StreamId::kMain;
+            main_options.require_key_frame_first = true;
+            main_options.sink_name = kServiceName;
+            auto main_sub =
+                dependencies_.media_service->SubscribeFrames(main_options, this);
+            if (main_sub.IsOk()) {
+                main_subscription_id_ = main_sub.value;
+            }
+            FrameSubscribeOptions sub_options;
+            sub_options.stream_id = infra::StreamId::kSub;
+            sub_options.require_key_frame_first = true;
+            sub_options.sink_name = kServiceName;
+            auto sub_sub =
+                dependencies_.media_service->SubscribeFrames(sub_options, this);
+            if (sub_sub.IsOk()) {
+                sub_subscription_id_ = sub_sub.value;
+            }
         }
         auto local_result = dependencies_.net_engine->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
@@ -378,6 +168,17 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
                                                          this);
             (void)dependencies_.frame_source->DetachSink(infra::StreamId::kSub,
                                                          this);
+        } else if (dependencies_.media_service != nullptr) {
+            if (main_subscription_id_ != 0) {
+                (void)dependencies_.media_service->UnsubscribeFrames(
+                    main_subscription_id_);
+                main_subscription_id_ = 0;
+            }
+            if (sub_subscription_id_ != 0) {
+                (void)dependencies_.media_service->UnsubscribeFrames(
+                    sub_subscription_id_);
+                sub_subscription_id_ = 0;
+            }
         }
         if (server_id_ != 0 && dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseTcp(server_id_);
@@ -406,6 +207,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
     }
 
     infra::Result<RtspListenAddress> LocalAddress() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (state_ != ServiceState::kStarted) {
             return infra::Result<RtspListenAddress>::Fail(infra::Status::kBusy);
         }
@@ -413,6 +215,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
     }
 
     RtspServiceStats GetStats() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
         RtspServiceStats stats = stats_;
         stats.active_sessions = static_cast<uint32_t>(sessions_.size());
         return stats;
@@ -427,17 +230,30 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             return infra::Status::kInvalidParam;
         }
         std::vector<std::shared_ptr<Session>> targets;
-        for (const auto& entry : sessions_) {
-            const auto& session = entry.second;
-            if (session->state == SessionState::kPlaying &&
-                session->stream_id == frame.stream_id) {
-                targets.push_back(session);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (const auto& entry : sessions_) {
+                const auto& session = entry.second;
+                if (session->state == SessionState::kPlaying &&
+                    session->stream_id == frame.stream_id) {
+                    targets.push_back(session);
+                }
             }
         }
         for (const auto& session : targets) {
             SendFrame(session, frame);
         }
         return infra::Status::kOk;
+    }
+
+    void OnFrame(const infra::EncodedFrame& frame) override {
+        (void)OnEncodedFrame(frame);
+    }
+
+    void OnSourceStateChanged(infra::StreamId stream_id,
+                              StreamState state) override {
+        (void)stream_id;
+        (void)state;
     }
 
  private:
@@ -489,41 +305,57 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
     }
 
     void OnConnection(ConnectionId connection_id, NetAddress peer) {
-        if (sessions_.size() >= options_.max_sessions) {
+        auto session = std::make_shared<Session>();
+        session->connection_id = connection_id;
+        session->peer = std::move(peer);
+        bool accepted = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (sessions_.size() < options_.max_sessions) {
+                session->session_id = next_session_id_++;
+                session->ssrc =
+                    kDefaultSsrcBase ^ static_cast<uint32_t>(session->session_id);
+                session->stats.session_id = session->session_id;
+                sessions_[connection_id] = session;
+                ++stats_.total_sessions;
+                accepted = true;
+            }
+        }
+        if (!accepted) {
             (void)dependencies_.net_engine->Close(connection_id);
             return;
         }
-        auto session = std::make_shared<Session>();
-        session->session_id = next_session_id_++;
-        session->connection_id = connection_id;
-        session->peer = std::move(peer);
-        session->ssrc = kDefaultSsrcBase ^ static_cast<uint32_t>(session->session_id);
-        session->stats.session_id = session->session_id;
-        sessions_[connection_id] = session;
-        ++stats_.total_sessions;
         PublishEvent(EventType::kRtspClientConnected, session->peer.ip);
     }
 
     void OnConnectionClosed(ConnectionId id) {
-        const auto it = sessions_.find(id);
-        if (it == sessions_.end()) {
-            return;
+        std::shared_ptr<Session> session;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto it = sessions_.find(id);
+            if (it == sessions_.end()) {
+                return;
+            }
+            session = it->second;
+            sessions_.erase(it);
         }
-        PublishEvent(EventType::kRtspClientDisconnected,
-                     it->second->peer.ip);
-        sessions_.erase(it);
+        PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);
     }
 
     void OnMessage(ConnectionId connection_id,
                    const uint8_t* data,
                    uint32_t size) {
-        const auto it = sessions_.find(connection_id);
-        if (it == sessions_.end()) {
-            (void)dependencies_.net_engine->Close(connection_id);
-            return;
+        std::shared_ptr<Session> session;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto it = sessions_.find(connection_id);
+            if (it == sessions_.end()) {
+                (void)dependencies_.net_engine->Close(connection_id);
+                return;
+            }
+            session = it->second;
+            session->request_buffer.append(reinterpret_cast<const char*>(data), size);
         }
-        auto session = it->second;
-        session->request_buffer.append(reinterpret_cast<const char*>(data), size);
         while (!session->request_buffer.empty() &&
                session->request_buffer[0] == '$') {
             if (session->request_buffer.size() < 4) {
@@ -541,7 +373,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             const size_t end = session->request_buffer.find("\r\n\r\n");
             if (end == std::string::npos) {
                 if (session->request_buffer.size() > options_.max_request_bytes) {
-                    ++stats_.parse_failures;
+                    AddParseFailure();
                     (void)dependencies_.net_engine->Close(connection_id);
                 }
                 return;
@@ -550,7 +382,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             session->request_buffer.erase(0, end + 4);
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
-                ++stats_.parse_failures;
+                AddParseFailure();
                 SendResponse(connection_id, 400, "1", {}, "");
                 (void)dependencies_.net_engine->CloseAfterSend(connection_id);
                 return;
@@ -602,9 +434,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             session->keyframe_seen = false;
             session->stats.stream_id = session->stream_id;
             session->stats.transport = session->transport;
-            if (dependencies_.frame_source != nullptr) {
-                (void)dependencies_.frame_source->RequestKeyFrame(
-                    session->stream_id);
+            if (RequestKeyFrame(session->stream_id)) {
                 NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
             }
             SendResponse(session->connection_id, 200, CSeq(request),
@@ -637,21 +467,21 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
         const std::string authorization = HeaderValue(request, "Authorization");
         const std::string prefix = "Basic ";
         if (authorization.compare(0, prefix.size(), prefix) != 0) {
-            ++stats_.auth_failures;
+            AddAuthFailure();
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
         }
         std::string decoded;
         if (!DecodeBase64(authorization.substr(prefix.size()), &decoded)) {
-            ++stats_.auth_failures;
+            AddAuthFailure();
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
         }
         const size_t colon = decoded.find(':');
         if (colon == std::string::npos) {
-            ++stats_.auth_failures;
+            AddAuthFailure();
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -662,7 +492,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
         login.password = decoded.substr(colon + 1);
         auto login_result = dependencies_.auth_service->Login(login);
         if (!login_result.IsOk()) {
-            ++stats_.auth_failures;
+            AddAuthFailure();
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -671,7 +501,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
         if (dependencies_.auth_service->CheckPermission(
                 login_result.value.principal, AuthPermission::kPreviewVideo,
                 target) != infra::Status::kOk) {
-            ++stats_.auth_failures;
+            AddAuthFailure();
             SendResponse(session->connection_id, 403, CSeq(request), {}, "");
             return false;
         }
@@ -695,7 +525,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             session->interleaved_rtp_channel = 0;
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1";
-            ++stats_.tcp_interleaved_sessions;
+            AddTcpInterleavedSession();
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
             if (client_port <= 0 || client_port > 65535 || udp_socket_id_ == 0) {
@@ -707,7 +537,7 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
             response_transport = "RTP/AVP;unicast;client_port=" +
                 std::to_string(client_port) + "-" +
                 std::to_string(client_port + 1);
-            ++stats_.udp_sessions;
+            AddUdpSession();
         } else {
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return;
@@ -722,169 +552,99 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
 
     void SendFrame(const std::shared_ptr<Session>& session,
                    const infra::EncodedFrame& frame) {
-        if (!session->keyframe_seen) {
-            if (frame.frame_type != infra::FrameType::kIdr &&
-                frame.frame_type != infra::FrameType::kI) {
-                ++session->stats.dropped_frames;
-                ++stats_.dropped_frames;
-                NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
-                return;
+        bool should_drop = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!session->keyframe_seen) {
+                if (frame.frame_type != infra::FrameType::kIdr &&
+                    frame.frame_type != infra::FrameType::kI) {
+                    ++session->stats.dropped_frames;
+                    ++stats_.dropped_frames;
+                    should_drop = true;
+                } else {
+                    session->keyframe_seen = true;
+                }
             }
-            session->keyframe_seen = true;
         }
-        const uint8_t* payload = frame.buffer->Data() + frame.offset;
-        uint32_t size = frame.size;
-        StripAnnexBStartCode(&payload, &size);
-        if (size == 0) {
+        if (should_drop) {
+            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
             return;
         }
-        const uint32_t mtu = options_.rtp_mtu_bytes;
-        if (size + 12 <= mtu) {
-            SendRtpPacket(session, frame, payload, size, true);
-            return;
+        uint16_t sequence = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sequence = session->rtp_sequence;
         }
-        if (frame.codec == infra::VideoCodec::kH265) {
-            PacketizeH265(session, frame, payload, size);
-        } else {
-            PacketizeH264(session, frame, payload, size);
+        RtpPacketizer packetizer(options_.rtp_mtu_bytes);
+        std::vector<RtpPacket> packets =
+            packetizer.Packetize(frame, &sequence, session->ssrc);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session->rtp_sequence = sequence;
+        }
+        for (const RtpPacket& packet : packets) {
+            SendRtpPacketBytes(session, packet.bytes);
         }
     }
 
-    void StripAnnexBStartCode(const uint8_t** payload, uint32_t* size) const {
-        if (*size >= 4 && (*payload)[0] == 0 && (*payload)[1] == 0 &&
-            (*payload)[2] == 0 && (*payload)[3] == 1) {
-            *payload += 4;
-            *size -= 4;
-            return;
+    void SendRtpPacketBytes(const std::shared_ptr<Session>& session,
+                            const std::vector<uint8_t>& packet) {
+        RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
+        ConnectionId connection_id = 0;
+        UdpSocketId udp_socket_id = 0;
+        NetAddress target;
+        uint8_t interleaved_channel = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            transport = session->transport;
+            connection_id = session->connection_id;
+            udp_socket_id = udp_socket_id_;
+            target = session->peer;
+            target.port = session->client_rtp_port;
+            interleaved_channel = session->interleaved_rtp_channel;
         }
-        if (*size >= 3 && (*payload)[0] == 0 && (*payload)[1] == 0 &&
-            (*payload)[2] == 1) {
-            *payload += 3;
-            *size -= 3;
-        }
-    }
-
-    void PacketizeH264(const std::shared_ptr<Session>& session,
-                       const infra::EncodedFrame& frame,
-                       const uint8_t* payload,
-                       uint32_t size) {
-        if (size <= 1) {
-            return;
-        }
-        const uint8_t nal = payload[0];
-        const uint8_t fu_indicator = (nal & 0xe0) | 28;
-        const uint8_t nal_type = nal & 0x1f;
-        const uint32_t max_fragment = options_.rtp_mtu_bytes - 14;
-        uint32_t offset = 1;
-        bool start = true;
-        while (offset < size) {
-            const uint32_t chunk = std::min(max_fragment, size - offset);
-            std::vector<uint8_t> fragment;
-            fragment.reserve(chunk + 2);
-            fragment.push_back(fu_indicator);
-            uint8_t fu_header = nal_type;
-            if (start) {
-                fu_header |= 0x80;
-            }
-            if (offset + chunk >= size) {
-                fu_header |= 0x40;
-            }
-            fragment.push_back(fu_header);
-            fragment.insert(fragment.end(), payload + offset, payload + offset + chunk);
-            SendRtpPacket(session, frame, fragment.data(),
-                          static_cast<uint32_t>(fragment.size()),
-                          offset + chunk >= size);
-            offset += chunk;
-            start = false;
-        }
-    }
-
-    void PacketizeH265(const std::shared_ptr<Session>& session,
-                       const infra::EncodedFrame& frame,
-                       const uint8_t* payload,
-                       uint32_t size) {
-        if (size <= 2) {
-            return;
-        }
-        const uint8_t nal0 = payload[0];
-        const uint8_t nal1 = payload[1];
-        const uint8_t nal_type = (nal0 >> 1) & 0x3f;
-        const uint32_t max_fragment = options_.rtp_mtu_bytes - 15;
-        uint32_t offset = 2;
-        bool start = true;
-        while (offset < size) {
-            const uint32_t chunk = std::min(max_fragment, size - offset);
-            std::vector<uint8_t> fragment;
-            fragment.reserve(chunk + 3);
-            fragment.push_back((nal0 & 0x81) | (49 << 1));
-            fragment.push_back(nal1);
-            uint8_t fu_header = nal_type;
-            if (start) {
-                fu_header |= 0x80;
-            }
-            if (offset + chunk >= size) {
-                fu_header |= 0x40;
-            }
-            fragment.push_back(fu_header);
-            fragment.insert(fragment.end(), payload + offset, payload + offset + chunk);
-            SendRtpPacket(session, frame, fragment.data(),
-                          static_cast<uint32_t>(fragment.size()),
-                          offset + chunk >= size);
-            offset += chunk;
-            start = false;
-        }
-    }
-
-    void SendRtpPacket(const std::shared_ptr<Session>& session,
-                       const infra::EncodedFrame& frame,
-                       const uint8_t* payload,
-                       uint32_t size,
-                       bool marker) {
-        std::vector<uint8_t> packet;
-        packet.reserve(size + 16);
-        packet.push_back(0x80);
-        packet.push_back(static_cast<uint8_t>((marker ? 0x80 : 0x00) |
-                                              PayloadType(frame.codec)));
-        AppendU16(&packet, session->rtp_sequence++);
-        AppendU32(&packet, RtpTimestamp(frame));
-        AppendU32(&packet, session->ssrc);
-        packet.insert(packet.end(), payload, payload + size);
 
         infra::Status error = infra::Status::kOk;
-        if (session->transport == RtspTransportMode::kTcpInterleaved) {
+        if (transport == RtspTransportMode::kTcpInterleaved) {
             std::vector<uint8_t> framed;
             framed.reserve(packet.size() + 4);
             framed.push_back('$');
-            framed.push_back(session->interleaved_rtp_channel);
+            framed.push_back(interleaved_channel);
             AppendU16(&framed, static_cast<uint16_t>(packet.size()));
             framed.insert(framed.end(), packet.begin(), packet.end());
-            error = dependencies_.net_engine->Send(session->connection_id,
-                                                   framed.data(),
+            error = dependencies_.net_engine->Send(connection_id, framed.data(),
                                                    framed.size());
-        } else if (udp_socket_id_ != 0) {
-            NetAddress target = session->peer;
-            target.port = session->client_rtp_port;
-            error = dependencies_.net_engine->SendTo(udp_socket_id_, target,
+        } else if (udp_socket_id != 0) {
+            error = dependencies_.net_engine->SendTo(udp_socket_id, target,
                                                      packet.data(),
                                                      packet.size());
         }
         if (error != infra::Status::kOk) {
-            ++session->stats.dropped_frames;
-            ++stats_.dropped_frames;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                ++session->stats.dropped_frames;
+                ++stats_.dropped_frames;
+            }
             NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
             if (error == infra::Status::kBusy) {
-                ++stats_.slow_client_closes;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    ++stats_.slow_client_closes;
+                }
                 NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
-                (void)dependencies_.net_engine->Close(session->connection_id);
+                (void)dependencies_.net_engine->Close(connection_id);
             }
             return;
         }
-        ++session->stats.sent_rtp_packets;
-        session->stats.sent_rtp_bytes += packet.size();
-        session->stats.pending_bytes =
-            dependencies_.net_engine->PendingBytes(session->connection_id);
-        ++stats_.sent_rtp_packets;
-        stats_.sent_rtp_bytes += packet.size();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++session->stats.sent_rtp_packets;
+            session->stats.sent_rtp_bytes += packet.size();
+            session->stats.pending_bytes =
+                dependencies_.net_engine->PendingBytes(connection_id);
+            ++stats_.sent_rtp_packets;
+            stats_.sent_rtp_bytes += packet.size();
+        }
         NotifyAdaptive(*session, RtspAdaptiveEventType::kSample);
     }
 
@@ -897,6 +657,39 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
         (void)dependencies_.net_engine->Send(
             connection_id, reinterpret_cast<const uint8_t*>(response.data()),
             response.size());
+    }
+
+    void AddParseFailure() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++stats_.parse_failures;
+    }
+
+    void AddAuthFailure() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++stats_.auth_failures;
+    }
+
+    void AddTcpInterleavedSession() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++stats_.tcp_interleaved_sessions;
+    }
+
+    void AddUdpSession() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++stats_.udp_sessions;
+    }
+
+    bool RequestKeyFrame(infra::StreamId stream_id) {
+        if (dependencies_.frame_source != nullptr) {
+            return dependencies_.frame_source->RequestKeyFrame(stream_id) ==
+                infra::Status::kOk;
+        }
+        if (dependencies_.media_service != nullptr) {
+            return dependencies_.media_service->RequestKeyFrame(
+                       stream_id, KeyFrameReason::kNewClient) ==
+                infra::Status::kOk;
+        }
+        return false;
     }
 
     void PublishEvent(EventType type, const std::string& target) {
@@ -916,15 +709,21 @@ class RtspServiceImpl : public IRtspService, public IRtspFrameSink {
         }
         RtspAdaptiveSample sample;
         sample.event = event;
-        sample.session = session.stats;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sample.session = session.stats;
+        }
         (void)dependencies_.adaptive_observer->OnRtspAdaptiveSample(sample);
     }
 
     RtspServiceOptions options_;
     RtspServiceDependencies dependencies_;
+    mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;
+    FrameSubscriptionId main_subscription_id_ = 0;
+    FrameSubscriptionId sub_subscription_id_ = 0;
     RtspListenAddress local_address_;
     std::map<ConnectionId, std::shared_ptr<Session>> sessions_;
     uint64_t next_session_id_ = 1;

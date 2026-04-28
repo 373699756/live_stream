@@ -174,6 +174,6 @@ int main() {
     close(tcp_fd);
     close(udp_fd);
     rtsp->Deinit();
-    netframe->Deinit();
+    netframe.value->Stop();
     return 0;
 }

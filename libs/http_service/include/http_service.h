@@ -14,8 +14,10 @@ namespace live_stream {
 class IAuthService;
 class IConfigService;
 class ILoggerService;
+class IWebrtcService;
 class MediaService;
 class NetEngine;
+class SnapshotService;
 
 enum class HttpMethod {
     kGet,
@@ -52,9 +54,14 @@ struct HttpServiceOptions {
     uint32_t max_request_body_bytes = 64 * 1024;
     uint32_t send_queue_capacity = 64;
     uint32_t executor_queue_capacity = 128;
+    uint32_t executor_worker_count = 1;
     uint32_t request_timeout_ms = 10000;
+    uint32_t connection_idle_timeout_ms = 10000;
+    uint32_t max_requests_per_connection = 1;
+    uint32_t max_pipelined_requests = 1;
     std::string static_root;
     bool enable_static_files = true;
+    bool enable_keep_alive = false;
 };
 
 struct HttpServiceDependencies {
@@ -63,6 +70,8 @@ struct HttpServiceDependencies {
     IConfigService* config_service = nullptr;
     ILoggerService* logger_service = nullptr;
     MediaService* media_service = nullptr;
+    SnapshotService* snapshot_service = nullptr;
+    IWebrtcService* webrtc_service = nullptr;
 };
 
 struct HttpServiceStats {

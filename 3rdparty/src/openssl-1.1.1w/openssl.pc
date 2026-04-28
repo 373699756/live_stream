@@ -1,0 +1,9 @@
+prefix=/home/c/linux/hisi/live_stream/3rdparty/src/openssl-1.1.1w/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 1.1.1w
+Requires: libssl libcrypto

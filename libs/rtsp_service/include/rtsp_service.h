@@ -14,6 +14,7 @@ namespace live_stream {
 
 class IAuthService;
 class IEventService;
+class MediaService;
 class NetEngine;
 
 enum class RtspTransportMode {
@@ -120,6 +121,7 @@ struct RtspServiceDependencies {
     NetEngine* net_engine = nullptr;
     IAuthService* auth_service = nullptr;
     IEventService* event_service = nullptr;
+    MediaService* media_service = nullptr;
     IRtspFrameSource* frame_source = nullptr;
     IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };

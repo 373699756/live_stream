@@ -19,15 +19,20 @@ namespace infra {
 using TimerId = uint64_t;
 
 enum class TimerMode {
+    // Skip a periodic firing when the previous callback is still running.
     kSkipIfRunning,
+    // Allow overlapping callbacks up to max_concurrency.
     kAllowOverlap,
+    // Start the next interval after the previous callback completes.
     kDelayUntilComplete,
+    // Advance by the configured interval and do not replay missed firings.
     kFixedRate,
 };
 
 struct TimerOptions {
     TimerMode mode = TimerMode::kSkipIfRunning;
     uint32_t max_concurrency = 1;
+    // 0 disables timeout accounting; nonzero values update TimerStats only.
     uint32_t timeout_ms = 0;
 };
 

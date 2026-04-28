@@ -113,6 +113,21 @@ class FakeLoggerService : public live_stream::ILoggerService {
 }  // namespace
 
 int main() {
+    live_stream::SystemServiceOptions default_options;
+    default_options.heartbeat_timeout_ms = 1;
+    std::unique_ptr<live_stream::ISystemService> default_service =
+        live_stream::CreateSystemService(default_options);
+    infra::RequestContext default_context;
+    if (!default_service ||
+        default_service->Init() != infra::Status::kOk ||
+        default_service->Start() != infra::Status::kOk ||
+        default_service->Reboot(default_context) !=
+            infra::Status::kNotSupported) {
+        return 8;
+    }
+    default_service->Stop();
+    default_service->Deinit();
+
     FakeSystemPlatform platform;
     FakeEventService event_service;
     FakeLoggerService logger_service;
@@ -151,6 +166,20 @@ int main() {
         event_service.last_event.type !=
             live_stream::EventType::kSystemStatusChanged) {
         return 5;
+    }
+    const int publish_count_after_timeout = event_service.publish_count;
+    status = service->GetSystemStatus();
+    if (!status.IsOk() ||
+        event_service.publish_count != publish_count_after_timeout) {
+        return 9;
+    }
+    if (service->ReportHeartbeat("media") != infra::Status::kOk) {
+        return 10;
+    }
+    status = service->GetSystemStatus();
+    if (!status.IsOk() || !status.value.healthy ||
+        event_service.publish_count != publish_count_after_timeout + 1) {
+        return 11;
     }
 
     infra::RequestContext context;

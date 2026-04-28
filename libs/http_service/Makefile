@@ -12,23 +12,34 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/netframe_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc_service/include
 
-EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(MEDIA_LIB)
-EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(MEDIA_LIB) $(INFRA_LIB)
+SNAPSHOT_LIB := ../../build/lib/libsnapshot_service.a
+WEBRTC_LIB := ../../build/lib/libwebrtc_service.a
+
+EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(MEDIA_LIB) $(SNAPSHOT_LIB) $(WEBRTC_LIB)
+EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(WEBRTC_LIB) $(SNAPSHOT_LIB) $(MEDIA_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
-	$(MAKE) -C ../infra_service
+	$(MAKE) -C ../infra_service all
 
 $(AUTH_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../auth_service
+	$(MAKE) -C ../auth_service all
 
 $(LOGGER_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../logger_service
+	$(MAKE) -C ../logger_service all
 
 $(NETFRAME_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../netframe_service
+	$(MAKE) -C ../netframe_service all
 
 $(MEDIA_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../media_service
+	$(MAKE) -C ../media_service all
+
+$(SNAPSHOT_LIB): $(MEDIA_LIB)
+	$(MAKE) -C ../snapshot_service all
+
+$(WEBRTC_LIB): $(MEDIA_LIB) $(NETFRAME_LIB)
+	$(MAKE) -C ../webrtc_service all
 
 include ../service_rules.mk

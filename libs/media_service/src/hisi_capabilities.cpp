@@ -1,5 +1,9 @@
 #include "hisi_sdk_default.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace live_stream {
 namespace hisisdk {
 namespace {
@@ -20,6 +24,87 @@ CodecCapability H265Capability() {
     return capability;
 }
 
+CodecCapability JpegCapability() {
+    CodecCapability capability;
+    capability.codec = infra::VideoCodec::kJpeg;
+    capability.profiles.push_back("baseline");
+    return capability;
+}
+
+CodecCapability MjpegCapability() {
+    CodecCapability capability;
+    capability.codec = infra::VideoCodec::kMjpeg;
+    capability.profiles.push_back("baseline");
+    return capability;
+}
+
+NumericControlCapability Range(const char* name,
+                               int32_t min,
+                               int32_t max,
+                               int32_t default_value) {
+    NumericControlCapability capability;
+    capability.name = name;
+    capability.min = min;
+    capability.max = max;
+    capability.default_value = default_value;
+    return capability;
+}
+
+OptionControlCapability Options(const char* name,
+                                std::vector<std::string> values,
+                                const char* default_value) {
+    OptionControlCapability capability;
+    capability.name = name;
+    capability.values = std::move(values);
+    capability.default_value = default_value;
+    return capability;
+}
+
+ImageCapabilities DefaultImageCapabilities() {
+    ImageCapabilities image;
+    image.basic.push_back(Range("brightness", 0, 100, 50));
+    image.basic.push_back(Range("contrast", 0, 100, 50));
+    image.basic.push_back(Range("saturation", 0, 100, 50));
+    image.basic.push_back(Range("sharpness", 0, 100, 50));
+    image.basic.push_back(Range("hue", 0, 100, 50));
+
+    image.exposure_options.push_back(
+        Options("mode", {"auto", "manual"}, "auto"));
+    image.exposure_options.push_back(
+        Options("anti_flicker", {"50hz", "60hz", "off"}, "50hz"));
+    image.exposure_options.push_back(
+        Options("exposure_time", {"auto", "1/25", "1/50", "1/100",
+                                  "1/250"},
+                "auto"));
+    image.exposure_options.push_back(
+        Options("gain", {"auto", "low", "medium", "high"}, "auto"));
+    image.exposure_options.push_back(
+        Options("slow_shutter", {"false", "true"}, "true"));
+    image.exposure_options.push_back(
+        Options("max_exposure_time", {"1/12", "1/25", "1/50"}, "1/25"));
+    image.exposure_ranges.push_back(Range("compensation", 0, 100, 50));
+
+    image.white_balance_options.push_back(
+        Options("mode", {"auto", "manual", "indoor", "outdoor"}, "auto"));
+    image.white_balance_ranges.push_back(Range("red_gain", 0, 100, 50));
+    image.white_balance_ranges.push_back(Range("blue_gain", 0, 100, 50));
+
+    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 50));
+    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 50));
+    image.enhancement_ranges.push_back(Range("gamma", 0, 100, 50));
+    image.enhancement_options.push_back(
+        Options("defog", {"false", "true"}, "false"));
+
+    image.backlight_options.push_back(
+        Options("mode", {"off", "wdr", "blc", "hlc"}, "off"));
+    image.backlight_ranges.push_back(Range("level", 0, 100, 50));
+    image.color_mode_options.push_back(
+        Options("mode", {"color", "black_white", "auto"}, "color"));
+    image.mirror_supported = true;
+    image.flip_supported = true;
+    return image;
+}
+
 MediaCapabilities DefaultCapabilities() {
     MediaCapabilities capabilities;
 
@@ -27,6 +112,8 @@ MediaCapabilities DefaultCapabilities() {
     main_stream.stream_id = infra::StreamId::kMain;
     main_stream.codecs.push_back(H264Capability());
     main_stream.codecs.push_back(H265Capability());
+    main_stream.codecs.push_back(JpegCapability());
+    main_stream.codecs.push_back(MjpegCapability());
     main_stream.resolutions.push_back(VideoResolution{3840, 2160});
     main_stream.resolutions.push_back(VideoResolution{2560, 1440});
     main_stream.resolutions.push_back(VideoResolution{1920, 1080});
@@ -44,6 +131,8 @@ MediaCapabilities DefaultCapabilities() {
     sub_stream.stream_id = infra::StreamId::kSub;
     sub_stream.codecs.push_back(H264Capability());
     sub_stream.codecs.push_back(H265Capability());
+    sub_stream.codecs.push_back(JpegCapability());
+    sub_stream.codecs.push_back(MjpegCapability());
     sub_stream.resolutions.push_back(VideoResolution{1280, 720});
     sub_stream.resolutions.push_back(VideoResolution{704, 576});
     sub_stream.resolutions.push_back(VideoResolution{640, 360});
@@ -57,6 +146,7 @@ MediaCapabilities DefaultCapabilities() {
     sub_stream.smart_codec_supported = true;
     capabilities.streams.push_back(sub_stream);
 
+    capabilities.image = DefaultImageCapabilities();
     return capabilities;
 }
 

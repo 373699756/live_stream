@@ -57,8 +57,37 @@ struct VideoStreamCapabilities {
     bool smart_codec_supported = false;
 };
 
+struct NumericControlCapability {
+    std::string name;
+    int32_t min = 0;
+    int32_t max = 100;
+    int32_t default_value = 50;
+};
+
+struct OptionControlCapability {
+    std::string name;
+    std::vector<std::string> values;
+    std::string default_value;
+};
+
+struct ImageCapabilities {
+    std::vector<NumericControlCapability> basic;
+    std::vector<OptionControlCapability> exposure_options;
+    std::vector<NumericControlCapability> exposure_ranges;
+    std::vector<OptionControlCapability> white_balance_options;
+    std::vector<NumericControlCapability> white_balance_ranges;
+    std::vector<NumericControlCapability> enhancement_ranges;
+    std::vector<OptionControlCapability> enhancement_options;
+    std::vector<OptionControlCapability> backlight_options;
+    std::vector<NumericControlCapability> backlight_ranges;
+    std::vector<OptionControlCapability> color_mode_options;
+    bool mirror_supported = true;
+    bool flip_supported = true;
+};
+
 struct MediaCapabilities {
     std::vector<VideoStreamCapabilities> streams;
+    ImageCapabilities image;
 };
 
 }  // namespace live_stream

@@ -23,7 +23,9 @@ class DefaultHisiSdk final : public IHisiSdk {
     void StopVenc(const MediaPipelineConfig& config) override;
     infra::Status BindVpssVenc(const MediaPipelineConfig& config) override;
     void UnbindVpssVenc(const MediaPipelineConfig& config) override;
-    infra::Status StartVencStream(const MediaPipelineConfig& config) override;
+    infra::Status StartVencStream(const MediaPipelineConfig& config,
+                                  EncodedFrameCallback callback,
+                                  void* user) override;
     void StopVencStream(const MediaPipelineConfig& config) override;
     infra::Status RequestIdr(int32_t venc_channel) override;
 

@@ -1,8 +1,0 @@
-[core]
-	repositoryformatversion = 0
-	filemode = true
-	bare = false
-	logallrefupdates = true
-[remote "origin"]
-	url = https://github.com/Mbed-TLS/mbedtls.git
-	fetch = +refs/tags/mbedtls-2.28.9:refs/tags/mbedtls-2.28.9

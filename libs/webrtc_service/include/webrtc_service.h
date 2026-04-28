@@ -14,6 +14,9 @@
 
 namespace live_stream {
 
+class MediaService;
+class NetEngine;
+
 enum class WebrtcPeerState {
     kCreated = 0,
     kOfferReceived,
@@ -35,6 +38,7 @@ struct WebrtcServiceOptions {
     uint32_t max_peers = 4;
     uint32_t session_timeout_ms = 30000;
     uint32_t send_queue_capacity = 128;
+    uint32_t send_worker_count = 1;
     uint16_t local_port_base = 16000;
     bool prefer_tcp = false;
     std::string public_ip;
@@ -42,6 +46,9 @@ struct WebrtcServiceOptions {
 };
 
 struct WebrtcServiceDependencies {
+    MediaService* media_service = nullptr;
+    NetEngine* net_engine = nullptr;
+    bool use_fake_engine = false;
 };
 
 struct WebrtcCreatePeerRequest {

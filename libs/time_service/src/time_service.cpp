@@ -42,17 +42,24 @@ class TimeServiceImpl : public ITimeService {
     }
 
     infra::Status Init() override {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (initialized_) {
+                return infra::Status::kOk;
+            }
+            if (!IsTimezoneValid(status_.timezone) ||
+                !IsNtpConfigValid(status_.ntp)) {
+                return infra::Status::kInvalidParam;
+            }
+        }
+
+        const int64_t now_ms = ReadSystemTimeMs();
+
         std::lock_guard<std::mutex> lock(mutex_);
         if (initialized_) {
             return infra::Status::kOk;
         }
-        if (status_.timezone.empty() || status_.timezone.size() > kMaxTimezoneLength ||
-            !IsNtpConfigValid(status_.ntp)) {
-            return infra::Status::kInvalidParam;
-        }
-        status_.system_time_ms = options_.platform != nullptr
-                                     ? options_.platform->GetSystemTimeMs()
-                                     : infra::Time::SystemTimeMillis();
+        status_.system_time_ms = now_ms;
         initialized_ = true;
         return infra::Status::kOk;
     }
@@ -80,20 +87,27 @@ class TimeServiceImpl : public ITimeService {
     const char* Name() const override { return "time_service"; }
 
     infra::Result<TimeStatus> GetTimeStatus() override {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!initialized_) {
+                return infra::Result<TimeStatus>::Fail(infra::Status::kBusy);
+            }
+        }
+
+        const int64_t now_ms = ReadSystemTimeMs();
+
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_) {
             return infra::Result<TimeStatus>::Fail(infra::Status::kBusy);
         }
         TimeStatus status = status_;
-        status.system_time_ms = options_.platform != nullptr
-                                    ? options_.platform->GetSystemTimeMs()
-                                    : infra::Time::SystemTimeMillis();
+        status.system_time_ms = now_ms;
         return infra::Result<TimeStatus>::Ok(status);
     }
 
     infra::Status SetTimezone(const infra::RequestContext& context,
                              const std::string& timezone) override {
-        if (timezone.empty() || timezone.size() > kMaxTimezoneLength) {
+        if (!IsTimezoneValid(timezone)) {
             return infra::Status::kInvalidParam;
         }
         if (!IsStarted()) {
@@ -189,6 +203,17 @@ class TimeServiceImpl : public ITimeService {
     }
 
  private:
+    bool IsTimezoneValid(const std::string& timezone) const {
+        return !timezone.empty() && timezone.size() <= kMaxTimezoneLength;
+    }
+
+    int64_t ReadSystemTimeMs() const {
+        if (options_.platform != nullptr) {
+            return options_.platform->GetSystemTimeMs();
+        }
+        return infra::Time::SystemTimeMillis();
+    }
+
     bool IsStarted() {
         std::lock_guard<std::mutex> lock(mutex_);
         return initialized_ && started_;

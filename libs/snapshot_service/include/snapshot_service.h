@@ -13,6 +13,12 @@
 
 namespace live_stream {
 
+class IConfigService;
+
+namespace hisisdk {
+class IHisiSdk;
+}  // namespace hisisdk
+
 struct SnapshotConfig {
     int32_t snap_pipe = 2;
     int32_t snap_vpss_group = 2;
@@ -45,10 +51,28 @@ struct SnapshotFrame {
     }
 };
 
+struct SnapshotServiceOptions {
+    SnapshotConfig default_config;
+    IConfigService* config_service = nullptr;
+    hisisdk::IHisiSdk* sdk = nullptr;
+};
+
+struct SnapshotServiceStats {
+    uint64_t config_apply_count = 0;
+    uint64_t config_apply_failed_count = 0;
+    uint64_t capture_count = 0;
+    uint64_t capture_failed_count = 0;
+    uint32_t jpeg_quality = 90;
+    uint32_t timeout_ms = 3000;
+    bool enabled = true;
+    bool capturing = false;
+};
+
 class SnapshotService : public infra::IService {
  public:
     SnapshotService();
     explicit SnapshotService(const SnapshotConfig& config);
+    explicit SnapshotService(const SnapshotServiceOptions& options);
     ~SnapshotService() override;
 
     infra::Status Init() override;
@@ -62,6 +86,7 @@ class SnapshotService : public infra::IService {
     infra::Status BindMedia(const MediaChannels& channels);
     infra::Result<SnapshotFrame> Capture(const CaptureRequest& request);
     bool IsCapturing() const;
+    SnapshotServiceStats GetStats() const;
 
  private:
     struct Impl;

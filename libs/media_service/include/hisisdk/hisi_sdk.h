@@ -3,6 +3,7 @@
 
 #include "infra/media_buffer.h"
 #include "infra/status.h"
+#include "media/frame_source.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
@@ -101,7 +102,9 @@ class IHisiSdk {
     virtual infra::Status BindVpssVenc(const MediaPipelineConfig& config) = 0;
     virtual void UnbindVpssVenc(const MediaPipelineConfig& config) = 0;
     virtual infra::Status StartVencStream(
-        const MediaPipelineConfig& config) = 0;
+        const MediaPipelineConfig& config,
+        EncodedFrameCallback callback,
+        void* user) = 0;
     virtual void StopVencStream(const MediaPipelineConfig& config) = 0;
     virtual infra::Status RequestIdr(int32_t venc_channel) = 0;
 

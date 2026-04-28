@@ -1,4 +1,5 @@
 SERVICE_NAME := event_service
+.DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a

@@ -19,6 +19,8 @@
 
 namespace live_stream {
 
+class IConfigService;
+
 /**
  * @brief IPC 管理用户角色。
  */
@@ -134,6 +136,34 @@ struct AuthAuditRecord {
 struct AuthServiceOptions {
     uint32_t token_ttl_seconds = 30 * 60;
     uint32_t max_sessions = 16;
+    uint32_t max_sessions_per_user = 4;
+    uint32_t lockout_failures = 5;
+    uint32_t lockout_seconds = 300;
+    uint32_t password_min_length = 8;
+    bool password_require_number = true;
+    bool password_require_symbol = false;
+};
+
+struct AuthServiceDependencies {
+    IConfigService* config_service = nullptr;
+};
+
+struct AuthStats {
+    uint64_t login_success = 0;
+    uint64_t login_failed = 0;
+    uint64_t token_validation_failed = 0;
+    uint64_t expired_sessions = 0;
+    uint64_t lockout_count = 0;
+    uint64_t config_apply_count = 0;
+    uint64_t config_apply_failed_count = 0;
+    uint32_t active_sessions = 0;
+};
+
+class IAuthTokenGenerator {
+ public:
+    virtual ~IAuthTokenGenerator() = default;
+
+    virtual infra::Result<std::string> GenerateToken() = 0;
 };
 
 /**
@@ -145,6 +175,7 @@ class IAuthUserStore {
 
     virtual infra::Result<AuthUserRecord> FindUser(
         const std::string& user_name) = 0;
+    virtual infra::Status Reload() { return infra::Status::kOk; }
 };
 
 /**
@@ -184,6 +215,7 @@ class IAuthService : public infra::IService {
         const AuthPrincipal& principal,
         AuthPermission permission,
         const std::string& target) = 0;
+    virtual AuthStats GetStats() const { return AuthStats{}; }
 };
 
 /**
@@ -233,6 +265,13 @@ std::unique_ptr<IAuthService> CreateAuthService(
     const AuthServiceOptions& options,
     std::unique_ptr<IAuthUserStore> user_store,
     std::unique_ptr<IPasswordVerifier> password_verifier);
+
+std::unique_ptr<IAuthService> CreateAuthService(
+    const AuthServiceOptions& options,
+    const AuthServiceDependencies& dependencies,
+    std::unique_ptr<IAuthUserStore> user_store,
+    std::unique_ptr<IPasswordVerifier> password_verifier,
+    IAuthTokenGenerator* token_generator = nullptr);
 
 const char* AuthRoleToString(AuthRole role);
 const char* AuthPermissionToString(AuthPermission permission);

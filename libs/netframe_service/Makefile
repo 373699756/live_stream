@@ -1,4 +1,5 @@
 SERVICE_NAME := netframe_service
+.DEFAULT_GOAL := all
 CXXFLAGS += -pthread
 INFRA_LIB := ../../build/lib/libinfra_service.a
 EXTRA_TEST_DEPS += $(INFRA_LIB)

@@ -4,8 +4,13 @@ LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/$(SERVICE_NAME)
 TEST_DIR := $(BUILD_DIR)/tests
 
-CXX ?= g++
-AR ?= ar
+CROSS_COMPILE ?=
+ifeq ($(origin CXX),default)
+CXX := $(CROSS_COMPILE)g++
+endif
+ifeq ($(origin AR),default)
+AR := $(CROSS_COMPILE)ar
+endif
 
 CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Werror
@@ -13,6 +18,9 @@ CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
 CXXFLAGS += -Iinclude
 CXXFLAGS += -I$(ROOT_DIR)/libs/infra_service/include
+CXXFLAGS += -I$(ROOT_DIR)/3rdparty/install/include
+CXXFLAGS += -I$(ROOT_DIR)/3rdparty/src
+
 
 SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))

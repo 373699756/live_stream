@@ -1,6 +1,6 @@
 export type StreamName = 'main' | 'sub';
 export type Resolution = string;
-export type VideoCodecName = 'h264' | 'h265' | 'mjpeg';
+export type VideoCodecName = 'h264' | 'h265' | 'jpeg' | 'mjpeg';
 
 export interface VideoStreamConfig {
   enabled: boolean;
@@ -53,11 +53,45 @@ export interface VideoStreamCapabilities {
   smart_codec: boolean;
 }
 
+export interface NumericControlCapability {
+  min: number;
+  max: number;
+  default: number;
+}
+
+export interface OptionControlCapability {
+  values: string[];
+  default: string;
+}
+
+export interface ImageCapabilities {
+  basic: Record<string, NumericControlCapability>;
+  exposure: {
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
+  white_balance: {
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
+  enhancement: {
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
+  backlight: {
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
+  color_mode: Record<string, OptionControlCapability>;
+  orientation: { mirror: boolean; flip: boolean };
+}
+
 export interface MediaCapabilities {
   streams: {
     main: VideoStreamCapabilities;
     sub: VideoStreamCapabilities;
   };
+  image: ImageCapabilities;
 }
 
 export interface ImageConfig {

@@ -2,8 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: timer.cpp
- * Brief: Hierarchical Timing Wheel based timer implementation.
- *        Replaces priority_queue + shared_ptr with O(1) slot operations.
+ * Brief: Implements the infra asynchronous timer service.
  */
 
 #include "infra/timer.h"
@@ -11,827 +10,667 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
-#include <ctime>
-#include <cstring>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <thread>
+#include <utility>
 #include <vector>
-
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <sys/timerfd.h>
-#include <unistd.h>
 
 namespace infra {
 namespace {
 
+constexpr uint32_t kMaxShardCount = 255;
+constexpr uint32_t kShardShift = 56;
+constexpr uint32_t kIndexShift = 32;
+constexpr uint64_t kGenerationMask = 0xFFFFFFFFULL;
+constexpr uint32_t kIndexMask = 0x00FFFFFFU;
+
 uint64_t NowNs() {
-    return static_cast<uint64_t>(Time::MonotonicNanos());
+  return static_cast<uint64_t>(Time::MonotonicNanos());
 }
 
 uint64_t MsToNs(uint32_t ms) {
-    return static_cast<uint64_t>(ms) * 1000ULL * 1000ULL;
+  return static_cast<uint64_t>(ms) * 1000ULL * 1000ULL;
 }
 
 uint32_t AutoShardCount() {
-    const uint32_t hardware = std::thread::hardware_concurrency();
-    if (hardware == 0) return 2;
-    return std::max<uint32_t>(1, std::min<uint32_t>(hardware, 4));
+  const uint32_t hardware = std::thread::hardware_concurrency();
+  if (hardware == 0) {
+    return 2;
+  }
+  return std::max<uint32_t>(1, std::min<uint32_t>(hardware, 4));
 }
 
 uint32_t ShardFromId(TimerId id) {
-    return static_cast<uint32_t>((id >> 56) & 0xFFU);
+  return static_cast<uint32_t>((id >> kShardShift) & 0xFFU);
 }
 
-TimerId MakeTimerId(uint32_t shard_index, uint64_t sequence) {
-    return (static_cast<uint64_t>(shard_index) << 56) |
-           (sequence & 0x00FFFFFFFFFFFFFFULL);
+uint32_t IndexFromId(TimerId id) {
+  return static_cast<uint32_t>((id >> kIndexShift) & kIndexMask);
 }
 
-// ============================================================================
-// Timing Wheel Configuration
-// ============================================================================
+uint32_t GenerationFromId(TimerId id) {
+  return static_cast<uint32_t>(id & kGenerationMask);
+}
 
-// L1: 1ms precision, 1024 slots -> covers 0~1023ms
-// L2: 1024ms precision, 512 slots -> covers 1024ms~524287ms (~8.7 min)
-// L3: 524288ms precision, 128 slots -> covers ~8.7min~18.2hours
-static constexpr uint32_t L1_SIZE = 1024;
-static constexpr uint32_t L2_SIZE = 512;
-static constexpr uint32_t L3_SIZE = 128;
-static constexpr uint32_t L1_TICK_MS = 1;
-static constexpr uint32_t L2_TICK_MS = L1_SIZE * L1_TICK_MS;      // 1024ms
-static constexpr uint32_t L3_TICK_MS = L2_SIZE * L2_TICK_MS;      // 524288ms
+TimerId MakeTimerId(uint32_t shard_index, uint32_t slot_index,
+                    uint32_t generation) {
+  return (static_cast<uint64_t>(shard_index) << kShardShift) |
+         (static_cast<uint64_t>(slot_index & kIndexMask) << kIndexShift) |
+         generation;
+}
 
-// ============================================================================
-// Intrusive List Node (zero allocation during operation)
-// ============================================================================
+bool IsValidOptions(bool periodic, uint32_t delay_ms,
+                    const TimerOptions& options, const Task& task) {
+  if (!task) {
+    return false;
+  }
+  if (periodic && delay_ms == 0) {
+    return false;
+  }
+  if (options.max_concurrency == 0) {
+    return false;
+  }
+  return true;
+}
 
-struct TimerNode {
-    TimerId id = 0;
-    uint64_t deadline_ms = 0;      // absolute deadline in ms
-    uint64_t interval_ms = 0;      // for periodic timers
-    uint32_t round = 0;            // remaining rounds for hierarchical wheel
-    TimerOptions options;
-    Task task;
-    bool periodic = false;
-    bool canceled = false;
-    uint32_t running = 0;
-    uint64_t running_since_ns = 0;
-    
-    // intrusive list pointers
-    TimerNode* next = nullptr;
-    TimerNode* prev = nullptr;
+struct TaskHolder {
+  explicit TaskHolder(Task task_value) : task(std::move(task_value)) {}
+
+  Task task;
 };
 
-// ============================================================================
-// Object Pool for TimerNode (avoids malloc/free in hot path)
-// ============================================================================
-
-class NodePool {
- public:
-    explicit NodePool(size_t capacity) {
-        nodes_.reserve(capacity);
-        for (size_t i = 0; i < capacity; ++i) {
-            nodes_.emplace_back(std::make_unique<TimerNode>());
-            free_list_.push_back(nodes_.back().get());
-        }
-    }
-
-    TimerNode* Alloc() {
-        if (free_list_.empty()) return nullptr;
-        TimerNode* node = free_list_.back();
-        free_list_.pop_back();
-        // reset state
-        node->id = 0;
-        node->deadline_ms = 0;
-        node->interval_ms = 0;
-        node->round = 0;
-        node->canceled = false;
-        node->running = 0;
-        node->running_since_ns = 0;
-        node->next = nullptr;
-        node->prev = nullptr;
-        return node;
-    }
-
-    void Free(TimerNode* node) {
-        if (node) {
-            node->task = nullptr;  // release task
-            free_list_.push_back(node);
-        }
-    }
-
-    size_t Available() const { return free_list_.size(); }
-    size_t Capacity() const { return nodes_.size(); }
-
- private:
-    std::vector<std::unique_ptr<TimerNode>> nodes_;
-    std::vector<TimerNode*> free_list_;
+struct TimerEntry {
+  TimerId id = 0;
+  uint32_t generation = 0;
+  uint64_t deadline_ns = 0;
+  uint64_t interval_ns = 0;
+  TimerOptions options;
+  std::shared_ptr<TaskHolder> holder;
+  bool allocated = false;
+  bool active = false;
+  bool periodic = false;
+  uint32_t running = 0;
 };
 
-// ============================================================================
-// Intrusive Doubly-Linked List (per slot)
-// ============================================================================
+struct HeapItem {
+  uint64_t deadline_ns = 0;
+  TimerId id = 0;
 
-struct TimerList {
-    TimerNode* head = nullptr;
-    TimerNode* tail = nullptr;
-
-    bool Empty() const { return head == nullptr; }
-
-    void PushBack(TimerNode* node) {
-        if (!node) return;
-        node->prev = tail;
-        node->next = nullptr;
-        if (tail) {
-            tail->next = node;
-        } else {
-            head = node;
-        }
-        tail = node;
+  bool operator>(const HeapItem& other) const {
+    if (deadline_ns != other.deadline_ns) {
+      return deadline_ns > other.deadline_ns;
     }
-
-    void Remove(TimerNode* node) {
-        if (!node) return;
-        if (node->prev) node->prev->next = node->next;
-        if (node->next) node->next->prev = node->prev;
-        if (head == node) head = node->next;
-        if (tail == node) tail = node->prev;
-        node->prev = node->next = nullptr;
-    }
-
-    // Take all nodes from this list (used when processing expired slot)
-    TimerNode* TakeAll() {
-        TimerNode* result = head;
-        head = tail = nullptr;
-        return result;
-    }
+    return id > other.id;
+  }
 };
-
-// ============================================================================
-// Hierarchical Timing Wheel
-// ============================================================================
-
-class TimingWheel {
- public:
-    explicit TimingWheel(uint32_t max_timers) 
-        : pool_(max_timers), l1_pos_(0), l2_pos_(0), l3_pos_(0) {}
-
-    // Add timer: O(1)
-    TimerNode* Add(TimerId id, uint32_t delay_ms, bool periodic,
-                   const TimerOptions& options, Task task) {
-        TimerNode* node = pool_.Alloc();
-        if (!node) return nullptr;
-
-        node->id = id;
-        node->deadline_ms = CurrentMs() + delay_ms;
-        node->interval_ms = periodic ? delay_ms : 0;
-        node->options = options;
-        node->task = std::move(task);
-        node->periodic = periodic;
-        node->canceled = false;
-
-        InsertToWheel(node, delay_ms);
-        return node;
-    }
-
-    // Cancel: O(1) lazy cancel
-    bool Cancel(TimerId id) {
-        // Linear search through all nodes (rare operation)
-        // For O(1) cancel, we need a hash map, but that defeats the purpose
-        // of removing shared_ptr. Trade-off: use lazy cancel in ProcessTick.
-        TimerNode* node = FindNode(id);
-        if (node && !node->canceled) {
-            node->canceled = true;
-            return true;
-        }
-        return false;
-    }
-
-    // Process current tick: O(M) where M = timers in current slots
-    template<typename Callback>
-    void ProcessTick(Callback&& on_expired) {
-        // L1 tick (every 1ms)
-        ProcessL1(on_expired);
-
-        // Cascade from L2 when L1 completes a round
-        if (l1_pos_ == 0) {
-            CascadeL2ToL1();
-            if (l2_pos_ == 0) {
-                CascadeL3ToL2();
-            }
-        }
-    }
-
-    // Calculate next timerfd expiration (in ms from now)
-    uint32_t NextExpirationMs() const {
-        // Find closest non-empty slot in L1
-        for (uint32_t i = 0; i < L1_SIZE; ++i) {
-            uint32_t idx = (l1_pos_ + i) % L1_SIZE;
-            if (!l1_[idx].Empty()) {
-                return i * L1_TICK_MS + 1;  // +1 to ensure we don't return 0
-            }
-        }
-        // If L1 is empty, next tick in 1ms (will cascade if needed)
-        return L1_TICK_MS;
-    }
-
-    size_t ActiveCount() const {
-        return pool_.Capacity() - pool_.Available();
-    }
-
-    void Clear() {
-        // Return all nodes to pool
-        for (auto& list : l1_) {
-            TimerNode* node = list.TakeAll();
-            while (node) {
-                TimerNode* next = node->next;
-                pool_.Free(node);
-                node = next;
-            }
-        }
-        for (auto& list : l2_) {
-            TimerNode* node = list.TakeAll();
-            while (node) {
-                TimerNode* next = node->next;
-                pool_.Free(node);
-                node = next;
-            }
-        }
-        for (auto& list : l3_) {
-            TimerNode* node = list.TakeAll();
-            while (node) {
-                TimerNode* next = node->next;
-                pool_.Free(node);
-                node = next;
-            }
-        }
-        l1_pos_ = l2_pos_ = l3_pos_ = 0;
-    }
-
- private:
-    uint64_t CurrentMs() const {
-        return NowNs() / 1000000ULL;
-    }
-
-    void InsertToWheel(TimerNode* node, uint32_t delay_ms) {
-        if (delay_ms < L1_SIZE * L1_TICK_MS) {
-            // L1: 0~1023ms
-            uint32_t slot = (l1_pos_ + delay_ms / L1_TICK_MS) % L1_SIZE;
-            node->round = 0;
-            l1_[slot].PushBack(node);
-        } else if (delay_ms < L2_SIZE * L2_TICK_MS) {
-            // L2: 1024ms~524287ms
-            uint32_t slot = (l2_pos_ + delay_ms / L2_TICK_MS) % L2_SIZE;
-            node->round = 0;
-            l2_[slot].PushBack(node);
-        } else {
-            // L3: > 524288ms
-            uint32_t slot = (l3_pos_ + delay_ms / L3_TICK_MS) % L3_SIZE;
-            node->round = delay_ms / (L3_SIZE * L3_TICK_MS);  // extra rounds
-            l3_[slot].PushBack(node);
-        }
-    }
-
-    template<typename Callback>
-    void ProcessL1(Callback&& on_expired) {
-        TimerNode* node = l1_[l1_pos_].TakeAll();
-        while (node) {
-            TimerNode* next = node->next;
-            node->next = node->prev = nullptr;
-
-            if (!node->canceled) {
-                on_expired(node);
-            } else {
-                pool_.Free(node);
-            }
-            node = next;
-        }
-
-        l1_pos_ = (l1_pos_ + 1) % L1_SIZE;
-    }
-
-    void CascadeL2ToL1() {
-        TimerNode* node = l2_[l2_pos_].TakeAll();
-        while (node) {
-            TimerNode* next = node->next;
-            node->next = node->prev = nullptr;
-
-            if (!node->canceled) {
-                // Re-insert to L1 based on remaining delay
-                uint64_t now_ms = CurrentMs();
-                if (node->deadline_ms > now_ms) {
-                    uint32_t remaining = static_cast<uint32_t>(node->deadline_ms - now_ms);
-                    InsertToWheel(node, remaining);
-                } else {
-                    // Already expired, insert to current slot
-                    l1_[l1_pos_].PushBack(node);
-                }
-            } else {
-                pool_.Free(node);
-            }
-            node = next;
-        }
-        l2_pos_ = (l2_pos_ + 1) % L2_SIZE;
-    }
-
-    void CascadeL3ToL2() {
-        TimerNode* node = l3_[l3_pos_].TakeAll();
-        while (node) {
-            TimerNode* next = node->next;
-            node->next = node->prev = nullptr;
-
-            if (!node->canceled) {
-                if (node->round > 0) {
-                    node->round--;
-                    l3_[l3_pos_].PushBack(node);  // stay in L3
-                } else {
-                    // Move to L2
-                    uint64_t now_ms = CurrentMs();
-                    if (node->deadline_ms > now_ms) {
-                        uint32_t remaining = static_cast<uint32_t>(node->deadline_ms - now_ms);
-                        if (remaining < L2_SIZE * L2_TICK_MS) {
-                            uint32_t slot = (l2_pos_ + remaining / L2_TICK_MS) % L2_SIZE;
-                            l2_[slot].PushBack(node);
-                        } else {
-                            l3_[l3_pos_].PushBack(node);  // should not happen
-                        }
-                    } else {
-                        l2_[l2_pos_].PushBack(node);
-                    }
-                }
-            } else {
-                pool_.Free(node);
-            }
-            node = next;
-        }
-        l3_pos_ = (l3_pos_ + 1) % L3_SIZE;
-    }
-
-    TimerNode* FindNode(TimerId id) {
-        // Search all wheels (cancel is rare, linear scan acceptable)
-        auto search_list = [&](TimerList& list) -> TimerNode* {
-            for (TimerNode* n = list.head; n; n = n->next) {
-                if (n->id == id) return n;
-            }
-            return nullptr;
-        };
-        
-        for (auto& list : l1_) {
-            if (auto* n = search_list(list)) return n;
-        }
-        for (auto& list : l2_) {
-            if (auto* n = search_list(list)) return n;
-        }
-        for (auto& list : l3_) {
-            if (auto* n = search_list(list)) return n;
-        }
-        return nullptr;
-    }
-
-    NodePool pool_;
-    std::array<TimerList, L1_SIZE> l1_;
-    std::array<TimerList, L2_SIZE> l2_;
-    std::array<TimerList, L3_SIZE> l3_;
-    uint32_t l1_pos_;
-    uint32_t l2_pos_;
-    uint32_t l3_pos_;
-};
-
-// ============================================================================
-// Timer Shard with Timing Wheel
-// ============================================================================
-
-void CloseFd(int* fd) {
-    if (fd != nullptr && *fd >= 0) {
-        close(*fd);
-        *fd = -1;
-    }
-}
-
-void WriteEventFd(int fd) {
-    const uint64_t value = 1;
-    static_cast<void>(write(fd, &value, sizeof(value)));
-}
-
-void DrainEventFd(int fd) {
-    uint64_t value = 0;
-    while (read(fd, &value, sizeof(value)) == sizeof(value)) {}
-}
 
 struct ShardState {
-    mutable std::mutex mutex;
-    std::unique_ptr<TimingWheel> wheel;
-    TimerStats stats;
-    uint64_t next_sequence = 1;
-    int event_fd = -1;
-    bool running = false;
-    bool stopping = false;
+  mutable std::mutex mutex;
+  std::condition_variable condition;
+  std::vector<TimerEntry> entries;
+  std::vector<uint32_t> free_indices;
+  std::priority_queue<HeapItem, std::vector<HeapItem>, std::greater<HeapItem>>
+      heap;
+  TimerStats stats;
+  bool running = false;
+  bool stopping = false;
 };
+
+void PushTimerLocked(ShardState* state, TimerEntry* entry,
+                     uint64_t deadline_ns) {
+  entry->deadline_ns = deadline_ns;
+  state->heap.push(HeapItem{deadline_ns, entry->id});
+}
+
+TimerEntry* FindEntryLocked(ShardState* state, TimerId id) {
+  const uint32_t index = IndexFromId(id);
+  if (index >= state->entries.size()) {
+    return nullptr;
+  }
+  TimerEntry& entry = state->entries[index];
+  if (!entry.allocated || entry.id != id ||
+      entry.generation != GenerationFromId(id)) {
+    return nullptr;
+  }
+  return &entry;
+}
+
+void FreeEntryLocked(ShardState* state, TimerEntry* entry) {
+  if (entry == nullptr || !entry->allocated || entry->active ||
+      entry->running != 0) {
+    return;
+  }
+
+  const uint32_t index = IndexFromId(entry->id);
+  entry->id = 0;
+  entry->deadline_ns = 0;
+  entry->interval_ns = 0;
+  entry->holder.reset();
+  entry->active = false;
+  entry->periodic = false;
+  entry->allocated = false;
+  state->free_indices.push_back(index);
+}
+
+uint32_t ActiveCountLocked(const ShardState& state) {
+  uint32_t count = 0;
+  for (const TimerEntry& entry : state.entries) {
+    if (entry.allocated) {
+      ++count;
+    }
+  }
+  return count;
+}
 
 class TimerShard {
  public:
-    TimerShard(uint32_t index, Executor* executor, uint32_t max_timers)
-        : index_(index), executor_(executor), 
-          state_(std::make_shared<ShardState>()) {
-        state_->wheel = std::make_unique<TimingWheel>(max_timers);
+  TimerShard(uint32_t index, Executor* executor, uint32_t max_timers)
+      : index_(index), executor_(executor), max_timers_(max_timers),
+        state_(new ShardState()) {}
+
+  ~TimerShard() { Stop(StopMode::kDiscard); }
+
+  Status Start() {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    if (state_->running) {
+      return Status::kOk;
     }
 
-    ~TimerShard() { Stop(StopMode::kDiscard); }
+    state_->entries.clear();
+    state_->free_indices.clear();
+    while (!state_->heap.empty()) {
+      state_->heap.pop();
+    }
+    state_->entries.resize(max_timers_);
+    state_->free_indices.reserve(max_timers_);
+    for (uint32_t i = 0; i < max_timers_; ++i) {
+      state_->entries[i].generation = 1;
+      state_->free_indices.push_back(max_timers_ - 1U - i);
+    }
+    state_->stats = TimerStats{};
+    state_->stopping = false;
+    state_->running = true;
+    thread_ = std::thread(&TimerShard::Run, this);
+    return Status::kOk;
+  }
 
-    Status Start() {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        if (state_->running) return Status::kOk;
+  void Stop(StopMode mode) {
+    (void)mode;
+    {
+      std::lock_guard<std::mutex> lock(state_->mutex);
+      if (!state_->running && !thread_.joinable()) {
+        return;
+      }
+      state_->stopping = true;
+      state_->running = false;
+      DiscardLocked();
+    }
+    state_->condition.notify_all();
 
-        event_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-        timer_fd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-        epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
-        
-        if (event_fd_ < 0 || timer_fd_ < 0 || epoll_fd_ < 0) {
-            CloseFd(&event_fd_);
-            CloseFd(&timer_fd_);
-            CloseFd(&epoll_fd_);
-            return Status::kIoError;
-        }
-
-        epoll_event event;
-        std::memset(&event, 0, sizeof(event));
-        event.events = EPOLLIN;
-        event.data.u32 = 1;
-        if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, event_fd_, &event) != 0) {
-            return Status::kIoError;
-        }
-        event.data.u32 = 2;
-        if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, timer_fd_, &event) != 0) {
-            return Status::kIoError;
-        }
-
-        state_->running = true;
-        state_->stopping = false;
-        state_->event_fd = event_fd_;
-        thread_ = std::thread(&TimerShard::Run, this);
-        return Status::kOk;
+    if (thread_.joinable()) {
+      thread_.join();
     }
 
-    void Stop(StopMode mode) {
-        {
-            std::lock_guard<std::mutex> lock(state_->mutex);
-            if (!state_->running && !thread_.joinable()) return;
-            state_->stopping = true;
-            state_->running = false;
-            state_->event_fd = event_fd_;
-            if (mode == StopMode::kDiscard && state_->wheel) {
-                state_->wheel->Clear();
-            }
-        }
-        WriteEventFd(event_fd_);
-        if (thread_.joinable()) {
-            thread_.join();
-        }
-        CloseFd(&event_fd_);
-        CloseFd(&timer_fd_);
-        CloseFd(&epoll_fd_);
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    DiscardLocked();
+  }
+
+  Result<TimerId> Add(uint32_t delay_ms, bool periodic,
+                      const TimerOptions& options, Task task) {
+    if (!IsValidOptions(periodic, delay_ms, options, task)) {
+      return Result<TimerId>::Fail(Status::kInvalidParam);
     }
 
-    Result<TimerId> Add(uint32_t delay_ms, bool periodic,
-                       const TimerOptions& options, Task task,
-                       uint32_t max_timers) {
-        if (!task || (periodic && delay_ms == 0)) {
-            return Result<TimerId>::Fail(Status::kInvalidParam);
-        }
-
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        if (!state_->running || state_->stopping) {
-            return Result<TimerId>::Fail(Status::kBusy);
-        }
-        if (state_->wheel->ActiveCount() >= max_timers) {
-            return Result<TimerId>::Fail(Status::kBusy);
-        }
-
-        TimerId id = MakeTimerId(index_, state_->next_sequence++);
-        TimerNode* node = state_->wheel->Add(id, delay_ms, periodic, options, std::move(task));
-        if (!node) {
-            return Result<TimerId>::Fail(Status::kBusy);
-        }
-
-        ++state_->stats.created;
-        state_->stats.active = static_cast<uint32_t>(state_->wheel->ActiveCount());
-        RearmTimerLocked();
-        WriteEventFd(event_fd_);
-        return Result<TimerId>::Ok(id);
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    if (!state_->running || state_->stopping) {
+      return Result<TimerId>::Fail(Status::kBusy);
+    }
+    if (state_->free_indices.empty()) {
+      return Result<TimerId>::Fail(Status::kBusy);
     }
 
-    Status Cancel(TimerId timer_id) {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        if (state_->wheel->Cancel(timer_id)) {
-            ++state_->stats.canceled;
-            WriteEventFd(event_fd_);
-            return Status::kOk;
-        }
-        return Status::kNotFound;
+    std::shared_ptr<TaskHolder> holder(new TaskHolder(std::move(task)));
+    const uint32_t slot_index = state_->free_indices.back();
+    state_->free_indices.pop_back();
+    TimerEntry& entry = state_->entries[slot_index];
+    entry.generation += 1;
+    if (entry.generation == 0) {
+      entry.generation = 1;
+    }
+    entry.id = MakeTimerId(index_, slot_index, entry.generation);
+    entry.interval_ns = periodic ? MsToNs(delay_ms) : 0;
+    entry.options = options;
+    entry.holder = holder;
+    entry.allocated = true;
+    entry.active = true;
+    entry.periodic = periodic;
+    entry.running = 0;
+    PushTimerLocked(state_.get(), &entry, NowNs() + MsToNs(delay_ms));
+    ++state_->stats.created;
+    state_->stats.active = ActiveCountLocked(*state_);
+    state_->condition.notify_all();
+    return Result<TimerId>::Ok(entry.id);
+  }
+
+  Status Cancel(TimerId timer_id) {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    TimerEntry* entry = FindEntryLocked(state_.get(), timer_id);
+    if (entry == nullptr || !entry->active) {
+      return Status::kNotFound;
     }
 
-    TimerStats GetStats() const {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        TimerStats stats = state_->stats;
-        stats.active = static_cast<uint32_t>(state_->wheel->ActiveCount());
-        return stats;
-    }
+    entry->active = false;
+    ++state_->stats.canceled;
+    FreeEntryLocked(state_.get(), entry);
+    state_->stats.active = ActiveCountLocked(*state_);
+    state_->condition.notify_all();
+    return Status::kOk;
+  }
+
+  TimerStats GetStats() const {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    TimerStats stats = state_->stats;
+    stats.active = ActiveCountLocked(*state_);
+    return stats;
+  }
 
  private:
-    void Run() {
-        epoll_event events[4];
-        while (true) {
-            const int count = epoll_wait(epoll_fd_, events, 4, 100);
-            if (count < 0) continue;
-            
-            for (int i = 0; i < count; ++i) {
-                if (events[i].data.u32 == 1) {
-                    DrainEventFd(event_fd_);
-                } else if (events[i].data.u32 == 2) {
-                    uint64_t expirations = 0;
-                    static_cast<void>(read(timer_fd_, &expirations, sizeof(expirations)));
-                }
-            }
-            
-            if (IsStopping()) break;
-            
-            DispatchExpired();
-            CheckTimeouts();
-            
-            {
-                std::lock_guard<std::mutex> lock(state_->mutex);
-                RearmTimerLocked();
-            }
+  struct ReadyTimer {
+    TimerId id = 0;
+    uint64_t started_ns = 0;
+    uint32_t timeout_ms = 0;
+    std::shared_ptr<TaskHolder> holder;
+  };
+
+  void Run() {
+    std::unique_lock<std::mutex> lock(state_->mutex);
+    while (true) {
+      DropStaleHeapItemsLocked();
+      if (state_->stopping) {
+        if (!HasRunnableWorkLocked()) {
+          break;
         }
+        if (state_->heap.empty()) {
+          state_->condition.wait(lock);
+          continue;
+        }
+      }
+
+      if (state_->heap.empty()) {
+        state_->condition.wait(lock);
+        continue;
+      }
+
+      const uint64_t now_ns = NowNs();
+      const uint64_t deadline_ns = state_->heap.top().deadline_ns;
+      if (deadline_ns > now_ns) {
+        state_->condition.wait_for(
+            lock, std::chrono::nanoseconds(deadline_ns - now_ns));
+        continue;
+      }
+
+      std::vector<ReadyTimer> ready;
+      CollectReadyLocked(now_ns, &ready);
+      lock.unlock();
+      for (const ReadyTimer& timer : ready) {
+        PostReady(timer);
+      }
+      lock.lock();
+    }
+  }
+
+  void DropStaleHeapItemsLocked() {
+    while (!state_->heap.empty()) {
+      const HeapItem item = state_->heap.top();
+      TimerEntry* entry = FindEntryLocked(state_.get(), item.id);
+      if (entry != nullptr && entry->active &&
+          entry->deadline_ns == item.deadline_ns) {
+        break;
+      }
+      state_->heap.pop();
+    }
+  }
+
+  bool HasRunnableWorkLocked() const {
+    for (const TimerEntry& entry : state_->entries) {
+      if (entry.allocated && (entry.active || entry.running != 0)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void CollectReadyLocked(uint64_t now_ns, std::vector<ReadyTimer>* ready) {
+    while (!state_->heap.empty()) {
+      const HeapItem item = state_->heap.top();
+      if (item.deadline_ns > now_ns) {
+        break;
+      }
+      state_->heap.pop();
+
+      TimerEntry* entry = FindEntryLocked(state_.get(), item.id);
+      if (entry == nullptr || !entry->active ||
+          entry->deadline_ns != item.deadline_ns) {
+        continue;
+      }
+      if (entry->running >= entry->options.max_concurrency) {
+        ++state_->stats.skipped;
+        RescheduleSkippedLocked(now_ns, entry);
+        continue;
+      }
+
+      ++entry->running;
+      ReadyTimer timer;
+      timer.id = entry->id;
+      timer.started_ns = now_ns;
+      timer.timeout_ms = entry->options.timeout_ms;
+      timer.holder = entry->holder;
+      ready->push_back(timer);
+
+      if (!entry->periodic) {
+        entry->active = false;
+      } else if (entry->options.mode != TimerMode::kDelayUntilComplete) {
+        ReschedulePeriodicLocked(now_ns, entry);
+      }
+    }
+  }
+
+  void RescheduleSkippedLocked(uint64_t now_ns, TimerEntry* entry) {
+    if (!entry->periodic) {
+      entry->active = false;
+      FreeEntryLocked(state_.get(), entry);
+      return;
+    }
+    if (entry->options.mode == TimerMode::kDelayUntilComplete) {
+      return;
+    }
+    ReschedulePeriodicLocked(now_ns, entry);
+  }
+
+  void ReschedulePeriodicLocked(uint64_t now_ns, TimerEntry* entry) {
+    uint64_t next_deadline_ns = now_ns + entry->interval_ns;
+    if (entry->options.mode == TimerMode::kFixedRate) {
+      next_deadline_ns = entry->deadline_ns + entry->interval_ns;
+      while (next_deadline_ns <= now_ns) {
+        next_deadline_ns += entry->interval_ns;
+      }
+    }
+    PushTimerLocked(state_.get(), entry, next_deadline_ns);
+  }
+
+  void PostReady(const ReadyTimer& timer) {
+    if (executor_ == nullptr || !timer.holder || !timer.holder->task) {
+      Complete(timer, false);
+      return;
     }
 
-    bool IsStopping() const {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        return state_->stopping;
+    std::shared_ptr<ShardState> state = state_;
+    Status error = executor_->Post([state, timer]() mutable {
+      timer.holder->task();
+      TimerShard::CompleteCallback(state, timer.id, timer.started_ns,
+                                   timer.timeout_ms, true);
+    });
+    if (error != Status::kOk) {
+      Complete(timer, false);
+      return;
     }
 
-    void DispatchExpired() {
-        std::vector<TimerNode*> ready;
-        {
-            std::lock_guard<std::mutex> lock(state_->mutex);
-            state_->wheel->ProcessTick([&](TimerNode* node) {
-                if (node->running >= std::max<uint32_t>(1, node->options.max_concurrency)) {
-                    ++state_->stats.skipped;
-                    // Re-schedule for next interval
-                    if (node->periodic && !node->canceled) {
-                        state_->wheel->Add(node->id, static_cast<uint32_t>(node->interval_ms),
-                                          true, node->options, std::move(node->task));
-                    }
-                    return;
-                }
-                ++node->running;
-                node->running_since_ns = NowNs();
-                ready.push_back(node);
-            });
-        }
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    ++state_->stats.fired;
+  }
 
-        for (TimerNode* node : ready) {
-            PostNode(node);
-        }
+  void Complete(const ReadyTimer& timer, bool ran) {
+    CompleteCallback(state_, timer.id, timer.started_ns, timer.timeout_ms, ran);
+  }
+
+  static void CompleteCallback(const std::shared_ptr<ShardState>& state,
+                               TimerId timer_id, uint64_t started_ns,
+                               uint32_t timeout_ms, bool ran) {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    TimerEntry* entry = FindEntryLocked(state.get(), timer_id);
+    if (entry == nullptr || entry->running == 0) {
+      return;
     }
 
-    void PostNode(TimerNode* node) {
-        if (!executor_ || !node->task) {
-            MarkPostFailed(node);
-            return;
-        }
-
-        auto state = state_;
-        Task task = std::move(node->task);
-        
-        Status error = executor_->Post([state, node, task]() mutable {
-            task();
-            CompleteCallback(state, node);
-        });
-
-        if (error != Status::kOk) {
-            MarkPostFailed(node);
-            return;
-        }
-
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        ++state_->stats.fired;
+    --entry->running;
+    if (!ran) {
+      ++state->stats.post_failed;
+    } else if (timeout_ms > 0 && NowNs() - started_ns > MsToNs(timeout_ms)) {
+      ++state->stats.timed_out;
     }
 
-    static void CompleteCallback(const std::shared_ptr<ShardState>& state,
-                                 TimerNode* node) {
-        int wake_fd = -1;
-        bool reschedule = false;
-        uint32_t interval_ms = 0;
-        TimerOptions options;
-        
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (node->running > 0) --node->running;
-            if (node->running == 0) node->running_since_ns = 0;
-            
-            if (node->canceled) {
-                state->wheel->Cancel(node->id);  // lazy remove
-                return;
-            }
-            
-            if (node->periodic && node->options.mode == TimerMode::kDelayUntilComplete) {
-                reschedule = true;
-                interval_ms = static_cast<uint32_t>(node->interval_ms);
-                options = node->options;
-                wake_fd = state->event_fd;
-            }
-        }
-        
-        if (reschedule && wake_fd >= 0) {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            state->wheel->Add(node->id, interval_ms, true, options, std::move(node->task));
-            WriteEventFd(wake_fd);
-        }
+    if (entry->active && entry->periodic &&
+        entry->options.mode == TimerMode::kDelayUntilComplete &&
+        entry->running == 0) {
+      PushTimerLocked(state.get(), entry, NowNs() + entry->interval_ns);
     }
 
-    void CheckTimeouts() {
-        const uint64_t now = NowNs();
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        
-        // Note: With timing wheel, we can't efficiently iterate all active timers
-        // Timeout checking is now done at expiration time in ProcessTick
-        // This is a design trade-off: O(1) insert/delete vs O(N) timeout scan
-        // For high-frequency timers, the trade-off is worth it
-        (void)now;  // suppress unused warning
-    }
+    FreeEntryLocked(state.get(), entry);
+    state->stats.active = ActiveCountLocked(*state);
+    state->condition.notify_all();
+  }
 
-    void MarkPostFailed(TimerNode* node) {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        ++state_->stats.post_failed;
-        if (node->running > 0) --node->running;
-        if (!node->periodic) {
-            node->canceled = true;
-        }
+  void DiscardLocked() {
+    while (!state_->heap.empty()) {
+      state_->heap.pop();
     }
-
-    void RearmTimerLocked() {
-        uint32_t next_ms = state_->wheel->NextExpirationMs();
-        itimerspec spec;
-        std::memset(&spec, 0, sizeof(spec));
-        spec.it_value.tv_sec = next_ms / 1000;
-        spec.it_value.tv_nsec = (next_ms % 1000) * 1000000LL;
-        timerfd_settime(timer_fd_, 0, &spec, nullptr);
+    state_->free_indices.clear();
+    for (uint32_t i = 0; i < state_->entries.size(); ++i) {
+      TimerEntry& entry = state_->entries[i];
+      entry.active = false;
+      if (entry.running == 0) {
+        entry.id = 0;
+        entry.deadline_ns = 0;
+        entry.interval_ns = 0;
+        entry.holder.reset();
+        entry.allocated = false;
+        entry.periodic = false;
+        state_->free_indices.push_back(i);
+      }
     }
+    state_->stats.active = ActiveCountLocked(*state_);
+  }
 
-    uint32_t index_ = 0;
-    Executor* executor_ = nullptr;
-    std::shared_ptr<ShardState> state_;
-    std::thread thread_;
-    int event_fd_ = -1;
-    int timer_fd_ = -1;
-    int epoll_fd_ = -1;
+  uint32_t index_ = 0;
+  Executor* executor_ = nullptr;
+  uint32_t max_timers_ = 0;
+  std::shared_ptr<ShardState> state_;
+  std::thread thread_;
 };
 
 }  // namespace
 
-// ============================================================================
-// Timer Public API (unchanged)
-// ============================================================================
-
 class Timer::Impl {
  public:
-    Status Start(const TimerConfig& options) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (running_) return Status::kOk;
-        
-        options_ = options;
-        if (options_.shard_count == 0) {
-            options_.shard_count = AutoShardCount();
-        }
-        if (options_.shard_count == 0 || options_.shard_count > 255 || options_.max_timers == 0) {
-            return Status::kInvalidParam;
-        }
-
-        if (options_.callback_executor == nullptr) {
-            ExecutorOptions executor_options;
-            executor_options.worker_count = options_.callback_worker_count;
-            executor_options.queue_capacity = options_.max_pending_callbacks;
-            owned_executor_ = std::make_unique<Executor>();
-            Status error = owned_executor_->Start(executor_options);
-            if (error != Status::kOk) {
-                owned_executor_.reset();
-                return error;
-            }
-            callback_executor_ = owned_executor_.get();
-        } else {
-            callback_executor_ = options_.callback_executor;
-        }
-
-        shards_.clear();
-        for (uint32_t i = 0; i < options_.shard_count; ++i) {
-            uint32_t max_per_shard = std::max<uint32_t>(1, options_.max_timers / options_.shard_count);
-            auto shard = std::make_unique<TimerShard>(i, callback_executor_, max_per_shard);
-            Status error = shard->Start();
-            if (error != Status::kOk) {
-                for (auto& existing : shards_) {
-                    existing->Stop(StopMode::kDiscard);
-                }
-                shards_.clear();
-                if (owned_executor_) {
-                    owned_executor_->Stop(StopMode::kDiscard);
-                    owned_executor_.reset();
-                }
-                callback_executor_ = nullptr;
-                return error;
-            }
-            shards_.push_back(std::move(shard));
-        }
-        running_ = true;
-        return Status::kOk;
+  Status Start(const TimerConfig& options) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (running_) {
+      return Status::kOk;
     }
 
-    void Stop(StopMode mode) {
-        std::vector<std::unique_ptr<TimerShard>> shards;
-        std::unique_ptr<Executor> owned_executor;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!running_ && shards_.empty()) return;
-            running_ = false;
-            shards.swap(shards_);
-            owned_executor = std::move(owned_executor_);
-            callback_executor_ = nullptr;
-        }
-        for (auto& shard : shards) {
-            shard->Stop(mode);
-        }
-        if (owned_executor) {
-            owned_executor->Stop(mode);
-        }
+    options_ = options;
+    if (options_.shard_count == 0) {
+      options_.shard_count = AutoShardCount();
+    }
+    if (options_.shard_count == 0 ||
+        options_.shard_count > kMaxShardCount ||
+        options_.max_timers == 0 ||
+        options_.max_timers > kIndexMask ||
+        options_.max_pending_callbacks == 0) {
+      return Status::kInvalidParam;
+    }
+    options_.shard_count = std::min(options_.shard_count, options_.max_timers);
+
+    if (options_.callback_executor == nullptr) {
+      ExecutorOptions executor_options;
+      executor_options.worker_count = options_.callback_worker_count;
+      executor_options.queue_capacity = options_.max_pending_callbacks;
+      owned_executor_.reset(new Executor());
+      const Status error = owned_executor_->Start(executor_options);
+      if (error != Status::kOk) {
+        owned_executor_.reset();
+        return error;
+      }
+      callback_executor_ = owned_executor_.get();
+    } else {
+      callback_executor_ = options_.callback_executor;
     }
 
-    Result<TimerId> After(uint32_t delay_ms, Task task) {
-        TimerOptions options;
-        return Add(delay_ms, false, options, std::move(task));
+    shards_.clear();
+    shards_.reserve(options_.shard_count);
+    const uint32_t base_per_shard =
+        options_.max_timers / options_.shard_count;
+    const uint32_t extra = options_.max_timers % options_.shard_count;
+    for (uint32_t i = 0; i < options_.shard_count; ++i) {
+      const uint32_t max_per_shard = base_per_shard + (i < extra ? 1 : 0);
+      std::unique_ptr<TimerShard> shard(
+          new TimerShard(i, callback_executor_, max_per_shard));
+      const Status error = shard->Start();
+      if (error != Status::kOk) {
+        StopStartedShards();
+        return error;
+      }
+      shards_.push_back(std::move(shard));
     }
 
-    Result<TimerId> Every(uint32_t interval_ms, const TimerOptions& options, Task task) {
-        return Add(interval_ms, true, options, std::move(task));
+    next_shard_.store(0);
+    running_ = true;
+    return Status::kOk;
+  }
+
+  void Stop(StopMode mode) {
+    std::vector<std::unique_ptr<TimerShard>> shards;
+    std::unique_ptr<Executor> owned_executor;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!running_ && shards_.empty()) {
+        return;
+      }
+      running_ = false;
+      shards.swap(shards_);
+      owned_executor = std::move(owned_executor_);
+      callback_executor_ = nullptr;
     }
 
-    Status Cancel(TimerId timer_id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        uint32_t shard = ShardFromId(timer_id);
-        if (!running_ || shard >= shards_.size()) {
-            return Status::kNotFound;
-        }
-        return shards_[shard]->Cancel(timer_id);
+    for (auto& shard : shards) {
+      shard->Stop(mode);
     }
+    if (owned_executor) {
+      owned_executor->Stop(mode);
+    }
+  }
 
-    TimerStats GetStats() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        TimerStats stats;
-        for (const auto& shard : shards_) {
-            TimerStats shard_stats = shard->GetStats();
-            stats.created += shard_stats.created;
-            stats.fired += shard_stats.fired;
-            stats.canceled += shard_stats.canceled;
-            stats.skipped += shard_stats.skipped;
-            stats.timed_out += shard_stats.timed_out;
-            stats.post_failed += shard_stats.post_failed;
-            stats.active += shard_stats.active;
-        }
-        return stats;
+  Result<TimerId> After(uint32_t delay_ms, Task task) {
+    TimerOptions options;
+    return Add(delay_ms, false, options, std::move(task));
+  }
+
+  Result<TimerId> Every(uint32_t interval_ms, const TimerOptions& options,
+                        Task task) {
+    return Add(interval_ms, true, options, std::move(task));
+  }
+
+  Status Cancel(TimerId timer_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const uint32_t shard = ShardFromId(timer_id);
+    if (!running_ || shard >= shards_.size()) {
+      return Status::kNotFound;
     }
+    return shards_[shard]->Cancel(timer_id);
+  }
+
+  TimerStats GetStats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    TimerStats stats;
+    for (const auto& shard : shards_) {
+      const TimerStats shard_stats = shard->GetStats();
+      stats.created += shard_stats.created;
+      stats.fired += shard_stats.fired;
+      stats.canceled += shard_stats.canceled;
+      stats.skipped += shard_stats.skipped;
+      stats.timed_out += shard_stats.timed_out;
+      stats.post_failed += shard_stats.post_failed;
+      stats.active += shard_stats.active;
+    }
+    return stats;
+  }
 
  private:
-    Result<TimerId> Add(uint32_t delay_ms, bool periodic,
-                       const TimerOptions& options, Task task) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!running_ || shards_.empty()) {
-            return Result<TimerId>::Fail(Status::kBusy);
-        }
-        uint32_t shard = next_shard_.fetch_add(1) % static_cast<uint32_t>(shards_.size());
-        uint32_t max_per_shard = std::max<uint32_t>(1, options_.max_timers / options_.shard_count);
-        return shards_[shard]->Add(delay_ms, periodic, options, std::move(task), max_per_shard);
+  Result<TimerId> Add(uint32_t delay_ms, bool periodic,
+                      const TimerOptions& options, Task task) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || shards_.empty()) {
+      return Result<TimerId>::Fail(Status::kBusy);
     }
+    const uint32_t shard_count = static_cast<uint32_t>(shards_.size());
+    const uint32_t first_shard = next_shard_.fetch_add(1) % shard_count;
+    Result<TimerId> last_error = Result<TimerId>::Fail(Status::kBusy);
+    for (uint32_t i = 0; i < shard_count; ++i) {
+      const uint32_t shard = (first_shard + i) % shard_count;
+      last_error = shards_[shard]->Add(delay_ms, periodic, options,
+                                       std::move(task));
+      if (last_error.IsOk() || last_error.status != Status::kBusy) {
+        return last_error;
+      }
+    }
+    return last_error;
+  }
 
-    TimerConfig options_;
-    mutable std::mutex mutex_;
-    std::vector<std::unique_ptr<TimerShard>> shards_;
-    std::unique_ptr<Executor> owned_executor_;
-    Executor* callback_executor_ = nullptr;
-    std::atomic<uint32_t> next_shard_{0};
-    bool running_ = false;
+  void StopStartedShards() {
+    for (auto& shard : shards_) {
+      shard->Stop(StopMode::kDiscard);
+    }
+    shards_.clear();
+    if (owned_executor_) {
+      owned_executor_->Stop(StopMode::kDiscard);
+      owned_executor_.reset();
+    }
+    callback_executor_ = nullptr;
+  }
+
+  TimerConfig options_;
+  mutable std::mutex mutex_;
+  std::vector<std::unique_ptr<TimerShard>> shards_;
+  std::unique_ptr<Executor> owned_executor_;
+  Executor* callback_executor_ = nullptr;
+  std::atomic<uint32_t> next_shard_{0};
+  bool running_ = false;
 };
 
-Timer::Timer() : impl_(std::make_unique<Impl>()) {}
+Timer::Timer() : impl_(new Impl()) {}
+
 Timer::~Timer() = default;
 
-Status Timer::Start(const TimerConfig& options) { return impl_->Start(options); }
-void Timer::Stop(StopMode mode) { impl_->Stop(mode); }
-Result<TimerId> Timer::After(uint32_t delay_ms, Task task) { return impl_->After(delay_ms, std::move(task)); }
-Result<TimerId> Timer::Every(uint32_t interval_ms, const TimerOptions& options, Task task) { return impl_->Every(interval_ms, options, std::move(task)); }
-Status Timer::Cancel(TimerId timer_id) { return impl_->Cancel(timer_id); }
-TimerStats Timer::GetStats() const { return impl_->GetStats(); }
+Status Timer::Start(const TimerConfig& options) {
+  return impl_->Start(options);
+}
+
+void Timer::Stop(StopMode mode) {
+  impl_->Stop(mode);
+}
+
+Result<TimerId> Timer::After(uint32_t delay_ms, Task task) {
+  return impl_->After(delay_ms, std::move(task));
+}
+
+Result<TimerId> Timer::Every(uint32_t interval_ms,
+                             const TimerOptions& options,
+                             Task task) {
+  return impl_->Every(interval_ms, options, std::move(task));
+}
+
+Status Timer::Cancel(TimerId timer_id) {
+  return impl_->Cancel(timer_id);
+}
+
+TimerStats Timer::GetStats() const {
+  return impl_->GetStats();
+}
 
 }  // namespace infra

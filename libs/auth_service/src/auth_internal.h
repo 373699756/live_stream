@@ -23,6 +23,7 @@ constexpr std::size_t kMaxAuthConfigSize = 64 * 1024;
 struct SessionRecord {
     AuthPrincipal principal;
     std::string token;
+    int64_t created_at_monotonic_ms = 0;
     int64_t expires_at_monotonic_ms = 0;
     int64_t expires_at_ms = 0;
 };

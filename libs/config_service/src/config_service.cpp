@@ -32,11 +32,28 @@ bool IsTopLevelName(const std::string& name) {
 infra::Status RunCallbacks(const std::vector<ConfigProc>& cbs,
                            const ConfigJson& value) {
     for (const auto& cb : cbs) {
-        if (const auto st = cb(value); st != infra::Status::kOk) {
+        const infra::Status st = cb(value);
+        if (st != infra::Status::kOk) {
             return st;
         }
     }
     return infra::Status::kOk;
+}
+
+void MergeMissingFields(ConfigJson* current, const ConfigJson& defaults) {
+    if (current == nullptr || !current->is_object() || !defaults.is_object()) {
+        return;
+    }
+    for (auto it = defaults.begin(); it != defaults.end(); ++it) {
+        auto current_it = current->find(it.key());
+        if (current_it == current->end()) {
+            (*current)[it.key()] = it.value();
+            continue;
+        }
+        if (current_it->is_object() && it.value().is_object()) {
+            MergeMissingFields(&(*current_it), it.value());
+        }
+    }
 }
 
 // JSON 文件读取
@@ -58,13 +75,13 @@ infra::Status AtomicWriteJson(const std::string& path,
     if (!root.is_object() || path.empty()) {
         return infra::Status::kInvalidParam;
     }
-    if (auto st = infra::Path::MakeDirs(infra::Path::DirName(path));
-        st != infra::Status::kOk) {
+    infra::Status st = infra::Path::MakeDirs(infra::Path::DirName(path));
+    if (st != infra::Status::kOk) {
         return st;
     }
     const std::string tmp = path + ".tmp";
-    if (auto st = infra::File::WriteAll(tmp, root.dump(4));
-        st != infra::Status::kOk) {
+    st = infra::File::WriteAll(tmp, root.dump(4));
+    if (st != infra::Status::kOk) {
         return st;
     }
     return infra::File::Rename(tmp, path);
@@ -113,10 +130,10 @@ class ConfigServiceImpl : public IConfigService, private infra::ServiceBase {
         }
 
         // Phase 2: 锁外执行 verify -> apply
-        if (auto st = RunCallbacks(verify_cbs, candidate);
-            st != infra::Status::kOk) return st;
-        if (auto st = RunCallbacks(apply_cbs, candidate);
-            st != infra::Status::kOk) return st;
+        infra::Status st = RunCallbacks(verify_cbs, candidate);
+        if (st != infra::Status::kOk) return st;
+        st = RunCallbacks(apply_cbs, candidate);
+        if (st != infra::Status::kOk) return st;
 
         // Phase 3: 锁内提交 + 持久化
         {
@@ -165,8 +182,9 @@ class ConfigServiceImpl : public IConfigService, private infra::ServiceBase {
                 entries.emplace_back(it.key(), it.value());
             }
         }
-        for (const auto& [k, v] : entries) {
-            if (auto st = SetValue(k, v); st != infra::Status::kOk)
+        for (const auto& entry : entries) {
+            const infra::Status st = SetValue(entry.first, entry.second);
+            if (st != infra::Status::kOk)
                 return st;
         }
         return infra::Status::kOk;
@@ -211,26 +229,32 @@ class ConfigServiceImpl : public IConfigService, private infra::ServiceBase {
         auto defaults = LoadJsonFile(opts_.default_config_path);
         if (!defaults.IsOk()) return defaults.status;
 
-        auto current = [&] -> infra::Result<ConfigJson> {
-            if (opts_.config_path.empty() || !defaults.value.is_object())
-                return infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
-            if (infra::File::Exists(opts_.config_path))
-                return LoadJsonFile(opts_.config_path);
-            if (!opts_.create_storage_if_missing)
-                return infra::Result<ConfigJson>::Fail(infra::Status::kNotFound);
-            // 首次运行：用默认配置创建文件
-            if (auto st = AtomicWriteJson(opts_.config_path, defaults.value);
-                st != infra::Status::kOk)
-                return infra::Result<ConfigJson>::Fail(st);
-            return infra::Result<ConfigJson>::Ok(defaults.value);
-        }();
+        infra::Result<ConfigJson> current =
+            infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
+        if (opts_.config_path.empty() || !defaults.value.is_object()) {
+            current =
+                infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
+        } else if (infra::File::Exists(opts_.config_path)) {
+            current = LoadJsonFile(opts_.config_path);
+        } else if (!opts_.create_storage_if_missing) {
+            current = infra::Result<ConfigJson>::Fail(infra::Status::kNotFound);
+        } else {
+            const infra::Status st =
+                AtomicWriteJson(opts_.config_path, defaults.value);
+            if (st != infra::Status::kOk) {
+                current = infra::Result<ConfigJson>::Fail(st);
+            } else {
+                current = infra::Result<ConfigJson>::Ok(defaults.value);
+            }
+        }
 
         if (!current.IsOk()) return current.status;
 
-        // 用 json原生 update 补齐新增的默认字段（替代手写 MergeMissingFields）
-        current.value.update(defaults.value);
-        if (auto st = AtomicWriteJson(opts_.config_path, current.value);
-            st != infra::Status::kOk)
+        // Preserve user config and only fill fields added by defaults.
+        MergeMissingFields(&current.value, defaults.value);
+        const infra::Status st =
+            AtomicWriteJson(opts_.config_path, current.value);
+        if (st != infra::Status::kOk)
             return st;
 
         current_  = std::move(current.value);

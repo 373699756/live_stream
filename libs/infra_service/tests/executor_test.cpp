@@ -50,5 +50,55 @@ int main() {
     if (executor.Post([]() {}) != infra::Status::kBusy) {
         return 7;
     }
+
+    if (executor.Start(options) != infra::Status::kOk) {
+        return 8;
+    }
+    stats = executor.GetStats();
+    if (stats.posted != 0 || stats.completed != 0 || stats.rejected != 0) {
+        return 9;
+    }
+    executor.Stop(infra::StopMode::kDiscard);
+
+    options.worker_count = 1;
+    options.queue_capacity = 1;
+    if (executor.Start(options) != infra::Status::kOk) {
+        return 10;
+    }
+    std::atomic<int> blocked{0};
+    if (executor.Post([&blocked]() {
+            infra::Time::SleepMillis(20);
+            blocked.fetch_add(1);
+        }) != infra::Status::kOk) {
+        return 11;
+    }
+    if (executor.Post([&blocked]() { blocked.fetch_add(1); }) !=
+        infra::Status::kOk) {
+        return 12;
+    }
+    if (executor.Post([]() {}) != infra::Status::kBusy) {
+        return 13;
+    }
+    executor.Stop(infra::StopMode::kDrain);
+    if (!WaitForValue(blocked, 2)) {
+        return 14;
+    }
+
+    options.worker_count = 1;
+    options.queue_capacity = 4;
+    if (executor.Start(options) != infra::Status::kOk) {
+        return 15;
+    }
+    std::atomic<int> discard_value{0};
+    for (int i = 0; i < 4; ++i) {
+        static_cast<void>(executor.Post([&discard_value]() {
+            infra::Time::SleepMillis(20);
+            discard_value.fetch_add(1);
+        }));
+    }
+    executor.Stop(infra::StopMode::kDiscard);
+    if (discard_value.load() >= 4) {
+        return 16;
+    }
     return 0;
 }

@@ -2,7 +2,7 @@
 
 #include "infra/fs.h"
 
-#include "../../../3rdparty/nlohmann_json.hpp"
+#include "nlohmann/json.hpp"
 
 #include <map>
 #include <memory>
@@ -63,6 +63,10 @@ class MemoryAuthUserStore : public IAuthUserStore {
         return infra::Result<AuthUserRecord>::Ok(iter->second);
     }
 
+    infra::Status Reload() override {
+        return infra::Status::kOk;
+    }
+
  private:
     std::map<std::string, AuthUserRecord> users_;
 };
@@ -83,6 +87,13 @@ class JsonAuthUserStore : public IAuthUserStore {
             return infra::Result<AuthUserRecord>::Fail(infra::Status::kNotFound);
         }
         return infra::Result<AuthUserRecord>::Ok(iter->second);
+    }
+
+    infra::Status Reload() override {
+        loaded_ = false;
+        load_error_ = infra::Status::kOk;
+        users_.clear();
+        return EnsureLoaded();
     }
 
  private:
@@ -125,6 +136,9 @@ class JsonAuthUserStore : public IAuthUserStore {
             if (!user_json.is_object()) {
                 return infra::Status::kInvalidParam;
             }
+            if (user_json.contains("password")) {
+                return infra::Status::kInvalidParam;
+            }
             AuthUserRecord user;
             std::string role;
             if (!ReadStringField(user_json, "user_name", &user.user_name) ||
@@ -138,6 +152,9 @@ class JsonAuthUserStore : public IAuthUserStore {
                     user.user_name, auth_internal::kMaxUserNameLength) ||
                 user.password_credential.empty()) {
                 return infra::Status::kInvalidParam;
+            }
+            if (parsed_users.find(user.user_name) != parsed_users.end()) {
+                return infra::Status::kAlreadyExists;
             }
             parsed_users[user.user_name] = user;
         }

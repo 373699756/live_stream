@@ -1,21 +1,27 @@
-CXX ?= g++
-AR ?= ar
+CROSS_COMPILE ?=
+ifeq ($(origin CXX),default)
+CXX := $(CROSS_COMPILE)g++
+endif
+ifeq ($(origin AR),default)
+AR := $(CROSS_COMPILE)ar
+endif
+
+.DEFAULT_GOAL := all
 
 BUILD_DIR ?= build
 LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/app
 BIN_DIR := $(BUILD_DIR)/bin
 THIRDPARTY_DIR := 3rdparty
-METARTC_SRC := $(THIRDPARTY_DIR)/metaRTC_src
-METARTC_BUILD := $(THIRDPARTY_DIR)/build
+THIRDPARTY_SRC := $(THIRDPARTY_DIR)/src
+METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
 METARTC_INSTALL := $(THIRDPARTY_DIR)/install
-METARTC_TOOLCHAIN_FILE := $(CURDIR)/$(THIRDPARTY_DIR)/toolchains/arm-himix200-linux.cmake
 
-MBEDTLS_LIBS := $(METARTC_INSTALL)/lib/libmbedtls.a $(METARTC_INSTALL)/lib/libmbedx509.a $(METARTC_INSTALL)/lib/libmbedcrypto.a
+OPENSSL_LIBS := $(METARTC_INSTALL)/lib/libssl.a $(METARTC_INSTALL)/lib/libcrypto.a
 SRTP_LIBS := $(METARTC_INSTALL)/lib/libsrtp2.a
 USRSCTP_LIBS := $(METARTC_INSTALL)/lib/libusrsctp.a
-METARTC_LIBS := $(METARTC_BUILD)/meta_libmetartccore8/libmetartccore8.a $(METARTC_BUILD)/meta_libyangutil8/libyangutil8.a
-THIRDPARTY_LIBS := $(METARTC_LIBS) $(SRTP_LIBS) $(USRSCTP_LIBS) $(MBEDTLS_LIBS)
+METARTC_LIBS := $(METARTC_INSTALL)/lib/libmetartc8.a $(METARTC_INSTALL)/lib/libmetartccore8.a $(METARTC_INSTALL)/lib/libyangutil8.a
+THIRDPARTY_LIBS := $(METARTC_LIBS) $(SRTP_LIBS) $(USRSCTP_LIBS) $(OPENSSL_LIBS)
 
 CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Werror
@@ -26,8 +32,15 @@ CXXFLAGS += -Ilibs/logger_service/include
 CXXFLAGS += -Ilibs/config_service/include
 CXXFLAGS += -Ilibs/event_service/include
 CXXFLAGS += -Ilibs/auth_service/include
+CXXFLAGS += -Ilibs/system_service/include
+CXXFLAGS += -Ilibs/network_service/include
 CXXFLAGS += -Ilibs/netframe_service/include
-CXXFLAGS += -Ilibs/time_service/include
+CXXFLAGS += -Ilibs/media_service/include
+CXXFLAGS += -Ilibs/osd_service/include
+CXXFLAGS += -Ilibs/rtsp_service/include
+CXXFLAGS += -Ilibs/webrtc_service/include
+CXXFLAGS += -Ilibs/snapshot_service/include
+CXXFLAGS += -Ilibs/http_service/include
 CXXFLAGS += -pthread
 
 SERVICES := \
@@ -66,18 +79,8 @@ all: $(SERVICES) $(BIN_DIR)/live_stream
 
 thirdparty: $(THIRDPARTY_LIBS)
 
-$(METARTC_INSTALL)/lib/libmbedtls.a $(METARTC_INSTALL)/lib/libmbedx509.a $(METARTC_INSTALL)/lib/libmbedcrypto.a $(METARTC_INSTALL)/lib/libsrtp2.a $(METARTC_INSTALL)/lib/libusrsctp.a: $(THIRDPARTY_DIR)/build_deps.sh
+$(THIRDPARTY_LIBS): $(THIRDPARTY_DIR)/build_deps.sh
 	$(THIRDPARTY_DIR)/build_deps.sh
-
-$(METARTC_BUILD)/meta_libyangutil8/libyangutil8.a: $(METARTC_INSTALL)/lib/libmbedtls.a $(METARTC_INSTALL)/lib/libsrtp2.a $(METARTC_INSTALL)/lib/libusrsctp.a $(METARTC_SRC)/libyangutil8/CMakeLists.txt
-	rm -rf $(METARTC_BUILD)/meta_libyangutil8
-	cmake -S $(METARTC_SRC)/libyangutil8 -B $(METARTC_BUILD)/meta_libyangutil8 -DCMAKE_TOOLCHAIN_FILE=$(METARTC_TOOLCHAIN_FILE) -DYang_Moc=2 -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(METARTC_BUILD)/meta_libyangutil8 -j4
-
-$(METARTC_BUILD)/meta_libmetartccore8/libmetartccore8.a: $(METARTC_BUILD)/meta_libyangutil8/libyangutil8.a $(METARTC_SRC)/libmetartccore8/CMakeLists.txt
-	rm -rf $(METARTC_BUILD)/meta_libmetartccore8
-	cmake -S $(METARTC_SRC)/libmetartccore8 -B $(METARTC_BUILD)/meta_libmetartccore8 -DCMAKE_TOOLCHAIN_FILE=$(METARTC_TOOLCHAIN_FILE) -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(METARTC_BUILD)/meta_libmetartccore8 -j4
 
 $(SERVICES):
 	$(MAKE) -C libs/$@

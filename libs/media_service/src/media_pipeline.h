@@ -3,11 +3,16 @@
 
 #include "infra/status.h"
 #include "infra/stream_types.h"
+#include "media/frame_source.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
 
 namespace live_stream {
+
+namespace hisisdk {
+class IHisiSdk;
+}  // namespace hisisdk
 
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config);
 bool IsValidMediaStream(infra::StreamId stream_id);
@@ -15,8 +20,11 @@ bool IsValidMediaStream(infra::StreamId stream_id);
 class MediaPipeline {
  public:
     explicit MediaPipeline(MediaPipelineConfig config);
+    MediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk);
 
     const MediaPipelineConfig& config() const { return config_; }
+    void SetConfig(const MediaPipelineConfig& config);
+    void SetFrameCallback(EncodedFrameCallback callback, void* user);
 
     infra::Result<MediaCapabilities> GetCapabilities() const;
     infra::Status InitSystem();
@@ -30,7 +38,10 @@ class MediaPipeline {
  private:
     void BuildChannels();
 
+    hisisdk::IHisiSdk* sdk_;
     MediaPipelineConfig config_;
+    EncodedFrameCallback frame_callback_ = nullptr;
+    void* frame_callback_user_ = nullptr;
     MediaChannels channels_{};
     bool system_initialized_ = false;
     bool vi_started_ = false;

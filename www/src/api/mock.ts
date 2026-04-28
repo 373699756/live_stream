@@ -50,6 +50,8 @@ export const mockMediaCapabilities: MediaCapabilities = {
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
+        { codec: 'jpeg', profiles: ['baseline'] },
+        { codec: 'mjpeg', profiles: ['baseline'] },
       ],
       resolutions: [
         { width: 3840, height: 2160 },
@@ -68,6 +70,8 @@ export const mockMediaCapabilities: MediaCapabilities = {
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
+        { codec: 'jpeg', profiles: ['baseline'] },
+        { codec: 'mjpeg', profiles: ['baseline'] },
       ],
       resolutions: [
         { width: 1280, height: 720 },
@@ -81,6 +85,53 @@ export const mockMediaCapabilities: MediaCapabilities = {
       gop: { min: 1, max: 120 },
       smart_codec: true,
     },
+  },
+  image: {
+    basic: {
+      brightness: { min: 0, max: 100, default: 50 },
+      contrast: { min: 0, max: 100, default: 50 },
+      saturation: { min: 0, max: 100, default: 50 },
+      sharpness: { min: 0, max: 100, default: 50 },
+      hue: { min: 0, max: 100, default: 50 },
+    },
+    exposure: {
+      options: {
+        mode: { values: ['auto', 'manual'], default: 'auto' },
+        anti_flicker: { values: ['50hz', '60hz', 'off'], default: '50hz' },
+        exposure_time: { values: ['auto', '1/25', '1/50', '1/100', '1/250'], default: 'auto' },
+        gain: { values: ['auto', 'low', 'medium', 'high'], default: 'auto' },
+        slow_shutter: { values: ['false', 'true'], default: 'true' },
+        max_exposure_time: { values: ['1/12', '1/25', '1/50'], default: '1/25' },
+      },
+      ranges: { compensation: { min: 0, max: 100, default: 50 } },
+    },
+    white_balance: {
+      options: {
+        mode: { values: ['auto', 'manual', 'indoor', 'outdoor'], default: 'auto' },
+      },
+      ranges: {
+        red_gain: { min: 0, max: 100, default: 50 },
+        blue_gain: { min: 0, max: 100, default: 50 },
+      },
+    },
+    enhancement: {
+      options: { defog: { values: ['false', 'true'], default: 'false' } },
+      ranges: {
+        denoise_2d: { min: 0, max: 100, default: 50 },
+        denoise_3d: { min: 0, max: 100, default: 50 },
+        gamma: { min: 0, max: 100, default: 50 },
+      },
+    },
+    backlight: {
+      options: {
+        mode: { values: ['off', 'wdr', 'blc', 'hlc'], default: 'off' },
+      },
+      ranges: { level: { min: 0, max: 100, default: 50 } },
+    },
+    color_mode: {
+      mode: { values: ['color', 'black_white', 'auto'], default: 'color' },
+    },
+    orientation: { mirror: true, flip: true },
   },
 };
 

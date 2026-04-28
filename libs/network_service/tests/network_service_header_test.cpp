@@ -113,6 +113,18 @@ class FakeConfigService : public live_stream::IConfigService {
         ++set_count;
         last_name = name;
         last_json = value.dump();
+        for (const live_stream::ConfigProc& proc : verify_callbacks) {
+            const infra::Status error = proc(value);
+            if (error != infra::Status::kOk) {
+                return error;
+            }
+        }
+        for (const live_stream::ConfigProc& proc : apply_callbacks) {
+            const infra::Status error = proc(value);
+            if (error != infra::Status::kOk) {
+                return error;
+            }
+        }
         return set_error;
     }
 
@@ -129,18 +141,28 @@ class FakeConfigService : public live_stream::IConfigService {
         return infra::Status::kOk;
     }
 
-    infra::Status SetDefault(const std::string&, const live_stream::ConfigJson&) override { return infra::Status::kOk; }
-    infra::Status GetDefault(const std::string&, live_stream::ConfigJson*) override { return infra::Status::kOk; }
+    infra::Status GetDefault(const std::string&,
+                            live_stream::ConfigJson*) override {
+        return infra::Status::kOk;
+    }
     infra::Status RestoreDefaults() override { return infra::Status::kOk; }
     infra::Status SaveFile() override { return infra::Status::kOk; }
-    infra::Status Invoke(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
-    infra::Status UnInvoke(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
-    infra::Status VerifyInvoke(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
-    infra::Status UnVerifyInvoke(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
+    infra::Status RegisterApply(const std::string&,
+                               live_stream::ConfigProc proc) override {
+        apply_callbacks.push_back(proc);
+        return infra::Status::kOk;
+    }
+    infra::Status RegisterVerify(const std::string&,
+                                live_stream::ConfigProc proc) override {
+        verify_callbacks.push_back(proc);
+        return infra::Status::kOk;
+    }
 
     std::string stored_json;
     std::string last_name;
     std::string last_json;
+    std::vector<live_stream::ConfigProc> apply_callbacks;
+    std::vector<live_stream::ConfigProc> verify_callbacks;
     int set_count = 0;
     int get_count = 0;
     infra::Status get_error = infra::Status::kNotFound;
@@ -308,7 +330,7 @@ int main() {
         platform.enable_count != 1 || !platform.last_enabled ||
         platform.start_dhcp_count != 1 || platform.gateway_count != 1 ||
         !platform.last_gateway.empty() || platform.dns_count != 1 ||
-        config_service.set_count != 1 ||
+        config_service.set_count != 1 || config_service.last_name != "network" ||
         event_service.last_event.type != live_stream::EventType::kNetworkChanged ||
         logger_service.last_record.result !=
             live_stream::OperationResult::kSuccess ||
@@ -322,7 +344,7 @@ int main() {
             infra::Status::kOk ||
         platform.stop_dhcp_count != 1 || platform.static_count != 1 ||
         platform.gateway_count != 2 || platform.last_gateway != "192.168.1.1" ||
-        config_service.last_json.find("\"address_mode\":\"static\"") ==
+        config_service.last_json.find("\"dhcp\":false") ==
             std::string::npos ||
         event_service.publish_count != publish_count_after_dhcp + 1) {
         return 7;

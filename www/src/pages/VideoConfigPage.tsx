@@ -20,6 +20,7 @@ import { VideoPreview } from '../components/VideoPreview';
 const codecLabel = (codec: string) => {
   if (codec === 'h264') return 'H.264';
   if (codec === 'h265') return 'H.265';
+  if (codec === 'jpeg') return 'JPEG';
   if (codec === 'mjpeg') return 'MJPEG';
   return codec;
 };

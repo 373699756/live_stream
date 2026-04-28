@@ -200,6 +200,6 @@ int main() {
 
     close(fd);
     rtsp->Deinit();
-    netframe->Deinit();
+    netframe.value->Stop();
     return 0;
 }

@@ -263,7 +263,11 @@ int main() {
                                              ""));
     if (!capabilities.IsOk() || capabilities.value.status_code != 200 ||
         !Contains(capabilities.value.body, "1920") ||
-        !Contains(capabilities.value.body, "h265")) {
+        !Contains(capabilities.value.body, "h265") ||
+        !Contains(capabilities.value.body, "\"codec\":\"jpeg\"") ||
+        !Contains(capabilities.value.body, "\"codec\":\"mjpeg\"") ||
+        !Contains(capabilities.value.body, "\"image\"") ||
+        !Contains(capabilities.value.body, "\"brightness\"")) {
         return 10;
     }
 
@@ -280,6 +284,18 @@ int main() {
     if (!invalid_config.IsOk() || invalid_config.value.status_code != 400 ||
         !Contains(invalid_config.value.body, "unsupported resolution")) {
         return 11;
+    }
+    const std::string invalid_image =
+        "{\"basic\":{\"brightness\":200},\"exposure\":{\"mode\":\"auto\"}}";
+    infra::Result<live_stream::HttpResponse> invalid_image_config =
+        media_service->HandleRequest(Request(live_stream::HttpMethod::kPut,
+                                             "/api/config/image",
+                                             invalid_image,
+                                             "admin-token"));
+    if (!invalid_image_config.IsOk() ||
+        invalid_image_config.value.status_code != 400 ||
+        !Contains(invalid_image_config.value.body, "unsupported value")) {
+        return 12;
     }
 
     service->Stop();

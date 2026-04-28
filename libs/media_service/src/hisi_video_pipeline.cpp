@@ -69,7 +69,11 @@ void DefaultHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
 }
 
 infra::Status DefaultHisiSdk::StartVencStream(
-    const MediaPipelineConfig& config) {
+    const MediaPipelineConfig& config,
+    EncodedFrameCallback callback,
+    void* user) {
+    (void)callback;
+    (void)user;
     return config.main_stream.bitrate_kbps > 0 ? infra::Status::kOk
                                                : infra::Status::kInvalidParam;
 }

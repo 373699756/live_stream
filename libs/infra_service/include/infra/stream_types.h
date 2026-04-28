@@ -33,7 +33,8 @@ enum class StreamId {
 enum class VideoCodec {
     kH264 = 0,  ///< H.264/AVC 编码。
     kH265,      ///< H.265/HEVC 编码。
-    kMjpeg,     ///< MJPEG/JPEG 编码。
+    kMjpeg,     ///< MJPEG 连续帧编码。
+    kJpeg,      ///< JPEG 单帧编码。
 };
 
 /**

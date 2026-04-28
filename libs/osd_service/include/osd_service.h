@@ -9,6 +9,12 @@
 
 namespace live_stream {
 
+class IConfigService;
+
+namespace hisisdk {
+class IHisiSdk;
+}  // namespace hisisdk
+
 enum class OsdRegionType {
     kOverlay = 0,
     kOverlayEx,
@@ -58,9 +64,22 @@ struct OsdRegionId {
     uint32_t value = 0;
 };
 
+struct OsdServiceOptions {
+    IConfigService* config_service = nullptr;
+    hisisdk::IHisiSdk* sdk = nullptr;
+};
+
+struct OsdServiceStats {
+    uint64_t config_apply_count = 0;
+    uint64_t config_apply_failed_count = 0;
+    uint64_t bitmap_update_count = 0;
+    uint32_t region_count = 0;
+};
+
 class OsdService : public infra::IService {
  public:
     OsdService();
+    explicit OsdService(const OsdServiceOptions& options);
     ~OsdService() override;
 
     infra::Status Init() override;
@@ -79,6 +98,7 @@ class OsdService : public infra::IService {
     infra::Status UpdateBitmap(OsdRegionId id, const OsdBitmap& bitmap);
     infra::Status DestroyRegion(OsdRegionId id);
     uint32_t RegionCount() const;
+    OsdServiceStats GetStats() const;
 
  private:
     struct Impl;

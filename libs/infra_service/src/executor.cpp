@@ -42,8 +42,11 @@ class Executor::Impl {
         head_ = 0;
         tail_ = 0;
         size_ = 0;
+        running_count_ = 0;
+        stats_ = ExecutorStats{};
         tasks_.clear();
         tasks_.resize(options_.queue_capacity);
+        workers_.clear();
         workers_.reserve(options_.worker_count);
         for (uint32_t i = 0; i < options_.worker_count; ++i) {
             workers_.push_back(std::thread(&Impl::WorkerLoop, this));
