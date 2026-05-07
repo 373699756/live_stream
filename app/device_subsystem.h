@@ -37,6 +37,7 @@ private:
   std::unique_ptr<ISystemPlatform> system_platform_;
   std::unique_ptr<ITimePlatform> time_platform_;
   std::unique_ptr<INetworkPlatform> network_platform_;
+  std::unique_ptr<IUpgradePlatform> upgrade_platform_;
   std::unique_ptr<ISystemService> system_;
   std::unique_ptr<ITimeService> time_;
   std::unique_ptr<INetworkService> network_;

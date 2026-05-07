@@ -144,6 +144,9 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig& runtime_config) {
   http_options.enable_static_files = true;
   http_options.enable_keep_alive = true;
   http_options.max_requests_per_connection = 32;
+  http_options.max_request_body_bytes = 128U * 1024U * 1024U;
+  http_options.request_timeout_ms = 60000;
+  http_options.connection_idle_timeout_ms = 60000;
 
   HttpServiceDependencies http_dependencies;
   http_dependencies.net_engine = net_engine_.get();

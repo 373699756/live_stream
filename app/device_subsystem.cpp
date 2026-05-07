@@ -75,6 +75,8 @@ bool DeviceSubsystem::Start() {
   upgrade_options.config_service = core.config();
   upgrade_options.event_service = core.event();
   upgrade_options.logger_service = core.logger();
+  upgrade_platform_ = CreateLinuxUpgradePlatform();
+  upgrade_options.platform = upgrade_platform_.get();
   upgrade_ = CreateUpgradeService(upgrade_options);
   if (!upgrade_ || !upgrade_->Start()) {
     INFRA_LOG_ERROR("app", "Start upgrade service failed");
@@ -91,6 +93,7 @@ void DeviceSubsystem::Stop() {
     upgrade_->Stop();
     upgrade_.reset();
   }
+  upgrade_platform_.reset();
   if (alarm_) {
     alarm_->Stop();
     alarm_.reset();

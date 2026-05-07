@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -36,6 +37,7 @@ namespace live_stream {
 namespace {
 
 constexpr const char *kModuleName = "http_service";
+constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
 
 HttpResponse JsonResponse(int status_code, const ConfigJson &value) {
   HttpResponse response;
@@ -83,6 +85,102 @@ std::string ExtractBearerToken(const HttpRequest &request) {
   const size_t end = request.query_string.find('&', pos);
   return request.query_string.substr(
       pos, end == std::string::npos ? std::string::npos : end - pos);
+}
+
+int HexValue(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return 10 + (c - 'a');
+  }
+  if (c >= 'A' && c <= 'F') {
+    return 10 + (c - 'A');
+  }
+  return -1;
+}
+
+std::string DecodeUrlComponent(const std::string &value) {
+  std::string decoded;
+  decoded.reserve(value.size());
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    const char c = value[i];
+    if (c == '+') {
+      decoded.push_back(' ');
+      continue;
+    }
+    if (c == '%' && i + 2 < value.size()) {
+      const int high = HexValue(value[i + 1]);
+      const int low = HexValue(value[i + 2]);
+      if (high >= 0 && low >= 0) {
+        decoded.push_back(static_cast<char>((high << 4) | low));
+        i += 2;
+        continue;
+      }
+    }
+    decoded.push_back(c);
+  }
+  return decoded;
+}
+
+std::string QueryValue(const HttpRequest &request, const std::string &name) {
+  std::size_t begin = 0;
+  while (begin <= request.query_string.size()) {
+    const std::size_t end = request.query_string.find('&', begin);
+    const std::string part =
+        request.query_string.substr(begin, end == std::string::npos
+                                               ? std::string::npos
+                                               : end - begin);
+    const std::size_t equal = part.find('=');
+    const std::string key =
+        DecodeUrlComponent(part.substr(0, equal == std::string::npos
+                                              ? part.size()
+                                              : equal));
+    if (key == name) {
+      return equal == std::string::npos
+                 ? std::string()
+                 : DecodeUrlComponent(part.substr(equal + 1));
+    }
+    if (end == std::string::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+  return std::string();
+}
+
+bool IsSafeUploadNameChar(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '.' ||
+         c == '-' || c == '_';
+}
+
+std::string SanitizeUploadFileName(const std::string &name) {
+  if (name.empty() || name.find('/') != std::string::npos ||
+      name.find('\\') != std::string::npos || name.find("..") != std::string::npos) {
+    return std::string();
+  }
+  std::string sanitized;
+  sanitized.reserve(name.size());
+  for (char c : name) {
+    sanitized.push_back(IsSafeUploadNameChar(c) ? c : '_');
+  }
+  while (!sanitized.empty() && sanitized.front() == '.') {
+    sanitized.erase(sanitized.begin());
+  }
+  return sanitized;
+}
+
+std::string UpgradeUploadPath(const std::string &file_name) {
+  const std::string sanitized = SanitizeUploadFileName(file_name);
+  if (sanitized.empty()) {
+    return std::string();
+  }
+  if (!infra::Path::MakeDirs(kUpgradeUploadDir)) {
+    return std::string();
+  }
+  return infra::Path::Join(
+      kUpgradeUploadDir,
+      std::to_string(infra::Time::SystemTimeMillis()) + "-" + sanitized);
 }
 
 std::string AuthRoleToJsonString(AuthRole role) {
@@ -820,6 +918,10 @@ public:
         request.method == HttpMethod::kPost) {
       return HandleNetworkReload(request);
     }
+    if (request.path == "/api/upgrade/upload" &&
+        request.method == HttpMethod::kPost) {
+      return HandleUpgradeUpload(request);
+    }
     if (request.path == "/api/upgrade/status" &&
         request.method == HttpMethod::kGet) {
       return HandleUpgradeStatus(request);
@@ -1435,6 +1537,48 @@ private:
     return dependencies_.network_service->ReloadStatus()
                ? OkResponse()
                : StatusResponse(503, "Could not reload network status");
+  }
+
+  HttpResponse HandleUpgradeUpload(const HttpRequest &request) {
+    if (dependencies_.upgrade_service == nullptr) {
+      return StatusResponse(501, "Not Implemented");
+    }
+    AuthPrincipal principal;
+    if (!RequirePermission(request, AuthPermission::kUpgrade, "upgrade",
+                           &principal)) {
+      return StatusResponse(403, "Forbidden");
+    }
+    if (request.body.empty()) {
+      return StatusResponse(400, "Empty package body");
+    }
+    std::string file_name = QueryValue(request, "filename");
+    if (file_name.empty()) {
+      file_name = DecodeUrlComponent(GetHeader(request, "X-Upload-Filename"));
+    }
+    const std::string upload_path = UpgradeUploadPath(file_name);
+    if (upload_path.empty()) {
+      RecordOperation(request, principal, OperationAction::kUpgrade, "upgrade",
+                      OperationResult::kRejected, "invalid upload filename");
+      return StatusResponse(400, "Invalid upload filename");
+    }
+    if (!infra::File::WriteAll(upload_path, request.body)) {
+      RecordOperation(request, principal, OperationAction::kUpgrade, "upgrade",
+                      OperationResult::kFailed, "upload write failed");
+      return StatusResponse(500, "Could not store upload");
+    }
+
+    const UpgradePackageInfo info =
+        dependencies_.upgrade_service->ValidatePackage(upload_path);
+    if (info.version.empty()) {
+      static_cast<void>(infra::File::Remove(upload_path));
+      RecordOperation(request, principal, OperationAction::kUpgrade, "upgrade",
+                      OperationResult::kRejected, "package validation failed");
+      return StatusResponse(400, "Could not validate package");
+    }
+
+    RecordOperation(request, principal, OperationAction::kUpgrade, info.version,
+                    OperationResult::kSuccess, "package uploaded");
+    return JsonResponse(200, UpgradePackageInfoToJson(info));
   }
 
   HttpResponse HandleUpgradeStatus(const HttpRequest &request) {
