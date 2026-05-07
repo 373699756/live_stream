@@ -111,7 +111,7 @@ $(OBJ_DIR)/%.o: app/%.cpp
 
 $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(APP_OBJS) $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a -pthread -o $@
+	$(CXX) $(CXXFLAGS) $(APP_OBJS) $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a $(THIRDPARTY_LIBS) -ldl -pthread -o $@
 
 test:
 	@for service in $(SERVICES); do \

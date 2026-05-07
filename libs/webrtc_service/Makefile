@@ -6,6 +6,7 @@ INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/netframe_service/include
+CXXFLAGS += -I$(ROOT_DIR)/3rdparty/src/metaRTC_src/include
 NETFRAME_LIB := $(BUILD_DIR)/lib/libnetframe_service.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(NETFRAME_LIB) $(MEDIA_LIB)
