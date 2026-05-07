@@ -9,6 +9,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -169,11 +170,58 @@ std::string RewriteLocalCandidates(const std::string &sdp,
   return rewritten;
 }
 
+class MetaRtcEngine;
+class MetaRtcPeerCallbacks;
+
 struct MetaRtcPeerSession {
   WebrtcPeerInfo peer;
+  std::shared_ptr<MetaRtcPeerCallbacks> callbacks;
   std::unique_ptr<YangPeerConnection8> connection;
   std::unique_ptr<YangRtcPacer> pacer;
   bool local_description_started = false;
+};
+
+class MetaRtcPeerCallbacks : public YangCallbackIce,
+                             public YangCallbackRtc,
+                             public YangCallbackSslAlert {
+public:
+  MetaRtcPeerCallbacks(MetaRtcEngine *engine, std::string peer_id)
+      : engine_(engine), peer_id_(std::move(peer_id)) {}
+
+  void onIceStateChange(int32_t uid, YangIceCandidateState ice_state) override {
+    (void)uid;
+    (void)ice_state;
+  }
+
+  void
+  onConnectionStateChange(int32_t uid,
+                          YangRtcConnectionState connection_state) override;
+
+  void onIceCandidate(int32_t uid, char *sdp) override {
+    (void)uid;
+    (void)sdp;
+  }
+
+  void onIceGatheringState(int32_t uid,
+                           YangIceGatheringState gather_state) override {
+    (void)uid;
+    (void)gather_state;
+  }
+
+  void setMediaConfig(int32_t uid, YangAudioParam *audio,
+                      YangVideoParam *video) override {
+    (void)uid;
+    (void)audio;
+    (void)video;
+  }
+
+  void sendRequest(int32_t uid, uint32_t ssrc, YangRequestType req) override;
+
+  void sslCloseAlert(int32_t uid) override;
+
+private:
+  MetaRtcEngine *engine_ = nullptr;
+  std::string peer_id_;
 };
 
 class MetaRtcEngine : public IWebrtcEngine {
@@ -181,57 +229,83 @@ public:
   const char *Name() const override { return "metaRTC"; }
   bool Available() const override { return true; }
 
-  bool Start(const WebrtcServiceOptions &options) override {
-    options_ = options;
-    next_local_port_ = options.local_port_base;
-    peers_.clear();
+  bool Start(const WebrtcServiceOptions &options,
+             const WebrtcEngineCallbacks &callbacks) override {
+    std::map<std::string, std::shared_ptr<MetaRtcPeerSession>> peers_to_drop;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      options_ = options;
+      callbacks_ = callbacks;
+      next_local_port_ = options.local_port_base;
+      peers_to_drop.swap(peers_);
+      sent_frames_ = 0;
+    }
+    peers_to_drop.clear();
     return true;
   }
 
-  void Stop() override { peers_.clear(); }
+  void Stop() override {
+    std::map<std::string, std::shared_ptr<MetaRtcPeerSession>> peers_to_drop;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      peers_to_drop.swap(peers_);
+      sent_frames_ = 0;
+    }
+    peers_to_drop.clear();
+  }
 
   bool CreatePeer(const WebrtcPeerInfo &peer) override {
-    if (peer.peer_id.empty() || !IsSupportedCodec(peer.codec) ||
-        peers_.find(peer.peer_id) != peers_.end()) {
-      return false;
+    WebrtcServiceOptions options;
+    uint16_t local_port = 0;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      if (peer.peer_id.empty() || !IsSupportedCodec(peer.codec) ||
+          peers_.find(peer.peer_id) != peers_.end()) {
+        return false;
+      }
+      options = options_;
+      local_port = next_local_port_++;
     }
 
     YangPeerInfo peer_info;
     std::memset(&peer_info, 0, sizeof(peer_info));
     yang_init_peerInfo(&peer_info);
-    peer_info.uid = static_cast<int32_t>(peers_.size() + 1);
+    peer_info.uid = static_cast<int32_t>(local_port);
     peer_info.direction = YangSendonly;
     peer_info.rtc.sessionTimeout =
-        static_cast<int32_t>(options_.session_timeout_ms) * 1000;
+        static_cast<int32_t>(options.session_timeout_ms) * 1000;
     peer_info.rtc.enableSdpCandidate = yangtrue;
-    peer_info.rtc.rtcSocketProtocol = options_.prefer_tcp
+    peer_info.rtc.rtcSocketProtocol = options.prefer_tcp
                                           ? Yang_Socket_Protocol_Tcp
                                           : Yang_Socket_Protocol_Udp;
     peer_info.rtc.turnSocketProtocol = peer_info.rtc.rtcSocketProtocol;
-    peer_info.rtc.rtcLocalPort = static_cast<int32_t>(next_local_port_++);
+    peer_info.rtc.rtcLocalPort = static_cast<int32_t>(local_port);
     peer_info.pushVideo.videoEncoderType = ToYangVideoCodec(peer.codec);
-    if (!options_.ice_servers.empty()) {
+    if (!options.ice_servers.empty()) {
       std::string scheme;
       std::string host;
       uint16_t port = 0;
-      if (ParseIceServerUrl(options_.ice_servers.front().url, &scheme, &host,
+      if (ParseIceServerUrl(options.ice_servers.front().url, &scheme, &host,
                             &port)) {
         peer_info.rtc.iceCandidateType =
             scheme == "turn" ? YangIceRelayed : YangIceServerReflexive;
         CopyCString(host, peer_info.rtc.iceServerIP,
                     sizeof(peer_info.rtc.iceServerIP));
-        CopyCString(options_.ice_servers.front().username,
+        CopyCString(options.ice_servers.front().username,
                     peer_info.rtc.iceUserName,
                     sizeof(peer_info.rtc.iceUserName));
-        CopyCString(options_.ice_servers.front().credential,
+        CopyCString(options.ice_servers.front().credential,
                     peer_info.rtc.icePassword,
                     sizeof(peer_info.rtc.icePassword));
         peer_info.rtc.iceServerPort = static_cast<int32_t>(port);
       }
     }
 
-    std::unique_ptr<YangPeerConnection8> connection(new YangPeerConnection8(
-        &peer_info, nullptr, nullptr, nullptr, nullptr));
+    std::shared_ptr<MetaRtcPeerCallbacks> callbacks(
+        new MetaRtcPeerCallbacks(this, peer.peer_id));
+    std::unique_ptr<YangPeerConnection8> connection(
+        new YangPeerConnection8(&peer_info, nullptr, callbacks.get(),
+                                callbacks.get(), callbacks.get()));
     if (connection->addVideoTrack(ToYangVideoCodec(peer.codec)) != Yang_Ok ||
         connection->addTransceiver(YangMediaVideo, YangSendonly) != Yang_Ok) {
       return false;
@@ -243,37 +317,50 @@ public:
       return false;
     }
 
-    std::unique_ptr<MetaRtcPeerSession> session(new MetaRtcPeerSession());
+    std::shared_ptr<MetaRtcPeerSession> session(new MetaRtcPeerSession());
     session->peer = peer;
+    session->callbacks = callbacks;
     session->connection = std::move(connection);
     session->pacer = std::move(pacer);
-    peers_[peer.peer_id] = std::move(session);
+
+    std::lock_guard<std::mutex> guard(mutex_);
+    if (peers_.find(peer.peer_id) != peers_.end()) {
+      return false;
+    }
+    peers_[peer.peer_id] = session;
     return true;
   }
 
   std::string HandleOffer(const WebrtcPeerInfo &peer,
                           const std::string &offer_sdp) override {
-    auto it = peers_.find(peer.peer_id);
-    if (it == peers_.end() || offer_sdp.empty()) {
+    std::shared_ptr<MetaRtcPeerSession> session;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto it = peers_.find(peer.peer_id);
+      if (it == peers_.end()) {
+        return std::string();
+      }
+      session = it->second;
+    }
+    if (!session || offer_sdp.empty()) {
       return std::string();
     }
 
     std::vector<char> offer(offer_sdp.begin(), offer_sdp.end());
     offer.push_back('\0');
-    if (it->second->connection->setRemoteDescription(offer.data()) != Yang_Ok) {
+    if (session->connection->setRemoteDescription(offer.data()) != Yang_Ok) {
       return std::string();
     }
-    if (!it->second->local_description_started) {
+    if (!session->local_description_started) {
       char local_marker[] = "metaRTC-local";
-      if (it->second->connection->setLocalDescription(local_marker) !=
-          Yang_Ok) {
+      if (session->connection->setLocalDescription(local_marker) != Yang_Ok) {
         return std::string();
       }
-      it->second->local_description_started = true;
+      session->local_description_started = true;
     }
 
     std::vector<char> answer(kAnswerSdpCapacity, 0);
-    if (it->second->connection->createAnswer(answer.data()) != Yang_Ok) {
+    if (session->connection->createAnswer(answer.data()) != Yang_Ok) {
       return std::string();
     }
     return RewriteLocalCandidates(
@@ -281,30 +368,54 @@ public:
   }
 
   bool AddIceCandidate(const WebrtcIceCandidate &candidate) override {
-    auto it = peers_.find(candidate.peer_id);
-    if (it == peers_.end()) {
-      return false;
+    std::shared_ptr<MetaRtcPeerSession> session;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto it = peers_.find(candidate.peer_id);
+      if (it == peers_.end()) {
+        return false;
+      }
+      session = it->second;
     }
+
     std::vector<char> candidate_text(candidate.candidate.begin(),
                                      candidate.candidate.end());
     candidate_text.push_back('\0');
-    return it->second->connection->addIceCandidate(candidate_text.data()) ==
+    return session->connection->addIceCandidate(candidate_text.data()) ==
            Yang_Ok;
   }
 
   bool ClosePeer(const std::string &peer_id) override {
-    peers_.erase(peer_id);
+    std::shared_ptr<MetaRtcPeerSession> session;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto it = peers_.find(peer_id);
+      if (it == peers_.end()) {
+        return false;
+      }
+      session = it->second;
+      peers_.erase(it);
+    }
+    session.reset();
     return true;
   }
 
   bool SendFrame(const WebrtcPeerInfo &peer,
                  const EncodedFrame &frame) override {
-    auto it = peers_.find(peer.peer_id);
-    if (it == peers_.end() || !HasValidPayload(frame) ||
-        !IsSupportedCodec(frame.codec) ||
-        frame.codec != it->second->peer.codec) {
+    std::shared_ptr<MetaRtcPeerSession> session;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto it = peers_.find(peer.peer_id);
+      if (it == peers_.end()) {
+        return false;
+      }
+      session = it->second;
+    }
+    if (!session || !HasValidPayload(frame) || !IsSupportedCodec(frame.codec) ||
+        frame.codec != session->peer.codec) {
       return false;
     }
+
     YangFrame video_frame;
     std::memset(&video_frame, 0, sizeof(video_frame));
     video_frame.mediaType = YangFrameTypeVideo;
@@ -315,58 +426,161 @@ public:
     video_frame.payload =
         const_cast<uint8_t *>(frame.buffer->Data() + frame.offset);
 
-    YangPushData *push_data = it->second->pacer->getVideoData(&video_frame);
+    YangPushData *push_data = session->pacer->getVideoData(&video_frame);
     if (push_data == nullptr) {
       return false;
     }
+    if (session->connection->on_video(push_data) != Yang_Ok) {
+      return false;
+    }
+
+    std::lock_guard<std::mutex> guard(mutex_);
     ++sent_frames_;
-    return it->second->connection->on_video(push_data) == Yang_Ok;
+    return true;
+  }
+
+  void NotifyPeerState(const char *peer_id, WebrtcPeerState state) {
+    WebrtcEngineCallbacks callbacks;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      callbacks = callbacks_;
+    }
+    if (callbacks.OnPeerStateChanged != nullptr && peer_id != nullptr) {
+      callbacks.OnPeerStateChanged(callbacks.user, peer_id, state);
+    }
+  }
+
+  void NotifyKeyFrameRequest(const char *peer_id) {
+    WebrtcEngineCallbacks callbacks;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      callbacks = callbacks_;
+    }
+    if (callbacks.OnPeerKeyFrameRequested != nullptr && peer_id != nullptr) {
+      callbacks.OnPeerKeyFrameRequested(callbacks.user, peer_id);
+    }
   }
 
 private:
+  mutable std::mutex mutex_;
+  WebrtcEngineCallbacks callbacks_;
   WebrtcServiceOptions options_;
   uint16_t next_local_port_ = 0;
-  std::map<std::string, std::unique_ptr<MetaRtcPeerSession>> peers_;
+  std::map<std::string, std::shared_ptr<MetaRtcPeerSession>> peers_;
   uint64_t sent_frames_ = 0;
 };
+
+void MetaRtcPeerCallbacks::onConnectionStateChange(
+    int32_t uid, YangRtcConnectionState connection_state) {
+  (void)uid;
+  if (engine_ == nullptr) {
+    return;
+  }
+  switch (connection_state) {
+  case Yang_Conn_State_Connecting:
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kConnecting);
+    break;
+  case Yang_Conn_State_Connected:
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kConnected);
+    break;
+  case Yang_Conn_State_Failed:
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kFailed);
+    break;
+  case Yang_Conn_State_Disconnected:
+  case Yang_Conn_State_Closed:
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kClosed);
+    break;
+  case Yang_Conn_State_New:
+  default:
+    break;
+  }
+}
+
+void MetaRtcPeerCallbacks::sendRequest(int32_t uid, uint32_t ssrc,
+                                       YangRequestType req) {
+  (void)uid;
+  (void)ssrc;
+  if (engine_ == nullptr) {
+    return;
+  }
+  if (req == Yang_Req_Sendkeyframe) {
+    engine_->NotifyKeyFrameRequest(peer_id_.c_str());
+  } else if (req == Yang_Req_Connected) {
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kConnected);
+  }
+}
+
+void MetaRtcPeerCallbacks::sslCloseAlert(int32_t uid) {
+  (void)uid;
+  if (engine_ != nullptr) {
+    engine_->NotifyPeerState(peer_id_.c_str(), WebrtcPeerState::kClosed);
+  }
+}
 
 class FakeWebrtcEngine : public IWebrtcEngine {
 public:
   const char *Name() const override { return "fake_webrtc"; }
   bool Available() const override { return true; }
 
-  bool Start(const WebrtcServiceOptions &options) override {
+  bool Start(const WebrtcServiceOptions &options,
+             const WebrtcEngineCallbacks &callbacks) override {
     (void)options;
+    std::lock_guard<std::mutex> guard(mutex_);
+    callbacks_ = callbacks;
     return true;
   }
 
-  void Stop() override { peers_.clear(); }
+  void Stop() override {
+    std::lock_guard<std::mutex> guard(mutex_);
+    peers_.clear();
+  }
 
   bool CreatePeer(const WebrtcPeerInfo &peer) override {
+    std::lock_guard<std::mutex> guard(mutex_);
     peers_[peer.peer_id] = peer;
     return true;
   }
 
   std::string HandleOffer(const WebrtcPeerInfo &peer,
                           const std::string &offer_sdp) override {
-    if (peers_.find(peer.peer_id) == peers_.end() || offer_sdp.empty()) {
-      return std::string();
+    WebrtcEngineCallbacks callbacks;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      if (peers_.find(peer.peer_id) == peers_.end() || offer_sdp.empty()) {
+        return std::string();
+      }
+      callbacks = callbacks_;
+    }
+    if (callbacks.OnPeerStateChanged != nullptr) {
+      callbacks.OnPeerStateChanged(callbacks.user, peer.peer_id.c_str(),
+                                   WebrtcPeerState::kConnected);
     }
     return "v=0\r\ns=fake-webrtc-answer\r\n";
   }
 
   bool AddIceCandidate(const WebrtcIceCandidate &candidate) override {
+    std::lock_guard<std::mutex> guard(mutex_);
     last_candidate_json_ = BuildCandidateJson(candidate);
     return peers_.find(candidate.peer_id) != peers_.end();
   }
 
   bool ClosePeer(const std::string &peer_id) override {
-    peers_.erase(peer_id);
+    WebrtcEngineCallbacks callbacks;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      peers_.erase(peer_id);
+      callbacks = callbacks_;
+    }
+    if (callbacks.OnPeerStateChanged != nullptr) {
+      callbacks.OnPeerStateChanged(callbacks.user, peer_id.c_str(),
+                                   WebrtcPeerState::kClosed);
+    }
     return true;
   }
 
   bool SendFrame(const WebrtcPeerInfo &peer,
                  const EncodedFrame &frame) override {
+    std::lock_guard<std::mutex> guard(mutex_);
     if (peers_.find(peer.peer_id) == peers_.end() || !frame.buffer ||
         frame.size == 0) {
       return false;
@@ -376,6 +590,8 @@ public:
   }
 
 private:
+  mutable std::mutex mutex_;
+  WebrtcEngineCallbacks callbacks_;
   std::map<std::string, WebrtcPeerInfo> peers_;
   std::string last_candidate_json_;
   uint64_t sent_frames_ = 0;
