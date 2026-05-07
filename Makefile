@@ -37,6 +37,8 @@ CXXFLAGS += -Ilibs/auth_service/include
 CXXFLAGS += -Ilibs/system_service/include
 CXXFLAGS += -Ilibs/network_service/include
 CXXFLAGS += -Ilibs/time_service/include
+CXXFLAGS += -Ilibs/stream_codec/include
+CXXFLAGS += -Ilibs/stream_mux/include
 CXXFLAGS += -Ilibs/netframe_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
@@ -73,7 +75,9 @@ SERVICES := \
 	onvif_service \
 	alarm_service \
 	upgrade_service \
-	http_service
+	http_service \
+	stream_codec \
+	stream_mux
 
 SERVICE_LIBS :=
 APP_SRCS := \

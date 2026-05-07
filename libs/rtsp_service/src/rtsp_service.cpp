@@ -5,8 +5,8 @@
 #include "media/frame_source.h"
 #include "media_service.h"
 #include "netframe_service.h"
-#include "rtp_packetizer.h"
 #include "rtsp_protocol.h"
+#include "stream_mux.h"
 
 #include <map>
 #include <mutex>
@@ -34,10 +34,17 @@ enum class SessionState {
     kClosed,
 };
 
+void AppendU16(std::vector<uint8_t> *out, uint16_t value) {
+    if (out == nullptr) {
+        return;
+    }
+    out->push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+    out->push_back(static_cast<uint8_t>(value & 0xff));
+}
+
 }  // namespace
 
 using rtsp_internal::BasicRealmHeader;
-using rtsp_internal::AppendU16;
 using rtsp_internal::BuildRtspResponse;
 using rtsp_internal::BuildSdp;
 using rtsp_internal::CSeq;
@@ -47,10 +54,10 @@ using rtsp_internal::HeaderValue;
 using rtsp_internal::ParseClientRtpPort;
 using rtsp_internal::ParseRtspRequest;
 using rtsp_internal::PathToStreamId;
-using rtsp_internal::RtpPacket;
-using rtsp_internal::RtpPacketizer;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
+using stream_mux::RtpPacket;
+using stream_mux::RtpPacketizer;
 
 class RtspServiceImpl : public IRtspService,
                         public IRtspFrameSink,
