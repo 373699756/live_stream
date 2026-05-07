@@ -58,7 +58,9 @@ class RtspServiceImpl : public IRtspService,
  public:
     RtspServiceImpl(RtspServiceOptions options,
                     RtspServiceDependencies dependencies)
-        : options_(std::move(options)), dependencies_(dependencies) {}
+        : options_(std::move(options)),
+          dependencies_(dependencies),
+          packetizer_(options_.rtp_mtu_bytes) {}
 
     ~RtspServiceImpl() override {
         Release();
@@ -597,9 +599,8 @@ class RtspServiceImpl : public IRtspService,
             std::lock_guard<std::mutex> lock(mutex_);
             sequence = session->rtp_sequence;
         }
-        RtpPacketizer packetizer(options_.rtp_mtu_bytes);
         std::vector<RtpPacket> packets =
-            packetizer.Packetize(frame, &sequence, session->ssrc);
+            packetizer_.Packetize(frame, &sequence, session->ssrc);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session->rtp_sequence = sequence;
@@ -736,6 +737,7 @@ class RtspServiceImpl : public IRtspService,
 
     RtspServiceOptions options_;
     RtspServiceDependencies dependencies_;
+    RtpPacketizer packetizer_;
     mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;

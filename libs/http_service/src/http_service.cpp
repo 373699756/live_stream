@@ -41,6 +41,8 @@ namespace {
 
 constexpr const char *kModuleName = "http_service";
 constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
+constexpr uint32_t kMaxStreamingQueuedChunks = 32;
+constexpr size_t kMaxStreamingQueuedBytes = 1024U * 1024U;
 
 HttpResponse JsonResponse(int status_code, const ConfigJson &value) {
   HttpResponse response;
@@ -1032,10 +1034,13 @@ private:
     std::string recv_buffer;
     std::string client_ip;
     std::deque<PendingRequest> pending_requests;
+    std::deque<std::string> streaming_chunks;
+    size_t streaming_bytes = 0;
     uint64_t request_count = 0;
     uint64_t timeout_generation = 0;
     FrameFlvClientId flv_client_id = 0;
     std::shared_ptr<IFrameFlvSink> flv_sink;
+    bool streaming_flush_posted = false;
     bool processing = false;
     bool closing = false;
     bool streaming = false;
@@ -1048,7 +1053,7 @@ private:
 
     bool OnFlvChunk(const uint8_t *data, size_t size) override {
       return owner_ != nullptr &&
-             owner_->SendStreamingChunk(connection_id_, data, size);
+             owner_->EnqueueStreamingChunk(connection_id_, data, size);
     }
 
   private:
@@ -1083,23 +1088,97 @@ private:
            value.substr(0, prefix.size()) == prefix;
   }
 
-  bool SendStreamingChunk(ConnectionId connection_id, const uint8_t *data,
-                          size_t size) {
+  bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
+                             size_t size) {
+    infra::Executor *task_executor = nullptr;
+    bool post_flush = false;
+    bool should_close = false;
     if (data == nullptr || size == 0) {
       return true;
     }
-    NetEngine *net_engine = nullptr;
+    std::string chunk(reinterpret_cast<const char *>(data), size);
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      net_engine = dependencies_.net_engine;
+      auto iter = sessions_.find(connection_id);
+      if (iter == sessions_.end() || !iter->second.streaming) {
+        return false;
+      }
+      HttpSession &session = iter->second;
+      if (session.streaming_chunks.size() >= kMaxStreamingQueuedChunks ||
+          session.streaming_bytes + chunk.size() > kMaxStreamingQueuedBytes) {
+        should_close = true;
+      } else {
+        session.streaming_bytes += chunk.size();
+        session.streaming_chunks.push_back(std::move(chunk));
+        if (!session.streaming_flush_posted) {
+          session.streaming_flush_posted = true;
+          task_executor = task_executor_.get();
+          post_flush = true;
+        }
+      }
     }
-    if (net_engine == nullptr || !net_engine->Send(connection_id, data, size)) {
-      if (net_engine != nullptr) {
-        (void)net_engine->Close(connection_id);
+    if (should_close) {
+      if (dependencies_.net_engine != nullptr) {
+        (void)dependencies_.net_engine->Close(connection_id);
+      }
+      return false;
+    }
+    if (post_flush && task_executor == nullptr) {
+      if (dependencies_.net_engine != nullptr) {
+        (void)dependencies_.net_engine->Close(connection_id);
+      }
+      return false;
+    }
+    if (post_flush && task_executor != nullptr &&
+        !task_executor->Post(
+            [this, connection_id]() { FlushStreamingChunks(connection_id); })) {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto iter = sessions_.find(connection_id);
+      if (iter != sessions_.end()) {
+        iter->second.streaming_flush_posted = false;
+      }
+      if (dependencies_.net_engine != nullptr) {
+        (void)dependencies_.net_engine->Close(connection_id);
       }
       return false;
     }
     return true;
+  }
+
+  void FlushStreamingChunks(ConnectionId connection_id) {
+    while (true) {
+      NetEngine *net_engine = nullptr;
+      std::string chunk;
+      {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end()) {
+          return;
+        }
+        HttpSession &session = iter->second;
+        if (session.streaming_chunks.empty()) {
+          session.streaming_flush_posted = false;
+          return;
+        }
+        chunk = std::move(session.streaming_chunks.front());
+        session.streaming_chunks.pop_front();
+        if (session.streaming_bytes >= chunk.size()) {
+          session.streaming_bytes -= chunk.size();
+        } else {
+          session.streaming_bytes = 0;
+        }
+        net_engine = dependencies_.net_engine;
+      }
+      if (net_engine == nullptr ||
+          !net_engine->Send(connection_id,
+                            reinterpret_cast<const uint8_t *>(chunk.data()),
+                            chunk.size())) {
+        if (net_engine != nullptr) {
+          (void)net_engine->Close(connection_id);
+        }
+        return;
+      }
+    }
   }
 
   bool TryHandleStreamingRequest(ConnectionId connection_id,
@@ -2047,21 +2126,21 @@ private:
     headers["Cache-Control"] = "no-cache";
     headers["Pragma"] = "no-cache";
     const std::string header_block = BuildStreamingHeaderBlock(200, headers);
-    if (!SendStreamingChunk(
+    if (!EnqueueStreamingChunk(
             connection_id,
             reinterpret_cast<const uint8_t *>(header_block.data()),
             header_block.size()) ||
-        !SendStreamingChunk(
+        !EnqueueStreamingChunk(
             connection_id,
             reinterpret_cast<const uint8_t *>(bootstrap.file_header.data()),
             bootstrap.file_header.size()) ||
         (!bootstrap.sequence_header.empty() &&
-         !SendStreamingChunk(connection_id,
-                             reinterpret_cast<const uint8_t *>(
-                                 bootstrap.sequence_header.data()),
-                             bootstrap.sequence_header.size())) ||
+         !EnqueueStreamingChunk(connection_id,
+                               reinterpret_cast<const uint8_t *>(
+                                   bootstrap.sequence_header.data()),
+                               bootstrap.sequence_header.size())) ||
         (!bootstrap.last_keyframe.empty() &&
-         !SendStreamingChunk(
+         !EnqueueStreamingChunk(
              connection_id,
              reinterpret_cast<const uint8_t *>(bootstrap.last_keyframe.data()),
              bootstrap.last_keyframe.size()))) {

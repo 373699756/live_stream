@@ -18,6 +18,20 @@ uint32_t RtpTimestamp(const EncodedFrame& frame) {
     return static_cast<uint32_t>((frame.pts_us * kRtpClockRate) / 1000000);
 }
 
+size_t EstimatePacketCount(uint32_t size,
+                           uint32_t mtu_bytes,
+                           VideoCodec codec) {
+    if (size + 12 <= mtu_bytes) {
+        return 1;
+    }
+    const uint32_t max_fragment =
+        codec == VideoCodec::kH265 ? mtu_bytes - 15 : mtu_bytes - 14;
+    if (max_fragment == 0) {
+        return 1;
+    }
+    return static_cast<size_t>((size + max_fragment - 1) / max_fragment);
+}
+
 void AppendU32(std::vector<uint8_t>* out, uint32_t value) {
     out->push_back(static_cast<uint8_t>((value >> 24) & 0xff));
     out->push_back(static_cast<uint8_t>((value >> 16) & 0xff));
@@ -60,6 +74,7 @@ std::vector<RtpPacket> RtpPacketizer::Packetize(
     if (size == 0) {
         return packets;
     }
+    packets.reserve(EstimatePacketCount(size, mtu_bytes_, frame.codec));
     if (size + 12 <= mtu_bytes_) {
         SendRtpPacket(frame, payload, size, true, sequence, ssrc, &packets);
         return packets;

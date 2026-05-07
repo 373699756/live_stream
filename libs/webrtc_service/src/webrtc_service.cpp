@@ -89,6 +89,10 @@ public:
       send_executor_->Stop(infra::StopMode::kDiscard);
       return false;
     }
+    main_pending_frame_ = PendingFrameSlot{};
+    sub_pending_frame_ = PendingFrameSlot{};
+    send_task_posted_ = false;
+    last_sent_stream_ = StreamId::kSub;
     state_ = ServiceState::kStarted;
     return true;
   }
@@ -105,6 +109,10 @@ public:
       if (transport_) {
         transport_->Stop();
       }
+      main_pending_frame_ = PendingFrameSlot{};
+      sub_pending_frame_ = PendingFrameSlot{};
+      send_task_posted_ = false;
+      last_sent_stream_ = StreamId::kSub;
       for (auto &item : peers_) {
         item.second.state = WebrtcPeerState::kClosing;
         peer_ids.push_back(item.first);
@@ -284,8 +292,8 @@ public:
   }
 
   void OnFrame(const EncodedFrame &frame) override {
-    std::vector<WebrtcPeerInfo> peers;
     infra::Executor *executor = nullptr;
+    bool post_send = false;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (state_ != ServiceState::kStarted || !send_executor_) {
@@ -296,23 +304,22 @@ public:
         ++stats_.dropped_frames;
         return;
       }
-      for (const auto &item : peers_) {
-        const WebrtcPeerInfo &peer = item.second;
-        if (peer.stream_id == frame.stream_id &&
-            peer.state == WebrtcPeerState::kConnected) {
-          peers.push_back(peer);
-        }
-      }
-      if (peers.empty()) {
+      if (!HasConnectedPeerLocked(frame.stream_id)) {
         ++stats_.dropped_frames;
         return;
       }
-      executor = send_executor_.get();
+      QueuePendingFrameLocked(frame);
+      if (!send_task_posted_) {
+        send_task_posted_ = true;
+        executor = send_executor_.get();
+        post_send = true;
+      }
     }
 
-    if (!executor->Post(
-            [this, frame, peers]() { SendEncodedFrame(frame, peers); })) {
+    if (post_send && executor != nullptr &&
+        !executor->Post([this]() { DrainPendingFrames(); })) {
       std::lock_guard<std::mutex> guard(mutex_);
+      send_task_posted_ = false;
       ++stats_.dropped_frames;
     }
   }
@@ -324,6 +331,11 @@ public:
   }
 
 private:
+  struct PendingFrameSlot {
+    EncodedFrame frame;
+    bool ready = false;
+  };
+
   static void OnEnginePeerStateChanged(void *user, const char *peer_id,
                                        WebrtcPeerState state) {
     if (user == nullptr || peer_id == nullptr) {
@@ -382,6 +394,10 @@ private:
         transport_->Stop();
         transport_.reset();
       }
+      main_pending_frame_ = PendingFrameSlot{};
+      sub_pending_frame_ = PendingFrameSlot{};
+      send_task_posted_ = false;
+      last_sent_stream_ = StreamId::kSub;
       peers_.clear();
       engine = std::move(engine_);
     }
@@ -410,22 +426,7 @@ private:
     uint64_t sent_frames = 0;
     uint64_t dropped_frames = 0;
     for (const WebrtcPeerInfo &peer : peers) {
-      WebrtcPeerInfo current_peer;
-      bool should_send = false;
-      {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto it = peers_.find(peer.peer_id);
-        if (it != peers_.end() &&
-            it->second.state == WebrtcPeerState::kConnected &&
-            it->second.stream_id == frame.stream_id) {
-          current_peer = it->second;
-          should_send = true;
-        }
-      }
-      if (!should_send) {
-        continue;
-      }
-      if (engine->SendFrame(current_peer, frame)) {
+      if (engine->SendFrame(peer, frame)) {
         delivered = true;
         ++sent_frames;
       } else {
@@ -438,6 +439,26 @@ private:
     stats_.dropped_frames += dropped_frames;
     if (!delivered) {
       ++stats_.dropped_frames;
+    }
+  }
+
+  void DrainPendingFrames() {
+    while (true) {
+      EncodedFrame frame;
+      std::vector<WebrtcPeerInfo> peers;
+      {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (state_ != ServiceState::kStarted || !TakePendingFrameLocked(&frame)) {
+          send_task_posted_ = false;
+          return;
+        }
+        CollectConnectedPeersLocked(frame.stream_id, &peers);
+        if (peers.empty()) {
+          ++stats_.dropped_frames;
+          continue;
+        }
+      }
+      SendEncodedFrame(frame, peers);
     }
   }
 
@@ -583,6 +604,87 @@ private:
     (void)dependencies_.media_service->RequestKeyFrame(stream_id, reason);
   }
 
+  PendingFrameSlot *FindPendingSlotLocked(StreamId stream_id) {
+    if (stream_id == StreamId::kMain) {
+      return &main_pending_frame_;
+    }
+    if (stream_id == StreamId::kSub) {
+      return &sub_pending_frame_;
+    }
+    return nullptr;
+  }
+
+  bool HasConnectedPeerLocked(StreamId stream_id) const {
+    for (const auto &item : peers_) {
+      if (item.second.stream_id == stream_id &&
+          item.second.state == WebrtcPeerState::kConnected) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void CollectConnectedPeersLocked(
+      StreamId stream_id, std::vector<WebrtcPeerInfo> *peers) const {
+    if (peers == nullptr) {
+      return;
+    }
+    for (const auto &item : peers_) {
+      if (item.second.stream_id == stream_id &&
+          item.second.state == WebrtcPeerState::kConnected) {
+        peers->push_back(item.second);
+      }
+    }
+  }
+
+  void QueuePendingFrameLocked(const EncodedFrame &frame) {
+    PendingFrameSlot *slot = FindPendingSlotLocked(frame.stream_id);
+    if (slot == nullptr) {
+      ++stats_.dropped_frames;
+      return;
+    }
+    if (slot->ready) {
+      const bool existing_keyframe = slot->frame.frame_type == FrameType::kIdr ||
+                                     slot->frame.frame_type == FrameType::kI;
+      const bool new_keyframe = frame.frame_type == FrameType::kIdr ||
+                                frame.frame_type == FrameType::kI;
+      if (existing_keyframe && !new_keyframe) {
+        ++stats_.dropped_frames;
+        return;
+      }
+      ++stats_.dropped_frames;
+    }
+    slot->frame = frame;
+    slot->ready = true;
+  }
+
+  bool TakePendingFrameLocked(EncodedFrame *frame) {
+    if (frame == nullptr) {
+      return false;
+    }
+    const StreamId preferred_stream = last_sent_stream_ == StreamId::kMain
+                                          ? StreamId::kSub
+                                          : StreamId::kMain;
+    if (TakePendingFrameLocked(preferred_stream, frame)) {
+      return true;
+    }
+    const StreamId fallback_stream = preferred_stream == StreamId::kMain
+                                         ? StreamId::kSub
+                                         : StreamId::kMain;
+    return TakePendingFrameLocked(fallback_stream, frame);
+  }
+
+  bool TakePendingFrameLocked(StreamId stream_id, EncodedFrame *frame) {
+    PendingFrameSlot *slot = FindPendingSlotLocked(stream_id);
+    if (slot == nullptr || frame == nullptr || !slot->ready) {
+      return false;
+    }
+    *frame = slot->frame;
+    slot->ready = false;
+    last_sent_stream_ = stream_id;
+    return true;
+  }
+
   WebrtcServiceOptions options_;
   WebrtcServiceDependencies dependencies_;
   ServiceState state_ = ServiceState::kCreated;
@@ -590,6 +692,10 @@ private:
   std::unique_ptr<webrtc_internal::NetframeWebrtcTransport> transport_;
   std::unique_ptr<infra::Executor> send_executor_;
   mutable std::mutex mutex_;
+  PendingFrameSlot main_pending_frame_;
+  PendingFrameSlot sub_pending_frame_;
+  bool send_task_posted_ = false;
+  StreamId last_sent_stream_ = StreamId::kSub;
   std::map<std::string, WebrtcPeerInfo> peers_;
   WebrtcServiceStats stats_{};
   uint64_t next_peer_id_ = 1;
