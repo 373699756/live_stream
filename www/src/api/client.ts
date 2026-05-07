@@ -7,6 +7,7 @@ import {
   mockSnapshotConfig,
   mockStreamStatus,
   mockSystemStatus,
+  mockUpgradeStatus,
   mockVideoConfig,
   mockWebrtcConfig,
 } from './mock';
@@ -20,6 +21,9 @@ import type {
   SnapshotConfig,
   StreamStatus,
   SystemStatus,
+  UpgradePackageInfo,
+  UpgradeRequest,
+  UpgradeStatus,
   VideoConfig,
   WebrtcConfig,
 } from './types';
@@ -27,6 +31,18 @@ import type {
 const headers = { 'Content-Type': 'application/json' };
 const tokenKey = 'live_stream_token';
 const useMockFallback = import.meta.env.DEV;
+
+async function readError(response: Response) {
+  try {
+    const body = (await response.json()) as { error?: string };
+    if (body.error) {
+      return body.error;
+    }
+  } catch {
+    // Ignore JSON parse failures for error responses.
+  }
+  return `${response.status} ${response.statusText}`;
+}
 
 function authHeaders(init?: RequestInit): HeadersInit {
   const token = window.localStorage.getItem(tokenKey);
@@ -46,7 +62,7 @@ async function requestJson<T>(path: string, fallback: T, init?: RequestInit): Pr
     if (useMockFallback) {
       return fallback;
     }
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new Error(await readError(response));
   }
   return (await response.json()) as T;
 }
@@ -65,7 +81,7 @@ async function postJson<TRequest, TResponse>(
     if (useMockFallback) {
       return fallback;
     }
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new Error(await readError(response));
   }
   return (await response.json()) as TResponse;
 }
@@ -168,6 +184,39 @@ export async function closeWebrtcPeer(peerId: string) {
   }
 }
 
+function mockUpgradePackage(file: File): UpgradePackageInfo {
+  const stem = file.name.replace(/\.[^.]+$/, '') || 'firmware';
+  return {
+    package_path: `/tmp/live_stream/upgrade/uploads/${file.name}`,
+    version: stem,
+    size_bytes: file.size,
+    digest: 'mock-digest',
+    build_time_ms: Date.now(),
+    target_model: 'live_stream_ipc',
+    requires_reboot: true,
+  };
+}
+
+export async function uploadUpgradePackage(file: File): Promise<UpgradePackageInfo> {
+  const response = await fetch(
+    `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
+    {
+      method: 'POST',
+      headers: authHeaders({
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }),
+      body: file,
+    },
+  );
+  if (!response.ok) {
+    if (useMockFallback) {
+      return mockUpgradePackage(file);
+    }
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as UpgradePackageInfo;
+}
+
 export const api = {
   getVideoConfig: () => requestJson<VideoConfig>('/api/config/video', mockVideoConfig),
   saveVideoConfig: (value: VideoConfig) => putJson('/api/config/video', value),
@@ -184,6 +233,36 @@ export const api = {
   getRtspConfig: () => requestJson<RtspConfig>('/api/config/rtsp', mockRtspConfig),
   getWebrtcConfig: () => requestJson<WebrtcConfig>('/api/config/webrtc', mockWebrtcConfig),
   getSystemStatus: () => requestJson<SystemStatus>('/api/system/status', mockSystemStatus),
+  getUpgradeStatus: () => requestJson<UpgradeStatus>('/api/upgrade/status', mockUpgradeStatus),
+  uploadUpgradePackage,
+  startUpgrade: (value: UpgradeRequest) =>
+    postJson<UpgradeRequest, UpgradeStatus>('/api/upgrade/start', value, {
+      ...mockUpgradeStatus,
+      state: 'validating',
+      current_stage: 'validating',
+      target_version: value.expected_version,
+      started_at_ms: Date.now(),
+    }),
+  cancelUpgrade: () =>
+    postJson<Record<string, never>, UpgradeStatus>('/api/upgrade/cancel', {}, {
+      ...mockUpgradeStatus,
+      state: 'canceled',
+      current_stage: 'canceled',
+      error_message: 'canceled',
+      finished_at_ms: Date.now(),
+    }),
+  confirmUpgradeReboot: () =>
+    postJson<Record<string, never>, UpgradeStatus>(
+      '/api/upgrade/confirm-reboot',
+      {},
+      {
+        ...mockUpgradeStatus,
+        state: 'completed',
+        current_stage: 'completed',
+        progress_percent: 100,
+        finished_at_ms: Date.now(),
+      },
+    ),
   getStreamStatus: () => requestJson<StreamStatus[]>('/api/status/streams', mockStreamStatus),
   getOperations: () =>
     requestJson<{ items: OperationRecord[] }>('/api/operations', { items: [] }),

@@ -6,6 +6,8 @@ import type {
   StreamStatus,
   SystemStatus,
   MediaCapabilities,
+  UpgradePackageInfo,
+  UpgradeStatus,
   VideoConfig,
   RtspConfig,
   WebrtcConfig,
@@ -210,6 +212,27 @@ export const mockWebrtcConfig: WebrtcConfig = {
   ice_servers: [],
   max_peers: 4,
   prefer_tcp: false,
+};
+
+export const mockUpgradePackageInfo: UpgradePackageInfo = {
+  package_path: '/tmp/live_stream/upgrade/uploads/mock-firmware.bin',
+  version: '1.0.1',
+  size_bytes: 8 * 1024 * 1024,
+  digest: 'mock-digest',
+  build_time_ms: Date.now(),
+  target_model: 'live_stream_ipc',
+  requires_reboot: true,
+};
+
+export const mockUpgradeStatus: UpgradeStatus = {
+  state: 'idle',
+  progress_percent: 0,
+  current_stage: 'idle',
+  target_version: '',
+  ok: true,
+  error_message: '',
+  started_at_ms: 0,
+  finished_at_ms: 0,
 };
 
 export const mockSystemStatus: SystemStatus = {

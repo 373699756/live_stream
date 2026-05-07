@@ -49,6 +49,11 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `GET/PUT /api/config/snapshot`
 - `GET /api/media/capabilities`
 - `GET /api/system/status`
+- `POST /api/upgrade/upload?filename=<name>`
+- `GET /api/upgrade/status`
+- `POST /api/upgrade/start`
+- `POST /api/upgrade/cancel`
+- `POST /api/upgrade/confirm-reboot`
 - `GET /api/status/streams`
 - `GET /api/snapshot/main.jpg`
 - `GET /api/snapshot/sub.jpg`
@@ -59,9 +64,9 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `POST /api/webrtc/candidate`
 - `POST /api/webrtc/close`
 
-WebRTC is currently disabled by default in device configuration until the
-backend is wired to a real WebRTC stack. The live view keeps snapshot preview
-available as the default preview path.
+Current WebRTC preview is video-only. The frontend does not negotiate audio,
+which matches devices that do not expose an audio path. The live view keeps
+snapshot preview available as the default preview path.
 
 `GET /api/media/capabilities` includes `streams.<name>.available` so the UI can
 hide or disable stream configuration that the current firmware does not start.

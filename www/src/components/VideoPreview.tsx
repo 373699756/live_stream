@@ -7,7 +7,7 @@ import {
   sendWebrtcOffer,
   snapshotUrl as buildSnapshotUrl,
 } from '../api/client';
-import type { StreamName, StreamStatus } from '../api/types';
+import type { StreamName, StreamStatus, WebrtcConfig } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 
 interface VideoPreviewProps {
@@ -19,7 +19,7 @@ interface VideoPreviewProps {
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
   const [mode, setMode] = useState<'webrtc' | 'snapshot'>('snapshot');
   const [snapshotTick, setSnapshotTick] = useState(0);
-  const [webrtcEnabled, setWebrtcEnabled] = useState(false);
+  const [webrtcConfig, setWebrtcConfig] = useState<WebrtcConfig | null>(null);
   const [webrtcState, setWebrtcState] = useState('等待 WebRTC 视频流');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -33,7 +33,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     void api.getWebrtcConfig()
       .then((config) => {
         if (mounted) {
-          setWebrtcEnabled(config.enabled);
+          setWebrtcConfig(config);
           if (!config.enabled) {
             setMode('snapshot');
             setWebrtcState('WebRTC 未启用');
@@ -42,7 +42,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       })
       .catch(() => {
         if (mounted) {
-          setWebrtcEnabled(false);
+          setWebrtcConfig(null);
           setMode('snapshot');
           setWebrtcState('WebRTC 配置不可用');
         }
@@ -51,6 +51,8 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       mounted = false;
     };
   }, []);
+
+  const webrtcEnabled = Boolean(webrtcConfig?.enabled);
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -71,6 +73,9 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         peerRef.current.close();
         peerRef.current = null;
       }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       void closeWebrtcPeer(peerIdRef.current);
       peerIdRef.current = '';
       setWebrtcState('等待 WebRTC 视频流');
@@ -78,12 +83,19 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     }
 
     let closed = false;
-    const pc = new RTCPeerConnection();
+    const pc = new RTCPeerConnection({
+      iceServers: (webrtcConfig?.ice_servers || []).map((server) => ({
+        urls: server.url,
+        username: server.username,
+        credential: server.credential,
+      })),
+    });
     peerRef.current = pc;
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.ontrack = (event) => {
-      if (videoRef.current && event.streams[0]) {
-        videoRef.current.srcObject = event.streams[0];
+      if (videoRef.current && event.track.kind === 'video') {
+        videoRef.current.srcObject = new MediaStream([event.track]);
+        setWebrtcState('视频已连接');
       }
     };
     pc.onicecandidate = (event) => {
@@ -93,6 +105,11 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     };
     pc.onconnectionstatechange = () => {
       setWebrtcState(pc.connectionState);
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
+        setWebrtcState('ICE 连接失败');
+      }
     };
 
     void (async () => {
@@ -120,10 +137,13 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       closed = true;
       pc.close();
       peerRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       void closeWebrtcPeer(peerIdRef.current);
       peerIdRef.current = '';
     };
-  }, [mode, stream, webrtcEnabled]);
+  }, [mode, stream, webrtcConfig, webrtcEnabled]);
 
   const openSnapshot = () => {
     window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
