@@ -1,5 +1,6 @@
 #include "frame_service.h"
 
+#include "infra/executor.h"
 #include "media/encoded_frame.h"
 #include "media_service.h"
 
@@ -23,6 +24,9 @@ constexpr uint16_t kPatPid = 0x0000;
 constexpr uint16_t kPmtPid = 0x1000;
 constexpr uint16_t kVideoPid = 0x0100;
 constexpr uint8_t kTsPacketSize = 188;
+constexpr uint32_t kWorkerQueueCapacity = 4;
+constexpr uint32_t kWorkerThreadCount = 1;
+constexpr size_t kMaxPendingFramesPerStream = 4;
 
 struct H264NalUnit {
   const uint8_t *data = nullptr;
@@ -377,18 +381,29 @@ public:
 
   bool Start() override {
     MediaService *media_service = nullptr;
+    infra::Executor *worker_executor = nullptr;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (started_) {
         return true;
       }
       media_service = dependencies_.media_service;
+      if (!worker_executor_) {
+        worker_executor_.reset(new infra::Executor());
+      }
+      worker_executor = worker_executor_.get();
     }
-    if (media_service == nullptr) {
+    if (media_service == nullptr || worker_executor == nullptr) {
       return false;
     }
     if (options_.hls_segment_duration_ms == 0 ||
         options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0) {
+      return false;
+    }
+    infra::ExecutorOptions executor_options;
+    executor_options.worker_count = kWorkerThreadCount;
+    executor_options.queue_capacity = kWorkerQueueCapacity;
+    if (!worker_executor->Start(executor_options)) {
       return false;
     }
     FrameSubscribeOptions main_options;
@@ -404,15 +419,26 @@ public:
     sub_options.sink_name = kServiceName;
     const FrameSubscriptionId sub_subscription_id =
         media_service->SubscribeFrames(sub_options, this);
+    const bool subscribed =
+        main_subscription_id != 0 || sub_subscription_id != 0;
+    if (!subscribed) {
+      worker_executor->Stop(infra::StopMode::kDiscard);
+      return false;
+    }
     std::lock_guard<std::mutex> guard(mutex_);
     main_subscription_id_ = main_subscription_id;
     sub_subscription_id_ = sub_subscription_id;
-    started_ = main_subscription_id_ != 0 || sub_subscription_id_ != 0;
-    return started_;
+    main_pending_ = StreamFrameQueue{};
+    sub_pending_ = StreamFrameQueue{};
+    drain_task_posted_ = false;
+    last_drained_stream_ = StreamId::kSub;
+    started_ = true;
+    return true;
   }
 
   void Stop() override {
     MediaService *media_service = nullptr;
+    infra::Executor *worker_executor = nullptr;
     FrameSubscriptionId main_subscription_id = 0;
     FrameSubscriptionId sub_subscription_id = 0;
     {
@@ -425,9 +451,13 @@ public:
       sub_subscription_id = sub_subscription_id_;
       main_subscription_id_ = 0;
       sub_subscription_id_ = 0;
+      main_pending_ = StreamFrameQueue{};
+      sub_pending_ = StreamFrameQueue{};
+      drain_task_posted_ = false;
       flv_clients_.clear();
       main_stream_ = StreamContext{};
       sub_stream_ = StreamContext{};
+      worker_executor = worker_executor_.get();
       started_ = false;
     }
     if (media_service != nullptr) {
@@ -437,6 +467,9 @@ public:
       if (sub_subscription_id != 0) {
         (void)media_service->UnsubscribeFrames(sub_subscription_id);
       }
+    }
+    if (worker_executor != nullptr) {
+      worker_executor->Stop(infra::StopMode::kDiscard);
     }
   }
 
@@ -548,9 +581,67 @@ public:
   const char *Name() const override { return kServiceName; }
 
   void OnFrame(const EncodedFrame &frame) override {
+    infra::Executor *worker_executor = nullptr;
+    bool post_drain = false;
     if (!HasValidPayload(frame) || !IsStreamSupported(frame.stream_id)) {
       return;
     }
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      if (!started_ || worker_executor_ == nullptr) {
+        return;
+      }
+      StreamFrameQueue *queue = FindPendingQueue(frame.stream_id);
+      if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
+        return;
+      }
+      if (!drain_task_posted_) {
+        drain_task_posted_ = true;
+        worker_executor = worker_executor_.get();
+        post_drain = true;
+      }
+    }
+    if (post_drain && worker_executor != nullptr &&
+        !worker_executor->Post([this]() { DrainPendingFrames(); })) {
+      std::lock_guard<std::mutex> guard(mutex_);
+      drain_task_posted_ = false;
+    }
+  }
+
+  void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
+    std::lock_guard<std::mutex> guard(mutex_);
+    StreamContext *stream = FindMutableStream(stream_id);
+    if (stream != nullptr) {
+      stream->state = state;
+    }
+  }
+
+private:
+  struct PendingFlvClientWrite {
+    FrameFlvClientId client_id = 0;
+    std::shared_ptr<IFrameFlvSink> sink;
+    bool send_sequence_header = false;
+  };
+
+  struct StreamFrameQueue {
+    std::deque<EncodedFrame> frames;
+  };
+
+  void DrainPendingFrames() {
+    while (true) {
+      EncodedFrame frame;
+      {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!started_ || !TakeNextPendingFrameLocked(&frame)) {
+          drain_task_posted_ = false;
+          return;
+        }
+      }
+      ProcessFrame(frame);
+    }
+  }
+
+  void ProcessFrame(const EncodedFrame &frame) {
     const uint8_t *payload = frame.buffer->Data() + frame.offset;
     const size_t size = frame.size;
     const std::vector<H264NalUnit> units = ParseAnnexBNalUnits(payload, size);
@@ -559,7 +650,7 @@ public:
     }
 
     std::vector<FrameFlvClientId> detach_ids;
-    std::vector<std::pair<std::shared_ptr<IFrameFlvSink>, bool>> clients;
+    std::vector<PendingFlvClientWrite> clients;
     std::string sequence_header_tag;
     std::string flv_tag;
     {
@@ -651,22 +742,26 @@ public:
         if (needs_config) {
           item.second.config_generation = stream->config_generation;
         }
-        clients.push_back({item.second.sink, needs_config});
+        PendingFlvClientWrite client;
+        client.client_id = item.first;
+        client.sink = item.second.sink;
+        client.send_sequence_header = needs_config;
+        clients.push_back(std::move(client));
       }
     }
 
-    for (const auto &client : clients) {
-      if (client.second &&
-          !client.first->OnFlvChunk(
+    for (const PendingFlvClientWrite &client : clients) {
+      if (client.send_sequence_header &&
+          !client.sink->OnFlvChunk(
               reinterpret_cast<const uint8_t *>(sequence_header_tag.data()),
               sequence_header_tag.size())) {
-        detach_ids.push_back(FindClientId(client.first));
+        detach_ids.push_back(client.client_id);
         continue;
       }
-      if (!client.first->OnFlvChunk(
+      if (!client.sink->OnFlvChunk(
               reinterpret_cast<const uint8_t *>(flv_tag.data()),
               flv_tag.size())) {
-        detach_ids.push_back(FindClientId(client.first));
+        detach_ids.push_back(client.client_id);
       }
     }
     for (FrameFlvClientId client_id : detach_ids) {
@@ -675,16 +770,6 @@ public:
       }
     }
   }
-
-  void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
-    std::lock_guard<std::mutex> guard(mutex_);
-    StreamContext *stream = FindMutableStream(stream_id);
-    if (stream != nullptr) {
-      stream->state = state;
-    }
-  }
-
-private:
   struct StreamContext {
     VideoCodec codec = VideoCodec::kH264;
     StreamState state = StreamState::kClosed;
@@ -708,6 +793,71 @@ private:
     uint64_t config_generation = 0;
     std::shared_ptr<IFrameFlvSink> sink;
   };
+
+  StreamFrameQueue *FindPendingQueue(StreamId stream_id) {
+    if (stream_id == StreamId::kMain) {
+      return &main_pending_;
+    }
+    if (stream_id == StreamId::kSub) {
+      return &sub_pending_;
+    }
+    return nullptr;
+  }
+
+  bool DropOldestNonKeyFrameLocked(StreamFrameQueue *queue) {
+    if (queue == nullptr) {
+      return false;
+    }
+    for (auto it = queue->frames.begin(); it != queue->frames.end(); ++it) {
+      if (!IsKeyFrame(it->frame_type)) {
+        queue->frames.erase(it);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool EnqueuePendingFrameLocked(StreamFrameQueue *queue,
+                                 const EncodedFrame &frame) {
+    if (queue == nullptr) {
+      return false;
+    }
+    if (queue->frames.size() >= kMaxPendingFramesPerStream) {
+      if (IsKeyFrame(frame.frame_type)) {
+        if (!DropOldestNonKeyFrameLocked(queue) && !queue->frames.empty()) {
+          queue->frames.pop_front();
+        }
+      } else if (!DropOldestNonKeyFrameLocked(queue)) {
+        return false;
+      }
+    }
+    queue->frames.push_back(frame);
+    return true;
+  }
+
+  bool PopPendingFrameLocked(StreamId stream_id, EncodedFrame *frame) {
+    StreamFrameQueue *queue = FindPendingQueue(stream_id);
+    if (queue == nullptr || frame == nullptr || queue->frames.empty()) {
+      return false;
+    }
+    *frame = queue->frames.front();
+    queue->frames.pop_front();
+    last_drained_stream_ = stream_id;
+    return true;
+  }
+
+  bool TakeNextPendingFrameLocked(EncodedFrame *frame) {
+    const StreamId preferred_stream = last_drained_stream_ == StreamId::kMain
+                                          ? StreamId::kSub
+                                          : StreamId::kMain;
+    if (PopPendingFrameLocked(preferred_stream, frame)) {
+      return true;
+    }
+    const StreamId fallback_stream = preferred_stream == StreamId::kMain
+                                         ? StreamId::kSub
+                                         : StreamId::kMain;
+    return PopPendingFrameLocked(fallback_stream, frame);
+  }
 
   const StreamContext *FindStream(StreamId stream_id) const {
     if (stream_id == StreamId::kMain) {
@@ -774,20 +924,14 @@ private:
     stream->current_segment = HlsSegmentState{};
   }
 
-  FrameFlvClientId
-  FindClientId(const std::shared_ptr<IFrameFlvSink> &sink) const {
-    std::lock_guard<std::mutex> guard(mutex_);
-    for (const auto &item : flv_clients_) {
-      if (item.second.sink == sink) {
-        return item.first;
-      }
-    }
-    return 0;
-  }
-
   FrameServiceOptions options_;
   FrameServiceDependencies dependencies_;
+  std::unique_ptr<infra::Executor> worker_executor_;
   mutable std::mutex mutex_;
+  StreamFrameQueue main_pending_;
+  StreamFrameQueue sub_pending_;
+  bool drain_task_posted_ = false;
+  StreamId last_drained_stream_ = StreamId::kSub;
   StreamContext main_stream_;
   StreamContext sub_stream_;
   std::map<FrameFlvClientId, FlvClientState> flv_clients_;
