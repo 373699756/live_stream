@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -62,10 +62,11 @@ HttpResponse OkResponse() {
   return JsonResponse(200, root);
 }
 
-std::string BuildStreamingHeaderBlock(
-    int status_code, const std::map<std::string, std::string>& headers) {
+std::string
+BuildStreamingHeaderBlock(int status_code,
+                          const std::map<std::string, std::string> &headers) {
   std::string out = "HTTP/1.1 " + std::to_string(status_code) + " OK\r\n";
-  for (const auto& header : headers) {
+  for (const auto &header : headers) {
     out += header.first + ": " + header.second + "\r\n";
   }
   out += "Connection: close\r\n";
@@ -141,15 +142,11 @@ std::string QueryValue(const HttpRequest &request, const std::string &name) {
   std::size_t begin = 0;
   while (begin <= request.query_string.size()) {
     const std::size_t end = request.query_string.find('&', begin);
-    const std::string part =
-        request.query_string.substr(begin, end == std::string::npos
-                                               ? std::string::npos
-                                               : end - begin);
+    const std::string part = request.query_string.substr(
+        begin, end == std::string::npos ? std::string::npos : end - begin);
     const std::size_t equal = part.find('=');
-    const std::string key =
-        DecodeUrlComponent(part.substr(0, equal == std::string::npos
-                                              ? part.size()
-                                              : equal));
+    const std::string key = DecodeUrlComponent(
+        part.substr(0, equal == std::string::npos ? part.size() : equal));
     if (key == name) {
       return equal == std::string::npos
                  ? std::string()
@@ -170,7 +167,8 @@ bool IsSafeUploadNameChar(char c) {
 
 std::string SanitizeUploadFileName(const std::string &name) {
   if (name.empty() || name.find('/') != std::string::npos ||
-      name.find('\\') != std::string::npos || name.find("..") != std::string::npos) {
+      name.find('\\') != std::string::npos ||
+      name.find("..") != std::string::npos) {
     return std::string();
   }
   std::string sanitized;
@@ -192,9 +190,9 @@ std::string UpgradeUploadPath(const std::string &file_name) {
   if (!infra::Path::MakeDirs(kUpgradeUploadDir)) {
     return std::string();
   }
-  return infra::Path::Join(
-      kUpgradeUploadDir,
-      std::to_string(infra::Time::SystemTimeMillis()) + "-" + sanitized);
+  return infra::Path::Join(kUpgradeUploadDir,
+                           std::to_string(infra::Time::SystemTimeMillis()) +
+                               "-" + sanitized);
 }
 
 std::string AuthRoleToJsonString(AuthRole role) {
@@ -1044,17 +1042,17 @@ private:
   };
 
   class FlvConnectionSink : public IWebMediaFlvSink {
-   public:
-    FlvConnectionSink(HttpServiceImpl* owner, ConnectionId connection_id)
+  public:
+    FlvConnectionSink(HttpServiceImpl *owner, ConnectionId connection_id)
         : owner_(owner), connection_id_(connection_id) {}
 
-    bool OnFlvChunk(const uint8_t* data, size_t size) override {
+    bool OnFlvChunk(const uint8_t *data, size_t size) override {
       return owner_ != nullptr &&
              owner_->SendStreamingChunk(connection_id_, data, size);
     }
 
-   private:
-    HttpServiceImpl* owner_ = nullptr;
+  private:
+    HttpServiceImpl *owner_ = nullptr;
     ConnectionId connection_id_ = 0;
   };
 
@@ -1095,8 +1093,7 @@ private:
       std::lock_guard<std::mutex> guard(mutex_);
       net_engine = dependencies_.net_engine;
     }
-    if (net_engine == nullptr ||
-        !net_engine->Send(connection_id, data, size)) {
+    if (net_engine == nullptr || !net_engine->Send(connection_id, data, size)) {
       if (net_engine != nullptr) {
         (void)net_engine->Close(connection_id);
       }
@@ -1858,8 +1855,9 @@ private:
       body += "#EXT-X-VERSION:3\n";
       body += "#EXT-X-TARGETDURATION:" +
               std::to_string(playlist.target_duration_sec) + "\n";
-      body += "#EXT-X-MEDIA-SEQUENCE:" +
-              std::to_string(playlist.media_sequence) + "\n";
+      body +=
+          "#EXT-X-MEDIA-SEQUENCE:" + std::to_string(playlist.media_sequence) +
+          "\n";
       body += "#EXT-X-INDEPENDENT-SEGMENTS\n";
       for (const WebMediaHlsEntry &entry : playlist.entries) {
         const double duration =
@@ -1867,8 +1865,7 @@ private:
         char line[64];
         std::snprintf(line, sizeof(line), "#EXTINF:%.3f,\n", duration);
         body += line;
-        body += "seg-" + std::to_string(entry.sequence) + ".ts" + suffix +
-                "\n";
+        body += "seg-" + std::to_string(entry.sequence) + ".ts" + suffix + "\n";
       }
       HttpResponse response;
       response.status_code = 200;
@@ -2006,8 +2003,8 @@ private:
       return;
     }
     if (!dependencies_.web_media_service->IsFlvSupported(stream_id)) {
-      SendResponse(connection_id, StatusResponse(409, "HTTP-FLV requires H.264 stream"),
-                   true);
+      SendResponse(connection_id,
+                   StatusResponse(409, "HTTP-FLV requires H.264 stream"), true);
       return;
     }
 
@@ -2024,8 +2021,8 @@ private:
         dependencies_.web_media_service->AttachFlvClient(
             stream_id, bootstrap.config_generation, sink);
     if (client_id == 0) {
-      SendResponse(connection_id, StatusResponse(409, "Could not open FLV stream"),
-                   true);
+      SendResponse(connection_id,
+                   StatusResponse(409, "Could not open FLV stream"), true);
       return;
     }
 
@@ -2051,17 +2048,19 @@ private:
     headers["Cache-Control"] = "no-cache";
     headers["Pragma"] = "no-cache";
     const std::string header_block = BuildStreamingHeaderBlock(200, headers);
-    if (!SendStreamingChunk(connection_id,
-                            reinterpret_cast<const uint8_t *>(header_block.data()),
-                            header_block.size()) ||
-        !SendStreamingChunk(connection_id,
-                            reinterpret_cast<const uint8_t *>(bootstrap.file_header.data()),
-                            bootstrap.file_header.size()) ||
+    if (!SendStreamingChunk(
+            connection_id,
+            reinterpret_cast<const uint8_t *>(header_block.data()),
+            header_block.size()) ||
+        !SendStreamingChunk(
+            connection_id,
+            reinterpret_cast<const uint8_t *>(bootstrap.file_header.data()),
+            bootstrap.file_header.size()) ||
         (!bootstrap.sequence_header.empty() &&
-         !SendStreamingChunk(
-             connection_id,
-             reinterpret_cast<const uint8_t *>(bootstrap.sequence_header.data()),
-             bootstrap.sequence_header.size())) ||
+         !SendStreamingChunk(connection_id,
+                             reinterpret_cast<const uint8_t *>(
+                                 bootstrap.sequence_header.data()),
+                             bootstrap.sequence_header.size())) ||
         (!bootstrap.last_keyframe.empty() &&
          !SendStreamingChunk(
              connection_id,

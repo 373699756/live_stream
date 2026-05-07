@@ -11,9 +11,9 @@ namespace live_stream {
 namespace {
 
 class StaticOnvifUriProvider : public IOnvifUriProvider {
- public:
-  StaticOnvifUriProvider(const AppRuntimeConfig& config,
-                         MediaService* media_service)
+public:
+  StaticOnvifUriProvider(const AppRuntimeConfig &config,
+                         MediaService *media_service)
       : config_(config), media_service_(media_service) {}
 
   std::string GetStreamUri(StreamId stream_id) override {
@@ -30,33 +30,33 @@ class StaticOnvifUriProvider : public IOnvifUriProvider {
            std::to_string(config_.http_port) + SnapshotPath(stream_id);
   }
 
- private:
-  const char* StreamPath(StreamId stream_id) const {
+private:
+  const char *StreamPath(StreamId stream_id) const {
     return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
   }
 
-  const std::string& SnapshotPath(StreamId stream_id) const {
+  const std::string &SnapshotPath(StreamId stream_id) const {
     return stream_id == StreamId::kSub ? config_.snapshot_sub_path
                                        : config_.snapshot_main_path;
   }
 
   AppRuntimeConfig config_;
-  MediaService* media_service_ = nullptr;
+  MediaService *media_service_ = nullptr;
 };
 
-}  // namespace
+} // namespace
 
-ProtocolSubsystem& ProtocolSubsystem::Get() {
+ProtocolSubsystem &ProtocolSubsystem::Get() {
   static ProtocolSubsystem subsystem;
   return subsystem;
 }
 
-bool ProtocolSubsystem::Start(const AppRuntimeConfig& runtime_config) {
+bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
   if (started_) {
     return true;
   }
 
-  CoreServices& core = CoreServices::Get();
+  CoreServices &core = CoreServices::Get();
   const DeviceRefs device = DeviceSubsystem::Get().refs();
   const MediaRefs media = MediaSubsystem::Get().refs();
 
@@ -112,8 +112,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig& runtime_config) {
   WebMediaServiceOptions web_media_options;
   WebMediaServiceDependencies web_media_dependencies;
   web_media_dependencies.media_service = media.media;
-  web_media_ =
-      CreateWebMediaService(web_media_options, web_media_dependencies);
+  web_media_ = CreateWebMediaService(web_media_options, web_media_dependencies);
   if (!web_media_ || !web_media_->Start()) {
     INFRA_LOG_ERROR("app", "Start web media service failed");
     Stop();
@@ -228,4 +227,4 @@ ProtocolRefs ProtocolSubsystem::refs() const {
   return refs;
 }
 
-}  // namespace live_stream
+} // namespace live_stream

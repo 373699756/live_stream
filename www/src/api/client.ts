@@ -32,6 +32,18 @@ const headers = { 'Content-Type': 'application/json' };
 const tokenKey = 'live_stream_token';
 const useMockFallback = import.meta.env.DEV;
 
+function authQuery(entries?: Record<string, string>) {
+  const params = new URLSearchParams();
+  const token = window.localStorage.getItem(tokenKey);
+  if (token) {
+    params.set('token', token);
+  }
+  if (entries) {
+    Object.entries(entries).forEach(([key, value]) => params.set(key, value));
+  }
+  return params.toString();
+}
+
 async function readError(response: Response) {
   try {
     const body = (await response.json()) as { error?: string };
@@ -96,26 +108,23 @@ async function putJson<T>(path: string, value: T): Promise<boolean> {
 }
 
 export function snapshotUrl(stream: string, tick = 0) {
-  const token = window.localStorage.getItem(tokenKey);
-  const params = new URLSearchParams();
-  if (tick > 0) {
-    params.set('t', String(tick));
-  }
-  if (token) {
-    params.set('token', token);
-  }
-  const query = params.toString();
+  const query = authQuery(tick > 0 ? { t: String(tick) } : undefined);
   return `/api/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
 }
 
 export function operationsExportUrl() {
-  const token = window.localStorage.getItem(tokenKey);
-  if (!token) {
-    return '/api/operations/export';
-  }
-  const params = new URLSearchParams();
-  params.set('token', token);
-  return `/api/operations/export?${params.toString()}`;
+  const query = authQuery();
+  return `/api/operations/export${query ? `?${query}` : ''}`;
+}
+
+export function hlsPlaylistUrl(stream: string) {
+  const query = authQuery();
+  return `/api/hls/${stream}/index.m3u8${query ? `?${query}` : ''}`;
+}
+
+export function flvStreamUrl(stream: string) {
+  const query = authQuery();
+  return `/api/flv/${stream}.flv${query ? `?${query}` : ''}`;
 }
 
 export async function login(userName: string, password: string): Promise<boolean> {

@@ -18,14 +18,14 @@
 namespace live_stream {
 namespace {
 
-constexpr const char* kServiceName = "web_media_service";
+constexpr const char *kServiceName = "web_media_service";
 constexpr uint16_t kPatPid = 0x0000;
 constexpr uint16_t kPmtPid = 0x1000;
 constexpr uint16_t kVideoPid = 0x0100;
 constexpr uint8_t kTsPacketSize = 188;
 
 struct H264NalUnit {
-  const uint8_t* data = nullptr;
+  const uint8_t *data = nullptr;
   size_t size = 0;
   uint8_t type = 0;
 };
@@ -42,43 +42,39 @@ bool IsStreamSupported(StreamId stream_id) {
   return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
 }
 
-bool IsBrowserCodec(VideoCodec codec) {
-  return codec == VideoCodec::kH264;
-}
+bool IsBrowserCodec(VideoCodec codec) { return codec == VideoCodec::kH264; }
 
 bool IsKeyFrame(FrameType frame_type) {
   return frame_type == FrameType::kIdr || frame_type == FrameType::kI;
 }
 
-bool HasValidPayload(const EncodedFrame& frame) {
+bool HasValidPayload(const EncodedFrame &frame) {
   return frame.buffer != nullptr && frame.size != 0 &&
          frame.offset <= frame.buffer->Size() &&
          frame.size <= frame.buffer->Size() - frame.offset;
 }
 
-void AppendU16(std::string* out, uint16_t value) {
+void AppendU16(std::string *out, uint16_t value) {
   out->push_back(static_cast<char>((value >> 8) & 0xff));
   out->push_back(static_cast<char>(value & 0xff));
 }
 
-void AppendU24(std::string* out, uint32_t value) {
+void AppendU24(std::string *out, uint32_t value) {
   out->push_back(static_cast<char>((value >> 16) & 0xff));
   out->push_back(static_cast<char>((value >> 8) & 0xff));
   out->push_back(static_cast<char>(value & 0xff));
 }
 
-void AppendU32(std::string* out, uint32_t value) {
+void AppendU32(std::string *out, uint32_t value) {
   out->push_back(static_cast<char>((value >> 24) & 0xff));
   out->push_back(static_cast<char>((value >> 16) & 0xff));
   out->push_back(static_cast<char>((value >> 8) & 0xff));
   out->push_back(static_cast<char>(value & 0xff));
 }
 
-void AppendStartCode(std::string* out) {
-  out->append("\x00\x00\x00\x01", 4);
-}
+void AppendStartCode(std::string *out) { out->append("\x00\x00\x00\x01", 4); }
 
-size_t FindStartCode(const uint8_t* data, size_t size, size_t offset) {
+size_t FindStartCode(const uint8_t *data, size_t size, size_t offset) {
   if (data == nullptr || size < 3 || offset >= size) {
     return std::string::npos;
   }
@@ -96,7 +92,7 @@ size_t FindStartCode(const uint8_t* data, size_t size, size_t offset) {
   return std::string::npos;
 }
 
-std::vector<H264NalUnit> ParseAnnexBNalUnits(const uint8_t* data, size_t size) {
+std::vector<H264NalUnit> ParseAnnexBNalUnits(const uint8_t *data, size_t size) {
   std::vector<H264NalUnit> units;
   size_t offset = 0;
   while (true) {
@@ -106,7 +102,7 @@ std::vector<H264NalUnit> ParseAnnexBNalUnits(const uint8_t* data, size_t size) {
     }
     const size_t prefix =
         start + 3 < size && data[start + 2] == 0 && data[start + 3] == 1 ? 4
-                                                                          : 3;
+                                                                         : 3;
     const size_t nal_begin = start + prefix;
     const size_t next = FindStartCode(data, size, nal_begin);
     size_t nal_end = next == std::string::npos ? size : next;
@@ -125,7 +121,7 @@ std::vector<H264NalUnit> ParseAnnexBNalUnits(const uint8_t* data, size_t size) {
   return units;
 }
 
-uint32_t MpegCrc32(const uint8_t* data, size_t size) {
+uint32_t MpegCrc32(const uint8_t *data, size_t size) {
   uint32_t crc = 0xffffffffU;
   for (size_t i = 0; i < size; ++i) {
     crc ^= static_cast<uint32_t>(data[i]) << 24;
@@ -140,7 +136,7 @@ uint32_t MpegCrc32(const uint8_t* data, size_t size) {
   return crc;
 }
 
-std::string BuildPatPacket(uint8_t* continuity_counter) {
+std::string BuildPatPacket(uint8_t *continuity_counter) {
   std::string section;
   section.push_back('\x00');
   section.push_back('\xb0');
@@ -152,8 +148,8 @@ std::string BuildPatPacket(uint8_t* continuity_counter) {
   AppendU16(&section, 1);
   section.push_back(static_cast<char>(0xe0 | ((kPmtPid >> 8) & 0x1f)));
   section.push_back(static_cast<char>(kPmtPid & 0xff));
-  const uint32_t crc =
-      MpegCrc32(reinterpret_cast<const uint8_t*>(section.data()), section.size());
+  const uint32_t crc = MpegCrc32(
+      reinterpret_cast<const uint8_t *>(section.data()), section.size());
   AppendU32(&section, crc);
 
   std::string packet(kTsPacketSize, static_cast<char>(0xff));
@@ -167,7 +163,7 @@ std::string BuildPatPacket(uint8_t* continuity_counter) {
   return packet;
 }
 
-std::string BuildPmtPacket(uint8_t* continuity_counter) {
+std::string BuildPmtPacket(uint8_t *continuity_counter) {
   std::string section;
   section.push_back('\x02');
   section.push_back('\xb0');
@@ -185,8 +181,8 @@ std::string BuildPmtPacket(uint8_t* continuity_counter) {
   section.push_back(static_cast<char>(kVideoPid & 0xff));
   section.push_back('\xf0');
   section.push_back('\x00');
-  const uint32_t crc =
-      MpegCrc32(reinterpret_cast<const uint8_t*>(section.data()), section.size());
+  const uint32_t crc = MpegCrc32(
+      reinterpret_cast<const uint8_t *>(section.data()), section.size());
   AppendU32(&section, crc);
 
   std::string packet(kTsPacketSize, static_cast<char>(0xff));
@@ -200,19 +196,17 @@ std::string BuildPmtPacket(uint8_t* continuity_counter) {
   return packet;
 }
 
-void AppendPts(std::string* out, uint8_t prefix, uint64_t value) {
+void AppendPts(std::string *out, uint8_t prefix, uint64_t value) {
   const uint64_t pts = value & 0x1ffffffffULL;
-  out->push_back(static_cast<char>((prefix << 4) |
-                                   (((pts >> 30) & 0x07) << 1) | 0x01));
-  out->push_back(static_cast<char>((pts >> 22) & 0xff));
   out->push_back(
-      static_cast<char>((((pts >> 15) & 0x7f) << 1) | 0x01));
+      static_cast<char>((prefix << 4) | (((pts >> 30) & 0x07) << 1) | 0x01));
+  out->push_back(static_cast<char>((pts >> 22) & 0xff));
+  out->push_back(static_cast<char>((((pts >> 15) & 0x7f) << 1) | 0x01));
   out->push_back(static_cast<char>((pts >> 7) & 0xff));
   out->push_back(static_cast<char>(((pts & 0x7f) << 1) | 0x01));
 }
 
-std::string BuildPesPacket(const std::string& access_unit,
-                           uint64_t pts_90k,
+std::string BuildPesPacket(const std::string &access_unit, uint64_t pts_90k,
                            uint64_t dts_90k) {
   std::string pes;
   pes.append("\x00\x00\x01\xe0", 4);
@@ -229,7 +223,7 @@ std::string BuildPesPacket(const std::string& access_unit,
   return pes;
 }
 
-void WritePcr(char* target, uint64_t pcr_90k) {
+void WritePcr(char *target, uint64_t pcr_90k) {
   const uint64_t base = pcr_90k & 0x1ffffffffULL;
   target[0] = static_cast<char>((base >> 25) & 0xff);
   target[1] = static_cast<char>((base >> 17) & 0xff);
@@ -239,10 +233,8 @@ void WritePcr(char* target, uint64_t pcr_90k) {
   target[5] = '\x00';
 }
 
-void AppendTsPayload(const std::string& pes,
-                     uint64_t pcr_90k,
-                     uint8_t* continuity_counter,
-                     std::string* out) {
+void AppendTsPayload(const std::string &pes, uint64_t pcr_90k,
+                     uint8_t *continuity_counter, std::string *out) {
   size_t offset = 0;
   while (offset < pes.size()) {
     const bool first_packet = offset == 0;
@@ -269,7 +261,8 @@ void AppendTsPayload(const std::string& pes,
     packet[2] = static_cast<char>(kVideoPid & 0xff);
     packet[3] = static_cast<char>(((use_adaptation ? 0x30 : 0x10)) |
                                   (*continuity_counter & 0x0f));
-    *continuity_counter = static_cast<uint8_t>((*continuity_counter + 1) & 0x0f);
+    *continuity_counter =
+        static_cast<uint8_t>((*continuity_counter + 1) & 0x0f);
 
     size_t packet_offset = 4;
     if (use_adaptation) {
@@ -304,14 +297,11 @@ std::string BuildFlvFileHeader() {
   return header;
 }
 
-std::string BuildFlvVideoTag(bool keyframe,
-                             uint8_t avc_packet_type,
-                             int32_t composition_time_ms,
-                             uint32_t timestamp_ms,
-                             const std::string& payload) {
+std::string BuildFlvVideoTag(bool keyframe, uint8_t avc_packet_type,
+                             int32_t composition_time_ms, uint32_t timestamp_ms,
+                             const std::string &payload) {
   std::string tag;
-  const uint32_t body_size =
-      5U + static_cast<uint32_t>(payload.size());
+  const uint32_t body_size = 5U + static_cast<uint32_t>(payload.size());
   tag.push_back('\x09');
   AppendU24(&tag, body_size);
   AppendU24(&tag, timestamp_ms & 0x00ffffffU);
@@ -325,8 +315,8 @@ std::string BuildFlvVideoTag(bool keyframe,
   return tag;
 }
 
-std::string BuildAvcSequenceHeader(const std::string& sps,
-                                   const std::string& pps) {
+std::string BuildAvcSequenceHeader(const std::string &sps,
+                                   const std::string &pps) {
   std::string config;
   config.push_back('\x01');
   config.push_back(sps.size() > 1 ? sps[1] : '\x64');
@@ -342,21 +332,20 @@ std::string BuildAvcSequenceHeader(const std::string& sps,
   return config;
 }
 
-std::string BuildAvccSample(const std::vector<H264NalUnit>& units) {
+std::string BuildAvccSample(const std::vector<H264NalUnit> &units) {
   std::string sample;
-  for (const H264NalUnit& unit : units) {
+  for (const H264NalUnit &unit : units) {
     if (unit.type == 7 || unit.type == 8 || unit.type == 9) {
       continue;
     }
     AppendU32(&sample, static_cast<uint32_t>(unit.size));
-    sample.append(reinterpret_cast<const char*>(unit.data), unit.size);
+    sample.append(reinterpret_cast<const char *>(unit.data), unit.size);
   }
   return sample;
 }
 
-std::string BuildTsAccessUnit(const std::vector<H264NalUnit>& units,
-                              const std::string& sps,
-                              const std::string& pps,
+std::string BuildTsAccessUnit(const std::vector<H264NalUnit> &units,
+                              const std::string &sps, const std::string &pps,
                               bool prepend_parameter_sets) {
   std::string access_unit;
   AppendStartCode(&access_unit);
@@ -368,18 +357,18 @@ std::string BuildTsAccessUnit(const std::vector<H264NalUnit>& units,
     AppendStartCode(&access_unit);
     access_unit.append(pps);
   }
-  for (const H264NalUnit& unit : units) {
+  for (const H264NalUnit &unit : units) {
     if (unit.type == 9) {
       continue;
     }
     AppendStartCode(&access_unit);
-    access_unit.append(reinterpret_cast<const char*>(unit.data), unit.size);
+    access_unit.append(reinterpret_cast<const char *>(unit.data), unit.size);
   }
   return access_unit;
 }
 
 class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
- public:
+public:
   WebMediaServiceImpl(WebMediaServiceOptions options,
                       WebMediaServiceDependencies dependencies)
       : options_(std::move(options)), dependencies_(dependencies) {}
@@ -387,7 +376,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   ~WebMediaServiceImpl() override { Stop(); }
 
   bool Start() override {
-    MediaService* media_service = nullptr;
+    MediaService *media_service = nullptr;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (started_) {
@@ -423,7 +412,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   }
 
   void Stop() override {
-    MediaService* media_service = nullptr;
+    MediaService *media_service = nullptr;
     FrameSubscriptionId main_subscription_id = 0;
     FrameSubscriptionId sub_subscription_id = 0;
     {
@@ -453,7 +442,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
 
   bool IsHlsSupported(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    const StreamContext* stream = FindStream(stream_id);
+    const StreamContext *stream = FindStream(stream_id);
     return stream != nullptr && IsBrowserCodec(stream->codec);
   }
 
@@ -464,16 +453,16 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   WebMediaHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
     WebMediaHlsPlaylist playlist;
-    const StreamContext* stream = FindStream(stream_id);
+    const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec) ||
         stream->segments.empty()) {
       return playlist;
     }
     playlist.supported = true;
     playlist.media_sequence = stream->segments.front().sequence;
-    int64_t max_duration_us = static_cast<int64_t>(options_.hls_segment_duration_ms) *
-                              1000;
-    for (const WebMediaSegment& segment : stream->segments) {
+    int64_t max_duration_us =
+        static_cast<int64_t>(options_.hls_segment_duration_ms) * 1000;
+    for (const WebMediaSegment &segment : stream->segments) {
       playlist.entries.push_back(
           WebMediaHlsEntry{segment.sequence, segment.duration_us});
       max_duration_us = std::max(max_duration_us, segment.duration_us);
@@ -486,11 +475,11 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   WebMediaSegment GetHlsSegment(StreamId stream_id,
                                 uint64_t sequence) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    const StreamContext* stream = FindStream(stream_id);
+    const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec)) {
       return WebMediaSegment{};
     }
-    for (const WebMediaSegment& segment : stream->segments) {
+    for (const WebMediaSegment &segment : stream->segments) {
       if (segment.sequence == sequence) {
         return segment;
       }
@@ -501,7 +490,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   WebMediaFlvBootstrap GetFlvBootstrap(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
     WebMediaFlvBootstrap bootstrap;
-    const StreamContext* stream = FindStream(stream_id);
+    const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec)) {
       return bootstrap;
     }
@@ -513,18 +502,17 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     return bootstrap;
   }
 
-  WebMediaFlvClientId AttachFlvClient(
-      StreamId stream_id,
-      uint64_t config_generation,
-      const std::shared_ptr<IWebMediaFlvSink>& sink) override {
+  WebMediaFlvClientId
+  AttachFlvClient(StreamId stream_id, uint64_t config_generation,
+                  const std::shared_ptr<IWebMediaFlvSink> &sink) override {
     if (sink == nullptr) {
       return 0;
     }
-    MediaService* media_service = nullptr;
+    MediaService *media_service = nullptr;
     WebMediaFlvClientId client_id = 0;
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      StreamContext* stream = FindMutableStream(stream_id);
+      StreamContext *stream = FindMutableStream(stream_id);
       if (stream == nullptr || !IsBrowserCodec(stream->codec) ||
           flv_clients_.size() >= options_.max_flv_clients) {
         return 0;
@@ -538,7 +526,8 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
       media_service = dependencies_.media_service;
     }
     if (media_service != nullptr) {
-      (void)media_service->RequestKeyFrame(stream_id, KeyFrameReason::kNewClient);
+      (void)media_service->RequestKeyFrame(stream_id,
+                                           KeyFrameReason::kNewClient);
     }
     return client_id;
   }
@@ -556,13 +545,13 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     return stats;
   }
 
-  const char* Name() const override { return kServiceName; }
+  const char *Name() const override { return kServiceName; }
 
-  void OnFrame(const EncodedFrame& frame) override {
+  void OnFrame(const EncodedFrame &frame) override {
     if (!HasValidPayload(frame) || !IsStreamSupported(frame.stream_id)) {
       return;
     }
-    const uint8_t* payload = frame.buffer->Data() + frame.offset;
+    const uint8_t *payload = frame.buffer->Data() + frame.offset;
     const size_t size = frame.size;
     const std::vector<H264NalUnit> units = ParseAnnexBNalUnits(payload, size);
     if (units.empty()) {
@@ -575,7 +564,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     std::string flv_tag;
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      StreamContext* stream = FindMutableStream(frame.stream_id);
+      StreamContext *stream = FindMutableStream(frame.stream_id);
       if (stream == nullptr) {
         return;
       }
@@ -588,18 +577,19 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
 
       bool has_sps = false;
       bool has_pps = false;
-      for (const H264NalUnit& unit : units) {
+      for (const H264NalUnit &unit : units) {
         if (unit.type == 7) {
-          stream->sps.assign(reinterpret_cast<const char*>(unit.data),
+          stream->sps.assign(reinterpret_cast<const char *>(unit.data),
                              unit.size);
           has_sps = true;
         } else if (unit.type == 8) {
-          stream->pps.assign(reinterpret_cast<const char*>(unit.data),
+          stream->pps.assign(reinterpret_cast<const char *>(unit.data),
                              unit.size);
           has_pps = true;
         }
       }
-      if (!stream->sps.empty() && !stream->pps.empty() && (has_sps || has_pps)) {
+      if (!stream->sps.empty() && !stream->pps.empty() &&
+          (has_sps || has_pps)) {
         stream->sequence_header_tag = BuildFlvVideoTag(
             true, 0, 0, static_cast<uint32_t>(frame.dts_us / 1000),
             BuildAvcSequenceHeader(stream->sps, stream->pps));
@@ -613,7 +603,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
       stream->last_pts_us = frame.pts_us;
 
       bool frame_has_parameter_sets = false;
-      for (const H264NalUnit& unit : units) {
+      for (const H264NalUnit &unit : units) {
         if (unit.type == 7 || unit.type == 8) {
           frame_has_parameter_sets = true;
           break;
@@ -627,34 +617,32 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
       if (!stream->current_segment.started) {
         StartSegment(stream, frame.pts_us);
       }
-      const std::string access_unit = BuildTsAccessUnit(
-          units, stream->sps, stream->pps,
-          keyframe && !frame_has_parameter_sets);
+      const std::string access_unit =
+          BuildTsAccessUnit(units, stream->sps, stream->pps,
+                            keyframe && !frame_has_parameter_sets);
       const uint64_t pts_90k =
-          static_cast<uint64_t>(
-              std::max<int64_t>(0, frame.pts_us) * 9 / 100);
+          static_cast<uint64_t>(std::max<int64_t>(0, frame.pts_us) * 9 / 100);
       const uint64_t dts_90k =
-          static_cast<uint64_t>(
-              std::max<int64_t>(0, frame.dts_us) * 9 / 100);
+          static_cast<uint64_t>(std::max<int64_t>(0, frame.dts_us) * 9 / 100);
       AppendTsPayload(BuildPesPacket(access_unit, pts_90k, dts_90k), dts_90k,
                       &stream->video_continuity, &stream->current_segment.body);
       stream->current_segment.last_pts_us = frame.pts_us;
 
       const std::string avcc_sample = BuildAvccSample(units);
       if (!avcc_sample.empty()) {
-        const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        flv_tag = BuildFlvVideoTag(keyframe, 1,
-                                   static_cast<int32_t>(composition_time_ms),
-                                   static_cast<uint32_t>(frame.dts_us / 1000),
-                                   avcc_sample);
+        const int64_t composition_time_ms =
+            (frame.pts_us - frame.dts_us) / 1000;
+        flv_tag = BuildFlvVideoTag(
+            keyframe, 1, static_cast<int32_t>(composition_time_ms),
+            static_cast<uint32_t>(frame.dts_us / 1000), avcc_sample);
         if (keyframe) {
           stream->last_keyframe_tag = flv_tag;
         }
       }
       sequence_header_tag = stream->sequence_header_tag;
-      for (auto& item : flv_clients_) {
-        if (item.second.stream_id != frame.stream_id || item.second.sink == nullptr ||
-            flv_tag.empty()) {
+      for (auto &item : flv_clients_) {
+        if (item.second.stream_id != frame.stream_id ||
+            item.second.sink == nullptr || flv_tag.empty()) {
           continue;
         }
         const bool needs_config =
@@ -667,16 +655,16 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
       }
     }
 
-    for (const auto& client : clients) {
+    for (const auto &client : clients) {
       if (client.second &&
           !client.first->OnFlvChunk(
-              reinterpret_cast<const uint8_t*>(sequence_header_tag.data()),
+              reinterpret_cast<const uint8_t *>(sequence_header_tag.data()),
               sequence_header_tag.size())) {
         detach_ids.push_back(FindClientId(client.first));
         continue;
       }
       if (!client.first->OnFlvChunk(
-              reinterpret_cast<const uint8_t*>(flv_tag.data()),
+              reinterpret_cast<const uint8_t *>(flv_tag.data()),
               flv_tag.size())) {
         detach_ids.push_back(FindClientId(client.first));
       }
@@ -690,13 +678,13 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
 
   void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
     std::lock_guard<std::mutex> guard(mutex_);
-    StreamContext* stream = FindMutableStream(stream_id);
+    StreamContext *stream = FindMutableStream(stream_id);
     if (stream != nullptr) {
       stream->state = state;
     }
   }
 
- private:
+private:
   struct StreamContext {
     VideoCodec codec = VideoCodec::kH264;
     StreamState state = StreamState::kClosed;
@@ -721,7 +709,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     std::shared_ptr<IWebMediaFlvSink> sink;
   };
 
-  const StreamContext* FindStream(StreamId stream_id) const {
+  const StreamContext *FindStream(StreamId stream_id) const {
     if (stream_id == StreamId::kMain) {
       return &main_stream_;
     }
@@ -731,7 +719,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     return nullptr;
   }
 
-  StreamContext* FindMutableStream(StreamId stream_id) {
+  StreamContext *FindMutableStream(StreamId stream_id) {
     if (stream_id == StreamId::kMain) {
       return &main_stream_;
     }
@@ -741,7 +729,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     return nullptr;
   }
 
-  void ResetStream(StreamContext* stream, VideoCodec codec) {
+  void ResetStream(StreamContext *stream, VideoCodec codec) {
     if (stream == nullptr) {
       return;
     }
@@ -751,7 +739,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     stream->state = state;
   }
 
-  void StartSegment(StreamContext* stream, int64_t pts_us) {
+  void StartSegment(StreamContext *stream, int64_t pts_us) {
     if (stream == nullptr) {
       return;
     }
@@ -764,7 +752,7 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     stream->current_segment.body += BuildPmtPacket(&stream->pmt_continuity);
   }
 
-  void FinalizeCurrentSegment(StreamContext* stream) {
+  void FinalizeCurrentSegment(StreamContext *stream) {
     if (stream == nullptr || !stream->current_segment.started ||
         stream->current_segment.body.empty()) {
       return;
@@ -786,10 +774,10 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
     stream->current_segment = HlsSegmentState{};
   }
 
-  WebMediaFlvClientId FindClientId(
-      const std::shared_ptr<IWebMediaFlvSink>& sink) const {
+  WebMediaFlvClientId
+  FindClientId(const std::shared_ptr<IWebMediaFlvSink> &sink) const {
     std::lock_guard<std::mutex> guard(mutex_);
-    for (const auto& item : flv_clients_) {
+    for (const auto &item : flv_clients_) {
       if (item.second.sink == sink) {
         return item.first;
       }
@@ -810,13 +798,13 @@ class WebMediaServiceImpl : public IWebMediaService, public IFrameSink {
   bool started_ = false;
 };
 
-}  // namespace
+} // namespace
 
-std::unique_ptr<IWebMediaService> CreateWebMediaService(
-    const WebMediaServiceOptions& options,
-    const WebMediaServiceDependencies& dependencies) {
+std::unique_ptr<IWebMediaService>
+CreateWebMediaService(const WebMediaServiceOptions &options,
+                      const WebMediaServiceDependencies &dependencies) {
   return std::unique_ptr<IWebMediaService>(
       new WebMediaServiceImpl(options, dependencies));
 }
 
-}  // namespace live_stream
+} // namespace live_stream

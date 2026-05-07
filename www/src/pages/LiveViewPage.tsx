@@ -47,6 +47,10 @@ export function LiveViewPage() {
           {runningStreams.map((item) => (
             <code key={item.stream}>{rtspAddress(rtspConfig, item.stream)}</code>
           ))}
+          <code>/api/hls/main/index.m3u8</code>
+          <code>/api/hls/sub/index.m3u8</code>
+          <code>/api/flv/main.flv</code>
+          <code>/api/flv/sub.flv</code>
           <code>/api/snapshot/main.jpg</code>
           <code>/api/snapshot/sub.jpg</code>
         </div>

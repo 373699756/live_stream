@@ -23,7 +23,7 @@ struct WebMediaServiceOptions {
 };
 
 struct WebMediaServiceDependencies {
-  MediaService* media_service = nullptr;
+  MediaService *media_service = nullptr;
 };
 
 struct WebMediaHlsEntry {
@@ -60,14 +60,14 @@ struct WebMediaServiceStats {
 };
 
 class IWebMediaFlvSink {
- public:
+public:
   virtual ~IWebMediaFlvSink() = default;
 
-  virtual bool OnFlvChunk(const uint8_t* data, size_t size) = 0;
+  virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
 };
 
 class IWebMediaService {
- public:
+public:
   virtual ~IWebMediaService() = default;
 
   virtual bool Start() = 0;
@@ -78,18 +78,17 @@ class IWebMediaService {
   virtual WebMediaSegment GetHlsSegment(StreamId stream_id,
                                         uint64_t sequence) const = 0;
   virtual WebMediaFlvBootstrap GetFlvBootstrap(StreamId stream_id) const = 0;
-  virtual WebMediaFlvClientId AttachFlvClient(
-      StreamId stream_id,
-      uint64_t config_generation,
-      const std::shared_ptr<IWebMediaFlvSink>& sink) = 0;
+  virtual WebMediaFlvClientId
+  AttachFlvClient(StreamId stream_id, uint64_t config_generation,
+                  const std::shared_ptr<IWebMediaFlvSink> &sink) = 0;
   virtual bool DetachFlvClient(WebMediaFlvClientId client_id) = 0;
   virtual WebMediaServiceStats GetStats() const = 0;
 };
 
-std::unique_ptr<IWebMediaService> CreateWebMediaService(
-    const WebMediaServiceOptions& options,
-    const WebMediaServiceDependencies& dependencies);
+std::unique_ptr<IWebMediaService>
+CreateWebMediaService(const WebMediaServiceOptions &options,
+                      const WebMediaServiceDependencies &dependencies);
 
-}  // namespace live_stream
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_WEB_MEDIA_SERVICE_H_
+#endif // LIVE_STREAM_WEB_MEDIA_SERVICE_H_

@@ -14,27 +14,27 @@
 namespace live_stream {
 
 struct ProtocolRefs {
-  IRtspService* rtsp = nullptr;
-  IWebrtcService* webrtc = nullptr;
-  IOnvifService* onvif = nullptr;
-  IHttpService* http = nullptr;
+  IRtspService *rtsp = nullptr;
+  IWebrtcService *webrtc = nullptr;
+  IOnvifService *onvif = nullptr;
+  IHttpService *http = nullptr;
 };
 
 class ProtocolSubsystem {
- public:
-  static ProtocolSubsystem& Get();
+public:
+  static ProtocolSubsystem &Get();
 
-  bool Start(const AppRuntimeConfig& runtime_config);
+  bool Start(const AppRuntimeConfig &runtime_config);
   void Stop();
   ProtocolRefs refs() const;
-  NetEngine* net_engine() const { return net_engine_.get(); }
+  NetEngine *net_engine() const { return net_engine_.get(); }
 
- private:
+private:
   ProtocolSubsystem() = default;
   ~ProtocolSubsystem() = default;
 
-  ProtocolSubsystem(const ProtocolSubsystem&) = delete;
-  ProtocolSubsystem& operator=(const ProtocolSubsystem&) = delete;
+  ProtocolSubsystem(const ProtocolSubsystem &) = delete;
+  ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
   std::unique_ptr<NetEngine> net_engine_;
   std::unique_ptr<IRtspService> rtsp_;
@@ -46,6 +46,6 @@ class ProtocolSubsystem {
   bool started_ = false;
 };
 
-}  // namespace live_stream
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_APP_PROTOCOL_SUBSYSTEM_H_
+#endif // LIVE_STREAM_APP_PROTOCOL_SUBSYSTEM_H_
