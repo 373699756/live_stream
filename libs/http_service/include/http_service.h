@@ -18,7 +18,7 @@ class IRtspService;
 class ISystemService;
 class ITimeService;
 class IUpgradeService;
-class IFrameService;
+class IStreamHubService;
 class IWebrtcService;
 class AiService;
 class MediaService;
@@ -86,7 +86,7 @@ struct HttpServiceDependencies {
   MediaService *media_service = nullptr;
   SnapshotService *snapshot_service = nullptr;
   IWebrtcService *webrtc_service = nullptr;
-  IFrameService *frame_service = nullptr;
+  IStreamHubService *stream_hub_service = nullptr;
 };
 
 struct HttpServiceStats {

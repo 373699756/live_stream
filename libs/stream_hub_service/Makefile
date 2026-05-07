@@ -1,4 +1,4 @@
-SERVICE_NAME := frame_service
+SERVICE_NAME := stream_hub_service
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build

@@ -129,12 +129,13 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
     return false;
   }
 
-  FrameServiceOptions frame_options;
-  FrameServiceDependencies frame_dependencies;
-  frame_dependencies.media_service = media.media;
-  frame_ = CreateFrameService(frame_options, frame_dependencies);
-  if (!frame_ || !frame_->Start()) {
-    INFRA_LOG_ERROR("app", "Start frame service failed");
+  StreamHubServiceOptions stream_hub_options;
+  StreamHubServiceDependencies stream_hub_dependencies;
+  stream_hub_dependencies.media_service = media.media;
+  stream_hub_ =
+      CreateStreamHubService(stream_hub_options, stream_hub_dependencies);
+  if (!stream_hub_ || !stream_hub_->Start()) {
+    INFRA_LOG_ERROR("app", "Start stream hub service failed");
     Stop();
     return false;
   }
@@ -194,7 +195,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
   http_dependencies.media_service = media.media;
   http_dependencies.snapshot_service = media.snapshot;
   http_dependencies.webrtc_service = webrtc_.get();
-  http_dependencies.frame_service = frame_.get();
+  http_dependencies.stream_hub_service = stream_hub_.get();
   http_ = CreateHttpService(http_options, http_dependencies);
   if (!http_ || !http_->Start()) {
     INFRA_LOG_ERROR("app", "Start http service failed: listen=%s:%u root=%s",
@@ -219,9 +220,9 @@ void ProtocolSubsystem::Stop() {
     onvif_.reset();
   }
   onvif_uri_provider_.reset();
-  if (frame_) {
-    frame_->Stop();
-    frame_.reset();
+  if (stream_hub_) {
+    stream_hub_->Stop();
+    stream_hub_.reset();
   }
   if (webrtc_) {
     webrtc_->Stop();

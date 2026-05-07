@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_FRAME_SERVICE_H_
-#define LIVE_STREAM_FRAME_SERVICE_H_
+#ifndef LIVE_STREAM_STREAM_HUB_SERVICE_H_
+#define LIVE_STREAM_STREAM_HUB_SERVICE_H_
 
 #include "media/frame_source.h"
 #include "media/stream_types.h"
@@ -14,38 +14,38 @@ namespace live_stream {
 
 class MediaService;
 
-using FrameFlvClientId = uint64_t;
+using StreamFlvClientId = uint64_t;
 
-struct FrameServiceOptions {
+struct StreamHubServiceOptions {
   uint32_t hls_segment_duration_ms = 1000;
   uint32_t hls_playlist_depth = 4;
   uint32_t max_flv_clients = 8;
 };
 
-struct FrameServiceDependencies {
+struct StreamHubServiceDependencies {
   MediaService *media_service = nullptr;
 };
 
-struct FrameHlsEntry {
+struct StreamHlsEntry {
   uint64_t sequence = 0;
   int64_t duration_us = 0;
 };
 
-struct FrameHlsPlaylist {
+struct StreamHlsPlaylist {
   bool supported = false;
   uint32_t target_duration_sec = 0;
   uint64_t media_sequence = 0;
-  std::vector<FrameHlsEntry> entries;
+  std::vector<StreamHlsEntry> entries;
 };
 
-struct FrameSegment {
+struct StreamSegment {
   bool found = false;
   uint64_t sequence = 0;
   int64_t duration_us = 0;
   std::string body;
 };
 
-struct FrameFlvBootstrap {
+struct StreamFlvBootstrap {
   bool supported = false;
   uint64_t config_generation = 0;
   std::string file_header;
@@ -53,42 +53,42 @@ struct FrameFlvBootstrap {
   std::string last_keyframe;
 };
 
-struct FrameServiceStats {
+struct StreamHubServiceStats {
   bool enabled = false;
   uint64_t hls_segments_created = 0;
   uint32_t active_flv_clients = 0;
 };
 
-class IFrameFlvSink {
+class IStreamFlvSink {
 public:
-  virtual ~IFrameFlvSink() = default;
+  virtual ~IStreamFlvSink() = default;
 
   virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
 };
 
-class IFrameService {
+class IStreamHubService {
 public:
-  virtual ~IFrameService() = default;
+  virtual ~IStreamHubService() = default;
 
   virtual bool Start() = 0;
   virtual void Stop() = 0;
   virtual bool IsHlsSupported(StreamId stream_id) const = 0;
   virtual bool IsFlvSupported(StreamId stream_id) const = 0;
-  virtual FrameHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
-  virtual FrameSegment GetHlsSegment(StreamId stream_id,
-                                     uint64_t sequence) const = 0;
-  virtual FrameFlvBootstrap GetFlvBootstrap(StreamId stream_id) const = 0;
-  virtual FrameFlvClientId
+  virtual StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
+  virtual StreamSegment GetHlsSegment(StreamId stream_id,
+                                      uint64_t sequence) const = 0;
+  virtual StreamFlvBootstrap GetFlvBootstrap(StreamId stream_id) const = 0;
+  virtual StreamFlvClientId
   AttachFlvClient(StreamId stream_id, uint64_t config_generation,
-                  const std::shared_ptr<IFrameFlvSink> &sink) = 0;
-  virtual bool DetachFlvClient(FrameFlvClientId client_id) = 0;
-  virtual FrameServiceStats GetStats() const = 0;
+                  const std::shared_ptr<IStreamFlvSink> &sink) = 0;
+  virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
+  virtual StreamHubServiceStats GetStats() const = 0;
 };
 
-std::unique_ptr<IFrameService>
-CreateFrameService(const FrameServiceOptions &options,
-                   const FrameServiceDependencies &dependencies);
+std::unique_ptr<IStreamHubService>
+CreateStreamHubService(const StreamHubServiceOptions &options,
+                       const StreamHubServiceDependencies &dependencies);
 
 } // namespace live_stream
 
-#endif // LIVE_STREAM_FRAME_SERVICE_H_
+#endif // LIVE_STREAM_STREAM_HUB_SERVICE_H_

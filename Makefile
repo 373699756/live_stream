@@ -46,7 +46,7 @@ CXXFLAGS += -Ilibs/osd_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
 CXXFLAGS += -Ilibs/webrtc_service/include
 CXXFLAGS += -Ilibs/snapshot_service/include
-CXXFLAGS += -Ilibs/frame_service/include
+CXXFLAGS += -Ilibs/stream_hub_service/include
 CXXFLAGS += -Ilibs/onvif_service/include
 CXXFLAGS += -Ilibs/alarm_service/include
 CXXFLAGS += -Ilibs/upgrade_service/include
@@ -71,7 +71,7 @@ SERVICES := \
 	rtsp_service \
 	webrtc_service \
 	snapshot_service \
-	frame_service \
+	stream_hub_service \
 	onvif_service \
 	alarm_service \
 	upgrade_service \

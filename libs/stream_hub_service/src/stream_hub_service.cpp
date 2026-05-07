@@ -1,4 +1,4 @@
-#include "frame_service.h"
+#include "stream_hub_service.h"
 
 #include "infra/executor.h"
 #include "media/encoded_frame.h"
@@ -21,7 +21,7 @@
 namespace live_stream {
 namespace {
 
-constexpr const char *kServiceName = "frame_service";
+constexpr const char *kServiceName = "stream_hub_service";
 constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
@@ -46,13 +46,13 @@ bool HasValidPayload(const EncodedFrame &frame) {
          frame.size <= frame.buffer->Size() - frame.offset;
 }
 
-class FrameServiceImpl : public IFrameService, public IFrameSink {
+class StreamHubServiceImpl : public IStreamHubService, public IFrameSink {
 public:
-  FrameServiceImpl(FrameServiceOptions options,
-                   FrameServiceDependencies dependencies)
+  StreamHubServiceImpl(StreamHubServiceOptions options,
+                       StreamHubServiceDependencies dependencies)
       : options_(std::move(options)), dependencies_(dependencies) {}
 
-  ~FrameServiceImpl() override { Stop(); }
+  ~StreamHubServiceImpl() override { Stop(); }
 
   bool Start() override {
     MediaService *media_service = nullptr;
@@ -158,9 +158,9 @@ public:
     return IsHlsSupported(stream_id);
   }
 
-  FrameHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
+  StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    FrameHlsPlaylist playlist;
+    StreamHlsPlaylist playlist;
     const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec) ||
         stream->segments.empty()) {
@@ -170,9 +170,9 @@ public:
     playlist.media_sequence = stream->segments.front().sequence;
     int64_t max_duration_us =
         static_cast<int64_t>(options_.hls_segment_duration_ms) * 1000;
-    for (const FrameSegment &segment : stream->segments) {
+    for (const StreamSegment &segment : stream->segments) {
       playlist.entries.push_back(
-          FrameHlsEntry{segment.sequence, segment.duration_us});
+          StreamHlsEntry{segment.sequence, segment.duration_us});
       max_duration_us = std::max(max_duration_us, segment.duration_us);
     }
     playlist.target_duration_sec = static_cast<uint32_t>(
@@ -180,24 +180,24 @@ public:
     return playlist;
   }
 
-  FrameSegment GetHlsSegment(StreamId stream_id,
+  StreamSegment GetHlsSegment(StreamId stream_id,
                              uint64_t sequence) const override {
     std::lock_guard<std::mutex> guard(mutex_);
     const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec)) {
-      return FrameSegment{};
+      return StreamSegment{};
     }
-    for (const FrameSegment &segment : stream->segments) {
+    for (const StreamSegment &segment : stream->segments) {
       if (segment.sequence == sequence) {
         return segment;
       }
     }
-    return FrameSegment{};
+    return StreamSegment{};
   }
 
-  FrameFlvBootstrap GetFlvBootstrap(StreamId stream_id) const override {
+  StreamFlvBootstrap GetFlvBootstrap(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    FrameFlvBootstrap bootstrap;
+    StreamFlvBootstrap bootstrap;
     const StreamContext *stream = FindStream(stream_id);
     if (stream == nullptr || !IsBrowserCodec(stream->codec)) {
       return bootstrap;
@@ -210,14 +210,14 @@ public:
     return bootstrap;
   }
 
-  FrameFlvClientId
+  StreamFlvClientId
   AttachFlvClient(StreamId stream_id, uint64_t config_generation,
-                  const std::shared_ptr<IFrameFlvSink> &sink) override {
+                  const std::shared_ptr<IStreamFlvSink> &sink) override {
     if (sink == nullptr) {
       return 0;
     }
     MediaService *media_service = nullptr;
-    FrameFlvClientId client_id = 0;
+    StreamFlvClientId client_id = 0;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       StreamContext *stream = FindMutableStream(stream_id);
@@ -240,14 +240,14 @@ public:
     return client_id;
   }
 
-  bool DetachFlvClient(FrameFlvClientId client_id) override {
+  bool DetachFlvClient(StreamFlvClientId client_id) override {
     std::lock_guard<std::mutex> guard(mutex_);
     return flv_clients_.erase(client_id) != 0;
   }
 
-  FrameServiceStats GetStats() const override {
+  StreamHubServiceStats GetStats() const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    FrameServiceStats stats = stats_;
+    StreamHubServiceStats stats = stats_;
     stats.enabled = started_;
     stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.size());
     return stats;
@@ -293,8 +293,8 @@ public:
 
 private:
   struct PendingFlvClientWrite {
-    FrameFlvClientId client_id = 0;
-    std::shared_ptr<IFrameFlvSink> sink;
+    StreamFlvClientId client_id = 0;
+    std::shared_ptr<IStreamFlvSink> sink;
     bool send_sequence_header = false;
   };
 
@@ -325,7 +325,7 @@ private:
       return;
     }
 
-    std::vector<FrameFlvClientId> detach_ids;
+    std::vector<StreamFlvClientId> detach_ids;
     std::vector<PendingFlvClientWrite> clients;
     std::string sequence_header_tag;
     std::string flv_tag;
@@ -421,7 +421,7 @@ private:
         detach_ids.push_back(client.client_id);
       }
     }
-    for (FrameFlvClientId client_id : detach_ids) {
+    for (StreamFlvClientId client_id : detach_ids) {
       if (client_id != 0) {
         (void)DetachFlvClient(client_id);
       }
@@ -434,7 +434,7 @@ private:
     std::string pps;
     std::string sequence_header_tag;
     std::string last_keyframe_tag;
-    std::deque<FrameSegment> segments;
+    std::deque<StreamSegment> segments;
     HlsSegmentState current_segment;
     uint64_t next_segment_sequence = 1;
     uint64_t config_generation = 0;
@@ -446,7 +446,7 @@ private:
   struct FlvClientState {
     StreamId stream_id = StreamId::kMain;
     uint64_t config_generation = 0;
-    std::shared_ptr<IFrameFlvSink> sink;
+    std::shared_ptr<IStreamFlvSink> sink;
   };
 
   StreamFrameQueue *FindPendingQueue(StreamId stream_id) {
@@ -562,7 +562,7 @@ private:
         stream->current_segment.body.empty()) {
       return;
     }
-    FrameSegment segment;
+    StreamSegment segment;
     segment.found = true;
     segment.sequence = stream->current_segment.sequence;
     segment.duration_us =
@@ -579,8 +579,8 @@ private:
     stream->current_segment = HlsSegmentState{};
   }
 
-  FrameServiceOptions options_;
-  FrameServiceDependencies dependencies_;
+  StreamHubServiceOptions options_;
+  StreamHubServiceDependencies dependencies_;
   std::unique_ptr<infra::Executor> worker_executor_;
   mutable std::mutex mutex_;
   StreamFrameQueue main_pending_;
@@ -589,21 +589,21 @@ private:
   StreamId last_drained_stream_ = StreamId::kSub;
   StreamContext main_stream_;
   StreamContext sub_stream_;
-  std::map<FrameFlvClientId, FlvClientState> flv_clients_;
-  FrameServiceStats stats_;
+  std::map<StreamFlvClientId, FlvClientState> flv_clients_;
+  StreamHubServiceStats stats_;
   FrameSubscriptionId main_subscription_id_ = 0;
   FrameSubscriptionId sub_subscription_id_ = 0;
-  FrameFlvClientId next_flv_client_id_ = 1;
+  StreamFlvClientId next_flv_client_id_ = 1;
   bool started_ = false;
 };
 
 } // namespace
 
-std::unique_ptr<IFrameService>
-CreateFrameService(const FrameServiceOptions &options,
-                   const FrameServiceDependencies &dependencies) {
-  return std::unique_ptr<IFrameService>(
-      new FrameServiceImpl(options, dependencies));
+std::unique_ptr<IStreamHubService>
+CreateStreamHubService(const StreamHubServiceOptions &options,
+                       const StreamHubServiceDependencies &dependencies) {
+  return std::unique_ptr<IStreamHubService>(
+      new StreamHubServiceImpl(options, dependencies));
 }
 
 } // namespace live_stream
