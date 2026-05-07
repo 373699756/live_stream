@@ -3,12 +3,12 @@
 
 #include <memory>
 
+#include "frame_service.h"
 #include "http_service.h"
 #include "netframe_service.h"
 #include "onvif_service.h"
 #include "rtsp_service.h"
 #include "runtime_config.h"
-#include "web_media_service.h"
 #include "webrtc_service.h"
 
 namespace live_stream {
@@ -39,7 +39,7 @@ private:
   std::unique_ptr<NetEngine> net_engine_;
   std::unique_ptr<IRtspService> rtsp_;
   std::unique_ptr<IWebrtcService> webrtc_;
-  std::unique_ptr<IWebMediaService> web_media_;
+  std::unique_ptr<IFrameService> frame_;
   std::unique_ptr<IOnvifUriProvider> onvif_uri_provider_;
   std::unique_ptr<IOnvifService> onvif_;
   std::unique_ptr<IHttpService> http_;

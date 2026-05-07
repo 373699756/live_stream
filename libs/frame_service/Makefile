@@ -1,4 +1,4 @@
-SERVICE_NAME := web_media_service
+SERVICE_NAME := frame_service
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build

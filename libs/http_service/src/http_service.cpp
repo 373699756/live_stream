@@ -19,6 +19,7 @@
 #include "ai_service.h"
 #include "auth_service.h"
 #include "config_service.h"
+#include "frame_service.h"
 #include "http_protocol.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
@@ -33,7 +34,6 @@
 #include "system_service.h"
 #include "time_service.h"
 #include "upgrade_service.h"
-#include "web_media_service.h"
 #include "webrtc_service.h"
 
 namespace live_stream {
@@ -820,7 +820,7 @@ public:
     TcpServerId server_id = 0;
     NetEngine *net_engine = nullptr;
     infra::Executor *task_executor = nullptr;
-    std::vector<WebMediaFlvClientId> flv_client_ids;
+    std::vector<FrameFlvClientId> flv_client_ids;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       if (!started_) {
@@ -839,9 +839,9 @@ public:
       stats_.active_connections = 0;
       task_executor = task_executor_.get();
     }
-    if (dependencies_.web_media_service != nullptr) {
-      for (WebMediaFlvClientId client_id : flv_client_ids) {
-        (void)dependencies_.web_media_service->DetachFlvClient(client_id);
+    if (dependencies_.frame_service != nullptr) {
+      for (FrameFlvClientId client_id : flv_client_ids) {
+        (void)dependencies_.frame_service->DetachFlvClient(client_id);
       }
     }
     if (net_engine != nullptr && server_id != 0) {
@@ -1034,14 +1034,14 @@ private:
     std::deque<PendingRequest> pending_requests;
     uint64_t request_count = 0;
     uint64_t timeout_generation = 0;
-    WebMediaFlvClientId flv_client_id = 0;
-    std::shared_ptr<IWebMediaFlvSink> flv_sink;
+    FrameFlvClientId flv_client_id = 0;
+    std::shared_ptr<IFrameFlvSink> flv_sink;
     bool processing = false;
     bool closing = false;
     bool streaming = false;
   };
 
-  class FlvConnectionSink : public IWebMediaFlvSink {
+  class FlvConnectionSink : public IFrameFlvSink {
   public:
     FlvConnectionSink(HttpServiceImpl *owner, ConnectionId connection_id)
         : owner_(owner), connection_id_(connection_id) {}
@@ -1383,9 +1383,9 @@ private:
                 dependencies_.webrtc_service != nullptr &&
                     dependencies_.webrtc_service->GetStats().enabled &&
                     dependencies_.webrtc_service->GetStats().backend_available);
-    add_service("web_media_service",
-                dependencies_.web_media_service != nullptr &&
-                    dependencies_.web_media_service->GetStats().enabled);
+    add_service("frame_service",
+                dependencies_.frame_service != nullptr &&
+                    dependencies_.frame_service->GetStats().enabled);
     root["services"] = services;
     return JsonResponse(200, root);
   }
@@ -1820,7 +1820,7 @@ private:
     if (principal.user_name.empty()) {
       return StatusResponse(401, "Unauthorized");
     }
-    if (dependencies_.web_media_service == nullptr) {
+    if (dependencies_.frame_service == nullptr) {
       return StatusResponse(501, "Not Implemented");
     }
 
@@ -1837,13 +1837,13 @@ private:
     if (!StreamIdFromJsonString(stream_name, &stream_id)) {
       return StatusResponse(400, "Invalid stream");
     }
-    if (!dependencies_.web_media_service->IsHlsSupported(stream_id)) {
+    if (!dependencies_.frame_service->IsHlsSupported(stream_id)) {
       return StatusResponse(409, "HLS requires H.264 stream");
     }
 
     if (object_name == "index.m3u8") {
-      const WebMediaHlsPlaylist playlist =
-          dependencies_.web_media_service->GetHlsPlaylist(stream_id);
+      const FrameHlsPlaylist playlist =
+          dependencies_.frame_service->GetHlsPlaylist(stream_id);
       if (playlist.entries.empty()) {
         return StatusResponse(503, "HLS playlist not ready");
       }
@@ -1859,7 +1859,7 @@ private:
           "#EXT-X-MEDIA-SEQUENCE:" + std::to_string(playlist.media_sequence) +
           "\n";
       body += "#EXT-X-INDEPENDENT-SEGMENTS\n";
-      for (const WebMediaHlsEntry &entry : playlist.entries) {
+      for (const FrameHlsEntry &entry : playlist.entries) {
         const double duration =
             static_cast<double>(entry.duration_us) / 1000000.0;
         char line[64];
@@ -1886,9 +1886,8 @@ private:
     if (end == nullptr || *end != '\0') {
       return StatusResponse(400, "Invalid HLS segment");
     }
-    const WebMediaSegment segment =
-        dependencies_.web_media_service->GetHlsSegment(
-            stream_id, static_cast<uint64_t>(sequence));
+    const FrameSegment segment = dependencies_.frame_service->GetHlsSegment(
+        stream_id, static_cast<uint64_t>(sequence));
     if (!segment.found) {
       return StatusResponse(404, "HLS segment not found");
     }
@@ -1978,7 +1977,7 @@ private:
   }
 
   void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
-    if (dependencies_.web_media_service == nullptr) {
+    if (dependencies_.frame_service == nullptr) {
       SendResponse(connection_id, StatusResponse(501, "Not Implemented"), true);
       return;
     }
@@ -2002,23 +2001,23 @@ private:
       SendResponse(connection_id, StatusResponse(400, "Invalid stream"), true);
       return;
     }
-    if (!dependencies_.web_media_service->IsFlvSupported(stream_id)) {
+    if (!dependencies_.frame_service->IsFlvSupported(stream_id)) {
       SendResponse(connection_id,
                    StatusResponse(409, "HTTP-FLV requires H.264 stream"), true);
       return;
     }
 
-    const WebMediaFlvBootstrap bootstrap =
-        dependencies_.web_media_service->GetFlvBootstrap(stream_id);
+    const FrameFlvBootstrap bootstrap =
+        dependencies_.frame_service->GetFlvBootstrap(stream_id);
     if (!bootstrap.supported) {
       SendResponse(connection_id, StatusResponse(503, "FLV stream not ready"),
                    true);
       return;
     }
-    std::shared_ptr<IWebMediaFlvSink> sink(
+    std::shared_ptr<IFrameFlvSink> sink(
         new FlvConnectionSink(this, connection_id));
-    const WebMediaFlvClientId client_id =
-        dependencies_.web_media_service->AttachFlvClient(
+    const FrameFlvClientId client_id =
+        dependencies_.frame_service->AttachFlvClient(
             stream_id, bootstrap.config_generation, sink);
     if (client_id == 0) {
       SendResponse(connection_id,
@@ -2030,7 +2029,7 @@ private:
       std::lock_guard<std::mutex> guard(mutex_);
       auto iter = sessions_.find(connection_id);
       if (iter == sessions_.end()) {
-        (void)dependencies_.web_media_service->DetachFlvClient(client_id);
+        (void)dependencies_.frame_service->DetachFlvClient(client_id);
         return;
       }
       iter->second.processing = false;
@@ -2066,7 +2065,7 @@ private:
              connection_id,
              reinterpret_cast<const uint8_t *>(bootstrap.last_keyframe.data()),
              bootstrap.last_keyframe.size()))) {
-      (void)dependencies_.web_media_service->DetachFlvClient(client_id);
+      (void)dependencies_.frame_service->DetachFlvClient(client_id);
     }
   }
 
@@ -2241,7 +2240,7 @@ private:
   }
 
   void OnClose(ConnectionId connection_id) {
-    WebMediaFlvClientId flv_client_id = 0;
+    FrameFlvClientId flv_client_id = 0;
     {
       std::lock_guard<std::mutex> guard(mutex_);
       auto iter = sessions_.find(connection_id);
@@ -2251,8 +2250,8 @@ private:
       flv_client_id = iter->second.flv_client_id;
       sessions_.erase(iter);
     }
-    if (flv_client_id != 0 && dependencies_.web_media_service != nullptr) {
-      (void)dependencies_.web_media_service->DetachFlvClient(flv_client_id);
+    if (flv_client_id != 0 && dependencies_.frame_service != nullptr) {
+      (void)dependencies_.frame_service->DetachFlvClient(flv_client_id);
     }
     {
       std::lock_guard<std::mutex> guard(mutex_);

@@ -20,18 +20,18 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/time_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/upgrade_service/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/web_media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/frame_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc_service/include
 
 SNAPSHOT_LIB := ../../build/lib/libsnapshot_service.a
-WEB_MEDIA_LIB := ../../build/lib/libweb_media_service.a
+FRAME_LIB := ../../build/lib/libframe_service.a
 WEBRTC_LIB := ../../build/lib/libwebrtc_service.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) \
-	$(MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(WEB_MEDIA_LIB) \
+	$(MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(FRAME_LIB) \
 	$(WEBRTC_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(WEBRTC_LIB) \
-	$(WEB_MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(MEDIA_LIB) \
+	$(FRAME_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(MEDIA_LIB) \
 	$(INFRA_LIB)
 
 $(INFRA_LIB):
@@ -55,8 +55,8 @@ $(SNAPSHOT_LIB): $(MEDIA_LIB)
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system_service all
 
-$(WEB_MEDIA_LIB): $(MEDIA_LIB)
-	$(MAKE) -C ../web_media_service all
+$(FRAME_LIB): $(MEDIA_LIB)
+	$(MAKE) -C ../frame_service all
 
 $(WEBRTC_LIB): $(MEDIA_LIB) $(NETFRAME_LIB)
 	$(MAKE) -C ../webrtc_service all
