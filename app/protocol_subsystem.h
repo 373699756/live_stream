@@ -5,6 +5,7 @@
 
 #include "frame_service.h"
 #include "http_service.h"
+#include "infra/executor.h"
 #include "netframe_service.h"
 #include "onvif_service.h"
 #include "rtsp_service.h"
@@ -36,6 +37,7 @@ private:
   ProtocolSubsystem(const ProtocolSubsystem &) = delete;
   ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
+  std::unique_ptr<infra::Executor> net_callback_executor_;
   std::unique_ptr<NetEngine> net_engine_;
   std::unique_ptr<IRtspService> rtsp_;
   std::unique_ptr<IWebrtcService> webrtc_;

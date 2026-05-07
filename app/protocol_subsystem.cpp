@@ -10,6 +10,10 @@
 namespace live_stream {
 namespace {
 
+constexpr uint32_t kNetIoThreadCount = 2;
+constexpr uint32_t kNetCallbackWorkerCount = 2;
+constexpr uint32_t kNetCallbackQueueCapacity = 4096;
+
 class StaticOnvifUriProvider : public IOnvifUriProvider {
 public:
   StaticOnvifUriProvider(const AppRuntimeConfig &config,
@@ -60,7 +64,23 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
   const DeviceRefs device = DeviceSubsystem::Get().refs();
   const MediaRefs media = MediaSubsystem::Get().refs();
 
-  net_engine_ = CreateNetEngine(NetEngineOptions{});
+  if (!net_callback_executor_) {
+    net_callback_executor_.reset(new infra::Executor());
+  }
+  infra::ExecutorOptions callback_executor_options;
+  callback_executor_options.worker_count = kNetCallbackWorkerCount;
+  callback_executor_options.queue_capacity = kNetCallbackQueueCapacity;
+  if (!net_callback_executor_->Start(callback_executor_options)) {
+    INFRA_LOG_ERROR("app", "Start net callback executor failed");
+    Stop();
+    return false;
+  }
+
+  NetEngineOptions net_options;
+  net_options.io_threads = kNetIoThreadCount;
+  net_options.callback_mode = CallbackMode::kPostToExecutor;
+  net_options.callback_executor = net_callback_executor_.get();
+  net_engine_ = CreateNetEngine(net_options);
   if (!net_engine_ || !net_engine_->Start()) {
     INFRA_LOG_ERROR("app", "Start net engine failed");
     Stop();
@@ -214,6 +234,9 @@ void ProtocolSubsystem::Stop() {
   if (net_engine_) {
     net_engine_->Stop();
     net_engine_.reset();
+  }
+  if (net_callback_executor_) {
+    net_callback_executor_->Stop(infra::StopMode::kDiscard);
   }
   started_ = false;
 }
