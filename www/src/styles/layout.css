@@ -335,8 +335,14 @@
 
 .segmented button.active,
 .preview-actions button.active,
-.preview-actions button:hover {
+.preview-actions button:not(:disabled):hover {
   background: var(--brand);
+}
+
+.preview-actions button:disabled {
+  color: #6f7f95;
+  cursor: not-allowed;
+  background: #172033;
 }
 
 .preview-actions {

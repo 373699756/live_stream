@@ -41,8 +41,8 @@ std::string XmlEscape(const std::string& value) {
     return escaped;
 }
 
-std::string StreamToken(infra::StreamId stream_id) {
-    return stream_id == infra::StreamId::kSub ? "profile_sub" : "profile_main";
+std::string StreamToken(StreamId stream_id) {
+    return stream_id == StreamId::kSub ? "profile_sub" : "profile_main";
 }
 
 const char* ActionName(OnvifAction action) {

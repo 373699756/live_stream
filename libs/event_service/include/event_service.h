@@ -1,9 +1,6 @@
 #ifndef LIVE_STREAM_EVENT_SERVICE_H_
 #define LIVE_STREAM_EVENT_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
-
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -48,13 +45,17 @@ using EventSubscriptionId = uint64_t;
 // subscriber service's own TaskQueue instead of blocking event-thread.
 using EventHandler = std::function<void(const Event&)>;
 
-class IEventService : public infra::IService {
+class IEventService {
  public:
+    virtual ~IEventService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
     // The handler is invoked asynchronously on event-thread.
-    virtual infra::Result<EventSubscriptionId> Subscribe(
+    virtual EventSubscriptionId Subscribe(
         EventType type, EventHandler handler) = 0;
-    virtual infra::Status Unsubscribe(EventSubscriptionId subscription_id) = 0;
-    virtual infra::Status Publish(const Event& event) = 0;
+    virtual bool Unsubscribe(EventSubscriptionId subscription_id) = 0;
+    virtual bool Publish(const Event& event) = 0;
 };
 
 std::unique_ptr<IEventService> CreateEventService();

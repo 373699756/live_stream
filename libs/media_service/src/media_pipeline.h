@@ -1,8 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
 #define LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
 
-#include "infra/status.h"
-#include "infra/stream_types.h"
+#include "media/stream_types.h"
 #include "media/frame_source.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
@@ -15,7 +14,7 @@ class IHisiSdk;
 }  // namespace hisisdk
 
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config);
-bool IsValidMediaStream(infra::StreamId stream_id);
+bool IsValidMediaStream(StreamId stream_id);
 
 class MediaPipeline {
  public:
@@ -26,10 +25,10 @@ class MediaPipeline {
     void SetConfig(const MediaPipelineConfig& config);
     void SetFrameCallback(EncodedFrameCallback callback, void* user);
 
-    infra::Result<MediaCapabilities> GetCapabilities() const;
-    infra::Status InitSystem();
+    MediaCapabilities GetCapabilities() const;
+    bool InitSystem();
     void DeinitSystem();
-    infra::Status Start();
+    bool Start();
     void Stop();
 
     bool system_initialized() const { return system_initialized_; }

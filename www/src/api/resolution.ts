@@ -24,6 +24,7 @@ export function isResolutionSupported(stream: VideoStreamConfig, capabilities: V
 
 export function isStreamSupported(stream: VideoStreamConfig, capabilities: VideoStreamCapabilities): boolean {
   return (
+    capabilities.available !== false &&
     capabilities.codecs.some((item) => item.codec === stream.codec) &&
     isResolutionSupported(stream, capabilities) &&
     stream.fps >= capabilities.fps.min &&

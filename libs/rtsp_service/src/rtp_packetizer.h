@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTP_PACKETIZER_H_
 #define LIVE_STREAM_RTSP_SERVICE_SRC_RTP_PACKETIZER_H_
 
-#include "infra/encoded_frame.h"
+#include "media/encoded_frame.h"
 
 #include <cstdint>
 #include <vector>
@@ -18,25 +18,25 @@ class RtpPacketizer {
  public:
     explicit RtpPacketizer(uint32_t mtu_bytes);
 
-    std::vector<RtpPacket> Packetize(const infra::EncodedFrame& frame,
+    std::vector<RtpPacket> Packetize(const EncodedFrame& frame,
                                      uint16_t* sequence,
                                      uint32_t ssrc) const;
 
  private:
-    void SendRtpPacket(const infra::EncodedFrame& frame,
+    void SendRtpPacket(const EncodedFrame& frame,
                        const uint8_t* payload,
                        uint32_t size,
                        bool marker,
                        uint16_t* sequence,
                        uint32_t ssrc,
                        std::vector<RtpPacket>* packets) const;
-    void PacketizeH264(const infra::EncodedFrame& frame,
+    void PacketizeH264(const EncodedFrame& frame,
                        const uint8_t* payload,
                        uint32_t size,
                        uint16_t* sequence,
                        uint32_t ssrc,
                        std::vector<RtpPacket>* packets) const;
-    void PacketizeH265(const infra::EncodedFrame& frame,
+    void PacketizeH265(const EncodedFrame& frame,
                        const uint8_t* payload,
                        uint32_t size,
                        uint16_t* sequence,

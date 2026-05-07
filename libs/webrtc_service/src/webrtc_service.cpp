@@ -1,13 +1,13 @@
 #include "webrtc_service.h"
 
 #include "infra/executor.h"
-#include "infra/sync.h"
 #include "media_service.h"
 #include "webrtc_engine.h"
 #include "webrtc_sdp.h"
 #include "webrtc_transport_netframe.h"
 
 #include <map>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -37,9 +37,9 @@ bool IsValidOptions(const WebrtcServiceOptions& options) {
     return true;
 }
 
-bool IsValidStream(infra::StreamId stream_id) {
-    return stream_id == infra::StreamId::kMain ||
-           stream_id == infra::StreamId::kSub;
+bool IsValidStream(StreamId stream_id) {
+    return stream_id == StreamId::kMain ||
+           stream_id == StreamId::kSub;
 }
 
 bool IsOpenPeerState(WebrtcPeerState state) {
@@ -57,76 +57,51 @@ class WebrtcServiceImpl : public IWebrtcService {
         : options_(std::move(options)),
           dependencies_(std::move(dependencies)) {}
 
-    ~WebrtcServiceImpl() override { Deinit(); }
+    ~WebrtcServiceImpl() override { Release(); }
 
-    infra::Status Init() override {
-        infra::MutexGuard guard(&mutex_);
-        if (!IsValidOptions(options_)) {
-            return infra::Status::kInvalidParam;
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
         }
-        if (state_ == ServiceState::kInitialized ||
-            state_ == ServiceState::kStarted ||
-            state_ == ServiceState::kStopped) {
-            return infra::Status::kOk;
-        }
-        engine_ = webrtc_internal::CreateEngine(dependencies_.use_fake_engine);
-        const infra::Status err = engine_->Init(options_);
-        if (err != infra::Status::kOk) {
-            engine_.reset();
-            return err;
-        }
-        if (dependencies_.net_engine != nullptr) {
-            transport_.reset(
-                new webrtc_internal::NetframeWebrtcTransport(
-                    dependencies_.net_engine));
-        }
-        send_executor_.reset(new infra::Executor());
-        state_ = ServiceState::kInitialized;
-        return infra::Status::kOk;
-    }
-
-    infra::Status Start() override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         if (state_ == ServiceState::kStarted) {
-            return infra::Status::kOk;
+            return true;
         }
         if (state_ == ServiceState::kStopped) {
             state_ = ServiceState::kInitialized;
         }
         if (state_ != ServiceState::kInitialized) {
-            return infra::Status::kBusy;
+            return false;
+        }
+        if (!options_.enabled) {
+            state_ = ServiceState::kStarted;
+            return true;
         }
         infra::ExecutorOptions executor_options;
         executor_options.worker_count = options_.send_worker_count;
         executor_options.queue_capacity = options_.send_queue_capacity;
-        const infra::Status executor_error =
-            send_executor_->Start(executor_options);
-        if (executor_error != infra::Status::kOk) {
-            return executor_error;
+        if (!send_executor_->Start(executor_options)) {
+            return false;
         }
-        const infra::Status media_error = SubscribeMediaLocked();
-        if (media_error != infra::Status::kOk) {
+        if (!SubscribeMediaLocked()) {
             send_executor_->Stop(infra::StopMode::kDiscard);
-            return media_error;
+            return false;
         }
         if (transport_) {
-            const infra::Status transport_error =
-                transport_->Start("0.0.0.0", options_.local_port_base);
-            if (transport_error != infra::Status::kOk &&
-                transport_error != infra::Status::kNotSupported) {
+            if (!transport_->Start("0.0.0.0", options_.local_port_base)) {
                 UnsubscribeMediaLocked();
                 send_executor_->Stop(infra::StopMode::kDiscard);
-                return transport_error;
+                return false;
             }
         }
         state_ = ServiceState::kStarted;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
         bool should_stop = false;
         {
-            infra::MutexGuard guard(&mutex_);
+            std::lock_guard<std::mutex> guard(mutex_);
             if (state_ == ServiceState::kStarted) {
                 state_ = ServiceState::kStopped;
                 should_stop = true;
@@ -136,7 +111,7 @@ class WebrtcServiceImpl : public IWebrtcService {
             return;
         }
         {
-            infra::MutexGuard guard(&mutex_);
+            std::lock_guard<std::mutex> guard(mutex_);
             UnsubscribeMediaLocked();
             if (transport_) {
                 transport_->Stop();
@@ -145,51 +120,29 @@ class WebrtcServiceImpl : public IWebrtcService {
         if (send_executor_) {
             send_executor_->Stop(infra::StopMode::kDiscard);
         }
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         CloseAllPeersLocked();
-    }
-
-    void Deinit() override {
-        {
-            infra::MutexGuard guard(&mutex_);
-            if (state_ == ServiceState::kCreated) {
-                return;
-            }
-            state_ = ServiceState::kDeinitialized;
-        }
-        if (send_executor_) {
-            send_executor_->Stop(infra::StopMode::kDiscard);
-        }
-        infra::MutexGuard guard(&mutex_);
-        UnsubscribeMediaLocked();
-        if (transport_) {
-            transport_->Stop();
-            transport_.reset();
-        }
-        CloseAllPeersLocked();
-        send_executor_.reset();
-        if (engine_) {
-            engine_->Deinit();
-            engine_.reset();
-        }
     }
 
     const char* Name() const override { return WebrtcService::Name(); }
 
-    infra::Result<WebrtcPeerInfo> CreatePeer(
+    WebrtcPeerInfo CreatePeer(
         const WebrtcCreatePeerRequest& request) override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != ServiceState::kStarted) {
-            return infra::Result<WebrtcPeerInfo>::Fail(infra::Status::kBusy);
+            return WebrtcPeerInfo();
         }
         if (!options_.enabled || !engine_ || !engine_->Available()) {
-            return infra::Result<WebrtcPeerInfo>::Fail(infra::Status::kNotSupported);
+            return WebrtcPeerInfo();
         }
         if (!IsValidStream(request.stream_id)) {
-            return infra::Result<WebrtcPeerInfo>::Fail(infra::Status::kInvalidParam);
+            return WebrtcPeerInfo();
+        }
+        if (!IsStreamAvailableLocked(request.stream_id)) {
+            return WebrtcPeerInfo();
         }
         if (ActivePeerCountLocked() >= options_.max_peers) {
-            return infra::Result<WebrtcPeerInfo>::Fail(infra::Status::kNoMemory);
+            return WebrtcPeerInfo();
         }
 
         WebrtcPeerInfo peer;
@@ -197,78 +150,78 @@ class WebrtcServiceImpl : public IWebrtcService {
         peer.stream_id = request.stream_id;
         peer.state = WebrtcPeerState::kCreated;
 
-        const infra::Status err = engine_->CreatePeer(peer);
-        if (err != infra::Status::kOk) {
-            return infra::Result<WebrtcPeerInfo>::Fail(err);
+        if (!engine_->CreatePeer(peer)) {
+            return WebrtcPeerInfo();
         }
         peers_[peer.peer_id] = peer;
         ++stats_.total_peers;
         RequestKeyFrameLocked(peer.stream_id);
-        return infra::Result<WebrtcPeerInfo>::Ok(peer);
+        return peer;
     }
 
-    infra::Result<WebrtcAnswer> HandleOffer(
+    WebrtcAnswer HandleOffer(
         const WebrtcOfferRequest& request) override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != ServiceState::kStarted) {
-            return infra::Result<WebrtcAnswer>::Fail(infra::Status::kBusy);
+            return WebrtcAnswer();
         }
         if (request.peer_id.empty() || request.sdp.empty()) {
-            return infra::Result<WebrtcAnswer>::Fail(infra::Status::kInvalidParam);
+            return WebrtcAnswer();
         }
         auto it = peers_.find(request.peer_id);
         if (it == peers_.end() || !IsOpenPeerState(it->second.state)) {
-            return infra::Result<WebrtcAnswer>::Fail(infra::Status::kNotFound);
+            return WebrtcAnswer();
         }
         it->second.state = WebrtcPeerState::kOfferReceived;
-        const infra::Result<std::string> answer =
-            engine_->HandleOffer(it->second, request.sdp);
-        if (!answer.IsOk()) {
+        const std::string answer = engine_->HandleOffer(it->second, request.sdp);
+        if (answer.empty()) {
             it->second.state = WebrtcPeerState::kFailed;
-            return infra::Result<WebrtcAnswer>::Fail(answer.status);
+            return WebrtcAnswer();
         }
         it->second.state = WebrtcPeerState::kConnected;
         ++stats_.offers;
         RequestKeyFrameLocked(it->second.stream_id);
         WebrtcAnswer result;
         result.peer_id = request.peer_id;
-        result.sdp = answer.value;
-        return infra::Result<WebrtcAnswer>::Ok(std::move(result));
+        result.sdp = answer;
+        return result;
     }
 
-    infra::Status AddIceCandidate(
+    bool AddIceCandidate(
         const WebrtcIceCandidate& candidate) override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != ServiceState::kStarted) {
-            return infra::Status::kBusy;
+            return false;
         }
         if (candidate.peer_id.empty() || candidate.candidate.empty() ||
             candidate.sdp_mline_index < 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         auto it = peers_.find(candidate.peer_id);
         if (it == peers_.end() || !IsOpenPeerState(it->second.state)) {
-            return infra::Status::kNotFound;
+            return false;
         }
         WebrtcIceCandidate normalized = candidate;
         normalized.candidate =
             webrtc_internal::ReplaceHostCandidateIp(candidate.candidate,
                                                     options_.public_ip);
-        const infra::Status err = engine_->AddIceCandidate(normalized);
-        if (err == infra::Status::kOk) {
+        if (!engine_->AddIceCandidate(normalized)) {
+            return false;
+        }
+        {
             ++stats_.remote_candidates;
         }
-        return err;
+        return true;
     }
 
-    infra::Status ClosePeer(const std::string& peer_id) override {
-        infra::MutexGuard guard(&mutex_);
+    bool ClosePeer(const std::string& peer_id) override {
+        std::lock_guard<std::mutex> guard(mutex_);
         if (peer_id.empty()) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         auto it = peers_.find(peer_id);
         if (it == peers_.end()) {
-            return infra::Status::kNotFound;
+            return false;
         }
         it->second.state = WebrtcPeerState::kClosing;
         if (engine_) {
@@ -276,21 +229,21 @@ class WebrtcServiceImpl : public IWebrtcService {
         }
         it->second.state = WebrtcPeerState::kClosed;
         peers_.erase(it);
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<WebrtcPeerInfo> GetPeer(
+    WebrtcPeerInfo GetPeer(
         const std::string& peer_id) const override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         auto it = peers_.find(peer_id);
         if (it == peers_.end()) {
-            return infra::Result<WebrtcPeerInfo>::Fail(infra::Status::kNotFound);
+            return WebrtcPeerInfo();
         }
-        return infra::Result<WebrtcPeerInfo>::Ok(it->second);
+        return it->second;
     }
 
     WebrtcServiceStats GetStats() const override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         WebrtcServiceStats result = stats_;
         result.enabled = options_.enabled;
         result.backend_available = engine_ && engine_->Available();
@@ -300,14 +253,14 @@ class WebrtcServiceImpl : public IWebrtcService {
     }
 
     const char* BackendName() const override {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         return engine_ ? engine_->Name() : "none";
     }
 
-    void OnFrame(const infra::EncodedFrame& frame) override {
+    void OnFrame(const EncodedFrame& frame) override {
         std::vector<WebrtcPeerInfo> peers;
         infra::Executor* executor = nullptr;
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != ServiceState::kStarted || !send_executor_) {
             ++stats_.dropped_frames;
             return;
@@ -329,25 +282,72 @@ class WebrtcServiceImpl : public IWebrtcService {
         }
         executor = send_executor_.get();
 
-        const infra::Status post_error =
-            executor->Post([this, frame, peers]() {
+        if (!executor->Post([this, frame, peers]() {
                 SendEncodedFrame(frame, peers);
-            });
-        if (post_error != infra::Status::kOk) {
+            })) {
             ++stats_.dropped_frames;
         }
     }
 
-    void OnSourceStateChanged(infra::StreamId stream_id,
+    void OnSourceStateChanged(StreamId stream_id,
                               StreamState stream_state) override {
         (void)stream_id;
         (void)stream_state;
     }
 
  private:
-    void SendEncodedFrame(const infra::EncodedFrame& frame,
+    bool Prepare() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!IsValidOptions(options_)) {
+            return false;
+        }
+        if (state_ == ServiceState::kInitialized ||
+            state_ == ServiceState::kStarted ||
+            state_ == ServiceState::kStopped) {
+            return true;
+        }
+        engine_ = webrtc_internal::CreateEngine(dependencies_.use_fake_engine);
+        if (!engine_->Start(options_)) {
+            engine_.reset();
+            return false;
+        }
+        if (dependencies_.net_engine != nullptr) {
+            transport_.reset(new webrtc_internal::NetframeWebrtcTransport(
+                dependencies_.net_engine));
+        }
+        send_executor_.reset(new infra::Executor());
+        state_ = ServiceState::kInitialized;
+        return true;
+    }
+
+    void Release() {
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (state_ == ServiceState::kCreated) {
+                return;
+            }
+            state_ = ServiceState::kDeinitialized;
+        }
+        if (send_executor_) {
+            send_executor_->Stop(infra::StopMode::kDiscard);
+        }
+        std::lock_guard<std::mutex> guard(mutex_);
+        UnsubscribeMediaLocked();
+        if (transport_) {
+            transport_->Stop();
+            transport_.reset();
+        }
+        CloseAllPeersLocked();
+        send_executor_.reset();
+        if (engine_) {
+            engine_->Stop();
+            engine_.reset();
+        }
+    }
+
+    void SendEncodedFrame(const EncodedFrame& frame,
                           const std::vector<WebrtcPeerInfo>& peers) {
-        infra::MutexGuard guard(&mutex_);
+        std::lock_guard<std::mutex> guard(mutex_);
         bool delivered = false;
         if (state_ != ServiceState::kStarted || !engine_) {
             ++stats_.dropped_frames;
@@ -360,8 +360,7 @@ class WebrtcServiceImpl : public IWebrtcService {
                 it->second.stream_id != frame.stream_id) {
                 continue;
             }
-            const infra::Status err = engine_->SendFrame(it->second, frame);
-            if (err == infra::Status::kOk) {
+            if (engine_->SendFrame(it->second, frame)) {
                 delivered = true;
                 ++stats_.sent_frames;
             } else {
@@ -389,37 +388,47 @@ class WebrtcServiceImpl : public IWebrtcService {
         return count;
     }
 
-    infra::Status SubscribeMediaLocked() {
+    bool IsStreamAvailableLocked(StreamId stream_id) const {
         if (dependencies_.media_service == nullptr) {
-            return infra::Status::kOk;
+            return true;
+        }
+        return dependencies_.media_service->IsStreamStarted(stream_id);
+    }
+
+    bool SubscribeMediaLocked() {
+        if (dependencies_.media_service == nullptr) {
+            return true;
         }
         if (main_subscription_id_ != 0 || sub_subscription_id_ != 0) {
-            return infra::Status::kOk;
+            return true;
         }
 
         FrameSubscribeOptions main_options;
-        main_options.stream_id = infra::StreamId::kMain;
+        main_options.stream_id = StreamId::kMain;
         main_options.sink_name = WebrtcService::Name();
-        auto main_result =
+        const FrameSubscriptionId main_result =
             dependencies_.media_service->SubscribeFrames(main_options, this);
-        if (!main_result.IsOk()) {
-            return main_result.status;
+        if (main_result == 0) {
+            return false;
         }
-        main_subscription_id_ = main_result.value;
+        main_subscription_id_ = main_result;
 
+        if (!dependencies_.media_service->IsStreamStarted(StreamId::kSub)) {
+            return true;
+        }
         FrameSubscribeOptions sub_options;
-        sub_options.stream_id = infra::StreamId::kSub;
+        sub_options.stream_id = StreamId::kSub;
         sub_options.sink_name = WebrtcService::Name();
-        auto sub_result =
+        const FrameSubscriptionId sub_result =
             dependencies_.media_service->SubscribeFrames(sub_options, this);
-        if (!sub_result.IsOk()) {
+        if (sub_result == 0) {
             (void)dependencies_.media_service->UnsubscribeFrames(
                 main_subscription_id_);
             main_subscription_id_ = 0;
-            return sub_result.status;
+            return false;
         }
-        sub_subscription_id_ = sub_result.value;
-        return infra::Status::kOk;
+        sub_subscription_id_ = sub_result;
+        return true;
     }
 
     void UnsubscribeMediaLocked() {
@@ -440,7 +449,7 @@ class WebrtcServiceImpl : public IWebrtcService {
         }
     }
 
-    void RequestKeyFrameLocked(infra::StreamId stream_id) {
+    void RequestKeyFrameLocked(StreamId stream_id) {
         if (dependencies_.media_service == nullptr) {
             return;
         }
@@ -465,7 +474,7 @@ class WebrtcServiceImpl : public IWebrtcService {
     std::unique_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::unique_ptr<webrtc_internal::NetframeWebrtcTransport> transport_;
     std::unique_ptr<infra::Executor> send_executor_;
-    mutable infra::Mutex mutex_;
+    mutable std::mutex mutex_;
     std::map<std::string, WebrtcPeerInfo> peers_;
     WebrtcServiceStats stats_{};
     uint64_t next_peer_id_ = 1;

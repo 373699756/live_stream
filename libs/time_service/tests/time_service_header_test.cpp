@@ -129,13 +129,13 @@ int main() {
         return 10;
     }
     if (lifecycle_service->Init() != infra::Status::kOk ||
-        lifecycle_service->SetTimezone(infra::RequestContext(), "UTC") !=
+        lifecycle_service->SetTimezone(live_stream::RequestContext(), "UTC") !=
             infra::Status::kBusy ||
         lifecycle_service->Start() != infra::Status::kOk) {
         return 11;
     }
     lifecycle_service->Stop();
-    if (lifecycle_service->SetSystemTime(infra::RequestContext(), 4000,
+    if (lifecycle_service->SetSystemTime(live_stream::RequestContext(), 4000,
                                          live_stream::TimeSyncSource::kManual) !=
         infra::Status::kBusy) {
         return 12;
@@ -174,7 +174,7 @@ int main() {
         return 2;
     }
 
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     context.request_id = "req-1";
     context.user_name = "admin";
     if (service->SetTimezone(context, "UTC") != infra::Status::kOk ||

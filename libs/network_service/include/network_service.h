@@ -1,9 +1,7 @@
 #ifndef LIVE_STREAM_NETWORK_SERVICE_H_
 #define LIVE_STREAM_NETWORK_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/request_context.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <memory>
@@ -41,28 +39,28 @@ struct NetworkInterfaceStatus {
     std::string mac_address;
     std::string gateway;
     std::vector<std::string> dns_servers;
-    infra::Status last_error = infra::Status::kOk;
+    bool last_ok = true;
 };
 
 class INetworkPlatform {
  public:
     virtual ~INetworkPlatform() = default;
 
-    virtual infra::Result<std::vector<std::string>> ListInterfaces() = 0;
-    virtual infra::Result<NetworkInterfaceStatus> GetInterfaceStatus(
+    virtual std::vector<std::string> ListInterfaces() = 0;
+    virtual NetworkInterfaceStatus GetInterfaceStatus(
         const std::string& ifname) = 0;
-    virtual infra::Status SetInterfaceEnabled(const std::string& ifname,
-                                             bool enabled) = 0;
-    virtual infra::Status ApplyStaticAddress(
+    virtual bool SetInterfaceEnabled(const std::string& ifname,
+                                     bool enabled) = 0;
+    virtual bool ApplyStaticAddress(
         const NetworkInterfaceConfig& config) = 0;
-    virtual infra::Status StartDhcp(const std::string& ifname) = 0;
-    virtual infra::Status StopDhcp(const std::string& ifname) = 0;
+    virtual bool StartDhcp(const std::string& ifname) = 0;
+    virtual bool StopDhcp(const std::string& ifname) = 0;
     // Passing an empty gateway clears the interface default route.
-    virtual infra::Status SetGateway(const std::string& ifname,
-                                    const std::string& gateway) = 0;
-    virtual infra::Status SetDnsServers(
+    virtual bool SetGateway(const std::string& ifname,
+                            const std::string& gateway) = 0;
+    virtual bool SetDnsServers(
         const std::vector<std::string>& dns_servers) = 0;
-    virtual infra::Status RollbackInterface(
+    virtual bool RollbackInterface(
         const NetworkInterfaceConfig& previous_config) = 0;
 };
 
@@ -75,15 +73,19 @@ struct NetworkServiceOptions {
     bool allow_loopback_config = false;
 };
 
-class INetworkService : public infra::IService {
+class INetworkService {
  public:
-    virtual infra::Result<std::vector<std::string>> GetInterfaces() = 0;
-    virtual infra::Result<NetworkInterfaceStatus> GetInterfaceStatus(
+    virtual ~INetworkService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual std::vector<std::string> GetInterfaces() = 0;
+    virtual NetworkInterfaceStatus GetInterfaceStatus(
         const std::string& ifname) = 0;
-    virtual infra::Status ApplyInterfaceConfig(
-        const infra::RequestContext& context,
+    virtual bool ApplyInterfaceConfig(
+        const live_stream::RequestContext& context,
         const NetworkInterfaceConfig& config) = 0;
-    virtual infra::Status ReloadStatus() = 0;
+    virtual bool ReloadStatus() = 0;
 };
 
 std::unique_ptr<INetworkService> CreateNetworkService(

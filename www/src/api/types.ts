@@ -44,6 +44,7 @@ export interface NumberRange {
 
 export interface VideoStreamCapabilities {
   stream: StreamName;
+  available: boolean;
   codecs: CodecCapability[];
   resolutions: VideoResolutionCapability[];
   fps: NumberRange;
@@ -129,6 +130,30 @@ export interface SnapshotConfig {
   timeout_ms: number;
 }
 
+export interface RtspConfig {
+  enabled: boolean;
+  port: number;
+  auth_required: boolean;
+  paths: {
+    main: string;
+    sub: string;
+  };
+  max_sessions: number;
+  session_timeout_sec: number;
+}
+
+export interface WebrtcConfig {
+  enabled: boolean;
+  signaling_path: string;
+  ice_servers: Array<{
+    url: string;
+    username?: string;
+    credential?: string;
+  }>;
+  max_peers: number;
+  prefer_tcp: boolean;
+}
+
 export interface SystemStatus {
   deviceName: string;
   model: string;
@@ -147,4 +172,17 @@ export interface StreamStatus {
   fps: number;
   bitrateKbps: number;
   state: 'running' | 'stopped' | 'error';
+}
+
+export interface OperationRecord {
+  timestamp_ms: number;
+  request_id: string;
+  user_name: string;
+  session_id: string;
+  client_ip: string;
+  module: string;
+  action: string;
+  target: string;
+  result: 'success' | 'failed' | 'rejected' | string;
+  reason: string;
 }

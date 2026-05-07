@@ -22,16 +22,11 @@ class OsdMppAdapter {
  public:
     virtual ~OsdMppAdapter() = default;
 
-    virtual infra::Status Create(int32_t handle,
-                                 const OsdRegionConfig& config) = 0;
-    virtual infra::Status Attach(int32_t handle,
-                                 const OsdRegionConfig& config) = 0;
-    virtual infra::Status Detach(int32_t handle,
-                                 const OsdRegionConfig& config) = 0;
-    virtual infra::Status SetDisplay(int32_t handle,
-                                     const OsdRegionConfig& config) = 0;
-    virtual infra::Status UpdateBitmap(int32_t handle,
-                                       const OsdBitmap& bitmap) = 0;
+    virtual bool Create(int32_t handle, const OsdRegionConfig& config) = 0;
+    virtual bool Attach(int32_t handle, const OsdRegionConfig& config) = 0;
+    virtual bool Detach(int32_t handle, const OsdRegionConfig& config) = 0;
+    virtual bool SetDisplay(int32_t handle, const OsdRegionConfig& config) = 0;
+    virtual bool UpdateBitmap(int32_t handle, const OsdBitmap& bitmap) = 0;
     virtual void Destroy(int32_t handle) = 0;
 };
 
@@ -39,16 +34,11 @@ class HostOsdMppAdapter final : public OsdMppAdapter {
  public:
     explicit HostOsdMppAdapter(hisisdk::IHisiSdk* sdk = nullptr);
 
-    infra::Status Create(int32_t handle,
-                         const OsdRegionConfig& config) override;
-    infra::Status Attach(int32_t handle,
-                         const OsdRegionConfig& config) override;
-    infra::Status Detach(int32_t handle,
-                         const OsdRegionConfig& config) override;
-    infra::Status SetDisplay(int32_t handle,
-                             const OsdRegionConfig& config) override;
-    infra::Status UpdateBitmap(int32_t handle,
-                               const OsdBitmap& bitmap) override;
+    bool Create(int32_t handle, const OsdRegionConfig& config) override;
+    bool Attach(int32_t handle, const OsdRegionConfig& config) override;
+    bool Detach(int32_t handle, const OsdRegionConfig& config) override;
+    bool SetDisplay(int32_t handle, const OsdRegionConfig& config) override;
+    bool UpdateBitmap(int32_t handle, const OsdBitmap& bitmap) override;
     void Destroy(int32_t handle) override;
 
  private:

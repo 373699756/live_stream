@@ -1,20 +1,43 @@
+import { useEffect, useState } from 'react';
+import { api, operationsExportUrl } from '../api/client';
+import type { OperationRecord } from '../api/types';
+
+function formatTimestamp(timestampMs: number) {
+  if (timestampMs <= 0) {
+    return '-';
+  }
+  return new Date(timestampMs).toLocaleString();
+}
+
 export function LogsPage() {
+  const [records, setRecords] = useState<OperationRecord[]>([]);
+
+  useEffect(() => {
+    void api.getOperations().then((body) => setRecords(body.items));
+  }, []);
+
   return (
     <section className="panel">
       <div className="page-heading">
         <div>
           <h2>日志信息</h2>
-          <p>导出运行日志和用户操作审计记录。</p>
+          <p>查看和导出用户操作审计记录。</p>
         </div>
       </div>
       <div className="log-actions">
-        <a className="button-like" href="/api/logs/export">导出运行日志</a>
-        <a className="button-like" href="/api/operations/export">导出操作审计</a>
+        <a className="button-like" href={operationsExportUrl()}>导出操作审计</a>
       </div>
       <div className="log-table">
-        <div><span>2026-04-26 10:20:12</span><strong>admin 登录系统</strong><em>Success</em></div>
-        <div><span>2026-04-26 10:21:03</span><strong>修改视频配置</strong><em>Pending</em></div>
-        <div><span>2026-04-26 10:22:18</span><strong>请求主码流抓图</strong><em>Success</em></div>
+        {records.map((record) => (
+          <div key={record.request_id || `${record.timestamp_ms}-${record.action}`}>
+            <span>{formatTimestamp(record.timestamp_ms)}</span>
+            <strong>{record.user_name || '-'} {record.action} {record.target}</strong>
+            <em>{record.result}</em>
+          </div>
+        ))}
+        {records.length === 0 && (
+          <div><span>-</span><strong>暂无审计记录</strong><em>-</em></div>
+        )}
       </div>
     </section>
   );

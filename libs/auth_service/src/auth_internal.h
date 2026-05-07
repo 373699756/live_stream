@@ -3,8 +3,6 @@
 
 #include "auth_service.h"
 
-#include "infra/status.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -30,8 +28,8 @@ struct SessionRecord {
 
 bool IsEmptyOrTooLong(const std::string& value, std::size_t max_length);
 bool IsHexString(const std::string& value);
-infra::Result<std::string> Sha256Credential(const std::string& password,
-                                             const std::string& salt_hex);
+std::string Sha256Credential(const std::string& password,
+                             const std::string& salt_hex);
 bool ConstantTimeEquals(const std::string& left, const std::string& right);
 bool ParseRole(const std::string& role, AuthRole* parsed);
 bool RoleHasPermission(AuthRole role, AuthPermission permission);

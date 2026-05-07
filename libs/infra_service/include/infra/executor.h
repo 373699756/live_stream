@@ -8,8 +8,6 @@
 #ifndef LIVE_STREAM_INFRA_EXECUTOR_H_
 #define LIVE_STREAM_INFRA_EXECUTOR_H_
 
-#include "infra/status.h"
-
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -190,9 +188,9 @@ class Executor {
     Executor(const Executor&) = delete;
     Executor& operator=(const Executor&) = delete;
 
-    Status Start(const ExecutorOptions& options);
+    bool Start(const ExecutorOptions& options);
     void Stop(StopMode mode);
-    Status Post(Task task);
+    bool Post(Task task);
     ExecutorStats GetStats() const;
 
  private:

@@ -8,9 +8,7 @@
 #ifndef LIVE_STREAM_AUTH_SERVICE_H_
 #define LIVE_STREAM_AUTH_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/request_context.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <memory>
@@ -71,7 +69,7 @@ struct AuthUserRecord {
  * @brief 登录请求。
  */
 struct LoginRequest {
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     std::string user_name;
     std::string password;
 };
@@ -120,7 +118,7 @@ enum class AuthAuditResult {
  * 的 OperationRecord。
  */
 struct AuthAuditRecord {
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     std::string user_name;
     std::string session_id;
     std::string module;
@@ -163,7 +161,7 @@ class IAuthTokenGenerator {
  public:
     virtual ~IAuthTokenGenerator() = default;
 
-    virtual infra::Result<std::string> GenerateToken() = 0;
+    virtual std::string GenerateToken() = 0;
 };
 
 /**
@@ -173,9 +171,9 @@ class IAuthUserStore {
  public:
     virtual ~IAuthUserStore() = default;
 
-    virtual infra::Result<AuthUserRecord> FindUser(
+    virtual AuthUserRecord FindUser(
         const std::string& user_name) = 0;
-    virtual infra::Status Reload() { return infra::Status::kOk; }
+    virtual bool Reload() { return true; }
 };
 
 /**
@@ -185,7 +183,7 @@ class IPasswordVerifier {
  public:
     virtual ~IPasswordVerifier() = default;
 
-    virtual infra::Status VerifyPassword(
+    virtual bool VerifyPassword(
         const std::string& password,
         const std::string& password_credential) = 0;
 };
@@ -197,21 +195,25 @@ class IAuthAuditSink {
  public:
     virtual ~IAuthAuditSink() = default;
 
-    virtual infra::Status RecordAuthOperation(
+    virtual bool RecordAuthOperation(
         const AuthAuditRecord& record) = 0;
 };
 
 /**
  * @brief 统一鉴权 public interface。
  */
-class IAuthService : public infra::IService {
+class IAuthService {
  public:
-    virtual infra::Status SetAuditSink(IAuthAuditSink* sink) = 0;
-    virtual infra::Result<LoginResult> Login(const LoginRequest& request) = 0;
-    virtual infra::Status Logout(const infra::RequestContext& context) = 0;
-    virtual infra::Result<TokenValidationResult> ValidateToken(
+    virtual ~IAuthService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual bool SetAuditSink(IAuthAuditSink* sink) = 0;
+    virtual LoginResult Login(const LoginRequest& request) = 0;
+    virtual bool Logout(const live_stream::RequestContext& context) = 0;
+    virtual TokenValidationResult ValidateToken(
         const std::string& token) = 0;
-    virtual infra::Status CheckPermission(
+    virtual bool CheckPermission(
         const AuthPrincipal& principal,
         AuthPermission permission,
         const std::string& target) = 0;
@@ -254,7 +256,7 @@ std::unique_ptr<IPasswordVerifier> CreateSha256PasswordVerifier();
  *
  * @return 成功返回 sha256:<salt_hex>:<hash_hex>；参数非法返回 kInvalidParam。
  */
-infra::Result<std::string> MakeSha256PasswordCredential(
+std::string MakeSha256PasswordCredential(
     const std::string& password,
     const std::string& salt_hex);
 

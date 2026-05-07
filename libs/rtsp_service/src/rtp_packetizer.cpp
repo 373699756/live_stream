@@ -10,11 +10,11 @@ constexpr uint8_t kPayloadTypeH264 = 96;
 constexpr uint8_t kPayloadTypeH265 = 98;
 constexpr uint32_t kRtpClockRate = 90000;
 
-uint8_t PayloadType(infra::VideoCodec codec) {
-    return codec == infra::VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
+uint8_t PayloadType(VideoCodec codec) {
+    return codec == VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
 }
 
-uint32_t RtpTimestamp(const infra::EncodedFrame& frame) {
+uint32_t RtpTimestamp(const EncodedFrame& frame) {
     return static_cast<uint32_t>((frame.pts_us * kRtpClockRate) / 1000000);
 }
 
@@ -50,7 +50,7 @@ RtpPacketizer::RtpPacketizer(uint32_t mtu_bytes)
     : mtu_bytes_(mtu_bytes < 64 ? 64 : mtu_bytes) {}
 
 std::vector<RtpPacket> RtpPacketizer::Packetize(
-    const infra::EncodedFrame& frame,
+    const EncodedFrame& frame,
     uint16_t* sequence,
     uint32_t ssrc) const {
     std::vector<RtpPacket> packets;
@@ -64,7 +64,7 @@ std::vector<RtpPacket> RtpPacketizer::Packetize(
         SendRtpPacket(frame, payload, size, true, sequence, ssrc, &packets);
         return packets;
     }
-    if (frame.codec == infra::VideoCodec::kH265) {
+    if (frame.codec == VideoCodec::kH265) {
         PacketizeH265(frame, payload, size, sequence, ssrc, &packets);
     } else {
         PacketizeH264(frame, payload, size, sequence, ssrc, &packets);
@@ -72,7 +72,7 @@ std::vector<RtpPacket> RtpPacketizer::Packetize(
     return packets;
 }
 
-void RtpPacketizer::SendRtpPacket(const infra::EncodedFrame& frame,
+void RtpPacketizer::SendRtpPacket(const EncodedFrame& frame,
                                   const uint8_t* payload,
                                   uint32_t size,
                                   bool marker,
@@ -92,7 +92,7 @@ void RtpPacketizer::SendRtpPacket(const infra::EncodedFrame& frame,
     packets->push_back(std::move(packet));
 }
 
-void RtpPacketizer::PacketizeH264(const infra::EncodedFrame& frame,
+void RtpPacketizer::PacketizeH264(const EncodedFrame& frame,
                                   const uint8_t* payload,
                                   uint32_t size,
                                   uint16_t* sequence,
@@ -128,7 +128,7 @@ void RtpPacketizer::PacketizeH264(const infra::EncodedFrame& frame,
     }
 }
 
-void RtpPacketizer::PacketizeH265(const infra::EncodedFrame& frame,
+void RtpPacketizer::PacketizeH265(const EncodedFrame& frame,
                                   const uint8_t* payload,
                                   uint32_t size,
                                   uint16_t* sequence,

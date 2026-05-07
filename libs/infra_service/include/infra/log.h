@@ -8,8 +8,6 @@
 #ifndef LIVE_STREAM_INFRA_LOG_H_
 #define LIVE_STREAM_INFRA_LOG_H_
 
-#include "infra/status.h"
-
 #include <cstdint>
 #include <string>
 
@@ -55,11 +53,11 @@ class Log {
      *
      * @param config 日志配置，包含等级、输出路径、轮转和异步写入设置。
      *
-     * @return 成功返回 kOk；文件路径无法打开时返回 kIoError。
+     * @return 成功返回 true；文件路径无法打开时返回 false。
      *
      * @note 重复调用 Init() 会先关闭旧运行时，再使用新配置初始化。
      */
-    static Status Init(const LogConfig& config);
+    static bool Init(const LogConfig& config);
 
     /**
      * @brief 关闭全局日志运行时。

@@ -20,20 +20,19 @@ int main() {
     options.worker_count = 2;
     options.queue_capacity = 8;
 
-    if (executor.Post([]() {}) != infra::Status::kBusy) {
+    if (executor.Post([]() {})) {
         return 1;
     }
-    if (executor.Start(options) != infra::Status::kOk) {
+    if (!executor.Start(options)) {
         return 2;
     }
-    if (executor.Start(options) != infra::Status::kOk) {
+    if (!executor.Start(options)) {
         return 3;
     }
 
     std::atomic<int> completed{0};
     for (int i = 0; i < 4; ++i) {
-        if (executor.Post([&completed]() { completed.fetch_add(1); }) !=
-            infra::Status::kOk) {
+        if (!executor.Post([&completed]() { completed.fetch_add(1); })) {
             return 4;
         }
     }
@@ -47,11 +46,11 @@ int main() {
     }
 
     executor.Stop(infra::StopMode::kDrain);
-    if (executor.Post([]() {}) != infra::Status::kBusy) {
+    if (executor.Post([]() {})) {
         return 7;
     }
 
-    if (executor.Start(options) != infra::Status::kOk) {
+    if (!executor.Start(options)) {
         return 8;
     }
     stats = executor.GetStats();
@@ -62,21 +61,20 @@ int main() {
 
     options.worker_count = 1;
     options.queue_capacity = 1;
-    if (executor.Start(options) != infra::Status::kOk) {
+    if (!executor.Start(options)) {
         return 10;
     }
     std::atomic<int> blocked{0};
     if (executor.Post([&blocked]() {
             infra::Time::SleepMillis(20);
             blocked.fetch_add(1);
-        }) != infra::Status::kOk) {
+        })) {
         return 11;
     }
-    if (executor.Post([&blocked]() { blocked.fetch_add(1); }) !=
-        infra::Status::kOk) {
+    if (!executor.Post([&blocked]() { blocked.fetch_add(1); })) {
         return 12;
     }
-    if (executor.Post([]() {}) != infra::Status::kBusy) {
+    if (executor.Post([]() {})) {
         return 13;
     }
     executor.Stop(infra::StopMode::kDrain);
@@ -86,7 +84,7 @@ int main() {
 
     options.worker_count = 1;
     options.queue_capacity = 4;
-    if (executor.Start(options) != infra::Status::kOk) {
+    if (!executor.Start(options)) {
         return 15;
     }
     std::atomic<int> discard_value{0};

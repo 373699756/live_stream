@@ -16,17 +16,14 @@ bool IsValidSize(const VideoSize& size) {
 }
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
-infra::Status FromHiStatus(int32_t status) {
-    return status == HI_SUCCESS ? infra::Status::kOk : infra::Status::kIoError;
-}
+bool FromHiStatus(int32_t status) { return status == HI_SUCCESS; }
 #endif
 
 }  // namespace
 
-infra::Status DefaultHisiSdk::InitSystem(
-    const MediaPipelineConfig& config) {
+bool DefaultHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     if (!IsValidSize(config.main_stream.size) || config.vb_block_count == 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     VB_CONFIG_S vb_config{};
@@ -52,7 +49,7 @@ infra::Status DefaultHisiSdk::InitSystem(
         return FromHiStatus(ret);
     }
 #endif
-    return infra::Status::kOk;
+    return true;
 }
 
 void DefaultHisiSdk::DeinitSystem() {

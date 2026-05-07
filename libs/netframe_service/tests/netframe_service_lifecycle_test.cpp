@@ -15,24 +15,24 @@ void OnUdp(void*,
 int main() {
     live_stream::NetEngineOptions options;
     auto engine = live_stream::CreateNetEngine(options);
-    if (!engine.IsOk()) {
+    if (!engine) {
         return 1;
     }
-    if (engine.value->Start() != infra::Status::kOk) {
+    if (!engine->Start()) {
         return 2;
     }
-    if (engine.value->Start() != infra::Status::kOk) {
+    if (!engine->Start()) {
         return 3;
     }
 
-    auto timer = engine.value->RunOnIoAfter(100, []() {});
-    if (!timer.IsOk()) {
+    const live_stream::NetTimerId timer = engine->RunOnIoAfter(100, []() {});
+    if (timer == 0) {
         return 4;
     }
-    if (engine.value->CancelIoTimer(timer.value) != infra::Status::kOk) {
+    if (!engine->CancelIoTimer(timer)) {
         return 5;
     }
-    if (engine.value->CancelIoTimer(timer.value) != infra::Status::kNotFound) {
+    if (engine->CancelIoTimer(timer)) {
         return 6;
     }
 
@@ -41,18 +41,17 @@ int main() {
     listen.address.port = 0;
     live_stream::TcpCallbacks tcp_callbacks;
     tcp_callbacks.on_accept = OnAccept;
-    auto server = engine.value->ListenTcp(listen, tcp_callbacks);
-    if (!server.IsOk()) {
+    const live_stream::TcpServerId server = engine->ListenTcp(listen, tcp_callbacks);
+    if (server == 0) {
         return 7;
     }
-    if (!engine.value->TcpLocalAddress(server.value).IsOk()) {
+    if (engine->TcpLocalAddress(server).port == 0) {
         return 8;
     }
-    if (engine.value->CloseTcp(server.value) != infra::Status::kOk) {
+    if (!engine->CloseTcp(server)) {
         return 9;
     }
-    if (engine.value->TcpLocalAddress(server.value).status !=
-        infra::Status::kNotFound) {
+    if (engine->TcpLocalAddress(server).port != 0) {
         return 10;
     }
 
@@ -61,22 +60,21 @@ int main() {
     bind.address.port = 0;
     live_stream::UdpCallbacks udp_callbacks;
     udp_callbacks.on_read = OnUdp;
-    auto socket_id = engine.value->BindUdp(bind, udp_callbacks);
-    if (!socket_id.IsOk()) {
+    const live_stream::UdpSocketId socket_id = engine->BindUdp(bind, udp_callbacks);
+    if (socket_id == 0) {
         return 11;
     }
-    if (!engine.value->UdpLocalAddress(socket_id.value).IsOk()) {
+    if (engine->UdpLocalAddress(socket_id).port == 0) {
         return 12;
     }
-    if (engine.value->CloseUdp(socket_id.value) != infra::Status::kOk) {
+    if (!engine->CloseUdp(socket_id)) {
         return 13;
     }
-    if (engine.value->UdpLocalAddress(socket_id.value).status !=
-        infra::Status::kNotFound) {
+    if (engine->UdpLocalAddress(socket_id).port != 0) {
         return 14;
     }
 
-    engine.value->Stop();
-    engine.value->Stop();
+    engine->Stop();
+    engine->Stop();
     return 0;
 }

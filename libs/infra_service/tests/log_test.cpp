@@ -12,7 +12,7 @@ int main() {
     config.console_output = false;
     config.async_write = true;
 
-    if (infra::Log::Init(config) != infra::Status::kOk) {
+    if (!infra::Log::Init(config)) {
         return 1;
     }
 
@@ -22,12 +22,12 @@ int main() {
     INFRA_LOG_ERROR("test", "error log");
     infra::Log::Shutdown();
 
-    infra::Result<std::string> content = infra::File::ReadAll(log_path);
-    if (!content.IsOk()) {
+    const std::string content = infra::File::ReadAll(log_path);
+    if (content.empty()) {
         return 2;
     }
-    if (content.value.find("info log 1") == std::string::npos ||
-        content.value.find("filtered log") != std::string::npos) {
+    if (content.find("info log 1") == std::string::npos ||
+        content.find("filtered log") != std::string::npos) {
         return 3;
     }
     infra::File::Remove(log_path);

@@ -1,10 +1,7 @@
 #include "event_service.h"
 
-#include "infra/status.h"
-
 #include <chrono>
 #include <condition_variable>
-#include <cstring>
 #include <mutex>
 #include <string>
 
@@ -16,13 +13,10 @@ int HeaderAndLifecycleTest() {
     if (!service) {
         return 1;
     }
-    if (std::strcmp(service->Name(), "event_service") != 0) {
-        return 2;
-    }
-    if (service->Init() != infra::Status::kOk) {
+    if (!service->Init()) {
         return 3;
     }
-    if (service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 4;
     }
     service->Stop();
@@ -34,8 +28,7 @@ int HeaderAndLifecycleTest() {
 int PublishSubscribeTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Init() || !service->Start()) {
         return 10;
     }
 
@@ -46,7 +39,7 @@ int PublishSubscribeTest() {
     std::string target;
     int32_t value = 0;
 
-    infra::Result<live_stream::EventSubscriptionId> subscription =
+    const live_stream::EventSubscriptionId subscription =
         service->Subscribe(live_stream::EventType::kConfigChanged,
                            [&](const live_stream::Event& event) {
                                std::lock_guard<std::mutex> lock(mutex);
@@ -56,14 +49,14 @@ int PublishSubscribeTest() {
                                value = event.value;
                                condition.notify_one();
                            });
-    if (!subscription.IsOk()) {
+    if (subscription == 0) {
         return 11;
     }
 
     live_stream::Event ignored;
     ignored.type = live_stream::EventType::kNetworkChanged;
     ignored.message = "ignored";
-    if (service->Publish(ignored) != infra::Status::kOk) {
+    if (!service->Publish(ignored)) {
         return 12;
     }
 
@@ -81,7 +74,7 @@ int PublishSubscribeTest() {
     event.target = "video.main";
     event.message = "changed";
     event.value = 7;
-    if (service->Publish(event) != infra::Status::kOk) {
+    if (!service->Publish(event)) {
         return 14;
     }
 
@@ -100,10 +93,10 @@ int PublishSubscribeTest() {
     }
 
     received = false;
-    if (service->Unsubscribe(subscription.value) != infra::Status::kOk) {
+    if (!service->Unsubscribe(subscription)) {
         return 17;
     }
-    if (service->Publish(event) != infra::Status::kOk) {
+    if (!service->Publish(event)) {
         return 18;
     }
     {
@@ -122,27 +115,27 @@ int PublishSubscribeTest() {
 int SubscriptionLimitTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (service->Init() != infra::Status::kOk) {
+    if (!service->Init()) {
         return 29;
     }
 
     for (int i = 0; i < 128; ++i) {
-        infra::Result<live_stream::EventSubscriptionId> subscription =
+        const live_stream::EventSubscriptionId subscription =
             service->Subscribe(live_stream::EventType::kConfigChanged,
                                [](const live_stream::Event& event) {
                                    (void)event;
                                });
-        if (!subscription.IsOk()) {
+        if (subscription == 0) {
             return 30;
         }
     }
 
-    infra::Result<live_stream::EventSubscriptionId> overflow =
+    const live_stream::EventSubscriptionId overflow =
         service->Subscribe(live_stream::EventType::kConfigChanged,
                            [](const live_stream::Event& event) {
                                (void)event;
                            });
-    if (overflow.status != infra::Status::kBusy) {
+    if (overflow != 0) {
         return 31;
     }
     return 0;
@@ -151,27 +144,26 @@ int SubscriptionLimitTest() {
 int EventSizeLimitTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Init() || !service->Start()) {
         return 40;
     }
 
     live_stream::Event event;
     event.type = live_stream::EventType::kConfigChanged;
     event.source = std::string(65, 's');
-    if (service->Publish(event) != infra::Status::kInvalidParam) {
+    if (service->Publish(event)) {
         return 41;
     }
 
     event.source.clear();
     event.target = std::string(129, 't');
-    if (service->Publish(event) != infra::Status::kInvalidParam) {
+    if (service->Publish(event)) {
         return 42;
     }
 
     event.target.clear();
     event.message = std::string(257, 'm');
-    if (service->Publish(event) != infra::Status::kInvalidParam) {
+    if (service->Publish(event)) {
         return 43;
     }
     return 0;
@@ -183,21 +175,20 @@ int ErrorPathTest() {
 
     live_stream::Event event;
     event.type = live_stream::EventType::kConfigChanged;
-    if (service->Publish(event) != infra::Status::kBusy) {
+    if (service->Publish(event)) {
         return 20;
     }
     if (service->Subscribe(live_stream::EventType::kConfigChanged,
-                           live_stream::EventHandler()).status !=
-        infra::Status::kInvalidParam) {
+                           live_stream::EventHandler()) != 0) {
         return 21;
     }
     if (service->Subscribe(live_stream::EventType::kConfigChanged,
                            [](const live_stream::Event& received_event) {
                                (void)received_event;
-                           }).status != infra::Status::kBusy) {
+                           }) != 0) {
         return 24;
     }
-    if (service->Unsubscribe(100) != infra::Status::kNotFound) {
+    if (service->Unsubscribe(100)) {
         return 22;
     }
     return 0;

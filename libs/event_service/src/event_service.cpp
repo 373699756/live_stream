@@ -1,7 +1,6 @@
 #include "event_service.h"
 
 #include "infra/executor.h"
-#include "infra/service.h"
 
 #include <memory>
 #include <mutex>
@@ -29,109 +28,49 @@ bool IsEventSizeValid(const Event& event) {
            event.message.size() <= kMaxMessageLength;
 }
 
-class EventServiceImpl : public IEventService, private infra::ServiceBase {
+class EventServiceImpl : public IEventService {
  public:
     EventServiceImpl() = default;
     ~EventServiceImpl() override {
         Stop();
-        Deinit();
+        Release();
     }
 
-    infra::Status Init() override { return infra::ServiceBase::Init(); }
-    infra::Status Start() override { return infra::ServiceBase::Start(); }
-    void Stop() override { infra::ServiceBase::Stop(); }
-    void Deinit() override { infra::ServiceBase::Deinit(); }
-
-    const char* Name() const override {
-        return "event_service";
-    }
-
-    infra::Result<EventSubscriptionId> Subscribe(
-        EventType type, EventHandler handler) override {
-        if (!handler) {
-            return infra::Result<EventSubscriptionId>::Fail(
-                infra::Status::kInvalidParam);
-        }
-        if (!IsInitializedForRead()) {
-            return infra::Result<EventSubscriptionId>::Fail(
-                infra::Status::kBusy);
-        }
-
+    bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (subscriptions_.size() >= kMaxSubscriptions) {
-            return infra::Result<EventSubscriptionId>::Fail(
-                infra::Status::kBusy);
+        if (initialized_) {
+            return true;
         }
-        const EventSubscriptionId subscription_id = next_subscription_id_++;
-        subscriptions_[subscription_id] = Subscription{type, std::move(handler)};
-        return infra::Result<EventSubscriptionId>::Ok(subscription_id);
-    }
-
-    infra::Status Unsubscribe(EventSubscriptionId subscription_id) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto erased = subscriptions_.erase(subscription_id);
-        return erased == 0 ? infra::Status::kNotFound : infra::Status::kOk;
-    }
-
-    infra::Status Publish(const Event& event) override {
-        if (!IsEventSizeValid(event)) {
-            return infra::Status::kInvalidParam;
-        }
-        if (!IsStartedForRead()) {
-            return infra::Status::kBusy;
-        }
-
-        std::vector<EventHandler> handlers;
-        infra::Executor* executor = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!executor_) {
-                return infra::Status::kBusy;
-            }
-            executor = executor_.get();
-            for (const auto& entry : subscriptions_) {
-                if (entry.second.type == event.type) {
-                    handlers.push_back(entry.second.handler);
-                }
-            }
-        }
-        if (handlers.empty()) {
-            return infra::Status::kOk;
-        }
-
-        return executor->Post([event, handlers]() {
-            for (const EventHandler& handler : handlers) {
-                handler(event);
-            }
-        });
-    }
-
- private:
-    infra::Status OnInit() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (executor_) {
-            return infra::Status::kOk;
-        }
-
-        executor_.reset(new infra::Executor());
-        return infra::Status::kOk;
-    }
-
-    infra::Status OnStart() override {
-        std::lock_guard<std::mutex> lock(mutex_);
         if (!executor_) {
-            return infra::Status::kInternalError;
+            executor_.reset(new infra::Executor());
+        }
+        initialized_ = executor_ != nullptr;
+        return initialized_;
+    }
+
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (started_) {
+            return true;
         }
         infra::ExecutorOptions config;
         config.worker_count = 1;
         config.queue_capacity = 1024;
-        return executor_->Start(config);
+        if (!executor_->Start(config)) {
+            return false;
+        }
+        started_ = true;
+        return true;
     }
 
-    void OnStop() override {
+    void Stop() override {
         std::unique_ptr<infra::Executor> executor;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            started_ = false;
             executor = std::move(executor_);
         }
         if (executor) {
@@ -143,16 +82,89 @@ class EventServiceImpl : public IEventService, private infra::ServiceBase {
         }
     }
 
-    void OnDeinit() override {
+    void Release() {
+        Stop();
         std::lock_guard<std::mutex> lock(mutex_);
         subscriptions_.clear();
         executor_.reset();
+        initialized_ = false;
+        started_ = false;
+    }
+
+    EventSubscriptionId Subscribe(
+        EventType type, EventHandler handler) override {
+        if (!handler) {
+            return 0;
+        }
+        if (!IsInitializedForRead()) {
+            return 0;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (subscriptions_.size() >= kMaxSubscriptions) {
+            return 0;
+        }
+        const EventSubscriptionId subscription_id = next_subscription_id_++;
+        subscriptions_[subscription_id] = Subscription{type, std::move(handler)};
+        return subscription_id;
+    }
+
+    bool Unsubscribe(EventSubscriptionId subscription_id) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto erased = subscriptions_.erase(subscription_id);
+        return erased != 0;
+    }
+
+    bool Publish(const Event& event) override {
+        if (!IsEventSizeValid(event)) {
+            return false;
+        }
+        if (!IsStartedForRead()) {
+            return false;
+        }
+
+        std::vector<EventHandler> handlers;
+        infra::Executor* executor = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!executor_) {
+                return false;
+            }
+            executor = executor_.get();
+            for (const auto& entry : subscriptions_) {
+                if (entry.second.type == event.type) {
+                    handlers.push_back(entry.second.handler);
+                }
+            }
+        }
+        if (handlers.empty()) {
+            return true;
+        }
+
+        return executor->Post([event, handlers]() {
+            for (const EventHandler& handler : handlers) {
+                handler(event);
+            }
+        });
+    }
+
+ private:
+    bool IsInitializedForRead() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_;
+    }
+
+    bool IsStartedForRead() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
     }
 
     mutable std::mutex mutex_;
     std::unique_ptr<infra::Executor> executor_;
     std::unordered_map<EventSubscriptionId, Subscription> subscriptions_;
     EventSubscriptionId next_subscription_id_ = 1;
+    bool initialized_ = false;
+    bool started_ = false;
 };
 
 }  // namespace

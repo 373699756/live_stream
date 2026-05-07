@@ -1,6 +1,5 @@
 #include "event_loop.h"
 
-#include "infra/errno_util.h"
 #include "infra/time.h"
 
 #include <sys/epoll.h>
@@ -20,38 +19,35 @@ EventLoop::EventLoop(uint32_t max_events, uint32_t task_capacity)
 
 EventLoop::~EventLoop() { Stop(); }
 
-infra::Status EventLoop::Start() {
+bool EventLoop::Start() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (running_) {
-    return infra::Status::kOk;
+    return true;
   }
   epoll_fd_.Reset(epoll_create1(EPOLL_CLOEXEC));
   timer_fd_.Reset(timerfd_create(CLOCK_MONOTONIC,
                                  TFD_NONBLOCK | TFD_CLOEXEC));
   if (!epoll_fd_.valid() || !timer_fd_.valid()) {
-    return infra::Status::kIoError;
+    return false;
   }
-  infra::Status status = wakeup_.Open();
-  if (status != infra::Status::kOk) {
-    return status;
+  if (!wakeup_.Open()) {
+    return false;
   }
-  status = AddRawFdLocked(wakeup_.fd(), EPOLLIN, [this](uint32_t) {
+  if (!AddRawFdLocked(wakeup_.fd(), EPOLLIN, [this](uint32_t) {
     wakeup_.Drain();
-  });
-  if (status != infra::Status::kOk) {
-    return status;
+  })) {
+    return false;
   }
-  status = AddRawFdLocked(timer_fd_.get(), EPOLLIN, [this](uint32_t) {
+  if (!AddRawFdLocked(timer_fd_.get(), EPOLLIN, [this](uint32_t) {
     DrainTimerFd();
     RunTimers();
-  });
-  if (status != infra::Status::kOk) {
-    return status;
+  })) {
+    return false;
   }
   stopping_ = false;
   running_ = true;
   thread_ = std::thread([this]() { Run(); });
-  return infra::Status::kOk;
+  return true;
 }
 
 void EventLoop::Stop() {
@@ -73,53 +69,53 @@ void EventLoop::Stop() {
   CleanupLocked();
 }
 
-infra::Status EventLoop::Post(infra::Task task) {
+bool EventLoop::Post(infra::Task task) {
   if (!task) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || stopping_) {
-      return infra::Status::kBusy;
+      return false;
     }
     if (tasks_.size() >= task_capacity_) {
-      return infra::Status::kBusy;
+      return false;
     }
     tasks_.push_back(std::move(task));
   }
   return wakeup_.Notify();
 }
 
-infra::Status EventLoop::AddFd(int fd,
-                               uint32_t events,
-                               std::function<void(uint32_t)> handler) {
+bool EventLoop::AddFd(int fd,
+                      uint32_t events,
+                      std::function<void(uint32_t)> handler) {
   if (fd < 0 || !handler) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
   std::lock_guard<std::mutex> lock(mutex_);
   if (!running_ || stopping_) {
-    return infra::Status::kBusy;
+    return false;
   }
   return AddRawFdLocked(fd, events | EPOLLERR | EPOLLHUP, std::move(handler));
 }
 
-infra::Status EventLoop::ModifyFd(int fd, uint32_t events) {
+bool EventLoop::ModifyFd(int fd, uint32_t events) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!running_ || stopping_) {
-    return infra::Status::kBusy;
+    return false;
   }
   auto it = handlers_.find(fd);
   if (it == handlers_.end()) {
-    return infra::Status::kNotFound;
+    return false;
   }
   epoll_event event {};
   event.events = events | EPOLLERR | EPOLLHUP;
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_MOD, fd, &event) != 0) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
   it->second.events = event.events;
-  return infra::Status::kOk;
+  return true;
 }
 
 void EventLoop::RemoveFd(int fd) {
@@ -130,14 +126,13 @@ void EventLoop::RemoveFd(int fd) {
   handlers_.erase(fd);
 }
 
-infra::Result<NetTimerId> EventLoop::RunAfter(uint32_t delay_ms,
-                                              infra::Task task) {
+NetTimerId EventLoop::RunAfter(uint32_t delay_ms, infra::Task task) {
   if (!task) {
-    return infra::Result<NetTimerId>::Fail(infra::Status::kInvalidParam);
+    return 0;
   }
   std::lock_guard<std::mutex> lock(mutex_);
   if (!running_ || stopping_) {
-    return infra::Result<NetTimerId>::Fail(infra::Status::kBusy);
+    return 0;
   }
   const NetTimerId id = next_timer_id_++;
   Timer timer;
@@ -145,30 +140,30 @@ infra::Result<NetTimerId> EventLoop::RunAfter(uint32_t delay_ms,
   timer.task = std::move(task);
   timers_[id] = std::move(timer);
   RearmTimerLocked();
-  return infra::Result<NetTimerId>::Ok(id);
+  return id;
 }
 
-infra::Status EventLoop::CancelTimer(NetTimerId id) {
+bool EventLoop::CancelTimer(NetTimerId id) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = timers_.find(id);
   if (it == timers_.end()) {
-    return infra::Status::kNotFound;
+    return false;
   }
   timers_.erase(it);
   RearmTimerLocked();
-  return infra::Status::kOk;
+  return true;
 }
 
-infra::Status EventLoop::AddRawFdLocked(
+bool EventLoop::AddRawFdLocked(
     int fd, uint32_t events, std::function<void(uint32_t)> handler) {
   epoll_event event {};
   event.events = events;
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, fd, &event) != 0) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
   handlers_[fd] = Handler{events, std::move(handler)};
-  return infra::Status::kOk;
+  return true;
 }
 
 void EventLoop::CleanupLocked() {

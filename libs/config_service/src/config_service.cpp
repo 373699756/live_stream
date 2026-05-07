@@ -10,10 +10,11 @@
 #include "config_service.h"
 
 #include "infra/fs.h"
-#include "infra/service.h"
-#include "infra/sync.h"
 
+#include <cstdint>
+#include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace live_stream {
@@ -21,275 +22,411 @@ namespace live_stream {
 namespace {
 
 // 名称校验: 只允许顶层无点号/无下标的纯名称
-bool IsTopLevelName(const std::string& name) {
-    return !name.empty() &&
-           name.find('.') == std::string::npos &&
-           name.find('[') == std::string::npos &&
-           name.find(']') == std::string::npos;
+bool IsTopLevelName(const std::string &name) {
+  return !name.empty() && name.find('.') == std::string::npos &&
+         name.find('[') == std::string::npos &&
+         name.find(']') == std::string::npos;
 }
 
-// 顺序执行回调列表，首个失败即停止
-infra::Status RunCallbacks(const std::vector<ConfigProc>& cbs,
-                           const ConfigJson& value) {
-    for (const auto& cb : cbs) {
-        const infra::Status st = cb(value);
-        if (st != infra::Status::kOk) {
-            return st;
-        }
-    }
-    return infra::Status::kOk;
+ConfigResult RunHandler(const ConfigHandler &handler, const ConfigJson &value) {
+  if (!handler) {
+    return ConfigResult::Success();
+  }
+  ConfigResult result = handler(value);
+  if (result.ok) {
+    result.error = ConfigError();
+    return result;
+  }
+  if (result.error.reason.empty()) {
+    result.error.reason = "config rejected";
+  }
+  return result;
 }
 
-void MergeMissingFields(ConfigJson* current, const ConfigJson& defaults) {
-    if (current == nullptr || !current->is_object() || !defaults.is_object()) {
-        return;
+void MergeMissingFields(ConfigJson *current, const ConfigJson &defaults) {
+  if (current == nullptr || !current->is_object() || !defaults.is_object()) {
+    return;
+  }
+  for (auto it = defaults.begin(); it != defaults.end(); ++it) {
+    auto current_it = current->find(it.key());
+    if (current_it == current->end()) {
+      (*current)[it.key()] = it.value();
+      continue;
     }
-    for (auto it = defaults.begin(); it != defaults.end(); ++it) {
-        auto current_it = current->find(it.key());
-        if (current_it == current->end()) {
-            (*current)[it.key()] = it.value();
-            continue;
-        }
-        if (current_it->is_object() && it.value().is_object()) {
-            MergeMissingFields(&(*current_it), it.value());
-        }
+    if (current_it->is_object() && it.value().is_object()) {
+      MergeMissingFields(&(*current_it), it.value());
     }
+  }
 }
 
 // JSON 文件读取
-infra::Result<ConfigJson> LoadJsonFile(const std::string& path) {
-    auto content = infra::File::ReadAll(path);
-    if (!content.IsOk()) {
-        return infra::Result<ConfigJson>::Fail(content.status);
-    }
-    ConfigJson parsed = ConfigJson::parse(content.value, nullptr, false);
-    if (parsed.is_discarded() || !parsed.is_object()) {
-        return infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
-    }
-    return infra::Result<ConfigJson>::Ok(std::move(parsed));
+ConfigJson LoadJsonFile(const std::string &path) {
+  std::string content = infra::File::ReadAll(path);
+  if (content.empty()) {
+    return ConfigJson();
+  }
+  ConfigJson parsed = ConfigJson::parse(content, nullptr, false);
+  if (parsed.is_discarded() || !parsed.is_object()) {
+    return ConfigJson();
+  }
+  return parsed;
 }
 
 // 原子写入: 先写 .tmp 再 rename（防止半写损坏）
-infra::Status AtomicWriteJson(const std::string& path,
-                               const ConfigJson& root) {
-    if (!root.is_object() || path.empty()) {
-        return infra::Status::kInvalidParam;
-    }
-    infra::Status st = infra::Path::MakeDirs(infra::Path::DirName(path));
-    if (st != infra::Status::kOk) {
-        return st;
-    }
-    const std::string tmp = path + ".tmp";
-    st = infra::File::WriteAll(tmp, root.dump(4));
-    if (st != infra::Status::kOk) {
-        return st;
-    }
-    return infra::File::Rename(tmp, path);
+bool AtomicWriteJson(const std::string &path, const ConfigJson &root) {
+  if (!root.is_object() || path.empty()) {
+    return false;
+  }
+  if (!infra::Path::MakeDirs(infra::Path::DirName(path))) {
+    return false;
+  }
+  const std::string tmp = path + ".tmp";
+  if (!infra::File::WriteAll(tmp, root.dump(4))) {
+    return false;
+  }
+  return infra::File::Rename(tmp, path);
 }
 
-}  // namespace
+} // namespace
 
+class ConfigServiceImpl : public IConfigService {
+public:
+  explicit ConfigServiceImpl(const ConfigServiceOptions &opts) : opts_(opts) {}
 
-class ConfigServiceImpl : public IConfigService, private infra::ServiceBase {
- public:
-    explicit ConfigServiceImpl(const ConfigServiceOptions& opts)
-        : opts_(opts) {}
+  ~ConfigServiceImpl() override { Release(); }
 
-    ~ConfigServiceImpl() override { Stop(); Deinit(); }
-
-    // -- IService --
-    infra::Status Init() override   { return infra::ServiceBase::Init(); }
-    infra::Status Start() override  { return infra::ServiceBase::Start(); }
-    void Stop() override            { infra::ServiceBase::Stop(); }
-    void Deinit() override          { infra::ServiceBase::Deinit(); }
-
-    const char* Name() const override { return "config_service"; }
-
-    // -- IConfigService --
-    infra::Status SetValue(const std::string& name,
-                          const ConfigJson& value) override {
-        if (!IsTopLevelName(name))     return infra::Status::kInvalidParam;
-        if (!IsStartedForRead())       return infra::Status::kBusy;
-
-        // Phase 1: 锁内构建候选 + 提取回调
-        ConfigJson old_value;
-        ConfigJson candidate;
-        std::vector<ConfigProc> verify_cbs, apply_cbs;
-        {
-            infra::MutexGuard g(&mutex_);
-            if (defaults_.find(name) == defaults_.end()) {
-                return infra::Status::kNotFound;
-            }
-            auto it = current_.find(name);
-            old_value = (it == current_.end())
-                        ? ConfigJson(nullptr) : it.value();
-            if (old_value == value) return infra::Status::kOk;  // 无变化
-            candidate = value;
-            verify_cbs = CopyCbs(verify_cbs_, name);
-            apply_cbs  = CopyCbs(apply_cbs_, name);
-        }
-
-        // Phase 2: 锁外执行 verify -> apply
-        infra::Status st = RunCallbacks(verify_cbs, candidate);
-        if (st != infra::Status::kOk) return st;
-        st = RunCallbacks(apply_cbs, candidate);
-        if (st != infra::Status::kOk) return st;
-
-        // Phase 3: 锁内提交 + 持久化
-        {
-            infra::MutexGuard g(&mutex_);
-            current_[name] = std::move(candidate);
-            changed_ = true;
-        }
-        return SaveToFile();
+  bool Prepare() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (initialized_) {
+        return true;
+      }
     }
 
-    infra::Status GetValue(const std::string& name,
-                          ConfigJson* value) override {
-        if (!value || !IsTopLevelName(name))
-            return infra::Status::kInvalidParam;
-        if (!IsInitializedForRead())
-            return infra::Status::kInternalError;
-
-        infra::MutexGuard g(&mutex_);
-        auto it = current_.find(name);
-        if (it == current_.end()) return infra::Status::kNotFound;
-        *value = it.value();
-        return infra::Status::kOk;
+    ConfigJson defaults;
+    ConfigJson current;
+    if (!LoadInitialConfig(&defaults, &current)) {
+      return false;
     }
 
-    infra::Status GetDefault(const std::string& name,
-                            ConfigJson* value) override {
-        if (!value || !IsTopLevelName(name))
-            return infra::Status::kInvalidParam;
-        if (!IsInitializedForRead())
-            return infra::Status::kInternalError;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (initialized_) {
+      return true;
+    }
+    defaults_ = std::move(defaults);
+    current_ = std::move(current);
+    changed_ = false;
+    initialized_ = true;
+    return true;
+  }
 
-        infra::MutexGuard g(&mutex_);
-        auto it = defaults_.find(name);
-        if (it == defaults_.end()) return infra::Status::kNotFound;
-        *value = it.value();
-        return infra::Status::kOk;
+  bool Start() override {
+    if (!Prepare()) {
+      return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    started_ = true;
+    return true;
+  }
+
+  void Stop() override {
+    SaveFile();
+    std::lock_guard<std::mutex> lock(mutex_);
+    started_ = false;
+  }
+
+  void Release() {
+    SaveFile();
+    std::lock_guard<std::mutex> lock(mutex_);
+    current_ = ConfigJson::object();
+    defaults_ = ConfigJson::object();
+    attachments_.clear();
+    observers_.clear();
+    last_errors_.clear();
+    changed_ = false;
+    initialized_ = false;
+    started_ = false;
+    next_observer_id_ = 1;
+  }
+
+  bool SetValue(const std::string &name, const ConfigJson &value) override {
+    if (!IsTopLevelName(name)) {
+      return false;
+    }
+    if (!IsStartedForRead()) {
+      SetLastConfigError(name, ConfigError{"", "config service not started"});
+      return false;
     }
 
-    infra::Status RestoreDefaults() override {
-        if (!IsInitializedForRead()) return infra::Status::kInternalError;
-
-        std::vector<std::pair<std::string, ConfigJson>> entries;
-        {
-            infra::MutexGuard g(&mutex_);
-            for (auto it = defaults_.begin(); it != defaults_.end(); ++it) {
-                entries.emplace_back(it.key(), it.value());
-            }
-        }
-        for (const auto& entry : entries) {
-            const infra::Status st = SetValue(entry.first, entry.second);
-            if (st != infra::Status::kOk)
-                return st;
-        }
-        return infra::Status::kOk;
+    ConfigAttachment attachment;
+    bool has_attachment = false;
+    {
+      std::lock_guard<std::mutex> g(mutex_);
+      if (defaults_.find(name) == defaults_.end()) {
+        last_errors_[name] = ConfigError{"", "config not found"};
+        return false;
+      }
+      const auto it = current_.find(name);
+      if (it != current_.end() && it.value() == value) {
+        ClearLastConfigErrorLocked(name);
+        return true;
+      }
+      auto attachment_it = attachments_.find(name);
+      if (attachment_it != attachments_.end()) {
+        attachment = attachment_it->second;
+        has_attachment = true;
+      }
     }
 
-    infra::Status SaveFile() override {
-        if (!IsInitializedForRead()) return infra::Status::kInternalError;
-
-        ConfigJson snap;
-        {
-            infra::MutexGuard g(&mutex_);
-            if (!changed_) return infra::Status::kOk;
-            snap = current_;
-        }
-        auto st = AtomicWriteJson(opts_.config_path, snap);
-        if (st == infra::Status::kOk) {
-            infra::MutexGuard g(&mutex_);
-            changed_ = false;
-        }
-        return st;
+    if (has_attachment) {
+      ConfigResult validate_result = RunHandler(attachment.validate, value);
+      if (!validate_result.ok) {
+        SetLastConfigError(name, validate_result.error);
+        return false;
+      }
+      ConfigResult apply_result = RunHandler(attachment.apply, value);
+      if (!apply_result.ok) {
+        SetLastConfigError(name, apply_result.error);
+        return false;
+      }
     }
 
-    infra::Status RegisterApply(const std::string& name,
-                               ConfigProc proc) override {
-        if (!proc || !IsTopLevelName(name)) return infra::Status::kInvalidParam;
-        infra::MutexGuard g(&mutex_);
-        apply_cbs_[name].push_back(std::move(proc));
-        return infra::Status::kOk;
+    std::vector<ConfigObserver> observers;
+    {
+      std::lock_guard<std::mutex> g(mutex_);
+      current_[name] = value;
+      changed_ = true;
+      ClearLastConfigErrorLocked(name);
+      observers = CollectObserversLocked(name);
+    }
+    if (!SaveFile()) {
+      SetLastConfigError(name, ConfigError{"", "save config file failed"});
+      return false;
+    }
+    NotifyObservers(observers, value);
+    return true;
+  }
+
+  ConfigJson GetValue(const std::string &name) override {
+    if (!IsTopLevelName(name) || !IsInitializedForRead())
+      return ConfigJson();
+
+    std::lock_guard<std::mutex> g(mutex_);
+    auto it = current_.find(name);
+    if (it == current_.end())
+      return ConfigJson();
+    return it.value();
+  }
+
+  ConfigJson GetDefault(const std::string &name) override {
+    if (!IsTopLevelName(name) || !IsInitializedForRead())
+      return ConfigJson();
+
+    std::lock_guard<std::mutex> g(mutex_);
+    auto it = defaults_.find(name);
+    if (it == defaults_.end())
+      return ConfigJson();
+    return it.value();
+  }
+
+  bool RestoreDefaults() override {
+    if (!IsInitializedForRead())
+      return false;
+
+    std::vector<std::pair<std::string, ConfigJson>> entries;
+    {
+      std::lock_guard<std::mutex> g(mutex_);
+      for (auto it = defaults_.begin(); it != defaults_.end(); ++it) {
+        entries.emplace_back(it.key(), it.value());
+      }
+    }
+    for (const auto &entry : entries) {
+      if (!SetValue(entry.first, entry.second))
+        return false;
+    }
+    return true;
+  }
+
+  bool SaveFile() override {
+    if (!IsInitializedForRead())
+      return false;
+
+    ConfigJson snap;
+    {
+      std::lock_guard<std::mutex> g(mutex_);
+      if (!changed_)
+        return true;
+      snap = current_;
+    }
+    const bool saved = AtomicWriteJson(opts_.config_path, snap);
+    if (saved) {
+      std::lock_guard<std::mutex> g(mutex_);
+      changed_ = false;
+    }
+    return saved;
+  }
+
+  bool AttachConfig(const std::string &name,
+                    const ConfigAttachment &attachment) override {
+    if (!IsTopLevelName(name) || (!attachment.validate && !attachment.apply)) {
+      return false;
+    }
+    std::lock_guard<std::mutex> g(mutex_);
+    if (attachments_.find(name) != attachments_.end()) {
+      return false;
+    }
+    attachments_[name] = attachment;
+    return true;
+  }
+
+  bool DetachConfig(const std::string &name) override {
+    if (!IsTopLevelName(name)) {
+      return false;
+    }
+    std::lock_guard<std::mutex> g(mutex_);
+    attachments_.erase(name);
+    return true;
+  }
+
+  ConfigObserverId ObserveConfig(const std::string &name,
+                                 ConfigObserver observer) override {
+    if (!IsTopLevelName(name) || !observer) {
+      return 0;
+    }
+    std::lock_guard<std::mutex> g(mutex_);
+    const ConfigObserverId observer_id = next_observer_id_++;
+    observers_[name][observer_id] = std::move(observer);
+    return observer_id;
+  }
+
+  bool UnobserveConfig(const std::string &name,
+                       ConfigObserverId observer_id) override {
+    if (!IsTopLevelName(name) || observer_id == 0) {
+      return false;
+    }
+    std::lock_guard<std::mutex> g(mutex_);
+    auto observers_it = observers_.find(name);
+    if (observers_it == observers_.end()) {
+      return false;
+    }
+    if (observers_it->second.erase(observer_id) == 0) {
+      return false;
+    }
+    if (observers_it->second.empty()) {
+      observers_.erase(observers_it);
+    }
+    return true;
+  }
+
+  ConfigError GetLastConfigError(const std::string &name) override {
+    if (!IsTopLevelName(name)) {
+      return ConfigError();
+    }
+    std::lock_guard<std::mutex> g(mutex_);
+    const auto it = last_errors_.find(name);
+    if (it == last_errors_.end()) {
+      return ConfigError();
+    }
+    return it->second;
+  }
+
+private:
+  bool LoadInitialConfig(ConfigJson *defaults_out, ConfigJson *current_out) {
+    if (defaults_out == nullptr || current_out == nullptr) {
+      return false;
+    }
+    ConfigJson defaults = LoadJsonFile(opts_.default_config_path);
+    if (!defaults.is_object())
+      return false;
+
+    ConfigJson current;
+    if (opts_.config_path.empty() || !defaults.is_object()) {
+      return false;
+    } else if (infra::File::Exists(opts_.config_path)) {
+      current = LoadJsonFile(opts_.config_path);
+    } else if (!opts_.create_storage_if_missing) {
+      return false;
+    } else {
+      if (!AtomicWriteJson(opts_.config_path, defaults))
+        return false;
+      current = defaults;
     }
 
-    infra::Status RegisterVerify(const std::string& name,
-                                ConfigProc proc) override {
-        if (!proc || !IsTopLevelName(name)) return infra::Status::kInvalidParam;
-        infra::MutexGuard g(&mutex_);
-        verify_cbs_[name].push_back(std::move(proc));
-        return infra::Status::kOk;
+    if (!current.is_object())
+      return false;
+
+    // Preserve user config and only fill fields added by defaults.
+    MergeMissingFields(&current, defaults);
+    if (!AtomicWriteJson(opts_.config_path, current))
+      return false;
+
+    *current_out = std::move(current);
+    *defaults_out = std::move(defaults);
+    return true;
+  }
+
+  bool IsInitializedForRead() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return initialized_;
+  }
+
+  bool IsStartedForRead() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return initialized_ && started_;
+  }
+
+  std::vector<ConfigObserver>
+  CollectObserversLocked(const std::string &name) const {
+    std::vector<ConfigObserver> observers;
+    const auto it = observers_.find(name);
+    if (it == observers_.end()) {
+      return observers;
     }
-
- private:
-    // -- 生命周期 --
-    infra::Status OnInit() override {
-        auto defaults = LoadJsonFile(opts_.default_config_path);
-        if (!defaults.IsOk()) return defaults.status;
-
-        infra::Result<ConfigJson> current =
-            infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
-        if (opts_.config_path.empty() || !defaults.value.is_object()) {
-            current =
-                infra::Result<ConfigJson>::Fail(infra::Status::kInvalidParam);
-        } else if (infra::File::Exists(opts_.config_path)) {
-            current = LoadJsonFile(opts_.config_path);
-        } else if (!opts_.create_storage_if_missing) {
-            current = infra::Result<ConfigJson>::Fail(infra::Status::kNotFound);
-        } else {
-            const infra::Status st =
-                AtomicWriteJson(opts_.config_path, defaults.value);
-            if (st != infra::Status::kOk) {
-                current = infra::Result<ConfigJson>::Fail(st);
-            } else {
-                current = infra::Result<ConfigJson>::Ok(defaults.value);
-            }
-        }
-
-        if (!current.IsOk()) return current.status;
-
-        // Preserve user config and only fill fields added by defaults.
-        MergeMissingFields(&current.value, defaults.value);
-        const infra::Status st =
-            AtomicWriteJson(opts_.config_path, current.value);
-        if (st != infra::Status::kOk)
-            return st;
-
-        current_  = std::move(current.value);
-        defaults_ = std::move(defaults.value);
-        changed_  = false;
-        return infra::Status::kOk;
+    observers.reserve(it->second.size());
+    for (const auto &entry : it->second) {
+      observers.push_back(entry.second);
     }
+    return observers;
+  }
 
-    void OnStop() override { SaveFile(); }
-
-    // -- 内部辅助 --
-    static std::vector<ConfigProc> CopyCbs(
-        const std::unordered_map<std::string, std::vector<ConfigProc>>& map,
-        const std::string& name) {
-        auto it = map.find(name);
-        return (it != map.end()) ? it->second : std::vector<ConfigProc>{};
+  void NotifyObservers(const std::vector<ConfigObserver> &observers,
+                       const ConfigJson &value) const {
+    for (const ConfigObserver &observer : observers) {
+      if (observer) {
+        observer(value);
+      }
     }
+  }
 
-    infra::Status SaveToFile() { return SaveFile(); }
+  void ClearLastConfigErrorLocked(const std::string &name) {
+    last_errors_.erase(name);
+  }
 
-    // -- 数据 --
-    ConfigJson      current_  = ConfigJson::object();
-    ConfigJson      defaults_ = ConfigJson::object();
+  void SetLastConfigError(const std::string &name, ConfigError error) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_errors_[name] = std::move(error);
+  }
 
-    std::unordered_map<std::string, std::vector<ConfigProc>> apply_cbs_;
-    std::unordered_map<std::string, std::vector<ConfigProc>> verify_cbs_;
+  ConfigJson current_ = ConfigJson::object();
+  ConfigJson defaults_ = ConfigJson::object();
 
-    ConfigServiceOptions opts_;
-    infra::Mutex       mutex_;
-    bool               changed_ = false;
+  std::unordered_map<std::string, ConfigAttachment> attachments_;
+  std::unordered_map<std::string,
+                     std::unordered_map<ConfigObserverId, ConfigObserver>>
+      observers_;
+  std::unordered_map<std::string, ConfigError> last_errors_;
+
+  ConfigServiceOptions opts_;
+  mutable std::mutex mutex_;
+  bool changed_ = false;
+  bool initialized_ = false;
+  bool started_ = false;
+  ConfigObserverId next_observer_id_ = 1;
 };
 
-std::unique_ptr<IConfigService> CreateConfigService(
-    const ConfigServiceOptions& options) {
-    return std::make_unique<ConfigServiceImpl>(options);
+std::unique_ptr<IConfigService>
+CreateConfigService(const ConfigServiceOptions &options) {
+  return std::unique_ptr<IConfigService>(new ConfigServiceImpl(options));
 }
 
-}  // namespace live_stream
+} // namespace live_stream

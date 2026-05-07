@@ -8,9 +8,7 @@
 #ifndef LIVE_STREAM_ALARM_SERVICE_H_
 #define LIVE_STREAM_ALARM_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/request_context.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <memory>
@@ -58,16 +56,20 @@ struct AlarmServiceOptions {
     std::vector<AlarmRule> default_rules;
 };
 
-class IAlarmService : public infra::IService {
+class IAlarmService {
  public:
-    virtual infra::Result<AlarmStatus> GetAlarmStatus() = 0;
-    virtual infra::Status UpdateRules(const infra::RequestContext& context,
-                                     const std::vector<AlarmRule>& rules) = 0;
-    virtual infra::Status EnableRule(const infra::RequestContext& context,
-                                    AlarmSource source,
-                                    bool enabled) = 0;
-    virtual infra::Status InjectAlarmInput(const AlarmInput& input) = 0;
-    virtual infra::Status ClearAlarm(const infra::RequestContext& context) = 0;
+    virtual ~IAlarmService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual AlarmStatus GetAlarmStatus() = 0;
+    virtual bool UpdateRules(const live_stream::RequestContext& context,
+                             const std::vector<AlarmRule>& rules) = 0;
+    virtual bool EnableRule(const live_stream::RequestContext& context,
+                            AlarmSource source,
+                            bool enabled) = 0;
+    virtual bool InjectAlarmInput(const AlarmInput& input) = 0;
+    virtual bool ClearAlarm(const live_stream::RequestContext& context) = 0;
 };
 
 std::unique_ptr<IAlarmService> CreateAlarmService(

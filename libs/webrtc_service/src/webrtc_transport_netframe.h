@@ -1,7 +1,6 @@
 #ifndef LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_TRANSPORT_NETFRAME_H_
 #define LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_TRANSPORT_NETFRAME_H_
 
-#include "infra/status.h"
 #include "netframe_service.h"
 
 #include <cstddef>
@@ -16,9 +15,9 @@ class NetframeWebrtcTransport {
     explicit NetframeWebrtcTransport(NetEngine* net_engine);
     ~NetframeWebrtcTransport();
 
-    infra::Status Start(const std::string& listen_ip, uint16_t port);
+    bool Start(const std::string& listen_ip, uint16_t port);
     void Stop();
-    infra::Status SendTo(NetAddress address, const uint8_t* data, size_t size);
+    bool SendTo(NetAddress address, const uint8_t* data, size_t size);
     bool started() const { return socket_id_ != 0; }
 
  private:

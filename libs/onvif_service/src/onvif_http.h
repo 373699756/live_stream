@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_
 #define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_
 
-#include "infra/status.h"
-
 #include <cstdint>
 #include <string>
 
@@ -16,7 +14,7 @@ struct HttpRequest {
     std::string body;
 };
 
-infra::Result<HttpRequest> ParseHttpRequest(const std::string& raw);
+HttpRequest ParseHttpRequest(const std::string& raw);
 std::string HttpResponse(uint32_t status_code,
                          const std::string& reason,
                          const std::string& body,

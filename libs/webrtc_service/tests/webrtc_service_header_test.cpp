@@ -5,7 +5,7 @@
 
 namespace {
 
-class DummyMediaBuffer : public infra::IMediaBuffer {
+class DummyMediaBuffer : public IMediaBuffer {
  public:
     uint8_t* MutableData() override { return data_; }
     const uint8_t* Data() const override { return data_; }
@@ -84,9 +84,9 @@ int main() {
         return 1;
     }
 
-    infra::EncodedFrame frame;
-    frame.stream_id = infra::StreamId::kMain;
-    frame.buffer = std::shared_ptr<infra::IMediaBuffer>(new DummyMediaBuffer());
+    EncodedFrame frame;
+    frame.stream_id = StreamId::kMain;
+    frame.buffer = std::shared_ptr<IMediaBuffer>(new DummyMediaBuffer());
     frame.size = 4;
     service->OnFrame(frame);
 

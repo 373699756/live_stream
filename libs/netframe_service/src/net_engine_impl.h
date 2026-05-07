@@ -22,28 +22,26 @@ class NetEngineImpl : public NetEngine {
   explicit NetEngineImpl(const NetEngineOptions& options);
   ~NetEngineImpl() override;
 
-  infra::Status Start() override;
+  bool Start() override;
   void Stop() override;
-  infra::Result<TcpServerId> ListenTcp(
-      const TcpListenOptions& options,
-      const TcpCallbacks& callbacks) override;
-  infra::Status CloseTcp(TcpServerId id) override;
-  infra::Result<UdpSocketId> BindUdp(
+  TcpServerId ListenTcp(const TcpListenOptions& options,
+                        const TcpCallbacks& callbacks) override;
+  bool CloseTcp(TcpServerId id) override;
+  UdpSocketId BindUdp(
       const UdpBindOptions& options,
       const UdpCallbacks& callbacks) override;
-  infra::Status CloseUdp(UdpSocketId id) override;
-  infra::Status Send(ConnectionId id, const uint8_t* data, size_t size) override;
-  infra::Status Close(ConnectionId id) override;
-  infra::Status CloseAfterSend(ConnectionId id) override;
-  infra::Status SendTo(UdpSocketId id,
-                       NetAddress address,
-                       const uint8_t* data,
-                       size_t size) override;
-  infra::Result<NetTimerId> RunOnIoAfter(uint32_t delay_ms,
-                                         infra::Task task) override;
-  infra::Status CancelIoTimer(NetTimerId id) override;
-  infra::Result<NetAddress> TcpLocalAddress(TcpServerId id) const override;
-  infra::Result<NetAddress> UdpLocalAddress(UdpSocketId id) const override;
+  bool CloseUdp(UdpSocketId id) override;
+  bool Send(ConnectionId id, const uint8_t* data, size_t size) override;
+  bool Close(ConnectionId id) override;
+  bool CloseAfterSend(ConnectionId id) override;
+  bool SendTo(UdpSocketId id,
+              NetAddress address,
+              const uint8_t* data,
+              size_t size) override;
+  NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) override;
+  bool CancelIoTimer(NetTimerId id) override;
+  NetAddress TcpLocalAddress(TcpServerId id) const override;
+  NetAddress UdpLocalAddress(UdpSocketId id) const override;
   uint32_t PendingBytes(ConnectionId id) const override;
   NetStats GetStats() const override;
 

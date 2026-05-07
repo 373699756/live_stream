@@ -45,10 +45,10 @@ class OnvifServiceImpl : public IOnvifService {
                      const OnvifServiceDependencies& dependencies)
         : options_(options), dependencies_(dependencies) {}
 
-    infra::Status Init() override {
+    bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (initialized_) {
-            return infra::Status::kOk;
+            return true;
         }
         if (dependencies_.net_engine == nullptr ||
             options_.device_service_port == 0 ||
@@ -56,22 +56,22 @@ class OnvifServiceImpl : public IOnvifService {
             options_.max_request_bytes == 0 ||
             options_.max_request_bytes > kMaxHttpResponseBytes ||
             options_.service_path.empty()) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         if (options_.enable_auth && dependencies_.auth_service == nullptr) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         initialized_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Start() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_) {
-            return infra::Status::kBusy;
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
         }
+        std::lock_guard<std::mutex> lock(mutex_);
         if (started_) {
-            return infra::Status::kOk;
+            return true;
         }
 
         TcpListenOptions tcp_config;
@@ -81,12 +81,12 @@ class OnvifServiceImpl : public IOnvifService {
         TcpCallbacks tcp_callbacks;
         tcp_callbacks.user = this;
         tcp_callbacks.on_read = &OnvifServiceImpl::HandleTcpRead;
-        infra::Result<TcpServerId> tcp_result =
+        const TcpServerId tcp_result =
             dependencies_.net_engine->ListenTcp(tcp_config, tcp_callbacks);
-        if (!tcp_result.IsOk()) {
-            return tcp_result.status;
+        if (tcp_result == 0) {
+            return false;
         }
-        tcp_server_id_ = tcp_result.value;
+        tcp_server_id_ = tcp_result;
 
         if (options_.discovery_enabled) {
             UdpBindOptions udp_config;
@@ -95,22 +95,17 @@ class OnvifServiceImpl : public IOnvifService {
             UdpCallbacks udp_callbacks;
             udp_callbacks.user = this;
             udp_callbacks.on_read = &OnvifServiceImpl::HandleUdpRead;
-            infra::Result<UdpSocketId> udp_result =
+            const UdpSocketId udp_result =
                 dependencies_.net_engine->BindUdp(udp_config, udp_callbacks);
-            if (!udp_result.IsOk()) {
+            if (udp_result == 0) {
                 CleanupSocketsLocked();
-                return udp_result.status;
+                return false;
             }
-            udp_socket_id_ = udp_result.value;
+            udp_socket_id_ = udp_result;
         }
 
-        infra::Status error = dependencies_.net_engine->Start();
-        if (error != infra::Status::kOk) {
-            CleanupSocketsLocked();
-            return error;
-        }
         started_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
@@ -119,13 +114,11 @@ class OnvifServiceImpl : public IOnvifService {
         started_ = false;
     }
 
-    void Deinit() override {
+    void Release() {
         Stop();
         std::lock_guard<std::mutex> lock(mutex_);
         initialized_ = false;
     }
-
-    const char* Name() const override { return "onvif_service"; }
 
     OnvifServiceStats GetStats() const override {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -189,31 +182,28 @@ class OnvifServiceImpl : public IOnvifService {
             return;
         }
         const std::string request(reinterpret_cast<const char*>(data), size);
-        infra::Result<HttpRequest> parsed = ParseHttpRequest(request);
+        HttpRequest parsed = ParseHttpRequest(request);
         OnvifAction action = OnvifAction::kUnknown;
         std::string body;
         std::string extra_headers;
         uint32_t status = 200;
         std::string reason = "OK";
-        if (!parsed.IsOk() || parsed.value.method != "POST" ||
-            parsed.value.path != options_.service_path) {
+        if (parsed.method != "POST" || parsed.path != options_.service_path) {
             IncrementParseFailures();
             status = 400;
             reason = "Bad Request";
             body = SoapFault("invalid onvif http request");
         } else {
-            action = ParseAction(parsed.value.body);
+            action = ParseAction(parsed.body);
             if (action == OnvifAction::kUnknown) {
                 IncrementParseFailures();
                 status = 400;
                 reason = "Bad Request";
                 body = SoapFault("unsupported onvif action");
             } else {
-                const infra::Status auth_error =
-                    AuthorizeOnvifRequest(dependencies_.auth_service,
-                                          options_.enable_auth,
-                                          parsed.value.headers, action);
-                if (auth_error != infra::Status::kOk) {
+                if (!AuthorizeOnvifRequest(dependencies_.auth_service,
+                                           options_.enable_auth,
+                                           parsed.headers, action)) {
                     IncrementAuthFailures();
                     status = 401;
                     reason = "Unauthorized";
@@ -221,7 +211,7 @@ class OnvifServiceImpl : public IOnvifService {
                         "WWW-Authenticate: Basic realm=\"onvif\"\r\n";
                     body = SoapFault("unauthorized");
                 } else {
-                    body = HandleSoapAction(action, parsed.value.body, &status,
+                    body = HandleSoapAction(action, parsed.body, &status,
                                             &reason);
                 }
             }
@@ -256,30 +246,26 @@ class OnvifServiceImpl : public IOnvifService {
                 return SoapEnvelope(SetSystemDateAndTimeBody(
                     dependencies_.time_service, request, status, reason));
             case OnvifAction::kGetProfiles:
-                return SoapEnvelope(ProfilesBody());
+                return SoapEnvelope(ProfilesBody(dependencies_.uri_provider));
             case OnvifAction::kGetStreamUri: {
-                infra::Result<infra::StreamId> stream_id =
-                    ParseStreamId(request);
-                if (!stream_id.IsOk()) {
+                StreamId stream_id = StreamId::kMain;
+                if (!ParseStreamId(request, &stream_id)) {
                     return SoapEnvelope(ProfileFault(status, reason));
                 }
                 OnvifBodyResult result = onvif_internal::StreamUriBody(
-                    dependencies_.uri_provider, stream_id.value, status,
-                    reason);
+                    dependencies_.uri_provider, stream_id, status, reason);
                 if (result.success) {
                     IncrementStreamUriRequests();
                 }
                 return SoapEnvelope(result.body);
             }
             case OnvifAction::kGetSnapshotUri: {
-                infra::Result<infra::StreamId> stream_id =
-                    ParseStreamId(request);
-                if (!stream_id.IsOk()) {
+                StreamId stream_id = StreamId::kMain;
+                if (!ParseStreamId(request, &stream_id)) {
                     return SoapEnvelope(ProfileFault(status, reason));
                 }
                 OnvifBodyResult result = onvif_internal::SnapshotUriBody(
-                    dependencies_.uri_provider, stream_id.value, status,
-                    reason);
+                    dependencies_.uri_provider, stream_id, status, reason);
                 if (result.success) {
                     IncrementSnapshotUriRequests();
                 }

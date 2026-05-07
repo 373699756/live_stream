@@ -8,10 +8,10 @@
 namespace live_stream {
 namespace netframe_internal {
 
-infra::Status SetNonBlocking(int fd);
-infra::Result<sockaddr_in> ToSockAddr(const NetAddress& address);
+bool SetNonBlocking(int fd);
+sockaddr_in ToSockAddr(const NetAddress& address);
 NetAddress FromSockAddr(const sockaddr_in& addr);
-infra::Result<NetAddress> GetSocketAddress(int fd, bool peer);
+NetAddress GetSocketAddress(int fd, bool peer);
 
 }  // namespace netframe_internal
 }  // namespace live_stream

@@ -18,6 +18,12 @@
   border-bottom-color: #eef5ff;
 }
 
+.tabs button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  background: #f5f7fa;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));

@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
 #define LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
 
-#include "infra/event_fd.h"
-#include "infra/fd.h"
+#include "event_fd.h"
+#include "fd.h"
 #include "netframe_service.h"
 
 #include <cstdint>
@@ -24,16 +24,14 @@ class EventLoop {
   EventLoop(const EventLoop&) = delete;
   EventLoop& operator=(const EventLoop&) = delete;
 
-  infra::Status Start();
+  bool Start();
   void Stop();
-  infra::Status Post(infra::Task task);
-  infra::Status AddFd(int fd,
-                      uint32_t events,
-                      std::function<void(uint32_t)> handler);
-  infra::Status ModifyFd(int fd, uint32_t events);
+  bool Post(infra::Task task);
+  bool AddFd(int fd, uint32_t events, std::function<void(uint32_t)> handler);
+  bool ModifyFd(int fd, uint32_t events);
   void RemoveFd(int fd);
-  infra::Result<NetTimerId> RunAfter(uint32_t delay_ms, infra::Task task);
-  infra::Status CancelTimer(NetTimerId id);
+  NetTimerId RunAfter(uint32_t delay_ms, infra::Task task);
+  bool CancelTimer(NetTimerId id);
 
  private:
   struct Handler {
@@ -46,9 +44,9 @@ class EventLoop {
     infra::Task task;
   };
 
-  infra::Status AddRawFdLocked(int fd,
-                               uint32_t events,
-                               std::function<void(uint32_t)> handler);
+  bool AddRawFdLocked(int fd,
+                      uint32_t events,
+                      std::function<void(uint32_t)> handler);
   void CleanupLocked();
   void DrainTimerFd();
   void RearmTimerLocked();
@@ -61,9 +59,9 @@ class EventLoop {
   const uint32_t max_events_;
   const uint32_t task_capacity_;
   mutable std::mutex mutex_;
-  infra::UniqueFd epoll_fd_;
-  infra::UniqueFd timer_fd_;
-  infra::EventFd wakeup_;
+  UniqueFd epoll_fd_;
+  UniqueFd timer_fd_;
+  EventFd wakeup_;
   std::thread thread_;
   std::deque<infra::Task> tasks_;
   std::unordered_map<int, Handler> handlers_;

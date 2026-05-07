@@ -8,9 +8,7 @@
 #ifndef LIVE_STREAM_SYSTEM_SERVICE_H_
 #define LIVE_STREAM_SYSTEM_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/request_context.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <memory>
@@ -48,11 +46,11 @@ class ISystemPlatform {
  public:
     virtual ~ISystemPlatform() = default;
 
-    virtual infra::Result<DeviceInfo> GetDeviceInfo() = 0;
-    virtual infra::Result<SystemStatus> GetSystemStatus() = 0;
-    virtual infra::Result<SystemCapabilities> GetCapabilities() = 0;
-    virtual infra::Status Reboot() = 0;
-    virtual infra::Status FactoryReset() = 0;
+    virtual DeviceInfo GetDeviceInfo() = 0;
+    virtual SystemStatus GetSystemStatus() = 0;
+    virtual SystemCapabilities GetCapabilities() = 0;
+    virtual bool Reboot() = 0;
+    virtual bool FactoryReset() = 0;
 };
 
 struct SystemServiceOptions {
@@ -63,14 +61,18 @@ struct SystemServiceOptions {
     uint32_t heartbeat_timeout_ms = 5000;
 };
 
-class ISystemService : public infra::IService {
+class ISystemService {
  public:
-    virtual infra::Result<DeviceInfo> GetDeviceInfo() = 0;
-    virtual infra::Result<SystemStatus> GetSystemStatus() = 0;
-    virtual infra::Result<SystemCapabilities> GetCapabilities() = 0;
-    virtual infra::Status Reboot(const infra::RequestContext& context) = 0;
-    virtual infra::Status FactoryReset(const infra::RequestContext& context) = 0;
-    virtual infra::Status ReportHeartbeat(const std::string& component) = 0;
+    virtual ~ISystemService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual DeviceInfo GetDeviceInfo() = 0;
+    virtual SystemStatus GetSystemStatus() = 0;
+    virtual SystemCapabilities GetCapabilities() = 0;
+    virtual bool Reboot(const live_stream::RequestContext& context) = 0;
+    virtual bool FactoryReset(const live_stream::RequestContext& context) = 0;
+    virtual bool ReportHeartbeat(const std::string& component) = 0;
 };
 
 std::unique_ptr<ISystemService> CreateSystemService(

@@ -3,10 +3,10 @@
 namespace live_stream {
 namespace onvif_internal {
 
-infra::Result<HttpRequest> ParseHttpRequest(const std::string& raw) {
+HttpRequest ParseHttpRequest(const std::string& raw) {
     const std::size_t line_end = raw.find("\r\n");
     if (line_end == std::string::npos) {
-        return infra::Result<HttpRequest>::Fail(infra::Status::kInvalidParam);
+        return HttpRequest();
     }
     const std::string request_line = raw.substr(0, line_end);
     const std::size_t first_space = request_line.find(' ');
@@ -16,12 +16,12 @@ infra::Result<HttpRequest> ParseHttpRequest(const std::string& raw) {
             : request_line.find(' ', first_space + 1);
     if (first_space == std::string::npos ||
         second_space == std::string::npos) {
-        return infra::Result<HttpRequest>::Fail(infra::Status::kInvalidParam);
+        return HttpRequest();
     }
 
     const std::size_t header_end = raw.find("\r\n\r\n");
     if (header_end == std::string::npos) {
-        return infra::Result<HttpRequest>::Fail(infra::Status::kInvalidParam);
+        return HttpRequest();
     }
 
     HttpRequest request;
@@ -31,9 +31,9 @@ infra::Result<HttpRequest> ParseHttpRequest(const std::string& raw) {
     request.headers = raw.substr(line_end + 2, header_end - line_end - 2);
     request.body = raw.substr(header_end + 4);
     if (request.method.empty() || request.path.empty()) {
-        return infra::Result<HttpRequest>::Fail(infra::Status::kInvalidParam);
+        return HttpRequest();
     }
-    return infra::Result<HttpRequest>::Ok(request);
+    return request;
 }
 
 std::string HttpResponse(uint32_t status_code,

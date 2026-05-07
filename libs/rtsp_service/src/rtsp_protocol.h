@@ -25,10 +25,11 @@ std::string BuildRtspResponse(int status,
                               const std::string& cseq,
                               const std::map<std::string, std::string>& headers,
                               const std::string& body);
-bool PathToStreamId(const std::string& uri, infra::StreamId* stream_id);
-const char* StreamPath(infra::StreamId stream_id);
+bool PathToStreamId(const std::string& uri, StreamId* stream_id);
+const char* StreamPath(StreamId stream_id);
 std::string BuildSdp(const RtspListenAddress& address,
-                     infra::StreamId stream_id);
+                     StreamId stream_id,
+                     VideoCodec codec);
 int ParseClientRtpPort(const std::string& transport);
 std::string BasicRealmHeader();
 bool DecodeBase64(const std::string& encoded, std::string* decoded);

@@ -10,7 +10,7 @@ namespace {
 
 CodecCapability H264Capability() {
     CodecCapability capability;
-    capability.codec = infra::VideoCodec::kH264;
+    capability.codec = VideoCodec::kH264;
     capability.profiles.push_back("baseline");
     capability.profiles.push_back("main");
     capability.profiles.push_back("high");
@@ -19,21 +19,21 @@ CodecCapability H264Capability() {
 
 CodecCapability H265Capability() {
     CodecCapability capability;
-    capability.codec = infra::VideoCodec::kH265;
+    capability.codec = VideoCodec::kH265;
     capability.profiles.push_back("main");
     return capability;
 }
 
 CodecCapability JpegCapability() {
     CodecCapability capability;
-    capability.codec = infra::VideoCodec::kJpeg;
+    capability.codec = VideoCodec::kJpeg;
     capability.profiles.push_back("baseline");
     return capability;
 }
 
 CodecCapability MjpegCapability() {
     CodecCapability capability;
-    capability.codec = infra::VideoCodec::kMjpeg;
+    capability.codec = VideoCodec::kMjpeg;
     capability.profiles.push_back("baseline");
     return capability;
 }
@@ -109,7 +109,7 @@ MediaCapabilities DefaultCapabilities() {
     MediaCapabilities capabilities;
 
     VideoStreamCapabilities main_stream;
-    main_stream.stream_id = infra::StreamId::kMain;
+    main_stream.stream_id = StreamId::kMain;
     main_stream.codecs.push_back(H264Capability());
     main_stream.codecs.push_back(H265Capability());
     main_stream.codecs.push_back(JpegCapability());
@@ -128,7 +128,7 @@ MediaCapabilities DefaultCapabilities() {
     capabilities.streams.push_back(main_stream);
 
     VideoStreamCapabilities sub_stream;
-    sub_stream.stream_id = infra::StreamId::kSub;
+    sub_stream.stream_id = StreamId::kSub;
     sub_stream.codecs.push_back(H264Capability());
     sub_stream.codecs.push_back(H265Capability());
     sub_stream.codecs.push_back(JpegCapability());
@@ -152,8 +152,8 @@ MediaCapabilities DefaultCapabilities() {
 
 }  // namespace
 
-infra::Result<MediaCapabilities> DefaultHisiSdk::GetCapabilities() {
-    return infra::Result<MediaCapabilities>::Ok(DefaultCapabilities());
+MediaCapabilities DefaultHisiSdk::GetCapabilities() {
+    return DefaultCapabilities();
 }
 
 }  // namespace hisisdk

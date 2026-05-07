@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_PIPELINE_CONFIG_H_
 #define LIVE_STREAM_MEDIA_PIPELINE_CONFIG_H_
 
-#include "infra/stream_types.h"
+#include "media/stream_types.h"
 #include "media/media_capabilities.h"
 
 #include <cstdint>
@@ -19,8 +19,8 @@ struct FrameRate {
 };
 
 struct VideoStreamConfig {
-    infra::StreamId stream_id = infra::StreamId::kMain;
-    infra::VideoCodec codec = infra::VideoCodec::kH265;
+    StreamId stream_id = StreamId::kMain;
+    VideoCodec codec = VideoCodec::kH265;
     VideoSize size;
     FrameRate frame_rate;
     uint32_t bitrate_kbps = 2048;

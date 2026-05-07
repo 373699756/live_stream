@@ -178,7 +178,7 @@ void StopWorker() {
 
 }  // namespace
 
-Status Log::Init(const LogConfig& config) {
+bool Log::Init(const LogConfig& config) {
     Shutdown();
 
     {
@@ -191,7 +191,7 @@ Status Log::Init(const LogConfig& config) {
             OpenFileLocked();
             if (g_file == nullptr) {
                 g_initialized = false;
-                return Status::kIoError;
+                return false;
             }
         }
     }
@@ -200,7 +200,7 @@ Status Log::Init(const LogConfig& config) {
         g_worker = std::thread(WorkerMain);
     }
 
-    return Status::kOk;
+    return true;
 }
 
 void Log::Shutdown() {

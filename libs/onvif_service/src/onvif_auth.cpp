@@ -80,36 +80,36 @@ AuthPermission PermissionForAction(OnvifAction action) {
 
 }  // namespace
 
-infra::Status AuthorizeOnvifRequest(IAuthService* auth_service,
-                                    bool enable_auth,
-                                    const std::string& headers,
-                                    OnvifAction action) {
+bool AuthorizeOnvifRequest(IAuthService* auth_service,
+                           bool enable_auth,
+                           const std::string& headers,
+                           OnvifAction action) {
     if (!enable_auth) {
-        return infra::Status::kOk;
+        return true;
     }
     if (auth_service == nullptr) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     std::string user_name;
     std::string password;
     if (!ExtractBasicCredentials(headers, &user_name, &password)) {
-        return infra::Status::kUnauthorized;
+        return false;
     }
     LoginRequest login;
     login.context.client_ip = "onvif";
     login.user_name = user_name;
     login.password = password;
-    infra::Result<LoginResult> result = auth_service->Login(login);
-    if (!result.IsOk()) {
-        return result.status;
+    LoginResult result = auth_service->Login(login);
+    if (result.token.empty()) {
+        return false;
     }
-    const infra::Status permission_error = auth_service->CheckPermission(
-        result.value.principal, PermissionForAction(action), "onvif_service");
-    infra::RequestContext logout_context;
-    logout_context.user_name = result.value.principal.user_name;
-    logout_context.session_id = result.value.principal.session_id;
+    const bool allowed = auth_service->CheckPermission(
+        result.principal, PermissionForAction(action), "onvif_service");
+    live_stream::RequestContext logout_context;
+    logout_context.user_name = result.principal.user_name;
+    logout_context.session_id = result.principal.session_id;
     static_cast<void>(auth_service->Logout(logout_context));
-    return permission_error;
+    return allowed;
 }
 
 }  // namespace onvif_internal

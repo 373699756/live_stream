@@ -1,6 +1,5 @@
 #include "tcp_server.h"
 
-#include "infra/errno_util.h"
 #include "net_engine_impl.h"
 #include "socket_util.h"
 #include "tcp_connection.h"
@@ -24,23 +23,23 @@ TcpServer::TcpServer(NetEngineImpl* engine,
 
 TcpServer::~TcpServer() { Stop(); }
 
-infra::Status TcpServer::Start(const std::shared_ptr<EventLoop>& loop) {
+bool TcpServer::Start(const std::shared_ptr<EventLoop>& loop) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (running_) {
-    return infra::Status::kOk;
+    return true;
   }
   if (!loop || options_.backlog == 0 || options_.max_connections == 0 ||
       options_.send_queue_capacity == 0 ||
       options_.send_buffer_limit_bytes == 0) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
-  auto addr = ToSockAddr(options_.address);
-  if (!addr.IsOk()) {
-    return addr.status;
+  sockaddr_in addr = ToSockAddr(options_.address);
+  if (addr.sin_family != AF_INET) {
+    return false;
   }
-  infra::UniqueFd fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+  UniqueFd fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
   if (!fd.valid()) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
   int enabled = 1;
   (void)setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR, &enabled,
@@ -51,24 +50,23 @@ infra::Status TcpServer::Start(const std::shared_ptr<EventLoop>& loop) {
                      sizeof(enabled));
 #endif
   }
-  infra::Status status = SetNonBlocking(fd.get());
-  if (status != infra::Status::kOk) {
-    return status;
+  if (!SetNonBlocking(fd.get())) {
+    return false;
   }
-  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr.value),
-           sizeof(addr.value)) != 0) {
-    return infra::ErrnoToStatus(errno);
+  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr),
+           sizeof(addr)) != 0) {
+    return false;
   }
   if (listen(fd.get(), static_cast<int>(options_.backlog)) != 0) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
-  auto local = GetSocketAddress(fd.get(), false);
-  if (!local.IsOk()) {
-    return local.status;
+  NetAddress local = GetSocketAddress(fd.get(), false);
+  if (local.port == 0) {
+    return false;
   }
   loop_ = loop;
   listen_fd_ = std::move(fd);
-  local_ = local.value;
+  local_ = local;
   running_ = true;
   std::weak_ptr<TcpServer> weak_self = shared_from_this();
   return loop_->AddFd(listen_fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
@@ -116,7 +114,7 @@ void TcpServer::AcceptLoop() {
       }
       return;
     }
-    infra::UniqueFd accepted(fd);
+    UniqueFd accepted(fd);
     if (!engine_->CanAccept(options_.max_connections)) {
       engine_->AddRejected();
       continue;
@@ -130,17 +128,16 @@ void TcpServer::AcceptLoop() {
       (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled,
                        sizeof(enabled));
     }
-    auto local = GetSocketAddress(fd, false);
-    if (!local.IsOk()) {
+    NetAddress local = GetSocketAddress(fd, false);
+    if (local.port == 0) {
       engine_->AddRejected();
       continue;
     }
     const ConnectionId id = engine_->AllocateConnectionId();
     auto connection = std::make_shared<TcpConnection>(
         engine_, engine_->NextLoop(), accepted.Release(), id, options_,
-        callbacks_, local.value, FromSockAddr(peer_addr));
-    infra::Status status = connection->Start();
-    if (status != infra::Status::kOk) {
+        callbacks_, local, FromSockAddr(peer_addr));
+    if (!connection->Start()) {
       engine_->AddRejected();
       continue;
     }

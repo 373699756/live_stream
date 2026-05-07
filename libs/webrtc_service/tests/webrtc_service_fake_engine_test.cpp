@@ -7,7 +7,7 @@
 
 namespace {
 
-class DummyMediaBuffer : public infra::IMediaBuffer {
+class DummyMediaBuffer : public IMediaBuffer {
  public:
     uint8_t* MutableData() override { return data_; }
     const uint8_t* Data() const override { return data_; }
@@ -53,7 +53,7 @@ int main() {
     }
 
     live_stream::WebrtcCreatePeerRequest create_request;
-    create_request.stream_id = infra::StreamId::kMain;
+    create_request.stream_id = StreamId::kMain;
     auto peer = service->CreatePeer(create_request);
     if (!peer.IsOk()) {
         return 3;
@@ -75,9 +75,9 @@ int main() {
         return 5;
     }
 
-    infra::EncodedFrame frame;
-    frame.stream_id = infra::StreamId::kMain;
-    frame.buffer = std::shared_ptr<infra::IMediaBuffer>(new DummyMediaBuffer());
+    EncodedFrame frame;
+    frame.stream_id = StreamId::kMain;
+    frame.buffer = std::shared_ptr<IMediaBuffer>(new DummyMediaBuffer());
     frame.size = 8;
     service->OnFrame(frame);
     if (!WaitForSentFrames(service.get(), 1)) {

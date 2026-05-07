@@ -15,18 +15,18 @@ NetEngineImpl::NetEngineImpl(const NetEngineOptions& options)
 
 NetEngineImpl::~NetEngineImpl() { Stop(); }
 
-infra::Status NetEngineImpl::Start() {
+bool NetEngineImpl::Start() {
   if (options_.io_threads == 0) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
   if (options_.callback_mode == CallbackMode::kPostToExecutor &&
       options_.callback_executor == nullptr) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) {
-      return infra::Status::kOk;
+      return true;
     }
     if (loops_.empty()) {
       for (uint32_t i = 0; i < options_.io_threads; ++i) {
@@ -36,28 +36,25 @@ infra::Status NetEngineImpl::Start() {
     }
   }
   for (const auto& loop : loops_) {
-    const infra::Status status = loop->Start();
-    if (status != infra::Status::kOk) {
+    if (!loop->Start()) {
       Stop();
-      return status;
+      return false;
     }
   }
   running_ = true;
   for (auto& entry : servers_) {
-    const infra::Status status = entry.second->Start(NextLoop());
-    if (status != infra::Status::kOk) {
+    if (!entry.second->Start(NextLoop())) {
       Stop();
-      return status;
+      return false;
     }
   }
   for (auto& entry : udp_sockets_) {
-    const infra::Status status = entry.second->Start(NextLoop());
-    if (status != infra::Status::kOk) {
+    if (!entry.second->Start(NextLoop())) {
       Stop();
-      return status;
+      return false;
     }
   }
-  return infra::Status::kOk;
+  return true;
 }
 
 void NetEngineImpl::Stop() {
@@ -82,10 +79,10 @@ void NetEngineImpl::Stop() {
   connections_.clear();
 }
 
-infra::Result<TcpServerId> NetEngineImpl::ListenTcp(
+TcpServerId NetEngineImpl::ListenTcp(
     const TcpListenOptions& options, const TcpCallbacks& callbacks) {
   if (callbacks.on_read == nullptr && callbacks.on_accept == nullptr) {
-    return infra::Result<TcpServerId>::Fail(infra::Status::kInvalidParam);
+    return 0;
   }
   const TcpServerId id = next_server_id_++;
   auto server = std::make_shared<TcpServer>(this, id, options, callbacks);
@@ -94,17 +91,16 @@ infra::Result<TcpServerId> NetEngineImpl::ListenTcp(
     servers_[id] = server;
   }
   if (running_) {
-    const infra::Status status = server->Start(NextLoop());
-    if (status != infra::Status::kOk) {
+    if (!server->Start(NextLoop())) {
       std::lock_guard<std::mutex> lock(mutex_);
       servers_.erase(id);
-      return infra::Result<TcpServerId>::Fail(status);
+      return 0;
     }
   }
-  return infra::Result<TcpServerId>::Ok(id);
+  return id;
 }
 
-infra::Result<UdpSocketId> NetEngineImpl::BindUdp(
+UdpSocketId NetEngineImpl::BindUdp(
     const UdpBindOptions& options, const UdpCallbacks& callbacks) {
   const UdpSocketId id = next_udp_id_++;
   auto socket = std::make_shared<UdpEndpoint>(this, id, options, callbacks);
@@ -113,117 +109,109 @@ infra::Result<UdpSocketId> NetEngineImpl::BindUdp(
     udp_sockets_[id] = socket;
   }
   if (running_) {
-    const infra::Status status = socket->Start(NextLoop());
-    if (status != infra::Status::kOk) {
+    if (!socket->Start(NextLoop())) {
       std::lock_guard<std::mutex> lock(mutex_);
       udp_sockets_.erase(id);
-      return infra::Result<UdpSocketId>::Fail(status);
+      return 0;
     }
   }
-  return infra::Result<UdpSocketId>::Ok(id);
+  return id;
 }
 
-infra::Status NetEngineImpl::CloseTcp(TcpServerId id) {
+bool NetEngineImpl::CloseTcp(TcpServerId id) {
   std::shared_ptr<TcpServer> server;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = servers_.find(id);
     if (it == servers_.end()) {
-      return infra::Status::kNotFound;
+      return false;
     }
     server = it->second;
     servers_.erase(it);
   }
   server->Stop();
-  return infra::Status::kOk;
+  return true;
 }
 
-infra::Status NetEngineImpl::CloseUdp(UdpSocketId id) {
+bool NetEngineImpl::CloseUdp(UdpSocketId id) {
   std::shared_ptr<UdpEndpoint> socket;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = udp_sockets_.find(id);
     if (it == udp_sockets_.end()) {
-      return infra::Status::kNotFound;
+      return false;
     }
     socket = it->second;
     udp_sockets_.erase(it);
   }
   socket->Stop();
-  return infra::Status::kOk;
+  return true;
 }
 
-infra::Status NetEngineImpl::Send(ConnectionId id,
-                                  const uint8_t* data,
-                                  size_t size) {
+bool NetEngineImpl::Send(ConnectionId id, const uint8_t* data, size_t size) {
   auto connection = FindConnection(id);
-  return connection ? connection->Send(data, size) : infra::Status::kNotFound;
+  return connection ? connection->Send(data, size) : false;
 }
 
-infra::Status NetEngineImpl::Close(ConnectionId id) {
+bool NetEngineImpl::Close(ConnectionId id) {
   auto connection = FindConnection(id);
-  return connection ? connection->Close() : infra::Status::kNotFound;
+  return connection ? connection->Close() : false;
 }
 
-infra::Status NetEngineImpl::CloseAfterSend(ConnectionId id) {
+bool NetEngineImpl::CloseAfterSend(ConnectionId id) {
   auto connection = FindConnection(id);
-  return connection ? connection->CloseAfterSend()
-                    : infra::Status::kNotFound;
+  return connection ? connection->CloseAfterSend() : false;
 }
 
-infra::Status NetEngineImpl::SendTo(UdpSocketId id,
-                                    NetAddress address,
-                                    const uint8_t* data,
-                                    size_t size) {
+bool NetEngineImpl::SendTo(UdpSocketId id,
+                           NetAddress address,
+                           const uint8_t* data,
+                           size_t size) {
   std::shared_ptr<UdpEndpoint> socket;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = udp_sockets_.find(id);
     if (it == udp_sockets_.end()) {
-      return infra::Status::kNotFound;
+      return false;
     }
     socket = it->second;
   }
   return socket->SendTo(std::move(address), data, size);
 }
 
-infra::Result<NetTimerId> NetEngineImpl::RunOnIoAfter(uint32_t delay_ms,
-                                                      infra::Task task) {
+NetTimerId NetEngineImpl::RunOnIoAfter(uint32_t delay_ms, infra::Task task) {
   auto loop = NextLoop();
   if (!loop) {
-    return infra::Result<NetTimerId>::Fail(infra::Status::kBusy);
+    return 0;
   }
   return loop->RunAfter(delay_ms, std::move(task));
 }
 
-infra::Status NetEngineImpl::CancelIoTimer(NetTimerId id) {
+bool NetEngineImpl::CancelIoTimer(NetTimerId id) {
   for (const auto& loop : loops_) {
-    const infra::Status status = loop->CancelTimer(id);
-    if (status == infra::Status::kOk) {
-      return status;
+    if (loop->CancelTimer(id)) {
+      return true;
     }
   }
-  return infra::Status::kNotFound;
+  return false;
 }
 
-infra::Result<NetAddress> NetEngineImpl::TcpLocalAddress(
-    TcpServerId id) const {
+NetAddress NetEngineImpl::TcpLocalAddress(TcpServerId id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = servers_.find(id);
   if (it == servers_.end()) {
-    return infra::Result<NetAddress>::Fail(infra::Status::kNotFound);
+    return NetAddress{};
   }
-  return infra::Result<NetAddress>::Ok(it->second->LocalAddress());
+  return it->second->LocalAddress();
 }
 
-infra::Result<NetAddress> NetEngineImpl::UdpLocalAddress(
-    UdpSocketId id) const {
+NetAddress NetEngineImpl::UdpLocalAddress(UdpSocketId id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = udp_sockets_.find(id);
   if (it == udp_sockets_.end()) {
-    return infra::Result<NetAddress>::Fail(infra::Status::kNotFound);
+    return NetAddress{};
   }
-  return infra::Result<NetAddress>::Ok(it->second->LocalAddress());
+  return it->second->LocalAddress();
 }
 
 uint32_t NetEngineImpl::PendingBytes(ConnectionId id) const {

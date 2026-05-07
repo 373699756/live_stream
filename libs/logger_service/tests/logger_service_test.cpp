@@ -50,19 +50,15 @@ int main() {
     if (!service) {
         return 1;
     }
-    if (std::string(service->Name()) != "logger_service") {
-        return 2;
-    }
-
     live_stream::OperationRecord before_start;
-    if (service->RecordOperation(before_start) == infra::Status::kOk) {
+    if (service->RecordOperation(before_start)) {
         return 3;
     }
 
-    if (service->Init() != infra::Status::kOk) {
+    if (!service->Init()) {
         return 4;
     }
-    if (service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 5;
     }
 
@@ -78,7 +74,7 @@ int main() {
     record.result = live_stream::OperationResult::kSuccess;
     record.reason = "ok";
 
-    if (service->RecordOperation(record) != infra::Status::kOk) {
+    if (!service->RecordOperation(record)) {
         return 6;
     }
 
@@ -90,19 +86,19 @@ int main() {
     failed.target = "device";
     failed.result = live_stream::OperationResult::kFailed;
     failed.reason = "denied";
-    if (service->RecordOperation(failed) != infra::Status::kOk) {
+    if (!service->RecordOperation(failed)) {
         return 7;
     }
 
     live_stream::OperationLogQuery query;
     query.limit = 10;
-    infra::Result<std::vector<live_stream::OperationRecord>> all =
+    std::vector<live_stream::OperationRecord> all =
         service->QueryOperations(query);
-    if (!all.IsOk() || all.value.size() != 2) {
+    if (all.size() != 2) {
         return 8;
     }
-    if (all.value[0].request_id != "req-2" ||
-        all.value[1].request_id != "req-1") {
+    if (all[0].request_id != "req-2" ||
+        all[1].request_id != "req-1") {
         return 9;
     }
 
@@ -112,32 +108,32 @@ int main() {
     admin_query.action = live_stream::OperationAction::kLogin;
     admin_query.has_result = true;
     admin_query.result = live_stream::OperationResult::kSuccess;
-    infra::Result<std::vector<live_stream::OperationRecord>> admin_records =
+    std::vector<live_stream::OperationRecord> admin_records =
         service->QueryOperations(admin_query);
-    if (!admin_records.IsOk() || admin_records.value.size() != 1 ||
-        admin_records.value[0].request_id != "req-1") {
+    if (admin_records.size() != 1 ||
+        admin_records[0].request_id != "req-1") {
         return 10;
     }
 
     live_stream::OperationLogQuery range_query;
     range_query.begin_timestamp_ms = 1500;
     range_query.end_timestamp_ms = 2500;
-    infra::Result<std::vector<live_stream::OperationRecord>> range_records =
+    std::vector<live_stream::OperationRecord> range_records =
         service->QueryOperations(range_query);
-    if (!range_records.IsOk() || range_records.value.size() != 1 ||
-        range_records.value[0].request_id != "req-2") {
+    if (range_records.size() != 1 ||
+        range_records[0].request_id != "req-2") {
         return 11;
     }
 
     live_stream::OperationLogExportOptions export_options;
     export_options.output_path = export_path;
     export_options.query = admin_query;
-    if (service->ExportOperations(export_options) != infra::Status::kOk) {
+    if (!service->ExportOperations(export_options)) {
         return 12;
     }
 
     service->Stop();
-    if (service->RecordOperation(record) == infra::Status::kOk) {
+    if (service->RecordOperation(record)) {
         return 13;
     }
     service->Stop();

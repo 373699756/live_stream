@@ -13,48 +13,45 @@ class MetaRtcEngine : public IWebrtcEngine {
     const char* Name() const override { return "metaRTC"; }
     bool Available() const override { return true; }
 
-    infra::Status Init(const WebrtcServiceOptions& options) override {
+    bool Start(const WebrtcServiceOptions& options) override {
         (void)options;
-        return infra::Status::kOk;
+        return true;
     }
 
-    void Deinit() override {}
+    void Stop() override {}
 
-    infra::Status CreatePeer(const WebrtcPeerInfo& peer) override {
+    bool CreatePeer(const WebrtcPeerInfo& peer) override {
         peers_[peer.peer_id] = peer;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<std::string> HandleOffer(
+    std::string HandleOffer(
         const WebrtcPeerInfo& peer,
         const std::string& offer_sdp) override {
         if (peers_.find(peer.peer_id) == peers_.end() || offer_sdp.empty()) {
-            return infra::Result<std::string>::Fail(infra::Status::kNotFound);
+            return std::string();
         }
-        return infra::Result<std::string>::Ok(BuildAnswerSdp());
+        return BuildAnswerSdp();
     }
 
-    infra::Status AddIceCandidate(
-        const WebrtcIceCandidate& candidate) override {
+    bool AddIceCandidate(const WebrtcIceCandidate& candidate) override {
         last_candidate_json_ = BuildCandidateJson(candidate);
-        return peers_.find(candidate.peer_id) == peers_.end()
-                   ? infra::Status::kNotFound
-                   : infra::Status::kOk;
+        return peers_.find(candidate.peer_id) != peers_.end();
     }
 
-    infra::Status ClosePeer(const std::string& peer_id) override {
+    bool ClosePeer(const std::string& peer_id) override {
         peers_.erase(peer_id);
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status SendFrame(const WebrtcPeerInfo& peer,
-                            const infra::EncodedFrame& frame) override {
+    bool SendFrame(const WebrtcPeerInfo& peer,
+                   const EncodedFrame& frame) override {
         if (peers_.find(peer.peer_id) == peers_.end() || !frame.buffer ||
             frame.size == 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         ++sent_frames_;
-        return infra::Status::kOk;
+        return true;
     }
 
  private:
@@ -82,49 +79,45 @@ class FakeWebrtcEngine : public IWebrtcEngine {
     const char* Name() const override { return "fake_webrtc"; }
     bool Available() const override { return true; }
 
-    infra::Status Init(const WebrtcServiceOptions& options) override {
+    bool Start(const WebrtcServiceOptions& options) override {
         (void)options;
-        return infra::Status::kOk;
+        return true;
     }
 
-    void Deinit() override { peers_.clear(); }
+    void Stop() override { peers_.clear(); }
 
-    infra::Status CreatePeer(const WebrtcPeerInfo& peer) override {
+    bool CreatePeer(const WebrtcPeerInfo& peer) override {
         peers_[peer.peer_id] = peer;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<std::string> HandleOffer(
+    std::string HandleOffer(
         const WebrtcPeerInfo& peer,
         const std::string& offer_sdp) override {
         if (peers_.find(peer.peer_id) == peers_.end() || offer_sdp.empty()) {
-            return infra::Result<std::string>::Fail(infra::Status::kNotFound);
+            return std::string();
         }
-        return infra::Result<std::string>::Ok(
-            "v=0\r\ns=fake-webrtc-answer\r\n");
+        return "v=0\r\ns=fake-webrtc-answer\r\n";
     }
 
-    infra::Status AddIceCandidate(
-        const WebrtcIceCandidate& candidate) override {
+    bool AddIceCandidate(const WebrtcIceCandidate& candidate) override {
         last_candidate_json_ = BuildCandidateJson(candidate);
-        return peers_.find(candidate.peer_id) == peers_.end()
-                   ? infra::Status::kNotFound
-                   : infra::Status::kOk;
+        return peers_.find(candidate.peer_id) != peers_.end();
     }
 
-    infra::Status ClosePeer(const std::string& peer_id) override {
+    bool ClosePeer(const std::string& peer_id) override {
         peers_.erase(peer_id);
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status SendFrame(const WebrtcPeerInfo& peer,
-                            const infra::EncodedFrame& frame) override {
+    bool SendFrame(const WebrtcPeerInfo& peer,
+                   const EncodedFrame& frame) override {
         if (peers_.find(peer.peer_id) == peers_.end() || !frame.buffer ||
             frame.size == 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         ++sent_frames_;
-        return infra::Status::kOk;
+        return true;
     }
 
  private:

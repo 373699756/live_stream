@@ -13,105 +13,103 @@ namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_auth"; }
 
-    infra::Status SetAuditSink(live_stream::IAuthAuditSink* sink) override {
+    bool SetAuditSink(live_stream::IAuthAuditSink* sink) override {
         (void)sink;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<live_stream::LoginResult> Login(
+    live_stream::LoginResult Login(
         const live_stream::LoginRequest& request) override {
-        if (request.user_name != "admin" || request.password != "pass") {
-            return infra::Result<live_stream::LoginResult>::Fail(
-                infra::Status::kUnauthorized);
-        }
         live_stream::LoginResult result;
+        if (request.user_name != "admin" || request.password != "pass") {
+            return result;
+        }
         result.principal.user_name = "admin";
         result.principal.session_id = "session-1";
         result.principal.role = live_stream::AuthRole::kAdmin;
         result.token = "admin-token";
         result.expires_at_ms = 1234;
-        return infra::Result<live_stream::LoginResult>::Ok(result);
+        return result;
     }
 
-    infra::Status Logout(const infra::RequestContext& context) override {
-        return context.session_id.empty() ? infra::Status::kUnauthorized
-                                          : infra::Status::kOk;
+    bool Logout(const live_stream::RequestContext& context) override {
+        return !context.session_id.empty();
     }
 
-    infra::Result<live_stream::TokenValidationResult> ValidateToken(
+    live_stream::TokenValidationResult ValidateToken(
         const std::string& token) override {
+        live_stream::TokenValidationResult result;
         if (token == "admin-token") {
-            live_stream::TokenValidationResult result;
             result.principal.user_name = "admin";
             result.principal.session_id = "session-1";
             result.principal.role = live_stream::AuthRole::kAdmin;
             result.expires_at_ms = 1234;
-            return infra::Result<live_stream::TokenValidationResult>::Ok(result);
+            return result;
         }
         if (token == "viewer-token") {
-            live_stream::TokenValidationResult result;
             result.principal.user_name = "viewer";
             result.principal.session_id = "session-2";
             result.principal.role = live_stream::AuthRole::kViewer;
-            return infra::Result<live_stream::TokenValidationResult>::Ok(result);
+            return result;
         }
-        return infra::Result<live_stream::TokenValidationResult>::Fail(
-            infra::Status::kUnauthorized);
+        return result;
     }
 
-    infra::Status CheckPermission(
+    bool CheckPermission(
         const live_stream::AuthPrincipal& principal,
         live_stream::AuthPermission permission,
         const std::string& target) override {
         (void)target;
         if (principal.role == live_stream::AuthRole::kAdmin) {
-            return infra::Status::kOk;
+            return true;
         }
         if (permission == live_stream::AuthPermission::kReadStatus ||
             permission == live_stream::AuthPermission::kPreviewVideo) {
-            return infra::Status::kOk;
+            return true;
         }
-        return infra::Status::kNoPermission;
+        return false;
     }
 };
 
 class FakeConfigService : public live_stream::IConfigService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_config"; }
 
-    infra::Status SetValue(const std::string& name,
+    bool SetValue(const std::string& name,
                           const live_stream::ConfigJson& value) override {
         if (name.empty()) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         value_ = value;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status GetValue(const std::string& name,
-                          live_stream::ConfigJson* value) override {
-        if (value == nullptr || name.empty()) {
-            return infra::Status::kInvalidParam;
+    live_stream::ConfigJson GetValue(const std::string& name) override {
+        if (name.empty()) {
+            return live_stream::ConfigJson();
         }
-        *value = value_;
-        return infra::Status::kOk;
+        return value_;
     }
 
-    infra::Status GetDefault(const std::string&, live_stream::ConfigJson*) override { return infra::Status::kOk; }
-    infra::Status RestoreDefaults() override { return infra::Status::kOk; }
-    infra::Status SaveFile() override { return infra::Status::kOk; }
-    infra::Status RegisterApply(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
-    infra::Status RegisterVerify(const std::string&, live_stream::ConfigProc) override { return infra::Status::kOk; }
+    live_stream::ConfigJson GetDefault(const std::string&) override {
+        return live_stream::ConfigJson();
+    }
+    bool RestoreDefaults() override { return true; }
+    bool SaveFile() override { return true; }
+    bool RegisterApply(const std::string&, live_stream::ConfigProc) override {
+        return true;
+    }
+    bool RegisterVerify(const std::string&, live_stream::ConfigProc) override {
+        return true;
+    }
 
  private:
     live_stream::ConfigJson value_ = {{"enabled", true}};
@@ -119,29 +117,27 @@ class FakeConfigService : public live_stream::IConfigService {
 
 class FakeLoggerService : public live_stream::ILoggerService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_logger"; }
 
-    infra::Status RecordOperation(
+    bool RecordOperation(
         const live_stream::OperationRecord& record) override {
         records_.push_back(record);
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<std::vector<live_stream::OperationRecord>> QueryOperations(
+    std::vector<live_stream::OperationRecord> QueryOperations(
         const live_stream::OperationLogQuery& query) override {
         (void)query;
-        return infra::Result<std::vector<live_stream::OperationRecord>>::Ok(
-            records_);
+        return records_;
     }
 
-    infra::Status ExportOperations(
+    bool ExportOperations(
         const live_stream::OperationLogExportOptions& options) override {
         (void)options;
-        return infra::Status::kOk;
+        return true;
     }
 
     std::vector<live_stream::OperationRecord> records_;
@@ -182,64 +178,62 @@ int main() {
     live_stream::HttpServiceOptions options;
     std::unique_ptr<live_stream::IHttpService> service =
         live_stream::CreateHttpService(options, deps);
-    if (service->Init() != infra::Status::kOk) {
+    if (!service->Init()) {
         return 1;
     }
 
-    infra::Result<live_stream::HttpResponse> login =
+    live_stream::HttpResponse login =
         service->HandleRequest(Request(live_stream::HttpMethod::kPost,
                                        "/api/auth/login",
                                        "{\"user_name\":\"admin\",\"password\":\"pass\"}",
                                        ""));
-    if (!login.IsOk() || login.value.status_code != 200 ||
-        !Contains(login.value.body, "admin-token")) {
+    if (login.status_code != 200 || !Contains(login.body, "admin-token")) {
         return 2;
     }
 
-    infra::Result<live_stream::HttpResponse> no_token =
+    live_stream::HttpResponse no_token =
         service->HandleRequest(Request(live_stream::HttpMethod::kPut,
                                        "/api/config/video",
                                        "{\"bitrate\":1024}",
                                        ""));
-    if (!no_token.IsOk() || no_token.value.status_code != 401) {
+    if (no_token.status_code != 401) {
         return 3;
     }
 
-    infra::Result<live_stream::HttpResponse> denied =
+    live_stream::HttpResponse denied =
         service->HandleRequest(Request(live_stream::HttpMethod::kPut,
                                        "/api/config/video",
                                        "{\"bitrate\":1024}",
                                        "viewer-token"));
-    if (!denied.IsOk() || denied.value.status_code != 403 ||
-        logger.records_.empty()) {
+    if (denied.status_code != 403 || logger.records_.empty()) {
         return 4;
     }
 
-    infra::Result<live_stream::HttpResponse> put_config =
+    live_stream::HttpResponse put_config =
         service->HandleRequest(Request(live_stream::HttpMethod::kPut,
                                        "/api/config/video",
                                        "{\"bitrate\":2048}",
                                        "admin-token"));
-    if (!put_config.IsOk() || put_config.value.status_code != 200) {
+    if (put_config.status_code != 200) {
         return 5;
     }
 
-    infra::Result<live_stream::HttpResponse> get_config =
+    live_stream::HttpResponse get_config =
         service->HandleRequest(Request(live_stream::HttpMethod::kGet,
                                        "/api/config/video",
                                        "",
                                        "admin-token"));
-    if (!get_config.IsOk() || get_config.value.status_code != 200 ||
-        !Contains(get_config.value.body, "2048")) {
+    if (get_config.status_code != 200 ||
+        !Contains(get_config.body, "2048")) {
         return 6;
     }
 
-    infra::Result<live_stream::HttpResponse> not_impl =
+    live_stream::HttpResponse not_impl =
         service->HandleRequest(Request(live_stream::HttpMethod::kPost,
                                        "/api/upgrade",
                                        "",
                                        "admin-token"));
-    if (!not_impl.IsOk() || not_impl.value.status_code != 501) {
+    if (not_impl.status_code != 501) {
         return 7;
     }
 
@@ -253,21 +247,21 @@ int main() {
     media_deps.media_service = &media;
     std::unique_ptr<live_stream::IHttpService> media_service =
         live_stream::CreateHttpService(options, media_deps);
-    if (media_service->Init() != infra::Status::kOk) {
+    if (!media_service->Init()) {
         return 9;
     }
-    infra::Result<live_stream::HttpResponse> capabilities =
+    live_stream::HttpResponse capabilities =
         media_service->HandleRequest(Request(live_stream::HttpMethod::kGet,
                                              "/api/media/capabilities",
                                              "",
                                              ""));
-    if (!capabilities.IsOk() || capabilities.value.status_code != 200 ||
-        !Contains(capabilities.value.body, "1920") ||
-        !Contains(capabilities.value.body, "h265") ||
-        !Contains(capabilities.value.body, "\"codec\":\"jpeg\"") ||
-        !Contains(capabilities.value.body, "\"codec\":\"mjpeg\"") ||
-        !Contains(capabilities.value.body, "\"image\"") ||
-        !Contains(capabilities.value.body, "\"brightness\"")) {
+    if (capabilities.status_code != 200 ||
+        !Contains(capabilities.body, "1920") ||
+        !Contains(capabilities.body, "h265") ||
+        !Contains(capabilities.body, "\"codec\":\"jpeg\"") ||
+        !Contains(capabilities.body, "\"codec\":\"mjpeg\"") ||
+        !Contains(capabilities.body, "\"image\"") ||
+        !Contains(capabilities.body, "\"brightness\"")) {
         return 10;
     }
 
@@ -276,25 +270,24 @@ int main() {
         "\"fps\":25,\"bitrate_kbps\":4096,\"rate_control\":\"cbr\",\"gop\":50},"
         "\"sub\":{\"codec\":\"h264\",\"resolution\":\"640x360\",\"fps\":15,"
         "\"bitrate_kbps\":768,\"rate_control\":\"cbr\",\"gop\":30}}}";
-    infra::Result<live_stream::HttpResponse> invalid_config =
+    live_stream::HttpResponse invalid_config =
         media_service->HandleRequest(Request(live_stream::HttpMethod::kPut,
                                              "/api/config/video",
                                              invalid_video,
                                              "admin-token"));
-    if (!invalid_config.IsOk() || invalid_config.value.status_code != 400 ||
-        !Contains(invalid_config.value.body, "unsupported resolution")) {
+    if (invalid_config.status_code != 400 ||
+        !Contains(invalid_config.body, "unsupported resolution")) {
         return 11;
     }
     const std::string invalid_image =
         "{\"basic\":{\"brightness\":200},\"exposure\":{\"mode\":\"auto\"}}";
-    infra::Result<live_stream::HttpResponse> invalid_image_config =
+    live_stream::HttpResponse invalid_image_config =
         media_service->HandleRequest(Request(live_stream::HttpMethod::kPut,
                                              "/api/config/image",
                                              invalid_image,
                                              "admin-token"));
-    if (!invalid_image_config.IsOk() ||
-        invalid_image_config.value.status_code != 400 ||
-        !Contains(invalid_image_config.value.body, "unsupported value")) {
+    if (invalid_image_config.status_code != 400 ||
+        !Contains(invalid_image_config.body, "unsupported value")) {
         return 12;
     }
 

@@ -22,10 +22,10 @@ uint32_t AutoWorkerCount() {
 
 class Executor::Impl {
  public:
-    Status Start(const ExecutorOptions& options) {
+    bool Start(const ExecutorOptions& options) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (running_) {
-            return Status::kOk;
+            return true;
         }
 
         options_ = options;
@@ -33,7 +33,7 @@ class Executor::Impl {
             options_.worker_count = AutoWorkerCount();
         }
         if (options_.queue_capacity == 0 || options_.worker_count == 0) {
-            return Status::kInvalidParam;
+            return false;
         }
 
         stopping_ = false;
@@ -51,7 +51,7 @@ class Executor::Impl {
         for (uint32_t i = 0; i < options_.worker_count; ++i) {
             workers_.push_back(std::thread(&Impl::WorkerLoop, this));
         }
-        return Status::kOk;
+        return true;
     }
 
     void Stop(StopMode mode) {
@@ -81,20 +81,20 @@ class Executor::Impl {
         running_count_ = 0;
     }
 
-    Status Post(Task task) {
+    bool Post(Task task) {
         if (!task) {
-            return Status::kInvalidParam;
+            return false;
         }
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!running_ || stopping_) {
                 ++stats_.rejected;
-                return Status::kBusy;
+                return false;
             }
             if (size_ >= options_.queue_capacity) {
                 ++stats_.rejected;
-                return Status::kBusy;
+                return false;
             }
             tasks_[tail_] = std::move(task);
             tail_ = (tail_ + 1) % options_.queue_capacity;
@@ -104,7 +104,7 @@ class Executor::Impl {
                 stats_.max_pending, static_cast<uint32_t>(size_));
         }
         condition_.notify_one();
-        return Status::kOk;
+        return true;
     }
 
     ExecutorStats GetStats() const {
@@ -177,13 +177,13 @@ class Executor::Impl {
 
 Executor::Executor() : impl_(new Impl()) {}
 Executor::~Executor() { Stop(StopMode::kDiscard); }
-Status Executor::Start(const ExecutorOptions& options) {
+bool Executor::Start(const ExecutorOptions& options) {
     return impl_->Start(options);
 }
 void Executor::Stop(StopMode mode) {
     impl_->Stop(mode);
 }
-Status Executor::Post(Task task) {
+bool Executor::Post(Task task) {
     return impl_->Post(std::move(task));
 }
 ExecutorStats Executor::GetStats() const {

@@ -27,6 +27,8 @@ CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Werror
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
+CXXFLAGS += -Iapp
+CXXFLAGS += -Ilibs/common/include
 CXXFLAGS += -Ilibs/infra_service/include
 CXXFLAGS += -Ilibs/logger_service/include
 CXXFLAGS += -Ilibs/config_service/include
@@ -34,13 +36,20 @@ CXXFLAGS += -Ilibs/event_service/include
 CXXFLAGS += -Ilibs/auth_service/include
 CXXFLAGS += -Ilibs/system_service/include
 CXXFLAGS += -Ilibs/network_service/include
+CXXFLAGS += -Ilibs/time_service/include
 CXXFLAGS += -Ilibs/netframe_service/include
+CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
 CXXFLAGS += -Ilibs/osd_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
 CXXFLAGS += -Ilibs/webrtc_service/include
 CXXFLAGS += -Ilibs/snapshot_service/include
+CXXFLAGS += -Ilibs/onvif_service/include
+CXXFLAGS += -Ilibs/alarm_service/include
+CXXFLAGS += -Ilibs/upgrade_service/include
 CXXFLAGS += -Ilibs/http_service/include
+CXXFLAGS += -I$(METARTC_INSTALL)/include
+CXXFLAGS += -I$(THIRDPARTY_SRC)
 CXXFLAGS += -pthread
 
 SERVICES := \
@@ -53,6 +62,7 @@ SERVICES := \
 	system_service \
 	network_service \
 	time_service \
+	ai_service \
 	media_service \
 	osd_service \
 	rtsp_service \
@@ -64,6 +74,16 @@ SERVICES := \
 	http_service
 
 SERVICE_LIBS :=
+APP_SRCS := \
+	app/main.cpp \
+	app/app_runtime.cpp \
+	app/core_services.cpp \
+	app/device_platforms.cpp \
+	app/device_subsystem.cpp \
+	app/media_subsystem.cpp \
+	app/protocol_subsystem.cpp \
+	app/runtime_config.cpp
+APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 
 define ADD_SERVICE_LIBRARY
 SERVICE_LIBS += $(LIB_DIR)/lib$(1).a
@@ -85,13 +105,13 @@ $(THIRDPARTY_LIBS): $(THIRDPARTY_DIR)/build_deps.sh
 $(SERVICES):
 	$(MAKE) -C libs/$@
 
-$(OBJ_DIR)/main.o: app/main.cpp
+$(OBJ_DIR)/%.o: app/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BIN_DIR)/live_stream: $(OBJ_DIR)/main.o $(SERVICES)
+$(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $< $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a -pthread -o $@
+	$(CXX) $(CXXFLAGS) $(APP_OBJS) $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a -pthread -o $@
 
 test:
 	@for service in $(SERVICES); do \

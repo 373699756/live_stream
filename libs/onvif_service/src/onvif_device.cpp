@@ -15,9 +15,9 @@ std::string DeviceInformationBody(const OnvifServiceOptions& options,
     info.model = options.model;
     info.firmware_version = options.firmware_version;
     if (system_service != nullptr) {
-        infra::Result<DeviceInfo> result = system_service->GetDeviceInfo();
-        if (result.IsOk()) {
-            info = result.value;
+        DeviceInfo result = system_service->GetDeviceInfo();
+        if (!result.model.empty()) {
+            info = result;
         }
     }
     return "<tds:GetDeviceInformationResponse>"
@@ -33,10 +33,7 @@ std::string DeviceInformationBody(const OnvifServiceOptions& options,
 std::string SystemDateAndTimeBody(ITimeService* time_service) {
     TimeStatus status;
     if (time_service != nullptr) {
-        infra::Result<TimeStatus> result = time_service->GetTimeStatus();
-        if (result.IsOk()) {
-            status = result.value;
-        }
+        status = time_service->GetTimeStatus();
     }
     return "<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime>"
            "<tds:TimeZone><tt:TZ>" +
@@ -60,8 +57,8 @@ std::string SetSystemDateAndTimeBody(ITimeService* time_service,
         }
         return SoapFault("time service unavailable");
     }
-    infra::Result<int64_t> unix_time_ms = ParseOnvifUnixTimeMs(request);
-    if (!unix_time_ms.IsOk()) {
+    int64_t unix_time_ms = 0;
+    if (!ParseOnvifUnixTimeMs(request, &unix_time_ms)) {
         if (status != nullptr) {
             *status = 400;
         }
@@ -70,11 +67,10 @@ std::string SetSystemDateAndTimeBody(ITimeService* time_service,
         }
         return SoapFault("invalid date time");
     }
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     context.user_name = "onvif";
-    const infra::Status error = time_service->SetSystemTime(
-        context, unix_time_ms.value, TimeSyncSource::kOnvif);
-    if (error != infra::Status::kOk) {
+    if (!time_service->SetSystemTime(context, unix_time_ms,
+                                     TimeSyncSource::kOnvif)) {
         if (status != nullptr) {
             *status = 500;
         }

@@ -8,9 +8,6 @@
 #ifndef LIVE_STREAM_LOGGER_SERVICE_H_
 #define LIVE_STREAM_LOGGER_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
-
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -75,12 +72,16 @@ struct LoggerServiceConfig {
     uint32_t max_rotate_files = 4;
 };
 
-class ILoggerService : public infra::IService {
+class ILoggerService {
  public:
-    virtual infra::Status RecordOperation(const OperationRecord& record) = 0;
-    virtual infra::Result<std::vector<OperationRecord>> QueryOperations(
+    virtual ~ILoggerService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual bool RecordOperation(const OperationRecord& record) = 0;
+    virtual std::vector<OperationRecord> QueryOperations(
         const OperationLogQuery& query) = 0;
-    virtual infra::Status ExportOperations(
+    virtual bool ExportOperations(
         const OperationLogExportOptions& options) = 0;
 };
 

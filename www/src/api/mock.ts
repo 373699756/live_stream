@@ -7,6 +7,8 @@ import type {
   SystemStatus,
   MediaCapabilities,
   VideoConfig,
+  RtspConfig,
+  WebrtcConfig,
 } from './types';
 
 export const mockVideoConfig: VideoConfig = {
@@ -47,6 +49,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
   streams: {
     main: {
       stream: 'main',
+      available: true,
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
@@ -67,6 +70,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
     },
     sub: {
       stream: 'sub',
+      available: false,
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
@@ -186,6 +190,26 @@ export const mockSnapshotConfig: SnapshotConfig = {
   sub_path: '/api/snapshot/sub.jpg',
   jpeg_quality: 85,
   timeout_ms: 2000,
+};
+
+export const mockRtspConfig: RtspConfig = {
+  enabled: true,
+  port: 554,
+  auth_required: true,
+  paths: {
+    main: '/live/main',
+    sub: '/live/sub',
+  },
+  max_sessions: 8,
+  session_timeout_sec: 60,
+};
+
+export const mockWebrtcConfig: WebrtcConfig = {
+  enabled: false,
+  signaling_path: '/api/webrtc',
+  ice_servers: [],
+  max_peers: 4,
+  prefer_tcp: false,
 };
 
 export const mockSystemStatus: SystemStatus = {

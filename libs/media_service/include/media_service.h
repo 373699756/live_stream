@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_MEDIA_SERVICE_H_
 #define LIVE_STREAM_MEDIA_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
 #include "media/frame_source.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
@@ -31,33 +29,34 @@ struct MediaServiceStats {
     uint32_t subscription_count = 0;
 };
 
-class MediaService : public infra::IService {
+class MediaService {
  public:
     MediaService();
     explicit MediaService(const MediaPipelineConfig& config);
     explicit MediaService(const MediaServiceOptions& options);
-    ~MediaService() override;
+    ~MediaService();
 
-    infra::Status Init() override;
-    infra::Status Start() override;
-    void Stop() override;
-    void Deinit() override;
-    const char* Name() const override;
+    bool Start();
+    void Stop();
+    bool IsStarted() const;
+    bool IsStreamSupported(StreamId stream_id) const;
+    bool IsStreamStarted(StreamId stream_id) const;
+    VideoCodec GetStreamCodec(StreamId stream_id) const;
 
     static const char* StaticName();
 
-    virtual infra::Result<FrameSubscriptionId> SubscribeFrames(
+    virtual FrameSubscriptionId SubscribeFrames(
         const FrameSubscribeOptions& options,
         IFrameSink* sink);
-    virtual infra::Status UnsubscribeFrames(FrameSubscriptionId subscription_id);
-    virtual infra::Status RequestKeyFrame(infra::StreamId stream_id,
-                                          KeyFrameReason reason);
-    infra::Result<MediaCapabilities> GetCapabilities() const;
+    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id);
+    virtual bool RequestKeyFrame(StreamId stream_id,
+                                 KeyFrameReason reason);
+    MediaCapabilities GetCapabilities() const;
 
-    infra::Status SetEncodedFrameCallback(EncodedFrameCallback callback, void* user);
-    infra::Result<MediaChannels> GetChannels() const;
-    infra::Result<MppChannel> GetMainVpssChannel() const;
-    infra::Result<MppChannel> GetMainVencChannel() const;
+    bool SetEncodedFrameCallback(EncodedFrameCallback callback, void* user);
+    MediaChannels GetChannels() const;
+    MppChannel GetMainVpssChannel() const;
+    MppChannel GetMainVencChannel() const;
     MediaServiceStats GetStats() const;
 
  private:

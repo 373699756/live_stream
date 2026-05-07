@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_
 #define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_
 
-#include "infra/stream_types.h"
+#include "media/stream_types.h"
 
 #include <cstdint>
 #include <string>
@@ -24,7 +24,7 @@ enum class OnvifAction {
 bool Contains(const std::string& text, const std::string& needle);
 std::string ToLower(std::string value);
 std::string XmlEscape(const std::string& value);
-std::string StreamToken(infra::StreamId stream_id);
+std::string StreamToken(StreamId stream_id);
 const char* ActionName(OnvifAction action);
 
 }  // namespace onvif_internal

@@ -2,7 +2,6 @@
 #define LIVE_STREAM_NETFRAME_SERVICE_H_
 
 #include "infra/executor.h"
-#include "infra/status.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -93,40 +92,36 @@ class NetEngine {
  public:
     virtual ~NetEngine() = default;
 
-    virtual infra::Status Start() = 0;
+    virtual bool Start() = 0;
     virtual void Stop() = 0;
 
-    virtual infra::Result<TcpServerId> ListenTcp(
+    virtual TcpServerId ListenTcp(
         const TcpListenOptions& options,
         const TcpCallbacks& callbacks) = 0;
-    virtual infra::Status CloseTcp(TcpServerId id) = 0;
-    virtual infra::Result<UdpSocketId> BindUdp(
+    virtual bool CloseTcp(TcpServerId id) = 0;
+    virtual UdpSocketId BindUdp(
         const UdpBindOptions& options,
         const UdpCallbacks& callbacks) = 0;
-    virtual infra::Status CloseUdp(UdpSocketId id) = 0;
+    virtual bool CloseUdp(UdpSocketId id) = 0;
 
-    virtual infra::Status Send(ConnectionId id,
-                               const uint8_t* data,
-                               size_t size) = 0;
-    virtual infra::Status Close(ConnectionId id) = 0;
-    virtual infra::Status CloseAfterSend(ConnectionId id) = 0;
-    virtual infra::Status SendTo(UdpSocketId id,
-                                 NetAddress address,
-                                 const uint8_t* data,
-                                 size_t size) = 0;
+    virtual bool Send(ConnectionId id, const uint8_t* data, size_t size) = 0;
+    virtual bool Close(ConnectionId id) = 0;
+    virtual bool CloseAfterSend(ConnectionId id) = 0;
+    virtual bool SendTo(UdpSocketId id,
+                        NetAddress address,
+                        const uint8_t* data,
+                        size_t size) = 0;
 
-    virtual infra::Result<NetTimerId> RunOnIoAfter(uint32_t delay_ms,
-                                                   infra::Task task) = 0;
-    virtual infra::Status CancelIoTimer(NetTimerId id) = 0;
+    virtual NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) = 0;
+    virtual bool CancelIoTimer(NetTimerId id) = 0;
 
-    virtual infra::Result<NetAddress> TcpLocalAddress(TcpServerId id) const = 0;
-    virtual infra::Result<NetAddress> UdpLocalAddress(UdpSocketId id) const = 0;
+    virtual NetAddress TcpLocalAddress(TcpServerId id) const = 0;
+    virtual NetAddress UdpLocalAddress(UdpSocketId id) const = 0;
     virtual uint32_t PendingBytes(ConnectionId id) const = 0;
     virtual NetStats GetStats() const = 0;
 };
 
-infra::Result<std::unique_ptr<NetEngine>> CreateNetEngine(
-    const NetEngineOptions& options);
+std::unique_ptr<NetEngine> CreateNetEngine(const NetEngineOptions& options);
 
 }  // namespace live_stream
 

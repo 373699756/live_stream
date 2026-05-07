@@ -12,84 +12,76 @@ namespace hisisdk {
 namespace {
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
-infra::Status FromHiStatus(int32_t status) {
-    return status == HI_SUCCESS ? infra::Status::kOk : infra::Status::kIoError;
-}
+bool FromHiStatus(int32_t status) { return status == HI_SUCCESS; }
 #endif
 
 }  // namespace
 
-infra::Status DefaultHisiSdk::StartVi(const MediaPipelineConfig& config) {
-    return config.video_pipe >= 0 ? infra::Status::kOk
-                                  : infra::Status::kInvalidParam;
+bool DefaultHisiSdk::StartVi(const MediaPipelineConfig& config) {
+    return config.video_pipe >= 0;
 }
 
 void DefaultHisiSdk::StopVi(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::StartVpss(const MediaPipelineConfig& config) {
-    return config.vpss_group >= 0 ? infra::Status::kOk
-                                  : infra::Status::kInvalidParam;
+bool DefaultHisiSdk::StartVpss(const MediaPipelineConfig& config) {
+    return config.vpss_group >= 0;
 }
 
 void DefaultHisiSdk::StopVpss(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
-    return config.vi_channel >= 0 ? infra::Status::kOk
-                                  : infra::Status::kInvalidParam;
+bool DefaultHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
+    return config.vi_channel >= 0;
 }
 
 void DefaultHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::StartVenc(const MediaPipelineConfig& config) {
+bool DefaultHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     if (config.venc_channel < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     // Board-specific VENC attribute setup belongs here in real MPP builds.
-    return infra::Status::kOk;
+    return true;
 }
 
 void DefaultHisiSdk::StopVenc(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::BindVpssVenc(
-    const MediaPipelineConfig& config) {
-    return config.vpss_channel >= 0 ? infra::Status::kOk
-                                    : infra::Status::kInvalidParam;
+bool DefaultHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
+    return config.vpss_channel >= 0;
 }
 
 void DefaultHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::StartVencStream(
+bool DefaultHisiSdk::StartVencStream(
     const MediaPipelineConfig& config,
     EncodedFrameCallback callback,
     void* user) {
     (void)callback;
     (void)user;
-    return config.main_stream.bitrate_kbps > 0 ? infra::Status::kOk
-                                               : infra::Status::kInvalidParam;
+    return config.main_stream.bitrate_kbps > 0;
 }
 
 void DefaultHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
     (void)config;
 }
 
-infra::Status DefaultHisiSdk::RequestIdr(int32_t venc_channel) {
+bool DefaultHisiSdk::RequestIdr(int32_t venc_channel) {
     if (venc_channel < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     return FromHiStatus(HI_MPI_VENC_RequestIDR(venc_channel, HI_TRUE));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 

@@ -53,77 +53,76 @@ OnvifAction ParseAction(const std::string& body) {
     return OnvifAction::kUnknown;
 }
 
-infra::Result<int64_t> ExtractInt64Tag(const std::string& text,
-                                       const std::string& tag) {
+bool ExtractInt64Tag(const std::string& text,
+                     const std::string& tag,
+                     int64_t* value) {
+    if (value == nullptr) {
+        return false;
+    }
     const std::string begin_tag = "<" + tag + ">";
     const std::string end_tag = "</" + tag + ">";
     const std::size_t begin = text.find(begin_tag);
     if (begin == std::string::npos) {
-        return infra::Result<int64_t>::Fail(infra::Status::kNotFound);
+        return false;
     }
     const std::size_t value_begin = begin + begin_tag.size();
     const std::size_t end = text.find(end_tag, value_begin);
     if (end == std::string::npos) {
-        return infra::Result<int64_t>::Fail(infra::Status::kInvalidParam);
+        return false;
     }
     const std::string raw = text.substr(value_begin, end - value_begin);
     char* parse_end = nullptr;
     const long long parsed = std::strtoll(raw.c_str(), &parse_end, 10);
     if (parse_end == raw.c_str() || *parse_end != '\0') {
-        return infra::Result<int64_t>::Fail(infra::Status::kInvalidParam);
+        return false;
     }
-    return infra::Result<int64_t>::Ok(static_cast<int64_t>(parsed));
+    *value = static_cast<int64_t>(parsed);
+    return true;
 }
 
-infra::Result<int64_t> ParseOnvifUnixTimeMs(const std::string& request) {
-    infra::Result<int64_t> unix_ms = ExtractInt64Tag(request, "tt:UnixTimeMs");
-    if (unix_ms.IsOk()) {
-        return unix_ms;
+bool ParseOnvifUnixTimeMs(const std::string& request, int64_t* unix_time_ms) {
+    if (unix_time_ms == nullptr) {
+        return false;
     }
-    unix_ms = ExtractInt64Tag(request, "UnixTimeMs");
-    if (unix_ms.IsOk()) {
-        return unix_ms;
+    int64_t unix_ms = 0;
+    if (ExtractInt64Tag(request, "tt:UnixTimeMs", &unix_ms) ||
+        ExtractInt64Tag(request, "UnixTimeMs", &unix_ms)) {
+        *unix_time_ms = unix_ms;
+        return true;
     }
 
-    infra::Result<int64_t> year = ExtractInt64Tag(request, "tt:Year");
-    infra::Result<int64_t> month = ExtractInt64Tag(request, "tt:Month");
-    infra::Result<int64_t> day = ExtractInt64Tag(request, "tt:Day");
-    infra::Result<int64_t> hour = ExtractInt64Tag(request, "tt:Hour");
-    infra::Result<int64_t> minute = ExtractInt64Tag(request, "tt:Minute");
-    infra::Result<int64_t> second = ExtractInt64Tag(request, "tt:Second");
-    if (!year.IsOk()) {
-        year = ExtractInt64Tag(request, "Year");
-    }
-    if (!month.IsOk()) {
-        month = ExtractInt64Tag(request, "Month");
-    }
-    if (!day.IsOk()) {
-        day = ExtractInt64Tag(request, "Day");
-    }
-    if (!hour.IsOk()) {
-        hour = ExtractInt64Tag(request, "Hour");
-    }
-    if (!minute.IsOk()) {
-        minute = ExtractInt64Tag(request, "Minute");
-    }
-    if (!second.IsOk()) {
-        second = ExtractInt64Tag(request, "Second");
-    }
-    if (!year.IsOk() || !month.IsOk() || !day.IsOk() || !hour.IsOk() ||
-        !minute.IsOk() || !second.IsOk() || year.value < 1970 ||
-        month.value < 1 || month.value > 12 || day.value < 1 ||
-        day.value > 31 || hour.value < 0 || hour.value > 23 ||
-        minute.value < 0 || minute.value > 59 || second.value < 0 ||
-        second.value > 60) {
-        return infra::Result<int64_t>::Fail(infra::Status::kInvalidParam);
+    int64_t year = 0;
+    int64_t month = 0;
+    int64_t day = 0;
+    int64_t hour = 0;
+    int64_t minute = 0;
+    int64_t second = 0;
+    const bool has_year = ExtractInt64Tag(request, "tt:Year", &year) ||
+                          ExtractInt64Tag(request, "Year", &year);
+    const bool has_month = ExtractInt64Tag(request, "tt:Month", &month) ||
+                           ExtractInt64Tag(request, "Month", &month);
+    const bool has_day = ExtractInt64Tag(request, "tt:Day", &day) ||
+                         ExtractInt64Tag(request, "Day", &day);
+    const bool has_hour = ExtractInt64Tag(request, "tt:Hour", &hour) ||
+                          ExtractInt64Tag(request, "Hour", &hour);
+    const bool has_minute = ExtractInt64Tag(request, "tt:Minute", &minute) ||
+                            ExtractInt64Tag(request, "Minute", &minute);
+    const bool has_second = ExtractInt64Tag(request, "tt:Second", &second) ||
+                            ExtractInt64Tag(request, "Second", &second);
+    if (!has_year || !has_month || !has_day || !has_hour || !has_minute ||
+        !has_second || year < 1970 || month < 1 || month > 12 || day < 1 ||
+        day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+        second < 0 || second > 60) {
+        return false;
     }
 
     const int64_t days = DaysFromCivil(
-        static_cast<int>(year.value), static_cast<unsigned>(month.value),
-        static_cast<unsigned>(day.value));
-    const int64_t seconds = days * 86400 + hour.value * 3600 +
-                            minute.value * 60 + second.value;
-    return infra::Result<int64_t>::Ok(seconds * 1000);
+        static_cast<int>(year), static_cast<unsigned>(month),
+        static_cast<unsigned>(day));
+    const int64_t seconds = days * 86400 + hour * 3600 +
+                            minute * 60 + second;
+    *unix_time_ms = seconds * 1000;
+    return true;
 }
 
 }  // namespace onvif_internal

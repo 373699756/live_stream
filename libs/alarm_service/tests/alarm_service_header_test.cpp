@@ -169,7 +169,7 @@ int main() {
         return 2;
     }
 
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     if (service->EnableRule(context, live_stream::AlarmSource::kMotion, true) !=
         infra::Status::kOk) {
         return 3;

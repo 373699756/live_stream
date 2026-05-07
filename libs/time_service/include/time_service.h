@@ -8,9 +8,7 @@
 #ifndef LIVE_STREAM_TIME_SERVICE_H_
 #define LIVE_STREAM_TIME_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/request_context.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <memory>
@@ -41,7 +39,7 @@ struct TimeStatus {
     NtpConfig ntp;
     TimeSyncSource last_sync_source = TimeSyncSource::kManual;
     int64_t last_sync_time_ms = 0;
-    infra::Status last_sync_error = infra::Status::kOk;
+    bool last_sync_ok = true;
 };
 
 class ITimePlatform {
@@ -49,9 +47,9 @@ class ITimePlatform {
     virtual ~ITimePlatform() = default;
 
     virtual int64_t GetSystemTimeMs() = 0;
-    virtual infra::Status SetSystemTimeMs(int64_t unix_time_ms) = 0;
-    virtual infra::Status SyncNtp(const std::vector<std::string>& servers,
-                                 int64_t* synced_time_ms) = 0;
+    virtual bool SetSystemTimeMs(int64_t unix_time_ms) = 0;
+    virtual bool SyncNtp(const std::vector<std::string>& servers,
+                         int64_t* synced_time_ms) = 0;
 };
 
 struct TimeServiceOptions {
@@ -63,18 +61,22 @@ struct TimeServiceOptions {
     NtpConfig default_ntp_config;
 };
 
-class ITimeService : public infra::IService {
+class ITimeService {
  public:
-    virtual infra::Result<TimeStatus> GetTimeStatus() = 0;
-    virtual infra::Status SetTimezone(const infra::RequestContext& context,
-                                     const std::string& timezone) = 0;
-    virtual infra::Status SetSystemTime(const infra::RequestContext& context,
-                                       int64_t unix_time_ms,
-                                       TimeSyncSource source) = 0;
-    virtual infra::Status SyncNow(const infra::RequestContext& context,
-                                 TimeSyncSource source) = 0;
-    virtual infra::Status UpdateNtpConfig(const infra::RequestContext& context,
-                                         const NtpConfig& config) = 0;
+    virtual ~ITimeService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual TimeStatus GetTimeStatus() = 0;
+    virtual bool SetTimezone(const live_stream::RequestContext& context,
+                             const std::string& timezone) = 0;
+    virtual bool SetSystemTime(const live_stream::RequestContext& context,
+                               int64_t unix_time_ms,
+                               TimeSyncSource source) = 0;
+    virtual bool SyncNow(const live_stream::RequestContext& context,
+                         TimeSyncSource source) = 0;
+    virtual bool UpdateNtpConfig(const live_stream::RequestContext& context,
+                                 const NtpConfig& config) = 0;
 };
 
 std::unique_ptr<ITimeService> CreateTimeService(

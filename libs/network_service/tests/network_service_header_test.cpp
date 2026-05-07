@@ -13,61 +13,61 @@ namespace {
 
 class FakeNetworkPlatform : public live_stream::INetworkPlatform {
  public:
-    infra::Result<std::vector<std::string>> ListInterfaces() override {
+    std::vector<std::string> ListInterfaces() override {
         ++list_count;
-        return infra::Result<std::vector<std::string>>::Ok(interfaces);
+        return interfaces;
     }
 
-    infra::Result<live_stream::NetworkInterfaceStatus> GetInterfaceStatus(
+    live_stream::NetworkInterfaceStatus GetInterfaceStatus(
         const std::string& ifname) override {
         ++status_count;
         status.ifname = ifname;
-        return infra::Result<live_stream::NetworkInterfaceStatus>::Ok(status);
+        return status;
     }
 
-    infra::Status ApplyStaticAddress(
+    bool ApplyStaticAddress(
         const live_stream::NetworkInterfaceConfig& config) override {
         ++static_count;
         last_static_config = config;
         return static_error;
     }
 
-    infra::Status SetInterfaceEnabled(const std::string& ifname,
-                                     bool enabled) override {
+    bool SetInterfaceEnabled(const std::string& ifname,
+                            bool enabled) override {
         ++enable_count;
         last_ifname = ifname;
         last_enabled = enabled;
         return enable_error;
     }
 
-    infra::Status StartDhcp(const std::string& ifname) override {
+    bool StartDhcp(const std::string& ifname) override {
         ++start_dhcp_count;
         last_ifname = ifname;
         return start_dhcp_error;
     }
 
-    infra::Status StopDhcp(const std::string& ifname) override {
+    bool StopDhcp(const std::string& ifname) override {
         ++stop_dhcp_count;
         last_ifname = ifname;
         return stop_dhcp_error;
     }
 
-    infra::Status SetGateway(const std::string& ifname,
-                            const std::string& gateway) override {
+    bool SetGateway(const std::string& ifname,
+                    const std::string& gateway) override {
         ++gateway_count;
         last_ifname = ifname;
         last_gateway = gateway;
         return gateway_error;
     }
 
-    infra::Status SetDnsServers(
+    bool SetDnsServers(
         const std::vector<std::string>& dns_servers) override {
         ++dns_count;
         last_dns_servers = dns_servers;
         return dns_error;
     }
 
-    infra::Status RollbackInterface(
+    bool RollbackInterface(
         const live_stream::NetworkInterfaceConfig& previous_config) override {
         ++rollback_count;
         last_rollback_config = previous_config;
@@ -91,71 +91,63 @@ class FakeNetworkPlatform : public live_stream::INetworkPlatform {
     int dns_count = 0;
     int rollback_count = 0;
     bool last_enabled = true;
-    infra::Status enable_error = infra::Status::kOk;
-    infra::Status static_error = infra::Status::kOk;
-    infra::Status start_dhcp_error = infra::Status::kOk;
-    infra::Status stop_dhcp_error = infra::Status::kOk;
-    infra::Status gateway_error = infra::Status::kOk;
-    infra::Status dns_error = infra::Status::kOk;
-    infra::Status rollback_error = infra::Status::kOk;
+    bool enable_error = true;
+    bool static_error = true;
+    bool start_dhcp_error = true;
+    bool stop_dhcp_error = true;
+    bool gateway_error = true;
+    bool dns_error = true;
+    bool rollback_error = true;
 };
 
 class FakeConfigService : public live_stream::IConfigService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_config"; }
 
-    infra::Status SetValue(const std::string& name,
-                          const live_stream::ConfigJson& value) override {
+    bool SetValue(const std::string& name,
+                  const live_stream::ConfigJson& value) override {
         ++set_count;
         last_name = name;
         last_json = value.dump();
         for (const live_stream::ConfigProc& proc : verify_callbacks) {
-            const infra::Status error = proc(value);
-            if (error != infra::Status::kOk) {
-                return error;
+            if (!proc(value)) {
+                return false;
             }
         }
         for (const live_stream::ConfigProc& proc : apply_callbacks) {
-            const infra::Status error = proc(value);
-            if (error != infra::Status::kOk) {
-                return error;
+            if (!proc(value)) {
+                return false;
             }
         }
         return set_error;
     }
 
-    infra::Status GetValue(const std::string& name,
-                          live_stream::ConfigJson* json) override {
+    live_stream::ConfigJson GetValue(const std::string& name) override {
         ++get_count;
         last_name = name;
-        if (get_error != infra::Status::kOk) {
-            return get_error;
+        if (!get_ok) {
+            return live_stream::ConfigJson();
         }
-        if (json != nullptr) {
-            *json = live_stream::ConfigJson::parse(stored_json, nullptr, false);
-        }
-        return infra::Status::kOk;
+        return live_stream::ConfigJson::parse(stored_json, nullptr, false);
     }
 
-    infra::Status GetDefault(const std::string&,
-                            live_stream::ConfigJson*) override {
-        return infra::Status::kOk;
+    live_stream::ConfigJson GetDefault(const std::string&) override {
+        return live_stream::ConfigJson();
     }
-    infra::Status RestoreDefaults() override { return infra::Status::kOk; }
-    infra::Status SaveFile() override { return infra::Status::kOk; }
-    infra::Status RegisterApply(const std::string&,
-                               live_stream::ConfigProc proc) override {
+    bool RestoreDefaults() override { return true; }
+    bool SaveFile() override { return true; }
+    bool RegisterApply(const std::string&,
+                       live_stream::ConfigProc proc) override {
         apply_callbacks.push_back(proc);
-        return infra::Status::kOk;
+        return true;
     }
-    infra::Status RegisterVerify(const std::string&,
-                                live_stream::ConfigProc proc) override {
+    bool RegisterVerify(const std::string&,
+                        live_stream::ConfigProc proc) override {
         verify_callbacks.push_back(proc);
-        return infra::Status::kOk;
+        return true;
     }
 
     std::string stored_json;
@@ -165,31 +157,30 @@ class FakeConfigService : public live_stream::IConfigService {
     std::vector<live_stream::ConfigProc> verify_callbacks;
     int set_count = 0;
     int get_count = 0;
-    infra::Status get_error = infra::Status::kNotFound;
-    infra::Status set_error = infra::Status::kOk;
+    bool get_ok = false;
+    bool set_error = true;
 };
 
 class FakeEventService : public live_stream::IEventService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_event"; }
 
-    infra::Result<live_stream::EventSubscriptionId> Subscribe(
+    live_stream::EventSubscriptionId Subscribe(
         live_stream::EventType, live_stream::EventHandler) override {
-        return infra::Result<live_stream::EventSubscriptionId>::Ok(1);
+        return 1;
     }
 
-    infra::Status Unsubscribe(live_stream::EventSubscriptionId) override {
-        return infra::Status::kOk;
+    bool Unsubscribe(live_stream::EventSubscriptionId) override {
+        return true;
     }
 
-    infra::Status Publish(const live_stream::Event& event) override {
+    bool Publish(const live_stream::Event& event) override {
         ++publish_count;
         last_event = event;
-        return infra::Status::kOk;
+        return true;
     }
 
     int publish_count = 0;
@@ -198,27 +189,26 @@ class FakeEventService : public live_stream::IEventService {
 
 class FakeLoggerService : public live_stream::ILoggerService {
  public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Init() override { return true; }
+    bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
-    const char* Name() const override { return "fake_logger"; }
 
-    infra::Status RecordOperation(
+    bool RecordOperation(
         const live_stream::OperationRecord& record) override {
         ++record_count;
         last_record = record;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<std::vector<live_stream::OperationRecord>> QueryOperations(
+    std::vector<live_stream::OperationRecord> QueryOperations(
         const live_stream::OperationLogQuery&) override {
-        return infra::Result<std::vector<live_stream::OperationRecord>>::Ok({});
+        return {};
     }
 
-    infra::Status ExportOperations(
+    bool ExportOperations(
         const live_stream::OperationLogExportOptions&) override {
-        return infra::Status::kOk;
+        return true;
     }
 
     int record_count = 0;
@@ -238,8 +228,7 @@ std::unique_ptr<live_stream::INetworkService> CreateStartedService(
     options.default_ifname = "eth0";
     std::unique_ptr<live_stream::INetworkService> service =
         live_stream::CreateNetworkService(options);
-    if (!service || service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service || !service->Init() || !service->Start()) {
         return nullptr;
     }
     return service;
@@ -275,9 +264,8 @@ int main() {
     live_stream::NetworkServiceOptions empty_options;
     std::unique_ptr<live_stream::INetworkService> default_service =
         live_stream::CreateNetworkService(empty_options);
-    if (!default_service ||
-        default_service->Init() != infra::Status::kOk ||
-        default_service->Start() != infra::Status::kOk) {
+    if (!default_service || !default_service->Init() ||
+        !default_service->Start()) {
         return 2;
     }
     default_service->Stop();
@@ -300,33 +288,29 @@ int main() {
     std::unique_ptr<live_stream::INetworkService> service =
         CreateStartedService(&platform, &config_service, &event_service,
                              &logger_service);
-    if (!service || std::string(service->Name()) != "network_service") {
+    if (!service) {
         return 3;
     }
 
-    infra::Result<std::vector<std::string>> interfaces =
-        service->GetInterfaces();
-    if (!interfaces.IsOk() || interfaces.value.size() != 1 ||
-        interfaces.value[0] != "eth0") {
+    std::vector<std::string> interfaces = service->GetInterfaces();
+    if (interfaces.size() != 1 || interfaces[0] != "eth0") {
         return 4;
     }
 
-    infra::Result<live_stream::NetworkInterfaceStatus> status =
+    live_stream::NetworkInterfaceStatus status =
         service->GetInterfaceStatus("eth0");
-    if (!status.IsOk() || !status.value.link_up ||
-        status.value.ipv4_address != "192.168.1.10" ||
-        status.value.mac_address != "00:11:22:33:44:55") {
+    if (!status.link_up || status.ipv4_address != "192.168.1.10" ||
+        status.mac_address != "00:11:22:33:44:55") {
         return 5;
     }
 
-    infra::RequestContext context;
+    live_stream::RequestContext context;
     context.request_id = "req-1";
     context.user_name = "admin";
     context.session_id = "session-1";
     context.client_ip = "10.0.0.2";
 
-    if (service->ApplyInterfaceConfig(context, DhcpConfig()) !=
-            infra::Status::kOk ||
+    if (!service->ApplyInterfaceConfig(context, DhcpConfig()) ||
         platform.enable_count != 1 || !platform.last_enabled ||
         platform.start_dhcp_count != 1 || platform.gateway_count != 1 ||
         !platform.last_gateway.empty() || platform.dns_count != 1 ||
@@ -340,8 +324,7 @@ int main() {
     }
 
     const int publish_count_after_dhcp = event_service.publish_count;
-    if (service->ApplyInterfaceConfig(context, StaticConfig()) !=
-            infra::Status::kOk ||
+    if (!service->ApplyInterfaceConfig(context, StaticConfig()) ||
         platform.stop_dhcp_count != 1 || platform.static_count != 1 ||
         platform.gateway_count != 2 || platform.last_gateway != "192.168.1.1" ||
         config_service.last_json.find("\"dhcp\":false") ==
@@ -353,7 +336,7 @@ int main() {
     live_stream::NetworkInterfaceConfig disabled = DhcpConfig();
     disabled.enabled = false;
     const int start_dhcp_before_disabled = platform.start_dhcp_count;
-    if (service->ApplyInterfaceConfig(context, disabled) != infra::Status::kOk ||
+    if (!service->ApplyInterfaceConfig(context, disabled) ||
         platform.enable_count != 3 || platform.last_enabled ||
         platform.start_dhcp_count != start_dhcp_before_disabled ||
         config_service.last_json.find("\"enabled\":false") == std::string::npos) {
@@ -364,8 +347,7 @@ int main() {
     invalid_mode.address_mode =
         static_cast<live_stream::NetworkAddressMode>(99);
     const int enable_count_before_invalid_mode = platform.enable_count;
-    if (service->ApplyInterfaceConfig(context, invalid_mode) !=
-            infra::Status::kInvalidParam ||
+    if (service->ApplyInterfaceConfig(context, invalid_mode) ||
         platform.enable_count != enable_count_before_invalid_mode ||
         logger_service.last_record.result !=
             live_stream::OperationResult::kRejected) {
@@ -375,8 +357,7 @@ int main() {
     live_stream::NetworkInterfaceConfig invalid = StaticConfig();
     invalid.ipv4_address = "999.1.1.1";
     const int static_count_before_invalid = platform.static_count;
-    if (service->ApplyInterfaceConfig(context, invalid) !=
-            infra::Status::kInvalidParam ||
+    if (service->ApplyInterfaceConfig(context, invalid) ||
         platform.static_count != static_count_before_invalid ||
         logger_service.last_record.result !=
             live_stream::OperationResult::kRejected) {
@@ -385,17 +366,15 @@ int main() {
 
     live_stream::NetworkInterfaceConfig loopback = StaticConfig();
     loopback.ifname = "lo";
-    if (service->ApplyInterfaceConfig(context, loopback) !=
-            infra::Status::kNoPermission ||
+    if (service->ApplyInterfaceConfig(context, loopback) ||
         logger_service.last_record.result !=
             live_stream::OperationResult::kRejected) {
         return 9;
     }
 
-    platform.static_error = infra::Status::kIoError;
+    platform.static_error = false;
     const int publish_count_before_failure = event_service.publish_count;
-    if (service->ApplyInterfaceConfig(context, StaticConfig()) !=
-            infra::Status::kIoError ||
+    if (service->ApplyInterfaceConfig(context, StaticConfig()) ||
         platform.rollback_count != 1 ||
         event_service.publish_count != publish_count_before_failure ||
         logger_service.last_record.result !=
@@ -403,32 +382,31 @@ int main() {
         return 10;
     }
 
-    platform.static_error = infra::Status::kOk;
-    config_service.set_error = infra::Status::kIoError;
+    platform.static_error = true;
+    config_service.set_error = false;
     const int rollback_count_before_persist_failure = platform.rollback_count;
     const int publish_count_before_persist_failure = event_service.publish_count;
-    if (service->ApplyInterfaceConfig(context, StaticConfig()) !=
-            infra::Status::kIoError ||
+    if (service->ApplyInterfaceConfig(context, StaticConfig()) ||
         platform.rollback_count != rollback_count_before_persist_failure + 1 ||
         event_service.publish_count != publish_count_before_persist_failure ||
         logger_service.last_record.result !=
             live_stream::OperationResult::kFailed) {
         return 16;
     }
-    config_service.set_error = infra::Status::kOk;
+    config_service.set_error = true;
 
     status = service->GetInterfaceStatus("eth0");
-    if (!status.IsOk() || status.value.last_error != infra::Status::kIoError) {
+    if (status.last_ok) {
         return 11;
     }
 
-    platform.static_error = infra::Status::kOk;
-    platform.status.last_error = infra::Status::kTimeout;
-    if (service->ReloadStatus() != infra::Status::kOk) {
+    platform.static_error = true;
+    platform.status.last_ok = false;
+    if (!service->ReloadStatus()) {
         return 12;
     }
     status = service->GetInterfaceStatus("eth0");
-    if (!status.IsOk() || status.value.last_error != infra::Status::kTimeout) {
+    if (status.last_ok) {
         return 13;
     }
 

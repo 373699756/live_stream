@@ -103,7 +103,7 @@ int main() {
         return 10;
     }
     if (!frame.value.buffer || frame.value.size == 0 ||
-        !infra::IsValidBufferSlice(frame.value.PayloadSlice())) {
+        !IsValidBufferSlice(frame.value.PayloadSlice())) {
         return 12;
     }
     if (snapshot.IsCapturing()) {

@@ -28,9 +28,9 @@ bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config) {
            config.main_stream.bitrate_kbps > 0 && config.main_stream.gop > 0;
 }
 
-bool IsValidMediaStream(infra::StreamId stream_id) {
-    return stream_id == infra::StreamId::kMain ||
-           stream_id == infra::StreamId::kSub;
+bool IsValidMediaStream(StreamId stream_id) {
+    return stream_id == StreamId::kMain ||
+           stream_id == StreamId::kSub;
 }
 
 MediaPipeline::MediaPipeline(MediaPipelineConfig config)
@@ -50,22 +50,21 @@ void MediaPipeline::SetFrameCallback(EncodedFrameCallback callback, void* user) 
     frame_callback_user_ = user;
 }
 
-infra::Result<MediaCapabilities> MediaPipeline::GetCapabilities() const {
+MediaCapabilities MediaPipeline::GetCapabilities() const {
     return sdk_->GetCapabilities();
 }
 
-infra::Status MediaPipeline::InitSystem() {
+bool MediaPipeline::InitSystem() {
     if (!IsValidMediaPipelineConfig(config_)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 
-    const infra::Status status = sdk_->InitSystem(config_);
-    if (status != infra::Status::kOk) {
-        return status;
+    if (!sdk_->InitSystem(config_)) {
+        return false;
     }
     BuildChannels();
     system_initialized_ = true;
-    return infra::Status::kOk;
+    return true;
 }
 
 void MediaPipeline::DeinitSystem() {
@@ -76,53 +75,47 @@ void MediaPipeline::DeinitSystem() {
     system_initialized_ = false;
 }
 
-infra::Status MediaPipeline::Start() {
+bool MediaPipeline::Start() {
     if (!system_initialized_) {
-        return infra::Status::kBusy;
+        return false;
     }
 
-    infra::Status status = sdk_->StartVi(config_);
-    if (status != infra::Status::kOk) {
-        return status;
+    if (!sdk_->StartVi(config_)) {
+        return false;
     }
     vi_started_ = true;
 
-    status = sdk_->StartVpss(config_);
-    if (status != infra::Status::kOk) {
+    if (!sdk_->StartVpss(config_)) {
         Stop();
-        return status;
+        return false;
     }
     vpss_started_ = true;
 
-    status = sdk_->BindViVpss(config_);
-    if (status != infra::Status::kOk) {
+    if (!sdk_->BindViVpss(config_)) {
         Stop();
-        return status;
+        return false;
     }
     vi_bound_vpss_ = true;
 
-    status = sdk_->StartVenc(config_);
-    if (status != infra::Status::kOk) {
+    if (!sdk_->StartVenc(config_)) {
         Stop();
-        return status;
+        return false;
     }
     venc_started_ = true;
 
-    status = sdk_->BindVpssVenc(config_);
-    if (status != infra::Status::kOk) {
+    if (!sdk_->BindVpssVenc(config_)) {
         Stop();
-        return status;
+        return false;
     }
     vpss_bound_venc_ = true;
 
-    status = sdk_->StartVencStream(config_, frame_callback_,
-                                   frame_callback_user_);
-    if (status != infra::Status::kOk) {
+    if (!sdk_->StartVencStream(config_, frame_callback_,
+                               frame_callback_user_)) {
         Stop();
-        return status;
+        return false;
     }
     stream_started_ = true;
-    return infra::Status::kOk;
+    return true;
 }
 
 void MediaPipeline::Stop() {

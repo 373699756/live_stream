@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 namespace live_stream {
+
 namespace {
 
 const char* HttpStatusText(int status_code) {
@@ -38,20 +39,20 @@ const char* HttpStatusText(int status_code) {
     }
 }
 
-infra::Result<HttpMethod> ParseMethod(const std::string& value) {
+HttpMethod ParseMethod(const std::string& value) {
     if (value == "GET") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kGet);
+        return HttpMethod::kGet;
     }
     if (value == "POST") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kPost);
+        return HttpMethod::kPost;
     }
     if (value == "PUT") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kPut);
+        return HttpMethod::kPut;
     }
     if (value == "DELETE") {
-        return infra::Result<HttpMethod>::Ok(HttpMethod::kDelete);
+        return HttpMethod::kDelete;
     }
-    return infra::Result<HttpMethod>::Fail(infra::Status::kInvalidParam);
+    return HttpMethod::kGet;
 }
 
 }  // namespace
@@ -145,9 +146,9 @@ RawParseResult ParseRawRequest(const std::string& raw,
         result.status = RawParseStatus::kBadRequest;
         return result;
     }
-    infra::Result<HttpMethod> method =
-        ParseMethod(request_line.substr(0, method_end));
-    if (!method.IsOk()) {
+    const std::string method_text = request_line.substr(0, method_end);
+    if (method_text != "GET" && method_text != "POST" &&
+        method_text != "PUT" && method_text != "DELETE") {
         RawParseResult result;
         result.status = RawParseStatus::kBadRequest;
         return result;
@@ -160,7 +161,7 @@ RawParseResult ParseRawRequest(const std::string& raw,
     }
 
     HttpRequest request;
-    request.method = method.value;
+    request.method = ParseMethod(method_text);
     request.client_ip = client_ip;
     const std::string target =
         request_line.substr(method_end + 1, target_end - method_end - 1);

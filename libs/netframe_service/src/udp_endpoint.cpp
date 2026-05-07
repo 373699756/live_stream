@@ -1,6 +1,5 @@
 #include "udp_endpoint.h"
 
-#include "infra/errno_util.h"
 #include "net_engine_impl.h"
 #include "socket_util.h"
 
@@ -28,18 +27,18 @@ UdpEndpoint::UdpEndpoint(NetEngineImpl* engine,
 
 UdpEndpoint::~UdpEndpoint() { Stop(); }
 
-infra::Status UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
+bool UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (running_) {
-    return infra::Status::kOk;
+    return true;
   }
-  auto addr = ToSockAddr(options_.address);
-  if (!addr.IsOk()) {
-    return addr.status;
+  sockaddr_in addr = ToSockAddr(options_.address);
+  if (addr.sin_family != AF_INET) {
+    return false;
   }
-  infra::UniqueFd fd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+  UniqueFd fd(socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0));
   if (!fd.valid()) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
   if (options_.recv_buffer_bytes > 0) {
     const int size = static_cast<int>(options_.recv_buffer_bytes);
@@ -49,21 +48,20 @@ infra::Status UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
     const int size = static_cast<int>(options_.send_buffer_bytes);
     (void)setsockopt(fd.get(), SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
   }
-  infra::Status status = SetNonBlocking(fd.get());
-  if (status != infra::Status::kOk) {
-    return status;
+  if (!SetNonBlocking(fd.get())) {
+    return false;
   }
-  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr.value),
-           sizeof(addr.value)) != 0) {
-    return infra::ErrnoToStatus(errno);
+  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr),
+           sizeof(addr)) != 0) {
+    return false;
   }
-  auto local = GetSocketAddress(fd.get(), false);
-  if (!local.IsOk()) {
-    return local.status;
+  NetAddress local = GetSocketAddress(fd.get(), false);
+  if (local.port == 0) {
+    return false;
   }
   loop_ = loop;
   fd_ = std::move(fd);
-  local_ = local.value;
+  local_ = local;
   running_ = true;
   std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
   return loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
@@ -83,32 +81,30 @@ void UdpEndpoint::Stop() {
   fd_.Reset();
 }
 
-infra::Status UdpEndpoint::SendTo(NetAddress address,
-                                  const uint8_t* data,
-                                  size_t size) {
+bool UdpEndpoint::SendTo(NetAddress address, const uint8_t* data, size_t size) {
   if (data == nullptr && size > 0) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
-  auto addr = ToSockAddr(address);
-  if (!addr.IsOk()) {
-    return addr.status;
+  sockaddr_in addr = ToSockAddr(address);
+  if (addr.sin_family != AF_INET) {
+    return false;
   }
   int fd = -1;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || !fd_.valid()) {
-      return infra::Status::kBusy;
+      return false;
     }
     fd = fd_.get();
   }
   const ssize_t ret = sendto(fd, data, size, 0,
-                             reinterpret_cast<const sockaddr*>(&addr.value),
-                             sizeof(addr.value));
+                             reinterpret_cast<const sockaddr*>(&addr),
+                             sizeof(addr));
   if (ret < 0) {
-    return infra::ErrnoToStatus(errno);
+    return false;
   }
   engine_->AddUdpTx();
-  return infra::Status::kOk;
+  return true;
 }
 
 NetAddress UdpEndpoint::LocalAddress() const {

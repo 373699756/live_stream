@@ -20,29 +20,29 @@ NetframeWebrtcTransport::NetframeWebrtcTransport(NetEngine* net_engine)
 
 NetframeWebrtcTransport::~NetframeWebrtcTransport() { Stop(); }
 
-infra::Status NetframeWebrtcTransport::Start(const std::string& listen_ip,
-                                             uint16_t port) {
+bool NetframeWebrtcTransport::Start(const std::string& listen_ip,
+                                    uint16_t port) {
     if (socket_id_ != 0) {
-        return infra::Status::kOk;
+        return true;
     }
     if (net_engine_ == nullptr) {
-        return infra::Status::kNotSupported;
+        return false;
     }
     UdpBindOptions options;
     options.address.ip = listen_ip.empty() ? "0.0.0.0" : listen_ip;
     options.address.port = port;
     UdpCallbacks callbacks;
     callbacks.on_read = OnUdp;
-    auto socket = net_engine_->BindUdp(options, callbacks);
-    if (!socket.IsOk()) {
-        return socket.status;
+    UdpSocketId socket = net_engine_->BindUdp(options, callbacks);
+    if (socket == 0) {
+        return false;
     }
-    socket_id_ = socket.value;
-    const infra::Status start_error = net_engine_->Start();
-    if (start_error != infra::Status::kOk) {
+    socket_id_ = socket;
+    if (!net_engine_->Start()) {
         Stop();
+        return false;
     }
-    return start_error;
+    return true;
 }
 
 void NetframeWebrtcTransport::Stop() {
@@ -52,11 +52,11 @@ void NetframeWebrtcTransport::Stop() {
     socket_id_ = 0;
 }
 
-infra::Status NetframeWebrtcTransport::SendTo(NetAddress address,
-                                              const uint8_t* data,
-                                              size_t size) {
+bool NetframeWebrtcTransport::SendTo(NetAddress address,
+                                     const uint8_t* data,
+                                     size_t size) {
     if (net_engine_ == nullptr || socket_id_ == 0) {
-        return infra::Status::kNotSupported;
+        return false;
     }
     return net_engine_->SendTo(socket_id_, std::move(address), data, size);
 }

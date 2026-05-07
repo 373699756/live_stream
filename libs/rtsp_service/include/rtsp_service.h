@@ -1,10 +1,8 @@
 #ifndef LIVE_STREAM_RTSP_SERVICE_H_
 #define LIVE_STREAM_RTSP_SERVICE_H_
 
-#include "infra/encoded_frame.h"
-#include "infra/status.h"
-#include "infra/service.h"
-#include "infra/stream_types.h"
+#include "media/encoded_frame.h"
+#include "media/stream_types.h"
 
 #include <cstdint>
 #include <memory>
@@ -54,11 +52,13 @@ struct RtspServiceOptions {
     uint32_t send_stall_timeout_ms = 5000;
     RtspTransportMode default_transport = RtspTransportMode::kTcpInterleaved;
     bool enable_auth = false;
+    VideoCodec main_stream_codec = VideoCodec::kH264;
+    VideoCodec sub_stream_codec = VideoCodec::kH264;
 };
 
 struct RtspSessionStats {
     uint64_t session_id = 0;
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
     uint32_t pending_bytes = 0;
     uint64_t sent_rtp_packets = 0;
@@ -86,7 +86,7 @@ struct RtspAdaptiveSample {
 
 struct RtspAdaptiveAction {
     RtspAdaptiveActionType type = RtspAdaptiveActionType::kNone;
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     uint32_t target_bitrate_kbps = 0;
     uint32_t target_fps = 0;
 };
@@ -95,18 +95,18 @@ class IRtspFrameSink {
  public:
     virtual ~IRtspFrameSink() = default;
 
-    virtual infra::Status OnEncodedFrame(const infra::EncodedFrame& frame) = 0;
+    virtual bool OnEncodedFrame(const EncodedFrame& frame) = 0;
 };
 
 class IRtspFrameSource {
  public:
     virtual ~IRtspFrameSource() = default;
 
-    virtual infra::Status AttachSink(infra::StreamId stream_id,
-                                    IRtspFrameSink* sink) = 0;
-    virtual infra::Status DetachSink(infra::StreamId stream_id,
-                                    IRtspFrameSink* sink) = 0;
-    virtual infra::Status RequestKeyFrame(infra::StreamId stream_id) = 0;
+    virtual bool AttachSink(StreamId stream_id,
+                            IRtspFrameSink* sink) = 0;
+    virtual bool DetachSink(StreamId stream_id,
+                            IRtspFrameSink* sink) = 0;
+    virtual bool RequestKeyFrame(StreamId stream_id) = 0;
 };
 
 class IRtspAdaptiveObserver {
@@ -126,13 +126,15 @@ struct RtspServiceDependencies {
     IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };
 
-class IRtspService : public infra::IService {
+class IRtspService {
  public:
-    ~IRtspService() override = default;
+    virtual ~IRtspService() = default;
 
-    virtual infra::Result<RtspListenAddress> LocalAddress() const = 0;
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspServiceStats GetStats() const = 0;
-    virtual infra::Status PushFrame(const infra::EncodedFrame& frame) = 0;
+    virtual bool PushFrame(const EncodedFrame& frame) = 0;
 };
 
 std::unique_ptr<IRtspService> CreateRtspService(

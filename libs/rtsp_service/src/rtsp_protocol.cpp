@@ -9,6 +9,7 @@ namespace rtsp_internal {
 namespace {
 
 constexpr uint8_t kPayloadTypeH264 = 96;
+constexpr uint8_t kPayloadTypeH265 = 98;
 
 std::string RtspStatusText(int status) {
     switch (status) {
@@ -52,6 +53,14 @@ int Base64Value(char ch) {
         return 63;
     }
     return -1;
+}
+
+uint8_t PayloadType(VideoCodec codec) {
+    return codec == VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
+}
+
+const char* RtpEncodingName(VideoCodec codec) {
+    return codec == VideoCodec::kH265 ? "H265" : "H264";
 }
 
 }  // namespace
@@ -149,7 +158,7 @@ std::string BuildRtspResponse(
     return output.str();
 }
 
-bool PathToStreamId(const std::string& uri, infra::StreamId* stream_id) {
+bool PathToStreamId(const std::string& uri, StreamId* stream_id) {
     const size_t scheme = uri.find("://");
     std::string path = uri;
     if (scheme != std::string::npos) {
@@ -161,22 +170,24 @@ bool PathToStreamId(const std::string& uri, infra::StreamId* stream_id) {
         path = path.substr(0, query);
     }
     if (path == "/live/main") {
-        *stream_id = infra::StreamId::kMain;
+        *stream_id = StreamId::kMain;
         return true;
     }
     if (path == "/live/sub") {
-        *stream_id = infra::StreamId::kSub;
+        *stream_id = StreamId::kSub;
         return true;
     }
     return false;
 }
 
-const char* StreamPath(infra::StreamId stream_id) {
-    return stream_id == infra::StreamId::kSub ? "/live/sub" : "/live/main";
+const char* StreamPath(StreamId stream_id) {
+    return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
 }
 
 std::string BuildSdp(const RtspListenAddress& address,
-                     infra::StreamId stream_id) {
+                     StreamId stream_id,
+                     VideoCodec codec) {
+    const uint8_t payload_type = PayloadType(codec);
     std::ostringstream sdp;
     sdp << "v=0\r\n";
     sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";
@@ -184,9 +195,9 @@ std::string BuildSdp(const RtspListenAddress& address,
     sdp << "c=IN IP4 0.0.0.0\r\n";
     sdp << "t=0 0\r\n";
     sdp << "a=control:*\r\n";
-    sdp << "m=video 0 RTP/AVP " << static_cast<int>(kPayloadTypeH264) << "\r\n";
-    sdp << "a=rtpmap:" << static_cast<int>(kPayloadTypeH264)
-        << " H264/90000\r\n";
+    sdp << "m=video 0 RTP/AVP " << static_cast<int>(payload_type) << "\r\n";
+    sdp << "a=rtpmap:" << static_cast<int>(payload_type)
+        << " " << RtpEncodingName(codec) << "/90000\r\n";
     sdp << "a=control:" << StreamPath(stream_id) << "\r\n";
     return sdp.str();
 }

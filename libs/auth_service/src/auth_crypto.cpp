@@ -22,9 +22,9 @@ uint8_t HexNibble(char c) {
     return 0;
 }
 
-infra::Result<std::string> HexToBytes(const std::string& hex) {
+std::string HexToBytes(const std::string& hex) {
     if (!IsHexString(hex)) {
-        return infra::Result<std::string>::Fail(infra::Status::kInvalidParam);
+        return std::string();
     }
     std::string bytes;
     bytes.resize(hex.size() / 2);
@@ -32,7 +32,7 @@ infra::Result<std::string> HexToBytes(const std::string& hex) {
         bytes[i] = static_cast<char>((HexNibble(hex[i * 2]) << 4) |
                                      HexNibble(hex[i * 2 + 1]));
     }
-    return infra::Result<std::string>::Ok(bytes);
+    return bytes;
 }
 
 std::string BytesToHex(const uint8_t* data, std::size_t size) {
@@ -168,20 +168,20 @@ bool IsHexString(const std::string& value) {
     return true;
 }
 
-infra::Result<std::string> Sha256Credential(
+std::string Sha256Credential(
     const std::string& password,
     const std::string& salt_hex) {
     if (password.empty() || password.size() > kMaxPasswordLength ||
         !IsHexString(salt_hex)) {
-        return infra::Result<std::string>::Fail(infra::Status::kInvalidParam);
+        return std::string();
     }
-    infra::Result<std::string> salt = HexToBytes(salt_hex);
-    if (!salt.IsOk()) {
-        return infra::Result<std::string>::Fail(salt.status);
+    std::string salt = HexToBytes(salt_hex);
+    if (salt.empty()) {
+        return std::string();
     }
-    const std::array<uint8_t, 32> digest = Sha256(salt.value + password);
-    return infra::Result<std::string>::Ok(
-        "sha256:" + salt_hex + ":" + BytesToHex(digest.data(), digest.size()));
+    const std::array<uint8_t, 32> digest = Sha256(salt + password);
+    return "sha256:" + salt_hex + ":" + BytesToHex(digest.data(),
+                                                   digest.size());
 }
 
 bool ConstantTimeEquals(const std::string& left, const std::string& right) {

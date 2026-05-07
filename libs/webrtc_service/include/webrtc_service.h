@@ -1,10 +1,8 @@
 #ifndef LIVE_STREAM_WEBRTC_SERVICE_H_
 #define LIVE_STREAM_WEBRTC_SERVICE_H_
 
-#include "infra/encoded_frame.h"
-#include "infra/status.h"
-#include "infra/service.h"
-#include "infra/stream_types.h"
+#include "media/encoded_frame.h"
+#include "media/stream_types.h"
 #include "media/frame_source.h"
 
 #include <cstdint>
@@ -52,13 +50,13 @@ struct WebrtcServiceDependencies {
 };
 
 struct WebrtcCreatePeerRequest {
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     std::string client_id;
 };
 
 struct WebrtcPeerInfo {
     std::string peer_id;
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     WebrtcPeerState state = WebrtcPeerState::kCreated;
 };
 
@@ -91,18 +89,20 @@ struct WebrtcServiceStats {
     uint64_t dropped_frames = 0;
 };
 
-class IWebrtcService : public infra::IService, public IFrameSink {
+class IWebrtcService : public IFrameSink {
  public:
     ~IWebrtcService() override = default;
 
-    virtual infra::Result<WebrtcPeerInfo> CreatePeer(
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual WebrtcPeerInfo CreatePeer(
         const WebrtcCreatePeerRequest& request) = 0;
-    virtual infra::Result<WebrtcAnswer> HandleOffer(
+    virtual WebrtcAnswer HandleOffer(
         const WebrtcOfferRequest& request) = 0;
-    virtual infra::Status AddIceCandidate(
+    virtual bool AddIceCandidate(
         const WebrtcIceCandidate& candidate) = 0;
-    virtual infra::Status ClosePeer(const std::string& peer_id) = 0;
-    virtual infra::Result<WebrtcPeerInfo> GetPeer(
+    virtual bool ClosePeer(const std::string& peer_id) = 0;
+    virtual WebrtcPeerInfo GetPeer(
         const std::string& peer_id) const = 0;
     virtual WebrtcServiceStats GetStats() const = 0;
     virtual const char* BackendName() const = 0;

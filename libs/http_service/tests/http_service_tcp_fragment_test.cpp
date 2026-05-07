@@ -45,7 +45,7 @@ class FakeAuthService : public live_stream::IAuthService {
         return infra::Result<live_stream::LoginResult>::Ok(result);
     }
 
-    infra::Status Logout(const infra::RequestContext& context) override {
+    infra::Status Logout(const live_stream::RequestContext& context) override {
         (void)context;
         return infra::Status::kOk;
     }

@@ -156,42 +156,42 @@ int32_t MinHandle(OsdRegionType type) {
     return -1;
 }
 
-infra::Status HostOsdMppAdapter::Create(
+bool HostOsdMppAdapter::Create(
     int32_t handle, const OsdRegionConfig& config) {
     if (handle < 0 || !IsValidRegionConfig(config)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     return sdk_->CreateRegion(handle, ToHisiRegionConfig(config));
 }
 
-infra::Status HostOsdMppAdapter::Attach(
+bool HostOsdMppAdapter::Attach(
     int32_t handle, const OsdRegionConfig& config) {
     if (handle < 0 || !IsValidRegionConfig(config)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     return sdk_->AttachRegion(handle, ToHisiRegionConfig(config));
 }
 
-infra::Status HostOsdMppAdapter::Detach(
+bool HostOsdMppAdapter::Detach(
     int32_t handle, const OsdRegionConfig& config) {
     if (handle < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     return sdk_->DetachRegion(handle, ToHisiRegionConfig(config));
 }
 
-infra::Status HostOsdMppAdapter::SetDisplay(
+bool HostOsdMppAdapter::SetDisplay(
     int32_t handle, const OsdRegionConfig& config) {
     if (handle < 0 || !IsValidRegionConfig(config)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     return sdk_->SetRegionDisplay(handle, ToHisiRegionConfig(config));
 }
 
-infra::Status HostOsdMppAdapter::UpdateBitmap(
+bool HostOsdMppAdapter::UpdateBitmap(
     int32_t handle, const OsdBitmap& bitmap) {
     if (handle < 0 || !IsValidBitmap(bitmap)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
     return sdk_->SetRegionBitmap(handle, ToHisiBitmap(bitmap));
 }

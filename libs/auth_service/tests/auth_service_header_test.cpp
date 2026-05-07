@@ -225,7 +225,7 @@ int main() {
         return 11;
     }
 
-    infra::RequestContext logout_context;
+    live_stream::RequestContext logout_context;
     logout_context.user_name = "admin";
     logout_context.session_id = login.value.principal.session_id;
     if (service->Logout(logout_context) != infra::Status::kOk) {

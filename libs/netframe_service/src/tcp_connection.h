@@ -2,7 +2,7 @@
 #define LIVE_STREAM_NETFRAME_SERVICE_SRC_TCP_CONNECTION_H_
 
 #include "event_loop.h"
-#include "infra/fd.h"
+#include "fd.h"
 #include "netframe_service.h"
 
 #include <cstddef>
@@ -29,10 +29,10 @@ class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
                 NetAddress peer);
   ~TcpConnection();
 
-  infra::Status Start();
-  infra::Status Send(const uint8_t* data, size_t size);
-  infra::Status Close();
-  infra::Status CloseAfterSend();
+  bool Start();
+  bool Send(const uint8_t* data, size_t size);
+  bool Close();
+  bool CloseAfterSend();
   uint32_t PendingBytes() const;
   ConnectionId id() const { return id_; }
   NetAddress peer() const { return peer_; }
@@ -54,7 +54,7 @@ class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
 
   NetEngineImpl* engine_ = nullptr;
   std::shared_ptr<EventLoop> loop_;
-  infra::UniqueFd fd_;
+  UniqueFd fd_;
   ConnectionId id_ = 0;
   TcpListenOptions options_;
   TcpCallbacks callbacks_;

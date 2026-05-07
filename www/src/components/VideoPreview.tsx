@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  api,
   closeWebrtcPeer,
   createWebrtcPeer,
   sendWebrtcCandidate,
@@ -18,6 +19,7 @@ interface VideoPreviewProps {
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
   const [mode, setMode] = useState<'webrtc' | 'snapshot'>('snapshot');
   const [snapshotTick, setSnapshotTick] = useState(0);
+  const [webrtcEnabled, setWebrtcEnabled] = useState(false);
   const [webrtcState, setWebrtcState] = useState('等待 WebRTC 视频流');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -25,6 +27,30 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   const peerIdRef = useRef('');
   const active = statuses.find((item) => item.stream === stream);
   const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
+
+  useEffect(() => {
+    let mounted = true;
+    void api.getWebrtcConfig()
+      .then((config) => {
+        if (mounted) {
+          setWebrtcEnabled(config.enabled);
+          if (!config.enabled) {
+            setMode('snapshot');
+            setWebrtcState('WebRTC 未启用');
+          }
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setWebrtcEnabled(false);
+          setMode('snapshot');
+          setWebrtcState('WebRTC 配置不可用');
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -35,6 +61,11 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   }, [mode]);
 
   useEffect(() => {
+    if (mode === 'webrtc' && !webrtcEnabled) {
+      setMode('snapshot');
+      setWebrtcState('WebRTC 未启用');
+      return;
+    }
     if (mode !== 'webrtc') {
       if (peerRef.current) {
         peerRef.current.close();
@@ -92,7 +123,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       void closeWebrtcPeer(peerIdRef.current);
       peerIdRef.current = '';
     };
-  }, [mode, stream]);
+  }, [mode, stream, webrtcEnabled]);
 
   const openSnapshot = () => {
     window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
@@ -125,6 +156,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           <button
             type="button"
             className={mode === 'webrtc' ? 'active' : ''}
+            disabled={!webrtcEnabled}
             onClick={() => setMode('webrtc')}
           >
             WebRTC

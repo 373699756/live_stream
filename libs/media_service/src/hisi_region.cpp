@@ -16,9 +16,7 @@ bool IsValidSize(const Size& size) {
 }
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
-infra::Status FromHiStatus(int32_t status) {
-    return status == HI_SUCCESS ? infra::Status::kOk : infra::Status::kIoError;
-}
+bool FromHiStatus(int32_t status) { return status == HI_SUCCESS; }
 
 PIXEL_FORMAT_E ToHiPixelFormat(PixelFormat format) {
     switch (format) {
@@ -123,10 +121,10 @@ void FillRegionChannelAttr(const RegionConfig& config,
 
 }  // namespace
 
-infra::Status DefaultHisiSdk::CreateRegion(int32_t handle,
-                                           const RegionConfig& config) {
+bool DefaultHisiSdk::CreateRegion(int32_t handle,
+                                  const RegionConfig& config) {
     if (handle < 0 || !IsValidSize(config.size)) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     RGN_ATTR_S attr{};
@@ -148,15 +146,15 @@ infra::Status DefaultHisiSdk::CreateRegion(int32_t handle,
     }
     return FromHiStatus(HI_MPI_RGN_Create(handle, &attr));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 
-infra::Status DefaultHisiSdk::AttachRegion(int32_t handle,
-                                           const RegionConfig& config) {
+bool DefaultHisiSdk::AttachRegion(int32_t handle,
+                                  const RegionConfig& config) {
     (void)config;
     if (handle < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
@@ -164,30 +162,30 @@ infra::Status DefaultHisiSdk::AttachRegion(int32_t handle,
     FillRegionChannelAttr(config, &attr);
     return FromHiStatus(HI_MPI_RGN_AttachToChn(handle, &channel, &attr));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 
-infra::Status DefaultHisiSdk::DetachRegion(int32_t handle,
-                                           const RegionConfig& config) {
+bool DefaultHisiSdk::DetachRegion(int32_t handle,
+                                  const RegionConfig& config) {
     (void)config;
     if (handle < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     return FromHiStatus(HI_MPI_RGN_DetachFromChn(handle, &channel));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 
-infra::Status DefaultHisiSdk::SetRegionDisplay(
+bool DefaultHisiSdk::SetRegionDisplay(
     int32_t handle,
     const RegionConfig& config) {
     (void)config;
     if (handle < 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
@@ -195,14 +193,14 @@ infra::Status DefaultHisiSdk::SetRegionDisplay(
     FillRegionChannelAttr(config, &attr);
     return FromHiStatus(HI_MPI_RGN_SetDisplayAttr(handle, &channel, &attr));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 
-infra::Status DefaultHisiSdk::SetRegionBitmap(int32_t handle,
-                                              const Bitmap& bitmap) {
+bool DefaultHisiSdk::SetRegionBitmap(int32_t handle,
+                                     const Bitmap& bitmap) {
     if (handle < 0 || bitmap.data == nullptr || bitmap.size == 0) {
-        return infra::Status::kInvalidParam;
+        return false;
     }
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     BITMAP_S hi_bitmap{};
@@ -212,7 +210,7 @@ infra::Status DefaultHisiSdk::SetRegionBitmap(int32_t handle,
     hi_bitmap.pData = const_cast<uint8_t*>(bitmap.data);
     return FromHiStatus(HI_MPI_RGN_SetBitMap(handle, &hi_bitmap));
 #else
-    return infra::Status::kOk;
+    return true;
 #endif
 }
 

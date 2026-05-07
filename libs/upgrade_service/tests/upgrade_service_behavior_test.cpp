@@ -224,8 +224,8 @@ live_stream::UpgradeServiceOptions MakeOptions(FakeUpgradePlatform* platform,
     return options;
 }
 
-infra::RequestContext MakeContext() {
-    infra::RequestContext context;
+live_stream::RequestContext MakeContext() {
+    live_stream::RequestContext context;
     context.request_id = "req-1";
     context.user_name = "admin";
     context.session_id = "session-1";

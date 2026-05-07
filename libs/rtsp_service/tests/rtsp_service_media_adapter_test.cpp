@@ -13,11 +13,11 @@ class FakeMediaService : public live_stream::MediaService {
             return infra::Result<live_stream::FrameSubscriptionId>::Fail(
                 infra::Status::kInvalidParam);
         }
-        if (options.stream_id == infra::StreamId::kMain) {
+        if (options.stream_id == StreamId::kMain) {
             main_sink = sink;
             return infra::Result<live_stream::FrameSubscriptionId>::Ok(1);
         }
-        if (options.stream_id == infra::StreamId::kSub) {
+        if (options.stream_id == StreamId::kSub) {
             sub_sink = sink;
             return infra::Result<live_stream::FrameSubscriptionId>::Ok(2);
         }
@@ -38,7 +38,7 @@ class FakeMediaService : public live_stream::MediaService {
         return infra::Status::kNotFound;
     }
 
-    infra::Status RequestKeyFrame(infra::StreamId stream_id,
+    infra::Status RequestKeyFrame(StreamId stream_id,
                                   live_stream::KeyFrameReason reason) override {
         last_key_frame_stream = stream_id;
         last_key_frame_reason = reason;
@@ -48,7 +48,7 @@ class FakeMediaService : public live_stream::MediaService {
 
     live_stream::IFrameSink* main_sink = nullptr;
     live_stream::IFrameSink* sub_sink = nullptr;
-    infra::StreamId last_key_frame_stream = infra::StreamId::kSnapshot;
+    StreamId last_key_frame_stream = StreamId::kSnapshot;
     live_stream::KeyFrameReason last_key_frame_reason =
         live_stream::KeyFrameReason::kRecovery;
     int key_frame_requests = 0;

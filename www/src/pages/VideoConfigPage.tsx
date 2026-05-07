@@ -35,15 +35,25 @@ function StreamForm({
   onChange: (stream: VideoStreamConfig) => void;
 }) {
   const patch = (value: Partial<VideoStreamConfig>) => onChange({ ...stream, ...value });
+  const available = capabilities.available !== false;
   const supported = isStreamSupported(stream, capabilities);
   const supportedResolution = capabilities.resolutions.some((item) => resolutionValue(item) === stream.resolution);
   return (
     <div className="form-grid form-grid-single">
       <FormField label="启用">
-        <input type="checkbox" checked={stream.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
+        <input
+          type="checkbox"
+          disabled={!available}
+          checked={stream.enabled && available}
+          onChange={(e) => patch({ enabled: e.target.checked })}
+        />
       </FormField>
       <FormField label="编码格式">
-        <select value={stream.codec} onChange={(e) => patch({ codec: e.target.value as VideoStreamConfig['codec'] })}>
+        <select
+          disabled={!available}
+          value={stream.codec}
+          onChange={(e) => patch({ codec: e.target.value as VideoStreamConfig['codec'] })}
+        >
           {capabilities.codecs.map((item) => (
             <option value={item.codec} key={item.codec}>
               {codecLabel(item.codec)}
@@ -52,7 +62,11 @@ function StreamForm({
         </select>
       </FormField>
       <FormField label="分辨率">
-        <select value={supportedResolution ? stream.resolution : ''} onChange={(e) => patch({ resolution: e.target.value })}>
+        <select
+          disabled={!available}
+          value={supportedResolution ? stream.resolution : ''}
+          onChange={(e) => patch({ resolution: e.target.value })}
+        >
           {!supportedResolution && <option value="">当前值不受设备支持：{stream.resolution}</option>}
           {capabilities.resolutions.map((option) => (
             <option value={resolutionValue(option)} key={resolutionValue(option)}>
@@ -66,6 +80,7 @@ function StreamForm({
           type="number"
           min={capabilities.fps.min}
           max={capabilities.fps.max}
+          disabled={!available}
           value={stream.fps}
           aria-invalid={stream.fps < capabilities.fps.min || stream.fps > capabilities.fps.max}
           onChange={(e) => patch({ fps: Number(e.target.value) })}
@@ -76,6 +91,7 @@ function StreamForm({
           type="number"
           min={capabilities.bitrate_kbps.min}
           max={capabilities.bitrate_kbps.max}
+          disabled={!available}
           value={stream.bitrate_kbps}
           aria-invalid={
             stream.bitrate_kbps < capabilities.bitrate_kbps.min ||
@@ -85,7 +101,11 @@ function StreamForm({
         />
       </FormField>
       <FormField label="码率控制">
-        <select value={stream.rate_control} onChange={(e) => patch({ rate_control: e.target.value as VideoStreamConfig['rate_control'] })}>
+        <select
+          disabled={!available}
+          value={stream.rate_control}
+          onChange={(e) => patch({ rate_control: e.target.value as VideoStreamConfig['rate_control'] })}
+        >
           {capabilities.rate_control.map((mode) => (
             <option value={mode} key={mode}>
               {mode.toUpperCase()}
@@ -98,6 +118,7 @@ function StreamForm({
           type="number"
           min={capabilities.gop.min}
           max={capabilities.gop.max}
+          disabled={!available}
           value={stream.gop}
           aria-invalid={stream.gop < capabilities.gop.min || stream.gop > capabilities.gop.max}
           onChange={(e) => patch({ gop: Number(e.target.value) })}
@@ -106,12 +127,13 @@ function StreamForm({
       <FormField label="智能编码">
         <input
           type="checkbox"
-          disabled={!capabilities.smart_codec}
+          disabled={!available || !capabilities.smart_codec}
           checked={stream.smart_codec && capabilities.smart_codec}
           onChange={(e) => patch({ smart_codec: e.target.checked })}
         />
       </FormField>
-      {!supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}
+      {!available && <div className="save-hint">当前固件未启用该码流管线。</div>}
+      {available && !supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}
     </div>
   );
 }
@@ -128,6 +150,12 @@ export function VideoConfigPage() {
     void api.getMediaCapabilities().then(setCapabilities);
     void api.getStreamStatus().then(setStatuses);
   }, []);
+
+  useEffect(() => {
+    if (capabilities.streams[active]?.available === false) {
+      setActive('main');
+    }
+  }, [active, capabilities]);
 
   if (!config) {
     return <div className="panel">加载视频配置...</div>;
@@ -146,10 +174,13 @@ export function VideoConfigPage() {
     setConfig(cloneDefaultConfig(mockVideoConfig));
     setSaved('已恢复默认值，保存后生效');
   };
-  const activeSupported = isStreamSupported(config.streams[active], capabilities.streams[active]);
+  const activeCapabilities = capabilities.streams[active];
+  const activeSupported = isStreamSupported(config.streams[active], activeCapabilities);
   const allSupported =
-    isStreamSupported(config.streams.main, capabilities.streams.main) &&
-    isStreamSupported(config.streams.sub, capabilities.streams.sub);
+    (capabilities.streams.main.available === false ||
+      isStreamSupported(config.streams.main, capabilities.streams.main)) &&
+    (capabilities.streams.sub.available === false ||
+      isStreamSupported(config.streams.sub, capabilities.streams.sub));
 
   return (
     <div className="config-preview-layout">
@@ -162,7 +193,14 @@ export function VideoConfigPage() {
         </div>
         <div className="tabs">
           <button type="button" className={active === 'main' ? 'active' : ''} onClick={() => setActive('main')}>主码流</button>
-          <button type="button" className={active === 'sub' ? 'active' : ''} onClick={() => setActive('sub')}>子码流</button>
+          <button
+            type="button"
+            className={active === 'sub' ? 'active' : ''}
+            disabled={capabilities.streams.sub.available === false}
+            onClick={() => setActive('sub')}
+          >
+            子码流
+          </button>
         </div>
         <StreamForm
           stream={config.streams[active]}

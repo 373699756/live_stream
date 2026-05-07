@@ -1,7 +1,7 @@
 #include "rtsp_service.h"
 
 #include "auth_service.h"
-#include "infra/media_buffer.h"
+#include "media/media_buffer.h"
 #include "netframe_service.h"
 
 #include <arpa/inet.h>
@@ -36,7 +36,7 @@ class FakeAuthService : public live_stream::IAuthService {
         result.principal.role = live_stream::AuthRole::kViewer;
         return infra::Result<live_stream::LoginResult>::Ok(result);
     }
-    infra::Status Logout(const infra::RequestContext&) override {
+    infra::Status Logout(const live_stream::RequestContext&) override {
         return infra::Status::kOk;
     }
     infra::Result<live_stream::TokenValidationResult> ValidateToken(
@@ -108,17 +108,17 @@ bool SendAndRead(int fd,
     return false;
 }
 
-infra::EncodedFrame MakeFrame() {
-    auto buffer = infra::CreateMediaBuffer(3);
+EncodedFrame MakeFrame() {
+    auto buffer = CreateMediaBuffer(3);
     uint8_t* data = buffer->MutableData();
     data[0] = 0x65;
     data[1] = 1;
     data[2] = 2;
     buffer->SetSize(3);
-    infra::EncodedFrame frame;
-    frame.stream_id = infra::StreamId::kMain;
-    frame.codec = infra::VideoCodec::kH264;
-    frame.frame_type = infra::FrameType::kIdr;
+    EncodedFrame frame;
+    frame.stream_id = StreamId::kMain;
+    frame.codec = VideoCodec::kH264;
+    frame.frame_type = FrameType::kIdr;
     frame.pts_us = 300000;
     frame.buffer = buffer;
     frame.size = 3;

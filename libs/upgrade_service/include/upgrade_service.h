@@ -1,9 +1,7 @@
 #ifndef LIVE_STREAM_UPGRADE_SERVICE_H_
 #define LIVE_STREAM_UPGRADE_SERVICE_H_
 
-#include "infra/request_context.h"
-#include "infra/status.h"
-#include "infra/service.h"
+#include "live_stream/request_context.h"
 
 #include <cstdint>
 #include <functional>
@@ -48,7 +46,7 @@ struct UpgradeStatus {
     uint32_t progress_percent = 0;
     std::string current_stage = "idle";
     std::string target_version;
-    infra::Status status = infra::Status::kOk;
+    bool ok = true;
     std::string error_message;
     int64_t started_at_ms = 0;
     int64_t finished_at_ms = 0;
@@ -68,20 +66,20 @@ class IUpgradePlatform {
  public:
     virtual ~IUpgradePlatform() = default;
 
-    virtual infra::Result<UpgradePackageInfo> ValidatePackage(
+    virtual UpgradePackageInfo ValidatePackage(
         const std::string& package_path) = 0;
-    virtual infra::Result<std::string> GetCurrentVersion() = 0;
+    virtual std::string GetCurrentVersion() = 0;
     // Returns < 0 when lhs is older than rhs, 0 when equal, > 0 when newer.
-    virtual infra::Result<int> CompareVersion(const std::string& lhs,
-                                              const std::string& rhs) = 0;
-    virtual infra::Status PrepareUpgrade(const UpgradePackageInfo& info) = 0;
-    virtual infra::Status WriteUpgrade(
+    virtual int CompareVersion(const std::string& lhs,
+                               const std::string& rhs) = 0;
+    virtual bool PrepareUpgrade(const UpgradePackageInfo& info) = 0;
+    virtual bool WriteUpgrade(
         const std::string& package_path,
         UpgradeProgressCallback progress_callback) = 0;
-    virtual infra::Status CommitUpgrade(const UpgradePackageInfo& info) = 0;
-    virtual infra::Status CancelUpgrade() = 0;
-    virtual infra::Status RebootToApply() = 0;
-    virtual infra::Status CleanupFailedUpgrade() = 0;
+    virtual bool CommitUpgrade(const UpgradePackageInfo& info) = 0;
+    virtual bool CancelUpgrade() = 0;
+    virtual bool RebootToApply() = 0;
+    virtual bool CleanupFailedUpgrade() = 0;
 };
 
 struct UpgradeServiceOptions {
@@ -94,17 +92,21 @@ struct UpgradeServiceOptions {
     uint32_t queue_capacity = 8;
 };
 
-class IUpgradeService : public infra::IService {
+class IUpgradeService {
  public:
+    virtual ~IUpgradeService() = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
     virtual UpgradeStatus GetStatus() = 0;
-    virtual infra::Result<UpgradePackageInfo> ValidatePackage(
+    virtual UpgradePackageInfo ValidatePackage(
         const std::string& package_path) = 0;
-    virtual infra::Status StartUpgrade(const infra::RequestContext& context,
-                                      const UpgradeRequest& request) = 0;
-    virtual infra::Status CancelUpgrade(
-        const infra::RequestContext& context) = 0;
-    virtual infra::Status ConfirmReboot(
-        const infra::RequestContext& context) = 0;
+    virtual bool StartUpgrade(const live_stream::RequestContext& context,
+                              const UpgradeRequest& request) = 0;
+    virtual bool CancelUpgrade(
+        const live_stream::RequestContext& context) = 0;
+    virtual bool ConfirmReboot(
+        const live_stream::RequestContext& context) = 0;
 };
 
 std::unique_ptr<IUpgradeService> CreateUpgradeService(

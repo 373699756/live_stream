@@ -9,11 +9,11 @@ namespace {
 class TestFrameSink : public live_stream::IFrameSink {
  public:
     const char* Name() const override { return "test_sink"; }
-    void OnFrame(const infra::EncodedFrame& frame) override {
+    void OnFrame(const EncodedFrame& frame) override {
         (void)frame;
         ++frames;
     }
-    void OnSourceStateChanged(infra::StreamId stream_id,
+    void OnSourceStateChanged(StreamId stream_id,
                               live_stream::StreamState state) override {
         (void)stream_id;
         last_state = state;
@@ -140,7 +140,7 @@ int main() {
         sink.state_changes != 1) {
         return 10;
     }
-    if (service.RequestKeyFrame(infra::StreamId::kMain,
+    if (service.RequestKeyFrame(StreamId::kMain,
                                 live_stream::KeyFrameReason::kNewClient) !=
         infra::Status::kOk) {
         return 11;

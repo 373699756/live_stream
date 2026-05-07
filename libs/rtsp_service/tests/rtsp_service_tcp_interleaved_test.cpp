@@ -1,6 +1,6 @@
 #include "rtsp_service.h"
 
-#include "infra/media_buffer.h"
+#include "media/media_buffer.h"
 #include "netframe_service.h"
 
 #include <arpa/inet.h>
@@ -52,8 +52,8 @@ bool ReadUntil(int fd, const std::string& needle, std::string* out) {
     return false;
 }
 
-infra::EncodedFrame MakeFrame() {
-    auto buffer = infra::CreateMediaBuffer(5);
+EncodedFrame MakeFrame() {
+    auto buffer = CreateMediaBuffer(5);
     uint8_t* data = buffer->MutableData();
     data[0] = 0x65;
     data[1] = 1;
@@ -61,10 +61,10 @@ infra::EncodedFrame MakeFrame() {
     data[3] = 3;
     data[4] = 4;
     buffer->SetSize(5);
-    infra::EncodedFrame frame;
-    frame.stream_id = infra::StreamId::kMain;
-    frame.codec = infra::VideoCodec::kH264;
-    frame.frame_type = infra::FrameType::kIdr;
+    EncodedFrame frame;
+    frame.stream_id = StreamId::kMain;
+    frame.codec = VideoCodec::kH264;
+    frame.frame_type = FrameType::kIdr;
     frame.pts_us = 100000;
     frame.dts_us = 100000;
     frame.buffer = buffer;

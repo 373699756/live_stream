@@ -8,9 +8,7 @@
 #ifndef LIVE_STREAM_ONVIF_SERVICE_H_
 #define LIVE_STREAM_ONVIF_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
-#include "infra/stream_types.h"
+#include "media/stream_types.h"
 
 #include <cstdint>
 #include <memory>
@@ -52,10 +50,8 @@ class IOnvifUriProvider {
  public:
     virtual ~IOnvifUriProvider() = default;
 
-    virtual infra::Result<std::string> GetStreamUri(
-        infra::StreamId stream_id) = 0;
-    virtual infra::Result<std::string> GetSnapshotUri(
-        infra::StreamId stream_id) = 0;
+    virtual std::string GetStreamUri(StreamId stream_id) = 0;
+    virtual std::string GetSnapshotUri(StreamId stream_id) = 0;
 };
 
 struct OnvifServiceDependencies {
@@ -68,10 +64,12 @@ struct OnvifServiceDependencies {
     IOnvifUriProvider* uri_provider = nullptr;
 };
 
-class IOnvifService : public infra::IService {
+class IOnvifService {
  public:
-    ~IOnvifService() override = default;
+    virtual ~IOnvifService() = default;
 
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
     virtual OnvifServiceStats GetStats() const = 0;
 };
 

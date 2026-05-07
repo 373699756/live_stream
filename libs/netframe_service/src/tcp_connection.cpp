@@ -37,7 +37,7 @@ TcpConnection::TcpConnection(NetEngineImpl* engine,
 
 TcpConnection::~TcpConnection() { fd_.Reset(); }
 
-infra::Status TcpConnection::Start() {
+bool TcpConnection::Start() {
   std::weak_ptr<TcpConnection> weak_self = shared_from_this();
   return loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
     auto self = weak_self.lock();
@@ -47,18 +47,18 @@ infra::Status TcpConnection::Start() {
   });
 }
 
-infra::Status TcpConnection::Send(const uint8_t* data, size_t size) {
+bool TcpConnection::Send(const uint8_t* data, size_t size) {
   if (data == nullptr && size > 0) {
-    return infra::Status::kInvalidParam;
+    return false;
   }
   if (size == 0) {
-    return infra::Status::kOk;
+    return true;
   }
   bool close_slow = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_ || close_after_send_) {
-      return infra::Status::kBusy;
+      return false;
     }
     if (send_queue_.size() >= options_.send_queue_capacity ||
         size > options_.send_buffer_limit_bytes - pending_bytes_) {
@@ -67,7 +67,7 @@ infra::Status TcpConnection::Send(const uint8_t* data, size_t size) {
       if (close_slow) {
         engine_->AddSlowClose();
       } else {
-        return infra::Status::kBusy;
+        return false;
       }
     }
     if (!close_slow) {
@@ -80,10 +80,10 @@ infra::Status TcpConnection::Send(const uint8_t* data, size_t size) {
   }
   if (close_slow) {
     (void)Close();
-    return infra::Status::kBusy;
+    return false;
   }
   std::weak_ptr<TcpConnection> weak_self = shared_from_this();
-  const infra::Status status = loop_->Post([weak_self]() {
+  const bool posted = loop_->Post([weak_self]() {
     auto self = weak_self.lock();
     if (!self) {
       return;
@@ -91,7 +91,7 @@ infra::Status TcpConnection::Send(const uint8_t* data, size_t size) {
     self->EnableWrite();
     self->HandleWrite();
   });
-  if (status != infra::Status::kOk) {
+  if (!posted) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!send_queue_.empty()) {
       pending_bytes_ -=
@@ -99,10 +99,10 @@ infra::Status TcpConnection::Send(const uint8_t* data, size_t size) {
       send_queue_.pop_back();
     }
   }
-  return status;
+  return posted;
 }
 
-infra::Status TcpConnection::Close() {
+bool TcpConnection::Close() {
   std::weak_ptr<TcpConnection> weak_self = shared_from_this();
   return loop_->Post([weak_self]() {
     auto self = weak_self.lock();
@@ -112,7 +112,7 @@ infra::Status TcpConnection::Close() {
   });
 }
 
-infra::Status TcpConnection::CloseAfterSend() {
+bool TcpConnection::CloseAfterSend() {
   std::weak_ptr<TcpConnection> weak_self = shared_from_this();
   return loop_->Post([weak_self]() {
     auto self = weak_self.lock();

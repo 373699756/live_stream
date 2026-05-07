@@ -19,28 +19,28 @@ class IOperationLogStore {
  public:
     virtual ~IOperationLogStore() = default;
 
-    virtual infra::Status Open() = 0;
+    virtual bool Open() = 0;
     virtual void Close() = 0;
-    virtual infra::Status Append(const OperationRecord& record) = 0;
-    virtual infra::Result<std::vector<OperationRecord>> Query(
+    virtual bool Append(const OperationRecord& record) = 0;
+    virtual std::vector<OperationRecord> Query(
         const OperationLogQuery& query) = 0;
-    virtual infra::Status Export(const OperationLogExportOptions& options) = 0;
+    virtual bool Export(const OperationLogExportOptions& options) = 0;
 };
 
 class FileOperationLogStore : public IOperationLogStore {
  public:
     explicit FileOperationLogStore(const LoggerServiceConfig& config);
 
-    infra::Status Open() override;
+    bool Open() override;
     void Close() override;
-    infra::Status Append(const OperationRecord& record) override;
-    infra::Result<std::vector<OperationRecord>> Query(
+    bool Append(const OperationRecord& record) override;
+    std::vector<OperationRecord> Query(
         const OperationLogQuery& query) override;
-    infra::Status Export(const OperationLogExportOptions& options) override;
+    bool Export(const OperationLogExportOptions& options) override;
 
  private:
     std::vector<std::string> LogPathsNewestFirst() const;
-    infra::Status RotateIfNeededLocked();
+    bool RotateIfNeededLocked();
 
     LoggerServiceConfig config_;
     bool opened_ = false;

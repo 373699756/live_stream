@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_MEDIA_FRAME_SOURCE_H_
 #define LIVE_STREAM_MEDIA_FRAME_SOURCE_H_
 
-#include "infra/encoded_frame.h"
-#include "infra/stream_types.h"
+#include "media/encoded_frame.h"
+#include "media/stream_types.h"
 
 #include <cstdint>
 #include <string>
@@ -25,7 +25,7 @@ enum class KeyFrameReason {
 using FrameSubscriptionId = uint64_t;
 
 struct FrameSubscribeOptions {
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     bool require_key_frame_first = true;
     std::string sink_name;
 };
@@ -35,12 +35,12 @@ class IFrameSink {
     virtual ~IFrameSink() = default;
 
     virtual const char* Name() const = 0;
-    virtual void OnFrame(const infra::EncodedFrame& frame) = 0;
-    virtual void OnSourceStateChanged(infra::StreamId stream_id,
+    virtual void OnFrame(const EncodedFrame& frame) = 0;
+    virtual void OnSourceStateChanged(StreamId stream_id,
                                       StreamState state) = 0;
 };
 
-using EncodedFrameCallback = void (*)(const infra::EncodedFrame& frame,
+using EncodedFrameCallback = void (*)(const EncodedFrame& frame,
                                       void* user);
 
 }  // namespace live_stream

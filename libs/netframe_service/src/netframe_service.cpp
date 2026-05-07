@@ -7,17 +7,14 @@
 
 namespace live_stream {
 
-infra::Result<std::unique_ptr<NetEngine>> CreateNetEngine(
-    const NetEngineOptions& options) {
+std::unique_ptr<NetEngine> CreateNetEngine(const NetEngineOptions& options) {
   if (options.io_threads == 0 ||
       (options.callback_mode == CallbackMode::kPostToExecutor &&
        options.callback_executor == nullptr)) {
-    return infra::Result<std::unique_ptr<NetEngine>>::Fail(
-        infra::Status::kInvalidParam);
+    return nullptr;
   }
-  std::unique_ptr<NetEngine> engine(
+  return std::unique_ptr<NetEngine>(
       new netframe_internal::NetEngineImpl(options));
-  return infra::Result<std::unique_ptr<NetEngine>>::Ok(std::move(engine));
 }
 
 }  // namespace live_stream

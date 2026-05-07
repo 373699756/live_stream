@@ -5,6 +5,7 @@
         "enabled": true,
         "name": "main",
         "codec": "h265",
+        "smart_codec": true,
         "profile": "high",
         "resolution": "1920x1080",
         "fps": 25,
@@ -17,6 +18,7 @@
         "enabled": true,
         "name": "sub",
         "codec": "h264",
+        "smart_codec": false,
         "profile": "main",
         "resolution": "640x360",
         "fps": 15,
@@ -38,6 +40,18 @@
     "bitrate_kbps": 64,
     "input_gain": 50,
     "noise_suppression": true
+  },
+  "ai": {
+    "enabled": false,
+    "backend": "hisi3516dv300_nnie",
+    "task": "object_detection",
+    "stream": "main",
+    "model_path": "",
+    "input_width": 416,
+    "input_height": 416,
+    "inference_interval_ms": 200,
+    "confidence_threshold": 0.5,
+    "max_results": 16
   },
   "image": {
     "basic": {
@@ -91,16 +105,25 @@
     "session_timeout_sec": 60
   },
   "webrtc": {
-    "enabled": true,
+    "enabled": false,
+    "local_port_base": 16000,
+    "public_ip": "192.168.1.100",
     "signaling_path": "/api/webrtc",
     "ice_servers": [],
     "max_peers": 4,
     "prefer_tcp": false
   },
+  "http": {
+    "port": 8080,
+    "static_root": "www/dist"
+  },
   "onvif": {
     "enabled": true,
     "device_service_port": 8000,
+    "discovery_port": 3702,
     "discovery_enabled": true,
+    "auth_required": false,
+    "advertise_ip": "192.168.1.100",
     "manufacturer": "CBinary",
     "model": "live_stream_ipc",
     "firmware_version": "0.1.0"
@@ -114,6 +137,7 @@
   },
   "network": {
     "hostname": "live-stream-ipc",
+    "advertise_ip": "192.168.1.100",
     "interfaces": {
       "eth0": {
         "enabled": true,

@@ -4,6 +4,7 @@ INFRA_LIB := ../../build/lib/libinfra_service.a
 CXXFLAGS += -I../auth_service/include
 CXXFLAGS += -I../config_service/include
 CXXFLAGS += -I../event_service/include
+CXXFLAGS += -I../media_service/include
 CXXFLAGS += -I../netframe_service/include
 CXXFLAGS += -I../system_service/include
 CXXFLAGS += -I../time_service/include

@@ -1,9 +1,6 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_H_
 #define LIVE_STREAM_HTTP_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
-
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -14,7 +11,15 @@ namespace live_stream {
 class IAuthService;
 class IConfigService;
 class ILoggerService;
+class IAlarmService;
+class INetworkService;
+class IOnvifService;
+class IRtspService;
+class ISystemService;
+class ITimeService;
+class IUpgradeService;
 class IWebrtcService;
+class AiService;
 class MediaService;
 class NetEngine;
 class SnapshotService;
@@ -69,6 +74,14 @@ struct HttpServiceDependencies {
     IAuthService* auth_service = nullptr;
     IConfigService* config_service = nullptr;
     ILoggerService* logger_service = nullptr;
+    INetworkService* network_service = nullptr;
+    ITimeService* time_service = nullptr;
+    IAlarmService* alarm_service = nullptr;
+    IUpgradeService* upgrade_service = nullptr;
+    IRtspService* rtsp_service = nullptr;
+    IOnvifService* onvif_service = nullptr;
+    ISystemService* system_service = nullptr;
+    AiService* ai_service = nullptr;
     MediaService* media_service = nullptr;
     SnapshotService* snapshot_service = nullptr;
     IWebrtcService* webrtc_service = nullptr;
@@ -83,13 +96,14 @@ struct HttpServiceStats {
     uint32_t active_connections = 0;
 };
 
-class IHttpService : public infra::IService {
+class IHttpService {
  public:
-    ~IHttpService() override = default;
+    virtual ~IHttpService() = default;
 
-    virtual infra::Result<HttpResponse> HandleRequest(
-        const HttpRequest& request) = 0;
-    virtual infra::Result<HttpListenAddress> LocalAddress() const = 0;
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual HttpResponse HandleRequest(const HttpRequest& request) = 0;
+    virtual HttpListenAddress LocalAddress() const = 0;
     virtual HttpServiceStats GetStats() const = 0;
 };
 

@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_MEDIA_CAPABILITIES_H_
 #define LIVE_STREAM_MEDIA_MEDIA_CAPABILITIES_H_
 
-#include "infra/stream_types.h"
+#include "media/stream_types.h"
 
 #include <cstdint>
 #include <string>
@@ -42,12 +42,12 @@ enum class GopMode {
 };
 
 struct CodecCapability {
-    infra::VideoCodec codec = infra::VideoCodec::kH264;
+    VideoCodec codec = VideoCodec::kH264;
     std::vector<std::string> profiles;
 };
 
 struct VideoStreamCapabilities {
-    infra::StreamId stream_id = infra::StreamId::kMain;
+    StreamId stream_id = StreamId::kMain;
     std::vector<CodecCapability> codecs;
     std::vector<VideoResolution> resolutions;
     FrameRateRange frame_rate;

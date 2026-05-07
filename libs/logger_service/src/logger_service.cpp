@@ -16,32 +16,31 @@ class LoggerServiceImpl : public ILoggerService {
 
     ~LoggerServiceImpl() override {
         Stop();
-        Deinit();
+        Release();
     }
 
-    infra::Status Init() override {
+    bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!store_) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         if (initialized_) {
-            return infra::Status::kOk;
+            return true;
         }
-        const infra::Status error = store_->Open();
-        if (error != infra::Status::kOk) {
-            return error;
+        if (!store_->Open()) {
+            return false;
         }
         initialized_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Start() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_ || !store_) {
-            return infra::Status::kInternalError;
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
         }
+        std::lock_guard<std::mutex> lock(mutex_);
         started_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
@@ -49,7 +48,7 @@ class LoggerServiceImpl : public ILoggerService {
         started_ = false;
     }
 
-    void Deinit() override {
+    void Release() {
         std::lock_guard<std::mutex> lock(mutex_);
         started_ = false;
         if (initialized_ && store_) {
@@ -58,33 +57,28 @@ class LoggerServiceImpl : public ILoggerService {
         initialized_ = false;
     }
 
-    const char* Name() const override {
-        return "logger_service";
-    }
-
-    infra::Status RecordOperation(const OperationRecord& record) override {
+    bool RecordOperation(const OperationRecord& record) override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!started_ || !store_) {
-            return infra::Status::kInternalError;
+            return false;
         }
         return store_->Append(record);
     }
 
-    infra::Result<std::vector<OperationRecord>> QueryOperations(
+    std::vector<OperationRecord> QueryOperations(
         const OperationLogQuery& query) override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_ || !store_) {
-            return infra::Result<std::vector<OperationRecord>>::Fail(
-                infra::Status::kInternalError);
+            return {};
         }
         return store_->Query(query);
     }
 
-    infra::Status ExportOperations(
+    bool ExportOperations(
         const OperationLogExportOptions& options) override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_ || !store_) {
-            return infra::Status::kInternalError;
+            return false;
         }
         return store_->Export(options);
     }

@@ -19,7 +19,10 @@ std::string UriFault(uint32_t* status, std::string* reason) {
 
 }  // namespace
 
-infra::Result<infra::StreamId> ParseStreamId(const std::string& body) {
+bool ParseStreamId(const std::string& body, StreamId* stream_id) {
+    if (stream_id == nullptr) {
+        return false;
+    }
     const std::string begin_tag = "<ProfileToken>";
     const std::string end_tag = "</ProfileToken>";
     const std::size_t begin = body.find(begin_tag);
@@ -30,28 +33,49 @@ infra::Result<infra::StreamId> ParseStreamId(const std::string& body) {
             const std::string token =
                 ToLower(body.substr(token_begin, end - token_begin));
             if (token == "sub" || token == "profile_sub") {
-                return infra::Result<infra::StreamId>::Ok(
-                    infra::StreamId::kSub);
+                *stream_id = StreamId::kSub;
+                return true;
             }
             if (token == "main" || token == "profile_main") {
-                return infra::Result<infra::StreamId>::Ok(
-                    infra::StreamId::kMain);
+                *stream_id = StreamId::kMain;
+                return true;
             }
-            return infra::Result<infra::StreamId>::Fail(
-                infra::Status::kInvalidParam);
+            return false;
         }
-        return infra::Result<infra::StreamId>::Fail(
-            infra::Status::kInvalidParam);
+        return false;
     }
-    return infra::Result<infra::StreamId>::Ok(infra::StreamId::kMain);
+    *stream_id = StreamId::kMain;
+    return true;
 }
 
-std::string ProfilesBody() {
-    return "<trt:GetProfilesResponse>"
-           "<trt:Profiles token=\"profile_main\"><tt:Name>MainStream"
-           "</tt:Name></trt:Profiles>"
-           "<trt:Profiles token=\"profile_sub\"><tt:Name>SubStream"
-           "</tt:Name></trt:Profiles></trt:GetProfilesResponse>";
+void AppendProfile(std::string* body,
+                   StreamId stream_id,
+                   const char* name) {
+    *body += "<trt:Profiles token=\"";
+    *body += StreamToken(stream_id);
+    *body += "\"><tt:Name>";
+    *body += name;
+    *body += "</tt:Name></trt:Profiles>";
+}
+
+bool ProfileAvailable(IOnvifUriProvider* uri_provider,
+                      StreamId stream_id) {
+    if (uri_provider == nullptr) {
+        return true;
+    }
+    return !uri_provider->GetStreamUri(stream_id).empty();
+}
+
+std::string ProfilesBody(IOnvifUriProvider* uri_provider) {
+    std::string body = "<trt:GetProfilesResponse>";
+    if (ProfileAvailable(uri_provider, StreamId::kMain)) {
+        AppendProfile(&body, StreamId::kMain, "MainStream");
+    }
+    if (ProfileAvailable(uri_provider, StreamId::kSub)) {
+        AppendProfile(&body, StreamId::kSub, "SubStream");
+    }
+    body += "</trt:GetProfilesResponse>";
+    return body;
 }
 
 std::string ProfileFault(uint32_t* status, std::string* reason) {
@@ -65,19 +89,19 @@ std::string ProfileFault(uint32_t* status, std::string* reason) {
 }
 
 OnvifBodyResult StreamUriBody(IOnvifUriProvider* uri_provider,
-                              infra::StreamId stream_id,
+                              StreamId stream_id,
                               uint32_t* status,
                               std::string* reason) {
     if (uri_provider == nullptr) {
         return OnvifBodyResult{UriFault(status, reason), false};
     }
-    infra::Result<std::string> uri = uri_provider->GetStreamUri(stream_id);
-    if (!uri.IsOk()) {
+    const std::string uri = uri_provider->GetStreamUri(stream_id);
+    if (uri.empty()) {
         return OnvifBodyResult{UriFault(status, reason), false};
     }
     return OnvifBodyResult{
         "<trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>" +
-            XmlEscape(uri.value) +
+            XmlEscape(uri) +
             "</tt:Uri></trt:MediaUri><trt:ProfileToken>" +
             StreamToken(stream_id) +
             "</trt:ProfileToken></trt:GetStreamUriResponse>",
@@ -85,19 +109,19 @@ OnvifBodyResult StreamUriBody(IOnvifUriProvider* uri_provider,
 }
 
 OnvifBodyResult SnapshotUriBody(IOnvifUriProvider* uri_provider,
-                                infra::StreamId stream_id,
+                                StreamId stream_id,
                                 uint32_t* status,
                                 std::string* reason) {
     if (uri_provider == nullptr) {
         return OnvifBodyResult{UriFault(status, reason), false};
     }
-    infra::Result<std::string> uri = uri_provider->GetSnapshotUri(stream_id);
-    if (!uri.IsOk()) {
+    const std::string uri = uri_provider->GetSnapshotUri(stream_id);
+    if (uri.empty()) {
         return OnvifBodyResult{UriFault(status, reason), false};
     }
     return OnvifBodyResult{
         "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>" +
-            XmlEscape(uri.value) +
+            XmlEscape(uri) +
             "</tt:Uri></trt:MediaUri><trt:ProfileToken>" +
             StreamToken(stream_id) +
             "</trt:ProfileToken></trt:GetSnapshotUriResponse>",

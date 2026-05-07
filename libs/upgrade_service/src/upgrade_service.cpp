@@ -26,59 +26,57 @@ bool IsCancelableState(UpgradeState state) {
            state == UpgradeState::kWriting;
 }
 
-OperationResult ToOperationResult(infra::Status error) {
-    return error == infra::Status::kOk ? OperationResult::kSuccess
-                                      : OperationResult::kFailed;
+OperationResult ToOperationResult(bool ok) {
+    return ok ? OperationResult::kSuccess : OperationResult::kFailed;
 }
 
 class RestrictedUpgradePlatform : public IUpgradePlatform {
  public:
-    infra::Result<UpgradePackageInfo> ValidatePackage(
+    UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
         (void)package_path;
-        return infra::Result<UpgradePackageInfo>::Fail(
-            infra::Status::kNotSupported);
+        return UpgradePackageInfo();
     }
 
-    infra::Result<std::string> GetCurrentVersion() override {
-        return infra::Result<std::string>::Fail(infra::Status::kNotSupported);
+    std::string GetCurrentVersion() override {
+        return std::string();
     }
 
-    infra::Result<int> CompareVersion(const std::string& lhs,
-                                      const std::string& rhs) override {
+    int CompareVersion(const std::string& lhs,
+                       const std::string& rhs) override {
         (void)lhs;
         (void)rhs;
-        return infra::Result<int>::Fail(infra::Status::kNotSupported);
+        return 0;
     }
 
-    infra::Status PrepareUpgrade(const UpgradePackageInfo& info) override {
+    bool PrepareUpgrade(const UpgradePackageInfo& info) override {
         (void)info;
-        return infra::Status::kNotSupported;
+        return false;
     }
 
-    infra::Status WriteUpgrade(
+    bool WriteUpgrade(
         const std::string& package_path,
         UpgradeProgressCallback progress_callback) override {
         (void)package_path;
         (void)progress_callback;
-        return infra::Status::kNotSupported;
+        return false;
     }
 
-    infra::Status CommitUpgrade(const UpgradePackageInfo& info) override {
+    bool CommitUpgrade(const UpgradePackageInfo& info) override {
         (void)info;
-        return infra::Status::kNotSupported;
+        return false;
     }
 
-    infra::Status CancelUpgrade() override {
-        return infra::Status::kNotSupported;
+    bool CancelUpgrade() override {
+        return false;
     }
 
-    infra::Status RebootToApply() override {
-        return infra::Status::kNotSupported;
+    bool RebootToApply() override {
+        return false;
     }
 
-    infra::Status CleanupFailedUpgrade() override {
-        return infra::Status::kOk;
+    bool CleanupFailedUpgrade() override {
+        return true;
     }
 };
 
@@ -89,18 +87,18 @@ class UpgradeServiceImpl : public IUpgradeService {
 
     ~UpgradeServiceImpl() override {
         Stop();
-        Deinit();
+        Release();
     }
 
-    infra::Status Init() override {
+    bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (initialized_) {
-            return infra::Status::kOk;
+            return true;
         }
         if (options_.max_package_size_bytes == 0 ||
             options_.max_package_path_length == 0 ||
             options_.queue_capacity == 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         if (options_.platform == nullptr) {
             restricted_platform_.reset(new RestrictedUpgradePlatform());
@@ -113,26 +111,28 @@ class UpgradeServiceImpl : public IUpgradeService {
 
         status_ = UpgradeStatus{};
         initialized_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Start() override {
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
+        }
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_ || !executor_) {
-            return infra::Status::kBusy;
+        if (!executor_) {
+            return false;
         }
         if (started_) {
-            return infra::Status::kOk;
+            return true;
         }
         infra::ExecutorOptions executor_options;
         executor_options.worker_count = 1;
         executor_options.queue_capacity = options_.queue_capacity;
-        const infra::Status error = executor_->Start(executor_options);
-        if (error != infra::Status::kOk) {
-            return error;
+        if (!executor_->Start(executor_options)) {
+            return false;
         }
         started_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
@@ -151,7 +151,7 @@ class UpgradeServiceImpl : public IUpgradeService {
         }
     }
 
-    void Deinit() override {
+    void Release() {
         Stop();
         std::lock_guard<std::mutex> lock(mutex_);
         executor_.reset();
@@ -162,52 +162,49 @@ class UpgradeServiceImpl : public IUpgradeService {
         initialized_ = false;
     }
 
-    const char* Name() const override { return kServiceName; }
-
     UpgradeStatus GetStatus() override {
         std::lock_guard<std::mutex> lock(mutex_);
         return status_;
     }
 
-    infra::Result<UpgradePackageInfo> ValidatePackage(
+    UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
-        const infra::Status local_error = ValidateLocalPackage(package_path);
-        if (local_error != infra::Status::kOk) {
-            return infra::Result<UpgradePackageInfo>::Fail(local_error);
+        std::string reason;
+        if (!ValidateLocalPackage(package_path, &reason)) {
+            return UpgradePackageInfo();
         }
         IUpgradePlatform* platform = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || platform_ == nullptr) {
-                return infra::Result<UpgradePackageInfo>::Fail(
-                    infra::Status::kBusy);
+                return UpgradePackageInfo();
             }
             platform = platform_;
         }
         return platform->ValidatePackage(package_path);
     }
 
-    infra::Status StartUpgrade(const infra::RequestContext& context,
-                              const UpgradeRequest& request) override {
+    bool StartUpgrade(const live_stream::RequestContext& context,
+                      const UpgradeRequest& request) override {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_ || !executor_) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
-                return infra::Status::kBusy;
+                return false;
             }
             if (!IsTerminalState(status_.state)) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
-                return infra::Status::kBusy;
+                return false;
             }
         }
 
-        const infra::Status local_error = ValidateLocalPackage(request.package_path);
-        if (local_error != infra::Status::kOk) {
+        std::string reason;
+        if (!ValidateLocalPackage(request.package_path, &reason)) {
             RecordAudit(context, request.package_path, OperationResult::kRejected,
-                        infra::StatusToString(local_error));
-            return local_error;
+                        reason);
+            return false;
         }
 
         infra::Executor* executor = nullptr;
@@ -216,36 +213,35 @@ class UpgradeServiceImpl : public IUpgradeService {
             if (!initialized_ || !started_ || !executor_) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
-                return infra::Status::kBusy;
+                return false;
             }
             if (!IsTerminalState(status_.state)) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
-                return infra::Status::kBusy;
+                return false;
             }
             cancel_requested_ = false;
             status_ = UpgradeStatus{};
             status_.state = UpgradeState::kValidating;
             status_.progress_percent = 0;
             status_.current_stage = UpgradeStateToString(UpgradeState::kValidating);
-            status_.status = infra::Status::kOk;
+            status_.ok = true;
             status_.started_at_ms = infra::Time::SystemTimeMillis();
             executor = executor_.get();
         }
         PublishProgressChanged();
 
-        const infra::Status post_error = executor->Post(
-            [this, context, request]() { ExecuteUpgrade(context, request); });
-        if (post_error != infra::Status::kOk) {
-            SetFailed(post_error, "failed to queue upgrade task", false);
+        if (!executor->Post(
+                [this, context, request]() { ExecuteUpgrade(context, request); })) {
+            SetFailed("failed to queue upgrade task", false);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
-                        infra::StatusToString(post_error));
-            return post_error;
+                        "failed to queue upgrade task");
+            return false;
         }
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status CancelUpgrade(const infra::RequestContext& context) override {
+    bool CancelUpgrade(const live_stream::RequestContext& context) override {
         IUpgradePlatform* platform = nullptr;
         std::string target;
         {
@@ -253,29 +249,29 @@ class UpgradeServiceImpl : public IUpgradeService {
             if (!initialized_ || !started_ || platform_ == nullptr) {
                 RecordAudit(context, "upgrade", OperationResult::kRejected,
                             "service not started");
-                return infra::Status::kBusy;
+                return false;
             }
             if (!IsCancelableState(status_.state)) {
                 RecordAudit(context, status_.target_version,
                             OperationResult::kRejected, "upgrade not cancelable");
-                return infra::Status::kBusy;
+                return false;
             }
             cancel_requested_ = true;
             target = status_.target_version;
             status_.state = UpgradeState::kCanceled;
             status_.current_stage = UpgradeStateToString(UpgradeState::kCanceled);
-            status_.status = infra::Status::kOk;
+            status_.ok = true;
             status_.error_message = "canceled";
             status_.finished_at_ms = infra::Time::SystemTimeMillis();
             platform = platform_;
         }
-        const infra::Status cancel_error = platform->CancelUpgrade();
+        const bool cancel_ok = platform->CancelUpgrade();
         PublishProgressChanged();
-        RecordAudit(context, target, ToOperationResult(cancel_error), "canceled");
-        return cancel_error;
+        RecordAudit(context, target, ToOperationResult(cancel_ok), "canceled");
+        return cancel_ok;
     }
 
-    infra::Status ConfirmReboot(const infra::RequestContext& context) override {
+    bool ConfirmReboot(const live_stream::RequestContext& context) override {
         IUpgradePlatform* platform = nullptr;
         std::string target;
         {
@@ -283,53 +279,72 @@ class UpgradeServiceImpl : public IUpgradeService {
             if (!initialized_ || !started_ || platform_ == nullptr) {
                 RecordAudit(context, "upgrade", OperationResult::kRejected,
                             "service not started");
-                return infra::Status::kBusy;
+                return false;
             }
             if (status_.state != UpgradeState::kWaitingReboot) {
                 RecordAudit(context, status_.target_version,
                             OperationResult::kRejected, "reboot not pending");
-                return infra::Status::kBusy;
+                return false;
             }
             platform = platform_;
             target = status_.target_version;
         }
 
-        const infra::Status error = platform->RebootToApply();
-        if (error == infra::Status::kOk) {
-            UpdateStatus(UpgradeState::kCompleted, 100, infra::Status::kOk, "");
+        const bool reboot_ok = platform->RebootToApply();
+        if (reboot_ok) {
+            UpdateStatus(UpgradeState::kCompleted, 100, true, "");
         } else {
-            SetFailed(error, infra::StatusToString(error), true);
+            SetFailed("reboot failed", true);
         }
-        RecordAudit(context, target, ToOperationResult(error),
-                    infra::StatusToString(error));
-        return error;
+        RecordAudit(context, target, ToOperationResult(reboot_ok),
+                    reboot_ok ? "ok" : "reboot failed");
+        return reboot_ok;
     }
 
  private:
-    infra::Status ValidateLocalPackage(const std::string& package_path) {
+    bool ValidateLocalPackage(const std::string& package_path,
+                              std::string* reason) {
         if (package_path.empty() ||
             package_path.size() > options_.max_package_path_length) {
-            return infra::Status::kInvalidParam;
+            if (reason != nullptr) {
+                *reason = "invalid package path";
+            }
+            return false;
         }
 
         struct stat file_stat;
         if (stat(package_path.c_str(), &file_stat) != 0) {
-            return infra::Status::kNotFound;
+            if (reason != nullptr) {
+                *reason = "package not found";
+            }
+            return false;
         }
         if (!S_ISREG(file_stat.st_mode)) {
-            return infra::Status::kInvalidParam;
+            if (reason != nullptr) {
+                *reason = "package path is not a regular file";
+            }
+            return false;
         }
         if (file_stat.st_size <= 0) {
-            return infra::Status::kInvalidParam;
+            if (reason != nullptr) {
+                *reason = "package is empty";
+            }
+            return false;
         }
         if (static_cast<uint64_t>(file_stat.st_size) >
             options_.max_package_size_bytes) {
-            return infra::Status::kInvalidParam;
+            if (reason != nullptr) {
+                *reason = "package too large";
+            }
+            return false;
         }
-        return infra::Status::kOk;
+        if (reason != nullptr) {
+            reason->clear();
+        }
+        return true;
     }
 
-    void ExecuteUpgrade(const infra::RequestContext& context,
+    void ExecuteUpgrade(const live_stream::RequestContext& context,
                         const UpgradeRequest& request) {
         IUpgradePlatform* platform = nullptr;
         {
@@ -337,32 +352,29 @@ class UpgradeServiceImpl : public IUpgradeService {
             platform = platform_;
         }
         if (platform == nullptr) {
-            SetFailed(infra::Status::kInternalError, "platform missing", false);
+            SetFailed("platform missing", false);
             RecordAudit(context, request.package_path, OperationResult::kFailed,
                         "platform missing");
             return;
         }
 
-        infra::Result<UpgradePackageInfo> package_result =
+        UpgradePackageInfo info =
             platform->ValidatePackage(request.package_path);
-        if (!package_result.IsOk()) {
-            SetFailed(package_result.status, infra::StatusToString(package_result.status),
-                      false);
+        if (info.version.empty()) {
+            SetFailed("package validation failed", false);
             RecordAudit(context, request.package_path, OperationResult::kFailed,
-                        infra::StatusToString(package_result.status));
+                        "package validation failed");
             return;
         }
-        UpgradePackageInfo info = package_result.value;
         if (info.package_path.empty()) {
             info.package_path = request.package_path;
         }
 
-        const infra::Status policy_error = ValidateVersionPolicy(
-            platform, info, request);
-        if (policy_error != infra::Status::kOk) {
-            SetFailed(policy_error, infra::StatusToString(policy_error), false);
+        std::string policy_reason;
+        if (!ValidateVersionPolicy(platform, info, request, &policy_reason)) {
+            SetFailed(policy_reason, false);
             RecordAudit(context, info.version, OperationResult::kRejected,
-                        infra::StatusToString(policy_error));
+                        policy_reason);
             return;
         }
 
@@ -370,32 +382,31 @@ class UpgradeServiceImpl : public IUpgradeService {
             return;
         }
         UpdateTargetVersion(info.version);
-        UpdateStatus(UpgradeState::kPreparing, 10, infra::Status::kOk, "");
-        const infra::Status prepare_error = platform->PrepareUpgrade(info);
-        if (prepare_error != infra::Status::kOk) {
+        UpdateStatus(UpgradeState::kPreparing, 10, true, "");
+        if (!platform->PrepareUpgrade(info)) {
             static_cast<void>(platform->CleanupFailedUpgrade());
-            SetFailed(prepare_error, infra::StatusToString(prepare_error), false);
+            SetFailed("prepare upgrade failed", false);
             RecordAudit(context, info.version, OperationResult::kFailed,
-                        infra::StatusToString(prepare_error));
+                        "prepare upgrade failed");
             return;
         }
 
         if (IsCancelRequested()) {
             return;
         }
-        UpdateStatus(UpgradeState::kWriting, 20, infra::Status::kOk, "");
-        const infra::Status write_error = platform->WriteUpgrade(
+        UpdateStatus(UpgradeState::kWriting, 20, true, "");
+        const bool write_ok = platform->WriteUpgrade(
             request.package_path, [this](uint32_t progress_percent) {
                 const uint32_t bounded = std::min(progress_percent, 100U);
                 const uint32_t service_progress = 20U + (bounded * 60U) / 100U;
                 UpdateWritingProgress(service_progress);
             });
-        if (write_error != infra::Status::kOk) {
+        if (!write_ok) {
             if (!IsCancelRequested()) {
                 static_cast<void>(platform->CleanupFailedUpgrade());
-                SetFailed(write_error, infra::StatusToString(write_error), false);
+                SetFailed("write upgrade failed", false);
                 RecordAudit(context, info.version, OperationResult::kFailed,
-                            infra::StatusToString(write_error));
+                            "write upgrade failed");
             }
             return;
         }
@@ -403,63 +414,73 @@ class UpgradeServiceImpl : public IUpgradeService {
         if (IsCancelRequested()) {
             return;
         }
-        UpdateStatus(UpgradeState::kCommitting, 90, infra::Status::kOk, "");
-        const infra::Status commit_error = platform->CommitUpgrade(info);
-        if (commit_error != infra::Status::kOk) {
-            SetFailed(commit_error, infra::StatusToString(commit_error), true);
+        UpdateStatus(UpgradeState::kCommitting, 90, true, "");
+        if (!platform->CommitUpgrade(info)) {
+            SetFailed("commit upgrade failed", true);
             RecordAudit(context, info.version, OperationResult::kFailed,
-                        infra::StatusToString(commit_error));
+                        "commit upgrade failed");
             return;
         }
 
         if (info.requires_reboot) {
             if (request.auto_reboot) {
-                const infra::Status reboot_error = platform->RebootToApply();
-                if (reboot_error != infra::Status::kOk) {
-                    SetFailed(reboot_error, infra::StatusToString(reboot_error), true);
+                if (!platform->RebootToApply()) {
+                    SetFailed("reboot failed", true);
                     RecordAudit(context, info.version, OperationResult::kFailed,
-                                infra::StatusToString(reboot_error));
+                                "reboot failed");
                     return;
                 }
-                UpdateStatus(UpgradeState::kCompleted, 100, infra::Status::kOk, "");
+                UpdateStatus(UpgradeState::kCompleted, 100, true, "");
                 RecordAudit(context, info.version, OperationResult::kSuccess,
                             "completed");
                 return;
             }
-            UpdateStatus(UpgradeState::kWaitingReboot, 100, infra::Status::kOk, "");
+            UpdateStatus(UpgradeState::kWaitingReboot, 100, true, "");
             RecordAudit(context, info.version, OperationResult::kSuccess,
                         "waiting reboot");
             return;
         }
 
-        UpdateStatus(UpgradeState::kCompleted, 100, infra::Status::kOk, "");
+        UpdateStatus(UpgradeState::kCompleted, 100, true, "");
         RecordAudit(context, info.version, OperationResult::kSuccess, "completed");
     }
 
-    infra::Status ValidateVersionPolicy(IUpgradePlatform* platform,
-                                       const UpgradePackageInfo& info,
-                                       const UpgradeRequest& request) {
+    bool ValidateVersionPolicy(IUpgradePlatform* platform,
+                               const UpgradePackageInfo& info,
+                               const UpgradeRequest& request,
+                               std::string* reason) {
         if (!request.expected_version.empty() &&
             request.expected_version != info.version) {
-            return infra::Status::kInvalidParam;
+            if (reason != nullptr) {
+                *reason = "unexpected package version";
+            }
+            return false;
         }
 
-        infra::Result<std::string> current_result = platform->GetCurrentVersion();
-        if (!current_result.IsOk()) {
-            return current_result.status;
+        const std::string current_version = platform->GetCurrentVersion();
+        if (current_version.empty()) {
+            if (reason != nullptr) {
+                *reason = "current version unavailable";
+            }
+            return false;
         }
-        infra::Result<int> compare_result =
-            platform->CompareVersion(info.version, current_result.value);
-        if (!compare_result.IsOk()) {
-            return compare_result.status;
+        const int compare = platform->CompareVersion(info.version, current_version);
+        if (compare == 0 && !request.allow_same_version) {
+            if (reason != nullptr) {
+                *reason = "same version is not allowed";
+            }
+            return false;
         }
-        if (compare_result.value == 0 && !request.allow_same_version) {
-            return infra::Status::kAlreadyExists;
+        if (compare < 0 && !request.allow_downgrade) {
+            if (reason != nullptr) {
+                *reason = "downgrade is not allowed";
+            }
+            return false;
         }
-        if (compare_result.value < 0 && !request.allow_downgrade) {
-            return infra::Status::kInvalidParam;
+        if (reason != nullptr) {
+            reason->clear();
         }
-        return infra::Status::kOk;
+        return true;
     }
 
     bool IsCancelRequested() {
@@ -492,14 +513,14 @@ class UpgradeServiceImpl : public IUpgradeService {
 
     void UpdateStatus(UpgradeState state,
                       uint32_t progress_percent,
-                      infra::Status error,
+                      bool ok,
                       const std::string& error_message) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             status_.state = state;
             status_.progress_percent = std::min(progress_percent, 100U);
             status_.current_stage = UpgradeStateToString(state);
-            status_.status = error;
+            status_.ok = ok;
             status_.error_message = error_message;
             if (state == UpgradeState::kCompleted || state == UpgradeState::kFailed ||
                 state == UpgradeState::kCanceled) {
@@ -509,8 +530,7 @@ class UpgradeServiceImpl : public IUpgradeService {
         PublishProgressChanged();
     }
 
-    void SetFailed(infra::Status error,
-                   const std::string& message,
+    void SetFailed(const std::string& message,
                    bool committed) {
         std::string full_message = message;
         if (committed && !full_message.empty()) {
@@ -518,7 +538,7 @@ class UpgradeServiceImpl : public IUpgradeService {
         } else if (committed) {
             full_message = "committed upgrade may require manual recovery";
         }
-        UpdateStatus(UpgradeState::kFailed, 100, error, full_message);
+        UpdateStatus(UpgradeState::kFailed, 100, false, full_message);
     }
 
     void PublishProgressChanged() {
@@ -535,7 +555,7 @@ class UpgradeServiceImpl : public IUpgradeService {
         static_cast<void>(event_service->Publish(event));
     }
 
-    void RecordAudit(const infra::RequestContext& context,
+    void RecordAudit(const live_stream::RequestContext& context,
                      const std::string& target,
                      OperationResult result,
                      const std::string& reason) {

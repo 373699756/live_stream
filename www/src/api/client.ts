@@ -3,20 +3,25 @@ import {
   mockMediaCapabilities,
   mockNetworkConfig,
   mockOsdConfig,
+  mockRtspConfig,
   mockSnapshotConfig,
   mockStreamStatus,
   mockSystemStatus,
   mockVideoConfig,
+  mockWebrtcConfig,
 } from './mock';
 import type {
   ImageConfig,
   MediaCapabilities,
   NetworkConfig,
+  OperationRecord,
   OsdConfig,
+  RtspConfig,
   SnapshotConfig,
   StreamStatus,
   SystemStatus,
   VideoConfig,
+  WebrtcConfig,
 } from './types';
 
 const headers = { 'Content-Type': 'application/json' };
@@ -85,6 +90,16 @@ export function snapshotUrl(stream: string, tick = 0) {
   }
   const query = params.toString();
   return `/api/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
+}
+
+export function operationsExportUrl() {
+  const token = window.localStorage.getItem(tokenKey);
+  if (!token) {
+    return '/api/operations/export';
+  }
+  const params = new URLSearchParams();
+  params.set('token', token);
+  return `/api/operations/export?${params.toString()}`;
 }
 
 export async function login(userName: string, password: string): Promise<boolean> {
@@ -166,6 +181,10 @@ export const api = {
   saveNetworkConfig: (value: NetworkConfig) => putJson('/api/config/network', value),
   getSnapshotConfig: () => requestJson<SnapshotConfig>('/api/config/snapshot', mockSnapshotConfig),
   saveSnapshotConfig: (value: SnapshotConfig) => putJson('/api/config/snapshot', value),
+  getRtspConfig: () => requestJson<RtspConfig>('/api/config/rtsp', mockRtspConfig),
+  getWebrtcConfig: () => requestJson<WebrtcConfig>('/api/config/webrtc', mockWebrtcConfig),
   getSystemStatus: () => requestJson<SystemStatus>('/api/system/status', mockSystemStatus),
   getStreamStatus: () => requestJson<StreamStatus[]>('/api/status/streams', mockStreamStatus),
+  getOperations: () =>
+    requestJson<{ items: OperationRecord[] }>('/api/operations', { items: [] }),
 };

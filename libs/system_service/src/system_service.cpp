@@ -18,9 +18,8 @@ namespace {
 constexpr std::size_t kMaxComponentNameLength = 64;
 constexpr std::size_t kMaxHeartbeatComponents = 32;
 
-OperationResult ToOperationResult(infra::Status error) {
-    return error == infra::Status::kOk ? OperationResult::kSuccess
-                                      : OperationResult::kFailed;
+OperationResult ToOperationResult(bool ok) {
+    return ok ? OperationResult::kSuccess : OperationResult::kFailed;
 }
 
 bool ParseFirstInteger(const std::string& text, int64_t* value) {
@@ -37,12 +36,11 @@ bool ParseFirstInteger(const std::string& text, int64_t* value) {
 }
 
 int64_t ReadUptimeMs() {
-    infra::Result<std::string> content =
-        infra::File::ReadAll("/proc/uptime");
-    if (!content.IsOk()) {
+    std::string content = infra::File::ReadAll("/proc/uptime");
+    if (content.empty()) {
         return 0;
     }
-    std::istringstream stream(content.value);
+    std::istringstream stream(content);
     double uptime_sec = 0.0;
     stream >> uptime_sec;
     if (!stream) {
@@ -52,12 +50,11 @@ int64_t ReadUptimeMs() {
 }
 
 uint32_t ReadMemoryUsagePercent() {
-    infra::Result<std::string> content =
-        infra::File::ReadAll("/proc/meminfo");
-    if (!content.IsOk()) {
+    std::string content = infra::File::ReadAll("/proc/meminfo");
+    if (content.empty()) {
         return 0;
     }
-    std::istringstream stream(content.value);
+    std::istringstream stream(content);
     std::string key;
     int64_t value = 0;
     std::string unit;
@@ -77,10 +74,10 @@ uint32_t ReadMemoryUsagePercent() {
 }
 
 int32_t ReadTemperatureCelsius() {
-    infra::Result<std::string> content =
+    std::string content =
         infra::File::ReadAll("/sys/class/thermal/thermal_zone0/temp");
     int64_t raw = 0;
-    if (!content.IsOk() || !ParseFirstInteger(content.value, &raw)) {
+    if (content.empty() || !ParseFirstInteger(content, &raw)) {
         return 0;
     }
     if (raw > 1000) {
@@ -91,36 +88,36 @@ int32_t ReadTemperatureCelsius() {
 
 class DefaultSystemPlatform : public ISystemPlatform {
  public:
-    infra::Result<DeviceInfo> GetDeviceInfo() override {
+    DeviceInfo GetDeviceInfo() override {
         DeviceInfo info;
         info.model = "live_stream_ipc";
         info.serial_number = "unknown";
         info.firmware_version = "0.1.0";
-        return infra::Result<DeviceInfo>::Ok(info);
+        return info;
     }
 
-    infra::Result<SystemStatus> GetSystemStatus() override {
+    SystemStatus GetSystemStatus() override {
         SystemStatus status;
         status.cpu_usage_percent = 0;
         status.memory_usage_percent = ReadMemoryUsagePercent();
         status.temperature_celsius = ReadTemperatureCelsius();
         status.uptime_ms = ReadUptimeMs();
         status.healthy = true;
-        return infra::Result<SystemStatus>::Ok(status);
+        return status;
     }
 
-    infra::Result<SystemCapabilities> GetCapabilities() override {
+    SystemCapabilities GetCapabilities() override {
         SystemCapabilities caps;
         caps.supports_reboot = false;
         caps.supports_factory_reset = false;
         caps.features.push_back("heartbeat");
-        return infra::Result<SystemCapabilities>::Ok(caps);
+        return caps;
     }
 
-    infra::Status Reboot() override { return infra::Status::kNotSupported; }
+    bool Reboot() override { return false; }
 
-    infra::Status FactoryReset() override {
-        return infra::Status::kNotSupported;
+    bool FactoryReset() override {
+        return false;
     }
 };
 
@@ -134,25 +131,25 @@ class SystemServiceImpl : public ISystemService {
           platform_(options.platform != nullptr ? options.platform
                                                 : owned_platform_.get()) {}
 
-    infra::Status Init() override {
+    bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (initialized_) {
-            return infra::Status::kOk;
+            return true;
         }
         if (platform_ == nullptr || options_.heartbeat_timeout_ms == 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         initialized_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Start() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_) {
-            return infra::Status::kBusy;
+    bool Start() override {
+        if (!Prepare()) {
+            return false;
         }
+        std::lock_guard<std::mutex> lock(mutex_);
         started_ = true;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
@@ -160,7 +157,7 @@ class SystemServiceImpl : public ISystemService {
         started_ = false;
     }
 
-    void Deinit() override {
+    void Release() {
         std::lock_guard<std::mutex> lock(mutex_);
         heartbeat_ms_.clear();
         heartbeat_unhealthy_ = false;
@@ -169,74 +166,69 @@ class SystemServiceImpl : public ISystemService {
         initialized_ = false;
     }
 
-    const char* Name() const override { return "system_service"; }
-
-    infra::Result<DeviceInfo> GetDeviceInfo() override {
+    DeviceInfo GetDeviceInfo() override {
         if (!IsStarted()) {
-            return infra::Result<DeviceInfo>::Fail(infra::Status::kBusy);
+            return DeviceInfo{};
         }
         return platform_->GetDeviceInfo();
     }
 
-    infra::Result<SystemStatus> GetSystemStatus() override {
+    SystemStatus GetSystemStatus() override {
         if (!IsStarted()) {
-            return infra::Result<SystemStatus>::Fail(infra::Status::kBusy);
+            return SystemStatus{};
         }
-        infra::Result<SystemStatus> status = platform_->GetSystemStatus();
-        if (!status.IsOk()) {
-            return status;
-        }
-        ApplyHeartbeatHealth(&status.value);
+        SystemStatus status = platform_->GetSystemStatus();
+        ApplyHeartbeatHealth(&status);
         return status;
     }
 
-    infra::Result<SystemCapabilities> GetCapabilities() override {
+    SystemCapabilities GetCapabilities() override {
         if (!IsStarted()) {
-            return infra::Result<SystemCapabilities>::Fail(infra::Status::kBusy);
+            return SystemCapabilities{};
         }
         return platform_->GetCapabilities();
     }
 
-    infra::Status Reboot(const infra::RequestContext& context) override {
+    bool Reboot(const live_stream::RequestContext& context) override {
         if (!IsStarted()) {
-            return infra::Status::kBusy;
+            return false;
         }
-        const infra::Status error = platform_->Reboot();
-        RecordAudit(context, OperationAction::kReboot, error, "system");
-        if (error == infra::Status::kOk) {
+        const bool ok = platform_->Reboot();
+        RecordAudit(context, OperationAction::kReboot, ok, "system");
+        if (ok) {
             PublishSystemStatusChanged("reboot");
         }
-        return error;
+        return ok;
     }
 
-    infra::Status FactoryReset(const infra::RequestContext& context) override {
+    bool FactoryReset(const live_stream::RequestContext& context) override {
         if (!IsStarted()) {
-            return infra::Status::kBusy;
+            return false;
         }
-        const infra::Status error = platform_->FactoryReset();
-        RecordAudit(context, OperationAction::kFactoryReset, error, "system");
-        if (error == infra::Status::kOk) {
+        const bool ok = platform_->FactoryReset();
+        RecordAudit(context, OperationAction::kFactoryReset, ok, "system");
+        if (ok) {
             PublishSystemStatusChanged("factory_reset");
         }
-        return error;
+        return ok;
     }
 
-    infra::Status ReportHeartbeat(const std::string& component) override {
+    bool ReportHeartbeat(const std::string& component) override {
         if (component.empty() || component.size() > kMaxComponentNameLength) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         if (!IsStarted()) {
-            return infra::Status::kBusy;
+            return false;
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (heartbeat_ms_.find(component) == heartbeat_ms_.end() &&
                 heartbeat_ms_.size() >= kMaxHeartbeatComponents) {
-                return infra::Status::kNoMemory;
+                return false;
             }
             heartbeat_ms_[component] = infra::Time::MonotonicMillis();
         }
-        return infra::Status::kOk;
+        return true;
     }
 
  private:
@@ -294,9 +286,9 @@ class SystemServiceImpl : public ISystemService {
         static_cast<void>(options_.event_service->Publish(event));
     }
 
-    void RecordAudit(const infra::RequestContext& context,
+    void RecordAudit(const live_stream::RequestContext& context,
                      OperationAction action,
-                     infra::Status error,
+                     bool ok,
                      const std::string& target) {
         if (options_.logger_service == nullptr) {
             return;
@@ -310,8 +302,8 @@ class SystemServiceImpl : public ISystemService {
         record.module = "system_service";
         record.action = action;
         record.target = target;
-        record.result = ToOperationResult(error);
-        record.reason = infra::StatusToString(error);
+        record.result = ToOperationResult(ok);
+        record.reason = ok ? "ok" : "failed";
         static_cast<void>(options_.logger_service->RecordOperation(record));
     }
 

@@ -61,38 +61,37 @@ class RtspServiceImpl : public IRtspService,
         : options_(std::move(options)), dependencies_(dependencies) {}
 
     ~RtspServiceImpl() override {
-        Deinit();
+        Release();
     }
 
-    infra::Status Init() override {
+    bool Prepare() {
         if (state_ == ServiceState::kInitialized ||
             state_ == ServiceState::kStarted ||
             state_ == ServiceState::kStopped) {
-            return infra::Status::kOk;
+            return true;
         }
         if (dependencies_.net_engine == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         state_ = ServiceState::kInitialized;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Start() override {
+    bool Start() override {
         if (state_ == ServiceState::kStarted) {
-            return infra::Status::kOk;
+            return true;
         }
         if (state_ == ServiceState::kCreated ||
             state_ == ServiceState::kDeinitialized) {
-            const infra::Status error = Init();
-            if (error != infra::Status::kOk) {
-                return error;
+            if (!Prepare()) {
+                return false;
             }
         }
         if (state_ != ServiceState::kInitialized &&
             state_ != ServiceState::kStopped) {
-            return infra::Status::kBusy;
+            return false;
         }
 
         TcpListenOptions tcp_config;
@@ -108,65 +107,61 @@ class RtspServiceImpl : public IRtspService,
         tcp_callbacks.on_accept = &RtspServiceImpl::HandleAccept;
         tcp_callbacks.on_read = &RtspServiceImpl::HandleRead;
         tcp_callbacks.on_close = &RtspServiceImpl::HandleClose;
-        auto server_result = dependencies_.net_engine->ListenTcp(
+        TcpServerId server_result = dependencies_.net_engine->ListenTcp(
             tcp_config, tcp_callbacks);
-        if (!server_result.IsOk()) {
-            return server_result.status;
+        if (server_result == 0) {
+            return false;
         }
-        server_id_ = server_result.value;
+        server_id_ = server_result;
 
         UdpBindOptions udp_config;
         udp_config.address = {options_.listen_ip, 0};
         UdpCallbacks udp_callbacks;
         udp_callbacks.user = this;
-        auto udp_result = dependencies_.net_engine->BindUdp(
+        UdpSocketId udp_result = dependencies_.net_engine->BindUdp(
             udp_config, udp_callbacks);
-        if (udp_result.IsOk()) {
-            udp_socket_id_ = udp_result.value;
+        if (udp_result != 0) {
+            udp_socket_id_ = udp_result;
         }
-        infra::Status error = dependencies_.net_engine->Start();
-        if (error != infra::Status::kOk) {
-            Stop();
-            return error;
-        }
-
         if (dependencies_.frame_source != nullptr) {
-            (void)dependencies_.frame_source->AttachSink(infra::StreamId::kMain,
+            (void)dependencies_.frame_source->AttachSink(StreamId::kMain,
                                                          this);
-            (void)dependencies_.frame_source->AttachSink(infra::StreamId::kSub,
+            (void)dependencies_.frame_source->AttachSink(StreamId::kSub,
                                                          this);
         } else if (dependencies_.media_service != nullptr) {
             FrameSubscribeOptions main_options;
-            main_options.stream_id = infra::StreamId::kMain;
+            main_options.stream_id = StreamId::kMain;
             main_options.require_key_frame_first = true;
             main_options.sink_name = kServiceName;
-            auto main_sub =
+            FrameSubscriptionId main_sub =
                 dependencies_.media_service->SubscribeFrames(main_options, this);
-            if (main_sub.IsOk()) {
-                main_subscription_id_ = main_sub.value;
+            if (main_sub != 0) {
+                main_subscription_id_ = main_sub;
             }
             FrameSubscribeOptions sub_options;
-            sub_options.stream_id = infra::StreamId::kSub;
+            sub_options.stream_id = StreamId::kSub;
             sub_options.require_key_frame_first = true;
             sub_options.sink_name = kServiceName;
-            auto sub_sub =
+            FrameSubscriptionId sub_sub =
                 dependencies_.media_service->SubscribeFrames(sub_options, this);
-            if (sub_sub.IsOk()) {
-                sub_subscription_id_ = sub_sub.value;
+            if (sub_sub != 0) {
+                sub_subscription_id_ = sub_sub;
             }
         }
-        auto local_result = dependencies_.net_engine->TcpLocalAddress(server_id_);
+        NetAddress local_result =
+            dependencies_.net_engine->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
-                          local_result.IsOk() ? local_result.value.port : options_.listen_port};
+                          local_result.port != 0 ? local_result.port
+                                                 : options_.listen_port};
         state_ = ServiceState::kStarted;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {
         if (dependencies_.frame_source != nullptr) {
-            (void)dependencies_.frame_source->DetachSink(infra::StreamId::kMain,
+            (void)dependencies_.frame_source->DetachSink(StreamId::kMain,
                                                          this);
-            (void)dependencies_.frame_source->DetachSink(infra::StreamId::kSub,
+            (void)dependencies_.frame_source->DetachSink(StreamId::kSub,
                                                          this);
         } else if (dependencies_.media_service != nullptr) {
             if (main_subscription_id_ != 0) {
@@ -195,7 +190,7 @@ class RtspServiceImpl : public IRtspService,
         }
     }
 
-    void Deinit() override {
+    void Release() {
         Stop();
         if (state_ != ServiceState::kCreated) {
             state_ = ServiceState::kDeinitialized;
@@ -206,12 +201,12 @@ class RtspServiceImpl : public IRtspService,
         return kServiceName;
     }
 
-    infra::Result<RtspListenAddress> LocalAddress() const override {
+    RtspListenAddress LocalAddress() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (state_ != ServiceState::kStarted) {
-            return infra::Result<RtspListenAddress>::Fail(infra::Status::kBusy);
+            return RtspListenAddress{};
         }
-        return infra::Result<RtspListenAddress>::Ok(local_address_);
+        return local_address_;
     }
 
     RtspServiceStats GetStats() const override {
@@ -221,13 +216,13 @@ class RtspServiceImpl : public IRtspService,
         return stats;
     }
 
-    infra::Status PushFrame(const infra::EncodedFrame& frame) override {
+    bool PushFrame(const EncodedFrame& frame) override {
         return OnEncodedFrame(frame);
     }
 
-    infra::Status OnEncodedFrame(const infra::EncodedFrame& frame) override {
+    bool OnEncodedFrame(const EncodedFrame& frame) override {
         if (!IsValidFrame(frame)) {
-            return infra::Status::kInvalidParam;
+            return false;
         }
         std::vector<std::shared_ptr<Session>> targets;
         {
@@ -243,14 +238,14 @@ class RtspServiceImpl : public IRtspService,
         for (const auto& session : targets) {
             SendFrame(session, frame);
         }
-        return infra::Status::kOk;
+        return true;
     }
 
-    void OnFrame(const infra::EncodedFrame& frame) override {
+    void OnFrame(const EncodedFrame& frame) override {
         (void)OnEncodedFrame(frame);
     }
 
-    void OnSourceStateChanged(infra::StreamId stream_id,
+    void OnSourceStateChanged(StreamId stream_id,
                               StreamState state) override {
         (void)stream_id;
         (void)state;
@@ -262,7 +257,7 @@ class RtspServiceImpl : public IRtspService,
         ConnectionId connection_id = 0;
         NetAddress peer;
         SessionState state = SessionState::kInit;
-        infra::StreamId stream_id = infra::StreamId::kMain;
+        StreamId stream_id = StreamId::kMain;
         RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
         uint8_t interleaved_rtp_channel = 0;
         uint16_t client_rtp_port = 0;
@@ -273,7 +268,7 @@ class RtspServiceImpl : public IRtspService,
         RtspSessionStats stats;
     };
 
-    bool IsValidFrame(const infra::EncodedFrame& frame) const {
+    bool IsValidFrame(const EncodedFrame& frame) const {
         return frame.buffer && frame.buffer->Data() != nullptr &&
                frame.size > 0 &&
                frame.offset <= frame.buffer->Size() &&
@@ -400,9 +395,14 @@ class RtspServiceImpl : public IRtspService,
             return;
         }
 
-        infra::StreamId stream_id = infra::StreamId::kMain;
+        StreamId stream_id = StreamId::kMain;
         if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
             !PathToStreamId(request.uri, &stream_id)) {
+            SendResponse(session->connection_id, 404, CSeq(request), {}, "");
+            return;
+        }
+        if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
+            !IsStreamAvailable(stream_id)) {
             SendResponse(session->connection_id, 404, CSeq(request), {}, "");
             return;
         }
@@ -413,7 +413,8 @@ class RtspServiceImpl : public IRtspService,
 
         if (request.method == "DESCRIBE") {
             session->stream_id = stream_id;
-            const std::string sdp = BuildSdp(local_address_, stream_id);
+            const std::string sdp =
+                BuildSdp(local_address_, stream_id, CodecForStream(stream_id));
             SendResponse(session->connection_id, 200, CSeq(request),
                          {{"Content-Type", "application/sdp"},
                           {"Content-Base", request.uri}},
@@ -454,9 +455,30 @@ class RtspServiceImpl : public IRtspService,
         SendResponse(session->connection_id, 455, CSeq(request), {}, "");
     }
 
+    bool IsStreamAvailable(StreamId stream_id) const {
+        if (dependencies_.frame_source != nullptr) {
+            return true;
+        }
+        if (dependencies_.media_service == nullptr) {
+            return true;
+        }
+        return dependencies_.media_service->IsStreamStarted(stream_id);
+    }
+
+    VideoCodec CodecForStream(StreamId stream_id) const {
+        if (dependencies_.media_service != nullptr &&
+            dependencies_.media_service->IsStreamStarted(stream_id)) {
+            return dependencies_.media_service->GetStreamCodec(stream_id);
+        }
+        if (stream_id == StreamId::kSub) {
+            return options_.sub_stream_codec;
+        }
+        return options_.main_stream_codec;
+    }
+
     bool Authorize(const std::shared_ptr<Session>& session,
                    const RtspRequest& request,
-                   infra::StreamId stream_id) {
+                   StreamId stream_id) {
         if (!options_.enable_auth) {
             return true;
         }
@@ -490,17 +512,17 @@ class RtspServiceImpl : public IRtspService,
         login.context.client_ip = session->peer.ip;
         login.user_name = decoded.substr(0, colon);
         login.password = decoded.substr(colon + 1);
-        auto login_result = dependencies_.auth_service->Login(login);
-        if (!login_result.IsOk()) {
+        LoginResult login_result = dependencies_.auth_service->Login(login);
+        if (login_result.token.empty()) {
             AddAuthFailure();
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
         }
         const std::string target = StreamPath(stream_id);
-        if (dependencies_.auth_service->CheckPermission(
-                login_result.value.principal, AuthPermission::kPreviewVideo,
-                target) != infra::Status::kOk) {
+        if (!dependencies_.auth_service->CheckPermission(
+                login_result.principal, AuthPermission::kPreviewVideo,
+                target)) {
             AddAuthFailure();
             SendResponse(session->connection_id, 403, CSeq(request), {}, "");
             return false;
@@ -510,7 +532,7 @@ class RtspServiceImpl : public IRtspService,
 
     void HandleSetup(const std::shared_ptr<Session>& session,
                      const RtspRequest& request,
-                     infra::StreamId stream_id) {
+                     StreamId stream_id) {
         const std::string transport = HeaderValue(request, "Transport");
         if (transport.empty()) {
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
@@ -551,13 +573,13 @@ class RtspServiceImpl : public IRtspService,
     }
 
     void SendFrame(const std::shared_ptr<Session>& session,
-                   const infra::EncodedFrame& frame) {
+                   const EncodedFrame& frame) {
         bool should_drop = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!session->keyframe_seen) {
-                if (frame.frame_type != infra::FrameType::kIdr &&
-                    frame.frame_type != infra::FrameType::kI) {
+                if (frame.frame_type != FrameType::kIdr &&
+                    frame.frame_type != FrameType::kI) {
                     ++session->stats.dropped_frames;
                     ++stats_.dropped_frames;
                     should_drop = true;
@@ -604,7 +626,7 @@ class RtspServiceImpl : public IRtspService,
             interleaved_channel = session->interleaved_rtp_channel;
         }
 
-        infra::Status error = infra::Status::kOk;
+        bool ok = true;
         if (transport == RtspTransportMode::kTcpInterleaved) {
             std::vector<uint8_t> framed;
             framed.reserve(packet.size() + 4);
@@ -612,28 +634,26 @@ class RtspServiceImpl : public IRtspService,
             framed.push_back(interleaved_channel);
             AppendU16(&framed, static_cast<uint16_t>(packet.size()));
             framed.insert(framed.end(), packet.begin(), packet.end());
-            error = dependencies_.net_engine->Send(connection_id, framed.data(),
-                                                   framed.size());
+            ok = dependencies_.net_engine->Send(connection_id, framed.data(),
+                                                framed.size());
         } else if (udp_socket_id != 0) {
-            error = dependencies_.net_engine->SendTo(udp_socket_id, target,
-                                                     packet.data(),
-                                                     packet.size());
+            ok = dependencies_.net_engine->SendTo(udp_socket_id, target,
+                                                  packet.data(),
+                                                  packet.size());
         }
-        if (error != infra::Status::kOk) {
+        if (!ok) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 ++session->stats.dropped_frames;
                 ++stats_.dropped_frames;
             }
             NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
-            if (error == infra::Status::kBusy) {
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    ++stats_.slow_client_closes;
-                }
-                NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
-                (void)dependencies_.net_engine->Close(connection_id);
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                ++stats_.slow_client_closes;
             }
+            NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
+            (void)dependencies_.net_engine->Close(connection_id);
             return;
         }
         {
@@ -679,15 +699,13 @@ class RtspServiceImpl : public IRtspService,
         ++stats_.udp_sessions;
     }
 
-    bool RequestKeyFrame(infra::StreamId stream_id) {
+    bool RequestKeyFrame(StreamId stream_id) {
         if (dependencies_.frame_source != nullptr) {
-            return dependencies_.frame_source->RequestKeyFrame(stream_id) ==
-                infra::Status::kOk;
+            return dependencies_.frame_source->RequestKeyFrame(stream_id);
         }
         if (dependencies_.media_service != nullptr) {
             return dependencies_.media_service->RequestKeyFrame(
-                       stream_id, KeyFrameReason::kNewClient) ==
-                infra::Status::kOk;
+                stream_id, KeyFrameReason::kNewClient);
         }
         return false;
     }

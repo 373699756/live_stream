@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_OSD_SERVICE_H_
 #define LIVE_STREAM_OSD_SERVICE_H_
 
-#include "infra/status.h"
-#include "infra/service.h"
 #include "media/mpp_types.h"
 
 #include <cstdint>
@@ -10,6 +8,7 @@
 namespace live_stream {
 
 class IConfigService;
+class MediaService;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -66,6 +65,7 @@ struct OsdRegionId {
 
 struct OsdServiceOptions {
     IConfigService* config_service = nullptr;
+    MediaService* media_service = nullptr;
     hisisdk::IHisiSdk* sdk = nullptr;
 };
 
@@ -76,27 +76,24 @@ struct OsdServiceStats {
     uint32_t region_count = 0;
 };
 
-class OsdService : public infra::IService {
+class OsdService {
  public:
     OsdService();
     explicit OsdService(const OsdServiceOptions& options);
-    ~OsdService() override;
+    ~OsdService();
 
-    infra::Status Init() override;
-    infra::Status Start() override;
-    void Stop() override;
-    void Deinit() override;
-    const char* Name() const override;
+    bool Start();
+    void Stop();
 
     static const char* StaticName();
 
-    infra::Status BindMedia(const MediaChannels& channels);
-    infra::Result<OsdRegionId> CreateRegion(const OsdRegionConfig& config);
-    infra::Status Attach(OsdRegionId id);
-    infra::Status Detach(OsdRegionId id);
-    infra::Status SetVisible(OsdRegionId id, bool visible);
-    infra::Status UpdateBitmap(OsdRegionId id, const OsdBitmap& bitmap);
-    infra::Status DestroyRegion(OsdRegionId id);
+    bool BindMedia(const MediaChannels& channels);
+    OsdRegionId CreateRegion(const OsdRegionConfig& config);
+    bool Attach(OsdRegionId id);
+    bool Detach(OsdRegionId id);
+    bool SetVisible(OsdRegionId id, bool visible);
+    bool UpdateBitmap(OsdRegionId id, const OsdBitmap& bitmap);
+    bool DestroyRegion(OsdRegionId id);
     uint32_t RegionCount() const;
     OsdServiceStats GetStats() const;
 

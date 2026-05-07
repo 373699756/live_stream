@@ -42,12 +42,12 @@ bool Path::Exists(const std::string& path) {
     return !path.empty() && stat(path.c_str(), &path_stat) == 0;
 }
 
-Status Path::MakeDirs(const std::string& path) {
+bool Path::MakeDirs(const std::string& path) {
     if (path.empty()) {
-        return Status::kInvalidParam;
+        return false;
     }
     if (Path::Exists(path)) {
-        return Status::kOk;
+        return true;
     }
 
     std::string current;
@@ -64,7 +64,7 @@ Status Path::MakeDirs(const std::string& path) {
             current = current == "/" ? current + part : Path::Join(current, part);
             if (!Path::Exists(current) && mkdir(current.c_str(), 0755) != 0 &&
                 errno != EEXIST) {
-                return Status::kIoError;
+                return false;
             }
         }
         if (slash == std::string::npos) {
@@ -73,7 +73,7 @@ Status Path::MakeDirs(const std::string& path) {
         start = slash + 1;
     }
 
-    return Status::kOk;
+    return true;
 }
 
 }  // namespace infra
