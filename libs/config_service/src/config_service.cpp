@@ -11,6 +11,7 @@
 
 #include "infra/fs.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <unordered_map>
@@ -21,11 +22,40 @@ namespace live_stream {
 
 namespace {
 
+constexpr size_t kMaxConfigFileBytes = 512 * 1024;
+constexpr int kMaxConfigJsonDepth = 32;
+
 // 名称校验: 只允许顶层无点号/无下标的纯名称
 bool IsTopLevelName(const std::string &name) {
   return !name.empty() && name.find('.') == std::string::npos &&
          name.find('[') == std::string::npos &&
          name.find(']') == std::string::npos;
+}
+
+bool IsConfigJsonWithinDepthLimit(const ConfigJson &value, int depth) {
+  if (depth > kMaxConfigJsonDepth) {
+    return false;
+  }
+  if (value.is_object()) {
+    for (auto it = value.begin(); it != value.end(); ++it) {
+      if (!IsConfigJsonWithinDepthLimit(it.value(), depth + 1)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (value.is_array()) {
+    for (const ConfigJson &item : value) {
+      if (!IsConfigJsonWithinDepthLimit(item, depth + 1)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsConfigJsonWithinLimits(const ConfigJson &value) {
+  return IsConfigJsonWithinDepthLimit(value, 1);
 }
 
 ConfigResult RunHandler(const ConfigHandler &handler, const ConfigJson &value) {
@@ -62,11 +92,12 @@ void MergeMissingFields(ConfigJson *current, const ConfigJson &defaults) {
 // JSON 文件读取
 ConfigJson LoadJsonFile(const std::string &path) {
   std::string content = infra::File::ReadAll(path);
-  if (content.empty()) {
+  if (content.empty() || content.size() > kMaxConfigFileBytes) {
     return ConfigJson();
   }
   ConfigJson parsed = ConfigJson::parse(content, nullptr, false);
-  if (parsed.is_discarded() || !parsed.is_object()) {
+  if (parsed.is_discarded() || !parsed.is_object() ||
+      !IsConfigJsonWithinLimits(parsed)) {
     return ConfigJson();
   }
   return parsed;
@@ -155,6 +186,10 @@ public:
     }
     if (!IsStartedForRead()) {
       SetLastConfigError(name, ConfigError{"", "config service not started"});
+      return false;
+    }
+    if (!IsConfigJsonWithinLimits(value)) {
+      SetLastConfigError(name, ConfigError{"", "config json too deep"});
       return false;
     }
 
