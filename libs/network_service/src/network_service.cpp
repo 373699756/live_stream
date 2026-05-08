@@ -770,6 +770,38 @@ private:
 
 } // namespace
 
+ConfigJson NetworkInterfaceStatusToApiJson(
+    const NetworkInterfaceStatus &status) {
+  ConfigJson root = ConfigJson::object();
+  root["ifname"] = status.ifname;
+  root["enabled"] = status.enabled;
+  root["link_up"] = status.link_up;
+  root["dhcp"] = status.dhcp_enabled;
+  root["mac_address"] = status.mac_address;
+  root["gateway"] = status.gateway;
+  root["last_ok"] = status.last_ok;
+
+  ConfigJson static_ipv4 = ConfigJson::object();
+  static_ipv4["address"] = status.ipv4_address;
+  static_ipv4["prefix_length"] = status.prefix_length;
+  static_ipv4["netmask"] = NetmaskFromPrefix(status.prefix_length);
+  static_ipv4["gateway"] = status.gateway;
+  root["static_ipv4"] = static_ipv4;
+
+  ConfigJson dns = ConfigJson::array();
+  for (const std::string &server : status.dns_servers) {
+    dns.push_back(server);
+  }
+  root["dns"] = dns;
+  return root;
+}
+
+bool NetworkInterfaceConfigFromApiJson(const std::string &ifname,
+                                       const ConfigJson &value,
+                                       NetworkInterfaceConfig *config) {
+  return ConfigFromNetworkInterfaceJson(ifname, value, config);
+}
+
 std::unique_ptr<INetworkService>
 CreateNetworkService(const NetworkServiceOptions &options) {
   return std::unique_ptr<INetworkService>(new NetworkServiceImpl(options));

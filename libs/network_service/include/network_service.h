@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_NETWORK_SERVICE_H_
 #define LIVE_STREAM_NETWORK_SERVICE_H_
 
+#include "live_stream/config_json.h"
 #include "live_stream/request_context.h"
 
 #include <cstdint>
@@ -91,6 +92,11 @@ class INetworkService {
 std::unique_ptr<INetworkService> CreateNetworkService(
     const NetworkServiceOptions& options);
 
+ConfigJson NetworkInterfaceStatusToApiJson(
+    const NetworkInterfaceStatus& status);
+bool NetworkInterfaceConfigFromApiJson(const std::string& ifname,
+                                       const ConfigJson& value,
+                                       NetworkInterfaceConfig* config);
 const char* NetworkAddressModeToString(NetworkAddressMode mode);
 
 class NetworkService {

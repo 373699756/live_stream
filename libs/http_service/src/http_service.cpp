@@ -1,7 +1,6 @@
 #include "http_service.h"
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -576,88 +575,6 @@ ConfigJson TimeStatusToJson(const TimeStatus &status) {
   root["last_sync_time_ms"] = status.last_sync_time_ms;
   root["last_sync_ok"] = status.last_sync_ok;
   return root;
-}
-
-std::string NetmaskFromPrefix(uint8_t prefix_length) {
-  if (prefix_length == 0 || prefix_length > 32) {
-    return std::string();
-  }
-  const uint32_t mask =
-      prefix_length == 32 ? 0xffffffffu : (0xffffffffu << (32 - prefix_length));
-  return std::to_string((mask >> 24) & 0xff) + "." +
-         std::to_string((mask >> 16) & 0xff) + "." +
-         std::to_string((mask >> 8) & 0xff) + "." + std::to_string(mask & 0xff);
-}
-
-ConfigJson NetworkInterfaceStatusToJson(const NetworkInterfaceStatus &status) {
-  ConfigJson root = ConfigJson::object();
-  root["ifname"] = status.ifname;
-  root["enabled"] = status.enabled;
-  root["link_up"] = status.link_up;
-  root["dhcp"] = status.dhcp_enabled;
-  root["mac_address"] = status.mac_address;
-  root["gateway"] = status.gateway;
-  root["last_ok"] = status.last_ok;
-  ConfigJson static_ipv4 = ConfigJson::object();
-  static_ipv4["address"] = status.ipv4_address;
-  static_ipv4["prefix_length"] = status.prefix_length;
-  static_ipv4["netmask"] = NetmaskFromPrefix(status.prefix_length);
-  static_ipv4["gateway"] = status.gateway;
-  root["static_ipv4"] = static_ipv4;
-  ConfigJson dns = ConfigJson::array();
-  for (const std::string &server : status.dns_servers) {
-    dns.push_back(server);
-  }
-  root["dns"] = dns;
-  return root;
-}
-
-bool PrefixFromNetmask(const std::string &netmask, uint8_t *prefix_length) {
-  if (prefix_length == nullptr) {
-    return false;
-  }
-  struct in_addr address;
-  if (inet_pton(AF_INET, netmask.c_str(), &address) != 1) {
-    return false;
-  }
-  uint32_t mask = ntohl(address.s_addr);
-  uint8_t bits = 0;
-  while ((mask & 0x80000000u) != 0) {
-    ++bits;
-    mask <<= 1;
-  }
-  if (mask != 0) {
-    return false;
-  }
-  *prefix_length = bits;
-  return bits > 0;
-}
-
-bool NetworkInterfaceConfigFromJson(const std::string &ifname,
-                                    const ConfigJson &value,
-                                    NetworkInterfaceConfig *config) {
-  if (config == nullptr || !value.is_object()) {
-    return false;
-  }
-  const ConfigJson *static_ipv4 = nullptr;
-  NetworkInterfaceConfig parsed;
-  parsed.ifname = ifname;
-  bool dhcp = false;
-  std::string netmask;
-  if (!json_utils::Load(value, "enabled", &parsed.enabled) ||
-      !json_utils::Load(value, "dhcp", &dhcp) ||
-      !json_utils::LoadStringArray(value, "dns", &parsed.dns_servers) ||
-      !json_utils::LoadObject(value, "static_ipv4", &static_ipv4) ||
-      !json_utils::Load(*static_ipv4, "address", &parsed.ipv4_address) ||
-      !json_utils::Load(*static_ipv4, "gateway", &parsed.gateway) ||
-      !json_utils::Load(*static_ipv4, "netmask", &netmask) ||
-      !PrefixFromNetmask(netmask, &parsed.prefix_length)) {
-    return false;
-  }
-  parsed.address_mode =
-      dhcp ? NetworkAddressMode::kDhcp : NetworkAddressMode::kStatic;
-  *config = parsed;
-  return true;
 }
 
 ConfigJson UpgradePackageInfoToJson(const UpgradePackageInfo &info) {
@@ -1636,7 +1553,7 @@ private:
     const std::vector<std::string> ifnames =
         dependencies_.network_service->GetInterfaces();
     for (const std::string &ifname : ifnames) {
-      items.push_back(NetworkInterfaceStatusToJson(
+      items.push_back(NetworkInterfaceStatusToApiJson(
           dependencies_.network_service->GetInterfaceStatus(ifname)));
     }
     root["items"] = items;
@@ -1663,7 +1580,7 @@ private:
       if (status.ifname.empty()) {
         return StatusResponse(404, "Not Found");
       }
-      return JsonResponse(200, NetworkInterfaceStatusToJson(status));
+      return JsonResponse(200, NetworkInterfaceStatusToApiJson(status));
     }
 
     AuthPrincipal principal;
@@ -1676,7 +1593,7 @@ private:
       return StatusResponse(400, "Invalid JSON");
     }
     NetworkInterfaceConfig config;
-    if (!NetworkInterfaceConfigFromJson(ifname, body, &config)) {
+    if (!NetworkInterfaceConfigFromApiJson(ifname, body, &config)) {
       return StatusResponse(400, "Invalid network config");
     }
     return dependencies_.network_service->ApplyInterfaceConfig(
