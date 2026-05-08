@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NETFRAME_SERVICE_SRC_SOCKET_UTIL_H_
-#define LIVE_STREAM_NETFRAME_SERVICE_SRC_SOCKET_UTIL_H_
+#ifndef LIVE_STREAM_NET_SERVICE_SRC_SOCKET_UTIL_H_
+#define LIVE_STREAM_NET_SERVICE_SRC_SOCKET_UTIL_H_
 
 #include "net_service.h"
 
@@ -16,4 +16,4 @@ NetAddress GetSocketAddress(int fd, bool peer);
 } // namespace net_internal
 } // namespace live_stream
 
-#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_SOCKET_UTIL_H_
+#endif // LIVE_STREAM_NET_SERVICE_SRC_SOCKET_UTIL_H_

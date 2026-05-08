@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
-#define LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
+#ifndef LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
+#define LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
 
 #include "event_fd.h"
 #include "fd.h"
@@ -73,4 +73,4 @@ private:
 } // namespace net_internal
 } // namespace live_stream
 
-#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
+#endif // LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
