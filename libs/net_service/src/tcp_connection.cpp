@@ -11,28 +11,20 @@
 #include <utility>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
 
-}  // namespace
+} // namespace
 
-TcpConnection::TcpConnection(NetEngineImpl* engine,
-                             std::shared_ptr<EventLoop> loop,
-                             int fd,
-                             ConnectionId id,
-                             const TcpListenOptions& options,
-                             TcpCallbacks callbacks,
-                             NetAddress local,
+TcpConnection::TcpConnection(NetEngineImpl *engine,
+                             std::shared_ptr<EventLoop> loop, int fd,
+                             ConnectionId id, const TcpListenOptions &options,
+                             TcpCallbacks callbacks, NetAddress local,
                              NetAddress peer)
-    : engine_(engine),
-      loop_(std::move(loop)),
-      fd_(fd),
-      id_(id),
-      options_(options),
-      callbacks_(callbacks),
-      local_(std::move(local)),
+    : engine_(engine), loop_(std::move(loop)), fd_(fd), id_(id),
+      options_(options), callbacks_(callbacks), local_(std::move(local)),
       peer_(std::move(peer)) {}
 
 TcpConnection::~TcpConnection() { fd_.Reset(); }
@@ -47,7 +39,7 @@ bool TcpConnection::Start() {
   });
 }
 
-bool TcpConnection::Send(const uint8_t* data, size_t size) {
+bool TcpConnection::Send(const uint8_t *data, size_t size) {
   if (data == nullptr && size > 0) {
     return false;
   }
@@ -94,8 +86,7 @@ bool TcpConnection::Send(const uint8_t* data, size_t size) {
   if (!posted) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!send_queue_.empty()) {
-      pending_bytes_ -=
-          static_cast<uint32_t>(send_queue_.back().data.size());
+      pending_bytes_ -= static_cast<uint32_t>(send_queue_.back().data.size());
       send_queue_.pop_back();
     }
   }
@@ -186,8 +177,8 @@ void TcpConnection::HandleWrite() {
       if (closed_ || send_queue_.empty()) {
         break;
       }
-      OutBuffer& current = send_queue_.front();
-      const uint8_t* data = current.data.data() + current.offset;
+      OutBuffer &current = send_queue_.front();
+      const uint8_t *data = current.data.data() + current.offset;
       const size_t remain = current.data.size() - current.offset;
       n = send(fd_.get(), data, remain, MSG_NOSIGNAL);
       if (n > 0) {
@@ -262,5 +253,5 @@ bool TcpConnection::IsSendStalledLocked() const {
   return age_ms >= static_cast<int64_t>(options_.send_stall_timeout_ms);
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

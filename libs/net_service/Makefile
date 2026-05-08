@@ -1,4 +1,4 @@
-SERVICE_NAME := netframe_service
+SERVICE_NAME := net_service
 .DEFAULT_GOAL := all
 CXXFLAGS += -pthread
 INFRA_LIB := ../../build/lib/libinfra_service.a

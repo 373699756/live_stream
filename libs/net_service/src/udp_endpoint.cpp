@@ -12,22 +12,21 @@
 #include <utility>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
 
-}  // namespace
+} // namespace
 
-UdpEndpoint::UdpEndpoint(NetEngineImpl* engine,
-                         UdpSocketId id,
-                         const UdpBindOptions& options,
-                         const UdpCallbacks& callbacks)
+UdpEndpoint::UdpEndpoint(NetEngineImpl *engine, UdpSocketId id,
+                         const UdpBindOptions &options,
+                         const UdpCallbacks &callbacks)
     : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
 
 UdpEndpoint::~UdpEndpoint() { Stop(); }
 
-bool UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
+bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (running_) {
     return true;
@@ -51,8 +50,8 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop>& loop) {
   if (!SetNonBlocking(fd.get())) {
     return false;
   }
-  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr),
-           sizeof(addr)) != 0) {
+  if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
+      0) {
     return false;
   }
   NetAddress local = GetSocketAddress(fd.get(), false);
@@ -81,7 +80,7 @@ void UdpEndpoint::Stop() {
   fd_.Reset();
 }
 
-bool UdpEndpoint::SendTo(NetAddress address, const uint8_t* data, size_t size) {
+bool UdpEndpoint::SendTo(NetAddress address, const uint8_t *data, size_t size) {
   if (data == nullptr && size > 0) {
     return false;
   }
@@ -97,9 +96,9 @@ bool UdpEndpoint::SendTo(NetAddress address, const uint8_t* data, size_t size) {
     }
     fd = fd_.get();
   }
-  const ssize_t ret = sendto(fd, data, size, 0,
-                             reinterpret_cast<const sockaddr*>(&addr),
-                             sizeof(addr));
+  const ssize_t ret =
+      sendto(fd, data, size, 0, reinterpret_cast<const sockaddr *>(&addr),
+             sizeof(addr));
   if (ret < 0) {
     return false;
   }
@@ -123,11 +122,10 @@ void UdpEndpoint::HandleRead() {
       }
       fd = fd_.get();
     }
-    sockaddr_in peer {};
+    sockaddr_in peer{};
     socklen_t peer_len = sizeof(peer);
     const ssize_t n = recvfrom(fd, buffer, sizeof(buffer), 0,
-                               reinterpret_cast<sockaddr*>(&peer),
-                               &peer_len);
+                               reinterpret_cast<sockaddr *>(&peer), &peer_len);
     if (n > 0) {
       engine_->AddUdpRx();
       engine_->DispatchUdp(callbacks_, id_, FromSockAddr(peer), buffer,
@@ -144,5 +142,5 @@ void UdpEndpoint::HandleRead() {
   }
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

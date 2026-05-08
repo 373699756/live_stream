@@ -4,7 +4,7 @@
 #include "media_service.h"
 #include "webrtc_engine.h"
 #include "webrtc_sdp.h"
-#include "webrtc_transport_netframe.h"
+#include "webrtc_transport_net.h"
 
 #include <map>
 #include <mutex>
@@ -373,7 +373,7 @@ private:
       return false;
     }
     if (dependencies_.use_fake_engine && dependencies_.net_engine != nullptr) {
-      transport_.reset(new webrtc_internal::NetframeWebrtcTransport(
+      transport_.reset(new webrtc_internal::NetWebrtcTransport(
           dependencies_.net_engine));
     }
     send_executor_.reset(new infra::Executor());
@@ -551,32 +551,28 @@ private:
       return true;
     }
 
-    FrameSubscribeOptions main_options;
-    main_options.stream_id = StreamId::kMain;
-    main_options.sink_name = WebrtcService::Name();
-    const FrameSubscriptionId main_result =
-        dependencies_.media_service->SubscribeFrames(main_options, this);
-    if (main_result == 0) {
-      return false;
+    if (dependencies_.media_service->IsStreamStarted(StreamId::kMain)) {
+      FrameSubscribeOptions main_options;
+      main_options.stream_id = StreamId::kMain;
+      main_options.sink_name = WebrtcService::Name();
+      main_subscription_id_ =
+          dependencies_.media_service->SubscribeFrames(main_options, this);
     }
-    main_subscription_id_ = main_result;
 
-    if (!dependencies_.media_service->IsStreamStarted(StreamId::kSub)) {
-      return true;
+    if (dependencies_.media_service->IsStreamStarted(StreamId::kSub)) {
+      FrameSubscribeOptions sub_options;
+      sub_options.stream_id = StreamId::kSub;
+      sub_options.sink_name = WebrtcService::Name();
+      sub_subscription_id_ =
+          dependencies_.media_service->SubscribeFrames(sub_options, this);
     }
-    FrameSubscribeOptions sub_options;
-    sub_options.stream_id = StreamId::kSub;
-    sub_options.sink_name = WebrtcService::Name();
-    const FrameSubscriptionId sub_result =
-        dependencies_.media_service->SubscribeFrames(sub_options, this);
-    if (sub_result == 0) {
-      (void)dependencies_.media_service->UnsubscribeFrames(
-          main_subscription_id_);
-      main_subscription_id_ = 0;
-      return false;
+
+    const bool subscribed =
+        main_subscription_id_ != 0 || sub_subscription_id_ != 0;
+    if (!subscribed) {
+      UnsubscribeMediaLocked();
     }
-    sub_subscription_id_ = sub_result;
-    return true;
+    return subscribed;
   }
 
   void UnsubscribeMediaLocked() {
@@ -689,7 +685,7 @@ private:
   WebrtcServiceDependencies dependencies_;
   ServiceState state_ = ServiceState::kCreated;
   std::unique_ptr<webrtc_internal::IWebrtcEngine> engine_;
-  std::unique_ptr<webrtc_internal::NetframeWebrtcTransport> transport_;
+  std::unique_ptr<webrtc_internal::NetWebrtcTransport> transport_;
   std::unique_ptr<infra::Executor> send_executor_;
   mutable std::mutex mutex_;
   PendingFrameSlot main_pending_frame_;

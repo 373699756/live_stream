@@ -4,7 +4,7 @@ LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/$(SERVICE_NAME)
 TEST_DIR := $(BUILD_DIR)/tests
 
-CROSS_COMPILE ?=
+CROSS_COMPILE ?= arm-himix200-linux-
 ifeq ($(origin CXX),default)
 CXX := $(CROSS_COMPILE)g++
 endif

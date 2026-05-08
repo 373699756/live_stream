@@ -5,14 +5,14 @@ CXXFLAGS += -I../auth_service/include
 CXXFLAGS += -I../event_service/include
 CXXFLAGS += -I../media_service/include
 CXXFLAGS += -I../stream_mux/include
-CXXFLAGS += -I../netframe_service/include
+CXXFLAGS += -I../net_service/include
 EXTRA_TEST_DEPS += ../../build/lib/libmedia_service.a
 EXTRA_TEST_DEPS += ../../build/lib/libstream_mux.a
-EXTRA_TEST_DEPS += ../../build/lib/libnetframe_service.a
+EXTRA_TEST_DEPS += ../../build/lib/libnet_service.a
 EXTRA_TEST_DEPS += ../../build/lib/libinfra_service.a
 EXTRA_TEST_LIBS += ../../build/lib/libmedia_service.a
 EXTRA_TEST_LIBS += ../../build/lib/libstream_mux.a
-EXTRA_TEST_LIBS += ../../build/lib/libnetframe_service.a
+EXTRA_TEST_LIBS += ../../build/lib/libnet_service.a
 EXTRA_TEST_LIBS += ../../build/lib/libinfra_service.a
 include ../service_rules.mk
 
@@ -22,8 +22,8 @@ include ../service_rules.mk
 ../../build/lib/libstream_mux.a: ../../build/lib/libinfra_service.a
 	$(MAKE) -C ../stream_mux all
 
-../../build/lib/libnetframe_service.a:
-	$(MAKE) -C ../netframe_service all
+../../build/lib/libnet_service.a:
+	$(MAKE) -C ../net_service all
 
 ../../build/lib/libinfra_service.a:
 	$(MAKE) -C ../infra_service all

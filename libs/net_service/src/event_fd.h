@@ -4,15 +4,15 @@
 #include "fd.h"
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class EventFd {
- public:
+public:
   EventFd() = default;
   ~EventFd() = default;
 
-  EventFd(const EventFd&) = delete;
-  EventFd& operator=(const EventFd&) = delete;
+  EventFd(const EventFd &) = delete;
+  EventFd &operator=(const EventFd &) = delete;
 
   bool Open();
   int fd() const { return fd_.get(); }
@@ -21,11 +21,11 @@ class EventFd {
   void Drain();
   void Close() { fd_.Reset(); }
 
- private:
+private:
   UniqueFd fd_;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_FD_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_FD_H_

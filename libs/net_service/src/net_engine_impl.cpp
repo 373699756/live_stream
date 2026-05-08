@@ -8,9 +8,9 @@
 #include <vector>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
-NetEngineImpl::NetEngineImpl(const NetEngineOptions& options)
+NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
     : options_(options) {}
 
 NetEngineImpl::~NetEngineImpl() { Stop(); }
@@ -35,20 +35,20 @@ bool NetEngineImpl::Start() {
       }
     }
   }
-  for (const auto& loop : loops_) {
+  for (const auto &loop : loops_) {
     if (!loop->Start()) {
       Stop();
       return false;
     }
   }
   running_ = true;
-  for (auto& entry : servers_) {
+  for (auto &entry : servers_) {
     if (!entry.second->Start(NextLoop())) {
       Stop();
       return false;
     }
   }
-  for (auto& entry : udp_sockets_) {
+  for (auto &entry : udp_sockets_) {
     if (!entry.second->Start(NextLoop())) {
       Stop();
       return false;
@@ -61,26 +61,26 @@ void NetEngineImpl::Stop() {
   running_ = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    for (auto& entry : servers_) {
+    for (auto &entry : servers_) {
       entry.second->Stop();
     }
-    for (auto& entry : udp_sockets_) {
+    for (auto &entry : udp_sockets_) {
       entry.second->Stop();
     }
     auto connections = connections_;
-    for (auto& entry : connections) {
+    for (auto &entry : connections) {
       (void)entry.second->Close();
     }
   }
-  for (const auto& loop : loops_) {
+  for (const auto &loop : loops_) {
     loop->Stop();
   }
   std::lock_guard<std::mutex> lock(mutex_);
   connections_.clear();
 }
 
-TcpServerId NetEngineImpl::ListenTcp(
-    const TcpListenOptions& options, const TcpCallbacks& callbacks) {
+TcpServerId NetEngineImpl::ListenTcp(const TcpListenOptions &options,
+                                     const TcpCallbacks &callbacks) {
   if (callbacks.on_read == nullptr && callbacks.on_accept == nullptr) {
     return 0;
   }
@@ -100,8 +100,8 @@ TcpServerId NetEngineImpl::ListenTcp(
   return id;
 }
 
-UdpSocketId NetEngineImpl::BindUdp(
-    const UdpBindOptions& options, const UdpCallbacks& callbacks) {
+UdpSocketId NetEngineImpl::BindUdp(const UdpBindOptions &options,
+                                   const UdpCallbacks &callbacks) {
   const UdpSocketId id = next_udp_id_++;
   auto socket = std::make_shared<UdpEndpoint>(this, id, options, callbacks);
   {
@@ -148,7 +148,7 @@ bool NetEngineImpl::CloseUdp(UdpSocketId id) {
   return true;
 }
 
-bool NetEngineImpl::Send(ConnectionId id, const uint8_t* data, size_t size) {
+bool NetEngineImpl::Send(ConnectionId id, const uint8_t *data, size_t size) {
   auto connection = FindConnection(id);
   return connection ? connection->Send(data, size) : false;
 }
@@ -163,10 +163,8 @@ bool NetEngineImpl::CloseAfterSend(ConnectionId id) {
   return connection ? connection->CloseAfterSend() : false;
 }
 
-bool NetEngineImpl::SendTo(UdpSocketId id,
-                           NetAddress address,
-                           const uint8_t* data,
-                           size_t size) {
+bool NetEngineImpl::SendTo(UdpSocketId id, NetAddress address,
+                           const uint8_t *data, size_t size) {
   std::shared_ptr<UdpEndpoint> socket;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -188,7 +186,7 @@ NetTimerId NetEngineImpl::RunOnIoAfter(uint32_t delay_ms, infra::Task task) {
 }
 
 bool NetEngineImpl::CancelIoTimer(NetTimerId id) {
-  for (const auto& loop : loops_) {
+  for (const auto &loop : loops_) {
     if (loop->CancelTimer(id)) {
       return true;
     }
@@ -280,13 +278,13 @@ bool NetEngineImpl::CanAccept(uint32_t max_connections) const {
 }
 
 void NetEngineImpl::RegisterConnection(
-    const std::shared_ptr<TcpConnection>& connection) {
+    const std::shared_ptr<TcpConnection> &connection) {
   std::lock_guard<std::mutex> lock(mutex_);
   connections_[connection->id()] = connection;
 }
 
 void NetEngineImpl::OnConnectionClosed(ConnectionId id,
-                                       const TcpCallbacks& callbacks) {
+                                       const TcpCallbacks &callbacks) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     connections_.erase(id);
@@ -298,9 +296,8 @@ void NetEngineImpl::OnConnectionClosed(ConnectionId id,
   DispatchClose(callbacks, id);
 }
 
-void NetEngineImpl::DispatchAccept(const TcpCallbacks& callbacks,
-                                   ConnectionId id,
-                                   NetAddress peer) {
+void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
+                                   ConnectionId id, NetAddress peer) {
   if (callbacks.on_accept == nullptr) {
     return;
   }
@@ -314,10 +311,8 @@ void NetEngineImpl::DispatchAccept(const TcpCallbacks& callbacks,
   callbacks.on_accept(callbacks.user, id, std::move(peer));
 }
 
-void NetEngineImpl::DispatchRead(const TcpCallbacks& callbacks,
-                                 ConnectionId id,
-                                 const uint8_t* data,
-                                 size_t size) {
+void NetEngineImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
+                                 const uint8_t *data, size_t size) {
   if (callbacks.on_read == nullptr) {
     return;
   }
@@ -332,36 +327,33 @@ void NetEngineImpl::DispatchRead(const TcpCallbacks& callbacks,
   callbacks.on_read(callbacks.user, id, data, size);
 }
 
-void NetEngineImpl::DispatchClose(const TcpCallbacks& callbacks,
+void NetEngineImpl::DispatchClose(const TcpCallbacks &callbacks,
                                   ConnectionId id) {
   if (callbacks.on_close == nullptr) {
     return;
   }
   if (options_.callback_mode == CallbackMode::kPostToExecutor) {
-    (void)options_.callback_executor->Post([callbacks, id]() {
-      callbacks.on_close(callbacks.user, id);
-    });
+    (void)options_.callback_executor->Post(
+        [callbacks, id]() { callbacks.on_close(callbacks.user, id); });
     return;
   }
   callbacks.on_close(callbacks.user, id);
 }
 
-void NetEngineImpl::DispatchUdp(const UdpCallbacks& callbacks,
-                                UdpSocketId socket_id,
-                                NetAddress peer,
-                                const uint8_t* data,
-                                size_t size) {
+void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
+                                UdpSocketId socket_id, NetAddress peer,
+                                const uint8_t *data, size_t size) {
   if (callbacks.on_read == nullptr) {
     return;
   }
   if (options_.callback_mode == CallbackMode::kPostToExecutor) {
     std::vector<uint8_t> copy(data, data + size);
-    (void)options_.callback_executor->Post(
-        [callbacks, socket_id, peer = std::move(peer),
-         copy = std::move(copy)]() mutable {
-          callbacks.on_read(callbacks.user, socket_id, peer, copy.data(),
-                            copy.size());
-        });
+    (void)options_.callback_executor->Post([callbacks, socket_id,
+                                            peer = std::move(peer),
+                                            copy = std::move(copy)]() mutable {
+      callbacks.on_read(callbacks.user, socket_id, peer, copy.data(),
+                        copy.size());
+    });
     return;
   }
   callbacks.on_read(callbacks.user, socket_id, std::move(peer), data, size);
@@ -377,12 +369,12 @@ std::shared_ptr<EventLoop> NetEngineImpl::NextLoop() {
   return loops_[index];
 }
 
-std::shared_ptr<TcpConnection> NetEngineImpl::FindConnection(
-    ConnectionId id) const {
+std::shared_ptr<TcpConnection>
+NetEngineImpl::FindConnection(ConnectionId id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = connections_.find(id);
   return it == connections_.end() ? nullptr : it->second;
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

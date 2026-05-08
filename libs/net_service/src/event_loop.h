@@ -3,7 +3,7 @@
 
 #include "event_fd.h"
 #include "fd.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 #include <cstdint>
 #include <deque>
@@ -14,15 +14,15 @@
 #include <unordered_map>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class EventLoop {
- public:
+public:
   EventLoop(uint32_t max_events, uint32_t task_capacity);
   ~EventLoop();
 
-  EventLoop(const EventLoop&) = delete;
-  EventLoop& operator=(const EventLoop&) = delete;
+  EventLoop(const EventLoop &) = delete;
+  EventLoop &operator=(const EventLoop &) = delete;
 
   bool Start();
   void Stop();
@@ -33,7 +33,7 @@ class EventLoop {
   NetTimerId RunAfter(uint32_t delay_ms, infra::Task task);
   bool CancelTimer(NetTimerId id);
 
- private:
+private:
   struct Handler {
     uint32_t events = 0;
     std::function<void(uint32_t)> callback;
@@ -44,8 +44,7 @@ class EventLoop {
     infra::Task task;
   };
 
-  bool AddRawFdLocked(int fd,
-                      uint32_t events,
+  bool AddRawFdLocked(int fd, uint32_t events,
                       std::function<void(uint32_t)> handler);
   void CleanupLocked();
   void DrainTimerFd();
@@ -71,7 +70,7 @@ class EventLoop {
   bool stopping_ = false;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_EVENT_LOOP_H_

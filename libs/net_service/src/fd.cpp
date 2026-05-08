@@ -3,15 +3,13 @@
 #include <unistd.h>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
-UniqueFd::~UniqueFd() {
-  Reset();
-}
+UniqueFd::~UniqueFd() { Reset(); }
 
-UniqueFd::UniqueFd(UniqueFd&& other) noexcept : fd_(other.Release()) {}
+UniqueFd::UniqueFd(UniqueFd &&other) noexcept : fd_(other.Release()) {}
 
-UniqueFd& UniqueFd::operator=(UniqueFd&& other) noexcept {
+UniqueFd &UniqueFd::operator=(UniqueFd &&other) noexcept {
   if (this != &other) {
     Reset(other.Release());
   }
@@ -31,5 +29,5 @@ void UniqueFd::Reset(int fd) {
   fd_ = fd;
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

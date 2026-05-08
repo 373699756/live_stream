@@ -13,17 +13,16 @@
 #include <utility>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
-TcpServer::TcpServer(NetEngineImpl* engine,
-                     TcpServerId id,
-                     const TcpListenOptions& options,
-                     const TcpCallbacks& callbacks)
+TcpServer::TcpServer(NetEngineImpl *engine, TcpServerId id,
+                     const TcpListenOptions &options,
+                     const TcpCallbacks &callbacks)
     : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
 
 TcpServer::~TcpServer() { Stop(); }
 
-bool TcpServer::Start(const std::shared_ptr<EventLoop>& loop) {
+bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (running_) {
     return true;
@@ -53,8 +52,8 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop>& loop) {
   if (!SetNonBlocking(fd.get())) {
     return false;
   }
-  if (bind(fd.get(), reinterpret_cast<const sockaddr*>(&addr),
-           sizeof(addr)) != 0) {
+  if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
+      0) {
     return false;
   }
   if (listen(fd.get(), static_cast<int>(options_.backlog)) != 0) {
@@ -101,9 +100,9 @@ void TcpServer::AcceptLoop() {
       }
       listen_fd = listen_fd_.get();
     }
-    sockaddr_in peer_addr {};
+    sockaddr_in peer_addr{};
     socklen_t peer_len = sizeof(peer_addr);
-    const int fd = accept4(listen_fd, reinterpret_cast<sockaddr*>(&peer_addr),
+    const int fd = accept4(listen_fd, reinterpret_cast<sockaddr *>(&peer_addr),
                            &peer_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (fd < 0) {
       if (errno == EINTR) {
@@ -121,12 +120,10 @@ void TcpServer::AcceptLoop() {
     }
     int enabled = 1;
     if (options_.tcp_no_delay) {
-      (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
-                       sizeof(enabled));
+      (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
     }
     if (options_.keepalive) {
-      (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled,
-                       sizeof(enabled));
+      (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
     }
     NetAddress local = GetSocketAddress(fd, false);
     if (local.port == 0) {
@@ -147,5 +144,5 @@ void TcpServer::AcceptLoop() {
   }
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

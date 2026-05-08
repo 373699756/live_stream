@@ -1,4 +1,4 @@
-CROSS_COMPILE ?=
+CROSS_COMPILE ?= arm-himix200-linux-
 ifeq ($(origin CXX),default)
 CXX := $(CROSS_COMPILE)g++
 endif
@@ -39,7 +39,7 @@ CXXFLAGS += -Ilibs/network_service/include
 CXXFLAGS += -Ilibs/time_service/include
 CXXFLAGS += -Ilibs/stream_codec/include
 CXXFLAGS += -Ilibs/stream_mux/include
-CXXFLAGS += -Ilibs/netframe_service/include
+CXXFLAGS += -Ilibs/net_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
 CXXFLAGS += -Ilibs/osd_service/include
@@ -58,7 +58,7 @@ CXXFLAGS += -pthread
 SERVICES := \
 	infra_service \
 	logger_service \
-	netframe_service \
+	net_service \
 	config_service \
 	event_service \
 	auth_service \

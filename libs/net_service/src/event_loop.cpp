@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 EventLoop::EventLoop(uint32_t max_events, uint32_t task_capacity)
     : max_events_(max_events == 0 ? 64 : max_events),
@@ -25,23 +25,21 @@ bool EventLoop::Start() {
     return true;
   }
   epoll_fd_.Reset(epoll_create1(EPOLL_CLOEXEC));
-  timer_fd_.Reset(timerfd_create(CLOCK_MONOTONIC,
-                                 TFD_NONBLOCK | TFD_CLOEXEC));
+  timer_fd_.Reset(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC));
   if (!epoll_fd_.valid() || !timer_fd_.valid()) {
     return false;
   }
   if (!wakeup_.Open()) {
     return false;
   }
-  if (!AddRawFdLocked(wakeup_.fd(), EPOLLIN, [this](uint32_t) {
-    wakeup_.Drain();
-  })) {
+  if (!AddRawFdLocked(wakeup_.fd(), EPOLLIN,
+                      [this](uint32_t) { wakeup_.Drain(); })) {
     return false;
   }
   if (!AddRawFdLocked(timer_fd_.get(), EPOLLIN, [this](uint32_t) {
-    DrainTimerFd();
-    RunTimers();
-  })) {
+        DrainTimerFd();
+        RunTimers();
+      })) {
     return false;
   }
   stopping_ = false;
@@ -86,8 +84,7 @@ bool EventLoop::Post(infra::Task task) {
   return wakeup_.Notify();
 }
 
-bool EventLoop::AddFd(int fd,
-                      uint32_t events,
+bool EventLoop::AddFd(int fd, uint32_t events,
                       std::function<void(uint32_t)> handler) {
   if (fd < 0 || !handler) {
     return false;
@@ -108,7 +105,7 @@ bool EventLoop::ModifyFd(int fd, uint32_t events) {
   if (it == handlers_.end()) {
     return false;
   }
-  epoll_event event {};
+  epoll_event event{};
   event.events = events | EPOLLERR | EPOLLHUP;
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_MOD, fd, &event) != 0) {
@@ -154,9 +151,9 @@ bool EventLoop::CancelTimer(NetTimerId id) {
   return true;
 }
 
-bool EventLoop::AddRawFdLocked(
-    int fd, uint32_t events, std::function<void(uint32_t)> handler) {
-  epoll_event event {};
+bool EventLoop::AddRawFdLocked(int fd, uint32_t events,
+                               std::function<void(uint32_t)> handler) {
+  epoll_event event{};
   event.events = events;
   event.data.fd = fd;
   if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD, fd, &event) != 0) {
@@ -187,11 +184,11 @@ void EventLoop::RearmTimerLocked() {
   if (!timer_fd_.valid()) {
     return;
   }
-  itimerspec spec {};
+  itimerspec spec{};
   if (!timers_.empty()) {
     const int64_t now = infra::Time::MonotonicMillis();
     int64_t next_ms = timers_.begin()->second.deadline_ms;
-    for (const auto& entry : timers_) {
+    for (const auto &entry : timers_) {
       if (entry.second.deadline_ms < next_ms) {
         next_ms = entry.second.deadline_ms;
       }
@@ -221,7 +218,7 @@ void EventLoop::RunTimers() {
     }
     RearmTimerLocked();
   }
-  for (infra::Task& task : ready) {
+  for (infra::Task &task : ready) {
     if (task) {
       task();
     }
@@ -277,5 +274,5 @@ void EventLoop::Run() {
   RunTasks();
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

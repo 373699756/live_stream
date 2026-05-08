@@ -3,32 +3,30 @@
 
 #include "event_loop.h"
 #include "fd.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 #include <memory>
 #include <mutex>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class NetEngineImpl;
 
 class TcpServer : public std::enable_shared_from_this<TcpServer> {
- public:
-  TcpServer(NetEngineImpl* engine,
-            TcpServerId id,
-            const TcpListenOptions& options,
-            const TcpCallbacks& callbacks);
+public:
+  TcpServer(NetEngineImpl *engine, TcpServerId id,
+            const TcpListenOptions &options, const TcpCallbacks &callbacks);
   ~TcpServer();
 
-  bool Start(const std::shared_ptr<EventLoop>& loop);
+  bool Start(const std::shared_ptr<EventLoop> &loop);
   void Stop();
   NetAddress LocalAddress() const;
 
- private:
+private:
   void AcceptLoop();
 
-  NetEngineImpl* engine_ = nullptr;
+  NetEngineImpl *engine_ = nullptr;
   TcpServerId id_ = 0;
   TcpListenOptions options_;
   TcpCallbacks callbacks_;
@@ -39,7 +37,7 @@ class TcpServer : public std::enable_shared_from_this<TcpServer> {
   bool running_ = false;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_TCP_SERVER_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_TCP_SERVER_H_

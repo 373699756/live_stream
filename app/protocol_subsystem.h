@@ -6,7 +6,7 @@
 #include "stream_hub_service.h"
 #include "http_service.h"
 #include "infra/executor.h"
-#include "netframe_service.h"
+#include "net_service.h"
 #include "onvif_service.h"
 #include "rtsp_service.h"
 #include "runtime_config.h"

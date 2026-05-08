@@ -2,7 +2,7 @@
 #define LIVE_STREAM_NETFRAME_SERVICE_SRC_NET_ENGINE_IMPL_H_
 
 #include "event_loop.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 #include <atomic>
 #include <memory>
@@ -11,32 +11,29 @@
 #include <vector>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class TcpConnection;
 class TcpServer;
 class UdpEndpoint;
 
 class NetEngineImpl : public NetEngine {
- public:
-  explicit NetEngineImpl(const NetEngineOptions& options);
+public:
+  explicit NetEngineImpl(const NetEngineOptions &options);
   ~NetEngineImpl() override;
 
   bool Start() override;
   void Stop() override;
-  TcpServerId ListenTcp(const TcpListenOptions& options,
-                        const TcpCallbacks& callbacks) override;
+  TcpServerId ListenTcp(const TcpListenOptions &options,
+                        const TcpCallbacks &callbacks) override;
   bool CloseTcp(TcpServerId id) override;
-  UdpSocketId BindUdp(
-      const UdpBindOptions& options,
-      const UdpCallbacks& callbacks) override;
+  UdpSocketId BindUdp(const UdpBindOptions &options,
+                      const UdpCallbacks &callbacks) override;
   bool CloseUdp(UdpSocketId id) override;
-  bool Send(ConnectionId id, const uint8_t* data, size_t size) override;
+  bool Send(ConnectionId id, const uint8_t *data, size_t size) override;
   bool Close(ConnectionId id) override;
   bool CloseAfterSend(ConnectionId id) override;
-  bool SendTo(UdpSocketId id,
-              NetAddress address,
-              const uint8_t* data,
+  bool SendTo(UdpSocketId id, NetAddress address, const uint8_t *data,
               size_t size) override;
   NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) override;
   bool CancelIoTimer(NetTimerId id) override;
@@ -45,21 +42,15 @@ class NetEngineImpl : public NetEngine {
   uint32_t PendingBytes(ConnectionId id) const override;
   NetStats GetStats() const override;
 
-  void RegisterConnection(const std::shared_ptr<TcpConnection>& connection);
-  void OnConnectionClosed(ConnectionId id, const TcpCallbacks& callbacks);
-  void DispatchAccept(const TcpCallbacks& callbacks,
-                      ConnectionId id,
+  void RegisterConnection(const std::shared_ptr<TcpConnection> &connection);
+  void OnConnectionClosed(ConnectionId id, const TcpCallbacks &callbacks);
+  void DispatchAccept(const TcpCallbacks &callbacks, ConnectionId id,
                       NetAddress peer);
-  void DispatchRead(const TcpCallbacks& callbacks,
-                    ConnectionId id,
-                    const uint8_t* data,
-                    size_t size);
-  void DispatchClose(const TcpCallbacks& callbacks, ConnectionId id);
-  void DispatchUdp(const UdpCallbacks& callbacks,
-                   UdpSocketId socket_id,
-                   NetAddress peer,
-                   const uint8_t* data,
-                   size_t size);
+  void DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
+                    const uint8_t *data, size_t size);
+  void DispatchClose(const TcpCallbacks &callbacks, ConnectionId id);
+  void DispatchUdp(const UdpCallbacks &callbacks, UdpSocketId socket_id,
+                   NetAddress peer, const uint8_t *data, size_t size);
   std::shared_ptr<EventLoop> NextLoop();
   ConnectionId AllocateConnectionId() { return next_connection_id_++; }
   void AddAccepted();
@@ -72,7 +63,7 @@ class NetEngineImpl : public NetEngine {
   void AddUdpTx();
   bool CanAccept(uint32_t max_connections) const;
 
- private:
+private:
   std::shared_ptr<TcpConnection> FindConnection(ConnectionId id) const;
 
   NetEngineOptions options_;
@@ -90,7 +81,7 @@ class NetEngineImpl : public NetEngine {
   mutable NetStats stats_;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_NET_ENGINE_IMPL_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_NET_ENGINE_IMPL_H_

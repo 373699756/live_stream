@@ -3,7 +3,7 @@
 
 #include "event_loop.h"
 #include "fd.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -13,31 +13,26 @@
 #include <vector>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class NetEngineImpl;
 
 class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
- public:
-  TcpConnection(NetEngineImpl* engine,
-                std::shared_ptr<EventLoop> loop,
-                int fd,
-                ConnectionId id,
-                const TcpListenOptions& options,
-                TcpCallbacks callbacks,
-                NetAddress local,
-                NetAddress peer);
+public:
+  TcpConnection(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
+                ConnectionId id, const TcpListenOptions &options,
+                TcpCallbacks callbacks, NetAddress local, NetAddress peer);
   ~TcpConnection();
 
   bool Start();
-  bool Send(const uint8_t* data, size_t size);
+  bool Send(const uint8_t *data, size_t size);
   bool Close();
   bool CloseAfterSend();
   uint32_t PendingBytes() const;
   ConnectionId id() const { return id_; }
   NetAddress peer() const { return peer_; }
 
- private:
+private:
   struct OutBuffer {
     std::vector<uint8_t> data;
     size_t offset = 0;
@@ -52,7 +47,7 @@ class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
   void CloseInLoop();
   bool IsSendStalledLocked() const;
 
-  NetEngineImpl* engine_ = nullptr;
+  NetEngineImpl *engine_ = nullptr;
   std::shared_ptr<EventLoop> loop_;
   UniqueFd fd_;
   ConnectionId id_ = 0;
@@ -67,7 +62,7 @@ class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
   bool close_after_send_ = false;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_TCP_CONNECTION_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_TCP_CONNECTION_H_

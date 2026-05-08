@@ -7,7 +7,7 @@
 #include <cstdint>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 bool EventFd::Open() {
   if (fd_.valid()) {
@@ -42,5 +42,5 @@ void EventFd::Drain() {
   }
 }
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream

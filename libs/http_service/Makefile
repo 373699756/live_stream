@@ -3,7 +3,7 @@ SERVICE_NAME := http_service
 INFRA_LIB := ../../build/lib/libinfra_service.a
 AUTH_LIB := ../../build/lib/libauth_service.a
 LOGGER_LIB := ../../build/lib/liblogger_service.a
-NETFRAME_LIB := ../../build/lib/libnetframe_service.a
+NET_LIB := ../../build/lib/libnet_service.a
 MEDIA_LIB := ../../build/lib/libmedia_service.a
 SYSTEM_LIB := ../../build/lib/libsystem_service.a
 
@@ -13,7 +13,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/netframe_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/network_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot_service/include
@@ -27,10 +27,10 @@ SNAPSHOT_LIB := ../../build/lib/libsnapshot_service.a
 STREAM_HUB_LIB := ../../build/lib/libstream_hub_service.a
 WEBRTC_LIB := ../../build/lib/libwebrtc_service.a
 
-EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) \
+EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(STREAM_HUB_LIB) \
 	$(WEBRTC_LIB)
-EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NETFRAME_LIB) $(WEBRTC_LIB) \
+EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(STREAM_HUB_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(MEDIA_LIB) \
 	$(INFRA_LIB)
 
@@ -43,8 +43,8 @@ $(AUTH_LIB): $(INFRA_LIB)
 $(LOGGER_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../logger_service all
 
-$(NETFRAME_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../netframe_service all
+$(NET_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../net_service all
 
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_service all
@@ -58,7 +58,7 @@ $(SYSTEM_LIB): $(INFRA_LIB)
 $(STREAM_HUB_LIB): $(MEDIA_LIB)
 	$(MAKE) -C ../stream_hub_service all
 
-$(WEBRTC_LIB): $(MEDIA_LIB) $(NETFRAME_LIB)
+$(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc_service all
 
 include ../service_rules.mk

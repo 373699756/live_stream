@@ -3,7 +3,7 @@
 
 #include "event_loop.h"
 #include "fd.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,27 +11,25 @@
 #include <mutex>
 
 namespace live_stream {
-namespace netframe_internal {
+namespace net_internal {
 
 class NetEngineImpl;
 
 class UdpEndpoint : public std::enable_shared_from_this<UdpEndpoint> {
- public:
-  UdpEndpoint(NetEngineImpl* engine,
-              UdpSocketId id,
-              const UdpBindOptions& options,
-              const UdpCallbacks& callbacks);
+public:
+  UdpEndpoint(NetEngineImpl *engine, UdpSocketId id,
+              const UdpBindOptions &options, const UdpCallbacks &callbacks);
   ~UdpEndpoint();
 
-  bool Start(const std::shared_ptr<EventLoop>& loop);
+  bool Start(const std::shared_ptr<EventLoop> &loop);
   void Stop();
-  bool SendTo(NetAddress address, const uint8_t* data, size_t size);
+  bool SendTo(NetAddress address, const uint8_t *data, size_t size);
   NetAddress LocalAddress() const;
 
- private:
+private:
   void HandleRead();
 
-  NetEngineImpl* engine_ = nullptr;
+  NetEngineImpl *engine_ = nullptr;
   UdpSocketId id_ = 0;
   UdpBindOptions options_;
   UdpCallbacks callbacks_;
@@ -42,7 +40,7 @@ class UdpEndpoint : public std::enable_shared_from_this<UdpEndpoint> {
   bool running_ = false;
 };
 
-}  // namespace netframe_internal
-}  // namespace live_stream
+} // namespace net_internal
+} // namespace live_stream
 
-#endif  // LIVE_STREAM_NETFRAME_SERVICE_SRC_UDP_ENDPOINT_H_
+#endif // LIVE_STREAM_NETFRAME_SERVICE_SRC_UDP_ENDPOINT_H_
