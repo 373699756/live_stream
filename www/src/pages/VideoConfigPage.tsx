@@ -188,7 +188,7 @@ export function VideoConfigPage() {
         <div className="page-heading">
           <div>
             <h2>视频参数</h2>
-            <p>主码流用于高清预览和录像，子码流用于低码率预览。</p>
+            <p>主码流用于高清预览和协议输出，子码流用于低码率预览。</p>
           </div>
         </div>
         <div className="tabs">

@@ -16,16 +16,31 @@ bool IsValidFrameRate(const FrameRate& frame_rate) {
            frame_rate.target_fps <= frame_rate.source_fps;
 }
 
+bool IsValidStreamConfig(const VideoStreamConfig& stream) {
+    return IsValidSize(stream.size) && IsValidFrameRate(stream.frame_rate) &&
+           stream.bitrate_kbps > 0 && stream.gop > 0;
+}
+
+bool IsValidSubStreamChannels(const MediaPipelineConfig& config) {
+    if (!config.sub_stream.enabled) {
+        return true;
+    }
+    return config.sub_vpss_channel >= 0 && config.sub_venc_channel >= 0 &&
+           config.sub_vpss_channel != config.vpss_channel &&
+           config.sub_venc_channel != config.venc_channel;
+}
+
 }  // namespace
 
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config) {
     return config.sensor_id >= 0 && config.video_pipe >= 0 &&
            config.snap_pipe >= 0 && config.vi_channel >= 0 &&
            config.vpss_group >= 0 && config.vpss_channel >= 0 &&
-           config.venc_channel >= 0 && config.vb_block_count > 0 &&
-           IsValidSize(config.main_stream.size) &&
-           IsValidFrameRate(config.main_stream.frame_rate) &&
-           config.main_stream.bitrate_kbps > 0 && config.main_stream.gop > 0;
+           config.venc_channel >= 0 && IsValidSubStreamChannels(config) &&
+           config.vb_block_count > 0 && IsValidStreamConfig(config.main_stream) &&
+           config.main_stream.stream_id == StreamId::kMain &&
+           IsValidStreamConfig(config.sub_stream) &&
+           config.sub_stream.stream_id == StreamId::kSub;
 }
 
 bool IsValidMediaStream(StreamId stream_id) {
@@ -150,7 +165,11 @@ void MediaPipeline::BuildChannels() {
                               config_.vi_channel};
     channels_.vpss = MppChannel{MppModule::kVpss, config_.vpss_group,
                                 config_.vpss_channel};
+    channels_.sub_vpss = MppChannel{MppModule::kVpss, config_.vpss_group,
+                                    config_.sub_vpss_channel};
     channels_.venc = MppChannel{MppModule::kVenc, 0, config_.venc_channel};
+    channels_.sub_venc = MppChannel{MppModule::kVenc, 0,
+                                    config_.sub_venc_channel};
     channels_.video_pipe = config_.video_pipe;
     channels_.snap_pipe = config_.snap_pipe;
 }

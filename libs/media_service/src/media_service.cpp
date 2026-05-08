@@ -183,6 +183,29 @@ bool ContainsString(const std::vector<std::string> &values,
   return false;
 }
 
+const VideoStreamConfig *FindConfiguredStream(
+    const MediaPipelineConfig &config,
+    StreamId stream_id) {
+  if (stream_id == config.main_stream.stream_id) {
+    return &config.main_stream;
+  }
+  if (stream_id == config.sub_stream.stream_id) {
+    return &config.sub_stream;
+  }
+  return nullptr;
+}
+
+int32_t VencChannelForStream(const MediaPipelineConfig &config,
+                             StreamId stream_id) {
+  if (stream_id == config.sub_stream.stream_id) {
+    return config.sub_venc_channel;
+  }
+  if (stream_id == config.main_stream.stream_id) {
+    return config.venc_channel;
+  }
+  return -1;
+}
+
 ConfigResult
 ValidateNumericControls(const ConfigJson &section,
                         const std::string &section_name,
@@ -317,6 +340,7 @@ ConfigResult ParseVideoConfig(const ConfigJson &value,
 
   MediaPipelineConfig config = fallback;
   config.main_stream.stream_id = StreamId::kMain;
+  config.sub_stream.stream_id = StreamId::kSub;
 
   const struct {
     const char *name;
@@ -366,7 +390,6 @@ ConfigResult ParseVideoConfig(const ConfigJson &value,
         !json_utils::Load(*stream, "gop_mode", &gop_mode)) {
       return ConfigResult::Failure(stream_prefix, "missing required field");
     }
-    (void)enabled;
 
     if (declared_name != stream_spec.name) {
       return ConfigResult::Failure(JoinField(stream_prefix, "name"),
@@ -429,16 +452,19 @@ ConfigResult ParseVideoConfig(const ConfigJson &value,
                                    "unsupported value");
     }
 
-    if (stream_spec.stream_id == StreamId::kMain) {
-      config.main_stream.codec = codec;
-      config.main_stream.size = parsed_size;
-      config.main_stream.frame_rate.source_fps = static_cast<int32_t>(fps);
-      config.main_stream.frame_rate.target_fps = static_cast<int32_t>(fps);
-      config.main_stream.bitrate_kbps = static_cast<uint32_t>(bitrate);
-      config.main_stream.gop = static_cast<uint32_t>(gop);
-      config.main_stream.rc_mode = parsed_rate_control;
-      config.main_stream.gop_mode = parsed_gop_mode;
-    }
+    VideoStreamConfig *target_stream =
+        stream_spec.stream_id == StreamId::kSub ? &config.sub_stream
+                                                : &config.main_stream;
+    target_stream->stream_id = stream_spec.stream_id;
+    target_stream->enabled = enabled;
+    target_stream->codec = codec;
+    target_stream->size = parsed_size;
+    target_stream->frame_rate.source_fps = static_cast<int32_t>(fps);
+    target_stream->frame_rate.target_fps = static_cast<int32_t>(fps);
+    target_stream->bitrate_kbps = static_cast<uint32_t>(bitrate);
+    target_stream->gop = static_cast<uint32_t>(gop);
+    target_stream->rc_mode = parsed_rate_control;
+    target_stream->gop_mode = parsed_gop_mode;
   }
 
   if (!IsValidMediaPipelineConfig(config)) {
@@ -611,8 +637,15 @@ struct MediaService::Impl {
   void NotifySourceState(StreamState stream_state) {
     for (const auto &item : sinks) {
       if (item.second.second != nullptr) {
+        const VideoStreamConfig *stream =
+            FindConfiguredStream(pipeline.config(), item.second.first.stream_id);
+        const bool stream_running =
+            stream_state == StreamState::kRunning && stream != nullptr &&
+            stream->enabled;
+        const StreamState effective_state =
+            stream_running ? stream_state : StreamState::kClosed;
         item.second.second->OnSourceStateChanged(item.second.first.stream_id,
-                                                 stream_state);
+                                                 effective_state);
       }
     }
   }
@@ -656,18 +689,9 @@ struct MediaService::Impl {
       ++stats.config_apply_failed_count;
       return false;
     }
-    if (config.main_stream.size.width ==
-            pipeline.config().main_stream.size.width &&
-        config.main_stream.size.height ==
-            pipeline.config().main_stream.size.height &&
-        config.main_stream.codec == pipeline.config().main_stream.codec &&
-        config.main_stream.frame_rate.target_fps ==
-            pipeline.config().main_stream.frame_rate.target_fps &&
-        config.main_stream.bitrate_kbps ==
-            pipeline.config().main_stream.bitrate_kbps &&
-        config.main_stream.gop == pipeline.config().main_stream.gop &&
-        config.main_stream.rc_mode == pipeline.config().main_stream.rc_mode &&
-        config.main_stream.gop_mode == pipeline.config().main_stream.gop_mode) {
+    if (VideoStreamConfigEqual(config.main_stream,
+                               pipeline.config().main_stream) &&
+        VideoStreamConfigEqual(config.sub_stream, pipeline.config().sub_stream)) {
       ++stats.config_apply_count;
       return true;
     }
@@ -711,6 +735,20 @@ struct MediaService::Impl {
     }
     ++stats.config_apply_failed_count;
     return false;
+  }
+
+  static bool VideoStreamConfigEqual(const VideoStreamConfig &lhs,
+                                     const VideoStreamConfig &rhs) {
+    return lhs.stream_id == rhs.stream_id &&
+           lhs.enabled == rhs.enabled &&
+           lhs.size.width == rhs.size.width &&
+           lhs.size.height == rhs.size.height &&
+           lhs.codec == rhs.codec &&
+           lhs.frame_rate.target_fps == rhs.frame_rate.target_fps &&
+           lhs.bitrate_kbps == rhs.bitrate_kbps &&
+           lhs.gop == rhs.gop &&
+           lhs.rc_mode == rhs.rc_mode &&
+           lhs.gop_mode == rhs.gop_mode;
   }
 };
 
@@ -797,7 +835,7 @@ bool MediaService::IsStreamSupported(StreamId stream_id) const {
     return false;
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  return stream_id == impl_->pipeline.config().main_stream.stream_id;
+  return FindConfiguredStream(impl_->pipeline.config(), stream_id) != nullptr;
 }
 
 bool MediaService::IsStreamStarted(StreamId stream_id) const {
@@ -805,8 +843,10 @@ bool MediaService::IsStreamStarted(StreamId stream_id) const {
     return false;
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  return impl_->state == ServiceState::kStarted &&
-         stream_id == impl_->pipeline.config().main_stream.stream_id;
+  const VideoStreamConfig *stream =
+      FindConfiguredStream(impl_->pipeline.config(), stream_id);
+  return impl_->state == ServiceState::kStarted && stream != nullptr &&
+         stream->enabled;
 }
 
 VideoCodec MediaService::GetStreamCodec(StreamId stream_id) const {
@@ -814,8 +854,10 @@ VideoCodec MediaService::GetStreamCodec(StreamId stream_id) const {
     return VideoCodec::kH264;
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  if (stream_id == impl_->pipeline.config().main_stream.stream_id) {
-    return impl_->pipeline.config().main_stream.codec;
+  const VideoStreamConfig *stream =
+      FindConfiguredStream(impl_->pipeline.config(), stream_id);
+  if (stream != nullptr) {
+    return stream->codec;
   }
   return VideoCodec::kH264;
 }
@@ -829,7 +871,9 @@ MediaService::SubscribeFrames(const FrameSubscribeOptions &options,
     return 0;
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  if (sink == nullptr || !IsValidMediaStream(options.stream_id)) {
+  const VideoStreamConfig *stream =
+      FindConfiguredStream(impl_->pipeline.config(), options.stream_id);
+  if (sink == nullptr || stream == nullptr || !stream->enabled) {
     return 0;
   }
   if (impl_->state != ServiceState::kStarted) {
@@ -863,16 +907,17 @@ bool MediaService::RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) {
   }
   std::lock_guard<std::mutex> lock(impl_->mutex);
   (void)reason;
-  if (!IsValidMediaStream(stream_id)) {
-    return false;
-  }
-  if (impl_->state != ServiceState::kStarted) {
+  const VideoStreamConfig *stream =
+      FindConfiguredStream(impl_->pipeline.config(), stream_id);
+  if (impl_->state != ServiceState::kStarted || stream == nullptr ||
+      !stream->enabled) {
     return false;
   }
   hisisdk::IHisiSdk *sdk = impl_->options.sdk != nullptr
                                ? impl_->options.sdk
                                : &hisisdk::DefaultSdk();
-  return sdk->RequestIdr(impl_->pipeline.config().venc_channel);
+  return sdk->RequestIdr(VencChannelForStream(impl_->pipeline.config(),
+                                              stream_id));
 }
 
 MediaCapabilities MediaService::GetCapabilities() const {

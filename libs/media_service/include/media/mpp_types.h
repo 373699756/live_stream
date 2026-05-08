@@ -21,7 +21,9 @@ struct MppChannel {
 struct MediaChannels {
     MppChannel vi;
     MppChannel vpss;
+    MppChannel sub_vpss;
     MppChannel venc;
+    MppChannel sub_venc;
     int32_t video_pipe = 0;
     int32_t snap_pipe = 2;
 };

@@ -45,6 +45,9 @@ bool DefaultHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     if (config.venc_channel < 0) {
         return false;
     }
+    if (config.sub_stream.enabled && config.sub_venc_channel < 0) {
+        return false;
+    }
     // Board-specific VENC attribute setup belongs here in real MPP builds.
     return true;
 }
@@ -54,7 +57,10 @@ void DefaultHisiSdk::StopVenc(const MediaPipelineConfig& config) {
 }
 
 bool DefaultHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
-    return config.vpss_channel >= 0;
+    if (config.vpss_channel < 0) {
+        return false;
+    }
+    return !config.sub_stream.enabled || config.sub_vpss_channel >= 0;
 }
 
 void DefaultHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
@@ -67,7 +73,8 @@ bool DefaultHisiSdk::StartVencStream(
     void* user) {
     (void)callback;
     (void)user;
-    return config.main_stream.bitrate_kbps > 0;
+    return config.main_stream.bitrate_kbps > 0 &&
+           (!config.sub_stream.enabled || config.sub_stream.bitrate_kbps > 0);
 }
 
 void DefaultHisiSdk::StopVencStream(const MediaPipelineConfig& config) {

@@ -18,8 +18,8 @@ export const mockVideoConfig: VideoConfig = {
     main: {
       enabled: true,
       name: 'main',
-      codec: 'h264',
-      profile: 'high',
+      codec: 'h265',
+      profile: 'main',
       h265_profile: 'main',
       resolution: '1920x1080',
       fps: 25,
@@ -27,7 +27,7 @@ export const mockVideoConfig: VideoConfig = {
       rate_control: 'cbr',
       gop: 50,
       vbr_quality: 60,
-      smart_codec: false,
+      smart_codec: true,
     },
     sub: {
       enabled: true,
@@ -72,7 +72,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
     },
     sub: {
       stream: 'sub',
-      available: false,
+      available: true,
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
@@ -255,7 +255,7 @@ export const mockSystemStatus: SystemStatus = {
 export const mockStreamStatus: StreamStatus[] = [
   {
     stream: 'main',
-    codec: 'H.264',
+    codec: 'H.265',
     resolution: mockVideoConfig.streams.main.resolution,
     fps: 25,
     bitrateKbps: 4096,

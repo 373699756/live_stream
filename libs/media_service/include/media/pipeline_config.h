@@ -20,6 +20,7 @@ struct FrameRate {
 
 struct VideoStreamConfig {
     StreamId stream_id = StreamId::kMain;
+    bool enabled = true;
     VideoCodec codec = VideoCodec::kH265;
     VideoSize size;
     FrameRate frame_rate;
@@ -36,9 +37,20 @@ struct MediaPipelineConfig {
     int32_t vi_channel = 0;
     int32_t vpss_group = 0;
     int32_t vpss_channel = 0;
+    int32_t sub_vpss_channel = 1;
     int32_t venc_channel = 0;
+    int32_t sub_venc_channel = 2;
     uint32_t vb_block_count = 10;
     VideoStreamConfig main_stream;
+    VideoStreamConfig sub_stream{StreamId::kSub,
+                                 true,
+                                 VideoCodec::kH264,
+                                 VideoSize{640, 360},
+                                 FrameRate{30, 30},
+                                 768,
+                                 30,
+                                 RateControlMode::kCbr,
+                                 GopMode::kNormalP};
 };
 
 }  // namespace live_stream
