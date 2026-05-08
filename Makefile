@@ -84,8 +84,12 @@ APP_SRCS := \
 	app/main.cpp \
 	app/app_runtime.cpp \
 	app/core_services.cpp \
-	app/device_platforms.cpp \
 	app/device_subsystem.cpp \
+	app/linux_network_platform.cpp \
+	app/linux_platform_common.cpp \
+	app/linux_system_platform.cpp \
+	app/linux_time_platform.cpp \
+	app/linux_upgrade_platform.cpp \
 	app/media_subsystem.cpp \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp
