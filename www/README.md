@@ -68,9 +68,11 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `POST /api/webrtc/candidate`
 - `POST /api/webrtc/close`
 
-Current WebRTC preview is video-only. The frontend does not negotiate audio,
-which matches devices that do not expose an audio path. The live view keeps
-snapshot preview available as the default preview path.
+Product scope is video-only live preview, snapshots, configuration, and
+maintenance. Audio capture, audio encoding, audio transport, recording,
+storage playback, and related UI/API surfaces are intentionally out of scope.
+Existing config fields that mention audio or recording are compatibility
+placeholders and must not be treated as enabled product features.
 
 The web live preview now exposes four modes:
 
@@ -79,8 +81,9 @@ The web live preview now exposes four modes:
 - `HTTP-FLV` for continuous live playback on MSE-capable browsers
 - `snapshot` as the fallback path
 
-HLS and HTTP-FLV currently target `H.264` video-only streams. The frontend
-loads `hls.js` and `mpegts.js` in the browser to drive those modes.
+WebRTC, RTSP, HLS, and HTTP-FLV are video-only paths. HLS and HTTP-FLV support
+`H.264` and `H.265` video-only streams; `H.265` playback still depends on the
+browser and hardware decoder exposed to `hls.js` or `mpegts.js`.
 
 `GET /api/media/capabilities` includes `streams.<name>.available` so the UI can
 hide or disable stream configuration that the current firmware does not start.

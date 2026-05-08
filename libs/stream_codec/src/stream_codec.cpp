@@ -7,6 +7,41 @@ namespace live_stream {
 namespace stream_codec {
 namespace {
 
+// Codec payload notes:
+//
+// Annex-B:
+// - H.264/H.265 elementary streams normally use start codes such as
+//   00 00 00 01 to separate NAL units.
+// - MPEG-TS carries video access units in Annex-B form, so HLS segment output
+//   must rebuild access units as AUD + optional parameter sets + frame NALs.
+// - FLV does not carry Annex-B start codes in video samples. FLV samples use
+//   a 4-byte big-endian length before each NAL, so Build*Sample() strips AUD
+//   and parameter sets and writes length-prefixed frame NALs.
+//
+// Parameter sets:
+// - H.264 uses SPS/PPS. NAL type 5 is IDR, 7 is SPS, 8 is PPS, and 9 is AUD.
+// - H.265 uses VPS/SPS/PPS. NAL types 19/20/21 are random-access pictures,
+//   32 is VPS, 33 is SPS, 34 is PPS, and 35 is AUD.
+// - Key frames sent to HLS should include cached parameter sets when the
+//   source frame does not already carry them.
+//
+// FLV samples:
+// - FLV sequence headers carry avcC/hvcC records. Those records hold cached
+//   SPS/PPS or VPS/SPS/PPS and tell the player that later video samples use
+//   4-byte NAL length prefixes.
+// - FLV video samples are length-prefixed NAL units, so parameter sets and AUD
+//   are stripped from the sample payload.
+
+void AppendByte(std::string *out, uint8_t value) {
+  out->push_back(static_cast<char>(value));
+}
+
+void AppendBytes(std::string *out, const uint8_t *data, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    AppendByte(out, data[i]);
+  }
+}
+
 void AppendU32(std::string *out, uint32_t value) {
   out->push_back(static_cast<char>((value >> 24) & 0xff));
   out->push_back(static_cast<char>((value >> 16) & 0xff));
@@ -14,7 +49,23 @@ void AppendU32(std::string *out, uint32_t value) {
   out->push_back(static_cast<char>(value & 0xff));
 }
 
-void AppendStartCode(std::string *out) { out->append("\x00\x00\x00\x01", 4); }
+void AppendStartCode(std::string *out) {
+  // Annex-B separates NAL units with the 4-byte start code 00 00 00 01.
+  AppendU32(out, 1);
+}
+
+void AppendH264Aud(std::string *out) {
+  static constexpr uint8_t kAud[] = {0x09, 0xf0};
+  AppendStartCode(out);
+  AppendBytes(out, kAud, sizeof(kAud));
+}
+
+void AppendH265Aud(std::string *out) {
+  // Access Unit Delimiter for H.265: NAL type 35 followed by pic_type.
+  static constexpr uint8_t kAud[] = {0x46, 0x01, 0x50};
+  AppendStartCode(out);
+  AppendBytes(out, kAud, sizeof(kAud));
+}
 
 size_t FindStartCode(const uint8_t *data, size_t size, size_t offset) {
   if (data == nullptr || size < 3 || offset >= size) {
@@ -87,9 +138,66 @@ std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
   return units;
 }
 
+std::vector<H265NalUnit> ParseH265AnnexBNalUnits(const uint8_t *data,
+                                                 size_t size) {
+  std::vector<H265NalUnit> units;
+  size_t offset = 0;
+  while (true) {
+    const size_t start = FindStartCode(data, size, offset);
+    if (start == std::string::npos) {
+      break;
+    }
+    const size_t prefix =
+        start + 3 < size && data[start + 2] == 0 && data[start + 3] == 1 ? 4
+                                                                         : 3;
+    const size_t nal_begin = start + prefix;
+    const size_t next = FindStartCode(data, size, nal_begin);
+    size_t nal_end = next == std::string::npos ? size : next;
+    while (nal_end > nal_begin && data[nal_end - 1] == 0) {
+      --nal_end;
+    }
+    if (nal_end > nal_begin + 1) {
+      units.push_back({data + nal_begin, nal_end - nal_begin,
+                       static_cast<uint8_t>((data[nal_begin] >> 1) & 0x3f)});
+    }
+    if (next == std::string::npos) {
+      break;
+    }
+    offset = next;
+  }
+  return units;
+}
+
 bool HasH264ParameterSets(const std::vector<H264NalUnit> &units) {
   for (const H264NalUnit &unit : units) {
     if (unit.type == 7 || unit.type == 8) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasH265ParameterSets(const std::vector<H265NalUnit> &units) {
+  for (const H265NalUnit &unit : units) {
+    if (unit.type == 32 || unit.type == 33 || unit.type == 34) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasH264KeyFrame(const std::vector<H264NalUnit> &units) {
+  for (const H264NalUnit &unit : units) {
+    if (unit.type == 5) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasH265KeyFrame(const std::vector<H265NalUnit> &units) {
+  for (const H265NalUnit &unit : units) {
+    if (unit.type == 19 || unit.type == 20 || unit.type == 21) {
       return true;
     }
   }
@@ -124,6 +232,45 @@ void ExtractH264ParameterSets(const std::vector<H264NalUnit> &units,
   }
 }
 
+void ExtractH265ParameterSets(const std::vector<H265NalUnit> &units,
+                              std::string *vps,
+                              std::string *sps,
+                              std::string *pps,
+                              bool *has_vps,
+                              bool *has_sps,
+                              bool *has_pps) {
+  bool local_has_vps = false;
+  bool local_has_sps = false;
+  bool local_has_pps = false;
+  for (const H265NalUnit &unit : units) {
+    if (unit.type == 32) {
+      if (vps != nullptr) {
+        vps->assign(reinterpret_cast<const char *>(unit.data), unit.size);
+      }
+      local_has_vps = true;
+    } else if (unit.type == 33) {
+      if (sps != nullptr) {
+        sps->assign(reinterpret_cast<const char *>(unit.data), unit.size);
+      }
+      local_has_sps = true;
+    } else if (unit.type == 34) {
+      if (pps != nullptr) {
+        pps->assign(reinterpret_cast<const char *>(unit.data), unit.size);
+      }
+      local_has_pps = true;
+    }
+  }
+  if (has_vps != nullptr) {
+    *has_vps = local_has_vps;
+  }
+  if (has_sps != nullptr) {
+    *has_sps = local_has_sps;
+  }
+  if (has_pps != nullptr) {
+    *has_pps = local_has_pps;
+  }
+}
+
 std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units) {
   std::string sample;
   for (const H264NalUnit &unit : units) {
@@ -136,13 +283,26 @@ std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units) {
   return sample;
 }
 
+std::string BuildH265LengthPrefixedSample(
+    const std::vector<H265NalUnit> &units) {
+  std::string sample;
+  for (const H265NalUnit &unit : units) {
+    if (unit.type == 32 || unit.type == 33 || unit.type == 34 ||
+        unit.type == 35) {
+      continue;
+    }
+    AppendU32(&sample, static_cast<uint32_t>(unit.size));
+    sample.append(reinterpret_cast<const char *>(unit.data), unit.size);
+  }
+  return sample;
+}
+
 std::string BuildH264AnnexBAccessUnit(
     const std::vector<H264NalUnit> &units, const std::string &sps,
     const std::string &pps, bool prepend_parameter_sets) {
   std::string access_unit;
-  AppendStartCode(&access_unit);
-  access_unit.push_back('\x09');
-  access_unit.push_back('\xf0');
+  // H.264 in MPEG-TS is carried as Annex-B: AUD, optional SPS/PPS, then NALs.
+  AppendH264Aud(&access_unit);
   if (prepend_parameter_sets && !sps.empty() && !pps.empty()) {
     AppendStartCode(&access_unit);
     access_unit.append(sps);
@@ -151,6 +311,32 @@ std::string BuildH264AnnexBAccessUnit(
   }
   for (const H264NalUnit &unit : units) {
     if (unit.type == 9) {
+      continue;
+    }
+    AppendStartCode(&access_unit);
+    access_unit.append(reinterpret_cast<const char *>(unit.data), unit.size);
+  }
+  return access_unit;
+}
+
+std::string BuildH265AnnexBAccessUnit(
+    const std::vector<H265NalUnit> &units, const std::string &vps,
+    const std::string &sps, const std::string &pps,
+    bool prepend_parameter_sets) {
+  std::string access_unit;
+  // H.265 in MPEG-TS is also Annex-B. VPS/SPS/PPS are prepended to IDR access
+  // units when the source frame did not already include parameter sets.
+  AppendH265Aud(&access_unit);
+  if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
+    AppendStartCode(&access_unit);
+    access_unit.append(vps);
+    AppendStartCode(&access_unit);
+    access_unit.append(sps);
+    AppendStartCode(&access_unit);
+    access_unit.append(pps);
+  }
+  for (const H265NalUnit &unit : units) {
+    if (unit.type == 35) {
       continue;
     }
     AppendStartCode(&access_unit);

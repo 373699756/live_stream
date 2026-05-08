@@ -27,12 +27,15 @@ class RtpPacketizer {
   void SendRtpPacket(const EncodedFrame &frame, const uint8_t *payload,
                      uint32_t size, bool marker, uint16_t *sequence,
                      uint32_t ssrc, std::vector<RtpPacket> *packets) const;
+  void PacketizeNal(const EncodedFrame &frame, const uint8_t *payload,
+                    uint32_t size, bool marker, uint16_t *sequence,
+                    uint32_t ssrc, std::vector<RtpPacket> *packets) const;
   void PacketizeH264(const EncodedFrame &frame, const uint8_t *payload,
-                     uint32_t size, uint16_t *sequence, uint32_t ssrc,
-                     std::vector<RtpPacket> *packets) const;
+                     uint32_t size, bool marker, uint16_t *sequence,
+                     uint32_t ssrc, std::vector<RtpPacket> *packets) const;
   void PacketizeH265(const EncodedFrame &frame, const uint8_t *payload,
-                     uint32_t size, uint16_t *sequence, uint32_t ssrc,
-                     std::vector<RtpPacket> *packets) const;
+                     uint32_t size, bool marker, uint16_t *sequence,
+                     uint32_t ssrc, std::vector<RtpPacket> *packets) const;
 
   uint32_t mtu_bytes_ = 1200;
 };
@@ -49,16 +52,26 @@ std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
                                           const std::string &pps,
                                           uint32_t timestamp_ms);
 
+std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
+                                          const std::string &sps,
+                                          const std::string &pps,
+                                          uint32_t timestamp_ms);
+
 std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
                                  uint32_t timestamp_ms,
                                  const std::string &avcc_sample);
 
-std::string BuildTsSegmentHeader(TsMuxerState *state);
+std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
+                                 uint32_t timestamp_ms,
+                                 const std::string &length_prefixed_sample);
 
-void AppendH264AccessUnitToTsSegment(const std::string &access_unit,
-                                     int64_t pts_us, int64_t dts_us,
-                                     TsMuxerState *state,
-                                     std::string *segment_body);
+std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state);
+
+void AppendVideoAccessUnitToTsSegment(VideoCodec codec,
+                                      const std::string &access_unit,
+                                      int64_t pts_us, int64_t dts_us,
+                                      TsMuxerState *state,
+                                      std::string *segment_body);
 
 }  // namespace stream_mux
 }  // namespace live_stream

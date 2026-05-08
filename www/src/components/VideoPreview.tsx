@@ -62,7 +62,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   const flvRef = useRef<FlvPlayer | null>(null);
   const active = statuses.find((item) => item.stream === stream);
   const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
-  const activeCodec = (active?.codec || '').toLowerCase();
+  const activeCodec = (active?.codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   useEffect(() => {
     let mounted = true;
@@ -89,7 +89,8 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   }, []);
 
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
-  const h264PlaybackEnabled = activeCodec === '' || activeCodec === 'h264';
+  const streamingPlaybackEnabled =
+    activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265';
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -239,9 +240,9 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     }
 
     closeWebrtc();
-    if (!h264PlaybackEnabled) {
+    if (!streamingPlaybackEnabled) {
       setMode('snapshot');
-      setPreviewState(mode === 'hls' ? 'HLS 仅支持 H.264' : 'HTTP-FLV 仅支持 H.264');
+      setPreviewState(mode === 'hls' ? 'HLS 不支持当前编码' : 'HTTP-FLV 不支持当前编码');
       return cleanup;
     }
 
@@ -316,7 +317,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       disposed = true;
       cleanup();
     };
-  }, [h264PlaybackEnabled, mode, stream, webrtcConfig, webrtcEnabled]);
+  }, [streamingPlaybackEnabled, mode, stream, webrtcConfig, webrtcEnabled]);
 
   const openSnapshot = () => {
     window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
@@ -366,7 +367,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           <button
             type="button"
             className={mode === 'hls' ? 'active' : ''}
-            disabled={!h264PlaybackEnabled}
+            disabled={!streamingPlaybackEnabled}
             onClick={() => setMode('hls')}
           >
             HLS
@@ -374,7 +375,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           <button
             type="button"
             className={mode === 'flv' ? 'active' : ''}
-            disabled={!h264PlaybackEnabled}
+            disabled={!streamingPlaybackEnabled}
             onClick={() => setMode('flv')}
           >
             HTTP-FLV

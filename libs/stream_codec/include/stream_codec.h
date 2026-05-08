@@ -17,6 +17,12 @@ struct H264NalUnit {
   uint8_t type = 0;
 };
 
+struct H265NalUnit {
+  const uint8_t *data = nullptr;
+  size_t size = 0;
+  uint8_t type = 0;
+};
+
 bool IsKeyFrame(FrameType frame_type);
 
 void StripAnnexBStartCode(const uint8_t **payload, size_t *size);
@@ -24,7 +30,16 @@ void StripAnnexBStartCode(const uint8_t **payload, size_t *size);
 std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
                                                  size_t size);
 
+std::vector<H265NalUnit> ParseH265AnnexBNalUnits(const uint8_t *data,
+                                                 size_t size);
+
 bool HasH264ParameterSets(const std::vector<H264NalUnit> &units);
+
+bool HasH265ParameterSets(const std::vector<H265NalUnit> &units);
+
+bool HasH264KeyFrame(const std::vector<H264NalUnit> &units);
+
+bool HasH265KeyFrame(const std::vector<H265NalUnit> &units);
 
 void ExtractH264ParameterSets(const std::vector<H264NalUnit> &units,
                               std::string *sps,
@@ -32,11 +47,27 @@ void ExtractH264ParameterSets(const std::vector<H264NalUnit> &units,
                               bool *has_sps,
                               bool *has_pps);
 
+void ExtractH265ParameterSets(const std::vector<H265NalUnit> &units,
+                              std::string *vps,
+                              std::string *sps,
+                              std::string *pps,
+                              bool *has_vps,
+                              bool *has_sps,
+                              bool *has_pps);
+
 std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units);
+
+std::string BuildH265LengthPrefixedSample(
+    const std::vector<H265NalUnit> &units);
 
 std::string BuildH264AnnexBAccessUnit(
     const std::vector<H264NalUnit> &units, const std::string &sps,
     const std::string &pps, bool prepend_parameter_sets);
+
+std::string BuildH265AnnexBAccessUnit(
+    const std::vector<H265NalUnit> &units, const std::string &vps,
+    const std::string &sps, const std::string &pps,
+    bool prepend_parameter_sets);
 
 }  // namespace stream_codec
 }  // namespace live_stream

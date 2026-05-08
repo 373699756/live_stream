@@ -27,7 +27,7 @@
 #include "live_stream/json_utils.h"
 #include "logger_service.h"
 #include "media_service.h"
-#include "netframe_service.h"
+#include "net_service.h"
 #include "network_service.h"
 #include "rtsp_service.h"
 #include "snapshot_service.h"
@@ -381,7 +381,7 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
     const char *name = StreamIdToJsonString(stream.stream_id);
     if (std::strcmp(name, "unknown") != 0) {
       const bool available = media_service == nullptr ||
-                             media_service->IsStreamSupported(stream.stream_id);
+                             media_service->IsStreamStarted(stream.stream_id);
       streams[name] = StreamCapabilitiesToJson(stream, available);
     }
   }
@@ -1917,7 +1917,7 @@ private:
       return StatusResponse(400, "Invalid stream");
     }
     if (!dependencies_.stream_hub_service->IsHlsSupported(stream_id)) {
-      return StatusResponse(409, "HLS requires H.264 stream");
+      return StatusResponse(409, "HLS requires H.264 or H.265 stream");
     }
 
     if (object_name == "index.m3u8") {
@@ -2082,7 +2082,9 @@ private:
     }
     if (!dependencies_.stream_hub_service->IsFlvSupported(stream_id)) {
       SendResponse(connection_id,
-                   StatusResponse(409, "HTTP-FLV requires H.264 stream"), true);
+                   StatusResponse(409,
+                                  "HTTP-FLV requires H.264 or H.265 stream"),
+                   true);
       return;
     }
 
