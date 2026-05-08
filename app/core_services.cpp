@@ -1,9 +1,44 @@
 #include "core_services.h"
 
 #include "infra/log.h"
+#include "live_stream/json_utils.h"
 
 namespace live_stream {
 namespace {
+
+constexpr const char* kAudioConfigName = "audio";
+
+ConfigResult ValidateAudioScopeConfig(const ConfigJson& value) {
+  if (!value.is_object()) {
+    return ConfigResult::Failure("", "invalid audio config");
+  }
+  bool enabled = false;
+  if (!json_utils::Load(value, "enabled", &enabled)) {
+    return ConfigResult::Failure("enabled", "missing or invalid value");
+  }
+  if (enabled) {
+    return ConfigResult::Failure("enabled", "audio is not supported");
+  }
+  return ConfigResult::Success();
+}
+
+bool InstallProductScopeConfigGuards(IConfigService* config) {
+  if (config == nullptr) {
+    return false;
+  }
+  const ConfigJson audio_config = config->GetValue(kAudioConfigName);
+  if (!audio_config.is_null()) {
+    const ConfigResult result = ValidateAudioScopeConfig(audio_config);
+    if (!result.ok) {
+      return false;
+    }
+  }
+
+  ConfigAttachment audio_attachment;
+  audio_attachment.validate = ValidateAudioScopeConfig;
+  audio_attachment.apply = ValidateAudioScopeConfig;
+  return config->AttachConfig(kAudioConfigName, audio_attachment);
+}
 
 OperationAction MapAuthAction(AuthAuditAction action) {
   switch (action) {
@@ -95,6 +130,11 @@ bool CoreServices::Start(const RuntimePaths& paths) {
   if (!config_ || !config_->Start()) {
     INFRA_LOG_ERROR("app", "Start config service failed: config=%s default=%s",
                     paths.business_config_path, paths.default_config_path);
+    Stop();
+    return false;
+  }
+  if (!InstallProductScopeConfigGuards(config_.get())) {
+    INFRA_LOG_ERROR("app", "Install product scope config guards failed");
     Stop();
     return false;
   }

@@ -6,7 +6,7 @@
         "name": "main",
         "codec": "h265",
         "smart_codec": true,
-        "profile": "high",
+        "profile": "main",
         "resolution": "1920x1080",
         "fps": 25,
         "bitrate_kbps": 4096,
@@ -33,7 +33,7 @@
     }
   },
   "audio": {
-    "enabled": true,
+    "enabled": false,
     "codec": "aac",
     "sample_rate": 16000,
     "channels": 1,

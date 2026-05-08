@@ -29,9 +29,10 @@ bool VerifyActionsConfig(const ConfigJson &value) {
     return false;
   }
   bool ignored = false;
+  bool record = false;
   return json_utils::Load(value, "snapshot", &ignored) &&
-         json_utils::Load(value, "record", &ignored) &&
-         json_utils::Load(value, "notify", &ignored);
+         json_utils::Load(value, "record", &record) &&
+         json_utils::Load(value, "notify", &ignored) && !record;
 }
 
 bool VerifyScheduleConfig(const ConfigJson &value) {
