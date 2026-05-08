@@ -20,6 +20,7 @@
 #include "config_service.h"
 #include "stream_hub_service.h"
 #include "http_protocol.h"
+#include "http_static_files.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
 #include "infra/time.h"
@@ -617,39 +618,6 @@ bool UpgradeRequestFromJson(const ConfigJson &value, UpgradeRequest *request) {
   }
   *request = parsed;
   return true;
-}
-
-std::string ContentTypeForPath(const std::string &path) {
-  const std::string lower_path = ToLower(path);
-  if (lower_path.size() >= 5 &&
-      lower_path.substr(lower_path.size() - 5) == ".html") {
-    return "text/html";
-  }
-  if (lower_path.size() >= 4 &&
-      lower_path.substr(lower_path.size() - 4) == ".css") {
-    return "text/css";
-  }
-  if (lower_path.size() >= 3 &&
-      lower_path.substr(lower_path.size() - 3) == ".js") {
-    return "application/javascript";
-  }
-  if (lower_path.size() >= 4 &&
-      lower_path.substr(lower_path.size() - 4) == ".jpg") {
-    return "image/jpeg";
-  }
-  if (lower_path.size() >= 4 &&
-      lower_path.substr(lower_path.size() - 4) == ".png") {
-    return "image/png";
-  }
-  return "application/octet-stream";
-}
-
-bool IsUnsafeStaticPath(const std::string &path) {
-  const std::string lower_path = ToLower(path);
-  return path.find("..") != std::string::npos ||
-         path.find('\\') != std::string::npos ||
-         lower_path.find("%2e") != std::string::npos ||
-         lower_path.find("%5c") != std::string::npos;
 }
 
 } // namespace
@@ -2201,29 +2169,16 @@ private:
   }
 
   HttpResponse HandleStaticFile(const HttpRequest &request) {
-    if (options_.static_root.empty()) {
+    const StaticFileResult result =
+        BuildStaticFileResponse(request, options_.static_root);
+    if (result.status == StaticFileStatus::kNotFound) {
       IncrementNotFound();
       return StatusResponse(404, "Not Found");
     }
-    if (IsUnsafeStaticPath(request.path)) {
+    if (result.status == StaticFileStatus::kForbidden) {
       return StatusResponse(403, "Forbidden");
     }
-    std::string relative =
-        request.path == "/" ? "index.html" : request.path.substr(1);
-    if (relative.empty()) {
-      relative = "index.html";
-    }
-    const std::string path = infra::Path::Join(options_.static_root, relative);
-    std::string content = infra::File::ReadAll(path);
-    if (content.empty()) {
-      IncrementNotFound();
-      return StatusResponse(404, "Not Found");
-    }
-    HttpResponse response;
-    response.status_code = 200;
-    response.headers["Content-Type"] = ContentTypeForPath(path);
-    response.body = content;
-    return response;
+    return result.response;
   }
 
   void OnConnection(ConnectionId connection_id, NetAddress peer) {
