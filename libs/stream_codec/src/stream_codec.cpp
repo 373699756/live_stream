@@ -8,6 +8,12 @@ namespace stream_codec {
 namespace {
 
 // Codec payload notes:
+// 码流转换要点：
+// - 编码器输出一般是 Annex-B：每个 NAL 前面带 00 00 01 或 00 00 00 01
+//   起始码。
+// - HLS/TS 仍然需要 Annex-B，所以这里会重组为 AUD + 参数集 + 图像 NAL。
+// - HTTP-FLV 不要 Annex-B 起始码，而是每个 NAL 前写 4 字节长度前缀；
+//   SPS/PPS/VPS 放进 sequence header，普通视频 tag 只放图像 NAL。
 //
 // Annex-B:
 // - H.264/H.265 elementary streams normally use start codes such as
@@ -110,6 +116,7 @@ void StripAnnexBStartCode(const uint8_t **payload, size_t *size) {
 
 std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
                                                  size_t size) {
+  // 先把 Annex-B 起始码切掉，后续才能按 NAL 类型分别生成 TS/FLV 载荷。
   std::vector<H264NalUnit> units;
   size_t offset = 0;
   while (true) {
@@ -140,6 +147,7 @@ std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
 
 std::vector<H265NalUnit> ParseH265AnnexBNalUnits(const uint8_t *data,
                                                  size_t size) {
+  // H.265 的 NAL 类型在第一个字节 bit[6:1]，和 H.264 的低 5 bit 不同。
   std::vector<H265NalUnit> units;
   size_t offset = 0;
   while (true) {
@@ -277,6 +285,7 @@ std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units) {
     if (unit.type == 7 || unit.type == 8 || unit.type == 9) {
       continue;
     }
+    // FLV/AVC 视频帧使用 avcC 约定：4 字节 NAL 长度 + NAL 内容。
     AppendU32(&sample, static_cast<uint32_t>(unit.size));
     sample.append(reinterpret_cast<const char *>(unit.data), unit.size);
   }
@@ -291,6 +300,7 @@ std::string BuildH265LengthPrefixedSample(
         unit.type == 35) {
       continue;
     }
+    // Enhanced FLV/H.265 同样使用长度前缀，VPS/SPS/PPS 已放在 hvcC。
     AppendU32(&sample, static_cast<uint32_t>(unit.size));
     sample.append(reinterpret_cast<const char *>(unit.data), unit.size);
   }
@@ -302,6 +312,7 @@ std::string BuildH264AnnexBAccessUnit(
     const std::string &pps, bool prepend_parameter_sets) {
   std::string access_unit;
   // H.264 in MPEG-TS is carried as Annex-B: AUD, optional SPS/PPS, then NALs.
+  // TS/HLS 播放器按访问单元解码，关键帧前补 SPS/PPS 可让新分片独立解码。
   AppendH264Aud(&access_unit);
   if (prepend_parameter_sets && !sps.empty() && !pps.empty()) {
     AppendStartCode(&access_unit);
@@ -326,6 +337,7 @@ std::string BuildH265AnnexBAccessUnit(
   std::string access_unit;
   // H.265 in MPEG-TS is also Annex-B. VPS/SPS/PPS are prepended to IDR access
   // units when the source frame did not already include parameter sets.
+  // H.265 比 H.264 多 VPS，关键帧补齐 VPS/SPS/PPS 后 HLS 分片才能自描述。
   AppendH265Aud(&access_unit);
   if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
     AppendStartCode(&access_unit);

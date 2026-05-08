@@ -354,6 +354,8 @@ private:
 
     const uint8_t *payload = frame.buffer->Data() + frame.offset;
     const size_t size = frame.size;
+    // 码流进入 hub 时仍是编码器输出的 Annex-B。先在锁外解析 NAL，避免在
+    // 互斥锁内做线性扫描，后面同一批 NAL 会同时生成 HLS 和 FLV 两种载荷。
     const std::vector<stream_codec::H264NalUnit> h264_units =
         frame.codec == VideoCodec::kH264
             ? stream_codec::ParseH264AnnexBNalUnits(payload, size)
@@ -394,6 +396,8 @@ private:
       std::string access_unit;
       std::string length_prefixed_sample;
       if (frame.codec == VideoCodec::kH265) {
+        // H.265 输出两份码流表示：
+        // access_unit 保持 Annex-B 给 HLS/TS；length_prefixed_sample 给 FLV。
         bool has_vps = false;
         bool has_sps = false;
         bool has_pps = false;
@@ -417,6 +421,7 @@ private:
         length_prefixed_sample =
             stream_codec::BuildH265LengthPrefixedSample(h265_units);
       } else {
+        // H.264 同样保留 Annex-B 给 HLS/TS，同时转换为 avcC 长度前缀格式给 FLV。
         bool has_sps = false;
         bool has_pps = false;
         stream_codec::ExtractH264ParameterSets(h264_units, &stream->sps,

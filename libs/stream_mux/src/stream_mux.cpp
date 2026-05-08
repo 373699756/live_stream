@@ -446,6 +446,8 @@ std::string BuildH265HvccRecord(const std::string &vps,
   // HEVCDecoderConfigurationRecord (hvcC): profile/tier/level from SPS when
   // available, followed by VPS/SPS/PPS arrays. Enhanced FLV uses this as the
   // sequence-start payload for H.265.
+  // hvcC 是 H.265 播放器的“解码说明书”；后续视频 tag 只带长度前缀 NAL，
+  // 因此这里必须缓存并写出 VPS/SPS/PPS。
   std::string config;
   AppendByte(&config, 1);  // configurationVersion.
   if (sps.size() >= 15) {
@@ -514,6 +516,8 @@ std::string BuildEnhancedFlvVideoTag(bool keyframe, uint8_t packet_type,
                                      const std::string &payload) {
   // Enhanced FLV for H.265 replaces FLV's legacy CodecID with:
   // ExHeader + frame type + packet type, then FourCC "hvc1".
+  // 这里不是普通 FLV 的 CodecID=7，而是 Enhanced FLV 扩展头 + hvc1 FourCC，
+  // 否则浏览器侧 mpegts.js 无法按 H.265 解释后面的长度前缀 NAL。
   std::string tag;
   const uint32_t body_size = 8U + static_cast<uint32_t>(payload.size());
   AppendByte(&tag, 9);  // Video tag.
