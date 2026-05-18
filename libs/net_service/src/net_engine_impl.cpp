@@ -332,9 +332,13 @@ void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
     if (callbacks.on_accept == nullptr) {
         return;
     }
-    // Accept must complete before the first read callback. HTTP/RTSP create
-    // per-connection session state in on_accept; posting accept to a shared
-    // worker pool can let early read events race ahead and get dropped.
+    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
+        (void)options_.callback_executor->Post(
+            [callbacks, id, peer = std::move(peer)]() mutable {
+                callbacks.on_accept(callbacks.user, id, peer);
+            });
+        return;
+    }
     callbacks.on_accept(callbacks.user, id, std::move(peer));
 }
 

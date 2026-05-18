@@ -68,6 +68,12 @@ StaticFileResult BuildStaticFileResponse(const HttpRequest &request,
     result.status = StaticFileStatus::kOk;
     result.response.status_code = 200;
     result.response.headers["Content-Type"] = ContentTypeForPath(path);
+    if (relative == "index.html") {
+        result.response.headers["Cache-Control"] =
+            "no-cache, no-store, must-revalidate";
+        result.response.headers["Pragma"] = "no-cache";
+        result.response.headers["Expires"] = "0";
+    }
     result.response.body = content;
     return result;
 }
