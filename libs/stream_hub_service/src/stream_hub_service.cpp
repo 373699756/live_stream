@@ -4,13 +4,11 @@
 #include "media/encoded_frame.h"
 #include "media_service.h"
 #include "stream_codec.h"
-#include "stream_mux.h"
+#include "stream_hub_stream_state.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -19,6 +17,7 @@
 #include <vector>
 
 namespace live_stream {
+namespace hub_state = stream_hub_internal;
 namespace {
 
 constexpr const char *kServiceName = "stream_hub_service";
@@ -26,24 +25,8 @@ constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
 
-struct HlsSegmentState {
-  bool started = false;
-  uint64_t sequence = 0;
-  int64_t start_pts_us = 0;
-  int64_t last_pts_us = 0;
-  std::string body;
-};
-
 bool IsStreamSupported(StreamId stream_id) {
   return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
-}
-
-bool IsBrowserCodec(VideoCodec codec) {
-  return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
-}
-
-bool IsBrowserStreamReady(const StreamState state, const VideoCodec codec) {
-  return state == StreamState::kRunning && IsBrowserCodec(codec);
 }
 
 bool HasValidPayload(const EncodedFrame &frame) {
@@ -113,11 +96,11 @@ public:
     sub_subscription_id_ = sub_subscription_id;
     main_pending_ = StreamFrameQueue{};
     sub_pending_ = StreamFrameQueue{};
-    main_stream_ = StreamContext{};
+    main_stream_ = hub_state::StreamContext{};
     main_stream_.codec = main_codec;
     main_stream_.state =
         main_subscription_id != 0 ? StreamState::kRunning : StreamState::kClosed;
-    sub_stream_ = StreamContext{};
+    sub_stream_ = hub_state::StreamContext{};
     sub_stream_.codec = sub_codec;
     sub_stream_.state =
         sub_subscription_id != 0 ? StreamState::kRunning : StreamState::kClosed;
@@ -146,8 +129,8 @@ public:
       sub_pending_ = StreamFrameQueue{};
       drain_task_posted_ = false;
       flv_clients_.clear();
-      main_stream_ = StreamContext{};
-      sub_stream_ = StreamContext{};
+      main_stream_ = hub_state::StreamContext{};
+      sub_stream_ = hub_state::StreamContext{};
       worker_executor = worker_executor_.get();
       started_ = false;
     }
@@ -166,9 +149,9 @@ public:
 
   bool IsHlsSupported(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    const StreamContext *stream = FindStream(stream_id);
+    const hub_state::StreamContext *stream = FindStream(stream_id);
     return stream != nullptr &&
-           IsBrowserStreamReady(stream->state, stream->codec);
+           hub_state::IsBrowserStreamReady(stream->state, stream->codec);
   }
 
   bool IsFlvSupported(StreamId stream_id) const override {
@@ -177,57 +160,31 @@ public:
 
   StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    StreamHlsPlaylist playlist;
-    const StreamContext *stream = FindStream(stream_id);
-    if (stream == nullptr ||
-        !IsBrowserStreamReady(stream->state, stream->codec) ||
-        stream->segments.empty()) {
-      return playlist;
+    const hub_state::StreamContext *stream = FindStream(stream_id);
+    if (stream == nullptr) {
+      return StreamHlsPlaylist{};
     }
-    playlist.supported = true;
-    playlist.media_sequence = stream->segments.front().sequence;
-    int64_t max_duration_us =
-        static_cast<int64_t>(options_.hls_segment_duration_ms) * 1000;
-    for (const StreamSegment &segment : stream->segments) {
-      playlist.entries.push_back(
-          StreamHlsEntry{segment.sequence, segment.duration_us});
-      max_duration_us = std::max(max_duration_us, segment.duration_us);
-    }
-    playlist.target_duration_sec = static_cast<uint32_t>(
-        std::max<int64_t>(1, (max_duration_us + 999999) / 1000000));
-    return playlist;
+    return hub_state::BuildHlsPlaylist(*stream,
+                                       options_.hls_segment_duration_ms);
   }
 
   StreamSegment GetHlsSegment(StreamId stream_id,
                              uint64_t sequence) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    const StreamContext *stream = FindStream(stream_id);
-    if (stream == nullptr ||
-        !IsBrowserStreamReady(stream->state, stream->codec)) {
+    const hub_state::StreamContext *stream = FindStream(stream_id);
+    if (stream == nullptr) {
       return StreamSegment{};
     }
-    for (const StreamSegment &segment : stream->segments) {
-      if (segment.sequence == sequence) {
-        return segment;
-      }
-    }
-    return StreamSegment{};
+    return hub_state::FindHlsSegment(*stream, sequence);
   }
 
   StreamFlvBootstrap GetFlvBootstrap(StreamId stream_id) const override {
     std::lock_guard<std::mutex> guard(mutex_);
-    StreamFlvBootstrap bootstrap;
-    const StreamContext *stream = FindStream(stream_id);
-    if (stream == nullptr ||
-        !IsBrowserStreamReady(stream->state, stream->codec)) {
-      return bootstrap;
+    const hub_state::StreamContext *stream = FindStream(stream_id);
+    if (stream == nullptr) {
+      return StreamFlvBootstrap{};
     }
-    bootstrap.supported = true;
-    bootstrap.file_header = stream_mux::BuildFlvFileHeader();
-    bootstrap.sequence_header = stream->sequence_header_tag;
-    bootstrap.last_keyframe = stream->last_keyframe_tag;
-    bootstrap.config_generation = stream->config_generation;
-    return bootstrap;
+    return hub_state::BuildFlvBootstrap(*stream);
   }
 
   StreamFlvClientId
@@ -240,9 +197,9 @@ public:
     StreamFlvClientId client_id = 0;
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      StreamContext *stream = FindMutableStream(stream_id);
+      hub_state::StreamContext *stream = FindMutableStream(stream_id);
       if (stream == nullptr ||
-          !IsBrowserStreamReady(stream->state, stream->codec) ||
+          !hub_state::IsBrowserStreamReady(stream->state, stream->codec) ||
           flv_clients_.size() >= options_.max_flv_clients) {
         return 0;
       }
@@ -306,7 +263,7 @@ public:
 
   void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
     std::lock_guard<std::mutex> guard(mutex_);
-    StreamContext *stream = FindMutableStream(stream_id);
+    hub_state::StreamContext *stream = FindMutableStream(stream_id);
     if (stream != nullptr) {
       stream->state = state;
     }
@@ -340,32 +297,23 @@ private:
   void ProcessFrame(const EncodedFrame &frame) {
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      StreamContext *stream = FindMutableStream(frame.stream_id);
+      hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
       if (stream == nullptr) {
         return;
       }
       if (stream->codec != frame.codec) {
-        ResetStream(stream, frame.codec);
+        hub_state::ResetStream(stream, frame.codec);
       }
-      if (!IsBrowserStreamReady(stream->state, stream->codec)) {
+      if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
         return;
       }
     }
 
-    const uint8_t *payload = frame.buffer->Data() + frame.offset;
-    const size_t size = frame.size;
     // 码流进入 hub 时仍是编码器输出的 Annex-B。先在锁外解析 NAL，避免在
     // 互斥锁内做线性扫描，后面同一批 NAL 会同时生成 HLS 和 FLV 两种载荷。
-    const std::vector<stream_codec::H264NalUnit> h264_units =
-        frame.codec == VideoCodec::kH264
-            ? stream_codec::ParseH264AnnexBNalUnits(payload, size)
-            : std::vector<stream_codec::H264NalUnit>();
-    const std::vector<stream_codec::H265NalUnit> h265_units =
-        frame.codec == VideoCodec::kH265
-            ? stream_codec::ParseH265AnnexBNalUnits(payload, size)
-            : std::vector<stream_codec::H265NalUnit>();
-    if ((frame.codec == VideoCodec::kH264 && h264_units.empty()) ||
-        (frame.codec == VideoCodec::kH265 && h265_units.empty())) {
+    const hub_state::ParsedFramePayload payload =
+        hub_state::ParseFramePayload(frame);
+    if (!hub_state::HasParsedUnits(payload)) {
       return;
     }
 
@@ -375,107 +323,29 @@ private:
     std::string flv_tag;
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      StreamContext *stream = FindMutableStream(frame.stream_id);
+      hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
       if (stream == nullptr) {
         return;
       }
       if (stream->codec != frame.codec) {
-        ResetStream(stream, frame.codec);
+        hub_state::ResetStream(stream, frame.codec);
       }
-      if (!IsBrowserStreamReady(stream->state, stream->codec)) {
+      if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
         return;
       }
 
-      if (stream->last_pts_us > 0 && frame.pts_us > stream->last_pts_us) {
-        stream->last_frame_duration_us = frame.pts_us - stream->last_pts_us;
+      const hub_state::PackagedFrameResult packaged_frame =
+          hub_state::AppendFrameToStream(
+              stream, frame, payload, options_.hls_segment_duration_ms,
+              options_.hls_playlist_depth);
+      if (!packaged_frame.accepted) {
+        return;
       }
-      stream->last_pts_us = frame.pts_us;
-
-      bool keyframe = stream_codec::IsKeyFrame(frame.frame_type);
-      bool frame_has_parameter_sets = false;
-      std::string access_unit;
-      std::string length_prefixed_sample;
-      if (frame.codec == VideoCodec::kH265) {
-        // H.265 输出两份码流表示：
-        // access_unit 保持 Annex-B 给 HLS/TS；length_prefixed_sample 给 FLV。
-        bool has_vps = false;
-        bool has_sps = false;
-        bool has_pps = false;
-        stream_codec::ExtractH265ParameterSets(
-            h265_units, &stream->vps, &stream->sps, &stream->pps, &has_vps,
-            &has_sps, &has_pps);
-        if (!stream->vps.empty() && !stream->sps.empty() &&
-            !stream->pps.empty() && (has_vps || has_sps || has_pps)) {
-          stream->sequence_header_tag =
-              stream_mux::BuildH265FlvSequenceHeaderTag(
-                  stream->vps, stream->sps, stream->pps,
-                  static_cast<uint32_t>(frame.dts_us / 1000));
-          ++stream->config_generation;
-        }
-        keyframe = keyframe || stream_codec::HasH265KeyFrame(h265_units);
-        frame_has_parameter_sets =
-            stream_codec::HasH265ParameterSets(h265_units);
-        access_unit = stream_codec::BuildH265AnnexBAccessUnit(
-            h265_units, stream->vps, stream->sps, stream->pps,
-            keyframe && !frame_has_parameter_sets);
-        length_prefixed_sample =
-            stream_codec::BuildH265LengthPrefixedSample(h265_units);
-      } else {
-        // H.264 同样保留 Annex-B 给 HLS/TS，同时转换为 avcC 长度前缀格式给 FLV。
-        bool has_sps = false;
-        bool has_pps = false;
-        stream_codec::ExtractH264ParameterSets(h264_units, &stream->sps,
-                                               &stream->pps, &has_sps,
-                                               &has_pps);
-        if (!stream->sps.empty() && !stream->pps.empty() &&
-            (has_sps || has_pps)) {
-          stream->sequence_header_tag =
-              stream_mux::BuildH264FlvSequenceHeaderTag(
-                  stream->sps, stream->pps,
-                  static_cast<uint32_t>(frame.dts_us / 1000));
-          ++stream->config_generation;
-        }
-        keyframe = keyframe || stream_codec::HasH264KeyFrame(h264_units);
-        frame_has_parameter_sets =
-            stream_codec::HasH264ParameterSets(h264_units);
-        access_unit = stream_codec::BuildH264AnnexBAccessUnit(
-            h264_units, stream->sps, stream->pps,
-            keyframe && !frame_has_parameter_sets);
-        length_prefixed_sample = stream_codec::BuildH264AvccSample(h264_units);
+      if (packaged_frame.hls_segment_created) {
+        ++stats_.hls_segments_created;
       }
-
-      if (keyframe && stream->current_segment.started &&
-          frame.pts_us - stream->current_segment.start_pts_us >=
-              static_cast<int64_t>(options_.hls_segment_duration_ms) * 1000) {
-        FinalizeCurrentSegment(stream);
-      }
-      if (!stream->current_segment.started) {
-        StartSegment(stream, frame.pts_us);
-      }
-      stream_mux::AppendVideoAccessUnitToTsSegment(
-          frame.codec, access_unit, frame.pts_us, frame.dts_us,
-          &stream->ts_muxer_state, &stream->current_segment.body);
-      stream->current_segment.last_pts_us = frame.pts_us;
-
-      if (!length_prefixed_sample.empty()) {
-        const int64_t composition_time_ms =
-            (frame.pts_us - frame.dts_us) / 1000;
-        if (frame.codec == VideoCodec::kH265) {
-          flv_tag = stream_mux::BuildH265FlvVideoTag(
-              keyframe, static_cast<int32_t>(composition_time_ms),
-              static_cast<uint32_t>(frame.dts_us / 1000),
-              length_prefixed_sample);
-        } else {
-          flv_tag = stream_mux::BuildH264FlvVideoTag(
-              keyframe, static_cast<int32_t>(composition_time_ms),
-              static_cast<uint32_t>(frame.dts_us / 1000),
-              length_prefixed_sample);
-        }
-        if (keyframe) {
-          stream->last_keyframe_tag = flv_tag;
-        }
-      }
-      sequence_header_tag = stream->sequence_header_tag;
+      sequence_header_tag = packaged_frame.sequence_header_tag;
+      flv_tag = packaged_frame.flv_tag;
       for (auto &item : flv_clients_) {
         if (item.second.stream_id != frame.stream_id ||
             item.second.sink == nullptr || flv_tag.empty()) {
@@ -515,23 +385,6 @@ private:
       }
     }
   }
-  struct StreamContext {
-    VideoCodec codec = VideoCodec::kH264;
-    StreamState state = StreamState::kClosed;
-    std::string vps;
-    std::string sps;
-    std::string pps;
-    std::string sequence_header_tag;
-    std::string last_keyframe_tag;
-    std::deque<StreamSegment> segments;
-    HlsSegmentState current_segment;
-    uint64_t next_segment_sequence = 1;
-    uint64_t config_generation = 0;
-    stream_mux::TsMuxerState ts_muxer_state;
-    int64_t last_pts_us = -1;
-    int64_t last_frame_duration_us = 33333;
-  };
-
   struct FlvClientState {
     StreamId stream_id = StreamId::kMain;
     uint64_t config_generation = 0;
@@ -603,7 +456,7 @@ private:
     return PopPendingFrameLocked(fallback_stream, frame);
   }
 
-  const StreamContext *FindStream(StreamId stream_id) const {
+  const hub_state::StreamContext *FindStream(StreamId stream_id) const {
     if (stream_id == StreamId::kMain) {
       return &main_stream_;
     }
@@ -613,7 +466,7 @@ private:
     return nullptr;
   }
 
-  StreamContext *FindMutableStream(StreamId stream_id) {
+  hub_state::StreamContext *FindMutableStream(StreamId stream_id) {
     if (stream_id == StreamId::kMain) {
       return &main_stream_;
     }
@@ -621,52 +474,6 @@ private:
       return &sub_stream_;
     }
     return nullptr;
-  }
-
-  void ResetStream(StreamContext *stream, VideoCodec codec) {
-    if (stream == nullptr) {
-      return;
-    }
-    const StreamState state = stream->state;
-    *stream = StreamContext{};
-    stream->codec = codec;
-    stream->state = state;
-  }
-
-  void StartSegment(StreamContext *stream, int64_t pts_us) {
-    if (stream == nullptr) {
-      return;
-    }
-    stream->current_segment = HlsSegmentState{};
-    stream->current_segment.started = true;
-    stream->current_segment.sequence = stream->next_segment_sequence++;
-    stream->current_segment.start_pts_us = pts_us;
-    stream->current_segment.last_pts_us = pts_us;
-    stream->current_segment.body =
-        stream_mux::BuildTsSegmentHeader(stream->codec,
-                                         &stream->ts_muxer_state);
-  }
-
-  void FinalizeCurrentSegment(StreamContext *stream) {
-    if (stream == nullptr || !stream->current_segment.started ||
-        stream->current_segment.body.empty()) {
-      return;
-    }
-    StreamSegment segment;
-    segment.found = true;
-    segment.sequence = stream->current_segment.sequence;
-    segment.duration_us =
-        std::max<int64_t>(stream->last_frame_duration_us,
-                          stream->current_segment.last_pts_us -
-                              stream->current_segment.start_pts_us +
-                              stream->last_frame_duration_us);
-    segment.body = stream->current_segment.body;
-    stream->segments.push_back(std::move(segment));
-    while (stream->segments.size() > options_.hls_playlist_depth) {
-      stream->segments.pop_front();
-    }
-    ++stats_.hls_segments_created;
-    stream->current_segment = HlsSegmentState{};
   }
 
   StreamHubServiceOptions options_;
@@ -677,8 +484,8 @@ private:
   StreamFrameQueue sub_pending_;
   bool drain_task_posted_ = false;
   StreamId last_drained_stream_ = StreamId::kSub;
-  StreamContext main_stream_;
-  StreamContext sub_stream_;
+  hub_state::StreamContext main_stream_;
+  hub_state::StreamContext sub_stream_;
   std::map<StreamFlvClientId, FlvClientState> flv_clients_;
   StreamHubServiceStats stats_;
   FrameSubscriptionId main_subscription_id_ = 0;

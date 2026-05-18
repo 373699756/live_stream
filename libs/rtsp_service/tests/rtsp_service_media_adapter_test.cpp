@@ -2,7 +2,7 @@
 
 #include "media/frame_source.h"
 #include "media_service.h"
-#include "netframe_service.h"
+#include "net_service.h"
 
 class FakeMediaService : public live_stream::MediaService {
  public:
