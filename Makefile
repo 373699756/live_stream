@@ -152,10 +152,12 @@ out: $(BIN_DIR)/live_stream
 	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
 	cp -f configs/*.json $(OUT_DIR)/configs/
 	@if [ -d www/dist ]; then \
+		find $(OUT_DIR)/web -mindepth 1 -delete; \
 		cp -rf www/dist/* $(OUT_DIR)/web/; \
 	else \
 		echo "Building web frontend..."; \
 		cd www && npm run build && cd ..; \
+		find $(OUT_DIR)/web -mindepth 1 -delete; \
 		cp -rf www/dist/* $(OUT_DIR)/web/; \
 	fi
 	@echo "Output packaged to $(OUT_DIR)/"

@@ -13,6 +13,7 @@ namespace {
 constexpr uint32_t kNetIoThreadCount = 2;
 constexpr uint32_t kNetCallbackWorkerCount = 2;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
+constexpr uint32_t kHttpExecutorWorkerCount = 4;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
 constexpr uint32_t kHttpMaxRequestBodyBytes = 128U * 1024U * 1024U;
 constexpr uint32_t kHttpRequestTimeoutMs = 60000;
@@ -166,6 +167,7 @@ HttpServiceOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     options.static_root = runtime_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
+    options.executor_worker_count = kHttpExecutorWorkerCount;
     options.max_requests_per_connection = kHttpMaxRequestsPerConnection;
     options.max_request_body_bytes = kHttpMaxRequestBodyBytes;
     options.request_timeout_ms = kHttpRequestTimeoutMs;

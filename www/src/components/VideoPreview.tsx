@@ -52,10 +52,10 @@ interface VideoPreviewProps {
 }
 
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
-  const [mode, setMode] = useState<PreviewMode>('snapshot');
+  const [mode, setMode] = useState<PreviewMode>('flv');
   const [snapshotTick, setSnapshotTick] = useState(0);
   const [webrtcConfig, setWebrtcConfig] = useState<WebrtcConfig | null>(null);
-  const [previewState, setPreviewState] = useState('抓图预览');
+  const [previewState, setPreviewState] = useState('等待 HTTP-FLV 视频流');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
