@@ -8,6 +8,11 @@ namespace hisisdk {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
+constexpr uint32_t kOverlayLayerCount = 8;
+constexpr uint32_t kOverlayExLayerCount = 16;
+constexpr uint32_t kCoverLayerCount = 8;
+constexpr uint32_t kMosaicLayerCount = 4;
+
 // ─── Pixel format conversion ───────────────────────────────────
 PIXEL_FORMAT_E ToHiPixelFormat(PixelFormat format) {
     switch (format) {
@@ -64,8 +69,19 @@ MPP_CHN_S ToHiChannel(const MppChannel& channel) {
     return hi_ch;
 }
 
+uint32_t RegionLayer(int32_t handle, uint32_t layer_count) {
+    if (handle < 0 || layer_count == 0) {
+        return 0;
+    }
+    return static_cast<uint32_t>(handle) % layer_count;
+}
+
 // ─── Fill channel display attribute ────────────────────────────
-void FillChannelAttr(const RegionConfig& config, RGN_CHN_ATTR_S* attr) {
+void FillChannelAttr(int32_t handle, const RegionConfig& config,
+                     RGN_CHN_ATTR_S* attr) {
+    if (attr == nullptr) {
+        return;
+    }
     attr->bShow = config.visible ? HI_TRUE : HI_FALSE;
     attr->enType = ToHiRegionType(config.type);
     switch (config.type) {
@@ -74,14 +90,19 @@ void FillChannelAttr(const RegionConfig& config, RGN_CHN_ATTR_S* attr) {
             attr->unChnAttr.stOverlayChn.stPoint.s32Y = config.position.y;
             attr->unChnAttr.stOverlayChn.u32FgAlpha = config.foreground_alpha;
             attr->unChnAttr.stOverlayChn.u32BgAlpha = config.background_alpha;
-            attr->unChnAttr.stOverlayChn.u32Layer = 0;
+            attr->unChnAttr.stOverlayChn.u32Layer =
+                RegionLayer(handle, kOverlayLayerCount);
+            attr->unChnAttr.stOverlayChn.stQpInfo.bQpDisable = HI_TRUE;
+            attr->unChnAttr.stOverlayChn.stInvertColor.bInvColEn = HI_FALSE;
+            attr->unChnAttr.stOverlayChn.enAttachDest = ATTACH_JPEG_MAIN;
             break;
         case RegionType::kOverlayEx:
             attr->unChnAttr.stOverlayExChn.stPoint.s32X = config.position.x;
             attr->unChnAttr.stOverlayExChn.stPoint.s32Y = config.position.y;
             attr->unChnAttr.stOverlayExChn.u32FgAlpha = config.foreground_alpha;
             attr->unChnAttr.stOverlayExChn.u32BgAlpha = config.background_alpha;
-            attr->unChnAttr.stOverlayExChn.u32Layer = 0;
+            attr->unChnAttr.stOverlayExChn.u32Layer =
+                RegionLayer(handle, kOverlayExLayerCount);
             break;
         case RegionType::kCover:
             attr->unChnAttr.stCoverChn.enCoverType = AREA_RECT;
@@ -90,6 +111,9 @@ void FillChannelAttr(const RegionConfig& config, RGN_CHN_ATTR_S* attr) {
             attr->unChnAttr.stCoverChn.stRect.u32Width = config.size.width;
             attr->unChnAttr.stCoverChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stCoverChn.u32Color = config.background_color;
+            attr->unChnAttr.stCoverChn.u32Layer =
+                RegionLayer(handle, kCoverLayerCount);
+            attr->unChnAttr.stCoverChn.enCoordinate = RGN_ABS_COOR;
             break;
         case RegionType::kCoverEx:
             attr->unChnAttr.stCoverExChn.enCoverType = AREA_RECT;
@@ -98,6 +122,8 @@ void FillChannelAttr(const RegionConfig& config, RGN_CHN_ATTR_S* attr) {
             attr->unChnAttr.stCoverExChn.stRect.u32Width = config.size.width;
             attr->unChnAttr.stCoverExChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stCoverExChn.u32Color = config.background_color;
+            attr->unChnAttr.stCoverExChn.u32Layer =
+                RegionLayer(handle, kCoverLayerCount);
             break;
         case RegionType::kMosaic:
             attr->unChnAttr.stMosaicChn.stRect.s32X = config.position.x;
@@ -105,6 +131,8 @@ void FillChannelAttr(const RegionConfig& config, RGN_CHN_ATTR_S* attr) {
             attr->unChnAttr.stMosaicChn.stRect.u32Width = config.size.width;
             attr->unChnAttr.stMosaicChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stMosaicChn.enBlkSize = MOSAIC_BLK_SIZE_16;
+            attr->unChnAttr.stMosaicChn.u32Layer =
+                RegionLayer(handle, kMosaicLayerCount);
             break;
     }
 }
@@ -155,7 +183,7 @@ bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
-    FillChannelAttr(config, &attr);
+    FillChannelAttr(handle, config, &attr);
     return internal::HiOk(HI_MPI_RGN_AttachToChn(handle, &channel, &attr));
 #else
     (void)handle;
@@ -189,7 +217,7 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
-    FillChannelAttr(config, &attr);
+    FillChannelAttr(handle, config, &attr);
     return internal::HiOk(HI_MPI_RGN_SetDisplayAttr(handle, &channel, &attr));
 #else
     (void)handle;
