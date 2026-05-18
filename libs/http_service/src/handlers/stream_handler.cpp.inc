@@ -164,11 +164,16 @@ HttpResponse HandleWebrtc(const HttpRequest &request) {
 
 void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     if (dependencies_.stream_hub_service == nullptr) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu reason=no_stream_hub",
+                        static_cast<unsigned long long>(connection_id));
         SendResponse(connection_id, StatusResponse(501, "Not Implemented"), true);
         return;
     }
     AuthPrincipal principal = Authenticate(request);
     if (principal.user_name.empty()) {
+        INFRA_LOG_ERROR(kModuleName, "HTTP-FLV reject conn=%llu reason=auth",
+                        static_cast<unsigned long long>(connection_id));
         SendResponse(connection_id, StatusResponse(401, "Unauthorized"), true);
         return;
     }
@@ -177,6 +182,10 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     std::string stream_name = request.path.substr(prefix.size());
     if (stream_name.size() <= 4 ||
         stream_name.substr(stream_name.size() - 4) != ".flv") {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu reason=path path=%s",
+                        static_cast<unsigned long long>(connection_id),
+                        request.path.c_str());
         SendResponse(connection_id, StatusResponse(400, "Invalid FLV path"),
                      true);
         return;
@@ -184,10 +193,18 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     stream_name.resize(stream_name.size() - 4);
     StreamId stream_id = StreamId::kMain;
     if (!StreamIdFromJsonString(stream_name, &stream_id)) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu reason=stream stream=%s",
+                        static_cast<unsigned long long>(connection_id),
+                        stream_name.c_str());
         SendResponse(connection_id, StatusResponse(400, "Invalid stream"), true);
         return;
     }
     if (!dependencies_.stream_hub_service->IsFlvSupported(stream_id)) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu stream=%s reason=unsupported",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
         SendResponse(connection_id,
                      StatusResponse(409,
                                     "HTTP-FLV requires H.264 or H.265 stream"),
@@ -198,32 +215,30 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     const StreamFlvBootstrap bootstrap =
         dependencies_.stream_hub_service->GetFlvBootstrap(stream_id);
     if (!bootstrap.supported) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu stream=%s reason=not_ready",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
         SendResponse(connection_id, StatusResponse(503, "FLV stream not ready"),
                      true);
         return;
     }
     std::shared_ptr<IStreamFlvSink> sink(
         new FlvConnectionSink(this, connection_id));
-    const StreamFlvClientId client_id =
-        dependencies_.stream_hub_service->AttachFlvClient(
-            stream_id, bootstrap.config_generation, sink);
-    if (client_id == 0) {
-        SendResponse(connection_id,
-                     StatusResponse(409, "Could not open FLV stream"), true);
-        return;
-    }
-
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end()) {
-            (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+            INFRA_LOG_ERROR(kModuleName,
+                            "HTTP-FLV close conn=%llu stream=%s reason=no_session",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
             return;
         }
         iter->second.processing = false;
         iter->second.closing = true;
         iter->second.streaming = true;
-        iter->second.flv_client_id = client_id;
+        iter->second.flv_client_id = 0;
         iter->second.flv_sink = sink;
         iter->second.pending_requests.clear();
         iter->second.recv_buffer.clear();
@@ -235,6 +250,15 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     headers["Cache-Control"] = "no-cache";
     headers["Pragma"] = "no-cache";
     const std::string header_block = BuildStreamingHeaderBlock(200, headers);
+    INFRA_LOG_INFO(kModuleName,
+                   "HTTP-FLV start conn=%llu stream=%s client=%llu header=%zu "
+                   "file=%zu sequence=%zu keyframe=%zu",
+                   static_cast<unsigned long long>(connection_id),
+                   StreamIdToJsonString(stream_id),
+                   static_cast<unsigned long long>(0),
+                   header_block.size(), bootstrap.file_header.size(),
+                   bootstrap.sequence_header.size(),
+                   bootstrap.last_keyframe.size());
     if (!EnqueueStreamingChunk(
             connection_id,
             reinterpret_cast<const uint8_t *>(header_block.data()),
@@ -253,6 +277,45 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
              connection_id,
              reinterpret_cast<const uint8_t *>(bootstrap.last_keyframe.data()),
              bootstrap.last_keyframe.size()))) {
-        (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV close conn=%llu stream=%s reason=enqueue",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
+        if (dependencies_.net_engine != nullptr) {
+            (void)dependencies_.net_engine->Close(connection_id);
+        }
+        return;
     }
+
+    const StreamFlvClientId client_id =
+        dependencies_.stream_hub_service->AttachFlvClient(
+            stream_id, bootstrap.config_generation, sink);
+    if (client_id == 0) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV close conn=%llu stream=%s reason=attach",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
+        if (dependencies_.net_engine != nullptr) {
+            (void)dependencies_.net_engine->Close(connection_id);
+        }
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || !iter->second.streaming) {
+            (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+            INFRA_LOG_ERROR(kModuleName,
+                            "HTTP-FLV close conn=%llu stream=%s reason=closed",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
+            return;
+        }
+        iter->second.flv_client_id = client_id;
+    }
+    INFRA_LOG_INFO(kModuleName, "HTTP-FLV attached conn=%llu stream=%s client=%llu",
+                   static_cast<unsigned long long>(connection_id),
+                   StreamIdToJsonString(stream_id),
+                   static_cast<unsigned long long>(client_id));
 }

@@ -80,10 +80,18 @@ bool AppRuntime::Start(const RuntimePaths &paths) {
 }
 
 void AppRuntime::Stop() {
+    INFRA_LOG_INFO("app", "Stop protocol subsystem begin");
     ProtocolSubsystem::Get().Stop();
+    INFRA_LOG_INFO("app", "Stop protocol subsystem done");
+    INFRA_LOG_INFO("app", "Stop media subsystem begin");
     MediaSubsystem::Get().Stop();
+    INFRA_LOG_INFO("app", "Stop media subsystem done");
+    INFRA_LOG_INFO("app", "Stop device subsystem begin");
     DeviceSubsystem::Get().Stop();
+    INFRA_LOG_INFO("app", "Stop device subsystem done");
+    INFRA_LOG_INFO("app", "Stop core services begin");
     CoreServices::Get().Stop();
+    INFRA_LOG_INFO("app", "Stop core services done");
     started_ = false;
 }
 
@@ -91,6 +99,7 @@ void AppRuntime::RunUntilSignal() {
     while (g_stop_requested == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
+    INFRA_LOG_INFO("app", "stop signal received");
 }
 
 }  // namespace live_stream

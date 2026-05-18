@@ -13,7 +13,7 @@ function rtspAddress(config: RtspConfig | null, stream: StreamName) {
 }
 
 export function LiveViewPage() {
-  const [stream, setStream] = useState<StreamName>('main');
+  const [stream, setStream] = useState<StreamName>('sub');
   const { statuses, rtspConfig } = useLiveView();
 
   const runningStreams = statuses.filter((item) => item.state === 'running');

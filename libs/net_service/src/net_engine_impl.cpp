@@ -59,18 +59,29 @@ bool NetEngineImpl::Start() {
 
 void NetEngineImpl::Stop() {
     running_ = false;
+    std::vector<std::shared_ptr<TcpServer>> servers;
+    std::vector<std::shared_ptr<UdpEndpoint>> udp_sockets;
+    std::vector<std::shared_ptr<TcpConnection>> connections;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         for (auto &entry : servers_) {
-            entry.second->Stop();
+            servers.push_back(entry.second);
         }
         for (auto &entry : udp_sockets_) {
-            entry.second->Stop();
+            udp_sockets.push_back(entry.second);
         }
-        auto connections = connections_;
-        for (auto &entry : connections) {
-            (void)entry.second->Close();
+        for (auto &entry : connections_) {
+            connections.push_back(entry.second);
         }
+    }
+    for (const auto &server : servers) {
+        server->Stop();
+    }
+    for (const auto &socket : udp_sockets) {
+        socket->Stop();
+    }
+    for (const auto &connection : connections) {
+        (void)connection->Close();
     }
     for (const auto &loop : loops_) {
         loop->Stop();
@@ -321,13 +332,9 @@ void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
     if (callbacks.on_accept == nullptr) {
         return;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
-        (void)options_.callback_executor->Post(
-            [callbacks, id, peer = std::move(peer)]() mutable {
-                callbacks.on_accept(callbacks.user, id, peer);
-            });
-        return;
-    }
+    // Accept must complete before the first read callback. HTTP/RTSP create
+    // per-connection session state in on_accept; posting accept to a shared
+    // worker pool can let early read events race ahead and get dropped.
     callbacks.on_accept(callbacks.user, id, std::move(peer));
 }
 

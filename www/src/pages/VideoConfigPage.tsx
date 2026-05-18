@@ -130,7 +130,7 @@ function StreamForm({
 
 export function VideoConfigPage() {
   const { config, setConfig, capabilities, statuses } = useVideoConfig();
-  const [active, setActive] = useState<StreamName>('main');
+  const [active, setActive] = useState<StreamName>('sub');
   const [saved, setSaved] = useState<string>('');
 
   if (!config) {

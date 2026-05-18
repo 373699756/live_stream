@@ -22,4 +22,5 @@ interface Window {
     };
     isSupported?: () => boolean;
   };
+  flvjs?: Window['mpegts'];
 }

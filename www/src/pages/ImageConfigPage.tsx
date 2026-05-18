@@ -132,7 +132,7 @@ function OptionField({
 export function ImageConfigPage() {
   const { config, setConfig, capabilities: mediaCapabilities, statuses, save, reset, savedMsg } = useImageConfig();
   const capabilities: ImageCapabilities = mediaCapabilities.image;
-  const [previewStream, setPreviewStream] = useState<StreamName>('main');
+  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
   if (!config) {
     return <div className="panel">加载图像配置...</div>;

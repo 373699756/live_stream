@@ -24,6 +24,7 @@
 #include "http_static_files.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
+#include "infra/log.h"
 #include "infra/time.h"
 #include "live_stream/json_utils.h"
 #include "logger_service.h"
@@ -42,8 +43,21 @@ namespace {
 
 constexpr const char *kModuleName = "http_service";
 constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
-constexpr uint32_t kMaxStreamingQueuedChunks = 32;
 constexpr size_t kMaxStreamingQueuedBytes = 1024U * 1024U;
+
+const char *HttpMethodName(HttpMethod method) {
+    switch (method) {
+        case HttpMethod::kGet:
+            return "GET";
+        case HttpMethod::kPost:
+            return "POST";
+        case HttpMethod::kPut:
+            return "PUT";
+        case HttpMethod::kDelete:
+            return "DELETE";
+    }
+    return "UNKNOWN";
+}
 
 // --- Domain: shared ---
 
@@ -198,6 +212,10 @@ public:
             tcp_server_id_ = server;
             started_ = true;
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP listen %s:%u static_root=%s",
+                       options_.listen_ip.c_str(),
+                       static_cast<unsigned>(options_.listen_port),
+                       options_.static_root.c_str());
         return true;
     }
 
@@ -224,6 +242,9 @@ public:
             stats_.active_connections = 0;
             task_executor = task_executor_.get();
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP stop begin server=%llu streams=%zu",
+                       static_cast<unsigned long long>(server_id),
+                       flv_client_ids.size());
         if (dependencies_.stream_hub_service != nullptr) {
             for (StreamFlvClientId client_id : flv_client_ids) {
                 (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
@@ -235,6 +256,7 @@ public:
         if (task_executor != nullptr) {
             task_executor->Stop(infra::StopMode::kDiscard);
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP stopped");
     }
 
     void Release() {
@@ -417,13 +439,10 @@ private:
         std::string recv_buffer;
         std::string client_ip;
         std::deque<PendingRequest> pending_requests;
-        std::deque<std::string> streaming_chunks;
-        size_t streaming_bytes = 0;
         uint64_t request_count = 0;
         uint64_t timeout_generation = 0;
         StreamFlvClientId flv_client_id = 0;
         std::shared_ptr<IStreamFlvSink> flv_sink;
-        bool streaming_flush_posted = false;
         bool processing = false;
         bool closing = false;
         bool streaming = false;
@@ -473,95 +492,33 @@ private:
 
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) {
-        infra::Executor *task_executor = nullptr;
-        bool post_flush = false;
-        bool should_close = false;
+        NetEngine *net_engine = nullptr;
         if (data == nullptr || size == 0) {
             return true;
         }
-        std::string chunk(reinterpret_cast<const char *>(data), size);
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto iter = sessions_.find(connection_id);
             if (iter == sessions_.end() || !iter->second.streaming) {
                 return false;
             }
-            HttpSession &session = iter->second;
-            if (session.streaming_chunks.size() >= kMaxStreamingQueuedChunks ||
-                session.streaming_bytes + chunk.size() > kMaxStreamingQueuedBytes) {
-                should_close = true;
-            } else {
-                session.streaming_bytes += chunk.size();
-                session.streaming_chunks.push_back(std::move(chunk));
-                if (!session.streaming_flush_posted) {
-                    session.streaming_flush_posted = true;
-                    task_executor = task_executor_.get();
-                    post_flush = true;
-                }
-            }
+            net_engine = dependencies_.net_engine;
         }
-        if (should_close) {
-            if (dependencies_.net_engine != nullptr) {
-                (void)dependencies_.net_engine->Close(connection_id);
-            }
+        if (net_engine == nullptr) {
             return false;
         }
-        if (post_flush && task_executor == nullptr) {
-            if (dependencies_.net_engine != nullptr) {
-                (void)dependencies_.net_engine->Close(connection_id);
-            }
+        if (net_engine->PendingBytes(connection_id) >= kMaxStreamingQueuedBytes) {
+            (void)net_engine->Close(connection_id);
             return false;
         }
-        if (post_flush && task_executor != nullptr &&
-            !task_executor->Post(
-                [this, connection_id]() { FlushStreamingChunks(connection_id); })) {
-            std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter != sessions_.end()) {
-                iter->second.streaming_flush_posted = false;
-            }
-            if (dependencies_.net_engine != nullptr) {
-                (void)dependencies_.net_engine->Close(connection_id);
-            }
+        if (!net_engine->Send(connection_id, data, size)) {
+            INFRA_LOG_ERROR(kModuleName, "HTTP-FLV send failed conn=%llu size=%zu",
+                            static_cast<unsigned long long>(connection_id),
+                            size);
+            (void)net_engine->Close(connection_id);
             return false;
         }
         return true;
-    }
-
-    void FlushStreamingChunks(ConnectionId connection_id) {
-        while (true) {
-            NetEngine *net_engine = nullptr;
-            std::string chunk;
-            {
-                std::lock_guard<std::mutex> guard(mutex_);
-                auto iter = sessions_.find(connection_id);
-                if (iter == sessions_.end()) {
-                    return;
-                }
-                HttpSession &session = iter->second;
-                if (session.streaming_chunks.empty()) {
-                    session.streaming_flush_posted = false;
-                    return;
-                }
-                chunk = std::move(session.streaming_chunks.front());
-                session.streaming_chunks.pop_front();
-                if (session.streaming_bytes >= chunk.size()) {
-                    session.streaming_bytes -= chunk.size();
-                } else {
-                    session.streaming_bytes = 0;
-                }
-                net_engine = dependencies_.net_engine;
-            }
-            if (net_engine == nullptr ||
-                !net_engine->Send(connection_id,
-                                  reinterpret_cast<const uint8_t *>(chunk.data()),
-                                  chunk.size())) {
-                if (net_engine != nullptr) {
-                    (void)net_engine->Close(connection_id);
-                }
-                return;
-            }
-        }
     }
 
     bool TryHandleStreamingRequest(ConnectionId connection_id,
@@ -574,6 +531,9 @@ private:
             std::lock_guard<std::mutex> guard(mutex_);
             ++stats_.total_requests;
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP-FLV request conn=%llu path=%s peer=%s",
+                       static_cast<unsigned long long>(connection_id),
+                       request.path.c_str(), request.client_ip.c_str());
         StartFlvStream(connection_id, request);
         return true;
     }
@@ -720,6 +680,7 @@ private:
     }
 
     void OnConnection(ConnectionId connection_id, NetAddress peer) {
+        std::string peer_ip = peer.ip;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             HttpSession session;
@@ -727,11 +688,15 @@ private:
             sessions_[connection_id] = session;
             ++stats_.active_connections;
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP accept conn=%llu peer=%s",
+                       static_cast<unsigned long long>(connection_id),
+                       peer_ip.c_str());
         ArmSessionTimer(connection_id, options_.request_timeout_ms);
     }
 
     void OnClose(ConnectionId connection_id) {
         StreamFlvClientId flv_client_id = 0;
+        bool was_streaming = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto iter = sessions_.find(connection_id);
@@ -739,6 +704,7 @@ private:
                 return;
             }
             flv_client_id = iter->second.flv_client_id;
+            was_streaming = iter->second.streaming;
             sessions_.erase(iter);
         }
         if (flv_client_id != 0 && dependencies_.stream_hub_service != nullptr) {
@@ -750,6 +716,10 @@ private:
                 --stats_.active_connections;
             }
         }
+        INFRA_LOG_INFO(kModuleName, "HTTP close conn=%llu streaming=%d flv=%llu",
+                       static_cast<unsigned long long>(connection_id),
+                       was_streaming ? 1 : 0,
+                       static_cast<unsigned long long>(flv_client_id));
     }
 
     void OnMessage(ConnectionId connection_id, const uint8_t *data,
@@ -920,6 +890,15 @@ private:
                 !options_.enable_keep_alive || !parsed.keep_alive ||
                 session.request_count >= options_.max_requests_per_connection;
             session.pending_requests.push_back(std::move(pending));
+            const PendingRequest &queued = session.pending_requests.back();
+            INFRA_LOG_INFO(kModuleName,
+                           "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
+                           static_cast<unsigned long long>(iter->first),
+                           session.client_ip.c_str(),
+                           HttpMethodName(queued.request.method),
+                           queued.request.path.c_str(),
+                           queued.request.query_string.size(),
+                           queued.request.body.size());
             ++parsed_count;
             if (session.pending_requests.back().close_after_response) {
                 session.closing = true;

@@ -10,8 +10,8 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kNetIoThreadCount = 2;
-constexpr uint32_t kNetCallbackWorkerCount = 2;
+constexpr uint32_t kNetIoThreadCount = 1;
+constexpr uint32_t kNetCallbackWorkerCount = 1;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpExecutorWorkerCount = 4;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
@@ -307,33 +307,47 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
 
 void ProtocolSubsystem::Stop() {
     if (http_) {
+        INFRA_LOG_INFO("app", "Stop HTTP service begin");
         http_->Stop();
-        http_.reset();
+        INFRA_LOG_INFO("app", "Stop HTTP service done");
     }
     if (onvif_) {
+        INFRA_LOG_INFO("app", "Stop ONVIF service begin");
         onvif_->Stop();
-        onvif_.reset();
+        INFRA_LOG_INFO("app", "Stop ONVIF service done");
     }
-    onvif_uri_provider_.reset();
     if (stream_hub_) {
+        INFRA_LOG_INFO("app", "Stop stream hub service begin");
         stream_hub_->Stop();
-        stream_hub_.reset();
+        INFRA_LOG_INFO("app", "Stop stream hub service done");
     }
     if (webrtc_) {
+        INFRA_LOG_INFO("app", "Stop WebRTC service begin");
         webrtc_->Stop();
-        webrtc_.reset();
+        INFRA_LOG_INFO("app", "Stop WebRTC service done");
     }
     if (rtsp_) {
+        INFRA_LOG_INFO("app", "Stop RTSP service begin");
         rtsp_->Stop();
-        rtsp_.reset();
+        INFRA_LOG_INFO("app", "Stop RTSP service done");
     }
     if (net_engine_) {
+        INFRA_LOG_INFO("app", "Stop net engine begin");
         net_engine_->Stop();
         net_engine_.reset();
+        INFRA_LOG_INFO("app", "Stop net engine done");
     }
     if (net_callback_executor_) {
+        INFRA_LOG_INFO("app", "Stop net callback executor begin");
         net_callback_executor_->Stop(infra::StopMode::kDiscard);
+        INFRA_LOG_INFO("app", "Stop net callback executor done");
     }
+    http_.reset();
+    onvif_.reset();
+    onvif_uri_provider_.reset();
+    stream_hub_.reset();
+    webrtc_.reset();
+    rtsp_.reset();
     started_ = false;
 }
 

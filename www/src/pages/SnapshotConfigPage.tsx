@@ -6,7 +6,7 @@ import { VideoPreview } from '../components/VideoPreview';
 
 export function SnapshotConfigPage() {
   const { config, setConfig, save, reset, savedMsg } = useSnapshotConfig();
-  const [previewStream, setPreviewStream] = useState<StreamName>('main');
+  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
   if (!config) {
     return <div className="panel">加载抓图配置...</div>;

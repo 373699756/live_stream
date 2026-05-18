@@ -51,6 +51,36 @@ interface VideoPreviewProps {
   onStreamChange: (stream: StreamName) => void;
 }
 
+function loadScriptOnce(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
+    if (existing?.dataset.loaded === 'true') {
+      resolve();
+      return;
+    }
+    const script = existing || document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`load failed: ${src}`));
+    if (!existing) {
+      document.head.appendChild(script);
+    }
+  });
+}
+
+async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
+  const current = window.mpegts || window.flvjs;
+  if (current) {
+    return current as FlvModule;
+  }
+  await loadScriptOnce('/vendor/flv.min.js');
+  return (window.mpegts || window.flvjs) as FlvModule | undefined;
+}
+
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('flv');
   const [snapshotTick, setSnapshotTick] = useState(0);
@@ -289,32 +319,40 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
     resetVideoSurface();
     setPreviewState('等待 HTTP-FLV 视频流');
-    const mpegts = window.mpegts as FlvModule | undefined;
-    if (!mpegts || !mpegts.isSupported?.()) {
-      setPreviewState('HTTP-FLV 播放器不可用');
-      return () => {
-        disposed = true;
-        cleanup();
-      };
-    }
-    const player = mpegts.createPlayer({
-      type: 'flv',
-      isLive: true,
-      url: flvStreamUrl(stream),
-      hasAudio: false,
-      hasVideo: true,
-    });
-    flvRef.current = player;
-    const errorEvent = mpegts.Events?.ERROR;
-    if (errorEvent && player.on) {
-      player.on(errorEvent, () => {
-        setPreviewState('HTTP-FLV 播放失败');
-      });
-    }
-    player.attachMediaElement(video);
-    player.load();
-    void player.play().catch(() => {});
-    setPreviewState('正在拉取 HTTP-FLV 码流');
+    void (async () => {
+      try {
+        const flvModule = await loadLocalFlvModule();
+        if (disposed) {
+          return;
+        }
+        if (!flvModule || !flvModule.isSupported?.()) {
+          setPreviewState('HTTP-FLV 播放器不可用');
+          return;
+        }
+        const player = flvModule.createPlayer({
+          type: 'flv',
+          isLive: true,
+          url: flvStreamUrl(stream),
+          hasAudio: false,
+          hasVideo: true,
+        });
+        flvRef.current = player;
+        const errorEvent = flvModule.Events?.ERROR;
+        if (errorEvent && player.on) {
+          player.on(errorEvent, () => {
+            setPreviewState('HTTP-FLV 播放失败');
+          });
+        }
+        player.attachMediaElement(video);
+        player.load();
+        void player.play().catch(() => {});
+        setPreviewState('正在拉取 HTTP-FLV 码流');
+      } catch {
+        if (!disposed) {
+          setPreviewState('HTTP-FLV 播放器脚本未加载');
+        }
+      }
+    })();
     return () => {
       disposed = true;
       cleanup();
