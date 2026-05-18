@@ -112,6 +112,7 @@ bool MediaPipeline::Start() {
     }
     vi_bound_vpss_ = true;
 
+    // VENC receive is started by BindVpssVenc() after the source is connected.
     if (!sdk_->StartVenc(config_)) {
         Stop();
         return false;

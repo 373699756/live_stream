@@ -4,10 +4,12 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <poll.h>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace live_stream {
 namespace hisisdk {
@@ -56,6 +58,150 @@ VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode) {
   return VENC_RC_MODE_H264CBR;
 }
 
+VENC_GOP_ATTR_S GopAttrFromConfig(GopMode mode, uint32_t gop) {
+  VENC_GOP_ATTR_S attr{};
+  switch (mode) {
+    case GopMode::kDualP:
+      attr.enGopMode = VENC_GOPMODE_DUALP;
+      attr.stDualP.s32IPQpDelta = 4;
+      attr.stDualP.s32SPQpDelta = 2;
+      attr.stDualP.u32SPInterval = 3;
+      break;
+    case GopMode::kSmartP:
+      attr.enGopMode = VENC_GOPMODE_SMARTP;
+      attr.stSmartP.s32BgQpDelta = 4;
+      attr.stSmartP.s32ViQpDelta = 2;
+      attr.stSmartP.u32BgInterval = gop > 0 ? gop * 3 : 90;
+      break;
+    case GopMode::kNormalP:
+      attr.enGopMode = VENC_GOPMODE_NORMALP;
+      attr.stNormalP.s32IPQpDelta = 2;
+      break;
+  }
+  return attr;
+}
+
+bool CheckMpiCall(const char* expression, HI_S32 status) {
+  if (status == HI_SUCCESS) {
+    return true;
+  }
+  INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
+  return false;
+}
+
+uint32_t VencPackDataLen(const VENC_PACK_S& pack) {
+  if (pack.pu8Addr == nullptr || pack.u32Len <= pack.u32Offset) {
+    return 0;
+  }
+  return pack.u32Len - pack.u32Offset;
+}
+
+FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
+  if (codec == VideoCodec::kJpeg || codec == VideoCodec::kMjpeg) {
+    return FrameType::kJpeg;
+  }
+
+  bool has_i_slice = false;
+  bool has_b_slice = false;
+  for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
+    const VENC_PACK_S& pack = stream.pstPack[i];
+    const uint32_t data_num = pack.u32DataNum < 8 ? pack.u32DataNum : 8;
+    if (codec == VideoCodec::kH264) {
+      if (pack.DataType.enH264EType == H264E_NALU_IDRSLICE) {
+        return FrameType::kIdr;
+      }
+      if (pack.DataType.enH264EType == H264E_NALU_ISLICE) {
+        has_i_slice = true;
+      } else if (pack.DataType.enH264EType == H264E_NALU_BSLICE) {
+        has_b_slice = true;
+      }
+      for (uint32_t j = 0; j < data_num; ++j) {
+        const H264E_NALU_TYPE_E type =
+            pack.stPackInfo[j].u32PackType.enH264EType;
+        if (type == H264E_NALU_IDRSLICE) {
+          return FrameType::kIdr;
+        }
+        if (type == H264E_NALU_ISLICE) {
+          has_i_slice = true;
+        } else if (type == H264E_NALU_BSLICE) {
+          has_b_slice = true;
+        }
+      }
+    } else if (codec == VideoCodec::kH265) {
+      if (pack.DataType.enH265EType == H265E_NALU_IDRSLICE) {
+        return FrameType::kIdr;
+      }
+      if (pack.DataType.enH265EType == H265E_NALU_ISLICE) {
+        has_i_slice = true;
+      } else if (pack.DataType.enH265EType == H265E_NALU_BSLICE) {
+        has_b_slice = true;
+      }
+      for (uint32_t j = 0; j < data_num; ++j) {
+        const H265E_NALU_TYPE_E type =
+            pack.stPackInfo[j].u32PackType.enH265EType;
+        if (type == H265E_NALU_IDRSLICE) {
+          return FrameType::kIdr;
+        }
+        if (type == H265E_NALU_ISLICE) {
+          has_i_slice = true;
+        } else if (type == H265E_NALU_BSLICE) {
+          has_b_slice = true;
+        }
+      }
+    }
+  }
+
+  if (has_i_slice) {
+    return FrameType::kI;
+  }
+  if (has_b_slice) {
+    return FrameType::kB;
+  }
+  return FrameType::kP;
+}
+
+bool StartRecvFrame(VENC_CHN venc) {
+  VENC_RECV_PIC_PARAM_S recv_param{};
+  recv_param.s32RecvPicNum = -1;
+  return CheckMpiCall("HI_MPI_VENC_StartRecvFrame",
+                      HI_MPI_VENC_StartRecvFrame(venc, &recv_param));
+}
+
+void StopRecvFrame(VENC_CHN venc) {
+  (void)HI_MPI_VENC_StopRecvFrame(venc);
+}
+
+bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
+                    int32_t venc_channel) {
+  MPP_CHN_S src{};
+  src.enModId = HI_ID_VPSS;
+  src.s32DevId = vpss_group;
+  src.s32ChnId = vpss_channel;
+
+  MPP_CHN_S dst{};
+  dst.enModId = HI_ID_VENC;
+  dst.s32DevId = 0;
+  dst.s32ChnId = venc_channel;
+
+  return CheckMpiCall("HI_MPI_SYS_Bind(VPSS-VENC)",
+                      HI_MPI_SYS_Bind(&src, &dst));
+}
+
+void UnbindVpssFromVenc(int32_t vpss_group, int32_t vpss_channel,
+                        int32_t venc_channel) {
+  MPP_CHN_S src{};
+  src.enModId = HI_ID_VPSS;
+  src.s32DevId = vpss_group;
+  src.s32ChnId = vpss_channel;
+
+  MPP_CHN_S dst{};
+  dst.enModId = HI_ID_VENC;
+  dst.s32DevId = 0;
+  dst.s32ChnId = venc_channel;
+
+  (void)HI_MPI_SYS_UnBind(&src, &dst);
+}
+
 // ─── Configure a single VENC channel ───────────────────────────
 bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
   VENC_CHN venc = static_cast<VENC_CHN>(chn);
@@ -70,6 +216,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
       stream.size.width * stream.size.height * 3 / 2;
   attr.stVencAttr.bByFrame = HI_TRUE;
   attr.stVencAttr.u32Profile = 0;  // default profile
+  attr.stGopAttr = GopAttrFromConfig(stream.gop_mode, stream.gop);
 
   // RC parameters
   attr.stRcAttr.enRcMode = RcModeFromConfig(stream.codec, stream.rc_mode);
@@ -162,48 +309,72 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
       break;
     }
 
-    // Query stream
-    VENC_STREAM_S stream{};
-    stream.pstPack = new VENC_PACK_S[1];  // single pack per query
-    HI_S32 s32_ret = HI_MPI_VENC_GetStream(venc, &stream, 0);
+    VENC_CHN_STATUS_S status{};
+    HI_S32 s32_ret = HI_MPI_VENC_QueryStatus(venc, &status);
     if (s32_ret != HI_SUCCESS) {
-      delete[] stream.pstPack;
+      INFRA_LOG_ERROR("hisi_vendor",
+                      "HI_MPI_VENC_QueryStatus chn %d failed: 0x%08x", chn,
+                      s32_ret);
+      continue;
+    }
+    if (status.u32CurPacks == 0 || status.u32LeftStreamFrames == 0) {
       continue;
     }
 
-    if (stream.u32PackCount == 0 || stream.pstPack[0].u32Len == 0) {
+    std::vector<VENC_PACK_S> packs(status.u32CurPacks);
+    VENC_STREAM_S stream{};
+    stream.pstPack = packs.data();
+    stream.u32PackCount = status.u32CurPacks;
+    s32_ret = HI_MPI_VENC_GetStream(venc, &stream, 0);
+    if (s32_ret != HI_SUCCESS) {
+      INFRA_LOG_ERROR("hisi_vendor",
+                      "HI_MPI_VENC_GetStream chn %d failed: 0x%08x", chn,
+                      s32_ret);
+      continue;
+    }
+
+    uint64_t total_len = 0;
+    for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
+      total_len += VencPackDataLen(stream.pstPack[i]);
+    }
+    if (total_len == 0 ||
+        total_len > std::numeric_limits<uint32_t>::max()) {
       HI_MPI_VENC_ReleaseStream(venc, &stream);
-      delete[] stream.pstPack;
       continue;
     }
 
-    // Wrap data into an EncodedFrame
-    VENC_PACK_S& pack = stream.pstPack[0];
-    uint32_t data_len = pack.u32Len - pack.u32Offset;
-    auto buffer = std::make_shared<internal::HeapMediaBuffer>(data_len);
-    std::memcpy(buffer->MutableData(),
-                static_cast<const uint8_t*>(pack.pu8Addr) + pack.u32Offset,
-                data_len);
-    buffer->SetSize(data_len);
+    auto buffer = std::make_shared<internal::HeapMediaBuffer>(
+        static_cast<uint32_t>(total_len));
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
+      const VENC_PACK_S& pack = stream.pstPack[i];
+      const uint32_t data_len = VencPackDataLen(pack);
+      if (data_len == 0) {
+        continue;
+      }
+      std::memcpy(buffer->MutableData() + offset,
+                  static_cast<const uint8_t*>(pack.pu8Addr) + pack.u32Offset,
+                  data_len);
+      offset += data_len;
+    }
+    buffer->SetSize(offset);
 
     EncodedFrame frame;
     frame.stream_id = stream_id;
     frame.codec = codec;
-    frame.frame_type = (pack.bFrameEnd == HI_TRUE) ? FrameType::kIdr
-                                                      : FrameType::kP;
-    frame.sequence = 0;  // sequence tracking if needed
-    frame.pts_us = pack.u64PTS;
+    frame.frame_type = FrameTypeFromStream(stream, codec);
+    frame.sequence = stream.u32Seq;
+    frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = 0;
     frame.buffer = std::move(buffer);
     frame.offset = 0;
-    frame.size = data_len;
+    frame.size = offset;
 
     if (callback) {
       callback(frame, user);
     }
 
     HI_MPI_VENC_ReleaseStream(venc, &stream);
-    delete[] stream.pstPack;
   }
 }
 
@@ -224,10 +395,6 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
   if (!ConfigureVencChannel(config.venc_channel, config.main_stream)) {
     return false;
   }
-  VENC_CHN main_venc = static_cast<VENC_CHN>(config.venc_channel);
-  VENC_RECV_PIC_PARAM_S recv_param{};
-  recv_param.s32RecvPicNum = -1;  // Continuous receive
-  HISI_CHECK(HI_MPI_VENC_StartRecvFrame(main_venc, &recv_param));
 
   // Sub stream (if enabled)
   if (config.sub_stream.enabled) {
@@ -235,8 +402,6 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
       StopVenc(config);
       return false;
     }
-    VENC_CHN sub_venc = static_cast<VENC_CHN>(config.sub_venc_channel);
-    HISI_CHECK(HI_MPI_VENC_StartRecvFrame(sub_venc, &recv_param));
   }
 
   impl_->venc_started_ = true;
@@ -254,12 +419,12 @@ void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
   VENC_CHN main_venc = static_cast<VENC_CHN>(config.venc_channel);
-  HI_MPI_VENC_StopRecvFrame(main_venc);
+  StopRecvFrame(main_venc);
   HI_MPI_VENC_DestroyChn(main_venc);
 
   if (config.sub_stream.enabled) {
     VENC_CHN sub_venc = static_cast<VENC_CHN>(config.sub_venc_channel);
-    HI_MPI_VENC_StopRecvFrame(sub_venc);
+    StopRecvFrame(sub_venc);
     HI_MPI_VENC_DestroyChn(sub_venc);
   }
 #else
@@ -277,33 +442,39 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
   // Main stream: VPSS CHN → VENC
-  {
-    MPP_CHN_S src{};
-    src.enModId = HI_ID_VPSS;
-    src.s32DevId = config.vpss_group;
-    src.s32ChnId = config.vpss_channel;
-
-    MPP_CHN_S dst{};
-    dst.enModId = HI_ID_VENC;
-    dst.s32DevId = 0;
-    dst.s32ChnId = config.venc_channel;
-
-    HISI_CHECK(HI_MPI_SYS_Bind(&src, &dst));
+  if (!BindVpssToVenc(config.vpss_group, config.vpss_channel,
+                      config.venc_channel)) {
+    return false;
   }
 
   // Sub stream (if enabled)
   if (config.sub_stream.enabled) {
-    MPP_CHN_S src{};
-    src.enModId = HI_ID_VPSS;
-    src.s32DevId = config.vpss_group;
-    src.s32ChnId = config.sub_vpss_channel;
+    if (!BindVpssToVenc(config.vpss_group, config.sub_vpss_channel,
+                        config.sub_venc_channel)) {
+      UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
+                         config.venc_channel);
+      return false;
+    }
+  }
 
-    MPP_CHN_S dst{};
-    dst.enModId = HI_ID_VENC;
-    dst.s32DevId = 0;
-    dst.s32ChnId = config.sub_venc_channel;
+  if (!StartRecvFrame(static_cast<VENC_CHN>(config.venc_channel))) {
+    if (config.sub_stream.enabled) {
+      UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
+                         config.sub_venc_channel);
+    }
+    UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
+                       config.venc_channel);
+    return false;
+  }
 
-    HISI_CHECK(HI_MPI_SYS_Bind(&src, &dst));
+  if (config.sub_stream.enabled &&
+      !StartRecvFrame(static_cast<VENC_CHN>(config.sub_venc_channel))) {
+    StopRecvFrame(static_cast<VENC_CHN>(config.venc_channel));
+    UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
+                       config.sub_venc_channel);
+    UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
+                       config.venc_channel);
+    return false;
   }
 
   impl_->vpss_bound_venc_ = true;
@@ -320,33 +491,20 @@ void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
   if (!impl_->vpss_bound_venc_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
-  // Main stream unbind
-  {
-    MPP_CHN_S src{};
-    src.enModId = HI_ID_VPSS;
-    src.s32DevId = config.vpss_group;
-    src.s32ChnId = config.vpss_channel;
-
-    MPP_CHN_S dst{};
-    dst.enModId = HI_ID_VENC;
-    dst.s32DevId = 0;
-    dst.s32ChnId = config.venc_channel;
-
-    HI_MPI_SYS_UnBind(&src, &dst);
+  if (impl_->venc_started_) {
+    if (config.sub_stream.enabled) {
+      StopRecvFrame(static_cast<VENC_CHN>(config.sub_venc_channel));
+    }
+    StopRecvFrame(static_cast<VENC_CHN>(config.venc_channel));
   }
 
+  // Main stream unbind
+  UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
+                     config.venc_channel);
+
   if (config.sub_stream.enabled) {
-    MPP_CHN_S src{};
-    src.enModId = HI_ID_VPSS;
-    src.s32DevId = config.vpss_group;
-    src.s32ChnId = config.sub_vpss_channel;
-
-    MPP_CHN_S dst{};
-    dst.enModId = HI_ID_VENC;
-    dst.s32DevId = 0;
-    dst.s32ChnId = config.sub_venc_channel;
-
-    HI_MPI_SYS_UnBind(&src, &dst);
+    UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
+                       config.sub_venc_channel);
   }
 #else
   (void)config;
