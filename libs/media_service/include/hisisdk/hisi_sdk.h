@@ -6,6 +6,7 @@
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
+#include "live_stream/config_json.h"
 
 #include <cstdint>
 #include <memory>
@@ -106,6 +107,8 @@ public:
         void* user) = 0;
     virtual void StopVencStream(const MediaPipelineConfig& config) = 0;
     virtual bool RequestIdr(int32_t venc_channel) = 0;
+    virtual bool ApplyImageConfig(const MediaPipelineConfig& config,
+                                  const ConfigJson& image_config) = 0;
 
     virtual bool CreateRegion(int32_t handle,
                               const RegionConfig& config) = 0;

@@ -6,6 +6,7 @@
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
+#include "live_stream/config_json.h"
 
 namespace live_stream {
 
@@ -30,6 +31,7 @@ public:
     void DeinitSystem();
     bool Start();
     void Stop();
+    bool ApplyImageConfig(const ConfigJson& image_config);
 
     bool system_initialized() const { return system_initialized_; }
     const MediaChannels& channels() const { return channels_; }

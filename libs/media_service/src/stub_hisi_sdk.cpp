@@ -212,6 +212,12 @@ bool StubHisiSdk::RequestIdr(int32_t venc_channel) {
     return venc_channel >= 0;
 }
 
+bool StubHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
+                                   const ConfigJson& image_config) {
+    return config.video_pipe >= 0 && config.vi_channel >= 0 &&
+           image_config.is_object();
+}
+
 bool StubHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
     (void)config;
     return handle >= 0 && config.size.width > 0 && config.size.height > 0;

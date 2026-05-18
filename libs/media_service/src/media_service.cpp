@@ -261,7 +261,21 @@ struct MediaService::Impl {
 
     ConfigResult ApplyImageConfig(const ConfigJson &value) {
         image_config = value;
+        if (state != ServiceState::kStarted) {
+            return ConfigResult::Success();
+        }
+        if (!ApplySavedImageConfig()) {
+            ++stats.config_apply_failed_count;
+            return ConfigResult::Failure("image", "apply failed");
+        }
         return ConfigResult::Success();
+    }
+
+    bool ApplySavedImageConfig() {
+        if (!image_config.is_object() || image_config.empty()) {
+            return true;
+        }
+        return pipeline.ApplyImageConfig(image_config);
     }
 
     bool ApplyPipelineConfig(const MediaPipelineConfig &config) {
@@ -280,6 +294,9 @@ struct MediaService::Impl {
         bool ok = !was_initialized || pipeline.InitSystem();
         if (ok && was_started) {
             ok = pipeline.Start();
+            if (ok) {
+                ok = ApplySavedImageConfig();
+            }
         }
         if (ok) {
             ++stats.config_apply_count;
@@ -355,6 +372,11 @@ bool MediaService::Start() {
     }
 
     impl_->state = ServiceState::kStarted;
+    if (!impl_->ApplySavedImageConfig()) {
+        impl_->pipeline.Stop();
+        impl_->state = ServiceState::kInitialized;
+        return false;
+    }
     impl_->NotifySourceState(StreamState::kRunning);
     return true;
 }

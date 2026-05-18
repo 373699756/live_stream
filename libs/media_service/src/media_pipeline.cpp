@@ -161,6 +161,10 @@ void MediaPipeline::Stop() {
     }
 }
 
+bool MediaPipeline::ApplyImageConfig(const ConfigJson& image_config) {
+    return sdk_->ApplyImageConfig(config_, image_config);
+}
+
 void MediaPipeline::BuildChannels() {
     channels_.vi = MppChannel{MppModule::kVi, config_.video_pipe,
                               config_.vi_channel};
