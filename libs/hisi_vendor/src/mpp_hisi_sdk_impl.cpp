@@ -6,13 +6,19 @@ namespace hisisdk {
 MppHisiSdk::MppHisiSdk() : impl_(new Impl()) {}
 
 MppHisiSdk::~MppHisiSdk() {
-  DeinitSystem();
-  delete impl_;
+    if (impl_ != nullptr) {
+        if (impl_->has_active_config_) {
+            StopVencStream(impl_->active_config_);
+        }
+        DeinitSystem();
+        delete impl_;
+        impl_ = nullptr;
+    }
 }
 
 IHisiSdk& MppSdk() {
-  static MppHisiSdk sdk;
-  return sdk;
+    static MppHisiSdk sdk;
+    return sdk;
 }
 
 }  // namespace hisisdk
