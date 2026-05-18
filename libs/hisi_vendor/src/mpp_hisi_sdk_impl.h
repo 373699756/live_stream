@@ -4,6 +4,7 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
 
 #include <atomic>
+#include <pthread.h>
 #include <thread>
 
 namespace live_stream {
@@ -16,11 +17,14 @@ struct MppHisiSdk::Impl {
 
   bool system_initialized_ = false;
   bool vi_started_ = false;
+  bool mipi_started_ = false;
+  bool isp_started_ = false;
   bool vpss_started_ = false;
   bool vi_bound_vpss_ = false;
   bool venc_started_ = false;
   bool vpss_bound_venc_ = false;
   bool stream_started_ = false;
+  pthread_t isp_thread_ = 0;
 
   std::thread main_stream_thread_;
   std::thread sub_stream_thread_;

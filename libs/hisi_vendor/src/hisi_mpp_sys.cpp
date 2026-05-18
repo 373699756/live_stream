@@ -10,56 +10,63 @@ namespace hisisdk {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
-// ─── Map stream config to MPP picture size ──────────────────────
-PIC_SIZE_E PicSizeFromDimensions(uint32_t width, uint32_t height) {
-  struct { uint32_t w, h; PIC_SIZE_E ps; } kMap[] = {
-    {3840, 2160, PIC_3840x2160},
-    {2592, 1520, PIC_2592x1520},
-    {2560, 1440, PIC_2560x1440},
-    {2048, 1536, PIC_2048x1536},
-    {1920, 1080, PIC_1920x1080},
-    {1280, 960,  PIC_1280x960},
-    {1280, 720,  PIC_1280x720},
-    {720,  576,  PIC_720x576},
-    {704,  576,  PIC_704x576},
-    {640,  480,  PIC_640x480},
-    {352,  288,  PIC_352x288},
-  };
-  for (auto& entry : kMap) {
-    if (entry.w == width && entry.h == height) return entry.ps;
-  }
-  return PIC_1920x1080;
+uint32_t AlignUp(uint32_t value, uint32_t alignment) {
+  return ((value + alignment - 1) / alignment) * alignment;
+}
+
+uint64_t Yuv420BlockSize(const VideoSize& size) {
+  constexpr uint32_t kDefaultAlign = 32;
+  const uint64_t stride = AlignUp(size.width, kDefaultAlign);
+  const uint64_t height = AlignUp(size.height, 2);
+  return stride * height * 3 / 2;
 }
 
 // ─── Video buffer configuration ─────────────────────────────────
 bool ConfigureVideoBuffer(const MediaPipelineConfig& config) {
-  VB_CONF_S vb_conf{};
+  VB_CONFIG_S vb_conf{};
   (void)std::memset(&vb_conf, 0, sizeof(vb_conf));
 
   // Main stream VB pool
-  vb_conf.astCommPool[0].u32BlkSize =
-      config.main_stream.size.width * config.main_stream.size.height * 3 / 2;
+  vb_conf.astCommPool[0].u64BlkSize =
+      Yuv420BlockSize(config.main_stream.size);
   vb_conf.astCommPool[0].u32BlkCnt = config.vb_block_count;
-  vb_conf.astCommPool[0].enMmpl = VB_MMC_CACHED;
+  vb_conf.astCommPool[0].enRemapMode = VB_REMAP_MODE_CACHED;
 
   // Sub-stream VB pool (if enabled)
   if (config.sub_stream.enabled) {
-    vb_conf.astCommPool[1].u32BlkSize =
-        config.sub_stream.size.width * config.sub_stream.size.height * 3 / 2;
+    vb_conf.astCommPool[1].u64BlkSize =
+        Yuv420BlockSize(config.sub_stream.size);
     vb_conf.astCommPool[1].u32BlkCnt = 4;
-    vb_conf.astCommPool[1].enMmpl = VB_MMC_CACHED;
+    vb_conf.astCommPool[1].enRemapMode = VB_REMAP_MODE_CACHED;
   }
 
   vb_conf.u32MaxPoolCnt = 4;
 
   HISI_CHECK(HI_MPI_VB_SetConfig(&vb_conf));
   HISI_CHECK(HI_MPI_VB_Init());
+  const HI_S32 sys_status = HI_MPI_SYS_Init();
+  if (sys_status != HI_SUCCESS) {
+    INFRA_LOG_ERROR("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x",
+                    sys_status);
+    HI_MPI_VB_Exit();
+    return false;
+  }
 
-  SYS_VIRUAL_ADDR_UNIFY_CONFIG_S sys_vir_addr_conf{};
-  sys_vir_addr_conf.bSupport = HI_FALSE;
-  HISI_CHECK(HI_MPI_SYS_SetVirAddrUnifyConfig(&sys_vir_addr_conf));
-  HISI_CHECK(HI_MPI_SYS_Init());
+  return true;
+}
 
+bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
+  VI_VPSS_MODE_S vi_vpss_mode{};
+  HISI_CHECK(HI_MPI_SYS_GetVIVPSSMode(&vi_vpss_mode));
+
+  if (config.video_pipe >= 0 && config.video_pipe < VI_MAX_PIPE_NUM) {
+    vi_vpss_mode.aenMode[config.video_pipe] = VI_OFFLINE_VPSS_OFFLINE;
+  }
+  if (config.snap_pipe >= 0 && config.snap_pipe < VI_MAX_PIPE_NUM) {
+    vi_vpss_mode.aenMode[config.snap_pipe] = VI_OFFLINE_VPSS_OFFLINE;
+  }
+
+  HISI_CHECK(HI_MPI_SYS_SetVIVPSSMode(&vi_vpss_mode));
   return true;
 }
 
@@ -78,17 +85,18 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
   }
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
-  // 1. Logger for MPP
-  HISI_CHECK(HI_MPI_SYS_SetLogLevel(HIS_LOG_LEVEL_ERR));
+  MPP_VERSION_S version{};
+  HISI_CHECK(HI_MPI_SYS_GetVersion(&version));
+  INFRA_LOG_INFO("hisi_vendor", "HISI MPP version: %s", version.aVersion);
 
-  // 2. Check chip version
-  HI_CHAR version[64]{};
-  HISI_CHECK(HI_MPI_SYS_GetVersion(version));
-  INFRA_LOG_INFO("hisi_vendor", "HISI MPP version: %s", version);
-
-  // 3. Init Video Buffer + SYS
   if (!ConfigureVideoBuffer(config)) {
     INFRA_LOG_ERROR("hisi_vendor", "ConfigureVideoBuffer failed");
+    return false;
+  }
+  if (!ConfigureViVpssMode(config)) {
+    INFRA_LOG_ERROR("hisi_vendor", "ConfigureViVpssMode failed");
+    HI_MPI_SYS_Exit();
+    HI_MPI_VB_Exit();
     return false;
   }
 
