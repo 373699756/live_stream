@@ -55,12 +55,17 @@ struct AuthPrincipal {
 /**
  * @brief 用户存储记录。
  *
- * password_credential 是密码校验器可理解的不透明凭据。auth_service 不解释该字段，
- * 也不会把它写入日志或审计。
+ * password_credential 是密码校验器可理解的不透明凭据（如 sha256:<salt>:<hash>）。
+ * auth_service 不解释该字段，也不会把它写入日志或审计。
+ *
+ * password_plaintext 为可选的明文密码，优先级低于 password_credential。
+ * 仅当 password_credential 验证失败时，才尝试 password_plaintext 比对。
+ * 主要供调试阶段使用，生产环境应使用 SHA-256 凭据。
  */
 struct AuthUserRecord {
     std::string user_name;
     std::string password_credential;
+    std::string password_plaintext;
     AuthRole role = AuthRole::kViewer;
     bool enabled = true;
 };
@@ -158,7 +163,7 @@ struct AuthStats {
 };
 
 class IAuthTokenGenerator {
- public:
+public:
     virtual ~IAuthTokenGenerator() = default;
 
     virtual std::string GenerateToken() = 0;
@@ -168,7 +173,7 @@ class IAuthTokenGenerator {
  * @brief 用户存储接口。
  */
 class IAuthUserStore {
- public:
+public:
     virtual ~IAuthUserStore() = default;
 
     virtual AuthUserRecord FindUser(
@@ -180,7 +185,7 @@ class IAuthUserStore {
  * @brief 密码校验接口。
  */
 class IPasswordVerifier {
- public:
+public:
     virtual ~IPasswordVerifier() = default;
 
     virtual bool VerifyPassword(
@@ -192,7 +197,7 @@ class IPasswordVerifier {
  * @brief 鉴权审计 sink。
  */
 class IAuthAuditSink {
- public:
+public:
     virtual ~IAuthAuditSink() = default;
 
     virtual bool RecordAuthOperation(
@@ -203,7 +208,7 @@ class IAuthAuditSink {
  * @brief 统一鉴权 public interface。
  */
 class IAuthService {
- public:
+public:
     virtual ~IAuthService() = default;
 
     virtual bool Start() = 0;

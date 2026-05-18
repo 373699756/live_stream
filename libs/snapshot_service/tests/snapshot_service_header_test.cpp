@@ -7,7 +7,7 @@
 namespace {
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}

@@ -1,29 +1,16 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import { cloneDefaultConfig, mockSnapshotConfig } from '../api/mock';
-import type { SnapshotConfig, StreamName, StreamStatus } from '../api/types';
+import { useState } from 'react';
+import { useSnapshotConfig } from '../hooks/useSnapshotConfig';
+import type { StreamName } from '../api/types';
 import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
 
 export function SnapshotConfigPage() {
-  const [config, setConfig] = useState<SnapshotConfig | null>(null);
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
+  const { config, setConfig, save, reset, savedMsg } = useSnapshotConfig();
   const [previewStream, setPreviewStream] = useState<StreamName>('main');
-  const [saved, setSaved] = useState('');
-
-  useEffect(() => {
-    void api.getSnapshotConfig().then(setConfig);
-    void api.getStreamStatus().then(setStatuses);
-  }, []);
 
   if (!config) {
     return <div className="panel">加载抓图配置...</div>;
   }
-
-  const resetDefault = () => {
-    setConfig(cloneDefaultConfig(mockSnapshotConfig));
-    setSaved('已恢复默认值，保存后生效');
-  };
 
   return (
     <div className="config-preview-layout">
@@ -83,22 +70,18 @@ export function SnapshotConfigPage() {
           </a>
         </div>
         <div className="form-actions">
-          <button type="button" onClick={resetDefault}>恢复默认</button>
+          <button type="button" onClick={reset}>恢复默认</button>
           <button
             type="button"
             className="primary"
-            onClick={() =>
-              void api
-                .saveSnapshotConfig(config)
-                .then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))
-            }
+            onClick={() => void save()}
           >
             保存
           </button>
         </div>
-        {saved && <div className="save-hint">{saved}</div>}
+        {savedMsg && <div className="save-hint">{savedMsg}</div>}
       </section>
-      <VideoPreview stream={previewStream} statuses={statuses} onStreamChange={setPreviewStream} />
+      <VideoPreview stream={previewStream} statuses={[]} onStreamChange={setPreviewStream} />
     </div>
   );
 }

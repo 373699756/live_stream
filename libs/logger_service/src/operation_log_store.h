@@ -16,7 +16,7 @@
 namespace live_stream {
 
 class IOperationLogStore {
- public:
+public:
     virtual ~IOperationLogStore() = default;
 
     virtual bool Open() = 0;
@@ -28,7 +28,7 @@ class IOperationLogStore {
 };
 
 class FileOperationLogStore : public IOperationLogStore {
- public:
+public:
     explicit FileOperationLogStore(const LoggerServiceConfig& config);
 
     bool Open() override;
@@ -38,7 +38,7 @@ class FileOperationLogStore : public IOperationLogStore {
         const OperationLogQuery& query) override;
     bool Export(const OperationLogExportOptions& options) override;
 
- private:
+private:
     std::vector<std::string> LogPathsNewestFirst() const;
     bool RotateIfNeededLocked();
 

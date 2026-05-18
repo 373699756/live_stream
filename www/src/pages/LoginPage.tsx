@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { login } from '../api/client';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (userName: string, password: string) => Promise<boolean>;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -12,12 +11,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   const submit = async () => {
     setError('');
-    const ok = await login(userName, password);
-    if (ok) {
-      onLogin();
-      return;
+    const ok = await onLogin(userName, password);
+    if (!ok) {
+      setError('用户名或密码错误');
     }
-    setError('用户名或密码错误');
   };
 
   return (

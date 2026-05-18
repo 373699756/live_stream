@@ -1,11 +1,11 @@
 SERVICE_NAME := http_service
 .DEFAULT_GOAL := all
-INFRA_LIB := ../../build/lib/libinfra_service.a
-AUTH_LIB := ../../build/lib/libauth_service.a
-LOGGER_LIB := ../../build/lib/liblogger_service.a
-NET_LIB := ../../build/lib/libnet_service.a
-MEDIA_LIB := ../../build/lib/libmedia_service.a
-SYSTEM_LIB := ../../build/lib/libsystem_service.a
+INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
+AUTH_LIB := $(BUILD_DIR)/lib/libauth_service.a
+LOGGER_LIB := $(BUILD_DIR)/lib/liblogger_service.a
+NET_LIB := $(BUILD_DIR)/lib/libnet_service.a
+MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
+SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem_service.a
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai_service/include
@@ -23,9 +23,9 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/upgrade_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/stream_hub_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc_service/include
 
-SNAPSHOT_LIB := ../../build/lib/libsnapshot_service.a
-STREAM_HUB_LIB := ../../build/lib/libstream_hub_service.a
-WEBRTC_LIB := ../../build/lib/libwebrtc_service.a
+SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot_service.a
+STREAM_HUB_LIB := $(BUILD_DIR)/lib/libstream_hub_service.a
+WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc_service.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(STREAM_HUB_LIB) \
@@ -62,3 +62,8 @@ $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc_service all
 
 include ../service_rules.mk
+
+# http_service.cpp #include-s all handler fragments — track them so make
+# recompiles whenever any handler file changes.
+HANDLER_INCS := $(wildcard src/handlers/*.cpp.inc)
+$(OBJ_DIR)/http_service.o: $(HANDLER_INCS)

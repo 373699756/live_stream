@@ -1,21 +1,19 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { useState } from 'react';
+import { saveVideoConfig } from '../api/video';
 import {
   isStreamSupported,
   resolutionLabel,
   resolutionValue,
 } from '../api/resolution';
-import { cloneDefaultConfig, mockMediaCapabilities, mockVideoConfig } from '../api/mock';
+import { cloneDefaultConfig, mockVideoConfig } from '../api/mock';
 import type {
-  MediaCapabilities,
   StreamName,
-  StreamStatus,
-  VideoConfig,
   VideoStreamCapabilities,
   VideoStreamConfig,
 } from '../api/types';
 import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
+import { useVideoConfig } from '../hooks/useVideoConfig';
 
 const codecLabel = (codec: string) => {
   if (codec === 'h264') return 'H.264';
@@ -124,14 +122,6 @@ function StreamForm({
           onChange={(e) => patch({ gop: Number(e.target.value) })}
         />
       </FormField>
-      <FormField label="智能编码">
-        <input
-          type="checkbox"
-          disabled={!available || !capabilities.smart_codec}
-          checked={stream.smart_codec && capabilities.smart_codec}
-          onChange={(e) => patch({ smart_codec: e.target.checked })}
-        />
-      </FormField>
       {!available && <div className="save-hint">当前固件未启用该码流管线。</div>}
       {available && !supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}
     </div>
@@ -139,23 +129,9 @@ function StreamForm({
 }
 
 export function VideoConfigPage() {
-  const [config, setConfig] = useState<VideoConfig | null>(null);
-  const [capabilities, setCapabilities] = useState<MediaCapabilities>(mockMediaCapabilities);
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
+  const { config, setConfig, capabilities, statuses } = useVideoConfig();
   const [active, setActive] = useState<StreamName>('main');
   const [saved, setSaved] = useState<string>('');
-
-  useEffect(() => {
-    void api.getVideoConfig().then(setConfig);
-    void api.getMediaCapabilities().then(setCapabilities);
-    void api.getStreamStatus().then(setStatuses);
-  }, []);
-
-  useEffect(() => {
-    if (capabilities.streams[active]?.available === false) {
-      setActive('main');
-    }
-  }, [active, capabilities]);
 
   if (!config) {
     return <div className="panel">加载视频配置...</div>;
@@ -213,7 +189,7 @@ export function VideoConfigPage() {
             type="button"
             className="primary"
             disabled={!allSupported}
-            onClick={() => void api.saveVideoConfig(config).then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))}
+            onClick={() => void saveVideoConfig(config).then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))}
           >
             保存
           </button>

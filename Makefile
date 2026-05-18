@@ -1,13 +1,6 @@
-CROSS_COMPILE ?= arm-himix200-linux-
-ifeq ($(origin CXX),default)
-CXX := $(CROSS_COMPILE)g++
-endif
-ifeq ($(origin AR),default)
-AR := $(CROSS_COMPILE)ar
-endif
-
 .DEFAULT_GOAL := all
 
+ROOT_DIR := $(CURDIR)
 BUILD_DIR ?= build
 LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/app
@@ -16,6 +9,19 @@ THIRDPARTY_DIR := 3rdparty
 THIRDPARTY_SRC := $(THIRDPARTY_DIR)/src
 METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
 METARTC_INSTALL := $(THIRDPARTY_DIR)/install
+OUT_DIR := out
+
+# Include HiSilicon toolchain (sets CROSS_COMPILE, CXX, CPU_FLAGS,
+# HISI_DEFINES, HISI_MPP_STATIC_LIBS, LDFLAGS, LDLIBS, etc.)
+# include mk/toolchain_hi3516dv300.mk
+include $(ROOT_DIR)/libs/hisi_vendor/toolchain_hi3516dv300.mk
+
+ifeq ($(origin CXX),default)
+CXX := $(CROSS_COMPILE)g++
+endif
+ifeq ($(origin AR),default)
+AR := $(CROSS_COMPILE)ar
+endif
 
 OPENSSL_LIBS := $(METARTC_INSTALL)/lib/libssl.a $(METARTC_INSTALL)/lib/libcrypto.a
 SRTP_LIBS := $(METARTC_INSTALL)/lib/libsrtp2.a
@@ -24,9 +30,12 @@ METARTC_LIBS := $(METARTC_INSTALL)/lib/libmetartc8.a $(METARTC_INSTALL)/lib/libm
 THIRDPARTY_LIBS := $(METARTC_LIBS) $(SRTP_LIBS) $(USRSCTP_LIBS) $(OPENSSL_LIBS)
 
 CXXFLAGS += -std=c++17
-CXXFLAGS += -Wall -Wextra -Werror
+CXXFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-date-time
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
+CXXFLAGS += $(CPU_FLAGS)
+CXXFLAGS += $(HISI_DEFINES)
+CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
 CXXFLAGS += -Iapp
 CXXFLAGS += -Ilibs/common/include
 CXXFLAGS += -Ilibs/infra_service/include
@@ -36,12 +45,14 @@ CXXFLAGS += -Ilibs/event_service/include
 CXXFLAGS += -Ilibs/auth_service/include
 CXXFLAGS += -Ilibs/system_service/include
 CXXFLAGS += -Ilibs/network_service/include
+CXXFLAGS += -Ilibs/network_service/src
 CXXFLAGS += -Ilibs/time_service/include
 CXXFLAGS += -Ilibs/stream_codec/include
 CXXFLAGS += -Ilibs/stream_mux/include
 CXXFLAGS += -Ilibs/net_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
+CXXFLAGS += -Ilibs/hisi_vendor/include
 CXXFLAGS += -Ilibs/osd_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
 CXXFLAGS += -Ilibs/webrtc_service/include
@@ -53,6 +64,10 @@ CXXFLAGS += -Ilibs/upgrade_service/include
 CXXFLAGS += -Ilibs/http_service/include
 CXXFLAGS += -I$(METARTC_INSTALL)/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)
+CXXFLAGS += -I$(HISI_MPP_INC)
+CXXFLAGS += -I$(HISI_MPP_ISP_INC)
+CXXFLAGS += -I$(HISI_MPP_ISP_EXT_INC)
+CXXFLAGS += -I$(HISI_MPP_COMMON)
 CXXFLAGS += -pthread
 
 SERVICES := \
@@ -66,6 +81,7 @@ SERVICES := \
 	network_service \
 	time_service \
 	ai_service \
+	hisi_vendor \
 	media_service \
 	osd_service \
 	rtsp_service \
@@ -91,6 +107,7 @@ APP_SRCS := \
 	app/linux_time_platform.cpp \
 	app/linux_upgrade_platform.cpp \
 	app/media_subsystem.cpp \
+	app/platform_factory.cpp \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
@@ -98,14 +115,14 @@ APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 define ADD_SERVICE_LIBRARY
 SERVICE_LIBS += $(LIB_DIR)/lib$(1).a
 $(LIB_DIR)/lib$(1).a:
-	$(MAKE) -C libs/$(1)
+	$(MAKE) -C libs/$(1) ROOT_DIR=$(ROOT_DIR)
 endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
 .PHONY: all test clean thirdparty $(SERVICES)
 
-all: $(SERVICES) $(BIN_DIR)/live_stream
+all: $(SERVICES) $(BIN_DIR)/live_stream out
 
 thirdparty: $(THIRDPARTY_LIBS)
 
@@ -113,7 +130,8 @@ $(THIRDPARTY_LIBS): $(THIRDPARTY_DIR)/build_deps.sh
 	$(THIRDPARTY_DIR)/build_deps.sh
 
 $(SERVICES):
-	$(MAKE) -C libs/$@
+	$(MAKE) -C libs/$@ ROOT_DIR=$(ROOT_DIR) \
+	  ENABLE_HISI_MPP=1
 
 $(OBJ_DIR)/%.o: app/%.cpp
 	@mkdir -p $(dir $@)
@@ -121,7 +139,26 @@ $(OBJ_DIR)/%.o: app/%.cpp
 
 $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(APP_OBJS) $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a $(THIRDPARTY_LIBS) -ldl -pthread -o $@
+	$(CXX) $(CXXFLAGS) -o $@ \
+	  -Wl,--start-group \
+	  $(APP_OBJS) \
+	  $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a \
+	  $(THIRDPARTY_LIBS) $(HISI_MPP_STATIC_LIBS) \
+	  -Wl,--end-group \
+	  $(LDFLAGS) $(LDLIBS)
+
+out: $(BIN_DIR)/live_stream
+	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs
+	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
+	cp -f configs/*.json $(OUT_DIR)/configs/
+	@if [ -d www/dist ]; then \
+		cp -rf www/dist/* $(OUT_DIR)/web/; \
+	else \
+		echo "Building web frontend..."; \
+		cd www && npm run build && cd ..; \
+		cp -rf www/dist/* $(OUT_DIR)/web/; \
+	fi
+	@echo "Output packaged to $(OUT_DIR)/"
 
 test:
 	@for service in $(SERVICES); do \
@@ -132,4 +169,4 @@ clean:
 	@for service in $(SERVICES); do \
 		$(MAKE) -C libs/$$service clean || exit $$?; \
 	done
-	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream
+	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(OUT_DIR)

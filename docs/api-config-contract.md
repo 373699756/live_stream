@@ -13,7 +13,11 @@ This document records the current backend configuration scopes and Web Console A
 
 ## Runtime path contract
 
-`app/main.cpp` currently sets these relative paths:
+`app/main.cpp` resolves paths using this priority order:
+
+1. **CLI argument** `--config-dir <dir>`: relocates all `configs/*` paths under `<dir>`.
+2. **Environment variable** `LIVE_STREAM_CONFIG_DIR=<dir>`: same effect as CLI arg; CLI takes precedence.
+3. **Default relative paths** (resolved from the process working directory):
 
 | Purpose | Path |
 | --- | --- |
@@ -22,7 +26,9 @@ This document records the current backend configuration scopes and Web Console A
 | Auth users | `configs/auth_users.json` |
 | Operation log | `build/runtime/operation.log` |
 
-Packaged deployments must preserve equivalent working-directory semantics or make these paths configurable before changing the launch environment.
+The operation log path is not affected by `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; it always defaults to `build/runtime/operation.log` relative to the working directory.
+
+Packaged deployments that change the working-directory layout must pass `--config-dir` or set `LIVE_STREAM_CONFIG_DIR` accordingly.
 
 ## Configuration scopes
 
@@ -273,6 +279,7 @@ Current fields:
 
 - `hostname`
 - `advertise_ip`
+- `default_ifname` — primary network interface name (e.g. `"eth0"`). Read at startup by `app/runtime_config.cpp` and passed to `CreateLinuxPlatformAdapters()`. Defaults to `"eth0"` if absent.
 - `interfaces.<ifname>.enabled`
 - `interfaces.<ifname>.dhcp`
 - `interfaces.<ifname>.static_ipv4.address`
@@ -286,11 +293,11 @@ Current fields:
 
 Runtime startup usage:
 
-- `app/runtime_config.cpp` reads `advertise_ip` and `ports`.
+- `app/runtime_config.cpp` reads `advertise_ip`, `ports`, and `default_ifname`.
 
 Known issue:
 
-- `DeviceSubsystem` currently creates `CreateLinuxNetworkPlatform("eth0")` and sets `default_ifname = "eth0"`. If multiple devices or environments use different interface names, the default interface should become config-driven.
+- `DeviceSubsystem` receives `network_ifname` from `AppRuntimeConfig` (read from `network.default_ifname` in config, defaulting to `"eth0"`). To use a different interface, set `network.default_ifname` in `business_config.json`.
 
 ### `time`
 

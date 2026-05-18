@@ -33,7 +33,6 @@ export function isStreamSupported(stream: VideoStreamConfig, capabilities: Video
     stream.bitrate_kbps <= capabilities.bitrate_kbps.max &&
     capabilities.rate_control.includes(stream.rate_control) &&
     stream.gop >= capabilities.gop.min &&
-    stream.gop <= capabilities.gop.max &&
-    (capabilities.smart_codec || !stream.smart_codec)
+    stream.gop <= capabilities.gop.max
   );
 }

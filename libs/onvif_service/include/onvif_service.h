@@ -47,7 +47,7 @@ struct OnvifServiceStats {
 };
 
 class IOnvifUriProvider {
- public:
+public:
     virtual ~IOnvifUriProvider() = default;
 
     virtual std::string GetStreamUri(StreamId stream_id) = 0;
@@ -65,7 +65,7 @@ struct OnvifServiceDependencies {
 };
 
 class IOnvifService {
- public:
+public:
     virtual ~IOnvifService() = default;
 
     virtual bool Start() = 0;
@@ -78,7 +78,7 @@ std::unique_ptr<IOnvifService> CreateOnvifService(
     const OnvifServiceDependencies& dependencies);
 
 class OnvifService {
- public:
+public:
     static const char* Name();
 };
 

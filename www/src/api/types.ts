@@ -4,26 +4,18 @@ export type VideoCodecName = 'h264' | 'h265' | 'jpeg' | 'mjpeg';
 
 export interface VideoStreamConfig {
   enabled: boolean;
-  name: StreamName;
   codec: VideoCodecName;
-  profile: string;
-  h265_profile: string;
   resolution: Resolution;
   fps: number;
   bitrate_kbps: number;
   rate_control: 'cbr' | 'vbr' | 'fixqp';
   gop: number;
-  vbr_quality: number;
-  smart_codec: boolean;
 }
 
 export interface VideoConfig {
   streams: {
     main: VideoStreamConfig;
     sub: VideoStreamConfig;
-  };
-  source: {
-    sensor: string;
   };
 }
 

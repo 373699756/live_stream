@@ -21,7 +21,7 @@ uint32_t AutoWorkerCount() {
 }  // namespace
 
 class Executor::Impl {
- public:
+public:
     bool Start(const ExecutorOptions& options) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (running_) {
@@ -116,7 +116,7 @@ class Executor::Impl {
         return stats;
     }
 
- private:
+private:
     void WorkerLoop() {
         while (true) {
             Task task;

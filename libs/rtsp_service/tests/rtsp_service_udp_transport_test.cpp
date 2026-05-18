@@ -18,10 +18,10 @@ int BindUdp(uint16_t* port) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
@@ -43,10 +43,10 @@ int ConnectTcp(uint16_t port) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if (inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
@@ -130,8 +130,9 @@ int main() {
         return 5;
     }
 
-    if (!Exchange(tcp_fd, "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                          "CSeq: 1\r\n\r\n",
+    if (!Exchange(tcp_fd,
+                  "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                  "CSeq: 1\r\n\r\n",
                   "application/sdp")) {
         close(tcp_fd);
         close(udp_fd);
@@ -144,8 +145,9 @@ int main() {
         std::to_string(udp_port) + "-" + std::to_string(udp_port + 1) +
         "\r\n\r\n";
     if (!Exchange(tcp_fd, setup, "client_port=") ||
-        !Exchange(tcp_fd, "PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                          "CSeq: 3\r\n\r\n",
+        !Exchange(tcp_fd,
+                  "PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                  "CSeq: 3\r\n\r\n",
                   "200 OK")) {
         close(tcp_fd);
         close(udp_fd);

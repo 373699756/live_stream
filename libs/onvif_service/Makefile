@@ -1,13 +1,13 @@
 SERVICE_NAME := onvif_service
 .DEFAULT_GOAL := all
-INFRA_LIB := ../../build/lib/libinfra_service.a
-CXXFLAGS += -I../auth_service/include
-CXXFLAGS += -I../config_service/include
-CXXFLAGS += -I../event_service/include
-CXXFLAGS += -I../media_service/include
-CXXFLAGS += -I../net_service/include
-CXXFLAGS += -I../system_service/include
-CXXFLAGS += -I../time_service/include
+INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
+CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/event_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/system_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/time_service/include
 EXTRA_TEST_DEPS := $(INFRA_LIB)
 EXTRA_TEST_LIBS := $(INFRA_LIB)
 

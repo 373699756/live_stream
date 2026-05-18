@@ -7,22 +7,22 @@
 namespace live_stream {
 
 class AppRuntime {
- public:
-  static AppRuntime& Get();
+public:
+    static AppRuntime& Get();
 
-  bool Start(const RuntimePaths& paths);
-  void Stop();
-  void RunUntilSignal();
+    bool Start(const RuntimePaths& paths);
+    void Stop();
+    void RunUntilSignal();
 
- private:
-  AppRuntime() = default;
-  ~AppRuntime() = default;
+private:
+    AppRuntime() = default;
+    ~AppRuntime() = default;
 
-  AppRuntime(const AppRuntime&) = delete;
-  AppRuntime& operator=(const AppRuntime&) = delete;
+    AppRuntime(const AppRuntime&) = delete;
+    AppRuntime& operator=(const AppRuntime&) = delete;
 
-  AppRuntimeConfig runtime_config_;
-  bool started_ = false;
+    AppRuntimeConfig runtime_config_;
+    bool started_ = false;
 };
 
 void RequestAppStop();

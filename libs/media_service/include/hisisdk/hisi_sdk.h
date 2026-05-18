@@ -82,7 +82,7 @@ struct JpegFrame {
 };
 
 class IHisiSdk {
- public:
+public:
     virtual ~IHisiSdk() = default;
 
     virtual MediaCapabilities GetCapabilities() = 0;

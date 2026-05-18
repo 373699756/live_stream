@@ -13,39 +13,36 @@ import type {
   WebrtcConfig,
 } from './types';
 
+// ---------------------------------------------------------------------------
+// Domain: video  (api/video.ts)
+// ---------------------------------------------------------------------------
+
 export const mockVideoConfig: VideoConfig = {
   streams: {
     main: {
       enabled: true,
-      name: 'main',
       codec: 'h265',
-      profile: 'main',
-      h265_profile: 'main',
       resolution: '1920x1080',
       fps: 25,
       bitrate_kbps: 4096,
       rate_control: 'cbr',
       gop: 50,
-      vbr_quality: 60,
-      smart_codec: true,
     },
     sub: {
       enabled: true,
-      name: 'sub',
       codec: 'h264',
-      profile: 'main',
-      h265_profile: 'main',
       resolution: '640x360',
       fps: 15,
       bitrate_kbps: 768,
       rate_control: 'cbr',
       gop: 30,
-      vbr_quality: 55,
-      smart_codec: false,
     },
   },
-  source: { sensor: 'default' },
 };
+
+// ---------------------------------------------------------------------------
+// Domain: video — media capabilities  (api/video.ts)
+// ---------------------------------------------------------------------------
 
 export const mockMediaCapabilities: MediaCapabilities = {
   streams: {
@@ -141,6 +138,10 @@ export const mockMediaCapabilities: MediaCapabilities = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Domain: image  (api/image.ts)
+// ---------------------------------------------------------------------------
+
 export const mockImageConfig: ImageConfig = {
   basic: { brightness: 50, contrast: 50, saturation: 50, sharpness: 50, hue: 50 },
   exposure: {
@@ -159,6 +160,10 @@ export const mockImageConfig: ImageConfig = {
   color_mode: { mode: 'color' },
 };
 
+// ---------------------------------------------------------------------------
+// Domain: system — OSD  (api/system.ts)
+// ---------------------------------------------------------------------------
+
 export const mockOsdConfig: OsdConfig = {
   enabled: true,
   items: {
@@ -169,6 +174,10 @@ export const mockOsdConfig: OsdConfig = {
   font_color: '#FFFFFF',
   background: true,
 };
+
+// ---------------------------------------------------------------------------
+// Domain: network  (api/network.ts)
+// ---------------------------------------------------------------------------
 
 export const mockNetworkConfig: NetworkConfig = {
   hostname: 'live-stream-ipc',
@@ -186,6 +195,10 @@ export const mockNetworkConfig: NetworkConfig = {
   ports: { http: 80, https: 443, rtsp: 554, onvif: 8000 },
 };
 
+// ---------------------------------------------------------------------------
+// Domain: system — snapshot config  (api/system.ts)
+// ---------------------------------------------------------------------------
+
 export const mockSnapshotConfig: SnapshotConfig = {
   enabled: true,
   main_path: '/api/snapshot/main.jpg',
@@ -193,6 +206,10 @@ export const mockSnapshotConfig: SnapshotConfig = {
   jpeg_quality: 85,
   timeout_ms: 2000,
 };
+
+// ---------------------------------------------------------------------------
+// Domain: stream  (api/stream.ts)
+// ---------------------------------------------------------------------------
 
 export const mockRtspConfig: RtspConfig = {
   enabled: true,
@@ -214,6 +231,10 @@ export const mockWebrtcConfig: WebrtcConfig = {
   prefer_tcp: false,
 };
 
+// ---------------------------------------------------------------------------
+// Domain: system — upgrade  (api/system.ts)
+// ---------------------------------------------------------------------------
+
 export const mockUpgradePackageInfo: UpgradePackageInfo = {
   package_path: '/tmp/live_stream/upgrade/uploads/mock-firmware.bin',
   version: '1.0.1',
@@ -234,6 +255,10 @@ export const mockUpgradeStatus: UpgradeStatus = {
   started_at_ms: 0,
   finished_at_ms: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Domain: system — status & stream status  (api/system.ts / api/video.ts)
+// ---------------------------------------------------------------------------
 
 export const mockSystemStatus: SystemStatus = {
   deviceName: 'IPC Camera',
@@ -270,6 +295,10 @@ export const mockStreamStatus: StreamStatus[] = [
     state: 'running',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 export function cloneDefaultConfig<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

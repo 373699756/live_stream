@@ -23,7 +23,7 @@ class MoveOnlyFunction;
 
 template <>
 class MoveOnlyFunction<void()> {
- public:
+public:
     MoveOnlyFunction() = default;
     MoveOnlyFunction(std::nullptr_t) {}
 
@@ -73,7 +73,7 @@ class MoveOnlyFunction<void()> {
         heap_active_ = false;
     }
 
- private:
+private:
     static constexpr std::size_t kInlineSize = 64;
     static constexpr std::size_t kInlineAlign = alignof(std::max_align_t);
     using Storage =
@@ -89,11 +89,11 @@ class MoveOnlyFunction<void()> {
 
         InitStorage<Stored>(
             std::forward<Callable>(callable),
-            std::integral_constant<
+            std::integral_constant <
                 bool,
-                sizeof(Stored) <= kInlineSize &&
-                    alignof(Stored) <= kInlineAlign &&
-                    std::is_nothrow_move_constructible<Stored>::value>());
+            sizeof(Stored) <= kInlineSize &&
+                alignof(Stored) <= kInlineAlign &&
+                std::is_nothrow_move_constructible<Stored>::value > ());
     }
 
     template <typename Stored, typename Callable>
@@ -181,7 +181,7 @@ struct ExecutorStats {
 };
 
 class Executor {
- public:
+public:
     Executor();
     ~Executor();
 
@@ -193,7 +193,7 @@ class Executor {
     bool Post(Task task);
     ExecutorStats GetStats() const;
 
- private:
+private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };

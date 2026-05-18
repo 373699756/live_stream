@@ -10,7 +10,7 @@
 namespace {
 
 class FakeMediaService : public live_stream::MediaService {
- public:
+public:
     infra::Result<live_stream::FrameSubscriptionId> SubscribeFrames(
         const live_stream::FrameSubscribeOptions& options,
         live_stream::IFrameSink* sink) override {
@@ -60,7 +60,7 @@ class FakeMediaService : public live_stream::MediaService {
 };
 
 class FakeNetEngine : public live_stream::NetEngine {
- public:
+public:
     infra::Status Start() override {
         ++start_count;
         return infra::Status::kOk;

@@ -15,7 +15,7 @@ class IEventService;
 class ILoggerService;
 
 class UpgradeService {
- public:
+public:
     static const char* Name();
 };
 
@@ -63,7 +63,7 @@ struct UpgradeRequest {
 using UpgradeProgressCallback = std::function<void(uint32_t progress_percent)>;
 
 class IUpgradePlatform {
- public:
+public:
     virtual ~IUpgradePlatform() = default;
 
     virtual UpgradePackageInfo ValidatePackage(
@@ -93,7 +93,7 @@ struct UpgradeServiceOptions {
 };
 
 class IUpgradeService {
- public:
+public:
     virtual ~IUpgradeService() = default;
 
     virtual bool Start() = 0;

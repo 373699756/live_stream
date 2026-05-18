@@ -7,6 +7,6 @@ namespace live_stream {
 
 using ConfigJson = nlohmann::json;
 
-} // namespace live_stream
+}  // namespace live_stream
 
-#endif // LIVE_STREAM_COMMON_CONFIG_JSON_H_
+#endif  // LIVE_STREAM_COMMON_CONFIG_JSON_H_

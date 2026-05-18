@@ -29,7 +29,7 @@ bool IsEventSizeValid(const Event& event) {
 }
 
 class EventServiceImpl : public IEventService {
- public:
+public:
     EventServiceImpl() = default;
     ~EventServiceImpl() override {
         Stop();
@@ -148,7 +148,7 @@ class EventServiceImpl : public IEventService {
         });
     }
 
- private:
+private:
     bool IsInitializedForRead() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return initialized_;

@@ -111,10 +111,13 @@ Source files:
 - `app/device_subsystem.cpp`
 - `app/device_platforms.h`
 - `app/linux_*_platform.cpp`
+- `app/platform_factory.h`
+- `app/platform_factory.cpp`
 
 Responsibilities:
 
-- Create platform adapters for Linux-backed system, time, network, and upgrade operations.
+- Create platform adapters for Linux-backed system, time, network, and upgrade operations via `CreateLinuxPlatformAdapters()`.
+- Accept a `PlatformAdapters` struct from `AppRuntime` at startup.
 - Start device management services:
   - `SystemService`
   - `TimeService`
@@ -122,15 +125,7 @@ Responsibilities:
   - `AlarmService`
   - `UpgradeService`
 
-Current technical debt:
-
-- The default network interface is hard-coded as `eth0` in `DeviceSubsystem`.
-- Linux platform creation is spread across `app/linux_*_platform.cpp` and wired directly in the subsystem.
-
-Preferred direction:
-
-- Add an app-level platform factory when platform variation becomes necessary.
-- Keep platform-specific code out of service modules unless the service owns that platform abstraction.
+The default network interface is read from `network.default_ifname` in the runtime config (falls back to `"eth0"` if absent). It is no longer hard-coded in `DeviceSubsystem`.
 
 ## Media subsystem
 
@@ -144,15 +139,11 @@ Responsibilities:
 - Start the video media pipeline.
 - Start AI only when `ai.enabled` is true.
 - Start OSD and snapshot services after media is available.
+- Expose `MediaRefs` (holding concrete service pointers) to the app composition root.
 
-Current technical debt:
-
-- Cross-module dependencies currently use concrete classes for several media services, such as `MediaService`, `AiService`, and `SnapshotService`.
-
-Preferred direction:
-
-- Keep the media pipeline stable.
-- Add interfaces only for cross-module capabilities that are consumed outside the media module.
+Cross-module consumers (`HttpService`, `RtspService`, `OnvifService`) receive narrow view interfaces
+(`IMediaView`, `IAiView`, `ISnapshotView`) rather than concrete class pointers. The interfaces are
+defined in each service's own header.
 
 ## Protocol subsystem
 
@@ -174,15 +165,11 @@ Responsibilities:
 
 The protocol subsystem depends on already-started core, device, and media services.
 
-Current technical debt:
-
-- This subsystem is the widest composition point.
-- HTTP service dependency wiring is especially wide because HTTP routes touch many business services.
-
-Preferred direction:
-
-- Keep `ProtocolSubsystem` as the composition point, but move option/dependency mapping into small helper functions.
-- Split HTTP business route handlers by domain while preserving API paths and DTOs.
+HTTP route handlers are split by business domain into `src/handlers/*.cpp.inc` files
+(auth, media, system, time, network, upgrade, AI, snapshot, stream, config, operations).
+Each handler fragment is `#include`d into `HttpServiceImpl`'s private section.
+`HttpServiceDependencies` uses narrow view interfaces (`IMediaView`, `IAiView`, `ISnapshotView`)
+for the three cross-module dependencies, and concrete interface pointers for all others.
 
 ## HTTP/Web Console boundary
 
@@ -200,14 +187,19 @@ When backend API fields change, update both:
 
 ## Configuration files and runtime paths
 
-`app/main.cpp` currently uses relative runtime paths:
+`app/main.cpp` resolves runtime paths in this priority order:
 
-- Business config: `configs/business_config.json`
-- Default config: `configs/default_config.json`
-- Auth users: `configs/auth_users.json`
-- Operation log: `build/runtime/operation.log`
+1. `--config-dir <dir>` CLI argument — relocates all `configs/*` paths under `<dir>`.
+2. `LIVE_STREAM_CONFIG_DIR` environment variable — same effect; CLI takes precedence.
+3. Default relative paths (from the process working directory):
+   - Business config: `configs/business_config.json`
+   - Default config: `configs/default_config.json`
+   - Auth users: `configs/auth_users.json`
+   - Operation log: `build/runtime/operation.log`
 
-Because these are relative paths, startup assumes the process runs from the repository/runtime root or an equivalent packaged working directory.
+The operation log path is not affected by `--config-dir`.
+
+The full configuration and HTTP API contract is documented in `docs/api-config-contract.md`.
 
 ## Dependency direction rules
 
@@ -230,16 +222,22 @@ Services should receive dependencies through options/dependency structs, constru
 
 ## Known architecture debt
 
-- `HttpServiceDependencies` is broad and makes HTTP service a business API aggregation point.
-- Runtime configuration has multiple sources of truth: JSON config, service option structs, runtime config parsing, and frontend TypeScript types.
-- Platform adapter construction is not yet centralized.
-- Some cross-module dependencies use concrete classes instead of narrow interfaces.
 - Event payload ownership and naming conventions are not yet documented.
+- `HttpServiceDependencies` is still a wide struct; further decomposition would require converting the `.cpp.inc` handler fragments into independently-constructed `IHttpHandler` classes.
+
+## Resolved architecture debt
+
+The following items were previously listed as debt and have been addressed:
+
+- **Platform adapter construction**: centralized in `app/platform_factory.h` / `platform_factory.cpp` via `CreateLinuxPlatformAdapters()`.
+- **`eth0` hard-coding**: network interface name is now read from `network.default_ifname` in the runtime config.
+- **Concrete class cross-module dependencies**: `HttpService`, `RtspService`, and `OnvifService` now use narrow view interfaces (`IMediaView`, `IAiView`, `ISnapshotView`) for cross-module media references.
+- **HTTP handler decomposition**: route handlers split into 11 domain files under `libs/http_service/src/handlers/`.
+- **Runtime configuration sources**: paths are configurable via `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; contract documented in `docs/api-config-contract.md`.
+- **Frontend API layer**: `www/src/api/client.ts` is now a thin HTTP layer; domain-specific API functions live in `video.ts`, `image.ts`, `network.ts`, `system.ts`, `stream.ts`; auth state is managed via `AuthContext`.
 
 ## Recommended evolution order
 
-1. Document service boundaries and API/config contracts.
-2. Refactor `app/protocol_subsystem.cpp` into smaller builder helpers without changing public APIs.
-3. Split HTTP handlers by domain while preserving existing API behavior.
-4. Introduce platform factory if host/board/platform variation becomes a recurring need.
-5. Add interfaces for cross-module media/snapshot/AI dependencies only where they reduce coupling.
+1. Convert `src/handlers/*.cpp.inc` fragments into true `IHttpHandler` implementations if `HttpServiceDependencies` further decomposition becomes necessary.
+2. Document event payload ownership and naming conventions.
+3. Add `compile_commands.json` generation (via `bear` or `compiledb`) for IDE/clangd support with the cross-compiler.

@@ -12,7 +12,7 @@
 namespace {
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -79,14 +79,13 @@ class FakeConfigService : public live_stream::IConfigService {
           {"min_duration_ms", 100},
           {"regions", live_stream::ConfigJson::array()}}},
         {"actions", {{"snapshot", true}, {"record", false}, {"notify", true}}},
-        {"schedule", {{"mode", "always"},
-                      {"weekly", live_stream::ConfigJson::array()}}}};
+        {"schedule", {{"mode", "always"}, {"weekly", live_stream::ConfigJson::array()}}}};
     live_stream::ConfigProc verify;
     live_stream::ConfigProc apply;
 };
 
 class FakeEventService : public live_stream::IEventService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -113,7 +112,7 @@ class FakeEventService : public live_stream::IEventService {
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -316,7 +315,7 @@ int main() {
     }
     if (configured->UpdateRules(
             context, std::vector<live_stream::AlarmRule>{rule}) !=
-        infra::Status::kOk ||
+            infra::Status::kOk ||
         static_cast<int>(logger_service.records.size()) != log_count + 3) {
         return 25;
     }

@@ -11,32 +11,32 @@
 namespace live_stream {
 
 struct MediaRefs {
-  MediaService* media = nullptr;
-  AiService* ai = nullptr;
-  OsdService* osd = nullptr;
-  SnapshotService* snapshot = nullptr;
+    MediaService* media = nullptr;
+    AiService* ai = nullptr;
+    OsdService* osd = nullptr;
+    SnapshotService* snapshot = nullptr;
 };
 
 class MediaSubsystem {
- public:
-  static MediaSubsystem& Get();
+public:
+    static MediaSubsystem& Get();
 
-  bool Start();
-  void Stop();
-  MediaRefs refs() const;
+    bool Start();
+    void Stop();
+    MediaRefs refs() const;
 
- private:
-  MediaSubsystem() = default;
-  ~MediaSubsystem() = default;
+private:
+    MediaSubsystem() = default;
+    ~MediaSubsystem() = default;
 
-  MediaSubsystem(const MediaSubsystem&) = delete;
-  MediaSubsystem& operator=(const MediaSubsystem&) = delete;
+    MediaSubsystem(const MediaSubsystem&) = delete;
+    MediaSubsystem& operator=(const MediaSubsystem&) = delete;
 
-  std::unique_ptr<MediaService> media_;
-  std::unique_ptr<AiService> ai_;
-  std::unique_ptr<OsdService> osd_;
-  std::unique_ptr<SnapshotService> snapshot_;
-  bool started_ = false;
+    std::unique_ptr<MediaService> media_;
+    std::unique_ptr<AiService> ai_;
+    std::unique_ptr<OsdService> osd_;
+    std::unique_ptr<SnapshotService> snapshot_;
+    bool started_ = false;
 };
 
 }  // namespace live_stream

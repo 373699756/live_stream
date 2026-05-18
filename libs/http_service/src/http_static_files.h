@@ -8,14 +8,14 @@
 namespace live_stream {
 
 enum class StaticFileStatus {
-  kOk,
-  kNotFound,
-  kForbidden,
+    kOk,
+    kNotFound,
+    kForbidden,
 };
 
 struct StaticFileResult {
-  StaticFileStatus status = StaticFileStatus::kNotFound;
-  HttpResponse response;
+    StaticFileStatus status = StaticFileStatus::kNotFound;
+    HttpResponse response;
 };
 
 StaticFileResult BuildStaticFileResponse(const HttpRequest &request,

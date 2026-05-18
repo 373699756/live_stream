@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  api,
   closeWebrtcPeer,
   createWebrtcPeer,
-  flvStreamUrl,
-  hlsPlaylistUrl,
   sendWebrtcCandidate,
   sendWebrtcOffer,
+  getWebrtcConfig,
+} from '../api/stream';
+import {
+  flvStreamUrl,
+  hlsPlaylistUrl,
   snapshotUrl as buildSnapshotUrl,
 } from '../api/client';
 import type { StreamName, StreamStatus, WebrtcConfig } from '../api/types';
@@ -66,7 +68,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
   useEffect(() => {
     let mounted = true;
-    void api.getWebrtcConfig()
+    void getWebrtcConfig()
       .then((config) => {
         if (mounted) {
           setWebrtcConfig(config);

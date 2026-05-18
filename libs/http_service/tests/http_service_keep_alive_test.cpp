@@ -16,7 +16,7 @@
 namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -59,7 +59,7 @@ class FakeAuthService : public live_stream::IAuthService {
 };
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -95,10 +95,10 @@ int ConnectTo(const live_stream::HttpListenAddress& address) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(address.port);
     if (inet_pton(AF_INET, address.ip.c_str(), &addr.sin_addr) != 1 ||
@@ -188,7 +188,8 @@ int main() {
         "POST /api/auth/login HTTP/1.1\r\n"
         "Host: 127.0.0.1\r\n"
         "Connection: keep-alive\r\n"
-        "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
+        "Content-Length: " +
+        std::to_string(body.size()) + "\r\n\r\n" + body;
     if (!SendAll(fd, request + request)) {
         close(fd);
         return 5;

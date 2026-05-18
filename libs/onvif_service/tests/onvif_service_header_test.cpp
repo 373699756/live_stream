@@ -15,7 +15,7 @@
 namespace {
 
 class FakeNetEngine : public live_stream::NetEngine {
- public:
+public:
     bool Start() override { return true; }
 
     void Stop() override {}
@@ -129,7 +129,7 @@ class FakeNetEngine : public live_stream::NetEngine {
 };
 
 class FakeEventService : public live_stream::IEventService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -155,7 +155,7 @@ class FakeEventService : public live_stream::IEventService {
 };
 
 class FakeSystemService : public live_stream::ISystemService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -189,7 +189,7 @@ class FakeSystemService : public live_stream::ISystemService {
 };
 
 class FakeTimeService : public live_stream::ITimeService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -233,7 +233,7 @@ class FakeTimeService : public live_stream::ITimeService {
 };
 
 class FakeUriProvider : public live_stream::IOnvifUriProvider {
- public:
+public:
     std::string GetStreamUri(live_stream::StreamId stream_id) override {
         ++stream_count;
         last_stream_id = stream_id;
@@ -257,7 +257,7 @@ class FakeUriProvider : public live_stream::IOnvifUriProvider {
 };
 
 class FakeAuthService : public live_stream::IAuthService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}

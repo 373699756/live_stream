@@ -12,7 +12,7 @@
 namespace {
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -75,7 +75,7 @@ class FakeConfigService : public live_stream::IConfigService {
 };
 
 class CountingTokenGenerator : public live_stream::IAuthTokenGenerator {
- public:
+public:
     infra::Result<std::string> GenerateToken() override {
         ++next;
         char buffer[80] = {0};
@@ -89,7 +89,7 @@ class CountingTokenGenerator : public live_stream::IAuthTokenGenerator {
 };
 
 class TestAuditSink : public live_stream::IAuthAuditSink {
- public:
+public:
     infra::Status RecordAuthOperation(
         const live_stream::AuthAuditRecord& record) override {
         ++count;
@@ -279,7 +279,9 @@ int main() {
         "      \"user_name\": \"json-admin\",\n"
         "      \"role\": \"admin\",\n"
         "      \"enabled\": true,\n"
-        "      \"password_credential\": \"" + credential.value + "\"\n"
+        "      \"password_credential\": \"" +
+        credential.value +
+        "\"\n"
         "    }\n"
         "  ]\n"
         "}\n";
@@ -364,7 +366,7 @@ int main() {
 
     configured_request.password = "wrong-pass";
     if (configured->Login(configured_request).status !=
-        infra::Status::kUnauthorized ||
+            infra::Status::kUnauthorized ||
         configured->Login(configured_request).status !=
             infra::Status::kUnauthorized) {
         return 29;

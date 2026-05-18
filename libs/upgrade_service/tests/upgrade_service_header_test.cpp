@@ -5,4 +5,3 @@
 int main() {
     return std::strcmp(live_stream::UpgradeService::Name(), "upgrade_service");
 }
-

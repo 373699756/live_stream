@@ -31,7 +31,7 @@ OperationResult ToOperationResult(bool ok) {
 }
 
 class RestrictedUpgradePlatform : public IUpgradePlatform {
- public:
+public:
     UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
         (void)package_path;
@@ -81,7 +81,7 @@ class RestrictedUpgradePlatform : public IUpgradePlatform {
 };
 
 class UpgradeServiceImpl : public IUpgradeService {
- public:
+public:
     explicit UpgradeServiceImpl(UpgradeServiceOptions options)
         : options_(std::move(options)) {}
 
@@ -301,7 +301,7 @@ class UpgradeServiceImpl : public IUpgradeService {
         return reboot_ok;
     }
 
- private:
+private:
     bool ValidateLocalPackage(const std::string& package_path,
                               std::string* reason) {
         if (package_path.empty() ||

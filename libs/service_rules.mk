@@ -1,4 +1,4 @@
-ROOT_DIR := ../..
+ROOT_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
 BUILD_DIR ?= $(ROOT_DIR)/build
 LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/$(SERVICE_NAME)

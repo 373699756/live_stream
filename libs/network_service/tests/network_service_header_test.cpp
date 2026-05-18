@@ -12,7 +12,7 @@
 namespace {
 
 class FakeNetworkPlatform : public live_stream::INetworkPlatform {
- public:
+public:
     std::vector<std::string> ListInterfaces() override {
         ++list_count;
         return interfaces;
@@ -33,7 +33,7 @@ class FakeNetworkPlatform : public live_stream::INetworkPlatform {
     }
 
     bool SetInterfaceEnabled(const std::string& ifname,
-                            bool enabled) override {
+                             bool enabled) override {
         ++enable_count;
         last_ifname = ifname;
         last_enabled = enabled;
@@ -101,7 +101,7 @@ class FakeNetworkPlatform : public live_stream::INetworkPlatform {
 };
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -162,7 +162,7 @@ class FakeConfigService : public live_stream::IConfigService {
 };
 
 class FakeEventService : public live_stream::IEventService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -188,7 +188,7 @@ class FakeEventService : public live_stream::IEventService {
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}

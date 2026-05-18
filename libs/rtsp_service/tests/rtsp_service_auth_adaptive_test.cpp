@@ -16,7 +16,7 @@
 namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -45,16 +45,16 @@ class FakeAuthService : public live_stream::IAuthService {
             infra::Status::kUnauthorized);
     }
     infra::Status CheckPermission(const live_stream::AuthPrincipal&,
-                                 live_stream::AuthPermission permission,
-                                 const std::string&) override {
+                                  live_stream::AuthPermission permission,
+                                  const std::string&) override {
         return permission == live_stream::AuthPermission::kPreviewVideo
-            ? infra::Status::kOk
-            : infra::Status::kNoPermission;
+                   ? infra::Status::kOk
+                   : infra::Status::kNoPermission;
     }
 };
 
 class FakeAdaptiveObserver : public live_stream::IRtspAdaptiveObserver {
- public:
+public:
     live_stream::RtspAdaptiveAction OnRtspAdaptiveSample(
         const live_stream::RtspAdaptiveSample& sample) override {
         ++samples;
@@ -72,10 +72,10 @@ int ConnectTcp(uint16_t port) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if (inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
@@ -154,8 +154,9 @@ int main() {
     if (fd < 0) {
         return 4;
     }
-    if (!SendAndRead(fd, "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                         "CSeq: 1\r\n\r\n",
+    if (!SendAndRead(fd,
+                     "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                     "CSeq: 1\r\n\r\n",
                      "401 Unauthorized")) {
         close(fd);
         return 5;
@@ -169,16 +170,15 @@ int main() {
     const char* auth_header = "Authorization: Basic dmlld2VyOnBhc3M=\r\n";
     if (!SendAndRead(fd, std::string("DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
                                      "CSeq: 2\r\n") +
-                         auth_header + "\r\n",
+                             auth_header + "\r\n",
                      "application/sdp") ||
         !SendAndRead(fd, std::string("SETUP rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
                                      "CSeq: 3\r\n") +
-                         auth_header +
-                         "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n",
+                             auth_header + "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n",
                      "interleaved=0-1") ||
         !SendAndRead(fd, std::string("PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
                                      "CSeq: 4\r\n") +
-                         auth_header + "\r\n",
+                             auth_header + "\r\n",
                      "200 OK")) {
         close(fd);
         return 7;

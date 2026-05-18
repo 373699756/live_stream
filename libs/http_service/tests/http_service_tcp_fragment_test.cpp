@@ -18,7 +18,7 @@
 namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -69,7 +69,7 @@ class FakeAuthService : public live_stream::IAuthService {
 };
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -77,14 +77,14 @@ class FakeConfigService : public live_stream::IConfigService {
     const char* Name() const override { return "fake_config"; }
 
     infra::Status SetValue(const std::string& name,
-                          const live_stream::ConfigJson& value) override {
+                           const live_stream::ConfigJson& value) override {
         (void)name;
         (void)value;
         return infra::Status::kOk;
     }
 
     infra::Status GetValue(const std::string& name,
-                          live_stream::ConfigJson* value) override {
+                           live_stream::ConfigJson* value) override {
         (void)name;
         if (value != nullptr) {
             *value = live_stream::ConfigJson::object();
@@ -104,10 +104,10 @@ int ConnectTo(const live_stream::HttpListenAddress& address) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(address.port);
     if (inet_pton(AF_INET, address.ip.c_str(), &addr.sin_addr) != 1) {

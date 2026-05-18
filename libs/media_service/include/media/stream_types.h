@@ -6,24 +6,24 @@
 namespace live_stream {
 
 enum class StreamId {
-  kMain = 0,
-  kSub,
-  kSnapshot,
+    kMain = 0,
+    kSub,
+    kSnapshot,
 };
 
 enum class VideoCodec {
-  kH264 = 0,
-  kH265,
-  kMjpeg,
-  kJpeg,
+    kH264 = 0,
+    kH265,
+    kMjpeg,
+    kJpeg,
 };
 
 enum class FrameType {
-  kIdr = 0,
-  kI,
-  kP,
-  kB,
-  kJpeg,
+    kIdr = 0,
+    kI,
+    kP,
+    kB,
+    kJpeg,
 };
 
 using FrameSequence = uint64_t;

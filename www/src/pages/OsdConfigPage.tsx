@@ -1,25 +1,12 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import { cloneDefaultConfig, mockOsdConfig } from '../api/mock';
-import type { OsdConfig } from '../api/types';
+import { useOsdConfig } from '../hooks/useOsdConfig';
 import { FormField } from '../components/FormField';
 
 export function OsdConfigPage() {
-  const [config, setConfig] = useState<OsdConfig | null>(null);
-  const [saved, setSaved] = useState('');
-
-  useEffect(() => {
-    void api.getOsdConfig().then(setConfig);
-  }, []);
+  const { config, setConfig, save, reset, savedMsg } = useOsdConfig();
 
   if (!config) {
     return <div className="panel">加载 OSD 配置...</div>;
   }
-
-  const resetDefault = () => {
-    setConfig(cloneDefaultConfig(mockOsdConfig));
-    setSaved('已恢复默认值，保存后生效');
-  };
 
   return (
     <div className="page-grid osd-grid">
@@ -54,10 +41,10 @@ export function OsdConfigPage() {
           </FormField>
         </div>
         <div className="form-actions">
-          <button type="button" onClick={resetDefault}>恢复默认</button>
-          <button type="button" className="primary" onClick={() => void api.saveOsdConfig(config).then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))}>保存</button>
+          <button type="button" onClick={reset}>恢复默认</button>
+          <button type="button" className="primary" onClick={() => void save()}>保存</button>
         </div>
-        {saved && <div className="save-hint">{saved}</div>}
+        {savedMsg && <div className="save-hint">{savedMsg}</div>}
       </section>
       <section className="panel">
         <div className="panel-title">叠加预览</div>

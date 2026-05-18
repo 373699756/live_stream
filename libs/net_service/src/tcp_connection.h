@@ -5,12 +5,12 @@
 #include "fd.h"
 #include "net_service.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <vector>
 
 namespace live_stream {
 namespace net_internal {
@@ -19,50 +19,65 @@ class NetEngineImpl;
 
 class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
 public:
-  TcpConnection(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
-                ConnectionId id, const TcpListenOptions &options,
-                TcpCallbacks callbacks, NetAddress local, NetAddress peer);
-  ~TcpConnection();
+    TcpConnection(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
+                  ConnectionId id, const TcpListenOptions &options,
+                  TcpCallbacks callbacks, NetAddress local, NetAddress peer);
+    ~TcpConnection();
 
-  bool Start();
-  bool Send(const uint8_t *data, size_t size);
-  bool Close();
-  bool CloseAfterSend();
-  uint32_t PendingBytes() const;
-  ConnectionId id() const { return id_; }
-  NetAddress peer() const { return peer_; }
+    bool Start();
+    bool Send(const uint8_t *data, size_t size);
+    bool SendSlices(const NetBufferSlices &slices);
+    bool Close();
+    bool CloseAfterSend();
+    uint32_t PendingBytes() const;
+    ConnectionId id() const { return id_; }
+    NetAddress peer() const { return peer_; }
 
 private:
-  struct OutBuffer {
-    std::vector<uint8_t> data;
-    size_t offset = 0;
-    int64_t enqueue_ms = 0;
-  };
+    static constexpr size_t kInlineSliceBytes = 64;
 
-  void HandleEvents(uint32_t events);
-  void HandleRead();
-  void HandleWrite();
-  void EnableWrite();
-  void DisableWrite();
-  void CloseInLoop();
-  bool IsSendStalledLocked() const;
+    struct OutSlice {
+        const uint8_t *data = nullptr;
+        size_t size = 0;
+        size_t offset = 0;
+        std::shared_ptr<const void> owner;
+        std::array<uint8_t, kInlineSliceBytes> inline_data{};
+        std::unique_ptr<uint8_t[]> heap_data;
+    };
 
-  NetEngineImpl *engine_ = nullptr;
-  std::shared_ptr<EventLoop> loop_;
-  UniqueFd fd_;
-  ConnectionId id_ = 0;
-  TcpListenOptions options_;
-  TcpCallbacks callbacks_;
-  NetAddress local_;
-  NetAddress peer_;
-  mutable std::mutex mutex_;
-  std::deque<OutBuffer> send_queue_;
-  uint32_t pending_bytes_ = 0;
-  bool closed_ = false;
-  bool close_after_send_ = false;
+    struct OutBuffer {
+        std::array<OutSlice, kMaxNetBufferSlices> slices{};
+        size_t slice_count = 0;
+        size_t current_slice = 0;
+        uint32_t size = 0;
+        int64_t enqueue_ms = 0;
+    };
+
+    bool BuildOutBuffer(const NetBufferSlices &slices, OutBuffer *buffer) const;
+    void HandleEvents(uint32_t events);
+    void HandleRead();
+    void HandleWrite();
+    void EnableWrite();
+    void DisableWrite();
+    void CloseInLoop();
+    bool IsSendStalledLocked() const;
+
+    NetEngineImpl *engine_ = nullptr;
+    std::shared_ptr<EventLoop> loop_;
+    UniqueFd fd_;
+    ConnectionId id_ = 0;
+    TcpListenOptions options_;
+    TcpCallbacks callbacks_;
+    NetAddress local_;
+    NetAddress peer_;
+    mutable std::mutex mutex_;
+    std::deque<OutBuffer> send_queue_;
+    uint32_t pending_bytes_ = 0;
+    bool closed_ = false;
+    bool close_after_send_ = false;
 };
 
-} // namespace net_internal
-} // namespace live_stream
+}  // namespace net_internal
+}  // namespace live_stream
 
-#endif // LIVE_STREAM_NET_SERVICE_SRC_TCP_CONNECTION_H_
+#endif  // LIVE_STREAM_NET_SERVICE_SRC_TCP_CONNECTION_H_

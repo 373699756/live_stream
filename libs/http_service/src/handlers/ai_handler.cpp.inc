@@ -1,0 +1,108 @@
+// handlers/ai_handler.cpp.inc
+// AI handlers: /api/ai/*
+
+const char *AiBackendToJsonString(AiBackend backend) {
+    switch (backend) {
+        case AiBackend::kHi3516Dv300Nnie:
+            return "hisi3516dv300_nnie";
+        case AiBackend::kHostStub:
+            return "host_stub";
+    }
+    return "unknown";
+}
+
+const char *AiTaskToJsonString(AiTask task) {
+    switch (task) {
+        case AiTask::kObjectDetection:
+            return "object_detection";
+        case AiTask::kFaceDetection:
+            return "face_detection";
+        case AiTask::kMotionClassification:
+            return "motion_classification";
+    }
+    return "unknown";
+}
+
+ConfigJson AiConfigToJson(const AiModelConfig &config) {
+    ConfigJson root = ConfigJson::object();
+    root["enabled"] = config.enabled;
+    root["backend"] = AiBackendToJsonString(config.backend);
+    root["task"] = AiTaskToJsonString(config.task);
+    root["stream"] = StreamIdToJsonString(config.stream_id);
+    root["model_path"] = config.model_path;
+    root["input_width"] = config.input_width;
+    root["input_height"] = config.input_height;
+    root["inference_interval_ms"] = config.inference_interval_ms;
+    root["confidence_threshold"] = config.confidence_threshold;
+    root["max_results"] = config.max_results;
+    return root;
+}
+
+ConfigJson AiStatsToJson(const AiServiceStats &stats) {
+    ConfigJson root = ConfigJson::object();
+    root["enabled"] = stats.enabled;
+    root["backend_available"] = stats.backend_available;
+    root["received_frames"] = stats.received_frames;
+    root["skipped_frames"] = stats.skipped_frames;
+    root["inference_count"] = stats.inference_count;
+    root["inference_failed_count"] = stats.inference_failed_count;
+    root["dropped_tasks"] = stats.dropped_tasks;
+    root["active_results"] = stats.active_results;
+    return root;
+}
+
+ConfigJson AiDetectionToJson(const AiDetection &detection) {
+    ConfigJson root = ConfigJson::object();
+    root["label"] = detection.label;
+    root["confidence"] = detection.confidence;
+    root["x"] = detection.x;
+    root["y"] = detection.y;
+    root["width"] = detection.width;
+    root["height"] = detection.height;
+    return root;
+}
+
+ConfigJson AiResultToJson(const AiInferenceResult &result) {
+    ConfigJson root = ConfigJson::object();
+    root["success"] = result.success;
+    root["stream"] = StreamIdToJsonString(result.stream_id);
+    root["sequence"] = result.sequence;
+    root["pts_us"] = result.pts_us;
+    ConfigJson detections = ConfigJson::array();
+    for (const AiDetection &detection : result.detections) {
+        detections.push_back(AiDetectionToJson(detection));
+    }
+    root["detections"] = detections;
+    return root;
+}
+
+bool IsAiServiceHealthy(const IAiView *service) {
+    if (service == nullptr) {
+        return false;
+    }
+    const AiServiceStats stats = service->GetStats();
+    return !stats.enabled || stats.backend_available;
+}
+
+HttpResponse HandleAiStatus(const HttpRequest &request) {
+    AuthPrincipal principal = Authenticate(request);
+    if (principal.user_name.empty()) {
+        return StatusResponse(401, "Unauthorized");
+    }
+    if (dependencies_.ai_service == nullptr) {
+        if (!IsAiConfigEnabled(dependencies_.config_service)) {
+            ConfigJson root = ConfigJson::object();
+            root["config"] = dependencies_.config_service->GetValue("ai");
+            root["stats"] = AiStatsToJson(AiServiceStats{});
+            root["last_result"] = AiResultToJson(AiInferenceResult{});
+            return JsonResponse(200, root);
+        }
+        return StatusResponse(503, "AI service not running");
+    }
+    ConfigJson root = ConfigJson::object();
+    root["config"] = AiConfigToJson(dependencies_.ai_service->GetConfig());
+    root["stats"] = AiStatsToJson(dependencies_.ai_service->GetStats());
+    root["last_result"] =
+        AiResultToJson(dependencies_.ai_service->GetLastResult());
+    return JsonResponse(200, root);
+}

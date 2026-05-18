@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import type { RtspConfig, StreamName, StreamStatus } from '../api/types';
+import { useState } from 'react';
+import { useLiveView } from '../hooks/useLiveView';
+import type { RtspConfig, StreamName } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { VideoPreview } from '../components/VideoPreview';
 
@@ -14,17 +14,7 @@ function rtspAddress(config: RtspConfig | null, stream: StreamName) {
 
 export function LiveViewPage() {
   const [stream, setStream] = useState<StreamName>('main');
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
-  const [rtspConfig, setRtspConfig] = useState<RtspConfig | null>(null);
-
-  useEffect(() => {
-    void api.getStreamStatus().then(setStatuses);
-    void api.getRtspConfig().then(setRtspConfig);
-    const timer = window.setInterval(() => {
-      void api.getStreamStatus().then(setStatuses);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const { statuses, rtspConfig } = useLiveView();
 
   const runningStreams = statuses.filter((item) => item.state === 'running');
 

@@ -46,7 +46,7 @@ using EventSubscriptionId = uint64_t;
 using EventHandler = std::function<void(const Event&)>;
 
 class IEventService {
- public:
+public:
     virtual ~IEventService() = default;
 
     virtual bool Start() = 0;

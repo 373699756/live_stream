@@ -13,7 +13,7 @@
 #include "media/frame_source.h"
 #include "media_service.h"
 
-#if defined(LIVE_STREAM_ENABLE_HISI_MPP) &&                                    \
+#if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \
     __has_include("mpi_nnie.h") && __has_include("hi_comm_svp.h")
 #define LIVE_STREAM_HAS_HISI_NNIE 1
 extern "C" {
@@ -30,411 +30,409 @@ namespace {
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
 
 bool IsFiniteConfidence(float value) {
-  return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+    return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
 }
 
 const char *ToString(AiBackend backend) {
-  switch (backend) {
-  case AiBackend::kHi3516Dv300Nnie:
+    switch (backend) {
+        case AiBackend::kHi3516Dv300Nnie:
+            return "hisi3516dv300_nnie";
+        case AiBackend::kHostStub:
+            return "host_stub";
+    }
     return "hisi3516dv300_nnie";
-  case AiBackend::kHostStub:
-    return "host_stub";
-  }
-  return "hisi3516dv300_nnie";
 }
 
 bool ParseBackend(const std::string &value, AiBackend *backend) {
-  if (backend == nullptr) {
+    if (backend == nullptr) {
+        return false;
+    }
+    if (value == "hisi3516dv300_nnie" || value == "nnie") {
+        *backend = AiBackend::kHi3516Dv300Nnie;
+        return true;
+    }
+    if (value == "host_stub") {
+        *backend = AiBackend::kHostStub;
+        return true;
+    }
     return false;
-  }
-  if (value == "hisi3516dv300_nnie" || value == "nnie") {
-    *backend = AiBackend::kHi3516Dv300Nnie;
-    return true;
-  }
-  if (value == "host_stub") {
-    *backend = AiBackend::kHostStub;
-    return true;
-  }
-  return false;
 }
 
 bool ParseTask(const std::string &value, AiTask *task) {
-  if (task == nullptr) {
+    if (task == nullptr) {
+        return false;
+    }
+    if (value == "object_detection") {
+        *task = AiTask::kObjectDetection;
+        return true;
+    }
+    if (value == "face_detection") {
+        *task = AiTask::kFaceDetection;
+        return true;
+    }
+    if (value == "motion_classification") {
+        *task = AiTask::kMotionClassification;
+        return true;
+    }
     return false;
-  }
-  if (value == "object_detection") {
-    *task = AiTask::kObjectDetection;
-    return true;
-  }
-  if (value == "face_detection") {
-    *task = AiTask::kFaceDetection;
-    return true;
-  }
-  if (value == "motion_classification") {
-    *task = AiTask::kMotionClassification;
-    return true;
-  }
-  return false;
 }
 
 bool ParseStream(const std::string &value, StreamId *stream_id) {
-  if (stream_id == nullptr) {
+    if (stream_id == nullptr) {
+        return false;
+    }
+    if (value == "main") {
+        *stream_id = StreamId::kMain;
+        return true;
+    }
+    if (value == "sub") {
+        *stream_id = StreamId::kSub;
+        return true;
+    }
     return false;
-  }
-  if (value == "main") {
-    *stream_id = StreamId::kMain;
-    return true;
-  }
-  if (value == "sub") {
-    *stream_id = StreamId::kSub;
-    return true;
-  }
-  return false;
 }
 
 bool IsValidConfig(const AiModelConfig &config) {
-  if (config.input_width == 0 || config.input_height == 0 ||
-      config.inference_interval_ms == 0 || config.max_results == 0 ||
-      !IsFiniteConfidence(config.confidence_threshold)) {
-    return false;
-  }
-  if (!config.enabled) {
-    return true;
-  }
-  if (config.backend == AiBackend::kHi3516Dv300Nnie &&
-      config.model_path.empty()) {
-    return false;
-  }
-  return config.stream_id == StreamId::kMain ||
-         config.stream_id == StreamId::kSub;
+    if (config.input_width == 0 || config.input_height == 0 ||
+        config.inference_interval_ms == 0 || config.max_results == 0 ||
+        !IsFiniteConfidence(config.confidence_threshold)) {
+        return false;
+    }
+    if (!config.enabled) {
+        return true;
+    }
+    if (config.backend == AiBackend::kHi3516Dv300Nnie &&
+        config.model_path.empty()) {
+        return false;
+    }
+    return config.stream_id == StreamId::kMain ||
+           config.stream_id == StreamId::kSub;
 }
 
 bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
                    AiModelConfig *parsed) {
-  if (parsed == nullptr || !value.is_object()) {
-    return false;
-  }
-  AiModelConfig config = fallback;
-  std::string backend;
-  std::string task;
-  std::string stream;
-  if (!json_utils::Load(value, "enabled", &config.enabled) ||
-      !json_utils::Load(value, "backend", &backend) ||
-      !ParseBackend(backend, &config.backend) ||
-      !json_utils::Load(value, "task", &task) ||
-      !ParseTask(task, &config.task) ||
-      !json_utils::Load(value, "stream", &stream) ||
-      !ParseStream(stream, &config.stream_id) ||
-      !json_utils::Load(value, "model_path", &config.model_path) ||
-      !json_utils::Load(value, "input_width", &config.input_width, 1,
-                        0xffffffffU) ||
-      !json_utils::Load(value, "input_height", &config.input_height, 1,
-                        0xffffffffU) ||
-      !json_utils::Load(value, "inference_interval_ms",
-                        &config.inference_interval_ms, 1, 0xffffffffU) ||
-      !json_utils::Load(value, "max_results", &config.max_results, 1,
-                        0xffffffffU) ||
-      !json_utils::Load(value, "confidence_threshold",
-                        &config.confidence_threshold, 0.0f, 1.0f)) {
-    return false;
-  }
-  if (!IsValidConfig(config)) {
-    return false;
-  }
-  *parsed = config;
-  return true;
+    if (parsed == nullptr || !value.is_object()) {
+        return false;
+    }
+    AiModelConfig config = fallback;
+    std::string backend;
+    std::string task;
+    std::string stream;
+    if (!json_utils::Load(value, "enabled", &config.enabled) ||
+        !json_utils::Load(value, "backend", &backend) ||
+        !ParseBackend(backend, &config.backend) ||
+        !json_utils::Load(value, "task", &task) ||
+        !ParseTask(task, &config.task) ||
+        !json_utils::Load(value, "stream", &stream) ||
+        !ParseStream(stream, &config.stream_id) ||
+        !json_utils::Load(value, "model_path", &config.model_path) ||
+        !json_utils::Load(value, "input_width", &config.input_width, 1,
+                          0xffffffffU) ||
+        !json_utils::Load(value, "input_height", &config.input_height, 1,
+                          0xffffffffU) ||
+        !json_utils::Load(value, "inference_interval_ms",
+                          &config.inference_interval_ms, 1, 0xffffffffU) ||
+        !json_utils::Load(value, "max_results", &config.max_results, 1,
+                          0xffffffffU) ||
+        !json_utils::Load(value, "confidence_threshold",
+                          &config.confidence_threshold, 0.0f, 1.0f)) {
+        return false;
+    }
+    if (!IsValidConfig(config)) {
+        return false;
+    }
+    *parsed = config;
+    return true;
 }
 
 class AiInferenceEngine {
 public:
-  virtual ~AiInferenceEngine() = default;
+    virtual ~AiInferenceEngine() = default;
 
-  virtual const char *Name() const = 0;
-  virtual bool Available() const = 0;
-  virtual bool Start(const AiModelConfig &config) = 0;
-  virtual void Stop() = 0;
-  virtual AiInferenceResult Run(const EncodedFrame &frame,
-                                const AiModelConfig &config) = 0;
+    virtual const char *Name() const = 0;
+    virtual bool Available() const = 0;
+    virtual bool Start(const AiModelConfig &config) = 0;
+    virtual void Stop() = 0;
+    virtual AiInferenceResult Run(const EncodedFrame &frame,
+                                  const AiModelConfig &config) = 0;
 };
 
 class HostStubAiEngine final : public AiInferenceEngine {
 public:
-  const char *Name() const override { return "host_stub"; }
-  bool Available() const override { return true; }
+    const char *Name() const override { return "host_stub"; }
+    bool Available() const override { return true; }
 
-  bool Start(const AiModelConfig &config) override {
-    started_ = IsValidConfig(config);
-    return started_;
-  }
+    bool Start(const AiModelConfig &config) override {
+        started_ = IsValidConfig(config);
+        return started_;
+    }
 
-  void Stop() override { started_ = false; }
+    void Stop() override { started_ = false; }
 
-  AiInferenceResult Run(const EncodedFrame &frame,
-                        const AiModelConfig &config) override {
-    (void)config;
-    AiInferenceResult result;
-    result.success = started_ && frame.buffer != nullptr && frame.size > 0;
-    result.stream_id = frame.stream_id;
-    result.sequence = frame.sequence;
-    result.pts_us = frame.pts_us;
-    return result;
-  }
+    AiInferenceResult Run(const EncodedFrame &frame,
+                          const AiModelConfig &config) override {
+        (void)config;
+        AiInferenceResult result;
+        result.success = started_ && frame.buffer != nullptr && frame.size > 0;
+        result.stream_id = frame.stream_id;
+        result.sequence = frame.sequence;
+        result.pts_us = frame.pts_us;
+        return result;
+    }
 
 private:
-  bool started_ = false;
+    bool started_ = false;
 };
 
 class Hi3516Dv300NnieEngine final : public AiInferenceEngine {
 public:
-  const char *Name() const override { return "hisi3516dv300_nnie"; }
-  bool Available() const override { return LIVE_STREAM_HAS_HISI_NNIE != 0; }
+    const char *Name() const override { return "hisi3516dv300_nnie"; }
+    bool Available() const override { return LIVE_STREAM_HAS_HISI_NNIE != 0; }
 
-  bool Start(const AiModelConfig &config) override {
-    if (!IsValidConfig(config) || config.model_path.empty()) {
-      return false;
-    }
+    bool Start(const AiModelConfig &config) override {
+        if (!IsValidConfig(config) || config.model_path.empty()) {
+            return false;
+        }
 #if LIVE_STREAM_HAS_HISI_NNIE
-    model_path_ = config.model_path;
-    started_ = true;
-    return true;
+        model_path_ = config.model_path;
+        started_ = true;
+        return true;
 #else
-    (void)config;
-    return false;
+        (void)config;
+        return false;
 #endif
-  }
-
-  void Stop() override {
-    model_path_.clear();
-    started_ = false;
-  }
-
-  AiInferenceResult Run(const EncodedFrame &frame,
-                        const AiModelConfig &config) override {
-    (void)config;
-    AiInferenceResult result;
-    result.stream_id = frame.stream_id;
-    result.sequence = frame.sequence;
-    result.pts_us = frame.pts_us;
-    if (!started_ || frame.buffer == nullptr || frame.size == 0) {
-      return result;
     }
+
+    void Stop() override {
+        model_path_.clear();
+        started_ = false;
+    }
+
+    AiInferenceResult Run(const EncodedFrame &frame,
+                          const AiModelConfig &config) override {
+        (void)config;
+        AiInferenceResult result;
+        result.stream_id = frame.stream_id;
+        result.sequence = frame.sequence;
+        result.pts_us = frame.pts_us;
+        if (!started_ || frame.buffer == nullptr || frame.size == 0) {
+            return result;
+        }
 #if LIVE_STREAM_HAS_HISI_NNIE
-    // Hi3516DV300 NNIE model loading and SVP buffer wiring are isolated here.
-    // The service layer already owns scheduling, config, and result contracts.
-    result.success = true;
+        // Hi3516DV300 NNIE model loading and SVP buffer wiring are isolated here.
+        // The service layer already owns scheduling, config, and result contracts.
+        result.success = true;
 #endif
-    return result;
-  }
+        return result;
+    }
 
 private:
-  std::string model_path_;
-  bool started_ = false;
+    std::string model_path_;
+    bool started_ = false;
 };
 
 std::unique_ptr<AiInferenceEngine> CreateEngine(AiBackend backend) {
-  if (backend == AiBackend::kHostStub) {
-    return std::unique_ptr<AiInferenceEngine>(new HostStubAiEngine());
-  }
-  return std::unique_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
+    if (backend == AiBackend::kHostStub) {
+        return std::unique_ptr<AiInferenceEngine>(new HostStubAiEngine());
+    }
+    return std::unique_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
 }
 
-} // namespace
+}  // namespace
 
 struct AiService::Impl final : public IFrameSink {
-  explicit Impl(const AiServiceOptions &service_options)
-      : options(service_options), config(service_options.default_config) {}
+    explicit Impl(const AiServiceOptions &service_options)
+        : options(service_options), config(service_options.default_config) {}
 
-  const char *Name() const override { return AiService::StaticName(); }
+    const char *Name() const override { return AiService::StaticName(); }
 
-  bool Prepare() {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!IsValidConfig(config)) {
-      return false;
-    }
-    if (options.config_service != nullptr && !config_attached) {
-      ConfigAttachment attachment;
-      attachment.validate = [this](const ConfigJson &value) {
-        std::lock_guard<std::mutex> guard(mutex);
-        AiModelConfig parsed;
-        return ParseAiConfig(value, config, &parsed)
-                   ? ConfigResult::Success()
-                   : ConfigResult::Failure("", "invalid ai config");
-      };
-      attachment.apply = [this](const ConfigJson &value) {
-        std::lock_guard<std::mutex> guard(mutex);
-        AiModelConfig parsed;
-        if (!ParseAiConfig(value, config, &parsed)) {
-          return ConfigResult::Failure("", "invalid ai config");
+    bool Prepare() {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!IsValidConfig(config)) {
+            return false;
         }
-        config = parsed;
-        return ConfigResult::Success();
-      };
-      if (!options.config_service->AttachConfig("ai", attachment)) {
-        return false;
-      }
-      config_attached = true;
-    }
-    if (options.config_service != nullptr) {
-      ConfigJson ai_config = options.config_service->GetValue("ai");
-      if (ai_config.is_object()) {
-        AiModelConfig parsed;
-        if (!ParseAiConfig(ai_config, config, &parsed)) {
-          return false;
+        if (options.config_service != nullptr && !config_attached) {
+            ConfigAttachment attachment;
+            attachment.validate = [this](const ConfigJson &value) {
+                std::lock_guard<std::mutex> guard(mutex);
+                AiModelConfig parsed;
+                return ParseAiConfig(value, config, &parsed)
+                           ? ConfigResult::Success()
+                           : ConfigResult::Failure("", "invalid ai config");
+            };
+            attachment.apply = [this](const ConfigJson &value) {
+                std::lock_guard<std::mutex> guard(mutex);
+                AiModelConfig parsed;
+                ParseAiConfig(value, config, &parsed);
+                config = parsed;
+                return ConfigResult::Success();
+            };
+            if (!options.config_service->AttachConfig("ai", attachment)) {
+                return false;
+            }
+            config_attached = true;
         }
-        config = parsed;
-      }
-    }
-    return true;
-  }
-
-  bool Start() {
-    if (!Prepare()) {
-      return false;
-    }
-
-    AiModelConfig start_config;
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      if (started) {
+        if (options.config_service != nullptr) {
+            ConfigJson ai_config = options.config_service->GetValue("ai");
+            if (ai_config.is_object()) {
+                AiModelConfig parsed;
+                if (!ParseAiConfig(ai_config, config, &parsed)) {
+                    return false;
+                }
+                config = parsed;
+            }
+        }
         return true;
-      }
-      start_config = config;
-      stats.enabled = start_config.enabled;
-      if (!start_config.enabled) {
+    }
+
+    bool Start() {
+        if (!Prepare()) {
+            return false;
+        }
+
+        AiModelConfig start_config;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (started) {
+                return true;
+            }
+            start_config = config;
+            stats.enabled = start_config.enabled;
+            if (!start_config.enabled) {
+                started = true;
+                return true;
+            }
+            engine = CreateEngine(start_config.backend);
+            if (!engine || !engine->Available() || !engine->Start(start_config)) {
+                INFRA_LOG_ERROR("ai", "Start AI backend failed: backend=%s model=%s",
+                                ToString(start_config.backend),
+                                start_config.model_path.c_str());
+                engine.reset();
+                return false;
+            }
+            stats.backend_available = engine->Available();
+            executor.reset(new infra::Executor());
+            infra::ExecutorOptions executor_options;
+            executor_options.worker_count = 1;
+            executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
+            if (!executor || !executor->Start(executor_options)) {
+                engine->Stop();
+                engine.reset();
+                executor.reset();
+                return false;
+            }
+        }
+
+        if (options.media_service == nullptr) {
+            Stop();
+            return false;
+        }
+        FrameSubscribeOptions subscribe_options;
+        subscribe_options.stream_id = start_config.stream_id;
+        subscribe_options.sink_name = AiService::StaticName();
+        const FrameSubscriptionId subscription =
+            options.media_service->SubscribeFrames(subscribe_options, this);
+        if (subscription == 0) {
+            Stop();
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(mutex);
+        subscription_id = subscription;
         started = true;
+        INFRA_LOG_INFO("ai", "AI service started: backend=%s stream=%d",
+                       ToString(start_config.backend),
+                       static_cast<int>(start_config.stream_id));
         return true;
-      }
-      engine = CreateEngine(start_config.backend);
-      if (!engine || !engine->Available() || !engine->Start(start_config)) {
-        INFRA_LOG_ERROR("ai", "Start AI backend failed: backend=%s model=%s",
-                        ToString(start_config.backend),
-                        start_config.model_path.c_str());
-        engine.reset();
-        return false;
-      }
-      stats.backend_available = engine->Available();
-      executor.reset(new infra::Executor());
-      infra::ExecutorOptions executor_options;
-      executor_options.worker_count = 1;
-      executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
-      if (!executor || !executor->Start(executor_options)) {
-        engine->Stop();
-        engine.reset();
+    }
+
+    void Stop() {
+        FrameSubscriptionId subscription = 0;
+        MediaService *media_service = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started && subscription_id == 0 && !executor && !engine) {
+                return;
+            }
+            started = false;
+            subscription = subscription_id;
+            subscription_id = 0;
+            media_service = options.media_service;
+        }
+        if (media_service != nullptr && subscription != 0) {
+            (void)media_service->UnsubscribeFrames(subscription);
+        }
+        if (executor) {
+            executor->Stop(infra::StopMode::kDiscard);
+        }
+        std::lock_guard<std::mutex> lock(mutex);
         executor.reset();
-        return false;
-      }
+        if (engine) {
+            engine->Stop();
+            engine.reset();
+        }
+        stats.backend_available = false;
     }
 
-    if (options.media_service == nullptr) {
-      Stop();
-      return false;
+    void OnFrame(const EncodedFrame &frame) override {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.received_frames;
+        if (!started || !config.enabled || !executor || !engine ||
+            frame.stream_id != config.stream_id || frame.buffer == nullptr ||
+            frame.size == 0) {
+            ++stats.skipped_frames;
+            return;
+        }
+        if (last_pts_us != 0 && frame.pts_us > last_pts_us &&
+            static_cast<uint64_t>(frame.pts_us - last_pts_us) <
+                static_cast<uint64_t>(config.inference_interval_ms) * 1000U) {
+            ++stats.skipped_frames;
+            return;
+        }
+        last_pts_us = frame.pts_us;
+        AiModelConfig run_config = config;
+        if (!executor->Post(
+                [this, frame, run_config]() { RunInference(frame, run_config); })) {
+            ++stats.dropped_tasks;
+        }
     }
-    FrameSubscribeOptions subscribe_options;
-    subscribe_options.stream_id = start_config.stream_id;
-    subscribe_options.sink_name = AiService::StaticName();
-    const FrameSubscriptionId subscription =
-        options.media_service->SubscribeFrames(subscribe_options, this);
-    if (subscription == 0) {
-      Stop();
-      return false;
-    }
-    std::lock_guard<std::mutex> lock(mutex);
-    subscription_id = subscription;
-    started = true;
-    INFRA_LOG_INFO("ai", "AI service started: backend=%s stream=%d",
-                   ToString(start_config.backend),
-                   static_cast<int>(start_config.stream_id));
-    return true;
-  }
 
-  void Stop() {
-    FrameSubscriptionId subscription = 0;
-    MediaService *media_service = nullptr;
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      if (!started && subscription_id == 0 && !executor && !engine) {
-        return;
-      }
-      started = false;
-      subscription = subscription_id;
-      subscription_id = 0;
-      media_service = options.media_service;
+    void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
+        (void)stream_id;
+        (void)state;
     }
-    if (media_service != nullptr && subscription != 0) {
-      (void)media_service->UnsubscribeFrames(subscription);
-    }
-    if (executor) {
-      executor->Stop(infra::StopMode::kDiscard);
-    }
-    std::lock_guard<std::mutex> lock(mutex);
-    executor.reset();
-    if (engine) {
-      engine->Stop();
-      engine.reset();
-    }
-    stats.backend_available = false;
-  }
 
-  void OnFrame(const EncodedFrame &frame) override {
-    std::lock_guard<std::mutex> lock(mutex);
-    ++stats.received_frames;
-    if (!started || !config.enabled || !executor || !engine ||
-        frame.stream_id != config.stream_id || frame.buffer == nullptr ||
-        frame.size == 0) {
-      ++stats.skipped_frames;
-      return;
+    void RunInference(const EncodedFrame &frame,
+                      const AiModelConfig &run_config) {
+        AiInferenceResult result;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started || !engine) {
+                ++stats.inference_failed_count;
+                return;
+            }
+            result = engine->Run(frame, run_config);
+            if (result.success) {
+                ++stats.inference_count;
+            } else {
+                ++stats.inference_failed_count;
+            }
+            last_result = result;
+            stats.active_results =
+                static_cast<uint32_t>(last_result.detections.size());
+        }
     }
-    if (last_pts_us != 0 && frame.pts_us > last_pts_us &&
-        static_cast<uint64_t>(frame.pts_us - last_pts_us) <
-            static_cast<uint64_t>(config.inference_interval_ms) * 1000U) {
-      ++stats.skipped_frames;
-      return;
-    }
-    last_pts_us = frame.pts_us;
-    AiModelConfig run_config = config;
-    if (!executor->Post(
-            [this, frame, run_config]() { RunInference(frame, run_config); })) {
-      ++stats.dropped_tasks;
-    }
-  }
 
-  void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
-    (void)stream_id;
-    (void)state;
-  }
-
-  void RunInference(const EncodedFrame &frame,
-                    const AiModelConfig &run_config) {
-    AiInferenceResult result;
-    {
-      std::lock_guard<std::mutex> lock(mutex);
-      if (!started || !engine) {
-        ++stats.inference_failed_count;
-        return;
-      }
-      result = engine->Run(frame, run_config);
-      if (result.success) {
-        ++stats.inference_count;
-      } else {
-        ++stats.inference_failed_count;
-      }
-      last_result = result;
-      stats.active_results =
-          static_cast<uint32_t>(last_result.detections.size());
-    }
-  }
-
-  AiServiceOptions options;
-  AiModelConfig config;
-  std::unique_ptr<AiInferenceEngine> engine;
-  std::unique_ptr<infra::Executor> executor;
-  FrameSubscriptionId subscription_id = 0;
-  AiInferenceResult last_result;
-  AiServiceStats stats;
-  int64_t last_pts_us = 0;
-  bool config_attached = false;
-  bool started = false;
-  mutable std::mutex mutex;
+    AiServiceOptions options;
+    AiModelConfig config;
+    std::unique_ptr<AiInferenceEngine> engine;
+    std::unique_ptr<infra::Executor> executor;
+    FrameSubscriptionId subscription_id = 0;
+    AiInferenceResult last_result;
+    AiServiceStats stats;
+    int64_t last_pts_us = 0;
+    bool config_attached = false;
+    bool started = false;
+    mutable std::mutex mutex;
 };
 
 AiService::AiService() : AiService(AiServiceOptions{}) {}
@@ -443,46 +441,46 @@ AiService::AiService(const AiServiceOptions &options)
     : impl_(new Impl(options)) {}
 
 AiService::~AiService() {
-  if (impl_) {
-    impl_->Stop();
-  }
+    if (impl_) {
+        impl_->Stop();
+    }
 }
 
 bool AiService::Start() { return impl_ != nullptr && impl_->Start(); }
 
 void AiService::Stop() {
-  if (impl_) {
-    impl_->Stop();
-  }
+    if (impl_) {
+        impl_->Stop();
+    }
 }
 
 AiModelConfig AiService::GetConfig() const {
-  if (!impl_) {
-    return AiModelConfig{};
-  }
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  return impl_->config;
+    if (!impl_) {
+        return AiModelConfig{};
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->config;
 }
 
 AiServiceStats AiService::GetStats() const {
-  if (!impl_) {
-    return AiServiceStats{};
-  }
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  AiServiceStats stats = impl_->stats;
-  stats.enabled = impl_->config.enabled;
-  stats.backend_available = impl_->engine && impl_->engine->Available();
-  return stats;
+    if (!impl_) {
+        return AiServiceStats{};
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    AiServiceStats stats = impl_->stats;
+    stats.enabled = impl_->config.enabled;
+    stats.backend_available = impl_->engine && impl_->engine->Available();
+    return stats;
 }
 
 AiInferenceResult AiService::GetLastResult() const {
-  if (!impl_) {
-    return AiInferenceResult{};
-  }
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  return impl_->last_result;
+    if (!impl_) {
+        return AiInferenceResult{};
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->last_result;
 }
 
 const char *AiService::StaticName() { return "ai_service"; }
 
-} // namespace live_stream
+}  // namespace live_stream

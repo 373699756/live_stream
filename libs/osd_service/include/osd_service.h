@@ -77,7 +77,7 @@ struct OsdServiceStats {
 };
 
 class OsdService {
- public:
+public:
     OsdService();
     explicit OsdService(const OsdServiceOptions& options);
     ~OsdService();
@@ -97,7 +97,7 @@ class OsdService {
     uint32_t RegionCount() const;
     OsdServiceStats GetStats() const;
 
- private:
+private:
     struct Impl;
     Impl* impl_;
 };

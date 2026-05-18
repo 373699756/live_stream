@@ -11,7 +11,7 @@
 namespace {
 
 class FakeSystemPlatform : public live_stream::ISystemPlatform {
- public:
+public:
     live_stream::DeviceInfo GetDeviceInfo() override {
         live_stream::DeviceInfo info;
         info.model = "ipc";
@@ -55,7 +55,7 @@ class FakeSystemPlatform : public live_stream::ISystemPlatform {
 };
 
 class FakeEventService : public live_stream::IEventService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -81,7 +81,7 @@ class FakeEventService : public live_stream::IEventService {
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}

@@ -57,7 +57,7 @@ struct AlarmServiceOptions {
 };
 
 class IAlarmService {
- public:
+public:
     virtual ~IAlarmService() = default;
 
     virtual bool Start() = 0;

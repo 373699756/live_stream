@@ -17,6 +17,6 @@ std::unique_ptr<INetworkPlatform>
 CreateLinuxNetworkPlatform(const std::string &default_ifname);
 std::unique_ptr<IUpgradePlatform> CreateLinuxUpgradePlatform();
 
-} // namespace live_stream
+}  // namespace live_stream
 
-#endif // LIVE_STREAM_APP_DEVICE_PLATFORMS_H_
+#endif  // LIVE_STREAM_APP_DEVICE_PLATFORMS_H_

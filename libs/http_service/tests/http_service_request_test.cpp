@@ -12,7 +12,7 @@
 namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
@@ -77,14 +77,14 @@ class FakeAuthService : public live_stream::IAuthService {
 };
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
     void Deinit() override {}
 
     bool SetValue(const std::string& name,
-                          const live_stream::ConfigJson& value) override {
+                  const live_stream::ConfigJson& value) override {
         if (name.empty()) {
             return false;
         }
@@ -111,12 +111,12 @@ class FakeConfigService : public live_stream::IConfigService {
         return true;
     }
 
- private:
+private:
     live_stream::ConfigJson value_ = {{"enabled", true}};
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
- public:
+public:
     bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}

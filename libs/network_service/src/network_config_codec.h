@@ -13,15 +13,20 @@ bool IsValidIfname(const std::string &ifname);
 bool ValidateConfig(const NetworkInterfaceConfig &config,
                     bool allow_loopback_config);
 NetworkInterfaceConfig DefaultConfig(const std::string &ifname);
+bool ConfigFromNetworkInterfaceJson(const std::string &ifname,
+                                    const ConfigJson &value,
+                                    NetworkInterfaceConfig *config);
+ConfigJson NetworkInterfaceConfigToJson(const NetworkInterfaceConfig &config);
 bool ConfigsFromNetworkJson(
     const ConfigJson &json,
     std::map<std::string, NetworkInterfaceConfig> *configs);
 ConfigJson NetworkJsonWithConfigs(
     const ConfigJson &current,
     const std::map<std::string, NetworkInterfaceConfig> &configs);
-bool ConfigFromNetworkInterfaceJson(const std::string &ifname,
-                                    const ConfigJson &value,
-                                    NetworkInterfaceConfig *config);
+
+// Netmask <-> prefix_length conversion (used by platform layer)
+bool NetmaskToPrefixLength(const std::string &netmask, uint8_t *prefix_length);
+std::string PrefixLengthToNetmask(uint8_t prefix_length);
 
 }  // namespace network_internal
 }  // namespace live_stream

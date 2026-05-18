@@ -15,36 +15,38 @@ class IConfigService;
 class IEventService;
 class ILoggerService;
 
-enum class NetworkAddressMode {
-    kDhcp,
-    kStatic,
+struct StaticIpv4Config {
+    std::string address;
+    std::string netmask;  // e.g. "255.255.255.0"
+    std::string gateway;
 };
 
 struct NetworkInterfaceConfig {
     std::string ifname;
     bool enabled = true;
-    NetworkAddressMode address_mode = NetworkAddressMode::kDhcp;
-    std::string ipv4_address;
-    uint8_t prefix_length = 24;
-    std::string gateway;
-    std::vector<std::string> dns_servers;
+    bool dhcp = true;
+    StaticIpv4Config static_ipv4;
+    std::vector<std::string> dns;
 };
 
 struct NetworkInterfaceStatus {
     std::string ifname;
     bool enabled = true;
     bool link_up = false;
-    bool dhcp_enabled = true;
-    std::string ipv4_address;
-    uint8_t prefix_length = 0;
+    bool dhcp = true;
     std::string mac_address;
-    std::string gateway;
-    std::vector<std::string> dns_servers;
     bool last_ok = true;
+    struct {
+        std::string address;
+        uint8_t prefix_length = 0;
+        std::string netmask;
+        std::string gateway;
+    } static_ipv4;
+    std::vector<std::string> dns;
 };
 
 class INetworkPlatform {
- public:
+public:
     virtual ~INetworkPlatform() = default;
 
     virtual std::vector<std::string> ListInterfaces() = 0;
@@ -75,7 +77,7 @@ struct NetworkServiceOptions {
 };
 
 class INetworkService {
- public:
+public:
     virtual ~INetworkService() = default;
 
     virtual bool Start() = 0;
@@ -97,10 +99,9 @@ ConfigJson NetworkInterfaceStatusToApiJson(
 bool NetworkInterfaceConfigFromApiJson(const std::string& ifname,
                                        const ConfigJson& value,
                                        NetworkInterfaceConfig* config);
-const char* NetworkAddressModeToString(NetworkAddressMode mode);
 
 class NetworkService {
- public:
+public:
     static const char* Name();
 };
 

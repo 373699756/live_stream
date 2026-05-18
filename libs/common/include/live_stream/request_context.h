@@ -6,11 +6,11 @@
 namespace live_stream {
 
 struct RequestContext {
-  std::string request_id;
-  std::string user_name;
-  std::string session_id;
-  std::string client_ip;
-  std::string user_agent;
+    std::string request_id;
+    std::string user_name;
+    std::string session_id;
+    std::string client_ip;
+    std::string user_agent;
 };
 
 }  // namespace live_stream

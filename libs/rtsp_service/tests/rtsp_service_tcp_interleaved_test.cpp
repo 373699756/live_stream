@@ -18,10 +18,10 @@ int ConnectTo(const live_stream::RtspListenAddress& address) {
     if (fd < 0) {
         return -1;
     }
-    timeval timeout {};
+    timeval timeout{};
     timeout.tv_sec = 2;
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(address.port);
     if (inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1 ||
@@ -34,7 +34,7 @@ int ConnectTo(const live_stream::RtspListenAddress& address) {
 
 bool SendAll(int fd, const std::string& data) {
     return send(fd, data.data(), data.size(), 0) ==
-        static_cast<ssize_t>(data.size());
+           static_cast<ssize_t>(data.size());
 }
 
 bool ReadUntil(int fd, const std::string& needle, std::string* out) {
@@ -99,30 +99,34 @@ int main() {
     }
 
     std::string received;
-    if (!SendAll(fd, "OPTIONS rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                     "CSeq: 1\r\n\r\n") ||
+    if (!SendAll(fd,
+                 "OPTIONS rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                 "CSeq: 1\r\n\r\n") ||
         !ReadUntil(fd, "200 OK", &received)) {
         close(fd);
         return 5;
     }
     received.clear();
-    if (!SendAll(fd, "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                     "CSeq: 2\r\n\r\n") ||
+    if (!SendAll(fd,
+                 "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                 "CSeq: 2\r\n\r\n") ||
         !ReadUntil(fd, "application/sdp", &received)) {
         close(fd);
         return 6;
     }
     received.clear();
-    if (!SendAll(fd, "SETUP rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                     "CSeq: 3\r\n"
-                     "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n") ||
+    if (!SendAll(fd,
+                 "SETUP rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                 "CSeq: 3\r\n"
+                 "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n") ||
         !ReadUntil(fd, "interleaved=0-1", &received)) {
         close(fd);
         return 7;
     }
     received.clear();
-    if (!SendAll(fd, "PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                     "CSeq: 4\r\n\r\n") ||
+    if (!SendAll(fd,
+                 "PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                 "CSeq: 4\r\n\r\n") ||
         !ReadUntil(fd, "200 OK", &received)) {
         close(fd);
         return 8;

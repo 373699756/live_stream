@@ -16,6 +16,17 @@ namespace hisisdk {
 class IHisiSdk;
 }  // namespace hisisdk
 
+// IMediaView is the narrow interface consumed by HttpService (and other
+// cross-module consumers). MediaService implements it so callers can depend on
+// the interface rather than the concrete class.
+class IMediaView {
+public:
+    virtual ~IMediaView() = default;
+    virtual bool IsStarted() const = 0;
+    virtual bool IsStreamStarted(StreamId stream_id) const = 0;
+    virtual MediaCapabilities GetCapabilities() const = 0;
+};
+
 struct MediaServiceOptions {
     MediaPipelineConfig default_config;
     IConfigService* config_service = nullptr;
@@ -29,8 +40,8 @@ struct MediaServiceStats {
     uint32_t subscription_count = 0;
 };
 
-class MediaService {
- public:
+class MediaService : public IMediaView {
+public:
     MediaService();
     explicit MediaService(const MediaPipelineConfig& config);
     explicit MediaService(const MediaServiceOptions& options);
@@ -38,9 +49,9 @@ class MediaService {
 
     bool Start();
     void Stop();
-    bool IsStarted() const;
+    bool IsStarted() const override;
     bool IsStreamSupported(StreamId stream_id) const;
-    bool IsStreamStarted(StreamId stream_id) const;
+    bool IsStreamStarted(StreamId stream_id) const override;
     VideoCodec GetStreamCodec(StreamId stream_id) const;
 
     static const char* StaticName();
@@ -51,7 +62,7 @@ class MediaService {
     virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id);
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason);
-    MediaCapabilities GetCapabilities() const;
+    MediaCapabilities GetCapabilities() const override;
 
     bool SetEncodedFrameCallback(EncodedFrameCallback callback, void* user);
     MediaChannels GetChannels() const;
@@ -59,7 +70,7 @@ class MediaService {
     MppChannel GetMainVencChannel() const;
     MediaServiceStats GetStats() const;
 
- private:
+private:
     struct Impl;
     Impl* impl_;
 };

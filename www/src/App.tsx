@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AppShell } from './components/AppShell';
-import { hasToken } from './api/client';
+import { useAuth } from './context/AuthContext';
 import { ImageConfigPage } from './pages/ImageConfigPage';
 import { LiveViewPage } from './pages/LiveViewPage';
 import { LoginPage } from './pages/LoginPage';
@@ -34,15 +34,15 @@ function renderPage(page: PageId) {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(hasToken());
+  const { authenticated, login, logout } = useAuth();
   const [page, setPage] = useState<PageId>('live');
 
   if (!authenticated) {
-    return <LoginPage onLogin={() => setAuthenticated(true)} />;
+    return <LoginPage onLogin={login} />;
   }
 
   return (
-    <AppShell activePage={page} onNavigate={setPage}>
+    <AppShell activePage={page} onNavigate={setPage} onLogout={logout}>
       {renderPage(page)}
     </AppShell>
   );

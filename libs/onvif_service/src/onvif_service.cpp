@@ -40,7 +40,7 @@ using onvif_internal::StreamUriBody;
 using onvif_internal::SystemDateAndTimeBody;
 
 class OnvifServiceImpl : public IOnvifService {
- public:
+public:
     OnvifServiceImpl(const OnvifServiceOptions& options,
                      const OnvifServiceDependencies& dependencies)
         : options_(options), dependencies_(dependencies) {}
@@ -125,7 +125,7 @@ class OnvifServiceImpl : public IOnvifService {
         return stats_;
     }
 
- private:
+private:
     void HandleUdpMessage(const NetAddress& address,
                           const uint8_t* data,
                           uint32_t size) {

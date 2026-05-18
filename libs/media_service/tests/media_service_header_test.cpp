@@ -7,7 +7,7 @@
 namespace {
 
 class TestFrameSink : public live_stream::IFrameSink {
- public:
+public:
     const char* Name() const override { return "test_sink"; }
     void OnFrame(const EncodedFrame& frame) override {
         (void)frame;
@@ -26,7 +26,7 @@ class TestFrameSink : public live_stream::IFrameSink {
 };
 
 class FakeConfigService : public live_stream::IConfigService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}

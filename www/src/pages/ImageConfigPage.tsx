@@ -1,17 +1,10 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import {
-  cloneDefaultConfig,
-  mockImageConfig,
-  mockMediaCapabilities,
-} from '../api/mock';
+import { useState } from 'react';
+import { useImageConfig } from '../hooks/useImageConfig';
 import type {
   ImageCapabilities,
-  ImageConfig,
   NumericControlCapability,
   OptionControlCapability,
   StreamName,
-  StreamStatus,
 } from '../api/types';
 import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
@@ -137,19 +130,9 @@ function OptionField({
 }
 
 export function ImageConfigPage() {
-  const [config, setConfig] = useState<ImageConfig | null>(null);
-  const [capabilities, setCapabilities] = useState<ImageCapabilities>(
-    mockMediaCapabilities.image,
-  );
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
+  const { config, setConfig, capabilities: mediaCapabilities, statuses, save, reset, savedMsg } = useImageConfig();
+  const capabilities: ImageCapabilities = mediaCapabilities.image;
   const [previewStream, setPreviewStream] = useState<StreamName>('main');
-  const [saved, setSaved] = useState('');
-
-  useEffect(() => {
-    void api.getImageConfig().then(setConfig);
-    void api.getMediaCapabilities().then((value) => setCapabilities(value.image));
-    void api.getStreamStatus().then(setStatuses);
-  }, []);
 
   if (!config) {
     return <div className="panel">加载图像配置...</div>;
@@ -163,10 +146,6 @@ export function ImageConfigPage() {
   };
   const updateColorMode = (mode: string) => {
     setConfig({ ...config, color_mode: { ...config.color_mode, mode } });
-  };
-  const resetDefault = () => {
-    setConfig(cloneDefaultConfig(mockImageConfig));
-    setSaved('已恢复默认值，保存后生效');
   };
 
   return (
@@ -398,10 +377,10 @@ export function ImageConfigPage() {
           )}
         </div>
         <div className="form-actions">
-          <button type="button" onClick={resetDefault}>恢复默认</button>
-          <button type="button" className="primary" onClick={() => void api.saveImageConfig(config).then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))}>保存</button>
+          <button type="button" onClick={reset}>恢复默认</button>
+          <button type="button" className="primary" onClick={() => void save()}>保存</button>
         </div>
-        {saved && <div className="save-hint">{saved}</div>}
+        {savedMsg && <div className="save-hint">{savedMsg}</div>}
       </section>
       <VideoPreview stream={previewStream} statuses={statuses} onStreamChange={setPreviewStream} />
     </div>

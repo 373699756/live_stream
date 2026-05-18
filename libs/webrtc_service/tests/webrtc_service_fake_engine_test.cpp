@@ -8,7 +8,7 @@
 namespace {
 
 class DummyMediaBuffer : public IMediaBuffer {
- public:
+public:
     uint8_t* MutableData() override { return data_; }
     const uint8_t* Data() const override { return data_; }
     uint32_t Size() const override { return size_; }
@@ -17,7 +17,7 @@ class DummyMediaBuffer : public IMediaBuffer {
         size_ = size > Capacity() ? Capacity() : size;
     }
 
- private:
+private:
     uint8_t data_[16] = {};
     uint32_t size_ = sizeof(data_);
 };

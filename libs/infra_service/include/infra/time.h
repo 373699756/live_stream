@@ -13,7 +13,7 @@
 namespace infra {
 
 class Time {
- public:
+public:
     static int64_t MonotonicMillis();
     static int64_t MonotonicNanos();
     static int64_t SystemTimeMillis();

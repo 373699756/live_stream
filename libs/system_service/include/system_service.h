@@ -43,7 +43,7 @@ struct SystemCapabilities {
 };
 
 class ISystemPlatform {
- public:
+public:
     virtual ~ISystemPlatform() = default;
 
     virtual DeviceInfo GetDeviceInfo() = 0;
@@ -62,7 +62,7 @@ struct SystemServiceOptions {
 };
 
 class ISystemService {
- public:
+public:
     virtual ~ISystemService() = default;
 
     virtual bool Start() = 0;

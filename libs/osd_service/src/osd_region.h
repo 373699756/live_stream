@@ -19,7 +19,7 @@ bool IsValidBitmap(const OsdBitmap& bitmap);
 int32_t MinHandle(OsdRegionType type);
 
 class OsdMppAdapter {
- public:
+public:
     virtual ~OsdMppAdapter() = default;
 
     virtual bool Create(int32_t handle, const OsdRegionConfig& config) = 0;
@@ -31,7 +31,7 @@ class OsdMppAdapter {
 };
 
 class HostOsdMppAdapter final : public OsdMppAdapter {
- public:
+public:
     explicit HostOsdMppAdapter(hisisdk::IHisiSdk* sdk = nullptr);
 
     bool Create(int32_t handle, const OsdRegionConfig& config) override;
@@ -41,7 +41,7 @@ class HostOsdMppAdapter final : public OsdMppAdapter {
     bool UpdateBitmap(int32_t handle, const OsdBitmap& bitmap) override;
     void Destroy(int32_t handle) override;
 
- private:
+private:
     hisisdk::IHisiSdk* sdk_;
 };
 

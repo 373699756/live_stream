@@ -46,7 +46,7 @@ int main() {
         return 3;
     }
     const int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    sockaddr_in addr {};
+    sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(local.value.port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);

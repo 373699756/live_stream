@@ -21,10 +21,11 @@ const navItems: NavItem[] = [
 interface AppShellProps {
   activePage: PageId;
   onNavigate: (page: PageId) => void;
+  onLogout?: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ activePage, onNavigate, children }: AppShellProps) {
+export function AppShell({ activePage, onNavigate, onLogout, children }: AppShellProps) {
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -40,6 +41,12 @@ export function AppShell({ activePage, onNavigate, children }: AppShellProps) {
           设备在线
           <span className="divider" />
           admin
+          {onLogout && (
+            <>
+              <span className="divider" />
+              <button type="button" className="logout-btn" onClick={onLogout}>退出</button>
+            </>
+          )}
         </div>
       </header>
 

@@ -15,39 +15,39 @@
 namespace live_stream {
 
 struct ProtocolRefs {
-  IRtspService *rtsp = nullptr;
-  IWebrtcService *webrtc = nullptr;
-  IOnvifService *onvif = nullptr;
-  IHttpService *http = nullptr;
+    IRtspService *rtsp = nullptr;
+    IWebrtcService *webrtc = nullptr;
+    IOnvifService *onvif = nullptr;
+    IHttpService *http = nullptr;
 };
 
 class ProtocolSubsystem {
 public:
-  static ProtocolSubsystem &Get();
+    static ProtocolSubsystem &Get();
 
-  bool Start(const AppRuntimeConfig &runtime_config);
-  void Stop();
-  ProtocolRefs refs() const;
-  NetEngine *net_engine() const { return net_engine_.get(); }
+    bool Start(const AppRuntimeConfig &runtime_config);
+    void Stop();
+    ProtocolRefs refs() const;
+    NetEngine *net_engine() const { return net_engine_.get(); }
 
 private:
-  ProtocolSubsystem() = default;
-  ~ProtocolSubsystem() = default;
+    ProtocolSubsystem() = default;
+    ~ProtocolSubsystem() = default;
 
-  ProtocolSubsystem(const ProtocolSubsystem &) = delete;
-  ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
+    ProtocolSubsystem(const ProtocolSubsystem &) = delete;
+    ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
-  std::unique_ptr<infra::Executor> net_callback_executor_;
-  std::unique_ptr<NetEngine> net_engine_;
-  std::unique_ptr<IRtspService> rtsp_;
-  std::unique_ptr<IWebrtcService> webrtc_;
-  std::unique_ptr<IStreamHubService> stream_hub_;
-  std::unique_ptr<IOnvifUriProvider> onvif_uri_provider_;
-  std::unique_ptr<IOnvifService> onvif_;
-  std::unique_ptr<IHttpService> http_;
-  bool started_ = false;
+    std::unique_ptr<infra::Executor> net_callback_executor_;
+    std::unique_ptr<NetEngine> net_engine_;
+    std::unique_ptr<IRtspService> rtsp_;
+    std::unique_ptr<IWebrtcService> webrtc_;
+    std::unique_ptr<IStreamHubService> stream_hub_;
+    std::unique_ptr<IOnvifUriProvider> onvif_uri_provider_;
+    std::unique_ptr<IOnvifService> onvif_;
+    std::unique_ptr<IHttpService> http_;
+    bool started_ = false;
 };
 
-} // namespace live_stream
+}  // namespace live_stream
 
-#endif // LIVE_STREAM_APP_PROTOCOL_SUBSYSTEM_H_
+#endif  // LIVE_STREAM_APP_PROTOCOL_SUBSYSTEM_H_

@@ -7,7 +7,7 @@ namespace live_stream {
 namespace {
 
 class PlainTextPasswordVerifier : public IPasswordVerifier {
- public:
+public:
     bool VerifyPassword(
         const std::string& password,
         const std::string& password_credential) override {
@@ -16,7 +16,7 @@ class PlainTextPasswordVerifier : public IPasswordVerifier {
 };
 
 class Sha256PasswordVerifier : public IPasswordVerifier {
- public:
+public:
     bool VerifyPassword(
         const std::string& password,
         const std::string& password_credential) override {

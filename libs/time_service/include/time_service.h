@@ -43,7 +43,7 @@ struct TimeStatus {
 };
 
 class ITimePlatform {
- public:
+public:
     virtual ~ITimePlatform() = default;
 
     virtual int64_t GetSystemTimeMs() = 0;
@@ -62,7 +62,7 @@ struct TimeServiceOptions {
 };
 
 class ITimeService {
- public:
+public:
     virtual ~ITimeService() = default;
 
     virtual bool Start() = 0;

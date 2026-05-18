@@ -10,7 +10,7 @@
 namespace {
 
 class FakeTimePlatform : public live_stream::ITimePlatform {
- public:
+public:
     int64_t GetSystemTimeMs() override { return now_ms; }
 
     infra::Status SetSystemTimeMs(int64_t unix_time_ms) override {
@@ -20,7 +20,7 @@ class FakeTimePlatform : public live_stream::ITimePlatform {
     }
 
     infra::Status SyncNtp(const std::vector<std::string>& servers,
-                         int64_t* synced_time_ms) override {
+                          int64_t* synced_time_ms) override {
         ++ntp_count;
         last_servers = servers;
         if (synced_time_ms != nullptr) {
@@ -39,7 +39,7 @@ class FakeTimePlatform : public live_stream::ITimePlatform {
 };
 
 class FakeEventService : public live_stream::IEventService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}
@@ -66,7 +66,7 @@ class FakeEventService : public live_stream::IEventService {
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
- public:
+public:
     infra::Status Init() override { return infra::Status::kOk; }
     infra::Status Start() override { return infra::Status::kOk; }
     void Stop() override {}

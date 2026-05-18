@@ -14,7 +14,7 @@
 namespace infra {
 
 class File {
- public:
+public:
     static std::string ReadAll(const std::string& path);
     static bool WriteAll(const std::string& path, const std::string& data);
     static bool Append(const std::string& path, const std::string& data);
@@ -26,7 +26,7 @@ class File {
 };
 
 class Path {
- public:
+public:
     static std::string Join(const std::string& left, const std::string& right);
     static std::string DirName(const std::string& path);
     static std::string BaseName(const std::string& path);

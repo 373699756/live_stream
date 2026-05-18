@@ -73,7 +73,7 @@ struct LoggerServiceConfig {
 };
 
 class ILoggerService {
- public:
+public:
     virtual ~ILoggerService() = default;
 
     virtual bool Start() = 0;

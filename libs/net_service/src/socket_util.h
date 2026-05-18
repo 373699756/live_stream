@@ -13,7 +13,7 @@ sockaddr_in ToSockAddr(const NetAddress &address);
 NetAddress FromSockAddr(const sockaddr_in &addr);
 NetAddress GetSocketAddress(int fd, bool peer);
 
-} // namespace net_internal
-} // namespace live_stream
+}  // namespace net_internal
+}  // namespace live_stream
 
-#endif // LIVE_STREAM_NET_SERVICE_SRC_SOCKET_UTIL_H_
+#endif  // LIVE_STREAM_NET_SERVICE_SRC_SOCKET_UTIL_H_

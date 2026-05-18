@@ -34,12 +34,12 @@ enum class SessionState {
     kClosed,
 };
 
-void AppendU16(std::vector<uint8_t> *out, uint16_t value) {
+void WriteU16(uint8_t* out, uint16_t value) {
     if (out == nullptr) {
         return;
     }
-    out->push_back(static_cast<uint8_t>((value >> 8) & 0xff));
-    out->push_back(static_cast<uint8_t>(value & 0xff));
+    out[0] = static_cast<uint8_t>((value >> 8) & 0xff);
+    out[1] = static_cast<uint8_t>(value & 0xff);
 }
 
 }  // namespace
@@ -47,8 +47,8 @@ void AppendU16(std::vector<uint8_t> *out, uint16_t value) {
 using rtsp_internal::BasicRealmHeader;
 using rtsp_internal::BuildRtspResponse;
 using rtsp_internal::BuildSdp;
-using rtsp_internal::CSeq;
 using rtsp_internal::ContainsNoCase;
+using rtsp_internal::CSeq;
 using rtsp_internal::DecodeBase64;
 using rtsp_internal::HeaderValue;
 using rtsp_internal::ParseClientRtpPort;
@@ -56,13 +56,14 @@ using rtsp_internal::ParseRtspRequest;
 using rtsp_internal::PathToStreamId;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
-using stream_mux::RtpPacket;
+using stream_mux::IRtpPacketSink;
 using stream_mux::RtpPacketizer;
+using stream_mux::RtpPacketView;
 
 class RtspServiceImpl : public IRtspService,
                         public IRtspFrameSink,
                         public IFrameSink {
- public:
+public:
     RtspServiceImpl(RtspServiceOptions options,
                     RtspServiceDependencies dependencies)
         : options_(std::move(options)),
@@ -260,7 +261,7 @@ class RtspServiceImpl : public IRtspService,
         (void)state;
     }
 
- private:
+private:
     struct Session {
         uint64_t session_id = 0;
         ConnectionId connection_id = 0;
@@ -566,8 +567,8 @@ class RtspServiceImpl : public IRtspService,
             session->transport = RtspTransportMode::kUdp;
             session->client_rtp_port = static_cast<uint16_t>(client_port);
             response_transport = "RTP/AVP;unicast;client_port=" +
-                std::to_string(client_port) + "-" +
-                std::to_string(client_port + 1);
+                                 std::to_string(client_port) + "-" +
+                                 std::to_string(client_port + 1);
             AddUdpSession();
         } else {
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
@@ -580,6 +581,32 @@ class RtspServiceImpl : public IRtspService,
                       {"Session", std::to_string(session->session_id)}},
                      "");
     }
+
+    class RtspPacketSink final : public IRtpPacketSink {
+    public:
+        RtspPacketSink(RtspServiceImpl* service,
+                       std::shared_ptr<Session> session,
+                       const EncodedFrame* frame)
+            : service_(service),
+              session_(std::move(session)),
+              frame_(frame) {}
+
+        bool OnRtpPacket(const RtpPacketView& packet) override {
+            if (service_ == nullptr || frame_ == nullptr || !ok_) {
+                return false;
+            }
+            ok_ = service_->SendRtpPacketView(session_, *frame_, packet);
+            return ok_;
+        }
+
+        bool ok() const { return ok_; }
+
+    private:
+        RtspServiceImpl* service_ = nullptr;
+        std::shared_ptr<Session> session_;
+        const EncodedFrame* frame_ = nullptr;
+        bool ok_ = true;
+    };
 
     void SendFrame(const std::shared_ptr<Session>& session,
                    const EncodedFrame& frame) {
@@ -606,19 +633,21 @@ class RtspServiceImpl : public IRtspService,
             std::lock_guard<std::mutex> lock(mutex_);
             sequence = session->rtp_sequence;
         }
-        std::vector<RtpPacket> packets =
-            packetizer_.Packetize(frame, &sequence, session->ssrc);
+        RtspPacketSink sink(this, session, &frame);
+        const bool packetized =
+            packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session->rtp_sequence = sequence;
         }
-        for (const RtpPacket& packet : packets) {
-            SendRtpPacketBytes(session, packet.bytes);
+        if (!packetized) {
+            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
         }
     }
 
-    void SendRtpPacketBytes(const std::shared_ptr<Session>& session,
-                            const std::vector<uint8_t>& packet) {
+    bool SendRtpPacketView(const std::shared_ptr<Session>& session,
+                           const EncodedFrame& frame,
+                           const RtpPacketView& packet) {
         RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
         ConnectionId connection_id = 0;
         UdpSocketId udp_socket_id = 0;
@@ -634,20 +663,38 @@ class RtspServiceImpl : public IRtspService,
             interleaved_channel = session->interleaved_rtp_channel;
         }
 
+        const size_t packet_size = packet.Size();
+        if (packet_size == 0 || packet_size > 0xffff ||
+            dependencies_.net_engine == nullptr) {
+            return false;
+        }
+        std::shared_ptr<const void> payload_owner;
+        if (frame.buffer) {
+            payload_owner =
+                std::shared_ptr<const void>(frame.buffer, frame.buffer.get());
+        }
+        NetBufferSlices slices;
+        uint8_t interleaved_header[4] = {'$', interleaved_channel, 0, 0};
         bool ok = true;
         if (transport == RtspTransportMode::kTcpInterleaved) {
-            std::vector<uint8_t> framed;
-            framed.reserve(packet.size() + 4);
-            framed.push_back('$');
-            framed.push_back(interleaved_channel);
-            AppendU16(&framed, static_cast<uint16_t>(packet.size()));
-            framed.insert(framed.end(), packet.begin(), packet.end());
-            ok = dependencies_.net_engine->Send(connection_id, framed.data(),
-                                                framed.size());
+            WriteU16(interleaved_header + 2,
+                     static_cast<uint16_t>(packet_size));
+            ok = slices.Add(interleaved_header, sizeof(interleaved_header));
+            for (size_t i = 0; ok && i < packet.slice_count; ++i) {
+                const auto& slice = packet.slices[i];
+                ok = slices.Add(slice.data, slice.size,
+                                slice.media_payload ? payload_owner : nullptr);
+            }
+            ok = ok && dependencies_.net_engine->SendSlices(connection_id,
+                                                            slices);
         } else if (udp_socket_id != 0) {
-            ok = dependencies_.net_engine->SendTo(udp_socket_id, target,
-                                                  packet.data(),
-                                                  packet.size());
+            for (size_t i = 0; ok && i < packet.slice_count; ++i) {
+                const auto& slice = packet.slices[i];
+                ok = slices.Add(slice.data, slice.size,
+                                slice.media_payload ? payload_owner : nullptr);
+            }
+            ok = ok && dependencies_.net_engine->SendToSlices(udp_socket_id,
+                                                              target, slices);
         }
         if (!ok) {
             {
@@ -662,18 +709,19 @@ class RtspServiceImpl : public IRtspService,
             }
             NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
             (void)dependencies_.net_engine->Close(connection_id);
-            return;
+            return false;
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ++session->stats.sent_rtp_packets;
-            session->stats.sent_rtp_bytes += packet.size();
+            session->stats.sent_rtp_bytes += packet_size;
             session->stats.pending_bytes =
                 dependencies_.net_engine->PendingBytes(connection_id);
             ++stats_.sent_rtp_packets;
-            stats_.sent_rtp_bytes += packet.size();
+            stats_.sent_rtp_bytes += packet_size;
         }
         NotifyAdaptive(*session, RtspAdaptiveEventType::kSample);
+        return true;
     }
 
     void SendResponse(ConnectionId connection_id,

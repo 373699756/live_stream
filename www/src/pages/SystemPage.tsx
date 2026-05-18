@@ -1,11 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import type {
-  SystemStatus,
-  UpgradePackageInfo,
-  UpgradeRequest,
-  UpgradeStatus,
-} from '../api/types';
+import { useUpgrade } from '../hooks/useUpgrade';
+import type { UpgradeStatus } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 
 function formatTimestamp(timestampMs: number) {
@@ -50,119 +44,30 @@ function canStartUpgrade(status: UpgradeStatus) {
 }
 
 export function SystemPage() {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
-  const [packageInfo, setPackageInfo] = useState<UpgradePackageInfo | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [allowSameVersion, setAllowSameVersion] = useState(false);
-  const [allowDowngrade, setAllowDowngrade] = useState(false);
-  const [autoReboot, setAutoReboot] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let mounted = true;
-
-    const load = () => {
-      void api.getSystemStatus().then((next) => {
-        if (mounted) {
-          setStatus(next);
-        }
-      });
-      void api.getUpgradeStatus().then((next) => {
-        if (mounted) {
-          setUpgradeStatus(next);
-        }
-      });
-    };
-
-    load();
-    const timer = window.setInterval(load, 2000);
-    return () => {
-      mounted = false;
-      window.clearInterval(timer);
-    };
-  }, []);
+  const {
+    status,
+    upgradeStatus,
+    packageInfo,
+    selectedFile,
+    allowSameVersion,
+    setAllowSameVersion,
+    allowDowngrade,
+    setAllowDowngrade,
+    autoReboot,
+    setAutoReboot,
+    busy,
+    message,
+    error,
+    selectFile,
+    uploadPackage,
+    startUpgrade,
+    cancelUpgrade,
+    confirmReboot,
+  } = useUpgrade();
 
   if (!status || !upgradeStatus) {
     return <div className="panel">加载系统状态...</div>;
   }
-
-  const uploadPackage = async () => {
-    if (!selectedFile) {
-      return;
-    }
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const uploaded = await api.uploadUpgradePackage(selectedFile);
-      setPackageInfo(uploaded);
-      setMessage(`已上传 ${selectedFile.name}`);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '上传失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startUpgrade = async () => {
-    if (!packageInfo) {
-      return;
-    }
-    setBusy(true);
-    setError('');
-    setMessage('');
-    const request: UpgradeRequest = {
-      package_path: packageInfo.package_path,
-      expected_version: packageInfo.version,
-      allow_same_version: allowSameVersion,
-      allow_downgrade: allowDowngrade,
-      auto_reboot: autoReboot,
-    };
-    try {
-      const next = await api.startUpgrade(request);
-      setUpgradeStatus(next);
-      setMessage('升级任务已提交');
-    } catch (startError) {
-      setError(startError instanceof Error ? startError.message : '启动升级失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const cancelUpgrade = async () => {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const next = await api.cancelUpgrade();
-      setUpgradeStatus(next);
-      setMessage('升级任务已取消');
-    } catch (cancelError) {
-      setError(cancelError instanceof Error ? cancelError.message : '取消升级失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmReboot = async () => {
-    setBusy(true);
-    setError('');
-    setMessage('');
-    try {
-      const next = await api.confirmUpgradeReboot();
-      setUpgradeStatus(next);
-      setMessage('已下发重启应用升级');
-    } catch (confirmError) {
-      setError(
-        confirmError instanceof Error ? confirmError.message : '确认重启失败',
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="page-grid system-grid">
@@ -217,11 +122,7 @@ export function SystemPage() {
                   type="file"
                   accept=".bin,.img,.tar,.tgz,.zip"
                   onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    setSelectedFile(file);
-                    setPackageInfo(null);
-                    setError('');
-                    setMessage('');
+                    selectFile(event.target.files?.[0] ?? null);
                   }}
                 />
                 <button

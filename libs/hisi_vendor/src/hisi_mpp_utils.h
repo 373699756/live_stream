@@ -44,24 +44,24 @@ namespace internal {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
 
 // Check HiSilicon SDK return code, log on failure, return false.
-#define HISI_CHECK(expr)                                                \
-  do {                                                                  \
-    HI_S32 __ret = (expr);                                              \
-    if (__ret != HI_SUCCESS) {                                          \
-      INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", #expr, __ret);\
-      return false;                                                     \
-    }                                                                   \
-  } while (0)
+#define HISI_CHECK(expr)                                                       \
+    do {                                                                       \
+        HI_S32 __ret = (expr);                                                 \
+        if (__ret != HI_SUCCESS) {                                             \
+            INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
+            return false;                                                      \
+        }                                                                      \
+    } while (0)
 
 // Check HiSilicon SDK return code, log on failure, propagate error code.
-#define HISI_CHECK_ERR(expr)                                            \
-  do {                                                                  \
-    HI_S32 __ret = (expr);                                              \
-    if (__ret != HI_SUCCESS) {                                          \
-      INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", #expr, __ret);\
-      return __ret;                                                     \
-    }                                                                   \
-  } while (0)
+#define HISI_CHECK_ERR(expr)                                                   \
+    do {                                                                       \
+        HI_S32 __ret = (expr);                                                 \
+        if (__ret != HI_SUCCESS) {                                             \
+            INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
+            return __ret;                                                      \
+        }                                                                      \
+    } while (0)
 
 // Single-expression version for use in ternary / assignment.
 inline bool HiOk(HI_S32 status) { return status == HI_SUCCESS; }
@@ -74,27 +74,27 @@ inline bool HiOk(HI_S32 status) { return status == HI_SUCCESS; }
 
 // Trivial IMediaBuffer implementation backed by a heap-allocated vector.
 class HeapMediaBuffer final : public IMediaBuffer {
- public:
-  explicit HeapMediaBuffer(uint32_t capacity) : data_(capacity) {}
+public:
+    explicit HeapMediaBuffer(uint32_t capacity) : data_(capacity) {}
 
-  uint8_t* MutableData() override { return data_.data(); }
-  const uint8_t* Data() const override { return data_.data(); }
-  uint32_t Size() const override {
-    return static_cast<uint32_t>(data_.size());
-  }
-  uint32_t Capacity() const override {
-    return static_cast<uint32_t>(data_.capacity());
-  }
-  bool SetSize(uint32_t size) override {
-    if (size <= data_.size()) {
-      data_.resize(size);
-      return true;
+    uint8_t* MutableData() override { return data_.data(); }
+    const uint8_t* Data() const override { return data_.data(); }
+    uint32_t Size() const override {
+        return static_cast<uint32_t>(data_.size());
     }
-    return false;
-  }
+    uint32_t Capacity() const override {
+        return static_cast<uint32_t>(data_.capacity());
+    }
+    bool SetSize(uint32_t size) override {
+        if (size <= data_.size()) {
+            data_.resize(size);
+            return true;
+        }
+        return false;
+    }
 
- private:
-  std::vector<uint8_t> data_;
+private:
+    std::vector<uint8_t> data_;
 };
 
 }  // namespace internal

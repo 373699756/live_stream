@@ -87,7 +87,7 @@ int32_t ReadTemperatureCelsius() {
 }
 
 class DefaultSystemPlatform : public ISystemPlatform {
- public:
+public:
     DeviceInfo GetDeviceInfo() override {
         DeviceInfo info;
         info.model = "live_stream_ipc";
@@ -122,7 +122,7 @@ class DefaultSystemPlatform : public ISystemPlatform {
 };
 
 class SystemServiceImpl : public ISystemService {
- public:
+public:
     explicit SystemServiceImpl(const SystemServiceOptions& options)
         : options_(options),
           owned_platform_(options.platform == nullptr
@@ -231,7 +231,7 @@ class SystemServiceImpl : public ISystemService {
         return true;
     }
 
- private:
+private:
     bool IsStarted() {
         std::lock_guard<std::mutex> lock(mutex_);
         return initialized_ && started_;

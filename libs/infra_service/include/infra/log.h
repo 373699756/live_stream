@@ -47,7 +47,7 @@ struct LogConfig {
  * - 建议由 app 在启动早期 Init()，在退出末尾 Shutdown()。
  */
 class Log {
- public:
+public:
     /**
      * @brief 初始化全局日志运行时。
      *

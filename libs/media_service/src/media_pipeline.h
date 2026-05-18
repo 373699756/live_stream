@@ -17,7 +17,7 @@ bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config);
 bool IsValidMediaStream(StreamId stream_id);
 
 class MediaPipeline {
- public:
+public:
     explicit MediaPipeline(MediaPipelineConfig config);
     MediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk);
 
@@ -34,7 +34,7 @@ class MediaPipeline {
     bool system_initialized() const { return system_initialized_; }
     const MediaChannels& channels() const { return channels_; }
 
- private:
+private:
     void BuildChannels();
 
     hisisdk::IHisiSdk* sdk_;

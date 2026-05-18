@@ -10,7 +10,7 @@ namespace live_stream {
 namespace {
 
 class LoggerServiceImpl : public ILoggerService {
- public:
+public:
     explicit LoggerServiceImpl(std::unique_ptr<IOperationLogStore> store)
         : store_(std::move(store)) {}
 
@@ -83,7 +83,7 @@ class LoggerServiceImpl : public ILoggerService {
         return store_->Export(options);
     }
 
- private:
+private:
     mutable std::mutex mutex_;
     std::unique_ptr<IOperationLogStore> store_;
     bool initialized_ = false;

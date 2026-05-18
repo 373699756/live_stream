@@ -10,44 +10,44 @@ namespace hisisdk {
 // This is the production implementation for Hi3516CV500 / Hi3516DV300 platforms.
 // Use it in place of StubHisiSdk when LIVE_STREAM_ENABLE_HISI_MPP is defined.
 class MppHisiSdk final : public IHisiSdk {
- public:
-  MppHisiSdk();
-  ~MppHisiSdk() override;
+public:
+    MppHisiSdk();
+    ~MppHisiSdk() override;
 
-  MediaCapabilities GetCapabilities() override;
-  bool InitSystem(const MediaPipelineConfig& config) override;
-  void DeinitSystem() override;
-  bool StartVi(const MediaPipelineConfig& config) override;
-  void StopVi(const MediaPipelineConfig& config) override;
-  bool StartVpss(const MediaPipelineConfig& config) override;
-  void StopVpss(const MediaPipelineConfig& config) override;
-  bool BindViVpss(const MediaPipelineConfig& config) override;
-  void UnbindViVpss(const MediaPipelineConfig& config) override;
-  bool StartVenc(const MediaPipelineConfig& config) override;
-  void StopVenc(const MediaPipelineConfig& config) override;
-  bool BindVpssVenc(const MediaPipelineConfig& config) override;
-  void UnbindVpssVenc(const MediaPipelineConfig& config) override;
-  bool StartVencStream(const MediaPipelineConfig& config,
-                       EncodedFrameCallback callback,
-                       void* user) override;
-  void StopVencStream(const MediaPipelineConfig& config) override;
-  bool RequestIdr(int32_t venc_channel) override;
-  bool CreateRegion(int32_t handle,
-                    const RegionConfig& config) override;
-  bool AttachRegion(int32_t handle,
-                    const RegionConfig& config) override;
-  bool DetachRegion(int32_t handle,
-                    const RegionConfig& config) override;
-  bool SetRegionDisplay(int32_t handle,
-                        const RegionConfig& config) override;
-  bool SetRegionBitmap(int32_t handle,
-                       const Bitmap& bitmap) override;
-  void DestroyRegion(int32_t handle) override;
-  JpegFrame CaptureJpeg(const SnapshotConfig& config) override;
+    MediaCapabilities GetCapabilities() override;
+    bool InitSystem(const MediaPipelineConfig& config) override;
+    void DeinitSystem() override;
+    bool StartVi(const MediaPipelineConfig& config) override;
+    void StopVi(const MediaPipelineConfig& config) override;
+    bool StartVpss(const MediaPipelineConfig& config) override;
+    void StopVpss(const MediaPipelineConfig& config) override;
+    bool BindViVpss(const MediaPipelineConfig& config) override;
+    void UnbindViVpss(const MediaPipelineConfig& config) override;
+    bool StartVenc(const MediaPipelineConfig& config) override;
+    void StopVenc(const MediaPipelineConfig& config) override;
+    bool BindVpssVenc(const MediaPipelineConfig& config) override;
+    void UnbindVpssVenc(const MediaPipelineConfig& config) override;
+    bool StartVencStream(const MediaPipelineConfig& config,
+                         EncodedFrameCallback callback,
+                         void* user) override;
+    void StopVencStream(const MediaPipelineConfig& config) override;
+    bool RequestIdr(int32_t venc_channel) override;
+    bool CreateRegion(int32_t handle,
+                      const RegionConfig& config) override;
+    bool AttachRegion(int32_t handle,
+                      const RegionConfig& config) override;
+    bool DetachRegion(int32_t handle,
+                      const RegionConfig& config) override;
+    bool SetRegionDisplay(int32_t handle,
+                          const RegionConfig& config) override;
+    bool SetRegionBitmap(int32_t handle,
+                         const Bitmap& bitmap) override;
+    void DestroyRegion(int32_t handle) override;
+    JpegFrame CaptureJpeg(const SnapshotConfig& config) override;
 
- private:
-  struct Impl;
-  Impl* impl_;
+private:
+    struct Impl;
+    Impl* impl_;
 };
 
 // Factory function – returns a static MppHisiSdk instance.

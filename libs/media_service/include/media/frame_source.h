@@ -31,7 +31,7 @@ struct FrameSubscribeOptions {
 };
 
 class IFrameSink {
- public:
+public:
     virtual ~IFrameSink() = default;
 
     virtual const char* Name() const = 0;

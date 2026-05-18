@@ -92,14 +92,14 @@ struct RtspAdaptiveAction {
 };
 
 class IRtspFrameSink {
- public:
+public:
     virtual ~IRtspFrameSink() = default;
 
     virtual bool OnEncodedFrame(const EncodedFrame& frame) = 0;
 };
 
 class IRtspFrameSource {
- public:
+public:
     virtual ~IRtspFrameSource() = default;
 
     virtual bool AttachSink(StreamId stream_id,
@@ -110,7 +110,7 @@ class IRtspFrameSource {
 };
 
 class IRtspAdaptiveObserver {
- public:
+public:
     virtual ~IRtspAdaptiveObserver() = default;
 
     virtual RtspAdaptiveAction OnRtspAdaptiveSample(
@@ -127,7 +127,7 @@ struct RtspServiceDependencies {
 };
 
 class IRtspService {
- public:
+public:
     virtual ~IRtspService() = default;
 
     virtual bool Start() = 0;
@@ -142,7 +142,7 @@ std::unique_ptr<IRtspService> CreateRtspService(
     const RtspServiceDependencies& dependencies);
 
 class RtspService {
- public:
+public:
     static const char* Name();
 };
 

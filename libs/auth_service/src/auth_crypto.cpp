@@ -180,8 +180,7 @@ std::string Sha256Credential(
         return std::string();
     }
     const std::array<uint8_t, 32> digest = Sha256(salt + password);
-    return "sha256:" + salt_hex + ":" + BytesToHex(digest.data(),
-                                                   digest.size());
+    return "sha256:" + salt_hex + ":" + BytesToHex(digest.data(), digest.size());
 }
 
 bool ConstantTimeEquals(const std::string& left, const std::string& right) {
