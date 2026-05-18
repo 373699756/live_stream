@@ -16,7 +16,10 @@ namespace hisisdk {
 namespace {
 
 constexpr int32_t kConfigMax = 100;
-constexpr uint32_t kGainBase = 0x400;
+constexpr int32_t kConfigNeutral = kConfigMax / 2;
+constexpr uint16_t kGainBase = 0x400;
+constexpr uint16_t kWbGainMin = 0x200;
+constexpr uint16_t kWbGainMax = 0x800;
 
 bool CheckMpiCall(const char* expression, HI_S32 status) {
     if (status == HI_SUCCESS) {
@@ -41,6 +44,15 @@ uint8_t ScaleControlU8(int32_t value, uint8_t min_value, uint8_t max_value) {
 uint16_t ScaleControlU16(int32_t value, uint16_t min_value,
                          uint16_t max_value) {
     return static_cast<uint16_t>(ScaleControl(value, min_value, max_value));
+}
+
+uint16_t WhiteBalanceGainFromControl(int32_t value) {
+    const int32_t clamped = std::max(0, std::min(kConfigMax, value));
+    if (clamped <= kConfigNeutral) {
+        return ScaleControlU16(clamped * 2, kWbGainMin, kGainBase);
+    }
+    return ScaleControlU16((clamped - kConfigNeutral) * 2, kGainBase,
+                           kWbGainMax);
 }
 
 bool LoadSection(const ConfigJson& image_config, const char* section_name,
@@ -213,10 +225,10 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     int32_t red_gain = 0;
     int32_t blue_gain = 0;
     if (LoadInt(white_balance, "red_gain", &red_gain)) {
-        attr.stManual.u16Rgain = ScaleControlU16(red_gain, 0, 0x0fff);
+        attr.stManual.u16Rgain = WhiteBalanceGainFromControl(red_gain);
     }
     if (LoadInt(white_balance, "blue_gain", &blue_gain)) {
-        attr.stManual.u16Bgain = ScaleControlU16(blue_gain, 0, 0x0fff);
+        attr.stManual.u16Bgain = WhiteBalanceGainFromControl(blue_gain);
     }
     attr.stManual.u16Grgain = kGainBase;
     attr.stManual.u16Gbgain = kGainBase;
@@ -313,6 +325,11 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
     }
     if (has_mode) {
         attr.bEnable = mode == "off" ? HI_FALSE : HI_TRUE;
+        if (mode != "off") {
+            INFRA_LOG_WARN("hisi_vendor",
+                           "backlight mode %s is applied as DRC strength only",
+                           mode.c_str());
+        }
     }
     if (has_level) {
         attr.enOpType = OP_TYPE_AUTO;

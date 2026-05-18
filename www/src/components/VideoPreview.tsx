@@ -51,8 +51,14 @@ interface VideoPreviewProps {
   onStreamChange: (stream: StreamName) => void;
 }
 
+const scriptLoads = new Map<string, Promise<void>>();
+
 function loadScriptOnce(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+  const existingLoad = scriptLoads.get(src);
+  if (existingLoad) {
+    return existingLoad;
+  }
+  const load = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
     if (existing?.dataset.loaded === 'true') {
       resolve();
@@ -65,11 +71,27 @@ function loadScriptOnce(src: string): Promise<void> {
       script.dataset.loaded = 'true';
       resolve();
     };
-    script.onerror = () => reject(new Error(`load failed: ${src}`));
+    script.onerror = () => {
+      script.remove();
+      reject(new Error(`load failed: ${src}`));
+    };
     if (!existing) {
       document.head.appendChild(script);
     }
   });
+  load.catch(() => {
+    scriptLoads.delete(src);
+  });
+  scriptLoads.set(src, load);
+  return load;
+}
+
+async function loadLocalHlsModule(): Promise<HlsConstructor | undefined> {
+  if (window.Hls) {
+    return window.Hls as HlsConstructor;
+  }
+  await loadScriptOnce('/vendor/hls.min.js');
+  return window.Hls as HlsConstructor | undefined;
 }
 
 async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
@@ -291,26 +313,34 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           cleanup();
         };
       }
-      const Hls = window.Hls as HlsConstructor | undefined;
-      if (!Hls || !Hls.isSupported?.()) {
-        setPreviewState('HLS 播放器不可用');
-        return () => {
-          disposed = true;
-          cleanup();
-        };
-      }
-      const player = new Hls({ enableWorker: true });
-      hlsRef.current = player;
-      const errorEvent = Hls.Events?.ERROR;
-      if (errorEvent && player.on) {
-        player.on(errorEvent, () => {
-          setPreviewState('HLS 播放失败');
-        });
-      }
-      player.attachMedia(video);
-      player.loadSource(url);
-      void video.play().catch(() => {});
-      setPreviewState('正在拉取 HLS 码流');
+      void (async () => {
+        try {
+          const Hls = await loadLocalHlsModule();
+          if (disposed) {
+            return;
+          }
+          if (!Hls || !Hls.isSupported?.()) {
+            setPreviewState('HLS 播放器不可用');
+            return;
+          }
+          const player = new Hls({ enableWorker: true });
+          hlsRef.current = player;
+          const errorEvent = Hls.Events?.ERROR;
+          if (errorEvent && player.on) {
+            player.on(errorEvent, () => {
+              setPreviewState('HLS 播放失败');
+            });
+          }
+          player.attachMedia(video);
+          player.loadSource(url);
+          void video.play().catch(() => {});
+          setPreviewState('正在拉取 HLS 码流');
+        } catch {
+          if (!disposed) {
+            setPreviewState('HLS 播放器脚本未加载');
+          }
+        }
+      })();
       return () => {
         disposed = true;
         cleanup();
