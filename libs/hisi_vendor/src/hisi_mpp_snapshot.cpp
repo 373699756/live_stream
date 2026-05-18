@@ -32,11 +32,11 @@ uint32_t VencPackDataLen(const VENC_PACK_S& pack) {
 void CleanupJpegCapture(VENC_CHN jpeg_chn, const MPP_CHN_S& src,
                         const MPP_CHN_S& dst, bool bound,
                         bool receiving) {
-    if (bound) {
-        (void)HI_MPI_SYS_UnBind(&src, &dst);
-    }
     if (receiving) {
         (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
+    }
+    if (bound) {
+        (void)HI_MPI_SYS_UnBind(&src, &dst);
     }
     (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
 }
@@ -89,6 +89,13 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     dst.s32DevId = 0;
     dst.s32ChnId = config.jpeg_venc_channel;
 
+    INFRA_LOG_INFO(
+        "hisi_vendor",
+        "CaptureJpeg: bind VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
+        "timeout=%u quality=%u",
+        config.snap_vpss_group, config.snap_vpss_channel,
+        config.jpeg_venc_channel, config.size.width, config.size.height,
+        config.timeout_ms, config.jpeg_quality);
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_SYS_Bind",
                       HI_MPI_SYS_Bind(&src, &dst))) {
         CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);

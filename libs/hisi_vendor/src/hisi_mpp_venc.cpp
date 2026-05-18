@@ -3,6 +3,7 @@
 #include "mpp_hisi_sdk_impl.h"
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -28,6 +29,7 @@ constexpr uint32_t kMinRcBitrateKbps = 2;
 constexpr uint32_t kMaxRcBitrateKbps = 614400;
 constexpr uint32_t kMaxInputFrameRate = 240;
 constexpr uint32_t kMaxVencPacksPerFrame = 256;
+constexpr uint32_t kPayloadPreviewBytes = 16;
 
 // ─── Payload type from VideoCodec ──────────────────────────────
 PAYLOAD_TYPE_E PayloadFromCodec(VideoCodec codec) {
@@ -152,6 +154,68 @@ const char* GopModeName(GopMode mode) {
             return "smart_p";
     }
     return "unknown";
+}
+
+bool IsIdrCodec(VideoCodec codec) {
+    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+}
+
+const char* FrameTypeName(FrameType frame_type) {
+    switch (frame_type) {
+        case FrameType::kIdr:
+            return "idr";
+        case FrameType::kI:
+            return "i";
+        case FrameType::kP:
+            return "p";
+        case FrameType::kB:
+            return "b";
+        case FrameType::kJpeg:
+            return "jpeg";
+    }
+    return "unknown";
+}
+
+int PackTypeValue(const VENC_PACK_S& pack, VideoCodec codec) {
+    if (codec == VideoCodec::kH264) {
+        return static_cast<int>(pack.DataType.enH264EType);
+    }
+    if (codec == VideoCodec::kH265) {
+        return static_cast<int>(pack.DataType.enH265EType);
+    }
+    if (codec == VideoCodec::kJpeg || codec == VideoCodec::kMjpeg) {
+        return static_cast<int>(pack.DataType.enJPEGEType);
+    }
+    return -1;
+}
+
+void FormatHexPreview(const uint8_t* data, uint32_t size, char* output,
+                      uint32_t output_size) {
+    if (output == nullptr || output_size == 0) {
+        return;
+    }
+    output[0] = '\0';
+    if (data == nullptr || size == 0) {
+        return;
+    }
+
+    uint32_t written = 0;
+    const uint32_t preview_size =
+        size < kPayloadPreviewBytes ? size : kPayloadPreviewBytes;
+    for (uint32_t i = 0; i < preview_size && written < output_size; ++i) {
+        const int ret = std::snprintf(
+            output + written, output_size - written, "%s%02x",
+            i == 0 ? "" : " ", static_cast<unsigned>(data[i]));
+        if (ret <= 0) {
+            return;
+        }
+        const uint32_t used = static_cast<uint32_t>(ret);
+        if (used >= output_size - written) {
+            output[output_size - 1] = '\0';
+            return;
+        }
+        written += used;
+    }
 }
 
 bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig& stream) {
@@ -331,6 +395,15 @@ void StopRecvFrame(VENC_CHN venc) {
 void DestroyVencChannel(VENC_CHN venc) {
     StopRecvFrame(venc);
     (void)HI_MPI_VENC_DestroyChn(venc);
+}
+
+void RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
+    if (!IsIdrCodec(codec)) {
+        return;
+    }
+    (void)CheckMpiCall("HI_MPI_VENC_RequestIDR",
+                       HI_MPI_VENC_RequestIDR(
+                           static_cast<VENC_CHN>(venc_channel), HI_TRUE));
 }
 
 bool CloseReEncode(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
@@ -588,21 +661,33 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
         frame.frame_type = FrameTypeFromStream(stream, codec);
         frame.sequence = stream.u32Seq;
         frame.pts_us = stream.pstPack[0].u64PTS;
-        frame.dts_us = 0;
+        frame.dts_us = frame.pts_us;
         frame.buffer = std::move(buffer);
         frame.offset = 0;
         frame.size = payload_size;
 
         if (!first_frame_logged) {
             const VENC_PACK_S& first_pack = stream.pstPack[0];
+            char payload_preview[kPayloadPreviewBytes * 3] = {};
+            FormatHexPreview(frame.buffer ? frame.buffer->Data() + frame.offset
+                                          : nullptr,
+                             frame.size, payload_preview,
+                             static_cast<uint32_t>(sizeof(payload_preview)));
             INFRA_LOG_INFO(
                 "hisi_vendor",
-                "VENC first frame chn=%d seq=%u packs=%u size=%u pts=%lld "
-                "type=%d first_len=%u first_offset=%u first_addr=%p",
-                chn, frame.sequence, stream.u32PackCount, frame.size,
+                "VENC first frame chn=%d codec=%s seq=%u frame_seq=%llu "
+                "packs=%u size=%u pts=%lld dts=%lld frame_type=%s "
+                "pack_type=%d first_len=%u first_offset=%u first_data=%u "
+                "data_num=%u first_addr=%p head=%s",
+                chn, CodecName(codec), stream.u32Seq,
+                static_cast<unsigned long long>(frame.sequence),
+                stream.u32PackCount, frame.size,
                 static_cast<long long>(frame.pts_us),
-                static_cast<int>(frame.frame_type), first_pack.u32Len,
-                first_pack.u32Offset, first_pack.pu8Addr);
+                static_cast<long long>(frame.dts_us),
+                FrameTypeName(frame.frame_type),
+                PackTypeValue(first_pack, codec), first_pack.u32Len,
+                first_pack.u32Offset, VencPackDataLen(first_pack),
+                first_pack.u32DataNum, first_pack.pu8Addr, payload_preview);
             first_frame_logged = true;
         }
 
@@ -712,6 +797,11 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
         UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                            config.venc_channel);
         return false;
+    }
+
+    RequestIdrFrame(config.venc_channel, config.main_stream.codec);
+    if (config.sub_stream.enabled) {
+        RequestIdrFrame(config.sub_venc_channel, config.sub_stream.codec);
     }
 
     impl_->vpss_bound_venc_ = true;

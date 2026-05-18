@@ -37,7 +37,8 @@ bool IsValidRequest(const CaptureRequest &request) {
 
 bool IsValidMedia(const MediaChannels &channels) {
     return channels.video_pipe >= 0 && channels.snap_pipe >= 0 &&
-           channels.vpss.device >= 0 && channels.vpss.channel >= 0;
+           channels.vpss.device >= 0 && channels.vpss.channel >= 0 &&
+           channels.main_size.width > 0 && channels.main_size.height > 0;
 }
 
 hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
@@ -55,6 +56,25 @@ hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
     hisi_config.load_ccm = config.load_ccm;
     hisi_config.zero_shutter_lag = config.zero_shutter_lag;
     return hisi_config;
+}
+
+void ApplyCaptureSource(const MediaChannels &channels,
+                        const CaptureRequest &request,
+                        SnapshotConfig *config) {
+    if (config == nullptr) {
+        return;
+    }
+    if (request.stream_id == StreamId::kSub &&
+        channels.sub_vpss.device >= 0 && channels.sub_vpss.channel >= 0 &&
+        channels.sub_size.width > 0 && channels.sub_size.height > 0) {
+        config->snap_vpss_group = channels.sub_vpss.device;
+        config->snap_vpss_channel = channels.sub_vpss.channel;
+        config->size = channels.sub_size;
+        return;
+    }
+    config->snap_vpss_group = channels.vpss.device;
+    config->snap_vpss_channel = channels.vpss.channel;
+    config->size = channels.main_size;
 }
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
@@ -289,7 +309,9 @@ bool SnapshotService::BindMedia(const MediaChannels &channels) {
     }
     impl_->media_channels = channels;
     impl_->config.snap_pipe = channels.snap_pipe;
-    impl_->config.snap_vpss_group = channels.snap_pipe;
+    impl_->config.snap_vpss_group = channels.vpss.device;
+    impl_->config.snap_vpss_channel = channels.vpss.channel;
+    impl_->config.size = channels.main_size;
     impl_->media_bound = true;
     return true;
 }
@@ -325,6 +347,8 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
             return SnapshotFrame{};
         }
         capture_config = impl_->config;
+        ApplyCaptureSource(impl_->media_channels, effective_request,
+                           &capture_config);
     }
 
     hisisdk::JpegFrame hisi_frame = impl_->sdk->CaptureJpeg(

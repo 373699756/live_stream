@@ -1,6 +1,7 @@
 #include "stream_hub_service.h"
 
 #include "infra/executor.h"
+#include "infra/log.h"
 #include "media/encoded_frame.h"
 #include "media_service.h"
 #include "stream_codec.h"
@@ -8,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <map>
 #include <memory>
@@ -24,6 +26,7 @@ constexpr const char *kServiceName = "stream_hub_service";
 constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
+constexpr size_t kPayloadPreviewBytes = 16;
 
 bool IsStreamSupported(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
@@ -33,6 +36,78 @@ bool HasValidPayload(const EncodedFrame &frame) {
     return frame.buffer != nullptr && frame.size != 0 &&
            frame.offset <= frame.buffer->Size() &&
            frame.size <= frame.buffer->Size() - frame.offset;
+}
+
+const char *StreamName(StreamId stream_id) {
+    switch (stream_id) {
+        case StreamId::kMain:
+            return "main";
+        case StreamId::kSub:
+            return "sub";
+        case StreamId::kSnapshot:
+            return "snapshot";
+    }
+    return "unknown";
+}
+
+const char *CodecName(VideoCodec codec) {
+    switch (codec) {
+        case VideoCodec::kH264:
+            return "h264";
+        case VideoCodec::kH265:
+            return "h265";
+        case VideoCodec::kMjpeg:
+            return "mjpeg";
+        case VideoCodec::kJpeg:
+            return "jpeg";
+    }
+    return "unknown";
+}
+
+const char *FrameTypeName(FrameType frame_type) {
+    switch (frame_type) {
+        case FrameType::kIdr:
+            return "idr";
+        case FrameType::kI:
+            return "i";
+        case FrameType::kP:
+            return "p";
+        case FrameType::kB:
+            return "b";
+        case FrameType::kJpeg:
+            return "jpeg";
+    }
+    return "unknown";
+}
+
+void FormatHexPreview(const EncodedFrame &frame, char *output,
+                      size_t output_size) {
+    if (output == nullptr || output_size == 0) {
+        return;
+    }
+    output[0] = '\0';
+    if (!HasValidPayload(frame)) {
+        return;
+    }
+
+    const uint8_t *data = frame.buffer->Data() + frame.offset;
+    const size_t preview_size =
+        frame.size < kPayloadPreviewBytes ? frame.size : kPayloadPreviewBytes;
+    size_t written = 0;
+    for (size_t i = 0; i < preview_size && written < output_size; ++i) {
+        const int ret = std::snprintf(
+            output + written, output_size - written, "%s%02x",
+            i == 0 ? "" : " ", static_cast<unsigned>(data[i]));
+        if (ret <= 0) {
+            return;
+        }
+        const size_t used = static_cast<size_t>(ret);
+        if (used >= output_size - written) {
+            output[output_size - 1] = '\0';
+            return;
+        }
+        written += used;
+    }
 }
 
 class StreamHubServiceImpl : public IStreamHubService, public IFrameSink {
@@ -91,22 +166,42 @@ public:
             worker_executor->Stop(infra::StopMode::kDiscard);
             return false;
         }
-        std::lock_guard<std::mutex> guard(mutex_);
-        main_subscription_id_ = main_subscription_id;
-        sub_subscription_id_ = sub_subscription_id;
-        main_pending_ = StreamFrameQueue{};
-        sub_pending_ = StreamFrameQueue{};
-        main_stream_ = hub_state::StreamContext{};
-        main_stream_.codec = main_codec;
-        main_stream_.state =
-            main_subscription_id != 0 ? StreamState::kRunning : StreamState::kClosed;
-        sub_stream_ = hub_state::StreamContext{};
-        sub_stream_.codec = sub_codec;
-        sub_stream_.state =
-            sub_subscription_id != 0 ? StreamState::kRunning : StreamState::kClosed;
-        drain_task_posted_ = false;
-        last_drained_stream_ = StreamId::kSub;
-        started_ = true;
+        bool request_main_idr = false;
+        bool request_sub_idr = false;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            main_subscription_id_ = main_subscription_id;
+            sub_subscription_id_ = sub_subscription_id;
+            main_pending_ = StreamFrameQueue{};
+            sub_pending_ = StreamFrameQueue{};
+            main_bad_payload_logged_ = false;
+            sub_bad_payload_logged_ = false;
+            main_packaged_logged_ = false;
+            sub_packaged_logged_ = false;
+            main_stream_ = hub_state::StreamContext{};
+            main_stream_.codec = main_codec;
+            main_stream_.state = main_subscription_id != 0
+                                     ? StreamState::kRunning
+                                     : StreamState::kClosed;
+            sub_stream_ = hub_state::StreamContext{};
+            sub_stream_.codec = sub_codec;
+            sub_stream_.state = sub_subscription_id != 0
+                                    ? StreamState::kRunning
+                                    : StreamState::kClosed;
+            drain_task_posted_ = false;
+            last_drained_stream_ = StreamId::kSub;
+            started_ = true;
+            request_main_idr = main_subscription_id_ != 0;
+            request_sub_idr = sub_subscription_id_ != 0;
+        }
+        if (request_main_idr) {
+            (void)media_service->RequestKeyFrame(StreamId::kMain,
+                                                 KeyFrameReason::kRecovery);
+        }
+        if (request_sub_idr) {
+            (void)media_service->RequestKeyFrame(StreamId::kSub,
+                                                 KeyFrameReason::kRecovery);
+        }
         return true;
     }
 
@@ -127,6 +222,10 @@ public:
             sub_subscription_id_ = 0;
             main_pending_ = StreamFrameQueue{};
             sub_pending_ = StreamFrameQueue{};
+            main_bad_payload_logged_ = false;
+            sub_bad_payload_logged_ = false;
+            main_packaged_logged_ = false;
+            sub_packaged_logged_ = false;
             drain_task_posted_ = false;
             flv_clients_.clear();
             main_stream_ = hub_state::StreamContext{};
@@ -314,6 +413,7 @@ private:
         const hub_state::ParsedFramePayload payload =
             hub_state::ParseFramePayload(frame);
         if (!hub_state::HasParsedUnits(payload)) {
+            LogBadPayloadOnce(frame, payload);
             return;
         }
 
@@ -341,6 +441,7 @@ private:
             if (!packaged_frame.accepted) {
                 return;
             }
+            LogPackagedFrameOnceLocked(frame, payload, packaged_frame, *stream);
             if (packaged_frame.hls_segment_created) {
                 ++stats_.hls_segments_created;
             }
@@ -385,6 +486,79 @@ private:
             }
         }
     }
+
+    bool *BadPayloadFlag(StreamId stream_id) {
+        if (stream_id == StreamId::kMain) {
+            return &main_bad_payload_logged_;
+        }
+        if (stream_id == StreamId::kSub) {
+            return &sub_bad_payload_logged_;
+        }
+        return nullptr;
+    }
+
+    bool *PackagedFlag(StreamId stream_id) {
+        if (stream_id == StreamId::kMain) {
+            return &main_packaged_logged_;
+        }
+        if (stream_id == StreamId::kSub) {
+            return &sub_packaged_logged_;
+        }
+        return nullptr;
+    }
+
+    void LogBadPayloadOnce(const EncodedFrame &frame,
+                           const hub_state::ParsedFramePayload &payload) {
+        bool should_log = false;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            bool *logged = BadPayloadFlag(frame.stream_id);
+            if (logged != nullptr && !*logged) {
+                *logged = true;
+                should_log = true;
+            }
+        }
+        if (!should_log) {
+            return;
+        }
+
+        char preview[kPayloadPreviewBytes * 3] = {};
+        FormatHexPreview(frame, preview, sizeof(preview));
+        INFRA_LOG_ERROR(
+            "stream_hub_service",
+            "drop encoded frame: stream=%s codec=%s seq=%llu size=%u "
+            "pts=%lld dts=%lld type=%s parse_valid=%d h264_units=%zu "
+            "h265_units=%zu head=%s",
+            StreamName(frame.stream_id), CodecName(frame.codec),
+            static_cast<unsigned long long>(frame.sequence), frame.size,
+            static_cast<long long>(frame.pts_us),
+            static_cast<long long>(frame.dts_us),
+            FrameTypeName(frame.frame_type), payload.valid ? 1 : 0,
+            payload.h264_units.count, payload.h265_units.count, preview);
+    }
+
+    void LogPackagedFrameOnceLocked(
+        const EncodedFrame &frame, const hub_state::ParsedFramePayload &payload,
+        const hub_state::PackagedFrameResult &packaged_frame,
+        const hub_state::StreamContext &stream) {
+        bool *logged = PackagedFlag(frame.stream_id);
+        if (logged == nullptr || *logged) {
+            return;
+        }
+        *logged = true;
+        INFRA_LOG_INFO(
+            "stream_hub_service",
+            "accepted encoded frame: stream=%s codec=%s seq=%llu size=%u "
+            "type=%s h264_units=%zu h265_units=%zu seq_header=%zu "
+            "flv_tag=%zu hls_current=%zu segments=%zu",
+            StreamName(frame.stream_id), CodecName(frame.codec),
+            static_cast<unsigned long long>(frame.sequence), frame.size,
+            FrameTypeName(frame.frame_type), payload.h264_units.count,
+            payload.h265_units.count, stream.sequence_header_tag.size(),
+            packaged_frame.flv_tag.size(), stream.current_segment.body.size(),
+            stream.segments.size());
+    }
+
     struct FlvClientState {
         StreamId stream_id = StreamId::kMain;
         uint64_t config_generation = 0;
@@ -491,6 +665,10 @@ private:
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
     StreamFlvClientId next_flv_client_id_ = 1;
+    bool main_bad_payload_logged_ = false;
+    bool sub_bad_payload_logged_ = false;
+    bool main_packaged_logged_ = false;
+    bool sub_packaged_logged_ = false;
     bool started_ = false;
 };
 

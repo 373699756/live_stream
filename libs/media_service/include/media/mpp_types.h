@@ -1,6 +1,8 @@
 #ifndef LIVE_STREAM_MEDIA_MPP_TYPES_H_
 #define LIVE_STREAM_MEDIA_MPP_TYPES_H_
 
+#include "media/pipeline_config.h"
+
 #include <cstdint>
 
 namespace live_stream {
@@ -26,6 +28,8 @@ struct MediaChannels {
     MppChannel sub_venc;
     int32_t video_pipe = 0;
     int32_t snap_pipe = 2;
+    VideoSize main_size;
+    VideoSize sub_size;
 };
 
 }  // namespace live_stream

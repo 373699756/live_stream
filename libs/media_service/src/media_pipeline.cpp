@@ -173,6 +173,8 @@ void MediaPipeline::BuildChannels() {
                                     config_.sub_venc_channel};
     channels_.video_pipe = config_.video_pipe;
     channels_.snap_pipe = config_.snap_pipe;
+    channels_.main_size = config_.main_stream.size;
+    channels_.sub_size = config_.sub_stream.size;
 }
 
 }  // namespace live_stream
