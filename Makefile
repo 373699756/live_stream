@@ -111,6 +111,15 @@ APP_SRCS := \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
+WEB_INPUTS := \
+	www/index.html \
+	www/package.json \
+	www/package-lock.json \
+	www/tsconfig.json \
+	www/vite.config.ts \
+	www/scripts/build.mjs \
+	$(shell find www/public www/src -type f | sort)
+WEB_STAMP := www/dist/.live_stream_build_stamp
 
 define ADD_SERVICE_LIBRARY
 SERVICE_LIBS += $(LIB_DIR)/lib$(1).a
@@ -147,19 +156,16 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-out: $(BIN_DIR)/live_stream
+$(WEB_STAMP): $(WEB_INPUTS)
+	cd www && npm run build
+	@touch $@
+
+out: $(BIN_DIR)/live_stream $(WEB_STAMP)
 	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs
 	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
 	cp -f configs/*.json $(OUT_DIR)/configs/
-	@if [ -d www/dist ]; then \
-		find $(OUT_DIR)/web -mindepth 1 -delete; \
-		cp -rf www/dist/* $(OUT_DIR)/web/; \
-	else \
-		echo "Building web frontend..."; \
-		cd www && npm run build && cd ..; \
-		find $(OUT_DIR)/web -mindepth 1 -delete; \
-		cp -rf www/dist/* $(OUT_DIR)/web/; \
-	fi
+	find $(OUT_DIR)/web -mindepth 1 -delete
+	cp -rf www/dist/* $(OUT_DIR)/web/
 	@echo "Output packaged to $(OUT_DIR)/"
 
 test:

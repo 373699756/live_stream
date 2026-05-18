@@ -41,6 +41,20 @@ bool IsUnsafeStaticPath(const std::string &path) {
            lower_path.find("%5c") != std::string::npos;
 }
 
+void AddStaticCacheHeaders(const std::string &relative,
+                           HttpResponse *response) {
+    if (!response) {
+        return;
+    }
+    if (relative == "index.html" || relative.rfind("assets/", 0) == 0 ||
+        relative.rfind("vendor/", 0) == 0) {
+        response->headers["Cache-Control"] =
+            "no-cache, no-store, must-revalidate";
+        response->headers["Pragma"] = "no-cache";
+        response->headers["Expires"] = "0";
+    }
+}
+
 }  // namespace
 
 StaticFileResult BuildStaticFileResponse(const HttpRequest &request,
@@ -68,12 +82,7 @@ StaticFileResult BuildStaticFileResponse(const HttpRequest &request,
     result.status = StaticFileStatus::kOk;
     result.response.status_code = 200;
     result.response.headers["Content-Type"] = ContentTypeForPath(path);
-    if (relative == "index.html") {
-        result.response.headers["Cache-Control"] =
-            "no-cache, no-store, must-revalidate";
-        result.response.headers["Pragma"] = "no-cache";
-        result.response.headers["Expires"] = "0";
-    }
+    AddStaticCacheHeaders(relative, &result.response);
     result.response.body = content;
     return result;
 }

@@ -34,8 +34,12 @@ function renderPage(page: PageId) {
 }
 
 export default function App() {
-  const { authenticated, login, logout } = useAuth();
+  const { authenticated, ready, login, logout } = useAuth();
   const [page, setPage] = useState<PageId>('live');
+
+  if (!ready) {
+    return <main className="login-page">正在校验登录状态...</main>;
+  }
 
   if (!authenticated) {
     return <LoginPage onLogin={login} />;

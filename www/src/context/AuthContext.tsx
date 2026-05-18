@@ -1,8 +1,15 @@
-import { createContext, useCallback, useContext, useState } from 'react';
-import { hasToken, login as apiLogin, logout as apiLogout } from '../api/client';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  hasToken,
+  login as apiLogin,
+  logout as apiLogout,
+  onAuthInvalid,
+  validateSession,
+} from '../api/client';
 
 interface AuthContextValue {
   authenticated: boolean;
+  ready: boolean;
   login: (userName: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -11,6 +18,33 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(hasToken);
+  const [ready, setReady] = useState(!hasToken());
+
+  useEffect(() => {
+    let mounted = true;
+    if (!hasToken()) {
+      setReady(true);
+      return () => {
+        mounted = false;
+      };
+    }
+    void validateSession().then((valid) => {
+      if (mounted) {
+        setAuthenticated(valid);
+        setReady(true);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return onAuthInvalid(() => {
+      setAuthenticated(false);
+      setReady(true);
+    });
+  }, []);
 
   const login = useCallback(async (userName: string, password: string) => {
     const ok = await apiLogin(userName, password);
@@ -26,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ authenticated, login, logout }}>
+    <AuthContext.Provider value={{ authenticated, ready, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

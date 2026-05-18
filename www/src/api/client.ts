@@ -3,6 +3,7 @@
 
 const baseHeaders = { 'Content-Type': 'application/json' };
 const tokenKey = 'live_stream_token';
+const authInvalidEvent = 'live-stream-auth-invalid';
 
 export const useMockFallback = import.meta.env.DEV;
 
@@ -22,8 +23,18 @@ function setToken(token: string): void {
   window.localStorage.setItem(tokenKey, token);
 }
 
-function removeToken(): void {
+export function removeToken(): void {
   window.localStorage.removeItem(tokenKey);
+}
+
+function handleUnauthorized(): void {
+  removeToken();
+  window.dispatchEvent(new Event(authInvalidEvent));
+}
+
+export function onAuthInvalid(listener: () => void): () => void {
+  window.addEventListener(authInvalidEvent, listener);
+  return () => window.removeEventListener(authInvalidEvent, listener);
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +80,9 @@ export async function requestJson<T>(path: string, fallback: T, init?: RequestIn
     headers: authHeaders(init),
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
     if (useMockFallback) {
       return fallback;
     }
@@ -88,6 +102,9 @@ export async function postJson<TRequest, TResponse>(
     body: JSON.stringify(value),
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
     if (useMockFallback) {
       return fallback;
     }
@@ -102,6 +119,9 @@ export async function putJson<T>(path: string, value: T): Promise<boolean> {
     headers: authHeaders(),
     body: JSON.stringify(value),
   });
+  if (response.status === 401) {
+    handleUnauthorized();
+  }
   return response.ok;
 }
 
@@ -110,6 +130,7 @@ export async function putJson<T>(path: string, value: T): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export async function login(userName: string, password: string): Promise<boolean> {
+  removeToken();
   try {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -126,6 +147,30 @@ export async function login(userName: string, password: string): Promise<boolean
     setToken(body.token);
     return true;
   } catch {
+    return false;
+  }
+}
+
+export async function validateSession(): Promise<boolean> {
+  if (!hasToken()) {
+    return false;
+  }
+  try {
+    const response = await fetch('/api/auth/me', {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      removeToken();
+      return false;
+    }
+    return true;
+  } catch {
+    if (useMockFallback) {
+      return hasToken();
+    }
+    removeToken();
+    window.dispatchEvent(new Event(authInvalidEvent));
     return false;
   }
 }
