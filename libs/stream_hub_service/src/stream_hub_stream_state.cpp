@@ -127,6 +127,19 @@ bool IsBrowserStreamReady(StreamState state, VideoCodec codec) {
     return state == StreamState::kRunning && IsBrowserCodec(codec);
 }
 
+bool IsFlvCodecSupported(VideoCodec codec) {
+    return IsBrowserCodec(codec);
+}
+
+bool HasFlvSequenceHeader(const StreamContext &stream) {
+    return !stream.sequence_header_tag.empty();
+}
+
+bool IsFlvStreamReady(const StreamContext &stream) {
+    return IsBrowserStreamReady(stream.state, stream.codec) &&
+           HasFlvSequenceHeader(stream);
+}
+
 ParsedFramePayload ParseFramePayload(const EncodedFrame &frame) {
     ParsedFramePayload payload;
     payload.codec = frame.codec;
@@ -196,7 +209,7 @@ StreamSegment FindHlsSegment(const StreamContext &stream, uint64_t sequence) {
 
 StreamFlvBootstrap BuildFlvBootstrap(const StreamContext &stream) {
     StreamFlvBootstrap bootstrap;
-    if (!IsBrowserStreamReady(stream.state, stream.codec)) {
+    if (!IsFlvStreamReady(stream)) {
         return bootstrap;
     }
 
@@ -266,7 +279,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         result.flv_tag = BuildFlvVideoTag(
             frame.codec, keyframe, static_cast<int32_t>(composition_time_ms),
             static_cast<uint32_t>(frame.dts_us / 1000), length_prefixed_sample);
-        if (keyframe) {
+        if (keyframe && !stream->sequence_header_tag.empty()) {
             stream->last_keyframe_tag = result.flv_tag;
         }
     }

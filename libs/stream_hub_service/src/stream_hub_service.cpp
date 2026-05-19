@@ -141,6 +141,27 @@ public:
         }
         const VideoCodec main_codec = media_service->GetStreamCodec(StreamId::kMain);
         const VideoCodec sub_codec = media_service->GetStreamCodec(StreamId::kSub);
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            main_subscription_id_ = 0;
+            sub_subscription_id_ = 0;
+            main_pending_ = StreamFrameQueue{};
+            sub_pending_ = StreamFrameQueue{};
+            main_bad_payload_logged_ = false;
+            sub_bad_payload_logged_ = false;
+            main_packaged_logged_ = false;
+            sub_packaged_logged_ = false;
+            main_stream_ = hub_state::StreamContext{};
+            main_stream_.codec = main_codec;
+            main_stream_.state = StreamState::kClosed;
+            sub_stream_ = hub_state::StreamContext{};
+            sub_stream_.codec = sub_codec;
+            sub_stream_.state = StreamState::kClosed;
+            drain_task_posted_ = false;
+            last_drained_stream_ = StreamId::kSub;
+            started_ = true;
+        }
+
         FrameSubscribeOptions main_options;
         main_options.stream_id = StreamId::kMain;
         main_options.require_key_frame_first = true;
@@ -157,6 +178,10 @@ public:
         const bool subscribed =
             main_subscription_id != 0 || sub_subscription_id != 0;
         if (!subscribed) {
+            {
+                std::lock_guard<std::mutex> guard(mutex_);
+                started_ = false;
+            }
             worker_executor->Stop(infra::StopMode::kDiscard);
             return false;
         }
@@ -164,27 +189,11 @@ public:
         bool request_sub_idr = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
+            if (!started_) {
+                return false;
+            }
             main_subscription_id_ = main_subscription_id;
             sub_subscription_id_ = sub_subscription_id;
-            main_pending_ = StreamFrameQueue{};
-            sub_pending_ = StreamFrameQueue{};
-            main_bad_payload_logged_ = false;
-            sub_bad_payload_logged_ = false;
-            main_packaged_logged_ = false;
-            sub_packaged_logged_ = false;
-            main_stream_ = hub_state::StreamContext{};
-            main_stream_.codec = main_codec;
-            main_stream_.state = main_subscription_id != 0
-                                     ? StreamState::kRunning
-                                     : StreamState::kClosed;
-            sub_stream_ = hub_state::StreamContext{};
-            sub_stream_.codec = sub_codec;
-            sub_stream_.state = sub_subscription_id != 0
-                                    ? StreamState::kRunning
-                                    : StreamState::kClosed;
-            drain_task_posted_ = false;
-            last_drained_stream_ = StreamId::kSub;
-            started_ = true;
             request_main_idr = main_subscription_id_ != 0;
             request_sub_idr = sub_subscription_id_ != 0;
         }
@@ -248,7 +257,10 @@ public:
     }
 
     bool IsFlvSupported(StreamId stream_id) const override {
-        return IsHlsSupported(stream_id);
+        std::lock_guard<std::mutex> guard(mutex_);
+        const hub_state::StreamContext *stream = FindStream(stream_id);
+        return stream != nullptr && stream->state == StreamState::kRunning &&
+               hub_state::IsFlvCodecSupported(stream->codec);
     }
 
     StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
@@ -292,7 +304,7 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(stream_id);
             if (stream == nullptr ||
-                !hub_state::IsBrowserStreamReady(stream->state, stream->codec) ||
+                !hub_state::IsFlvStreamReady(*stream) ||
                 flv_clients_.size() >= options_.max_flv_clients) {
                 return 0;
             }
@@ -441,9 +453,12 @@ private:
             }
             sequence_header_tag = packaged_frame.sequence_header_tag;
             flv_tag = packaged_frame.flv_tag;
+            const bool has_sequence_header =
+                hub_state::HasFlvSequenceHeader(*stream);
             for (auto &item : flv_clients_) {
                 if (item.second.stream_id != frame.stream_id ||
-                    item.second.sink == nullptr || flv_tag.empty()) {
+                    item.second.sink == nullptr || flv_tag.empty() ||
+                    !has_sequence_header) {
                     continue;
                 }
                 const bool needs_config =
