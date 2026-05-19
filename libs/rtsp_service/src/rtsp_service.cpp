@@ -7,9 +7,9 @@
 #include "media_service.h"
 #include "net_service.h"
 #include "rtsp_protocol.h"
+#include "rtsp_session_store.h"
 #include "stream_mux.h"
 
-#include <map>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -18,21 +18,12 @@ namespace live_stream {
 namespace {
 
 constexpr const char* kServiceName = "rtsp_service";
-constexpr uint32_t kDefaultSsrcBase = 0x52545350;
-
 enum class ServiceState {
     kCreated = 0,
     kInitialized,
     kStarted,
     kStopped,
     kDeinitialized,
-};
-
-enum class SessionState {
-    kInit = 0,
-    kReady,
-    kPlaying,
-    kClosed,
 };
 
 }  // namespace
@@ -187,7 +178,7 @@ public:
             (void)dependencies_.net_engine->CloseUdp(udp_socket_id_);
             udp_socket_id_ = 0;
         }
-        sessions_.clear();
+        sessions_.Clear();
         if (state_ == ServiceState::kStarted ||
             state_ == ServiceState::kInitialized) {
             state_ = ServiceState::kStopped;
@@ -216,7 +207,7 @@ public:
     RtspServiceStats GetStats() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         RtspServiceStats stats = stats_;
-        stats.active_sessions = static_cast<uint32_t>(sessions_.size());
+        stats.active_sessions = static_cast<uint32_t>(sessions_.Size());
         return stats;
     }
 
@@ -228,16 +219,10 @@ public:
         if (!IsValidFrame(frame)) {
             return false;
         }
-        std::vector<std::shared_ptr<Session>> targets;
+        std::vector<std::shared_ptr<RtspSession>> targets;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            for (const auto& entry : sessions_) {
-                const auto& session = entry.second;
-                if (session->state == SessionState::kPlaying &&
-                    session->stream_id == frame.stream_id) {
-                    targets.push_back(session);
-                }
-            }
+            targets = sessions_.PlayingTargets(frame.stream_id);
         }
         for (const auto& session : targets) {
             SendFrame(session, frame);
@@ -256,22 +241,6 @@ public:
     }
 
 private:
-    struct Session {
-        uint64_t session_id = 0;
-        ConnectionId connection_id = 0;
-        NetAddress peer;
-        SessionState state = SessionState::kInit;
-        StreamId stream_id = StreamId::kMain;
-        RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
-        uint8_t interleaved_rtp_channel = 0;
-        uint16_t client_rtp_port = 0;
-        uint16_t rtp_sequence = 1;
-        uint32_t ssrc = 0;
-        bool keyframe_seen = false;
-        std::string request_buffer;
-        RtspSessionStats stats;
-    };
-
     bool IsValidFrame(const EncodedFrame& frame) const {
         return frame.buffer && frame.buffer->Data() != nullptr &&
                frame.size > 0 &&
@@ -304,18 +273,12 @@ private:
     }
 
     void OnConnection(ConnectionId connection_id, NetAddress peer) {
-        auto session = std::make_shared<Session>();
-        session->connection_id = connection_id;
-        session->peer = std::move(peer);
+        std::shared_ptr<RtspSession> session;
         bool accepted = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (sessions_.size() < options_.max_sessions) {
-                session->session_id = next_session_id_++;
-                session->ssrc =
-                    kDefaultSsrcBase ^ static_cast<uint32_t>(session->session_id);
-                session->stats.session_id = session->session_id;
-                sessions_[connection_id] = session;
+            if (sessions_.Add(connection_id, std::move(peer),
+                              options_.max_sessions, &session)) {
                 ++stats_.total_sessions;
                 accepted = true;
             }
@@ -328,15 +291,13 @@ private:
     }
 
     void OnConnectionClosed(ConnectionId id) {
-        std::shared_ptr<Session> session;
+        std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            const auto it = sessions_.find(id);
-            if (it == sessions_.end()) {
-                return;
-            }
-            session = it->second;
-            sessions_.erase(it);
+            session = sessions_.Remove(id);
+        }
+        if (!session) {
+            return;
         }
         PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);
     }
@@ -344,15 +305,14 @@ private:
     void OnMessage(ConnectionId connection_id,
                    const uint8_t* data,
                    uint32_t size) {
-        std::shared_ptr<Session> session;
+        std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            const auto it = sessions_.find(connection_id);
-            if (it == sessions_.end()) {
+            session = sessions_.Find(connection_id);
+            if (!session) {
                 (void)dependencies_.net_engine->Close(connection_id);
                 return;
             }
-            session = it->second;
             session->request_buffer.append(reinterpret_cast<const char*>(data), size);
         }
         while (!session->request_buffer.empty() &&
@@ -390,7 +350,7 @@ private:
         }
     }
 
-    void HandleRequest(const std::shared_ptr<Session>& session,
+    void HandleRequest(const std::shared_ptr<RtspSession>& session,
                        const RtspRequest& request) {
         if (request.method == "OPTIONS") {
             SendResponse(session->connection_id, 200, CSeq(request),
@@ -430,12 +390,12 @@ private:
             return;
         }
         if (request.method == "PLAY") {
-            if (session->state != SessionState::kReady &&
-                session->state != SessionState::kPlaying) {
+            if (session->state != RtspSessionState::kReady &&
+                session->state != RtspSessionState::kPlaying) {
                 SendResponse(session->connection_id, 455, CSeq(request), {}, "");
                 return;
             }
-            session->state = SessionState::kPlaying;
+            session->state = RtspSessionState::kPlaying;
             session->keyframe_seen = false;
             session->stats.stream_id = session->stream_id;
             session->stats.transport = session->transport;
@@ -451,7 +411,7 @@ private:
         if (request.method == "TEARDOWN") {
             SendResponse(session->connection_id, 200, CSeq(request),
                          {{"Session", std::to_string(session->session_id)}}, "");
-            session->state = SessionState::kClosed;
+            session->state = RtspSessionState::kClosed;
             (void)dependencies_.net_engine->CloseAfterSend(session->connection_id);
             return;
         }
@@ -480,7 +440,7 @@ private:
         return options_.main_stream_codec;
     }
 
-    bool Authorize(const std::shared_ptr<Session>& session,
+    bool Authorize(const std::shared_ptr<RtspSession>& session,
                    const RtspRequest& request,
                    StreamId stream_id) {
         if (!options_.enable_auth) {
@@ -534,7 +494,7 @@ private:
         return true;
     }
 
-    void HandleSetup(const std::shared_ptr<Session>& session,
+    void HandleSetup(const std::shared_ptr<RtspSession>& session,
                      const RtspRequest& request,
                      StreamId stream_id) {
         const std::string transport = HeaderValue(request, "Transport");
@@ -543,7 +503,7 @@ private:
             return;
         }
         session->stream_id = stream_id;
-        session->state = SessionState::kReady;
+        session->state = RtspSessionState::kReady;
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
@@ -579,7 +539,7 @@ private:
     class RtspPacketSink final : public IRtpPacketSink {
     public:
         RtspPacketSink(RtspServiceImpl* service,
-                       std::shared_ptr<Session> session,
+                       std::shared_ptr<RtspSession> session,
                        const EncodedFrame* frame)
             : service_(service),
               session_(std::move(session)),
@@ -597,12 +557,12 @@ private:
 
     private:
         RtspServiceImpl* service_ = nullptr;
-        std::shared_ptr<Session> session_;
+        std::shared_ptr<RtspSession> session_;
         const EncodedFrame* frame_ = nullptr;
         bool ok_ = true;
     };
 
-    void SendFrame(const std::shared_ptr<Session>& session,
+    void SendFrame(const std::shared_ptr<RtspSession>& session,
                    const EncodedFrame& frame) {
         bool should_drop = false;
         {
@@ -639,7 +599,7 @@ private:
         }
     }
 
-    bool SendRtpPacketView(const std::shared_ptr<Session>& session,
+    bool SendRtpPacketView(const std::shared_ptr<RtspSession>& session,
                            const EncodedFrame& frame,
                            const RtpPacketView& packet) {
         RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
@@ -771,7 +731,7 @@ private:
         (void)dependencies_.event_service->Publish(event);
     }
 
-    void NotifyAdaptive(const Session& session, RtspAdaptiveEventType event) {
+    void NotifyAdaptive(const RtspSession& session, RtspAdaptiveEventType event) {
         if (dependencies_.adaptive_observer == nullptr) {
             return;
         }
@@ -794,8 +754,7 @@ private:
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
     RtspListenAddress local_address_;
-    std::map<ConnectionId, std::shared_ptr<Session>> sessions_;
-    uint64_t next_session_id_ = 1;
+    RtspSessionStore sessions_;
     RtspServiceStats stats_;
 };
 
