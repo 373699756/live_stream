@@ -252,6 +252,10 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
         return false;
     }
     refs.rtsp_service = rtsp_.get();
+    const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
+    INFRA_LOG_INFO("app", "RTSP service listening %s:%u",
+                   rtsp_address.ip.c_str(),
+                   static_cast<unsigned>(rtsp_address.port));
 
     const WebrtcServiceOptions webrtc_options =
         BuildWebrtcOptions(runtime_config);
@@ -294,6 +298,10 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
         return false;
     }
     refs.onvif_service = onvif_.get();
+    INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
+                   runtime_config.listen_ip.c_str(),
+                   static_cast<unsigned>(runtime_config.onvif_device_port),
+                   static_cast<unsigned>(runtime_config.onvif_discovery_port));
 
     const HttpServiceOptions http_options = BuildHttpOptions(runtime_config);
     const HttpServiceDependencies http_dependencies = BuildHttpDependencies(refs);
@@ -306,6 +314,11 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
         Stop();
         return false;
     }
+    const HttpListenAddress http_address = http_->LocalAddress();
+    INFRA_LOG_INFO("app", "HTTP service listening %s:%u root=%s",
+                   http_address.ip.c_str(),
+                   static_cast<unsigned>(http_address.port),
+                   runtime_config.static_root.c_str());
 
     started_ = true;
     return true;
