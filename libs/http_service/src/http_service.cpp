@@ -161,10 +161,13 @@ public:
             options_.max_requests_per_connection == 0 ||
             options_.max_pipelined_requests == 0 ||
             options_.executor_worker_count == 0 ||
-            options_.executor_queue_capacity == 0) {
+            options_.executor_queue_capacity == 0 ||
+            options_.config_apply_worker_count == 0 ||
+            options_.config_apply_queue_capacity == 0) {
             return false;
         }
         task_executor_.reset(new infra::Executor());
+        config_apply_executor_.reset(new infra::Executor());
         initialized_ = true;
         return true;
     }
@@ -190,6 +193,19 @@ public:
         if (!task_executor->Start(executor_options)) {
             return false;
         }
+        infra::Executor *config_apply_executor = nullptr;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            config_apply_executor = config_apply_executor_.get();
+        }
+        infra::ExecutorOptions config_apply_options;
+        config_apply_options.worker_count = options_.config_apply_worker_count;
+        config_apply_options.queue_capacity = options_.config_apply_queue_capacity;
+        if (config_apply_executor == nullptr ||
+            !config_apply_executor->Start(config_apply_options)) {
+            task_executor->Stop(infra::StopMode::kDiscard);
+            return false;
+        }
 
         TcpListenOptions server_config;
         server_config.address.ip = options_.listen_ip;
@@ -204,6 +220,7 @@ public:
         TcpServerId server =
             dependencies_.net_engine->ListenTcp(server_config, callbacks);
         if (server == 0) {
+            config_apply_executor->Stop(infra::StopMode::kDiscard);
             task_executor->Stop(infra::StopMode::kDiscard);
             return false;
         }
@@ -212,10 +229,15 @@ public:
             tcp_server_id_ = server;
             started_ = true;
         }
-        INFRA_LOG_INFO(kModuleName, "HTTP listen %s:%u static_root=%s",
+        INFRA_LOG_INFO(kModuleName,
+                       "HTTP listen %s:%u static_root=%s workers=%u "
+                       "config_workers=%u",
                        options_.listen_ip.c_str(),
                        static_cast<unsigned>(options_.listen_port),
-                       options_.static_root.c_str());
+                       options_.static_root.c_str(),
+                       static_cast<unsigned>(options_.executor_worker_count),
+                       static_cast<unsigned>(
+                           options_.config_apply_worker_count));
         return true;
     }
 
@@ -223,6 +245,7 @@ public:
         TcpServerId server_id = 0;
         NetEngine *net_engine = nullptr;
         infra::Executor *task_executor = nullptr;
+        infra::Executor *config_apply_executor = nullptr;
         std::vector<StreamFlvClientId> flv_client_ids;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -241,6 +264,7 @@ public:
             sessions_.clear();
             stats_.active_connections = 0;
             task_executor = task_executor_.get();
+            config_apply_executor = config_apply_executor_.get();
         }
         INFRA_LOG_INFO(kModuleName, "HTTP stop begin server=%llu streams=%zu",
                        static_cast<unsigned long long>(server_id),
@@ -253,6 +277,9 @@ public:
         if (net_engine != nullptr && server_id != 0) {
             (void)net_engine->CloseTcp(server_id);
         }
+        if (config_apply_executor != nullptr) {
+            config_apply_executor->Stop(infra::StopMode::kDiscard);
+        }
         if (task_executor != nullptr) {
             task_executor->Stop(infra::StopMode::kDiscard);
         }
@@ -264,6 +291,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         sessions_.clear();
         task_executor_.reset();
+        config_apply_executor_.reset();
         initialized_ = false;
     }
 
@@ -488,6 +516,18 @@ private:
     static bool StartsWith(const std::string &value, const std::string &prefix) {
         return value.size() >= prefix.size() &&
                value.substr(0, prefix.size()) == prefix;
+    }
+
+    static bool IsConfigMutationRequest(const HttpRequest &request) {
+        return request.method == HttpMethod::kPut &&
+               StartsWith(request.path, "/api/config/");
+    }
+
+    infra::Executor *ExecutorForRequestLocked(const HttpRequest &request) const {
+        if (IsConfigMutationRequest(request)) {
+            return config_apply_executor_.get();
+        }
+        return task_executor_.get();
     }
 
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
@@ -766,7 +806,7 @@ private:
             iter->second.pending_requests.pop_front();
             iter->second.processing = true;
             has_request = true;
-            task_executor = task_executor_.get();
+            task_executor = ExecutorForRequestLocked(pending.request);
         }
         if (!has_request) {
             return;
@@ -945,6 +985,7 @@ private:
     HttpServiceDependencies dependencies_;
     mutable std::mutex mutex_;
     std::unique_ptr<infra::Executor> task_executor_;
+    std::unique_ptr<infra::Executor> config_apply_executor_;
     TcpServerId tcp_server_id_ = 0;
     std::map<ConnectionId, HttpSession> sessions_;
     HttpServiceStats stats_;

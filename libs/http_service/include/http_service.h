@@ -61,8 +61,10 @@ struct HttpServiceOptions {
     uint32_t max_request_header_bytes = 8 * 1024;
     uint32_t max_request_body_bytes = 64 * 1024;
     uint32_t send_queue_capacity = 64;
-    uint32_t executor_queue_capacity = 128;
-    uint32_t executor_worker_count = 1;
+    uint32_t executor_queue_capacity = 256;
+    uint32_t executor_worker_count = 4;
+    uint32_t config_apply_queue_capacity = 8;
+    uint32_t config_apply_worker_count = 1;
     uint32_t request_timeout_ms = 10000;
     uint32_t connection_idle_timeout_ms = 10000;
     uint32_t max_requests_per_connection = 1;
