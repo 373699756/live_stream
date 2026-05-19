@@ -601,8 +601,9 @@ public:
             session = it->second;
         }
 
-        std::vector<char> candidate_text(candidate.candidate.begin(),
-                                         candidate.candidate.end());
+        const std::string candidate_json = BuildCandidateJson(candidate);
+        std::vector<char> candidate_text(candidate_json.begin(),
+                                         candidate_json.end());
         candidate_text.push_back('\0');
         return session->connection->addIceCandidate(candidate_text.data()) ==
                Yang_Ok;

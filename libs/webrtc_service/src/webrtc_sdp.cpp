@@ -52,7 +52,12 @@ std::string BuildCandidateJson(const WebrtcIceCandidate& candidate) {
     std::ostringstream json;
     json << "{\"candidate\":\"" << JsonEscape(candidate.candidate)
          << "\",\"sdpMid\":\"" << JsonEscape(candidate.sdp_mid)
-         << "\",\"sdpMLineIndex\":" << candidate.sdp_mline_index << "}";
+         << "\",\"sdpMLineIndex\":" << candidate.sdp_mline_index;
+    if (!candidate.username_fragment.empty()) {
+        json << ",\"usernameFragment\":\""
+             << JsonEscape(candidate.username_fragment) << "\"";
+    }
+    json << "}";
     return json.str();
 }
 

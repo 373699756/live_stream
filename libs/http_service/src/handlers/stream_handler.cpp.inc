@@ -145,6 +145,8 @@ HttpResponse HandleWebrtc(const HttpRequest &request) {
                               0, std::numeric_limits<int32_t>::max())) {
             return StatusResponse(400, "Missing candidate fields");
         }
+        (void)json_utils::Load(body, "username_fragment",
+                               &candidate.username_fragment);
         return dependencies_.webrtc_service->AddIceCandidate(candidate)
                    ? OkResponse()
                    : StatusResponse(404, "Peer not found");

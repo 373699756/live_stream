@@ -56,6 +56,7 @@ export async function sendWebrtcCandidate(
       candidate: candidate.candidate || '',
       sdp_mid: candidate.sdpMid || '0',
       sdp_mline_index: candidate.sdpMLineIndex || 0,
+      username_fragment: candidate.usernameFragment || '',
     },
     { ok: true },
     init,

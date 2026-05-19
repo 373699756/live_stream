@@ -75,6 +75,7 @@ struct WebrtcIceCandidate {
     std::string peer_id;
     std::string candidate;
     std::string sdp_mid = "0";
+    std::string username_fragment;
     int32_t sdp_mline_index = 0;
 };
 
