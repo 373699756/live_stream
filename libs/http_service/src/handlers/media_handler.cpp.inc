@@ -95,6 +95,7 @@ NumericControlsToJson(const std::vector<NumericControlCapability> &controls) {
         value["min"] = control.min;
         value["max"] = control.max;
         value["default"] = control.default_value;
+        value["runtime_supported"] = control.runtime_supported;
         root[control.name] = value;
     }
     return root;
@@ -111,6 +112,7 @@ OptionControlsToJson(const std::vector<OptionControlCapability> &controls) {
         ConfigJson item = ConfigJson::object();
         item["values"] = values;
         item["default"] = control.default_value;
+        item["runtime_supported"] = control.runtime_supported;
         root[control.name] = item;
     }
     return root;

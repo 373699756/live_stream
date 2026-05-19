@@ -29,13 +29,22 @@ NumericControlCapability Range(const char* name,
                                int32_t min,
                                int32_t max,
                                int32_t dv) {
-    return {name, min, max, dv};
+    NumericControlCapability cap;
+    cap.name = name;
+    cap.min = min;
+    cap.max = max;
+    cap.default_value = dv;
+    return cap;
 }
 
 OptionControlCapability Options(const char* name,
                                 std::vector<std::string> values,
                                 const char* dv) {
-    return {name, std::move(values), dv};
+    OptionControlCapability cap;
+    cap.name = name;
+    cap.values = std::move(values);
+    cap.default_value = dv;
+    return cap;
 }
 
 ImageCapabilities DefaultImage() {

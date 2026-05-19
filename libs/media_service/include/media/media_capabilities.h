@@ -62,12 +62,14 @@ struct NumericControlCapability {
     int32_t min = 0;
     int32_t max = 100;
     int32_t default_value = 50;
+    bool runtime_supported = true;
 };
 
 struct OptionControlCapability {
     std::string name;
     std::vector<std::string> values;
     std::string default_value;
+    bool runtime_supported = true;
 };
 
 struct ImageCapabilities {

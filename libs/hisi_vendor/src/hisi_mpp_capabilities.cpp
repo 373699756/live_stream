@@ -33,22 +33,26 @@ CodecCapability MjpegCapability() {
 }
 
 NumericControlCapability Range(const char* name, int32_t min, int32_t max,
-                               int32_t default_value) {
+                               int32_t default_value,
+                               bool runtime_supported = true) {
     NumericControlCapability cap;
     cap.name = name;
     cap.min = min;
     cap.max = max;
     cap.default_value = default_value;
+    cap.runtime_supported = runtime_supported;
     return cap;
 }
 
 OptionControlCapability Options(const char* name,
                                 std::vector<std::string> values,
-                                const char* default_value) {
+                                const char* default_value,
+                                bool runtime_supported = true) {
     OptionControlCapability cap;
     cap.name = name;
     cap.values = std::move(values);
     cap.default_value = default_value;
+    cap.runtime_supported = runtime_supported;
     return cap;
 }
 
@@ -67,11 +71,11 @@ void AddCommonRcModes(std::vector<RateControlMode>& modes) {
 ImageCapabilities DefaultImageCapabilities() {
     ImageCapabilities image;
 
-    image.basic.push_back(Range("brightness", 0, 100, 50));
-    image.basic.push_back(Range("contrast", 0, 100, 50));
+    image.basic.push_back(Range("brightness", 0, 100, 50, false));
+    image.basic.push_back(Range("contrast", 0, 100, 50, false));
     image.basic.push_back(Range("saturation", 0, 100, 50));
     image.basic.push_back(Range("sharpness", 0, 100, 50));
-    image.basic.push_back(Range("hue", 0, 100, 50));
+    image.basic.push_back(Range("hue", 0, 100, 50, false));
 
     image.exposure_options.push_back(
         Options("mode", {"auto", "manual"}, "auto"));
@@ -103,7 +107,7 @@ ImageCapabilities DefaultImageCapabilities() {
         Options("mode", {"off", "wdr", "blc", "hlc"}, "off"));
     image.backlight_ranges.push_back(Range("level", 0, 100, 50));
     image.color_mode_options.push_back(
-        Options("mode", {"color", "black_white", "auto"}, "color"));
+        Options("mode", {"color", "black_white", "auto"}, "color", false));
     image.mirror_supported = true;
     image.flip_supported = true;
 
