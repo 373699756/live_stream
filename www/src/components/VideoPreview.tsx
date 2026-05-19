@@ -108,6 +108,10 @@ async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
   return (window.mpegts || window.flvjs) as FlvModule | undefined;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 export function VideoPreview({
   stream,
   statuses,
@@ -133,7 +137,8 @@ export function VideoPreview({
 
   useEffect(() => {
     let mounted = true;
-    void getWebrtcConfig()
+    const controller = new AbortController();
+    void getWebrtcConfig({ signal: controller.signal })
       .then((config) => {
         if (mounted) {
           setWebrtcConfig(config);
@@ -144,7 +149,10 @@ export function VideoPreview({
           }
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (isAbortError(error)) {
+          return;
+        }
         if (mounted) {
           setWebrtcConfig(null);
           setWebrtcConfigLoaded(true);
@@ -154,6 +162,7 @@ export function VideoPreview({
       });
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, []);
 
@@ -183,8 +192,11 @@ export function VideoPreview({
     let sessionPeerId = '';
     let sessionHls: HlsPlayer | null = null;
     let sessionFlv: FlvPlayer | null = null;
+    const controller = new AbortController();
+    const sessionSignal = controller.signal;
 
-    const isCurrentSession = () => !disposed && sessionRef.current === sessionId;
+    const isCurrentSession = () =>
+      !disposed && !sessionSignal.aborted && sessionRef.current === sessionId;
     const setSessionConnected = (value: boolean) => {
       if (isCurrentSession()) {
         setConnected(value);
@@ -270,6 +282,7 @@ export function VideoPreview({
     };
     const cleanupSession = () => {
       disposed = true;
+      controller.abort();
       destroyHls(sessionHls);
       destroyFlv(sessionFlv);
       closePeer(sessionPeer, sessionPeerId);
@@ -371,7 +384,9 @@ export function VideoPreview({
           event.candidate &&
           sessionPeerId
         ) {
-          void sendWebrtcCandidate(sessionPeerId, event.candidate.toJSON());
+          void sendWebrtcCandidate(sessionPeerId, event.candidate.toJSON(), {
+            signal: sessionSignal,
+          });
         }
       };
       pc.onconnectionstatechange = () => {
@@ -412,7 +427,7 @@ export function VideoPreview({
 
       void (async () => {
         try {
-          const peer = await createWebrtcPeer(stream);
+          const peer = await createWebrtcPeer(stream, { signal: sessionSignal });
           if (!peer.peer_id || !isCurrentSession() || peerRef.current !== pc) {
             if (peer.peer_id) {
               void closeWebrtcPeer(peer.peer_id);
@@ -435,7 +450,9 @@ export function VideoPreview({
             void closeWebrtcPeer(peer.peer_id);
             return;
           }
-          const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '');
+          const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '', {
+            signal: sessionSignal,
+          });
           if (!answer.sdp || !isCurrentSession() || peerRef.current !== pc) {
             void closeWebrtcPeer(peer.peer_id);
             if (isCurrentSession()) {
@@ -448,7 +465,10 @@ export function VideoPreview({
           if (!isCurrentSession() || peerRef.current !== pc) {
             void closeWebrtcPeer(peer.peer_id);
           }
-        } catch {
+        } catch (error: unknown) {
+          if (isAbortError(error)) {
+            return;
+          }
           if (isCurrentSession()) {
             setSessionPreviewState('WebRTC 连接失败');
             closeWebrtcSession();

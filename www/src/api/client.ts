@@ -117,6 +117,10 @@ function requestSignal(init?: ApiRequestOptions): AbortSignal {
   return mergeSignals(timeoutSignal(init?.timeoutMs), init?.signal);
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 export async function readError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: string };
@@ -142,6 +146,9 @@ export async function requestJson<T>(
       signal: requestSignal(init),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     if (useMockFallback) {
       return fallback;
     }
@@ -172,6 +179,9 @@ export async function postJson<TRequest, TResponse>(
       signal: requestSignal(init),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     if (useMockFallback) {
       return fallback;
     }
@@ -201,6 +211,9 @@ export async function putJson<T>(
       signal: requestSignal(init),
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     if (useMockFallback) {
       return;
     }
