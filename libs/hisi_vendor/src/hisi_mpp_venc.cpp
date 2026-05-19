@@ -669,8 +669,7 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
         if (!first_frame_logged) {
             const VENC_PACK_S& first_pack = stream.pstPack[0];
             char payload_preview[kPayloadPreviewBytes * 3] = {};
-            FormatHexPreview(frame.buffer ? frame.buffer->Data() + frame.offset
-                                          : nullptr,
+            FormatHexPreview(frame.PayloadData(),
                              frame.size, payload_preview,
                              static_cast<uint32_t>(sizeof(payload_preview)));
             INFRA_LOG_INFO(

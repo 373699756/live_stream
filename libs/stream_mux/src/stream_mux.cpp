@@ -1,8 +1,12 @@
 #include "stream_mux.h"
 
+#include "live_stream/byte_writer.h"
+#include "stream_codec.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace live_stream {
@@ -81,15 +85,13 @@ constexpr uint8_t kH265VpsNalType = 32;
 constexpr uint8_t kH265SpsNalType = 33;
 constexpr uint8_t kH265PpsNalType = 34;
 
-void AppendByte(std::string *out, uint8_t value) {
-    out->push_back(static_cast<char>(value));
-}
-
-void AppendBytes(std::string *out, const uint8_t *data, size_t size) {
-    for (size_t i = 0; i < size; ++i) {
-        AppendByte(out, data[i]);
-    }
-}
+using byte_writer::AppendBytes;
+using byte_writer::AppendU8;
+using byte_writer::AppendU16;
+using byte_writer::AppendU24;
+using byte_writer::AppendU32;
+using byte_writer::WriteU16;
+using byte_writer::WriteU32;
 
 uint8_t PayloadType(VideoCodec codec) {
     return codec == VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
@@ -103,75 +105,13 @@ uint32_t RtpTimestamp(const EncodedFrame &frame) {
     return static_cast<uint32_t>((frame.pts_us * kRtpClockRate) / 1000000);
 }
 
-size_t FindAnnexBStartCode(const uint8_t *data, size_t size, size_t offset) {
-    if (data == nullptr || size < 3 || offset >= size) {
-        return std::string::npos;
-    }
-    for (size_t i = offset; i + 3 <= size; ++i) {
-        if (data[i] != 0 || data[i + 1] != 0) {
-            continue;
-        }
-        if (data[i + 2] == 1) {
-            return i;
-        }
-        if (i + 3 < size && data[i + 2] == 0 && data[i + 3] == 1) {
-            return i;
-        }
-    }
-    return std::string::npos;
-}
-
-size_t AnnexBStartCodeSize(const uint8_t *data, size_t size, size_t offset) {
-    if (data == nullptr || offset + 3 > size) {
-        return 0;
-    }
-    if (data[offset] == 0 && data[offset + 1] == 0 && data[offset + 2] == 1) {
-        return 3;
-    }
-    if (offset + 4 <= size && data[offset] == 0 && data[offset + 1] == 0 &&
-        data[offset + 2] == 0 && data[offset + 3] == 1) {
-        return 4;
-    }
-    return 0;
-}
-
-void AppendU16(std::string *out, uint16_t value) {
-    AppendByte(out, static_cast<uint8_t>((value >> 8) & 0xff));
-    AppendByte(out, static_cast<uint8_t>(value & 0xff));
-}
-
-void AppendU24(std::string *out, uint32_t value) {
-    AppendByte(out, static_cast<uint8_t>((value >> 16) & 0xff));
-    AppendByte(out, static_cast<uint8_t>((value >> 8) & 0xff));
-    AppendByte(out, static_cast<uint8_t>(value & 0xff));
-}
-
-void AppendU32(std::string *out, uint32_t value) {
-    AppendByte(out, static_cast<uint8_t>((value >> 24) & 0xff));
-    AppendByte(out, static_cast<uint8_t>((value >> 16) & 0xff));
-    AppendByte(out, static_cast<uint8_t>((value >> 8) & 0xff));
-    AppendByte(out, static_cast<uint8_t>(value & 0xff));
-}
-
 void AppendFlvTimestamp(std::string *out, uint32_t timestamp_ms) {
     AppendU24(out, timestamp_ms & 0x00ffffffU);
-    AppendByte(out, static_cast<uint8_t>((timestamp_ms >> 24) & 0xff));
+    AppendU8(out, static_cast<uint8_t>((timestamp_ms >> 24) & 0xff));
 }
 
 void AppendFourCc(std::string *out, const char *fourcc) {
     out->append(fourcc, 4);
-}
-
-void WriteU16(uint8_t *out, uint16_t value) {
-    out[0] = static_cast<uint8_t>((value >> 8) & 0xff);
-    out[1] = static_cast<uint8_t>(value & 0xff);
-}
-
-void WriteU32(uint8_t *out, uint32_t value) {
-    out[0] = static_cast<uint8_t>((value >> 24) & 0xff);
-    out[1] = static_cast<uint8_t>((value >> 16) & 0xff);
-    out[2] = static_cast<uint8_t>((value >> 8) & 0xff);
-    out[3] = static_cast<uint8_t>(value & 0xff);
 }
 
 void WriteRtpHeader(const EncodedFrame &frame, bool marker, uint16_t sequence,
@@ -200,25 +140,25 @@ uint32_t MpegCrc32(const uint8_t *data, size_t size) {
 }
 
 void AppendPsiSectionLength(std::string *out, uint16_t section_length) {
-    AppendByte(out, static_cast<uint8_t>(0xb0 | ((section_length >> 8) & 0x0f)));
-    AppendByte(out, static_cast<uint8_t>(section_length & 0xff));
+    AppendU8(out, static_cast<uint8_t>(0xb0 | ((section_length >> 8) & 0x0f)));
+    AppendU8(out, static_cast<uint8_t>(section_length & 0xff));
 }
 
 void AppendPsiPid(std::string *out, uint16_t pid) {
-    AppendByte(out, static_cast<uint8_t>(0xe0 | ((pid >> 8) & 0x1f)));
-    AppendByte(out, static_cast<uint8_t>(pid & 0xff));
+    AppendU8(out, static_cast<uint8_t>(0xe0 | ((pid >> 8) & 0x1f)));
+    AppendU8(out, static_cast<uint8_t>(pid & 0xff));
 }
 
 std::string BuildPatPacket(uint8_t *continuity_counter) {
     // PAT (Program Association Table): tells the player which PID carries PMT.
     // HLS TS segments need PAT/PMT at the start so every segment is decodable.
     std::string section;
-    AppendByte(&section, 0x00);  // PAT table_id.
+    AppendU8(&section, 0x00);  // PAT table_id.
     AppendPsiSectionLength(&section, 13);
     AppendU16(&section, 1);      // transport_stream_id.
-    AppendByte(&section, 0xc1);  // current_next_indicator.
-    AppendByte(&section, 0);     // section_number.
-    AppendByte(&section, 0);     // last_section_number.
+    AppendU8(&section, 0xc1);  // current_next_indicator.
+    AppendU8(&section, 0);     // section_number.
+    AppendU8(&section, 0);     // last_section_number.
     AppendU16(&section, 1);      // program_number.
     AppendPsiPid(&section, kPmtPid);
     const uint32_t crc = MpegCrc32(
@@ -240,15 +180,15 @@ std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
     // PMT (Program Map Table): declares the video PID and codec stream type.
     // 0x1b means H.264/AVC, 0x24 means H.265/HEVC.
     std::string section;
-    AppendByte(&section, 0x02);  // PMT table_id.
+    AppendU8(&section, 0x02);  // PMT table_id.
     AppendPsiSectionLength(&section, 18);
     AppendU16(&section, 1);             // program_number.
-    AppendByte(&section, 0xc1);         // current_next_indicator.
-    AppendByte(&section, 0);            // section_number.
-    AppendByte(&section, 0);            // last_section_number.
+    AppendU8(&section, 0xc1);         // current_next_indicator.
+    AppendU8(&section, 0);            // section_number.
+    AppendU8(&section, 0);            // last_section_number.
     AppendPsiPid(&section, kVideoPid);  // PCR PID.
     AppendU16(&section, 0xf000);        // program_info_length: no descriptors.
-    AppendByte(&section, TsStreamType(codec));
+    AppendU8(&section, TsStreamType(codec));
     AppendPsiPid(&section, kVideoPid);
     AppendU16(&section, 0xf000);  // ES_info_length: no descriptors.
     const uint32_t crc = MpegCrc32(
@@ -269,13 +209,13 @@ std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
 void AppendPts(std::string *out, uint8_t prefix, uint64_t value) {
     // PTS/DTS are 33-bit 90 kHz timestamps split across five marker-bit bytes.
     const uint64_t pts = value & 0x1ffffffffULL;
-    AppendByte(out, static_cast<uint8_t>(
+    AppendU8(out, static_cast<uint8_t>(
                         (prefix << 4) | (((pts >> 30) & 0x07) << 1) | 0x01));
-    AppendByte(out, static_cast<uint8_t>((pts >> 22) & 0xff));
-    AppendByte(out,
+    AppendU8(out, static_cast<uint8_t>((pts >> 22) & 0xff));
+    AppendU8(out,
                static_cast<uint8_t>((((pts >> 15) & 0x7f) << 1) | 0x01));
-    AppendByte(out, static_cast<uint8_t>((pts >> 7) & 0xff));
-    AppendByte(out, static_cast<uint8_t>(((pts & 0x7f) << 1) | 0x01));
+    AppendU8(out, static_cast<uint8_t>((pts >> 7) & 0xff));
+    AppendU8(out, static_cast<uint8_t>(((pts & 0x7f) << 1) | 0x01));
 }
 
 std::string BuildPesPacket(const std::string &access_unit, uint64_t pts_90k,
@@ -284,12 +224,12 @@ std::string BuildPesPacket(const std::string &access_unit, uint64_t pts_90k,
     // packets. Packet length is set to 0 because live video PES can exceed 64 KiB.
     std::string pes;
     AppendU24(&pes, 0x000001);  // PES start code prefix.
-    AppendByte(&pes, 0xe0);     // Video stream id.
+    AppendU8(&pes, 0xe0);     // Video stream id.
     AppendU16(&pes, 0);         // Unbounded video PES length.
-    AppendByte(&pes, 0x80);     // Marker bits.
+    AppendU8(&pes, 0x80);     // Marker bits.
     const bool has_dts = pts_90k != dts_90k;
-    AppendByte(&pes, has_dts ? 0xc0 : 0x80);  // PTS+DTS or PTS only.
-    AppendByte(&pes, has_dts ? 10 : 5);       // Optional header length.
+    AppendU8(&pes, has_dts ? 0xc0 : 0x80);  // PTS+DTS or PTS only.
+    AppendU8(&pes, has_dts ? 10 : 5);       // Optional header length.
     AppendPts(&pes, has_dts ? 0x03 : 0x02, pts_90k);
     if (has_dts) {
         AppendPts(&pes, 0x01, dts_90k);
@@ -370,15 +310,15 @@ std::string BuildH264FlvConfigurationRecord(const std::string &sps,
     // AVCDecoderConfigurationRecord (avcC) carried by the FLV sequence header:
     // version, profile/compatibility/level from SPS, NAL length size, SPS, PPS.
     std::string config;
-    AppendByte(&config, 1);  // configurationVersion.
-    AppendByte(&config, sps.size() > 1 ? static_cast<uint8_t>(sps[1]) : 0x64);
-    AppendByte(&config, sps.size() > 2 ? static_cast<uint8_t>(sps[2]) : 0x00);
-    AppendByte(&config, sps.size() > 3 ? static_cast<uint8_t>(sps[3]) : 0x1f);
-    AppendByte(&config, 0xff);  // 4-byte NAL length prefix.
-    AppendByte(&config, 0xe1);  // One SPS.
+    AppendU8(&config, 1);  // configurationVersion.
+    AppendU8(&config, sps.size() > 1 ? static_cast<uint8_t>(sps[1]) : 0x64);
+    AppendU8(&config, sps.size() > 2 ? static_cast<uint8_t>(sps[2]) : 0x00);
+    AppendU8(&config, sps.size() > 3 ? static_cast<uint8_t>(sps[3]) : 0x1f);
+    AppendU8(&config, 0xff);  // 4-byte NAL length prefix.
+    AppendU8(&config, 0xe1);  // One SPS.
     AppendU16(&config, static_cast<uint16_t>(sps.size()));
     config.append(sps);
-    AppendByte(&config, 1);
+    AppendU8(&config, 1);
     AppendU16(&config, static_cast<uint16_t>(pps.size()));
     config.append(pps);
     return config;
@@ -389,7 +329,7 @@ void AppendHvccArray(std::string *config, uint8_t nal_type,
     if (nal_unit.empty()) {
         return;
     }
-    AppendByte(config, static_cast<uint8_t>(0x80 | (nal_type & 0x3f)));
+    AppendU8(config, static_cast<uint8_t>(0x80 | (nal_type & 0x3f)));
     AppendU16(config, 1);
     AppendU16(config, static_cast<uint16_t>(nal_unit.size()));
     config->append(nal_unit);
@@ -404,27 +344,27 @@ std::string BuildH265HvccRecord(const std::string &vps,
     // hvcC 是 H.265 播放器的“解码说明书”；后续视频 tag 只带长度前缀 NAL，
     // 因此这里必须缓存并写出 VPS/SPS/PPS。
     std::string config;
-    AppendByte(&config, 1);  // configurationVersion.
+    AppendU8(&config, 1);  // configurationVersion.
     if (sps.size() >= 15) {
-        AppendByte(&config, static_cast<uint8_t>(sps[3]));
+        AppendU8(&config, static_cast<uint8_t>(sps[3]));
         config.append(sps.data() + 4, 4);
         config.append(sps.data() + 8, 6);
-        AppendByte(&config, static_cast<uint8_t>(sps[14]));
+        AppendU8(&config, static_cast<uint8_t>(sps[14]));
     } else {
-        AppendByte(&config, 0x01);       // general_profile_space/tier/profile_idc.
+        AppendU8(&config, 0x01);       // general_profile_space/tier/profile_idc.
         AppendU32(&config, 0x60000000);  // profile_compatibility_flags.
         static constexpr uint8_t kConstraintFlags[] = {
             0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
         AppendBytes(&config, kConstraintFlags, sizeof(kConstraintFlags));
-        AppendByte(&config, 0x1e);  // general_level_idc fallback.
+        AppendU8(&config, 0x1e);  // general_level_idc fallback.
     }
     AppendU16(&config, 0xf000);  // min_spatial_segmentation_idc unknown.
-    AppendByte(&config, 0xfc);   // parallelismType unknown.
-    AppendByte(&config, 0xfd);   // chromaFormat 4:2:0.
-    AppendByte(&config, 0xf8);   // bitDepthLumaMinus8 = 0.
-    AppendByte(&config, 0xf8);   // bitDepthChromaMinus8 = 0.
+    AppendU8(&config, 0xfc);   // parallelismType unknown.
+    AppendU8(&config, 0xfd);   // chromaFormat 4:2:0.
+    AppendU8(&config, 0xf8);   // bitDepthLumaMinus8 = 0.
+    AppendU8(&config, 0xf8);   // bitDepthChromaMinus8 = 0.
     AppendU16(&config, 0);       // avgFrameRate unknown.
-    AppendByte(&config, 0x0f);   // constantFrameRate + temporal layers + length.
+    AppendU8(&config, 0x0f);   // constantFrameRate + temporal layers + length.
 
     uint8_t array_count = 0;
     if (!vps.empty()) {
@@ -436,7 +376,7 @@ std::string BuildH265HvccRecord(const std::string &vps,
     if (!pps.empty()) {
         ++array_count;
     }
-    AppendByte(&config, array_count);
+    AppendU8(&config, array_count);
     AppendHvccArray(&config, kH265VpsNalType, vps);
     AppendHvccArray(&config, kH265SpsNalType, sps);
     AppendHvccArray(&config, kH265PpsNalType, pps);
@@ -452,13 +392,13 @@ std::string BuildH264FlvVideoTag(bool keyframe, uint8_t avc_packet_type,
     // composition time, then codec payload.
     std::string tag;
     const uint32_t body_size = 5U + static_cast<uint32_t>(payload.size());
-    AppendByte(&tag, 9);  // Video tag.
+    AppendU8(&tag, 9);  // Video tag.
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
     AppendU24(&tag, 0);  // FLV StreamID is always 0.
-    AppendByte(&tag,
+    AppendU8(&tag,
                static_cast<uint8_t>(((keyframe ? 1 : 2) << 4) | kFlvCodecIdAvc));
-    AppendByte(&tag, avc_packet_type);
+    AppendU8(&tag, avc_packet_type);
     AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
     tag.append(payload);
     AppendU32(&tag, body_size + 11U);  // PreviousTagSize.
@@ -475,11 +415,11 @@ std::string BuildEnhancedFlvVideoTag(bool keyframe, uint8_t packet_type,
     // 否则浏览器侧 mpegts.js 无法按 H.265 解释后面的长度前缀 NAL。
     std::string tag;
     const uint32_t body_size = 8U + static_cast<uint32_t>(payload.size());
-    AppendByte(&tag, 9);  // Video tag.
+    AppendU8(&tag, 9);  // Video tag.
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
     AppendU24(&tag, 0);  // FLV StreamID is always 0.
-    AppendByte(&tag,
+    AppendU8(&tag,
                static_cast<uint8_t>(kEnhancedFlvHeader |
                                     (keyframe ? kFlvFrameKey : kFlvFrameInter) |
                                     packet_type));
@@ -495,49 +435,58 @@ std::string BuildEnhancedFlvVideoTag(bool keyframe, uint8_t packet_type,
 RtpPacketizer::RtpPacketizer(uint32_t mtu_bytes)
     : mtu_bytes_(mtu_bytes < 64 ? 64 : mtu_bytes) {}
 
-bool RtpPacketizer::Packetize(const EncodedFrame &frame, uint16_t *sequence,
-                              uint32_t ssrc, IRtpPacketSink *sink) const {
-    if (frame.buffer == nullptr || sequence == nullptr ||
-        sink == nullptr ||
-        frame.offset > frame.buffer->Size() ||
-        frame.size > frame.buffer->Size() - frame.offset) {
+bool RtpPacketizer::Packetize(
+    const EncodedFrame &frame,
+    uint16_t *sequence,
+    uint32_t ssrc,
+    IRtpPacketSink *sink) const {
+    if (!frame.HasValidPayload() || sequence == nullptr || sink == nullptr) {
         return false;
     }
-    const uint8_t *payload = frame.buffer->Data() + frame.offset;
+    const uint8_t *payload = frame.PayloadData();
     const size_t size = frame.size;
 
-    // Encoders usually deliver Annex-B access units:
-    // start code + NAL, start code + NAL... RTP sends one NAL or one NAL
-    // fragment per packet, so this scans in place and emits views immediately.
-    size_t offset = FindAnnexBStartCode(payload, size, 0);
-    if (offset == std::string::npos) {
-        return PacketizeNal(frame, payload, static_cast<uint32_t>(size), true,
-                            sequence, ssrc, sink);
-    }
-
-    bool emitted = false;
-    while (offset != std::string::npos) {
-        const size_t prefix_size = AnnexBStartCodeSize(payload, size, offset);
-        if (prefix_size == 0) {
-            break;
+    if (frame.codec == VideoCodec::kH265) {
+        stream_codec::H265NalUnitList units;
+        if (!stream_codec::ParseH265AnnexBNalUnits(payload, size, &units)) {
+            return false;
         }
-        const size_t nal_begin = offset + prefix_size;
-        const size_t next = FindAnnexBStartCode(payload, size, nal_begin);
-        size_t nal_end = next == std::string::npos ? size : next;
-        while (nal_end > nal_begin && payload[nal_end - 1] == 0) {
-            --nal_end;
-        }
-        if (nal_end > nal_begin) {
-            emitted = true;
-            if (!PacketizeNal(frame, payload + nal_begin,
-                              static_cast<uint32_t>(nal_end - nal_begin),
-                              next == std::string::npos, sequence, ssrc, sink)) {
+        for (size_t i = 0; i < units.count; ++i) {
+            const stream_codec::H265NalUnit &unit = units.units[i];
+            if (unit.size >
+                static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+                return false;
+            }
+            if (!PacketizeNal(frame, unit.data, static_cast<uint32_t>(unit.size),
+                              i + 1 == units.count, sequence, ssrc, sink)) {
                 return false;
             }
         }
-        offset = next;
+        if (!units.empty()) {
+            return true;
+        }
+    } else {
+        stream_codec::H264NalUnitList units;
+        if (!stream_codec::ParseH264AnnexBNalUnits(payload, size, &units)) {
+            return false;
+        }
+        for (size_t i = 0; i < units.count; ++i) {
+            const stream_codec::H264NalUnit &unit = units.units[i];
+            if (unit.size >
+                static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+                return false;
+            }
+            if (!PacketizeNal(frame, unit.data, static_cast<uint32_t>(unit.size),
+                              i + 1 == units.count, sequence, ssrc, sink)) {
+                return false;
+            }
+        }
+        if (!units.empty()) {
+            return true;
+        }
     }
-    return emitted;
+    return PacketizeNal(frame, payload, static_cast<uint32_t>(size), true,
+                        sequence, ssrc, sink);
 }
 
 bool RtpPacketizer::SendRtpPacket(
@@ -655,8 +604,8 @@ std::string BuildFlvFileHeader() {
     // flag, header size, then PreviousTagSize0.
     std::string header;
     header.append("FLV", 3);
-    AppendByte(&header, 1);  // FLV version.
-    AppendByte(&header, 1);  // Video-only flags.
+    AppendU8(&header, 1);  // FLV version.
+    AppendU8(&header, 1);  // Video-only flags.
     AppendU32(&header, 9);   // FLV header size.
     AppendU32(&header, 0);   // PreviousTagSize0.
     return header;
@@ -677,11 +626,11 @@ std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
     const std::string payload = BuildH265HvccRecord(vps, sps, pps);
     std::string tag;
     const uint32_t body_size = 5U + static_cast<uint32_t>(payload.size());
-    AppendByte(&tag, 9);  // Video tag.
+    AppendU8(&tag, 9);  // Video tag.
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
     AppendU24(&tag, 0);  // FLV StreamID is always 0.
-    AppendByte(&tag, static_cast<uint8_t>(kEnhancedFlvHeader | kFlvFrameKey |
+    AppendU8(&tag, static_cast<uint8_t>(kEnhancedFlvHeader | kFlvFrameKey |
                                           kFlvPacketTypeSequenceStart));
     AppendFourCc(&tag, "hvc1");
     tag.append(payload);

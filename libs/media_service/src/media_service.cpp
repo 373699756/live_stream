@@ -4,6 +4,7 @@
 #include "hisisdk/hisi_sdk.h"
 #include "media_config_codec.h"
 #include "media_pipeline.h"
+#include "stream_codec.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -69,94 +70,22 @@ MediaChannels BuildChannelsForConfig(const MediaPipelineConfig &config) {
     return channels;
 }
 
-bool IsKeyFrame(const EncodedFrame &frame) {
-    return frame.frame_type == FrameType::kIdr ||
-           frame.frame_type == FrameType::kI ||
-           frame.frame_type == FrameType::kJpeg;
-}
-
-bool HasValidPayload(const EncodedFrame &frame) {
-    return frame.buffer != nullptr && frame.size != 0 &&
-           frame.offset <= frame.buffer->Size() &&
-           frame.size <= frame.buffer->Size() - frame.offset;
-}
-
-size_t FindAnnexBStartCode(const uint8_t *data,
-                           size_t size,
-                           size_t offset) {
-    if (data == nullptr || size < 3 || offset > size - 3) {
-        return std::string::npos;
-    }
-    for (size_t i = offset; i + 2 < size; ++i) {
-        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
-            return i;
-        }
-        if (i + 3 < size && data[i] == 0 && data[i + 1] == 0 &&
-            data[i + 2] == 0 && data[i + 3] == 1) {
-            return i;
-        }
-    }
-    return std::string::npos;
-}
-
 bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
-    if (!HasValidPayload(frame) ||
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr ||
         (frame.codec != VideoCodec::kH264 && frame.codec != VideoCodec::kH265)) {
         return false;
     }
 
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
-    size_t offset = 0;
-    bool has_h264_sps = false;
-    bool has_h264_pps = false;
-    bool has_h265_vps = false;
-    bool has_h265_sps = false;
-    bool has_h265_pps = false;
-    while (true) {
-        const size_t start = FindAnnexBStartCode(data, frame.size, offset);
-        if (start == std::string::npos) {
-            break;
-        }
-        const size_t prefix =
-            start + 3 < frame.size && data[start + 2] == 0 &&
-                    data[start + 3] == 1
-                ? 4
-                : 3;
-        const size_t nal_begin = start + prefix;
-        if (nal_begin >= frame.size) {
-            break;
-        }
-        if (frame.codec == VideoCodec::kH264) {
-            const uint8_t type = data[nal_begin] & 0x1f;
-            if (type == 7) {
-                has_h264_sps = true;
-            } else if (type == 8) {
-                has_h264_pps = true;
-            }
-            if (has_h264_sps && has_h264_pps) {
-                return true;
-            }
-        } else if (nal_begin + 1 < frame.size) {
-            const uint8_t type = (data[nal_begin] >> 1) & 0x3f;
-            if (type == 32) {
-                has_h265_vps = true;
-            } else if (type == 33) {
-                has_h265_sps = true;
-            } else if (type == 34) {
-                has_h265_pps = true;
-            }
-            if (has_h265_vps && has_h265_sps && has_h265_pps) {
-                return true;
-            }
-        }
-
-        const size_t next = FindAnnexBStartCode(data, frame.size, nal_begin);
-        if (next == std::string::npos) {
-            break;
-        }
-        offset = next;
+    if (frame.codec == VideoCodec::kH265) {
+        stream_codec::H265NalUnitList units;
+        return stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
+               stream_codec::HasCompleteH265ParameterSets(units);
     }
-    return false;
+
+    stream_codec::H264NalUnitList units;
+    return stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
+           stream_codec::HasCompleteH264ParameterSets(units);
 }
 
 }  // namespace
@@ -419,7 +348,8 @@ struct MediaService::Impl {
     }
 
     void RememberKeyFrame(const EncodedFrame &frame) {
-        if (!IsKeyFrame(frame)) {
+        if (!stream_codec::IsKeyFrame(frame.frame_type) &&
+            frame.frame_type != FrameType::kJpeg) {
             return;
         }
         const bool has_parameter_sets =

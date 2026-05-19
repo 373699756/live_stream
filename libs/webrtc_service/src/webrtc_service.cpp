@@ -3,6 +3,7 @@
 #include "infra/executor.h"
 #include "infra/time.h"
 #include "media_service.h"
+#include "stream_codec.h"
 #include "webrtc_engine.h"
 #include "webrtc_sdp.h"
 #include "webrtc_transport_net.h"
@@ -713,10 +714,9 @@ private:
             return;
         }
         if (slot->ready) {
-            const bool existing_keyframe = slot->frame.frame_type == FrameType::kIdr ||
-                                           slot->frame.frame_type == FrameType::kI;
-            const bool new_keyframe = frame.frame_type == FrameType::kIdr ||
-                                      frame.frame_type == FrameType::kI;
+            const bool existing_keyframe =
+                stream_codec::IsKeyFrame(slot->frame.frame_type);
+            const bool new_keyframe = stream_codec::IsKeyFrame(frame.frame_type);
             if (existing_keyframe && !new_keyframe) {
                 ++stats_.dropped_frames;
                 return;

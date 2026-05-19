@@ -130,11 +130,11 @@ bool IsBrowserStreamReady(StreamState state, VideoCodec codec) {
 ParsedFramePayload ParseFramePayload(const EncodedFrame &frame) {
     ParsedFramePayload payload;
     payload.codec = frame.codec;
-    if (frame.buffer == nullptr || frame.size == 0) {
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr) {
         return payload;
     }
 
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
     if (frame.codec == VideoCodec::kH264) {
         payload.valid =
             stream_codec::ParseH264AnnexBNalUnits(data, frame.size,

@@ -94,14 +94,4 @@ std::shared_ptr<IMediaBuffer> CreateExternalMediaBuffer(
                                                  user));
 }
 
-bool IsValidBufferSlice(const BufferSlice& slice) {
-    if (!slice.buffer) {
-        return false;
-    }
-    if (slice.offset > slice.buffer->Size()) {
-        return false;
-    }
-    return slice.size <= slice.buffer->Size() - slice.offset;
-}
-
 }  // namespace live_stream

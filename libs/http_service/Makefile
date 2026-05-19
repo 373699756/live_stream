@@ -5,6 +5,7 @@ AUTH_LIB := $(BUILD_DIR)/lib/libauth_service.a
 LOGGER_LIB := $(BUILD_DIR)/lib/liblogger_service.a
 NET_LIB := $(BUILD_DIR)/lib/libnet_service.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
+STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem_service.a
 
 CXXFLAGS += -pthread
@@ -28,11 +29,11 @@ STREAM_HUB_LIB := $(BUILD_DIR)/lib/libstream_hub_service.a
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc_service.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
-	$(MEDIA_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(STREAM_HUB_LIB) \
-	$(WEBRTC_LIB)
+	$(MEDIA_LIB) $(STREAM_CODEC_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) \
+	$(STREAM_HUB_LIB) $(WEBRTC_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(STREAM_HUB_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(MEDIA_LIB) \
-	$(INFRA_LIB)
+	$(STREAM_CODEC_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service all
@@ -48,6 +49,9 @@ $(NET_LIB): $(INFRA_LIB)
 
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_service all
+
+$(STREAM_CODEC_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../stream_codec all
 
 $(SNAPSHOT_LIB): $(MEDIA_LIB)
 	$(MAKE) -C ../snapshot_service all

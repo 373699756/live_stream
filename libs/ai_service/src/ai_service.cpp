@@ -173,7 +173,7 @@ public:
                           const AiModelConfig &config) override {
         (void)config;
         AiInferenceResult result;
-        result.success = started_ && frame.buffer != nullptr && frame.size > 0;
+        result.success = started_ && frame.HasValidPayload();
         result.stream_id = frame.stream_id;
         result.sequence = frame.sequence;
         result.pts_us = frame.pts_us;
@@ -215,7 +215,7 @@ public:
         result.stream_id = frame.stream_id;
         result.sequence = frame.sequence;
         result.pts_us = frame.pts_us;
-        if (!started_ || frame.buffer == nullptr || frame.size == 0) {
+        if (!started_ || !frame.HasValidPayload()) {
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
@@ -377,8 +377,7 @@ struct AiService::Impl final : public IFrameSink {
         std::lock_guard<std::mutex> lock(mutex);
         ++stats.received_frames;
         if (!started || !config.enabled || !executor || !engine ||
-            frame.stream_id != config.stream_id || frame.buffer == nullptr ||
-            frame.size == 0) {
+            frame.stream_id != config.stream_id || !frame.HasValidPayload()) {
             ++stats.skipped_frames;
             return;
         }

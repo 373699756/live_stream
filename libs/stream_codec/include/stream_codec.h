@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_STREAM_CODEC_H_
 #define LIVE_STREAM_STREAM_CODEC_H_
 
-#include "media/encoded_frame.h"
+#include "media/stream_types.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -47,9 +47,27 @@ struct H265NalUnitList {
     bool Add(const H265NalUnit &unit);
 };
 
+struct AnnexBNalUnit {
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    uint8_t h264_type = 0;
+    uint8_t h265_type = 0;
+};
+
+class IAnnexBNalUnitSink {
+public:
+    virtual ~IAnnexBNalUnitSink() = default;
+    virtual bool OnAnnexBNalUnit(const AnnexBNalUnit &unit,
+                                 bool last) = 0;
+};
+
 bool IsKeyFrame(FrameType frame_type);
 
 void StripAnnexBStartCode(const uint8_t **payload, size_t *size);
+
+bool ForEachAnnexBNalUnit(const uint8_t *data,
+                          size_t size,
+                          IAnnexBNalUnitSink *sink);
 
 bool ParseH264AnnexBNalUnits(const uint8_t *data, size_t size,
                              H264NalUnitList *units);
@@ -70,6 +88,14 @@ bool HasH265ParameterSets(const H265NalUnitList &units);
 bool HasH264ParameterSets(const std::vector<H264NalUnit> &units);
 
 bool HasH265ParameterSets(const std::vector<H265NalUnit> &units);
+
+bool HasCompleteH264ParameterSets(const H264NalUnitList &units);
+
+bool HasCompleteH265ParameterSets(const H265NalUnitList &units);
+
+bool HasCompleteH264ParameterSets(const std::vector<H264NalUnit> &units);
+
+bool HasCompleteH265ParameterSets(const std::vector<H265NalUnit> &units);
 
 bool HasH264KeyFrame(const H264NalUnitList &units);
 

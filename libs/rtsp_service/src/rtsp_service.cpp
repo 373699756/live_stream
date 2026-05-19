@@ -2,6 +2,7 @@
 
 #include "auth_service.h"
 #include "event_service.h"
+#include "live_stream/byte_writer.h"
 #include "media/frame_source.h"
 #include "media_service.h"
 #include "net_service.h"
@@ -34,14 +35,6 @@ enum class SessionState {
     kClosed,
 };
 
-void WriteU16(uint8_t* out, uint16_t value) {
-    if (out == nullptr) {
-        return;
-    }
-    out[0] = static_cast<uint8_t>((value >> 8) & 0xff);
-    out[1] = static_cast<uint8_t>(value & 0xff);
-}
-
 }  // namespace
 
 using rtsp_internal::BasicRealmHeader;
@@ -56,6 +49,7 @@ using rtsp_internal::ParseRtspRequest;
 using rtsp_internal::PathToStreamId;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
+using byte_writer::WriteU16;
 using stream_mux::IRtpPacketSink;
 using stream_mux::RtpPacketizer;
 using stream_mux::RtpPacketView;

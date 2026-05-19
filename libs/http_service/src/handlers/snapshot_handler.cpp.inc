@@ -23,13 +23,13 @@ HttpResponse HandleSnapshot(const HttpRequest &request) {
     capture_request.stream_id = stream_id;
     SnapshotFrame frame =
         dependencies_.snapshot_service->Capture(capture_request);
-    if (!frame.buffer || frame.offset + frame.size > frame.buffer->Size()) {
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr) {
         return StatusResponse(500, "Invalid snapshot frame");
     }
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "image/jpeg";
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
     response.body.assign(reinterpret_cast<const char *>(data), frame.size);
     return response;
 }

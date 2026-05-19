@@ -52,7 +52,20 @@ std::shared_ptr<IMediaBuffer> CreateExternalMediaBuffer(
 std::shared_ptr<IMediaBufferPool> CreateFixedMediaBufferPool(
     uint32_t block_size, uint32_t block_count);
 
-bool IsValidBufferSlice(const BufferSlice& slice);
+inline bool IsValidBufferSlice(const BufferSlice& slice) {
+    if (!slice.buffer) {
+        return false;
+    }
+    if (slice.offset > slice.buffer->Size()) {
+        return false;
+    }
+    return slice.size <= slice.buffer->Size() - slice.offset;
+}
+
+inline const uint8_t *BufferSliceData(const BufferSlice& slice) {
+    return IsValidBufferSlice(slice) ? slice.buffer->Data() + slice.offset
+                                     : nullptr;
+}
 
 }  // namespace live_stream
 

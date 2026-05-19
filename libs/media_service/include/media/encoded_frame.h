@@ -23,6 +23,14 @@ struct EncodedFrame {
     BufferSlice PayloadSlice() const {
         return BufferSlice{buffer, offset, size};
     }
+
+    bool HasValidPayload() const {
+        return size != 0 && IsValidBufferSlice(PayloadSlice());
+    }
+
+    const uint8_t *PayloadData() const {
+        return HasValidPayload() ? BufferSliceData(PayloadSlice()) : nullptr;
+    }
 };
 
 }  // namespace live_stream

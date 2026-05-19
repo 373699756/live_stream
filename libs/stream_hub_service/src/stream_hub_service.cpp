@@ -32,12 +32,6 @@ bool IsStreamSupported(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
 }
 
-bool HasValidPayload(const EncodedFrame &frame) {
-    return frame.buffer != nullptr && frame.size != 0 &&
-           frame.offset <= frame.buffer->Size() &&
-           frame.size <= frame.buffer->Size() - frame.offset;
-}
-
 const char *StreamName(StreamId stream_id) {
     switch (stream_id) {
         case StreamId::kMain:
@@ -86,11 +80,11 @@ void FormatHexPreview(const EncodedFrame &frame, char *output,
         return;
     }
     output[0] = '\0';
-    if (!HasValidPayload(frame)) {
+    if (!frame.HasValidPayload()) {
         return;
     }
 
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
+    const uint8_t *data = frame.PayloadData();
     const size_t preview_size =
         frame.size < kPayloadPreviewBytes ? frame.size : kPayloadPreviewBytes;
     size_t written = 0;
@@ -335,7 +329,7 @@ public:
     void OnFrame(const EncodedFrame &frame) override {
         infra::Executor *worker_executor = nullptr;
         bool post_drain = false;
-        if (!HasValidPayload(frame) || !IsStreamSupported(frame.stream_id)) {
+        if (!frame.HasValidPayload() || !IsStreamSupported(frame.stream_id)) {
             return;
         }
         {

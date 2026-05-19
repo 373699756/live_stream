@@ -39,12 +39,6 @@ bool IsSupportedCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
 }
 
-bool HasValidPayload(const EncodedFrame &frame) {
-    return frame.buffer != nullptr && frame.size > 0 &&
-           frame.offset <= frame.buffer->Size() &&
-           frame.size <= frame.buffer->Size() - frame.offset;
-}
-
 YangVideoCodec ToYangVideoCodec(VideoCodec codec) {
     return codec == VideoCodec::kH265 ? Yang_VED_H265 : Yang_VED_H264;
 }
@@ -122,7 +116,10 @@ bool QueueMetaRtcNal(YangRtcPacer *pacer,
 YangPushData *QueueH264Frame(YangRtcPacer *pacer,
                              const EncodedFrame &frame,
                              VideoParameterCache *cache) {
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr) {
+        return nullptr;
+    }
     const std::vector<stream_codec::H264NalUnit> nals =
         stream_codec::ParseH264AnnexBNalUnits(data, frame.size);
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
@@ -193,7 +190,10 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
 YangPushData *QueueH265Frame(YangRtcPacer *pacer,
                              const EncodedFrame &frame,
                              VideoParameterCache *cache) {
-    const uint8_t *data = frame.buffer->Data() + frame.offset;
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr) {
+        return nullptr;
+    }
     const std::vector<stream_codec::H265NalUnit> nals =
         stream_codec::ParseH265AnnexBNalUnits(data, frame.size);
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
@@ -634,8 +634,8 @@ public:
             }
             session = it->second;
         }
-        if (!session || !HasValidPayload(frame) || !IsSupportedCodec(frame.codec) ||
-            frame.codec != session->peer.codec) {
+        if (!session || !frame.HasValidPayload() ||
+            !IsSupportedCodec(frame.codec) || frame.codec != session->peer.codec) {
             return false;
         }
 
