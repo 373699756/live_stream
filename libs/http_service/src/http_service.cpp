@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <limits>
 #include <map>
 #include <memory>
@@ -21,6 +20,7 @@
 #include "stream_hub_service.h"
 #include "http_protocol.h"
 #include "http_request_utils.h"
+#include "http_session_store.h"
 #include "http_static_files.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
@@ -298,12 +298,9 @@ public:
             server_id = tcp_server_id_;
             tcp_server_id_ = 0;
             net_engine = dependencies_.net_engine;
-            flv_client_ids = TakeAllFlvClientsLocked();
-            connection_ids.reserve(sessions_.size());
-            for (const auto &item : sessions_) {
-                connection_ids.push_back(item.first);
-            }
-            sessions_.clear();
+            flv_client_ids = sessions_.TakeAllFlvClients();
+            connection_ids = sessions_.ConnectionIds();
+            sessions_.Clear();
             stats_.active_connections = 0;
             task_executor = task_executor_.get();
             stream_executor = stream_executor_.get();
@@ -332,7 +329,7 @@ public:
     void Release() {
         Stop();
         std::lock_guard<std::mutex> guard(mutex_);
-        sessions_.clear();
+        sessions_.Clear();
         task_executor_.reset();
         stream_executor_.reset();
         control_executor_.reset();
@@ -503,30 +500,6 @@ public:
     }
 
 private:
-    struct PendingRequest {
-        HttpRequest request;
-        bool close_after_response = true;
-    };
-
-    struct HttpSession {
-        std::string recv_buffer;
-        std::string client_ip;
-        std::deque<PendingRequest> pending_requests;
-        uint64_t request_count = 0;
-        uint64_t timeout_generation = 0;
-        StreamFlvClientId flv_client_id = 0;
-        std::shared_ptr<IStreamFlvSink> flv_sink;
-        bool processing = false;
-        bool closing = false;
-        bool streaming = false;
-    };
-
-    struct ClosedSessionInfo {
-        StreamFlvClientId flv_client_id = 0;
-        bool was_streaming = false;
-        bool found = false;
-    };
-
     class FlvConnectionSink : public IStreamFlvSink {
     public:
         FlvConnectionSink(HttpServiceImpl *owner, ConnectionId connection_id)
@@ -609,44 +582,6 @@ private:
         return task_executor_.get();
     }
 
-    static StreamFlvClientId TakeFlvClientLocked(HttpSession *session) {
-        if (session == nullptr || session->flv_client_id == 0) {
-            return 0;
-        }
-        const StreamFlvClientId client_id = session->flv_client_id;
-        session->flv_client_id = 0;
-        session->flv_sink.reset();
-        return client_id;
-    }
-
-    std::vector<StreamFlvClientId> TakeAllFlvClientsLocked() {
-        std::vector<StreamFlvClientId> client_ids;
-        for (auto &item : sessions_) {
-            const StreamFlvClientId client_id =
-                TakeFlvClientLocked(&item.second);
-            if (client_id != 0) {
-                client_ids.push_back(client_id);
-            }
-        }
-        return client_ids;
-    }
-
-    ClosedSessionInfo RemoveSessionLocked(ConnectionId connection_id) {
-        ClosedSessionInfo closed;
-        auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end()) {
-            return closed;
-        }
-        closed.found = true;
-        closed.was_streaming = iter->second.streaming;
-        closed.flv_client_id = TakeFlvClientLocked(&iter->second);
-        sessions_.erase(iter);
-        if (stats_.active_connections > 0) {
-            --stats_.active_connections;
-        }
-        return closed;
-    }
-
     void DetachFlvClient(StreamFlvClientId client_id) {
         if (client_id != 0 && dependencies_.stream_hub_service != nullptr) {
             (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
@@ -672,8 +607,7 @@ private:
         }
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end() || !iter->second.streaming) {
+            if (!sessions_.IsStreaming(connection_id)) {
                 return false;
             }
             net_engine = dependencies_.net_engine;
@@ -807,6 +741,18 @@ private:
         (void)dependencies_.logger_service->RecordOperation(record);
     }
 
+    bool BeginFlvSession(ConnectionId connection_id,
+                         const std::shared_ptr<IStreamFlvSink> &sink) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return sessions_.BeginFlvStream(connection_id, sink);
+    }
+
+    bool AttachFlvSessionClient(ConnectionId connection_id,
+                                StreamFlvClientId client_id) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return sessions_.AttachFlvClient(connection_id, client_id);
+    }
+
     // --- Auth handlers ---
 #include "handlers/auth_handler.cpp.inc"
 
@@ -857,9 +803,7 @@ private:
         std::string peer_ip = peer.ip;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            HttpSession session;
-            session.client_ip = std::move(peer.ip);
-            sessions_[connection_id] = session;
+            sessions_.Add(connection_id, std::move(peer.ip));
             ++stats_.active_connections;
         }
         INFRA_LOG_INFO(kModuleName, "HTTP accept conn=%llu peer=%s",
@@ -869,12 +813,15 @@ private:
     }
 
     void OnClose(ConnectionId connection_id) {
-        ClosedSessionInfo closed;
+        ClosedHttpSessionInfo closed;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            closed = RemoveSessionLocked(connection_id);
+            closed = sessions_.Remove(connection_id);
             if (!closed.found) {
                 return;
+            }
+            if (stats_.active_connections > 0) {
+                --stats_.active_connections;
             }
         }
         DetachFlvClient(closed.flv_client_id);
@@ -889,24 +836,22 @@ private:
         if (data == nullptr) {
             return;
         }
-        HttpResponse close_response;
-        bool should_close = false;
+        HttpSessionParseResult parsed;
+        std::vector<HttpSessionRequestLog> request_logs;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end() || iter->second.closing ||
-                iter->second.streaming) {
+            if (!sessions_.AppendRequestBytes(connection_id, data, size)) {
                 return;
             }
-            ++iter->second.timeout_generation;
-            iter->second.recv_buffer.append(reinterpret_cast<const char *>(data),
-                                            size);
-            should_close = !ParsePendingRequestsLocked(iter, &close_response);
+            parsed = sessions_.ParsePendingRequests(
+                connection_id, MakeSessionParseOptions(), &request_logs);
         }
+        LogRequests(request_logs);
 
-        if (should_close) {
+        if (!parsed.success) {
             IncrementParseFailures();
-            SendResponse(connection_id, close_response, true);
+            SendResponse(connection_id, ParseFailureResponse(parsed.failure),
+                         true);
             return;
         }
         ArmSessionTimer(connection_id, options_.request_timeout_ms);
@@ -914,24 +859,14 @@ private:
     }
 
     void TryPostNextRequest(ConnectionId connection_id) {
-        PendingRequest pending;
+        PendingHttpRequest pending;
         infra::Executor *task_executor = nullptr;
-        bool has_request = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end() || iter->second.processing ||
-                iter->second.pending_requests.empty()) {
+            if (!sessions_.TakeNextRequest(connection_id, &pending)) {
                 return;
             }
-            pending = std::move(iter->second.pending_requests.front());
-            iter->second.pending_requests.pop_front();
-            iter->second.processing = true;
-            has_request = true;
             task_executor = ExecutorForRequestLocked(pending.request);
-        }
-        if (!has_request) {
-            return;
         }
         if (task_executor == nullptr ||
             task_executor->Post([this, connection_id,
@@ -980,95 +915,57 @@ private:
     }
 
     void CompleteKeepAliveRequest(ConnectionId connection_id) {
-        HttpResponse close_response;
-        bool should_close = false;
-        bool has_pending = false;
+        HttpSessionParseResult parsed;
+        std::vector<HttpSessionRequestLog> request_logs;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end()) {
-                return;
-            }
-            iter->second.processing = false;
-            should_close = !ParsePendingRequestsLocked(iter, &close_response);
-            has_pending = !iter->second.pending_requests.empty();
+            parsed = sessions_.CompleteKeepAliveRequest(
+                connection_id, MakeSessionParseOptions(), &request_logs);
         }
-        if (should_close) {
-            IncrementParseFailures();
-            SendResponse(connection_id, close_response, true);
+        if (!parsed.found) {
             return;
         }
-        if (has_pending) {
+        LogRequests(request_logs);
+        if (!parsed.success) {
+            IncrementParseFailures();
+            SendResponse(connection_id, ParseFailureResponse(parsed.failure),
+                         true);
+            return;
+        }
+        if (parsed.has_pending) {
             TryPostNextRequest(connection_id);
             return;
         }
         ArmSessionTimer(connection_id, options_.connection_idle_timeout_ms);
     }
 
-    bool
-    ParsePendingRequestsLocked(std::map<ConnectionId, HttpSession>::iterator iter,
-                               HttpResponse *close_response) {
-        HttpSession &session = iter->second;
-        const size_t max_buffer_size =
-            static_cast<size_t>(options_.max_request_header_bytes) + 4 +
-            options_.max_request_body_bytes;
-        size_t parsed_count = 0;
-        while (!session.closing &&
-               parsed_count <
-                   static_cast<size_t>(options_.max_pipelined_requests)) {
-            if (session.recv_buffer.empty()) {
-                return true;
-            }
-            if (session.recv_buffer.size() > max_buffer_size) {
-                session.closing = true;
-                if (close_response != nullptr) {
-                    *close_response = StatusResponse(413, "Payload Too Large");
-                }
-                return false;
-            }
-            RawParseResult parsed = ParseRawRequest(
-                session.recv_buffer, options_.max_request_header_bytes,
-                options_.max_request_body_bytes, session.client_ip);
-            if (parsed.status == RawParseStatus::kIncomplete) {
-                return true;
-            }
-            if (parsed.status != RawParseStatus::kComplete ||
-                parsed.consumed_bytes == 0 ||
-                parsed.consumed_bytes > session.recv_buffer.size()) {
-                session.closing = true;
-                if (close_response != nullptr) {
-                    *close_response = parsed.status == RawParseStatus::kPayloadTooLarge
-                                          ? StatusResponse(413, "Payload Too Large")
-                                          : StatusResponse(400, "Bad Request");
-                }
-                return false;
-            }
+    HttpSessionParseOptions MakeSessionParseOptions() const {
+        HttpSessionParseOptions options;
+        options.max_request_header_bytes = options_.max_request_header_bytes;
+        options.max_request_body_bytes = options_.max_request_body_bytes;
+        options.max_pipelined_requests = options_.max_pipelined_requests;
+        options.max_requests_per_connection =
+            options_.max_requests_per_connection;
+        options.enable_keep_alive = options_.enable_keep_alive;
+        return options;
+    }
 
-            session.recv_buffer.erase(0, parsed.consumed_bytes);
-            ++session.request_count;
-            PendingRequest pending;
-            pending.request = std::move(parsed.request);
-            pending.close_after_response =
-                !options_.enable_keep_alive || !parsed.keep_alive ||
-                session.request_count >= options_.max_requests_per_connection;
-            session.pending_requests.push_back(std::move(pending));
-            const PendingRequest &queued = session.pending_requests.back();
+    static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure) {
+        if (failure == HttpSessionParseFailure::kPayloadTooLarge) {
+            return StatusResponse(413, "Payload Too Large");
+        }
+        return StatusResponse(400, "Bad Request");
+    }
+
+    static void LogRequests(
+        const std::vector<HttpSessionRequestLog> &request_logs) {
+        for (const HttpSessionRequestLog &log : request_logs) {
             INFRA_LOG_INFO(kModuleName,
                            "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
-                           static_cast<unsigned long long>(iter->first),
-                           session.client_ip.c_str(),
-                           HttpMethodName(queued.request.method),
-                           queued.request.path.c_str(),
-                           queued.request.query_string.size(),
-                           queued.request.body.size());
-            ++parsed_count;
-            if (session.pending_requests.back().close_after_response) {
-                session.closing = true;
-                session.recv_buffer.clear();
-                return true;
-            }
+                           static_cast<unsigned long long>(log.connection_id),
+                           log.client_ip.c_str(), HttpMethodName(log.method),
+                           log.path.c_str(), log.query_size, log.body_size);
         }
-        return true;
     }
 
     void ArmSessionTimer(ConnectionId connection_id, uint32_t delay_ms) {
@@ -1076,11 +973,9 @@ private:
         uint64_t generation = 0;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end()) {
+            if (!sessions_.ArmTimer(connection_id, &generation)) {
                 return;
             }
-            generation = ++iter->second.timeout_generation;
             net_engine = dependencies_.net_engine;
         }
         if (net_engine == nullptr) {
@@ -1092,9 +987,8 @@ private:
                 bool should_close = false;
                 {
                     std::lock_guard<std::mutex> guard(mutex_);
-                    auto iter = sessions_.find(connection_id);
-                    should_close = iter != sessions_.end() &&
-                                   iter->second.timeout_generation == generation;
+                    should_close =
+                        sessions_.IsTimerCurrent(connection_id, generation);
                     engine = dependencies_.net_engine;
                 }
                 if (should_close && engine != nullptr) {
@@ -1111,7 +1005,7 @@ private:
     std::unique_ptr<infra::Executor> control_executor_;
     std::unique_ptr<infra::Executor> config_apply_executor_;
     TcpServerId tcp_server_id_ = 0;
-    std::map<ConnectionId, HttpSession> sessions_;
+    HttpSessionStore sessions_;
     HttpServiceStats stats_;
     uint64_t next_request_id_ = 0;
     bool initialized_ = false;

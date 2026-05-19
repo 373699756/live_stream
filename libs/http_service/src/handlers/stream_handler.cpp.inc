@@ -278,24 +278,12 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
     }
     std::shared_ptr<IStreamFlvSink> sink(
         new FlvConnectionSink(this, connection_id));
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end()) {
-            INFRA_LOG_ERROR(kModuleName,
-                            "HTTP-FLV close conn=%llu stream=%s reason=no_session",
-                            static_cast<unsigned long long>(connection_id),
-                            StreamIdToJsonString(stream_id));
-            return;
-        }
-        iter->second.processing = false;
-        iter->second.closing = true;
-        iter->second.streaming = true;
-        iter->second.flv_client_id = 0;
-        iter->second.flv_sink = sink;
-        iter->second.pending_requests.clear();
-        iter->second.recv_buffer.clear();
-        ++iter->second.timeout_generation;
+    if (!BeginFlvSession(connection_id, sink)) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV close conn=%llu stream=%s reason=no_session",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
+        return;
     }
 
     std::map<std::string, std::string> headers;
@@ -354,18 +342,13 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
         return;
     }
 
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || !iter->second.streaming) {
-            (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
-            INFRA_LOG_ERROR(kModuleName,
-                            "HTTP-FLV close conn=%llu stream=%s reason=closed",
-                            static_cast<unsigned long long>(connection_id),
-                            StreamIdToJsonString(stream_id));
-            return;
-        }
-        iter->second.flv_client_id = client_id;
+    if (!AttachFlvSessionClient(connection_id, client_id)) {
+        (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV close conn=%llu stream=%s reason=closed",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
+        return;
     }
     INFRA_LOG_INFO(kModuleName, "HTTP-FLV attached conn=%llu stream=%s client=%llu",
                    static_cast<unsigned long long>(connection_id),
