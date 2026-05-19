@@ -41,7 +41,11 @@ type FlvPlayer = {
 
 type FlvModule = {
   Events?: Record<string, string>;
-  createPlayer: (config: Record<string, unknown>) => FlvPlayer;
+  createPlayer: (
+    config: Record<string, unknown>,
+    options?: Record<string, unknown>,
+  ) => FlvPlayer;
+  getFeatureList?: () => { mseLiveFlvPlayback?: boolean };
   isSupported?: () => boolean;
 };
 
@@ -104,10 +108,12 @@ async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
 }
 
 export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
-  const [mode, setMode] = useState<PreviewMode>('flv');
+  const [mode, setMode] = useState<PreviewMode>('webrtc');
   const [snapshotTick, setSnapshotTick] = useState(0);
   const [webrtcConfig, setWebrtcConfig] = useState<WebrtcConfig | null>(null);
-  const [previewState, setPreviewState] = useState('等待 HTTP-FLV 视频流');
+  const [webrtcConfigLoaded, setWebrtcConfigLoaded] = useState(false);
+  const [previewState, setPreviewState] = useState('等待 WebRTC 视频流');
+  const [connected, setConnected] = useState(false);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -124,8 +130,9 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       .then((config) => {
         if (mounted) {
           setWebrtcConfig(config);
+          setWebrtcConfigLoaded(true);
           if (!config.enabled) {
-            setMode((current) => (current === 'webrtc' ? 'snapshot' : current));
+            setMode((current) => (current === 'webrtc' ? 'flv' : current));
             setPreviewState('WebRTC 未启用');
           }
         }
@@ -133,7 +140,8 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       .catch(() => {
         if (mounted) {
           setWebrtcConfig(null);
-          setMode((current) => (current === 'webrtc' ? 'snapshot' : current));
+          setWebrtcConfigLoaded(true);
+          setMode((current) => (current === 'webrtc' ? 'flv' : current));
           setPreviewState('WebRTC 配置不可用');
         }
       });
@@ -143,6 +151,8 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   }, []);
 
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
+  const webrtcPlaybackEnabled =
+    activeCodec === '' || activeCodec === 'h264';
   const streamingPlaybackEnabled =
     activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265';
 
@@ -159,7 +169,15 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
   useEffect(() => {
     const video = videoRef.current;
+    const stopVideoTracks = () => {
+      if (video?.srcObject instanceof MediaStream) {
+        for (const track of video.srcObject.getTracks()) {
+          track.stop();
+        }
+      }
+    };
     const resetVideoSurface = () => {
+      setConnected(false);
       if (hlsRef.current) {
         try {
           hlsRef.current.destroy();
@@ -180,6 +198,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       }
       if (video) {
         video.pause();
+        stopVideoTracks();
         video.srcObject = null;
         video.removeAttribute('src');
         video.load();
@@ -189,14 +208,20 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       }
     };
     const closeWebrtc = () => {
+      const peer_id = peerIdRef.current;
       if (peerRef.current) {
+        peerRef.current.onicecandidate = null;
+        peerRef.current.ontrack = null;
+        peerRef.current.onconnectionstatechange = null;
+        peerRef.current.oniceconnectionstatechange = null;
         peerRef.current.close();
         peerRef.current = null;
       }
       if (video) {
+        stopVideoTracks();
         video.srcObject = null;
       }
-      void closeWebrtcPeer(peerIdRef.current);
+      void closeWebrtcPeer(peer_id);
       peerIdRef.current = '';
     };
     const cleanup = () => {
@@ -215,13 +240,20 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     }
 
     let disposed = false;
+    const cleanupActive = () => {
+      disposed = true;
+      cleanup();
+    };
     video.onloadeddata = () => {
+      setConnected(true);
       setPreviewState('视频已连接');
     };
     video.onplaying = () => {
+      setConnected(true);
       setPreviewState('视频已连接');
     };
     video.onerror = () => {
+      setConnected(false);
       if (mode === 'hls') {
         setPreviewState('HLS 播放失败');
       } else if (mode === 'flv') {
@@ -231,13 +263,19 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
     if (mode === 'webrtc') {
       resetVideoSurface();
-      if (!webrtcEnabled) {
-        setMode('snapshot');
+      if (!webrtcConfigLoaded) {
+        setPreviewState('正在读取 WebRTC 配置');
+        return cleanupActive;
+      }
+      if (!webrtcEnabled || !webrtcPlaybackEnabled) {
+        setMode(streamingPlaybackEnabled ? 'flv' : 'snapshot');
         setPreviewState('WebRTC 未启用');
-        return cleanup;
+        return cleanupActive;
       }
       setPreviewState('等待 WebRTC 视频流');
       const pc = new RTCPeerConnection({
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
         iceServers: (webrtcConfig?.ice_servers || []).map((server) => ({
           urls: server.url,
           username: server.username,
@@ -247,22 +285,56 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       peerRef.current = pc;
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.ontrack = (event) => {
-        if (videoRef.current && event.track.kind === 'video') {
-          videoRef.current.srcObject = new MediaStream([event.track]);
+        if (disposed || peerRef.current !== pc || event.track.kind !== 'video') {
+          return;
+        }
+        const media_stream =
+          event.streams[0] || new MediaStream([event.track]);
+        if (videoRef.current) {
+          videoRef.current.srcObject = media_stream;
+          void videoRef.current.play().catch(() => {});
+          setConnected(true);
           setPreviewState('视频已连接');
         }
       };
       pc.onicecandidate = (event) => {
-        if (event.candidate && peerIdRef.current) {
+        if (!disposed && peerRef.current === pc && event.candidate && peerIdRef.current) {
           void sendWebrtcCandidate(peerIdRef.current, event.candidate.toJSON());
         }
       };
       pc.onconnectionstatechange = () => {
-        setPreviewState(pc.connectionState);
+        if (disposed || peerRef.current !== pc) {
+          return;
+        }
+        if (pc.connectionState === 'connected') {
+          setConnected(true);
+          setPreviewState('WebRTC 已连接');
+        } else if (
+          pc.connectionState === 'failed' ||
+          pc.connectionState === 'disconnected' ||
+          pc.connectionState === 'closed'
+        ) {
+          setConnected(false);
+          setPreviewState(
+            pc.connectionState === 'failed' ? 'WebRTC 连接失败' : 'WebRTC 已断开',
+          );
+          closeWebrtc();
+        } else {
+          setPreviewState(`WebRTC ${pc.connectionState}`);
+        }
       };
       pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'failed') {
+        if (disposed || peerRef.current !== pc) {
+          return;
+        }
+        if (
+          pc.iceConnectionState === 'failed' ||
+          pc.iceConnectionState === 'disconnected' ||
+          pc.iceConnectionState === 'closed'
+        ) {
+          setConnected(false);
           setPreviewState('ICE 连接失败');
+          closeWebrtc();
         }
       };
 
@@ -270,7 +342,12 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         try {
           const peer = await createWebrtcPeer(stream);
           if (!peer.peer_id || disposed) {
-            setPreviewState('WebRTC 后端不可用');
+            if (peer.peer_id) {
+              void closeWebrtcPeer(peer.peer_id);
+            }
+            if (!disposed) {
+              setPreviewState('WebRTC 后端不可用');
+            }
             return;
           }
           peerIdRef.current = peer.peer_id;
@@ -278,19 +355,27 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           await pc.setLocalDescription(offer);
           const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '');
           if (!answer.sdp || disposed) {
-            setPreviewState('WebRTC 应答无效');
+            void closeWebrtcPeer(peer.peer_id);
+            if (!disposed) {
+              setPreviewState('WebRTC 应答无效');
+            }
+            return;
+          }
+          if (peerRef.current !== pc) {
+            void closeWebrtcPeer(peer.peer_id);
+            pc.close();
             return;
           }
           await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
         } catch {
-          setPreviewState('WebRTC 连接失败');
+          if (!disposed) {
+            setPreviewState('WebRTC 连接失败');
+            closeWebrtc();
+          }
         }
       })();
 
-      return () => {
-        disposed = true;
-        cleanup();
-      };
+      return cleanupActive;
     }
 
     closeWebrtc();
@@ -308,10 +393,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         video.src = url;
         void video.play().catch(() => {});
         setPreviewState('正在拉取 HLS 码流');
-        return () => {
-          disposed = true;
-          cleanup();
-        };
+        return cleanupActive;
       }
       void (async () => {
         try {
@@ -341,10 +423,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           }
         }
       })();
-      return () => {
-        disposed = true;
-        cleanup();
-      };
+      return cleanupActive;
     }
 
     resetVideoSurface();
@@ -355,7 +434,10 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         if (disposed) {
           return;
         }
-        if (!flvModule || !flvModule.isSupported?.()) {
+        const flv_supported = flvModule?.isSupported?.() ?? true;
+        const live_supported =
+          flvModule?.getFeatureList?.().mseLiveFlvPlayback ?? flv_supported;
+        if (!flvModule || !flv_supported || !live_supported) {
           setPreviewState('HTTP-FLV 播放器不可用');
           return;
         }
@@ -365,6 +447,15 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           url: flvStreamUrl(stream),
           hasAudio: false,
           hasVideo: true,
+        }, {
+          enableWorker: false,
+          enableStashBuffer: false,
+          stashInitialSize: 128,
+          lazyLoad: false,
+          deferLoadAfterSourceOpen: false,
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 8,
+          autoCleanupMinBackwardDuration: 2,
         });
         flvRef.current = player;
         const errorEvent = flvModule.Events?.ERROR;
@@ -383,11 +474,16 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         }
       }
     })();
-    return () => {
-      disposed = true;
-      cleanup();
-    };
-  }, [streamingPlaybackEnabled, mode, stream, webrtcConfig, webrtcEnabled]);
+    return cleanupActive;
+  }, [
+    mode,
+    stream,
+    streamingPlaybackEnabled,
+    webrtcConfig,
+    webrtcConfigLoaded,
+    webrtcEnabled,
+    webrtcPlaybackEnabled,
+  ]);
 
   const openSnapshot = () => {
     window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
@@ -429,7 +525,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           <button
             type="button"
             className={mode === 'webrtc' ? 'active' : ''}
-            disabled={!webrtcEnabled}
+            disabled={!webrtcEnabled || !webrtcPlaybackEnabled}
             onClick={() => setMode('webrtc')}
           >
             WebRTC
@@ -470,19 +566,23 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
             alt="snapshot preview"
             onLoad={(event) => {
               event.currentTarget.style.opacity = '1';
+              setConnected(true);
             }}
             onError={(event) => {
               event.currentTarget.style.opacity = '0';
+              setConnected(false);
             }}
           />
         ) : (
           <video ref={videoRef} className="video-element" autoPlay muted playsInline />
         )}
-        <div className="video-placeholder">
-          <div className="lens-ring" />
-          <strong>{previewState}</strong>
-          <span>{previewDetail}</span>
-        </div>
+        {!connected && (
+          <div className="video-placeholder">
+            <div className="lens-ring" />
+            <strong>{previewState}</strong>
+            <span>{previewDetail}</span>
+          </div>
+        )}
       </div>
 
       <div className="preview-footer">

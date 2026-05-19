@@ -1,6 +1,7 @@
 #include "webrtc_service.h"
 
 #include "infra/executor.h"
+#include "infra/time.h"
 #include "media_service.h"
 #include "webrtc_engine.h"
 #include "webrtc_sdp.h"
@@ -14,6 +15,8 @@
 namespace live_stream {
 
 namespace {
+
+constexpr int64_t kPeerSetupTimeoutMs = 10000;
 
 enum class ServiceState {
     kCreated = 0,
@@ -44,6 +47,12 @@ bool IsValidStream(StreamId stream_id) {
 bool IsOpenPeerState(WebrtcPeerState state) {
     return state != WebrtcPeerState::kClosing &&
            state != WebrtcPeerState::kClosed && state != WebrtcPeerState::kFailed;
+}
+
+bool IsSetupPeerState(WebrtcPeerState state) {
+    return state == WebrtcPeerState::kCreated ||
+           state == WebrtcPeerState::kOfferReceived ||
+           state == WebrtcPeerState::kConnecting;
 }
 
 }  // namespace
@@ -117,6 +126,7 @@ public:
                 item.second.state = WebrtcPeerState::kClosing;
                 peer_ids.push_back(item.first);
             }
+            peer_activity_ms_.clear();
         }
 
         if (send_executor_) {
@@ -135,6 +145,7 @@ public:
     const char *Name() const override { return WebrtcService::Name(); }
 
     WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request) override {
+        CloseEnginePeers(TakeStalePeerIds());
         WebrtcPeerInfo peer;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -158,11 +169,13 @@ public:
             }
             peer.state = WebrtcPeerState::kCreated;
             peers_[peer.peer_id] = peer;
+            peer_activity_ms_[peer.peer_id] = infra::Time::MonotonicMillis();
         }
 
         if (!engine_ || !engine_->CreatePeer(peer)) {
             std::lock_guard<std::mutex> guard(mutex_);
             peers_.erase(peer.peer_id);
+            peer_activity_ms_.erase(peer.peer_id);
             return WebrtcPeerInfo();
         }
 
@@ -190,6 +203,7 @@ public:
                 return WebrtcAnswer();
             }
             it->second.state = WebrtcPeerState::kOfferReceived;
+            peer_activity_ms_[request.peer_id] = infra::Time::MonotonicMillis();
             peer = it->second;
         }
 
@@ -198,21 +212,38 @@ public:
         }
         const std::string answer = engine_->HandleOffer(peer, request.sdp);
 
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto it = peers_.find(request.peer_id);
         if (answer.empty()) {
-            if (it != peers_.end()) {
-                it->second.state = WebrtcPeerState::kFailed;
+            {
+                std::lock_guard<std::mutex> guard(mutex_);
+                peers_.erase(request.peer_id);
+                peer_activity_ms_.erase(request.peer_id);
+            }
+            if (engine_ != nullptr) {
+                (void)engine_->ClosePeer(request.peer_id);
             }
             return WebrtcAnswer();
         }
-        if (it == peers_.end()) {
+
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            auto it = peers_.find(request.peer_id);
+            if (it == peers_.end()) {
+                peer = WebrtcPeerInfo();
+            } else {
+                if (it->second.state != WebrtcPeerState::kConnected) {
+                    it->second.state = WebrtcPeerState::kConnecting;
+                }
+                peer_activity_ms_[request.peer_id] =
+                    infra::Time::MonotonicMillis();
+                ++stats_.offers;
+            }
+        }
+        if (peer.peer_id.empty()) {
+            if (engine_ != nullptr) {
+                (void)engine_->ClosePeer(request.peer_id);
+            }
             return WebrtcAnswer();
         }
-        if (it->second.state != WebrtcPeerState::kConnected) {
-            it->second.state = WebrtcPeerState::kConnecting;
-        }
-        ++stats_.offers;
         WebrtcAnswer result;
         result.peer_id = request.peer_id;
         result.sdp = answer;
@@ -237,6 +268,7 @@ public:
         }
 
         std::lock_guard<std::mutex> guard(mutex_);
+        peer_activity_ms_[candidate.peer_id] = infra::Time::MonotonicMillis();
         ++stats_.remote_candidates;
         return true;
     }
@@ -248,10 +280,11 @@ public:
                 return false;
             }
             auto it = peers_.find(peer_id);
-            if (it == peers_.end()) {
+            if (it != peers_.end()) {
+                it->second.state = WebrtcPeerState::kClosing;
+            } else {
                 return false;
             }
-            it->second.state = WebrtcPeerState::kClosing;
         }
 
         if (engine_ != nullptr) {
@@ -264,6 +297,7 @@ public:
             it->second.state = WebrtcPeerState::kClosed;
             peers_.erase(it);
         }
+        peer_activity_ms_.erase(peer_id);
         return true;
     }
 
@@ -399,6 +433,7 @@ private:
             send_task_posted_ = false;
             last_sent_stream_ = StreamId::kSub;
             peers_.clear();
+            peer_activity_ms_.clear();
             engine = std::move(engine_);
         }
         if (send_executor_) {
@@ -478,6 +513,7 @@ private:
                     if (IsOpenPeerState(it->second.state) &&
                         it->second.state != WebrtcPeerState::kConnected) {
                         it->second.state = WebrtcPeerState::kConnecting;
+                        peer_activity_ms_[peer_id] = infra::Time::MonotonicMillis();
                     }
                     return;
                 case WebrtcPeerState::kConnected:
@@ -486,15 +522,18 @@ private:
                         stream_id = it->second.stream_id;
                         request_key_frame = true;
                     }
+                    peer_activity_ms_[peer_id] = infra::Time::MonotonicMillis();
                     break;
                 case WebrtcPeerState::kFailed:
                     it->second.state = WebrtcPeerState::kFailed;
                     peers_.erase(it);
+                    peer_activity_ms_.erase(peer_id);
                     return;
                 case WebrtcPeerState::kClosed:
                 case WebrtcPeerState::kClosing:
                     it->second.state = WebrtcPeerState::kClosed;
                     peers_.erase(it);
+                    peer_activity_ms_.erase(peer_id);
                     return;
                 case WebrtcPeerState::kCreated:
                 case WebrtcPeerState::kOfferReceived:
@@ -518,6 +557,40 @@ private:
             stream_id = it->second.stream_id;
         }
         RequestKeyFrame(stream_id, KeyFrameReason::kPacketLoss);
+    }
+
+    std::vector<std::string> TakeStalePeerIds() {
+        std::vector<std::string> peer_ids;
+        const int64_t now_ms = infra::Time::MonotonicMillis();
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (state_ != ServiceState::kStarted) {
+            return peer_ids;
+        }
+        for (auto it = peers_.begin(); it != peers_.end();) {
+            auto activity_it = peer_activity_ms_.find(it->first);
+            if (activity_it == peer_activity_ms_.end()) {
+                activity_it = peer_activity_ms_.insert(
+                    std::make_pair(it->first, now_ms)).first;
+            }
+            if (IsSetupPeerState(it->second.state) &&
+                now_ms - activity_it->second >= kPeerSetupTimeoutMs) {
+                peer_ids.push_back(it->first);
+                peer_activity_ms_.erase(it->first);
+                it = peers_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        return peer_ids;
+    }
+
+    void CloseEnginePeers(const std::vector<std::string> &peer_ids) {
+        if (engine_ == nullptr) {
+            return;
+        }
+        for (const std::string &peer_id : peer_ids) {
+            (void)engine_->ClosePeer(peer_id);
+        }
     }
 
     std::string NextPeerId() {
@@ -693,6 +766,7 @@ private:
     bool send_task_posted_ = false;
     StreamId last_sent_stream_ = StreamId::kSub;
     std::map<std::string, WebrtcPeerInfo> peers_;
+    std::map<std::string, int64_t> peer_activity_ms_;
     WebrtcServiceStats stats_{};
     uint64_t next_peer_id_ = 1;
     FrameSubscriptionId main_subscription_id_ = 0;

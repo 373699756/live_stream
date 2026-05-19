@@ -224,7 +224,7 @@ export const mockRtspConfig: RtspConfig = {
 };
 
 export const mockWebrtcConfig: WebrtcConfig = {
-  enabled: false,
+  enabled: true,
   signaling_path: '/api/webrtc',
   ice_servers: [],
   max_peers: 4,

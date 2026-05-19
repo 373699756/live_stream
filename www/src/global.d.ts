@@ -11,7 +11,10 @@ interface Window {
   };
   mpegts?: {
     Events?: Record<string, string>;
-    createPlayer: (config: Record<string, unknown>) => {
+    createPlayer: (
+      config: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ) => {
       attachMediaElement: (media: HTMLMediaElement) => void;
       destroy: () => void;
       detachMediaElement?: () => void;
@@ -20,6 +23,7 @@ interface Window {
       play: () => Promise<void>;
       unload?: () => void;
     };
+    getFeatureList?: () => { mseLiveFlvPlayback?: boolean };
     isSupported?: () => boolean;
   };
   flvjs?: Window['mpegts'];
