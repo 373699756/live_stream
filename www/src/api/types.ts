@@ -50,11 +50,13 @@ export interface NumericControlCapability {
   min: number;
   max: number;
   default: number;
+  runtime_supported?: boolean;
 }
 
 export interface OptionControlCapability {
   values: string[];
   default: string;
+  runtime_supported?: boolean;
 }
 
 export interface ImageCapabilities {
@@ -94,7 +96,7 @@ export interface ImageConfig {
   backlight: Record<string, unknown>;
   enhancement: Record<string, unknown>;
   orientation: { mirror: boolean; flip: boolean };
-  color_mode: { mode: string };
+  color_mode: Record<string, string>;
 }
 
 export interface OsdConfig {

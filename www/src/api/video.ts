@@ -2,21 +2,38 @@
 
 import { mockMediaCapabilities, mockVideoConfig } from './mock';
 import { mockStreamStatus } from './mock';
-import { requestJson, putJson } from './client';
+import { requestJson, putJson, type ApiRequestOptions } from './client';
 import type { MediaCapabilities, StreamStatus, VideoConfig } from './types';
 
-export function getVideoConfig(): Promise<VideoConfig> {
-  return requestJson<VideoConfig>('/api/config/video', mockVideoConfig);
+export function getVideoConfig(
+  options?: ApiRequestOptions,
+): Promise<VideoConfig> {
+  return requestJson<VideoConfig>('/api/config/video', mockVideoConfig, options);
 }
 
-export function saveVideoConfig(value: VideoConfig): Promise<boolean> {
-  return putJson('/api/config/video', value);
+export function saveVideoConfig(
+  value: VideoConfig,
+  options?: ApiRequestOptions,
+): Promise<void> {
+  return putJson('/api/config/video', value, options);
 }
 
-export function getMediaCapabilities(): Promise<MediaCapabilities> {
-  return requestJson<MediaCapabilities>('/api/media/capabilities', mockMediaCapabilities);
+export function getMediaCapabilities(
+  options?: ApiRequestOptions,
+): Promise<MediaCapabilities> {
+  return requestJson<MediaCapabilities>(
+    '/api/media/capabilities',
+    mockMediaCapabilities,
+    options,
+  );
 }
 
-export function getStreamStatus(): Promise<StreamStatus[]> {
-  return requestJson<StreamStatus[]>('/api/status/streams', mockStreamStatus);
+export function getStreamStatus(
+  options?: ApiRequestOptions,
+): Promise<StreamStatus[]> {
+  return requestJson<StreamStatus[]>(
+    '/api/status/streams',
+    mockStreamStatus,
+    options,
+  );
 }

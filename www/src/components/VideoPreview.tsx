@@ -53,6 +53,7 @@ interface VideoPreviewProps {
   stream: StreamName;
   statuses: StreamStatus[];
   onStreamChange: (stream: StreamName) => void;
+  enabled?: boolean;
 }
 
 const scriptLoads = new Map<string, Promise<void>>();
@@ -107,7 +108,12 @@ async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
   return (window.mpegts || window.flvjs) as FlvModule | undefined;
 }
 
-export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewProps) {
+export function VideoPreview({
+  stream,
+  statuses,
+  onStreamChange,
+  enabled = true,
+}: VideoPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('webrtc');
   const [snapshotTick, setSnapshotTick] = useState(0);
   const [webrtcConfig, setWebrtcConfig] = useState<WebrtcConfig | null>(null);
@@ -260,7 +266,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       destroyFlv(flvRef.current);
       closePeer(peerRef.current, peerIdRef.current);
       resetVideoElement(video);
-      setConnected(false);
+      setSessionConnected(false);
     };
     const cleanupSession = () => {
       disposed = true;
@@ -288,6 +294,10 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
     stopPreviousLinks();
 
+    if (!enabled) {
+      setSessionPreviewState('预览已暂停');
+      return cleanupSession;
+    }
     if (mode === 'snapshot') {
       setSessionPreviewState('抓图预览');
       return cleanupSession;
@@ -553,6 +563,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
     return cleanupSession;
   }, [
     mode,
+    enabled,
     stream,
     streamingPlaybackEnabled,
     webrtcConfig,
@@ -635,7 +646,13 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
       </div>
 
       <div className="video-surface" ref={surfaceRef}>
-        {mode === 'snapshot' ? (
+        {!enabled ? (
+          <div className="video-placeholder">
+            <div className="lens-ring paused" />
+            <strong>预览已暂停</strong>
+            <span>正在应用视频参数</span>
+          </div>
+        ) : mode === 'snapshot' ? (
           <img
             className="snapshot-preview"
             src={snapshotUrl}

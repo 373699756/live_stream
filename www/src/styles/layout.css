@@ -395,6 +395,10 @@
   border-radius: 50%;
 }
 
+.lens-ring.paused {
+  border-top-color: #64748b;
+}
+
 .osd-preview {
   position: relative;
   height: 260px;

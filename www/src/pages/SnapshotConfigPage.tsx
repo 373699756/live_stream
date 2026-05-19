@@ -5,11 +5,23 @@ import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
 
 export function SnapshotConfigPage() {
-  const { config, setConfig, save, reset, savedMsg } = useSnapshotConfig();
+  const {
+    config,
+    setConfig,
+    save,
+    reset,
+    savedMsg,
+    loading,
+    saving,
+    error,
+  } = useSnapshotConfig();
   const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
-  if (!config) {
+  if (loading) {
     return <div className="panel">加载抓图配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">抓图配置加载失败：{error || '无可用配置'}</div>;
   }
 
   return (
@@ -27,7 +39,9 @@ export function SnapshotConfigPage() {
             <input
               type="checkbox"
               checked={config.enabled}
-              onChange={(event) => setConfig({ ...config, enabled: event.target.checked })}
+              onChange={(event) =>
+                setConfig({ ...config, enabled: event.target.checked })
+              }
             />
           </FormField>
           <FormField label="JPEG 质量">
@@ -36,7 +50,9 @@ export function SnapshotConfigPage() {
               min="1"
               max="100"
               value={config.jpeg_quality}
-              onChange={(event) => setConfig({ ...config, jpeg_quality: Number(event.target.value) })}
+              onChange={(event) =>
+                setConfig({ ...config, jpeg_quality: Number(event.target.value) })
+              }
             />
           </FormField>
           <FormField label="超时 ms">
@@ -44,19 +60,25 @@ export function SnapshotConfigPage() {
               type="number"
               min="100"
               value={config.timeout_ms}
-              onChange={(event) => setConfig({ ...config, timeout_ms: Number(event.target.value) })}
+              onChange={(event) =>
+                setConfig({ ...config, timeout_ms: Number(event.target.value) })
+              }
             />
           </FormField>
           <FormField label="主码流路径">
             <input
               value={config.main_path}
-              onChange={(event) => setConfig({ ...config, main_path: event.target.value })}
+              onChange={(event) =>
+                setConfig({ ...config, main_path: event.target.value })
+              }
             />
           </FormField>
           <FormField label="子码流路径">
             <input
               value={config.sub_path}
-              onChange={(event) => setConfig({ ...config, sub_path: event.target.value })}
+              onChange={(event) =>
+                setConfig({ ...config, sub_path: event.target.value })
+              }
             />
           </FormField>
         </div>
@@ -74,14 +96,20 @@ export function SnapshotConfigPage() {
           <button
             type="button"
             className="primary"
+            disabled={saving}
             onClick={() => void save()}
           >
-            保存
+            {saving ? '保存中' : '保存'}
           </button>
         </div>
         {savedMsg && <div className="save-hint">{savedMsg}</div>}
+        {error && <div className="status-note error-note">{error}</div>}
       </section>
-      <VideoPreview stream={previewStream} statuses={[]} onStreamChange={setPreviewStream} />
+      <VideoPreview
+        stream={previewStream}
+        statuses={[]}
+        onStreamChange={setPreviewStream}
+      />
     </div>
   );
 }

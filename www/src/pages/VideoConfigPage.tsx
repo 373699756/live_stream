@@ -129,12 +129,24 @@ function StreamForm({
 }
 
 export function VideoConfigPage() {
-  const { config, setConfig, capabilities, statuses } = useVideoConfig();
+  const {
+    config,
+    setConfig,
+    capabilities,
+    statuses,
+    loading,
+    error,
+  } = useVideoConfig();
   const [active, setActive] = useState<StreamName>('sub');
   const [saved, setSaved] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [previewEnabled, setPreviewEnabled] = useState(true);
 
-  if (!config) {
+  if (loading) {
     return <div className="panel">加载视频配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">视频配置加载失败：{error || '无可用配置'}</div>;
   }
 
   const updateStream = (name: StreamName, stream: VideoStreamConfig) => {
@@ -157,6 +169,20 @@ export function VideoConfigPage() {
       isStreamSupported(config.streams.main, capabilities.streams.main)) &&
     (capabilities.streams.sub.available === false ||
       isStreamSupported(config.streams.sub, capabilities.streams.sub));
+  const saveConfig = async () => {
+    setSaving(true);
+    setPreviewEnabled(false);
+    try {
+      await saveVideoConfig(config);
+      setSaved('已提交保存');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '保存失败';
+      setSaved(`保存失败：${message}`);
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setPreviewEnabled(true), 600);
+    }
+  };
 
   return (
     <div className="config-preview-layout">
@@ -168,7 +194,13 @@ export function VideoConfigPage() {
           </div>
         </div>
         <div className="tabs">
-          <button type="button" className={active === 'main' ? 'active' : ''} onClick={() => setActive('main')}>主码流</button>
+          <button
+            type="button"
+            className={active === 'main' ? 'active' : ''}
+            onClick={() => setActive('main')}
+          >
+            主码流
+          </button>
           <button
             type="button"
             className={active === 'sub' ? 'active' : ''}
@@ -188,16 +220,22 @@ export function VideoConfigPage() {
           <button
             type="button"
             className="primary"
-            disabled={!allSupported}
-            onClick={() => void saveVideoConfig(config).then((ok) => setSaved(ok ? '已提交保存' : '后端未连接，已保留本地修改'))}
+            disabled={!allSupported || saving}
+            onClick={() => void saveConfig()}
           >
-            保存
+            {saving ? '保存中' : '保存'}
           </button>
         </div>
         {!activeSupported && <div className="save-hint">当前码流包含设备不支持的参数。</div>}
         {saved && <div className="save-hint">{saved}</div>}
+        {error && <div className="status-note error-note">{error}</div>}
       </section>
-      <VideoPreview stream={active} statuses={previewStatuses} onStreamChange={setActive} />
+      <VideoPreview
+        stream={active}
+        statuses={previewStatuses}
+        onStreamChange={setActive}
+        enabled={previewEnabled}
+      />
     </div>
   );
 }

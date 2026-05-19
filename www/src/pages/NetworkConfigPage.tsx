@@ -2,10 +2,13 @@ import { useNetworkConfig } from '../hooks/useNetworkConfig';
 import { FormField } from '../components/FormField';
 
 export function NetworkConfigPage() {
-  const { config, setConfig, save, reset, savedMsg } = useNetworkConfig();
+  const { config, setConfig, save, reset, savedMsg, loading, saving, error } = useNetworkConfig();
 
-  if (!config) {
+  if (loading) {
     return <div className="panel">加载网络配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">网络配置加载失败：{error || '无可用配置'}</div>;
   }
 
   return (
@@ -28,9 +31,12 @@ export function NetworkConfigPage() {
       </div>
       <div className="form-actions">
         <button type="button" onClick={reset}>恢复默认</button>
-        <button type="button" className="primary" onClick={() => void save()}>保存</button>
+        <button type="button" className="primary" disabled={saving} onClick={() => void save()}>
+          {saving ? '保存中' : '保存'}
+        </button>
       </div>
       {savedMsg && <div className="save-hint">{savedMsg}</div>}
+      {error && <div className="status-note error-note">{error}</div>}
     </section>
   );
 }

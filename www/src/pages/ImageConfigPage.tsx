@@ -59,8 +59,8 @@ function optionLabel(value: string): string {
 function numericCapability(
   controls: Record<string, NumericControlCapability>,
   key: string,
-): NumericControlCapability {
-  return controls[key] || { min: 0, max: 100, default: 50 };
+): NumericControlCapability | undefined {
+  return controls[key];
 }
 
 function optionCapability(
@@ -130,12 +130,26 @@ function OptionField({
 }
 
 export function ImageConfigPage() {
-  const { config, setConfig, capabilities: mediaCapabilities, statuses, save, reset, savedMsg } = useImageConfig();
+  const {
+    config,
+    setConfig,
+    capabilities: mediaCapabilities,
+    statuses,
+    save,
+    reset,
+    savedMsg,
+    loading,
+    saving,
+    error,
+  } = useImageConfig();
   const capabilities: ImageCapabilities = mediaCapabilities.image;
   const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
-  if (!config) {
+  if (loading) {
     return <div className="panel">加载图像配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">图像配置加载失败：{error || '无可用配置'}</div>;
   }
 
   const updateBasic = (key: string, value: number) => {
@@ -159,15 +173,18 @@ export function ImageConfigPage() {
         </div>
         <div className="form-grid form-grid-single">
           <div className="form-section-title">基础画质</div>
-          {basicItems.map(([key, label]) => (
-            <RangeField
-              label={label}
-              capability={numericCapability(capabilities.basic, key)}
-              value={config.basic[key] ?? numericCapability(capabilities.basic, key).default}
-              onChange={(value) => updateBasic(key, value)}
-              key={key}
-            />
-          ))}
+          {basicItems.map(([key, label]) => {
+            const capability = numericCapability(capabilities.basic, key);
+            return capability && capability.runtime_supported !== false ? (
+              <RangeField
+                label={label}
+                capability={capability}
+                value={config.basic[key] ?? capability.default}
+                onChange={(value) => updateBasic(key, value)}
+                key={key}
+              />
+            ) : null;
+          })}
 
           <div className="form-section-title">曝光控制</div>
           <OptionField
@@ -216,10 +233,13 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="曝光补偿"
-            capability={numericCapability(
-              capabilities.exposure.ranges,
-              'compensation',
-            )}
+            capability={
+              numericCapability(capabilities.exposure.ranges, 'compensation') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.exposure, 'compensation', 50)}
             onChange={(value) =>
               updateSection('exposure', 'compensation', value)
@@ -266,10 +286,13 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="红色增益"
-            capability={numericCapability(
-              capabilities.white_balance.ranges,
-              'red_gain',
-            )}
+            capability={
+              numericCapability(capabilities.white_balance.ranges, 'red_gain') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.white_balance, 'red_gain', 50)}
             onChange={(value) =>
               updateSection('white_balance', 'red_gain', value)
@@ -277,10 +300,13 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="蓝色增益"
-            capability={numericCapability(
-              capabilities.white_balance.ranges,
-              'blue_gain',
-            )}
+            capability={
+              numericCapability(capabilities.white_balance.ranges, 'blue_gain') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.white_balance, 'blue_gain', 50)}
             onChange={(value) =>
               updateSection('white_balance', 'blue_gain', value)
@@ -290,10 +316,13 @@ export function ImageConfigPage() {
           <div className="form-section-title">图像增强</div>
           <RangeField
             label="2D 降噪"
-            capability={numericCapability(
-              capabilities.enhancement.ranges,
-              'denoise_2d',
-            )}
+            capability={
+              numericCapability(capabilities.enhancement.ranges, 'denoise_2d') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.enhancement, 'denoise_2d', 50)}
             onChange={(value) =>
               updateSection('enhancement', 'denoise_2d', value)
@@ -301,10 +330,13 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="3D 降噪"
-            capability={numericCapability(
-              capabilities.enhancement.ranges,
-              'denoise_3d',
-            )}
+            capability={
+              numericCapability(capabilities.enhancement.ranges, 'denoise_3d') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.enhancement, 'denoise_3d', 50)}
             onChange={(value) =>
               updateSection('enhancement', 'denoise_3d', value)
@@ -312,10 +344,13 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="Gamma"
-            capability={numericCapability(
-              capabilities.enhancement.ranges,
-              'gamma',
-            )}
+            capability={
+              numericCapability(capabilities.enhancement.ranges, 'gamma') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.enhancement, 'gamma', 50)}
             onChange={(value) => updateSection('enhancement', 'gamma', value)}
           />
@@ -349,20 +384,29 @@ export function ImageConfigPage() {
           />
           <RangeField
             label="背光等级"
-            capability={numericCapability(capabilities.backlight.ranges, 'level')}
+            capability={
+              numericCapability(capabilities.backlight.ranges, 'level') || {
+                min: 0,
+                max: 100,
+                default: 50,
+              }
+            }
             value={numberValue(config.backlight, 'level', 50)}
             onChange={(value) => updateSection('backlight', 'level', value)}
           />
-          <OptionField
-            label="日夜模式"
-            capability={optionCapability(capabilities.color_mode, 'mode', [
-              'color',
-              'black_white',
-              'auto',
-            ])}
-            value={config.color_mode.mode}
-            onChange={updateColorMode}
-          />
+          {capabilities.color_mode.mode &&
+            capabilities.color_mode.mode.runtime_supported !== false && (
+              <OptionField
+                label="日夜模式"
+                capability={optionCapability(capabilities.color_mode, 'mode', [
+                  'color',
+                  'black_white',
+                  'auto',
+                ])}
+                value={config.color_mode.mode || capabilities.color_mode.mode.default}
+                onChange={updateColorMode}
+              />
+            )}
 
           <div className="form-section-title">方向</div>
           {capabilities.orientation.mirror && (
@@ -378,9 +422,17 @@ export function ImageConfigPage() {
         </div>
         <div className="form-actions">
           <button type="button" onClick={reset}>恢复默认</button>
-          <button type="button" className="primary" onClick={() => void save()}>保存</button>
+          <button
+            type="button"
+            className="primary"
+            disabled={saving}
+            onClick={() => void save(config)}
+          >
+            {saving ? '保存中' : '保存'}
+          </button>
         </div>
         {savedMsg && <div className="save-hint">{savedMsg}</div>}
+        {error && <div className="status-note error-note">{error}</div>}
       </section>
       <VideoPreview stream={previewStream} statuses={statuses} onStreamChange={setPreviewStream} />
     </div>

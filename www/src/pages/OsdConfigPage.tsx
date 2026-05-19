@@ -2,10 +2,13 @@ import { useOsdConfig } from '../hooks/useOsdConfig';
 import { FormField } from '../components/FormField';
 
 export function OsdConfigPage() {
-  const { config, setConfig, save, reset, savedMsg } = useOsdConfig();
+  const { config, setConfig, save, reset, savedMsg, loading, saving, error } = useOsdConfig();
 
-  if (!config) {
+  if (loading) {
     return <div className="panel">加载 OSD 配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">OSD 配置加载失败：{error || '无可用配置'}</div>;
   }
 
   return (
@@ -42,9 +45,12 @@ export function OsdConfigPage() {
         </div>
         <div className="form-actions">
           <button type="button" onClick={reset}>恢复默认</button>
-          <button type="button" className="primary" onClick={() => void save()}>保存</button>
+          <button type="button" className="primary" disabled={saving} onClick={() => void save()}>
+            {saving ? '保存中' : '保存'}
+          </button>
         </div>
         {savedMsg && <div className="save-hint">{savedMsg}</div>}
+        {error && <div className="status-note error-note">{error}</div>}
       </section>
       <section className="panel">
         <div className="panel-title">叠加预览</div>

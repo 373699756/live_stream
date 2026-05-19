@@ -22,7 +22,7 @@ export function getOsdConfig(): Promise<OsdConfig> {
   return requestJson<OsdConfig>('/api/config/osd', mockOsdConfig);
 }
 
-export function saveOsdConfig(value: OsdConfig): Promise<boolean> {
+export function saveOsdConfig(value: OsdConfig): Promise<void> {
   return putJson('/api/config/osd', value);
 }
 
@@ -31,7 +31,7 @@ export function getSnapshotConfig(): Promise<SnapshotConfig> {
   return requestJson<SnapshotConfig>('/api/config/snapshot', mockSnapshotConfig);
 }
 
-export function saveSnapshotConfig(value: SnapshotConfig): Promise<boolean> {
+export function saveSnapshotConfig(value: SnapshotConfig): Promise<void> {
   return putJson('/api/config/snapshot', value);
 }
 

@@ -91,11 +91,11 @@ export const mockMediaCapabilities: MediaCapabilities = {
   },
   image: {
     basic: {
-      brightness: { min: 0, max: 100, default: 50 },
-      contrast: { min: 0, max: 100, default: 50 },
+      brightness: { min: 0, max: 100, default: 50, runtime_supported: false },
+      contrast: { min: 0, max: 100, default: 50, runtime_supported: false },
       saturation: { min: 0, max: 100, default: 50 },
       sharpness: { min: 0, max: 100, default: 50 },
-      hue: { min: 0, max: 100, default: 50 },
+      hue: { min: 0, max: 100, default: 50, runtime_supported: false },
     },
     exposure: {
       options: {
@@ -132,7 +132,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
       ranges: { level: { min: 0, max: 100, default: 50 } },
     },
     color_mode: {
-      mode: { values: ['color', 'black_white', 'auto'], default: 'color' },
+      mode: { values: ['color', 'black_white', 'auto'], default: 'color', runtime_supported: false },
     },
     orientation: { mirror: true, flip: true },
   },

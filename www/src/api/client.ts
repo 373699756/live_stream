@@ -4,8 +4,27 @@
 const baseHeaders = { 'Content-Type': 'application/json' };
 const tokenKey = 'live_stream_token';
 const authInvalidEvent = 'live-stream-auth-invalid';
+const defaultTimeoutMs = 8000;
 
 export const useMockFallback = import.meta.env.DEV;
+
+export type ApiRequestOptions = RequestInit & {
+  timeoutMs?: number;
+};
+
+type AbortSignalStatic = typeof AbortSignal & {
+  any?: (signals: AbortSignal[]) => AbortSignal;
+  timeout?: (milliseconds: number) => AbortSignal;
+};
+
+function fetchOptions(init?: ApiRequestOptions): RequestInit {
+  if (!init) {
+    return {};
+  }
+  const options: ApiRequestOptions = { ...init };
+  delete options.timeoutMs;
+  return options;
+}
 
 // ---------------------------------------------------------------------------
 // Auth token helpers
@@ -62,6 +81,42 @@ export function authHeaders(init?: RequestInit): HeadersInit {
   };
 }
 
+function mergeSignals(
+  timeoutSignal: AbortSignal,
+  requestSignal?: AbortSignal | null,
+): AbortSignal {
+  if (!requestSignal) {
+    return timeoutSignal;
+  }
+  const abortSignal = AbortSignal as AbortSignalStatic;
+  if (abortSignal.any) {
+    return abortSignal.any([requestSignal, timeoutSignal]);
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (requestSignal.aborted || timeoutSignal.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+  requestSignal.addEventListener('abort', abort, { once: true });
+  timeoutSignal.addEventListener('abort', abort, { once: true });
+  return controller.signal;
+}
+
+function timeoutSignal(timeoutMs = defaultTimeoutMs): AbortSignal {
+  const abortSignal = AbortSignal as AbortSignalStatic;
+  if (abortSignal.timeout) {
+    return abortSignal.timeout(timeoutMs);
+  }
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
+}
+
+function requestSignal(init?: ApiRequestOptions): AbortSignal {
+  return mergeSignals(timeoutSignal(init?.timeoutMs), init?.signal);
+}
+
 export async function readError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: string };
@@ -74,17 +129,27 @@ export async function readError(response: Response): Promise<string> {
   return `${response.status} ${response.statusText}`;
 }
 
-export async function requestJson<T>(path: string, fallback: T, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: authHeaders(init),
-  });
+export async function requestJson<T>(
+  path: string,
+  fallback: T,
+  init?: ApiRequestOptions,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...fetchOptions(init),
+      headers: authHeaders(init),
+      signal: requestSignal(init),
+    });
+  } catch (error) {
+    if (useMockFallback) {
+      return fallback;
+    }
+    throw error;
+  }
   if (!response.ok) {
     if (response.status === 401) {
       handleUnauthorized();
-    }
-    if (useMockFallback) {
-      return fallback;
     }
     throw new Error(await readError(response));
   }
@@ -95,34 +160,58 @@ export async function postJson<TRequest, TResponse>(
   path: string,
   value: TRequest,
   fallback: TResponse,
+  init?: ApiRequestOptions,
 ): Promise<TResponse> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(value),
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...fetchOptions(init),
+      method: 'POST',
+      headers: authHeaders(init),
+      body: JSON.stringify(value),
+      signal: requestSignal(init),
+    });
+  } catch (error) {
+    if (useMockFallback) {
+      return fallback;
+    }
+    throw error;
+  }
   if (!response.ok) {
     if (response.status === 401) {
       handleUnauthorized();
-    }
-    if (useMockFallback) {
-      return fallback;
     }
     throw new Error(await readError(response));
   }
   return (await response.json()) as TResponse;
 }
 
-export async function putJson<T>(path: string, value: T): Promise<boolean> {
-  const response = await fetch(path, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(value),
-  });
+export async function putJson<T>(
+  path: string,
+  value: T,
+  init?: ApiRequestOptions,
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...fetchOptions(init),
+      method: 'PUT',
+      headers: authHeaders(init),
+      body: JSON.stringify(value),
+      signal: requestSignal(init),
+    });
+  } catch (error) {
+    if (useMockFallback) {
+      return;
+    }
+    throw error;
+  }
   if (response.status === 401) {
     handleUnauthorized();
   }
-  return response.ok;
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +264,21 @@ export async function validateSession(): Promise<boolean> {
   }
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+  if (!hasToken()) {
+    return;
+  }
+  try {
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
+  } catch {
+    // Local logout still clears the browser session if the device is offline.
+  }
   removeToken();
 }
 
