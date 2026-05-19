@@ -21,7 +21,7 @@ export const mockVideoConfig: VideoConfig = {
   streams: {
     main: {
       enabled: true,
-      codec: 'h265',
+      codec: 'h264',
       resolution: '1920x1080',
       fps: 25,
       bitrate_kbps: 4096,

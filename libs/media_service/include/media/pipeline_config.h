@@ -21,7 +21,7 @@ struct FrameRate {
 struct VideoStreamConfig {
     StreamId stream_id = StreamId::kMain;
     bool enabled = true;
-    VideoCodec codec = VideoCodec::kH265;
+    VideoCodec codec = VideoCodec::kH264;
     VideoSize size;
     FrameRate frame_rate;
     uint32_t bitrate_kbps = 2048;
