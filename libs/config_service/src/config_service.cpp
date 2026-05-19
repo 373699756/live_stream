@@ -118,6 +118,13 @@ bool AtomicWriteJson(const std::string &path, const ConfigJson &root) {
     return infra::File::Rename(tmp, path);
 }
 
+ConfigError RollbackError(const ConfigResult &apply_result) {
+    if (!apply_result.error.reason.empty()) {
+        return apply_result.error;
+    }
+    return ConfigError{"", "apply failed"};
+}
+
 }  // namespace
 
 class ConfigServiceImpl : public IConfigService {
@@ -147,6 +154,7 @@ public:
         defaults_ = std::move(defaults);
         current_ = std::move(current);
         changed_ = false;
+        change_generation_ = 0;
         initialized_ = true;
         return true;
     }
@@ -175,6 +183,7 @@ public:
         observers_.clear();
         last_errors_.clear();
         changed_ = false;
+        change_generation_ = 0;
         initialized_ = false;
         started_ = false;
         next_observer_id_ = 1;
@@ -184,59 +193,23 @@ public:
         if (!IsTopLevelName(name)) {
             return false;
         }
-        if (!IsStartedForRead()) {
-            SetLastConfigError(name, ConfigError{"", "config service not started"});
-            return false;
-        }
         if (!IsConfigJsonWithinLimits(value)) {
             SetLastConfigError(name, ConfigError{"", "config json too deep"});
             return false;
         }
 
-        ConfigAttachment attachment;
-        bool has_attachment = false;
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-            if (defaults_.find(name) == defaults_.end()) {
-                last_errors_[name] = ConfigError{"", "config not found"};
-                return false;
-            }
-            const auto it = current_.find(name);
-            if (it != current_.end() && it.value() == value) {
-                ClearLastConfigErrorLocked(name);
-                return true;
-            }
-            auto attachment_it = attachments_.find(name);
-            if (attachment_it != attachments_.end()) {
-                attachment = attachment_it->second;
-                has_attachment = true;
-            }
-        }
-
-        if (has_attachment) {
-            ConfigResult validate_result = RunHandler(attachment.validate, value);
-            if (!validate_result.ok) {
-                SetLastConfigError(name, validate_result.error);
-                return false;
-            }
-            ConfigResult apply_result = RunHandler(attachment.apply, value);
-            if (!apply_result.ok) {
-                SetLastConfigError(name, apply_result.error);
-                return false;
-            }
-        }
-
         std::vector<ConfigObserver> observers;
         {
-            std::lock_guard<std::mutex> g(mutex_);
-            current_[name] = value;
-            changed_ = true;
-            ClearLastConfigErrorLocked(name);
-            observers = CollectObserversLocked(name);
-        }
-        if (!SaveFile()) {
-            SetLastConfigError(name, ConfigError{"", "save config file failed"});
-            return false;
+            std::lock_guard<std::mutex> write_lock(write_mutex_);
+            if (!IsStartedForRead()) {
+                SetLastConfigError(name,
+                                   ConfigError{"",
+                                               "config service not started"});
+                return false;
+            }
+            if (!SetValueTransaction(name, value, &observers)) {
+                return false;
+            }
         }
         NotifyObservers(observers, value);
         return true;
@@ -283,22 +256,8 @@ public:
     }
 
     bool SaveFile() override {
-        if (!IsInitializedForRead())
-            return false;
-
-        ConfigJson snap;
-        {
-            std::lock_guard<std::mutex> g(mutex_);
-            if (!changed_)
-                return true;
-            snap = current_;
-        }
-        const bool saved = AtomicWriteJson(opts_.config_path, snap);
-        if (saved) {
-            std::lock_guard<std::mutex> g(mutex_);
-            changed_ = false;
-        }
-        return saved;
+        std::lock_guard<std::mutex> write_lock(write_mutex_);
+        return SaveFileSnapshot();
     }
 
     bool AttachConfig(const std::string &name,
@@ -313,7 +272,6 @@ public:
         attachments_[name] = attachment;
         return true;
     }
-
     bool DetachConfig(const std::string &name) override {
         if (!IsTopLevelName(name)) {
             return false;
@@ -366,6 +324,168 @@ public:
     }
 
 private:
+    struct PendingConfigChange {
+        ConfigAttachment attachment;
+        bool changed = false;
+        bool has_attachment = false;
+        ConfigJson previous_value;
+        bool previous_changed = false;
+        uint64_t generation = 0;
+    };
+
+    bool SetValueTransaction(const std::string &name, const ConfigJson &value,
+                             std::vector<ConfigObserver> *observers) {
+        PendingConfigChange change;
+        if (!PrepareConfigChange(name, value, &change)) {
+            return false;
+        }
+        if (!change.changed) {
+            return true;
+        }
+        if (change.has_attachment) {
+            ConfigResult validate_result =
+                RunHandler(change.attachment.validate, value);
+            if (!validate_result.ok) {
+                SetLastConfigError(name, validate_result.error);
+                return false;
+            }
+        }
+        CommitConfigValue(name, value, &change, observers);
+        if (!SaveFileSnapshot()) {
+            RestoreUnsavedValue(name, change);
+            return false;
+        }
+        if (change.has_attachment) {
+            ConfigResult apply_result =
+                RunHandler(change.attachment.apply, value);
+            if (!apply_result.ok) {
+                RollbackAppliedValue(name, value, change,
+                                     RollbackError(apply_result));
+                return false;
+            }
+        }
+        ClearLastConfigError(name);
+        return true;
+    }
+
+    bool PrepareConfigChange(const std::string &name, const ConfigJson &value,
+                             PendingConfigChange *change) {
+        if (change == nullptr) {
+            return false;
+        }
+        ConfigAttachment attachment;
+        bool has_attachment = false;
+        ConfigJson previous_value;
+        bool previous_changed = false;
+        {
+            std::lock_guard<std::mutex> g(mutex_);
+            if (defaults_.find(name) == defaults_.end()) {
+                last_errors_[name] = ConfigError{"", "config not found"};
+                return false;
+            }
+            const auto it = current_.find(name);
+            if (it != current_.end() && it.value() == value) {
+                ClearLastConfigErrorLocked(name);
+                return true;
+            }
+            if (it == current_.end()) {
+                last_errors_[name] = ConfigError{"", "config not found"};
+                return false;
+            }
+            previous_value = it.value();
+            previous_changed = changed_;
+            auto attachment_it = attachments_.find(name);
+            if (attachment_it != attachments_.end()) {
+                attachment = attachment_it->second;
+                has_attachment = true;
+            }
+        }
+        change->changed = true;
+        change->attachment = std::move(attachment);
+        change->has_attachment = has_attachment;
+        change->previous_value = std::move(previous_value);
+        change->previous_changed = previous_changed;
+        return true;
+    }
+
+    void CommitConfigValue(const std::string &name, const ConfigJson &value,
+                           PendingConfigChange *change,
+                           std::vector<ConfigObserver> *observers) {
+        if (change == nullptr) {
+            return;
+        }
+        std::vector<ConfigObserver> next_observers;
+        {
+            std::lock_guard<std::mutex> g(mutex_);
+            current_[name] = value;
+            changed_ = true;
+            ++change_generation_;
+            change->generation = change_generation_;
+            ClearLastConfigErrorLocked(name);
+            next_observers = CollectObserversLocked(name);
+        }
+        if (observers != nullptr) {
+            *observers = std::move(next_observers);
+        }
+    }
+
+    void RestoreUnsavedValue(const std::string &name,
+                             const PendingConfigChange &change) {
+        std::lock_guard<std::mutex> g(mutex_);
+        current_[name] = change.previous_value;
+        ++change_generation_;
+        changed_ = change.previous_changed;
+        last_errors_[name] = ConfigError{"", "save config file failed"};
+    }
+
+    void RollbackAppliedValue(const std::string &name,
+                              const ConfigJson &attempted_value,
+                              const PendingConfigChange &change,
+                              const ConfigError &error) {
+        bool should_save_rollback = false;
+        {
+            std::lock_guard<std::mutex> g(mutex_);
+            const auto it = current_.find(name);
+            if (change_generation_ == change.generation &&
+                it != current_.end() && it.value() == attempted_value) {
+                current_[name] = change.previous_value;
+                changed_ = true;
+                ++change_generation_;
+                should_save_rollback = true;
+            }
+        }
+        const bool rollback_saved =
+            should_save_rollback && SaveFileSnapshot();
+        if (!rollback_saved) {
+            SetLastConfigError(
+                name, ConfigError{"", "apply failed and rollback save failed"});
+            return;
+        }
+        SetLastConfigError(name, error);
+    }
+
+    bool SaveFileSnapshot() {
+        if (!IsInitializedForRead())
+            return false;
+
+        ConfigJson snap;
+        uint64_t snap_generation = 0;
+        {
+            std::lock_guard<std::mutex> g(mutex_);
+            if (!changed_)
+                return true;
+            snap_generation = change_generation_;
+            snap = current_;
+        }
+        const bool saved = AtomicWriteJson(opts_.config_path, snap);
+        if (saved) {
+            std::lock_guard<std::mutex> g(mutex_);
+            if (change_generation_ == snap_generation) {
+                changed_ = false;
+            }
+        }
+        return saved;
+    }
     bool LoadInitialConfig(ConfigJson *defaults_out, ConfigJson *current_out) {
         if (defaults_out == nullptr || current_out == nullptr) {
             return false;
@@ -437,6 +557,11 @@ private:
         last_errors_.erase(name);
     }
 
+    void ClearLastConfigError(const std::string &name) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ClearLastConfigErrorLocked(name);
+    }
+
     void SetLastConfigError(const std::string &name, ConfigError error) {
         std::lock_guard<std::mutex> lock(mutex_);
         last_errors_[name] = std::move(error);
@@ -452,8 +577,10 @@ private:
     std::unordered_map<std::string, ConfigError> last_errors_;
 
     ConfigServiceOptions opts_;
+    std::mutex write_mutex_;
     mutable std::mutex mutex_;
     bool changed_ = false;
+    uint64_t change_generation_ = 0;
     bool initialized_ = false;
     bool started_ = false;
     ConfigObserverId next_observer_id_ = 1;
