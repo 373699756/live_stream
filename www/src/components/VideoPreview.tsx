@@ -116,6 +116,7 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
   const [connected, setConnected] = useState(false);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const sessionRef = useRef(0);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const peerIdRef = useRef('');
   const hlsRef = useRef<HlsPlayer | null>(null);
@@ -169,110 +170,161 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
 
   useEffect(() => {
     const video = videoRef.current;
-    const stopVideoTracks = () => {
-      if (video?.srcObject instanceof MediaStream) {
-        for (const track of video.srcObject.getTracks()) {
+    const sessionId = sessionRef.current + 1;
+    sessionRef.current = sessionId;
+    let disposed = false;
+    let sessionPeer: RTCPeerConnection | null = null;
+    let sessionPeerId = '';
+    let sessionHls: HlsPlayer | null = null;
+    let sessionFlv: FlvPlayer | null = null;
+
+    const isCurrentSession = () => !disposed && sessionRef.current === sessionId;
+    const setSessionConnected = (value: boolean) => {
+      if (isCurrentSession()) {
+        setConnected(value);
+      }
+    };
+    const setSessionPreviewState = (value: string) => {
+      if (isCurrentSession()) {
+        setPreviewState(value);
+      }
+    };
+    const stopVideoTracks = (target: HTMLMediaElement | null) => {
+      if (target?.srcObject instanceof MediaStream) {
+        for (const track of target.srcObject.getTracks()) {
           track.stop();
         }
       }
     };
-    const resetVideoSurface = () => {
-      setConnected(false);
-      if (hlsRef.current) {
-        try {
-          hlsRef.current.destroy();
-        } catch {
-          // Best-effort cleanup.
-        }
+    const resetVideoElement = (target: HTMLMediaElement | null) => {
+      if (!target) {
+        return;
+      }
+      target.pause();
+      stopVideoTracks(target);
+      target.srcObject = null;
+      target.removeAttribute('src');
+      target.load();
+      target.onloadeddata = null;
+      target.onplaying = null;
+      target.onerror = null;
+    };
+    const destroyHls = (player: HlsPlayer | null) => {
+      if (!player) {
+        return;
+      }
+      try {
+        player.destroy();
+      } catch {
+        // Best-effort cleanup.
+      }
+      if (hlsRef.current === player) {
         hlsRef.current = null;
       }
-      if (flvRef.current) {
-        try {
-          flvRef.current.unload?.();
-          flvRef.current.detachMediaElement?.();
-          flvRef.current.destroy();
-        } catch {
-          // Best-effort cleanup.
-        }
+    };
+    const destroyFlv = (player: FlvPlayer | null) => {
+      if (!player) {
+        return;
+      }
+      try {
+        player.unload?.();
+        player.detachMediaElement?.();
+        player.destroy();
+      } catch {
+        // Best-effort cleanup.
+      }
+      if (flvRef.current === player) {
         flvRef.current = null;
       }
+    };
+    const closePeer = (peer: RTCPeerConnection | null, peerId: string) => {
+      if (peer) {
+        peer.onicecandidate = null;
+        peer.ontrack = null;
+        peer.onconnectionstatechange = null;
+        peer.oniceconnectionstatechange = null;
+        peer.close();
+        if (peerRef.current === peer) {
+          peerRef.current = null;
+        }
+      }
+      if (peerId) {
+        void closeWebrtcPeer(peerId);
+        if (peerIdRef.current === peerId) {
+          peerIdRef.current = '';
+        }
+      }
+    };
+    const stopPreviousLinks = () => {
+      destroyHls(hlsRef.current);
+      destroyFlv(flvRef.current);
+      closePeer(peerRef.current, peerIdRef.current);
+      resetVideoElement(video);
+      setConnected(false);
+    };
+    const cleanupSession = () => {
+      disposed = true;
+      destroyHls(sessionHls);
+      destroyFlv(sessionFlv);
+      closePeer(sessionPeer, sessionPeerId);
+      if (sessionRef.current === sessionId) {
+        resetVideoElement(video);
+        setConnected(false);
+      }
+      sessionHls = null;
+      sessionFlv = null;
+      sessionPeer = null;
+      sessionPeerId = '';
+    };
+    const closeWebrtcSession = () => {
+      closePeer(sessionPeer, sessionPeerId);
+      stopVideoTracks(video);
       if (video) {
-        video.pause();
-        stopVideoTracks();
-        video.srcObject = null;
-        video.removeAttribute('src');
-        video.load();
-        video.onloadeddata = null;
-        video.onplaying = null;
-        video.onerror = null;
-      }
-    };
-    const closeWebrtc = () => {
-      const peer_id = peerIdRef.current;
-      if (peerRef.current) {
-        peerRef.current.onicecandidate = null;
-        peerRef.current.ontrack = null;
-        peerRef.current.onconnectionstatechange = null;
-        peerRef.current.oniceconnectionstatechange = null;
-        peerRef.current.close();
-        peerRef.current = null;
-      }
-      if (video) {
-        stopVideoTracks();
         video.srcObject = null;
       }
-      void closeWebrtcPeer(peer_id);
-      peerIdRef.current = '';
+      sessionPeer = null;
+      sessionPeerId = '';
     };
-    const cleanup = () => {
-      resetVideoSurface();
-      closeWebrtc();
-    };
+
+    stopPreviousLinks();
 
     if (mode === 'snapshot') {
-      cleanup();
-      setPreviewState('抓图预览');
-      return cleanup;
+      setSessionPreviewState('抓图预览');
+      return cleanupSession;
     }
     if (!video) {
-      setPreviewState('视频预览器不可用');
-      return cleanup;
+      setSessionPreviewState('视频预览器不可用');
+      return cleanupSession;
     }
 
-    let disposed = false;
-    const cleanupActive = () => {
-      disposed = true;
-      cleanup();
-    };
     video.onloadeddata = () => {
-      setConnected(true);
-      setPreviewState('视频已连接');
+      setSessionConnected(true);
+      setSessionPreviewState('视频已连接');
     };
     video.onplaying = () => {
-      setConnected(true);
-      setPreviewState('视频已连接');
+      setSessionConnected(true);
+      setSessionPreviewState('视频已连接');
     };
     video.onerror = () => {
-      setConnected(false);
+      setSessionConnected(false);
       if (mode === 'hls') {
-        setPreviewState('HLS 播放失败');
+        setSessionPreviewState('HLS 播放失败');
       } else if (mode === 'flv') {
-        setPreviewState('HTTP-FLV 播放失败');
+        setSessionPreviewState('HTTP-FLV 播放失败');
       }
     };
 
     if (mode === 'webrtc') {
-      resetVideoSurface();
       if (!webrtcConfigLoaded) {
-        setPreviewState('正在读取 WebRTC 配置');
-        return cleanupActive;
+        setSessionPreviewState('正在读取 WebRTC 配置');
+        return cleanupSession;
       }
       if (!webrtcEnabled || !webrtcPlaybackEnabled) {
         setMode(streamingPlaybackEnabled ? 'flv' : 'snapshot');
-        setPreviewState('WebRTC 未启用');
-        return cleanupActive;
+        setSessionPreviewState('WebRTC 未启用');
+        return cleanupSession;
       }
-      setPreviewState('等待 WebRTC 视频流');
+      setSessionPreviewState('等待 WebRTC 视频流');
       const pc = new RTCPeerConnection({
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
@@ -282,10 +334,15 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           credential: server.credential,
         })),
       });
+      sessionPeer = pc;
       peerRef.current = pc;
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.ontrack = (event) => {
-        if (disposed || peerRef.current !== pc || event.track.kind !== 'video') {
+        if (
+          !isCurrentSession() ||
+          peerRef.current !== pc ||
+          event.track.kind !== 'video'
+        ) {
           return;
         }
         const media_stream =
@@ -293,38 +350,43 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
         if (videoRef.current) {
           videoRef.current.srcObject = media_stream;
           void videoRef.current.play().catch(() => {});
-          setConnected(true);
-          setPreviewState('视频已连接');
+          setSessionConnected(true);
+          setSessionPreviewState('视频已连接');
         }
       };
       pc.onicecandidate = (event) => {
-        if (!disposed && peerRef.current === pc && event.candidate && peerIdRef.current) {
-          void sendWebrtcCandidate(peerIdRef.current, event.candidate.toJSON());
+        if (
+          isCurrentSession() &&
+          peerRef.current === pc &&
+          event.candidate &&
+          sessionPeerId
+        ) {
+          void sendWebrtcCandidate(sessionPeerId, event.candidate.toJSON());
         }
       };
       pc.onconnectionstatechange = () => {
-        if (disposed || peerRef.current !== pc) {
+        if (!isCurrentSession() || peerRef.current !== pc) {
           return;
         }
         if (pc.connectionState === 'connected') {
-          setConnected(true);
-          setPreviewState('WebRTC 已连接');
+          setSessionConnected(true);
+          setSessionPreviewState('WebRTC 已连接');
         } else if (
           pc.connectionState === 'failed' ||
           pc.connectionState === 'disconnected' ||
           pc.connectionState === 'closed'
         ) {
-          setConnected(false);
-          setPreviewState(
+          setSessionConnected(false);
+          setSessionPreviewState(
             pc.connectionState === 'failed' ? 'WebRTC 连接失败' : 'WebRTC 已断开',
           );
-          closeWebrtc();
+          closeWebrtcSession();
         } else {
-          setPreviewState(`WebRTC ${pc.connectionState}`);
+          setSessionPreviewState(`WebRTC ${pc.connectionState}`);
         }
       };
       pc.oniceconnectionstatechange = () => {
-        if (disposed || peerRef.current !== pc) {
+        if (!isCurrentSession() || peerRef.current !== pc) {
           return;
         }
         if (
@@ -332,113 +394,124 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           pc.iceConnectionState === 'disconnected' ||
           pc.iceConnectionState === 'closed'
         ) {
-          setConnected(false);
-          setPreviewState('ICE 连接失败');
-          closeWebrtc();
+          setSessionConnected(false);
+          setSessionPreviewState('ICE 连接失败');
+          closeWebrtcSession();
         }
       };
 
       void (async () => {
         try {
           const peer = await createWebrtcPeer(stream);
-          if (!peer.peer_id || disposed) {
+          if (!peer.peer_id || !isCurrentSession() || peerRef.current !== pc) {
             if (peer.peer_id) {
               void closeWebrtcPeer(peer.peer_id);
             }
-            if (!disposed) {
-              setPreviewState('WebRTC 后端不可用');
+            if (isCurrentSession()) {
+              setSessionPreviewState('WebRTC 后端不可用');
+              closeWebrtcSession();
             }
             return;
           }
+          sessionPeerId = peer.peer_id;
           peerIdRef.current = peer.peer_id;
           const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '');
-          if (!answer.sdp || disposed) {
+          if (!isCurrentSession() || peerRef.current !== pc) {
             void closeWebrtcPeer(peer.peer_id);
-            if (!disposed) {
-              setPreviewState('WebRTC 应答无效');
-            }
             return;
           }
-          if (peerRef.current !== pc) {
+          await pc.setLocalDescription(offer);
+          if (!isCurrentSession() || peerRef.current !== pc) {
             void closeWebrtcPeer(peer.peer_id);
-            pc.close();
+            return;
+          }
+          const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '');
+          if (!answer.sdp || !isCurrentSession() || peerRef.current !== pc) {
+            void closeWebrtcPeer(peer.peer_id);
+            if (isCurrentSession()) {
+              setSessionPreviewState('WebRTC 应答无效');
+              closeWebrtcSession();
+            }
             return;
           }
           await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+          if (!isCurrentSession() || peerRef.current !== pc) {
+            void closeWebrtcPeer(peer.peer_id);
+          }
         } catch {
-          if (!disposed) {
-            setPreviewState('WebRTC 连接失败');
-            closeWebrtc();
+          if (isCurrentSession()) {
+            setSessionPreviewState('WebRTC 连接失败');
+            closeWebrtcSession();
           }
         }
       })();
 
-      return cleanupActive;
+      return cleanupSession;
     }
 
-    closeWebrtc();
     if (!streamingPlaybackEnabled) {
       setMode('snapshot');
-      setPreviewState(mode === 'hls' ? 'HLS 不支持当前编码' : 'HTTP-FLV 不支持当前编码');
-      return cleanup;
+      setSessionPreviewState(
+        mode === 'hls' ? 'HLS 不支持当前编码' : 'HTTP-FLV 不支持当前编码',
+      );
+      return cleanupSession;
     }
 
     if (mode === 'hls') {
-      resetVideoSurface();
-      setPreviewState('等待 HLS 视频流');
+      setSessionPreviewState('等待 HLS 视频流');
       const url = hlsPlaylistUrl(stream);
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
         void video.play().catch(() => {});
-        setPreviewState('正在拉取 HLS 码流');
-        return cleanupActive;
+        setSessionPreviewState('正在拉取 HLS 码流');
+        return cleanupSession;
       }
       void (async () => {
         try {
           const Hls = await loadLocalHlsModule();
-          if (disposed) {
+          if (!isCurrentSession()) {
             return;
           }
           if (!Hls || !Hls.isSupported?.()) {
-            setPreviewState('HLS 播放器不可用');
+            setSessionPreviewState('HLS 播放器不可用');
             return;
           }
           const player = new Hls({ enableWorker: true });
+          sessionHls = player;
           hlsRef.current = player;
           const errorEvent = Hls.Events?.ERROR;
           if (errorEvent && player.on) {
             player.on(errorEvent, () => {
-              setPreviewState('HLS 播放失败');
+              if (isCurrentSession() && hlsRef.current === player) {
+                setSessionPreviewState('HLS 播放失败');
+              }
             });
           }
           player.attachMedia(video);
           player.loadSource(url);
           void video.play().catch(() => {});
-          setPreviewState('正在拉取 HLS 码流');
+          setSessionPreviewState('正在拉取 HLS 码流');
         } catch {
-          if (!disposed) {
-            setPreviewState('HLS 播放器脚本未加载');
+          if (isCurrentSession()) {
+            setSessionPreviewState('HLS 播放器脚本未加载');
           }
         }
       })();
-      return cleanupActive;
+      return cleanupSession;
     }
 
-    resetVideoSurface();
-    setPreviewState('等待 HTTP-FLV 视频流');
+    setSessionPreviewState('等待 HTTP-FLV 视频流');
     void (async () => {
       try {
         const flvModule = await loadLocalFlvModule();
-        if (disposed) {
+        if (!isCurrentSession()) {
           return;
         }
         const flv_supported = flvModule?.isSupported?.() ?? true;
         const live_supported =
           flvModule?.getFeatureList?.().mseLiveFlvPlayback ?? flv_supported;
         if (!flvModule || !flv_supported || !live_supported) {
-          setPreviewState('HTTP-FLV 播放器不可用');
+          setSessionPreviewState('HTTP-FLV 播放器不可用');
           return;
         }
         const player = flvModule.createPlayer({
@@ -457,24 +530,27 @@ export function VideoPreview({ stream, statuses, onStreamChange }: VideoPreviewP
           autoCleanupMaxBackwardDuration: 8,
           autoCleanupMinBackwardDuration: 2,
         });
+        sessionFlv = player;
         flvRef.current = player;
         const errorEvent = flvModule.Events?.ERROR;
         if (errorEvent && player.on) {
           player.on(errorEvent, () => {
-            setPreviewState('HTTP-FLV 播放失败');
+            if (isCurrentSession() && flvRef.current === player) {
+              setSessionPreviewState('HTTP-FLV 播放失败');
+            }
           });
         }
         player.attachMediaElement(video);
         player.load();
         void player.play().catch(() => {});
-        setPreviewState('正在拉取 HTTP-FLV 码流');
+        setSessionPreviewState('正在拉取 HTTP-FLV 码流');
       } catch {
-        if (!disposed) {
-          setPreviewState('HTTP-FLV 播放器脚本未加载');
+        if (isCurrentSession()) {
+          setSessionPreviewState('HTTP-FLV 播放器脚本未加载');
         }
       }
     })();
-    return cleanupActive;
+    return cleanupSession;
   }, [
     mode,
     stream,
