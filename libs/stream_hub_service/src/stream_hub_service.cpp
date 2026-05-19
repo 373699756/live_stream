@@ -252,8 +252,7 @@ public:
     bool IsHlsSupported(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);
-        return stream != nullptr &&
-               hub_state::IsBrowserStreamReady(stream->state, stream->codec);
+        return stream != nullptr && hub_state::IsHlsStreamReady(*stream);
     }
 
     bool IsFlvSupported(StreamId stream_id) const override {
@@ -290,6 +289,21 @@ public:
             return StreamFlvBootstrap{};
         }
         return hub_state::BuildFlvBootstrap(*stream);
+    }
+
+    StreamBrowserStatus GetBrowserStatus(StreamId stream_id) const override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        const hub_state::StreamContext *stream = FindStream(stream_id);
+        StreamBrowserStatus status;
+        if (stream == nullptr) {
+            return status;
+        }
+        status.running = stream->state == StreamState::kRunning;
+        status.browser_codec = hub_state::IsBrowserCodec(stream->codec);
+        status.hls_ready = hub_state::IsHlsStreamReady(*stream);
+        status.flv_ready = hub_state::IsFlvStreamReady(*stream);
+        status.codec = stream->codec;
+        return status;
     }
 
     StreamFlvClientId
@@ -408,6 +422,7 @@ private:
             }
             if (stream->codec != frame.codec) {
                 hub_state::ResetStream(stream, frame.codec);
+                ResetStreamLogFlagsLocked(frame.stream_id);
             }
             if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
@@ -435,6 +450,7 @@ private:
             }
             if (stream->codec != frame.codec) {
                 hub_state::ResetStream(stream, frame.codec);
+                ResetStreamLogFlagsLocked(frame.stream_id);
             }
             if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
@@ -514,6 +530,17 @@ private:
             return &sub_packaged_logged_;
         }
         return nullptr;
+    }
+
+    void ResetStreamLogFlagsLocked(StreamId stream_id) {
+        bool *bad_payload_logged = BadPayloadFlag(stream_id);
+        if (bad_payload_logged != nullptr) {
+            *bad_payload_logged = false;
+        }
+        bool *packaged_logged = PackagedFlag(stream_id);
+        if (packaged_logged != nullptr) {
+            *packaged_logged = false;
+        }
     }
 
     void LogBadPayloadOnce(const EncodedFrame &frame,

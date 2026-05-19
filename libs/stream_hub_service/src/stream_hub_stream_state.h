@@ -56,9 +56,11 @@ struct PackagedFrameResult {
 };
 
 bool IsBrowserStreamReady(StreamState state, VideoCodec codec);
+bool IsBrowserCodec(VideoCodec codec);
 bool IsFlvCodecSupported(VideoCodec codec);
 bool HasFlvSequenceHeader(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
+bool IsHlsStreamReady(const StreamContext &stream);
 
 ParsedFramePayload ParseFramePayload(const EncodedFrame &frame);
 bool HasParsedUnits(const ParsedFramePayload &payload);

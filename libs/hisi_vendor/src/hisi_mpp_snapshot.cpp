@@ -45,6 +45,7 @@ void CleanupJpegCapture(VENC_CHN jpeg_chn, const MPP_CHN_S& src,
 #endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     JpegFrame result{};
     result.width = config.size.width;
     result.height = config.size.height;

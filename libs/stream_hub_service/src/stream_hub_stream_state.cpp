@@ -6,11 +6,11 @@
 
 namespace live_stream {
 namespace stream_hub_internal {
-namespace {
-
 bool IsBrowserCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
 }
+
+namespace {
 
 void StartSegment(StreamContext *stream, int64_t pts_us) {
     if (stream == nullptr) {
@@ -140,6 +140,11 @@ bool IsFlvStreamReady(const StreamContext &stream) {
            HasFlvSequenceHeader(stream);
 }
 
+bool IsHlsStreamReady(const StreamContext &stream) {
+    return IsBrowserStreamReady(stream.state, stream.codec) &&
+           !stream.segments.empty();
+}
+
 ParsedFramePayload ParseFramePayload(const EncodedFrame &frame) {
     ParsedFramePayload payload;
     payload.codec = frame.codec;
@@ -176,8 +181,7 @@ bool HasParsedUnits(const ParsedFramePayload &payload) {
 StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                    uint32_t hls_segment_duration_ms) {
     StreamHlsPlaylist playlist;
-    if (!IsBrowserStreamReady(stream.state, stream.codec) ||
-        stream.segments.empty()) {
+    if (!IsHlsStreamReady(stream)) {
         return playlist;
     }
 

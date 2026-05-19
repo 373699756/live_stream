@@ -41,6 +41,19 @@ bool IsValidMedia(const MediaChannels &channels) {
            channels.main_size.width > 0 && channels.main_size.height > 0;
 }
 
+bool IsSnapshotVencChannelAvailable(const SnapshotConfig &config,
+                                    const MediaChannels &channels) {
+    if (channels.venc.channel == config.jpeg_venc_channel) {
+        return false;
+    }
+    if (channels.sub_venc.module == MppModule::kVenc &&
+        channels.sub_venc.channel >= 0 &&
+        channels.sub_venc.channel == config.jpeg_venc_channel) {
+        return false;
+    }
+    return true;
+}
+
 hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
                                              const CaptureRequest &request) {
     hisisdk::SnapshotConfig hisi_config;
@@ -189,6 +202,9 @@ struct SnapshotService::Impl {
         if (!media_bound) {
             return false;
         }
+        if (!IsSnapshotVencChannelAvailable(config, media_channels)) {
+            return false;
+        }
         snap_vpss_started = true;
         vi_bound_snap_vpss = true;
         jpeg_venc_started = true;
@@ -312,6 +328,9 @@ bool SnapshotService::BindMedia(const MediaChannels &channels) {
     impl_->config.snap_vpss_group = channels.vpss.device;
     impl_->config.snap_vpss_channel = channels.vpss.channel;
     impl_->config.size = channels.main_size;
+    if (!IsSnapshotVencChannelAvailable(impl_->config, channels)) {
+        return false;
+    }
     impl_->media_bound = true;
     return true;
 }
@@ -322,6 +341,7 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
     }
     CaptureRequest effective_request = request;
     SnapshotConfig capture_config;
+    MediaChannels channels;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
         if (impl_->state != ServiceState::kStarted || impl_->capturing ||
@@ -329,6 +349,30 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
             return SnapshotFrame{};
         }
         if (!IsValidRequest(request)) {
+            return SnapshotFrame{};
+        }
+
+        if (impl_->options.media_service != nullptr) {
+            if (!impl_->options.media_service->IsStarted()) {
+                ++impl_->stats.capture_failed_count;
+                return SnapshotFrame{};
+            }
+            channels = impl_->options.media_service->GetChannels();
+            if (!IsValidMedia(channels)) {
+                ++impl_->stats.capture_failed_count;
+                return SnapshotFrame{};
+            }
+            impl_->media_channels = channels;
+            impl_->config.snap_pipe = channels.snap_pipe;
+            impl_->config.snap_vpss_group = channels.vpss.device;
+            impl_->config.snap_vpss_channel = channels.vpss.channel;
+            impl_->config.size = channels.main_size;
+            impl_->media_bound = true;
+        } else {
+            channels = impl_->media_channels;
+        }
+        if (!IsSnapshotVencChannelAvailable(impl_->config, channels)) {
+            ++impl_->stats.capture_failed_count;
             return SnapshotFrame{};
         }
 

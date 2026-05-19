@@ -144,6 +144,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
 // CreateRegion
 // ====================================================================
 bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0 || config.size.width == 0 || config.size.height == 0) {
         return false;
     }
@@ -178,6 +179,7 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
 // AttachRegion
 // ====================================================================
 bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -196,6 +198,7 @@ bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
 // DetachRegion
 // ====================================================================
 bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -212,6 +215,7 @@ bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
 // SetRegionDisplay
 // ====================================================================
 bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -230,6 +234,7 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
 // SetRegionBitmap
 // ====================================================================
 bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0 || bitmap.data == nullptr || bitmap.size == 0) {
         return false;
     }
@@ -252,6 +257,7 @@ bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
 // DestroyRegion
 // ====================================================================
 void MppHisiSdk::DestroyRegion(int32_t handle) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP

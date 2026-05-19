@@ -30,6 +30,15 @@ bool IsValidSubStreamChannels(const MediaPipelineConfig& config) {
            config.sub_venc_channel != config.venc_channel;
 }
 
+bool IsValidSnapshotChannels(const MediaPipelineConfig& config) {
+    const hisisdk::SnapshotConfig snapshot;
+    if (snapshot.jpeg_venc_channel == config.venc_channel) {
+        return false;
+    }
+    return !config.sub_stream.enabled ||
+           snapshot.jpeg_venc_channel != config.sub_venc_channel;
+}
+
 }  // namespace
 
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config) {
@@ -37,6 +46,7 @@ bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config) {
            config.snap_pipe >= 0 && config.vi_channel >= 0 &&
            config.vpss_group >= 0 && config.vpss_channel >= 0 &&
            config.venc_channel >= 0 && IsValidSubStreamChannels(config) &&
+           IsValidSnapshotChannels(config) &&
            config.vb_block_count > 0 && IsValidStreamConfig(config.main_stream) &&
            config.main_stream.stream_id == StreamId::kMain &&
            IsValidStreamConfig(config.sub_stream) &&

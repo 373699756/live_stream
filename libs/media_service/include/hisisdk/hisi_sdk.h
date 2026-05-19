@@ -63,7 +63,7 @@ struct SnapshotConfig {
     int32_t snap_pipe = 2;
     int32_t snap_vpss_group = 2;
     int32_t snap_vpss_channel = 0;
-    int32_t jpeg_venc_channel = 1;
+    int32_t jpeg_venc_channel = 3;
     Size size;
     uint32_t frame_count = 1;
     uint32_t repeat_send_times = 1;

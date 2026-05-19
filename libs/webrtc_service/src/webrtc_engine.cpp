@@ -67,6 +67,16 @@ bool IsH265KeyFrameNal(uint8_t nal_type) {
     return nal_type >= 16 && nal_type <= 21;
 }
 
+template <typename Unit>
+void AppendAnnexBNal(const Unit &unit, std::vector<uint8_t> *out) {
+    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+    if (unit.data == nullptr || unit.size == 0 || out == nullptr) {
+        return;
+    }
+    out->insert(out->end(), kStartCode, kStartCode + sizeof(kStartCode));
+    out->insert(out->end(), unit.data, unit.data + unit.size);
+}
+
 void StoreParameterSet(const uint8_t *data,
                        std::size_t size,
                        std::vector<uint8_t> *out) {
@@ -94,23 +104,6 @@ YangPushData *QueueMetaRtcPayload(YangRtcPacer *pacer,
     video_frame.pts = pts_us;
     video_frame.payload = const_cast<uint8_t *>(payload);
     return pacer->getVideoData(&video_frame);
-}
-
-bool QueueMetaRtcNal(YangRtcPacer *pacer,
-                     const uint8_t *payload,
-                     std::size_t size,
-                     int32_t frame_type,
-                     uint64_t pts_us,
-                     YangPushData **last_push_data) {
-    YangPushData *push_data =
-        QueueMetaRtcPayload(pacer, payload, size, frame_type, pts_us);
-    if (push_data == nullptr) {
-        return false;
-    }
-    if (last_push_data != nullptr) {
-        *last_push_data = push_data;
-    }
-    return true;
 }
 
 YangPushData *QueueH264Frame(YangRtcPacer *pacer,
@@ -159,6 +152,7 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
         pps_size = cache->h264_pps.size();
     }
 
+    std::vector<uint8_t> idr_payload;
     YangPushData *push_data = nullptr;
     bool sent_idr_with_meta = false;
     for (const stream_codec::H264NalUnit &nal : nals) {
@@ -167,13 +161,17 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
         }
         if (nal.type == 5 && !sent_idr_with_meta && sps_data != nullptr &&
             pps_data != nullptr) {
-            sent_idr_with_meta =
-                QueueMetaRtcNal(pacer, sps_data, sps_size, YANG_Frametype_I,
-                                pts_us, &push_data) &&
-                QueueMetaRtcNal(pacer, pps_data, pps_size, YANG_Frametype_I,
-                                pts_us, &push_data) &&
-                QueueMetaRtcNal(pacer, nal.data, nal.size, YANG_Frametype_I,
-                                pts_us, &push_data);
+            idr_payload.clear();
+            idr_payload.reserve(12 + sps_size + pps_size + nal.size);
+            AppendAnnexBNal(stream_codec::H264NalUnit{sps_data, sps_size, 7},
+                            &idr_payload);
+            AppendAnnexBNal(stream_codec::H264NalUnit{pps_data, pps_size, 8},
+                            &idr_payload);
+            AppendAnnexBNal(nal, &idr_payload);
+            push_data = QueueMetaRtcPayload(pacer, idr_payload.data(),
+                                            idr_payload.size(),
+                                            YANG_Frametype_I, pts_us);
+            sent_idr_with_meta = push_data != nullptr;
             continue;
         }
         const int32_t frame_type =
@@ -245,6 +243,7 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
         pps_size = cache->h265_pps.size();
     }
 
+    std::vector<uint8_t> key_payload;
     YangPushData *push_data = nullptr;
     bool sent_key_frame_with_meta = false;
     for (const stream_codec::H265NalUnit &nal : nals) {
@@ -253,15 +252,19 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
         }
         if (IsH265KeyFrameNal(nal.type) && !sent_key_frame_with_meta &&
             vps_data != nullptr && sps_data != nullptr && pps_data != nullptr) {
-            sent_key_frame_with_meta =
-                QueueMetaRtcNal(pacer, vps_data, vps_size, YANG_Frametype_I,
-                                pts_us, &push_data) &&
-                QueueMetaRtcNal(pacer, sps_data, sps_size, YANG_Frametype_I,
-                                pts_us, &push_data) &&
-                QueueMetaRtcNal(pacer, pps_data, pps_size, YANG_Frametype_I,
-                                pts_us, &push_data) &&
-                QueueMetaRtcNal(pacer, nal.data, nal.size, YANG_Frametype_I,
-                                pts_us, &push_data);
+            key_payload.clear();
+            key_payload.reserve(16 + vps_size + sps_size + pps_size + nal.size);
+            AppendAnnexBNal(stream_codec::H265NalUnit{vps_data, vps_size, 32},
+                            &key_payload);
+            AppendAnnexBNal(stream_codec::H265NalUnit{sps_data, sps_size, 33},
+                            &key_payload);
+            AppendAnnexBNal(stream_codec::H265NalUnit{pps_data, pps_size, 34},
+                            &key_payload);
+            AppendAnnexBNal(nal, &key_payload);
+            push_data = QueueMetaRtcPayload(pacer, key_payload.data(),
+                                            key_payload.size(),
+                                            YANG_Frametype_I, pts_us);
+            sent_key_frame_with_meta = push_data != nullptr;
             continue;
         }
         const int32_t frame_type =
@@ -401,7 +404,7 @@ struct MetaRtcPeerSession {
     std::unique_ptr<YangPeerConnection8> connection;
     std::unique_ptr<YangRtcPacer> pacer;
     VideoParameterCache parameters;
-    bool local_description_started = false;
+    std::mutex mutex;
 };
 
 class MetaRtcPeerCallbacks : public YangCallbackIce,
@@ -569,22 +572,20 @@ public:
             return std::string();
         }
 
-        std::vector<char> offer(offer_sdp.begin(), offer_sdp.end());
-        offer.push_back('\0');
-        if (session->connection->setRemoteDescription(offer.data()) != Yang_Ok) {
-            return std::string();
-        }
-        if (!session->local_description_started) {
-            char local_marker[] = "metaRTC-local";
-            if (session->connection->setLocalDescription(local_marker) != Yang_Ok) {
+        std::vector<char> answer(kAnswerSdpCapacity, 0);
+        {
+            std::lock_guard<std::mutex> session_guard(session->mutex);
+            std::vector<char> offer(offer_sdp.begin(), offer_sdp.end());
+            offer.push_back('\0');
+            if (session->connection->setRemoteDescription(offer.data()) != Yang_Ok) {
                 return std::string();
             }
-            session->local_description_started = true;
-        }
-
-        std::vector<char> answer(kAnswerSdpCapacity, 0);
-        if (session->connection->createAnswer(answer.data()) != Yang_Ok) {
-            return std::string();
+            if (session->connection->createAnswer(answer.data()) != Yang_Ok) {
+                return std::string();
+            }
+            if (session->connection->setLocalDescription(answer.data()) != Yang_Ok) {
+                return std::string();
+            }
         }
         return RewriteLocalCandidates(
             NormalizeMetaRtcSdp(std::string(answer.data())), options_.public_ip);
@@ -605,6 +606,7 @@ public:
         std::vector<char> candidate_text(candidate_json.begin(),
                                          candidate_json.end());
         candidate_text.push_back('\0');
+        std::lock_guard<std::mutex> session_guard(session->mutex);
         return session->connection->addIceCandidate(candidate_text.data()) ==
                Yang_Ok;
     }
@@ -640,17 +642,20 @@ public:
             return false;
         }
 
-        YangPushData *push_data =
-            frame.codec == VideoCodec::kH265
-                ? QueueH265Frame(session->pacer.get(), frame,
-                                 &session->parameters)
-                : QueueH264Frame(session->pacer.get(), frame,
-                                 &session->parameters);
-        if (push_data == nullptr) {
-            return false;
-        }
-        if (session->connection->on_video(push_data) != Yang_Ok) {
-            return false;
+        {
+            std::lock_guard<std::mutex> session_guard(session->mutex);
+            YangPushData *push_data =
+                frame.codec == VideoCodec::kH265
+                    ? QueueH265Frame(session->pacer.get(), frame,
+                                     &session->parameters)
+                    : QueueH264Frame(session->pacer.get(), frame,
+                                     &session->parameters);
+            if (push_data == nullptr) {
+                return false;
+            }
+            if (session->connection->on_video(push_data) != Yang_Ok) {
+                return false;
+            }
         }
 
         std::lock_guard<std::mutex> guard(mutex_);

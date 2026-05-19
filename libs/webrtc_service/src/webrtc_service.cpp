@@ -128,6 +128,7 @@ public:
                 peer_ids.push_back(item.first);
             }
             peer_activity_ms_.clear();
+            pending_candidates_.clear();
         }
 
         if (send_executor_) {
@@ -141,6 +142,7 @@ public:
 
         std::lock_guard<std::mutex> guard(mutex_);
         peers_.clear();
+        pending_candidates_.clear();
     }
 
     const char *Name() const override { return WebrtcService::Name(); }
@@ -193,6 +195,7 @@ public:
 
     WebrtcAnswer HandleOffer(const WebrtcOfferRequest &request) override {
         WebrtcPeerInfo peer;
+        std::vector<WebrtcIceCandidate> pending_candidates;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || request.peer_id.empty() ||
@@ -218,6 +221,7 @@ public:
                 std::lock_guard<std::mutex> guard(mutex_);
                 peers_.erase(request.peer_id);
                 peer_activity_ms_.erase(request.peer_id);
+                pending_candidates_.erase(request.peer_id);
             }
             if (engine_ != nullptr) {
                 (void)engine_->ClosePeer(request.peer_id);
@@ -234,6 +238,11 @@ public:
                 if (it->second.state != WebrtcPeerState::kConnected) {
                     it->second.state = WebrtcPeerState::kConnecting;
                 }
+                auto candidate_it = pending_candidates_.find(request.peer_id);
+                if (candidate_it != pending_candidates_.end()) {
+                    pending_candidates.swap(candidate_it->second);
+                    pending_candidates_.erase(candidate_it);
+                }
                 peer_activity_ms_[request.peer_id] =
                     infra::Time::MonotonicMillis();
                 ++stats_.offers;
@@ -244,6 +253,11 @@ public:
                 (void)engine_->ClosePeer(request.peer_id);
             }
             return WebrtcAnswer();
+        }
+        for (const WebrtcIceCandidate &candidate : pending_candidates) {
+            if (engine_ != nullptr) {
+                (void)engine_->AddIceCandidate(candidate);
+            }
         }
         WebrtcAnswer result;
         result.peer_id = request.peer_id;
@@ -261,6 +275,14 @@ public:
             auto it = peers_.find(candidate.peer_id);
             if (it == peers_.end() || !IsOpenPeerState(it->second.state)) {
                 return false;
+            }
+            if (it->second.state == WebrtcPeerState::kCreated ||
+                it->second.state == WebrtcPeerState::kOfferReceived) {
+                pending_candidates_[candidate.peer_id].push_back(candidate);
+                peer_activity_ms_[candidate.peer_id] =
+                    infra::Time::MonotonicMillis();
+                ++stats_.remote_candidates;
+                return true;
             }
         }
 
@@ -298,6 +320,7 @@ public:
             it->second.state = WebrtcPeerState::kClosed;
             peers_.erase(it);
         }
+        pending_candidates_.erase(peer_id);
         peer_activity_ms_.erase(peer_id);
         return true;
     }
@@ -435,6 +458,7 @@ private:
             last_sent_stream_ = StreamId::kSub;
             peers_.clear();
             peer_activity_ms_.clear();
+            pending_candidates_.clear();
             engine = std::move(engine_);
         }
         if (send_executor_) {
@@ -576,6 +600,7 @@ private:
             if (IsSetupPeerState(it->second.state) &&
                 now_ms - activity_it->second >= kPeerSetupTimeoutMs) {
                 peer_ids.push_back(it->first);
+                pending_candidates_.erase(it->first);
                 peer_activity_ms_.erase(it->first);
                 it = peers_.erase(it);
             } else {
@@ -767,6 +792,7 @@ private:
     StreamId last_sent_stream_ = StreamId::kSub;
     std::map<std::string, WebrtcPeerInfo> peers_;
     std::map<std::string, int64_t> peer_activity_ms_;
+    std::map<std::string, std::vector<WebrtcIceCandidate>> pending_candidates_;
     WebrtcServiceStats stats_{};
     uint64_t next_peer_id_ = 1;
     FrameSubscriptionId main_subscription_id_ = 0;

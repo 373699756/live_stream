@@ -391,6 +391,7 @@ void LogUnsupportedControls(const ConfigJson& image_config) {
 
 bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
                                   const ConfigJson& image_config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     if (!image_config.is_object()) {
         return false;

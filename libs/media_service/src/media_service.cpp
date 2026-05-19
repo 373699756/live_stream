@@ -70,6 +70,15 @@ MediaChannels BuildChannelsForConfig(const MediaPipelineConfig &config) {
     return channels;
 }
 
+bool IsValidSnapshotVencChannel(const MediaPipelineConfig &config) {
+    const hisisdk::SnapshotConfig snapshot;
+    if (snapshot.jpeg_venc_channel == config.venc_channel) {
+        return false;
+    }
+    return !config.sub_stream.enabled ||
+           snapshot.jpeg_venc_channel != config.sub_venc_channel;
+}
+
 bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
     const uint8_t *data = frame.PayloadData();
     if (data == nullptr ||
@@ -418,7 +427,15 @@ struct MediaService::Impl {
 
     ConfigResult CheckVideoConfig(const ConfigJson &value) const {
         MediaPipelineConfig parsed;
-        return ParseVideoConfig(value, active_config, capabilities, &parsed);
+        ConfigResult result =
+            ParseVideoConfig(value, active_config, capabilities, &parsed);
+        if (!result.ok) {
+            return result;
+        }
+        return IsValidSnapshotVencChannel(parsed)
+                   ? ConfigResult::Success()
+                   : ConfigResult::Failure("streams",
+                                           "snapshot VENC channel conflicts");
     }
 
     ConfigResult ApplyVideoConfig(const ConfigJson &value) {
@@ -434,6 +451,11 @@ struct MediaService::Impl {
             if (!result.ok) {
                 ++stats.config_apply_failed_count;
                 return result;
+            }
+            if (!IsValidSnapshotVencChannel(next_config)) {
+                ++stats.config_apply_failed_count;
+                return ConfigResult::Failure(
+                    "streams", "snapshot VENC channel conflicts");
             }
         }
         if (!ApplyPipelineConfig(next_config)) {
@@ -683,6 +705,14 @@ bool MediaService::IsStarted() const {
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->state == ServiceState::kStarted;
+}
+
+bool MediaService::IsRestarting() const {
+    if (impl_ == nullptr) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->state == ServiceState::kStopping;
 }
 
 bool MediaService::IsStreamSupported(StreamId stream_id) const {

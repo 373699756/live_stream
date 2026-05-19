@@ -371,6 +371,7 @@ bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
 // InitSystem / DeinitSystem
 // ====================================================================
 bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
 
@@ -404,6 +405,7 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::DeinitSystem() {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->system_initialized_) {
         return;
     }

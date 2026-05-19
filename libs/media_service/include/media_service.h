@@ -23,6 +23,7 @@ class IMediaView {
 public:
     virtual ~IMediaView() = default;
     virtual bool IsStarted() const = 0;
+    virtual bool IsRestarting() const = 0;
     virtual bool IsStreamStarted(StreamId stream_id) const = 0;
     virtual MediaCapabilities GetCapabilities() const = 0;
 };
@@ -50,6 +51,7 @@ public:
     bool Start();
     void Stop();
     bool IsStarted() const override;
+    bool IsRestarting() const override;
     bool IsStreamSupported(StreamId stream_id) const;
     bool IsStreamStarted(StreamId stream_id) const override;
     VideoCodec GetStreamCodec(StreamId stream_id) const;

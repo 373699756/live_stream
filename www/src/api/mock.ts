@@ -280,11 +280,15 @@ export const mockSystemStatus: SystemStatus = {
 export const mockStreamStatus: StreamStatus[] = [
   {
     stream: 'main',
-    codec: 'H.265',
+    codec: 'H.264',
     resolution: mockVideoConfig.streams.main.resolution,
     fps: 25,
     bitrateKbps: 4096,
     state: 'running',
+    browserCodec: true,
+    hlsReady: true,
+    flvReady: true,
+    webrtcReady: true,
   },
   {
     stream: 'sub',
@@ -293,6 +297,10 @@ export const mockStreamStatus: StreamStatus[] = [
     fps: 15,
     bitrateKbps: 768,
     state: 'running',
+    browserCodec: true,
+    hlsReady: true,
+    flvReady: true,
+    webrtcReady: true,
   },
 ];
 

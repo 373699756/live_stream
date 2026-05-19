@@ -59,6 +59,14 @@ struct StreamHubServiceStats {
     uint32_t active_flv_clients = 0;
 };
 
+struct StreamBrowserStatus {
+    bool running = false;
+    bool browser_codec = false;
+    bool hls_ready = false;
+    bool flv_ready = false;
+    VideoCodec codec = VideoCodec::kH264;
+};
+
 class IStreamFlvSink {
 public:
     virtual ~IStreamFlvSink() = default;
@@ -78,6 +86,7 @@ public:
     virtual StreamSegment GetHlsSegment(StreamId stream_id,
                                         uint64_t sequence) const = 0;
     virtual StreamFlvBootstrap GetFlvBootstrap(StreamId stream_id) const = 0;
+    virtual StreamBrowserStatus GetBrowserStatus(StreamId stream_id) const = 0;
     virtual StreamFlvClientId
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;

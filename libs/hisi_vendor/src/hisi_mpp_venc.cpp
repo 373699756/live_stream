@@ -708,6 +708,7 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
 // StartVenc / StopVenc
 // ====================================================================
 bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->venc_started_) return true;
 
     impl_->active_config_ = config;
@@ -738,6 +739,7 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->venc_started_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -759,6 +761,7 @@ void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
 // Bind VPSS → VENC
 // ====================================================================
 bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_bound_venc_) return true;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -814,6 +817,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vpss_bound_venc_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -845,6 +849,7 @@ void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
 bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
                                  EncodedFrameCallback callback,
                                  void* user) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->stream_started_) return true;
 
     impl_->active_config_ = config;
@@ -880,6 +885,7 @@ bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
 }
 
 void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // Stop uses the same configured channel set as StartVencStream.
     (void)config;
@@ -912,6 +918,7 @@ void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
 // RequestIdr
 // ====================================================================
 bool MppHisiSdk::RequestIdr(int32_t venc_channel) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (venc_channel < 0) return false;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP

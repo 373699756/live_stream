@@ -4,6 +4,7 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
 
 #include <atomic>
+#include <mutex>
 #include <pthread.h>
 #include <thread>
 
@@ -29,6 +30,7 @@ struct MppHisiSdk::Impl {
     std::thread main_stream_thread_;
     std::thread sub_stream_thread_;
     std::atomic<bool> stream_running_{false};
+    std::recursive_mutex control_mutex_;
 
     EncodedFrameCallback frame_callback_ = nullptr;
     void* frame_callback_user_ = nullptr;

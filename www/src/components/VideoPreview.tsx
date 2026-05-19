@@ -134,6 +134,39 @@ export function VideoPreview({
   const active = statuses.find((item) => item.stream === stream);
   const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
   const activeCodec = (active?.codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hlsReady = active?.hlsReady ?? false;
+  const flvReady = active?.flvReady ?? false;
+  const webrtcReady = active?.webrtcReady ?? false;
+  const browserCodec = active?.browserCodec ?? (
+    activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265'
+  );
+  const chooseFallbackMode = () => {
+    if (flvReady) {
+      return 'flv';
+    }
+    if (hlsReady) {
+      return 'hls';
+    }
+    return 'snapshot';
+  };
+  const switchStream = (nextStream: StreamName) => {
+    if (nextStream === stream) {
+      return;
+    }
+    sessionRef.current += 1;
+    setConnected(false);
+    setPreviewState('正在切换码流');
+    onStreamChange(nextStream);
+  };
+  const switchMode = (nextMode: PreviewMode) => {
+    if (nextMode === mode) {
+      return;
+    }
+    sessionRef.current += 1;
+    setConnected(false);
+    setPreviewState('正在切换预览链路');
+    setMode(nextMode);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -168,9 +201,9 @@ export function VideoPreview({
 
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
   const webrtcPlaybackEnabled =
-    activeCodec === '' || activeCodec === 'h264';
-  const streamingPlaybackEnabled =
-    activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265';
+    webrtcEnabled && webrtcReady && activeCodec === 'h264';
+  const hlsPlaybackEnabled = browserCodec && hlsReady;
+  const flvPlaybackEnabled = browserCodec && flvReady;
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -343,7 +376,7 @@ export function VideoPreview({
         return cleanupSession;
       }
       if (!webrtcEnabled || !webrtcPlaybackEnabled) {
-        setMode(streamingPlaybackEnabled ? 'flv' : 'snapshot');
+        setMode(chooseFallbackMode());
         setSessionPreviewState('WebRTC 未启用');
         return cleanupSession;
       }
@@ -479,10 +512,11 @@ export function VideoPreview({
       return cleanupSession;
     }
 
-    if (!streamingPlaybackEnabled) {
-      setMode('snapshot');
+    if ((mode === 'hls' && !hlsPlaybackEnabled) ||
+        (mode === 'flv' && !flvPlaybackEnabled)) {
+      setMode(chooseFallbackMode());
       setSessionPreviewState(
-        mode === 'hls' ? 'HLS 不支持当前编码' : 'HTTP-FLV 不支持当前编码',
+        mode === 'hls' ? 'HLS 暂未就绪' : 'HTTP-FLV 暂未就绪',
       );
       return cleanupSession;
     }
@@ -585,7 +619,10 @@ export function VideoPreview({
     mode,
     enabled,
     stream,
-    streamingPlaybackEnabled,
+    flvPlaybackEnabled,
+    flvReady,
+    hlsPlaybackEnabled,
+    hlsReady,
     webrtcConfig,
     webrtcConfigLoaded,
     webrtcEnabled,
@@ -616,14 +653,14 @@ export function VideoPreview({
           <button
             type="button"
             className={stream === 'main' ? 'active' : ''}
-            onClick={() => onStreamChange('main')}
+            onClick={() => switchStream('main')}
           >
             主码流
           </button>
           <button
             type="button"
             className={stream === 'sub' ? 'active' : ''}
-            onClick={() => onStreamChange('sub')}
+            onClick={() => switchStream('sub')}
           >
             子码流
           </button>
@@ -633,30 +670,30 @@ export function VideoPreview({
             type="button"
             className={mode === 'webrtc' ? 'active' : ''}
             disabled={!webrtcEnabled || !webrtcPlaybackEnabled}
-            onClick={() => setMode('webrtc')}
+            onClick={() => switchMode('webrtc')}
           >
             WebRTC
           </button>
           <button
             type="button"
             className={mode === 'hls' ? 'active' : ''}
-            disabled={!streamingPlaybackEnabled}
-            onClick={() => setMode('hls')}
+            disabled={!hlsPlaybackEnabled}
+            onClick={() => switchMode('hls')}
           >
             HLS
           </button>
           <button
             type="button"
             className={mode === 'flv' ? 'active' : ''}
-            disabled={!streamingPlaybackEnabled}
-            onClick={() => setMode('flv')}
+            disabled={!flvPlaybackEnabled}
+            onClick={() => switchMode('flv')}
           >
             HTTP-FLV
           </button>
           <button
             type="button"
             className={mode === 'snapshot' ? 'active' : ''}
-            onClick={() => setMode('snapshot')}
+            onClick={() => switchMode('snapshot')}
           >
             抓图预览
           </button>
@@ -674,14 +711,21 @@ export function VideoPreview({
           </div>
         ) : mode === 'snapshot' ? (
           <img
+            key={`${stream}-${snapshotTick}-${sessionRef.current}`}
             className="snapshot-preview"
             src={snapshotUrl}
             alt="snapshot preview"
             onLoad={(event) => {
+              if (mode !== 'snapshot') {
+                return;
+              }
               event.currentTarget.style.opacity = '1';
               setConnected(true);
             }}
             onError={(event) => {
+              if (mode !== 'snapshot') {
+                return;
+              }
               event.currentTarget.style.opacity = '0';
               setConnected(false);
             }}

@@ -42,6 +42,7 @@ void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
 #endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_started_) return true;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -125,6 +126,7 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vpss_started_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -147,6 +149,7 @@ void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
 
 // ─── Bind VI → VPSS ──────────────────────────────────────────
 bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vi_bound_vpss_) return true;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -172,6 +175,7 @@ bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vi_bound_vpss_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP

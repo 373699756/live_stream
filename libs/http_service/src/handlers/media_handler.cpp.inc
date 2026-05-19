@@ -224,7 +224,28 @@ HttpResponse HandleStreamStatus(const HttpRequest &request) {
         (void)StreamIdFromJsonString(name, &stream_id);
         const bool stream_running =
             dependencies_.media_service->IsStreamStarted(stream_id);
-        item["state"] = stream_running && stream_enabled ? "running" : "stopped";
+        item["state"] =
+            dependencies_.media_service->IsRestarting()
+                ? "pending"
+                : (stream_running && stream_enabled ? "running" : "stopped");
+        if (dependencies_.stream_hub_service != nullptr) {
+            const StreamBrowserStatus browser =
+                dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+            item["browserCodec"] = browser.browser_codec;
+            item["hlsReady"] = browser.hls_ready;
+            item["flvReady"] = browser.flv_ready;
+        } else {
+            item["browserCodec"] = false;
+            item["hlsReady"] = false;
+            item["flvReady"] = false;
+        }
+        WebrtcServiceStats webrtc_stats;
+        if (dependencies_.webrtc_service != nullptr) {
+            webrtc_stats = dependencies_.webrtc_service->GetStats();
+        }
+        item["webrtcReady"] = stream_running && stream_enabled &&
+                              codec == "h264" && webrtc_stats.enabled &&
+                              webrtc_stats.backend_available;
         items.push_back(item);
     }
     return JsonResponse(200, items);

@@ -9,6 +9,10 @@ HttpResponse HandleSnapshot(const HttpRequest &request) {
     if (dependencies_.snapshot_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
+    if (dependencies_.media_service != nullptr &&
+        dependencies_.media_service->IsRestarting()) {
+        return StatusResponse(503, "Media pipeline restarting");
+    }
     const std::string prefix = "/api/snapshot/";
     std::string name = request.path.substr(prefix.size());
     const size_t dot = name.find('.');

@@ -148,6 +148,19 @@ export interface WebrtcConfig {
   prefer_tcp: boolean;
 }
 
+export interface StreamStatus {
+  stream: StreamName;
+  codec: string;
+  resolution: string;
+  fps: number;
+  bitrateKbps: number;
+  state: 'running' | 'stopped' | 'pending';
+  browserCodec?: boolean;
+  hlsReady?: boolean;
+  flvReady?: boolean;
+  webrtcReady?: boolean;
+}
+
 export type UpgradeState =
   | 'idle'
   | 'validating'
@@ -197,15 +210,6 @@ export interface SystemStatus {
   memory: number;
   temperature: number;
   services: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
-}
-
-export interface StreamStatus {
-  stream: StreamName;
-  codec: string;
-  resolution: string;
-  fps: number;
-  bitrateKbps: number;
-  state: 'running' | 'stopped' | 'error';
 }
 
 export interface OperationRecord {

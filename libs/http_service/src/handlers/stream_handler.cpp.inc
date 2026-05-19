@@ -9,6 +9,10 @@ HttpResponse HandleHls(const HttpRequest &request) {
     if (dependencies_.stream_hub_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
+    if (dependencies_.media_service != nullptr &&
+        dependencies_.media_service->IsRestarting()) {
+        return StatusResponse(503, "Media pipeline restarting");
+    }
 
     const std::string prefix = "/api/hls/";
     const std::string remaining = request.path.substr(prefix.size());
@@ -23,8 +27,13 @@ HttpResponse HandleHls(const HttpRequest &request) {
     if (!StreamIdFromJsonString(stream_name, &stream_id)) {
         return StatusResponse(400, "Invalid stream");
     }
-    if (!dependencies_.stream_hub_service->IsHlsSupported(stream_id)) {
+    const StreamBrowserStatus browser_status =
+        dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+    if (!browser_status.browser_codec) {
         return StatusResponse(409, "HLS requires H.264 or H.265 stream");
+    }
+    if (!browser_status.running || !browser_status.hls_ready) {
+        return StatusResponse(503, "HLS playlist not ready");
     }
 
     if (object_name == "index.m3u8") {
@@ -92,6 +101,10 @@ HttpResponse HandleWebrtc(const HttpRequest &request) {
     if (dependencies_.webrtc_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
+    if (dependencies_.media_service != nullptr &&
+        dependencies_.media_service->IsRestarting()) {
+        return StatusResponse(503, "Media pipeline restarting");
+    }
     ConfigJson body = request.body.empty()
                           ? ConfigJson::object()
                           : ConfigJson::parse(request.body, nullptr, false);
@@ -138,15 +151,33 @@ HttpResponse HandleWebrtc(const HttpRequest &request) {
     if (request.path == "/api/webrtc/candidate" &&
         request.method == HttpMethod::kPost) {
         WebrtcIceCandidate candidate;
+        bool has_mline_index = false;
         if (!json_utils::Load(body, "peer_id", &candidate.peer_id) ||
-            !json_utils::Load(body, "candidate", &candidate.candidate) ||
-            !json_utils::Load(body, "sdp_mid", &candidate.sdp_mid) ||
-            !json_utils::Load(body, "sdp_mline_index", &candidate.sdp_mline_index,
-                              0, std::numeric_limits<int32_t>::max())) {
+            !json_utils::Load(body, "candidate", &candidate.candidate)) {
             return StatusResponse(400, "Missing candidate fields");
         }
-        (void)json_utils::Load(body, "username_fragment",
-                               &candidate.username_fragment);
+        if (!json_utils::Load(body, "sdp_mid", &candidate.sdp_mid)) {
+            (void)json_utils::Load(body, "sdpMid", &candidate.sdp_mid);
+        }
+        has_mline_index =
+            json_utils::Load(body, "sdp_mline_index",
+                             &candidate.sdp_mline_index, 0,
+                             std::numeric_limits<int32_t>::max()) ||
+            json_utils::Load(body, "sdpMLineIndex",
+                             &candidate.sdp_mline_index, 0,
+                             std::numeric_limits<int32_t>::max());
+        if (!has_mline_index) {
+            return StatusResponse(400, "Missing candidate fields");
+        }
+        if (!json_utils::Load(body, "username_fragment",
+                              &candidate.username_fragment)) {
+            (void)json_utils::Load(body, "usernameFragment",
+                                   &candidate.username_fragment);
+        }
+        INFRA_LOG_INFO(kModuleName,
+                       "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
+                       candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
+                       candidate.sdp_mline_index, candidate.candidate.size());
         return dependencies_.webrtc_service->AddIceCandidate(candidate)
                    ? OkResponse()
                    : StatusResponse(404, "Peer not found");
@@ -170,6 +201,15 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
                         "HTTP-FLV reject conn=%llu reason=no_stream_hub",
                         static_cast<unsigned long long>(connection_id));
         SendResponse(connection_id, StatusResponse(501, "Not Implemented"), true);
+        return;
+    }
+    if (dependencies_.media_service != nullptr &&
+        dependencies_.media_service->IsRestarting()) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu reason=media_restarting",
+                        static_cast<unsigned long long>(connection_id));
+        SendResponse(connection_id,
+                     StatusResponse(503, "Media pipeline restarting"), true);
         return;
     }
     AuthPrincipal principal = Authenticate(request);
@@ -202,7 +242,9 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
         SendResponse(connection_id, StatusResponse(400, "Invalid stream"), true);
         return;
     }
-    if (!dependencies_.stream_hub_service->IsFlvSupported(stream_id)) {
+    const StreamBrowserStatus browser_status =
+        dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+    if (!browser_status.browser_codec) {
         INFRA_LOG_ERROR(kModuleName,
                         "HTTP-FLV reject conn=%llu stream=%s reason=unsupported",
                         static_cast<unsigned long long>(connection_id),
@@ -210,6 +252,15 @@ void StartFlvStream(ConnectionId connection_id, const HttpRequest &request) {
         SendResponse(connection_id,
                      StatusResponse(409,
                                     "HTTP-FLV requires H.264 or H.265 stream"),
+                     true);
+        return;
+    }
+    if (!browser_status.running || !browser_status.flv_ready) {
+        INFRA_LOG_ERROR(kModuleName,
+                        "HTTP-FLV reject conn=%llu stream=%s reason=not_ready",
+                        static_cast<unsigned long long>(connection_id),
+                        StreamIdToJsonString(stream_id));
+        SendResponse(connection_id, StatusResponse(503, "FLV stream not ready"),
                      true);
         return;
     }

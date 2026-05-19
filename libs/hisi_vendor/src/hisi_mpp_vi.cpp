@@ -385,6 +385,7 @@ void CleanupStartedVi(VI_DEV vi_dev, VI_PIPE vi_pipe, VI_CHN vi_chn,
 #endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vi_started_) return true;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
@@ -486,6 +487,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
 }
 
 void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vi_started_) return;
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
