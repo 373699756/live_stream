@@ -103,6 +103,23 @@ bool IsAiConfigEnabled(IConfigService *config_service) {
            enabled;
 }
 
+bool StartExecutor(infra::Executor *executor, uint32_t worker_count,
+                   uint32_t queue_capacity) {
+    if (executor == nullptr || worker_count == 0 || queue_capacity == 0) {
+        return false;
+    }
+    infra::ExecutorOptions options;
+    options.worker_count = worker_count;
+    options.queue_capacity = queue_capacity;
+    return executor->Start(options);
+}
+
+void StopExecutor(infra::Executor *executor) {
+    if (executor != nullptr) {
+        executor->Stop(infra::StopMode::kDiscard);
+    }
+}
+
 // --- Domain: media/video (stream id helpers, used across domains) ---
 
 const char *StreamIdToJsonString(StreamId stream_id) {
@@ -162,11 +179,17 @@ public:
             options_.max_pipelined_requests == 0 ||
             options_.executor_worker_count == 0 ||
             options_.executor_queue_capacity == 0 ||
+            options_.stream_executor_worker_count == 0 ||
+            options_.stream_executor_queue_capacity == 0 ||
+            options_.control_executor_worker_count == 0 ||
+            options_.control_executor_queue_capacity == 0 ||
             options_.config_apply_worker_count == 0 ||
             options_.config_apply_queue_capacity == 0) {
             return false;
         }
         task_executor_.reset(new infra::Executor());
+        stream_executor_.reset(new infra::Executor());
+        control_executor_.reset(new infra::Executor());
         config_apply_executor_.reset(new infra::Executor());
         initialized_ = true;
         return true;
@@ -177,6 +200,9 @@ public:
             return false;
         }
         infra::Executor *task_executor = nullptr;
+        infra::Executor *stream_executor = nullptr;
+        infra::Executor *control_executor = nullptr;
+        infra::Executor *config_apply_executor = nullptr;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (started_) {
@@ -186,24 +212,31 @@ public:
                 return false;
             }
             task_executor = task_executor_.get();
-        }
-        infra::ExecutorOptions executor_options;
-        executor_options.worker_count = options_.executor_worker_count;
-        executor_options.queue_capacity = options_.executor_queue_capacity;
-        if (!task_executor->Start(executor_options)) {
-            return false;
-        }
-        infra::Executor *config_apply_executor = nullptr;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
+            stream_executor = stream_executor_.get();
+            control_executor = control_executor_.get();
             config_apply_executor = config_apply_executor_.get();
         }
-        infra::ExecutorOptions config_apply_options;
-        config_apply_options.worker_count = options_.config_apply_worker_count;
-        config_apply_options.queue_capacity = options_.config_apply_queue_capacity;
-        if (config_apply_executor == nullptr ||
-            !config_apply_executor->Start(config_apply_options)) {
-            task_executor->Stop(infra::StopMode::kDiscard);
+        if (!StartExecutor(task_executor, options_.executor_worker_count,
+                           options_.executor_queue_capacity)) {
+            return false;
+        }
+        if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
+                           options_.stream_executor_queue_capacity)) {
+            StopExecutor(task_executor);
+            return false;
+        }
+        if (!StartExecutor(control_executor, options_.control_executor_worker_count,
+                           options_.control_executor_queue_capacity)) {
+            StopExecutor(stream_executor);
+            StopExecutor(task_executor);
+            return false;
+        }
+        if (!StartExecutor(config_apply_executor,
+                           options_.config_apply_worker_count,
+                           options_.config_apply_queue_capacity)) {
+            StopExecutor(control_executor);
+            StopExecutor(stream_executor);
+            StopExecutor(task_executor);
             return false;
         }
 
@@ -220,8 +253,10 @@ public:
         TcpServerId server =
             dependencies_.net_engine->ListenTcp(server_config, callbacks);
         if (server == 0) {
-            config_apply_executor->Stop(infra::StopMode::kDiscard);
-            task_executor->Stop(infra::StopMode::kDiscard);
+            StopExecutor(config_apply_executor);
+            StopExecutor(control_executor);
+            StopExecutor(stream_executor);
+            StopExecutor(task_executor);
             return false;
         }
         {
@@ -231,11 +266,15 @@ public:
         }
         INFRA_LOG_INFO(kModuleName,
                        "HTTP listen %s:%u static_root=%s workers=%u "
-                       "config_workers=%u",
+                       "stream_workers=%u control_workers=%u config_workers=%u",
                        options_.listen_ip.c_str(),
                        static_cast<unsigned>(options_.listen_port),
                        options_.static_root.c_str(),
                        static_cast<unsigned>(options_.executor_worker_count),
+                       static_cast<unsigned>(
+                           options_.stream_executor_worker_count),
+                       static_cast<unsigned>(
+                           options_.control_executor_worker_count),
                        static_cast<unsigned>(
                            options_.config_apply_worker_count));
         return true;
@@ -245,8 +284,11 @@ public:
         TcpServerId server_id = 0;
         NetEngine *net_engine = nullptr;
         infra::Executor *task_executor = nullptr;
+        infra::Executor *stream_executor = nullptr;
+        infra::Executor *control_executor = nullptr;
         infra::Executor *config_apply_executor = nullptr;
         std::vector<StreamFlvClientId> flv_client_ids;
+        std::vector<ConnectionId> connection_ids;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (!started_) {
@@ -256,33 +298,34 @@ public:
             server_id = tcp_server_id_;
             tcp_server_id_ = 0;
             net_engine = dependencies_.net_engine;
+            flv_client_ids = TakeAllFlvClientsLocked();
+            connection_ids.reserve(sessions_.size());
             for (const auto &item : sessions_) {
-                if (item.second.flv_client_id != 0) {
-                    flv_client_ids.push_back(item.second.flv_client_id);
-                }
+                connection_ids.push_back(item.first);
             }
             sessions_.clear();
             stats_.active_connections = 0;
             task_executor = task_executor_.get();
+            stream_executor = stream_executor_.get();
+            control_executor = control_executor_.get();
             config_apply_executor = config_apply_executor_.get();
         }
         INFRA_LOG_INFO(kModuleName, "HTTP stop begin server=%llu streams=%zu",
                        static_cast<unsigned long long>(server_id),
                        flv_client_ids.size());
-        if (dependencies_.stream_hub_service != nullptr) {
-            for (StreamFlvClientId client_id : flv_client_ids) {
-                (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
-            }
-        }
+        DetachFlvClients(flv_client_ids);
         if (net_engine != nullptr && server_id != 0) {
             (void)net_engine->CloseTcp(server_id);
         }
-        if (config_apply_executor != nullptr) {
-            config_apply_executor->Stop(infra::StopMode::kDiscard);
+        if (net_engine != nullptr) {
+            for (ConnectionId connection_id : connection_ids) {
+                (void)net_engine->Close(connection_id);
+            }
         }
-        if (task_executor != nullptr) {
-            task_executor->Stop(infra::StopMode::kDiscard);
-        }
+        StopExecutor(config_apply_executor);
+        StopExecutor(control_executor);
+        StopExecutor(stream_executor);
+        StopExecutor(task_executor);
         INFRA_LOG_INFO(kModuleName, "HTTP stopped");
     }
 
@@ -291,6 +334,8 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         sessions_.clear();
         task_executor_.reset();
+        stream_executor_.reset();
+        control_executor_.reset();
         config_apply_executor_.reset();
         initialized_ = false;
     }
@@ -476,6 +521,12 @@ private:
         bool streaming = false;
     };
 
+    struct ClosedSessionInfo {
+        StreamFlvClientId flv_client_id = 0;
+        bool was_streaming = false;
+        bool found = false;
+    };
+
     class FlvConnectionSink : public IStreamFlvSink {
     public:
         FlvConnectionSink(HttpServiceImpl *owner, ConnectionId connection_id)
@@ -523,11 +574,94 @@ private:
                StartsWith(request.path, "/api/config/");
     }
 
+    static bool IsStreamRequest(const HttpRequest &request) {
+        if (request.method == HttpMethod::kGet) {
+            return StartsWith(request.path, "/api/flv/") ||
+                   StartsWith(request.path, "/api/hls/") ||
+                   StartsWith(request.path, "/api/snapshot/");
+        }
+        return StartsWith(request.path, "/api/webrtc") &&
+               (request.method == HttpMethod::kPost ||
+                request.method == HttpMethod::kDelete);
+    }
+
+    static bool IsControlMutationRequest(const HttpRequest &request) {
+        if (request.method == HttpMethod::kGet ||
+            !StartsWith(request.path, "/api/")) {
+            return false;
+        }
+        return StartsWith(request.path, "/api/network/") ||
+               StartsWith(request.path, "/api/system/") ||
+               StartsWith(request.path, "/api/time/") ||
+               StartsWith(request.path, "/api/upgrade/");
+    }
+
     infra::Executor *ExecutorForRequestLocked(const HttpRequest &request) const {
         if (IsConfigMutationRequest(request)) {
             return config_apply_executor_.get();
         }
+        if (IsStreamRequest(request)) {
+            return stream_executor_.get();
+        }
+        if (IsControlMutationRequest(request)) {
+            return control_executor_.get();
+        }
         return task_executor_.get();
+    }
+
+    static StreamFlvClientId TakeFlvClientLocked(HttpSession *session) {
+        if (session == nullptr || session->flv_client_id == 0) {
+            return 0;
+        }
+        const StreamFlvClientId client_id = session->flv_client_id;
+        session->flv_client_id = 0;
+        session->flv_sink.reset();
+        return client_id;
+    }
+
+    std::vector<StreamFlvClientId> TakeAllFlvClientsLocked() {
+        std::vector<StreamFlvClientId> client_ids;
+        for (auto &item : sessions_) {
+            const StreamFlvClientId client_id =
+                TakeFlvClientLocked(&item.second);
+            if (client_id != 0) {
+                client_ids.push_back(client_id);
+            }
+        }
+        return client_ids;
+    }
+
+    ClosedSessionInfo RemoveSessionLocked(ConnectionId connection_id) {
+        ClosedSessionInfo closed;
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end()) {
+            return closed;
+        }
+        closed.found = true;
+        closed.was_streaming = iter->second.streaming;
+        closed.flv_client_id = TakeFlvClientLocked(&iter->second);
+        sessions_.erase(iter);
+        if (stats_.active_connections > 0) {
+            --stats_.active_connections;
+        }
+        return closed;
+    }
+
+    void DetachFlvClient(StreamFlvClientId client_id) {
+        if (client_id != 0 && dependencies_.stream_hub_service != nullptr) {
+            (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+        }
+    }
+
+    void DetachFlvClients(const std::vector<StreamFlvClientId> &client_ids) {
+        if (dependencies_.stream_hub_service == nullptr) {
+            return;
+        }
+        for (StreamFlvClientId client_id : client_ids) {
+            if (client_id != 0) {
+                (void)dependencies_.stream_hub_service->DetachFlvClient(client_id);
+            }
+        }
     }
 
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
@@ -735,31 +869,19 @@ private:
     }
 
     void OnClose(ConnectionId connection_id) {
-        StreamFlvClientId flv_client_id = 0;
-        bool was_streaming = false;
+        ClosedSessionInfo closed;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = sessions_.find(connection_id);
-            if (iter == sessions_.end()) {
+            closed = RemoveSessionLocked(connection_id);
+            if (!closed.found) {
                 return;
             }
-            flv_client_id = iter->second.flv_client_id;
-            was_streaming = iter->second.streaming;
-            sessions_.erase(iter);
         }
-        if (flv_client_id != 0 && dependencies_.stream_hub_service != nullptr) {
-            (void)dependencies_.stream_hub_service->DetachFlvClient(flv_client_id);
-        }
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            if (stats_.active_connections > 0) {
-                --stats_.active_connections;
-            }
-        }
+        DetachFlvClient(closed.flv_client_id);
         INFRA_LOG_INFO(kModuleName, "HTTP close conn=%llu streaming=%d flv=%llu",
                        static_cast<unsigned long long>(connection_id),
-                       was_streaming ? 1 : 0,
-                       static_cast<unsigned long long>(flv_client_id));
+                       closed.was_streaming ? 1 : 0,
+                       static_cast<unsigned long long>(closed.flv_client_id));
     }
 
     void OnMessage(ConnectionId connection_id, const uint8_t *data,
@@ -811,12 +933,12 @@ private:
         if (!has_request) {
             return;
         }
-        if (TryHandleStreamingRequest(connection_id, pending.request)) {
-            return;
-        }
         if (task_executor == nullptr ||
             task_executor->Post([this, connection_id,
                                  pending = std::move(pending)]() mutable {
+                if (TryHandleStreamingRequest(connection_id, pending.request)) {
+                    return;
+                }
                 HttpResponse handled = HandleRequest(pending.request);
                 SendResponse(connection_id, handled, pending.close_after_response);
             }) == false) {
@@ -985,6 +1107,8 @@ private:
     HttpServiceDependencies dependencies_;
     mutable std::mutex mutex_;
     std::unique_ptr<infra::Executor> task_executor_;
+    std::unique_ptr<infra::Executor> stream_executor_;
+    std::unique_ptr<infra::Executor> control_executor_;
     std::unique_ptr<infra::Executor> config_apply_executor_;
     TcpServerId tcp_server_id_ = 0;
     std::map<ConnectionId, HttpSession> sessions_;
