@@ -5,6 +5,8 @@
 #include "media_config_codec.h"
 #include "media_pipeline.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
@@ -23,11 +25,8 @@ enum class ServiceState {
     kDeinitialized,
 };
 
-using media_internal::BuildPipelineConfig;
-using media_internal::DecodeVideoConfig;
+using media_internal::ParseVideoConfig;
 using media_internal::ValidateImageConfig;
-using media_internal::ValidateVideoConfig;
-using media_internal::VideoConfig;
 
 const VideoStreamConfig *FindConfiguredStream(
     const MediaPipelineConfig &config,
@@ -52,17 +51,131 @@ int32_t VencChannelForStream(const MediaPipelineConfig &config,
     return -1;
 }
 
+MediaChannels BuildChannelsForConfig(const MediaPipelineConfig &config) {
+    MediaChannels channels;
+    channels.vi = MppChannel{MppModule::kVi, config.video_pipe,
+                             config.vi_channel};
+    channels.vpss = MppChannel{MppModule::kVpss, config.vpss_group,
+                               config.vpss_channel};
+    channels.sub_vpss = MppChannel{MppModule::kVpss, config.vpss_group,
+                                   config.sub_vpss_channel};
+    channels.venc = MppChannel{MppModule::kVenc, 0, config.venc_channel};
+    channels.sub_venc =
+        MppChannel{MppModule::kVenc, 0, config.sub_venc_channel};
+    channels.video_pipe = config.video_pipe;
+    channels.snap_pipe = config.snap_pipe;
+    channels.main_size = config.main_stream.size;
+    channels.sub_size = config.sub_stream.size;
+    return channels;
+}
+
+bool IsKeyFrame(const EncodedFrame &frame) {
+    return frame.frame_type == FrameType::kIdr ||
+           frame.frame_type == FrameType::kI ||
+           frame.frame_type == FrameType::kJpeg;
+}
+
+bool HasValidPayload(const EncodedFrame &frame) {
+    return frame.buffer != nullptr && frame.size != 0 &&
+           frame.offset <= frame.buffer->Size() &&
+           frame.size <= frame.buffer->Size() - frame.offset;
+}
+
+size_t FindAnnexBStartCode(const uint8_t *data,
+                           size_t size,
+                           size_t offset) {
+    if (data == nullptr || size < 3 || offset > size - 3) {
+        return std::string::npos;
+    }
+    for (size_t i = offset; i + 2 < size; ++i) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+            return i;
+        }
+        if (i + 3 < size && data[i] == 0 && data[i + 1] == 0 &&
+            data[i + 2] == 0 && data[i + 3] == 1) {
+            return i;
+        }
+    }
+    return std::string::npos;
+}
+
+bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
+    if (!HasValidPayload(frame) ||
+        (frame.codec != VideoCodec::kH264 && frame.codec != VideoCodec::kH265)) {
+        return false;
+    }
+
+    const uint8_t *data = frame.buffer->Data() + frame.offset;
+    size_t offset = 0;
+    bool has_h264_sps = false;
+    bool has_h264_pps = false;
+    bool has_h265_vps = false;
+    bool has_h265_sps = false;
+    bool has_h265_pps = false;
+    while (true) {
+        const size_t start = FindAnnexBStartCode(data, frame.size, offset);
+        if (start == std::string::npos) {
+            break;
+        }
+        const size_t prefix =
+            start + 3 < frame.size && data[start + 2] == 0 &&
+                    data[start + 3] == 1
+                ? 4
+                : 3;
+        const size_t nal_begin = start + prefix;
+        if (nal_begin >= frame.size) {
+            break;
+        }
+        if (frame.codec == VideoCodec::kH264) {
+            const uint8_t type = data[nal_begin] & 0x1f;
+            if (type == 7) {
+                has_h264_sps = true;
+            } else if (type == 8) {
+                has_h264_pps = true;
+            }
+            if (has_h264_sps && has_h264_pps) {
+                return true;
+            }
+        } else if (nal_begin + 1 < frame.size) {
+            const uint8_t type = (data[nal_begin] >> 1) & 0x3f;
+            if (type == 32) {
+                has_h265_vps = true;
+            } else if (type == 33) {
+                has_h265_sps = true;
+            } else if (type == 34) {
+                has_h265_pps = true;
+            }
+            if (has_h265_vps && has_h265_sps && has_h265_pps) {
+                return true;
+            }
+        }
+
+        const size_t next = FindAnnexBStartCode(data, frame.size, nal_begin);
+        if (next == std::string::npos) {
+            break;
+        }
+        offset = next;
+    }
+    return false;
+}
+
 }  // namespace
 
 struct MediaService::Impl {
     explicit Impl(const MediaServiceOptions &service_options)
         : options(service_options),
           pipeline(service_options.default_config, service_options.sdk) {
+        active_config = pipeline.config();
+        active_channels = BuildChannelsForConfig(active_config);
+        capabilities = pipeline.GetCapabilities();
         pipeline.SetFrameCallback(&Impl::OnPipelineFrame, this);
     }
 
     MediaServiceOptions options;
     MediaPipeline pipeline;
+    MediaPipelineConfig active_config;
+    MediaChannels active_channels;
+    MediaCapabilities capabilities;
     ServiceState state = ServiceState::kCreated;
     EncodedFrameCallback callback = nullptr;
     void *callback_user = nullptr;
@@ -71,105 +184,195 @@ struct MediaService::Impl {
     FrameSubscriptionId next_subscription_id = 1;
     MediaServiceStats stats;
     ConfigJson image_config = ConfigJson::object();
+    EncodedFrame last_main_key_frame;
+    EncodedFrame last_sub_key_frame;
     mutable std::mutex mutex;
+    std::mutex pipeline_op_mutex;
     bool video_config_attached = false;
     bool image_config_attached = false;
+    bool system_initialized = false;
+    bool has_last_main_key_frame = false;
+    bool has_last_sub_key_frame = false;
+    bool last_main_key_frame_has_parameter_sets = false;
+    bool last_sub_key_frame_has_parameter_sets = false;
 
     bool Prepare() {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (state == ServiceState::kInitialized ||
-            state == ServiceState::kStarted || state == ServiceState::kStopped) {
-            return true;
-        }
-        if (state != ServiceState::kCreated &&
-            state != ServiceState::kDeinitialized) {
-            return false;
+        ConfigJson video_config;
+        ConfigJson next_image_config;
+        if (options.config_service != nullptr) {
+            video_config = options.config_service->GetValue("video");
+            next_image_config = options.config_service->GetValue("image");
         }
 
+        MediaPipelineConfig startup_config;
+        MediaCapabilities capabilities_snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (state == ServiceState::kInitialized ||
+                state == ServiceState::kStarted ||
+                state == ServiceState::kStopped) {
+                return true;
+            }
+            if (state != ServiceState::kCreated &&
+                state != ServiceState::kDeinitialized) {
+                return false;
+            }
+            startup_config = active_config;
+            capabilities_snapshot = capabilities;
+        }
+
+        if (video_config.is_object()) {
+            const ConfigResult result = ParseVideoConfig(
+                video_config, startup_config, capabilities_snapshot,
+                &startup_config);
+            if (!result.ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                ++stats.config_apply_failed_count;
+                return false;
+            }
+        }
+
+        const bool has_image_config = next_image_config.is_object();
+        if (has_image_config) {
+            const ConfigResult result =
+                ValidateImageConfig(next_image_config,
+                                    capabilities_snapshot.image);
+            if (!result.ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                ++stats.config_apply_failed_count;
+                return false;
+            }
+        }
+
+        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (state == ServiceState::kInitialized ||
+                state == ServiceState::kStarted ||
+                state == ServiceState::kStopped) {
+                return true;
+            }
+            if (state != ServiceState::kCreated &&
+                state != ServiceState::kDeinitialized) {
+                return false;
+            }
+            state = ServiceState::kStopping;
+            ClearKeyFrameCacheLocked();
+        }
+
+        pipeline.SetConfig(startup_config);
         if (!pipeline.InitSystem()) {
             pipeline.DeinitSystem();
+            std::lock_guard<std::mutex> lock(mutex);
+            state = ServiceState::kDeinitialized;
+            system_initialized = false;
             return false;
         }
 
+        bool attached_video_now = false;
+        bool attached_image_now = false;
         if (options.config_service != nullptr) {
-            ConfigJson video_config = options.config_service->GetValue("video");
-            if (video_config.is_object()) {
-                const ConfigResult result = ApplyVideoConfig(video_config);
-                if (!result.ok) {
-                    pipeline.DeinitSystem();
-                    return false;
-                }
+            bool need_video_attach = false;
+            bool need_image_attach = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                need_video_attach = !video_config_attached;
+                need_image_attach = !image_config_attached;
             }
-            ConfigJson next_image_config = options.config_service->GetValue("image");
-            if (next_image_config.is_object()) {
-                const ConfigResult result = ApplyImageConfig(next_image_config);
-                if (!result.ok) {
-                    pipeline.DeinitSystem();
-                    return false;
-                }
-            }
-            if (!video_config_attached) {
+            if (need_video_attach) {
                 ConfigAttachment attachment;
                 attachment.validate = [this](const ConfigJson &value) {
                     std::lock_guard<std::mutex> guard(mutex);
                     return CheckVideoConfig(value);
                 };
                 attachment.apply = [this](const ConfigJson &value) {
-                    std::lock_guard<std::mutex> guard(mutex);
                     return ApplyVideoConfig(value);
                 };
                 if (!options.config_service->AttachConfig("video", attachment)) {
                     pipeline.DeinitSystem();
+                    std::lock_guard<std::mutex> lock(mutex);
+                    state = ServiceState::kDeinitialized;
+                    system_initialized = false;
                     return false;
                 }
-                video_config_attached = true;
+                attached_video_now = true;
             }
-            if (!image_config_attached) {
+            if (need_image_attach) {
                 ConfigAttachment attachment;
                 attachment.validate = [this](const ConfigJson &value) {
                     std::lock_guard<std::mutex> guard(mutex);
                     return CheckImageConfig(value);
                 };
                 attachment.apply = [this](const ConfigJson &value) {
-                    std::lock_guard<std::mutex> guard(mutex);
                     return ApplyImageConfig(value);
                 };
                 if (!options.config_service->AttachConfig("image", attachment)) {
-                    if (video_config_attached) {
+                    if (attached_video_now) {
                         (void)options.config_service->DetachConfig("video");
-                        video_config_attached = false;
                     }
                     pipeline.DeinitSystem();
+                    std::lock_guard<std::mutex> lock(mutex);
+                    state = ServiceState::kDeinitialized;
+                    system_initialized = false;
                     return false;
                 }
-                image_config_attached = true;
+                attached_image_now = true;
             }
         }
 
-        state = ServiceState::kInitialized;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            active_config = startup_config;
+            active_channels = BuildChannelsForConfig(active_config);
+            system_initialized = true;
+            if (has_image_config) {
+                image_config = next_image_config;
+            }
+            if (attached_video_now) {
+                video_config_attached = true;
+            }
+            if (attached_image_now) {
+                image_config_attached = true;
+            }
+            state = ServiceState::kInitialized;
+        }
         return true;
     }
 
     void Release() {
         bool detach_video = false;
         bool detach_image = false;
+        bool stop_pipeline = false;
+        bool deinit_pipeline = false;
         {
-            std::lock_guard<std::mutex> lock(mutex);
-            if (state == ServiceState::kStarted) {
-                state = ServiceState::kStopping;
-                NotifySourceState(StreamState::kClosed);
+            std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (state == ServiceState::kStarted) {
+                    state = ServiceState::kStopping;
+                    NotifySourceState(StreamState::kClosed);
+                    stop_pipeline = true;
+                    ClearKeyFrameCacheLocked();
+                    state = ServiceState::kStopped;
+                }
+                if (state != ServiceState::kDeinitialized &&
+                    state != ServiceState::kCreated) {
+                    deinit_pipeline = true;
+                    ClearKeyFrameCacheLocked();
+                    state = ServiceState::kDeinitialized;
+                }
+                detach_video = video_config_attached;
+                detach_image = image_config_attached;
+                video_config_attached = false;
+                image_config_attached = false;
+                system_initialized = false;
+            }
+            if (stop_pipeline) {
                 pipeline.Stop();
-                state = ServiceState::kStopped;
             }
-            if (state != ServiceState::kDeinitialized &&
-                state != ServiceState::kCreated) {
+            if (deinit_pipeline) {
                 pipeline.DeinitSystem();
-                state = ServiceState::kDeinitialized;
             }
-            detach_video = video_config_attached;
-            detach_image = image_config_attached;
-            video_config_attached = false;
-            image_config_attached = false;
         }
 
         if (options.config_service != nullptr) {
@@ -194,6 +397,10 @@ struct MediaService::Impl {
         std::vector<IFrameSink *> matching_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex);
+            if (state != ServiceState::kStarted) {
+                return;
+            }
+            RememberKeyFrame(frame);
             frame_callback = callback;
             frame_callback_user = callback_user;
             for (const auto &item : sinks) {
@@ -211,11 +418,63 @@ struct MediaService::Impl {
         }
     }
 
+    void RememberKeyFrame(const EncodedFrame &frame) {
+        if (!IsKeyFrame(frame)) {
+            return;
+        }
+        const bool has_parameter_sets =
+            EncodedFrameHasCompleteParameterSets(frame);
+        if (frame.stream_id == StreamId::kMain) {
+            if (has_last_main_key_frame &&
+                last_main_key_frame_has_parameter_sets &&
+                !has_parameter_sets) {
+                return;
+            }
+            last_main_key_frame = frame;
+            has_last_main_key_frame = true;
+            last_main_key_frame_has_parameter_sets = has_parameter_sets;
+        } else if (frame.stream_id == StreamId::kSub) {
+            if (has_last_sub_key_frame &&
+                last_sub_key_frame_has_parameter_sets &&
+                !has_parameter_sets) {
+                return;
+            }
+            last_sub_key_frame = frame;
+            has_last_sub_key_frame = true;
+            last_sub_key_frame_has_parameter_sets = has_parameter_sets;
+        }
+    }
+
+    void ClearKeyFrameCacheLocked() {
+        last_main_key_frame = EncodedFrame{};
+        last_sub_key_frame = EncodedFrame{};
+        has_last_main_key_frame = false;
+        has_last_sub_key_frame = false;
+        last_main_key_frame_has_parameter_sets = false;
+        last_sub_key_frame_has_parameter_sets = false;
+    }
+
+    bool GetLastKeyFrameLocked(StreamId stream_id, EncodedFrame *frame) const {
+        if (frame == nullptr) {
+            return false;
+        }
+        if (stream_id == StreamId::kMain && has_last_main_key_frame) {
+            *frame = last_main_key_frame;
+            return true;
+        }
+        if (stream_id == StreamId::kSub && has_last_sub_key_frame) {
+            *frame = last_sub_key_frame;
+            return true;
+        }
+        return false;
+    }
+
     void NotifySourceState(StreamState stream_state) {
         for (const auto &item : sinks) {
             if (item.second.second != nullptr) {
                 const VideoStreamConfig *stream =
-                    FindConfiguredStream(pipeline.config(), item.second.first.stream_id);
+                    FindConfiguredStream(active_config,
+                                         item.second.first.stream_id);
                 const bool stream_running =
                     stream_state == StreamState::kRunning && stream != nullptr &&
                     stream->enabled;
@@ -228,26 +487,24 @@ struct MediaService::Impl {
     }
 
     ConfigResult CheckVideoConfig(const ConfigJson &value) const {
-        VideoConfig video_config;
-        ConfigResult result = DecodeVideoConfig(value, &video_config);
-        if (!result.ok) {
-            return result;
-        }
-        return ValidateVideoConfig(video_config, pipeline.GetCapabilities());
+        MediaPipelineConfig parsed;
+        return ParseVideoConfig(value, active_config, capabilities, &parsed);
     }
 
     ConfigResult ApplyVideoConfig(const ConfigJson &value) {
-        VideoConfig video_config;
-        ConfigResult result = DecodeVideoConfig(value, &video_config);
-        if (!result.ok) {
-            ++stats.config_apply_failed_count;
-            return result;
-        }
         MediaPipelineConfig next_config;
-        result = BuildPipelineConfig(video_config, pipeline.config(), &next_config);
-        if (!result.ok) {
-            ++stats.config_apply_failed_count;
-            return result;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (state == ServiceState::kStopping) {
+                ++stats.config_apply_failed_count;
+                return ConfigResult::Failure("", "media pipeline busy");
+            }
+            const ConfigResult result = ParseVideoConfig(
+                value, active_config, capabilities, &next_config);
+            if (!result.ok) {
+                ++stats.config_apply_failed_count;
+                return result;
+            }
         }
         if (!ApplyPipelineConfig(next_config)) {
             return ConfigResult::Failure("streams.main", "apply failed");
@@ -256,35 +513,71 @@ struct MediaService::Impl {
     }
 
     ConfigResult CheckImageConfig(const ConfigJson &value) const {
-        return ValidateImageConfig(value, pipeline.GetCapabilities().image);
+        return ValidateImageConfig(value, capabilities.image);
     }
 
     ConfigResult ApplyImageConfig(const ConfigJson &value) {
-        if (state != ServiceState::kStarted) {
-            image_config = value;
-            return ConfigResult::Success();
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (state != ServiceState::kStarted) {
+                image_config = value;
+                return ConfigResult::Success();
+            }
+        }
+
+        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (state != ServiceState::kStarted) {
+                image_config = value;
+                return ConfigResult::Success();
+            }
         }
         if (!pipeline.ApplyImageConfig(value)) {
+            std::lock_guard<std::mutex> guard(mutex);
             ++stats.config_apply_failed_count;
             return ConfigResult::Failure("image", "apply failed");
         }
-        image_config = value;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            image_config = value;
+        }
         return ConfigResult::Success();
     }
 
-    bool ApplySavedImageConfig() {
-        if (!image_config.is_object() || image_config.empty()) {
+    bool ApplyImageConfigToPipeline(const ConfigJson &value) {
+        if (!value.is_object() || value.empty()) {
             return true;
         }
-        return pipeline.ApplyImageConfig(image_config);
+        return pipeline.ApplyImageConfig(value);
     }
 
     bool ApplyPipelineConfig(const MediaPipelineConfig &config) {
-        const bool was_started = state == ServiceState::kStarted;
-        const bool was_initialized = pipeline.system_initialized();
-        const MediaPipelineConfig previous = pipeline.config();
+        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+        bool was_started = false;
+        bool was_initialized = false;
+        ServiceState previous_state = ServiceState::kCreated;
+        MediaPipelineConfig previous;
+        ConfigJson saved_image_config;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (state == ServiceState::kStopping) {
+                ++stats.config_apply_failed_count;
+                return false;
+            }
+            previous_state = state;
+            was_started = state == ServiceState::kStarted;
+            was_initialized = system_initialized;
+            previous = active_config;
+            saved_image_config = image_config;
+            state = ServiceState::kStopping;
+            if (was_started) {
+                NotifySourceState(StreamState::kClosed);
+            }
+            ClearKeyFrameCacheLocked();
+        }
+
         if (was_started) {
-            NotifySourceState(StreamState::kClosed);
             pipeline.Stop();
         }
         if (was_initialized) {
@@ -296,12 +589,18 @@ struct MediaService::Impl {
         if (ok && was_started) {
             ok = pipeline.Start();
             if (ok) {
-                ok = ApplySavedImageConfig();
+                ok = ApplyImageConfigToPipeline(saved_image_config);
             }
         }
         if (ok) {
+            std::lock_guard<std::mutex> guard(mutex);
+            active_config = config;
+            active_channels = BuildChannelsForConfig(active_config);
+            system_initialized = was_initialized;
+            state = previous_state;
             ++stats.config_apply_count;
             if (was_started) {
+                state = ServiceState::kStarted;
                 ++stats.restart_count;
                 NotifySourceState(StreamState::kRunning);
             }
@@ -309,7 +608,7 @@ struct MediaService::Impl {
         }
 
         pipeline.Stop();
-        if (pipeline.system_initialized()) {
+        if (was_initialized) {
             pipeline.DeinitSystem();
         }
         pipeline.SetConfig(previous);
@@ -319,19 +618,37 @@ struct MediaService::Impl {
             if (recovered && was_started) {
                 recovered = pipeline.Start();
                 if (recovered) {
-                    recovered = ApplySavedImageConfig();
+                    recovered = ApplyImageConfigToPipeline(saved_image_config);
                 }
             }
+        } else {
+            recovered = true;
         }
-        if (recovered) {
-            NotifySourceState(StreamState::kRunning);
-        } else if (was_started) {
-            state = ServiceState::kStopped;
-            NotifySourceState(StreamState::kError);
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            if (recovered) {
+                active_config = previous;
+                active_channels = BuildChannelsForConfig(active_config);
+                system_initialized = was_initialized;
+                state = previous_state;
+                if (was_started) {
+                    state = ServiceState::kStarted;
+                    NotifySourceState(StreamState::kRunning);
+                }
+            } else if (was_started) {
+                system_initialized = false;
+                state = ServiceState::kStopped;
+                NotifySourceState(StreamState::kError);
+            } else {
+                system_initialized = false;
+                state = was_initialized ? ServiceState::kDeinitialized
+                                        : previous_state;
+            }
+            ++stats.config_apply_failed_count;
         }
-        ++stats.config_apply_failed_count;
         return false;
     }
+
 };
 
 MediaService::MediaService() : MediaService(MediaServiceOptions{}) {}
@@ -364,30 +681,41 @@ bool MediaService::Start() {
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    if (impl_->state == ServiceState::kStarted) {
-        return true;
-    }
-    if (impl_->state == ServiceState::kStopped) {
-        impl_->state = ServiceState::kInitialized;
-    }
-    if (impl_->state != ServiceState::kInitialized) {
-        return false;
+    ConfigJson saved_image_config;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        if (impl_->state == ServiceState::kStarted) {
+            return true;
+        }
+        if (impl_->state == ServiceState::kStopped) {
+            impl_->state = ServiceState::kInitialized;
+        }
+        if (impl_->state != ServiceState::kInitialized) {
+            return false;
+        }
+        impl_->state = ServiceState::kStopping;
+        impl_->ClearKeyFrameCacheLocked();
+        saved_image_config = impl_->image_config;
     }
 
-    if (!impl_->pipeline.Start()) {
+    std::lock_guard<std::mutex> op_guard(impl_->pipeline_op_mutex);
+    bool ok = impl_->pipeline.Start();
+    if (ok) {
+        ok = impl_->ApplyImageConfigToPipeline(saved_image_config);
+    }
+    if (!ok) {
         impl_->pipeline.Stop();
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->ClearKeyFrameCacheLocked();
         impl_->state = ServiceState::kInitialized;
+        impl_->NotifySourceState(StreamState::kError);
         return false;
     }
-
-    impl_->state = ServiceState::kStarted;
-    if (!impl_->ApplySavedImageConfig()) {
-        impl_->pipeline.Stop();
-        impl_->state = ServiceState::kInitialized;
-        return false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->state = ServiceState::kStarted;
+        impl_->NotifySourceState(StreamState::kRunning);
     }
-    impl_->NotifySourceState(StreamState::kRunning);
     return true;
 }
 
@@ -395,17 +723,27 @@ void MediaService::Stop() {
     if (impl_ == nullptr) {
         return;
     }
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    if (impl_->state != ServiceState::kStarted) {
-        if (impl_->state == ServiceState::kStopping) {
-            impl_->state = ServiceState::kStopped;
+    bool should_stop = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        if (impl_->state != ServiceState::kStarted) {
+            if (impl_->state == ServiceState::kStopping) {
+                impl_->state = ServiceState::kStopped;
+            }
+            return;
         }
-        return;
+
+        impl_->state = ServiceState::kStopping;
+        impl_->NotifySourceState(StreamState::kClosed);
+        impl_->ClearKeyFrameCacheLocked();
+        should_stop = true;
     }
 
-    impl_->state = ServiceState::kStopping;
-    impl_->NotifySourceState(StreamState::kClosed);
-    impl_->pipeline.Stop();
+    if (should_stop) {
+        std::lock_guard<std::mutex> op_guard(impl_->pipeline_op_mutex);
+        impl_->pipeline.Stop();
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->state = ServiceState::kStopped;
 }
 
@@ -422,7 +760,7 @@ bool MediaService::IsStreamSupported(StreamId stream_id) const {
         return false;
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    return FindConfiguredStream(impl_->pipeline.config(), stream_id) != nullptr;
+    return FindConfiguredStream(impl_->active_config, stream_id) != nullptr;
 }
 
 bool MediaService::IsStreamStarted(StreamId stream_id) const {
@@ -431,7 +769,7 @@ bool MediaService::IsStreamStarted(StreamId stream_id) const {
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
     const VideoStreamConfig *stream =
-        FindConfiguredStream(impl_->pipeline.config(), stream_id);
+        FindConfiguredStream(impl_->active_config, stream_id);
     return impl_->state == ServiceState::kStarted && stream != nullptr &&
            stream->enabled;
 }
@@ -442,7 +780,7 @@ VideoCodec MediaService::GetStreamCodec(StreamId stream_id) const {
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
     const VideoStreamConfig *stream =
-        FindConfiguredStream(impl_->pipeline.config(), stream_id);
+        FindConfiguredStream(impl_->active_config, stream_id);
     if (stream != nullptr) {
         return stream->codec;
     }
@@ -457,20 +795,32 @@ MediaService::SubscribeFrames(const FrameSubscribeOptions &options,
     if (impl_ == nullptr) {
         return 0;
     }
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    const VideoStreamConfig *stream =
-        FindConfiguredStream(impl_->pipeline.config(), options.stream_id);
-    if (sink == nullptr || stream == nullptr || !stream->enabled) {
-        return 0;
+    FrameSubscriptionId id = 0;
+    EncodedFrame last_key_frame;
+    bool has_last_key_frame = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        const VideoStreamConfig *stream =
+            FindConfiguredStream(impl_->active_config, options.stream_id);
+        if (sink == nullptr || stream == nullptr || !stream->enabled ||
+            impl_->state != ServiceState::kStarted) {
+            return 0;
+        }
+        has_last_key_frame =
+            options.require_key_frame_first &&
+            impl_->GetLastKeyFrameLocked(options.stream_id, &last_key_frame);
+        id = impl_->next_subscription_id++;
     }
-    if (impl_->state != ServiceState::kStarted) {
-        return 0;
-    }
-
-    const FrameSubscriptionId id = impl_->next_subscription_id++;
-    impl_->sinks[id] = std::make_pair(options, sink);
-    impl_->stats.subscription_count = static_cast<uint32_t>(impl_->sinks.size());
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
+    if (has_last_key_frame) {
+        sink->OnFrame(last_key_frame);
+    }
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->sinks[id] = std::make_pair(options, sink);
+        impl_->stats.subscription_count =
+            static_cast<uint32_t>(impl_->sinks.size());
+    }
     return id;
 }
 
@@ -492,19 +842,24 @@ bool MediaService::RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) {
     if (impl_ == nullptr) {
         return false;
     }
-    std::lock_guard<std::mutex> lock(impl_->mutex);
     (void)reason;
-    const VideoStreamConfig *stream =
-        FindConfiguredStream(impl_->pipeline.config(), stream_id);
-    if (impl_->state != ServiceState::kStarted || stream == nullptr ||
-        !stream->enabled) {
-        return false;
+    int32_t venc_channel = -1;
+    hisisdk::IHisiSdk *sdk = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        const MediaPipelineConfig config = impl_->active_config;
+        const VideoStreamConfig *stream =
+            FindConfiguredStream(config, stream_id);
+        if (impl_->state != ServiceState::kStarted || stream == nullptr ||
+            !stream->enabled) {
+            return false;
+        }
+        venc_channel = VencChannelForStream(config, stream_id);
+        sdk = impl_->options.sdk != nullptr
+                  ? impl_->options.sdk
+                  : &hisisdk::DefaultSdk();
     }
-    hisisdk::IHisiSdk *sdk = impl_->options.sdk != nullptr
-                                 ? impl_->options.sdk
-                                 : &hisisdk::DefaultSdk();
-    return sdk->RequestIdr(VencChannelForStream(impl_->pipeline.config(),
-                                                stream_id));
+    return sdk->RequestIdr(venc_channel);
 }
 
 MediaCapabilities MediaService::GetCapabilities() const {
@@ -512,7 +867,7 @@ MediaCapabilities MediaService::GetCapabilities() const {
         return MediaCapabilities{};
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    return impl_->pipeline.GetCapabilities();
+    return impl_->capabilities;
 }
 
 bool MediaService::SetEncodedFrameCallback(EncodedFrameCallback callback,
@@ -534,10 +889,10 @@ MediaChannels MediaService::GetChannels() const {
         return MediaChannels{};
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    if (!impl_->pipeline.system_initialized()) {
+    if (!impl_->system_initialized) {
         return MediaChannels{};
     }
-    return impl_->pipeline.channels();
+    return impl_->active_channels;
 }
 
 MediaServiceStats MediaService::GetStats() const {
