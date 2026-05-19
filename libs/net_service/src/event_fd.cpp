@@ -1,5 +1,7 @@
 #include "event_fd.h"
 
+#include "socket_util.h"
+
 #include <sys/eventfd.h>
 #include <unistd.h>
 
@@ -13,7 +15,7 @@ bool EventFd::Open() {
     if (fd_.valid()) {
         return true;
     }
-    const int fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    const int fd = CreateEventFd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (fd < 0) {
         return false;
     }

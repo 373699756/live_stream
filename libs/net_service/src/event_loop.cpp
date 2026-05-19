@@ -1,12 +1,13 @@
 #include "event_loop.h"
 
 #include "infra/time.h"
+#include "socket_util.h"
 
+#include <cerrno>
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 
-#include <cerrno>
 #include <utility>
 #include <vector>
 
@@ -24,8 +25,11 @@ bool EventLoop::Start() {
     if (running_) {
         return true;
     }
-    epoll_fd_.Reset(epoll_create1(EPOLL_CLOEXEC));
-    timer_fd_.Reset(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC));
+    const int epoll_fd = CreateEpollFd(EPOLL_CLOEXEC);
+    const int timer_fd =
+        CreateTimerFd(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    epoll_fd_.Reset(epoll_fd);
+    timer_fd_.Reset(timer_fd);
     if (!epoll_fd_.valid() || !timer_fd_.valid()) {
         return false;
     }
