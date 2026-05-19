@@ -21,7 +21,6 @@ namespace {
 
 constexpr std::size_t kAnswerSdpCapacity = 16 * 1024;
 constexpr uint32_t kVideoPacketCapacity = 1024;
-constexpr uint8_t kAnnexBStartCode[4] = {0x00, 0x00, 0x00, 0x01};
 
 struct VideoParameterCache {
     std::vector<uint8_t> h264_sps;
@@ -74,17 +73,6 @@ bool IsH265KeyFrameNal(uint8_t nal_type) {
     return nal_type >= 16 && nal_type <= 21;
 }
 
-void AppendAnnexBNal(const uint8_t *data,
-                     std::size_t size,
-                     std::vector<uint8_t> *out) {
-    if (data == nullptr || size == 0 || out == nullptr) {
-        return;
-    }
-    out->insert(out->end(), kAnnexBStartCode,
-                kAnnexBStartCode + sizeof(kAnnexBStartCode));
-    out->insert(out->end(), data, data + size);
-}
-
 void StoreParameterSet(const uint8_t *data,
                        std::size_t size,
                        std::vector<uint8_t> *out) {
@@ -112,6 +100,23 @@ YangPushData *QueueMetaRtcPayload(YangRtcPacer *pacer,
     video_frame.pts = pts_us;
     video_frame.payload = const_cast<uint8_t *>(payload);
     return pacer->getVideoData(&video_frame);
+}
+
+bool QueueMetaRtcNal(YangRtcPacer *pacer,
+                     const uint8_t *payload,
+                     std::size_t size,
+                     int32_t frame_type,
+                     uint64_t pts_us,
+                     YangPushData **last_push_data) {
+    YangPushData *push_data =
+        QueueMetaRtcPayload(pacer, payload, size, frame_type, pts_us);
+    if (push_data == nullptr) {
+        return false;
+    }
+    if (last_push_data != nullptr) {
+        *last_push_data = push_data;
+    }
+    return true;
 }
 
 YangPushData *QueueH264Frame(YangRtcPacer *pacer,
@@ -159,27 +164,25 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
 
     YangPushData *push_data = nullptr;
     bool sent_idr_with_meta = false;
-    std::vector<uint8_t> key_frame_payload;
     for (const stream_codec::H264NalUnit &nal : nals) {
         if (!IsH264VclNal(nal.type)) {
             continue;
         }
         if (nal.type == 5 && !sent_idr_with_meta && sps_data != nullptr &&
             pps_data != nullptr) {
-            key_frame_payload.clear();
-            key_frame_payload.reserve(sizeof(kAnnexBStartCode) * 3 + sps_size +
-                                      pps_size + nal.size);
-            AppendAnnexBNal(sps_data, sps_size, &key_frame_payload);
-            AppendAnnexBNal(pps_data, pps_size, &key_frame_payload);
-            AppendAnnexBNal(nal.data, nal.size, &key_frame_payload);
-            push_data = QueueMetaRtcPayload(
-                pacer, key_frame_payload.data(), key_frame_payload.size(),
-                YANG_Frametype_I, pts_us);
-            sent_idr_with_meta = push_data != nullptr;
+            sent_idr_with_meta =
+                QueueMetaRtcNal(pacer, sps_data, sps_size, YANG_Frametype_I,
+                                pts_us, &push_data) &&
+                QueueMetaRtcNal(pacer, pps_data, pps_size, YANG_Frametype_I,
+                                pts_us, &push_data) &&
+                QueueMetaRtcNal(pacer, nal.data, nal.size, YANG_Frametype_I,
+                                pts_us, &push_data);
             continue;
         }
-        YangPushData *current_push_data = QueueMetaRtcPayload(
-            pacer, nal.data, nal.size, YANG_Frametype_P, pts_us);
+        const int32_t frame_type =
+            nal.type == 5 ? YANG_Frametype_I : YANG_Frametype_P;
+        YangPushData *current_push_data =
+            QueueMetaRtcPayload(pacer, nal.data, nal.size, frame_type, pts_us);
         if (current_push_data != nullptr) {
             push_data = current_push_data;
         }
@@ -244,28 +247,27 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
 
     YangPushData *push_data = nullptr;
     bool sent_key_frame_with_meta = false;
-    std::vector<uint8_t> key_frame_payload;
     for (const stream_codec::H265NalUnit &nal : nals) {
         if (!IsH265VclNal(nal.type)) {
             continue;
         }
         if (IsH265KeyFrameNal(nal.type) && !sent_key_frame_with_meta &&
             vps_data != nullptr && sps_data != nullptr && pps_data != nullptr) {
-            key_frame_payload.clear();
-            key_frame_payload.reserve(sizeof(kAnnexBStartCode) * 4 + vps_size +
-                                      sps_size + pps_size + nal.size);
-            AppendAnnexBNal(vps_data, vps_size, &key_frame_payload);
-            AppendAnnexBNal(sps_data, sps_size, &key_frame_payload);
-            AppendAnnexBNal(pps_data, pps_size, &key_frame_payload);
-            AppendAnnexBNal(nal.data, nal.size, &key_frame_payload);
-            push_data = QueueMetaRtcPayload(
-                pacer, key_frame_payload.data(), key_frame_payload.size(),
-                YANG_Frametype_I, pts_us);
-            sent_key_frame_with_meta = push_data != nullptr;
+            sent_key_frame_with_meta =
+                QueueMetaRtcNal(pacer, vps_data, vps_size, YANG_Frametype_I,
+                                pts_us, &push_data) &&
+                QueueMetaRtcNal(pacer, sps_data, sps_size, YANG_Frametype_I,
+                                pts_us, &push_data) &&
+                QueueMetaRtcNal(pacer, pps_data, pps_size, YANG_Frametype_I,
+                                pts_us, &push_data) &&
+                QueueMetaRtcNal(pacer, nal.data, nal.size, YANG_Frametype_I,
+                                pts_us, &push_data);
             continue;
         }
-        YangPushData *current_push_data = QueueMetaRtcPayload(
-            pacer, nal.data, nal.size, YANG_Frametype_P, pts_us);
+        const int32_t frame_type =
+            IsH265KeyFrameNal(nal.type) ? YANG_Frametype_I : YANG_Frametype_P;
+        YangPushData *current_push_data =
+            QueueMetaRtcPayload(pacer, nal.data, nal.size, frame_type, pts_us);
         if (current_push_data != nullptr) {
             push_data = current_push_data;
         }
