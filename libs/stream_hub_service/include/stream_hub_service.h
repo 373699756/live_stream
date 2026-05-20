@@ -12,18 +12,18 @@
 
 namespace live_stream {
 
-class MediaService;
-
 using StreamFlvClientId = uint64_t;
+using StreamFrameConsumerId = uint64_t;
 
 struct StreamHubServiceOptions {
     uint32_t hls_segment_duration_ms = 1000;
     uint32_t hls_playlist_depth = 4;
     uint32_t max_flv_clients = 8;
+    uint32_t max_frame_consumers = 8;
 };
 
 struct StreamHubServiceDependencies {
-    MediaService *media_service = nullptr;
+    IFrameSource *frame_source = nullptr;
 };
 
 struct StreamHlsEntry {
@@ -57,6 +57,7 @@ struct StreamHubServiceStats {
     bool enabled = false;
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
+    uint32_t active_frame_consumers = 0;
 };
 
 struct StreamBrowserStatus {
@@ -65,6 +66,12 @@ struct StreamBrowserStatus {
     bool hls_ready = false;
     bool flv_ready = false;
     VideoCodec codec = VideoCodec::kH264;
+};
+
+struct StreamFrameConsumerOptions {
+    StreamId stream_id = StreamId::kMain;
+    bool require_key_frame_first = true;
+    std::string sink_name;
 };
 
 class IStreamFlvSink {
@@ -82,6 +89,8 @@ public:
     virtual void Stop() = 0;
     virtual bool IsHlsSupported(StreamId stream_id) const = 0;
     virtual bool IsFlvSupported(StreamId stream_id) const = 0;
+    virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
+    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
     virtual StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
     virtual StreamSegment GetHlsSegment(StreamId stream_id,
                                         uint64_t sequence) const = 0;
@@ -91,6 +100,11 @@ public:
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
+    virtual StreamFrameConsumerId AttachFrameConsumer(
+        const StreamFrameConsumerOptions &options, IFrameSink *sink) = 0;
+    virtual bool DetachFrameConsumer(StreamFrameConsumerId consumer_id) = 0;
+    virtual bool RequestKeyFrame(StreamId stream_id,
+                                 KeyFrameReason reason) = 0;
     virtual StreamHubServiceStats GetStats() const = 0;
 };
 

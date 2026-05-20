@@ -103,6 +103,7 @@ RtspServiceDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     dependencies.net_engine = refs.net_engine;
     dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.stream_hub = refs.stream_hub_service;
     dependencies.media_service = refs.media.media;
     return dependencies;
 }
@@ -123,7 +124,7 @@ WebrtcServiceDependencies BuildWebrtcDependencies(
     const ProtocolRuntimeRefs &refs) {
     WebrtcServiceDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.media_service = refs.media.media;
+    dependencies.stream_hub = refs.stream_hub_service;
     dependencies.use_fake_engine = false;
     return dependencies;
 }
@@ -136,7 +137,7 @@ StreamHubServiceOptions BuildStreamHubOptions() {
 StreamHubServiceDependencies BuildStreamHubDependencies(
     const ProtocolRuntimeRefs &refs) {
     StreamHubServiceDependencies dependencies;
-    dependencies.media_service = refs.media.media;
+    dependencies.frame_source = refs.media.media;
     return dependencies;
 }
 
@@ -249,6 +250,18 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
     }
     refs.net_engine = net_engine_.get();
 
+    const StreamHubServiceOptions stream_hub_options = BuildStreamHubOptions();
+    const StreamHubServiceDependencies stream_hub_dependencies =
+        BuildStreamHubDependencies(refs);
+    stream_hub_ =
+        CreateStreamHubService(stream_hub_options, stream_hub_dependencies);
+    if (!stream_hub_ || !stream_hub_->Start()) {
+        INFRA_LOG_ERROR("app", "Start stream hub service failed");
+        Stop();
+        return false;
+    }
+    refs.stream_hub_service = stream_hub_.get();
+
     const RtspServiceOptions rtsp_options = BuildRtspOptions(runtime_config);
     const RtspServiceDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtspService(rtsp_options, rtsp_dependencies);
@@ -279,18 +292,6 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
         return false;
     }
     refs.webrtc_service = webrtc_.get();
-
-    const StreamHubServiceOptions stream_hub_options = BuildStreamHubOptions();
-    const StreamHubServiceDependencies stream_hub_dependencies =
-        BuildStreamHubDependencies(refs);
-    stream_hub_ =
-        CreateStreamHubService(stream_hub_options, stream_hub_dependencies);
-    if (!stream_hub_ || !stream_hub_->Start()) {
-        INFRA_LOG_ERROR("app", "Start stream hub service failed");
-        Stop();
-        return false;
-    }
-    refs.stream_hub_service = stream_hub_.get();
 
     onvif_uri_provider_.reset(
         new StaticOnvifUriProvider(runtime_config, refs.media.media));
@@ -343,11 +344,6 @@ void ProtocolSubsystem::Stop() {
         onvif_->Stop();
         INFRA_LOG_INFO("app", "Stop ONVIF service done");
     }
-    if (stream_hub_) {
-        INFRA_LOG_INFO("app", "Stop stream hub service begin");
-        stream_hub_->Stop();
-        INFRA_LOG_INFO("app", "Stop stream hub service done");
-    }
     if (webrtc_) {
         INFRA_LOG_INFO("app", "Stop WebRTC service begin");
         webrtc_->Stop();
@@ -357,6 +353,11 @@ void ProtocolSubsystem::Stop() {
         INFRA_LOG_INFO("app", "Stop RTSP service begin");
         rtsp_->Stop();
         INFRA_LOG_INFO("app", "Stop RTSP service done");
+    }
+    if (stream_hub_) {
+        INFRA_LOG_INFO("app", "Stop stream hub service begin");
+        stream_hub_->Stop();
+        INFRA_LOG_INFO("app", "Stop stream hub service done");
     }
     if (net_engine_) {
         INFRA_LOG_INFO("app", "Stop net engine begin");

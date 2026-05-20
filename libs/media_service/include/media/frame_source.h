@@ -40,6 +40,19 @@ public:
                                       StreamState state) = 0;
 };
 
+class IFrameSource {
+public:
+    virtual ~IFrameSource() = default;
+
+    virtual bool IsStreamStarted(StreamId stream_id) const = 0;
+    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual FrameSubscriptionId SubscribeFrames(
+        const FrameSubscribeOptions& options, IFrameSink* sink) = 0;
+    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id) = 0;
+    virtual bool RequestKeyFrame(StreamId stream_id,
+                                 KeyFrameReason reason) = 0;
+};
+
 using EncodedFrameCallback = void (*)(const EncodedFrame& frame,
                                       void* user);
 

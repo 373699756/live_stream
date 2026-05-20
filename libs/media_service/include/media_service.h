@@ -41,7 +41,7 @@ struct MediaServiceStats {
     uint32_t subscription_count = 0;
 };
 
-class MediaService : public IMediaView {
+class MediaService : public IMediaView, public IFrameSource {
 public:
     MediaService();
     explicit MediaService(const MediaPipelineConfig& config);
@@ -54,16 +54,16 @@ public:
     bool IsRestarting() const override;
     bool IsStreamSupported(StreamId stream_id) const;
     bool IsStreamStarted(StreamId stream_id) const override;
-    VideoCodec GetStreamCodec(StreamId stream_id) const;
+    VideoCodec GetStreamCodec(StreamId stream_id) const override;
 
     static const char* StaticName();
 
     virtual FrameSubscriptionId SubscribeFrames(
         const FrameSubscribeOptions& options,
-        IFrameSink* sink);
-    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id);
+        IFrameSink* sink) override;
+    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id) override;
     virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason);
+                                 KeyFrameReason reason) override;
     MediaCapabilities GetCapabilities() const override;
 
     bool SetEncodedFrameCallback(EncodedFrameCallback callback, void* user);

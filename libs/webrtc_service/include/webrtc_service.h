@@ -1,9 +1,8 @@
 #ifndef LIVE_STREAM_WEBRTC_SERVICE_H_
 #define LIVE_STREAM_WEBRTC_SERVICE_H_
 
-#include "media/encoded_frame.h"
-#include "media/frame_source.h"
 #include "media/stream_types.h"
+#include "stream_hub_service.h"
 
 #include <cstdint>
 #include <memory>
@@ -12,7 +11,6 @@
 
 namespace live_stream {
 
-class MediaService;
 class NetEngine;
 
 enum class WebrtcPeerState {
@@ -44,7 +42,7 @@ struct WebrtcServiceOptions {
 };
 
 struct WebrtcServiceDependencies {
-    MediaService *media_service = nullptr;
+    IStreamHubService *stream_hub = nullptr;
     NetEngine *net_engine = nullptr;
     bool use_fake_engine = false;
 };

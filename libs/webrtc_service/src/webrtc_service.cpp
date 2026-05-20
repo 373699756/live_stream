@@ -1,7 +1,6 @@
 #include "webrtc_service.h"
 
 #include "infra/executor.h"
-#include "media_service.h"
 #include "stream_codec.h"
 #include "webrtc_engine.h"
 #include "webrtc_peer_store.h"
@@ -147,8 +146,8 @@ public:
             }
 
             VideoCodec codec = VideoCodec::kH264;
-            if (dependencies_.media_service != nullptr) {
-                codec = dependencies_.media_service->GetStreamCodec(
+            if (dependencies_.stream_hub != nullptr) {
+                codec = dependencies_.stream_hub->GetStreamCodec(
                     request.stream_id);
             }
             peer = peer_store_.CreatePeer(request.stream_id, codec);
@@ -505,38 +504,34 @@ private:
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
-        if (dependencies_.media_service == nullptr) {
+        if (dependencies_.stream_hub == nullptr) {
             return true;
         }
-        return dependencies_.media_service->IsStreamStarted(stream_id);
+        return dependencies_.stream_hub->IsStreamAvailable(stream_id);
     }
 
     bool SubscribeMediaLocked() {
-        if (dependencies_.media_service == nullptr) {
+        if (dependencies_.stream_hub == nullptr) {
             return true;
         }
-        if (main_subscription_id_ != 0 || sub_subscription_id_ != 0) {
+        if (main_consumer_id_ != 0 || sub_consumer_id_ != 0) {
             return true;
         }
 
-        if (dependencies_.media_service->IsStreamStarted(StreamId::kMain)) {
-            FrameSubscribeOptions main_options;
-            main_options.stream_id = StreamId::kMain;
-            main_options.sink_name = WebrtcService::Name();
-            main_subscription_id_ =
-                dependencies_.media_service->SubscribeFrames(main_options, this);
-        }
+        StreamFrameConsumerOptions main_options;
+        main_options.stream_id = StreamId::kMain;
+        main_options.sink_name = WebrtcService::Name();
+        main_consumer_id_ =
+            dependencies_.stream_hub->AttachFrameConsumer(main_options, this);
 
-        if (dependencies_.media_service->IsStreamStarted(StreamId::kSub)) {
-            FrameSubscribeOptions sub_options;
-            sub_options.stream_id = StreamId::kSub;
-            sub_options.sink_name = WebrtcService::Name();
-            sub_subscription_id_ =
-                dependencies_.media_service->SubscribeFrames(sub_options, this);
-        }
+        StreamFrameConsumerOptions sub_options;
+        sub_options.stream_id = StreamId::kSub;
+        sub_options.sink_name = WebrtcService::Name();
+        sub_consumer_id_ =
+            dependencies_.stream_hub->AttachFrameConsumer(sub_options, this);
 
         const bool subscribed =
-            main_subscription_id_ != 0 || sub_subscription_id_ != 0;
+            main_consumer_id_ != 0 || sub_consumer_id_ != 0;
         if (!subscribed) {
             UnsubscribeMediaLocked();
         }
@@ -544,28 +539,28 @@ private:
     }
 
     void UnsubscribeMediaLocked() {
-        if (dependencies_.media_service == nullptr) {
-            main_subscription_id_ = 0;
-            sub_subscription_id_ = 0;
+        if (dependencies_.stream_hub == nullptr) {
+            main_consumer_id_ = 0;
+            sub_consumer_id_ = 0;
             return;
         }
-        if (main_subscription_id_ != 0) {
-            (void)dependencies_.media_service->UnsubscribeFrames(
-                main_subscription_id_);
-            main_subscription_id_ = 0;
+        if (main_consumer_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameConsumer(
+                main_consumer_id_);
+            main_consumer_id_ = 0;
         }
-        if (sub_subscription_id_ != 0) {
-            (void)dependencies_.media_service->UnsubscribeFrames(
-                sub_subscription_id_);
-            sub_subscription_id_ = 0;
+        if (sub_consumer_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameConsumer(
+                sub_consumer_id_);
+            sub_consumer_id_ = 0;
         }
     }
 
     void RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) {
-        if (dependencies_.media_service == nullptr) {
+        if (dependencies_.stream_hub == nullptr) {
             return;
         }
-        (void)dependencies_.media_service->RequestKeyFrame(stream_id, reason);
+        (void)dependencies_.stream_hub->RequestKeyFrame(stream_id, reason);
     }
 
     PendingFrameSlot *FindPendingSlotLocked(StreamId stream_id) {
@@ -638,8 +633,8 @@ private:
     StreamId last_sent_stream_ = StreamId::kSub;
     webrtc_internal::WebrtcPeerStore peer_store_;
     WebrtcServiceStats stats_{};
-    FrameSubscriptionId main_subscription_id_ = 0;
-    FrameSubscriptionId sub_subscription_id_ = 0;
+    StreamFrameConsumerId main_consumer_id_ = 0;
+    StreamFrameConsumerId sub_consumer_id_ = 0;
 };
 
 std::unique_ptr<IWebrtcService>

@@ -3,7 +3,6 @@
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
-#include "media_service.h"
 #include "stream_codec.h"
 #include "stream_hub_stream_state.h"
 
@@ -113,24 +112,25 @@ public:
     ~StreamHubServiceImpl() override { Stop(); }
 
     bool Start() override {
-        MediaService *media_service = nullptr;
+        IFrameSource *frame_source = nullptr;
         infra::Executor *worker_executor = nullptr;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (started_) {
                 return true;
             }
-            media_service = dependencies_.media_service;
+            frame_source = dependencies_.frame_source;
             if (!worker_executor_) {
                 worker_executor_.reset(new infra::Executor());
             }
             worker_executor = worker_executor_.get();
         }
-        if (media_service == nullptr || worker_executor == nullptr) {
+        if (frame_source == nullptr || worker_executor == nullptr) {
             return false;
         }
         if (options_.hls_segment_duration_ms == 0 ||
-            options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0) {
+            options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0 ||
+            options_.max_frame_consumers == 0) {
             return false;
         }
         infra::ExecutorOptions executor_options;
@@ -139,8 +139,10 @@ public:
         if (!worker_executor->Start(executor_options)) {
             return false;
         }
-        const VideoCodec main_codec = media_service->GetStreamCodec(StreamId::kMain);
-        const VideoCodec sub_codec = media_service->GetStreamCodec(StreamId::kSub);
+        const VideoCodec main_codec =
+            frame_source->GetStreamCodec(StreamId::kMain);
+        const VideoCodec sub_codec =
+            frame_source->GetStreamCodec(StreamId::kSub);
         {
             std::lock_guard<std::mutex> guard(mutex_);
             main_subscription_id_ = 0;
@@ -167,14 +169,14 @@ public:
         main_options.require_key_frame_first = true;
         main_options.sink_name = kServiceName;
         const FrameSubscriptionId main_subscription_id =
-            media_service->SubscribeFrames(main_options, this);
+            frame_source->SubscribeFrames(main_options, this);
 
         FrameSubscribeOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.require_key_frame_first = true;
         sub_options.sink_name = kServiceName;
         const FrameSubscriptionId sub_subscription_id =
-            media_service->SubscribeFrames(sub_options, this);
+            frame_source->SubscribeFrames(sub_options, this);
         const bool subscribed =
             main_subscription_id != 0 || sub_subscription_id != 0;
         if (!subscribed) {
@@ -198,18 +200,18 @@ public:
             request_sub_idr = sub_subscription_id_ != 0;
         }
         if (request_main_idr) {
-            (void)media_service->RequestKeyFrame(StreamId::kMain,
-                                                 KeyFrameReason::kRecovery);
+            (void)frame_source->RequestKeyFrame(StreamId::kMain,
+                                                KeyFrameReason::kRecovery);
         }
         if (request_sub_idr) {
-            (void)media_service->RequestKeyFrame(StreamId::kSub,
-                                                 KeyFrameReason::kRecovery);
+            (void)frame_source->RequestKeyFrame(StreamId::kSub,
+                                                KeyFrameReason::kRecovery);
         }
         return true;
     }
 
     void Stop() override {
-        MediaService *media_service = nullptr;
+        IFrameSource *frame_source = nullptr;
         infra::Executor *worker_executor = nullptr;
         FrameSubscriptionId main_subscription_id = 0;
         FrameSubscriptionId sub_subscription_id = 0;
@@ -218,7 +220,7 @@ public:
             if (!started_) {
                 return;
             }
-            media_service = dependencies_.media_service;
+            frame_source = dependencies_.frame_source;
             main_subscription_id = main_subscription_id_;
             sub_subscription_id = sub_subscription_id_;
             main_subscription_id_ = 0;
@@ -231,17 +233,18 @@ public:
             sub_packaged_logged_ = false;
             drain_task_posted_ = false;
             flv_clients_.clear();
+            frame_consumers_.clear();
             main_stream_ = hub_state::StreamContext{};
             sub_stream_ = hub_state::StreamContext{};
             worker_executor = worker_executor_.get();
             started_ = false;
         }
-        if (media_service != nullptr) {
+        if (frame_source != nullptr) {
             if (main_subscription_id != 0) {
-                (void)media_service->UnsubscribeFrames(main_subscription_id);
+                (void)frame_source->UnsubscribeFrames(main_subscription_id);
             }
             if (sub_subscription_id != 0) {
-                (void)media_service->UnsubscribeFrames(sub_subscription_id);
+                (void)frame_source->UnsubscribeFrames(sub_subscription_id);
             }
         }
         if (worker_executor != nullptr) {
@@ -260,6 +263,21 @@ public:
         const hub_state::StreamContext *stream = FindStream(stream_id);
         return stream != nullptr && stream->state == StreamState::kRunning &&
                hub_state::IsFlvCodecSupported(stream->codec);
+    }
+
+    bool IsStreamAvailable(StreamId stream_id) const override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        const hub_state::StreamContext *stream = FindStream(stream_id);
+        return stream != nullptr && stream->state == StreamState::kRunning;
+    }
+
+    VideoCodec GetStreamCodec(StreamId stream_id) const override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        const hub_state::StreamContext *stream = FindStream(stream_id);
+        if (stream != nullptr) {
+            return stream->codec;
+        }
+        return VideoCodec::kH264;
     }
 
     StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
@@ -312,7 +330,7 @@ public:
         if (sink == nullptr) {
             return 0;
         }
-        MediaService *media_service = nullptr;
+        IFrameSource *frame_source = nullptr;
         StreamFlvClientId client_id = 0;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -328,11 +346,11 @@ public:
             client.config_generation = config_generation;
             client.sink = sink;
             flv_clients_[client_id] = client;
-            media_service = dependencies_.media_service;
+            frame_source = dependencies_.frame_source;
         }
-        if (media_service != nullptr) {
-            (void)media_service->RequestKeyFrame(stream_id,
-                                                 KeyFrameReason::kNewClient);
+        if (frame_source != nullptr) {
+            (void)frame_source->RequestKeyFrame(stream_id,
+                                                KeyFrameReason::kNewClient);
         }
         return client_id;
     }
@@ -342,11 +360,57 @@ public:
         return flv_clients_.erase(client_id) != 0;
     }
 
+    StreamFrameConsumerId AttachFrameConsumer(
+        const StreamFrameConsumerOptions &options, IFrameSink *sink) override {
+        if (sink == nullptr || !IsStreamSupported(options.stream_id)) {
+            return 0;
+        }
+        IFrameSource *frame_source = nullptr;
+        StreamFrameConsumerId consumer_id = 0;
+        bool request_key_frame = false;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (!started_ || FindStream(options.stream_id) == nullptr ||
+                frame_consumers_.size() >= options_.max_frame_consumers) {
+                return 0;
+            }
+            consumer_id = next_frame_consumer_id_++;
+            FrameConsumerState consumer;
+            consumer.stream_id = options.stream_id;
+            consumer.require_key_frame_first = options.require_key_frame_first;
+            consumer.sink = sink;
+            consumer.sink_name = options.sink_name;
+            frame_consumers_[consumer_id] = consumer;
+            frame_source = dependencies_.frame_source;
+            request_key_frame = options.require_key_frame_first;
+        }
+        if (frame_source != nullptr && request_key_frame) {
+            (void)frame_source->RequestKeyFrame(options.stream_id,
+                                                KeyFrameReason::kNewClient);
+        }
+        return consumer_id;
+    }
+
+    bool DetachFrameConsumer(StreamFrameConsumerId consumer_id) override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return frame_consumers_.erase(consumer_id) != 0;
+    }
+
+    bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
+        if (!IsStreamSupported(stream_id) ||
+            dependencies_.frame_source == nullptr) {
+            return false;
+        }
+        return dependencies_.frame_source->RequestKeyFrame(stream_id, reason);
+    }
+
     StreamHubServiceStats GetStats() const override {
         std::lock_guard<std::mutex> guard(mutex_);
         StreamHubServiceStats stats = stats_;
         stats.enabled = started_;
         stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.size());
+        stats.active_frame_consumers =
+            static_cast<uint32_t>(frame_consumers_.size());
         return stats;
     }
 
@@ -395,6 +459,11 @@ private:
         bool send_sequence_header = false;
     };
 
+    struct PendingFrameConsumerWrite {
+        StreamFrameConsumerId consumer_id = 0;
+        IFrameSink *sink = nullptr;
+    };
+
     struct StreamFrameQueue {
         std::deque<EncodedFrame> frames;
     };
@@ -414,6 +483,7 @@ private:
     }
 
     void ProcessFrame(const EncodedFrame &frame) {
+        std::vector<PendingFrameConsumerWrite> frame_consumers;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -424,8 +494,29 @@ private:
                 hub_state::ResetStream(stream, frame.codec);
                 ResetStreamLogFlagsLocked(frame.stream_id);
             }
-            if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
+            if (stream->state != StreamState::kRunning) {
                 return;
+            }
+            for (auto &item : frame_consumers_) {
+                if (item.second.stream_id != frame.stream_id ||
+                    item.second.sink == nullptr) {
+                    continue;
+                }
+                if (item.second.require_key_frame_first &&
+                    !stream_codec::IsKeyFrame(frame.frame_type)) {
+                    continue;
+                }
+                item.second.require_key_frame_first = false;
+                PendingFrameConsumerWrite consumer;
+                consumer.consumer_id = item.first;
+                consumer.sink = item.second.sink;
+                frame_consumers.push_back(consumer);
+            }
+        }
+
+        for (const PendingFrameConsumerWrite &consumer : frame_consumers) {
+            if (consumer.sink != nullptr) {
+                consumer.sink->OnFrame(frame);
             }
         }
 
@@ -601,6 +692,13 @@ private:
         std::shared_ptr<IStreamFlvSink> sink;
     };
 
+    struct FrameConsumerState {
+        StreamId stream_id = StreamId::kMain;
+        bool require_key_frame_first = true;
+        IFrameSink *sink = nullptr;
+        std::string sink_name;
+    };
+
     StreamFrameQueue *FindPendingQueue(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_pending_;
@@ -697,10 +795,12 @@ private:
     hub_state::StreamContext main_stream_;
     hub_state::StreamContext sub_stream_;
     std::map<StreamFlvClientId, FlvClientState> flv_clients_;
+    std::map<StreamFrameConsumerId, FrameConsumerState> frame_consumers_;
     StreamHubServiceStats stats_;
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
     StreamFlvClientId next_flv_client_id_ = 1;
+    StreamFrameConsumerId next_frame_consumer_id_ = 1;
     bool main_bad_payload_logged_ = false;
     bool sub_bad_payload_logged_ = false;
     bool main_packaged_logged_ = false;
