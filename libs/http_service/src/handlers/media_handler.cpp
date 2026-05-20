@@ -6,6 +6,7 @@
 #include "live_stream/json_utils.h"
 #include "media/media_capabilities.h"
 #include "media_service.h"
+#include "infra/log.h"
 #include "stream_hub_service.h"
 #include "webrtc_service.h"
 
@@ -267,6 +268,20 @@ HttpResponse http_handlers::HandleStreamStatus(HttpHandlerContext *context, cons
             item["browserCodec"] = browser.browser_codec;
             item["hlsReady"] = browser.hls_ready;
             item["flvReady"] = browser.flv_ready;
+            if (browser.running && browser.browser_codec &&
+                (!browser.hls_ready || !browser.flv_ready)) {
+                INFRA_LOG_WARN(
+                    kHttpModuleName,
+                    "stream browser not ready stream=%s codec=%s hls_ready=%d "
+                    "flv_ready=%d segments=%u current_segment=%u "
+                    "flv_header=%u flv_keyframe=%u",
+                    name, VideoCodecToJsonString(browser.codec),
+                    browser.hls_ready ? 1 : 0, browser.flv_ready ? 1 : 0,
+                    browser.hls_segment_count,
+                    browser.hls_current_segment_size,
+                    browser.flv_sequence_header_size,
+                    browser.flv_last_keyframe_size);
+            }
         } else {
             item["browserCodec"] = false;
             item["hlsReady"] = false;

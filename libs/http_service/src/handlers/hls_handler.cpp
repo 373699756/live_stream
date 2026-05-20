@@ -93,12 +93,15 @@ HttpResponse HandlePlaylist(HttpHandlerContext *context,
                                    stream_id);
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=empty "
-                        "codec=%s running=%d hls_ready=%d keyframe=%d",
+                        "codec=%s running=%d hls_ready=%d keyframe=%d "
+                        "segments=%u current_segment=%u",
                         StreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         browser_status.running ? 1 : 0,
                         browser_status.hls_ready ? 1 : 0,
-                        keyframe_requested ? 1 : 0);
+                        keyframe_requested ? 1 : 0,
+                        browser_status.hls_segment_count,
+                        browser_status.hls_current_segment_size);
         return StatusResponse(503, "HLS playlist not ready");
     }
     return BuildPlaylistResponse(playlist, ExtractBearerToken(request));
@@ -164,11 +167,14 @@ HttpResponse http_handlers::HandleHls(HttpHandlerContext *context,
     if (!browser_status.browser_codec) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=unsupported "
-                        "codec=%s running=%d hls_ready=%d",
+                        "codec=%s running=%d hls_ready=%d segments=%u "
+                        "current_segment=%u",
                         StreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         browser_status.running ? 1 : 0,
-                        browser_status.hls_ready ? 1 : 0);
+                        browser_status.hls_ready ? 1 : 0,
+                        browser_status.hls_segment_count,
+                        browser_status.hls_current_segment_size);
         return StatusResponse(409, "HLS requires H.264 or H.265 stream");
     }
     if (!browser_status.running || !browser_status.hls_ready) {
@@ -178,12 +184,15 @@ HttpResponse http_handlers::HandleHls(HttpHandlerContext *context,
                                    stream_id);
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=not_ready "
-                        "codec=%s running=%d hls_ready=%d keyframe=%d",
+                        "codec=%s running=%d hls_ready=%d keyframe=%d "
+                        "segments=%u current_segment=%u",
                         StreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         browser_status.running ? 1 : 0,
                         browser_status.hls_ready ? 1 : 0,
-                        keyframe_requested ? 1 : 0);
+                        keyframe_requested ? 1 : 0,
+                        browser_status.hls_segment_count,
+                        browser_status.hls_current_segment_size);
         return StatusResponse(503, "HLS playlist not ready");
     }
 

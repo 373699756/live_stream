@@ -66,6 +66,10 @@ struct StreamBrowserStatus {
     bool hls_ready = false;
     bool flv_ready = false;
     VideoCodec codec = VideoCodec::kH264;
+    uint32_t hls_segment_count = 0;
+    uint32_t flv_sequence_header_size = 0;
+    uint32_t flv_last_keyframe_size = 0;
+    uint32_t hls_current_segment_size = 0;
 };
 
 struct StreamFrameSinkOptions {

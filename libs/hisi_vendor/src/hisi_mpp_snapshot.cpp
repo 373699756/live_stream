@@ -3,6 +3,7 @@
 #include "mpp_hisi_sdk_impl.h"
 
 #include <cerrno>
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -29,9 +30,23 @@ uint32_t VencPackDataLen(const VENC_PACK_S& pack) {
     return pack.u32Len - pack.u32Offset;
 }
 
+uint32_t ClampJpegQuality(uint32_t quality) {
+    return std::max<uint32_t>(1, std::min<uint32_t>(quality, 99));
+}
+
+bool SetJpegQuality(VENC_CHN jpeg_chn, uint32_t quality) {
+    VENC_JPEG_PARAM_S jpeg_param{};
+    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_GetJpegParam",
+                      HI_MPI_VENC_GetJpegParam(jpeg_chn, &jpeg_param))) {
+        return false;
+    }
+    jpeg_param.u32Qfactor = ClampJpegQuality(quality);
+    return CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SetJpegParam",
+                        HI_MPI_VENC_SetJpegParam(jpeg_chn, &jpeg_param));
+}
+
 void CleanupJpegCapture(VENC_CHN jpeg_chn, const MPP_CHN_S& src,
-                        const MPP_CHN_S& dst, bool bound,
-                        bool receiving) {
+                        const MPP_CHN_S& dst, bool bound, bool receiving) {
     if (receiving) {
         (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
     }
@@ -80,8 +95,19 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
                       HI_MPI_VENC_CreateChn(jpeg_chn, &attr))) {
         return result;
     }
+    if (!SetJpegQuality(jpeg_chn, config.jpeg_quality)) {
+        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        return result;
+    }
 
-    // ─── 2. Bind VPSS → VENC (snapshot path) ──────────────────
+    INFRA_LOG_INFO(
+        "hisi_vendor",
+        "CaptureJpeg: bind VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
+        "timeout=%u quality=%u",
+        config.snap_vpss_group, config.snap_vpss_channel,
+        config.jpeg_venc_channel, config.size.width, config.size.height,
+        config.timeout_ms, ClampJpegQuality(config.jpeg_quality));
+
     src.enModId = HI_ID_VPSS;
     src.s32DevId = config.snap_vpss_group;
     src.s32ChnId = config.snap_vpss_channel;
@@ -90,13 +116,6 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     dst.s32DevId = 0;
     dst.s32ChnId = config.jpeg_venc_channel;
 
-    INFRA_LOG_INFO(
-        "hisi_vendor",
-        "CaptureJpeg: bind VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
-        "timeout=%u quality=%u",
-        config.snap_vpss_group, config.snap_vpss_channel,
-        config.jpeg_venc_channel, config.size.width, config.size.height,
-        config.timeout_ms, config.jpeg_quality);
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_SYS_Bind",
                       HI_MPI_SYS_Bind(&src, &dst))) {
         CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
@@ -104,7 +123,6 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     }
     bound = true;
 
-    // ─── 3. Start receiving one picture ───────────────────────
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = 1;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",

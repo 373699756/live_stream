@@ -26,6 +26,18 @@ namespace {
 
 constexpr size_t kMaxStreamingQueuedBytes = 1024U * 1024U;
 
+const char *StaticStatusText(StaticFileStatus status) {
+    switch (status) {
+        case StaticFileStatus::kOk:
+            return "ok";
+        case StaticFileStatus::kNotFound:
+            return "not_found";
+        case StaticFileStatus::kForbidden:
+            return "forbidden";
+    }
+    return "unknown";
+}
+
 const char *HttpMethodName(HttpMethod method) {
     switch (method) {
         case HttpMethod::kGet:
@@ -183,6 +195,26 @@ bool HttpServiceImpl::Start() {
                        options_.control_executor_worker_count),
                    static_cast<unsigned>(
                        options_.config_apply_worker_count));
+    const std::vector<StaticAssetStatus> static_assets = CheckStaticAssets(
+        options_.static_root,
+        std::vector<std::string>{"index.html", "vendor/flv.min.js",
+                                 "vendor/hls.min.js"});
+    for (const StaticAssetStatus &asset : static_assets) {
+        if (asset.exists && asset.size > 0) {
+            INFRA_LOG_INFO(kHttpModuleName,
+                           "HTTP static asset ok relative=%s path=%s size=%llu",
+                           asset.relative_path.c_str(), asset.path.c_str(),
+                           static_cast<unsigned long long>(asset.size));
+        } else {
+            INFRA_LOG_ERROR(
+                kHttpModuleName,
+                "HTTP static asset missing relative=%s path=%s exists=%d "
+                "size=%llu",
+                asset.relative_path.c_str(), asset.path.c_str(),
+                asset.exists ? 1 : 0,
+                static_cast<unsigned long long>(asset.size));
+        }
+    }
     return true;
 }
 
@@ -547,9 +579,19 @@ HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
         BuildStaticFileResponse(request, options_.static_root);
     if (result.status == StaticFileStatus::kNotFound) {
         IncrementNotFound();
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP static reject status=%s request=%s relative=%s "
+                        "path=%s",
+                        StaticStatusText(result.status), request.path.c_str(),
+                        result.relative_path.c_str(), result.path.c_str());
         return StatusResponse(404, "Not Found");
     }
     if (result.status == StaticFileStatus::kForbidden) {
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP static reject status=%s request=%s relative=%s "
+                        "path=%s",
+                        StaticStatusText(result.status), request.path.c_str(),
+                        result.relative_path.c_str(), result.path.c_str());
         return StatusResponse(403, "Forbidden");
     }
     return result.response;

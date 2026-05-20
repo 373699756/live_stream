@@ -335,6 +335,14 @@ public:
         status.hls_ready = hub_state::IsHlsStreamReady(*stream);
         status.flv_ready = hub_state::IsFlvStreamReady(*stream);
         status.codec = stream->codec;
+        status.hls_segment_count =
+            static_cast<uint32_t>(stream->segments.size());
+        status.flv_sequence_header_size =
+            static_cast<uint32_t>(stream->sequence_header_tag.size());
+        status.flv_last_keyframe_size =
+            static_cast<uint32_t>(stream->last_keyframe_tag.size());
+        status.hls_current_segment_size =
+            static_cast<uint32_t>(stream->current_segment.body.size());
         return status;
     }
 

@@ -4,6 +4,7 @@
 #include "infra/fs.h"
 
 #include <string>
+#include <vector>
 
 namespace live_stream {
 namespace {
@@ -74,6 +75,8 @@ StaticFileResult BuildStaticFileResponse(const HttpRequest &request,
         relative = "index.html";
     }
     const std::string path = infra::Path::Join(static_root, relative);
+    result.relative_path = relative;
+    result.path = path;
     std::string content = infra::File::ReadAll(path);
     if (content.empty()) {
         result.status = StaticFileStatus::kNotFound;
@@ -85,6 +88,22 @@ StaticFileResult BuildStaticFileResponse(const HttpRequest &request,
     AddStaticCacheHeaders(relative, &result.response);
     result.response.body = content;
     return result;
+}
+
+std::vector<StaticAssetStatus> CheckStaticAssets(
+    const std::string &static_root,
+    const std::vector<std::string> &relative_paths) {
+    std::vector<StaticAssetStatus> assets;
+    assets.reserve(relative_paths.size());
+    for (const std::string &relative_path : relative_paths) {
+        StaticAssetStatus asset;
+        asset.relative_path = relative_path;
+        asset.path = infra::Path::Join(static_root, relative_path);
+        asset.exists = infra::File::Exists(asset.path);
+        asset.size = asset.exists ? infra::File::Size(asset.path) : 0;
+        assets.push_back(asset);
+    }
+    return assets;
 }
 
 }  // namespace live_stream
