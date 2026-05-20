@@ -3,7 +3,6 @@
 #include "mpp_hisi_sdk_impl.h"
 
 #include <cerrno>
-#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -28,21 +27,6 @@ uint32_t VencPackDataLen(const VENC_PACK_S& pack) {
         return 0;
     }
     return pack.u32Len - pack.u32Offset;
-}
-
-uint32_t ClampJpegQuality(uint32_t quality) {
-    return std::max<uint32_t>(1, std::min<uint32_t>(quality, 99));
-}
-
-bool SetJpegQuality(VENC_CHN jpeg_chn, uint32_t quality) {
-    VENC_JPEG_PARAM_S jpeg_param{};
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_GetJpegParam",
-                      HI_MPI_VENC_GetJpegParam(jpeg_chn, &jpeg_param))) {
-        return false;
-    }
-    jpeg_param.u32Qfactor = ClampJpegQuality(quality);
-    return CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SetJpegParam",
-                        HI_MPI_VENC_SetJpegParam(jpeg_chn, &jpeg_param));
 }
 
 void CleanupJpegCapture(VENC_CHN jpeg_chn, const MPP_CHN_S& src,
@@ -87,6 +71,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     attr.stVencAttr.u32BufSize = config.size.width * config.size.height * 2;
     attr.stVencAttr.bByFrame = HI_TRUE;
     attr.stVencAttr.stAttrJpege.bSupportDCF = HI_FALSE;
+    attr.stVencAttr.stAttrJpege.stMPFCfg.u8LargeThumbNailNum = 0;
     attr.stVencAttr.stAttrJpege.enReceiveMode = VENC_PIC_RECEIVE_SINGLE;
     attr.stGopAttr.enGopMode = VENC_GOPMODE_NORMALP;
     attr.stGopAttr.stNormalP.s32IPQpDelta = 0;
@@ -95,18 +80,14 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
                       HI_MPI_VENC_CreateChn(jpeg_chn, &attr))) {
         return result;
     }
-    if (!SetJpegQuality(jpeg_chn, config.jpeg_quality)) {
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
-        return result;
-    }
 
     INFRA_LOG_INFO(
         "hisi_vendor",
         "CaptureJpeg: bind VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
-        "timeout=%u quality=%u",
+        "timeout=%u requested_quality=%u",
         config.snap_vpss_group, config.snap_vpss_channel,
         config.jpeg_venc_channel, config.size.width, config.size.height,
-        config.timeout_ms, ClampJpegQuality(config.jpeg_quality));
+        config.timeout_ms, config.jpeg_quality);
 
     src.enModId = HI_ID_VPSS;
     src.s32DevId = config.snap_vpss_group;
@@ -122,6 +103,8 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         return result;
     }
     bound = true;
+    INFRA_LOG_INFO("hisi_vendor", "CaptureJpeg: VPSS bound to JPEG venc=%d",
+                   config.jpeg_venc_channel);
 
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = 1;
@@ -131,6 +114,8 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         return result;
     }
     receiving = true;
+    INFRA_LOG_INFO("hisi_vendor", "CaptureJpeg: JPEG venc=%d receiving started",
+                   config.jpeg_venc_channel);
 
     const int fd = HI_MPI_VENC_GetFd(jpeg_chn);
     if (fd < 0) {
@@ -145,6 +130,9 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     pfd.events = POLLIN | POLLERR;
     const int timeout_ms = static_cast<int>(config.timeout_ms);
     const int poll_status = poll(&pfd, 1, timeout_ms);
+    INFRA_LOG_INFO("hisi_vendor",
+                   "CaptureJpeg: JPEG venc=%d poll status=%d revents=0x%x",
+                   config.jpeg_venc_channel, poll_status, pfd.revents);
     if (poll_status <= 0) {
         if (poll_status < 0) {
             INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: poll failed: %s",
@@ -169,6 +157,12 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
         return result;
     }
+    INFRA_LOG_INFO(
+        "hisi_vendor",
+        "CaptureJpeg: JPEG venc=%d status packs=%u left_pics=%u "
+        "left_frames=%u",
+        config.jpeg_venc_channel, status.u32CurPacks, status.u32LeftPics,
+        status.u32LeftStreamFrames);
     if (status.u32CurPacks == 0) {
         INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: no JPEG packs available");
         CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
