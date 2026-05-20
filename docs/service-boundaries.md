@@ -90,9 +90,10 @@ Should not own:
 - Persistent event storage.
 - Business decision logic.
 
-Open convention to define:
+Payload and naming convention:
 
-- Event names and payload ownership for config changes, stream state, alarm state, and upgrade progress.
+- See `docs/event-payloads.md` for event names, payload ownership, publishers,
+  subscribers, and reserved event contracts.
 
 ### `libs/auth_service`
 
