@@ -130,7 +130,7 @@ public:
         }
         if (options_.hls_segment_duration_ms == 0 ||
             options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0 ||
-            options_.max_frame_consumers == 0) {
+            options_.max_frame_sinks == 0) {
             return false;
         }
         infra::ExecutorOptions executor_options;
@@ -233,7 +233,7 @@ public:
             sub_packaged_logged_ = false;
             drain_task_posted_ = false;
             flv_clients_.clear();
-            frame_consumers_.clear();
+            frame_sinks_.clear();
             main_stream_ = hub_state::StreamContext{};
             sub_stream_ = hub_state::StreamContext{};
             worker_executor = worker_executor_.get();
@@ -360,27 +360,27 @@ public:
         return flv_clients_.erase(client_id) != 0;
     }
 
-    StreamFrameConsumerId AttachFrameConsumer(
-        const StreamFrameConsumerOptions &options, IFrameSink *sink) override {
+    StreamFrameSinkId AttachFrameSink(
+        const StreamFrameSinkOptions &options, IFrameSink *sink) override {
         if (sink == nullptr || !IsStreamSupported(options.stream_id)) {
             return 0;
         }
         IFrameSource *frame_source = nullptr;
-        StreamFrameConsumerId consumer_id = 0;
+        StreamFrameSinkId sink_id = 0;
         bool request_key_frame = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (!started_ || FindStream(options.stream_id) == nullptr ||
-                frame_consumers_.size() >= options_.max_frame_consumers) {
+                frame_sinks_.size() >= options_.max_frame_sinks) {
                 return 0;
             }
-            consumer_id = next_frame_consumer_id_++;
-            FrameConsumerState consumer;
-            consumer.stream_id = options.stream_id;
-            consumer.require_key_frame_first = options.require_key_frame_first;
-            consumer.sink = sink;
-            consumer.sink_name = options.sink_name;
-            frame_consumers_[consumer_id] = consumer;
+            sink_id = next_frame_sink_id_++;
+            FrameSinkState frame_sink;
+            frame_sink.stream_id = options.stream_id;
+            frame_sink.require_key_frame_first = options.require_key_frame_first;
+            frame_sink.sink = sink;
+            frame_sink.sink_name = options.sink_name;
+            frame_sinks_[sink_id] = frame_sink;
             frame_source = dependencies_.frame_source;
             request_key_frame = options.require_key_frame_first;
         }
@@ -388,12 +388,12 @@ public:
             (void)frame_source->RequestKeyFrame(options.stream_id,
                                                 KeyFrameReason::kNewClient);
         }
-        return consumer_id;
+        return sink_id;
     }
 
-    bool DetachFrameConsumer(StreamFrameConsumerId consumer_id) override {
+    bool DetachFrameSink(StreamFrameSinkId sink_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
-        return frame_consumers_.erase(consumer_id) != 0;
+        return frame_sinks_.erase(sink_id) != 0;
     }
 
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
@@ -409,8 +409,8 @@ public:
         StreamHubServiceStats stats = stats_;
         stats.enabled = started_;
         stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.size());
-        stats.active_frame_consumers =
-            static_cast<uint32_t>(frame_consumers_.size());
+        stats.active_frame_sinks =
+            static_cast<uint32_t>(frame_sinks_.size());
         return stats;
     }
 
@@ -459,8 +459,8 @@ private:
         bool send_sequence_header = false;
     };
 
-    struct PendingFrameConsumerWrite {
-        StreamFrameConsumerId consumer_id = 0;
+    struct PendingFrameSinkWrite {
+        StreamFrameSinkId sink_id = 0;
         IFrameSink *sink = nullptr;
     };
 
@@ -483,7 +483,7 @@ private:
     }
 
     void ProcessFrame(const EncodedFrame &frame) {
-        std::vector<PendingFrameConsumerWrite> frame_consumers;
+        std::vector<PendingFrameSinkWrite> frame_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -497,7 +497,7 @@ private:
             if (stream->state != StreamState::kRunning) {
                 return;
             }
-            for (auto &item : frame_consumers_) {
+            for (auto &item : frame_sinks_) {
                 if (item.second.stream_id != frame.stream_id ||
                     item.second.sink == nullptr) {
                     continue;
@@ -507,16 +507,16 @@ private:
                     continue;
                 }
                 item.second.require_key_frame_first = false;
-                PendingFrameConsumerWrite consumer;
-                consumer.consumer_id = item.first;
-                consumer.sink = item.second.sink;
-                frame_consumers.push_back(consumer);
+                PendingFrameSinkWrite pending_sink;
+                pending_sink.sink_id = item.first;
+                pending_sink.sink = item.second.sink;
+                frame_sinks.push_back(pending_sink);
             }
         }
 
-        for (const PendingFrameConsumerWrite &consumer : frame_consumers) {
-            if (consumer.sink != nullptr) {
-                consumer.sink->OnFrame(frame);
+        for (const PendingFrameSinkWrite &pending_sink : frame_sinks) {
+            if (pending_sink.sink != nullptr) {
+                pending_sink.sink->OnFrame(frame);
             }
         }
 
@@ -692,7 +692,7 @@ private:
         std::shared_ptr<IStreamFlvSink> sink;
     };
 
-    struct FrameConsumerState {
+    struct FrameSinkState {
         StreamId stream_id = StreamId::kMain;
         bool require_key_frame_first = true;
         IFrameSink *sink = nullptr;
@@ -795,12 +795,12 @@ private:
     hub_state::StreamContext main_stream_;
     hub_state::StreamContext sub_stream_;
     std::map<StreamFlvClientId, FlvClientState> flv_clients_;
-    std::map<StreamFrameConsumerId, FrameConsumerState> frame_consumers_;
+    std::map<StreamFrameSinkId, FrameSinkState> frame_sinks_;
     StreamHubServiceStats stats_;
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
     StreamFlvClientId next_flv_client_id_ = 1;
-    StreamFrameConsumerId next_frame_consumer_id_ = 1;
+    StreamFrameSinkId next_frame_sink_id_ = 1;
     bool main_bad_payload_logged_ = false;
     bool sub_bad_payload_logged_ = false;
     bool main_packaged_logged_ = false;

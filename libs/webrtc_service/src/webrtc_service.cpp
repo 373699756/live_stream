@@ -514,24 +514,24 @@ private:
         if (dependencies_.stream_hub == nullptr) {
             return true;
         }
-        if (main_consumer_id_ != 0 || sub_consumer_id_ != 0) {
+        if (main_sink_id_ != 0 || sub_sink_id_ != 0) {
             return true;
         }
 
-        StreamFrameConsumerOptions main_options;
+        StreamFrameSinkOptions main_options;
         main_options.stream_id = StreamId::kMain;
         main_options.sink_name = WebrtcService::Name();
-        main_consumer_id_ =
-            dependencies_.stream_hub->AttachFrameConsumer(main_options, this);
+        main_sink_id_ =
+            dependencies_.stream_hub->AttachFrameSink(main_options, this);
 
-        StreamFrameConsumerOptions sub_options;
+        StreamFrameSinkOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.sink_name = WebrtcService::Name();
-        sub_consumer_id_ =
-            dependencies_.stream_hub->AttachFrameConsumer(sub_options, this);
+        sub_sink_id_ =
+            dependencies_.stream_hub->AttachFrameSink(sub_options, this);
 
         const bool subscribed =
-            main_consumer_id_ != 0 || sub_consumer_id_ != 0;
+            main_sink_id_ != 0 || sub_sink_id_ != 0;
         if (!subscribed) {
             UnsubscribeMediaLocked();
         }
@@ -540,19 +540,19 @@ private:
 
     void UnsubscribeMediaLocked() {
         if (dependencies_.stream_hub == nullptr) {
-            main_consumer_id_ = 0;
-            sub_consumer_id_ = 0;
+            main_sink_id_ = 0;
+            sub_sink_id_ = 0;
             return;
         }
-        if (main_consumer_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameConsumer(
-                main_consumer_id_);
-            main_consumer_id_ = 0;
+        if (main_sink_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameSink(
+                main_sink_id_);
+            main_sink_id_ = 0;
         }
-        if (sub_consumer_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameConsumer(
-                sub_consumer_id_);
-            sub_consumer_id_ = 0;
+        if (sub_sink_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameSink(
+                sub_sink_id_);
+            sub_sink_id_ = 0;
         }
     }
 
@@ -633,8 +633,8 @@ private:
     StreamId last_sent_stream_ = StreamId::kSub;
     webrtc_internal::WebrtcPeerStore peer_store_;
     WebrtcServiceStats stats_{};
-    StreamFrameConsumerId main_consumer_id_ = 0;
-    StreamFrameConsumerId sub_consumer_id_ = 0;
+    StreamFrameSinkId main_sink_id_ = 0;
+    StreamFrameSinkId sub_sink_id_ = 0;
 };
 
 std::unique_ptr<IWebrtcService>

@@ -120,18 +120,18 @@ public:
             udp_socket_id_ = udp_result;
         }
         if (dependencies_.stream_hub != nullptr) {
-            StreamFrameConsumerOptions main_options;
+            StreamFrameSinkOptions main_options;
             main_options.stream_id = StreamId::kMain;
             main_options.require_key_frame_first = true;
             main_options.sink_name = kServiceName;
-            main_consumer_id_ =
-                dependencies_.stream_hub->AttachFrameConsumer(main_options, this);
-            StreamFrameConsumerOptions sub_options;
+            main_sink_id_ =
+                dependencies_.stream_hub->AttachFrameSink(main_options, this);
+            StreamFrameSinkOptions sub_options;
             sub_options.stream_id = StreamId::kSub;
             sub_options.require_key_frame_first = true;
             sub_options.sink_name = kServiceName;
-            sub_consumer_id_ =
-                dependencies_.stream_hub->AttachFrameConsumer(sub_options, this);
+            sub_sink_id_ =
+                dependencies_.stream_hub->AttachFrameSink(sub_options, this);
         } else if (dependencies_.frame_source != nullptr) {
             (void)dependencies_.frame_source->AttachSink(StreamId::kMain,
                                                          this);
@@ -168,15 +168,15 @@ public:
 
     void Stop() override {
         if (dependencies_.stream_hub != nullptr) {
-            if (main_consumer_id_ != 0) {
-                (void)dependencies_.stream_hub->DetachFrameConsumer(
-                    main_consumer_id_);
-                main_consumer_id_ = 0;
+            if (main_sink_id_ != 0) {
+                (void)dependencies_.stream_hub->DetachFrameSink(
+                    main_sink_id_);
+                main_sink_id_ = 0;
             }
-            if (sub_consumer_id_ != 0) {
-                (void)dependencies_.stream_hub->DetachFrameConsumer(
-                    sub_consumer_id_);
-                sub_consumer_id_ = 0;
+            if (sub_sink_id_ != 0) {
+                (void)dependencies_.stream_hub->DetachFrameSink(
+                    sub_sink_id_);
+                sub_sink_id_ = 0;
             }
         } else if (dependencies_.frame_source != nullptr) {
             (void)dependencies_.frame_source->DetachSink(StreamId::kMain,
@@ -792,8 +792,8 @@ private:
     RtspListenAddress local_address_;
     RtspSessionStore sessions_;
     RtspServiceStats stats_;
-    StreamFrameConsumerId main_consumer_id_ = 0;
-    StreamFrameConsumerId sub_consumer_id_ = 0;
+    StreamFrameSinkId main_sink_id_ = 0;
+    StreamFrameSinkId sub_sink_id_ = 0;
 };
 
 std::unique_ptr<IRtspService> CreateRtspService(

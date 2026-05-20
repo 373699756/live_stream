@@ -13,13 +13,13 @@
 namespace live_stream {
 
 using StreamFlvClientId = uint64_t;
-using StreamFrameConsumerId = uint64_t;
+using StreamFrameSinkId = uint64_t;
 
 struct StreamHubServiceOptions {
     uint32_t hls_segment_duration_ms = 1000;
     uint32_t hls_playlist_depth = 4;
     uint32_t max_flv_clients = 8;
-    uint32_t max_frame_consumers = 8;
+    uint32_t max_frame_sinks = 8;
 };
 
 struct StreamHubServiceDependencies {
@@ -57,7 +57,7 @@ struct StreamHubServiceStats {
     bool enabled = false;
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
-    uint32_t active_frame_consumers = 0;
+    uint32_t active_frame_sinks = 0;
 };
 
 struct StreamBrowserStatus {
@@ -68,7 +68,7 @@ struct StreamBrowserStatus {
     VideoCodec codec = VideoCodec::kH264;
 };
 
-struct StreamFrameConsumerOptions {
+struct StreamFrameSinkOptions {
     StreamId stream_id = StreamId::kMain;
     bool require_key_frame_first = true;
     std::string sink_name;
@@ -100,9 +100,9 @@ public:
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
-    virtual StreamFrameConsumerId AttachFrameConsumer(
-        const StreamFrameConsumerOptions &options, IFrameSink *sink) = 0;
-    virtual bool DetachFrameConsumer(StreamFrameConsumerId consumer_id) = 0;
+    virtual StreamFrameSinkId AttachFrameSink(
+        const StreamFrameSinkOptions &options, IFrameSink *sink) = 0;
+    virtual bool DetachFrameSink(StreamFrameSinkId sink_id) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason) = 0;
     virtual StreamHubServiceStats GetStats() const = 0;
