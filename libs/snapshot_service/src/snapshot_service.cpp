@@ -23,7 +23,6 @@ enum class ServiceState {
 bool IsValidConfig(const SnapshotConfig &config) {
     return config.snap_pipe >= 0 && config.snap_vpss_group >= 0 &&
            config.snap_vpss_channel >= 0 && config.jpeg_venc_channel >= 0 &&
-           config.size.width > 0 && config.size.height > 0 &&
            config.frame_count > 0 && config.repeat_send_times > 0;
 }
 
@@ -54,6 +53,25 @@ bool IsSnapshotVencChannelAvailable(const SnapshotConfig &config,
     return true;
 }
 
+SnapshotConfig BuildCaptureConfig(const SnapshotConfig &base_config,
+                                  const MediaChannels &channels,
+                                  StreamId stream_id) {
+    SnapshotConfig capture_config = base_config;
+    capture_config.snap_pipe = channels.snap_pipe;
+    if (stream_id == StreamId::kSub && channels.sub_vpss.device >= 0 &&
+        channels.sub_vpss.channel >= 0 && channels.sub_size.width > 0 &&
+        channels.sub_size.height > 0) {
+        capture_config.snap_vpss_group = channels.sub_vpss.device;
+        capture_config.snap_vpss_channel = channels.sub_vpss.channel;
+        capture_config.size = channels.sub_size;
+        return capture_config;
+    }
+    capture_config.snap_vpss_group = channels.vpss.device;
+    capture_config.snap_vpss_channel = channels.vpss.channel;
+    capture_config.size = channels.main_size;
+    return capture_config;
+}
+
 hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
                                              const CaptureRequest &request) {
     hisisdk::SnapshotConfig hisi_config;
@@ -69,25 +87,6 @@ hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
     hisi_config.load_ccm = config.load_ccm;
     hisi_config.zero_shutter_lag = config.zero_shutter_lag;
     return hisi_config;
-}
-
-void ApplyCaptureSource(const MediaChannels &channels,
-                        const CaptureRequest &request,
-                        SnapshotConfig *config) {
-    if (config == nullptr) {
-        return;
-    }
-    if (request.stream_id == StreamId::kSub &&
-        channels.sub_vpss.device >= 0 && channels.sub_vpss.channel >= 0 &&
-        channels.sub_size.width > 0 && channels.sub_size.height > 0) {
-        config->snap_vpss_group = channels.sub_vpss.device;
-        config->snap_vpss_channel = channels.sub_vpss.channel;
-        config->size = channels.sub_size;
-        return;
-    }
-    config->snap_vpss_group = channels.vpss.device;
-    config->snap_vpss_channel = channels.vpss.channel;
-    config->size = channels.main_size;
 }
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
@@ -130,11 +129,6 @@ struct SnapshotService::Impl {
     bool enabled = true;
     uint32_t default_jpeg_quality = 90;
     uint32_t default_timeout_ms = 3000;
-    bool snap_vpss_started = false;
-    bool vi_bound_snap_vpss = false;
-    bool jpeg_venc_started = false;
-    bool snap_vpss_bound_venc = false;
-    bool snap_pipe_enabled = false;
     MediaChannels media_channels{};
     SnapshotServiceStats stats;
     mutable std::mutex mutex;
@@ -190,11 +184,6 @@ struct SnapshotService::Impl {
     }
 
     void CleanupCaptureSession() {
-        snap_pipe_enabled = false;
-        snap_vpss_bound_venc = false;
-        jpeg_venc_started = false;
-        vi_bound_snap_vpss = false;
-        snap_vpss_started = false;
         capturing = false;
     }
 
@@ -205,11 +194,6 @@ struct SnapshotService::Impl {
         if (!IsSnapshotVencChannelAvailable(config, media_channels)) {
             return false;
         }
-        snap_vpss_started = true;
-        vi_bound_snap_vpss = true;
-        jpeg_venc_started = true;
-        snap_vpss_bound_venc = true;
-        snap_pipe_enabled = true;
         return true;
     }
 
@@ -324,10 +308,6 @@ bool SnapshotService::BindMedia(const MediaChannels &channels) {
         return false;
     }
     impl_->media_channels = channels;
-    impl_->config.snap_pipe = channels.snap_pipe;
-    impl_->config.snap_vpss_group = channels.vpss.device;
-    impl_->config.snap_vpss_channel = channels.vpss.channel;
-    impl_->config.size = channels.main_size;
     if (!IsSnapshotVencChannelAvailable(impl_->config, channels)) {
         return false;
     }
@@ -363,10 +343,6 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
                 return SnapshotFrame{};
             }
             impl_->media_channels = channels;
-            impl_->config.snap_pipe = channels.snap_pipe;
-            impl_->config.snap_vpss_group = channels.vpss.device;
-            impl_->config.snap_vpss_channel = channels.vpss.channel;
-            impl_->config.size = channels.main_size;
             impl_->media_bound = true;
         } else {
             channels = impl_->media_channels;
@@ -386,13 +362,17 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
         }
         if (!impl_->PrepareCaptureSession()) {
             impl_->CleanupCaptureSession();
-            impl_->capturing = false;
             ++impl_->stats.capture_failed_count;
             return SnapshotFrame{};
         }
-        capture_config = impl_->config;
-        ApplyCaptureSource(impl_->media_channels, effective_request,
-                           &capture_config);
+        capture_config = BuildCaptureConfig(
+            impl_->config, impl_->media_channels, effective_request.stream_id);
+        if (capture_config.size.width == 0 ||
+            capture_config.size.height == 0) {
+            impl_->CleanupCaptureSession();
+            ++impl_->stats.capture_failed_count;
+            return SnapshotFrame{};
+        }
     }
 
     hisisdk::JpegFrame hisi_frame = impl_->sdk->CaptureJpeg(
@@ -400,7 +380,6 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->CleanupCaptureSession();
-    impl_->capturing = false;
     if (!hisi_frame.buffer || hisi_frame.size == 0) {
         ++impl_->stats.capture_failed_count;
         return SnapshotFrame{};

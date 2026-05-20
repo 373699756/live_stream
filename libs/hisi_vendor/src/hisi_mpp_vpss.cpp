@@ -76,7 +76,7 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     chn_attr.stFrameRate.s32DstFrameRate =
         config.main_stream.frame_rate.target_fps;
     chn_attr.enCompressMode = COMPRESS_MODE_NONE;
-    chn_attr.u32Depth = 0;
+    chn_attr.u32Depth = 1;
     chn_attr.bMirror = HI_FALSE;
     chn_attr.bFlip = HI_FALSE;
 
@@ -98,7 +98,7 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
         sub_attr.stFrameRate.s32DstFrameRate =
             config.sub_stream.frame_rate.target_fps;
         sub_attr.enCompressMode = COMPRESS_MODE_NONE;
-        sub_attr.u32Depth = 0;
+        sub_attr.u32Depth = 1;
         sub_attr.bMirror = HI_FALSE;
         sub_attr.bFlip = HI_FALSE;
 

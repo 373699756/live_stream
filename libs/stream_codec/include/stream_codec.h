@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace live_stream {
 namespace stream_codec {
@@ -75,35 +74,17 @@ bool ParseH264AnnexBNalUnits(const uint8_t *data, size_t size,
 bool ParseH265AnnexBNalUnits(const uint8_t *data, size_t size,
                              H265NalUnitList *units);
 
-std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
-                                                 size_t size);
-
-std::vector<H265NalUnit> ParseH265AnnexBNalUnits(const uint8_t *data,
-                                                 size_t size);
-
 bool HasH264ParameterSets(const H264NalUnitList &units);
 
 bool HasH265ParameterSets(const H265NalUnitList &units);
-
-bool HasH264ParameterSets(const std::vector<H264NalUnit> &units);
-
-bool HasH265ParameterSets(const std::vector<H265NalUnit> &units);
 
 bool HasCompleteH264ParameterSets(const H264NalUnitList &units);
 
 bool HasCompleteH265ParameterSets(const H265NalUnitList &units);
 
-bool HasCompleteH264ParameterSets(const std::vector<H264NalUnit> &units);
-
-bool HasCompleteH265ParameterSets(const std::vector<H265NalUnit> &units);
-
 bool HasH264KeyFrame(const H264NalUnitList &units);
 
 bool HasH265KeyFrame(const H265NalUnitList &units);
-
-bool HasH264KeyFrame(const std::vector<H264NalUnit> &units);
-
-bool HasH265KeyFrame(const std::vector<H265NalUnit> &units);
 
 void ExtractH264ParameterSets(const H264NalUnitList &units, std::string *sps,
                               std::string *pps, bool *has_sps,
@@ -113,28 +94,9 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               std::string *sps, std::string *pps,
                               bool *has_vps, bool *has_sps, bool *has_pps);
 
-void ExtractH264ParameterSets(const std::vector<H264NalUnit> &units,
-                              std::string *sps,
-                              std::string *pps,
-                              bool *has_sps,
-                              bool *has_pps);
-
-void ExtractH265ParameterSets(const std::vector<H265NalUnit> &units,
-                              std::string *vps,
-                              std::string *sps,
-                              std::string *pps,
-                              bool *has_vps,
-                              bool *has_sps,
-                              bool *has_pps);
-
 std::string BuildH264AvccSample(const H264NalUnitList &units);
 
 std::string BuildH265LengthPrefixedSample(const H265NalUnitList &units);
-
-std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units);
-
-std::string BuildH265LengthPrefixedSample(
-    const std::vector<H265NalUnit> &units);
 
 std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
                                       const std::string &sps,
@@ -146,15 +108,6 @@ std::string BuildH265AnnexBAccessUnit(const H265NalUnitList &units,
                                       const std::string &sps,
                                       const std::string &pps,
                                       bool prepend_parameter_sets);
-
-std::string BuildH264AnnexBAccessUnit(
-    const std::vector<H264NalUnit> &units, const std::string &sps,
-    const std::string &pps, bool prepend_parameter_sets);
-
-std::string BuildH265AnnexBAccessUnit(
-    const std::vector<H265NalUnit> &units, const std::string &vps,
-    const std::string &sps, const std::string &pps,
-    bool prepend_parameter_sets);
 
 }  // namespace stream_codec
 }  // namespace live_stream

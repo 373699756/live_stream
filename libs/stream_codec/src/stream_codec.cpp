@@ -3,7 +3,6 @@
 #include "live_stream/byte_writer.h"
 
 #include <string>
-#include <vector>
 
 namespace live_stream {
 namespace stream_codec {
@@ -375,18 +374,6 @@ bool ParseH264AnnexBNalUnits(const uint8_t *data, size_t size,
     return ForEachAnnexBNalUnit(data, size, &builder) && !units->overflow;
 }
 
-std::vector<H264NalUnit> ParseH264AnnexBNalUnits(const uint8_t *data,
-                                                 size_t size) {
-    H264NalUnitList parsed;
-    (void)ParseH264AnnexBNalUnits(data, size, &parsed);
-    std::vector<H264NalUnit> units;
-    units.reserve(parsed.count);
-    for (const H264NalUnit &unit : parsed) {
-        units.push_back(unit);
-    }
-    return units;
-}
-
 bool ParseH265AnnexBNalUnits(const uint8_t *data, size_t size,
                              H265NalUnitList *units) {
     if (units == nullptr) {
@@ -411,33 +398,9 @@ bool ParseH265AnnexBNalUnits(const uint8_t *data, size_t size,
     return ForEachAnnexBNalUnit(data, size, &builder) && !units->overflow;
 }
 
-std::vector<H265NalUnit> ParseH265AnnexBNalUnits(const uint8_t *data,
-                                                 size_t size) {
-    H265NalUnitList parsed;
-    (void)ParseH265AnnexBNalUnits(data, size, &parsed);
-    std::vector<H265NalUnit> units;
-    units.reserve(parsed.count);
-    for (const H265NalUnit &unit : parsed) {
-        units.push_back(unit);
-    }
-    return units;
-}
-
-bool HasH264ParameterSets(const std::vector<H264NalUnit> &units) {
-    return AnyNalUnit(units, [](const H264NalUnit &unit) {
-        return unit.type == 7 || unit.type == 8;
-    });
-}
-
 bool HasH264ParameterSets(const H264NalUnitList &units) {
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return unit.type == 7 || unit.type == 8;
-    });
-}
-
-bool HasH265ParameterSets(const std::vector<H265NalUnit> &units) {
-    return AnyNalUnit(units, [](const H265NalUnit &unit) {
-        return unit.type == 32 || unit.type == 33 || unit.type == 34;
     });
 }
 
@@ -447,37 +410,17 @@ bool HasH265ParameterSets(const H265NalUnitList &units) {
     });
 }
 
-bool HasCompleteH264ParameterSets(const std::vector<H264NalUnit> &units) {
-    return HasCompleteH264ParameterSetsInUnits(units);
-}
-
 bool HasCompleteH264ParameterSets(const H264NalUnitList &units) {
     return HasCompleteH264ParameterSetsInUnits(units);
-}
-
-bool HasCompleteH265ParameterSets(const std::vector<H265NalUnit> &units) {
-    return HasCompleteH265ParameterSetsInUnits(units);
 }
 
 bool HasCompleteH265ParameterSets(const H265NalUnitList &units) {
     return HasCompleteH265ParameterSetsInUnits(units);
 }
 
-bool HasH264KeyFrame(const std::vector<H264NalUnit> &units) {
-    return AnyNalUnit(units, [](const H264NalUnit &unit) {
-        return unit.type == 5;
-    });
-}
-
 bool HasH264KeyFrame(const H264NalUnitList &units) {
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return unit.type == 5;
-    });
-}
-
-bool HasH265KeyFrame(const std::vector<H265NalUnit> &units) {
-    return AnyNalUnit(units, [](const H265NalUnit &unit) {
-        return unit.type == 19 || unit.type == 20 || unit.type == 21;
     });
 }
 
@@ -487,29 +430,10 @@ bool HasH265KeyFrame(const H265NalUnitList &units) {
     });
 }
 
-void ExtractH264ParameterSets(const std::vector<H264NalUnit> &units,
-                              std::string *sps,
-                              std::string *pps,
-                              bool *has_sps,
-                              bool *has_pps) {
-    ExtractH264ParameterSetsFromUnits(units, sps, pps, has_sps, has_pps);
-}
-
 void ExtractH264ParameterSets(const H264NalUnitList &units, std::string *sps,
                               std::string *pps, bool *has_sps,
                               bool *has_pps) {
     ExtractH264ParameterSetsFromUnits(units, sps, pps, has_sps, has_pps);
-}
-
-void ExtractH265ParameterSets(const std::vector<H265NalUnit> &units,
-                              std::string *vps,
-                              std::string *sps,
-                              std::string *pps,
-                              bool *has_vps,
-                              bool *has_sps,
-                              bool *has_pps) {
-    ExtractH265ParameterSetsFromUnits(units, vps, sps, pps, has_vps, has_sps,
-                                      has_pps);
 }
 
 void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
@@ -519,28 +443,12 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                                       has_pps);
 }
 
-std::string BuildH264AvccSample(const std::vector<H264NalUnit> &units) {
-    return BuildH264AvccSampleFromUnits(units);
-}
-
 std::string BuildH264AvccSample(const H264NalUnitList &units) {
     return BuildH264AvccSampleFromUnits(units);
 }
 
-std::string BuildH265LengthPrefixedSample(
-    const std::vector<H265NalUnit> &units) {
-    return BuildH265LengthPrefixedSampleFromUnits(units);
-}
-
 std::string BuildH265LengthPrefixedSample(const H265NalUnitList &units) {
     return BuildH265LengthPrefixedSampleFromUnits(units);
-}
-
-std::string BuildH264AnnexBAccessUnit(
-    const std::vector<H264NalUnit> &units, const std::string &sps,
-    const std::string &pps, bool prepend_parameter_sets) {
-    return BuildH264AnnexBAccessUnitFromUnits(units, sps, pps,
-                                              prepend_parameter_sets);
 }
 
 std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
@@ -548,14 +456,6 @@ std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
                                       const std::string &pps,
                                       bool prepend_parameter_sets) {
     return BuildH264AnnexBAccessUnitFromUnits(units, sps, pps,
-                                              prepend_parameter_sets);
-}
-
-std::string BuildH265AnnexBAccessUnit(
-    const std::vector<H265NalUnit> &units, const std::string &vps,
-    const std::string &sps, const std::string &pps,
-    bool prepend_parameter_sets) {
-    return BuildH265AnnexBAccessUnitFromUnits(units, vps, sps, pps,
                                               prepend_parameter_sets);
 }
 

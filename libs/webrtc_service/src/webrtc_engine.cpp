@@ -113,8 +113,8 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
     if (data == nullptr) {
         return nullptr;
     }
-    const std::vector<stream_codec::H264NalUnit> nals =
-        stream_codec::ParseH264AnnexBNalUnits(data, frame.size);
+    stream_codec::H264NalUnitList nals;
+    (void)stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &nals);
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
                                              : 0;
     if (nals.empty()) {
@@ -192,8 +192,8 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
     if (data == nullptr) {
         return nullptr;
     }
-    const std::vector<stream_codec::H265NalUnit> nals =
-        stream_codec::ParseH265AnnexBNalUnits(data, frame.size);
+    stream_codec::H265NalUnitList nals;
+    (void)stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &nals);
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
                                              : 0;
     if (nals.empty()) {
