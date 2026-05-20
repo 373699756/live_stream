@@ -149,6 +149,8 @@ public:
             sub_subscription_id_ = 0;
             main_pending_ = StreamFrameQueue{};
             sub_pending_ = StreamFrameQueue{};
+            main_input_logged_ = false;
+            sub_input_logged_ = false;
             main_bad_payload_logged_ = false;
             sub_bad_payload_logged_ = false;
             main_packaged_logged_ = false;
@@ -199,6 +201,15 @@ public:
             request_main_idr = main_subscription_id_ != 0;
             request_sub_idr = sub_subscription_id_ != 0;
         }
+        INFRA_LOG_INFO(kServiceName,
+                       "stream hub subscribed main_id=%llu sub_id=%llu "
+                       "main_codec=%s sub_codec=%s request_main_idr=%d "
+                       "request_sub_idr=%d",
+                       static_cast<unsigned long long>(main_subscription_id),
+                       static_cast<unsigned long long>(sub_subscription_id),
+                       CodecName(main_codec), CodecName(sub_codec),
+                       request_main_idr ? 1 : 0,
+                       request_sub_idr ? 1 : 0);
         if (request_main_idr) {
             (void)frame_source->RequestKeyFrame(StreamId::kMain,
                                                 KeyFrameReason::kRecovery);
@@ -227,6 +238,8 @@ public:
             sub_subscription_id_ = 0;
             main_pending_ = StreamFrameQueue{};
             sub_pending_ = StreamFrameQueue{};
+            main_input_logged_ = false;
+            sub_input_logged_ = false;
             main_bad_payload_logged_ = false;
             sub_bad_payload_logged_ = false;
             main_packaged_logged_ = false;
@@ -427,6 +440,7 @@ public:
             if (!started_ || worker_executor_ == nullptr) {
                 return;
             }
+            LogInputFrameOnceLocked(frame);
             StreamFrameQueue *queue = FindPendingQueue(frame.stream_id);
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
                 return;
@@ -449,6 +463,8 @@ public:
         hub_state::StreamContext *stream = FindMutableStream(stream_id);
         if (stream != nullptr) {
             stream->state = state;
+            INFRA_LOG_INFO(kServiceName, "source state stream=%s state=%d",
+                           StreamName(stream_id), static_cast<int>(state));
         }
     }
 
@@ -546,6 +562,8 @@ private:
             if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
             }
+            const bool was_hls_ready = hub_state::IsHlsStreamReady(*stream);
+            const bool was_flv_ready = hub_state::IsFlvStreamReady(*stream);
 
             const hub_state::PackagedFrameResult packaged_frame =
                 hub_state::AppendFrameToStream(
@@ -555,6 +573,18 @@ private:
                 return;
             }
             LogPackagedFrameOnceLocked(frame, payload, packaged_frame, *stream);
+            const bool hls_ready = hub_state::IsHlsStreamReady(*stream);
+            const bool flv_ready = hub_state::IsFlvStreamReady(*stream);
+            if ((!was_hls_ready && hls_ready) ||
+                (!was_flv_ready && flv_ready)) {
+                INFRA_LOG_INFO(
+                    kServiceName,
+                    "browser stream ready stream=%s hls=%d flv=%d "
+                    "sequence_header=%zu last_keyframe=%zu segments=%zu",
+                    StreamName(frame.stream_id), hls_ready ? 1 : 0,
+                    flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
+                    stream->last_keyframe_tag.size(), stream->segments.size());
+            }
             if (packaged_frame.hls_segment_created) {
                 ++stats_.hls_segments_created;
             }
@@ -613,6 +643,16 @@ private:
         return nullptr;
     }
 
+    bool *InputFrameFlag(StreamId stream_id) {
+        if (stream_id == StreamId::kMain) {
+            return &main_input_logged_;
+        }
+        if (stream_id == StreamId::kSub) {
+            return &sub_input_logged_;
+        }
+        return nullptr;
+    }
+
     bool *PackagedFlag(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_packaged_logged_;
@@ -628,10 +668,32 @@ private:
         if (bad_payload_logged != nullptr) {
             *bad_payload_logged = false;
         }
+        bool *input_logged = InputFrameFlag(stream_id);
+        if (input_logged != nullptr) {
+            *input_logged = false;
+        }
         bool *packaged_logged = PackagedFlag(stream_id);
         if (packaged_logged != nullptr) {
             *packaged_logged = false;
         }
+    }
+
+    void LogInputFrameOnceLocked(const EncodedFrame &frame) {
+        bool *logged = InputFrameFlag(frame.stream_id);
+        if (logged == nullptr || *logged) {
+            return;
+        }
+        *logged = true;
+        char preview[kPayloadPreviewBytes * 3] = {};
+        FormatHexPreview(frame, preview, sizeof(preview));
+        INFRA_LOG_INFO(kServiceName,
+                       "received encoded frame: stream=%s codec=%s seq=%llu "
+                       "size=%u pts=%lld dts=%lld type=%s head=%s",
+                       StreamName(frame.stream_id), CodecName(frame.codec),
+                       static_cast<unsigned long long>(frame.sequence),
+                       frame.size, static_cast<long long>(frame.pts_us),
+                       static_cast<long long>(frame.dts_us),
+                       FrameTypeName(frame.frame_type), preview);
     }
 
     void LogBadPayloadOnce(const EncodedFrame &frame,
@@ -801,6 +863,8 @@ private:
     FrameSubscriptionId sub_subscription_id_ = 0;
     StreamFlvClientId next_flv_client_id_ = 1;
     StreamFrameSinkId next_frame_sink_id_ = 1;
+    bool main_input_logged_ = false;
+    bool sub_input_logged_ = false;
     bool main_bad_payload_logged_ = false;
     bool sub_bad_payload_logged_ = false;
     bool main_packaged_logged_ = false;

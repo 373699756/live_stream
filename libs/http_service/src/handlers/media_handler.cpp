@@ -182,6 +182,19 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
     return root;
 }
 
+void RequestBrowserRecoveryKeyFrame(HttpHandlerContext *context,
+                                    StreamId stream_id,
+                                    const StreamBrowserStatus &status) {
+    if (context == nullptr ||
+        context->Dependencies().stream_hub_service == nullptr ||
+        !status.running || !status.browser_codec ||
+        (status.hls_ready && status.flv_ready)) {
+        return;
+    }
+    (void)context->Dependencies().stream_hub_service->RequestKeyFrame(
+        stream_id, KeyFrameReason::kRecovery);
+}
+
 }  // namespace
 
 HttpResponse http_handlers::HandleMediaCapabilities(HttpHandlerContext *context) {
@@ -250,6 +263,7 @@ HttpResponse http_handlers::HandleStreamStatus(HttpHandlerContext *context, cons
         if (context->Dependencies().stream_hub_service != nullptr) {
             const StreamBrowserStatus browser =
                 context->Dependencies().stream_hub_service->GetBrowserStatus(stream_id);
+            RequestBrowserRecoveryKeyFrame(context, stream_id, browser);
             item["browserCodec"] = browser.browser_codec;
             item["hlsReady"] = browser.hls_ready;
             item["flvReady"] = browser.flv_ready;
