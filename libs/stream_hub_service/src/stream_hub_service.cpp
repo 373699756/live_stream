@@ -1,8 +1,10 @@
 #include "stream_hub_service.h"
 
+#include "flv_client_registry.h"
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
+#include "stream_frame_dispatcher.h"
 #include "stream_codec.h"
 #include "stream_hub_stream_state.h"
 
@@ -10,7 +12,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <deque>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -245,8 +246,8 @@ public:
             main_packaged_logged_ = false;
             sub_packaged_logged_ = false;
             drain_task_posted_ = false;
-            flv_clients_.clear();
-            frame_sinks_.clear();
+            flv_clients_.Clear();
+            frame_dispatcher_.Clear();
             main_stream_ = hub_state::StreamContext{};
             sub_stream_ = hub_state::StreamContext{};
             worker_executor = worker_executor_.get();
@@ -350,15 +351,11 @@ public:
             hub_state::StreamContext *stream = FindMutableStream(stream_id);
             if (stream == nullptr ||
                 !hub_state::IsFlvStreamReady(*stream) ||
-                flv_clients_.size() >= options_.max_flv_clients) {
+                flv_clients_.Size() >= options_.max_flv_clients) {
                 return 0;
             }
-            client_id = next_flv_client_id_++;
-            FlvClientState client;
-            client.stream_id = stream_id;
-            client.config_generation = config_generation;
-            client.sink = sink;
-            flv_clients_[client_id] = client;
+            client_id = flv_clients_.Attach(stream_id, config_generation, sink,
+                                            options_.max_flv_clients);
             frame_source = dependencies_.frame_source;
         }
         if (frame_source != nullptr) {
@@ -370,7 +367,7 @@ public:
 
     bool DetachFlvClient(StreamFlvClientId client_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
-        return flv_clients_.erase(client_id) != 0;
+        return flv_clients_.Detach(client_id);
     }
 
     StreamFrameSinkId AttachFrameSink(
@@ -384,16 +381,11 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (!started_ || FindStream(options.stream_id) == nullptr ||
-                frame_sinks_.size() >= options_.max_frame_sinks) {
+                frame_dispatcher_.Size() >= options_.max_frame_sinks) {
                 return 0;
             }
-            sink_id = next_frame_sink_id_++;
-            FrameSinkState frame_sink;
-            frame_sink.stream_id = options.stream_id;
-            frame_sink.require_key_frame_first = options.require_key_frame_first;
-            frame_sink.sink = sink;
-            frame_sink.sink_name = options.sink_name;
-            frame_sinks_[sink_id] = frame_sink;
+            sink_id = frame_dispatcher_.Attach(options, sink,
+                                               options_.max_frame_sinks);
             frame_source = dependencies_.frame_source;
             request_key_frame = options.require_key_frame_first;
         }
@@ -406,7 +398,7 @@ public:
 
     bool DetachFrameSink(StreamFrameSinkId sink_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
-        return frame_sinks_.erase(sink_id) != 0;
+        return frame_dispatcher_.Detach(sink_id);
     }
 
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
@@ -421,9 +413,9 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         StreamHubServiceStats stats = stats_;
         stats.enabled = started_;
-        stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.size());
+        stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.Size());
         stats.active_frame_sinks =
-            static_cast<uint32_t>(frame_sinks_.size());
+            static_cast<uint32_t>(frame_dispatcher_.Size());
         return stats;
     }
 
@@ -469,17 +461,6 @@ public:
     }
 
 private:
-    struct PendingFlvClientWrite {
-        StreamFlvClientId client_id = 0;
-        std::shared_ptr<IStreamFlvSink> sink;
-        bool send_sequence_header = false;
-    };
-
-    struct PendingFrameSinkWrite {
-        StreamFrameSinkId sink_id = 0;
-        IFrameSink *sink = nullptr;
-    };
-
     struct StreamFrameQueue {
         std::deque<EncodedFrame> frames;
     };
@@ -499,7 +480,7 @@ private:
     }
 
     void ProcessFrame(const EncodedFrame &frame) {
-        std::vector<PendingFrameSinkWrite> frame_sinks;
+        std::vector<hub_state::PendingStreamFrameSinkWrite> frame_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -513,24 +494,11 @@ private:
             if (stream->state != StreamState::kRunning) {
                 return;
             }
-            for (auto &item : frame_sinks_) {
-                if (item.second.stream_id != frame.stream_id ||
-                    item.second.sink == nullptr) {
-                    continue;
-                }
-                if (item.second.require_key_frame_first &&
-                    !stream_codec::IsKeyFrame(frame.frame_type)) {
-                    continue;
-                }
-                item.second.require_key_frame_first = false;
-                PendingFrameSinkWrite pending_sink;
-                pending_sink.sink_id = item.first;
-                pending_sink.sink = item.second.sink;
-                frame_sinks.push_back(pending_sink);
-            }
+            frame_sinks = frame_dispatcher_.CollectWrites(frame);
         }
 
-        for (const PendingFrameSinkWrite &pending_sink : frame_sinks) {
+        for (const hub_state::PendingStreamFrameSinkWrite &pending_sink :
+             frame_sinks) {
             if (pending_sink.sink != nullptr) {
                 pending_sink.sink->OnFrame(frame);
             }
@@ -546,7 +514,7 @@ private:
         }
 
         std::vector<StreamFlvClientId> detach_ids;
-        std::vector<PendingFlvClientWrite> clients;
+        std::vector<hub_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         std::string flv_tag;
         {
@@ -592,27 +560,12 @@ private:
             flv_tag = packaged_frame.flv_tag;
             const bool has_sequence_header =
                 hub_state::HasFlvSequenceHeader(*stream);
-            for (auto &item : flv_clients_) {
-                if (item.second.stream_id != frame.stream_id ||
-                    item.second.sink == nullptr || flv_tag.empty() ||
-                    !has_sequence_header) {
-                    continue;
-                }
-                const bool needs_config =
-                    item.second.config_generation != stream->config_generation &&
-                    !sequence_header_tag.empty();
-                if (needs_config) {
-                    item.second.config_generation = stream->config_generation;
-                }
-                PendingFlvClientWrite client;
-                client.client_id = item.first;
-                client.sink = item.second.sink;
-                client.send_sequence_header = needs_config;
-                clients.push_back(std::move(client));
-            }
+            clients = flv_clients_.CollectWrites(
+                frame.stream_id, stream->config_generation, !flv_tag.empty(),
+                has_sequence_header, !sequence_header_tag.empty());
         }
 
-        for (const PendingFlvClientWrite &client : clients) {
+        for (const hub_state::PendingFlvClientWrite &client : clients) {
             if (client.send_sequence_header &&
                 !client.sink->OnFlvChunk(
                     reinterpret_cast<const uint8_t *>(sequence_header_tag.data()),
@@ -748,19 +701,6 @@ private:
             stream.segments.size());
     }
 
-    struct FlvClientState {
-        StreamId stream_id = StreamId::kMain;
-        uint64_t config_generation = 0;
-        std::shared_ptr<IStreamFlvSink> sink;
-    };
-
-    struct FrameSinkState {
-        StreamId stream_id = StreamId::kMain;
-        bool require_key_frame_first = true;
-        IFrameSink *sink = nullptr;
-        std::string sink_name;
-    };
-
     StreamFrameQueue *FindPendingQueue(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_pending_;
@@ -856,13 +796,11 @@ private:
     StreamId last_drained_stream_ = StreamId::kSub;
     hub_state::StreamContext main_stream_;
     hub_state::StreamContext sub_stream_;
-    std::map<StreamFlvClientId, FlvClientState> flv_clients_;
-    std::map<StreamFrameSinkId, FrameSinkState> frame_sinks_;
+    hub_state::FlvClientRegistry flv_clients_;
+    hub_state::StreamFrameDispatcher frame_dispatcher_;
     StreamHubServiceStats stats_;
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
-    StreamFlvClientId next_flv_client_id_ = 1;
-    StreamFrameSinkId next_frame_sink_id_ = 1;
     bool main_input_logged_ = false;
     bool sub_input_logged_ = false;
     bool main_bad_payload_logged_ = false;
