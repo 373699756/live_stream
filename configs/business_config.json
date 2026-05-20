@@ -9,7 +9,7 @@
         "bitrate_kbps": 4096,
         "rate_control": "cbr",
         "gop": 50,
-        "gop_mode": "smart_p"
+        "gop_mode": "normal_p"
       },
       "sub": {
         "enabled": true,

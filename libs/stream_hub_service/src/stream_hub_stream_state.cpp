@@ -270,13 +270,15 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         result.hls_segment_created =
             FinalizeCurrentSegment(stream, hls_playlist_depth);
     }
-    if (!stream->current_segment.started) {
+    if (keyframe && !stream->current_segment.started) {
         StartSegment(stream, frame.pts_us);
     }
-    stream_mux::AppendVideoAccessUnitToTsSegment(
-        frame.codec, access_unit, frame.pts_us, frame.dts_us,
-        &stream->ts_muxer_state, &stream->current_segment.body);
-    stream->current_segment.last_pts_us = frame.pts_us;
+    if (stream->current_segment.started) {
+        stream_mux::AppendVideoAccessUnitToTsSegment(
+            frame.codec, access_unit, frame.pts_us, frame.dts_us,
+            &stream->ts_muxer_state, &stream->current_segment.body);
+        stream->current_segment.last_pts_us = frame.pts_us;
+    }
 
     if (!length_prefixed_sample.empty()) {
         const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
