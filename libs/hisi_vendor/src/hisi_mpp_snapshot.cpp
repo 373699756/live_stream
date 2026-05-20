@@ -14,6 +14,8 @@ namespace hisisdk {
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
+constexpr uint32_t kMaxJpegPacksPerFrame = 16;
+
 bool CheckMpiCall(const char* expression, HI_S32 status) {
     if (status == HI_SUCCESS) {
         return true;
@@ -29,13 +31,9 @@ uint32_t VencPackDataLen(const VENC_PACK_S& pack) {
     return pack.u32Len - pack.u32Offset;
 }
 
-void CleanupJpegCapture(VENC_CHN jpeg_chn, const MPP_CHN_S& src,
-                        const MPP_CHN_S& dst, bool bound, bool receiving) {
+void CleanupJpegCapture(VENC_CHN jpeg_chn, bool receiving) {
     if (receiving) {
         (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-    }
-    if (bound) {
-        (void)HI_MPI_SYS_UnBind(&src, &dst);
     }
     (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
 }
@@ -56,9 +54,6 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
 
 #ifdef LIVE_STREAM_ENABLE_HISI_MPP
     VENC_CHN jpeg_chn = static_cast<VENC_CHN>(config.jpeg_venc_channel);
-    MPP_CHN_S src{};
-    MPP_CHN_S dst{};
-    bool bound = false;
     bool receiving = false;
 
     // ─── 1. Create JPEG VENC channel ──────────────────────────
@@ -83,52 +78,66 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
 
     INFRA_LOG_INFO(
         "hisi_vendor",
-        "CaptureJpeg: bind VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
+        "CaptureJpeg: source VPSS grp=%d chn=%d to JPEG venc=%d size=%ux%u "
         "timeout=%u requested_quality=%u",
         config.snap_vpss_group, config.snap_vpss_channel,
         config.jpeg_venc_channel, config.size.width, config.size.height,
         config.timeout_ms, config.jpeg_quality);
 
-    src.enModId = HI_ID_VPSS;
-    src.s32DevId = config.snap_vpss_group;
-    src.s32ChnId = config.snap_vpss_channel;
-
-    dst.enModId = HI_ID_VENC;
-    dst.s32DevId = 0;
-    dst.s32ChnId = config.jpeg_venc_channel;
-
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_SYS_Bind",
-                      HI_MPI_SYS_Bind(&src, &dst))) {
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
-        return result;
-    }
-    bound = true;
-    INFRA_LOG_INFO("hisi_vendor", "CaptureJpeg: VPSS bound to JPEG venc=%d",
-                   config.jpeg_venc_channel);
-
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = 1;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
                       HI_MPI_VENC_StartRecvFrame(jpeg_chn, &recv_param))) {
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
     receiving = true;
     INFRA_LOG_INFO("hisi_vendor", "CaptureJpeg: JPEG venc=%d receiving started",
                    config.jpeg_venc_channel);
 
+    VIDEO_FRAME_INFO_S frame{};
+    const int timeout_ms = static_cast<int>(config.timeout_ms);
+    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
+                      HI_MPI_VPSS_GetChnFrame(
+                          static_cast<VPSS_GRP>(config.snap_vpss_group),
+                          static_cast<VPSS_CHN>(config.snap_vpss_channel),
+                          &frame, timeout_ms))) {
+        CleanupJpegCapture(jpeg_chn, receiving);
+        return result;
+    }
+    INFRA_LOG_INFO("hisi_vendor",
+                   "CaptureJpeg: VPSS frame acquired grp=%d chn=%d pts=%llu",
+                   config.snap_vpss_group, config.snap_vpss_channel,
+                   static_cast<unsigned long long>(frame.stVFrame.u64PTS));
+
+    const bool frame_sent =
+        CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SendFrame",
+                     HI_MPI_VENC_SendFrame(jpeg_chn, &frame, timeout_ms));
+    const bool frame_released =
+        CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
+                     HI_MPI_VPSS_ReleaseChnFrame(
+                         static_cast<VPSS_GRP>(config.snap_vpss_group),
+                         static_cast<VPSS_CHN>(config.snap_vpss_channel),
+                         &frame));
+    if (!frame_sent || !frame_released) {
+        CleanupJpegCapture(jpeg_chn, receiving);
+        return result;
+    }
+    INFRA_LOG_INFO("hisi_vendor",
+                   "CaptureJpeg: VPSS frame sent to JPEG venc=%d",
+                   config.jpeg_venc_channel);
+
     const int fd = HI_MPI_VENC_GetFd(jpeg_chn);
     if (fd < 0) {
         INFRA_LOG_ERROR("hisi_vendor",
                         "CaptureJpeg: HI_MPI_VENC_GetFd failed: %d", fd);
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
 
     pollfd pfd{};
     pfd.fd = fd;
     pfd.events = POLLIN | POLLERR;
-    const int timeout_ms = static_cast<int>(config.timeout_ms);
     const int poll_status = poll(&pfd, 1, timeout_ms);
     INFRA_LOG_INFO("hisi_vendor",
                    "CaptureJpeg: JPEG venc=%d poll status=%d revents=0x%x",
@@ -141,12 +150,12 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
             INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: timed out after %u ms",
                             config.timeout_ms);
         }
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
     if ((pfd.revents & POLLERR) != 0) {
         INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: POLLERR on VENC fd %d", fd);
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
 
@@ -154,7 +163,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     VENC_CHN_STATUS_S status{};
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_QueryStatus",
                       HI_MPI_VENC_QueryStatus(jpeg_chn, &status))) {
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
     INFRA_LOG_INFO(
@@ -165,7 +174,14 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         status.u32LeftStreamFrames);
     if (status.u32CurPacks == 0) {
         INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: no JPEG packs available");
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
+        return result;
+    }
+    if (status.u32CurPacks > kMaxJpegPacksPerFrame) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "CaptureJpeg: too many JPEG packs %u max=%u",
+                        status.u32CurPacks, kMaxJpegPacksPerFrame);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
 
@@ -175,7 +191,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     stream.u32PackCount = status.u32CurPacks;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_GetStream",
                       HI_MPI_VENC_GetStream(jpeg_chn, &stream, -1))) {
-        CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+        CleanupJpegCapture(jpeg_chn, receiving);
         return result;
     }
 
@@ -210,7 +226,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     }
 
     (void)HI_MPI_VENC_ReleaseStream(jpeg_chn, &stream);
-    CleanupJpegCapture(jpeg_chn, src, dst, bound, receiving);
+    CleanupJpegCapture(jpeg_chn, receiving);
 
     return result;
 
