@@ -16,5 +16,22 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/index.js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: (assetInfo) => {
+          const names = assetInfo.names.length > 0
+            ? assetInfo.names
+            : assetInfo.name
+              ? [assetInfo.name]
+              : [];
+          if (names.some((name) => name.endsWith('.css'))) {
+            return 'assets/index.css';
+          }
+          return 'assets/[name][extname]';
+        },
+      },
+    },
   },
 });

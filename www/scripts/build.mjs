@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,7 @@ const rootDir = path.resolve(scriptDir, '..');
 const distDir = path.join(rootDir, 'dist');
 const distAssetsDir = path.join(distDir, 'assets');
 const publicAssetsDir = path.join(rootDir, 'public', 'assets');
-const legacyEntryPattern = /^index-[A-Za-z0-9_-]+\.js$/;
+const legacyEntryPattern = /^index-[A-Za-z0-9_-]+\.(?:js|css)$/;
 
 function localBin(name) {
   const suffix = process.platform === 'win32' ? '.cmd' : '';
@@ -30,53 +30,19 @@ function run(command, args) {
   }
 }
 
-function readEntryFromIndex(indexPath) {
-  if (!existsSync(indexPath)) {
-    return '';
-  }
-  const html = readFileSync(indexPath, 'utf8');
-  const match = html.match(/\/assets\/(index-[^"']+\.js)/);
-  return match ? match[1] : '';
-}
-
-function listLegacyEntries() {
-  if (!existsSync(publicAssetsDir)) {
-    return [];
-  }
-  return readdirSync(publicAssetsDir).filter((name) => legacyEntryPattern.test(name));
-}
-
-function writeIfChanged(filePath, content) {
-  if (existsSync(filePath) && readFileSync(filePath, 'utf8') === content) {
+function removeLegacyEntries(directory) {
+  if (!existsSync(directory)) {
     return;
   }
-  writeFileSync(filePath, content);
+  for (const name of readdirSync(directory)) {
+    if (legacyEntryPattern.test(name)) {
+      rmSync(path.join(directory, name), { force: true });
+    }
+  }
 }
 
-const previousEntry = readEntryFromIndex(path.join(distDir, 'index.html'));
+removeLegacyEntries(distAssetsDir);
+removeLegacyEntries(publicAssetsDir);
 
 run(localBin('tsc'), ['--noEmit']);
 run(localBin('vite'), ['build']);
-
-const currentEntry = readEntryFromIndex(path.join(distDir, 'index.html'));
-if (!currentEntry) {
-  console.error('Unable to find Vite entry bundle in dist/index.html');
-  process.exit(1);
-}
-
-mkdirSync(publicAssetsDir, { recursive: true });
-mkdirSync(distAssetsDir, { recursive: true });
-
-const legacyEntries = new Set(listLegacyEntries());
-if (previousEntry && previousEntry !== currentEntry) {
-  legacyEntries.add(previousEntry);
-}
-
-const shim = `import('/assets/${currentEntry}');\n`;
-for (const entry of legacyEntries) {
-  if (entry === currentEntry) {
-    continue;
-  }
-  writeIfChanged(path.join(publicAssetsDir, entry), shim);
-  writeIfChanged(path.join(distAssetsDir, entry), shim);
-}
