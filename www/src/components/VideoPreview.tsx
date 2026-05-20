@@ -49,6 +49,20 @@ type FlvModule = {
   isSupported?: () => boolean;
 };
 
+class PlayerScriptLoadError extends Error {
+  constructor(src: string) {
+    super(`load failed: ${src}`);
+    this.name = 'PlayerScriptLoadError';
+  }
+}
+
+class PlayerModuleUnavailableError extends Error {
+  constructor(name: string) {
+    super(`${name} module unavailable`);
+    this.name = 'PlayerModuleUnavailableError';
+  }
+}
+
 interface VideoPreviewProps {
   stream: StreamName;
   statuses: StreamStatus[];
@@ -78,7 +92,7 @@ function loadScriptOnce(src: string): Promise<void> {
     };
     script.onerror = () => {
       script.remove();
-      reject(new Error(`load failed: ${src}`));
+      reject(new PlayerScriptLoadError(src));
     };
     if (!existing) {
       document.head.appendChild(script);
@@ -96,7 +110,11 @@ async function loadLocalHlsModule(): Promise<HlsConstructor | undefined> {
     return window.Hls as HlsConstructor;
   }
   await loadScriptOnce('/vendor/hls.min.js');
-  return window.Hls as HlsConstructor | undefined;
+  const module = window.Hls as HlsConstructor | undefined;
+  if (!module) {
+    throw new PlayerModuleUnavailableError('HLS');
+  }
+  return module;
 }
 
 async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
@@ -105,7 +123,11 @@ async function loadLocalFlvModule(): Promise<FlvModule | undefined> {
     return current as FlvModule;
   }
   await loadScriptOnce('/vendor/flv.min.js');
-  return (window.mpegts || window.flvjs) as FlvModule | undefined;
+  const module = (window.mpegts || window.flvjs) as FlvModule | undefined;
+  if (!module) {
+    throw new PlayerModuleUnavailableError('HTTP-FLV');
+  }
+  return module;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -555,9 +577,13 @@ export function VideoPreview({
           player.loadSource(url);
           void video.play().catch(() => {});
           setSessionPreviewState('正在拉取 HLS 码流');
-        } catch {
+        } catch (error) {
           if (isCurrentSession()) {
-            setSessionPreviewState('HLS 播放器脚本未加载');
+            setSessionPreviewState(
+              error instanceof PlayerModuleUnavailableError
+                ? 'HLS 播放器初始化失败'
+                : 'HLS 播放器脚本加载失败',
+            );
           }
         }
       })();
@@ -608,9 +634,13 @@ export function VideoPreview({
         player.load();
         void player.play().catch(() => {});
         setSessionPreviewState('正在拉取 HTTP-FLV 码流');
-      } catch {
+      } catch (error) {
         if (isCurrentSession()) {
-          setSessionPreviewState('HTTP-FLV 播放器脚本未加载');
+          setSessionPreviewState(
+            error instanceof PlayerModuleUnavailableError
+              ? 'HTTP-FLV 播放器初始化失败'
+              : 'HTTP-FLV 播放器脚本加载失败',
+          );
         }
       }
     })();
