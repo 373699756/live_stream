@@ -93,6 +93,7 @@ bool HttpServiceImpl::Prepare() {
         options_.max_request_body_bytes == 0 || options_.max_connections == 0 ||
         options_.request_timeout_ms == 0 ||
         options_.connection_idle_timeout_ms == 0 ||
+        options_.send_buffer_limit_bytes == 0 ||
         options_.max_requests_per_connection == 0 ||
         options_.max_pipelined_requests == 0 ||
         options_.executor_worker_count == 0 ||
@@ -163,6 +164,7 @@ bool HttpServiceImpl::Start() {
     server_config.address.port = options_.listen_port;
     server_config.max_connections = options_.max_connections;
     server_config.send_queue_capacity = options_.send_queue_capacity;
+    server_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
     TcpCallbacks callbacks;
     callbacks.user = this;
     callbacks.on_accept = &HttpServiceImpl::HandleAccept;
@@ -412,21 +414,37 @@ bool HttpServiceImpl::EnqueueStreamingChunk(ConnectionId connection_id,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!connections_.IsStreaming(connection_id)) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-FLV enqueue reject conn=%llu reason=closed "
+                            "size=%zu",
+                            static_cast<unsigned long long>(connection_id),
+                            size);
             return false;
         }
         net_engine = dependencies_.net_engine;
     }
     if (net_engine == nullptr) {
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP-FLV enqueue reject conn=%llu reason=no_net "
+                        "size=%zu",
+                        static_cast<unsigned long long>(connection_id), size);
         return false;
     }
     if (net_engine->PendingBytes(connection_id) >= kMaxStreamingQueuedBytes) {
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP-FLV close conn=%llu reason=queue_full "
+                        "pending=%u limit=%zu next=%zu",
+                        static_cast<unsigned long long>(connection_id),
+                        net_engine->PendingBytes(connection_id),
+                        kMaxStreamingQueuedBytes, size);
         (void)net_engine->Close(connection_id);
         return false;
     }
     if (!net_engine->Send(connection_id, data, size)) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP-FLV send failed conn=%llu size=%zu",
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP-FLV send failed conn=%llu size=%zu pending=%u",
                         static_cast<unsigned long long>(connection_id),
-                        size);
+                        size, net_engine->PendingBytes(connection_id));
         (void)net_engine->Close(connection_id);
         return false;
     }
@@ -703,6 +721,12 @@ void HttpServiceImpl::SendResponse(ConnectionId connection_id,
     if (!net_engine->Send(connection_id,
                           reinterpret_cast<const uint8_t *>(serialized.data()),
                           serialized.size())) {
+        INFRA_LOG_ERROR(kHttpModuleName,
+                        "HTTP response send failed conn=%llu status=%d "
+                        "body=%zu serialized=%zu close=%d",
+                        static_cast<unsigned long long>(connection_id),
+                        response.status_code, response.body.size(),
+                        serialized.size(), close_after_response ? 1 : 0);
         (void)net_engine->Close(connection_id);
         return;
     }

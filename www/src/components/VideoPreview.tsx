@@ -177,6 +177,7 @@ export function VideoPreview({
   const browserCodec = active?.browserCodec ?? (
     activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265'
   );
+  const flvCodec = activeCodec === 'h264';
   const switchStream = (nextStream: StreamName) => {
     if (nextStream === stream) {
       return;
@@ -231,7 +232,7 @@ export function VideoPreview({
     webrtcEnabled && webrtcReady && activeCodec === 'h264';
   const streamRunning = active?.state === 'running';
   const hlsPlaybackEnabled = browserCodec && streamRunning;
-  const flvPlaybackEnabled = browserCodec && streamRunning;
+  const flvPlaybackEnabled = flvCodec && streamRunning;
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,

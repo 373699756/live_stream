@@ -117,7 +117,7 @@ void http_handlers::StartFlvStream(HttpHandlerContext *context,
 
     const StreamBrowserStatus browser_status =
         context->Dependencies().stream_hub_service->GetBrowserStatus(stream_id);
-    if (!browser_status.browser_codec) {
+    if (browser_status.codec != VideoCodec::kH264) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HTTP-FLV reject conn=%llu stream=%s "
                         "reason=unsupported codec=%s running=%d flv_ready=%d",
@@ -126,12 +126,11 @@ void http_handlers::StartFlvStream(HttpHandlerContext *context,
                         VideoCodecName(browser_status.codec),
                         browser_status.running ? 1 : 0,
                         browser_status.flv_ready ? 1 : 0);
-        SendFlvError(
-            context, connection_id,
-            StatusResponse(409, "HTTP-FLV requires H.264 or H.265 stream"));
+        SendFlvError(context, connection_id,
+                     StatusResponse(409, "HTTP-FLV requires H.264 stream"));
         return;
     }
-    if (!browser_status.running || !browser_status.browser_codec) {
+    if (!browser_status.running) {
         const bool keyframe_requested =
             browser_status.running &&
             RequestBrowserKeyFrame(context->Dependencies().stream_hub_service,
@@ -153,8 +152,19 @@ void http_handlers::StartFlvStream(HttpHandlerContext *context,
     IStreamHubService *stream_hub =
         context->Dependencies().stream_hub_service;
     StreamFlvBootstrap bootstrap = stream_hub->GetFlvBootstrap(stream_id);
+    INFRA_LOG_INFO(kHttpModuleName,
+                   "HTTP-FLV bootstrap conn=%llu stream=%s supported=%d "
+                   "file=%zu sequence=%zu keyframe=%zu generation=%llu",
+                   static_cast<unsigned long long>(connection_id),
+                   StreamIdToJsonString(stream_id),
+                   bootstrap.supported ? 1 : 0,
+                   bootstrap.file_header.size(),
+                   bootstrap.sequence_header.size(),
+                   bootstrap.last_keyframe.size(),
+                   static_cast<unsigned long long>(
+                       bootstrap.config_generation));
     if ((!bootstrap.supported || bootstrap.sequence_header.empty()) &&
-        browser_status.running && browser_status.browser_codec) {
+        browser_status.running) {
         (void)RequestBrowserKeyFrame(stream_hub, stream_id);
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::milliseconds(kFlvBootstrapWaitMs);
@@ -164,6 +174,18 @@ void http_handlers::StartFlvStream(HttpHandlerContext *context,
                 std::chrono::milliseconds(kFlvBootstrapPollMs));
             bootstrap = stream_hub->GetFlvBootstrap(stream_id);
         }
+        INFRA_LOG_INFO(kHttpModuleName,
+                       "HTTP-FLV bootstrap after wait conn=%llu stream=%s "
+                       "supported=%d file=%zu sequence=%zu keyframe=%zu "
+                       "generation=%llu",
+                       static_cast<unsigned long long>(connection_id),
+                       StreamIdToJsonString(stream_id),
+                       bootstrap.supported ? 1 : 0,
+                       bootstrap.file_header.size(),
+                       bootstrap.sequence_header.size(),
+                       bootstrap.last_keyframe.size(),
+                       static_cast<unsigned long long>(
+                           bootstrap.config_generation));
     }
     if (!bootstrap.supported || bootstrap.file_header.empty() ||
         bootstrap.sequence_header.empty()) {

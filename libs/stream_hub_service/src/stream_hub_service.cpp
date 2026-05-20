@@ -331,7 +331,7 @@ public:
             return status;
         }
         status.running = stream->state == StreamState::kRunning;
-        status.browser_codec = hub_state::IsBrowserCodec(stream->codec);
+        status.browser_codec = hub_state::IsHlsCodecSupported(stream->codec);
         status.hls_ready = hub_state::IsHlsStreamReady(*stream);
         status.flv_ready = hub_state::IsFlvStreamReady(*stream);
         status.codec = stream->codec;
@@ -562,6 +562,8 @@ private:
                     stream->last_keyframe_tag.size(), stream->segments.size());
             }
             if (packaged_frame.hls_segment_created) {
+                ++stats_.hls_segments_created;
+            } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
             sequence_header_tag = packaged_frame.sequence_header_tag;

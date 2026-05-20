@@ -16,6 +16,7 @@ namespace stream_hub_internal {
 
 struct HlsSegmentState {
     bool started = false;
+    bool published = false;
     uint64_t sequence = 0;
     int64_t start_pts_us = 0;
     int64_t last_pts_us = 0;
@@ -51,6 +52,7 @@ struct ParsedFramePayload {
 struct PackagedFrameResult {
     bool accepted = false;
     bool hls_segment_created = false;
+    bool hls_segment_updated = false;
     std::string sequence_header_tag;
     std::string flv_tag;
 };
@@ -58,6 +60,7 @@ struct PackagedFrameResult {
 bool IsBrowserStreamReady(StreamState state, VideoCodec codec);
 bool IsBrowserCodec(VideoCodec codec);
 bool IsFlvCodecSupported(VideoCodec codec);
+bool IsHlsCodecSupported(VideoCodec codec);
 bool HasFlvSequenceHeader(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);

@@ -18,6 +18,7 @@ void StartSegment(StreamContext *stream, int64_t pts_us) {
     }
     stream->current_segment = HlsSegmentState{};
     stream->current_segment.started = true;
+    stream->current_segment.published = false;
     stream->current_segment.sequence = stream->next_segment_sequence++;
     stream->current_segment.start_pts_us = pts_us;
     stream->current_segment.last_pts_us = pts_us;
@@ -26,25 +27,70 @@ void StartSegment(StreamContext *stream, int64_t pts_us) {
                                          &stream->ts_muxer_state);
 }
 
+StreamSegment BuildSegmentFromCurrent(const StreamContext &stream) {
+    StreamSegment segment;
+    if (!stream.current_segment.started || stream.current_segment.body.empty()) {
+        return segment;
+    }
+    segment.found = true;
+    segment.sequence = stream.current_segment.sequence;
+    segment.duration_us =
+        std::max<int64_t>(stream.last_frame_duration_us,
+                          stream.current_segment.last_pts_us -
+                              stream.current_segment.start_pts_us +
+                              stream.last_frame_duration_us);
+    segment.body = stream.current_segment.body;
+    return segment;
+}
+
+void UpsertSegment(StreamContext *stream, const StreamSegment &segment,
+                   uint32_t playlist_depth) {
+    if (stream == nullptr || !segment.found || segment.body.empty()) {
+        return;
+    }
+    for (StreamSegment &cached : stream->segments) {
+        if (cached.sequence == segment.sequence) {
+            cached.duration_us = segment.duration_us;
+            cached.body = segment.body;
+            return;
+        }
+    }
+    stream->segments.push_back(segment);
+    while (stream->segments.size() > playlist_depth) {
+        stream->segments.pop_front();
+    }
+}
+
+bool PublishCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
+    if (stream == nullptr || !stream->current_segment.started ||
+        stream->current_segment.published) {
+        return false;
+    }
+    const StreamSegment segment = BuildSegmentFromCurrent(*stream);
+    if (!segment.found || segment.body.empty()) {
+        return false;
+    }
+    UpsertSegment(stream, segment, playlist_depth);
+    stream->current_segment.published = true;
+    return true;
+}
+
+void UpdatePublishedCurrentSegment(StreamContext *stream,
+                                   uint32_t playlist_depth) {
+    if (stream == nullptr || !stream->current_segment.started ||
+        !stream->current_segment.published) {
+        return;
+    }
+    UpsertSegment(stream, BuildSegmentFromCurrent(*stream), playlist_depth);
+}
+
 bool FinalizeCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
     if (stream == nullptr || !stream->current_segment.started ||
         stream->current_segment.body.empty()) {
         return false;
     }
 
-    StreamSegment segment;
-    segment.found = true;
-    segment.sequence = stream->current_segment.sequence;
-    segment.duration_us =
-        std::max<int64_t>(stream->last_frame_duration_us,
-                          stream->current_segment.last_pts_us -
-                              stream->current_segment.start_pts_us +
-                              stream->last_frame_duration_us);
-    segment.body = stream->current_segment.body;
-    stream->segments.push_back(std::move(segment));
-    while (stream->segments.size() > playlist_depth) {
-        stream->segments.pop_front();
-    }
+    UpsertSegment(stream, BuildSegmentFromCurrent(*stream), playlist_depth);
     stream->current_segment = HlsSegmentState{};
     return true;
 }
@@ -128,6 +174,10 @@ bool IsBrowserStreamReady(StreamState state, VideoCodec codec) {
 }
 
 bool IsFlvCodecSupported(VideoCodec codec) {
+    return codec == VideoCodec::kH264;
+}
+
+bool IsHlsCodecSupported(VideoCodec codec) {
     return IsBrowserCodec(codec);
 }
 
@@ -137,11 +187,13 @@ bool HasFlvSequenceHeader(const StreamContext &stream) {
 
 bool IsFlvStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
+           IsFlvCodecSupported(stream.codec) &&
            HasFlvSequenceHeader(stream);
 }
 
 bool IsHlsStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
+           IsHlsCodecSupported(stream.codec) &&
            !stream.segments.empty();
 }
 
@@ -278,6 +330,12 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
             frame.codec, access_unit, frame.pts_us, frame.dts_us,
             &stream->ts_muxer_state, &stream->current_segment.body);
         stream->current_segment.last_pts_us = frame.pts_us;
+        if (keyframe) {
+            result.hls_segment_updated =
+                PublishCurrentSegment(stream, hls_playlist_depth);
+        } else {
+            UpdatePublishedCurrentSegment(stream, hls_playlist_depth);
+        }
     }
 
     if (!length_prefixed_sample.empty()) {

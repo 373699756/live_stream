@@ -40,7 +40,8 @@ bool RequestBrowserKeyFrame(IStreamHubService *stream_hub_service,
 }
 
 HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
-                                   const std::string &token) {
+                                   const std::string &token,
+                                   StreamId stream_id) {
     const std::string suffix =
         token.empty() ? std::string() : std::string("?token=") + token;
     std::string body;
@@ -64,6 +65,12 @@ HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
     response.status_code = 200;
     response.headers["Content-Type"] = "application/vnd.apple.mpegurl";
     response.body = body;
+    INFRA_LOG_INFO(kHttpModuleName,
+                   "HLS playlist ok stream=%s entries=%zu media_sequence=%llu "
+                   "target=%u body=%zu",
+                   StreamIdToJsonString(stream_id), playlist.entries.size(),
+                   static_cast<unsigned long long>(playlist.media_sequence),
+                   playlist.target_duration_sec, response.body.size());
     return response;
 }
 
@@ -121,7 +128,8 @@ HttpResponse HandlePlaylist(HttpHandlerContext *context,
                         browser_status.hls_current_segment_size);
         return StatusResponse(503, "HLS playlist not ready");
     }
-    return BuildPlaylistResponse(playlist, ExtractBearerToken(request));
+    return BuildPlaylistResponse(playlist, ExtractBearerToken(request),
+                                 stream_id);
 }
 
 HttpResponse HandleSegment(HttpHandlerContext *context, StreamId stream_id,
@@ -155,6 +163,13 @@ HttpResponse HandleSegment(HttpHandlerContext *context, StreamId stream_id,
     response.status_code = 200;
     response.headers["Content-Type"] = "video/mp2t";
     response.body = segment.body;
+    INFRA_LOG_INFO(kHttpModuleName,
+                   "HLS segment ok stream=%s object=%s sequence=%llu "
+                   "duration_us=%lld body=%zu",
+                   StreamIdToJsonString(stream_id), object_name.c_str(),
+                   static_cast<unsigned long long>(segment.sequence),
+                   static_cast<long long>(segment.duration_us),
+                   response.body.size());
     return response;
 }
 
