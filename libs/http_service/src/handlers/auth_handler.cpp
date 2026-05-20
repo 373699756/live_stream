@@ -1,5 +1,13 @@
-// handlers/auth_handler.cpp.inc
-// Auth handlers: /api/auth/*
+#include "handlers/http_handlers.h"
+
+#include "http_handler_utils.h"
+
+#include "live_stream/json_utils.h"
+
+#include <string>
+
+namespace live_stream {
+namespace {
 
 std::string AuthRoleToJsonString(AuthRole role) {
     return AuthRoleToString(role);
@@ -13,10 +21,12 @@ ConfigJson PrincipalToJson(const AuthPrincipal &principal) {
     return root;
 }
 
-HttpResponse HandleLogin(const HttpRequest &request) {
-    ConfigJson parsed = ConfigJson::parse(request.body, nullptr, false);
-    if (parsed.is_discarded()) {
-        IncrementParseFailures();
+}  // namespace
+
+HttpResponse http_handlers::HandleLogin(HttpHandlerContext *context, const HttpRequest &request) {
+    ConfigJson parsed;
+    if (!ParseJsonObject(request, &parsed)) {
+        context->IncrementParseFailures();
         return StatusResponse(400, "Invalid JSON");
     }
     std::string user_name;
@@ -27,12 +37,12 @@ HttpResponse HandleLogin(const HttpRequest &request) {
     }
 
     LoginRequest login_request;
-    login_request.context = MakeContext(request, nullptr);
+    login_request.context = context->MakeContext(request, nullptr);
     login_request.user_name = user_name;
     login_request.password = password;
-    LoginResult login = dependencies_.auth_service->Login(login_request);
+    LoginResult login = context->Dependencies().auth_service->Login(login_request);
     if (login.token.empty()) {
-        IncrementAuthFailures();
+        context->IncrementAuthFailures();
         return StatusResponse(401, "Unauthorized");
     }
 
@@ -43,22 +53,26 @@ HttpResponse HandleLogin(const HttpRequest &request) {
     return JsonResponse(200, root);
 }
 
-HttpResponse HandleLogout(const HttpRequest &request) {
-    AuthPrincipal principal = Authenticate(request);
-    if (principal.user_name.empty()) {
+HttpResponse http_handlers::HandleLogout(HttpHandlerContext *context,
+                                         const HttpRequest &request) {
+    AuthPrincipal principal;
+    if (!RequireAuth(context, request, &principal)) {
         return StatusResponse(401, "Unauthorized");
     }
-    live_stream::RequestContext context = MakeContext(request, &principal);
-    if (!dependencies_.auth_service->Logout(context)) {
+    live_stream::RequestContext request_context =
+        context->MakeContext(request, &principal);
+    if (!context->Dependencies().auth_service->Logout(request_context)) {
         return StatusResponse(404, "Not Found");
     }
     return OkResponse();
 }
 
-HttpResponse HandleMe(const HttpRequest &request) {
-    AuthPrincipal principal = Authenticate(request);
-    if (principal.user_name.empty()) {
+HttpResponse http_handlers::HandleMe(HttpHandlerContext *context, const HttpRequest &request) {
+    AuthPrincipal principal;
+    if (!RequireAuth(context, request, &principal)) {
         return StatusResponse(401, "Unauthorized");
     }
     return JsonResponse(200, PrincipalToJson(principal));
 }
+
+}  // namespace live_stream

@@ -21,7 +21,8 @@ struct EnginePeerStateUpdate {
 // intentionally not internally synchronized; WebrtcServiceImpl protects it.
 class WebrtcPeerStore {
  public:
-  WebrtcPeerInfo CreatePeer(StreamId stream_id, VideoCodec codec);
+  WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request,
+                            VideoCodec codec);
   bool Contains(const std::string &peer_id) const;
   WebrtcPeerInfo GetPeer(const std::string &peer_id) const;
   bool RemovePeer(const std::string &peer_id);

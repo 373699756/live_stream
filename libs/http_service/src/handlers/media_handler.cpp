@@ -1,5 +1,22 @@
-// handlers/media_handler.cpp.inc
-// Media handlers: /api/media/*, /api/status/streams
+#include "handlers/http_handlers.h"
+
+#include "http_handler_utils.h"
+
+#include "config_service.h"
+#include "live_stream/json_utils.h"
+#include "media/media_capabilities.h"
+#include "media_service.h"
+#include "stream_hub_service.h"
+#include "webrtc_service.h"
+
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <string>
+#include <vector>
+
+namespace live_stream {
+namespace {
 
 const char *VideoCodecToJsonString(VideoCodec codec) {
     switch (codec) {
@@ -165,30 +182,32 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
     return root;
 }
 
-HttpResponse HandleMediaCapabilities() {
-    if (dependencies_.media_service == nullptr) {
+}  // namespace
+
+HttpResponse http_handlers::HandleMediaCapabilities(HttpHandlerContext *context) {
+    if (context->Dependencies().media_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
     MediaCapabilities capabilities =
-        dependencies_.media_service->GetCapabilities();
+        context->Dependencies().media_service->GetCapabilities();
     if (capabilities.streams.empty()) {
         return StatusResponse(500, "Media capabilities unavailable");
     }
     return JsonResponse(200, MediaCapabilitiesToJson(
-                                 capabilities, dependencies_.media_service));
+                                 capabilities, context->Dependencies().media_service));
 }
 
-HttpResponse HandleStreamStatus(const HttpRequest &request) {
-    AuthPrincipal principal = Authenticate(request);
+HttpResponse http_handlers::HandleStreamStatus(HttpHandlerContext *context, const HttpRequest &request) {
+    AuthPrincipal principal = context->Authenticate(request);
     if (principal.user_name.empty()) {
         return StatusResponse(401, "Unauthorized");
     }
-    if (dependencies_.media_service == nullptr) {
+    if (context->Dependencies().media_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
 
     ConfigJson items = ConfigJson::array();
-    ConfigJson video_config = dependencies_.config_service->GetValue("video");
+    ConfigJson video_config = context->Dependencies().config_service->GetValue("video");
     if (!video_config.is_object() || !video_config.contains("streams") ||
         !video_config["streams"].is_object()) {
         return StatusResponse(500, "Invalid video config");
@@ -223,14 +242,14 @@ HttpResponse HandleStreamStatus(const HttpRequest &request) {
         StreamId stream_id = StreamId::kMain;
         (void)StreamIdFromJsonString(name, &stream_id);
         const bool stream_running =
-            dependencies_.media_service->IsStreamStarted(stream_id);
+            context->Dependencies().media_service->IsStreamStarted(stream_id);
         item["state"] =
-            dependencies_.media_service->IsRestarting()
+            context->Dependencies().media_service->IsRestarting()
                 ? "pending"
                 : (stream_running && stream_enabled ? "running" : "stopped");
-        if (dependencies_.stream_hub_service != nullptr) {
+        if (context->Dependencies().stream_hub_service != nullptr) {
             const StreamBrowserStatus browser =
-                dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+                context->Dependencies().stream_hub_service->GetBrowserStatus(stream_id);
             item["browserCodec"] = browser.browser_codec;
             item["hlsReady"] = browser.hls_ready;
             item["flvReady"] = browser.flv_ready;
@@ -240,8 +259,8 @@ HttpResponse HandleStreamStatus(const HttpRequest &request) {
             item["flvReady"] = false;
         }
         WebrtcServiceStats webrtc_stats;
-        if (dependencies_.webrtc_service != nullptr) {
-            webrtc_stats = dependencies_.webrtc_service->GetStats();
+        if (context->Dependencies().webrtc_service != nullptr) {
+            webrtc_stats = context->Dependencies().webrtc_service->GetStats();
         }
         item["webrtcReady"] = stream_running && stream_enabled &&
                               codec == "h264" && webrtc_stats.enabled &&
@@ -250,3 +269,5 @@ HttpResponse HandleStreamStatus(const HttpRequest &request) {
     }
     return JsonResponse(200, items);
 }
+
+}  // namespace live_stream

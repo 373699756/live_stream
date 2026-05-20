@@ -1,16 +1,27 @@
-// handlers/snapshot_handler.cpp.inc
-// Snapshot handlers: /api/snapshot/*
+#include "handlers/http_handlers.h"
 
-HttpResponse HandleSnapshot(const HttpRequest &request) {
-    AuthPrincipal principal = Authenticate(request);
-    if (principal.user_name.empty()) {
+#include "http_handler_utils.h"
+
+#include "media/stream_types.h"
+#include "media_service.h"
+#include "snapshot_service.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+namespace live_stream {
+
+HttpResponse http_handlers::HandleSnapshot(HttpHandlerContext *context, const HttpRequest &request) {
+    AuthPrincipal principal;
+    if (!RequireAuth(context, request, &principal)) {
         return StatusResponse(401, "Unauthorized");
     }
-    if (dependencies_.snapshot_service == nullptr) {
+    if (context->Dependencies().snapshot_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
-    if (dependencies_.media_service != nullptr &&
-        dependencies_.media_service->IsRestarting()) {
+    if (context->Dependencies().media_service != nullptr &&
+        context->Dependencies().media_service->IsRestarting()) {
         return StatusResponse(503, "Media pipeline restarting");
     }
     const std::string prefix = "/api/snapshot/";
@@ -26,7 +37,7 @@ HttpResponse HandleSnapshot(const HttpRequest &request) {
     CaptureRequest capture_request;
     capture_request.stream_id = stream_id;
     SnapshotFrame frame =
-        dependencies_.snapshot_service->Capture(capture_request);
+        context->Dependencies().snapshot_service->Capture(capture_request);
     const uint8_t *data = frame.PayloadData();
     if (data == nullptr) {
         return StatusResponse(500, "Invalid snapshot frame");
@@ -37,3 +48,5 @@ HttpResponse HandleSnapshot(const HttpRequest &request) {
     response.body.assign(reinterpret_cast<const char *>(data), frame.size);
     return response;
 }
+
+}  // namespace live_stream

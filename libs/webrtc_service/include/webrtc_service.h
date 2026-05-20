@@ -50,6 +50,9 @@ struct WebrtcServiceDependencies {
 struct WebrtcCreatePeerRequest {
     StreamId stream_id = StreamId::kMain;
     std::string client_id;
+    std::string session_id;
+    std::string user_name;
+    std::string client_ip;
 };
 
 struct WebrtcPeerInfo {
@@ -57,6 +60,10 @@ struct WebrtcPeerInfo {
     StreamId stream_id = StreamId::kMain;
     VideoCodec codec = VideoCodec::kH264;
     WebrtcPeerState state = WebrtcPeerState::kCreated;
+    std::string client_id;
+    std::string session_id;
+    std::string user_name;
+    std::string client_ip;
 };
 
 struct WebrtcOfferRequest {

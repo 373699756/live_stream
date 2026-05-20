@@ -150,7 +150,7 @@ public:
                 codec = dependencies_.stream_hub->GetStreamCodec(
                     request.stream_id);
             }
-            peer = peer_store_.CreatePeer(request.stream_id, codec);
+            peer = peer_store_.CreatePeer(request, codec);
         }
 
         if (!engine_ || !engine_->CreatePeer(peer)) {

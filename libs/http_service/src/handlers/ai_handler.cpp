@@ -1,5 +1,12 @@
-// handlers/ai_handler.cpp.inc
-// AI handlers: /api/ai/*
+#include "handlers/http_handlers.h"
+
+#include "http_handler_utils.h"
+
+#include "ai_service.h"
+#include "config_service.h"
+
+namespace live_stream {
+namespace {
 
 const char *AiBackendToJsonString(AiBackend backend) {
     switch (backend) {
@@ -76,23 +83,17 @@ ConfigJson AiResultToJson(const AiInferenceResult &result) {
     return root;
 }
 
-bool IsAiServiceHealthy(const IAiView *service) {
-    if (service == nullptr) {
-        return false;
-    }
-    const AiServiceStats stats = service->GetStats();
-    return !stats.enabled || stats.backend_available;
-}
+}  // namespace
 
-HttpResponse HandleAiStatus(const HttpRequest &request) {
-    AuthPrincipal principal = Authenticate(request);
-    if (principal.user_name.empty()) {
+HttpResponse http_handlers::HandleAiStatus(HttpHandlerContext *context, const HttpRequest &request) {
+    AuthPrincipal principal;
+    if (!RequireAuth(context, request, &principal)) {
         return StatusResponse(401, "Unauthorized");
     }
-    if (dependencies_.ai_service == nullptr) {
-        if (!IsAiConfigEnabled(dependencies_.config_service)) {
+    if (context->Dependencies().ai_service == nullptr) {
+        if (!IsAiConfigEnabled(context->Dependencies().config_service)) {
             ConfigJson root = ConfigJson::object();
-            root["config"] = dependencies_.config_service->GetValue("ai");
+            root["config"] = context->Dependencies().config_service->GetValue("ai");
             root["stats"] = AiStatsToJson(AiServiceStats{});
             root["last_result"] = AiResultToJson(AiInferenceResult{});
             return JsonResponse(200, root);
@@ -100,9 +101,11 @@ HttpResponse HandleAiStatus(const HttpRequest &request) {
         return StatusResponse(503, "AI service not running");
     }
     ConfigJson root = ConfigJson::object();
-    root["config"] = AiConfigToJson(dependencies_.ai_service->GetConfig());
-    root["stats"] = AiStatsToJson(dependencies_.ai_service->GetStats());
+    root["config"] = AiConfigToJson(context->Dependencies().ai_service->GetConfig());
+    root["stats"] = AiStatsToJson(context->Dependencies().ai_service->GetStats());
     root["last_result"] =
-        AiResultToJson(dependencies_.ai_service->GetLastResult());
+        AiResultToJson(context->Dependencies().ai_service->GetLastResult());
     return JsonResponse(200, root);
 }
+
+}  // namespace live_stream

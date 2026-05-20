@@ -17,6 +17,7 @@
 namespace live_stream {
 namespace {
 
+constexpr uint32_t kSessionIdBytes = 16;
 constexpr uint32_t kTokenBytes = 32;
 
 struct FailureRecord {
@@ -35,16 +36,19 @@ std::string BytesToHex(const uint8_t *data, uint32_t size) {
     return hex;
 }
 
-std::string SystemRandomToken() {
+std::string SystemRandomHex(uint32_t byte_count) {
     uint8_t bytes[kTokenBytes] = {0};
+    if (byte_count == 0 || byte_count > kTokenBytes) {
+        return std::string();
+    }
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         return std::string();
     }
     uint32_t offset = 0;
-    while (offset < kTokenBytes) {
+    while (offset < byte_count) {
         const ssize_t n = read(fd, bytes + offset,
-                               static_cast<std::size_t>(kTokenBytes - offset));
+                               static_cast<std::size_t>(byte_count - offset));
         if (n <= 0) {
             close(fd);
             return std::string();
@@ -52,7 +56,19 @@ std::string SystemRandomToken() {
         offset += static_cast<uint32_t>(n);
     }
     close(fd);
-    return BytesToHex(bytes, kTokenBytes);
+    return BytesToHex(bytes, byte_count);
+}
+
+std::string SystemRandomToken() {
+    return SystemRandomHex(kTokenBytes);
+}
+
+std::string SystemRandomSessionId() {
+    const std::string random = SystemRandomHex(kSessionIdBytes);
+    if (random.empty()) {
+        return std::string();
+    }
+    return std::string("auth-") + random;
 }
 
 bool IsValidPolicy(const AuthServiceOptions &options) {
@@ -437,6 +453,10 @@ private:
         if (token.empty()) {
             return false;
         }
+        std::string session_id = SystemRandomSessionId();
+        if (session_id.empty()) {
+            return false;
+        }
 
         std::lock_guard<std::mutex> guard(mutex_);
         PruneExpiredSessionsLocked();
@@ -451,8 +471,13 @@ private:
                 return false;
             }
         }
+        while (ContainsSessionIdLocked(session_id)) {
+            session_id = SystemRandomSessionId();
+            if (session_id.empty()) {
+                return false;
+            }
+        }
 
-        ++sequence_;
         const int64_t now = infra::Time::MonotonicMillis();
         const int64_t wall_now = infra::Time::SystemTimeMillis();
         const int64_t ttl_ms =
@@ -460,7 +485,7 @@ private:
 
         auth_internal::SessionRecord session;
         session.principal.user_name = user.user_name;
-        session.principal.session_id = auth_internal::MakeSessionId(sequence_);
+        session.principal.session_id = session_id;
         session.principal.role = user.role;
         session.token = token;
         session.created_at_monotonic_ms = now;
@@ -472,6 +497,15 @@ private:
         result->token = token;
         result->expires_at_ms = session.expires_at_ms;
         return true;
+    }
+
+    bool ContainsSessionIdLocked(const std::string &session_id) const {
+        for (const auto &item : sessions_) {
+            if (item.second.principal.session_id == session_id) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void PruneExpiredSessionsLocked() {
@@ -574,7 +608,6 @@ private:
     std::map<std::string, FailureRecord> failures_;
     IAuthAuditSink *audit_sink_ = nullptr;
     AuthStats stats_;
-    uint64_t sequence_ = 0;
     bool config_attached_ = false;
     bool initialized_ = false;
     bool started_ = false;

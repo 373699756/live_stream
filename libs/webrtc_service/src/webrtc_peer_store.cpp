@@ -5,13 +5,17 @@
 namespace live_stream {
 namespace webrtc_internal {
 
-WebrtcPeerInfo WebrtcPeerStore::CreatePeer(StreamId stream_id,
-                                           VideoCodec codec) {
+WebrtcPeerInfo WebrtcPeerStore::CreatePeer(
+    const WebrtcCreatePeerRequest &request, VideoCodec codec) {
   WebrtcPeerInfo peer;
   peer.peer_id = NextPeerId();
-  peer.stream_id = stream_id;
+  peer.stream_id = request.stream_id;
   peer.codec = codec;
   peer.state = WebrtcPeerState::kCreated;
+  peer.client_id = request.client_id;
+  peer.session_id = request.session_id;
+  peer.user_name = request.user_name;
+  peer.client_ip = request.client_ip;
   peers_[peer.peer_id] = peer;
   Touch(peer.peer_id);
   return peer;

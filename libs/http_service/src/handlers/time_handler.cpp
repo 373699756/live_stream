@@ -1,5 +1,16 @@
-// handlers/time_handler.cpp.inc
-// Time handlers: /api/time/*
+#include "handlers/http_handlers.h"
+
+#include "http_handler_utils.h"
+
+#include "live_stream/json_utils.h"
+#include "time_service.h"
+
+#include <cstdint>
+#include <limits>
+#include <string>
+
+namespace live_stream {
+namespace {
 
 ConfigJson NtpConfigToJson(const NtpConfig &config) {
     ConfigJson root = ConfigJson::object();
@@ -39,76 +50,93 @@ ConfigJson TimeStatusToJson(const TimeStatus &status) {
     return root;
 }
 
-HttpResponse HandleTimeStatus(const HttpRequest &request) {
-    if (dependencies_.time_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    AuthPrincipal principal;
-    if (!RequirePermission(request, AuthPermission::kReadStatus, "time",
-                           &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    return JsonResponse(
-        200, TimeStatusToJson(dependencies_.time_service->GetTimeStatus()));
+ITimeService *RequireTimeService(HttpHandlerContext *context) {
+    return context->Dependencies().time_service;
 }
 
-HttpResponse HandleTimeTimezone(const HttpRequest &request) {
-    if (dependencies_.time_service == nullptr) {
+bool RequireTimePermission(HttpHandlerContext *context,
+                           const HttpRequest &request,
+                           AuthPermission permission,
+                           AuthPrincipal *principal) {
+    return RequirePermissionOrForbidden(context, request, permission, "time",
+                                        principal);
+}
+
+}  // namespace
+
+HttpResponse http_handlers::HandleTimeStatus(HttpHandlerContext *context, const HttpRequest &request) {
+    ITimeService *time_service = RequireTimeService(context);
+    if (time_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
     AuthPrincipal principal;
-    if (!RequirePermission(request, AuthPermission::kModifyConfig, "time",
-                           &principal)) {
+    if (!RequireTimePermission(context, request, AuthPermission::kReadStatus,
+                               &principal)) {
         return StatusResponse(403, "Forbidden");
     }
-    ConfigJson body = ConfigJson::parse(request.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) {
+    return JsonResponse(200, TimeStatusToJson(time_service->GetTimeStatus()));
+}
+
+HttpResponse http_handlers::HandleTimeTimezone(HttpHandlerContext *context, const HttpRequest &request) {
+    ITimeService *time_service = RequireTimeService(context);
+    if (time_service == nullptr) {
+        return StatusResponse(501, "Not Implemented");
+    }
+    AuthPrincipal principal;
+    if (!RequireTimePermission(context, request, AuthPermission::kModifyConfig,
+                               &principal)) {
+        return StatusResponse(403, "Forbidden");
+    }
+    ConfigJson body;
+    if (!ParseJsonObject(request, &body)) {
         return StatusResponse(400, "Invalid JSON");
     }
     std::string timezone;
     if (!json_utils::Load(body, "timezone", &timezone)) {
         return StatusResponse(400, "Invalid time request");
     }
-    return dependencies_.time_service->SetTimezone(
-               MakeContext(request, &principal), timezone)
+    return time_service->SetTimezone(
+               context->MakeContext(request, &principal), timezone)
                ? OkResponse()
                : StatusResponse(400, "Could not set timezone");
 }
 
-HttpResponse HandleTimeNtp(const HttpRequest &request) {
-    if (dependencies_.time_service == nullptr) {
+HttpResponse http_handlers::HandleTimeNtp(HttpHandlerContext *context, const HttpRequest &request) {
+    ITimeService *time_service = RequireTimeService(context);
+    if (time_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
     AuthPrincipal principal;
-    if (!RequirePermission(request, AuthPermission::kModifyConfig, "time",
-                           &principal)) {
+    if (!RequireTimePermission(context, request, AuthPermission::kModifyConfig,
+                               &principal)) {
         return StatusResponse(403, "Forbidden");
     }
-    ConfigJson body = ConfigJson::parse(request.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) {
+    ConfigJson body;
+    if (!ParseJsonObject(request, &body)) {
         return StatusResponse(400, "Invalid JSON");
     }
     NtpConfig config;
     if (!NtpConfigFromJson(body, &config)) {
         return StatusResponse(400, "Invalid NTP config");
     }
-    return dependencies_.time_service->UpdateNtpConfig(
-               MakeContext(request, &principal), config)
+    return time_service->UpdateNtpConfig(
+               context->MakeContext(request, &principal), config)
                ? OkResponse()
                : StatusResponse(400, "Could not update NTP config");
 }
 
-HttpResponse HandleTimeSystemTime(const HttpRequest &request) {
-    if (dependencies_.time_service == nullptr) {
+HttpResponse http_handlers::HandleTimeSystemTime(HttpHandlerContext *context, const HttpRequest &request) {
+    ITimeService *time_service = RequireTimeService(context);
+    if (time_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
     AuthPrincipal principal;
-    if (!RequirePermission(request, AuthPermission::kModifyConfig, "time",
-                           &principal)) {
+    if (!RequireTimePermission(context, request, AuthPermission::kModifyConfig,
+                               &principal)) {
         return StatusResponse(403, "Forbidden");
     }
-    ConfigJson body = ConfigJson::parse(request.body, nullptr, false);
-    if (body.is_discarded() || !body.is_object()) {
+    ConfigJson body;
+    if (!ParseJsonObject(request, &body)) {
         return StatusResponse(400, "Invalid JSON");
     }
     int64_t system_time_ms = 0;
@@ -116,24 +144,27 @@ HttpResponse HandleTimeSystemTime(const HttpRequest &request) {
                           std::numeric_limits<int64_t>::max())) {
         return StatusResponse(400, "Invalid time request");
     }
-    return dependencies_.time_service->SetSystemTime(
-               MakeContext(request, &principal), system_time_ms,
+    return time_service->SetSystemTime(
+               context->MakeContext(request, &principal), system_time_ms,
                TimeSyncSource::kManual)
                ? OkResponse()
                : StatusResponse(503, "Could not set system time");
 }
 
-HttpResponse HandleTimeSync(const HttpRequest &request) {
-    if (dependencies_.time_service == nullptr) {
+HttpResponse http_handlers::HandleTimeSync(HttpHandlerContext *context, const HttpRequest &request) {
+    ITimeService *time_service = RequireTimeService(context);
+    if (time_service == nullptr) {
         return StatusResponse(501, "Not Implemented");
     }
     AuthPrincipal principal;
-    if (!RequirePermission(request, AuthPermission::kModifyConfig, "time",
-                           &principal)) {
+    if (!RequireTimePermission(context, request, AuthPermission::kModifyConfig,
+                               &principal)) {
         return StatusResponse(403, "Forbidden");
     }
-    return dependencies_.time_service->SyncNow(MakeContext(request, &principal),
-                                               TimeSyncSource::kNtp)
+    return time_service->SyncNow(context->MakeContext(request, &principal),
+                                 TimeSyncSource::kNtp)
                ? OkResponse()
                : StatusResponse(503, "Could not sync time");
 }
+
+}  // namespace live_stream

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SESSION_STORE_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SESSION_STORE_H_
+#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
+#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
 
 #include "http_service.h"
 #include "net_service.h"
@@ -20,19 +20,19 @@ struct PendingHttpRequest {
   bool close_after_response = true;
 };
 
-struct ClosedHttpSessionInfo {
+struct ClosedHttpConnectionInfo {
   StreamFlvClientId flv_client_id = 0;
   bool was_streaming = false;
   bool found = false;
 };
 
-enum class HttpSessionParseFailure {
+enum class HttpConnectionParseFailure {
   kNone,
   kBadRequest,
   kPayloadTooLarge,
 };
 
-struct HttpSessionParseOptions {
+struct HttpConnectionParseOptions {
   uint32_t max_request_header_bytes = 0;
   uint32_t max_request_body_bytes = 0;
   uint32_t max_pipelined_requests = 0;
@@ -40,7 +40,7 @@ struct HttpSessionParseOptions {
   bool enable_keep_alive = false;
 };
 
-struct HttpSessionRequestLog {
+struct HttpConnectionRequestLog {
   ConnectionId connection_id = 0;
   std::string client_ip;
   HttpMethod method = HttpMethod::kGet;
@@ -49,16 +49,16 @@ struct HttpSessionRequestLog {
   size_t body_size = 0;
 };
 
-struct HttpSessionParseResult {
+struct HttpConnectionParseResult {
   bool found = false;
   bool success = true;
   bool has_pending = false;
-  HttpSessionParseFailure failure = HttpSessionParseFailure::kNone;
+  HttpConnectionParseFailure failure = HttpConnectionParseFailure::kNone;
 };
 
-// HttpSessionStore owns per-connection HTTP state. It is intentionally not
+// HttpConnectionStore owns per-connection HTTP state. It is intentionally not
 // internally synchronized; HttpServiceImpl protects it with its service mutex.
-class HttpSessionStore {
+class HttpConnectionStore {
  public:
   void Add(ConnectionId connection_id, std::string client_ip);
   void Clear();
@@ -67,13 +67,13 @@ class HttpSessionStore {
 
   bool AppendRequestBytes(ConnectionId connection_id, const uint8_t *data,
                           uint32_t size);
-  HttpSessionParseResult ParsePendingRequests(
-      ConnectionId connection_id, const HttpSessionParseOptions &options,
-      std::vector<HttpSessionRequestLog> *request_logs);
+  HttpConnectionParseResult ParsePendingRequests(
+      ConnectionId connection_id, const HttpConnectionParseOptions &options,
+      std::vector<HttpConnectionRequestLog> *request_logs);
   bool TakeNextRequest(ConnectionId connection_id, PendingHttpRequest *pending);
-  HttpSessionParseResult CompleteKeepAliveRequest(
-      ConnectionId connection_id, const HttpSessionParseOptions &options,
-      std::vector<HttpSessionRequestLog> *request_logs);
+  HttpConnectionParseResult CompleteKeepAliveRequest(
+      ConnectionId connection_id, const HttpConnectionParseOptions &options,
+      std::vector<HttpConnectionRequestLog> *request_logs);
 
   bool BeginFlvStream(ConnectionId connection_id,
                       const std::shared_ptr<IStreamFlvSink> &sink);
@@ -84,11 +84,11 @@ class HttpSessionStore {
   bool ArmTimer(ConnectionId connection_id, uint64_t *generation);
   bool IsTimerCurrent(ConnectionId connection_id, uint64_t generation) const;
 
-  ClosedHttpSessionInfo Remove(ConnectionId connection_id);
+  ClosedHttpConnectionInfo Remove(ConnectionId connection_id);
   std::vector<StreamFlvClientId> TakeAllFlvClients();
 
  private:
-  struct HttpSession {
+  struct HttpConnectionState {
     std::string recv_buffer;
     std::string client_ip;
     std::deque<PendingHttpRequest> pending_requests;
@@ -101,16 +101,16 @@ class HttpSessionStore {
     bool streaming = false;
   };
 
-  using SessionMap = std::map<ConnectionId, HttpSession>;
+  using ConnectionMap = std::map<ConnectionId, HttpConnectionState>;
 
-  static StreamFlvClientId TakeFlvClient(HttpSession *session);
-  HttpSessionParseResult ParsePendingRequests(
-      SessionMap::iterator iter, const HttpSessionParseOptions &options,
-      std::vector<HttpSessionRequestLog> *request_logs);
+  static StreamFlvClientId TakeFlvClient(HttpConnectionState *session);
+  HttpConnectionParseResult ParsePendingRequests(
+      ConnectionMap::iterator iter, const HttpConnectionParseOptions &options,
+      std::vector<HttpConnectionRequestLog> *request_logs);
 
-  SessionMap sessions_;
+  ConnectionMap connections_;
 };
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SESSION_STORE_H_
+#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_

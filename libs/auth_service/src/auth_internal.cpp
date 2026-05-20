@@ -54,12 +54,5 @@ std::string MakeHexToken(uint64_t a, uint64_t b, uint64_t c, uint64_t d) {
     return std::string(buffer);
 }
 
-std::string MakeSessionId(uint64_t sequence) {
-    char buffer[32] = {0};
-    std::snprintf(buffer, sizeof(buffer), "auth-%016llx",
-                  static_cast<unsigned long long>(sequence));
-    return std::string(buffer);
-}
-
 }  // namespace auth_internal
 }  // namespace live_stream

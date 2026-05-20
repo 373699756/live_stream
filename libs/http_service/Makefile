@@ -23,6 +23,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/time_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/upgrade_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/stream_hub_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc_service/include
+CXXFLAGS += -Isrc
 
 SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot_service.a
 STREAM_HUB_LIB := $(BUILD_DIR)/lib/libstream_hub_service.a
@@ -67,7 +68,10 @@ $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 
 include ../service_rules.mk
 
-# http_service.cpp #include-s all handler fragments — track them so make
-# recompiles whenever any handler file changes.
-HANDLER_INCS := $(wildcard src/handlers/*.cpp.inc)
-$(OBJ_DIR)/http_service.o: $(HANDLER_INCS)
+HANDLER_SRCS := $(wildcard src/handlers/*.cpp)
+HANDLER_OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(HANDLER_SRCS))
+$(LIB_DIR)/lib$(SERVICE_NAME).a: $(HANDLER_OBJS)
+
+$(OBJ_DIR)/handlers/%.o: src/handlers/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@

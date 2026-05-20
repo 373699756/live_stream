@@ -34,7 +34,6 @@ bool ConstantTimeEquals(const std::string& left, const std::string& right);
 bool ParseRole(const std::string& role, AuthRole* parsed);
 bool RoleHasPermission(AuthRole role, AuthPermission permission);
 std::string MakeHexToken(uint64_t a, uint64_t b, uint64_t c, uint64_t d);
-std::string MakeSessionId(uint64_t sequence);
 
 }  // namespace auth_internal
 }  // namespace live_stream
