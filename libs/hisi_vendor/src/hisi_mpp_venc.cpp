@@ -617,7 +617,7 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
                             s32_ret);
             continue;
         }
-        if (status.u32CurPacks == 0 || status.u32LeftStreamFrames == 0) {
+        if (status.u32CurPacks == 0) {
             continue;
         }
         if (status.u32CurPacks > kMaxVencPacksPerFrame) {

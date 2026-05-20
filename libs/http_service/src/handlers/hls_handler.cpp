@@ -6,12 +6,17 @@
 #include "infra/log.h"
 #include "stream_hub_service.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
 
 namespace live_stream {
 namespace {
+
+constexpr uint32_t kHlsBootstrapWaitMs = 2500;
+constexpr uint32_t kHlsBootstrapPollMs = 50;
 
 const char *VideoCodecName(VideoCodec codec) {
     switch (codec) {
@@ -85,12 +90,24 @@ HttpResponse HandlePlaylist(HttpHandlerContext *context,
                             const HttpRequest &request, StreamId stream_id,
                             const std::string &object_name,
                             const StreamBrowserStatus &browser_status) {
-    const StreamHlsPlaylist playlist =
-        context->Dependencies().stream_hub_service->GetHlsPlaylist(stream_id);
+    IStreamHubService *stream_hub =
+        context->Dependencies().stream_hub_service;
+    StreamHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
+    if (playlist.entries.empty() && browser_status.running &&
+        browser_status.browser_codec) {
+        (void)RequestBrowserKeyFrame(stream_hub, stream_id);
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(kHlsBootstrapWaitMs);
+        while (playlist.entries.empty() &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(kHlsBootstrapPollMs));
+            playlist = stream_hub->GetHlsPlaylist(stream_id);
+        }
+    }
     if (playlist.entries.empty()) {
         const bool keyframe_requested =
-            RequestBrowserKeyFrame(context->Dependencies().stream_hub_service,
-                                   stream_id);
+            RequestBrowserKeyFrame(stream_hub, stream_id);
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=empty "
                         "codec=%s running=%d hls_ready=%d keyframe=%d "
@@ -177,7 +194,7 @@ HttpResponse http_handlers::HandleHls(HttpHandlerContext *context,
                         browser_status.hls_current_segment_size);
         return StatusResponse(409, "HLS requires H.264 or H.265 stream");
     }
-    if (!browser_status.running || !browser_status.hls_ready) {
+    if (!browser_status.running) {
         const bool keyframe_requested =
             browser_status.running &&
             RequestBrowserKeyFrame(context->Dependencies().stream_hub_service,

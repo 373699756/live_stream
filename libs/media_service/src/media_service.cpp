@@ -97,6 +97,29 @@ bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
            stream_codec::HasCompleteH264ParameterSets(units);
 }
 
+bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
+    if (stream_codec::IsKeyFrame(frame.frame_type) ||
+        frame.frame_type == FrameType::kJpeg) {
+        return true;
+    }
+    const uint8_t *data = frame.PayloadData();
+    if (data == nullptr) {
+        return false;
+    }
+
+    if (frame.codec == VideoCodec::kH265) {
+        stream_codec::H265NalUnitList units;
+        return stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
+               stream_codec::HasH265KeyFrame(units);
+    }
+    if (frame.codec == VideoCodec::kH264) {
+        stream_codec::H264NalUnitList units;
+        return stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
+               stream_codec::HasH264KeyFrame(units);
+    }
+    return false;
+}
+
 }  // namespace
 
 struct MediaService::Impl {
@@ -357,8 +380,7 @@ struct MediaService::Impl {
     }
 
     void RememberKeyFrame(const EncodedFrame &frame) {
-        if (!stream_codec::IsKeyFrame(frame.frame_type) &&
-            frame.frame_type != FrameType::kJpeg) {
+        if (!EncodedFrameHasKeyPicture(frame)) {
             return;
         }
         const bool has_parameter_sets =

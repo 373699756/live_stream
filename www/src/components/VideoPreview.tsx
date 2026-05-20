@@ -16,6 +16,13 @@ import { StatusBadge } from './StatusBadge';
 
 type PreviewMode = 'webrtc' | 'hls' | 'flv' | 'snapshot';
 
+const previewModeLabels: Record<PreviewMode, string> = {
+  webrtc: 'WebRTC',
+  hls: 'HLS',
+  flv: 'HTTP-FLV',
+  snapshot: '抓图预览',
+};
+
 type HlsPlayer = {
   attachMedia: (media: HTMLMediaElement) => void;
   destroy: () => void;
@@ -153,6 +160,14 @@ export function VideoPreview({
   const peerIdRef = useRef('');
   const hlsRef = useRef<HlsPlayer | null>(null);
   const flvRef = useRef<FlvPlayer | null>(null);
+  const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
+  const readinessRef = useRef({
+    flvPlaybackEnabled: false,
+    hlsPlaybackEnabled: false,
+    webrtcPlaybackEnabled: false,
+    webrtcConfigLoaded: false,
+    webrtcEnabled: false,
+  });
   const active = statuses.find((item) => item.stream === stream);
   const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
   const activeCodec = (active?.codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -162,15 +177,6 @@ export function VideoPreview({
   const browserCodec = active?.browserCodec ?? (
     activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265'
   );
-  const chooseFallbackMode = () => {
-    if (flvReady) {
-      return 'flv';
-    }
-    if (hlsReady) {
-      return 'hls';
-    }
-    return 'snapshot';
-  };
   const switchStream = (nextStream: StreamName) => {
     if (nextStream === stream) {
       return;
@@ -184,6 +190,7 @@ export function VideoPreview({
     if (nextMode === mode) {
       return;
     }
+    modeSelectionRef.current = 'manual';
     sessionRef.current += 1;
     setConnected(false);
     setPreviewState('正在切换预览链路');
@@ -199,7 +206,6 @@ export function VideoPreview({
           setWebrtcConfig(config);
           setWebrtcConfigLoaded(true);
           if (!config.enabled) {
-            setMode((current) => (current === 'webrtc' ? 'flv' : current));
             setPreviewState('WebRTC 未启用');
           }
         }
@@ -211,7 +217,6 @@ export function VideoPreview({
         if (mounted) {
           setWebrtcConfig(null);
           setWebrtcConfigLoaded(true);
-          setMode((current) => (current === 'webrtc' ? 'flv' : current));
           setPreviewState('WebRTC 配置不可用');
         }
       });
@@ -224,8 +229,83 @@ export function VideoPreview({
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
   const webrtcPlaybackEnabled =
     webrtcEnabled && webrtcReady && activeCodec === 'h264';
-  const hlsPlaybackEnabled = browserCodec && hlsReady;
-  const flvPlaybackEnabled = browserCodec && flvReady;
+  const streamRunning = active?.state === 'running';
+  const hlsPlaybackEnabled = browserCodec && streamRunning;
+  const flvPlaybackEnabled = browserCodec && streamRunning;
+  const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
+    .map((server) => [
+      server.url,
+      server.username || '',
+      server.credential || '',
+    ].join(','))
+    .join('|');
+
+  readinessRef.current = {
+    flvPlaybackEnabled,
+    hlsPlaybackEnabled,
+    webrtcPlaybackEnabled,
+    webrtcConfigLoaded,
+    webrtcEnabled,
+  };
+
+  const isModeAvailable = (candidate: PreviewMode) => {
+    if (candidate === 'snapshot') {
+      return true;
+    }
+    if (candidate === 'webrtc') {
+      return webrtcConfigLoaded && webrtcPlaybackEnabled;
+    }
+    if (candidate === 'hls') {
+      return hlsPlaybackEnabled;
+    }
+    return flvPlaybackEnabled;
+  };
+
+  const chooseAvailableMode = () => {
+    if (webrtcPlaybackEnabled) {
+      return 'webrtc';
+    }
+    if (flvPlaybackEnabled) {
+      return 'flv';
+    }
+    if (hlsPlaybackEnabled) {
+      return 'hls';
+    }
+    return 'snapshot';
+  };
+
+  useEffect(() => {
+    if (!enabled || (mode === 'webrtc' && !webrtcConfigLoaded)) {
+      return;
+    }
+
+    const modeAvailable = isModeAvailable(mode);
+    const nextMode = chooseAvailableMode();
+    if (!modeAvailable) {
+      if (nextMode !== mode) {
+        modeSelectionRef.current = 'auto';
+        sessionRef.current += 1;
+        setConnected(false);
+        setPreviewState(`${previewModeLabels[mode]} 暂不可用`);
+        setMode(nextMode);
+      }
+      return;
+    }
+
+    if (modeSelectionRef.current === 'auto' && nextMode !== mode) {
+      sessionRef.current += 1;
+      setConnected(false);
+      setPreviewState('正在切换预览链路');
+      setMode(nextMode);
+    }
+  }, [
+    mode,
+    enabled,
+    flvPlaybackEnabled,
+    hlsPlaybackEnabled,
+    webrtcConfigLoaded,
+    webrtcPlaybackEnabled,
+  ]);
 
   useEffect(() => {
     if (mode !== 'snapshot') {
@@ -242,6 +322,7 @@ export function VideoPreview({
     const video = videoRef.current;
     const sessionId = sessionRef.current + 1;
     sessionRef.current = sessionId;
+    const readiness = readinessRef.current;
     let disposed = false;
     let sessionPeer: RTCPeerConnection | null = null;
     let sessionPeerId = '';
@@ -393,13 +474,16 @@ export function VideoPreview({
     };
 
     if (mode === 'webrtc') {
-      if (!webrtcConfigLoaded) {
+      if (!readiness.webrtcConfigLoaded) {
         setSessionPreviewState('正在读取 WebRTC 配置');
         return cleanupSession;
       }
-      if (!webrtcEnabled || !webrtcPlaybackEnabled) {
-        setMode(chooseFallbackMode());
+      if (!readiness.webrtcEnabled) {
         setSessionPreviewState('WebRTC 未启用');
+        return cleanupSession;
+      }
+      if (!readiness.webrtcPlaybackEnabled) {
+        setSessionPreviewState('WebRTC 暂未就绪');
         return cleanupSession;
       }
       setSessionPreviewState('等待 WebRTC 视频流');
@@ -534,17 +618,16 @@ export function VideoPreview({
       return cleanupSession;
     }
 
-    if ((mode === 'hls' && !hlsPlaybackEnabled) ||
-        (mode === 'flv' && !flvPlaybackEnabled)) {
-      setMode(chooseFallbackMode());
+    if ((mode === 'hls' && !readiness.hlsPlaybackEnabled) ||
+        (mode === 'flv' && !readiness.flvPlaybackEnabled)) {
       setSessionPreviewState(
-        mode === 'hls' ? 'HLS 暂未就绪' : 'HTTP-FLV 暂未就绪',
+        mode === 'hls' ? 'HLS 码流不可用' : 'HTTP-FLV 码流不可用',
       );
       return cleanupSession;
     }
 
     if (mode === 'hls') {
-      setSessionPreviewState('等待 HLS 视频流');
+      setSessionPreviewState(hlsReady ? '等待 HLS 视频流' : '正在等待 HLS 首帧');
       const url = hlsPlaylistUrl(stream);
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
@@ -590,7 +673,9 @@ export function VideoPreview({
       return cleanupSession;
     }
 
-    setSessionPreviewState('等待 HTTP-FLV 视频流');
+    setSessionPreviewState(
+      flvReady ? '等待 HTTP-FLV 视频流' : '正在等待 HTTP-FLV 首帧',
+    );
     void (async () => {
       try {
         const flvModule = await loadLocalFlvModule();
@@ -649,14 +734,14 @@ export function VideoPreview({
     mode,
     enabled,
     stream,
-    flvPlaybackEnabled,
+    activeCodec,
     flvReady,
-    hlsPlaybackEnabled,
     hlsReady,
-    webrtcConfig,
+    hlsPlaybackEnabled,
+    flvPlaybackEnabled,
     webrtcConfigLoaded,
     webrtcEnabled,
-    webrtcPlaybackEnabled,
+    webrtcIceServerKey,
   ]);
 
   const openSnapshot = () => {
@@ -667,14 +752,16 @@ export function VideoPreview({
     void surfaceRef.current?.requestFullscreen?.();
   };
 
+  const streamLabel = stream === 'main' ? '主码流' : '子码流';
   const previewDetail =
     mode === 'webrtc'
-      ? '正在建立浏览器拉流会话'
+      ? `${streamLabel} / WebRTC`
       : mode === 'hls'
-        ? '浏览器正在拉取 HLS 分片'
+        ? `${streamLabel} / HLS`
         : mode === 'flv'
-          ? '浏览器正在接收 HTTP-FLV 视频流'
-          : '定时刷新 JPEG 抓图';
+          ? `${streamLabel} / HTTP-FLV`
+          : `${streamLabel} / JPEG 抓图`;
+  const protocolLabel = previewModeLabels[mode];
 
   return (
     <section className="preview-panel">
@@ -774,6 +861,8 @@ export function VideoPreview({
 
       <div className="preview-footer">
         <StatusBadge state={active?.state === 'running' ? 'running' : 'pending'} />
+        <span>{streamLabel}</span>
+        <span>{protocolLabel}</span>
         <span>{active?.codec || 'H.264'}</span>
         <span>分辨率 {active?.resolution || '1920x1080'}</span>
         <span>{active?.fps || 25} fps</span>
