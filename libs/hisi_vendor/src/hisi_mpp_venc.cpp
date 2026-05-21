@@ -30,6 +30,7 @@ constexpr uint32_t kMaxRcBitrateKbps = 614400;
 constexpr uint32_t kMaxInputFrameRate = 240;
 constexpr uint32_t kMaxVencPacksPerFrame = 256;
 constexpr uint32_t kPayloadPreviewBytes = 16;
+constexpr uint32_t kMaxEncodedFrameBytes = 32U * 1024U * 1024U;
 
 // ─── Payload type from VideoCodec ──────────────────────────────
 PAYLOAD_TYPE_E PayloadFromCodec(VideoCodec codec) {
@@ -271,6 +272,158 @@ bool HasValidVencStreamPacks(const VENC_STREAM_S& stream) {
            stream.u32PackCount <= kMaxVencPacksPerFrame;
 }
 
+bool FindVencStreamBufferTile(const VENC_STREAM_BUF_INFO_S& stream_buf,
+                              uint64_t phy_addr,
+                              uint32_t* tile_index,
+                              uint64_t* tile_offset) {
+    if (tile_index == nullptr || tile_offset == nullptr) {
+        return false;
+    }
+    for (uint32_t i = 0; i < MAX_TILE_NUM; ++i) {
+        const uint64_t tile_phy = stream_buf.u64PhyAddr[i];
+        const uint64_t tile_size = stream_buf.u64BufSize[i];
+        if (tile_phy == 0 || tile_size == 0 ||
+            stream_buf.pUserAddr[i] == nullptr) {
+            continue;
+        }
+        if (tile_size > std::numeric_limits<uint64_t>::max() - tile_phy) {
+            continue;
+        }
+        const uint64_t tile_end = tile_phy + tile_size;
+        if (phy_addr == tile_end) {
+            *tile_index = i;
+            *tile_offset = 0;
+            return true;
+        }
+        if (phy_addr >= tile_phy && phy_addr < tile_end) {
+            *tile_index = i;
+            *tile_offset = phy_addr - tile_phy;
+            return true;
+        }
+    }
+    return false;
+}
+
+void LogVencPacks(const char* prefix, int32_t chn,
+                  const VENC_STREAM_S& stream) {
+    const uint32_t pack_count =
+        stream.u32PackCount < kMaxVencPacksPerFrame
+            ? stream.u32PackCount
+            : kMaxVencPacksPerFrame;
+    for (uint32_t i = 0; i < pack_count; ++i) {
+        const VENC_PACK_S& pack = stream.pstPack[i];
+        INFRA_LOG_INFO(
+            "hisi_vendor",
+            "%s chn=%d seq=%u pack=%u/%u len=%u offset=%u data=%u "
+            "addr=%p phy=0x%llx pts=%lld end=%d data_num=%u",
+            prefix, chn, stream.u32Seq, i, stream.u32PackCount, pack.u32Len,
+            pack.u32Offset, VencPackDataLen(pack), pack.pu8Addr,
+            static_cast<unsigned long long>(pack.u64PhyAddr),
+            static_cast<long long>(pack.u64PTS), pack.bFrameEnd ? 1 : 0,
+            pack.u32DataNum);
+    }
+}
+
+void LogVencStreamBuffer(const char* prefix, int32_t chn,
+                         const VENC_STREAM_BUF_INFO_S& stream_buf) {
+    for (uint32_t i = 0; i < MAX_TILE_NUM; ++i) {
+        INFRA_LOG_INFO(
+            "hisi_vendor",
+            "%s chn=%d tile=%u phy=0x%llx user=%p size=%llu",
+            prefix, chn, i,
+            static_cast<unsigned long long>(stream_buf.u64PhyAddr[i]),
+            stream_buf.pUserAddr[i],
+            static_cast<unsigned long long>(stream_buf.u64BufSize[i]));
+    }
+}
+
+void LogVencPackCopy(const char* phase,
+                     int32_t chn,
+                     const VENC_STREAM_S& stream,
+                     const VENC_STREAM_BUF_INFO_S* stream_buf,
+                     uint32_t pack_index,
+                     const uint8_t* source,
+                     uint32_t output_offset,
+                     uint32_t output_capacity) {
+    const VENC_PACK_S& pack = stream.pstPack[pack_index];
+    int tile = -1;
+    uint64_t ring_offset = 0;
+    uint64_t ring_left = 0;
+    if (stream_buf != nullptr) {
+        uint32_t tile_index = 0;
+        uint64_t tile_offset = 0;
+        if (FindVencStreamBufferTile(*stream_buf, pack.u64PhyAddr, &tile_index,
+                                     &tile_offset)) {
+            tile = static_cast<int>(tile_index);
+            ring_offset = (tile_offset + pack.u32Offset) %
+                          stream_buf->u64BufSize[tile_index];
+            ring_left = stream_buf->u64BufSize[tile_index] - ring_offset;
+        }
+    }
+    INFRA_LOG_INFO(
+        "hisi_vendor",
+        "VENC copy %s chn=%d seq=%u pack=%u/%u len=%u offset=%u data=%u "
+        "src=%p dst_off=%u dst_cap=%u phy=0x%llx tile=%d ring_off=%llu "
+        "ring_left=%llu",
+        phase, chn, stream.u32Seq, pack_index, stream.u32PackCount,
+        pack.u32Len, pack.u32Offset, VencPackDataLen(pack), source,
+        output_offset, output_capacity,
+        static_cast<unsigned long long>(pack.u64PhyAddr), tile,
+        static_cast<unsigned long long>(ring_offset),
+        static_cast<unsigned long long>(ring_left));
+}
+
+bool VencPackPayloadAddress(const VENC_PACK_S& pack, const uint8_t** source) {
+    if (source == nullptr || pack.pu8Addr == nullptr) {
+        return false;
+    }
+    const uintptr_t address = reinterpret_cast<uintptr_t>(pack.pu8Addr);
+    if (pack.u32Offset > std::numeric_limits<uintptr_t>::max() - address) {
+        return false;
+    }
+    *source = reinterpret_cast<const uint8_t*>(address + pack.u32Offset);
+    return true;
+}
+
+bool CopyVencPackDirect(int32_t chn,
+                        const VENC_STREAM_S& stream,
+                        const VENC_STREAM_BUF_INFO_S* stream_buf,
+                        uint32_t pack_index,
+                        uint8_t* output,
+                        uint32_t output_capacity,
+                        uint32_t* output_offset,
+                        bool log_copy_detail) {
+    if (output == nullptr || output_offset == nullptr ||
+        pack_index >= stream.u32PackCount || *output_offset > output_capacity) {
+        return false;
+    }
+    const VENC_PACK_S& pack = stream.pstPack[pack_index];
+    const uint32_t data_len = VencPackDataLen(pack);
+    if (data_len == 0) {
+        return true;
+    }
+    if (data_len > output_capacity - *output_offset) {
+        return false;
+    }
+
+    const uint8_t* source = nullptr;
+    if (!VencPackPayloadAddress(pack, &source)) {
+        return false;
+    }
+
+    if (log_copy_detail) {
+        LogVencPackCopy("begin", chn, stream, stream_buf, pack_index, source,
+                        *output_offset, output_capacity);
+    }
+    std::memcpy(output + *output_offset, source, data_len);
+    *output_offset += data_len;
+    if (log_copy_detail) {
+        LogVencPackCopy("end", chn, stream, stream_buf, pack_index, source,
+                        *output_offset, output_capacity);
+    }
+    return true;
+}
+
 FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
     if (codec == VideoCodec::kJpeg || codec == VideoCodec::kMjpeg) {
         return FrameType::kJpeg;
@@ -339,6 +492,9 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
 }
 
 bool CopyVencStreamPayloads(const VENC_STREAM_S& stream,
+                            const VENC_STREAM_BUF_INFO_S* stream_buf,
+                            int32_t chn,
+                            bool log_copy_detail,
                             std::shared_ptr<IMediaBuffer>* buffer,
                             uint32_t* size) {
     if (buffer == nullptr || size == nullptr ||
@@ -350,7 +506,7 @@ bool CopyVencStreamPayloads(const VENC_STREAM_S& stream,
     for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
         total_len += VencPackDataLen(stream.pstPack[i]);
     }
-    if (total_len == 0 ||
+    if (total_len == 0 || total_len > kMaxEncodedFrameBytes ||
         total_len > std::numeric_limits<uint32_t>::max()) {
         return false;
     }
@@ -362,15 +518,12 @@ bool CopyVencStreamPayloads(const VENC_STREAM_S& stream,
     }
     uint32_t offset = 0;
     for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
-        const VENC_PACK_S& pack = stream.pstPack[i];
-        const uint32_t data_len = VencPackDataLen(pack);
-        if (data_len == 0) {
-            continue;
+        bool copied = CopyVencPackDirect(
+            chn, stream, stream_buf, i, payload->MutableData(),
+            payload->Capacity(), &offset, log_copy_detail);
+        if (!copied) {
+            return false;
         }
-        const uint8_t* data =
-            static_cast<const uint8_t*>(pack.pu8Addr) + pack.u32Offset;
-        std::memcpy(payload->MutableData() + offset, data, data_len);
-        offset += data_len;
     }
     if (offset == 0 || !payload->SetSize(offset)) {
         return false;
@@ -593,7 +746,14 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
     struct pollfd pfd;
     pfd.fd = fd;
     pfd.events = POLLIN | POLLERR;
+    VENC_STREAM_BUF_INFO_S stream_buf{};
+    bool has_stream_buf = true;
+    if (!CheckMpiCall("HI_MPI_VENC_GetStreamBufInfo",
+                      HI_MPI_VENC_GetStreamBufInfo(venc, &stream_buf))) {
+        has_stream_buf = false;
+    }
     bool first_frame_logged = false;
+    bool first_copy_begin_logged = false;
 
     while (running->load()) {
         int ret = poll(&pfd, 1, 500);
@@ -642,15 +802,34 @@ void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
 
         std::shared_ptr<IMediaBuffer> buffer;
         uint32_t payload_size = 0;
-        const bool copied =
-            CopyVencStreamPayloads(stream, &buffer, &payload_size);
+        if (!first_copy_begin_logged) {
+            const VENC_PACK_S& first_pack = stream.pstPack[0];
+            INFRA_LOG_INFO(
+                "hisi_vendor",
+                "VENC first stream chn=%d codec=%s seq=%u packs=%u "
+                "first_len=%u first_offset=%u first_addr=%p first_phy=0x%llx",
+                chn, CodecName(codec), stream.u32Seq, stream.u32PackCount,
+                first_pack.u32Len, first_pack.u32Offset, first_pack.pu8Addr,
+                static_cast<unsigned long long>(first_pack.u64PhyAddr));
+            if (has_stream_buf) {
+                LogVencStreamBuffer("VENC stream buffer", chn, stream_buf);
+            }
+            LogVencPacks("VENC first stream pack", chn, stream);
+            first_copy_begin_logged = true;
+        }
+        const bool copied = CopyVencStreamPayloads(
+            stream, has_stream_buf ? &stream_buf : nullptr, chn,
+            !first_frame_logged, &buffer, &payload_size);
         if (!copied) {
             INFRA_LOG_ERROR(
                 "hisi_vendor",
                 "invalid VENC stream chn=%d seq=%u packs=%u cur=%u "
-                "left_frames=%u",
+                "left_frames=%u first_len=%u first_offset=%u first_addr=%p "
+                "first_phy=0x%llx",
                 chn, stream.u32Seq, stream.u32PackCount, status.u32CurPacks,
-                status.u32LeftStreamFrames);
+                status.u32LeftStreamFrames, stream.pstPack[0].u32Len,
+                stream.pstPack[0].u32Offset, stream.pstPack[0].pu8Addr,
+                static_cast<unsigned long long>(stream.pstPack[0].u64PhyAddr));
             HI_MPI_VENC_ReleaseStream(venc, &stream);
             continue;
         }
