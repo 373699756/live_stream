@@ -1,15 +1,14 @@
 #ifndef LIVE_STREAM_HISISDK_HISI_SDK_H_
 #define LIVE_STREAM_HISISDK_HISI_SDK_H_
 
+#include "media/frame_subscription.h"
 #include "media/media_buffer.h"
-#include "media/frame_source.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
 #include "live_stream/config_json.h"
 
 #include <cstdint>
-#include <memory>
 
 namespace live_stream {
 namespace hisisdk {
@@ -74,12 +73,133 @@ struct SnapshotConfig {
 };
 
 struct JpegFrame {
-    std::shared_ptr<IMediaBuffer> buffer;
+    VideoBuffer* buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t width = 0;
     uint32_t height = 0;
     int64_t pts_us = 0;
+
+    JpegFrame() = default;
+    JpegFrame(const JpegFrame& other)
+        : buffer(VideoBufferRetain(other.buffer)),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          pts_us(other.pts_us) {}
+    JpegFrame& operator=(const JpegFrame& other) {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBuffer* retained = VideoBufferRetain(other.buffer);
+        VideoBufferRelease(buffer);
+        buffer = retained;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        pts_us = other.pts_us;
+        return *this;
+    }
+    JpegFrame(JpegFrame&& other) noexcept
+        : buffer(other.buffer),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          pts_us(other.pts_us) {
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+    }
+    JpegFrame& operator=(JpegFrame&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBufferRelease(buffer);
+        buffer = other.buffer;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        pts_us = other.pts_us;
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+        return *this;
+    }
+    ~JpegFrame() { VideoBufferRelease(buffer); }
+};
+
+struct YuvFrame {
+    VideoBuffer* buffer = nullptr;
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride_y = 0;
+    uint32_t stride_uv = 0;
+    int64_t pts_us = 0;
+
+    YuvFrame() = default;
+    YuvFrame(const YuvFrame& other)
+        : buffer(VideoBufferRetain(other.buffer)),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          stride_y(other.stride_y),
+          stride_uv(other.stride_uv),
+          pts_us(other.pts_us) {}
+    YuvFrame& operator=(const YuvFrame& other) {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBuffer* retained = VideoBufferRetain(other.buffer);
+        VideoBufferRelease(buffer);
+        buffer = retained;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        stride_y = other.stride_y;
+        stride_uv = other.stride_uv;
+        pts_us = other.pts_us;
+        return *this;
+    }
+    YuvFrame(YuvFrame&& other) noexcept
+        : buffer(other.buffer),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          stride_y(other.stride_y),
+          stride_uv(other.stride_uv),
+          pts_us(other.pts_us) {
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+    }
+    YuvFrame& operator=(YuvFrame&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBufferRelease(buffer);
+        buffer = other.buffer;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        stride_y = other.stride_y;
+        stride_uv = other.stride_uv;
+        pts_us = other.pts_us;
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+        return *this;
+    }
+    ~YuvFrame() { VideoBufferRelease(buffer); }
 };
 
 class IHisiSdk {
@@ -123,6 +243,9 @@ public:
     virtual void DestroyRegion(int32_t handle) = 0;
 
     virtual JpegFrame CaptureJpeg(const SnapshotConfig& config) = 0;
+    virtual YuvFrame CaptureYuvFrame(const MppChannel& vpss_channel,
+                                     Size size,
+                                     uint32_t timeout_ms) = 0;
 };
 
 IHisiSdk& DefaultSdk();

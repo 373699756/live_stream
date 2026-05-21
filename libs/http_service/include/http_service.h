@@ -20,9 +20,7 @@ class ITimeService;
 class IUpgradeService;
 class IStreamHubService;
 class IWebrtcService;
-// Narrow view interfaces — defined in their respective service headers.
-// HttpService depends on these interfaces, not on the concrete classes.
-class IMediaView;
+class IMediaService;
 class IAiView;
 class ISnapshotView;
 class NetEngine;
@@ -79,26 +77,49 @@ struct HttpServiceOptions {
     bool enable_keep_alive = false;
 };
 
-// HttpServiceDependencies uses abstract interfaces for all dependencies.
-// IMediaView, IAiView, ISnapshotView replace the former concrete class pointers
-// (MediaService*, AiService*, SnapshotService*) as part of Phase 2.
-struct HttpServiceDependencies {
+struct HttpCoreDependencies {
     NetEngine *net_engine = nullptr;
+};
+
+struct HttpSecurityDependencies {
     IAuthService *auth_service = nullptr;
-    IConfigService *config_service = nullptr;
     ILoggerService *logger_service = nullptr;
+};
+
+struct HttpConfigDependencies {
+    IConfigService *config_service = nullptr;
+};
+
+struct HttpDeviceDependencies {
     INetworkService *network_service = nullptr;
     ITimeService *time_service = nullptr;
     IAlarmService *alarm_service = nullptr;
     IUpgradeService *upgrade_service = nullptr;
+    ISystemService *system_service = nullptr;
+};
+
+struct HttpProtocolDependencies {
     IRtspService *rtsp_service = nullptr;
     IOnvifService *onvif_service = nullptr;
-    ISystemService *system_service = nullptr;
+};
+
+struct HttpMediaDependencies {
     IAiView *ai_service = nullptr;
-    IMediaView *media_service = nullptr;
+    IMediaService *media_service = nullptr;
     ISnapshotView *snapshot_service = nullptr;
     IWebrtcService *webrtc_service = nullptr;
     IStreamHubService *stream_hub_service = nullptr;
+};
+
+// HttpServiceDependencies groups dependency domains so the service boundary is
+// not a flat list of every subsystem pointer.
+struct HttpServiceDependencies {
+    HttpCoreDependencies core;
+    HttpSecurityDependencies security;
+    HttpConfigDependencies config;
+    HttpDeviceDependencies device;
+    HttpProtocolDependencies protocol;
+    HttpMediaDependencies media;
 };
 
 struct HttpServiceStats {

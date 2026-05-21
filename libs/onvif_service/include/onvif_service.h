@@ -70,6 +70,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual OnvifServiceStats GetStats() const = 0;
 };
 

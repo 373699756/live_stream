@@ -157,9 +157,9 @@ int main() {
     FakeAuthService auth;
     FakeConfigService config;
     live_stream::HttpServiceDependencies deps;
-    deps.net_engine = netframe.value.get();
-    deps.auth_service = &auth;
-    deps.config_service = &config;
+    deps.core.net_engine = netframe.value.get();
+    deps.security.auth_service = &auth;
+    deps.config.config_service = &config;
 
     live_stream::HttpServiceOptions options;
     options.listen_ip = "127.0.0.1";

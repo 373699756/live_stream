@@ -1,8 +1,5 @@
-import { useState } from 'react';
 import { useSnapshotConfig } from '../hooks/useSnapshotConfig';
-import type { StreamName } from '../api/types';
 import { FormField } from '../components/FormField';
-import { VideoPreview } from '../components/VideoPreview';
 
 export function SnapshotConfigPage() {
   const {
@@ -15,7 +12,6 @@ export function SnapshotConfigPage() {
     saving,
     error,
   } = useSnapshotConfig();
-  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
   if (loading) {
     return <div className="panel">加载抓图配置...</div>;
@@ -83,14 +79,6 @@ export function SnapshotConfigPage() {
           </FormField>
         </div>
 
-        <div className="snapshot-links">
-          <a className="button-like" href={config.main_path} target="_blank" rel="noreferrer">
-            预览主码流抓图
-          </a>
-          <a className="button-like" href={config.sub_path} target="_blank" rel="noreferrer">
-            预览子码流抓图
-          </a>
-        </div>
         <div className="form-actions">
           <button type="button" onClick={reset}>恢复默认</button>
           <button
@@ -105,11 +93,6 @@ export function SnapshotConfigPage() {
         {savedMsg && <div className="save-hint">{savedMsg}</div>}
         {error && <div className="status-note error-note">{error}</div>}
       </section>
-      <VideoPreview
-        stream={previewStream}
-        statuses={[]}
-        onStreamChange={setPreviewStream}
-      />
     </div>
   );
 }

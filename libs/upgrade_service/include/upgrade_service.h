@@ -98,6 +98,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual UpgradeStatus GetStatus() = 0;
     virtual UpgradePackageInfo ValidatePackage(
         const std::string& package_path) = 0;

@@ -8,7 +8,7 @@
 namespace live_stream {
 
 class IConfigService;
-class MediaService;
+class IMediaService;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -65,7 +65,8 @@ struct OsdRegionId {
 
 struct OsdServiceOptions {
     IConfigService* config_service = nullptr;
-    MediaService* media_service = nullptr;
+    IMediaService* media_service = nullptr;
+    MediaChannels media_channels;
     hisisdk::IHisiSdk* sdk = nullptr;
 };
 

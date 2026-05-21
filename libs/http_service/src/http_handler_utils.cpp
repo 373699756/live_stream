@@ -64,10 +64,8 @@ bool ParseOptionalJsonObject(const HttpRequest &request, ConfigJson *body) {
     return ParseJsonObject(request, body);
 }
 
-bool IsMediaRestarting(HttpHandlerContext *context) {
-    return context != nullptr &&
-           context->Dependencies().media_service != nullptr &&
-           context->Dependencies().media_service->IsRestarting();
+bool IsMediaRestarting(IMediaService *media_service) {
+    return media_service != nullptr && media_service->IsRestarting();
 }
 
 std::string PathSuffix(const std::string &path, const std::string &prefix) {
@@ -84,7 +82,7 @@ BuildStreamingHeaderBlock(int status_code,
     for (const auto &header : headers) {
         out += header.first + ": " + header.second + "\r\n";
     }
-    out += "Connection: close\r\n";
+    out += "Connection: keep-alive\r\n";
     out += "\r\n";
     return out;
 }

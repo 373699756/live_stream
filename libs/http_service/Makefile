@@ -10,12 +10,14 @@ SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem_service.a
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/alarm_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/network_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/onvif_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system_service/include

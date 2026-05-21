@@ -11,10 +11,6 @@ namespace live_stream {
 
 namespace {
 
-INetworkService *RequireNetworkService(HttpHandlerContext *context) {
-    return context->Dependencies().network_service;
-}
-
 bool RequireNetworkPermission(HttpHandlerContext *context,
                               const HttpRequest &request,
                               AuthPermission permission,
@@ -26,86 +22,140 @@ bool RequireNetworkPermission(HttpHandlerContext *context,
 
 }  // namespace
 
-HttpResponse http_handlers::HandleNetworkInterfaces(HttpHandlerContext *context, const HttpRequest &request) {
-    INetworkService *network_service = RequireNetworkService(context);
-    if (network_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    AuthPrincipal principal;
-    if (!RequireNetworkPermission(context, request, AuthPermission::kReadStatus,
-                                  "network", &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    ConfigJson root = ConfigJson::object();
-    ConfigJson items = ConfigJson::array();
-    const std::vector<std::string> ifnames = network_service->GetInterfaces();
-    for (const std::string &ifname : ifnames) {
-        items.push_back(
-            NetworkInterfaceStatusToApiJson(
-                network_service->GetInterfaceStatus(ifname)));
-    }
-    root["items"] = items;
-    return JsonResponse(200, root);
-}
+class NetworkHttpHandler : public IHttpHandler {
+public:
+    NetworkHttpHandler(HttpHandlerContext *context,
+                       const DeviceHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
 
-HttpResponse http_handlers::HandleNetworkInterface(HttpHandlerContext *context, const HttpRequest &request) {
-    INetworkService *network_service = RequireNetworkService(context);
-    if (network_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddExactRoute(HttpMethod::kGet, "/api/network/interfaces",
+                              &NetworkHttpHandler::HandleInterfacesRoute,
+                              this);
+        router->AddPrefixRoute(HttpMethod::kGet, "/api/network/interfaces/",
+                               &NetworkHttpHandler::HandleInterfaceRoute,
+                               this);
+        router->AddPrefixRoute(HttpMethod::kPut, "/api/network/interfaces/",
+                               &NetworkHttpHandler::HandleInterfaceRoute,
+                               this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/network/reload",
+                              &NetworkHttpHandler::HandleReloadRoute, this);
     }
-    const std::string ifname = PathSuffix(request.path, "/api/network/interfaces/");
-    if (ifname.empty()) {
-        return StatusResponse(400, "Missing interface");
+
+private:
+    static HttpResponse HandleInterfacesRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<NetworkHttpHandler *>(user)->HandleInterfaces(
+            request);
     }
-    if (request.method == HttpMethod::kGet) {
+
+    static HttpResponse HandleInterfaceRoute(void *user,
+                                             const HttpRequest &request) {
+        return static_cast<NetworkHttpHandler *>(user)->HandleInterface(
+            request);
+    }
+
+    static HttpResponse HandleReloadRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<NetworkHttpHandler *>(user)->HandleReload(request);
+    }
+
+    HttpResponse HandleInterfaces(const HttpRequest &request) {
+        INetworkService *network_service = dependencies_.network_service;
+        if (network_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
         AuthPrincipal principal;
-        if (!RequireNetworkPermission(context, request,
-                                      AuthPermission::kReadStatus, ifname,
+        if (!RequireNetworkPermission(context_, request,
+                                      AuthPermission::kReadStatus, "network",
                                       &principal)) {
             return StatusResponse(403, "Forbidden");
         }
-        const NetworkInterfaceStatus status =
-            network_service->GetInterfaceStatus(ifname);
-        if (status.ifname.empty()) {
-            return StatusResponse(404, "Not Found");
+        ConfigJson root = ConfigJson::object();
+        ConfigJson items = ConfigJson::array();
+        const std::vector<std::string> ifnames =
+            network_service->GetInterfaces();
+        for (const std::string &ifname : ifnames) {
+            items.push_back(NetworkInterfaceStatusToApiJson(
+                network_service->GetInterfaceStatus(ifname)));
         }
-        return JsonResponse(200, NetworkInterfaceStatusToApiJson(status));
+        root["items"] = items;
+        return JsonResponse(200, root);
     }
 
-    AuthPrincipal principal;
-    if (!RequireNetworkPermission(context, request,
-                                  AuthPermission::kModifyConfig, ifname,
-                                  &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    ConfigJson body;
-    if (!ParseJsonObject(request, &body)) {
-        return StatusResponse(400, "Invalid JSON");
-    }
-    NetworkInterfaceConfig config;
-    if (!NetworkInterfaceConfigFromApiJson(ifname, body, &config)) {
-        return StatusResponse(400, "Invalid network config");
-    }
-    return network_service->ApplyInterfaceConfig(
-               context->MakeContext(request, &principal), config)
-               ? OkResponse()
-               : StatusResponse(400, "Could not apply network config");
-}
+    HttpResponse HandleInterface(const HttpRequest &request) {
+        INetworkService *network_service = dependencies_.network_service;
+        if (network_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        const std::string ifname =
+            PathSuffix(request.path, "/api/network/interfaces/");
+        if (ifname.empty()) {
+            return StatusResponse(400, "Missing interface");
+        }
+        if (request.method == HttpMethod::kGet) {
+            AuthPrincipal principal;
+            if (!RequireNetworkPermission(context_, request,
+                                          AuthPermission::kReadStatus, ifname,
+                                          &principal)) {
+                return StatusResponse(403, "Forbidden");
+            }
+            const NetworkInterfaceStatus status =
+                network_service->GetInterfaceStatus(ifname);
+            if (status.ifname.empty()) {
+                return StatusResponse(404, "Not Found");
+            }
+            return JsonResponse(200, NetworkInterfaceStatusToApiJson(status));
+        }
 
-HttpResponse http_handlers::HandleNetworkReload(HttpHandlerContext *context, const HttpRequest &request) {
-    INetworkService *network_service = RequireNetworkService(context);
-    if (network_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+        AuthPrincipal principal;
+        if (!RequireNetworkPermission(context_, request,
+                                      AuthPermission::kModifyConfig, ifname,
+                                      &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        ConfigJson body;
+        if (!ParseJsonObject(request, &body)) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+        NetworkInterfaceConfig config;
+        if (!NetworkInterfaceConfigFromApiJson(ifname, body, &config)) {
+            return StatusResponse(400, "Invalid network config");
+        }
+        return network_service
+                       ->ApplyInterfaceConfig(context_->MakeContext(request, &principal),
+                                              config)
+                   ? OkResponse()
+                   : StatusResponse(400, "Could not apply network config");
     }
-    AuthPrincipal principal;
-    if (!RequireNetworkPermission(context, request,
-                                  AuthPermission::kModifyConfig, "network",
-                                  &principal)) {
-        return StatusResponse(403, "Forbidden");
+
+    HttpResponse HandleReload(const HttpRequest &request) {
+        INetworkService *network_service = dependencies_.network_service;
+        if (network_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!RequireNetworkPermission(context_, request,
+                                      AuthPermission::kModifyConfig, "network",
+                                      &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        return network_service->ReloadStatus()
+                   ? OkResponse()
+                   : StatusResponse(503, "Could not reload network status");
     }
-    return network_service->ReloadStatus()
-               ? OkResponse()
-               : StatusResponse(503, "Could not reload network status");
+
+    HttpHandlerContext *context_ = nullptr;
+    DeviceHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateNetworkHttpHandler(
+    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new NetworkHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

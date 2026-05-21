@@ -169,11 +169,13 @@ bool PathToStreamId(const std::string& uri, StreamId* stream_id) {
     if (query != std::string::npos) {
         path = path.substr(0, query);
     }
-    if (path == "/live/main") {
+    if (path == "/live/main" || path == "/live/main/" ||
+        path == "/live/main/*" || path == "/live/main/trackID=0") {
         *stream_id = StreamId::kMain;
         return true;
     }
-    if (path == "/live/sub") {
+    if (path == "/live/sub" || path == "/live/sub/" ||
+        path == "/live/sub/*" || path == "/live/sub/trackID=0") {
         *stream_id = StreamId::kSub;
         return true;
     }
@@ -187,6 +189,7 @@ const char* StreamPath(StreamId stream_id) {
 std::string BuildSdp(const RtspListenAddress& address,
                      StreamId stream_id,
                      VideoCodec codec) {
+    (void)stream_id;
     const uint8_t payload_type = PayloadType(codec);
     std::ostringstream sdp;
     sdp << "v=0\r\n";
@@ -194,11 +197,11 @@ std::string BuildSdp(const RtspListenAddress& address,
     sdp << "s=live_stream\r\n";
     sdp << "c=IN IP4 0.0.0.0\r\n";
     sdp << "t=0 0\r\n";
-    sdp << "a=control:*\r\n";
+    sdp << "a=control:" << StreamPath(stream_id) << "\r\n";
     sdp << "m=video 0 RTP/AVP " << static_cast<int>(payload_type) << "\r\n";
     sdp << "a=rtpmap:" << static_cast<int>(payload_type)
         << " " << RtpEncodingName(codec) << "/90000\r\n";
-    sdp << "a=control:" << StreamPath(stream_id) << "\r\n";
+    sdp << "a=control:trackID=0\r\n";
     return sdp.str();
 }
 

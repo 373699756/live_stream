@@ -11,7 +11,7 @@
 namespace live_stream {
 
 struct MediaRefs {
-    MediaService* media = nullptr;
+    IMediaService* media = nullptr;
     AiService* ai = nullptr;
     OsdService* osd = nullptr;
     SnapshotService* snapshot = nullptr;
@@ -32,7 +32,7 @@ private:
     MediaSubsystem(const MediaSubsystem&) = delete;
     MediaSubsystem& operator=(const MediaSubsystem&) = delete;
 
-    std::unique_ptr<MediaService> media_;
+    std::unique_ptr<IMediaService> media_;
     std::unique_ptr<AiService> ai_;
     std::unique_ptr<OsdService> osd_;
     std::unique_ptr<SnapshotService> snapshot_;

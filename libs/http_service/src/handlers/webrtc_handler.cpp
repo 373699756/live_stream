@@ -14,17 +14,12 @@ namespace live_stream {
 namespace {
 
 using WebrtcRouteHandler =
-    HttpResponse (*)(HttpHandlerContext *context, const HttpRequest &request,
+    HttpResponse (*)(IWebrtcService *webrtc_service,
+                     const HttpRequest &request,
                      const ConfigJson &body,
                      const AuthPrincipal &principal);
 
-struct WebrtcRoute {
-    HttpMethod method = HttpMethod::kPost;
-    const char *path = nullptr;
-    WebrtcRouteHandler handler = nullptr;
-};
-
-HttpResponse HandleCreatePeer(HttpHandlerContext *context,
+HttpResponse HandleCreatePeer(IWebrtcService *webrtc_service,
                               const HttpRequest &request,
                               const ConfigJson &body,
                               const AuthPrincipal &principal) {
@@ -41,8 +36,7 @@ HttpResponse HandleCreatePeer(HttpHandlerContext *context,
     create_request.user_name = principal.user_name;
     create_request.client_ip = request.client_ip;
 
-    const WebrtcPeerInfo peer =
-        context->Dependencies().webrtc_service->CreatePeer(create_request);
+    const WebrtcPeerInfo peer = webrtc_service->CreatePeer(create_request);
     if (peer.peer_id.empty()) {
         return StatusResponse(409, "Could not create peer");
     }
@@ -53,7 +47,7 @@ HttpResponse HandleCreatePeer(HttpHandlerContext *context,
     return JsonResponse(200, root);
 }
 
-HttpResponse HandleOffer(HttpHandlerContext *context,
+HttpResponse HandleOffer(IWebrtcService *webrtc_service,
                          const HttpRequest &request, const ConfigJson &body,
                          const AuthPrincipal &principal) {
     (void)request;
@@ -64,8 +58,7 @@ HttpResponse HandleOffer(HttpHandlerContext *context,
         return StatusResponse(400, "Missing offer fields");
     }
 
-    const WebrtcAnswer answer =
-        context->Dependencies().webrtc_service->HandleOffer(offer);
+    const WebrtcAnswer answer = webrtc_service->HandleOffer(offer);
     if (answer.sdp.empty()) {
         return StatusResponse(404, "Peer not found");
     }
@@ -76,7 +69,7 @@ HttpResponse HandleOffer(HttpHandlerContext *context,
     return JsonResponse(200, root);
 }
 
-HttpResponse HandleCandidate(HttpHandlerContext *context,
+HttpResponse HandleCandidate(IWebrtcService *webrtc_service,
                              const HttpRequest &request,
                              const ConfigJson &body,
                              const AuthPrincipal &principal) {
@@ -111,12 +104,12 @@ HttpResponse HandleCandidate(HttpHandlerContext *context,
                    "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
                    candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
                    candidate.sdp_mline_index, candidate.candidate.size());
-    return context->Dependencies().webrtc_service->AddIceCandidate(candidate)
+    return webrtc_service->AddIceCandidate(candidate)
                ? OkResponse()
                : StatusResponse(404, "Peer not found");
 }
 
-HttpResponse HandleClosePeer(HttpHandlerContext *context,
+HttpResponse HandleClosePeer(IWebrtcService *webrtc_service,
                              const HttpRequest &request,
                              const ConfigJson &body,
                              const AuthPrincipal &principal) {
@@ -126,53 +119,91 @@ HttpResponse HandleClosePeer(HttpHandlerContext *context,
     if (!json_utils::Load(body, "peer_id", &peer_id)) {
         return StatusResponse(400, "Missing peer_id");
     }
-    return context->Dependencies().webrtc_service->ClosePeer(peer_id)
+    return webrtc_service->ClosePeer(peer_id)
                ? OkResponse()
                : StatusResponse(404, "Peer not found");
 }
 
-const WebrtcRoute *FindWebrtcRoute(const HttpRequest &request) {
-    static const WebrtcRoute kRoutes[] = {
-        {HttpMethod::kPost, "/api/webrtc/peers", HandleCreatePeer},
-        {HttpMethod::kPost, "/api/webrtc/offer", HandleOffer},
-        {HttpMethod::kPost, "/api/webrtc/candidate", HandleCandidate},
-        {HttpMethod::kPost, "/api/webrtc/close", HandleClosePeer},
-        {HttpMethod::kDelete, "/api/webrtc/close", HandleClosePeer},
-    };
-
-    for (const WebrtcRoute &route : kRoutes) {
-        if (route.method == request.method && request.path == route.path) {
-            return &route;
-        }
-    }
-    return nullptr;
-}
-
 }  // namespace
 
-HttpResponse http_handlers::HandleWebrtc(HttpHandlerContext *context,
+class WebrtcHttpHandler : public IHttpHandler {
+public:
+    WebrtcHttpHandler(HttpHandlerContext *context,
+                      const MediaHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
+
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddExactRoute(HttpMethod::kPost, "/api/webrtc/peers",
+                              &WebrtcHttpHandler::HandleCreatePeerRoute,
+                              this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/webrtc/offer",
+                              &WebrtcHttpHandler::HandleOfferRoute, this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/webrtc/candidate",
+                              &WebrtcHttpHandler::HandleCandidateRoute, this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/webrtc/close",
+                              &WebrtcHttpHandler::HandleClosePeerRoute, this);
+        router->AddExactRoute(HttpMethod::kDelete, "/api/webrtc/close",
+                              &WebrtcHttpHandler::HandleClosePeerRoute, this);
+    }
+
+private:
+    static HttpResponse HandleCreatePeerRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
+            request, &HandleCreatePeer);
+    }
+
+    static HttpResponse HandleOfferRoute(void *user,
                                          const HttpRequest &request) {
-    AuthPrincipal principal;
-    if (!RequireAuth(context, request, &principal)) {
-        return StatusResponse(401, "Unauthorized");
-    }
-    if (context->Dependencies().webrtc_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    if (IsMediaRestarting(context)) {
-        return StatusResponse(503, "Media pipeline restarting");
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
+            request, &HandleOffer);
     }
 
-    ConfigJson body;
-    if (!ParseOptionalJsonObject(request, &body)) {
-        return StatusResponse(400, "Invalid JSON");
+    static HttpResponse HandleCandidateRoute(void *user,
+                                             const HttpRequest &request) {
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
+            request, &HandleCandidate);
     }
 
-    const WebrtcRoute *route = FindWebrtcRoute(request);
-    if (route == nullptr) {
-        return StatusResponse(404, "Not Found");
+    static HttpResponse HandleClosePeerRoute(void *user,
+                                             const HttpRequest &request) {
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
+            request, &HandleClosePeer);
     }
-    return route->handler(context, request, body, principal);
+
+    HttpResponse HandleWebrtc(const HttpRequest &request,
+                              WebrtcRouteHandler handler) {
+        AuthPrincipal principal;
+        if (!RequireAuth(context_, request, &principal)) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        if (dependencies_.webrtc_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        if (IsMediaRestarting(dependencies_.media_service)) {
+            return StatusResponse(503, "Media pipeline restarting");
+        }
+
+        ConfigJson body;
+        if (!ParseOptionalJsonObject(request, &body)) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+
+        return handler(dependencies_.webrtc_service, request, body, principal);
+    }
+
+    HttpHandlerContext *context_ = nullptr;
+    MediaHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
+    HttpHandlerContext *context,
+    const MediaHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new WebrtcHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

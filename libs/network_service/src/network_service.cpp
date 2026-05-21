@@ -142,6 +142,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         bool detach = false;
         {
@@ -236,11 +241,6 @@ public:
     }
 
 private:
-    bool IsStarted() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return initialized_ && started_;
-    }
-
     bool LoadConfigs() {
         ConfigJson network_json = ConfigJson::object();
         std::map<std::string, NetworkInterfaceConfig> loaded_configs;
@@ -469,7 +469,7 @@ private:
     std::map<std::string, NetworkInterfaceConfig> configs_;
     std::map<std::string, bool> status_errors_;
     ConfigJson network_config_json_ = ConfigJson::object();
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     bool config_attached_ = false;
     bool suppress_config_apply_ = false;
     bool initialized_ = false;

@@ -5,21 +5,6 @@
 
 namespace {
 
-class DummyMediaBuffer : public IMediaBuffer {
-public:
-    uint8_t* MutableData() override { return data_; }
-    const uint8_t* Data() const override { return data_; }
-    uint32_t Size() const override { return size_; }
-    uint32_t Capacity() const override { return sizeof(data_); }
-    void SetSize(uint32_t size) override {
-        size_ = size > Capacity() ? Capacity() : size;
-    }
-
-private:
-    uint8_t data_[8] = {};
-    uint32_t size_ = sizeof(data_);
-};
-
 int Expect(bool condition) {
     return condition ? 0 : 1;
 }
@@ -36,7 +21,7 @@ int main() {
     live_stream::WebrtcServiceDependencies dependencies;
     std::unique_ptr<live_stream::IWebrtcService> invalid_service =
         live_stream::CreateWebrtcService(invalid_options, dependencies);
-    if (Expect(invalid_service->Init() == infra::Status::kInvalidParam)) {
+    if (Expect(!invalid_service->Start())) {
         return 1;
     }
 
@@ -50,8 +35,7 @@ int main() {
 
     std::unique_ptr<live_stream::IWebrtcService> service =
         live_stream::CreateWebrtcService(options, dependencies);
-    if (Expect(service->Init() == infra::Status::kOk) ||
-        Expect(service->Start() == infra::Status::kOk) ||
+    if (Expect(!service->Start()) ||
         Expect(std::strcmp(service->BackendName(), "metaRTC") == 0)) {
         return 1;
     }
@@ -65,35 +49,34 @@ int main() {
     }
 
     live_stream::WebrtcCreatePeerRequest create_request;
-    if (Expect(service->CreatePeer(create_request).status ==
-               infra::Status::kNotSupported)) {
+    if (Expect(service->CreatePeer(create_request).peer_id.empty())) {
         return 1;
     }
 
     live_stream::WebrtcOfferRequest offer;
     offer.peer_id = "missing-peer";
     offer.sdp = "v=0\r\n";
-    if (Expect(service->HandleOffer(offer).status == infra::Status::kNotFound)) {
+    if (Expect(service->HandleOffer(offer).sdp.empty())) {
         return 1;
     }
 
     live_stream::WebrtcIceCandidate candidate;
     candidate.peer_id = "missing-peer";
     candidate.candidate = "candidate:1 1 UDP 1 10.0.0.2 10000 typ host";
-    if (Expect(service->AddIceCandidate(candidate) == infra::Status::kNotFound)) {
+    if (Expect(!service->AddIceCandidate(candidate))) {
         return 1;
     }
 
-    EncodedFrame frame;
-    frame.stream_id = StreamId::kMain;
-    frame.buffer = std::shared_ptr<IMediaBuffer>(new DummyMediaBuffer());
+    live_stream::EncodedFrame frame;
+    frame.stream_id = live_stream::StreamId::kMain;
+    frame.buffer = live_stream::VideoBufferAlloc(8);
     frame.size = 4;
+    (void)live_stream::VideoBufferSetSize(frame.buffer, 8);
     service->OnFrame(frame);
 
     service->Stop();
-    if (Expect(service->CreatePeer(create_request).status == infra::Status::kBusy)) {
+    if (Expect(service->CreatePeer(create_request).peer_id.empty())) {
         return 1;
     }
-    service->Deinit();
     return 0;
 }

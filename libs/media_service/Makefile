@@ -11,7 +11,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 
 EXTRA_TEST_DEPS := $(CONFIG_LIB) $(STREAM_CODEC_LIB) $(INFRA_LIB)
-EXTRA_TEST_LIBS := $(CONFIG_LIB) $(STREAM_CODEC_LIB) $(INFRA_LIB)
+EXTRA_TEST_LIBS := $(CONFIG_LIB) $(STREAM_CODEC_LIB) $(INFRA_LIB) -pthread
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service ROOT_DIR=$(ROOT_DIR)

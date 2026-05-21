@@ -12,7 +12,7 @@
 namespace live_stream {
 
 class IConfigService;
-class MediaService;
+class IMediaService;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -38,12 +38,68 @@ struct CaptureRequest {
 };
 
 struct SnapshotFrame {
-    std::shared_ptr<IMediaBuffer> buffer;
+    VideoBuffer *buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t width = 0;
     uint32_t height = 0;
     int64_t pts_us = 0;
+
+    SnapshotFrame() = default;
+
+    SnapshotFrame(const SnapshotFrame &other)
+        : buffer(VideoBufferRetain(other.buffer)),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          pts_us(other.pts_us) {}
+
+    SnapshotFrame &operator=(const SnapshotFrame &other) {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBuffer *retained = VideoBufferRetain(other.buffer);
+        VideoBufferRelease(buffer);
+        buffer = retained;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        pts_us = other.pts_us;
+        return *this;
+    }
+
+    SnapshotFrame(SnapshotFrame &&other) noexcept
+        : buffer(other.buffer),
+          offset(other.offset),
+          size(other.size),
+          width(other.width),
+          height(other.height),
+          pts_us(other.pts_us) {
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+    }
+
+    SnapshotFrame &operator=(SnapshotFrame &&other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBufferRelease(buffer);
+        buffer = other.buffer;
+        offset = other.offset;
+        size = other.size;
+        width = other.width;
+        height = other.height;
+        pts_us = other.pts_us;
+        other.buffer = nullptr;
+        other.offset = 0;
+        other.size = 0;
+        return *this;
+    }
+
+    ~SnapshotFrame() { VideoBufferRelease(buffer); }
 
     BufferSlice PayloadSlice() const { return BufferSlice{buffer, offset, size}; }
 
@@ -59,7 +115,8 @@ struct SnapshotFrame {
 struct SnapshotServiceOptions {
     SnapshotConfig default_config;
     IConfigService *config_service = nullptr;
-    MediaService *media_service = nullptr;
+    IMediaService *media_service = nullptr;
+    MediaChannels media_channels;
     hisisdk::IHisiSdk *sdk = nullptr;
 };
 

@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { id: 'osd', label: 'OSD', group: 'Setup' },
   { id: 'network', label: '网络', group: 'Setup' },
   { id: 'system', label: '系统维护', group: 'System' },
+  { id: 'streamInfo', label: '码流信息', group: 'Information' },
   { id: 'logs', label: '日志信息', group: 'Information' },
 ];
 

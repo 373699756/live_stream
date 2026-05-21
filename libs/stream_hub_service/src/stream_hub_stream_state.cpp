@@ -197,24 +197,26 @@ bool IsHlsStreamReady(const StreamContext &stream) {
            !stream.segments.empty();
 }
 
-ParsedFramePayload ParseFramePayload(const EncodedFrame &frame) {
-    ParsedFramePayload payload;
-    payload.codec = frame.codec;
+void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
+    if (payload == nullptr) {
+        return;
+    }
+    *payload = ParsedFramePayload{};
+    payload->codec = frame.codec;
     const uint8_t *data = frame.PayloadData();
     if (data == nullptr) {
-        return payload;
+        return;
     }
 
     if (frame.codec == VideoCodec::kH264) {
-        payload.valid =
+        payload->valid =
             stream_codec::ParseH264AnnexBNalUnits(data, frame.size,
-                                                  &payload.h264_units);
+                                                  &payload->h264_units);
     } else if (frame.codec == VideoCodec::kH265) {
-        payload.valid =
+        payload->valid =
             stream_codec::ParseH265AnnexBNalUnits(data, frame.size,
-                                                  &payload.h265_units);
+                                                  &payload->h265_units);
     }
-    return payload;
 }
 
 bool HasParsedUnits(const ParsedFramePayload &payload) {
@@ -263,18 +265,19 @@ StreamSegment FindHlsSegment(const StreamContext &stream, uint64_t sequence) {
     return StreamSegment{};
 }
 
-StreamFlvBootstrap BuildFlvBootstrap(const StreamContext &stream) {
-    StreamFlvBootstrap bootstrap;
-    if (!IsFlvStreamReady(stream)) {
-        return bootstrap;
+StreamFlvStartData BuildFlvStartData(const StreamContext &stream) {
+    StreamFlvStartData start_data;
+    if (!IsBrowserStreamReady(stream.state, stream.codec) ||
+        !IsFlvCodecSupported(stream.codec)) {
+        return start_data;
     }
 
-    bootstrap.supported = true;
-    bootstrap.file_header = stream_mux::BuildFlvFileHeader();
-    bootstrap.sequence_header = stream.sequence_header_tag;
-    bootstrap.last_keyframe = stream.last_keyframe_tag;
-    bootstrap.config_generation = stream.config_generation;
-    return bootstrap;
+    start_data.supported = true;
+    start_data.file_header = stream_mux::BuildFlvFileHeader();
+    start_data.sequence_header = stream.sequence_header_tag;
+    start_data.last_keyframe = stream.last_keyframe_tag;
+    start_data.config_generation = stream.config_generation;
+    return start_data;
 }
 
 void ResetStream(StreamContext *stream, VideoCodec codec) {
@@ -348,6 +351,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         }
     }
 
+    result.keyframe = keyframe;
     result.sequence_header_tag = stream->sequence_header_tag;
     result.accepted = true;
     return result;

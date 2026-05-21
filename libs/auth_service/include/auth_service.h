@@ -213,6 +213,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual bool SetAuditSink(IAuthAuditSink* sink) = 0;
     virtual LoginResult Login(const LoginRequest& request) = 0;
     virtual bool Logout(const live_stream::RequestContext& context) = 0;

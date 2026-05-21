@@ -14,10 +14,17 @@ MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
 STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a
 STREAM_MUX_LIB := $(BUILD_DIR)/lib/libstream_mux.a
 STREAM_HUB_LIB := $(BUILD_DIR)/lib/libstream_hub_service.a
+METARTC_LIBS := $(ROOT_DIR)/3rdparty/install/lib/libmetartc8.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libmetartccore8.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libyangutil8.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libsrtp2.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libusrsctp.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libssl.a \
+	$(ROOT_DIR)/3rdparty/install/lib/libcrypto.a
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
-	$(STREAM_MUX_LIB) $(STREAM_HUB_LIB)
+	$(STREAM_MUX_LIB) $(STREAM_HUB_LIB) $(METARTC_LIBS)
 EXTRA_TEST_LIBS := $(STREAM_HUB_LIB) $(STREAM_MUX_LIB) $(STREAM_CODEC_LIB) \
-	$(MEDIA_LIB) $(NET_LIB) $(INFRA_LIB) -pthread
+	$(MEDIA_LIB) $(NET_LIB) $(INFRA_LIB) $(METARTC_LIBS) -pthread -lm -ldl
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service all

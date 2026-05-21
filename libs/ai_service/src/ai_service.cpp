@@ -7,10 +7,11 @@
 #include <utility>
 
 #include "config_service.h"
+#include "hisisdk/hisi_sdk.h"
 #include "infra/executor.h"
 #include "infra/log.h"
+#include "infra/time.h"
 #include "live_stream/json_utils.h"
-#include "media/frame_source.h"
 #include "media_service.h"
 
 #if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \
@@ -153,7 +154,8 @@ public:
     virtual bool Available() const = 0;
     virtual bool Start(const AiModelConfig &config) = 0;
     virtual void Stop() = 0;
-    virtual AiInferenceResult Run(const EncodedFrame &frame,
+    virtual AiInferenceResult Run(const hisisdk::YuvFrame &frame,
+                                  StreamId stream_id,
                                   const AiModelConfig &config) = 0;
 };
 
@@ -169,13 +171,13 @@ public:
 
     void Stop() override { started_ = false; }
 
-    AiInferenceResult Run(const EncodedFrame &frame,
+    AiInferenceResult Run(const hisisdk::YuvFrame &frame,
+                          StreamId stream_id,
                           const AiModelConfig &config) override {
         (void)config;
         AiInferenceResult result;
-        result.success = started_ && frame.HasValidPayload();
-        result.stream_id = frame.stream_id;
-        result.sequence = frame.sequence;
+        result.success = started_ && frame.buffer && frame.size > 0;
+        result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
         return result;
     }
@@ -208,14 +210,14 @@ public:
         started_ = false;
     }
 
-    AiInferenceResult Run(const EncodedFrame &frame,
+    AiInferenceResult Run(const hisisdk::YuvFrame &frame,
+                          StreamId stream_id,
                           const AiModelConfig &config) override {
         (void)config;
         AiInferenceResult result;
-        result.stream_id = frame.stream_id;
-        result.sequence = frame.sequence;
+        result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
-        if (!started_ || !frame.HasValidPayload()) {
+        if (!started_ || !frame.buffer || frame.size == 0) {
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
@@ -238,13 +240,23 @@ std::unique_ptr<AiInferenceEngine> CreateEngine(AiBackend backend) {
     return std::unique_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
 }
 
+MppChannel VpssChannelForStream(const MediaChannels &channels,
+                                StreamId stream_id) {
+    return stream_id == StreamId::kSub ? channels.sub_vpss : channels.vpss;
+}
+
+hisisdk::Size YuvSizeForStream(const MediaChannels &channels,
+                               StreamId stream_id) {
+    const VideoSize size = stream_id == StreamId::kSub ? channels.sub_size
+                                                       : channels.main_size;
+    return hisisdk::Size{size.width, size.height};
+}
+
 }  // namespace
 
-struct AiService::Impl final : public IFrameSink {
+struct AiService::Impl final {
     explicit Impl(const AiServiceOptions &service_options)
         : options(service_options), config(service_options.default_config) {}
-
-    const char *Name() const override { return AiService::StaticName(); }
 
     bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex);
@@ -321,24 +333,18 @@ struct AiService::Impl final : public IFrameSink {
                 executor.reset();
                 return false;
             }
+            started = true;
         }
 
-        if (options.media_service == nullptr) {
+        if (options.media_service == nullptr || options.sdk == nullptr ||
+            !options.media_service->IsStarted()) {
             Stop();
             return false;
         }
-        FrameSubscribeOptions subscribe_options;
-        subscribe_options.stream_id = start_config.stream_id;
-        subscribe_options.sink_name = AiService::StaticName();
-        const FrameSubscriptionId subscription =
-            options.media_service->SubscribeFrames(subscribe_options, this);
-        if (subscription == 0) {
+        if (!executor->Post([this]() { CaptureLoop(); })) {
             Stop();
             return false;
         }
-        std::lock_guard<std::mutex> lock(mutex);
-        subscription_id = subscription;
-        started = true;
         INFRA_LOG_INFO("ai", "AI service started: backend=%s stream=%d",
                        ToString(start_config.backend),
                        static_cast<int>(start_config.stream_id));
@@ -346,20 +352,12 @@ struct AiService::Impl final : public IFrameSink {
     }
 
     void Stop() {
-        FrameSubscriptionId subscription = 0;
-        MediaService *media_service = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started && subscription_id == 0 && !executor && !engine) {
+            if (!started && !executor && !engine) {
                 return;
             }
             started = false;
-            subscription = subscription_id;
-            subscription_id = 0;
-            media_service = options.media_service;
-        }
-        if (media_service != nullptr && subscription != 0) {
-            (void)media_service->UnsubscribeFrames(subscription);
         }
         if (executor) {
             executor->Stop(infra::StopMode::kDiscard);
@@ -373,34 +371,37 @@ struct AiService::Impl final : public IFrameSink {
         stats.backend_available = false;
     }
 
-    void OnFrame(const EncodedFrame &frame) override {
-        std::lock_guard<std::mutex> lock(mutex);
-        ++stats.received_frames;
-        if (!started || !config.enabled || !executor || !engine ||
-            frame.stream_id != config.stream_id || !frame.HasValidPayload()) {
-            ++stats.skipped_frames;
-            return;
-        }
-        if (last_pts_us != 0 && frame.pts_us > last_pts_us &&
-            static_cast<uint64_t>(frame.pts_us - last_pts_us) <
-                static_cast<uint64_t>(config.inference_interval_ms) * 1000U) {
-            ++stats.skipped_frames;
-            return;
-        }
-        last_pts_us = frame.pts_us;
-        AiModelConfig run_config = config;
-        if (!executor->Post(
-                [this, frame, run_config]() { RunInference(frame, run_config); })) {
-            ++stats.dropped_tasks;
+    void CaptureLoop() {
+        while (true) {
+            AiModelConfig run_config;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (!started || !config.enabled) {
+                    return;
+                }
+                run_config = config;
+            }
+            hisisdk::YuvFrame frame = options.sdk->CaptureYuvFrame(
+                VpssChannelForStream(options.media_channels,
+                                     run_config.stream_id),
+                YuvSizeForStream(options.media_channels,
+                                 run_config.stream_id),
+                run_config.inference_interval_ms);
+            if (!frame.buffer || frame.size == 0) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    ++stats.skipped_frames;
+                    ++stats.inference_failed_count;
+                }
+                infra::Time::SleepMillis(run_config.inference_interval_ms);
+                continue;
+            }
+            RunInference(frame, run_config);
+            infra::Time::SleepMillis(run_config.inference_interval_ms);
         }
     }
 
-    void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
-        (void)stream_id;
-        (void)state;
-    }
-
-    void RunInference(const EncodedFrame &frame,
+    void RunInference(const hisisdk::YuvFrame &frame,
                       const AiModelConfig &run_config) {
         AiInferenceResult result;
         {
@@ -409,7 +410,8 @@ struct AiService::Impl final : public IFrameSink {
                 ++stats.inference_failed_count;
                 return;
             }
-            result = engine->Run(frame, run_config);
+            ++stats.received_frames;
+            result = engine->Run(frame, run_config.stream_id, run_config);
             if (result.success) {
                 ++stats.inference_count;
             } else {
@@ -425,10 +427,8 @@ struct AiService::Impl final : public IFrameSink {
     AiModelConfig config;
     std::unique_ptr<AiInferenceEngine> engine;
     std::unique_ptr<infra::Executor> executor;
-    FrameSubscriptionId subscription_id = 0;
     AiInferenceResult last_result;
     AiServiceStats stats;
-    int64_t last_pts_us = 0;
     bool config_attached = false;
     bool started = false;
     mutable std::mutex mutex;

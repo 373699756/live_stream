@@ -15,8 +15,8 @@ EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libnet_service.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libinfra_service.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libstream_hub_service.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia_service.a
-EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libstream_codec.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libstream_mux.a
+EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libstream_codec.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libnet_service.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libinfra_service.a
 include ../service_rules.mk

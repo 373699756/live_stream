@@ -62,6 +62,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual AlarmStatus GetAlarmStatus() = 0;
     virtual bool UpdateRules(const live_stream::RequestContext& context,
                              const std::vector<AlarmRule>& rules) = 0;

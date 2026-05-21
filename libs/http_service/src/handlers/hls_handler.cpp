@@ -15,8 +15,9 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kHlsBootstrapWaitMs = 2500;
-constexpr uint32_t kHlsBootstrapPollMs = 50;
+constexpr uint32_t kHlsStartWaitMs = 2500;
+constexpr uint32_t kHlsStartPollMs = 50;
+constexpr uint32_t kHlsStartRequestEveryMs = 500;
 
 const char *VideoCodecName(VideoCodec codec) {
     switch (codec) {
@@ -36,7 +37,7 @@ bool RequestBrowserKeyFrame(IStreamHubService *stream_hub_service,
                             StreamId stream_id) {
     return stream_hub_service != nullptr &&
            stream_hub_service->RequestKeyFrame(stream_id,
-                                               KeyFrameReason::kRecovery);
+                                               KeyFrameReason::kNewClient);
 }
 
 HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
@@ -93,28 +94,35 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     return true;
 }
 
-HttpResponse HandlePlaylist(HttpHandlerContext *context,
+HttpResponse HandlePlaylist(IStreamHubService *stream_hub,
                             const HttpRequest &request, StreamId stream_id,
                             const std::string &object_name,
                             const StreamBrowserStatus &browser_status) {
-    IStreamHubService *stream_hub =
-        context->Dependencies().stream_hub_service;
+    bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
     StreamHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty() && browser_status.running &&
         browser_status.browser_codec) {
-        (void)RequestBrowserKeyFrame(stream_hub, stream_id);
         const auto deadline = std::chrono::steady_clock::now() +
-                              std::chrono::milliseconds(kHlsBootstrapWaitMs);
+                              std::chrono::milliseconds(kHlsStartWaitMs);
+        auto next_keyframe_request = std::chrono::steady_clock::now() +
+                                     std::chrono::milliseconds(
+                                         kHlsStartRequestEveryMs);
         while (playlist.entries.empty() &&
                std::chrono::steady_clock::now() < deadline) {
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(kHlsBootstrapPollMs));
+                std::chrono::milliseconds(kHlsStartPollMs));
+            if (std::chrono::steady_clock::now() >= next_keyframe_request) {
+                keyframe_requested =
+                    RequestBrowserKeyFrame(stream_hub, stream_id) ||
+                    keyframe_requested;
+                next_keyframe_request = std::chrono::steady_clock::now() +
+                                        std::chrono::milliseconds(
+                                            kHlsStartRequestEveryMs);
+            }
             playlist = stream_hub->GetHlsPlaylist(stream_id);
         }
     }
     if (playlist.entries.empty()) {
-        const bool keyframe_requested =
-            RequestBrowserKeyFrame(stream_hub, stream_id);
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=empty "
                         "codec=%s running=%d hls_ready=%d keyframe=%d "
@@ -132,7 +140,7 @@ HttpResponse HandlePlaylist(HttpHandlerContext *context,
                                  stream_id);
 }
 
-HttpResponse HandleSegment(HttpHandlerContext *context, StreamId stream_id,
+HttpResponse HandleSegment(IStreamHubService *stream_hub, StreamId stream_id,
                            const std::string &object_name) {
     if (!StartsWith(object_name, "seg-") || object_name.size() <= 7 ||
         object_name.substr(object_name.size() - 3) != ".ts") {
@@ -148,8 +156,7 @@ HttpResponse HandleSegment(HttpHandlerContext *context, StreamId stream_id,
     }
 
     const StreamSegment segment =
-        context->Dependencies().stream_hub_service->GetHlsSegment(
-            stream_id, static_cast<uint64_t>(sequence));
+        stream_hub->GetHlsSegment(stream_id, static_cast<uint64_t>(sequence));
     if (!segment.found) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=segment_missing "
@@ -175,64 +182,92 @@ HttpResponse HandleSegment(HttpHandlerContext *context, StreamId stream_id,
 
 }  // namespace
 
-HttpResponse http_handlers::HandleHls(HttpHandlerContext *context,
-                                      const HttpRequest &request) {
-    AuthPrincipal principal;
-    if (!RequireAuth(context, request, &principal)) {
-        return StatusResponse(401, "Unauthorized");
-    }
-    if (context->Dependencies().stream_hub_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    if (IsMediaRestarting(context)) {
-        return StatusResponse(503, "Media pipeline restarting");
+class HlsHttpHandler : public IHttpHandler {
+public:
+    HlsHttpHandler(HttpHandlerContext *context,
+                   const MediaHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
+
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddPrefixRoute(HttpMethod::kGet, "/api/hls/",
+                               &HlsHttpHandler::HandleHlsRoute, this);
     }
 
-    StreamId stream_id = StreamId::kMain;
-    std::string object_name;
-    if (!ParseHlsPath(request, &stream_id, &object_name)) {
-        return StatusResponse(400, "Invalid HLS path");
+private:
+    static HttpResponse HandleHlsRoute(void *user,
+                                       const HttpRequest &request) {
+        return static_cast<HlsHttpHandler *>(user)->HandleHls(request);
     }
 
-    const StreamBrowserStatus browser_status =
-        context->Dependencies().stream_hub_service->GetBrowserStatus(stream_id);
-    if (!browser_status.browser_codec) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HLS reject stream=%s object=%s reason=unsupported "
-                        "codec=%s running=%d hls_ready=%d segments=%u "
-                        "current_segment=%u",
-                        StreamIdToJsonString(stream_id), object_name.c_str(),
-                        VideoCodecName(browser_status.codec),
-                        browser_status.running ? 1 : 0,
-                        browser_status.hls_ready ? 1 : 0,
-                        browser_status.hls_segment_count,
-                        browser_status.hls_current_segment_size);
-        return StatusResponse(409, "HLS requires H.264 or H.265 stream");
-    }
-    if (!browser_status.running) {
-        const bool keyframe_requested =
-            browser_status.running &&
-            RequestBrowserKeyFrame(context->Dependencies().stream_hub_service,
-                                   stream_id);
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HLS reject stream=%s object=%s reason=not_ready "
-                        "codec=%s running=%d hls_ready=%d keyframe=%d "
-                        "segments=%u current_segment=%u",
-                        StreamIdToJsonString(stream_id), object_name.c_str(),
-                        VideoCodecName(browser_status.codec),
-                        browser_status.running ? 1 : 0,
-                        browser_status.hls_ready ? 1 : 0,
-                        keyframe_requested ? 1 : 0,
-                        browser_status.hls_segment_count,
-                        browser_status.hls_current_segment_size);
-        return StatusResponse(503, "HLS playlist not ready");
+    HttpResponse HandleHls(const HttpRequest &request) {
+        AuthPrincipal principal;
+        if (!RequireAuth(context_, request, &principal)) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        if (dependencies_.stream_hub_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        if (IsMediaRestarting(dependencies_.media_service)) {
+            return StatusResponse(503, "Media pipeline restarting");
+        }
+
+        StreamId stream_id = StreamId::kMain;
+        std::string object_name;
+        if (!ParseHlsPath(request, &stream_id, &object_name)) {
+            return StatusResponse(400, "Invalid HLS path");
+        }
+
+        const StreamBrowserStatus browser_status =
+            dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+        if (!browser_status.browser_codec) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HLS reject stream=%s object=%s reason=unsupported "
+                            "codec=%s running=%d hls_ready=%d segments=%u "
+                            "current_segment=%u",
+                            StreamIdToJsonString(stream_id),
+                            object_name.c_str(),
+                            VideoCodecName(browser_status.codec),
+                            browser_status.running ? 1 : 0,
+                            browser_status.hls_ready ? 1 : 0,
+                            browser_status.hls_segment_count,
+                            browser_status.hls_current_segment_size);
+            return StatusResponse(409, "HLS requires H.264 or H.265 stream");
+        }
+        if (!browser_status.running) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HLS reject stream=%s object=%s reason=not_ready "
+                            "codec=%s running=%d hls_ready=%d "
+                            "segments=%u current_segment=%u",
+                            StreamIdToJsonString(stream_id),
+                            object_name.c_str(),
+                            VideoCodecName(browser_status.codec),
+                            browser_status.running ? 1 : 0,
+                            browser_status.hls_ready ? 1 : 0,
+                            browser_status.hls_segment_count,
+                            browser_status.hls_current_segment_size);
+            return StatusResponse(503, "HLS playlist not ready");
+        }
+
+        if (object_name == "index.m3u8") {
+            return HandlePlaylist(dependencies_.stream_hub_service, request,
+                                  stream_id, object_name, browser_status);
+        }
+        return HandleSegment(dependencies_.stream_hub_service, stream_id,
+                             object_name);
     }
 
-    if (object_name == "index.m3u8") {
-        return HandlePlaylist(context, request, stream_id, object_name,
-                              browser_status);
-    }
-    return HandleSegment(context, stream_id, object_name);
+    HttpHandlerContext *context_ = nullptr;
+    MediaHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
+    HttpHandlerContext *context,
+    const MediaHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new HlsHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

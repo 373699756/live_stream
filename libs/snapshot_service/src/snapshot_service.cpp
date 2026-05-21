@@ -1,5 +1,6 @@
 #include "snapshot_service.h"
 
+#include <condition_variable>
 #include <mutex>
 #include <utility>
 
@@ -91,7 +92,7 @@ hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
     SnapshotFrame frame;
-    frame.buffer = hisi_frame.buffer;
+    frame.buffer = VideoBufferRetain(hisi_frame.buffer);
     frame.offset = hisi_frame.offset;
     frame.size = hisi_frame.size;
     frame.width = hisi_frame.width;
@@ -129,9 +130,10 @@ struct SnapshotService::Impl {
     bool enabled = true;
     uint32_t default_jpeg_quality = 90;
     uint32_t default_timeout_ms = 3000;
-    MediaChannels media_channels{};
+    MediaChannels media_channels;
     SnapshotServiceStats stats;
     mutable std::mutex mutex;
+    std::condition_variable capture_idle;
     bool config_attached = false;
 
     bool Prepare() {
@@ -169,9 +171,9 @@ struct SnapshotService::Impl {
     void Release() {
         bool detach = false;
         {
-            std::lock_guard<std::mutex> lock(mutex);
+            std::unique_lock<std::mutex> lock(mutex);
             detach = config_attached;
-            CleanupCaptureSession();
+            WaitCaptureIdleLocked(lock);
             media_bound = false;
             config_attached = false;
             if (state != ServiceState::kCreated) {
@@ -183,8 +185,15 @@ struct SnapshotService::Impl {
         }
     }
 
-    void CleanupCaptureSession() {
+    void FinishCaptureSession() {
         capturing = false;
+        capture_idle.notify_all();
+    }
+
+    void WaitCaptureIdleLocked(std::unique_lock<std::mutex> &lock) {
+        while (capturing) {
+            capture_idle.wait(lock);
+        }
     }
 
     bool PrepareCaptureSession() {
@@ -224,7 +233,8 @@ SnapshotService::SnapshotService()
 
 SnapshotService::SnapshotService(const SnapshotConfig &config)
     : SnapshotService(
-          SnapshotServiceOptions{config, nullptr, nullptr, nullptr}) {}
+          SnapshotServiceOptions{config, nullptr, nullptr, MediaChannels{},
+                                 nullptr}) {}
 
 SnapshotService::SnapshotService(const SnapshotServiceOptions &options)
     : impl_(new Impl(options)) {}
@@ -262,10 +272,7 @@ bool SnapshotService::Start() {
         return false;
     }
     if (!impl_->media_bound) {
-        if (impl_->options.media_service == nullptr) {
-            return false;
-        }
-        const MediaChannels channels = impl_->options.media_service->GetChannels();
+        const MediaChannels channels = impl_->options.media_channels;
         if (!IsValidMedia(channels)) {
             return false;
         }
@@ -287,8 +294,8 @@ void SnapshotService::Stop() {
     if (impl_ == nullptr) {
         return;
     }
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->CleanupCaptureSession();
+    std::unique_lock<std::mutex> lock(impl_->mutex);
+    impl_->WaitCaptureIdleLocked(lock);
     if (impl_->state == ServiceState::kStarted) {
         impl_->state = ServiceState::kStopped;
     }
@@ -325,27 +332,22 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
         if (impl_->state != ServiceState::kStarted || impl_->capturing ||
-            !impl_->enabled) {
+            !impl_->enabled || impl_->sdk == nullptr) {
             return SnapshotFrame{};
         }
         if (!IsValidRequest(request)) {
             return SnapshotFrame{};
         }
 
-        if (impl_->options.media_service != nullptr) {
-            if (!impl_->options.media_service->IsStarted()) {
-                ++impl_->stats.capture_failed_count;
-                return SnapshotFrame{};
-            }
-            channels = impl_->options.media_service->GetChannels();
-            if (!IsValidMedia(channels)) {
-                ++impl_->stats.capture_failed_count;
-                return SnapshotFrame{};
-            }
-            impl_->media_channels = channels;
-            impl_->media_bound = true;
-        } else {
-            channels = impl_->media_channels;
+        if (impl_->options.media_service != nullptr &&
+            !impl_->options.media_service->IsStarted()) {
+            ++impl_->stats.capture_failed_count;
+            return SnapshotFrame{};
+        }
+        channels = impl_->media_channels;
+        if (!IsValidMedia(channels)) {
+            ++impl_->stats.capture_failed_count;
+            return SnapshotFrame{};
         }
         if (!IsSnapshotVencChannelAvailable(impl_->config, channels)) {
             ++impl_->stats.capture_failed_count;
@@ -361,7 +363,7 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
             effective_request.timeout_ms = impl_->default_timeout_ms;
         }
         if (!impl_->PrepareCaptureSession()) {
-            impl_->CleanupCaptureSession();
+            impl_->FinishCaptureSession();
             ++impl_->stats.capture_failed_count;
             return SnapshotFrame{};
         }
@@ -369,7 +371,7 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
             impl_->config, impl_->media_channels, effective_request.stream_id);
         if (capture_config.size.width == 0 ||
             capture_config.size.height == 0) {
-            impl_->CleanupCaptureSession();
+            impl_->FinishCaptureSession();
             ++impl_->stats.capture_failed_count;
             return SnapshotFrame{};
         }
@@ -379,7 +381,7 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
         ToHisiSnapshotConfig(capture_config, effective_request));
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->CleanupCaptureSession();
+    impl_->FinishCaptureSession();
     if (!hisi_frame.buffer || hisi_frame.size == 0) {
         ++impl_->stats.capture_failed_count;
         return SnapshotFrame{};

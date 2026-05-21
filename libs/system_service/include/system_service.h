@@ -67,6 +67,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual DeviceInfo GetDeviceInfo() = 0;
     virtual SystemStatus GetSystemStatus() = 0;
     virtual SystemCapabilities GetCapabilities() = 0;

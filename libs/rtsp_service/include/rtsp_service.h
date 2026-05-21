@@ -13,7 +13,6 @@ namespace live_stream {
 class IAuthService;
 class IEventService;
 class IStreamHubService;
-class MediaService;
 class NetEngine;
 
 enum class RtspTransportMode {
@@ -92,24 +91,6 @@ struct RtspAdaptiveAction {
     uint32_t target_fps = 0;
 };
 
-class IRtspFrameSink {
-public:
-    virtual ~IRtspFrameSink() = default;
-
-    virtual bool OnEncodedFrame(const EncodedFrame& frame) = 0;
-};
-
-class IRtspFrameSource {
-public:
-    virtual ~IRtspFrameSource() = default;
-
-    virtual bool AttachSink(StreamId stream_id,
-                            IRtspFrameSink* sink) = 0;
-    virtual bool DetachSink(StreamId stream_id,
-                            IRtspFrameSink* sink) = 0;
-    virtual bool RequestKeyFrame(StreamId stream_id) = 0;
-};
-
 class IRtspAdaptiveObserver {
 public:
     virtual ~IRtspAdaptiveObserver() = default;
@@ -123,8 +104,6 @@ struct RtspServiceDependencies {
     IAuthService* auth_service = nullptr;
     IEventService* event_service = nullptr;
     IStreamHubService* stream_hub = nullptr;
-    MediaService* media_service = nullptr;
-    IRtspFrameSource* frame_source = nullptr;
     IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };
 
@@ -136,7 +115,6 @@ public:
     virtual void Stop() = 0;
     virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspServiceStats GetStats() const = 0;
-    virtual bool PushFrame(const EncodedFrame& frame) = 0;
 };
 
 std::unique_ptr<IRtspService> CreateRtspService(

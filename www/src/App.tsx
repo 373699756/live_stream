@@ -9,6 +9,7 @@ import { NetworkConfigPage } from './pages/NetworkConfigPage';
 import { OsdConfigPage } from './pages/OsdConfigPage';
 import type { PageId } from './pages/pageTypes';
 import { SnapshotConfigPage } from './pages/SnapshotConfigPage';
+import { StreamInfoPage } from './pages/StreamInfoPage';
 import { SystemPage } from './pages/SystemPage';
 import { VideoConfigPage } from './pages/VideoConfigPage';
 
@@ -16,6 +17,8 @@ function renderPage(page: PageId) {
   switch (page) {
     case 'live':
       return <LiveViewPage />;
+    case 'streamInfo':
+      return <StreamInfoPage />;
     case 'video':
       return <VideoConfigPage />;
     case 'snapshot':

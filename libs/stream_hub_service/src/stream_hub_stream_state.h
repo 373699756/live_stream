@@ -51,6 +51,7 @@ struct ParsedFramePayload {
 
 struct PackagedFrameResult {
     bool accepted = false;
+    bool keyframe = false;
     bool hls_segment_created = false;
     bool hls_segment_updated = false;
     std::string sequence_header_tag;
@@ -65,13 +66,13 @@ bool HasFlvSequenceHeader(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);
 
-ParsedFramePayload ParseFramePayload(const EncodedFrame &frame);
+void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload);
 bool HasParsedUnits(const ParsedFramePayload &payload);
 
 StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                    uint32_t hls_segment_duration_ms);
 StreamSegment FindHlsSegment(const StreamContext &stream, uint64_t sequence);
-StreamFlvBootstrap BuildFlvBootstrap(const StreamContext &stream);
+StreamFlvStartData BuildFlvStartData(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, VideoCodec codec);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,

@@ -9,18 +9,16 @@ import {
 import {
   flvStreamUrl,
   hlsPlaylistUrl,
-  snapshotUrl as buildSnapshotUrl,
 } from '../api/client';
 import type { StreamName, StreamStatus, WebrtcConfig } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 
-type PreviewMode = 'webrtc' | 'hls' | 'flv' | 'snapshot';
+type PreviewMode = 'webrtc' | 'hls' | 'flv';
 
 const previewModeLabels: Record<PreviewMode, string> = {
   webrtc: 'WebRTC',
   hls: 'HLS',
   flv: 'HTTP-FLV',
-  snapshot: '抓图预览',
 };
 
 type HlsPlayer = {
@@ -75,6 +73,7 @@ interface VideoPreviewProps {
   statuses: StreamStatus[];
   onStreamChange: (stream: StreamName) => void;
   enabled?: boolean;
+  onSnapshot?: (stream: StreamName) => void;
 }
 
 const scriptLoads = new Map<string, Promise<void>>();
@@ -146,13 +145,15 @@ export function VideoPreview({
   statuses,
   onStreamChange,
   enabled = true,
+  onSnapshot,
 }: VideoPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('webrtc');
-  const [snapshotTick, setSnapshotTick] = useState(0);
   const [webrtcConfig, setWebrtcConfig] = useState<WebrtcConfig | null>(null);
   const [webrtcConfigLoaded, setWebrtcConfigLoaded] = useState(false);
   const [previewState, setPreviewState] = useState('等待 WebRTC 视频流');
   const [connected, setConnected] = useState(false);
+  const [decodedSize, setDecodedSize] = useState('');
+  const [displaySize, setDisplaySize] = useState('');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sessionRef = useRef(0);
@@ -169,7 +170,6 @@ export function VideoPreview({
     webrtcEnabled: false,
   });
   const active = statuses.find((item) => item.stream === stream);
-  const snapshotUrl = buildSnapshotUrl(stream, snapshotTick);
   const activeCodec = (active?.codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const hlsReady = active?.hlsReady ?? false;
   const flvReady = active?.flvReady ?? false;
@@ -250,9 +250,6 @@ export function VideoPreview({
   };
 
   const isModeAvailable = (candidate: PreviewMode) => {
-    if (candidate === 'snapshot') {
-      return true;
-    }
     if (candidate === 'webrtc') {
       return webrtcConfigLoaded && webrtcPlaybackEnabled;
     }
@@ -272,7 +269,7 @@ export function VideoPreview({
     if (hlsPlaybackEnabled) {
       return 'hls';
     }
-    return 'snapshot';
+    return 'webrtc';
   };
 
   useEffect(() => {
@@ -307,17 +304,6 @@ export function VideoPreview({
     webrtcConfigLoaded,
     webrtcPlaybackEnabled,
   ]);
-
-  useEffect(() => {
-    if (mode !== 'snapshot') {
-      return;
-    }
-    const timer = window.setInterval(
-      () => setSnapshotTick((value) => value + 1),
-      2000,
-    );
-    return () => window.clearInterval(timer);
-  }, [mode]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -361,8 +347,20 @@ export function VideoPreview({
       target.removeAttribute('src');
       target.load();
       target.onloadeddata = null;
+      target.onloadedmetadata = null;
       target.onplaying = null;
       target.onerror = null;
+      setDecodedSize('');
+      setDisplaySize('');
+    };
+    const updateDisplaySize = () => {
+      if (!video) {
+        return;
+      }
+      const rect = video.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setDisplaySize(`${Math.round(rect.width)}x${Math.round(rect.height)}`);
+      }
     };
     const destroyHls = (player: HlsPlayer | null) => {
       if (!player) {
@@ -448,10 +446,6 @@ export function VideoPreview({
       setSessionPreviewState('预览已暂停');
       return cleanupSession;
     }
-    if (mode === 'snapshot') {
-      setSessionPreviewState('抓图预览');
-      return cleanupSession;
-    }
     if (!video) {
       setSessionPreviewState('视频预览器不可用');
       return cleanupSession;
@@ -461,9 +455,16 @@ export function VideoPreview({
       setSessionConnected(true);
       setSessionPreviewState('视频已连接');
     };
+    video.onloadedmetadata = () => {
+      if (isCurrentSession() && video.videoWidth > 0 && video.videoHeight > 0) {
+        setDecodedSize(`${video.videoWidth}x${video.videoHeight}`);
+        updateDisplaySize();
+      }
+    };
     video.onplaying = () => {
       setSessionConnected(true);
       setSessionPreviewState('视频已连接');
+      updateDisplaySize();
     };
     video.onerror = () => {
       setSessionConnected(false);
@@ -690,16 +691,18 @@ export function VideoPreview({
           setSessionPreviewState('HTTP-FLV 播放器不可用');
           return;
         }
+        const baseFlvUrl = flvStreamUrl(stream);
+        const flvUrl = `${baseFlvUrl}${baseFlvUrl.includes('?') ? '&' : '?'}session=${sessionId}`;
         const player = flvModule.createPlayer({
           type: 'flv',
           isLive: true,
-          url: flvStreamUrl(stream),
+          url: flvUrl,
           hasAudio: false,
           hasVideo: true,
         }, {
           enableWorker: false,
-          enableStashBuffer: false,
-          stashInitialSize: 128,
+          enableStashBuffer: true,
+          stashInitialSize: 384,
           lazyLoad: false,
           deferLoadAfterSourceOpen: false,
           autoCleanupSourceBuffer: true,
@@ -710,9 +713,22 @@ export function VideoPreview({
         flvRef.current = player;
         const errorEvent = flvModule.Events?.ERROR;
         if (errorEvent && player.on) {
-          player.on(errorEvent, () => {
+          player.on(errorEvent, (...args: unknown[]) => {
             if (isCurrentSession() && flvRef.current === player) {
-              setSessionPreviewState('HTTP-FLV 播放失败');
+              const details = args
+                .map((item) => (
+                  typeof item === 'string'
+                    ? item
+                    : item instanceof Error
+                      ? item.message
+                      : JSON.stringify(item)
+                ))
+                .filter(Boolean)
+                .join(' ');
+              console.error('HTTP-FLV player error', ...args);
+              setSessionPreviewState(
+                details ? `HTTP-FLV 播放失败：${details}` : 'HTTP-FLV 播放失败',
+              );
             }
           });
         }
@@ -745,12 +761,16 @@ export function VideoPreview({
     webrtcIceServerKey,
   ]);
 
-  const openSnapshot = () => {
-    window.open(buildSnapshotUrl(stream), '_blank', 'noopener,noreferrer');
-  };
-
-  const requestFullscreen = () => {
-    void surfaceRef.current?.requestFullscreen?.();
+  const toggleFullscreen = () => {
+    const surface = surfaceRef.current;
+    if (!surface) {
+      return;
+    }
+    if (document.fullscreenElement === surface) {
+      void document.exitFullscreen?.();
+      return;
+    }
+    void surface.requestFullscreen?.();
   };
 
   const streamLabel = stream === 'main' ? '主码流' : '子码流';
@@ -761,26 +781,42 @@ export function VideoPreview({
         ? `${streamLabel} / HLS`
         : mode === 'flv'
           ? `${streamLabel} / HTTP-FLV`
-          : `${streamLabel} / JPEG 抓图`;
+          : `${streamLabel} / WebRTC`;
   const protocolLabel = previewModeLabels[mode];
+  const streamSummary = (name: StreamName) => {
+    const item = statuses.find((status) => status.stream === name);
+    const running = item?.state === 'running';
+    return {
+      label: name === 'main' ? '主码流' : '子码流',
+      running,
+      state: running ? '运行中' : '未运行',
+      detail: `${item?.codec || 'H.264'} / ${item?.resolution || '--'} / ${item?.fps || 0}fps`,
+    };
+  };
+  const mainSummary = streamSummary('main');
+  const subSummary = streamSummary('sub');
 
   return (
     <section className="preview-panel">
       <div className="preview-toolbar">
-        <div className="segmented">
+        <div className="stream-switcher">
           <button
             type="button"
             className={stream === 'main' ? 'active' : ''}
             onClick={() => switchStream('main')}
           >
-            主码流
+            <strong>{mainSummary.label}</strong>
+            <span className={mainSummary.running ? 'running' : ''}>{mainSummary.state}</span>
+            <em>{mainSummary.detail}</em>
           </button>
           <button
             type="button"
             className={stream === 'sub' ? 'active' : ''}
             onClick={() => switchStream('sub')}
           >
-            子码流
+            <strong>{subSummary.label}</strong>
+            <span className={subSummary.running ? 'running' : ''}>{subSummary.state}</span>
+            <em>{subSummary.detail}</em>
           </button>
         </div>
         <div className="preview-actions">
@@ -808,46 +844,26 @@ export function VideoPreview({
           >
             HTTP-FLV
           </button>
-          <button
-            type="button"
-            className={mode === 'snapshot' ? 'active' : ''}
-            onClick={() => switchMode('snapshot')}
-          >
-            抓图预览
-          </button>
-          <button type="button" onClick={openSnapshot}>截图</button>
-          <button type="button" onClick={requestFullscreen}>全屏</button>
+          {onSnapshot && (
+            <button
+              type="button"
+              disabled={!streamRunning}
+              onClick={() => onSnapshot(stream)}
+            >
+              抓图
+            </button>
+          )}
+          <button type="button" onClick={toggleFullscreen}>全屏</button>
         </div>
       </div>
 
-      <div className="video-surface" ref={surfaceRef}>
+      <div className="video-surface" ref={surfaceRef} onDoubleClick={toggleFullscreen}>
         {!enabled ? (
           <div className="video-placeholder">
             <div className="lens-ring paused" />
             <strong>预览已暂停</strong>
             <span>正在应用视频参数</span>
           </div>
-        ) : mode === 'snapshot' ? (
-          <img
-            key={`${stream}-${snapshotTick}-${sessionRef.current}`}
-            className="snapshot-preview"
-            src={snapshotUrl}
-            alt="snapshot preview"
-            onLoad={(event) => {
-              if (mode !== 'snapshot') {
-                return;
-              }
-              event.currentTarget.style.opacity = '1';
-              setConnected(true);
-            }}
-            onError={(event) => {
-              if (mode !== 'snapshot') {
-                return;
-              }
-              event.currentTarget.style.opacity = '0';
-              setConnected(false);
-            }}
-          />
         ) : (
           <video ref={videoRef} className="video-element" autoPlay muted playsInline />
         )}
@@ -866,8 +882,10 @@ export function VideoPreview({
         <span>{protocolLabel}</span>
         <span>{active?.codec || 'H.264'}</span>
         <span>分辨率 {active?.resolution || '1920x1080'}</span>
+        {decodedSize && <span>实际 {decodedSize}</span>}
+        {displaySize && <span>显示 {displaySize}</span>}
         <span>{active?.fps || 25} fps</span>
-        <span>{active?.bitrateKbps || 4096} kbps</span>
+        <span>{active?.bitrateKbps || 12288} kbps</span>
       </div>
     </section>
   );

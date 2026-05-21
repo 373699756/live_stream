@@ -191,7 +191,11 @@ Should not own:
 
 Boundary note:
 
-- `MediaService` is currently a concrete cross-module dependency. If host/mock development or additional protocol consumers increase coupling, introduce a narrow `IMediaService` for only the methods consumed outside the module.
+- `media_service.h` exposes `IMediaService`. Media status, capabilities,
+  hardware channel metadata, key-frame requests, and encoded-frame subscription
+  live on that interface. Frame subscription types are simple data/callback
+  contracts, not a separate source interface. The concrete media pipeline
+  implementation stays private to `media_service.cpp`.
 
 ### `libs/snapshot_service`
 

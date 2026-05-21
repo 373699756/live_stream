@@ -139,11 +139,15 @@ Responsibilities:
 - Start the video media pipeline.
 - Start AI only when `ai.enabled` is true.
 - Start OSD and snapshot services after media is available.
-- Expose `MediaRefs` (holding concrete service pointers) to the app composition root.
+- Expose `MediaRefs` with the `IMediaService` pointer needed by protocol,
+  HTTP, AI, OSD, and snapshot services.
 
-Cross-module consumers (`HttpService`, `RtspService`, `OnvifService`) receive narrow view interfaces
-(`IMediaView`, `IAiView`, `ISnapshotView`) rather than concrete class pointers. The interfaces are
-defined in each service's own header.
+Cross-module consumers receive narrow interfaces rather than concrete class
+pointers. Media status, capabilities, channels, key-frame requests, and frame
+subscription are owned by `IMediaService`; protocol stream consumers use
+`IStreamHubService`; HTTP also uses `IAiView` and
+`ISnapshotView`. Internal MPP channel data is kept at the app composition
+boundary and passed only to services that need hardware binding.
 
 ## Protocol subsystem
 
@@ -168,8 +172,9 @@ The protocol subsystem depends on already-started core, device, and media servic
 HTTP route handlers are split by business domain into `src/handlers/*.cpp.inc` files
 (auth, media, system, time, network, upgrade, AI, snapshot, stream, config, operations).
 Each handler fragment is `#include`d into `HttpServiceImpl`'s private section.
-`HttpServiceDependencies` uses narrow view interfaces (`IMediaView`, `IAiView`, `ISnapshotView`)
-for the three cross-module dependencies, and concrete interface pointers for all others.
+`HttpServiceDependencies` uses service/view interfaces (`IMediaService`,
+`IAiView`, `ISnapshotView`) for media-domain dependencies, and concrete
+interface pointers for all others.
 
 ## HTTP/Web Console boundary
 
@@ -231,7 +236,9 @@ The following items were previously listed as debt and have been addressed:
 
 - **Platform adapter construction**: centralized in `app/platform_factory.h` / `platform_factory.cpp` via `CreateLinuxPlatformAdapters()`.
 - **`eth0` hard-coding**: network interface name is now read from `network.default_ifname` in the runtime config.
-- **Concrete class cross-module dependencies**: `HttpService`, `RtspService`, and `OnvifService` now use narrow view interfaces (`IMediaView`, `IAiView`, `ISnapshotView`) for cross-module media references.
+- **Concrete class cross-module dependencies**: cross-module consumers now use
+  interfaces (`IMediaService`, `IAiView`, `ISnapshotView`,
+  `IStreamHubService`) instead of concrete service implementations.
 - **HTTP handler decomposition**: route handlers split into 11 domain files under `libs/http_service/src/handlers/`.
 - **Runtime configuration sources**: paths are configurable via `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; contract documented in `docs/api-config-contract.md`.
 - **Frontend API layer**: `www/src/api/client.ts` is now a thin HTTP layer; domain-specific API functions live in `video.ts`, `image.ts`, `network.ts`, `system.ts`, `stream.ts`; auth state is managed via `AuthContext`.

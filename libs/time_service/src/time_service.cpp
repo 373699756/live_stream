@@ -166,6 +166,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         bool detach = false;
         {
@@ -345,11 +350,6 @@ private:
         return infra::Time::SystemTimeMillis();
     }
 
-    bool IsStarted() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return initialized_ && started_;
-    }
-
     bool VerifyTimeConfig(const ConfigJson &value) const {
         TimeConfigState config;
         return LoadTimeConfig(value, &config);
@@ -441,7 +441,7 @@ private:
     TimeServiceOptions options_;
     TimeStatus status_;
     ConfigJson time_config_json_ = ConfigJson::object();
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     bool manual_sync_allowed_ = true;
     bool config_attached_ = false;
     bool suppress_config_apply_ = false;

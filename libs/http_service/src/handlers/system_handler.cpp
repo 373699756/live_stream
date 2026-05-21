@@ -2,11 +2,17 @@
 
 #include "http_handler_utils.h"
 
+#include "alarm_service.h"
+#include "config_service.h"
 #include "media_service.h"
+#include "network_service.h"
+#include "onvif_service.h"
 #include "rtsp_service.h"
 #include "snapshot_service.h"
 #include "stream_hub_service.h"
 #include "system_service.h"
+#include "time_service.h"
+#include "upgrade_service.h"
 #include "webrtc_service.h"
 
 #include <cstdint>
@@ -51,122 +57,204 @@ ConfigJson SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
 
 }  // namespace
 
-HttpResponse http_handlers::HandleSystemStatus(HttpHandlerContext *context, const HttpRequest &request) {
-    AuthPrincipal principal = context->Authenticate(request);
-    if (principal.user_name.empty()) {
-        return StatusResponse(401, "Unauthorized");
+class SystemHttpHandler : public IHttpHandler {
+public:
+    SystemHttpHandler(HttpHandlerContext *context,
+                      const SystemHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
+
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddExactRoute(HttpMethod::kGet, "/api/system/status",
+                              &SystemHttpHandler::HandleStatusRoute, this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/system/capabilities",
+                              &SystemHttpHandler::HandleCapabilitiesRoute,
+                              this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/system/reboot",
+                              &SystemHttpHandler::HandleRebootRoute, this);
+        router->AddExactRoute(HttpMethod::kPost,
+                              "/api/system/factory-reset",
+                              &SystemHttpHandler::HandleFactoryResetRoute,
+                              this);
     }
 
-    ConfigJson root = ConfigJson::object();
-    DeviceInfo device_info;
-    SystemStatus system_status;
-    if (context->Dependencies().system_service != nullptr) {
-        device_info = context->Dependencies().system_service->GetDeviceInfo();
-        system_status = context->Dependencies().system_service->GetSystemStatus();
+private:
+    static HttpResponse HandleStatusRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<SystemHttpHandler *>(user)->HandleStatus(request);
     }
-    root["deviceName"] = device_info.serial_number.empty()
-                             ? std::string("live-stream-ipc")
-                             : device_info.serial_number;
-    root["model"] = device_info.model.empty() ? std::string("live_stream_ipc")
-                                              : device_info.model;
-    root["firmware"] = device_info.firmware_version.empty()
-                           ? std::string("0.1.0")
-                           : device_info.firmware_version;
-    root["uptime"] = UptimeToString(system_status.uptime_ms);
-    root["cpu"] = system_status.cpu_usage_percent;
-    root["memory"] = system_status.memory_usage_percent;
-    root["temperature"] = system_status.temperature_celsius;
-    ConfigJson services = ConfigJson::array();
-    auto add_service = [&services](const char *name, bool running) {
-        ConfigJson service = ConfigJson::object();
-        service["name"] = name;
-        service["state"] = running ? "running" : "pending";
-        services.push_back(service);
-    };
-    add_service("logger_service", context->Dependencies().logger_service != nullptr);
-    add_service("config_service", context->Dependencies().config_service != nullptr);
-    add_service("auth_service", context->Dependencies().auth_service != nullptr);
-    add_service("system_service", context->Dependencies().system_service != nullptr);
-    add_service("time_service", context->Dependencies().time_service != nullptr);
-    add_service("network_service", context->Dependencies().network_service != nullptr);
-    add_service("alarm_service", context->Dependencies().alarm_service != nullptr);
-    add_service("upgrade_service", context->Dependencies().upgrade_service != nullptr);
-    add_service("rtsp_service",
-                context->Dependencies().rtsp_service != nullptr &&
-                    context->Dependencies().rtsp_service->LocalAddress().port != 0);
-    add_service("onvif_service", context->Dependencies().onvif_service != nullptr);
-    add_service("http_service", true);
-    add_service("media_service", context->Dependencies().media_service != nullptr &&
-                                     context->Dependencies().media_service->IsStarted());
-    if (IsAiConfigEnabled(context->Dependencies().config_service)) {
-        add_service("ai_service", IsAiServiceHealthy(context->Dependencies().ai_service));
-    }
-    add_service("snapshot_service",
-                context->Dependencies().snapshot_service != nullptr &&
-                    context->Dependencies().snapshot_service->GetStats().enabled);
-    add_service("webrtc_service",
-                context->Dependencies().webrtc_service != nullptr &&
-                    context->Dependencies().webrtc_service->GetStats().enabled &&
-                    context->Dependencies().webrtc_service->GetStats().backend_available);
-    add_service("stream_hub_service",
-                context->Dependencies().stream_hub_service != nullptr &&
-                    context->Dependencies().stream_hub_service->GetStats().enabled);
-    root["services"] = services;
-    return JsonResponse(200, root);
-}
 
-HttpResponse http_handlers::HandleSystemCapabilities(HttpHandlerContext *context, const HttpRequest &request) {
-    if (context->Dependencies().system_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+    static HttpResponse HandleCapabilitiesRoute(void *user,
+                                                const HttpRequest &request) {
+        return static_cast<SystemHttpHandler *>(user)->HandleCapabilities(
+            request);
     }
-    AuthPrincipal principal;
-    if (!context->RequirePermission(request, AuthPermission::kReadStatus, "system",
-                                    &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    return JsonResponse(200,
-                        SystemCapabilitiesToJson(
-                            context->Dependencies().system_service->GetCapabilities()));
-}
 
-HttpResponse http_handlers::HandleSystemReboot(HttpHandlerContext *context, const HttpRequest &request) {
-    if (context->Dependencies().system_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+    static HttpResponse HandleRebootRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<SystemHttpHandler *>(user)->HandleReboot(request);
     }
-    AuthPrincipal principal;
-    if (!context->RequirePermission(request, AuthPermission::kReboot, "system",
-                                    &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    const SystemCapabilities capabilities =
-        context->Dependencies().system_service->GetCapabilities();
-    if (!capabilities.supports_reboot) {
-        return StatusResponse(501, "Reboot not supported");
-    }
-    return context->Dependencies().system_service->Reboot(
-               context->MakeContext(request, &principal))
-               ? OkResponse()
-               : StatusResponse(503, "Reboot failed");
-}
 
-HttpResponse http_handlers::HandleSystemFactoryReset(HttpHandlerContext *context, const HttpRequest &request) {
-    if (context->Dependencies().system_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+    static HttpResponse HandleFactoryResetRoute(void *user,
+                                                const HttpRequest &request) {
+        return static_cast<SystemHttpHandler *>(user)->HandleFactoryReset(
+            request);
     }
-    AuthPrincipal principal;
-    if (!context->RequirePermission(request, AuthPermission::kFactoryReset, "system",
-                                    &principal)) {
-        return StatusResponse(403, "Forbidden");
+
+    HttpResponse HandleStatus(const HttpRequest &request) {
+        AuthPrincipal principal = context_->Authenticate(request);
+        if (principal.user_name.empty()) {
+            return StatusResponse(401, "Unauthorized");
+        }
+
+        ConfigJson root = ConfigJson::object();
+        DeviceInfo device_info;
+        SystemStatus system_status;
+        if (dependencies_.system_service != nullptr) {
+            device_info = dependencies_.system_service->GetDeviceInfo();
+            system_status = dependencies_.system_service->GetSystemStatus();
+        }
+        root["deviceName"] = device_info.serial_number.empty()
+                                 ? std::string("live-stream-ipc")
+                                 : device_info.serial_number;
+        root["model"] = device_info.model.empty()
+                            ? std::string("live_stream_ipc")
+                            : device_info.model;
+        root["firmware"] = device_info.firmware_version.empty()
+                               ? std::string("0.1.0")
+                               : device_info.firmware_version;
+        root["uptime"] = UptimeToString(system_status.uptime_ms);
+        root["cpu"] = system_status.cpu_usage_percent;
+        root["memory"] = system_status.memory_usage_percent;
+        root["temperature"] = system_status.temperature_celsius;
+        ConfigJson services = ConfigJson::array();
+        auto add_service = [&services](const char *name, bool running) {
+            ConfigJson service = ConfigJson::object();
+            service["name"] = name;
+            service["state"] = running ? "running" : "pending";
+            services.push_back(service);
+        };
+        add_service("logger_service",
+                    dependencies_.logger_service != nullptr &&
+                        dependencies_.logger_service->IsStarted());
+        add_service("config_service",
+                    dependencies_.config_service != nullptr &&
+                        dependencies_.config_service->IsStarted());
+        add_service("auth_service",
+                    dependencies_.auth_service != nullptr &&
+                        dependencies_.auth_service->IsStarted());
+        add_service("system_service",
+                    dependencies_.system_service != nullptr &&
+                        dependencies_.system_service->IsStarted());
+        add_service("time_service",
+                    dependencies_.time_service != nullptr &&
+                        dependencies_.time_service->IsStarted());
+        add_service("network_service",
+                    dependencies_.network_service != nullptr &&
+                        dependencies_.network_service->IsStarted());
+        add_service("alarm_service",
+                    dependencies_.alarm_service != nullptr &&
+                        dependencies_.alarm_service->IsStarted());
+        add_service("upgrade_service",
+                    dependencies_.upgrade_service != nullptr &&
+                        dependencies_.upgrade_service->IsStarted());
+        add_service("rtsp_service",
+                    dependencies_.rtsp_service != nullptr &&
+                        dependencies_.rtsp_service->LocalAddress().port != 0);
+        add_service("onvif_service",
+                    dependencies_.onvif_service != nullptr &&
+                        dependencies_.onvif_service->IsStarted());
+        add_service("http_service", true);
+        add_service("media_service",
+                    dependencies_.media_service != nullptr &&
+                        dependencies_.media_service->IsStarted());
+        if (IsAiConfigEnabled(dependencies_.config_service)) {
+            add_service("ai_service",
+                        IsAiServiceHealthy(dependencies_.ai_service));
+        }
+        add_service("snapshot_service",
+                    dependencies_.snapshot_service != nullptr &&
+                        dependencies_.snapshot_service->GetStats().enabled);
+        bool webrtc_running = false;
+        if (dependencies_.webrtc_service != nullptr) {
+            const WebrtcServiceStats stats =
+                dependencies_.webrtc_service->GetStats();
+            webrtc_running = stats.enabled && stats.backend_available;
+        }
+        add_service("webrtc_service", webrtc_running);
+        add_service("stream_hub_service",
+                    dependencies_.stream_hub_service != nullptr &&
+                        dependencies_.stream_hub_service->GetStats().enabled);
+        root["services"] = services;
+        return JsonResponse(200, root);
     }
-    const SystemCapabilities capabilities =
-        context->Dependencies().system_service->GetCapabilities();
-    if (!capabilities.supports_factory_reset) {
-        return StatusResponse(501, "Factory reset not supported");
+
+    HttpResponse HandleCapabilities(const HttpRequest &request) {
+        if (dependencies_.system_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!context_->RequirePermission(request, AuthPermission::kReadStatus,
+                                         "system", &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        return JsonResponse(
+            200, SystemCapabilitiesToJson(
+                     dependencies_.system_service->GetCapabilities()));
     }
-    return context->Dependencies().system_service->FactoryReset(
-               context->MakeContext(request, &principal))
-               ? OkResponse()
-               : StatusResponse(503, "Factory reset failed");
+
+    HttpResponse HandleReboot(const HttpRequest &request) {
+        if (dependencies_.system_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!context_->RequirePermission(request, AuthPermission::kReboot,
+                                         "system", &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        const SystemCapabilities capabilities =
+            dependencies_.system_service->GetCapabilities();
+        if (!capabilities.supports_reboot) {
+            return StatusResponse(501, "Reboot not supported");
+        }
+        return dependencies_.system_service->Reboot(
+                   context_->MakeContext(request, &principal))
+                   ? OkResponse()
+                   : StatusResponse(503, "Reboot failed");
+    }
+
+    HttpResponse HandleFactoryReset(const HttpRequest &request) {
+        if (dependencies_.system_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!context_->RequirePermission(request,
+                                         AuthPermission::kFactoryReset,
+                                         "system", &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        const SystemCapabilities capabilities =
+            dependencies_.system_service->GetCapabilities();
+        if (!capabilities.supports_factory_reset) {
+            return StatusResponse(501, "Factory reset not supported");
+        }
+        return dependencies_.system_service->FactoryReset(
+                   context_->MakeContext(request, &principal))
+                   ? OkResponse()
+                   : StatusResponse(503, "Factory reset failed");
+    }
+
+    HttpHandlerContext *context_ = nullptr;
+    SystemHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
+    HttpHandlerContext *context,
+    const SystemHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new SystemHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

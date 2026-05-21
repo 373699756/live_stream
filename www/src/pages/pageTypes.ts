@@ -1,5 +1,6 @@
 export type PageId =
   | 'live'
+  | 'streamInfo'
   | 'video'
   | 'snapshot'
   | 'image'

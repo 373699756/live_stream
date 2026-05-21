@@ -20,7 +20,6 @@ class HttpHandlerContext {
 public:
     virtual ~HttpHandlerContext() = default;
 
-    virtual const HttpServiceDependencies &Dependencies() const = 0;
     virtual AuthPrincipal Authenticate(const HttpRequest &request) = 0;
     virtual bool RequirePermission(const HttpRequest &request,
                                    AuthPermission permission,

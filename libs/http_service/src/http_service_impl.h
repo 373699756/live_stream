@@ -3,6 +3,8 @@
 
 #include "http_handler_context.h"
 #include "http_connection_store.h"
+#include "http_router.h"
+#include "handlers/http_handlers.h"
 
 #include <cstdint>
 #include <memory>
@@ -48,8 +50,8 @@ private:
     void DetachFlvClients(const std::vector<StreamFlvClientId> &client_ids);
     bool TryHandleStreamingRequest(ConnectionId connection_id,
                                    const HttpRequest &request);
+    void RegisterHandlers();
 
-    const HttpServiceDependencies &Dependencies() const override;
     AuthPrincipal Authenticate(const HttpRequest &request) override;
     bool RequirePermission(const HttpRequest &request,
                            AuthPermission permission,
@@ -99,6 +101,9 @@ private:
     std::unique_ptr<infra::Executor> stream_executor_;
     std::unique_ptr<infra::Executor> control_executor_;
     std::unique_ptr<infra::Executor> config_apply_executor_;
+    HttpRouter router_;
+    std::vector<std::unique_ptr<IHttpHandler>> handlers_;
+    std::unique_ptr<IStreamingHttpHandler> streaming_handler_;
     TcpServerId tcp_server_id_ = 0;
     HttpConnectionStore connections_;
     HttpServiceStats stats_;

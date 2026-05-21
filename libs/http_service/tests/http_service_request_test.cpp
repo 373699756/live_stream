@@ -171,9 +171,9 @@ int main() {
     FakeLoggerService logger;
 
     live_stream::HttpServiceDependencies deps;
-    deps.auth_service = &auth;
-    deps.config_service = &config;
-    deps.logger_service = &logger;
+    deps.security.auth_service = &auth;
+    deps.config.config_service = &config;
+    deps.security.logger_service = &logger;
 
     live_stream::HttpServiceOptions options;
     std::unique_ptr<live_stream::IHttpService> service =
@@ -242,9 +242,10 @@ int main() {
         return 8;
     }
 
-    live_stream::MediaService media;
+    std::unique_ptr<live_stream::IMediaService> media =
+        live_stream::CreateMediaService();
     live_stream::HttpServiceDependencies media_deps = deps;
-    media_deps.media_service = &media;
+    media_deps.media.media_service = media.get();
     std::unique_ptr<live_stream::IHttpService> media_service =
         live_stream::CreateHttpService(options, media_deps);
     if (!media_service->Init()) {

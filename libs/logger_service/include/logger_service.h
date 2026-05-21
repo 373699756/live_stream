@@ -78,6 +78,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual bool RecordOperation(const OperationRecord& record) = 0;
     virtual std::vector<OperationRecord> QueryOperations(
         const OperationLogQuery& query) = 0;

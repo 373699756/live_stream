@@ -2,9 +2,9 @@
 
 #include "auth_service.h"
 #include "event_service.h"
+#include "infra/log.h"
 #include "live_stream/byte_writer.h"
-#include "media/frame_source.h"
-#include "media_service.h"
+#include "media/media_buffer.h"
 #include "net_service.h"
 #include "rtsp_protocol.h"
 #include "rtsp_session_store.h"
@@ -46,9 +46,7 @@ using stream_mux::IRtpPacketSink;
 using stream_mux::RtpPacketizer;
 using stream_mux::RtpPacketView;
 
-class RtspServiceImpl : public IRtspService,
-                        public IRtspFrameSink,
-                        public IFrameSink {
+class RtspServiceImpl : public IRtspService, public IFrameSink {
 public:
     RtspServiceImpl(RtspServiceOptions options,
                     RtspServiceDependencies dependencies)
@@ -67,6 +65,7 @@ public:
             return true;
         }
         if (dependencies_.net_engine == nullptr ||
+            dependencies_.stream_hub == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
             return false;
@@ -119,44 +118,18 @@ public:
         if (udp_result != 0) {
             udp_socket_id_ = udp_result;
         }
-        if (dependencies_.stream_hub != nullptr) {
-            StreamFrameSinkOptions main_options;
-            main_options.stream_id = StreamId::kMain;
-            main_options.require_key_frame_first = true;
-            main_options.sink_name = kServiceName;
-            main_sink_id_ =
-                dependencies_.stream_hub->AttachFrameSink(main_options, this);
-            StreamFrameSinkOptions sub_options;
-            sub_options.stream_id = StreamId::kSub;
-            sub_options.require_key_frame_first = true;
-            sub_options.sink_name = kServiceName;
-            sub_sink_id_ =
-                dependencies_.stream_hub->AttachFrameSink(sub_options, this);
-        } else if (dependencies_.frame_source != nullptr) {
-            (void)dependencies_.frame_source->AttachSink(StreamId::kMain,
-                                                         this);
-            (void)dependencies_.frame_source->AttachSink(StreamId::kSub,
-                                                         this);
-        } else if (dependencies_.media_service != nullptr) {
-            FrameSubscribeOptions main_options;
-            main_options.stream_id = StreamId::kMain;
-            main_options.require_key_frame_first = true;
-            main_options.sink_name = kServiceName;
-            FrameSubscriptionId main_sub =
-                dependencies_.media_service->SubscribeFrames(main_options, this);
-            if (main_sub != 0) {
-                main_subscription_id_ = main_sub;
-            }
-            FrameSubscribeOptions sub_options;
-            sub_options.stream_id = StreamId::kSub;
-            sub_options.require_key_frame_first = true;
-            sub_options.sink_name = kServiceName;
-            FrameSubscriptionId sub_sub =
-                dependencies_.media_service->SubscribeFrames(sub_options, this);
-            if (sub_sub != 0) {
-                sub_subscription_id_ = sub_sub;
-            }
-        }
+        StreamFrameSinkOptions main_options;
+        main_options.stream_id = StreamId::kMain;
+        main_options.require_key_frame_first = true;
+        main_options.sink_name = kServiceName;
+        main_sink_id_ =
+            dependencies_.stream_hub->AttachFrameSink(main_options, this);
+        StreamFrameSinkOptions sub_options;
+        sub_options.stream_id = StreamId::kSub;
+        sub_options.require_key_frame_first = true;
+        sub_options.sink_name = kServiceName;
+        sub_sink_id_ =
+            dependencies_.stream_hub->AttachFrameSink(sub_options, this);
         NetAddress local_result =
             dependencies_.net_engine->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
@@ -167,33 +140,13 @@ public:
     }
 
     void Stop() override {
-        if (dependencies_.stream_hub != nullptr) {
-            if (main_sink_id_ != 0) {
-                (void)dependencies_.stream_hub->DetachFrameSink(
-                    main_sink_id_);
-                main_sink_id_ = 0;
-            }
-            if (sub_sink_id_ != 0) {
-                (void)dependencies_.stream_hub->DetachFrameSink(
-                    sub_sink_id_);
-                sub_sink_id_ = 0;
-            }
-        } else if (dependencies_.frame_source != nullptr) {
-            (void)dependencies_.frame_source->DetachSink(StreamId::kMain,
-                                                         this);
-            (void)dependencies_.frame_source->DetachSink(StreamId::kSub,
-                                                         this);
-        } else if (dependencies_.media_service != nullptr) {
-            if (main_subscription_id_ != 0) {
-                (void)dependencies_.media_service->UnsubscribeFrames(
-                    main_subscription_id_);
-                main_subscription_id_ = 0;
-            }
-            if (sub_subscription_id_ != 0) {
-                (void)dependencies_.media_service->UnsubscribeFrames(
-                    sub_subscription_id_);
-                sub_subscription_id_ = 0;
-            }
+        if (dependencies_.stream_hub != nullptr && main_sink_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameSink(main_sink_id_);
+            main_sink_id_ = 0;
+        }
+        if (dependencies_.stream_hub != nullptr && sub_sink_id_ != 0) {
+            (void)dependencies_.stream_hub->DetachFrameSink(sub_sink_id_);
+            sub_sink_id_ = 0;
         }
         if (server_id_ != 0 && dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseTcp(server_id_);
@@ -236,11 +189,7 @@ public:
         return stats;
     }
 
-    bool PushFrame(const EncodedFrame& frame) override {
-        return OnEncodedFrame(frame);
-    }
-
-    bool OnEncodedFrame(const EncodedFrame& frame) override {
+    bool OnEncodedFrame(const EncodedFrame& frame) {
         if (!IsValidFrame(frame)) {
             return false;
         }
@@ -267,10 +216,10 @@ public:
 
 private:
     bool IsValidFrame(const EncodedFrame& frame) const {
-        return frame.buffer && frame.buffer->Data() != nullptr &&
+        return frame.buffer != nullptr && frame.buffer->data != nullptr &&
                frame.size > 0 &&
-               frame.offset <= frame.buffer->Size() &&
-               frame.size <= frame.buffer->Size() - frame.offset;
+               frame.offset <= frame.buffer->size &&
+               frame.size <= frame.buffer->size - frame.offset;
     }
 
     static void HandleAccept(void* user, ConnectionId id, NetAddress peer) {
@@ -312,6 +261,10 @@ private:
             (void)dependencies_.net_engine->Close(connection_id);
             return;
         }
+        INFRA_LOG_INFO("rtsp_service", "RTSP client connected conn=%llu peer=%s:%u",
+                       static_cast<unsigned long long>(connection_id),
+                       session->peer.ip.c_str(),
+                       static_cast<unsigned>(session->peer.port));
         PublishEvent(EventType::kRtspClientConnected, session->peer.ip);
     }
 
@@ -324,6 +277,11 @@ private:
         if (!session) {
             return;
         }
+        INFRA_LOG_INFO("rtsp_service",
+                       "RTSP client disconnected conn=%llu peer=%s:%u",
+                       static_cast<unsigned long long>(id),
+                       session->peer.ip.c_str(),
+                       static_cast<unsigned>(session->peer.port));
         PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);
     }
 
@@ -377,6 +335,12 @@ private:
 
     void HandleRequest(const std::shared_ptr<RtspSession>& session,
                        const RtspRequest& request) {
+        INFRA_LOG_INFO("rtsp_service",
+                       "RTSP request conn=%llu peer=%s:%u method=%s uri=%s",
+                       static_cast<unsigned long long>(session->connection_id),
+                       session->peer.ip.c_str(),
+                       static_cast<unsigned>(session->peer.port),
+                       request.method.c_str(), request.uri.c_str());
         if (request.method == "OPTIONS") {
             SendResponse(session->connection_id, 200, CSeq(request),
                          {{"Public", "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN"}},
@@ -387,11 +351,15 @@ private:
         StreamId stream_id = StreamId::kMain;
         if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
             !PathToStreamId(request.uri, &stream_id)) {
+            INFRA_LOG_ERROR("rtsp_service", "RTSP path not found uri=%s",
+                            request.uri.c_str());
             SendResponse(session->connection_id, 404, CSeq(request), {}, "");
             return;
         }
         if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
             !IsStreamAvailable(stream_id)) {
+            INFRA_LOG_ERROR("rtsp_service", "RTSP stream unavailable uri=%s",
+                            request.uri.c_str());
             SendResponse(session->connection_id, 404, CSeq(request), {}, "");
             return;
         }
@@ -427,6 +395,15 @@ private:
             if (RequestKeyFrame(session->stream_id)) {
                 NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
             }
+            INFRA_LOG_INFO("rtsp_service",
+                           "RTSP play conn=%llu stream=%s transport=%s",
+                           static_cast<unsigned long long>(
+                               session->connection_id),
+                           StreamPath(session->stream_id),
+                           session->transport ==
+                                   RtspTransportMode::kTcpInterleaved
+                               ? "tcp"
+                               : "udp");
             SendResponse(session->connection_id, 200, CSeq(request),
                          {{"Session", std::to_string(session->session_id)},
                           {"RTP-Info", "url=" + std::string(StreamPath(session->stream_id))}},
@@ -445,26 +422,14 @@ private:
     }
 
     bool IsStreamAvailable(StreamId stream_id) const {
-        if (dependencies_.stream_hub != nullptr) {
-            return dependencies_.stream_hub->IsStreamAvailable(stream_id);
-        }
-        if (dependencies_.frame_source != nullptr) {
-            return true;
-        }
-        if (dependencies_.media_service == nullptr) {
-            return true;
-        }
-        return dependencies_.media_service->IsStreamStarted(stream_id);
+        return dependencies_.stream_hub != nullptr &&
+               dependencies_.stream_hub->IsStreamAvailable(stream_id);
     }
 
     VideoCodec CodecForStream(StreamId stream_id) const {
         if (dependencies_.stream_hub != nullptr &&
             dependencies_.stream_hub->IsStreamAvailable(stream_id)) {
             return dependencies_.stream_hub->GetStreamCodec(stream_id);
-        }
-        if (dependencies_.media_service != nullptr &&
-            dependencies_.media_service->IsStreamStarted(stream_id)) {
-            return dependencies_.media_service->GetStreamCodec(stream_id);
         }
         if (stream_id == StreamId::kSub) {
             return options_.sub_stream_codec;
@@ -479,6 +444,7 @@ private:
             return true;
         }
         if (dependencies_.auth_service == nullptr) {
+            INFRA_LOG_ERROR("rtsp_service", "RTSP auth service unavailable");
             SendResponse(session->connection_id, 500, CSeq(request), {}, "");
             return false;
         }
@@ -486,6 +452,9 @@ private:
         const std::string prefix = "Basic ";
         if (authorization.compare(0, prefix.size(), prefix) != 0) {
             AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth required peer=%s uri=%s",
+                            session->peer.ip.c_str(), request.uri.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -493,6 +462,9 @@ private:
         std::string decoded;
         if (!DecodeBase64(authorization.substr(prefix.size()), &decoded)) {
             AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth invalid base64 peer=%s",
+                            session->peer.ip.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -500,6 +472,9 @@ private:
         const size_t colon = decoded.find(':');
         if (colon == std::string::npos) {
             AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth invalid credential peer=%s",
+                            session->peer.ip.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -511,6 +486,9 @@ private:
         LoginResult login_result = dependencies_.auth_service->Login(login);
         if (login_result.token.empty()) {
             AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth rejected peer=%s user=%s",
+                            session->peer.ip.c_str(), login.user_name.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
@@ -520,6 +498,10 @@ private:
                 login_result.principal, AuthPermission::kPreviewVideo,
                 target)) {
             AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth forbidden peer=%s user=%s target=%s",
+                            session->peer.ip.c_str(), login.user_name.c_str(),
+                            target.c_str());
             SendResponse(session->connection_id, 403, CSeq(request), {}, "");
             return false;
         }
@@ -531,6 +513,7 @@ private:
                      StreamId stream_id) {
         const std::string transport = HeaderValue(request, "Transport");
         if (transport.empty()) {
+            INFRA_LOG_ERROR("rtsp_service", "RTSP setup missing Transport");
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return;
         }
@@ -547,16 +530,29 @@ private:
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
             if (client_port <= 0 || client_port > 65535 || udp_socket_id_ == 0) {
+                INFRA_LOG_ERROR(
+                    "rtsp_service",
+                    "RTSP setup unsupported UDP transport=%s udp=%llu",
+                    transport.c_str(),
+                    static_cast<unsigned long long>(udp_socket_id_));
                 SendResponse(session->connection_id, 461, CSeq(request), {}, "");
                 return;
             }
             session->transport = RtspTransportMode::kUdp;
             session->client_rtp_port = static_cast<uint16_t>(client_port);
+            const NetAddress server_rtp =
+                dependencies_.net_engine->UdpLocalAddress(udp_socket_id_);
             response_transport = "RTP/AVP;unicast;client_port=" +
                                  std::to_string(client_port) + "-" +
-                                 std::to_string(client_port + 1);
+                                 std::to_string(client_port + 1) +
+                                 ";server_port=" +
+                                 std::to_string(server_rtp.port) + "-" +
+                                 std::to_string(server_rtp.port + 1);
             AddUdpSession();
         } else {
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP setup unsupported transport=%s",
+                            transport.c_str());
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return;
         }
@@ -655,9 +651,13 @@ private:
             return false;
         }
         std::shared_ptr<const void> payload_owner;
-        if (frame.buffer) {
-            payload_owner =
-                std::shared_ptr<const void>(frame.buffer, frame.buffer.get());
+        if (frame.buffer != nullptr) {
+            payload_owner = std::shared_ptr<const void>(
+                static_cast<const void*>(VideoBufferRetain(frame.buffer)),
+                [](const void* buffer) {
+                    VideoBufferRelease(
+                        static_cast<VideoBuffer*>(const_cast<void*>(buffer)));
+                });
         }
         NetBufferSlices slices;
         uint8_t interleaved_header[4] = {'$', interleaved_channel, 0, 0};
@@ -746,13 +746,6 @@ private:
             return dependencies_.stream_hub->RequestKeyFrame(
                 stream_id, KeyFrameReason::kNewClient);
         }
-        if (dependencies_.frame_source != nullptr) {
-            return dependencies_.frame_source->RequestKeyFrame(stream_id);
-        }
-        if (dependencies_.media_service != nullptr) {
-            return dependencies_.media_service->RequestKeyFrame(
-                stream_id, KeyFrameReason::kNewClient);
-        }
         return false;
     }
 
@@ -787,8 +780,6 @@ private:
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;
-    FrameSubscriptionId main_subscription_id_ = 0;
-    FrameSubscriptionId sub_subscription_id_ = 0;
     RtspListenAddress local_address_;
     RtspSessionStore sessions_;
     RtspServiceStats stats_;

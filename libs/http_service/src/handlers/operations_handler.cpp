@@ -26,67 +26,109 @@ ConfigJson OperationRecordToJson(const OperationRecord &record) {
 
 }  // namespace
 
-HttpResponse http_handlers::HandleOperations(HttpHandlerContext *context, const HttpRequest &request) {
-    if (context->Dependencies().logger_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    AuthPrincipal principal;
-    if (!context->RequirePermission(request, AuthPermission::kManageUsers, "operations",
-                                    &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    OperationLogQuery query;
-    query.limit = 100;
-    std::vector<OperationRecord> records =
-        context->Dependencies().logger_service->QueryOperations(query);
-    ConfigJson root = ConfigJson::object();
-    ConfigJson items = ConfigJson::array();
-    for (const OperationRecord &record : records) {
-        items.push_back(OperationRecordToJson(record));
-    }
-    root["items"] = items;
-    return JsonResponse(200, root);
-}
+class OperationsHttpHandler : public IHttpHandler {
+public:
+    OperationsHttpHandler(
+        HttpHandlerContext *context,
+        const OperationsHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
 
-HttpResponse http_handlers::HandleOperationsExport(HttpHandlerContext *context, const HttpRequest &request) {
-    if (context->Dependencies().logger_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    AuthPrincipal principal;
-    if (!context->RequirePermission(request, AuthPermission::kManageUsers, "operations",
-                                    &principal)) {
-        return StatusResponse(403, "Forbidden");
-    }
-    OperationLogQuery query;
-    query.limit = 1000;
-    std::vector<OperationRecord> records =
-        context->Dependencies().logger_service->QueryOperations(query);
-
-    std::string body =
-        "timestamp_ms,request_id,user_name,session_id,client_ip,module,"
-        "action,target,result,reason\n";
-    for (const OperationRecord &record : records) {
-        body += std::to_string(record.timestamp_ms) + ",";
-        body += record.request_id + ",";
-        body += record.user_name + ",";
-        body += record.session_id + ",";
-        body += record.client_ip + ",";
-        body += record.module + ",";
-        body += OperationActionToString(record.action);
-        body += ",";
-        body += record.target + ",";
-        body += OperationResultToString(record.result);
-        body += ",";
-        body += record.reason + "\n";
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddExactRoute(HttpMethod::kGet, "/api/operations/export",
+                              &OperationsHttpHandler::HandleExportRoute, this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/operations",
+                              &OperationsHttpHandler::HandleOperationsRoute,
+                              this);
     }
 
-    HttpResponse response;
-    response.status_code = 200;
-    response.headers["Content-Type"] = "text/csv";
-    response.headers["Content-Disposition"] =
-        "attachment; filename=\"operations.csv\"";
-    response.body = std::move(body);
-    return response;
+private:
+    static HttpResponse HandleOperationsRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<OperationsHttpHandler *>(user)->HandleOperations(
+            request);
+    }
+
+    static HttpResponse HandleExportRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<OperationsHttpHandler *>(user)->HandleExport(
+            request);
+    }
+
+    HttpResponse HandleOperations(const HttpRequest &request) {
+        if (dependencies_.logger_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!context_->RequirePermission(request, AuthPermission::kManageUsers,
+                                         "operations", &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        OperationLogQuery query;
+        query.limit = 100;
+        std::vector<OperationRecord> records =
+            dependencies_.logger_service->QueryOperations(query);
+        ConfigJson root = ConfigJson::object();
+        ConfigJson items = ConfigJson::array();
+        for (const OperationRecord &record : records) {
+            items.push_back(OperationRecordToJson(record));
+        }
+        root["items"] = items;
+        return JsonResponse(200, root);
+    }
+
+    HttpResponse HandleExport(const HttpRequest &request) {
+        if (dependencies_.logger_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!context_->RequirePermission(request, AuthPermission::kManageUsers,
+                                         "operations", &principal)) {
+            return StatusResponse(403, "Forbidden");
+        }
+        OperationLogQuery query;
+        query.limit = 1000;
+        std::vector<OperationRecord> records =
+            dependencies_.logger_service->QueryOperations(query);
+
+        std::string body =
+            "timestamp_ms,request_id,user_name,session_id,client_ip,module,"
+            "action,target,result,reason\n";
+        for (const OperationRecord &record : records) {
+            body += std::to_string(record.timestamp_ms) + ",";
+            body += record.request_id + ",";
+            body += record.user_name + ",";
+            body += record.session_id + ",";
+            body += record.client_ip + ",";
+            body += record.module + ",";
+            body += OperationActionToString(record.action);
+            body += ",";
+            body += record.target + ",";
+            body += OperationResultToString(record.result);
+            body += ",";
+            body += record.reason + "\n";
+        }
+
+        HttpResponse response;
+        response.status_code = 200;
+        response.headers["Content-Type"] = "text/csv";
+        response.headers["Content-Disposition"] =
+            "attachment; filename=\"operations.csv\"";
+        response.body = std::move(body);
+        return response;
+    }
+
+    HttpHandlerContext *context_ = nullptr;
+    OperationsHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(
+    HttpHandlerContext *context,
+    const OperationsHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new OperationsHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

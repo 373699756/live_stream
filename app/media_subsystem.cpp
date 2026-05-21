@@ -42,17 +42,20 @@ bool MediaSubsystem::Start() {
     MediaServiceOptions media_options;
     media_options.config_service = config;
     media_options.sdk = &sdk;
-    media_.reset(new MediaService(media_options));
+    media_ = CreateMediaService(media_options);
     if (!media_ || !media_->Start()) {
         INFRA_LOG_ERROR("app", "Start media service failed");
         Stop();
         return false;
     }
+    const MediaChannels media_channels = media_->GetChannels();
 
     if (ai_enabled) {
         AiServiceOptions ai_options;
         ai_options.config_service = config;
         ai_options.media_service = media_.get();
+        ai_options.media_channels = media_channels;
+        ai_options.sdk = &sdk;
         ai_.reset(new AiService(ai_options));
         if (!ai_ || !ai_->Start()) {
             INFRA_LOG_ERROR("app", "Start ai service failed");
@@ -67,6 +70,7 @@ bool MediaSubsystem::Start() {
     OsdServiceOptions osd_options;
     osd_options.config_service = config;
     osd_options.media_service = media_.get();
+    osd_options.media_channels = media_channels;
     osd_options.sdk = &sdk;
     osd_.reset(new OsdService(osd_options));
     if (!osd_ || !osd_->Start()) {
@@ -78,6 +82,7 @@ bool MediaSubsystem::Start() {
     SnapshotServiceOptions snapshot_options;
     snapshot_options.config_service = config;
     snapshot_options.media_service = media_.get();
+    snapshot_options.media_channels = media_channels;
     snapshot_options.sdk = &sdk;
     snapshot_.reset(new SnapshotService(snapshot_options));
     if (!snapshot_ || !snapshot_->Start()) {

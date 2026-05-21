@@ -48,6 +48,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         std::lock_guard<std::mutex> lock(mutex_);
         started_ = false;

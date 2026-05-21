@@ -14,6 +14,10 @@
 
 namespace live_stream {
 
+class CoreServices;
+struct DeviceRefs;
+struct MediaRefs;
+
 struct ProtocolRefs {
     IRtspService *rtsp = nullptr;
     IWebrtcService *webrtc = nullptr;
@@ -25,7 +29,10 @@ class ProtocolSubsystem {
 public:
     static ProtocolSubsystem &Get();
 
-    bool Start(const AppRuntimeConfig &runtime_config);
+    bool Start(const AppRuntimeConfig &runtime_config,
+               CoreServices &core_services,
+               const DeviceRefs &device_refs,
+               const MediaRefs &media_refs);
     void Stop();
     ProtocolRefs refs() const;
     NetEngine *net_engine() const { return net_engine_.get(); }

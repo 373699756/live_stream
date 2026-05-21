@@ -174,6 +174,10 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        return IsStartedForRead();
+    }
+
     void Release() {
         SaveFile();
         std::lock_guard<std::mutex> lock(mutex_);

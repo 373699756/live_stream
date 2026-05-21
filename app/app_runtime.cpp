@@ -2,7 +2,13 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/ucontext.h>
 #include <thread>
+#include <unistd.h>
 
 #include "device_subsystem.h"
 #include "infra/log.h"
@@ -17,6 +23,42 @@ volatile std::sig_atomic_t g_stop_requested = 0;
 
 void HandleSignal(int) { g_stop_requested = 1; }
 
+void DumpMaps() {
+    const int fd = open("/proc/self/maps", O_RDONLY);
+    if (fd < 0) {
+        return;
+    }
+    char buffer[512];
+    while (true) {
+        const ssize_t n = read(fd, buffer, sizeof(buffer));
+        if (n <= 0) {
+            break;
+        }
+        (void)write(STDERR_FILENO, buffer, static_cast<size_t>(n));
+    }
+    (void)close(fd);
+}
+
+void HandleSegv(int sig, siginfo_t *info, void *context) {
+    const ucontext_t *uc = static_cast<const ucontext_t *>(context);
+    const unsigned long pc = uc != nullptr ? uc->uc_mcontext.arm_pc : 0;
+    const unsigned long lr = uc != nullptr ? uc->uc_mcontext.arm_lr : 0;
+    const unsigned long sp = uc != nullptr ? uc->uc_mcontext.arm_sp : 0;
+    char buffer[256];
+    const int n = std::snprintf(
+        buffer, sizeof(buffer),
+        "SIGSEGV diag sig=%d fault=%p pc=0x%08lx lr=0x%08lx sp=0x%08lx\n",
+        sig, info != nullptr ? info->si_addr : nullptr, pc, lr, sp);
+    if (n > 0) {
+        const size_t size =
+            static_cast<size_t>(n) < sizeof(buffer) ? static_cast<size_t>(n)
+                                                    : sizeof(buffer) - 1;
+        (void)write(STDERR_FILENO, buffer, size);
+    }
+    DumpMaps();
+    _exit(128 + sig);
+}
+
 }  // namespace
 
 void RequestAppStop() { g_stop_requested = 1; }
@@ -24,6 +66,11 @@ void RequestAppStop() { g_stop_requested = 1; }
 void InstallAppSignalHandlers() {
     std::signal(SIGINT, HandleSignal);
     std::signal(SIGTERM, HandleSignal);
+    struct sigaction action {};
+    action.sa_sigaction = HandleSegv;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    (void)sigaction(SIGSEGV, &action, nullptr);
 }
 
 AppRuntime &AppRuntime::Get() {
@@ -36,14 +83,19 @@ bool AppRuntime::Start(const RuntimePaths &paths) {
         return true;
     }
 
-    if (!CoreServices::Get().Start(paths)) {
+    CoreServices &core_services = CoreServices::Get();
+    DeviceSubsystem &device_subsystem = DeviceSubsystem::Get();
+    MediaSubsystem &media_subsystem = MediaSubsystem::Get();
+    ProtocolSubsystem &protocol_subsystem = ProtocolSubsystem::Get();
+
+    if (!core_services.Start(paths)) {
         INFRA_LOG_ERROR("app", "Start core services failed");
         Stop();
         return false;
     }
 
     AppRuntimeConfig runtime_config;
-    if (!LoadRuntimeConfig(CoreServices::Get().config(), &runtime_config)) {
+    if (!LoadRuntimeConfig(core_services.config(), &runtime_config)) {
         INFRA_LOG_ERROR("app", "Load runtime config failed");
         Stop();
         return false;
@@ -58,18 +110,20 @@ bool AppRuntime::Start(const RuntimePaths &paths) {
                    runtime_config_.advertise_host.c_str(),
                    runtime_config_.static_root.c_str());
 
-    if (!DeviceSubsystem::Get().Start(
+    if (!device_subsystem.Start(
             CreateLinuxPlatformAdapters(runtime_config_.network_ifname))) {
         INFRA_LOG_ERROR("app", "Start device subsystem failed");
         Stop();
         return false;
     }
-    if (!MediaSubsystem::Get().Start()) {
+    if (!media_subsystem.Start()) {
         INFRA_LOG_ERROR("app", "Start media subsystem failed");
         Stop();
         return false;
     }
-    if (!ProtocolSubsystem::Get().Start(runtime_config_)) {
+    if (!protocol_subsystem.Start(runtime_config_, core_services,
+                                  device_subsystem.refs(),
+                                  media_subsystem.refs())) {
         INFRA_LOG_ERROR("app", "Start protocol subsystem failed");
         Stop();
         return false;

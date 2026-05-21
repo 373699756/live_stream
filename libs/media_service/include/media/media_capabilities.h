@@ -21,7 +21,7 @@ struct FrameRateRange {
 
 struct BitrateRange {
     uint32_t min_kbps = 64;
-    uint32_t max_kbps = 8192;
+    uint32_t max_kbps = 12288;
 };
 
 struct GopRange {

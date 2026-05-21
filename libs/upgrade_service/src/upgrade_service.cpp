@@ -151,6 +151,11 @@ public:
         }
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         Stop();
         std::lock_guard<std::mutex> lock(mutex_);
@@ -581,7 +586,7 @@ private:
     std::unique_ptr<infra::Executor> executor_;
     std::unique_ptr<IUpgradePlatform> restricted_platform_;
     IUpgradePlatform* platform_ = nullptr;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     UpgradeStatus status_;
     bool initialized_ = false;
     bool started_ = false;

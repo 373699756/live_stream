@@ -2,18 +2,22 @@
 
 #include "config_service.h"
 
-#include <cstring>
+#include <map>
+#include <memory>
+#include <string>
 
 namespace {
 
 class TestFrameSink : public live_stream::IFrameSink {
 public:
     const char* Name() const override { return "test_sink"; }
-    void OnFrame(const EncodedFrame& frame) override {
+
+    void OnFrame(const live_stream::EncodedFrame& frame) override {
         (void)frame;
         ++frames;
     }
-    void OnSourceStateChanged(StreamId stream_id,
+
+    void OnSourceStateChanged(live_stream::StreamId stream_id,
                               live_stream::StreamState state) override {
         (void)stream_id;
         last_state = state;
@@ -27,153 +31,166 @@ public:
 
 class FakeConfigService : public live_stream::IConfigService {
 public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_config"; }
+    bool IsStarted() const override { return true; }
 
-    infra::Status SetValue(const std::string& name,
-                           const live_stream::ConfigJson& value) override {
-        if (verify && verify(value) != infra::Status::kOk) {
-            return infra::Status::kInvalidParam;
+    bool SetValue(const std::string& name,
+                  const live_stream::ConfigJson& value) override {
+        auto iter = attachments.find(name);
+        if (iter != attachments.end() && iter->second.validate) {
+            const live_stream::ConfigResult result =
+                iter->second.validate(value);
+            if (!result.ok) {
+                last_error = result.error;
+                return false;
+            }
         }
-        if (apply) {
-            return apply(value);
+        if (iter != attachments.end() && iter->second.apply) {
+            const live_stream::ConfigResult result = iter->second.apply(value);
+            if (!result.ok) {
+                last_error = result.error;
+                return false;
+            }
         }
+        values[name] = value;
+        return true;
+    }
+
+    live_stream::ConfigJson GetValue(const std::string& name) override {
+        auto iter = values.find(name);
+        return iter != values.end() ? iter->second
+                                    : live_stream::ConfigJson::object();
+    }
+
+    live_stream::ConfigJson GetDefault(const std::string& name) override {
         (void)name;
-        return infra::Status::kOk;
+        return live_stream::ConfigJson::object();
     }
 
-    infra::Status GetValue(const std::string& name,
-                           live_stream::ConfigJson* value) override {
-        if (name != "video" || value == nullptr) {
-            return infra::Status::kInvalidParam;
-        }
-        *value = video;
-        return infra::Status::kOk;
+    bool RestoreDefaults() override { return true; }
+    bool SaveFile() override { return true; }
+
+    bool AttachConfig(
+        const std::string& name,
+        const live_stream::ConfigAttachment& attachment) override {
+        attachments[name] = attachment;
+        ++attach_count;
+        return true;
     }
 
-    infra::Status GetDefault(const std::string&,
-                             live_stream::ConfigJson*) override {
-        return infra::Status::kNotFound;
-    }
-    infra::Status RestoreDefaults() override { return infra::Status::kOk; }
-    infra::Status SaveFile() override { return infra::Status::kOk; }
-    infra::Status RegisterApply(const std::string& name,
-                                live_stream::ConfigProc proc) override {
-        if (name != "video") {
-            return infra::Status::kInvalidParam;
-        }
-        apply = proc;
-        return infra::Status::kOk;
-    }
-    infra::Status RegisterVerify(const std::string& name,
-                                 live_stream::ConfigProc proc) override {
-        if (name != "video") {
-            return infra::Status::kInvalidParam;
-        }
-        verify = proc;
-        return infra::Status::kOk;
+    bool DetachConfig(const std::string& name) override {
+        return attachments.erase(name) != 0;
     }
 
-    live_stream::ConfigJson video = {
-        {"streams",
-         {{"main",
-           {{"codec", "h265"},
-            {"resolution", "1920x1080"},
-            {"fps", 25},
-            {"bitrate_kbps", 4096},
-            {"rate_control", "cbr"},
-            {"gop", 50},
-            {"gop_mode", "smart_p"}}}}}};
-    live_stream::ConfigProc verify;
-    live_stream::ConfigProc apply;
+    live_stream::ConfigObserverId ObserveConfig(
+        const std::string& name,
+        live_stream::ConfigObserver observer) override {
+        (void)name;
+        (void)observer;
+        return 1;
+    }
+
+    bool UnobserveConfig(const std::string& name,
+                         live_stream::ConfigObserverId observer_id) override {
+        (void)name;
+        return observer_id != 0;
+    }
+
+    live_stream::ConfigError GetLastConfigError(
+        const std::string& name) override {
+        (void)name;
+        return last_error;
+    }
+
+    std::map<std::string, live_stream::ConfigJson> values;
+    std::map<std::string, live_stream::ConfigAttachment> attachments;
+    live_stream::ConfigError last_error;
+    int attach_count = 0;
 };
+
+live_stream::ConfigJson BuildVideoConfig(uint32_t bitrate_kbps) {
+    return {{"streams",
+             {{"main",
+               {{"codec", "h265"},
+                {"resolution", "1920x1080"},
+                {"fps", 25},
+                {"bitrate_kbps", bitrate_kbps},
+                {"rate_control", "cbr"},
+                {"gop", 50},
+                {"gop_mode", "smart_p"}}}}}};
+}
 
 }  // namespace
 
 int main() {
-    live_stream::MediaService service;
-    TestFrameSink sink;
-    live_stream::FrameSubscribeOptions options;
-
-    if (std::strcmp(live_stream::MediaService::StaticName(), "media_service") != 0) {
+    std::unique_ptr<live_stream::IMediaService> service =
+        live_stream::CreateMediaService();
+    if (!service) {
         return 1;
     }
-    if (std::strcmp(service.Name(), "media_service") != 0) {
-        return 2;
-    }
-    if (service.GetChannels().IsOk()) {
+    if (service->IsStarted() || service->GetChannels().venc.channel != 0) {
         return 3;
     }
-    if (service.Init() != infra::Status::kOk) {
+    const live_stream::MediaCapabilities capabilities =
+        service->GetCapabilities();
+    if (capabilities.streams.size() < 2 ||
+        capabilities.streams[0].resolutions.empty() ||
+        capabilities.streams[0].codecs.size() < 4 ||
+        capabilities.image.basic.size() < 5 ||
+        capabilities.image.exposure_options.empty()) {
         return 4;
     }
-    infra::Result<live_stream::MediaCapabilities> capabilities =
-        service.GetCapabilities();
-    if (!capabilities.IsOk() || capabilities.value.streams.size() < 2 ||
-        capabilities.value.streams[0].resolutions.empty() ||
-        capabilities.value.streams[0].codecs.size() < 4 ||
-        capabilities.value.image.basic.size() < 5 ||
-        capabilities.value.image.exposure_options.empty()) {
-        return 14;
-    }
-    if (service.SubscribeFrames(options, &sink).status != infra::Status::kBusy) {
-        return 8;
-    }
-    if (!service.GetChannels().IsOk()) {
+
+    TestFrameSink sink;
+    live_stream::FrameSubscribeOptions subscribe_options;
+    if (service->SubscribeFrames(subscribe_options, &sink) != 0) {
         return 5;
     }
-    if (service.Start() != infra::Status::kOk) {
+    if (!service->Start() || !service->IsStarted()) {
         return 6;
     }
-    if (service.SetEncodedFrameCallback(nullptr, nullptr) != infra::Status::kBusy) {
+    const live_stream::FrameSubscriptionId subscription =
+        service->SubscribeFrames(subscribe_options, &sink);
+    if (subscription == 0) {
         return 7;
-    }
-    infra::Result<live_stream::FrameSubscriptionId> subscription =
-        service.SubscribeFrames(options, &sink);
-    if (!subscription.IsOk()) {
-        return 9;
     }
     if (sink.last_state != live_stream::StreamState::kRunning ||
         sink.state_changes != 1) {
+        return 8;
+    }
+    if (!service->RequestKeyFrame(
+            live_stream::StreamId::kMain,
+            live_stream::KeyFrameReason::kNewClient)) {
+        return 9;
+    }
+    if (!service->UnsubscribeFrames(subscription)) {
         return 10;
     }
-    if (service.RequestKeyFrame(StreamId::kMain,
-                                live_stream::KeyFrameReason::kNewClient) !=
-        infra::Status::kOk) {
+    if (service->UnsubscribeFrames(subscription)) {
         return 11;
     }
-    if (service.UnsubscribeFrames(subscription.value) != infra::Status::kOk) {
-        return 12;
-    }
-    if (service.UnsubscribeFrames(subscription.value) != infra::Status::kNotFound) {
-        return 13;
-    }
-    service.Stop();
-    service.Stop();
-    service.Deinit();
-    service.Deinit();
+    service->Stop();
+    service->Stop();
 
     FakeConfigService config;
+    config.values["video"] = BuildVideoConfig(4096);
     live_stream::MediaServiceOptions service_options;
     service_options.config_service = &config;
-    live_stream::MediaService configured(service_options);
-    if (configured.Init() != infra::Status::kOk) {
-        return 15;
+    std::unique_ptr<live_stream::IMediaService> configured =
+        live_stream::CreateMediaService(service_options);
+    if (!configured || !configured->Start()) {
+        return 12;
     }
-    live_stream::MediaServiceStats stats = configured.GetStats();
-    if (stats.config_apply_count != 1) {
-        return 16;
+    if (config.attach_count != 2 ||
+        config.attachments.find("video") == config.attachments.end() ||
+        config.attachments.find("image") == config.attachments.end()) {
+        return 13;
     }
-    config.video["streams"]["main"]["bitrate_kbps"] = 2048;
-    if (config.SetValue("video", config.video) != infra::Status::kOk) {
-        return 17;
+    config.values["video"] = BuildVideoConfig(2048);
+    if (!config.SetValue("video", config.values["video"])) {
+        return 14;
     }
-    stats = configured.GetStats();
-    if (stats.config_apply_count != 2) {
-        return 18;
-    }
+    configured->Stop();
     return 0;
 }

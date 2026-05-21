@@ -260,18 +260,16 @@ export function ImageConfigPage() {
               />
             </FormField>
           )}
-          <OptionField
-            label="最长曝光"
-            capability={optionCapability(
-              capabilities.exposure.options,
-              'max_exposure_time',
-              ['1/12', '1/25', '1/50'],
-            )}
-            value={stringValue(config.exposure, 'max_exposure_time', '1/25')}
-            onChange={(value) =>
-              updateSection('exposure', 'max_exposure_time', value)
-            }
-          />
+          {capabilities.exposure.options.max_exposure_time && (
+            <OptionField
+              label="最长曝光"
+              capability={capabilities.exposure.options.max_exposure_time}
+              value={stringValue(config.exposure, 'max_exposure_time', '1/25')}
+              onChange={(value) =>
+                updateSection('exposure', 'max_exposure_time', value)
+              }
+            />
+          )}
 
           <div className="form-section-title">白平衡</div>
           <OptionField

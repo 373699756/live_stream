@@ -167,7 +167,7 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &image) {
 }
 
 ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
-                                   const IMediaView *media_service) {
+                                   const IMediaService *media_service) {
     ConfigJson root = ConfigJson::object();
     ConfigJson streams = ConfigJson::object();
     for (const VideoStreamCapabilities &stream : capabilities.streams) {
@@ -183,120 +183,167 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
     return root;
 }
 
-void RequestBrowserRecoveryKeyFrame(HttpHandlerContext *context,
+void RequestBrowserRecoveryKeyFrame(IStreamHubService *stream_hub_service,
                                     StreamId stream_id,
                                     const StreamBrowserStatus &status) {
-    if (context == nullptr ||
-        context->Dependencies().stream_hub_service == nullptr ||
-        !status.running || !status.browser_codec ||
+    if (stream_hub_service == nullptr || !status.running ||
+        !status.browser_codec ||
         (status.hls_ready && status.flv_ready)) {
         return;
     }
-    (void)context->Dependencies().stream_hub_service->RequestKeyFrame(
-        stream_id, KeyFrameReason::kRecovery);
+    (void)stream_hub_service->RequestKeyFrame(stream_id,
+                                              KeyFrameReason::kRecovery);
 }
 
 }  // namespace
 
-HttpResponse http_handlers::HandleMediaCapabilities(HttpHandlerContext *context) {
-    if (context->Dependencies().media_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
-    }
-    MediaCapabilities capabilities =
-        context->Dependencies().media_service->GetCapabilities();
-    if (capabilities.streams.empty()) {
-        return StatusResponse(500, "Media capabilities unavailable");
-    }
-    return JsonResponse(200, MediaCapabilitiesToJson(
-                                 capabilities, context->Dependencies().media_service));
-}
+class MediaHttpHandler : public IHttpHandler {
+public:
+    MediaHttpHandler(HttpHandlerContext *context,
+                     const MediaHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
 
-HttpResponse http_handlers::HandleStreamStatus(HttpHandlerContext *context, const HttpRequest &request) {
-    AuthPrincipal principal = context->Authenticate(request);
-    if (principal.user_name.empty()) {
-        return StatusResponse(401, "Unauthorized");
-    }
-    if (context->Dependencies().media_service == nullptr) {
-        return StatusResponse(501, "Not Implemented");
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
+        }
+        router->AddExactRoute(HttpMethod::kGet, "/api/media/capabilities",
+                              &MediaHttpHandler::HandleCapabilitiesRoute,
+                              this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/status/streams",
+                              &MediaHttpHandler::HandleStreamStatusRoute,
+                              this);
     }
 
-    ConfigJson items = ConfigJson::array();
-    ConfigJson video_config = context->Dependencies().config_service->GetValue("video");
-    if (!video_config.is_object() || !video_config.contains("streams") ||
-        !video_config["streams"].is_object()) {
-        return StatusResponse(500, "Invalid video config");
+private:
+    static HttpResponse HandleCapabilitiesRoute(void *user,
+                                                const HttpRequest &request) {
+        (void)request;
+        return static_cast<MediaHttpHandler *>(user)->HandleCapabilities();
     }
-    const ConfigJson &streams = video_config["streams"];
-    const char *names[] = {"main", "sub"};
-    for (const char *name : names) {
-        ConfigJson item = ConfigJson::object();
-        item["stream"] = name;
-        if (!streams.contains(name) || !streams.at(name).is_object()) {
+
+    static HttpResponse HandleStreamStatusRoute(void *user,
+                                                const HttpRequest &request) {
+        return static_cast<MediaHttpHandler *>(user)->HandleStreamStatus(
+            request);
+    }
+
+    HttpResponse HandleCapabilities() {
+        if (dependencies_.media_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        MediaCapabilities capabilities =
+            dependencies_.media_service->GetCapabilities();
+        if (capabilities.streams.empty()) {
+            return StatusResponse(500, "Media capabilities unavailable");
+        }
+        return JsonResponse(
+            200, MediaCapabilitiesToJson(capabilities,
+                                         dependencies_.media_service));
+    }
+
+    HttpResponse HandleStreamStatus(const HttpRequest &request) {
+        AuthPrincipal principal = context_->Authenticate(request);
+        if (principal.user_name.empty()) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        if (dependencies_.media_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+
+        ConfigJson items = ConfigJson::array();
+        ConfigJson video_config =
+            dependencies_.config_service->GetValue("video");
+        if (!video_config.is_object() || !video_config.contains("streams") ||
+            !video_config["streams"].is_object()) {
             return StatusResponse(500, "Invalid video config");
         }
-        const ConfigJson &stream = streams.at(name);
-        std::string codec;
-        std::string resolution;
-        int64_t fps = 0;
-        int64_t bitrate_kbps = 0;
-        bool stream_enabled = false;
-        if (!json_utils::Load(stream, "codec", &codec) ||
-            !json_utils::Load(stream, "resolution", &resolution) ||
-            !json_utils::Load(stream, "fps", &fps, 1,
-                              std::numeric_limits<int64_t>::max()) ||
-            !json_utils::Load(stream, "bitrate_kbps", &bitrate_kbps, 1,
-                              std::numeric_limits<int64_t>::max()) ||
-            !json_utils::Load(stream, "enabled", &stream_enabled)) {
-            return StatusResponse(500, "Invalid video config");
-        }
-        item["codec"] = codec;
-        item["resolution"] = resolution;
-        item["fps"] = fps;
-        item["bitrateKbps"] = bitrate_kbps;
-        StreamId stream_id = StreamId::kMain;
-        (void)StreamIdFromJsonString(name, &stream_id);
-        const bool stream_running =
-            context->Dependencies().media_service->IsStreamStarted(stream_id);
-        item["state"] =
-            context->Dependencies().media_service->IsRestarting()
-                ? "pending"
-                : (stream_running && stream_enabled ? "running" : "stopped");
-        if (context->Dependencies().stream_hub_service != nullptr) {
-            const StreamBrowserStatus browser =
-                context->Dependencies().stream_hub_service->GetBrowserStatus(stream_id);
-            RequestBrowserRecoveryKeyFrame(context, stream_id, browser);
-            item["browserCodec"] = browser.browser_codec;
-            item["hlsReady"] = browser.hls_ready;
-            item["flvReady"] = browser.flv_ready;
-            if (browser.running && browser.browser_codec &&
-                (!browser.hls_ready || !browser.flv_ready)) {
-                INFRA_LOG_WARN(
-                    kHttpModuleName,
-                    "stream browser not ready stream=%s codec=%s hls_ready=%d "
-                    "flv_ready=%d segments=%u current_segment=%u "
-                    "flv_header=%u flv_keyframe=%u",
-                    name, VideoCodecToJsonString(browser.codec),
-                    browser.hls_ready ? 1 : 0, browser.flv_ready ? 1 : 0,
-                    browser.hls_segment_count,
-                    browser.hls_current_segment_size,
-                    browser.flv_sequence_header_size,
-                    browser.flv_last_keyframe_size);
+        const ConfigJson &streams = video_config["streams"];
+        const char *names[] = {"main", "sub"};
+        for (const char *name : names) {
+            ConfigJson item = ConfigJson::object();
+            item["stream"] = name;
+            if (!streams.contains(name) || !streams.at(name).is_object()) {
+                return StatusResponse(500, "Invalid video config");
             }
-        } else {
-            item["browserCodec"] = false;
-            item["hlsReady"] = false;
-            item["flvReady"] = false;
+            const ConfigJson &stream = streams.at(name);
+            std::string codec;
+            std::string resolution;
+            int64_t fps = 0;
+            int64_t bitrate_kbps = 0;
+            bool stream_enabled = false;
+            if (!json_utils::Load(stream, "codec", &codec) ||
+                !json_utils::Load(stream, "resolution", &resolution) ||
+                !json_utils::Load(stream, "fps", &fps, 1,
+                                  std::numeric_limits<int64_t>::max()) ||
+                !json_utils::Load(stream, "bitrate_kbps", &bitrate_kbps, 1,
+                                  std::numeric_limits<int64_t>::max()) ||
+                !json_utils::Load(stream, "enabled", &stream_enabled)) {
+                return StatusResponse(500, "Invalid video config");
+            }
+            item["codec"] = codec;
+            item["resolution"] = resolution;
+            item["fps"] = fps;
+            item["bitrateKbps"] = bitrate_kbps;
+            StreamId stream_id = StreamId::kMain;
+            (void)StreamIdFromJsonString(name, &stream_id);
+            const bool stream_running =
+                dependencies_.media_service->IsStreamStarted(stream_id);
+            item["state"] = dependencies_.media_service->IsRestarting()
+                                ? "pending"
+                                : (stream_running && stream_enabled
+                                       ? "running"
+                                       : "stopped");
+            if (dependencies_.stream_hub_service != nullptr) {
+                const StreamBrowserStatus browser =
+                    dependencies_.stream_hub_service->GetBrowserStatus(
+                        stream_id);
+                RequestBrowserRecoveryKeyFrame(dependencies_.stream_hub_service,
+                                               stream_id, browser);
+                item["browserCodec"] = browser.browser_codec;
+                item["hlsReady"] = browser.hls_ready;
+                item["flvReady"] = browser.flv_ready;
+                if (browser.running && browser.browser_codec &&
+                    (!browser.hls_ready || !browser.flv_ready)) {
+                    INFRA_LOG_WARN(
+                        kHttpModuleName,
+                        "stream browser not ready stream=%s codec=%s "
+                        "hls_ready=%d flv_ready=%d segments=%u "
+                        "current_segment=%u flv_header=%u flv_keyframe=%u",
+                        name, VideoCodecToJsonString(browser.codec),
+                        browser.hls_ready ? 1 : 0,
+                        browser.flv_ready ? 1 : 0,
+                        browser.hls_segment_count,
+                        browser.hls_current_segment_size,
+                        browser.flv_sequence_header_size,
+                        browser.flv_last_keyframe_size);
+                }
+            } else {
+                item["browserCodec"] = false;
+                item["hlsReady"] = false;
+                item["flvReady"] = false;
+            }
+            WebrtcServiceStats webrtc_stats;
+            if (dependencies_.webrtc_service != nullptr) {
+                webrtc_stats = dependencies_.webrtc_service->GetStats();
+            }
+            item["webrtcReady"] = stream_running && stream_enabled &&
+                                  codec == "h264" && webrtc_stats.enabled &&
+                                  webrtc_stats.backend_available;
+            items.push_back(item);
         }
-        WebrtcServiceStats webrtc_stats;
-        if (context->Dependencies().webrtc_service != nullptr) {
-            webrtc_stats = context->Dependencies().webrtc_service->GetStats();
-        }
-        item["webrtcReady"] = stream_running && stream_enabled &&
-                              codec == "h264" && webrtc_stats.enabled &&
-                              webrtc_stats.backend_available;
-        items.push_back(item);
+        return JsonResponse(200, items);
     }
-    return JsonResponse(200, items);
+
+    HttpHandlerContext *context_ = nullptr;
+    MediaHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
+    HttpHandlerContext *context,
+    const MediaHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new MediaHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

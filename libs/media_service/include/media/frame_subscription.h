@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_FRAME_SOURCE_H_
-#define LIVE_STREAM_MEDIA_FRAME_SOURCE_H_
+#ifndef LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_
+#define LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_
 
 #include "media/encoded_frame.h"
 #include "media/stream_types.h"
@@ -40,22 +40,8 @@ public:
                                       StreamState state) = 0;
 };
 
-class IFrameSource {
-public:
-    virtual ~IFrameSource() = default;
-
-    virtual bool IsStreamStarted(StreamId stream_id) const = 0;
-    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
-    virtual FrameSubscriptionId SubscribeFrames(
-        const FrameSubscribeOptions& options, IFrameSink* sink) = 0;
-    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id) = 0;
-    virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason) = 0;
-};
-
-using EncodedFrameCallback = void (*)(const EncodedFrame& frame,
-                                      void* user);
+using EncodedFrameCallback = void (*)(const EncodedFrame& frame, void* user);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_FRAME_SOURCE_H_
+#endif  // LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_

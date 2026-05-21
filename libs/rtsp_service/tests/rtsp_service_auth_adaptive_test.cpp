@@ -1,6 +1,7 @@
 #include "rtsp_service.h"
 
 #include "auth_service.h"
+#include "fake_stream_hub.h"
 #include "media/media_buffer.h"
 #include "net_service.h"
 
@@ -17,39 +18,41 @@ namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
 public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_auth"; }
-    infra::Status SetAuditSink(live_stream::IAuthAuditSink*) override {
-        return infra::Status::kOk;
+    bool IsStarted() const override { return true; }
+
+    bool SetAuditSink(live_stream::IAuthAuditSink*) override {
+        return true;
     }
-    infra::Result<live_stream::LoginResult> Login(
+
+    live_stream::LoginResult Login(
         const live_stream::LoginRequest& request) override {
         if (request.user_name != "viewer" || request.password != "pass") {
-            return infra::Result<live_stream::LoginResult>::Fail(
-                infra::Status::kUnauthorized);
+            return live_stream::LoginResult{};
         }
         live_stream::LoginResult result;
         result.principal.user_name = request.user_name;
         result.principal.role = live_stream::AuthRole::kViewer;
-        return infra::Result<live_stream::LoginResult>::Ok(result);
+        result.token = "viewer-token";
+        return result;
     }
-    infra::Status Logout(const live_stream::RequestContext&) override {
-        return infra::Status::kOk;
+
+    bool Logout(const live_stream::RequestContext&) override {
+        return true;
     }
-    infra::Result<live_stream::TokenValidationResult> ValidateToken(
+
+    live_stream::TokenValidationResult ValidateToken(
         const std::string&) override {
-        return infra::Result<live_stream::TokenValidationResult>::Fail(
-            infra::Status::kUnauthorized);
+        return live_stream::TokenValidationResult{};
     }
-    infra::Status CheckPermission(const live_stream::AuthPrincipal&,
-                                  live_stream::AuthPermission permission,
-                                  const std::string&) override {
+
+    bool CheckPermission(const live_stream::AuthPrincipal&,
+                         live_stream::AuthPermission permission,
+                         const std::string&) override {
         return permission == live_stream::AuthPermission::kPreviewVideo
-                   ? infra::Status::kOk
-                   : infra::Status::kNoPermission;
+                   ? true
+                   : false;
     }
 };
 
@@ -108,17 +111,17 @@ bool SendAndRead(int fd,
     return false;
 }
 
-EncodedFrame MakeFrame() {
-    auto buffer = CreateMediaBuffer(3);
-    uint8_t* data = buffer->MutableData();
+live_stream::EncodedFrame MakeFrame() {
+    live_stream::VideoBuffer* buffer = live_stream::VideoBufferAlloc(3);
+    uint8_t* data = buffer->data;
     data[0] = 0x65;
     data[1] = 1;
     data[2] = 2;
-    buffer->SetSize(3);
-    EncodedFrame frame;
-    frame.stream_id = StreamId::kMain;
-    frame.codec = VideoCodec::kH264;
-    frame.frame_type = FrameType::kIdr;
+    (void)live_stream::VideoBufferSetSize(buffer, 3);
+    live_stream::EncodedFrame frame;
+    frame.stream_id = live_stream::StreamId::kMain;
+    frame.codec = live_stream::VideoCodec::kH264;
+    frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 300000;
     frame.buffer = buffer;
     frame.size = 3;
@@ -128,29 +131,32 @@ EncodedFrame MakeFrame() {
 }  // namespace
 
 int main() {
-    auto netframe = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!netframe.IsOk()) {
+    std::unique_ptr<live_stream::NetEngine> net_engine =
+        live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
+    if (!net_engine || !net_engine->Start()) {
         return 1;
     }
     FakeAuthService auth;
     FakeAdaptiveObserver adaptive;
+    live_stream::test::FakeStreamHub stream_hub;
     live_stream::RtspServiceOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
     options.enable_auth = true;
     live_stream::RtspServiceDependencies deps;
-    deps.net_engine = netframe.value.get();
+    deps.net_engine = net_engine.get();
     deps.auth_service = &auth;
+    deps.stream_hub = &stream_hub;
     deps.adaptive_observer = &adaptive;
     auto rtsp = live_stream::CreateRtspService(options, deps);
-    if (!rtsp || rtsp->Start() != infra::Status::kOk) {
+    if (!rtsp || !rtsp->Start()) {
         return 2;
     }
     const auto local = rtsp->LocalAddress();
-    if (!local.IsOk()) {
+    if (local.port == 0) {
         return 3;
     }
-    int fd = ConnectTcp(local.value.port);
+    int fd = ConnectTcp(local.port);
     if (fd < 0) {
         return 4;
     }
@@ -163,7 +169,7 @@ int main() {
     }
     close(fd);
 
-    fd = ConnectTcp(local.value.port);
+    fd = ConnectTcp(local.port);
     if (fd < 0) {
         return 6;
     }
@@ -183,7 +189,7 @@ int main() {
         close(fd);
         return 7;
     }
-    if (rtsp->PushFrame(MakeFrame()) != infra::Status::kOk) {
+    if (!stream_hub.DeliverFrame(MakeFrame())) {
         close(fd);
         return 8;
     }
@@ -199,7 +205,7 @@ int main() {
     }
 
     close(fd);
-    rtsp->Deinit();
-    netframe.value->Stop();
+    rtsp->Stop();
+    net_engine->Stop();
     return 0;
 }

@@ -6,12 +6,17 @@
 #include <string>
 #include <vector>
 
+#include "media/mpp_types.h"
 #include "media/stream_types.h"
 
 namespace live_stream {
 
 class IConfigService;
-class MediaService;
+class IMediaService;
+
+namespace hisisdk {
+class IHisiSdk;
+}  // namespace hisisdk
 
 enum class AiTask {
     kObjectDetection = 0,
@@ -68,7 +73,9 @@ struct AiServiceStats {
 struct AiServiceOptions {
     AiModelConfig default_config;
     IConfigService* config_service = nullptr;
-    MediaService* media_service = nullptr;
+    IMediaService* media_service = nullptr;
+    MediaChannels media_channels;
+    hisisdk::IHisiSdk* sdk = nullptr;
 };
 
 // IAiView is the narrow interface consumed by HttpService (and other

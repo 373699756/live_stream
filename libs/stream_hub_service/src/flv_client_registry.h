@@ -15,6 +15,7 @@ struct PendingFlvClientWrite {
     StreamFlvClientId client_id = 0;
     std::shared_ptr<IStreamFlvSink> sink;
     bool send_sequence_header = false;
+    bool starts_on_keyframe = false;
 };
 
 // Tracks active HTTP-FLV clients. The owner synchronizes access and only keeps
@@ -22,6 +23,7 @@ struct PendingFlvClientWrite {
 class FlvClientRegistry {
 public:
     StreamFlvClientId Attach(StreamId stream_id, uint64_t config_generation,
+                             bool wait_for_keyframe,
                              const std::shared_ptr<IStreamFlvSink> &sink,
                              size_t max_clients);
     bool Detach(StreamFlvClientId client_id);
@@ -29,12 +31,13 @@ public:
     size_t Size() const;
     std::vector<PendingFlvClientWrite> CollectWrites(
         StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
-        bool has_sequence_header, bool has_new_sequence_header);
+        bool has_sequence_header, bool keyframe);
 
 private:
     struct FlvClientState {
         StreamId stream_id = StreamId::kMain;
         uint64_t config_generation = 0;
+        bool wait_for_keyframe = false;
         std::shared_ptr<IStreamFlvSink> sink;
     };
 

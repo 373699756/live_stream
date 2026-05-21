@@ -7,19 +7,103 @@
 
 namespace {
 
-class DummyMediaBuffer : public IMediaBuffer {
+class FakeStreamHub : public live_stream::IStreamHubService {
 public:
-    uint8_t* MutableData() override { return data_; }
-    const uint8_t* Data() const override { return data_; }
-    uint32_t Size() const override { return size_; }
-    uint32_t Capacity() const override { return sizeof(data_); }
-    void SetSize(uint32_t size) override {
-        size_ = size > Capacity() ? Capacity() : size;
+    bool Start() override { return true; }
+    void Stop() override {}
+    bool IsHlsSupported(live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
+    bool IsFlvSupported(live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
+    bool IsStreamAvailable(live_stream::StreamId stream_id) const override {
+        return stream_id == live_stream::StreamId::kMain ||
+               stream_id == live_stream::StreamId::kSub;
+    }
+    live_stream::VideoCodec GetStreamCodec(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::VideoCodec::kH264;
+    }
+    live_stream::StreamHlsPlaylist GetHlsPlaylist(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamHlsPlaylist{};
+    }
+    live_stream::StreamSegment GetHlsSegment(
+        live_stream::StreamId stream_id, uint64_t sequence) const override {
+        (void)stream_id;
+        (void)sequence;
+        return live_stream::StreamSegment{};
+    }
+    live_stream::StreamFlvStartData GetFlvStartData(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamFlvStartData{};
+    }
+    live_stream::StreamBrowserStatus GetBrowserStatus(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamBrowserStatus{};
+    }
+    live_stream::StreamFlvClientId AttachFlvClient(
+        live_stream::StreamId stream_id, uint64_t config_generation,
+        bool wait_for_keyframe,
+        const std::shared_ptr<live_stream::IStreamFlvSink>& sink) override {
+        (void)stream_id;
+        (void)config_generation;
+        (void)wait_for_keyframe;
+        (void)sink;
+        return 0;
+    }
+    bool DetachFlvClient(live_stream::StreamFlvClientId client_id) override {
+        (void)client_id;
+        return false;
+    }
+    live_stream::StreamFrameSinkId AttachFrameSink(
+        const live_stream::StreamFrameSinkOptions& options,
+        live_stream::IFrameSink* sink) override {
+        if (sink == nullptr) {
+            return 0;
+        }
+        if (options.stream_id == live_stream::StreamId::kMain) {
+            main_sink = sink;
+            return 1;
+        }
+        if (options.stream_id == live_stream::StreamId::kSub) {
+            sub_sink = sink;
+            return 2;
+        }
+        return 0;
+    }
+    bool DetachFrameSink(live_stream::StreamFrameSinkId sink_id) override {
+        if (sink_id == 1) {
+            main_sink = nullptr;
+            return true;
+        }
+        if (sink_id == 2) {
+            sub_sink = nullptr;
+            return true;
+        }
+        return false;
+    }
+    bool RequestKeyFrame(live_stream::StreamId stream_id,
+                         live_stream::KeyFrameReason reason) override {
+        (void)stream_id;
+        (void)reason;
+        return true;
+    }
+    live_stream::StreamHubServiceStats GetStats() const override {
+        live_stream::StreamHubServiceStats stats;
+        stats.enabled = true;
+        return stats;
     }
 
-private:
-    uint8_t data_[16] = {};
-    uint32_t size_ = sizeof(data_);
+    live_stream::IFrameSink* main_sink = nullptr;
+    live_stream::IFrameSink* sub_sink = nullptr;
 };
 
 bool WaitForSentFrames(live_stream::IWebrtcService* service,
@@ -39,13 +123,14 @@ int main() {
     live_stream::WebrtcServiceOptions options;
     options.send_worker_count = 2;
 
+    FakeStreamHub stream_hub;
     live_stream::WebrtcServiceDependencies dependencies;
+    dependencies.stream_hub = &stream_hub;
     dependencies.use_fake_engine = true;
 
     std::unique_ptr<live_stream::IWebrtcService> service =
         live_stream::CreateWebrtcService(options, dependencies);
-    if (!service || service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service || !service->Start()) {
         return 1;
     }
     if (std::strcmp(service->BackendName(), "fake_webrtc") != 0) {
@@ -53,38 +138,37 @@ int main() {
     }
 
     live_stream::WebrtcCreatePeerRequest create_request;
-    create_request.stream_id = StreamId::kMain;
-    auto peer = service->CreatePeer(create_request);
-    if (!peer.IsOk()) {
+    create_request.stream_id = live_stream::StreamId::kMain;
+    live_stream::WebrtcPeerInfo peer = service->CreatePeer(create_request);
+    if (peer.peer_id.empty()) {
         return 3;
     }
 
     live_stream::WebrtcOfferRequest offer;
-    offer.peer_id = peer.value.peer_id;
+    offer.peer_id = peer.peer_id;
     offer.sdp = "v=0\r\n";
-    auto answer = service->HandleOffer(offer);
-    if (!answer.IsOk() ||
-        answer.value.sdp.find("fake-webrtc-answer") == std::string::npos) {
+    live_stream::WebrtcAnswer answer = service->HandleOffer(offer);
+    if (answer.sdp.find("fake-webrtc-answer") == std::string::npos) {
         return 4;
     }
 
     live_stream::WebrtcIceCandidate candidate;
-    candidate.peer_id = peer.value.peer_id;
+    candidate.peer_id = peer.peer_id;
     candidate.candidate = "candidate:1 1 UDP 1 10.0.0.2 10000 typ host";
-    if (service->AddIceCandidate(candidate) != infra::Status::kOk) {
+    if (!service->AddIceCandidate(candidate)) {
         return 5;
     }
 
-    EncodedFrame frame;
-    frame.stream_id = StreamId::kMain;
-    frame.buffer = std::shared_ptr<IMediaBuffer>(new DummyMediaBuffer());
+    live_stream::EncodedFrame frame;
+    frame.stream_id = live_stream::StreamId::kMain;
+    frame.buffer = live_stream::VideoBufferAlloc(16);
     frame.size = 8;
+    (void)live_stream::VideoBufferSetSize(frame.buffer, 16);
     service->OnFrame(frame);
     if (!WaitForSentFrames(service.get(), 1)) {
         return 6;
     }
 
     service->Stop();
-    service->Deinit();
     return 0;
 }

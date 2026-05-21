@@ -45,6 +45,9 @@ public:
                          const Bitmap& bitmap) override;
     void DestroyRegion(int32_t handle) override;
     JpegFrame CaptureJpeg(const SnapshotConfig& config) override;
+    YuvFrame CaptureYuvFrame(const MppChannel& vpss_channel,
+                             Size size,
+                             uint32_t timeout_ms) override;
 };
 
 }  // namespace hisisdk

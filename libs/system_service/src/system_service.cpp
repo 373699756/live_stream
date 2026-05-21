@@ -157,6 +157,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         std::lock_guard<std::mutex> lock(mutex_);
         heartbeat_ms_.clear();
@@ -232,11 +237,6 @@ public:
     }
 
 private:
-    bool IsStarted() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return initialized_ && started_;
-    }
-
     void ApplyHeartbeatHealth(SystemStatus* status) {
         if (status == nullptr) {
             return;
@@ -311,7 +311,7 @@ private:
     std::unique_ptr<ISystemPlatform> owned_platform_;
     ISystemPlatform* platform_ = nullptr;
     std::map<std::string, int64_t> heartbeat_ms_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     bool heartbeat_unhealthy_ = false;
     std::string last_failed_component_;
     bool initialized_ = false;

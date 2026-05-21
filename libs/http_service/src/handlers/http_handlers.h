@@ -2,72 +2,111 @@
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_HANDLERS_H_
 
 #include "http_handler_context.h"
+#include "http_router.h"
+
+#include <memory>
 
 namespace live_stream {
-namespace http_handlers {
 
-HttpResponse HandleLogin(HttpHandlerContext *context,
-                         const HttpRequest &request);
-HttpResponse HandleLogout(HttpHandlerContext *context,
-                          const HttpRequest &request);
-HttpResponse HandleMe(HttpHandlerContext *context, const HttpRequest &request);
-HttpResponse HandleMediaCapabilities(HttpHandlerContext *context);
-HttpResponse HandleStreamStatus(HttpHandlerContext *context,
-                                const HttpRequest &request);
-HttpResponse HandleSystemStatus(HttpHandlerContext *context,
-                                const HttpRequest &request);
-HttpResponse HandleSystemCapabilities(HttpHandlerContext *context,
-                                      const HttpRequest &request);
-HttpResponse HandleSystemReboot(HttpHandlerContext *context,
-                                const HttpRequest &request);
-HttpResponse HandleSystemFactoryReset(HttpHandlerContext *context,
-                                      const HttpRequest &request);
-HttpResponse HandleTimeStatus(HttpHandlerContext *context,
-                              const HttpRequest &request);
-HttpResponse HandleTimeTimezone(HttpHandlerContext *context,
-                                const HttpRequest &request);
-HttpResponse HandleTimeNtp(HttpHandlerContext *context,
-                           const HttpRequest &request);
-HttpResponse HandleTimeSystemTime(HttpHandlerContext *context,
-                                  const HttpRequest &request);
-HttpResponse HandleTimeSync(HttpHandlerContext *context,
-                            const HttpRequest &request);
-HttpResponse HandleNetworkInterfaces(HttpHandlerContext *context,
-                                     const HttpRequest &request);
-HttpResponse HandleNetworkInterface(HttpHandlerContext *context,
-                                    const HttpRequest &request);
-HttpResponse HandleNetworkReload(HttpHandlerContext *context,
-                                 const HttpRequest &request);
-HttpResponse HandleUpgradeUpload(HttpHandlerContext *context,
-                                 const HttpRequest &request);
-HttpResponse HandleUpgradeStatus(HttpHandlerContext *context,
-                                 const HttpRequest &request);
-HttpResponse HandleUpgradeValidate(HttpHandlerContext *context,
-                                   const HttpRequest &request);
-HttpResponse HandleUpgradeStart(HttpHandlerContext *context,
-                                const HttpRequest &request);
-HttpResponse HandleUpgradeCancel(HttpHandlerContext *context,
-                                 const HttpRequest &request);
-HttpResponse HandleUpgradeConfirmReboot(HttpHandlerContext *context,
-                                        const HttpRequest &request);
-HttpResponse HandleAiStatus(HttpHandlerContext *context,
-                            const HttpRequest &request);
-HttpResponse HandleSnapshot(HttpHandlerContext *context,
-                            const HttpRequest &request);
-HttpResponse HandleHls(HttpHandlerContext *context,
-                       const HttpRequest &request);
-HttpResponse HandleWebrtc(HttpHandlerContext *context,
-                          const HttpRequest &request);
-void StartFlvStream(HttpHandlerContext *context, ConnectionId connection_id,
-                    const HttpRequest &request);
-HttpResponse HandleConfig(HttpHandlerContext *context,
-                          const HttpRequest &request);
-HttpResponse HandleOperations(HttpHandlerContext *context,
-                              const HttpRequest &request);
-HttpResponse HandleOperationsExport(HttpHandlerContext *context,
-                                    const HttpRequest &request);
+class IAuthService;
+class IConfigService;
+class ILoggerService;
+class IAlarmService;
+class INetworkService;
+class ITimeService;
+class IUpgradeService;
+class ISystemService;
+class IRtspService;
+class IOnvifService;
+class IMediaService;
+class IAiView;
+class ISnapshotView;
+class IWebrtcService;
+class IStreamHubService;
 
-}  // namespace http_handlers
+struct AuthHandlerDependencies {
+    IAuthService *auth_service = nullptr;
+};
+
+struct ConfigHandlerDependencies {
+    IConfigService *config_service = nullptr;
+};
+
+struct OperationsHandlerDependencies {
+    ILoggerService *logger_service = nullptr;
+};
+
+struct DeviceHandlerDependencies {
+    INetworkService *network_service = nullptr;
+    ITimeService *time_service = nullptr;
+    IUpgradeService *upgrade_service = nullptr;
+};
+
+struct SystemHandlerDependencies {
+    ILoggerService *logger_service = nullptr;
+    IConfigService *config_service = nullptr;
+    IAuthService *auth_service = nullptr;
+    ISystemService *system_service = nullptr;
+    ITimeService *time_service = nullptr;
+    INetworkService *network_service = nullptr;
+    IAlarmService *alarm_service = nullptr;
+    IUpgradeService *upgrade_service = nullptr;
+    IRtspService *rtsp_service = nullptr;
+    IOnvifService *onvif_service = nullptr;
+    IMediaService *media_service = nullptr;
+    IAiView *ai_service = nullptr;
+    ISnapshotView *snapshot_service = nullptr;
+    IWebrtcService *webrtc_service = nullptr;
+    IStreamHubService *stream_hub_service = nullptr;
+};
+
+struct MediaHandlerDependencies {
+    IConfigService *config_service = nullptr;
+    IMediaService *media_service = nullptr;
+    IAiView *ai_service = nullptr;
+    ISnapshotView *snapshot_service = nullptr;
+    IWebrtcService *webrtc_service = nullptr;
+    IStreamHubService *stream_hub_service = nullptr;
+};
+
+std::unique_ptr<IHttpHandler> CreateAuthHttpHandler(
+    HttpHandlerContext *context, const AuthHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateConfigHttpHandler(
+    HttpHandlerContext *context, const ConfigHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(
+    HttpHandlerContext *context,
+    const OperationsHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateNetworkHttpHandler(
+    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateTimeHttpHandler(
+    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateUpgradeHttpHandler(
+    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
+    HttpHandlerContext *context, const SystemHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+
+class IStreamingHttpHandler {
+public:
+    virtual ~IStreamingHttpHandler() = default;
+
+    virtual bool CanHandleStreamingRequest(const HttpRequest &request) const = 0;
+    virtual void HandleStreamingRequest(ConnectionId connection_id,
+                                        const HttpRequest &request) = 0;
+};
+
+std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_HANDLERS_H_

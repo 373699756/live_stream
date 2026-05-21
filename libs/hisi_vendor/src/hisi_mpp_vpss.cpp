@@ -49,7 +49,7 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     grp_attr.u32MaxH = config.main_stream.size.height;
     grp_attr.enPixelFormat = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     grp_attr.enDynamicRange = DYNAMIC_RANGE_SDR8;
-    grp_attr.bNrEn = HI_TRUE;
+    grp_attr.bNrEn = HI_FALSE;
     grp_attr.stFrameRate.s32SrcFrameRate =
         config.main_stream.frame_rate.source_fps;
     grp_attr.stFrameRate.s32DstFrameRate =

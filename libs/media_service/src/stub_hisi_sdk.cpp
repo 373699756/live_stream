@@ -50,22 +50,40 @@ OptionControlCapability Options(const char* name,
 ImageCapabilities DefaultImage() {
     ImageCapabilities img;
     img.basic = {
-        Range("brightness", 0, 100, 50),
-        Range("contrast", 0, 100, 50),
         Range("saturation", 0, 100, 50),
         Range("sharpness", 0, 100, 50),
-        Range("hue", 0, 100, 50),
     };
     img.exposure_options = {
         Options("mode", {"auto", "manual"}, "auto"),
         Options("anti_flicker", {"50hz", "60hz", "off"}, "50hz"),
+        Options("exposure_time", {"auto", "1/25", "1/50", "1/100", "1/250"},
+                "auto"),
+        Options("gain", {"auto", "low", "medium", "high"}, "auto"),
+        Options("slow_shutter", {"false", "true"}, "true"),
+    };
+    img.exposure_ranges = {
+        Range("compensation", 0, 100, 50),
     };
     img.white_balance_options = {
-        Options("mode", {"auto", "manual", "indoor", "outdoor"}, "auto"),
+        Options("mode", {"auto", "manual"}, "auto"),
     };
     img.white_balance_ranges = {
         Range("red_gain", 0, 100, 50),
         Range("blue_gain", 0, 100, 50),
+    };
+    img.enhancement_options = {
+        Options("defog", {"false", "true"}, "false"),
+    };
+    img.enhancement_ranges = {
+        Range("denoise_2d", 0, 100, 50),
+        Range("denoise_3d", 0, 100, 50),
+        Range("gamma", 0, 100, 50),
+    };
+    img.backlight_options = {
+        Options("mode", {"off", "wdr"}, "off"),
+    };
+    img.backlight_ranges = {
+        Range("level", 0, 100, 50),
     };
     img.mirror_supported = true;
     img.flip_supported = true;
@@ -80,16 +98,15 @@ MediaCapabilities StubCapabilities() {
     main.codecs = {
         MakeCodecCap(VideoCodec::kH264, {"baseline", "main", "high"}),
         MakeCodecCap(VideoCodec::kH265, {"main"}),
-        MakeCodecCap(VideoCodec::kJpeg, {"baseline"}),
-        MakeCodecCap(VideoCodec::kMjpeg, {"baseline"}),
     };
-    main.resolutions = {{3840, 2160}, {2560, 1440}, {1920, 1080}, {1280, 720}};
+    main.resolutions = {{1920, 1080}, {1280, 720}, {704, 576}, {640, 360},
+                        {352, 288}};
     main.frame_rate = {1, 30};
-    main.bitrate = {512, 8192};
+    main.bitrate = {512, 12288};
     main.rate_control_modes = {RateControlMode::kCbr, RateControlMode::kVbr,
                                RateControlMode::kFixQp};
     main.gop = {1, 120};
-    main.smart_codec_supported = true;
+    main.smart_codec_supported = false;
     caps.streams.push_back(main);
 
     VideoStreamCapabilities sub;
@@ -100,7 +117,7 @@ MediaCapabilities StubCapabilities() {
     sub.bitrate = {64, 2048};
     sub.rate_control_modes = main.rate_control_modes;
     sub.gop = {1, 120};
-    sub.smart_codec_supported = true;
+    sub.smart_codec_supported = false;
     caps.streams.push_back(sub);
 
     caps.image = DefaultImage();
@@ -155,17 +172,20 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
         0x14, 0x11, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xff, 0xda, 0x00, 0x08,
         0x01, 0x03, 0x01, 0x01, 0x3f, 0x00, 0x7f, 0xff, 0xd9};
-    auto pool = CreateFixedMediaBufferPool(EstimateJpegBlockSize(config),
-                                           kDefaultJpegPoolBlocks);
+    auto pool = CreateVideoBufferPool(EstimateJpegBlockSize(config),
+                                      kDefaultJpegPoolBlocks);
     if (!pool) return JpegFrame{};
     auto buffer = pool->Acquire();
-    if (!buffer || buffer->Capacity() < sizeof(kMinimalJpeg)) return JpegFrame{};
-    std::memcpy(buffer->MutableData(), kMinimalJpeg, sizeof(kMinimalJpeg));
-    buffer->SetSize(static_cast<uint32_t>(sizeof(kMinimalJpeg)));
+    if (buffer == nullptr || buffer->capacity < sizeof(kMinimalJpeg)) {
+        VideoBufferRelease(buffer);
+        return JpegFrame{};
+    }
+    std::memcpy(buffer->data, kMinimalJpeg, sizeof(kMinimalJpeg));
+    VideoBufferSetSize(buffer, static_cast<uint32_t>(sizeof(kMinimalJpeg)));
     JpegFrame frame;
     frame.buffer = buffer;
     frame.offset = 0;
-    frame.size = buffer->Size();
+    frame.size = buffer->size;
     frame.width = config.size.width;
     frame.height = config.size.height;
     return frame;
@@ -251,6 +271,33 @@ JpegFrame StubHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         return JpegFrame{};
     }
     return MakeHostJpeg(config);
+}
+
+YuvFrame StubHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
+                                      Size size,
+                                      uint32_t timeout_ms) {
+    if (vpss_channel.module != MppModule::kVpss || size.width == 0 ||
+        size.height == 0 || timeout_ms == 0) {
+        return YuvFrame{};
+    }
+    const uint32_t y_size = size.width * size.height;
+    const uint32_t uv_size = y_size / 2;
+    VideoBuffer* buffer = VideoBufferAlloc(y_size + uv_size);
+    if (buffer == nullptr) {
+        return YuvFrame{};
+    }
+    std::memset(buffer->data, 0x10, y_size);
+    std::memset(buffer->data + y_size, 0x80, uv_size);
+    VideoBufferSetSize(buffer, y_size + uv_size);
+    YuvFrame frame;
+    frame.buffer = buffer;
+    frame.offset = 0;
+    frame.size = buffer->size;
+    frame.width = size.width;
+    frame.height = size.height;
+    frame.stride_y = size.width;
+    frame.stride_uv = size.width;
+    return frame;
 }
 
 // ====================================================================

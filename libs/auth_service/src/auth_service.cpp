@@ -185,6 +185,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         std::lock_guard<std::mutex> guard(mutex_);
         sessions_.clear();
@@ -387,11 +392,6 @@ private:
         EnforcePerUserSessionLimitLocked();
         ++stats_.config_apply_count;
         return true;
-    }
-
-    bool IsStarted() {
-        std::lock_guard<std::mutex> guard(mutex_);
-        return initialized_ && started_;
     }
 
     bool CheckLockout(const std::string &user_name) {

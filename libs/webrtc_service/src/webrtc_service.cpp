@@ -1,6 +1,7 @@
 #include "webrtc_service.h"
 
 #include "infra/executor.h"
+#include "infra/log.h"
 #include "webrtc_engine.h"
 #include "webrtc_frame_dispatcher.h"
 #include "webrtc_peer_store.h"
@@ -16,6 +17,7 @@ namespace live_stream {
 namespace {
 
 constexpr int64_t kPeerSetupTimeoutMs = 10000;
+constexpr FrameSequence kWebrtcDiagMaxSeq = 2;
 
 enum class ServiceState {
     kCreated = 0,
@@ -41,6 +43,18 @@ bool IsValidOptions(const WebrtcServiceOptions &options) {
 
 bool IsValidStream(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
+}
+
+const char *StreamName(StreamId stream_id) {
+    switch (stream_id) {
+        case StreamId::kMain:
+            return "main";
+        case StreamId::kSub:
+            return "sub";
+        case StreamId::kSnapshot:
+            return "snapshot";
+    }
+    return "unknown";
 }
 
 }  // namespace
@@ -70,6 +84,9 @@ public:
         if (!options_.enabled) {
             state_ = ServiceState::kStarted;
             return true;
+        }
+        if (dependencies_.stream_hub == nullptr) {
+            return false;
         }
         infra::ExecutorOptions executor_options;
         executor_options.worker_count = options_.send_worker_count;
@@ -141,11 +158,8 @@ public:
                 return WebrtcPeerInfo();
             }
 
-            VideoCodec codec = VideoCodec::kH264;
-            if (dependencies_.stream_hub != nullptr) {
-                codec = dependencies_.stream_hub->GetStreamCodec(
-                    request.stream_id);
-            }
+            const VideoCodec codec =
+                dependencies_.stream_hub->GetStreamCodec(request.stream_id);
             peer = peer_store_.CreatePeer(request, codec);
         }
 
@@ -407,6 +421,15 @@ private:
     void SendEncodedFrame(const EncodedFrame &frame,
                           const std::vector<WebrtcPeerInfo> &peers) {
         webrtc_internal::IWebrtcEngine *engine = nullptr;
+        const bool log_diag = frame.sequence <= kWebrtcDiagMaxSeq;
+        if (log_diag) {
+            INFRA_LOG_INFO("webrtc_service",
+                           "webrtc diag send begin stream=%s seq=%llu size=%u "
+                           "peers=%zu",
+                           StreamName(frame.stream_id),
+                           static_cast<unsigned long long>(frame.sequence),
+                           frame.size, peers.size());
+        }
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || !engine_) {
@@ -420,11 +443,27 @@ private:
         uint64_t sent_frames = 0;
         uint64_t dropped_frames = 0;
         for (const WebrtcPeerInfo &peer : peers) {
+            if (log_diag) {
+                INFRA_LOG_INFO("webrtc_service",
+                               "webrtc diag peer send begin stream=%s "
+                               "seq=%llu peer=%s",
+                               StreamName(frame.stream_id),
+                               static_cast<unsigned long long>(frame.sequence),
+                               peer.peer_id.c_str());
+            }
             if (engine->SendFrame(peer, frame)) {
                 delivered = true;
                 ++sent_frames;
             } else {
                 ++dropped_frames;
+            }
+            if (log_diag) {
+                INFRA_LOG_INFO("webrtc_service",
+                               "webrtc diag peer send end stream=%s seq=%llu "
+                               "peer=%s",
+                               StreamName(frame.stream_id),
+                               static_cast<unsigned long long>(frame.sequence),
+                               peer.peer_id.c_str());
             }
         }
 
@@ -433,6 +472,15 @@ private:
         stats_.dropped_frames += dropped_frames;
         if (!delivered) {
             ++stats_.dropped_frames;
+        }
+        if (log_diag) {
+            INFRA_LOG_INFO("webrtc_service",
+                           "webrtc diag send end stream=%s seq=%llu sent=%llu "
+                           "dropped=%llu",
+                           StreamName(frame.stream_id),
+                           static_cast<unsigned long long>(frame.sequence),
+                           static_cast<unsigned long long>(sent_frames),
+                           static_cast<unsigned long long>(dropped_frames));
         }
     }
 
@@ -499,15 +547,13 @@ private:
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
-        if (dependencies_.stream_hub == nullptr) {
-            return true;
-        }
-        return dependencies_.stream_hub->IsStreamAvailable(stream_id);
+        return dependencies_.stream_hub != nullptr &&
+               dependencies_.stream_hub->IsStreamAvailable(stream_id);
     }
 
     bool SubscribeMediaLocked() {
         if (dependencies_.stream_hub == nullptr) {
-            return true;
+            return false;
         }
         if (main_sink_id_ != 0 || sub_sink_id_ != 0) {
             return true;

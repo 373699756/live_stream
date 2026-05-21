@@ -61,6 +61,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual bool SetValue(const std::string &name, const ConfigJson &value) = 0;
     virtual ConfigJson GetValue(const std::string &name) = 0;
     virtual ConfigJson GetDefault(const std::string &name) = 0;

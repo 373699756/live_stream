@@ -3,9 +3,9 @@
  Context
 
  本项目是 HiSilicon 平台上的实时视频流服务器，核心路径：
- 硬件编码器输出 → EncodedFrame（IMediaBuffer + shared_ptr）→ StreamHubService → HLS/FLV 分发。
+ 硬件编码器输出 → EncodedFrame（VideoBuffer* 显式引用计数）→ StreamHubService → HLS/FLV 分发。
 
- 整体框架的内存设计已经很好（IMediaBufferPool + shared_ptr 零拷贝传帧），
+ 整体框架的内存设计已经收敛为 IVideoBufferPool + VideoBuffer* 零拷贝传帧，
  但在 转码打包层（stream_mux、stream_hub_stream_state）存在大量低效点：
 
  1. std::string 当字节容器：TS segment body、FLV tag、PES packet 均用 std::string，每次 append/+ 触发 realloc +

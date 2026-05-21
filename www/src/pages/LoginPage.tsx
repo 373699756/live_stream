@@ -9,7 +9,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const submit = async () => {
+  const submit = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     setError('');
     const ok = await onLogin(userName, password);
     if (!ok) {
@@ -19,7 +20,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <main className="login-page">
-      <section className="login-panel">
+      <form className="login-panel" onSubmit={submit}>
         <div className="login-brand">IPC</div>
         <h1>Live Stream IPC</h1>
         <p>设备 Web 管理控制台</p>
@@ -36,11 +37,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <button type="button" className="primary wide" onClick={submit}>
+        <button type="submit" className="primary wide">
           登录
         </button>
         {error && <div className="save-hint">{error}</div>}
-      </section>
+      </form>
     </main>
   );
 }

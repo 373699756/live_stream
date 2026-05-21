@@ -67,6 +67,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool IsStarted() const = 0;
     virtual TimeStatus GetTimeStatus() = 0;
     virtual bool SetTimezone(const live_stream::RequestContext& context,
                              const std::string& timezone) = 0;

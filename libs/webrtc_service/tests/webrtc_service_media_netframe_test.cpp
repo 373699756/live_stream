@@ -1,6 +1,5 @@
 #include "webrtc_service.h"
 
-#include "media_service.h"
 #include "net_service.h"
 
 #include <cstddef>
@@ -9,51 +8,106 @@
 
 namespace {
 
-class FakeMediaService : public live_stream::MediaService {
+class FakeStreamHub : public live_stream::IStreamHubService {
 public:
-    infra::Result<live_stream::FrameSubscriptionId> SubscribeFrames(
-        const live_stream::FrameSubscribeOptions& options,
+    bool Start() override { return true; }
+    void Stop() override {}
+    bool IsHlsSupported(live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
+    bool IsFlvSupported(live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
+    bool IsStreamAvailable(live_stream::StreamId stream_id) const override {
+        return stream_id == live_stream::StreamId::kMain ||
+               stream_id == live_stream::StreamId::kSub;
+    }
+    live_stream::VideoCodec GetStreamCodec(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::VideoCodec::kH264;
+    }
+    live_stream::StreamHlsPlaylist GetHlsPlaylist(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamHlsPlaylist{};
+    }
+    live_stream::StreamSegment GetHlsSegment(
+        live_stream::StreamId stream_id, uint64_t sequence) const override {
+        (void)stream_id;
+        (void)sequence;
+        return live_stream::StreamSegment{};
+    }
+    live_stream::StreamFlvStartData GetFlvStartData(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamFlvStartData{};
+    }
+    live_stream::StreamBrowserStatus GetBrowserStatus(
+        live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return live_stream::StreamBrowserStatus{};
+    }
+    live_stream::StreamFlvClientId AttachFlvClient(
+        live_stream::StreamId stream_id, uint64_t config_generation,
+        bool wait_for_keyframe,
+        const std::shared_ptr<live_stream::IStreamFlvSink>& sink) override {
+        (void)stream_id;
+        (void)config_generation;
+        (void)wait_for_keyframe;
+        (void)sink;
+        return 0;
+    }
+    bool DetachFlvClient(live_stream::StreamFlvClientId client_id) override {
+        (void)client_id;
+        return false;
+    }
+    live_stream::StreamFrameSinkId AttachFrameSink(
+        const live_stream::StreamFrameSinkOptions& options,
         live_stream::IFrameSink* sink) override {
         if (sink == nullptr) {
-            return infra::Result<live_stream::FrameSubscriptionId>::Fail(
-                infra::Status::kInvalidParam);
+            return 0;
         }
-        if (options.stream_id == StreamId::kMain) {
+        if (options.stream_id == live_stream::StreamId::kMain) {
             main_sink = sink;
-            return infra::Result<live_stream::FrameSubscriptionId>::Ok(1);
+            return 1;
         }
-        if (options.stream_id == StreamId::kSub) {
+        if (options.stream_id == live_stream::StreamId::kSub) {
             sub_sink = sink;
-            return infra::Result<live_stream::FrameSubscriptionId>::Ok(2);
+            return 2;
         }
-        return infra::Result<live_stream::FrameSubscriptionId>::Fail(
-            infra::Status::kInvalidParam);
+        return 0;
     }
-
-    infra::Status UnsubscribeFrames(
-        live_stream::FrameSubscriptionId subscription_id) override {
-        if (subscription_id == 1) {
+    bool DetachFrameSink(live_stream::StreamFrameSinkId sink_id) override {
+        if (sink_id == 1) {
             main_sink = nullptr;
-            return infra::Status::kOk;
+            return true;
         }
-        if (subscription_id == 2) {
+        if (sink_id == 2) {
             sub_sink = nullptr;
-            return infra::Status::kOk;
+            return true;
         }
-        return infra::Status::kNotFound;
+        return false;
     }
-
-    infra::Status RequestKeyFrame(StreamId stream_id,
-                                  live_stream::KeyFrameReason reason) override {
+    bool RequestKeyFrame(live_stream::StreamId stream_id,
+                         live_stream::KeyFrameReason reason) override {
         last_key_frame_stream = stream_id;
         last_key_frame_reason = reason;
         ++key_frame_requests;
-        return infra::Status::kOk;
+        return true;
+    }
+    live_stream::StreamHubServiceStats GetStats() const override {
+        live_stream::StreamHubServiceStats stats;
+        stats.enabled = true;
+        return stats;
     }
 
     live_stream::IFrameSink* main_sink = nullptr;
     live_stream::IFrameSink* sub_sink = nullptr;
-    StreamId last_key_frame_stream = StreamId::kSnapshot;
+    live_stream::StreamId last_key_frame_stream =
+        live_stream::StreamId::kSnapshot;
     live_stream::KeyFrameReason last_key_frame_reason =
         live_stream::KeyFrameReason::kRecovery;
     int key_frame_requests = 0;
@@ -61,75 +115,69 @@ public:
 
 class FakeNetEngine : public live_stream::NetEngine {
 public:
-    infra::Status Start() override {
+    bool Start() override {
         ++start_count;
-        return infra::Status::kOk;
+        return true;
     }
 
     void Stop() override {}
 
-    infra::Result<live_stream::TcpServerId> ListenTcp(
+    live_stream::TcpServerId ListenTcp(
         const live_stream::TcpListenOptions&,
         const live_stream::TcpCallbacks&) override {
-        return infra::Result<live_stream::TcpServerId>::Ok(1);
+        return 1;
     }
 
-    infra::Status CloseTcp(live_stream::TcpServerId) override {
-        return infra::Status::kOk;
+    bool CloseTcp(live_stream::TcpServerId) override {
+        return true;
     }
 
-    infra::Result<live_stream::UdpSocketId> BindUdp(
+    live_stream::UdpSocketId BindUdp(
         const live_stream::UdpBindOptions& options,
         const live_stream::UdpCallbacks&) override {
         last_udp_bind = options.address;
         ++bind_udp_count;
-        return infra::Result<live_stream::UdpSocketId>::Ok(7);
+        return 7;
     }
 
-    infra::Status CloseUdp(live_stream::UdpSocketId) override {
+    bool CloseUdp(live_stream::UdpSocketId) override {
         ++close_udp_count;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Send(live_stream::ConnectionId,
-                       const uint8_t*,
-                       size_t) override {
-        return infra::Status::kOk;
+    bool Send(live_stream::ConnectionId, const uint8_t*, size_t) override {
+        return true;
     }
 
-    infra::Status Close(live_stream::ConnectionId) override {
-        return infra::Status::kOk;
+    bool Close(live_stream::ConnectionId) override {
+        return true;
     }
 
-    infra::Status CloseAfterSend(live_stream::ConnectionId) override {
-        return infra::Status::kOk;
+    bool CloseAfterSend(live_stream::ConnectionId) override {
+        return true;
     }
 
-    infra::Status SendTo(live_stream::UdpSocketId,
-                         live_stream::NetAddress,
-                         const uint8_t*,
-                         size_t) override {
-        return infra::Status::kOk;
+    bool SendTo(live_stream::UdpSocketId, live_stream::NetAddress,
+                const uint8_t*, size_t) override {
+        return true;
     }
 
-    infra::Result<live_stream::NetTimerId> RunOnIoAfter(uint32_t,
-                                                        infra::Task) override {
-        return infra::Result<live_stream::NetTimerId>::Ok(1);
+    live_stream::NetTimerId RunOnIoAfter(uint32_t, infra::Task) override {
+        return 1;
     }
 
-    infra::Status CancelIoTimer(live_stream::NetTimerId) override {
-        return infra::Status::kOk;
+    bool CancelIoTimer(live_stream::NetTimerId) override {
+        return true;
     }
 
-    infra::Result<live_stream::NetAddress> TcpLocalAddress(
+    live_stream::NetAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
-        return infra::Result<live_stream::NetAddress>::Ok(
-            live_stream::NetAddress{"127.0.0.1", 8000});
+        return live_stream::NetAddress{"127.0.0.1", 8000};
     }
 
-    infra::Result<live_stream::NetAddress> UdpLocalAddress(
+    live_stream::NetAddress UdpLocalAddress(
         live_stream::UdpSocketId) const override {
-        return infra::Result<live_stream::NetAddress>::Ok(last_udp_bind);
+        return last_udp_bind;
     }
 
     uint32_t PendingBytes(live_stream::ConnectionId) const override {
@@ -149,24 +197,23 @@ public:
 }  // namespace
 
 int main() {
-    FakeMediaService media;
+    FakeStreamHub stream_hub;
     FakeNetEngine net_engine;
 
     live_stream::WebrtcServiceOptions options;
     options.local_port_base = 16000;
 
     live_stream::WebrtcServiceDependencies dependencies;
-    dependencies.media_service = &media;
+    dependencies.stream_hub = &stream_hub;
     dependencies.net_engine = &net_engine;
     dependencies.use_fake_engine = true;
 
     std::unique_ptr<live_stream::IWebrtcService> service =
         live_stream::CreateWebrtcService(options, dependencies);
-    if (!service || service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service || !service->Start()) {
         return 1;
     }
-    if (media.main_sink == nullptr || media.sub_sink == nullptr) {
+    if (stream_hub.main_sink == nullptr || stream_hub.sub_sink == nullptr) {
         return 2;
     }
     if (net_engine.bind_udp_count != 1 || net_engine.start_count != 1 ||
@@ -175,26 +222,27 @@ int main() {
     }
 
     live_stream::WebrtcCreatePeerRequest create_request;
-    create_request.stream_id = StreamId::kSub;
-    auto peer = service->CreatePeer(create_request);
-    if (!peer.IsOk() || media.key_frame_requests != 1 ||
-        media.last_key_frame_stream != StreamId::kSub ||
-        media.last_key_frame_reason != live_stream::KeyFrameReason::kNewClient) {
+    create_request.stream_id = live_stream::StreamId::kSub;
+    live_stream::WebrtcPeerInfo peer = service->CreatePeer(create_request);
+    if (peer.peer_id.empty() || stream_hub.key_frame_requests != 1 ||
+        stream_hub.last_key_frame_stream != live_stream::StreamId::kSub ||
+        stream_hub.last_key_frame_reason !=
+            live_stream::KeyFrameReason::kNewClient) {
         return 4;
     }
 
     live_stream::WebrtcOfferRequest offer;
-    offer.peer_id = peer.value.peer_id;
+    offer.peer_id = peer.peer_id;
     offer.sdp = "v=0\r\n";
-    if (!service->HandleOffer(offer).IsOk() || media.key_frame_requests != 2) {
+    live_stream::WebrtcAnswer answer = service->HandleOffer(offer);
+    if (answer.sdp.empty() || stream_hub.key_frame_requests != 2) {
         return 5;
     }
 
     service->Stop();
-    if (media.main_sink != nullptr || media.sub_sink != nullptr ||
+    if (stream_hub.main_sink != nullptr || stream_hub.sub_sink != nullptr ||
         net_engine.close_udp_count != 1) {
         return 6;
     }
-    service->Deinit();
     return 0;
 }

@@ -85,27 +85,58 @@ ConfigJson AiResultToJson(const AiInferenceResult &result) {
 
 }  // namespace
 
-HttpResponse http_handlers::HandleAiStatus(HttpHandlerContext *context, const HttpRequest &request) {
-    AuthPrincipal principal;
-    if (!RequireAuth(context, request, &principal)) {
-        return StatusResponse(401, "Unauthorized");
-    }
-    if (context->Dependencies().ai_service == nullptr) {
-        if (!IsAiConfigEnabled(context->Dependencies().config_service)) {
-            ConfigJson root = ConfigJson::object();
-            root["config"] = context->Dependencies().config_service->GetValue("ai");
-            root["stats"] = AiStatsToJson(AiServiceStats{});
-            root["last_result"] = AiResultToJson(AiInferenceResult{});
-            return JsonResponse(200, root);
+class AiHttpHandler : public IHttpHandler {
+public:
+    AiHttpHandler(HttpHandlerContext *context,
+                  const MediaHandlerDependencies &dependencies)
+        : context_(context), dependencies_(dependencies) {}
+
+    void RegisterRoutes(IHttpRouter *router) override {
+        if (router == nullptr) {
+            return;
         }
-        return StatusResponse(503, "AI service not running");
+        router->AddExactRoute(HttpMethod::kGet, "/api/ai/status",
+                              &AiHttpHandler::HandleStatusRoute, this);
     }
-    ConfigJson root = ConfigJson::object();
-    root["config"] = AiConfigToJson(context->Dependencies().ai_service->GetConfig());
-    root["stats"] = AiStatsToJson(context->Dependencies().ai_service->GetStats());
-    root["last_result"] =
-        AiResultToJson(context->Dependencies().ai_service->GetLastResult());
-    return JsonResponse(200, root);
+
+private:
+    static HttpResponse HandleStatusRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<AiHttpHandler *>(user)->HandleStatus(request);
+    }
+
+    HttpResponse HandleStatus(const HttpRequest &request) {
+        AuthPrincipal principal;
+        if (!RequireAuth(context_, request, &principal)) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        if (dependencies_.ai_service == nullptr) {
+            if (!IsAiConfigEnabled(dependencies_.config_service)) {
+                ConfigJson root = ConfigJson::object();
+                root["config"] =
+                    dependencies_.config_service->GetValue("ai");
+                root["stats"] = AiStatsToJson(AiServiceStats{});
+                root["last_result"] = AiResultToJson(AiInferenceResult{});
+                return JsonResponse(200, root);
+            }
+            return StatusResponse(503, "AI service not running");
+        }
+        ConfigJson root = ConfigJson::object();
+        root["config"] = AiConfigToJson(dependencies_.ai_service->GetConfig());
+        root["stats"] = AiStatsToJson(dependencies_.ai_service->GetStats());
+        root["last_result"] =
+            AiResultToJson(dependencies_.ai_service->GetLastResult());
+        return JsonResponse(200, root);
+    }
+
+    HttpHandlerContext *context_ = nullptr;
+    MediaHandlerDependencies dependencies_;
+};
+
+std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
+    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies) {
+    return std::unique_ptr<IHttpHandler>(
+        new AiHttpHandler(context, dependencies));
 }
 
 }  // namespace live_stream

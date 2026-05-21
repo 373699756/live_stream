@@ -1,0 +1,192 @@
+# live_stream 工程改进计划
+
+扫描范围：app/、libs/、www/、docs/、configs/、Makefile
+扫描时间：2026-05-20
+
+---
+
+## 一、问题汇总
+
+### P1 — 高优先级（影响可维护性/正确性）
+
+#### 1. 全局单例隐式依赖（app 层）
+文件：app/app_runtime.cpp、app/protocol_subsystem.cpp
+
+ProtocolSubsystem::Start() 内部直接调用 CoreServices::Get()、
+DeviceSubsystem::Get()、MediaSubsystem::Get()，形成隐式全局依赖，
+违反了"服务不通过 app 单例发现彼此"的架构规范（docs/architecture.md）。
+
+改进方案：
+- AppRuntime::Start() 显式构造各子系统并传递引用
+- ProtocolSubsystem::Start(runtime_config, core, device_refs, media_refs)
+- 消除内部 ::Get() 调用，依赖由调用方注入
+
+受影响文件：
+  app/app_runtime.cpp
+  app/protocol_subsystem.cpp
+  app/protocol_subsystem.h
+
+
+#### 2. system_handler.cpp include 具体类头文件
+文件：libs/http_service/src/handlers/system_handler.cpp
+
+SystemHandlerDependencies 字段全为接口指针，但 .cpp 文件直接
+#include 了 10 个具体类头文件：
+  alarm_service.h、media_service.h、network_service.h、
+  rtsp_service.h、snapshot_service.h、stream_hub_service.h、
+  system_service.h、time_service.h、upgrade_service.h、webrtc_service.h
+
+这导致具体类更新时 system_handler 被不必要重编译，违反依赖倒置原则。
+
+改进方案：
+- 检查各服务接口是否暴露在独立的 I*.h 头文件中
+- 若是，将 #include 替换为接口头文件
+- 若接口和实现混在同一头文件，则此条暂不处理（编译器会报错）
+
+
+#### 3. HandleStatus 服务状态检查不一致
+文件：libs/http_service/src/handlers/system_handler.cpp，HandleStatus()
+
+部分服务（time/network/alarm/upgrade）用 IsRunning() 判断状态，
+部分服务（logger/config/auth/system/onvif）仅判断指针非空。
+指针非空不等于服务在运行，会导致服务 Stop() 后状态仍显示 running。
+
+改进方案（二选一）：
+A. 给 ILoggerService/IConfigService/IAuthService/ISystemService/IOnvifService
+   增加 IsRunning() 接口，HandleStatus 统一调用
+B. 在注释中明确说明：http_service 中这些服务指针在整个生命周期内不为 null
+   即 nullptr = not configured，non-null = running，规范语义后不再变更
+
+
+#### 4. webrtc GetStats 重复调用（system_handler.cpp）
+文件：libs/http_service/src/handlers/system_handler.cpp
+
+add_service("webrtc_service",
+    dependencies_.webrtc_service->GetStats().enabled &&
+    dependencies_.webrtc_service->GetStats().backend_available);
+
+两次调用 GetStats()，若内部有锁则有额外开销。
+
+改进方案：
+  const auto stats = dependencies_.webrtc_service->GetStats();
+  add_service("webrtc_service", stats.enabled && stats.backend_available);
+
+
+### P2 — 中优先级（影响架构清晰度）
+
+#### 5. 事件系统 payload 无规范
+文件：libs/event_service/（整个模块）
+参考：docs/service-boundaries.md "Open convention to define"
+
+event_service 的事件名称和 payload 所有权没有文档化，
+各模块发布/订阅事件时约定隐式，容易导致不一致。
+
+改进方案：
+- 新建 docs/event-payloads.md
+- 记录已有事件名、payload 结构、发布方、订阅方
+- 规定命名规则（如 "config.video.changed"、"stream.main.started"）
+
+
+#### 6. AI 服务 disabled 状态语义未统一
+文件：libs/ai_service/、libs/http_service/src/handlers/ai_handler.cpp
+
+docs/service-boundaries.md 标注："Open question: core feature or optional?"
+AI 被禁用时，API 返回什么状态码、什么 JSON 字段，各处不统一。
+
+改进方案：
+- 在 IAiView 或 ai_service.h 中明确注释 disabled 时的返回语义
+- ai_handler 对 disabled AI 统一返回 {"enabled": false}，状态码 200
+- 确保 system status 中 ai_service 只在 ai.enabled=true 时出现
+
+
+#### 7. 缺少 compile_commands.json 生成
+文件：Makefile（根）
+
+交叉编译环境下 clangd 无法自动识别 include 路径和宏，
+代码导航和静态分析无法正常工作（docs/architecture.md 已列为推荐事项）。
+
+改进方案：
+在根 Makefile 添加目标：
+  compiledb:
+      bear -- make -j2 2>/dev/null || true
+  .PHONY: compiledb
+
+或使用 compiledb 工具：
+  pip install compiledb
+  compiledb make -j2
+
+
+### P3 — 低优先级（提升可测试性）
+
+#### 8. 测试覆盖薄弱
+各模块 tests/ 多为 header_test（编译检查），缺少业务逻辑测试。
+
+优先补充：
+- config_service：JSON load/persist/validate 逻辑
+- auth_service：token 验证、session 过期
+- rtsp_service：会话生命周期（setup/play/teardown）
+- system_handler：/api/system/status JSON 格式验证
+
+
+#### 9. 调试日志噪声（protocol_subsystem.cpp）
+文件：app/protocol_subsystem.cpp，Start() 方法
+
+HTTP 服务启动时有 6 条连续 INFO 日志（build options begin/done 各类），
+是调试阶段遗留，生产环境中属于噪声。
+
+改进方案：
+删除以下冗余日志，保留最终 "HTTP service listening" 一条：
+  INFRA_LOG_INFO("app", "HTTP service build options begin");
+  INFRA_LOG_INFO("app", "HTTP service build dependencies begin");
+  INFRA_LOG_INFO("app", "HTTP service create begin");
+  INFRA_LOG_INFO("app", "HTTP service start begin");
+  INFRA_LOG_INFO("app", "HTTP service start done");
+  INFRA_LOG_INFO("app", "HTTP service local address begin");
+  INFRA_LOG_INFO("app", "HTTP service local address done");
+
+
+---
+
+## 二、改进执行顺序
+
+阶段 1（立即，不破坏接口）：
+  - 修复 webrtc GetStats 重复调用（5 分钟）
+  - 清理 protocol_subsystem.cpp 调试日志（5 分钟）
+  - 新建 docs/event-payloads.md（文档，不改代码）
+  - 统一 AI disabled 语义（ai_handler.cpp，小改）
+
+阶段 2（本周，局部重构）：
+  - system_handler.cpp #include 改接口头文件
+  - HandleStatus 服务状态检查统一
+  - 添加 compiledb Makefile 目标
+
+阶段 3（下一迭代，架构调整）：
+  - 打破子系统全局单例依赖（需要改 app_runtime/protocol_subsystem 接口）
+  - 补充 config/auth/rtsp handler 单元测试
+
+---
+
+## 三、不需要改动的部分（已确认合理）
+
+- SystemHandlerDependencies 15 个字段：业务需要，不是 God Object
+- WebrtcHttpHandler：已用 IHttpRouter::AddExactRoute()，风格统一
+- HttpServiceDependencies：16 个接口，全部抽象，无具体类
+- 4 个 Executor 分流：config_apply/control/stream/task，设计合理
+- IStreamingHttpHandler 分离：FLV 不走普通路由，合理
+- Handler 工厂 + IHttpHandler 类模式：已全面落地，不需要重构
+- Platform 适配层（ISystemPlatform/ITimePlatform 等）：抽象完善
+- 配置路径可外部化（--config-dir / env var）：已实现
+
+---
+
+## 四、快速验证方式
+
+# 编译整个工程
+make -j2
+
+# 编译单个模块
+make -C libs/http_service ROOT_DIR=/home/c/linux/hisi/live_stream
+
+# 运行模块测试
+make -C libs/http_service test ROOT_DIR=/home/c/linux/hisi/live_stream
+make -C libs/net_service test ROOT_DIR=/home/c/linux/hisi/live_stream

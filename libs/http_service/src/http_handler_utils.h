@@ -13,6 +13,7 @@ namespace live_stream {
 
 class IAiView;
 class IConfigService;
+class IMediaService;
 
 constexpr const char *kHttpModuleName = "http_service";
 
@@ -28,7 +29,7 @@ bool RequirePermissionOrForbidden(HttpHandlerContext *context,
                                   AuthPrincipal *principal);
 bool ParseJsonObject(const HttpRequest &request, ConfigJson *body);
 bool ParseOptionalJsonObject(const HttpRequest &request, ConfigJson *body);
-bool IsMediaRestarting(HttpHandlerContext *context);
+bool IsMediaRestarting(IMediaService *media_service);
 std::string PathSuffix(const std::string &path, const std::string &prefix);
 std::string BuildStreamingHeaderBlock(
     int status_code, const std::map<std::string, std::string> &headers);

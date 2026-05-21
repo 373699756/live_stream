@@ -25,13 +25,6 @@ CodecCapability H265Capability() {
     return cap;
 }
 
-CodecCapability MjpegCapability() {
-    CodecCapability cap;
-    cap.codec = VideoCodec::kMjpeg;
-    cap.profiles = {"baseline"};
-    return cap;
-}
-
 NumericControlCapability Range(const char* name, int32_t min, int32_t max,
                                int32_t default_value,
                                bool runtime_supported = true) {
@@ -59,7 +52,6 @@ OptionControlCapability Options(const char* name,
 void AddCommonCodecs(std::vector<CodecCapability>& codecs) {
     codecs.push_back(H264Capability());
     codecs.push_back(H265Capability());
-    codecs.push_back(MjpegCapability());
 }
 
 void AddCommonRcModes(std::vector<RateControlMode>& modes) {
@@ -71,11 +63,8 @@ void AddCommonRcModes(std::vector<RateControlMode>& modes) {
 ImageCapabilities DefaultImageCapabilities() {
     ImageCapabilities image;
 
-    image.basic.push_back(Range("brightness", 0, 100, 50, false));
-    image.basic.push_back(Range("contrast", 0, 100, 50, false));
     image.basic.push_back(Range("saturation", 0, 100, 50));
-    image.basic.push_back(Range("sharpness", 0, 100, 50));
-    image.basic.push_back(Range("hue", 0, 100, 50, false));
+    image.basic.push_back(Range("sharpness", 0, 100, 55));
 
     image.exposure_options.push_back(
         Options("mode", {"auto", "manual"}, "auto"));
@@ -88,26 +77,22 @@ ImageCapabilities DefaultImageCapabilities() {
         Options("gain", {"auto", "low", "medium", "high"}, "auto"));
     image.exposure_options.push_back(
         Options("slow_shutter", {"false", "true"}, "true"));
-    image.exposure_options.push_back(
-        Options("max_exposure_time", {"1/12", "1/25", "1/50"}, "1/25"));
     image.exposure_ranges.push_back(Range("compensation", 0, 100, 50));
 
     image.white_balance_options.push_back(
-        Options("mode", {"auto", "manual", "indoor", "outdoor"}, "auto"));
+        Options("mode", {"auto", "manual"}, "auto"));
     image.white_balance_ranges.push_back(Range("red_gain", 0, 100, 50));
     image.white_balance_ranges.push_back(Range("blue_gain", 0, 100, 50));
 
-    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 50));
-    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 50));
+    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 55));
+    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 45));
     image.enhancement_ranges.push_back(Range("gamma", 0, 100, 50));
     image.enhancement_options.push_back(
         Options("defog", {"false", "true"}, "false"));
 
     image.backlight_options.push_back(
-        Options("mode", {"off", "wdr", "blc", "hlc"}, "off"));
+        Options("mode", {"off", "wdr"}, "off"));
     image.backlight_ranges.push_back(Range("level", 0, 100, 50));
-    image.color_mode_options.push_back(
-        Options("mode", {"color", "black_white", "auto"}, "color", false));
     image.mirror_supported = true;
     image.flip_supported = true;
 
@@ -120,8 +105,6 @@ VideoStreamCapabilities BuildMainStreamCaps() {
     main.stream_id = StreamId::kMain;
     AddCommonCodecs(main.codecs);
     main.resolutions = {
-        {3840, 2160},  // 4K
-        {2560, 1440},  // 2K
         {1920, 1080},  // 1080P
         {1280, 720},   // 720P
         {704, 576},    // D1
@@ -132,7 +115,7 @@ VideoStreamCapabilities BuildMainStreamCaps() {
     main.bitrate = BitrateRange{MIN_BITRATE, MAX_BITRATE};
     AddCommonRcModes(main.rate_control_modes);
     main.gop = GopRange{1, 120};
-    main.smart_codec_supported = true;
+    main.smart_codec_supported = false;
     return main;
 }
 
@@ -150,7 +133,7 @@ VideoStreamCapabilities BuildSubStreamCaps() {
     sub.bitrate = BitrateRange{MIN_BITRATE, 2048};
     AddCommonRcModes(sub.rate_control_modes);
     sub.gop = GopRange{1, 120};
-    sub.smart_codec_supported = true;
+    sub.smart_codec_supported = false;
     return sub;
 }
 

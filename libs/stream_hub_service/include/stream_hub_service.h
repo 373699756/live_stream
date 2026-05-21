@@ -1,8 +1,9 @@
 #ifndef LIVE_STREAM_STREAM_HUB_SERVICE_H_
 #define LIVE_STREAM_STREAM_HUB_SERVICE_H_
 
-#include "media/frame_source.h"
+#include "media/frame_subscription.h"
 #include "media/stream_types.h"
+#include "media_service.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +24,7 @@ struct StreamHubServiceOptions {
 };
 
 struct StreamHubServiceDependencies {
-    IFrameSource *frame_source = nullptr;
+    IMediaService *media_service = nullptr;
 };
 
 struct StreamHlsEntry {
@@ -45,7 +46,7 @@ struct StreamSegment {
     std::string body;
 };
 
-struct StreamFlvBootstrap {
+struct StreamFlvStartData {
     bool supported = false;
     uint64_t config_generation = 0;
     std::string file_header;
@@ -98,10 +99,11 @@ public:
     virtual StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
     virtual StreamSegment GetHlsSegment(StreamId stream_id,
                                         uint64_t sequence) const = 0;
-    virtual StreamFlvBootstrap GetFlvBootstrap(StreamId stream_id) const = 0;
+    virtual StreamFlvStartData GetFlvStartData(StreamId stream_id) const = 0;
     virtual StreamBrowserStatus GetBrowserStatus(StreamId stream_id) const = 0;
     virtual StreamFlvClientId
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
+                    bool wait_for_keyframe,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
     virtual StreamFrameSinkId AttachFrameSink(

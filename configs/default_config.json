@@ -6,7 +6,7 @@
         "codec": "h264",
         "resolution": "1920x1080",
         "fps": 25,
-        "bitrate_kbps": 4096,
+        "bitrate_kbps": 12288,
         "rate_control": "cbr",
         "gop": 50,
         "gop_mode": "normal_p"
@@ -49,7 +49,7 @@
       "brightness": 50,
       "contrast": 50,
       "saturation": 50,
-      "sharpness": 50,
+      "sharpness": 55,
       "hue": 50
     },
     "exposure": {
@@ -58,7 +58,7 @@
       "exposure_time": "auto",
       "gain": "auto",
       "compensation": 50,
-      "slow_shutter": true,
+      "slow_shutter": false,
       "max_exposure_time": "1/25"
     },
     "white_balance": {
@@ -67,8 +67,8 @@
       "blue_gain": 50
     },
     "enhancement": {
-      "denoise_2d": 50,
-      "denoise_3d": 50,
+      "denoise_2d": 55,
+      "denoise_3d": 45,
       "gamma": 50,
       "defog": false
     },

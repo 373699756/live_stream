@@ -148,6 +148,11 @@ public:
         started_ = false;
     }
 
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
     void Release() {
         std::lock_guard<std::mutex> lock(mutex_);
         pending_since_ms_.clear();
@@ -288,11 +293,6 @@ public:
     }
 
 private:
-    bool IsStarted() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return initialized_ && started_;
-    }
-
     AlarmRule CurrentMotionRuleLocked() const {
         const auto iter = rules_.find(AlarmSource::kMotion);
         if (iter == rules_.end()) {
@@ -362,7 +362,7 @@ private:
     std::map<AlarmSource, AlarmRule> rules_;
     std::map<AlarmSource, int64_t> pending_since_ms_;
     AlarmStatus status_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     bool config_attached_ = false;
     bool initialized_ = false;
     bool started_ = false;

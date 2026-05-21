@@ -1,5 +1,6 @@
 #include "rtsp_service.h"
 
+#include "fake_stream_hub.h"
 #include "media/media_buffer.h"
 #include "net_service.h"
 
@@ -77,18 +78,18 @@ bool Exchange(int fd, const std::string& request, const std::string& expected) {
     return false;
 }
 
-EncodedFrame MakeFrame() {
-    auto buffer = CreateMediaBuffer(4);
-    uint8_t* data = buffer->MutableData();
+live_stream::EncodedFrame MakeFrame() {
+    live_stream::VideoBuffer* buffer = live_stream::VideoBufferAlloc(4);
+    uint8_t* data = buffer->data;
     data[0] = 0x65;
     data[1] = 9;
     data[2] = 8;
     data[3] = 7;
-    buffer->SetSize(4);
-    EncodedFrame frame;
-    frame.stream_id = StreamId::kMain;
-    frame.codec = VideoCodec::kH264;
-    frame.frame_type = FrameType::kIdr;
+    (void)live_stream::VideoBufferSetSize(buffer, 4);
+    live_stream::EncodedFrame frame;
+    frame.stream_id = live_stream::StreamId::kMain;
+    frame.codec = live_stream::VideoCodec::kH264;
+    frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 200000;
     frame.buffer = buffer;
     frame.size = 4;
@@ -104,27 +105,30 @@ int main() {
         return 1;
     }
 
-    auto netframe = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!netframe.IsOk()) {
+    std::unique_ptr<live_stream::NetEngine> net_engine =
+        live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
+    if (!net_engine || !net_engine->Start()) {
         close(udp_fd);
         return 2;
     }
+    live_stream::test::FakeStreamHub stream_hub;
     live_stream::RtspServiceOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
     live_stream::RtspServiceDependencies deps;
-    deps.net_engine = netframe.value.get();
+    deps.net_engine = net_engine.get();
+    deps.stream_hub = &stream_hub;
     auto rtsp = live_stream::CreateRtspService(options, deps);
-    if (!rtsp || rtsp->Start() != infra::Status::kOk) {
+    if (!rtsp || !rtsp->Start()) {
         close(udp_fd);
         return 3;
     }
     const auto local = rtsp->LocalAddress();
-    if (!local.IsOk()) {
+    if (local.port == 0) {
         close(udp_fd);
         return 4;
     }
-    const int tcp_fd = ConnectTcp(local.value.port);
+    const int tcp_fd = ConnectTcp(local.port);
     if (tcp_fd < 0) {
         close(udp_fd);
         return 5;
@@ -153,7 +157,7 @@ int main() {
         close(udp_fd);
         return 7;
     }
-    if (rtsp->PushFrame(MakeFrame()) != infra::Status::kOk) {
+    if (!stream_hub.DeliverFrame(MakeFrame())) {
         close(tcp_fd);
         close(udp_fd);
         return 8;
@@ -175,7 +179,7 @@ int main() {
 
     close(tcp_fd);
     close(udp_fd);
-    rtsp->Deinit();
-    netframe.value->Stop();
+    rtsp->Stop();
+    net_engine->Stop();
     return 0;
 }

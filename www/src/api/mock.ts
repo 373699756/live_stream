@@ -24,7 +24,7 @@ export const mockVideoConfig: VideoConfig = {
       codec: 'h264',
       resolution: '1920x1080',
       fps: 25,
-      bitrate_kbps: 4096,
+      bitrate_kbps: 12288,
       rate_control: 'cbr',
       gop: 50,
     },
@@ -52,20 +52,19 @@ export const mockMediaCapabilities: MediaCapabilities = {
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
-        { codec: 'jpeg', profiles: ['baseline'] },
-        { codec: 'mjpeg', profiles: ['baseline'] },
       ],
       resolutions: [
-        { width: 3840, height: 2160 },
-        { width: 2560, height: 1440 },
         { width: 1920, height: 1080 },
         { width: 1280, height: 720 },
+        { width: 704, height: 576 },
+        { width: 640, height: 360 },
+        { width: 352, height: 288 },
       ],
       fps: { min: 1, max: 30 },
-      bitrate_kbps: { min: 512, max: 8192 },
+      bitrate_kbps: { min: 512, max: 12288 },
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
-      smart_codec: true,
+      smart_codec: false,
     },
     sub: {
       stream: 'sub',
@@ -73,8 +72,6 @@ export const mockMediaCapabilities: MediaCapabilities = {
       codecs: [
         { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
         { codec: 'h265', profiles: ['main'] },
-        { codec: 'jpeg', profiles: ['baseline'] },
-        { codec: 'mjpeg', profiles: ['baseline'] },
       ],
       resolutions: [
         { width: 1280, height: 720 },
@@ -86,16 +83,13 @@ export const mockMediaCapabilities: MediaCapabilities = {
       bitrate_kbps: { min: 64, max: 2048 },
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
-      smart_codec: true,
+      smart_codec: false,
     },
   },
   image: {
     basic: {
-      brightness: { min: 0, max: 100, default: 50, runtime_supported: false },
-      contrast: { min: 0, max: 100, default: 50, runtime_supported: false },
       saturation: { min: 0, max: 100, default: 50 },
-      sharpness: { min: 0, max: 100, default: 50 },
-      hue: { min: 0, max: 100, default: 50, runtime_supported: false },
+      sharpness: { min: 0, max: 100, default: 55 },
     },
     exposure: {
       options: {
@@ -103,14 +97,13 @@ export const mockMediaCapabilities: MediaCapabilities = {
         anti_flicker: { values: ['50hz', '60hz', 'off'], default: '50hz' },
         exposure_time: { values: ['auto', '1/25', '1/50', '1/100', '1/250'], default: 'auto' },
         gain: { values: ['auto', 'low', 'medium', 'high'], default: 'auto' },
-        slow_shutter: { values: ['false', 'true'], default: 'true' },
-        max_exposure_time: { values: ['1/12', '1/25', '1/50'], default: '1/25' },
+        slow_shutter: { values: ['false', 'true'], default: 'false' },
       },
       ranges: { compensation: { min: 0, max: 100, default: 50 } },
     },
     white_balance: {
       options: {
-        mode: { values: ['auto', 'manual', 'indoor', 'outdoor'], default: 'auto' },
+        mode: { values: ['auto', 'manual'], default: 'auto' },
       },
       ranges: {
         red_gain: { min: 0, max: 100, default: 50 },
@@ -120,20 +113,18 @@ export const mockMediaCapabilities: MediaCapabilities = {
     enhancement: {
       options: { defog: { values: ['false', 'true'], default: 'false' } },
       ranges: {
-        denoise_2d: { min: 0, max: 100, default: 50 },
-        denoise_3d: { min: 0, max: 100, default: 50 },
+        denoise_2d: { min: 0, max: 100, default: 55 },
+        denoise_3d: { min: 0, max: 100, default: 45 },
         gamma: { min: 0, max: 100, default: 50 },
       },
     },
     backlight: {
       options: {
-        mode: { values: ['off', 'wdr', 'blc', 'hlc'], default: 'off' },
+        mode: { values: ['off', 'wdr'], default: 'off' },
       },
       ranges: { level: { min: 0, max: 100, default: 50 } },
     },
-    color_mode: {
-      mode: { values: ['color', 'black_white', 'auto'], default: 'color', runtime_supported: false },
-    },
+    color_mode: {},
     orientation: { mirror: true, flip: true },
   },
 };
@@ -143,18 +134,18 @@ export const mockMediaCapabilities: MediaCapabilities = {
 // ---------------------------------------------------------------------------
 
 export const mockImageConfig: ImageConfig = {
-  basic: { brightness: 50, contrast: 50, saturation: 50, sharpness: 50, hue: 50 },
+  basic: { brightness: 50, contrast: 50, saturation: 50, sharpness: 55, hue: 50 },
   exposure: {
     mode: 'auto',
     anti_flicker: '50hz',
     exposure_time: 'auto',
     gain: 'auto',
     compensation: 50,
-    slow_shutter: true,
+    slow_shutter: false,
     max_exposure_time: '1/25',
   },
   white_balance: { mode: 'auto', red_gain: 50, blue_gain: 50 },
-  enhancement: { denoise_2d: 50, denoise_3d: 50, defog: false, gamma: 50 },
+  enhancement: { denoise_2d: 55, denoise_3d: 45, defog: false, gamma: 50 },
   backlight: { mode: 'off', level: 50 },
   orientation: { mirror: false, flip: false },
   color_mode: { mode: 'color' },
@@ -283,7 +274,7 @@ export const mockStreamStatus: StreamStatus[] = [
     codec: 'H.264',
     resolution: mockVideoConfig.streams.main.resolution,
     fps: 25,
-    bitrateKbps: 4096,
+    bitrateKbps: 12288,
     state: 'running',
     browserCodec: true,
     hlsReady: true,

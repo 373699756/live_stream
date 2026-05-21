@@ -41,7 +41,7 @@ struct ProtocolRuntimeRefs {
 class StaticOnvifUriProvider : public IOnvifUriProvider {
 public:
     StaticOnvifUriProvider(const AppRuntimeConfig &config,
-                           IMediaView *media_service)
+                           IMediaService *media_service)
         : config_(config), media_service_(media_service) {}
 
     std::string GetStreamUri(StreamId stream_id) override {
@@ -69,7 +69,7 @@ private:
     }
 
     AppRuntimeConfig config_;
-    IMediaView *media_service_ = nullptr;
+    IMediaService *media_service_ = nullptr;
 };
 
 infra::ExecutorOptions BuildNetCallbackExecutorOptions() {
@@ -104,7 +104,6 @@ RtspServiceDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.stream_hub = refs.stream_hub_service;
-    dependencies.media_service = refs.media.media;
     return dependencies;
 }
 
@@ -137,7 +136,7 @@ StreamHubServiceOptions BuildStreamHubOptions() {
 StreamHubServiceDependencies BuildStreamHubDependencies(
     const ProtocolRuntimeRefs &refs) {
     StreamHubServiceDependencies dependencies;
-    dependencies.frame_source = refs.media.media;
+    dependencies.media_service = refs.media.media;
     return dependencies;
 }
 
@@ -192,22 +191,25 @@ HttpServiceOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
 
 HttpServiceDependencies BuildHttpDependencies(const ProtocolRuntimeRefs &refs) {
     HttpServiceDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
-    dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.config_service = refs.core != nullptr ? refs.core->config() : nullptr;
-    dependencies.logger_service = refs.core != nullptr ? refs.core->logger() : nullptr;
-    dependencies.network_service = refs.device.network;
-    dependencies.time_service = refs.device.time;
-    dependencies.alarm_service = refs.device.alarm;
-    dependencies.upgrade_service = refs.device.upgrade;
-    dependencies.rtsp_service = refs.rtsp_service;
-    dependencies.onvif_service = refs.onvif_service;
-    dependencies.system_service = refs.device.system;
-    dependencies.ai_service = refs.media.ai;
-    dependencies.media_service = refs.media.media;
-    dependencies.snapshot_service = refs.media.snapshot;
-    dependencies.webrtc_service = refs.webrtc_service;
-    dependencies.stream_hub_service = refs.stream_hub_service;
+    dependencies.core.net_engine = refs.net_engine;
+    dependencies.security.auth_service =
+        refs.core != nullptr ? refs.core->auth() : nullptr;
+    dependencies.security.logger_service =
+        refs.core != nullptr ? refs.core->logger() : nullptr;
+    dependencies.config.config_service =
+        refs.core != nullptr ? refs.core->config() : nullptr;
+    dependencies.device.network_service = refs.device.network;
+    dependencies.device.time_service = refs.device.time;
+    dependencies.device.alarm_service = refs.device.alarm;
+    dependencies.device.upgrade_service = refs.device.upgrade;
+    dependencies.device.system_service = refs.device.system;
+    dependencies.protocol.rtsp_service = refs.rtsp_service;
+    dependencies.protocol.onvif_service = refs.onvif_service;
+    dependencies.media.ai_service = refs.media.ai;
+    dependencies.media.media_service = refs.media.media;
+    dependencies.media.snapshot_service = refs.media.snapshot;
+    dependencies.media.webrtc_service = refs.webrtc_service;
+    dependencies.media.stream_hub_service = refs.stream_hub_service;
     return dependencies;
 }
 
@@ -218,16 +220,18 @@ ProtocolSubsystem &ProtocolSubsystem::Get() {
     return subsystem;
 }
 
-bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config) {
+bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
+                              CoreServices &core_services,
+                              const DeviceRefs &device_refs,
+                              const MediaRefs &media_refs) {
     if (started_) {
         return true;
     }
 
-    CoreServices &core = CoreServices::Get();
     ProtocolRuntimeRefs refs;
-    refs.core = &core;
-    refs.device = DeviceSubsystem::Get().refs();
-    refs.media = MediaSubsystem::Get().refs();
+    refs.core = &core_services;
+    refs.device = device_refs;
+    refs.media = media_refs;
 
     if (!net_callback_executor_) {
         net_callback_executor_.reset(new infra::Executor());
