@@ -114,8 +114,6 @@ ImageCapabilities DefaultImageCapabilities() {
     return image;
 }
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
-
 // ─── Capabilities that can be refined at runtime ───────────────
 VideoStreamCapabilities BuildMainStreamCaps() {
     VideoStreamCapabilities main;
@@ -156,8 +154,6 @@ VideoStreamCapabilities BuildSubStreamCaps() {
     return sub;
 }
 
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
-
 }  // anonymous namespace
 
 // ====================================================================
@@ -166,7 +162,6 @@ VideoStreamCapabilities BuildSubStreamCaps() {
 MediaCapabilities MppHisiSdk::GetCapabilities() {
     MediaCapabilities caps;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // Build from SDK compile-time macro constants
     caps.streams.push_back(BuildMainStreamCaps());
     caps.streams.push_back(BuildSubStreamCaps());
@@ -174,29 +169,6 @@ MediaCapabilities MppHisiSdk::GetCapabilities() {
     // In future: if system is initialised and sensor info is available,
     // refine the resolution list and frame-rate limits here using
     // SAMPLE_COMM_VI_GetSizeBySensor / GetFrameRateBySensor.
-#else
-    // Fallback: same as StubHisiSdk
-    VideoStreamCapabilities main, sub;
-    main.stream_id = StreamId::kMain;
-    AddCommonCodecs(main.codecs);
-    main.resolutions = {{3840, 2160}, {2560, 1440}, {1920, 1080}, {1280, 720}};
-    main.frame_rate = {1, 30};
-    main.bitrate = {512, 8192};
-    AddCommonRcModes(main.rate_control_modes);
-    main.gop = {1, 120};
-    main.smart_codec_supported = true;
-    caps.streams.push_back(main);
-
-    sub.stream_id = StreamId::kSub;
-    AddCommonCodecs(sub.codecs);
-    sub.resolutions = {{1280, 720}, {704, 576}, {640, 360}, {352, 288}};
-    sub.frame_rate = {1, 30};
-    sub.bitrate = {64, 2048};
-    AddCommonRcModes(sub.rate_control_modes);
-    sub.gop = {1, 120};
-    sub.smart_codec_supported = true;
-    caps.streams.push_back(sub);
-#endif
 
     caps.image = DefaultImageCapabilities();
     return caps;

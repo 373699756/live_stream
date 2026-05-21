@@ -8,7 +8,7 @@ namespace hisisdk {
 
 // MppHisiSdk implements IHisiSdk by calling HiSilicon MPP SDK APIs directly.
 // This is the production implementation for Hi3516CV500 / Hi3516DV300 platforms.
-// Use it in place of StubHisiSdk when LIVE_STREAM_ENABLE_HISI_MPP is defined.
+// Use it in HISI MPP builds. Non-MPP builds use StubHisiSdk instead.
 class MppHisiSdk final : public IHisiSdk {
 public:
     MppHisiSdk();
@@ -46,6 +46,9 @@ public:
                          const Bitmap& bitmap) override;
     void DestroyRegion(int32_t handle) override;
     JpegFrame CaptureJpeg(const SnapshotConfig& config) override;
+    YuvFrame CaptureYuvFrame(const MppChannel& vpss_channel,
+                             Size size,
+                             uint32_t timeout_ms) override;
 
 private:
     struct Impl;

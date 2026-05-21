@@ -7,7 +7,8 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <poll.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -15,7 +16,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 constexpr uint32_t kDefaultStatTimeSec = 1;
@@ -272,158 +272,6 @@ bool HasValidVencStreamPacks(const VENC_STREAM_S& stream) {
            stream.u32PackCount <= kMaxVencPacksPerFrame;
 }
 
-bool FindVencStreamBufferTile(const VENC_STREAM_BUF_INFO_S& stream_buf,
-                              uint64_t phy_addr,
-                              uint32_t* tile_index,
-                              uint64_t* tile_offset) {
-    if (tile_index == nullptr || tile_offset == nullptr) {
-        return false;
-    }
-    for (uint32_t i = 0; i < MAX_TILE_NUM; ++i) {
-        const uint64_t tile_phy = stream_buf.u64PhyAddr[i];
-        const uint64_t tile_size = stream_buf.u64BufSize[i];
-        if (tile_phy == 0 || tile_size == 0 ||
-            stream_buf.pUserAddr[i] == nullptr) {
-            continue;
-        }
-        if (tile_size > std::numeric_limits<uint64_t>::max() - tile_phy) {
-            continue;
-        }
-        const uint64_t tile_end = tile_phy + tile_size;
-        if (phy_addr == tile_end) {
-            *tile_index = i;
-            *tile_offset = 0;
-            return true;
-        }
-        if (phy_addr >= tile_phy && phy_addr < tile_end) {
-            *tile_index = i;
-            *tile_offset = phy_addr - tile_phy;
-            return true;
-        }
-    }
-    return false;
-}
-
-void LogVencPacks(const char* prefix, int32_t chn,
-                  const VENC_STREAM_S& stream) {
-    const uint32_t pack_count =
-        stream.u32PackCount < kMaxVencPacksPerFrame
-            ? stream.u32PackCount
-            : kMaxVencPacksPerFrame;
-    for (uint32_t i = 0; i < pack_count; ++i) {
-        const VENC_PACK_S& pack = stream.pstPack[i];
-        INFRA_LOG_INFO(
-            "hisi_vendor",
-            "%s chn=%d seq=%u pack=%u/%u len=%u offset=%u data=%u "
-            "addr=%p phy=0x%llx pts=%lld end=%d data_num=%u",
-            prefix, chn, stream.u32Seq, i, stream.u32PackCount, pack.u32Len,
-            pack.u32Offset, VencPackDataLen(pack), pack.pu8Addr,
-            static_cast<unsigned long long>(pack.u64PhyAddr),
-            static_cast<long long>(pack.u64PTS), pack.bFrameEnd ? 1 : 0,
-            pack.u32DataNum);
-    }
-}
-
-void LogVencStreamBuffer(const char* prefix, int32_t chn,
-                         const VENC_STREAM_BUF_INFO_S& stream_buf) {
-    for (uint32_t i = 0; i < MAX_TILE_NUM; ++i) {
-        INFRA_LOG_INFO(
-            "hisi_vendor",
-            "%s chn=%d tile=%u phy=0x%llx user=%p size=%llu",
-            prefix, chn, i,
-            static_cast<unsigned long long>(stream_buf.u64PhyAddr[i]),
-            stream_buf.pUserAddr[i],
-            static_cast<unsigned long long>(stream_buf.u64BufSize[i]));
-    }
-}
-
-void LogVencPackCopy(const char* phase,
-                     int32_t chn,
-                     const VENC_STREAM_S& stream,
-                     const VENC_STREAM_BUF_INFO_S* stream_buf,
-                     uint32_t pack_index,
-                     const uint8_t* source,
-                     uint32_t output_offset,
-                     uint32_t output_capacity) {
-    const VENC_PACK_S& pack = stream.pstPack[pack_index];
-    int tile = -1;
-    uint64_t ring_offset = 0;
-    uint64_t ring_left = 0;
-    if (stream_buf != nullptr) {
-        uint32_t tile_index = 0;
-        uint64_t tile_offset = 0;
-        if (FindVencStreamBufferTile(*stream_buf, pack.u64PhyAddr, &tile_index,
-                                     &tile_offset)) {
-            tile = static_cast<int>(tile_index);
-            ring_offset = (tile_offset + pack.u32Offset) %
-                          stream_buf->u64BufSize[tile_index];
-            ring_left = stream_buf->u64BufSize[tile_index] - ring_offset;
-        }
-    }
-    INFRA_LOG_INFO(
-        "hisi_vendor",
-        "VENC copy %s chn=%d seq=%u pack=%u/%u len=%u offset=%u data=%u "
-        "src=%p dst_off=%u dst_cap=%u phy=0x%llx tile=%d ring_off=%llu "
-        "ring_left=%llu",
-        phase, chn, stream.u32Seq, pack_index, stream.u32PackCount,
-        pack.u32Len, pack.u32Offset, VencPackDataLen(pack), source,
-        output_offset, output_capacity,
-        static_cast<unsigned long long>(pack.u64PhyAddr), tile,
-        static_cast<unsigned long long>(ring_offset),
-        static_cast<unsigned long long>(ring_left));
-}
-
-bool VencPackPayloadAddress(const VENC_PACK_S& pack, const uint8_t** source) {
-    if (source == nullptr || pack.pu8Addr == nullptr) {
-        return false;
-    }
-    const uintptr_t address = reinterpret_cast<uintptr_t>(pack.pu8Addr);
-    if (pack.u32Offset > std::numeric_limits<uintptr_t>::max() - address) {
-        return false;
-    }
-    *source = reinterpret_cast<const uint8_t*>(address + pack.u32Offset);
-    return true;
-}
-
-bool CopyVencPackDirect(int32_t chn,
-                        const VENC_STREAM_S& stream,
-                        const VENC_STREAM_BUF_INFO_S* stream_buf,
-                        uint32_t pack_index,
-                        uint8_t* output,
-                        uint32_t output_capacity,
-                        uint32_t* output_offset,
-                        bool log_copy_detail) {
-    if (output == nullptr || output_offset == nullptr ||
-        pack_index >= stream.u32PackCount || *output_offset > output_capacity) {
-        return false;
-    }
-    const VENC_PACK_S& pack = stream.pstPack[pack_index];
-    const uint32_t data_len = VencPackDataLen(pack);
-    if (data_len == 0) {
-        return true;
-    }
-    if (data_len > output_capacity - *output_offset) {
-        return false;
-    }
-
-    const uint8_t* source = nullptr;
-    if (!VencPackPayloadAddress(pack, &source)) {
-        return false;
-    }
-
-    if (log_copy_detail) {
-        LogVencPackCopy("begin", chn, stream, stream_buf, pack_index, source,
-                        *output_offset, output_capacity);
-    }
-    std::memcpy(output + *output_offset, source, data_len);
-    *output_offset += data_len;
-    if (log_copy_detail) {
-        LogVencPackCopy("end", chn, stream, stream_buf, pack_index, source,
-                        *output_offset, output_capacity);
-    }
-    return true;
-}
-
 FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
     if (codec == VideoCodec::kJpeg || codec == VideoCodec::kMjpeg) {
         return FrameType::kJpeg;
@@ -492,9 +340,6 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
 }
 
 bool CopyVencStreamPayloads(const VENC_STREAM_S& stream,
-                            const VENC_STREAM_BUF_INFO_S* stream_buf,
-                            int32_t chn,
-                            bool log_copy_detail,
                             std::shared_ptr<IMediaBuffer>* buffer,
                             uint32_t* size) {
     if (buffer == nullptr || size == nullptr ||
@@ -518,12 +363,18 @@ bool CopyVencStreamPayloads(const VENC_STREAM_S& stream,
     }
     uint32_t offset = 0;
     for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
-        bool copied = CopyVencPackDirect(
-            chn, stream, stream_buf, i, payload->MutableData(),
-            payload->Capacity(), &offset, log_copy_detail);
-        if (!copied) {
+        const VENC_PACK_S& pack = stream.pstPack[i];
+        const uint32_t data_len = VencPackDataLen(pack);
+        if (data_len == 0) {
+            continue;
+        }
+        if (data_len > payload->Capacity() - offset) {
             return false;
         }
+        const uint8_t* data =
+            static_cast<const uint8_t*>(pack.pu8Addr) + pack.u32Offset;
+        std::memcpy(payload->MutableData() + offset, data, data_len);
+        offset += data_len;
     }
     if (offset == 0 || !payload->SetSize(offset)) {
         return false;
@@ -732,156 +583,193 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
     return true;
 }
 
-// ─── Stream reader thread ──────────────────────────────────────
-void VencStreamLoop(int32_t chn, StreamId stream_id, VideoCodec codec,
-                    EncodedFrameCallback callback, void* user,
-                    std::atomic<bool>* running) {
-    VENC_CHN venc = static_cast<VENC_CHN>(chn);
-    int fd = HI_MPI_VENC_GetFd(venc);
-    if (fd < 0) {
-        INFRA_LOG_ERROR("hisi_vendor", "HI_MPI_VENC_GetFd failed for channel %d", chn);
+struct VencStreamContext {
+    int32_t chn = -1;
+    VENC_CHN venc = 0;
+    int fd = -1;
+    StreamId stream_id = StreamId::kMain;
+    VideoCodec codec = VideoCodec::kH264;
+    bool first_frame_logged = false;
+};
+
+bool InitVencStreamContext(int32_t chn, StreamId stream_id, VideoCodec codec,
+                           VencStreamContext* context) {
+    if (context == nullptr) {
+        return false;
+    }
+    context->chn = chn;
+    context->venc = static_cast<VENC_CHN>(chn);
+    context->stream_id = stream_id;
+    context->codec = codec;
+    context->fd = HI_MPI_VENC_GetFd(context->venc);
+    if (context->fd < 0) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "HI_MPI_VENC_GetFd failed for channel %d", chn);
+        return false;
+    }
+    if (context->fd >= FD_SETSIZE) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "VENC fd %d exceeds FD_SETSIZE", context->fd);
+        return false;
+    }
+    return true;
+}
+
+void HandleVencStream(VencStreamContext* context,
+                      EncodedFrameCallback callback,
+                      void* user) {
+    if (context == nullptr) {
         return;
     }
 
-    struct pollfd pfd;
-    pfd.fd = fd;
-    pfd.events = POLLIN | POLLERR;
-    VENC_STREAM_BUF_INFO_S stream_buf{};
-    bool has_stream_buf = true;
-    if (!CheckMpiCall("HI_MPI_VENC_GetStreamBufInfo",
-                      HI_MPI_VENC_GetStreamBufInfo(venc, &stream_buf))) {
-        has_stream_buf = false;
+    VENC_CHN_STATUS_S status{};
+    HI_S32 s32_ret = HI_MPI_VENC_QueryStatus(context->venc, &status);
+    if (s32_ret != HI_SUCCESS) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "HI_MPI_VENC_QueryStatus chn %d failed: 0x%08x",
+                        context->chn, s32_ret);
+        return;
     }
-    bool first_frame_logged = false;
-    bool first_copy_begin_logged = false;
+    if (status.u32CurPacks == 0) {
+        return;
+    }
+    if (status.u32CurPacks > kMaxVencPacksPerFrame) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "VENC chn %d returned too many packs: cur=%u left_frames=%u",
+            context->chn, status.u32CurPacks, status.u32LeftStreamFrames);
+        return;
+    }
+
+    std::vector<VENC_PACK_S> packs(status.u32CurPacks);
+    VENC_STREAM_S stream{};
+    stream.pstPack = packs.data();
+    stream.u32PackCount = status.u32CurPacks;
+    s32_ret = HI_MPI_VENC_GetStream(context->venc, &stream, 0);
+    if (s32_ret != HI_SUCCESS) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "HI_MPI_VENC_GetStream chn %d failed: 0x%08x",
+                        context->chn, s32_ret);
+        return;
+    }
+
+    std::shared_ptr<IMediaBuffer> buffer;
+    uint32_t payload_size = 0;
+    if (!CopyVencStreamPayloads(stream, &buffer, &payload_size)) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "invalid VENC stream chn=%d seq=%u packs=%u cur=%u left_frames=%u",
+            context->chn, stream.u32Seq, stream.u32PackCount,
+            status.u32CurPacks, status.u32LeftStreamFrames);
+        (void)HI_MPI_VENC_ReleaseStream(context->venc, &stream);
+        return;
+    }
+
+    EncodedFrame frame;
+    frame.stream_id = context->stream_id;
+    frame.codec = context->codec;
+    frame.frame_type = FrameTypeFromStream(stream, context->codec);
+    frame.sequence = stream.u32Seq;
+    frame.pts_us = stream.pstPack[0].u64PTS;
+    frame.dts_us = frame.pts_us;
+    frame.buffer = std::move(buffer);
+    frame.offset = 0;
+    frame.size = payload_size;
+
+    if (!context->first_frame_logged) {
+        const VENC_PACK_S& first_pack = stream.pstPack[0];
+        char payload_preview[kPayloadPreviewBytes * 3] = {};
+        FormatHexPreview(frame.PayloadData(), frame.size, payload_preview,
+                         static_cast<uint32_t>(sizeof(payload_preview)));
+        INFRA_LOG_INFO(
+            "hisi_vendor",
+            "VENC first frame chn=%d codec=%s seq=%u frame_seq=%llu packs=%u "
+            "size=%u pts=%lld dts=%lld frame_type=%s pack_type=%d "
+            "first_len=%u first_offset=%u first_data=%u data_num=%u "
+            "first_addr=%p head=%s",
+            context->chn, CodecName(context->codec), stream.u32Seq,
+            static_cast<unsigned long long>(frame.sequence),
+            stream.u32PackCount, frame.size,
+            static_cast<long long>(frame.pts_us),
+            static_cast<long long>(frame.dts_us),
+            FrameTypeName(frame.frame_type),
+            PackTypeValue(first_pack, context->codec), first_pack.u32Len,
+            first_pack.u32Offset, VencPackDataLen(first_pack),
+            first_pack.u32DataNum, first_pack.pu8Addr, payload_preview);
+        context->first_frame_logged = true;
+    }
+
+    if (HI_MPI_VENC_ReleaseStream(context->venc, &stream) != HI_SUCCESS) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "HI_MPI_VENC_ReleaseStream chn %d failed",
+                        context->chn);
+    }
+
+    if (callback != nullptr) {
+        callback(frame, user);
+    }
+}
+
+// Match the HiSilicon sample flow: one reader thread selects all VENC fds.
+void VencStreamLoop(MediaPipelineConfig config,
+                    EncodedFrameCallback callback,
+                    void* user,
+                    std::atomic<bool>* running) {
+    VencStreamContext streams[2];
+    uint32_t stream_count = 0;
+    if (!InitVencStreamContext(config.venc_channel, StreamId::kMain,
+                               config.main_stream.codec,
+                               &streams[stream_count])) {
+        return;
+    }
+    ++stream_count;
+
+    if (config.sub_stream.enabled) {
+        if (!InitVencStreamContext(config.sub_venc_channel, StreamId::kSub,
+                                   config.sub_stream.codec,
+                                   &streams[stream_count])) {
+            return;
+        }
+        ++stream_count;
+    }
 
     while (running->load()) {
-        int ret = poll(&pfd, 1, 500);
-        if (ret < 0) {
-            if (errno == EINTR) continue;
-            INFRA_LOG_ERROR("hisi_vendor", "poll on VENC %d failed: %s", chn, strerror(errno));
-            break;
-        }
-        if (ret == 0) continue;  // timeout
-
-        if (pfd.revents & POLLERR) {
-            INFRA_LOG_ERROR("hisi_vendor", "POLLERR on VENC fd %d", fd);
-            break;
-        }
-
-        VENC_CHN_STATUS_S status{};
-        HI_S32 s32_ret = HI_MPI_VENC_QueryStatus(venc, &status);
-        if (s32_ret != HI_SUCCESS) {
-            INFRA_LOG_ERROR("hisi_vendor",
-                            "HI_MPI_VENC_QueryStatus chn %d failed: 0x%08x", chn,
-                            s32_ret);
-            continue;
-        }
-        if (status.u32CurPacks == 0) {
-            continue;
-        }
-        if (status.u32CurPacks > kMaxVencPacksPerFrame) {
-            INFRA_LOG_ERROR(
-                "hisi_vendor",
-                "VENC chn %d returned too many packs: cur=%u left_frames=%u",
-                chn, status.u32CurPacks, status.u32LeftStreamFrames);
-            continue;
-        }
-
-        std::vector<VENC_PACK_S> packs(status.u32CurPacks);
-        VENC_STREAM_S stream{};
-        stream.pstPack = packs.data();
-        stream.u32PackCount = status.u32CurPacks;
-        s32_ret = HI_MPI_VENC_GetStream(venc, &stream, 0);
-        if (s32_ret != HI_SUCCESS) {
-            INFRA_LOG_ERROR("hisi_vendor",
-                            "HI_MPI_VENC_GetStream chn %d failed: 0x%08x", chn,
-                            s32_ret);
-            continue;
-        }
-
-        std::shared_ptr<IMediaBuffer> buffer;
-        uint32_t payload_size = 0;
-        if (!first_copy_begin_logged) {
-            const VENC_PACK_S& first_pack = stream.pstPack[0];
-            INFRA_LOG_INFO(
-                "hisi_vendor",
-                "VENC first stream chn=%d codec=%s seq=%u packs=%u "
-                "first_len=%u first_offset=%u first_addr=%p first_phy=0x%llx",
-                chn, CodecName(codec), stream.u32Seq, stream.u32PackCount,
-                first_pack.u32Len, first_pack.u32Offset, first_pack.pu8Addr,
-                static_cast<unsigned long long>(first_pack.u64PhyAddr));
-            if (has_stream_buf) {
-                LogVencStreamBuffer("VENC stream buffer", chn, stream_buf);
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        int max_fd = -1;
+        for (uint32_t i = 0; i < stream_count; ++i) {
+            FD_SET(streams[i].fd, &read_fds);
+            if (streams[i].fd > max_fd) {
+                max_fd = streams[i].fd;
             }
-            LogVencPacks("VENC first stream pack", chn, stream);
-            first_copy_begin_logged = true;
         }
-        const bool copied = CopyVencStreamPayloads(
-            stream, has_stream_buf ? &stream_buf : nullptr, chn,
-            !first_frame_logged, &buffer, &payload_size);
-        if (!copied) {
-            INFRA_LOG_ERROR(
-                "hisi_vendor",
-                "invalid VENC stream chn=%d seq=%u packs=%u cur=%u "
-                "left_frames=%u first_len=%u first_offset=%u first_addr=%p "
-                "first_phy=0x%llx",
-                chn, stream.u32Seq, stream.u32PackCount, status.u32CurPacks,
-                status.u32LeftStreamFrames, stream.pstPack[0].u32Len,
-                stream.pstPack[0].u32Offset, stream.pstPack[0].pu8Addr,
-                static_cast<unsigned long long>(stream.pstPack[0].u64PhyAddr));
-            HI_MPI_VENC_ReleaseStream(venc, &stream);
+
+        timeval timeout{};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 500000;
+        const int ret = select(max_fd + 1, &read_fds, nullptr, nullptr,
+                               &timeout);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            INFRA_LOG_ERROR("hisi_vendor", "select on VENC failed: %s",
+                            strerror(errno));
+            break;
+        }
+        if (ret == 0) {
             continue;
         }
 
-        EncodedFrame frame;
-        frame.stream_id = stream_id;
-        frame.codec = codec;
-        frame.frame_type = FrameTypeFromStream(stream, codec);
-        frame.sequence = stream.u32Seq;
-        frame.pts_us = stream.pstPack[0].u64PTS;
-        frame.dts_us = frame.pts_us;
-        frame.buffer = std::move(buffer);
-        frame.offset = 0;
-        frame.size = payload_size;
-
-        if (!first_frame_logged) {
-            const VENC_PACK_S& first_pack = stream.pstPack[0];
-            char payload_preview[kPayloadPreviewBytes * 3] = {};
-            FormatHexPreview(frame.PayloadData(),
-                             frame.size, payload_preview,
-                             static_cast<uint32_t>(sizeof(payload_preview)));
-            INFRA_LOG_INFO(
-                "hisi_vendor",
-                "VENC first frame chn=%d codec=%s seq=%u frame_seq=%llu "
-                "packs=%u size=%u pts=%lld dts=%lld frame_type=%s "
-                "pack_type=%d first_len=%u first_offset=%u first_data=%u "
-                "data_num=%u first_addr=%p head=%s",
-                chn, CodecName(codec), stream.u32Seq,
-                static_cast<unsigned long long>(frame.sequence),
-                stream.u32PackCount, frame.size,
-                static_cast<long long>(frame.pts_us),
-                static_cast<long long>(frame.dts_us),
-                FrameTypeName(frame.frame_type),
-                PackTypeValue(first_pack, codec), first_pack.u32Len,
-                first_pack.u32Offset, VencPackDataLen(first_pack),
-                first_pack.u32DataNum, first_pack.pu8Addr, payload_preview);
-            first_frame_logged = true;
-        }
-
-        if (HI_MPI_VENC_ReleaseStream(venc, &stream) != HI_SUCCESS) {
-            INFRA_LOG_ERROR("hisi_vendor",
-                            "HI_MPI_VENC_ReleaseStream chn %d failed", chn);
-        }
-
-        if (callback) {
-            callback(frame, user);
+        for (uint32_t i = 0; i < stream_count; ++i) {
+            if (FD_ISSET(streams[i].fd, &read_fds)) {
+                HandleVencStream(&streams[i], callback, user);
+            }
         }
     }
 }
 
 }  // anonymous namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 // ====================================================================
 // StartVenc / StopVenc
@@ -893,7 +781,6 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // Main stream
     if (!ConfigureVencChannel(config.venc_channel, config.main_stream)) {
         return false;
@@ -909,19 +796,12 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
 
     impl_->venc_started_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->venc_started_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->venc_started_) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     VENC_CHN main_venc = static_cast<VENC_CHN>(config.venc_channel);
     DestroyVencChannel(main_venc);
 
@@ -929,9 +809,6 @@ void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
         VENC_CHN sub_venc = static_cast<VENC_CHN>(config.sub_venc_channel);
         DestroyVencChannel(sub_venc);
     }
-#else
-    (void)config;
-#endif
 
     impl_->venc_started_ = false;
 }
@@ -943,7 +820,6 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_bound_venc_) return true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // Main stream: VPSS CHN → VENC
     if (!BindVpssToVenc(config.vpss_group, config.vpss_channel,
                         config.venc_channel)) {
@@ -987,19 +863,12 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
 
     impl_->vpss_bound_venc_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->vpss_bound_venc_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vpss_bound_venc_) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     if (impl_->venc_started_) {
         if (config.sub_stream.enabled) {
             StopRecvFrame(static_cast<VENC_CHN>(config.sub_venc_channel));
@@ -1015,9 +884,6 @@ void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
         UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
                            config.sub_venc_channel);
     }
-#else
-    (void)config;
-#endif
 
     impl_->vpss_bound_venc_ = false;
 }
@@ -1034,59 +900,32 @@ bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     impl_->frame_callback_ = callback;
     impl_->frame_callback_user_ = user;
     impl_->stream_running_.store(true);
 
-    // Main stream thread
+    // One stream reader thread monitors all enabled VENC channels.
     impl_->main_stream_thread_ = std::thread(
-        VencStreamLoop, config.venc_channel, StreamId::kMain,
-        config.main_stream.codec, callback, user, &impl_->stream_running_);
-
-    // Sub stream thread (if enabled)
-    if (config.sub_stream.enabled) {
-        impl_->sub_stream_thread_ = std::thread(
-            VencStreamLoop, config.sub_venc_channel, StreamId::kSub,
-            config.sub_stream.codec, callback, user, &impl_->stream_running_);
-    }
+        VencStreamLoop, config, callback, user, &impl_->stream_running_);
 
     impl_->stream_started_ = true;
     return true;
-
-#else
-    (void)config;
-    (void)callback;
-    (void)user;
-    impl_->stream_started_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // Stop uses the same configured channel set as StartVencStream.
     (void)config;
-#else
-    (void)config;
-#endif
 
-    if (!impl_->stream_started_ && !impl_->main_stream_thread_.joinable() &&
-        !impl_->sub_stream_thread_.joinable()) {
+    if (!impl_->stream_started_ && !impl_->main_stream_thread_.joinable()) {
         return;
     }
 
     impl_->stream_running_.store(false);
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     if (impl_->main_stream_thread_.joinable()) {
         impl_->main_stream_thread_.join();
     }
-    if (impl_->sub_stream_thread_.joinable()) {
-        impl_->sub_stream_thread_.join();
-    }
-#endif
 
     impl_->frame_callback_ = nullptr;
     impl_->frame_callback_user_ = nullptr;
@@ -1100,13 +939,8 @@ bool MppHisiSdk::RequestIdr(int32_t venc_channel) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (venc_channel < 0) return false;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     return internal::HiOk(HI_MPI_VENC_RequestIDR(
         static_cast<VENC_CHN>(venc_channel), HI_TRUE));
-#else
-    (void)venc_channel;
-    return true;
-#endif
 }
 
 }  // namespace hisisdk

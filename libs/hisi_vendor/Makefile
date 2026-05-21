@@ -7,7 +7,6 @@ ENABLE_HISI_MPP ?= 1
 ifeq ($(ENABLE_HISI_MPP),1)
 # include $(ROOT_DIR)/libs/hisi_vendor/toolchain_hi3516dv300.mk
 include ./toolchain_hi3516dv300.mk
-CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
 CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -I$(HISI_MPP_INC)

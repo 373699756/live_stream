@@ -28,7 +28,6 @@ struct MppHisiSdk::Impl {
     pthread_t isp_thread_ = 0;
 
     std::thread main_stream_thread_;
-    std::thread sub_stream_thread_;
     std::atomic<bool> stream_running_{false};
     std::recursive_mutex control_mutex_;
 

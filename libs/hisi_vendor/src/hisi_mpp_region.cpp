@@ -5,7 +5,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 constexpr uint32_t kOverlayLayerCount = 8;
@@ -138,7 +137,6 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
 }
 
 }  // anonymous namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 // ====================================================================
 // CreateRegion
@@ -149,7 +147,6 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
         return false;
     }
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     RGN_ATTR_S attr{};
     attr.enType = ToHiRegionType(config.type);
 
@@ -168,11 +165,6 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
     }
 
     return internal::HiOk(HI_MPI_RGN_Create(handle, &attr));
-#else
-    (void)handle;
-    (void)config;
-    return true;
-#endif
 }
 
 // ====================================================================
@@ -182,16 +174,10 @@ bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
     FillChannelAttr(handle, config, &attr);
     return internal::HiOk(HI_MPI_RGN_AttachToChn(handle, &channel, &attr));
-#else
-    (void)handle;
-    (void)config;
-    return true;
-#endif
 }
 
 // ====================================================================
@@ -201,14 +187,8 @@ bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     return internal::HiOk(HI_MPI_RGN_DetachFromChn(handle, &channel));
-#else
-    (void)handle;
-    (void)config;
-    return true;
-#endif
 }
 
 // ====================================================================
@@ -218,16 +198,10 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
     FillChannelAttr(handle, config, &attr);
     return internal::HiOk(HI_MPI_RGN_SetDisplayAttr(handle, &channel, &attr));
-#else
-    (void)handle;
-    (void)config;
-    return true;
-#endif
 }
 
 // ====================================================================
@@ -239,18 +213,12 @@ bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
         return false;
     }
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     BITMAP_S hi_bitmap{};
     hi_bitmap.enPixelFormat = ToHiPixelFormat(bitmap.pixel_format);
     hi_bitmap.u32Width = bitmap.dimensions.width;
     hi_bitmap.u32Height = bitmap.dimensions.height;
     hi_bitmap.pData = const_cast<uint8_t*>(bitmap.data);
     return internal::HiOk(HI_MPI_RGN_SetBitMap(handle, &hi_bitmap));
-#else
-    (void)handle;
-    (void)bitmap;
-    return true;
-#endif
 }
 
 // ====================================================================
@@ -260,11 +228,7 @@ void MppHisiSdk::DestroyRegion(int32_t handle) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     (void)HI_MPI_RGN_Destroy(handle);
-#else
-    (void)handle;
-#endif
 }
 
 }  // namespace hisisdk

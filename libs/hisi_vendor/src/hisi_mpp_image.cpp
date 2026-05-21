@@ -12,7 +12,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 constexpr int32_t kConfigMax = 100;
@@ -387,12 +386,10 @@ void LogUnsupportedControls(const ConfigJson& image_config) {
 }
 
 }  // namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
                                   const ConfigJson& image_config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     if (!image_config.is_object()) {
         return false;
     }
@@ -441,10 +438,6 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
 
     LogUnsupportedControls(image_config);
     return true;
-#else
-    (void)config;
-    return image_config.is_object();
-#endif
 }
 
 }  // namespace hisisdk

@@ -8,7 +8,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 constexpr int kMppExitRetryCount = 20;
@@ -365,7 +364,6 @@ bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
 }
 
 }  // anonymous namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 // ====================================================================
 // InitSystem / DeinitSystem
@@ -379,7 +377,6 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
         return true;
     }
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_VERSION_S version{};
     HISI_CHECK(HI_MPI_SYS_GetVersion(&version));
     INFRA_LOG_INFO("hisi_vendor", "HISI MPP version: %s", version.aVersion);
@@ -396,12 +393,6 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
 
     impl_->system_initialized_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->system_initialized_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::DeinitSystem() {
@@ -419,12 +410,10 @@ void MppHisiSdk::DeinitSystem() {
     StopVpss(config);
     StopVi(config);
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     if (!ExitMppSystem(true, kMppExitRetryCount)) {
         ForceCleanupPipelineResources(config);
         (void)ExitMppSystem(true, kMppExitRetryCount);
     }
-#endif
 
     impl_->system_initialized_ = false;
     impl_->has_active_config_ = false;

@@ -13,7 +13,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 constexpr const char* kMipiDeviceNode = "/dev/hi_mipi";
@@ -382,13 +381,11 @@ void CleanupStartedVi(VI_DEV vi_dev, VI_PIPE vi_pipe, VI_CHN vi_chn,
 }
 
 }  // namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vi_started_) return true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     bool dev_enabled = false;
     bool pipe_created = false;
     bool chn_enabled = false;
@@ -478,19 +475,12 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
 
     impl_->vi_started_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->vi_started_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vi_started_) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     VI_CHN vi_chn = static_cast<VI_CHN>(config.vi_channel);
     if (impl_->isp_started_) {
@@ -505,9 +495,6 @@ void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
         StopMipi();
         impl_->mipi_started_ = false;
     }
-#else
-    (void)config;
-#endif
 
     impl_->vi_started_ = false;
 }

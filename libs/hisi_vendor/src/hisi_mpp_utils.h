@@ -7,7 +7,6 @@
 
 #include "infra/log.h"
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 extern "C" {
 #include "hi_common.h"
 #include "hi_defines.h"
@@ -31,7 +30,6 @@ extern "C" {
 #include "hi_mipi.h"
 #include "hi_sns_ctrl.h"
 }
-#endif
 
 namespace live_stream {
 namespace hisisdk {
@@ -40,8 +38,6 @@ namespace internal {
 // ------------------------------------------------------------------
 // Helper macros
 // ------------------------------------------------------------------
-
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 
 // Check HiSilicon SDK return code, log on failure, return false.
 #define HISI_CHECK(expr)                                                       \
@@ -65,8 +61,6 @@ namespace internal {
 
 // Single-expression version for use in ternary / assignment.
 inline bool HiOk(HI_S32 status) { return status == HI_SUCCESS; }
-
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 // ------------------------------------------------------------------
 // Common helpers (required by all modules)

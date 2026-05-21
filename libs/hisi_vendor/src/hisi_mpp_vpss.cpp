@@ -5,7 +5,6 @@
 namespace live_stream {
 namespace hisisdk {
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
 namespace {
 
 bool CheckMpiCall(const char* expression, HI_S32 status) {
@@ -39,13 +38,11 @@ void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
 }
 
 }  // namespace
-#endif  // LIVE_STREAM_ENABLE_HISI_MPP
 
 bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_started_) return true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     // ─── VPSS GROUP attribute ─────────────────────────────────
     VPSS_GRP_ATTR_S grp_attr{};
     grp_attr.u32MaxW = config.main_stream.size.width;
@@ -117,19 +114,12 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
 
     impl_->vpss_started_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->vpss_started_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vpss_started_) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     VPSS_GRP vpss_grp = static_cast<VPSS_GRP>(config.vpss_group);
 
     if (config.sub_stream.enabled) {
@@ -140,9 +130,6 @@ void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
                            static_cast<VPSS_CHN>(config.vpss_channel));
     HI_MPI_VPSS_StopGrp(vpss_grp);
     HI_MPI_VPSS_DestroyGrp(vpss_grp);
-#else
-    (void)config;
-#endif
 
     impl_->vpss_started_ = false;
 }
@@ -152,7 +139,6 @@ bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vi_bound_vpss_) return true;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S src{};
     src.enModId = HI_ID_VI;
     src.s32DevId = config.video_pipe;
@@ -166,19 +152,12 @@ bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
     HISI_CHECK(HI_MPI_SYS_Bind(&src, &dst));
     impl_->vi_bound_vpss_ = true;
     return true;
-
-#else
-    (void)config;
-    impl_->vi_bound_vpss_ = true;
-    return true;
-#endif
 }
 
 void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vi_bound_vpss_) return;
 
-#ifdef LIVE_STREAM_ENABLE_HISI_MPP
     MPP_CHN_S src{};
     src.enModId = HI_ID_VI;
     src.s32DevId = config.video_pipe;
@@ -190,9 +169,6 @@ void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
     dst.s32ChnId = 0;
 
     HI_MPI_SYS_UnBind(&src, &dst);
-#else
-    (void)config;
-#endif
 
     impl_->vi_bound_vpss_ = false;
 }
