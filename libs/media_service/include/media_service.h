@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace live_stream {
 
@@ -21,6 +22,24 @@ struct MediaServiceOptions {
     MediaPipelineConfig default_config;
     IConfigService* config_service = nullptr;
     hisisdk::IHisiSdk* sdk = nullptr;
+};
+
+struct ImageStrategyStatus {
+    bool enabled = false;
+    bool active = false;
+    bool exposure_valid = false;
+    uint32_t iso = 0;
+    uint32_t exposure_time_us = 0;
+    uint32_t analog_gain = 0;
+    uint32_t digital_gain = 0;
+    uint32_t isp_digital_gain = 0;
+    std::string mode;
+    std::string tier;
+    int32_t saturation = 0;
+    int32_t sharpness = 0;
+    int32_t denoise_2d = 0;
+    int32_t denoise_3d = 0;
+    int32_t gamma = 0;
 };
 
 class IMediaService {
@@ -40,6 +59,7 @@ public:
                                  KeyFrameReason reason) = 0;
     virtual MediaCapabilities GetCapabilities() const = 0;
     virtual MediaChannels GetChannels() const = 0;
+    virtual ImageStrategyStatus GetImageStrategyStatus() const = 0;
 };
 
 std::unique_ptr<IMediaService> CreateMediaService();

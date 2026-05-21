@@ -30,9 +30,9 @@ bool VerifyActionsConfig(const ConfigJson &value) {
     }
     bool ignored = false;
     bool record = false;
-    return json_utils::Load(value, "snapshot", &ignored) &&
-           json_utils::Load(value, "record", &record) &&
-           json_utils::Load(value, "notify", &ignored) && !record;
+    return json_utils::ReadField(value, "snapshot", &ignored) &&
+           json_utils::ReadField(value, "record", &record) &&
+           json_utils::ReadField(value, "notify", &ignored) && !record;
 }
 
 bool VerifyScheduleConfig(const ConfigJson &value) {
@@ -40,7 +40,7 @@ bool VerifyScheduleConfig(const ConfigJson &value) {
         return false;
     }
     std::string mode;
-    if (!json_utils::Load(value, "mode", &mode) || mode != "always" ||
+    if (!json_utils::ReadField(value, "mode", &mode) || mode != "always" ||
         !value.contains("weekly") || !value.at("weekly").is_array()) {
         return false;
     }
@@ -61,9 +61,9 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &fallback,
     }
     const ConfigJson &motion = value.at("motion_detection");
     uint32_t sensitivity = 0;
-    if (!json_utils::Load(motion, "enabled", &motion_rule.enabled) ||
-        !json_utils::Load(motion, "sensitivity", &sensitivity, 0, 100) ||
-        !json_utils::Load(motion, "min_duration_ms", &motion_rule.min_duration_ms,
+    if (!json_utils::ReadField(motion, "enabled", &motion_rule.enabled) ||
+        !json_utils::ReadField(motion, "sensitivity", &sensitivity, 0, 100) ||
+        !json_utils::ReadField(motion, "min_duration_ms", &motion_rule.min_duration_ms,
                           0, kMaxAlarmDurationMs) ||
         !motion.contains("regions") || !motion.at("regions").is_array()) {
         return false;

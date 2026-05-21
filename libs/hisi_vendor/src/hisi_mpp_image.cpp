@@ -4,7 +4,6 @@
 
 #include "live_stream/json_utils.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -33,7 +32,8 @@ bool CheckMpiCall(const char* expression, HI_S32 status) {
 }
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
-    const int32_t clamped = std::max(0, std::min(kConfigMax, value));
+    const int32_t clamped =
+        value < 0 ? 0 : (value > kConfigMax ? kConfigMax : value);
     return min_value +
            (static_cast<uint32_t>(clamped) * (max_value - min_value) +
             kConfigMax / 2) /
@@ -50,7 +50,8 @@ uint16_t ScaleControlU16(int32_t value, uint16_t min_value,
 }
 
 uint16_t WhiteBalanceGainFromControl(int32_t value) {
-    const int32_t clamped = std::max(0, std::min(kConfigMax, value));
+    const int32_t clamped =
+        value < 0 ? 0 : (value > kConfigMax ? kConfigMax : value);
     if (clamped <= kConfigNeutral) {
         return ScaleControlU16(clamped * 2, kWbGainMin, kGainBase);
     }
@@ -58,13 +59,15 @@ uint16_t WhiteBalanceGainFromControl(int32_t value) {
                            kWbGainMax);
 }
 
-bool LoadSection(const ConfigJson& image_config, const char* section_name,
+bool FindSection(const ConfigJson& image_config, const char* section_name,
                  const ConfigJson** section) {
-    return json_utils::LoadObject(image_config, section_name, section);
-}
-
-bool LoadInt(const ConfigJson& section, const char* key, int32_t* value) {
-    return json_utils::Load(section, key, value, 0, kConfigMax);
+    if (section == nullptr || section_name == nullptr ||
+        !image_config.contains(section_name) ||
+        !image_config.at(section_name).is_object()) {
+        return false;
+    }
+    *section = &image_config.at(section_name);
+    return true;
 }
 
 bool ParseExposureTimeUs(const std::string& value, uint32_t* exposure_us) {
@@ -96,7 +99,7 @@ bool ParseExposureTimeUs(const std::string& value, uint32_t* exposure_us) {
 
 void ApplyAntiFlicker(const ConfigJson& exposure, ISP_EXPOSURE_ATTR_S* attr) {
     std::string anti_flicker;
-    if (!json_utils::Load(exposure, "anti_flicker", &anti_flicker)) {
+    if (!json_utils::ReadField(exposure, "anti_flicker", &anti_flicker)) {
         return;
     }
     if (anti_flicker == "off") {
@@ -118,18 +121,19 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     }
 
     std::string mode;
-    if (json_utils::Load(exposure, "mode", &mode)) {
+    if (json_utils::ReadField(exposure, "mode", &mode)) {
         attr.enOpType = mode == "manual" ? OP_TYPE_MANUAL : OP_TYPE_AUTO;
     }
 
     int32_t compensation = 0;
-    if (LoadInt(exposure, "compensation", &compensation)) {
+    if (json_utils::ReadField(exposure, "compensation", &compensation, 0,
+                              kConfigMax)) {
         attr.stAuto.u8Compensation =
             ScaleControlU8(compensation, 0x00, 0xff);
     }
 
     bool slow_shutter = false;
-    if (json_utils::Load(exposure, "slow_shutter", &slow_shutter)) {
+    if (json_utils::ReadField(exposure, "slow_shutter", &slow_shutter)) {
         attr.stAuto.enAEMode =
             slow_shutter ? AE_MODE_SLOW_SHUTTER : AE_MODE_FIX_FRAME_RATE;
     }
@@ -137,7 +141,7 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     ApplyAntiFlicker(exposure, &attr);
 
     std::string exposure_time;
-    if (json_utils::Load(exposure, "exposure_time", &exposure_time)) {
+    if (json_utils::ReadField(exposure, "exposure_time", &exposure_time)) {
         uint32_t exposure_us = 0;
         if (ParseExposureTimeUs(exposure_time, &exposure_us)) {
             attr.stManual.enExpTimeOpType = OP_TYPE_MANUAL;
@@ -148,7 +152,7 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     }
 
     std::string gain;
-    if (json_utils::Load(exposure, "gain", &gain)) {
+    if (json_utils::ReadField(exposure, "gain", &gain)) {
         if (gain == "auto") {
             attr.stManual.enAGainOpType = OP_TYPE_AUTO;
             attr.stManual.enDGainOpType = OP_TYPE_AUTO;
@@ -173,7 +177,8 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
 
 bool ApplySaturation(VI_PIPE vi_pipe, const ConfigJson& basic) {
     int32_t saturation = 0;
-    if (!LoadInt(basic, "saturation", &saturation)) {
+    if (!json_utils::ReadField(basic, "saturation", &saturation, 0,
+                               kConfigMax)) {
         return true;
     }
     ISP_SATURATION_ATTR_S attr{};
@@ -189,7 +194,8 @@ bool ApplySaturation(VI_PIPE vi_pipe, const ConfigJson& basic) {
 
 bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
     int32_t sharpness = 0;
-    if (!LoadInt(basic, "sharpness", &sharpness)) {
+    if (!json_utils::ReadField(basic, "sharpness", &sharpness, 0,
+                               kConfigMax)) {
         return true;
     }
     ISP_SHARPEN_ATTR_S attr{};
@@ -221,16 +227,18 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     }
 
     std::string mode;
-    if (json_utils::Load(white_balance, "mode", &mode)) {
+    if (json_utils::ReadField(white_balance, "mode", &mode)) {
         attr.enOpType = mode == "manual" ? OP_TYPE_MANUAL : OP_TYPE_AUTO;
     }
 
     int32_t red_gain = 0;
     int32_t blue_gain = 0;
-    if (LoadInt(white_balance, "red_gain", &red_gain)) {
+    if (json_utils::ReadField(white_balance, "red_gain", &red_gain, 0,
+                              kConfigMax)) {
         attr.stManual.u16Rgain = WhiteBalanceGainFromControl(red_gain);
     }
-    if (LoadInt(white_balance, "blue_gain", &blue_gain)) {
+    if (json_utils::ReadField(white_balance, "blue_gain", &blue_gain, 0,
+                              kConfigMax)) {
         attr.stManual.u16Bgain = WhiteBalanceGainFromControl(blue_gain);
     }
     attr.stManual.u16Grgain = kGainBase;
@@ -243,8 +251,10 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
 bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     int32_t denoise_2d = 0;
     int32_t denoise_3d = 0;
-    const bool has_2d = LoadInt(enhancement, "denoise_2d", &denoise_2d);
-    const bool has_3d = LoadInt(enhancement, "denoise_3d", &denoise_3d);
+    const bool has_2d = json_utils::ReadField(
+        enhancement, "denoise_2d", &denoise_2d, 0, kConfigMax);
+    const bool has_3d = json_utils::ReadField(
+        enhancement, "denoise_3d", &denoise_3d, 0, kConfigMax);
     if (!has_2d && !has_3d) {
         return true;
     }
@@ -273,7 +283,8 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
 
 bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     int32_t gamma = 0;
-    if (!LoadInt(enhancement, "gamma", &gamma)) {
+    if (!json_utils::ReadField(enhancement, "gamma", &gamma, 0,
+                               kConfigMax)) {
         return true;
     }
     ISP_GAMMA_ATTR_S attr{};
@@ -289,8 +300,9 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         const double normalized =
             static_cast<double>(i) / static_cast<double>(GAMMA_NODE_NUM - 1);
         const double mapped = std::pow(normalized, exponent);
-        attr.u16Table[i] =
-            static_cast<HI_U16>(std::max(0.0, std::min(4095.0, mapped * 4095.0)));
+        const double clamped =
+            mapped < 0.0 ? 0.0 : (mapped > 4095.0 ? 4095.0 : mapped);
+        attr.u16Table[i] = static_cast<HI_U16>(clamped);
     }
     return CheckMpiCall("HI_MPI_ISP_SetGammaAttr",
                         HI_MPI_ISP_SetGammaAttr(vi_pipe, &attr));
@@ -298,7 +310,7 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
 
 bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     bool defog = false;
-    if (!json_utils::Load(enhancement, "defog", &defog)) {
+    if (!json_utils::ReadField(enhancement, "defog", &defog)) {
         return true;
     }
     ISP_DEHAZE_ATTR_S attr{};
@@ -316,8 +328,9 @@ bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
 bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
     std::string mode;
     int32_t level = 0;
-    const bool has_mode = json_utils::Load(backlight, "mode", &mode);
-    const bool has_level = LoadInt(backlight, "level", &level);
+    const bool has_mode = json_utils::ReadField(backlight, "mode", &mode);
+    const bool has_level = json_utils::ReadField(backlight, "level", &level,
+                                                 0, kConfigMax);
     if (!has_mode && !has_level) {
         return true;
     }
@@ -348,8 +361,8 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
                       const ConfigJson& orientation) {
     bool mirror = false;
     bool flip = false;
-    const bool has_mirror = json_utils::Load(orientation, "mirror", &mirror);
-    const bool has_flip = json_utils::Load(orientation, "flip", &flip);
+    const bool has_mirror = json_utils::ReadField(orientation, "mirror", &mirror);
+    const bool has_flip = json_utils::ReadField(orientation, "flip", &flip);
     if (!has_mirror && !has_flip) {
         return true;
     }
@@ -370,7 +383,7 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
 
 void LogUnsupportedControls(const ConfigJson& image_config) {
     const ConfigJson* basic = nullptr;
-    if (LoadSection(image_config, "basic", &basic)) {
+    if (FindSection(image_config, "basic", &basic)) {
         if (basic->contains("brightness") || basic->contains("contrast") ||
             basic->contains("hue")) {
             INFRA_LOG_INFO(
@@ -380,7 +393,7 @@ void LogUnsupportedControls(const ConfigJson& image_config) {
         }
     }
     const ConfigJson* color_mode = nullptr;
-    if (LoadSection(image_config, "color_mode", &color_mode) &&
+    if (FindSection(image_config, "color_mode", &color_mode) &&
         color_mode->contains("mode")) {
         INFRA_LOG_INFO(
             "hisi_vendor",
@@ -402,26 +415,26 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     VI_CHN vi_channel = static_cast<VI_CHN>(config.vi_channel);
 
     const ConfigJson* basic = nullptr;
-    if (LoadSection(image_config, "basic", &basic) &&
+    if (FindSection(image_config, "basic", &basic) &&
         (!ApplySaturation(vi_pipe, *basic) ||
          !ApplySharpen(vi_pipe, *basic))) {
         return false;
     }
 
     const ConfigJson* exposure = nullptr;
-    if (LoadSection(image_config, "exposure", &exposure) &&
+    if (FindSection(image_config, "exposure", &exposure) &&
         !ApplyExposure(vi_pipe, *exposure)) {
         return false;
     }
 
     const ConfigJson* white_balance = nullptr;
-    if (LoadSection(image_config, "white_balance", &white_balance) &&
+    if (FindSection(image_config, "white_balance", &white_balance) &&
         !ApplyWhiteBalance(vi_pipe, *white_balance)) {
         return false;
     }
 
     const ConfigJson* enhancement = nullptr;
-    if (LoadSection(image_config, "enhancement", &enhancement) &&
+    if (FindSection(image_config, "enhancement", &enhancement) &&
         (!ApplyNoiseReduction(vi_pipe, *enhancement) ||
          !ApplyGamma(vi_pipe, *enhancement) ||
          !ApplyDehaze(vi_pipe, *enhancement))) {
@@ -429,19 +442,43 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     }
 
     const ConfigJson* backlight = nullptr;
-    if (LoadSection(image_config, "backlight", &backlight) &&
+    if (FindSection(image_config, "backlight", &backlight) &&
         !ApplyBacklight(vi_pipe, *backlight)) {
         return false;
     }
 
     const ConfigJson* orientation = nullptr;
-    if (LoadSection(image_config, "orientation", &orientation) &&
+    if (FindSection(image_config, "orientation", &orientation) &&
         !ApplyOrientation(vi_pipe, vi_channel, *orientation)) {
         return false;
     }
 
     LogUnsupportedControls(image_config);
     return true;
+}
+
+ExposureInfo MppHisiSdk::QueryExposureInfo(
+    const MediaPipelineConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    ExposureInfo info;
+    if (!impl_->isp_started_) {
+        return info;
+    }
+
+    ISP_EXP_INFO_S exp_info{};
+    const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
+    if (!CheckMpiCall("HI_MPI_ISP_QueryExposureInfo",
+                      HI_MPI_ISP_QueryExposureInfo(vi_pipe, &exp_info))) {
+        return info;
+    }
+
+    info.valid = true;
+    info.exposure_time_us = exp_info.u32ExpTime;
+    info.analog_gain = exp_info.u32AGain;
+    info.digital_gain = exp_info.u32DGain;
+    info.isp_digital_gain = exp_info.u32ISPDGain;
+    info.iso = exp_info.u32ISO;
+    return info;
 }
 
 }  // namespace hisisdk

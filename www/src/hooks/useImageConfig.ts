@@ -4,13 +4,23 @@
  */
 
 import { useEffect, useState } from 'react';
-import { getImageConfig, saveImageConfig } from '../api/image';
+import {
+  getImageConfig,
+  getImageStrategyStatus,
+  saveImageConfig,
+} from '../api/image';
 import { getMediaCapabilities, getStreamStatus } from '../api/video';
-import type { ImageConfig, MediaCapabilities, StreamStatus } from '../api/types';
+import type {
+  ImageConfig,
+  ImageStrategyStatus,
+  MediaCapabilities,
+  StreamStatus,
+} from '../api/types';
 import {
   cloneDefaultConfig,
   mockMediaCapabilities,
   mockImageConfig,
+  mockImageStrategyStatus,
 } from '../api/mock';
 
 const configTimeoutMs = 5000;
@@ -20,6 +30,8 @@ export function useImageConfig() {
   const [config, setConfig] = useState<ImageConfig | null>(null);
   const [capabilities, setCapabilities] = useState<MediaCapabilities>(mockMediaCapabilities);
   const [statuses, setStatuses] = useState<StreamStatus[]>([]);
+  const [strategyStatus, setStrategyStatus] =
+    useState<ImageStrategyStatus>(mockImageStrategyStatus);
   const [savedMsg, setSavedMsg] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,8 +87,24 @@ export function useImageConfig() {
           setStatuses([]);
         }
       });
+    const refreshStrategy = () => {
+      void getImageStrategyStatus({ timeoutMs: statusTimeoutMs })
+        .then((nextStatus) => {
+          if (mounted) {
+            setStrategyStatus(nextStatus);
+          }
+        })
+        .catch(() => {
+          if (mounted) {
+            setStrategyStatus(mockImageStrategyStatus);
+          }
+        });
+    };
+    refreshStrategy();
+    const timer = window.setInterval(refreshStrategy, 2000);
     return () => {
       mounted = false;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -107,6 +135,7 @@ export function useImageConfig() {
     setConfig,
     capabilities,
     statuses,
+    strategyStatus,
     save,
     reset,
     savedMsg,

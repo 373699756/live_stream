@@ -88,30 +88,31 @@ bool ParseUserConfig(const ConfigJson &value,
     }
 
     AuthServiceOptions options = fallback;
-    const ConfigJson *policy = nullptr;
-    if (!json_utils::LoadObject(value, "password_policy", &policy)) {
+    if (!value.contains("password_policy") ||
+        !value.at("password_policy").is_object()) {
         return false;
     }
-    if (!json_utils::Load(*policy, "min_length", &options.password_min_length, 0,
+    const ConfigJson &policy = value.at("password_policy");
+    if (!json_utils::ReadField(policy, "min_length", &options.password_min_length, 0,
                           std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::Load(*policy, "require_number",
+        !json_utils::ReadField(policy, "require_number",
                           &options.password_require_number) ||
-        !json_utils::Load(*policy, "require_symbol",
+        !json_utils::ReadField(policy, "require_symbol",
                           &options.password_require_symbol) ||
-        !json_utils::Load(*policy, "lockout_failures", &options.lockout_failures,
+        !json_utils::ReadField(policy, "lockout_failures", &options.lockout_failures,
                           0, std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::Load(*policy, "lockout_seconds", &options.lockout_seconds, 0,
+        !json_utils::ReadField(policy, "lockout_seconds", &options.lockout_seconds, 0,
                           std::numeric_limits<uint32_t>::max())) {
         return false;
     }
-    const ConfigJson *session = nullptr;
-    if (!json_utils::LoadObject(value, "session", &session)) {
+    if (!value.contains("session") || !value.at("session").is_object()) {
         return false;
     }
-    if (!json_utils::Load(*session, "token_ttl_seconds",
+    const ConfigJson &session = value.at("session");
+    if (!json_utils::ReadField(session, "token_ttl_seconds",
                           &options.token_ttl_seconds, 1,
                           std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::Load(*session, "max_sessions_per_user",
+        !json_utils::ReadField(session, "max_sessions_per_user",
                           &options.max_sessions_per_user, 1,
                           std::numeric_limits<uint32_t>::max())) {
         return false;

@@ -183,6 +183,26 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
     return root;
 }
 
+ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
+    ConfigJson root = ConfigJson::object();
+    root["enabled"] = status.enabled;
+    root["active"] = status.active;
+    root["exposure_valid"] = status.exposure_valid;
+    root["iso"] = status.iso;
+    root["exposure_time_us"] = status.exposure_time_us;
+    root["analog_gain"] = status.analog_gain;
+    root["digital_gain"] = status.digital_gain;
+    root["isp_digital_gain"] = status.isp_digital_gain;
+    root["mode"] = status.mode;
+    root["tier"] = status.tier;
+    root["saturation"] = status.saturation;
+    root["sharpness"] = status.sharpness;
+    root["denoise_2d"] = status.denoise_2d;
+    root["denoise_3d"] = status.denoise_3d;
+    root["gamma"] = status.gamma;
+    return root;
+}
+
 void RequestBrowserRecoveryKeyFrame(IStreamHubService *stream_hub_service,
                                     StreamId stream_id,
                                     const StreamBrowserStatus &status) {
@@ -213,6 +233,9 @@ public:
         router->AddExactRoute(HttpMethod::kGet, "/api/status/streams",
                               &MediaHttpHandler::HandleStreamStatusRoute,
                               this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/status/image-strategy",
+                              &MediaHttpHandler::HandleImageStrategyRoute,
+                              this);
     }
 
 private:
@@ -225,6 +248,12 @@ private:
     static HttpResponse HandleStreamStatusRoute(void *user,
                                                 const HttpRequest &request) {
         return static_cast<MediaHttpHandler *>(user)->HandleStreamStatus(
+            request);
+    }
+
+    static HttpResponse HandleImageStrategyRoute(void *user,
+                                                 const HttpRequest &request) {
+        return static_cast<MediaHttpHandler *>(user)->HandleImageStrategy(
             request);
     }
 
@@ -255,10 +284,10 @@ private:
         ConfigJson video_config =
             dependencies_.config_service->GetValue("video");
         if (!video_config.is_object() || !video_config.contains("streams") ||
-            !video_config["streams"].is_object()) {
+            !video_config.at("streams").is_object()) {
             return StatusResponse(500, "Invalid video config");
         }
-        const ConfigJson &streams = video_config["streams"];
+        const ConfigJson &streams = video_config.at("streams");
         const char *names[] = {"main", "sub"};
         for (const char *name : names) {
             ConfigJson item = ConfigJson::object();
@@ -272,13 +301,13 @@ private:
             int64_t fps = 0;
             int64_t bitrate_kbps = 0;
             bool stream_enabled = false;
-            if (!json_utils::Load(stream, "codec", &codec) ||
-                !json_utils::Load(stream, "resolution", &resolution) ||
-                !json_utils::Load(stream, "fps", &fps, 1,
+            if (!json_utils::ReadField(stream, "codec", &codec) ||
+                !json_utils::ReadField(stream, "resolution", &resolution) ||
+                !json_utils::ReadField(stream, "fps", &fps, 1,
                                   std::numeric_limits<int64_t>::max()) ||
-                !json_utils::Load(stream, "bitrate_kbps", &bitrate_kbps, 1,
+                !json_utils::ReadField(stream, "bitrate_kbps", &bitrate_kbps, 1,
                                   std::numeric_limits<int64_t>::max()) ||
-                !json_utils::Load(stream, "enabled", &stream_enabled)) {
+                !json_utils::ReadField(stream, "enabled", &stream_enabled)) {
                 return StatusResponse(500, "Invalid video config");
             }
             item["codec"] = codec;
@@ -333,6 +362,20 @@ private:
             items.push_back(item);
         }
         return JsonResponse(200, items);
+    }
+
+    HttpResponse HandleImageStrategy(const HttpRequest &request) {
+        AuthPrincipal principal = context_->Authenticate(request);
+        if (principal.user_name.empty()) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        if (dependencies_.media_service == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        return JsonResponse(
+            200,
+            ImageStrategyStatusToJson(
+                dependencies_.media_service->GetImageStrategyStatus()));
     }
 
     HttpHandlerContext *context_ = nullptr;

@@ -1,4 +1,5 @@
 build/
+out/
 3rdparty/build/
 3rdparty/install/
 3rdparty/metaRTC_src/.git.upstream/

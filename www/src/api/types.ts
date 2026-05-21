@@ -97,6 +97,28 @@ export interface ImageConfig {
   enhancement: Record<string, unknown>;
   orientation: { mirror: boolean; flip: boolean };
   color_mode: Record<string, string>;
+  strategy?: {
+    enabled: boolean;
+    mode: 'balanced';
+  };
+}
+
+export interface ImageStrategyStatus {
+  enabled: boolean;
+  active: boolean;
+  exposure_valid: boolean;
+  iso: number;
+  exposure_time_us: number;
+  analog_gain: number;
+  digital_gain: number;
+  isp_digital_gain: number;
+  mode: string;
+  tier: string;
+  saturation: number;
+  sharpness: number;
+  denoise_2d: number;
+  denoise_3d: number;
+  gamma: number;
 }
 
 export interface OsdConfig {

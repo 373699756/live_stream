@@ -151,20 +151,21 @@ bool ConfigFromNetworkInterfaceJson(const std::string &ifname,
     }
     NetworkInterfaceConfig parsed;
     parsed.ifname = ifname;
-    if (!json_utils::Load(value, "enabled", &parsed.enabled) ||
-        !json_utils::Load(value, "dhcp", &parsed.dhcp)) {
+    if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
+        !json_utils::ReadField(value, "dhcp", &parsed.dhcp)) {
         return false;
     }
-    const ConfigJson *static_ipv4 = nullptr;
-    if (!json_utils::LoadObject(value, "static_ipv4", &static_ipv4)) {
+    if (!value.contains("static_ipv4") ||
+        !value.at("static_ipv4").is_object()) {
         return false;
     }
-    if (!json_utils::Load(*static_ipv4, "address", &parsed.static_ipv4.address) ||
-        !json_utils::Load(*static_ipv4, "netmask", &parsed.static_ipv4.netmask) ||
-        !json_utils::Load(*static_ipv4, "gateway", &parsed.static_ipv4.gateway)) {
+    const ConfigJson &static_ipv4 = value.at("static_ipv4");
+    if (!json_utils::ReadField(static_ipv4, "address", &parsed.static_ipv4.address) ||
+        !json_utils::ReadField(static_ipv4, "netmask", &parsed.static_ipv4.netmask) ||
+        !json_utils::ReadField(static_ipv4, "gateway", &parsed.static_ipv4.gateway)) {
         return false;
     }
-    if (!json_utils::LoadStringArray(value, "dns", &parsed.dns)) {
+    if (!json_utils::ReadStringArray(value, "dns", &parsed.dns)) {
         return false;
     }
     *config = parsed;
@@ -195,11 +196,11 @@ bool ConfigsFromNetworkJson(
         return false;
     }
     configs->clear();
-    const ConfigJson *interfaces = nullptr;
-    if (!json_utils::LoadObject(json, "interfaces", &interfaces)) {
+    if (!json.contains("interfaces") || !json.at("interfaces").is_object()) {
         return false;
     }
-    for (auto iter = interfaces->begin(); iter != interfaces->end(); ++iter) {
+    const ConfigJson &interfaces = json.at("interfaces");
+    for (auto iter = interfaces.begin(); iter != interfaces.end(); ++iter) {
         NetworkInterfaceConfig config;
         if (!ConfigFromNetworkInterfaceJson(iter.key(), iter.value(), &config) ||
             !ValidateConfig(config, true)) {

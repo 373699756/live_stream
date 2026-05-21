@@ -107,9 +107,9 @@ bool ParseSnapshotRuntimeConfig(const ConfigJson &value, bool *enabled,
         timeout_ms == nullptr) {
         return false;
     }
-    return json_utils::Load(value, "enabled", enabled) &&
-           json_utils::Load(value, "jpeg_quality", jpeg_quality, 1, 100) &&
-           json_utils::Load(value, "timeout_ms", timeout_ms, 1, 0xffffffffU);
+    return json_utils::ReadField(value, "enabled", enabled) &&
+           json_utils::ReadField(value, "jpeg_quality", jpeg_quality, 1, 100) &&
+           json_utils::ReadField(value, "timeout_ms", timeout_ms, 1, 0xffffffffU);
 }
 
 }  // namespace

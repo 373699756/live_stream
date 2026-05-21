@@ -90,12 +90,12 @@ bool UpgradeRequestFromJson(const ConfigJson &value, UpgradeRequest *request) {
         return false;
     }
     UpgradeRequest parsed;
-    if (!json_utils::Load(value, "package_path", &parsed.package_path) ||
-        !json_utils::Load(value, "expected_version", &parsed.expected_version) ||
-        !json_utils::Load(value, "allow_same_version",
+    if (!json_utils::ReadField(value, "package_path", &parsed.package_path) ||
+        !json_utils::ReadField(value, "expected_version", &parsed.expected_version) ||
+        !json_utils::ReadField(value, "allow_same_version",
                           &parsed.allow_same_version) ||
-        !json_utils::Load(value, "allow_downgrade", &parsed.allow_downgrade) ||
-        !json_utils::Load(value, "auto_reboot", &parsed.auto_reboot)) {
+        !json_utils::ReadField(value, "allow_downgrade", &parsed.allow_downgrade) ||
+        !json_utils::ReadField(value, "auto_reboot", &parsed.auto_reboot)) {
         return false;
     }
     *request = parsed;
@@ -241,7 +241,7 @@ private:
             return StatusResponse(400, "Invalid JSON");
         }
         std::string package_path;
-        if (!json_utils::Load(body, "package_path", &package_path)) {
+        if (!json_utils::ReadField(body, "package_path", &package_path)) {
             return StatusResponse(400, "Invalid upgrade request");
         }
         const UpgradePackageInfo info =

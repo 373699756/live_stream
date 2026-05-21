@@ -119,23 +119,23 @@ bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
     std::string backend;
     std::string task;
     std::string stream;
-    if (!json_utils::Load(value, "enabled", &config.enabled) ||
-        !json_utils::Load(value, "backend", &backend) ||
+    if (!json_utils::ReadField(value, "enabled", &config.enabled) ||
+        !json_utils::ReadField(value, "backend", &backend) ||
         !ParseBackend(backend, &config.backend) ||
-        !json_utils::Load(value, "task", &task) ||
+        !json_utils::ReadField(value, "task", &task) ||
         !ParseTask(task, &config.task) ||
-        !json_utils::Load(value, "stream", &stream) ||
+        !json_utils::ReadField(value, "stream", &stream) ||
         !ParseStream(stream, &config.stream_id) ||
-        !json_utils::Load(value, "model_path", &config.model_path) ||
-        !json_utils::Load(value, "input_width", &config.input_width, 1,
+        !json_utils::ReadField(value, "model_path", &config.model_path) ||
+        !json_utils::ReadField(value, "input_width", &config.input_width, 1,
                           0xffffffffU) ||
-        !json_utils::Load(value, "input_height", &config.input_height, 1,
+        !json_utils::ReadField(value, "input_height", &config.input_height, 1,
                           0xffffffffU) ||
-        !json_utils::Load(value, "inference_interval_ms",
+        !json_utils::ReadField(value, "inference_interval_ms",
                           &config.inference_interval_ms, 1, 0xffffffffU) ||
-        !json_utils::Load(value, "max_results", &config.max_results, 1,
+        !json_utils::ReadField(value, "max_results", &config.max_results, 1,
                           0xffffffffU) ||
-        !json_utils::Load(value, "confidence_threshold",
+        !json_utils::ReadField(value, "confidence_threshold",
                           &config.confidence_threshold, 0.0f, 1.0f)) {
         return false;
     }

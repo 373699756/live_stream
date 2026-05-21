@@ -64,8 +64,8 @@ private:
         }
         std::string user_name;
         std::string password;
-        if (!json_utils::Load(parsed, "user_name", &user_name) ||
-            !json_utils::Load(parsed, "password", &password)) {
+        if (!json_utils::ReadField(parsed, "user_name", &user_name) ||
+            !json_utils::ReadField(parsed, "password", &password)) {
             return StatusResponse(400, "Invalid login request");
         }
 

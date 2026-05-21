@@ -33,6 +33,8 @@ public:
     bool RequestIdr(int32_t venc_channel) override;
     bool ApplyImageConfig(const MediaPipelineConfig& config,
                           const ConfigJson& image_config) override;
+    ExposureInfo QueryExposureInfo(
+        const MediaPipelineConfig& config) override;
     bool CreateRegion(int32_t handle,
                       const RegionConfig& config) override;
     bool AttachRegion(int32_t handle,

@@ -46,14 +46,16 @@ bool LoadTimeConfig(const ConfigJson &value, TimeConfigState *config) {
         return false;
     }
     TimeConfigState parsed;
-    const ConfigJson *ntp = nullptr;
-    if (!json_utils::Load(value, "timezone", &parsed.timezone) ||
-        !json_utils::Load(value, "manual_sync_allowed",
+    if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
+        !json_utils::ReadField(value, "manual_sync_allowed",
                           &parsed.manual_sync_allowed) ||
-        !json_utils::LoadObject(value, "ntp", &ntp) ||
-        !json_utils::Load(*ntp, "enabled", &parsed.ntp.enabled) ||
-        !json_utils::LoadStringArray(*ntp, "servers", &parsed.ntp.servers) ||
-        !json_utils::Load(*ntp, "sync_interval_sec",
+        !value.contains("ntp") || !value.at("ntp").is_object()) {
+        return false;
+    }
+    const ConfigJson &ntp = value.at("ntp");
+    if (!json_utils::ReadField(ntp, "enabled", &parsed.ntp.enabled) ||
+        !json_utils::ReadStringArray(ntp, "servers", &parsed.ntp.servers) ||
+        !json_utils::ReadField(ntp, "sync_interval_sec",
                           &parsed.ntp.sync_interval_sec, 1, 0xffffffffU)) {
         return false;
     }

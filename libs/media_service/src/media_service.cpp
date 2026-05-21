@@ -3,17 +3,20 @@
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
 #include "infra/log.h"
+#include "live_stream/json_utils.h"
 #include "media_config_codec.h"
 #include "media/media_buffer.h"
 #include "media_pipeline.h"
 #include "stream_codec.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -33,6 +36,10 @@ using media_internal::ParseVideoConfig;
 using media_internal::ValidateImageConfig;
 
 constexpr FrameSequence kMediaDiagMaxSeq = 8;
+constexpr int32_t kControlMin = 0;
+constexpr int32_t kControlMax = 100;
+constexpr int kImageStrategyIntervalMs = 1000;
+constexpr int kImageStrategyStableSamples = 3;
 
 const char* StreamName(StreamId stream_id) {
     switch (stream_id) {
@@ -44,6 +51,127 @@ const char* StreamName(StreamId stream_id) {
             return "snapshot";
     }
     return "unknown";
+}
+
+int IsoTier(uint32_t iso) {
+    if (iso <= 400) {
+        return 0;
+    }
+    if (iso <= 1600) {
+        return 1;
+    }
+    if (iso <= 6400) {
+        return 2;
+    }
+    return 3;
+}
+
+const char *IsoTierName(int tier) {
+    switch (tier) {
+        case 0:
+            return "day";
+        case 1:
+            return "indoor";
+        case 2:
+            return "low_light";
+        case 3:
+            return "very_low_light";
+    }
+    return "unknown";
+}
+
+struct ImageStrategyControls {
+    int32_t saturation = 50;
+    int32_t sharpness = 55;
+    int32_t denoise_2d = 55;
+    int32_t denoise_3d = 45;
+    int32_t gamma = 50;
+};
+
+int32_t ClampImageControl(int32_t value) {
+    if (value < kControlMin) {
+        return kControlMin;
+    }
+    if (value > kControlMax) {
+        return kControlMax;
+    }
+    return value;
+}
+
+ImageStrategyControls LoadImageStrategyControls(
+    const ConfigJson &image_config) {
+    ImageStrategyControls controls;
+    const ConfigJson &basic = image_config.at("basic");
+    const ConfigJson &enhancement = image_config.at("enhancement");
+    (void)json_utils::ReadField(basic, "saturation", &controls.saturation,
+                                kControlMin, kControlMax);
+    (void)json_utils::ReadField(basic, "sharpness", &controls.sharpness,
+                                kControlMin, kControlMax);
+    (void)json_utils::ReadField(enhancement, "denoise_2d",
+                                &controls.denoise_2d, kControlMin,
+                                kControlMax);
+    (void)json_utils::ReadField(enhancement, "denoise_3d",
+                                &controls.denoise_3d, kControlMin,
+                                kControlMax);
+    (void)json_utils::ReadField(enhancement, "gamma", &controls.gamma,
+                                kControlMin, kControlMax);
+    return controls;
+}
+
+ImageStrategyControls ControlsForIsoTier(
+    const ImageStrategyControls &base,
+    int tier) {
+    const int32_t saturation_delta[] = {12, 6, -6, -15};
+    const int32_t sharpness_delta[] = {10, 2, -12, -24};
+    const int32_t denoise_2d_delta[] = {-10, 5, 20, 32};
+    const int32_t denoise_3d_delta[] = {-8, 8, 22, 34};
+    const int32_t gamma_delta[] = {0, 2, 6, 9};
+    ImageStrategyControls controls;
+    controls.saturation =
+        ClampImageControl(base.saturation + saturation_delta[tier]);
+    controls.sharpness =
+        ClampImageControl(base.sharpness + sharpness_delta[tier]);
+    controls.denoise_2d =
+        ClampImageControl(base.denoise_2d + denoise_2d_delta[tier]);
+    controls.denoise_3d =
+        ClampImageControl(base.denoise_3d + denoise_3d_delta[tier]);
+    controls.gamma = ClampImageControl(base.gamma + gamma_delta[tier]);
+    return controls;
+}
+
+ImageStrategyControls SmoothImageStrategyControls(
+    const ImageStrategyControls &target,
+    const ImageStrategyStatus &current) {
+    ImageStrategyControls controls = target;
+    if (!current.active) {
+        return controls;
+    }
+    controls.saturation =
+        current.saturation + (target.saturation - current.saturation) / 3;
+    controls.sharpness =
+        current.sharpness + (target.sharpness - current.sharpness) / 3;
+    controls.denoise_2d =
+        current.denoise_2d + (target.denoise_2d - current.denoise_2d) / 3;
+    controls.denoise_3d =
+        current.denoise_3d + (target.denoise_3d - current.denoise_3d) / 3;
+    controls.gamma = current.gamma + (target.gamma - current.gamma) / 3;
+    return controls;
+}
+
+bool IsImageStrategyEnabled(const ConfigJson &image_config) {
+    const auto strategy = image_config.find("strategy");
+    if (strategy == image_config.end() || !strategy->is_object()) {
+        return true;
+    }
+    return strategy->value("enabled", true);
+}
+
+std::string ImageStrategyMode(const ConfigJson &image_config) {
+    const auto strategy = image_config.find("strategy");
+    if (strategy == image_config.end() || !strategy->is_object()) {
+        return "balanced";
+    }
+    return strategy->value("mode", std::string("balanced"));
 }
 
 const VideoStreamConfig *FindConfiguredStream(
@@ -201,6 +329,7 @@ public:
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override;
     MediaCapabilities GetCapabilities() const override;
     MediaChannels GetChannels() const override;
+    ImageStrategyStatus GetImageStrategyStatus() const override;
 
 private:
     MediaServiceOptions options;
@@ -213,6 +342,7 @@ private:
         sinks;
     FrameSubscriptionId next_subscription_id = 1;
     ConfigJson image_config = ConfigJson::object();
+    ImageStrategyStatus image_strategy_status;
     EncodedFrame last_main_key_frame;
     EncodedFrame last_sub_key_frame;
     mutable std::mutex mutex;
@@ -224,6 +354,9 @@ private:
     bool has_last_sub_key_frame = false;
     bool last_main_key_frame_has_parameter_sets = false;
     bool last_sub_key_frame_has_parameter_sets = false;
+    std::thread image_strategy_thread;
+    bool image_strategy_running = false;
+    bool image_strategy_stop = false;
 
     bool Prepare() {
         ConfigJson video_config;
@@ -365,6 +498,7 @@ private:
     }
 
     void Release() {
+        StopImageStrategy();
         bool detach_video = false;
         bool detach_image = false;
         bool stop_pipeline = false;
@@ -647,8 +781,169 @@ private:
         return pipeline.ApplyImageConfig(value);
     }
 
+    ConfigJson BuildImageStrategyConfigLocked(
+        const hisisdk::ExposureInfo &exposure,
+        ImageStrategyStatus *next_status) const {
+        ConfigJson adjusted = image_config;
+        if (!adjusted.is_object()) {
+            return adjusted;
+        }
+
+        const int tier = IsoTier(exposure.iso);
+        const ImageStrategyControls controls = SmoothImageStrategyControls(
+            ControlsForIsoTier(LoadImageStrategyControls(image_config), tier),
+            image_strategy_status);
+
+        adjusted["basic"]["saturation"] = controls.saturation;
+        adjusted["basic"]["sharpness"] = controls.sharpness;
+        adjusted["enhancement"]["denoise_2d"] = controls.denoise_2d;
+        adjusted["enhancement"]["denoise_3d"] = controls.denoise_3d;
+        adjusted["enhancement"]["gamma"] = controls.gamma;
+
+        if (next_status != nullptr) {
+            *next_status = image_strategy_status;
+            next_status->enabled = true;
+            next_status->active = true;
+            next_status->exposure_valid = true;
+            next_status->iso = exposure.iso;
+            next_status->exposure_time_us = exposure.exposure_time_us;
+            next_status->analog_gain = exposure.analog_gain;
+            next_status->digital_gain = exposure.digital_gain;
+            next_status->isp_digital_gain = exposure.isp_digital_gain;
+            next_status->mode = ImageStrategyMode(image_config);
+            next_status->tier = IsoTierName(tier);
+            next_status->saturation = controls.saturation;
+            next_status->sharpness = controls.sharpness;
+            next_status->denoise_2d = controls.denoise_2d;
+            next_status->denoise_3d = controls.denoise_3d;
+            next_status->gamma = controls.gamma;
+        }
+        return adjusted;
+    }
+
+    void StartImageStrategyLocked() {
+        if (image_strategy_running) {
+            return;
+        }
+        image_strategy_stop = false;
+        image_strategy_running = true;
+        image_strategy_thread =
+            std::thread(&MediaServiceImpl::ImageStrategyLoop, this);
+    }
+
+    void StopImageStrategy() {
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            image_strategy_stop = true;
+        }
+        if (image_strategy_thread.joinable()) {
+            image_strategy_thread.join();
+        }
+        std::lock_guard<std::mutex> guard(mutex);
+        image_strategy_running = false;
+        image_strategy_stop = false;
+        image_strategy_status.active = false;
+    }
+
+    void ImageStrategyLoop() {
+        int stable_tier = -1;
+        int pending_tier = -1;
+        int pending_count = 0;
+        while (true) {
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                if (image_strategy_stop) {
+                    return;
+                }
+            }
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(kImageStrategyIntervalMs));
+
+            bool enabled = false;
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                if (image_strategy_stop) {
+                    return;
+                }
+                const bool strategy_enabled =
+                    IsImageStrategyEnabled(image_config);
+                enabled = state == ServiceState::kStarted && strategy_enabled;
+                image_strategy_status.enabled = strategy_enabled;
+                if (!enabled) {
+                    image_strategy_status.active = false;
+                    continue;
+                }
+            }
+
+            const hisisdk::ExposureInfo exposure = pipeline.QueryExposureInfo();
+            if (!exposure.valid) {
+                std::lock_guard<std::mutex> guard(mutex);
+                image_strategy_status.exposure_valid = false;
+                continue;
+            }
+
+            const int tier = IsoTier(exposure.iso);
+            if (tier != pending_tier) {
+                pending_tier = tier;
+                pending_count = 1;
+            } else if (pending_count < kImageStrategyStableSamples) {
+                ++pending_count;
+            }
+            if (stable_tier < 0 ||
+                pending_count >= kImageStrategyStableSamples) {
+                stable_tier = pending_tier;
+            }
+            hisisdk::ExposureInfo stable_exposure = exposure;
+            if (stable_tier >= 0 && stable_tier != tier) {
+                if (stable_tier == 0) {
+                    stable_exposure.iso = 400;
+                } else if (stable_tier == 1) {
+                    stable_exposure.iso = 1600;
+                } else if (stable_tier == 2) {
+                    stable_exposure.iso = 6400;
+                } else {
+                    stable_exposure.iso = 6401;
+                }
+            }
+
+            ImageStrategyStatus next_status;
+            ConfigJson adjusted;
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                const bool strategy_enabled =
+                    IsImageStrategyEnabled(image_config);
+                if (image_strategy_stop || state != ServiceState::kStarted ||
+                    !strategy_enabled) {
+                    continue;
+                }
+                adjusted = BuildImageStrategyConfigLocked(stable_exposure,
+                                                          &next_status);
+            }
+
+            bool applied = false;
+            {
+                std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+                bool can_apply = false;
+                {
+                    std::lock_guard<std::mutex> guard(mutex);
+                    const bool strategy_enabled =
+                        IsImageStrategyEnabled(image_config);
+                    can_apply = !image_strategy_stop &&
+                                state == ServiceState::kStarted &&
+                                strategy_enabled;
+                }
+                if (can_apply) {
+                    applied = pipeline.ApplyImageConfig(adjusted);
+                }
+            }
+            if (applied) {
+                std::lock_guard<std::mutex> guard(mutex);
+                image_strategy_status = next_status;
+            }
+        }
+    }
+
     bool ApplyPipelineConfig(const MediaPipelineConfig &config) {
-        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
         bool was_started = false;
         bool was_initialized = false;
         ServiceState previous_state = ServiceState::kCreated;
@@ -671,6 +966,11 @@ private:
             ClearKeyFrameCacheLocked();
         }
 
+        if (was_started) {
+            StopImageStrategy();
+        }
+
+        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
         if (was_started) {
             pipeline.Stop();
         }
@@ -695,6 +995,7 @@ private:
             if (was_started) {
                 state = ServiceState::kStarted;
                 NotifySourceState(StreamState::kRunning);
+                StartImageStrategyLocked();
             }
             return true;
         }
@@ -726,6 +1027,7 @@ private:
                 if (was_started) {
                     state = ServiceState::kStarted;
                     NotifySourceState(StreamState::kRunning);
+                    StartImageStrategyLocked();
                 }
             } else if (was_started) {
                 system_initialized = false;
@@ -787,11 +1089,13 @@ bool MediaServiceImpl::Start() {
         std::lock_guard<std::mutex> lock(mutex);
         state = ServiceState::kStarted;
         NotifySourceState(StreamState::kRunning);
+        StartImageStrategyLocked();
     }
     return true;
 }
 
 void MediaServiceImpl::Stop() {
+    StopImageStrategy();
     bool should_stop = false;
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -917,6 +1221,11 @@ MediaChannels MediaServiceImpl::GetChannels() const {
         return MediaChannels{};
     }
     return active_channels;
+}
+
+ImageStrategyStatus MediaServiceImpl::GetImageStrategyStatus() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return image_strategy_status;
 }
 
 }  // namespace

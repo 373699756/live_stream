@@ -12,6 +12,7 @@ namespace live_stream {
 
 namespace hisisdk {
 class IHisiSdk;
+struct ExposureInfo;
 }  // namespace hisisdk
 
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config);
@@ -32,6 +33,7 @@ public:
     bool Start();
     void Stop();
     bool ApplyImageConfig(const ConfigJson& image_config);
+    hisisdk::ExposureInfo QueryExposureInfo() const;
 
     bool system_initialized() const { return system_initialized_; }
     const MediaChannels& channels() const { return channels_; }

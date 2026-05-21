@@ -98,7 +98,7 @@ bool IsAiConfigEnabled(IConfigService *config_service) {
     }
     ConfigJson config = config_service->GetValue("ai");
     bool enabled = false;
-    return config.is_object() && json_utils::Load(config, "enabled", &enabled) &&
+    return config.is_object() && json_utils::ReadField(config, "enabled", &enabled) &&
            enabled;
 }
 

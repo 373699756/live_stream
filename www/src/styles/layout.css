@@ -293,6 +293,24 @@
   word-break: break-all;
 }
 
+.strategy-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #dbe7f5;
+  border-radius: 4px;
+  background: #f8fbff;
+}
+
+.strategy-status span {
+  min-width: 0;
+  color: #35445a;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .preview-panel {
   min-width: 0;
   background: #111827;

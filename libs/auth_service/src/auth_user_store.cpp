@@ -84,14 +84,14 @@ private:
     }
 
     bool Parse(const ConfigJson &document) {
-        const ConfigJson *users = nullptr;
-        if (!document.is_object() ||
-            !json_utils::LoadArray(document, "users", &users) || users->empty()) {
+        if (!document.is_object() || !document.contains("users") ||
+            !document.at("users").is_array() || document.at("users").empty()) {
             return false;
         }
+        const ConfigJson &users = document.at("users");
 
         std::map<std::string, AuthUserRecord> parsed_users;
-        for (const ConfigJson &user_json : *users) {
+        for (const ConfigJson &user_json : users) {
             if (!user_json.is_object()) {
                 return false;
             }
@@ -100,18 +100,18 @@ private:
             }
             AuthUserRecord user;
             std::string role;
-            if (!json_utils::Load(user_json, "user_name", &user.user_name) ||
-                !json_utils::Load(user_json, "role", &role) ||
-                !json_utils::Load(user_json, "password_credential",
+            if (!json_utils::ReadField(user_json, "user_name", &user.user_name) ||
+                !json_utils::ReadField(user_json, "role", &role) ||
+                !json_utils::ReadField(user_json, "password_credential",
                                   &user.password_credential) ||
-                !json_utils::Load(user_json, "enabled", &user.enabled) ||
+                !json_utils::ReadField(user_json, "enabled", &user.enabled) ||
                 !auth_internal::ParseRole(role, &user.role) ||
                 auth_internal::IsEmptyOrTooLong(user.user_name,
                                                 auth_internal::kMaxUserNameLength) ||
                 user.password_credential.empty()) {
                 return false;
             }
-            (void)json_utils::Load(user_json, "password_plaintext",
+            (void)json_utils::ReadField(user_json, "password_plaintext",
                                    &user.password_plaintext);
             if (parsed_users.find(user.user_name) != parsed_users.end()) {
                 return false;

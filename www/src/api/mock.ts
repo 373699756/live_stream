@@ -1,5 +1,6 @@
 import type {
   ImageConfig,
+  ImageStrategyStatus,
   NetworkConfig,
   OsdConfig,
   SnapshotConfig,
@@ -144,11 +145,30 @@ export const mockImageConfig: ImageConfig = {
     slow_shutter: false,
     max_exposure_time: '1/25',
   },
-  white_balance: { mode: 'auto', red_gain: 50, blue_gain: 50 },
+  white_balance: { mode: 'auto', red_gain: 50, blue_gain: 45 },
   enhancement: { denoise_2d: 55, denoise_3d: 45, defog: false, gamma: 50 },
   backlight: { mode: 'off', level: 50 },
   orientation: { mirror: false, flip: false },
   color_mode: { mode: 'color' },
+  strategy: { enabled: true, mode: 'balanced' },
+};
+
+export const mockImageStrategyStatus: ImageStrategyStatus = {
+  enabled: true,
+  active: true,
+  exposure_valid: true,
+  iso: 200,
+  exposure_time_us: 10000,
+  analog_gain: 1024,
+  digital_gain: 1024,
+  isp_digital_gain: 1024,
+  mode: 'balanced',
+  tier: 'day',
+  saturation: 62,
+  sharpness: 65,
+  denoise_2d: 45,
+  denoise_3d: 37,
+  gamma: 50,
 };
 
 // ---------------------------------------------------------------------------

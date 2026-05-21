@@ -217,163 +217,76 @@ using detail::ParseResolutionText;
 
 constexpr uint32_t kDefaultSensorFrameRate = 30;
 
-ConfigResult ValidateVideoStreamJson(const ConfigJson &stream,
-                                     const std::string &prefix) {
+std::string JoinField(const std::string &parent, const char *child) {
+    if (parent.empty()) {
+        return child != nullptr ? child : "";
+    }
+    return child != nullptr ? (parent + "." + child) : parent;
+}
+
+std::string JoinField(const std::string &parent, const std::string &child) {
+    return JoinField(parent, child.c_str());
+}
+
+bool ValidateVideoStreamJson(const ConfigJson &stream) {
     if (!stream.is_object()) {
-        return ConfigResult::Failure(prefix, "missing object");
+        return false;
     }
 
-    // Validate enabled (bool)
-    const ConfigJson *enabled_field = json_utils::FindField(stream, "enabled");
-    if (enabled_field == nullptr || !enabled_field->is_boolean()) {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "enabled"),
-                                     "missing or invalid value");
+    bool enabled = false;
+    if (!json_utils::ReadField(stream, "enabled", &enabled)) {
+        return false;
     }
 
-    // Validate codec (string, must be valid codec)
-    const ConfigJson *codec_field = json_utils::FindField(stream, "codec");
-    if (codec_field != nullptr && codec_field->is_string()) {
-        std::string codec_text;
-        codec_field->get_to(codec_text);
-        VideoCodec dummy = VideoCodec::kH264;
-        if (!ParseCodecText(codec_text, &dummy)) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "codec"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "codec"),
-                                     "missing or invalid value");
+    std::string codec_text;
+    VideoCodec dummy_codec = VideoCodec::kH264;
+    if (!json_utils::ReadField(stream, "codec", &codec_text) ||
+        !ParseCodecText(codec_text, &dummy_codec)) {
+        return false;
     }
 
-    // Validate resolution (string, must be valid resolution)
-    const ConfigJson *resolution_field = json_utils::FindField(stream, "resolution");
-    if (resolution_field != nullptr && resolution_field->is_string()) {
-        std::string resolution_text;
-        resolution_field->get_to(resolution_text);
-        VideoSize dummy_size;
-        if (!ParseResolutionText(resolution_text, &dummy_size)) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "resolution"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "resolution"),
-                                     "missing or invalid value");
+    std::string resolution_text;
+    VideoSize dummy_size;
+    if (!json_utils::ReadField(stream, "resolution", &resolution_text) ||
+        !ParseResolutionText(resolution_text, &dummy_size)) {
+        return false;
     }
 
-    // Validate fps (uint32)
-    const ConfigJson *fps_field = json_utils::FindField(stream, "fps");
-    if (fps_field != nullptr) {
-        uint64_t fps_value = 0;
-        if (fps_field->is_number_unsigned()) {
-            fps_value = fps_field->get<uint64_t>();
-        } else if (fps_field->is_number_integer()) {
-            const int64_t signed_fps = fps_field->get<int64_t>();
-            if (signed_fps < 0 || signed_fps > std::numeric_limits<uint32_t>::max()) {
-                return ConfigResult::Failure(json_utils::JoinField(prefix, "fps"),
-                                             "missing or invalid value");
-            }
-            fps_value = static_cast<uint64_t>(signed_fps);
-        } else {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "fps"),
-                                         "missing or invalid value");
-        }
-        if (fps_value > std::numeric_limits<uint32_t>::max()) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "fps"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "fps"),
-                                     "missing or invalid value");
+    uint32_t fps = 0;
+    if (!json_utils::ReadField(stream, "fps", &fps)) {
+        return false;
     }
 
-    // Validate bitrate_kbps (uint32)
-    const ConfigJson *bitrate_field = json_utils::FindField(stream, "bitrate_kbps");
-    if (bitrate_field != nullptr) {
-        uint64_t bitrate_value = 0;
-        if (bitrate_field->is_number_unsigned()) {
-            bitrate_value = bitrate_field->get<uint64_t>();
-        } else if (bitrate_field->is_number_integer()) {
-            const int64_t signed_bitrate = bitrate_field->get<int64_t>();
-            if (signed_bitrate < 0 || signed_bitrate > std::numeric_limits<uint32_t>::max()) {
-                return ConfigResult::Failure(json_utils::JoinField(prefix, "bitrate_kbps"),
-                                             "missing or invalid value");
-            }
-            bitrate_value = static_cast<uint64_t>(signed_bitrate);
-        } else {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "bitrate_kbps"),
-                                         "missing or invalid value");
-        }
-        if (bitrate_value > std::numeric_limits<uint32_t>::max()) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "bitrate_kbps"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "bitrate_kbps"),
-                                     "missing or invalid value");
+    uint32_t bitrate_kbps = 0;
+    if (!json_utils::ReadField(stream, "bitrate_kbps", &bitrate_kbps)) {
+        return false;
     }
 
-    // Validate rate_control (string, must be valid rate control mode)
-    const ConfigJson *rc_field = json_utils::FindField(stream, "rate_control");
-    if (rc_field != nullptr && rc_field->is_string()) {
-        std::string rc_text;
-        rc_field->get_to(rc_text);
-        RateControlMode dummy_mode = RateControlMode::kCbr;
-        if (!ParseRateControlText(rc_text, &dummy_mode)) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "rate_control"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "rate_control"),
-                                     "missing or invalid value");
+    std::string rc_text;
+    RateControlMode dummy_mode = RateControlMode::kCbr;
+    if (!json_utils::ReadField(stream, "rate_control", &rc_text) ||
+        !ParseRateControlText(rc_text, &dummy_mode)) {
+        return false;
     }
 
-    // Validate gop (uint32)
-    const ConfigJson *gop_field = json_utils::FindField(stream, "gop");
-    if (gop_field != nullptr) {
-        uint64_t gop_value = 0;
-        if (gop_field->is_number_unsigned()) {
-            gop_value = gop_field->get<uint64_t>();
-        } else if (gop_field->is_number_integer()) {
-            const int64_t signed_gop = gop_field->get<int64_t>();
-            if (signed_gop < 0 || signed_gop > std::numeric_limits<uint32_t>::max()) {
-                return ConfigResult::Failure(json_utils::JoinField(prefix, "gop"),
-                                             "missing or invalid value");
-            }
-            gop_value = static_cast<uint64_t>(signed_gop);
-        } else {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "gop"),
-                                         "missing or invalid value");
-        }
-        if (gop_value > std::numeric_limits<uint32_t>::max()) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "gop"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "gop"),
-                                     "missing or invalid value");
+    uint32_t gop = 0;
+    if (!json_utils::ReadField(stream, "gop", &gop)) {
+        return false;
     }
 
-    // Validate gop_mode (string, must be valid gop mode)
-    const ConfigJson *gop_mode_field = json_utils::FindField(stream, "gop_mode");
-    if (gop_mode_field != nullptr && gop_mode_field->is_string()) {
-        std::string gop_mode_text;
-        gop_mode_field->get_to(gop_mode_text);
-        GopMode dummy_gop_mode = GopMode::kNormalP;
-        if (!ParseGopModeText(gop_mode_text, &dummy_gop_mode)) {
-            return ConfigResult::Failure(json_utils::JoinField(prefix, "gop_mode"),
-                                         "missing or invalid value");
-        }
-    } else {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "gop_mode"),
-                                     "missing or invalid value");
+    std::string gop_mode_text;
+    GopMode dummy_gop_mode = GopMode::kNormalP;
+    if (!json_utils::ReadField(stream, "gop_mode", &gop_mode_text) ||
+        !ParseGopModeText(gop_mode_text, &dummy_gop_mode)) {
+        return false;
     }
 
-    const ConfigJson *smart_codec = json_utils::FindField(stream, "smart_codec");
-    if (smart_codec != nullptr && !smart_codec->is_boolean()) {
-        return ConfigResult::Failure(json_utils::JoinField(prefix, "smart_codec"),
-                                     "missing or invalid value");
+    bool smart_codec = false;
+    if (stream.contains("smart_codec") &&
+        !json_utils::ReadField(stream, "smart_codec", &smart_codec)) {
+        return false;
     }
-    return ConfigResult::Success();
+    return true;
 }
 
 const VideoStreamCapabilities *
@@ -434,8 +347,8 @@ ValidateNumericControls(const ConfigJson &section,
                         const std::vector<NumericControlCapability> &controls) {
     for (const NumericControlCapability &control : controls) {
         int64_t value = 0;
-        const std::string field = json_utils::JoinField(section_name, control.name);
-        if (!json_utils::Load(section, control.name.c_str(), &value, control.min,
+        const std::string field = JoinField(section_name, control.name);
+        if (!json_utils::ReadField(section, control.name.c_str(), &value, control.min,
                               control.max)) {
             return ConfigResult::Failure(field, "missing or unsupported value");
         }
@@ -448,16 +361,16 @@ ValidateOptionControls(const ConfigJson &section,
                        const std::string &section_name,
                        const std::vector<OptionControlCapability> &controls) {
     for (const OptionControlCapability &control : controls) {
-        const std::string field = json_utils::JoinField(section_name, control.name);
+        const std::string field = JoinField(section_name, control.name);
         std::string value;
-        if (json_utils::Load(section, control.name.c_str(), &value)) {
+        if (json_utils::ReadField(section, control.name.c_str(), &value)) {
             if (!ContainsString(control.values, value)) {
                 return ConfigResult::Failure(field, "unsupported value");
             }
             continue;
         }
         bool enabled = false;
-        if (!json_utils::Load(section, control.name.c_str(), &enabled)) {
+        if (!json_utils::ReadField(section, control.name.c_str(), &enabled)) {
             return ConfigResult::Failure(field, "missing or invalid value");
         }
         if (!ContainsString(control.values, enabled ? "true" : "false")) {
@@ -474,34 +387,34 @@ ConfigResult ValidateVideoStreamConfig(
     const CodecCapability *codec_capability =
         FindCodecCapability(stream_capabilities, stream.codec);
     if (codec_capability == nullptr) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "codec"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "codec"),
                                      "unsupported value");
     }
     if (!ContainsResolution(stream_capabilities, stream.resolution)) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "resolution"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "resolution"),
                                      "unsupported value");
     }
     if (stream.fps < stream_capabilities.frame_rate.min_fps ||
         stream.fps > stream_capabilities.frame_rate.max_fps) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "fps"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "fps"),
                                      "unsupported value");
     }
     if (stream.bitrate_kbps < stream_capabilities.bitrate.min_kbps ||
         stream.bitrate_kbps > stream_capabilities.bitrate.max_kbps) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "bitrate_kbps"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "bitrate_kbps"),
                                      "unsupported value");
     }
     if (!ContainsRateControl(stream_capabilities, stream.rate_control)) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "rate_control"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "rate_control"),
                                      "unsupported value");
     }
     if (stream.gop < stream_capabilities.gop.min ||
         stream.gop > stream_capabilities.gop.max) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "gop"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "gop"),
                                      "unsupported value");
     }
     if (stream.smart_codec && !stream_capabilities.smart_codec_supported) {
-        return ConfigResult::Failure(json_utils::JoinField(stream_prefix, "smart_codec"),
+        return ConfigResult::Failure(JoinField(stream_prefix, "smart_codec"),
                                      "unsupported value");
     }
     return ConfigResult::Success();
@@ -568,33 +481,31 @@ void from_json(const ConfigJson &json, VideoConfig &config) {
 
 ConfigResult DecodeVideoConfig(const ConfigJson &value, VideoConfig *config) {
     if (config == nullptr) {
-        return ConfigResult::Failure("", "invalid video config target");
+        return ConfigResult::Failure("", "invalid video config");
     }
     if (!value.is_object()) {
         return ConfigResult::Failure("", "invalid video config");
     }
 
-    const ConfigJson *streams = nullptr;
-    if (!json_utils::LoadObject(value, "streams", &streams)) {
-        return ConfigResult::Failure("streams", "missing object");
+    if (!value.contains("streams") || !value.at("streams").is_object()) {
+        return ConfigResult::Failure("", "invalid video config");
+    }
+    const ConfigJson &streams = value.at("streams");
+
+    if (!streams.contains("main") || !streams.at("main").is_object()) {
+        return ConfigResult::Failure("", "invalid video config");
+    }
+    const ConfigJson &main_stream = streams.at("main");
+    if (!ValidateVideoStreamJson(main_stream)) {
+        return ConfigResult::Failure("", "invalid video config");
     }
 
-    const ConfigJson *main_stream = nullptr;
-    if (!json_utils::LoadObject(*streams, "main", &main_stream)) {
-        return ConfigResult::Failure("streams.main", "missing object");
+    if (!streams.contains("sub") || !streams.at("sub").is_object()) {
+        return ConfigResult::Failure("", "invalid video config");
     }
-    ConfigResult result = ValidateVideoStreamJson(*main_stream, "streams.main");
-    if (!result.ok) {
-        return result;
-    }
-
-    const ConfigJson *sub_stream = nullptr;
-    if (!json_utils::LoadObject(*streams, "sub", &sub_stream)) {
-        return ConfigResult::Failure("streams.sub", "missing object");
-    }
-    result = ValidateVideoStreamJson(*sub_stream, "streams.sub");
-    if (!result.ok) {
-        return result;
+    const ConfigJson &sub_stream = streams.at("sub");
+    if (!ValidateVideoStreamJson(sub_stream)) {
+        return ConfigResult::Failure("", "invalid video config");
     }
 
     value.get_to(*config);
@@ -617,7 +528,7 @@ ConfigResult ValidateVideoConfig(const VideoConfig &config,
     };
 
     for (const auto &stream_spec : stream_specs) {
-        const std::string stream_prefix = json_utils::JoinField("streams", stream_spec.name);
+        const std::string stream_prefix = JoinField("streams", stream_spec.name);
         const VideoStreamCapabilities *stream_capabilities =
             FindStreamCapabilities(capabilities, stream_spec.stream_id);
         if (stream_capabilities == nullptr) {
@@ -637,7 +548,7 @@ ConfigResult BuildPipelineConfig(const VideoConfig &config,
                                  const MediaPipelineConfig &fallback,
                                  MediaPipelineConfig *pipeline_config) {
     if (pipeline_config == nullptr) {
-        return ConfigResult::Failure("", "invalid video config target");
+        return ConfigResult::Failure("", "invalid video config");
     }
     MediaPipelineConfig next_config = fallback;
     ApplyStreamConfig(StreamId::kMain, config.main, &next_config.main_stream);
@@ -669,32 +580,34 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
     };
 
     for (const auto &section_spec : sections) {
-        const ConfigJson *section = nullptr;
-        if (!json_utils::LoadObject(value, section_spec.name, &section)) {
-            return ConfigResult::Failure(section_spec.name, "missing object");
+        if (!value.contains(section_spec.name) ||
+            !value.at(section_spec.name).is_object()) {
+            return ConfigResult::Failure("", "invalid image config");
         }
+        const ConfigJson &section = value.at(section_spec.name);
         if (section_spec.ranges != nullptr) {
             const ConfigResult result = ValidateNumericControls(
-                *section, section_spec.name, *section_spec.ranges);
+                section, section_spec.name, *section_spec.ranges);
             if (!result.ok) {
                 return result;
             }
         }
         if (section_spec.options != nullptr) {
             const ConfigResult result = ValidateOptionControls(
-                *section, section_spec.name, *section_spec.options);
+                section, section_spec.name, *section_spec.options);
             if (!result.ok) {
                 return result;
             }
         }
     }
 
-    const ConfigJson *orientation = nullptr;
-    if (!json_utils::LoadObject(value, "orientation", &orientation)) {
-        return ConfigResult::Failure("orientation", "missing object");
+    if (!value.contains("orientation") ||
+        !value.at("orientation").is_object()) {
+        return ConfigResult::Failure("", "invalid image config");
     }
+    const ConfigJson &orientation = value.at("orientation");
     bool mirror = false;
-    if (!json_utils::Load(*orientation, "mirror", &mirror)) {
+    if (!json_utils::ReadField(orientation, "mirror", &mirror)) {
         return ConfigResult::Failure("orientation.mirror",
                                      "missing or invalid value");
     }
@@ -702,12 +615,20 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
         return ConfigResult::Failure("orientation.mirror", "unsupported value");
     }
     bool flip = false;
-    if (!json_utils::Load(*orientation, "flip", &flip)) {
+    if (!json_utils::ReadField(orientation, "flip", &flip)) {
         return ConfigResult::Failure("orientation.flip",
                                      "missing or invalid value");
     }
     if (flip && !capabilities.flip_supported) {
         return ConfigResult::Failure("orientation.flip", "unsupported value");
+    }
+
+    if (value.contains("strategy") && value.at("strategy").is_object()) {
+        const ConfigJson &strategy = value.at("strategy");
+        const std::string mode = strategy.value("mode", "balanced");
+        if (mode != "balanced") {
+            return ConfigResult::Failure("strategy.mode", "unsupported value");
+        }
     }
     return ConfigResult::Success();
 }

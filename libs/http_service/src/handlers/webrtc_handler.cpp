@@ -26,9 +26,9 @@ HttpResponse HandleCreatePeer(IWebrtcService *webrtc_service,
     WebrtcCreatePeerRequest create_request;
     std::string stream;
     StreamId stream_id = StreamId::kMain;
-    if (!json_utils::Load(body, "stream", &stream) ||
+    if (!json_utils::ReadField(body, "stream", &stream) ||
         !StreamIdFromJsonString(stream, &stream_id) ||
-        !json_utils::Load(body, "client_id", &create_request.client_id)) {
+        !json_utils::ReadField(body, "client_id", &create_request.client_id)) {
         return StatusResponse(400, "Invalid stream");
     }
     create_request.stream_id = stream_id;
@@ -53,8 +53,8 @@ HttpResponse HandleOffer(IWebrtcService *webrtc_service,
     (void)request;
     (void)principal;
     WebrtcOfferRequest offer;
-    if (!json_utils::Load(body, "peer_id", &offer.peer_id) ||
-        !json_utils::Load(body, "sdp", &offer.sdp)) {
+    if (!json_utils::ReadField(body, "peer_id", &offer.peer_id) ||
+        !json_utils::ReadField(body, "sdp", &offer.sdp)) {
         return StatusResponse(400, "Missing offer fields");
     }
 
@@ -77,26 +77,26 @@ HttpResponse HandleCandidate(IWebrtcService *webrtc_service,
     (void)principal;
     WebrtcIceCandidate candidate;
     bool has_mline_index = false;
-    if (!json_utils::Load(body, "peer_id", &candidate.peer_id) ||
-        !json_utils::Load(body, "candidate", &candidate.candidate)) {
+    if (!json_utils::ReadField(body, "peer_id", &candidate.peer_id) ||
+        !json_utils::ReadField(body, "candidate", &candidate.candidate)) {
         return StatusResponse(400, "Missing candidate fields");
     }
-    if (!json_utils::Load(body, "sdp_mid", &candidate.sdp_mid)) {
-        (void)json_utils::Load(body, "sdpMid", &candidate.sdp_mid);
+    if (!json_utils::ReadField(body, "sdp_mid", &candidate.sdp_mid)) {
+        (void)json_utils::ReadField(body, "sdpMid", &candidate.sdp_mid);
     }
     has_mline_index =
-        json_utils::Load(body, "sdp_mline_index",
+        json_utils::ReadField(body, "sdp_mline_index",
                          &candidate.sdp_mline_index, 0,
                          std::numeric_limits<int32_t>::max()) ||
-        json_utils::Load(body, "sdpMLineIndex",
+        json_utils::ReadField(body, "sdpMLineIndex",
                          &candidate.sdp_mline_index, 0,
                          std::numeric_limits<int32_t>::max());
     if (!has_mline_index) {
         return StatusResponse(400, "Missing candidate fields");
     }
-    if (!json_utils::Load(body, "username_fragment",
+    if (!json_utils::ReadField(body, "username_fragment",
                           &candidate.username_fragment)) {
-        (void)json_utils::Load(body, "usernameFragment",
+        (void)json_utils::ReadField(body, "usernameFragment",
                                &candidate.username_fragment);
     }
 
@@ -116,7 +116,7 @@ HttpResponse HandleClosePeer(IWebrtcService *webrtc_service,
     (void)request;
     (void)principal;
     std::string peer_id;
-    if (!json_utils::Load(body, "peer_id", &peer_id)) {
+    if (!json_utils::ReadField(body, "peer_id", &peer_id)) {
         return StatusResponse(400, "Missing peer_id");
     }
     return webrtc_service->ClosePeer(peer_id)

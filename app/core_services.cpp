@@ -13,7 +13,7 @@ ConfigResult ValidateAudioScopeConfig(const ConfigJson& value) {
         return ConfigResult::Failure("", "invalid audio config");
     }
     bool enabled = false;
-    if (!json_utils::Load(value, "enabled", &enabled)) {
+    if (!json_utils::ReadField(value, "enabled", &enabled)) {
         return ConfigResult::Failure("enabled", "missing or invalid value");
     }
     if (enabled) {

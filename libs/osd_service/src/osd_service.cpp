@@ -262,37 +262,40 @@ bool ParseOsdConfig(const ConfigJson &value, ParsedOsdConfig *config) {
     if (config == nullptr || !value.is_object()) {
         return false;
     }
-    const ConfigJson *items = nullptr;
-    const ConfigJson *timestamp = nullptr;
-    const ConfigJson *device_name = nullptr;
     std::string color_text;
     int32_t x = 0;
     int32_t y = 0;
-    if (!json_utils::Load(value, "enabled", &config->enabled) ||
-        !json_utils::LoadObject(value, "items", &items) ||
-        !json_utils::Load(value, "font_size", &config->font_size,
+    if (!json_utils::ReadField(value, "enabled", &config->enabled) ||
+        !value.contains("items") || !value.at("items").is_object() ||
+        !json_utils::ReadField(value, "font_size", &config->font_size,
                           kMinFontSize, kMaxFontSize) ||
-        !json_utils::Load(value, "font_color", &color_text) ||
+        !json_utils::ReadField(value, "font_color", &color_text) ||
         !ParseHexColor(color_text, &config->font_color) ||
-        !json_utils::Load(value, "background", &config->background) ||
-        !json_utils::LoadObject(*items, "timestamp", &timestamp) ||
-        !json_utils::LoadObject(*items, "device_name", &device_name)) {
+        !json_utils::ReadField(value, "background", &config->background)) {
         return false;
     }
-    if (!json_utils::Load(*timestamp, "enabled",
+    const ConfigJson &items = value.at("items");
+    if (!items.contains("timestamp") || !items.at("timestamp").is_object() ||
+        !items.contains("device_name") ||
+        !items.at("device_name").is_object()) {
+        return false;
+    }
+    const ConfigJson &timestamp = items.at("timestamp");
+    const ConfigJson &device_name = items.at("device_name");
+    if (!json_utils::ReadField(timestamp, "enabled",
                           &config->timestamp_enabled) ||
-        !json_utils::Load(*timestamp, "format",
+        !json_utils::ReadField(timestamp, "format",
                           &config->timestamp_format) ||
-        !json_utils::Load(*timestamp, "x", &x) ||
-        !json_utils::Load(*timestamp, "y", &y)) {
+        !json_utils::ReadField(timestamp, "x", &x) ||
+        !json_utils::ReadField(timestamp, "y", &y)) {
         return false;
     }
     config->timestamp_position = OsdPoint{x, y};
-    if (!json_utils::Load(*device_name, "enabled",
+    if (!json_utils::ReadField(device_name, "enabled",
                           &config->device_name_enabled) ||
-        !json_utils::Load(*device_name, "text", &config->device_name) ||
-        !json_utils::Load(*device_name, "x", &x) ||
-        !json_utils::Load(*device_name, "y", &y)) {
+        !json_utils::ReadField(device_name, "text", &config->device_name) ||
+        !json_utils::ReadField(device_name, "x", &x) ||
+        !json_utils::ReadField(device_name, "y", &y)) {
         return false;
     }
     config->device_name_position = OsdPoint{x, y};
@@ -313,14 +316,15 @@ bool ParseOsdItem(const ConfigJson &items, const char *name,
     if (config == nullptr) {
         return false;
     }
-    const ConfigJson *item = nullptr;
-    if (!json_utils::LoadObject(items, name, &item)) {
+    if (!items.contains(name) || !items.at(name).is_object()) {
         return false;
     }
+    const ConfigJson &item = items.at(name);
     int32_t x = 0;
     int32_t y = 0;
-    if (!json_utils::Load(*item, "enabled", &config->visible) ||
-        !json_utils::Load(*item, "x", &x) || !json_utils::Load(*item, "y", &y)) {
+    if (!json_utils::ReadField(item, "enabled", &config->visible) ||
+        !json_utils::ReadField(item, "x", &x) ||
+        !json_utils::ReadField(item, "y", &y)) {
         return false;
     }
     config->position.x = x;
@@ -331,10 +335,9 @@ bool ParseOsdItem(const ConfigJson &items, const char *name,
 }
 
 bool IsValidOsdConfig(const ConfigJson &value) {
-    const ConfigJson *items = nullptr;
     bool enabled = false;
-    return value.is_object() && json_utils::Load(value, "enabled", &enabled) &&
-           json_utils::LoadObject(value, "items", &items);
+    return value.is_object() && json_utils::ReadField(value, "enabled", &enabled) &&
+           value.contains("items") && value.at("items").is_object();
 }
 
 struct OsdService::Impl {

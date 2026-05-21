@@ -14,7 +14,7 @@ bool LoadAiEnabled(IConfigService *config, bool *enabled) {
     }
     ConfigJson ai_config = config->GetValue("ai");
     return ai_config.is_object() &&
-           json_utils::Load(ai_config, "enabled", enabled);
+           json_utils::ReadField(ai_config, "enabled", enabled);
 }
 
 }  // namespace

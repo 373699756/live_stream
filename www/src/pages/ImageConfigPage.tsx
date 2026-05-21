@@ -37,6 +37,13 @@ const optionLabels: Record<string, string> = {
   black_white: '黑白',
 };
 
+const tierLabels: Record<string, string> = {
+  day: '日间',
+  indoor: '室内',
+  low_light: '弱光',
+  very_low_light: '极弱光',
+};
+
 function numberValue(record: Record<string, unknown>, key: string, fallback: number): number {
   const value = record[key];
   return typeof value === 'number' ? value : fallback;
@@ -129,12 +136,17 @@ function OptionField({
   );
 }
 
+function tierLabel(value: string): string {
+  return tierLabels[value] || value || '-';
+}
+
 export function ImageConfigPage() {
   const {
     config,
     setConfig,
     capabilities: mediaCapabilities,
     statuses,
+    strategyStatus,
     save,
     reset,
     savedMsg,
@@ -161,6 +173,13 @@ export function ImageConfigPage() {
   const updateColorMode = (mode: string) => {
     setConfig({ ...config, color_mode: { ...config.color_mode, mode } });
   };
+  const updateStrategyEnabled = (enabled: boolean) => {
+    setConfig({
+      ...config,
+      strategy: { enabled, mode: config.strategy?.mode || 'balanced' },
+    });
+  };
+  const strategyEnabled = config.strategy?.enabled ?? true;
 
   return (
     <div className="config-preview-layout">
@@ -172,6 +191,26 @@ export function ImageConfigPage() {
           </div>
         </div>
         <div className="form-grid form-grid-single">
+          <div className="form-section-title">自动画质策略</div>
+          <FormField label="自动策略">
+            <input
+              type="checkbox"
+              checked={strategyEnabled}
+              onChange={(event) => updateStrategyEnabled(event.target.checked)}
+            />
+          </FormField>
+          <div className="strategy-status">
+            <span>状态 {strategyStatus.active ? '运行中' : '未运行'}</span>
+            <span>ISO {strategyStatus.exposure_valid ? strategyStatus.iso : '-'}</span>
+            <span>曝光 {strategyStatus.exposure_valid ? `${strategyStatus.exposure_time_us} us` : '-'}</span>
+            <span>场景 {tierLabel(strategyStatus.tier)}</span>
+            <span>实际 饱和 {strategyStatus.saturation}</span>
+            <span>锐度 {strategyStatus.sharpness}</span>
+            <span>2DNR {strategyStatus.denoise_2d}</span>
+            <span>3DNR {strategyStatus.denoise_3d}</span>
+            <span>Gamma {strategyStatus.gamma}</span>
+          </div>
+
           <div className="form-section-title">基础画质</div>
           {basicItems.map(([key, label]) => {
             const capability = numericCapability(capabilities.basic, key);
@@ -305,7 +344,7 @@ export function ImageConfigPage() {
                 default: 50,
               }
             }
-            value={numberValue(config.white_balance, 'blue_gain', 50)}
+            value={numberValue(config.white_balance, 'blue_gain', 45)}
             onChange={(value) =>
               updateSection('white_balance', 'blue_gain', value)
             }

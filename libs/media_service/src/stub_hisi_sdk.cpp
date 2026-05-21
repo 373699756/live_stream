@@ -247,6 +247,20 @@ bool StubHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
            image_config.is_object();
 }
 
+ExposureInfo StubHisiSdk::QueryExposureInfo(const MediaPipelineConfig& config) {
+    ExposureInfo info;
+    if (config.video_pipe < 0) {
+        return info;
+    }
+    info.valid = true;
+    info.exposure_time_us = 10000;
+    info.analog_gain = 0x400;
+    info.digital_gain = 0x400;
+    info.isp_digital_gain = 0x400;
+    info.iso = 200;
+    return info;
+}
+
 bool StubHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
     (void)config;
     return handle >= 0 && config.size.width > 0 && config.size.height > 0;

@@ -1,8 +1,8 @@
 // Image / ISP API: /api/config/image
 
-import { mockImageConfig } from './mock';
+import { mockImageConfig, mockImageStrategyStatus } from './mock';
 import { requestJson, putJson, type ApiRequestOptions } from './client';
-import type { ImageConfig } from './types';
+import type { ImageConfig, ImageStrategyStatus } from './types';
 
 export function getImageConfig(
   options?: ApiRequestOptions,
@@ -15,4 +15,14 @@ export function saveImageConfig(
   options?: ApiRequestOptions,
 ): Promise<void> {
   return putJson('/api/config/image', value, options);
+}
+
+export function getImageStrategyStatus(
+  options?: ApiRequestOptions,
+): Promise<ImageStrategyStatus> {
+  return requestJson<ImageStrategyStatus>(
+    '/api/status/image-strategy',
+    mockImageStrategyStatus,
+    options,
+  );
 }

@@ -29,9 +29,9 @@ bool NtpConfigFromJson(const ConfigJson &value, NtpConfig *config) {
         return false;
     }
     NtpConfig parsed;
-    if (!json_utils::Load(value, "enabled", &parsed.enabled) ||
-        !json_utils::LoadStringArray(value, "servers", &parsed.servers) ||
-        !json_utils::Load(value, "sync_interval_sec", &parsed.sync_interval_sec,
+    if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
+        !json_utils::ReadStringArray(value, "servers", &parsed.servers) ||
+        !json_utils::ReadField(value, "sync_interval_sec", &parsed.sync_interval_sec,
                           1, 0xffffffffU)) {
         return false;
     }
@@ -138,7 +138,7 @@ private:
             return StatusResponse(400, "Invalid JSON");
         }
         std::string timezone;
-        if (!json_utils::Load(body, "timezone", &timezone)) {
+        if (!json_utils::ReadField(body, "timezone", &timezone)) {
             return StatusResponse(400, "Invalid time request");
         }
         return time_service
@@ -189,7 +189,7 @@ private:
             return StatusResponse(400, "Invalid JSON");
         }
         int64_t system_time_ms = 0;
-        if (!json_utils::Load(body, "system_time_ms", &system_time_ms, 1,
+        if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
                               std::numeric_limits<int64_t>::max())) {
             return StatusResponse(400, "Invalid time request");
         }

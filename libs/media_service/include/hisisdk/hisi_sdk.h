@@ -202,6 +202,15 @@ struct YuvFrame {
     ~YuvFrame() { VideoBufferRelease(buffer); }
 };
 
+struct ExposureInfo {
+    bool valid = false;
+    uint32_t exposure_time_us = 0;
+    uint32_t analog_gain = 0;
+    uint32_t digital_gain = 0;
+    uint32_t isp_digital_gain = 0;
+    uint32_t iso = 0;
+};
+
 class IHisiSdk {
 public:
     virtual ~IHisiSdk() = default;
@@ -229,6 +238,8 @@ public:
     virtual bool RequestIdr(int32_t venc_channel) = 0;
     virtual bool ApplyImageConfig(const MediaPipelineConfig& config,
                                   const ConfigJson& image_config) = 0;
+    virtual ExposureInfo QueryExposureInfo(
+        const MediaPipelineConfig& config) = 0;
 
     virtual bool CreateRegion(int32_t handle,
                               const RegionConfig& config) = 0;

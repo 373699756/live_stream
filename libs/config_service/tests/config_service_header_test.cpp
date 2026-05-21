@@ -78,7 +78,7 @@ int main() {
                               const live_stream::ConfigJson &config) {
         ++validate_count;
         int64_t bitrate = 0;
-        if (!live_stream::json_utils::Load(config, "bitrate", &bitrate, 128,
+        if (!live_stream::json_utils::ReadField(config, "bitrate", &bitrate, 128,
                                            8192)) {
             return live_stream::ConfigResult::Failure("bitrate", "unsupported value");
         }
