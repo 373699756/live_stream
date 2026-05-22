@@ -105,6 +105,42 @@ RunWarningStep() {
   fi
 }
 
+RunShellStep() {
+  local name="$1"
+  local log_file="$2"
+  local script="$3"
+
+  Log "running ${name}"
+  {
+    printf '$ %s\n\n' "${script}"
+    bash -lc "${script}"
+  } >"${REPORT_DIR}/${log_file}" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "${name} failed with exit code ${status}"
+    RecordFailure "${name}"
+  fi
+}
+
+RunShellWarningStep() {
+  local name="$1"
+  local log_file="$2"
+  local script="$3"
+
+  Log "running ${name}"
+  {
+    printf '$ %s\n\n' "${script}"
+    bash -lc "${script}"
+  } >"${REPORT_DIR}/${log_file}" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "${name} finished with warning exit code ${status}"
+    RecordWarning "${name}: exit code ${status}"
+  fi
+}
+
 RunRgStep() {
   local name="$1"
   local log_file="$2"
@@ -279,6 +315,9 @@ StepLogFile() {
     clang-tidy)
       printf 'clang-tidy.log'
       ;;
+    "include-what-you-use")
+      printf 'iwyu.log'
+      ;;
     *)
       printf 'summary.md'
       ;;
@@ -290,6 +329,7 @@ WriteQualityReport() {
   local keyword_log="${REPORT_DIR}/keyword-scan.log"
   local hot_path_log="${REPORT_DIR}/hot-path-log-scan.log"
   local clang_tidy_log="${REPORT_DIR}/clang-tidy.log"
+  local iwyu_log="${REPORT_DIR}/iwyu.log"
   local make_log="${REPORT_DIR}/make.log"
 
   local cppcheck_count
@@ -297,11 +337,13 @@ WriteQualityReport() {
   local keyword_count
   local hot_path_count
   local clang_tidy_count
+  local iwyu_count
   cppcheck_count="$(CountMatches "${cppcheck_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning|style|performance|portability):')"
   cppcheck_error_count="$(CountMatches "${cppcheck_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: error:')"
   keyword_count="$(CountMatches "${keyword_log}" '^(app|libs|configs|www)/.*:')"
   hot_path_count="$(CountMatches "${hot_path_log}" '^(app|libs)/.*:')"
   clang_tidy_count="$(CountMatches "${clang_tidy_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):')"
+  iwyu_count="$(CountMatches "${iwyu_log}" ' should add these lines:| should remove these lines:| has correct #includes/fwd-decls')"
 
   {
     printf '# Quality Report\n\n'
@@ -319,6 +361,7 @@ WriteQualityReport() {
     printf '%s\n' "- keyword risk hits: ${keyword_count}"
     printf '%s\n' "- hot-path/logging hits: ${hot_path_count}"
     printf '%s\n' "- clang-tidy diagnostics: ${clang_tidy_count}"
+    printf '%s\n' "- include-what-you-use findings: ${iwyu_count}"
     printf '\n'
 
     printf '## Must Check First\n\n'
@@ -349,6 +392,9 @@ WriteQualityReport() {
 
     AppendFirstMatches "Review: Clang-Tidy Diagnostics" "${clang_tidy_log}" \
       '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):' 80
+
+    AppendFirstMatches "Review: Include-What-You-Use" "${iwyu_log}" \
+      ' should add these lines:| should remove these lines:| has correct #includes/fwd-decls' 80
 
     AppendTopFiles "Optimization Candidates: Files With Most Keyword Risk Hits" "${keyword_log}" \
       '^(app|libs|configs|www)/.*:' 20
@@ -454,20 +500,19 @@ else
 fi
 
 if [[ "${MODE}" == "full" ]]; then
-  RunOptionalStep bear "compile database" "bear.log" bear make -j2
+  if HaveTool bear; then
+    RunShellStep "compile database" "bear.log" \
+      "make clean && bear -- make -j2"
+  else
+    RecordSkipped "compile database: missing bear"
+  fi
 
   if HaveTool scan-build-10; then
-    RunWarningStep scan-build-10 "scan-build-10" "scan-build.log" \
-      scan-build-10 \
-      --use-cc arm-himix200-linux-gcc \
-      --use-c++ arm-himix200-linux-g++ \
-      make -j2
+    RunShellWarningStep "scan-build-10" "scan-build.log" \
+      "make clean && scan-build-10 --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
   elif HaveTool scan-build; then
-    RunWarningStep scan-build "scan-build" "scan-build.log" \
-      scan-build \
-      --use-cc arm-himix200-linux-gcc \
-      --use-c++ arm-himix200-linux-g++ \
-      make -j2
+    RunShellWarningStep "scan-build" "scan-build.log" \
+      "make clean && scan-build --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
   else
     RecordSkipped "scan-build: missing scan-build-10 or scan-build"
   fi
@@ -486,12 +531,16 @@ if [[ "${MODE}" == "full" ]]; then
     RecordSkipped "clang-tidy: missing compile_commands.json"
   fi
 
-  if HaveTool include-what-you-use; then
-    RecordSkipped "include-what-you-use: installed but not wired into this scan"
-  elif HaveTool iwyu; then
-    RecordSkipped "iwyu: installed but not wired into this scan"
-  else
+  if [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool iwyu_tool; then
+    RunShellWarningStep "include-what-you-use" "iwyu.log" \
+      "iwyu_tool -p '${ROOT_DIR}' app libs -- -Xiwyu --cxx17ns"
+  elif [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool include-what-you-use; then
+    RunShellWarningStep "include-what-you-use" "iwyu.log" \
+      "find app libs -path '*/tests/*' -prune -o -name '*.cpp' -print | sort | head -n 40 | xargs -r -n 1 include-what-you-use -std=c++17 -Iapp -Ilibs/infra_service/include"
+  elif ! HaveTool iwyu_tool && ! HaveTool include-what-you-use && ! HaveTool iwyu; then
     RecordSkipped "include-what-you-use: missing include-what-you-use or iwyu"
+  else
+    RecordSkipped "include-what-you-use: missing compile_commands.json"
   fi
 fi
 
