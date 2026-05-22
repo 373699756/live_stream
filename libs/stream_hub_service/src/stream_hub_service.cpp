@@ -10,7 +10,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -26,8 +25,6 @@ constexpr const char *kServiceName = "stream_hub_service";
 constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
-constexpr size_t kPayloadPreviewBytes = 16;
-constexpr FrameSequence kHubDiagMaxSeq = 2;
 
 bool IsStreamSupported(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
@@ -59,63 +56,6 @@ const char *CodecName(VideoCodec codec) {
     return "unknown";
 }
 
-const char *FrameTypeName(FrameType frame_type) {
-    switch (frame_type) {
-        case FrameType::kIdr:
-            return "idr";
-        case FrameType::kI:
-            return "i";
-        case FrameType::kP:
-            return "p";
-        case FrameType::kB:
-            return "b";
-        case FrameType::kJpeg:
-            return "jpeg";
-    }
-    return "unknown";
-}
-
-void FormatHexPreview(const EncodedFrame &frame, char *output,
-                      size_t output_size) {
-    if (output == nullptr || output_size == 0) {
-        return;
-    }
-    output[0] = '\0';
-    if (!frame.HasValidPayload()) {
-        return;
-    }
-
-    const uint8_t *data = frame.PayloadData();
-    const size_t preview_size =
-        frame.size < kPayloadPreviewBytes ? frame.size : kPayloadPreviewBytes;
-    size_t written = 0;
-    for (size_t i = 0; i < preview_size && written < output_size; ++i) {
-        const int ret = std::snprintf(
-            output + written, output_size - written, "%s%02x",
-            i == 0 ? "" : " ", static_cast<unsigned>(data[i]));
-        if (ret <= 0) {
-            return;
-        }
-        const size_t used = static_cast<size_t>(ret);
-        if (used >= output_size - written) {
-            output[output_size - 1] = '\0';
-            return;
-        }
-        written += used;
-    }
-}
-
-uint32_t FrameHeadWord(const EncodedFrame &frame) {
-    const uint8_t *data = frame.PayloadData();
-    if (data == nullptr || frame.size < 4) {
-        return 0;
-    }
-    return (static_cast<uint32_t>(data[0]) << 24) |
-           (static_cast<uint32_t>(data[1]) << 16) |
-           (static_cast<uint32_t>(data[2]) << 8) |
-           static_cast<uint32_t>(data[3]);
-}
-
 class StreamHubServiceImpl : public IStreamHubService, public IFrameSink {
 public:
     StreamHubServiceImpl(StreamHubServiceOptions options,
@@ -129,27 +69,40 @@ public:
         infra::Executor *worker_executor = nullptr;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (started_) {
+            if (run_state_ == StreamHubRunState::kStarted) {
                 return true;
+            }
+            if (run_state_ == StreamHubRunState::kStarting) {
+                return false;
             }
             media_service = dependencies_.media_service;
             if (!worker_executor_) {
                 worker_executor_.reset(new infra::Executor());
             }
             worker_executor = worker_executor_.get();
+            run_state_ = StreamHubRunState::kStarting;
         }
         if (media_service == nullptr || worker_executor == nullptr) {
+            std::lock_guard<std::mutex> guard(mutex_);
+            ResetRuntimeStateLocked();
+            run_state_ = StreamHubRunState::kStopped;
             return false;
         }
         if (options_.hls_segment_duration_ms == 0 ||
             options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0 ||
             options_.max_frame_sinks == 0) {
+            std::lock_guard<std::mutex> guard(mutex_);
+            ResetRuntimeStateLocked();
+            run_state_ = StreamHubRunState::kStopped;
             return false;
         }
         infra::ExecutorOptions executor_options;
         executor_options.worker_count = kWorkerThreadCount;
         executor_options.queue_capacity = kWorkerQueueCapacity;
         if (!worker_executor->Start(executor_options)) {
+            std::lock_guard<std::mutex> guard(mutex_);
+            ResetRuntimeStateLocked();
+            run_state_ = StreamHubRunState::kStopped;
             return false;
         }
         const VideoCodec main_codec =
@@ -158,25 +111,11 @@ public:
             media_service->GetStreamCodec(StreamId::kSub);
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            main_subscription_id_ = 0;
-            sub_subscription_id_ = 0;
-            main_pending_ = StreamFrameQueue{};
-            sub_pending_ = StreamFrameQueue{};
-            main_input_logged_ = false;
-            sub_input_logged_ = false;
-            main_bad_payload_logged_ = false;
-            sub_bad_payload_logged_ = false;
-            main_packaged_logged_ = false;
-            sub_packaged_logged_ = false;
-            main_stream_ = hub_state::StreamContext{};
+            ResetRuntimeStateLocked();
             main_stream_.codec = main_codec;
             main_stream_.state = StreamState::kClosed;
-            sub_stream_ = hub_state::StreamContext{};
             sub_stream_.codec = sub_codec;
             sub_stream_.state = StreamState::kClosed;
-            drain_task_posted_ = false;
-            last_drained_stream_ = StreamId::kSub;
-            started_ = true;
         }
 
         FrameSubscribeOptions main_options;
@@ -192,42 +131,61 @@ public:
         sub_options.sink_name = kServiceName;
         const FrameSubscriptionId sub_subscription_id =
             media_service->SubscribeFrames(sub_options, this);
-        const bool subscribed =
+        const bool has_media_subscription =
             main_subscription_id != 0 || sub_subscription_id != 0;
-        if (!subscribed) {
+        if (!has_media_subscription) {
             {
                 std::lock_guard<std::mutex> guard(mutex_);
-                started_ = false;
+                ResetRuntimeStateLocked();
+                run_state_ = StreamHubRunState::kStopped;
             }
             worker_executor->Stop(infra::StopMode::kDiscard);
             return false;
         }
-        bool request_main_idr = false;
-        bool request_sub_idr = false;
+        bool need_main_key_frame = false;
+        bool need_sub_key_frame = false;
+        bool start_was_cancelled = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!started_) {
-                return false;
+            if (run_state_ != StreamHubRunState::kStarting) {
+                start_was_cancelled = true;
+            } else {
+                main_subscription_id_ = main_subscription_id;
+                sub_subscription_id_ = sub_subscription_id;
+                run_state_ = StreamHubRunState::kStarted;
+                need_main_key_frame = main_subscription_id_ != 0;
+                need_sub_key_frame = sub_subscription_id_ != 0;
             }
-            main_subscription_id_ = main_subscription_id;
-            sub_subscription_id_ = sub_subscription_id;
-            request_main_idr = main_subscription_id_ != 0;
-            request_sub_idr = sub_subscription_id_ != 0;
+        }
+        if (start_was_cancelled) {
+            {
+                std::lock_guard<std::mutex> guard(mutex_);
+                ResetRuntimeStateLocked();
+                run_state_ = StreamHubRunState::kStopped;
+            }
+            if (main_subscription_id != 0) {
+                (void)media_service->UnsubscribeFrames(main_subscription_id);
+            }
+            if (sub_subscription_id != 0) {
+                (void)media_service->UnsubscribeFrames(sub_subscription_id);
+            }
+            worker_executor->Stop(infra::StopMode::kDiscard);
+            return false;
         }
         INFRA_LOG_INFO(kServiceName,
                        "stream hub subscribed main_id=%llu sub_id=%llu "
-                       "main_codec=%s sub_codec=%s request_main_idr=%d "
-                       "request_sub_idr=%d",
+                       "main_codec=%s sub_codec=%s need_main_key_frame=%d "
+                       "need_sub_key_frame=%d",
                        static_cast<unsigned long long>(main_subscription_id),
                        static_cast<unsigned long long>(sub_subscription_id),
                        CodecName(main_codec), CodecName(sub_codec),
-                       request_main_idr ? 1 : 0,
-                       request_sub_idr ? 1 : 0);
-        if (request_main_idr) {
+                       need_main_key_frame ? 1 : 0,
+                       need_sub_key_frame ? 1 : 0);
+        if (need_main_key_frame) {
             (void)media_service->RequestKeyFrame(StreamId::kMain,
                                                 KeyFrameReason::kRecovery);
         }
-        if (request_sub_idr) {
+        if (need_sub_key_frame) {
             (void)media_service->RequestKeyFrame(StreamId::kSub,
                                                 KeyFrameReason::kRecovery);
         }
@@ -241,29 +199,15 @@ public:
         FrameSubscriptionId sub_subscription_id = 0;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!started_) {
+            if (run_state_ == StreamHubRunState::kStopped) {
                 return;
             }
             media_service = dependencies_.media_service;
             main_subscription_id = main_subscription_id_;
             sub_subscription_id = sub_subscription_id_;
-            main_subscription_id_ = 0;
-            sub_subscription_id_ = 0;
-            main_pending_ = StreamFrameQueue{};
-            sub_pending_ = StreamFrameQueue{};
-            main_input_logged_ = false;
-            sub_input_logged_ = false;
-            main_bad_payload_logged_ = false;
-            sub_bad_payload_logged_ = false;
-            main_packaged_logged_ = false;
-            sub_packaged_logged_ = false;
-            drain_task_posted_ = false;
-            flv_clients_.Clear();
-            frame_dispatcher_.Clear();
-            main_stream_ = hub_state::StreamContext{};
-            sub_stream_ = hub_state::StreamContext{};
+            ResetRuntimeStateLocked();
             worker_executor = worker_executor_.get();
-            started_ = false;
+            run_state_ = StreamHubRunState::kStopped;
         }
         if (media_service != nullptr) {
             if (main_subscription_id != 0) {
@@ -404,7 +348,8 @@ public:
         bool request_key_frame = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!started_ || FindStream(options.stream_id) == nullptr ||
+            if (run_state_ != StreamHubRunState::kStarted ||
+                FindStream(options.stream_id) == nullptr ||
                 frame_dispatcher_.Size() >= options_.max_frame_sinks) {
                 return 0;
             }
@@ -436,7 +381,7 @@ public:
     StreamHubServiceStats GetStats() const override {
         std::lock_guard<std::mutex> guard(mutex_);
         StreamHubServiceStats stats = stats_;
-        stats.enabled = started_;
+        stats.enabled = run_state_ == StreamHubRunState::kStarted;
         stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.Size());
         stats.active_frame_sinks =
             static_cast<uint32_t>(frame_dispatcher_.Size());
@@ -453,11 +398,12 @@ public:
         }
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!started_ || worker_executor_ == nullptr) {
+            if (run_state_ != StreamHubRunState::kStarted ||
+                worker_executor_ == nullptr) {
                 return;
             }
-            LogInputFrameOnceLocked(frame);
-            StreamFrameQueue *queue = FindPendingQueue(frame.stream_id);
+            std::deque<EncodedFrame> *queue =
+                FindPendingQueue(frame.stream_id);
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
                 return;
             }
@@ -485,34 +431,43 @@ public:
     }
 
 private:
-    struct StreamFrameQueue {
-        std::deque<EncodedFrame> frames;
+    enum class StreamHubRunState {
+        kStopped = 0,
+        kStarting,
+        kStarted,
     };
+
+    void ResetRuntimeStateLocked() {
+        main_subscription_id_ = 0;
+        sub_subscription_id_ = 0;
+        main_pending_.clear();
+        sub_pending_.clear();
+        drain_task_posted_ = false;
+        last_drained_stream_ = StreamId::kSub;
+        flv_clients_.Clear();
+        frame_dispatcher_.Clear();
+        main_stream_ = hub_state::StreamContext{};
+        sub_stream_ = hub_state::StreamContext{};
+    }
 
     void DrainPendingFrames() {
         while (true) {
             EncodedFrame frame;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
-                if (!started_ || !TakeNextPendingFrameLocked(&frame)) {
+                if (run_state_ != StreamHubRunState::kStarted ||
+                    !TakeNextPendingFrameLocked(&frame)) {
                     drain_task_posted_ = false;
                     return;
                 }
             }
-            ProcessFrame(frame);
+            DispatchFrameSinks(frame);
+            PackageBrowserFrame(frame);
         }
     }
 
-    void ProcessFrame(const EncodedFrame &frame) {
+    void DispatchFrameSinks(const EncodedFrame &frame) {
         std::vector<hub_state::PendingStreamFrameSinkWrite> frame_sinks;
-        const bool log_diag = frame.sequence <= kHubDiagMaxSeq;
-        if (log_diag) {
-            INFRA_LOG_INFO(kServiceName,
-                           "hub diag process begin stream=%s seq=%llu size=%u",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           frame.size);
-        }
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -521,7 +476,6 @@ private:
             }
             if (stream->codec != frame.codec) {
                 hub_state::ResetStream(stream, frame.codec);
-                ResetStreamLogFlagsLocked(frame.stream_id);
             }
             if (stream->state != StreamState::kRunning) {
                 return;
@@ -529,79 +483,23 @@ private:
             frame_sinks = frame_dispatcher_.CollectWrites(frame);
         }
 
-        if (log_diag) {
-            INFRA_LOG_INFO(kServiceName,
-                           "hub diag sinks begin stream=%s seq=%llu sinks=%zu "
-                           "data=%p head=0x%08x",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           frame_sinks.size(),
-                           static_cast<const void*>(frame.PayloadData()),
-                           FrameHeadWord(frame));
-        }
         for (const hub_state::PendingStreamFrameSinkWrite &pending_sink :
              frame_sinks) {
             if (pending_sink.sink != nullptr) {
-                if (log_diag) {
-                    INFRA_LOG_INFO(
-                        kServiceName,
-                        "hub diag sink call begin stream=%s seq=%llu sink=%llu",
-                        StreamName(frame.stream_id),
-                        static_cast<unsigned long long>(frame.sequence),
-                        static_cast<unsigned long long>(pending_sink.sink_id));
-                }
                 pending_sink.sink->OnFrame(frame);
-                if (log_diag) {
-                    INFRA_LOG_INFO(
-                        kServiceName,
-                        "hub diag sink call end stream=%s seq=%llu sink=%llu",
-                        StreamName(frame.stream_id),
-                        static_cast<unsigned long long>(frame.sequence),
-                        static_cast<unsigned long long>(pending_sink.sink_id));
-                }
             }
         }
-        if (log_diag) {
-            INFRA_LOG_INFO(kServiceName,
-                           "hub diag sinks end stream=%s seq=%llu data=%p "
-                           "head=0x%08x",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           static_cast<const void*>(frame.PayloadData()),
-                           FrameHeadWord(frame));
-        }
+    }
 
+    void PackageBrowserFrame(const EncodedFrame &frame) {
         // 码流进入 hub 时仍是编码器输出的 Annex-B。先在锁外解析 NAL，避免在
         // 互斥锁内做线性扫描，后面同一批 NAL 会同时生成 HLS 和 FLV 两种载荷。
-        if (log_diag) {
-            INFRA_LOG_INFO(kServiceName,
-                           "hub diag parse begin stream=%s seq=%llu data=%p "
-                           "size=%u buffer_size=%u head=0x%08x",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           static_cast<const void*>(frame.PayloadData()),
-                           frame.size,
-                           frame.buffer != nullptr ? frame.buffer->size : 0,
-                           FrameHeadWord(frame));
-        }
         hub_state::ParsedFramePayload payload;
         hub_state::ParseFramePayload(frame, &payload);
-        if (log_diag) {
-            INFRA_LOG_INFO(
-                kServiceName,
-                "hub diag parse end stream=%s seq=%llu valid=%d h264=%zu "
-                "h265=%zu",
-                StreamName(frame.stream_id),
-                static_cast<unsigned long long>(frame.sequence),
-                payload.valid ? 1 : 0, payload.h264_units.count,
-                payload.h265_units.count);
-        }
         if (!hub_state::HasParsedUnits(payload)) {
-            LogBadPayloadOnce(frame, payload);
             return;
         }
 
-        std::vector<StreamFlvClientId> detach_ids;
         std::vector<hub_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         std::string flv_tag;
@@ -613,7 +511,6 @@ private:
             }
             if (stream->codec != frame.codec) {
                 hub_state::ResetStream(stream, frame.codec);
-                ResetStreamLogFlagsLocked(frame.stream_id);
             }
             if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
@@ -621,32 +518,13 @@ private:
             const bool was_hls_ready = hub_state::IsHlsStreamReady(*stream);
             const bool was_flv_ready = hub_state::IsFlvStreamReady(*stream);
 
-            if (log_diag) {
-                INFRA_LOG_INFO(kServiceName,
-                               "hub diag append begin stream=%s seq=%llu",
-                               StreamName(frame.stream_id),
-                               static_cast<unsigned long long>(
-                                   frame.sequence));
-            }
             const hub_state::PackagedFrameResult packaged_frame =
                 hub_state::AppendFrameToStream(
                     stream, frame, payload, options_.hls_segment_duration_ms,
                     options_.hls_playlist_depth);
-            if (log_diag) {
-                INFRA_LOG_INFO(
-                    kServiceName,
-                    "hub diag append end stream=%s seq=%llu accepted=%d "
-                    "flv=%zu seq_header=%zu",
-                    StreamName(frame.stream_id),
-                    static_cast<unsigned long long>(frame.sequence),
-                    packaged_frame.accepted ? 1 : 0,
-                    packaged_frame.flv_tag.size(),
-                    packaged_frame.sequence_header_tag.size());
-            }
             if (!packaged_frame.accepted) {
                 return;
             }
-            LogPackagedFrameOnceLocked(frame, payload, packaged_frame, *stream);
             const bool hls_ready = hub_state::IsHlsStreamReady(*stream);
             const bool flv_ready = hub_state::IsFlvStreamReady(*stream);
             if ((!was_hls_ready && hls_ready) ||
@@ -673,12 +551,21 @@ private:
                 has_sequence_header, packaged_frame.keyframe);
         }
 
+        WriteFlvClients(clients, sequence_header_tag, flv_tag, frame.stream_id);
+    }
+
+    void WriteFlvClients(
+        const std::vector<hub_state::PendingFlvClientWrite> &clients,
+        const std::string &sequence_header_tag,
+        const std::string &flv_tag,
+        StreamId stream_id) {
+        std::vector<StreamFlvClientId> detach_ids;
         for (const hub_state::PendingFlvClientWrite &client : clients) {
             if (client.starts_on_keyframe) {
                 INFRA_LOG_INFO(kServiceName,
                                "HTTP-FLV client starts stream=%s client=%llu "
                                "sequence_header=%zu keyframe=%zu",
-                               StreamName(frame.stream_id),
+                               StreamName(stream_id),
                                static_cast<unsigned long long>(
                                    client.client_id),
                                sequence_header_tag.size(), flv_tag.size());
@@ -701,130 +588,9 @@ private:
                 (void)DetachFlvClient(client_id);
             }
         }
-        if (log_diag) {
-            INFRA_LOG_INFO(kServiceName,
-                           "hub diag process end stream=%s seq=%llu",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence));
-        }
     }
 
-    bool *BadPayloadFlag(StreamId stream_id) {
-        if (stream_id == StreamId::kMain) {
-            return &main_bad_payload_logged_;
-        }
-        if (stream_id == StreamId::kSub) {
-            return &sub_bad_payload_logged_;
-        }
-        return nullptr;
-    }
-
-    bool *InputFrameFlag(StreamId stream_id) {
-        if (stream_id == StreamId::kMain) {
-            return &main_input_logged_;
-        }
-        if (stream_id == StreamId::kSub) {
-            return &sub_input_logged_;
-        }
-        return nullptr;
-    }
-
-    bool *PackagedFlag(StreamId stream_id) {
-        if (stream_id == StreamId::kMain) {
-            return &main_packaged_logged_;
-        }
-        if (stream_id == StreamId::kSub) {
-            return &sub_packaged_logged_;
-        }
-        return nullptr;
-    }
-
-    void ResetStreamLogFlagsLocked(StreamId stream_id) {
-        bool *bad_payload_logged = BadPayloadFlag(stream_id);
-        if (bad_payload_logged != nullptr) {
-            *bad_payload_logged = false;
-        }
-        bool *input_logged = InputFrameFlag(stream_id);
-        if (input_logged != nullptr) {
-            *input_logged = false;
-        }
-        bool *packaged_logged = PackagedFlag(stream_id);
-        if (packaged_logged != nullptr) {
-            *packaged_logged = false;
-        }
-    }
-
-    void LogInputFrameOnceLocked(const EncodedFrame &frame) {
-        bool *logged = InputFrameFlag(frame.stream_id);
-        if (logged == nullptr || *logged) {
-            return;
-        }
-        *logged = true;
-        char preview[kPayloadPreviewBytes * 3] = {};
-        FormatHexPreview(frame, preview, sizeof(preview));
-        INFRA_LOG_INFO(kServiceName,
-                       "received encoded frame: stream=%s codec=%s seq=%llu "
-                       "size=%u pts=%lld dts=%lld type=%s head=%s",
-                       StreamName(frame.stream_id), CodecName(frame.codec),
-                       static_cast<unsigned long long>(frame.sequence),
-                       frame.size, static_cast<long long>(frame.pts_us),
-                       static_cast<long long>(frame.dts_us),
-                       FrameTypeName(frame.frame_type), preview);
-    }
-
-    void LogBadPayloadOnce(const EncodedFrame &frame,
-                           const hub_state::ParsedFramePayload &payload) {
-        bool should_log = false;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            bool *logged = BadPayloadFlag(frame.stream_id);
-            if (logged != nullptr && !*logged) {
-                *logged = true;
-                should_log = true;
-            }
-        }
-        if (!should_log) {
-            return;
-        }
-
-        char preview[kPayloadPreviewBytes * 3] = {};
-        FormatHexPreview(frame, preview, sizeof(preview));
-        INFRA_LOG_ERROR(
-            "stream_hub_service",
-            "drop encoded frame: stream=%s codec=%s seq=%llu size=%u "
-            "pts=%lld dts=%lld type=%s parse_valid=%d h264_units=%zu "
-            "h265_units=%zu head=%s",
-            StreamName(frame.stream_id), CodecName(frame.codec),
-            static_cast<unsigned long long>(frame.sequence), frame.size,
-            static_cast<long long>(frame.pts_us),
-            static_cast<long long>(frame.dts_us),
-            FrameTypeName(frame.frame_type), payload.valid ? 1 : 0,
-            payload.h264_units.count, payload.h265_units.count, preview);
-    }
-
-    void LogPackagedFrameOnceLocked(
-        const EncodedFrame &frame, const hub_state::ParsedFramePayload &payload,
-        const hub_state::PackagedFrameResult &packaged_frame,
-        const hub_state::StreamContext &stream) {
-        bool *logged = PackagedFlag(frame.stream_id);
-        if (logged == nullptr || *logged) {
-            return;
-        }
-        *logged = true;
-        INFRA_LOG_INFO(
-            "stream_hub_service",
-            "accepted encoded frame: stream=%s codec=%s seq=%llu size=%u "
-            "type=%s h264_units=%zu h265_units=%zu seq_header=%zu "
-            "flv_tag=%zu hls_current=%zu segments=%zu",
-            StreamName(frame.stream_id), CodecName(frame.codec),
-            static_cast<unsigned long long>(frame.sequence), frame.size,
-            FrameTypeName(frame.frame_type), payload.h264_units.count,
-            payload.h265_units.count, stream.sequence_header_tag.size(),
-            packaged_frame.flv_tag.size(), stream.current_segment.body.size(),
-            stream.segments.size());
-    }
-
-    StreamFrameQueue *FindPendingQueue(StreamId stream_id) {
+    std::deque<EncodedFrame> *FindPendingQueue(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_pending_;
         }
@@ -834,59 +600,60 @@ private:
         return nullptr;
     }
 
-    bool DropOldestNonKeyFrameLocked(StreamFrameQueue *queue) {
+    bool DropOldestNonKeyFrameLocked(std::deque<EncodedFrame> *queue) {
         if (queue == nullptr) {
             return false;
         }
-        for (auto it = queue->frames.begin(); it != queue->frames.end(); ++it) {
+        for (auto it = queue->begin(); it != queue->end(); ++it) {
             if (!stream_codec::IsKeyFrame(it->frame_type)) {
-                queue->frames.erase(it);
+                queue->erase(it);
                 return true;
             }
         }
         return false;
     }
 
-    bool EnqueuePendingFrameLocked(StreamFrameQueue *queue,
+    bool EnqueuePendingFrameLocked(std::deque<EncodedFrame> *queue,
                                    const EncodedFrame &frame) {
         if (queue == nullptr) {
             return false;
         }
-        if (queue->frames.size() >= kMaxPendingFramesPerStream) {
+        if (queue->size() >= kMaxPendingFramesPerStream) {
             if (stream_codec::IsKeyFrame(frame.frame_type)) {
-                if (!DropOldestNonKeyFrameLocked(queue) && !queue->frames.empty()) {
-                    queue->frames.pop_front();
+                if (!DropOldestNonKeyFrameLocked(queue) && !queue->empty()) {
+                    queue->pop_front();
                 }
             } else if (!DropOldestNonKeyFrameLocked(queue)) {
                 return false;
             }
         }
-        queue->frames.push_back(frame);
-        return true;
-    }
-
-    bool PopPendingFrameLocked(StreamId stream_id, EncodedFrame *frame) {
-        StreamFrameQueue *queue = FindPendingQueue(stream_id);
-        if (queue == nullptr || frame == nullptr || queue->frames.empty()) {
-            return false;
-        }
-        *frame = queue->frames.front();
-        queue->frames.pop_front();
-        last_drained_stream_ = stream_id;
+        queue->push_back(frame);
         return true;
     }
 
     bool TakeNextPendingFrameLocked(EncodedFrame *frame) {
+        if (frame == nullptr) {
+            return false;
+        }
         const StreamId preferred_stream = last_drained_stream_ == StreamId::kMain
                                               ? StreamId::kSub
                                               : StreamId::kMain;
-        if (PopPendingFrameLocked(preferred_stream, frame)) {
-            return true;
-        }
         const StreamId fallback_stream = preferred_stream == StreamId::kMain
                                              ? StreamId::kSub
                                              : StreamId::kMain;
-        return PopPendingFrameLocked(fallback_stream, frame);
+        std::deque<EncodedFrame> *queue = FindPendingQueue(preferred_stream);
+        StreamId selected_stream = preferred_stream;
+        if (queue == nullptr || queue->empty()) {
+            queue = FindPendingQueue(fallback_stream);
+            selected_stream = fallback_stream;
+        }
+        if (queue == nullptr || queue->empty()) {
+            return false;
+        }
+        *frame = queue->front();
+        queue->pop_front();
+        last_drained_stream_ = selected_stream;
+        return true;
     }
 
     const hub_state::StreamContext *FindStream(StreamId stream_id) const {
@@ -913,8 +680,8 @@ private:
     StreamHubServiceDependencies dependencies_;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
-    StreamFrameQueue main_pending_;
-    StreamFrameQueue sub_pending_;
+    std::deque<EncodedFrame> main_pending_;
+    std::deque<EncodedFrame> sub_pending_;
     bool drain_task_posted_ = false;
     StreamId last_drained_stream_ = StreamId::kSub;
     hub_state::StreamContext main_stream_;
@@ -924,13 +691,7 @@ private:
     StreamHubServiceStats stats_;
     FrameSubscriptionId main_subscription_id_ = 0;
     FrameSubscriptionId sub_subscription_id_ = 0;
-    bool main_input_logged_ = false;
-    bool sub_input_logged_ = false;
-    bool main_bad_payload_logged_ = false;
-    bool sub_bad_payload_logged_ = false;
-    bool main_packaged_logged_ = false;
-    bool sub_packaged_logged_ = false;
-    bool started_ = false;
+    StreamHubRunState run_state_ = StreamHubRunState::kStopped;
 };
 
 }  // namespace

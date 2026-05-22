@@ -27,7 +27,6 @@ constexpr uint32_t kMaxRcStatTimeSec = 60;
 constexpr uint32_t kMinRcBitrateKbps = 2;
 constexpr uint32_t kMaxRcBitrateKbps = 614400;
 constexpr uint32_t kMaxInputFrameRate = 240;
-constexpr uint32_t kVencDiagMaxSeq = 8;
 
 // ─── Payload type from VideoCodec ──────────────────────────────
 PAYLOAD_TYPE_E PayloadFromCodec(VideoCodec codec) {
@@ -536,7 +535,6 @@ void HandleVencStream(VencStreamContext* context,
         std::free(packs);
         return;
     }
-    const bool log_diag = stream.u32Seq <= kVencDiagMaxSeq;
     if (stream.u32PackCount > status.u32CurPacks) {
         INFRA_LOG_ERROR(
             "hisi_vendor",
@@ -546,13 +544,6 @@ void HandleVencStream(VencStreamContext* context,
         (void)HI_MPI_VENC_ReleaseStream(context->venc, &stream);
         std::free(packs);
         return;
-    }
-    if (log_diag) {
-        INFRA_LOG_INFO("hisi_vendor",
-                       "VENC diag getstream chn=%d seq=%u cur_packs=%u "
-                       "left_frames=%u packs=%u",
-                       context->chn, stream.u32Seq, status.u32CurPacks,
-                       status.u32LeftStreamFrames, stream.u32PackCount);
     }
 
     VENC_STREAM_BUF_INFO_S stream_buffer{};
@@ -612,16 +603,6 @@ void HandleVencStream(VencStreamContext* context,
             VideoBufferRelease(buffer);
             return;
         }
-        if (log_diag) {
-            INFRA_LOG_INFO(
-                "hisi_vendor",
-                "VENC diag pack chn=%d seq=%u pack=%u/%u len=%u offset=%u "
-                "data=%u addr=%p frame_end=%d span=%u+%u",
-                context->chn, stream.u32Seq, i, stream.u32PackCount,
-                pack.u32Len, pack.u32Offset, packet_data.size,
-                static_cast<void*>(pack.pu8Addr), pack.bFrameEnd,
-                packet_data.first.size, packet_data.second.size);
-        }
         if (packet_data.size > payload_size - offset) {
             INFRA_LOG_ERROR("hisi_vendor",
                             "copy VENC stream overflow chn=%d seq=%u "
@@ -643,13 +624,6 @@ void HandleVencStream(VencStreamContext* context,
                         packet_data.second.size);
             offset += packet_data.second.size;
         }
-    }
-    if (log_diag) {
-        INFRA_LOG_INFO(
-            "hisi_vendor",
-            "VENC diag copy done chn=%d seq=%u size=%u cap=%u buffer=%p",
-            context->chn, stream.u32Seq, offset, buffer->capacity,
-            static_cast<void*>(buffer->data));
     }
     if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
         INFRA_LOG_ERROR("hisi_vendor",
@@ -681,17 +655,7 @@ void HandleVencStream(VencStreamContext* context,
     std::free(packs);
 
     if (callback != nullptr) {
-        if (log_diag) {
-            INFRA_LOG_INFO("hisi_vendor",
-                           "VENC diag callback begin chn=%d seq=%u size=%u",
-                           context->chn, frame.sequence, frame.size);
-        }
         callback(frame, user);
-        if (log_diag) {
-            INFRA_LOG_INFO("hisi_vendor",
-                           "VENC diag callback end chn=%d seq=%u size=%u",
-                           context->chn, frame.sequence, frame.size);
-        }
     }
 }
 

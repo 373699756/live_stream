@@ -35,11 +35,9 @@ enum class ServiceState {
 using media_internal::ParseVideoConfig;
 using media_internal::ValidateImageConfig;
 
-constexpr FrameSequence kMediaDiagMaxSeq = 8;
 constexpr int32_t kControlMin = 0;
 constexpr int32_t kControlMax = 100;
 constexpr int kImageStrategyIntervalMs = 1000;
-constexpr int kImageStrategyStableSamples = 3;
 
 const char* StreamName(StreamId stream_id) {
     switch (stream_id) {
@@ -298,6 +296,140 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     return copy;
 }
 
+class KeyFrameCache {
+public:
+    void Remember(const EncodedFrame &frame) {
+        if (!EncodedFrameHasKeyPicture(frame)) {
+            return;
+        }
+        const bool has_parameter_sets =
+            EncodedFrameHasCompleteParameterSets(frame);
+        CachedKeyFrame *cached = FindMutable(frame.stream_id);
+        if (cached == nullptr) {
+            return;
+        }
+        if (cached->has_frame && cached->has_parameter_sets &&
+            !has_parameter_sets) {
+            return;
+        }
+        EncodedFrame cached_frame = CloneEncodedFramePayload(frame);
+        if (!cached_frame.HasValidPayload()) {
+            return;
+        }
+        cached->frame = std::move(cached_frame);
+        cached->has_frame = true;
+        cached->has_parameter_sets = has_parameter_sets;
+    }
+
+    void Clear() {
+        main_ = CachedKeyFrame{};
+        sub_ = CachedKeyFrame{};
+    }
+
+    bool Get(StreamId stream_id, EncodedFrame *frame) const {
+        if (frame == nullptr) {
+            return false;
+        }
+        const CachedKeyFrame *cached = Find(stream_id);
+        if (cached == nullptr || !cached->has_frame) {
+            return false;
+        }
+        *frame = cached->frame;
+        return true;
+    }
+
+private:
+    struct CachedKeyFrame {
+        EncodedFrame frame;
+        bool has_frame = false;
+        bool has_parameter_sets = false;
+    };
+
+    CachedKeyFrame *FindMutable(StreamId stream_id) {
+        if (stream_id == StreamId::kMain) {
+            return &main_;
+        }
+        if (stream_id == StreamId::kSub) {
+            return &sub_;
+        }
+        return nullptr;
+    }
+
+    const CachedKeyFrame *Find(StreamId stream_id) const {
+        if (stream_id == StreamId::kMain) {
+            return &main_;
+        }
+        if (stream_id == StreamId::kSub) {
+            return &sub_;
+        }
+        return nullptr;
+    }
+
+    CachedKeyFrame main_;
+    CachedKeyFrame sub_;
+};
+
+class FrameSubscriptions {
+public:
+    struct SubscribedSink {
+        IFrameSink *sink = nullptr;
+        StreamId stream_id = StreamId::kMain;
+    };
+
+    struct SourceStateNotice {
+        IFrameSink *sink = nullptr;
+        StreamId stream_id = StreamId::kMain;
+        StreamState state = StreamState::kClosed;
+    };
+
+    FrameSubscriptionId ReserveId() { return next_subscription_id_++; }
+
+    void Add(FrameSubscriptionId id, const FrameSubscribeOptions &options,
+             IFrameSink *sink) {
+        sinks_[id] = std::make_pair(options, sink);
+    }
+
+    bool Remove(FrameSubscriptionId id) {
+        auto it = sinks_.find(id);
+        if (it == sinks_.end()) {
+            return false;
+        }
+        sinks_.erase(it);
+        return true;
+    }
+
+    std::vector<IFrameSink *> CollectSinks(StreamId stream_id) const {
+        std::vector<IFrameSink *> sinks;
+        for (const auto &item : sinks_) {
+            if (item.second.first.stream_id == stream_id &&
+                item.second.second != nullptr) {
+                sinks.push_back(item.second.second);
+            }
+        }
+        return sinks;
+    }
+
+    std::vector<SubscribedSink> CollectSubscribedSinks() const {
+        std::vector<SubscribedSink> subscribed_sinks;
+        for (const auto &item : sinks_) {
+            if (item.second.second == nullptr) {
+                continue;
+            }
+            SubscribedSink subscribed_sink;
+            subscribed_sink.sink = item.second.second;
+            subscribed_sink.stream_id = item.second.first.stream_id;
+            subscribed_sinks.push_back(subscribed_sink);
+        }
+        return subscribed_sinks;
+    }
+
+private:
+    std::map<FrameSubscriptionId,
+             std::pair<FrameSubscribeOptions, IFrameSink *>>
+        sinks_;
+    FrameSubscriptionId next_subscription_id_ = 1;
+};
+
 }  // namespace
 
 namespace {
@@ -338,25 +470,23 @@ private:
     MediaChannels active_channels;
     MediaCapabilities capabilities;
     ServiceState state = ServiceState::kCreated;
-    std::map<FrameSubscriptionId, std::pair<FrameSubscribeOptions, IFrameSink *>>
-        sinks;
-    FrameSubscriptionId next_subscription_id = 1;
+    FrameSubscriptions subscriptions;
     ConfigJson image_config = ConfigJson::object();
     ImageStrategyStatus image_strategy_status;
-    EncodedFrame last_main_key_frame;
-    EncodedFrame last_sub_key_frame;
+    KeyFrameCache key_frame_cache;
     mutable std::mutex mutex;
     std::mutex pipeline_op_mutex;
     bool video_config_attached = false;
     bool image_config_attached = false;
     bool system_initialized = false;
-    bool has_last_main_key_frame = false;
-    bool has_last_sub_key_frame = false;
-    bool last_main_key_frame_has_parameter_sets = false;
-    bool last_sub_key_frame_has_parameter_sets = false;
     std::thread image_strategy_thread;
     bool image_strategy_running = false;
     bool image_strategy_stop = false;
+
+    struct AttachedConfigs {
+        bool video = false;
+        bool image = false;
+    };
 
     bool Prepare() {
         ConfigJson video_config;
@@ -415,7 +545,7 @@ private:
                 return false;
             }
             state = ServiceState::kStopping;
-            ClearKeyFrameCacheLocked();
+            key_frame_cache.Clear();
         }
 
         pipeline.SetConfig(startup_config);
@@ -427,55 +557,13 @@ private:
             return false;
         }
 
-        bool attached_video_now = false;
-        bool attached_image_now = false;
-        if (options.config_service != nullptr) {
-            bool need_video_attach = false;
-            bool need_image_attach = false;
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                need_video_attach = !video_config_attached;
-                need_image_attach = !image_config_attached;
-            }
-            if (need_video_attach) {
-                ConfigAttachment attachment;
-                attachment.validate = [this](const ConfigJson &value) {
-                    std::lock_guard<std::mutex> guard(mutex);
-                    return CheckVideoConfig(value);
-                };
-                attachment.apply = [this](const ConfigJson &value) {
-                    return ApplyVideoConfig(value);
-                };
-                if (!options.config_service->AttachConfig("video", attachment)) {
-                    pipeline.DeinitSystem();
-                    std::lock_guard<std::mutex> lock(mutex);
-                    state = ServiceState::kDeinitialized;
-                    system_initialized = false;
-                    return false;
-                }
-                attached_video_now = true;
-            }
-            if (need_image_attach) {
-                ConfigAttachment attachment;
-                attachment.validate = [this](const ConfigJson &value) {
-                    std::lock_guard<std::mutex> guard(mutex);
-                    return CheckImageConfig(value);
-                };
-                attachment.apply = [this](const ConfigJson &value) {
-                    return ApplyImageConfig(value);
-                };
-                if (!options.config_service->AttachConfig("image", attachment)) {
-                    if (attached_video_now) {
-                        (void)options.config_service->DetachConfig("video");
-                    }
-                    pipeline.DeinitSystem();
-                    std::lock_guard<std::mutex> lock(mutex);
-                    state = ServiceState::kDeinitialized;
-                    system_initialized = false;
-                    return false;
-                }
-                attached_image_now = true;
-            }
+        AttachedConfigs attached_now;
+        if (!AttachConfigs(&attached_now)) {
+            pipeline.DeinitSystem();
+            std::lock_guard<std::mutex> lock(mutex);
+            state = ServiceState::kDeinitialized;
+            system_initialized = false;
+            return false;
         }
 
         {
@@ -486,13 +574,66 @@ private:
             if (has_image_config) {
                 image_config = next_image_config;
             }
-            if (attached_video_now) {
+            if (attached_now.video) {
                 video_config_attached = true;
             }
-            if (attached_image_now) {
+            if (attached_now.image) {
                 image_config_attached = true;
             }
             state = ServiceState::kInitialized;
+        }
+        return true;
+    }
+
+    bool AttachConfigs(AttachedConfigs *attached_now) {
+        if (attached_now == nullptr) {
+            return false;
+        }
+        *attached_now = AttachedConfigs{};
+        if (options.config_service == nullptr) {
+            return true;
+        }
+
+        bool need_video_attach = false;
+        bool need_image_attach = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            need_video_attach = !video_config_attached;
+            need_image_attach = !image_config_attached;
+        }
+
+        if (need_video_attach) {
+            ConfigAttachment attachment;
+            attachment.validate = [this](const ConfigJson &value) {
+                std::lock_guard<std::mutex> guard(mutex);
+                return CheckVideoConfig(value);
+            };
+            attachment.apply = [this](const ConfigJson &value) {
+                return ApplyVideoConfig(value);
+            };
+            if (!options.config_service->AttachConfig("video", attachment)) {
+                return false;
+            }
+            attached_now->video = true;
+        }
+
+        if (need_image_attach) {
+            ConfigAttachment attachment;
+            attachment.validate = [this](const ConfigJson &value) {
+                std::lock_guard<std::mutex> guard(mutex);
+                return CheckImageConfig(value);
+            };
+            attachment.apply = [this](const ConfigJson &value) {
+                return ApplyImageConfig(value);
+            };
+            if (!options.config_service->AttachConfig("image", attachment)) {
+                if (attached_now->video) {
+                    (void)options.config_service->DetachConfig("video");
+                }
+                *attached_now = AttachedConfigs{};
+                return false;
+            }
+            attached_now->image = true;
         }
         return true;
     }
@@ -503,21 +644,23 @@ private:
         bool detach_image = false;
         bool stop_pipeline = false;
         bool deinit_pipeline = false;
+        std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
         {
             std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 if (state == ServiceState::kStarted) {
                     state = ServiceState::kStopping;
-                    NotifySourceState(StreamState::kClosed);
+                    source_state_events =
+                        BuildSourceStateEventsLocked(StreamState::kClosed);
                     stop_pipeline = true;
-                    ClearKeyFrameCacheLocked();
+                    key_frame_cache.Clear();
                     state = ServiceState::kStopped;
                 }
                 if (state != ServiceState::kDeinitialized &&
                     state != ServiceState::kCreated) {
                     deinit_pipeline = true;
-                    ClearKeyFrameCacheLocked();
+                    key_frame_cache.Clear();
                     state = ServiceState::kDeinitialized;
                 }
                 detach_video = video_config_attached;
@@ -533,6 +676,7 @@ private:
                 pipeline.DeinitSystem();
             }
         }
+        NotifySourceState(source_state_events);
 
         if (options.config_service != nullptr) {
             if (detach_video) {
@@ -545,14 +689,6 @@ private:
     }
 
     static void OnPipelineFrame(const EncodedFrame &frame, void *user) {
-        if (frame.sequence <= kMediaDiagMaxSeq) {
-            INFRA_LOG_INFO("media_service",
-                           "media diag pipeline callback stream=%s seq=%llu "
-                           "size=%u user=%p",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           frame.size, user);
-        }
         if (user != nullptr) {
             static_cast<MediaServiceImpl *>(user)->DispatchFrame(frame);
         }
@@ -560,149 +696,47 @@ private:
 
     void DispatchFrame(const EncodedFrame &frame) {
         std::vector<IFrameSink *> matching_sinks;
-        const bool log_diag = frame.sequence <= kMediaDiagMaxSeq;
-        if (log_diag) {
-            INFRA_LOG_INFO("media_service",
-                           "media diag dispatch begin stream=%s seq=%llu "
-                           "size=%u",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           frame.size);
-        }
         {
             std::lock_guard<std::mutex> guard(mutex);
             if (state != ServiceState::kStarted) {
                 return;
             }
-            if (log_diag) {
-                INFRA_LOG_INFO(
-                    "media_service",
-                    "media diag remember begin stream=%s seq=%llu",
-                    StreamName(frame.stream_id),
-                    static_cast<unsigned long long>(frame.sequence));
-            }
-            RememberKeyFrame(frame);
-            if (log_diag) {
-                INFRA_LOG_INFO(
-                    "media_service",
-                    "media diag remember end stream=%s seq=%llu",
-                    StreamName(frame.stream_id),
-                    static_cast<unsigned long long>(frame.sequence));
-            }
-            for (const auto &item : sinks) {
-                if (item.second.first.stream_id == frame.stream_id &&
-                    item.second.second != nullptr) {
-                    matching_sinks.push_back(item.second.second);
-                }
-            }
-        }
-        if (log_diag) {
-            INFRA_LOG_INFO("media_service",
-                           "media diag sinks begin stream=%s seq=%llu "
-                           "sinks=%zu",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           matching_sinks.size());
+            key_frame_cache.Remember(frame);
+            matching_sinks = subscriptions.CollectSinks(frame.stream_id);
         }
         for (IFrameSink *sink : matching_sinks) {
-            if (log_diag) {
-                INFRA_LOG_INFO(
-                    "media_service",
-                    "media diag sink call begin stream=%s seq=%llu sink=%p",
-                    StreamName(frame.stream_id),
-                    static_cast<unsigned long long>(frame.sequence),
-                    static_cast<void*>(sink));
-            }
             sink->OnFrame(frame);
-            if (log_diag) {
-                INFRA_LOG_INFO(
-                    "media_service",
-                    "media diag sink call end stream=%s seq=%llu sink=%p",
-                    StreamName(frame.stream_id),
-                    static_cast<unsigned long long>(frame.sequence),
-                    static_cast<void*>(sink));
-            }
-        }
-        if (log_diag) {
-            INFRA_LOG_INFO("media_service",
-                           "media diag dispatch end stream=%s seq=%llu",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence));
         }
     }
 
-    void RememberKeyFrame(const EncodedFrame &frame) {
-        if (!EncodedFrameHasKeyPicture(frame)) {
-            return;
+    std::vector<FrameSubscriptions::SourceStateNotice>
+    BuildSourceStateEventsLocked(StreamState stream_state) const {
+        std::vector<FrameSubscriptions::SourceStateNotice> events;
+        const std::vector<FrameSubscriptions::SubscribedSink> targets =
+            subscriptions.CollectSubscribedSinks();
+        for (const FrameSubscriptions::SubscribedSink &target : targets) {
+            const VideoStreamConfig *stream =
+                FindConfiguredStream(active_config, target.stream_id);
+            const bool stream_running =
+                stream_state == StreamState::kRunning && stream != nullptr &&
+                stream->enabled;
+            FrameSubscriptions::SourceStateNotice event;
+            event.sink = target.sink;
+            event.stream_id = target.stream_id;
+            event.state = stream_running ? stream_state : StreamState::kClosed;
+            events.push_back(event);
         }
-        const bool has_parameter_sets =
-            EncodedFrameHasCompleteParameterSets(frame);
-        if (frame.stream_id == StreamId::kMain) {
-            if (has_last_main_key_frame &&
-                last_main_key_frame_has_parameter_sets &&
-                !has_parameter_sets) {
-                return;
-            }
-            EncodedFrame cached_frame = CloneEncodedFramePayload(frame);
-            if (!cached_frame.HasValidPayload()) {
-                return;
-            }
-            last_main_key_frame = std::move(cached_frame);
-            has_last_main_key_frame = true;
-            last_main_key_frame_has_parameter_sets = has_parameter_sets;
-        } else if (frame.stream_id == StreamId::kSub) {
-            if (has_last_sub_key_frame &&
-                last_sub_key_frame_has_parameter_sets &&
-                !has_parameter_sets) {
-                return;
-            }
-            EncodedFrame cached_frame = CloneEncodedFramePayload(frame);
-            if (!cached_frame.HasValidPayload()) {
-                return;
-            }
-            last_sub_key_frame = std::move(cached_frame);
-            has_last_sub_key_frame = true;
-            last_sub_key_frame_has_parameter_sets = has_parameter_sets;
-        }
+        return events;
     }
 
-    void ClearKeyFrameCacheLocked() {
-        last_main_key_frame = EncodedFrame{};
-        last_sub_key_frame = EncodedFrame{};
-        has_last_main_key_frame = false;
-        has_last_sub_key_frame = false;
-        last_main_key_frame_has_parameter_sets = false;
-        last_sub_key_frame_has_parameter_sets = false;
-    }
-
-    bool GetLastKeyFrameLocked(StreamId stream_id, EncodedFrame *frame) const {
-        if (frame == nullptr) {
-            return false;
-        }
-        if (stream_id == StreamId::kMain && has_last_main_key_frame) {
-            *frame = last_main_key_frame;
-            return true;
-        }
-        if (stream_id == StreamId::kSub && has_last_sub_key_frame) {
-            *frame = last_sub_key_frame;
-            return true;
-        }
-        return false;
-    }
-
-    void NotifySourceState(StreamState stream_state) {
-        for (const auto &item : sinks) {
-            if (item.second.second != nullptr) {
-                const VideoStreamConfig *stream =
-                    FindConfiguredStream(active_config,
-                                         item.second.first.stream_id);
-                const bool stream_running =
-                    stream_state == StreamState::kRunning && stream != nullptr &&
-                    stream->enabled;
-                const StreamState effective_state =
-                    stream_running ? stream_state : StreamState::kClosed;
-                item.second.second->OnSourceStateChanged(item.second.first.stream_id,
-                                                         effective_state);
+    static void NotifySourceState(
+        const std::vector<FrameSubscriptions::SourceStateNotice>
+            &source_state_events) {
+        for (const FrameSubscriptions::SourceStateNotice &notification :
+             source_state_events) {
+            if (notification.sink != nullptr) {
+                notification.sink->OnSourceStateChanged(notification.stream_id,
+                                                        notification.state);
             }
         }
     }
@@ -846,9 +880,6 @@ private:
     }
 
     void ImageStrategyLoop() {
-        int stable_tier = -1;
-        int pending_tier = -1;
-        int pending_count = 0;
         while (true) {
             {
                 std::lock_guard<std::mutex> guard(mutex);
@@ -859,7 +890,6 @@ private:
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(kImageStrategyIntervalMs));
 
-            bool enabled = false;
             {
                 std::lock_guard<std::mutex> guard(mutex);
                 if (image_strategy_stop) {
@@ -867,9 +897,8 @@ private:
                 }
                 const bool strategy_enabled =
                     IsImageStrategyEnabled(image_config);
-                enabled = state == ServiceState::kStarted && strategy_enabled;
                 image_strategy_status.enabled = strategy_enabled;
-                if (!enabled) {
+                if (state != ServiceState::kStarted || !strategy_enabled) {
                     image_strategy_status.active = false;
                     continue;
                 }
@@ -878,45 +907,22 @@ private:
             const hisisdk::ExposureInfo exposure = pipeline.QueryExposureInfo();
             if (!exposure.valid) {
                 std::lock_guard<std::mutex> guard(mutex);
+                if (image_strategy_stop) {
+                    return;
+                }
                 image_strategy_status.exposure_valid = false;
                 continue;
-            }
-
-            const int tier = IsoTier(exposure.iso);
-            if (tier != pending_tier) {
-                pending_tier = tier;
-                pending_count = 1;
-            } else if (pending_count < kImageStrategyStableSamples) {
-                ++pending_count;
-            }
-            if (stable_tier < 0 ||
-                pending_count >= kImageStrategyStableSamples) {
-                stable_tier = pending_tier;
-            }
-            hisisdk::ExposureInfo stable_exposure = exposure;
-            if (stable_tier >= 0 && stable_tier != tier) {
-                if (stable_tier == 0) {
-                    stable_exposure.iso = 400;
-                } else if (stable_tier == 1) {
-                    stable_exposure.iso = 1600;
-                } else if (stable_tier == 2) {
-                    stable_exposure.iso = 6400;
-                } else {
-                    stable_exposure.iso = 6401;
-                }
             }
 
             ImageStrategyStatus next_status;
             ConfigJson adjusted;
             {
                 std::lock_guard<std::mutex> guard(mutex);
-                const bool strategy_enabled =
-                    IsImageStrategyEnabled(image_config);
                 if (image_strategy_stop || state != ServiceState::kStarted ||
-                    !strategy_enabled) {
+                    !IsImageStrategyEnabled(image_config)) {
                     continue;
                 }
-                adjusted = BuildImageStrategyConfigLocked(stable_exposure,
+                adjusted = BuildImageStrategyConfigLocked(exposure,
                                                           &next_status);
             }
 
@@ -926,11 +932,10 @@ private:
                 bool can_apply = false;
                 {
                     std::lock_guard<std::mutex> guard(mutex);
-                    const bool strategy_enabled =
+                    can_apply =
+                        !image_strategy_stop &&
+                        state == ServiceState::kStarted &&
                         IsImageStrategyEnabled(image_config);
-                    can_apply = !image_strategy_stop &&
-                                state == ServiceState::kStarted &&
-                                strategy_enabled;
                 }
                 if (can_apply) {
                     applied = pipeline.ApplyImageConfig(adjusted);
@@ -944,101 +949,99 @@ private:
     }
 
     bool ApplyPipelineConfig(const MediaPipelineConfig &config) {
-        bool was_started = false;
-        bool was_initialized = false;
-        ServiceState previous_state = ServiceState::kCreated;
-        MediaPipelineConfig previous;
-        ConfigJson saved_image_config;
+        bool restart_stream = false;
+        bool rebuild_system = false;
+        ServiceState state_before_change = ServiceState::kCreated;
+        ConfigJson image_config_before_change;
+        std::vector<FrameSubscriptions::SourceStateNotice>
+            source_closed_events;
         {
             std::lock_guard<std::mutex> guard(mutex);
             if (state == ServiceState::kStopping) {
                 return false;
             }
-            previous_state = state;
-            was_started = state == ServiceState::kStarted;
-            was_initialized = system_initialized;
-            previous = active_config;
-            saved_image_config = image_config;
+            state_before_change = state;
+            restart_stream = state == ServiceState::kStarted;
+            rebuild_system = system_initialized;
+            image_config_before_change = image_config;
             state = ServiceState::kStopping;
-            if (was_started) {
-                NotifySourceState(StreamState::kClosed);
+            if (restart_stream) {
+                source_closed_events =
+                    BuildSourceStateEventsLocked(StreamState::kClosed);
             }
-            ClearKeyFrameCacheLocked();
+            key_frame_cache.Clear();
         }
+        NotifySourceState(source_closed_events);
 
-        if (was_started) {
+        if (restart_stream) {
             StopImageStrategy();
         }
 
-        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
-        if (was_started) {
-            pipeline.Stop();
-        }
-        if (was_initialized) {
-            pipeline.DeinitSystem();
+        bool device_config_applied = false;
+        {
+            std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+            if (restart_stream) {
+                pipeline.Stop();
+            }
+            if (rebuild_system) {
+                pipeline.DeinitSystem();
+            }
+
+            pipeline.SetConfig(config);
+
+            device_config_applied = true;
+            if (rebuild_system && !pipeline.InitSystem()) {
+                device_config_applied = false;
+            } else if (restart_stream && !pipeline.Start()) {
+                device_config_applied = false;
+            } else if (restart_stream &&
+                       !ApplyImageConfigToPipeline(
+                           image_config_before_change)) {
+                device_config_applied = false;
+            }
+
+            if (!device_config_applied && (restart_stream || rebuild_system)) {
+                pipeline.Stop();
+                if (rebuild_system) {
+                    pipeline.DeinitSystem();
+                }
+            }
         }
 
-        pipeline.SetConfig(config);
-        bool ok = !was_initialized || pipeline.InitSystem();
-        if (ok && was_started) {
-            ok = pipeline.Start();
-            if (ok) {
-                ok = ApplyImageConfigToPipeline(saved_image_config);
+        std::vector<FrameSubscriptions::SourceStateNotice>
+            source_state_events;
+        if (device_config_applied) {
+            {
+                std::lock_guard<std::mutex> guard(mutex);
+                active_config = config;
+                active_channels = BuildChannelsForConfig(active_config);
+                system_initialized = rebuild_system;
+                state = restart_stream ? ServiceState::kStarted
+                                       : state_before_change;
+                if (restart_stream) {
+                    source_state_events =
+                        BuildSourceStateEventsLocked(StreamState::kRunning);
+                    StartImageStrategyLocked();
+                }
             }
-        }
-        if (ok) {
-            std::lock_guard<std::mutex> guard(mutex);
-            active_config = config;
-            active_channels = BuildChannelsForConfig(active_config);
-            system_initialized = was_initialized;
-            state = previous_state;
-            if (was_started) {
-                state = ServiceState::kStarted;
-                NotifySourceState(StreamState::kRunning);
-                StartImageStrategyLocked();
-            }
+            NotifySourceState(source_state_events);
             return true;
         }
 
-        pipeline.Stop();
-        if (was_initialized) {
-            pipeline.DeinitSystem();
-        }
-        pipeline.SetConfig(previous);
-        bool recovered = false;
-        if (was_initialized) {
-            recovered = pipeline.InitSystem();
-            if (recovered && was_started) {
-                recovered = pipeline.Start();
-                if (recovered) {
-                    recovered = ApplyImageConfigToPipeline(saved_image_config);
-                }
-            }
-        } else {
-            recovered = true;
-        }
         {
             std::lock_guard<std::mutex> guard(mutex);
-            if (recovered) {
-                active_config = previous;
-                active_channels = BuildChannelsForConfig(active_config);
-                system_initialized = was_initialized;
-                state = previous_state;
-                if (was_started) {
-                    state = ServiceState::kStarted;
-                    NotifySourceState(StreamState::kRunning);
-                    StartImageStrategyLocked();
-                }
-            } else if (was_started) {
-                system_initialized = false;
-                state = ServiceState::kStopped;
-                NotifySourceState(StreamState::kError);
+            system_initialized = false;
+            if (restart_stream) {
+                state = rebuild_system ? ServiceState::kDeinitialized
+                                       : ServiceState::kStopped;
+                source_state_events =
+                    BuildSourceStateEventsLocked(StreamState::kError);
             } else {
-                system_initialized = false;
-                state = was_initialized ? ServiceState::kDeinitialized
-                                        : previous_state;
+                state = rebuild_system ? ServiceState::kDeinitialized
+                                       : state_before_change;
             }
         }
+        NotifySourceState(source_state_events);
         return false;
     }
 
@@ -1055,7 +1058,7 @@ bool MediaServiceImpl::Start() {
         return false;
     }
 
-    ConfigJson saved_image_config;
+    ConfigJson image_config_before_change;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (state == ServiceState::kStarted) {
@@ -1068,35 +1071,48 @@ bool MediaServiceImpl::Start() {
             return false;
         }
         state = ServiceState::kStopping;
-        ClearKeyFrameCacheLocked();
-        saved_image_config = image_config;
+        key_frame_cache.Clear();
+        image_config_before_change = image_config;
     }
 
-    std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
-    bool ok = pipeline.Start();
-    if (ok) {
-        ok = ApplyImageConfigToPipeline(saved_image_config);
+    bool ok = false;
+    {
+        std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
+        ok = pipeline.Start();
+        if (ok) {
+            ok = ApplyImageConfigToPipeline(image_config_before_change);
+        }
+        if (!ok) {
+            pipeline.Stop();
+        }
     }
     if (!ok) {
-        pipeline.Stop();
-        std::lock_guard<std::mutex> lock(mutex);
-        ClearKeyFrameCacheLocked();
-        state = ServiceState::kInitialized;
-        NotifySourceState(StreamState::kError);
+        std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            key_frame_cache.Clear();
+            state = ServiceState::kInitialized;
+            source_state_events =
+                BuildSourceStateEventsLocked(StreamState::kError);
+        }
+        NotifySourceState(source_state_events);
         return false;
     }
+    std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex);
         state = ServiceState::kStarted;
-        NotifySourceState(StreamState::kRunning);
+        source_state_events = BuildSourceStateEventsLocked(StreamState::kRunning);
         StartImageStrategyLocked();
     }
+    NotifySourceState(source_state_events);
     return true;
 }
 
 void MediaServiceImpl::Stop() {
     StopImageStrategy();
     bool should_stop = false;
+    std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (state != ServiceState::kStarted) {
@@ -1107,10 +1123,11 @@ void MediaServiceImpl::Stop() {
         }
 
         state = ServiceState::kStopping;
-        NotifySourceState(StreamState::kClosed);
-        ClearKeyFrameCacheLocked();
+        source_state_events = BuildSourceStateEventsLocked(StreamState::kClosed);
+        key_frame_cache.Clear();
         should_stop = true;
     }
+    NotifySourceState(source_state_events);
 
     if (should_stop) {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
@@ -1164,28 +1181,20 @@ MediaServiceImpl::SubscribeFrames(const FrameSubscribeOptions &options,
         }
         has_last_key_frame =
             options.require_key_frame_first &&
-            GetLastKeyFrameLocked(options.stream_id, &last_key_frame);
-        id = next_subscription_id++;
+            key_frame_cache.Get(options.stream_id, &last_key_frame);
+        id = subscriptions.ReserveId();
+        subscriptions.Add(id, options, sink);
     }
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
     if (has_last_key_frame) {
         sink->OnFrame(last_key_frame);
-    }
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        sinks[id] = std::make_pair(options, sink);
     }
     return id;
 }
 
 bool MediaServiceImpl::UnsubscribeFrames(FrameSubscriptionId subscription_id) {
     std::lock_guard<std::mutex> lock(mutex);
-    auto it = sinks.find(subscription_id);
-    if (it == sinks.end()) {
-        return false;
-    }
-    sinks.erase(it);
-    return true;
+    return subscriptions.Remove(subscription_id);
 }
 
 bool MediaServiceImpl::RequestKeyFrame(StreamId stream_id,

@@ -17,7 +17,6 @@ namespace live_stream {
 namespace {
 
 constexpr int64_t kPeerSetupTimeoutMs = 10000;
-constexpr FrameSequence kWebrtcDiagMaxSeq = 2;
 
 enum class ServiceState {
     kCreated = 0,
@@ -43,18 +42,6 @@ bool IsValidOptions(const WebrtcServiceOptions &options) {
 
 bool IsValidStream(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
-}
-
-const char *StreamName(StreamId stream_id) {
-    switch (stream_id) {
-        case StreamId::kMain:
-            return "main";
-        case StreamId::kSub:
-            return "sub";
-        case StreamId::kSnapshot:
-            return "snapshot";
-    }
-    return "unknown";
 }
 
 }  // namespace
@@ -421,15 +408,6 @@ private:
     void SendEncodedFrame(const EncodedFrame &frame,
                           const std::vector<WebrtcPeerInfo> &peers) {
         webrtc_internal::IWebrtcEngine *engine = nullptr;
-        const bool log_diag = frame.sequence <= kWebrtcDiagMaxSeq;
-        if (log_diag) {
-            INFRA_LOG_INFO("webrtc_service",
-                           "webrtc diag send begin stream=%s seq=%llu size=%u "
-                           "peers=%zu",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           frame.size, peers.size());
-        }
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || !engine_) {
@@ -443,27 +421,11 @@ private:
         uint64_t sent_frames = 0;
         uint64_t dropped_frames = 0;
         for (const WebrtcPeerInfo &peer : peers) {
-            if (log_diag) {
-                INFRA_LOG_INFO("webrtc_service",
-                               "webrtc diag peer send begin stream=%s "
-                               "seq=%llu peer=%s",
-                               StreamName(frame.stream_id),
-                               static_cast<unsigned long long>(frame.sequence),
-                               peer.peer_id.c_str());
-            }
             if (engine->SendFrame(peer, frame)) {
                 delivered = true;
                 ++sent_frames;
             } else {
                 ++dropped_frames;
-            }
-            if (log_diag) {
-                INFRA_LOG_INFO("webrtc_service",
-                               "webrtc diag peer send end stream=%s seq=%llu "
-                               "peer=%s",
-                               StreamName(frame.stream_id),
-                               static_cast<unsigned long long>(frame.sequence),
-                               peer.peer_id.c_str());
             }
         }
 
@@ -472,15 +434,6 @@ private:
         stats_.dropped_frames += dropped_frames;
         if (!delivered) {
             ++stats_.dropped_frames;
-        }
-        if (log_diag) {
-            INFRA_LOG_INFO("webrtc_service",
-                           "webrtc diag send end stream=%s seq=%llu sent=%llu "
-                           "dropped=%llu",
-                           StreamName(frame.stream_id),
-                           static_cast<unsigned long long>(frame.sequence),
-                           static_cast<unsigned long long>(sent_frames),
-                           static_cast<unsigned long long>(dropped_frames));
         }
     }
 
