@@ -6,18 +6,12 @@
 #include "infra/log.h"
 #include "stream_hub_service.h"
 
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
-#include <thread>
 
 namespace live_stream {
 namespace {
-
-constexpr uint32_t kHlsStartWaitMs = 2500;
-constexpr uint32_t kHlsStartPollMs = 50;
-constexpr uint32_t kHlsStartRequestEveryMs = 500;
 
 const char *VideoCodecName(VideoCodec codec) {
     switch (codec) {
@@ -93,28 +87,6 @@ HttpResponse HandlePlaylist(IStreamHubService *stream_hub,
                             const StreamBrowserStatus &browser_status) {
     bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
     StreamHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
-    if (playlist.entries.empty() && browser_status.running &&
-        browser_status.browser_codec) {
-        const auto deadline = std::chrono::steady_clock::now() +
-                              std::chrono::milliseconds(kHlsStartWaitMs);
-        auto next_keyframe_request = std::chrono::steady_clock::now() +
-                                     std::chrono::milliseconds(
-                                         kHlsStartRequestEveryMs);
-        while (playlist.entries.empty() &&
-               std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(kHlsStartPollMs));
-            if (std::chrono::steady_clock::now() >= next_keyframe_request) {
-                keyframe_requested =
-                    RequestBrowserKeyFrame(stream_hub, stream_id) ||
-                    keyframe_requested;
-                next_keyframe_request = std::chrono::steady_clock::now() +
-                                        std::chrono::milliseconds(
-                                            kHlsStartRequestEveryMs);
-            }
-            playlist = stream_hub->GetHlsPlaylist(stream_id);
-        }
-    }
     if (playlist.entries.empty()) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HLS reject stream=%s object=%s reason=empty "

@@ -490,6 +490,8 @@ public:
 
     void sslCloseAlert(int32_t uid) override;
 
+    void DetachEngine() { engine_ = nullptr; }
+
 private:
     MetaRtcEngine *engine_ = nullptr;
     std::string peer_id_;
@@ -666,6 +668,10 @@ public:
             }
             session = it->second;
             peers_.erase(it);
+        }
+        if (session && session->callbacks) {
+            std::lock_guard<std::mutex> session_guard(session->mutex);
+            session->callbacks->DetachEngine();
         }
         session.reset();
         return true;
