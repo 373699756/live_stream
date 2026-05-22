@@ -3,6 +3,7 @@
 
 #include "media/encoded_frame.h"
 #include "media/stream_types.h"
+#include "stream_codec.h"
 
 #include <cstdint>
 #include <string>
@@ -24,6 +25,13 @@ enum class KeyFrameReason {
 
 using FrameSubscriptionId = uint64_t;
 
+struct ParsedVideoFrame {
+    EncodedFrame coded_frame;
+    bool has_nal_units = false;
+    stream_codec::H264NalUnitList h264_units;
+    stream_codec::H265NalUnitList h265_units;
+};
+
 struct FrameSubscribeOptions {
     StreamId stream_id = StreamId::kMain;
     bool require_key_frame_first = true;
@@ -35,7 +43,7 @@ public:
     virtual ~IFrameSink() = default;
 
     virtual const char* Name() const = 0;
-    virtual void OnFrame(const EncodedFrame& frame) = 0;
+    virtual void OnFrame(const ParsedVideoFrame& frame) = 0;
     virtual void OnSourceStateChanged(StreamId stream_id,
                                       StreamState state) = 0;
 };

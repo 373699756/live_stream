@@ -118,13 +118,13 @@ public:
         if (udp_result != 0) {
             udp_socket_id_ = udp_result;
         }
-        StreamFrameSinkOptions main_options;
+        FrameSubscribeOptions main_options;
         main_options.stream_id = StreamId::kMain;
         main_options.require_key_frame_first = true;
         main_options.sink_name = kServiceName;
         main_sink_id_ =
             dependencies_.stream_hub->AttachFrameSink(main_options, this);
-        StreamFrameSinkOptions sub_options;
+        FrameSubscribeOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.require_key_frame_first = true;
         sub_options.sink_name = kServiceName;
@@ -204,8 +204,8 @@ public:
         return true;
     }
 
-    void OnFrame(const EncodedFrame& frame) override {
-        (void)OnEncodedFrame(frame);
+    void OnFrame(const ParsedVideoFrame& frame) override {
+        (void)OnEncodedFrame(frame.coded_frame);
     }
 
     void OnSourceStateChanged(StreamId stream_id,
@@ -783,8 +783,8 @@ private:
     RtspListenAddress local_address_;
     RtspSessionStore sessions_;
     RtspServiceStats stats_;
-    StreamFrameSinkId main_sink_id_ = 0;
-    StreamFrameSinkId sub_sink_id_ = 0;
+    FrameSubscriptionId main_sink_id_ = 0;
+    FrameSubscriptionId sub_sink_id_ = 0;
 };
 
 std::unique_ptr<IRtspService> CreateRtspService(

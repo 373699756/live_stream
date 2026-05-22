@@ -209,18 +209,19 @@ YangPushData *QueueRawFrame(YangRtcPacer *pacer, const EncodedFrame &frame,
 }
 
 YangPushData *QueueH264Frame(YangRtcPacer *pacer,
-                             const EncodedFrame &frame,
+                             const ParsedVideoFrame &frame,
                              VideoParameterCache *cache) {
-    const uint8_t *data = frame.PayloadData();
+    const EncodedFrame &coded_frame = frame.coded_frame;
+    const uint8_t *data = coded_frame.PayloadData();
     if (data == nullptr) {
         return nullptr;
     }
-    stream_codec::H264NalUnitList nals;
-    (void)stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &nals);
-    const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
-                                             : 0;
+    const stream_codec::H264NalUnitList &nals = frame.h264_units;
+    const uint64_t pts_us = coded_frame.pts_us > 0
+                                ? static_cast<uint64_t>(coded_frame.pts_us)
+                                : 0;
     if (nals.empty()) {
-        return QueueRawFrame(pacer, frame, data);
+        return QueueRawFrame(pacer, coded_frame, data);
     }
 
     const H264ParameterSets parameter_sets =
@@ -264,18 +265,19 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
 }
 
 YangPushData *QueueH265Frame(YangRtcPacer *pacer,
-                             const EncodedFrame &frame,
+                             const ParsedVideoFrame &frame,
                              VideoParameterCache *cache) {
-    const uint8_t *data = frame.PayloadData();
+    const EncodedFrame &coded_frame = frame.coded_frame;
+    const uint8_t *data = coded_frame.PayloadData();
     if (data == nullptr) {
         return nullptr;
     }
-    stream_codec::H265NalUnitList nals;
-    (void)stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &nals);
-    const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
-                                             : 0;
+    const stream_codec::H265NalUnitList &nals = frame.h265_units;
+    const uint64_t pts_us = coded_frame.pts_us > 0
+                                ? static_cast<uint64_t>(coded_frame.pts_us)
+                                : 0;
     if (nals.empty()) {
-        return QueueRawFrame(pacer, frame, data);
+        return QueueRawFrame(pacer, coded_frame, data);
     }
 
     const H265ParameterSets parameter_sets =
@@ -678,7 +680,8 @@ public:
     }
 
     bool SendFrame(const WebrtcPeerInfo &peer,
-                   const EncodedFrame &frame) override {
+                   const ParsedVideoFrame &frame) override {
+        const EncodedFrame &coded_frame = frame.coded_frame;
         std::shared_ptr<MetaRtcPeerSession> session;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -688,15 +691,16 @@ public:
             }
             session = it->second;
         }
-        if (!session || !frame.HasValidPayload() ||
-            !IsSupportedCodec(frame.codec) || frame.codec != session->peer.codec) {
+        if (!session || !coded_frame.HasValidPayload() ||
+            !IsSupportedCodec(coded_frame.codec) ||
+            coded_frame.codec != session->peer.codec || !frame.has_nal_units) {
             return false;
         }
 
         {
             std::lock_guard<std::mutex> session_guard(session->mutex);
             YangPushData *push_data =
-                frame.codec == VideoCodec::kH265
+                coded_frame.codec == VideoCodec::kH265
                     ? QueueH265Frame(session->pacer.get(), frame,
                                      &session->parameters)
                     : QueueH264Frame(session->pacer.get(), frame,
@@ -854,10 +858,12 @@ public:
     }
 
     bool SendFrame(const WebrtcPeerInfo &peer,
-                   const EncodedFrame &frame) override {
+                   const ParsedVideoFrame &frame) override {
+        const EncodedFrame &coded_frame = frame.coded_frame;
         std::lock_guard<std::mutex> guard(mutex_);
-        if (peers_.find(peer.peer_id) == peers_.end() || !frame.buffer ||
-            frame.size == 0) {
+        if (peers_.find(peer.peer_id) == peers_.end() ||
+            !coded_frame.buffer || coded_frame.size == 0 ||
+            !frame.has_nal_units) {
             return false;
         }
         ++sent_frames_;

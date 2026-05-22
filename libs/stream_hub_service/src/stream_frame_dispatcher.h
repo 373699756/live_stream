@@ -13,7 +13,7 @@ namespace live_stream {
 namespace stream_hub_internal {
 
 struct PendingStreamFrameSinkWrite {
-    StreamFrameSinkId sink_id = 0;
+    FrameSubscriptionId sink_id = 0;
     IFrameSink *sink = nullptr;
 };
 
@@ -21,9 +21,9 @@ struct PendingStreamFrameSinkWrite {
 // owning service provides synchronization and calls this class under its mutex.
 class StreamFrameDispatcher {
 public:
-    StreamFrameSinkId Attach(const StreamFrameSinkOptions &options,
-                             IFrameSink *sink, size_t max_sinks);
-    bool Detach(StreamFrameSinkId sink_id);
+    FrameSubscriptionId Attach(const FrameSubscribeOptions &options,
+                               IFrameSink *sink, size_t max_sinks);
+    bool Detach(FrameSubscriptionId sink_id);
     void Clear();
     size_t Size() const;
     std::vector<PendingStreamFrameSinkWrite> CollectWrites(
@@ -37,8 +37,8 @@ private:
         std::string sink_name;
     };
 
-    std::map<StreamFrameSinkId, FrameSinkState> frame_sinks_;
-    StreamFrameSinkId next_frame_sink_id_ = 1;
+    std::map<FrameSubscriptionId, FrameSinkState> frame_sinks_;
+    FrameSubscriptionId next_frame_sink_id_ = 1;
 };
 
 }  // namespace stream_hub_internal

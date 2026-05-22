@@ -14,7 +14,6 @@
 namespace live_stream {
 
 using StreamFlvClientId = uint64_t;
-using StreamFrameSinkId = uint64_t;
 
 struct StreamHubServiceOptions {
     uint32_t hls_segment_duration_ms = 1000;
@@ -75,12 +74,6 @@ struct StreamBrowserStatus {
     bool flv_supported = false;
 };
 
-struct StreamFrameSinkOptions {
-    StreamId stream_id = StreamId::kMain;
-    bool require_key_frame_first = true;
-    std::string sink_name;
-};
-
 class IStreamFlvSink {
 public:
     virtual ~IStreamFlvSink() = default;
@@ -108,9 +101,9 @@ public:
                     bool wait_for_keyframe,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
-    virtual StreamFrameSinkId AttachFrameSink(
-        const StreamFrameSinkOptions &options, IFrameSink *sink) = 0;
-    virtual bool DetachFrameSink(StreamFrameSinkId sink_id) = 0;
+    virtual FrameSubscriptionId AttachFrameSink(
+        const FrameSubscribeOptions &options, IFrameSink *sink) = 0;
+    virtual bool DetachFrameSink(FrameSubscriptionId sink_id) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason) = 0;
     virtual StreamHubServiceStats GetStats() const = 0;

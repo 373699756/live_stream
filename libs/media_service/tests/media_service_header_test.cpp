@@ -12,7 +12,7 @@ class TestFrameSink : public live_stream::IFrameSink {
 public:
     const char* Name() const override { return "test_sink"; }
 
-    void OnFrame(const live_stream::EncodedFrame& frame) override {
+    void OnFrame(const live_stream::ParsedVideoFrame& frame) override {
         (void)frame;
         ++frames;
     }

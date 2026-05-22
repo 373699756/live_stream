@@ -64,8 +64,8 @@ public:
         (void)client_id;
         return false;
     }
-    live_stream::StreamFrameSinkId AttachFrameSink(
-        const live_stream::StreamFrameSinkOptions& options,
+    live_stream::FrameSubscriptionId AttachFrameSink(
+        const live_stream::FrameSubscribeOptions& options,
         live_stream::IFrameSink* sink) override {
         if (sink == nullptr) {
             return 0;
@@ -80,7 +80,7 @@ public:
         }
         return 0;
     }
-    bool DetachFrameSink(live_stream::StreamFrameSinkId sink_id) override {
+    bool DetachFrameSink(live_stream::FrameSubscriptionId sink_id) override {
         if (sink_id == 1) {
             main_sink = nullptr;
             return true;

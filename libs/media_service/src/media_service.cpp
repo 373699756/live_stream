@@ -695,6 +695,8 @@ private:
     }
 
     void DispatchFrame(const EncodedFrame &frame) {
+        ParsedVideoFrame parsed_frame;
+        parsed_frame.coded_frame = frame;
         std::vector<IFrameSink *> matching_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex);
@@ -705,7 +707,7 @@ private:
             matching_sinks = subscriptions.CollectSinks(frame.stream_id);
         }
         for (IFrameSink *sink : matching_sinks) {
-            sink->OnFrame(frame);
+            sink->OnFrame(parsed_frame);
         }
     }
 
@@ -1187,7 +1189,9 @@ MediaServiceImpl::SubscribeFrames(const FrameSubscribeOptions &options,
     }
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
     if (has_last_key_frame) {
-        sink->OnFrame(last_key_frame);
+        ParsedVideoFrame parsed_frame;
+        parsed_frame.coded_frame = last_key_frame;
+        sink->OnFrame(parsed_frame);
     }
     return id;
 }

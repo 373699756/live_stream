@@ -12,17 +12,18 @@ void WebrtcFrameDispatcher::Clear() {
 }
 
 WebrtcFrameQueueResult WebrtcFrameDispatcher::Queue(
-    const EncodedFrame &frame) {
+    const ParsedVideoFrame &frame) {
     WebrtcFrameQueueResult result;
-    PendingFrameSlot *slot = FindPendingSlot(frame.stream_id);
+    PendingFrameSlot *slot = FindPendingSlot(frame.coded_frame.stream_id);
     if (slot == nullptr) {
         result.dropped_frames = 1;
         return result;
     }
     if (slot->ready) {
         const bool existing_keyframe =
-            stream_codec::IsKeyFrame(slot->frame.frame_type);
-        const bool new_keyframe = stream_codec::IsKeyFrame(frame.frame_type);
+            stream_codec::IsKeyFrame(slot->frame.coded_frame.frame_type);
+        const bool new_keyframe =
+            stream_codec::IsKeyFrame(frame.coded_frame.frame_type);
         if (existing_keyframe && !new_keyframe) {
             result.dropped_frames = 1;
             return result;
@@ -35,7 +36,7 @@ WebrtcFrameQueueResult WebrtcFrameDispatcher::Queue(
     return result;
 }
 
-bool WebrtcFrameDispatcher::TakeNext(EncodedFrame *frame) {
+bool WebrtcFrameDispatcher::TakeNext(ParsedVideoFrame *frame) {
     if (frame == nullptr) {
         return false;
     }
@@ -62,7 +63,7 @@ WebrtcFrameDispatcher::FindPendingSlot(StreamId stream_id) {
     return nullptr;
 }
 
-bool WebrtcFrameDispatcher::Take(StreamId stream_id, EncodedFrame *frame) {
+bool WebrtcFrameDispatcher::Take(StreamId stream_id, ParsedVideoFrame *frame) {
     PendingFrameSlot *slot = FindPendingSlot(stream_id);
     if (slot == nullptr || frame == nullptr || !slot->ready) {
         return false;

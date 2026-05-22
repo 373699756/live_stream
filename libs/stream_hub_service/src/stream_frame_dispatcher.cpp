@@ -5,12 +5,13 @@
 namespace live_stream {
 namespace stream_hub_internal {
 
-StreamFrameSinkId StreamFrameDispatcher::Attach(
-    const StreamFrameSinkOptions &options, IFrameSink *sink, size_t max_sinks) {
+FrameSubscriptionId StreamFrameDispatcher::Attach(
+    const FrameSubscribeOptions &options, IFrameSink *sink,
+    size_t max_sinks) {
     if (sink == nullptr || frame_sinks_.size() >= max_sinks) {
         return 0;
     }
-    const StreamFrameSinkId sink_id = next_frame_sink_id_++;
+    const FrameSubscriptionId sink_id = next_frame_sink_id_++;
     FrameSinkState frame_sink;
     frame_sink.stream_id = options.stream_id;
     frame_sink.require_key_frame_first = options.require_key_frame_first;
@@ -20,7 +21,7 @@ StreamFrameSinkId StreamFrameDispatcher::Attach(
     return sink_id;
 }
 
-bool StreamFrameDispatcher::Detach(StreamFrameSinkId sink_id) {
+bool StreamFrameDispatcher::Detach(FrameSubscriptionId sink_id) {
     return frame_sinks_.erase(sink_id) != 0;
 }
 

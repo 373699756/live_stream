@@ -29,6 +29,15 @@ void FlvClientRegistry::Clear() { flv_clients_.clear(); }
 
 size_t FlvClientRegistry::Size() const { return flv_clients_.size(); }
 
+bool FlvClientRegistry::HasClient(StreamId stream_id) const {
+    for (const auto &item : flv_clients_) {
+        if (item.second.stream_id == stream_id && item.second.sink != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<PendingFlvClientWrite> FlvClientRegistry::CollectWrites(
     StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
     bool has_sequence_header, bool keyframe) {

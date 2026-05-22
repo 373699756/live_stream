@@ -63,8 +63,8 @@ public:
         (void)client_id;
         return false;
     }
-    live_stream::StreamFrameSinkId AttachFrameSink(
-        const live_stream::StreamFrameSinkOptions& options,
+    live_stream::FrameSubscriptionId AttachFrameSink(
+        const live_stream::FrameSubscribeOptions& options,
         live_stream::IFrameSink* sink) override {
         if (sink == nullptr) {
             return 0;
@@ -79,7 +79,7 @@ public:
         }
         return 0;
     }
-    bool DetachFrameSink(live_stream::StreamFrameSinkId sink_id) override {
+    bool DetachFrameSink(live_stream::FrameSubscriptionId sink_id) override {
         if (sink_id == 1) {
             main_sink = nullptr;
             return true;
@@ -164,7 +164,10 @@ int main() {
     frame.buffer = live_stream::VideoBufferAlloc(16);
     frame.size = 8;
     (void)live_stream::VideoBufferSetSize(frame.buffer, 16);
-    service->OnFrame(frame);
+    live_stream::ParsedVideoFrame parsed_frame;
+    parsed_frame.coded_frame = frame;
+    parsed_frame.has_nal_units = true;
+    service->OnFrame(parsed_frame);
     if (!WaitForSentFrames(service.get(), 1)) {
         return 6;
     }

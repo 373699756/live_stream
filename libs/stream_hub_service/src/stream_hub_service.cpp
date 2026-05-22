@@ -342,13 +342,13 @@ public:
         return flv_clients_.Detach(client_id);
     }
 
-    StreamFrameSinkId AttachFrameSink(
-        const StreamFrameSinkOptions &options, IFrameSink *sink) override {
+    FrameSubscriptionId AttachFrameSink(
+        const FrameSubscribeOptions &options, IFrameSink *sink) override {
         if (sink == nullptr || !IsStreamSupported(options.stream_id)) {
             return 0;
         }
         IMediaService *media_service = nullptr;
-        StreamFrameSinkId sink_id = 0;
+        FrameSubscriptionId sink_id = 0;
         bool request_key_frame = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -369,7 +369,7 @@ public:
         return sink_id;
     }
 
-    bool DetachFrameSink(StreamFrameSinkId sink_id) override {
+    bool DetachFrameSink(FrameSubscriptionId sink_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
         return frame_dispatcher_.Detach(sink_id);
     }
@@ -394,7 +394,8 @@ public:
 
     const char *Name() const override { return kServiceName; }
 
-    void OnFrame(const EncodedFrame &frame) override {
+    void OnFrame(const ParsedVideoFrame &input_frame) override {
+        const EncodedFrame &frame = input_frame.coded_frame;
         infra::Executor *worker_executor = nullptr;
         bool post_drain = false;
         if (!frame.HasValidPayload() || !IsStreamSupported(frame.stream_id)) {
@@ -465,13 +466,60 @@ private:
                     return;
                 }
             }
-            DispatchFrameSinks(frame);
-            PackageBrowserFrame(frame);
+            hub_state::ParsedFramePayload payload;
+            const bool has_payload = BuildParsedFrame(frame, &payload);
+            DispatchFrameSinks(payload);
+            PackageBrowserFrame(payload, has_payload);
         }
     }
 
-    void DispatchFrameSinks(const EncodedFrame &frame) {
+    bool BuildParsedFrame(const EncodedFrame &frame,
+                          hub_state::ParsedFramePayload *payload) {
+        if (payload == nullptr) {
+            return false;
+        }
+        hub_state::ParseFramePayload(frame, payload);
+        return hub_state::HasParsedUnits(*payload);
+    }
+
+    void DispatchFrameSinks(const hub_state::ParsedFramePayload &payload) {
         std::vector<hub_state::PendingStreamFrameSinkWrite> frame_sinks;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            hub_state::StreamContext *stream =
+                FindMutableStream(payload.coded_frame.stream_id);
+            if (stream == nullptr) {
+                return;
+            }
+            if (stream->codec != payload.coded_frame.codec) {
+                hub_state::ResetStream(stream, payload.coded_frame.codec);
+            }
+            if (stream->state != StreamState::kRunning) {
+                return;
+            }
+            frame_sinks = frame_dispatcher_.CollectWrites(payload.coded_frame);
+        }
+
+        for (const hub_state::PendingStreamFrameSinkWrite &pending_sink :
+             frame_sinks) {
+            if (pending_sink.sink != nullptr) {
+                pending_sink.sink->OnFrame(payload);
+            }
+        }
+    }
+
+    void PackageBrowserFrame(const hub_state::ParsedFramePayload &payload,
+                             bool has_payload) {
+        if (!has_payload) {
+            return;
+        }
+        const EncodedFrame &frame = payload.coded_frame;
+        std::vector<hub_state::PendingFlvClientWrite> clients;
+        std::string sequence_header_tag;
+        std::string flv_tag;
+        bool package_hls = false;
+        bool package_flv = false;
+        bool update_flv_header = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -481,32 +529,17 @@ private:
             if (stream->codec != frame.codec) {
                 hub_state::ResetStream(stream, frame.codec);
             }
-            if (stream->state != StreamState::kRunning) {
+            if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
             }
-            frame_sinks = frame_dispatcher_.CollectWrites(frame);
+            package_hls = stream->hls_requested;
+            package_flv = flv_clients_.HasClient(frame.stream_id);
+            update_flv_header = hub_state::IsFlvCodecSupported(stream->codec);
         }
-
-        for (const hub_state::PendingStreamFrameSinkWrite &pending_sink :
-             frame_sinks) {
-            if (pending_sink.sink != nullptr) {
-                pending_sink.sink->OnFrame(frame);
-            }
-        }
-    }
-
-    void PackageBrowserFrame(const EncodedFrame &frame) {
-        // 码流进入 hub 时仍是编码器输出的 Annex-B。先在锁外解析 NAL，避免在
-        // 互斥锁内做线性扫描，后面同一批 NAL 会同时生成 HLS 和 FLV 两种载荷。
-        hub_state::ParsedFramePayload payload;
-        hub_state::ParseFramePayload(frame, &payload);
-        if (!hub_state::HasParsedUnits(payload)) {
+        if (!package_hls && !package_flv && !update_flv_header) {
             return;
         }
 
-        std::vector<hub_state::PendingFlvClientWrite> clients;
-        std::string sequence_header_tag;
-        std::string flv_tag;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -521,10 +554,12 @@ private:
             }
             const bool was_hls_ready = hub_state::IsHlsStreamReady(*stream);
             const bool was_flv_ready = hub_state::IsFlvStreamReady(*stream);
+            package_hls = stream->hls_requested;
+            package_flv = flv_clients_.HasClient(frame.stream_id);
 
             hub_state::PackagedFrameResult packaged_frame =
                 hub_state::AppendFrameToStream(
-                    stream, frame, payload, stream->hls_requested,
+                    stream, frame, payload, package_hls, package_flv,
                     options_.hls_segment_duration_ms,
                     options_.hls_playlist_depth);
             if (!packaged_frame.accepted) {

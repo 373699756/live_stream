@@ -29,6 +29,7 @@ public:
     bool Detach(StreamFlvClientId client_id);
     void Clear();
     size_t Size() const;
+    bool HasClient(StreamId stream_id) const;
     std::vector<PendingFlvClientWrite> CollectWrites(
         StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
         bool has_sequence_header, bool keyframe);

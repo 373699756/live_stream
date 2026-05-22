@@ -43,12 +43,7 @@ struct StreamContext {
     int64_t last_frame_duration_us = 33333;
 };
 
-struct ParsedFramePayload {
-    VideoCodec codec = VideoCodec::kH264;
-    bool valid = false;
-    stream_codec::H264NalUnitList h264_units;
-    stream_codec::H265NalUnitList h265_units;
-};
+using ParsedFramePayload = ParsedVideoFrame;
 
 struct PackagedFrameResult {
     bool accepted = false;
@@ -80,6 +75,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
+                                        bool package_flv,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth);
 

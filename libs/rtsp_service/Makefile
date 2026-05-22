@@ -4,6 +4,7 @@ CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/stream_mux/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/stream_hub_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
