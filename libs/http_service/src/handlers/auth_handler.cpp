@@ -18,6 +18,7 @@ ConfigJson PrincipalToJson(const AuthPrincipal &principal) {
     root["user_name"] = principal.user_name;
     root["session_id"] = principal.session_id;
     root["role"] = AuthRoleToJsonString(principal.role);
+    root["must_change_password"] = principal.must_change_password;
     return root;
 }
 
@@ -36,6 +37,9 @@ public:
                               &AuthHttpHandler::HandleLoginRoute, this);
         router->AddExactRoute(HttpMethod::kPost, "/api/auth/logout",
                               &AuthHttpHandler::HandleLogoutRoute, this);
+        router->AddExactRoute(HttpMethod::kPost, "/api/auth/change-password",
+                              &AuthHttpHandler::HandleChangePasswordRoute,
+                              this);
         router->AddExactRoute(HttpMethod::kGet, "/api/auth/me",
                               &AuthHttpHandler::HandleMeRoute, this);
     }
@@ -49,6 +53,12 @@ private:
     static HttpResponse HandleLogoutRoute(void *user,
                                           const HttpRequest &request) {
         return static_cast<AuthHttpHandler *>(user)->HandleLogout(request);
+    }
+
+    static HttpResponse HandleChangePasswordRoute(void *user,
+                                                  const HttpRequest &request) {
+        return static_cast<AuthHttpHandler *>(user)->HandleChangePassword(
+            request);
     }
 
     static HttpResponse HandleMeRoute(void *user, const HttpRequest &request) {
@@ -81,13 +91,14 @@ private:
         ConfigJson root = ConfigJson::object();
         root["token"] = login.token;
         root["expires_at_ms"] = login.expires_at_ms;
+        root["must_change_password"] = login.must_change_password;
         root["principal"] = PrincipalToJson(login.principal);
         return JsonResponse(200, root);
     }
 
     HttpResponse HandleLogout(const HttpRequest &request) {
-        AuthPrincipal principal;
-        if (!RequireAuth(access_, request, &principal)) {
+        AuthPrincipal principal = access_->Authenticate(request);
+        if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
         live_stream::RequestContext request_context =
@@ -98,12 +109,43 @@ private:
         return OkResponse();
     }
 
-    HttpResponse HandleMe(const HttpRequest &request) {
-        AuthPrincipal principal;
-        if (!RequireAuth(access_, request, &principal)) {
+    HttpResponse HandleChangePassword(const HttpRequest &request) {
+        AuthPrincipal principal = access_->Authenticate(request);
+        if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
-        return JsonResponse(200, PrincipalToJson(principal));
+        ConfigJson parsed;
+        if (!ParseJsonObject(request, &parsed)) {
+            access_->IncrementParseFailures();
+            return StatusResponse(400, "Invalid JSON");
+        }
+        std::string old_password;
+        std::string new_password;
+        if (!json_utils::ReadField(parsed, "old_password", &old_password) ||
+            !json_utils::ReadField(parsed, "new_password", &new_password)) {
+            return StatusResponse(400, "Invalid change-password request");
+        }
+
+        ChangePasswordRequest change_request;
+        change_request.context = access_->MakeContext(request, &principal);
+        change_request.old_password = old_password;
+        change_request.new_password = new_password;
+        if (!auth_service_->ChangePassword(change_request)) {
+            access_->IncrementAuthFailures();
+            return StatusResponse(401, "Unauthorized");
+        }
+        return OkResponse();
+    }
+
+    HttpResponse HandleMe(const HttpRequest &request) {
+        AuthPrincipal principal = access_->Authenticate(request);
+        if (principal.user_name.empty()) {
+            return StatusResponse(401, "Unauthorized");
+        }
+        ConfigJson root = ConfigJson::object();
+        root["principal"] = PrincipalToJson(principal);
+        root["must_change_password"] = principal.must_change_password;
+        return JsonResponse(200, root);
     }
 
     HttpAccess *access_ = nullptr;

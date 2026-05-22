@@ -6,22 +6,8 @@
       "user_name": "admin",
       "role": "admin",
       "enabled": true,
-      "password_credential": "sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:aa59d4e505fdc79cf87da7c492d5fbb965a791cd7eac26595048ee46b5f7c182",
-      "password_plaintext": "admin"
-    },
-    {
-      "user_name": "operator",
-      "role": "operator",
-      "enabled": true,
-      "password_credential": "sha256:102132435465768798a9babbdccdedef:c74db0372f1d7a3fb8e4466284acf4cf4a4ac21704607bdc5bd340ab07b0ea81",
-      "password_plaintext": "operator"
-    },
-    {
-      "user_name": "viewer",
-      "role": "viewer",
-      "enabled": true,
-      "password_credential": "sha256:2031425364758697a8b9cacbdcedfe0f:587e23f20e966bfe690ba5458da4939abded0fa7fc4f9b13028b86c94d78c977",
-      "password_plaintext": "viewer"
+      "must_change_password": true,
+      "password_credential": "sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:aa59d4e505fdc79cf87da7c492d5fbb965a791cd7eac26595048ee46b5f7c182"
     }
   ]
 }

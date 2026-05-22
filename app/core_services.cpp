@@ -154,7 +154,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     AuthServiceDependencies auth_dependencies;
     auth_dependencies.config_service = config_.get();
     auth_ = CreateAuthService(auth_options, auth_dependencies,
-                              CreateJsonAuthUserStore(paths.auth_users_path),
+                              CreateConfigAuthUserStore(paths.auth_users_path),
                               CreateSha256PasswordVerifier());
     auth_audit_sink_.reset(new AuthAuditToLoggerSink(logger_.get()));
     if (auth_ != nullptr) {

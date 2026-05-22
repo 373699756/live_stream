@@ -50,8 +50,10 @@ private:
         }
         if (request.method == HttpMethod::kGet) {
             AuthPrincipal principal;
-            if (!RequireAuth(access_, request, &principal)) {
-                return StatusResponse(401, "Unauthorized");
+            HttpResponse auth_response =
+                RequireAuthResponse(access_, request, &principal);
+            if (auth_response.status_code != 0) {
+                return auth_response;
             }
             ConfigJson config = config_service->GetValue(name);
             if (config.is_null()) {
@@ -68,7 +70,7 @@ private:
             if (!RequirePermissionOrForbidden(access_, request,
                                               AuthPermission::kModifyConfig,
                                               name, &principal)) {
-                return StatusResponse(403, "Forbidden");
+                return ForbiddenResponse(principal);
             }
             ConfigJson config;
             if (!ParseJsonObject(request, &config)) {

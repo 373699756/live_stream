@@ -282,6 +282,9 @@ private:
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
+        if (principal.must_change_password) {
+            return ForbiddenResponse(principal);
+        }
         if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
@@ -376,6 +379,9 @@ private:
         AuthPrincipal principal = access_->Authenticate(request);
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
+        }
+        if (principal.must_change_password) {
+            return ForbiddenResponse(principal);
         }
         if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");

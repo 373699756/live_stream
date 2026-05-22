@@ -1,9 +1,12 @@
 // Core HTTP fetch utilities. Business API functions live in domain-specific
 // modules (video.ts, image.ts, network.ts, system.ts, stream.ts).
 
+import type { AuthPrincipal, AuthState } from './types';
+
 const baseHeaders = { 'Content-Type': 'application/json' };
 const tokenKey = 'live_stream_token';
 const authInvalidEvent = 'live-stream-auth-invalid';
+const mustChangePasswordEvent = 'live-stream-must-change-password';
 const defaultTimeoutMs = 8000;
 
 export const useMockFallback = import.meta.env.DEV;
@@ -54,6 +57,11 @@ function handleUnauthorized(): void {
 export function onAuthInvalid(listener: () => void): () => void {
   window.addEventListener(authInvalidEvent, listener);
   return () => window.removeEventListener(authInvalidEvent, listener);
+}
+
+export function onMustChangePassword(listener: () => void): () => void {
+  window.addEventListener(mustChangePasswordEvent, listener);
+  return () => window.removeEventListener(mustChangePasswordEvent, listener);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +141,24 @@ export async function readError(response: Response): Promise<string> {
   return `${response.status} ${response.statusText}`;
 }
 
+async function handleRejectedResponse(response: Response): Promise<void> {
+  if (response.status === 401) {
+    handleUnauthorized();
+    return;
+  }
+  if (response.status !== 403) {
+    return;
+  }
+  try {
+    const body = (await response.clone().json()) as { error?: string };
+    if (body.error === 'must_change_password') {
+      window.dispatchEvent(new Event(mustChangePasswordEvent));
+    }
+  } catch {
+    // Ignore malformed error bodies.
+  }
+}
+
 export async function requestJson<T>(
   path: string,
   fallback: T,
@@ -155,9 +181,7 @@ export async function requestJson<T>(
     throw error;
   }
   if (!response.ok) {
-    if (response.status === 401) {
-      handleUnauthorized();
-    }
+    await handleRejectedResponse(response);
     throw new Error(await readError(response));
   }
   return (await response.json()) as T;
@@ -188,9 +212,7 @@ export async function postJson<TRequest, TResponse>(
     throw error;
   }
   if (!response.ok) {
-    if (response.status === 401) {
-      handleUnauthorized();
-    }
+    await handleRejectedResponse(response);
     throw new Error(await readError(response));
   }
   return (await response.json()) as TResponse;
@@ -219,10 +241,8 @@ export async function putJson<T>(
     }
     throw error;
   }
-  if (response.status === 401) {
-    handleUnauthorized();
-  }
   if (!response.ok) {
+    await handleRejectedResponse(response);
     throw new Error(await readError(response));
   }
 }
@@ -231,7 +251,28 @@ export async function putJson<T>(
 // Auth API (kept here because it manages the token lifecycle)
 // ---------------------------------------------------------------------------
 
-export async function login(userName: string, password: string): Promise<boolean> {
+interface AuthResponse {
+  token?: string;
+  expires_at_ms?: number;
+  principal?: AuthPrincipal;
+  must_change_password?: boolean;
+}
+
+function stateFromAuthResponse(body: AuthResponse): AuthState {
+  const mustChangePassword =
+    Boolean(body.must_change_password) ||
+    Boolean(body.principal?.must_change_password);
+  return {
+    authenticated: true,
+    mustChangePassword,
+    principal: body.principal,
+  };
+}
+
+export async function login(
+  userName: string,
+  password: string,
+): Promise<AuthState> {
   removeToken();
   try {
     const response = await fetch('/api/auth/login', {
@@ -240,22 +281,22 @@ export async function login(userName: string, password: string): Promise<boolean
       body: JSON.stringify({ user_name: userName, password }),
     });
     if (!response.ok) {
-      return false;
+      return { authenticated: false, mustChangePassword: false };
     }
-    const body = (await response.json()) as { token?: string };
+    const body = (await response.json()) as AuthResponse;
     if (!body.token) {
-      return false;
+      return { authenticated: false, mustChangePassword: false };
     }
     setToken(body.token);
-    return true;
+    return stateFromAuthResponse(body);
   } catch {
-    return false;
+    return { authenticated: false, mustChangePassword: false };
   }
 }
 
-export async function validateSession(): Promise<boolean> {
+export async function validateSession(): Promise<AuthState> {
   if (!hasToken()) {
-    return false;
+    return { authenticated: false, mustChangePassword: false };
   }
   try {
     const response = await fetch('/api/auth/me', {
@@ -264,15 +305,42 @@ export async function validateSession(): Promise<boolean> {
     });
     if (!response.ok) {
       removeToken();
-      return false;
+      return { authenticated: false, mustChangePassword: false };
     }
-    return true;
+    const body = (await response.json()) as AuthResponse;
+    return stateFromAuthResponse(body);
   } catch {
     if (useMockFallback) {
-      return hasToken();
+      return { authenticated: hasToken(), mustChangePassword: false };
     }
     removeToken();
     window.dispatchEvent(new Event(authInvalidEvent));
+    return { authenticated: false, mustChangePassword: false };
+  }
+}
+
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<boolean> {
+  if (!hasToken()) {
+    return false;
+  }
+  try {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        old_password: oldPassword,
+        new_password: newPassword,
+      }),
+    });
+    if (response.status === 401) {
+      handleUnauthorized();
+      return false;
+    }
+    return response.ok;
+  } catch {
     return false;
   }
 }

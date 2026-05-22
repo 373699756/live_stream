@@ -19,9 +19,13 @@ constexpr const char *kHttpModuleName = "http_service";
 
 HttpResponse JsonResponse(int status_code, const ConfigJson &value);
 HttpResponse StatusResponse(int status_code, const std::string &reason);
+HttpResponse ForbiddenResponse(const AuthPrincipal &principal);
 HttpResponse OkResponse();
 bool RequireAuth(HttpAccess *access, const HttpRequest &request,
                  AuthPrincipal *principal);
+HttpResponse RequireAuthResponse(HttpAccess *access,
+                                 const HttpRequest &request,
+                                 AuthPrincipal *principal);
 bool RequirePermissionOrForbidden(HttpAccess *access,
                                   const HttpRequest &request,
                                   AuthPermission permission,

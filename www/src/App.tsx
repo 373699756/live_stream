@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell';
 import { useAuth } from './context/AuthContext';
 import { ImageConfigPage } from './pages/ImageConfigPage';
 import { LiveViewPage } from './pages/LiveViewPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { LogsPage } from './pages/LogsPage';
 import { NetworkConfigPage } from './pages/NetworkConfigPage';
@@ -37,7 +38,14 @@ function renderPage(page: PageId) {
 }
 
 export default function App() {
-  const { authenticated, ready, login, logout } = useAuth();
+  const {
+    authenticated,
+    mustChangePassword,
+    ready,
+    login,
+    changePassword,
+    logout,
+  } = useAuth();
   const [page, setPage] = useState<PageId>('live');
 
   if (!ready) {
@@ -46,6 +54,15 @@ export default function App() {
 
   if (!authenticated) {
     return <LoginPage onLogin={login} />;
+  }
+
+  if (mustChangePassword) {
+    return (
+      <ChangePasswordPage
+        onChangePassword={changePassword}
+        onLogout={logout}
+      />
+    );
   }
 
   return (

@@ -110,6 +110,9 @@ private:
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
+        if (principal.must_change_password) {
+            return ForbiddenResponse(principal);
+        }
 
         ConfigJson root = ConfigJson::object();
         DeviceInfo device_info;
@@ -200,7 +203,7 @@ private:
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
                                          "system", &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         return JsonResponse(
             200, SystemCapabilitiesToJson(
@@ -214,7 +217,7 @@ private:
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kReboot,
                                          "system", &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         const SystemCapabilities capabilities =
             system_service_->GetCapabilities();
@@ -235,7 +238,7 @@ private:
         if (!access_->RequirePermission(request,
                                          AuthPermission::kFactoryReset,
                                          "system", &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         const SystemCapabilities capabilities =
             system_service_->GetCapabilities();

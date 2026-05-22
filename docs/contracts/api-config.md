@@ -380,7 +380,8 @@ Contract:
 Owner:
 
 - `AuthService` for session/auth policy
-- `configs/auth_users.json` for actual user store in current app wiring
+- `ConfigService` owns loading and saving `configs/auth_users.json`
+- `AuthService` consumes the auth user store interface for login and password changes
 
 Current fields:
 
@@ -396,6 +397,7 @@ Current fields:
 Current runtime note:
 
 - `CoreServices` currently hardcodes `token_ttl_seconds = 30 * 60` and `max_sessions = 16` in `AuthServiceOptions`, while JSON contains session policy fields. This should be reconciled before exposing session policy editing.
+- `configs/auth_users.json` stores only `password_credential`; `password` and `password_plaintext` fields are rejected. The factory `admin` account may start with `must_change_password=true` so the Web Console forces a password change after the first `admin/admin` login.
 
 ### `system`
 
@@ -462,7 +464,14 @@ Auth:
 
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `POST /api/auth/change-password`
 - `GET /api/auth/me`
+
+`POST /api/auth/login` and `GET /api/auth/me` return `must_change_password`.
+When it is true, authenticated management APIs are rejected until
+`POST /api/auth/change-password` succeeds.
+RTSP and ONVIF Basic authentication also rejects users while
+`must_change_password` is true.
 
 Config:
 

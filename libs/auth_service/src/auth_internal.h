@@ -12,11 +12,10 @@
 namespace live_stream {
 namespace auth_internal {
 
-constexpr std::size_t kMaxUserNameLength = 64;
-constexpr std::size_t kMaxPasswordLength = 256;
+constexpr std::size_t kMaxUserNameLength = kMaxAuthUserNameLength;
+constexpr std::size_t kMaxPasswordLength = kMaxAuthPasswordLength;
 constexpr std::size_t kMaxTokenLength = 256;
 constexpr std::size_t kMaxTargetLength = 128;
-constexpr std::size_t kMaxAuthConfigSize = 64 * 1024;
 
 struct SessionRecord {
     AuthPrincipal principal;
@@ -24,6 +23,7 @@ struct SessionRecord {
     int64_t created_at_monotonic_ms = 0;
     int64_t expires_at_monotonic_ms = 0;
     int64_t expires_at_ms = 0;
+    bool must_change_password = false;
 };
 
 bool IsEmptyOrTooLong(const std::string& value, std::size_t max_length);

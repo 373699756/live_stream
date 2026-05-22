@@ -17,6 +17,8 @@
 
 namespace live_stream {
 
+class IAuthUserStore;
+
 struct ConfigServiceOptions {
     std::string config_path;
     std::string default_config_path;
@@ -71,6 +73,9 @@ public:
 
 std::unique_ptr<IConfigService>
 CreateConfigService(const ConfigServiceOptions &options);
+
+std::unique_ptr<IAuthUserStore> CreateConfigAuthUserStore(
+    const std::string &config_path);
 
 }  // namespace live_stream
 

@@ -312,6 +312,17 @@ bool HttpServiceImpl::RequirePermission(const HttpRequest &request,
     if (authenticated.user_name.empty()) {
         return false;
     }
+    if (principal != nullptr) {
+        *principal = authenticated;
+    }
+    if (authenticated.must_change_password) {
+        IncrementPermissionDenied();
+        RecordOperation(request, authenticated,
+                        OperationAction::kPermissionDenied, target,
+                        OperationResult::kRejected,
+                        "must_change_password");
+        return false;
+    }
     if (auth_service_ == nullptr ||
         !auth_service_->CheckPermission(authenticated, permission, target)) {
         IncrementPermissionDenied();
@@ -319,9 +330,6 @@ bool HttpServiceImpl::RequirePermission(const HttpRequest &request,
                         OperationAction::kPermissionDenied, target,
                         OperationResult::kRejected, "permission_denied");
         return false;
-    }
-    if (principal != nullptr) {
-        *principal = authenticated;
     }
     return true;
 }

@@ -10,6 +10,7 @@
 
 #include "request_context.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -18,6 +19,9 @@
 namespace live_stream {
 
 class IConfigService;
+
+constexpr std::size_t kMaxAuthUserNameLength = 64;
+constexpr std::size_t kMaxAuthPasswordLength = 256;
 
 /**
  * @brief IPC 管理用户角色。
@@ -50,24 +54,21 @@ struct AuthPrincipal {
     std::string user_name;
     std::string session_id;
     AuthRole role = AuthRole::kViewer;
+    bool must_change_password = false;
 };
 
 /**
  * @brief 用户存储记录。
  *
  * password_credential 是密码校验器可理解的不透明凭据（如 sha256:<salt>:<hash>）。
- * auth_service 不解释该字段，也不会把它写入日志或审计。
- *
- * password_plaintext 为可选的明文密码，优先级低于 password_credential。
- * 仅当 password_credential 验证失败时，才尝试 password_plaintext 比对。
- * 主要供调试阶段使用，生产环境应使用 SHA-256 凭据。
+ * auth_service 不会把它写入日志或审计。
  */
 struct AuthUserRecord {
     std::string user_name;
     std::string password_credential;
-    std::string password_plaintext;
     AuthRole role = AuthRole::kViewer;
     bool enabled = true;
+    bool must_change_password = false;
 };
 
 /**
@@ -86,6 +87,7 @@ struct LoginResult {
     AuthPrincipal principal;
     std::string token;
     int64_t expires_at_ms = 0;
+    bool must_change_password = false;
 };
 
 /**
@@ -94,6 +96,16 @@ struct LoginResult {
 struct TokenValidationResult {
     AuthPrincipal principal;
     int64_t expires_at_ms = 0;
+    bool must_change_password = false;
+};
+
+/**
+ * @brief 修改当前用户密码请求。
+ */
+struct ChangePasswordRequest {
+    live_stream::RequestContext context;
+    std::string old_password;
+    std::string new_password;
 };
 
 /**
@@ -142,8 +154,8 @@ struct AuthServiceOptions {
     uint32_t max_sessions_per_user = 4;
     uint32_t lockout_failures = 5;
     uint32_t lockout_seconds = 300;
-    uint32_t password_min_length = 8;
-    bool password_require_number = true;
+    uint32_t password_min_length = 1;
+    bool password_require_number = false;
     bool password_require_symbol = false;
 };
 
@@ -178,6 +190,10 @@ public:
 
     virtual AuthUserRecord FindUser(
         const std::string& user_name) = 0;
+    virtual bool UpdatePassword(
+        const std::string& user_name,
+        const std::string& password_credential,
+        bool must_change_password) = 0;
     virtual bool Reload() { return true; }
 };
 
@@ -219,6 +235,8 @@ public:
     virtual bool Logout(const live_stream::RequestContext& context) = 0;
     virtual TokenValidationResult ValidateToken(
         const std::string& token) = 0;
+    virtual bool ChangePassword(
+        const ChangePasswordRequest& request) = 0;
     virtual bool CheckPermission(
         const AuthPrincipal& principal,
         AuthPermission permission,
@@ -231,14 +249,6 @@ public:
  */
 std::unique_ptr<IAuthUserStore> CreateMemoryAuthUserStore(
     const std::vector<AuthUserRecord>& users);
-
-/**
- * @brief 创建 JSON 文件用户存储。
- *
- * 文件只应保存 password_credential，不允许保存 password 明文字段。
- */
-std::unique_ptr<IAuthUserStore> CreateJsonAuthUserStore(
-    const std::string& config_path);
 
 /**
  * @brief 创建明文密码校验器。

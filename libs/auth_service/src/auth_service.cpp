@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <cctype>
 #include <cstddef>
 #include <limits>
 #include <map>
@@ -75,6 +76,48 @@ bool IsValidPolicy(const AuthServiceOptions &options) {
     return options.token_ttl_seconds > 0 && options.max_sessions > 0 &&
            options.max_sessions_per_user > 0 &&
            options.password_min_length <= auth_internal::kMaxPasswordLength;
+}
+
+bool HasDigit(const std::string &value) {
+    for (char ch : value) {
+        if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool HasSymbol(const std::string &value) {
+    for (char ch : value) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsValidNewPassword(const std::string &password,
+                        const AuthServiceOptions &options) {
+    if (password.empty() ||
+        password.size() > auth_internal::kMaxPasswordLength ||
+        password.size() < options.password_min_length) {
+        return false;
+    }
+    if (options.password_require_number && !HasDigit(password)) {
+        return false;
+    }
+    if (options.password_require_symbol && !HasSymbol(password)) {
+        return false;
+    }
+    return true;
+}
+
+std::string GeneratePasswordCredential(const std::string &password) {
+    const std::string salt_hex = SystemRandomHex(kSessionIdBytes);
+    if (salt_hex.empty()) {
+        return std::string();
+    }
+    return auth_internal::Sha256Credential(password, salt_hex);
 }
 
 bool ParseUserConfig(const ConfigJson &value,
@@ -234,12 +277,9 @@ public:
 
         if (!password_verifier_->VerifyPassword(request.password,
                                                 user.password_credential)) {
-            if (user.password_plaintext.empty() ||
-                user.password_plaintext != request.password) {
-                RegisterFailedAttempt(request.user_name);
-                RecordLoginFailure(request.context, request.user_name, "bad_password");
-                return LoginResult{};
-            }
+            RegisterFailedAttempt(request.user_name);
+            RecordLoginFailure(request.context, request.user_name, "bad_password");
+            return LoginResult{};
         }
 
         LoginResult result;
@@ -329,6 +369,8 @@ public:
                 TokenValidationResult result;
                 result.principal = iter->second.principal;
                 result.expires_at_ms = iter->second.expires_at_ms;
+                result.must_change_password =
+                    iter->second.must_change_password;
                 return result;
             }
         }
@@ -344,6 +386,52 @@ public:
         return TokenValidationResult{};
     }
 
+    bool ChangePassword(const ChangePasswordRequest &request) override {
+        if (auth_internal::IsEmptyOrTooLong(request.context.user_name,
+                                            auth_internal::kMaxUserNameLength) ||
+            auth_internal::IsEmptyOrTooLong(request.context.session_id,
+                                            auth_internal::kMaxTokenLength) ||
+            request.old_password.size() > auth_internal::kMaxPasswordLength) {
+            return false;
+        }
+        if (!IsStarted()) {
+            return false;
+        }
+        AuthServiceOptions options_snapshot;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            options_snapshot = options_;
+        }
+        if (!IsValidNewPassword(request.new_password, options_snapshot)) {
+            return false;
+        }
+        if (!HasActiveSession(request.context)) {
+            return false;
+        }
+
+        AuthUserRecord user = user_store_->FindUser(request.context.user_name);
+        if (user.user_name.empty() || !user.enabled) {
+            return false;
+        }
+        if (!password_verifier_->VerifyPassword(request.old_password,
+                                                user.password_credential)) {
+            RecordLoginFailure(request.context, request.context.user_name,
+                               "bad_password");
+            return false;
+        }
+
+        const std::string credential =
+            GeneratePasswordCredential(request.new_password);
+        if (credential.empty()) {
+            return false;
+        }
+        if (!user_store_->UpdatePassword(user.user_name, credential, false)) {
+            return false;
+        }
+        AcceptChangedPasswordSession(request.context);
+        return true;
+    }
+
     bool CheckPermission(const AuthPrincipal &principal,
                          AuthPermission permission,
                          const std::string &target) override {
@@ -355,6 +443,18 @@ public:
             return false;
         }
         if (!IsStarted()) {
+            return false;
+        }
+        if (principal.must_change_password) {
+            live_stream::RequestContext context;
+            context.user_name = principal.user_name;
+            context.session_id = principal.session_id;
+            RecordAudit(context, principal.user_name, principal.session_id,
+                        AuthAuditAction::kPermissionDenied,
+                        target.empty() ? AuthPermissionToString(permission)
+                                       : target,
+                        AuthAuditResult::kRejected,
+                        "must_change_password");
             return false;
         }
         if (auth_internal::RoleHasPermission(principal.role, permission)) {
@@ -488,21 +588,54 @@ private:
         session.principal.user_name = user.user_name;
         session.principal.session_id = session_id;
         session.principal.role = user.role;
+        session.principal.must_change_password = user.must_change_password;
         session.token = token;
         session.created_at_monotonic_ms = now;
         session.expires_at_monotonic_ms = now + ttl_ms;
         session.expires_at_ms = wall_now + ttl_ms;
+        session.must_change_password = user.must_change_password;
 
         sessions_[token] = session;
         result->principal = session.principal;
         result->token = token;
         result->expires_at_ms = session.expires_at_ms;
+        result->must_change_password = session.must_change_password;
         return true;
+    }
+
+    void AcceptChangedPasswordSession(
+        const live_stream::RequestContext &context) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        for (auto iter = sessions_.begin(); iter != sessions_.end();) {
+            if (iter->second.principal.user_name != context.user_name) {
+                ++iter;
+                continue;
+            }
+            if (iter->second.principal.session_id == context.session_id) {
+                iter->second.must_change_password = false;
+                iter->second.principal.must_change_password = false;
+                ++iter;
+                continue;
+            }
+            iter = sessions_.erase(iter);
+        }
     }
 
     bool ContainsSessionIdLocked(const std::string &session_id) const {
         for (const auto &item : sessions_) {
             if (item.second.principal.session_id == session_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool HasActiveSession(const live_stream::RequestContext &context) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        PruneExpiredSessionsLocked();
+        for (const auto &item : sessions_) {
+            if (item.second.principal.user_name == context.user_name &&
+                item.second.principal.session_id == context.session_id) {
                 return true;
             }
         }

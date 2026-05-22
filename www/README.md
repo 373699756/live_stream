@@ -41,6 +41,7 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
+- `POST /api/auth/change-password`
 - `GET /api/auth/me`
 - `GET/PUT /api/config/video`
 - `GET/PUT /api/config/image`
@@ -100,3 +101,11 @@ the automatic strategy modes `balanced`, `low_noise`, and `detail`.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.
+
+Auth users are loaded and saved by `config_service` from
+`configs/auth_users.json` with hashed `password_credential` values only. The
+factory `admin/admin` login is allowed only as an initial setup path when
+`must_change_password` is returned by the auth API; the UI then forces
+`POST /api/auth/change-password` before showing the management console.
+RTSP and ONVIF authentication reject the factory password until that password
+change succeeds.

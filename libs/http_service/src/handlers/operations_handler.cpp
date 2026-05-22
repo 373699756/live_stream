@@ -63,7 +63,7 @@ private:
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
                                          "operations", &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         OperationLogQuery query;
         query.limit = 100;
@@ -85,7 +85,7 @@ private:
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
                                          "operations", &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         OperationLogQuery query;
         query.limit = 1000;

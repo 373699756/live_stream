@@ -115,7 +115,7 @@ private:
         AuthPrincipal principal;
         if (!RequireTimePermission(access_, request,
                                    AuthPermission::kReadStatus, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         return JsonResponse(200,
                             TimeStatusToJson(time_service->GetTimeStatus()));
@@ -130,7 +130,7 @@ private:
         if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -155,7 +155,7 @@ private:
         if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -181,7 +181,7 @@ private:
         if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -208,7 +208,7 @@ private:
         if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         return time_service
                        ->SyncNow(access_->MakeContext(request, &principal),

@@ -503,10 +503,26 @@ private:
                          {{"WWW-Authenticate", BasicRealmHeader()}}, "");
             return false;
         }
+        live_stream::RequestContext logout_context;
+        logout_context.user_name = login_result.principal.user_name;
+        logout_context.session_id = login_result.principal.session_id;
+        if (login_result.must_change_password) {
+            static_cast<void>(
+                dependencies_.auth_service->Logout(logout_context));
+            AddAuthFailure();
+            INFRA_LOG_ERROR("rtsp_service",
+                            "RTSP auth rejected peer=%s user=%s "
+                            "reason=must_change_password",
+                            session->peer.ip.c_str(), login.user_name.c_str());
+            SendResponse(session->connection_id, 403, CSeq(request), {}, "");
+            return false;
+        }
         const std::string target = StreamPath(stream_id);
         if (!dependencies_.auth_service->CheckPermission(
                 login_result.principal, AuthPermission::kPreviewVideo,
                 target)) {
+            static_cast<void>(
+                dependencies_.auth_service->Logout(logout_context));
             AddAuthFailure();
             INFRA_LOG_ERROR("rtsp_service",
                             "RTSP auth forbidden peer=%s user=%s target=%s",
@@ -515,6 +531,7 @@ private:
             SendResponse(session->connection_id, 403, CSeq(request), {}, "");
             return false;
         }
+        static_cast<void>(dependencies_.auth_service->Logout(logout_context));
         return true;
     }
 

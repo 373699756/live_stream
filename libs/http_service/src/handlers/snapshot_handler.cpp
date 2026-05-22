@@ -48,8 +48,10 @@ private:
 
     HttpResponse HandleSnapshot(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireAuth(access_, request, &principal)) {
-            return StatusResponse(401, "Unauthorized");
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         if (snapshot_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");

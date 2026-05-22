@@ -21,6 +21,13 @@ HttpResponse StatusResponse(int status_code, const std::string &reason) {
     return JsonResponse(status_code, root);
 }
 
+HttpResponse ForbiddenResponse(const AuthPrincipal &principal) {
+    if (principal.must_change_password) {
+        return StatusResponse(403, "must_change_password");
+    }
+    return StatusResponse(403, "Forbidden");
+}
+
 HttpResponse OkResponse() {
     ConfigJson root = ConfigJson::object();
     root["ok"] = true;
@@ -33,7 +40,23 @@ bool RequireAuth(HttpAccess *access, const HttpRequest &request,
         return false;
     }
     *principal = access->Authenticate(request);
-    return !principal->user_name.empty();
+    return !principal->user_name.empty() && !principal->must_change_password;
+}
+
+HttpResponse RequireAuthResponse(HttpAccess *access,
+                                 const HttpRequest &request,
+                                 AuthPrincipal *principal) {
+    if (access == nullptr || principal == nullptr) {
+        return StatusResponse(401, "Unauthorized");
+    }
+    *principal = access->Authenticate(request);
+    if (principal->user_name.empty()) {
+        return StatusResponse(401, "Unauthorized");
+    }
+    if (principal->must_change_password) {
+        return ForbiddenResponse(*principal);
+    }
+    return HttpResponse{};
 }
 
 bool RequirePermissionOrForbidden(HttpAccess *access,

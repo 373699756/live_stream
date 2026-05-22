@@ -170,7 +170,7 @@ private:
         AuthPrincipal principal;
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         if (request.body.empty()) {
             return StatusResponse(400, "Empty package body");
@@ -220,7 +220,7 @@ private:
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kReadStatus,
                                       &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         return JsonResponse(200,
                             UpgradeStatusToJson(upgrade_service->GetStatus()));
@@ -234,7 +234,7 @@ private:
         AuthPrincipal principal;
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -260,7 +260,7 @@ private:
         AuthPrincipal principal;
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -286,7 +286,7 @@ private:
         AuthPrincipal principal;
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         if (!upgrade_service->CancelUpgrade(
                 access_->MakeContext(request, &principal))) {
@@ -304,7 +304,7 @@ private:
         AuthPrincipal principal;
         if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         if (!upgrade_service->ConfirmReboot(
                 access_->MakeContext(request, &principal))) {

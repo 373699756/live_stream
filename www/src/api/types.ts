@@ -4,6 +4,19 @@ export type VideoCodecName = 'h264' | 'h265' | 'jpeg' | 'mjpeg';
 export type GopMode = 'normal_p' | 'dual_p' | 'smart_p';
 export type ImageStrategyMode = 'balanced' | 'low_noise' | 'detail';
 
+export interface AuthPrincipal {
+  user_name: string;
+  session_id: string;
+  role: string;
+  must_change_password?: boolean;
+}
+
+export interface AuthState {
+  authenticated: boolean;
+  mustChangePassword: boolean;
+  principal?: AuthPrincipal;
+}
+
 export interface VideoStreamConfig {
   enabled: boolean;
   codec: VideoCodecName;

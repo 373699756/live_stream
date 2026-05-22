@@ -189,12 +189,13 @@ public:
             return;
         }
         AuthPrincipal principal;
-        if (!RequireAuth(access_, request, &principal)) {
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=auth",
                             static_cast<unsigned long long>(connection_id));
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(401, "Unauthorized"));
+            SendFlvError(writer_, connection_id, auth_response);
             return;
         }
 

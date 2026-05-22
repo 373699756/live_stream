@@ -55,6 +55,18 @@
   border-radius: 4px;
 }
 
+.login-panel .secondary-action {
+  margin-top: 10px;
+  color: #dce7f7;
+  background: #1d2d43;
+  border-color: #40546f;
+}
+
+.login-panel .secondary-action:hover {
+  color: #fff;
+  border-color: #6b8db8;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;

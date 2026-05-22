@@ -103,11 +103,15 @@ bool AuthorizeOnvifRequest(IAuthService* auth_service,
     if (result.token.empty()) {
         return false;
     }
-    const bool allowed = auth_service->CheckPermission(
-        result.principal, PermissionForAction(action), "onvif_service");
     live_stream::RequestContext logout_context;
     logout_context.user_name = result.principal.user_name;
     logout_context.session_id = result.principal.session_id;
+    if (result.must_change_password) {
+        static_cast<void>(auth_service->Logout(logout_context));
+        return false;
+    }
+    const bool allowed = auth_service->CheckPermission(
+        result.principal, PermissionForAction(action), "onvif_service");
     static_cast<void>(auth_service->Logout(logout_context));
     return allowed;
 }

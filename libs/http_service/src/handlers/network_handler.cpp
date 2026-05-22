@@ -72,7 +72,7 @@ private:
         if (!RequireNetworkPermission(access_, request,
                                       AuthPermission::kReadStatus, "network",
                                       &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
@@ -101,7 +101,7 @@ private:
             if (!RequireNetworkPermission(access_, request,
                                           AuthPermission::kReadStatus, ifname,
                                           &principal)) {
-                return StatusResponse(403, "Forbidden");
+                return ForbiddenResponse(principal);
             }
             const NetworkInterfaceStatus status =
                 network_service->GetInterfaceStatus(ifname);
@@ -115,7 +115,7 @@ private:
         if (!RequireNetworkPermission(access_, request,
                                       AuthPermission::kModifyConfig, ifname,
                                       &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         ConfigJson body;
         if (!ParseJsonObject(request, &body)) {
@@ -141,7 +141,7 @@ private:
         if (!RequireNetworkPermission(access_, request,
                                       AuthPermission::kModifyConfig, "network",
                                       &principal)) {
-            return StatusResponse(403, "Forbidden");
+            return ForbiddenResponse(principal);
         }
         return network_service->ReloadStatus()
                    ? OkResponse()

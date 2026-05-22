@@ -209,8 +209,8 @@
   "user": {
     "accounts": [],
     "password_policy": {
-      "min_length": 8,
-      "require_number": true,
+      "min_length": 1,
+      "require_number": false,
       "require_symbol": false,
       "lockout_failures": 5,
       "lockout_seconds": 300

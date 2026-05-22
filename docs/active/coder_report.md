@@ -4,53 +4,53 @@
 
 ## Task completed
 
-把 HiSilicon VI/MIPI/ISP 启动从硬编码 IMX290 收敛为 sensor profile，并补齐
-SDK 样例中可确认的 Sony IMX 型号。
+实现首次登录强制改密，去掉 `configs/auth_users.json` 明文密码，并把 auth 用户文件
+读写收敛到 `config_service` 提供的 auth user store 接口。
 
 ## Problem fixed
 
-之前 `hisi_mpp_vi.cpp` 把 IMX290 的 MIPI lane、RAW bit width、ISP pub attr、
-VI DEV/PIPE 尺寸写死。切到 IMX307/327/335/458 时，即使链接了对应 sensor lib，
-VI/MIPI/ISP 仍不会按对应 sensor 初始化。
+原先 `auth_service` 允许 `password_plaintext` 作为后备校验，配置里保留明文密码；
+Web 登录也没有首次改密流程。RTSP/ONVIF 通过 Basic auth 直接调用登录，如果不同步
+处理，会绕过 Web 的首次改密约束。
 
 ## Files changed
 
-主要变更在 `libs/hisi_vendor/`：
+主要变更：
 
-- 新增 `src/hisi_mpp_sensor.h`，集中维护编译期 `SENSOR0_TYPE` 到 sensor profile
-  的映射。
-- VI MIPI attr、VI DEV attr、VI PIPE attr、ISP pub attr、sensor callback
-  全部从 profile 取参数。
-- SYS VB pool 和 VPSS group 最大尺寸改为按 sensor 输入尺寸配置，避免 IMX335/458
-  这类大分辨率 sensor 仍按主码流 1080p 分配。
-- 已按 SDK sample 参数支持 IMX290、IMX307、IMX327、IMX327 2-lane、IMX335、
-  IMX458 的线性/已列出的 WDR 编译期 profile。
-- 删除长参数 profile helper，改为具名 profile 构造函数加少量明确的字段修改函数。
+- `auth_service` 增加 `must_change_password`、`ChangePassword` 和用户 store
+  `UpdatePassword`；登录只接受 hashed credential。
+- `config_service` 新增 `CreateConfigAuthUserStore()`，负责加载、校验、保存
+  `configs/auth_users.json`，拒绝 `password`/`password_plaintext` 字段。
+- HTTP auth API 增加 `POST /api/auth/change-password`，`login/me` 返回
+  `must_change_password`；未改密用户只能访问 `me/logout/change-password`。
+- Web Console 登录后如果需要改密，进入强制改密页，改完后才显示管理台。
+- RTSP/ONVIF Basic auth 对 `must_change_password` 用户返回拒绝，并清理临时
+  session。
+- 默认配置改为测试友好的密码策略：最小 1 位，不要求数字。
 
 ## Behavior changed
 
-- 默认仍是 `SONY_IMX290_MIPI_2M_30FPS_12BIT`。
-- 通过 `make -C libs/hisi_vendor SENSOR0_TYPE=<sensor_macro>` 可切换编译期
-  sensor profile。
-- 大尺寸 sensor 启动时 MIPI/VI/ISP/VPSS/VB 使用真实 sensor 输入尺寸；主码流、
-  子码流输出尺寸仍由业务配置控制。
+- 初始 `admin/admin` 可登录，但会返回 `must_change_password=true`。
+- 改密成功后 `configs/auth_users.json` 只保存新的 SHA-256 salted credential，
+  `must_change_password` 变为 false。
+- 改密前 HTTP 管理 API 返回 `403 {"error":"must_change_password"}`；RTSP/ONVIF
+  也拒绝预览/管理认证。
+- 同一用户改密成功后，只保留当前 session，其他旧 session 被清理。
 
 ## Verification
 
 通过：
 
-- `make -B -C libs/hisi_vendor`
-- `make -B -C libs/hisi_vendor SENSOR0_TYPE=SONY_IMX335_MIPI_5M_30FPS_12BIT`
-- `make -B -C libs/hisi_vendor SENSOR0_TYPE=SONY_IMX458_MIPI_8M_30FPS_10BIT`
-- `make -B -C libs/hisi_vendor SENSOR0_TYPE=SONY_IMX290_MIPI_2M_30FPS_10BIT_WDR2TO1`
-- `make -B -C libs/hisi_vendor SENSOR0_TYPE=SONY_IMX327_2L_MIPI_2M_30FPS_12BIT`
-- 最后再次 `make -B -C libs/hisi_vendor` 恢复默认 IMX290 产物
-- `git diff --check -- libs/hisi_vendor/src/hisi_mpp_sensor.h libs/hisi_vendor/src/hisi_mpp_vi.cpp libs/hisi_vendor/src/hisi_mpp_sys.cpp libs/hisi_vendor/src/hisi_mpp_vpss.cpp`
+- `make -C libs/auth_service`
+- `make -C libs/config_service`
+- `make -C libs/http_service`
+- `make -C libs/rtsp_service`
+- `make -C libs/onvif_service`
+- `npm run build` in `www/`
+- `git diff --check`
 
-未做：
-
-- 板端实测。MIPI lane、sensor reset/clock、镜头模组实际接线和 sensor I2C
-  地址仍需要在目标板验证。
+`make -j2` 已跑到最终链接阶段，失败原因是缺少第三方静态库：
+`libmetartc8.a`、`libmetartccore8.a`、`libyangutil8.a`、`libusrsctp.a`。
 
 ## Commit
 
@@ -58,11 +58,10 @@ Pending.
 
 ## Deviations
 
-sensor 选择仍保持编译期 `SENSOR0_TYPE`，没有做成运行时 UI 配置。原因是 sensor
-切换涉及 MIPI/VI/ISP 启动链路和物理接线，运行时热切换风险高。
+未迁移或修复旧测试源码。当前测试源码仍使用旧的 service API 形态，和本任务生产
+代码改动无关。
 
 ## Blocked or follow-up
 
-新增其他 IMX 型号时，先从 SDK sample 或 sensor lib 文档确认 MIPI attr、
-VI DEV/PIPE attr、ISP pub attr 和 sensor object，再补一个 profile 函数并用
-`SENSOR0_TYPE=<macro>` 做单模块强制构建。
+如果要恢复整工程最终链接，需要先补齐 `3rdparty/install/lib/` 下缺失的 metaRTC 和
+usrsctp 静态库。
