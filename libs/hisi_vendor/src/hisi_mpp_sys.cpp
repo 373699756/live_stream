@@ -1,4 +1,5 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_mpp_sensor.h"
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
@@ -23,6 +24,11 @@ uint64_t Yuv420BlockSize(const VideoSize& size) {
     const uint64_t stride = AlignUp(size.width, kDefaultAlign);
     const uint64_t height = AlignUp(size.height, 2);
     return stride * height * 3 / 2;
+}
+
+VideoSize SensorInputSize() {
+    const internal::SensorProfile& profile = internal::SelectedSensorProfile();
+    return VideoSize{profile.input_width, profile.input_height};
 }
 
 bool IsVbExitDone(HI_S32 status) {
@@ -308,19 +314,23 @@ bool InitConfiguredVideoBuffer() {
 bool ConfigureVideoBuffer(const MediaPipelineConfig& config) {
     VB_CONFIG_S vb_conf{};
     (void)std::memset(&vb_conf, 0, sizeof(vb_conf));
+    const VideoSize sensor_input_size = SensorInputSize();
 
-    // Main stream VB pool
     vb_conf.astCommPool[0].u64BlkSize =
-        Yuv420BlockSize(config.main_stream.size);
+        Yuv420BlockSize(sensor_input_size);
     vb_conf.astCommPool[0].u32BlkCnt = config.vb_block_count;
     vb_conf.astCommPool[0].enRemapMode = VB_REMAP_MODE_CACHED;
 
-    // Sub-stream VB pool (if enabled)
+    vb_conf.astCommPool[1].u64BlkSize =
+        Yuv420BlockSize(config.main_stream.size);
+    vb_conf.astCommPool[1].u32BlkCnt = 4;
+    vb_conf.astCommPool[1].enRemapMode = VB_REMAP_MODE_CACHED;
+
     if (config.sub_stream.enabled) {
-        vb_conf.astCommPool[1].u64BlkSize =
+        vb_conf.astCommPool[2].u64BlkSize =
             Yuv420BlockSize(config.sub_stream.size);
-        vb_conf.astCommPool[1].u32BlkCnt = 4;
-        vb_conf.astCommPool[1].enRemapMode = VB_REMAP_MODE_CACHED;
+        vb_conf.astCommPool[2].u32BlkCnt = 4;
+        vb_conf.astCommPool[2].enRemapMode = VB_REMAP_MODE_CACHED;
     }
 
     vb_conf.u32MaxPoolCnt = 4;

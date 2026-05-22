@@ -1,4 +1,5 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_mpp_sensor.h"
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
@@ -16,6 +17,9 @@ namespace hisisdk {
 namespace {
 
 constexpr const char* kMipiDeviceNode = "/dev/hi_mipi";
+
+using internal::SelectedSensorProfile;
+using internal::SensorProfile;
 
 bool CheckMpiCall(const char* expression, HI_S32 status) {
     if (status == HI_SUCCESS) {
@@ -42,24 +46,25 @@ void FillAlgLib(const char* name, VI_PIPE vi_pipe, ALG_LIB_S* lib) {
     lib->acLibName[sizeof(lib->acLibName) - 1] = '\0';
 }
 
-void UnregisterSensorCallback(VI_PIPE vi_pipe, ALG_LIB_S* ae_lib,
-                              ALG_LIB_S* awb_lib) {
-    if (stSnsImx290Obj.pfnUnRegisterCallback != nullptr) {
-        (void)stSnsImx290Obj.pfnUnRegisterCallback(vi_pipe, ae_lib, awb_lib);
+void UnregisterSensorCallback(const SensorProfile& profile, VI_PIPE vi_pipe,
+                              ALG_LIB_S* ae_lib, ALG_LIB_S* awb_lib) {
+    if (profile.sns_obj != nullptr &&
+        profile.sns_obj->pfnUnRegisterCallback != nullptr) {
+        (void)profile.sns_obj->pfnUnRegisterCallback(vi_pipe, ae_lib, awb_lib);
     }
 }
 
-VI_PIPE_ATTR_S MakePipeAttr(const MediaPipelineConfig& config) {
+VI_PIPE_ATTR_S MakePipeAttr(const SensorProfile& profile) {
     VI_PIPE_ATTR_S pipe_attr{};
     pipe_attr.enPipeBypassMode = VI_PIPE_BYPASS_NONE;
     pipe_attr.bYuvSkip = HI_FALSE;
     pipe_attr.bIspBypass = HI_FALSE;
-    pipe_attr.u32MaxW = config.main_stream.size.width;
-    pipe_attr.u32MaxH = config.main_stream.size.height;
-    pipe_attr.enPixFmt = PIXEL_FORMAT_RGB_BAYER_12BPP;
-    pipe_attr.enCompressMode = COMPRESS_MODE_NONE;
-    pipe_attr.enBitWidth = DATA_BITWIDTH_12;
-    pipe_attr.bNrEn = HI_FALSE;
+    pipe_attr.u32MaxW = profile.input_width;
+    pipe_attr.u32MaxH = profile.input_height;
+    pipe_attr.enPixFmt = profile.pipe_pixel_format;
+    pipe_attr.enCompressMode = profile.pipe_compress_mode;
+    pipe_attr.enBitWidth = profile.pipe_bit_width;
+    pipe_attr.bNrEn = profile.pipe_nr_enabled;
     pipe_attr.stNrAttr.enPixFmt = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     pipe_attr.stNrAttr.enBitWidth = DATA_BITWIDTH_8;
     pipe_attr.stNrAttr.enNrRefSource = VI_NR_REF_FROM_RFR;
@@ -87,11 +92,11 @@ VI_CHN_ATTR_S MakeViChannelAttr(const MediaPipelineConfig& config) {
     return chn_attr;
 }
 
-VI_DEV_ATTR_S MakeViDevAttr(const MediaPipelineConfig& config) {
+VI_DEV_ATTR_S MakeViDevAttr(const SensorProfile& profile) {
     VI_DEV_ATTR_S dev_attr{};
     dev_attr.enIntfMode = VI_MODE_MIPI;
     dev_attr.enWorkMode = VI_WORK_MODE_1Multiplex;
-    dev_attr.au32ComponentMask[0] = 0xFFF00000;
+    dev_attr.au32ComponentMask[0] = profile.vi_component_mask;
     dev_attr.au32ComponentMask[1] = 0;
     dev_attr.enScanMode = VI_SCAN_PROGRESSIVE;
     dev_attr.as32AdChnId[0] = -1;
@@ -116,50 +121,48 @@ VI_DEV_ATTR_S MakeViDevAttr(const MediaPipelineConfig& config) {
     dev_attr.stSynCfg.stTimingBlank.u32VsyncVbbb = 0;
     dev_attr.enInputDataType = VI_DATA_TYPE_RGB;
     dev_attr.bDataReverse = HI_FALSE;
-    dev_attr.stSize.u32Width = config.main_stream.size.width;
-    dev_attr.stSize.u32Height = config.main_stream.size.height;
+    dev_attr.stSize.u32Width = profile.input_width;
+    dev_attr.stSize.u32Height = profile.input_height;
     dev_attr.stBasAttr.stSacleAttr.stBasSize.u32Width =
-        config.main_stream.size.width;
+        profile.input_width;
     dev_attr.stBasAttr.stSacleAttr.stBasSize.u32Height =
-        config.main_stream.size.height;
+        profile.input_height;
     dev_attr.stBasAttr.stRephaseAttr.enHRephaseMode = VI_REPHASE_MODE_NONE;
     dev_attr.stBasAttr.stRephaseAttr.enVRephaseMode = VI_REPHASE_MODE_NONE;
-    dev_attr.stWDRAttr.enWDRMode = WDR_MODE_NONE;
-    dev_attr.stWDRAttr.u32CacheLine = config.main_stream.size.height;
+    dev_attr.stWDRAttr.enWDRMode = profile.wdr_mode;
+    dev_attr.stWDRAttr.u32CacheLine = profile.input_height;
     dev_attr.enDataRate = DATA_RATE_X1;
     return dev_attr;
 }
 
-combo_dev_attr_t MakeImx290MipiAttr() {
+combo_dev_attr_t MakeMipiAttr(const SensorProfile& profile) {
     combo_dev_attr_t attr{};
     attr.devno = 0;
     attr.input_mode = INPUT_MODE_MIPI;
     attr.data_rate = MIPI_DATA_RATE_X1;
-    attr.img_rect.x = 0;
-    attr.img_rect.y = 0;
-    attr.img_rect.width = 1920;
-    attr.img_rect.height = 1080;
-    attr.mipi_attr.input_data_type = DATA_TYPE_RAW_12BIT;
-    attr.mipi_attr.wdr_mode = HI_MIPI_WDR_MODE_NONE;
-    attr.mipi_attr.lane_id[0] = 0;
-    attr.mipi_attr.lane_id[1] = 1;
-    attr.mipi_attr.lane_id[2] = 2;
-    attr.mipi_attr.lane_id[3] = 3;
+    attr.img_rect.x = profile.mipi_x;
+    attr.img_rect.y = profile.mipi_y;
+    attr.img_rect.width = profile.input_width;
+    attr.img_rect.height = profile.input_height;
+    attr.mipi_attr.input_data_type = profile.mipi_data_type;
+    attr.mipi_attr.wdr_mode = profile.mipi_wdr_mode;
+    std::memcpy(attr.mipi_attr.lane_id, profile.lane_id,
+                sizeof(attr.mipi_attr.lane_id));
     return attr;
 }
 
-ISP_PUB_ATTR_S MakeImx290IspPubAttr() {
+ISP_PUB_ATTR_S MakeIspPubAttr(const SensorProfile& profile) {
     ISP_PUB_ATTR_S attr{};
     attr.stWndRect.s32X = 0;
     attr.stWndRect.s32Y = 0;
-    attr.stWndRect.u32Width = 1920;
-    attr.stWndRect.u32Height = 1080;
-    attr.stSnsSize.u32Width = 1920;
-    attr.stSnsSize.u32Height = 1080;
-    attr.f32FrameRate = 30.0f;
-    attr.enBayer = BAYER_RGGB;
-    attr.enWDRMode = WDR_MODE_NONE;
-    attr.u8SnsMode = 0;
+    attr.stWndRect.u32Width = profile.input_width;
+    attr.stWndRect.u32Height = profile.input_height;
+    attr.stSnsSize.u32Width = profile.sensor_width;
+    attr.stSnsSize.u32Height = profile.sensor_height;
+    attr.f32FrameRate = profile.frame_rate;
+    attr.enBayer = profile.bayer;
+    attr.enWDRMode = profile.wdr_mode;
+    attr.u8SnsMode = profile.sns_mode;
     return attr;
 }
 
@@ -176,7 +179,7 @@ bool MipiIoctl(const char* expression, unsigned long request, void* arg) {
 
 void StopMipi();
 
-bool StartMipi() {
+bool StartMipi(const SensorProfile& profile) {
     lane_divide_mode_t lane_mode = LANE_DIVIDE_MODE_0;
     if (!MipiIoctl("HI_MIPI_SET_HS_MODE", HI_MIPI_SET_HS_MODE, &lane_mode)) {
         return false;
@@ -208,7 +211,7 @@ bool StartMipi() {
         }
     }
 
-    combo_dev_attr_t combo_attr = MakeImx290MipiAttr();
+    combo_dev_attr_t combo_attr = MakeMipiAttr(profile);
     if (!MipiIoctl("HI_MIPI_SET_DEV_ATTR", HI_MIPI_SET_DEV_ATTR,
                    &combo_attr)) {
         StopMipi();
@@ -256,7 +259,8 @@ void* IspThread(void* arg) {
     return nullptr;
 }
 
-bool StartIsp(VI_PIPE vi_pipe, pthread_t* isp_thread) {
+bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
+              pthread_t* isp_thread) {
     if (isp_thread == nullptr) {
         return false;
     }
@@ -266,58 +270,60 @@ bool StartIsp(VI_PIPE vi_pipe, pthread_t* isp_thread) {
     FillAlgLib(HI_AE_LIB_NAME, vi_pipe, &ae_lib);
     FillAlgLib(HI_AWB_LIB_NAME, vi_pipe, &awb_lib);
 
-    if (stSnsImx290Obj.pfnRegisterCallback == nullptr ||
-        stSnsImx290Obj.pfnSetBusInfo == nullptr) {
-        INFRA_LOG_ERROR("hisi_vendor", "IMX290 sensor callbacks are unavailable");
+    if (profile.sns_obj == nullptr ||
+        profile.sns_obj->pfnRegisterCallback == nullptr ||
+        profile.sns_obj->pfnSetBusInfo == nullptr) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "%s sensor callbacks are unavailable", profile.name);
         return false;
     }
 
-    if (!CheckMpiCall("stSnsImx290Obj.pfnRegisterCallback",
-                      stSnsImx290Obj.pfnRegisterCallback(vi_pipe, &ae_lib,
-                                                         &awb_lib))) {
+    if (!CheckMpiCall("sensor.pfnRegisterCallback",
+                      profile.sns_obj->pfnRegisterCallback(vi_pipe, &ae_lib,
+                                                           &awb_lib))) {
         return false;
     }
 
     ISP_SNS_COMMBUS_U bus_info{};
-    bus_info.s8I2cDev = 0;
-    if (!CheckMpiCall("stSnsImx290Obj.pfnSetBusInfo",
-                      stSnsImx290Obj.pfnSetBusInfo(vi_pipe, bus_info))) {
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+    bus_info.s8I2cDev = profile.i2c_device;
+    if (!CheckMpiCall("sensor.pfnSetBusInfo",
+                      profile.sns_obj->pfnSetBusInfo(vi_pipe, bus_info))) {
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
     if (!CheckMpiCall("HI_MPI_AE_Register",
                       HI_MPI_AE_Register(vi_pipe, &ae_lib))) {
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
     if (!CheckMpiCall("HI_MPI_AWB_Register",
                       HI_MPI_AWB_Register(vi_pipe, &awb_lib))) {
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
     if (!CheckMpiCall("HI_MPI_ISP_MemInit", HI_MPI_ISP_MemInit(vi_pipe))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    ISP_PUB_ATTR_S pub_attr = MakeImx290IspPubAttr();
+    ISP_PUB_ATTR_S pub_attr = MakeIspPubAttr(profile);
     if (!CheckMpiCall("HI_MPI_ISP_SetPubAttr",
                       HI_MPI_ISP_SetPubAttr(vi_pipe, &pub_attr))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
     if (!CheckMpiCall("HI_MPI_ISP_Init", HI_MPI_ISP_Init(vi_pipe))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
@@ -328,14 +334,15 @@ bool StartIsp(VI_PIPE vi_pipe, pthread_t* isp_thread) {
         (void)HI_MPI_ISP_Exit(vi_pipe);
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-        UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+        UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
     return true;
 }
 
-void StopIsp(VI_PIPE vi_pipe, pthread_t isp_thread) {
+void StopIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
+             pthread_t isp_thread) {
     (void)HI_MPI_ISP_Exit(vi_pipe);
     if (isp_thread != 0) {
         (void)pthread_join(isp_thread, nullptr);
@@ -347,7 +354,7 @@ void StopIsp(VI_PIPE vi_pipe, pthread_t isp_thread) {
     FillAlgLib(HI_AWB_LIB_NAME, vi_pipe, &awb_lib);
     (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
     (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
-    UnregisterSensorCallback(vi_pipe, &ae_lib, &awb_lib);
+    UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
 }
 
 bool BindDevPipe(VI_DEV vi_dev, VI_PIPE vi_pipe) {
@@ -385,20 +392,21 @@ void CleanupStartedVi(VI_DEV vi_dev, VI_PIPE vi_pipe, VI_CHN vi_chn,
 bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vi_started_) return true;
+    const SensorProfile& sensor_profile = SelectedSensorProfile();
 
     bool dev_enabled = false;
     bool pipe_created = false;
     bool chn_enabled = false;
 
     if (!impl_->mipi_started_) {
-        if (!StartMipi()) {
+        if (!StartMipi(sensor_profile)) {
             return false;
         }
         impl_->mipi_started_ = true;
     }
 
     // ─── VI DEV attribute ─────────────────────────────────────
-    VI_DEV_ATTR_S dev_attr = MakeViDevAttr(config);
+    VI_DEV_ATTR_S dev_attr = MakeViDevAttr(sensor_profile);
     VI_DEV vi_dev = static_cast<VI_DEV>(config.sensor_id);
     if (!CheckMpiCall("HI_MPI_VI_SetDevAttr",
                       HI_MPI_VI_SetDevAttr(vi_dev, &dev_attr))) {
@@ -427,7 +435,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
         return false;
     }
 
-    VI_PIPE_ATTR_S pipe_attr = MakePipeAttr(config);
+    VI_PIPE_ATTR_S pipe_attr = MakePipeAttr(sensor_profile);
     if (!CheckMpiCall("HI_MPI_VI_CreatePipe",
                       HI_MPI_VI_CreatePipe(vi_pipe, &pipe_attr))) {
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
@@ -464,7 +472,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     chn_enabled = true;
 
     if (!impl_->isp_started_) {
-        if (!StartIsp(vi_pipe, &impl_->isp_thread_)) {
+        if (!StartIsp(vi_pipe, sensor_profile, &impl_->isp_thread_)) {
             CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                              dev_enabled, impl_->mipi_started_);
             impl_->mipi_started_ = false;
@@ -480,11 +488,12 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
 void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (!impl_->vi_started_) return;
+    const SensorProfile& sensor_profile = SelectedSensorProfile();
 
     VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     VI_CHN vi_chn = static_cast<VI_CHN>(config.vi_channel);
     if (impl_->isp_started_) {
-        StopIsp(vi_pipe, impl_->isp_thread_);
+        StopIsp(vi_pipe, sensor_profile, impl_->isp_thread_);
         impl_->isp_thread_ = 0;
         impl_->isp_started_ = false;
     }

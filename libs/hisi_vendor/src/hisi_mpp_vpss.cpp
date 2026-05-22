@@ -1,4 +1,5 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_mpp_sensor.h"
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
@@ -42,11 +43,13 @@ void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
 bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_started_) return true;
+    const internal::SensorProfile& sensor_profile =
+        internal::SelectedSensorProfile();
 
     // ─── VPSS GROUP attribute ─────────────────────────────────
     VPSS_GRP_ATTR_S grp_attr{};
-    grp_attr.u32MaxW = config.main_stream.size.width;
-    grp_attr.u32MaxH = config.main_stream.size.height;
+    grp_attr.u32MaxW = sensor_profile.input_width;
+    grp_attr.u32MaxH = sensor_profile.input_height;
     grp_attr.enPixelFormat = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     grp_attr.enDynamicRange = DYNAMIC_RANGE_SDR8;
     grp_attr.bNrEn = HI_FALSE;
