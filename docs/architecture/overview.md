@@ -82,7 +82,7 @@ main.cpp
             - RtspService
             - WebrtcService
             - StreamHubService
-            - OnvifService + IOnvifUriProvider
+            - OnvifService
             - HttpService
 ```
 
@@ -145,9 +145,9 @@ Responsibilities:
 Cross-module consumers receive narrow interfaces rather than concrete class
 pointers. Media status, capabilities, channels, key-frame requests, and frame
 subscription are owned by `IMediaService`; protocol stream consumers use
-`IStreamHubService`; HTTP also uses `IAiView` and
-`ISnapshotView`. Internal MPP channel data is kept at the app composition
-boundary and passed only to services that need hardware binding.
+`IStreamFrameSource`; HTTP uses `IStreamBrowserSource`, `IStreamFlvSource`,
+`IAiView`, and `ISnapshotView`. Internal MPP channel data is kept at the app
+composition boundary and passed only to services that need hardware binding.
 
 ## Protocol subsystem
 

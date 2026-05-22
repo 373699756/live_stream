@@ -4,6 +4,7 @@
 
 #include "core_services.h"
 #include "device_subsystem.h"
+#include "http_console_service.h"
 #include "infra/log.h"
 #include "media_subsystem.h"
 

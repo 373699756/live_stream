@@ -49,7 +49,6 @@ private:
     std::unique_ptr<IRtspService> rtsp_;
     std::unique_ptr<IWebrtcService> webrtc_;
     std::unique_ptr<IStreamHubService> stream_hub_;
-    std::unique_ptr<IOnvifUriProvider> onvif_uri_provider_;
     std::unique_ptr<IOnvifService> onvif_;
     std::unique_ptr<IHttpService> http_;
     bool started_ = false;

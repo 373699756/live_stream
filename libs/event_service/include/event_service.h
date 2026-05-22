@@ -24,7 +24,6 @@ enum class EventType {
     kTimeChanged,
     kNetworkChanged,
     kAlarmTriggered,
-    kStorageStateChanged,
     kSystemStatusChanged,
     kUpgradeProgressChanged,
 };

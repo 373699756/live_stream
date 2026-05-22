@@ -14,6 +14,14 @@ struct OnvifBodyResult {
     bool success = false;
 };
 
+class IOnvifUriProvider {
+public:
+    virtual ~IOnvifUriProvider() = default;
+
+    virtual std::string GetStreamUri(StreamId stream_id) = 0;
+    virtual std::string GetSnapshotUri(StreamId stream_id) = 0;
+};
+
 bool ParseStreamId(const std::string& body, StreamId* stream_id);
 std::string ProfilesBody(IOnvifUriProvider* uri_provider);
 std::string ProfileFault(uint32_t* status, std::string* reason);

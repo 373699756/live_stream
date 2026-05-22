@@ -222,7 +222,6 @@ Notes:
 Owner:
 
 - `OnvifService`
-- `IOnvifUriProvider` in app composition
 
 Current fields:
 

@@ -109,22 +109,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-function normalizeCodec(codec: string | undefined) {
-  return (codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function codecSupportsHls(codec: string) {
-  return codec === '' || codec === 'h264' || codec === 'h265';
-}
-
-function codecSupportsFlv(codec: string) {
-  return codec === 'h264';
-}
-
-function codecSupportsWebrtc(codec: string) {
-  return codec === 'h264';
-}
-
 function stopVideoTracks(video: HTMLMediaElement | null) {
   if (video?.srcObject instanceof MediaStream) {
     for (const track of video.srcObject.getTracks()) {
@@ -178,20 +162,21 @@ export function usePreviewPlayer({
   const flvRef = useRef<FlvPlayer | null>(null);
   const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
 
-  const activeCodec = normalizeCodec(active?.codec);
   const hlsReady = active?.hlsReady ?? false;
   const flvReady = active?.flvReady ?? false;
   const webrtcReady = active?.webrtcReady ?? false;
-  const hlsSupported = active?.hlsSupported ?? active?.browserCodec ??
-    codecSupportsHls(activeCodec);
-  const flvSupported = active?.flvSupported ?? codecSupportsFlv(activeCodec);
-  const webrtcSupported = codecSupportsWebrtc(activeCodec);
+  const hlsSupported = active?.hlsSupported ?? false;
+  const flvSupported = active?.flvSupported ?? false;
+  const webrtcSupported = webrtcReady;
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
   const streamRunning = active?.state === 'running';
-  const webrtcPlaybackEnabled =
-    webrtcEnabled && webrtcSupported && webrtcReady;
-  const hlsPlaybackEnabled = hlsSupported && streamRunning;
-  const flvPlaybackEnabled = flvSupported && streamRunning && flvReady;
+  const webrtcModeEnabled =
+    webrtcConfigLoaded && webrtcEnabled && webrtcSupported;
+  const hlsModeEnabled = hlsSupported && streamRunning;
+  const flvModeEnabled = flvSupported && streamRunning;
+  const webrtcPlaybackReady = webrtcModeEnabled && webrtcReady;
+  const hlsPlaybackReady = hlsModeEnabled && hlsReady;
+  const flvPlaybackReady = flvModeEnabled && flvReady;
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,
@@ -249,36 +234,41 @@ export function usePreviewPlayer({
       return;
     }
 
-    const modeAvailable =
-      (mode === 'webrtc' && webrtcConfigLoaded && webrtcPlaybackEnabled) ||
-      (mode === 'hls' && hlsPlaybackEnabled) ||
-      (mode === 'flv' && flvPlaybackEnabled);
-    const nextMode =
-      webrtcPlaybackEnabled ? 'webrtc' :
-      flvPlaybackEnabled ? 'flv' :
-      hlsPlaybackEnabled ? 'hls' :
-      'webrtc';
-    if (!modeAvailable) {
-      if (nextMode !== mode) {
+    const selectedModeEnabled =
+      (mode === 'webrtc' && webrtcModeEnabled) ||
+      (mode === 'hls' && hlsModeEnabled) ||
+      (mode === 'flv' && flvModeEnabled);
+    const nextReadyMode =
+      webrtcPlaybackReady ? 'webrtc' :
+      flvPlaybackReady ? 'flv' :
+      hlsPlaybackReady ? 'hls' :
+      null;
+
+    if (modeSelectionRef.current === 'manual') {
+      if (!selectedModeEnabled) {
         modeSelectionRef.current = 'auto';
         restartPreview(`${previewModeLabels[mode]} 暂不可用`);
-        setMode(nextMode);
+        if (nextReadyMode && nextReadyMode !== mode) {
+          setMode(nextReadyMode);
+        }
       }
       return;
     }
 
-    if (modeSelectionRef.current === 'auto' && nextMode !== mode) {
+    if (nextReadyMode && nextReadyMode !== mode) {
       restartPreview('正在切换预览链路');
-      setMode(nextMode);
+      setMode(nextReadyMode);
     }
   }, [
     enabled,
-    flvPlaybackEnabled,
-    hlsPlaybackEnabled,
+    flvModeEnabled,
+    flvPlaybackReady,
+    hlsModeEnabled,
+    hlsPlaybackReady,
     mode,
     setMode,
-    webrtcConfigLoaded,
-    webrtcPlaybackEnabled,
+    webrtcModeEnabled,
+    webrtcPlaybackReady,
   ]);
 
   useEffect(() => {
@@ -427,7 +417,7 @@ export function usePreviewPlayer({
         setSessionPreviewState('WebRTC 未启用');
         return cleanupSession;
       }
-      if (!webrtcPlaybackEnabled) {
+      if (!webrtcReady) {
         setSessionPreviewState('WebRTC 暂未就绪');
         return cleanupSession;
       }
@@ -563,8 +553,8 @@ export function usePreviewPlayer({
       return cleanupSession;
     }
 
-    if ((mode === 'hls' && !hlsPlaybackEnabled) ||
-        (mode === 'flv' && !flvPlaybackEnabled)) {
+    if ((mode === 'hls' && !hlsModeEnabled) ||
+        (mode === 'flv' && !flvModeEnabled)) {
       setSessionPreviewState(
         mode === 'hls' ? 'HLS 码流不可用' : 'HTTP-FLV 码流不可用',
       );
@@ -572,7 +562,11 @@ export function usePreviewPlayer({
     }
 
     if (mode === 'hls') {
-      setSessionPreviewState(hlsReady ? '等待 HLS 视频流' : '正在等待 HLS 首帧');
+      if (!hlsReady) {
+        setSessionPreviewState('正在等待 HLS 首帧');
+        return cleanupSession;
+      }
+      setSessionPreviewState('等待 HLS 视频流');
       const url = hlsPlaylistUrl(stream);
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
@@ -618,8 +612,12 @@ export function usePreviewPlayer({
       return cleanupSession;
     }
 
+    if (!flvReady) {
+      setSessionPreviewState('正在等待 HTTP-FLV 首帧');
+      return cleanupSession;
+    }
     setSessionPreviewState(
-      flvReady ? '等待 HTTP-FLV 视频流' : '正在等待 HTTP-FLV 首帧',
+      '等待 HTTP-FLV 视频流',
     );
     void (async () => {
       try {
@@ -692,11 +690,10 @@ export function usePreviewPlayer({
     })();
     return cleanupSession;
   }, [
-    activeCodec,
     enabled,
-    flvPlaybackEnabled,
+    flvModeEnabled,
     flvReady,
-    hlsPlaybackEnabled,
+    hlsModeEnabled,
     hlsReady,
     mode,
     stream,
@@ -704,16 +701,16 @@ export function usePreviewPlayer({
     webrtcConfigLoaded,
     webrtcEnabled,
     webrtcIceServerKey,
-    webrtcPlaybackEnabled,
+    webrtcReady,
   ]);
 
   return {
     connected,
     decodedSize,
     displaySize,
-    flvPlaybackEnabled,
+    flvPlaybackEnabled: flvPlaybackReady,
     flvSupported,
-    hlsPlaybackEnabled,
+    hlsPlaybackEnabled: hlsPlaybackReady,
     hlsSupported,
     previewState,
     restartPreview,
@@ -721,7 +718,7 @@ export function usePreviewPlayer({
     switchMode,
     videoRef,
     webrtcEnabled,
-    webrtcPlaybackEnabled,
+    webrtcPlaybackEnabled: webrtcPlaybackReady,
     webrtcSupported,
   };
 }

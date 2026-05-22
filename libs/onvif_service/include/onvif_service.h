@@ -19,6 +19,7 @@ namespace live_stream {
 class IAuthService;
 class IConfigService;
 class IEventService;
+class IMediaService;
 class NetEngine;
 class ISystemService;
 class ITimeService;
@@ -34,6 +35,10 @@ struct OnvifServiceOptions {
     std::string model = "live_stream_ipc";
     std::string firmware_version = "0.1.0";
     std::string service_path = "/onvif/device_service";
+    std::string snapshot_main_path = "/api/snapshot/main.jpg";
+    std::string snapshot_sub_path = "/api/snapshot/sub.jpg";
+    uint16_t rtsp_port = 554;
+    uint16_t http_port = 80;
     uint32_t max_request_bytes = 16 * 1024;
 };
 
@@ -46,14 +51,6 @@ struct OnvifServiceStats {
     uint64_t snapshot_uri_requests = 0;
 };
 
-class IOnvifUriProvider {
-public:
-    virtual ~IOnvifUriProvider() = default;
-
-    virtual std::string GetStreamUri(StreamId stream_id) = 0;
-    virtual std::string GetSnapshotUri(StreamId stream_id) = 0;
-};
-
 struct OnvifServiceDependencies {
     NetEngine* net_engine = nullptr;
     IAuthService* auth_service = nullptr;
@@ -61,7 +58,7 @@ struct OnvifServiceDependencies {
     IConfigService* config_service = nullptr;
     ISystemService* system_service = nullptr;
     ITimeService* time_service = nullptr;
-    IOnvifUriProvider* uri_provider = nullptr;
+    IMediaService* media_service = nullptr;
 };
 
 class IOnvifService {

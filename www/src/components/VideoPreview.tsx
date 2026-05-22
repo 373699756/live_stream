@@ -63,6 +63,8 @@ export function VideoPreview({
   };
 
   const streamLabel = stream === 'main' ? '主码流' : '子码流';
+  const streamText = (value: string | number | undefined, fallback = '未知') =>
+    value === undefined || value === '' ? fallback : String(value);
   const previewDetail =
     mode === 'webrtc'
       ? `${streamLabel} / WebRTC`
@@ -79,7 +81,7 @@ export function VideoPreview({
       label: name === 'main' ? '主码流' : '子码流',
       running,
       state: running ? '运行中' : '未运行',
-      detail: `${item?.codec || 'H.264'} / ${item?.resolution || '--'} / ${item?.fps || 0}fps`,
+      detail: `${streamText(item?.codec)} / ${streamText(item?.resolution, '--')} / ${streamText(item?.fps, '--')}fps`,
     };
   };
   const mainSummary = streamSummary('main');
@@ -172,12 +174,12 @@ export function VideoPreview({
         <StatusBadge state={active?.state === 'running' ? 'running' : 'pending'} />
         <span>{streamLabel}</span>
         <span>{protocolLabel}</span>
-        <span>{active?.codec || 'H.264'}</span>
-        <span>分辨率 {active?.resolution || '1920x1080'}</span>
+        <span>{streamText(active?.codec)}</span>
+        <span>分辨率 {streamText(active?.resolution, '--')}</span>
         {decodedSize && <span>实际 {decodedSize}</span>}
         {displaySize && <span>显示 {displaySize}</span>}
-        <span>{active?.fps || 25} fps</span>
-        <span>{active?.bitrateKbps || 12288} kbps</span>
+        <span>{streamText(active?.fps, '--')} fps</span>
+        <span>{streamText(active?.bitrateKbps, '--')} kbps</span>
       </div>
     </section>
   );

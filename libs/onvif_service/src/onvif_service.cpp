@@ -2,6 +2,7 @@
 
 #include "auth_service.h"
 #include "event_service.h"
+#include "media_service.h"
 #include "net_service.h"
 #include "onvif_auth.h"
 #include "onvif_device.h"
@@ -39,11 +40,53 @@ using onvif_internal::SoapFault;
 using onvif_internal::StreamUriBody;
 using onvif_internal::SystemDateAndTimeBody;
 
+class ServiceUriProvider : public IOnvifUriProvider {
+public:
+    ServiceUriProvider(const OnvifServiceOptions* options,
+                       const OnvifServiceDependencies* dependencies)
+        : options_(options), dependencies_(dependencies) {}
+
+    std::string GetStreamUri(StreamId stream_id) override {
+        if (options_ == nullptr || dependencies_ == nullptr) {
+            return std::string();
+        }
+        if (dependencies_->media_service != nullptr &&
+            !dependencies_->media_service->IsStreamStarted(stream_id)) {
+            return std::string();
+        }
+        return std::string("rtsp://") + options_->advertise_ip + ":" +
+               std::to_string(options_->rtsp_port) + StreamPath(stream_id);
+    }
+
+    std::string GetSnapshotUri(StreamId stream_id) override {
+        if (options_ == nullptr) {
+            return std::string();
+        }
+        return std::string("http://") + options_->advertise_ip + ":" +
+               std::to_string(options_->http_port) + SnapshotPath(stream_id);
+    }
+
+private:
+    const char* StreamPath(StreamId stream_id) const {
+        return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
+    }
+
+    const std::string& SnapshotPath(StreamId stream_id) const {
+        return stream_id == StreamId::kSub ? options_->snapshot_sub_path
+                                           : options_->snapshot_main_path;
+    }
+
+    const OnvifServiceOptions* options_ = nullptr;
+    const OnvifServiceDependencies* dependencies_ = nullptr;
+};
+
 class OnvifServiceImpl : public IOnvifService {
 public:
     OnvifServiceImpl(const OnvifServiceOptions& options,
                      const OnvifServiceDependencies& dependencies)
-        : options_(options), dependencies_(dependencies) {}
+        : options_(options),
+          dependencies_(dependencies),
+          uri_provider_(&options_, &dependencies_) {}
 
     bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -251,14 +294,14 @@ private:
                 return SoapEnvelope(SetSystemDateAndTimeBody(
                     dependencies_.time_service, request, status, reason));
             case OnvifAction::kGetProfiles:
-                return SoapEnvelope(ProfilesBody(dependencies_.uri_provider));
+                return SoapEnvelope(ProfilesBody(&uri_provider_));
             case OnvifAction::kGetStreamUri: {
                 StreamId stream_id = StreamId::kMain;
                 if (!ParseStreamId(request, &stream_id)) {
                     return SoapEnvelope(ProfileFault(status, reason));
                 }
                 OnvifBodyResult result = onvif_internal::StreamUriBody(
-                    dependencies_.uri_provider, stream_id, status, reason);
+                    &uri_provider_, stream_id, status, reason);
                 if (result.success) {
                     IncrementStreamUriRequests();
                 }
@@ -270,7 +313,7 @@ private:
                     return SoapEnvelope(ProfileFault(status, reason));
                 }
                 OnvifBodyResult result = onvif_internal::SnapshotUriBody(
-                    dependencies_.uri_provider, stream_id, status, reason);
+                    &uri_provider_, stream_id, status, reason);
                 if (result.success) {
                     IncrementSnapshotUriRequests();
                 }
@@ -342,6 +385,7 @@ private:
 
     OnvifServiceOptions options_;
     OnvifServiceDependencies dependencies_;
+    ServiceUriProvider uri_provider_;
     TcpServerId tcp_server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;
     mutable std::mutex mutex_;

@@ -298,7 +298,7 @@ Owns:
 Should not own:
 
 - Internal RTSP session state.
-- Direct construction of stream URLs outside `IOnvifUriProvider`.
+- Direct construction of stream URLs outside `OnvifService`.
 
 ### `libs/http_service`
 

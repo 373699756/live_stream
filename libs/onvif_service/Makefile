@@ -5,6 +5,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/time_service/include
