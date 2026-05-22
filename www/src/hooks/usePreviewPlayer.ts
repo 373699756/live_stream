@@ -176,8 +176,8 @@ export function usePreviewPlayer({
   const streamRunning = active?.state === 'running';
   const webrtcPlaybackEnabled =
     webrtcEnabled && webrtcReady && activeCodec === 'h264';
-  const hlsPlaybackEnabled = browserCodec && streamRunning;
-  const flvPlaybackEnabled = flvCodec && streamRunning;
+  const hlsPlaybackEnabled = browserCodec && streamRunning && hlsReady;
+  const flvPlaybackEnabled = flvCodec && streamRunning && flvReady;
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,
