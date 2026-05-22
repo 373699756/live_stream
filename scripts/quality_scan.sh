@@ -457,9 +457,17 @@ if [[ "${MODE}" == "full" ]]; then
   RunOptionalStep bear "compile database" "bear.log" bear make -j2
 
   if HaveTool scan-build-10; then
-    RunWarningStep scan-build-10 "scan-build-10" "scan-build.log" scan-build-10 make -j2
+    RunWarningStep scan-build-10 "scan-build-10" "scan-build.log" \
+      scan-build-10 \
+      --use-cc arm-himix200-linux-gcc \
+      --use-c++ arm-himix200-linux-g++ \
+      make -j2
   elif HaveTool scan-build; then
-    RunWarningStep scan-build "scan-build" "scan-build.log" scan-build make -j2
+    RunWarningStep scan-build "scan-build" "scan-build.log" \
+      scan-build \
+      --use-cc arm-himix200-linux-gcc \
+      --use-c++ arm-himix200-linux-g++ \
+      make -j2
   else
     RecordSkipped "scan-build: missing scan-build-10 or scan-build"
   fi

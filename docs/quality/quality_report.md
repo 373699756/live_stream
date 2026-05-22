@@ -2,46 +2,32 @@
 
 本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
 
-- Generated: `20260522-022057`
-- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-022057`
-- Git commit: `3f9efb1`
+- Generated: `20260522-024510`
+- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-024510`
+- Git commit: `53050c4`
 
 ## Counts
 
-- cppcheck diagnostics: 12
-- cppcheck errors: 1
+- cppcheck diagnostics: 0
+- cppcheck errors: 0
 - keyword risk hits: 229
 - hot-path/logging hits: 195
 - clang-tidy diagnostics: 0
 
 ## Must Check First
 
-- No required step failed.
-- Warning step: `scan-build-10: exit code 2`; inspect related log before trusting that tool result.
+- Required step failed: `make`; inspect `make.log`.
+- Required step failed: `compile database`; inspect `bear.log`.
 - Skipped: `code size: missing cloc or tokei`.
 - Skipped: `include-what-you-use: missing include-what-you-use or iwyu`.
 
 ## Must Fix: Cppcheck Errors
 
-```text
-libs/stream_mux/src/stream_mux.cpp:309:68: error: Invalid out->resize() argument nr 2. The value is -1 but the valid values are '0:255'. [invalidFunctionArg]
-```
+_No findings in this category._
 
 ## Review: Cppcheck Warnings
 
-```text
-libs/config_service/src/config_service.cpp:262:10: warning: Virtual function 'SaveFile' is called from destructor '~ConfigServiceImpl()' at line 134. Dynamic binding is not used. [virtualCallInConstructor]
-libs/event_service/src/event_service.cpp:69:10: warning: Virtual function 'Stop' is called from destructor '~EventServiceImpl()' at line 35. Dynamic binding is not used. [virtualCallInConstructor]
-libs/event_service/src/event_service.cpp:69:10: warning: Virtual function 'Stop' is called from destructor '~EventServiceImpl()' at line 36. Dynamic binding is not used. [virtualCallInConstructor]
-libs/http_service/src/http_service_impl.h:32:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 42. Dynamic binding is not used. [virtualCallInConstructor]
-libs/http_service/src/http_service_impl.h:32:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 43. Dynamic binding is not used. [virtualCallInConstructor]
-libs/logger_service/src/logger_service.cpp:46:10: warning: Virtual function 'Stop' is called from destructor '~LoggerServiceImpl()' at line 18. Dynamic binding is not used. [virtualCallInConstructor]
-libs/net_service/src/net_engine_impl.h:26:10: warning: Virtual function 'Stop' is called from destructor '~NetEngineImpl()' at line 16. Dynamic binding is not used. [virtualCallInConstructor]
-libs/rtsp_service/src/rtsp_service.cpp:142:10: warning: Virtual function 'Stop' is called from destructor '~RtspServiceImpl()' at line 58. Dynamic binding is not used. [virtualCallInConstructor]
-libs/stream_hub_service/src/stream_hub_service.cpp:195:10: warning: Virtual function 'Stop' is called from destructor '~StreamHubServiceImpl()' at line 65. Dynamic binding is not used. [virtualCallInConstructor]
-libs/upgrade_service/src/upgrade_service.cpp:138:10: warning: Virtual function 'Stop' is called from destructor '~UpgradeServiceImpl()' at line 89. Dynamic binding is not used. [virtualCallInConstructor]
-libs/upgrade_service/src/upgrade_service.cpp:138:10: warning: Virtual function 'Stop' is called from destructor '~UpgradeServiceImpl()' at line 90. Dynamic binding is not used. [virtualCallInConstructor]
-```
+_No findings in this category._
 
 ## Review: Clang-Tidy Diagnostics
 
@@ -99,7 +85,10 @@ _No findings in this category._
 
 ## Build Failure Tail
 
-_No build failure pattern detected._
+```text
+make: *** [Makefile:160: build/bin/live_stream] Bad system call (core dumped)
+
+```
 
 ## How To Use This Report
 
