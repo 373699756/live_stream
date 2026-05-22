@@ -95,18 +95,16 @@ public:
             return context_->EnqueueStreamingChunk(connection_id_, data, size);
         }
 
-        scratch_.assign(reinterpret_cast<const char *>(data), size);
-        uint8_t *tag = reinterpret_cast<uint8_t *>(&scratch_[0]);
+        std::shared_ptr<std::string> chunk(new std::string(
+            reinterpret_cast<const char *>(data), size));
+        uint8_t *tag = reinterpret_cast<uint8_t *>(&(*chunk)[0]);
         const uint32_t timestamp_ms = ReadFlvTimestampMs(tag);
         const uint8_t packet_type =
             size > kFlvH264PacketTypeOffset ? tag[kFlvH264PacketTypeOffset]
                                             : 0xff;
         if (packet_type == kFlvH264PacketTypeSequenceHeader) {
             WriteFlvTimestampMs(0, tag);
-            return context_->EnqueueStreamingChunk(
-                connection_id_,
-                reinterpret_cast<const uint8_t *>(scratch_.data()),
-                scratch_.size());
+            return context_->EnqueueStreamingChunk(connection_id_, chunk);
         }
         if (!timestamp_base_set_) {
             timestamp_base_ms_ = timestamp_ms;
@@ -125,9 +123,7 @@ public:
         }
         last_timestamp_ms_ = rebased_ms;
         WriteFlvTimestampMs(rebased_ms, tag);
-        return context_->EnqueueStreamingChunk(
-            connection_id_, reinterpret_cast<const uint8_t *>(scratch_.data()),
-            scratch_.size());
+        return context_->EnqueueStreamingChunk(connection_id_, chunk);
     }
 
 private:
@@ -136,7 +132,6 @@ private:
     bool timestamp_base_set_ = false;
     uint32_t timestamp_base_ms_ = 0;
     uint32_t last_timestamp_ms_ = 0;
-    std::string scratch_;
 };
 
 void SendFlvError(HttpHandlerContext *context, ConnectionId connection_id,
@@ -156,27 +151,6 @@ bool ParseFlvStreamName(const HttpRequest &request, StreamId *stream_id,
     }
     stream_name->resize(stream_name->size() - 4);
     return StreamIdFromJsonString(*stream_name, stream_id);
-}
-
-void LogFlvTagSummary(const char *label, const std::string &tag) {
-    if (label == nullptr || tag.empty()) {
-        return;
-    }
-    const uint8_t *data = reinterpret_cast<const uint8_t *>(tag.data());
-    uint32_t body_size = 0;
-    const bool complete = IsCompleteFlvVideoTag(data, tag.size(), &body_size);
-    const uint8_t video_flags =
-        tag.size() > kFlvVideoBodyOffset ? data[kFlvVideoBodyOffset] : 0;
-    const uint8_t packet_type =
-        tag.size() > kFlvH264PacketTypeOffset ? data[kFlvH264PacketTypeOffset]
-                                              : 0xff;
-    INFRA_LOG_INFO(kHttpModuleName,
-                   "HTTP-FLV tag %s size=%zu complete=%d body=%u flags=0x%02x "
-                   "packet=%u timestamp=%u",
-                   label, tag.size(), complete ? 1 : 0, body_size,
-                   static_cast<unsigned>(video_flags),
-                   static_cast<unsigned>(packet_type),
-                   complete ? ReadFlvTimestampMs(data) : 0);
 }
 
 }  // namespace
@@ -321,8 +295,6 @@ public:
                        start_data.file_header.size(),
                        start_data.sequence_header.size(),
                        start_data.last_keyframe.size());
-        LogFlvTagSummary("sequence", start_data.sequence_header);
-        LogFlvTagSummary("cached_keyframe", start_data.last_keyframe);
         std::string start_block;
         start_block.reserve(header_block.size() + start_data.file_header.size());
         start_block.append(header_block);

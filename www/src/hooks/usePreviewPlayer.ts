@@ -631,8 +631,8 @@ export function usePreviewPlayer({
           hasVideo: true,
         }, {
           enableWorker: false,
-          enableStashBuffer: true,
-          stashInitialSize: 384,
+          enableStashBuffer: false,
+          stashInitialSize: 128,
           lazyLoad: false,
           deferLoadAfterSourceOpen: false,
           autoCleanupSourceBuffer: true,

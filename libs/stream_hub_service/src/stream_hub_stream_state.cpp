@@ -12,6 +12,8 @@ bool IsBrowserCodec(VideoCodec codec) {
 
 namespace {
 
+constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
+
 void StartSegment(StreamContext *stream, int64_t pts_us) {
     if (stream == nullptr) {
         return;
@@ -25,6 +27,7 @@ void StartSegment(StreamContext *stream, int64_t pts_us) {
     stream->current_segment.body =
         stream_mux::BuildTsSegmentHeader(stream->codec,
                                          &stream->ts_muxer_state);
+    stream->current_segment.body.reserve(kInitialHlsSegmentBytes);
 }
 
 StreamSegment BuildSegmentFromCurrent(const StreamContext &stream) {

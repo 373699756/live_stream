@@ -77,7 +77,13 @@ private:
                                 StreamFlvClientId client_id) override;
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) override;
+    bool EnqueueStreamingChunk(
+        ConnectionId connection_id,
+        const std::shared_ptr<const std::string> &data) override;
     void CloseConnection(ConnectionId connection_id) override;
+    bool EnqueueStreamingSlices(ConnectionId connection_id,
+                                const NetBufferSlices &slices,
+                                size_t size);
 
     void IncrementNotFound();
     uint64_t NextRequestId();

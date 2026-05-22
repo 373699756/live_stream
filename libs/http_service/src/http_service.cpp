@@ -23,7 +23,7 @@
 namespace live_stream {
 namespace {
 
-constexpr size_t kMaxStreamingQueuedBytes = 1024U * 1024U;
+constexpr size_t kMaxStreamingQueuedBytes = 4U * 1024U * 1024U;
 
 const char *StaticStatusText(StaticFileStatus status) {
     switch (status) {
@@ -400,10 +400,33 @@ void HttpServiceImpl::DetachFlvClients(
 
 bool HttpServiceImpl::EnqueueStreamingChunk(ConnectionId connection_id,
                                             const uint8_t *data, size_t size) {
-    NetEngine *net_engine = nullptr;
+    NetBufferSlices slices;
     if (data == nullptr || size == 0) {
         return true;
     }
+    if (!slices.Add(data, size)) {
+        return false;
+    }
+    return EnqueueStreamingSlices(connection_id, slices, size);
+}
+
+bool HttpServiceImpl::EnqueueStreamingChunk(
+    ConnectionId connection_id, const std::shared_ptr<const std::string> &data) {
+    NetBufferSlices slices;
+    if (!data || data->empty()) {
+        return true;
+    }
+    if (!slices.Add(reinterpret_cast<const uint8_t *>(data->data()),
+                    data->size(), data)) {
+        return false;
+    }
+    return EnqueueStreamingSlices(connection_id, slices, data->size());
+}
+
+bool HttpServiceImpl::EnqueueStreamingSlices(ConnectionId connection_id,
+                                             const NetBufferSlices &slices,
+                                             size_t size) {
+    NetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!connections_.IsStreaming(connection_id)) {
@@ -433,7 +456,7 @@ bool HttpServiceImpl::EnqueueStreamingChunk(ConnectionId connection_id,
         (void)net_engine->Close(connection_id);
         return false;
     }
-    if (!net_engine->Send(connection_id, data, size)) {
+    if (!net_engine->SendSlices(connection_id, slices)) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HTTP-FLV send failed conn=%llu size=%zu pending=%u",
                         static_cast<unsigned long long>(connection_id),

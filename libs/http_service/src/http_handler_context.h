@@ -48,6 +48,9 @@ public:
                                         StreamFlvClientId client_id) = 0;
     virtual bool EnqueueStreamingChunk(ConnectionId connection_id,
                                        const uint8_t *data, size_t size) = 0;
+    virtual bool EnqueueStreamingChunk(
+        ConnectionId connection_id,
+        const std::shared_ptr<const std::string> &data) = 0;
     virtual void CloseConnection(ConnectionId connection_id) = 0;
 };
 

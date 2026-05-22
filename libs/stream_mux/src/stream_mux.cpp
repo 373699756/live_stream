@@ -218,24 +218,21 @@ void AppendPts(std::string *out, uint8_t prefix, uint64_t value) {
     AppendU8(out, static_cast<uint8_t>(((pts & 0x7f) << 1) | 0x01));
 }
 
-std::string BuildPesPacket(const std::string &access_unit, uint64_t pts_90k,
-                           uint64_t dts_90k) {
-    // PES wraps one video access unit before it is split into 188-byte TS
-    // packets. Packet length is set to 0 because live video PES can exceed 64 KiB.
-    std::string pes;
-    AppendU24(&pes, 0x000001);  // PES start code prefix.
-    AppendU8(&pes, 0xe0);     // Video stream id.
-    AppendU16(&pes, 0);         // Unbounded video PES length.
-    AppendU8(&pes, 0x80);     // Marker bits.
+std::string BuildPesHeader(uint64_t pts_90k, uint64_t dts_90k) {
+    // Packet length is set to 0 because live video PES can exceed 64 KiB.
+    std::string header;
+    AppendU24(&header, 0x000001);  // PES start code prefix.
+    AppendU8(&header, 0xe0);       // Video stream id.
+    AppendU16(&header, 0);         // Unbounded video PES length.
+    AppendU8(&header, 0x80);       // Marker bits.
     const bool has_dts = pts_90k != dts_90k;
-    AppendU8(&pes, has_dts ? 0xc0 : 0x80);  // PTS+DTS or PTS only.
-    AppendU8(&pes, has_dts ? 10 : 5);       // Optional header length.
-    AppendPts(&pes, has_dts ? 0x03 : 0x02, pts_90k);
+    AppendU8(&header, has_dts ? 0xc0 : 0x80);  // PTS+DTS or PTS only.
+    AppendU8(&header, has_dts ? 10 : 5);       // Optional header length.
+    AppendPts(&header, has_dts ? 0x03 : 0x02, pts_90k);
     if (has_dts) {
-        AppendPts(&pes, 0x01, dts_90k);
+        AppendPts(&header, 0x01, dts_90k);
     }
-    pes.append(access_unit);
-    return pes;
+    return header;
 }
 
 void WritePcr(char *target, uint64_t pcr_90k) {
@@ -248,14 +245,51 @@ void WritePcr(char *target, uint64_t pcr_90k) {
     target[5] = static_cast<char>(0);
 }
 
-void AppendTsPayload(const std::string &pes, uint64_t pcr_90k,
+size_t CopyPesBytes(const std::string &pes_header,
+                    const std::string &access_unit, size_t offset,
+                    size_t size, char *target) {
+    if (target == nullptr || size == 0) {
+        return 0;
+    }
+    size_t copied = 0;
+    if (offset < pes_header.size()) {
+        const size_t header_size =
+            std::min(size, pes_header.size() - offset);
+        std::copy(pes_header.begin() + static_cast<std::ptrdiff_t>(offset),
+                  pes_header.begin() + static_cast<std::ptrdiff_t>(
+                                         offset + header_size),
+                  target);
+        copied += header_size;
+        offset += header_size;
+    }
+    if (copied < size) {
+        const size_t access_unit_offset = offset - pes_header.size();
+        const size_t access_unit_size = std::min(
+            size - copied, access_unit.size() - access_unit_offset);
+        std::copy(access_unit.begin() +
+                      static_cast<std::ptrdiff_t>(access_unit_offset),
+                  access_unit.begin() + static_cast<std::ptrdiff_t>(
+                                            access_unit_offset +
+                                            access_unit_size),
+                  target + copied);
+        copied += access_unit_size;
+    }
+    return copied;
+}
+
+void AppendTsPayload(const std::string &pes_header,
+                     const std::string &access_unit, uint64_t pcr_90k,
                      uint8_t *continuity_counter, std::string *out) {
     // Split PES into fixed 188-byte TS packets. The first packet carries PCR in
     // the adaptation field so HLS players can recover the sender clock.
+    if (out == nullptr) {
+        return;
+    }
+    const size_t pes_size = pes_header.size() + access_unit.size();
     size_t offset = 0;
-    while (offset < pes.size()) {
+    while (offset < pes_size) {
         const bool first_packet = offset == 0;
-        const size_t remaining = pes.size() - offset;
+        const size_t remaining = pes_size - offset;
         size_t payload_size = 0;
         if (first_packet) {
             payload_size = std::min(remaining, static_cast<size_t>(176));
@@ -271,7 +305,9 @@ void AppendTsPayload(const std::string &pes, uint64_t pcr_90k,
         }
         const size_t adaptation_total = use_adaptation ? 184 - payload_size : 0;
 
-        std::string packet(kTsPacketSize, static_cast<char>(0xff));
+        const size_t packet_start = out->size();
+        out->resize(packet_start + kTsPacketSize, static_cast<char>(0xff));
+        char *packet = &(*out)[packet_start];
         packet[0] = static_cast<char>(0x47);  // TS sync byte.
         packet[1] = static_cast<char>((first_packet ? 0x40 : 0x00) |
                                       ((kVideoPid >> 8) & 0x1f));
@@ -297,10 +333,8 @@ void AppendTsPayload(const std::string &pes, uint64_t pcr_90k,
                 packet[packet_offset++] = static_cast<char>(0xff);
             }
         }
-        std::copy(pes.begin() + static_cast<std::ptrdiff_t>(offset),
-                  pes.begin() + static_cast<std::ptrdiff_t>(offset + payload_size),
-                  packet.begin() + static_cast<std::ptrdiff_t>(packet_offset));
-        out->append(packet);
+        (void)CopyPesBytes(pes_header, access_unit, offset, payload_size,
+                           packet + packet_offset);
         offset += payload_size;
     }
 }
@@ -678,7 +712,7 @@ void AppendVideoAccessUnitToTsSegment(VideoCodec codec,
     const uint64_t dts_90k =
         static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
     // PTS/DTS from media frames are microseconds; TS/PES timestamps use 90 kHz.
-    AppendTsPayload(BuildPesPacket(access_unit, pts_90k, dts_90k), dts_90k,
+    AppendTsPayload(BuildPesHeader(pts_90k, dts_90k), access_unit, dts_90k,
                     &state->video_continuity, segment_body);
 }
 
