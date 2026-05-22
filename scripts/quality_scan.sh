@@ -502,7 +502,7 @@ fi
 if [[ "${MODE}" == "full" ]]; then
   if HaveTool bear; then
     RunShellStep "compile database" "bear.log" \
-      "make clean && bear -- make -j2"
+      "make clean && bear --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
   else
     RecordSkipped "compile database: missing bear"
   fi

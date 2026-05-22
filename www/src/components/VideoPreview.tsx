@@ -31,7 +31,6 @@ export function VideoPreview({
     displaySize,
     flvPlaybackEnabled,
     flvSupported,
-    hlsPlaybackEnabled,
     hlsSupported,
     previewState,
     restartPreview,
@@ -123,7 +122,7 @@ export function VideoPreview({
           <button
             type="button"
             className={mode === 'hls' ? 'active' : ''}
-            disabled={!hlsSupported || !hlsPlaybackEnabled}
+            disabled={!hlsSupported || !streamRunning}
             title={!hlsSupported ? '当前编码不支持 HLS 预览' : undefined}
             onClick={() => switchMode('hls')}
           >

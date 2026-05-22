@@ -1,10 +1,10 @@
 # Quality Report
 
-本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
+本文档由 `scripts/quality_scan.sh quick` 生成，汇总代码质量、性能和设计候选问题。
 
-- Generated: `20260522-024510`
-- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-024510`
-- Git commit: `53050c4`
+- Generated: `20260522-025749`
+- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-025749`
+- Git commit: `93db900`
 
 ## Counts
 
@@ -13,13 +13,11 @@
 - keyword risk hits: 229
 - hot-path/logging hits: 195
 - clang-tidy diagnostics: 0
+- include-what-you-use findings: 0
 
 ## Must Check First
 
-- Required step failed: `make`; inspect `make.log`.
-- Required step failed: `compile database`; inspect `bear.log`.
-- Skipped: `code size: missing cloc or tokei`.
-- Skipped: `include-what-you-use: missing include-what-you-use or iwyu`.
+- No required step failed.
 
 ## Must Fix: Cppcheck Errors
 
@@ -31,7 +29,11 @@ _No findings in this category._
 
 ## Review: Clang-Tidy Diagnostics
 
-_No findings in this category._
+_No log file generated._
+
+## Review: Include-What-You-Use
+
+_No log file generated._
 
 ## Optimization Candidates: Files With Most Keyword Risk Hits
 
@@ -85,10 +87,7 @@ _No findings in this category._
 
 ## Build Failure Tail
 
-```text
-make: *** [Makefile:160: build/bin/live_stream] Bad system call (core dumped)
-
-```
+_No build failure pattern detected._
 
 ## How To Use This Report
 
