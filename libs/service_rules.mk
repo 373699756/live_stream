@@ -19,7 +19,7 @@ CXXFLAGS += -fno-rtti
 CXXFLAGS += -Iinclude
 CXXFLAGS += -I$(ROOT_DIR)/libs/infra_service/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/install/include
-CXXFLAGS += -I$(ROOT_DIR)/3rdparty/src
+CXXFLAGS += -I$(ROOT_DIR)/3rdparty/open_src
 
 
 SRCS := $(wildcard src/*.cpp)

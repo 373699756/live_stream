@@ -6,7 +6,7 @@ LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/app
 BIN_DIR := $(BUILD_DIR)/bin
 THIRDPARTY_DIR := 3rdparty
-THIRDPARTY_SRC := $(THIRDPARTY_DIR)/src
+THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
 METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
 METARTC_INSTALL := $(THIRDPARTY_DIR)/install
 OUT_DIR := out
@@ -141,8 +141,8 @@ compiledb:
 		exit 1; \
 	fi
 
-$(THIRDPARTY_LIBS): $(THIRDPARTY_DIR)/build_deps.sh
-	$(THIRDPARTY_DIR)/build_deps.sh
+$(THIRDPARTY_LIBS): $(THIRDPARTY_SRC)/build_deps.sh
+	$(THIRDPARTY_SRC)/build_deps.sh
 
 $(SERVICES):
 	$(MAKE) -C libs/$@ ROOT_DIR=$(ROOT_DIR) \

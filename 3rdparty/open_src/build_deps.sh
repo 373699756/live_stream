@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="${ROOT_DIR}/src"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SRC_DIR}/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
 INSTALL_DIR="${ROOT_DIR}/install"
 INSTALL_LIB_DIR="${INSTALL_DIR}/lib"
 INSTALL_INCLUDE_DIR="${INSTALL_DIR}/include"
-TOOLCHAIN_FILE="${ROOT_DIR}/toolchains/arm-himix200-linux.cmake"
+TOOLCHAIN_FILE="${SRC_DIR}/toolchains/arm-himix200-linux.cmake"
 
 OPENSSL_SRC_DIR="${SRC_DIR}/openssl-1.1.1w"
 OPENSSL_INSTALL_DIR="${OPENSSL_SRC_DIR}/install"
