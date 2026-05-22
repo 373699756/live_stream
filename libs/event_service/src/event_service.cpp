@@ -32,8 +32,7 @@ class EventServiceImpl : public IEventService {
 public:
     EventServiceImpl() = default;
     ~EventServiceImpl() override {
-        Stop();
-        Release();
+        ReleaseInternal();
     }
 
     bool Prepare() {
@@ -67,6 +66,15 @@ public:
     }
 
     void Stop() override {
+        StopInternal();
+    }
+
+    void Release() {
+        ReleaseInternal();
+    }
+
+private:
+    void StopInternal() {
         std::unique_ptr<infra::Executor> executor;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -82,8 +90,8 @@ public:
         }
     }
 
-    void Release() {
-        Stop();
+    void ReleaseInternal() {
+        StopInternal();
         std::lock_guard<std::mutex> lock(mutex_);
         subscriptions_.clear();
         executor_.reset();
@@ -91,6 +99,7 @@ public:
         started_ = false;
     }
 
+public:
     EventSubscriptionId Subscribe(
         EventType type, EventHandler handler) override {
         if (!handler) {

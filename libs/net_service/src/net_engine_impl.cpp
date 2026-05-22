@@ -13,7 +13,7 @@ namespace net_internal {
 NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
     : options_(options) {}
 
-NetEngineImpl::~NetEngineImpl() { Stop(); }
+NetEngineImpl::~NetEngineImpl() { StopInternal(); }
 
 bool NetEngineImpl::Start() {
     if (options_.io_threads == 0) {
@@ -58,6 +58,10 @@ bool NetEngineImpl::Start() {
 }
 
 void NetEngineImpl::Stop() {
+    StopInternal();
+}
+
+void NetEngineImpl::StopInternal() {
     running_ = false;
     std::vector<std::shared_ptr<TcpServer>> servers;
     std::vector<std::shared_ptr<UdpEndpoint>> udp_sockets;

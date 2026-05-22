@@ -62,7 +62,7 @@ public:
                          StreamHubServiceDependencies dependencies)
         : options_(std::move(options)), dependencies_(dependencies) {}
 
-    ~StreamHubServiceImpl() override { Stop(); }
+    ~StreamHubServiceImpl() override { StopInternal(); }
 
     bool Start() override {
         IMediaService *media_service = nullptr;
@@ -193,6 +193,11 @@ public:
     }
 
     void Stop() override {
+        StopInternal();
+    }
+
+private:
+    void StopInternal() {
         IMediaService *media_service = nullptr;
         infra::Executor *worker_executor = nullptr;
         FrameAttachId main_attach_id = 0;
@@ -222,6 +227,7 @@ public:
         }
     }
 
+public:
     bool IsHlsSupported(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);

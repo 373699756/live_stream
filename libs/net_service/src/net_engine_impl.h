@@ -67,6 +67,7 @@ public:
     bool CanAccept(uint32_t max_connections) const;
 
 private:
+    void StopInternal();
     std::shared_ptr<TcpConnection> FindConnection(ConnectionId id) const;
 
     NetEngineOptions options_;

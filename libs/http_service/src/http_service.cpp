@@ -39,8 +39,7 @@ HttpServiceImpl::HttpServiceImpl(
       server_(new HttpServer(options, dependencies, this)) {}
 
 HttpServiceImpl::~HttpServiceImpl() {
-    Stop();
-    Release();
+    ReleaseInternal();
 }
 
 bool HttpServiceImpl::Prepare() {
@@ -68,13 +67,21 @@ bool HttpServiceImpl::Start() {
 }
 
 void HttpServiceImpl::Stop() {
+    StopInternal();
+}
+
+void HttpServiceImpl::StopInternal() {
     if (server_ != nullptr) {
         server_->Stop();
     }
 }
 
 void HttpServiceImpl::Release() {
-    Stop();
+    ReleaseInternal();
+}
+
+void HttpServiceImpl::ReleaseInternal() {
+    StopInternal();
     std::lock_guard<std::mutex> guard(mutex_);
     if (server_ != nullptr) {
         server_->Release();

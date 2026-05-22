@@ -15,8 +15,7 @@ public:
         : store_(std::move(store)) {}
 
     ~LoggerServiceImpl() override {
-        Stop();
-        Release();
+        ReleaseInternal();
     }
 
     bool Prepare() {
@@ -44,8 +43,7 @@ public:
     }
 
     void Stop() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        started_ = false;
+        StopInternal();
     }
 
     bool IsStarted() const override {
@@ -54,6 +52,16 @@ public:
     }
 
     void Release() {
+        ReleaseInternal();
+    }
+
+private:
+    void StopInternal() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        started_ = false;
+    }
+
+    void ReleaseInternal() {
         std::lock_guard<std::mutex> lock(mutex_);
         started_ = false;
         if (initialized_ && store_) {
@@ -62,6 +70,7 @@ public:
         initialized_ = false;
     }
 
+public:
     bool RecordOperation(const OperationRecord& record) override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!started_ || !store_) {

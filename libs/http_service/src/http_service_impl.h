@@ -68,6 +68,8 @@ private:
     void IncrementAuthFailures() override;
     void IncrementPermissionDenied() override;
 
+    void StopInternal();
+    void ReleaseInternal();
     void IncrementNotFound();
     uint64_t NextRequestId();
     HttpResponse HandleStaticFile(const HttpRequest &request);

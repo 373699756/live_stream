@@ -86,8 +86,7 @@ public:
         : options_(std::move(options)) {}
 
     ~UpgradeServiceImpl() override {
-        Stop();
-        Release();
+        ReleaseInternal();
     }
 
     bool Prepare() {
@@ -136,6 +135,20 @@ public:
     }
 
     void Stop() override {
+        StopInternal();
+    }
+
+    bool IsStarted() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return initialized_ && started_;
+    }
+
+    void Release() {
+        ReleaseInternal();
+    }
+
+private:
+    void StopInternal() {
         std::unique_ptr<infra::Executor> executor;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -151,13 +164,8 @@ public:
         }
     }
 
-    bool IsStarted() const override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return initialized_ && started_;
-    }
-
-    void Release() {
-        Stop();
+    void ReleaseInternal() {
+        StopInternal();
         std::lock_guard<std::mutex> lock(mutex_);
         executor_.reset();
         restricted_platform_.reset();
@@ -167,6 +175,7 @@ public:
         initialized_ = false;
     }
 
+public:
     UpgradeStatus GetStatus() override {
         std::lock_guard<std::mutex> lock(mutex_);
         return status_;

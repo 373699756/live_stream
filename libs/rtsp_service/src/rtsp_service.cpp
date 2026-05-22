@@ -55,7 +55,7 @@ public:
           packetizer_(options_.rtp_mtu_bytes) {}
 
     ~RtspServiceImpl() override {
-        Release();
+        ReleaseInternal();
     }
 
     bool Prepare() {
@@ -140,6 +140,15 @@ public:
     }
 
     void Stop() override {
+        StopInternal();
+    }
+
+    void Release() {
+        ReleaseInternal();
+    }
+
+private:
+    void StopInternal() {
         if (dependencies_.stream_hub != nullptr && main_sink_id_ != 0) {
             (void)dependencies_.stream_hub->DetachFrameSink(main_sink_id_);
             main_sink_id_ = 0;
@@ -163,13 +172,14 @@ public:
         }
     }
 
-    void Release() {
-        Stop();
+    void ReleaseInternal() {
+        StopInternal();
         if (state_ != ServiceState::kCreated) {
             state_ = ServiceState::kDeinitialized;
         }
     }
 
+public:
     const char* Name() const override {
         return kServiceName;
     }
