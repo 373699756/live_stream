@@ -109,6 +109,22 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+function normalizeCodec(codec: string | undefined) {
+  return (codec || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function codecSupportsHls(codec: string) {
+  return codec === '' || codec === 'h264' || codec === 'h265';
+}
+
+function codecSupportsFlv(codec: string) {
+  return codec === 'h264';
+}
+
+function codecSupportsWebrtc(codec: string) {
+  return codec === 'h264';
+}
+
 function stopVideoTracks(video: HTMLMediaElement | null) {
   if (video?.srcObject instanceof MediaStream) {
     for (const track of video.srcObject.getTracks()) {
@@ -162,22 +178,20 @@ export function usePreviewPlayer({
   const flvRef = useRef<FlvPlayer | null>(null);
   const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
 
-  const activeCodec = (active?.codec || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+  const activeCodec = normalizeCodec(active?.codec);
   const hlsReady = active?.hlsReady ?? false;
   const flvReady = active?.flvReady ?? false;
   const webrtcReady = active?.webrtcReady ?? false;
-  const browserCodec = active?.browserCodec ?? (
-    activeCodec === '' || activeCodec === 'h264' || activeCodec === 'h265'
-  );
-  const flvCodec = activeCodec === 'h264';
+  const hlsSupported = active?.hlsSupported ?? active?.browserCodec ??
+    codecSupportsHls(activeCodec);
+  const flvSupported = active?.flvSupported ?? codecSupportsFlv(activeCodec);
+  const webrtcSupported = codecSupportsWebrtc(activeCodec);
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
   const streamRunning = active?.state === 'running';
   const webrtcPlaybackEnabled =
-    webrtcEnabled && webrtcReady && activeCodec === 'h264';
-  const hlsPlaybackEnabled = browserCodec && streamRunning && hlsReady;
-  const flvPlaybackEnabled = flvCodec && streamRunning && flvReady;
+    webrtcEnabled && webrtcSupported && webrtcReady;
+  const hlsPlaybackEnabled = hlsSupported && streamRunning;
+  const flvPlaybackEnabled = flvSupported && streamRunning && flvReady;
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,
@@ -698,7 +712,9 @@ export function usePreviewPlayer({
     decodedSize,
     displaySize,
     flvPlaybackEnabled,
+    flvSupported,
     hlsPlaybackEnabled,
+    hlsSupported,
     previewState,
     restartPreview,
     streamRunning,
@@ -706,5 +722,6 @@ export function usePreviewPlayer({
     videoRef,
     webrtcEnabled,
     webrtcPlaybackEnabled,
+    webrtcSupported,
   };
 }

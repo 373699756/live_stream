@@ -207,8 +207,7 @@ void RequestBrowserRecoveryKeyFrame(IStreamHubService *stream_hub_service,
                                     StreamId stream_id,
                                     const StreamBrowserStatus &status) {
     if (stream_hub_service == nullptr || !status.running ||
-        !status.browser_codec ||
-        (status.hls_ready && status.flv_ready)) {
+        !status.browser_codec || status.hls_ready) {
         return;
     }
     (void)stream_hub_service->RequestKeyFrame(stream_id,
@@ -330,6 +329,8 @@ private:
                 RequestBrowserRecoveryKeyFrame(dependencies_.stream_hub_service,
                                                stream_id, browser);
                 item["browserCodec"] = browser.browser_codec;
+                item["hlsSupported"] = browser.hls_supported;
+                item["flvSupported"] = browser.flv_supported;
                 item["hlsReady"] = browser.hls_ready;
                 item["flvReady"] = browser.flv_ready;
                 if (browser.running && browser.browser_codec &&

@@ -64,6 +64,8 @@ struct StreamHubServiceStats {
 struct StreamBrowserStatus {
     bool running = false;
     bool browser_codec = false;
+    bool hls_supported = false;
+    bool flv_supported = false;
     bool hls_ready = false;
     bool flv_ready = false;
     VideoCodec codec = VideoCodec::kH264;

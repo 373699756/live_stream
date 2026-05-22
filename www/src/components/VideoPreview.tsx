@@ -30,7 +30,9 @@ export function VideoPreview({
     decodedSize,
     displaySize,
     flvPlaybackEnabled,
+    flvSupported,
     hlsPlaybackEnabled,
+    hlsSupported,
     previewState,
     restartPreview,
     streamRunning,
@@ -38,6 +40,7 @@ export function VideoPreview({
     videoRef,
     webrtcEnabled,
     webrtcPlaybackEnabled,
+    webrtcSupported,
   } = usePreviewPlayer({ active, enabled, mode, setMode, stream });
   const switchStream = (nextStream: StreamName) => {
     if (nextStream === stream) {
@@ -109,7 +112,8 @@ export function VideoPreview({
           <button
             type="button"
             className={mode === 'webrtc' ? 'active' : ''}
-            disabled={!webrtcEnabled || !webrtcPlaybackEnabled}
+            disabled={!webrtcEnabled || !webrtcSupported || !webrtcPlaybackEnabled}
+            title={!webrtcSupported ? '当前编码不支持 WebRTC 预览' : undefined}
             onClick={() => switchMode('webrtc')}
           >
             WebRTC
@@ -117,7 +121,8 @@ export function VideoPreview({
           <button
             type="button"
             className={mode === 'hls' ? 'active' : ''}
-            disabled={!hlsPlaybackEnabled}
+            disabled={!hlsSupported || !hlsPlaybackEnabled}
+            title={!hlsSupported ? '当前编码不支持 HLS 预览' : undefined}
             onClick={() => switchMode('hls')}
           >
             HLS
@@ -125,7 +130,8 @@ export function VideoPreview({
           <button
             type="button"
             className={mode === 'flv' ? 'active' : ''}
-            disabled={!flvPlaybackEnabled}
+            disabled={!flvSupported || !flvPlaybackEnabled}
+            title={!flvSupported ? '当前编码不支持 HTTP-FLV 预览' : undefined}
             onClick={() => switchMode('flv')}
           >
             HTTP-FLV

@@ -289,7 +289,9 @@ public:
             return status;
         }
         status.running = stream->state == StreamState::kRunning;
-        status.browser_codec = hub_state::IsHlsCodecSupported(stream->codec);
+        status.hls_supported = hub_state::IsHlsCodecSupported(stream->codec);
+        status.flv_supported = hub_state::IsFlvCodecSupported(stream->codec);
+        status.browser_codec = status.hls_supported;
         status.hls_ready = hub_state::IsHlsStreamReady(*stream);
         status.flv_ready = hub_state::IsFlvStreamReady(*stream);
         status.codec = stream->codec;

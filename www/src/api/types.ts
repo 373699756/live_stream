@@ -178,6 +178,8 @@ export interface StreamStatus {
   bitrateKbps: number;
   state: 'running' | 'stopped' | 'pending';
   browserCodec?: boolean;
+  hlsSupported?: boolean;
+  flvSupported?: boolean;
   hlsReady?: boolean;
   flvReady?: boolean;
   webrtcReady?: boolean;
