@@ -25,6 +25,7 @@ using onvif_internal::DeviceInformationBody;
 using onvif_internal::DiscoveryProbeMatchesBody;
 using onvif_internal::HttpRequest;
 using onvif_internal::HttpResponse;
+using onvif_internal::IOnvifUriProvider;
 using onvif_internal::kMaxHttpResponseBytes;
 using onvif_internal::OnvifAction;
 using onvif_internal::OnvifBodyResult;
