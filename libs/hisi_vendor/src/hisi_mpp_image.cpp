@@ -299,7 +299,7 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     for (uint32_t i = 0; i < GAMMA_NODE_NUM; ++i) {
         const double normalized =
             static_cast<double>(i) / static_cast<double>(GAMMA_NODE_NUM - 1);
-        const double mapped = std::pow(normalized, exponent);
+        const double mapped = std::pow(normalized, exponent) * 4095.0;
         const double clamped =
             mapped < 0.0 ? 0.0 : (mapped > 4095.0 ? 4095.0 : mapped);
         attr.u16Table[i] = static_cast<HI_U16>(clamped);
@@ -382,10 +382,14 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
 }
 
 void LogUnsupportedControls(const ConfigJson& image_config) {
+    static bool logged_basic_controls = false;
+    static bool logged_color_mode = false;
+
     const ConfigJson* basic = nullptr;
-    if (FindSection(image_config, "basic", &basic)) {
+    if (!logged_basic_controls && FindSection(image_config, "basic", &basic)) {
         if (basic->contains("brightness") || basic->contains("contrast") ||
             basic->contains("hue")) {
+            logged_basic_controls = true;
             INFRA_LOG_INFO(
                 "hisi_vendor",
                 "image brightness/contrast/hue are stored but not mapped to "
@@ -393,8 +397,10 @@ void LogUnsupportedControls(const ConfigJson& image_config) {
         }
     }
     const ConfigJson* color_mode = nullptr;
-    if (FindSection(image_config, "color_mode", &color_mode) &&
+    if (!logged_color_mode &&
+        FindSection(image_config, "color_mode", &color_mode) &&
         color_mode->contains("mode")) {
+        logged_color_mode = true;
         INFRA_LOG_INFO(
             "hisi_vendor",
             "image color_mode.mode is stored but not mapped to HiSilicon ISP "
