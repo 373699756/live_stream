@@ -145,11 +145,11 @@ scripts/quality_scan.sh full
 
 默认 `quick` 模式会运行构建、前端构建、关键词扫描、`cppcheck`、代码规模统计
 和产物信息检查。`full` 模式会额外运行 `bear`、`scan-build-10` 和
-`clang-tidy`。结果写入 `reports/quality/<timestamp>/`，其中 `findings.md`
-是人工分析入口，`summary.md` 只记录步骤状态。缺失的可选工具会记录为 skipped；
+`clang-tidy`。最终总报告写入 `docs/quality/quality_report.md`；原始工具输出写入
+`reports/quality/<timestamp>/`，只作为排查证据。缺失的可选工具会记录为 skipped；
 `scan-build-10` 的交叉编译兼容性问题会记录为 warning，不会直接导致扫描失败。
 
-`findings.md` 会从原始日志中提取：
+`docs/quality/quality_report.md` 会从原始日志中提取：
 
 - 必须先看的失败步骤和对应日志。
 - 必须优先处理的 `cppcheck` error。

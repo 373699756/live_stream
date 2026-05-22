@@ -50,6 +50,10 @@
 
 - `performance/memory-optimization.md`：视频热路径内存、拷贝和分配优化计划。
 
+## 质量报告
+
+- `quality/quality_report.md`：由 `scripts/quality_scan.sh` 生成的总问题分析报告。
+
 ## AI 协作文档
 
 - `ai/codex-skill.md`：本工程 Codex skill 草案。

@@ -9,14 +9,15 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_ROOT="${ROOT_DIR}/reports/quality"
 REPORT_DIR="${REPORT_ROOT}/${TIMESTAMP}"
 SUMMARY_FILE="${REPORT_DIR}/summary.md"
-FINDINGS_FILE="${REPORT_DIR}/findings.md"
+DOC_REPORT_DIR="${ROOT_DIR}/docs/quality"
+DOC_REPORT_FILE="${DOC_REPORT_DIR}/quality_report.md"
 
 if [[ "${MODE}" != "quick" && "${MODE}" != "full" ]]; then
   echo "Usage: $0 [quick|full]" >&2
   exit 2
 fi
 
-mkdir -p "${REPORT_DIR}"
+mkdir -p "${REPORT_DIR}" "${DOC_REPORT_DIR}"
 
 declare -a FAILED_STEPS=()
 declare -a SKIPPED_STEPS=()
@@ -189,10 +190,6 @@ WriteSummary() {
     fi
     printf '\n'
 
-    printf '## Start Here\n\n'
-    printf '%s\n' "- Review \`findings.md\` first. Raw tool logs are only supporting evidence."
-    printf '\n'
-
     printf '## Logs\n\n'
     find "${REPORT_DIR}" -maxdepth 1 -type f ! -name 'summary.md' \
       -printf '- `%f`\n' | sort
@@ -288,7 +285,7 @@ StepLogFile() {
   esac
 }
 
-WriteFindings() {
+WriteQualityReport() {
   local cppcheck_log="${REPORT_DIR}/cppcheck.log"
   local keyword_log="${REPORT_DIR}/keyword-scan.log"
   local hot_path_log="${REPORT_DIR}/hot-path-log-scan.log"
@@ -307,8 +304,14 @@ WriteFindings() {
   clang_tidy_count="$(CountMatches "${clang_tidy_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):')"
 
   {
-    printf '# Quality Findings\n\n'
-    printf '这份文件是扫描入口，只列需要人工判断或优化的点；完整输出见同目录原始日志。\n\n'
+    printf '# Quality Report\n\n'
+    printf '本文档由 `scripts/quality_scan.sh %s` 生成，汇总代码质量、性能和设计候选问题。\n\n' "${MODE}"
+    printf '%s\n' "- Generated: \`${TIMESTAMP}\`"
+    printf '%s\n' "- Raw log directory: \`${REPORT_DIR}\`"
+    if HaveTool git; then
+      printf '%s\n' "- Git commit: \`$(git -C "${ROOT_DIR}" rev-parse --short HEAD 2>/dev/null || printf 'unknown')\`"
+    fi
+    printf '\n'
 
     printf '## Counts\n\n'
     printf '%s\n' "- cppcheck diagnostics: ${cppcheck_count}"
@@ -350,14 +353,8 @@ WriteFindings() {
     AppendTopFiles "Optimization Candidates: Files With Most Keyword Risk Hits" "${keyword_log}" \
       '^(app|libs|configs|www)/.*:' 20
 
-    AppendFirstMatches "Optimization Candidates: Keyword Risk Hits" "${keyword_log}" \
-      '^(app|libs|configs|www)/.*:' 80
-
     AppendTopFiles "Optimization Candidates: Files With Most Hot-Path Or Logging Hits" "${hot_path_log}" \
       '^(app|libs)/.*:' 20
-
-    AppendFirstMatches "Optimization Candidates: Hot-Path Or Logging Hits" "${hot_path_log}" \
-      '^(app|libs)/.*:' 80
 
     printf '## Build Failure Tail\n\n'
     if [[ -f "${make_log}" ]] && grep -qE '(^|[[:space:]])(error:|Error [0-9]+|Bad system call|undefined reference|No such file)' "${make_log}"; then
@@ -368,12 +365,13 @@ WriteFindings() {
       printf '_No build failure pattern detected._\n\n'
     fi
 
-    printf '## How To Use This\n\n'
+    printf '## How To Use This Report\n\n'
     printf '1. 先处理 `Must Check First` 中的失败步骤。\n'
-    printf '2. 再看 `Cppcheck Diagnostics`，这些通常比关键词命中更可靠。\n'
-    printf '3. `Keyword Risk Hits` 和 `Hot-Path Or Logging Hits` 是候选优化点，不是自动判定的 bug。\n'
-    printf '4. 需要上下文时再打开同目录的原始 `.log` 文件。\n'
-  } >"${FINDINGS_FILE}"
+    printf '2. 再处理 `Must Fix`，这些比关键词命中更可靠。\n'
+    printf '3. `Review` 是设计/生命周期风险，逐项确认是否真实影响业务。\n'
+    printf '4. `Optimization Candidates` 只列热点候选文件，具体行号到原始日志里追。\n'
+    printf '5. 原始工具日志只作证据，不作为主要阅读入口。\n'
+  } >"${DOC_REPORT_FILE}"
 }
 
 cd "${ROOT_DIR}" || exit 1
@@ -489,10 +487,10 @@ if [[ "${MODE}" == "full" ]]; then
   fi
 fi
 
-WriteFindings
+WriteQualityReport
 WriteSummary
 
-Log "findings: ${FINDINGS_FILE}"
+Log "report: ${DOC_REPORT_FILE}"
 Log "summary: ${SUMMARY_FILE}"
 
 if [[ ${#FAILED_STEPS[@]} -gt 0 ]]; then
