@@ -30,6 +30,22 @@ struct VideoParameterCache {
     std::vector<uint8_t> h265_pps;
 };
 
+struct ParameterSetRef {
+    const uint8_t *data = nullptr;
+    std::size_t size = 0;
+};
+
+struct H264ParameterSets {
+    ParameterSetRef sps;
+    ParameterSetRef pps;
+};
+
+struct H265ParameterSets {
+    ParameterSetRef vps;
+    ParameterSetRef sps;
+    ParameterSetRef pps;
+};
+
 bool StartsWith(const std::string &text, const char *prefix) {
     const std::string expected(prefix);
     return text.compare(0, expected.size(), expected) == 0;
@@ -86,6 +102,15 @@ void StoreParameterSet(const uint8_t *data,
     out->assign(data, data + size);
 }
 
+ParameterSetRef CachedParameterSet(const std::vector<uint8_t> &cache) {
+    ParameterSetRef ref;
+    if (!cache.empty()) {
+        ref.data = cache.data();
+        ref.size = cache.size();
+    }
+    return ref;
+}
+
 YangPushData *QueueMetaRtcPayload(YangRtcPacer *pacer,
                                   const uint8_t *payload,
                                   std::size_t size,
@@ -106,6 +131,83 @@ YangPushData *QueueMetaRtcPayload(YangRtcPacer *pacer,
     return pacer->getVideoData(&video_frame);
 }
 
+H264ParameterSets CollectH264ParameterSets(
+    const stream_codec::H264NalUnitList &nals, VideoParameterCache *cache) {
+    H264ParameterSets sets;
+    for (const stream_codec::H264NalUnit &nal : nals) {
+        if (nal.type == 7) {
+            sets.sps = ParameterSetRef{nal.data, nal.size};
+            if (cache != nullptr) {
+                StoreParameterSet(nal.data, nal.size, &cache->h264_sps);
+            }
+        } else if (nal.type == 8) {
+            sets.pps = ParameterSetRef{nal.data, nal.size};
+            if (cache != nullptr) {
+                StoreParameterSet(nal.data, nal.size, &cache->h264_pps);
+            }
+        }
+    }
+    if (sets.sps.data == nullptr && cache != nullptr) {
+        sets.sps = CachedParameterSet(cache->h264_sps);
+    }
+    if (sets.pps.data == nullptr && cache != nullptr) {
+        sets.pps = CachedParameterSet(cache->h264_pps);
+    }
+    return sets;
+}
+
+H265ParameterSets CollectH265ParameterSets(
+    const stream_codec::H265NalUnitList &nals, VideoParameterCache *cache) {
+    H265ParameterSets sets;
+    for (const stream_codec::H265NalUnit &nal : nals) {
+        if (nal.type == 32) {
+            sets.vps = ParameterSetRef{nal.data, nal.size};
+            if (cache != nullptr) {
+                StoreParameterSet(nal.data, nal.size, &cache->h265_vps);
+            }
+        } else if (nal.type == 33) {
+            sets.sps = ParameterSetRef{nal.data, nal.size};
+            if (cache != nullptr) {
+                StoreParameterSet(nal.data, nal.size, &cache->h265_sps);
+            }
+        } else if (nal.type == 34) {
+            sets.pps = ParameterSetRef{nal.data, nal.size};
+            if (cache != nullptr) {
+                StoreParameterSet(nal.data, nal.size, &cache->h265_pps);
+            }
+        }
+    }
+    if (sets.vps.data == nullptr && cache != nullptr) {
+        sets.vps = CachedParameterSet(cache->h265_vps);
+    }
+    if (sets.sps.data == nullptr && cache != nullptr) {
+        sets.sps = CachedParameterSet(cache->h265_sps);
+    }
+    if (sets.pps.data == nullptr && cache != nullptr) {
+        sets.pps = CachedParameterSet(cache->h265_pps);
+    }
+    return sets;
+}
+
+bool HasH264ParameterSets(const H264ParameterSets &sets) {
+    return sets.sps.data != nullptr && sets.pps.data != nullptr;
+}
+
+bool HasH265ParameterSets(const H265ParameterSets &sets) {
+    return sets.vps.data != nullptr && sets.sps.data != nullptr &&
+           sets.pps.data != nullptr;
+}
+
+YangPushData *QueueRawFrame(YangRtcPacer *pacer, const EncodedFrame &frame,
+                            const uint8_t *data) {
+    std::size_t size = frame.size;
+    stream_codec::StripAnnexBStartCode(&data, &size);
+    const uint64_t pts_us =
+        frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us) : 0;
+    return QueueMetaRtcPayload(pacer, data, size,
+                               ToYangFrameType(frame.frame_type), pts_us);
+}
+
 YangPushData *QueueH264Frame(YangRtcPacer *pacer,
                              const EncodedFrame &frame,
                              VideoParameterCache *cache) {
@@ -118,40 +220,11 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
                                              : 0;
     if (nals.empty()) {
-        std::size_t size = frame.size;
-        stream_codec::StripAnnexBStartCode(&data, &size);
-        return QueueMetaRtcPayload(pacer, data, size,
-                                   ToYangFrameType(frame.frame_type), pts_us);
+        return QueueRawFrame(pacer, frame, data);
     }
 
-    const stream_codec::H264NalUnit *sps = nullptr;
-    const stream_codec::H264NalUnit *pps = nullptr;
-    for (const stream_codec::H264NalUnit &nal : nals) {
-        if (nal.type == 7) {
-            sps = &nal;
-            if (cache != nullptr) {
-                StoreParameterSet(nal.data, nal.size, &cache->h264_sps);
-            }
-        } else if (nal.type == 8) {
-            pps = &nal;
-            if (cache != nullptr) {
-                StoreParameterSet(nal.data, nal.size, &cache->h264_pps);
-            }
-        }
-    }
-    const uint8_t *sps_data = sps != nullptr ? sps->data : nullptr;
-    std::size_t sps_size = sps != nullptr ? sps->size : 0;
-    const uint8_t *pps_data = pps != nullptr ? pps->data : nullptr;
-    std::size_t pps_size = pps != nullptr ? pps->size : 0;
-    if (sps_data == nullptr && cache != nullptr && !cache->h264_sps.empty()) {
-        sps_data = cache->h264_sps.data();
-        sps_size = cache->h264_sps.size();
-    }
-    if (pps_data == nullptr && cache != nullptr && !cache->h264_pps.empty()) {
-        pps_data = cache->h264_pps.data();
-        pps_size = cache->h264_pps.size();
-    }
-
+    const H264ParameterSets parameter_sets =
+        CollectH264ParameterSets(nals, cache);
     std::vector<uint8_t> idr_payload;
     YangPushData *push_data = nullptr;
     bool sent_idr_with_meta = false;
@@ -159,14 +232,19 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
         if (!IsH264VclNal(nal.type)) {
             continue;
         }
-        if (nal.type == 5 && !sent_idr_with_meta && sps_data != nullptr &&
-            pps_data != nullptr) {
+        if (nal.type == 5 && !sent_idr_with_meta &&
+            HasH264ParameterSets(parameter_sets)) {
             idr_payload.clear();
-            idr_payload.reserve(12 + sps_size + pps_size + nal.size);
-            AppendAnnexBNal(stream_codec::H264NalUnit{sps_data, sps_size, 7},
-                            &idr_payload);
-            AppendAnnexBNal(stream_codec::H264NalUnit{pps_data, pps_size, 8},
-                            &idr_payload);
+            idr_payload.reserve(12 + parameter_sets.sps.size +
+                                parameter_sets.pps.size + nal.size);
+            AppendAnnexBNal(
+                stream_codec::H264NalUnit{parameter_sets.sps.data,
+                                          parameter_sets.sps.size, 7},
+                &idr_payload);
+            AppendAnnexBNal(
+                stream_codec::H264NalUnit{parameter_sets.pps.data,
+                                          parameter_sets.pps.size, 8},
+                &idr_payload);
             AppendAnnexBNal(nal, &idr_payload);
             push_data = QueueMetaRtcPayload(pacer, idr_payload.data(),
                                             idr_payload.size(),
@@ -197,52 +275,11 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
     const uint64_t pts_us = frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us)
                                              : 0;
     if (nals.empty()) {
-        std::size_t size = frame.size;
-        stream_codec::StripAnnexBStartCode(&data, &size);
-        return QueueMetaRtcPayload(pacer, data, size,
-                                   ToYangFrameType(frame.frame_type), pts_us);
+        return QueueRawFrame(pacer, frame, data);
     }
 
-    const stream_codec::H265NalUnit *vps = nullptr;
-    const stream_codec::H265NalUnit *sps = nullptr;
-    const stream_codec::H265NalUnit *pps = nullptr;
-    for (const stream_codec::H265NalUnit &nal : nals) {
-        if (nal.type == 32) {
-            vps = &nal;
-            if (cache != nullptr) {
-                StoreParameterSet(nal.data, nal.size, &cache->h265_vps);
-            }
-        } else if (nal.type == 33) {
-            sps = &nal;
-            if (cache != nullptr) {
-                StoreParameterSet(nal.data, nal.size, &cache->h265_sps);
-            }
-        } else if (nal.type == 34) {
-            pps = &nal;
-            if (cache != nullptr) {
-                StoreParameterSet(nal.data, nal.size, &cache->h265_pps);
-            }
-        }
-    }
-    const uint8_t *vps_data = vps != nullptr ? vps->data : nullptr;
-    std::size_t vps_size = vps != nullptr ? vps->size : 0;
-    const uint8_t *sps_data = sps != nullptr ? sps->data : nullptr;
-    std::size_t sps_size = sps != nullptr ? sps->size : 0;
-    const uint8_t *pps_data = pps != nullptr ? pps->data : nullptr;
-    std::size_t pps_size = pps != nullptr ? pps->size : 0;
-    if (vps_data == nullptr && cache != nullptr && !cache->h265_vps.empty()) {
-        vps_data = cache->h265_vps.data();
-        vps_size = cache->h265_vps.size();
-    }
-    if (sps_data == nullptr && cache != nullptr && !cache->h265_sps.empty()) {
-        sps_data = cache->h265_sps.data();
-        sps_size = cache->h265_sps.size();
-    }
-    if (pps_data == nullptr && cache != nullptr && !cache->h265_pps.empty()) {
-        pps_data = cache->h265_pps.data();
-        pps_size = cache->h265_pps.size();
-    }
-
+    const H265ParameterSets parameter_sets =
+        CollectH265ParameterSets(nals, cache);
     std::vector<uint8_t> key_payload;
     YangPushData *push_data = nullptr;
     bool sent_key_frame_with_meta = false;
@@ -251,15 +288,23 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
             continue;
         }
         if (IsH265KeyFrameNal(nal.type) && !sent_key_frame_with_meta &&
-            vps_data != nullptr && sps_data != nullptr && pps_data != nullptr) {
+            HasH265ParameterSets(parameter_sets)) {
             key_payload.clear();
-            key_payload.reserve(16 + vps_size + sps_size + pps_size + nal.size);
-            AppendAnnexBNal(stream_codec::H265NalUnit{vps_data, vps_size, 32},
-                            &key_payload);
-            AppendAnnexBNal(stream_codec::H265NalUnit{sps_data, sps_size, 33},
-                            &key_payload);
-            AppendAnnexBNal(stream_codec::H265NalUnit{pps_data, pps_size, 34},
-                            &key_payload);
+            key_payload.reserve(16 + parameter_sets.vps.size +
+                                parameter_sets.sps.size +
+                                parameter_sets.pps.size + nal.size);
+            AppendAnnexBNal(
+                stream_codec::H265NalUnit{parameter_sets.vps.data,
+                                          parameter_sets.vps.size, 32},
+                &key_payload);
+            AppendAnnexBNal(
+                stream_codec::H265NalUnit{parameter_sets.sps.data,
+                                          parameter_sets.sps.size, 33},
+                &key_payload);
+            AppendAnnexBNal(
+                stream_codec::H265NalUnit{parameter_sets.pps.data,
+                                          parameter_sets.pps.size, 34},
+                &key_payload);
             AppendAnnexBNal(nal, &key_payload);
             push_data = QueueMetaRtcPayload(pacer, key_payload.data(),
                                             key_payload.size(),

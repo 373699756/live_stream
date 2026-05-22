@@ -25,6 +25,17 @@ struct VpssMappedFrame {
     VIDEO_FRAME_INFO_S frame_info;
 };
 
+struct JpegCaptureContext {
+    VPSS_GRP vpss_group = 0;
+    VPSS_CHN vpss_channel = 0;
+    VENC_CHN jpeg_channel = 0;
+    HI_S32 timeout = 0;
+    VIDEO_FRAME_INFO_S frame_info;
+    bool has_frame = false;
+    bool has_channel = false;
+    bool receiving = false;
+};
+
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return ((value + alignment - 1) / alignment) * alignment;
 }
@@ -102,46 +113,54 @@ bool EnsureVpssFrameDepth(VPSS_GRP group, VPSS_CHN channel) {
     return true;
 }
 
-}  // namespace
-
-JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    JpegFrame result{};
-    result.width = config.size.width;
-    result.height = config.size.height;
-
-    if (!impl_->system_initialized_) {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: system not initialized");
-        return result;
+void ReleaseCaptureContext(JpegCaptureContext* context) {
+    if (context == nullptr) {
+        return;
     }
-    if (config.jpeg_venc_channel < 0 || config.snap_vpss_group < 0 ||
-        config.snap_vpss_channel < 0 || config.size.width == 0 ||
-        config.size.height == 0 || config.timeout_ms == 0) {
-        return result;
+    if (context->receiving) {
+        (void)HI_MPI_VENC_StopRecvFrame(context->jpeg_channel);
+        context->receiving = false;
     }
-
-    const VPSS_GRP vpss_group =
-        static_cast<VPSS_GRP>(config.snap_vpss_group);
-    const VPSS_CHN vpss_channel =
-        static_cast<VPSS_CHN>(config.snap_vpss_channel);
-    VIDEO_FRAME_INFO_S frame_info{};
-    const HI_S32 timeout = static_cast<HI_S32>(config.timeout_ms);
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
-                      HI_MPI_VPSS_GetChnFrame(vpss_group, vpss_channel,
-                                              &frame_info, timeout))) {
-        return result;
+    if (context->has_channel) {
+        (void)HI_MPI_VENC_DestroyChn(context->jpeg_channel);
+        context->has_channel = false;
     }
-
-    const VIDEO_FRAME_S& source_frame = frame_info.stVFrame;
-    if (source_frame.u32Width == 0 || source_frame.u32Height == 0) {
+    if (context->has_frame) {
         (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(vpss_group,
-                                                       vpss_channel,
-                                                       &frame_info));
-        return result;
+                           HI_MPI_VPSS_ReleaseChnFrame(
+                               context->vpss_group, context->vpss_channel,
+                               &context->frame_info));
+        context->has_frame = false;
     }
+}
 
-    const VENC_CHN jpeg_chn = static_cast<VENC_CHN>(config.jpeg_venc_channel);
+bool InitJpegCaptureContext(const SnapshotConfig& config,
+                            JpegCaptureContext* context) {
+    if (context == nullptr) {
+        return false;
+    }
+    *context = JpegCaptureContext{};
+    context->vpss_group = static_cast<VPSS_GRP>(config.snap_vpss_group);
+    context->vpss_channel = static_cast<VPSS_CHN>(config.snap_vpss_channel);
+    context->jpeg_channel = static_cast<VENC_CHN>(config.jpeg_venc_channel);
+    context->timeout = static_cast<HI_S32>(config.timeout_ms);
+
+    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
+                      HI_MPI_VPSS_GetChnFrame(
+                          context->vpss_group, context->vpss_channel,
+                          &context->frame_info, context->timeout))) {
+        return false;
+    }
+    context->has_frame = true;
+    const VIDEO_FRAME_S& source_frame = context->frame_info.stVFrame;
+    if (source_frame.u32Width == 0 || source_frame.u32Height == 0) {
+        return false;
+    }
+    return true;
+}
+
+VENC_CHN_ATTR_S MakeJpegChannelAttr(const SnapshotConfig& config,
+                                    const VIDEO_FRAME_S& source_frame) {
     const uint32_t jpeg_buffer_size =
         AlignUp(source_frame.u32Width, 32) *
         AlignUp(source_frame.u32Height, 32) * 2;
@@ -162,72 +181,75 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         JpegQualityFromConfig(config.jpeg_quality);
     attr.stGopAttr.enGopMode = VENC_GOPMODE_NORMALP;
     attr.stGopAttr.stNormalP.s32IPQpDelta = kJpegIpQpDelta;
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_CreateChn",
-                      HI_MPI_VENC_CreateChn(jpeg_chn, &attr))) {
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(vpss_group,
-                                                       vpss_channel,
-                                                       &frame_info));
-        return result;
+    return attr;
+}
+
+bool CreateJpegChannel(const SnapshotConfig& config,
+                       JpegCaptureContext* context) {
+    if (context == nullptr || !context->has_frame) {
+        return false;
     }
+    VENC_CHN_ATTR_S attr =
+        MakeJpegChannelAttr(config, context->frame_info.stVFrame);
+    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_CreateChn",
+                      HI_MPI_VENC_CreateChn(context->jpeg_channel, &attr))) {
+        return false;
+    }
+    context->has_channel = true;
 
     VENC_CHN_PARAM_S channel_param{};
     channel_param.u32MaxStrmCnt = kJpegMaxStreamCount;
     channel_param.u32PollWakeUpFrmCnt = 1;
     channel_param.stFrameRate.s32SrcFrmRate = 1;
     channel_param.stFrameRate.s32DstFrmRate = 1;
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SetChnParam",
-                      HI_MPI_VENC_SetChnParam(jpeg_chn, &channel_param))) {
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(vpss_group,
-                                                       vpss_channel,
-                                                       &frame_info));
-        return result;
-    }
+    return CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SetChnParam",
+                        HI_MPI_VENC_SetChnParam(context->jpeg_channel,
+                                                &channel_param));
+}
 
+bool SendJpegFrame(JpegCaptureContext* context) {
+    if (context == nullptr || !context->has_channel || !context->has_frame) {
+        return false;
+    }
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = -1;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
-                      HI_MPI_VENC_StartRecvFrame(jpeg_chn, &recv_param))) {
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(vpss_group,
-                                                       vpss_channel,
-                                                       &frame_info));
-        return result;
+                      HI_MPI_VENC_StartRecvFrame(context->jpeg_channel,
+                                                &recv_param))) {
+        return false;
     }
-
+    context->receiving = true;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SendFrame",
-                      HI_MPI_VENC_SendFrame(jpeg_chn, &frame_info, timeout))) {
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(vpss_group,
-                                                       vpss_channel,
-                                                       &frame_info));
-        return result;
+                      HI_MPI_VENC_SendFrame(context->jpeg_channel,
+                                            &context->frame_info,
+                                            context->timeout))) {
+        return false;
     }
-    (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                       HI_MPI_VPSS_ReleaseChnFrame(vpss_group, vpss_channel,
-                                                   &frame_info));
+    if (context->has_frame) {
+        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
+                           HI_MPI_VPSS_ReleaseChnFrame(
+                               context->vpss_group, context->vpss_channel,
+                               &context->frame_info));
+        context->has_frame = false;
+    }
+    return true;
+}
 
-    const int fd = HI_MPI_VENC_GetFd(jpeg_chn);
+bool WaitJpegStream(VENC_CHN jpeg_channel, uint32_t timeout_ms) {
+    const int fd = HI_MPI_VENC_GetFd(jpeg_channel);
     if (fd < 0 || fd >= FD_SETSIZE) {
         INFRA_LOG_ERROR("hisi_vendor",
                         "CaptureJpeg: HI_MPI_VENC_GetFd failed: %d", fd);
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+        return false;
     }
 
     fd_set read_fds;
     FD_ZERO(&read_fds);
     FD_SET(fd, &read_fds);
     timeval select_timeout{};
-    select_timeout.tv_sec = static_cast<time_t>(config.timeout_ms / 1000);
+    select_timeout.tv_sec = static_cast<time_t>(timeout_ms / 1000);
     select_timeout.tv_usec =
-        static_cast<suseconds_t>((config.timeout_ms % 1000) * 1000);
+        static_cast<suseconds_t>((timeout_ms % 1000) * 1000);
     const int select_ret =
         select(fd + 1, &read_fds, nullptr, nullptr, &select_timeout);
     if (select_ret <= 0 || !FD_ISSET(fd, &read_fds)) {
@@ -237,124 +259,203 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
         } else {
             INFRA_LOG_ERROR("hisi_vendor",
                             "CaptureJpeg: timed out after %u ms",
-                            config.timeout_ms);
+                            timeout_ms);
         }
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+        return false;
     }
+    return true;
+}
 
-    VENC_CHN_STATUS_S status{};
+bool QueryJpegPacks(VENC_CHN jpeg_channel, VENC_CHN_STATUS_S* status) {
+    if (status == nullptr) {
+        return false;
+    }
+    *status = VENC_CHN_STATUS_S{};
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_QueryStatus",
-                      HI_MPI_VENC_QueryStatus(jpeg_chn, &status))) {
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+                      HI_MPI_VENC_QueryStatus(jpeg_channel, status))) {
+        return false;
     }
-    if (status.u32CurPacks == 0) {
+    if (status->u32CurPacks == 0) {
         INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: no JPEG packs available");
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+        return false;
     }
-    VENC_PACK_S* packs = static_cast<VENC_PACK_S*>(
+    return true;
+}
+
+bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
+                   VENC_PACK_S** packs, VENC_STREAM_S* stream) {
+    if (packs == nullptr || stream == nullptr) {
+        return false;
+    }
+    *packs = static_cast<VENC_PACK_S*>(
         std::calloc(status.u32CurPacks, sizeof(VENC_PACK_S)));
-    if (packs == nullptr) {
+    if (*packs == nullptr) {
         INFRA_LOG_ERROR("hisi_vendor",
                         "CaptureJpeg: calloc packs=%u failed",
                         status.u32CurPacks);
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+        return false;
     }
-
-    VENC_STREAM_S stream{};
-    stream.pstPack = packs;
-    stream.u32PackCount = status.u32CurPacks;
+    *stream = VENC_STREAM_S{};
+    stream->pstPack = *packs;
+    stream->u32PackCount = status.u32CurPacks;
     if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_GetStream",
-                      HI_MPI_VENC_GetStream(jpeg_chn, &stream, -1))) {
-        std::free(packs);
-        (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-        (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
-        return result;
+                      HI_MPI_VENC_GetStream(jpeg_channel, stream, -1))) {
+        std::free(*packs);
+        *packs = nullptr;
+        return false;
     }
+    return true;
+}
 
+VENC_STREAM_BUF_INFO_S GetJpegStreamBufferInfo(VENC_CHN jpeg_channel) {
     VENC_STREAM_BUF_INFO_S stream_buffer{};
-    if (HI_MPI_VENC_GetStreamBufInfo(jpeg_chn, &stream_buffer) !=
+    if (HI_MPI_VENC_GetStreamBufInfo(jpeg_channel, &stream_buffer) !=
         HI_SUCCESS) {
         stream_buffer = VENC_STREAM_BUF_INFO_S{};
     }
+    return stream_buffer;
+}
 
-    uint32_t payload_size = 0;
-    bool valid_stream = stream.u32PackCount > 0 &&
-                        stream.u32PackCount <= status.u32CurPacks &&
-                        stream.pstPack != nullptr;
-    for (uint32_t i = 0; valid_stream && i < stream.u32PackCount; ++i) {
+bool MeasureJpegPayload(const VENC_STREAM_S& stream,
+                        const VENC_CHN_STATUS_S& status,
+                        const VENC_STREAM_BUF_INFO_S& stream_buffer,
+                        uint32_t* payload_size) {
+    if (payload_size == nullptr) {
+        return false;
+    }
+    *payload_size = 0;
+    if (stream.u32PackCount == 0 || stream.u32PackCount > status.u32CurPacks ||
+        stream.pstPack == nullptr) {
+        return false;
+    }
+    for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
         internal::VencPacketData packet_data;
         if (!internal::GetVencPacketData(stream.pstPack[i], stream_buffer,
-                                         &packet_data)) {
-            valid_stream = false;
-            break;
+                                         &packet_data) ||
+            *payload_size > UINT32_MAX - packet_data.size) {
+            return false;
         }
-        if (payload_size > UINT32_MAX - packet_data.size) {
-            valid_stream = false;
-            break;
-        }
-        payload_size += packet_data.size;
+        *payload_size += packet_data.size;
     }
+    return *payload_size > 0;
+}
 
-    VideoBuffer* buffer = nullptr;
+VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
+                             const VENC_STREAM_BUF_INFO_S& stream_buffer,
+                             uint32_t payload_size) {
+    VideoBuffer* buffer = VideoBufferAlloc(payload_size);
+    if (buffer == nullptr) {
+        return nullptr;
+    }
     uint32_t offset = 0;
-    if (valid_stream && payload_size > 0) {
-        buffer = VideoBufferAlloc(payload_size);
-    }
-    if (buffer != nullptr) {
-        for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
-            const VENC_PACK_S& pack = stream.pstPack[i];
-            internal::VencPacketData packet_data;
-            if (!internal::GetVencPacketData(pack, stream_buffer,
-                                             &packet_data) ||
-                packet_data.size > payload_size - offset) {
-                valid_stream = false;
-                break;
-            }
-            if (packet_data.first.size > 0) {
-                std::memcpy(buffer->data + offset,
-                            packet_data.first.data,
-                            packet_data.first.size);
-                offset += packet_data.first.size;
-            }
-            if (packet_data.second.size > 0) {
-                std::memcpy(buffer->data + offset,
-                            packet_data.second.data,
-                            packet_data.second.size);
-                offset += packet_data.second.size;
-            }
+    for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
+        const VENC_PACK_S& pack = stream.pstPack[i];
+        internal::VencPacketData packet_data;
+        if (!internal::GetVencPacketData(pack, stream_buffer, &packet_data) ||
+            packet_data.size > payload_size - offset) {
+            VideoBufferRelease(buffer);
+            return nullptr;
+        }
+        if (packet_data.first.size > 0) {
+            std::memcpy(buffer->data + offset, packet_data.first.data,
+                        packet_data.first.size);
+            offset += packet_data.first.size;
+        }
+        if (packet_data.second.size > 0) {
+            std::memcpy(buffer->data + offset, packet_data.second.data,
+                        packet_data.second.size);
+            offset += packet_data.second.size;
         }
     }
-    if (valid_stream && buffer != nullptr && offset == payload_size &&
-        VideoBufferSetSize(buffer, offset)) {
-        result.buffer = buffer;
-        result.offset = 0;
-        result.size = offset;
-        result.pts_us = stream.pstPack[0].u64PTS;
-    } else {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: invalid JPEG stream");
+    if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
         VideoBufferRelease(buffer);
+        return nullptr;
     }
+    return buffer;
+}
 
-    const HI_S32 release_status =
-        HI_MPI_VENC_ReleaseStream(jpeg_chn, &stream);
-    if (release_status != HI_SUCCESS) {
+void ReleaseJpegStream(VENC_CHN jpeg_channel, VENC_STREAM_S* stream,
+                       VENC_PACK_S* packs) {
+    if (stream != nullptr) {
+        const HI_S32 release_status =
+            HI_MPI_VENC_ReleaseStream(jpeg_channel, stream);
+        if (release_status != HI_SUCCESS) {
         INFRA_LOG_ERROR(
             "hisi_vendor",
             "CaptureJpeg: HI_MPI_VENC_ReleaseStream failed: 0x%08x",
             release_status);
+        }
     }
     std::free(packs);
-    (void)HI_MPI_VENC_StopRecvFrame(jpeg_chn);
-    (void)HI_MPI_VENC_DestroyChn(jpeg_chn);
+}
 
+JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
+                         uint32_t height, uint32_t timeout_ms) {
+    JpegFrame result{};
+    result.width = width;
+    result.height = height;
+    if (!WaitJpegStream(jpeg_channel, timeout_ms)) {
+        return result;
+    }
+
+    VENC_CHN_STATUS_S status{};
+    if (!QueryJpegPacks(jpeg_channel, &status)) {
+        return result;
+    }
+    VENC_PACK_S* packs = nullptr;
+    VENC_STREAM_S stream{};
+    if (!GetJpegStream(jpeg_channel, status, &packs, &stream)) {
+        return result;
+    }
+
+    const VENC_STREAM_BUF_INFO_S stream_buffer =
+        GetJpegStreamBufferInfo(jpeg_channel);
+    uint32_t payload_size = 0;
+    VideoBuffer* buffer = nullptr;
+    if (MeasureJpegPayload(stream, status, stream_buffer, &payload_size)) {
+        buffer = CopyJpegPayload(stream, stream_buffer, payload_size);
+    }
+    if (buffer != nullptr) {
+        result.buffer = buffer;
+        result.offset = 0;
+        result.size = buffer->size;
+        result.pts_us = stream.pstPack[0].u64PTS;
+    } else {
+        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: invalid JPEG stream");
+    }
+    ReleaseJpegStream(jpeg_channel, &stream, packs);
+    return result;
+}
+
+}  // namespace
+
+JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    JpegFrame result{};
+    result.width = config.size.width;
+    result.height = config.size.height;
+
+    if (!impl_->system_initialized_) {
+        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: system not initialized");
+        return result;
+    }
+    if (config.jpeg_venc_channel < 0 || config.snap_vpss_group < 0 ||
+        config.snap_vpss_channel < 0 || config.size.width == 0 ||
+        config.size.height == 0 || config.timeout_ms == 0) {
+        return result;
+    }
+
+    JpegCaptureContext context;
+    if (!InitJpegCaptureContext(config, &context) ||
+        !CreateJpegChannel(config, &context) || !SendJpegFrame(&context)) {
+        ReleaseCaptureContext(&context);
+        return result;
+    }
+    result = ReadJpegResult(context.jpeg_channel,
+                            context.frame_info.stVFrame.u32Width,
+                            context.frame_info.stVFrame.u32Height,
+                            config.timeout_ms);
+    ReleaseCaptureContext(&context);
     return result;
 }
 
