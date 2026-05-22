@@ -86,7 +86,7 @@ public:
             return false;
         }
         if (transport_ && !transport_->Start("0.0.0.0", options_.local_port_base)) {
-            UnsubscribeMediaLocked();
+            DetachMediaLocked();
             send_executor_->Stop(infra::StopMode::kDiscard);
             return false;
         }
@@ -104,7 +104,7 @@ public:
                 return;
             }
             state_ = ServiceState::kStopped;
-            UnsubscribeMediaLocked();
+            DetachMediaLocked();
             if (transport_) {
                 transport_->Stop();
             }
@@ -288,22 +288,22 @@ public:
         return engine_ ? engine_->Name() : "none";
     }
 
-    void OnFrame(const ParsedVideoFrame &frame) override {
+    void OnFrame(const FramePayload &frame) override {
         infra::Executor *executor = nullptr;
         bool post_send = false;
-        const EncodedFrame &coded_frame = frame.coded_frame;
+        const EncodedFrame &encoded_frame = frame.encoded_frame;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || !send_executor_) {
                 ++stats_.dropped_frames;
                 return;
             }
-            if (!frame.has_nal_units || !coded_frame.buffer ||
-                coded_frame.size == 0) {
+            if (!frame.has_nal_units || !encoded_frame.buffer ||
+                encoded_frame.size == 0) {
                 ++stats_.dropped_frames;
                 return;
             }
-            if (!peer_store_.HasConnectedPeer(coded_frame.stream_id)) {
+            if (!peer_store_.HasConnectedPeer(encoded_frame.stream_id)) {
                 ++stats_.dropped_frames;
                 return;
             }
@@ -388,7 +388,7 @@ private:
                 return;
             }
             state_ = ServiceState::kDeinitialized;
-            UnsubscribeMediaLocked();
+            DetachMediaLocked();
             if (transport_) {
                 transport_->Stop();
                 transport_.reset();
@@ -407,7 +407,7 @@ private:
         }
     }
 
-    void SendEncodedFrame(const ParsedVideoFrame &frame,
+    void SendEncodedFrame(const FramePayload &frame,
                           const std::vector<WebrtcPeerInfo> &peers) {
         webrtc_internal::IWebrtcEngine *engine = nullptr;
         {
@@ -441,7 +441,7 @@ private:
 
     void DrainPendingFrames() {
         while (true) {
-            ParsedVideoFrame frame;
+            FramePayload frame;
             std::vector<WebrtcPeerInfo> peers;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -450,7 +450,7 @@ private:
                     send_task_posted_ = false;
                     return;
                 }
-                peers = peer_store_.ConnectedPeers(frame.coded_frame.stream_id);
+                peers = peer_store_.ConnectedPeers(frame.encoded_frame.stream_id);
                 if (peers.empty()) {
                     ++stats_.dropped_frames;
                     continue;
@@ -514,27 +514,27 @@ private:
             return true;
         }
 
-        FrameSubscribeOptions main_options;
+        FrameAttachOptions main_options;
         main_options.stream_id = StreamId::kMain;
         main_options.sink_name = WebrtcService::Name();
         main_sink_id_ =
             dependencies_.stream_hub->AttachFrameSink(main_options, this);
 
-        FrameSubscribeOptions sub_options;
+        FrameAttachOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.sink_name = WebrtcService::Name();
         sub_sink_id_ =
             dependencies_.stream_hub->AttachFrameSink(sub_options, this);
 
-        const bool subscribed =
+        const bool attached =
             main_sink_id_ != 0 || sub_sink_id_ != 0;
-        if (!subscribed) {
-            UnsubscribeMediaLocked();
+        if (!attached) {
+            DetachMediaLocked();
         }
-        return subscribed;
+        return attached;
     }
 
-    void UnsubscribeMediaLocked() {
+    void DetachMediaLocked() {
         if (dependencies_.stream_hub == nullptr) {
             main_sink_id_ = 0;
             sub_sink_id_ = 0;
@@ -570,8 +570,8 @@ private:
     bool send_task_posted_ = false;
     webrtc_internal::WebrtcPeerStore peer_store_;
     WebrtcServiceStats stats_{};
-    FrameSubscriptionId main_sink_id_ = 0;
-    FrameSubscriptionId sub_sink_id_ = 0;
+    FrameAttachId main_sink_id_ = 0;
+    FrameAttachId sub_sink_id_ = 0;
 };
 
 std::unique_ptr<IWebrtcService>

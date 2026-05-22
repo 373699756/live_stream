@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_
-#define LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_
+#ifndef LIVE_STREAM_MEDIA_FRAME_ATTACH_H_
+#define LIVE_STREAM_MEDIA_FRAME_ATTACH_H_
 
 #include "media/encoded_frame.h"
 #include "media/stream_types.h"
@@ -23,16 +23,16 @@ enum class KeyFrameReason {
     kRecovery,
 };
 
-using FrameSubscriptionId = uint64_t;
+using FrameAttachId = uint64_t;
 
-struct ParsedVideoFrame {
-    EncodedFrame coded_frame;
+struct FramePayload {
+    EncodedFrame encoded_frame;
     bool has_nal_units = false;
     stream_codec::H264NalUnitList h264_units;
     stream_codec::H265NalUnitList h265_units;
 };
 
-struct FrameSubscribeOptions {
+struct FrameAttachOptions {
     StreamId stream_id = StreamId::kMain;
     bool require_key_frame_first = true;
     std::string sink_name;
@@ -43,7 +43,7 @@ public:
     virtual ~IFrameSink() = default;
 
     virtual const char* Name() const = 0;
-    virtual void OnFrame(const ParsedVideoFrame& frame) = 0;
+    virtual void OnFrame(const FramePayload& frame) = 0;
     virtual void OnSourceStateChanged(StreamId stream_id,
                                       StreamState state) = 0;
 };
@@ -52,4 +52,4 @@ using EncodedFrameCallback = void (*)(const EncodedFrame& frame, void* user);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_FRAME_SUBSCRIPTION_H_
+#endif  // LIVE_STREAM_MEDIA_FRAME_ATTACH_H_

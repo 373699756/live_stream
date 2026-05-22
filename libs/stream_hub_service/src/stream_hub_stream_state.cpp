@@ -214,7 +214,7 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
         return;
     }
     *payload = ParsedFramePayload{};
-    payload->coded_frame = frame;
+    payload->encoded_frame = frame;
     payload->has_nal_units = true;
     const uint8_t *data = frame.PayloadData();
     if (data == nullptr) {
@@ -239,10 +239,10 @@ bool HasParsedUnits(const ParsedFramePayload &payload) {
     if (!payload.has_nal_units) {
         return false;
     }
-    if (payload.coded_frame.codec == VideoCodec::kH264) {
+    if (payload.encoded_frame.codec == VideoCodec::kH264) {
         return !payload.h264_units.empty();
     }
-    if (payload.coded_frame.codec == VideoCodec::kH265) {
+    if (payload.encoded_frame.codec == VideoCodec::kH265) {
         return !payload.h265_units.empty();
     }
     return false;
@@ -315,7 +315,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth) {
     PackagedFrameResult result;
-    if (stream == nullptr || frame.codec != payload.coded_frame.codec ||
+    if (stream == nullptr || frame.codec != payload.encoded_frame.codec ||
         !HasParsedUnits(payload)) {
         return result;
     }

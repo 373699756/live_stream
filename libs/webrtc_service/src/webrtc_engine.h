@@ -31,7 +31,7 @@ public:
     virtual bool AddIceCandidate(const WebrtcIceCandidate &candidate) = 0;
     virtual bool ClosePeer(const std::string &peer_id) = 0;
     virtual bool SendFrame(const WebrtcPeerInfo &peer,
-                           const ParsedVideoFrame &frame) = 0;
+                           const FramePayload &frame) = 0;
 };
 
 std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine);

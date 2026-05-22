@@ -369,9 +369,9 @@ private:
     CachedKeyFrame sub_;
 };
 
-class FrameSubscriptions {
+class FrameAttachments {
 public:
-    struct SubscribedSink {
+    struct AttachedSink {
         IFrameSink *sink = nullptr;
         StreamId stream_id = StreamId::kMain;
     };
@@ -382,14 +382,14 @@ public:
         StreamState state = StreamState::kClosed;
     };
 
-    FrameSubscriptionId ReserveId() { return next_subscription_id_++; }
+    FrameAttachId ReserveId() { return next_attach_id_++; }
 
-    void Add(FrameSubscriptionId id, const FrameSubscribeOptions &options,
+    void Add(FrameAttachId id, const FrameAttachOptions &options,
              IFrameSink *sink) {
         sinks_[id] = std::make_pair(options, sink);
     }
 
-    bool Remove(FrameSubscriptionId id) {
+    bool Remove(FrameAttachId id) {
         auto it = sinks_.find(id);
         if (it == sinks_.end()) {
             return false;
@@ -409,25 +409,25 @@ public:
         return sinks;
     }
 
-    std::vector<SubscribedSink> CollectSubscribedSinks() const {
-        std::vector<SubscribedSink> subscribed_sinks;
+    std::vector<AttachedSink> CollectAttachedSinks() const {
+        std::vector<AttachedSink> attached_sinks;
         for (const auto &item : sinks_) {
             if (item.second.second == nullptr) {
                 continue;
             }
-            SubscribedSink subscribed_sink;
-            subscribed_sink.sink = item.second.second;
-            subscribed_sink.stream_id = item.second.first.stream_id;
-            subscribed_sinks.push_back(subscribed_sink);
+            AttachedSink attached_sink;
+            attached_sink.sink = item.second.second;
+            attached_sink.stream_id = item.second.first.stream_id;
+            attached_sinks.push_back(attached_sink);
         }
-        return subscribed_sinks;
+        return attached_sinks;
     }
 
 private:
-    std::map<FrameSubscriptionId,
-             std::pair<FrameSubscribeOptions, IFrameSink *>>
+    std::map<FrameAttachId,
+             std::pair<FrameAttachOptions, IFrameSink *>>
         sinks_;
-    FrameSubscriptionId next_subscription_id_ = 1;
+    FrameAttachId next_attach_id_ = 1;
 };
 
 }  // namespace
@@ -455,9 +455,9 @@ public:
     bool IsRestarting() const override;
     bool IsStreamStarted(StreamId stream_id) const override;
     VideoCodec GetStreamCodec(StreamId stream_id) const override;
-    FrameSubscriptionId SubscribeFrames(const FrameSubscribeOptions &options,
+    FrameAttachId AttachFrameSink(const FrameAttachOptions &options,
                                         IFrameSink *sink) override;
-    bool UnsubscribeFrames(FrameSubscriptionId subscription_id) override;
+    bool DetachFrameSink(FrameAttachId attach_id) override;
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override;
     MediaCapabilities GetCapabilities() const override;
     MediaChannels GetChannels() const override;
@@ -470,7 +470,7 @@ private:
     MediaChannels active_channels;
     MediaCapabilities capabilities;
     ServiceState state = ServiceState::kCreated;
-    FrameSubscriptions subscriptions;
+    FrameAttachments frame_attachments;
     ConfigJson image_config = ConfigJson::object();
     ImageStrategyStatus image_strategy_status;
     KeyFrameCache key_frame_cache;
@@ -644,7 +644,7 @@ private:
         bool detach_image = false;
         bool stop_pipeline = false;
         bool deinit_pipeline = false;
-        std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
+        std::vector<FrameAttachments::SourceStateNotice> source_state_events;
         {
             std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
             {
@@ -695,8 +695,8 @@ private:
     }
 
     void DispatchFrame(const EncodedFrame &frame) {
-        ParsedVideoFrame parsed_frame;
-        parsed_frame.coded_frame = frame;
+        FramePayload payload;
+        payload.encoded_frame = frame;
         std::vector<IFrameSink *> matching_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex);
@@ -704,25 +704,25 @@ private:
                 return;
             }
             key_frame_cache.Remember(frame);
-            matching_sinks = subscriptions.CollectSinks(frame.stream_id);
+            matching_sinks = frame_attachments.CollectSinks(frame.stream_id);
         }
         for (IFrameSink *sink : matching_sinks) {
-            sink->OnFrame(parsed_frame);
+            sink->OnFrame(payload);
         }
     }
 
-    std::vector<FrameSubscriptions::SourceStateNotice>
+    std::vector<FrameAttachments::SourceStateNotice>
     BuildSourceStateEventsLocked(StreamState stream_state) const {
-        std::vector<FrameSubscriptions::SourceStateNotice> events;
-        const std::vector<FrameSubscriptions::SubscribedSink> targets =
-            subscriptions.CollectSubscribedSinks();
-        for (const FrameSubscriptions::SubscribedSink &target : targets) {
+        std::vector<FrameAttachments::SourceStateNotice> events;
+        const std::vector<FrameAttachments::AttachedSink> targets =
+            frame_attachments.CollectAttachedSinks();
+        for (const FrameAttachments::AttachedSink &target : targets) {
             const VideoStreamConfig *stream =
                 FindConfiguredStream(active_config, target.stream_id);
             const bool stream_running =
                 stream_state == StreamState::kRunning && stream != nullptr &&
                 stream->enabled;
-            FrameSubscriptions::SourceStateNotice event;
+            FrameAttachments::SourceStateNotice event;
             event.sink = target.sink;
             event.stream_id = target.stream_id;
             event.state = stream_running ? stream_state : StreamState::kClosed;
@@ -732,9 +732,9 @@ private:
     }
 
     static void NotifySourceState(
-        const std::vector<FrameSubscriptions::SourceStateNotice>
+        const std::vector<FrameAttachments::SourceStateNotice>
             &source_state_events) {
-        for (const FrameSubscriptions::SourceStateNotice &notification :
+        for (const FrameAttachments::SourceStateNotice &notification :
              source_state_events) {
             if (notification.sink != nullptr) {
                 notification.sink->OnSourceStateChanged(notification.stream_id,
@@ -955,7 +955,7 @@ private:
         bool rebuild_system = false;
         ServiceState state_before_change = ServiceState::kCreated;
         ConfigJson image_config_before_change;
-        std::vector<FrameSubscriptions::SourceStateNotice>
+        std::vector<FrameAttachments::SourceStateNotice>
             source_closed_events;
         {
             std::lock_guard<std::mutex> guard(mutex);
@@ -1010,7 +1010,7 @@ private:
             }
         }
 
-        std::vector<FrameSubscriptions::SourceStateNotice>
+        std::vector<FrameAttachments::SourceStateNotice>
             source_state_events;
         if (device_config_applied) {
             {
@@ -1089,7 +1089,7 @@ bool MediaServiceImpl::Start() {
         }
     }
     if (!ok) {
-        std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
+        std::vector<FrameAttachments::SourceStateNotice> source_state_events;
         {
             std::lock_guard<std::mutex> lock(mutex);
             key_frame_cache.Clear();
@@ -1100,7 +1100,7 @@ bool MediaServiceImpl::Start() {
         NotifySourceState(source_state_events);
         return false;
     }
-    std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
+    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex);
         state = ServiceState::kStarted;
@@ -1114,7 +1114,7 @@ bool MediaServiceImpl::Start() {
 void MediaServiceImpl::Stop() {
     StopImageStrategy();
     bool should_stop = false;
-    std::vector<FrameSubscriptions::SourceStateNotice> source_state_events;
+    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (state != ServiceState::kStarted) {
@@ -1167,10 +1167,10 @@ VideoCodec MediaServiceImpl::GetStreamCodec(StreamId stream_id) const {
     return VideoCodec::kH264;
 }
 
-FrameSubscriptionId
-MediaServiceImpl::SubscribeFrames(const FrameSubscribeOptions &options,
+FrameAttachId
+MediaServiceImpl::AttachFrameSink(const FrameAttachOptions &options,
                                   IFrameSink *sink) {
-    FrameSubscriptionId id = 0;
+    FrameAttachId id = 0;
     EncodedFrame last_key_frame;
     bool has_last_key_frame = false;
     {
@@ -1184,21 +1184,21 @@ MediaServiceImpl::SubscribeFrames(const FrameSubscribeOptions &options,
         has_last_key_frame =
             options.require_key_frame_first &&
             key_frame_cache.Get(options.stream_id, &last_key_frame);
-        id = subscriptions.ReserveId();
-        subscriptions.Add(id, options, sink);
+        id = frame_attachments.ReserveId();
+        frame_attachments.Add(id, options, sink);
     }
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
     if (has_last_key_frame) {
-        ParsedVideoFrame parsed_frame;
-        parsed_frame.coded_frame = last_key_frame;
-        sink->OnFrame(parsed_frame);
+        FramePayload payload;
+        payload.encoded_frame = last_key_frame;
+        sink->OnFrame(payload);
     }
     return id;
 }
 
-bool MediaServiceImpl::UnsubscribeFrames(FrameSubscriptionId subscription_id) {
+bool MediaServiceImpl::DetachFrameSink(FrameAttachId attach_id) {
     std::lock_guard<std::mutex> lock(mutex);
-    return subscriptions.Remove(subscription_id);
+    return frame_attachments.Remove(attach_id);
 }
 
 bool MediaServiceImpl::RequestKeyFrame(StreamId stream_id,

@@ -69,12 +69,12 @@ public:
         return false;
     }
 
-    FrameSubscriptionId AttachFrameSink(const FrameSubscribeOptions& options,
+    FrameAttachId AttachFrameSink(const FrameAttachOptions& options,
                                         IFrameSink* sink) override {
         if (sink == nullptr) {
             return 0;
         }
-        const FrameSubscriptionId id = next_sink_id_++;
+        const FrameAttachId id = next_sink_id_++;
         if (options.stream_id == StreamId::kMain) {
             main_sink = sink;
             main_sink_id = id;
@@ -85,7 +85,7 @@ public:
         return id;
     }
 
-    bool DetachFrameSink(FrameSubscriptionId sink_id) override {
+    bool DetachFrameSink(FrameAttachId sink_id) override {
         if (sink_id == main_sink_id) {
             main_sink = nullptr;
             main_sink_id = 0;
@@ -121,22 +121,22 @@ public:
         if (sink == nullptr) {
             return false;
         }
-        ParsedVideoFrame parsed_frame;
-        parsed_frame.coded_frame = frame;
-        sink->OnFrame(parsed_frame);
+        FramePayload payload;
+        payload.encoded_frame = frame;
+        sink->OnFrame(payload);
         return true;
     }
 
     IFrameSink* main_sink = nullptr;
     IFrameSink* sub_sink = nullptr;
-    FrameSubscriptionId main_sink_id = 0;
-    FrameSubscriptionId sub_sink_id = 0;
+    FrameAttachId main_sink_id = 0;
+    FrameAttachId sub_sink_id = 0;
     StreamId last_key_frame_stream = StreamId::kMain;
     KeyFrameReason last_key_frame_reason = KeyFrameReason::kRecovery;
     int key_frame_requests = 0;
 
 private:
-    FrameSubscriptionId next_sink_id_ = 1;
+    FrameAttachId next_sink_id_ = 1;
 };
 
 }  // namespace test

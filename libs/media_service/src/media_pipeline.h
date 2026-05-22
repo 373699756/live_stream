@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
 #define LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
 
-#include "media/frame_subscription.h"
+#include "media/frame_attach.h"
 #include "media/stream_types.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"

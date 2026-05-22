@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_FRAME_DISPATCHER_H_
 #define LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_FRAME_DISPATCHER_H_
 
-#include "media/frame_subscription.h"
+#include "media/frame_attach.h"
 
 namespace live_stream {
 namespace webrtc_internal {
@@ -16,17 +16,17 @@ struct WebrtcFrameQueueResult {
 class WebrtcFrameDispatcher {
 public:
     void Clear();
-    WebrtcFrameQueueResult Queue(const ParsedVideoFrame &frame);
-    bool TakeNext(ParsedVideoFrame *frame);
+    WebrtcFrameQueueResult Queue(const FramePayload &frame);
+    bool TakeNext(FramePayload *frame);
 
 private:
     struct PendingFrameSlot {
-        ParsedVideoFrame frame;
+        FramePayload frame;
         bool ready = false;
     };
 
     PendingFrameSlot *FindPendingSlot(StreamId stream_id);
-    bool Take(StreamId stream_id, ParsedVideoFrame *frame);
+    bool Take(StreamId stream_id, FramePayload *frame);
 
     PendingFrameSlot main_pending_frame_;
     PendingFrameSlot sub_pending_frame_;

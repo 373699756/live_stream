@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_STREAM_HUB_SERVICE_H_
 #define LIVE_STREAM_STREAM_HUB_SERVICE_H_
 
-#include "media/frame_subscription.h"
+#include "media/frame_attach.h"
 #include "media/stream_types.h"
 #include "media_service.h"
 
@@ -101,9 +101,9 @@ public:
                     bool wait_for_keyframe,
                     const std::shared_ptr<IStreamFlvSink> &sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
-    virtual FrameSubscriptionId AttachFrameSink(
-        const FrameSubscribeOptions &options, IFrameSink *sink) = 0;
-    virtual bool DetachFrameSink(FrameSubscriptionId sink_id) = 0;
+    virtual FrameAttachId AttachFrameSink(
+        const FrameAttachOptions &options, IFrameSink *sink) = 0;
+    virtual bool DetachFrameSink(FrameAttachId sink_id) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason) = 0;
     virtual StreamHubServiceStats GetStats() const = 0;

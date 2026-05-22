@@ -12,7 +12,7 @@ class TestFrameSink : public live_stream::IFrameSink {
 public:
     const char* Name() const override { return "test_sink"; }
 
-    void OnFrame(const live_stream::ParsedVideoFrame& frame) override {
+    void OnFrame(const live_stream::FramePayload& frame) override {
         (void)frame;
         ++frames;
     }
@@ -143,16 +143,16 @@ int main() {
     }
 
     TestFrameSink sink;
-    live_stream::FrameSubscribeOptions subscribe_options;
-    if (service->SubscribeFrames(subscribe_options, &sink) != 0) {
+    live_stream::FrameAttachOptions attach_options;
+    if (service->AttachFrameSink(attach_options, &sink) != 0) {
         return 5;
     }
     if (!service->Start() || !service->IsStarted()) {
         return 6;
     }
-    const live_stream::FrameSubscriptionId subscription =
-        service->SubscribeFrames(subscribe_options, &sink);
-    if (subscription == 0) {
+    const live_stream::FrameAttachId attach_id =
+        service->AttachFrameSink(attach_options, &sink);
+    if (attach_id == 0) {
         return 7;
     }
     if (sink.last_state != live_stream::StreamState::kRunning ||
@@ -164,10 +164,10 @@ int main() {
             live_stream::KeyFrameReason::kNewClient)) {
         return 9;
     }
-    if (!service->UnsubscribeFrames(subscription)) {
+    if (!service->DetachFrameSink(attach_id)) {
         return 10;
     }
-    if (service->UnsubscribeFrames(subscription)) {
+    if (service->DetachFrameSink(attach_id)) {
         return 11;
     }
     service->Stop();

@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SERVICE_H_
 #define LIVE_STREAM_MEDIA_SERVICE_H_
 
-#include "media/frame_subscription.h"
+#include "media/frame_attach.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
@@ -52,9 +52,9 @@ public:
     virtual bool IsRestarting() const = 0;
     virtual bool IsStreamStarted(StreamId stream_id) const = 0;
     virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
-    virtual FrameSubscriptionId SubscribeFrames(
-        const FrameSubscribeOptions& options, IFrameSink* sink) = 0;
-    virtual bool UnsubscribeFrames(FrameSubscriptionId subscription_id) = 0;
+    virtual FrameAttachId AttachFrameSink(
+        const FrameAttachOptions& options, IFrameSink* sink) = 0;
+    virtual bool DetachFrameSink(FrameAttachId attach_id) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason) = 0;
     virtual MediaCapabilities GetCapabilities() const = 0;

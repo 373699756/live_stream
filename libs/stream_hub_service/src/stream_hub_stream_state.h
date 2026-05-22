@@ -43,7 +43,7 @@ struct StreamContext {
     int64_t last_frame_duration_us = 33333;
 };
 
-using ParsedFramePayload = ParsedVideoFrame;
+using ParsedFramePayload = FramePayload;
 
 struct PackagedFrameResult {
     bool accepted = false;

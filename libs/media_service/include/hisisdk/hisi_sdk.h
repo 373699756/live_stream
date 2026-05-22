@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HISISDK_HISI_SDK_H_
 #define LIVE_STREAM_HISISDK_HISI_SDK_H_
 
-#include "media/frame_subscription.h"
+#include "media/frame_attach.h"
 #include "media/media_buffer.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
