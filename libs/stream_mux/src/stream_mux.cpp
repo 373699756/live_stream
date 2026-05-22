@@ -1,6 +1,6 @@
 #include "stream_mux.h"
 
-#include "live_stream/byte_writer.h"
+#include "byte_writer.h"
 #include "stream_codec.h"
 
 #include <algorithm>

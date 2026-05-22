@@ -3,7 +3,7 @@
 #include "core_services.h"
 #include "infra/log.h"
 #include "hisi_vendor/mpp_hisi_sdk.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 namespace live_stream {
 namespace {

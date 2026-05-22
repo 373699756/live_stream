@@ -3,7 +3,7 @@
 #include "auth_service.h"
 #include "event_service.h"
 #include "infra/log.h"
-#include "live_stream/byte_writer.h"
+#include "byte_writer.h"
 #include "media/media_buffer.h"
 #include "net_service.h"
 #include "rtsp_protocol.h"

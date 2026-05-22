@@ -1,6 +1,6 @@
 #include "config_service.h"
 
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 #include <cstdio>
 #include <fstream>

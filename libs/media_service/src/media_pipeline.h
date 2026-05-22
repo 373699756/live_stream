@@ -6,7 +6,7 @@
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
-#include "live_stream/config_json.h"
+#include "config_json.h"
 
 namespace live_stream {
 

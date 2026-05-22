@@ -206,7 +206,7 @@ cppcheck --enable=warning,performance,portability --std=c++17 \
 ```
 
 ```sh
-clang-tidy app/*.cpp libs/*/src/*.cpp -- -std=c++17 -Iapp -Ilibs/common/include
+clang-tidy app/*.cpp libs/*/src/*.cpp -- -std=c++17 -Iapp -Ilibs/infra_service/include
 ```
 
 实际使用 `clang-tidy` 时优先基于 `compile_commands.json`，不要长期维护一份手写

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_COMMON_BYTE_WRITER_H_
-#define LIVE_STREAM_COMMON_BYTE_WRITER_H_
+#ifndef LIVE_STREAM_INFRA_SERVICE_BYTE_WRITER_H_
+#define LIVE_STREAM_INFRA_SERVICE_BYTE_WRITER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -60,4 +60,4 @@ inline void WriteU32(uint8_t *out, uint32_t value) {
 }  // namespace byte_writer
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_COMMON_BYTE_WRITER_H_
+#endif  // LIVE_STREAM_INFRA_SERVICE_BYTE_WRITER_H_

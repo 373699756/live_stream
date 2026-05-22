@@ -2,7 +2,7 @@
 
 #include "ai_service.h"
 #include "config_service.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_service.h"
 
 namespace live_stream {

@@ -2,7 +2,7 @@
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 #include <cmath>
 #include <cstdint>

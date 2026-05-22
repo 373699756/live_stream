@@ -3,7 +3,7 @@
 #include "http_handler_utils.h"
 
 #include "infra/log.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "webrtc_service.h"
 
 #include <cstdint>

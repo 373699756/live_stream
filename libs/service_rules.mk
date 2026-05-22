@@ -17,7 +17,6 @@ CXXFLAGS += -Wall -Wextra -Werror
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
 CXXFLAGS += -Iinclude
-CXXFLAGS += -I$(ROOT_DIR)/libs/common/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/infra_service/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/install/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/src

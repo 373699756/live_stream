@@ -1,7 +1,7 @@
 #include "osd_service.h"
 
 #include "config_service.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_service.h"
 #include "osd_region.h"
 

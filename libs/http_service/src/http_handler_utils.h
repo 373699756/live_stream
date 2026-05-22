@@ -3,7 +3,7 @@
 
 #include "http_access.h"
 #include "http_service.h"
-#include "live_stream/config_json.h"
+#include "config_json.h"
 #include "media/stream_types.h"
 
 #include <map>

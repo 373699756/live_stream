@@ -8,7 +8,7 @@
 #ifndef LIVE_STREAM_CONFIG_SERVICE_H_
 #define LIVE_STREAM_CONFIG_SERVICE_H_
 
-#include "live_stream/config_json.h"
+#include "config_json.h"
 
 #include <cstdint>
 #include <functional>

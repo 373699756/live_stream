@@ -4,5 +4,6 @@ SERVICE_NAME := ai_service
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 
 include ../service_rules.mk

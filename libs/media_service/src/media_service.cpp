@@ -3,7 +3,7 @@
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
 #include "infra/log.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_config_codec.h"
 #include "media/media_buffer.h"
 #include "media_pipeline.h"

@@ -1,6 +1,6 @@
 #include "network_config_codec.h"
 
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 #include <cctype>
 #include <cstdint>

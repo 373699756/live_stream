@@ -11,7 +11,7 @@
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "infra/time.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_service.h"
 
 #if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \

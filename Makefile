@@ -37,7 +37,6 @@ CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
 CXXFLAGS += -Iapp
-CXXFLAGS += -Ilibs/common/include
 CXXFLAGS += -Ilibs/infra_service/include
 CXXFLAGS += -Ilibs/logger_service/include
 CXXFLAGS += -Ilibs/config_service/include

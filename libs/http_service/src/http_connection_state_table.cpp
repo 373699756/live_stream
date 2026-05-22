@@ -1,4 +1,4 @@
-#include "http_connection_store.h"
+#include "http_connection_state_table.h"
 
 #include "http_protocol.h"
 
@@ -17,17 +17,17 @@ HttpConnectionParseFailure FailureFromRawParseStatus(RawParseStatus status) {
 
 }  // namespace
 
-void HttpConnectionStore::Add(ConnectionId connection_id, std::string client_ip) {
+void HttpConnectionStateTable::Add(ConnectionId connection_id, std::string client_ip) {
   HttpConnectionState session;
   session.client_ip = std::move(client_ip);
   connections_[connection_id] = session;
 }
 
-void HttpConnectionStore::Clear() { connections_.clear(); }
+void HttpConnectionStateTable::Clear() { connections_.clear(); }
 
-size_t HttpConnectionStore::Size() const { return connections_.size(); }
+size_t HttpConnectionStateTable::Size() const { return connections_.size(); }
 
-std::vector<ConnectionId> HttpConnectionStore::ConnectionIds() const {
+std::vector<ConnectionId> HttpConnectionStateTable::ConnectionIds() const {
   std::vector<ConnectionId> connection_ids;
   connection_ids.reserve(connections_.size());
   for (const auto &item : connections_) {
@@ -36,7 +36,7 @@ std::vector<ConnectionId> HttpConnectionStore::ConnectionIds() const {
   return connection_ids;
 }
 
-bool HttpConnectionStore::AppendRequestBytes(ConnectionId connection_id,
+bool HttpConnectionStateTable::AppendRequestBytes(ConnectionId connection_id,
                                           const uint8_t *data, uint32_t size) {
   if (data == nullptr) {
     return false;
@@ -51,7 +51,7 @@ bool HttpConnectionStore::AppendRequestBytes(ConnectionId connection_id,
   return true;
 }
 
-HttpConnectionParseResult HttpConnectionStore::ParsePendingRequests(
+HttpConnectionParseResult HttpConnectionStateTable::ParsePendingRequests(
     ConnectionId connection_id, const HttpConnectionParseOptions &options,
     std::vector<HttpConnectionRequestLog> *request_logs) {
   auto iter = connections_.find(connection_id);
@@ -61,7 +61,7 @@ HttpConnectionParseResult HttpConnectionStore::ParsePendingRequests(
   return ParsePendingRequests(iter, options, request_logs);
 }
 
-bool HttpConnectionStore::TakeNextRequest(ConnectionId connection_id,
+bool HttpConnectionStateTable::TakeNextRequest(ConnectionId connection_id,
                                        PendingHttpRequest *pending) {
   if (pending == nullptr) {
     return false;
@@ -77,7 +77,7 @@ bool HttpConnectionStore::TakeNextRequest(ConnectionId connection_id,
   return true;
 }
 
-HttpConnectionParseResult HttpConnectionStore::CompleteKeepAliveRequest(
+HttpConnectionParseResult HttpConnectionStateTable::CompleteKeepAliveRequest(
     ConnectionId connection_id, const HttpConnectionParseOptions &options,
     std::vector<HttpConnectionRequestLog> *request_logs) {
   auto iter = connections_.find(connection_id);
@@ -88,7 +88,7 @@ HttpConnectionParseResult HttpConnectionStore::CompleteKeepAliveRequest(
   return ParsePendingRequests(iter, options, request_logs);
 }
 
-bool HttpConnectionStore::BeginStream(
+bool HttpConnectionStateTable::BeginStream(
     ConnectionId connection_id, const std::shared_ptr<void> &stream_owner) {
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end()) {
@@ -105,7 +105,7 @@ bool HttpConnectionStore::BeginStream(
   return true;
 }
 
-bool HttpConnectionStore::AttachStreamClient(ConnectionId connection_id,
+bool HttpConnectionStateTable::AttachStreamClient(ConnectionId connection_id,
                                              HttpStreamClientId client_id) {
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end() || !iter->second.streaming) {
@@ -115,12 +115,12 @@ bool HttpConnectionStore::AttachStreamClient(ConnectionId connection_id,
   return true;
 }
 
-bool HttpConnectionStore::IsStreaming(ConnectionId connection_id) const {
+bool HttpConnectionStateTable::IsStreaming(ConnectionId connection_id) const {
   auto iter = connections_.find(connection_id);
   return iter != connections_.end() && iter->second.streaming;
 }
 
-bool HttpConnectionStore::ArmTimer(ConnectionId connection_id,
+bool HttpConnectionStateTable::ArmTimer(ConnectionId connection_id,
                                 uint64_t *generation) {
   if (generation == nullptr) {
     return false;
@@ -133,14 +133,14 @@ bool HttpConnectionStore::ArmTimer(ConnectionId connection_id,
   return true;
 }
 
-bool HttpConnectionStore::IsTimerCurrent(ConnectionId connection_id,
+bool HttpConnectionStateTable::IsTimerCurrent(ConnectionId connection_id,
                                       uint64_t generation) const {
   auto iter = connections_.find(connection_id);
   return iter != connections_.end() &&
          iter->second.timeout_generation == generation;
 }
 
-ClosedHttpConnectionInfo HttpConnectionStore::Remove(ConnectionId connection_id) {
+ClosedHttpConnectionInfo HttpConnectionStateTable::Remove(ConnectionId connection_id) {
   ClosedHttpConnectionInfo closed;
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end()) {
@@ -153,7 +153,7 @@ ClosedHttpConnectionInfo HttpConnectionStore::Remove(ConnectionId connection_id)
   return closed;
 }
 
-std::vector<HttpStreamClientId> HttpConnectionStore::TakeAllStreamClients() {
+std::vector<HttpStreamClientId> HttpConnectionStateTable::TakeAllStreamClients() {
   std::vector<HttpStreamClientId> client_ids;
   for (auto &item : connections_) {
     const HttpStreamClientId client_id = TakeStreamClient(&item.second);
@@ -164,7 +164,7 @@ std::vector<HttpStreamClientId> HttpConnectionStore::TakeAllStreamClients() {
   return client_ids;
 }
 
-HttpStreamClientId HttpConnectionStore::TakeStreamClient(
+HttpStreamClientId HttpConnectionStateTable::TakeStreamClient(
     HttpConnectionState *session) {
   if (session == nullptr || session->stream_client_id == 0) {
     return 0;
@@ -175,7 +175,7 @@ HttpStreamClientId HttpConnectionStore::TakeStreamClient(
   return client_id;
 }
 
-HttpConnectionParseResult HttpConnectionStore::ParsePendingRequests(
+HttpConnectionParseResult HttpConnectionStateTable::ParsePendingRequests(
     ConnectionMap::iterator iter, const HttpConnectionParseOptions &options,
     std::vector<HttpConnectionRequestLog> *request_logs) {
   HttpConnectionParseResult result;

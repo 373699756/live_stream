@@ -6,7 +6,7 @@
 #include "http_request_utils.h"
 #include "infra/fs.h"
 #include "infra/time.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "upgrade_service.h"
 
 #include <cctype>

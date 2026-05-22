@@ -5,7 +5,7 @@
 
 #include "auth_internal.h"
 #include "infra/fs.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 namespace live_stream {
 namespace {

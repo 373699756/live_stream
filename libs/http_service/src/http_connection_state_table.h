@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
+#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STATE_TABLE_H_
+#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STATE_TABLE_H_
 
 #include "http_stream_writer.h"
 #include "http_service.h"
@@ -56,9 +56,9 @@ struct HttpConnectionParseResult {
   HttpConnectionParseFailure failure = HttpConnectionParseFailure::kNone;
 };
 
-// HttpConnectionStore owns per-connection HTTP state. It is intentionally not
-// internally synchronized; HttpServiceImpl protects it with its service mutex.
-class HttpConnectionStore {
+// HttpConnectionStateTable owns per-connection HTTP state. It is intentionally
+// not internally synchronized; HttpServer protects it with its mutex.
+class HttpConnectionStateTable {
  public:
   void Add(ConnectionId connection_id, std::string client_ip);
   void Clear();
@@ -113,4 +113,4 @@ class HttpConnectionStore {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
+#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STATE_TABLE_H_

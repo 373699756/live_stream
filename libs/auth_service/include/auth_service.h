@@ -8,7 +8,7 @@
 #ifndef LIVE_STREAM_AUTH_SERVICE_H_
 #define LIVE_STREAM_AUTH_SERVICE_H_
 
-#include "live_stream/request_context.h"
+#include "request_context.h"
 
 #include <cstdint>
 #include <memory>

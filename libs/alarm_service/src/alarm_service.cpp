@@ -10,7 +10,7 @@
 #include "config_service.h"
 #include "event_service.h"
 #include "infra/time.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "logger_service.h"
 
 namespace live_stream {

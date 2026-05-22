@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_NETWORK_SERVICE_H_
 #define LIVE_STREAM_NETWORK_SERVICE_H_
 
-#include "live_stream/config_json.h"
-#include "live_stream/request_context.h"
+#include "config_json.h"
+#include "request_context.h"
 
 #include <cstdint>
 #include <memory>

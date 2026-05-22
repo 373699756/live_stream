@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 
-#include "http_connection_store.h"
+#include "http_connection_state_table.h"
 #include "http_service.h"
 #include "http_service_dependencies.h"
 #include "http_stream_writer.h"
@@ -100,7 +100,7 @@ private:
     std::unique_ptr<infra::Executor> stream_executor_;
     std::unique_ptr<infra::Executor> control_executor_;
     TcpServerId tcp_server_id_ = 0;
-    HttpConnectionStore connections_;
+    HttpConnectionStateTable connections_;
     HttpServiceStats stats_;
     bool initialized_ = false;
     bool started_ = false;

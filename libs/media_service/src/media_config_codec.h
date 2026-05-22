@@ -2,7 +2,7 @@
 #define LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_CONFIG_CODEC_H_
 
 #include "config_service.h"
-#include "live_stream/config_json.h"
+#include "config_json.h"
 #include "media/media_capabilities.h"
 #include "media/pipeline_config.h"
 

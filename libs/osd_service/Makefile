@@ -5,6 +5,7 @@ STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
 CONFIG_LIB := $(BUILD_DIR)/lib/libconfig_service.a
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 EXTRA_TEST_DEPS := $(MEDIA_LIB) $(STREAM_CODEC_LIB) $(CONFIG_LIB) \
 	$(INFRA_LIB)

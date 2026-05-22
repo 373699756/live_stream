@@ -12,7 +12,7 @@
 #include "auth_internal.h"
 #include "config_service.h"
 #include "infra/time.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 
 namespace live_stream {
 namespace {

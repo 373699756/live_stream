@@ -1,6 +1,6 @@
 #include "media_config_codec.h"
 
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_pipeline.h"
 
 #include <cctype>

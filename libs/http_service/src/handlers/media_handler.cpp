@@ -3,7 +3,7 @@
 #include "http_handler_utils.h"
 
 #include "config_service.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media/media_capabilities.h"
 #include "media_service.h"
 #include "infra/log.h"

@@ -1,6 +1,6 @@
 #include "stream_codec.h"
 
-#include "live_stream/byte_writer.h"
+#include "byte_writer.h"
 
 #include <string>
 

@@ -6,7 +6,7 @@
 
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
-#include "live_stream/json_utils.h"
+#include "json_utils.h"
 #include "media_service.h"
 
 namespace live_stream {
