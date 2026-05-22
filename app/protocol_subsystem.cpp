@@ -270,17 +270,23 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     const RtspServiceDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtspService(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
-        INFRA_LOG_ERROR("app", "Start rtsp service failed: listen=%s:%u",
+        INFRA_LOG_ERROR("app",
+                        "Start rtsp service failed, continue without RTSP: "
+                        "listen=%s:%u",
                         runtime_config.listen_ip.c_str(),
                         static_cast<unsigned>(runtime_config.rtsp_port));
-        Stop();
-        return false;
+        if (rtsp_) {
+            rtsp_->Stop();
+        }
+        rtsp_.reset();
+        refs.rtsp_service = nullptr;
+    } else {
+        refs.rtsp_service = rtsp_.get();
+        const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
+        INFRA_LOG_INFO("app", "RTSP service listening %s:%u",
+                       rtsp_address.ip.c_str(),
+                       static_cast<unsigned>(rtsp_address.port));
     }
-    refs.rtsp_service = rtsp_.get();
-    const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
-    INFRA_LOG_INFO("app", "RTSP service listening %s:%u",
-                   rtsp_address.ip.c_str(),
-                   static_cast<unsigned>(rtsp_address.port));
 
     const WebrtcServiceOptions webrtc_options =
         BuildWebrtcOptions(runtime_config);
@@ -289,13 +295,19 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     webrtc_ = CreateWebrtcService(webrtc_options, webrtc_dependencies);
     if (!webrtc_ || !webrtc_->Start()) {
         INFRA_LOG_ERROR(
-            "app", "Start webrtc service failed: enabled=%d base=%u",
+            "app",
+            "Start webrtc service failed, continue without WebRTC: "
+            "enabled=%d base=%u",
             runtime_config.webrtc_enabled ? 1 : 0,
             static_cast<unsigned>(runtime_config.webrtc_local_port_base));
-        Stop();
-        return false;
+        if (webrtc_) {
+            webrtc_->Stop();
+        }
+        webrtc_.reset();
+        refs.webrtc_service = nullptr;
+    } else {
+        refs.webrtc_service = webrtc_.get();
     }
-    refs.webrtc_service = webrtc_.get();
 
     onvif_uri_provider_.reset(
         new StaticOnvifUriProvider(runtime_config, refs.media.media));
@@ -305,16 +317,24 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         BuildOnvifDependencies(refs);
     onvif_ = CreateOnvifService(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
-        INFRA_LOG_ERROR("app", "Start onvif service failed: device_port=%u",
+        INFRA_LOG_ERROR("app",
+                        "Start onvif service failed, continue without ONVIF: "
+                        "device_port=%u",
                         static_cast<unsigned>(runtime_config.onvif_device_port));
-        Stop();
-        return false;
+        if (onvif_) {
+            onvif_->Stop();
+        }
+        onvif_.reset();
+        onvif_uri_provider_.reset();
+        refs.onvif_service = nullptr;
+        refs.onvif_uri_provider = nullptr;
+    } else {
+        refs.onvif_service = onvif_.get();
+        INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
+                       runtime_config.listen_ip.c_str(),
+                       static_cast<unsigned>(runtime_config.onvif_device_port),
+                       static_cast<unsigned>(runtime_config.onvif_discovery_port));
     }
-    refs.onvif_service = onvif_.get();
-    INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
-                   runtime_config.listen_ip.c_str(),
-                   static_cast<unsigned>(runtime_config.onvif_device_port),
-                   static_cast<unsigned>(runtime_config.onvif_discovery_port));
 
     const HttpServiceOptions http_options = BuildHttpOptions(runtime_config);
     const HttpServiceDependencies http_dependencies = BuildHttpDependencies(refs);
