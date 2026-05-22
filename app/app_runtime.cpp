@@ -111,12 +111,13 @@ bool AppRuntime::Start(const RuntimePaths &paths) {
                    runtime_config_.static_root.c_str());
 
     if (!device_subsystem.Start(
+            core_services,
             CreateLinuxPlatformAdapters(runtime_config_.network_ifname))) {
         INFRA_LOG_ERROR("app", "Start device subsystem failed");
         Stop();
         return false;
     }
-    if (!media_subsystem.Start()) {
+    if (!media_subsystem.Start(core_services)) {
         INFRA_LOG_ERROR("app", "Start media subsystem failed");
         Stop();
         return false;

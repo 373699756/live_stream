@@ -1,23 +1,25 @@
 # Quality Report
 
-本文档由 `scripts/quality_scan.sh quick` 生成，汇总代码质量、性能和设计候选问题。
+本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
 
-- Generated: `20260521-232711`
-- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260521-232711`
-- Git commit: `73adb89`
+- Generated: `20260522-022057`
+- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-022057`
+- Git commit: `3f9efb1`
 
 ## Counts
 
 - cppcheck diagnostics: 12
 - cppcheck errors: 1
 - keyword risk hits: 229
-- hot-path/logging hits: 191
+- hot-path/logging hits: 195
 - clang-tidy diagnostics: 0
 
 ## Must Check First
 
-- Required step failed: `make`; inspect `make.log`.
+- No required step failed.
+- Warning step: `scan-build-10: exit code 2`; inspect related log before trusting that tool result.
 - Skipped: `code size: missing cloc or tokei`.
+- Skipped: `include-what-you-use: missing include-what-you-use or iwyu`.
 
 ## Must Fix: Cppcheck Errors
 
@@ -31,8 +33,8 @@ libs/stream_mux/src/stream_mux.cpp:309:68: error: Invalid out->resize() argument
 libs/config_service/src/config_service.cpp:262:10: warning: Virtual function 'SaveFile' is called from destructor '~ConfigServiceImpl()' at line 134. Dynamic binding is not used. [virtualCallInConstructor]
 libs/event_service/src/event_service.cpp:69:10: warning: Virtual function 'Stop' is called from destructor '~EventServiceImpl()' at line 35. Dynamic binding is not used. [virtualCallInConstructor]
 libs/event_service/src/event_service.cpp:69:10: warning: Virtual function 'Stop' is called from destructor '~EventServiceImpl()' at line 36. Dynamic binding is not used. [virtualCallInConstructor]
-libs/http_service/src/http_service_impl.h:29:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 78. Dynamic binding is not used. [virtualCallInConstructor]
-libs/http_service/src/http_service_impl.h:29:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 79. Dynamic binding is not used. [virtualCallInConstructor]
+libs/http_service/src/http_service_impl.h:32:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 42. Dynamic binding is not used. [virtualCallInConstructor]
+libs/http_service/src/http_service_impl.h:32:10: warning: Virtual function 'Stop' is called from destructor '~HttpServiceImpl()' at line 43. Dynamic binding is not used. [virtualCallInConstructor]
 libs/logger_service/src/logger_service.cpp:46:10: warning: Virtual function 'Stop' is called from destructor '~LoggerServiceImpl()' at line 18. Dynamic binding is not used. [virtualCallInConstructor]
 libs/net_service/src/net_engine_impl.h:26:10: warning: Virtual function 'Stop' is called from destructor '~NetEngineImpl()' at line 16. Dynamic binding is not used. [virtualCallInConstructor]
 libs/rtsp_service/src/rtsp_service.cpp:142:10: warning: Virtual function 'Stop' is called from destructor '~RtspServiceImpl()' at line 58. Dynamic binding is not used. [virtualCallInConstructor]
@@ -43,7 +45,7 @@ libs/upgrade_service/src/upgrade_service.cpp:138:10: warning: Virtual function '
 
 ## Review: Clang-Tidy Diagnostics
 
-_No log file generated._
+_No findings in this category._
 
 ## Optimization Candidates: Files With Most Keyword Risk Hits
 
@@ -61,13 +63,13 @@ _No log file generated._
       5 libs/snapshot_service/src/snapshot_service.cpp
       5 libs/network_service/src/network_service.cpp
       5 libs/media_service/src/media_buffer.cpp
-      5 libs/http_service/src/http_service.cpp
       4 libs/time_service/src/time_service.cpp
       4 libs/infra_service/include/infra/executor.h
       4 libs/hisi_vendor/src/hisi_mpp_vpss.cpp
       4 libs/hisi_vendor/src/hisi_mpp_sys.cpp
       4 libs/ai_service/src/ai_service.cpp
       3 libs/webrtc_service/src/webrtc_service.cpp
+      3 libs/upgrade_service/src/upgrade_service.cpp
 ```
 
 ## Optimization Candidates: Files With Most Hot-Path Or Logging Hits
@@ -77,30 +79,27 @@ _No log file generated._
      19 libs/media_service/src/media_service.cpp
      17 libs/hisi_vendor/src/hisi_mpp_venc.cpp
      16 libs/webrtc_service/src/webrtc_engine.cpp
-     13 libs/stream_hub_service/src/stream_hub_service.cpp
-     12 libs/rtsp_service/src/rtsp_service.cpp
+     15 libs/stream_hub_service/src/stream_hub_service.cpp
+     13 libs/rtsp_service/src/rtsp_service.cpp
       7 libs/stream_mux/src/stream_mux.cpp
       7 libs/media_service/include/media/encoded_frame.h
       7 libs/hisi_vendor/src/hisi_mpp_snapshot.cpp
+      5 libs/webrtc_service/src/webrtc_service.cpp
       5 libs/stream_mux/include/stream_mux.h
       5 libs/stream_hub_service/src/stream_hub_stream_state.cpp
       5 libs/media_service/src/media_buffer.cpp
-      4 libs/webrtc_service/src/webrtc_service.cpp
       4 libs/net_service/src/tcp_connection.cpp
       4 libs/net_service/src/net_engine_impl.cpp
       3 libs/net_service/include/net_service.h
       3 libs/media_service/include/media/media_buffer.h
+      3 libs/media_service/include/media/frame_attach.h
       2 libs/stream_hub_service/src/stream_hub_stream_state.h
       2 libs/onvif_service/src/onvif_service.cpp
-      2 libs/net_service/src/tcp_connection.h
 ```
 
 ## Build Failure Tail
 
-```text
-make: *** [Makefile:151: build/bin/live_stream] Bad system call (core dumped)
-
-```
+_No build failure pattern detected._
 
 ## How To Use This Report
 

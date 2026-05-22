@@ -10,18 +10,17 @@ DeviceSubsystem &DeviceSubsystem::Get() {
     return subsystem;
 }
 
-bool DeviceSubsystem::Start(PlatformAdapters adapters) {
+bool DeviceSubsystem::Start(CoreServices &core_services,
+                            PlatformAdapters adapters) {
     if (started_) {
         return true;
     }
 
-    CoreServices &core = CoreServices::Get();
-
     system_platform_ = std::move(adapters.system);
     SystemServiceOptions system_options;
-    system_options.config_service = core.config();
-    system_options.event_service = core.event();
-    system_options.logger_service = core.logger();
+    system_options.config_service = core_services.config();
+    system_options.event_service = core_services.event();
+    system_options.logger_service = core_services.logger();
     system_options.platform = system_platform_.get();
     system_ = CreateSystemService(system_options);
     if (!system_ || !system_->Start()) {
@@ -32,9 +31,9 @@ bool DeviceSubsystem::Start(PlatformAdapters adapters) {
 
     time_platform_ = std::move(adapters.time);
     TimeServiceOptions time_options;
-    time_options.config_service = core.config();
-    time_options.event_service = core.event();
-    time_options.logger_service = core.logger();
+    time_options.config_service = core_services.config();
+    time_options.event_service = core_services.event();
+    time_options.logger_service = core_services.logger();
     time_options.platform = time_platform_.get();
     time_options.default_ntp_config.enabled = false;
     time_ = CreateTimeService(time_options);
@@ -46,9 +45,9 @@ bool DeviceSubsystem::Start(PlatformAdapters adapters) {
 
     network_platform_ = std::move(adapters.network);
     NetworkServiceOptions network_options;
-    network_options.config_service = core.config();
-    network_options.event_service = core.event();
-    network_options.logger_service = core.logger();
+    network_options.config_service = core_services.config();
+    network_options.event_service = core_services.event();
+    network_options.logger_service = core_services.logger();
     network_options.default_ifname = adapters.network_ifname;
     network_options.platform = network_platform_.get();
     network_ = CreateNetworkService(network_options);
@@ -60,9 +59,9 @@ bool DeviceSubsystem::Start(PlatformAdapters adapters) {
     }
 
     AlarmServiceOptions alarm_options;
-    alarm_options.config_service = core.config();
-    alarm_options.event_service = core.event();
-    alarm_options.logger_service = core.logger();
+    alarm_options.config_service = core_services.config();
+    alarm_options.event_service = core_services.event();
+    alarm_options.logger_service = core_services.logger();
     alarm_ = CreateAlarmService(alarm_options);
     if (!alarm_ || !alarm_->Start()) {
         INFRA_LOG_ERROR("app", "Start alarm service failed");
@@ -71,9 +70,9 @@ bool DeviceSubsystem::Start(PlatformAdapters adapters) {
     }
 
     UpgradeServiceOptions upgrade_options;
-    upgrade_options.config_service = core.config();
-    upgrade_options.event_service = core.event();
-    upgrade_options.logger_service = core.logger();
+    upgrade_options.config_service = core_services.config();
+    upgrade_options.event_service = core_services.event();
+    upgrade_options.logger_service = core_services.logger();
     upgrade_platform_ = std::move(adapters.upgrade);
     upgrade_options.platform = upgrade_platform_.get();
     upgrade_ = CreateUpgradeService(upgrade_options);

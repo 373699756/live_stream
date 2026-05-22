@@ -128,11 +128,21 @@ endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
-.PHONY: all test clean thirdparty $(SERVICES)
+.PHONY: all test clean thirdparty compiledb $(SERVICES)
 
 all: $(SERVICES) $(BIN_DIR)/live_stream out
 
 thirdparty: $(THIRDPARTY_LIBS)
+
+compiledb:
+	@if command -v bear >/dev/null 2>&1; then \
+		bear -- $(MAKE) -j2; \
+	elif command -v compiledb >/dev/null 2>&1; then \
+		compiledb make -j2; \
+	else \
+		echo "Install bear or compiledb to generate compile_commands.json"; \
+		exit 1; \
+	fi
 
 $(THIRDPARTY_LIBS): $(THIRDPARTY_DIR)/build_deps.sh
 	$(THIRDPARTY_DIR)/build_deps.sh

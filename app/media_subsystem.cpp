@@ -24,12 +24,12 @@ MediaSubsystem &MediaSubsystem::Get() {
     return subsystem;
 }
 
-bool MediaSubsystem::Start() {
+bool MediaSubsystem::Start(CoreServices &core_services) {
     if (started_) {
         return true;
     }
 
-    IConfigService *config = CoreServices::Get().config();
+    IConfigService *config = core_services.config();
     bool ai_enabled = false;
     if (!LoadAiEnabled(config, &ai_enabled)) {
         INFRA_LOG_ERROR("app", "Load ai config failed");
