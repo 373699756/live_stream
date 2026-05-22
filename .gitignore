@@ -1,5 +1,7 @@
 build/
 out/
+compile_commands.json
+reports/quality/
 3rdparty/build/
 3rdparty/install/
 3rdparty/metaRTC_src/.git.upstream/

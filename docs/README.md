@@ -25,6 +25,7 @@
 - `active/decision_log.md`：架构和协作决策。
 - `contracts/api-config.md` 中的配置/API 兼容规则。
 - `contracts/event-payloads.md`：进程内事件契约。
+- `ai/embedded-quality-tooling.md`：嵌入式代码质量、性能和设计扫描工具清单。
 
 视频实时预览专用：
 
@@ -52,6 +53,7 @@
 ## AI 协作文档
 
 - `ai/codex-skill.md`：本工程 Codex skill 草案。
+- `ai/embedded-quality-tooling.md`：嵌入式工程扫描工具现状、缺口和安装建议。
 - `ai/lessons-learned.md`：项目复盘、AI 协作经验和 token 平衡策略。
 
 ## 前端文档
