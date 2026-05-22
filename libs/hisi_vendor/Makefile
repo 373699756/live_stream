@@ -10,9 +10,6 @@ include ./toolchain_hi3516dv300.mk
 CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -I$(HISI_MPP_INC)
-CXXFLAGS += -I$(HISI_MPP_ISP_INC)
-CXXFLAGS += -I$(HISI_MPP_ISP_EXT_INC)
-CXXFLAGS += -I$(HISI_MPP_COMMON)
 
 # IHisiSdk interface header lives in media_service
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include

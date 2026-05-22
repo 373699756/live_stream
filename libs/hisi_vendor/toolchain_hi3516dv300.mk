@@ -6,7 +6,8 @@ HISI_VENDOR_TOOLCHAIN_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFI
 ROOT_DIR ?= $(abspath $(HISI_VENDOR_TOOLCHAIN_DIR)/../..)
 PROJECT_PARENT_DIR := $(abspath $(ROOT_DIR)/..)
 PROJECT_GRANDPARENT_DIR := $(abspath $(ROOT_DIR)/../..)
-PROJECT_HISI_MPP_ROOT := $(ROOT_DIR)/3rdparty/hisi_mpp/Hi3516CV500_SDK_V2.0.1.0/mpp
+PROJECT_HISI_MPP_ROOT := $(ROOT_DIR)/3rdparty/hisi_mpp
+PROJECT_HISI_MPP_MARKER := $(wildcard $(PROJECT_HISI_MPP_ROOT)/include/mpi_sys.h)
 HISI_SDK_ROOT_CANDIDATES := \
   $(wildcard $(PROJECT_PARENT_DIR)/Hi3516*SDK*) \
   $(wildcard $(PROJECT_GRANDPARENT_DIR)/Hi3516*SDK*) \
@@ -14,19 +15,15 @@ HISI_SDK_ROOT_CANDIDATES := \
   /home/alientek/hisi/Hi3516CV500_SDK_V2.0.1.0
 HISI_SDK_ROOT ?= $(firstword $(HISI_SDK_ROOT_CANDIDATES))
 
-HISI_MPP_CFG_CANDIDATES := \
-  $(wildcard $(PROJECT_HISI_MPP_ROOT)/cfg.mak) \
-  $(wildcard $(HISI_SDK_ROOT)/smp/*/mpp/cfg.mak)
-HISI_MPP_ROOT ?= $(patsubst %/cfg.mak,%,$(firstword $(HISI_MPP_CFG_CANDIDATES)))
+HISI_MPP_ROOT_CANDIDATES := \
+  $(if $(PROJECT_HISI_MPP_MARKER),$(PROJECT_HISI_MPP_ROOT)) \
+  $(patsubst %/cfg.mak,%,$(wildcard $(HISI_SDK_ROOT)/smp/*/mpp/cfg.mak))
+HISI_MPP_ROOT ?= $(firstword $(HISI_MPP_ROOT_CANDIDATES))
 ifeq ($(strip $(HISI_MPP_ROOT)),)
 HISI_MPP_ROOT := $(HISI_SDK_ROOT)/smp/a7_linux/mpp
 endif
 HISI_MPP_INC := $(HISI_MPP_ROOT)/include
-HISI_MPP_ISP_INC := $(HISI_MPP_ROOT)/component/isp/include
-HISI_MPP_ISP_EXT_INC := $(HISI_MPP_ROOT)/component/isp/ext_inc
 HISI_MPP_LIB := $(HISI_MPP_ROOT)/lib
-HISI_MPP_SAMPLE := $(HISI_MPP_ROOT)/sample
-HISI_MPP_COMMON := $(HISI_MPP_SAMPLE)/common
 
 -include $(HISI_MPP_ROOT)/cfg.mak
 
@@ -41,8 +38,8 @@ STRIP := $(CROSS_COMPILE)strip
 SENSOR0_TYPE ?= SONY_IMX290_MIPI_2M_30FPS_12BIT
 SENSOR1_TYPE ?= $(SENSOR0_TYPE)
 ISP_VERSION ?= ISP_V2
-HIARCH ?= $(CONFIG_HI_ARCH)
-HI_RLS_MODE ?= $(CONFIG_HI_RLS_MODE)
+HIARCH ?= $(if $(strip $(CONFIG_HI_ARCH)),$(CONFIG_HI_ARCH),hi3516cv500)
+HI_RLS_MODE ?= $(if $(strip $(CONFIG_HI_RLS_MODE)),$(CONFIG_HI_RLS_MODE),HI_RELEASE)
 
 # ---- CPU flags ----
 CPU_FLAGS := -mcpu=cortex-a7 -mfloat-abi=softfp -mfpu=neon-vfpv4
@@ -55,7 +52,6 @@ HISI_DEFINES := $(if $(strip $(HIARCH)),-D$(HIARCH)) \
   -DSENSOR0_TYPE=$(SENSOR0_TYPE) -DSENSOR1_TYPE=$(SENSOR1_TYPE)
 
 # ---- SDK validation ----
-# HISI_MPP_INC_COMMON := $(HISI_MPP_ROOT)/include_common
 REQUIRED_HISI_HEADERS := $(HISI_MPP_INC)/mpi_isp.h $(HISI_MPP_INC)/mpi_sys.h
 MISSING_HISI_HEADERS := $(filter-out $(wildcard $(REQUIRED_HISI_HEADERS)),$(REQUIRED_HISI_HEADERS))
 
