@@ -31,6 +31,17 @@ HaveTool() {
   command -v "$1" >/dev/null 2>&1
 }
 
+FindFirstTool() {
+  local tool
+  for tool in "$@"; do
+    if HaveTool "${tool}"; then
+      printf '%s\n' "${tool}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 RecordFailure() {
   FAILED_STEPS+=("$1")
 }
@@ -427,7 +438,9 @@ Log "writing reports to ${REPORT_DIR}"
 {
   for tool in rg git make arm-himix200-linux-gcc arm-himix200-linux-g++ \
     arm-himix200-linux-size gcc g++ clang clang++ clang-tidy clang-format \
-    cppcheck scan-build scan-build-10 bear cloc tokei perf valgrind strace \
+    cppcheck scan-build scan-build-18 scan-build-17 scan-build-16 \
+    scan-build-15 scan-build-14 scan-build-13 scan-build-12 scan-build-11 \
+    scan-build-10 bear cloc tokei perf valgrind strace \
     ltrace gdb gdb-multiarch readelf objdump nm size addr2line file node npm \
     npx include-what-you-use iwyu; do
     AppendToolStatus "${tool}"
@@ -507,14 +520,14 @@ if [[ "${MODE}" == "full" ]]; then
     RecordSkipped "compile database: missing bear"
   fi
 
-  if HaveTool scan-build-10; then
-    RunShellWarningStep "scan-build-10" "scan-build.log" \
-      "make clean && scan-build-10 --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
-  elif HaveTool scan-build; then
-    RunShellWarningStep "scan-build" "scan-build.log" \
-      "make clean && scan-build --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
+  scan_build_tool="$(FindFirstTool scan-build scan-build-18 scan-build-17 \
+    scan-build-16 scan-build-15 scan-build-14 scan-build-13 scan-build-12 \
+    scan-build-11 scan-build-10)"
+  if [[ -n "${scan_build_tool}" ]]; then
+    RunShellWarningStep "${scan_build_tool}" "scan-build.log" \
+      "make clean && ${scan_build_tool} --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
   else
-    RecordSkipped "scan-build: missing scan-build-10 or scan-build"
+    RecordSkipped "scan-build: missing scan-build or scan-build-10..18"
   fi
 
   if [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool clang-tidy; then
