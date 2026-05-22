@@ -50,6 +50,7 @@ Current fields:
 - `streams.main.rate_control`
 - `streams.main.gop`
 - `streams.main.gop_mode`
+- `streams.main.smart_codec`
 - Same fields under `streams.sub`
 
 Runtime startup usage:
@@ -65,6 +66,7 @@ Frontend DTO:
 Notes:
 
 - Keep stream names `main` and `sub` stable unless all protocol paths and frontend assumptions are migrated together.
+- `smart_codec=true` maps the stream GOP mode to HiSilicon SmartP at runtime. It is only valid for H.264/H.265 streams and requires `GET /api/media/capabilities` to report `streams.<name>.smart_codec=true`.
 
 ### `audio`
 
@@ -133,6 +135,15 @@ Frontend DTO:
 
 - `ImageConfig`
 - `ImageCapabilities`
+
+Runtime mapping:
+
+- `basic.brightness`, `basic.contrast`, `basic.saturation`, and `basic.hue` map to HiSilicon ISP CSC attributes.
+- `basic.sharpness` maps to HiSilicon ISP sharpen attributes.
+- `exposure.max_exposure_time` maps to the ISP AE exposure-time upper bound.
+- `backlight.mode=drc` and `backlight.level` map to ISP DRC enable and strength. Full sensor WDR requires VI/MIPI/sensor startup-mode support and is not exposed as a runtime image toggle.
+- `color_mode.mode=color/black_white` maps to ISP CSC saturation.
+- `strategy.mode` supports `balanced`, `low_noise`, and `detail` in the media-service ISO strategy loop.
 
 ### `rtsp`
 

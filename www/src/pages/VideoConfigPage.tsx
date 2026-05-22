@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { saveVideoConfig } from '../api/video';
 import {
+  codecSupportsSmartP,
   isStreamSupported,
   resolutionLabel,
   resolutionValue,
@@ -23,6 +24,13 @@ const codecLabel = (codec: string) => {
   return codec;
 };
 
+const gopModeLabel = (mode: VideoStreamConfig['gop_mode']) => {
+  if (mode === 'normal_p') return 'Normal P';
+  if (mode === 'dual_p') return 'Dual P';
+  if (mode === 'smart_p') return 'Smart P';
+  return mode;
+};
+
 function StreamForm({
   stream,
   capabilities,
@@ -32,10 +40,25 @@ function StreamForm({
   capabilities: VideoStreamCapabilities;
   onChange: (stream: VideoStreamConfig) => void;
 }) {
-  const patch = (value: Partial<VideoStreamConfig>) => onChange({ ...stream, ...value });
+  const patch = (value: Partial<VideoStreamConfig>) => {
+    const next = { ...stream, ...value };
+    if (!codecSupportsSmartP(next.codec) || !capabilities.smart_codec) {
+      next.smart_codec = false;
+      if (next.gop_mode === 'smart_p') {
+        next.gop_mode = 'normal_p';
+      }
+    }
+    onChange(next);
+  };
   const available = capabilities.available !== false;
   const supported = isStreamSupported(stream, capabilities);
   const supportedResolution = capabilities.resolutions.some((item) => resolutionValue(item) === stream.resolution);
+  const showSmartCodec = codecSupportsSmartP(stream.codec) && capabilities.smart_codec;
+  const gopModes: VideoStreamConfig['gop_mode'][] = showSmartCodec
+    ? ['normal_p', 'dual_p', 'smart_p']
+    : ['normal_p', 'dual_p'];
+  const selectedGopMode = stream.smart_codec ? 'smart_p' : stream.gop_mode;
+  const currentGopMode = gopModes.includes(selectedGopMode) ? selectedGopMode : 'normal_p';
   return (
     <div className="form-grid form-grid-single">
       <FormField label="启用">
@@ -122,6 +145,38 @@ function StreamForm({
           onChange={(e) => patch({ gop: Number(e.target.value) })}
         />
       </FormField>
+      <FormField label="GOP模式">
+        <select
+          disabled={!available}
+          value={currentGopMode}
+          onChange={(e) => {
+            const mode = e.target.value as VideoStreamConfig['gop_mode'];
+            patch({ gop_mode: mode, smart_codec: mode === 'smart_p' });
+          }}
+        >
+          {gopModes.map((mode) => (
+            <option value={mode} key={mode}>
+              {gopModeLabel(mode)}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      {showSmartCodec && (
+        <FormField label="智能编码">
+          <input
+            type="checkbox"
+            disabled={!available}
+            checked={stream.smart_codec}
+            onChange={(e) => {
+              const smart_codec = e.target.checked;
+              patch({
+                smart_codec,
+                gop_mode: smart_codec ? 'smart_p' : 'normal_p',
+              });
+            }}
+          />
+        </FormField>
+      )}
       {!available && <div className="save-hint">当前固件未启用该码流管线。</div>}
       {available && !supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}
     </div>

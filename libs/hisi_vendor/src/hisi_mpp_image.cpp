@@ -23,7 +23,7 @@ constexpr uint16_t kSharpenFreqMax = 0x0800;
 constexpr uint8_t kSharpenShootMax = 48;
 constexpr uint16_t kNrCoarseMax = 0x02c0;
 
-bool CheckMpiCall(const char* expression, HI_S32 status) {
+bool MpiOk(const char* expression, HI_S32 status) {
     if (status == HI_SUCCESS) {
         return true;
     }
@@ -115,8 +115,8 @@ void ApplyAntiFlicker(const ConfigJson& exposure, ISP_EXPOSURE_ATTR_S* attr) {
 
 bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     ISP_EXPOSURE_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetExposureAttr",
-                      HI_MPI_ISP_GetExposureAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetExposureAttr",
+               HI_MPI_ISP_GetExposureAttr(vi_pipe, &attr))) {
         return false;
     }
 
@@ -151,6 +151,16 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
         }
     }
 
+    std::string max_exposure_time;
+    if (json_utils::ReadField(exposure, "max_exposure_time",
+                              &max_exposure_time)) {
+        uint32_t max_exposure_us = 0;
+        if (ParseExposureTimeUs(max_exposure_time, &max_exposure_us)) {
+            attr.stAuto.stExpTimeRange.u32Min = 0;
+            attr.stAuto.stExpTimeRange.u32Max = max_exposure_us;
+        }
+    }
+
     std::string gain;
     if (json_utils::ReadField(exposure, "gain", &gain)) {
         if (gain == "auto") {
@@ -171,25 +181,46 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
         }
     }
 
-    return CheckMpiCall("HI_MPI_ISP_SetExposureAttr",
-                        HI_MPI_ISP_SetExposureAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetExposureAttr",
+                 HI_MPI_ISP_SetExposureAttr(vi_pipe, &attr));
 }
 
-bool ApplySaturation(VI_PIPE vi_pipe, const ConfigJson& basic) {
+bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
+    int32_t brightness = 0;
+    int32_t contrast = 0;
     int32_t saturation = 0;
-    if (!json_utils::ReadField(basic, "saturation", &saturation, 0,
-                               kConfigMax)) {
+    int32_t hue = 0;
+    const bool has_brightness = json_utils::ReadField(
+        basic, "brightness", &brightness, 0, kConfigMax);
+    const bool has_contrast = json_utils::ReadField(
+        basic, "contrast", &contrast, 0, kConfigMax);
+    const bool has_saturation = json_utils::ReadField(
+        basic, "saturation", &saturation, 0, kConfigMax);
+    const bool has_hue = json_utils::ReadField(
+        basic, "hue", &hue, 0, kConfigMax);
+    if (!has_brightness && !has_contrast && !has_saturation && !has_hue) {
         return true;
     }
-    ISP_SATURATION_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetSaturationAttr",
-                      HI_MPI_ISP_GetSaturationAttr(vi_pipe, &attr))) {
+    ISP_CSC_ATTR_S attr{};
+    if (!MpiOk("HI_MPI_ISP_GetCSCAttr",
+               HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr))) {
         return false;
     }
-    attr.enOpType = OP_TYPE_MANUAL;
-    attr.stManual.u8Saturation = ScaleControlU8(saturation, 0, 0xff);
-    return CheckMpiCall("HI_MPI_ISP_SetSaturationAttr",
-                        HI_MPI_ISP_SetSaturationAttr(vi_pipe, &attr));
+    attr.bEnable = HI_TRUE;
+    if (has_brightness) {
+        attr.u8Luma = ScaleControlU8(brightness, 0, 100);
+    }
+    if (has_contrast) {
+        attr.u8Contr = ScaleControlU8(contrast, 0, 100);
+    }
+    if (has_saturation) {
+        attr.u8Satu = ScaleControlU8(saturation, 0, 100);
+    }
+    if (has_hue) {
+        attr.u8Hue = ScaleControlU8(hue, 0, 100);
+    }
+    return MpiOk("HI_MPI_ISP_SetCSCAttr",
+                 HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr));
 }
 
 bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
@@ -199,8 +230,8 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
         return true;
     }
     ISP_SHARPEN_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetIspSharpenAttr",
-                      HI_MPI_ISP_GetIspSharpenAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetIspSharpenAttr",
+               HI_MPI_ISP_GetIspSharpenAttr(vi_pipe, &attr))) {
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -215,14 +246,14 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
     attr.stManual.u16EdgeFreq = ScaleControlU16(sharpness, 0, kSharpenFreqMax);
     attr.stManual.u8OverShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
     attr.stManual.u8UnderShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
-    return CheckMpiCall("HI_MPI_ISP_SetIspSharpenAttr",
-                        HI_MPI_ISP_SetIspSharpenAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetIspSharpenAttr",
+                 HI_MPI_ISP_SetIspSharpenAttr(vi_pipe, &attr));
 }
 
 bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     ISP_WB_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetWBAttr",
-                      HI_MPI_ISP_GetWBAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetWBAttr",
+               HI_MPI_ISP_GetWBAttr(vi_pipe, &attr))) {
         return false;
     }
 
@@ -244,8 +275,8 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     attr.stManual.u16Grgain = kGainBase;
     attr.stManual.u16Gbgain = kGainBase;
 
-    return CheckMpiCall("HI_MPI_ISP_SetWBAttr",
-                        HI_MPI_ISP_SetWBAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetWBAttr",
+                 HI_MPI_ISP_SetWBAttr(vi_pipe, &attr));
 }
 
 bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -260,8 +291,8 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     }
 
     ISP_NR_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetNRAttr",
-                      HI_MPI_ISP_GetNRAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetNRAttr",
+               HI_MPI_ISP_GetNRAttr(vi_pipe, &attr))) {
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -277,8 +308,8 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         std::fill(std::begin(attr.stManual.au16CoarseStr),
                   std::end(attr.stManual.au16CoarseStr), coarse);
     }
-    return CheckMpiCall("HI_MPI_ISP_SetNRAttr",
-                        HI_MPI_ISP_SetNRAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetNRAttr",
+                 HI_MPI_ISP_SetNRAttr(vi_pipe, &attr));
 }
 
 bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -288,8 +319,8 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         return true;
     }
     ISP_GAMMA_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetGammaAttr",
-                      HI_MPI_ISP_GetGammaAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetGammaAttr",
+               HI_MPI_ISP_GetGammaAttr(vi_pipe, &attr))) {
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -304,8 +335,8 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
             mapped < 0.0 ? 0.0 : (mapped > 4095.0 ? 4095.0 : mapped);
         attr.u16Table[i] = static_cast<HI_U16>(clamped);
     }
-    return CheckMpiCall("HI_MPI_ISP_SetGammaAttr",
-                        HI_MPI_ISP_SetGammaAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetGammaAttr",
+                 HI_MPI_ISP_SetGammaAttr(vi_pipe, &attr));
 }
 
 bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -314,15 +345,15 @@ bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         return true;
     }
     ISP_DEHAZE_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetDehazeAttr",
-                      HI_MPI_ISP_GetDehazeAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetDehazeAttr",
+               HI_MPI_ISP_GetDehazeAttr(vi_pipe, &attr))) {
         return false;
     }
     attr.bEnable = defog ? HI_TRUE : HI_FALSE;
     attr.enOpType = OP_TYPE_AUTO;
     attr.stAuto.u8strength = defog ? 128 : 0;
-    return CheckMpiCall("HI_MPI_ISP_SetDehazeAttr",
-                        HI_MPI_ISP_SetDehazeAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetDehazeAttr",
+                 HI_MPI_ISP_SetDehazeAttr(vi_pipe, &attr));
 }
 
 bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
@@ -335,16 +366,19 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
         return true;
     }
     ISP_DRC_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_ISP_GetDRCAttr",
-                      HI_MPI_ISP_GetDRCAttr(vi_pipe, &attr))) {
+    if (!MpiOk("HI_MPI_ISP_GetDRCAttr",
+               HI_MPI_ISP_GetDRCAttr(vi_pipe, &attr))) {
         return false;
     }
     if (has_mode) {
-        attr.bEnable = mode == "off" ? HI_FALSE : HI_TRUE;
-        if (mode != "off") {
-            INFRA_LOG_WARN("hisi_vendor",
-                           "backlight mode %s is applied as DRC strength only",
-                           mode.c_str());
+        if (mode == "off") {
+            attr.bEnable = HI_FALSE;
+        } else if (mode == "drc") {
+            attr.bEnable = HI_TRUE;
+        } else {
+            INFRA_LOG_ERROR("hisi_vendor", "unsupported backlight mode %s",
+                            mode.c_str());
+            return false;
         }
     }
     if (has_level) {
@@ -353,8 +387,8 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
         attr.stAuto.u16StrengthMin = 0;
         attr.stAuto.u16StrengthMax = 0x03ff;
     }
-    return CheckMpiCall("HI_MPI_ISP_SetDRCAttr",
-                        HI_MPI_ISP_SetDRCAttr(vi_pipe, &attr));
+    return MpiOk("HI_MPI_ISP_SetDRCAttr",
+                 HI_MPI_ISP_SetDRCAttr(vi_pipe, &attr));
 }
 
 bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
@@ -367,8 +401,8 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
         return true;
     }
     VI_CHN_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_VI_GetChnAttr",
-                      HI_MPI_VI_GetChnAttr(vi_pipe, vi_channel, &attr))) {
+    if (!MpiOk("HI_MPI_VI_GetChnAttr",
+               HI_MPI_VI_GetChnAttr(vi_pipe, vi_channel, &attr))) {
         return false;
     }
     if (has_mirror) {
@@ -377,35 +411,40 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
     if (has_flip) {
         attr.bFlip = flip ? HI_TRUE : HI_FALSE;
     }
-    return CheckMpiCall("HI_MPI_VI_SetChnAttr",
-                        HI_MPI_VI_SetChnAttr(vi_pipe, vi_channel, &attr));
+    return MpiOk("HI_MPI_VI_SetChnAttr",
+                 HI_MPI_VI_SetChnAttr(vi_pipe, vi_channel, &attr));
 }
 
-void LogUnsupportedControls(const ConfigJson& image_config) {
-    static bool logged_basic_controls = false;
-    static bool logged_color_mode = false;
-
-    const ConfigJson* basic = nullptr;
-    if (!logged_basic_controls && FindSection(image_config, "basic", &basic)) {
-        if (basic->contains("brightness") || basic->contains("contrast") ||
-            basic->contains("hue")) {
-            logged_basic_controls = true;
-            INFRA_LOG_INFO(
-                "hisi_vendor",
-                "image brightness/contrast/hue are stored but not mapped to "
-                "HiSilicon ISP in this build");
-        }
-    }
+bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
     const ConfigJson* color_mode = nullptr;
-    if (!logged_color_mode &&
-        FindSection(image_config, "color_mode", &color_mode) &&
-        color_mode->contains("mode")) {
-        logged_color_mode = true;
-        INFRA_LOG_INFO(
-            "hisi_vendor",
-            "image color_mode.mode is stored but not mapped to HiSilicon ISP "
-            "in this build");
+    if (!FindSection(image_config, "color_mode", &color_mode)) {
+        return true;
     }
+    std::string mode;
+    if (!json_utils::ReadField(*color_mode, "mode", &mode)) {
+        return true;
+    }
+    ISP_CSC_ATTR_S attr{};
+    if (!MpiOk("HI_MPI_ISP_GetCSCAttr",
+               HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr))) {
+        return false;
+    }
+    attr.bEnable = HI_TRUE;
+    if (mode == "black_white") {
+        attr.u8Satu = 0;
+    } else if (mode == "color") {
+        const ConfigJson* basic = nullptr;
+        int32_t saturation = kConfigNeutral;
+        if (FindSection(image_config, "basic", &basic)) {
+            (void)json_utils::ReadField(*basic, "saturation", &saturation, 0,
+                                        kConfigMax);
+        }
+        attr.u8Satu = ScaleControlU8(saturation, 0, 100);
+    } else {
+        return true;
+    }
+    return MpiOk("HI_MPI_ISP_SetCSCAttr",
+                 HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr));
 }
 
 }  // namespace
@@ -422,7 +461,7 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
 
     const ConfigJson* basic = nullptr;
     if (FindSection(image_config, "basic", &basic) &&
-        (!ApplySaturation(vi_pipe, *basic) ||
+        (!ApplyCsc(vi_pipe, *basic) ||
          !ApplySharpen(vi_pipe, *basic))) {
         return false;
     }
@@ -459,7 +498,9 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
         return false;
     }
 
-    LogUnsupportedControls(image_config);
+    if (!ApplyColorMode(vi_pipe, image_config)) {
+        return false;
+    }
     return true;
 }
 
@@ -473,8 +514,8 @@ ExposureInfo MppHisiSdk::QueryExposureInfo(
 
     ISP_EXP_INFO_S exp_info{};
     const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
-    if (!CheckMpiCall("HI_MPI_ISP_QueryExposureInfo",
-                      HI_MPI_ISP_QueryExposureInfo(vi_pipe, &exp_info))) {
+    if (!MpiOk("HI_MPI_ISP_QueryExposureInfo",
+               HI_MPI_ISP_QueryExposureInfo(vi_pipe, &exp_info))) {
         return info;
     }
 

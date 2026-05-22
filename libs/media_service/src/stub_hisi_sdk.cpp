@@ -50,16 +50,22 @@ OptionControlCapability Options(const char* name,
 ImageCapabilities DefaultImage() {
     ImageCapabilities img;
     img.basic = {
-        Range("saturation", 0, 100, 50),
-        Range("sharpness", 0, 100, 50),
+        Range("brightness", 0, 100, 50),
+        Range("contrast", 0, 100, 50),
+        Range("saturation", 0, 100, 52),
+        Range("sharpness", 0, 100, 42),
+        Range("hue", 0, 100, 50),
     };
     img.exposure_options = {
         Options("mode", {"auto", "manual"}, "auto"),
         Options("anti_flicker", {"50hz", "60hz", "off"}, "50hz"),
-        Options("exposure_time", {"auto", "1/25", "1/50", "1/100", "1/250"},
+        Options("exposure_time",
+                {"auto", "1/12", "1/25", "1/50", "1/100", "1/250"},
                 "auto"),
+        Options("max_exposure_time", {"1/12", "1/25", "1/50", "1/100",
+                                      "1/250"}, "1/25"),
         Options("gain", {"auto", "low", "medium", "high"}, "auto"),
-        Options("slow_shutter", {"false", "true"}, "true"),
+        Options("slow_shutter", {"false", "true"}, "false"),
     };
     img.exposure_ranges = {
         Range("compensation", 0, 100, 50),
@@ -75,15 +81,18 @@ ImageCapabilities DefaultImage() {
         Options("defog", {"false", "true"}, "false"),
     };
     img.enhancement_ranges = {
-        Range("denoise_2d", 0, 100, 50),
-        Range("denoise_3d", 0, 100, 50),
+        Range("denoise_2d", 0, 100, 60),
+        Range("denoise_3d", 0, 100, 52),
         Range("gamma", 0, 100, 50),
     };
     img.backlight_options = {
-        Options("mode", {"off", "wdr"}, "off"),
+        Options("mode", {"off", "drc"}, "off"),
     };
     img.backlight_ranges = {
         Range("level", 0, 100, 50),
+    };
+    img.color_mode_options = {
+        Options("mode", {"color", "black_white"}, "color"),
     };
     img.mirror_supported = true;
     img.flip_supported = true;
@@ -106,7 +115,7 @@ MediaCapabilities StubCapabilities() {
     main.rate_control_modes = {RateControlMode::kCbr, RateControlMode::kVbr,
                                RateControlMode::kFixQp};
     main.gop = {1, 120};
-    main.smart_codec_supported = false;
+    main.smart_codec_supported = true;
     caps.streams.push_back(main);
 
     VideoStreamCapabilities sub;
@@ -117,7 +126,7 @@ MediaCapabilities StubCapabilities() {
     sub.bitrate = {64, 2048};
     sub.rate_control_modes = main.rate_control_modes;
     sub.gop = {1, 120};
-    sub.smart_codec_supported = false;
+    sub.smart_codec_supported = true;
     caps.streams.push_back(sub);
 
     caps.image = DefaultImage();

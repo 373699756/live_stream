@@ -1,10 +1,10 @@
 # Quality Report
 
-本文档由 `scripts/quality_scan.sh quick` 生成，汇总代码质量、性能和设计候选问题。
+本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
 
-- Generated: `20260522-025749`
-- Raw log directory: `/home/c/linux/hisi/live_stream/reports/quality/20260522-025749`
-- Git commit: `93db900`
+- Generated: `20260522-233023`
+- Raw log directory: `/home/cp/Public/hisi/live_stream/reports/quality/20260522-233023`
+- Git commit: `8343928`
 
 ## Counts
 
@@ -17,15 +17,22 @@
 
 ## Must Check First
 
-- No required step failed.
+- Required step failed: `make`; inspect `make.log`.
+- Required step failed: `compile database`; inspect `bear.log`.
+- Skipped: `code size: missing cloc or tokei`.
+- Skipped: `cppcheck: missing cppcheck`.
+- Skipped: `binary info: missing build/bin/live_stream`.
+- Skipped: `scan-build: missing scan-build-10 or scan-build`.
+- Skipped: `clang-tidy: missing clang-tidy`.
+- Skipped: `include-what-you-use: missing include-what-you-use or iwyu`.
 
 ## Must Fix: Cppcheck Errors
 
-_No findings in this category._
+_No log file generated._
 
 ## Review: Cppcheck Warnings
 
-_No findings in this category._
+_No log file generated._
 
 ## Review: Clang-Tidy Diagnostics
 
@@ -87,7 +94,16 @@ _No log file generated._
 
 ## Build Failure Tail
 
-_No build failure pattern detected._
+```text
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libmetartc8.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libmetartccore8.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libyangutil8.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libsrtp2.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libusrsctp.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libssl.a: No such file or directory
+arm-himix200-linux-g++: error: 3rdparty/install/lib/libcrypto.a: No such file or directory
+
+```
 
 ## How To Use This Report
 

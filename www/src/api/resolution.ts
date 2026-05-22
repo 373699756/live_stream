@@ -1,5 +1,9 @@
 import type { VideoResolutionCapability, VideoStreamCapabilities, VideoStreamConfig } from './types';
 
+export function codecSupportsSmartP(codec: VideoStreamConfig['codec']): boolean {
+  return codec === 'h264' || codec === 'h265';
+}
+
 export function resolutionValue(resolution: VideoResolutionCapability): string {
   return `${resolution.width}x${resolution.height}`;
 }
@@ -23,6 +27,7 @@ export function isResolutionSupported(stream: VideoStreamConfig, capabilities: V
 }
 
 export function isStreamSupported(stream: VideoStreamConfig, capabilities: VideoStreamCapabilities): boolean {
+  const smartCodecEnabled = stream.smart_codec || stream.gop_mode === 'smart_p';
   return (
     capabilities.available !== false &&
     capabilities.codecs.some((item) => item.codec === stream.codec) &&
@@ -33,6 +38,8 @@ export function isStreamSupported(stream: VideoStreamConfig, capabilities: Video
     stream.bitrate_kbps <= capabilities.bitrate_kbps.max &&
     capabilities.rate_control.includes(stream.rate_control) &&
     stream.gop >= capabilities.gop.min &&
-    stream.gop <= capabilities.gop.max
+    stream.gop <= capabilities.gop.max &&
+    (!smartCodecEnabled || codecSupportsSmartP(stream.codec)) &&
+    (!smartCodecEnabled || capabilities.smart_codec)
   );
 }

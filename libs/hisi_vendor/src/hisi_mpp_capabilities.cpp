@@ -63,8 +63,11 @@ void AddCommonRcModes(std::vector<RateControlMode>& modes) {
 ImageCapabilities DefaultImageCapabilities() {
     ImageCapabilities image;
 
-    image.basic.push_back(Range("saturation", 0, 100, 50));
-    image.basic.push_back(Range("sharpness", 0, 100, 55));
+    image.basic.push_back(Range("brightness", 0, 100, 50));
+    image.basic.push_back(Range("contrast", 0, 100, 50));
+    image.basic.push_back(Range("saturation", 0, 100, 52));
+    image.basic.push_back(Range("sharpness", 0, 100, 42));
+    image.basic.push_back(Range("hue", 0, 100, 50));
 
     image.exposure_options.push_back(
         Options("mode", {"auto", "manual"}, "auto"));
@@ -72,11 +75,15 @@ ImageCapabilities DefaultImageCapabilities() {
         Options("anti_flicker", {"50hz", "60hz", "off"}, "50hz"));
     image.exposure_options.push_back(
         Options("exposure_time",
-                {"auto", "1/25", "1/50", "1/100", "1/250"}, "auto"));
+                {"auto", "1/12", "1/25", "1/50", "1/100", "1/250"},
+                "auto"));
+    image.exposure_options.push_back(
+        Options("max_exposure_time", {"1/12", "1/25", "1/50", "1/100",
+                                      "1/250"}, "1/25"));
     image.exposure_options.push_back(
         Options("gain", {"auto", "low", "medium", "high"}, "auto"));
     image.exposure_options.push_back(
-        Options("slow_shutter", {"false", "true"}, "true"));
+        Options("slow_shutter", {"false", "true"}, "false"));
     image.exposure_ranges.push_back(Range("compensation", 0, 100, 50));
 
     image.white_balance_options.push_back(
@@ -84,15 +91,17 @@ ImageCapabilities DefaultImageCapabilities() {
     image.white_balance_ranges.push_back(Range("red_gain", 0, 100, 50));
     image.white_balance_ranges.push_back(Range("blue_gain", 0, 100, 50));
 
-    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 55));
-    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 45));
+    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 60));
+    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 52));
     image.enhancement_ranges.push_back(Range("gamma", 0, 100, 50));
     image.enhancement_options.push_back(
         Options("defog", {"false", "true"}, "false"));
 
     image.backlight_options.push_back(
-        Options("mode", {"off", "wdr"}, "off"));
+        Options("mode", {"off", "drc"}, "off"));
     image.backlight_ranges.push_back(Range("level", 0, 100, 50));
+    image.color_mode_options.push_back(
+        Options("mode", {"color", "black_white"}, "color"));
     image.mirror_supported = true;
     image.flip_supported = true;
 
@@ -115,7 +124,7 @@ VideoStreamCapabilities BuildMainStreamCaps() {
     main.bitrate = BitrateRange{MIN_BITRATE, MAX_BITRATE};
     AddCommonRcModes(main.rate_control_modes);
     main.gop = GopRange{1, 120};
-    main.smart_codec_supported = false;
+    main.smart_codec_supported = true;
     return main;
 }
 
@@ -133,7 +142,7 @@ VideoStreamCapabilities BuildSubStreamCaps() {
     sub.bitrate = BitrateRange{MIN_BITRATE, 2048};
     AddCommonRcModes(sub.rate_control_modes);
     sub.gop = GopRange{1, 120};
-    sub.smart_codec_supported = false;
+    sub.smart_codec_supported = true;
     return sub;
 }
 

@@ -87,8 +87,16 @@ browser and hardware decoder exposed to `hls.js` or `mpegts.js`.
 
 `GET /api/media/capabilities` includes `streams.<name>.available` so the UI can
 hide or disable stream configuration that the current firmware does not start.
+It also exposes `streams.<name>.smart_codec`; when enabled, video config
+`streams.<name>.smart_codec=true` is saved and applied as HiSilicon SmartP GOP
+mode for H.264/H.265 streams.
 `GET /api/status/streams` is the runtime source of truth for stream access
 links.
+
+Image capabilities expose only runtime-supported ISP controls. Current image
+runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,
+AE maximum exposure time, DRC backlight strength, color/black-white mode, and
+the automatic strategy modes `balanced`, `low_noise`, and `detail`.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

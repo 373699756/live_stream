@@ -9,7 +9,8 @@
         "bitrate_kbps": 12288,
         "rate_control": "cbr",
         "gop": 50,
-        "gop_mode": "normal_p"
+        "gop_mode": "normal_p",
+        "smart_codec": false
       },
       "sub": {
         "enabled": true,
@@ -19,7 +20,8 @@
         "bitrate_kbps": 768,
         "rate_control": "cbr",
         "gop": 30,
-        "gop_mode": "normal_p"
+        "gop_mode": "normal_p",
+        "smart_codec": false
       }
     }
   },
@@ -48,8 +50,8 @@
     "basic": {
       "brightness": 50,
       "contrast": 50,
-      "saturation": 50,
-      "sharpness": 55,
+      "saturation": 52,
+      "sharpness": 42,
       "hue": 50
     },
     "exposure": {
@@ -67,8 +69,8 @@
       "blue_gain": 45
     },
     "enhancement": {
-      "denoise_2d": 55,
-      "denoise_3d": 45,
+      "denoise_2d": 60,
+      "denoise_3d": 52,
       "gamma": 50,
       "defog": false
     },

@@ -28,6 +28,8 @@ export const mockVideoConfig: VideoConfig = {
       bitrate_kbps: 12288,
       rate_control: 'cbr',
       gop: 50,
+      gop_mode: 'normal_p',
+      smart_codec: false,
     },
     sub: {
       enabled: true,
@@ -37,6 +39,8 @@ export const mockVideoConfig: VideoConfig = {
       bitrate_kbps: 768,
       rate_control: 'cbr',
       gop: 30,
+      gop_mode: 'normal_p',
+      smart_codec: false,
     },
   },
 };
@@ -65,7 +69,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
       bitrate_kbps: { min: 512, max: 12288 },
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
-      smart_codec: false,
+      smart_codec: true,
     },
     sub: {
       stream: 'sub',
@@ -84,19 +88,23 @@ export const mockMediaCapabilities: MediaCapabilities = {
       bitrate_kbps: { min: 64, max: 2048 },
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
-      smart_codec: false,
+      smart_codec: true,
     },
   },
   image: {
     basic: {
-      saturation: { min: 0, max: 100, default: 50 },
-      sharpness: { min: 0, max: 100, default: 55 },
+      brightness: { min: 0, max: 100, default: 50 },
+      contrast: { min: 0, max: 100, default: 50 },
+      saturation: { min: 0, max: 100, default: 52 },
+      sharpness: { min: 0, max: 100, default: 42 },
+      hue: { min: 0, max: 100, default: 50 },
     },
     exposure: {
       options: {
         mode: { values: ['auto', 'manual'], default: 'auto' },
         anti_flicker: { values: ['50hz', '60hz', 'off'], default: '50hz' },
-        exposure_time: { values: ['auto', '1/25', '1/50', '1/100', '1/250'], default: 'auto' },
+        exposure_time: { values: ['auto', '1/12', '1/25', '1/50', '1/100', '1/250'], default: 'auto' },
+        max_exposure_time: { values: ['1/12', '1/25', '1/50', '1/100', '1/250'], default: '1/25' },
         gain: { values: ['auto', 'low', 'medium', 'high'], default: 'auto' },
         slow_shutter: { values: ['false', 'true'], default: 'false' },
       },
@@ -114,18 +122,20 @@ export const mockMediaCapabilities: MediaCapabilities = {
     enhancement: {
       options: { defog: { values: ['false', 'true'], default: 'false' } },
       ranges: {
-        denoise_2d: { min: 0, max: 100, default: 55 },
-        denoise_3d: { min: 0, max: 100, default: 45 },
+        denoise_2d: { min: 0, max: 100, default: 60 },
+        denoise_3d: { min: 0, max: 100, default: 52 },
         gamma: { min: 0, max: 100, default: 50 },
       },
     },
     backlight: {
       options: {
-        mode: { values: ['off', 'wdr'], default: 'off' },
+        mode: { values: ['off', 'drc'], default: 'off' },
       },
       ranges: { level: { min: 0, max: 100, default: 50 } },
     },
-    color_mode: {},
+    color_mode: {
+      mode: { values: ['color', 'black_white'], default: 'color' },
+    },
     orientation: { mirror: true, flip: true },
   },
 };
@@ -135,7 +145,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
 // ---------------------------------------------------------------------------
 
 export const mockImageConfig: ImageConfig = {
-  basic: { brightness: 50, contrast: 50, saturation: 50, sharpness: 55, hue: 50 },
+  basic: { brightness: 50, contrast: 50, saturation: 52, sharpness: 42, hue: 50 },
   exposure: {
     mode: 'auto',
     anti_flicker: '50hz',
@@ -146,7 +156,7 @@ export const mockImageConfig: ImageConfig = {
     max_exposure_time: '1/25',
   },
   white_balance: { mode: 'auto', red_gain: 50, blue_gain: 45 },
-  enhancement: { denoise_2d: 55, denoise_3d: 45, defog: false, gamma: 50 },
+  enhancement: { denoise_2d: 60, denoise_3d: 52, defog: false, gamma: 50 },
   backlight: { mode: 'off', level: 50 },
   orientation: { mirror: false, flip: false },
   color_mode: { mode: 'color' },
@@ -164,10 +174,10 @@ export const mockImageStrategyStatus: ImageStrategyStatus = {
   isp_digital_gain: 1024,
   mode: 'balanced',
   tier: 'day',
-  saturation: 62,
-  sharpness: 65,
-  denoise_2d: 45,
-  denoise_3d: 37,
+  saturation: 52,
+  sharpness: 42,
+  denoise_2d: 60,
+  denoise_3d: 52,
   gamma: 50,
 };
 

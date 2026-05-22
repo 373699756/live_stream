@@ -417,6 +417,16 @@ ConfigResult ValidateVideoStreamConfig(
         return ConfigResult::Failure(JoinField(stream_prefix, "smart_codec"),
                                      "unsupported value");
     }
+    if (stream.gop_mode == GopMode::kSmartP &&
+        !stream_capabilities.smart_codec_supported) {
+        return ConfigResult::Failure(JoinField(stream_prefix, "gop_mode"),
+                                     "unsupported value");
+    }
+    if ((stream.smart_codec || stream.gop_mode == GopMode::kSmartP) &&
+        stream.codec != VideoCodec::kH264 && stream.codec != VideoCodec::kH265) {
+        return ConfigResult::Failure(JoinField(stream_prefix, "smart_codec"),
+                                     "unsupported codec");
+    }
     return ConfigResult::Success();
 }
 
@@ -435,7 +445,8 @@ void ApplyStreamConfig(StreamId stream_id,
     target->bitrate_kbps = source.bitrate_kbps;
     target->gop = source.gop;
     target->rc_mode = source.rate_control;
-    target->gop_mode = source.gop_mode;
+    target->gop_mode = source.smart_codec ? GopMode::kSmartP
+                                          : source.gop_mode;
 }
 
 void to_json(ConfigJson &json, const VideoConfig::Stream &stream) {
@@ -626,7 +637,7 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
     if (value.contains("strategy") && value.at("strategy").is_object()) {
         const ConfigJson &strategy = value.at("strategy");
         const std::string mode = strategy.value("mode", "balanced");
-        if (mode != "balanced") {
+        if (mode != "balanced" && mode != "low_noise" && mode != "detail") {
             return ConfigResult::Failure("strategy.mode", "unsupported value");
         }
     }

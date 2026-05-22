@@ -79,10 +79,10 @@ const char *IsoTierName(int tier) {
 }
 
 struct ImageStrategyControls {
-    int32_t saturation = 50;
-    int32_t sharpness = 55;
-    int32_t denoise_2d = 55;
-    int32_t denoise_3d = 45;
+    int32_t saturation = 52;
+    int32_t sharpness = 42;
+    int32_t denoise_2d = 60;
+    int32_t denoise_3d = 52;
     int32_t gamma = 50;
 };
 
@@ -118,12 +118,56 @@ ImageStrategyControls LoadImageStrategyControls(
 
 ImageStrategyControls ControlsForIsoTier(
     const ImageStrategyControls &base,
+    const std::string &mode,
     int tier) {
-    const int32_t saturation_delta[] = {12, 6, -6, -15};
-    const int32_t sharpness_delta[] = {10, 2, -12, -24};
-    const int32_t denoise_2d_delta[] = {-10, 5, 20, 32};
-    const int32_t denoise_3d_delta[] = {-8, 8, 22, 34};
-    const int32_t gamma_delta[] = {0, 2, 6, 9};
+    int32_t saturation_delta[] = {0, 0, -6, -14};
+    int32_t sharpness_delta[] = {0, -6, -14, -24};
+    int32_t denoise_2d_delta[] = {0, 8, 18, 30};
+    int32_t denoise_3d_delta[] = {0, 10, 22, 34};
+    int32_t gamma_delta[] = {0, 2, 5, 8};
+    if (mode == "low_noise") {
+        saturation_delta[0] = 0;
+        saturation_delta[1] = -4;
+        saturation_delta[2] = -10;
+        saturation_delta[3] = -18;
+        sharpness_delta[0] = -6;
+        sharpness_delta[1] = -12;
+        sharpness_delta[2] = -22;
+        sharpness_delta[3] = -32;
+        denoise_2d_delta[0] = 8;
+        denoise_2d_delta[1] = 16;
+        denoise_2d_delta[2] = 30;
+        denoise_2d_delta[3] = 42;
+        denoise_3d_delta[0] = 10;
+        denoise_3d_delta[1] = 22;
+        denoise_3d_delta[2] = 38;
+        denoise_3d_delta[3] = 50;
+        gamma_delta[0] = 0;
+        gamma_delta[1] = 1;
+        gamma_delta[2] = 4;
+        gamma_delta[3] = 7;
+    } else if (mode == "detail") {
+        saturation_delta[0] = 5;
+        saturation_delta[1] = 2;
+        saturation_delta[2] = -4;
+        saturation_delta[3] = -10;
+        sharpness_delta[0] = 8;
+        sharpness_delta[1] = 2;
+        sharpness_delta[2] = -8;
+        sharpness_delta[3] = -18;
+        denoise_2d_delta[0] = -6;
+        denoise_2d_delta[1] = 2;
+        denoise_2d_delta[2] = 12;
+        denoise_2d_delta[3] = 24;
+        denoise_3d_delta[0] = -4;
+        denoise_3d_delta[1] = 4;
+        denoise_3d_delta[2] = 16;
+        denoise_3d_delta[3] = 28;
+        gamma_delta[0] = 0;
+        gamma_delta[1] = 3;
+        gamma_delta[2] = 7;
+        gamma_delta[3] = 10;
+    }
     ImageStrategyControls controls;
     controls.saturation =
         ClampImageControl(base.saturation + saturation_delta[tier]);
@@ -826,8 +870,10 @@ private:
         }
 
         const int tier = IsoTier(exposure.iso);
+        const std::string strategy_mode = ImageStrategyMode(image_config);
         const ImageStrategyControls controls = SmoothImageStrategyControls(
-            ControlsForIsoTier(LoadImageStrategyControls(image_config), tier),
+            ControlsForIsoTier(LoadImageStrategyControls(image_config),
+                               strategy_mode, tier),
             image_strategy_status);
 
         adjusted["basic"]["saturation"] = controls.saturation;
@@ -846,7 +892,7 @@ private:
             next_status->analog_gain = exposure.analog_gain;
             next_status->digital_gain = exposure.digital_gain;
             next_status->isp_digital_gain = exposure.isp_digital_gain;
-            next_status->mode = ImageStrategyMode(image_config);
+            next_status->mode = strategy_mode;
             next_status->tier = IsoTierName(tier);
             next_status->saturation = controls.saturation;
             next_status->sharpness = controls.sharpness;

@@ -30,9 +30,7 @@ const optionLabels: Record<string, string> = {
   high: '高',
   indoor: '室内',
   outdoor: '室外',
-  wdr: '宽动态',
-  blc: '背光补偿',
-  hlc: '强光抑制',
+  drc: '动态范围压缩',
   color: '彩色',
   black_white: '黑白',
 };
@@ -42,6 +40,12 @@ const tierLabels: Record<string, string> = {
   indoor: '室内',
   low_light: '弱光',
   very_low_light: '极弱光',
+};
+
+const strategyModeLabels: Record<string, string> = {
+  balanced: '均衡',
+  low_noise: '低噪声',
+  detail: '细节优先',
 };
 
 function numberValue(record: Record<string, unknown>, key: string, fallback: number): number {
@@ -140,6 +144,10 @@ function tierLabel(value: string): string {
   return tierLabels[value] || value || '-';
 }
 
+function strategyModeLabel(value: string): string {
+  return strategyModeLabels[value] || value || '-';
+}
+
 export function ImageConfigPage() {
   const {
     config,
@@ -180,6 +188,15 @@ export function ImageConfigPage() {
     });
   };
   const strategyEnabled = config.strategy?.enabled ?? true;
+  const updateStrategyMode = (mode: string) => {
+    setConfig({
+      ...config,
+      strategy: {
+        enabled: strategyEnabled,
+        mode: mode as NonNullable<typeof config.strategy>['mode'],
+      },
+    });
+  };
 
   return (
     <div className="config-preview-layout">
@@ -199,10 +216,20 @@ export function ImageConfigPage() {
               onChange={(event) => updateStrategyEnabled(event.target.checked)}
             />
           </FormField>
+          <OptionField
+            label="策略模式"
+            capability={{
+              values: ['balanced', 'low_noise', 'detail'],
+              default: 'balanced',
+            }}
+            value={config.strategy?.mode || 'balanced'}
+            onChange={updateStrategyMode}
+          />
           <div className="strategy-status">
             <span>状态 {strategyStatus.active ? '运行中' : '未运行'}</span>
             <span>ISO {strategyStatus.exposure_valid ? strategyStatus.iso : '-'}</span>
             <span>曝光 {strategyStatus.exposure_valid ? `${strategyStatus.exposure_time_us} us` : '-'}</span>
+            <span>模式 {strategyModeLabel(strategyStatus.mode)}</span>
             <span>场景 {tierLabel(strategyStatus.tier)}</span>
             <span>实际 饱和 {strategyStatus.saturation}</span>
             <span>锐度 {strategyStatus.sharpness}</span>
@@ -292,7 +319,7 @@ export function ImageConfigPage() {
             <FormField label="慢快门">
               <input
                 type="checkbox"
-                checked={boolValue(config.exposure, 'slow_shutter', true)}
+                checked={boolValue(config.exposure, 'slow_shutter', false)}
                 onChange={(e) =>
                   updateSection('exposure', 'slow_shutter', e.target.checked)
                 }
@@ -357,10 +384,10 @@ export function ImageConfigPage() {
               numericCapability(capabilities.enhancement.ranges, 'denoise_2d') || {
                 min: 0,
                 max: 100,
-                default: 50,
+                default: 60,
               }
             }
-            value={numberValue(config.enhancement, 'denoise_2d', 50)}
+            value={numberValue(config.enhancement, 'denoise_2d', 60)}
             onChange={(value) =>
               updateSection('enhancement', 'denoise_2d', value)
             }
@@ -371,10 +398,10 @@ export function ImageConfigPage() {
               numericCapability(capabilities.enhancement.ranges, 'denoise_3d') || {
                 min: 0,
                 max: 100,
-                default: 50,
+                default: 52,
               }
             }
-            value={numberValue(config.enhancement, 'denoise_3d', 50)}
+            value={numberValue(config.enhancement, 'denoise_3d', 52)}
             onChange={(value) =>
               updateSection('enhancement', 'denoise_3d', value)
             }
@@ -412,9 +439,7 @@ export function ImageConfigPage() {
             label="背光模式"
             capability={optionCapability(capabilities.backlight.options, 'mode', [
               'off',
-              'wdr',
-              'blc',
-              'hlc',
+              'drc',
             ])}
             value={stringValue(config.backlight, 'mode', 'off')}
             onChange={(value) => updateSection('backlight', 'mode', value)}
