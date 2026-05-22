@@ -184,6 +184,7 @@ Current fields:
 Runtime startup usage:
 
 - `app/runtime_config.cpp` reads `enabled`, `prefer_tcp`, `local_port_base`, `max_peers`, `public_ip`, and `ice_servers`.
+- `public_ip` is validated for schema compatibility, but advertised WebRTC addresses use the unified runtime advertise host from `network.advertise_ip`.
 - `ProtocolSubsystem` maps runtime fields into `WebrtcServiceOptions`.
 
 Frontend DTO:
@@ -238,11 +239,13 @@ Current fields:
 Runtime startup usage:
 
 - `app/runtime_config.cpp` reads ports, discovery flag, auth flag, advertise IP, and device metadata.
+- `advertise_ip` is validated for schema compatibility, but ONVIF advertised addresses use the unified runtime advertise host from `network.advertise_ip`.
 - `ProtocolSubsystem` maps these into `OnvifServiceOptions`.
 
-Known issue:
+Advertise policy:
 
-- `network.advertise_ip`, `webrtc.public_ip`, and `onvif.advertise_ip` all influence advertised addresses. They should be reconciled into one documented policy before behavior changes.
+- `network.advertise_ip` is the single startup source for `AppRuntimeConfig::advertise_host`.
+- `webrtc.public_ip` and `onvif.advertise_ip` remain accepted config fields for compatibility, but no longer overwrite the runtime advertise host.
 
 ### `snapshot`
 
@@ -293,7 +296,8 @@ Current fields:
 
 Runtime startup usage:
 
-- `app/runtime_config.cpp` reads `advertise_ip`, `ports`, and `default_ifname`.
+- `app/runtime_config.cpp` reads `advertise_ip` and `default_ifname`.
+- `network.ports` remains part of the config schema for UI/device network settings, but protocol startup ports are read from their protocol owners: `http.port`, `rtsp.port`, and `onvif.device_service_port`.
 
 Known issue:
 

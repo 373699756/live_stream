@@ -60,20 +60,15 @@ bool ApplyNetworkConfig(const ConfigJson &network, AppRuntimeConfig *config) {
         return false;
     }
     if (!json_utils::ReadField(network, "advertise_ip", &config->advertise_host) ||
-        config->advertise_host.empty() ||
-        !network.contains("ports") || !network.at("ports").is_object()) {
+        config->advertise_host.empty()) {
         return false;
     }
-    const ConfigJson &ports = network.at("ports");
     // default_ifname is optional; falls back to the struct default ("eth0").
     std::string ifname;
     if (json_utils::ReadField(network, "default_ifname", &ifname) && !ifname.empty()) {
         config->network_ifname = ifname;
     }
-    return json_utils::ReadField(ports, "http", &config->http_port, 1, 65535) &&
-           json_utils::ReadField(ports, "rtsp", &config->rtsp_port, 1, 65535) &&
-           json_utils::ReadField(ports, "onvif", &config->onvif_device_port, 1,
-                            65535);
+    return true;
 }
 
 bool ApplyHttpConfig(const ConfigJson &http, AppRuntimeConfig *config) {
@@ -112,14 +107,15 @@ bool ApplyWebrtcConfig(const ConfigJson &webrtc, AppRuntimeConfig *config) {
     if (config == nullptr || !webrtc.is_object()) {
         return false;
     }
+    std::string public_ip;
     if (!json_utils::ReadField(webrtc, "enabled", &config->webrtc_enabled) ||
         !json_utils::ReadField(webrtc, "prefer_tcp", &config->webrtc_prefer_tcp) ||
         !json_utils::ReadField(webrtc, "local_port_base",
                           &config->webrtc_local_port_base, 1, 65535) ||
         !json_utils::ReadField(webrtc, "max_peers", &config->webrtc_max_peers, 1,
                           0xffffffffU) ||
-        !json_utils::ReadField(webrtc, "public_ip", &config->advertise_host) ||
-        config->advertise_host.empty()) {
+        !json_utils::ReadField(webrtc, "public_ip", &public_ip) ||
+        public_ip.empty()) {
         return false;
     }
     if (!webrtc.contains("ice_servers") ||
@@ -147,6 +143,7 @@ bool ApplyOnvifConfig(const ConfigJson &onvif, AppRuntimeConfig *config) {
     if (config == nullptr || !onvif.is_object()) {
         return false;
     }
+    std::string advertise_ip;
     return json_utils::ReadField(onvif, "device_service_port",
                             &config->onvif_device_port, 1, 65535) &&
            json_utils::ReadField(onvif, "discovery_port",
@@ -155,8 +152,8 @@ bool ApplyOnvifConfig(const ConfigJson &onvif, AppRuntimeConfig *config) {
                             &config->onvif_discovery_enabled) &&
            json_utils::ReadField(onvif, "auth_required",
                             &config->onvif_auth_required) &&
-           json_utils::ReadField(onvif, "advertise_ip", &config->advertise_host) &&
-           !config->advertise_host.empty() &&
+           json_utils::ReadField(onvif, "advertise_ip", &advertise_ip) &&
+           !advertise_ip.empty() &&
            json_utils::ReadField(onvif, "manufacturer", &config->onvif_manufacturer) &&
            json_utils::ReadField(onvif, "model", &config->onvif_model) &&
            json_utils::ReadField(onvif, "firmware_version",
