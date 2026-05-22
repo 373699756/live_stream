@@ -8,22 +8,7 @@
 
 namespace live_stream {
 
-class IAuthService;
-class IConfigService;
-class ILoggerService;
-class IAlarmService;
-class INetworkService;
-class IOnvifService;
-class IRtspService;
-class ISystemService;
-class ITimeService;
-class IUpgradeService;
-class IStreamHubService;
-class IWebrtcService;
-class IMediaService;
-class IAiView;
-class ISnapshotView;
-class NetEngine;
+struct HttpServiceDependencies;
 
 enum class HttpMethod {
     kGet,
@@ -60,14 +45,10 @@ struct HttpServiceOptions {
     uint32_t max_request_body_bytes = 64 * 1024;
     uint32_t send_queue_capacity = 64;
     uint32_t send_buffer_limit_bytes = 8 * 1024 * 1024;
-    uint32_t executor_queue_capacity = 256;
-    uint32_t executor_worker_count = 4;
     uint32_t stream_executor_queue_capacity = 128;
     uint32_t stream_executor_worker_count = 2;
     uint32_t control_executor_queue_capacity = 16;
     uint32_t control_executor_worker_count = 1;
-    uint32_t config_apply_queue_capacity = 8;
-    uint32_t config_apply_worker_count = 1;
     uint32_t request_timeout_ms = 10000;
     uint32_t connection_idle_timeout_ms = 10000;
     uint32_t max_requests_per_connection = 1;
@@ -75,51 +56,6 @@ struct HttpServiceOptions {
     std::string static_root;
     bool enable_static_files = true;
     bool enable_keep_alive = false;
-};
-
-struct HttpCoreDependencies {
-    NetEngine *net_engine = nullptr;
-};
-
-struct HttpSecurityDependencies {
-    IAuthService *auth_service = nullptr;
-    ILoggerService *logger_service = nullptr;
-};
-
-struct HttpConfigDependencies {
-    IConfigService *config_service = nullptr;
-};
-
-struct HttpDeviceDependencies {
-    INetworkService *network_service = nullptr;
-    ITimeService *time_service = nullptr;
-    IAlarmService *alarm_service = nullptr;
-    IUpgradeService *upgrade_service = nullptr;
-    ISystemService *system_service = nullptr;
-};
-
-struct HttpProtocolDependencies {
-    IRtspService *rtsp_service = nullptr;
-    IOnvifService *onvif_service = nullptr;
-};
-
-struct HttpMediaDependencies {
-    IAiView *ai_service = nullptr;
-    IMediaService *media_service = nullptr;
-    ISnapshotView *snapshot_service = nullptr;
-    IWebrtcService *webrtc_service = nullptr;
-    IStreamHubService *stream_hub_service = nullptr;
-};
-
-// HttpServiceDependencies groups dependency domains so the service boundary is
-// not a flat list of every subsystem pointer.
-struct HttpServiceDependencies {
-    HttpCoreDependencies core;
-    HttpSecurityDependencies security;
-    HttpConfigDependencies config;
-    HttpDeviceDependencies device;
-    HttpProtocolDependencies protocol;
-    HttpMediaDependencies media;
 };
 
 struct HttpServiceStats {

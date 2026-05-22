@@ -17,12 +17,6 @@ enum class StreamState {
     kError,
 };
 
-enum class KeyFrameReason {
-    kNewClient = 0,
-    kPacketLoss,
-    kRecovery,
-};
-
 using FrameAttachId = uint64_t;
 
 struct FramePayload {

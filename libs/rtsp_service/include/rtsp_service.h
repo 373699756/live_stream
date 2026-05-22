@@ -12,7 +12,7 @@ namespace live_stream {
 
 class IAuthService;
 class IEventService;
-class IStreamHubService;
+class IStreamFrameSource;
 class NetEngine;
 
 enum class RtspTransportMode {
@@ -103,7 +103,7 @@ struct RtspServiceDependencies {
     NetEngine* net_engine = nullptr;
     IAuthService* auth_service = nullptr;
     IEventService* event_service = nullptr;
-    IStreamHubService* stream_hub = nullptr;
+    IStreamFrameSource* stream_hub = nullptr;
     IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };
 

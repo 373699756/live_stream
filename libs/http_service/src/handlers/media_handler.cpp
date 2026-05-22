@@ -7,7 +7,7 @@
 #include "media/media_capabilities.h"
 #include "media_service.h"
 #include "infra/log.h"
-#include "stream_hub_service.h"
+#include "stream_browser_source.h"
 #include "webrtc_service.h"
 
 #include <cstdint>
@@ -203,14 +203,14 @@ ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
     return root;
 }
 
-void RequestBrowserRecoveryKeyFrame(IStreamHubService *stream_hub_service,
+void RequestBrowserRecoveryKeyFrame(IStreamBrowserSource *stream_browser_source,
                                     StreamId stream_id,
                                     const StreamBrowserStatus &status) {
-    if (stream_hub_service == nullptr || !status.running ||
+    if (stream_browser_source == nullptr || !status.running ||
         !status.browser_codec || status.hls_ready) {
         return;
     }
-    (void)stream_hub_service->RequestKeyFrame(stream_id,
+    (void)stream_browser_source->RequestKeyFrame(stream_id,
                                               KeyFrameReason::kRecovery);
 }
 
@@ -218,9 +218,16 @@ void RequestBrowserRecoveryKeyFrame(IStreamHubService *stream_hub_service,
 
 class MediaHttpHandler : public IHttpHandler {
 public:
-    MediaHttpHandler(HttpHandlerContext *context,
-                     const MediaHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    MediaHttpHandler(HttpAccess *access,
+                     IConfigService *config_service,
+                     IMediaService *media_service,
+                     IStreamBrowserSource *stream_browser_source,
+                     IWebrtcService *webrtc_service)
+        : access_(access),
+          config_service_(config_service),
+          media_service_(media_service),
+          stream_browser_source_(stream_browser_source),
+          webrtc_service_(webrtc_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -257,31 +264,31 @@ private:
     }
 
     HttpResponse HandleCapabilities() {
-        if (dependencies_.media_service == nullptr) {
+        if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         MediaCapabilities capabilities =
-            dependencies_.media_service->GetCapabilities();
+            media_service_->GetCapabilities();
         if (capabilities.streams.empty()) {
             return StatusResponse(500, "Media capabilities unavailable");
         }
         return JsonResponse(
             200, MediaCapabilitiesToJson(capabilities,
-                                         dependencies_.media_service));
+                                         media_service_));
     }
 
     HttpResponse HandleStreamStatus(const HttpRequest &request) {
-        AuthPrincipal principal = context_->Authenticate(request);
+        AuthPrincipal principal = access_->Authenticate(request);
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.media_service == nullptr) {
+        if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
 
         ConfigJson items = ConfigJson::array();
         ConfigJson video_config =
-            dependencies_.config_service->GetValue("video");
+            config_service_->GetValue("video");
         if (!video_config.is_object() || !video_config.contains("streams") ||
             !video_config.at("streams").is_object()) {
             return StatusResponse(500, "Invalid video config");
@@ -316,17 +323,17 @@ private:
             StreamId stream_id = StreamId::kMain;
             (void)StreamIdFromJsonString(name, &stream_id);
             const bool stream_running =
-                dependencies_.media_service->IsStreamStarted(stream_id);
-            item["state"] = dependencies_.media_service->IsRestarting()
+                media_service_->IsStreamStarted(stream_id);
+            item["state"] = media_service_->IsRestarting()
                                 ? "pending"
                                 : (stream_running && stream_enabled
                                        ? "running"
                                        : "stopped");
-            if (dependencies_.stream_hub_service != nullptr) {
+            if (stream_browser_source_ != nullptr) {
                 const StreamBrowserStatus browser =
-                    dependencies_.stream_hub_service->GetBrowserStatus(
+                    stream_browser_source_->GetBrowserStatus(
                         stream_id);
-                RequestBrowserRecoveryKeyFrame(dependencies_.stream_hub_service,
+                RequestBrowserRecoveryKeyFrame(stream_browser_source_,
                                                stream_id, browser);
                 item["browserCodec"] = browser.browser_codec;
                 item["hlsSupported"] = browser.hls_supported;
@@ -354,8 +361,8 @@ private:
                 item["flvReady"] = false;
             }
             WebrtcServiceStats webrtc_stats;
-            if (dependencies_.webrtc_service != nullptr) {
-                webrtc_stats = dependencies_.webrtc_service->GetStats();
+            if (webrtc_service_ != nullptr) {
+                webrtc_stats = webrtc_service_->GetStats();
             }
             item["webrtcReady"] = stream_running && stream_enabled &&
                                   codec == "h264" && webrtc_stats.enabled &&
@@ -366,28 +373,34 @@ private:
     }
 
     HttpResponse HandleImageStrategy(const HttpRequest &request) {
-        AuthPrincipal principal = context_->Authenticate(request);
+        AuthPrincipal principal = access_->Authenticate(request);
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.media_service == nullptr) {
+        if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         return JsonResponse(
             200,
             ImageStrategyStatusToJson(
-                dependencies_.media_service->GetImageStrategyStatus()));
+                media_service_->GetImageStrategyStatus()));
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    MediaHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IConfigService *config_service_ = nullptr;
+    IMediaService *media_service_ = nullptr;
+    IStreamBrowserSource *stream_browser_source_ = nullptr;
+    IWebrtcService *webrtc_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
-    HttpHandlerContext *context,
-    const MediaHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(HttpAccess *access,
+                       IConfigService *config_service,
+                       IMediaService *media_service,
+                       IStreamBrowserSource *stream_browser_source,
+                       IWebrtcService *webrtc_service) {
     return std::unique_ptr<IHttpHandler>(
-        new MediaHttpHandler(context, dependencies));
+        new MediaHttpHandler(access, config_service, media_service,
+                             stream_browser_source, webrtc_service));
 }
 
 }  // namespace live_stream

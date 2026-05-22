@@ -13,14 +13,10 @@ namespace {
 constexpr uint32_t kNetIoThreadCount = 1;
 constexpr uint32_t kNetCallbackWorkerCount = 1;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
-constexpr uint32_t kHttpExecutorWorkerCount = 4;
-constexpr uint32_t kHttpExecutorQueueCapacity = 256;
 constexpr uint32_t kHttpStreamExecutorWorkerCount = 4;
 constexpr uint32_t kHttpStreamExecutorQueueCapacity = 256;
 constexpr uint32_t kHttpControlExecutorWorkerCount = 1;
 constexpr uint32_t kHttpControlExecutorQueueCapacity = 16;
-constexpr uint32_t kHttpConfigApplyWorkerCount = 1;
-constexpr uint32_t kHttpConfigApplyQueueCapacity = 8;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
 constexpr uint32_t kHttpMaxRequestBodyBytes = 128U * 1024U * 1024U;
 constexpr uint32_t kHttpRequestTimeoutMs = 60000;
@@ -35,41 +31,6 @@ struct ProtocolRuntimeRefs {
     IOnvifService *onvif_service = nullptr;
     IWebrtcService *webrtc_service = nullptr;
     IStreamHubService *stream_hub_service = nullptr;
-    IOnvifUriProvider *onvif_uri_provider = nullptr;
-};
-
-class StaticOnvifUriProvider : public IOnvifUriProvider {
-public:
-    StaticOnvifUriProvider(const AppRuntimeConfig &config,
-                           IMediaService *media_service)
-        : config_(config), media_service_(media_service) {}
-
-    std::string GetStreamUri(StreamId stream_id) override {
-        if (media_service_ != nullptr &&
-            !media_service_->IsStreamStarted(stream_id)) {
-            return std::string();
-        }
-        return std::string("rtsp://") + config_.advertise_host + ":" +
-               std::to_string(config_.rtsp_port) + StreamPath(stream_id);
-    }
-
-    std::string GetSnapshotUri(StreamId stream_id) override {
-        return std::string("http://") + config_.advertise_host + ":" +
-               std::to_string(config_.http_port) + SnapshotPath(stream_id);
-    }
-
-private:
-    const char *StreamPath(StreamId stream_id) const {
-        return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
-    }
-
-    const std::string &SnapshotPath(StreamId stream_id) const {
-        return stream_id == StreamId::kSub ? config_.snapshot_sub_path
-                                           : config_.snapshot_main_path;
-    }
-
-    AppRuntimeConfig config_;
-    IMediaService *media_service_ = nullptr;
 };
 
 infra::ExecutorOptions BuildNetCallbackExecutorOptions() {
@@ -151,6 +112,10 @@ OnvifServiceOptions BuildOnvifOptions(const AppRuntimeConfig &runtime_config) {
     options.manufacturer = runtime_config.onvif_manufacturer;
     options.model = runtime_config.onvif_model;
     options.firmware_version = runtime_config.onvif_firmware_version;
+    options.snapshot_main_path = runtime_config.snapshot_main_path;
+    options.snapshot_sub_path = runtime_config.snapshot_sub_path;
+    options.rtsp_port = runtime_config.rtsp_port;
+    options.http_port = runtime_config.http_port;
     return options;
 }
 
@@ -163,7 +128,7 @@ OnvifServiceDependencies BuildOnvifDependencies(
     dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system_service = refs.device.system;
     dependencies.time_service = refs.device.time;
-    dependencies.uri_provider = refs.onvif_uri_provider;
+    dependencies.media_service = refs.media.media;
     return dependencies;
 }
 
@@ -174,43 +139,15 @@ HttpServiceOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     options.static_root = runtime_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
-    options.executor_worker_count = kHttpExecutorWorkerCount;
-    options.executor_queue_capacity = kHttpExecutorQueueCapacity;
     options.stream_executor_worker_count = kHttpStreamExecutorWorkerCount;
     options.stream_executor_queue_capacity = kHttpStreamExecutorQueueCapacity;
     options.control_executor_worker_count = kHttpControlExecutorWorkerCount;
     options.control_executor_queue_capacity = kHttpControlExecutorQueueCapacity;
-    options.config_apply_worker_count = kHttpConfigApplyWorkerCount;
-    options.config_apply_queue_capacity = kHttpConfigApplyQueueCapacity;
     options.max_requests_per_connection = kHttpMaxRequestsPerConnection;
     options.max_request_body_bytes = kHttpMaxRequestBodyBytes;
     options.request_timeout_ms = kHttpRequestTimeoutMs;
     options.connection_idle_timeout_ms = kHttpConnectionIdleTimeoutMs;
     return options;
-}
-
-HttpServiceDependencies BuildHttpDependencies(const ProtocolRuntimeRefs &refs) {
-    HttpServiceDependencies dependencies;
-    dependencies.core.net_engine = refs.net_engine;
-    dependencies.security.auth_service =
-        refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.security.logger_service =
-        refs.core != nullptr ? refs.core->logger() : nullptr;
-    dependencies.config.config_service =
-        refs.core != nullptr ? refs.core->config() : nullptr;
-    dependencies.device.network_service = refs.device.network;
-    dependencies.device.time_service = refs.device.time;
-    dependencies.device.alarm_service = refs.device.alarm;
-    dependencies.device.upgrade_service = refs.device.upgrade;
-    dependencies.device.system_service = refs.device.system;
-    dependencies.protocol.rtsp_service = refs.rtsp_service;
-    dependencies.protocol.onvif_service = refs.onvif_service;
-    dependencies.media.ai_service = refs.media.ai;
-    dependencies.media.media_service = refs.media.media;
-    dependencies.media.snapshot_service = refs.media.snapshot;
-    dependencies.media.webrtc_service = refs.webrtc_service;
-    dependencies.media.stream_hub_service = refs.stream_hub_service;
-    return dependencies;
 }
 
 }  // namespace
@@ -309,9 +246,6 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.webrtc_service = webrtc_.get();
     }
 
-    onvif_uri_provider_.reset(
-        new StaticOnvifUriProvider(runtime_config, refs.media.media));
-    refs.onvif_uri_provider = onvif_uri_provider_.get();
     const OnvifServiceOptions onvif_options = BuildOnvifOptions(runtime_config);
     const OnvifServiceDependencies onvif_dependencies =
         BuildOnvifDependencies(refs);
@@ -325,9 +259,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
             onvif_->Stop();
         }
         onvif_.reset();
-        onvif_uri_provider_.reset();
         refs.onvif_service = nullptr;
-        refs.onvif_uri_provider = nullptr;
     } else {
         refs.onvif_service = onvif_.get();
         INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
@@ -337,8 +269,16 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
 
     const HttpServiceOptions http_options = BuildHttpOptions(runtime_config);
-    const HttpServiceDependencies http_dependencies = BuildHttpDependencies(refs);
-    http_ = CreateHttpService(http_options, http_dependencies);
+    http_ = CreateHttpConsoleService(
+        http_options, refs.net_engine,
+        refs.core != nullptr ? refs.core->auth() : nullptr,
+        refs.core != nullptr ? refs.core->logger() : nullptr,
+        refs.core != nullptr ? refs.core->config() : nullptr,
+        refs.device.network, refs.device.time, refs.device.alarm,
+        refs.device.upgrade, refs.device.system, refs.rtsp_service,
+        refs.onvif_service, refs.media.ai, refs.media.media,
+        refs.media.snapshot, refs.webrtc_service, refs.stream_hub_service,
+        refs.stream_hub_service);
     if (!http_ || !http_->Start()) {
         INFRA_LOG_ERROR("app", "Start http service failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),
@@ -396,7 +336,6 @@ void ProtocolSubsystem::Stop() {
     }
     http_.reset();
     onvif_.reset();
-    onvif_uri_provider_.reset();
     stream_hub_.reset();
     webrtc_.reset();
     rtsp_.reset();

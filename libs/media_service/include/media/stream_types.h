@@ -26,6 +26,12 @@ enum class FrameType {
     kJpeg,
 };
 
+enum class KeyFrameReason {
+    kNewClient = 0,
+    kPacketLoss,
+    kRecovery,
+};
+
 using FrameSequence = uint64_t;
 
 }  // namespace live_stream

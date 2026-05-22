@@ -4,7 +4,7 @@
 
 #include "http_request_utils.h"
 #include "infra/log.h"
-#include "stream_hub_service.h"
+#include "stream_browser_source.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,10 +27,10 @@ const char *VideoCodecName(VideoCodec codec) {
     return "unknown";
 }
 
-bool RequestBrowserKeyFrame(IStreamHubService *stream_hub_service,
+bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
                             StreamId stream_id) {
-    return stream_hub_service != nullptr &&
-           stream_hub_service->RequestKeyFrame(stream_id,
+    return stream_browser_source != nullptr &&
+           stream_browser_source->RequestKeyFrame(stream_id,
                                                KeyFrameReason::kNewClient);
 }
 
@@ -81,7 +81,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     return true;
 }
 
-HttpResponse HandlePlaylist(IStreamHubService *stream_hub,
+HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
                             const HttpRequest &request, StreamId stream_id,
                             const std::string &object_name,
                             const StreamBrowserStatus &browser_status) {
@@ -104,7 +104,7 @@ HttpResponse HandlePlaylist(IStreamHubService *stream_hub,
     return BuildPlaylistResponse(playlist, ExtractBearerToken(request));
 }
 
-HttpResponse HandleSegment(IStreamHubService *stream_hub, StreamId stream_id,
+HttpResponse HandleSegment(IStreamBrowserSource *stream_hub, StreamId stream_id,
                            const std::string &object_name) {
     if (!StartsWith(object_name, "seg-") || object_name.size() <= 7 ||
         object_name.substr(object_name.size() - 3) != ".ts") {
@@ -141,9 +141,11 @@ HttpResponse HandleSegment(IStreamHubService *stream_hub, StreamId stream_id,
 
 class HlsHttpHandler : public IHttpHandler {
 public:
-    HlsHttpHandler(HttpHandlerContext *context,
-                   const MediaHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    HlsHttpHandler(HttpAccess *access,
+                   IMediaService *media_service,
+                   IStreamBrowserSource *stream_browser_source)
+        : access_(access), media_service_(media_service),
+          stream_browser_source_(stream_browser_source) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -161,13 +163,13 @@ private:
 
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireAuth(context_, request, &principal)) {
+        if (!RequireAuth(access_, request, &principal)) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.stream_hub_service == nullptr) {
+        if (stream_browser_source_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(dependencies_.media_service)) {
+        if (IsMediaRestarting(media_service_)) {
             return StatusResponse(503, "Media pipeline restarting");
         }
 
@@ -178,7 +180,7 @@ private:
         }
 
         const StreamBrowserStatus browser_status =
-            dependencies_.stream_hub_service->GetBrowserStatus(stream_id);
+            stream_browser_source_->GetBrowserStatus(stream_id);
         if (!browser_status.browser_codec) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
@@ -209,22 +211,23 @@ private:
         }
 
         if (object_name == "index.m3u8") {
-            return HandlePlaylist(dependencies_.stream_hub_service, request,
+            return HandlePlaylist(stream_browser_source_, request,
                                   stream_id, object_name, browser_status);
         }
-        return HandleSegment(dependencies_.stream_hub_service, stream_id,
+        return HandleSegment(stream_browser_source_, stream_id,
                              object_name);
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    MediaHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IMediaService *media_service_ = nullptr;
+    IStreamBrowserSource *stream_browser_source_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
-    HttpHandlerContext *context,
-    const MediaHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(HttpAccess *access,
+                     IMediaService *media_service,
+                     IStreamBrowserSource *stream_browser_source) {
     return std::unique_ptr<IHttpHandler>(
-        new HlsHttpHandler(context, dependencies));
+        new HlsHttpHandler(access, media_service, stream_browser_source));
 }
 
 }  // namespace live_stream

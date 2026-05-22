@@ -1,5 +1,7 @@
 SERVICE_NAME := http_service
 .DEFAULT_GOAL := all
+ROOT_DIR ?= ../..
+BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
 AUTH_LIB := $(BUILD_DIR)/lib/libauth_service.a
 LOGGER_LIB := $(BUILD_DIR)/lib/liblogger_service.a
@@ -15,6 +17,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/auth_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/network_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/onvif_service/include

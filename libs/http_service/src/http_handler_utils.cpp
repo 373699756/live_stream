@@ -27,22 +27,22 @@ HttpResponse OkResponse() {
     return JsonResponse(200, root);
 }
 
-bool RequireAuth(HttpHandlerContext *context, const HttpRequest &request,
+bool RequireAuth(HttpAccess *access, const HttpRequest &request,
                  AuthPrincipal *principal) {
-    if (context == nullptr || principal == nullptr) {
+    if (access == nullptr || principal == nullptr) {
         return false;
     }
-    *principal = context->Authenticate(request);
+    *principal = access->Authenticate(request);
     return !principal->user_name.empty();
 }
 
-bool RequirePermissionOrForbidden(HttpHandlerContext *context,
+bool RequirePermissionOrForbidden(HttpAccess *access,
                                   const HttpRequest &request,
                                   AuthPermission permission,
                                   const std::string &target,
                                   AuthPrincipal *principal) {
-    return context != nullptr &&
-           context->RequirePermission(request, permission, target, principal);
+    return access != nullptr &&
+           access->RequirePermission(request, permission, target, principal);
 }
 
 bool ParseJsonObject(const HttpRequest &request, ConfigJson *body) {

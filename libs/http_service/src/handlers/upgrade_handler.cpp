@@ -52,11 +52,11 @@ std::string UpgradeUploadPath(const std::string &file_name) {
                                  "-" + sanitized);
 }
 
-bool RequireUpgradePermission(HttpHandlerContext *context,
+bool RequireUpgradePermission(HttpAccess *access,
                               const HttpRequest &request,
                               AuthPermission permission,
                               AuthPrincipal *principal) {
-    return RequirePermissionOrForbidden(context, request, permission, "upgrade",
+    return RequirePermissionOrForbidden(access, request, permission, "upgrade",
                                         principal);
 }
 
@@ -106,9 +106,9 @@ bool UpgradeRequestFromJson(const ConfigJson &value, UpgradeRequest *request) {
 
 class UpgradeHttpHandler : public IHttpHandler {
 public:
-    UpgradeHttpHandler(HttpHandlerContext *context,
-                       const DeviceHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    UpgradeHttpHandler(HttpAccess *access,
+                       IUpgradeService *upgrade_service)
+        : access_(access), upgrade_service_(upgrade_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -163,12 +163,12 @@ private:
     }
 
     HttpResponse HandleUpload(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
@@ -182,13 +182,13 @@ private:
         }
         const std::string upload_path = UpgradeUploadPath(file_name);
         if (upload_path.empty()) {
-            context_->RecordOperation(
+            access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kRejected, "invalid upload filename");
             return StatusResponse(400, "Invalid upload filename");
         }
         if (!infra::File::WriteAll(upload_path, request.body)) {
-            context_->RecordOperation(
+            access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kFailed, "upload write failed");
             return StatusResponse(500, "Could not store upload");
@@ -198,13 +198,13 @@ private:
             upgrade_service->ValidatePackage(upload_path);
         if (info.version.empty()) {
             static_cast<void>(infra::File::Remove(upload_path));
-            context_->RecordOperation(
+            access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kRejected, "package validation failed");
             return StatusResponse(400, "Could not validate package");
         }
 
-        context_->RecordOperation(request, principal,
+        access_->RecordOperation(request, principal,
                                   OperationAction::kUpgrade, info.version,
                                   OperationResult::kSuccess,
                                   "package uploaded");
@@ -212,12 +212,12 @@ private:
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kReadStatus,
                                       &principal)) {
             return StatusResponse(403, "Forbidden");
@@ -227,12 +227,12 @@ private:
     }
 
     HttpResponse HandleValidate(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
@@ -253,12 +253,12 @@ private:
     }
 
     HttpResponse HandleStart(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
@@ -271,7 +271,7 @@ private:
             return StatusResponse(400, "Invalid upgrade request");
         }
         if (!upgrade_service->StartUpgrade(
-                context_->MakeContext(request, &principal), upgrade_request)) {
+                access_->MakeContext(request, &principal), upgrade_request)) {
             return StatusResponse(409, "Could not start upgrade");
         }
         return JsonResponse(200,
@@ -279,17 +279,17 @@ private:
     }
 
     HttpResponse HandleCancel(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         if (!upgrade_service->CancelUpgrade(
-                context_->MakeContext(request, &principal))) {
+                access_->MakeContext(request, &principal))) {
             return StatusResponse(409, "Could not cancel upgrade");
         }
         return JsonResponse(200,
@@ -297,31 +297,31 @@ private:
     }
 
     HttpResponse HandleConfirmReboot(const HttpRequest &request) {
-        IUpgradeService *upgrade_service = dependencies_.upgrade_service;
+        IUpgradeService *upgrade_service = upgrade_service_;
         if (upgrade_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireUpgradePermission(context_, request,
+        if (!RequireUpgradePermission(access_, request,
                                       AuthPermission::kUpgrade, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         if (!upgrade_service->ConfirmReboot(
-                context_->MakeContext(request, &principal))) {
+                access_->MakeContext(request, &principal))) {
             return StatusResponse(409, "Could not confirm reboot");
         }
         return JsonResponse(200,
                             UpgradeStatusToJson(upgrade_service->GetStatus()));
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    DeviceHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IUpgradeService *upgrade_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateUpgradeHttpHandler(
-    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateUpgradeHttpHandler(HttpAccess *access,
+                         IUpgradeService *upgrade_service) {
     return std::unique_ptr<IHttpHandler>(
-        new UpgradeHttpHandler(context, dependencies));
+        new UpgradeHttpHandler(access, upgrade_service));
 }
 
 }  // namespace live_stream

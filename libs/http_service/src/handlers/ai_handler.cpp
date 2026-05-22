@@ -87,9 +87,10 @@ ConfigJson AiResultToJson(const AiInferenceResult &result) {
 
 class AiHttpHandler : public IHttpHandler {
 public:
-    AiHttpHandler(HttpHandlerContext *context,
-                  const MediaHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    AiHttpHandler(HttpAccess *access, IConfigService *config_service,
+                  IAiView *ai_service)
+        : access_(access), config_service_(config_service),
+          ai_service_(ai_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -107,14 +108,14 @@ private:
 
     HttpResponse HandleStatus(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireAuth(context_, request, &principal)) {
+        if (!RequireAuth(access_, request, &principal)) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.ai_service == nullptr) {
-            if (!IsAiConfigEnabled(dependencies_.config_service)) {
+        if (ai_service_ == nullptr) {
+            if (!IsAiConfigEnabled(config_service_)) {
                 ConfigJson root = ConfigJson::object();
                 root["config"] =
-                    dependencies_.config_service->GetValue("ai");
+                    config_service_->GetValue("ai");
                 root["stats"] = AiStatsToJson(AiServiceStats{});
                 root["last_result"] = AiResultToJson(AiInferenceResult{});
                 return JsonResponse(200, root);
@@ -122,21 +123,22 @@ private:
             return StatusResponse(503, "AI service not running");
         }
         ConfigJson root = ConfigJson::object();
-        root["config"] = AiConfigToJson(dependencies_.ai_service->GetConfig());
-        root["stats"] = AiStatsToJson(dependencies_.ai_service->GetStats());
+        root["config"] = AiConfigToJson(ai_service_->GetConfig());
+        root["stats"] = AiStatsToJson(ai_service_->GetStats());
         root["last_result"] =
-            AiResultToJson(dependencies_.ai_service->GetLastResult());
+            AiResultToJson(ai_service_->GetLastResult());
         return JsonResponse(200, root);
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    MediaHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IConfigService *config_service_ = nullptr;
+    IAiView *ai_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateAiHttpHandler(HttpAccess *access,
+                    IConfigService *config_service, IAiView *ai_service) {
     return std::unique_ptr<IHttpHandler>(
-        new AiHttpHandler(context, dependencies));
+        new AiHttpHandler(access, config_service, ai_service));
 }
 
 }  // namespace live_stream

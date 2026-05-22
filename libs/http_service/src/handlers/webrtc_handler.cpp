@@ -128,9 +128,11 @@ HttpResponse HandleClosePeer(IWebrtcService *webrtc_service,
 
 class WebrtcHttpHandler : public IHttpHandler {
 public:
-    WebrtcHttpHandler(HttpHandlerContext *context,
-                      const MediaHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    WebrtcHttpHandler(HttpAccess *access,
+                      IMediaService *media_service,
+                      IWebrtcService *webrtc_service)
+        : access_(access), media_service_(media_service),
+          webrtc_service_(webrtc_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -177,13 +179,13 @@ private:
     HttpResponse HandleWebrtc(const HttpRequest &request,
                               WebrtcRouteHandler handler) {
         AuthPrincipal principal;
-        if (!RequireAuth(context_, request, &principal)) {
+        if (!RequireAuth(access_, request, &principal)) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.webrtc_service == nullptr) {
+        if (webrtc_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(dependencies_.media_service)) {
+        if (IsMediaRestarting(media_service_)) {
             return StatusResponse(503, "Media pipeline restarting");
         }
 
@@ -192,18 +194,19 @@ private:
             return StatusResponse(400, "Invalid JSON");
         }
 
-        return handler(dependencies_.webrtc_service, request, body, principal);
+        return handler(webrtc_service_, request, body, principal);
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    MediaHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IMediaService *media_service_ = nullptr;
+    IWebrtcService *webrtc_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
-    HttpHandlerContext *context,
-    const MediaHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(HttpAccess *access,
+                        IMediaService *media_service,
+                        IWebrtcService *webrtc_service) {
     return std::unique_ptr<IHttpHandler>(
-        new WebrtcHttpHandler(context, dependencies));
+        new WebrtcHttpHandler(access, media_service, webrtc_service));
 }
 
 }  // namespace live_stream

@@ -1,8 +1,9 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_HANDLERS_H_
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_HANDLERS_H_
 
-#include "http_handler_context.h"
+#include "http_access.h"
 #include "http_router.h"
+#include "http_stream_writer.h"
 
 #include <memory>
 
@@ -22,31 +23,13 @@ class IMediaService;
 class IAiView;
 class ISnapshotView;
 class IWebrtcService;
-class IStreamHubService;
+class IStreamBrowserSource;
+class IStreamFlvSource;
 
-struct AuthHandlerDependencies {
-    IAuthService *auth_service = nullptr;
-};
-
-struct ConfigHandlerDependencies {
-    IConfigService *config_service = nullptr;
-};
-
-struct OperationsHandlerDependencies {
-    ILoggerService *logger_service = nullptr;
-};
-
-struct DeviceHandlerDependencies {
-    INetworkService *network_service = nullptr;
-    ITimeService *time_service = nullptr;
-    IUpgradeService *upgrade_service = nullptr;
-};
-
-struct SystemHandlerDependencies {
+struct SystemStatusSources {
     ILoggerService *logger_service = nullptr;
     IConfigService *config_service = nullptr;
     IAuthService *auth_service = nullptr;
-    ISystemService *system_service = nullptr;
     ITimeService *time_service = nullptr;
     INetworkService *network_service = nullptr;
     IAlarmService *alarm_service = nullptr;
@@ -57,43 +40,42 @@ struct SystemHandlerDependencies {
     IAiView *ai_service = nullptr;
     ISnapshotView *snapshot_service = nullptr;
     IWebrtcService *webrtc_service = nullptr;
-    IStreamHubService *stream_hub_service = nullptr;
-};
-
-struct MediaHandlerDependencies {
-    IConfigService *config_service = nullptr;
-    IMediaService *media_service = nullptr;
-    IAiView *ai_service = nullptr;
-    ISnapshotView *snapshot_service = nullptr;
-    IWebrtcService *webrtc_service = nullptr;
-    IStreamHubService *stream_hub_service = nullptr;
+    IStreamBrowserSource *stream_browser_source = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> CreateAuthHttpHandler(
-    HttpHandlerContext *context, const AuthHandlerDependencies &dependencies);
+    HttpAccess *access, IAuthService *auth_service);
 std::unique_ptr<IHttpHandler> CreateConfigHttpHandler(
-    HttpHandlerContext *context, const ConfigHandlerDependencies &dependencies);
+    HttpAccess *access, IConfigService *config_service);
 std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(
-    HttpHandlerContext *context,
-    const OperationsHandlerDependencies &dependencies);
+    HttpAccess *access, ILoggerService *logger_service);
 std::unique_ptr<IHttpHandler> CreateNetworkHttpHandler(
-    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+    HttpAccess *access, INetworkService *network_service);
 std::unique_ptr<IHttpHandler> CreateTimeHttpHandler(
-    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+    HttpAccess *access, ITimeService *time_service);
 std::unique_ptr<IHttpHandler> CreateUpgradeHttpHandler(
-    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies);
+    HttpAccess *access, IUpgradeService *upgrade_service);
 std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
-    HttpHandlerContext *context, const SystemHandlerDependencies &dependencies);
+    HttpAccess *access, ISystemService *system_service,
+    const SystemStatusSources &status_sources);
 std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, IConfigService *config_service,
+    IMediaService *media_service, IStreamBrowserSource *stream_browser_source,
+    IWebrtcService *webrtc_service);
 std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, IConfigService *config_service,
+    IAiView *ai_service);
 std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, IMediaService *media_service,
+    ISnapshotView *snapshot_service);
 std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, IMediaService *media_service,
+    IStreamBrowserSource *stream_browser_source);
 std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, IMediaService *media_service,
+    IWebrtcService *webrtc_service);
+std::unique_ptr<IHttpHandler> CreateEventStreamHttpHandler(
+    HttpAccess *access);
 
 class IStreamingHttpHandler {
 public:
@@ -105,7 +87,9 @@ public:
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    HttpHandlerContext *context, const MediaHandlerDependencies &dependencies);
+    HttpAccess *access, HttpStreamWriter *writer, IMediaService *media_service,
+    IStreamBrowserSource *stream_browser_source,
+    IStreamFlvSource *stream_flv_source);
 
 }  // namespace live_stream
 

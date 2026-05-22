@@ -28,9 +28,8 @@ std::string FormatConfigError(const ConfigError &error) {
 
 class ConfigHttpHandler : public IHttpHandler {
 public:
-    ConfigHttpHandler(HttpHandlerContext *context,
-                      const ConfigHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    ConfigHttpHandler(HttpAccess *access, IConfigService *config_service)
+        : access_(access), config_service_(config_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -49,7 +48,7 @@ private:
     }
 
     HttpResponse HandleConfig(const HttpRequest &request) {
-        IConfigService *config_service = dependencies_.config_service;
+        IConfigService *config_service = config_service_;
         if (config_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
@@ -59,7 +58,7 @@ private:
         }
         if (request.method == HttpMethod::kGet) {
             AuthPrincipal principal;
-            if (!RequireAuth(context_, request, &principal)) {
+            if (!RequireAuth(access_, request, &principal)) {
                 return StatusResponse(401, "Unauthorized");
             }
             ConfigJson config = config_service->GetValue(name);
@@ -74,7 +73,7 @@ private:
         }
         if (request.method == HttpMethod::kPut) {
             AuthPrincipal principal;
-            if (!RequirePermissionOrForbidden(context_, request,
+            if (!RequirePermissionOrForbidden(access_, request,
                                               AuthPermission::kModifyConfig,
                                               name, &principal)) {
                 return StatusResponse(403, "Forbidden");
@@ -96,7 +95,7 @@ private:
                 failure_reason =
                     FormatConfigError(config_service->GetLastConfigError(name));
             }
-            context_->RecordOperation(
+            access_->RecordOperation(
                 request, principal, OperationAction::kModifyConfig, name,
                 ok ? OperationResult::kSuccess : OperationResult::kFailed,
                 ok ? std::string() : failure_reason);
@@ -108,15 +107,14 @@ private:
         return StatusResponse(404, "Not Found");
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    ConfigHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IConfigService *config_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateConfigHttpHandler(
-    HttpHandlerContext *context,
-    const ConfigHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateConfigHttpHandler(HttpAccess *access,
+                                                      IConfigService *config_service) {
     return std::unique_ptr<IHttpHandler>(
-        new ConfigHttpHandler(context, dependencies));
+        new ConfigHttpHandler(access, config_service));
 }
 
 }  // namespace live_stream

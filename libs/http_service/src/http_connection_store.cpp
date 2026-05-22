@@ -88,8 +88,8 @@ HttpConnectionParseResult HttpConnectionStore::CompleteKeepAliveRequest(
   return ParsePendingRequests(iter, options, request_logs);
 }
 
-bool HttpConnectionStore::BeginFlvStream(
-    ConnectionId connection_id, const std::shared_ptr<IStreamFlvSink> &sink) {
+bool HttpConnectionStore::BeginStream(
+    ConnectionId connection_id, const std::shared_ptr<void> &stream_owner) {
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end()) {
     return false;
@@ -97,21 +97,21 @@ bool HttpConnectionStore::BeginFlvStream(
   iter->second.processing = false;
   iter->second.closing = true;
   iter->second.streaming = true;
-  iter->second.flv_client_id = 0;
-  iter->second.flv_sink = sink;
+  iter->second.stream_client_id = 0;
+  iter->second.stream_owner = stream_owner;
   iter->second.pending_requests.clear();
   iter->second.recv_buffer.clear();
   ++iter->second.timeout_generation;
   return true;
 }
 
-bool HttpConnectionStore::AttachFlvClient(ConnectionId connection_id,
-                                       StreamFlvClientId client_id) {
+bool HttpConnectionStore::AttachStreamClient(ConnectionId connection_id,
+                                             HttpStreamClientId client_id) {
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end() || !iter->second.streaming) {
     return false;
   }
-  iter->second.flv_client_id = client_id;
+  iter->second.stream_client_id = client_id;
   return true;
 }
 
@@ -148,15 +148,15 @@ ClosedHttpConnectionInfo HttpConnectionStore::Remove(ConnectionId connection_id)
   }
   closed.found = true;
   closed.was_streaming = iter->second.streaming;
-  closed.flv_client_id = TakeFlvClient(&iter->second);
+  closed.stream_client_id = TakeStreamClient(&iter->second);
   connections_.erase(iter);
   return closed;
 }
 
-std::vector<StreamFlvClientId> HttpConnectionStore::TakeAllFlvClients() {
-  std::vector<StreamFlvClientId> client_ids;
+std::vector<HttpStreamClientId> HttpConnectionStore::TakeAllStreamClients() {
+  std::vector<HttpStreamClientId> client_ids;
   for (auto &item : connections_) {
-    const StreamFlvClientId client_id = TakeFlvClient(&item.second);
+    const HttpStreamClientId client_id = TakeStreamClient(&item.second);
     if (client_id != 0) {
       client_ids.push_back(client_id);
     }
@@ -164,13 +164,14 @@ std::vector<StreamFlvClientId> HttpConnectionStore::TakeAllFlvClients() {
   return client_ids;
 }
 
-StreamFlvClientId HttpConnectionStore::TakeFlvClient(HttpConnectionState *session) {
-  if (session == nullptr || session->flv_client_id == 0) {
+HttpStreamClientId HttpConnectionStore::TakeStreamClient(
+    HttpConnectionState *session) {
+  if (session == nullptr || session->stream_client_id == 0) {
     return 0;
   }
-  const StreamFlvClientId client_id = session->flv_client_id;
-  session->flv_client_id = 0;
-  session->flv_sink.reset();
+  const HttpStreamClientId client_id = session->stream_client_id;
+  session->stream_client_id = 0;
+  session->stream_owner.reset();
   return client_id;
 }
 

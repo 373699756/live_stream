@@ -28,10 +28,9 @@ ConfigJson OperationRecordToJson(const OperationRecord &record) {
 
 class OperationsHttpHandler : public IHttpHandler {
 public:
-    OperationsHttpHandler(
-        HttpHandlerContext *context,
-        const OperationsHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    OperationsHttpHandler(HttpAccess *access,
+                          ILoggerService *logger_service)
+        : access_(access), logger_service_(logger_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -58,18 +57,18 @@ private:
     }
 
     HttpResponse HandleOperations(const HttpRequest &request) {
-        if (dependencies_.logger_service == nullptr) {
+        if (logger_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!context_->RequirePermission(request, AuthPermission::kManageUsers,
+        if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
                                          "operations", &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         OperationLogQuery query;
         query.limit = 100;
         std::vector<OperationRecord> records =
-            dependencies_.logger_service->QueryOperations(query);
+            logger_service_->QueryOperations(query);
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
         for (const OperationRecord &record : records) {
@@ -80,18 +79,18 @@ private:
     }
 
     HttpResponse HandleExport(const HttpRequest &request) {
-        if (dependencies_.logger_service == nullptr) {
+        if (logger_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!context_->RequirePermission(request, AuthPermission::kManageUsers,
+        if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
                                          "operations", &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         OperationLogQuery query;
         query.limit = 1000;
         std::vector<OperationRecord> records =
-            dependencies_.logger_service->QueryOperations(query);
+            logger_service_->QueryOperations(query);
 
         std::string body =
             "timestamp_ms,request_id,user_name,session_id,client_ip,module,"
@@ -120,15 +119,14 @@ private:
         return response;
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    OperationsHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    ILoggerService *logger_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(
-    HttpHandlerContext *context,
-    const OperationsHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(HttpAccess *access,
+                            ILoggerService *logger_service) {
     return std::unique_ptr<IHttpHandler>(
-        new OperationsHttpHandler(context, dependencies));
+        new OperationsHttpHandler(access, logger_service));
 }
 
 }  // namespace live_stream

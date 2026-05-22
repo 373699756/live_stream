@@ -24,9 +24,11 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
 
 class SnapshotHttpHandler : public IHttpHandler {
 public:
-    SnapshotHttpHandler(HttpHandlerContext *context,
-                        const MediaHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    SnapshotHttpHandler(HttpAccess *access,
+                        IMediaService *media_service,
+                        ISnapshotView *snapshot_service)
+        : access_(access), media_service_(media_service),
+          snapshot_service_(snapshot_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -46,13 +48,13 @@ private:
 
     HttpResponse HandleSnapshot(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireAuth(context_, request, &principal)) {
+        if (!RequireAuth(access_, request, &principal)) {
             return StatusResponse(401, "Unauthorized");
         }
-        if (dependencies_.snapshot_service == nullptr) {
+        if (snapshot_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(dependencies_.media_service)) {
+        if (IsMediaRestarting(media_service_)) {
             return StatusResponse(503, "Media pipeline restarting");
         }
         const std::string prefix = "/api/snapshot/";
@@ -68,7 +70,7 @@ private:
         CaptureRequest capture_request;
         capture_request.stream_id = stream_id;
         SnapshotFrame frame =
-            dependencies_.snapshot_service->Capture(capture_request);
+            snapshot_service_->Capture(capture_request);
         if (!frame.HasValidPayload() || !LooksLikeJpeg(frame)) {
             return StatusResponse(500, "Invalid snapshot frame");
         }
@@ -81,15 +83,16 @@ private:
         return response;
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    MediaHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    IMediaService *media_service_ = nullptr;
+    ISnapshotView *snapshot_service_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(
-    HttpHandlerContext *context,
-    const MediaHandlerDependencies &dependencies) {
+std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(HttpAccess *access,
+                          IMediaService *media_service,
+                          ISnapshotView *snapshot_service) {
     return std::unique_ptr<IHttpHandler>(
-        new SnapshotHttpHandler(context, dependencies));
+        new SnapshotHttpHandler(access, media_service, snapshot_service));
 }
 
 }  // namespace live_stream

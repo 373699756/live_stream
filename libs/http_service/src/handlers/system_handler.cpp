@@ -9,7 +9,7 @@
 #include "onvif_service.h"
 #include "rtsp_service.h"
 #include "snapshot_service.h"
-#include "stream_hub_service.h"
+#include "stream_browser_source.h"
 #include "system_service.h"
 #include "time_service.h"
 #include "upgrade_service.h"
@@ -59,9 +59,11 @@ ConfigJson SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
 
 class SystemHttpHandler : public IHttpHandler {
 public:
-    SystemHttpHandler(HttpHandlerContext *context,
-                      const SystemHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    SystemHttpHandler(HttpAccess *access,
+                      ISystemService *system_service,
+                      const SystemStatusSources &status_sources)
+        : access_(access), system_service_(system_service),
+          status_sources_(status_sources) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -104,7 +106,7 @@ private:
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
-        AuthPrincipal principal = context_->Authenticate(request);
+        AuthPrincipal principal = access_->Authenticate(request);
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
@@ -112,9 +114,9 @@ private:
         ConfigJson root = ConfigJson::object();
         DeviceInfo device_info;
         SystemStatus system_status;
-        if (dependencies_.system_service != nullptr) {
-            device_info = dependencies_.system_service->GetDeviceInfo();
-            system_status = dependencies_.system_service->GetSystemStatus();
+        if (system_service_ != nullptr) {
+            device_info = system_service_->GetDeviceInfo();
+            system_status = system_service_->GetSystemStatus();
         }
         root["deviceName"] = device_info.serial_number.empty()
                                  ? std::string("live-stream-ipc")
@@ -137,124 +139,125 @@ private:
             services.push_back(service);
         };
         add_service("logger_service",
-                    dependencies_.logger_service != nullptr &&
-                        dependencies_.logger_service->IsStarted());
+                    status_sources_.logger_service != nullptr &&
+                        status_sources_.logger_service->IsStarted());
         add_service("config_service",
-                    dependencies_.config_service != nullptr &&
-                        dependencies_.config_service->IsStarted());
+                    status_sources_.config_service != nullptr &&
+                        status_sources_.config_service->IsStarted());
         add_service("auth_service",
-                    dependencies_.auth_service != nullptr &&
-                        dependencies_.auth_service->IsStarted());
+                    status_sources_.auth_service != nullptr &&
+                        status_sources_.auth_service->IsStarted());
         add_service("system_service",
-                    dependencies_.system_service != nullptr &&
-                        dependencies_.system_service->IsStarted());
+                    system_service_ != nullptr &&
+                        system_service_->IsStarted());
         add_service("time_service",
-                    dependencies_.time_service != nullptr &&
-                        dependencies_.time_service->IsStarted());
+                    status_sources_.time_service != nullptr &&
+                        status_sources_.time_service->IsStarted());
         add_service("network_service",
-                    dependencies_.network_service != nullptr &&
-                        dependencies_.network_service->IsStarted());
+                    status_sources_.network_service != nullptr &&
+                        status_sources_.network_service->IsStarted());
         add_service("alarm_service",
-                    dependencies_.alarm_service != nullptr &&
-                        dependencies_.alarm_service->IsStarted());
+                    status_sources_.alarm_service != nullptr &&
+                        status_sources_.alarm_service->IsStarted());
         add_service("upgrade_service",
-                    dependencies_.upgrade_service != nullptr &&
-                        dependencies_.upgrade_service->IsStarted());
+                    status_sources_.upgrade_service != nullptr &&
+                        status_sources_.upgrade_service->IsStarted());
         add_service("rtsp_service",
-                    dependencies_.rtsp_service != nullptr &&
-                        dependencies_.rtsp_service->LocalAddress().port != 0);
+                    status_sources_.rtsp_service != nullptr &&
+                        status_sources_.rtsp_service->LocalAddress().port != 0);
         add_service("onvif_service",
-                    dependencies_.onvif_service != nullptr &&
-                        dependencies_.onvif_service->IsStarted());
+                    status_sources_.onvif_service != nullptr &&
+                        status_sources_.onvif_service->IsStarted());
         add_service("http_service", true);
         add_service("media_service",
-                    dependencies_.media_service != nullptr &&
-                        dependencies_.media_service->IsStarted());
-        if (IsAiConfigEnabled(dependencies_.config_service)) {
+                    status_sources_.media_service != nullptr &&
+                        status_sources_.media_service->IsStarted());
+        if (IsAiConfigEnabled(status_sources_.config_service)) {
             add_service("ai_service",
-                        IsAiServiceHealthy(dependencies_.ai_service));
+                        IsAiServiceHealthy(status_sources_.ai_service));
         }
         add_service("snapshot_service",
-                    dependencies_.snapshot_service != nullptr &&
-                        dependencies_.snapshot_service->GetStats().enabled);
+                    status_sources_.snapshot_service != nullptr &&
+                        status_sources_.snapshot_service->GetStats().enabled);
         bool webrtc_running = false;
-        if (dependencies_.webrtc_service != nullptr) {
+        if (status_sources_.webrtc_service != nullptr) {
             const WebrtcServiceStats stats =
-                dependencies_.webrtc_service->GetStats();
+                status_sources_.webrtc_service->GetStats();
             webrtc_running = stats.enabled && stats.backend_available;
         }
         add_service("webrtc_service", webrtc_running);
         add_service("stream_hub_service",
-                    dependencies_.stream_hub_service != nullptr &&
-                        dependencies_.stream_hub_service->GetStats().enabled);
+                    status_sources_.stream_browser_source != nullptr &&
+                        status_sources_.stream_browser_source->GetStats().enabled);
         root["services"] = services;
         return JsonResponse(200, root);
     }
 
     HttpResponse HandleCapabilities(const HttpRequest &request) {
-        if (dependencies_.system_service == nullptr) {
+        if (system_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!context_->RequirePermission(request, AuthPermission::kReadStatus,
+        if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
                                          "system", &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         return JsonResponse(
             200, SystemCapabilitiesToJson(
-                     dependencies_.system_service->GetCapabilities()));
+                     system_service_->GetCapabilities()));
     }
 
     HttpResponse HandleReboot(const HttpRequest &request) {
-        if (dependencies_.system_service == nullptr) {
+        if (system_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!context_->RequirePermission(request, AuthPermission::kReboot,
+        if (!access_->RequirePermission(request, AuthPermission::kReboot,
                                          "system", &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         const SystemCapabilities capabilities =
-            dependencies_.system_service->GetCapabilities();
+            system_service_->GetCapabilities();
         if (!capabilities.supports_reboot) {
             return StatusResponse(501, "Reboot not supported");
         }
-        return dependencies_.system_service->Reboot(
-                   context_->MakeContext(request, &principal))
+        return system_service_->Reboot(
+                   access_->MakeContext(request, &principal))
                    ? OkResponse()
                    : StatusResponse(503, "Reboot failed");
     }
 
     HttpResponse HandleFactoryReset(const HttpRequest &request) {
-        if (dependencies_.system_service == nullptr) {
+        if (system_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!context_->RequirePermission(request,
+        if (!access_->RequirePermission(request,
                                          AuthPermission::kFactoryReset,
                                          "system", &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         const SystemCapabilities capabilities =
-            dependencies_.system_service->GetCapabilities();
+            system_service_->GetCapabilities();
         if (!capabilities.supports_factory_reset) {
             return StatusResponse(501, "Factory reset not supported");
         }
-        return dependencies_.system_service->FactoryReset(
-                   context_->MakeContext(request, &principal))
+        return system_service_->FactoryReset(
+                   access_->MakeContext(request, &principal))
                    ? OkResponse()
                    : StatusResponse(503, "Factory reset failed");
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    SystemHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    ISystemService *system_service_ = nullptr;
+    SystemStatusSources status_sources_;
 };
 
 std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
-    HttpHandlerContext *context,
-    const SystemHandlerDependencies &dependencies) {
+    HttpAccess *access, ISystemService *system_service,
+    const SystemStatusSources &status_sources) {
     return std::unique_ptr<IHttpHandler>(
-        new SystemHttpHandler(context, dependencies));
+        new SystemHttpHandler(access, system_service, status_sources));
 }
 
 }  // namespace live_stream

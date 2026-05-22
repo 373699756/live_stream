@@ -1,9 +1,9 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_CONNECTION_STORE_H_
 
+#include "http_stream_writer.h"
 #include "http_service.h"
 #include "net_service.h"
-#include "stream_hub_service.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +21,7 @@ struct PendingHttpRequest {
 };
 
 struct ClosedHttpConnectionInfo {
-  StreamFlvClientId flv_client_id = 0;
+  HttpStreamClientId stream_client_id = 0;
   bool was_streaming = false;
   bool found = false;
 };
@@ -75,17 +75,17 @@ class HttpConnectionStore {
       ConnectionId connection_id, const HttpConnectionParseOptions &options,
       std::vector<HttpConnectionRequestLog> *request_logs);
 
-  bool BeginFlvStream(ConnectionId connection_id,
-                      const std::shared_ptr<IStreamFlvSink> &sink);
-  bool AttachFlvClient(ConnectionId connection_id,
-                       StreamFlvClientId client_id);
+  bool BeginStream(ConnectionId connection_id,
+                   const std::shared_ptr<void> &stream_owner);
+  bool AttachStreamClient(ConnectionId connection_id,
+                          HttpStreamClientId client_id);
   bool IsStreaming(ConnectionId connection_id) const;
 
   bool ArmTimer(ConnectionId connection_id, uint64_t *generation);
   bool IsTimerCurrent(ConnectionId connection_id, uint64_t generation) const;
 
   ClosedHttpConnectionInfo Remove(ConnectionId connection_id);
-  std::vector<StreamFlvClientId> TakeAllFlvClients();
+  std::vector<HttpStreamClientId> TakeAllStreamClients();
 
  private:
   struct HttpConnectionState {
@@ -94,8 +94,8 @@ class HttpConnectionStore {
     std::deque<PendingHttpRequest> pending_requests;
     uint64_t request_count = 0;
     uint64_t timeout_generation = 0;
-    StreamFlvClientId flv_client_id = 0;
-    std::shared_ptr<IStreamFlvSink> flv_sink;
+    HttpStreamClientId stream_client_id = 0;
+    std::shared_ptr<void> stream_owner;
     bool processing = false;
     bool closing = false;
     bool streaming = false;
@@ -103,7 +103,7 @@ class HttpConnectionStore {
 
   using ConnectionMap = std::map<ConnectionId, HttpConnectionState>;
 
-  static StreamFlvClientId TakeFlvClient(HttpConnectionState *session);
+  static HttpStreamClientId TakeStreamClient(HttpConnectionState *session);
   HttpConnectionParseResult ParsePendingRequests(
       ConnectionMap::iterator iter, const HttpConnectionParseOptions &options,
       std::vector<HttpConnectionRequestLog> *request_logs);

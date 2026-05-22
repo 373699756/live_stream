@@ -50,11 +50,11 @@ ConfigJson TimeStatusToJson(const TimeStatus &status) {
     return root;
 }
 
-bool RequireTimePermission(HttpHandlerContext *context,
+bool RequireTimePermission(HttpAccess *access,
                            const HttpRequest &request,
                            AuthPermission permission,
                            AuthPrincipal *principal) {
-    return RequirePermissionOrForbidden(context, request, permission, "time",
+    return RequirePermissionOrForbidden(access, request, permission, "time",
                                         principal);
 }
 
@@ -62,9 +62,8 @@ bool RequireTimePermission(HttpHandlerContext *context,
 
 class TimeHttpHandler : public IHttpHandler {
 public:
-    TimeHttpHandler(HttpHandlerContext *context,
-                    const DeviceHandlerDependencies &dependencies)
-        : context_(context), dependencies_(dependencies) {}
+    TimeHttpHandler(HttpAccess *access, ITimeService *time_service)
+        : access_(access), time_service_(time_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -109,12 +108,12 @@ private:
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
-        ITimeService *time_service = dependencies_.time_service;
+        ITimeService *time_service = time_service_;
         if (time_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireTimePermission(context_, request,
+        if (!RequireTimePermission(access_, request,
                                    AuthPermission::kReadStatus, &principal)) {
             return StatusResponse(403, "Forbidden");
         }
@@ -123,12 +122,12 @@ private:
     }
 
     HttpResponse HandleTimezone(const HttpRequest &request) {
-        ITimeService *time_service = dependencies_.time_service;
+        ITimeService *time_service = time_service_;
         if (time_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireTimePermission(context_, request,
+        if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
             return StatusResponse(403, "Forbidden");
@@ -142,18 +141,18 @@ private:
             return StatusResponse(400, "Invalid time request");
         }
         return time_service
-                       ->SetTimezone(context_->MakeContext(request, &principal), timezone)
+                       ->SetTimezone(access_->MakeContext(request, &principal), timezone)
                    ? OkResponse()
                    : StatusResponse(400, "Could not set timezone");
     }
 
     HttpResponse HandleNtp(const HttpRequest &request) {
-        ITimeService *time_service = dependencies_.time_service;
+        ITimeService *time_service = time_service_;
         if (time_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireTimePermission(context_, request,
+        if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
             return StatusResponse(403, "Forbidden");
@@ -167,19 +166,19 @@ private:
             return StatusResponse(400, "Invalid NTP config");
         }
         return time_service
-                       ->UpdateNtpConfig(context_->MakeContext(request, &principal),
+                       ->UpdateNtpConfig(access_->MakeContext(request, &principal),
                                          config)
                    ? OkResponse()
                    : StatusResponse(400, "Could not update NTP config");
     }
 
     HttpResponse HandleSystemTime(const HttpRequest &request) {
-        ITimeService *time_service = dependencies_.time_service;
+        ITimeService *time_service = time_service_;
         if (time_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireTimePermission(context_, request,
+        if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
             return StatusResponse(403, "Forbidden");
@@ -194,38 +193,38 @@ private:
             return StatusResponse(400, "Invalid time request");
         }
         return time_service
-                       ->SetSystemTime(context_->MakeContext(request, &principal),
+                       ->SetSystemTime(access_->MakeContext(request, &principal),
                                        system_time_ms, TimeSyncSource::kManual)
                    ? OkResponse()
                    : StatusResponse(503, "Could not set system time");
     }
 
     HttpResponse HandleSync(const HttpRequest &request) {
-        ITimeService *time_service = dependencies_.time_service;
+        ITimeService *time_service = time_service_;
         if (time_service == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
-        if (!RequireTimePermission(context_, request,
+        if (!RequireTimePermission(access_, request,
                                    AuthPermission::kModifyConfig,
                                    &principal)) {
             return StatusResponse(403, "Forbidden");
         }
         return time_service
-                       ->SyncNow(context_->MakeContext(request, &principal),
+                       ->SyncNow(access_->MakeContext(request, &principal),
                                  TimeSyncSource::kNtp)
                    ? OkResponse()
                    : StatusResponse(503, "Could not sync time");
     }
 
-    HttpHandlerContext *context_ = nullptr;
-    DeviceHandlerDependencies dependencies_;
+    HttpAccess *access_ = nullptr;
+    ITimeService *time_service_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> CreateTimeHttpHandler(
-    HttpHandlerContext *context, const DeviceHandlerDependencies &dependencies) {
+    HttpAccess *access, ITimeService *time_service) {
     return std::unique_ptr<IHttpHandler>(
-        new TimeHttpHandler(context, dependencies));
+        new TimeHttpHandler(access, time_service));
 }
 
 }  // namespace live_stream

@@ -42,7 +42,7 @@ struct WebrtcServiceOptions {
 };
 
 struct WebrtcServiceDependencies {
-    IStreamHubService *stream_hub = nullptr;
+    IStreamFrameSource *stream_hub = nullptr;
     NetEngine *net_engine = nullptr;
     bool use_fake_engine = false;
 };

@@ -1,29 +1,21 @@
 #include "http_service_impl.h"
 
-#include <cstdint>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <utility>
-#include <vector>
-
+#include "http_console_service.h"
 #include "http_handler_utils.h"
-#include "http_protocol.h"
 #include "http_request_utils.h"
-#include "http_connection_store.h"
-#include "http_router.h"
 #include "http_static_files.h"
-#include "infra/executor.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "logger_service.h"
-#include "net_service.h"
-#include "stream_hub_service.h"
+#include "stream_browser_source.h"
+
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace live_stream {
 namespace {
-
-constexpr size_t kMaxStreamingQueuedBytes = 4U * 1024U * 1024U;
 
 const char *StaticStatusText(StaticFileStatus status) {
     switch (status) {
@@ -37,42 +29,14 @@ const char *StaticStatusText(StaticFileStatus status) {
     return "unknown";
 }
 
-const char *HttpMethodName(HttpMethod method) {
-    switch (method) {
-        case HttpMethod::kGet:
-            return "GET";
-        case HttpMethod::kPost:
-            return "POST";
-        case HttpMethod::kPut:
-            return "PUT";
-        case HttpMethod::kDelete:
-            return "DELETE";
-    }
-    return "UNKNOWN";
-}
-
-bool StartExecutor(infra::Executor *executor, uint32_t worker_count,
-                   uint32_t queue_capacity) {
-    if (executor == nullptr || worker_count == 0 || queue_capacity == 0) {
-        return false;
-    }
-    infra::ExecutorOptions options;
-    options.worker_count = worker_count;
-    options.queue_capacity = queue_capacity;
-    return executor->Start(options);
-}
-
-void StopExecutor(infra::Executor *executor) {
-    if (executor != nullptr) {
-        executor->Stop(infra::StopMode::kDiscard);
-    }
-}
-
 }  // namespace
 
-HttpServiceImpl::HttpServiceImpl(const HttpServiceOptions &options,
-                                 const HttpServiceDependencies &dependencies)
-    : options_(options), dependencies_(dependencies) {}
+HttpServiceImpl::HttpServiceImpl(
+    const HttpServiceOptions &options,
+    const HttpServiceDependencies &dependencies)
+    : options_(options),
+      dependencies_(dependencies),
+      server_(new HttpServer(options, dependencies, this)) {}
 
 HttpServiceImpl::~HttpServiceImpl() {
     Stop();
@@ -84,32 +48,9 @@ bool HttpServiceImpl::Prepare() {
     if (initialized_) {
         return true;
     }
-    if (dependencies_.security.auth_service == nullptr ||
-        dependencies_.config.config_service == nullptr) {
+    if (server_ == nullptr || !server_->Prepare()) {
         return false;
     }
-    if (options_.max_request_header_bytes == 0 ||
-        options_.max_request_body_bytes == 0 || options_.max_connections == 0 ||
-        options_.request_timeout_ms == 0 ||
-        options_.connection_idle_timeout_ms == 0 ||
-        options_.send_buffer_limit_bytes == 0 ||
-        options_.max_requests_per_connection == 0 ||
-        options_.max_pipelined_requests == 0 ||
-        options_.executor_worker_count == 0 ||
-        options_.executor_queue_capacity == 0 ||
-        options_.stream_executor_worker_count == 0 ||
-        options_.stream_executor_queue_capacity == 0 ||
-        options_.control_executor_worker_count == 0 ||
-        options_.control_executor_queue_capacity == 0 ||
-        options_.config_apply_worker_count == 0 ||
-        options_.config_apply_queue_capacity == 0) {
-        return false;
-    }
-    task_executor_.reset(new infra::Executor());
-    stream_executor_.reset(new infra::Executor());
-    control_executor_.reset(new infra::Executor());
-    config_apply_executor_.reset(new infra::Executor());
-    RegisterHandlers();
     initialized_ = true;
     return true;
 }
@@ -119,151 +60,25 @@ bool HttpServiceImpl::Start() {
         INFRA_LOG_ERROR(kHttpModuleName, "HTTP start prepare failed");
         return false;
     }
-    infra::Executor *task_executor = nullptr;
-    infra::Executor *stream_executor = nullptr;
-    infra::Executor *control_executor = nullptr;
-    infra::Executor *config_apply_executor = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (started_) {
-            INFRA_LOG_INFO(kHttpModuleName, "HTTP start skipped: already started");
-            return true;
-        }
-        if (dependencies_.core.net_engine == nullptr) {
-            INFRA_LOG_ERROR(kHttpModuleName, "HTTP start failed: net engine null");
-            return false;
-        }
-        task_executor = task_executor_.get();
-        stream_executor = stream_executor_.get();
-        control_executor = control_executor_.get();
-        config_apply_executor = config_apply_executor_.get();
-    }
-    if (!StartExecutor(task_executor, options_.executor_worker_count,
-                       options_.executor_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP task executor start failed");
+    if (server_ == nullptr || !server_->Start()) {
+        INFRA_LOG_ERROR(kHttpModuleName, "HTTP server start failed");
         return false;
-    }
-    if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
-                       options_.stream_executor_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP stream executor start failed");
-        StopExecutor(task_executor);
-        return false;
-    }
-    if (!StartExecutor(control_executor, options_.control_executor_worker_count,
-                       options_.control_executor_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP control executor start failed");
-        StopExecutor(stream_executor);
-        StopExecutor(task_executor);
-        return false;
-    }
-    if (!StartExecutor(config_apply_executor,
-                       options_.config_apply_worker_count,
-                       options_.config_apply_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP config executor start failed");
-        StopExecutor(control_executor);
-        StopExecutor(stream_executor);
-        StopExecutor(task_executor);
-        return false;
-    }
-
-    TcpListenOptions server_config;
-    server_config.address.ip = options_.listen_ip;
-    server_config.address.port = options_.listen_port;
-    server_config.max_connections = options_.max_connections;
-    server_config.send_queue_capacity = options_.send_queue_capacity;
-    server_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
-    TcpCallbacks callbacks;
-    callbacks.user = this;
-    callbacks.on_accept = &HttpServiceImpl::HandleAccept;
-    callbacks.on_read = &HttpServiceImpl::HandleRead;
-    callbacks.on_close = &HttpServiceImpl::HandleClose;
-    TcpServerId server =
-        dependencies_.core.net_engine->ListenTcp(server_config, callbacks);
-    if (server == 0) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP listen tcp failed");
-        StopExecutor(config_apply_executor);
-        StopExecutor(control_executor);
-        StopExecutor(stream_executor);
-        StopExecutor(task_executor);
-        return false;
-    }
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        tcp_server_id_ = server;
-        started_ = true;
-    }
-    const std::vector<StaticAssetStatus> static_assets = CheckStaticAssets(
-        options_.static_root,
-        std::vector<std::string>{"index.html", "vendor/flv.min.js",
-                                 "vendor/hls.min.js"});
-    for (const StaticAssetStatus &asset : static_assets) {
-        if (!asset.exists || asset.size == 0) {
-            INFRA_LOG_ERROR(
-                kHttpModuleName,
-                "HTTP static asset missing relative=%s path=%s exists=%d "
-                "size=%llu",
-                asset.relative_path.c_str(), asset.path.c_str(),
-                asset.exists ? 1 : 0,
-                static_cast<unsigned long long>(asset.size));
-        }
     }
     return true;
 }
 
 void HttpServiceImpl::Stop() {
-    TcpServerId server_id = 0;
-    NetEngine *net_engine = nullptr;
-    infra::Executor *task_executor = nullptr;
-    infra::Executor *stream_executor = nullptr;
-    infra::Executor *control_executor = nullptr;
-    infra::Executor *config_apply_executor = nullptr;
-    std::vector<StreamFlvClientId> flv_client_ids;
-    std::vector<ConnectionId> connection_ids;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!started_) {
-            return;
-        }
-        started_ = false;
-        server_id = tcp_server_id_;
-        tcp_server_id_ = 0;
-        net_engine = dependencies_.core.net_engine;
-        flv_client_ids = connections_.TakeAllFlvClients();
-        connection_ids = connections_.ConnectionIds();
-        connections_.Clear();
-        stats_.active_connections = 0;
-        task_executor = task_executor_.get();
-        stream_executor = stream_executor_.get();
-        control_executor = control_executor_.get();
-        config_apply_executor = config_apply_executor_.get();
+    if (server_ != nullptr) {
+        server_->Stop();
     }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
-                   static_cast<unsigned long long>(server_id),
-                   flv_client_ids.size());
-    DetachFlvClients(flv_client_ids);
-    if (net_engine != nullptr && server_id != 0) {
-        (void)net_engine->CloseTcp(server_id);
-    }
-    if (net_engine != nullptr) {
-        for (ConnectionId connection_id : connection_ids) {
-            (void)net_engine->Close(connection_id);
-        }
-    }
-    StopExecutor(config_apply_executor);
-    StopExecutor(control_executor);
-    StopExecutor(stream_executor);
-    StopExecutor(task_executor);
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP stopped");
 }
 
 void HttpServiceImpl::Release() {
     Stop();
     std::lock_guard<std::mutex> guard(mutex_);
-    connections_.Clear();
-    task_executor_.reset();
-    stream_executor_.reset();
-    control_executor_.reset();
-    config_apply_executor_.reset();
+    if (server_ != nullptr) {
+        server_->Release();
+    }
     streaming_handler_.reset();
     handlers_.clear();
     router_.Clear();
@@ -271,12 +86,30 @@ void HttpServiceImpl::Release() {
 }
 
 HttpResponse HttpServiceImpl::HandleRequest(const HttpRequest &request) {
+    return HandleHttpRequest(request);
+}
+
+bool HttpServiceImpl::ShouldUseStreamExecutor(
+    const HttpRequest &request) const {
+    if (request.method == HttpMethod::kGet) {
+        return StartsWith(request.path, "/api/flv/") ||
+               StartsWith(request.path, "/api/hls/") ||
+               StartsWith(request.path, "/api/snapshot/");
+    }
+    return StartsWith(request.path, "/api/webrtc") &&
+           (request.method == HttpMethod::kPost ||
+            request.method == HttpMethod::kDelete);
+}
+
+HttpResponse HttpServiceImpl::HandleHttpRequest(const HttpRequest &request) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!initialized_) {
             return StatusResponse(500, "Service not initialized");
         }
-        ++stats_.total_requests;
+    }
+    if (server_ != nullptr) {
+        server_->IncrementTotalRequests();
     }
 
     if (request.path.empty() || request.path[0] != '/') {
@@ -299,175 +132,7 @@ HttpResponse HttpServiceImpl::HandleRequest(const HttpRequest &request) {
     return StatusResponse(404, "Not Found");
 }
 
-HttpServiceStats HttpServiceImpl::GetStats() const {
-    std::lock_guard<std::mutex> guard(mutex_);
-    return stats_;
-}
-
-HttpListenAddress HttpServiceImpl::LocalAddress() const {
-    std::lock_guard<std::mutex> guard(mutex_);
-    if (dependencies_.core.net_engine == nullptr || tcp_server_id_ == 0) {
-        return HttpListenAddress{};
-    }
-    NetAddress address =
-        dependencies_.core.net_engine->TcpLocalAddress(tcp_server_id_);
-    HttpListenAddress result;
-    result.ip = address.ip;
-    result.port = address.port;
-    return result;
-}
-
-void HttpServiceImpl::HandleAccept(void *user, ConnectionId id, NetAddress peer) {
-    HttpServiceImpl *self = static_cast<HttpServiceImpl *>(user);
-    if (self != nullptr) {
-        self->OnConnection(id, std::move(peer));
-    }
-}
-
-void HttpServiceImpl::HandleRead(void *user, ConnectionId id, const uint8_t *data,
-                                 size_t size) {
-    HttpServiceImpl *self = static_cast<HttpServiceImpl *>(user);
-    if (self != nullptr) {
-        self->OnMessage(id, data, static_cast<uint32_t>(size));
-    }
-}
-
-void HttpServiceImpl::HandleClose(void *user, ConnectionId id) {
-    HttpServiceImpl *self = static_cast<HttpServiceImpl *>(user);
-    if (self != nullptr) {
-        self->OnClose(id);
-    }
-}
-
-bool HttpServiceImpl::IsConfigMutationRequest(const HttpRequest &request) {
-    return request.method == HttpMethod::kPut &&
-           StartsWith(request.path, "/api/config/");
-}
-
-bool HttpServiceImpl::IsStreamRequest(const HttpRequest &request) {
-    if (request.method == HttpMethod::kGet) {
-        return StartsWith(request.path, "/api/flv/") ||
-               StartsWith(request.path, "/api/hls/") ||
-               StartsWith(request.path, "/api/snapshot/");
-    }
-    return StartsWith(request.path, "/api/webrtc") &&
-           (request.method == HttpMethod::kPost ||
-            request.method == HttpMethod::kDelete);
-}
-
-bool HttpServiceImpl::IsControlMutationRequest(const HttpRequest &request) {
-    if (request.method == HttpMethod::kGet ||
-        !StartsWith(request.path, "/api/")) {
-        return false;
-    }
-    return StartsWith(request.path, "/api/network/") ||
-           StartsWith(request.path, "/api/system/") ||
-           StartsWith(request.path, "/api/time/") ||
-           StartsWith(request.path, "/api/upgrade/");
-}
-
-infra::Executor *HttpServiceImpl::ExecutorForRequestLocked(
-    const HttpRequest &request) const {
-    if (IsConfigMutationRequest(request)) {
-        return config_apply_executor_.get();
-    }
-    if (IsStreamRequest(request)) {
-        return stream_executor_.get();
-    }
-    if (IsControlMutationRequest(request)) {
-        return control_executor_.get();
-    }
-    return task_executor_.get();
-}
-
-void HttpServiceImpl::DetachFlvClient(StreamFlvClientId client_id) {
-    if (client_id != 0 && dependencies_.media.stream_hub_service != nullptr) {
-        (void)dependencies_.media.stream_hub_service->DetachFlvClient(client_id);
-    }
-}
-
-void HttpServiceImpl::DetachFlvClients(
-    const std::vector<StreamFlvClientId> &client_ids) {
-    if (dependencies_.media.stream_hub_service == nullptr) {
-        return;
-    }
-    for (StreamFlvClientId client_id : client_ids) {
-        if (client_id != 0) {
-            (void)dependencies_.media.stream_hub_service->DetachFlvClient(client_id);
-        }
-    }
-}
-
-bool HttpServiceImpl::EnqueueStreamingChunk(ConnectionId connection_id,
-                                            const uint8_t *data, size_t size) {
-    NetBufferSlices slices;
-    if (data == nullptr || size == 0) {
-        return true;
-    }
-    if (!slices.Add(data, size)) {
-        return false;
-    }
-    return EnqueueStreamingSlices(connection_id, slices, size);
-}
-
-bool HttpServiceImpl::EnqueueStreamingChunk(
-    ConnectionId connection_id, const std::shared_ptr<const std::string> &data) {
-    NetBufferSlices slices;
-    if (!data || data->empty()) {
-        return true;
-    }
-    if (!slices.Add(reinterpret_cast<const uint8_t *>(data->data()),
-                    data->size(), data)) {
-        return false;
-    }
-    return EnqueueStreamingSlices(connection_id, slices, data->size());
-}
-
-bool HttpServiceImpl::EnqueueStreamingSlices(ConnectionId connection_id,
-                                             const NetBufferSlices &slices,
-                                             size_t size) {
-    NetEngine *net_engine = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.IsStreaming(connection_id)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
-                            "HTTP-FLV enqueue reject conn=%llu reason=closed "
-                            "size=%zu",
-                            static_cast<unsigned long long>(connection_id),
-                            size);
-            return false;
-        }
-        net_engine = dependencies_.core.net_engine;
-    }
-    if (net_engine == nullptr) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP-FLV enqueue reject conn=%llu reason=no_net "
-                        "size=%zu",
-                        static_cast<unsigned long long>(connection_id), size);
-        return false;
-    }
-    if (net_engine->PendingBytes(connection_id) >= kMaxStreamingQueuedBytes) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP-FLV close conn=%llu reason=queue_full "
-                        "pending=%u limit=%zu next=%zu",
-                        static_cast<unsigned long long>(connection_id),
-                        net_engine->PendingBytes(connection_id),
-                        kMaxStreamingQueuedBytes, size);
-        (void)net_engine->Close(connection_id);
-        return false;
-    }
-    if (!net_engine->SendSlices(connection_id, slices)) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP-FLV send failed conn=%llu size=%zu pending=%u",
-                        static_cast<unsigned long long>(connection_id),
-                        size, net_engine->PendingBytes(connection_id));
-        (void)net_engine->Close(connection_id);
-        return false;
-    }
-    return true;
-}
-
-bool HttpServiceImpl::TryHandleStreamingRequest(
+bool HttpServiceImpl::HandleStreamingHttpRequest(
     ConnectionId connection_id, const HttpRequest &request) {
     IStreamingHttpHandler *streaming_handler = nullptr;
     {
@@ -478,9 +143,8 @@ bool HttpServiceImpl::TryHandleStreamingRequest(
         !streaming_handler->CanHandleStreamingRequest(request)) {
         return false;
     }
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        ++stats_.total_requests;
+    if (server_ != nullptr) {
+        server_->IncrementTotalRequests();
     }
     INFRA_LOG_INFO(kHttpModuleName, "HTTP-FLV request conn=%llu path=%s peer=%s",
                    static_cast<unsigned long long>(connection_id),
@@ -489,63 +153,82 @@ bool HttpServiceImpl::TryHandleStreamingRequest(
     return true;
 }
 
-void HttpServiceImpl::RegisterHandlers() {
+HttpServiceStats HttpServiceImpl::GetStats() const {
+    if (server_ == nullptr) {
+        return HttpServiceStats{};
+    }
+    return server_->GetStats();
+}
+
+HttpListenAddress HttpServiceImpl::LocalAddress() const {
+    if (server_ == nullptr) {
+        return HttpListenAddress{};
+    }
+    return server_->LocalAddress();
+}
+
+void HttpServiceImpl::ConfigureConsoleHandlers(
+    IAuthService *auth_service, ILoggerService *logger_service,
+    IConfigService *config_service, INetworkService *network_service,
+    ITimeService *time_service, IAlarmService *alarm_service,
+    IUpgradeService *upgrade_service, ISystemService *system_service,
+    IRtspService *rtsp_service, IOnvifService *onvif_service,
+    IAiView *ai_service, IMediaService *media_service,
+    ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
+    IStreamBrowserSource *stream_browser_source,
+    IStreamFlvSource *stream_flv_source) {
     router_.Clear();
     handlers_.clear();
     streaming_handler_.reset();
+    auth_service_ = auth_service;
+    logger_service_ = logger_service;
+    if (server_ != nullptr) {
+        server_->SetCloseCallback([stream_flv_source](HttpStreamClientId id) {
+            if (stream_flv_source != nullptr && id != 0) {
+                (void)stream_flv_source->DetachFlvClient(id);
+            }
+        });
+    }
 
-    AuthHandlerDependencies auth_dependencies;
-    auth_dependencies.auth_service = dependencies_.security.auth_service;
-    handlers_.push_back(CreateAuthHttpHandler(this, auth_dependencies));
+    handlers_.push_back(CreateAuthHttpHandler(this, auth_service));
+    handlers_.push_back(CreateConfigHttpHandler(this, config_service));
+    handlers_.push_back(CreateOperationsHttpHandler(this, logger_service));
+    handlers_.push_back(CreateNetworkHttpHandler(this, network_service));
+    handlers_.push_back(CreateTimeHttpHandler(this, time_service));
+    handlers_.push_back(CreateUpgradeHttpHandler(this, upgrade_service));
 
-    ConfigHandlerDependencies config_dependencies;
-    config_dependencies.config_service = dependencies_.config.config_service;
-    handlers_.push_back(CreateConfigHttpHandler(this, config_dependencies));
+    SystemStatusSources system_status_sources;
+    system_status_sources.logger_service = logger_service;
+    system_status_sources.config_service = config_service;
+    system_status_sources.auth_service = auth_service;
+    system_status_sources.time_service = time_service;
+    system_status_sources.network_service = network_service;
+    system_status_sources.alarm_service = alarm_service;
+    system_status_sources.upgrade_service = upgrade_service;
+    system_status_sources.rtsp_service = rtsp_service;
+    system_status_sources.onvif_service = onvif_service;
+    system_status_sources.media_service = media_service;
+    system_status_sources.ai_service = ai_service;
+    system_status_sources.snapshot_service = snapshot_service;
+    system_status_sources.webrtc_service = webrtc_service;
+    system_status_sources.stream_browser_source = stream_browser_source;
+    handlers_.push_back(CreateSystemHttpHandler(
+        this, system_service, system_status_sources));
 
-    OperationsHandlerDependencies operations_dependencies;
-    operations_dependencies.logger_service = dependencies_.security.logger_service;
-    handlers_.push_back(
-        CreateOperationsHttpHandler(this, operations_dependencies));
-
-    DeviceHandlerDependencies device_dependencies;
-    device_dependencies.network_service = dependencies_.device.network_service;
-    device_dependencies.time_service = dependencies_.device.time_service;
-    device_dependencies.upgrade_service = dependencies_.device.upgrade_service;
-    handlers_.push_back(CreateNetworkHttpHandler(this, device_dependencies));
-    handlers_.push_back(CreateTimeHttpHandler(this, device_dependencies));
-    handlers_.push_back(CreateUpgradeHttpHandler(this, device_dependencies));
-
-    SystemHandlerDependencies system_dependencies;
-    system_dependencies.logger_service = dependencies_.security.logger_service;
-    system_dependencies.config_service = dependencies_.config.config_service;
-    system_dependencies.auth_service = dependencies_.security.auth_service;
-    system_dependencies.system_service = dependencies_.device.system_service;
-    system_dependencies.time_service = dependencies_.device.time_service;
-    system_dependencies.network_service = dependencies_.device.network_service;
-    system_dependencies.alarm_service = dependencies_.device.alarm_service;
-    system_dependencies.upgrade_service = dependencies_.device.upgrade_service;
-    system_dependencies.rtsp_service = dependencies_.protocol.rtsp_service;
-    system_dependencies.onvif_service = dependencies_.protocol.onvif_service;
-    system_dependencies.media_service = dependencies_.media.media_service;
-    system_dependencies.ai_service = dependencies_.media.ai_service;
-    system_dependencies.snapshot_service = dependencies_.media.snapshot_service;
-    system_dependencies.webrtc_service = dependencies_.media.webrtc_service;
-    system_dependencies.stream_hub_service = dependencies_.media.stream_hub_service;
-    handlers_.push_back(CreateSystemHttpHandler(this, system_dependencies));
-
-    MediaHandlerDependencies media_dependencies;
-    media_dependencies.config_service = dependencies_.config.config_service;
-    media_dependencies.media_service = dependencies_.media.media_service;
-    media_dependencies.ai_service = dependencies_.media.ai_service;
-    media_dependencies.snapshot_service = dependencies_.media.snapshot_service;
-    media_dependencies.webrtc_service = dependencies_.media.webrtc_service;
-    media_dependencies.stream_hub_service = dependencies_.media.stream_hub_service;
-    handlers_.push_back(CreateMediaHttpHandler(this, media_dependencies));
-    handlers_.push_back(CreateAiHttpHandler(this, media_dependencies));
-    handlers_.push_back(CreateSnapshotHttpHandler(this, media_dependencies));
-    handlers_.push_back(CreateHlsHttpHandler(this, media_dependencies));
-    handlers_.push_back(CreateWebrtcHttpHandler(this, media_dependencies));
-    streaming_handler_ = CreateStreamingHttpHandler(this, media_dependencies);
+    handlers_.push_back(CreateMediaHttpHandler(
+        this, config_service, media_service, stream_browser_source,
+        webrtc_service));
+    handlers_.push_back(CreateAiHttpHandler(this, config_service, ai_service));
+    handlers_.push_back(CreateSnapshotHttpHandler(
+        this, media_service, snapshot_service));
+    handlers_.push_back(CreateHlsHttpHandler(
+        this, media_service, stream_browser_source));
+    handlers_.push_back(CreateWebrtcHttpHandler(
+        this, media_service, webrtc_service));
+    handlers_.push_back(CreateEventStreamHttpHandler(this));
+    streaming_handler_ = CreateStreamingHttpHandler(
+        this, server_.get(), media_service, stream_browser_source,
+        stream_flv_source);
 
     for (const std::unique_ptr<IHttpHandler> &handler : handlers_) {
         if (handler != nullptr) {
@@ -555,23 +238,27 @@ void HttpServiceImpl::RegisterHandlers() {
 }
 
 void HttpServiceImpl::IncrementParseFailures() {
-    std::lock_guard<std::mutex> guard(mutex_);
-    ++stats_.parse_failures;
+    if (server_ != nullptr) {
+        server_->IncrementParseFailures();
+    }
 }
 
 void HttpServiceImpl::IncrementNotFound() {
-    std::lock_guard<std::mutex> guard(mutex_);
-    ++stats_.not_found;
+    if (server_ != nullptr) {
+        server_->IncrementNotFound();
+    }
 }
 
 void HttpServiceImpl::IncrementAuthFailures() {
-    std::lock_guard<std::mutex> guard(mutex_);
-    ++stats_.auth_failures;
+    if (server_ != nullptr) {
+        server_->IncrementAuthFailures();
+    }
 }
 
 void HttpServiceImpl::IncrementPermissionDenied() {
-    std::lock_guard<std::mutex> guard(mutex_);
-    ++stats_.permission_denied;
+    if (server_ != nullptr) {
+        server_->IncrementPermissionDenied();
+    }
 }
 
 live_stream::RequestContext HttpServiceImpl::MakeContext(
@@ -598,8 +285,11 @@ AuthPrincipal HttpServiceImpl::Authenticate(const HttpRequest &request) {
         IncrementAuthFailures();
         return AuthPrincipal{};
     }
-    TokenValidationResult validated =
-        dependencies_.security.auth_service->ValidateToken(token);
+    if (auth_service_ == nullptr) {
+        IncrementAuthFailures();
+        return AuthPrincipal{};
+    }
+    TokenValidationResult validated = auth_service_->ValidateToken(token);
     if (validated.principal.user_name.empty()) {
         IncrementAuthFailures();
         return AuthPrincipal{};
@@ -615,8 +305,8 @@ bool HttpServiceImpl::RequirePermission(const HttpRequest &request,
     if (authenticated.user_name.empty()) {
         return false;
     }
-    if (!dependencies_.security.auth_service->CheckPermission(authenticated, permission,
-                                                              target)) {
+    if (auth_service_ == nullptr ||
+        !auth_service_->CheckPermission(authenticated, permission, target)) {
         IncrementPermissionDenied();
         RecordOperation(request, authenticated,
                         OperationAction::kPermissionDenied, target,
@@ -633,7 +323,7 @@ void HttpServiceImpl::RecordOperation(
     const HttpRequest &request, const AuthPrincipal &principal,
     OperationAction action, const std::string &target, OperationResult result,
     const std::string &reason) {
-    if (dependencies_.security.logger_service == nullptr) {
+    if (logger_service_ == nullptr) {
         return;
     }
     live_stream::RequestContext context = MakeContext(request, &principal);
@@ -648,30 +338,7 @@ void HttpServiceImpl::RecordOperation(
     record.target = target;
     record.result = result;
     record.reason = reason;
-    (void)dependencies_.security.logger_service->RecordOperation(record);
-}
-
-bool HttpServiceImpl::BeginFlvSession(
-    ConnectionId connection_id, const std::shared_ptr<IStreamFlvSink> &sink) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    return connections_.BeginFlvStream(connection_id, sink);
-}
-
-bool HttpServiceImpl::AttachFlvSessionClient(ConnectionId connection_id,
-                                             StreamFlvClientId client_id) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    return connections_.AttachFlvClient(connection_id, client_id);
-}
-
-void HttpServiceImpl::CloseConnection(ConnectionId connection_id) {
-    NetEngine *net_engine = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = dependencies_.core.net_engine;
-    }
-    if (net_engine != nullptr) {
-        (void)net_engine->Close(connection_id);
-    }
+    (void)logger_service_->RecordOperation(record);
 }
 
 HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
@@ -697,218 +364,35 @@ HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
     return result.response;
 }
 
-void HttpServiceImpl::OnConnection(ConnectionId connection_id, NetAddress peer) {
-    std::string peer_ip = peer.ip;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        connections_.Add(connection_id, std::move(peer.ip));
-        ++stats_.active_connections;
-    }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
-                   static_cast<unsigned long long>(connection_id),
-                   peer_ip.c_str());
-    ArmConnectionTimer(connection_id, options_.request_timeout_ms);
-}
-
-void HttpServiceImpl::OnClose(ConnectionId connection_id) {
-    ClosedHttpConnectionInfo closed;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        closed = connections_.Remove(connection_id);
-        if (!closed.found) {
-            return;
-        }
-        if (stats_.active_connections > 0) {
-            --stats_.active_connections;
-        }
-    }
-    DetachFlvClient(closed.flv_client_id);
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP close conn=%llu streaming=%d flv=%llu",
-                   static_cast<unsigned long long>(connection_id),
-                   closed.was_streaming ? 1 : 0,
-                   static_cast<unsigned long long>(closed.flv_client_id));
-}
-
-void HttpServiceImpl::OnMessage(ConnectionId connection_id, const uint8_t *data,
-                                uint32_t size) {
-    if (data == nullptr) {
-        return;
-    }
-    HttpConnectionParseResult parsed;
-    std::vector<HttpConnectionRequestLog> request_logs;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.AppendRequestBytes(connection_id, data, size)) {
-            return;
-        }
-        parsed = connections_.ParsePendingRequests(
-            connection_id, MakeConnectionParseOptions(), &request_logs);
-    }
-    LogRequests(request_logs);
-
-    if (!parsed.success) {
-        IncrementParseFailures();
-        SendResponse(connection_id, ParseFailureResponse(parsed.failure),
-                     true);
-        return;
-    }
-    ArmConnectionTimer(connection_id, options_.request_timeout_ms);
-    TryPostNextRequest(connection_id);
-}
-
-void HttpServiceImpl::TryPostNextRequest(ConnectionId connection_id) {
-    PendingHttpRequest pending;
-    infra::Executor *task_executor = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.TakeNextRequest(connection_id, &pending)) {
-            return;
-        }
-        task_executor = ExecutorForRequestLocked(pending.request);
-    }
-    if (task_executor == nullptr ||
-        task_executor->Post([this, connection_id,
-                             pending = std::move(pending)]() mutable {
-            if (TryHandleStreamingRequest(connection_id, pending.request)) {
-                return;
-            }
-            HttpResponse handled = HandleRequest(pending.request);
-            SendResponse(connection_id, handled, pending.close_after_response);
-        }) == false) {
-        SendResponse(connection_id, StatusResponse(503, "Service Unavailable"),
-                     true);
-    }
-}
-
-void HttpServiceImpl::SendResponseAndClose(ConnectionId connection_id,
-                                           const HttpResponse &response) {
-    SendResponse(connection_id, response, true);
-}
-
-void HttpServiceImpl::SendResponse(ConnectionId connection_id,
-                                   const HttpResponse &response,
-                                   bool close_after_response) {
-    NetEngine *net_engine = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = dependencies_.core.net_engine;
-    }
-    if (net_engine == nullptr) {
-        return;
-    }
-    HttpResponse response_copy = response;
-    response_copy.headers["Connection"] =
-        close_after_response ? "close" : "keep-alive";
-    const std::string serialized = SerializeResponse(response_copy);
-    if (!net_engine->Send(connection_id,
-                          reinterpret_cast<const uint8_t *>(serialized.data()),
-                          serialized.size())) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP response send failed conn=%llu status=%d "
-                        "body=%zu serialized=%zu close=%d",
-                        static_cast<unsigned long long>(connection_id),
-                        response.status_code, response.body.size(),
-                        serialized.size(), close_after_response ? 1 : 0);
-        (void)net_engine->Close(connection_id);
-        return;
-    }
-    if (close_after_response) {
-        (void)net_engine->CloseAfterSend(connection_id);
-        return;
-    }
-    CompleteKeepAliveRequest(connection_id);
-}
-
-void HttpServiceImpl::CompleteKeepAliveRequest(ConnectionId connection_id) {
-    HttpConnectionParseResult parsed;
-    std::vector<HttpConnectionRequestLog> request_logs;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        parsed = connections_.CompleteKeepAliveRequest(
-            connection_id, MakeConnectionParseOptions(), &request_logs);
-    }
-    if (!parsed.found) {
-        return;
-    }
-    LogRequests(request_logs);
-    if (!parsed.success) {
-        IncrementParseFailures();
-        SendResponse(connection_id, ParseFailureResponse(parsed.failure),
-                     true);
-        return;
-    }
-    if (parsed.has_pending) {
-        TryPostNextRequest(connection_id);
-        return;
-    }
-    ArmConnectionTimer(connection_id, options_.connection_idle_timeout_ms);
-}
-
-HttpConnectionParseOptions HttpServiceImpl::MakeConnectionParseOptions() const {
-    HttpConnectionParseOptions options;
-    options.max_request_header_bytes = options_.max_request_header_bytes;
-    options.max_request_body_bytes = options_.max_request_body_bytes;
-    options.max_pipelined_requests = options_.max_pipelined_requests;
-    options.max_requests_per_connection =
-        options_.max_requests_per_connection;
-    options.enable_keep_alive = options_.enable_keep_alive;
-    return options;
-}
-
-HttpResponse HttpServiceImpl::ParseFailureResponse(
-    HttpConnectionParseFailure failure) {
-    if (failure == HttpConnectionParseFailure::kPayloadTooLarge) {
-        return StatusResponse(413, "Payload Too Large");
-    }
-    return StatusResponse(400, "Bad Request");
-}
-
-void HttpServiceImpl::LogRequests(
-    const std::vector<HttpConnectionRequestLog> &request_logs) {
-    for (const HttpConnectionRequestLog &log : request_logs) {
-        INFRA_LOG_INFO(kHttpModuleName,
-                       "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
-                       static_cast<unsigned long long>(log.connection_id),
-                       log.client_ip.c_str(), HttpMethodName(log.method),
-                       log.path.c_str(), log.query_size, log.body_size);
-    }
-}
-
-void HttpServiceImpl::ArmConnectionTimer(ConnectionId connection_id,
-                                         uint32_t delay_ms) {
-    NetEngine *net_engine = nullptr;
-    uint64_t generation = 0;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.ArmTimer(connection_id, &generation)) {
-            return;
-        }
-        net_engine = dependencies_.core.net_engine;
-    }
-    if (net_engine == nullptr) {
-        return;
-    }
-    (void)net_engine->RunOnIoAfter(
-        delay_ms, [this, connection_id, generation]() {
-            NetEngine *engine = nullptr;
-            bool should_close = false;
-            {
-                std::lock_guard<std::mutex> guard(mutex_);
-                should_close =
-                    connections_.IsTimerCurrent(connection_id, generation);
-                engine = dependencies_.core.net_engine;
-            }
-            if (should_close && engine != nullptr) {
-                (void)engine->Close(connection_id);
-            }
-        });
-}
-
 std::unique_ptr<IHttpService>
 CreateHttpService(const HttpServiceOptions &options,
                   const HttpServiceDependencies &dependencies) {
     return std::unique_ptr<IHttpService>(
         new HttpServiceImpl(options, dependencies));
+}
+
+std::unique_ptr<IHttpService> CreateHttpConsoleService(
+    const HttpServiceOptions &options, NetEngine *net_engine,
+    IAuthService *auth_service, ILoggerService *logger_service,
+    IConfigService *config_service, INetworkService *network_service,
+    ITimeService *time_service, IAlarmService *alarm_service,
+    IUpgradeService *upgrade_service, ISystemService *system_service,
+    IRtspService *rtsp_service, IOnvifService *onvif_service,
+    IAiView *ai_service, IMediaService *media_service,
+    ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
+    IStreamBrowserSource *stream_browser_source,
+    IStreamFlvSource *stream_flv_source) {
+    HttpServiceDependencies dependencies;
+    dependencies.net_engine = net_engine;
+    std::unique_ptr<HttpServiceImpl> service(
+        new HttpServiceImpl(options, dependencies));
+    service->ConfigureConsoleHandlers(
+        auth_service, logger_service, config_service, network_service,
+        time_service, alarm_service, upgrade_service, system_service,
+        rtsp_service, onvif_service, ai_service, media_service,
+        snapshot_service, webrtc_service, stream_browser_source,
+        stream_flv_source);
+    return std::unique_ptr<IHttpService>(service.release());
 }
 
 }  // namespace live_stream

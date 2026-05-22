@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_HANDLER_UTILS_H_
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_HANDLER_UTILS_H_
 
-#include "http_handler_context.h"
+#include "http_access.h"
 #include "http_service.h"
 #include "live_stream/config_json.h"
 #include "media/stream_types.h"
@@ -20,9 +20,9 @@ constexpr const char *kHttpModuleName = "http_service";
 HttpResponse JsonResponse(int status_code, const ConfigJson &value);
 HttpResponse StatusResponse(int status_code, const std::string &reason);
 HttpResponse OkResponse();
-bool RequireAuth(HttpHandlerContext *context, const HttpRequest &request,
+bool RequireAuth(HttpAccess *access, const HttpRequest &request,
                  AuthPrincipal *principal);
-bool RequirePermissionOrForbidden(HttpHandlerContext *context,
+bool RequirePermissionOrForbidden(HttpAccess *access,
                                   const HttpRequest &request,
                                   AuthPermission permission,
                                   const std::string &target,
