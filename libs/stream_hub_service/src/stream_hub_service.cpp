@@ -256,6 +256,7 @@ public:
         if (stream == nullptr) {
             return StreamHlsPlaylist{};
         }
+        stream->hls_requested = true;
         return hub_state::BuildHlsPlaylist(*stream,
                                            options_.hls_segment_duration_ms);
     }
@@ -267,6 +268,7 @@ public:
         if (stream == nullptr) {
             return StreamSegment{};
         }
+        stream->hls_requested = true;
         return hub_state::FindHlsSegment(*stream, sequence);
     }
 
@@ -518,9 +520,10 @@ private:
             const bool was_hls_ready = hub_state::IsHlsStreamReady(*stream);
             const bool was_flv_ready = hub_state::IsFlvStreamReady(*stream);
 
-            const hub_state::PackagedFrameResult packaged_frame =
+            hub_state::PackagedFrameResult packaged_frame =
                 hub_state::AppendFrameToStream(
-                    stream, frame, payload, options_.hls_segment_duration_ms,
+                    stream, frame, payload, stream->hls_requested,
+                    options_.hls_segment_duration_ms,
                     options_.hls_playlist_depth);
             if (!packaged_frame.accepted) {
                 return;
@@ -542,8 +545,8 @@ private:
             } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
-            sequence_header_tag = packaged_frame.sequence_header_tag;
-            flv_tag = packaged_frame.flv_tag;
+            sequence_header_tag = std::move(packaged_frame.sequence_header_tag);
+            flv_tag = std::move(packaged_frame.flv_tag);
             const bool has_sequence_header =
                 hub_state::HasFlvSequenceHeader(*stream);
             clients = flv_clients_.CollectWrites(

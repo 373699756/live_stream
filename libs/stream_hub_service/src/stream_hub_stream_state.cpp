@@ -107,7 +107,8 @@ void UpdateFrameTiming(StreamContext *stream, const EncodedFrame &frame) {
 
 std::string BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
                              const ParsedFramePayload &payload,
-                             bool *keyframe, std::string *access_unit) {
+                             bool package_hls, bool *keyframe,
+                             std::string *access_unit) {
     bool has_sps = false;
     bool has_pps = false;
     stream_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
@@ -121,15 +122,18 @@ std::string BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
     *keyframe = *keyframe || stream_codec::HasH264KeyFrame(payload.h264_units);
     const bool frame_has_parameter_sets =
         stream_codec::HasH264ParameterSets(payload.h264_units);
-    *access_unit = stream_codec::BuildH264AnnexBAccessUnit(
-        payload.h264_units, stream->sps, stream->pps,
-        *keyframe && !frame_has_parameter_sets);
+    if (package_hls && access_unit != nullptr) {
+        *access_unit = stream_codec::BuildH264AnnexBAccessUnit(
+            payload.h264_units, stream->sps, stream->pps,
+            *keyframe && !frame_has_parameter_sets);
+    }
     return stream_codec::BuildH264AvccSample(payload.h264_units);
 }
 
 std::string BuildH265Outputs(StreamContext *stream, const EncodedFrame &frame,
                              const ParsedFramePayload &payload,
-                             bool *keyframe, std::string *access_unit) {
+                             bool package_hls, bool *keyframe,
+                             std::string *access_unit) {
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
@@ -147,9 +151,11 @@ std::string BuildH265Outputs(StreamContext *stream, const EncodedFrame &frame,
     *keyframe = *keyframe || stream_codec::HasH265KeyFrame(payload.h265_units);
     const bool frame_has_parameter_sets =
         stream_codec::HasH265ParameterSets(payload.h265_units);
-    *access_unit = stream_codec::BuildH265AnnexBAccessUnit(
-        payload.h265_units, stream->vps, stream->sps, stream->pps,
-        *keyframe && !frame_has_parameter_sets);
+    if (package_hls && access_unit != nullptr) {
+        *access_unit = stream_codec::BuildH265AnnexBAccessUnit(
+            payload.h265_units, stream->vps, stream->sps, stream->pps,
+            *keyframe && !frame_has_parameter_sets);
+    }
     return stream_codec::BuildH265LengthPrefixedSample(payload.h265_units);
 }
 
@@ -294,6 +300,7 @@ void ResetStream(StreamContext *stream, VideoCodec codec) {
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,
+                                        bool package_hls,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth) {
     PackagedFrameResult result;
@@ -310,25 +317,27 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     UpdateFrameTiming(stream, frame);
 
-    // 编码器输出是 Annex-B NAL 起始码格式。HLS/TS 继续使用 Annex-B access
-    // unit；FLV 需要写 AVCDecoderConfigurationRecord/HVCC 和长度前缀 sample。
+    // FLV always needs a length-prefixed sample; HLS only builds the Annex-B
+    // access unit after an HLS client has requested this stream.
     bool keyframe = stream_codec::IsKeyFrame(frame.frame_type);
     std::string access_unit;
     const std::string length_prefixed_sample =
         frame.codec == VideoCodec::kH265
-            ? BuildH265Outputs(stream, frame, payload, &keyframe, &access_unit)
-            : BuildH264Outputs(stream, frame, payload, &keyframe, &access_unit);
+            ? BuildH265Outputs(stream, frame, payload, package_hls, &keyframe,
+                               &access_unit)
+            : BuildH264Outputs(stream, frame, payload, package_hls, &keyframe,
+                               &access_unit);
 
-    if (keyframe && stream->current_segment.started &&
+    if (package_hls && keyframe && stream->current_segment.started &&
         frame.pts_us - stream->current_segment.start_pts_us >=
             static_cast<int64_t>(hls_segment_duration_ms) * 1000) {
         result.hls_segment_created =
             FinalizeCurrentSegment(stream, hls_playlist_depth);
     }
-    if (keyframe && !stream->current_segment.started) {
+    if (package_hls && keyframe && !stream->current_segment.started) {
         StartSegment(stream, frame.pts_us);
     }
-    if (stream->current_segment.started) {
+    if (package_hls && stream->current_segment.started) {
         stream_mux::AppendVideoAccessUnitToTsSegment(
             frame.codec, access_unit, frame.pts_us, frame.dts_us,
             &stream->ts_muxer_state, &stream->current_segment.body);

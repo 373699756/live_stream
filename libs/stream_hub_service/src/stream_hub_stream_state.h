@@ -35,6 +35,7 @@ struct StreamContext {
     std::string last_keyframe_tag;
     std::deque<StreamSegment> segments;
     HlsSegmentState current_segment;
+    mutable bool hls_requested = false;
     uint64_t next_segment_sequence = 1;
     uint64_t config_generation = 0;
     stream_mux::TsMuxerState ts_muxer_state;
@@ -78,6 +79,7 @@ void ResetStream(StreamContext *stream, VideoCodec codec);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,
+                                        bool package_hls,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth);
 
