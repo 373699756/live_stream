@@ -9,6 +9,7 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_ROOT="${ROOT_DIR}/reports/quality"
 REPORT_DIR="${REPORT_ROOT}/${TIMESTAMP}"
 SUMMARY_FILE="${REPORT_DIR}/summary.md"
+FINDINGS_FILE="${REPORT_DIR}/findings.md"
 
 if [[ "${MODE}" != "quick" && "${MODE}" != "full" ]]; then
   echo "Usage: $0 [quick|full]" >&2
@@ -19,6 +20,7 @@ mkdir -p "${REPORT_DIR}"
 
 declare -a FAILED_STEPS=()
 declare -a SKIPPED_STEPS=()
+declare -a WARNING_STEPS=()
 
 Log() {
   printf '[quality-scan] %s\n' "$*"
@@ -34,6 +36,10 @@ RecordFailure() {
 
 RecordSkipped() {
   SKIPPED_STEPS+=("$1")
+}
+
+RecordWarning() {
+  WARNING_STEPS+=("$1")
 }
 
 RunStep() {
@@ -69,6 +75,33 @@ RunOptionalStep() {
   fi
 
   RunStep "${name}" "${log_file}" "$@"
+}
+
+RunWarningStep() {
+  local tool="$1"
+  local name="$2"
+  local log_file="$3"
+  shift 3
+
+  if ! HaveTool "${tool}"; then
+    Log "skipping ${name}: missing ${tool}"
+    RecordSkipped "${name}: missing ${tool}"
+    return 0
+  fi
+
+  Log "running ${name}"
+  {
+    printf '$'
+    printf ' %q' "$@"
+    printf '\n\n'
+    "$@"
+  } >"${REPORT_DIR}/${log_file}" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "${name} finished with warning exit code ${status}"
+    RecordWarning "${name}: exit code ${status}"
+  fi
 }
 
 RunRgStep() {
@@ -148,12 +181,199 @@ WriteSummary() {
         printf '  - %s\n' "${step}"
       done
     fi
+    if [[ ${#WARNING_STEPS[@]} -gt 0 ]]; then
+      printf '%s\n' '- Warning steps:'
+      for step in "${WARNING_STEPS[@]}"; do
+        printf '  - %s\n' "${step}"
+      done
+    fi
+    printf '\n'
+
+    printf '## Start Here\n\n'
+    printf '%s\n' "- Review \`findings.md\` first. Raw tool logs are only supporting evidence."
     printf '\n'
 
     printf '## Logs\n\n'
     find "${REPORT_DIR}" -maxdepth 1 -type f ! -name 'summary.md' \
       -printf '- `%f`\n' | sort
   } >"${SUMMARY_FILE}"
+}
+
+AppendFirstMatches() {
+  local title="$1"
+  local source_file="$2"
+  local pattern="$3"
+  local limit="$4"
+
+  printf '## %s\n\n' "${title}"
+  if [[ ! -f "${source_file}" ]]; then
+    printf '_No log file generated._\n\n'
+    return 0
+  fi
+
+  local matches
+  matches="$(awk -v pat="${pattern}" -v limit="${limit}" \
+    '$0 ~ pat { print; count++; if (count >= limit) exit }' \
+    "${source_file}" || true)"
+  if [[ -z "${matches}" ]]; then
+    printf '_No findings in this category._\n\n'
+    return 0
+  fi
+
+  printf '```text\n'
+  printf '%s\n' "${matches}"
+  printf '```\n\n'
+}
+
+AppendTopFiles() {
+  local title="$1"
+  local source_file="$2"
+  local pattern="$3"
+  local limit="$4"
+
+  printf '## %s\n\n' "${title}"
+  if [[ ! -f "${source_file}" ]]; then
+    printf '_No log file generated._\n\n'
+    return 0
+  fi
+
+  local matches
+  matches="$(awk -F: -v pat="${pattern}" '$0 ~ pat {print $1}' "${source_file}" \
+    | sort \
+    | uniq -c \
+    | sort -nr \
+    | head -n "${limit}" || true)"
+  if [[ -z "${matches}" ]]; then
+    printf '_No files in this category._\n\n'
+    return 0
+  fi
+
+  printf '```text\n'
+  printf '%s\n' "${matches}"
+  printf '```\n\n'
+}
+
+CountMatches() {
+  local source_file="$1"
+  local pattern="$2"
+
+  if [[ ! -f "${source_file}" ]]; then
+    printf '0'
+    return 0
+  fi
+
+  awk -v pat="${pattern}" '$0 ~ pat {count++} END {print count + 0}' "${source_file}"
+}
+
+StepLogFile() {
+  case "$1" in
+    make)
+      printf 'make.log'
+      ;;
+    "www build")
+      printf 'www-build.log'
+      ;;
+    cppcheck)
+      printf 'cppcheck.log'
+      ;;
+    "compile database")
+      printf 'bear.log'
+      ;;
+    clang-tidy)
+      printf 'clang-tidy.log'
+      ;;
+    *)
+      printf 'summary.md'
+      ;;
+  esac
+}
+
+WriteFindings() {
+  local cppcheck_log="${REPORT_DIR}/cppcheck.log"
+  local keyword_log="${REPORT_DIR}/keyword-scan.log"
+  local hot_path_log="${REPORT_DIR}/hot-path-log-scan.log"
+  local clang_tidy_log="${REPORT_DIR}/clang-tidy.log"
+  local make_log="${REPORT_DIR}/make.log"
+
+  local cppcheck_count
+  local cppcheck_error_count
+  local keyword_count
+  local hot_path_count
+  local clang_tidy_count
+  cppcheck_count="$(CountMatches "${cppcheck_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning|style|performance|portability):')"
+  cppcheck_error_count="$(CountMatches "${cppcheck_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: error:')"
+  keyword_count="$(CountMatches "${keyword_log}" '^(app|libs|configs|www)/.*:')"
+  hot_path_count="$(CountMatches "${hot_path_log}" '^(app|libs)/.*:')"
+  clang_tidy_count="$(CountMatches "${clang_tidy_log}" '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):')"
+
+  {
+    printf '# Quality Findings\n\n'
+    printf '这份文件是扫描入口，只列需要人工判断或优化的点；完整输出见同目录原始日志。\n\n'
+
+    printf '## Counts\n\n'
+    printf '%s\n' "- cppcheck diagnostics: ${cppcheck_count}"
+    printf '%s\n' "- cppcheck errors: ${cppcheck_error_count}"
+    printf '%s\n' "- keyword risk hits: ${keyword_count}"
+    printf '%s\n' "- hot-path/logging hits: ${hot_path_count}"
+    printf '%s\n' "- clang-tidy diagnostics: ${clang_tidy_count}"
+    printf '\n'
+
+    printf '## Must Check First\n\n'
+    if [[ ${#FAILED_STEPS[@]} -eq 0 ]]; then
+      printf '%s\n' '- No required step failed.'
+    else
+      for step in "${FAILED_STEPS[@]}"; do
+        printf '%s\n' "- Required step failed: \`${step}\`; inspect \`$(StepLogFile "${step}")\`."
+      done
+    fi
+    if [[ ${#WARNING_STEPS[@]} -gt 0 ]]; then
+      for step in "${WARNING_STEPS[@]}"; do
+        printf '%s\n' "- Warning step: \`${step}\`; inspect related log before trusting that tool result."
+      done
+    fi
+    if [[ ${#SKIPPED_STEPS[@]} -gt 0 ]]; then
+      for step in "${SKIPPED_STEPS[@]}"; do
+        printf '%s\n' "- Skipped: \`${step}\`."
+      done
+    fi
+    printf '\n'
+
+    AppendFirstMatches "Must Fix: Cppcheck Errors" "${cppcheck_log}" \
+      '^(app|libs)/.*:[0-9]+:[0-9]+: error:' 40
+
+    AppendFirstMatches "Review: Cppcheck Warnings" "${cppcheck_log}" \
+      '^(app|libs)/.*:[0-9]+:[0-9]+: (warning|style|performance|portability):' 80
+
+    AppendFirstMatches "Review: Clang-Tidy Diagnostics" "${clang_tidy_log}" \
+      '^(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):' 80
+
+    AppendTopFiles "Optimization Candidates: Files With Most Keyword Risk Hits" "${keyword_log}" \
+      '^(app|libs|configs|www)/.*:' 20
+
+    AppendFirstMatches "Optimization Candidates: Keyword Risk Hits" "${keyword_log}" \
+      '^(app|libs|configs|www)/.*:' 80
+
+    AppendTopFiles "Optimization Candidates: Files With Most Hot-Path Or Logging Hits" "${hot_path_log}" \
+      '^(app|libs)/.*:' 20
+
+    AppendFirstMatches "Optimization Candidates: Hot-Path Or Logging Hits" "${hot_path_log}" \
+      '^(app|libs)/.*:' 80
+
+    printf '## Build Failure Tail\n\n'
+    if [[ -f "${make_log}" ]] && grep -qE '(^|[[:space:]])(error:|Error [0-9]+|Bad system call|undefined reference|No such file)' "${make_log}"; then
+      printf '```text\n'
+      grep -E '(^|[[:space:]])(error:|Error [0-9]+|Bad system call|undefined reference|No such file)' "${make_log}" | tail -n 40
+      printf '\n```\n\n'
+    else
+      printf '_No build failure pattern detected._\n\n'
+    fi
+
+    printf '## How To Use This\n\n'
+    printf '1. 先处理 `Must Check First` 中的失败步骤。\n'
+    printf '2. 再看 `Cppcheck Diagnostics`，这些通常比关键词命中更可靠。\n'
+    printf '3. `Keyword Risk Hits` 和 `Hot-Path Or Logging Hits` 是候选优化点，不是自动判定的 bug。\n'
+    printf '4. 需要上下文时再打开同目录的原始 `.log` 文件。\n'
+  } >"${FINDINGS_FILE}"
 }
 
 cd "${ROOT_DIR}" || exit 1
@@ -194,11 +414,15 @@ else
 fi
 
 RunRgStep "keyword scan" "keyword-scan.log" \
-  -n "TODO|FIXME|XXX|HACK|sleep|usleep|malloc|free|new |delete |memcpy|strcpy|sprintf|printf|pthread|mutex|lock|detach" \
-  app libs configs www
+  -n --glob '!**/tests/**' --glob '!www/package-lock.json' \
+  --glob '!www/public/vendor/**' \
+  "TODO|FIXME|XXX|HACK|sleep_for|usleep|malloc|free|new |delete |memcpy|strcpy|sprintf|pthread|recursive_mutex|detach" \
+  app libs configs www/src
 
 RunRgStep "hot path log scan" "hot-path-log-scan.log" \
-  -n "LOG|Log|printf|std::cout|PublishFrame|OnFrame|Encode|Write|Send|Push" app libs
+  -n --glob '!**/tests/**' \
+  "PublishFrame|OnFrame|EncodedFrame|Encode|WriteFrame|SendFrame|Send\\(|Push|memcpy|malloc|free|usleep|sleep_for" \
+  app libs
 
 if HaveTool cloc; then
   RunStep "cloc" "code-size-cloc.log" cloc app libs configs www --exclude-dir=dist,node_modules
@@ -232,12 +456,12 @@ else
 fi
 
 if [[ "${MODE}" == "full" ]]; then
-  RunOptionalStep bear "compile database" "bear.log" bear -- make -j2
+  RunOptionalStep bear "compile database" "bear.log" bear make -j2
 
   if HaveTool scan-build-10; then
-    RunStep "scan-build-10" "scan-build.log" scan-build-10 make -j2
+    RunWarningStep scan-build-10 "scan-build-10" "scan-build.log" scan-build-10 make -j2
   elif HaveTool scan-build; then
-    RunStep "scan-build" "scan-build.log" scan-build make -j2
+    RunWarningStep scan-build "scan-build" "scan-build.log" scan-build make -j2
   else
     RecordSkipped "scan-build: missing scan-build-10 or scan-build"
   fi
@@ -265,8 +489,10 @@ if [[ "${MODE}" == "full" ]]; then
   fi
 fi
 
+WriteFindings
 WriteSummary
 
+Log "findings: ${FINDINGS_FILE}"
 Log "summary: ${SUMMARY_FILE}"
 
 if [[ ${#FAILED_STEPS[@]} -gt 0 ]]; then

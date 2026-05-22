@@ -107,7 +107,8 @@ exceptions 和 RTTI，不能照搬桌面 C++ 建议。
 
 `scan-build-10` 已随 `clang-tools-10` 可用，可作为 `clang-tidy` 外的补充静态
 分析工具。当前环境没有无后缀的 `scan-build` 命令，命令示例应使用
-`scan-build-10 make -j2`。
+`scan-build-10 make -j2`。它会用宿主 clang analyzer 包装编译命令，遇到交叉
+编译专用参数时可能失败；脚本会把这类结果记录为 warning，不阻断整次扫描。
 
 `cppcheck` 用于补充扫描空指针、越界、未初始化、资源泄漏和可移植性问题。它对
 Makefile 型嵌入式工程比较实用，但误报需要人工分级。
@@ -144,8 +145,21 @@ scripts/quality_scan.sh full
 
 默认 `quick` 模式会运行构建、前端构建、关键词扫描、`cppcheck`、代码规模统计
 和产物信息检查。`full` 模式会额外运行 `bear`、`scan-build-10` 和
-`clang-tidy`。结果写入 `reports/quality/<timestamp>/`，其中 `summary.md`
-是入口报告。缺失的可选工具会记录为 skipped，不会直接导致扫描失败。
+`clang-tidy`。结果写入 `reports/quality/<timestamp>/`，其中 `findings.md`
+是人工分析入口，`summary.md` 只记录步骤状态。缺失的可选工具会记录为 skipped；
+`scan-build-10` 的交叉编译兼容性问题会记录为 warning，不会直接导致扫描失败。
+
+`findings.md` 会从原始日志中提取：
+
+- 必须先看的失败步骤和对应日志。
+- 必须优先处理的 `cppcheck` error。
+- 需要人工 review 的 `cppcheck` warning 和 `clang-tidy` 诊断。
+- 命中风险关键词最多的文件。
+- 热路径、发送、编码、日志相关候选优化点。
+- 构建失败尾部摘要。
+
+注意：关键词和热路径命中只是候选优化点，不等同于 bug。真正的修复优先级应先看
+`Must Check First` 和 `Must Fix`。
 
 快速基线：
 
@@ -157,7 +171,7 @@ cd www && npm run build
 生成编译数据库：
 
 ```sh
-bear -- make -j2
+bear make -j2
 ```
 
 补充静态分析：
@@ -247,7 +261,7 @@ nm -S --size-sort build/bin/live_stream
 1. 先跑 `make -j2` 和 `npm run build`，确认基线。
 2. 用 `rg` 做关键词快扫，记录高风险文件。
 3. 用 `cloc` 或 `tokei` 看模块规模，把大文件和高 churn 文件放前面。
-4. 用 `bear -- make -j2` 生成 `compile_commands.json`。
+4. 用 `bear make -j2` 生成 `compile_commands.json`。
 5. 对高风险模块跑 `clang-tidy` 和 `cppcheck`，先人工分级，不直接大面积改。
 6. 对目标产物跑 `size`、`readelf`、`nm`，建立体积和符号基线。
 7. 上板后用 `strace`、`gdbserver`、`perf` 做运行期验证。
