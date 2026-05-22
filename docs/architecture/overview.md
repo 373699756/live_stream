@@ -1,4 +1,4 @@
-# live_stream Architecture
+# live_stream Architecture Overview
 
 This document describes the current runtime architecture and the intended module boundaries for the IPC live-stream application.
 
@@ -188,7 +188,7 @@ When backend API fields change, update both:
 
 - Backend handler/DTO code.
 - Frontend TypeScript DTOs in `www/src/api/types.ts`.
-- Contract documentation in `docs/api-config-contract.md`.
+- Contract documentation in `docs/contracts/api-config.md`.
 
 ## Configuration files and runtime paths
 
@@ -204,7 +204,8 @@ When backend API fields change, update both:
 
 The operation log path is not affected by `--config-dir`.
 
-The full configuration and HTTP API contract is documented in `docs/api-config-contract.md`.
+The full configuration and HTTP API contract is documented in
+`docs/contracts/api-config.md`.
 
 ## Dependency direction rules
 
@@ -240,7 +241,7 @@ The following items were previously listed as debt and have been addressed:
   interfaces (`IMediaService`, `IAiView`, `ISnapshotView`,
   `IStreamHubService`) instead of concrete service implementations.
 - **HTTP handler decomposition**: route handlers split into 11 domain files under `libs/http_service/src/handlers/`.
-- **Runtime configuration sources**: paths are configurable via `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; contract documented in `docs/api-config-contract.md`.
+- **Runtime configuration sources**: paths are configurable via `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; contract documented in `docs/contracts/api-config.md`.
 - **Frontend API layer**: `www/src/api/client.ts` is now a thin HTTP layer; domain-specific API functions live in `video.ts`, `image.ts`, `network.ts`, `system.ts`, `stream.ts`; auth state is managed via `AuthContext`.
 
 ## Recommended evolution order

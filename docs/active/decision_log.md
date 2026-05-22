@@ -1,0 +1,12 @@
+# Decision Log
+
+记录固定下来的产品和架构决策，避免 AI 会话重复打开同一个问题。保持短表，不写过程长文。
+
+| Date | Decision | Reason | Impact |
+| --- | --- | --- | --- |
+| 2026-05-21 | AI 会话先读短执行文档，再按需读长设计文档。 | 长文档有价值，但每轮都读会浪费 token 并增加跑偏概率。 | 默认入口是 `AGENTS.md` 和 `docs/active/*`；`docs/architecture/*`、`docs/contracts/*`、`docs/performance/*`、`docs/ai/*` 只定向读取。 |
+| 2026-05-21 | 一轮任务通常只处理一个模块，最多一个相邻接口模块。 | 多模块大任务容易导致重复封装、命名漂移和行为回归。 | 跨模块工作先做接口/状态契约，再做实现。 |
+| 2026-05-21 | 前端直播状态不猜测设备内部状态。 | HLS/FLV/WebRTC ready 已由后端真实链路产生，前端猜测会导致偶现播放卡住。 | Web Console 使用 `browserCodec`、`hlsReady`、`flvReady`、`webrtcReady` 控制预览可用性。 |
+| 2026-05-21 | 精简优先，不为简单顺序逻辑新增抽象。 | 过度使用 Context、State、Manager、Store、helper 会降低可读性。 | 新增抽象前必须说明真实收益；否则使用直线流程。 |
+| 2026-05-21 | 高频日志默认不进入生产路径。 | 帧路径和首帧路径日志会影响实时性并淹没关键问题。 | 只保留错误、启动停止、配置变化和关键状态变化；临时诊断日志任务后删除。 |
+| 2026-05-21 | 普通实现任务不扩写长设计文档。 | 反复追加长文档会降低 AI 使用效率。 | 当前状态写 `docs/active/current_milestone.md`，固定决策写本文件，复盘写 `docs/ai/lessons-learned.md`。 |

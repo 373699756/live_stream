@@ -12,6 +12,23 @@
 - `3rdparty/` 是第三方依赖区域，`build/` 是构建产物区域。除非任务明确要求，
   不要改动这些目录中的内容。
 
+## AI 入口与上下文策略
+
+- 每次任务先读本文件。
+- 普通编码任务再读：
+  - `docs/active/current_milestone.md`
+  - `docs/active/module_contracts.md`
+  - `docs/active/decision_log.md`
+- 如果任务来自明确交接，再读 `docs/active/ai_handoff.md`，完成后更新
+  `docs/active/coder_report.md`。
+- `docs/README.md` 是文档索引。`docs/architecture/*`、`docs/contracts/*`、
+  `docs/performance/*` 和 `docs/ai/*` 是低频参考文档，只在架构、接口、契约、
+  性能、复盘或对应模块问题需要时定向读取。
+- 不要在普通实现任务里扩写长设计文档；当前状态更新放 `docs/active/*`，
+  固定架构决策写入 `docs/active/decision_log.md`。
+- 为控制 token，日常任务默认只读相关模块和相邻接口；全工程扫描只用于明确的
+  架构 review、技术债盘点或用户要求。
+
 ## 常用命令
 
 在仓库根目录：

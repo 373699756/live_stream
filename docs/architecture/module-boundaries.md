@@ -1,4 +1,4 @@
-# Service Boundaries
+# Module Boundaries
 
 This document records the intended responsibilities and dependency boundaries for live_stream service modules.
 
@@ -92,7 +92,7 @@ Should not own:
 
 Payload and naming convention:
 
-- See `docs/event-payloads.md` for event names, payload ownership, publishers,
+- See `docs/contracts/event-payloads.md` for event names, payload ownership, publishers,
   subscribers, and reserved event contracts.
 
 ### `libs/auth_service`
@@ -351,7 +351,7 @@ When adding or changing an API:
 1. Update backend handler and DTO mapping.
 2. Update `www/src/api/types.ts` and client functions.
 3. Update `www/README.md` endpoint list when paths change.
-4. Update `docs/api-config-contract.md` for schema/field ownership.
+4. Update `docs/contracts/api-config.md` for schema/field ownership.
 
 ## Cross-module dependency checklist
 
