@@ -9,19 +9,11 @@
 namespace live_stream {
 namespace {
 
+const char *kSetConfigFailed = "set config failed";
+
 bool IsWrappedConfigPayload(const std::string &name, const ConfigJson &value) {
     return value.is_object() && value.size() == 1 && value.contains(name) &&
            value.at(name).is_object();
-}
-
-std::string FormatConfigError(const ConfigError &error) {
-    if (error.reason.empty()) {
-        return "set config failed";
-    }
-    if (error.field.empty()) {
-        return error.reason;
-    }
-    return error.field + ": " + error.reason;
 }
 
 }  // namespace
@@ -90,15 +82,12 @@ private:
                     400, "Config payload must be the top-level node");
             }
             bool ok = config_service->SetValue(name, config);
-            std::string failure_reason;
-            if (!ok) {
-                failure_reason =
-                    FormatConfigError(config_service->GetLastConfigError(name));
-            }
+            const std::string failure_reason =
+                ok ? std::string() : std::string(kSetConfigFailed);
             access_->RecordOperation(
                 request, principal, OperationAction::kModifyConfig, name,
                 ok ? OperationResult::kSuccess : OperationResult::kFailed,
-                ok ? std::string() : failure_reason);
+                failure_reason);
             if (!ok) {
                 return StatusResponse(400, failure_reason);
             }

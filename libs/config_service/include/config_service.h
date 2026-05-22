@@ -10,7 +10,6 @@
 
 #include "config_json.h"
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -47,8 +46,6 @@ struct ConfigResult {
 };
 
 using ConfigHandler = std::function<ConfigResult(const ConfigJson &value)>;
-using ConfigObserverId = uint64_t;
-using ConfigObserver = std::function<void(const ConfigJson &value)>;
 
 struct ConfigAttachment {
     ConfigHandler validate;
@@ -64,17 +61,12 @@ public:
     virtual bool IsStarted() const = 0;
     virtual bool SetValue(const std::string &name, const ConfigJson &value) = 0;
     virtual ConfigJson GetValue(const std::string &name) = 0;
+    virtual bool SetDefault(const std::string &name) = 0;
     virtual ConfigJson GetDefault(const std::string &name) = 0;
     virtual bool RestoreDefaults() = 0;
-    virtual bool SaveFile() = 0;
     virtual bool AttachConfig(const std::string &name,
                               const ConfigAttachment &attachment) = 0;
     virtual bool DetachConfig(const std::string &name) = 0;
-    virtual ConfigObserverId ObserveConfig(const std::string &name,
-                                           ConfigObserver observer) = 0;
-    virtual bool UnobserveConfig(const std::string &name,
-                                 ConfigObserverId observer_id) = 0;
-    virtual ConfigError GetLastConfigError(const std::string &name) = 0;
 };
 
 std::unique_ptr<IConfigService>
