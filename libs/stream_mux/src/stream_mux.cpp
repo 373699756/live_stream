@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -105,6 +106,13 @@ uint32_t RtpTimestamp(const EncodedFrame &frame) {
     return static_cast<uint32_t>((frame.pts_us * kRtpClockRate) / 1000000);
 }
 
+void FillBytes(char *target, size_t size, uint8_t value) {
+    if (target == nullptr || size == 0) {
+        return;
+    }
+    std::memset(target, value, size);
+}
+
 void AppendFlvTimestamp(std::string *out, uint32_t timestamp_ms) {
     AppendU24(out, timestamp_ms & 0x00ffffffU);
     AppendU8(out, static_cast<uint8_t>((timestamp_ms >> 24) & 0xff));
@@ -165,7 +173,8 @@ std::string BuildPatPacket(uint8_t *continuity_counter) {
         reinterpret_cast<const uint8_t *>(section.data()), section.size());
     AppendU32(&section, crc);
 
-    std::string packet(kTsPacketSize, static_cast<char>(0xff));
+    std::string packet(kTsPacketSize, '\0');
+    FillBytes(&packet[0], packet.size(), 0xff);
     packet[0] = static_cast<char>(0x47);  // TS sync byte.
     packet[1] = static_cast<char>(0x40 | ((kPatPid >> 8) & 0x1f));
     packet[2] = static_cast<char>(kPatPid & 0xff);
@@ -195,7 +204,8 @@ std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
         reinterpret_cast<const uint8_t *>(section.data()), section.size());
     AppendU32(&section, crc);
 
-    std::string packet(kTsPacketSize, static_cast<char>(0xff));
+    std::string packet(kTsPacketSize, '\0');
+    FillBytes(&packet[0], packet.size(), 0xff);
     packet[0] = static_cast<char>(0x47);  // TS sync byte.
     packet[1] = static_cast<char>(0x40 | ((kPmtPid >> 8) & 0x1f));
     packet[2] = static_cast<char>(kPmtPid & 0xff);
@@ -306,8 +316,9 @@ void AppendTsPayload(const std::string &pes_header,
         const size_t adaptation_total = use_adaptation ? 184 - payload_size : 0;
 
         const size_t packet_start = out->size();
-        out->resize(packet_start + kTsPacketSize, static_cast<char>(0xff));
+        out->resize(packet_start + kTsPacketSize);
         char *packet = &(*out)[packet_start];
+        FillBytes(packet, kTsPacketSize, 0xff);
         packet[0] = static_cast<char>(0x47);  // TS sync byte.
         packet[1] = static_cast<char>((first_packet ? 0x40 : 0x00) |
                                       ((kVideoPid >> 8) & 0x1f));
