@@ -39,7 +39,7 @@ stream executor 处理 FLV/HLS/snapshot/WebRTC 实时链路，control executor �
 
 ## Commit
 
-Pending.
+`bb5d7a8 refactor(http): split server core from business handlers`
 
 ## Deviations
 
