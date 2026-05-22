@@ -64,8 +64,6 @@ struct StreamHubServiceStats {
 struct StreamBrowserStatus {
     bool running = false;
     bool browser_codec = false;
-    bool hls_supported = false;
-    bool flv_supported = false;
     bool hls_ready = false;
     bool flv_ready = false;
     VideoCodec codec = VideoCodec::kH264;
@@ -73,6 +71,8 @@ struct StreamBrowserStatus {
     uint32_t flv_sequence_header_size = 0;
     uint32_t flv_last_keyframe_size = 0;
     uint32_t hls_current_segment_size = 0;
+    bool hls_supported = false;
+    bool flv_supported = false;
 };
 
 struct StreamFrameSinkOptions {

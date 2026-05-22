@@ -209,7 +209,7 @@ public:
         IStreamHubService *stream_hub = dependencies_.stream_hub_service;
         const StreamBrowserStatus browser_status =
             stream_hub->GetBrowserStatus(stream_id);
-        if (browser_status.codec != VideoCodec::kH264) {
+        if (!browser_status.flv_supported) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d flv_ready=%d",
