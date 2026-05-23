@@ -2,6 +2,8 @@
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
+#include "infra/clamp.h"
+
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -81,7 +83,7 @@ uint32_t JpegQualityFromConfig(uint32_t quality) {
     if (qfactor == 0) {
         qfactor = 1;
     }
-    return qfactor > 99 ? 99 : qfactor;
+    return infra::Clamp<uint32_t>(qfactor, 1U, 99U);
 }
 
 bool EnsureVpssFrameDepth(VPSS_GRP group, VPSS_CHN channel) {

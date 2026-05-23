@@ -6,6 +6,8 @@
 
 #include "stub_hisi_sdk.h"
 
+#include "infra/clamp.h"
+
 #include <cstring>
 #include <memory>
 #include <string>
@@ -135,6 +137,8 @@ MediaCapabilities StubCapabilities() {
 
 // ── Snapshot stub helpers ─────────────────────────────────────
 constexpr uint32_t kDefaultJpegPoolBlocks = 2;
+constexpr uint64_t kMinJpegBlockSize = 1024ULL * 1024ULL;
+constexpr uint64_t kMaxJpegBlockSize = 16ULL * 1024ULL * 1024ULL;
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     if (alignment == 0) return value;
@@ -143,10 +147,10 @@ uint32_t AlignUp(uint32_t value, uint32_t alignment) {
 }
 
 uint32_t EstimateJpegBlockSize(const SnapshotConfig& config) {
-    uint64_t pixels = static_cast<uint64_t>(config.size.width) *
-                      config.size.height;
-    uint64_t block_size = std::max(pixels, 1024ULL * 1024ULL);
-    block_size = std::min(block_size, 16ULL * 1024ULL * 1024ULL);
+    const uint64_t pixels = static_cast<uint64_t>(config.size.width) *
+                            config.size.height;
+    const uint64_t block_size =
+        infra::Clamp(pixels, kMinJpegBlockSize, kMaxJpegBlockSize);
     return AlignUp(static_cast<uint32_t>(block_size), 4096);
 }
 

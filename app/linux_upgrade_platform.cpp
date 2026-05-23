@@ -1,5 +1,6 @@
 #include "device_platforms.h"
 
+#include "infra/clamp.h"
 #include "infra/fs.h"
 #include "linux_platform_common.h"
 
@@ -267,7 +268,7 @@ bool CopyFileWithProgress(const std::string &source_path,
             if (total_size > 0) {
                 progress = static_cast<uint32_t>((copied_size * 100ULL) / total_size);
             }
-            progress_callback(progress > 100U ? 100U : progress);
+            progress_callback(infra::Clamp<uint32_t>(progress, 0U, 100U));
         }
     }
     if (std::fflush(target) != 0) {

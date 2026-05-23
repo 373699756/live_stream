@@ -41,9 +41,18 @@ void DumpMaps() {
 
 void HandleSegv(int sig, siginfo_t *info, void *context) {
     const ucontext_t *uc = static_cast<const ucontext_t *>(context);
-    const unsigned long pc = uc != nullptr ? uc->uc_mcontext.arm_pc : 0;
-    const unsigned long lr = uc != nullptr ? uc->uc_mcontext.arm_lr : 0;
-    const unsigned long sp = uc != nullptr ? uc->uc_mcontext.arm_sp : 0;
+    unsigned long pc = 0;
+    unsigned long lr = 0;
+    unsigned long sp = 0;
+#if defined(__arm__)
+    if (uc != nullptr) {
+        pc = uc->uc_mcontext.arm_pc;
+        lr = uc->uc_mcontext.arm_lr;
+        sp = uc->uc_mcontext.arm_sp;
+    }
+#else
+    (void)uc;
+#endif
     char buffer[256];
     const int n = std::snprintf(
         buffer, sizeof(buffer),

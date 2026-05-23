@@ -2,6 +2,8 @@
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
+#include "infra/clamp.h"
+
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -257,7 +259,8 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
     FrameType frame_type = FrameType::kP;
     for (uint32_t i = 0; i < stream.u32PackCount; ++i) {
         const VENC_PACK_S& pack = stream.pstPack[i];
-        const uint32_t data_num = pack.u32DataNum < 8 ? pack.u32DataNum : 8;
+        const uint32_t data_num =
+            infra::Clamp<uint32_t>(pack.u32DataNum, 0U, 8U);
         if (codec == VideoCodec::kH264) {
             UpdateFrameTypeFromH264Pack(pack, data_num, &frame_type);
         } else if (codec == VideoCodec::kH265) {

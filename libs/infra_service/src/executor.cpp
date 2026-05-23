@@ -1,5 +1,7 @@
 #include "infra/executor.h"
 
+#include "infra/clamp.h"
+
 #include <algorithm>
 #include <condition_variable>
 #include <mutex>
@@ -15,7 +17,7 @@ uint32_t AutoWorkerCount() {
     if (hardware == 0) {
         return 2;
     }
-    return std::max<uint32_t>(1, std::min<uint32_t>(hardware, 4));
+    return infra::Clamp<uint32_t>(hardware, 1U, 4U);
 }
 
 }  // namespace

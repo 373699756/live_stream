@@ -1,11 +1,11 @@
 #include "upgrade_service.h"
 
 #include "event_service.h"
-#include "infra/time.h"
+#include "infra/clamp.h"
 #include "infra/executor.h"
+#include "infra/time.h"
 #include "logger_service.h"
 
-#include <algorithm>
 #include <mutex>
 #include <sys/stat.h>
 #include <utility>
@@ -153,13 +153,13 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             started_ = false;
-            executor = std::move(executor_);
+            executor_.swap(executor);
         }
         if (executor) {
             executor->Stop(infra::StopMode::kDiscard);
             std::lock_guard<std::mutex> lock(mutex_);
             if (!executor_) {
-                executor_ = std::move(executor);
+                executor_.swap(executor);
             }
         }
     }
@@ -411,7 +411,8 @@ private:
         UpdateStatus(UpgradeState::kWriting, 20, true, "");
         const bool write_ok = platform->WriteUpgrade(
             request.package_path, [this](uint32_t progress_percent) {
-                const uint32_t bounded = std::min(progress_percent, 100U);
+                const uint32_t bounded =
+                    infra::Clamp<uint32_t>(progress_percent, 0U, 100U);
                 const uint32_t service_progress = 20U + (bounded * 60U) / 100U;
                 UpdateWritingProgress(service_progress);
             });
@@ -514,7 +515,8 @@ private:
             if (status_.state != UpgradeState::kWriting || cancel_requested_) {
                 return;
             }
-            progress_percent = std::min(progress_percent, 89U);
+            progress_percent =
+                infra::Clamp<uint32_t>(progress_percent, 0U, 89U);
             if (progress_percent > status_.progress_percent) {
                 status_.progress_percent = progress_percent;
                 changed = true;
@@ -532,7 +534,8 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             status_.state = state;
-            status_.progress_percent = std::min(progress_percent, 100U);
+            status_.progress_percent =
+                infra::Clamp<uint32_t>(progress_percent, 0U, 100U);
             status_.current_stage = UpgradeStateToString(state);
             status_.ok = ok;
             status_.error_message = error_message;

@@ -2,6 +2,7 @@
 #include "hisi_mpp_utils.h"
 #include "mpp_hisi_sdk_impl.h"
 
+#include "infra/clamp.h"
 #include "json_utils.h"
 
 #include <cmath>
@@ -32,8 +33,7 @@ bool MpiOk(const char* expression, HI_S32 status) {
 }
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
-    const int32_t clamped =
-        value < 0 ? 0 : (value > kConfigMax ? kConfigMax : value);
+    const int32_t clamped = infra::Clamp(value, 0, kConfigMax);
     return min_value +
            (static_cast<uint32_t>(clamped) * (max_value - min_value) +
             kConfigMax / 2) /
@@ -50,8 +50,7 @@ uint16_t ScaleControlU16(int32_t value, uint16_t min_value,
 }
 
 uint16_t WhiteBalanceGainFromControl(int32_t value) {
-    const int32_t clamped =
-        value < 0 ? 0 : (value > kConfigMax ? kConfigMax : value);
+    const int32_t clamped = infra::Clamp(value, 0, kConfigMax);
     if (clamped <= kConfigNeutral) {
         return ScaleControlU16(clamped * 2, kWbGainMin, kGainBase);
     }
@@ -331,8 +330,7 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         const double normalized =
             static_cast<double>(i) / static_cast<double>(GAMMA_NODE_NUM - 1);
         const double mapped = std::pow(normalized, exponent) * 4095.0;
-        const double clamped =
-            mapped < 0.0 ? 0.0 : (mapped > 4095.0 ? 4095.0 : mapped);
+        const double clamped = infra::Clamp(mapped, 0.0, 4095.0);
         attr.u16Table[i] = static_cast<HI_U16>(clamped);
     }
     return MpiOk("HI_MPI_ISP_SetGammaAttr",

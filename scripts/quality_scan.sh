@@ -11,6 +11,18 @@ REPORT_DIR="${REPORT_ROOT}/${TIMESTAMP}"
 SUMMARY_FILE="${REPORT_DIR}/summary.md"
 DOC_REPORT_DIR="${ROOT_DIR}/docs/quality"
 DOC_REPORT_FILE="${DOC_REPORT_DIR}/quality_report.md"
+CROSS_PREFIX="${CROSS_PREFIX:-arm-himix200-linux-}"
+CROSS_CC_FROM_ENV="${CROSS_CC+x}"
+CROSS_CXX_FROM_ENV="${CROSS_CXX+x}"
+CROSS_AR_FROM_ENV="${CROSS_AR+x}"
+CROSS_SIZE_FROM_ENV="${CROSS_SIZE+x}"
+CROSS_CC="${CROSS_CC:-${CROSS_PREFIX}gcc}"
+CROSS_CXX="${CROSS_CXX:-${CROSS_PREFIX}g++}"
+CROSS_AR="${CROSS_AR:-${CROSS_PREFIX}ar}"
+CROSS_SIZE="${CROSS_SIZE:-${CROSS_PREFIX}size}"
+CROSS_TOOLCHAIN_RESOLVED=0
+CLANG_ANALYSIS_DB_DIR="${REPORT_DIR}/clang-analysis-db"
+CLANG_ANALYSIS_DB_READY=0
 
 if [[ "${MODE}" != "quick" && "${MODE}" != "full" ]]; then
   echo "Usage: $0 [quick|full]" >&2
@@ -40,6 +52,292 @@ FindFirstTool() {
     fi
   done
   return 1
+}
+
+AbsoluteToolPath() {
+  local tool_path="$1"
+  local tool_dir
+  local tool_name
+
+  tool_dir="$(cd "$(dirname "${tool_path}")" && pwd -P)"
+  tool_name="$(basename "${tool_path}")"
+  printf '%s/%s\n' "${tool_dir}" "${tool_name}"
+}
+
+ResolveRequiredToolPath() {
+  local configured_tool="$1"
+  local tool_label="$2"
+  local resolved_tool
+
+  resolved_tool="$(command -v "${configured_tool}" 2>/dev/null || true)"
+  if [[ -z "${resolved_tool}" ]]; then
+    Log "missing ${tool_label}: ${configured_tool}"
+    return 1
+  fi
+
+  AbsoluteToolPath "${resolved_tool}"
+}
+
+ResolveOptionalToolPath() {
+  local configured_tool="$1"
+  local resolved_tool
+
+  if [[ -z "${configured_tool}" ]]; then
+    return 0
+  fi
+
+  resolved_tool="$(command -v "${configured_tool}" 2>/dev/null || true)"
+  if [[ -n "${resolved_tool}" ]]; then
+    AbsoluteToolPath "${resolved_tool}"
+  fi
+}
+
+ResolveCrossToolchain() {
+  if [[ "${CROSS_TOOLCHAIN_RESOLVED}" -eq 1 ]]; then
+    return 0
+  fi
+
+  CROSS_CC="$(ResolveRequiredToolPath "${CROSS_CC}" "cross C compiler")" || return 1
+  if [[ "${CROSS_CC}" != *gcc ]]; then
+    Log "cannot derive CROSS_COMPILE prefix from ${CROSS_CC}"
+    return 1
+  fi
+  CROSS_PREFIX="${CROSS_CC%gcc}"
+
+  if [[ -z "${CROSS_CXX_FROM_ENV}" ]]; then
+    CROSS_CXX="${CROSS_PREFIX}g++"
+  fi
+  if [[ -z "${CROSS_AR_FROM_ENV}" ]]; then
+    CROSS_AR="${CROSS_PREFIX}ar"
+  fi
+  if [[ -z "${CROSS_SIZE_FROM_ENV}" ]]; then
+    CROSS_SIZE="${CROSS_PREFIX}size"
+  fi
+
+  CROSS_CXX="$(ResolveRequiredToolPath "${CROSS_CXX}" "cross C++ compiler")" || return 1
+  CROSS_AR="$(ResolveRequiredToolPath "${CROSS_AR}" "cross archiver")" || return 1
+  CROSS_SIZE="$(ResolveOptionalToolPath "${CROSS_SIZE}")"
+
+  CROSS_TOOLCHAIN_RESOLVED=1
+  return 0
+}
+
+FindClangResourceDir() {
+  local clang_tool
+  local resource_dir
+  local dir
+
+  clang_tool="$(FindFirstTool clang++ clang || true)"
+  if [[ -n "${clang_tool}" ]]; then
+    resource_dir="$("${clang_tool}" -print-resource-dir 2>/dev/null || true)"
+    if [[ -n "${resource_dir}" && -f "${resource_dir}/include/stddef.h" ]]; then
+      printf '%s\n' "${resource_dir}"
+      return 0
+    fi
+  fi
+
+  for dir in /usr/lib/llvm-*/lib/clang/* /usr/lib/clang/* /usr/include/clang/*; do
+    if [[ -f "${dir}/include/stddef.h" ]]; then
+      printf '%s\n' "${dir}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+PrepareClangAnalysisDatabase() {
+  local source_db="${ROOT_DIR}/compile_commands.json"
+  local output_db="${CLANG_ANALYSIS_DB_DIR}/compile_commands.json"
+  local source_list="${CLANG_ANALYSIS_DB_DIR}/sources.txt"
+  local clang_cxx
+  local clang_cxx_path
+
+  if [[ "${CLANG_ANALYSIS_DB_READY}" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ ! -f "${source_db}" ]]; then
+    Log "missing compile database: ${source_db}"
+    return 1
+  fi
+  if ! HaveTool python3; then
+    Log "missing python3 for clang analysis database"
+    return 1
+  fi
+
+  clang_cxx="$(FindFirstTool clang++ clang || true)"
+  if [[ -z "${clang_cxx}" ]]; then
+    Log "missing clang++ or clang for clang analysis database"
+    return 1
+  fi
+  clang_cxx_path="$(command -v "${clang_cxx}" 2>/dev/null || true)"
+  if [[ -z "${clang_cxx_path}" ]]; then
+    clang_cxx_path="${clang_cxx}"
+  fi
+
+  mkdir -p "${CLANG_ANALYSIS_DB_DIR}"
+  {
+    printf '$ python3 sanitize compile_commands.json for host clang tools\n\n'
+    python3 - "${source_db}" "${output_db}" "${source_list}" "${clang_cxx_path}" <<'PY'
+import json
+import os
+import shlex
+import sys
+
+source_db, output_db, source_list, clang_cxx = sys.argv[1:5]
+
+remove_exact = {
+    "-Werror",
+}
+remove_prefixes = (
+    "-mcpu=",
+    "-mfloat-abi=",
+    "-mfpu=",
+    "-march=",
+    "-mtune=",
+    "--target=",
+    "-target=",
+    "--sysroot=",
+    "-isysroot",
+    "-Wreserved-user-defined-literal",
+)
+remove_with_value = {
+    "--target",
+    "-target",
+    "--sysroot",
+    "-isysroot",
+    "-gcc-toolchain",
+    "--gcc-toolchain",
+}
+
+
+def absolute_path(directory, path):
+    if os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(directory, path))
+
+
+def sanitize_args(args, directory, source_file):
+    sanitized = [
+        clang_cxx,
+        "-Wno-reserved-user-defined-literal",
+    ]
+    index = 1
+    while index < len(args):
+        arg = args[index]
+        if arg in remove_exact or arg.startswith(remove_prefixes):
+            index += 1
+            continue
+        if arg in remove_with_value:
+            index += 2
+            continue
+
+        if arg == "-I" and index + 1 < len(args):
+            sanitized.append(arg)
+            sanitized.append(absolute_path(directory, args[index + 1]))
+            index += 2
+            continue
+        if arg.startswith("-I") and len(arg) > 2:
+            sanitized.append("-I" + absolute_path(directory, arg[2:]))
+            index += 1
+            continue
+        if arg in ("-isystem", "-iquote", "-include", "-o") and index + 1 < len(args):
+            sanitized.append(arg)
+            sanitized.append(absolute_path(directory, args[index + 1]))
+            index += 2
+            continue
+        if arg.startswith(("-isystem", "-iquote")) and len(arg) > len("-isystem"):
+            option = "-isystem" if arg.startswith("-isystem") else "-iquote"
+            sanitized.append(option + absolute_path(directory, arg[len(option):]))
+            index += 1
+            continue
+        if arg == source_file or (
+            not arg.startswith("-") and arg.endswith((".c", ".cc", ".cpp", ".cxx"))
+        ):
+            sanitized.append(absolute_path(directory, arg))
+            index += 1
+            continue
+
+        sanitized.append(arg)
+        index += 1
+    return sanitized
+
+
+with open(source_db, "r", encoding="utf-8") as handle:
+    entries = json.load(handle)
+
+sanitized_entries = []
+for entry in entries:
+    directory = entry.get("directory", os.getcwd())
+    args = entry.get("arguments")
+    if args is None and "command" in entry:
+        args = shlex.split(entry["command"])
+    if not args:
+        continue
+
+    sanitized_entry = dict(entry)
+    source_file = sanitized_entry.get("file", "")
+    sanitized_entry["arguments"] = sanitize_args(args, directory, source_file)
+    sanitized_entry.pop("command", None)
+    if "file" in sanitized_entry and not os.path.isabs(sanitized_entry["file"]):
+        sanitized_entry["file"] = os.path.normpath(
+            os.path.join(directory, sanitized_entry["file"])
+        )
+    sanitized_entries.append(sanitized_entry)
+
+os.makedirs(os.path.dirname(output_db), exist_ok=True)
+with open(output_db, "w", encoding="utf-8") as handle:
+    json.dump(sanitized_entries, handle, indent=2)
+    handle.write("\n")
+
+with open(source_list, "w", encoding="utf-8") as handle:
+    for entry in sanitized_entries:
+        if "file" in entry:
+            handle.write(entry["file"])
+            handle.write("\n")
+
+print(f"wrote {len(sanitized_entries)} entries to {output_db}")
+PY
+  } >"${REPORT_DIR}/clang-analysis-db.log" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "clang analysis database failed with exit code ${status}"
+    return 1
+  fi
+  if ! grep -q '"file":' "${output_db}"; then
+    Log "clang analysis database has no compile commands"
+    printf '\nno compile commands found\n' >>"${REPORT_DIR}/clang-analysis-db.log"
+    return 1
+  fi
+
+  CLANG_ANALYSIS_DB_READY=1
+  return 0
+}
+
+RunIwyuToolStep() {
+  local db_dir="$1"
+  local resource_dir="$2"
+  local cmd=(iwyu_tool -p "${db_dir}" app libs --)
+
+  if [[ -n "${resource_dir}" ]]; then
+    cmd+=("-resource-dir=${resource_dir}")
+  fi
+  cmd+=(-Xiwyu --cxx17ns)
+
+  Log "running include-what-you-use"
+  {
+    printf '$'
+    printf ' %q' "${cmd[@]}"
+    printf '\n\n'
+    "${cmd[@]}"
+  } >"${REPORT_DIR}/iwyu.log" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "include-what-you-use finished with warning exit code ${status}"
+    RecordWarning "include-what-you-use: exit code ${status}"
+  fi
 }
 
 RecordFailure() {
@@ -149,6 +447,44 @@ RunShellWarningStep() {
   if [[ ${status} -ne 0 ]]; then
     Log "${name} finished with warning exit code ${status}"
     RecordWarning "${name}: exit code ${status}"
+  fi
+}
+
+RunCompileDatabaseStep() {
+  Log "running compile database"
+  {
+    printf '$ make clean\n\n'
+    make clean
+    printf '\n$ bear -- make -j2 CROSS_COMPILE=%q\n\n' "${CROSS_PREFIX}"
+    bear -- make -j2 "CROSS_COMPILE=${CROSS_PREFIX}"
+  } >"${REPORT_DIR}/bear.log" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "compile database failed with exit code ${status}"
+    RecordFailure "compile database"
+  fi
+}
+
+RunScanBuildStep() {
+  local scan_build_tool="$1"
+
+  Log "running ${scan_build_tool}"
+  {
+    printf '$ make clean\n\n'
+    make clean
+    printf '\n$'
+    printf ' %q' "${scan_build_tool}" --use-cc "${CROSS_CC}" \
+      --use-c++ "${CROSS_CXX}" make -j2 "CROSS_COMPILE=${CROSS_PREFIX}"
+    printf '\n\n'
+    "${scan_build_tool}" --use-cc "${CROSS_CC}" --use-c++ "${CROSS_CXX}" \
+      make -j2 "CROSS_COMPILE=${CROSS_PREFIX}"
+  } >"${REPORT_DIR}/scan-build.log" 2>&1
+
+  local status=$?
+  if [[ ${status} -ne 0 ]]; then
+    Log "${scan_build_tool} finished with warning exit code ${status}"
+    RecordWarning "${scan_build_tool}: exit code ${status}"
   fi
 }
 
@@ -496,8 +832,8 @@ RunOptionalStep cppcheck "cppcheck" "cppcheck.log" \
 if [[ -f "${ROOT_DIR}/build/bin/live_stream" ]]; then
   {
     file build/bin/live_stream
-    if HaveTool arm-himix200-linux-size; then
-      arm-himix200-linux-size build/bin/live_stream
+    if ResolveCrossToolchain && [[ -n "${CROSS_SIZE}" ]]; then
+      "${CROSS_SIZE}" build/bin/live_stream
     elif HaveTool size; then
       size build/bin/live_stream
     fi
@@ -514,8 +850,11 @@ fi
 
 if [[ "${MODE}" == "full" ]]; then
   if HaveTool bear; then
-    RunShellStep "compile database" "bear.log" \
-      "make clean && bear --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
+    if ResolveCrossToolchain; then
+      RunCompileDatabaseStep
+    else
+      RecordFailure "compile database: missing cross toolchain"
+    fi
   else
     RecordSkipped "compile database: missing bear"
   fi
@@ -524,19 +863,26 @@ if [[ "${MODE}" == "full" ]]; then
     scan-build-16 scan-build-15 scan-build-14 scan-build-13 scan-build-12 \
     scan-build-11 scan-build-10)"
   if [[ -n "${scan_build_tool}" ]]; then
-    RunShellWarningStep "${scan_build_tool}" "scan-build.log" \
-      "make clean && ${scan_build_tool} --use-cc arm-himix200-linux-gcc --use-c++ arm-himix200-linux-g++ make -j2"
+    if ResolveCrossToolchain; then
+      RunScanBuildStep "${scan_build_tool}"
+    else
+      RecordWarning "scan-build: missing cross toolchain"
+    fi
   else
     RecordSkipped "scan-build: missing scan-build or scan-build-10..18"
   fi
 
   if [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool clang-tidy; then
-    mapfile -t cpp_sources < <(find app libs -path '*/tests/*' -prune -o \
-      -name '*.cpp' -print | sort)
-    if [[ ${#cpp_sources[@]} -gt 0 ]]; then
-      RunStep "clang-tidy" "clang-tidy.log" clang-tidy -p "${ROOT_DIR}" "${cpp_sources[@]}"
+    if PrepareClangAnalysisDatabase; then
+      mapfile -t cpp_sources < <(sort "${CLANG_ANALYSIS_DB_DIR}/sources.txt")
+      if [[ ${#cpp_sources[@]} -gt 0 ]]; then
+        RunStep "clang-tidy" "clang-tidy.log" \
+          clang-tidy -p "${CLANG_ANALYSIS_DB_DIR}" "${cpp_sources[@]}"
+      else
+        RecordSkipped "clang-tidy: no production .cpp files found"
+      fi
     else
-      RecordSkipped "clang-tidy: no production .cpp files found"
+      RecordFailure "clang-tidy: failed to prepare clang analysis database"
     fi
   elif ! HaveTool clang-tidy; then
     RecordSkipped "clang-tidy: missing clang-tidy"
@@ -545,11 +891,14 @@ if [[ "${MODE}" == "full" ]]; then
   fi
 
   if [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool iwyu_tool; then
-    RunShellWarningStep "include-what-you-use" "iwyu.log" \
-      "iwyu_tool -p '${ROOT_DIR}' app libs -- -Xiwyu --cxx17ns"
+    if PrepareClangAnalysisDatabase; then
+      iwyu_resource_dir="$(FindClangResourceDir || true)"
+      RunIwyuToolStep "${CLANG_ANALYSIS_DB_DIR}" "${iwyu_resource_dir}"
+    else
+      RecordWarning "include-what-you-use: failed to prepare clang analysis database"
+    fi
   elif [[ -f "${ROOT_DIR}/compile_commands.json" ]] && HaveTool include-what-you-use; then
-    RunShellWarningStep "include-what-you-use" "iwyu.log" \
-      "find app libs -path '*/tests/*' -prune -o -name '*.cpp' -print | sort | head -n 40 | xargs -r -n 1 include-what-you-use -std=c++17 -Iapp -Ilibs/infra_service/include"
+    RecordSkipped "include-what-you-use: missing iwyu_tool"
   elif ! HaveTool iwyu_tool && ! HaveTool include-what-you-use && ! HaveTool iwyu; then
     RecordSkipped "include-what-you-use: missing include-what-you-use or iwyu"
   else

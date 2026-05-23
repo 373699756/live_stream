@@ -2,6 +2,7 @@
 
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
+#include "infra/clamp.h"
 #include "infra/log.h"
 #include "json_utils.h"
 #include "media_config_codec.h"
@@ -87,13 +88,7 @@ struct ImageStrategyControls {
 };
 
 int32_t ClampImageControl(int32_t value) {
-    if (value < kControlMin) {
-        return kControlMin;
-    }
-    if (value > kControlMax) {
-        return kControlMax;
-    }
-    return value;
+    return infra::Clamp(value, kControlMin, kControlMax);
 }
 
 ImageStrategyControls LoadImageStrategyControls(

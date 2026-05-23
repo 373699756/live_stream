@@ -79,13 +79,13 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             started_ = false;
-            executor = std::move(executor_);
+            executor_.swap(executor);
         }
         if (executor) {
             executor->Stop(infra::StopMode::kDiscard);
             std::lock_guard<std::mutex> lock(mutex_);
             if (!executor_) {
-                executor_ = std::move(executor);
+                executor_.swap(executor);
             }
         }
     }

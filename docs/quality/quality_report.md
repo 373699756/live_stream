@@ -2,45 +2,120 @@
 
 本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
 
-- Generated: `20260522-233023`
-- Raw log directory: `/home/cp/Public/hisi/live_stream/reports/quality/20260522-233023`
-- Git commit: `8343928`
+- Generated: `20260523-105220`
+- Raw log directory: `/home/cp/Public/hisi/live_stream/reports/quality/20260523-105220`
+- Git commit: `0274b17`
 
 ## Counts
 
 - cppcheck diagnostics: 0
 - cppcheck errors: 0
-- keyword risk hits: 229
-- hot-path/logging hits: 195
+- keyword risk hits: 231
+- hot-path/logging hits: 196
 - clang-tidy diagnostics: 0
-- include-what-you-use findings: 0
+- include-what-you-use findings: 235
 
 ## Must Check First
 
-- Required step failed: `make`; inspect `make.log`.
-- Required step failed: `compile database`; inspect `bear.log`.
-- Skipped: `code size: missing cloc or tokei`.
-- Skipped: `cppcheck: missing cppcheck`.
-- Skipped: `binary info: missing build/bin/live_stream`.
-- Skipped: `scan-build: missing scan-build-10 or scan-build`.
-- Skipped: `clang-tidy: missing clang-tidy`.
-- Skipped: `include-what-you-use: missing include-what-you-use or iwyu`.
+- Required step failed: `clang-tidy`; inspect `clang-tidy.log`.
+- Warning step: `include-what-you-use: exit code 1`; inspect related log before trusting that tool result.
 
 ## Must Fix: Cppcheck Errors
 
-_No log file generated._
+_No findings in this category._
 
 ## Review: Cppcheck Warnings
 
-_No log file generated._
+_No findings in this category._
 
 ## Review: Clang-Tidy Diagnostics
 
-_No log file generated._
+_No findings in this category._
 
 ## Review: Include-What-You-Use
 
-_No log file generated._
+```text
+/home/cp/Public/hisi/live_stream/app/app_runtime.h should add these lines:
+/home/cp/Public/hisi/live_stream/app/app_runtime.h should remove these lines:
+/home/cp/Public/hisi/live_stream/app/app_runtime.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/app_runtime.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/app/core_services.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/app/core_services.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/core_services.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/app/device_subsystem.h should add these lines:
+/home/cp/Public/hisi/live_stream/app/device_subsystem.h should remove these lines:
+/home/cp/Public/hisi/live_stream/app/device_subsystem.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/device_subsystem.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/app/linux_network_platform.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/linux_network_platform.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/app/linux_system_platform.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/linux_system_platform.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/app/linux_time_platform.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/linux_time_platform.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/app/linux_upgrade_platform.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/linux_upgrade_platform.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/app/media_subsystem.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/app/media_subsystem.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/media_subsystem.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/app/platform_factory.h has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/app/platform_factory.cpp has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/app/runtime_config.h should add these lines:
+/home/cp/Public/hisi/live_stream/app/runtime_config.h should remove these lines:
+/home/cp/Public/hisi/live_stream/app/runtime_config.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/app/runtime_config.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/include/infra/executor.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/include/infra/executor.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/executor.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/executor.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/logger_service/src/file_operation_log_store.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/logger_service/src/file_operation_log_store.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/logger_service/include/logger_service.h has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/libs/logger_service/src/logger_service.cpp has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/file.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/file.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/infra_service/include/infra/log.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/log.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/log.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/logger_service/src/operation_record_codec.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/logger_service/src/operation_record_codec.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/logger_service/src/operation_record_codec.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/path.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/infra_service/src/path.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/net_service/src/event_fd.h has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/libs/net_service/src/event_fd.cpp has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/libs/infra_service/include/infra/time.h has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/libs/infra_service/src/time.cpp has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/net_service/src/event_loop.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/event_loop.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/event_loop.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/event_loop.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/config_service/src/auth_user_config_store.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/config_service/src/auth_user_config_store.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/net_service/src/fd.h has correct #includes/fwd-decls)
+(/home/cp/Public/hisi/live_stream/libs/net_service/src/fd.cpp has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_engine_impl.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_engine_impl.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_engine_impl.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_engine_impl.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/net_service/include/net_service.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_service.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/net_service.cpp should remove these lines:
+(/home/cp/Public/hisi/live_stream/libs/config_service/include/config_service.h has correct #includes/fwd-decls)
+/home/cp/Public/hisi/live_stream/libs/config_service/src/config_service.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/config_service/src/config_service.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/socket_util.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/socket_util.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/socket_util.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/socket_util.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_connection.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_connection.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_connection.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_connection.cpp should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_server.h should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_server.h should remove these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_server.cpp should add these lines:
+/home/cp/Public/hisi/live_stream/libs/net_service/src/tcp_server.cpp should remove these lines:
+```
 
 ## Optimization Candidates: Files With Most Keyword Risk Hits
 
@@ -48,9 +123,9 @@ _No log file generated._
      29 libs/media_service/src/media_buffer_pool.cpp
      12 libs/hisi_vendor/src/hisi_mpp_venc.cpp
      11 www/src/hooks/usePreviewPlayer.ts
-      9 www/src/api/client.ts
+     10 www/src/api/client.ts
       9 libs/media_service/src/media_service.cpp
-      8 libs/hisi_vendor/src/hisi_mpp_vi.cpp
+      9 libs/hisi_vendor/src/hisi_mpp_vi.cpp
       7 libs/hisi_vendor/src/hisi_mpp_snapshot.cpp
       6 libs/webrtc_service/src/webrtc_engine.cpp
       6 libs/stream_hub_service/src/stream_hub_service.cpp
@@ -94,16 +169,7 @@ _No log file generated._
 
 ## Build Failure Tail
 
-```text
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libmetartc8.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libmetartccore8.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libyangutil8.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libsrtp2.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libusrsctp.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libssl.a: No such file or directory
-arm-himix200-linux-g++: error: 3rdparty/install/lib/libcrypto.a: No such file or directory
-
-```
+_No build failure pattern detected._
 
 ## How To Use This Report
 
