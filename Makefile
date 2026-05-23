@@ -101,11 +101,12 @@ APP_SRCS := \
 	app/linux_platform_common.cpp \
 	app/linux_system_platform.cpp \
 	app/linux_time_platform.cpp \
-	app/linux_upgrade_platform.cpp \
 	app/media_subsystem.cpp \
 	app/platform_factory.cpp \
 	app/protocol_subsystem.cpp \
-	app/runtime_config.cpp
+	app/runtime_config.cpp \
+	app/upgrade_package.cpp \
+	app/upgrade_platform.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 WEB_INPUTS := \
 	www/index.html \
@@ -125,7 +126,7 @@ endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
-.PHONY: all test clean thirdparty compiledb $(SERVICES)
+.PHONY: all test clean thirdparty compiledb upgrade-package $(SERVICES)
 
 all: $(SERVICES) $(BIN_DIR)/live_stream out
 
@@ -173,6 +174,9 @@ out: $(BIN_DIR)/live_stream $(WEB_STAMP)
 	find $(OUT_DIR)/web -mindepth 1 -delete
 	cp -rf www/dist/* $(OUT_DIR)/web/
 	@echo "Output packaged to $(OUT_DIR)/"
+
+upgrade-package: out
+	./scripts/package_upgrade.sh
 
 test:
 	@for service in $(SERVICES); do \

@@ -1,0 +1,23 @@
+#!/bin/sh
+
+mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
+
+mount_if_needed() {
+  dev="$1"
+  dir="$2"
+  type="$3"
+  opts="$4"
+
+  if grep -q " $dir " /proc/mounts; then
+    return 0
+  fi
+
+  mount -t "$type" -o "$opts" "$dev" "$dir"
+}
+
+mount_if_needed /dev/mtdblock3 /opt/app squashfs ro
+mount_if_needed /dev/mtdblock4 /www squashfs ro
+mount_if_needed /dev/mtdblock5 /config jffs2 rw
+mount_if_needed /dev/mtdblock6 /data jffs2 rw
+
+exit 0

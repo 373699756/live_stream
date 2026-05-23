@@ -8,8 +8,8 @@ PlatformAdapters CreateLinuxPlatformAdapters(const std::string& network_ifname) 
     PlatformAdapters adapters;
     adapters.system = CreateLinuxSystemPlatform();
     adapters.time = CreateLinuxTimePlatform();
-    adapters.network = CreateLinuxNetworkPlatform(network_ifname);
-    adapters.upgrade = CreateLinuxUpgradePlatform();
+    adapters.network = CreateNetworkPlatform(network_ifname);
+    adapters.upgrade = CreateUpgradePlatform();
     adapters.network_ifname = network_ifname;
     return adapters;
 }

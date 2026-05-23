@@ -10,7 +10,7 @@ class AppRuntime {
 public:
     static AppRuntime& Get();
 
-    bool Start(const RuntimePaths& paths);
+    bool Start(const RuntimePaths& paths, const char* static_root_override);
     void Stop();
     void RunUntilSignal();
 

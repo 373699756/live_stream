@@ -14,6 +14,8 @@ constexpr const char *kDefaultConfigPath = "configs/default_config.json";
 constexpr const char *kDefaultAuthUsersPath = "configs/auth_users.json";
 constexpr const char *kDefaultOperationLogPath =
     "log/operation.log";
+constexpr const char *kProductionConfigDir = "/config";
+constexpr const char *kProductionOperationLogPath = "/data/operation.log";
 
 // ResolvedPaths owns the string storage that RuntimePaths points into.
 // Paths may be overridden by:
@@ -37,8 +39,7 @@ struct ResolvedPaths {
 };
 
 // If a config_dir is provided the configs/* paths are relocated under it.
-// The operation log is always placed at ../log/operation.log relative
-// to the working directory (or unchanged when no override is given).
+// Production /config runs with operation log persisted under /data.
 ResolvedPaths BuildPaths(const char *config_dir) {
     ResolvedPaths r;
     if (config_dir != nullptr && config_dir[0] != '\0') {
@@ -54,14 +55,18 @@ ResolvedPaths BuildPaths(const char *config_dir) {
         r.default_config = kDefaultConfigPath;
         r.auth_users = kDefaultAuthUsersPath;
     }
-    r.operation_log = kDefaultOperationLogPath;
+    if (config_dir != nullptr &&
+        std::strcmp(config_dir, kProductionConfigDir) == 0) {
+        r.operation_log = kProductionOperationLogPath;
+    } else {
+        r.operation_log = kDefaultOperationLogPath;
+    }
     return r;
 }
 
-// Parse --config-dir <path> from argv; returns nullptr if not present.
-const char *ParseConfigDirArg(int argc, char **argv) {
+const char *ParseValueArg(int argc, char **argv, const char *name) {
     for (int i = 1; i + 1 < argc; ++i) {
-        if (std::strcmp(argv[i], "--config-dir") == 0) {
+        if (std::strcmp(argv[i], name) == 0) {
             return argv[i + 1];
         }
     }
@@ -84,10 +89,11 @@ int main(int argc, char **argv) {
     }
 
     // Resolve config dir: CLI arg wins over env var; env var wins over default.
-    const char *config_dir = ParseConfigDirArg(argc, argv);
+    const char *config_dir = ParseValueArg(argc, argv, "--config-dir");
     if (config_dir == nullptr) {
         config_dir = std::getenv("LIVE_STREAM_CONFIG_DIR");
     }
+    const char *static_root = ParseValueArg(argc, argv, "--static-root");
 
     const ResolvedPaths resolved = BuildPaths(config_dir);
     const live_stream::RuntimePaths paths = resolved.ToRuntimePaths();
@@ -96,7 +102,7 @@ int main(int argc, char **argv) {
     live_stream::InstallAppSignalHandlers();
 
     live_stream::AppRuntime &app = live_stream::AppRuntime::Get();
-    bool ok = app.Start(paths);
+    bool ok = app.Start(paths, static_root);
     if (ok) {
         INFRA_LOG_INFO("app", "live_stream running");
         app.RunUntilSignal();

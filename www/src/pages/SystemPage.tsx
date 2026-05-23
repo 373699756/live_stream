@@ -43,6 +43,13 @@ function canStartUpgrade(status: UpgradeStatus) {
   );
 }
 
+function statusLabel(status: UpgradeStatus) {
+  if (status.current_stage) {
+    return status.current_stage;
+  }
+  return status.state;
+}
+
 export function SystemPage() {
   const {
     status,
@@ -203,7 +210,7 @@ export function SystemPage() {
           <div className="upgrade-section">
             <div className="upgrade-progress">
               <div className="upgrade-progress-header">
-                <strong>{upgradeStatus.current_stage || upgradeStatus.state}</strong>
+                <strong>{statusLabel(upgradeStatus)}</strong>
                 <span>{upgradeStatus.progress_percent}%</span>
               </div>
               <div className="progress-track">
@@ -214,7 +221,7 @@ export function SystemPage() {
               </div>
             </div>
 
-            <div className="info-table">
+            <div className="upgrade-status-grid">
               <div>
                 <span>状态</span>
                 <strong>{upgradeStatus.state}</strong>
@@ -241,7 +248,7 @@ export function SystemPage() {
 
         <div className="upgrade-meta">
           <div className="panel-title">已校验包信息</div>
-          <div className="info-table">
+          <div className="upgrade-package-grid">
             <div>
               <span>包路径</span>
               <strong>{packageInfo?.package_path || '-'}</strong>
@@ -256,7 +263,7 @@ export function SystemPage() {
             </div>
             <div>
               <span>摘要</span>
-              <strong>{packageInfo?.digest || '-'}</strong>
+              <code>{packageInfo?.digest || '-'}</code>
             </div>
             <div>
               <span>目标型号</span>

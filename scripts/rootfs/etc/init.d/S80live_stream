@@ -1,0 +1,20 @@
+#!/bin/sh
+
+export LD_LIBRARY_PATH=/opt/app/lib:/usr/lib:/lib
+export PATH=/opt/app/bin:/opt/app/scripts:/bin:/sbin:/usr/bin:/usr/sbin
+export LIVE_STREAM_CONFIG_DIR=/config
+
+if [ ! -x /opt/app/bin/live_stream ]; then
+  echo "live_stream not found"
+  exit 1
+fi
+
+mkdir -p /data
+
+cd /
+/opt/app/bin/live_stream \
+  --config-dir /config \
+  --static-root /www \
+  >> /data/operation.log 2>&1 &
+
+exit 0

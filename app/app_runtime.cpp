@@ -87,7 +87,8 @@ AppRuntime &AppRuntime::Get() {
     return runtime;
 }
 
-bool AppRuntime::Start(const RuntimePaths &paths) {
+bool AppRuntime::Start(const RuntimePaths &paths,
+                       const char *static_root_override) {
     if (started_) {
         return true;
     }
@@ -108,6 +109,9 @@ bool AppRuntime::Start(const RuntimePaths &paths) {
         INFRA_LOG_ERROR("app", "Load runtime config failed");
         Stop();
         return false;
+    }
+    if (static_root_override != nullptr && static_root_override[0] != '\0') {
+        runtime_config.static_root = static_root_override;
     }
     runtime_config_ = runtime_config;
     INFRA_LOG_INFO("app",

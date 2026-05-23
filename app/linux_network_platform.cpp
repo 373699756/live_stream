@@ -394,7 +394,7 @@ private:
 }  // namespace
 
 std::unique_ptr<INetworkPlatform>
-CreateLinuxNetworkPlatform(const std::string &default_ifname) {
+CreateNetworkPlatform(const std::string &default_ifname) {
     return std::unique_ptr<INetworkPlatform>(
         new LinuxNetworkPlatform(default_ifname));
 }
