@@ -24,6 +24,16 @@ constexpr uint32_t kDefaultFixQpI = 25;
 constexpr uint32_t kDefaultFixQpP = 30;
 constexpr uint32_t kDefaultFixQpB = 32;
 constexpr uint32_t kDefaultMjpegQfactor = 95;
+constexpr uint32_t kSmartPBgIntervalMultiplier = 4;
+constexpr int32_t kSmartPBgQpDelta = 6;
+constexpr int32_t kSmartPViQpDelta = 2;
+constexpr int32_t kVbrChangePos = 85;
+constexpr uint32_t kVbrMinIprop = 1;
+constexpr uint32_t kVbrMaxIprop = 100;
+constexpr uint32_t kVbrMinQp = 10;
+constexpr uint32_t kVbrMaxQp = 48;
+constexpr uint32_t kVbrMinIQp = 10;
+constexpr uint32_t kVbrMaxIQp = 42;
 constexpr uint32_t kMinRcStatTimeSec = 1;
 constexpr uint32_t kMaxRcStatTimeSec = 60;
 constexpr uint32_t kMinRcBitrateKbps = 2;
@@ -95,9 +105,10 @@ VENC_GOP_ATTR_S GopAttrFromConfig(GopMode mode, uint32_t gop) {
             break;
         case GopMode::kSmartP:
             attr.enGopMode = VENC_GOPMODE_SMARTP;
-            attr.stSmartP.s32BgQpDelta = 4;
-            attr.stSmartP.s32ViQpDelta = 2;
-            attr.stSmartP.u32BgInterval = gop > 0 ? gop * 3 : 90;
+            attr.stSmartP.s32BgQpDelta = kSmartPBgQpDelta;
+            attr.stSmartP.s32ViQpDelta = kSmartPViQpDelta;
+            attr.stSmartP.u32BgInterval =
+                gop > 0 ? gop * kSmartPBgIntervalMultiplier : 90;
             break;
         case GopMode::kNormalP:
             attr.enGopMode = VENC_GOPMODE_NORMALP;
@@ -192,14 +203,6 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig& stream) {
     return true;
 }
 
-bool CheckMpiCall(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 void UpdateFrameTypeFromH264(H264E_NALU_TYPE_E type, FrameType* frame_type) {
     if (frame_type == nullptr || *frame_type == FrameType::kIdr) {
         return;
@@ -277,8 +280,8 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
 bool StartRecvFrame(VENC_CHN venc) {
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = -1;
-    return CheckMpiCall("HI_MPI_VENC_StartRecvFrame",
-                        HI_MPI_VENC_StartRecvFrame(venc, &recv_param));
+    return MpiOk("HI_MPI_VENC_StartRecvFrame",
+                 HI_MPI_VENC_StartRecvFrame(venc, &recv_param));
 }
 
 void StopRecvFrame(VENC_CHN venc) {
@@ -294,37 +297,79 @@ void RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
     if (!IsIdrCodec(codec)) {
         return;
     }
-    (void)CheckMpiCall("HI_MPI_VENC_RequestIDR",
-                       HI_MPI_VENC_RequestIDR(
-                           static_cast<VENC_CHN>(venc_channel), HI_TRUE));
+    (void)MpiOk(
+        "HI_MPI_VENC_RequestIDR",
+        HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel), HI_TRUE));
 }
 
-bool CloseReEncode(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
+void CloseReEncode(VENC_RC_PARAM_S* rc_param, VENC_RC_MODE_E rc_mode) {
+    if (rc_param == nullptr) {
+        return;
+    }
+    switch (rc_mode) {
+        case VENC_RC_MODE_H264CBR:
+            rc_param->stParamH264Cbr.s32MaxReEncodeTimes = 0;
+            break;
+        case VENC_RC_MODE_H264VBR:
+            rc_param->stParamH264Vbr.s32MaxReEncodeTimes = 0;
+            break;
+        case VENC_RC_MODE_H265CBR:
+            rc_param->stParamH265Cbr.s32MaxReEncodeTimes = 0;
+            break;
+        case VENC_RC_MODE_H265VBR:
+            rc_param->stParamH265Vbr.s32MaxReEncodeTimes = 0;
+            break;
+        default:
+            break;
+    }
+}
+
+void TuneH264VbrParam(VENC_PARAM_H264_VBR_S* param) {
+    if (param == nullptr) {
+        return;
+    }
+    param->s32ChangePos = kVbrChangePos;
+    param->u32MinIprop = kVbrMinIprop;
+    param->u32MaxIprop = kVbrMaxIprop;
+    param->u32MinQp = kVbrMinQp;
+    param->u32MaxQp = kVbrMaxQp;
+    param->u32MinIQp = kVbrMinIQp;
+    param->u32MaxIQp = kVbrMaxIQp;
+    param->s32MaxReEncodeTimes = 0;
+    param->bQpMapEn = HI_FALSE;
+}
+
+void TuneH265VbrParam(VENC_PARAM_H265_VBR_S* param) {
+    if (param == nullptr) {
+        return;
+    }
+    param->s32ChangePos = kVbrChangePos;
+    param->u32MinIprop = kVbrMinIprop;
+    param->u32MaxIprop = kVbrMaxIprop;
+    param->u32MinQp = kVbrMinQp;
+    param->u32MaxQp = kVbrMaxQp;
+    param->u32MinIQp = kVbrMinIQp;
+    param->u32MaxIQp = kVbrMaxIQp;
+    param->s32MaxReEncodeTimes = 0;
+    param->bQpMapEn = HI_FALSE;
+}
+
+bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
     VENC_RC_PARAM_S rc_param{};
-    if (!CheckMpiCall("HI_MPI_VENC_GetRcParam",
-                      HI_MPI_VENC_GetRcParam(venc, &rc_param))) {
+    if (!MpiOk("HI_MPI_VENC_GetRcParam",
+               HI_MPI_VENC_GetRcParam(venc, &rc_param))) {
         return false;
     }
 
-    switch (rc_mode) {
-        case VENC_RC_MODE_H264CBR:
-            rc_param.stParamH264Cbr.s32MaxReEncodeTimes = 0;
-            break;
-        case VENC_RC_MODE_H264VBR:
-            rc_param.stParamH264Vbr.s32MaxReEncodeTimes = 0;
-            break;
-        case VENC_RC_MODE_H265CBR:
-            rc_param.stParamH265Cbr.s32MaxReEncodeTimes = 0;
-            break;
-        case VENC_RC_MODE_H265VBR:
-            rc_param.stParamH265Vbr.s32MaxReEncodeTimes = 0;
-            break;
-        default:
-            return true;
+    CloseReEncode(&rc_param, rc_mode);
+    if (rc_mode == VENC_RC_MODE_H264VBR) {
+        TuneH264VbrParam(&rc_param.stParamH264Vbr);
+    } else if (rc_mode == VENC_RC_MODE_H265VBR) {
+        TuneH265VbrParam(&rc_param.stParamH265Vbr);
     }
 
-    return CheckMpiCall("HI_MPI_VENC_SetRcParam",
-                        HI_MPI_VENC_SetRcParam(venc, &rc_param));
+    return MpiOk("HI_MPI_VENC_SetRcParam",
+                 HI_MPI_VENC_SetRcParam(venc, &rc_param));
 }
 
 bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -339,8 +384,8 @@ bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
     dst.s32DevId = 0;
     dst.s32ChnId = venc_channel;
 
-    return CheckMpiCall("HI_MPI_SYS_Bind(VPSS-VENC)",
-                        HI_MPI_SYS_Bind(&src, &dst));
+    return MpiOk("HI_MPI_SYS_Bind(VPSS-VENC)",
+                 HI_MPI_SYS_Bind(&src, &dst));
 }
 
 void UnbindVpssFromVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -464,8 +509,11 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         GopModeName(stream.gop_mode), stream.size.width, stream.size.height,
         stream.frame_rate.source_fps, stream.frame_rate.target_fps,
         stream.bitrate_kbps, stream.gop, stat_time, attr.stVencAttr.u32BufSize);
-    HISI_CHECK(HI_MPI_VENC_CreateChn(venc, &attr));
-    if (!CloseReEncode(venc, attr.stRcAttr.enRcMode)) {
+    if (!MpiOk("HI_MPI_VENC_CreateChn",
+               HI_MPI_VENC_CreateChn(venc, &attr))) {
+        return false;
+    }
+    if (!TuneRcParam(venc, attr.stRcAttr.enRcMode)) {
         DestroyVencChannel(venc);
         return false;
     }
@@ -964,8 +1012,9 @@ bool MppHisiSdk::RequestIdr(int32_t venc_channel) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (venc_channel < 0) return false;
 
-    return internal::HiOk(HI_MPI_VENC_RequestIDR(
-        static_cast<VENC_CHN>(venc_channel), HI_TRUE));
+    return MpiOk("HI_MPI_VENC_RequestIDR",
+                 HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel),
+                                        HI_TRUE));
 }
 
 }  // namespace hisisdk

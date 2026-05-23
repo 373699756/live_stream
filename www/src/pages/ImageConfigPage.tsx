@@ -197,6 +197,8 @@ export function ImageConfigPage() {
       },
     });
   };
+  const showOrientationControls =
+    capabilities.orientation.mirror || capabilities.orientation.flip;
 
   return (
     <div className="config-preview-layout">
@@ -207,7 +209,7 @@ export function ImageConfigPage() {
             <p>调整基础画质参数，运行态应用由后端图像管线完成。</p>
           </div>
         </div>
-        <div className="form-grid form-grid-single">
+        <div className="form-grid image-settings-grid image-primary-grid">
           <div className="form-section-title">自动画质策略</div>
           <FormField label="自动策略">
             <input
@@ -225,18 +227,26 @@ export function ImageConfigPage() {
             value={config.strategy?.mode || 'balanced'}
             onChange={updateStrategyMode}
           />
-          <div className="strategy-status">
-            <span>状态 {strategyStatus.active ? '运行中' : '未运行'}</span>
-            <span>ISO {strategyStatus.exposure_valid ? strategyStatus.iso : '-'}</span>
-            <span>曝光 {strategyStatus.exposure_valid ? `${strategyStatus.exposure_time_us} us` : '-'}</span>
-            <span>模式 {strategyModeLabel(strategyStatus.mode)}</span>
-            <span>场景 {tierLabel(strategyStatus.tier)}</span>
-            <span>实际 饱和 {strategyStatus.saturation}</span>
-            <span>锐度 {strategyStatus.sharpness}</span>
-            <span>2DNR {strategyStatus.denoise_2d}</span>
-            <span>3DNR {strategyStatus.denoise_3d}</span>
-            <span>Gamma {strategyStatus.gamma}</span>
+          <div className="strategy-status image-status-strip">
+            <span><strong>状态</strong>{strategyStatus.active ? '运行中' : '未运行'}</span>
+            <span><strong>场景</strong>{tierLabel(strategyStatus.tier)}</span>
+            <span><strong>模式</strong>{strategyModeLabel(strategyStatus.mode)}</span>
+            <span><strong>ISO</strong>{strategyStatus.exposure_valid ? strategyStatus.iso : '-'}</span>
+            <span>
+              <strong>曝光</strong>
+              {strategyStatus.exposure_valid ? `${strategyStatus.exposure_time_us} us` : '-'}
+            </span>
           </div>
+          <details className="image-status-details">
+            <summary>更多运行值</summary>
+            <div className="strategy-status image-status-grid">
+              <span><strong>饱和</strong>{strategyStatus.saturation}</span>
+              <span><strong>锐度</strong>{strategyStatus.sharpness}</span>
+              <span><strong>2DNR</strong>{strategyStatus.denoise_2d}</span>
+              <span><strong>3DNR</strong>{strategyStatus.denoise_3d}</span>
+              <span><strong>Gamma</strong>{strategyStatus.gamma}</span>
+            </div>
+          </details>
 
           <div className="form-section-title">基础画质</div>
           {basicItems.map(([key, label]) => {
@@ -251,8 +261,12 @@ export function ImageConfigPage() {
               />
             ) : null;
           })}
+        </div>
 
-          <div className="form-section-title">曝光控制</div>
+        <div className="image-advanced-list">
+          <details className="image-advanced-section">
+            <summary>曝光控制</summary>
+            <div className="form-grid image-settings-grid image-detail-grid">
           <OptionField
             label="曝光模式"
             capability={optionCapability(capabilities.exposure.options, 'mode', [
@@ -336,8 +350,12 @@ export function ImageConfigPage() {
               }
             />
           )}
+            </div>
+          </details>
 
-          <div className="form-section-title">白平衡</div>
+          <details className="image-advanced-section">
+            <summary>白平衡</summary>
+            <div className="form-grid image-settings-grid image-detail-grid">
           <OptionField
             label="白平衡模式"
             capability={optionCapability(
@@ -376,8 +394,12 @@ export function ImageConfigPage() {
               updateSection('white_balance', 'blue_gain', value)
             }
           />
+            </div>
+          </details>
 
-          <div className="form-section-title">图像增强</div>
+          <details className="image-advanced-section">
+            <summary>图像增强</summary>
+            <div className="form-grid image-settings-grid image-detail-grid">
           <RangeField
             label="2D 降噪"
             capability={
@@ -433,8 +455,12 @@ export function ImageConfigPage() {
               />
             </FormField>
           )}
+            </div>
+          </details>
 
-          <div className="form-section-title">背光与日夜</div>
+          <details className="image-advanced-section">
+            <summary>背光与日夜</summary>
+            <div className="form-grid image-settings-grid image-detail-grid">
           <OptionField
             label="背光模式"
             capability={optionCapability(capabilities.backlight.options, 'mode', [
@@ -469,8 +495,13 @@ export function ImageConfigPage() {
                 onChange={updateColorMode}
               />
             )}
+            </div>
+          </details>
 
-          <div className="form-section-title">方向</div>
+          {showOrientationControls && (
+            <details className="image-advanced-section">
+              <summary>方向</summary>
+              <div className="form-grid image-settings-grid image-detail-grid">
           {capabilities.orientation.mirror && (
             <FormField label="镜像">
               <input type="checkbox" checked={config.orientation.mirror} onChange={(e) => setConfig({ ...config, orientation: { ...config.orientation, mirror: e.target.checked } })} />
@@ -480,6 +511,9 @@ export function ImageConfigPage() {
             <FormField label="翻转">
               <input type="checkbox" checked={config.orientation.flip} onChange={(e) => setConfig({ ...config, orientation: { ...config.orientation, flip: e.target.checked } })} />
             </FormField>
+          )}
+              </div>
+            </details>
           )}
         </div>
         <div className="form-actions">

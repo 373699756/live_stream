@@ -24,14 +24,6 @@ constexpr uint16_t kSharpenFreqMax = 0x0800;
 constexpr uint8_t kSharpenShootMax = 48;
 constexpr uint16_t kNrCoarseMax = 0x02c0;
 
-bool MpiOk(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
     const int32_t clamped = infra::Clamp(value, 0, kConfigMax);
     return min_value +

@@ -31,6 +31,13 @@ const gopModeLabel = (mode: VideoStreamConfig['gop_mode']) => {
   return mode;
 };
 
+const rateControlLabel = (mode: VideoStreamConfig['rate_control']) => {
+  if (mode === 'cbr') return 'CBR';
+  if (mode === 'vbr') return 'VBR';
+  if (mode === 'fixqp') return 'Fix QP';
+  return String(mode).toUpperCase();
+};
+
 function StreamForm({
   stream,
   capabilities,
@@ -53,12 +60,30 @@ function StreamForm({
   const available = capabilities.available !== false;
   const supported = isStreamSupported(stream, capabilities);
   const supportedResolution = capabilities.resolutions.some((item) => resolutionValue(item) === stream.resolution);
-  const showSmartCodec = codecSupportsSmartP(stream.codec) && capabilities.smart_codec;
-  const gopModes: VideoStreamConfig['gop_mode'][] = showSmartCodec
+  const smartCodecSupported = codecSupportsSmartP(stream.codec) && capabilities.smart_codec;
+  const gopModes: VideoStreamConfig['gop_mode'][] = smartCodecSupported
     ? ['normal_p', 'dual_p', 'smart_p']
     : ['normal_p', 'dual_p'];
   const selectedGopMode = stream.smart_codec ? 'smart_p' : stream.gop_mode;
   const currentGopMode = gopModes.includes(selectedGopMode) ? selectedGopMode : 'normal_p';
+  const smartCodecState = smartCodecSupported
+    ? currentGopMode === 'smart_p'
+      ? 'SmartP 已启用'
+      : 'SmartP 可选'
+    : 'SmartP 不可用';
+  const rateControlHint =
+    stream.rate_control === 'vbr'
+      ? currentGopMode === 'smart_p'
+        ? 'VBR 使用码率上限，SmartP 降低静态画面的参考帧成本。'
+        : 'VBR 使用码率上限，复杂画面放宽，静态画面收敛。'
+      : stream.rate_control === 'fixqp'
+        ? 'Fix QP 适合稳定测试或固定量化场景。'
+        : 'CBR 适合固定带宽链路，输出更平稳。';
+  const smartCodecHint = smartCodecSupported
+    ? currentGopMode === 'smart_p'
+      ? 'SmartP 仅对 H.264/H.265 生效，保存后后端按智能 GOP 应用。'
+      : '选择 Smart P 即启用 Smart H.264/H.265；Normal/Dual P 会关闭智能编码。'
+    : '当前编码或固件能力不支持 SmartP。';
   return (
     <div className="form-grid form-grid-single">
       <FormField label="启用">
@@ -121,62 +146,58 @@ function StreamForm({
           onChange={(e) => patch({ bitrate_kbps: Number(e.target.value) })}
         />
       </FormField>
-      <FormField label="码率控制">
-        <select
-          disabled={!available}
-          value={stream.rate_control}
-          onChange={(e) => patch({ rate_control: e.target.value as VideoStreamConfig['rate_control'] })}
-        >
+      <div className="stream-advanced-block">
+        <div className="stream-advanced-block-title">码率控制</div>
+        <div className="stream-control-segmented">
           {capabilities.rate_control.map((mode) => (
-            <option value={mode} key={mode}>
-              {mode.toUpperCase()}
-            </option>
+            <button
+              type="button"
+              key={mode}
+              className={stream.rate_control === mode ? 'active' : ''}
+              disabled={!available}
+              onClick={() => patch({ rate_control: mode })}
+            >
+              {rateControlLabel(mode)}
+            </button>
           ))}
-        </select>
-      </FormField>
-      <FormField label="GOP">
-        <input
-          type="number"
-          min={capabilities.gop.min}
-          max={capabilities.gop.max}
-          disabled={!available}
-          value={stream.gop}
-          aria-invalid={stream.gop < capabilities.gop.min || stream.gop > capabilities.gop.max}
-          onChange={(e) => patch({ gop: Number(e.target.value) })}
-        />
-      </FormField>
-      <FormField label="GOP模式">
-        <select
-          disabled={!available}
-          value={currentGopMode}
-          onChange={(e) => {
-            const mode = e.target.value as VideoStreamConfig['gop_mode'];
-            patch({ gop_mode: mode, smart_codec: mode === 'smart_p' });
-          }}
-        >
-          {gopModes.map((mode) => (
-            <option value={mode} key={mode}>
-              {gopModeLabel(mode)}
-            </option>
-          ))}
-        </select>
-      </FormField>
-      {showSmartCodec && (
-        <FormField label="智能编码">
-          <input
-            type="checkbox"
+        </div>
+        <div className="stream-advanced-hint">{rateControlHint}</div>
+      </div>
+      <div className="stream-advanced-block">
+        <div className="stream-advanced-block-title">Smart H.264/H.265</div>
+        <div className="stream-state-line">
+          <span>{codecLabel(stream.codec)}</span>
+          <span>{smartCodecState}</span>
+        </div>
+        <FormField label="GOP模式">
+          <select
             disabled={!available}
-            checked={stream.smart_codec}
+            value={currentGopMode}
             onChange={(e) => {
-              const smart_codec = e.target.checked;
-              patch({
-                smart_codec,
-                gop_mode: smart_codec ? 'smart_p' : 'normal_p',
-              });
+              const mode = e.target.value as VideoStreamConfig['gop_mode'];
+              patch({ gop_mode: mode, smart_codec: mode === 'smart_p' });
             }}
+          >
+            {gopModes.map((mode) => (
+              <option value={mode} key={mode}>
+                {gopModeLabel(mode)}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="GOP">
+          <input
+            type="number"
+            min={capabilities.gop.min}
+            max={capabilities.gop.max}
+            disabled={!available}
+            value={stream.gop}
+            aria-invalid={stream.gop < capabilities.gop.min || stream.gop > capabilities.gop.max}
+            onChange={(e) => patch({ gop: Number(e.target.value) })}
           />
         </FormField>
-      )}
+        <div className="stream-advanced-hint">{smartCodecHint}</div>
+      </div>
       {!available && <div className="save-hint">当前固件未启用该码流管线。</div>}
       {available && !supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}
     </div>
