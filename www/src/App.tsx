@@ -7,7 +7,7 @@ import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { LogsPage } from './pages/LogsPage';
 import { NetworkConfigPage } from './pages/NetworkConfigPage';
-import { OsdConfigPage } from './pages/OsdConfigPage';
+import { OverlayConfigPage } from './pages/OverlayConfigPage';
 import type { PageId } from './pages/pageTypes';
 import { SnapshotConfigPage } from './pages/SnapshotConfigPage';
 import { StreamInfoPage } from './pages/StreamInfoPage';
@@ -26,8 +26,8 @@ function renderPage(page: PageId) {
       return <SnapshotConfigPage />;
     case 'image':
       return <ImageConfigPage />;
-    case 'osd':
-      return <OsdConfigPage />;
+    case 'overlay':
+      return <OverlayConfigPage />;
     case 'network':
       return <NetworkConfigPage />;
     case 'system':

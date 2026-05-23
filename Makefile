@@ -52,7 +52,7 @@ CXXFLAGS += -Ilibs/net_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
-CXXFLAGS += -Ilibs/osd_service/include
+CXXFLAGS += -Ilibs/region_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
 CXXFLAGS += -Ilibs/webrtc_service/include
 CXXFLAGS += -Ilibs/snapshot_service/include
@@ -79,7 +79,7 @@ SERVICES := \
 	ai_service \
 	hisi_vendor \
 	media_service \
-	osd_service \
+	region_service \
 	rtsp_service \
 	webrtc_service \
 	snapshot_service \

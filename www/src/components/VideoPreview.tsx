@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import type { StreamName, StreamStatus } from '../api/types';
 import {
   previewModeLabels,
@@ -13,6 +13,7 @@ interface VideoPreviewProps {
   onStreamChange: (stream: StreamName) => void;
   enabled?: boolean;
   onSnapshot?: (stream: StreamName) => void;
+  surfaceOverlay?: ReactNode;
 }
 
 export function VideoPreview({
@@ -21,6 +22,7 @@ export function VideoPreview({
   onStreamChange,
   enabled = true,
   onSnapshot,
+  surfaceOverlay,
 }: VideoPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('webrtc');
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -167,6 +169,7 @@ export function VideoPreview({
             <span>{previewDetail}</span>
           </div>
         )}
+        {surfaceOverlay}
       </div>
 
       <div className="preview-footer">

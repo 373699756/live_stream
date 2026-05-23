@@ -67,14 +67,14 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
         INFRA_LOG_INFO("app", "AI service disabled");
     }
 
-    OsdServiceOptions osd_options;
-    osd_options.config_service = config;
-    osd_options.media_service = media_.get();
-    osd_options.media_channels = media_channels;
-    osd_options.sdk = &sdk;
-    osd_.reset(new OsdService(osd_options));
-    if (!osd_ || !osd_->Start()) {
-        INFRA_LOG_ERROR("app", "Start osd service failed");
+    RegionServiceOptions overlay_options;
+    overlay_options.config_service = config;
+    overlay_options.media_service = media_.get();
+    overlay_options.media_channels = media_channels;
+    overlay_options.sdk = &sdk;
+    overlay_.reset(new RegionService(overlay_options));
+    if (!overlay_ || !overlay_->Start()) {
+        INFRA_LOG_ERROR("app", "Start overlay service failed");
         Stop();
         return false;
     }
@@ -104,9 +104,9 @@ void MediaSubsystem::Stop() {
         ai_->Stop();
         ai_.reset();
     }
-    if (osd_) {
-        osd_->Stop();
-        osd_.reset();
+    if (overlay_) {
+        overlay_->Stop();
+        overlay_.reset();
     }
     if (media_) {
         media_->Stop();
@@ -119,7 +119,7 @@ MediaRefs MediaSubsystem::refs() const {
     MediaRefs refs;
     refs.media = media_.get();
     refs.ai = ai_.get();
-    refs.osd = osd_.get();
+    refs.overlay = overlay_.get();
     refs.snapshot = snapshot_.get();
     return refs;
 }

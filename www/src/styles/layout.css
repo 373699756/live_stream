@@ -235,11 +235,15 @@
   min-height: 420px;
 }
 
+.overlay-config-layout {
+  grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
+}
+
 .live-grid {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.osd-grid {
+.overlay-grid {
   grid-template-columns: minmax(420px, 1fr) 420px;
 }
 
@@ -481,7 +485,7 @@
   border-top-color: #64748b;
 }
 
-.osd-preview {
+.overlay-preview {
   position: relative;
   height: 260px;
   overflow: hidden;
@@ -492,15 +496,101 @@
   border-radius: 4px;
 }
 
-.osd-text {
+.overlay-text {
   position: absolute;
   font-weight: 700;
   text-shadow: 0 1px 2px #000;
 }
 
-.osd-text.background {
+.overlay-text.background {
   padding: 3px 6px;
   background: rgba(0, 0, 0, 0.45);
+}
+
+.mask-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.mask-slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mask-slots button {
+  min-height: 54px;
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  text-align: left;
+}
+
+.mask-slots button.active {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: #edf6ff;
+}
+
+.mask-slots span {
+  font-weight: 700;
+}
+
+.mask-slots em,
+.mask-coordinate-row {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.mask-coordinate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.overlay-preview-stack {
+  position: sticky;
+  top: 18px;
+}
+
+.overlay-preview-stack .preview-panel {
+  position: relative;
+  top: auto;
+}
+
+.mask-draw-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mask-rect {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-width: 10px;
+  min-height: 10px;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.mask-rect.active {
+  opacity: 0.9;
+  outline: 2px solid #38bdf8;
 }
 
 .metric-grid {
@@ -622,7 +712,7 @@
   .workspace,
   .config-preview-layout,
   .live-grid,
-  .osd-grid,
+  .overlay-grid,
   .system-grid,
   .stream-info-grid {
     grid-template-columns: 1fr;

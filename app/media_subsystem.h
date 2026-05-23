@@ -5,7 +5,7 @@
 
 #include "ai_service.h"
 #include "media_service.h"
-#include "osd_service.h"
+#include "region_service.h"
 #include "snapshot_service.h"
 
 namespace live_stream {
@@ -15,7 +15,7 @@ class CoreServices;
 struct MediaRefs {
     IMediaService* media = nullptr;
     AiService* ai = nullptr;
-    OsdService* osd = nullptr;
+    RegionService* overlay = nullptr;
     SnapshotService* snapshot = nullptr;
 };
 
@@ -36,7 +36,7 @@ private:
 
     std::unique_ptr<IMediaService> media_;
     std::unique_ptr<AiService> ai_;
-    std::unique_ptr<OsdService> osd_;
+    std::unique_ptr<RegionService> overlay_;
     std::unique_ptr<SnapshotService> snapshot_;
     bool started_ = false;
 };

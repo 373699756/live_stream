@@ -1,4 +1,4 @@
-SERVICE_NAME := osd_service
+SERVICE_NAME := region_service
 .DEFAULT_GOAL := all
 MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
 STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a

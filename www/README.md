@@ -45,7 +45,7 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `GET /api/auth/me`
 - `GET/PUT /api/config/video`
 - `GET/PUT /api/config/image`
-- `GET/PUT /api/config/osd`
+- `GET/PUT /api/config/overlay`
 - `GET/PUT /api/config/network`
 - `GET/PUT /api/config/snapshot`
 - `GET /api/media/capabilities`

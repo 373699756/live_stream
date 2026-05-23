@@ -4,7 +4,7 @@ export type PageId =
   | 'video'
   | 'snapshot'
   | 'image'
-  | 'osd'
+  | 'overlay'
   | 'network'
   | 'system'
   | 'logs';

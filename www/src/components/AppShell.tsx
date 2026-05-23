@@ -12,7 +12,7 @@ const navItems: NavItem[] = [
   { id: 'video', label: '视频参数', group: 'Setup' },
   { id: 'snapshot', label: '抓图参数', group: 'Setup' },
   { id: 'image', label: '图像参数', group: 'Setup' },
-  { id: 'osd', label: 'OSD', group: 'Setup' },
+  { id: 'overlay', label: '视频叠加', group: 'Setup' },
   { id: 'network', label: '网络', group: 'Setup' },
   { id: 'system', label: '系统维护', group: 'System' },
   { id: 'streamInfo', label: '码流信息', group: 'Information' },

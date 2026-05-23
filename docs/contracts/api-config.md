@@ -327,12 +327,12 @@ Current fields:
 - `ntp.sync_interval_sec`
 - `manual_sync_allowed`
 
-### `osd`
+### `overlay`
 
 Owner:
 
-- `OsdService`
-- Web UI OSD configuration page
+- `RegionService`
+- Web UI Overlay configuration page
 
 Current fields:
 
@@ -348,10 +348,18 @@ Current fields:
 - `font_size`
 - `font_color`
 - `background`
+- `privacy_masks.main[]`
+- `privacy_masks.sub[]`
+- `privacy_masks.*[].enabled`
+- `privacy_masks.*[].x`
+- `privacy_masks.*[].y`
+- `privacy_masks.*[].width`
+- `privacy_masks.*[].height`
+- `privacy_masks.*[].color`
 
 Frontend DTO:
 
-- `OsdConfig`
+- `OverlayConfig`
 
 ### `alarm`
 
@@ -477,7 +485,7 @@ Config:
 
 - `GET/PUT /api/config/video`
 - `GET/PUT /api/config/image`
-- `GET/PUT /api/config/osd`
+- `GET/PUT /api/config/overlay`
 - `GET/PUT /api/config/network`
 - `GET/PUT /api/config/snapshot`
 

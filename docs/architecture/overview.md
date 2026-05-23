@@ -74,7 +74,7 @@ main.cpp
        -> MediaSubsystem
             - MediaService
             - AiService, only when ai.enabled is true
-            - OsdService
+            - RegionService
             - SnapshotService
        -> ProtocolSubsystem
             - infra::Executor for network callbacks
@@ -138,9 +138,9 @@ Responsibilities:
 
 - Start the video media pipeline.
 - Start AI only when `ai.enabled` is true.
-- Start OSD and snapshot services after media is available.
+- Start Overlay and snapshot services after media is available.
 - Expose `MediaRefs` with the `IMediaService` pointer needed by protocol,
-  HTTP, AI, OSD, and snapshot services.
+  HTTP, AI, Overlay, and snapshot services.
 
 Cross-module consumers receive narrow interfaces rather than concrete class
 pointers. Media status, capabilities, channels, key-frame requests, and frame

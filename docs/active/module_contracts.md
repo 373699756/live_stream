@@ -7,7 +7,8 @@
 
 - `app/` 是组合根。服务之间通过窄接口、Options、Dependencies 或构造参数协作，
   不通过全局单例互相发现。
-- HiSilicon MPP/VENC/ISP 细节留在 `media_service` 的 SDK 适配边界内。
+- HiSilicon MPP/VENC/ISP 细节留在 `media_service` 和 `hisi_vendor`
+  的 SDK 边界内；区域叠加/遮挡由 `region_service` 通过 SDK 接口调用。
 - 状态由最接近真实资源的模块拥有；上层只消费状态，不重复推导。
 - 查询 API 返回具体业务类型；动作型 C++ 函数返回 `bool`。
 - 不新增音频、录像、存储回放、录制 UI/API。
@@ -49,6 +50,13 @@
 - 视频/图像配置应用。
 
 不拥有 RTSP、HTTP、WebRTC、HLS/FLV 请求解析或 Web Console DTO。
+
+## Region
+
+`region_service` 拥有文字叠加和隐私遮挡配置应用、region 生命周期和
+`hisisdk::IHisiSdk` region 接口调用。
+
+不拥有 HiSilicon MPI/API 结构转换；这些实现在 `hisi_vendor` 内。
 
 ## Stream Hub
 

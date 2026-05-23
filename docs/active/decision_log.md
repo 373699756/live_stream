@@ -10,3 +10,4 @@
 | 2026-05-21 | 精简优先，不为简单顺序逻辑新增抽象。 | 过度使用 Context、State、Manager、Store、helper 会降低可读性。 | 新增抽象前必须说明真实收益；否则使用直线流程。 |
 | 2026-05-21 | 高频日志默认不进入生产路径。 | 帧路径和首帧路径日志会影响实时性并淹没关键问题。 | 只保留错误、启动停止、配置变化和关键状态变化；临时诊断日志任务后删除。 |
 | 2026-05-21 | 普通实现任务不扩写长设计文档。 | 反复追加长文档会降低 AI 使用效率。 | 当前状态写 `docs/active/current_milestone.md`，固定决策写本文件，复盘写 `docs/ai/lessons-learned.md`。 |
+| 2026-05-23 | 文字叠加和隐私遮挡统一归入 `region_service`，配置/API 命名为 `overlay`。 | OSD 只是区域能力的一部分，遮挡和文字都依赖 region 生命周期；用 overlay 避免把模块命名限定成文字 OSD。 | 不再新增 `osd_service`、`region_mpp_adapter` 这类并列适配层；HiSilicon API 转换函数留在 `hisi_vendor`。 |

@@ -138,7 +138,16 @@ export interface ImageStrategyStatus {
   gamma: number;
 }
 
-export interface OsdConfig {
+export interface PrivacyMaskConfig {
+  enabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+}
+
+export interface OverlayConfig {
   enabled: boolean;
   items: {
     timestamp: { enabled: boolean; format: string; x: number; y: number };
@@ -147,6 +156,10 @@ export interface OsdConfig {
   font_size: number;
   font_color: string;
   background: boolean;
+  privacy_masks: {
+    main: PrivacyMaskConfig[];
+    sub: PrivacyMaskConfig[];
+  };
 }
 
 export interface NetworkConfig {

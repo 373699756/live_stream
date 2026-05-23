@@ -1,7 +1,7 @@
-// System, upgrade, logs, and OSD/snapshot config API
+// System, upgrade, logs, and Overlay/snapshot config API
 
 import {
-  mockOsdConfig,
+  mockOverlayConfig,
   mockSnapshotConfig,
   mockSystemStatus,
   mockUpgradeStatus,
@@ -9,7 +9,7 @@ import {
 import { postJson, requestJson, putJson, authHeaders, readError, useMockFallback } from './client';
 import type {
   OperationRecord,
-  OsdConfig,
+  OverlayConfig,
   SnapshotConfig,
   SystemStatus,
   UpgradePackageInfo,
@@ -17,13 +17,13 @@ import type {
   UpgradeStatus,
 } from './types';
 
-// OSD
-export function getOsdConfig(): Promise<OsdConfig> {
-  return requestJson<OsdConfig>('/api/config/osd', mockOsdConfig);
+// Overlay
+export function getOverlayConfig(): Promise<OverlayConfig> {
+  return requestJson<OverlayConfig>('/api/config/overlay', mockOverlayConfig);
 }
 
-export function saveOsdConfig(value: OsdConfig): Promise<void> {
-  return putJson('/api/config/osd', value);
+export function saveOverlayConfig(value: OverlayConfig): Promise<void> {
+  return putJson('/api/config/overlay', value);
 }
 
 // Snapshot

@@ -169,7 +169,7 @@
     },
     "manual_sync_allowed": true
   },
-  "osd": {
+  "overlay": {
     "enabled": true,
     "items": {
       "timestamp": {
@@ -187,7 +187,21 @@
     },
     "font_size": 24,
     "font_color": "#FFFFFF",
-    "background": true
+    "background": true,
+    "privacy_masks": {
+      "main": [
+        { "enabled": false, "x": 0, "y": 0, "width": 160, "height": 120, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 160, "height": 120, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 160, "height": 120, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 160, "height": 120, "color": "#000000" }
+      ],
+      "sub": [
+        { "enabled": false, "x": 0, "y": 0, "width": 80, "height": 60, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 80, "height": 60, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 80, "height": 60, "color": "#000000" },
+        { "enabled": false, "x": 0, "y": 0, "width": 80, "height": 60, "color": "#000000" }
+      ]
+    }
   },
   "alarm": {
     "motion_detection": {

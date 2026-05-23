@@ -208,16 +208,18 @@ Should not own:
 - HTTP path routing.
 - Static file serving.
 
-### `libs/osd_service`
+### `libs/region_service`
 
 Owns:
 
-- OSD config validation/application.
-- OSD region interaction with media/MPP adapter.
+- Overlay config validation/application for text OSD and privacy masks.
+- Region lifecycle decisions: create, attach, update, detach, and destroy.
+- Calls the `hisisdk::IHisiSdk` region interface.
 
 Should not own:
 
 - Frontend form layout or TypeScript DTO ownership.
+- HiSilicon MPI/API conversion details; those stay in `libs/hisi_vendor`.
 
 ### `libs/ai_service`
 

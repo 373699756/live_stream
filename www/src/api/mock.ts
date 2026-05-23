@@ -2,7 +2,7 @@ import type {
   ImageConfig,
   ImageStrategyStatus,
   NetworkConfig,
-  OsdConfig,
+  OverlayConfig,
   SnapshotConfig,
   StreamStatus,
   SystemStatus,
@@ -182,10 +182,28 @@ export const mockImageStrategyStatus: ImageStrategyStatus = {
 };
 
 // ---------------------------------------------------------------------------
-// Domain: system — OSD  (api/system.ts)
+// Domain: system — Overlay  (api/system.ts)
 // ---------------------------------------------------------------------------
 
-export const mockOsdConfig: OsdConfig = {
+const emptyMainMask = () => ({
+  enabled: false,
+  x: 0,
+  y: 0,
+  width: 160,
+  height: 120,
+  color: '#000000',
+});
+
+const emptySubMask = () => ({
+  enabled: false,
+  x: 0,
+  y: 0,
+  width: 80,
+  height: 60,
+  color: '#000000',
+});
+
+export const mockOverlayConfig: OverlayConfig = {
   enabled: true,
   items: {
     timestamp: { enabled: true, format: '%Y-%m-%d %H:%M:%S', x: 16, y: 16 },
@@ -194,6 +212,10 @@ export const mockOsdConfig: OsdConfig = {
   font_size: 24,
   font_color: '#FFFFFF',
   background: true,
+  privacy_masks: {
+    main: [emptyMainMask(), emptyMainMask(), emptyMainMask(), emptyMainMask()],
+    sub: [emptySubMask(), emptySubMask(), emptySubMask(), emptySubMask()],
+  },
 };
 
 // ---------------------------------------------------------------------------

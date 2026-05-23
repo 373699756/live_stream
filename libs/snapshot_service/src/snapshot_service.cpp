@@ -73,21 +73,21 @@ SnapshotConfig BuildCaptureConfig(const SnapshotConfig &base_config,
     return capture_config;
 }
 
-hisisdk::SnapshotConfig ToHisiSnapshotConfig(const SnapshotConfig &config,
-                                             const CaptureRequest &request) {
-    hisisdk::SnapshotConfig hisi_config;
-    hisi_config.snap_pipe = config.snap_pipe;
-    hisi_config.snap_vpss_group = config.snap_vpss_group;
-    hisi_config.snap_vpss_channel = config.snap_vpss_channel;
-    hisi_config.jpeg_venc_channel = config.jpeg_venc_channel;
-    hisi_config.size = hisisdk::Size{config.size.width, config.size.height};
-    hisi_config.frame_count = config.frame_count;
-    hisi_config.repeat_send_times = config.repeat_send_times;
-    hisi_config.timeout_ms = request.timeout_ms;
-    hisi_config.jpeg_quality = request.jpeg_quality;
-    hisi_config.load_ccm = config.load_ccm;
-    hisi_config.zero_shutter_lag = config.zero_shutter_lag;
-    return hisi_config;
+hisisdk::SnapshotConfig BuildSdkSnapshotConfig(
+    const SnapshotConfig &config, const CaptureRequest &request) {
+    hisisdk::SnapshotConfig sdk_config;
+    sdk_config.snap_pipe = config.snap_pipe;
+    sdk_config.snap_vpss_group = config.snap_vpss_group;
+    sdk_config.snap_vpss_channel = config.snap_vpss_channel;
+    sdk_config.jpeg_venc_channel = config.jpeg_venc_channel;
+    sdk_config.size = hisisdk::Size{config.size.width, config.size.height};
+    sdk_config.frame_count = config.frame_count;
+    sdk_config.repeat_send_times = config.repeat_send_times;
+    sdk_config.timeout_ms = request.timeout_ms;
+    sdk_config.jpeg_quality = request.jpeg_quality;
+    sdk_config.load_ccm = config.load_ccm;
+    sdk_config.zero_shutter_lag = config.zero_shutter_lag;
+    return sdk_config;
 }
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
@@ -378,7 +378,7 @@ SnapshotFrame SnapshotService::Capture(const CaptureRequest &request) {
     }
 
     hisisdk::JpegFrame hisi_frame = impl_->sdk->CaptureJpeg(
-        ToHisiSnapshotConfig(capture_config, effective_request));
+        BuildSdkSnapshotConfig(capture_config, effective_request));
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->FinishCaptureSession();
