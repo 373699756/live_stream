@@ -21,14 +21,6 @@ constexpr const char* kMipiDeviceNode = "/dev/hi_mipi";
 using internal::SelectedSensorProfile;
 using internal::SensorProfile;
 
-bool CheckMpiCall(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 bool CheckSysCall(const char* expression, int status) {
     if (status == 0) {
         return true;
@@ -278,7 +270,7 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         return false;
     }
 
-    if (!CheckMpiCall("sensor.pfnRegisterCallback",
+    if (!MpiOk("sensor.pfnRegisterCallback",
                       profile.sns_obj->pfnRegisterCallback(vi_pipe, &ae_lib,
                                                            &awb_lib))) {
         return false;
@@ -286,25 +278,25 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
 
     ISP_SNS_COMMBUS_U bus_info{};
     bus_info.s8I2cDev = profile.i2c_device;
-    if (!CheckMpiCall("sensor.pfnSetBusInfo",
+    if (!MpiOk("sensor.pfnSetBusInfo",
                       profile.sns_obj->pfnSetBusInfo(vi_pipe, bus_info))) {
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    if (!CheckMpiCall("HI_MPI_AE_Register",
+    if (!MpiOk("HI_MPI_AE_Register",
                       HI_MPI_AE_Register(vi_pipe, &ae_lib))) {
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
-    if (!CheckMpiCall("HI_MPI_AWB_Register",
+    if (!MpiOk("HI_MPI_AWB_Register",
                       HI_MPI_AWB_Register(vi_pipe, &awb_lib))) {
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    if (!CheckMpiCall("HI_MPI_ISP_MemInit", HI_MPI_ISP_MemInit(vi_pipe))) {
+    if (!MpiOk("HI_MPI_ISP_MemInit", HI_MPI_ISP_MemInit(vi_pipe))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
@@ -312,7 +304,7 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
     }
 
     ISP_PUB_ATTR_S pub_attr = MakeIspPubAttr(profile);
-    if (!CheckMpiCall("HI_MPI_ISP_SetPubAttr",
+    if (!MpiOk("HI_MPI_ISP_SetPubAttr",
                       HI_MPI_ISP_SetPubAttr(vi_pipe, &pub_attr))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
@@ -320,7 +312,7 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         return false;
     }
 
-    if (!CheckMpiCall("HI_MPI_ISP_Init", HI_MPI_ISP_Init(vi_pipe))) {
+    if (!MpiOk("HI_MPI_ISP_Init", HI_MPI_ISP_Init(vi_pipe))) {
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
@@ -361,7 +353,7 @@ bool BindDevPipe(VI_DEV vi_dev, VI_PIPE vi_pipe) {
     VI_DEV_BIND_PIPE_S bind_pipe{};
     bind_pipe.u32Num = 1;
     bind_pipe.PipeId[0] = vi_pipe;
-    return CheckMpiCall("HI_MPI_VI_SetDevBindPipe",
+    return MpiOk("HI_MPI_VI_SetDevBindPipe",
                         HI_MPI_VI_SetDevBindPipe(vi_dev, &bind_pipe));
 }
 
@@ -408,7 +400,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     // ─── VI DEV attribute ─────────────────────────────────────
     VI_DEV_ATTR_S dev_attr = MakeViDevAttr(sensor_profile);
     VI_DEV vi_dev = static_cast<VI_DEV>(config.sensor_id);
-    if (!CheckMpiCall("HI_MPI_VI_SetDevAttr",
+    if (!MpiOk("HI_MPI_VI_SetDevAttr",
                       HI_MPI_VI_SetDevAttr(vi_dev, &dev_attr))) {
         CleanupStartedVi(vi_dev, static_cast<VI_PIPE>(config.video_pipe),
                          static_cast<VI_CHN>(config.vi_channel), chn_enabled,
@@ -416,7 +408,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
         impl_->mipi_started_ = false;
         return false;
     }
-    if (!CheckMpiCall("HI_MPI_VI_EnableDev",
+    if (!MpiOk("HI_MPI_VI_EnableDev",
                       HI_MPI_VI_EnableDev(vi_dev))) {
         CleanupStartedVi(vi_dev, static_cast<VI_PIPE>(config.video_pipe),
                          static_cast<VI_CHN>(config.vi_channel), chn_enabled,
@@ -436,7 +428,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     }
 
     VI_PIPE_ATTR_S pipe_attr = MakePipeAttr(sensor_profile);
-    if (!CheckMpiCall("HI_MPI_VI_CreatePipe",
+    if (!MpiOk("HI_MPI_VI_CreatePipe",
                       HI_MPI_VI_CreatePipe(vi_pipe, &pipe_attr))) {
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
@@ -444,7 +436,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
         return false;
     }
     pipe_created = true;
-    if (!CheckMpiCall("HI_MPI_VI_StartPipe",
+    if (!MpiOk("HI_MPI_VI_StartPipe",
                       HI_MPI_VI_StartPipe(vi_pipe))) {
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
@@ -455,14 +447,14 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     // ─── VI CHN attribute ─────────────────────────────────────
     VI_CHN_ATTR_S chn_attr = MakeViChannelAttr(config);
 
-    if (!CheckMpiCall("HI_MPI_VI_SetChnAttr",
+    if (!MpiOk("HI_MPI_VI_SetChnAttr",
                       HI_MPI_VI_SetChnAttr(vi_pipe, vi_chn, &chn_attr))) {
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;
         return false;
     }
-    if (!CheckMpiCall("HI_MPI_VI_EnableChn",
+    if (!MpiOk("HI_MPI_VI_EnableChn",
                       HI_MPI_VI_EnableChn(vi_pipe, vi_chn))) {
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);

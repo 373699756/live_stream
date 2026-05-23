@@ -8,21 +8,13 @@ namespace hisisdk {
 
 namespace {
 
-bool CheckMpiCall(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 bool EnableVpssChannel(VPSS_GRP vpss_grp, VPSS_CHN vpss_chn,
                        const VPSS_CHN_ATTR_S& chn_attr) {
-    if (!CheckMpiCall("HI_MPI_VPSS_SetChnAttr",
+    if (!MpiOk("HI_MPI_VPSS_SetChnAttr",
                       HI_MPI_VPSS_SetChnAttr(vpss_grp, vpss_chn, &chn_attr))) {
         return false;
     }
-    return CheckMpiCall("HI_MPI_VPSS_EnableChn",
+    return MpiOk("HI_MPI_VPSS_EnableChn",
                         HI_MPI_VPSS_EnableChn(vpss_grp, vpss_chn));
 }
 
@@ -109,7 +101,7 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
         sub_enabled = true;
     }
 
-    if (!CheckMpiCall("HI_MPI_VPSS_StartGrp",
+    if (!MpiOk("HI_MPI_VPSS_StartGrp",
                       HI_MPI_VPSS_StartGrp(vpss_grp))) {
         CleanupVpssGroup(vpss_grp, vpss_chn, main_enabled, sub_chn, sub_enabled);
         return false;

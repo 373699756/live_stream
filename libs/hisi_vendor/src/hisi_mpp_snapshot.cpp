@@ -42,14 +42,6 @@ uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return ((value + alignment - 1) / alignment) * alignment;
 }
 
-bool CheckMpiCall(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 void ReleaseVpssMappedFrame(uint8_t* data, uint32_t capacity, void* user) {
     VpssMappedFrame* mapped_frame = static_cast<VpssMappedFrame*>(user);
     if (mapped_frame == nullptr) {
@@ -89,13 +81,13 @@ uint32_t JpegQualityFromConfig(uint32_t quality) {
 bool EnsureVpssFrameDepth(VPSS_GRP group, VPSS_CHN channel) {
     if (channel >= VPSS_MAX_PHY_CHN_NUM) {
         VPSS_EXT_CHN_ATTR_S attr{};
-        if (!CheckMpiCall("HI_MPI_VPSS_GetExtChnAttr",
+        if (!MpiOk("HI_MPI_VPSS_GetExtChnAttr",
                           HI_MPI_VPSS_GetExtChnAttr(group, channel, &attr))) {
             return false;
         }
         if (attr.u32Depth == 0) {
             attr.u32Depth = 2;
-            return CheckMpiCall("HI_MPI_VPSS_SetExtChnAttr",
+            return MpiOk("HI_MPI_VPSS_SetExtChnAttr",
                                 HI_MPI_VPSS_SetExtChnAttr(group, channel,
                                                           &attr));
         }
@@ -103,13 +95,13 @@ bool EnsureVpssFrameDepth(VPSS_GRP group, VPSS_CHN channel) {
     }
 
     VPSS_CHN_ATTR_S attr{};
-    if (!CheckMpiCall("HI_MPI_VPSS_GetChnAttr",
+    if (!MpiOk("HI_MPI_VPSS_GetChnAttr",
                       HI_MPI_VPSS_GetChnAttr(group, channel, &attr))) {
         return false;
     }
     if (attr.u32Depth == 0) {
         attr.u32Depth = 2;
-        return CheckMpiCall("HI_MPI_VPSS_SetChnAttr",
+        return MpiOk("HI_MPI_VPSS_SetChnAttr",
                             HI_MPI_VPSS_SetChnAttr(group, channel, &attr));
     }
     return true;
@@ -128,7 +120,7 @@ void ReleaseCaptureContext(JpegCaptureContext* context) {
         context->has_channel = false;
     }
     if (context->has_frame) {
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
+        (void)MpiOk("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
                            HI_MPI_VPSS_ReleaseChnFrame(
                                context->vpss_group, context->vpss_channel,
                                &context->frame_info));
@@ -147,7 +139,7 @@ bool InitJpegCaptureContext(const SnapshotConfig& config,
     context->jpeg_channel = static_cast<VENC_CHN>(config.jpeg_venc_channel);
     context->timeout = static_cast<HI_S32>(config.timeout_ms);
 
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
                       HI_MPI_VPSS_GetChnFrame(
                           context->vpss_group, context->vpss_channel,
                           &context->frame_info, context->timeout))) {
@@ -193,7 +185,7 @@ bool CreateJpegChannel(const SnapshotConfig& config,
     }
     VENC_CHN_ATTR_S attr =
         MakeJpegChannelAttr(config, context->frame_info.stVFrame);
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_CreateChn",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_CreateChn",
                       HI_MPI_VENC_CreateChn(context->jpeg_channel, &attr))) {
         return false;
     }
@@ -204,7 +196,7 @@ bool CreateJpegChannel(const SnapshotConfig& config,
     channel_param.u32PollWakeUpFrmCnt = 1;
     channel_param.stFrameRate.s32SrcFrmRate = 1;
     channel_param.stFrameRate.s32DstFrmRate = 1;
-    return CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SetChnParam",
+    return MpiOk("CaptureJpeg: HI_MPI_VENC_SetChnParam",
                         HI_MPI_VENC_SetChnParam(context->jpeg_channel,
                                                 &channel_param));
 }
@@ -215,20 +207,20 @@ bool SendJpegFrame(JpegCaptureContext* context) {
     }
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = -1;
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
                       HI_MPI_VENC_StartRecvFrame(context->jpeg_channel,
                                                 &recv_param))) {
         return false;
     }
     context->receiving = true;
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_SendFrame",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_SendFrame",
                       HI_MPI_VENC_SendFrame(context->jpeg_channel,
                                             &context->frame_info,
                                             context->timeout))) {
         return false;
     }
     if (context->has_frame) {
-        (void)CheckMpiCall("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
+        (void)MpiOk("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
                            HI_MPI_VPSS_ReleaseChnFrame(
                                context->vpss_group, context->vpss_channel,
                                &context->frame_info));
@@ -273,7 +265,7 @@ bool QueryJpegPacks(VENC_CHN jpeg_channel, VENC_CHN_STATUS_S* status) {
         return false;
     }
     *status = VENC_CHN_STATUS_S{};
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_QueryStatus",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_QueryStatus",
                       HI_MPI_VENC_QueryStatus(jpeg_channel, status))) {
         return false;
     }
@@ -300,7 +292,7 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
     *stream = VENC_STREAM_S{};
     stream->pstPack = *packs;
     stream->u32PackCount = status.u32CurPacks;
-    if (!CheckMpiCall("CaptureJpeg: HI_MPI_VENC_GetStream",
+    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_GetStream",
                       HI_MPI_VENC_GetStream(jpeg_channel, stream, -1))) {
         std::free(*packs);
         *packs = nullptr;
@@ -485,7 +477,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
 
     const HI_S32 timeout = static_cast<HI_S32>(timeout_ms);
-    if (!CheckMpiCall("CaptureYuvFrame: HI_MPI_VPSS_GetChnFrame",
+    if (!MpiOk("CaptureYuvFrame: HI_MPI_VPSS_GetChnFrame",
                       HI_MPI_VPSS_GetChnFrame(group, channel, &frame_info,
                                               timeout))) {
         return result;
