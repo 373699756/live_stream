@@ -142,6 +142,27 @@ bool CheckedFrameRange(uint32_t stride, uint32_t width, uint32_t height,
         static_cast<uint64_t>(stride) * (height - 1U) + width;
     return end <= available_size;
 }
+
+bool BlobDataSize(const SVP_BLOB_S &blob, HI_U32 *size) {
+    if (size == nullptr || blob.enType == SVP_BLOB_TYPE_SEQ_S32) {
+        return false;
+    }
+    return ToHiU32(static_cast<uint64_t>(blob.u32Num) * blob.u32Stride *
+                       blob.unShape.stWhc.u32Height *
+                       blob.unShape.stWhc.u32Chn,
+                   size);
+}
+
+bool FlushBlob(const SVP_BLOB_S &blob) {
+    HI_U32 size = 0;
+    if (!BlobDataSize(blob, &size) || blob.u64PhyAddr == 0 ||
+        blob.u64VirAddr == 0) {
+        return false;
+    }
+    return HI_MPI_SYS_MmzFlushCache(blob.u64PhyAddr,
+                                    VirAddrToPointer(blob.u64VirAddr),
+                                    size) == HI_SUCCESS;
+}
 #endif
 
 bool IsFiniteConfidence(float value) {
@@ -348,8 +369,12 @@ public:
         if (!FillInputBlob(frame, config)) {
             return result;
         }
-        // Model resources are ready. Forward/input/output blob wiring is the next
-        // NNIE step, so this backend does not report detections yet.
+        if (!RunSingleSegForward()) {
+            return result;
+        }
+        result.success = true;
+        // Output post-processing is task/model specific, so detections stay empty
+        // until SSD/YOLO/classifier decoding is implemented.
 #endif
         return result;
     }
@@ -525,6 +550,16 @@ private:
                     return false;
                 }
             }
+        }
+        return true;
+    }
+
+    bool ValidateForwardConfig() const {
+        if (model_.u32NetSegNum != 1) {
+            INFRA_LOG_ERROR("ai",
+                            "Unsupported NNIE forward segment count: count=%u",
+                            static_cast<unsigned int>(model_.u32NetSegNum));
+            return false;
         }
         return true;
     }
@@ -724,6 +759,35 @@ private:
         const HI_S32 ret = HI_MPI_SYS_MmzFlushCache(src.u64PhyAddr, dst,
                                                     flush_size);
         return ret == HI_SUCCESS;
+    }
+
+    bool RunSingleSegForward() {
+        if (!ValidateForwardConfig()) {
+            return false;
+        }
+        SVP_NNIE_FORWARD_CTRL_S &ctrl = forward_ctrl_[0];
+        if (HI_MPI_SYS_MmzFlushCache(ctrl.stTskBuf.u64PhyAddr,
+                                     VirAddrToPointer(ctrl.stTskBuf.u64VirAddr),
+                                     ctrl.stTskBuf.u32Size) != HI_SUCCESS) {
+            return false;
+        }
+        for (HI_U32 i = 0; i < ctrl.u32DstNum; ++i) {
+            if (!FlushBlob(seg_data_[0].dst[i])) {
+                return false;
+            }
+        }
+
+        SVP_NNIE_HANDLE handle = 0;
+        HI_S32 ret = HI_MPI_SVP_NNIE_Forward(&handle, seg_data_[0].src,
+                                             &model_, seg_data_[0].dst,
+                                             &ctrl, HI_TRUE);
+        if (ret != HI_SUCCESS) {
+            return false;
+        }
+
+        HI_BOOL finished = HI_FALSE;
+        ret = HI_MPI_SVP_NNIE_Query(ctrl.enNnieId, handle, &finished, HI_TRUE);
+        return ret == HI_SUCCESS && finished == HI_TRUE;
     }
 
     SVP_SRC_MEM_INFO_S model_buf_{};

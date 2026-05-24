@@ -29,8 +29,8 @@
   - 已准备普通 CNN 模型的 task/tmp/input/output blob workspace；ROI 和 recurrent
     模型暂不支持。
   - 已支持尺寸匹配的 YUV420SP 帧拷贝到首段 YVU420SP 输入 blob 并刷新缓存。
-  - 当前尚未接入 resize/色彩转换、forward、query 和后处理，所以 NNIE 后端不会
-    生成检测结果。
+  - 已接入单段 CNN 的 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`。
+  - 当前尚未接入 resize/色彩转换和后处理，所以 NNIE 后端暂不会生成检测结果。
 - Web 暂时告警能力是图片瀑布流：
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
@@ -42,8 +42,8 @@
 
 1. 保持 host `host_stub` 可构建，确保 Web 可以用 mock 和空告警联调。
 2. 使用 IVE/VPSS 补齐输入 resize 和色彩转换，避免要求 VPSS 抓帧尺寸必须等于模型输入。
-3. 接入 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`，先完成单段 CNN 跑通。
-4. 把模型输出统一转换为 `AiDetection`，坐标归一化到 0.0 到 1.0。
+3. 按实际 `.wk` 模型类型接入输出后处理，把模型输出转换为 `AiDetection`。
+4. 坐标归一化到 0.0 到 1.0，并按 `confidence_threshold` / `max_results` 过滤。
 5. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
 
 ## Acceptance
