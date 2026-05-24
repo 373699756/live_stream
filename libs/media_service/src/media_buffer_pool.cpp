@@ -39,13 +39,13 @@ struct PoolBlockRef {
     uint32_t index = 0;
 };
 
-void PoolStateRetain(PoolState* state) {
+void PoolStateRef(PoolState* state) {
     if (state != nullptr) {
         (void)__sync_add_and_fetch(&state->ref_count, 1);
     }
 }
 
-void PoolStateRelease(PoolState* state) {
+void PoolStateUnref(PoolState* state) {
     if (state == nullptr) {
         return;
     }
@@ -54,7 +54,7 @@ void PoolStateRelease(PoolState* state) {
     }
 }
 
-void ReleasePoolBlock(uint8_t* data, uint32_t capacity, void* user) {
+void FreePoolBlock(uint8_t* data, uint32_t capacity, void* user) {
     (void)data;
     (void)capacity;
     PoolBlockRef* ref = static_cast<PoolBlockRef*>(user);
@@ -72,14 +72,14 @@ void ReleasePoolBlock(uint8_t* data, uint32_t capacity, void* user) {
         }
     }
     std::free(ref);
-    PoolStateRelease(state);
+    PoolStateUnref(state);
 }
 
 class VideoBufferPool final : public IVideoBufferPool {
 public:
     explicit VideoBufferPool(PoolState* state) : state_(state) {}
 
-    ~VideoBufferPool() override { PoolStateRelease(state_); }
+    ~VideoBufferPool() override { PoolStateUnref(state_); }
 
     VideoBuffer* Acquire() override {
         std::lock_guard<std::mutex> lock(state_->mutex);
@@ -100,21 +100,21 @@ public:
         PoolBlockRef* ref =
             static_cast<PoolBlockRef*>(std::malloc(sizeof(PoolBlockRef)));
         if (ref == nullptr) {
-            ReleaseIndexLocked(index);
+            UnrefIndexLocked(index);
             ++state_->no_memory_count;
             return nullptr;
         }
         ref->state = state_;
         ref->index = index;
-        PoolStateRetain(state_);
+        PoolStateRef(state_);
         uint8_t* block = state_->data +
                          static_cast<std::size_t>(index) * state_->block_size;
         VideoBuffer* buffer = VideoBufferCreateExternal(
-            block, state_->block_size, 0, ReleasePoolBlock, ref);
+            block, state_->block_size, 0, FreePoolBlock, ref);
         if (buffer == nullptr) {
-            PoolStateRelease(state_);
+            PoolStateUnref(state_);
             std::free(ref);
-            ReleaseIndexLocked(index);
+            UnrefIndexLocked(index);
             ++state_->no_memory_count;
             return nullptr;
         }
@@ -134,7 +134,7 @@ public:
     }
 
 private:
-    void ReleaseIndexLocked(uint32_t index) {
+    void UnrefIndexLocked(uint32_t index) {
         state_->in_use[index] = 0;
         state_->free_indices[state_->free_count] = index;
         ++state_->free_count;
@@ -168,7 +168,7 @@ std::unique_ptr<IVideoBufferPool> CreateVideoBufferPool(uint32_t block_size,
         static_cast<uint32_t*>(std::malloc(sizeof(uint32_t) * block_count));
     if (state->data == nullptr || state->in_use == nullptr ||
         state->free_indices == nullptr) {
-        PoolStateRelease(state);
+        PoolStateUnref(state);
         return nullptr;
     }
     for (uint32_t i = 0; i < block_count; ++i) {
@@ -178,7 +178,7 @@ std::unique_ptr<IVideoBufferPool> CreateVideoBufferPool(uint32_t block_size,
     std::unique_ptr<IVideoBufferPool> pool(
         new (std::nothrow) VideoBufferPool(state));
     if (!pool) {
-        PoolStateRelease(state);
+        PoolStateUnref(state);
         return nullptr;
     }
     return pool;

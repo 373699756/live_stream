@@ -398,7 +398,7 @@ VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
         internal::VencPacketData packet_data;
         if (!internal::GetVencPacketData(pack, stream_buffer, &packet_data) ||
             packet_data.size > payload_size - offset) {
-            VideoBufferRelease(buffer);
+            VideoBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.first.size > 0) {
@@ -413,7 +413,7 @@ VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
         }
     }
     if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         return nullptr;
     }
     return buffer;

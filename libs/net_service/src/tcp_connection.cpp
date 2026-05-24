@@ -19,15 +19,15 @@ namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
 
-void RetainNetBufferOwner(const NetBufferOwner &owner) {
-    if (owner.ptr != nullptr && owner.retain != nullptr) {
-        owner.retain(owner.ptr);
+void RefNetBufferOwner(const NetBufferOwner &owner) {
+    if (owner.ptr != nullptr && owner.ref != nullptr) {
+        owner.ref(owner.ptr);
     }
 }
 
-void ReleaseNetBufferOwner(const NetBufferOwner &owner) {
-    if (owner.ptr != nullptr && owner.release != nullptr) {
-        owner.release(owner.ptr);
+void UnrefNetBufferOwner(const NetBufferOwner &owner) {
+    if (owner.ptr != nullptr && owner.unref != nullptr) {
+        owner.unref(owner.ptr);
     }
 }
 
@@ -54,7 +54,7 @@ TcpConnection::OutSlice& TcpConnection::OutSlice::operator=(
     if (this == &other) {
         return *this;
     }
-    ReleaseNetBufferOwner(owner);
+    UnrefNetBufferOwner(owner);
     data = other.data;
     size = other.size;
     offset = other.offset;
@@ -72,7 +72,7 @@ TcpConnection::OutSlice& TcpConnection::OutSlice::operator=(
 }
 
 TcpConnection::OutSlice::~OutSlice() {
-    ReleaseNetBufferOwner(owner);
+    UnrefNetBufferOwner(owner);
 }
 
 TcpConnection::TcpConnection(NetEngineImpl *engine,
@@ -352,7 +352,7 @@ bool TcpConnection::BuildOutBuffer(const NetBufferSlices &slices,
         out.size = input.size;
         out.owner = input.owner;
         if (out.owner.ptr != nullptr) {
-            RetainNetBufferOwner(out.owner);
+            RefNetBufferOwner(out.owner);
             out.data = input.data;
         } else if (input.size <= out.inline_data.size()) {
             std::memcpy(out.inline_data.data(), input.data, input.size);

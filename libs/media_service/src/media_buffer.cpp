@@ -22,7 +22,7 @@ VideoBuffer* VideoBufferAlloc(uint32_t capacity) {
 
 VideoBuffer* VideoBufferCreateExternal(uint8_t* data, uint32_t capacity,
                                        uint32_t size,
-                                       MediaBufferReleaseCallback release,
+                                       VideoBufferFreeCallback free_callback,
                                        void* user) {
     if (data == nullptr || capacity == 0 || size > capacity) {
         return nullptr;
@@ -36,12 +36,12 @@ VideoBuffer* VideoBufferCreateExternal(uint8_t* data, uint32_t capacity,
     buffer->capacity = capacity;
     buffer->size = size;
     buffer->ref_count = 1;
-    buffer->release = release;
+    buffer->free_callback = free_callback;
     buffer->user = user;
     return buffer;
 }
 
-VideoBuffer* VideoBufferRetain(VideoBuffer* buffer) {
+VideoBuffer* VideoBufferRef(VideoBuffer* buffer) {
     if (buffer == nullptr) {
         return nullptr;
     }
@@ -57,15 +57,15 @@ bool VideoBufferSetSize(VideoBuffer* buffer, uint32_t size) {
     return true;
 }
 
-void VideoBufferRelease(VideoBuffer* buffer) {
+void VideoBufferUnref(VideoBuffer* buffer) {
     if (buffer == nullptr) {
         return;
     }
     if (__sync_sub_and_fetch(&buffer->ref_count, 1) != 0) {
         return;
     }
-    if (buffer->release != nullptr) {
-        buffer->release(buffer->data, buffer->capacity, buffer->user);
+    if (buffer->free_callback != nullptr) {
+        buffer->free_callback(buffer->data, buffer->capacity, buffer->user);
     } else {
         std::free(buffer->data);
     }

@@ -48,7 +48,7 @@ struct SnapshotFrame {
     SnapshotFrame() = default;
 
     SnapshotFrame(const SnapshotFrame &other)
-        : buffer(VideoBufferRetain(other.buffer)),
+        : buffer(VideoBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -59,8 +59,8 @@ struct SnapshotFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer *retained = VideoBufferRetain(other.buffer);
-        VideoBufferRelease(buffer);
+        VideoBuffer *retained = VideoBufferRef(other.buffer);
+        VideoBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -86,7 +86,7 @@ struct SnapshotFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -99,7 +99,7 @@ struct SnapshotFrame {
         return *this;
     }
 
-    ~SnapshotFrame() { VideoBufferRelease(buffer); }
+    ~SnapshotFrame() { VideoBufferUnref(buffer); }
 
     BufferSlice PayloadSlice() const { return BufferSlice{buffer, offset, size}; }
 

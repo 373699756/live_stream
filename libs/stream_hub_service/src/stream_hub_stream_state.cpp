@@ -26,7 +26,7 @@ void ClearFlvGopCache(StreamContext *stream) {
     stream->flv_gop_cache = CachedFlvFrameRing{};
 }
 
-void ReleaseHlsSegments(StreamContext *stream) {
+void UnrefHlsSegments(StreamContext *stream) {
     if (stream == nullptr) {
         return;
     }
@@ -40,7 +40,7 @@ void HlsSegmentStateUnref(HlsSegmentState *segment) {
     if (segment == nullptr) {
         return;
     }
-    VideoBufferRelease(segment->body);
+    VideoBufferUnref(segment->body);
     *segment = HlsSegmentState{};
 }
 
@@ -70,10 +70,10 @@ bool EnsureHlsSegmentCapacity(HlsSegmentState *segment, size_t extra_bytes) {
     std::copy(segment->body->data, segment->body->data + segment->body->size,
               new_body->data);
     if (!VideoBufferSetSize(new_body, segment->body->size)) {
-        VideoBufferRelease(new_body);
+        VideoBufferUnref(new_body);
         return false;
     }
-    VideoBufferRelease(segment->body);
+    VideoBufferUnref(segment->body);
     segment->body = new_body;
     return true;
 }
@@ -457,7 +457,7 @@ void ClearStreamContext(StreamContext *stream) {
         return;
     }
     ClearFlvGopCache(stream);
-    ReleaseHlsSegments(stream);
+    UnrefHlsSegments(stream);
     HlsSegmentStateUnref(&stream->current_segment);
     *stream = StreamContext{};
 }
@@ -511,7 +511,7 @@ StreamSegmentRef FindHlsSegmentRef(const StreamContext &stream,
         ref.found = true;
         ref.sequence = stream.current_segment.sequence;
         ref.duration_us = CurrentSegmentDurationUs(stream);
-        ref.body = VideoBufferRetain(stream.current_segment.body);
+        ref.body = VideoBufferRef(stream.current_segment.body);
         if (ref.body == nullptr) {
             return StreamSegmentRef{};
         }

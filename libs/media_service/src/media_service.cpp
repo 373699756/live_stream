@@ -326,7 +326,7 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     }
     std::memcpy(buffer->data, payload, frame.size);
     if (!VideoBufferSetSize(buffer, frame.size)) {
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         return EncodedFrame{};
     }
     copy.buffer = buffer;

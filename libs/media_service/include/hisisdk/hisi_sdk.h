@@ -82,7 +82,7 @@ struct JpegFrame {
 
     JpegFrame() = default;
     JpegFrame(const JpegFrame& other)
-        : buffer(VideoBufferRetain(other.buffer)),
+        : buffer(VideoBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -92,8 +92,8 @@ struct JpegFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer* retained = VideoBufferRetain(other.buffer);
-        VideoBufferRelease(buffer);
+        VideoBuffer* retained = VideoBufferRef(other.buffer);
+        VideoBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -117,7 +117,7 @@ struct JpegFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -129,7 +129,7 @@ struct JpegFrame {
         other.size = 0;
         return *this;
     }
-    ~JpegFrame() { VideoBufferRelease(buffer); }
+    ~JpegFrame() { VideoBufferUnref(buffer); }
 };
 
 struct MppYuvFrameInfo {
@@ -176,7 +176,7 @@ struct YuvFrame {
 
     YuvFrame() = default;
     YuvFrame(const YuvFrame& other)
-        : buffer(VideoBufferRetain(other.buffer)),
+        : buffer(VideoBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -189,8 +189,8 @@ struct YuvFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer* retained = VideoBufferRetain(other.buffer);
-        VideoBufferRelease(buffer);
+        VideoBuffer* retained = VideoBufferRef(other.buffer);
+        VideoBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -221,7 +221,7 @@ struct YuvFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -237,7 +237,7 @@ struct YuvFrame {
         other.mpp_info = MppYuvFrameInfo{};
         return *this;
     }
-    ~YuvFrame() { VideoBufferRelease(buffer); }
+    ~YuvFrame() { VideoBufferUnref(buffer); }
 };
 
 struct ExposureInfo {

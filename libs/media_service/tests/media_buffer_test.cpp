@@ -6,14 +6,15 @@
 
 using live_stream::CreateVideoBufferPool;
 using live_stream::EncodedFrame;
+using live_stream::EncodedFramePayloadSlice;
 using live_stream::FrameType;
 using live_stream::IsValidBufferSlice;
 using live_stream::MediaBufferPoolStats;
 using live_stream::StreamId;
 using live_stream::VideoBuffer;
 using live_stream::VideoBufferAlloc;
-using live_stream::VideoBufferRelease;
-using live_stream::VideoBufferRetain;
+using live_stream::VideoBufferUnref;
+using live_stream::VideoBufferRef;
 using live_stream::VideoBufferSetSize;
 using live_stream::VideoCodec;
 using live_stream::IVideoBufferPool;
@@ -46,7 +47,7 @@ int main() {
     frame.sequence = 9;
     frame.pts_us = 100;
     frame.dts_us = 90;
-    frame.buffer = VideoBufferRetain(buffer);
+    frame.buffer = VideoBufferRef(buffer);
     frame.offset = 0;
     frame.size = buffer->size;
 
@@ -54,11 +55,11 @@ int main() {
         frame.codec != VideoCodec::kH265) {
         return 5;
     }
-    if (!IsValidBufferSlice(frame.PayloadSlice())) {
+    if (!IsValidBufferSlice(EncodedFramePayloadSlice(&frame))) {
         return 6;
     }
 
-    VideoBufferRelease(buffer);
+    VideoBufferUnref(buffer);
 
     std::unique_ptr<IVideoBufferPool> pool = CreateVideoBufferPool(8, 2);
     if (!pool) {
@@ -75,13 +76,13 @@ int main() {
         stats.no_memory_count != 1U) {
         return 9;
     }
-    VideoBufferRelease(pooled_a);
+    VideoBufferUnref(pooled_a);
     pooled_a = nullptr;
     stats = pool->Stats();
     if (stats.in_use_count != 1U || stats.free_count != 1U) {
         return 10;
     }
-    VideoBufferRelease(pooled_b);
+    VideoBufferUnref(pooled_b);
     pooled_b = nullptr;
     stats = pool->Stats();
     if (stats.in_use_count != 0U || stats.free_count != 2U ||
@@ -106,10 +107,10 @@ int main() {
     std::unique_ptr<IVideoBufferPool> temp_pool = CreateVideoBufferPool(8, 1);
     VideoBuffer* outstanding = temp_pool->Acquire();
     temp_pool.reset();
-    VideoBufferRelease(outstanding);
+    VideoBufferUnref(outstanding);
 
-    VideoBufferRelease(pooled_a);
-    VideoBufferRelease(pooled_b);
+    VideoBufferUnref(pooled_a);
+    VideoBufferUnref(pooled_b);
 
     if (VideoBufferAlloc(0) != nullptr || CreateVideoBufferPool(0, 2)) {
         return 14;

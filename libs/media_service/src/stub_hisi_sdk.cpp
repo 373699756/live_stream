@@ -191,7 +191,7 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
     if (!pool) return JpegFrame{};
     auto buffer = pool->Acquire();
     if (buffer == nullptr || buffer->capacity < sizeof(kMinimalJpeg)) {
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         return JpegFrame{};
     }
     std::memcpy(buffer->data, kMinimalJpeg, sizeof(kMinimalJpeg));

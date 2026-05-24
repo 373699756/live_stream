@@ -6,19 +6,19 @@
 
 namespace live_stream {
 
-using MediaBufferReleaseCallback = void (*)(uint8_t* data, uint32_t capacity,
-                                            void* user);
+using VideoBufferFreeCallback = void (*)(uint8_t* data, uint32_t capacity,
+                                         void* user);
 
 // VideoBuffer owns one contiguous media payload reference. Callers that store a
-// pointer beyond the current scope must call VideoBufferRetain() and later
-// VideoBufferRelease(). If release is null, the final release frees data with
-// free(); otherwise release must release the external mapping or pool block.
+// pointer beyond the current scope must call VideoBufferRef() and later
+// VideoBufferUnref(). If free_callback is null, the final unref frees data with
+// free(); otherwise free_callback must free the external mapping or pool block.
 struct VideoBuffer {
     uint8_t* data = nullptr;
     uint32_t capacity = 0;
     uint32_t size = 0;
     uint32_t ref_count = 0;
-    MediaBufferReleaseCallback release = nullptr;
+    VideoBufferFreeCallback free_callback = nullptr;
     void* user = nullptr;
 };
 
@@ -48,11 +48,11 @@ public:
 VideoBuffer* VideoBufferAlloc(uint32_t capacity);
 VideoBuffer* VideoBufferCreateExternal(uint8_t* data, uint32_t capacity,
                                        uint32_t size,
-                                       MediaBufferReleaseCallback release,
+                                       VideoBufferFreeCallback free_callback,
                                        void* user);
-VideoBuffer* VideoBufferRetain(VideoBuffer* buffer);
+VideoBuffer* VideoBufferRef(VideoBuffer* buffer);
 bool VideoBufferSetSize(VideoBuffer* buffer, uint32_t size);
-void VideoBufferRelease(VideoBuffer* buffer);
+void VideoBufferUnref(VideoBuffer* buffer);
 
 std::unique_ptr<IVideoBufferPool> CreateVideoBufferPool(uint32_t block_size,
                                                         uint32_t block_count);

@@ -21,13 +21,13 @@ using NetTimerId = uint64_t;
 
 constexpr size_t kMaxNetBufferSlices = 8;
 
-using NetBufferOwnerRetainFn = void (*)(const void *owner);
-using NetBufferOwnerReleaseFn = void (*)(const void *owner);
+using NetBufferOwnerRefFn = void (*)(const void *owner);
+using NetBufferOwnerUnrefFn = void (*)(const void *owner);
 
 struct NetBufferOwner {
     const void *ptr = nullptr;
-    NetBufferOwnerRetainFn retain = nullptr;
-    NetBufferOwnerReleaseFn release = nullptr;
+    NetBufferOwnerRefFn ref = nullptr;
+    NetBufferOwnerUnrefFn unref = nullptr;
 };
 
 struct NetBufferSlice {
@@ -47,7 +47,7 @@ struct NetBufferSlices {
         }
         if (data == nullptr || count >= kMaxNetBufferSlices ||
             (owner.ptr != nullptr &&
-             (owner.retain == nullptr || owner.release == nullptr))) {
+             (owner.ref == nullptr || owner.unref == nullptr))) {
             return false;
         }
         slices[count].data = data;

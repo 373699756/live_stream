@@ -200,7 +200,7 @@ inline StreamSegmentRef StreamSegmentRefCopy(
         return ref;
     }
     ref = *segment;
-    ref.body = VideoBufferRetain(segment->body);
+    ref.body = VideoBufferRef(segment->body);
     if (ref.body == nullptr) {
         return StreamSegmentRef{};
     }
@@ -211,7 +211,7 @@ inline void StreamSegmentRefUnref(StreamSegmentRef *segment) {
     if (segment == nullptr) {
         return;
     }
-    VideoBufferRelease(segment->body);
+    VideoBufferUnref(segment->body);
     *segment = StreamSegmentRef{};
 }
 

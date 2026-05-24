@@ -92,7 +92,7 @@ hisisdk::SnapshotConfig BuildSdkSnapshotConfig(
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
     SnapshotFrame frame;
-    frame.buffer = VideoBufferRetain(hisi_frame.buffer);
+    frame.buffer = VideoBufferRef(hisi_frame.buffer);
     frame.offset = hisi_frame.offset;
     frame.size = hisi_frame.size;
     frame.width = hisi_frame.width;

@@ -679,7 +679,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                             "pack=%u len=%u offset=%u addr=%p",
                             context.chn, stream.u32Seq, i, pack.u32Len,
                             pack.u32Offset, static_cast<void*>(pack.pu8Addr));
-            VideoBufferRelease(buffer);
+            VideoBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.size > payload_size - offset) {
@@ -688,7 +688,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                             "offset=%u len=%u size=%u",
                             context.chn, stream.u32Seq, offset,
                             packet_data.size, payload_size);
-            VideoBufferRelease(buffer);
+            VideoBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.first.size > 0) {
@@ -707,7 +707,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                         "copy VENC stream chn=%d seq=%u size=%u expect=%u "
                         "failed",
                         context.chn, stream.u32Seq, offset, payload_size);
-        VideoBufferRelease(buffer);
+        VideoBufferUnref(buffer);
         return nullptr;
     }
     return buffer;

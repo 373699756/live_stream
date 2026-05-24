@@ -58,7 +58,7 @@ inline void EncodedFrameUnref(EncodedFrame *frame) {
     if (frame == nullptr) {
         return;
     }
-    VideoBufferRelease(frame->buffer);
+    VideoBufferUnref(frame->buffer);
     EncodedFrameInit(frame);
 }
 
@@ -70,7 +70,7 @@ inline bool EncodedFrameRefCopy(EncodedFrame *target,
     if (target == source) {
         return true;
     }
-    VideoBuffer *retained = VideoBufferRetain(source->buffer);
+    VideoBuffer *retained = VideoBufferRef(source->buffer);
     if (source->buffer != nullptr && retained == nullptr) {
         return false;
     }

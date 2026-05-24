@@ -15,13 +15,13 @@ namespace {
 
 constexpr size_t kMaxStreamingQueuedBytes = 4U * 1024U * 1024U;
 
-void RetainVideoBufferOwner(const void *owner) {
-    (void)VideoBufferRetain(
+void RefVideoBufferOwner(const void *owner) {
+    (void)VideoBufferRef(
         const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
 }
 
-void ReleaseVideoBufferOwner(const void *owner) {
-    VideoBufferRelease(
+void UnrefVideoBufferOwner(const void *owner) {
+    VideoBufferUnref(
         const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
 }
 
@@ -29,8 +29,8 @@ NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
     if (buffer == nullptr) {
         return NetBufferOwner{};
     }
-    return NetBufferOwner{buffer, RetainVideoBufferOwner,
-                          ReleaseVideoBufferOwner};
+    return NetBufferOwner{buffer, RefVideoBufferOwner,
+                          UnrefVideoBufferOwner};
 }
 
 const char *HttpMethodName(HttpMethod method) {
