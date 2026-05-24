@@ -114,7 +114,7 @@ HttpResponse HandleSegment(IStreamBrowserSource *stream_hub, StreamId stream_id,
         return StatusResponse(400, "Invalid HLS segment");
     }
 
-    const StreamSegment segment =
+    StreamSegment segment =
         stream_hub->GetHlsSegment(stream_id, static_cast<uint64_t>(sequence));
     if (!segment.found) {
         INFRA_LOG_ERROR(kHttpModuleName,
@@ -128,7 +128,7 @@ HttpResponse HandleSegment(IStreamBrowserSource *stream_hub, StreamId stream_id,
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "video/mp2t";
-    response.body = segment.body;
+    response.body.swap(segment.body);
     return response;
 }
 

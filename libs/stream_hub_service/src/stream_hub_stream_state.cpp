@@ -14,6 +14,13 @@ namespace {
 
 constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
 
+int64_t CurrentSegmentDurationUs(const StreamContext &stream) {
+    return std::max<int64_t>(stream.last_frame_duration_us,
+                             stream.current_segment.last_pts_us -
+                                 stream.current_segment.start_pts_us +
+                                 stream.last_frame_duration_us);
+}
+
 void StartSegment(StreamContext *stream, int64_t pts_us) {
     if (stream == nullptr) {
         return;
@@ -37,54 +44,53 @@ StreamSegment BuildSegmentFromCurrent(const StreamContext &stream) {
     }
     segment.found = true;
     segment.sequence = stream.current_segment.sequence;
-    segment.duration_us =
-        std::max<int64_t>(stream.last_frame_duration_us,
-                          stream.current_segment.last_pts_us -
-                              stream.current_segment.start_pts_us +
-                              stream.last_frame_duration_us);
+    segment.duration_us = CurrentSegmentDurationUs(stream);
     segment.body = stream.current_segment.body;
     return segment;
 }
 
-void UpsertSegment(StreamContext *stream, const StreamSegment &segment,
-                   uint32_t playlist_depth) {
-    if (stream == nullptr || !segment.found || segment.body.empty()) {
+void PushFinalizedSegment(StreamContext *stream, uint32_t playlist_depth) {
+    if (stream == nullptr || !stream->current_segment.started ||
+        stream->current_segment.body.empty()) {
         return;
     }
-    for (StreamSegment &cached : stream->segments) {
-        if (cached.sequence == segment.sequence) {
-            cached.duration_us = segment.duration_us;
-            cached.body = segment.body;
-            return;
-        }
-    }
-    stream->segments.push_back(segment);
+    stream->segments.push_back(StreamSegment{});
+    StreamSegment &segment = stream->segments.back();
+    segment.found = true;
+    segment.sequence = stream->current_segment.sequence;
+    segment.duration_us = CurrentSegmentDurationUs(*stream);
+    segment.body.swap(stream->current_segment.body);
     while (stream->segments.size() > playlist_depth) {
         stream->segments.pop_front();
     }
 }
 
-bool PublishCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
-    if (stream == nullptr || !stream->current_segment.started ||
-        stream->current_segment.published) {
-        return false;
-    }
-    const StreamSegment segment = BuildSegmentFromCurrent(*stream);
-    if (!segment.found || segment.body.empty()) {
-        return false;
-    }
-    UpsertSegment(stream, segment, playlist_depth);
-    stream->current_segment.published = true;
-    return true;
-}
-
-void UpdatePublishedCurrentSegment(StreamContext *stream,
-                                   uint32_t playlist_depth) {
-    if (stream == nullptr || !stream->current_segment.started ||
-        !stream->current_segment.published) {
+void TrimSegments(StreamContext *stream, uint32_t playlist_depth) {
+    if (stream == nullptr) {
         return;
     }
-    UpsertSegment(stream, BuildSegmentFromCurrent(*stream), playlist_depth);
+    while (stream->segments.size() > playlist_depth) {
+        stream->segments.pop_front();
+    }
+}
+
+void TrimSegmentsWithCurrent(StreamContext *stream, uint32_t playlist_depth) {
+    if (playlist_depth == 0) {
+        TrimSegments(stream, 0);
+        return;
+    }
+    TrimSegments(stream, playlist_depth - 1);
+}
+
+bool PublishCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
+    if (stream == nullptr || !stream->current_segment.started ||
+        stream->current_segment.published ||
+        stream->current_segment.body.empty()) {
+        return false;
+    }
+    stream->current_segment.published = true;
+    TrimSegmentsWithCurrent(stream, playlist_depth);
+    return true;
 }
 
 bool FinalizeCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
@@ -93,7 +99,7 @@ bool FinalizeCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
         return false;
     }
 
-    UpsertSegment(stream, BuildSegmentFromCurrent(*stream), playlist_depth);
+    PushFinalizedSegment(stream, playlist_depth);
     stream->current_segment = HlsSegmentState{};
     return true;
 }
@@ -206,7 +212,7 @@ bool IsFlvStreamReady(const StreamContext &stream) {
 bool IsHlsStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
            IsHlsCodecSupported(stream.codec) &&
-           !stream.segments.empty();
+           (!stream.segments.empty() || stream.current_segment.published);
 }
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
@@ -256,12 +262,20 @@ StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
     }
 
     playlist.supported = true;
-    playlist.media_sequence = stream.segments.front().sequence;
+    playlist.media_sequence = !stream.segments.empty()
+                                  ? stream.segments.front().sequence
+                                  : stream.current_segment.sequence;
     int64_t max_duration_us = static_cast<int64_t>(hls_segment_duration_ms) * 1000;
     for (const StreamSegment &segment : stream.segments) {
         playlist.entries.push_back(
             StreamHlsEntry{segment.sequence, segment.duration_us});
         max_duration_us = std::max(max_duration_us, segment.duration_us);
+    }
+    if (stream.current_segment.published) {
+        const int64_t duration_us = CurrentSegmentDurationUs(stream);
+        playlist.entries.push_back(
+            StreamHlsEntry{stream.current_segment.sequence, duration_us});
+        max_duration_us = std::max(max_duration_us, duration_us);
     }
     playlist.target_duration_sec = static_cast<uint32_t>(
         std::max<int64_t>(1, (max_duration_us + 999999) / 1000000));
@@ -277,6 +291,10 @@ StreamSegment FindHlsSegment(const StreamContext &stream, uint64_t sequence) {
         if (segment.sequence == sequence) {
             return segment;
         }
+    }
+    if (stream.current_segment.published &&
+        stream.current_segment.sequence == sequence) {
+        return BuildSegmentFromCurrent(stream);
     }
     return StreamSegment{};
 }
@@ -358,8 +376,6 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         if (keyframe) {
             result.hls_segment_updated =
                 PublishCurrentSegment(stream, hls_playlist_depth);
-        } else {
-            UpdatePublishedCurrentSegment(stream, hls_playlist_depth);
         }
     }
 

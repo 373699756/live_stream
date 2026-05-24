@@ -271,16 +271,20 @@ void HttpServer::SendResponse(ConnectionId connection_id,
     HttpResponse response_copy = response;
     response_copy.headers["Connection"] =
         close_after_response ? "close" : "keep-alive";
-    const std::string serialized = SerializeResponse(response_copy);
-    if (!net_engine->Send(connection_id,
-                          reinterpret_cast<const uint8_t *>(serialized.data()),
-                          serialized.size())) {
+    const std::string header = SerializeResponseHeader(response_copy);
+    NetBufferSlices slices;
+    if (!slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
+                    header.size()) ||
+        (!response_copy.body.empty() &&
+         !slices.Add(reinterpret_cast<const uint8_t *>(response_copy.body.data()),
+                     response_copy.body.size())) ||
+        !net_engine->SendSlices(connection_id, slices)) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HTTP response send failed conn=%llu status=%d "
-                        "body=%zu serialized=%zu close=%d",
+                        "body=%zu header=%zu close=%d",
                         static_cast<unsigned long long>(connection_id),
                         response.status_code, response.body.size(),
-                        serialized.size(), close_after_response ? 1 : 0);
+                        header.size(), close_after_response ? 1 : 0);
         (void)net_engine->Close(connection_id);
         return;
     }

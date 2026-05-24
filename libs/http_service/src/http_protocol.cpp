@@ -88,7 +88,7 @@ std::string GetHeader(const HttpRequest& request, const std::string& name) {
     return std::string();
 }
 
-std::string SerializeResponse(const HttpResponse& response) {
+std::string SerializeResponseHeader(const HttpResponse& response) {
     std::string out = "HTTP/1.1 " + std::to_string(response.status_code) + " " +
                       HttpStatusText(response.status_code) + "\r\n";
     bool has_length = false;
@@ -109,8 +109,11 @@ std::string SerializeResponse(const HttpResponse& response) {
         out += "Connection: close\r\n";
     }
     out += "\r\n";
-    out += response.body;
     return out;
+}
+
+std::string SerializeResponse(const HttpResponse& response) {
+    return SerializeResponseHeader(response) + response.body;
 }
 
 RawParseResult ParseRawRequest(const std::string& raw,

@@ -301,8 +301,9 @@ public:
         status.hls_ready = hub_state::IsHlsStreamReady(*stream);
         status.flv_ready = hub_state::IsFlvStreamReady(*stream);
         status.codec = stream->codec;
-        status.hls_segment_count =
-            static_cast<uint32_t>(stream->segments.size());
+        status.hls_segment_count = static_cast<uint32_t>(
+            stream->segments.size() +
+            (stream->current_segment.published ? 1U : 0U));
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
@@ -580,7 +581,9 @@ private:
                     "sequence_header=%zu last_keyframe=%zu segments=%zu",
                     StreamName(frame.stream_id), hls_ready ? 1 : 0,
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
-                    stream->last_keyframe_tag.size(), stream->segments.size());
+                    stream->last_keyframe_tag.size(),
+                    stream->segments.size() +
+                        (stream->current_segment.published ? 1U : 0U));
             }
             if (packaged_frame.hls_segment_created) {
                 ++stats_.hls_segments_created;
