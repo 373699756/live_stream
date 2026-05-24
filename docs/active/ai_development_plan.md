@@ -7,6 +7,11 @@
 - SVP 文档：`~/Public/hisi/sdk_hisi3516dv300/zh/01.software/board/SVP`
 - SVP 示例：
   `/home/cp/Public/hisi/sdk_hisi3516dv300/Hi3516CV500_SDK_V2.0.1.0/smp/a7_linux/mpp/sample/svp`
+- 项目内离线副本：
+  - `3rdparty/hisi_mpp/include` 和 `3rdparty/hisi_mpp/lib`：编译用 MPP/NNIE/IVE
+    头文件和库。
+  - `3rdparty/hisi_svp/docs`：SVP/IVE/IVS 开发文档 PDF。
+  - `3rdparty/hisi_svp/sample/svp`：SVP 官方 sample、`.wk` 模型和输入样例。
 - 示例重点：
   - `ive/`：移动侦测、边缘、跟踪和前处理参考。
   - `nnie/`：NNIE 模型加载、forward 和后处理参考。
@@ -31,6 +36,8 @@
   - 已支持尺寸匹配的 YUV420SP 帧拷贝到首段 YVU420SP 输入 blob 并刷新缓存。
   - 已接入单段 CNN 的 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`。
   - 当前尚未接入 resize/色彩转换和后处理，所以 NNIE 后端暂不会生成检测结果。
+- 官方 SVP 依赖已复制到项目内，后续开发默认从 `3rdparty/hisi_svp` 查 sample
+  和模型，不再依赖外部 SDK 路径。
 - Web 暂时告警能力是图片瀑布流：
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
@@ -41,10 +48,13 @@
 ## Next Development Order
 
 1. 保持 host `host_stub` 可构建，确保 Web 可以用 mock 和空告警联调。
-2. 使用 IVE/VPSS 补齐输入 resize 和色彩转换，避免要求 VPSS 抓帧尺寸必须等于模型输入。
-3. 按实际 `.wk` 模型类型接入输出后处理，把模型输出转换为 `AiDetection`。
-4. 坐标归一化到 0.0 到 1.0，并按 `confidence_threshold` / `max_results` 过滤。
-5. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
+2. 先选定一个项目默认检测模型，建议从
+   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`
+   开始，因为 sample 里有完整 SSD 后处理参考。
+3. 使用 IVE/VPSS 补齐输入 resize 和色彩转换，避免要求 VPSS 抓帧尺寸必须等于模型输入。
+4. 按实际 `.wk` 模型类型接入输出后处理，把模型输出转换为 `AiDetection`。
+5. 坐标归一化到 0.0 到 1.0，并按 `confidence_threshold` / `max_results` 过滤。
+6. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
 
 ## Acceptance
 
