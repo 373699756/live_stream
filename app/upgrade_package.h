@@ -16,6 +16,7 @@ struct UpgradePartition {
     std::string fs_type;
     std::string mount_options;
     uint32_t size_bytes = 0;
+    uint32_t erase_size_bytes = 0;
     bool online_writable = false;
 };
 

@@ -7,8 +7,8 @@ FLASH_DIR="${OUT_DIR}/flash"
 TOOLS_DIR="${ROOT_DIR}/tools/pc"
 VERSION="${1:-1.0.0}"
 PACKAGE_PROFILE="${2:-web-only}"
-KERNEL_IMAGE="${KERNEL_IMAGE:-${OUT_DIR}/flash/uImage_hi3516dv300}"
-ROOTFS_IMAGE="${ROOTFS_IMAGE:-${OUT_DIR}/flash/rootfs_hi3516dv300_64k.jffs2}"
+UPGRADE_SIGN_KEY="${UPGRADE_SIGN_KEY:-}"
+UPGRADE_PUBLIC_KEY="${UPGRADE_PUBLIC_KEY:-${ROOT_DIR}/configs/upgrade_public_key.pem}"
 
 need_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -54,9 +54,6 @@ sha256_file() {
 need_bin=false
 need_web=false
 need_config=false
-need_kernel=false
-need_rootfs=false
-need_helper=false
 reboot="false"
 
 case "${PACKAGE_PROFILE}" in
@@ -66,28 +63,19 @@ case "${PACKAGE_PROFILE}" in
   bin-web)
     need_bin=true
     need_web=true
-    need_helper=true
     reboot="true"
     ;;
   config-only)
     need_config=true
-    need_helper=true
     reboot="true"
     ;;
   kernel-rootfs)
-    need_kernel=true
-    need_rootfs=true
-    need_helper=true
-    reboot="true"
+    echo "kernel-rootfs profile is disabled: rootfs online upgrade is unsafe" >&2
+    exit 1
     ;;
   full)
-    need_bin=true
-    need_web=true
-    need_config=true
-    need_kernel=true
-    need_rootfs=true
-    need_helper=true
-    reboot="true"
+    echo "full profile is disabled: rootfs online upgrade is unsafe" >&2
+    exit 1
     ;;
   *)
     echo "usage: $0 [version] [web-only|bin-web|config-only|kernel-rootfs|full]" >&2
@@ -102,6 +90,7 @@ if [ "${need_config}" = true ]; then
   MKFS_JFFS2_TOOL=$(resolve_local_tool "${MKFS_JFFS2:-}" mkfs.jffs2)
 fi
 need_tool zip
+need_tool openssl
 need_tool sha256sum
 need_tool awk
 case "${VERSION}" in
@@ -113,12 +102,13 @@ esac
 
 mkdir -p "${FLASH_DIR}"
 
-if [ "${need_helper}" = true ]; then
-  if [ ! -f "${OUT_DIR}/bin/live_sysupgrade" ]; then
-    echo "missing helper: ${OUT_DIR}/bin/live_sysupgrade" >&2
-    exit 1
-  fi
-  cp -f "${OUT_DIR}/bin/live_sysupgrade" "${FLASH_DIR}/live_sysupgrade"
+if [ -z "${UPGRADE_SIGN_KEY}" ] || [ ! -f "${UPGRADE_SIGN_KEY}" ]; then
+  echo "set UPGRADE_SIGN_KEY=/path/to/private_key.pem to sign Install" >&2
+  exit 1
+fi
+if [ ! -f "${UPGRADE_PUBLIC_KEY}" ]; then
+  echo "missing upgrade public key: ${UPGRADE_PUBLIC_KEY}" >&2
+  exit 1
 fi
 
 if [ "${need_bin}" = true ]; then
@@ -150,6 +140,7 @@ if [ "${need_config}" = true ]; then
   if [ -d "${OUT_DIR}/configs" ]; then
     cp -rf "${OUT_DIR}/configs/." "${FLASH_DIR}/config_root/"
   fi
+  cp -f "${UPGRADE_PUBLIC_KEY}" "${FLASH_DIR}/config_root/upgrade_public_key.pem"
   "${MKFS_JFFS2_TOOL}" -r "${FLASH_DIR}/config_root" \
     -o "${FLASH_DIR}/config.jffs2" \
     -e 0x10000 --pad=0x100000 -n
@@ -174,16 +165,6 @@ EOF
   zip_inputs="${zip_inputs} ${file}"
 }
 
-copy_optional_image() {
-  source_path="$1"
-  file_name="$2"
-  if [ ! -f "${source_path}" ]; then
-    echo "missing image for ${file_name}: ${source_path}" >&2
-    exit 1
-  fi
-  cp -f "${source_path}" "${FLASH_DIR}/${file_name}"
-}
-
 INSTALL_TMP="${FLASH_DIR}/Install.commands"
 rm -f "${INSTALL_TMP}"
 touch "${INSTALL_TMP}"
@@ -197,32 +178,17 @@ case "${PACKAGE_PROFILE}" in
   bin-web)
     add_command bin bin.squashfs "$(sha256_file "${FLASH_DIR}/bin.squashfs")"
     add_command web web.squashfs "$(sha256_file "${FLASH_DIR}/web.squashfs")"
-    zip_inputs="${zip_inputs} live_sysupgrade"
     ;;
   config-only)
     add_command config config.jffs2 "$(sha256_file "${FLASH_DIR}/config.jffs2")"
-    zip_inputs="${zip_inputs} live_sysupgrade"
     ;;
   kernel-rootfs)
-    copy_optional_image "${KERNEL_IMAGE}" uImage_hi3516dv300
-    copy_optional_image "${ROOTFS_IMAGE}" rootfs_hi3516dv300_64k.jffs2
-    add_command kernel uImage_hi3516dv300 \
-      "$(sha256_file "${FLASH_DIR}/uImage_hi3516dv300")"
-    add_command rootfs rootfs_hi3516dv300_64k.jffs2 \
-      "$(sha256_file "${FLASH_DIR}/rootfs_hi3516dv300_64k.jffs2")"
-    zip_inputs="${zip_inputs} live_sysupgrade"
+    echo "kernel-rootfs profile is disabled: rootfs online upgrade is unsafe" >&2
+    exit 1
     ;;
   full)
-    copy_optional_image "${KERNEL_IMAGE}" uImage_hi3516dv300
-    copy_optional_image "${ROOTFS_IMAGE}" rootfs_hi3516dv300_64k.jffs2
-    add_command kernel uImage_hi3516dv300 \
-      "$(sha256_file "${FLASH_DIR}/uImage_hi3516dv300")"
-    add_command rootfs rootfs_hi3516dv300_64k.jffs2 \
-      "$(sha256_file "${FLASH_DIR}/rootfs_hi3516dv300_64k.jffs2")"
-    add_command bin bin.squashfs "$(sha256_file "${FLASH_DIR}/bin.squashfs")"
-    add_command web web.squashfs "$(sha256_file "${FLASH_DIR}/web.squashfs")"
-    add_command config config.jffs2 "$(sha256_file "${FLASH_DIR}/config.jffs2")"
-    zip_inputs="${zip_inputs} live_sysupgrade"
+    echo "full profile is disabled: rootfs online upgrade is unsafe" >&2
+    exit 1
     ;;
   *)
     echo "usage: $0 [version] [web-only|bin-web|config-only|kernel-rootfs|full]" >&2
@@ -242,6 +208,12 @@ $(cat "${INSTALL_TMP}")
   ]
 }
 EOF
+
+openssl dgst -sha256 -sign "${UPGRADE_SIGN_KEY}" \
+  -out "${FLASH_DIR}/Install.sig" "${FLASH_DIR}/Install"
+openssl dgst -sha256 -verify "${UPGRADE_PUBLIC_KEY}" \
+  -signature "${FLASH_DIR}/Install.sig" "${FLASH_DIR}/Install" >/dev/null
+zip_inputs="${zip_inputs} Install.sig"
 
 (cd "${FLASH_DIR}" && zip -0 -q -FS "upgrade-${PACKAGE_PROFILE}.zip" ${zip_inputs})
 cp -f "${FLASH_DIR}/upgrade-${PACKAGE_PROFILE}.zip" "${FLASH_DIR}/upgrade.zip"

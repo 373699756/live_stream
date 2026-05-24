@@ -4,13 +4,14 @@
 #include "infra/time.h"
 #include "logger_service.h"
 
-#include <condition_variable>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -22,10 +23,13 @@ using live_stream::UpgradeProgressCallback;
 using live_stream::UpgradeState;
 
 std::string MakePackageFile(const char* name, std::size_t size) {
-    std::string path = "/tmp/";
+    std::string path = "/tmp/live_stream/upgrade/uploads/";
     path += name;
     path += "_";
     path += std::to_string(static_cast<long long>(getpid()));
+    static_cast<void>(mkdir("/tmp/live_stream", 0755));
+    static_cast<void>(mkdir("/tmp/live_stream/upgrade", 0755));
+    static_cast<void>(mkdir("/tmp/live_stream/upgrade/uploads", 0755));
     std::ofstream output(path, std::ios::binary);
     for (std::size_t i = 0; i < size; ++i) {
         output.put('x');
@@ -34,106 +38,94 @@ std::string MakePackageFile(const char* name, std::size_t size) {
 }
 
 struct FakeEventService : live_stream::IEventService {
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_event"; }
 
-    infra::Result<live_stream::EventSubscriptionId> Subscribe(
+    live_stream::EventSubscriptionId Subscribe(
         live_stream::EventType type,
         live_stream::EventHandler handler) override {
         (void)type;
         (void)handler;
-        return infra::Result<live_stream::EventSubscriptionId>::Ok(1);
+        return 1;
     }
 
-    infra::Status Unsubscribe(
+    bool Unsubscribe(
         live_stream::EventSubscriptionId subscription_id) override {
         (void)subscription_id;
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Status Publish(const live_stream::Event& event) override {
+    bool Publish(const live_stream::Event& event) override {
         events.push_back(event);
-        return infra::Status::kOk;
+        return true;
     }
 
     std::vector<live_stream::Event> events;
 };
 
 struct FakeLoggerService : live_stream::ILoggerService {
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
+    bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_logger"; }
+    bool IsStarted() const override { return true; }
 
-    infra::Status RecordOperation(
+    bool RecordOperation(
         const live_stream::OperationRecord& record) override {
         records.push_back(record);
-        return infra::Status::kOk;
+        return true;
     }
 
-    infra::Result<std::vector<live_stream::OperationRecord>> QueryOperations(
+    std::vector<live_stream::OperationRecord> QueryOperations(
         const live_stream::OperationLogQuery& query) override {
         (void)query;
-        return infra::Result<std::vector<live_stream::OperationRecord>>::Ok(
-            records);
+        return records;
     }
 
-    infra::Status ExportOperations(
+    bool ExportOperations(
         const live_stream::OperationLogExportOptions& options) override {
         (void)options;
-        return infra::Status::kOk;
+        return true;
     }
 
     std::vector<live_stream::OperationRecord> records;
 };
 
 struct FakeUpgradePlatform : IUpgradePlatform {
-    infra::Result<UpgradePackageInfo> ValidatePackage(
+    UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
         calls.push_back("validate");
-        if (validate_error != infra::Status::kOk) {
-            return infra::Result<UpgradePackageInfo>::Fail(validate_error);
+        if (!validate_ok) {
+            return UpgradePackageInfo();
         }
         UpgradePackageInfo result = info;
         result.package_path = package_path;
         result.size_bytes = 16;
-        return infra::Result<UpgradePackageInfo>::Ok(result);
+        return result;
     }
 
-    infra::Result<std::string> GetCurrentVersion() override {
+    std::string GetCurrentVersion() override {
         calls.push_back("current_version");
-        if (current_version_error != infra::Status::kOk) {
-            return infra::Result<std::string>::Fail(current_version_error);
-        }
-        return infra::Result<std::string>::Ok(current_version);
+        return current_version;
     }
 
-    infra::Result<int> CompareVersion(const std::string& lhs,
-                                      const std::string& rhs) override {
+    int CompareVersion(const std::string& lhs,
+                       const std::string& rhs) override {
         calls.push_back("compare");
-        if (compare_error != infra::Status::kOk) {
-            return infra::Result<int>::Fail(compare_error);
-        }
-        int value = 0;
         if (lhs < rhs) {
-            value = -1;
-        } else if (lhs > rhs) {
-            value = 1;
+            return -1;
         }
-        return infra::Result<int>::Ok(value);
+        if (lhs > rhs) {
+            return 1;
+        }
+        return 0;
     }
 
-    infra::Status PrepareUpgrade(const UpgradePackageInfo& package_info) override {
+    bool PrepareUpgrade(const UpgradePackageInfo& package_info) override {
         (void)package_info;
         calls.push_back("prepare");
-        return prepare_error;
+        return prepare_ok;
     }
 
-    infra::Status WriteUpgrade(
+    bool WriteUpgrade(
         const std::string& package_path,
         UpgradeProgressCallback progress_callback) override {
         (void)package_path;
@@ -151,32 +143,32 @@ struct FakeUpgradePlatform : IUpgradePlatform {
             }
         }
         progress_callback(100);
-        return write_error;
+        return write_ok;
     }
 
-    infra::Status CommitUpgrade(const UpgradePackageInfo& package_info) override {
+    bool CommitUpgrade(const UpgradePackageInfo& package_info) override {
         (void)package_info;
         calls.push_back("commit");
-        return commit_error;
+        return commit_ok;
     }
 
-    infra::Status CancelUpgrade() override {
+    bool CancelUpgrade() override {
         calls.push_back("cancel");
         std::lock_guard<std::mutex> lock(mutex);
         cancel_called = true;
         condition.notify_all();
-        return cancel_error;
+        return cancel_ok;
     }
 
-    infra::Status RebootToApply() override {
+    bool RebootToApply() override {
         calls.push_back("reboot");
-        return reboot_error;
+        return reboot_ok;
     }
 
-    infra::Status CleanupFailedUpgrade() override {
+    bool CleanupFailedUpgrade() override {
         calls.push_back("cleanup");
         cleanup_called = true;
-        return cleanup_error;
+        return cleanup_ok;
     }
 
     bool WaitWritingStarted() {
@@ -193,15 +185,13 @@ struct FakeUpgradePlatform : IUpgradePlatform {
 
     UpgradePackageInfo info;
     std::string current_version = "1.0.0";
-    infra::Status validate_error = infra::Status::kOk;
-    infra::Status current_version_error = infra::Status::kOk;
-    infra::Status compare_error = infra::Status::kOk;
-    infra::Status prepare_error = infra::Status::kOk;
-    infra::Status write_error = infra::Status::kOk;
-    infra::Status commit_error = infra::Status::kOk;
-    infra::Status cancel_error = infra::Status::kOk;
-    infra::Status reboot_error = infra::Status::kOk;
-    infra::Status cleanup_error = infra::Status::kOk;
+    bool validate_ok = true;
+    bool prepare_ok = true;
+    bool write_ok = true;
+    bool commit_ok = true;
+    bool cancel_ok = true;
+    bool reboot_ok = true;
+    bool cleanup_ok = true;
     bool block_in_write = false;
     bool writing_started = false;
     bool release_write = false;
@@ -268,15 +258,14 @@ int TestSuccessAndConfirmReboot() {
         live_stream::CreateUpgradeService(
             MakeOptions(&platform, &event_service, &logger));
 
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 1;
     }
 
     live_stream::UpgradeRequest request;
     request.package_path = package_path;
     request.expected_version = "2.0.0";
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kOk) {
+    if (!service->StartUpgrade(MakeContext(), request)) {
         return 2;
     }
     if (!WaitForState(service.get(), UpgradeState::kWaitingReboot)) {
@@ -296,7 +285,7 @@ int TestSuccessAndConfirmReboot() {
         return 6;
     }
 
-    if (service->ConfirmReboot(MakeContext()) != infra::Status::kOk) {
+    if (!service->ConfirmReboot(MakeContext())) {
         return 7;
     }
     if (service->GetStatus().state != UpgradeState::kCompleted ||
@@ -317,23 +306,22 @@ int TestBusyAndCancel() {
     std::unique_ptr<live_stream::IUpgradeService> service =
         live_stream::CreateUpgradeService(
             MakeOptions(&platform, &event_service, &logger));
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 1;
     }
 
     live_stream::UpgradeRequest request;
     request.package_path = package_path;
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kOk) {
+    if (!service->StartUpgrade(MakeContext(), request)) {
         return 2;
     }
     if (!platform.WaitWritingStarted()) {
         return 3;
     }
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kBusy) {
+    if (service->StartUpgrade(MakeContext(), request)) {
         return 4;
     }
-    if (service->CancelUpgrade(MakeContext()) != infra::Status::kOk) {
+    if (!service->CancelUpgrade(MakeContext())) {
         return 5;
     }
     platform.ReleaseWrite();
@@ -358,40 +346,38 @@ int TestPolicyAndFailureCleanup() {
     std::unique_ptr<live_stream::IUpgradeService> service =
         live_stream::CreateUpgradeService(
             MakeOptions(&platform, &event_service, &logger));
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 1;
     }
 
     live_stream::UpgradeRequest request;
     request.package_path = package_path;
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kOk) {
+    if (!service->StartUpgrade(MakeContext(), request)) {
         return 2;
     }
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 3;
     }
-    if (service->GetStatus().status != infra::Status::kAlreadyExists ||
+    if (service->GetStatus().error_message != "same version is not allowed" ||
         logger.records.empty() ||
         logger.records.back().result != live_stream::OperationResult::kRejected) {
         return 4;
     }
 
     platform.info.version = "2.0.0";
-    platform.prepare_error = infra::Status::kIoError;
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kOk) {
+    platform.prepare_ok = false;
+    if (!service->StartUpgrade(MakeContext(), request)) {
         return 5;
     }
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 6;
     }
     if (!platform.cleanup_called ||
-        service->GetStatus().status != infra::Status::kIoError) {
+        service->GetStatus().error_message != "prepare upgrade failed") {
         return 7;
     }
 
-    if (service->StartUpgrade(MakeContext(), live_stream::UpgradeRequest{}) !=
-        infra::Status::kInvalidParam) {
+    if (service->StartUpgrade(MakeContext(), live_stream::UpgradeRequest{})) {
         return 8;
     }
     std::remove(package_path.c_str());
@@ -404,24 +390,54 @@ int TestDefaultPlatformIsRestricted() {
     options.max_package_size_bytes = 1024;
     std::unique_ptr<live_stream::IUpgradeService> service =
         live_stream::CreateUpgradeService(options);
-    if (service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk) {
+    if (!service->Start()) {
         return 1;
     }
-    if (service->ValidatePackage(package_path).status !=
-        infra::Status::kNotSupported) {
+    if (!service->ValidatePackage(package_path).version.empty()) {
         return 2;
     }
     live_stream::UpgradeRequest request;
     request.package_path = package_path;
-    if (service->StartUpgrade(MakeContext(), request) != infra::Status::kOk) {
+    if (!service->StartUpgrade(MakeContext(), request)) {
         return 3;
     }
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 4;
     }
-    if (service->GetStatus().status != infra::Status::kNotSupported) {
+    if (service->GetStatus().error_message != "package validation failed") {
         return 5;
+    }
+    std::remove(package_path.c_str());
+    return 0;
+}
+
+int TestRejectsPathOutsideUploadDirectory() {
+    const std::string package_path = "/tmp/upgrade_reject_" +
+        std::to_string(static_cast<long long>(getpid()));
+    std::ofstream output(package_path, std::ios::binary);
+    output.put('x');
+    output.close();
+
+    FakeUpgradePlatform platform;
+    platform.info.version = "2.0.0";
+    FakeEventService event_service;
+    FakeLoggerService logger;
+    std::unique_ptr<live_stream::IUpgradeService> service =
+        live_stream::CreateUpgradeService(
+            MakeOptions(&platform, &event_service, &logger));
+    if (!service->Start()) {
+        return 1;
+    }
+    if (!service->ValidatePackage(package_path).version.empty()) {
+        return 2;
+    }
+    live_stream::UpgradeRequest request;
+    request.package_path = package_path;
+    if (service->StartUpgrade(MakeContext(), request)) {
+        return 3;
+    }
+    if (HasCall(platform, "validate")) {
+        return 4;
     }
     std::remove(package_path.c_str());
     return 0;
@@ -445,6 +461,9 @@ int main() {
     }
     if (TestDefaultPlatformIsRestricted() != 0) {
         return 5;
+    }
+    if (TestRejectsPathOutsideUploadDirectory() != 0) {
+        return 6;
     }
     return 0;
 }

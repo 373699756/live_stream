@@ -10,12 +10,15 @@
 #include "upgrade_service.h"
 
 #include <cctype>
+#include <fcntl.h>
 #include <string>
+#include <unistd.h>
 
 namespace live_stream {
 namespace {
 
 constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
+constexpr std::size_t kMaxUpgradeUploadBytes = 32U * 1024U * 1024U;
 
 bool IsSafeUploadNameChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '.' ||
@@ -50,6 +53,36 @@ std::string UpgradeUploadPath(const std::string &file_name) {
     return infra::Path::Join(kUpgradeUploadDir,
                              std::to_string(infra::Time::SystemTimeMillis()) +
                                  "-" + sanitized);
+}
+
+bool WriteUploadFile(const std::string &path, const std::string &body) {
+    if (path.empty() || body.empty() || body.size() > kMaxUpgradeUploadBytes) {
+        return false;
+    }
+    const int fd = open(path.c_str(),
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return false;
+    }
+    std::size_t offset = 0;
+    bool ok = true;
+    while (offset < body.size()) {
+        const ssize_t write_size =
+            write(fd, body.data() + offset, body.size() - offset);
+        if (write_size <= 0) {
+            ok = false;
+            break;
+        }
+        offset += static_cast<std::size_t>(write_size);
+    }
+    if (ok && fsync(fd) != 0) {
+        ok = false;
+    }
+    close(fd);
+    if (!ok) {
+        static_cast<void>(infra::File::Remove(path));
+    }
+    return ok;
 }
 
 bool RequireUpgradePermission(HttpAccess *access,
@@ -175,6 +208,9 @@ private:
         if (request.body.empty()) {
             return StatusResponse(400, "Empty package body");
         }
+        if (request.body.size() > kMaxUpgradeUploadBytes) {
+            return StatusResponse(413, "Package too large");
+        }
         std::string file_name = QueryValue(request, "filename");
         if (file_name.empty()) {
             file_name =
@@ -187,7 +223,7 @@ private:
                 OperationResult::kRejected, "invalid upload filename");
             return StatusResponse(400, "Invalid upload filename");
         }
-        if (!infra::File::WriteAll(upload_path, request.body)) {
+        if (!WriteUploadFile(upload_path, request.body)) {
             access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kFailed, "upload write failed");

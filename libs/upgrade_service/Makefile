@@ -1,5 +1,7 @@
 SERVICE_NAME := upgrade_service
 .DEFAULT_GOAL := all
+ROOT_DIR := ../..
+BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
 EXTRA_TEST_DEPS := $(INFRA_LIB)
 EXTRA_TEST_LIBS := $(INFRA_LIB) -pthread

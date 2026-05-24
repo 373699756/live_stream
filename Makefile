@@ -63,6 +63,7 @@ CXXFLAGS += -Ilibs/alarm_service/include
 CXXFLAGS += -Ilibs/upgrade_service/include
 CXXFLAGS += -Ilibs/http_service/include
 CXXFLAGS += -I$(METARTC_INSTALL)/include
+CXXFLAGS += -I$(THIRDPARTY_SRC)/openssl-1.1.1w/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)
 CXXFLAGS += -I$(HISI_MPP_INC)
 CXXFLAGS += -pthread
@@ -175,11 +176,11 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra_service.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra_service.a $(METARTC_INSTALL)/lib/libcrypto.a
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
-	  $(LIB_DIR)/libinfra_service.a \
+	  $(LIB_DIR)/libinfra_service.a $(METARTC_INSTALL)/lib/libcrypto.a \
 	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
 
 $(WEB_STAMP): $(WEB_INPUTS)
@@ -191,6 +192,9 @@ out: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
 	cp -f $(BIN_DIR)/live_sysupgrade $(OUT_DIR)/bin/
 	cp -f configs/*.json $(OUT_DIR)/configs/
+	@if [ -f configs/upgrade_public_key.pem ]; then \
+		cp -f configs/upgrade_public_key.pem $(OUT_DIR)/configs/; \
+	fi
 	find $(OUT_DIR)/web -mindepth 1 -delete
 	cp -rf www/dist/* $(OUT_DIR)/web/
 	@echo "Output packaged to $(OUT_DIR)/"

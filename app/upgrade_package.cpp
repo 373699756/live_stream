@@ -7,9 +7,9 @@
 #include "json_utils.h"
 
 #include <cctype>
-#include <cstdio>
-#include <cstring>
 #include <sys/stat.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
 
 namespace live_stream {
 namespace {
@@ -19,17 +19,29 @@ constexpr const char* kExpectedFlash = "spi-nor-32m";
 constexpr const char* kExpectedPackageType = "normal";
 constexpr uint32_t kZipLocalFileHeader = 0x04034b50U;
 constexpr uint16_t kZipMethodStored = 0;
+constexpr const char* kManifestName = "Install";
+constexpr const char* kManifestSignatureName = "Install.sig";
+constexpr const char* kUpgradePublicKeyPath = "/config/upgrade_public_key.pem";
+constexpr uint32_t kSpiNorEraseSize = 0x00010000U;
+constexpr uint64_t kMaxUpgradePackageSize = 32ULL * 1024ULL * 1024ULL;
 
 const UpgradePartition kPartitions[] = {
-    {"kernel", "/dev/mtd1", "", "", "", "", 0x00400000U, false},
-    {"rootfs", "/dev/mtd2", "", "", "", "", 0x00c00000U, false},
+    {"kernel", "/dev/mtd1", "", "", "", "", 0x00400000U, kSpiNorEraseSize,
+     false},
+    {"rootfs", "/dev/mtd2", "", "", "", "", 0x00c00000U, kSpiNorEraseSize,
+     false},
     {"bin", "/dev/mtd3", "/dev/mtdblock3", "/opt/app", "squashfs", "ro",
-     0x00a00000U, false},
+     0x00a00000U, kSpiNorEraseSize, false},
     {"web", "/dev/mtd4", "/dev/mtdblock4", "/www", "squashfs", "ro",
-     0x00200000U, true},
+     0x00200000U, kSpiNorEraseSize, true},
     {"config", "/dev/mtd5", "/dev/mtdblock5", "/config", "jffs2", "rw",
-     0x00100000U, false},
+     0x00100000U, kSpiNorEraseSize, false},
 };
+
+constexpr const char kBuiltInUpgradePublicKeyPem[] =
+    "-----BEGIN PUBLIC KEY-----\n"
+    "REPLACE_WITH_PRODUCTION_UPGRADE_PUBLIC_KEY\n"
+    "-----END PUBLIC KEY-----\n";
 
 struct ZipEntry {
     std::string name;
@@ -64,6 +76,13 @@ bool ReadStoreOnlyZipEntries(const std::string& package_path,
                              std::vector<ZipEntry>* entries,
                              std::string* reason) {
     if (zip_data == nullptr || entries == nullptr) {
+        return false;
+    }
+    const uint64_t package_size = infra::File::Size(package_path);
+    if (package_size == 0 || package_size > kMaxUpgradePackageSize) {
+        if (reason != nullptr) {
+            *reason = "package size is not allowed";
+        }
         return false;
     }
     *zip_data = infra::File::ReadAll(package_path);
@@ -142,6 +161,10 @@ const ZipEntry* FindZipEntry(const std::vector<ZipEntry>& entries,
     return nullptr;
 }
 
+bool IsManifestOrSignatureEntry(const ZipEntry& entry) {
+    return entry.name == kManifestName || entry.name == kManifestSignatureName;
+}
+
 std::string ReadZipEntryData(const std::string& zip_data,
                              const ZipEntry& entry) {
     if (entry.data_offset > zip_data.size() ||
@@ -162,6 +185,79 @@ bool FileMtimeMs(const std::string& path, int64_t* mtime_ms) {
     }
     *mtime_ms = static_cast<int64_t>(file_stat.st_mtime) * 1000LL;
     return true;
+}
+
+bool IsProductionPublicKeyConfigured(const std::string& public_key_pem) {
+    return public_key_pem.find("REPLACE_WITH_PRODUCTION_UPGRADE_PUBLIC_KEY") ==
+           std::string::npos;
+}
+
+std::string LoadUpgradePublicKeyPem() {
+    std::string public_key_pem = infra::File::ReadAll(kUpgradePublicKeyPath);
+    if (IsProductionPublicKeyConfigured(public_key_pem)) {
+        return public_key_pem;
+    }
+    public_key_pem = kBuiltInUpgradePublicKeyPem;
+    if (IsProductionPublicKeyConfigured(public_key_pem)) {
+        return public_key_pem;
+    }
+    return std::string();
+}
+
+bool VerifyInstallSignature(const std::string& install_text,
+                            const std::string& signature,
+                            std::string* reason) {
+    if (signature.empty()) {
+        if (reason != nullptr) {
+            *reason = "Install signature is missing";
+        }
+        return false;
+    }
+    const std::string public_key_pem = LoadUpgradePublicKeyPem();
+    if (public_key_pem.empty()) {
+        if (reason != nullptr) {
+            *reason = "upgrade public key is not configured";
+        }
+        return false;
+    }
+
+    BIO* key_bio = BIO_new_mem_buf(public_key_pem.data(),
+                                   static_cast<int>(public_key_pem.size()));
+    if (key_bio == nullptr) {
+        if (reason != nullptr) {
+            *reason = "upgrade public key load failed";
+        }
+        return false;
+    }
+    EVP_PKEY* public_key = PEM_read_bio_PUBKEY(key_bio, nullptr, nullptr,
+                                               nullptr);
+    BIO_free(key_bio);
+    if (public_key == nullptr) {
+        if (reason != nullptr) {
+            *reason = "upgrade public key is invalid";
+        }
+        return false;
+    }
+
+    EVP_MD_CTX* verify_context = EVP_MD_CTX_new();
+    bool ok = false;
+    if (verify_context != nullptr &&
+        EVP_DigestVerifyInit(verify_context, nullptr, EVP_sha256(), nullptr,
+                             public_key) == 1 &&
+        EVP_DigestVerifyUpdate(verify_context, install_text.data(),
+                               install_text.size()) == 1 &&
+        EVP_DigestVerifyFinal(
+            verify_context,
+            reinterpret_cast<const unsigned char*>(signature.data()),
+            signature.size()) == 1) {
+        ok = true;
+    }
+    EVP_MD_CTX_free(verify_context);
+    EVP_PKEY_free(public_key);
+    if (!ok && reason != nullptr) {
+        *reason = "Install signature verification failed";
+    }
+    return ok;
 }
 
 bool ReadManifest(const std::string& install_text,
@@ -227,6 +323,12 @@ bool ReadManifest(const std::string& install_text,
             }
             return false;
         }
+        if (command.partition == "rootfs") {
+            if (reason != nullptr) {
+                *reason = "rootfs online upgrade is disabled";
+            }
+            return false;
+        }
         for (const UpgradeCommand& existing : parsed.commands) {
             if (existing.partition == command.partition ||
                 existing.file == command.file) {
@@ -280,6 +382,80 @@ bool ValidateCommandFiles(const std::string& zip_data,
         }
         command.size_bytes = entry->size;
     }
+    for (const ZipEntry& entry : entries) {
+        if (IsManifestOrSignatureEntry(entry)) {
+            continue;
+        }
+        bool declared = false;
+        for (const UpgradeCommand& command : manifest->commands) {
+            if (entry.name == command.file) {
+                declared = true;
+                break;
+            }
+        }
+        if (!declared) {
+            if (reason != nullptr) {
+                *reason = "upgrade package contains undeclared file";
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ReadVerifiedManifest(const std::string& zip_data,
+                          const std::vector<ZipEntry>& entries,
+                          UpgradeManifest* manifest,
+                          std::string* reason) {
+    if (manifest == nullptr) {
+        return false;
+    }
+    const ZipEntry* install_entry = FindZipEntry(entries, kManifestName);
+    if (install_entry == nullptr) {
+        if (reason != nullptr) {
+            *reason = "Install is missing";
+        }
+        return false;
+    }
+    const ZipEntry* signature_entry =
+        FindZipEntry(entries, kManifestSignatureName);
+    if (signature_entry == nullptr) {
+        if (reason != nullptr) {
+            *reason = "Install signature is missing";
+        }
+        return false;
+    }
+    const std::string install_text = ReadZipEntryData(zip_data, *install_entry);
+    if (!VerifyInstallSignature(
+            install_text, ReadZipEntryData(zip_data, *signature_entry),
+            reason)) {
+        return false;
+    }
+    if (!ReadManifest(install_text, manifest, reason) ||
+        !ValidateCommandFiles(zip_data, entries, manifest, reason)) {
+        return false;
+    }
+    return true;
+}
+
+bool ManifestMatches(const UpgradeManifest& expected,
+                     const UpgradeManifest& actual) {
+    if (expected.version != actual.version || expected.board != actual.board ||
+        expected.flash != actual.flash ||
+        expected.package_type != actual.package_type ||
+        expected.reboot != actual.reboot ||
+        expected.commands.size() != actual.commands.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < expected.commands.size(); ++i) {
+        const UpgradeCommand& left = expected.commands[i];
+        const UpgradeCommand& right = actual.commands[i];
+        if (left.partition != right.partition || left.file != right.file ||
+            left.sha256 != right.sha256 ||
+            left.size_bytes != right.size_bytes) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -308,17 +484,8 @@ bool ParseUpgradePackage(const std::string& package_path,
     if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
         return false;
     }
-    const ZipEntry* install_entry = FindZipEntry(entries, "Install");
-    if (install_entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "Install is missing";
-        }
-        return false;
-    }
     UpgradeManifest manifest;
-    if (!ReadManifest(ReadZipEntryData(zip_data, *install_entry), &manifest,
-                      reason) ||
-        !ValidateCommandFiles(zip_data, entries, &manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_data, entries, &manifest, reason)) {
         return false;
     }
 
@@ -344,6 +511,23 @@ bool ExtractUpgradeFile(const std::string& package_path,
     std::string zip_data;
     std::vector<ZipEntry> entries;
     if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
+        return false;
+    }
+    UpgradeManifest manifest;
+    if (!ReadVerifiedManifest(zip_data, entries, &manifest, reason)) {
+        return false;
+    }
+    bool declared = false;
+    for (const UpgradeCommand& command : manifest.commands) {
+        if (command.file == file_name) {
+            declared = true;
+            break;
+        }
+    }
+    if (!declared) {
+        if (reason != nullptr) {
+            *reason = "upgrade image file is not declared";
+        }
         return false;
     }
     const ZipEntry* entry = FindZipEntry(entries, file_name);
@@ -375,12 +559,38 @@ bool ExtractUpgradeFiles(const std::string& package_path,
         }
         return false;
     }
-    for (std::size_t i = 0; i < manifest.commands.size(); ++i) {
-        const UpgradeCommand& command = manifest.commands[i];
+    std::string zip_data;
+    std::vector<ZipEntry> entries;
+    if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
+        return false;
+    }
+    UpgradeManifest verified_manifest;
+    if (!ReadVerifiedManifest(zip_data, entries, &verified_manifest, reason)) {
+        return false;
+    }
+    if (!ManifestMatches(manifest, verified_manifest)) {
+        if (reason != nullptr) {
+            *reason = "upgrade manifest changed before extract";
+        }
+        return false;
+    }
+    for (std::size_t i = 0; i < verified_manifest.commands.size(); ++i) {
+        const UpgradeCommand& command = verified_manifest.commands[i];
         const std::string output_path =
             infra::Path::Join(output_dir, command.file);
-        if (!ExtractUpgradeFile(package_path, command.file, output_path,
-                                reason)) {
+        const ZipEntry* entry = FindZipEntry(entries, command.file);
+        if (entry == nullptr) {
+            if (reason != nullptr) {
+                *reason = "upgrade image file is missing";
+            }
+            return false;
+        }
+        if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
+            !infra::File::WriteAll(output_path,
+                                   ReadZipEntryData(zip_data, *entry))) {
+            if (reason != nullptr) {
+                *reason = "failed to extract upgrade image";
+            }
             return false;
         }
         if (infra::Sha256FileHex(output_path) != command.sha256) {
@@ -391,7 +601,7 @@ bool ExtractUpgradeFiles(const std::string& package_path,
         }
         if (progress_callback) {
             const uint32_t progress = static_cast<uint32_t>(
-                ((i + 1) * 100ULL) / manifest.commands.size());
+                ((i + 1) * 100ULL) / verified_manifest.commands.size());
             progress_callback(infra::Clamp<uint32_t>(progress, 0U, 100U));
         }
     }

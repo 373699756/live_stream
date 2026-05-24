@@ -19,7 +19,7 @@ constexpr uint32_t kHttpStreamExecutorQueueCapacity = 256;
 constexpr uint32_t kHttpControlExecutorWorkerCount = 1;
 constexpr uint32_t kHttpControlExecutorQueueCapacity = 16;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
-constexpr uint32_t kHttpMaxRequestBodyBytes = 128U * 1024U * 1024U;
+constexpr uint32_t kHttpMaxRequestBodyBytes = 32U * 1024U * 1024U;
 constexpr uint32_t kHttpRequestTimeoutMs = 60000;
 constexpr uint32_t kHttpConnectionIdleTimeoutMs = 60000;
 

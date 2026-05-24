@@ -5,13 +5,13 @@
 #include "linux_platform_common.h"
 
 #include <cstdint>
-#include <cstdio>
 #include <fcntl.h>
 #include <mtd/mtd-abi.h>
 #include <sstream>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace live_stream {
@@ -89,7 +89,9 @@ bool ValidateMtdDevice(const UpgradePartition& partition,
     if (!ReadProcMtd(partition.name, &proc_entry) ||
         "/dev/" + proc_entry.device_name != partition.mtd_path ||
         proc_entry.size_bytes != partition.size_bytes ||
-        info->size != partition.size_bytes) {
+        proc_entry.erase_size != partition.erase_size_bytes ||
+        info->size != partition.size_bytes ||
+        info->erasesize != partition.erase_size_bytes) {
         if (reason != nullptr) {
             *reason = "MTD partition layout mismatch";
         }
@@ -98,29 +100,147 @@ bool ValidateMtdDevice(const UpgradePartition& partition,
     return true;
 }
 
-bool WriteAllBytes(int fd, const std::string& image_path, uint64_t* written) {
+bool ReadFully(int fd, uint8_t* data, std::size_t size) {
+    if (data == nullptr && size > 0) {
+        return false;
+    }
+    std::size_t offset = 0;
+    while (offset < size) {
+        const ssize_t read_size = read(fd, data + offset, size - offset);
+        if (read_size <= 0) {
+            return false;
+        }
+        offset += static_cast<std::size_t>(read_size);
+    }
+    return true;
+}
+
+bool ImageHasExpectedMagic(const UpgradeCommand& command,
+                           int image_fd,
+                           std::string* reason) {
+    uint8_t magic[4] = {0};
+    if (lseek(image_fd, 0, SEEK_SET) < 0 ||
+        !ReadFully(image_fd, magic, sizeof(magic)) ||
+        lseek(image_fd, 0, SEEK_SET) < 0) {
+        if (reason != nullptr) {
+            *reason = "read image magic failed";
+        }
+        return false;
+    }
+    bool ok = false;
+    if (command.partition == "kernel") {
+        ok = magic[0] == 0x27U && magic[1] == 0x05U && magic[2] == 0x19U &&
+             magic[3] == 0x56U;
+    } else if (command.partition == "bin" || command.partition == "web") {
+        ok = magic[0] == 'h' && magic[1] == 's' && magic[2] == 'q' &&
+             magic[3] == 's';
+    } else if (command.partition == "config") {
+        ok = magic[0] == 0x85U && magic[1] == 0x19U;
+    } else if (command.partition == "rootfs") {
+        ok = magic[0] == 0x85U && magic[1] == 0x19U;
+    }
+    if (!ok && reason != nullptr) {
+        *reason = "upgrade image magic mismatch";
+    }
+    return ok;
+}
+
+std::string Sha256FdHex(int fd) {
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        return std::string();
+    }
+    infra::Sha256 sha;
+    uint8_t buffer[64 * 1024];
+    while (true) {
+        const ssize_t read_size = read(fd, buffer, sizeof(buffer));
+        if (read_size < 0) {
+            return std::string();
+        }
+        if (read_size == 0) {
+            break;
+        }
+        sha.Update(buffer, static_cast<std::size_t>(read_size));
+    }
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        return std::string();
+    }
+    return sha.FinishHex();
+}
+
+bool OpenAndValidateImage(const UpgradeCommand& command,
+                          const std::string& image_path,
+                          int* image_fd,
+                          std::string* reason) {
+    if (image_fd == nullptr) {
+        return false;
+    }
+    *image_fd = -1;
+    const int fd = open(image_path.c_str(), O_RDONLY | O_NOFOLLOW);
+    if (fd < 0) {
+        if (reason != nullptr) {
+            *reason = "open upgrade image failed";
+        }
+        return false;
+    }
+    struct stat file_stat;
+    if (fstat(fd, &file_stat) != 0 ||
+        !S_ISREG(file_stat.st_mode)) {
+        close(fd);
+        if (reason != nullptr) {
+            *reason = "upgrade image is not a regular file";
+        }
+        return false;
+    }
+    if (file_stat.st_size <= 0 ||
+        static_cast<uint64_t>(file_stat.st_size) != command.size_bytes ||
+        static_cast<uint64_t>(file_stat.st_size) >
+            command.partition_info.size_bytes) {
+        close(fd);
+        if (reason != nullptr) {
+            *reason = "upgrade image size mismatch";
+        }
+        return false;
+    }
+    const std::string image_sha256 = Sha256FdHex(fd);
+    if (image_sha256.empty() || image_sha256 != command.sha256) {
+        close(fd);
+        if (reason != nullptr) {
+            *reason = "upgrade image sha256 mismatch";
+        }
+        return false;
+    }
+    if (!ImageHasExpectedMagic(command, fd, reason)) {
+        close(fd);
+        return false;
+    }
+    *image_fd = fd;
+    return true;
+}
+
+bool WriteAllBytes(int fd, int image_fd, uint64_t* written) {
     if (written == nullptr) {
         return false;
     }
-    std::FILE* file = std::fopen(image_path.c_str(), "rb");
-    if (file == nullptr) {
+    if (lseek(image_fd, 0, SEEK_SET) < 0) {
         return false;
     }
     uint8_t buffer[64 * 1024];
     *written = 0;
     bool ok = true;
     while (ok) {
-        const std::size_t read_size = std::fread(buffer, 1, sizeof(buffer), file);
+        const ssize_t read_size = read(image_fd, buffer, sizeof(buffer));
+        if (read_size < 0) {
+            ok = false;
+            break;
+        }
         if (read_size == 0) {
-            if (std::ferror(file) != 0) {
-                ok = false;
-            }
             break;
         }
         std::size_t offset = 0;
-        while (offset < read_size) {
+        while (offset < static_cast<std::size_t>(read_size)) {
             const ssize_t write_size =
-                write(fd, buffer + offset, read_size - offset);
+                write(fd, buffer + offset,
+                      static_cast<std::size_t>(read_size) - offset);
             if (write_size <= 0) {
                 ok = false;
                 break;
@@ -129,7 +249,6 @@ bool WriteAllBytes(int fd, const std::string& image_path, uint64_t* written) {
             *written += static_cast<uint64_t>(write_size);
         }
     }
-    std::fclose(file);
     return ok;
 }
 
@@ -260,8 +379,13 @@ bool WriteMtdImage(const UpgradeCommand& command,
                    const std::string& image_path,
                    std::string* reason) {
     const UpgradePartition& partition = command.partition_info;
+    int image_fd = -1;
+    if (!OpenAndValidateImage(command, image_path, &image_fd, reason)) {
+        return false;
+    }
     const int fd = open(partition.mtd_path.c_str(), O_RDWR);
     if (fd < 0) {
+        close(image_fd);
         if (reason != nullptr) {
             *reason = "open MTD failed";
         }
@@ -291,7 +415,7 @@ bool WriteMtdImage(const UpgradeCommand& command,
         }
         ok = false;
     }
-    if (ok && !WriteAllBytes(fd, image_path, &written)) {
+    if (ok && !WriteAllBytes(fd, image_fd, &written)) {
         if (reason != nullptr) {
             *reason = "write MTD failed";
         }
@@ -318,6 +442,7 @@ bool WriteMtdImage(const UpgradeCommand& command,
         ok = false;
     }
     close(fd);
+    close(image_fd);
     return ok;
 }
 

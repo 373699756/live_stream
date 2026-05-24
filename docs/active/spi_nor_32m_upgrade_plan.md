@@ -227,7 +227,8 @@ config_root/
 └── device.json
 ```
 
-`config` 可以单独升级，也可以和 `kernel/rootfs/bin/web` 联合升级。只要升级 `config`，升级完成后必须重启。
+`config` 可以单独升级，也可以和 `kernel/bin/web` 联合升级。只要升级
+`config`，升级完成后必须重启。`rootfs` 在线升级禁用。
 
 ### 4.5 data
 
@@ -328,7 +329,7 @@ exit 0
 采用：
 
 ```text
-Install + 分区名 + 文件名 + sha256
+Install + Install.sig + 分区名 + 文件名 + sha256
 ```
 
 升级包：
@@ -336,13 +337,16 @@ Install + 分区名 + 文件名 + sha256
 ```text
 upgrade.zip
 ├── Install
-├── live_sysupgrade            # 非 web-only 包携带，用于首版部署和 RAM 执行
+├── Install.sig                # 对 Install 原文做 SHA256/RSA 签名
 ├── uImage_hi3516dv300
-├── rootfs_hi3516dv300_64k.jffs2
 ├── bin.squashfs
 ├── web.squashfs
 └── config.jffs2
 ```
+
+当前 Linux 在线升级包禁止携带额外未声明文件，尤其禁止从升级包执行
+`live_sysupgrade`。RAM helper 只从设备已安装的
+`/opt/app/sbin/live_sysupgrade` 复制到 `/tmp/live_stream/upgrade/` 后执行。
 
 `Install` 示例：
 
@@ -358,12 +362,6 @@ upgrade.zip
       "Action": "burn",
       "Partition": "kernel",
       "File": "uImage_hi3516dv300",
-      "Sha256": "..."
-    },
-    {
-      "Action": "burn",
-      "Partition": "rootfs",
-      "File": "rootfs_hi3516dv300_64k.jffs2",
       "Sha256": "..."
     },
     {
@@ -392,7 +390,6 @@ upgrade.zip
 
 ```text
 kernel
-rootfs
 bin
 web
 config
@@ -402,14 +399,17 @@ config
 
 ```text
 boot
+rootfs
 data
 ```
 
 其中：
 
 - `config` 可以单独升级。
-- `config` 可以和 `kernel/rootfs/bin/web` 联合升级。
+- `config` 可以和 `kernel/bin/web` 联合升级。
 - 只要升级 `config`，升级完成后必须重启。
+- `rootfs` 在线升级暂时禁用。当前 rootfs 仍挂载为 `/`，没有 initramfs、
+  recovery 分区或 A/B 回滚能力，强刷 rootfs 的断电和运行时风险不可接受。
 - `data` 不纳入普通升级，避免清除升级日志和运行数据。
 
 设备端内置分区表决定实际写入目标：
@@ -431,18 +431,18 @@ Linux 下采用 OpenIPC/OpenWrt 类 `sysupgrade` 模式：
 ```text
 Web/API 上传到 /tmp
     ↓
-live_stream 校验升级包和 /proc/mtd
+live_stream 校验升级包签名、payload sha256 和 /proc/mtd
     ↓
 web-only 包直接在线写 web 分区
     ↓
 非 web-only 包复制 /opt/app/sbin/live_sysupgrade 到 /tmp
     ↓
-live_sysupgrade 在 RAM 中重新校验、停服务、解包、擦写 flash、sync、reboot
+live_sysupgrade 在 RAM 中重新验签、停服务、解包、擦写 flash、sync、reboot
 ```
 
-`live_stream` 主进程不直接刷 `kernel/rootfs/bin/config`。这些分区升级必须由
+`live_stream` 主进程不直接刷 `kernel/bin/config`。这些分区升级必须由
 `/tmp/live_stream/upgrade/live_sysupgrade` 完成，避免主进程在卸载 `/opt/app`、
-擦写 rootfs 或停止自身时进入不可控状态。
+停止自身时进入不可控状态。`rootfs` 在线升级当前直接拒绝。
 
 升级服务直接使用 MTD ioctl：
 
@@ -462,7 +462,7 @@ close
 | 分区 | Linux 设备 | 升级前动作 | 升级后动作 |
 | --- | --- | --- | --- |
 | `kernel` | `/dev/mtd1` | helper 已在 RAM 中运行 | 写完强制重启 |
-| `rootfs` | `/dev/mtd2` | helper 已在 RAM 中运行，不卸载 `/` | 写完强制重启 |
+| `rootfs` | `/dev/mtd2` | 禁止 Linux 在线升级 | 无 |
 | `bin` | `/dev/mtd3` | 停应用，卸载 `/opt/app` | 写完强制重启 |
 | `web` | `/dev/mtd4` | web-only 在线升级时卸载 `/www`；组合升级由 helper 处理 | web-only 重新挂载；组合升级重启 |
 | `config` | `/dev/mtd5` | 停应用，卸载 `/config` | 写完强制重启 |
@@ -471,14 +471,16 @@ close
 升级校验顺序：
 
 1. 上传包保存到 `/tmp/live_stream/upgrade/uploads`。
-2. 解析 `Install`。
-3. 校验 `Board/Flash/PackageType`。
-4. 校验所有文件存在。
-5. 校验 sha256。
-6. 校验文件大小不超过分区。
-7. 校验 `/proc/mtd` 分区大小和名称。
-8. 非 web-only 包校验 `/tmp/live_stream/upgrade` 是 `tmpfs` 或 `ramfs`。
-9. 全部校验通过后，才允许擦写任何分区。
+2. 本地路径必须解析到 `/tmp/live_stream/upgrade/uploads/` 下的普通文件。
+3. 读取 `Install` 和 `Install.sig`。
+4. 使用 `/config/upgrade_public_key.pem` 或内置生产公钥验签 `Install` 原文。
+5. 解析 `Install`。
+6. 校验 `Board/Flash/PackageType`。
+7. 拒绝 `boot/rootfs/data` 和所有未声明 zip entry。
+8. 校验所有文件存在、sha256、文件大小和镜像魔数。
+9. 校验 `/proc/mtd` 分区名称、大小和擦除块大小。
+10. 非 web-only 包校验 `/tmp/live_stream/upgrade` 是 `tmpfs` 或 `ramfs`。
+11. 全部校验通过后，才允许擦写任何分区。
 
 `/tmp` 不能仅凭路径名判断，必须通过 `/proc/mounts` 确认为 `tmpfs` 或
 `ramfs`。如果不是 RAM 文件系统，非 web-only 升级必须拒绝，避免升级包和
@@ -486,12 +488,12 @@ helper 写在 NOR rootfs 上导致擦写自身或空间不足。
 
 helper 运行规则：
 
-- 非 web-only 包优先从升级包提取 `live_sysupgrade` 到 `/tmp/live_stream/upgrade/live_sysupgrade`。
-- 如果包内没有 helper，则回退复制 `/opt/app/sbin/live_sysupgrade`。
-- helper 必须重新解析升级包、重新校验 sha256 和 `/proc/mtd`。
+- 非 web-only 包只允许复制设备内置 `/opt/app/sbin/live_sysupgrade` 到
+  `/tmp/live_stream/upgrade/live_sysupgrade`，不允许执行升级包携带的 helper。
+- helper 必须重新解析升级包、重新验签、重新校验 sha256 和 `/proc/mtd`。
 - helper 的 staging 目录固定在 `/tmp/live_stream/upgrade/staged`。
 - helper 停止 `live_stream` 后继续执行，不依赖 `/opt/app/bin/live_stream`。
-- helper 写完 `kernel/rootfs/bin/config` 或组合包后执行 `sync` 和 `reboot`。
+- helper 写完 `kernel/bin/config` 或组合包后执行 `sync` 和 `reboot`。
 
 失败规则：
 
@@ -518,9 +520,10 @@ helper 运行规则：
 13. 实现 MTD ioctl 擦写。
 14. 新增 `live_sysupgrade` helper，并随 `bin.squashfs` 发布到 `/opt/app/sbin`。
 15. `web-only` 包保留在线升级和重新挂载。
-16. `bin/config/kernel/rootfs` 和组合包走 RAM helper。
+16. `bin/config/kernel` 和组合包走 RAM helper。
 17. 完成强制重启策略。
-18. 保留 UART/U-Boot/TFTP 恢复流程。
+18. 部署生产升级公钥到 `/config/upgrade_public_key.pem` 或编译进固件。
+19. 保留 UART/U-Boot/TFTP 恢复流程。
 
 ## 9. 验证项
 
@@ -584,12 +587,16 @@ touch /opt/app/test
 - 单独升级 `bin`。
 - 单独升级 `config`，升级完成后重启。
 - 升级 `web + bin`。
-- 升级 `kernel + rootfs`。
-- 升级全包 `kernel + rootfs + bin + web + config`。
+- 升级 `kernel + bin + web + config`。
 - 普通包写 `boot` 必须拒绝。
+- 普通包写 `rootfs` 必须拒绝。
 - 普通包写 `data` 必须拒绝。
+- 无 `Install.sig`、签名错误、公钥未部署必须拒绝。
+- 升级包含未声明文件必须拒绝。
 - sha256 错误必须拒绝。
 - 文件超过分区大小必须拒绝。
+- 镜像魔数错误必须拒绝。
+- `/proc/mtd` erase size 不匹配必须拒绝。
 - 升级 config 后 `/config` 内容为新包内容。
 - 升级 config 后 `/data/upgrade.log` 不丢失。
 - 非 web-only 升级时 helper 路径必须位于 `/tmp`，且 `/tmp/live_stream/upgrade` 必须是 tmpfs/ramfs。
@@ -611,8 +618,8 @@ data 2M
 升级策略：
 
 ```text
-允许升级：kernel/rootfs/bin/web/config
-禁止升级：boot/data
+允许 Linux 在线升级：kernel/bin/web/config
+禁止普通在线升级：boot/rootfs/data
 ```
 
 实现要求：
@@ -624,10 +631,13 @@ data 2M
 - rootfs 保持海思默认 jffs2。
 - 业务程序和动态库放 `bin.squashfs`。
 - 一次性升级 helper 放 `bin.squashfs` 的 `/opt/app/sbin/live_sysupgrade`。
+- 升级包不携带、不执行 helper；非 web-only 包只运行设备内置 helper 的
+  `/tmp` 副本。
 - Web 放 `web.squashfs`。
 - 配置放 `config.jffs2`，可单独或联合升级。
 - 日志和升级状态放 `/data`。
 - 升级包不用 `.img`，不携带 flash 地址。
+- 升级包必须携带 `Install.sig`，设备端必须验签后才解析和擦写。
 - 设备端内置分区表是唯一地址来源。
 - 32M NOR 不做 A/B，断电或刷坏需要串口/U-Boot/TFTP 或烧录器恢复。
 
@@ -677,4 +687,15 @@ Hi3516CV500_SDK_V2.0.1.0/osdrv/tools/pc/squashfs4.3/mksquashfs
 
 生成 `Install` 时 `scripts/package_upgrade.sh` 保持纯 shell，不引入 Python；
 字段值来自固定分区名、固定文件名、sha256 和经过白名单限制的版本号。
+脚本要求：
+
+- `UPGRADE_SIGN_KEY=/path/to/private_key.pem` 必须指向生产私钥。
+- `UPGRADE_PUBLIC_KEY` 默认使用 `configs/upgrade_public_key.pem`，用于打包端
+  立即验证 `Install.sig`，防止私钥和设备公钥不匹配。
+- 私钥不能提交进仓库，设备端只保存公钥。
+- 生成 `config-only` 包时，脚本会把当前公钥写入 `config.jffs2`，避免升级
+  配置分区后丢失后续验签所需公钥。
+- 当前脚本只生成 `web-only`、`bin-web`、`config-only` 三类包；
+  `kernel-rootfs` 和 `full` 因包含 rootfs 在线升级被拒绝。
+
 C++ 侧生成 JSON 状态文件必须使用项目 JSON 模块，不允许手写转义和字符串拼接。

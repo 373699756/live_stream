@@ -6,14 +6,17 @@
 #include "infra/time.h"
 #include "logger_service.h"
 
+#include <limits.h>
 #include <mutex>
 #include <sys/stat.h>
 #include <utility>
+#include <unistd.h>
 
 namespace live_stream {
 namespace {
 
 const char* kServiceName = "upgrade_service";
+constexpr const char* kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
 
 bool IsTerminalState(UpgradeState state) {
     return state == UpgradeState::kIdle || state == UpgradeState::kCompleted ||
@@ -184,7 +187,9 @@ public:
     UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
         std::string reason;
-        if (!ValidateLocalPackage(package_path, &reason)) {
+        std::string checked_package_path;
+        if (!ValidateLocalPackage(package_path, &checked_package_path,
+                                  &reason)) {
             return UpgradePackageInfo();
         }
         IUpgradePlatform* platform = nullptr;
@@ -195,7 +200,7 @@ public:
             }
             platform = platform_;
         }
-        return platform->ValidatePackage(package_path);
+        return platform->ValidatePackage(checked_package_path);
     }
 
     bool StartUpgrade(const live_stream::RequestContext& context,
@@ -215,7 +220,9 @@ public:
         }
 
         std::string reason;
-        if (!ValidateLocalPackage(request.package_path, &reason)) {
+        std::string checked_package_path;
+        if (!ValidateLocalPackage(request.package_path, &checked_package_path,
+                                  &reason)) {
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         reason);
             return false;
@@ -245,8 +252,12 @@ public:
         }
         PublishProgressChanged();
 
+        UpgradeRequest checked_request = request;
+        checked_request.package_path = checked_package_path;
         if (!executor->Post(
-                [this, context, request]() { ExecuteUpgrade(context, request); })) {
+                [this, context, checked_request]() {
+                    ExecuteUpgrade(context, checked_request);
+                })) {
             SetFailed("failed to queue upgrade task", false);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         "failed to queue upgrade task");
@@ -317,7 +328,12 @@ public:
 
 private:
     bool ValidateLocalPackage(const std::string& package_path,
+                              std::string* checked_package_path,
                               std::string* reason) {
+        if (checked_package_path == nullptr) {
+            return false;
+        }
+        checked_package_path->clear();
         if (package_path.empty() ||
             package_path.size() > options_.max_package_path_length) {
             if (reason != nullptr) {
@@ -325,9 +341,34 @@ private:
             }
             return false;
         }
+        struct stat link_stat;
+        if (lstat(package_path.c_str(), &link_stat) != 0 ||
+            S_ISLNK(link_stat.st_mode)) {
+            if (reason != nullptr) {
+                *reason = "package path is not allowed";
+            }
+            return false;
+        }
+        char resolved_path[PATH_MAX] = {0};
+        if (realpath(package_path.c_str(), resolved_path) == nullptr) {
+            if (reason != nullptr) {
+                *reason = "package path is not allowed";
+            }
+            return false;
+        }
+        const std::string resolved_package_path(resolved_path);
+        const std::string upload_prefix =
+            std::string(kUpgradeUploadDir) + "/";
+        if (resolved_package_path.compare(0, upload_prefix.size(),
+                                          upload_prefix) != 0) {
+            if (reason != nullptr) {
+                *reason = "package path is outside upload directory";
+            }
+            return false;
+        }
 
         struct stat file_stat;
-        if (stat(package_path.c_str(), &file_stat) != 0) {
+        if (stat(resolved_package_path.c_str(), &file_stat) != 0) {
             if (reason != nullptr) {
                 *reason = "package not found";
             }
@@ -352,6 +393,7 @@ private:
             }
             return false;
         }
+        *checked_package_path = resolved_package_path;
         if (reason != nullptr) {
             reason->clear();
         }

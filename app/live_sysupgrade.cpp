@@ -7,8 +7,11 @@
 #include "upgrade_package.h"
 
 #include <cstdint>
+#include <fcntl.h>
 #include <string>
 #include <sys/reboot.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <vector>
 
@@ -46,8 +49,36 @@ void WriteUpgradeStatus(const std::string& state,
     root["ok"] = ok;
     root["version"] = version;
     root["error_message"] = error_message;
-    static_cast<void>(
-        infra::File::WriteAll(kUpgradeStatusPath, root.dump(2) + "\n"));
+    const std::string tmp_path = std::string(kUpgradeStatusPath) + ".tmp";
+    const int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        return;
+    }
+    const std::string data = root.dump(2) + "\n";
+    std::size_t offset = 0;
+    bool write_ok = true;
+    while (offset < data.size()) {
+        const ssize_t write_size =
+            write(fd, data.data() + offset, data.size() - offset);
+        if (write_size <= 0) {
+            write_ok = false;
+            break;
+        }
+        offset += static_cast<std::size_t>(write_size);
+    }
+    if (write_ok && fsync(fd) != 0) {
+        write_ok = false;
+    }
+    close(fd);
+    if (!write_ok || rename(tmp_path.c_str(), kUpgradeStatusPath) != 0) {
+        static_cast<void>(infra::File::Remove(tmp_path));
+        return;
+    }
+    const int dir_fd = open("/data", O_RDONLY | O_DIRECTORY);
+    if (dir_fd >= 0) {
+        static_cast<void>(fsync(dir_fd));
+        close(dir_fd);
+    }
 }
 
 void Usage() {
@@ -109,6 +140,14 @@ bool PackageNeedsStoppedApp(const UpgradeManifest& manifest) {
 bool ApplyPackage(const ParsedUpgradePackage& package,
                   const std::string& stage_dir,
                   std::string* reason) {
+    for (const UpgradeCommand& command : package.manifest.commands) {
+        if (command.partition == "rootfs") {
+            if (reason != nullptr) {
+                *reason = "rootfs online upgrade is disabled";
+            }
+            return false;
+        }
+    }
     if (!upgrade_flash::IsPathOnTmpfs(stage_dir)) {
         if (reason != nullptr) {
             *reason = "stage directory is not tmpfs";

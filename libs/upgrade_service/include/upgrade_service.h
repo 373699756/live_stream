@@ -87,7 +87,7 @@ struct UpgradeServiceOptions {
     IEventService* event_service = nullptr;
     ILoggerService* logger_service = nullptr;
     IUpgradePlatform* platform = nullptr;
-    uint64_t max_package_size_bytes = 256ULL * 1024ULL * 1024ULL;
+    uint64_t max_package_size_bytes = 32ULL * 1024ULL * 1024ULL;
     uint32_t max_package_path_length = 512;
     uint32_t queue_capacity = 8;
 };
