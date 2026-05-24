@@ -73,9 +73,14 @@ int main() {
     frame.size = 4;
     (void)live_stream::VideoBufferSetSize(frame.buffer, 8);
     live_stream::FramePayload payload;
-    payload.encoded_frame = frame;
+    if (Expect(live_stream::EncodedFrameRefCopy(&payload.encoded_frame,
+                                                &frame))) {
+        return 1;
+    }
     payload.has_nal_units = true;
     service->OnFrame(payload);
+    live_stream::FramePayloadUnref(&payload);
+    live_stream::EncodedFrameUnref(&frame);
 
     service->Stop();
     if (Expect(service->CreatePeer(create_request).peer_id.empty())) {

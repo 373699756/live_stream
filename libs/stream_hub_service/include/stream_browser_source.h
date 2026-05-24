@@ -57,11 +57,11 @@ struct StreamHlsPlaylist {
     std::vector<StreamHlsEntry> entries;
 };
 
-struct StreamSegment {
+struct StreamSegmentRef {
     bool found = false;
     uint64_t sequence = 0;
     int64_t duration_us = 0;
-    std::string body;
+    VideoBuffer *body = nullptr;
 };
 
 struct StreamFlvStartData {
@@ -72,6 +72,48 @@ struct StreamFlvStartData {
     std::string sequence_header;
     std::vector<StreamFlvCachedVideoTag> cached_video_tags;
 };
+
+inline void StreamFlvCachedVideoTagUnref(StreamFlvCachedVideoTag *tag) {
+    if (tag == nullptr) {
+        return;
+    }
+    EncodedFrameUnref(&tag->frame);
+    *tag = StreamFlvCachedVideoTag{};
+}
+
+inline bool StreamFlvCachedVideoTagRefCopy(
+    StreamFlvCachedVideoTag *target,
+    const StreamFlvCachedVideoTag *source) {
+    if (target == nullptr || source == nullptr) {
+        return false;
+    }
+    if (target == source) {
+        return true;
+    }
+    EncodedFrame retained_frame;
+    if (!EncodedFrameRefCopy(&retained_frame, &source->frame)) {
+        return false;
+    }
+    StreamFlvCachedVideoTagUnref(target);
+    *target = *source;
+    target->frame = retained_frame;
+    return true;
+}
+
+inline void StreamFlvStartDataUnref(StreamFlvStartData *start_data) {
+    if (start_data == nullptr) {
+        return;
+    }
+    for (StreamFlvCachedVideoTag &tag : start_data->cached_video_tags) {
+        StreamFlvCachedVideoTagUnref(&tag);
+    }
+    start_data->cached_video_tags.clear();
+    start_data->file_header.clear();
+    start_data->sequence_header.clear();
+    start_data->supported = false;
+    start_data->cached_gop_complete = false;
+    start_data->config_generation = 0;
+}
 
 struct StreamHubServiceStats {
     bool enabled = false;
@@ -123,8 +165,8 @@ public:
     virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
     virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
     virtual StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
-    virtual StreamSegment GetHlsSegment(StreamId stream_id,
-                                        uint64_t sequence) const = 0;
+    virtual StreamSegmentRef GetHlsSegmentRef(StreamId stream_id,
+                                              uint64_t sequence) const = 0;
     virtual StreamFlvStartData GetFlvStartData(StreamId stream_id) const = 0;
     virtual StreamBrowserStatus GetBrowserStatus(StreamId stream_id) const = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
@@ -150,6 +192,28 @@ public:
     AttachMjpegClient(StreamId stream_id, IStreamMjpegSink *sink) = 0;
     virtual bool DetachMjpegClient(StreamMjpegClientId client_id) = 0;
 };
+
+inline StreamSegmentRef StreamSegmentRefCopy(
+    const StreamSegmentRef *segment) {
+    StreamSegmentRef ref;
+    if (segment == nullptr || !segment->found || segment->body == nullptr) {
+        return ref;
+    }
+    ref = *segment;
+    ref.body = VideoBufferRetain(segment->body);
+    if (ref.body == nullptr) {
+        return StreamSegmentRef{};
+    }
+    return ref;
+}
+
+inline void StreamSegmentRefUnref(StreamSegmentRef *segment) {
+    if (segment == nullptr) {
+        return;
+    }
+    VideoBufferRelease(segment->body);
+    *segment = StreamSegmentRef{};
+}
 
 }  // namespace live_stream
 

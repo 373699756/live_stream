@@ -781,6 +781,7 @@ void HandleVencStream(VencStreamContext* context,
     if (callback != nullptr) {
         callback(frame, user);
     }
+    EncodedFrameUnref(&frame);
 }
 
 // Match the HiSilicon sample flow: one reader thread selects all VENC fds.

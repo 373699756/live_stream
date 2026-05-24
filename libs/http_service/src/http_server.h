@@ -54,6 +54,12 @@ public:
 
     void SendResponse(ConnectionId connection_id, const HttpResponse &response,
                       bool close_after_response) override;
+    bool SendResponseSlices(ConnectionId connection_id,
+                            const HttpResponse &response,
+                            const HttpStreamSlice *body_slices,
+                            size_t body_slice_count,
+                            size_t body_size,
+                            bool close_after_response) override;
     bool BeginStream(ConnectionId connection_id) override;
     bool AttachStreamClient(ConnectionId connection_id,
                             HttpStreamClientId client_id) override;

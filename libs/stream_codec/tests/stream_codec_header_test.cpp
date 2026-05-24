@@ -3,14 +3,6 @@
 #include <cstdint>
 #include <string>
 
-namespace {
-
-bool StartsWith(const std::string& value, const char* prefix, size_t size) {
-  return value.size() >= size && value.compare(0, size, prefix, size) == 0;
-}
-
-}  // namespace
-
 int main() {
   const uint8_t h264[] = {
       0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1f,
@@ -40,13 +32,8 @@ int main() {
     return 3;
   }
 
-  std::string sample =
-      live_stream::stream_codec::BuildH264AnnexBAccessUnit(
-          units, sps, pps, true);
-  if (!StartsWith(sample, "\x00\x00\x00\x01\x09\xf0", 6)) {
-    return 4;
-  }
-  if (sample.size() <= sizeof(h264)) {
+  if (units.units[0].type != 7 || units.units[1].type != 8 ||
+      units.units[2].type != 5) {
     return 5;
   }
 
@@ -84,14 +71,10 @@ int main() {
     return 8;
   }
 
-  std::string h265_access_unit =
-      live_stream::stream_codec::BuildH265AnnexBAccessUnit(
-          h265_units, vps, h265_sps, h265_pps, true);
-  if (!StartsWith(h265_access_unit, "\x00\x00\x00\x01\x46\x01\x50", 7)) {
+  if (h265_units.units[0].type != 35 || h265_units.units[1].type != 32 ||
+      h265_units.units[2].type != 33 || h265_units.units[3].type != 34 ||
+      h265_units.units[4].type != 19) {
     return 9;
-  }
-  if (h265_access_unit.size() <= sizeof(h265)) {
-    return 10;
   }
   return 0;
 }

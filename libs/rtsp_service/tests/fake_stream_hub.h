@@ -21,6 +21,11 @@ public:
         return false;
     }
 
+    bool IsMjpegSupported(StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
+
     bool IsStreamAvailable(StreamId stream_id) const override {
         return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
     }
@@ -35,11 +40,11 @@ public:
         return StreamHlsPlaylist{};
     }
 
-    StreamSegment GetHlsSegment(StreamId stream_id,
+    StreamSegmentRef GetHlsSegmentRef(StreamId stream_id,
                                 uint64_t sequence) const override {
         (void)stream_id;
         (void)sequence;
-        return StreamSegment{};
+        return StreamSegmentRef{};
     }
 
     StreamFlvStartData GetFlvStartData(StreamId stream_id) const override {
@@ -64,6 +69,18 @@ public:
     }
 
     bool DetachFlvClient(StreamFlvClientId client_id) override {
+        (void)client_id;
+        return false;
+    }
+
+    StreamMjpegClientId AttachMjpegClient(StreamId stream_id,
+                                          IStreamMjpegSink* sink) override {
+        (void)stream_id;
+        (void)sink;
+        return 0;
+    }
+
+    bool DetachMjpegClient(StreamMjpegClientId client_id) override {
         (void)client_id;
         return false;
     }
@@ -121,8 +138,11 @@ public:
             return false;
         }
         FramePayload payload;
-        payload.encoded_frame = frame;
+        if (!EncodedFrameRefCopy(&payload.encoded_frame, &frame)) {
+            return false;
+        }
         sink->OnFrame(payload);
+        FramePayloadUnref(&payload);
         return true;
     }
 

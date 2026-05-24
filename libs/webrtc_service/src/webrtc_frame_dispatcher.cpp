@@ -6,8 +6,10 @@ namespace live_stream {
 namespace webrtc_internal {
 
 void WebrtcFrameDispatcher::Clear() {
-    main_pending_frame_ = PendingFrameSlot{};
-    sub_pending_frame_ = PendingFrameSlot{};
+    FramePayloadUnref(&main_pending_frame_.frame);
+    FramePayloadUnref(&sub_pending_frame_.frame);
+    main_pending_frame_.ready = false;
+    sub_pending_frame_.ready = false;
     last_sent_stream_ = StreamId::kSub;
 }
 
@@ -30,7 +32,10 @@ WebrtcFrameQueueResult WebrtcFrameDispatcher::Queue(
         }
         result.dropped_frames = 1;
     }
-    slot->frame = frame;
+    if (!FramePayloadRefCopy(&slot->frame, &frame)) {
+        result.dropped_frames = 1;
+        return result;
+    }
     slot->ready = true;
     result.queued = true;
     return result;
@@ -68,7 +73,9 @@ bool WebrtcFrameDispatcher::Take(StreamId stream_id, FramePayload *frame) {
     if (slot == nullptr || frame == nullptr || !slot->ready) {
         return false;
     }
-    *frame = slot->frame;
+    if (!FramePayloadMove(frame, &slot->frame)) {
+        return false;
+    }
     slot->ready = false;
     last_sent_stream_ = stream_id;
     return true;

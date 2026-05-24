@@ -6,7 +6,6 @@
 #include "stream_browser_source.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 
 namespace live_stream {
@@ -99,39 +98,6 @@ HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
     return BuildPlaylistResponse(playlist);
 }
 
-HttpResponse HandleSegment(IStreamBrowserSource *stream_hub, StreamId stream_id,
-                           const std::string &object_name) {
-    if (!StartsWith(object_name, "seg-") || object_name.size() <= 7 ||
-        object_name.substr(object_name.size() - 3) != ".ts") {
-        return StatusResponse(404, "Not Found");
-    }
-    const std::string sequence_text =
-        object_name.substr(4, object_name.size() - 7);
-    char *end = nullptr;
-    const unsigned long long sequence =
-        std::strtoull(sequence_text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
-        return StatusResponse(400, "Invalid HLS segment");
-    }
-
-    StreamSegment segment =
-        stream_hub->GetHlsSegment(stream_id, static_cast<uint64_t>(sequence));
-    if (!segment.found) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HLS reject stream=%s object=%s reason=segment_missing "
-                        "sequence=%llu",
-                        StreamIdToJsonString(stream_id), object_name.c_str(),
-                        sequence);
-        return StatusResponse(404, "HLS segment not found");
-    }
-
-    HttpResponse response;
-    response.status_code = 200;
-    response.headers["Content-Type"] = "video/mp2t";
-    response.body.swap(segment.body);
-    return response;
-}
-
 }  // namespace
 
 class HlsHttpHandler : public IHttpHandler {
@@ -211,8 +177,7 @@ private:
             return HandlePlaylist(stream_browser_source_, stream_id,
                                   object_name, browser_status);
         }
-        return HandleSegment(stream_browser_source_, stream_id,
-                             object_name);
+        return StatusResponse(404, "Not Found");
     }
 
     HttpAccess *access_ = nullptr;

@@ -278,39 +278,70 @@ void HttpServer::IncrementPermissionDenied() {
 void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
+    HttpStreamSlice body_slice;
+    const HttpStreamSlice *body_slices = nullptr;
+    size_t body_slice_count = 0;
+    if (!response.body.empty()) {
+        body_slice.data =
+            reinterpret_cast<const uint8_t *>(response.body.data());
+        body_slice.size = response.body.size();
+        body_slices = &body_slice;
+        body_slice_count = 1;
+    }
+    (void)SendResponseSlices(connection_id, response, body_slices,
+                             body_slice_count, response.body.size(),
+                             close_after_response);
+}
+
+bool HttpServer::SendResponseSlices(ConnectionId connection_id,
+                                    const HttpResponse &response,
+                                    const HttpStreamSlice *body_slices,
+                                    size_t body_slice_count,
+                                    size_t body_size,
+                                    bool close_after_response) {
     NetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         net_engine = dependencies_.net_engine;
     }
     if (net_engine == nullptr) {
-        return;
+        return false;
     }
-    HttpResponse response_copy = response;
-    response_copy.headers["Connection"] =
+    if (body_slice_count > kMaxNetBufferSlices - 1 ||
+        (body_slice_count != 0 && body_slices == nullptr)) {
+        return false;
+    }
+    std::map<std::string, std::string> response_headers = response.headers;
+    response_headers["Connection"] =
         close_after_response ? "close" : "keep-alive";
-    const std::string header = SerializeResponseHeader(response_copy);
+    HttpResponse header_response;
+    header_response.status_code = response.status_code;
+    header_response.headers = std::move(response_headers);
+    const std::string header =
+        SerializeResponseHeaderWithBodySize(header_response, body_size);
     NetBufferSlices slices;
-    if (!slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
-                    header.size()) ||
-        (!response_copy.body.empty() &&
-         !slices.Add(reinterpret_cast<const uint8_t *>(response_copy.body.data()),
-                     response_copy.body.size())) ||
-        !net_engine->SendSlices(connection_id, slices)) {
+    bool slices_ok = slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
+                                header.size());
+    for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
+        slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
+                               VideoBufferNetOwner(body_slices[i].owner));
+    }
+    if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
         INFRA_LOG_ERROR(kHttpModuleName,
                         "HTTP response send failed conn=%llu status=%d "
                         "body=%zu header=%zu close=%d",
                         static_cast<unsigned long long>(connection_id),
-                        response.status_code, response.body.size(),
+                        response.status_code, body_size,
                         header.size(), close_after_response ? 1 : 0);
         (void)net_engine->Close(connection_id);
-        return;
+        return false;
     }
     if (close_after_response) {
         (void)net_engine->CloseAfterSend(connection_id);
-        return;
+        return true;
     }
     CompleteKeepAliveRequest(connection_id);
+    return true;
 }
 
 bool HttpServer::BeginStream(ConnectionId connection_id) {

@@ -212,7 +212,7 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
                              const FramePayload &frame,
                              VideoParameterCache *cache) {
     const EncodedFrame &encoded_frame = frame.encoded_frame;
-    const uint8_t *data = encoded_frame.PayloadData();
+    const uint8_t *data = EncodedFramePayloadData(&encoded_frame);
     if (data == nullptr) {
         return nullptr;
     }
@@ -268,7 +268,7 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
                              const FramePayload &frame,
                              VideoParameterCache *cache) {
     const EncodedFrame &encoded_frame = frame.encoded_frame;
-    const uint8_t *data = encoded_frame.PayloadData();
+    const uint8_t *data = EncodedFramePayloadData(&encoded_frame);
     if (data == nullptr) {
         return nullptr;
     }
@@ -691,7 +691,7 @@ public:
             }
             session = it->second;
         }
-        if (!session || !encoded_frame.HasValidPayload() ||
+        if (!session || !EncodedFrameHasPayload(&encoded_frame) ||
             !IsSupportedCodec(encoded_frame.codec) ||
             encoded_frame.codec != session->peer.codec || !frame.has_nal_units) {
             return false;

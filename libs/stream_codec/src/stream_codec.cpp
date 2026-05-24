@@ -1,7 +1,5 @@
 #include "stream_codec.h"
 
-#include "byte_writer.h"
-
 #include <string>
 
 namespace live_stream {
@@ -38,27 +36,6 @@ namespace {
 //   4-byte NAL length prefixes.
 // - FLV video samples are length-prefixed NAL units, so parameter sets and AUD
 //   are stripped from the sample payload.
-
-using byte_writer::AppendBytes;
-using byte_writer::AppendU32;
-
-void AppendStartCode(std::string *out) {
-    // Annex-B separates NAL units with the 4-byte start code 00 00 00 01.
-    AppendU32(out, 1);
-}
-
-void AppendH264Aud(std::string *out) {
-    static constexpr uint8_t kAud[] = {0x09, 0xf0};
-    AppendStartCode(out);
-    AppendBytes(out, kAud, sizeof(kAud));
-}
-
-void AppendH265Aud(std::string *out) {
-    // Access Unit Delimiter for H.265: NAL type 35 followed by pic_type.
-    static constexpr uint8_t kAud[] = {0x46, 0x01, 0x50};
-    AppendStartCode(out);
-    AppendBytes(out, kAud, sizeof(kAud));
-}
 
 size_t FindStartCode(const uint8_t *data, size_t size, size_t offset) {
     if (data == nullptr || size < 3 || offset >= size) {
@@ -188,55 +165,6 @@ void ExtractH265ParameterSetsFromUnits(const Units &units,
     if (has_pps != nullptr) {
         *has_pps = local_has_pps;
     }
-}
-
-template <typename Units>
-std::string BuildH264AnnexBAccessUnitFromUnits(const Units &units,
-                                               const std::string &sps,
-                                               const std::string &pps,
-                                               bool prepend_parameter_sets) {
-    std::string access_unit;
-    AppendH264Aud(&access_unit);
-    if (prepend_parameter_sets && !sps.empty() && !pps.empty()) {
-        AppendStartCode(&access_unit);
-        access_unit.append(sps);
-        AppendStartCode(&access_unit);
-        access_unit.append(pps);
-    }
-    for (const auto &unit : units) {
-        if (unit.type == 9) {
-            continue;
-        }
-        AppendStartCode(&access_unit);
-        access_unit.append(reinterpret_cast<const char *>(unit.data), unit.size);
-    }
-    return access_unit;
-}
-
-template <typename Units>
-std::string BuildH265AnnexBAccessUnitFromUnits(const Units &units,
-                                               const std::string &vps,
-                                               const std::string &sps,
-                                               const std::string &pps,
-                                               bool prepend_parameter_sets) {
-    std::string access_unit;
-    AppendH265Aud(&access_unit);
-    if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
-        AppendStartCode(&access_unit);
-        access_unit.append(vps);
-        AppendStartCode(&access_unit);
-        access_unit.append(sps);
-        AppendStartCode(&access_unit);
-        access_unit.append(pps);
-    }
-    for (const auto &unit : units) {
-        if (unit.type == 35) {
-            continue;
-        }
-        AppendStartCode(&access_unit);
-        access_unit.append(reinterpret_cast<const char *>(unit.data), unit.size);
-    }
-    return access_unit;
 }
 
 }  // namespace
@@ -410,23 +338,6 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               bool *has_vps, bool *has_sps, bool *has_pps) {
     ExtractH265ParameterSetsFromUnits(units, vps, sps, pps, has_vps, has_sps,
                                       has_pps);
-}
-
-std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
-                                      const std::string &sps,
-                                      const std::string &pps,
-                                      bool prepend_parameter_sets) {
-    return BuildH264AnnexBAccessUnitFromUnits(units, sps, pps,
-                                              prepend_parameter_sets);
-}
-
-std::string BuildH265AnnexBAccessUnit(const H265NalUnitList &units,
-                                      const std::string &vps,
-                                      const std::string &sps,
-                                      const std::string &pps,
-                                      bool prepend_parameter_sets) {
-    return BuildH265AnnexBAccessUnitFromUnits(units, vps, sps, pps,
-                                              prepend_parameter_sets);
 }
 
 }  // namespace stream_codec

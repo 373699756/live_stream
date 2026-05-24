@@ -88,7 +88,8 @@ std::string GetHeader(const HttpRequest& request, const std::string& name) {
     return std::string();
 }
 
-std::string SerializeResponseHeader(const HttpResponse& response) {
+std::string SerializeResponseHeaderWithBodySize(const HttpResponse& response,
+                                                size_t body_size) {
     std::string out = "HTTP/1.1 " + std::to_string(response.status_code) + " " +
                       HttpStatusText(response.status_code) + "\r\n";
     bool has_length = false;
@@ -103,13 +104,17 @@ std::string SerializeResponseHeader(const HttpResponse& response) {
         out += header.first + ": " + header.second + "\r\n";
     }
     if (!has_length) {
-        out += "Content-Length: " + std::to_string(response.body.size()) + "\r\n";
+        out += "Content-Length: " + std::to_string(body_size) + "\r\n";
     }
     if (!has_connection) {
         out += "Connection: close\r\n";
     }
     out += "\r\n";
     return out;
+}
+
+std::string SerializeResponseHeader(const HttpResponse& response) {
+    return SerializeResponseHeaderWithBodySize(response, response.body.size());
 }
 
 std::string SerializeResponse(const HttpResponse& response) {

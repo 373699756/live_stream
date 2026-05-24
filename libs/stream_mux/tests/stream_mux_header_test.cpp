@@ -3,7 +3,6 @@
 #include "media/media_buffer.h"
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
 namespace {
@@ -33,11 +32,16 @@ int main() {
   }
 
   live_stream::stream_mux::TsMuxerState ts_state;
-  std::string ts_header = live_stream::stream_mux::BuildTsSegmentHeader(
-      live_stream::VideoCodec::kH264, &ts_state);
-  if (ts_header.size() != 376 ||
-      static_cast<uint8_t>(ts_header[0]) != 0x47 ||
-      static_cast<uint8_t>(ts_header[188]) != 0x47) {
+  uint8_t ts_header[376] = {};
+  live_stream::stream_mux::TsSegmentBuffer ts_buffer;
+  ts_buffer.data = ts_header;
+  ts_buffer.capacity = sizeof(ts_header);
+  if (!live_stream::stream_mux::AppendTsSegmentHeader(
+          live_stream::VideoCodec::kH264, &ts_state, &ts_buffer)) {
+    return 2;
+  }
+  if (ts_buffer.size != sizeof(ts_header) || ts_header[0] != 0x47 ||
+      ts_header[188] != 0x47) {
     return 2;
   }
 

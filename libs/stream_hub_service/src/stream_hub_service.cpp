@@ -30,7 +30,9 @@ constexpr size_t kMaxPendingFramesPerStream = 4;
 class PendingFrameQueue {
 public:
     void Clear() {
-        frames_ = {};
+        for (EncodedFrame &frame : frames_) {
+            EncodedFrameUnref(&frame);
+        }
         head_ = 0;
         size_ = 0;
     }
@@ -43,7 +45,10 @@ public:
         if (Full()) {
             return false;
         }
-        frames_[(head_ + size_) % frames_.size()] = frame;
+        if (!EncodedFrameRefCopy(&frames_[(head_ + size_) % frames_.size()],
+                                    &frame)) {
+            return false;
+        }
         ++size_;
         return true;
     }
@@ -52,7 +57,7 @@ public:
         if (Empty()) {
             return false;
         }
-        frames_[head_] = EncodedFrame{};
+        EncodedFrameUnref(&frames_[head_]);
         head_ = (head_ + 1) % frames_.size();
         --size_;
         return true;
@@ -73,7 +78,7 @@ public:
         if (frame == nullptr || Empty()) {
             return false;
         }
-        *frame = std::move(frames_[head_]);
+        (void)EncodedFrameMove(frame, &frames_[head_]);
         head_ = (head_ + 1) % frames_.size();
         --size_;
         return true;
@@ -87,10 +92,10 @@ private:
         for (size_t i = position; i + 1 < size_; ++i) {
             const size_t target = (head_ + i) % frames_.size();
             const size_t source = (head_ + i + 1) % frames_.size();
-            frames_[target] = std::move(frames_[source]);
+            (void)EncodedFrameMove(&frames_[target], &frames_[source]);
         }
         const size_t tail = (head_ + size_ - 1) % frames_.size();
-        frames_[tail] = EncodedFrame{};
+        EncodedFrameUnref(&frames_[tail]);
         --size_;
     }
 
@@ -363,15 +368,15 @@ public:
                                            options_.hls_segment_duration_ms);
     }
 
-    StreamSegment GetHlsSegment(StreamId stream_id,
-                                uint64_t sequence) const override {
+    StreamSegmentRef GetHlsSegmentRef(StreamId stream_id,
+                                      uint64_t sequence) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);
         if (stream == nullptr) {
-            return StreamSegment{};
+            return StreamSegmentRef{};
         }
         stream->hls_requested = true;
-        return hub_state::FindHlsSegment(*stream, sequence);
+        return hub_state::FindHlsSegmentRef(*stream, sequence);
     }
 
     StreamFlvStartData GetFlvStartData(StreamId stream_id) const override {
@@ -414,7 +419,9 @@ public:
                       stream->flv_gop_cache.frames[stream->flv_gop_cache.head]
                           .total_size);
         status.hls_current_segment_size =
-            static_cast<uint32_t>(stream->current_segment.body.size());
+            stream->current_segment.body != nullptr
+                ? stream->current_segment.body->size
+                : 0;
         return status;
     }
 
@@ -536,7 +543,8 @@ public:
         const EncodedFrame &frame = input_frame.encoded_frame;
         infra::Executor *worker_executor = nullptr;
         bool post_drain = false;
-        if (!frame.HasValidPayload() || !IsStreamSupported(frame.stream_id)) {
+        if (!EncodedFrameHasPayload(&frame) ||
+            !IsStreamSupported(frame.stream_id)) {
             return;
         }
         {
@@ -589,8 +597,8 @@ private:
         flv_clients_.Clear();
         mjpeg_clients_.Clear();
         frame_dispatcher_.Clear();
-        main_stream_ = hub_state::StreamContext{};
-        sub_stream_ = hub_state::StreamContext{};
+        hub_state::ClearStreamContext(&main_stream_);
+        hub_state::ClearStreamContext(&sub_stream_);
     }
 
     void DrainPendingFrames() {
@@ -608,6 +616,8 @@ private:
             const bool has_payload = BuildParsedFrame(frame, &payload);
             DispatchFrameSinks(payload);
             PackageBrowserFrame(payload, has_payload);
+            hub_state::ParsedFramePayloadUnref(&payload);
+            EncodedFrameUnref(&frame);
         }
     }
 
@@ -748,7 +758,8 @@ private:
 
     void PackageMjpegFrame(const hub_state::ParsedFramePayload &payload) {
         const EncodedFrame &frame = payload.encoded_frame;
-        if (frame.codec != VideoCodec::kMjpeg || !frame.HasValidPayload()) {
+        if (frame.codec != VideoCodec::kMjpeg ||
+            !EncodedFrameHasPayload(&frame)) {
             return;
         }
         std::vector<hub_state::PendingMjpegClientWrite> clients;

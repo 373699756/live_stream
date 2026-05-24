@@ -29,6 +29,12 @@ public:
     virtual void SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) = 0;
+    virtual bool SendResponseSlices(ConnectionId connection_id,
+                                    const HttpResponse &response,
+                                    const HttpStreamSlice *body_slices,
+                                    size_t body_slice_count,
+                                    size_t body_size,
+                                    bool close_after_response) = 0;
     virtual bool BeginStream(ConnectionId connection_id) = 0;
     virtual bool AttachStreamClient(ConnectionId connection_id,
                                     HttpStreamClientId client_id) = 0;

@@ -143,6 +143,12 @@ struct TsMuxerState {
     uint8_t video_continuity = 0;
 };
 
+struct TsSegmentBuffer {
+    uint8_t *data = nullptr;
+    size_t capacity = 0;
+    size_t size = 0;
+};
+
 std::string BuildFlvFileHeader();
 
 std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
@@ -154,14 +160,6 @@ std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
                                           const std::string &pps,
                                           uint32_t timestamp_ms);
 
-std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
-                                 uint32_t timestamp_ms,
-                                 const stream_codec::H264NalUnitList &units);
-
-std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
-                                 uint32_t timestamp_ms,
-                                 const stream_codec::H265NalUnitList &units);
-
 bool BuildH264FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
                               uint32_t timestamp_ms,
                               const stream_codec::H264NalUnitList &units,
@@ -172,24 +170,27 @@ bool BuildH265FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
                               const stream_codec::H265NalUnitList &units,
                               FlvVideoTagView *tag);
 
-std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state);
+bool AppendTsSegmentHeader(VideoCodec codec, TsMuxerState *state,
+                           TsSegmentBuffer *segment_body);
 
-void AppendH264NalUnitsToTsSegment(const stream_codec::H264NalUnitList &units,
-                                   const std::string &sps,
-                                   const std::string &pps,
-                                   bool prepend_parameter_sets,
-                                   int64_t pts_us, int64_t dts_us,
-                                   TsMuxerState *state,
-                                   std::string *segment_body);
+bool AppendH264NalUnitsToTsSegmentBuffer(
+    const stream_codec::H264NalUnitList &units,
+    const std::string &sps,
+    const std::string &pps,
+    bool prepend_parameter_sets,
+    int64_t pts_us, int64_t dts_us,
+    TsMuxerState *state,
+    TsSegmentBuffer *segment_body);
 
-void AppendH265NalUnitsToTsSegment(const stream_codec::H265NalUnitList &units,
-                                   const std::string &vps,
-                                   const std::string &sps,
-                                   const std::string &pps,
-                                   bool prepend_parameter_sets,
-                                   int64_t pts_us, int64_t dts_us,
-                                   TsMuxerState *state,
-                                   std::string *segment_body);
+bool AppendH265NalUnitsToTsSegmentBuffer(
+    const stream_codec::H265NalUnitList &units,
+    const std::string &vps,
+    const std::string &sps,
+    const std::string &pps,
+    bool prepend_parameter_sets,
+    int64_t pts_us, int64_t dts_us,
+    TsMuxerState *state,
+    TsSegmentBuffer *segment_body);
 
 }  // namespace stream_mux
 }  // namespace live_stream

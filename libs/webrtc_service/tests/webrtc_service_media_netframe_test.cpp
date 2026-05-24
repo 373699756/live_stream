@@ -20,6 +20,10 @@ public:
         (void)stream_id;
         return false;
     }
+    bool IsMjpegSupported(live_stream::StreamId stream_id) const override {
+        (void)stream_id;
+        return false;
+    }
     bool IsStreamAvailable(live_stream::StreamId stream_id) const override {
         return stream_id == live_stream::StreamId::kMain ||
                stream_id == live_stream::StreamId::kSub;
@@ -34,11 +38,11 @@ public:
         (void)stream_id;
         return live_stream::StreamHlsPlaylist{};
     }
-    live_stream::StreamSegment GetHlsSegment(
+    live_stream::StreamSegmentRef GetHlsSegmentRef(
         live_stream::StreamId stream_id, uint64_t sequence) const override {
         (void)stream_id;
         (void)sequence;
-        return live_stream::StreamSegment{};
+        return live_stream::StreamSegmentRef{};
     }
     live_stream::StreamFlvStartData GetFlvStartData(
         live_stream::StreamId stream_id) const override {
@@ -61,6 +65,18 @@ public:
         return 0;
     }
     bool DetachFlvClient(live_stream::StreamFlvClientId client_id) override {
+        (void)client_id;
+        return false;
+    }
+    live_stream::StreamMjpegClientId AttachMjpegClient(
+        live_stream::StreamId stream_id,
+        live_stream::IStreamMjpegSink* sink) override {
+        (void)stream_id;
+        (void)sink;
+        return 0;
+    }
+    bool DetachMjpegClient(
+        live_stream::StreamMjpegClientId client_id) override {
         (void)client_id;
         return false;
     }

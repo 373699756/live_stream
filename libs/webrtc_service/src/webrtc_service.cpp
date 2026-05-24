@@ -323,6 +323,7 @@ public:
         if (post_send && executor != nullptr &&
             !executor->Post([this]() { DrainPendingFrames(); })) {
             std::lock_guard<std::mutex> guard(mutex_);
+            frame_dispatcher_.Clear();
             send_task_posted_ = false;
             ++stats_.dropped_frames;
         }
@@ -453,10 +454,12 @@ private:
                 peers = peer_store_.ConnectedPeers(frame.encoded_frame.stream_id);
                 if (peers.empty()) {
                     ++stats_.dropped_frames;
+                    FramePayloadUnref(&frame);
                     continue;
                 }
             }
             SendEncodedFrame(frame, peers);
+            FramePayloadUnref(&frame);
         }
     }
 

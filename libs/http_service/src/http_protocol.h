@@ -27,6 +27,8 @@ std::string ToLower(const std::string& value);
 std::string Trim(const std::string& value);
 std::string GetHeader(const HttpRequest& request, const std::string& name);
 std::string SerializeResponseHeader(const HttpResponse& response);
+std::string SerializeResponseHeaderWithBodySize(const HttpResponse& response,
+                                                size_t body_size);
 std::string SerializeResponse(const HttpResponse& response);
 RawParseResult ParseRawRequest(const std::string& raw,
                                uint32_t max_header_bytes,

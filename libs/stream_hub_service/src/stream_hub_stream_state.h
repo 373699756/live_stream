@@ -8,9 +8,8 @@
 
 #include <array>
 #include <cstdint>
-#include <deque>
-#include <string>
 #include <vector>
+#include <string>
 
 namespace live_stream {
 namespace stream_hub_internal {
@@ -21,7 +20,7 @@ struct HlsSegmentState {
     uint64_t sequence = 0;
     int64_t start_pts_us = 0;
     int64_t last_pts_us = 0;
-    std::string body;
+    VideoBuffer *body = nullptr;
 };
 
 struct CachedFlvFrameRing {
@@ -41,7 +40,7 @@ struct StreamContext {
     std::string pps;
     std::string sequence_header_tag;
     CachedFlvFrameRing flv_gop_cache;
-    std::deque<StreamSegment> segments;
+    std::vector<StreamSegmentRef> segments;
     HlsSegmentState current_segment;
     mutable bool hls_requested = false;
     uint64_t next_segment_sequence = 1;
@@ -74,10 +73,13 @@ bool IsMjpegStreamReady(const StreamContext &stream);
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload);
 bool HasParsedUnits(const ParsedFramePayload &payload);
+void ParsedFramePayloadUnref(ParsedFramePayload *payload);
+void ClearStreamContext(StreamContext *stream);
 
 StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                    uint32_t hls_segment_duration_ms);
-StreamSegment FindHlsSegment(const StreamContext &stream, uint64_t sequence);
+StreamSegmentRef FindHlsSegmentRef(const StreamContext &stream,
+                                   uint64_t sequence);
 StreamFlvStartData BuildFlvStartData(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, VideoCodec codec);

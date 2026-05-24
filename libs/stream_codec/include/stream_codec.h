@@ -94,17 +94,6 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               std::string *sps, std::string *pps,
                               bool *has_vps, bool *has_sps, bool *has_pps);
 
-std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
-                                      const std::string &sps,
-                                      const std::string &pps,
-                                      bool prepend_parameter_sets);
-
-std::string BuildH265AnnexBAccessUnit(const H265NalUnitList &units,
-                                      const std::string &vps,
-                                      const std::string &sps,
-                                      const std::string &pps,
-                                      bool prepend_parameter_sets);
-
 }  // namespace stream_codec
 }  // namespace live_stream
 

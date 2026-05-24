@@ -26,6 +26,63 @@ struct FramePayload {
     stream_codec::H265NalUnitList h265_units;
 };
 
+inline void FramePayloadInit(FramePayload *payload) {
+    if (payload == nullptr) {
+        return;
+    }
+    EncodedFrameInit(&payload->encoded_frame);
+    payload->has_nal_units = false;
+    payload->h264_units = stream_codec::H264NalUnitList{};
+    payload->h265_units = stream_codec::H265NalUnitList{};
+}
+
+inline void FramePayloadUnref(FramePayload *payload) {
+    if (payload == nullptr) {
+        return;
+    }
+    EncodedFrameUnref(&payload->encoded_frame);
+    payload->has_nal_units = false;
+    payload->h264_units = stream_codec::H264NalUnitList{};
+    payload->h265_units = stream_codec::H265NalUnitList{};
+}
+
+inline bool FramePayloadRefCopy(FramePayload *target,
+                                const FramePayload *source) {
+    if (target == nullptr || source == nullptr) {
+        return false;
+    }
+    if (target == source) {
+        return true;
+    }
+    EncodedFrame retained_frame;
+    if (!EncodedFrameRefCopy(&retained_frame, &source->encoded_frame)) {
+        return false;
+    }
+    FramePayloadUnref(target);
+    target->encoded_frame = retained_frame;
+    target->has_nal_units = source->has_nal_units;
+    target->h264_units = source->h264_units;
+    target->h265_units = source->h265_units;
+    return true;
+}
+
+inline bool FramePayloadMove(FramePayload *target, FramePayload *source) {
+    if (target == nullptr || source == nullptr) {
+        return false;
+    }
+    if (target == source) {
+        return true;
+    }
+    FramePayloadUnref(target);
+    target->has_nal_units = source->has_nal_units;
+    target->h264_units = source->h264_units;
+    target->h265_units = source->h265_units;
+    source->has_nal_units = false;
+    source->h264_units = stream_codec::H264NalUnitList{};
+    source->h265_units = stream_codec::H265NalUnitList{};
+    return EncodedFrameMove(&target->encoded_frame, &source->encoded_frame);
+}
+
 struct FrameAttachOptions {
     StreamId stream_id = StreamId::kMain;
     bool require_key_frame_first = true;

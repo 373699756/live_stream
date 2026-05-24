@@ -262,7 +262,7 @@ bool IsValidSnapshotVencChannel(const MediaPipelineConfig &config) {
 }
 
 bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
-    const uint8_t *data = frame.PayloadData();
+    const uint8_t *data = EncodedFramePayloadData(&frame);
     if (data == nullptr ||
         (frame.codec != VideoCodec::kH264 && frame.codec != VideoCodec::kH265)) {
         return false;
@@ -284,7 +284,7 @@ bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
         frame.frame_type == FrameType::kJpeg) {
         return true;
     }
-    const uint8_t *data = frame.PayloadData();
+    const uint8_t *data = EncodedFramePayloadData(&frame);
     if (data == nullptr) {
         return false;
     }
@@ -310,7 +310,7 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     copy.sequence = frame.sequence;
     copy.pts_us = frame.pts_us;
     copy.dts_us = frame.dts_us;
-    const uint8_t *payload = frame.PayloadData();
+    const uint8_t *payload = EncodedFramePayloadData(&frame);
     if (payload == nullptr || frame.size == 0) {
         return copy;
     }
@@ -352,15 +352,17 @@ public:
             return;
         }
         EncodedFrame cached_frame = CloneEncodedFramePayload(frame);
-        if (!cached_frame.HasValidPayload()) {
+        if (!EncodedFrameHasPayload(&cached_frame)) {
             return;
         }
-        cached->frame = std::move(cached_frame);
+        (void)EncodedFrameMove(&cached->frame, &cached_frame);
         cached->has_frame = true;
         cached->has_parameter_sets = has_parameter_sets;
     }
 
     void Clear() {
+        EncodedFrameUnref(&main_.frame);
+        EncodedFrameUnref(&sub_.frame);
         main_ = CachedKeyFrame{};
         sub_ = CachedKeyFrame{};
     }
@@ -373,8 +375,7 @@ public:
         if (cached == nullptr || !cached->has_frame) {
             return false;
         }
-        *frame = cached->frame;
-        return true;
+        return EncodedFrameRefCopy(frame, &cached->frame);
     }
 
 private:
@@ -735,11 +736,14 @@ private:
 
     void DispatchFrame(const EncodedFrame &frame) {
         FramePayload payload;
-        payload.encoded_frame = frame;
+        if (!EncodedFrameRefCopy(&payload.encoded_frame, &frame)) {
+            return;
+        }
         std::vector<IFrameSink *> matching_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex);
             if (state != ServiceState::kStarted) {
+                FramePayloadUnref(&payload);
                 return;
             }
             key_frame_cache.Remember(frame);
@@ -748,6 +752,7 @@ private:
         for (IFrameSink *sink : matching_sinks) {
             sink->OnFrame(payload);
         }
+        FramePayloadUnref(&payload);
     }
 
     std::vector<FrameAttachments::SourceStateNotice>
@@ -1231,8 +1236,14 @@ MediaServiceImpl::AttachFrameSink(const FrameAttachOptions &options,
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
     if (has_last_key_frame) {
         FramePayload payload;
-        payload.encoded_frame = last_key_frame;
+        if (!EncodedFrameMove(&payload.encoded_frame, &last_key_frame)) {
+            EncodedFrameUnref(&last_key_frame);
+            return id;
+        }
         sink->OnFrame(payload);
+        FramePayloadUnref(&payload);
+    } else {
+        EncodedFrameUnref(&last_key_frame);
     }
     return id;
 }
