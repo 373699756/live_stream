@@ -43,6 +43,7 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
+constexpr uint32_t kCaptureStopPollMs = 50;
 constexpr int64_t kMinAlertIntervalMs = 1000;
 
 #if LIVE_STREAM_HAS_HISI_NNIE
@@ -2500,18 +2501,30 @@ struct AiService::Impl final {
         if (options.config_service != nullptr && !config_attached) {
             ConfigAttachment attachment;
             attachment.validate = [this](const ConfigJson &value) {
-                std::lock_guard<std::mutex> guard(mutex);
+                AiModelConfig current_config;
+                {
+                    std::lock_guard<std::mutex> guard(mutex);
+                    current_config = config;
+                }
                 AiModelConfig parsed;
-                return ParseAiConfig(value, config, &parsed)
+                return ParseAiConfig(value, current_config, &parsed)
                            ? ConfigResult::Success()
                            : ConfigResult::Failure("", "invalid ai config");
             };
             attachment.apply = [this](const ConfigJson &value) {
-                std::lock_guard<std::mutex> guard(mutex);
+                AiModelConfig current_config;
+                {
+                    std::lock_guard<std::mutex> guard(mutex);
+                    current_config = config;
+                }
                 AiModelConfig parsed;
-                ParseAiConfig(value, config, &parsed);
-                config = parsed;
-                return ConfigResult::Success();
+                if (!ParseAiConfig(value, current_config, &parsed)) {
+                    return ConfigResult::Failure("", "invalid ai config");
+                }
+                return ApplyConfig(parsed)
+                           ? ConfigResult::Success()
+                           : ConfigResult::Failure(
+                                 "", "apply ai config failed");
             };
             if (!options.config_service->AttachConfig("ai", attachment)) {
                 return false;
@@ -2544,40 +2557,18 @@ struct AiService::Impl final {
             }
             start_config = config;
             stats.enabled = start_config.enabled;
+            stats.backend_available = false;
             if (!start_config.enabled) {
                 started = true;
                 return true;
             }
-            engine = CreateEngine(start_config.backend);
-            if (!engine || !engine->Available() || !engine->Start(start_config)) {
-                INFRA_LOG_ERROR("ai", "Start AI backend failed: backend=%s model=%s",
-                                ToString(start_config.backend),
-                                start_config.model_path.c_str());
-                engine.reset();
-                return false;
-            }
-            stats.backend_available = engine->Available();
-            executor.reset(new infra::Executor());
-            infra::ExecutorOptions executor_options;
-            executor_options.worker_count = 1;
-            executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
-            if (!executor || !executor->Start(executor_options)) {
-                engine->Stop();
-                engine.reset();
-                executor.reset();
-                return false;
-            }
             started = true;
-        }
-
-        if (options.media_service == nullptr || options.sdk == nullptr ||
-            !options.media_service->IsStarted()) {
-            Stop();
-            return false;
-        }
-        if (!executor->Post([this]() { CaptureLoop(); })) {
-            Stop();
-            return false;
+            if (!StartInferenceLocked(start_config)) {
+                started = false;
+                stats.enabled = false;
+                stats.backend_available = false;
+                return false;
+            }
         }
         INFRA_LOG_INFO("ai", "AI service started: backend=%s stream=%d",
                        ToString(start_config.backend),
@@ -2586,23 +2577,38 @@ struct AiService::Impl final {
     }
 
     void Stop() {
+        std::unique_ptr<infra::Executor> stopped_executor;
+        std::shared_ptr<AiInferenceEngine> stopped_engine;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started && !executor && !engine) {
                 return;
             }
             started = false;
+            inference_running = false;
+            stopped_executor = std::move(executor);
+            stopped_engine = std::move(engine);
+            stats.backend_available = false;
         }
-        if (executor) {
-            executor->Stop(infra::StopMode::kDiscard);
+        if (stopped_executor) {
+            stopped_executor->Stop(infra::StopMode::kDiscard);
         }
-        std::lock_guard<std::mutex> lock(mutex);
-        executor.reset();
-        if (engine) {
-            engine->Stop();
-            engine.reset();
+        if (stopped_engine) {
+            stopped_engine->Stop();
         }
-        stats.backend_available = false;
+    }
+
+    void Release() {
+        Stop();
+        bool detach_config = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            detach_config = config_attached;
+            config_attached = false;
+        }
+        if (detach_config && options.config_service != nullptr) {
+            static_cast<void>(options.config_service->DetachConfig("ai"));
+        }
     }
 
     void CaptureLoop() {
@@ -2611,15 +2617,17 @@ struct AiService::Impl final {
             AiModelConfig run_config;
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                if (!started || !config.enabled) {
+                if (!started || !inference_running || !config.enabled) {
                     return;
                 }
                 run_config = config;
             }
             const int64_t now_ms = infra::Time::MonotonicMillis();
             if (now_ms < next_inference_ms) {
-                infra::Time::SleepMillis(
-                    static_cast<uint32_t>(next_inference_ms - now_ms));
+                const int64_t wait_ms = next_inference_ms - now_ms;
+                infra::Time::SleepMillis(static_cast<uint32_t>(
+                    std::min<int64_t>(wait_ms, kCaptureStopPollMs)));
+                continue;
             }
             next_inference_ms =
                 infra::Time::MonotonicMillis() +
@@ -2647,7 +2655,7 @@ struct AiService::Impl final {
         std::shared_ptr<AiInferenceEngine> run_engine;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || !engine) {
+            if (!started || !inference_running || !engine) {
                 ++stats.inference_failed_count;
                 return;
             }
@@ -2660,7 +2668,7 @@ struct AiService::Impl final {
 
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started) {
+            if (!started || !inference_running) {
                 return;
             }
             if (result.success) {
@@ -2684,7 +2692,8 @@ struct AiService::Impl final {
         const int64_t now_ms = infra::Time::SystemTimeMillis();
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || now_ms - last_alert_ms < kMinAlertIntervalMs) {
+            if (!started || !inference_running ||
+                now_ms - last_alert_ms < kMinAlertIntervalMs) {
                 return;
             }
             last_alert_ms = now_ms;
@@ -2730,6 +2739,136 @@ struct AiService::Impl final {
         AddAlert(alert);
     }
 
+    bool ApplyConfig(const AiModelConfig &next_config) {
+        if (!IsValidConfig(next_config)) {
+            return false;
+        }
+
+        AiModelConfig previous_config;
+        bool service_started = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            previous_config = config;
+            service_started = started;
+            if (!service_started) {
+                config = next_config;
+                stats.enabled = next_config.enabled;
+                stats.backend_available = false;
+                ClearLastResultLocked();
+                return true;
+            }
+        }
+
+        StopInference();
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            config = next_config;
+            stats.enabled = next_config.enabled;
+            stats.backend_available = false;
+            ClearLastResultLocked();
+            if (!started || !next_config.enabled) {
+                return true;
+            }
+            if (StartInferenceLocked(next_config)) {
+                INFRA_LOG_INFO("ai", "AI config applied: backend=%s stream=%d",
+                               ToString(next_config.backend),
+                               static_cast<int>(next_config.stream_id));
+                return true;
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            config = previous_config;
+            stats.enabled = previous_config.enabled;
+            stats.backend_available = false;
+            ClearLastResultLocked();
+            if (!started || !previous_config.enabled) {
+                return false;
+            }
+            if (StartInferenceLocked(previous_config)) {
+                INFRA_LOG_ERROR(
+                    "ai",
+                    "Apply AI config failed, previous backend restored");
+                return false;
+            }
+        }
+
+        INFRA_LOG_ERROR("ai",
+                        "Apply AI config failed, restore previous backend "
+                        "failed");
+        return false;
+    }
+
+    bool StartInferenceLocked(const AiModelConfig &start_config) {
+        if (options.media_service == nullptr || options.sdk == nullptr ||
+            !options.media_service->IsStarted()) {
+            return false;
+        }
+
+        std::shared_ptr<AiInferenceEngine> next_engine =
+            CreateEngine(start_config.backend);
+        if (!next_engine || !next_engine->Available() ||
+            !next_engine->Start(start_config)) {
+            INFRA_LOG_ERROR("ai", "Start AI backend failed: backend=%s model=%s",
+                            ToString(start_config.backend),
+                            start_config.model_path.c_str());
+            if (next_engine) {
+                next_engine->Stop();
+            }
+            return false;
+        }
+
+        std::unique_ptr<infra::Executor> next_executor(new infra::Executor());
+        infra::ExecutorOptions executor_options;
+        executor_options.worker_count = 1;
+        executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
+        if (!next_executor->Start(executor_options)) {
+            next_engine->Stop();
+            return false;
+        }
+        engine = next_engine;
+        executor = std::move(next_executor);
+        inference_running = true;
+        stats.backend_available = engine->Available();
+        if (!executor->Post([this]() { CaptureLoop(); })) {
+            std::unique_ptr<infra::Executor> failed_executor =
+                std::move(executor);
+            std::shared_ptr<AiInferenceEngine> failed_engine =
+                std::move(engine);
+            inference_running = false;
+            stats.backend_available = false;
+            failed_executor->Stop(infra::StopMode::kDiscard);
+            failed_engine->Stop();
+            return false;
+        }
+        return true;
+    }
+
+    void StopInference() {
+        std::unique_ptr<infra::Executor> stopped_executor;
+        std::shared_ptr<AiInferenceEngine> stopped_engine;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            inference_running = false;
+            stopped_executor = std::move(executor);
+            stopped_engine = std::move(engine);
+            stats.backend_available = false;
+        }
+        if (stopped_executor) {
+            stopped_executor->Stop(infra::StopMode::kDiscard);
+        }
+        if (stopped_engine) {
+            stopped_engine->Stop();
+        }
+    }
+
+    void ClearLastResultLocked() {
+        last_result = AiInferenceResult{};
+        stats.active_results = 0;
+    }
+
     void AddAlert(const AiAlertRecord &alert) {
         std::string expired_image_path;
         {
@@ -2757,6 +2896,7 @@ struct AiService::Impl final {
     int64_t last_alert_ms = 0;
     bool config_attached = false;
     bool started = false;
+    bool inference_running = false;
     mutable std::mutex mutex;
 };
 
@@ -2767,7 +2907,7 @@ AiService::AiService(const AiServiceOptions &options)
 
 AiService::~AiService() {
     if (impl_) {
-        impl_->Stop();
+        impl_->Release();
     }
 }
 

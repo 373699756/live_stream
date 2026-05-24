@@ -27,6 +27,9 @@
 ## Current Implementation Target
 
 - AI 默认为可选实验能力，配置 `ai.enabled=false` 时不启动。
+- `AiService` 随媒体子系统常驻创建；`ai.enabled=false` 时只挂配置和状态接口，
+  不创建推理后端和抓帧线程。Web 通过 `PUT /api/config/ai` 保存后会热应用：
+  关闭会停止当前推理线程和后端，开启或修改后端/任务/模型/阈值会重建推理链路。
 - 设备构建已接入 NNIE `.wk` 模型加载/卸载：
   - `ENABLE_HISI_MPP=1` 且 `CONFIG_HISI_AI_LIBS=y` 时编译 NNIE 后端。
   - `ai_service` 使用 MMZ 承载模型文件，并调用 `HI_MPI_SVP_NNIE_LoadModel`
@@ -70,8 +73,7 @@
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
   - `GET /api/ai/alerts/{id}/image` 返回 JPEG 图片。
   - AI 告警页可通过已有 `PUT /api/config/ai` 保存启用状态、后端、任务、码流、
-    模型路径、推理间隔、阈值和最大结果数；当前运行中的 `AiService` 仍需重启服务
-    后按新配置重建推理后端。
+    模型路径、推理间隔、阈值和最大结果数；保存成功后后端即时应用配置。
 - 实时预览页已轮询 `/api/ai/status`，把当前码流的
   `last_result.detections` 按归一化坐标叠到预览画面内容区域；AI 未启用、后端不可用
   或结果来自另一条码流时只显示紧凑状态，不阻塞预览。

@@ -4,33 +4,40 @@
 
 ## Task completed
 
-继续 AI 模块开发，在 Web AI 告警页增加 AI 配置面板。
+继续 AI 模块开发，实现 AI 配置热应用。
 
 ## Problem fixed
 
-- AI 告警页现在可以编辑并保存 `ai` 配置：启用状态、后端、任务、码流、模型路径、
-  推理间隔、置信度阈值和最大结果数。
-- 保存复用现有 `PUT /api/config/ai`，不新增后端 HTTP 契约。
-- 保存后刷新状态，并提示需要重启服务后让当前 `AiService` 按新配置重建后端。
+- `AiService` 随媒体子系统常驻创建；`ai.enabled=false` 时不启动推理后端或抓帧线程，
+  但保留 `/api/ai/status` 和配置 apply 回调。
+- Web 保存 `ai` 配置后，运行中的 `AiService` 会停止旧推理线程和后端，并按新配置
+  启动、关闭或重建推理链路，不再要求重启服务。
+- 配置热应用失败时回滚到上一份运行配置；停止推理时最多等待 50ms 粒度检查退出，
+  避免长推理间隔拖慢切换。
+- `AiService` 析构时会 detach `ai` 配置回调，避免媒体子系统重启后留下旧回调。
 
 ## Files changed
 
-- `www/src/api/ai.ts`
+- `app/media_subsystem.cpp`
+- `libs/ai_service/src/ai_service.cpp`
 - `www/src/pages/AiAlertsPage.tsx`
-- `www/src/styles/layout.css`
 - `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
+- `docs/active/decision_log.md`
 
 ## Verification
 
 已通过：
 
+- `make -C libs/ai_service CXX=g++ AR=ar CROSS_COMPILE= BUILD_DIR=/tmp/live_stream_ai_host_build all`
+- `make -C libs/ai_service ENABLE_HISI_MPP=1`
+- `make build/obj/app/media_subsystem.o`
 - `cd www && npm run build`
-- `git diff --check -- www/src/api/ai.ts www/src/pages/AiAlertsPage.tsx www/src/styles/layout.css docs/active/ai_development_plan.md docs/active/coder_report.md`
+- `git diff --check -- libs/ai_service/src/ai_service.cpp app/media_subsystem.cpp www/src/pages/AiAlertsPage.tsx docs/active/ai_development_plan.md docs/active/coder_report.md docs/active/decision_log.md`
 
 ## Commit
 
-`feat(www): add AI config controls`
+`feat(ai): hot apply runtime config`
 
 ## Deviations
 
@@ -38,8 +45,8 @@
 
 ## Blocked or follow-up
 
-- 需要在 Hi3516DV300/CV500 板端通过 Web 保存 `ai.enabled=true` 后重启服务，
-  验证 NNIE/IVS_MD、Web 告警瀑布流和预览叠框。
+- 需要在 Hi3516DV300/CV500 板端通过 Web 保存 `ai.enabled=true`，验证无需重启即可
+  启停 NNIE/IVS_MD、刷新 Web 告警瀑布流和预览叠框。
 - 需要在板端验证 `task=motion_classification` 的 IVS_MD 框坐标、灵敏度和误报率。
 - 当前工作区还有非本次 AI 任务的 media/stream_hub/webrtc/http 未提交改动，未纳入
   本次提交范围。

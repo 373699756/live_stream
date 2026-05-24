@@ -3,21 +3,8 @@
 #include "core_services.h"
 #include "infra/log.h"
 #include "hisi_vendor/mpp_hisi_sdk.h"
-#include "json_utils.h"
 
 namespace live_stream {
-namespace {
-
-bool LoadAiEnabled(IConfigService *config, bool *enabled) {
-    if (config == nullptr || enabled == nullptr) {
-        return false;
-    }
-    ConfigJson ai_config = config->GetValue("ai");
-    return ai_config.is_object() &&
-           json_utils::ReadField(ai_config, "enabled", enabled);
-}
-
-}  // namespace
 
 MediaSubsystem &MediaSubsystem::Get() {
     static MediaSubsystem subsystem;
@@ -30,13 +17,6 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
     }
 
     IConfigService *config = core_services.config();
-    bool ai_enabled = false;
-    if (!LoadAiEnabled(config, &ai_enabled)) {
-        INFRA_LOG_ERROR("app", "Load ai config failed");
-        Stop();
-        return false;
-    }
-
     hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
 
     MediaServiceOptions media_options;
@@ -62,23 +42,19 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
         return false;
     }
 
-    if (ai_enabled) {
-        AiServiceOptions ai_options;
-        ai_options.config_service = config;
-        ai_options.media_service = media_.get();
-        ai_options.snapshot_service = snapshot_.get();
-        ai_options.media_channels = media_channels;
-        ai_options.sdk = &sdk;
-        ai_.reset(new AiService(ai_options));
-        if (!ai_ || !ai_->Start()) {
-            INFRA_LOG_ERROR("app", "Start ai service failed");
-            Stop();
-            return false;
-        }
-        INFRA_LOG_INFO("app", "AI service enabled");
-    } else {
-        INFRA_LOG_INFO("app", "AI service disabled");
+    AiServiceOptions ai_options;
+    ai_options.config_service = config;
+    ai_options.media_service = media_.get();
+    ai_options.snapshot_service = snapshot_.get();
+    ai_options.media_channels = media_channels;
+    ai_options.sdk = &sdk;
+    ai_.reset(new AiService(ai_options));
+    if (!ai_ || !ai_->Start()) {
+        INFRA_LOG_ERROR("app", "Start ai service failed");
+        Stop();
+        return false;
     }
+    INFRA_LOG_INFO("app", "AI service ready");
 
     RegionServiceOptions overlay_options;
     overlay_options.config_service = config;

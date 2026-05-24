@@ -252,7 +252,7 @@ function AiStatusPanel({
               void saveAiConfig(config)
                 .then(onSaved)
                 .then(() => {
-                  setSaveMessage('已保存，重启服务后生效');
+                  setSaveMessage('已保存并应用');
                 })
                 .catch((err: unknown) => {
                   setSaveMessage(
