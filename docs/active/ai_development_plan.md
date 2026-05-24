@@ -44,6 +44,12 @@
   - 已按官方 SSD sample 参数接入 VOC 21 类后处理：prior box、softmax、
     bbox decode、NMS、置信度和 `max_results` 过滤，输出归一化 `AiDetection`。
     SSD prior 和后处理大数组在模型加载后缓存复用，避免每帧重复分配。
+  - `motion_classification` 在设备构建下已接入 IVS_MD：按实际 VPSS YVU420SP
+    帧尺寸建立 U8C1 双帧工作区，用 IVE DMA 拷贝亮度平面，再调用
+    `HI_IVS_MD_Process` 输出 motion 检测框；此任务不依赖 `.wk` 模型文件。
+- 设备构建默认链接 `libnnie.a`、`libmd.a` 和 `libive.a`；产品不支持音频，
+  不链接 `libVoiceEngine.a`、`libupvqe.a`、`libdnvqe.a`。海思 `libmpi.a`
+  内部音频符号由 `hisi_vendor` 失败 stub 闭合，不启用音频能力。
 - AI 推理调度默认走子码流，默认间隔 500ms；抓帧和 NNIE forward 不持有
   `AiService` 状态锁，状态查询、停止和告警读取不会被单次推理长时间阻塞。
 - `host_stub` 后端会为有效输入帧生成确定性结果，用于走通 `/api/ai/status`、
@@ -75,9 +81,7 @@
 2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
 3. 在板端实测 VGS + IVE CSC 前处理耗时和检测结果，确认色彩顺序与模型输入一致。
-4. 在板端接入 IVE/IVS_MD 移动侦测真实后端，参考
-   `3rdparty/hisi_svp/sample/svp/ive/sample/sample_ive_md.c` 和项目内
-   `libmd`/`ivs_md.h`。
+4. 在板端验证 `task=motion_classification` 的 IVS_MD 框坐标、灵敏度和瀑布流告警。
 
 ## Acceptance
 

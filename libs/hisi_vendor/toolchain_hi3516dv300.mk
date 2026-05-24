@@ -88,16 +88,15 @@ HISI_SENSOR_LIBS := $(HISI_MPP_LIB)/lib_hiae.a \
   $(HISI_MPP_LIB)/libsns_imx458.a \
   $(HISI_MPP_LIB)/libsns_mn34220.a \
   $(HISI_MPP_LIB)/libsns_os05a.a
-HISI_OPTIONAL_AI_LIBS := $(HISI_MPP_LIB)/libive.a $(HISI_MPP_LIB)/libnnie.a
-HISI_MPI_AUDIO_DEPS := $(HISI_MPP_LIB)/libVoiceEngine.a \
-  $(HISI_MPP_LIB)/libupvqe.a \
-  $(HISI_MPP_LIB)/libdnvqe.a
+HISI_OPTIONAL_AI_LIBS := $(HISI_MPP_LIB)/libnnie.a \
+  $(HISI_MPP_LIB)/libmd.a \
+  $(HISI_MPP_LIB)/libive.a
 HISI_SECUREC_LIB := $(HISI_MPP_LIB)/libsecurec.a
 
 CONFIG_HISI_AI_LIBS ?= y
 
 HISI_MPP_STATIC_LIBS := $(HISI_MPI_LIBS) $(HISI_SENSOR_LIBS) \
-  $(HISI_MPI_AUDIO_DEPS) $(HISI_SECUREC_LIB)
+  $(HISI_SECUREC_LIB)
 ifeq ($(CONFIG_HISI_AI_LIBS),y)
 HISI_MPP_STATIC_LIBS += $(HISI_OPTIONAL_AI_LIBS)
 endif

@@ -23,11 +23,13 @@
 
 #if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \
     defined(LIVE_STREAM_ENABLE_HISI_NNIE) && \
-    __has_include("mpi_nnie.h") && __has_include("mpi_sys.h")
+    __has_include("mpi_nnie.h") && __has_include("mpi_sys.h") && \
+    __has_include("ivs_md.h")
 #define LIVE_STREAM_HAS_HISI_NNIE 1
 extern "C" {
 #include "hi_comm_vb.h"
 #include "hi_comm_video.h"
+#include "ivs_md.h"
 #include "mpi_ive.h"
 #include "mpi_nnie.h"
 #include "mpi_sys.h"
@@ -62,6 +64,11 @@ constexpr uint32_t kVgsFrameAlign = 32;
 constexpr uint32_t kIveImageAlign = 16;
 constexpr uint32_t kIveCscMinWidth = 64;
 constexpr uint32_t kIveCscMinHeight = 64;
+constexpr uint32_t kMotionImageCount = 2;
+constexpr uint32_t kMotionAreaThresholdStep = 8;
+constexpr HI_U16 kMotionSadThreshold = 200;
+constexpr HI_U0Q16 kMotionBackgroundBlend = 32768;
+constexpr MD_CHN kMotionChannel = 0;
 
 constexpr std::array<uint32_t, kSsdLayerCount> kSsdPriorBoxWidth = {
     {38, 19, 10, 5, 3, 1}};
@@ -197,6 +204,21 @@ struct IveRgbFrame {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t stride = 0;
+};
+
+struct MotionImage {
+    IVE_IMAGE_S image{};
+    HI_U64 phy_addr = 0;
+    HI_VOID *vir_addr = nullptr;
+    uint32_t size = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+};
+
+struct MotionBlob {
+    IVE_DST_MEM_INFO_S mem{};
+    HI_VOID *vir_addr = nullptr;
 };
 
 bool AddHiU32(HI_U32 value, HI_U32 *total) {
@@ -664,6 +686,7 @@ bool IsValidConfig(const AiModelConfig &config) {
         return true;
     }
     if (config.backend == AiBackend::kHi3516Dv300Nnie &&
+        config.task != AiTask::kMotionClassification &&
         config.model_path.empty()) {
         return false;
     }
@@ -798,11 +821,22 @@ public:
     bool Available() const override { return LIVE_STREAM_HAS_HISI_NNIE != 0; }
 
     bool Start(const AiModelConfig &config) override {
-        if (!IsValidConfig(config) || config.model_path.empty()) {
+        if (!IsValidConfig(config)) {
             return false;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
         Stop();
+        if (config.task == AiTask::kMotionClassification) {
+            if (!StartMotionBackend(config)) {
+                return false;
+            }
+            model_path_ = config.model_path;
+            started_ = true;
+            return true;
+        }
+        if (config.model_path.empty()) {
+            return false;
+        }
         if (!LoadModel(config)) {
             return false;
         }
@@ -818,6 +852,7 @@ public:
     void Stop() override {
 #if LIVE_STREAM_HAS_HISI_NNIE
         UnloadModel();
+        StopMotionBackend();
 #endif
         model_path_.clear();
         started_ = false;
@@ -833,6 +868,9 @@ public:
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
+        if (motion_started_) {
+            return RunMotionDetection(frame, stream_id, config);
+        }
         if (!model_loaded_) {
             return result;
         }
@@ -1214,6 +1252,341 @@ private:
         tmp_buf_size_ = 0;
         ClearU8C3SampleMap();
         ClearSsdPostprocessCache();
+    }
+
+    bool StartMotionBackend(const AiModelConfig &config) {
+        if (config.input_width == 0 || config.input_height == 0) {
+            return false;
+        }
+        (void)config;
+        motion_started_ = false;
+        if (HI_IVS_MD_Init() != HI_SUCCESS) {
+            INFRA_LOG_ERROR("ai", "Init IVS motion detection failed");
+            return false;
+        }
+        motion_initialized_ = true;
+        motion_started_ = true;
+        return true;
+    }
+
+    void StopMotionBackend() {
+        if (motion_channel_created_) {
+            const HI_S32 ret = HI_IVS_MD_DestroyChn(kMotionChannel);
+            if (ret != HI_SUCCESS) {
+                INFRA_LOG_ERROR("ai",
+                                "Destroy IVS motion channel failed: ret=%#x",
+                                static_cast<unsigned int>(ret));
+            }
+            motion_channel_created_ = false;
+        }
+        if (motion_initialized_) {
+            const HI_S32 ret = HI_IVS_MD_Exit();
+            if (ret != HI_SUCCESS) {
+                INFRA_LOG_ERROR("ai", "Exit IVS motion detection failed: ret=%#x",
+                                static_cast<unsigned int>(ret));
+            }
+            motion_initialized_ = false;
+        }
+        motion_started_ = false;
+        FreeMotionWorkspace();
+        motion_current_index_ = 0;
+        motion_has_reference_ = false;
+    }
+
+    void FreeMotionWorkspace() {
+        for (MotionImage &image : motion_images_) {
+            if (image.phy_addr != 0 && image.vir_addr != nullptr) {
+                HI_MPI_SYS_MmzFree(image.phy_addr, image.vir_addr);
+            }
+            image = MotionImage{};
+        }
+        if (motion_blob_.mem.u64PhyAddr != 0 && motion_blob_.vir_addr) {
+            HI_MPI_SYS_MmzFree(motion_blob_.mem.u64PhyAddr,
+                               motion_blob_.vir_addr);
+        }
+        motion_blob_ = MotionBlob{};
+        std::memset(&motion_attr_, 0, sizeof(motion_attr_));
+    }
+
+    bool EnsureMotionWorkspace(uint32_t width, uint32_t height) {
+        if (motion_images_[0].phy_addr != 0 &&
+            motion_images_[0].vir_addr != nullptr &&
+            motion_images_[0].width == width &&
+            motion_images_[0].height == height &&
+            motion_blob_.mem.u64PhyAddr != 0) {
+            return true;
+        }
+        const bool recreate_channel = motion_channel_created_;
+        if (recreate_channel) {
+            const HI_S32 ret = HI_IVS_MD_DestroyChn(kMotionChannel);
+            if (ret != HI_SUCCESS) {
+                INFRA_LOG_ERROR("ai",
+                                "Destroy IVS motion channel failed: ret=%#x",
+                                static_cast<unsigned int>(ret));
+                return false;
+            }
+            motion_channel_created_ = false;
+        }
+        FreeMotionWorkspace();
+
+        for (MotionImage &image : motion_images_) {
+            if (!AllocMotionImage(width, height, &image)) {
+                FreeMotionWorkspace();
+                return false;
+            }
+        }
+        if (!AllocMotionBlob()) {
+            FreeMotionWorkspace();
+            return false;
+        }
+        InitMotionAttr(width, height);
+        if (HI_IVS_MD_CreateChn(kMotionChannel, &motion_attr_) != HI_SUCCESS) {
+            INFRA_LOG_ERROR("ai", "Create IVS motion channel failed");
+            FreeMotionWorkspace();
+            return false;
+        }
+        motion_channel_created_ = true;
+        motion_has_reference_ = false;
+        motion_current_index_ = 0;
+        return true;
+    }
+
+    bool AllocMotionImage(uint32_t width, uint32_t height,
+                          MotionImage *motion_image) {
+        if (motion_image == nullptr || width == 0 || height == 0) {
+            return false;
+        }
+        const uint32_t stride = AlignUpU32(width, kIveImageAlign);
+        const uint64_t image_size = static_cast<uint64_t>(stride) * height;
+        if (stride < width || image_size == 0 || image_size > kMaxHiU32) {
+            return false;
+        }
+        HI_U64 phy_addr = 0;
+        HI_VOID *vir_addr = nullptr;
+        HI_S32 ret = HI_MPI_SYS_MmzAlloc(&phy_addr, &vir_addr,
+                                         "LIVE_AI_MD_IMAGE", nullptr,
+                                         static_cast<HI_U32>(image_size));
+        if (ret != HI_SUCCESS || phy_addr == 0 || vir_addr == nullptr) {
+            return false;
+        }
+        std::memset(vir_addr, 0, static_cast<size_t>(image_size));
+        motion_image->phy_addr = phy_addr;
+        motion_image->vir_addr = vir_addr;
+        motion_image->size = static_cast<uint32_t>(image_size);
+        motion_image->width = width;
+        motion_image->height = height;
+        motion_image->stride = stride;
+        IVE_IMAGE_S &image = motion_image->image;
+        std::memset(&image, 0, sizeof(image));
+        image.enType = IVE_IMAGE_TYPE_U8C1;
+        image.u32Width = width;
+        image.u32Height = height;
+        image.au32Stride[0] = stride;
+        image.au64PhyAddr[0] = phy_addr;
+        image.au64VirAddr[0] =
+            static_cast<HI_U64>(reinterpret_cast<HI_UL>(vir_addr));
+        return true;
+    }
+
+    bool AllocMotionBlob() {
+        HI_U64 phy_addr = 0;
+        HI_VOID *vir_addr = nullptr;
+        const HI_U32 blob_size = static_cast<HI_U32>(sizeof(IVE_CCBLOB_S));
+        HI_S32 ret = HI_MPI_SYS_MmzAlloc(&phy_addr, &vir_addr,
+                                         "LIVE_AI_MD_BLOB", nullptr,
+                                         blob_size);
+        if (ret != HI_SUCCESS || phy_addr == 0 || vir_addr == nullptr) {
+            return false;
+        }
+        std::memset(vir_addr, 0, blob_size);
+        motion_blob_.mem.u64PhyAddr = phy_addr;
+        motion_blob_.mem.u64VirAddr =
+            static_cast<HI_U64>(reinterpret_cast<HI_UL>(vir_addr));
+        motion_blob_.mem.u32Size = blob_size;
+        motion_blob_.vir_addr = vir_addr;
+        return true;
+    }
+
+    void InitMotionAttr(uint32_t width, uint32_t height) {
+        std::memset(&motion_attr_, 0, sizeof(motion_attr_));
+        motion_attr_.enAlgMode = MD_ALG_MODE_BG;
+        motion_attr_.enSadMode = IVE_SAD_MODE_MB_4X4;
+        motion_attr_.enSadOutCtrl = IVE_SAD_OUT_CTRL_THRESH;
+        motion_attr_.u32Width = width;
+        motion_attr_.u32Height = height;
+        motion_attr_.u16SadThr = kMotionSadThreshold;
+        motion_attr_.stAddCtrl.u0q16X = kMotionBackgroundBlend;
+        motion_attr_.stAddCtrl.u0q16Y = kMotionBackgroundBlend;
+        motion_attr_.stCclCtrl.enMode = IVE_CCL_MODE_4C;
+        const HI_U8 window_size =
+            static_cast<HI_U8>(1U << (2U + motion_attr_.enSadMode));
+        motion_attr_.stCclCtrl.u16InitAreaThr = window_size * window_size;
+        motion_attr_.stCclCtrl.u16Step = window_size;
+    }
+
+    bool CopyFrameLumaToMotionImage(const hisisdk::YuvFrame &frame,
+                                    MotionImage *motion_image) const {
+        if (motion_image == nullptr || motion_image->phy_addr == 0 ||
+            motion_image->vir_addr == nullptr ||
+            motion_image->width != frame.width ||
+            motion_image->height != frame.height ||
+            !CanUseMotionFrame(frame)) {
+            return false;
+        }
+        IVE_SRC_DATA_S src{};
+        src.u64PhyAddr = frame.mpp_info.phy_addr[0];
+        src.u32Width = frame.width;
+        src.u32Height = frame.height;
+        src.u32Stride = frame.mpp_info.stride[0];
+        IVE_DST_DATA_S dst{};
+        dst.u64PhyAddr = motion_image->image.au64PhyAddr[0];
+        dst.u32Width = motion_image->image.u32Width;
+        dst.u32Height = motion_image->image.u32Height;
+        dst.u32Stride = motion_image->image.au32Stride[0];
+        IVE_DMA_CTRL_S ctrl{};
+        ctrl.enMode = IVE_DMA_MODE_DIRECT_COPY;
+        IVE_HANDLE handle = 0;
+        HI_S32 ret = HI_MPI_IVE_DMA(&handle, &src, &dst, &ctrl, HI_TRUE);
+        if (ret != HI_SUCCESS) {
+            return false;
+        }
+        return QueryIveTask(handle);
+    }
+
+    bool CanUseMotionFrame(const hisisdk::YuvFrame &frame) const {
+        const hisisdk::MppYuvFrameInfo &info = frame.mpp_info;
+        return motion_initialized_ && info.valid && frame.width != 0 &&
+               frame.height != 0 &&
+               info.phy_addr[0] != 0 && info.stride[0] >= frame.width &&
+               info.pixel_format ==
+                   static_cast<int32_t>(PIXEL_FORMAT_YVU_SEMIPLANAR_420) &&
+               info.compress_mode == static_cast<int32_t>(COMPRESS_MODE_NONE);
+    }
+
+    AiInferenceResult RunMotionDetection(const hisisdk::YuvFrame &frame,
+                                         StreamId stream_id,
+                                         const AiModelConfig &config) {
+        AiInferenceResult result;
+        result.stream_id = stream_id;
+        result.pts_us = frame.pts_us;
+        if (config.max_results == 0 || !CanUseMotionFrame(frame) ||
+            !EnsureMotionWorkspace(frame.width, frame.height)) {
+            return result;
+        }
+
+        MotionImage &current = motion_images_[motion_current_index_];
+        if (!CopyFrameLumaToMotionImage(frame, &current)) {
+            return result;
+        }
+        if (!motion_has_reference_) {
+            motion_has_reference_ = true;
+            motion_current_index_ = 1U - motion_current_index_;
+            result.success = true;
+            result.sequence = ++motion_sequence_;
+            return result;
+        }
+
+        MotionImage &reference = motion_images_[1U - motion_current_index_];
+        std::memset(motion_blob_.vir_addr, 0, motion_blob_.mem.u32Size);
+        HI_S32 ret = HI_IVS_MD_Process(kMotionChannel, &current.image,
+                                       &reference.image, nullptr,
+                                       &motion_blob_.mem);
+        if (ret != HI_SUCCESS) {
+            return result;
+        }
+        result.success = true;
+        result.sequence = ++motion_sequence_;
+        result.detections = DecodeMotionBlob(config);
+        motion_current_index_ = 1U - motion_current_index_;
+        return result;
+    }
+
+    std::vector<AiDetection> DecodeMotionBlob(const AiModelConfig &config) {
+        std::vector<AiDetection> detections;
+        if (motion_blob_.vir_addr == nullptr || motion_attr_.u32Width == 0 ||
+            motion_attr_.u32Height == 0) {
+            return detections;
+        }
+        const IVE_CCBLOB_S *blob =
+            static_cast<const IVE_CCBLOB_S *>(motion_blob_.vir_addr);
+        if (blob->s8LabelStatus != 0) {
+            return detections;
+        }
+
+        std::vector<const IVE_REGION_S *> regions;
+        regions.reserve(std::min<uint32_t>(IVE_MAX_REGION_NUM,
+                                           config.max_results));
+        HI_U16 area_threshold = 0;
+        if (blob->u8RegionNum > config.max_results) {
+            area_threshold = blob->u16CurAreaThr;
+            while (CountMotionRegions(*blob, area_threshold) >
+                   config.max_results) {
+                if (area_threshold >
+                    std::numeric_limits<HI_U16>::max() -
+                        kMotionAreaThresholdStep) {
+                    break;
+                }
+                area_threshold += kMotionAreaThresholdStep;
+            }
+        }
+        for (uint32_t i = 0; i < IVE_MAX_REGION_NUM; ++i) {
+            const IVE_REGION_S &region = blob->astRegion[i];
+            if (region.u32Area > area_threshold &&
+                IsValidMotionRegion(region)) {
+                regions.push_back(&region);
+            }
+        }
+        std::sort(regions.begin(), regions.end(),
+                  [](const IVE_REGION_S *lhs, const IVE_REGION_S *rhs) {
+                      return lhs->u32Area > rhs->u32Area;
+                  });
+        if (regions.size() > config.max_results) {
+            regions.resize(config.max_results);
+        }
+
+        detections.reserve(regions.size());
+        const float frame_area = static_cast<float>(motion_attr_.u32Width) *
+                                 static_cast<float>(motion_attr_.u32Height);
+        for (const IVE_REGION_S *region : regions) {
+            AiDetection detection;
+            detection.label = "motion";
+            const float area_ratio =
+                static_cast<float>(region->u32Area) / frame_area;
+            detection.confidence = ClampFloat(0.5f + area_ratio * 8.0f,
+                                              0.0f, 1.0f);
+            detection.x = static_cast<float>(region->u16Left) /
+                          static_cast<float>(motion_attr_.u32Width);
+            detection.y = static_cast<float>(region->u16Top) /
+                          static_cast<float>(motion_attr_.u32Height);
+            detection.width =
+                static_cast<float>(region->u16Right - region->u16Left + 1U) /
+                static_cast<float>(motion_attr_.u32Width);
+            detection.height =
+                static_cast<float>(region->u16Bottom - region->u16Top + 1U) /
+                static_cast<float>(motion_attr_.u32Height);
+            if (detection.confidence >= config.confidence_threshold) {
+                detections.push_back(detection);
+            }
+        }
+        return detections;
+    }
+
+    uint32_t CountMotionRegions(const IVE_CCBLOB_S &blob,
+                                HI_U16 area_threshold) const {
+        uint32_t count = 0;
+        for (uint32_t i = 0; i < IVE_MAX_REGION_NUM; ++i) {
+            if (blob.astRegion[i].u32Area > area_threshold) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+    bool IsValidMotionRegion(const IVE_REGION_S &region) const {
+        return region.u32Area != 0 && region.u16Right >= region.u16Left &&
+               region.u16Bottom >= region.u16Top &&
+               region.u16Right < motion_attr_.u32Width &&
+               region.u16Bottom < motion_attr_.u32Height;
     }
 
     void FreeScaledYvuFrame() {
@@ -2050,8 +2423,17 @@ private:
     std::vector<SsdProposal> ssd_class_proposals_;
     std::vector<SsdProposal> ssd_proposals_after_nms_;
     std::vector<uint8_t> ssd_nms_suppressed_;
+    std::array<MotionImage, kMotionImageCount> motion_images_;
+    MotionBlob motion_blob_;
+    MD_ATTR_S motion_attr_{};
+    FrameSequence motion_sequence_ = 0;
+    uint32_t motion_current_index_ = 0;
     bool model_loaded_ = false;
     bool ssd_model_ready_ = false;
+    bool motion_initialized_ = false;
+    bool motion_channel_created_ = false;
+    bool motion_started_ = false;
+    bool motion_has_reference_ = false;
 #endif
     std::string model_path_;
     bool started_ = false;
