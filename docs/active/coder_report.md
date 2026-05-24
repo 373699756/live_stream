@@ -4,17 +4,16 @@
 
 ## Task completed
 
-继续优化 AI NNIE 前处理路径。
+review AI 模块并优化 host stub 联调链路。
 
 ## Problem fixed
 
-- `ai_service` 的 U8_C3 输入前处理现在优先走 `VGS scale -> IVE CSC -> BGR planar
-  row copy`。
-- IVE 输出 RGB planar 后只在 CPU 上做 B/G/R 平面顺序拷贝，避免每像素 YUV 转 RGB
-  公式计算。
-- VGS 或 IVE 不可用时保留原 CPU resize + YVU 到 BGR planar 回退路径，避免影响
-  `ai.enabled=false` 和 host stub 构建。
-- 修正同一段 MPP frame 地址填充代码中的缩进异常。
+- 对照官方 SVP SSD sample 复核了当前 SSD prior、decode、softmax 和 NMS 主流程，
+  未发现需要立即修正的错参。
+- `host_stub` 后端现在会为有效输入帧返回确定性 object detection 结果，便于不用
+  NNIE 硬件也能走通 `/api/ai/status`、`/api/ai/alerts` 和告警图片写入链路。
+- host stub 结果仍受 `confidence_threshold`、`max_results` 和 `task` 配置约束；
+  生产默认配置仍保持 `ai.enabled=false`。
 
 ## Files changed
 
@@ -33,7 +32,7 @@
 
 ## Commit
 
-Pending: `perf(ai): use IVE for NNIE color conversion`
+Pending: `feat(ai): emit host stub detections`
 
 ## Deviations
 
@@ -43,3 +42,5 @@ Pending: `perf(ai): use IVE for NNIE color conversion`
 
 - 需要在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，实测 VGS + IVE CSC
   前处理耗时、检测结果和 Web 告警瀑布流。
+- 若要在 PC/host 上联调真实 AI 告警接口，需要显式把配置改成 `backend=host_stub`
+  并让 AI 服务启动。

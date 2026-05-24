@@ -727,6 +727,9 @@ public:
 
     bool Start(const AiModelConfig &config) override {
         started_ = IsValidConfig(config);
+        if (started_) {
+            sequence_ = 0;
+        }
         return started_;
     }
 
@@ -735,15 +738,32 @@ public:
     AiInferenceResult Run(const hisisdk::YuvFrame &frame,
                           StreamId stream_id,
                           const AiModelConfig &config) override {
-        (void)config;
         AiInferenceResult result;
         result.success = started_ && frame.buffer && frame.size > 0;
         result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
+        if (!result.success || config.task != AiTask::kObjectDetection) {
+            return result;
+        }
+        result.sequence = ++sequence_;
+        if (config.max_results == 0 ||
+            config.confidence_threshold > kHostStubConfidence) {
+            return result;
+        }
+        AiDetection detection;
+        detection.label = "person";
+        detection.confidence = kHostStubConfidence;
+        detection.x = 0.18f;
+        detection.y = 0.22f;
+        detection.width = 0.2f;
+        detection.height = 0.46f;
+        result.detections.push_back(detection);
         return result;
     }
 
 private:
+    static constexpr float kHostStubConfidence = 0.86f;
+    FrameSequence sequence_ = 0;
     bool started_ = false;
 };
 
