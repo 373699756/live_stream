@@ -3,6 +3,7 @@
 #include "http_handler_utils.h"
 
 #include "infra/log.h"
+#include "media/encoded_frame.h"
 #include "net_service.h"
 #include "stream_browser_source.h"
 
@@ -23,6 +24,8 @@ constexpr uint8_t kFlvTagTypeVideo = 9;
 constexpr uint8_t kFlvEnhancedHeader = 0x80;
 constexpr uint8_t kFlvPacketTypeSequenceHeader = 0;
 constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
+constexpr const char *kMjpegBoundary = "live_stream_frame";
+constexpr const char *kMjpegFrameTail = "\r\n";
 
 bool HasUsableFlvStartData(const StreamFlvStartData &start_data) {
     return start_data.supported && !start_data.file_header.empty() &&
@@ -95,6 +98,11 @@ bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
                                                KeyFrameReason::kNewClient);
 }
 
+void SendStreamingError(HttpStreamWriter *writer, ConnectionId connection_id,
+                        const HttpResponse &response) {
+    writer->SendResponse(connection_id, response, true);
+}
+
 bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
                                 ConnectionId connection_id,
                                 const uint8_t *data, size_t size,
@@ -163,10 +171,41 @@ private:
     uint32_t last_timestamp_ms_ = 0;
 };
 
-void SendFlvError(HttpStreamWriter *writer, ConnectionId connection_id,
-                  const HttpResponse &response) {
-    writer->SendResponse(connection_id, response, true);
-}
+class MjpegConnectionSink : public IStreamMjpegSink {
+public:
+    MjpegConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
+        : writer_(writer), connection_id_(connection_id) {}
+
+    bool OnMjpegFrame(const EncodedFrame &frame) override {
+        if (writer_ == nullptr) {
+            return false;
+        }
+        const uint8_t *payload = frame.PayloadData();
+        if (payload == nullptr || frame.size == 0) {
+            return true;
+        }
+        std::string frame_header;
+        frame_header.reserve(128);
+        frame_header.append("--");
+        frame_header.append(kMjpegBoundary);
+        frame_header.append("\r\nContent-Type: image/jpeg\r\nContent-Length: ");
+        frame_header.append(std::to_string(frame.size));
+        frame_header.append("\r\n\r\n");
+
+        HttpStreamSlice slices[3];
+        slices[0].data = reinterpret_cast<const uint8_t *>(frame_header.data());
+        slices[0].size = frame_header.size();
+        slices[1].data = payload;
+        slices[1].size = frame.size;
+        slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
+        slices[2].size = 2;
+        return writer_->EnqueueStreamingSlices(connection_id_, slices, 3);
+    }
+
+private:
+    HttpStreamWriter *writer_ = nullptr;
+    ConnectionId connection_id_ = 0;
+};
 
 bool ParseFlvStreamName(const HttpRequest &request, StreamId *stream_id,
                         std::string *stream_name) {
@@ -182,6 +221,20 @@ bool ParseFlvStreamName(const HttpRequest &request, StreamId *stream_id,
     return StreamIdFromJsonString(*stream_name, stream_id);
 }
 
+bool ParseMjpegStreamName(const HttpRequest &request, StreamId *stream_id,
+                          std::string *stream_name) {
+    if (stream_id == nullptr || stream_name == nullptr) {
+        return false;
+    }
+    *stream_name = PathSuffix(request.path, "/api/mjpeg/");
+    if (stream_name->size() <= 5 ||
+        stream_name->substr(stream_name->size() - 5) != ".mjpg") {
+        return false;
+    }
+    stream_name->resize(stream_name->size() - 5);
+    return StreamIdFromJsonString(*stream_name, stream_id);
+}
+
 }  // namespace
 
 class StreamingHttpHandler : public IStreamingHttpHandler {
@@ -189,32 +242,46 @@ public:
     StreamingHttpHandler(HttpAccess *access, HttpStreamWriter *writer,
                          IMediaService *media_service,
                          IStreamBrowserSource *stream_browser_source,
-                         IStreamFlvSource *stream_flv_source)
+                         IStreamFlvSource *stream_flv_source,
+                         IStreamMjpegSource *stream_mjpeg_source)
         : access_(access), writer_(writer), media_service_(media_service),
           stream_browser_source_(stream_browser_source),
-          stream_flv_source_(stream_flv_source) {}
+          stream_flv_source_(stream_flv_source),
+          stream_mjpeg_source_(stream_mjpeg_source) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
         return request.method == HttpMethod::kGet &&
-               StartsWith(request.path, "/api/flv/");
+               (StartsWith(request.path, "/api/flv/") ||
+                StartsWith(request.path, "/api/mjpeg/"));
     }
 
     void HandleStreamingRequest(ConnectionId connection_id,
                                 const HttpRequest &request) override {
+        if (StartsWith(request.path, "/api/mjpeg/")) {
+            HandleMjpegRequest(connection_id, request);
+            return;
+        }
+        HandleFlvRequest(connection_id, request);
+    }
+
+private:
+    void HandleFlvRequest(ConnectionId connection_id,
+                          const HttpRequest &request) {
         if (stream_browser_source_ == nullptr || stream_flv_source_ == nullptr) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=no_stream_hub",
                             static_cast<unsigned long long>(connection_id));
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(501, "Not Implemented"));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(501, "Not Implemented"));
             return;
         }
         if (IsMediaRestarting(media_service_)) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(503, "Media pipeline restarting"));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(503,
+                                              "Media pipeline restarting"));
             return;
         }
         AuthPrincipal principal;
@@ -224,7 +291,7 @@ public:
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=auth",
                             static_cast<unsigned long long>(connection_id));
-            SendFlvError(writer_, connection_id, auth_response);
+            SendStreamingError(writer_, connection_id, auth_response);
             return;
         }
 
@@ -235,8 +302,8 @@ public:
                             "HTTP-FLV reject conn=%llu reason=path path=%s",
                             static_cast<unsigned long long>(connection_id),
                             request.path.c_str());
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(400, "Invalid FLV path"));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(400, "Invalid FLV path"));
             return;
         }
 
@@ -253,8 +320,9 @@ public:
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.flv_ready ? 1 : 0);
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(409, "HTTP-FLV requires H.264 stream"));
+            SendStreamingError(
+                writer_, connection_id,
+                StatusResponse(409, "HTTP-FLV requires H.264/H.265 stream"));
             return;
         }
         if (!browser_status.running) {
@@ -266,8 +334,8 @@ public:
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.flv_ready ? 1 : 0);
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(503, "FLV stream not ready"));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(503, "FLV stream not ready"));
             return;
         }
 
@@ -302,8 +370,8 @@ public:
                             start_data.sequence_header.size(),
                             start_data.last_keyframe.size(),
                             keyframe_requested ? 1 : 0);
-            SendFlvError(writer_, connection_id,
-                         StatusResponse(503, "FLV stream not ready"));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(503, "FLV stream not ready"));
             return;
         }
 
@@ -390,21 +458,153 @@ public:
                        wait_for_keyframe ? 1 : 0);
     }
 
-private:
+    void HandleMjpegRequest(ConnectionId connection_id,
+                            const HttpRequest &request) {
+        if (stream_browser_source_ == nullptr ||
+            stream_mjpeg_source_ == nullptr) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu reason=no_stream_hub",
+                            static_cast<unsigned long long>(connection_id));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(501, "Not Implemented"));
+            return;
+        }
+        if (IsMediaRestarting(media_service_)) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu reason=media_restarting",
+                            static_cast<unsigned long long>(connection_id));
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(503,
+                                              "Media pipeline restarting"));
+            return;
+        }
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu reason=auth",
+                            static_cast<unsigned long long>(connection_id));
+            SendStreamingError(writer_, connection_id, auth_response);
+            return;
+        }
+
+        StreamId stream_id = StreamId::kMain;
+        std::string stream_name;
+        if (!ParseMjpegStreamName(request, &stream_id, &stream_name)) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu reason=path path=%s",
+                            static_cast<unsigned long long>(connection_id),
+                            request.path.c_str());
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(400, "Invalid MJPEG path"));
+            return;
+        }
+
+        const StreamBrowserStatus browser_status =
+            stream_browser_source_->GetBrowserStatus(stream_id);
+        if (!browser_status.mjpeg_supported) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu stream=%s "
+                            "reason=unsupported codec=%s running=%d",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id),
+                            VideoCodecName(browser_status.codec),
+                            browser_status.running ? 1 : 0);
+            SendStreamingError(
+                writer_, connection_id,
+                StatusResponse(409, "MJPEG preview requires MJPEG stream"));
+            return;
+        }
+        if (!browser_status.mjpeg_ready) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG reject conn=%llu stream=%s "
+                            "reason=not_ready codec=%s running=%d",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id),
+                            VideoCodecName(browser_status.codec),
+                            browser_status.running ? 1 : 0);
+            SendStreamingError(writer_, connection_id,
+                               StatusResponse(503, "MJPEG stream not ready"));
+            return;
+        }
+
+        IStreamMjpegSink *sink =
+            new MjpegConnectionSink(writer_, connection_id);
+        if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {
+            delete sink;
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG close conn=%llu stream=%s "
+                            "reason=no_session",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
+            return;
+        }
+
+        std::map<std::string, std::string> headers;
+        headers["Content-Type"] =
+            std::string("multipart/x-mixed-replace; boundary=") +
+            kMjpegBoundary;
+        headers["Cache-Control"] = "no-cache";
+        headers["Pragma"] = "no-cache";
+        const std::string header_block = BuildStreamingHeaderBlock(200, headers);
+        if (!writer_->EnqueueStreamingChunk(
+                connection_id,
+                reinterpret_cast<const uint8_t *>(header_block.data()),
+                header_block.size())) {
+            delete sink;
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG close conn=%llu stream=%s reason=enqueue",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+
+        const StreamMjpegClientId client_id =
+            stream_mjpeg_source_->AttachMjpegClient(stream_id, sink);
+        if (client_id == 0) {
+            delete sink;
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG close conn=%llu stream=%s reason=attach",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+
+        if (!writer_->AttachStreamClient(connection_id, client_id)) {
+            (void)stream_mjpeg_source_->DetachMjpegClient(client_id);
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP-MJPEG close conn=%llu stream=%s reason=closed",
+                            static_cast<unsigned long long>(connection_id),
+                            StreamIdToJsonString(stream_id));
+            return;
+        }
+        INFRA_LOG_INFO(kHttpModuleName,
+                       "HTTP-MJPEG attached conn=%llu stream=%s client=%llu",
+                       static_cast<unsigned long long>(connection_id),
+                       StreamIdToJsonString(stream_id),
+                       static_cast<unsigned long long>(client_id));
+    }
+
     HttpAccess *access_ = nullptr;
     HttpStreamWriter *writer_ = nullptr;
     IMediaService *media_service_ = nullptr;
     IStreamBrowserSource *stream_browser_source_ = nullptr;
     IStreamFlvSource *stream_flv_source_ = nullptr;
+    IStreamMjpegSource *stream_mjpeg_source_ = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     HttpAccess *access, HttpStreamWriter *writer, IMediaService *media_service,
     IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source) {
+    IStreamFlvSource *stream_flv_source,
+    IStreamMjpegSource *stream_mjpeg_source) {
     return std::unique_ptr<IStreamingHttpHandler>(
         new StreamingHttpHandler(access, writer, media_service,
-                                 stream_browser_source, stream_flv_source));
+                                 stream_browser_source, stream_flv_source,
+                                 stream_mjpeg_source));
 }
 
 }  // namespace live_stream

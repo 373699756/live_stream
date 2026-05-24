@@ -57,9 +57,11 @@ bool IsBrowserStreamReady(StreamState state, VideoCodec codec);
 bool IsBrowserCodec(VideoCodec codec);
 bool IsFlvCodecSupported(VideoCodec codec);
 bool IsHlsCodecSupported(VideoCodec codec);
+bool IsMjpegCodecSupported(VideoCodec codec);
 bool HasFlvSequenceHeader(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);
+bool IsMjpegStreamReady(const StreamContext &stream);
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload);
 bool HasParsedUnits(const ParsedFramePayload &payload);

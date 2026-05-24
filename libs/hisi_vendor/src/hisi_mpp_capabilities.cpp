@@ -25,6 +25,12 @@ CodecCapability H265Capability() {
     return cap;
 }
 
+CodecCapability MjpegCapability() {
+    CodecCapability cap;
+    cap.codec = VideoCodec::kMjpeg;
+    return cap;
+}
+
 NumericControlCapability Range(const char* name, int32_t min, int32_t max,
                                int32_t default_value,
                                bool runtime_supported = true) {
@@ -52,6 +58,7 @@ OptionControlCapability Options(const char* name,
 void AddCommonCodecs(std::vector<CodecCapability>& codecs) {
     codecs.push_back(H264Capability());
     codecs.push_back(H265Capability());
+    codecs.push_back(MjpegCapability());
 }
 
 void AddCommonRcModes(std::vector<RateControlMode>& modes) {

@@ -7,7 +7,8 @@
 namespace live_stream {
 namespace stream_hub_internal {
 bool IsBrowserCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265 ||
+           codec == VideoCodec::kMjpeg;
 }
 
 namespace {
@@ -171,7 +172,11 @@ bool IsFlvCodecSupported(VideoCodec codec) {
 }
 
 bool IsHlsCodecSupported(VideoCodec codec) {
-    return IsBrowserCodec(codec);
+    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+}
+
+bool IsMjpegCodecSupported(VideoCodec codec) {
+    return codec == VideoCodec::kMjpeg;
 }
 
 bool HasFlvSequenceHeader(const StreamContext &stream) {
@@ -188,6 +193,11 @@ bool IsHlsStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
            IsHlsCodecSupported(stream.codec) &&
            (!stream.segments.empty() || stream.current_segment.published);
+}
+
+bool IsMjpegStreamReady(const StreamContext &stream) {
+    return IsBrowserStreamReady(stream.state, stream.codec) &&
+           IsMjpegCodecSupported(stream.codec);
 }
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {

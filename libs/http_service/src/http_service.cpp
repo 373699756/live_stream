@@ -100,6 +100,7 @@ bool HttpServiceImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/api/flv/") ||
+               StartsWith(request.path, "/api/mjpeg/") ||
                StartsWith(request.path, "/api/hls/") ||
                StartsWith(request.path, "/api/snapshot/");
     }
@@ -153,7 +154,7 @@ bool HttpServiceImpl::HandleStreamingHttpRequest(
     if (server_ != nullptr) {
         server_->IncrementTotalRequests();
     }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP-FLV request conn=%llu path=%s peer=%s",
+    INFRA_LOG_INFO(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
                    static_cast<unsigned long long>(connection_id),
                    request.path.c_str(), request.client_ip.c_str());
     streaming_handler->HandleStreamingRequest(connection_id, request);
@@ -183,16 +184,21 @@ void HttpServiceImpl::ConfigureConsoleHandlers(
     IAiView *ai_service, IMediaService *media_service,
     ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
     IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source) {
+    IStreamFlvSource *stream_flv_source,
+    IStreamMjpegSource *stream_mjpeg_source) {
     router_.Clear();
     handlers_.clear();
     streaming_handler_.reset();
     auth_service_ = auth_service;
     logger_service_ = logger_service;
     if (server_ != nullptr) {
-        server_->SetCloseCallback([stream_flv_source](HttpStreamClientId id) {
+        server_->SetCloseCallback([stream_flv_source,
+                                   stream_mjpeg_source](HttpStreamClientId id) {
             if (stream_flv_source != nullptr && id != 0) {
                 (void)stream_flv_source->DetachFlvClient(id);
+            }
+            if (stream_mjpeg_source != nullptr && id != 0) {
+                (void)stream_mjpeg_source->DetachMjpegClient(id);
             }
         });
     }
@@ -235,7 +241,7 @@ void HttpServiceImpl::ConfigureConsoleHandlers(
     handlers_.push_back(CreateEventStreamHttpHandler(this));
     streaming_handler_ = CreateStreamingHttpHandler(
         this, server_.get(), media_service, stream_browser_source,
-        stream_flv_source);
+        stream_flv_source, stream_mjpeg_source);
 
     for (const std::unique_ptr<IHttpHandler> &handler : handlers_) {
         if (handler != nullptr) {
@@ -396,7 +402,8 @@ std::unique_ptr<IHttpService> CreateHttpConsoleService(
     IAiView *ai_service, IMediaService *media_service,
     ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
     IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source) {
+    IStreamFlvSource *stream_flv_source,
+    IStreamMjpegSource *stream_mjpeg_source) {
     HttpServiceDependencies dependencies;
     dependencies.net_engine = net_engine;
     std::unique_ptr<HttpServiceImpl> service(
@@ -406,7 +413,7 @@ std::unique_ptr<IHttpService> CreateHttpConsoleService(
         time_service, alarm_service, upgrade_service, system_service,
         rtsp_service, onvif_service, ai_service, media_service,
         snapshot_service, webrtc_service, stream_browser_source,
-        stream_flv_source);
+        stream_flv_source, stream_mjpeg_source);
     return std::unique_ptr<IHttpService>(service.release());
 }
 

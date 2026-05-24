@@ -4,6 +4,7 @@
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
+#include "mjpeg_client_registry.h"
 #include "stream_frame_dispatcher.h"
 #include "stream_codec.h"
 #include "stream_hub_stream_state.h"
@@ -90,7 +91,7 @@ public:
         }
         if (options_.hls_segment_duration_ms == 0 ||
             options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0 ||
-            options_.max_frame_sinks == 0) {
+            options_.max_mjpeg_clients == 0 || options_.max_frame_sinks == 0) {
             std::lock_guard<std::mutex> guard(mutex_);
             ResetRuntimeStateLocked();
             run_state_ = StreamHubRunState::kStopped;
@@ -241,6 +242,13 @@ public:
                hub_state::IsFlvCodecSupported(stream->codec);
     }
 
+    bool IsMjpegSupported(StreamId stream_id) const override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        const hub_state::StreamContext *stream = FindStream(stream_id);
+        return stream != nullptr && stream->state == StreamState::kRunning &&
+               hub_state::IsMjpegCodecSupported(stream->codec);
+    }
+
     bool IsStreamAvailable(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);
@@ -297,9 +305,14 @@ public:
         status.running = stream->state == StreamState::kRunning;
         status.hls_supported = hub_state::IsHlsCodecSupported(stream->codec);
         status.flv_supported = hub_state::IsFlvCodecSupported(stream->codec);
-        status.browser_codec = status.hls_supported;
+        status.mjpeg_supported =
+            hub_state::IsMjpegCodecSupported(stream->codec);
+        status.browser_codec =
+            status.hls_supported || status.flv_supported ||
+            status.mjpeg_supported;
         status.hls_ready = hub_state::IsHlsStreamReady(*stream);
         status.flv_ready = hub_state::IsFlvStreamReady(*stream);
+        status.mjpeg_ready = hub_state::IsMjpegStreamReady(*stream);
         status.codec = stream->codec;
         status.hls_segment_count = static_cast<uint32_t>(
             stream->segments.size() +
@@ -348,6 +361,31 @@ public:
         return flv_clients_.Detach(client_id);
     }
 
+    StreamMjpegClientId
+    AttachMjpegClient(StreamId stream_id, IStreamMjpegSink *sink) override {
+        if (sink == nullptr) {
+            return 0;
+        }
+        StreamMjpegClientId client_id = 0;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            hub_state::StreamContext *stream = FindMutableStream(stream_id);
+            if (stream == nullptr ||
+                !hub_state::IsMjpegStreamReady(*stream) ||
+                mjpeg_clients_.Size() >= options_.max_mjpeg_clients) {
+                return 0;
+            }
+            client_id = mjpeg_clients_.Attach(
+                stream_id, sink, options_.max_mjpeg_clients);
+        }
+        return client_id;
+    }
+
+    bool DetachMjpegClient(StreamMjpegClientId client_id) override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return mjpeg_clients_.Detach(client_id);
+    }
+
     FrameAttachId AttachFrameSink(
         const FrameAttachOptions &options, IFrameSink *sink) override {
         if (sink == nullptr || !IsStreamSupported(options.stream_id)) {
@@ -393,6 +431,8 @@ public:
         StreamHubServiceStats stats = stats_;
         stats.enabled = run_state_ == StreamHubRunState::kStarted;
         stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.Size());
+        stats.active_mjpeg_clients =
+            static_cast<uint32_t>(mjpeg_clients_.Size());
         stats.active_frame_sinks =
             static_cast<uint32_t>(frame_dispatcher_.Size());
         return stats;
@@ -456,6 +496,7 @@ private:
         drain_task_posted_ = false;
         last_drained_stream_ = StreamId::kSub;
         flv_clients_.Clear();
+        mjpeg_clients_.Clear();
         frame_dispatcher_.Clear();
         main_stream_ = hub_state::StreamContext{};
         sub_stream_ = hub_state::StreamContext{};
@@ -517,6 +558,7 @@ private:
     void PackageBrowserFrame(const hub_state::ParsedFramePayload &payload,
                              bool has_payload) {
         if (!has_payload) {
+            PackageMjpegFrame(payload);
             return;
         }
         const EncodedFrame &frame = payload.encoded_frame;
@@ -607,6 +649,30 @@ private:
         WriteFlvClients(clients, sequence_header_tag, flv_tag, frame.stream_id);
     }
 
+    void PackageMjpegFrame(const hub_state::ParsedFramePayload &payload) {
+        const EncodedFrame &frame = payload.encoded_frame;
+        if (frame.codec != VideoCodec::kMjpeg || !frame.HasValidPayload()) {
+            return;
+        }
+        std::vector<hub_state::PendingMjpegClientWrite> clients;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
+            if (stream == nullptr) {
+                return;
+            }
+            if (stream->codec != frame.codec) {
+                hub_state::ResetStream(stream, frame.codec);
+            }
+            if (!hub_state::IsMjpegStreamReady(*stream) ||
+                !mjpeg_clients_.HasClient(frame.stream_id)) {
+                return;
+            }
+            clients = mjpeg_clients_.CollectWrites(frame.stream_id);
+        }
+        WriteMjpegClients(clients, frame);
+    }
+
     void WriteFlvClients(
         const std::vector<hub_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
@@ -648,6 +714,28 @@ private:
     void ReleaseFlvClientWrite(StreamFlvClientId client_id) {
         std::lock_guard<std::mutex> guard(mutex_);
         flv_clients_.ReleaseWrite(client_id);
+    }
+
+    void WriteMjpegClients(
+        const std::vector<hub_state::PendingMjpegClientWrite> &clients,
+        const EncodedFrame &frame) {
+        std::vector<StreamMjpegClientId> detach_ids;
+        for (const hub_state::PendingMjpegClientWrite &client : clients) {
+            if (client.sink == nullptr || !client.sink->OnMjpegFrame(frame)) {
+                detach_ids.push_back(client.client_id);
+            }
+            ReleaseMjpegClientWrite(client.client_id);
+        }
+        for (StreamMjpegClientId client_id : detach_ids) {
+            if (client_id != 0) {
+                (void)DetachMjpegClient(client_id);
+            }
+        }
+    }
+
+    void ReleaseMjpegClientWrite(StreamMjpegClientId client_id) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        mjpeg_clients_.ReleaseWrite(client_id);
     }
 
     std::deque<EncodedFrame> *FindPendingQueue(StreamId stream_id) {
@@ -747,6 +835,7 @@ private:
     hub_state::StreamContext main_stream_;
     hub_state::StreamContext sub_stream_;
     hub_state::FlvClientRegistry flv_clients_;
+    hub_state::MjpegClientRegistry mjpeg_clients_;
     hub_state::StreamFrameDispatcher frame_dispatcher_;
     StreamHubServiceStats stats_;
     FrameAttachId main_attach_id_ = 0;

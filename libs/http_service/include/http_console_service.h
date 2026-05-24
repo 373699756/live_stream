@@ -19,6 +19,7 @@ class ITimeService;
 class IUpgradeService;
 class IStreamBrowserSource;
 class IStreamFlvSource;
+class IStreamMjpegSource;
 class IWebrtcService;
 class IMediaService;
 class IAiView;
@@ -35,7 +36,8 @@ std::unique_ptr<IHttpService> CreateHttpConsoleService(
     IAiView *ai_service, IMediaService *media_service,
     ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
     IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source);
+    IStreamFlvSource *stream_flv_source,
+    IStreamMjpegSource *stream_mjpeg_source);
 
 }  // namespace live_stream
 

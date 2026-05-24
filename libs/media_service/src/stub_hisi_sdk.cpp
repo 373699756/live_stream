@@ -109,6 +109,7 @@ MediaCapabilities StubCapabilities() {
     main.codecs = {
         MakeCodecCap(VideoCodec::kH264, {"baseline", "main", "high"}),
         MakeCodecCap(VideoCodec::kH265, {"main"}),
+        MakeCodecCap(VideoCodec::kMjpeg, {}),
     };
     main.resolutions = {{1920, 1080}, {1280, 720}, {704, 576}, {640, 360},
                         {352, 288}};

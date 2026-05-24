@@ -279,7 +279,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.device.upgrade, refs.device.system, refs.rtsp_service,
         refs.onvif_service, refs.media.ai, refs.media.media,
         refs.media.snapshot, refs.webrtc_service, refs.stream_hub_service,
-        refs.stream_hub_service);
+        refs.stream_hub_service, refs.stream_hub_service);
     if (!http_ || !http_->Start()) {
         INFRA_LOG_ERROR("app", "Start http service failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),

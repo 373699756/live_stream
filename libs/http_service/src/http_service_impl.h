@@ -48,7 +48,8 @@ public:
         IAiView *ai_service, IMediaService *media_service,
         ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
         IStreamBrowserSource *stream_browser_source,
-        IStreamFlvSource *stream_flv_source);
+        IStreamFlvSource *stream_flv_source,
+        IStreamMjpegSource *stream_mjpeg_source);
 
 private:
     AuthPrincipal Authenticate(const HttpRequest &request) override;

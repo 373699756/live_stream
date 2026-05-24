@@ -344,18 +344,23 @@ private:
                 item["browserCodec"] = browser.browser_codec;
                 item["hlsSupported"] = browser.hls_supported;
                 item["flvSupported"] = browser.flv_supported;
+                item["mjpegSupported"] = browser.mjpeg_supported;
                 item["hlsReady"] = browser.hls_ready;
                 item["flvReady"] = browser.flv_ready;
+                item["mjpegReady"] = browser.mjpeg_ready;
                 if (browser.running && browser.browser_codec &&
-                    (!browser.hls_ready || !browser.flv_ready)) {
+                    ((browser.hls_supported && !browser.hls_ready) ||
+                     (browser.flv_supported && !browser.flv_ready) ||
+                     (browser.mjpeg_supported && !browser.mjpeg_ready))) {
                     INFRA_LOG_WARN(
                         kHttpModuleName,
                         "stream browser not ready stream=%s codec=%s "
-                        "hls_ready=%d flv_ready=%d segments=%u "
+                        "hls_ready=%d flv_ready=%d mjpeg_ready=%d segments=%u "
                         "current_segment=%u flv_header=%u flv_keyframe=%u",
                         name, VideoCodecToJsonString(browser.codec),
                         browser.hls_ready ? 1 : 0,
                         browser.flv_ready ? 1 : 0,
+                        browser.mjpeg_ready ? 1 : 0,
                         browser.hls_segment_count,
                         browser.hls_current_segment_size,
                         browser.flv_sequence_header_size,
@@ -363,15 +368,20 @@ private:
                 }
             } else {
                 item["browserCodec"] = false;
+                item["hlsSupported"] = false;
+                item["flvSupported"] = false;
+                item["mjpegSupported"] = false;
                 item["hlsReady"] = false;
                 item["flvReady"] = false;
+                item["mjpegReady"] = false;
             }
             WebrtcServiceStats webrtc_stats;
             if (webrtc_service_ != nullptr) {
                 webrtc_stats = webrtc_service_->GetStats();
             }
             item["webrtcReady"] = stream_running && stream_enabled &&
-                                  codec == "h264" && webrtc_stats.enabled &&
+                                  (codec == "h264" || codec == "h265") &&
+                                  webrtc_stats.enabled &&
                                   webrtc_stats.backend_available;
             items.push_back(item);
         }

@@ -25,6 +25,7 @@ class ISnapshotView;
 class IWebrtcService;
 class IStreamBrowserSource;
 class IStreamFlvSource;
+class IStreamMjpegSource;
 
 struct SystemStatusSources {
     ILoggerService *logger_service = nullptr;
@@ -89,7 +90,8 @@ public:
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     HttpAccess *access, HttpStreamWriter *writer, IMediaService *media_service,
     IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source);
+    IStreamFlvSource *stream_flv_source,
+    IStreamMjpegSource *stream_mjpeg_source);
 
 }  // namespace live_stream
 

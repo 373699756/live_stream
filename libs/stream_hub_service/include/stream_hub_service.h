@@ -15,6 +15,7 @@ struct StreamHubServiceOptions {
     uint32_t hls_segment_duration_ms = 1000;
     uint32_t hls_playlist_depth = 4;
     uint32_t max_flv_clients = 8;
+    uint32_t max_mjpeg_clients = 8;
     uint32_t max_frame_sinks = 8;
 };
 
@@ -37,6 +38,7 @@ public:
 
 class IStreamHubService : public IStreamBrowserSource,
                           public IStreamFlvSource,
+                          public IStreamMjpegSource,
                           public IStreamFrameSource {
 public:
     ~IStreamHubService() override = default;

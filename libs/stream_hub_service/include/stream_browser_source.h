@@ -10,7 +10,10 @@
 
 namespace live_stream {
 
+struct EncodedFrame;
+
 using StreamFlvClientId = uint64_t;
+using StreamMjpegClientId = uint64_t;
 
 struct StreamHlsEntry {
     uint64_t sequence = 0;
@@ -43,6 +46,7 @@ struct StreamHubServiceStats {
     bool enabled = false;
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
+    uint32_t active_mjpeg_clients = 0;
     uint32_t active_frame_sinks = 0;
 };
 
@@ -51,6 +55,7 @@ struct StreamBrowserStatus {
     bool browser_codec = false;
     bool hls_ready = false;
     bool flv_ready = false;
+    bool mjpeg_ready = false;
     VideoCodec codec = VideoCodec::kH264;
     uint32_t hls_segment_count = 0;
     uint32_t flv_sequence_header_size = 0;
@@ -58,6 +63,7 @@ struct StreamBrowserStatus {
     uint32_t hls_current_segment_size = 0;
     bool hls_supported = false;
     bool flv_supported = false;
+    bool mjpeg_supported = false;
 };
 
 class IStreamFlvSink {
@@ -67,12 +73,20 @@ public:
     virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
 };
 
+class IStreamMjpegSink {
+public:
+    virtual ~IStreamMjpegSink() = default;
+
+    virtual bool OnMjpegFrame(const EncodedFrame &frame) = 0;
+};
+
 class IStreamBrowserSource {
 public:
     virtual ~IStreamBrowserSource() = default;
 
     virtual bool IsHlsSupported(StreamId stream_id) const = 0;
     virtual bool IsFlvSupported(StreamId stream_id) const = 0;
+    virtual bool IsMjpegSupported(StreamId stream_id) const = 0;
     virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
     virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
     virtual StreamHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
@@ -93,6 +107,15 @@ public:
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
                     bool wait_for_keyframe, IStreamFlvSink *sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
+};
+
+class IStreamMjpegSource {
+public:
+    virtual ~IStreamMjpegSource() = default;
+
+    virtual StreamMjpegClientId
+    AttachMjpegClient(StreamId stream_id, IStreamMjpegSink *sink) = 0;
+    virtual bool DetachMjpegClient(StreamMjpegClientId client_id) = 0;
 };
 
 }  // namespace live_stream
