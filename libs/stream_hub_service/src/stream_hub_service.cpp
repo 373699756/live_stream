@@ -797,10 +797,14 @@ private:
                 ReleaseFlvClientWrite(client.client_id);
                 continue;
             }
+            if (!has_flv_tag_view) {
+                detach_ids.push_back(client.client_id);
+                ReleaseFlvClientWrite(client.client_id);
+                continue;
+            }
             const StreamFlvVideoTagView flv_video_tag =
                 ToStreamFlvVideoTagView(flv_tag_view);
             const bool sent_frame =
-                has_flv_tag_view &&
                 client.sink->OnFlvVideoTag(flv_video_tag, frame);
             if (!sent_frame) {
                 detach_ids.push_back(client.client_id);

@@ -601,7 +601,9 @@ private:
             cached_flv_bytes += cached_tag.total_size;
         }
 
-        const bool wait_for_keyframe = true;
+        const bool wait_for_keyframe =
+            start_data.cached_video_tags.empty() ||
+            !start_data.cached_gop_complete;
         const StreamFlvClientId client_id = flv_source->AttachFlvClient(
             stream_id, start_data.config_generation, wait_for_keyframe, sink);
         if (client_id == 0) {

@@ -85,7 +85,7 @@ void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
         return;
     }
     if (stream->flv_gop_cache.size >= stream->flv_gop_cache.frames.size()) {
-        stream->flv_gop_cache.complete = false;
+        ClearFlvGopCache(stream);
         return;
     }
     const size_t index =
@@ -379,6 +379,10 @@ StreamFlvStartData BuildFlvStartData(const StreamContext &stream) {
     start_data.cached_gop_complete = stream.flv_gop_cache.complete;
     start_data.file_header = stream_mux::BuildFlvFileHeader();
     start_data.sequence_header = stream.sequence_header_tag;
+    if (!stream.flv_gop_cache.complete) {
+        start_data.config_generation = stream.config_generation;
+        return start_data;
+    }
     start_data.cached_video_tags.reserve(stream.flv_gop_cache.size);
     for (size_t i = 0; i < stream.flv_gop_cache.size; ++i) {
         const size_t index =
