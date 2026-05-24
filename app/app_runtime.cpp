@@ -130,7 +130,7 @@ bool AppRuntime::Start(const RuntimePaths &paths,
         Stop();
         return false;
     }
-    if (!media_subsystem.Start(core_services)) {
+    if (!media_subsystem.Start(core_services, device_subsystem.refs())) {
         INFRA_LOG_ERROR("app", "Start media subsystem failed");
         Stop();
         return false;

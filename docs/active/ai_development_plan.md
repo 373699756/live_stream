@@ -70,10 +70,14 @@
   和模型，不再依赖外部 SDK 路径。
 - Web 暂时告警能力是图片瀑布流：
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
+  - `GET /api/ai/status` 的 `stats` 也返回 alarm 联动状态、最近/最大/平均推理耗时、
+    最近成功/失败时间，便于板端验证和性能调优。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
   - `GET /api/ai/alerts/{id}/image` 返回 JPEG 图片。
   - AI 告警页可通过已有 `PUT /api/config/ai` 保存启用状态、后端、任务、码流、
     模型路径、推理间隔、阈值和最大结果数；保存成功后后端即时应用配置。
+- AI 有检测结果时会向 `alarm_service` 注入 `ai_detection` 输入，触发已有
+  `kAlarmTriggered` 事件链路；该联动不启用录像、回放或长期存储。
 - 实时预览页已轮询 `/api/ai/status`，把当前码流的
   `last_result.detections` 按归一化坐标叠到预览画面内容区域；AI 未启用、后端不可用
   或结果来自另一条码流时只显示紧凑状态，不阻塞预览。

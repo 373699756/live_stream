@@ -248,11 +248,17 @@ export interface AiDetection {
 export interface AiServiceStats {
   enabled: boolean;
   backend_available: boolean;
+  alarm_linked: boolean;
+  last_success_time_ms: number;
+  last_failure_time_ms: number;
   received_frames: number;
   skipped_frames: number;
   inference_count: number;
   inference_failed_count: number;
   dropped_tasks: number;
+  last_inference_time_ms: number;
+  max_inference_time_ms: number;
+  average_inference_time_ms: number;
   active_results: number;
 }
 

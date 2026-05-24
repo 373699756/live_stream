@@ -162,11 +162,17 @@ export const mockAiStatus: AiStatus = {
   stats: {
     enabled: true,
     backend_available: true,
+    alarm_linked: true,
+    last_success_time_ms: Date.now() - 1200,
+    last_failure_time_ms: 0,
     received_frames: 2841,
     skipped_frames: 3,
     inference_count: 942,
     inference_failed_count: 1,
     dropped_tasks: 0,
+    last_inference_time_ms: 34,
+    max_inference_time_ms: 71,
+    average_inference_time_ms: 38,
     active_results: 2,
   },
   last_result: {

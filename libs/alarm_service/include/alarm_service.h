@@ -23,6 +23,7 @@ class ILoggerService;
 
 enum class AlarmSource {
     kMotion,
+    kAiDetection,
     kIoInput,
     kTamper,
     kNetwork,

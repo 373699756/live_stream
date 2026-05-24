@@ -11,6 +11,7 @@
 
 namespace live_stream {
 
+class IAlarmService;
 class IConfigService;
 class IMediaService;
 class ISnapshotView;
@@ -63,11 +64,17 @@ struct AiInferenceResult {
 struct AiServiceStats {
     bool enabled = false;
     bool backend_available = false;
+    bool alarm_linked = false;
+    int64_t last_success_time_ms = 0;
+    int64_t last_failure_time_ms = 0;
     uint64_t received_frames = 0;
     uint64_t skipped_frames = 0;
     uint64_t inference_count = 0;
     uint64_t inference_failed_count = 0;
     uint64_t dropped_tasks = 0;
+    uint32_t last_inference_time_ms = 0;
+    uint32_t max_inference_time_ms = 0;
+    uint32_t average_inference_time_ms = 0;
     uint32_t active_results = 0;
 };
 
@@ -84,6 +91,7 @@ struct AiAlertRecord {
 struct AiServiceOptions {
     AiModelConfig default_config;
     IConfigService* config_service = nullptr;
+    IAlarmService* alarm_service = nullptr;
     IMediaService* media_service = nullptr;
     ISnapshotView* snapshot_service = nullptr;
     MediaChannels media_channels;

@@ -1,6 +1,7 @@
 #include "media_subsystem.h"
 
 #include "core_services.h"
+#include "device_subsystem.h"
 #include "infra/log.h"
 #include "hisi_vendor/mpp_hisi_sdk.h"
 
@@ -11,7 +12,8 @@ MediaSubsystem &MediaSubsystem::Get() {
     return subsystem;
 }
 
-bool MediaSubsystem::Start(CoreServices &core_services) {
+bool MediaSubsystem::Start(CoreServices &core_services,
+                           const DeviceRefs &device_refs) {
     if (started_) {
         return true;
     }
@@ -44,6 +46,7 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
 
     AiServiceOptions ai_options;
     ai_options.config_service = config;
+    ai_options.alarm_service = device_refs.alarm;
     ai_options.media_service = media_.get();
     ai_options.snapshot_service = snapshot_.get();
     ai_options.media_channels = media_channels;

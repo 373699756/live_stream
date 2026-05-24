@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "alarm_service.h"
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
 #include "infra/executor.h"
@@ -2477,6 +2478,18 @@ std::string AlertImagePath(const std::string &dir, const std::string &id) {
     return infra::Path::Join(dir, id + ".jpg");
 }
 
+const char *TaskAlarmName(AiTask task) {
+    switch (task) {
+        case AiTask::kFaceDetection:
+            return "face";
+        case AiTask::kMotionClassification:
+            return "motion";
+        case AiTask::kObjectDetection:
+            return "object";
+    }
+    return "ai";
+}
+
 bool LooksLikeJpeg(const SnapshotFrame &frame) {
     const uint8_t *data = frame.PayloadData();
     return data != nullptr && frame.size >= 2 && data[0] == 0xff &&
@@ -2596,6 +2609,7 @@ struct AiService::Impl final {
         if (stopped_engine) {
             stopped_engine->Stop();
         }
+        ClearAlarmInput();
     }
 
     void Release() {
@@ -2643,7 +2657,9 @@ struct AiService::Impl final {
                     std::lock_guard<std::mutex> lock(mutex);
                     ++stats.skipped_frames;
                     ++stats.inference_failed_count;
+                    stats.last_failure_time_ms = infra::Time::SystemTimeMillis();
                 }
+                ClearAlarmInput();
                 continue;
             }
             RunInference(frame, run_config);
@@ -2663,8 +2679,11 @@ struct AiService::Impl final {
             run_engine = engine;
         }
 
+        const int64_t inference_start_ms = infra::Time::MonotonicMillis();
         AiInferenceResult result =
             run_engine->Run(frame, run_config.stream_id, run_config);
+        const int64_t inference_time_ms =
+            infra::Time::MonotonicMillis() - inference_start_ms;
 
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -2673,13 +2692,17 @@ struct AiService::Impl final {
             }
             if (result.success) {
                 ++stats.inference_count;
+                stats.last_success_time_ms = infra::Time::SystemTimeMillis();
+                UpdateInferenceTimeStatsLocked(inference_time_ms);
             } else {
                 ++stats.inference_failed_count;
+                stats.last_failure_time_ms = infra::Time::SystemTimeMillis();
             }
             last_result = result;
             stats.active_results =
                 static_cast<uint32_t>(last_result.detections.size());
         }
+        UpdateAlarmInput(result, run_config);
         MaybeSaveAlert(result, run_config);
     }
 
@@ -2737,6 +2760,24 @@ struct AiService::Impl final {
         alert.max_confidence = MaxConfidence(result.detections);
         alert.detections = result.detections;
         AddAlert(alert);
+    }
+
+    void UpdateAlarmInput(const AiInferenceResult &result,
+                          const AiModelConfig &run_config) {
+        if (options.alarm_service == nullptr) {
+            return;
+        }
+        AlarmInput input;
+        input.source = AlarmSource::kAiDetection;
+        input.active = HasAlertDetections(result);
+        input.value = static_cast<int32_t>(result.detections.size());
+        if (input.active) {
+            input.message = std::string("ai_") + TaskAlarmName(run_config.task);
+        }
+        if (!options.alarm_service->InjectAlarmInput(input)) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++stats.dropped_tasks;
+        }
     }
 
     bool ApplyConfig(const AiModelConfig &next_config) {
@@ -2862,11 +2903,41 @@ struct AiService::Impl final {
         if (stopped_engine) {
             stopped_engine->Stop();
         }
+        ClearAlarmInput();
+    }
+
+    void ClearAlarmInput() {
+        if (options.alarm_service == nullptr) {
+            return;
+        }
+        AlarmInput input;
+        input.source = AlarmSource::kAiDetection;
+        input.active = false;
+        static_cast<void>(options.alarm_service->InjectAlarmInput(input));
     }
 
     void ClearLastResultLocked() {
         last_result = AiInferenceResult{};
         stats.active_results = 0;
+    }
+
+    void UpdateInferenceTimeStatsLocked(int64_t inference_time_ms) {
+        const uint32_t clamped_time_ms =
+            inference_time_ms <= 0
+                ? 0
+                : static_cast<uint32_t>(std::min<int64_t>(
+                      inference_time_ms,
+                      static_cast<int64_t>(
+                          std::numeric_limits<uint32_t>::max())));
+        stats.last_inference_time_ms = clamped_time_ms;
+        stats.max_inference_time_ms =
+            std::max(stats.max_inference_time_ms, clamped_time_ms);
+        inference_time_total_ms += clamped_time_ms;
+        if (stats.inference_count != 0) {
+            stats.average_inference_time_ms =
+                static_cast<uint32_t>(inference_time_total_ms /
+                                      stats.inference_count);
+        }
     }
 
     void AddAlert(const AiAlertRecord &alert) {
@@ -2892,6 +2963,7 @@ struct AiService::Impl final {
     AiInferenceResult last_result;
     AiServiceStats stats;
     std::vector<AiAlertRecord> alerts;
+    uint64_t inference_time_total_ms = 0;
     uint64_t next_alert_id = 1;
     int64_t last_alert_ms = 0;
     bool config_attached = false;
@@ -2935,6 +3007,7 @@ AiServiceStats AiService::GetStats() const {
     AiServiceStats stats = impl_->stats;
     stats.enabled = impl_->config.enabled;
     stats.backend_available = impl_->engine && impl_->engine->Available();
+    stats.alarm_linked = impl_->options.alarm_service != nullptr;
     return stats;
 }
 

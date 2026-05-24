@@ -86,7 +86,7 @@ Contract:
 Owner:
 
 - `AiService`
-- `MediaSubsystem` startup decision
+- `MediaSubsystem` dependency injection
 
 Current fields:
 
@@ -103,11 +103,17 @@ Current fields:
 
 Runtime startup usage:
 
-- `MediaSubsystem` reads `ai.enabled` and starts `AiService` only when true.
+- `MediaSubsystem` always creates `AiService`. `ai.enabled=false` keeps the
+  service attached to config/status only and does not start inference.
+- `PUT /api/config/ai` hot-applies runtime changes by stopping or rebuilding
+  the AI inference path.
 
 Runtime API:
 
 - `GET /api/ai/status` returns `config`, `stats`, and `last_result`.
+- `stats` includes backend/alarm linkage, frame counters, last/max/average
+  inference time in milliseconds, active result count, and last success/failure
+  wall-clock timestamps.
 - `GET /api/ai/alerts` returns `{ "items": [...] }` for recent AI alert
   snapshots.
 - `GET /api/ai/alerts/{id}/image` returns the JPEG image for one alert.
@@ -118,9 +124,9 @@ Current product status:
 - The default NNIE object-detection model is `models/inst_ssd_cycle.wk` with
   300x300 input, `stream=sub`, and `inference_interval_ms=500`. The release
   `out` package includes this file under `out/models/`.
-- Web alarm display is currently an AI snapshot waterfall only. It does not
-  imply recording, playback, long-term storage, or `alarm_service` event
-  integration.
+- Web alarm display is currently an AI snapshot waterfall. AI detections can
+  inject an `ai_detection` input into `alarm_service`, but this still does not
+  imply recording, playback, or long-term storage.
 
 ### `image`
 
@@ -386,6 +392,10 @@ Current fields:
 - `motion_detection.sensitivity`
 - `motion_detection.min_duration_ms`
 - `motion_detection.regions[]`
+- `ai_detection.enabled`
+- `ai_detection.sensitivity`
+- `ai_detection.min_duration_ms`
+- `ai_detection.regions[]`
 - `actions.snapshot`
 - `actions.record`
 - `actions.notify`

@@ -11,7 +11,7 @@
 | 2026-05-21 | 高频日志默认不进入生产路径。 | 帧路径和首帧路径日志会影响实时性并淹没关键问题。 | 只保留错误、启动停止、配置变化和关键状态变化；临时诊断日志任务后删除。 |
 | 2026-05-21 | 普通实现任务不扩写长设计文档。 | 反复追加长文档会降低 AI 使用效率。 | 当前状态写 `docs/active/current_milestone.md`，固定决策写本文件，复盘写 `docs/ai/lessons-learned.md`。 |
 | 2026-05-23 | 文字叠加和隐私遮挡统一归入 `region_service`，配置/API 命名为 `overlay`。 | OSD 只是区域能力的一部分，遮挡和文字都依赖 region 生命周期；用 overlay 避免把模块命名限定成文字 OSD。 | 不再新增 `osd_service`、`region_mpp_adapter` 这类并列适配层；HiSilicon API 转换函数留在 `hisi_vendor`。 |
-| 2026-05-24 | AI 是默认关闭的可选实验能力，Web 暂用图片瀑布流承载告警。 | 先验证 SVP/NNIE/IVE 链路和 Web 可见性，不扩大到录像、回放或正式告警事件。 | `ai_service` 维护最近 AI 告警图片；`alarm_service` 联动、长期存储和视频叠框后续单独设计。 |
+| 2026-05-24 | AI 是默认关闭的可选实验能力，Web 暂用图片瀑布流承载告警，可注入 `alarm_service` 的 `ai_detection` 输入。 | 先验证 SVP/NNIE/IVE 链路、Web 可见性和既有告警事件链路，不扩大到录像、回放或长期存储。 | `ai_service` 维护最近 AI 告警图片；`ai_detection` 默认关闭，启用后只触发既有告警事件，不启用 `actions.record`。 |
 | 2026-05-24 | 设备构建默认链接 HiSilicon NNIE/IVE 库。 | `ai_service` 已直接管理 NNIE 模型资源，应用最终链接需要解析 `HI_MPI_SVP_NNIE_*` 符号。 | `CONFIG_HISI_AI_LIBS ?= y`；需要裁剪 AI 链接时可显式传 `CONFIG_HISI_AI_LIBS=n`。 |
 | 2026-05-24 | SVP/NNIE/IVE 开发依赖固定保存在项目内。 | AI 开发不能依赖程序员再去外部 SDK 路径找文档、sample、`.wk` 模型或样例输入。 | 编译头库使用 `3rdparty/hisi_mpp`；开发参考和模型资源使用 `3rdparty/hisi_svp`。 |
 | 2026-05-24 | AI 默认推理负载走子码流，间隔 500ms。 | 首版 AI 仍有 CPU 前处理，默认配置应优先保护实时预览主链路。 | `ai.stream=sub`、`ai.inference_interval_ms=500`；需要更高频检测时由项目配置显式打开。 |

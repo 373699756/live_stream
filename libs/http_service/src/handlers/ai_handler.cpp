@@ -53,11 +53,17 @@ ConfigJson AiStatsToJson(const AiServiceStats &stats) {
     ConfigJson root = ConfigJson::object();
     root["enabled"] = stats.enabled;
     root["backend_available"] = stats.backend_available;
+    root["alarm_linked"] = stats.alarm_linked;
+    root["last_success_time_ms"] = stats.last_success_time_ms;
+    root["last_failure_time_ms"] = stats.last_failure_time_ms;
     root["received_frames"] = stats.received_frames;
     root["skipped_frames"] = stats.skipped_frames;
     root["inference_count"] = stats.inference_count;
     root["inference_failed_count"] = stats.inference_failed_count;
     root["dropped_tasks"] = stats.dropped_tasks;
+    root["last_inference_time_ms"] = stats.last_inference_time_ms;
+    root["max_inference_time_ms"] = stats.max_inference_time_ms;
+    root["average_inference_time_ms"] = stats.average_inference_time_ms;
     root["active_results"] = stats.active_results;
     return root;
 }

@@ -210,6 +210,12 @@
       "min_duration_ms": 500,
       "regions": []
     },
+    "ai_detection": {
+      "enabled": false,
+      "sensitivity": 50,
+      "min_duration_ms": 0,
+      "regions": []
+    },
     "actions": {
       "snapshot": true,
       "record": false,

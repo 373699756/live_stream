@@ -47,25 +47,58 @@ bool VerifyScheduleConfig(const ConfigJson &value) {
     return true;
 }
 
-bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &fallback,
-                      AlarmRule *rule) {
+bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
+                          AlarmSource source, const AlarmRule &fallback,
+                          bool required,
+                          AlarmRule *rule) {
     if (rule == nullptr || !value.is_object()) {
         return false;
     }
-
-    AlarmRule motion_rule = fallback;
-    motion_rule.source = AlarmSource::kMotion;
-    if (!value.contains("motion_detection") ||
-        !value.at("motion_detection").is_object()) {
+    if (!value.contains(name)) {
+        if (required) {
+            return false;
+        }
+        *rule = fallback;
+        rule->source = source;
+        return true;
+    }
+    if (!value.at(name).is_object()) {
         return false;
     }
-    const ConfigJson &motion = value.at("motion_detection");
+    AlarmRule parsed = fallback;
+    parsed.source = source;
+    const ConfigJson &rule_config = value.at(name);
     uint32_t sensitivity = 0;
-    if (!json_utils::ReadField(motion, "enabled", &motion_rule.enabled) ||
-        !json_utils::ReadField(motion, "sensitivity", &sensitivity, 0, 100) ||
-        !json_utils::ReadField(motion, "min_duration_ms", &motion_rule.min_duration_ms,
-                          0, kMaxAlarmDurationMs) ||
-        !motion.contains("regions") || !motion.at("regions").is_array()) {
+    if (!json_utils::ReadField(rule_config, "enabled", &parsed.enabled) ||
+        !json_utils::ReadField(rule_config, "sensitivity", &sensitivity, 0,
+                               100) ||
+        !json_utils::ReadField(rule_config, "min_duration_ms",
+                               &parsed.min_duration_ms, 0,
+                               kMaxAlarmDurationMs) ||
+        !rule_config.contains("regions") ||
+        !rule_config.at("regions").is_array()) {
+        return false;
+    }
+    if (!IsRuleValid(parsed)) {
+        return false;
+    }
+    *rule = parsed;
+    return true;
+}
+
+bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
+                      const AlarmRule &ai_fallback, AlarmRule *motion_rule,
+                      AlarmRule *ai_rule) {
+    if (motion_rule == nullptr || ai_rule == nullptr || !value.is_object()) {
+        return false;
+    }
+    AlarmRule parsed_motion;
+    AlarmRule parsed_ai;
+    if (!ParseAlarmRuleConfig(value, "motion_detection", AlarmSource::kMotion,
+                              motion_fallback, true, &parsed_motion) ||
+        !ParseAlarmRuleConfig(value, "ai_detection",
+                              AlarmSource::kAiDetection, ai_fallback,
+                              false, &parsed_ai)) {
         return false;
     }
     if (!value.contains("actions") || !VerifyActionsConfig(value.at("actions")) ||
@@ -73,10 +106,8 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &fallback,
         !VerifyScheduleConfig(value.at("schedule"))) {
         return false;
     }
-    if (!IsRuleValid(motion_rule)) {
-        return false;
-    }
-    *rule = motion_rule;
+    *motion_rule = parsed_motion;
+    *ai_rule = parsed_ai;
     return true;
 }
 
@@ -293,11 +324,11 @@ public:
     }
 
 private:
-    AlarmRule CurrentMotionRuleLocked() const {
-        const auto iter = rules_.find(AlarmSource::kMotion);
+    AlarmRule CurrentRuleLocked(AlarmSource source) const {
+        const auto iter = rules_.find(source);
         if (iter == rules_.end()) {
             AlarmRule rule;
-            rule.source = AlarmSource::kMotion;
+            rule.source = source;
             return rule;
         }
         return iter->second;
@@ -309,21 +340,37 @@ private:
     }
 
     bool VerifyConfigLocked(const ConfigJson &value) const {
-        AlarmRule parsed;
-        return ParseAlarmConfig(value, CurrentMotionRuleLocked(), &parsed);
+        AlarmRule motion_rule;
+        AlarmRule ai_rule;
+        return ParseAlarmConfig(value, CurrentRuleLocked(AlarmSource::kMotion),
+                                CurrentRuleLocked(AlarmSource::kAiDetection),
+                                &motion_rule, &ai_rule);
     }
 
     bool ApplyConfigLocked(const ConfigJson &value) {
-        AlarmRule parsed;
-        ParseAlarmConfig(value, CurrentMotionRuleLocked(), &parsed);
-        rules_[AlarmSource::kMotion] = parsed;
-        if (!parsed.enabled) {
-            pending_since_ms_.erase(AlarmSource::kMotion);
-            if (status_.active && status_.source == AlarmSource::kMotion) {
-                status_ = AlarmStatus();
-            }
+        AlarmRule motion_rule;
+        AlarmRule ai_rule;
+        if (!ParseAlarmConfig(value, CurrentRuleLocked(AlarmSource::kMotion),
+                              CurrentRuleLocked(AlarmSource::kAiDetection),
+                              &motion_rule, &ai_rule)) {
+            return false;
+        }
+        rules_[AlarmSource::kMotion] = motion_rule;
+        rules_[AlarmSource::kAiDetection] = ai_rule;
+        if (!motion_rule.enabled) {
+            ClearSourceLocked(AlarmSource::kMotion);
+        }
+        if (!ai_rule.enabled) {
+            ClearSourceLocked(AlarmSource::kAiDetection);
         }
         return true;
+    }
+
+    void ClearSourceLocked(AlarmSource source) {
+        pending_since_ms_.erase(source);
+        if (status_.active && status_.source == source) {
+            status_ = AlarmStatus();
+        }
     }
 
     void PublishAlarmTriggered(const AlarmStatus &status) {
@@ -379,6 +426,8 @@ const char *AlarmSourceToString(AlarmSource source) {
     switch (source) {
         case AlarmSource::kMotion:
             return "motion";
+        case AlarmSource::kAiDetection:
+            return "ai_detection";
         case AlarmSource::kIoInput:
             return "io_input";
         case AlarmSource::kTamper:

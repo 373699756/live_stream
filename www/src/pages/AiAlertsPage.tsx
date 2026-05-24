@@ -50,6 +50,21 @@ function metricValue(value: number) {
   return Number.isFinite(value) ? String(value) : '-';
 }
 
+function timeSince(timestampMs: number) {
+  if (timestampMs <= 0) {
+    return '-';
+  }
+  const deltaSeconds = Math.max(0, Math.round((Date.now() - timestampMs) / 1000));
+  if (deltaSeconds < 60) {
+    return `${deltaSeconds}s`;
+  }
+  const deltaMinutes = Math.round(deltaSeconds / 60);
+  if (deltaMinutes < 60) {
+    return `${deltaMinutes}m`;
+  }
+  return `${Math.round(deltaMinutes / 60)}h`;
+}
+
 function AiStatusPanel({
   status,
   onSaved,
@@ -102,8 +117,32 @@ function AiStatusPanel({
           <strong>{metricValue(status.stats.active_results)}</strong>
         </div>
         <div>
+          <span>最近耗时</span>
+          <strong>{metricValue(status.stats.last_inference_time_ms)} ms</strong>
+        </div>
+        <div>
+          <span>平均耗时</span>
+          <strong>{metricValue(status.stats.average_inference_time_ms)} ms</strong>
+        </div>
+        <div>
+          <span>最大耗时</span>
+          <strong>{metricValue(status.stats.max_inference_time_ms)} ms</strong>
+        </div>
+        <div>
           <span>丢弃告警</span>
           <strong>{metricValue(status.stats.dropped_tasks)}</strong>
+        </div>
+        <div>
+          <span>告警联动</span>
+          <strong>{status.stats.alarm_linked ? '已接入' : '未接入'}</strong>
+        </div>
+        <div>
+          <span>最近成功</span>
+          <strong>{timeSince(status.stats.last_success_time_ms)}</strong>
+        </div>
+        <div>
+          <span>最近失败</span>
+          <strong>{timeSince(status.stats.last_failure_time_ms)}</strong>
         </div>
       </div>
       <div className="ai-config-grid">
