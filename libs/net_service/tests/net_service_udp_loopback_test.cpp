@@ -27,7 +27,7 @@ void OnUdp(void* user,
 
 int main() {
     auto engine = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!engine.IsOk()) {
+    if (!engine) {
         return 1;
     }
     UdpState state;
@@ -37,18 +37,18 @@ int main() {
     live_stream::UdpCallbacks callbacks;
     callbacks.user = &state;
     callbacks.on_read = OnUdp;
-    auto socket_id = engine.value->BindUdp(bind, callbacks);
-    if (!socket_id.IsOk() || engine.value->Start() != infra::Status::kOk) {
+    live_stream::UdpSocketId socket_id = engine->BindUdp(bind, callbacks);
+    if (socket_id == 0 || !engine->Start()) {
         return 2;
     }
-    auto local = engine.value->UdpLocalAddress(socket_id.value);
-    if (!local.IsOk()) {
+    live_stream::NetAddress local = engine->UdpLocalAddress(socket_id);
+    if (local.port == 0) {
         return 3;
     }
     const int fd = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(local.value.port);
+    addr.sin_port = htons(local.port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     (void)sendto(fd, "pong", 4, 0, reinterpret_cast<sockaddr*>(&addr),
                  sizeof(addr));
@@ -56,6 +56,6 @@ int main() {
         infra::Time::SleepMillis(10);
     }
     close(fd);
-    engine.value->Stop();
+    engine->Stop();
     return state.received ? 0 : 4;
 }

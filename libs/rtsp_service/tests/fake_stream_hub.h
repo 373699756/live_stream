@@ -3,8 +3,6 @@
 
 #include "stream_hub_service.h"
 
-#include <memory>
-
 namespace live_stream {
 namespace test {
 
@@ -54,9 +52,10 @@ public:
         return StreamBrowserStatus{};
     }
 
-    StreamFlvClientId AttachFlvClient(
-        StreamId stream_id, uint64_t config_generation, bool wait_for_keyframe,
-        const std::shared_ptr<IStreamFlvSink>& sink) override {
+    StreamFlvClientId AttachFlvClient(StreamId stream_id,
+                                      uint64_t config_generation,
+                                      bool wait_for_keyframe,
+                                      IStreamFlvSink* sink) override {
         (void)stream_id;
         (void)config_generation;
         (void)wait_for_keyframe;

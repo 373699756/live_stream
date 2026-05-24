@@ -29,7 +29,7 @@ TEST_BINS := $(patsubst tests/%.cpp,$(TEST_DIR)/$(SERVICE_NAME)_%,$(TEST_SRCS))
 EXTRA_TEST_DEPS ?=
 EXTRA_TEST_LIBS ?=
 
-.PHONY: all test clean
+.PHONY: all test test-build clean
 
 all: $(LIB_DIR)/lib$(SERVICE_NAME).a
 
@@ -50,6 +50,8 @@ test: all $(TEST_BINS)
 	@for test_bin in $(TEST_BINS); do \
 		$$test_bin || exit $$?; \
 	done
+
+test-build: all $(TEST_BINS)
 
 clean:
 	rm -rf $(OBJ_DIR) $(LIB_DIR)/lib$(SERVICE_NAME).a $(TEST_BINS)

@@ -55,9 +55,6 @@ int main() {
         return 3;
     }
 
-    if (!service->Init()) {
-        return 4;
-    }
     if (!service->Start()) {
         return 5;
     }
@@ -137,8 +134,6 @@ int main() {
         return 13;
     }
     service->Stop();
-    service->Deinit();
-    service->Deinit();
 
     std::string log_content;
     if (!ReadFile(path, &log_content)) {

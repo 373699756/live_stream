@@ -30,6 +30,12 @@ EXTRA_TEST_DEPS := $(CONFIG_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
 EXTRA_TEST_LIBS := $(CONFIG_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
 	$(SNAPSHOT_LIB) $(INFRA_LIB) -pthread
 
+ifeq ($(ENABLE_HISI_MPP),1)
+include $(ROOT_DIR)/libs/hisi_vendor/toolchain_hi3516dv300.mk
+EXTRA_TEST_DEPS += $(HISI_MPP_STATIC_LIBS)
+EXTRA_TEST_LIBS += $(HISI_MPP_STATIC_LIBS) $(LDLIBS)
+endif
+
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service all
 

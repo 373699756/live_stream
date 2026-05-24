@@ -42,14 +42,12 @@ public:
             const live_stream::ConfigResult result =
                 iter->second.validate(value);
             if (!result.ok) {
-                last_error = result.error;
                 return false;
             }
         }
         if (iter != attachments.end() && iter->second.apply) {
             const live_stream::ConfigResult result = iter->second.apply(value);
             if (!result.ok) {
-                last_error = result.error;
                 return false;
             }
         }
@@ -68,8 +66,12 @@ public:
         return live_stream::ConfigJson::object();
     }
 
+    bool SetDefault(const std::string& name) override {
+        values[name] = GetDefault(name);
+        return true;
+    }
+
     bool RestoreDefaults() override { return true; }
-    bool SaveFile() override { return true; }
 
     bool AttachConfig(
         const std::string& name,
@@ -83,29 +85,8 @@ public:
         return attachments.erase(name) != 0;
     }
 
-    live_stream::ConfigObserverId ObserveConfig(
-        const std::string& name,
-        live_stream::ConfigObserver observer) override {
-        (void)name;
-        (void)observer;
-        return 1;
-    }
-
-    bool UnobserveConfig(const std::string& name,
-                         live_stream::ConfigObserverId observer_id) override {
-        (void)name;
-        return observer_id != 0;
-    }
-
-    live_stream::ConfigError GetLastConfigError(
-        const std::string& name) override {
-        (void)name;
-        return last_error;
-    }
-
     std::map<std::string, live_stream::ConfigJson> values;
     std::map<std::string, live_stream::ConfigAttachment> attachments;
-    live_stream::ConfigError last_error;
     int attach_count = 0;
 };
 

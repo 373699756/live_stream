@@ -13,22 +13,18 @@ int HeaderAndLifecycleTest() {
     if (!service) {
         return 1;
     }
-    if (!service->Init()) {
-        return 3;
-    }
     if (!service->Start()) {
         return 4;
     }
     service->Stop();
     service->Stop();
-    service->Deinit();
     return 0;
 }
 
 int PublishSubscribeTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (!service->Init() || !service->Start()) {
+    if (!service->Start()) {
         return 10;
     }
 
@@ -108,14 +104,13 @@ int PublishSubscribeTest() {
     }
 
     service->Stop();
-    service->Deinit();
     return 0;
 }
 
 int SubscriptionLimitTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (!service->Init()) {
+    if (!service->Start()) {
         return 29;
     }
 
@@ -144,7 +139,7 @@ int SubscriptionLimitTest() {
 int EventSizeLimitTest() {
     std::unique_ptr<live_stream::IEventService> service =
         live_stream::CreateEventService();
-    if (!service->Init() || !service->Start()) {
+    if (!service->Start()) {
         return 40;
     }
 

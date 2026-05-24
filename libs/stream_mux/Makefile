@@ -14,7 +14,9 @@ $(INFRA_LIB):
 $(STREAM_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../stream_codec all
 
-EXTRA_TEST_DEPS := $(INFRA_LIB) $(STREAM_CODEC_LIB)
-EXTRA_TEST_LIBS := $(STREAM_CODEC_LIB) $(INFRA_LIB)
+EXTRA_TEST_DEPS := $(INFRA_LIB) $(STREAM_CODEC_LIB) \
+	$(BUILD_DIR)/obj/media_service/media_buffer.o
+EXTRA_TEST_LIBS := $(STREAM_CODEC_LIB) $(INFRA_LIB) \
+	$(BUILD_DIR)/obj/media_service/media_buffer.o
 
 include ../service_rules.mk

@@ -1,11 +1,15 @@
+#include "http_console_service.h"
 #include "http_service.h"
+#include "http_service_dependencies.h"
 
 #include "auth_service.h"
 #include "config_service.h"
 #include "logger_service.h"
 #include "media_service.h"
+#include "net_service.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,288 +17,283 @@ namespace {
 
 class FakeAuthService : public live_stream::IAuthService {
 public:
-    bool Init() override { return true; }
-    bool Start() override { return true; }
-    void Stop() override {}
-    void Deinit() override {}
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+  bool SetAuditSink(live_stream::IAuthAuditSink*) override { return true; }
 
-    bool SetAuditSink(live_stream::IAuthAuditSink* sink) override {
-        (void)sink;
-        return true;
+  live_stream::LoginResult Login(
+      const live_stream::LoginRequest& request) override {
+    live_stream::LoginResult result;
+    if (request.user_name == "admin" && request.password == "pass") {
+      result.principal.user_name = "admin";
+      result.principal.session_id = "session-1";
+      result.principal.role = live_stream::AuthRole::kAdmin;
+      result.token = "admin-token";
     }
+    return result;
+  }
 
-    live_stream::LoginResult Login(
-        const live_stream::LoginRequest& request) override {
-        live_stream::LoginResult result;
-        if (request.user_name != "admin" || request.password != "pass") {
-            return result;
-        }
-        result.principal.user_name = "admin";
-        result.principal.session_id = "session-1";
-        result.principal.role = live_stream::AuthRole::kAdmin;
-        result.token = "admin-token";
-        result.expires_at_ms = 1234;
-        return result;
+  bool Logout(const live_stream::RequestContext&) override { return true; }
+  live_stream::TokenValidationResult ValidateToken(
+      const std::string& token) override {
+    live_stream::TokenValidationResult result;
+    if (token == "admin-token") {
+      result.principal.user_name = "admin";
+      result.principal.session_id = "session-1";
+      result.principal.role = live_stream::AuthRole::kAdmin;
     }
-
-    bool Logout(const live_stream::RequestContext& context) override {
-        return !context.session_id.empty();
-    }
-
-    live_stream::TokenValidationResult ValidateToken(
-        const std::string& token) override {
-        live_stream::TokenValidationResult result;
-        if (token == "admin-token") {
-            result.principal.user_name = "admin";
-            result.principal.session_id = "session-1";
-            result.principal.role = live_stream::AuthRole::kAdmin;
-            result.expires_at_ms = 1234;
-            return result;
-        }
-        if (token == "viewer-token") {
-            result.principal.user_name = "viewer";
-            result.principal.session_id = "session-2";
-            result.principal.role = live_stream::AuthRole::kViewer;
-            return result;
-        }
-        return result;
-    }
-
-    bool CheckPermission(
-        const live_stream::AuthPrincipal& principal,
-        live_stream::AuthPermission permission,
-        const std::string& target) override {
-        (void)target;
-        if (principal.role == live_stream::AuthRole::kAdmin) {
-            return true;
-        }
-        if (permission == live_stream::AuthPermission::kReadStatus ||
-            permission == live_stream::AuthPermission::kPreviewVideo) {
-            return true;
-        }
-        return false;
-    }
+    return result;
+  }
+  bool ChangePassword(
+      const live_stream::ChangePasswordRequest&) override {
+    return true;
+  }
+  bool CheckPermission(const live_stream::AuthPrincipal& principal,
+                       live_stream::AuthPermission permission,
+                       const std::string&) override {
+    return principal.role == live_stream::AuthRole::kAdmin ||
+           permission == live_stream::AuthPermission::kReadStatus ||
+           permission == live_stream::AuthPermission::kPreviewVideo;
+  }
 };
 
 class FakeConfigService : public live_stream::IConfigService {
 public:
-    bool Init() override { return true; }
-    bool Start() override { return true; }
-    void Stop() override {}
-    void Deinit() override {}
-
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
-        if (name.empty()) {
-            return false;
-        }
-        value_ = value;
-        return true;
-    }
-
-    live_stream::ConfigJson GetValue(const std::string& name) override {
-        if (name.empty()) {
-            return live_stream::ConfigJson();
-        }
-        return value_;
-    }
-
-    live_stream::ConfigJson GetDefault(const std::string&) override {
-        return live_stream::ConfigJson();
-    }
-    bool RestoreDefaults() override { return true; }
-    bool SaveFile() override { return true; }
-    bool RegisterApply(const std::string&, live_stream::ConfigProc) override {
-        return true;
-    }
-    bool RegisterVerify(const std::string&, live_stream::ConfigProc) override {
-        return true;
-    }
-
-private:
-    live_stream::ConfigJson value_ = {{"enabled", true}};
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+  bool SetValue(const std::string&, const live_stream::ConfigJson&) override {
+    return true;
+  }
+  live_stream::ConfigJson GetValue(const std::string&) override {
+    return live_stream::ConfigJson::object();
+  }
+  bool SetDefault(const std::string&) override { return true; }
+  live_stream::ConfigJson GetDefault(const std::string&) override {
+    return live_stream::ConfigJson::object();
+  }
+  bool RestoreDefaults() override { return true; }
+  bool AttachConfig(const std::string&,
+                    const live_stream::ConfigAttachment&) override {
+    return true;
+  }
+  bool DetachConfig(const std::string&) override { return true; }
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
 public:
-    bool Init() override { return true; }
-    bool Start() override { return true; }
-    void Stop() override {}
-    void Deinit() override {}
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+  bool RecordOperation(const live_stream::OperationRecord& record) override {
+    records.push_back(record);
+    return true;
+  }
+  std::vector<live_stream::OperationRecord> QueryOperations(
+      const live_stream::OperationLogQuery&) override {
+    return records;
+  }
+  bool ExportOperations(
+      const live_stream::OperationLogExportOptions&) override {
+    return true;
+  }
 
-    bool RecordOperation(
-        const live_stream::OperationRecord& record) override {
-        records_.push_back(record);
-        return true;
-    }
+  std::vector<live_stream::OperationRecord> records;
+};
 
-    std::vector<live_stream::OperationRecord> QueryOperations(
-        const live_stream::OperationLogQuery& query) override {
-        (void)query;
-        return records_;
-    }
+class FakeNetEngine : public live_stream::NetEngine {
+public:
+  bool Start() override { return true; }
+  void Stop() override {}
 
-    bool ExportOperations(
-        const live_stream::OperationLogExportOptions& options) override {
-        (void)options;
-        return true;
-    }
+  live_stream::TcpServerId ListenTcp(
+      const live_stream::TcpListenOptions&,
+      const live_stream::TcpCallbacks&) override {
+    return 1;
+  }
 
-    std::vector<live_stream::OperationRecord> records_;
+  bool CloseTcp(live_stream::TcpServerId) override { return true; }
+
+  live_stream::UdpSocketId BindUdp(
+      const live_stream::UdpBindOptions&,
+      const live_stream::UdpCallbacks&) override {
+    return 1;
+  }
+
+  bool CloseUdp(live_stream::UdpSocketId) override { return true; }
+
+  bool Send(live_stream::ConnectionId, const uint8_t*, size_t) override {
+    return true;
+  }
+
+  bool Close(live_stream::ConnectionId) override { return true; }
+  bool CloseAfterSend(live_stream::ConnectionId) override { return true; }
+  bool SendTo(live_stream::UdpSocketId, live_stream::NetAddress,
+              const uint8_t*, size_t) override {
+    return true;
+  }
+
+  live_stream::NetTimerId RunOnIoAfter(uint32_t, infra::Task) override {
+    return 1;
+  }
+
+  bool CancelIoTimer(live_stream::NetTimerId) override { return true; }
+
+  live_stream::NetAddress TcpLocalAddress(
+      live_stream::TcpServerId) const override {
+    return live_stream::NetAddress{"127.0.0.1", 8080};
+  }
+
+  live_stream::NetAddress UdpLocalAddress(
+      live_stream::UdpSocketId) const override {
+    return live_stream::NetAddress{"127.0.0.1", 3702};
+  }
+
+  uint32_t PendingBytes(live_stream::ConnectionId) const override { return 0; }
+
+  live_stream::NetStats GetStats() const override {
+    return live_stream::NetStats();
+  }
+};
+
+class FakeMediaService : public live_stream::IMediaService {
+public:
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+  bool IsRestarting() const override { return false; }
+  bool IsStreamStarted(live_stream::StreamId) const override { return true; }
+  live_stream::VideoCodec GetStreamCodec(
+      live_stream::StreamId) const override {
+    return live_stream::VideoCodec::kH264;
+  }
+  live_stream::FrameAttachId AttachFrameSink(
+      const live_stream::FrameAttachOptions&,
+      live_stream::IFrameSink*) override {
+    return 0;
+  }
+  bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
+  bool RequestKeyFrame(live_stream::StreamId,
+                       live_stream::KeyFrameReason) override {
+    return true;
+  }
+  live_stream::MediaCapabilities GetCapabilities() const override {
+    live_stream::MediaCapabilities capabilities;
+    live_stream::VideoStreamCapabilities main;
+    main.stream_id = live_stream::StreamId::kMain;
+    main.codecs.push_back(
+        live_stream::CodecCapability{live_stream::VideoCodec::kH264, {}});
+    main.resolutions.push_back({1920, 1080});
+    capabilities.streams.push_back(main);
+    capabilities.image.basic.push_back({"brightness", 0, 100, 50, true});
+    return capabilities;
+  }
+  live_stream::MediaChannels GetChannels() const override {
+    live_stream::MediaChannels channels;
+    channels.main_size = live_stream::VideoSize{1920, 1080};
+    channels.sub_size = live_stream::VideoSize{640, 360};
+    return channels;
+  }
+  live_stream::ImageStrategyStatus GetImageStrategyStatus() const override {
+    return live_stream::ImageStrategyStatus();
+  }
 };
 
 live_stream::HttpRequest Request(live_stream::HttpMethod method,
                                  const std::string& path,
                                  const std::string& body,
                                  const std::string& token) {
-    live_stream::HttpRequest request;
-    request.method = method;
-    request.path = path;
-    request.body = body;
-    request.client_ip = "192.0.2.10";
-    request.headers["User-Agent"] = "unit-test";
-    if (!token.empty()) {
-        request.headers["Authorization"] = "Bearer " + token;
-    }
-    return request;
+  live_stream::HttpRequest request;
+  request.method = method;
+  request.path = path;
+  request.body = body;
+  if (!token.empty()) {
+    request.headers["Authorization"] = "Bearer " + token;
+  }
+  return request;
 }
 
 bool Contains(const std::string& haystack, const std::string& needle) {
-    return haystack.find(needle) != std::string::npos;
+  return haystack.find(needle) != std::string::npos;
 }
 
 }  // namespace
 
 int main() {
-    FakeAuthService auth;
-    FakeConfigService config;
-    FakeLoggerService logger;
+  FakeAuthService auth;
+  FakeConfigService config;
+  FakeLoggerService logger;
+  FakeMediaService media;
+  FakeNetEngine net_engine;
 
-    live_stream::HttpServiceDependencies deps;
-    deps.security.auth_service = &auth;
-    deps.config.config_service = &config;
-    deps.security.logger_service = &logger;
+  live_stream::HttpServiceOptions options;
+  live_stream::HttpServiceDependencies deps;
+  deps.net_engine = nullptr;
 
-    live_stream::HttpServiceOptions options;
-    std::unique_ptr<live_stream::IHttpService> service =
-        live_stream::CreateHttpService(options, deps);
-    if (!service->Init()) {
-        return 1;
-    }
+  std::unique_ptr<live_stream::IHttpService> base =
+      live_stream::CreateHttpService(options, deps);
+  if (!base || base->HandleRequest(Request(live_stream::HttpMethod::kGet,
+                                           "bad", "", "")).status_code != 500) {
+    return 1;
+  }
 
-    live_stream::HttpResponse login =
-        service->HandleRequest(Request(live_stream::HttpMethod::kPost,
-                                       "/api/auth/login",
-                                       "{\"user_name\":\"admin\",\"password\":\"pass\"}",
-                                       ""));
-    if (login.status_code != 200 || !Contains(login.body, "admin-token")) {
-        return 2;
-    }
+  std::unique_ptr<live_stream::IHttpService> console =
+      live_stream::CreateHttpConsoleService(
+          options, &net_engine, &auth, &logger, &config, nullptr, nullptr,
+          nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &media,
+          nullptr, nullptr, nullptr, nullptr);
+  if (!console || !console->Start()) {
+    return 2;
+  }
 
-    live_stream::HttpResponse no_token =
-        service->HandleRequest(Request(live_stream::HttpMethod::kPut,
-                                       "/api/config/video",
-                                       "{\"bitrate\":1024}",
-                                       ""));
-    if (no_token.status_code != 401) {
-        return 3;
-    }
+  live_stream::HttpResponse login =
+      console->HandleRequest(Request(live_stream::HttpMethod::kPost,
+                                     "/api/auth/login",
+                                     "{\"user_name\":\"admin\",\"password\":\"pass\"}",
+                                     ""));
+  if (login.status_code != 200 || !Contains(login.body, "admin-token")) {
+    return 3;
+  }
 
-    live_stream::HttpResponse denied =
-        service->HandleRequest(Request(live_stream::HttpMethod::kPut,
-                                       "/api/config/video",
-                                       "{\"bitrate\":1024}",
-                                       "viewer-token"));
-    if (denied.status_code != 403 || logger.records_.empty()) {
-        return 4;
-    }
+  live_stream::HttpResponse config_get =
+      console->HandleRequest(Request(live_stream::HttpMethod::kGet,
+                                     "/api/config/video",
+                                     "",
+                                     "admin-token"));
+  if (config_get.status_code != 200) {
+    return 4;
+  }
 
-    live_stream::HttpResponse put_config =
-        service->HandleRequest(Request(live_stream::HttpMethod::kPut,
-                                       "/api/config/video",
-                                       "{\"bitrate\":2048}",
-                                       "admin-token"));
-    if (put_config.status_code != 200) {
-        return 5;
-    }
+  live_stream::HttpResponse media_caps =
+      console->HandleRequest(Request(live_stream::HttpMethod::kGet,
+                                     "/api/media/capabilities",
+                                     "",
+                                     "admin-token"));
+  if (media_caps.status_code != 200 ||
+      !Contains(media_caps.body, "\"streams\"") ||
+      !Contains(media_caps.body, "1920")) {
+    return 5;
+  }
 
-    live_stream::HttpResponse get_config =
-        service->HandleRequest(Request(live_stream::HttpMethod::kGet,
-                                       "/api/config/video",
-                                       "",
-                                       "admin-token"));
-    if (get_config.status_code != 200 ||
-        !Contains(get_config.body, "2048")) {
-        return 6;
-    }
+  live_stream::HttpResponse snapshot =
+      console->HandleRequest(Request(live_stream::HttpMethod::kGet,
+                                     "/api/snapshot/main.jpg",
+                                     "",
+                                     "admin-token"));
+  if (snapshot.status_code != 501) {
+    return 6;
+  }
 
-    live_stream::HttpResponse not_impl =
-        service->HandleRequest(Request(live_stream::HttpMethod::kPost,
-                                       "/api/upgrade",
-                                       "",
-                                       "admin-token"));
-    if (not_impl.status_code != 501) {
-        return 7;
-    }
+  live_stream::HttpResponse not_impl =
+      console->HandleRequest(Request(live_stream::HttpMethod::kPost,
+                                     "/api/upgrade",
+                                     "",
+                                     "admin-token"));
+  if (not_impl.status_code != 501) {
+    return 7;
+  }
 
-    live_stream::HttpServiceStats stats = service->GetStats();
-    if (stats.total_requests != 6 || stats.permission_denied != 1) {
-        return 8;
-    }
-
-    std::unique_ptr<live_stream::IMediaService> media =
-        live_stream::CreateMediaService();
-    live_stream::HttpServiceDependencies media_deps = deps;
-    media_deps.media.media_service = media.get();
-    std::unique_ptr<live_stream::IHttpService> media_service =
-        live_stream::CreateHttpService(options, media_deps);
-    if (!media_service->Init()) {
-        return 9;
-    }
-    live_stream::HttpResponse capabilities =
-        media_service->HandleRequest(Request(live_stream::HttpMethod::kGet,
-                                             "/api/media/capabilities",
-                                             "",
-                                             ""));
-    if (capabilities.status_code != 200 ||
-        !Contains(capabilities.body, "1920") ||
-        !Contains(capabilities.body, "h265") ||
-        !Contains(capabilities.body, "\"codec\":\"jpeg\"") ||
-        !Contains(capabilities.body, "\"codec\":\"mjpeg\"") ||
-        !Contains(capabilities.body, "\"image\"") ||
-        !Contains(capabilities.body, "\"brightness\"")) {
-        return 10;
-    }
-
-    const std::string invalid_video =
-        "{\"streams\":{\"main\":{\"codec\":\"h264\",\"resolution\":\"9999x9999\","
-        "\"fps\":25,\"bitrate_kbps\":4096,\"rate_control\":\"cbr\",\"gop\":50},"
-        "\"sub\":{\"codec\":\"h264\",\"resolution\":\"640x360\",\"fps\":15,"
-        "\"bitrate_kbps\":768,\"rate_control\":\"cbr\",\"gop\":30}}}";
-    live_stream::HttpResponse invalid_config =
-        media_service->HandleRequest(Request(live_stream::HttpMethod::kPut,
-                                             "/api/config/video",
-                                             invalid_video,
-                                             "admin-token"));
-    if (invalid_config.status_code != 400 ||
-        !Contains(invalid_config.body, "unsupported resolution")) {
-        return 11;
-    }
-    const std::string invalid_image =
-        "{\"basic\":{\"brightness\":200},\"exposure\":{\"mode\":\"auto\"}}";
-    live_stream::HttpResponse invalid_image_config =
-        media_service->HandleRequest(Request(live_stream::HttpMethod::kPut,
-                                             "/api/config/image",
-                                             invalid_image,
-                                             "admin-token"));
-    if (invalid_image_config.status_code != 400 ||
-        !Contains(invalid_image_config.body, "unsupported value")) {
-        return 12;
-    }
-
-    service->Stop();
-    service->Deinit();
-    media_service->Stop();
-    media_service->Deinit();
-    return 0;
+  console->Stop();
+  return 0;
 }

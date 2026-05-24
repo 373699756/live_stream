@@ -10,7 +10,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/config_service/include
 EXTRA_TEST_DEPS := $(MEDIA_LIB) $(STREAM_CODEC_LIB) $(CONFIG_LIB) \
 	$(INFRA_LIB)
 EXTRA_TEST_LIBS := $(MEDIA_LIB) $(STREAM_CODEC_LIB) $(CONFIG_LIB) \
-	$(INFRA_LIB)
+	$(INFRA_LIB) -pthread
 
 $(MEDIA_LIB):
 	$(MAKE) -C ../media_service

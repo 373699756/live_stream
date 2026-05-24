@@ -6,18 +6,18 @@
 
 int main() {
     auto engine = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!engine.IsOk()) {
+    if (!engine) {
         return 1;
     }
-    if (engine.value->Start() != infra::Status::kOk) {
+    if (!engine->Start()) {
         return 2;
     }
 
     std::atomic<bool> fired{false};
-    auto timer = engine.value->RunOnIoAfter(10, [&fired]() {
+    live_stream::NetTimerId timer = engine->RunOnIoAfter(10, [&fired]() {
         fired.store(true);
     });
-    if (!timer.IsOk()) {
+    if (timer == 0) {
         return 3;
     }
     for (int i = 0; i < 20 && !fired.load(); ++i) {
@@ -26,10 +26,10 @@ int main() {
     if (!fired.load()) {
         return 4;
     }
-    if (engine.value->CancelIoTimer(timer.value) != infra::Status::kNotFound) {
+    if (engine->CancelIoTimer(timer)) {
         return 5;
     }
 
-    engine.value->Stop();
+    engine->Stop();
     return 0;
 }

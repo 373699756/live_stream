@@ -56,10 +56,8 @@ public:
 
 class FakeEventService : public live_stream::IEventService {
 public:
-    bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
 
     live_stream::EventSubscriptionId Subscribe(
         live_stream::EventType, live_stream::EventHandler) override {
@@ -82,10 +80,9 @@ public:
 
 class FakeLoggerService : public live_stream::ILoggerService {
 public:
-    bool Init() override { return true; }
     bool Start() override { return true; }
     void Stop() override {}
-    void Deinit() override {}
+    bool IsStarted() const override { return true; }
 
     bool RecordOperation(
         const live_stream::OperationRecord& record) override {
@@ -117,13 +114,11 @@ int main() {
         live_stream::CreateSystemService(default_options);
     live_stream::RequestContext default_context;
     if (!default_service ||
-        !default_service->Init() ||
         !default_service->Start() ||
         default_service->Reboot(default_context)) {
         return 8;
     }
     default_service->Stop();
-    default_service->Deinit();
 
     FakeSystemPlatform platform;
     FakeEventService event_service;
@@ -136,7 +131,7 @@ int main() {
     options.heartbeat_timeout_ms = 1;
     std::unique_ptr<live_stream::ISystemService> service =
         live_stream::CreateSystemService(options);
-    if (!service || !service->Init() || !service->Start()) {
+    if (!service || !service->Start()) {
         return 1;
     }
 
@@ -190,6 +185,5 @@ int main() {
     }
 
     service->Stop();
-    service->Deinit();
     return 0;
 }

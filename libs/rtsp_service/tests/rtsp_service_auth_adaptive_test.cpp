@@ -42,6 +42,11 @@ public:
         return true;
     }
 
+    bool ChangePassword(
+        const live_stream::ChangePasswordRequest&) override {
+        return true;
+    }
+
     live_stream::TokenValidationResult ValidateToken(
         const std::string&) override {
         return live_stream::TokenValidationResult{};

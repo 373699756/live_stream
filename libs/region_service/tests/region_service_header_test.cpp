@@ -131,9 +131,9 @@ int main() {
         return 8;
     }
 
-    live_stream::RegionConfig config;
-    config.target = channels.venc;
-    const live_stream::RegionId id = overlay.CreateRegion(config);
+    live_stream::RegionConfig region_config;
+    region_config.target = channels.venc;
+    const live_stream::RegionId id = overlay.CreateRegion(region_config);
     if (id.value == 0) {
         return 9;
     }
@@ -151,9 +151,9 @@ int main() {
         return 13;
     }
 
-    FakeConfigService config;
+    FakeConfigService config_service;
     live_stream::RegionServiceOptions options;
-    options.config_service = &config;
+    options.config_service = &config_service;
     options.media_channels = channels;
     live_stream::RegionService configured(options);
     if (!configured.Start()) {
@@ -162,8 +162,8 @@ int main() {
     if (configured.RegionCount() != 4U) {
         return 17;
     }
-    config.overlay["items"]["timestamp"]["x"] = 32;
-    if (!config.SetValue("overlay", config.overlay)) {
+    config_service.overlay["items"]["timestamp"]["x"] = 32;
+    if (!config_service.SetValue("overlay", config_service.overlay)) {
         return 18;
     }
     if (configured.GetStats().config_apply_count < 2) {

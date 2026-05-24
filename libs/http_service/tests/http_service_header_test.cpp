@@ -1,4 +1,5 @@
 #include "http_service.h"
+#include "http_service_dependencies.h"
 
 int main() {
     live_stream::HttpServiceOptions options;

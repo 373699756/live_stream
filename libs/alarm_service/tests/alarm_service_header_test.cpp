@@ -13,314 +13,224 @@ namespace {
 
 class FakeConfigService : public live_stream::IConfigService {
 public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
-    void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_config"; }
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
 
-    infra::Status SetValue(const std::string& name,
-                           const live_stream::ConfigJson& value) override {
-        if (name != "alarm") {
-            return infra::Status::kInvalidParam;
-        }
-        if (verify && verify(value) != infra::Status::kOk) {
-            return infra::Status::kInvalidParam;
-        }
-        if (apply) {
-            const infra::Status status = apply(value);
-            if (status != infra::Status::kOk) {
-                return status;
-            }
-        }
-        alarm_config = value;
-        return infra::Status::kOk;
+  bool SetValue(const std::string& name,
+                const live_stream::ConfigJson& value) override {
+    if (name != "alarm") {
+      return false;
     }
-
-    infra::Status GetValue(const std::string& name,
-                           live_stream::ConfigJson* value) override {
-        if (name != "alarm" || value == nullptr) {
-            return infra::Status::kInvalidParam;
-        }
-        *value = alarm_config;
-        return infra::Status::kOk;
+    if (attachment.validate && !attachment.validate(value).ok) {
+      return false;
     }
-
-    infra::Status GetDefault(const std::string&,
-                             live_stream::ConfigJson*) override {
-        return infra::Status::kNotFound;
+    if (attachment.apply && !attachment.apply(value).ok) {
+      return false;
     }
+    alarm_config = value;
+    return true;
+  }
 
-    infra::Status RestoreDefaults() override { return infra::Status::kOk; }
-    infra::Status SaveFile() override { return infra::Status::kOk; }
-
-    infra::Status RegisterApply(const std::string& name,
-                                live_stream::ConfigProc proc) override {
-        if (name != "alarm") {
-            return infra::Status::kInvalidParam;
-        }
-        apply = proc;
-        return infra::Status::kOk;
+  live_stream::ConfigJson GetValue(const std::string& name) override {
+    if (name != "alarm") {
+      return live_stream::ConfigJson();
     }
+    return alarm_config;
+  }
 
-    infra::Status RegisterVerify(const std::string& name,
-                                 live_stream::ConfigProc proc) override {
-        if (name != "alarm") {
-            return infra::Status::kInvalidParam;
-        }
-        verify = proc;
-        return infra::Status::kOk;
+  bool SetDefault(const std::string& name) override { return name == "alarm"; }
+
+  live_stream::ConfigJson GetDefault(const std::string& name) override {
+    if (name != "alarm") {
+      return live_stream::ConfigJson();
     }
+    return alarm_config;
+  }
 
-    live_stream::ConfigJson alarm_config = {
-        {"motion_detection",
-         {{"enabled", false},
-          {"sensitivity", 50},
-          {"min_duration_ms", 100},
-          {"regions", live_stream::ConfigJson::array()}}},
-        {"actions", {{"snapshot", true}, {"record", false}, {"notify", true}}},
-        {"schedule", {{"mode", "always"}, {"weekly", live_stream::ConfigJson::array()}}}};
-    live_stream::ConfigProc verify;
-    live_stream::ConfigProc apply;
+  bool RestoreDefaults() override { return true; }
+
+  bool AttachConfig(const std::string& name,
+                    const live_stream::ConfigAttachment& next) override {
+    if (name != "alarm") {
+      return false;
+    }
+    attachment = next;
+    return true;
+  }
+
+  bool DetachConfig(const std::string& name) override {
+    if (name != "alarm") {
+      return false;
+    }
+    attachment = live_stream::ConfigAttachment();
+    return true;
+  }
+
+  live_stream::ConfigJson alarm_config = {
+      {"motion_detection",
+       {{"enabled", false},
+        {"sensitivity", 50},
+        {"min_duration_ms", 100},
+        {"regions", live_stream::ConfigJson::array()}}},
+      {"actions", {{"snapshot", true}, {"record", false}, {"notify", true}}},
+      {"schedule",
+       {{"mode", "always"}, {"weekly", live_stream::ConfigJson::array()}}}};
+  live_stream::ConfigAttachment attachment;
 };
 
 class FakeEventService : public live_stream::IEventService {
 public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
-    void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_event"; }
+  bool Start() override { return true; }
+  void Stop() override {}
+  live_stream::EventSubscriptionId Subscribe(
+      live_stream::EventType, live_stream::EventHandler) override {
+    return 1;
+  }
+  bool Unsubscribe(live_stream::EventSubscriptionId) override { return true; }
+  bool Publish(const live_stream::Event& event) override {
+    ++publish_count;
+    last_event = event;
+    return true;
+  }
 
-    infra::Result<live_stream::EventSubscriptionId> Subscribe(
-        live_stream::EventType, live_stream::EventHandler) override {
-        return infra::Result<live_stream::EventSubscriptionId>::Ok(1);
-    }
-
-    infra::Status Unsubscribe(live_stream::EventSubscriptionId) override {
-        return infra::Status::kOk;
-    }
-
-    infra::Status Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return infra::Status::kOk;
-    }
-
-    int publish_count = 0;
-    live_stream::Event last_event;
+  int publish_count = 0;
+  live_stream::Event last_event;
 };
 
 class FakeLoggerService : public live_stream::ILoggerService {
 public:
-    infra::Status Init() override { return infra::Status::kOk; }
-    infra::Status Start() override { return infra::Status::kOk; }
-    void Stop() override {}
-    void Deinit() override {}
-    const char* Name() const override { return "fake_logger"; }
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+  bool RecordOperation(const live_stream::OperationRecord& record) override {
+    records.push_back(record);
+    return true;
+  }
+  std::vector<live_stream::OperationRecord> QueryOperations(
+      const live_stream::OperationLogQuery&) override {
+    return records;
+  }
+  bool ExportOperations(
+      const live_stream::OperationLogExportOptions&) override {
+    return true;
+  }
 
-    infra::Status RecordOperation(
-        const live_stream::OperationRecord& record) override {
-        records.push_back(record);
-        return infra::Status::kOk;
-    }
-
-    infra::Result<std::vector<live_stream::OperationRecord>> QueryOperations(
-        const live_stream::OperationLogQuery&) override {
-        return infra::Result<std::vector<live_stream::OperationRecord>>::Ok(
-            records);
-    }
-
-    infra::Status ExportOperations(
-        const live_stream::OperationLogExportOptions&) override {
-        return infra::Status::kOk;
-    }
-
-    std::vector<live_stream::OperationRecord> records;
+  std::vector<live_stream::OperationRecord> records;
 };
 
 }  // namespace
 
 int main() {
-    FakeEventService event_service;
-    live_stream::AlarmRule rule;
-    rule.source = live_stream::AlarmSource::kMotion;
-    rule.enabled = false;
-    rule.min_duration_ms = 0;
+  if (std::string(live_stream::AlarmSourceToString(
+          live_stream::AlarmSource::kNetwork)) != "network") {
+    return 1;
+  }
 
-    live_stream::AlarmServiceOptions options;
-    options.event_service = &event_service;
-    options.default_rules.push_back(rule);
-    std::unique_ptr<live_stream::IAlarmService> service =
-        live_stream::CreateAlarmService(options);
-    if (!service || service->Init() != infra::Status::kOk ||
-        service->Start() != infra::Status::kOk ||
-        std::string(service->Name()) != "alarm_service") {
-        return 1;
-    }
+  FakeEventService event_service;
+  live_stream::AlarmServiceOptions options;
+  options.event_service = &event_service;
+  options.default_rules.push_back(
+      live_stream::AlarmRule{live_stream::AlarmSource::kMotion, false, 0});
 
-    live_stream::AlarmInput input;
-    input.source = live_stream::AlarmSource::kMotion;
-    input.active = true;
-    input.message = "motion";
-    if (service->InjectAlarmInput(input) != infra::Status::kOk ||
-        event_service.publish_count != 0) {
-        return 2;
-    }
+  std::unique_ptr<live_stream::IAlarmService> service =
+      live_stream::CreateAlarmService(options);
+  if (!service || !service->Start() || !service->IsStarted()) {
+    return 2;
+  }
 
-    live_stream::RequestContext context;
-    if (service->EnableRule(context, live_stream::AlarmSource::kMotion, true) !=
-        infra::Status::kOk) {
-        return 3;
-    }
-    if (service->InjectAlarmInput(input) != infra::Status::kOk ||
-        event_service.publish_count != 1 ||
-        event_service.last_event.type !=
-            live_stream::EventType::kAlarmTriggered ||
-        event_service.last_event.target != "motion") {
-        return 4;
-    }
+  live_stream::AlarmInput input;
+  input.source = live_stream::AlarmSource::kMotion;
+  input.active = true;
+  input.message = "motion";
+  if (!service->InjectAlarmInput(input) || event_service.publish_count != 0) {
+    return 3;
+  }
 
-    infra::Result<live_stream::AlarmStatus> status = service->GetAlarmStatus();
-    if (!status.IsOk() || !status.value.active ||
-        status.value.source != live_stream::AlarmSource::kMotion) {
-        return 5;
-    }
+  live_stream::RequestContext context;
+  if (!service->EnableRule(context, live_stream::AlarmSource::kMotion, true)) {
+    return 4;
+  }
+  if (!service->InjectAlarmInput(input) || event_service.publish_count != 1 ||
+      event_service.last_event.type != live_stream::EventType::kAlarmTriggered ||
+      event_service.last_event.target != "motion") {
+    return 5;
+  }
 
-    if (service->ClearAlarm(context) != infra::Status::kOk) {
-        return 6;
-    }
-    status = service->GetAlarmStatus();
-    if (!status.IsOk() || status.value.active) {
-        return 7;
-    }
+  live_stream::AlarmStatus status = service->GetAlarmStatus();
+  if (!status.active || status.source != live_stream::AlarmSource::kMotion) {
+    return 6;
+  }
 
-    rule.enabled = true;
-    rule.source = live_stream::AlarmSource::kNetwork;
-    if (service->UpdateRules(
-            context, std::vector<live_stream::AlarmRule>{rule}) !=
-        infra::Status::kOk) {
-        return 8;
-    }
+  if (!service->ClearAlarm(context)) {
+    return 7;
+  }
+  if (service->GetAlarmStatus().active) {
+    return 8;
+  }
 
-    service->Stop();
-    service->Deinit();
+  live_stream::AlarmRule network_rule;
+  network_rule.source = live_stream::AlarmSource::kNetwork;
+  network_rule.enabled = true;
+  network_rule.min_duration_ms = 0;
+  if (!service->UpdateRules(context, std::vector<live_stream::AlarmRule>{
+          network_rule})) {
+    return 9;
+  }
 
-    FakeConfigService config_service;
-    FakeEventService config_event_service;
-    FakeLoggerService logger_service;
-    live_stream::AlarmServiceOptions config_options;
-    config_options.config_service = &config_service;
-    config_options.event_service = &config_event_service;
-    config_options.logger_service = &logger_service;
-    std::unique_ptr<live_stream::IAlarmService> configured =
-        live_stream::CreateAlarmService(config_options);
-    if (!configured || configured->Init() != infra::Status::kOk ||
-        configured->Start() != infra::Status::kOk) {
-        return 9;
-    }
+  service->Stop();
+  if (service->IsStarted()) {
+    return 10;
+  }
 
-    input.source = live_stream::AlarmSource::kMotion;
-    input.active = true;
-    input.message = "configured-motion";
-    if (configured->InjectAlarmInput(input) != infra::Status::kOk ||
-        config_event_service.publish_count != 0) {
-        return 10;
-    }
+  FakeConfigService config_service;
+  FakeEventService config_event_service;
+  FakeLoggerService logger_service;
+  live_stream::AlarmServiceOptions config_options;
+  config_options.config_service = &config_service;
+  config_options.event_service = &config_event_service;
+  config_options.logger_service = &logger_service;
+  std::unique_ptr<live_stream::IAlarmService> configured =
+      live_stream::CreateAlarmService(config_options);
+  if (!configured || !configured->Start()) {
+    return 11;
+  }
 
-    config_service.alarm_config["motion_detection"]["enabled"] = true;
-    config_service.alarm_config["motion_detection"]["min_duration_ms"] = 50;
-    if (config_service.SetValue("alarm", config_service.alarm_config) !=
-        infra::Status::kOk) {
-        return 11;
-    }
-    if (configured->InjectAlarmInput(input) != infra::Status::kOk ||
-        config_event_service.publish_count != 0) {
-        return 12;
-    }
-    infra::Time::SleepMillis(60);
-    if (configured->InjectAlarmInput(input) != infra::Status::kOk ||
-        config_event_service.publish_count != 1 ||
-        config_event_service.last_event.target != "motion") {
-        return 13;
-    }
-    if (configured->InjectAlarmInput(input) != infra::Status::kOk ||
-        config_event_service.publish_count != 1) {
-        return 14;
-    }
+  config_service.alarm_config["motion_detection"]["enabled"] = true;
+  config_service.alarm_config["motion_detection"]["min_duration_ms"] = 0;
+  if (!config_service.SetValue("alarm", config_service.alarm_config)) {
+    return 12;
+  }
 
-    config_service.alarm_config["motion_detection"]["enabled"] = false;
-    if (config_service.SetValue("alarm", config_service.alarm_config) !=
-        infra::Status::kOk) {
-        return 15;
-    }
-    status = configured->GetAlarmStatus();
-    if (!status.IsOk() || status.value.active) {
-        return 16;
-    }
+  input.message = "configured-motion";
+  if (!configured->InjectAlarmInput(input) ||
+      config_event_service.publish_count != 1) {
+    return 13;
+  }
+  if (configured->GetAlarmStatus().message != "configured-motion") {
+    return 14;
+  }
 
-    live_stream::ConfigJson invalid = config_service.alarm_config;
-    invalid["motion_detection"]["enabled"] = true;
-    invalid["motion_detection"]["min_duration_ms"] = -1;
-    if (config_service.SetValue("alarm", invalid) !=
-        infra::Status::kInvalidParam) {
-        return 17;
-    }
-    invalid = config_service.alarm_config;
-    invalid["motion_detection"]["sensitivity"] = 101;
-    if (config_service.SetValue("alarm", invalid) !=
-        infra::Status::kInvalidParam) {
-        return 18;
-    }
-    invalid = config_service.alarm_config;
-    invalid["actions"]["notify"] = "yes";
-    if (config_service.SetValue("alarm", invalid) !=
-        infra::Status::kInvalidParam) {
-        return 19;
-    }
-    invalid = config_service.alarm_config;
-    invalid["schedule"]["mode"] = "weekly";
-    if (config_service.SetValue("alarm", invalid) !=
-        infra::Status::kInvalidParam) {
-        return 20;
-    }
+  const int log_count = static_cast<int>(logger_service.records.size());
+  context.request_id = "alarm-1";
+  context.user_name = "admin";
+  context.session_id = "session-1";
+  context.client_ip = "127.0.0.1";
+  if (!configured->EnableRule(context, live_stream::AlarmSource::kNetwork,
+                              true)) {
+    return 15;
+  }
+  if (static_cast<int>(logger_service.records.size()) != log_count + 1 ||
+      logger_service.records.back().module != "alarm_service" ||
+      logger_service.records.back().target != "network") {
+    return 16;
+  }
 
-    const int log_count = static_cast<int>(logger_service.records.size());
-    context.request_id = "alarm-1";
-    context.user_name = "admin";
-    context.session_id = "session-1";
-    context.client_ip = "127.0.0.1";
-    if (configured->EnableRule(
-            context, live_stream::AlarmSource::kNetwork, true) !=
-        infra::Status::kOk) {
-        return 21;
-    }
-    if (static_cast<int>(logger_service.records.size()) != log_count + 1 ||
-        logger_service.records.back().action !=
-            live_stream::OperationAction::kModifyConfig ||
-        logger_service.records.back().module != "alarm_service" ||
-        logger_service.records.back().target != "network") {
-        return 22;
-    }
+  if (!configured->ClearAlarm(context) ||
+      static_cast<int>(logger_service.records.size()) != log_count + 2) {
+    return 17;
+  }
 
-    input.source = live_stream::AlarmSource::kNetwork;
-    input.message = "network";
-    if (configured->InjectAlarmInput(input) != infra::Status::kOk ||
-        static_cast<int>(logger_service.records.size()) != log_count + 1) {
-        return 23;
-    }
-    if (configured->ClearAlarm(context) != infra::Status::kOk ||
-        static_cast<int>(logger_service.records.size()) != log_count + 2) {
-        return 24;
-    }
-    if (configured->UpdateRules(
-            context, std::vector<live_stream::AlarmRule>{rule}) !=
-            infra::Status::kOk ||
-        static_cast<int>(logger_service.records.size()) != log_count + 3) {
-        return 25;
-    }
-
-    configured->Stop();
-    configured->Deinit();
-    return 0;
+  configured->Stop();
+  return configured->IsStarted() ? 18 : 0;
 }

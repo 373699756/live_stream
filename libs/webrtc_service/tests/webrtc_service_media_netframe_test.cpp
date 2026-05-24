@@ -53,7 +53,7 @@ public:
     live_stream::StreamFlvClientId AttachFlvClient(
         live_stream::StreamId stream_id, uint64_t config_generation,
         bool wait_for_keyframe,
-        const std::shared_ptr<live_stream::IStreamFlvSink>& sink) override {
+        live_stream::IStreamFlvSink* sink) override {
         (void)stream_id;
         (void)config_generation;
         (void)wait_for_keyframe;

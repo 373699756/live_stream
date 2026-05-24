@@ -135,7 +135,7 @@ endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
-.PHONY: all test clean thirdparty compiledb upgrade-package $(SERVICES)
+.PHONY: all test test-build clean thirdparty compiledb upgrade-package $(SERVICES)
 
 all: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade out
 
@@ -204,11 +204,20 @@ upgrade-package: out
 
 test:
 	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service test || exit $$?; \
+		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) test || exit $$?; \
+	done
+
+test-build:
+	@for service in $(SERVICES); do \
+		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) ENABLE_HISI_MPP=1 \
+		  test-build || exit $$?; \
 	done
 
 clean:
 	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service clean || exit $$?; \
+		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) clean || exit $$?; \
 	done
 	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(OUT_DIR)

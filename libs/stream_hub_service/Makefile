@@ -12,7 +12,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/stream_mux/include
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
 	$(STREAM_MUX_LIB)
 EXTRA_TEST_LIBS := $(STREAM_MUX_LIB) $(STREAM_CODEC_LIB) $(MEDIA_LIB) \
-	$(INFRA_LIB)
+	$(INFRA_LIB) -pthread
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service all

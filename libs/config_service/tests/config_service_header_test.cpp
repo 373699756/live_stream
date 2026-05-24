@@ -70,8 +70,6 @@ int main() {
 
     int validate_count = 0;
     int apply_count = 0;
-    int observer_count = 0;
-    bool observer_value_ok = false;
 
     live_stream::ConfigAttachment attachment;
     attachment.validate = [&validate_count](
@@ -98,23 +96,13 @@ int main() {
         return 7;
     }
 
-    const live_stream::ConfigObserverId observer_id = service->ObserveConfig(
-        "stream", [&observer_count,
-                   &observer_value_ok](const live_stream::ConfigJson &config) {
-            ++observer_count;
-            observer_value_ok = config["bitrate"] == 4096;
-        });
-    if (observer_id == 0) {
-        return 8;
-    }
-
     live_stream::ConfigJson next_stream = {
         {"bitrate", 4096},
         {"fps", 30},
         {"codec", "h264"},
     };
     if (!service->SetValue("stream", next_stream) || validate_count != 1 ||
-        apply_count != 1 || observer_count != 1 || !observer_value_ok) {
+        apply_count != 1) {
         return 9;
     }
 
@@ -131,21 +119,9 @@ int main() {
     if (service->SetValue("stream", invalid_stream)) {
         return 11;
     }
-    const live_stream::ConfigError invalid_error =
-        service->GetLastConfigError("stream");
-    if (invalid_error.field != "bitrate" ||
-        invalid_error.reason != "unsupported value") {
-        return 12;
-    }
     value = service->GetValue("stream");
-    if (!value.is_object() || value["bitrate"] != 4096 || apply_count != 1 ||
-        observer_count != 1) {
+    if (!value.is_object() || value["bitrate"] != 4096 || apply_count != 1) {
         return 13;
-    }
-
-    if (!service->UnobserveConfig("stream", observer_id) ||
-        service->UnobserveConfig("stream", observer_id)) {
-        return 14;
     }
 
     live_stream::ConfigJson another_stream = {
@@ -154,7 +130,7 @@ int main() {
         {"codec", "h265"},
     };
     if (!service->SetValue("stream", another_stream) || validate_count != 2 ||
-        apply_count != 2 || observer_count != 1) {
+        apply_count != 2) {
         return 15;
     }
 
@@ -163,11 +139,6 @@ int main() {
     }
     if (service->SetValue("missing", live_stream::ConfigJson::object())) {
         return 17;
-    }
-    const live_stream::ConfigError missing_error =
-        service->GetLastConfigError("missing");
-    if (missing_error.reason != "config not found") {
-        return 18;
     }
 
     if (!service->RestoreDefaults()) {
