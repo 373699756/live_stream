@@ -1,9 +1,9 @@
-import { authQuery, requestJson } from './client';
+import { authQuery, requestJson, type ApiRequestOptions } from './client';
 import { mockAiAlerts, mockAiStatus } from './mock';
 import type { AiAlertList, AiStatus } from './types';
 
-export function getAiStatus(): Promise<AiStatus> {
-  return requestJson<AiStatus>('/api/ai/status', mockAiStatus);
+export function getAiStatus(init?: ApiRequestOptions): Promise<AiStatus> {
+  return requestJson<AiStatus>('/api/ai/status', mockAiStatus, init);
 }
 
 export function getAiAlerts(): Promise<AiAlertList> {

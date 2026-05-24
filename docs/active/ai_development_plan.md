@@ -60,6 +60,9 @@
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
   - `GET /api/ai/alerts/{id}/image` 返回 JPEG 图片。
+- 实时预览页已轮询 `/api/ai/status`，把当前码流的
+  `last_result.detections` 按归一化坐标叠到预览画面内容区域；AI 未启用、后端不可用
+  或结果来自另一条码流时只显示紧凑状态，不阻塞预览。
 - 告警图片保存到 `build/runtime/ai_alerts/`，默认保留最近 100 条。
 - 第一版不接 `alarm_service`，不做录像、回放或长期存储。
 
@@ -69,7 +72,7 @@
 2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
 3. 在板端实测 VGS + IVE CSC 前处理耗时和检测结果，确认色彩顺序与模型输入一致。
-4. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
+4. 检测结果稳定后再增加 IVE 移动侦测。
 
 ## Acceptance
 

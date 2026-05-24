@@ -614,6 +614,77 @@
   outline: 2px solid #38bdf8;
 }
 
+.ai-preview-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.ai-detection-layer {
+  position: absolute;
+}
+
+.ai-detection-box {
+  position: absolute;
+  min-width: 32px;
+  min-height: 24px;
+  border: 2px solid #22c55e;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.ai-detection-box span {
+  position: absolute;
+  left: -2px;
+  bottom: 100%;
+  max-width: min(220px, 42vw);
+  padding: 3px 6px;
+  color: #04130b;
+  background: #22c55e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.ai-detection-box.near-top span {
+  top: 0;
+  bottom: auto;
+}
+
+.ai-preview-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  color: #dce7f7;
+  background: rgba(8, 13, 23, 0.74);
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.ai-preview-status strong {
+  color: #86efac;
+}
+
+.ai-preview-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

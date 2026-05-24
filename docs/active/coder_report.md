@@ -4,20 +4,23 @@
 
 ## Task completed
 
-review AI 模块并优化 host stub 联调链路。
+继续 AI 模块开发，在实时预览页增加当前 AI 检测结果叠框。
 
 ## Problem fixed
 
-- 对照官方 SVP SSD sample 复核了当前 SSD prior、decode、softmax 和 NMS 主流程，
-  未发现需要立即修正的错参。
-- `host_stub` 后端现在会为有效输入帧返回确定性 object detection 结果，便于不用
-  NNIE 硬件也能走通 `/api/ai/status`、`/api/ai/alerts` 和告警图片写入链路。
-- host stub 结果仍受 `confidence_threshold`、`max_results` 和 `task` 配置约束；
-  生产默认配置仍保持 `ai.enabled=false`。
+- `LiveViewPage` 现在轮询 `/api/ai/status`，不改后端 API 契约。
+- 新增 `AiDetectionOverlay`，把当前码流的 `last_result.detections` 按归一化坐标叠到
+  `VideoPreview` 的实际画面区域，避免视频黑边导致框位置偏移。
+- AI 未启用、后端不可用或状态刷新失败时不显示旧框，只保留紧凑 AI 状态提示；
+  最近结果来自另一条码流时提示结果来源，不影响实时预览和抓图按钮。
 
 ## Files changed
 
-- `libs/ai_service/src/ai_service.cpp`
+- `www/src/api/ai.ts`
+- `www/src/components/AiDetectionOverlay.tsx`
+- `www/src/hooks/useAiStatus.ts`
+- `www/src/pages/LiveViewPage.tsx`
+- `www/src/styles/layout.css`
 - `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
 
@@ -25,14 +28,13 @@ review AI 模块并优化 host stub 联调链路。
 
 已通过：
 
-- `make -C libs/ai_service ENABLE_HISI_MPP=1`
-- `make -C libs/ai_service CXX=g++ AR=ar CROSS_COMPILE= BUILD_DIR=/tmp/live_stream_ai_host_build all`
+- `cd www && npm run build`
 - `git diff --check`
 - `make -j2`
 
 ## Commit
 
-Pending: `feat(ai): emit host stub detections`
+`feat(www): overlay AI detections on preview`
 
 ## Deviations
 
@@ -41,6 +43,6 @@ Pending: `feat(ai): emit host stub detections`
 ## Blocked or follow-up
 
 - 需要在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，实测 VGS + IVE CSC
-  前处理耗时、检测结果和 Web 告警瀑布流。
+  前处理耗时、检测结果、Web 告警瀑布流和预览叠框。
 - 若要在 PC/host 上联调真实 AI 告警接口，需要显式把配置改成 `backend=host_stub`
   并让 AI 服务启动。
