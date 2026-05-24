@@ -22,6 +22,11 @@
 ## Current Implementation Target
 
 - AI 默认为可选实验能力，配置 `ai.enabled=false` 时不启动。
+- 设备构建已接入 NNIE `.wk` 模型加载/卸载：
+  - `ENABLE_HISI_MPP=1` 且 `CONFIG_HISI_AI_LIBS=y` 时编译 NNIE 后端。
+  - `ai_service` 使用 MMZ 承载模型文件，并调用 `HI_MPI_SVP_NNIE_LoadModel`
+    / `HI_MPI_SVP_NNIE_UnloadModel` 管理模型生命周期。
+  - 当前尚未接入输入 blob、forward、query 和后处理，所以 NNIE 后端不会生成检测结果。
 - Web 暂时告警能力是图片瀑布流：
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。

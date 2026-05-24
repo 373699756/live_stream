@@ -12,3 +12,4 @@
 | 2026-05-21 | 普通实现任务不扩写长设计文档。 | 反复追加长文档会降低 AI 使用效率。 | 当前状态写 `docs/active/current_milestone.md`，固定决策写本文件，复盘写 `docs/ai/lessons-learned.md`。 |
 | 2026-05-23 | 文字叠加和隐私遮挡统一归入 `region_service`，配置/API 命名为 `overlay`。 | OSD 只是区域能力的一部分，遮挡和文字都依赖 region 生命周期；用 overlay 避免把模块命名限定成文字 OSD。 | 不再新增 `osd_service`、`region_mpp_adapter` 这类并列适配层；HiSilicon API 转换函数留在 `hisi_vendor`。 |
 | 2026-05-24 | AI 是默认关闭的可选实验能力，Web 暂用图片瀑布流承载告警。 | 先验证 SVP/NNIE/IVE 链路和 Web 可见性，不扩大到录像、回放或正式告警事件。 | `ai_service` 维护最近 AI 告警图片；`alarm_service` 联动、长期存储和视频叠框后续单独设计。 |
+| 2026-05-24 | 设备构建默认链接 HiSilicon NNIE/IVE 库。 | `ai_service` 已直接管理 NNIE 模型资源，应用最终链接需要解析 `HI_MPI_SVP_NNIE_*` 符号。 | `CONFIG_HISI_AI_LIBS ?= y`；需要裁剪 AI 链接时可显式传 `CONFIG_HISI_AI_LIBS=n`。 |

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -18,11 +19,12 @@
 #include "snapshot_service.h"
 
 #if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \
-    __has_include("mpi_nnie.h") && __has_include("hi_comm_svp.h")
+    defined(LIVE_STREAM_ENABLE_HISI_NNIE) && \
+    __has_include("mpi_nnie.h") && __has_include("mpi_sys.h")
 #define LIVE_STREAM_HAS_HISI_NNIE 1
 extern "C" {
-#include "hi_comm_svp.h"
 #include "mpi_nnie.h"
+#include "mpi_sys.h"
 }
 #else
 #define LIVE_STREAM_HAS_HISI_NNIE 0
@@ -200,6 +202,10 @@ public:
             return false;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
+        Stop();
+        if (!LoadModel(config.model_path)) {
+            return false;
+        }
         model_path_ = config.model_path;
         started_ = true;
         return true;
@@ -210,6 +216,9 @@ public:
     }
 
     void Stop() override {
+#if LIVE_STREAM_HAS_HISI_NNIE
+        UnloadModel();
+#endif
         model_path_.clear();
         started_ = false;
     }
@@ -225,14 +234,84 @@ public:
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
-        // Hi3516DV300 NNIE model loading and SVP buffer wiring are isolated here.
-        // The service layer already owns scheduling, config, and result contracts.
-        result.success = true;
+        if (!model_loaded_) {
+            return result;
+        }
+        // Model resources are ready. Forward/input/output blob wiring is the next
+        // NNIE step, so this backend does not report detections yet.
 #endif
         return result;
     }
 
 private:
+#if LIVE_STREAM_HAS_HISI_NNIE
+    bool LoadModel(const std::string &model_path) {
+        const std::string model_data = infra::File::ReadAll(model_path);
+        if (model_data.empty() ||
+            model_data.size() > static_cast<size_t>(0xffffffffU)) {
+            INFRA_LOG_ERROR("ai", "Read NNIE model failed: path=%s",
+                            model_path.c_str());
+            return false;
+        }
+
+        HI_U64 model_phy_addr = 0;
+        HI_VOID *model_vir_addr = nullptr;
+        const HI_U32 model_size = static_cast<HI_U32>(model_data.size());
+        HI_S32 ret = HI_MPI_SYS_MmzAlloc(&model_phy_addr, &model_vir_addr,
+                                         "LIVE_AI_NNIE_MODEL", nullptr,
+                                         model_size);
+        if (ret != HI_SUCCESS || model_phy_addr == 0 ||
+            model_vir_addr == nullptr) {
+            INFRA_LOG_ERROR("ai", "Allocate NNIE model MMZ failed: ret=%#x",
+                            static_cast<unsigned int>(ret));
+            return false;
+        }
+
+        std::memcpy(model_vir_addr, model_data.data(), model_data.size());
+        model_buf_.u32Size = model_size;
+        model_buf_.u64PhyAddr = model_phy_addr;
+        model_buf_.u64VirAddr =
+            static_cast<HI_U64>(reinterpret_cast<HI_UL>(model_vir_addr));
+        std::memset(&model_, 0, sizeof(model_));
+
+        ret = HI_MPI_SVP_NNIE_LoadModel(&model_buf_, &model_);
+        if (ret != HI_SUCCESS) {
+            INFRA_LOG_ERROR("ai", "Load NNIE model failed: ret=%#x",
+                            static_cast<unsigned int>(ret));
+            HI_MPI_SYS_MmzFree(model_buf_.u64PhyAddr, model_vir_addr);
+            std::memset(&model_buf_, 0, sizeof(model_buf_));
+            std::memset(&model_, 0, sizeof(model_));
+            return false;
+        }
+
+        model_loaded_ = true;
+        return true;
+    }
+
+    void UnloadModel() {
+        if (model_loaded_) {
+            const HI_S32 ret = HI_MPI_SVP_NNIE_UnloadModel(&model_);
+            if (ret != HI_SUCCESS) {
+                INFRA_LOG_ERROR("ai", "Unload NNIE model failed: ret=%#x",
+                                static_cast<unsigned int>(ret));
+            }
+            model_loaded_ = false;
+        }
+
+        if (model_buf_.u64PhyAddr != 0 && model_buf_.u64VirAddr != 0) {
+            HI_MPI_SYS_MmzFree(
+                model_buf_.u64PhyAddr,
+                reinterpret_cast<HI_VOID *>(
+                    static_cast<HI_UL>(model_buf_.u64VirAddr)));
+        }
+        std::memset(&model_buf_, 0, sizeof(model_buf_));
+        std::memset(&model_, 0, sizeof(model_));
+    }
+
+    SVP_SRC_MEM_INFO_S model_buf_{};
+    SVP_NNIE_MODEL_S model_{};
+    bool model_loaded_ = false;
+#endif
     std::string model_path_;
     bool started_ = false;
 };
