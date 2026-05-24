@@ -56,7 +56,9 @@ HttpResponse RequireAuthResponse(HttpAccess *access,
     if (principal->must_change_password) {
         return ForbiddenResponse(*principal);
     }
-    return HttpResponse{};
+    HttpResponse response;
+    response.status_code = 0;
+    return response;
 }
 
 bool RequirePermissionOrForbidden(HttpAccess *access,
