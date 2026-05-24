@@ -164,6 +164,7 @@ mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
 ```text
 bin_root/
 ├── bin/live_stream
+├── sbin/live_sysupgrade
 ├── lib/*.so
 ├── scripts/start_app.sh
 ├── scripts/stop_app.sh
@@ -175,6 +176,7 @@ bin_root/
 - 海思 SDK 基础库、C 运行库、loader 等系统级库放 rootfs `/lib` 或 `/usr/lib`。
 - 业务程序依赖的第三方库放 `/opt/app/lib`。
 - `live_stream` 主程序放 `/opt/app/bin`。
+- `live_sysupgrade` 是一次性升级 helper，放 `/opt/app/sbin`，执行前复制到 `/tmp`。
 - 不把业务 so 散放到 rootfs，便于单独升级 `bin`。
 
 启动应用前设置：
@@ -273,6 +275,13 @@ exit 0
 ```sh
 #!/bin/sh
 
+case "$1" in
+    stop)
+        killall live_stream >/dev/null 2>&1 || true
+        exit 0
+        ;;
+esac
+
 export LD_LIBRARY_PATH=/opt/app/lib:/usr/lib:/lib
 export PATH=/opt/app/bin:/opt/app/scripts:/bin:/sbin:/usr/bin:/usr/sbin
 export LIVE_STREAM_CONFIG_DIR=/config
@@ -308,6 +317,7 @@ Install + 分区名 + 文件名 + sha256
 ```text
 upgrade.zip
 ├── Install
+├── live_sysupgrade            # 非 web-only 包携带，用于首版部署和 RAM 执行
 ├── uImage_hi3516dv300
 ├── rootfs_hi3516dv300_64k.jffs2
 ├── bin.squashfs
@@ -397,6 +407,24 @@ config -> /dev/mtd5
 
 正式程序不调用命令行 `flash_erase`、`mtd_debug`、`dd`。
 
+Linux 下采用 OpenIPC/OpenWrt 类 `sysupgrade` 模式：
+
+```text
+Web/API 上传到 /tmp
+    ↓
+live_stream 校验升级包和 /proc/mtd
+    ↓
+web-only 包直接在线写 web 分区
+    ↓
+非 web-only 包复制 /opt/app/sbin/live_sysupgrade 到 /tmp
+    ↓
+live_sysupgrade 在 RAM 中重新校验、停服务、解包、擦写 flash、sync、reboot
+```
+
+`live_stream` 主进程不直接刷 `kernel/rootfs/bin/config`。这些分区升级必须由
+`/tmp/live_stream/upgrade/live_sysupgrade` 完成，避免主进程在卸载 `/opt/app`、
+擦写 rootfs 或停止自身时进入不可控状态。
+
 升级服务直接使用 MTD ioctl：
 
 ```text
@@ -414,23 +442,33 @@ close
 
 | 分区 | Linux 设备 | 升级前动作 | 升级后动作 |
 | --- | --- | --- | --- |
-| `kernel` | `/dev/mtd1` | 无 | 重启 |
-| `rootfs` | `/dev/mtd2` | 无 | 必须重启 |
-| `bin` | `/dev/mtd3` | 停应用，卸载 `/opt/app` | 重新挂载，建议重启 |
-| `web` | `/dev/mtd4` | Web 维护模式，卸载 `/www` | 重新挂载 |
-| `config` | `/dev/mtd5` | 停应用，卸载 `/config` | 写完重启 |
+| `kernel` | `/dev/mtd1` | helper 已在 RAM 中运行 | 写完强制重启 |
+| `rootfs` | `/dev/mtd2` | helper 已在 RAM 中运行，不卸载 `/` | 写完强制重启 |
+| `bin` | `/dev/mtd3` | 停应用，卸载 `/opt/app` | 写完强制重启 |
+| `web` | `/dev/mtd4` | web-only 在线升级时卸载 `/www`；组合升级由 helper 处理 | web-only 重新挂载；组合升级重启 |
+| `config` | `/dev/mtd5` | 停应用，卸载 `/config` | 写完强制重启 |
 | `data` | `/dev/mtd6` | 禁止普通升级 | 无 |
 
 升级校验顺序：
 
-1. 解压升级包。
+1. 上传包保存到 `/tmp/live_stream/upgrade/uploads`。
 2. 解析 `Install`。
 3. 校验 `Board/Flash/PackageType`。
 4. 校验所有文件存在。
 5. 校验 sha256。
 6. 校验文件大小不超过分区。
 7. 校验 `/proc/mtd` 分区大小和名称。
-8. 全部校验通过后，才允许擦写任何分区。
+8. 非 web-only 包校验 `/tmp/live_stream/upgrade` 是 `tmpfs` 或 `ramfs`。
+9. 全部校验通过后，才允许擦写任何分区。
+
+helper 运行规则：
+
+- 非 web-only 包优先从升级包提取 `live_sysupgrade` 到 `/tmp/live_stream/upgrade/live_sysupgrade`。
+- 如果包内没有 helper，则回退复制 `/opt/app/sbin/live_sysupgrade`。
+- helper 必须重新解析升级包、重新校验 sha256 和 `/proc/mtd`。
+- helper 的 staging 目录固定在 `/tmp/live_stream/upgrade/staged`。
+- helper 停止 `live_stream` 后继续执行，不依赖 `/opt/app/bin/live_stream`。
+- helper 写完 `kernel/rootfs/bin/config` 或组合包后执行 `sync` 和 `reboot`。
 
 失败规则：
 
@@ -438,6 +476,7 @@ close
 - 写入阶段失败：停止后续分区。
 - 失败原因写 `/data/upgrade.log`。
 - 状态写 `/data/upgrade_status.json`。
+- 单分区原地升级没有自动回滚；如果断电或写坏系统分区，需要 UART/U-Boot/TFTP 或烧录器恢复。
 
 ## 8. 程序员实施步骤
 
@@ -454,11 +493,11 @@ close
 11. 实现内置分区表。
 12. 实现 `/proc/mtd` 校验。
 13. 实现 MTD ioctl 擦写。
-14. 先支持 `web` 升级。
-15. 再支持 `bin` 升级。
-16. 再支持 `config` 单独升级。
-17. 最后支持 `kernel/rootfs` 和组合升级。
-18. 完成重启策略。
+14. 新增 `live_sysupgrade` helper，并随 `bin.squashfs` 发布到 `/opt/app/sbin`。
+15. `web-only` 包保留在线升级和重新挂载。
+16. `bin/config/kernel/rootfs` 和组合包走 RAM helper。
+17. 完成强制重启策略。
+18. 保留 UART/U-Boot/TFTP 恢复流程。
 
 ## 9. 验证项
 
@@ -530,6 +569,7 @@ touch /opt/app/test
 - 文件超过分区大小必须拒绝。
 - 升级 config 后 `/config` 内容为新包内容。
 - 升级 config 后 `/data/upgrade.log` 不丢失。
+- 非 web-only 升级时 helper 路径必须位于 `/tmp`，且 `/tmp/live_stream/upgrade` 必须是 tmpfs/ramfs。
 
 ## 10. 最终结论
 
@@ -555,11 +595,13 @@ data 2M
 实现要求：
 
 - U-Boot 下用 `sf erase` / `sf write` 按物理地址烧写。
-- Linux 下正式升级用 MTD ioctl，不依赖命令行工具。
+- Linux 下正式升级用 sysupgrade/RAM helper + MTD ioctl，不依赖 flash 命令行工具。
 - rootfs 保持海思默认 jffs2。
 - 业务程序和动态库放 `bin.squashfs`。
+- 一次性升级 helper 放 `bin.squashfs` 的 `/opt/app/sbin/live_sysupgrade`。
 - Web 放 `web.squashfs`。
 - 配置放 `config.jffs2`，可单独或联合升级。
 - 日志和升级状态放 `/data`。
 - 升级包不用 `.img`，不携带 flash 地址。
 - 设备端内置分区表是唯一地址来源。
+- 32M NOR 不做 A/B，断电或刷坏需要串口/U-Boot/TFTP 或烧录器恢复。

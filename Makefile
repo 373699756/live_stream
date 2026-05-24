@@ -28,6 +28,7 @@ SRTP_LIBS := $(METARTC_INSTALL)/lib/libsrtp2.a
 USRSCTP_LIBS := $(METARTC_INSTALL)/lib/libusrsctp.a
 METARTC_LIBS := $(METARTC_INSTALL)/lib/libmetartc8.a $(METARTC_INSTALL)/lib/libmetartccore8.a $(METARTC_INSTALL)/lib/libyangutil8.a
 THIRDPARTY_LIBS := $(METARTC_LIBS) $(SRTP_LIBS) $(USRSCTP_LIBS) $(OPENSSL_LIBS)
+SYSUPGRADE_LDFLAGS ?= -static
 
 CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-date-time
@@ -105,9 +106,16 @@ APP_SRCS := \
 	app/platform_factory.cpp \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp \
+	app/upgrade_flash.cpp \
 	app/upgrade_package.cpp \
 	app/upgrade_platform.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
+SYSUPGRADE_SRCS := \
+	app/live_sysupgrade.cpp \
+	app/linux_platform_common.cpp \
+	app/upgrade_flash.cpp \
+	app/upgrade_package.cpp
+SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
 WEB_INPUTS := \
 	www/index.html \
 	www/package.json \
@@ -128,7 +136,7 @@ include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
 .PHONY: all test clean thirdparty compiledb upgrade-package $(SERVICES)
 
-all: $(SERVICES) $(BIN_DIR)/live_stream out
+all: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade out
 
 thirdparty: $(THIRDPARTY_LIBS)
 
@@ -153,6 +161,10 @@ $(OBJ_DIR)/%.o: app/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+$(OBJ_DIR)/sysupgrade_%.o: app/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
@@ -163,13 +175,21 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra_service.a
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -o $@ \
+	  $(SYSUPGRADE_OBJS) \
+	  $(LIB_DIR)/libinfra_service.a \
+	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
+
 $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-out: $(BIN_DIR)/live_stream $(WEB_STAMP)
+out: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs
 	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
+	cp -f $(BIN_DIR)/live_sysupgrade $(OUT_DIR)/bin/
 	cp -f configs/*.json $(OUT_DIR)/configs/
 	find $(OUT_DIR)/web -mindepth 1 -delete
 	cp -rf www/dist/* $(OUT_DIR)/web/

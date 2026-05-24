@@ -108,6 +108,14 @@ bool ReadStoreOnlyZipEntries(const std::string& package_path,
             }
             return false;
         }
+        for (const ZipEntry& existing : *entries) {
+            if (existing.name == name) {
+                if (reason != nullptr) {
+                    *reason = "duplicate zip entry path";
+                }
+                return false;
+            }
+        }
         ZipEntry entry;
         entry.name = name;
         entry.data_offset = static_cast<uint32_t>(data_offset);

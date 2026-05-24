@@ -1,5 +1,12 @@
 #!/bin/sh
 
+case "$1" in
+  stop)
+    killall live_stream >/dev/null 2>&1 || true
+    exit 0
+    ;;
+esac
+
 export LD_LIBRARY_PATH=/opt/app/lib:/usr/lib:/lib
 export PATH=/opt/app/bin:/opt/app/scripts:/bin:/sbin:/usr/bin:/usr/sbin
 export LIVE_STREAM_CONFIG_DIR=/config
