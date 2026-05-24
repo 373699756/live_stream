@@ -38,7 +38,8 @@
     YVU420SP 帧做 CPU resize + YVU 到 BGR planar 转换；当前 CPU 路径已缓存
     resize 采样表，并用 YUV 查表减少每像素计算。
   - 设备构建下 U8_C3 输入会优先使用 VGS 把 VPSS YVU420SP 帧硬件缩放到模型输入
-    尺寸，再做 CPU YVU 到 BGR planar 转换；VGS 不可用时回退到原 CPU resize。
+    尺寸，再用 IVE CSC 转 RGB planar，CPU 只做 B/G/R 平面顺序拷贝；VGS 或 IVE
+    不可用时回退到原 CPU resize + YVU 到 BGR planar 转换。
   - 已接入单段 CNN 的 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`。
   - 已按官方 SSD sample 参数接入 VOC 21 类后处理：prior box、softmax、
     bbox decode、NMS、置信度和 `max_results` 过滤，输出归一化 `AiDetection`。
@@ -64,7 +65,7 @@
 1. 保持 host `host_stub` 可构建，确保 Web 可以用 mock 和空告警联调。
 2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
-3. 用 IVE/VPSS 继续替换当前 CPU 色彩转换，进一步降低板端推理开销。
+3. 在板端实测 VGS + IVE CSC 前处理耗时和检测结果，确认色彩顺序与模型输入一致。
 4. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
 
 ## Acceptance

@@ -4,40 +4,36 @@
 
 ## Task completed
 
-review 并优化 HTTP-FLV GOP 缓存起播路径。
+继续优化 AI NNIE 前处理路径。
 
 ## Problem fixed
 
-- `stream_hub_service` 不再为 FLV 客户端额外构造整帧 `std::string` tag，统一使用
-  `FlvVideoTagView` slice 发送。
-- FLV 起播缓存从单个 last keyframe 扩展为当前 GOP 缓存，缓存只复制小头部，媒体
-  payload 继续由 `EncodedFrame`/`VideoBuffer` 持有。
-- GOP 缓存超过 64 帧窗口后立即释放，等待下一关键帧重建，避免继续保留和导出不可用
-  的不完整 GOP。
-- `BuildFlvStartData` 不再导出不完整 GOP；`http_service` 只有在没有完整缓存时才让新
-  客户端继续等待下一关键帧。
-- `stream_hub_service` 只在确认有 FLV tag 需要发送时转换 public tag view，减少热路径
-  无效 work。
+- `ai_service` 的 U8_C3 输入前处理现在优先走 `VGS scale -> IVE CSC -> BGR planar
+  row copy`。
+- IVE 输出 RGB planar 后只在 CPU 上做 B/G/R 平面顺序拷贝，避免每像素 YUV 转 RGB
+  公式计算。
+- VGS 或 IVE 不可用时保留原 CPU resize + YVU 到 BGR planar 回退路径，避免影响
+  `ai.enabled=false` 和 host stub 构建。
+- 修正同一段 MPP frame 地址填充代码中的缩进异常。
 
 ## Files changed
 
-- `libs/stream_hub_service/src/stream_hub_stream_state.cpp`
-- `libs/stream_hub_service/src/stream_hub_service.cpp`
-- `libs/http_service/src/handlers/flv_handler.cpp`
+- `libs/ai_service/src/ai_service.cpp`
+- `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
 
 ## Verification
 
 已通过：
 
-- `make -C libs/stream_hub_service`
-- `make -C libs/http_service`
+- `make -C libs/ai_service ENABLE_HISI_MPP=1`
+- `make -C libs/ai_service CXX=g++ AR=ar CROSS_COMPILE= BUILD_DIR=/tmp/live_stream_ai_host_build all`
 - `git diff --check`
 - `make -j2`
 
 ## Commit
 
-Pending: `fix(stream): avoid sending incomplete FLV GOP cache`
+Pending: `perf(ai): use IVE for NNIE color conversion`
 
 ## Deviations
 
@@ -45,4 +41,5 @@ Pending: `fix(stream): avoid sending incomplete FLV GOP cache`
 
 ## Blocked or follow-up
 
-- 需要在板端用 HTTP-FLV 播放器实测多客户端接入时的起播延迟、内存占用和画面连续性。
+- 需要在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，实测 VGS + IVE CSC
+  前处理耗时、检测结果和 Web 告警瀑布流。
