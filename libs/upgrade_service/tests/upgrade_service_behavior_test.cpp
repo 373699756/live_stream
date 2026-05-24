@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <vector>
 
@@ -443,6 +444,104 @@ int TestRejectsPathOutsideUploadDirectory() {
     return 0;
 }
 
+int TestRejectsSymlinkInsideUploadDirectory() {
+    const std::string real_path = "/tmp/upgrade_real_" +
+        std::to_string(static_cast<long long>(getpid()));
+    {
+        std::ofstream output(real_path, std::ios::binary);
+        output.put('x');
+    }
+    const std::string symlink_path = "/tmp/live_stream/upgrade/uploads/" +
+        std::string("upgrade_symlink_") +
+        std::to_string(static_cast<long long>(getpid()));
+    static_cast<void>(mkdir("/tmp/live_stream", 0755));
+    static_cast<void>(mkdir("/tmp/live_stream/upgrade", 0755));
+    static_cast<void>(mkdir("/tmp/live_stream/upgrade/uploads", 0755));
+    static_cast<void>(std::remove(symlink_path.c_str()));
+    if (symlink(real_path.c_str(), symlink_path.c_str()) != 0) {
+        std::remove(real_path.c_str());
+        return 1;
+    }
+
+    FakeUpgradePlatform platform;
+    platform.info.version = "2.0.0";
+    FakeEventService event_service;
+    FakeLoggerService logger;
+    std::unique_ptr<live_stream::IUpgradeService> service =
+        live_stream::CreateUpgradeService(
+            MakeOptions(&platform, &event_service, &logger));
+    if (!service->Start()) {
+        std::remove(symlink_path.c_str());
+        std::remove(real_path.c_str());
+        return 2;
+    }
+    if (!service->ValidatePackage(symlink_path).version.empty()) {
+        std::remove(symlink_path.c_str());
+        std::remove(real_path.c_str());
+        return 3;
+    }
+    live_stream::UpgradeRequest request;
+    request.package_path = symlink_path;
+    if (service->StartUpgrade(MakeContext(), request)) {
+        std::remove(symlink_path.c_str());
+        std::remove(real_path.c_str());
+        return 4;
+    }
+    if (HasCall(platform, "validate")) {
+        std::remove(symlink_path.c_str());
+        std::remove(real_path.c_str());
+        return 5;
+    }
+    std::remove(symlink_path.c_str());
+    std::remove(real_path.c_str());
+    return 0;
+}
+
+int TestAutoRebootAndCommittedFailure() {
+    const std::string package_path = MakePackageFile("upgrade_auto_reboot", 16);
+    FakeUpgradePlatform platform;
+    platform.info.version = "2.0.0";
+    platform.info.requires_reboot = true;
+    FakeEventService event_service;
+    FakeLoggerService logger;
+    std::unique_ptr<live_stream::IUpgradeService> service =
+        live_stream::CreateUpgradeService(
+            MakeOptions(&platform, &event_service, &logger));
+    if (!service->Start()) {
+        return 1;
+    }
+
+    live_stream::UpgradeRequest request;
+    request.package_path = package_path;
+    request.auto_reboot = true;
+    if (!service->StartUpgrade(MakeContext(), request)) {
+        return 2;
+    }
+    if (!WaitForState(service.get(), UpgradeState::kCompleted)) {
+        return 3;
+    }
+    if (!HasCall(platform, "reboot") ||
+        service->GetStatus().progress_percent != 100) {
+        return 4;
+    }
+
+    platform.calls.clear();
+    platform.reboot_ok = false;
+    if (!service->StartUpgrade(MakeContext(), request)) {
+        return 5;
+    }
+    if (!WaitForState(service.get(), UpgradeState::kFailed)) {
+        return 6;
+    }
+    if (service->GetStatus().error_message.find(
+            "committed upgrade may require manual recovery") ==
+        std::string::npos) {
+        return 7;
+    }
+    std::remove(package_path.c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -464,6 +563,12 @@ int main() {
     }
     if (TestRejectsPathOutsideUploadDirectory() != 0) {
         return 6;
+    }
+    if (TestRejectsSymlinkInsideUploadDirectory() != 0) {
+        return 7;
+    }
+    if (TestAutoRebootAndCommittedFailure() != 0) {
+        return 8;
     }
     return 0;
 }

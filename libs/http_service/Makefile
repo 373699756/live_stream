@@ -9,6 +9,9 @@ NET_LIB := $(BUILD_DIR)/lib/libnet_service.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
 STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem_service.a
+UPGRADE_LIB := $(BUILD_DIR)/lib/libupgrade_service.a
+NETWORK_LIB := $(BUILD_DIR)/lib/libnetwork_service.a
+TIME_LIB := $(BUILD_DIR)/lib/libtime_service.a
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai_service/include
@@ -36,10 +39,12 @@ WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc_service.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(STREAM_CODEC_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) \
-	$(STREAM_HUB_LIB) $(WEBRTC_LIB)
+	$(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) $(STREAM_HUB_LIB) \
+	$(WEBRTC_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
-	$(STREAM_HUB_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(MEDIA_LIB) \
-	$(STREAM_CODEC_LIB) $(INFRA_LIB)
+	$(STREAM_HUB_LIB) $(SNAPSHOT_LIB) $(SYSTEM_LIB) $(UPGRADE_LIB) \
+	$(NETWORK_LIB) $(TIME_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
+	$(INFRA_LIB)
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra_service all
@@ -64,6 +69,15 @@ $(SNAPSHOT_LIB): $(MEDIA_LIB)
 
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system_service all
+
+$(UPGRADE_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../upgrade_service all
+
+$(NETWORK_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../network_service all
+
+$(TIME_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../time_service all
 
 $(STREAM_HUB_LIB): $(MEDIA_LIB)
 	$(MAKE) -C ../stream_hub_service all

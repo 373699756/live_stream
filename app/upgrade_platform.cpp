@@ -207,10 +207,18 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
 bool CopyFile(const std::string& from_path,
               const std::string& to_path,
               std::string* reason) {
-    const int from_fd = open(from_path.c_str(), O_RDONLY);
+    const int from_fd = open(from_path.c_str(), O_RDONLY | O_NOFOLLOW);
     if (from_fd < 0) {
         if (reason != nullptr) {
             *reason = "open helper failed";
+        }
+        return false;
+    }
+    struct stat from_stat;
+    if (fstat(from_fd, &from_stat) != 0 || !S_ISREG(from_stat.st_mode)) {
+        close(from_fd);
+        if (reason != nullptr) {
+            *reason = "helper is not a regular file";
         }
         return false;
     }
@@ -221,7 +229,9 @@ bool CopyFile(const std::string& from_path,
         }
         return false;
     }
-    const int to_fd = open(to_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0755);
+    static_cast<void>(infra::File::Remove(to_path));
+    const int to_fd = open(to_path.c_str(),
+                           O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0755);
     if (to_fd < 0) {
         close(from_fd);
         if (reason != nullptr) {
@@ -255,17 +265,14 @@ bool CopyFile(const std::string& from_path,
     if (ok && fsync(to_fd) != 0) {
         ok = false;
     }
+    if (ok && fchmod(to_fd, 0755) != 0) {
+        ok = false;
+    }
     close(to_fd);
     close(from_fd);
     if (!ok) {
         if (reason != nullptr) {
             *reason = "copy helper failed";
-        }
-        return false;
-    }
-    if (chmod(to_path.c_str(), 0755) != 0) {
-        if (reason != nullptr) {
-            *reason = "chmod helper failed";
         }
         return false;
     }

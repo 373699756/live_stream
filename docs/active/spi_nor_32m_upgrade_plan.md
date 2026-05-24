@@ -482,6 +482,27 @@ close
 10. 非 web-only 包校验 `/tmp/live_stream/upgrade` 是 `tmpfs` 或 `ramfs`。
 11. 全部校验通过后，才允许擦写任何分区。
 
+密钥放置规则：
+
+- 私钥只放在离线打包/发布机器，不进入设备、不进入升级包、不提交仓库。
+- 打包时用环境变量指定私钥：
+
+  ```sh
+  UPGRADE_SIGN_KEY=/secure/offline/live_stream_upgrade_private_key.pem \
+    ./scripts/package_upgrade.sh 1.2.3 bin-web
+  ```
+
+- 设备端只保存公钥，固定路径是 `/config/upgrade_public_key.pem`。
+- 工程输入公钥默认是 `configs/upgrade_public_key.pem`；`make out` 如果看到该文件，
+  会复制到 `out/configs/`，`config-only` 打包会把它写进 `config.jffs2`。
+- `UPGRADE_PUBLIC_KEY` 只用于打包端立即验证刚生成的 `Install.sig`，防止签名私钥
+  和设备公钥不匹配。
+- 当前源码里的内置公钥是占位符，未替换时会 fail-closed，设备必须通过工厂
+  `/config` 或正式内置公钥部署真实生产公钥后才能接受升级包。
+- 公钥轮换只能通过“旧私钥签名的 `config-only` 包”更新
+  `/config/upgrade_public_key.pem`；更新后后续包必须改用新私钥签名。
+- 私钥文件名显式加入 `.gitignore`，但仍要求发布流程在仓库外保存私钥。
+
 `/tmp` 不能仅凭路径名判断，必须通过 `/proc/mounts` 确认为 `tmpfs` 或
 `ramfs`。如果不是 RAM 文件系统，非 web-only 升级必须拒绝，避免升级包和
 helper 写在 NOR rootfs 上导致擦写自身或空间不足。
@@ -490,6 +511,8 @@ helper 运行规则：
 
 - 非 web-only 包只允许复制设备内置 `/opt/app/sbin/live_sysupgrade` 到
   `/tmp/live_stream/upgrade/live_sysupgrade`，不允许执行升级包携带的 helper。
+- 复制 helper 时源文件和目标文件都拒绝符号链接，目标用 `O_EXCL` 新建，避免
+  `/tmp` 下路径被替换成非预期文件。
 - helper 必须重新解析升级包、重新验签、重新校验 sha256 和 `/proc/mtd`。
 - helper 的 staging 目录固定在 `/tmp/live_stream/upgrade/staged`。
 - helper 停止 `live_stream` 后继续执行，不依赖 `/opt/app/bin/live_stream`。
@@ -583,6 +606,13 @@ touch /opt/app/test
 
 必须覆盖：
 
+- 主机脚本测试：`scripts/tests/package_upgrade_test.sh`。
+- 服务层测试：`make -C libs/upgrade_service test`，当前工程默认交叉编译为 ARM
+  ELF，需在板端或 qemu-arm 环境执行；开发机无 qemu-arm 时只能确认编译通过。
+- HTTP 层升级路由测试需要覆盖上传文件名清洗、上传大小、validate/start JSON、
+  权限拒绝和 service 调用参数。
+- MTD 实刷测试必须在板端或 mock MTD 环境执行，开发机禁止用真实 `/dev/mtdX`
+  做破坏性测试。
 - 单独升级 `web`。
 - 单独升级 `bin`。
 - 单独升级 `config`，升级完成后重启。
@@ -597,6 +627,7 @@ touch /opt/app/test
 - 文件超过分区大小必须拒绝。
 - 镜像魔数错误必须拒绝。
 - `/proc/mtd` erase size 不匹配必须拒绝。
+- helper 复制路径遇到符号链接必须拒绝。
 - 升级 config 后 `/config` 内容为新包内容。
 - 升级 config 后 `/data/upgrade.log` 不丢失。
 - 非 web-only 升级时 helper 路径必须位于 `/tmp`，且 `/tmp/live_stream/upgrade` 必须是 tmpfs/ramfs。
@@ -699,3 +730,38 @@ Hi3516CV500_SDK_V2.0.1.0/osdrv/tools/pc/squashfs4.3/mksquashfs
   `kernel-rootfs` 和 `full` 因包含 rootfs 在线升级被拒绝。
 
 C++ 侧生成 JSON 状态文件必须使用项目 JSON 模块，不允许手写转义和字符串拼接。
+
+## 12. 升级模块三轮 review 结论
+
+### 12.1 安全入口 review
+
+- HTTP 上传入口只接受有 `upgrade` 权限的请求，上传体最大 32M。
+- 上传文件名只保留字母、数字、`.`、`-`、`_`，禁止 `/`、`\` 和 `..`。
+- 上传文件写入 `/tmp/live_stream/upgrade/uploads`，使用 `O_NOFOLLOW|O_EXCL`。
+- `upgrade_service` 再次使用 `lstat + realpath + stat` 限制包路径必须位于上传目录，
+  并拒绝符号链接、非普通文件、空文件和超过 32M 的文件。
+
+### 12.2 包格式和验签 review
+
+- 升级包必须是 store-only zip，拒绝压缩 entry、data descriptor、重复 entry、
+  绝对路径、反斜杠和 `..`。
+- 必须存在 `Install` 和 `Install.sig`；设备端用公钥对 `Install` 原文做
+  SHA256/RSA 验签，通过后才解析 JSON。
+- `Install` 限定 `Board=Hi3516DV300`、`Flash=spi-nor-32m`、
+  `PackageType=normal`。
+- 只接受 `burn` 命令，分区必须命中设备内置分区表；`rootfs` 明确拒绝。
+- 每个 payload 必须被 manifest 声明，大小不超过对应分区，sha256 必须匹配，
+  镜像魔数必须匹配分区类型。
+
+### 12.3 写 flash 和恢复边界 review
+
+- 写 MTD 前再次校验 `/proc/mtd` 和 `MEMGETINFO` 的分区名、设备、大小、erase size。
+- 源镜像打开使用 `O_NOFOLLOW`，同一 fd 完成 fstat、sha256、magic 和后续写入。
+- 写入顺序是 erase -> write -> fsync -> readback sha256，失败立即停止后续分区。
+- `web-only` 可由主进程在线卸载 `/www` 后写入并重新挂载。
+- `kernel/bin/config` 走 `/tmp` RAM helper；helper 启动后重新验签和校验，再停应用、
+  卸载相关挂载点、写 flash、sync、reboot。
+- `kernel-only` 技术上可在线写，但无 A/B 回滚，仍要求 UART/U-Boot/TFTP 或烧录器
+  救援能力；普通 Web 入口建议不要暴露给最终用户。
+- `rootfs`、`kernel-rootfs`、`full` 禁止 Linux 在线升级；未来要升级 rootfs，
+  应进入 bootloader/recovery 路径，在 rootfs 未挂载时刷写。
