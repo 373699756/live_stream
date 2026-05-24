@@ -1,6 +1,7 @@
 #include "handlers/http_handlers.h"
 
 #include "http_handler_utils.h"
+#include "http_request_utils.h"
 
 #include "json_utils.h"
 
@@ -93,7 +94,10 @@ private:
         root["expires_at_ms"] = login.expires_at_ms;
         root["must_change_password"] = login.must_change_password;
         root["principal"] = PrincipalToJson(login.principal);
-        return JsonResponse(200, root);
+        HttpResponse response = JsonResponse(200, root);
+        response.headers["Set-Cookie"] =
+            BuildSessionCookie(login.token, login.expires_at_ms);
+        return response;
     }
 
     HttpResponse HandleLogout(const HttpRequest &request) {
@@ -106,7 +110,9 @@ private:
         if (!auth_service_->Logout(request_context)) {
             return StatusResponse(404, "Not Found");
         }
-        return OkResponse();
+        HttpResponse response = OkResponse();
+        response.headers["Set-Cookie"] = ClearSessionCookie();
+        return response;
     }
 
     HttpResponse HandleChangePassword(const HttpRequest &request) {

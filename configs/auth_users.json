@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "credential_format": "sha256:<salt_hex>:<hash_hex>",
+  "credential_format": "pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>",
   "users": [
     {
       "user_name": "admin",
       "role": "admin",
       "enabled": true,
       "must_change_password": true,
-      "password_credential": "sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:aa59d4e505fdc79cf87da7c492d5fbb965a791cd7eac26595048ee46b5f7c182"
+      "password_credential": "pbkdf2-sha256:100000:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:b7f6d8e141539871cf5f6f9bec09cbe5ac9dc4b1d4570d84113e8986303627f4"
     }
   ]
 }

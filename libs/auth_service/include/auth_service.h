@@ -60,8 +60,8 @@ struct AuthPrincipal {
 /**
  * @brief 用户存储记录。
  *
- * password_credential 是密码校验器可理解的不透明凭据（如 sha256:<salt>:<hash>）。
- * auth_service 不会把它写入日志或审计。
+ * password_credential 是密码校验器可理解的不透明凭据。当前生产格式固定为
+ * pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>；auth_service 不会把它写入日志或审计。
  */
 struct AuthUserRecord {
     std::string user_name;
@@ -258,23 +258,11 @@ std::unique_ptr<IAuthUserStore> CreateMemoryAuthUserStore(
 std::unique_ptr<IPasswordVerifier> CreatePlainTextPasswordVerifier();
 
 /**
- * @brief 创建 SHA-256 盐值密码校验器。
+ * @brief 创建默认密码校验器。
  *
- * 支持的凭据格式为 sha256:<salt_hex>:<hash_hex>，其中 hash 为 SHA256(salt + password)。
+ * 支持的生产凭据格式为 pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>。
  */
-std::unique_ptr<IPasswordVerifier> CreateSha256PasswordVerifier();
-
-/**
- * @brief 生成 SHA-256 盐值密码凭据。
- *
- * @param password 明文密码，只用于生成凭据，不应写入配置文件。
- * @param salt_hex 十六进制盐值字符串。
- *
- * @return 成功返回 sha256:<salt_hex>:<hash_hex>；参数非法返回 kInvalidParam。
- */
-std::string MakeSha256PasswordCredential(
-    const std::string& password,
-    const std::string& salt_hex);
+std::unique_ptr<IPasswordVerifier> CreatePbkdf2PasswordVerifier();
 
 /**
  * @brief 创建统一鉴权 service。

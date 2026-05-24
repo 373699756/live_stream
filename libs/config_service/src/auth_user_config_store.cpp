@@ -14,9 +14,15 @@ namespace live_stream {
 namespace {
 
 constexpr std::size_t kMaxAuthConfigSize = 64 * 1024;
+constexpr const char *kPasswordCredentialPrefix = "pbkdf2-sha256:";
 
 bool IsEmptyOrTooLong(const std::string &value, std::size_t max_length) {
     return value.empty() || value.size() > max_length;
+}
+
+bool IsSupportedPasswordCredential(const std::string &credential) {
+    const std::string prefix = kPasswordCredentialPrefix;
+    return credential.compare(0, prefix.size(), prefix) == 0;
 }
 
 bool ParseRole(const std::string &role, AuthRole *parsed) {
@@ -146,7 +152,7 @@ private:
                 !json_utils::ReadField(user_json, "enabled", &user.enabled) ||
                 !ParseRole(role, &user.role) ||
                 IsEmptyOrTooLong(user.user_name, kMaxAuthUserNameLength) ||
-                user.password_credential.empty()) {
+                !IsSupportedPasswordCredential(user.password_credential)) {
                 return false;
             }
             if (user_json.contains("must_change_password") &&
@@ -166,7 +172,8 @@ private:
     bool Save(const std::map<std::string, AuthUserRecord> &users) const {
         ConfigJson root = ConfigJson::object();
         root["version"] = 1;
-        root["credential_format"] = "sha256:<salt_hex>:<hash_hex>";
+        root["credential_format"] =
+            "pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>";
         root["users"] = ConfigJson::array();
         for (const auto &item : users) {
             const AuthUserRecord &user = item.second;

@@ -8,8 +8,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <map>
-#include <memory>
 #include <string>
 
 namespace live_stream {
@@ -80,6 +80,25 @@ bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
                                                KeyFrameReason::kNewClient);
 }
 
+bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
+                                ConnectionId connection_id,
+                                const uint8_t *data, size_t size,
+                                uint32_t timestamp_ms) {
+    if (writer == nullptr || data == nullptr || size < kFlvTagHeaderSize) {
+        return writer != nullptr;
+    }
+    uint8_t header[kFlvTagHeaderSize];
+    std::memcpy(header, data, sizeof(header));
+    WriteFlvTimestampMs(timestamp_ms, header);
+
+    HttpStreamSlice slices[2];
+    slices[0].data = header;
+    slices[0].size = sizeof(header);
+    slices[1].data = data + sizeof(header);
+    slices[1].size = size - sizeof(header);
+    return writer->EnqueueStreamingSlices(connection_id, slices, 2);
+}
+
 class FlvConnectionSink : public IStreamFlvSink {
 public:
     FlvConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
@@ -95,16 +114,13 @@ public:
             return writer_->EnqueueStreamingChunk(connection_id_, data, size);
         }
 
-        std::shared_ptr<std::string> chunk(new std::string(
-            reinterpret_cast<const char *>(data), size));
-        uint8_t *tag = reinterpret_cast<uint8_t *>(&(*chunk)[0]);
-        const uint32_t timestamp_ms = ReadFlvTimestampMs(tag);
+        const uint32_t timestamp_ms = ReadFlvTimestampMs(data);
         const uint8_t packet_type =
-            size > kFlvH264PacketTypeOffset ? tag[kFlvH264PacketTypeOffset]
+            size > kFlvH264PacketTypeOffset ? data[kFlvH264PacketTypeOffset]
                                             : 0xff;
         if (packet_type == kFlvH264PacketTypeSequenceHeader) {
-            WriteFlvTimestampMs(0, tag);
-            return writer_->EnqueueStreamingChunk(connection_id_, chunk);
+            return EnqueueFlvTagWithTimestamp(writer_, connection_id_, data,
+                                              size, 0);
         }
         if (!timestamp_base_set_) {
             timestamp_base_ms_ = timestamp_ms;
@@ -122,8 +138,8 @@ public:
             rebased_ms = last_timestamp_ms_;
         }
         last_timestamp_ms_ = rebased_ms;
-        WriteFlvTimestampMs(rebased_ms, tag);
-        return writer_->EnqueueStreamingChunk(connection_id_, chunk);
+        return EnqueueFlvTagWithTimestamp(writer_, connection_id_, data, size,
+                                          rebased_ms);
     }
 
 private:
@@ -278,9 +294,9 @@ public:
             return;
         }
 
-        std::shared_ptr<IStreamFlvSink> sink(
-            new FlvConnectionSink(writer_, connection_id));
-        if (writer_ == nullptr || !writer_->BeginStream(connection_id, sink)) {
+        IStreamFlvSink *sink = new FlvConnectionSink(writer_, connection_id);
+        if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {
+            delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=no_session",
                             static_cast<unsigned long long>(connection_id),
@@ -310,6 +326,7 @@ public:
                 connection_id,
                 reinterpret_cast<const uint8_t *>(start_block.data()),
                 start_block.size())) {
+            delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=enqueue",
                             static_cast<unsigned long long>(connection_id),
@@ -321,6 +338,7 @@ public:
                 reinterpret_cast<const uint8_t *>(
                     start_data.sequence_header.data()),
                 start_data.sequence_header.size())) {
+            delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=start_tags",
                             static_cast<unsigned long long>(connection_id),
@@ -333,6 +351,7 @@ public:
         const StreamFlvClientId client_id = flv_source->AttachFlvClient(
             stream_id, start_data.config_generation, wait_for_keyframe, sink);
         if (client_id == 0) {
+            delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=attach",
                             static_cast<unsigned long long>(connection_id),

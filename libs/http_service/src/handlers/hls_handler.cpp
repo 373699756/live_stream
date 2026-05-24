@@ -2,7 +2,6 @@
 
 #include "http_handler_utils.h"
 
-#include "http_request_utils.h"
 #include "infra/log.h"
 #include "stream_browser_source.h"
 
@@ -34,10 +33,7 @@ bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
                                                KeyFrameReason::kNewClient);
 }
 
-HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
-                                   const std::string &token) {
-    const std::string suffix =
-        token.empty() ? std::string() : std::string("?token=") + token;
+HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist) {
     std::string body;
     body += "#EXTM3U\n";
     body += "#EXT-X-VERSION:3\n";
@@ -52,7 +48,7 @@ HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
         char line[64];
         std::snprintf(line, sizeof(line), "#EXTINF:%.3f,\n", duration);
         body += line;
-        body += "seg-" + std::to_string(entry.sequence) + ".ts" + suffix + "\n";
+        body += "seg-" + std::to_string(entry.sequence) + ".ts\n";
     }
 
     HttpResponse response;
@@ -82,8 +78,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
 }
 
 HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
-                            const HttpRequest &request, StreamId stream_id,
-                            const std::string &object_name,
+                            StreamId stream_id, const std::string &object_name,
                             const StreamBrowserStatus &browser_status) {
     bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
     StreamHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
@@ -101,7 +96,7 @@ HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
                         browser_status.hls_current_segment_size);
         return StatusResponse(503, "HLS playlist not ready");
     }
-    return BuildPlaylistResponse(playlist, ExtractBearerToken(request));
+    return BuildPlaylistResponse(playlist);
 }
 
 HttpResponse HandleSegment(IStreamBrowserSource *stream_hub, StreamId stream_id,
@@ -213,8 +208,8 @@ private:
         }
 
         if (object_name == "index.m3u8") {
-            return HandlePlaylist(stream_browser_source_, request,
-                                  stream_id, object_name, browser_status);
+            return HandlePlaylist(stream_browser_source_, stream_id,
+                                  object_name, browser_status);
         }
         return HandleSegment(stream_browser_source_, stream_id,
                              object_name);

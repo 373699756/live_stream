@@ -11,6 +11,8 @@ namespace live_stream {
 std::string RequestUserAgent(const HttpRequest &request);
 std::string MakeRequestId(uint64_t id);
 std::string ExtractBearerToken(const HttpRequest &request);
+std::string BuildSessionCookie(const std::string &token, int64_t expires_at_ms);
+std::string ClearSessionCookie();
 std::string DecodeUrlComponent(const std::string &value);
 std::string QueryValue(const HttpRequest &request, const std::string &name);
 

@@ -88,8 +88,7 @@ HttpConnectionParseResult HttpConnectionStateTable::CompleteKeepAliveRequest(
   return ParsePendingRequests(iter, options, request_logs);
 }
 
-bool HttpConnectionStateTable::BeginStream(
-    ConnectionId connection_id, const std::shared_ptr<void> &stream_owner) {
+bool HttpConnectionStateTable::BeginStream(ConnectionId connection_id) {
   auto iter = connections_.find(connection_id);
   if (iter == connections_.end()) {
     return false;
@@ -98,7 +97,6 @@ bool HttpConnectionStateTable::BeginStream(
   iter->second.closing = true;
   iter->second.streaming = true;
   iter->second.stream_client_id = 0;
-  iter->second.stream_owner = stream_owner;
   iter->second.pending_requests.clear();
   iter->second.recv_buffer.clear();
   ++iter->second.timeout_generation;
@@ -171,7 +169,6 @@ HttpStreamClientId HttpConnectionStateTable::TakeStreamClient(
   }
   const HttpStreamClientId client_id = session->stream_client_id;
   session->stream_client_id = 0;
-  session->stream_owner.reset();
   return client_id;
 }
 

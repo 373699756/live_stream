@@ -314,8 +314,7 @@ public:
 
     StreamFlvClientId
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
-                    bool wait_for_keyframe,
-                    const std::shared_ptr<IStreamFlvSink> &sink) override {
+                    bool wait_for_keyframe, IStreamFlvSink *sink) override {
         if (sink == nullptr) {
             return 0;
         }
@@ -588,13 +587,18 @@ private:
             } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
-            sequence_header_tag = std::move(packaged_frame.sequence_header_tag);
             flv_tag = std::move(packaged_frame.flv_tag);
             const bool has_sequence_header =
                 hub_state::HasFlvSequenceHeader(*stream);
             clients = flv_clients_.CollectWrites(
                 frame.stream_id, stream->config_generation, !flv_tag.empty(),
                 has_sequence_header, packaged_frame.keyframe);
+            for (const hub_state::PendingFlvClientWrite &client : clients) {
+                if (client.send_sequence_header) {
+                    sequence_header_tag = stream->sequence_header_tag;
+                    break;
+                }
+            }
         }
 
         WriteFlvClients(clients, sequence_header_tag, flv_tag, frame.stream_id);
@@ -621,6 +625,7 @@ private:
                     reinterpret_cast<const uint8_t *>(sequence_header_tag.data()),
                     sequence_header_tag.size())) {
                 detach_ids.push_back(client.client_id);
+                ReleaseFlvClientWrite(client.client_id);
                 continue;
             }
             if (!client.sink->OnFlvChunk(
@@ -628,12 +633,18 @@ private:
                     flv_tag.size())) {
                 detach_ids.push_back(client.client_id);
             }
+            ReleaseFlvClientWrite(client.client_id);
         }
         for (StreamFlvClientId client_id : detach_ids) {
             if (client_id != 0) {
                 (void)DetachFlvClient(client_id);
             }
         }
+    }
+
+    void ReleaseFlvClientWrite(StreamFlvClientId client_id) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        flv_clients_.ReleaseWrite(client_id);
     }
 
     std::deque<EncodedFrame> *FindPendingQueue(StreamId stream_id) {

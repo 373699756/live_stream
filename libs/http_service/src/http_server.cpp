@@ -291,10 +291,9 @@ void HttpServer::SendResponse(ConnectionId connection_id,
     CompleteKeepAliveRequest(connection_id);
 }
 
-bool HttpServer::BeginStream(ConnectionId connection_id,
-                             const std::shared_ptr<void> &stream_owner) {
+bool HttpServer::BeginStream(ConnectionId connection_id) {
     std::lock_guard<std::mutex> guard(mutex_);
-    return connections_.BeginStream(connection_id, stream_owner);
+    return connections_.BeginStream(connection_id);
 }
 
 bool HttpServer::AttachStreamClient(ConnectionId connection_id,
@@ -315,18 +314,30 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
     return EnqueueStreamingSlices(connection_id, slices, size);
 }
 
-bool HttpServer::EnqueueStreamingChunk(
-    ConnectionId connection_id,
-    const std::shared_ptr<const std::string> &data) {
-    NetBufferSlices slices;
-    if (!data || data->empty()) {
+bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
+                                        const HttpStreamSlice *slices,
+                                        size_t slice_count) {
+    NetBufferSlices net_slices;
+    size_t total_size = 0;
+    if (slice_count == 0) {
         return true;
     }
-    if (!slices.Add(reinterpret_cast<const uint8_t *>(data->data()),
-                    data->size(), data)) {
+    if (slices == nullptr || slice_count > kMaxNetBufferSlices) {
         return false;
     }
-    return EnqueueStreamingSlices(connection_id, slices, data->size());
+    for (size_t i = 0; i < slice_count; ++i) {
+        if (slices[i].size == 0) {
+            continue;
+        }
+        if (!net_slices.Add(slices[i].data, slices[i].size)) {
+            return false;
+        }
+        total_size += slices[i].size;
+    }
+    if (total_size == 0) {
+        return true;
+    }
+    return EnqueueStreamingSlices(connection_id, net_slices, total_size);
 }
 
 void HttpServer::SetCloseCallback(HttpStreamCloseCallback callback) {

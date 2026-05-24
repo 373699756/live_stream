@@ -374,7 +374,6 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
     }
 
     result.keyframe = keyframe;
-    result.sequence_header_tag = stream->sequence_header_tag;
     result.accepted = true;
     return result;
 }

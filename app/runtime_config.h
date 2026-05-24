@@ -33,7 +33,7 @@ struct AppRuntimeConfig {
     VideoCodec rtsp_main_codec = VideoCodec::kH264;
     VideoCodec rtsp_sub_codec = VideoCodec::kH264;
     bool rtsp_auth_required = true;
-    bool onvif_auth_required = false;
+    bool onvif_auth_required = true;
     bool onvif_discovery_enabled = true;
     bool webrtc_enabled = true;
     bool webrtc_prefer_tcp = false;

@@ -28,8 +28,9 @@ struct SessionRecord {
 
 bool IsEmptyOrTooLong(const std::string& value, std::size_t max_length);
 bool IsHexString(const std::string& value);
-std::string Sha256Credential(const std::string& password,
-                             const std::string& salt_hex);
+std::string Pbkdf2Sha256Credential(const std::string& password,
+                                   const std::string& salt_hex,
+                                   uint32_t iterations);
 bool ConstantTimeEquals(const std::string& left, const std::string& right);
 bool ParseRole(const std::string& role, AuthRole* parsed);
 bool RoleHasPermission(AuthRole role, AuthPermission permission);

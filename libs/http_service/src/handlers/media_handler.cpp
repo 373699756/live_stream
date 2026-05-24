@@ -247,8 +247,8 @@ public:
 private:
     static HttpResponse HandleCapabilitiesRoute(void *user,
                                                 const HttpRequest &request) {
-        (void)request;
-        return static_cast<MediaHttpHandler *>(user)->HandleCapabilities();
+        return static_cast<MediaHttpHandler *>(user)->HandleCapabilities(
+            request);
     }
 
     static HttpResponse HandleStreamStatusRoute(void *user,
@@ -263,9 +263,14 @@ private:
             request);
     }
 
-    HttpResponse HandleCapabilities() {
+    HttpResponse HandleCapabilities(const HttpRequest &request) {
         if (media_service_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
+                                         "media", &principal)) {
+            return ForbiddenResponse(principal);
         }
         MediaCapabilities capabilities =
             media_service_->GetCapabilities();
@@ -278,11 +283,9 @@ private:
     }
 
     HttpResponse HandleStreamStatus(const HttpRequest &request) {
-        AuthPrincipal principal = access_->Authenticate(request);
-        if (principal.user_name.empty()) {
-            return StatusResponse(401, "Unauthorized");
-        }
-        if (principal.must_change_password) {
+        AuthPrincipal principal;
+        if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
+                                         "media", &principal)) {
             return ForbiddenResponse(principal);
         }
         if (media_service_ == nullptr) {
@@ -376,11 +379,9 @@ private:
     }
 
     HttpResponse HandleImageStrategy(const HttpRequest &request) {
-        AuthPrincipal principal = access_->Authenticate(request);
-        if (principal.user_name.empty()) {
-            return StatusResponse(401, "Unauthorized");
-        }
-        if (principal.must_change_password) {
+        AuthPrincipal principal;
+        if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
+                                         "image-strategy", &principal)) {
             return ForbiddenResponse(principal);
         }
         if (media_service_ == nullptr) {

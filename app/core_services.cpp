@@ -155,7 +155,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     auth_dependencies.config_service = config_.get();
     auth_ = CreateAuthService(auth_options, auth_dependencies,
                               CreateConfigAuthUserStore(paths.auth_users_path),
-                              CreateSha256PasswordVerifier());
+                              CreatePbkdf2PasswordVerifier());
     auth_audit_sink_.reset(new AuthAuditToLoggerSink(logger_.get()));
     if (auth_ != nullptr) {
         (void)auth_->SetAuditSink(auth_audit_sink_.get());

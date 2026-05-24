@@ -70,10 +70,6 @@ export function onMustChangePassword(listener: () => void): () => void {
 
 export function authQuery(entries?: Record<string, string>): string {
   const params = new URLSearchParams();
-  const token = getToken();
-  if (token) {
-    params.set('token', token);
-  }
   if (entries) {
     Object.entries(entries).forEach(([key, value]) => params.set(key, value));
   }

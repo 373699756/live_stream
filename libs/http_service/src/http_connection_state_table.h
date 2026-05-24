@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <deque>
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -75,8 +74,7 @@ class HttpConnectionStateTable {
       ConnectionId connection_id, const HttpConnectionParseOptions &options,
       std::vector<HttpConnectionRequestLog> *request_logs);
 
-  bool BeginStream(ConnectionId connection_id,
-                   const std::shared_ptr<void> &stream_owner);
+  bool BeginStream(ConnectionId connection_id);
   bool AttachStreamClient(ConnectionId connection_id,
                           HttpStreamClientId client_id);
   bool IsStreaming(ConnectionId connection_id) const;
@@ -95,7 +93,6 @@ class HttpConnectionStateTable {
     uint64_t request_count = 0;
     uint64_t timeout_generation = 0;
     HttpStreamClientId stream_client_id = 0;
-    std::shared_ptr<void> stream_owner;
     bool processing = false;
     bool closing = false;
     bool streaming = false;

@@ -54,15 +54,14 @@ public:
 
     void SendResponse(ConnectionId connection_id, const HttpResponse &response,
                       bool close_after_response) override;
-    bool BeginStream(ConnectionId connection_id,
-                     const std::shared_ptr<void> &stream_owner) override;
+    bool BeginStream(ConnectionId connection_id) override;
     bool AttachStreamClient(ConnectionId connection_id,
                             HttpStreamClientId client_id) override;
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) override;
-    bool EnqueueStreamingChunk(
-        ConnectionId connection_id,
-        const std::shared_ptr<const std::string> &data) override;
+    bool EnqueueStreamingSlices(ConnectionId connection_id,
+                                const HttpStreamSlice *slices,
+                                size_t slice_count) override;
     void SetCloseCallback(HttpStreamCloseCallback callback) override;
     void CloseConnection(ConnectionId connection_id) override;
 

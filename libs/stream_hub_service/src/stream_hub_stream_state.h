@@ -50,7 +50,6 @@ struct PackagedFrameResult {
     bool keyframe = false;
     bool hls_segment_created = false;
     bool hls_segment_updated = false;
-    std::string sequence_header_tag;
     std::string flv_tag;
 };
 

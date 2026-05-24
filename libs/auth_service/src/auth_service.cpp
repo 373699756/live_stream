@@ -20,6 +20,8 @@ namespace {
 
 constexpr uint32_t kSessionIdBytes = 16;
 constexpr uint32_t kTokenBytes = 32;
+constexpr uint32_t kPasswordSaltBytes = 16;
+constexpr uint32_t kPasswordPbkdf2Iterations = 100000;
 
 struct FailureRecord {
     uint32_t failures = 0;
@@ -113,11 +115,12 @@ bool IsValidNewPassword(const std::string &password,
 }
 
 std::string GeneratePasswordCredential(const std::string &password) {
-    const std::string salt_hex = SystemRandomHex(kSessionIdBytes);
+    const std::string salt_hex = SystemRandomHex(kPasswordSaltBytes);
     if (salt_hex.empty()) {
         return std::string();
     }
-    return auth_internal::Sha256Credential(password, salt_hex);
+    return auth_internal::Pbkdf2Sha256Credential(
+        password, salt_hex, kPasswordPbkdf2Iterations);
 }
 
 bool ParseUserConfig(const ConfigJson &value,
@@ -304,7 +307,7 @@ public:
     }
 
     bool Logout(const live_stream::RequestContext &context) override {
-        if (context.session_id.empty() && context.user_name.empty()) {
+        if (context.session_id.empty()) {
             return false;
         }
         if (!IsStarted()) {
@@ -317,12 +320,8 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             for (auto iter = sessions_.begin(); iter != sessions_.end(); ++iter) {
                 const bool session_match =
-                    !context.session_id.empty() &&
                     iter->second.principal.session_id == context.session_id;
-                const bool user_match =
-                    !context.user_name.empty() &&
-                    iter->second.principal.user_name == context.user_name;
-                if (session_match || user_match) {
+                if (session_match) {
                     removed = iter->second;
                     sessions_.erase(iter);
                     found = true;

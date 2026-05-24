@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <map>
-#include <memory>
 #include <vector>
 
 namespace live_stream {
@@ -13,18 +12,18 @@ namespace stream_hub_internal {
 
 struct PendingFlvClientWrite {
     StreamFlvClientId client_id = 0;
-    std::shared_ptr<IStreamFlvSink> sink;
+    IStreamFlvSink *sink = nullptr;
     bool send_sequence_header = false;
     bool starts_on_keyframe = false;
 };
 
 // Tracks active HTTP-FLV clients. The owner synchronizes access and only keeps
-// sink shared_ptrs here; network writes are performed outside the service lock.
+// raw sink pointers here. Attach owns the sink on success; writes increment a
+// pending count so Detach/Clear cannot delete a sink while it is being called.
 class FlvClientRegistry {
 public:
     StreamFlvClientId Attach(StreamId stream_id, uint64_t config_generation,
-                             bool wait_for_keyframe,
-                             const std::shared_ptr<IStreamFlvSink> &sink,
+                             bool wait_for_keyframe, IStreamFlvSink *sink,
                              size_t max_clients);
     bool Detach(StreamFlvClientId client_id);
     void Clear();
@@ -33,14 +32,21 @@ public:
     std::vector<PendingFlvClientWrite> CollectWrites(
         StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
         bool has_sequence_header, bool keyframe);
+    void ReleaseWrite(StreamFlvClientId client_id);
 
 private:
     struct FlvClientState {
         StreamId stream_id = StreamId::kMain;
         uint64_t config_generation = 0;
         bool wait_for_keyframe = false;
-        std::shared_ptr<IStreamFlvSink> sink;
+        IStreamFlvSink *sink = nullptr;
+        uint32_t pending_writes = 0;
+        bool detached = false;
     };
+
+    static void ReleaseClientSink(FlvClientState *client);
+    bool EraseDetachedClient(StreamFlvClientId client_id,
+                             FlvClientState *client);
 
     std::map<StreamFlvClientId, FlvClientState> flv_clients_;
     StreamFlvClientId next_flv_client_id_ = 1;

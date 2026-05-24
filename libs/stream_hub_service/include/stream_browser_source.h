@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -92,8 +91,7 @@ public:
 
     virtual StreamFlvClientId
     AttachFlvClient(StreamId stream_id, uint64_t config_generation,
-                    bool wait_for_keyframe,
-                    const std::shared_ptr<IStreamFlvSink> &sink) = 0;
+                    bool wait_for_keyframe, IStreamFlvSink *sink) = 0;
     virtual bool DetachFlvClient(StreamFlvClientId client_id) = 0;
 };
 
