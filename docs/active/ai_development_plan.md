@@ -34,8 +34,15 @@
   - 已准备普通 CNN 模型的 task/tmp/input/output blob workspace；ROI 和 recurrent
     模型暂不支持。
   - 已支持尺寸匹配的 YUV420SP 帧拷贝到首段 YVU420SP 输入 blob 并刷新缓存。
+  - 已支持 `inst_ssd_cycle.wk` 的 300x300 U8_C3 输入：从 VPSS 的
+    YVU420SP 帧做 CPU resize + YVU 到 BGR planar 转换。
   - 已接入单段 CNN 的 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`。
-  - 当前尚未接入 resize/色彩转换和后处理，所以 NNIE 后端暂不会生成检测结果。
+  - 已按官方 SSD sample 参数接入 VOC 21 类后处理：prior box、softmax、
+    bbox decode、NMS、置信度和 `max_results` 过滤，输出归一化 `AiDetection`。
+- 默认模型为
+  `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`，
+  `make out` 会复制到 `out/models/inst_ssd_cycle.wk`，运行配置默认填写
+  `models/inst_ssd_cycle.wk`，但 `ai.enabled=false` 仍保持默认关闭。
 - 官方 SVP 依赖已复制到项目内，后续开发默认从 `3rdparty/hisi_svp` 查 sample
   和模型，不再依赖外部 SDK 路径。
 - Web 暂时告警能力是图片瀑布流：
@@ -48,13 +55,10 @@
 ## Next Development Order
 
 1. 保持 host `host_stub` 可构建，确保 Web 可以用 mock 和空告警联调。
-2. 先选定一个项目默认检测模型，建议从
-   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`
-   开始，因为 sample 里有完整 SSD 后处理参考。
-3. 使用 IVE/VPSS 补齐输入 resize 和色彩转换，避免要求 VPSS 抓帧尺寸必须等于模型输入。
-4. 按实际 `.wk` 模型类型接入输出后处理，把模型输出转换为 `AiDetection`。
-5. 坐标归一化到 0.0 到 1.0，并按 `confidence_threshold` / `max_results` 过滤。
-6. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
+2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
+   `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
+3. 用 IVE/VPSS 替换当前 CPU resize + 色彩转换，降低主码流推理开销。
+4. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
 
 ## Acceptance
 

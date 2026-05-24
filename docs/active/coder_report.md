@@ -4,50 +4,56 @@
 
 ## Task completed
 
-继续 AI/NNIE 开发准备，把 SVP/NNIE/IVE 相关依赖本地化到本项目工程目录。
+继续 AI/NNIE 开发，把项目默认 SSD 模型从 forward 接到真实检测结果和 Web
+告警瀑布流触发源。
 
 ## Problem fixed
 
-- 复制 SDK SVP 文档到 `3rdparty/hisi_svp/docs`。
-- 复制 SDK `mpp/sample/svp` 完整示例树到 `3rdparty/hisi_svp/sample/svp`，包含
-  NNIE/IVE/HiRuntime sample、17 个 `.wk` 模型和样例输入数据。
-- 保留现有 `3rdparty/hisi_mpp/include` / `lib` 作为项目编译用 MPP、NNIE、IVE
-  头文件和库，不再要求程序员从外部 SDK 找 AI 头库。
-- 增加 `3rdparty/hisi_svp/README.md`，说明来源、目录、模型资源和后续开发参考文件。
-- 更新 AI 开发计划和决策日志，固定本地依赖路径和下一步模型后处理方向。
+- `ai_service` 支持 `inst_ssd_cycle.wk` 的 300x300 U8_C3 输入。
+- 从 VPSS YVU420SP 帧做首版 CPU resize + YVU 到 BGR planar 转换，写入 NNIE
+  输入 blob。
+- 按官方 SVP SSD sample 参数实现 prior box、softmax、bbox decode、NMS、
+  `confidence_threshold` 和 `max_results` 过滤。
+- NNIE forward 后生成归一化 `AiDetection`，有检测结果时原有告警图片保存和
+  `/api/ai/alerts` 瀑布流即可触发。
+- 默认配置填写 `models/inst_ssd_cycle.wk`、300x300 输入，但 `ai.enabled=false`
+  仍默认关闭。
+- `make out` 会把项目内 SSD 模型复制到 `out/models/inst_ssd_cycle.wk`。
 
 ## Files changed
 
-- `3rdparty/hisi_svp/README.md`
-- `3rdparty/hisi_svp/docs/*`
-- `3rdparty/hisi_svp/sample/svp/*`
+- `libs/ai_service/src/ai_service.cpp`
+- `libs/ai_service/include/ai_service.h`
+- `configs/default_config.json`
+- `configs/business_config.json`
+- `Makefile`
 - `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
-- `docs/active/decision_log.md`
+- `docs/contracts/api-config.md`
+- `www/README.md`
+- `www/src/api/mock.ts`
 
 ## Verification
 
-通过：
+已通过：
 
-- `find` 计数确认 SVP 文档 4 个、SVP sample 文件 117 个、`.wk` 模型 17 个已进入
-  `3rdparty/hisi_svp`。
-- `git diff --check`
 - `make -C libs/ai_service ENABLE_HISI_MPP=1`
-- `make -j2`
+- `git diff --check`
 - `npm run build`（`www/`）
+- `make -j2`
 
 ## Commit
 
-`d7c9947 chore: vendor HiSilicon SVP AI resources`
+`feat(ai): decode SSD NNIE detections`
 
 ## Deviations
 
-- 新增依赖体积约 879M，属于用户要求的“相关依赖全部拷贝本项目工程目录中”。
-- 本轮没有改默认配置启用 AI；`ai.enabled=false` 仍保持默认关闭。
+- 当前 resize/色彩转换先用 CPU 路径，能跑通功能但不是最终性能方案；后续应换成
+  IVE/VPSS。
+- 本轮只支持官方 SSD VOC 21 类模型；YOLO/RFCN/分类模型仍需单独后处理。
 
 ## Blocked or follow-up
 
-- 下一步需要选定实际检测模型，优先建议
-  `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`。
-- NNIE 已能 forward，但还缺 SSD/YOLO/RFCN 等模型后处理，暂不会生成真实
-  `AiDetection` 和告警图片。
+- 需要在 Hi3516DV300/CV500 板端设置 `ai.enabled=true` 做实机验证，确认 NNIE
+  输出和告警图片瀑布流。
+- 若主码流 CPU 转换占用过高，下一步做 IVE/VPSS 前处理优化。

@@ -10,6 +10,7 @@ THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
 METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
 METARTC_INSTALL := $(THIRDPARTY_DIR)/install
 OUT_DIR := out
+AI_SSD_MODEL := $(THIRDPARTY_DIR)/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk
 
 # Include HiSilicon toolchain (sets CROSS_COMPILE, CXX, CPU_FLAGS,
 # HISI_DEFINES, HISI_MPP_STATIC_LIBS, LDFLAGS, LDLIBS, etc.)
@@ -187,11 +188,12 @@ $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-out: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
-	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs
+out: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP) $(AI_SSD_MODEL)
+	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs $(OUT_DIR)/models
 	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
 	cp -f $(BIN_DIR)/live_sysupgrade $(OUT_DIR)/bin/
 	cp -f configs/*.json $(OUT_DIR)/configs/
+	cp -f $(AI_SSD_MODEL) $(OUT_DIR)/models/
 	@if [ -f configs/upgrade_public_key.pem ]; then \
 		cp -f configs/upgrade_public_key.pem $(OUT_DIR)/configs/; \
 	fi

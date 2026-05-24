@@ -115,6 +115,9 @@ Runtime API:
 Current product status:
 
 - AI is an optional experimental capability and is disabled by default.
+- The default NNIE object-detection model is `models/inst_ssd_cycle.wk` with
+  300x300 input. The release `out` package includes this file under
+  `out/models/`.
 - Web alarm display is currently an AI snapshot waterfall only. It does not
   imply recording, playback, long-term storage, or `alarm_service` event
   integration.

@@ -39,9 +39,9 @@
     "backend": "hisi3516dv300_nnie",
     "task": "object_detection",
     "stream": "main",
-    "model_path": "",
-    "input_width": 416,
-    "input_height": 416,
+    "model_path": "models/inst_ssd_cycle.wk",
+    "input_width": 300,
+    "input_height": 300,
     "inference_interval_ms": 200,
     "confidence_threshold": 0.5,
     "max_results": 16

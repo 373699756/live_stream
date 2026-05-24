@@ -36,8 +36,8 @@ struct AiModelConfig {
     AiTask task = AiTask::kObjectDetection;
     StreamId stream_id = StreamId::kMain;
     std::string model_path;
-    uint32_t input_width = 416;
-    uint32_t input_height = 416;
+    uint32_t input_width = 300;
+    uint32_t input_height = 300;
     uint32_t inference_interval_ms = 200;
     uint32_t max_results = 16;
     float confidence_threshold = 0.5f;
