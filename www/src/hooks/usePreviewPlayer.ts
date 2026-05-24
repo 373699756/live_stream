@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { flvStreamUrl, hlsPlaylistUrl } from '../api/client';
+import { flvStreamUrl, hlsPlaylistUrl, mjpegStreamUrl } from '../api/client';
 import {
   closeWebrtcPeer,
   createWebrtcPeer,
@@ -9,12 +9,13 @@ import {
 } from '../api/stream';
 import type { StreamName, StreamStatus, WebrtcConfig } from '../api/types';
 
-export type PreviewMode = 'webrtc' | 'hls' | 'flv';
+export type PreviewMode = 'webrtc' | 'hls' | 'flv' | 'mjpeg';
 
 export const previewModeLabels: Record<PreviewMode, string> = {
   webrtc: 'WebRTC',
   hls: 'HLS',
   flv: 'HTTP-FLV',
+  mjpeg: 'MJPEG',
 };
 
 type HlsPlayer = InstanceType<NonNullable<Window['Hls']>>;
@@ -155,6 +156,7 @@ export function usePreviewPlayer({
   const [decodedSize, setDecodedSize] = useState('');
   const [displaySize, setDisplaySize] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const sessionRef = useRef(0);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const peerIdRef = useRef('');
@@ -164,9 +166,11 @@ export function usePreviewPlayer({
 
   const hlsReady = active?.hlsReady ?? false;
   const flvReady = active?.flvReady ?? false;
+  const mjpegReady = active?.mjpegReady ?? false;
   const webrtcReady = active?.webrtcReady ?? false;
   const hlsSupported = active?.hlsSupported ?? false;
   const flvSupported = active?.flvSupported ?? false;
+  const mjpegSupported = active?.mjpegSupported ?? false;
   const webrtcSupported = webrtcReady;
   const webrtcEnabled = Boolean(webrtcConfig?.enabled);
   const streamRunning = active?.state === 'running';
@@ -174,9 +178,11 @@ export function usePreviewPlayer({
     webrtcConfigLoaded && webrtcEnabled && webrtcSupported;
   const hlsModeEnabled = hlsSupported && streamRunning;
   const flvModeEnabled = flvSupported && streamRunning;
+  const mjpegModeEnabled = mjpegSupported && streamRunning;
   const webrtcPlaybackReady = webrtcModeEnabled && webrtcReady;
   const hlsPlaybackReady = hlsModeEnabled && hlsReady;
   const flvPlaybackReady = flvModeEnabled && flvReady;
+  const mjpegPlaybackReady = mjpegModeEnabled && mjpegReady;
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,
@@ -237,11 +243,13 @@ export function usePreviewPlayer({
     const selectedModeEnabled =
       (mode === 'webrtc' && webrtcModeEnabled) ||
       (mode === 'hls' && hlsModeEnabled) ||
-      (mode === 'flv' && flvModeEnabled);
+      (mode === 'flv' && flvModeEnabled) ||
+      (mode === 'mjpeg' && mjpegModeEnabled);
     const nextReadyMode =
       webrtcPlaybackReady ? 'webrtc' :
       flvPlaybackReady ? 'flv' :
       hlsPlaybackReady ? 'hls' :
+      mjpegPlaybackReady ? 'mjpeg' :
       null;
 
     if (modeSelectionRef.current === 'manual') {
@@ -265,6 +273,8 @@ export function usePreviewPlayer({
     flvPlaybackReady,
     hlsModeEnabled,
     hlsPlaybackReady,
+    mjpegModeEnabled,
+    mjpegPlaybackReady,
     mode,
     setMode,
     webrtcModeEnabled,
@@ -273,6 +283,7 @@ export function usePreviewPlayer({
 
   useEffect(() => {
     const video = videoRef.current;
+    const image = imageRef.current;
     const sessionId = sessionRef.current + 1;
     sessionRef.current = sessionId;
     let disposed = false;
@@ -296,13 +307,24 @@ export function usePreviewPlayer({
       }
     };
     const updateDisplaySize = () => {
-      if (!video) {
+      const element = mode === 'mjpeg' ? image : video;
+      if (!element) {
         return;
       }
-      const rect = video.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         setDisplaySize(`${Math.round(rect.width)}x${Math.round(rect.height)}`);
       }
+    };
+    const resetImageElement = () => {
+      if (!image) {
+        return;
+      }
+      image.removeAttribute('src');
+      image.onload = null;
+      image.onerror = null;
+      setDecodedSize('');
+      setDisplaySize('');
     };
     const resetVideoElement = () => {
       if (!video) {
@@ -361,6 +383,7 @@ export function usePreviewPlayer({
       }
       if (sessionRef.current === sessionId) {
         resetVideoElement();
+        resetImageElement();
         setConnected(false);
       }
       sessionHls = null;
@@ -373,6 +396,7 @@ export function usePreviewPlayer({
     destroyFlv(flvRef.current);
     closePeer(peerRef.current, peerIdRef.current);
     resetVideoElement();
+    resetImageElement();
     setSessionConnected(false);
 
     if (!enabled) {
@@ -380,6 +404,36 @@ export function usePreviewPlayer({
       return cleanupSession;
     }
     if (!video) {
+      if (mode === 'mjpeg' && image) {
+        if (!mjpegModeEnabled) {
+          setSessionPreviewState('MJPEG 码流不可用');
+          return cleanupSession;
+        }
+        if (!mjpegReady) {
+          setSessionPreviewState('正在等待 MJPEG 首帧');
+          return cleanupSession;
+        }
+        image.onload = () => {
+          if (isCurrentSession()) {
+            setSessionConnected(true);
+            setSessionPreviewState('MJPEG 已连接');
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              setDecodedSize(`${image.naturalWidth}x${image.naturalHeight}`);
+            }
+            updateDisplaySize();
+          }
+        };
+        image.onerror = () => {
+          setSessionConnected(false);
+          setSessionPreviewState('MJPEG 播放失败');
+        };
+        const baseMjpegUrl = mjpegStreamUrl(stream);
+        const mjpegUrl =
+          `${baseMjpegUrl}${baseMjpegUrl.includes('?') ? '&' : '?'}session=${sessionId}`;
+        setSessionPreviewState('正在拉取 MJPEG 码流');
+        image.src = mjpegUrl;
+        return cleanupSession;
+      }
       setSessionPreviewState('视频预览器不可用');
       return cleanupSession;
     }
@@ -695,6 +749,8 @@ export function usePreviewPlayer({
     flvReady,
     hlsModeEnabled,
     hlsReady,
+    mjpegModeEnabled,
+    mjpegReady,
     mode,
     stream,
     webrtcConfig,
@@ -712,6 +768,10 @@ export function usePreviewPlayer({
     flvSupported,
     hlsPlaybackEnabled: hlsPlaybackReady,
     hlsSupported,
+    imageRef,
+    isMjpegMode: mode === 'mjpeg',
+    mjpegPlaybackEnabled: mjpegPlaybackReady,
+    mjpegSupported,
     previewState,
     restartPreview,
     streamRunning,

@@ -34,6 +34,10 @@ export function VideoPreview({
     flvPlaybackEnabled,
     flvSupported,
     hlsSupported,
+    imageRef,
+    isMjpegMode,
+    mjpegPlaybackEnabled,
+    mjpegSupported,
     previewState,
     restartPreview,
     streamRunning,
@@ -73,7 +77,9 @@ export function VideoPreview({
         ? `${streamLabel} / HLS`
         : mode === 'flv'
           ? `${streamLabel} / HTTP-FLV`
-          : `${streamLabel} / WebRTC`;
+          : mode === 'mjpeg'
+            ? `${streamLabel} / MJPEG`
+            : `${streamLabel} / WebRTC`;
   const protocolLabel = previewModeLabels[mode];
   const streamSummary = (name: StreamName) => {
     const item = statuses.find((status) => status.stream === name);
@@ -139,6 +145,15 @@ export function VideoPreview({
           >
             HTTP-FLV
           </button>
+          <button
+            type="button"
+            className={mode === 'mjpeg' ? 'active' : ''}
+            disabled={!mjpegSupported || !mjpegPlaybackEnabled}
+            title={!mjpegSupported ? '当前编码不支持 MJPEG 预览' : undefined}
+            onClick={() => switchMode('mjpeg')}
+          >
+            MJPEG
+          </button>
           {onSnapshot && (
             <button
               type="button"
@@ -159,6 +174,8 @@ export function VideoPreview({
             <strong>预览已暂停</strong>
             <span>正在应用视频参数</span>
           </div>
+        ) : isMjpegMode ? (
+          <img ref={imageRef} className="video-element" alt="" />
         ) : (
           <video ref={videoRef} className="video-element" autoPlay muted playsInline />
         )}

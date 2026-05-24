@@ -382,3 +382,8 @@ export function flvStreamUrl(stream: string): string {
   const query = authQuery();
   return `/api/flv/${stream}.flv${query ? `?${query}` : ''}`;
 }
+
+export function mjpegStreamUrl(stream: string): string {
+  const query = authQuery();
+  return `/api/mjpeg/${stream}.mjpg${query ? `?${query}` : ''}`;
+}

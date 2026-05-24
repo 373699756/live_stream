@@ -439,8 +439,10 @@ export const mockStreamStatus: StreamStatus[] = [
     browserCodec: true,
     hlsSupported: true,
     flvSupported: true,
+    mjpegSupported: false,
     hlsReady: false,
     flvReady: false,
+    mjpegReady: false,
     webrtcReady: true,
   },
   {
@@ -452,10 +454,12 @@ export const mockStreamStatus: StreamStatus[] = [
     state: 'running',
     browserCodec: true,
     hlsSupported: true,
-    flvSupported: false,
+    flvSupported: true,
+    mjpegSupported: false,
     hlsReady: true,
-    flvReady: false,
-    webrtcReady: false,
+    flvReady: true,
+    mjpegReady: false,
+    webrtcReady: true,
   },
 ];
 

@@ -509,6 +509,12 @@ Media and live preview:
 - `GET /api/hls/sub/index.m3u8`
 - `GET /api/flv/main.flv`
 - `GET /api/flv/sub.flv`
+- `GET /api/mjpeg/main.mjpg`
+- `GET /api/mjpeg/sub.mjpg`
+
+`GET /api/status/streams` exposes runtime playback readiness per stream:
+`browserCodec`, `hlsSupported`, `hlsReady`, `flvSupported`, `flvReady`,
+`mjpegSupported`, `mjpegReady`, and `webrtcReady`.
 
 System and maintenance:
 

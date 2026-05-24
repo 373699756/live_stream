@@ -38,7 +38,7 @@
 
 ## Commit
 
-Pending.
+`d7c9947 chore: vendor HiSilicon SVP AI resources`
 
 ## Deviations
 

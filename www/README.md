@@ -65,6 +65,8 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `GET /api/hls/sub/index.m3u8`
 - `GET /api/flv/main.flv`
 - `GET /api/flv/sub.flv`
+- `GET /api/mjpeg/main.mjpg`
+- `GET /api/mjpeg/sub.mjpg`
 - `GET /api/operations`
 - `GET /api/operations/export`
 - `POST /api/webrtc/peers`
@@ -83,11 +85,14 @@ The web live preview now exposes four modes:
 - `WebRTC` for low-latency preview
 - `HLS` for browser-compatible segmented playback
 - `HTTP-FLV` for continuous live playback on MSE-capable browsers
-- `snapshot` as the fallback path
+- `MJPEG` for multipart JPEG streams
+- `snapshot` for still-image capture
 
-WebRTC, RTSP, HLS, and HTTP-FLV are video-only paths. HLS and HTTP-FLV support
-`H.264` and `H.265` video-only streams; `H.265` playback still depends on the
-browser and hardware decoder exposed to `hls.js` or `mpegts.js`.
+WebRTC, RTSP, HLS, HTTP-FLV, and MJPEG are video-only paths. HLS, HTTP-FLV, and
+WebRTC support `H.264` and `H.265` video-only streams; `H.265` playback still
+depends on the browser and hardware decoder exposed to `hls.js`, `mpegts.js`,
+or the WebRTC implementation. MJPEG preview uses `/api/mjpeg/{stream}.mjpg`
+when the active stream codec is `mjpeg`.
 
 `GET /api/media/capabilities` includes `streams.<name>.available` so the UI can
 hide or disable stream configuration that the current firmware does not start.
@@ -95,7 +100,8 @@ It also exposes `streams.<name>.smart_codec`; when enabled, video config
 `streams.<name>.smart_codec=true` is saved and applied as HiSilicon SmartP GOP
 mode for H.264/H.265 streams.
 `GET /api/status/streams` is the runtime source of truth for stream access
-links.
+links, including `hlsSupported/hlsReady`, `flvSupported/flvReady`,
+`mjpegSupported/mjpegReady`, and `webrtcReady`.
 
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,

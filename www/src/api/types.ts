@@ -210,8 +210,10 @@ export interface StreamStatus {
   browserCodec?: boolean;
   hlsSupported?: boolean;
   flvSupported?: boolean;
+  mjpegSupported?: boolean;
   hlsReady?: boolean;
   flvReady?: boolean;
+  mjpegReady?: boolean;
   webrtcReady?: boolean;
 }
 

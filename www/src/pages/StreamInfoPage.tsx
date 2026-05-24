@@ -1,6 +1,7 @@
 import {
   flvStreamUrl,
   hlsPlaylistUrl,
+  mjpegStreamUrl,
   snapshotUrl,
 } from '../api/client';
 import type { RtspConfig, StreamName } from '../api/types';
@@ -28,7 +29,7 @@ export function StreamInfoPage() {
         <div className="page-heading">
           <div>
             <h2>访问地址</h2>
-            <p>RTSP、HLS、HTTP-FLV 和抓图接口地址</p>
+            <p>RTSP、HLS、HTTP-FLV、MJPEG 和抓图接口地址</p>
           </div>
         </div>
         {error && <div className="status-note error-note">{error}</div>}
@@ -54,6 +55,14 @@ export function StreamInfoPage() {
           <div>
             <strong>子码流 HTTP-FLV</strong>
             <code>{flvStreamUrl('sub')}</code>
+          </div>
+          <div>
+            <strong>主码流 MJPEG</strong>
+            <code>{mjpegStreamUrl('main')}</code>
+          </div>
+          <div>
+            <strong>子码流 MJPEG</strong>
+            <code>{mjpegStreamUrl('sub')}</code>
           </div>
           <div>
             <strong>主码流抓图</strong>
