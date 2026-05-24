@@ -132,6 +132,16 @@ bool IsSupportedCnnNode(const SVP_NNIE_NODE_S &node) {
            node.unShape.stWhc.u32Height != 0 &&
            node.unShape.stWhc.u32Chn != 0;
 }
+
+bool CheckedFrameRange(uint32_t stride, uint32_t width, uint32_t height,
+                       uint32_t available_size) {
+    if (stride < width || width == 0 || height == 0) {
+        return false;
+    }
+    const uint64_t end =
+        static_cast<uint64_t>(stride) * (height - 1U) + width;
+    return end <= available_size;
+}
 #endif
 
 bool IsFiniteConfidence(float value) {
@@ -301,7 +311,7 @@ public:
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
         Stop();
-        if (!LoadModel(config.model_path)) {
+        if (!LoadModel(config)) {
             return false;
         }
         model_path_ = config.model_path;
@@ -335,6 +345,9 @@ public:
         if (!model_loaded_) {
             return result;
         }
+        if (!FillInputBlob(frame, config)) {
+            return result;
+        }
         // Model resources are ready. Forward/input/output blob wiring is the next
         // NNIE step, so this backend does not report detections yet.
 #endif
@@ -343,7 +356,8 @@ public:
 
 private:
 #if LIVE_STREAM_HAS_HISI_NNIE
-    bool LoadModel(const std::string &model_path) {
+    bool LoadModel(const AiModelConfig &config) {
+        const std::string &model_path = config.model_path;
         const std::string model_data = infra::File::ReadAll(model_path);
         if (model_data.empty() ||
             model_data.size() > static_cast<size_t>(0xffffffffU)) {
@@ -384,6 +398,10 @@ private:
 
         model_loaded_ = true;
         if (!PrepareForwardWorkspace()) {
+            UnloadModel();
+            return false;
+        }
+        if (!ValidateInputConfig(config)) {
             UnloadModel();
             return false;
         }
@@ -511,6 +529,27 @@ private:
         return true;
     }
 
+    bool ValidateInputConfig(const AiModelConfig &config) const {
+        const SVP_SRC_BLOB_S &src = seg_data_[0].src[0];
+        if (src.enType != SVP_BLOB_TYPE_YVU420SP ||
+            src.unShape.stWhc.u32Chn != 3 ||
+            src.unShape.stWhc.u32Width != config.input_width ||
+            src.unShape.stWhc.u32Height != config.input_height) {
+            INFRA_LOG_ERROR(
+                "ai",
+                "Unsupported NNIE input: type=%d chn=%u model=%ux%u "
+                "config=%ux%u",
+                static_cast<int>(src.enType),
+                static_cast<unsigned int>(src.unShape.stWhc.u32Chn),
+                static_cast<unsigned int>(src.unShape.stWhc.u32Width),
+                static_cast<unsigned int>(src.unShape.stWhc.u32Height),
+                static_cast<unsigned int>(config.input_width),
+                static_cast<unsigned int>(config.input_height));
+            return false;
+        }
+        return true;
+    }
+
     bool FillForwardInfo() {
         std::memset(seg_data_, 0, sizeof(seg_data_));
         std::memset(forward_ctrl_, 0, sizeof(forward_ctrl_));
@@ -632,6 +671,59 @@ private:
         std::memset(seg_data_, 0, sizeof(seg_data_));
         std::memset(forward_ctrl_, 0, sizeof(forward_ctrl_));
         tmp_buf_size_ = 0;
+    }
+
+    bool FillInputBlob(const hisisdk::YuvFrame &frame,
+                       const AiModelConfig &config) {
+        SVP_SRC_BLOB_S &src = seg_data_[0].src[0];
+        if (src.enType != SVP_BLOB_TYPE_YVU420SP ||
+            frame.buffer == nullptr || frame.buffer->data == nullptr ||
+            frame.offset > frame.buffer->size ||
+            frame.size > frame.buffer->size - frame.offset ||
+            frame.width != config.input_width ||
+            frame.height != config.input_height ||
+            frame.stride_y < config.input_width ||
+            frame.stride_uv < config.input_width) {
+            return false;
+        }
+
+        const uint32_t available_size =
+            std::min(frame.size, frame.buffer->size - frame.offset);
+        const uint8_t *frame_data = frame.buffer->data + frame.offset;
+        const uint32_t y_size = frame.stride_y * frame.height;
+        if (y_size > available_size) {
+            return false;
+        }
+        const uint32_t uv_available_size = available_size - y_size;
+        if (!CheckedFrameRange(frame.stride_y, config.input_width,
+                               config.input_height, y_size) ||
+            !CheckedFrameRange(frame.stride_uv, config.input_width,
+                               config.input_height / 2, uv_available_size)) {
+            return false;
+        }
+
+        uint8_t *dst = static_cast<uint8_t *>(VirAddrToPointer(src.u64VirAddr));
+        if (dst == nullptr || src.u32Stride < config.input_width) {
+            return false;
+        }
+        const uint8_t *src_y = frame_data;
+        const uint8_t *src_uv = frame_data + y_size;
+        const uint32_t total_rows = config.input_height * 3U / 2U;
+        for (uint32_t row = 0; row < config.input_height; ++row) {
+            std::memcpy(dst + row * src.u32Stride,
+                        src_y + row * frame.stride_y,
+                        config.input_width);
+        }
+        for (uint32_t row = 0; row < config.input_height / 2U; ++row) {
+            std::memcpy(dst + (config.input_height + row) * src.u32Stride,
+                        src_uv + row * frame.stride_uv,
+                        config.input_width);
+        }
+
+        const HI_U32 flush_size = total_rows * src.u32Stride;
+        const HI_S32 ret = HI_MPI_SYS_MmzFlushCache(src.u64PhyAddr, dst,
+                                                    flush_size);
+        return ret == HI_SUCCESS;
     }
 
     SVP_SRC_MEM_INFO_S model_buf_{};
