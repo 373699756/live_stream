@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './context/AuthContext';
+import { AiAlertsPage } from './pages/AiAlertsPage';
 import { ImageConfigPage } from './pages/ImageConfigPage';
 import { LiveViewPage } from './pages/LiveViewPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
@@ -18,6 +19,8 @@ function renderPage(page: PageId) {
   switch (page) {
     case 'live':
       return <LiveViewPage />;
+    case 'aiAlerts':
+      return <AiAlertsPage />;
     case 'streamInfo':
       return <StreamInfoPage />;
     case 'video':

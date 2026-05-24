@@ -9,6 +9,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'live', label: '实时预览', group: 'Live' },
+  { id: 'aiAlerts', label: 'AI 告警', group: 'Live' },
   { id: 'video', label: '视频参数', group: 'Setup' },
   { id: 'snapshot', label: '抓图参数', group: 'Setup' },
   { id: 'image', label: '图像参数', group: 'Setup' },

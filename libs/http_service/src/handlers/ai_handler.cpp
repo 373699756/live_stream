@@ -5,6 +5,10 @@
 #include "ai_service.h"
 #include "config_service.h"
 
+#include <cctype>
+#include <string>
+#include <vector>
+
 namespace live_stream {
 namespace {
 
@@ -83,6 +87,45 @@ ConfigJson AiResultToJson(const AiInferenceResult &result) {
     return root;
 }
 
+bool IsValidAlertId(const std::string &id) {
+    if (id.empty() || id.size() > 64) {
+        return false;
+    }
+    for (const char c : id) {
+        if (!std::isdigit(static_cast<unsigned char>(c)) && c != '-') {
+            return false;
+        }
+    }
+    return true;
+}
+
+ConfigJson AiAlertToJson(const AiAlertRecord &alert) {
+    ConfigJson root = ConfigJson::object();
+    root["id"] = alert.id;
+    root["timestamp_ms"] = alert.timestamp_ms;
+    root["stream"] = StreamIdToJsonString(alert.stream_id);
+    root["task"] = AiTaskToJsonString(alert.task);
+    root["image_url"] = "/api/ai/alerts/" + alert.id + "/image";
+    root["detection_count"] = alert.detection_count;
+    root["confidence_max"] = alert.max_confidence;
+    ConfigJson detections = ConfigJson::array();
+    for (const AiDetection &detection : alert.detections) {
+        detections.push_back(AiDetectionToJson(detection));
+    }
+    root["detections"] = detections;
+    return root;
+}
+
+ConfigJson AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
+    ConfigJson root = ConfigJson::object();
+    ConfigJson items = ConfigJson::array();
+    for (const AiAlertRecord &alert : alerts) {
+        items.push_back(AiAlertToJson(alert));
+    }
+    root["items"] = items;
+    return root;
+}
+
 }  // namespace
 
 class AiHttpHandler : public IHttpHandler {
@@ -98,12 +141,26 @@ public:
         }
         router->AddExactRoute(HttpMethod::kGet, "/api/ai/status",
                               &AiHttpHandler::HandleStatusRoute, this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/ai/alerts",
+                              &AiHttpHandler::HandleAlertsRoute, this);
+        router->AddPrefixRoute(HttpMethod::kGet, "/api/ai/alerts/",
+                               &AiHttpHandler::HandleAlertImageRoute, this);
     }
 
 private:
     static HttpResponse HandleStatusRoute(void *user,
                                           const HttpRequest &request) {
         return static_cast<AiHttpHandler *>(user)->HandleStatus(request);
+    }
+
+    static HttpResponse HandleAlertsRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<AiHttpHandler *>(user)->HandleAlerts(request);
+    }
+
+    static HttpResponse HandleAlertImageRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<AiHttpHandler *>(user)->HandleAlertImage(request);
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
@@ -130,6 +187,55 @@ private:
         root["last_result"] =
             AiResultToJson(ai_service_->GetLastResult());
         return JsonResponse(200, root);
+    }
+
+    HttpResponse HandleAlerts(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        if (ai_service_ == nullptr) {
+            if (!IsAiConfigEnabled(config_service_)) {
+                return JsonResponse(200, AiAlertListToJson({}));
+            }
+            return StatusResponse(503, "AI service not running");
+        }
+        return JsonResponse(200, AiAlertListToJson(ai_service_->ListAlerts()));
+    }
+
+    HttpResponse HandleAlertImage(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        if (ai_service_ == nullptr) {
+            return StatusResponse(503, "AI service not running");
+        }
+        const std::string prefix = "/api/ai/alerts/";
+        const std::string suffix = PathSuffix(request.path, prefix);
+        const std::string marker = "/image";
+        if (suffix.size() <= marker.size() ||
+            suffix.substr(suffix.size() - marker.size()) != marker) {
+            return StatusResponse(404, "Not Found");
+        }
+        const std::string id = suffix.substr(0, suffix.size() - marker.size());
+        if (!IsValidAlertId(id)) {
+            return StatusResponse(400, "Invalid alert id");
+        }
+        const std::string image = ai_service_->ReadAlertImage(id);
+        if (image.empty()) {
+            return StatusResponse(404, "AI alert image not found");
+        }
+        HttpResponse response;
+        response.status_code = 200;
+        response.headers["Content-Type"] = "image/jpeg";
+        response.headers["Cache-Control"] = "no-cache";
+        response.body = image;
+        return response;
     }
 
     HttpAccess *access_ = nullptr;

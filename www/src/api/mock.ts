@@ -1,4 +1,6 @@
 import type {
+  AiAlertList,
+  AiStatus,
   ImageConfig,
   ImageStrategyStatus,
   NetworkConfig,
@@ -138,6 +140,112 @@ export const mockMediaCapabilities: MediaCapabilities = {
     },
     orientation: { mirror: true, flip: true },
   },
+};
+
+// ---------------------------------------------------------------------------
+// Domain: AI  (api/ai.ts)
+// ---------------------------------------------------------------------------
+
+export const mockAiStatus: AiStatus = {
+  config: {
+    enabled: true,
+    backend: 'host_stub',
+    task: 'object_detection',
+    stream: 'main',
+    model_path: '/mnt/app/models/person_vehicle.wk',
+    input_width: 416,
+    input_height: 416,
+    inference_interval_ms: 200,
+    confidence_threshold: 0.5,
+    max_results: 16,
+  },
+  stats: {
+    enabled: true,
+    backend_available: true,
+    received_frames: 2841,
+    skipped_frames: 3,
+    inference_count: 942,
+    inference_failed_count: 1,
+    dropped_tasks: 0,
+    active_results: 2,
+  },
+  last_result: {
+    success: true,
+    stream: 'main',
+    sequence: 942,
+    pts_us: 190214000,
+    detections: [
+      {
+        label: 'person',
+        confidence: 0.91,
+        x: 0.18,
+        y: 0.24,
+        width: 0.16,
+        height: 0.42,
+      },
+      {
+        label: 'vehicle',
+        confidence: 0.78,
+        x: 0.58,
+        y: 0.44,
+        width: 0.22,
+        height: 0.18,
+      },
+    ],
+  },
+};
+
+export const mockAiAlerts: AiAlertList = {
+  items: [
+    {
+      id: 'mock-3',
+      timestamp_ms: Date.now() - 45_000,
+      stream: 'main',
+      task: 'object_detection',
+      image_url: '/api/snapshot/main.jpg',
+      detection_count: 2,
+      confidence_max: 0.91,
+      detections: mockAiStatus.last_result.detections,
+    },
+    {
+      id: 'mock-2',
+      timestamp_ms: Date.now() - 180_000,
+      stream: 'main',
+      task: 'object_detection',
+      image_url: '/api/snapshot/main.jpg',
+      detection_count: 1,
+      confidence_max: 0.82,
+      detections: [
+        {
+          label: 'person',
+          confidence: 0.82,
+          x: 0.42,
+          y: 0.22,
+          width: 0.12,
+          height: 0.36,
+        },
+      ],
+    },
+    {
+      id: 'mock-1',
+      timestamp_ms: Date.now() - 360_000,
+      stream: 'sub',
+      task: 'motion_classification',
+      image_url: '/api/snapshot/sub.jpg',
+      detection_count: 1,
+      confidence_max: 0.69,
+      detections: [
+        {
+          label: 'motion',
+          confidence: 0.69,
+          x: 0.08,
+          y: 0.16,
+          width: 0.3,
+          height: 0.22,
+        },
+      ],
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------

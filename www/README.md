@@ -49,6 +49,9 @@ The web UI does not parse or own device SDK settings. It calls HTTP APIs:
 - `GET/PUT /api/config/network`
 - `GET/PUT /api/config/snapshot`
 - `GET /api/media/capabilities`
+- `GET /api/ai/status`
+- `GET /api/ai/alerts`
+- `GET /api/ai/alerts/{id}/image`
 - `GET /api/system/status`
 - `POST /api/upgrade/upload?filename=<name>`
 - `GET /api/upgrade/status`
@@ -98,6 +101,10 @@ Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,
 AE maximum exposure time, DRC backlight strength, color/black-white mode, and
 the automatic strategy modes `balanced`, `low_noise`, and `detail`.
+
+AI is an optional device capability and is disabled by default. The current Web
+alarm surface is the AI alert image waterfall backed by `/api/ai/alerts`; it is
+not recording, playback, or long-term storage.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

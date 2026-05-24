@@ -13,6 +13,7 @@ namespace live_stream {
 
 class IConfigService;
 class IMediaService;
+class ISnapshotView;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -70,12 +71,25 @@ struct AiServiceStats {
     uint32_t active_results = 0;
 };
 
+struct AiAlertRecord {
+    std::string id;
+    int64_t timestamp_ms = 0;
+    StreamId stream_id = StreamId::kMain;
+    AiTask task = AiTask::kObjectDetection;
+    uint32_t detection_count = 0;
+    float max_confidence = 0.0f;
+    std::vector<AiDetection> detections;
+};
+
 struct AiServiceOptions {
     AiModelConfig default_config;
     IConfigService* config_service = nullptr;
     IMediaService* media_service = nullptr;
+    ISnapshotView* snapshot_service = nullptr;
     MediaChannels media_channels;
     hisisdk::IHisiSdk* sdk = nullptr;
+    std::string alert_image_dir = "build/runtime/ai_alerts";
+    uint32_t max_alert_records = 100;
 };
 
 // IAiView is the narrow interface consumed by HttpService (and other
@@ -86,6 +100,8 @@ public:
     virtual AiModelConfig GetConfig() const = 0;
     virtual AiServiceStats GetStats() const = 0;
     virtual AiInferenceResult GetLastResult() const = 0;
+    virtual std::vector<AiAlertRecord> ListAlerts() const = 0;
+    virtual std::string ReadAlertImage(const std::string& id) const = 0;
 };
 
 class AiService : public IAiView {
@@ -100,6 +116,8 @@ public:
     AiModelConfig GetConfig() const override;
     AiServiceStats GetStats() const override;
     AiInferenceResult GetLastResult() const override;
+    std::vector<AiAlertRecord> ListAlerts() const override;
+    std::string ReadAlertImage(const std::string& id) const override;
 
     static const char* StaticName();
 

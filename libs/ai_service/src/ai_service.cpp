@@ -1,5 +1,6 @@
 #include "ai_service.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <mutex>
@@ -9,10 +10,12 @@
 #include "config_service.h"
 #include "hisisdk/hisi_sdk.h"
 #include "infra/executor.h"
+#include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "json_utils.h"
 #include "media_service.h"
+#include "snapshot_service.h"
 
 #if defined(LIVE_STREAM_ENABLE_HISI_MPP) && \
     __has_include("mpi_nnie.h") && __has_include("hi_comm_svp.h")
@@ -29,6 +32,7 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
+constexpr int64_t kMinAlertIntervalMs = 1000;
 
 bool IsFiniteConfidence(float value) {
     return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
@@ -252,11 +256,39 @@ hisisdk::Size YuvSizeForStream(const MediaChannels &channels,
     return hisisdk::Size{size.width, size.height};
 }
 
+bool HasAlertDetections(const AiInferenceResult &result) {
+    return result.success && !result.detections.empty();
+}
+
+float MaxConfidence(const std::vector<AiDetection> &detections) {
+    float max_confidence = 0.0f;
+    for (const AiDetection &detection : detections) {
+        if (detection.confidence > max_confidence) {
+            max_confidence = detection.confidence;
+        }
+    }
+    return max_confidence;
+}
+
+std::string AlertImagePath(const std::string &dir, const std::string &id) {
+    return infra::Path::Join(dir, id + ".jpg");
+}
+
+bool LooksLikeJpeg(const SnapshotFrame &frame) {
+    const uint8_t *data = frame.PayloadData();
+    return data != nullptr && frame.size >= 2 && data[0] == 0xff &&
+           data[1] == 0xd8;
+}
+
 }  // namespace
 
 struct AiService::Impl final {
     explicit Impl(const AiServiceOptions &service_options)
-        : options(service_options), config(service_options.default_config) {}
+        : options(service_options), config(service_options.default_config) {
+        if (options.max_alert_records == 0) {
+            options.max_alert_records = 100;
+        }
+    }
 
     bool Prepare() {
         std::lock_guard<std::mutex> lock(mutex);
@@ -421,6 +453,78 @@ struct AiService::Impl final {
             stats.active_results =
                 static_cast<uint32_t>(last_result.detections.size());
         }
+        MaybeSaveAlert(result, run_config);
+    }
+
+    void MaybeSaveAlert(const AiInferenceResult &result,
+                        const AiModelConfig &run_config) {
+        if (!HasAlertDetections(result) ||
+            options.snapshot_service == nullptr) {
+            return;
+        }
+        const int64_t now_ms = infra::Time::SystemTimeMillis();
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started || now_ms - last_alert_ms < kMinAlertIntervalMs) {
+                return;
+            }
+            last_alert_ms = now_ms;
+        }
+
+        CaptureRequest request;
+        request.stream_id = run_config.stream_id;
+        request.include_thumbnail = false;
+        SnapshotFrame frame = options.snapshot_service->Capture(request);
+        if (!LooksLikeJpeg(frame)) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++stats.dropped_tasks;
+            return;
+        }
+
+        if (!infra::Path::MakeDirs(options.alert_image_dir)) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++stats.dropped_tasks;
+            return;
+        }
+
+        const std::string id =
+            std::to_string(now_ms) + "-" + std::to_string(next_alert_id++);
+        const uint8_t *data = frame.PayloadData();
+        std::string image;
+        image.assign(reinterpret_cast<const char *>(data), frame.size);
+        if (!infra::File::WriteAll(AlertImagePath(options.alert_image_dir, id),
+                                   image)) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++stats.dropped_tasks;
+            return;
+        }
+
+        AiAlertRecord alert;
+        alert.id = id;
+        alert.timestamp_ms = now_ms;
+        alert.stream_id = result.stream_id;
+        alert.task = run_config.task;
+        alert.detection_count =
+            static_cast<uint32_t>(result.detections.size());
+        alert.max_confidence = MaxConfidence(result.detections);
+        alert.detections = result.detections;
+        AddAlert(alert);
+    }
+
+    void AddAlert(const AiAlertRecord &alert) {
+        std::string expired_image_path;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            alerts.push_back(alert);
+            while (alerts.size() > options.max_alert_records) {
+                expired_image_path =
+                    AlertImagePath(options.alert_image_dir, alerts.front().id);
+                alerts.erase(alerts.begin());
+            }
+        }
+        if (!expired_image_path.empty()) {
+            static_cast<void>(infra::File::Remove(expired_image_path));
+        }
     }
 
     AiServiceOptions options;
@@ -429,6 +533,9 @@ struct AiService::Impl final {
     std::unique_ptr<infra::Executor> executor;
     AiInferenceResult last_result;
     AiServiceStats stats;
+    std::vector<AiAlertRecord> alerts;
+    uint64_t next_alert_id = 1;
+    int64_t last_alert_ms = 0;
     bool config_attached = false;
     bool started = false;
     mutable std::mutex mutex;
@@ -478,6 +585,33 @@ AiInferenceResult AiService::GetLastResult() const {
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->last_result;
+}
+
+std::vector<AiAlertRecord> AiService::ListAlerts() const {
+    if (!impl_) {
+        return std::vector<AiAlertRecord>();
+    }
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    std::vector<AiAlertRecord> alerts = impl_->alerts;
+    std::reverse(alerts.begin(), alerts.end());
+    return alerts;
+}
+
+std::string AiService::ReadAlertImage(const std::string &id) const {
+    if (!impl_ || id.empty()) {
+        return std::string();
+    }
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        const auto iter = std::find_if(
+            impl_->alerts.begin(), impl_->alerts.end(),
+            [&id](const AiAlertRecord &alert) { return alert.id == id; });
+        if (iter == impl_->alerts.end()) {
+            return std::string();
+        }
+    }
+    return infra::File::ReadAll(AlertImagePath(impl_->options.alert_image_dir,
+                                               id));
 }
 
 const char *AiService::StaticName() { return "ai_service"; }

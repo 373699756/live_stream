@@ -105,9 +105,19 @@ Runtime startup usage:
 
 - `MediaSubsystem` reads `ai.enabled` and starts `AiService` only when true.
 
-Open point:
+Runtime API:
 
-- Decide whether AI is a supported product feature or optional experimental capability. If optional, disabled/unavailable API behavior should be explicit.
+- `GET /api/ai/status` returns `config`, `stats`, and `last_result`.
+- `GET /api/ai/alerts` returns `{ "items": [...] }` for recent AI alert
+  snapshots.
+- `GET /api/ai/alerts/{id}/image` returns the JPEG image for one alert.
+
+Current product status:
+
+- AI is an optional experimental capability and is disabled by default.
+- Web alarm display is currently an AI snapshot waterfall only. It does not
+  imply recording, playback, long-term storage, or `alarm_service` event
+  integration.
 
 ### `image`
 

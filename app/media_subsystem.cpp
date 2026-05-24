@@ -50,10 +50,23 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
     }
     const MediaChannels media_channels = media_->GetChannels();
 
+    SnapshotServiceOptions snapshot_options;
+    snapshot_options.config_service = config;
+    snapshot_options.media_service = media_.get();
+    snapshot_options.media_channels = media_channels;
+    snapshot_options.sdk = &sdk;
+    snapshot_.reset(new SnapshotService(snapshot_options));
+    if (!snapshot_ || !snapshot_->Start()) {
+        INFRA_LOG_ERROR("app", "Start snapshot service failed");
+        Stop();
+        return false;
+    }
+
     if (ai_enabled) {
         AiServiceOptions ai_options;
         ai_options.config_service = config;
         ai_options.media_service = media_.get();
+        ai_options.snapshot_service = snapshot_.get();
         ai_options.media_channels = media_channels;
         ai_options.sdk = &sdk;
         ai_.reset(new AiService(ai_options));
@@ -79,30 +92,18 @@ bool MediaSubsystem::Start(CoreServices &core_services) {
         return false;
     }
 
-    SnapshotServiceOptions snapshot_options;
-    snapshot_options.config_service = config;
-    snapshot_options.media_service = media_.get();
-    snapshot_options.media_channels = media_channels;
-    snapshot_options.sdk = &sdk;
-    snapshot_.reset(new SnapshotService(snapshot_options));
-    if (!snapshot_ || !snapshot_->Start()) {
-        INFRA_LOG_ERROR("app", "Start snapshot service failed");
-        Stop();
-        return false;
-    }
-
     started_ = true;
     return true;
 }
 
 void MediaSubsystem::Stop() {
-    if (snapshot_) {
-        snapshot_->Stop();
-        snapshot_.reset();
-    }
     if (ai_) {
         ai_->Stop();
         ai_.reset();
+    }
+    if (snapshot_) {
+        snapshot_->Stop();
+        snapshot_.reset();
     }
     if (overlay_) {
         overlay_->Stop();

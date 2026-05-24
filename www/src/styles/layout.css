@@ -256,6 +256,10 @@
   align-items: start;
 }
 
+.ai-page-grid {
+  grid-template-columns: 1fr;
+}
+
 .wide-panel {
   grid-column: 1 / -1;
 }
@@ -667,6 +671,105 @@
   font-size: 12px;
 }
 
+.ai-status-header,
+.ai-waterfall-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ai-status-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ai-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ai-waterfall-header span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ai-waterfall {
+  column-count: 4;
+  column-gap: 12px;
+}
+
+.ai-alert-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 12px;
+  overflow: hidden;
+  border: 1px solid #dfe6f0;
+  border-radius: 4px;
+  background: #fafbfe;
+  break-inside: avoid;
+}
+
+.ai-alert-image-wrap {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.ai-alert-image-wrap img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.ai-alert-body {
+  padding: 10px;
+}
+
+.ai-alert-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-alert-title strong {
+  min-width: 0;
+  color: #243044;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ai-alert-title span {
+  flex: 0 0 auto;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-alert-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty-state {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  color: var(--muted);
+  border: 1px dashed #ccd6e3;
+  border-radius: 4px;
+  background: #fafbfe;
+}
+
 .upgrade-grid {
   display: grid;
   grid-template-columns: minmax(360px, 1.1fr) minmax(340px, 0.9fr);
@@ -773,7 +876,8 @@
   .live-grid,
   .overlay-grid,
   .system-grid,
-  .stream-info-grid {
+  .stream-info-grid,
+  .ai-page-grid {
     grid-template-columns: 1fr;
   }
 
@@ -802,5 +906,19 @@
   .image-status-strip,
   .image-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-waterfall {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 620px) {
+  .ai-waterfall {
+    column-count: 1;
   }
 }

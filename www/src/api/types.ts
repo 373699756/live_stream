@@ -215,6 +215,74 @@ export interface StreamStatus {
   webrtcReady?: boolean;
 }
 
+export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';
+export type AiTaskName =
+  | 'object_detection'
+  | 'face_detection'
+  | 'motion_classification';
+
+export interface AiModelConfig {
+  enabled: boolean;
+  backend: AiBackendName;
+  task: AiTaskName;
+  stream: StreamName;
+  model_path: string;
+  input_width: number;
+  input_height: number;
+  inference_interval_ms: number;
+  confidence_threshold: number;
+  max_results: number;
+}
+
+export interface AiDetection {
+  label: string;
+  confidence: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface AiServiceStats {
+  enabled: boolean;
+  backend_available: boolean;
+  received_frames: number;
+  skipped_frames: number;
+  inference_count: number;
+  inference_failed_count: number;
+  dropped_tasks: number;
+  active_results: number;
+}
+
+export interface AiInferenceResult {
+  success: boolean;
+  stream: StreamName;
+  sequence: number;
+  pts_us: number;
+  detections: AiDetection[];
+}
+
+export interface AiStatus {
+  config: AiModelConfig;
+  stats: AiServiceStats;
+  last_result: AiInferenceResult;
+}
+
+export interface AiAlertRecord {
+  id: string;
+  timestamp_ms: number;
+  stream: StreamName;
+  task: AiTaskName;
+  image_url: string;
+  detection_count: number;
+  confidence_max: number;
+  detections: AiDetection[];
+}
+
+export interface AiAlertList {
+  items: AiAlertRecord[];
+}
+
 export type UpgradeState =
   | 'idle'
   | 'validating'
