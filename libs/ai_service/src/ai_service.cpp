@@ -26,8 +26,11 @@
     __has_include("mpi_nnie.h") && __has_include("mpi_sys.h")
 #define LIVE_STREAM_HAS_HISI_NNIE 1
 extern "C" {
+#include "hi_comm_vb.h"
+#include "hi_comm_video.h"
 #include "mpi_nnie.h"
 #include "mpi_sys.h"
+#include "mpi_vgs.h"
 }
 #else
 #define LIVE_STREAM_HAS_HISI_NNIE 0
@@ -54,6 +57,7 @@ constexpr uint32_t kSsdTopK = 400;
 constexpr uint32_t kSsdKeepTopK = 200;
 constexpr int32_t kSsdQuantBase = 4096;
 constexpr float kSsdNmsThreshold = 0.3f;
+constexpr uint32_t kVgsFrameAlign = 32;
 
 constexpr std::array<uint32_t, kSsdLayerCount> kSsdPriorBoxWidth = {
     {38, 19, 10, 5, 3, 1}};
@@ -171,6 +175,16 @@ struct U8C3SamplePoint {
     uint32_t vu_offset = 0;
 };
 
+struct ScaledYvuFrame {
+    VIDEO_FRAME_INFO_S frame_info{};
+    HI_U64 phy_addr = 0;
+    HI_VOID *vir_addr = nullptr;
+    uint32_t size = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+};
+
 bool AddHiU32(HI_U32 value, HI_U32 *total) {
     if (total == nullptr ||
         static_cast<uint64_t>(*total) + value > kMaxHiU32) {
@@ -195,6 +209,13 @@ bool Align16(uint64_t value, HI_U32 *aligned) {
     const uint64_t aligned_value =
         ((value + kNnieAlign16 - 1) / kNnieAlign16) * kNnieAlign16;
     return ToHiU32(aligned_value, aligned);
+}
+
+uint32_t AlignUpU32(uint32_t value, uint32_t alignment) {
+    if (alignment == 0) {
+        return value;
+    }
+    return ((value + alignment - 1U) / alignment) * alignment;
 }
 
 HI_U32 BlobUnitSize(SVP_BLOB_TYPE_E type) {
@@ -260,6 +281,21 @@ bool CheckedFrameRange(uint32_t stride, uint32_t width, uint32_t height,
     const uint64_t end =
         static_cast<uint64_t>(stride) * (height - 1U) + width;
     return end <= available_size;
+}
+
+bool IsValidYvu420FrameRange(uint32_t stride_y, uint32_t stride_uv,
+                             uint32_t width, uint32_t height,
+                             uint32_t available_size) {
+    const uint64_t y_size = static_cast<uint64_t>(stride_y) * height;
+    if (y_size > available_size || y_size > kMaxHiU32) {
+        return false;
+    }
+    const uint32_t uv_available_size =
+        available_size - static_cast<uint32_t>(y_size);
+    return CheckedFrameRange(stride_y, width, height,
+                             static_cast<uint32_t>(y_size)) &&
+           CheckedFrameRange(stride_uv, width, height / 2U,
+                             uv_available_size);
 }
 
 bool BlobDataSize(const SVP_BLOB_S &blob, HI_U32 *size) {
@@ -1108,6 +1144,7 @@ private:
             HI_MPI_SYS_MmzFree(workspace_buf_.u64PhyAddr,
                                VirAddrToPointer(workspace_buf_.u64VirAddr));
         }
+        FreeScaledYvuFrame();
         std::memset(&workspace_buf_, 0, sizeof(workspace_buf_));
         std::memset(&tmp_buf_, 0, sizeof(tmp_buf_));
         std::memset(task_buf_sizes_, 0, sizeof(task_buf_sizes_));
@@ -1117,6 +1154,14 @@ private:
         tmp_buf_size_ = 0;
         ClearU8C3SampleMap();
         ClearSsdPostprocessCache();
+    }
+
+    void FreeScaledYvuFrame() {
+        if (scaled_yvu_frame_.phy_addr != 0 && scaled_yvu_frame_.vir_addr) {
+            HI_MPI_SYS_MmzFree(scaled_yvu_frame_.phy_addr,
+                               scaled_yvu_frame_.vir_addr);
+        }
+        scaled_yvu_frame_ = ScaledYvuFrame{};
     }
 
     bool ValidateYuvFrameRange(const hisisdk::YuvFrame &frame,
@@ -1170,11 +1215,9 @@ private:
 
         const uint8_t *frame_data = frame.buffer->data + frame.offset;
         const uint32_t y_size = frame.stride_y * frame.height;
-        const uint32_t uv_available_size = available_size - y_size;
-        if (!CheckedFrameRange(frame.stride_y, config.input_width,
-                               config.input_height, y_size) ||
-            !CheckedFrameRange(frame.stride_uv, config.input_width,
-                               config.input_height / 2U, uv_available_size)) {
+        if (!IsValidYvu420FrameRange(frame.stride_y, frame.stride_uv,
+                                     config.input_width, config.input_height,
+                                     available_size)) {
             return false;
         }
 
@@ -1216,14 +1259,15 @@ private:
             dst_blob.u32Stride < dst_width) {
             return false;
         }
+        if (TryFillU8C3InputBlobWithVgs(frame, dst_width, dst_height)) {
+            return true;
+        }
 
         const uint8_t *frame_data = frame.buffer->data + frame.offset;
         const uint32_t y_size = frame.stride_y * frame.height;
-        const uint32_t uv_available_size = available_size - y_size;
-        if (!CheckedFrameRange(frame.stride_y, frame.width, frame.height,
-                               y_size) ||
-            !CheckedFrameRange(frame.stride_uv, frame.width,
-                               frame.height / 2U, uv_available_size)) {
+        if (!IsValidYvu420FrameRange(frame.stride_y, frame.stride_uv,
+                                     frame.width, frame.height,
+                                     available_size)) {
             return false;
         }
         if (!EnsureU8C3SampleMap(frame, dst_width, dst_height)) {
@@ -1272,6 +1316,229 @@ private:
             dst_blob.u32Stride * dst_height * dst_blob.unShape.stWhc.u32Chn;
         return HI_MPI_SYS_MmzFlushCache(dst_blob.u64PhyAddr, dst,
                                         flush_size) == HI_SUCCESS;
+    }
+
+    bool TryFillU8C3InputBlobWithVgs(const hisisdk::YuvFrame &frame,
+                                     uint32_t dst_width,
+                                     uint32_t dst_height) {
+        if (!CanUseVgsScale(frame, dst_width, dst_height) ||
+            !EnsureScaledYvuFrame(dst_width, dst_height) ||
+            !ScaleFrameWithVgs(frame, &scaled_yvu_frame_)) {
+            return false;
+        }
+        const VIDEO_FRAME_S &scaled = scaled_yvu_frame_.frame_info.stVFrame;
+        const uint32_t scaled_size = scaled_yvu_frame_.size;
+        const uint32_t y_size = scaled.u32Stride[0] * scaled.u32Height;
+        if (!IsValidYvu420FrameRange(scaled.u32Stride[0], scaled.u32Stride[1],
+                                     scaled.u32Width, scaled.u32Height,
+                                     scaled_size)) {
+            return false;
+        }
+        SVP_SRC_BLOB_S &dst_blob = seg_data_[0].src[0];
+        uint8_t *dst =
+            static_cast<uint8_t *>(VirAddrToPointer(dst_blob.u64VirAddr));
+        if (dst == nullptr) {
+            return false;
+        }
+        const uint8_t *src_y =
+            static_cast<const uint8_t *>(scaled_yvu_frame_.vir_addr);
+        const uint8_t *src_vu = src_y + y_size;
+        const uint32_t channel_size = dst_blob.u32Stride * dst_height;
+        uint8_t *dst_b = dst;
+        uint8_t *dst_g = dst + channel_size;
+        uint8_t *dst_r = dst + channel_size * 2U;
+
+        for (uint32_t y = 0; y < dst_height; ++y) {
+            const uint32_t dst_offset = y * dst_blob.u32Stride;
+            const uint32_t y_offset = y * scaled.u32Stride[0];
+            const uint32_t vu_offset = (y / 2U) * scaled.u32Stride[1];
+            for (uint32_t x = 0; x < dst_width; ++x) {
+                const uint32_t chroma_x = (x / 2U) * 2U;
+                const uint8_t y_value = src_y[y_offset + x];
+                const uint8_t v_value = src_vu[vu_offset + chroma_x];
+                const uint8_t u_value = src_vu[vu_offset + chroma_x + 1U];
+                const int y_scaled = kYuvYTable[y_value];
+                const uint8_t r =
+                    ClampToByte((y_scaled + kYuvVToRTable[v_value] + 128) >>
+                                8);
+                const uint8_t g =
+                    ClampToByte((y_scaled + kYuvUToGTable[u_value] +
+                                 kYuvVToGTable[v_value] + 128) >>
+                                8);
+                const uint8_t b =
+                    ClampToByte((y_scaled + kYuvUToBTable[u_value] + 128) >>
+                                8);
+                dst_b[dst_offset + x] = b;
+                dst_g[dst_offset + x] = g;
+                dst_r[dst_offset + x] = r;
+            }
+        }
+
+        const HI_U32 flush_size =
+            dst_blob.u32Stride * dst_height * dst_blob.unShape.stWhc.u32Chn;
+        return HI_MPI_SYS_MmzFlushCache(dst_blob.u64PhyAddr, dst,
+                                        flush_size) == HI_SUCCESS;
+    }
+
+    bool CanUseVgsScale(const hisisdk::YuvFrame &frame, uint32_t dst_width,
+                        uint32_t dst_height) const {
+        const hisisdk::MppYuvFrameInfo &info = frame.mpp_info;
+        return info.valid &&
+               info.pixel_format ==
+                   static_cast<int32_t>(PIXEL_FORMAT_YVU_SEMIPLANAR_420) &&
+               info.compress_mode ==
+                   static_cast<int32_t>(COMPRESS_MODE_NONE) &&
+               info.phy_addr[0] != 0 && info.width == frame.width &&
+               info.height == frame.height && dst_width % 2U == 0 &&
+               dst_height % 2U == 0;
+    }
+
+    bool EnsureScaledYvuFrame(uint32_t width, uint32_t height) {
+        if (scaled_yvu_frame_.phy_addr != 0 &&
+            scaled_yvu_frame_.vir_addr != nullptr &&
+            scaled_yvu_frame_.width == width &&
+            scaled_yvu_frame_.height == height) {
+            return true;
+        }
+        FreeScaledYvuFrame();
+
+        const uint32_t aligned_height = AlignUpU32(height, 2U);
+        const uint32_t stride = AlignUpU32(width, kVgsFrameAlign);
+        const uint64_t y_size = static_cast<uint64_t>(stride) * aligned_height;
+        const uint64_t frame_size = y_size * 3U / 2U;
+        if (stride < width || y_size == 0 || frame_size > kMaxHiU32) {
+            return false;
+        }
+
+        HI_U64 phy_addr = 0;
+        HI_VOID *vir_addr = nullptr;
+        HI_S32 ret = HI_MPI_SYS_MmzAlloc(&phy_addr, &vir_addr,
+                                         "LIVE_AI_VGS_SCALE", nullptr,
+                                         static_cast<HI_U32>(frame_size));
+        if (ret != HI_SUCCESS || phy_addr == 0 || vir_addr == nullptr) {
+            return false;
+        }
+        std::memset(vir_addr, 0, static_cast<size_t>(frame_size));
+
+        scaled_yvu_frame_.phy_addr = phy_addr;
+        scaled_yvu_frame_.vir_addr = vir_addr;
+        scaled_yvu_frame_.size = static_cast<uint32_t>(frame_size);
+        scaled_yvu_frame_.width = width;
+        scaled_yvu_frame_.height = height;
+        scaled_yvu_frame_.stride = stride;
+        VIDEO_FRAME_INFO_S &frame_info = scaled_yvu_frame_.frame_info;
+        std::memset(&frame_info, 0, sizeof(frame_info));
+        frame_info.enModId = HI_ID_VGS;
+        frame_info.u32PoolId = VB_INVALID_POOLID;
+        VIDEO_FRAME_S &frame = frame_info.stVFrame;
+        frame.u32Width = width;
+        frame.u32Height = height;
+        frame.enField = VIDEO_FIELD_FRAME;
+        frame.enPixelFormat = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
+        frame.enVideoFormat = VIDEO_FORMAT_LINEAR;
+        frame.enCompressMode = COMPRESS_MODE_NONE;
+        frame.enDynamicRange = DYNAMIC_RANGE_SDR8;
+        frame.enColorGamut = COLOR_GAMUT_BT709;
+        frame.u32Stride[0] = stride;
+        frame.u32Stride[1] = stride;
+        frame.u32Stride[2] = stride;
+        frame.u64PhyAddr[0] = phy_addr;
+        frame.u64PhyAddr[1] = phy_addr + y_size;
+        frame.u64PhyAddr[2] = frame.u64PhyAddr[1];
+        frame.u64VirAddr[0] =
+            static_cast<HI_U64>(reinterpret_cast<HI_UL>(vir_addr));
+        frame.u64VirAddr[1] = frame.u64VirAddr[0] + y_size;
+        frame.u64VirAddr[2] = frame.u64VirAddr[1];
+        return true;
+    }
+
+    VIDEO_FRAME_INFO_S MakeInputVideoFrameInfo(
+        const hisisdk::YuvFrame &frame) const {
+        const hisisdk::MppYuvFrameInfo &info = frame.mpp_info;
+        VIDEO_FRAME_INFO_S frame_info{};
+        frame_info.u32PoolId = info.pool_id;
+        frame_info.enModId = static_cast<MOD_ID_E>(info.module_id);
+        VIDEO_FRAME_S &video_frame = frame_info.stVFrame;
+        video_frame.u32Width = info.width;
+        video_frame.u32Height = info.height;
+        video_frame.enField = static_cast<VIDEO_FIELD_E>(info.field);
+        video_frame.enPixelFormat =
+            static_cast<PIXEL_FORMAT_E>(info.pixel_format);
+        video_frame.enVideoFormat =
+            static_cast<VIDEO_FORMAT_E>(info.video_format);
+        video_frame.enCompressMode =
+            static_cast<COMPRESS_MODE_E>(info.compress_mode);
+        video_frame.enDynamicRange =
+            static_cast<DYNAMIC_RANGE_E>(info.dynamic_range);
+        video_frame.enColorGamut = static_cast<COLOR_GAMUT_E>(info.color_gamut);
+        for (uint32_t i = 0; i < 3; ++i) {
+            video_frame.u32Stride[i] = info.stride[i];
+            video_frame.u32HeaderStride[i] = info.header_stride[i];
+            video_frame.u32ExtStride[i] = info.ext_stride[i];
+        video_frame.u64PhyAddr[i] = info.phy_addr[i];
+            video_frame.u64VirAddr[i] = info.vir_addr[i];
+            video_frame.u64HeaderPhyAddr[i] = info.header_phy_addr[i];
+            video_frame.u64HeaderVirAddr[i] = info.header_vir_addr[i];
+            video_frame.u64ExtPhyAddr[i] = info.ext_phy_addr[i];
+            video_frame.u64ExtVirAddr[i] = info.ext_vir_addr[i];
+        }
+        video_frame.s16OffsetTop = info.offset_top;
+        video_frame.s16OffsetBottom = info.offset_bottom;
+        video_frame.s16OffsetLeft = info.offset_left;
+        video_frame.s16OffsetRight = info.offset_right;
+        video_frame.u32MaxLuminance = info.max_luminance;
+        video_frame.u32MinLuminance = info.min_luminance;
+        video_frame.u32TimeRef = info.time_ref;
+        video_frame.u64PTS = static_cast<HI_U64>(frame.pts_us);
+        video_frame.u32FrameFlag = info.frame_flag;
+        if (video_frame.u32Stride[1] == 0) {
+            video_frame.u32Stride[1] = video_frame.u32Stride[0];
+        }
+        if (video_frame.u64PhyAddr[1] == 0 &&
+            video_frame.u64PhyAddr[0] != 0 &&
+            video_frame.u32Stride[0] != 0) {
+            video_frame.u64PhyAddr[1] =
+                video_frame.u64PhyAddr[0] +
+                static_cast<HI_U64>(video_frame.u32Stride[0]) *
+                    video_frame.u32Height;
+        }
+        if (video_frame.u64VirAddr[1] == 0 &&
+            video_frame.u64VirAddr[0] != 0 &&
+            video_frame.u32Stride[0] != 0) {
+            video_frame.u64VirAddr[1] =
+                video_frame.u64VirAddr[0] +
+                static_cast<HI_U64>(video_frame.u32Stride[0]) *
+                    video_frame.u32Height;
+        }
+        return frame_info;
+    }
+
+    bool ScaleFrameWithVgs(const hisisdk::YuvFrame &frame,
+                           ScaledYvuFrame *scaled_frame) {
+        if (scaled_frame == nullptr || scaled_frame->phy_addr == 0 ||
+            scaled_frame->vir_addr == nullptr) {
+            return false;
+        }
+        VGS_HANDLE handle = -1;
+        HI_S32 ret = HI_MPI_VGS_BeginJob(&handle);
+        if (ret != HI_SUCCESS) {
+            return false;
+        }
+
+        VGS_TASK_ATTR_S task{};
+        task.stImgIn = MakeInputVideoFrameInfo(frame);
+        task.stImgOut = scaled_frame->frame_info;
+        ret = HI_MPI_VGS_AddScaleTask(handle, &task, VGS_SCLCOEF_NORMAL);
+        if (ret != HI_SUCCESS) {
+            HI_MPI_VGS_CancelJob(handle);
+            return false;
+        }
+        ret = HI_MPI_VGS_EndJob(handle);
+        if (ret != HI_SUCCESS) {
+            HI_MPI_VGS_CancelJob(handle);
+            return false;
+        }
+        return true;
     }
 
     bool EnsureU8C3SampleMap(const hisisdk::YuvFrame &frame,
@@ -1547,6 +1814,7 @@ private:
     NnieBlobSize blob_sizes_[SVP_NNIE_MAX_NET_SEG_NUM]{};
     NnieSegData seg_data_[SVP_NNIE_MAX_NET_SEG_NUM]{};
     SVP_NNIE_FORWARD_CTRL_S forward_ctrl_[SVP_NNIE_MAX_NET_SEG_NUM]{};
+    ScaledYvuFrame scaled_yvu_frame_;
     std::vector<U8C3SamplePoint> u8c3_sample_points_;
     uint32_t sample_frame_width_ = 0;
     uint32_t sample_frame_height_ = 0;

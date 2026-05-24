@@ -132,6 +132,37 @@ struct JpegFrame {
     ~JpegFrame() { VideoBufferRelease(buffer); }
 };
 
+struct MppYuvFrameInfo {
+    bool valid = false;
+    uint64_t phy_addr[3] = {};
+    uint64_t vir_addr[3] = {};
+    uint64_t header_phy_addr[3] = {};
+    uint64_t header_vir_addr[3] = {};
+    uint64_t ext_phy_addr[3] = {};
+    uint64_t ext_vir_addr[3] = {};
+    uint32_t stride[3] = {};
+    uint32_t header_stride[3] = {};
+    uint32_t ext_stride[3] = {};
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t pool_id = 0;
+    uint32_t max_luminance = 0;
+    uint32_t min_luminance = 0;
+    uint32_t time_ref = 0;
+    uint32_t frame_flag = 0;
+    int32_t module_id = 0;
+    int32_t field = 0;
+    int32_t pixel_format = 0;
+    int32_t video_format = 0;
+    int32_t compress_mode = 0;
+    int32_t dynamic_range = 0;
+    int32_t color_gamut = 0;
+    int16_t offset_top = 0;
+    int16_t offset_bottom = 0;
+    int16_t offset_left = 0;
+    int16_t offset_right = 0;
+};
+
 struct YuvFrame {
     VideoBuffer* buffer = nullptr;
     uint32_t offset = 0;
@@ -141,6 +172,7 @@ struct YuvFrame {
     uint32_t stride_y = 0;
     uint32_t stride_uv = 0;
     int64_t pts_us = 0;
+    MppYuvFrameInfo mpp_info;
 
     YuvFrame() = default;
     YuvFrame(const YuvFrame& other)
@@ -151,7 +183,8 @@ struct YuvFrame {
           height(other.height),
           stride_y(other.stride_y),
           stride_uv(other.stride_uv),
-          pts_us(other.pts_us) {}
+          pts_us(other.pts_us),
+          mpp_info(other.mpp_info) {}
     YuvFrame& operator=(const YuvFrame& other) {
         if (this == &other) {
             return *this;
@@ -166,6 +199,7 @@ struct YuvFrame {
         stride_y = other.stride_y;
         stride_uv = other.stride_uv;
         pts_us = other.pts_us;
+        mpp_info = other.mpp_info;
         return *this;
     }
     YuvFrame(YuvFrame&& other) noexcept
@@ -176,10 +210,12 @@ struct YuvFrame {
           height(other.height),
           stride_y(other.stride_y),
           stride_uv(other.stride_uv),
-          pts_us(other.pts_us) {
+          pts_us(other.pts_us),
+          mpp_info(other.mpp_info) {
         other.buffer = nullptr;
         other.offset = 0;
         other.size = 0;
+        other.mpp_info = MppYuvFrameInfo{};
     }
     YuvFrame& operator=(YuvFrame&& other) noexcept {
         if (this == &other) {
@@ -194,9 +230,11 @@ struct YuvFrame {
         stride_y = other.stride_y;
         stride_uv = other.stride_uv;
         pts_us = other.pts_us;
+        mpp_info = other.mpp_info;
         other.buffer = nullptr;
         other.offset = 0;
         other.size = 0;
+        other.mpp_info = MppYuvFrameInfo{};
         return *this;
     }
     ~YuvFrame() { VideoBufferRelease(buffer); }

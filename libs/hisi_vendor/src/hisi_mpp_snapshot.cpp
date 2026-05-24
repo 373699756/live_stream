@@ -42,6 +42,57 @@ uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return ((value + alignment - 1) / alignment) * alignment;
 }
 
+MppYuvFrameInfo MakeMppYuvFrameInfo(const VIDEO_FRAME_INFO_S& frame_info) {
+    const VIDEO_FRAME_S& frame = frame_info.stVFrame;
+    MppYuvFrameInfo info;
+    info.valid = true;
+    for (uint32_t i = 0; i < 3; ++i) {
+        info.phy_addr[i] = frame.u64PhyAddr[i];
+        info.vir_addr[i] = frame.u64VirAddr[i];
+        info.header_phy_addr[i] = frame.u64HeaderPhyAddr[i];
+        info.header_vir_addr[i] = frame.u64HeaderVirAddr[i];
+        info.ext_phy_addr[i] = frame.u64ExtPhyAddr[i];
+        info.ext_vir_addr[i] = frame.u64ExtVirAddr[i];
+        info.stride[i] = frame.u32Stride[i];
+        info.header_stride[i] = frame.u32HeaderStride[i];
+        info.ext_stride[i] = frame.u32ExtStride[i];
+    }
+    if (info.stride[1] == 0) {
+        info.stride[1] = info.stride[0];
+    }
+    if (info.phy_addr[1] == 0 && info.phy_addr[0] != 0 &&
+        info.stride[0] != 0) {
+        info.phy_addr[1] = info.phy_addr[0] +
+                           static_cast<uint64_t>(info.stride[0]) *
+                               frame.u32Height;
+    }
+    if (info.vir_addr[1] == 0 && info.vir_addr[0] != 0 &&
+        info.stride[0] != 0) {
+        info.vir_addr[1] = info.vir_addr[0] +
+                           static_cast<uint64_t>(info.stride[0]) *
+                               frame.u32Height;
+    }
+    info.width = frame.u32Width;
+    info.height = frame.u32Height;
+    info.pool_id = frame_info.u32PoolId;
+    info.max_luminance = frame.u32MaxLuminance;
+    info.min_luminance = frame.u32MinLuminance;
+    info.time_ref = frame.u32TimeRef;
+    info.frame_flag = frame.u32FrameFlag;
+    info.module_id = static_cast<int32_t>(frame_info.enModId);
+    info.field = static_cast<int32_t>(frame.enField);
+    info.pixel_format = static_cast<int32_t>(frame.enPixelFormat);
+    info.video_format = static_cast<int32_t>(frame.enVideoFormat);
+    info.compress_mode = static_cast<int32_t>(frame.enCompressMode);
+    info.dynamic_range = static_cast<int32_t>(frame.enDynamicRange);
+    info.color_gamut = static_cast<int32_t>(frame.enColorGamut);
+    info.offset_top = frame.s16OffsetTop;
+    info.offset_bottom = frame.s16OffsetBottom;
+    info.offset_left = frame.s16OffsetLeft;
+    info.offset_right = frame.s16OffsetRight;
+    return info;
+}
+
 void ReleaseVpssMappedFrame(uint8_t* data, uint32_t capacity, void* user) {
     VpssMappedFrame* mapped_frame = static_cast<VpssMappedFrame*>(user);
     if (mapped_frame == nullptr) {
@@ -548,6 +599,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     result.stride_y = stride_y;
     result.stride_uv = stride_uv;
     result.pts_us = static_cast<int64_t>(frame.u64PTS);
+    result.mpp_info = MakeMppYuvFrameInfo(frame_info);
     return result;
 }
 
