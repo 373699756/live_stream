@@ -20,8 +20,9 @@ constexpr size_t kFlvPreviousTagSize = 4;
 constexpr size_t kFlvVideoBodyOffset = kFlvTagHeaderSize;
 constexpr size_t kFlvH264PacketTypeOffset = kFlvVideoBodyOffset + 1;
 constexpr uint8_t kFlvTagTypeVideo = 9;
-constexpr uint8_t kFlvH264PacketTypeSequenceHeader = 0;
-constexpr uint8_t kFlvH264PacketTypeCodedFrames = 1;
+constexpr uint8_t kFlvEnhancedHeader = 0x80;
+constexpr uint8_t kFlvPacketTypeSequenceHeader = 0;
+constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
 
 bool HasUsableFlvStartData(const StreamFlvStartData &start_data) {
     return start_data.supported && !start_data.file_header.empty() &&
@@ -57,6 +58,20 @@ bool IsCompleteFlvVideoTag(const uint8_t *data, size_t size,
     }
     *body_size = ReadU24(data + 1);
     return size >= kFlvTagHeaderSize + *body_size + kFlvPreviousTagSize;
+}
+
+uint8_t ReadFlvVideoPacketType(const uint8_t *data, size_t size) {
+    if (data == nullptr || size <= kFlvVideoBodyOffset) {
+        return 0xff;
+    }
+    const uint8_t video_header = data[kFlvVideoBodyOffset];
+    if ((video_header & kFlvEnhancedHeader) != 0) {
+        return static_cast<uint8_t>(video_header & 0x0f);
+    }
+    if (size <= kFlvH264PacketTypeOffset) {
+        return 0xff;
+    }
+    return data[kFlvH264PacketTypeOffset];
 }
 
 const char *VideoCodecName(VideoCodec codec) {
@@ -115,10 +130,8 @@ public:
         }
 
         const uint32_t timestamp_ms = ReadFlvTimestampMs(data);
-        const uint8_t packet_type =
-            size > kFlvH264PacketTypeOffset ? data[kFlvH264PacketTypeOffset]
-                                            : 0xff;
-        if (packet_type == kFlvH264PacketTypeSequenceHeader) {
+        const uint8_t packet_type = ReadFlvVideoPacketType(data, size);
+        if (packet_type == kFlvPacketTypeSequenceHeader) {
             return EnqueueFlvTagWithTimestamp(writer_, connection_id_, data,
                                               size, 0);
         }
@@ -134,7 +147,7 @@ public:
             timestamp_ms >= timestamp_base_ms_ ? timestamp_ms - timestamp_base_ms_
                                                : last_timestamp_ms_;
         if (timestamp_base_set_ && rebased_ms < last_timestamp_ms_ &&
-            packet_type == kFlvH264PacketTypeCodedFrames) {
+            packet_type == kFlvPacketTypeCodedFrames) {
             rebased_ms = last_timestamp_ms_;
         }
         last_timestamp_ms_ = rebased_ms;

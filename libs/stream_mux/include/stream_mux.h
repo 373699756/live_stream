@@ -10,6 +10,7 @@
 namespace live_stream {
 namespace stream_codec {
 struct H264NalUnitList;
+struct H265NalUnitList;
 }  // namespace stream_codec
 
 namespace stream_mux {
@@ -103,17 +104,37 @@ std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
                                           const std::string &pps,
                                           uint32_t timestamp_ms);
 
+std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
+                                          const std::string &sps,
+                                          const std::string &pps,
+                                          uint32_t timestamp_ms);
+
 std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
                                  uint32_t timestamp_ms,
                                  const stream_codec::H264NalUnitList &units);
 
+std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
+                                 uint32_t timestamp_ms,
+                                 const stream_codec::H265NalUnitList &units);
+
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state);
 
-void AppendVideoAccessUnitToTsSegment(VideoCodec codec,
-                                      const std::string &access_unit,
-                                      int64_t pts_us, int64_t dts_us,
-                                      TsMuxerState *state,
-                                      std::string *segment_body);
+void AppendH264NalUnitsToTsSegment(const stream_codec::H264NalUnitList &units,
+                                   const std::string &sps,
+                                   const std::string &pps,
+                                   bool prepend_parameter_sets,
+                                   int64_t pts_us, int64_t dts_us,
+                                   TsMuxerState *state,
+                                   std::string *segment_body);
+
+void AppendH265NalUnitsToTsSegment(const stream_codec::H265NalUnitList &units,
+                                   const std::string &vps,
+                                   const std::string &sps,
+                                   const std::string &pps,
+                                   bool prepend_parameter_sets,
+                                   int64_t pts_us, int64_t dts_us,
+                                   TsMuxerState *state,
+                                   std::string *segment_body);
 
 }  // namespace stream_mux
 }  // namespace live_stream

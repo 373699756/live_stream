@@ -77,9 +77,16 @@ constexpr uint8_t kTsPacketSize = 188;
 constexpr uint8_t kTsStreamTypeH264 = 0x1b;
 constexpr uint8_t kTsStreamTypeH265 = 0x24;
 constexpr uint8_t kFlvCodecIdAvc = 7;
+constexpr uint8_t kEnhancedFlvHeader = 0x80;
 constexpr uint32_t kFlvMaxBodySize = 0x00ffffffU;
 constexpr uint8_t kFlvPacketTypeSequenceStart = 0;
 constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
+constexpr uint8_t kFlvFrameKey = 1 << 4;
+constexpr uint8_t kFlvFrameInter = 2 << 4;
+constexpr uint8_t kH265VpsNalType = 32;
+constexpr uint8_t kH265SpsNalType = 33;
+constexpr uint8_t kH265PpsNalType = 34;
+constexpr size_t kMaxTsMediaSlices = 192;
 
 using byte_writer::AppendU8;
 using byte_writer::AppendU16;
@@ -110,6 +117,12 @@ void FillBytes(char *target, size_t size, uint8_t value) {
 void AppendFlvTimestamp(std::string *out, uint32_t timestamp_ms) {
     AppendU24(out, timestamp_ms & 0x00ffffffU);
     AppendU8(out, static_cast<uint8_t>((timestamp_ms >> 24) & 0xff));
+}
+
+void AppendFourCc(std::string *out, const char *fourcc) {
+    if (out != nullptr && fourcc != nullptr) {
+        out->append(fourcc, 4);
+    }
 }
 
 void WriteRtpHeader(const EncodedFrame &frame, bool marker, uint16_t sequence,
@@ -245,47 +258,70 @@ void WritePcr(char *target, uint64_t pcr_90k) {
     target[5] = static_cast<char>(0);
 }
 
-size_t CopyPesBytes(const std::string &pes_header,
-                    const std::string &access_unit, size_t offset,
+struct MediaSliceList {
+    struct Slice {
+        const uint8_t *data = nullptr;
+        size_t size = 0;
+    };
+
+    Slice slices[kMaxTsMediaSlices];
+    size_t count = 0;
+    size_t total_size = 0;
+
+    bool Add(const uint8_t *data, size_t size) {
+        if (size == 0) {
+            return true;
+        }
+        if (data == nullptr || count >= kMaxTsMediaSlices ||
+            size > std::numeric_limits<size_t>::max() - total_size) {
+            return false;
+        }
+        slices[count].data = data;
+        slices[count].size = size;
+        total_size += size;
+        ++count;
+        return true;
+    }
+
+    bool AddString(const std::string &data) {
+        return data.empty() ||
+               Add(reinterpret_cast<const uint8_t *>(data.data()),
+                   data.size());
+    }
+};
+
+size_t CopyPesBytes(const MediaSliceList &pes_slices, size_t offset,
                     size_t size, char *target) {
     if (target == nullptr || size == 0) {
         return 0;
     }
     size_t copied = 0;
-    if (offset < pes_header.size()) {
-        const size_t header_size =
-            std::min(size, pes_header.size() - offset);
-        std::copy(pes_header.begin() + static_cast<std::ptrdiff_t>(offset),
-                  pes_header.begin() + static_cast<std::ptrdiff_t>(
-                                         offset + header_size),
-                  target);
-        copied += header_size;
-        offset += header_size;
-    }
-    if (copied < size) {
-        const size_t access_unit_offset = offset - pes_header.size();
-        const size_t access_unit_size = std::min(
-            size - copied, access_unit.size() - access_unit_offset);
-        std::copy(access_unit.begin() +
-                      static_cast<std::ptrdiff_t>(access_unit_offset),
-                  access_unit.begin() + static_cast<std::ptrdiff_t>(
-                                            access_unit_offset +
-                                            access_unit_size),
-                  target + copied);
-        copied += access_unit_size;
+    size_t slice_base = 0;
+    for (size_t i = 0; i < pes_slices.count && copied < size; ++i) {
+        const MediaSliceList::Slice &slice = pes_slices.slices[i];
+        if (offset >= slice_base + slice.size) {
+            slice_base += slice.size;
+            continue;
+        }
+        const size_t slice_offset = offset > slice_base ? offset - slice_base : 0;
+        const size_t copy_size =
+            std::min(size - copied, slice.size - slice_offset);
+        std::memcpy(target + copied, slice.data + slice_offset, copy_size);
+        copied += copy_size;
+        offset += copy_size;
+        slice_base += slice.size;
     }
     return copied;
 }
 
-void AppendTsPayload(const std::string &pes_header,
-                     const std::string &access_unit, uint64_t pcr_90k,
+void AppendTsPayload(const MediaSliceList &pes_slices, uint64_t pcr_90k,
                      uint8_t *continuity_counter, std::string *out) {
     // Split PES into fixed 188-byte TS packets. The first packet carries PCR in
     // the adaptation field so HLS players can recover the sender clock.
     if (out == nullptr) {
         return;
     }
-    const size_t pes_size = pes_header.size() + access_unit.size();
+    const size_t pes_size = pes_slices.total_size;
     size_t offset = 0;
     while (offset < pes_size) {
         const bool first_packet = offset == 0;
@@ -334,7 +370,7 @@ void AppendTsPayload(const std::string &pes_header,
                 packet[packet_offset++] = static_cast<char>(0xff);
             }
         }
-        (void)CopyPesBytes(pes_header, access_unit, offset, payload_size,
+        (void)CopyPesBytes(pes_slices, offset, payload_size,
                            packet + packet_offset);
         offset += payload_size;
     }
@@ -364,10 +400,25 @@ bool IsH264FlvVideoNal(const stream_codec::H264NalUnit &unit) {
            unit.type != 8 && unit.type != 9;
 }
 
+bool IsH265FlvVideoNal(const stream_codec::H265NalUnit &unit) {
+    return unit.data != nullptr && unit.size > 0 && unit.type != 32 &&
+           unit.type != 33 && unit.type != 34 && unit.type != 35;
+}
+
 size_t H264FlvVideoPayloadSize(const stream_codec::H264NalUnitList &units) {
     size_t payload_size = 0;
     for (const stream_codec::H264NalUnit &unit : units) {
         if (IsH264FlvVideoNal(unit)) {
+            payload_size += 4 + unit.size;
+        }
+    }
+    return payload_size;
+}
+
+size_t H265FlvVideoPayloadSize(const stream_codec::H265NalUnitList &units) {
+    size_t payload_size = 0;
+    for (const stream_codec::H265NalUnit &unit : units) {
+        if (IsH265FlvVideoNal(unit)) {
             payload_size += 4 + unit.size;
         }
     }
@@ -387,6 +438,76 @@ void AppendH264LengthPrefixedVideoNals(
         AppendU32(tag, static_cast<uint32_t>(unit.size));
         tag->append(reinterpret_cast<const char *>(unit.data), unit.size);
     }
+}
+
+void AppendH265LengthPrefixedVideoNals(
+    const stream_codec::H265NalUnitList &units,
+    std::string *tag) {
+    if (tag == nullptr) {
+        return;
+    }
+    for (const stream_codec::H265NalUnit &unit : units) {
+        if (!IsH265FlvVideoNal(unit)) {
+            continue;
+        }
+        AppendU32(tag, static_cast<uint32_t>(unit.size));
+        tag->append(reinterpret_cast<const char *>(unit.data), unit.size);
+    }
+}
+
+void AppendHvccArray(std::string *config, uint8_t nal_type,
+                     const std::string &nal_unit) {
+    if (nal_unit.empty()) {
+        return;
+    }
+    AppendU8(config, static_cast<uint8_t>(0x80 | (nal_type & 0x3f)));
+    AppendU16(config, 1);
+    AppendU16(config, static_cast<uint16_t>(nal_unit.size()));
+    config->append(nal_unit);
+}
+
+std::string BuildH265HvccRecord(const std::string &vps,
+                                const std::string &sps,
+                                const std::string &pps) {
+    std::string config;
+    AppendU8(&config, 1);  // configurationVersion.
+    if (sps.size() >= 15) {
+        AppendU8(&config, static_cast<uint8_t>(sps[3]));
+        config.append(sps.data() + 4, 4);
+        config.append(sps.data() + 8, 6);
+        AppendU8(&config, static_cast<uint8_t>(sps[14]));
+    } else {
+        AppendU8(&config, 0x01);
+        AppendU32(&config, 0x60000000);
+        static constexpr uint8_t kConstraintFlags[] = {
+            0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
+        config.append(reinterpret_cast<const char *>(kConstraintFlags),
+                      sizeof(kConstraintFlags));
+        AppendU8(&config, 0x1e);
+    }
+    AppendU16(&config, 0xf000);
+    AppendU8(&config, 0xfc);
+    AppendU8(&config, 0xfd);
+    AppendU8(&config, 0xf8);
+    AppendU8(&config, 0xf8);
+    AppendU16(&config, 0);
+    AppendU8(&config, 0x0f);
+
+    uint8_t array_count = 0;
+    if (!vps.empty()) {
+        ++array_count;
+    }
+    if (!sps.empty()) {
+        ++array_count;
+    }
+    if (!pps.empty()) {
+        ++array_count;
+    }
+    AppendU8(&config, array_count);
+    AppendHvccArray(&config, kH265VpsNalType, vps);
+    AppendHvccArray(&config, kH265SpsNalType, sps);
+    AppendHvccArray(&config, kH265PpsNalType, pps);
+    return config;
 }
 
 std::string BuildH264FlvVideoTag(bool keyframe, uint8_t avc_packet_type,
@@ -409,6 +530,107 @@ std::string BuildH264FlvVideoTag(bool keyframe, uint8_t avc_packet_type,
     tag.append(payload);
     AppendU32(&tag, body_size + 11U);  // PreviousTagSize.
     return tag;
+}
+
+std::string BuildEnhancedFlvVideoTag(bool keyframe, uint8_t packet_type,
+                                     int32_t composition_time_ms,
+                                     uint32_t timestamp_ms,
+                                     const std::string &payload) {
+    std::string tag;
+    if (payload.size() > kFlvMaxBodySize - 8U) {
+        return tag;
+    }
+    const uint32_t body_size = 8U + static_cast<uint32_t>(payload.size());
+    tag.reserve(11U + body_size + 4U);
+    AppendU8(&tag, 9);
+    AppendU24(&tag, body_size);
+    AppendFlvTimestamp(&tag, timestamp_ms);
+    AppendU24(&tag, 0);
+    AppendU8(&tag,
+             static_cast<uint8_t>(kEnhancedFlvHeader |
+                                  (keyframe ? kFlvFrameKey : kFlvFrameInter) |
+                                  packet_type));
+    AppendFourCc(&tag, "hvc1");
+    AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
+    tag.append(payload);
+    AppendU32(&tag, body_size + 11U);
+    return tag;
+}
+
+bool AddH264AccessUnitSlices(const stream_codec::H264NalUnitList &units,
+                             const std::string &sps,
+                             const std::string &pps,
+                             bool prepend_parameter_sets,
+                             MediaSliceList *slices) {
+    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+    static constexpr uint8_t kAud[] = {0x09, 0xf0};
+    if (slices == nullptr) {
+        return false;
+    }
+    if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+        !slices->Add(kAud, sizeof(kAud))) {
+        return false;
+    }
+    if (prepend_parameter_sets && !sps.empty() && !pps.empty()) {
+        if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(reinterpret_cast<const uint8_t *>(sps.data()),
+                         sps.size()) ||
+            !slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(reinterpret_cast<const uint8_t *>(pps.data()),
+                         pps.size())) {
+            return false;
+        }
+    }
+    for (const stream_codec::H264NalUnit &unit : units) {
+        if (unit.type == 9) {
+            continue;
+        }
+        if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(unit.data, unit.size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AddH265AccessUnitSlices(const stream_codec::H265NalUnitList &units,
+                             const std::string &vps,
+                             const std::string &sps,
+                             const std::string &pps,
+                             bool prepend_parameter_sets,
+                             MediaSliceList *slices) {
+    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
+    static constexpr uint8_t kAud[] = {0x46, 0x01, 0x50};
+    if (slices == nullptr) {
+        return false;
+    }
+    if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+        !slices->Add(kAud, sizeof(kAud))) {
+        return false;
+    }
+    if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
+        if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(reinterpret_cast<const uint8_t *>(vps.data()),
+                         vps.size()) ||
+            !slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(reinterpret_cast<const uint8_t *>(sps.data()),
+                         sps.size()) ||
+            !slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(reinterpret_cast<const uint8_t *>(pps.data()),
+                         pps.size())) {
+            return false;
+        }
+    }
+    for (const stream_codec::H265NalUnit &unit : units) {
+        if (unit.type == 35) {
+            continue;
+        }
+        if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
+            !slices->Add(unit.data, unit.size)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -600,6 +822,15 @@ std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
                                 BuildH264FlvConfigurationRecord(sps, pps));
 }
 
+std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
+                                          const std::string &sps,
+                                          const std::string &pps,
+                                          uint32_t timestamp_ms) {
+    return BuildEnhancedFlvVideoTag(true, kFlvPacketTypeSequenceStart, 0,
+                                    timestamp_ms,
+                                    BuildH265HvccRecord(vps, sps, pps));
+}
+
 std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
                                  uint32_t timestamp_ms,
                                  const stream_codec::H264NalUnitList &units) {
@@ -623,6 +854,31 @@ std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
     return tag;
 }
 
+std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
+                                 uint32_t timestamp_ms,
+                                 const stream_codec::H265NalUnitList &units) {
+    const size_t payload_size = H265FlvVideoPayloadSize(units);
+    if (payload_size == 0 || payload_size > kFlvMaxBodySize - 8U) {
+        return std::string();
+    }
+    const uint32_t body_size = 8U + static_cast<uint32_t>(payload_size);
+    std::string tag;
+    tag.reserve(11U + body_size + 4U);
+    AppendU8(&tag, 9);
+    AppendU24(&tag, body_size);
+    AppendFlvTimestamp(&tag, timestamp_ms);
+    AppendU24(&tag, 0);
+    AppendU8(&tag,
+             static_cast<uint8_t>(kEnhancedFlvHeader |
+                                  (keyframe ? kFlvFrameKey : kFlvFrameInter) |
+                                  kFlvPacketTypeCodedFrames));
+    AppendFourCc(&tag, "hvc1");
+    AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
+    AppendH265LengthPrefixedVideoNals(units, &tag);
+    AppendU32(&tag, body_size + 11U);
+    return tag;
+}
+
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state) {
     if (state == nullptr) {
         return std::string();
@@ -634,22 +890,55 @@ std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state) {
     return header;
 }
 
-void AppendVideoAccessUnitToTsSegment(VideoCodec codec,
-                                      const std::string &access_unit,
-                                      int64_t pts_us, int64_t dts_us,
-                                      TsMuxerState *state,
-                                      std::string *segment_body) {
-    if ((codec != VideoCodec::kH264 && codec != VideoCodec::kH265) ||
-        access_unit.empty() || state == nullptr || segment_body == nullptr) {
+void AppendH264NalUnitsToTsSegment(const stream_codec::H264NalUnitList &units,
+                                   const std::string &sps,
+                                   const std::string &pps,
+                                   bool prepend_parameter_sets,
+                                   int64_t pts_us, int64_t dts_us,
+                                   TsMuxerState *state,
+                                   std::string *segment_body) {
+    if (units.empty() || state == nullptr || segment_body == nullptr) {
         return;
     }
     const uint64_t pts_90k =
         static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
     const uint64_t dts_90k =
         static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
-    // PTS/DTS from media frames are microseconds; TS/PES timestamps use 90 kHz.
-    AppendTsPayload(BuildPesHeader(pts_90k, dts_90k), access_unit, dts_90k,
-                    &state->video_continuity, segment_body);
+    const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
+    MediaSliceList pes_slices;
+    if (!pes_slices.AddString(pes_header) ||
+        !AddH264AccessUnitSlices(units, sps, pps, prepend_parameter_sets,
+                                 &pes_slices)) {
+        return;
+    }
+    AppendTsPayload(pes_slices, dts_90k, &state->video_continuity,
+                    segment_body);
+}
+
+void AppendH265NalUnitsToTsSegment(const stream_codec::H265NalUnitList &units,
+                                   const std::string &vps,
+                                   const std::string &sps,
+                                   const std::string &pps,
+                                   bool prepend_parameter_sets,
+                                   int64_t pts_us, int64_t dts_us,
+                                   TsMuxerState *state,
+                                   std::string *segment_body) {
+    if (units.empty() || state == nullptr || segment_body == nullptr) {
+        return;
+    }
+    const uint64_t pts_90k =
+        static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
+    const uint64_t dts_90k =
+        static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
+    const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
+    MediaSliceList pes_slices;
+    if (!pes_slices.AddString(pes_header) ||
+        !AddH265AccessUnitSlices(units, vps, sps, pps, prepend_parameter_sets,
+                                 &pes_slices)) {
+        return;
+    }
+    AppendTsPayload(pes_slices, dts_90k, &state->video_continuity,
+                    segment_body);
 }
 
 }  // namespace stream_mux
