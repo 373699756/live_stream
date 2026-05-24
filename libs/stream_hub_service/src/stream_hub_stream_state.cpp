@@ -16,6 +16,16 @@ namespace {
 constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
 constexpr size_t kMaxHlsSegmentBytes = 4 * 1024 * 1024;
 
+uint32_t ClampHlsSegmentCapacity(size_t capacity) {
+    if (capacity < kInitialHlsSegmentBytes) {
+        return static_cast<uint32_t>(kInitialHlsSegmentBytes);
+    }
+    if (capacity > kMaxHlsSegmentBytes) {
+        return static_cast<uint32_t>(kMaxHlsSegmentBytes);
+    }
+    return static_cast<uint32_t>(capacity);
+}
+
 void ClearFlvGopCache(StreamContext *stream) {
     if (stream == nullptr) {
         return;
@@ -236,7 +246,9 @@ void StartSegment(StreamContext *stream, int64_t pts_us) {
     stream->current_segment.sequence = stream->next_segment_sequence++;
     stream->current_segment.start_pts_us = pts_us;
     stream->current_segment.last_pts_us = pts_us;
-    stream->current_segment.body = VideoBufferAlloc(kInitialHlsSegmentBytes);
+    const uint32_t segment_capacity = ClampHlsSegmentCapacity(
+        stream->next_hls_segment_capacity);
+    stream->current_segment.body = VideoBufferAlloc(segment_capacity);
     if (stream->current_segment.body == nullptr) {
         HlsSegmentStateUnref(&stream->current_segment);
         return;
@@ -251,6 +263,23 @@ void StartSegment(StreamContext *stream, int64_t pts_us) {
     }
 }
 
+void RememberHlsSegmentCapacity(StreamContext *stream,
+                                const HlsSegmentState &segment) {
+    if (stream == nullptr || segment.body == nullptr) {
+        return;
+    }
+    stream->next_hls_segment_capacity =
+        ClampHlsSegmentCapacity(segment.body->size);
+}
+
+void PopOldestSegment(StreamContext *stream) {
+    if (stream == nullptr || stream->segments.empty()) {
+        return;
+    }
+    StreamSegmentRefUnref(&stream->segments.front());
+    stream->segments.pop_front();
+}
+
 void PushFinalizedSegment(StreamContext *stream, uint32_t playlist_depth) {
     if (stream == nullptr || !stream->current_segment.started ||
         stream->current_segment.body == nullptr ||
@@ -262,11 +291,11 @@ void PushFinalizedSegment(StreamContext *stream, uint32_t playlist_depth) {
     segment.sequence = stream->current_segment.sequence;
     segment.duration_us = CurrentSegmentDurationUs(*stream);
     segment.body = stream->current_segment.body;
+    RememberHlsSegmentCapacity(stream, stream->current_segment);
     stream->current_segment.body = nullptr;
     stream->segments.push_back(segment);
     while (stream->segments.size() > playlist_depth) {
-        StreamSegmentRefUnref(&stream->segments.front());
-        stream->segments.erase(stream->segments.begin());
+        PopOldestSegment(stream);
     }
 }
 
@@ -275,8 +304,7 @@ void TrimSegments(StreamContext *stream, uint32_t playlist_depth) {
         return;
     }
     while (stream->segments.size() > playlist_depth) {
-        StreamSegmentRefUnref(&stream->segments.front());
-        stream->segments.erase(stream->segments.begin());
+        PopOldestSegment(stream);
     }
 }
 
@@ -295,6 +323,7 @@ bool PublishCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
         stream->current_segment.body->size == 0) {
         return false;
     }
+    RememberHlsSegmentCapacity(stream, stream->current_segment);
     stream->current_segment.published = true;
     TrimSegmentsWithCurrent(stream, playlist_depth);
     return true;

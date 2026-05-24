@@ -8,8 +8,9 @@
 
 #include <array>
 #include <cstdint>
-#include <vector>
+#include <deque>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 namespace stream_hub_internal {
@@ -40,8 +41,9 @@ struct StreamContext {
     std::string pps;
     std::string sequence_header_tag;
     CachedFlvFrameRing flv_gop_cache;
-    std::vector<StreamSegmentRef> segments;
+    std::deque<StreamSegmentRef> segments;
     HlsSegmentState current_segment;
+    uint32_t next_hls_segment_capacity = 0;
     mutable bool hls_requested = false;
     uint64_t next_segment_sequence = 1;
     uint64_t config_generation = 0;
