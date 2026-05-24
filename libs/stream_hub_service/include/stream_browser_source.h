@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_STREAM_BROWSER_SOURCE_H_
 #define LIVE_STREAM_STREAM_BROWSER_SOURCE_H_
 
+#include "media/encoded_frame.h"
 #include "media/stream_types.h"
 
 #include <cstddef>
@@ -10,9 +11,9 @@
 
 namespace live_stream {
 
-struct EncodedFrame;
-
 constexpr size_t kMaxStreamFlvVideoTagSlices = 130;
+constexpr size_t kMaxStreamFlvHeaderSliceBytes = 24;
+constexpr size_t kMaxStreamFlvCachedVideoTags = 64;
 
 struct StreamFlvVideoTagSlice {
     const uint8_t *data = nullptr;
@@ -23,6 +24,21 @@ struct StreamFlvVideoTagSlice {
 struct StreamFlvVideoTagView {
     StreamFlvVideoTagSlice slices[kMaxStreamFlvVideoTagSlices];
     size_t slice_count = 0;
+    uint32_t timestamp_ms = 0;
+};
+
+struct StreamFlvCachedVideoTagSlice {
+    const uint8_t *media_data = nullptr;
+    uint8_t header_data[kMaxStreamFlvHeaderSliceBytes] = {};
+    size_t size = 0;
+    bool media_payload = false;
+};
+
+struct StreamFlvCachedVideoTag {
+    EncodedFrame frame;
+    StreamFlvCachedVideoTagSlice slices[kMaxStreamFlvVideoTagSlices];
+    size_t slice_count = 0;
+    size_t total_size = 0;
     uint32_t timestamp_ms = 0;
 };
 
@@ -50,10 +66,11 @@ struct StreamSegment {
 
 struct StreamFlvStartData {
     bool supported = false;
+    bool cached_gop_complete = false;
     uint64_t config_generation = 0;
     std::string file_header;
     std::string sequence_header;
-    std::string last_keyframe;
+    std::vector<StreamFlvCachedVideoTag> cached_video_tags;
 };
 
 struct StreamHubServiceStats {

@@ -408,7 +408,11 @@ public:
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
-            static_cast<uint32_t>(stream->last_keyframe_tag.size());
+            !stream->flv_gop_cache.complete || stream->flv_gop_cache.size == 0
+                ? 0
+                : static_cast<uint32_t>(
+                      stream->flv_gop_cache.frames[stream->flv_gop_cache.head]
+                          .total_size);
         status.hls_current_segment_size =
             static_cast<uint32_t>(stream->current_segment.body.size());
         return status;
@@ -651,12 +655,11 @@ private:
         const EncodedFrame &frame = payload.encoded_frame;
         std::vector<hub_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
-        std::string flv_tag;
         stream_mux::FlvVideoTagView flv_tag_view;
         bool has_flv_tag_view = false;
         bool package_hls = false;
         bool package_flv = false;
-        bool update_flv_header = false;
+        bool update_flv_cache = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -671,9 +674,9 @@ private:
             }
             package_hls = stream->hls_requested;
             package_flv = flv_clients_.HasClient(frame.stream_id);
-            update_flv_header = hub_state::IsFlvCodecSupported(stream->codec);
+            update_flv_cache = hub_state::IsFlvCodecSupported(stream->codec);
         }
-        if (!package_hls && !package_flv && !update_flv_header) {
+        if (!package_hls && !package_flv && !update_flv_cache) {
             return;
         }
 
@@ -693,10 +696,12 @@ private:
             const bool was_flv_ready = hub_state::IsFlvStreamReady(*stream);
             package_hls = stream->hls_requested;
             package_flv = flv_clients_.HasClient(frame.stream_id);
+            update_flv_cache = hub_state::IsFlvCodecSupported(stream->codec);
 
             hub_state::PackagedFrameResult packaged_frame =
                 hub_state::AppendFrameToStream(
-                    stream, frame, payload, package_hls, package_flv,
+                    stream, frame, payload, package_hls,
+                    package_flv || update_flv_cache,
                     options_.hls_segment_duration_ms,
                     options_.hls_playlist_depth);
             if (!packaged_frame.accepted) {
@@ -709,10 +714,10 @@ private:
                 INFRA_LOG_INFO(
                     kServiceName,
                     "browser stream ready stream=%s hls=%d flv=%d "
-                    "sequence_header=%zu last_keyframe=%zu segments=%zu",
+                    "sequence_header=%zu cached_flv=%zu segments=%zu",
                     StreamName(frame.stream_id), hls_ready ? 1 : 0,
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
-                    stream->last_keyframe_tag.size(),
+                    stream->flv_gop_cache.size,
                     stream->segments.size() +
                         (stream->current_segment.published ? 1U : 0U));
             }
@@ -721,14 +726,13 @@ private:
             } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
-            flv_tag = std::move(packaged_frame.flv_tag);
             flv_tag_view = packaged_frame.flv_tag_view;
             has_flv_tag_view = packaged_frame.has_flv_tag_view;
             const bool has_sequence_header =
                 hub_state::HasFlvSequenceHeader(*stream);
             clients = flv_clients_.CollectWrites(
                 frame.stream_id, stream->config_generation,
-                has_flv_tag_view || !flv_tag.empty(), has_sequence_header,
+                has_flv_tag_view, has_sequence_header,
                 packaged_frame.keyframe);
             for (const hub_state::PendingFlvClientWrite &client : clients) {
                 if (client.send_sequence_header) {
@@ -738,7 +742,7 @@ private:
             }
         }
 
-        WriteFlvClients(clients, sequence_header_tag, flv_tag, flv_tag_view,
+        WriteFlvClients(clients, sequence_header_tag, flv_tag_view,
                         has_flv_tag_view, frame, frame.stream_id);
     }
 
@@ -769,7 +773,6 @@ private:
     void WriteFlvClients(
         const std::vector<hub_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
-        const std::string &flv_tag,
         const stream_mux::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
         const EncodedFrame &frame,
@@ -783,7 +786,8 @@ private:
                                StreamName(stream_id),
                                static_cast<unsigned long long>(
                                    client.client_id),
-                               sequence_header_tag.size(), flv_tag.size());
+                               sequence_header_tag.size(),
+                               flv_tag_view.total_size);
             }
             if (client.send_sequence_header &&
                 !client.sink->OnFlvChunk(
@@ -796,11 +800,8 @@ private:
             const StreamFlvVideoTagView flv_video_tag =
                 ToStreamFlvVideoTagView(flv_tag_view);
             const bool sent_frame =
-                has_flv_tag_view
-                    ? client.sink->OnFlvVideoTag(flv_video_tag, frame)
-                    : client.sink->OnFlvChunk(
-                          reinterpret_cast<const uint8_t *>(flv_tag.data()),
-                          flv_tag.size());
+                has_flv_tag_view &&
+                client.sink->OnFlvVideoTag(flv_video_tag, frame);
             if (!sent_frame) {
                 detach_ids.push_back(client.client_id);
             }

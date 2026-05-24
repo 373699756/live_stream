@@ -15,6 +15,90 @@ namespace {
 
 constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
 
+void ClearFlvGopCache(StreamContext *stream) {
+    if (stream == nullptr) {
+        return;
+    }
+    stream->flv_gop_cache = CachedFlvFrameRing{};
+}
+
+bool CopyFlvTagViewForCache(const EncodedFrame &frame,
+                            const stream_mux::FlvVideoTagView &source,
+                            StreamFlvCachedVideoTag *target) {
+    if (target == nullptr || !frame.HasValidPayload() ||
+        source.slice_count == 0 ||
+        source.slice_count > kMaxStreamFlvVideoTagSlices) {
+        return false;
+    }
+
+    StreamFlvCachedVideoTag cached_tag;
+    cached_tag.frame = frame;
+    cached_tag.slice_count = source.slice_count;
+    cached_tag.total_size = source.total_size;
+    cached_tag.timestamp_ms = source.timestamp_ms;
+    for (size_t i = 0; i < source.slice_count; ++i) {
+        const stream_mux::FlvVideoTagSlice &source_slice = source.slices[i];
+        StreamFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
+        if (source_slice.data == nullptr || source_slice.size == 0) {
+            return false;
+        }
+        if (source_slice.media_payload) {
+            const uint8_t *payload = frame.PayloadData();
+            const uintptr_t payload_addr =
+                reinterpret_cast<uintptr_t>(payload);
+            const uintptr_t source_addr =
+                reinterpret_cast<uintptr_t>(source_slice.data);
+            if (payload == nullptr || source_addr < payload_addr ||
+                source_addr - payload_addr > frame.size ||
+                source_slice.size > frame.size - (source_addr - payload_addr)) {
+                return false;
+            }
+            target_slice.media_data = source_slice.data;
+            target_slice.size = source_slice.size;
+            target_slice.media_payload = true;
+        } else {
+            if (source_slice.size > sizeof(target_slice.header_data)) {
+                return false;
+            }
+            std::copy(source_slice.data, source_slice.data + source_slice.size,
+                      target_slice.header_data);
+            target_slice.size = source_slice.size;
+            target_slice.media_payload = false;
+        }
+    }
+
+    *target = cached_tag;
+    return true;
+}
+
+void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
+                     bool keyframe,
+                     const stream_mux::FlvVideoTagView &flv_tag_view) {
+    if (stream == nullptr || stream->sequence_header_tag.empty()) {
+        return;
+    }
+    if (keyframe) {
+        ClearFlvGopCache(stream);
+        stream->flv_gop_cache.complete = true;
+    }
+    if (stream->flv_gop_cache.size == 0 && !keyframe) {
+        return;
+    }
+    if (stream->flv_gop_cache.size >= stream->flv_gop_cache.frames.size()) {
+        stream->flv_gop_cache.complete = false;
+        return;
+    }
+    const size_t index =
+        (stream->flv_gop_cache.head + stream->flv_gop_cache.size) %
+        stream->flv_gop_cache.frames.size();
+    if (!CopyFlvTagViewForCache(frame, flv_tag_view,
+                                &stream->flv_gop_cache.frames[index])) {
+        ClearFlvGopCache(stream);
+        return;
+    }
+    ++stream->flv_gop_cache.size;
+}
+
 int64_t CurrentSegmentDurationUs(const StreamContext &stream) {
     return std::max<int64_t>(stream.last_frame_duration_us,
                              stream.current_segment.last_pts_us -
@@ -292,9 +376,19 @@ StreamFlvStartData BuildFlvStartData(const StreamContext &stream) {
     }
 
     start_data.supported = true;
+    start_data.cached_gop_complete = stream.flv_gop_cache.complete;
     start_data.file_header = stream_mux::BuildFlvFileHeader();
     start_data.sequence_header = stream.sequence_header_tag;
-    start_data.last_keyframe = stream.last_keyframe_tag;
+    start_data.cached_video_tags.reserve(stream.flv_gop_cache.size);
+    for (size_t i = 0; i < stream.flv_gop_cache.size; ++i) {
+        const size_t index =
+            (stream.flv_gop_cache.head + i) %
+            stream.flv_gop_cache.frames.size();
+        if (stream.flv_gop_cache.frames[index].slice_count != 0) {
+            start_data.cached_video_tags.push_back(
+                stream.flv_gop_cache.frames[index]);
+        }
+    }
     start_data.config_generation = stream.config_generation;
     return start_data;
 }
@@ -333,12 +427,16 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     bool keyframe = stream_codec::IsKeyFrame(frame.frame_type);
     bool prepend_parameter_sets = false;
+    const uint64_t config_generation_before = stream->config_generation;
     if (frame.codec == VideoCodec::kH265) {
         BuildH265Outputs(stream, payload, frame, &keyframe,
                          &prepend_parameter_sets);
     } else {
         BuildH264Outputs(stream, frame, payload, &keyframe,
                          &prepend_parameter_sets);
+    }
+    if (stream->config_generation != config_generation_before) {
+        ClearFlvGopCache(stream);
     }
 
     if (package_hls && keyframe && stream->current_segment.started &&
@@ -375,12 +473,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
             keyframe, static_cast<int32_t>(composition_time_ms),
             static_cast<uint32_t>(frame.dts_us / 1000), payload.h264_units,
             &result.flv_tag_view);
-        if (keyframe && !stream->sequence_header_tag.empty()) {
-            result.flv_tag = stream_mux::BuildH264FlvVideoTag(
-                keyframe, static_cast<int32_t>(composition_time_ms),
-                static_cast<uint32_t>(frame.dts_us / 1000),
-                payload.h264_units);
-            stream->last_keyframe_tag = result.flv_tag;
+        if (result.has_flv_tag_view) {
+            PushFlvGopCache(stream, frame, keyframe, result.flv_tag_view);
         }
     } else if (package_flv && frame.codec == VideoCodec::kH265) {
         const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
@@ -388,12 +482,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
             keyframe, static_cast<int32_t>(composition_time_ms),
             static_cast<uint32_t>(frame.dts_us / 1000), payload.h265_units,
             &result.flv_tag_view);
-        if (keyframe && !stream->sequence_header_tag.empty()) {
-            result.flv_tag = stream_mux::BuildH265FlvVideoTag(
-                keyframe, static_cast<int32_t>(composition_time_ms),
-                static_cast<uint32_t>(frame.dts_us / 1000),
-                payload.h265_units);
-            stream->last_keyframe_tag = result.flv_tag;
+        if (result.has_flv_tag_view) {
+            PushFlvGopCache(stream, frame, keyframe, result.flv_tag_view);
         }
     }
 

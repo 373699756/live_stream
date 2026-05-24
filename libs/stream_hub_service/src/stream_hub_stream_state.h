@@ -6,6 +6,7 @@
 #include "stream_hub_service.h"
 #include "stream_mux.h"
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -23,6 +24,13 @@ struct HlsSegmentState {
     std::string body;
 };
 
+struct CachedFlvFrameRing {
+    std::array<StreamFlvCachedVideoTag, kMaxStreamFlvCachedVideoTags> frames;
+    size_t head = 0;
+    size_t size = 0;
+    bool complete = false;
+};
+
 // 单路码流的浏览器播放状态。服务层只负责加锁和分发，HLS/FLV 的
 // 参数集、分片缓存和打包游标都集中维护在这里。
 struct StreamContext {
@@ -32,7 +40,7 @@ struct StreamContext {
     std::string sps;
     std::string pps;
     std::string sequence_header_tag;
-    std::string last_keyframe_tag;
+    CachedFlvFrameRing flv_gop_cache;
     std::deque<StreamSegment> segments;
     HlsSegmentState current_segment;
     mutable bool hls_requested = false;
@@ -50,7 +58,6 @@ struct PackagedFrameResult {
     bool keyframe = false;
     bool hls_segment_created = false;
     bool hls_segment_updated = false;
-    std::string flv_tag;
     stream_mux::FlvVideoTagView flv_tag_view;
     bool has_flv_tag_view = false;
 };

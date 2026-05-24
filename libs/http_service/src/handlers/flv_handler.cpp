@@ -164,6 +164,51 @@ bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
     return true;
 }
 
+bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
+                                    ConnectionId connection_id,
+                                    const StreamFlvCachedVideoTag &tag,
+                                    const uint8_t *rebased_header) {
+    if (writer == nullptr || tag.slice_count == 0 ||
+        rebased_header == nullptr) {
+        return writer != nullptr;
+    }
+
+    size_t index = 0;
+    while (index < tag.slice_count) {
+        HttpStreamSlice slices[kMaxNetBufferSlices];
+        size_t slice_count = 0;
+        while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
+            const StreamFlvCachedVideoTagSlice &source = tag.slices[index];
+            if (source.size == 0) {
+                return false;
+            }
+            slices[slice_count].data =
+                index == kFlvVideoTagHeaderSliceIndex
+                    ? rebased_header
+                    : (source.media_payload ? source.media_data
+                                            : source.header_data);
+            if (slices[slice_count].data == nullptr) {
+                return false;
+            }
+            slices[slice_count].size = source.size;
+            if (source.media_payload) {
+                if (tag.frame.buffer == nullptr) {
+                    return false;
+                }
+                slices[slice_count].owner = tag.frame.buffer;
+            }
+            ++slice_count;
+            ++index;
+        }
+        if (slice_count == 0 ||
+            !writer->EnqueueStreamingSlices(connection_id, slices,
+                                            slice_count)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class FlvConnectionSink : public IStreamFlvSink {
 public:
     FlvConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
@@ -237,6 +282,38 @@ public:
 
         return EnqueueFlvVideoTagSlices(writer_, connection_id_, tag, frame,
                                         header);
+    }
+
+    bool OnCachedFlvVideoTag(const StreamFlvCachedVideoTag &tag) {
+        if (writer_ == nullptr || tag.slice_count == 0) {
+            return writer_ != nullptr;
+        }
+        uint32_t timestamp_ms = tag.timestamp_ms;
+        if (!timestamp_base_set_) {
+            timestamp_base_ms_ = timestamp_ms;
+            timestamp_base_set_ = true;
+            INFRA_LOG_INFO(kHttpModuleName,
+                           "HTTP-FLV timestamp base conn=%llu base_ms=%u",
+                           static_cast<unsigned long long>(connection_id_),
+                           timestamp_base_ms_);
+        }
+        uint32_t rebased_ms =
+            timestamp_ms >= timestamp_base_ms_ ? timestamp_ms - timestamp_base_ms_
+                                               : last_timestamp_ms_;
+        if (timestamp_base_set_ && rebased_ms < last_timestamp_ms_) {
+            rebased_ms = last_timestamp_ms_;
+        }
+        last_timestamp_ms_ = rebased_ms;
+
+        uint8_t header[24] = {};
+        if (tag.slices[0].media_payload || tag.slices[0].size > sizeof(header)) {
+            return false;
+        }
+        std::memcpy(header, tag.slices[0].header_data, tag.slices[0].size);
+        WriteFlvTimestampMs(rebased_ms, header);
+
+        return EnqueueCachedFlvVideoTagSlices(writer_, connection_id_, tag,
+                                              header);
     }
 
 private:
@@ -420,14 +497,15 @@ private:
             browser_source->GetFlvStartData(stream_id);
         INFRA_LOG_INFO(kHttpModuleName,
                        "HTTP-FLV start-data conn=%llu stream=%s supported=%d "
-                       "file=%zu sequence=%zu cached_keyframe=%zu "
+                       "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d "
                        "generation=%llu",
                        static_cast<unsigned long long>(connection_id),
                        StreamIdToJsonString(stream_id),
                        start_data.supported ? 1 : 0,
                        start_data.file_header.size(),
                        start_data.sequence_header.size(),
-                       start_data.last_keyframe.size(),
+                       start_data.cached_video_tags.size(),
+                       start_data.cached_gop_complete ? 1 : 0,
                        static_cast<unsigned long long>(
                            start_data.config_generation));
         if (!HasUsableFlvStartData(start_data)) {
@@ -436,7 +514,8 @@ private:
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=start_data codec=%s running=%d flv_ready=%d "
-                            "file=%zu sequence=%zu cached_keyframe=%zu "
+                            "file=%zu sequence=%zu cached_flv=%zu "
+                            "gop_complete=%d "
                             "keyframe=%d",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id),
@@ -445,14 +524,15 @@ private:
                             browser_status.flv_ready ? 1 : 0,
                             start_data.file_header.size(),
                             start_data.sequence_header.size(),
-                            start_data.last_keyframe.size(),
+                            start_data.cached_video_tags.size(),
+                            start_data.cached_gop_complete ? 1 : 0,
                             keyframe_requested ? 1 : 0);
             SendStreamingError(writer_, connection_id,
                                StatusResponse(503, "FLV stream not ready"));
             return;
         }
 
-        IStreamFlvSink *sink = new FlvConnectionSink(writer_, connection_id);
+        FlvConnectionSink *sink = new FlvConnectionSink(writer_, connection_id);
         if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {
             delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
@@ -469,13 +549,14 @@ private:
         const std::string header_block = BuildStreamingHeaderBlock(200, headers);
         INFRA_LOG_INFO(kHttpModuleName,
                        "HTTP-FLV start conn=%llu stream=%s client=%llu header=%zu "
-                       "file=%zu sequence=%zu cached_keyframe=%zu",
+                       "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d",
                        static_cast<unsigned long long>(connection_id),
                        StreamIdToJsonString(stream_id),
                        static_cast<unsigned long long>(0), header_block.size(),
                        start_data.file_header.size(),
                        start_data.sequence_header.size(),
-                       start_data.last_keyframe.size());
+                       start_data.cached_video_tags.size(),
+                       start_data.cached_gop_complete ? 1 : 0);
         std::string start_block;
         start_block.reserve(header_block.size() + start_data.file_header.size());
         start_block.append(header_block);
@@ -504,6 +585,21 @@ private:
             writer_->CloseConnection(connection_id);
             return;
         }
+        size_t cached_flv_bytes = 0;
+        for (const StreamFlvCachedVideoTag &cached_tag :
+             start_data.cached_video_tags) {
+            if (!sink->OnCachedFlvVideoTag(cached_tag)) {
+                delete sink;
+                INFRA_LOG_ERROR(kHttpModuleName,
+                                "HTTP-FLV close conn=%llu stream=%s "
+                                "reason=cached_flv",
+                                static_cast<unsigned long long>(connection_id),
+                                StreamIdToJsonString(stream_id));
+                writer_->CloseConnection(connection_id);
+                return;
+            }
+            cached_flv_bytes += cached_tag.total_size;
+        }
 
         const bool wait_for_keyframe = true;
         const StreamFlvClientId client_id = flv_source->AttachFlvClient(
@@ -528,11 +624,14 @@ private:
         }
         INFRA_LOG_INFO(kHttpModuleName,
                        "HTTP-FLV attached conn=%llu stream=%s client=%llu "
-                       "wait_keyframe=%d request_keyframe=1",
+                       "wait_keyframe=%d request_keyframe=1 cached_flv=%zu "
+                       "cached_bytes=%zu gop_complete=%d",
                        static_cast<unsigned long long>(connection_id),
                        StreamIdToJsonString(stream_id),
                        static_cast<unsigned long long>(client_id),
-                       wait_for_keyframe ? 1 : 0);
+                       wait_for_keyframe ? 1 : 0,
+                       start_data.cached_video_tags.size(), cached_flv_bytes,
+                       start_data.cached_gop_complete ? 1 : 0);
     }
 
     void HandleMjpegRequest(ConnectionId connection_id,
