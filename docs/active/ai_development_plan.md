@@ -69,6 +69,9 @@
   - `GET /api/ai/status` 返回 AI 配置、统计和最近推理结果。
   - `GET /api/ai/alerts` 返回最近 AI 告警图片列表。
   - `GET /api/ai/alerts/{id}/image` 返回 JPEG 图片。
+  - AI 告警页可通过已有 `PUT /api/config/ai` 保存启用状态、后端、任务、码流、
+    模型路径、推理间隔、阈值和最大结果数；当前运行中的 `AiService` 仍需重启服务
+    后按新配置重建推理后端。
 - 实时预览页已轮询 `/api/ai/status`，把当前码流的
   `last_result.detections` 按归一化坐标叠到预览画面内容区域；AI 未启用、后端不可用
   或结果来自另一条码流时只显示紧凑状态，不阻塞预览。

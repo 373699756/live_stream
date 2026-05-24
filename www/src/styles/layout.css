@@ -761,6 +761,32 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.ai-config-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 10px 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e5eaf1;
+}
+
+.ai-config-path {
+  grid-column: span 2;
+}
+
+.ai-config-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-config-actions span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .ai-waterfall-header span {
   color: var(--muted);
   font-size: 13px;
@@ -983,12 +1009,24 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .ai-config-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .ai-waterfall {
     column-count: 2;
   }
 }
 
 @media (max-width: 620px) {
+  .ai-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-config-path {
+    grid-column: auto;
+  }
+
   .ai-waterfall {
     column-count: 1;
   }
