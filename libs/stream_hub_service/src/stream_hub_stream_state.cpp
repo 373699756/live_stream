@@ -371,18 +371,28 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     if (package_flv && frame.codec == VideoCodec::kH264) {
         const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        result.flv_tag = stream_mux::BuildH264FlvVideoTag(
+        result.has_flv_tag_view = stream_mux::BuildH264FlvVideoTagView(
             keyframe, static_cast<int32_t>(composition_time_ms),
-            static_cast<uint32_t>(frame.dts_us / 1000), payload.h264_units);
+            static_cast<uint32_t>(frame.dts_us / 1000), payload.h264_units,
+            &result.flv_tag_view);
         if (keyframe && !stream->sequence_header_tag.empty()) {
+            result.flv_tag = stream_mux::BuildH264FlvVideoTag(
+                keyframe, static_cast<int32_t>(composition_time_ms),
+                static_cast<uint32_t>(frame.dts_us / 1000),
+                payload.h264_units);
             stream->last_keyframe_tag = result.flv_tag;
         }
     } else if (package_flv && frame.codec == VideoCodec::kH265) {
         const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        result.flv_tag = stream_mux::BuildH265FlvVideoTag(
+        result.has_flv_tag_view = stream_mux::BuildH265FlvVideoTagView(
             keyframe, static_cast<int32_t>(composition_time_ms),
-            static_cast<uint32_t>(frame.dts_us / 1000), payload.h265_units);
+            static_cast<uint32_t>(frame.dts_us / 1000), payload.h265_units,
+            &result.flv_tag_view);
         if (keyframe && !stream->sequence_header_tag.empty()) {
+            result.flv_tag = stream_mux::BuildH265FlvVideoTag(
+                keyframe, static_cast<int32_t>(composition_time_ms),
+                static_cast<uint32_t>(frame.dts_us / 1000),
+                payload.h265_units);
             stream->last_keyframe_tag = result.flv_tag;
         }
     }

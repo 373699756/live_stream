@@ -12,6 +12,20 @@ namespace live_stream {
 
 struct EncodedFrame;
 
+constexpr size_t kMaxStreamFlvVideoTagSlices = 130;
+
+struct StreamFlvVideoTagSlice {
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    bool media_payload = false;
+};
+
+struct StreamFlvVideoTagView {
+    StreamFlvVideoTagSlice slices[kMaxStreamFlvVideoTagSlices];
+    size_t slice_count = 0;
+    uint32_t timestamp_ms = 0;
+};
+
 using StreamFlvClientId = uint64_t;
 using StreamMjpegClientId = uint64_t;
 
@@ -71,6 +85,8 @@ public:
     virtual ~IStreamFlvSink() = default;
 
     virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
+    virtual bool OnFlvVideoTag(const StreamFlvVideoTagView &tag,
+                               const EncodedFrame &frame) = 0;
 };
 
 class IStreamMjpegSink {

@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <memory>
 #include <mutex>
 
 namespace live_stream {
@@ -37,10 +36,17 @@ private:
     static constexpr size_t kInlineSliceBytes = 64;
 
     struct OutSlice {
+        OutSlice() = default;
+        OutSlice(OutSlice&& other) noexcept;
+        OutSlice& operator=(OutSlice&& other) noexcept;
+        OutSlice(const OutSlice&) = delete;
+        OutSlice& operator=(const OutSlice&) = delete;
+        ~OutSlice();
+
         const uint8_t *data = nullptr;
         size_t size = 0;
         size_t offset = 0;
-        std::shared_ptr<const void> owner;
+        NetBufferOwner owner;
         std::array<uint8_t, kInlineSliceBytes> inline_data{};
         std::unique_ptr<uint8_t[]> heap_data;
     };

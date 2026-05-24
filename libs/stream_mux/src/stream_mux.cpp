@@ -95,6 +95,19 @@ using byte_writer::AppendU32;
 using byte_writer::WriteU16;
 using byte_writer::WriteU32;
 
+void WriteU24Bytes(uint32_t value, uint8_t *target) {
+    target[0] = static_cast<uint8_t>((value >> 16) & 0xff);
+    target[1] = static_cast<uint8_t>((value >> 8) & 0xff);
+    target[2] = static_cast<uint8_t>(value & 0xff);
+}
+
+void WriteU32Bytes(uint32_t value, uint8_t *target) {
+    target[0] = static_cast<uint8_t>((value >> 24) & 0xff);
+    target[1] = static_cast<uint8_t>((value >> 16) & 0xff);
+    target[2] = static_cast<uint8_t>((value >> 8) & 0xff);
+    target[3] = static_cast<uint8_t>(value & 0xff);
+}
+
 uint8_t PayloadType(VideoCodec codec) {
     return codec == VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
 }
@@ -877,6 +890,113 @@ std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
     AppendH265LengthPrefixedVideoNals(units, &tag);
     AppendU32(&tag, body_size + 11U);
     return tag;
+}
+
+bool BuildH264FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
+                              uint32_t timestamp_ms,
+                              const stream_codec::H264NalUnitList &units,
+                              FlvVideoTagView *tag) {
+    if (tag == nullptr) {
+        return false;
+    }
+    *tag = FlvVideoTagView{};
+    const size_t payload_size = H264FlvVideoPayloadSize(units);
+    if (payload_size == 0 || payload_size > kFlvMaxBodySize - 5U) {
+        return false;
+    }
+    const uint32_t body_size = 5U + static_cast<uint32_t>(payload_size);
+    uint8_t *header = tag->header;
+    header[0] = 9;
+    WriteU24Bytes(body_size, header + 1);
+    WriteU24Bytes(timestamp_ms & 0x00ffffffU, header + 4);
+    header[7] = static_cast<uint8_t>((timestamp_ms >> 24) & 0xff);
+    WriteU24Bytes(0, header + 8);
+    header[11] =
+        static_cast<uint8_t>(((keyframe ? 1 : 2) << 4) | kFlvCodecIdAvc);
+    header[12] = kFlvPacketTypeCodedFrames;
+    WriteU24Bytes(static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU,
+                  header + 13);
+    if (!tag->AddHeader(header, 16)) {
+        return false;
+    }
+    size_t nal_index = 0;
+    for (const stream_codec::H264NalUnit &unit : units) {
+        if (!IsH264FlvVideoNal(unit)) {
+            continue;
+        }
+        if (nal_index >= stream_codec::kMaxNalUnitsPerFrame) {
+            return false;
+        }
+        WriteU32Bytes(static_cast<uint32_t>(unit.size),
+                      tag->nal_lengths[nal_index]);
+        if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
+            !tag->AddPayload(unit.data, unit.size)) {
+            return false;
+        }
+        ++nal_index;
+    }
+    WriteU32Bytes(body_size + 11U, tag->previous_tag_size);
+    if (!tag->AddHeader(tag->previous_tag_size, 4)) {
+        return false;
+    }
+    tag->timestamp_ms = timestamp_ms;
+    return true;
+}
+
+bool BuildH265FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
+                              uint32_t timestamp_ms,
+                              const stream_codec::H265NalUnitList &units,
+                              FlvVideoTagView *tag) {
+    if (tag == nullptr) {
+        return false;
+    }
+    *tag = FlvVideoTagView{};
+    const size_t payload_size = H265FlvVideoPayloadSize(units);
+    if (payload_size == 0 || payload_size > kFlvMaxBodySize - 8U) {
+        return false;
+    }
+    const uint32_t body_size = 8U + static_cast<uint32_t>(payload_size);
+    uint8_t *header = tag->header;
+    header[0] = 9;
+    WriteU24Bytes(body_size, header + 1);
+    WriteU24Bytes(timestamp_ms & 0x00ffffffU, header + 4);
+    header[7] = static_cast<uint8_t>((timestamp_ms >> 24) & 0xff);
+    WriteU24Bytes(0, header + 8);
+    header[11] = static_cast<uint8_t>(kEnhancedFlvHeader |
+                                      (keyframe ? kFlvFrameKey
+                                                : kFlvFrameInter) |
+                                      kFlvPacketTypeCodedFrames);
+    header[12] = 'h';
+    header[13] = 'v';
+    header[14] = 'c';
+    header[15] = '1';
+    WriteU24Bytes(static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU,
+                  header + 16);
+    if (!tag->AddHeader(header, 19)) {
+        return false;
+    }
+    size_t nal_index = 0;
+    for (const stream_codec::H265NalUnit &unit : units) {
+        if (!IsH265FlvVideoNal(unit)) {
+            continue;
+        }
+        if (nal_index >= stream_codec::kMaxNalUnitsPerFrame) {
+            return false;
+        }
+        WriteU32Bytes(static_cast<uint32_t>(unit.size),
+                      tag->nal_lengths[nal_index]);
+        if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
+            !tag->AddPayload(unit.data, unit.size)) {
+            return false;
+        }
+        ++nal_index;
+    }
+    WriteU32Bytes(body_size + 11U, tag->previous_tag_size);
+    if (!tag->AddHeader(tag->previous_tag_size, 4)) {
+        return false;
+    }
+    tag->timestamp_ms = timestamp_ms;
+    return true;
 }
 
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state) {

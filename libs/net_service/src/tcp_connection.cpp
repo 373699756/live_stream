@@ -19,7 +19,61 @@ namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
 
+void RetainNetBufferOwner(const NetBufferOwner &owner) {
+    if (owner.ptr != nullptr && owner.retain != nullptr) {
+        owner.retain(owner.ptr);
+    }
+}
+
+void ReleaseNetBufferOwner(const NetBufferOwner &owner) {
+    if (owner.ptr != nullptr && owner.release != nullptr) {
+        owner.release(owner.ptr);
+    }
+}
+
 }  // namespace
+
+TcpConnection::OutSlice::OutSlice(OutSlice&& other) noexcept
+    : data(other.data),
+      size(other.size),
+      offset(other.offset),
+      owner(other.owner),
+      inline_data(other.inline_data),
+      heap_data(std::move(other.heap_data)) {
+    if (data == other.inline_data.data()) {
+        data = inline_data.data();
+    }
+    other.data = nullptr;
+    other.size = 0;
+    other.offset = 0;
+    other.owner = NetBufferOwner{};
+}
+
+TcpConnection::OutSlice& TcpConnection::OutSlice::operator=(
+    OutSlice&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    ReleaseNetBufferOwner(owner);
+    data = other.data;
+    size = other.size;
+    offset = other.offset;
+    owner = other.owner;
+    inline_data = other.inline_data;
+    heap_data = std::move(other.heap_data);
+    if (data == other.inline_data.data()) {
+        data = inline_data.data();
+    }
+    other.data = nullptr;
+    other.size = 0;
+    other.offset = 0;
+    other.owner = NetBufferOwner{};
+    return *this;
+}
+
+TcpConnection::OutSlice::~OutSlice() {
+    ReleaseNetBufferOwner(owner);
+}
 
 TcpConnection::TcpConnection(NetEngineImpl *engine,
                              std::shared_ptr<EventLoop> loop, int fd,
@@ -297,7 +351,8 @@ bool TcpConnection::BuildOutBuffer(const NetBufferSlices &slices,
         OutSlice &out = buffer->slices[buffer->slice_count];
         out.size = input.size;
         out.owner = input.owner;
-        if (out.owner) {
+        if (out.owner.ptr != nullptr) {
+            RetainNetBufferOwner(out.owner);
             out.data = input.data;
         } else if (input.size <= out.inline_data.size()) {
             std::memcpy(out.inline_data.data(), input.data, input.size);

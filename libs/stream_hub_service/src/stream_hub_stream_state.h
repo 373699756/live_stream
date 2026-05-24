@@ -51,6 +51,8 @@ struct PackagedFrameResult {
     bool hls_segment_created = false;
     bool hls_segment_updated = false;
     std::string flv_tag;
+    stream_mux::FlvVideoTagView flv_tag_view;
+    bool has_flv_tag_view = false;
 };
 
 bool IsBrowserStreamReady(StreamState state, VideoCodec codec);

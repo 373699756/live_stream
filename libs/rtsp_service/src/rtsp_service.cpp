@@ -27,6 +27,24 @@ enum class ServiceState {
     kDeinitialized,
 };
 
+void RetainVideoBufferOwner(const void *owner) {
+    (void)VideoBufferRetain(
+        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
+}
+
+void ReleaseVideoBufferOwner(const void *owner) {
+    VideoBufferRelease(
+        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
+}
+
+NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
+    if (buffer == nullptr) {
+        return NetBufferOwner{};
+    }
+    return NetBufferOwner{buffer, RetainVideoBufferOwner,
+                          ReleaseVideoBufferOwner};
+}
+
 }  // namespace
 
 using rtsp_internal::BasicRealmHeader;
@@ -677,15 +695,7 @@ private:
             dependencies_.net_engine == nullptr) {
             return false;
         }
-        std::shared_ptr<const void> payload_owner;
-        if (frame.buffer != nullptr) {
-            payload_owner = std::shared_ptr<const void>(
-                static_cast<const void*>(VideoBufferRetain(frame.buffer)),
-                [](const void* buffer) {
-                    VideoBufferRelease(
-                        static_cast<VideoBuffer*>(const_cast<void*>(buffer)));
-                });
-        }
+        const NetBufferOwner payload_owner = VideoBufferNetOwner(frame.buffer);
         NetBufferSlices slices;
         uint8_t interleaved_header[4] = {'$', interleaved_channel, 0, 0};
         bool ok = true;
@@ -696,7 +706,8 @@ private:
             for (size_t i = 0; ok && i < packet.slice_count; ++i) {
                 const auto& slice = packet.slices[i];
                 ok = slices.Add(slice.data, slice.size,
-                                slice.media_payload ? payload_owner : nullptr);
+                                slice.media_payload ? payload_owner
+                                                    : NetBufferOwner{});
             }
             ok = ok && dependencies_.net_engine->SendSlices(connection_id,
                                                             slices);
@@ -704,7 +715,8 @@ private:
             for (size_t i = 0; ok && i < packet.slice_count; ++i) {
                 const auto& slice = packet.slices[i];
                 ok = slices.Add(slice.data, slice.size,
-                                slice.media_payload ? payload_owner : nullptr);
+                                slice.media_payload ? payload_owner
+                                                    : NetBufferOwner{});
             }
             ok = ok && dependencies_.net_engine->SendToSlices(udp_socket_id,
                                                               target, slices);

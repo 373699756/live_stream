@@ -2,9 +2,11 @@
 #define LIVE_STREAM_STREAM_MUX_H_
 
 #include "media/encoded_frame.h"
+#include "stream_codec.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace live_stream {
@@ -16,6 +18,8 @@ struct H265NalUnitList;
 namespace stream_mux {
 
 constexpr size_t kMaxRtpPacketSlices = 4;
+constexpr size_t kMaxFlvVideoTagSlices =
+    stream_codec::kMaxNalUnitsPerFrame * 2 + 2;
 
 struct RtpPacketSlice {
     const uint8_t *data = nullptr;
@@ -55,6 +59,47 @@ private:
         slices[slice_count].data = data;
         slices[slice_count].size = size;
         slices[slice_count].media_payload = media_payload;
+        ++slice_count;
+        return true;
+    }
+};
+
+struct FlvVideoTagSlice {
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    bool media_payload = false;
+};
+
+struct FlvVideoTagView {
+    FlvVideoTagSlice slices[kMaxFlvVideoTagSlices];
+    size_t slice_count = 0;
+    size_t total_size = 0;
+    uint32_t timestamp_ms = 0;
+    uint8_t header[24] = {};
+    uint8_t nal_lengths[kMaxFlvVideoTagSlices][4] = {};
+    uint8_t previous_tag_size[4] = {};
+
+    bool AddHeader(const uint8_t *data, size_t size) {
+        return Add(data, size, false);
+    }
+
+    bool AddPayload(const uint8_t *data, size_t size) {
+        return Add(data, size, true);
+    }
+
+private:
+    bool Add(const uint8_t *data, size_t size, bool media_payload) {
+        if (size == 0) {
+            return true;
+        }
+        if (data == nullptr || slice_count >= kMaxFlvVideoTagSlices ||
+            size > std::numeric_limits<size_t>::max() - total_size) {
+            return false;
+        }
+        slices[slice_count].data = data;
+        slices[slice_count].size = size;
+        slices[slice_count].media_payload = media_payload;
+        total_size += size;
         ++slice_count;
         return true;
     }
@@ -116,6 +161,16 @@ std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
 std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
                                  uint32_t timestamp_ms,
                                  const stream_codec::H265NalUnitList &units);
+
+bool BuildH264FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
+                              uint32_t timestamp_ms,
+                              const stream_codec::H264NalUnitList &units,
+                              FlvVideoTagView *tag);
+
+bool BuildH265FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
+                              uint32_t timestamp_ms,
+                              const stream_codec::H265NalUnitList &units,
+                              FlvVideoTagView *tag);
 
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state);
 

@@ -5,9 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
-#include <utility>
 
 namespace live_stream {
 
@@ -23,10 +21,19 @@ using NetTimerId = uint64_t;
 
 constexpr size_t kMaxNetBufferSlices = 8;
 
+using NetBufferOwnerRetainFn = void (*)(const void *owner);
+using NetBufferOwnerReleaseFn = void (*)(const void *owner);
+
+struct NetBufferOwner {
+    const void *ptr = nullptr;
+    NetBufferOwnerRetainFn retain = nullptr;
+    NetBufferOwnerReleaseFn release = nullptr;
+};
+
 struct NetBufferSlice {
     const uint8_t *data = nullptr;
     size_t size = 0;
-    std::shared_ptr<const void> owner;
+    NetBufferOwner owner;
 };
 
 struct NetBufferSlices {
@@ -34,16 +41,18 @@ struct NetBufferSlices {
     size_t count = 0;
 
     bool Add(const uint8_t *data, size_t size,
-             std::shared_ptr<const void> owner = nullptr) {
+             NetBufferOwner owner = NetBufferOwner{}) {
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || count >= kMaxNetBufferSlices) {
+        if (data == nullptr || count >= kMaxNetBufferSlices ||
+            (owner.ptr != nullptr &&
+             (owner.retain == nullptr || owner.release == nullptr))) {
             return false;
         }
         slices[count].data = data;
         slices[count].size = size;
-        slices[count].owner = std::move(owner);
+        slices[count].owner = owner;
         ++count;
         return true;
     }

@@ -15,6 +15,24 @@ namespace {
 
 constexpr size_t kMaxStreamingQueuedBytes = 4U * 1024U * 1024U;
 
+void RetainVideoBufferOwner(const void *owner) {
+    (void)VideoBufferRetain(
+        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
+}
+
+void ReleaseVideoBufferOwner(const void *owner) {
+    VideoBufferRelease(
+        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
+}
+
+NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
+    if (buffer == nullptr) {
+        return NetBufferOwner{};
+    }
+    return NetBufferOwner{buffer, RetainVideoBufferOwner,
+                          ReleaseVideoBufferOwner};
+}
+
 const char *HttpMethodName(HttpMethod method) {
     switch (method) {
         case HttpMethod::kGet:
@@ -333,7 +351,8 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         if (slices[i].size == 0) {
             continue;
         }
-        if (!net_slices.Add(slices[i].data, slices[i].size)) {
+        if (!net_slices.Add(slices[i].data, slices[i].size,
+                            VideoBufferNetOwner(slices[i].owner))) {
             return false;
         }
         total_size += slices[i].size;

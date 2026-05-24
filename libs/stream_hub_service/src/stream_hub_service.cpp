@@ -9,9 +9,9 @@
 #include "stream_codec.h"
 #include "stream_hub_stream_state.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -26,6 +26,94 @@ constexpr const char *kServiceName = "stream_hub_service";
 constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
+
+class PendingFrameQueue {
+public:
+    void Clear() {
+        frames_ = {};
+        head_ = 0;
+        size_ = 0;
+    }
+
+    bool Empty() const { return size_ == 0; }
+
+    bool Full() const { return size_ >= frames_.size(); }
+
+    bool PushBack(const EncodedFrame &frame) {
+        if (Full()) {
+            return false;
+        }
+        frames_[(head_ + size_) % frames_.size()] = frame;
+        ++size_;
+        return true;
+    }
+
+    bool PopFront() {
+        if (Empty()) {
+            return false;
+        }
+        frames_[head_] = EncodedFrame{};
+        head_ = (head_ + 1) % frames_.size();
+        --size_;
+        return true;
+    }
+
+    bool DropOldestNonKeyFrame() {
+        for (size_t i = 0; i < size_; ++i) {
+            const size_t index = (head_ + i) % frames_.size();
+            if (!stream_codec::IsKeyFrame(frames_[index].frame_type)) {
+                RemoveAt(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TakeFront(EncodedFrame *frame) {
+        if (frame == nullptr || Empty()) {
+            return false;
+        }
+        *frame = std::move(frames_[head_]);
+        head_ = (head_ + 1) % frames_.size();
+        --size_;
+        return true;
+    }
+
+private:
+    void RemoveAt(size_t position) {
+        if (position >= size_) {
+            return;
+        }
+        for (size_t i = position; i + 1 < size_; ++i) {
+            const size_t target = (head_ + i) % frames_.size();
+            const size_t source = (head_ + i + 1) % frames_.size();
+            frames_[target] = std::move(frames_[source]);
+        }
+        const size_t tail = (head_ + size_ - 1) % frames_.size();
+        frames_[tail] = EncodedFrame{};
+        --size_;
+    }
+
+    std::array<EncodedFrame, kMaxPendingFramesPerStream> frames_{};
+    size_t head_ = 0;
+    size_t size_ = 0;
+};
+
+StreamFlvVideoTagView ToStreamFlvVideoTagView(
+    const stream_mux::FlvVideoTagView &tag) {
+    StreamFlvVideoTagView output_tag;
+    if (tag.slice_count > kMaxStreamFlvVideoTagSlices) {
+        return output_tag;
+    }
+    output_tag.slice_count = tag.slice_count;
+    output_tag.timestamp_ms = tag.timestamp_ms;
+    for (size_t i = 0; i < tag.slice_count; ++i) {
+        output_tag.slices[i].data = tag.slices[i].data;
+        output_tag.slices[i].size = tag.slices[i].size;
+        output_tag.slices[i].media_payload = tag.slices[i].media_payload;
+    }
+    return output_tag;
+}
 
 bool IsStreamSupported(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
@@ -453,8 +541,7 @@ public:
                 worker_executor_ == nullptr) {
                 return;
             }
-            std::deque<EncodedFrame> *queue =
-                FindPendingQueue(frame.stream_id);
+            PendingFrameQueue *queue = FindPendingQueue(frame.stream_id);
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
                 return;
             }
@@ -491,8 +578,8 @@ private:
     void ResetRuntimeStateLocked() {
         main_attach_id_ = 0;
         sub_attach_id_ = 0;
-        main_pending_.clear();
-        sub_pending_.clear();
+        main_pending_.Clear();
+        sub_pending_.Clear();
         drain_task_posted_ = false;
         last_drained_stream_ = StreamId::kSub;
         flv_clients_.Clear();
@@ -565,6 +652,8 @@ private:
         std::vector<hub_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         std::string flv_tag;
+        stream_mux::FlvVideoTagView flv_tag_view;
+        bool has_flv_tag_view = false;
         bool package_hls = false;
         bool package_flv = false;
         bool update_flv_header = false;
@@ -633,11 +722,14 @@ private:
                 ++stats_.hls_segments_created;
             }
             flv_tag = std::move(packaged_frame.flv_tag);
+            flv_tag_view = packaged_frame.flv_tag_view;
+            has_flv_tag_view = packaged_frame.has_flv_tag_view;
             const bool has_sequence_header =
                 hub_state::HasFlvSequenceHeader(*stream);
             clients = flv_clients_.CollectWrites(
-                frame.stream_id, stream->config_generation, !flv_tag.empty(),
-                has_sequence_header, packaged_frame.keyframe);
+                frame.stream_id, stream->config_generation,
+                has_flv_tag_view || !flv_tag.empty(), has_sequence_header,
+                packaged_frame.keyframe);
             for (const hub_state::PendingFlvClientWrite &client : clients) {
                 if (client.send_sequence_header) {
                     sequence_header_tag = stream->sequence_header_tag;
@@ -646,7 +738,8 @@ private:
             }
         }
 
-        WriteFlvClients(clients, sequence_header_tag, flv_tag, frame.stream_id);
+        WriteFlvClients(clients, sequence_header_tag, flv_tag, flv_tag_view,
+                        has_flv_tag_view, frame, frame.stream_id);
     }
 
     void PackageMjpegFrame(const hub_state::ParsedFramePayload &payload) {
@@ -677,6 +770,9 @@ private:
         const std::vector<hub_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
         const std::string &flv_tag,
+        const stream_mux::FlvVideoTagView &flv_tag_view,
+        bool has_flv_tag_view,
+        const EncodedFrame &frame,
         StreamId stream_id) {
         std::vector<StreamFlvClientId> detach_ids;
         for (const hub_state::PendingFlvClientWrite &client : clients) {
@@ -697,9 +793,15 @@ private:
                 ReleaseFlvClientWrite(client.client_id);
                 continue;
             }
-            if (!client.sink->OnFlvChunk(
-                    reinterpret_cast<const uint8_t *>(flv_tag.data()),
-                    flv_tag.size())) {
+            const StreamFlvVideoTagView flv_video_tag =
+                ToStreamFlvVideoTagView(flv_tag_view);
+            const bool sent_frame =
+                has_flv_tag_view
+                    ? client.sink->OnFlvVideoTag(flv_video_tag, frame)
+                    : client.sink->OnFlvChunk(
+                          reinterpret_cast<const uint8_t *>(flv_tag.data()),
+                          flv_tag.size());
+            if (!sent_frame) {
                 detach_ids.push_back(client.client_id);
             }
             ReleaseFlvClientWrite(client.client_id);
@@ -738,7 +840,7 @@ private:
         mjpeg_clients_.ReleaseWrite(client_id);
     }
 
-    std::deque<EncodedFrame> *FindPendingQueue(StreamId stream_id) {
+    PendingFrameQueue *FindPendingQueue(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_pending_;
         }
@@ -748,35 +850,21 @@ private:
         return nullptr;
     }
 
-    bool DropOldestNonKeyFrameLocked(std::deque<EncodedFrame> *queue) {
-        if (queue == nullptr) {
-            return false;
-        }
-        for (auto it = queue->begin(); it != queue->end(); ++it) {
-            if (!stream_codec::IsKeyFrame(it->frame_type)) {
-                queue->erase(it);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool EnqueuePendingFrameLocked(std::deque<EncodedFrame> *queue,
+    bool EnqueuePendingFrameLocked(PendingFrameQueue *queue,
                                    const EncodedFrame &frame) {
         if (queue == nullptr) {
             return false;
         }
-        if (queue->size() >= kMaxPendingFramesPerStream) {
+        if (queue->Full()) {
             if (stream_codec::IsKeyFrame(frame.frame_type)) {
-                if (!DropOldestNonKeyFrameLocked(queue) && !queue->empty()) {
-                    queue->pop_front();
+                if (!queue->DropOldestNonKeyFrame() && !queue->Empty()) {
+                    queue->PopFront();
                 }
-            } else if (!DropOldestNonKeyFrameLocked(queue)) {
+            } else if (!queue->DropOldestNonKeyFrame()) {
                 return false;
             }
         }
-        queue->push_back(frame);
-        return true;
+        return queue->PushBack(frame);
     }
 
     bool TakeNextPendingFrameLocked(EncodedFrame *frame) {
@@ -789,17 +877,18 @@ private:
         const StreamId fallback_stream = preferred_stream == StreamId::kMain
                                              ? StreamId::kSub
                                              : StreamId::kMain;
-        std::deque<EncodedFrame> *queue = FindPendingQueue(preferred_stream);
+        PendingFrameQueue *queue = FindPendingQueue(preferred_stream);
         StreamId selected_stream = preferred_stream;
-        if (queue == nullptr || queue->empty()) {
+        if (queue == nullptr || queue->Empty()) {
             queue = FindPendingQueue(fallback_stream);
             selected_stream = fallback_stream;
         }
-        if (queue == nullptr || queue->empty()) {
+        if (queue == nullptr || queue->Empty()) {
             return false;
         }
-        *frame = queue->front();
-        queue->pop_front();
+        if (!queue->TakeFront(frame)) {
+            return false;
+        }
         last_drained_stream_ = selected_stream;
         return true;
     }
@@ -828,8 +917,8 @@ private:
     StreamHubServiceDependencies dependencies_;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
-    std::deque<EncodedFrame> main_pending_;
-    std::deque<EncodedFrame> sub_pending_;
+    PendingFrameQueue main_pending_;
+    PendingFrameQueue sub_pending_;
     bool drain_task_posted_ = false;
     StreamId last_drained_stream_ = StreamId::kSub;
     hub_state::StreamContext main_stream_;

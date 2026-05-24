@@ -24,6 +24,7 @@ constexpr uint8_t kFlvTagTypeVideo = 9;
 constexpr uint8_t kFlvEnhancedHeader = 0x80;
 constexpr uint8_t kFlvPacketTypeSequenceHeader = 0;
 constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
+constexpr size_t kFlvVideoTagHeaderSliceIndex = 0;
 constexpr const char *kMjpegBoundary = "live_stream_frame";
 constexpr const char *kMjpegFrameTail = "\r\n";
 
@@ -122,6 +123,47 @@ bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
     return writer->EnqueueStreamingSlices(connection_id, slices, 2);
 }
 
+bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
+                              ConnectionId connection_id,
+                              const StreamFlvVideoTagView &tag,
+                              const EncodedFrame &frame,
+                              const uint8_t *rebased_header) {
+    if (writer == nullptr || tag.slice_count == 0 ||
+        rebased_header == nullptr) {
+        return writer != nullptr;
+    }
+
+    size_t index = 0;
+    while (index < tag.slice_count) {
+        HttpStreamSlice slices[kMaxNetBufferSlices];
+        size_t slice_count = 0;
+        while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
+            const StreamFlvVideoTagSlice &source = tag.slices[index];
+            if (source.data == nullptr || source.size == 0) {
+                return false;
+            }
+            if (source.media_payload && frame.buffer == nullptr) {
+                return false;
+            }
+            slices[slice_count].data =
+                index == kFlvVideoTagHeaderSliceIndex ? rebased_header
+                                                      : source.data;
+            slices[slice_count].size = source.size;
+            if (source.media_payload) {
+                slices[slice_count].owner = frame.buffer;
+            }
+            ++slice_count;
+            ++index;
+        }
+        if (slice_count == 0 ||
+            !writer->EnqueueStreamingSlices(connection_id, slices,
+                                            slice_count)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class FlvConnectionSink : public IStreamFlvSink {
 public:
     FlvConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
@@ -163,6 +205,40 @@ public:
                                           rebased_ms);
     }
 
+    bool OnFlvVideoTag(const StreamFlvVideoTagView &tag,
+                       const EncodedFrame &frame) override {
+        if (writer_ == nullptr || tag.slice_count == 0) {
+            return writer_ != nullptr;
+        }
+        uint32_t timestamp_ms = tag.timestamp_ms;
+        if (!timestamp_base_set_) {
+            timestamp_base_ms_ = timestamp_ms;
+            timestamp_base_set_ = true;
+            INFRA_LOG_INFO(kHttpModuleName,
+                           "HTTP-FLV timestamp base conn=%llu base_ms=%u",
+                           static_cast<unsigned long long>(connection_id_),
+                           timestamp_base_ms_);
+        }
+        uint32_t rebased_ms =
+            timestamp_ms >= timestamp_base_ms_ ? timestamp_ms - timestamp_base_ms_
+                                               : last_timestamp_ms_;
+        if (timestamp_base_set_ && rebased_ms < last_timestamp_ms_) {
+            rebased_ms = last_timestamp_ms_;
+        }
+        last_timestamp_ms_ = rebased_ms;
+
+        uint8_t header[24] = {};
+        if (tag.slices[0].data == nullptr ||
+            tag.slices[0].size > sizeof(header)) {
+            return false;
+        }
+        std::memcpy(header, tag.slices[0].data, tag.slices[0].size);
+        WriteFlvTimestampMs(rebased_ms, header);
+
+        return EnqueueFlvVideoTagSlices(writer_, connection_id_, tag, frame,
+                                        header);
+    }
+
 private:
     HttpStreamWriter *writer_ = nullptr;
     ConnectionId connection_id_ = 0;
@@ -197,6 +273,7 @@ public:
         slices[0].size = frame_header.size();
         slices[1].data = payload;
         slices[1].size = frame.size;
+        slices[1].owner = frame.buffer;
         slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
         slices[2].size = 2;
         return writer_->EnqueueStreamingSlices(connection_id_, slices, 3);
