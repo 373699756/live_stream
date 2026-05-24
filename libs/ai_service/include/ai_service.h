@@ -34,11 +34,11 @@ struct AiModelConfig {
     bool enabled = false;
     AiBackend backend = AiBackend::kHi3516Dv300Nnie;
     AiTask task = AiTask::kObjectDetection;
-    StreamId stream_id = StreamId::kMain;
+    StreamId stream_id = StreamId::kSub;
     std::string model_path;
     uint32_t input_width = 300;
     uint32_t input_height = 300;
-    uint32_t inference_interval_ms = 200;
+    uint32_t inference_interval_ms = 500;
     uint32_t max_results = 16;
     float confidence_threshold = 0.5f;
 };

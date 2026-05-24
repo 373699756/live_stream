@@ -38,11 +38,11 @@
     "enabled": false,
     "backend": "hisi3516dv300_nnie",
     "task": "object_detection",
-    "stream": "main",
+    "stream": "sub",
     "model_path": "models/inst_ssd_cycle.wk",
     "input_width": 300,
     "input_height": 300,
-    "inference_interval_ms": 200,
+    "inference_interval_ms": 500,
     "confidence_threshold": 0.5,
     "max_results": 16
   },

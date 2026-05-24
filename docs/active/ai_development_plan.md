@@ -35,14 +35,19 @@
     模型暂不支持。
   - 已支持尺寸匹配的 YUV420SP 帧拷贝到首段 YVU420SP 输入 blob 并刷新缓存。
   - 已支持 `inst_ssd_cycle.wk` 的 300x300 U8_C3 输入：从 VPSS 的
-    YVU420SP 帧做 CPU resize + YVU 到 BGR planar 转换。
+    YVU420SP 帧做 CPU resize + YVU 到 BGR planar 转换；当前 CPU 路径已缓存
+    resize 采样表，并用 YUV 查表减少每像素计算。
   - 已接入单段 CNN 的 `HI_MPI_SVP_NNIE_Forward` / `HI_MPI_SVP_NNIE_Query`。
   - 已按官方 SSD sample 参数接入 VOC 21 类后处理：prior box、softmax、
     bbox decode、NMS、置信度和 `max_results` 过滤，输出归一化 `AiDetection`。
+    SSD prior 和后处理大数组在模型加载后缓存复用，避免每帧重复分配。
+- AI 推理调度默认走子码流，默认间隔 500ms；抓帧和 NNIE forward 不持有
+  `AiService` 状态锁，状态查询、停止和告警读取不会被单次推理长时间阻塞。
 - 默认模型为
   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`，
   `make out` 会复制到 `out/models/inst_ssd_cycle.wk`，运行配置默认填写
-  `models/inst_ssd_cycle.wk`，但 `ai.enabled=false` 仍保持默认关闭。
+  `models/inst_ssd_cycle.wk`，默认使用 `stream=sub`、`inference_interval_ms=500`，
+  但 `ai.enabled=false` 仍保持默认关闭。
 - 官方 SVP 依赖已复制到项目内，后续开发默认从 `3rdparty/hisi_svp` 查 sample
   和模型，不再依赖外部 SDK 路径。
 - Web 暂时告警能力是图片瀑布流：
@@ -57,7 +62,7 @@
 1. 保持 host `host_stub` 可构建，确保 Web 可以用 mock 和空告警联调。
 2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
-3. 用 IVE/VPSS 替换当前 CPU resize + 色彩转换，降低主码流推理开销。
+3. 用 IVE/VPSS 替换当前 CPU resize + 色彩转换，进一步降低板端推理开销。
 4. 检测结果稳定后再增加 IVE 移动侦测和前端预览叠框。
 
 ## Acceptance

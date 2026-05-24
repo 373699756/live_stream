@@ -88,6 +88,53 @@ constexpr std::array<const char *, kSsdClassCount> kSsdVocLabels = {
      "motorbike", "person", "pottedplant", "sheep", "sofa", "train",
      "tvmonitor"}};
 
+std::array<int, 256> BuildYuvYTable() {
+    std::array<int, 256> table{};
+    for (uint32_t i = 0; i < 256; ++i) {
+        const int c = static_cast<int>(i) > 16 ? static_cast<int>(i) - 16 : 0;
+        table[i] = 298 * c;
+    }
+    return table;
+}
+
+std::array<int, 256> BuildYuvUToBTable() {
+    std::array<int, 256> table{};
+    for (uint32_t i = 0; i < 256; ++i) {
+        table[i] = 516 * (static_cast<int>(i) - 128);
+    }
+    return table;
+}
+
+std::array<int, 256> BuildYuvUToGTable() {
+    std::array<int, 256> table{};
+    for (uint32_t i = 0; i < 256; ++i) {
+        table[i] = -100 * (static_cast<int>(i) - 128);
+    }
+    return table;
+}
+
+std::array<int, 256> BuildYuvVToRTable() {
+    std::array<int, 256> table{};
+    for (uint32_t i = 0; i < 256; ++i) {
+        table[i] = 409 * (static_cast<int>(i) - 128);
+    }
+    return table;
+}
+
+std::array<int, 256> BuildYuvVToGTable() {
+    std::array<int, 256> table{};
+    for (uint32_t i = 0; i < 256; ++i) {
+        table[i] = -208 * (static_cast<int>(i) - 128);
+    }
+    return table;
+}
+
+const std::array<int, 256> kYuvYTable = BuildYuvYTable();
+const std::array<int, 256> kYuvUToBTable = BuildYuvUToBTable();
+const std::array<int, 256> kYuvUToGTable = BuildYuvUToGTable();
+const std::array<int, 256> kYuvVToRTable = BuildYuvVToRTable();
+const std::array<int, 256> kYuvVToGTable = BuildYuvVToGTable();
+
 struct NnieSegData {
     SVP_SRC_BLOB_S src[SVP_NNIE_MAX_INPUT_NUM];
     SVP_DST_BLOB_S dst[SVP_NNIE_MAX_OUTPUT_NUM];
@@ -117,6 +164,11 @@ struct SsdProposal {
     uint32_t class_id = 0;
     int32_t score = 0;
     SsdDecodedBox box;
+};
+
+struct U8C3SamplePoint {
+    uint32_t y_offset = 0;
+    uint32_t vu_offset = 0;
 };
 
 bool AddHiU32(HI_U32 value, HI_U32 *total) {
@@ -461,8 +513,10 @@ bool DecodeSsdBoxes(const std::vector<int32_t> &loc_predictions,
 }
 
 void AppendNmsProposals(std::vector<SsdProposal> *proposals,
+                        std::vector<uint8_t> *suppressed,
                         std::vector<SsdProposal> *result) {
-    if (proposals == nullptr || result == nullptr || proposals->empty()) {
+    if (proposals == nullptr || suppressed == nullptr || result == nullptr ||
+        proposals->empty()) {
         return;
     }
     std::sort(proposals->begin(), proposals->end(), ProposalConfidenceGreater);
@@ -470,17 +524,17 @@ void AppendNmsProposals(std::vector<SsdProposal> *proposals,
         proposals->resize(kSsdTopK);
     }
 
-    std::vector<uint8_t> suppressed(proposals->size(), 0);
+    suppressed->assign(proposals->size(), 0);
     for (size_t i = 0; i < proposals->size(); ++i) {
-        if (suppressed[i] != 0) {
+        if ((*suppressed)[i] != 0) {
             continue;
         }
         result->push_back((*proposals)[i]);
         for (size_t j = i + 1; j < proposals->size(); ++j) {
-            if (suppressed[j] == 0 &&
+            if ((*suppressed)[j] == 0 &&
                 SsdBoxIou((*proposals)[i].box, (*proposals)[j].box) >
                     kSsdNmsThreshold) {
-                suppressed[j] = 1;
+                (*suppressed)[j] = 1;
             }
         }
     }
@@ -694,7 +748,7 @@ public:
             return result;
         }
         result.success = true;
-        if (config.task == AiTask::kObjectDetection && IsSsdModel()) {
+        if (config.task == AiTask::kObjectDetection && ssd_model_ready_) {
             result.detections = DecodeSsdDetections(config);
         }
 #else
@@ -751,6 +805,10 @@ private:
             return false;
         }
         if (!ValidateInputConfig(config)) {
+            UnloadModel();
+            return false;
+        }
+        if (!PrepareSsdPostprocess()) {
             UnloadModel();
             return false;
         }
@@ -1057,6 +1115,8 @@ private:
         std::memset(seg_data_, 0, sizeof(seg_data_));
         std::memset(forward_ctrl_, 0, sizeof(forward_ctrl_));
         tmp_buf_size_ = 0;
+        ClearU8C3SampleMap();
+        ClearSsdPostprocessCache();
     }
 
     bool ValidateYuvFrameRange(const hisisdk::YuvFrame &frame,
@@ -1166,6 +1226,9 @@ private:
                                frame.height / 2U, uv_available_size)) {
             return false;
         }
+        if (!EnsureU8C3SampleMap(frame, dst_width, dst_height)) {
+            return false;
+        }
 
         uint8_t *dst =
             static_cast<uint8_t *>(VirAddrToPointer(dst_blob.u64VirAddr));
@@ -1180,31 +1243,28 @@ private:
         uint8_t *dst_r = dst + channel_size * 2U;
 
         for (uint32_t y = 0; y < dst_height; ++y) {
-            const uint32_t src_y_row =
-                static_cast<uint64_t>(y) * frame.height / dst_height;
-            const uint32_t src_uv_row = src_y_row / 2U;
+            const uint32_t sample_row = y * dst_width;
+            const uint32_t dst_offset = y * dst_blob.u32Stride;
             for (uint32_t x = 0; x < dst_width; ++x) {
-                const uint32_t src_x =
-                    static_cast<uint64_t>(x) * frame.width / dst_width;
-                const uint32_t chroma_x = (src_x / 2U) * 2U;
-                const uint8_t y_value =
-                    src_y[src_y_row * frame.stride_y + src_x];
-                const uint8_t v_value =
-                    src_vu[src_uv_row * frame.stride_uv + chroma_x];
-                const uint8_t u_value =
-                    src_vu[src_uv_row * frame.stride_uv + chroma_x + 1U];
-                const int c = std::max(0, static_cast<int>(y_value) - 16);
-                const int d = static_cast<int>(u_value) - 128;
-                const int e = static_cast<int>(v_value) - 128;
+                const U8C3SamplePoint &sample =
+                    u8c3_sample_points_[sample_row + x];
+                const uint8_t y_value = src_y[sample.y_offset];
+                const uint8_t v_value = src_vu[sample.vu_offset];
+                const uint8_t u_value = src_vu[sample.vu_offset + 1U];
+                const int y_scaled = kYuvYTable[y_value];
                 const uint8_t r =
-                    ClampToByte((298 * c + 409 * e + 128) >> 8);
+                    ClampToByte((y_scaled + kYuvVToRTable[v_value] + 128) >>
+                                8);
                 const uint8_t g =
-                    ClampToByte((298 * c - 100 * d - 208 * e + 128) >> 8);
+                    ClampToByte((y_scaled + kYuvUToGTable[u_value] +
+                                 kYuvVToGTable[v_value] + 128) >>
+                                8);
                 const uint8_t b =
-                    ClampToByte((298 * c + 516 * d + 128) >> 8);
-                dst_b[y * dst_blob.u32Stride + x] = b;
-                dst_g[y * dst_blob.u32Stride + x] = g;
-                dst_r[y * dst_blob.u32Stride + x] = r;
+                    ClampToByte((y_scaled + kYuvUToBTable[u_value] + 128) >>
+                                8);
+                dst_b[dst_offset + x] = b;
+                dst_g[dst_offset + x] = g;
+                dst_r[dst_offset + x] = r;
             }
         }
 
@@ -1212,6 +1272,62 @@ private:
             dst_blob.u32Stride * dst_height * dst_blob.unShape.stWhc.u32Chn;
         return HI_MPI_SYS_MmzFlushCache(dst_blob.u64PhyAddr, dst,
                                         flush_size) == HI_SUCCESS;
+    }
+
+    bool EnsureU8C3SampleMap(const hisisdk::YuvFrame &frame,
+                             uint32_t dst_width, uint32_t dst_height) {
+        const uint64_t sample_count =
+            static_cast<uint64_t>(dst_width) * dst_height;
+        if (sample_count == 0 ||
+            sample_count > static_cast<uint64_t>(0xffffffffU)) {
+            return false;
+        }
+        if (sample_frame_width_ == frame.width &&
+            sample_frame_height_ == frame.height &&
+            sample_stride_y_ == frame.stride_y &&
+            sample_stride_uv_ == frame.stride_uv &&
+            sample_dst_width_ == dst_width &&
+            sample_dst_height_ == dst_height &&
+            u8c3_sample_points_.size() == static_cast<size_t>(sample_count)) {
+            return true;
+        }
+
+        std::vector<U8C3SamplePoint> sample_points;
+        sample_points.resize(static_cast<size_t>(sample_count));
+        for (uint32_t y = 0; y < dst_height; ++y) {
+            const uint32_t src_y_row =
+                static_cast<uint64_t>(y) * frame.height / dst_height;
+            const uint32_t src_uv_row = src_y_row / 2U;
+            for (uint32_t x = 0; x < dst_width; ++x) {
+                const uint32_t src_x =
+                    static_cast<uint64_t>(x) * frame.width / dst_width;
+                const uint32_t chroma_x = (src_x / 2U) * 2U;
+                U8C3SamplePoint sample;
+                sample.y_offset = src_y_row * frame.stride_y + src_x;
+                sample.vu_offset = src_uv_row * frame.stride_uv + chroma_x;
+                sample_points[static_cast<size_t>(y) * dst_width + x] =
+                    sample;
+            }
+        }
+
+        u8c3_sample_points_.swap(sample_points);
+        sample_frame_width_ = frame.width;
+        sample_frame_height_ = frame.height;
+        sample_stride_y_ = frame.stride_y;
+        sample_stride_uv_ = frame.stride_uv;
+        sample_dst_width_ = dst_width;
+        sample_dst_height_ = dst_height;
+        return true;
+    }
+
+    void ClearU8C3SampleMap() {
+        u8c3_sample_points_.clear();
+        sample_frame_width_ = 0;
+        sample_frame_height_ = 0;
+        sample_stride_y_ = 0;
+        sample_stride_uv_ = 0;
+        sample_dst_width_ = 0;
+        sample_dst_height_ = 0;
     }
 
     bool RunSingleSegForward() {
@@ -1251,8 +1367,8 @@ private:
         return true;
     }
 
-    bool CopyS32BlobValues(const SVP_DST_BLOB_S &blob,
-                           std::vector<int32_t> *values) const {
+    bool AppendS32BlobValues(const SVP_DST_BLOB_S &blob,
+                             std::vector<int32_t> *values) const {
         if (values == nullptr || blob.enType != SVP_BLOB_TYPE_S32 ||
             blob.u64VirAddr == 0 ||
             blob.u32Stride < blob.unShape.stWhc.u32Width * sizeof(int32_t)) {
@@ -1285,97 +1401,120 @@ private:
         return true;
     }
 
-    bool CollectSsdOutputs(std::vector<int32_t> *loc_predictions,
-                           std::vector<int32_t> *conf_scores) const {
-        if (loc_predictions == nullptr || conf_scores == nullptr) {
-            return false;
-        }
-        loc_predictions->clear();
-        conf_scores->clear();
-        loc_predictions->reserve(kSsdPriorCount * kSsdCoordinateCount);
-        conf_scores->reserve(kSsdPriorCount * kSsdClassCount);
+    bool CollectSsdOutputs() {
+        ssd_loc_predictions_.clear();
+        ssd_conf_scores_.clear();
 
         for (uint32_t layer = 0; layer < kSsdLayerCount; ++layer) {
-            std::vector<int32_t> loc_values;
-            if (!CopyS32BlobValues(seg_data_[0].dst[layer * 2U],
-                                   &loc_values) ||
-                loc_values.size() != kSsdDetectInputChannel[layer]) {
+            const size_t loc_offset = ssd_loc_predictions_.size();
+            if (!AppendS32BlobValues(seg_data_[0].dst[layer * 2U],
+                                     &ssd_loc_predictions_) ||
+                ssd_loc_predictions_.size() - loc_offset !=
+                    kSsdDetectInputChannel[layer]) {
                 return false;
             }
-            loc_predictions->insert(loc_predictions->end(),
-                                    loc_values.begin(), loc_values.end());
 
-            std::vector<int32_t> conf_values;
-            if (!CopyS32BlobValues(seg_data_[0].dst[layer * 2U + 1U],
-                                   &conf_values) ||
-                conf_values.size() != kSsdSoftmaxInputChannel[layer] ||
-                conf_values.size() % kSsdClassCount != 0) {
+            ssd_conf_raw_.clear();
+            if (!AppendS32BlobValues(seg_data_[0].dst[layer * 2U + 1U],
+                                     &ssd_conf_raw_) ||
+                ssd_conf_raw_.size() != kSsdSoftmaxInputChannel[layer] ||
+                ssd_conf_raw_.size() % kSsdClassCount != 0) {
                 return false;
             }
-            for (size_t offset = 0; offset < conf_values.size();
+            for (size_t offset = 0; offset < ssd_conf_raw_.size();
                  offset += kSsdClassCount) {
-                std::array<int32_t, kSsdClassCount> softmax{};
-                if (!SoftmaxQuantized(&conf_values[offset], softmax.data())) {
+                const size_t score_offset = ssd_conf_scores_.size();
+                ssd_conf_scores_.resize(score_offset + kSsdClassCount);
+                if (!SoftmaxQuantized(&ssd_conf_raw_[offset],
+                                      &ssd_conf_scores_[score_offset])) {
                     return false;
                 }
-                conf_scores->insert(conf_scores->end(), softmax.begin(),
-                                    softmax.end());
             }
         }
 
-        return loc_predictions->size() ==
+        return ssd_loc_predictions_.size() ==
                    kSsdPriorCount * kSsdCoordinateCount &&
-               conf_scores->size() == kSsdPriorCount * kSsdClassCount;
+               ssd_conf_scores_.size() == kSsdPriorCount * kSsdClassCount;
     }
 
-    std::vector<AiDetection> DecodeSsdDetections(
-        const AiModelConfig &config) const {
-        std::vector<int32_t> loc_predictions;
-        std::vector<int32_t> conf_scores;
-        if (!CollectSsdOutputs(&loc_predictions, &conf_scores)) {
+    bool PrepareSsdPostprocess() {
+        ssd_model_ready_ = IsSsdModel();
+        if (!ssd_model_ready_) {
+            ClearSsdPostprocessCache();
+            return true;
+        }
+        ssd_priors_ = GenerateSsdPriors();
+        if (ssd_priors_.size() != kSsdPriorCount) {
+            INFRA_LOG_ERROR("ai", "Prepare SSD priors failed");
+            ClearSsdPostprocessCache();
+            return false;
+        }
+        ssd_loc_predictions_.reserve(kSsdPriorCount * kSsdCoordinateCount);
+        ssd_conf_raw_.reserve(kSsdSoftmaxInputChannel[0]);
+        ssd_conf_scores_.reserve(kSsdPriorCount * kSsdClassCount);
+        ssd_boxes_.reserve(kSsdPriorCount);
+        ssd_class_proposals_.reserve(kSsdPriorCount);
+        ssd_proposals_after_nms_.reserve((kSsdClassCount - 1U) * kSsdTopK);
+        ssd_nms_suppressed_.reserve(kSsdTopK);
+        return true;
+    }
+
+    void ClearSsdPostprocessCache() {
+        ssd_model_ready_ = false;
+        ssd_priors_.clear();
+        ssd_loc_predictions_.clear();
+        ssd_conf_raw_.clear();
+        ssd_conf_scores_.clear();
+        ssd_boxes_.clear();
+        ssd_class_proposals_.clear();
+        ssd_proposals_after_nms_.clear();
+        ssd_nms_suppressed_.clear();
+    }
+
+    std::vector<AiDetection> DecodeSsdDetections(const AiModelConfig &config) {
+        if (!CollectSsdOutputs()) {
             return std::vector<AiDetection>();
         }
-        const std::vector<SsdPrior> priors = GenerateSsdPriors();
-        std::vector<SsdDecodedBox> boxes;
-        if (!DecodeSsdBoxes(loc_predictions, priors, &boxes)) {
+        if (!DecodeSsdBoxes(ssd_loc_predictions_, ssd_priors_, &ssd_boxes_)) {
             return std::vector<AiDetection>();
         }
 
         const int32_t score_threshold =
             QuantizeConfidence(config.confidence_threshold);
-        std::vector<SsdProposal> proposals_after_nms;
-        proposals_after_nms.reserve(config.max_results);
+        ssd_proposals_after_nms_.clear();
         for (uint32_t class_id = 1; class_id < kSsdClassCount; ++class_id) {
-            std::vector<SsdProposal> proposals;
+            ssd_class_proposals_.clear();
             for (uint32_t i = 0; i < kSsdPriorCount; ++i) {
                 const int32_t score =
-                    conf_scores[i * kSsdClassCount + class_id];
-                if (score < score_threshold || !IsValidSsdBox(boxes[i])) {
+                    ssd_conf_scores_[i * kSsdClassCount + class_id];
+                if (score < score_threshold || !IsValidSsdBox(ssd_boxes_[i])) {
                     continue;
                 }
                 SsdProposal proposal;
                 proposal.class_id = class_id;
                 proposal.score = score;
-                proposal.box = boxes[i];
-                proposals.push_back(proposal);
+                proposal.box = ssd_boxes_[i];
+                ssd_class_proposals_.push_back(proposal);
             }
-            AppendNmsProposals(&proposals, &proposals_after_nms);
+            AppendNmsProposals(&ssd_class_proposals_, &ssd_nms_suppressed_,
+                               &ssd_proposals_after_nms_);
         }
 
-        std::sort(proposals_after_nms.begin(), proposals_after_nms.end(),
+        std::sort(ssd_proposals_after_nms_.begin(),
+                  ssd_proposals_after_nms_.end(),
                   ProposalConfidenceGreater);
-        if (proposals_after_nms.size() > kSsdKeepTopK) {
-            proposals_after_nms.resize(kSsdKeepTopK);
+        if (ssd_proposals_after_nms_.size() > kSsdKeepTopK) {
+            ssd_proposals_after_nms_.resize(kSsdKeepTopK);
         }
-        if (proposals_after_nms.size() > config.max_results) {
-            proposals_after_nms.resize(config.max_results);
+        if (ssd_proposals_after_nms_.size() > config.max_results) {
+            ssd_proposals_after_nms_.resize(config.max_results);
         }
 
         std::vector<AiDetection> detections;
-        detections.reserve(proposals_after_nms.size());
+        detections.reserve(ssd_proposals_after_nms_.size());
         const float model_width = static_cast<float>(kSsdInputWidth);
         const float model_height = static_cast<float>(kSsdInputHeight);
-        for (const SsdProposal &proposal : proposals_after_nms) {
+        for (const SsdProposal &proposal : ssd_proposals_after_nms_) {
             const float x_min =
                 ClampFloat(proposal.box.x_min, 0.0f, model_width);
             const float y_min =
@@ -1408,17 +1547,33 @@ private:
     NnieBlobSize blob_sizes_[SVP_NNIE_MAX_NET_SEG_NUM]{};
     NnieSegData seg_data_[SVP_NNIE_MAX_NET_SEG_NUM]{};
     SVP_NNIE_FORWARD_CTRL_S forward_ctrl_[SVP_NNIE_MAX_NET_SEG_NUM]{};
+    std::vector<U8C3SamplePoint> u8c3_sample_points_;
+    uint32_t sample_frame_width_ = 0;
+    uint32_t sample_frame_height_ = 0;
+    uint32_t sample_stride_y_ = 0;
+    uint32_t sample_stride_uv_ = 0;
+    uint32_t sample_dst_width_ = 0;
+    uint32_t sample_dst_height_ = 0;
+    std::vector<SsdPrior> ssd_priors_;
+    std::vector<int32_t> ssd_loc_predictions_;
+    std::vector<int32_t> ssd_conf_raw_;
+    std::vector<int32_t> ssd_conf_scores_;
+    std::vector<SsdDecodedBox> ssd_boxes_;
+    std::vector<SsdProposal> ssd_class_proposals_;
+    std::vector<SsdProposal> ssd_proposals_after_nms_;
+    std::vector<uint8_t> ssd_nms_suppressed_;
     bool model_loaded_ = false;
+    bool ssd_model_ready_ = false;
 #endif
     std::string model_path_;
     bool started_ = false;
 };
 
-std::unique_ptr<AiInferenceEngine> CreateEngine(AiBackend backend) {
+std::shared_ptr<AiInferenceEngine> CreateEngine(AiBackend backend) {
     if (backend == AiBackend::kHostStub) {
-        return std::unique_ptr<AiInferenceEngine>(new HostStubAiEngine());
+        return std::shared_ptr<AiInferenceEngine>(new HostStubAiEngine());
     }
-    return std::unique_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
+    return std::shared_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
 }
 
 MppChannel VpssChannelForStream(const MediaChannels &channels,
@@ -1581,6 +1736,7 @@ struct AiService::Impl final {
     }
 
     void CaptureLoop() {
+        int64_t next_inference_ms = infra::Time::MonotonicMillis();
         while (true) {
             AiModelConfig run_config;
             {
@@ -1590,6 +1746,14 @@ struct AiService::Impl final {
                 }
                 run_config = config;
             }
+            const int64_t now_ms = infra::Time::MonotonicMillis();
+            if (now_ms < next_inference_ms) {
+                infra::Time::SleepMillis(
+                    static_cast<uint32_t>(next_inference_ms - now_ms));
+            }
+            next_inference_ms =
+                infra::Time::MonotonicMillis() +
+                static_cast<int64_t>(run_config.inference_interval_ms);
             hisisdk::YuvFrame frame = options.sdk->CaptureYuvFrame(
                 VpssChannelForStream(options.media_channels,
                                      run_config.stream_id),
@@ -1602,17 +1766,15 @@ struct AiService::Impl final {
                     ++stats.skipped_frames;
                     ++stats.inference_failed_count;
                 }
-                infra::Time::SleepMillis(run_config.inference_interval_ms);
                 continue;
             }
             RunInference(frame, run_config);
-            infra::Time::SleepMillis(run_config.inference_interval_ms);
         }
     }
 
     void RunInference(const hisisdk::YuvFrame &frame,
                       const AiModelConfig &run_config) {
-        AiInferenceResult result;
+        std::shared_ptr<AiInferenceEngine> run_engine;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started || !engine) {
@@ -1620,7 +1782,17 @@ struct AiService::Impl final {
                 return;
             }
             ++stats.received_frames;
-            result = engine->Run(frame, run_config.stream_id, run_config);
+            run_engine = engine;
+        }
+
+        AiInferenceResult result =
+            run_engine->Run(frame, run_config.stream_id, run_config);
+
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started) {
+                return;
+            }
             if (result.success) {
                 ++stats.inference_count;
             } else {
@@ -1706,7 +1878,7 @@ struct AiService::Impl final {
 
     AiServiceOptions options;
     AiModelConfig config;
-    std::unique_ptr<AiInferenceEngine> engine;
+    std::shared_ptr<AiInferenceEngine> engine;
     std::unique_ptr<infra::Executor> executor;
     AiInferenceResult last_result;
     AiServiceStats stats;

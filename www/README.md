@@ -112,7 +112,8 @@ AI is an optional device capability and is disabled by default. The current Web
 alarm surface is the AI alert image waterfall backed by `/api/ai/alerts`; it is
 not recording, playback, or long-term storage.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300
-input, and the `out` package includes the model under `out/models/`.
+input, sub-stream inference, and a 500 ms interval. The `out` package includes
+the model under `out/models/`.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

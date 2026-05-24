@@ -151,11 +151,11 @@ export const mockAiStatus: AiStatus = {
     enabled: true,
     backend: 'host_stub',
     task: 'object_detection',
-    stream: 'main',
+    stream: 'sub',
     model_path: 'models/inst_ssd_cycle.wk',
     input_width: 300,
     input_height: 300,
-    inference_interval_ms: 200,
+    inference_interval_ms: 500,
     confidence_threshold: 0.5,
     max_results: 16,
   },
@@ -171,7 +171,7 @@ export const mockAiStatus: AiStatus = {
   },
   last_result: {
     success: true,
-    stream: 'main',
+    stream: 'sub',
     sequence: 942,
     pts_us: 190214000,
     detections: [
@@ -200,9 +200,9 @@ export const mockAiAlerts: AiAlertList = {
     {
       id: 'mock-3',
       timestamp_ms: Date.now() - 45_000,
-      stream: 'main',
+      stream: 'sub',
       task: 'object_detection',
-      image_url: '/api/snapshot/main.jpg',
+      image_url: '/api/snapshot/sub.jpg',
       detection_count: 2,
       confidence_max: 0.91,
       detections: mockAiStatus.last_result.detections,
@@ -210,9 +210,9 @@ export const mockAiAlerts: AiAlertList = {
     {
       id: 'mock-2',
       timestamp_ms: Date.now() - 180_000,
-      stream: 'main',
+      stream: 'sub',
       task: 'object_detection',
-      image_url: '/api/snapshot/main.jpg',
+      image_url: '/api/snapshot/sub.jpg',
       detection_count: 1,
       confidence_max: 0.82,
       detections: [

@@ -4,21 +4,19 @@
 
 ## Task completed
 
-继续 AI/NNIE 开发，把项目默认 SSD 模型从 forward 接到真实检测结果和 Web
-告警瀑布流触发源。
+大范围优化 AI/NNIE 首版 SSD 路径，降低默认板端负载和每帧 CPU/内存抖动。
 
 ## Problem fixed
 
-- `ai_service` 支持 `inst_ssd_cycle.wk` 的 300x300 U8_C3 输入。
-- 从 VPSS YVU420SP 帧做首版 CPU resize + YVU 到 BGR planar 转换，写入 NNIE
-  输入 blob。
-- 按官方 SVP SSD sample 参数实现 prior box、softmax、bbox decode、NMS、
-  `confidence_threshold` 和 `max_results` 过滤。
-- NNIE forward 后生成归一化 `AiDetection`，有检测结果时原有告警图片保存和
-  `/api/ai/alerts` 瀑布流即可触发。
-- 默认配置填写 `models/inst_ssd_cycle.wk`、300x300 输入，但 `ai.enabled=false`
-  仍默认关闭。
-- `make out` 会把项目内 SSD 模型复制到 `out/models/inst_ssd_cycle.wk`。
+- AI 默认从主码流改为子码流，默认推理间隔从 200ms 改为 500ms。
+- `inst_ssd_cycle.wk` 的 U8_C3 CPU 前处理缓存 resize 采样点，并用 YUV 查表替代
+  每像素重复乘法。
+- SSD prior boxes 在模型加载后生成一次，后处理复用 loc/conf/box/proposal/NMS
+  buffer，避免每帧重复分配大数组。
+- SSD 输出 blob 直接追加到复用 buffer，不再为每个输出层创建临时 vector。
+- NNIE 推理不再持有 `AiService` 状态锁；状态查询、停止和 Web 告警读取不会被单次
+  forward 长时间阻塞。
+- 抓帧调度改为按目标时间补眠，避免抓帧等待后再固定 sleep 一整个推理间隔。
 
 ## Files changed
 
@@ -26,7 +24,6 @@
 - `libs/ai_service/include/ai_service.h`
 - `configs/default_config.json`
 - `configs/business_config.json`
-- `Makefile`
 - `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
 - `docs/contracts/api-config.md`
@@ -38,22 +35,21 @@
 已通过：
 
 - `make -C libs/ai_service ENABLE_HISI_MPP=1`
-- `git diff --check`
 - `npm run build`（`www/`）
+- `git diff --check`
 - `make -j2`
 
 ## Commit
 
-`feat(ai): decode SSD NNIE detections`
+Pending: `perf(ai): reduce NNIE inference overhead`
 
 ## Deviations
 
-- 当前 resize/色彩转换先用 CPU 路径，能跑通功能但不是最终性能方案；后续应换成
-  IVE/VPSS。
-- 本轮只支持官方 SSD VOC 21 类模型；YOLO/RFCN/分类模型仍需单独后处理。
+- CPU resize + 色彩转换仍是临时可运行路径；下一步大性能收益应来自 IVE/VPSS
+  前处理替换。
+- 本轮不修改 `tests/`，遵循当前阶段测试目录暂不主动整理的项目约定。
 
 ## Blocked or follow-up
 
-- 需要在 Hi3516DV300/CV500 板端设置 `ai.enabled=true` 做实机验证，确认 NNIE
-  输出和告警图片瀑布流。
-- 若主码流 CPU 转换占用过高，下一步做 IVE/VPSS 前处理优化。
+- 需要在 Hi3516DV300/CV500 板端打开 `ai.enabled=true` 实测 CPU 占用、推理耗时和
+  Web 告警瀑布流刷新。
