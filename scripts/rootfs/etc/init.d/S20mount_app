@@ -1,5 +1,14 @@
 #!/bin/sh
 
+mkdir -p /tmp
+chmod 1777 /tmp
+
+if ! grep -q " /tmp tmpfs " /proc/mounts && \
+   ! grep -q " /tmp ramfs " /proc/mounts; then
+  mount -t tmpfs -o size=64m,mode=1777 tmpfs /tmp
+fi
+chmod 1777 /tmp
+
 mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
 
 mount_if_needed() {

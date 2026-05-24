@@ -1,3 +1,4 @@
+#include "config_json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/time.h"
@@ -6,7 +7,6 @@
 #include "upgrade_package.h"
 
 #include <cstdint>
-#include <sstream>
 #include <string>
 #include <sys/reboot.h>
 #include <unistd.h>
@@ -27,17 +27,6 @@ struct HelperOptions {
     bool reboot = false;
 };
 
-std::string JsonEscape(const std::string& value) {
-    std::string escaped;
-    for (char c : value) {
-        if (c == '"' || c == '\\') {
-            escaped.push_back('\\');
-        }
-        escaped.push_back(c);
-    }
-    return escaped;
-}
-
 void AppendUpgradeLog(const std::string& message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
     const std::string line =
@@ -51,15 +40,14 @@ void WriteUpgradeStatus(const std::string& state,
                         const std::string& version,
                         const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
-    std::ostringstream out;
-    out << "{\n"
-        << "  \"state\": \"" << JsonEscape(state) << "\",\n"
-        << "  \"progress_percent\": " << progress << ",\n"
-        << "  \"ok\": " << (ok ? "true" : "false") << ",\n"
-        << "  \"version\": \"" << JsonEscape(version) << "\",\n"
-        << "  \"error_message\": \"" << JsonEscape(error_message) << "\"\n"
-        << "}\n";
-    static_cast<void>(infra::File::WriteAll(kUpgradeStatusPath, out.str()));
+    ConfigJson root = ConfigJson::object();
+    root["state"] = state;
+    root["progress_percent"] = progress;
+    root["ok"] = ok;
+    root["version"] = version;
+    root["error_message"] = error_message;
+    static_cast<void>(
+        infra::File::WriteAll(kUpgradeStatusPath, root.dump(2) + "\n"));
 }
 
 void Usage() {

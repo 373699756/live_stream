@@ -1,5 +1,6 @@
 #include "device_platforms.h"
 
+#include "config_json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/hash.h"
@@ -10,7 +11,6 @@
 #include <cctype>
 #include <cstdint>
 #include <fcntl.h>
-#include <sstream>
 #include <string>
 #include <sys/reboot.h>
 #include <sys/stat.h>
@@ -125,32 +125,20 @@ void AppendUpgradeLog(const std::string& message) {
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
 }
 
-std::string JsonEscape(const std::string& value) {
-    std::string escaped;
-    for (char c : value) {
-        if (c == '"' || c == '\\') {
-            escaped.push_back('\\');
-        }
-        escaped.push_back(c);
-    }
-    return escaped;
-}
-
 void WriteUpgradeStatus(const std::string& state,
                         uint32_t progress,
                         bool ok,
                         const std::string& version,
                         const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
-    std::ostringstream out;
-    out << "{\n"
-        << "  \"state\": \"" << JsonEscape(state) << "\",\n"
-        << "  \"progress_percent\": " << progress << ",\n"
-        << "  \"ok\": " << (ok ? "true" : "false") << ",\n"
-        << "  \"version\": \"" << JsonEscape(version) << "\",\n"
-        << "  \"error_message\": \"" << JsonEscape(error_message) << "\"\n"
-        << "}\n";
-    static_cast<void>(infra::File::WriteAll(kUpgradeStatusPath, out.str()));
+    ConfigJson root = ConfigJson::object();
+    root["state"] = state;
+    root["progress_percent"] = progress;
+    root["ok"] = ok;
+    root["version"] = version;
+    root["error_message"] = error_message;
+    static_cast<void>(
+        infra::File::WriteAll(kUpgradeStatusPath, root.dump(2) + "\n"));
 }
 
 bool ApplyWebUpgrade(const UpgradeManifest& manifest,

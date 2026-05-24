@@ -157,6 +157,16 @@ rootfs 中必须预创建：
 mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
 ```
 
+SDK 核查结论：
+
+- `linux-4.9.37/.config` 和 `hi3516dv300_smp_defconfig` 均启用
+  `CONFIG_TMPFS=y`，内核支持 tmpfs。
+- SDK 默认 `rootfs_scripts/rootfs/etc/fstab` 只把 `/dev` 挂成 tmpfs：
+  `tmpfs /dev tmpfs defaults 0 0`。
+- SDK 默认 rootfs 中的 `/tmp` 只是普通目录，不是 tmpfs。升级方案要求
+  `/tmp/live_stream/upgrade` 位于 RAM，因此必须在启动脚本中显式挂载
+  `/tmp` 为 tmpfs/ramfs。
+
 ### 4.2 bin
 
 `bin.squashfs` 目录结构建议：
@@ -246,6 +256,15 @@ config_root/
 
 ```sh
 #!/bin/sh
+
+mkdir -p /tmp
+chmod 1777 /tmp
+
+if ! grep -q " /tmp tmpfs " /proc/mounts && \
+   ! grep -q " /tmp ramfs " /proc/mounts; then
+    mount -t tmpfs -o size=64m,mode=1777 tmpfs /tmp
+fi
+chmod 1777 /tmp
 
 mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
 
@@ -461,6 +480,10 @@ close
 8. 非 web-only 包校验 `/tmp/live_stream/upgrade` 是 `tmpfs` 或 `ramfs`。
 9. 全部校验通过后，才允许擦写任何分区。
 
+`/tmp` 不能仅凭路径名判断，必须通过 `/proc/mounts` 确认为 `tmpfs` 或
+`ramfs`。如果不是 RAM 文件系统，非 web-only 升级必须拒绝，避免升级包和
+helper 写在 NOR rootfs 上导致擦写自身或空间不足。
+
 helper 运行规则：
 
 - 非 web-only 包优先从升级包提取 `live_sysupgrade` 到 `/tmp/live_stream/upgrade/live_sysupgrade`。
@@ -596,6 +619,8 @@ data 2M
 
 - U-Boot 下用 `sf erase` / `sf write` 按物理地址烧写。
 - Linux 下正式升级用 sysupgrade/RAM helper + MTD ioctl，不依赖 flash 命令行工具。
+- `live_sysupgrade` 必须从 `/tmp/live_stream/upgrade` 运行，且启动脚本必须先把
+  `/tmp` 挂成 tmpfs/ramfs。
 - rootfs 保持海思默认 jffs2。
 - 业务程序和动态库放 `bin.squashfs`。
 - 一次性升级 helper 放 `bin.squashfs` 的 `/opt/app/sbin/live_sysupgrade`。
@@ -605,3 +630,51 @@ data 2M
 - 升级包不用 `.img`，不携带 flash 地址。
 - 设备端内置分区表是唯一地址来源。
 - 32M NOR 不做 A/B，断电或刷坏需要串口/U-Boot/TFTP 或烧录器恢复。
+
+## 11. 主机端打包工具
+
+当前工程固定拷贝 SDK 的 PC 端文件系统打包工具到 `tools/pc/`：
+
+```text
+tools/pc/mksquashfs
+tools/pc/mkfs.jffs2
+```
+
+来源：
+
+```text
+Hi3516CV500_SDK_V2.0.1.0/osdrv/pub/bin/pc/mkfs.jffs2
+Hi3516CV500_SDK_V2.0.1.0/osdrv/tools/pc/squashfs4.3/mksquashfs
+```
+
+不能使用 `osdrv/tools/board/mtd-utils/bin/mkfs.jffs2` 作为主机打包工具；
+该文件是 ARM 板端 ELF，只能在设备侧运行，不能在 x86-64 开发主机上给
+升级包打 `config.jffs2`。
+
+`scripts/package_upgrade.sh` 生成 `config.jffs2` 时优先使用 `tools/pc/mkfs.jffs2`；
+生成 squashfs 时优先使用 `tools/pc/mksquashfs`。当前 SDK 预编译的
+`osdrv/pub/bin/pc/mksquashfs` 是 x86-64 静态 ELF，但在当前开发主机上实测会
+`Floating point exception`；因此使用 SDK 自带
+`osdrv/tools/pc/squashfs4.3` 源码重新编译出的 `mksquashfs`。
+
+重编译注意事项：
+
+- `osdrv/tools/pc/squashfs4.3/tmp` 是解压和构建产物，可以删除。
+- 现代 GCC 默认 `-fno-common`，老版 squashfs4.3 源码会在链接时报
+  `fwriter_buffer` / `bwriter_buffer` multiple definition。
+- 修正点必须放在 SDK 顶层
+  `osdrv/tools/pc/squashfs4.3/Makefile`，把 squashfs-tools 子 make 的
+  `EXTRA_CFLAGS` 从 `-I$(BUILD_DIR)/include` 改为
+  `-I$(BUILD_DIR)/include -fcommon`。
+- 不能用 `make CFLAGS=...` 覆盖编译参数，否则会丢失 squashfs-tools 自带的
+  `-D_GNU_SOURCE`、`-DCOMP_DEFAULT`、`-DGZIP_SUPPORT`、`-DXZ_SUPPORT` 等参数。
+- 静态链接阶段出现 `Using 'getpwuid' in statically linked applications`、
+  `Using 'getgrgid' in statically linked applications` 是 glibc 静态链接警告，
+  不是失败原因。
+
+如需强制指定工具，可通过 `MKSQUASHFS=/path/to/mksquashfs` 或
+`MKFS_JFFS2=/path/to/mkfs.jffs2` 覆盖。
+
+生成 `Install` 时 `scripts/package_upgrade.sh` 保持纯 shell，不引入 Python；
+字段值来自固定分区名、固定文件名、sha256 和经过白名单限制的版本号。
+C++ 侧生成 JSON 状态文件必须使用项目 JSON 模块，不允许手写转义和字符串拼接。

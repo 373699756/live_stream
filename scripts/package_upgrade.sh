@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT_DIR="${ROOT_DIR}/out"
 FLASH_DIR="${OUT_DIR}/flash"
+TOOLS_DIR="${ROOT_DIR}/tools/pc"
 VERSION="${1:-1.0.0}"
 PACKAGE_PROFILE="${2:-web-only}"
 KERNEL_IMAGE="${KERNEL_IMAGE:-${OUT_DIR}/flash/uImage_hi3516dv300}"
@@ -14,6 +15,36 @@ need_tool() {
     echo "missing tool: $1" >&2
     exit 1
   fi
+}
+
+resolve_local_tool() {
+  requested="$1"
+  fallback_name="$2"
+  local_path="${TOOLS_DIR}/${fallback_name}"
+
+  if [ -n "${requested}" ]; then
+    if [ -x "${requested}" ]; then
+      printf '%s\n' "${requested}"
+      return 0
+    fi
+    if command -v "${requested}" >/dev/null 2>&1; then
+      command -v "${requested}"
+      return 0
+    fi
+    echo "missing tool: ${requested}" >&2
+    exit 1
+  fi
+
+  if [ -x "${local_path}" ]; then
+    printf '%s\n' "${local_path}"
+    return 0
+  fi
+  if command -v "${fallback_name}" >/dev/null 2>&1; then
+    command -v "${fallback_name}"
+    return 0
+  fi
+  echo "missing tool: ${fallback_name} (expected ${local_path} or PATH)" >&2
+  exit 1
 }
 
 sha256_file() {
@@ -65,14 +96,20 @@ case "${PACKAGE_PROFILE}" in
 esac
 
 if [ "${need_bin}" = true ] || [ "${need_web}" = true ]; then
-  need_tool mksquashfs
+  MKSQUASHFS_TOOL=$(resolve_local_tool "${MKSQUASHFS:-}" mksquashfs)
 fi
 if [ "${need_config}" = true ]; then
-  need_tool mkfs.jffs2
+  MKFS_JFFS2_TOOL=$(resolve_local_tool "${MKFS_JFFS2:-}" mkfs.jffs2)
 fi
 need_tool zip
 need_tool sha256sum
 need_tool awk
+case "${VERSION}" in
+  *[!A-Za-z0-9._+-]*)
+    echo "invalid version: ${VERSION}" >&2
+    exit 1
+    ;;
+esac
 
 mkdir -p "${FLASH_DIR}"
 
@@ -92,7 +129,7 @@ if [ "${need_bin}" = true ]; then
   cp -f "${OUT_DIR}/bin/live_stream" "${FLASH_DIR}/bin_root/bin/"
   cp -f "${OUT_DIR}/bin/live_sysupgrade" "${FLASH_DIR}/bin_root/sbin/"
   printf '%s\n' "${VERSION}" > "${FLASH_DIR}/bin_root/version"
-  mksquashfs "${FLASH_DIR}/bin_root" "${FLASH_DIR}/bin.squashfs" \
+  "${MKSQUASHFS_TOOL}" "${FLASH_DIR}/bin_root" "${FLASH_DIR}/bin.squashfs" \
     -noappend -comp xz
 fi
 
@@ -103,7 +140,7 @@ if [ "${need_web}" = true ]; then
     cp -rf "${OUT_DIR}/web/." "${FLASH_DIR}/web_root/"
   fi
   printf '%s\n' "${VERSION}" > "${FLASH_DIR}/web_root/version"
-  mksquashfs "${FLASH_DIR}/web_root" "${FLASH_DIR}/web.squashfs" \
+  "${MKSQUASHFS_TOOL}" "${FLASH_DIR}/web_root" "${FLASH_DIR}/web.squashfs" \
     -noappend -comp xz
 fi
 
@@ -113,7 +150,7 @@ if [ "${need_config}" = true ]; then
   if [ -d "${OUT_DIR}/configs" ]; then
     cp -rf "${OUT_DIR}/configs/." "${FLASH_DIR}/config_root/"
   fi
-  mkfs.jffs2 -r "${FLASH_DIR}/config_root" \
+  "${MKFS_JFFS2_TOOL}" -r "${FLASH_DIR}/config_root" \
     -o "${FLASH_DIR}/config.jffs2" \
     -e 0x10000 --pad=0x100000 -n
 fi

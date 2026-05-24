@@ -1,6 +1,6 @@
 #include "webrtc_sdp.h"
 
-#include <sstream>
+#include "config_json.h"
 
 namespace live_stream {
 namespace webrtc_internal {
@@ -9,33 +9,6 @@ namespace {
 bool StartsWith(const std::string& text, const char* prefix) {
     const std::string expected(prefix);
     return text.compare(0, expected.size(), expected) == 0;
-}
-
-std::string JsonEscape(const std::string& value) {
-    std::string escaped;
-    escaped.reserve(value.size());
-    for (char ch : value) {
-        switch (ch) {
-            case '\\':
-            case '"':
-                escaped.push_back('\\');
-                escaped.push_back(ch);
-                break;
-            case '\n':
-                escaped += "\\n";
-                break;
-            case '\r':
-                escaped += "\\r";
-                break;
-            case '\t':
-                escaped += "\\t";
-                break;
-            default:
-                escaped.push_back(ch);
-                break;
-        }
-    }
-    return escaped;
 }
 
 }  // namespace
@@ -49,16 +22,14 @@ bool IsValidIceServerUrl(const std::string& url) {
 }
 
 std::string BuildCandidateJson(const WebrtcIceCandidate& candidate) {
-    std::ostringstream json;
-    json << "{\"candidate\":\"" << JsonEscape(candidate.candidate)
-         << "\",\"sdpMid\":\"" << JsonEscape(candidate.sdp_mid)
-         << "\",\"sdpMLineIndex\":" << candidate.sdp_mline_index;
+    ConfigJson root = ConfigJson::object();
+    root["candidate"] = candidate.candidate;
+    root["sdpMid"] = candidate.sdp_mid;
+    root["sdpMLineIndex"] = candidate.sdp_mline_index;
     if (!candidate.username_fragment.empty()) {
-        json << ",\"usernameFragment\":\""
-             << JsonEscape(candidate.username_fragment) << "\"";
+        root["usernameFragment"] = candidate.username_fragment;
     }
-    json << "}";
-    return json.str();
+    return root.dump();
 }
 
 std::string ReplaceHostCandidateIp(const std::string& candidate,
