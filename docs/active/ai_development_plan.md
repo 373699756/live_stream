@@ -46,9 +46,12 @@
     SSD prior 和后处理大数组在模型加载后缓存复用，避免每帧重复分配。
 - AI 推理调度默认走子码流，默认间隔 500ms；抓帧和 NNIE forward 不持有
   `AiService` 状态锁，状态查询、停止和告警读取不会被单次推理长时间阻塞。
-- `host_stub` 后端会为有效输入帧生成确定性 object detection 结果，用于走通
-  `/api/ai/status`、`/api/ai/alerts` 和告警图片写入链路；生产默认配置仍使用
-  `hisi3516dv300_nnie` 且 `ai.enabled=false`。
+- `host_stub` 后端会为有效输入帧生成确定性结果，用于走通 `/api/ai/status`、
+  `/api/ai/alerts`、告警图片写入和预览叠框链路：
+  - `object_detection` 输出 `person`。
+  - `face_detection` 输出 `face`。
+  - `motion_classification` 输出 `motion`。
+  生产默认配置仍使用 `hisi3516dv300_nnie` 且 `ai.enabled=false`。
 - 默认模型为
   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`，
   `make out` 会复制到 `out/models/inst_ssd_cycle.wk`，运行配置默认填写
@@ -72,7 +75,9 @@
 2. 在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，确认
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
 3. 在板端实测 VGS + IVE CSC 前处理耗时和检测结果，确认色彩顺序与模型输入一致。
-4. 检测结果稳定后再增加 IVE 移动侦测。
+4. 在板端接入 IVE/IVS_MD 移动侦测真实后端，参考
+   `3rdparty/hisi_svp/sample/svp/ive/sample/sample_ive_md.c` 和项目内
+   `libmd`/`ivs_md.h`。
 
 ## Acceptance
 

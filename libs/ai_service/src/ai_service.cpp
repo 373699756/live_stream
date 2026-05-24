@@ -742,27 +742,52 @@ public:
         result.success = started_ && frame.buffer && frame.size > 0;
         result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
-        if (!result.success || config.task != AiTask::kObjectDetection) {
+        if (!result.success) {
             return result;
         }
         result.sequence = ++sequence_;
-        if (config.max_results == 0 ||
-            config.confidence_threshold > kHostStubConfidence) {
+        if (config.max_results == 0) {
             return result;
         }
-        AiDetection detection;
-        detection.label = "person";
-        detection.confidence = kHostStubConfidence;
-        detection.x = 0.18f;
-        detection.y = 0.22f;
-        detection.width = 0.2f;
-        detection.height = 0.46f;
-        result.detections.push_back(detection);
+        AiDetection detection = DetectionForTask(config.task);
+        if (detection.confidence >= config.confidence_threshold) {
+            result.detections.push_back(detection);
+        }
         return result;
     }
 
 private:
-    static constexpr float kHostStubConfidence = 0.86f;
+    AiDetection DetectionForTask(AiTask task) const {
+        AiDetection detection;
+        switch (task) {
+            case AiTask::kFaceDetection:
+                detection.label = "face";
+                detection.confidence = 0.82f;
+                detection.x = 0.42f;
+                detection.y = 0.18f;
+                detection.width = 0.16f;
+                detection.height = 0.22f;
+                return detection;
+            case AiTask::kMotionClassification:
+                detection.label = "motion";
+                detection.confidence = 0.79f;
+                detection.x = 0.12f;
+                detection.y = 0.18f;
+                detection.width = 0.46f;
+                detection.height = 0.34f;
+                return detection;
+            case AiTask::kObjectDetection:
+                detection.label = "person";
+                detection.confidence = 0.86f;
+                detection.x = 0.18f;
+                detection.y = 0.22f;
+                detection.width = 0.2f;
+                detection.height = 0.46f;
+                return detection;
+        }
+        return detection;
+    }
+
     FrameSequence sequence_ = 0;
     bool started_ = false;
 };

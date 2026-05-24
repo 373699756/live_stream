@@ -4,23 +4,20 @@
 
 ## Task completed
 
-继续 AI 模块开发，在实时预览页增加当前 AI 检测结果叠框。
+继续 AI 模块开发，补齐 host_stub 三类 AI 任务的联调输出。
 
 ## Problem fixed
 
-- `LiveViewPage` 现在轮询 `/api/ai/status`，不改后端 API 契约。
-- 新增 `AiDetectionOverlay`，把当前码流的 `last_result.detections` 按归一化坐标叠到
-  `VideoPreview` 的实际画面区域，避免视频黑边导致框位置偏移。
-- AI 未启用、后端不可用或状态刷新失败时不显示旧框，只保留紧凑 AI 状态提示；
-  最近结果来自另一条码流时提示结果来源，不影响实时预览和抓图按钮。
+- `host_stub` 现在按 `AiTask` 输出确定性检测结果：
+  `object_detection -> person`、`face_detection -> face`、
+  `motion_classification -> motion`。
+- 三类任务都继续受 `confidence_threshold` 和 `max_results` 控制，便于 Web
+  用真实 `/api/ai/status`、`/api/ai/alerts`、告警图片和预览叠框做联调。
+- 生产默认配置未变：`ai.enabled=false`，后端仍默认 `hisi3516dv300_nnie`。
 
 ## Files changed
 
-- `www/src/api/ai.ts`
-- `www/src/components/AiDetectionOverlay.tsx`
-- `www/src/hooks/useAiStatus.ts`
-- `www/src/pages/LiveViewPage.tsx`
-- `www/src/styles/layout.css`
+- `libs/ai_service/src/ai_service.cpp`
 - `docs/active/ai_development_plan.md`
 - `docs/active/coder_report.md`
 
@@ -28,13 +25,12 @@
 
 已通过：
 
-- `cd www && npm run build`
-- `git diff --check`
-- `make -j2`
+- `make -C libs/ai_service CXX=g++ AR=ar CROSS_COMPILE= BUILD_DIR=/tmp/live_stream_ai_host_build all`
+- `make -C libs/ai_service ENABLE_HISI_MPP=1`
 
 ## Commit
 
-`feat(www): overlay AI detections on preview`
+`feat(ai): cover host stub task outputs`
 
 ## Deviations
 
@@ -44,5 +40,6 @@
 
 - 需要在 Hi3516DV300/CV500 板端打开 `ai.enabled=true`，实测 VGS + IVE CSC
   前处理耗时、检测结果、Web 告警瀑布流和预览叠框。
-- 若要在 PC/host 上联调真实 AI 告警接口，需要显式把配置改成 `backend=host_stub`
-  并让 AI 服务启动。
+- 真实 IVE/IVS_MD 移动侦测后端仍需在板端接入和验证；本次只补 host stub 联调输出。
+- 当前工作区还有非本次 AI 任务的 media/stream_hub/webrtc 未提交改动，未纳入本次
+  验证和提交范围。
