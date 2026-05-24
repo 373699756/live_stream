@@ -190,37 +190,6 @@ void ExtractH265ParameterSetsFromUnits(const Units &units,
     }
 }
 
-template <typename Unit>
-void AppendLengthPrefixedNal(const Unit &unit, std::string *out) {
-    AppendU32(out, static_cast<uint32_t>(unit.size));
-    out->append(reinterpret_cast<const char *>(unit.data), unit.size);
-}
-
-template <typename Units>
-std::string BuildH264AvccSampleFromUnits(const Units &units) {
-    std::string sample;
-    for (const auto &unit : units) {
-        if (unit.type == 7 || unit.type == 8 || unit.type == 9) {
-            continue;
-        }
-        AppendLengthPrefixedNal(unit, &sample);
-    }
-    return sample;
-}
-
-template <typename Units>
-std::string BuildH265LengthPrefixedSampleFromUnits(const Units &units) {
-    std::string sample;
-    for (const auto &unit : units) {
-        if (unit.type == 32 || unit.type == 33 || unit.type == 34 ||
-            unit.type == 35) {
-            continue;
-        }
-        AppendLengthPrefixedNal(unit, &sample);
-    }
-    return sample;
-}
-
 template <typename Units>
 std::string BuildH264AnnexBAccessUnitFromUnits(const Units &units,
                                                const std::string &sps,
@@ -441,14 +410,6 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               bool *has_vps, bool *has_sps, bool *has_pps) {
     ExtractH265ParameterSetsFromUnits(units, vps, sps, pps, has_vps, has_sps,
                                       has_pps);
-}
-
-std::string BuildH264AvccSample(const H264NalUnitList &units) {
-    return BuildH264AvccSampleFromUnits(units);
-}
-
-std::string BuildH265LengthPrefixedSample(const H265NalUnitList &units) {
-    return BuildH265LengthPrefixedSampleFromUnits(units);
 }
 
 std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,

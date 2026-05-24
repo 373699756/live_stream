@@ -94,10 +94,6 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               std::string *sps, std::string *pps,
                               bool *has_vps, bool *has_sps, bool *has_pps);
 
-std::string BuildH264AvccSample(const H264NalUnitList &units);
-
-std::string BuildH265LengthPrefixedSample(const H265NalUnitList &units);
-
 std::string BuildH264AnnexBAccessUnit(const H264NalUnitList &units,
                                       const std::string &sps,
                                       const std::string &pps,

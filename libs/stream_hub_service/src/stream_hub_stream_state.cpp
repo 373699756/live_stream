@@ -114,10 +114,10 @@ void UpdateFrameTiming(StreamContext *stream, const EncodedFrame &frame) {
     stream->last_pts_us = frame.pts_us;
 }
 
-std::string BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
-                             const ParsedFramePayload &payload,
-                             bool package_hls, bool package_flv,
-                             bool *keyframe, std::string *access_unit) {
+void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
+                      const ParsedFramePayload &payload,
+                      bool package_hls, bool *keyframe,
+                      std::string *access_unit) {
     bool has_sps = false;
     bool has_pps = false;
     stream_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
@@ -136,27 +136,14 @@ std::string BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
             payload.h264_units, stream->sps, stream->pps,
             *keyframe && !frame_has_parameter_sets);
     }
-    return package_flv ? stream_codec::BuildH264AvccSample(payload.h264_units)
-                       : std::string();
 }
 
-std::string BuildH265Outputs(StreamContext *stream, const EncodedFrame &frame,
-                             const ParsedFramePayload &payload,
-                             bool package_hls, bool package_flv,
-                             bool *keyframe, std::string *access_unit) {
-    bool has_vps = false;
-    bool has_sps = false;
-    bool has_pps = false;
+void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
+                      bool package_hls, bool *keyframe,
+                      std::string *access_unit) {
     stream_codec::ExtractH265ParameterSets(payload.h265_units, &stream->vps,
-                                           &stream->sps, &stream->pps, &has_vps,
-                                           &has_sps, &has_pps);
-    if (!stream->vps.empty() && !stream->sps.empty() && !stream->pps.empty() &&
-        (has_vps || has_sps || has_pps)) {
-        stream->sequence_header_tag = stream_mux::BuildH265FlvSequenceHeaderTag(
-            stream->vps, stream->sps, stream->pps,
-            static_cast<uint32_t>(frame.dts_us / 1000));
-        ++stream->config_generation;
-    }
+                                           &stream->sps, &stream->pps, nullptr,
+                                           nullptr, nullptr);
 
     *keyframe = *keyframe || stream_codec::HasH265KeyFrame(payload.h265_units);
     const bool frame_has_parameter_sets =
@@ -166,23 +153,6 @@ std::string BuildH265Outputs(StreamContext *stream, const EncodedFrame &frame,
             payload.h265_units, stream->vps, stream->sps, stream->pps,
             *keyframe && !frame_has_parameter_sets);
     }
-    return package_flv
-               ? stream_codec::BuildH265LengthPrefixedSample(payload.h265_units)
-               : std::string();
-}
-
-std::string BuildFlvVideoTag(VideoCodec codec, bool keyframe,
-                             int32_t composition_time_ms,
-                             uint32_t timestamp_ms,
-                             const std::string &length_prefixed_sample) {
-    if (codec == VideoCodec::kH265) {
-        return stream_mux::BuildH265FlvVideoTag(keyframe, composition_time_ms,
-                                                timestamp_ms,
-                                                length_prefixed_sample);
-    }
-    return stream_mux::BuildH264FlvVideoTag(keyframe, composition_time_ms,
-                                            timestamp_ms,
-                                            length_prefixed_sample);
 }
 
 }  // namespace
@@ -348,15 +318,11 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     bool keyframe = stream_codec::IsKeyFrame(frame.frame_type);
     std::string access_unit;
-    std::string length_prefixed_sample;
     if (frame.codec == VideoCodec::kH265) {
-        length_prefixed_sample =
-            BuildH265Outputs(stream, frame, payload, package_hls, package_flv,
-                             &keyframe, &access_unit);
+        BuildH265Outputs(stream, payload, package_hls, &keyframe, &access_unit);
     } else {
-        length_prefixed_sample =
-            BuildH264Outputs(stream, frame, payload, package_hls, package_flv,
-                             &keyframe, &access_unit);
+        BuildH264Outputs(stream, frame, payload, package_hls, &keyframe,
+                         &access_unit);
     }
 
     if (package_hls && keyframe && stream->current_segment.started &&
@@ -379,11 +345,11 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         }
     }
 
-    if (package_flv && !length_prefixed_sample.empty()) {
+    if (package_flv && frame.codec == VideoCodec::kH264) {
         const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        result.flv_tag = BuildFlvVideoTag(
-            frame.codec, keyframe, static_cast<int32_t>(composition_time_ms),
-            static_cast<uint32_t>(frame.dts_us / 1000), length_prefixed_sample);
+        result.flv_tag = stream_mux::BuildH264FlvVideoTag(
+            keyframe, static_cast<int32_t>(composition_time_ms),
+            static_cast<uint32_t>(frame.dts_us / 1000), payload.h264_units);
         if (keyframe && !stream->sequence_header_tag.empty()) {
             stream->last_keyframe_tag = result.flv_tag;
         }

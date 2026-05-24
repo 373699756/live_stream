@@ -8,6 +8,10 @@
 #include <string>
 
 namespace live_stream {
+namespace stream_codec {
+struct H264NalUnitList;
+}  // namespace stream_codec
+
 namespace stream_mux {
 
 constexpr size_t kMaxRtpPacketSlices = 4;
@@ -99,18 +103,9 @@ std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
                                           const std::string &pps,
                                           uint32_t timestamp_ms);
 
-std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
-                                          const std::string &sps,
-                                          const std::string &pps,
-                                          uint32_t timestamp_ms);
-
 std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
                                  uint32_t timestamp_ms,
-                                 const std::string &avcc_sample);
-
-std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
-                                 uint32_t timestamp_ms,
-                                 const std::string &length_prefixed_sample);
+                                 const stream_codec::H264NalUnitList &units);
 
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state);
 

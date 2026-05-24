@@ -77,16 +77,10 @@ constexpr uint8_t kTsPacketSize = 188;
 constexpr uint8_t kTsStreamTypeH264 = 0x1b;
 constexpr uint8_t kTsStreamTypeH265 = 0x24;
 constexpr uint8_t kFlvCodecIdAvc = 7;
-constexpr uint8_t kEnhancedFlvHeader = 0x80;
-constexpr uint8_t kFlvFrameKey = 1 << 4;
-constexpr uint8_t kFlvFrameInter = 2 << 4;
+constexpr uint32_t kFlvMaxBodySize = 0x00ffffffU;
 constexpr uint8_t kFlvPacketTypeSequenceStart = 0;
 constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
-constexpr uint8_t kH265VpsNalType = 32;
-constexpr uint8_t kH265SpsNalType = 33;
-constexpr uint8_t kH265PpsNalType = 34;
 
-using byte_writer::AppendBytes;
 using byte_writer::AppendU8;
 using byte_writer::AppendU16;
 using byte_writer::AppendU24;
@@ -116,10 +110,6 @@ void FillBytes(char *target, size_t size, uint8_t value) {
 void AppendFlvTimestamp(std::string *out, uint32_t timestamp_ms) {
     AppendU24(out, timestamp_ms & 0x00ffffffU);
     AppendU8(out, static_cast<uint8_t>((timestamp_ms >> 24) & 0xff));
-}
-
-void AppendFourCc(std::string *out, const char *fourcc) {
-    out->append(fourcc, 4);
 }
 
 void WriteRtpHeader(const EncodedFrame &frame, bool marker, uint16_t sequence,
@@ -369,63 +359,34 @@ std::string BuildH264FlvConfigurationRecord(const std::string &sps,
     return config;
 }
 
-void AppendHvccArray(std::string *config, uint8_t nal_type,
-                     const std::string &nal_unit) {
-    if (nal_unit.empty()) {
-        return;
-    }
-    AppendU8(config, static_cast<uint8_t>(0x80 | (nal_type & 0x3f)));
-    AppendU16(config, 1);
-    AppendU16(config, static_cast<uint16_t>(nal_unit.size()));
-    config->append(nal_unit);
+bool IsH264FlvVideoNal(const stream_codec::H264NalUnit &unit) {
+    return unit.data != nullptr && unit.size > 0 && unit.type != 7 &&
+           unit.type != 8 && unit.type != 9;
 }
 
-std::string BuildH265HvccRecord(const std::string &vps,
-                                const std::string &sps,
-                                const std::string &pps) {
-    // HEVCDecoderConfigurationRecord (hvcC): profile/tier/level from SPS when
-    // available, followed by VPS/SPS/PPS arrays. Enhanced FLV uses this as the
-    // sequence-start payload for H.265.
-    // hvcC 是 H.265 播放器的“解码说明书”；后续视频 tag 只带长度前缀 NAL，
-    // 因此这里必须缓存并写出 VPS/SPS/PPS。
-    std::string config;
-    AppendU8(&config, 1);  // configurationVersion.
-    if (sps.size() >= 15) {
-        AppendU8(&config, static_cast<uint8_t>(sps[3]));
-        config.append(sps.data() + 4, 4);
-        config.append(sps.data() + 8, 6);
-        AppendU8(&config, static_cast<uint8_t>(sps[14]));
-    } else {
-        AppendU8(&config, 0x01);       // general_profile_space/tier/profile_idc.
-        AppendU32(&config, 0x60000000);  // profile_compatibility_flags.
-        static constexpr uint8_t kConstraintFlags[] = {
-            0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
-        AppendBytes(&config, kConstraintFlags, sizeof(kConstraintFlags));
-        AppendU8(&config, 0x1e);  // general_level_idc fallback.
+size_t H264FlvVideoPayloadSize(const stream_codec::H264NalUnitList &units) {
+    size_t payload_size = 0;
+    for (const stream_codec::H264NalUnit &unit : units) {
+        if (IsH264FlvVideoNal(unit)) {
+            payload_size += 4 + unit.size;
+        }
     }
-    AppendU16(&config, 0xf000);  // min_spatial_segmentation_idc unknown.
-    AppendU8(&config, 0xfc);   // parallelismType unknown.
-    AppendU8(&config, 0xfd);   // chromaFormat 4:2:0.
-    AppendU8(&config, 0xf8);   // bitDepthLumaMinus8 = 0.
-    AppendU8(&config, 0xf8);   // bitDepthChromaMinus8 = 0.
-    AppendU16(&config, 0);       // avgFrameRate unknown.
-    AppendU8(&config, 0x0f);   // constantFrameRate + temporal layers + length.
+    return payload_size;
+}
 
-    uint8_t array_count = 0;
-    if (!vps.empty()) {
-        ++array_count;
+void AppendH264LengthPrefixedVideoNals(
+    const stream_codec::H264NalUnitList &units,
+    std::string *tag) {
+    if (tag == nullptr) {
+        return;
     }
-    if (!sps.empty()) {
-        ++array_count;
+    for (const stream_codec::H264NalUnit &unit : units) {
+        if (!IsH264FlvVideoNal(unit)) {
+            continue;
+        }
+        AppendU32(tag, static_cast<uint32_t>(unit.size));
+        tag->append(reinterpret_cast<const char *>(unit.data), unit.size);
     }
-    if (!pps.empty()) {
-        ++array_count;
-    }
-    AppendU8(&config, array_count);
-    AppendHvccArray(&config, kH265VpsNalType, vps);
-    AppendHvccArray(&config, kH265SpsNalType, sps);
-    AppendHvccArray(&config, kH265PpsNalType, pps);
-    return config;
 }
 
 std::string BuildH264FlvVideoTag(bool keyframe, uint8_t avc_packet_type,
@@ -444,31 +405,6 @@ std::string BuildH264FlvVideoTag(bool keyframe, uint8_t avc_packet_type,
     AppendU8(&tag,
                static_cast<uint8_t>(((keyframe ? 1 : 2) << 4) | kFlvCodecIdAvc));
     AppendU8(&tag, avc_packet_type);
-    AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
-    tag.append(payload);
-    AppendU32(&tag, body_size + 11U);  // PreviousTagSize.
-    return tag;
-}
-
-std::string BuildEnhancedFlvVideoTag(bool keyframe, uint8_t packet_type,
-                                     int32_t composition_time_ms,
-                                     uint32_t timestamp_ms,
-                                     const std::string &payload) {
-    // Enhanced FLV for H.265 replaces FLV's legacy CodecID with:
-    // ExHeader + frame type + packet type, then FourCC "hvc1".
-    // 这里不是普通 FLV 的 CodecID=7，而是 Enhanced FLV 扩展头 + hvc1 FourCC，
-    // 否则浏览器侧 mpegts.js 无法按 H.265 解释后面的长度前缀 NAL。
-    std::string tag;
-    const uint32_t body_size = 8U + static_cast<uint32_t>(payload.size());
-    AppendU8(&tag, 9);  // Video tag.
-    AppendU24(&tag, body_size);
-    AppendFlvTimestamp(&tag, timestamp_ms);
-    AppendU24(&tag, 0);  // FLV StreamID is always 0.
-    AppendU8(&tag,
-               static_cast<uint8_t>(kEnhancedFlvHeader |
-                                    (keyframe ? kFlvFrameKey : kFlvFrameInter) |
-                                    packet_type));
-    AppendFourCc(&tag, "hvc1");
     AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
     tag.append(payload);
     AppendU32(&tag, body_size + 11U);  // PreviousTagSize.
@@ -664,38 +600,27 @@ std::string BuildH264FlvSequenceHeaderTag(const std::string &sps,
                                 BuildH264FlvConfigurationRecord(sps, pps));
 }
 
-std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
-                                          const std::string &sps,
-                                          const std::string &pps,
-                                          uint32_t timestamp_ms) {
-    const std::string payload = BuildH265HvccRecord(vps, sps, pps);
+std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
+                                 uint32_t timestamp_ms,
+                                 const stream_codec::H264NalUnitList &units) {
+    const size_t payload_size = H264FlvVideoPayloadSize(units);
+    if (payload_size == 0 || payload_size > kFlvMaxBodySize - 5U) {
+        return std::string();
+    }
+    const uint32_t body_size = 5U + static_cast<uint32_t>(payload_size);
     std::string tag;
-    const uint32_t body_size = 5U + static_cast<uint32_t>(payload.size());
+    tag.reserve(11U + body_size + 4U);
     AppendU8(&tag, 9);  // Video tag.
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
     AppendU24(&tag, 0);  // FLV StreamID is always 0.
-    AppendU8(&tag, static_cast<uint8_t>(kEnhancedFlvHeader | kFlvFrameKey |
-                                          kFlvPacketTypeSequenceStart));
-    AppendFourCc(&tag, "hvc1");
-    tag.append(payload);
+    AppendU8(&tag,
+               static_cast<uint8_t>(((keyframe ? 1 : 2) << 4) | kFlvCodecIdAvc));
+    AppendU8(&tag, kFlvPacketTypeCodedFrames);
+    AppendU24(&tag, static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU);
+    AppendH264LengthPrefixedVideoNals(units, &tag);
     AppendU32(&tag, body_size + 11U);  // PreviousTagSize.
     return tag;
-}
-
-std::string BuildH264FlvVideoTag(bool keyframe, int32_t composition_time_ms,
-                                 uint32_t timestamp_ms,
-                                 const std::string &avcc_sample) {
-    return BuildH264FlvVideoTag(keyframe, kFlvPacketTypeCodedFrames,
-                                composition_time_ms, timestamp_ms, avcc_sample);
-}
-
-std::string BuildH265FlvVideoTag(bool keyframe, int32_t composition_time_ms,
-                                 uint32_t timestamp_ms,
-                                 const std::string &length_prefixed_sample) {
-    return BuildEnhancedFlvVideoTag(keyframe, kFlvPacketTypeCodedFrames,
-                                    composition_time_ms, timestamp_ms,
-                                    length_prefixed_sample);
 }
 
 std::string BuildTsSegmentHeader(VideoCodec codec, TsMuxerState *state) {
