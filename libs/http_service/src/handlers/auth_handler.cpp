@@ -138,7 +138,7 @@ private:
         change_request.new_password = new_password;
         if (!auth_service_->ChangePassword(change_request)) {
             access_->IncrementAuthFailures();
-            return StatusResponse(401, "Unauthorized");
+            return StatusResponse(400, "Could not change password");
         }
         return OkResponse();
     }

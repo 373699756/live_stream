@@ -427,6 +427,7 @@ public:
         if (!user_store_->UpdatePassword(user.user_name, credential, false)) {
             return false;
         }
+        ClearFailedAttempts(user.user_name);
         AcceptChangedPasswordSession(request.context);
         return true;
     }

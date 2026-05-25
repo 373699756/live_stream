@@ -254,6 +254,10 @@ interface AuthResponse {
   must_change_password?: boolean;
 }
 
+export interface LoginResult extends AuthState {
+  error?: string;
+}
+
 function stateFromAuthResponse(body: AuthResponse): AuthState {
   const mustChangePassword =
     Boolean(body.must_change_password) ||
@@ -268,7 +272,7 @@ function stateFromAuthResponse(body: AuthResponse): AuthState {
 export async function login(
   userName: string,
   password: string,
-): Promise<AuthState> {
+): Promise<LoginResult> {
   removeToken();
   try {
     const response = await fetch('/api/auth/login', {
@@ -278,16 +282,28 @@ export async function login(
       signal: requestSignal(),
     });
     if (!response.ok) {
-      return { authenticated: false, mustChangePassword: false };
+      return {
+        authenticated: false,
+        mustChangePassword: false,
+        error: await readError(response),
+      };
     }
     const body = (await response.json()) as AuthResponse;
     if (!body.token) {
-      return { authenticated: false, mustChangePassword: false };
+      return {
+        authenticated: false,
+        mustChangePassword: false,
+        error: 'empty_token',
+      };
     }
     setToken(body.token);
     return stateFromAuthResponse(body);
   } catch {
-    return { authenticated: false, mustChangePassword: false };
+    return {
+      authenticated: false,
+      mustChangePassword: false,
+      error: 'network_error',
+    };
   }
 }
 

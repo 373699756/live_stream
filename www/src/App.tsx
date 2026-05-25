@@ -1,19 +1,60 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './context/AuthContext';
-import { AiAlertsPage } from './pages/AiAlertsPage';
-import { ImageConfigPage } from './pages/ImageConfigPage';
-import { LiveViewPage } from './pages/LiveViewPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { LoginPage } from './pages/LoginPage';
-import { LogsPage } from './pages/LogsPage';
-import { NetworkConfigPage } from './pages/NetworkConfigPage';
-import { OverlayConfigPage } from './pages/OverlayConfigPage';
 import type { PageId } from './pages/pageTypes';
-import { SnapshotConfigPage } from './pages/SnapshotConfigPage';
-import { StreamInfoPage } from './pages/StreamInfoPage';
-import { SystemPage } from './pages/SystemPage';
-import { VideoConfigPage } from './pages/VideoConfigPage';
+
+const AiAlertsPage = lazy(() =>
+  import('./pages/AiAlertsPage').then((module) => ({
+    default: module.AiAlertsPage,
+  })),
+);
+const ImageConfigPage = lazy(() =>
+  import('./pages/ImageConfigPage').then((module) => ({
+    default: module.ImageConfigPage,
+  })),
+);
+const LiveViewPage = lazy(() =>
+  import('./pages/LiveViewPage').then((module) => ({
+    default: module.LiveViewPage,
+  })),
+);
+const LogsPage = lazy(() =>
+  import('./pages/LogsPage').then((module) => ({
+    default: module.LogsPage,
+  })),
+);
+const NetworkConfigPage = lazy(() =>
+  import('./pages/NetworkConfigPage').then((module) => ({
+    default: module.NetworkConfigPage,
+  })),
+);
+const OverlayConfigPage = lazy(() =>
+  import('./pages/OverlayConfigPage').then((module) => ({
+    default: module.OverlayConfigPage,
+  })),
+);
+const SnapshotConfigPage = lazy(() =>
+  import('./pages/SnapshotConfigPage').then((module) => ({
+    default: module.SnapshotConfigPage,
+  })),
+);
+const StreamInfoPage = lazy(() =>
+  import('./pages/StreamInfoPage').then((module) => ({
+    default: module.StreamInfoPage,
+  })),
+);
+const SystemPage = lazy(() =>
+  import('./pages/SystemPage').then((module) => ({
+    default: module.SystemPage,
+  })),
+);
+const VideoConfigPage = lazy(() =>
+  import('./pages/VideoConfigPage').then((module) => ({
+    default: module.VideoConfigPage,
+  })),
+);
 
 function renderPage(page: PageId) {
   switch (page) {
@@ -78,7 +119,9 @@ export default function App() {
 
   return (
     <AppShell activePage={page} onNavigate={setPage} onLogout={logout}>
-      {renderPage(page)}
+      <Suspense fallback={<div className="panel">正在加载页面...</div>}>
+        {renderPage(page)}
+      </Suspense>
     </AppShell>
   );
 }

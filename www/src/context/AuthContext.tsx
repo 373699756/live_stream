@@ -13,7 +13,7 @@ interface AuthContextValue {
   authenticated: boolean;
   mustChangePassword: boolean;
   ready: boolean;
-  login: (userName: string, password: string) => Promise<boolean>;
+  login: (userName: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthenticated(true);
       setMustChangePassword(state.mustChangePassword);
     }
-    return state.authenticated;
+    return { ok: state.authenticated, error: state.error };
   }, []);
 
   const changePassword = useCallback(async (oldPassword: string, newPassword: string) => {

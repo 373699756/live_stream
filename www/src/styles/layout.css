@@ -2,27 +2,36 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(180deg, rgba(10, 22, 40, 0.18), rgba(10, 22, 40, 0.42)),
-    #1a2636;
+  padding: 20px;
+  background: #1a2636;
 }
 
 .login-panel {
   width: min(360px, calc(100vw - 32px));
-  padding: 28px;
+  padding: 24px;
   color: #dce7f7;
   background: #152335;
   border: 1px solid #31425a;
   border-radius: 6px;
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.24);
+}
+
+.change-password-panel {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.login-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
 }
 
 .login-brand {
   width: 52px;
   height: 52px;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
-  margin-bottom: 14px;
   color: #fff;
   background: var(--brand);
   border-radius: 4px;
@@ -35,18 +44,27 @@
 }
 
 .login-panel p {
-  margin: 6px 0 22px;
+  margin: 5px 0 0;
   color: #9fb0c8;
-}
-
-.login-panel label {
-  display: grid;
-  gap: 7px;
-  margin-bottom: 14px;
   font-size: 13px;
 }
 
-.login-panel input {
+.auth-field-list {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.auth-field span {
+  color: #cbd8e9;
+}
+
+.auth-field input {
   height: 36px;
   padding: 0 10px;
   color: #fff;
@@ -55,8 +73,22 @@
   border-radius: 4px;
 }
 
+.login-panel button[type="submit"] {
+  margin-top: 16px;
+}
+
+.auth-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.auth-action-row button {
+  min-width: 112px;
+}
+
 .login-panel .secondary-action {
-  margin-top: 10px;
   color: #dce7f7;
   background: #1d2d43;
   border-color: #40546f;
@@ -65,6 +97,54 @@
 .login-panel .secondary-action:hover {
   color: #fff;
   border-color: #6b8db8;
+}
+
+.auth-message {
+  margin-top: 14px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-message-error {
+  color: #ffd7d7;
+  background: #402331;
+  border-color: #774052;
+}
+
+.password-meter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 0 10px;
+  color: #b9c9dd;
+  background: #102033;
+  border: 1px solid #30445f;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.password-meter strong {
+  font-size: 13px;
+}
+
+.password-meter-empty strong {
+  color: #9fb0c8;
+}
+
+.password-meter-weak strong {
+  color: #ffb4b4;
+}
+
+.password-meter-medium strong {
+  color: #ffe2a6;
+}
+
+.password-meter-strong strong {
+  color: #a7f3c4;
 }
 
 .app-shell {
@@ -1019,6 +1099,14 @@
 }
 
 @media (max-width: 620px) {
+  .auth-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-action-row button {
+    width: 100%;
+  }
+
   .ai-config-grid {
     grid-template-columns: 1fr;
   }
