@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { saveVideoConfig } from '../api/video';
 import {
   codecSupportsSmartP,
@@ -210,6 +210,8 @@ export function VideoConfigPage() {
     setConfig,
     capabilities,
     statuses,
+    reloadConfig,
+    refreshStatuses,
     loading,
     error,
   } = useVideoConfig();
@@ -217,6 +219,15 @@ export function VideoConfigPage() {
   const [saved, setSaved] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [previewEnabled, setPreviewEnabled] = useState(true);
+  const refreshTimerRef = useRef(0);
+  const previewTimerRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(refreshTimerRef.current);
+      window.clearTimeout(previewTimerRef.current);
+    };
+  }, []);
 
   if (loading) {
     return <div className="panel">加载视频配置...</div>;
@@ -248,15 +259,25 @@ export function VideoConfigPage() {
   const saveConfig = async () => {
     setSaving(true);
     setPreviewEnabled(false);
+    window.clearTimeout(refreshTimerRef.current);
+    window.clearTimeout(previewTimerRef.current);
     try {
       await saveVideoConfig(config);
       setSaved('已提交保存');
+      await refreshStatuses();
+      refreshTimerRef.current = window.setTimeout(() => void refreshStatuses(), 2500);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '保存失败';
-      setSaved(`保存失败：${message}`);
+      try {
+        await reloadConfig();
+        await refreshStatuses();
+        setSaved(`保存失败，已恢复当前生效配置：${message}`);
+      } catch {
+        setSaved(`保存失败：${message}`);
+      }
     } finally {
       setSaving(false);
-      window.setTimeout(() => setPreviewEnabled(true), 600);
+      previewTimerRef.current = window.setTimeout(() => setPreviewEnabled(true), 2500);
     }
   };
 

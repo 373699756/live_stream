@@ -528,6 +528,10 @@ ConfigResult ValidateVideoConfig(const VideoConfig &config,
     if (capabilities.streams.empty()) {
         return ConfigResult::Failure("", "media capabilities unavailable");
     }
+    if (!config.main.enabled) {
+        return ConfigResult::Failure("streams.main.enabled",
+                                     "main stream must stay enabled");
+    }
 
     const struct {
         const char *name;

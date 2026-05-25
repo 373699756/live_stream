@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './context/AuthContext';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { LiveViewPage } from './pages/LiveViewPage';
 import { LoginPage } from './pages/LoginPage';
 import type { PageId } from './pages/pageTypes';
 
@@ -13,11 +14,6 @@ const AiAlertsPage = lazy(() =>
 const ImageConfigPage = lazy(() =>
   import('./pages/ImageConfigPage').then((module) => ({
     default: module.ImageConfigPage,
-  })),
-);
-const LiveViewPage = lazy(() =>
-  import('./pages/LiveViewPage').then((module) => ({
-    default: module.LiveViewPage,
   })),
 );
 const LogsPage = lazy(() =>

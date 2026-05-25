@@ -1000,6 +1000,7 @@ private:
         bool restart_stream = false;
         bool rebuild_system = false;
         ServiceState state_before_change = ServiceState::kCreated;
+        MediaPipelineConfig config_before_change;
         ConfigJson image_config_before_change;
         std::vector<FrameAttachments::SourceStateNotice>
             source_closed_events;
@@ -1011,6 +1012,7 @@ private:
             state_before_change = state;
             restart_stream = state == ServiceState::kStarted;
             rebuild_system = system_initialized;
+            config_before_change = active_config;
             image_config_before_change = image_config;
             state = ServiceState::kStopping;
             if (restart_stream) {
@@ -1026,6 +1028,7 @@ private:
         }
 
         bool device_config_applied = false;
+        bool old_config_restored = false;
         {
             std::lock_guard<std::mutex> op_guard(pipeline_op_mutex);
             if (restart_stream) {
@@ -1053,6 +1056,32 @@ private:
                 if (rebuild_system) {
                     pipeline.DeinitSystem();
                 }
+                pipeline.SetConfig(config_before_change);
+                bool restored = true;
+                if (rebuild_system && !pipeline.InitSystem()) {
+                    restored = false;
+                }
+                if (restored && restart_stream && !pipeline.Start()) {
+                    restored = false;
+                }
+                if (restored && restart_stream &&
+                    !ApplyImageConfigToPipeline(image_config_before_change)) {
+                    restored = false;
+                }
+                if (!restored) {
+                    pipeline.Stop();
+                    if (rebuild_system) {
+                        pipeline.DeinitSystem();
+                    }
+                    INFRA_LOG_ERROR("media_service",
+                                    "restore media pipeline after config "
+                                    "failure failed");
+                } else {
+                    INFRA_LOG_ERROR("media_service",
+                                    "media config apply failed, restored "
+                                    "previous pipeline");
+                }
+                old_config_restored = restored;
             }
         }
 
@@ -1078,15 +1107,28 @@ private:
 
         {
             std::lock_guard<std::mutex> guard(mutex);
-            system_initialized = false;
-            if (restart_stream) {
-                state = rebuild_system ? ServiceState::kDeinitialized
-                                       : ServiceState::kStopped;
-                source_state_events =
-                    BuildSourceStateEventsLocked(StreamState::kError);
-            } else {
-                state = rebuild_system ? ServiceState::kDeinitialized
+            if (old_config_restored) {
+                active_config = config_before_change;
+                active_channels = BuildChannelsForConfig(active_config);
+                system_initialized = rebuild_system;
+                state = restart_stream ? ServiceState::kStarted
                                        : state_before_change;
+                if (restart_stream) {
+                    source_state_events =
+                        BuildSourceStateEventsLocked(StreamState::kRunning);
+                    StartImageStrategyLocked();
+                }
+            } else {
+                system_initialized = false;
+                if (restart_stream) {
+                    state = rebuild_system ? ServiceState::kDeinitialized
+                                           : ServiceState::kStopped;
+                    source_state_events =
+                        BuildSourceStateEventsLocked(StreamState::kError);
+                } else {
+                    state = rebuild_system ? ServiceState::kDeinitialized
+                                           : state_before_change;
+                }
             }
         }
         NotifySourceState(source_state_events);

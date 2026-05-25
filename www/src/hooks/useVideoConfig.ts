@@ -10,6 +10,7 @@ import { mockMediaCapabilities } from '../api/mock';
 
 const configTimeoutMs = 5000;
 const statusTimeoutMs = 1800;
+const statusRefreshIntervalMs = 3000;
 
 export function useVideoConfig() {
   const [config, setConfig] = useState<VideoConfig | null>(null);
@@ -17,6 +18,27 @@ export function useVideoConfig() {
   const [statuses, setStatuses] = useState<StreamStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const reloadConfig = () =>
+    getVideoConfig({ timeoutMs: configTimeoutMs })
+      .then((nextConfig) => {
+        setConfig(nextConfig);
+        setError('');
+        return nextConfig;
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : '加载视频配置失败');
+        throw err;
+      });
+
+  const refreshStatuses = () =>
+    getStreamStatus({ timeoutMs: statusTimeoutMs })
+      .then((nextStatuses) => {
+        setStatuses(nextStatuses);
+      })
+      .catch(() => {
+        setStatuses([]);
+      });
 
   useEffect(() => {
     let mounted = true;
@@ -46,6 +68,19 @@ export function useVideoConfig() {
 
   useEffect(() => {
     let mounted = true;
+    const loadStatuses = () => {
+      void getStreamStatus({ timeoutMs: statusTimeoutMs })
+        .then((nextStatuses) => {
+          if (mounted) {
+            setStatuses(nextStatuses);
+          }
+        })
+        .catch(() => {
+          if (mounted) {
+            setStatuses([]);
+          }
+        });
+    };
     void getMediaCapabilities({ timeoutMs: statusTimeoutMs })
       .then((nextCapabilities) => {
         if (mounted) {
@@ -57,21 +92,24 @@ export function useVideoConfig() {
           setCapabilities(mockMediaCapabilities);
         }
       });
-    void getStreamStatus({ timeoutMs: statusTimeoutMs })
-      .then((nextStatuses) => {
-        if (mounted) {
-          setStatuses(nextStatuses);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setStatuses([]);
-        }
-      });
+    loadStatuses();
+    const timer = window.setInterval(() => {
+      loadStatuses();
+    }, statusRefreshIntervalMs);
     return () => {
       mounted = false;
+      window.clearInterval(timer);
     };
   }, []);
 
-  return { config, setConfig, capabilities, statuses, loading, error };
+  return {
+    config,
+    setConfig,
+    capabilities,
+    statuses,
+    reloadConfig,
+    refreshStatuses,
+    loading,
+    error,
+  };
 }
