@@ -95,7 +95,9 @@ or the WebRTC implementation. MJPEG preview uses `/api/mjpeg/{stream}.mjpg`
 when the active stream codec is `mjpeg`.
 
 `GET /api/media/capabilities` includes `streams.<name>.available` so the UI can
-hide or disable stream configuration that the current firmware does not start.
+hide or disable stream configuration that the current firmware cannot support.
+It is not a runtime on/off state; use `GET /api/status/streams` for whether a
+stream is currently running.
 It also exposes `streams.<name>.smart_codec`; when enabled, video config
 `streams.<name>.smart_codec=true` is saved and applied as HiSilicon SmartP GOP
 mode for H.264/H.265 streams.

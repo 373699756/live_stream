@@ -166,16 +166,13 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &image) {
     return root;
 }
 
-ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities,
-                                   const IMediaService *media_service) {
+ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
     ConfigJson root = ConfigJson::object();
     ConfigJson streams = ConfigJson::object();
     for (const VideoStreamCapabilities &stream : capabilities.streams) {
         const char *name = StreamIdToJsonString(stream.stream_id);
         if (std::strcmp(name, "unknown") != 0) {
-            const bool available = media_service == nullptr ||
-                                   media_service->IsStreamStarted(stream.stream_id);
-            streams[name] = StreamCapabilitiesToJson(stream, available);
+            streams[name] = StreamCapabilitiesToJson(stream, true);
         }
     }
     root["streams"] = streams;
@@ -281,9 +278,7 @@ private:
         if (capabilities.streams.empty()) {
             return StatusResponse(500, "Media capabilities unavailable");
         }
-        return JsonResponse(
-            200, MediaCapabilitiesToJson(capabilities,
-                                         media_service_));
+        return JsonResponse(200, MediaCapabilitiesToJson(capabilities));
     }
 
     HttpResponse HandleStreamStatus(const HttpRequest &request) {

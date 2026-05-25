@@ -90,7 +90,7 @@ function StreamForm({
         <input
           type="checkbox"
           disabled={!available}
-          checked={stream.enabled && available}
+          checked={stream.enabled}
           onChange={(e) => patch({ enabled: e.target.checked })}
         />
       </FormField>
