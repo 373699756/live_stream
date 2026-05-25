@@ -200,9 +200,10 @@ When backend API fields change, update both:
    - Business config: `configs/business_config.json`
    - Default config: `configs/default_config.json`
    - Auth users: `configs/auth_users.json`
-   - Operation log: `build/runtime/operation.log`
+   - Operation log: `log/operation.log`
 
-The operation log path is not affected by `--config-dir`.
+The operation log path is not affected by `--config-dir`; production startup
+with `--config-dir /config` maps it to `/data/operation.log`.
 
 The full configuration and HTTP API contract is documented in
 `docs/contracts/api-config.md`.

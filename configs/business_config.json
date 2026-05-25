@@ -112,7 +112,7 @@
   },
   "http": {
     "port": 80,
-    "static_root": "/www"
+    "static_root": "web"
   },
   "onvif": {
     "enabled": true,
@@ -255,13 +255,13 @@
     "level": "info",
     "console_output": true,
     "file_output": true,
-    "path": "/data/runtime.log",
+    "path": "log/runtime.log",
     "max_file_size_bytes": 1048576,
     "max_files": 4,
     "async_write": true
   },
   "logger": {
-    "operation_log_path": "/data/operation.log",
+    "operation_log_path": "log/operation.log",
     "max_file_size_bytes": 1048576,
     "max_files": 8,
     "export_limit": 1000,

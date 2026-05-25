@@ -24,11 +24,11 @@ This document records the current backend configuration scopes and Web Console A
 | Business config | `configs/business_config.json` |
 | Default config | `configs/default_config.json` |
 | Auth users | `configs/auth_users.json` |
-| Operation log | `build/runtime/operation.log` |
+| Operation log | `log/operation.log` |
 
-The operation log path is not affected by `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; it always defaults to `build/runtime/operation.log` relative to the working directory.
+The operation log path is not affected by `--config-dir` or `LIVE_STREAM_CONFIG_DIR`; it defaults to `log/operation.log` relative to the working directory. Production startup with `--config-dir /config` maps it to `/data/operation.log`.
 
-Packaged deployments that change the working-directory layout must pass `--config-dir` or set `LIVE_STREAM_CONFIG_DIR` accordingly.
+Debug deployments should run with `/mnt/live_stream` as the working directory so `configs/`, `web/`, and `log/` resolve under that mount.
 
 ## Configuration scopes
 
@@ -122,8 +122,8 @@ Current product status:
 
 - AI is an optional experimental capability and is disabled by default.
 - The default NNIE object-detection model is `models/inst_ssd_cycle.wk` with
-  300x300 input, `stream=sub`, and `inference_interval_ms=500`. The release
-  `out` package includes this file under `out/models/`.
+  300x300 input, `stream=sub`, and `inference_interval_ms=500`. Deploy optional
+  model assets under the runtime `models/` directory when AI is enabled.
 - Web alarm display is currently an AI snapshot waterfall. AI detections can
   inject an `ai_detection` input into `alarm_service`, but this still does not
   imply recording, playback, or long-term storage.

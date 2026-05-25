@@ -3,7 +3,7 @@
 本文档由 `scripts/quality_scan.sh full` 生成，汇总代码质量、性能和设计候选问题。
 
 - Generated: `20260523-105220`
-- Raw log directory: `/home/cp/Public/hisi/live_stream/reports/quality/20260523-105220`
+- Raw log directory: `docs/quality/reports/20260523-105220`
 - Git commit: `0274b17`
 
 ## Counts

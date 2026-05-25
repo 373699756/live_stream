@@ -489,12 +489,12 @@ close
 
   ```sh
   UPGRADE_SIGN_KEY=/secure/offline/live_stream_upgrade_private_key.pem \
-    ./scripts/package_upgrade.sh 1.2.3 bin-web
+    make release RELEASE_VERSION=1.2.3 RELEASE_PROFILE=bin-web
   ```
 
 - 设备端只保存公钥，固定路径是 `/config/upgrade_public_key.pem`。
-- 工程输入公钥默认是 `configs/upgrade_public_key.pem`；`make out` 如果看到该文件，
-  会复制到 `out/configs/`，`config-only` 打包会把它写进 `config.jffs2`。
+- 工程输入公钥默认是 `configs/upgrade_public_key.pem`；`make release` 会复制到
+  `release/configs/`，`config-only` 打包会把它写进 `config.jffs2`。
 - `UPGRADE_PUBLIC_KEY` 只用于打包端立即验证刚生成的 `Install.sig`，防止签名私钥
   和设备公钥不匹配。
 - 当前源码里的内置公钥是占位符，未替换时会 fail-closed，设备必须通过工厂
@@ -606,7 +606,7 @@ touch /opt/app/test
 
 必须覆盖：
 
-- 主机脚本测试：`scripts/tests/package_upgrade_test.sh`。
+- 主机脚本测试：`scripts/tests/package_release_test.sh`。
 - 服务层测试：`make -C libs/upgrade_service test`，当前工程默认交叉编译为 ARM
   ELF，需在板端或 qemu-arm 环境执行；开发机无 qemu-arm 时只能确认编译通过。
 - HTTP 层升级路由测试需要覆盖上传文件名清洗、上传大小、validate/start JSON、
@@ -692,7 +692,7 @@ Hi3516CV500_SDK_V2.0.1.0/osdrv/tools/pc/squashfs4.3/mksquashfs
 该文件是 ARM 板端 ELF，只能在设备侧运行，不能在 x86-64 开发主机上给
 升级包打 `config.jffs2`。
 
-`scripts/package_upgrade.sh` 生成 `config.jffs2` 时优先使用 `tools/pc/mkfs.jffs2`；
+`scripts/package_release.sh` 生成 `config.jffs2` 时优先使用 `tools/pc/mkfs.jffs2`；
 生成 squashfs 时优先使用 `tools/pc/mksquashfs`。当前 SDK 预编译的
 `osdrv/pub/bin/pc/mksquashfs` 是 x86-64 静态 ELF，但在当前开发主机上实测会
 `Floating point exception`；因此使用 SDK 自带
@@ -716,7 +716,7 @@ Hi3516CV500_SDK_V2.0.1.0/osdrv/tools/pc/squashfs4.3/mksquashfs
 如需强制指定工具，可通过 `MKSQUASHFS=/path/to/mksquashfs` 或
 `MKFS_JFFS2=/path/to/mkfs.jffs2` 覆盖。
 
-生成 `Install` 时 `scripts/package_upgrade.sh` 保持纯 shell，不引入 Python；
+生成 `Install` 时 `scripts/package_release.sh` 保持纯 shell，不引入 Python；
 字段值来自固定分区名、固定文件名、sha256 和经过白名单限制的版本号。
 脚本要求：
 

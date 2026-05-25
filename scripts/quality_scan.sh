@@ -6,7 +6,7 @@ set -o pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-quick}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-REPORT_ROOT="${ROOT_DIR}/reports/quality"
+REPORT_ROOT="${ROOT_DIR}/docs/quality/reports"
 REPORT_DIR="${REPORT_ROOT}/${TIMESTAMP}"
 SUMMARY_FILE="${REPORT_DIR}/summary.md"
 DOC_REPORT_DIR="${ROOT_DIR}/docs/quality"

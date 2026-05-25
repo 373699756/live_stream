@@ -9,8 +9,10 @@ THIRDPARTY_DIR := 3rdparty
 THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
 METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
 METARTC_INSTALL := $(THIRDPARTY_DIR)/install
-OUT_DIR := out
-AI_SSD_MODEL := $(THIRDPARTY_DIR)/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk
+DEBUG_DIR ?= debug
+RELEASE_DIR ?= release
+RELEASE_VERSION ?= 1.0.0
+RELEASE_PROFILE ?= web-only
 
 # Include HiSilicon toolchain (sets CROSS_COMPILE, CXX, CPU_FLAGS,
 # HISI_DEFINES, HISI_MPP_STATIC_LIBS, LDFLAGS, LDLIBS, etc.)
@@ -136,9 +138,10 @@ endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
-.PHONY: all test test-build clean thirdparty compiledb upgrade-package $(SERVICES)
+.PHONY: all test test-build clean thirdparty compiledb debug release \
+	$(SERVICES)
 
-all: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade out
+all: debug
 
 thirdparty: $(THIRDPARTY_LIBS)
 
@@ -188,21 +191,11 @@ $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-out: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP) $(AI_SSD_MODEL)
-	@mkdir -p $(OUT_DIR)/bin $(OUT_DIR)/web $(OUT_DIR)/configs $(OUT_DIR)/models
-	cp -f $(BIN_DIR)/live_stream $(OUT_DIR)/bin/
-	cp -f $(BIN_DIR)/live_sysupgrade $(OUT_DIR)/bin/
-	cp -f configs/*.json $(OUT_DIR)/configs/
-	cp -f $(AI_SSD_MODEL) $(OUT_DIR)/models/
-	@if [ -f configs/upgrade_public_key.pem ]; then \
-		cp -f configs/upgrade_public_key.pem $(OUT_DIR)/configs/; \
-	fi
-	find $(OUT_DIR)/web -mindepth 1 -delete
-	cp -rf www/dist/* $(OUT_DIR)/web/
-	@echo "Output packaged to $(OUT_DIR)/"
+debug: $(SERVICES) $(BIN_DIR)/live_stream $(WEB_STAMP)
+	scripts/package_debug.sh $(DEBUG_DIR)
 
-upgrade-package: out
-	./scripts/package_upgrade.sh
+release: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
+	scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
 test:
 	@for service in $(SERVICES); do \
@@ -222,4 +215,5 @@ clean:
 		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
 		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) clean || exit $$?; \
 	done
-	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(OUT_DIR)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade \
+	  $(DEBUG_DIR) $(RELEASE_DIR)

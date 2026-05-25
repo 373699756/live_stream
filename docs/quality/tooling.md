@@ -17,7 +17,7 @@
 默认跳过：
 
 - `3rdparty/`，除非问题指向第三方集成或链接。
-- `build/`、`out/`、`www/dist/` 等产物目录。
+- `build/`、`debug/`、`release/`、`www/dist/` 等产物目录。
 - `tests/`，除非任务明确要求测试迁移、修复或覆盖率分析。
 
 ## Current Baseline
@@ -146,7 +146,7 @@ scripts/quality_scan.sh full
 默认 `quick` 模式会运行构建、前端构建、关键词扫描、`cppcheck`、代码规模统计
 和产物信息检查。`full` 模式会额外运行 `bear`、`scan-build-10` 和
 `clang-tidy`。最终总报告写入 `docs/quality/quality_report.md`；原始工具输出写入
-`reports/quality/<timestamp>/`，只作为排查证据。缺失的可选工具会记录为 skipped；
+`docs/quality/reports/<timestamp>/`，只作为排查证据。缺失的可选工具会记录为 skipped；
 `scan-build-10` 的交叉编译兼容性问题会记录为 warning，不会直接导致扫描失败。
 
 `docs/quality/quality_report.md` 会从原始日志中提取：

@@ -63,8 +63,8 @@
   生产默认配置仍使用 `hisi3516dv300_nnie` 且 `ai.enabled=false`。
 - 默认模型为
   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`，
-  `make out` 会复制到 `out/models/inst_ssd_cycle.wk`，运行配置默认填写
-  `models/inst_ssd_cycle.wk`，默认使用 `stream=sub`、`inference_interval_ms=500`，
+  运行配置默认填写 `models/inst_ssd_cycle.wk`，默认使用
+  `stream=sub`、`inference_interval_ms=500`，
   但 `ai.enabled=false` 仍保持默认关闭。
 - 官方 SVP 依赖已复制到项目内，后续开发默认从 `3rdparty/hisi_svp` 查 sample
   和模型，不再依赖外部 SDK 路径。

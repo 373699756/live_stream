@@ -115,8 +115,8 @@ not recording, playback, or long-term storage.
 average inference time, and last success/failure timestamps for board-side
 validation.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300
-input, sub-stream inference, and a 500 ms interval. The `out` package includes
-the model under `out/models/`.
+input, sub-stream inference, and a 500 ms interval. Deploy optional model assets
+under `/mnt/live_stream/models/` when AI is enabled.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

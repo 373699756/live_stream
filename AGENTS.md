@@ -19,11 +19,9 @@
   - `docs/active/current_milestone.md`
   - `docs/active/module_contracts.md`
   - `docs/active/decision_log.md`
-- 如果任务来自明确交接，再读 `docs/active/ai_handoff.md`，完成后更新
-  `docs/active/coder_report.md`。
 - `docs/README.md` 是文档索引。`docs/architecture/*`、`docs/contracts/*`、
-  `docs/performance/*` 和 `docs/ai/*` 是低频参考文档，只在架构、接口、契约、
-  性能、复盘或对应模块问题需要时定向读取。
+  `docs/features/*` 和 `docs/quality/*` 是低频参考文档，只在架构、接口、契约、
+  功能方案、质量扫描或对应模块问题需要时定向读取。
 - 不要在普通实现任务里扩写长设计文档；当前状态更新放 `docs/active/*`，
   固定架构决策写入 `docs/active/decision_log.md`。
 - 为控制 token，日常任务默认只读相关模块和相邻接口；全工程扫描只用于明确的
@@ -99,7 +97,7 @@ npm run build
 - 改动应聚焦当前任务，避免无关重构、格式化或构建产物变更。
 - 不删除或重命名现有空 `.codex` 文件，除非用户明确要求。
 - 涉及运行时路径时，注意当前代码使用相对路径，例如 `configs/*.json` 和
-  `build/runtime/operation.log`。
+  `log/operation.log`。
 
 ## 设计与命名原则
 

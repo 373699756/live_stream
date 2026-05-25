@@ -1,5 +1,7 @@
 build/
 out/
+debug/
+release/
 compile_commands.json
 reports/quality/
 3rdparty/build/
