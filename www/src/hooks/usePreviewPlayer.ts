@@ -46,6 +46,7 @@ interface UsePreviewPlayerOptions {
 }
 
 const scriptLoads = new Map<string, Promise<void>>();
+const webrtcStartupTimeoutMs = 3500;
 
 function loadScriptOnce(src: string): Promise<void> {
   const existingLoad = scriptLoads.get(src);
@@ -246,8 +247,8 @@ export function usePreviewPlayer({
       (mode === 'flv' && flvModeEnabled) ||
       (mode === 'mjpeg' && mjpegModeEnabled);
     const nextReadyMode =
-      webrtcPlaybackReady ? 'webrtc' :
       flvPlaybackReady ? 'flv' :
+      webrtcPlaybackReady ? 'webrtc' :
       hlsPlaybackReady ? 'hls' :
       mjpegPlaybackReady ? 'mjpeg' :
       null;
@@ -291,12 +292,19 @@ export function usePreviewPlayer({
     let sessionPeerId = '';
     let sessionHls: HlsPlayer | null = null;
     let sessionFlv: FlvPlayer | null = null;
+    let sessionConnected = false;
+    let startupTimer = 0;
     const controller = new AbortController();
     const sessionSignal = controller.signal;
 
     const isCurrentSession = () =>
       !disposed && !sessionSignal.aborted && sessionRef.current === sessionId;
     const setSessionConnected = (value: boolean) => {
+      sessionConnected = value;
+      if (value && startupTimer !== 0) {
+        window.clearTimeout(startupTimer);
+        startupTimer = 0;
+      }
       if (isCurrentSession()) {
         setConnected(value);
       }
@@ -372,6 +380,9 @@ export function usePreviewPlayer({
     const cleanupSession = () => {
       disposed = true;
       controller.abort();
+      if (startupTimer !== 0) {
+        window.clearTimeout(startupTimer);
+      }
       destroyHls(sessionHls);
       destroyFlv(sessionFlv);
       closePeer(sessionPeer, sessionPeerId);
@@ -476,6 +487,19 @@ export function usePreviewPlayer({
         return cleanupSession;
       }
       setSessionPreviewState('等待 WebRTC 视频流');
+      startupTimer = window.setTimeout(() => {
+        if (!isCurrentSession() || sessionConnected) {
+          return;
+        }
+        if (flvPlaybackReady) {
+          modeSelectionRef.current = 'auto';
+          restartPreview('WebRTC 连接超时，切换 HTTP-FLV');
+          setMode('flv');
+          return;
+        }
+        setSessionPreviewState('WebRTC 连接超时');
+        closeWebrtcSession();
+      }, webrtcStartupTimeoutMs);
       const pc = new RTCPeerConnection({
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
@@ -522,6 +546,10 @@ export function usePreviewPlayer({
           return;
         }
         if (pc.connectionState === 'connected') {
+          if (startupTimer !== 0) {
+            window.clearTimeout(startupTimer);
+            startupTimer = 0;
+          }
           setSessionConnected(true);
           setSessionPreviewState('WebRTC 已连接');
         } else if (
@@ -616,12 +644,20 @@ export function usePreviewPlayer({
     }
 
     if (mode === 'hls') {
+      const url = hlsPlaylistUrl(stream);
       if (!hlsReady) {
-        setSessionPreviewState('正在等待 HLS 首帧');
+        setSessionPreviewState('正在启动 HLS 码流');
+        void fetch(url, {
+          cache: 'no-store',
+          signal: sessionSignal,
+        }).catch((error: unknown) => {
+          if (!isAbortError(error) && isCurrentSession()) {
+            setSessionPreviewState('HLS 启动失败');
+          }
+        });
         return cleanupSession;
       }
       setSessionPreviewState('等待 HLS 视频流');
-      const url = hlsPlaylistUrl(stream);
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
         void video.play().catch(() => {});

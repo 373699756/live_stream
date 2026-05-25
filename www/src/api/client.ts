@@ -275,6 +275,7 @@ export async function login(
       method: 'POST',
       headers: baseHeaders,
       body: JSON.stringify({ user_name: userName, password }),
+      signal: requestSignal(),
     });
     if (!response.ok) {
       return { authenticated: false, mustChangePassword: false };
@@ -298,6 +299,7 @@ export async function validateSession(): Promise<AuthState> {
     const response = await fetch('/api/auth/me', {
       method: 'GET',
       headers: authHeaders(),
+      signal: requestSignal(),
     });
     if (!response.ok) {
       removeToken();
@@ -330,6 +332,7 @@ export async function changePassword(
         old_password: oldPassword,
         new_password: newPassword,
       }),
+      signal: requestSignal(),
     });
     if (response.status === 401) {
       handleUnauthorized();
@@ -349,6 +352,7 @@ export async function logout(): Promise<void> {
     const response = await fetch('/api/auth/logout', {
       method: 'POST',
       headers: authHeaders(),
+      signal: requestSignal(),
     });
     if (response.status === 401) {
       handleUnauthorized();

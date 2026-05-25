@@ -52,7 +52,15 @@ export default function App() {
   const [page, setPage] = useState<PageId>('live');
 
   if (!ready) {
-    return <main className="login-page">正在校验登录状态...</main>;
+    return (
+      <main className="login-page">
+        <div className="login-panel">
+          <div className="login-brand">IPC</div>
+          <h1>Live Stream IPC</h1>
+          <p>正在校验登录状态...</p>
+        </div>
+      </main>
+    );
   }
 
   if (!authenticated) {

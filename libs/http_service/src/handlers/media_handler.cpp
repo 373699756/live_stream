@@ -203,11 +203,15 @@ ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
     return root;
 }
 
+bool HasReadyBrowserProtocol(const StreamBrowserStatus &status) {
+    return status.hls_ready || status.flv_ready || status.mjpeg_ready;
+}
+
 void RequestBrowserRecoveryKeyFrame(IStreamBrowserSource *stream_browser_source,
                                     StreamId stream_id,
                                     const StreamBrowserStatus &status) {
     if (stream_browser_source == nullptr || !status.running ||
-        !status.browser_codec || status.hls_ready) {
+        !status.browser_codec || HasReadyBrowserProtocol(status)) {
         return;
     }
     (void)stream_browser_source->RequestKeyFrame(stream_id,
@@ -349,9 +353,7 @@ private:
                 item["flvReady"] = browser.flv_ready;
                 item["mjpegReady"] = browser.mjpeg_ready;
                 if (browser.running && browser.browser_codec &&
-                    ((browser.hls_supported && !browser.hls_ready) ||
-                     (browser.flv_supported && !browser.flv_ready) ||
-                     (browser.mjpeg_supported && !browser.mjpeg_ready))) {
+                    !HasReadyBrowserProtocol(browser)) {
                     INFRA_LOG_WARN(
                         kHttpModuleName,
                         "stream browser not ready stream=%s codec=%s "

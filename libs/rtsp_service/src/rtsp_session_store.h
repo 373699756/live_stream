@@ -31,6 +31,9 @@ struct RtspSession {
   uint16_t rtp_sequence = 1;
   uint32_t ssrc = 0;
   bool keyframe_seen = false;
+  bool authenticated = false;
+  StreamId authenticated_stream_id = StreamId::kMain;
+  std::string authenticated_user;
   std::string request_buffer;
   RtspSessionStats stats;
 };

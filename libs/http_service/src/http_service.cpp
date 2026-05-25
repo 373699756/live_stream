@@ -367,11 +367,6 @@ HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
         BuildStaticFileResponse(request, options_.static_root);
     if (result.status == StaticFileStatus::kNotFound) {
         IncrementNotFound();
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP static reject status=%s request=%s relative=%s "
-                        "path=%s",
-                        StaticStatusText(result.status), request.path.c_str(),
-                        result.relative_path.c_str(), result.path.c_str());
         return StatusResponse(404, "Not Found");
     }
     if (result.status == StaticFileStatus::kForbidden) {

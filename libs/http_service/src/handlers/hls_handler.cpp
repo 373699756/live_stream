@@ -37,7 +37,10 @@ HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist) {
     body += "#EXTM3U\n";
     body += "#EXT-X-VERSION:3\n";
     body += "#EXT-X-TARGETDURATION:" +
-            std::to_string(playlist.target_duration_sec) + "\n";
+            std::to_string(playlist.target_duration_sec == 0
+                               ? 1
+                               : playlist.target_duration_sec) +
+            "\n";
     body += "#EXT-X-MEDIA-SEQUENCE:" +
             std::to_string(playlist.media_sequence) + "\n";
     body += "#EXT-X-INDEPENDENT-SEGMENTS\n";
@@ -53,6 +56,7 @@ HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist) {
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "application/vnd.apple.mpegurl";
+    response.headers["Cache-Control"] = "no-cache";
     response.body = body;
     return response;
 }
@@ -82,18 +86,15 @@ HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
     bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
     StreamHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HLS reject stream=%s object=%s reason=empty "
-                        "codec=%s running=%d hls_ready=%d keyframe=%d "
-                        "segments=%u current_segment=%u",
+        INFRA_LOG_DEBUG(kHttpModuleName,
+                        "HLS warmup stream=%s object=%s codec=%s "
+                        "keyframe=%d segments=%u current_segment=%u",
                         StreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
-                        browser_status.running ? 1 : 0,
-                        browser_status.hls_ready ? 1 : 0,
                         keyframe_requested ? 1 : 0,
                         browser_status.hls_segment_count,
                         browser_status.hls_current_segment_size);
-        return StatusResponse(503, "HLS playlist not ready");
+        return BuildPlaylistResponse(playlist);
     }
     return BuildPlaylistResponse(playlist);
 }

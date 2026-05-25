@@ -73,7 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const changePassword = useCallback(async (oldPassword: string, newPassword: string) => {
     const ok = await apiChangePassword(oldPassword, newPassword);
     if (ok) {
+      setAuthenticated(false);
       setMustChangePassword(false);
+      void apiLogout();
     }
     return ok;
   }, []);

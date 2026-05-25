@@ -327,12 +327,21 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
                                VideoBufferNetOwner(body_slices[i].owner));
     }
     if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
-        INFRA_LOG_ERROR(kHttpModuleName,
-                        "HTTP response send failed conn=%llu status=%d "
-                        "body=%zu header=%zu close=%d",
-                        static_cast<unsigned long long>(connection_id),
-                        response.status_code, body_size,
-                        header.size(), close_after_response ? 1 : 0);
+        if (response.status_code >= 500) {
+            INFRA_LOG_ERROR(kHttpModuleName,
+                            "HTTP response send failed conn=%llu status=%d "
+                            "body=%zu header=%zu close=%d",
+                            static_cast<unsigned long long>(connection_id),
+                            response.status_code, body_size,
+                            header.size(), close_after_response ? 1 : 0);
+        } else {
+            INFRA_LOG_DEBUG(kHttpModuleName,
+                            "HTTP response send failed conn=%llu status=%d "
+                            "body=%zu header=%zu close=%d",
+                            static_cast<unsigned long long>(connection_id),
+                            response.status_code, body_size,
+                            header.size(), close_after_response ? 1 : 0);
+        }
         (void)net_engine->Close(connection_id);
         return false;
     }

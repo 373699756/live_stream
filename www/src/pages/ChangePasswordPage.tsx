@@ -13,9 +13,13 @@ export function ChangePasswordPage({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
+    if (submitting) {
+      return;
+    }
     setError('');
     if (!newPassword) {
       setError('新密码不能为空');
@@ -25,9 +29,14 @@ export function ChangePasswordPage({
       setError('两次输入的新密码不一致');
       return;
     }
-    const ok = await onChangePassword(oldPassword, newPassword);
-    if (!ok) {
-      setError('旧密码错误或新密码不可用');
+    setSubmitting(true);
+    try {
+      const ok = await onChangePassword(oldPassword, newPassword);
+      if (!ok) {
+        setError('旧密码错误或新密码不可用');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -64,8 +73,8 @@ export function ChangePasswordPage({
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
         </label>
-        <button type="submit" className="primary wide">
-          保存密码
+        <button type="submit" className="primary wide" disabled={submitting}>
+          {submitting ? '保存中...' : '保存密码'}
         </button>
         <button type="button" className="wide secondary-action" onClick={onLogout}>
           退出登录

@@ -12,7 +12,8 @@ function rtspAddress(config: RtspConfig | null, stream: StreamName) {
   const port = config?.port || 554;
   const portText = port === 554 ? '' : `:${port}`;
   const path = config?.paths?.[stream] || `/live/${stream}`;
-  return `rtsp://${host}${portText}${path}`;
+  const credential = config?.auth_required ? 'admin:<password>@' : '';
+  return `rtsp://${credential}${host}${portText}${path}`;
 }
 
 const streamLabels: Record<StreamName, string> = {
@@ -33,6 +34,11 @@ export function StreamInfoPage() {
           </div>
         </div>
         {error && <div className="status-note error-note">{error}</div>}
+        {rtspConfig?.auth_required && (
+          <div className="status-note">
+            RTSP 已启用鉴权，地址中的 &lt;password&gt; 替换为登录密码
+          </div>
+        )}
         <div className="address-table">
           {(['main', 'sub'] as StreamName[]).map((stream) => (
             <div key={stream}>

@@ -5,8 +5,10 @@ import { postJson, requestJson, type ApiRequestOptions } from './client';
 import type { RtspConfig, WebrtcConfig } from './types';
 
 // RTSP & WebRTC read-only config
-export function getRtspConfig(): Promise<RtspConfig> {
-  return requestJson<RtspConfig>('/api/config/rtsp', mockRtspConfig);
+export function getRtspConfig(
+  init?: ApiRequestOptions,
+): Promise<RtspConfig> {
+  return requestJson<RtspConfig>('/api/config/rtsp', mockRtspConfig, init);
 }
 
 export function getWebrtcConfig(

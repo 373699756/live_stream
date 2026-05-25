@@ -8,13 +8,22 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [userName, setUserName] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
+    if (submitting) {
+      return;
+    }
+    setSubmitting(true);
     setError('');
-    const ok = await onLogin(userName, password);
-    if (!ok) {
-      setError('用户名或密码错误');
+    try {
+      const ok = await onLogin(userName, password);
+      if (!ok) {
+        setError('用户名或密码错误');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -37,8 +46,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <button type="submit" className="primary wide">
-          登录
+        <button type="submit" className="primary wide" disabled={submitting}>
+          {submitting ? '登录中...' : '登录'}
         </button>
         {error && <div className="save-hint">{error}</div>}
       </form>
