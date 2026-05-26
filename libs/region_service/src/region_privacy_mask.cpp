@@ -3,6 +3,7 @@
 #include "infra/log.h"
 #include "json_utils.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace live_stream {
@@ -10,6 +11,70 @@ namespace {
 
 bool IsValidVideoSize(const VideoSize &size) {
     return size.width > 0 && size.height > 0;
+}
+
+uint32_t AlignDown(uint32_t value, uint32_t alignment) {
+    return alignment == 0 ? value : value - value % alignment;
+}
+
+uint32_t AlignUp(uint32_t value, uint32_t alignment) {
+    return alignment == 0 ? value : ((value + alignment - 1) / alignment) *
+                                      alignment;
+}
+
+int32_t AlignPointDown(int32_t value, uint32_t alignment) {
+    if (value <= 0 || alignment == 0) {
+        return 0;
+    }
+    return static_cast<int32_t>(
+        AlignDown(static_cast<uint32_t>(value), alignment));
+}
+
+PrivacyMask NormalizeMaskForDevice(const PrivacyMask &mask,
+                                   const VideoSize &frame_size) {
+    constexpr uint32_t kMaskAlignment = 4;
+    PrivacyMask normalized = mask;
+    if (!normalized.enabled || !IsValidVideoSize(frame_size)) {
+        return normalized;
+    }
+
+    const uint32_t max_x = frame_size.width > kMaskAlignment
+                               ? AlignDown(frame_size.width - kMaskAlignment,
+                                           kMaskAlignment)
+                               : 0;
+    const uint32_t max_y = frame_size.height > kMaskAlignment
+                               ? AlignDown(frame_size.height - kMaskAlignment,
+                                           kMaskAlignment)
+                               : 0;
+    const uint32_t aligned_x =
+        std::min(static_cast<uint32_t>(AlignPointDown(mask.position.x,
+                                                      kMaskAlignment)),
+                 max_x);
+    const uint32_t aligned_y =
+        std::min(static_cast<uint32_t>(AlignPointDown(mask.position.y,
+                                                      kMaskAlignment)),
+                 max_y);
+    const uint32_t remaining_width = frame_size.width - aligned_x;
+    const uint32_t remaining_height = frame_size.height - aligned_y;
+    const uint32_t max_width = remaining_width >= kMaskAlignment
+                                   ? AlignDown(remaining_width,
+                                               kMaskAlignment)
+                                   : remaining_width;
+    const uint32_t max_height = remaining_height >= kMaskAlignment
+                                    ? AlignDown(remaining_height,
+                                                kMaskAlignment)
+                                    : remaining_height;
+    normalized.position.x = static_cast<int32_t>(aligned_x);
+    normalized.position.y = static_cast<int32_t>(aligned_y);
+    normalized.size.width =
+        std::min(AlignUp(mask.size.width, kMaskAlignment), max_width);
+    normalized.size.height =
+        std::min(AlignUp(mask.size.height, kMaskAlignment), max_height);
+    normalized.size.width = std::max(normalized.size.width,
+                                     std::min(kMaskAlignment, max_width));
+    normalized.size.height = std::max(normalized.size.height,
+                                      std::min(kMaskAlignment, max_height));
+    return normalized;
 }
 
 bool IsMaskWithinFrame(const PrivacyMask &mask,
@@ -74,7 +139,8 @@ std::string PrivacyMaskName(const char *stream_name, uint32_t slot) {
 }
 
 bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
-                  const MppChannel &target, const PrivacyMask *masks) {
+                  const MppChannel &target, const VideoSize &frame_size,
+                  const PrivacyMask *masks) {
     if (service == nullptr || stream_name == nullptr || masks == nullptr) {
         return false;
     }
@@ -88,12 +154,13 @@ bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
             service->DestroyRegionByPrefix(name);
             continue;
         }
+        const PrivacyMask normalized = NormalizeMaskForDevice(mask, frame_size);
         RegionConfig config;
         config.type = RegionType::kCover;
         config.target = target;
-        config.position = mask.position;
-        config.size = mask.size;
-        config.background_color = mask.color;
+        config.position = normalized.position;
+        config.size = normalized.size;
+        config.background_color = normalized.color;
         config.visible = true;
         if (!service->UpsertDisplayRegion(name, config)) {
             INFRA_LOG_ERROR(
@@ -101,9 +168,9 @@ bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
                 "apply privacy mask failed stream=%s slot=%u target=%d:%d:%d "
                 "x=%d y=%d width=%u height=%u color=0x%06x",
                 stream_name, slot, static_cast<int>(target.module),
-                target.device, target.channel, mask.position.x,
-                mask.position.y, mask.size.width, mask.size.height,
-                mask.color);
+                target.device, target.channel, normalized.position.x,
+                normalized.position.y, normalized.size.width,
+                normalized.size.height, normalized.color);
             return false;
         }
     }
@@ -128,10 +195,12 @@ bool ParsePrivacyMasksConfig(const ConfigJson &value,
 }
 
 bool RegionServiceImpl::ApplyPrivacyMasks(const PrivacyMasks &masks) {
-    if (!ApplyMaskSet(this, "main", media_channels.vpss, masks.main)) {
+    if (!ApplyMaskSet(this, "main", media_channels.vpss,
+                      media_channels.main_size, masks.main)) {
         return false;
     }
-    if (!ApplyMaskSet(this, "sub", media_channels.sub_vpss, masks.sub)) {
+    if (!ApplyMaskSet(this, "sub", media_channels.sub_vpss,
+                      media_channels.sub_size, masks.sub)) {
         return false;
     }
     return true;

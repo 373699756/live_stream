@@ -48,7 +48,7 @@ struct ParsedOverlayConfig {
     bool device_name_enabled = false;
     std::string timestamp_format;
     std::string device_name;
-    uint32_t font_size = 24;
+    uint32_t font_size = 16;
     uint32_t font_color = 0xffffff;
     bool background = true;
     RegionPoint timestamp_position;
@@ -105,6 +105,7 @@ public:
     void DestroyAll();
     void DestroyRegionByPrefix(const std::string &prefix);
     MediaChannels ActiveChannels() const;
+    void RefreshMediaChannels();
     std::vector<MppChannel> OverlayTargets() const;
     bool UpsertBitmapRegion(const std::string &name,
                             const RegionConfig &config,

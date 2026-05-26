@@ -13,6 +13,9 @@ interface DragState {
 }
 
 const streamLabel = (stream: StreamName) => (stream === 'main' ? '主码流' : '子码流');
+const minFontSize = 8;
+const maxFontSize = 32;
+const maskAlignment = 4;
 
 const parseResolution = (resolution: string) => {
   const [width, height] = resolution.split('x').map((value) => Number(value));
@@ -54,12 +57,12 @@ function contentAreaForSurface(
   return { left: 0, top: (surface.height - height) / 2, width, height };
 }
 
-function evenFloor(value: number) {
-  return Math.floor(value / 2) * 2;
+function alignFloor(value: number, alignment: number) {
+  return Math.floor(value / alignment) * alignment;
 }
 
-function evenCeil(value: number) {
-  return Math.ceil(value / 2) * 2;
+function alignCeil(value: number, alignment: number) {
+  return Math.ceil(value / alignment) * alignment;
 }
 
 function normalizeMaskRect(
@@ -69,15 +72,31 @@ function normalizeMaskRect(
   width: number,
   height: number,
 ) {
-  const alignedX = clamp(evenFloor(x), 0, Math.max(0, frame.width - 2));
-  const alignedY = clamp(evenFloor(y), 0, Math.max(0, frame.height - 2));
+  const maxX = alignFloor(Math.max(0, frame.width - maskAlignment), maskAlignment);
+  const maxY = alignFloor(Math.max(0, frame.height - maskAlignment), maskAlignment);
+  const alignedX = clamp(alignFloor(x, maskAlignment), 0, maxX);
+  const alignedY = clamp(alignFloor(y, maskAlignment), 0, maxY);
   const maxWidth = Math.max(1, frame.width - alignedX);
   const maxHeight = Math.max(1, frame.height - alignedY);
+  const alignedMaxWidth = maxWidth >= maskAlignment
+    ? alignFloor(maxWidth, maskAlignment)
+    : maxWidth;
+  const alignedMaxHeight = maxHeight >= maskAlignment
+    ? alignFloor(maxHeight, maskAlignment)
+    : maxHeight;
   return {
     x: alignedX,
     y: alignedY,
-    width: clamp(evenCeil(width), Math.min(2, maxWidth), maxWidth),
-    height: clamp(evenCeil(height), Math.min(2, maxHeight), maxHeight),
+    width: clamp(
+      alignCeil(width, maskAlignment),
+      Math.min(maskAlignment, alignedMaxWidth),
+      alignedMaxWidth,
+    ),
+    height: clamp(
+      alignCeil(height, maskAlignment),
+      Math.min(maskAlignment, alignedMaxHeight),
+      alignedMaxHeight,
+    ),
   };
 }
 
@@ -308,7 +327,17 @@ export function OverlayConfigPage() {
             <input value={config.items.device_name.text} onChange={(e) => setConfig({ ...config, items: { ...config.items, device_name: { ...config.items.device_name, text: e.target.value } } })} />
           </FormField>
           <FormField label="字体大小">
-            <input type="number" value={config.font_size} onChange={(e) => setConfig({ ...config, font_size: Number(e.target.value) })} />
+            <input
+              type="number"
+              min={minFontSize}
+              max={maxFontSize}
+              step={1}
+              value={config.font_size}
+              onChange={(e) => setConfig({
+                ...config,
+                font_size: clamp(Number(e.target.value), minFontSize, maxFontSize),
+              })}
+            />
           </FormField>
           <FormField label="字体颜色">
             <input type="color" value={config.font_color} onChange={(e) => setConfig({ ...config, font_color: e.target.value })} />

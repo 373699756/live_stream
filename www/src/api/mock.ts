@@ -323,7 +323,7 @@ export const mockOverlayConfig: OverlayConfig = {
     timestamp: { enabled: true, format: '%Y-%m-%d %H:%M:%S', x: 16, y: 16 },
     device_name: { enabled: true, text: 'IPC Camera', x: 16, y: 48 },
   },
-  font_size: 24,
+  font_size: 16,
   font_color: '#FFFFFF',
   background: true,
   privacy_masks: {

@@ -14,6 +14,8 @@ constexpr uint32_t kGlyphHeight = 7;
 constexpr uint32_t kGlyphSpacing = 1;
 constexpr uint32_t kTextPaddingX = 4;
 constexpr uint32_t kTextPaddingY = 3;
+constexpr uint32_t kTextBitmapWidthAlignment = 16;
+constexpr uint32_t kMaxRenderedFontSize = 32;
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return alignment == 0 ? value : ((value + alignment - 1) / alignment) *
@@ -109,7 +111,10 @@ const uint8_t *GlyphRows(char ch) {
 TextBitmap RenderTextBitmap(const std::string &text, uint32_t font_size,
                             uint32_t font_color, bool background) {
     TextBitmap bitmap;
-    const uint32_t scale = std::max<uint32_t>(1, font_size / kGlyphHeight);
+    const uint32_t rendered_font_size =
+        std::min(font_size, kMaxRenderedFontSize);
+    const uint32_t scale =
+        std::max<uint32_t>(1, rendered_font_size / kGlyphHeight);
     const uint32_t glyph_width = kGlyphWidth * scale;
     const uint32_t glyph_height = kGlyphHeight * scale;
     const uint32_t spacing = kGlyphSpacing * scale;
@@ -118,7 +123,8 @@ TextBitmap RenderTextBitmap(const std::string &text, uint32_t font_size,
                      : static_cast<uint32_t>(text.size()) *
                                (glyph_width + spacing) -
                            spacing;
-    bitmap.size.width = AlignUp(text_width + kTextPaddingX * 2, 2);
+    bitmap.size.width =
+        AlignUp(text_width + kTextPaddingX * 2, kTextBitmapWidthAlignment);
     bitmap.size.height = AlignUp(glyph_height + kTextPaddingY * 2, 2);
     bitmap.stride = bitmap.size.width * 2;
     bitmap.pixels.assign(bitmap.stride * bitmap.size.height, 0);
@@ -281,17 +287,22 @@ bool RegionServiceImpl::UpdateTimestampLocked() {
                                          active_config.font_color,
                                          active_config.background);
     const RegionBitmap region_bitmap = BuildRegionBitmap(bitmap);
+    bool need_rebuild = false;
     for (auto &region : regions) {
         if (region.name.find("timestamp:") != 0) {
             continue;
         }
         if (!sdk->SetRegionBitmap(region.mpp_handle,
                                   BuildSdkBitmap(region_bitmap))) {
-            return false;
+            need_rebuild = true;
+            break;
         }
         region.has_bitmap = true;
         region.config.size = bitmap.size;
         ++stats.bitmap_update_count;
+    }
+    if (need_rebuild) {
+        return ApplyTextOverlay(active_config);
     }
     return true;
 }

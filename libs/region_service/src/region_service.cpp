@@ -1,5 +1,7 @@
 #include "region_service_internal.h"
 
+#include "media_service.h"
+
 #include <cstdio>
 #include <utility>
 
@@ -214,6 +216,7 @@ bool RegionServiceImpl::Prepare() {
         ConfigAttachment attachment;
         attachment.validate = [this](const ConfigJson &value) {
             std::lock_guard<std::mutex> guard(mutex);
+            RefreshMediaChannels();
             return VerifyConfig(value)
                        ? ConfigResult::Success()
                        : ConfigResult::Failure("", "invalid overlay config");
@@ -336,6 +339,19 @@ MediaChannels RegionServiceImpl::ActiveChannels() const {
     return media_bound ? media_channels : options.media_channels;
 }
 
+void RegionServiceImpl::RefreshMediaChannels() {
+    if (options.media_service == nullptr) {
+        return;
+    }
+    const MediaChannels current_channels = options.media_service->GetChannels();
+    if (!IsValidChannel(current_channels.venc) ||
+        !IsValidChannel(current_channels.vpss)) {
+        return;
+    }
+    media_channels = current_channels;
+    media_bound = true;
+}
+
 std::vector<MppChannel> RegionServiceImpl::OverlayTargets() const {
     std::vector<MppChannel> targets;
     if (IsValidChannel(media_channels.venc)) {
@@ -372,8 +388,9 @@ bool RegionServiceImpl::UpsertBitmapRegion(const std::string &name,
             region->config = config;
             region->has_bitmap = true;
             ++stats.bitmap_update_count;
+            return true;
         }
-        return ok;
+        DestroyRegionByPrefix(name);
     }
 
     if (regions.size() >= kMaxRegions) {
@@ -417,8 +434,9 @@ bool RegionServiceImpl::UpsertDisplayRegion(const std::string &name,
             region->mpp_handle, BuildSdkRegionConfig(config));
         if (ok) {
             region->config = config;
+            return true;
         }
-        return ok;
+        DestroyRegionByPrefix(name);
     }
 
     if (regions.size() >= kMaxRegions) {
@@ -456,6 +474,7 @@ bool RegionServiceImpl::VerifyConfig(const ConfigJson &value) const {
 }
 
 bool RegionServiceImpl::ApplyConfig(const ConfigJson &value) {
+    RefreshMediaChannels();
     ParsedOverlayConfig parsed;
     if (!ParseTextOverlayConfig(value, &parsed) ||
         !ParsePrivacyMasksConfig(value, ActiveChannels(),
