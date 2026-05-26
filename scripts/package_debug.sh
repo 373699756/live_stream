@@ -3,6 +3,7 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 debug_dir="${1:-${repo_root}/debug}"
+models_src="${repo_root}/3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model"
 
 resolve_output_dir() {
   case "$1" in
@@ -23,9 +24,10 @@ reject_repo_root() {
 }
 
 copy_debug_inputs() {
-  rm -rf "${debug_dir}/bin" "${debug_dir}/configs" "${debug_dir}/web"
+  rm -rf "${debug_dir}/bin" "${debug_dir}/configs" \
+    "${debug_dir}/models" "${debug_dir}/web"
   mkdir -p "${debug_dir}/bin" "${debug_dir}/configs" \
-    "${debug_dir}/log" "${debug_dir}/web"
+    "${debug_dir}/log" "${debug_dir}/models" "${debug_dir}/web"
 
   cp -f "${repo_root}/build/bin/live_stream" "${debug_dir}/bin/"
   cp -f "${repo_root}"/configs/*.json "${debug_dir}/configs/"
@@ -33,6 +35,11 @@ copy_debug_inputs() {
     cp -f "${repo_root}/configs/upgrade_public_key.pem" \
       "${debug_dir}/configs/"
   fi
+  for model_file in "${models_src}"/*/*.wk; do
+    if [ -f "${model_file}" ]; then
+      cp -f "${model_file}" "${debug_dir}/models/"
+    fi
+  done
   cp -rf "${repo_root}/www/dist/." "${debug_dir}/web/"
 }
 
