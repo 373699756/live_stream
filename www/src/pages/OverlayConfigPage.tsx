@@ -28,11 +28,11 @@ const clamp = (value: number, min: number, max: number) =>
 function scaleMaskToSurface(
   mask: PrivacyMaskConfig,
   frame: { width: number; height: number },
-  videoArea: { left: number; top: number; width: number; height: number },
+  videoArea: { width: number; height: number },
 ) {
   return {
-    left: videoArea.left + (mask.x / frame.width) * videoArea.width,
-    top: videoArea.top + (mask.y / frame.height) * videoArea.height,
+    left: (mask.x / frame.width) * videoArea.width,
+    top: (mask.y / frame.height) * videoArea.height,
     width: (mask.width / frame.width) * videoArea.width,
     height: (mask.height / frame.height) * videoArea.height,
   };
@@ -52,6 +52,33 @@ function contentAreaForSurface(
   const width = surface.width;
   const height = width / frameRatio;
   return { left: 0, top: (surface.height - height) / 2, width, height };
+}
+
+function evenFloor(value: number) {
+  return Math.floor(value / 2) * 2;
+}
+
+function evenCeil(value: number) {
+  return Math.ceil(value / 2) * 2;
+}
+
+function normalizeMaskRect(
+  frame: { width: number; height: number },
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const alignedX = clamp(evenFloor(x), 0, Math.max(0, frame.width - 2));
+  const alignedY = clamp(evenFloor(y), 0, Math.max(0, frame.height - 2));
+  const maxWidth = Math.max(1, frame.width - alignedX);
+  const maxHeight = Math.max(1, frame.height - alignedY);
+  return {
+    x: alignedX,
+    y: alignedY,
+    width: clamp(evenCeil(width), Math.min(2, maxWidth), maxWidth),
+    height: clamp(evenCeil(height), Math.min(2, maxHeight), maxHeight),
+  };
 }
 
 function updateMask(
@@ -168,27 +195,20 @@ export function OverlayConfigPage() {
   };
 
   const pointerToFrame = (event: React.PointerEvent<HTMLDivElement>) => {
-    const surface = drawRef.current?.getBoundingClientRect();
-    if (!surface) {
-      return { x: 0, y: 0 };
-    }
-    const contentArea = contentAreaForSurface(frame, {
-      width: surface.width,
-      height: surface.height,
-    });
+    const videoLayer = event.currentTarget.getBoundingClientRect();
     const x = clamp(
-      event.clientX - surface.left - contentArea.left,
+      event.clientX - videoLayer.left,
       0,
-      contentArea.width,
+      videoLayer.width,
     );
     const y = clamp(
-      event.clientY - surface.top - contentArea.top,
+      event.clientY - videoLayer.top,
       0,
-      contentArea.height,
+      videoLayer.height,
     );
     return {
-      x: Math.round((x / contentArea.width) * frame.width),
-      y: Math.round((y / contentArea.height) * frame.height),
+      x: Math.round((x / videoLayer.width) * frame.width),
+      y: Math.round((y / videoLayer.height) * frame.height),
     };
   };
 
@@ -200,13 +220,11 @@ export function OverlayConfigPage() {
       return;
     }
     const point = pointerToFrame(event);
+    const rect = normalizeMaskRect(frame, point.x, point.y, 1, 1);
     setDrag({ slot: activeSlot, start_x: point.x, start_y: point.y });
     setMask(activeSlot, {
       enabled: true,
-      x: point.x,
-      y: point.y,
-      width: 1,
-      height: 1,
+      ...rect,
     });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -222,10 +240,7 @@ export function OverlayConfigPage() {
     const height = Math.max(1, Math.abs(point.y - drag.start_y));
     setMask(drag.slot, {
       enabled: true,
-      x,
-      y,
-      width: Math.min(width, frame.width - x),
-      height: Math.min(height, frame.height - y),
+      ...normalizeMaskRect(frame, x, y, width, height),
     });
   };
 
@@ -238,24 +253,20 @@ export function OverlayConfigPage() {
 
   const timestampRect = videoArea
     ? {
-        left: videoArea.left +
+        left: (config.items.timestamp.x / frame.width) * videoArea.width,
+        top: (config.items.timestamp.y / frame.height) * videoArea.height,
+        maxWidth:
+          videoArea.width -
           (config.items.timestamp.x / frame.width) * videoArea.width,
-        top: videoArea.top +
-          (config.items.timestamp.y / frame.height) * videoArea.height,
-        maxWidth: videoArea.left + videoArea.width -
-          (videoArea.left +
-            (config.items.timestamp.x / frame.width) * videoArea.width),
       }
     : { left: 0, top: 0, maxWidth: 0 };
   const deviceNameRect = videoArea
     ? {
-        left: videoArea.left +
+        left: (config.items.device_name.x / frame.width) * videoArea.width,
+        top: (config.items.device_name.y / frame.height) * videoArea.height,
+        maxWidth:
+          videoArea.width -
           (config.items.device_name.x / frame.width) * videoArea.width,
-        top: videoArea.top +
-          (config.items.device_name.y / frame.height) * videoArea.height,
-        maxWidth: videoArea.left + videoArea.width -
-          (videoArea.left +
-            (config.items.device_name.x / frame.width) * videoArea.width),
       }
     : { left: 0, top: 0, maxWidth: 0 };
   const timestampPreview = config.items.timestamp.format
@@ -268,14 +279,14 @@ export function OverlayConfigPage() {
 
   return (
     <div className="config-preview-layout overlay-config-layout">
-      <section className="panel settings-column">
+      <section className="panel settings-column overlay-settings-column">
         <div className="page-heading">
           <div>
             <h2>视频叠加</h2>
             <p>文字叠加与隐私遮挡由设备端 region_service 统一应用</p>
           </div>
         </div>
-        <div className="form-grid">
+        <div className="form-grid overlay-text-form">
           <FormField label="文字叠加">
             <SwitchButton
               checked={config.enabled}
@@ -387,62 +398,72 @@ export function OverlayConfigPage() {
             <div
               ref={drawRef}
               className={drawingEnabled ? 'mask-draw-layer drawing' : 'mask-draw-layer'}
-              onPointerDown={beginDraw}
-              onPointerMove={updateDraw}
-              onPointerUp={finishDraw}
-              onPointerCancel={finishDraw}
             >
-              {config.enabled && config.items.timestamp.enabled && (
+              {videoArea && (
                 <div
-                  className={config.background ? 'overlay-text background' : 'overlay-text'}
+                  className="mask-video-layer"
                   style={{
-                    left: timestampRect.left,
-                    top: timestampRect.top,
-                    maxWidth: timestampRect.maxWidth,
-                    color: config.font_color,
-                    fontSize: config.font_size,
+                    left: videoArea.left,
+                    top: videoArea.top,
+                    width: videoArea.width,
+                    height: videoArea.height,
                   }}
+                  onPointerDown={beginDraw}
+                  onPointerMove={updateDraw}
+                  onPointerUp={finishDraw}
+                  onPointerCancel={finishDraw}
                 >
-                  {timestampPreview}
+                  {config.enabled && config.items.timestamp.enabled && (
+                    <div
+                      className={config.background ? 'overlay-text background' : 'overlay-text'}
+                      style={{
+                        left: timestampRect.left,
+                        top: timestampRect.top,
+                        maxWidth: timestampRect.maxWidth,
+                        color: config.font_color,
+                        fontSize: config.font_size,
+                      }}
+                    >
+                      {timestampPreview}
+                    </div>
+                  )}
+                  {config.enabled && config.items.device_name.enabled && (
+                    <div
+                      className={config.background ? 'overlay-text background' : 'overlay-text'}
+                      style={{
+                        left: deviceNameRect.left,
+                        top: deviceNameRect.top,
+                        maxWidth: deviceNameRect.maxWidth,
+                        color: config.font_color,
+                        fontSize: config.font_size,
+                      }}
+                    >
+                      {config.items.device_name.text}
+                    </div>
+                  )}
+                  {activeMasks.map((mask, index) => {
+                    if (!mask.enabled) {
+                      return null;
+                    }
+                    const rect = scaleMaskToSurface(mask, frame, videoArea);
+                    return (
+                      <div
+                        key={index}
+                        className={activeSlot === index ? 'mask-rect active' : 'mask-rect'}
+                        style={{
+                          left: rect.left,
+                          top: rect.top,
+                          width: rect.width,
+                          height: rect.height,
+                          backgroundColor: mask.color,
+                        }}
+                      >
+                        {index + 1}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              {config.enabled && config.items.device_name.enabled && (
-                <div
-                  className={config.background ? 'overlay-text background' : 'overlay-text'}
-                  style={{
-                    left: deviceNameRect.left,
-                    top: deviceNameRect.top,
-                    maxWidth: deviceNameRect.maxWidth,
-                    color: config.font_color,
-                    fontSize: config.font_size,
-                  }}
-                >
-                  {config.items.device_name.text}
-                </div>
-              )}
-              {activeMasks.map((mask, index) => {
-                if (!mask.enabled) {
-                  return null;
-                }
-                const rect = videoArea
-                  ? scaleMaskToSurface(mask, frame, videoArea)
-                  : { left: 0, top: 0, width: 0, height: 0 };
-                return (
-                  <div
-                    key={index}
-                    className={activeSlot === index ? 'mask-rect active' : 'mask-rect'}
-                    style={{
-                      left: rect.left,
-                      top: rect.top,
-                      width: rect.width,
-                      height: rect.height,
-                      backgroundColor: mask.color,
-                    }}
-                  >
-                    {index + 1}
-                  </div>
-                );
-              })}
             </div>
           }
         />

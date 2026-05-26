@@ -319,6 +319,25 @@
   grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
 }
 
+.overlay-settings-column .overlay-text-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.overlay-settings-column .form-field {
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.overlay-settings-column .form-control {
+  gap: 6px;
+}
+
+.settings-column.overlay-settings-column .form-control input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+.settings-column.overlay-settings-column .form-control select {
+  width: min(100%, 300px);
+}
+
 .live-grid {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -708,6 +727,16 @@
 }
 
 .mask-draw-layer.drawing {
+  cursor: default;
+}
+
+.mask-video-layer {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mask-draw-layer.drawing .mask-video-layer {
   cursor: crosshair;
   pointer-events: auto;
 }

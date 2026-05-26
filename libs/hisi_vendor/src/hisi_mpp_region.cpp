@@ -144,6 +144,13 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
 bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0 || config.size.width == 0 || config.size.height == 0) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "invalid region create handle=%d type=%d size=%ux%u "
+            "target=%d:%d:%d",
+            handle, static_cast<int>(config.type), config.size.width,
+            config.size.height, static_cast<int>(config.target.module),
+            config.target.device, config.target.channel);
         return false;
     }
 
@@ -164,7 +171,19 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
         attr.unAttr.stOverlayEx.u32CanvasNum = 2;
     }
 
-    return internal::HiOk(HI_MPI_RGN_Create(handle, &attr));
+    const HI_S32 status = HI_MPI_RGN_Create(handle, &attr);
+    if (status != HI_SUCCESS) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "HI_MPI_RGN_Create failed: 0x%08x handle=%d type=%d "
+            "size=%ux%u target=%d:%d:%d",
+            status, handle, static_cast<int>(config.type),
+            config.size.width, config.size.height,
+            static_cast<int>(config.target.module), config.target.device,
+            config.target.channel);
+        return false;
+    }
+    return true;
 }
 
 // ====================================================================
@@ -172,12 +191,28 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
 // ====================================================================
 bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (handle < 0) return false;
+    if (handle < 0) {
+        INFRA_LOG_ERROR("hisi_vendor", "invalid region attach handle=%d",
+                        handle);
+        return false;
+    }
 
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
     FillChannelAttr(handle, config, &attr);
-    return internal::HiOk(HI_MPI_RGN_AttachToChn(handle, &channel, &attr));
+    const HI_S32 status = HI_MPI_RGN_AttachToChn(handle, &channel, &attr);
+    if (status != HI_SUCCESS) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "HI_MPI_RGN_AttachToChn failed: 0x%08x handle=%d type=%d "
+            "target=%d:%d:%d x=%d y=%d width=%u height=%u visible=%d",
+            status, handle, static_cast<int>(config.type),
+            static_cast<int>(config.target.module), config.target.device,
+            config.target.channel, config.position.x, config.position.y,
+            config.size.width, config.size.height, config.visible ? 1 : 0);
+        return false;
+    }
+    return true;
 }
 
 // ====================================================================
@@ -188,7 +223,17 @@ bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
     if (handle < 0) return false;
 
     MPP_CHN_S channel = ToHiChannel(config.target);
-    return internal::HiOk(HI_MPI_RGN_DetachFromChn(handle, &channel));
+    const HI_S32 status = HI_MPI_RGN_DetachFromChn(handle, &channel);
+    if (status != HI_SUCCESS) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "HI_MPI_RGN_DetachFromChn failed: 0x%08x handle=%d "
+            "target=%d:%d:%d",
+            status, handle, static_cast<int>(config.target.module),
+            config.target.device, config.target.channel);
+        return false;
+    }
+    return true;
 }
 
 // ====================================================================
@@ -196,12 +241,30 @@ bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
 // ====================================================================
 bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (handle < 0) return false;
+    if (handle < 0) {
+        INFRA_LOG_ERROR("hisi_vendor", "invalid region display handle=%d",
+                        handle);
+        return false;
+    }
 
     MPP_CHN_S channel = ToHiChannel(config.target);
     RGN_CHN_ATTR_S attr{};
     FillChannelAttr(handle, config, &attr);
-    return internal::HiOk(HI_MPI_RGN_SetDisplayAttr(handle, &channel, &attr));
+    const HI_S32 status = HI_MPI_RGN_SetDisplayAttr(handle, &channel, &attr);
+    if (status != HI_SUCCESS) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "HI_MPI_RGN_SetDisplayAttr failed: 0x%08x handle=%d type=%d "
+            "target=%d:%d:%d x=%d y=%d width=%u height=%u visible=%d "
+            "color=0x%06x",
+            status, handle, static_cast<int>(config.type),
+            static_cast<int>(config.target.module), config.target.device,
+            config.target.channel, config.position.x, config.position.y,
+            config.size.width, config.size.height, config.visible ? 1 : 0,
+            config.background_color);
+        return false;
+    }
+    return true;
 }
 
 // ====================================================================
@@ -210,6 +273,12 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
 bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0 || bitmap.data == nullptr || bitmap.size == 0) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "invalid region bitmap handle=%d data=%p size=%u width=%u "
+            "height=%u stride=%u",
+            handle, bitmap.data, bitmap.size, bitmap.dimensions.width,
+            bitmap.dimensions.height, bitmap.stride);
         return false;
     }
 
@@ -218,7 +287,17 @@ bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
     hi_bitmap.u32Width = bitmap.dimensions.width;
     hi_bitmap.u32Height = bitmap.dimensions.height;
     hi_bitmap.pData = const_cast<uint8_t*>(bitmap.data);
-    return internal::HiOk(HI_MPI_RGN_SetBitMap(handle, &hi_bitmap));
+    const HI_S32 status = HI_MPI_RGN_SetBitMap(handle, &hi_bitmap);
+    if (status != HI_SUCCESS) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "HI_MPI_RGN_SetBitMap failed: 0x%08x handle=%d width=%u "
+            "height=%u stride=%u size=%u",
+            status, handle, bitmap.dimensions.width,
+            bitmap.dimensions.height, bitmap.stride, bitmap.size);
+        return false;
+    }
+    return true;
 }
 
 // ====================================================================

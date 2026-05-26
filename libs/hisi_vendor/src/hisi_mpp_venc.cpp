@@ -857,6 +857,17 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
 
     // Main stream
     if (!ConfigureVencChannel(config.venc_channel, config.main_stream)) {
+        INFRA_LOG_ERROR(
+            "hisi_vendor",
+            "start main VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
+            "size=%ux%u src_fps=%d dst_fps=%d bitrate=%u gop=%u",
+            config.venc_channel, CodecName(config.main_stream.codec),
+            RcModeName(config.main_stream.rc_mode),
+            GopModeName(config.main_stream.gop_mode),
+            config.main_stream.size.width, config.main_stream.size.height,
+            config.main_stream.frame_rate.source_fps,
+            config.main_stream.frame_rate.target_fps,
+            config.main_stream.bitrate_kbps, config.main_stream.gop);
         return false;
     }
 
@@ -864,6 +875,17 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     if (config.sub_stream.enabled) {
         if (!ConfigureVencChannel(config.sub_venc_channel, config.sub_stream)) {
             DestroyVencChannel(static_cast<VENC_CHN>(config.venc_channel));
+            INFRA_LOG_ERROR(
+                "hisi_vendor",
+                "start sub VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
+                "size=%ux%u src_fps=%d dst_fps=%d bitrate=%u gop=%u",
+                config.sub_venc_channel, CodecName(config.sub_stream.codec),
+                RcModeName(config.sub_stream.rc_mode),
+                GopModeName(config.sub_stream.gop_mode),
+                config.sub_stream.size.width, config.sub_stream.size.height,
+                config.sub_stream.frame_rate.source_fps,
+                config.sub_stream.frame_rate.target_fps,
+                config.sub_stream.bitrate_kbps, config.sub_stream.gop);
             return false;
         }
     }
@@ -897,6 +919,10 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     // Main stream: VPSS CHN → VENC
     if (!BindVpssToVenc(config.vpss_group, config.vpss_channel,
                         config.venc_channel)) {
+        INFRA_LOG_ERROR("hisi_vendor",
+                        "bind main VPSS to VENC failed vpss=%d:%d venc=%d",
+                        config.vpss_group, config.vpss_channel,
+                        config.venc_channel);
         return false;
     }
 
@@ -906,6 +932,10 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
                             config.sub_venc_channel)) {
             UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                                config.venc_channel);
+            INFRA_LOG_ERROR("hisi_vendor",
+                            "bind sub VPSS to VENC failed vpss=%d:%d venc=%d",
+                            config.vpss_group, config.sub_vpss_channel,
+                            config.sub_venc_channel);
             return false;
         }
     }
@@ -917,6 +947,8 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
         }
         UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                            config.venc_channel);
+        INFRA_LOG_ERROR("hisi_vendor", "start main VENC recv failed chn=%d",
+                        config.venc_channel);
         return false;
     }
 
@@ -927,6 +959,8 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
                            config.sub_venc_channel);
         UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                            config.venc_channel);
+        INFRA_LOG_ERROR("hisi_vendor", "start sub VENC recv failed chn=%d",
+                        config.sub_venc_channel);
         return false;
     }
 

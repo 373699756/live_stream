@@ -1,5 +1,6 @@
 #include "region_service_internal.h"
 
+#include "infra/log.h"
 #include "json_utils.h"
 
 #include <cstdio>
@@ -95,6 +96,14 @@ bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
         config.background_color = mask.color;
         config.visible = true;
         if (!service->UpsertDisplayRegion(name, config)) {
+            INFRA_LOG_ERROR(
+                "region_service",
+                "apply privacy mask failed stream=%s slot=%u target=%d:%d:%d "
+                "x=%d y=%d width=%u height=%u color=0x%06x",
+                stream_name, slot, static_cast<int>(target.module),
+                target.device, target.channel, mask.position.x,
+                mask.position.y, mask.size.width, mask.size.height,
+                mask.color);
             return false;
         }
     }
