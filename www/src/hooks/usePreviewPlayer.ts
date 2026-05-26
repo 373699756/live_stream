@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { flvStreamUrl, hlsPlaylistUrl, mjpegStreamUrl } from '../api/client';
+import {
+  authHeaders,
+  flvStreamUrl,
+  hlsPlaylistUrl,
+  mjpegStreamUrl,
+} from '../api/client';
 import {
   closeWebrtcPeer,
   createWebrtcPeer,
@@ -47,6 +52,7 @@ interface UsePreviewPlayerOptions {
 
 const scriptLoads = new Map<string, Promise<void>>();
 const webrtcStartupTimeoutMs = 3500;
+const hlsWarmupRetryMs = 1000;
 
 function loadScriptOnce(src: string): Promise<void> {
   const existingLoad = scriptLoads.get(src);
@@ -119,6 +125,33 @@ function stopVideoTracks(video: HTMLMediaElement | null) {
   }
 }
 
+function appendSessionQuery(url: string, sessionId: number) {
+  return `${url}${url.includes('?') ? '&' : '?'}session=${sessionId}`;
+}
+
+function isModeEnabled(
+  mode: PreviewMode,
+  enabled: Record<PreviewMode, boolean>,
+) {
+  return enabled[mode];
+}
+
+async function waitForHlsPlaylist(
+  url: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers: authHeaders(),
+    signal,
+  });
+  if (!response.ok) {
+    return false;
+  }
+  const body = await response.text();
+  return body.includes('.ts');
+}
+
 function destroyHls(player: HlsPlayer | null) {
   if (!player) {
     return;
@@ -184,6 +217,18 @@ export function usePreviewPlayer({
   const hlsPlaybackReady = hlsModeEnabled && hlsReady;
   const flvPlaybackReady = flvModeEnabled && flvReady;
   const mjpegPlaybackReady = mjpegModeEnabled && mjpegReady;
+  const modeEnabled = {
+    webrtc: webrtcModeEnabled,
+    hls: hlsModeEnabled,
+    flv: flvModeEnabled,
+    mjpeg: mjpegModeEnabled,
+  };
+  const modeReady = {
+    webrtc: webrtcPlaybackReady,
+    hls: hlsPlaybackReady,
+    flv: flvPlaybackReady,
+    mjpeg: mjpegPlaybackReady,
+  };
   const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
     .map((server) => [
       server.url,
@@ -241,32 +286,37 @@ export function usePreviewPlayer({
       return;
     }
 
-    const selectedModeEnabled =
-      (mode === 'webrtc' && webrtcModeEnabled) ||
-      (mode === 'hls' && hlsModeEnabled) ||
-      (mode === 'flv' && flvModeEnabled) ||
-      (mode === 'mjpeg' && mjpegModeEnabled);
+    const selectedModeEnabled = isModeEnabled(mode, modeEnabled);
     const nextReadyMode =
-      flvPlaybackReady ? 'flv' :
+      modeReady[mode] ? mode :
       webrtcPlaybackReady ? 'webrtc' :
       hlsPlaybackReady ? 'hls' :
+      flvPlaybackReady ? 'flv' :
       mjpegPlaybackReady ? 'mjpeg' :
+      null;
+    const nextEnabledMode =
+      selectedModeEnabled ? mode :
+      webrtcModeEnabled ? 'webrtc' :
+      hlsModeEnabled ? 'hls' :
+      flvModeEnabled ? 'flv' :
+      mjpegModeEnabled ? 'mjpeg' :
       null;
 
     if (modeSelectionRef.current === 'manual') {
       if (!selectedModeEnabled) {
         modeSelectionRef.current = 'auto';
         restartPreview(`${previewModeLabels[mode]} 暂不可用`);
-        if (nextReadyMode && nextReadyMode !== mode) {
-          setMode(nextReadyMode);
+        const fallbackMode = nextReadyMode || nextEnabledMode;
+        if (fallbackMode && fallbackMode !== mode) {
+          setMode(fallbackMode);
         }
       }
       return;
     }
 
-    if (nextReadyMode && nextReadyMode !== mode) {
+    if (!selectedModeEnabled && nextEnabledMode && nextEnabledMode !== mode) {
       restartPreview('正在切换预览链路');
-      setMode(nextReadyMode);
+      setMode(nextEnabledMode);
     }
   }, [
     enabled,
@@ -294,6 +344,7 @@ export function usePreviewPlayer({
     let sessionFlv: FlvPlayer | null = null;
     let sessionConnected = false;
     let startupTimer = 0;
+    let hlsWarmupTimer = 0;
     const controller = new AbortController();
     const sessionSignal = controller.signal;
 
@@ -383,6 +434,9 @@ export function usePreviewPlayer({
       if (startupTimer !== 0) {
         window.clearTimeout(startupTimer);
       }
+      if (hlsWarmupTimer !== 0) {
+        window.clearTimeout(hlsWarmupTimer);
+      }
       destroyHls(sessionHls);
       destroyFlv(sessionFlv);
       closePeer(sessionPeer, sessionPeerId);
@@ -467,9 +521,13 @@ export function usePreviewPlayer({
     video.onerror = () => {
       setSessionConnected(false);
       if (mode === 'hls') {
-        setSessionPreviewState('HLS 播放失败');
+        if (!sessionConnected) {
+          setSessionPreviewState('HLS 播放失败');
+        }
       } else if (mode === 'flv') {
-        setSessionPreviewState('HTTP-FLV 播放失败');
+        if (!sessionConnected) {
+          setSessionPreviewState('HTTP-FLV 播放失败');
+        }
       }
     };
 
@@ -644,27 +702,18 @@ export function usePreviewPlayer({
     }
 
     if (mode === 'hls') {
-      const url = hlsPlaylistUrl(stream);
-      if (!hlsReady) {
-        setSessionPreviewState('正在启动 HLS 码流');
-        void fetch(url, {
-          cache: 'no-store',
-          signal: sessionSignal,
-        }).catch((error: unknown) => {
-          if (!isAbortError(error) && isCurrentSession()) {
-            setSessionPreviewState('HLS 启动失败');
-          }
-        });
-        return cleanupSession;
-      }
-      setSessionPreviewState('等待 HLS 视频流');
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = url;
-        void video.play().catch(() => {});
-        setSessionPreviewState('正在拉取 HLS 码流');
-        return cleanupSession;
-      }
-      void (async () => {
+      const playlistUrl = hlsPlaylistUrl(stream);
+      const startHlsPlayer = async () => {
+        if (!isCurrentSession()) {
+          return;
+        }
+        const playbackUrl = appendSessionQuery(playlistUrl, sessionId);
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = playbackUrl;
+          void video.play().catch(() => {});
+          setSessionPreviewState('正在拉取 HLS 码流');
+          return;
+        }
         try {
           const Hls = await loadLocalHlsModule();
           if (!isCurrentSession()) {
@@ -686,7 +735,7 @@ export function usePreviewPlayer({
             });
           }
           player.attachMedia(video);
-          player.loadSource(url);
+          player.loadSource(playbackUrl);
           void video.play().catch(() => {});
           setSessionPreviewState('正在拉取 HLS 码流');
         } catch (error) {
@@ -698,14 +747,39 @@ export function usePreviewPlayer({
             );
           }
         }
-      })();
+      };
+      const warmupHls = () => {
+        if (!isCurrentSession()) {
+          return;
+        }
+        void waitForHlsPlaylist(playlistUrl, sessionSignal)
+          .then((ready) => {
+            if (!isCurrentSession() || sessionConnected) {
+              return;
+            }
+            if (ready) {
+              void startHlsPlayer();
+              return;
+            }
+            hlsWarmupTimer =
+              window.setTimeout(warmupHls, hlsWarmupRetryMs);
+          })
+          .catch((error: unknown) => {
+            if (isAbortError(error) || !isCurrentSession()) {
+              return;
+            }
+            if (!sessionConnected) {
+              setSessionPreviewState('HLS 启动失败');
+              hlsWarmupTimer =
+                window.setTimeout(warmupHls, hlsWarmupRetryMs);
+            }
+          });
+      };
+      warmupHls();
+      setSessionPreviewState('等待 HLS 视频流');
       return cleanupSession;
     }
 
-    if (!flvReady) {
-      setSessionPreviewState('正在等待 HTTP-FLV 首帧');
-      return cleanupSession;
-    }
     setSessionPreviewState(
       '等待 HTTP-FLV 视频流',
     );
@@ -723,8 +797,7 @@ export function usePreviewPlayer({
           return;
         }
         const baseFlvUrl = flvStreamUrl(stream);
-        const flvUrl =
-          `${baseFlvUrl}${baseFlvUrl.includes('?') ? '&' : '?'}session=${sessionId}`;
+        const flvUrl = appendSessionQuery(baseFlvUrl, sessionId);
         const player = flvModule.createPlayer({
           type: 'flv',
           isLive: true,
@@ -782,9 +855,7 @@ export function usePreviewPlayer({
   }, [
     enabled,
     flvModeEnabled,
-    flvReady,
     hlsModeEnabled,
-    hlsReady,
     mjpegModeEnabled,
     mjpegReady,
     mode,
