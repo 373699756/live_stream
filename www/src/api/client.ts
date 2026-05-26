@@ -8,6 +8,7 @@ const tokenKey = 'live_stream_token';
 const authInvalidEvent = 'live-stream-auth-invalid';
 const mustChangePasswordEvent = 'live-stream-must-change-password';
 const defaultTimeoutMs = 8000;
+const credentialTimeoutMs = 60000;
 
 export const useMockFallback = import.meta.env.DEV;
 
@@ -279,7 +280,7 @@ export async function login(
       method: 'POST',
       headers: baseHeaders,
       body: JSON.stringify({ user_name: userName, password }),
-      signal: requestSignal(),
+      signal: requestSignal({ timeoutMs: credentialTimeoutMs }),
     });
     if (!response.ok) {
       return {
@@ -348,7 +349,7 @@ export async function changePassword(
         old_password: oldPassword,
         new_password: newPassword,
       }),
-      signal: requestSignal(),
+      signal: requestSignal({ timeoutMs: credentialTimeoutMs }),
     });
     if (response.status === 401) {
       handleUnauthorized();
