@@ -199,6 +199,10 @@ export function ImageConfigPage() {
   };
   const showOrientationControls =
     capabilities.orientation.mirror || capabilities.orientation.flip;
+  const exposureMode = stringValue(config.exposure, 'mode', 'auto');
+  const exposureManual = exposureMode === 'manual';
+  const whiteBalanceMode = stringValue(config.white_balance, 'mode', 'auto');
+  const whiteBalanceManual = whiteBalanceMode === 'manual';
 
   return (
     <div className="config-preview-layout">
@@ -267,133 +271,167 @@ export function ImageConfigPage() {
           <details className="image-advanced-section">
             <summary>曝光控制</summary>
             <div className="form-grid image-settings-grid image-detail-grid">
-          <OptionField
-            label="曝光模式"
-            capability={optionCapability(capabilities.exposure.options, 'mode', [
-              'auto',
-              'manual',
-            ])}
-            value={stringValue(config.exposure, 'mode', 'auto')}
-            onChange={(value) => updateSection('exposure', 'mode', value)}
-          />
-          <OptionField
-            label="防闪烁"
-            capability={optionCapability(
-              capabilities.exposure.options,
-              'anti_flicker',
-              ['50hz', '60hz', 'off'],
-            )}
-            value={stringValue(config.exposure, 'anti_flicker', '50hz')}
-            onChange={(value) =>
-              updateSection('exposure', 'anti_flicker', value)
-            }
-          />
-          <OptionField
-            label="曝光时间"
-            capability={optionCapability(
-              capabilities.exposure.options,
-              'exposure_time',
-              ['auto', '1/25', '1/50', '1/100', '1/250'],
-            )}
-            value={stringValue(config.exposure, 'exposure_time', 'auto')}
-            onChange={(value) =>
-              updateSection('exposure', 'exposure_time', value)
-            }
-          />
-          <OptionField
-            label="增益"
-            capability={optionCapability(capabilities.exposure.options, 'gain', [
-              'auto',
-              'low',
-              'medium',
-              'high',
-            ])}
-            value={stringValue(config.exposure, 'gain', 'auto')}
-            onChange={(value) => updateSection('exposure', 'gain', value)}
-          />
-          <RangeField
-            label="曝光补偿"
-            capability={
-              numericCapability(capabilities.exposure.ranges, 'compensation') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.exposure, 'compensation', 50)}
-            onChange={(value) =>
-              updateSection('exposure', 'compensation', value)
-            }
-          />
-          {supportsOptionValue(
-            capabilities.exposure.options,
-            'slow_shutter',
-            'true',
-          ) && (
-            <FormField label="慢快门">
-              <input
-                type="checkbox"
-                checked={boolValue(config.exposure, 'slow_shutter', false)}
-                onChange={(e) =>
-                  updateSection('exposure', 'slow_shutter', e.target.checked)
+              <OptionField
+                label="曝光模式"
+                capability={optionCapability(
+                  capabilities.exposure.options,
+                  'mode',
+                  ['auto', 'manual'],
+                )}
+                value={exposureMode}
+                onChange={(value) => updateSection('exposure', 'mode', value)}
+              />
+              <OptionField
+                label="防闪烁"
+                capability={optionCapability(
+                  capabilities.exposure.options,
+                  'anti_flicker',
+                  ['50hz', '60hz', 'off'],
+                )}
+                value={stringValue(config.exposure, 'anti_flicker', '50hz')}
+                onChange={(value) =>
+                  updateSection('exposure', 'anti_flicker', value)
                 }
               />
-            </FormField>
-          )}
-          {capabilities.exposure.options.max_exposure_time && (
-            <OptionField
-              label="最长曝光"
-              capability={capabilities.exposure.options.max_exposure_time}
-              value={stringValue(config.exposure, 'max_exposure_time', '1/25')}
-              onChange={(value) =>
-                updateSection('exposure', 'max_exposure_time', value)
-              }
-            />
-          )}
+              {exposureManual && (
+                <>
+                  <OptionField
+                    label="曝光时间"
+                    capability={optionCapability(
+                      capabilities.exposure.options,
+                      'exposure_time',
+                      ['auto', '1/25', '1/50', '1/100', '1/250'],
+                    )}
+                    value={stringValue(
+                      config.exposure,
+                      'exposure_time',
+                      'auto',
+                    )}
+                    onChange={(value) =>
+                      updateSection('exposure', 'exposure_time', value)
+                    }
+                  />
+                  <OptionField
+                    label="增益"
+                    capability={optionCapability(
+                      capabilities.exposure.options,
+                      'gain',
+                      ['auto', 'low', 'medium', 'high'],
+                    )}
+                    value={stringValue(config.exposure, 'gain', 'auto')}
+                    onChange={(value) =>
+                      updateSection('exposure', 'gain', value)
+                    }
+                  />
+                </>
+              )}
+              <RangeField
+                label="曝光补偿"
+                capability={
+                  numericCapability(
+                    capabilities.exposure.ranges,
+                    'compensation',
+                  ) || {
+                    min: 0,
+                    max: 100,
+                    default: 50,
+                  }
+                }
+                value={numberValue(config.exposure, 'compensation', 50)}
+                onChange={(value) =>
+                  updateSection('exposure', 'compensation', value)
+                }
+              />
+              {supportsOptionValue(
+                capabilities.exposure.options,
+                'slow_shutter',
+                'true',
+              ) && (
+                <FormField label="慢快门">
+                  <input
+                    type="checkbox"
+                    checked={boolValue(config.exposure, 'slow_shutter', false)}
+                    onChange={(e) =>
+                      updateSection(
+                        'exposure',
+                        'slow_shutter',
+                        e.target.checked,
+                      )
+                    }
+                  />
+                </FormField>
+              )}
+              {exposureManual &&
+                capabilities.exposure.options.max_exposure_time && (
+                  <OptionField
+                    label="最长曝光"
+                    capability={capabilities.exposure.options.max_exposure_time}
+                    value={stringValue(
+                      config.exposure,
+                      'max_exposure_time',
+                      '1/25',
+                    )}
+                    onChange={(value) =>
+                      updateSection('exposure', 'max_exposure_time', value)
+                    }
+                  />
+                )}
             </div>
           </details>
 
           <details className="image-advanced-section">
             <summary>白平衡</summary>
             <div className="form-grid image-settings-grid image-detail-grid">
-          <OptionField
-            label="白平衡模式"
-            capability={optionCapability(
-              capabilities.white_balance.options,
-              'mode',
-              ['auto', 'manual', 'indoor', 'outdoor'],
-            )}
-            value={stringValue(config.white_balance, 'mode', 'auto')}
-            onChange={(value) => updateSection('white_balance', 'mode', value)}
-          />
-          <RangeField
-            label="红色增益"
-            capability={
-              numericCapability(capabilities.white_balance.ranges, 'red_gain') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.white_balance, 'red_gain', 50)}
-            onChange={(value) =>
-              updateSection('white_balance', 'red_gain', value)
-            }
-          />
-          <RangeField
-            label="蓝色增益"
-            capability={
-              numericCapability(capabilities.white_balance.ranges, 'blue_gain') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.white_balance, 'blue_gain', 45)}
-            onChange={(value) =>
-              updateSection('white_balance', 'blue_gain', value)
-            }
-          />
+              <OptionField
+                label="白平衡模式"
+                capability={optionCapability(
+                  capabilities.white_balance.options,
+                  'mode',
+                  ['auto', 'manual', 'indoor', 'outdoor'],
+                )}
+                value={whiteBalanceMode}
+                onChange={(value) =>
+                  updateSection('white_balance', 'mode', value)
+                }
+              />
+              {whiteBalanceManual && (
+                <>
+                  <RangeField
+                    label="红色增益"
+                    capability={
+                      numericCapability(
+                        capabilities.white_balance.ranges,
+                        'red_gain',
+                      ) || {
+                        min: 0,
+                        max: 100,
+                        default: 50,
+                      }
+                    }
+                    value={numberValue(config.white_balance, 'red_gain', 50)}
+                    onChange={(value) =>
+                      updateSection('white_balance', 'red_gain', value)
+                    }
+                  />
+                  <RangeField
+                    label="蓝色增益"
+                    capability={
+                      numericCapability(
+                        capabilities.white_balance.ranges,
+                        'blue_gain',
+                      ) || {
+                        min: 0,
+                        max: 100,
+                        default: 50,
+                      }
+                    }
+                    value={numberValue(config.white_balance, 'blue_gain', 45)}
+                    onChange={(value) =>
+                      updateSection('white_balance', 'blue_gain', value)
+                    }
+                  />
+                </>
+              )}
             </div>
           </details>
 
