@@ -568,6 +568,10 @@ private:
         HttpResponse response;
         response.status_code = 200;
         response.headers["Content-Type"] = "video/mp2t";
+        response.headers["Cache-Control"] =
+            "no-store, no-cache, must-revalidate";
+        response.headers["Pragma"] = "no-cache";
+        response.headers["Expires"] = "0";
         HttpStreamSlice body_slice;
         body_slice.data = segment.body->data;
         body_slice.size = segment.body->size;

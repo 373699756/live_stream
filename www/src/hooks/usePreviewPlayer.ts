@@ -136,6 +136,15 @@ function isModeEnabled(
   return enabled[mode];
 }
 
+function isFatalHlsError(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'fatal' in data &&
+    (data as { fatal?: unknown }).fatal === true
+  );
+}
+
 async function waitForHlsPlaylist(
   url: string,
   signal: AbortSignal,
@@ -728,8 +737,12 @@ export function usePreviewPlayer({
           hlsRef.current = player;
           const errorEvent = Hls.Events?.ERROR;
           if (errorEvent && player.on) {
-            player.on(errorEvent, () => {
-              if (isCurrentSession() && hlsRef.current === player) {
+            player.on(errorEvent, (_event: unknown, data: unknown) => {
+              if (
+                isFatalHlsError(data) &&
+                isCurrentSession() &&
+                hlsRef.current === player
+              ) {
                 setSessionPreviewState('HLS 播放失败');
               }
             });

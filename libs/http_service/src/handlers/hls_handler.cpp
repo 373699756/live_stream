@@ -32,8 +32,17 @@ bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
                                                KeyFrameReason::kNewClient);
 }
 
-HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist) {
+std::string SegmentQuerySuffix(const HttpRequest &request) {
+    if (request.query_string.empty()) {
+        return std::string();
+    }
+    return "?" + request.query_string;
+}
+
+HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist,
+                                   const HttpRequest &request) {
     std::string body;
+    const std::string segment_query = SegmentQuerySuffix(request);
     body += "#EXTM3U\n";
     body += "#EXT-X-VERSION:3\n";
     body += "#EXT-X-TARGETDURATION:" +
@@ -50,13 +59,16 @@ HttpResponse BuildPlaylistResponse(const StreamHlsPlaylist &playlist) {
         char line[64];
         std::snprintf(line, sizeof(line), "#EXTINF:%.3f,\n", duration);
         body += line;
-        body += "seg-" + std::to_string(entry.sequence) + ".ts\n";
+        body += "seg-" + std::to_string(entry.sequence) + ".ts" +
+                segment_query + "\n";
     }
 
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "application/vnd.apple.mpegurl";
-    response.headers["Cache-Control"] = "no-cache";
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    response.headers["Pragma"] = "no-cache";
+    response.headers["Expires"] = "0";
     response.body = body;
     return response;
 }
@@ -81,6 +93,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
 }
 
 HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
+                            const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
                             const StreamBrowserStatus &browser_status) {
     bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
@@ -94,9 +107,9 @@ HttpResponse HandlePlaylist(IStreamBrowserSource *stream_hub,
                         keyframe_requested ? 1 : 0,
                         browser_status.hls_segment_count,
                         browser_status.hls_current_segment_size);
-        return BuildPlaylistResponse(playlist);
+        return BuildPlaylistResponse(playlist, request);
     }
-    return BuildPlaylistResponse(playlist);
+    return BuildPlaylistResponse(playlist, request);
 }
 
 }  // namespace
@@ -175,7 +188,7 @@ private:
         }
 
         if (object_name == "index.m3u8") {
-            return HandlePlaylist(stream_browser_source_, stream_id,
+            return HandlePlaylist(stream_browser_source_, request, stream_id,
                                   object_name, browser_status);
         }
         return StatusResponse(404, "Not Found");
