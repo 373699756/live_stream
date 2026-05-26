@@ -325,7 +325,8 @@ public:
     bool IsHlsSupported(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);
-        return stream != nullptr && hub_state::IsHlsStreamReady(*stream);
+        return stream != nullptr && stream->state == StreamState::kRunning &&
+               hub_state::IsHlsCodecSupported(stream->codec);
     }
 
     bool IsFlvSupported(StreamId stream_id) const override {
@@ -408,8 +409,7 @@ public:
         status.mjpeg_ready = hub_state::IsMjpegStreamReady(*stream);
         status.codec = stream->codec;
         status.hls_segment_count = static_cast<uint32_t>(
-            stream->segments.size() +
-            (stream->current_segment.published ? 1U : 0U));
+            stream->segments.size());
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
@@ -728,12 +728,9 @@ private:
                     StreamName(frame.stream_id), hls_ready ? 1 : 0,
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
                     stream->flv_gop_cache.size,
-                    stream->segments.size() +
-                        (stream->current_segment.published ? 1U : 0U));
+                    stream->segments.size());
             }
             if (packaged_frame.hls_segment_created) {
-                ++stats_.hls_segments_created;
-            } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
             flv_tag_view = packaged_frame.flv_tag_view;

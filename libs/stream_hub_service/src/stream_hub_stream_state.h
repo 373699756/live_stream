@@ -17,7 +17,6 @@ namespace stream_hub_internal {
 
 struct HlsSegmentState {
     bool started = false;
-    bool published = false;
     uint64_t sequence = 0;
     int64_t start_pts_us = 0;
     int64_t last_pts_us = 0;
@@ -58,7 +57,6 @@ struct PackagedFrameResult {
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
-    bool hls_segment_updated = false;
     stream_mux::FlvVideoTagView flv_tag_view;
     bool has_flv_tag_view = false;
 };
