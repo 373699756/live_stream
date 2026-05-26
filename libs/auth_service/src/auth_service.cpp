@@ -12,6 +12,7 @@
 
 #include "auth_internal.h"
 #include "config_service.h"
+#include "infra/log.h"
 #include "infra/time.h"
 #include "json_utils.h"
 
@@ -22,6 +23,7 @@ constexpr uint32_t kSessionIdBytes = 16;
 constexpr uint32_t kTokenBytes = 32;
 constexpr uint32_t kPasswordSaltBytes = 16;
 constexpr uint32_t kPasswordPbkdf2Iterations = 100000;
+constexpr const char *kAuthModuleName = "auth_service";
 
 struct FailureRecord {
     uint32_t failures = 0;
@@ -252,6 +254,7 @@ public:
     }
 
     LoginResult Login(const LoginRequest &request) override {
+        const int64_t login_start_ms = infra::Time::MonotonicMillis();
         if (auth_internal::IsEmptyOrTooLong(request.user_name,
                                             auth_internal::kMaxUserNameLength) ||
             request.password.size() > auth_internal::kMaxPasswordLength) {
@@ -278,18 +281,46 @@ public:
             return LoginResult{};
         }
 
-        if (!password_verifier_->VerifyPassword(request.password,
-                                                user.password_credential)) {
+        const int64_t password_verify_start_ms =
+            infra::Time::MonotonicMillis();
+        const bool password_ok = password_verifier_->VerifyPassword(
+            request.password, user.password_credential);
+        const int64_t password_verify_ms =
+            infra::Time::MonotonicMillis() - password_verify_start_ms;
+        if (!password_ok) {
             RegisterFailedAttempt(request.user_name);
             RecordLoginFailure(request.context, request.user_name, "bad_password");
+            INFRA_LOG_INFO(
+                kAuthModuleName,
+                "auth login timing user=%s result=bad_password "
+                "password_verify_ms=%lld total_ms=%lld",
+                request.user_name.c_str(),
+                static_cast<long long>(password_verify_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       login_start_ms));
             return LoginResult{};
         }
 
         LoginResult result;
+        const int64_t session_create_start_ms =
+            infra::Time::MonotonicMillis();
         if (!CreateSession(user, &result)) {
             RecordLoginFailure(request.context, request.user_name, "session_limit");
+            INFRA_LOG_INFO(
+                kAuthModuleName,
+                "auth login timing user=%s result=session_limit "
+                "password_verify_ms=%lld session_create_ms=%lld "
+                "total_ms=%lld",
+                request.user_name.c_str(),
+                static_cast<long long>(password_verify_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       session_create_start_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       login_start_ms));
             return LoginResult{};
         }
+        const int64_t session_create_ms =
+            infra::Time::MonotonicMillis() - session_create_start_ms;
 
         ClearFailedAttempts(request.user_name);
         {
@@ -303,6 +334,17 @@ public:
         RecordAudit(audit_context, result.principal.user_name,
                     result.principal.session_id, AuthAuditAction::kLogin, "session",
                     AuthAuditResult::kSuccess, "");
+        INFRA_LOG_INFO(
+            kAuthModuleName,
+            "auth login timing user=%s result=success "
+            "password_verify_ms=%lld session_create_ms=%lld total_ms=%lld "
+            "must_change_password=%d",
+            result.principal.user_name.c_str(),
+            static_cast<long long>(password_verify_ms),
+            static_cast<long long>(session_create_ms),
+            static_cast<long long>(infra::Time::MonotonicMillis() -
+                                   login_start_ms),
+            result.must_change_password ? 1 : 0);
         return result;
     }
 
@@ -386,6 +428,7 @@ public:
     }
 
     bool ChangePassword(const ChangePasswordRequest &request) override {
+        const int64_t change_password_start_ms = infra::Time::MonotonicMillis();
         if (auth_internal::IsEmptyOrTooLong(request.context.user_name,
                                             auth_internal::kMaxUserNameLength) ||
             auth_internal::IsEmptyOrTooLong(request.context.session_id,
@@ -412,23 +455,70 @@ public:
         if (user.user_name.empty() || !user.enabled) {
             return false;
         }
-        if (!password_verifier_->VerifyPassword(request.old_password,
-                                                user.password_credential)) {
+        const int64_t old_password_verify_start_ms =
+            infra::Time::MonotonicMillis();
+        const bool old_password_ok = password_verifier_->VerifyPassword(
+            request.old_password, user.password_credential);
+        const int64_t old_password_verify_ms =
+            infra::Time::MonotonicMillis() - old_password_verify_start_ms;
+        if (!old_password_ok) {
             RecordLoginFailure(request.context, request.context.user_name,
                                "bad_password");
+            INFRA_LOG_INFO(
+                kAuthModuleName,
+                "auth change_password timing user=%s result=bad_password "
+                "old_password_verify_ms=%lld total_ms=%lld",
+                request.context.user_name.c_str(),
+                static_cast<long long>(old_password_verify_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       change_password_start_ms));
             return false;
         }
 
+        const int64_t credential_generate_start_ms =
+            infra::Time::MonotonicMillis();
         const std::string credential =
             GeneratePasswordCredential(request.new_password);
+        const int64_t credential_generate_ms =
+            infra::Time::MonotonicMillis() - credential_generate_start_ms;
         if (credential.empty()) {
+            INFRA_LOG_INFO(
+                kAuthModuleName,
+                "auth change_password timing user=%s result=generate_failed "
+                "old_password_verify_ms=%lld credential_generate_ms=%lld "
+                "total_ms=%lld",
+                request.context.user_name.c_str(),
+                static_cast<long long>(old_password_verify_ms),
+                static_cast<long long>(credential_generate_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       change_password_start_ms));
             return false;
         }
         if (!user_store_->UpdatePassword(user.user_name, credential, false)) {
+            INFRA_LOG_INFO(
+                kAuthModuleName,
+                "auth change_password timing user=%s result=update_failed "
+                "old_password_verify_ms=%lld credential_generate_ms=%lld "
+                "total_ms=%lld",
+                request.context.user_name.c_str(),
+                static_cast<long long>(old_password_verify_ms),
+                static_cast<long long>(credential_generate_ms),
+                static_cast<long long>(infra::Time::MonotonicMillis() -
+                                       change_password_start_ms));
             return false;
         }
         ClearFailedAttempts(user.user_name);
         AcceptChangedPasswordSession(request.context);
+        INFRA_LOG_INFO(
+            kAuthModuleName,
+            "auth change_password timing user=%s result=success "
+            "old_password_verify_ms=%lld credential_generate_ms=%lld "
+            "total_ms=%lld",
+            request.context.user_name.c_str(),
+            static_cast<long long>(old_password_verify_ms),
+            static_cast<long long>(credential_generate_ms),
+            static_cast<long long>(infra::Time::MonotonicMillis() -
+                                   change_password_start_ms));
         return true;
     }
 
