@@ -58,7 +58,10 @@ void Sha256::Update(const void* data, std::size_t size) {
     }
 }
 
-std::string Sha256::FinishHex() {
+bool Sha256::Finish(uint8_t* digest, std::size_t size) {
+    if (digest == nullptr || size < 32) {
+        return false;
+    }
     if (!finished_) {
         const uint64_t bit_size = total_size_ * 8ULL;
         uint8_t padding[128] = {0};
@@ -72,7 +75,6 @@ std::string Sha256::FinishHex() {
         finished_ = true;
     }
 
-    uint8_t digest[32] = {0};
     for (int i = 0; i < 8; ++i) {
         digest[static_cast<std::size_t>(i) * 4] =
             static_cast<uint8_t>((hash_[i] >> 24) & 0xffU);
@@ -82,6 +84,14 @@ std::string Sha256::FinishHex() {
             static_cast<uint8_t>((hash_[i] >> 8) & 0xffU);
         digest[static_cast<std::size_t>(i) * 4 + 3] =
             static_cast<uint8_t>(hash_[i] & 0xffU);
+    }
+    return true;
+}
+
+std::string Sha256::FinishHex() {
+    uint8_t digest[32] = {0};
+    if (!Finish(digest, sizeof(digest))) {
+        return std::string();
     }
     return BytesToHex(digest, sizeof(digest));
 }

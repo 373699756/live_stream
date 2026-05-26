@@ -12,6 +12,7 @@ public:
     Sha256();
 
     void Update(const void* data, std::size_t size);
+    bool Finish(uint8_t* digest, std::size_t size);
     std::string FinishHex();
 
 private:

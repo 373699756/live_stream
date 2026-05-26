@@ -7,7 +7,7 @@
       "role": "admin",
       "enabled": true,
       "must_change_password": true,
-      "password_credential": "pbkdf2-sha256:100000:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:b7f6d8e141539871cf5f6f9bec09cbe5ac9dc4b1d4570d84113e8986303627f4"
+      "password_credential": "pbkdf2-sha256:20000:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:ac6c2b5bfd627d9d83d4b9510b4293ce49fc25f31f666a928fc114024ff2f0fe"
     }
   ]
 }

@@ -36,8 +36,9 @@ public:
         char* end = nullptr;
         const unsigned long iterations =
             std::strtoul(iterations_text.c_str(), &end, 10);
-        if (end == iterations_text.c_str() || end == nullptr || *end != '\0' ||
-            iterations == 0 || iterations > 1000000UL) {
+        if (end == iterations_text.c_str() || end == nullptr ||
+            *end != '\0' ||
+            iterations != auth_internal::kPasswordPbkdf2Iterations) {
             return false;
         }
 

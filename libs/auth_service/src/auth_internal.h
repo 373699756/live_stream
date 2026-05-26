@@ -16,6 +16,7 @@ constexpr std::size_t kMaxUserNameLength = kMaxAuthUserNameLength;
 constexpr std::size_t kMaxPasswordLength = kMaxAuthPasswordLength;
 constexpr std::size_t kMaxTokenLength = 256;
 constexpr std::size_t kMaxTargetLength = 128;
+constexpr uint32_t kPasswordPbkdf2Iterations = 20000;
 
 struct SessionRecord {
     AuthPrincipal principal;

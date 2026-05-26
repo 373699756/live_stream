@@ -61,7 +61,7 @@ struct AuthPrincipal {
  * @brief 用户存储记录。
  *
  * password_credential 是密码校验器可理解的不透明凭据。当前生产格式固定为
- * pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>；auth_service 不会把它写入日志或审计。
+ * pbkdf2-sha256:20000:<salt_hex>:<hash_hex>；auth_service 不会把它写入日志或审计。
  */
 struct AuthUserRecord {
     std::string user_name;
@@ -260,7 +260,7 @@ std::unique_ptr<IPasswordVerifier> CreatePlainTextPasswordVerifier();
 /**
  * @brief 创建默认密码校验器。
  *
- * 支持的生产凭据格式为 pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>。
+ * 支持的生产凭据格式为 pbkdf2-sha256:20000:<salt_hex>:<hash_hex>。
  */
 std::unique_ptr<IPasswordVerifier> CreatePbkdf2PasswordVerifier();
 
