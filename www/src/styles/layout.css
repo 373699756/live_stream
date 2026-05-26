@@ -599,8 +599,16 @@
 
 .overlay-text {
   position: absolute;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 0;
   font-weight: 700;
+  line-height: 1.2;
+  pointer-events: none;
   text-shadow: 0 1px 2px #000;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overlay-text.background {
@@ -647,6 +655,30 @@
   font-size: 12px;
 }
 
+.mask-draw-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mask-draw-actions button {
+  min-width: 112px;
+  font-weight: 700;
+}
+
+.mask-draw-actions button.active {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.mask-draw-actions button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  background: #f1f5f9;
+  border-color: #d8e0eb;
+}
+
 .mask-coordinate-row {
   display: flex;
   flex-wrap: wrap;
@@ -670,8 +702,14 @@
   top: 0;
   bottom: 0;
   z-index: 5;
-  cursor: crosshair;
+  cursor: default;
+  pointer-events: none;
   touch-action: none;
+}
+
+.mask-draw-layer.drawing {
+  cursor: crosshair;
+  pointer-events: auto;
 }
 
 .mask-rect {

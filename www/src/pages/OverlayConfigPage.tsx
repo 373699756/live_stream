@@ -72,6 +72,30 @@ function updateMask(
   };
 }
 
+function SwitchButton({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={checked ? 'switch-button active' : 'switch-button'}
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-track" aria-hidden="true">
+        <span />
+      </span>
+      <strong>{label}</strong>
+    </button>
+  );
+}
+
 export function OverlayConfigPage() {
   const { config, setConfig, save, reset, savedMsg, loading, saving, error } = useOverlayConfig();
   const {
@@ -82,6 +106,7 @@ export function OverlayConfigPage() {
   } = useVideoConfig();
   const [activeStream, setActiveStream] = useState<StreamName>('sub');
   const [activeSlot, setActiveSlot] = useState(0);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const drawRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +157,16 @@ export function OverlayConfigPage() {
     setConfig(updateMask(config, activeStream, slot, patch));
   };
 
+  const startDrawing = () => {
+    setDrawingEnabled(true);
+    setMask(activeSlot, { enabled: true });
+  };
+
+  const finishDrawing = () => {
+    setDrag(null);
+    setDrawingEnabled(false);
+  };
+
   const pointerToFrame = (event: React.PointerEvent<HTMLDivElement>) => {
     const surface = drawRef.current?.getBoundingClientRect();
     if (!surface) {
@@ -158,6 +193,9 @@ export function OverlayConfigPage() {
   };
 
   const beginDraw = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!drawingEnabled) {
+      return;
+    }
     if (event.button !== 0) {
       return;
     }
@@ -174,7 +212,7 @@ export function OverlayConfigPage() {
   };
 
   const updateDraw = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag) {
+    if (!drawingEnabled || !drag) {
       return;
     }
     const point = pointerToFrame(event);
@@ -198,21 +236,59 @@ export function OverlayConfigPage() {
     setDrag(null);
   };
 
+  const timestampRect = videoArea
+    ? {
+        left: videoArea.left +
+          (config.items.timestamp.x / frame.width) * videoArea.width,
+        top: videoArea.top +
+          (config.items.timestamp.y / frame.height) * videoArea.height,
+        maxWidth: videoArea.left + videoArea.width -
+          (videoArea.left +
+            (config.items.timestamp.x / frame.width) * videoArea.width),
+      }
+    : { left: 0, top: 0, maxWidth: 0 };
+  const deviceNameRect = videoArea
+    ? {
+        left: videoArea.left +
+          (config.items.device_name.x / frame.width) * videoArea.width,
+        top: videoArea.top +
+          (config.items.device_name.y / frame.height) * videoArea.height,
+        maxWidth: videoArea.left + videoArea.width -
+          (videoArea.left +
+            (config.items.device_name.x / frame.width) * videoArea.width),
+      }
+    : { left: 0, top: 0, maxWidth: 0 };
+  const timestampPreview = config.items.timestamp.format
+    .replace('%Y', '2026')
+    .replace('%m', '05')
+    .replace('%d', '26')
+    .replace('%H', '12')
+    .replace('%M', '34')
+    .replace('%S', '56');
+
   return (
     <div className="config-preview-layout overlay-config-layout">
       <section className="panel settings-column">
         <div className="page-heading">
           <div>
             <h2>视频叠加</h2>
-            <p>文字叠加与隐私遮挡由设备端 region_service 统一应用。</p>
+            <p>文字叠加与隐私遮挡由设备端 region_service 统一应用</p>
           </div>
         </div>
         <div className="form-grid">
-          <FormField label="启用文字叠加">
-            <input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />
+          <FormField label="文字叠加">
+            <SwitchButton
+              checked={config.enabled}
+              label={config.enabled ? '已开启' : '已关闭'}
+              onChange={(checked) => setConfig({ ...config, enabled: checked })}
+            />
           </FormField>
           <FormField label="时间水印">
-            <input type="checkbox" checked={config.items.timestamp.enabled} onChange={(e) => setConfig({ ...config, items: { ...config.items, timestamp: { ...config.items.timestamp, enabled: e.target.checked } } })} />
+            <SwitchButton
+              checked={config.items.timestamp.enabled}
+              label={config.items.timestamp.enabled ? '显示' : '隐藏'}
+              onChange={(checked) => setConfig({ ...config, items: { ...config.items, timestamp: { ...config.items.timestamp, enabled: checked } } })}
+            />
           </FormField>
           <FormField label="时间格式">
             <input value={config.items.timestamp.format} onChange={(e) => setConfig({ ...config, items: { ...config.items, timestamp: { ...config.items.timestamp, format: e.target.value } } })} />
@@ -227,7 +303,11 @@ export function OverlayConfigPage() {
             <input type="color" value={config.font_color} onChange={(e) => setConfig({ ...config, font_color: e.target.value })} />
           </FormField>
           <FormField label="背景">
-            <input type="checkbox" checked={config.background} onChange={(e) => setConfig({ ...config, background: e.target.checked })} />
+            <SwitchButton
+              checked={config.background}
+              label={config.background ? '显示' : '隐藏'}
+              onChange={(checked) => setConfig({ ...config, background: checked })}
+            />
           </FormField>
         </div>
 
@@ -252,11 +332,31 @@ export function OverlayConfigPage() {
           </div>
           <div className="form-grid form-grid-single">
             <FormField label="启用当前遮挡">
-              <input type="checkbox" checked={activeMask.enabled} onChange={(e) => setMask(activeSlot, { enabled: e.target.checked })} />
+              <SwitchButton
+                checked={activeMask.enabled}
+                label={activeMask.enabled ? '已开启' : '已关闭'}
+                onChange={(checked) => setMask(activeSlot, { enabled: checked })}
+              />
             </FormField>
             <FormField label="遮挡颜色">
               <input type="color" value={activeMask.color} onChange={(e) => setMask(activeSlot, { color: e.target.value })} />
             </FormField>
+          </div>
+          <div className="mask-draw-actions">
+            <button
+              type="button"
+              className={drawingEnabled ? 'active' : ''}
+              onClick={startDrawing}
+            >
+              开始画矩形
+            </button>
+            <button
+              type="button"
+              disabled={!drawingEnabled}
+              onClick={finishDrawing}
+            >
+              完成绘制
+            </button>
           </div>
           <div className="mask-coordinate-row">
             <span>{streamLabel(activeStream)}</span>
@@ -267,10 +367,10 @@ export function OverlayConfigPage() {
             <span>h {activeMask.height}</span>
           </div>
           <div className="form-actions">
-            <button type="button" onClick={() => setMask(activeSlot, { enabled: false })}>清除当前</button>
+            <button type="button" onClick={() => { finishDrawing(); setMask(activeSlot, { enabled: false }); }}>清除当前</button>
             <button type="button" onClick={reset}>恢复默认</button>
             <button type="button" className="primary" disabled={saving} onClick={() => void save()}>
-              {saving ? '设置中' : '完成'}
+              {saving ? '设置中' : '保存设置'}
             </button>
           </div>
           {savedMsg && <div className="save-hint">{savedMsg}</div>}
@@ -286,12 +386,40 @@ export function OverlayConfigPage() {
           surfaceOverlay={
             <div
               ref={drawRef}
-              className="mask-draw-layer"
+              className={drawingEnabled ? 'mask-draw-layer drawing' : 'mask-draw-layer'}
               onPointerDown={beginDraw}
               onPointerMove={updateDraw}
               onPointerUp={finishDraw}
               onPointerCancel={finishDraw}
             >
+              {config.enabled && config.items.timestamp.enabled && (
+                <div
+                  className={config.background ? 'overlay-text background' : 'overlay-text'}
+                  style={{
+                    left: timestampRect.left,
+                    top: timestampRect.top,
+                    maxWidth: timestampRect.maxWidth,
+                    color: config.font_color,
+                    fontSize: config.font_size,
+                  }}
+                >
+                  {timestampPreview}
+                </div>
+              )}
+              {config.enabled && config.items.device_name.enabled && (
+                <div
+                  className={config.background ? 'overlay-text background' : 'overlay-text'}
+                  style={{
+                    left: deviceNameRect.left,
+                    top: deviceNameRect.top,
+                    maxWidth: deviceNameRect.maxWidth,
+                    color: config.font_color,
+                    fontSize: config.font_size,
+                  }}
+                >
+                  {config.items.device_name.text}
+                </div>
+              )}
               {activeMasks.map((mask, index) => {
                 if (!mask.enabled) {
                   return null;
