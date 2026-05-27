@@ -129,7 +129,22 @@ public:
     const char *Name() const override { return WebrtcService::Name(); }
 
     WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request) override {
-        CloseEnginePeers(TakeStalePeerIds());
+        std::vector<std::string> peer_ids_to_close = TakeStalePeerIds();
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (state_ == ServiceState::kStarted && options_.enabled &&
+                engine_ && engine_->Available() &&
+                IsValidStream(request.stream_id) &&
+                IsStreamAvailableLocked(request.stream_id)) {
+                std::vector<std::string> client_peer_ids =
+                    peer_store_.TakePeerIdsForClient(request.session_id,
+                                                     request.client_id);
+                peer_ids_to_close.insert(peer_ids_to_close.end(),
+                                         client_peer_ids.begin(),
+                                         client_peer_ids.end());
+            }
+        }
+        CloseEnginePeers(peer_ids_to_close);
         WebrtcPeerInfo peer;
         {
             std::lock_guard<std::mutex> guard(mutex_);

@@ -50,6 +50,32 @@ void WebrtcPeerStore::Clear() {
   pending_candidates_.clear();
 }
 
+std::vector<std::string> WebrtcPeerStore::TakePeerIdsForClient(
+    const std::string &session_id, const std::string &client_id) {
+  std::vector<std::string> peer_ids;
+  if (session_id.empty() && client_id.empty()) {
+    return peer_ids;
+  }
+  const bool use_session = !session_id.empty();
+  const bool use_client = !use_session && !client_id.empty();
+  for (auto iter = peers_.begin(); iter != peers_.end();) {
+    const WebrtcPeerInfo &peer = iter->second;
+    const bool same_session = use_session && peer.session_id == session_id;
+    const bool same_client = use_client &&
+                             !peer.client_id.empty() &&
+                             peer.client_id == client_id;
+    if (same_session || same_client) {
+      peer_ids.push_back(iter->first);
+      pending_candidates_.erase(iter->first);
+      peer_activity_ms_.erase(iter->first);
+      iter = peers_.erase(iter);
+      continue;
+    }
+    ++iter;
+  }
+  return peer_ids;
+}
+
 std::vector<std::string> WebrtcPeerStore::MarkAllClosing() {
   std::vector<std::string> peer_ids;
   for (auto &item : peers_) {

@@ -31,7 +31,7 @@ struct WebrtcIceServer {
 
 struct WebrtcServiceOptions {
     bool enabled = true;
-    uint32_t max_peers = 4;
+    uint32_t max_peers = 1;
     uint32_t session_timeout_ms = 30000;
     uint32_t send_queue_capacity = 128;
     uint32_t send_worker_count = 1;

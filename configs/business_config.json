@@ -107,7 +107,7 @@
     "public_ip": "192.168.1.100",
     "signaling_path": "/api/webrtc",
     "ice_servers": [],
-    "max_peers": 4,
+    "max_peers": 1,
     "prefer_tcp": false
   },
   "http": {

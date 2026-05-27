@@ -28,6 +28,8 @@ class WebrtcPeerStore {
   bool RemovePeer(const std::string &peer_id);
   void Clear();
 
+  std::vector<std::string> TakePeerIdsForClient(
+      const std::string &session_id, const std::string &client_id);
   std::vector<std::string> MarkAllClosing();
   uint32_t ActivePeerCount() const;
   bool HasConnectedPeer(StreamId stream_id) const;

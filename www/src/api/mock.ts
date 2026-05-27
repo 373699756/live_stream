@@ -384,7 +384,7 @@ export const mockWebrtcConfig: WebrtcConfig = {
   enabled: true,
   signaling_path: '/api/webrtc',
   ice_servers: [],
-  max_peers: 4,
+  max_peers: 1,
   prefer_tcp: false,
 };
 
