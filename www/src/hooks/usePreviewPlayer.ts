@@ -53,6 +53,7 @@ interface UsePreviewPlayerOptions {
 const scriptLoads = new Map<string, Promise<void>>();
 const webrtcStartupTimeoutMs = 3500;
 const hlsWarmupRetryMs = 1000;
+const hlsRetryAfterFatalMs = 500;
 
 function loadScriptOnce(src: string): Promise<void> {
   const existingLoad = scriptLoads.get(src);
@@ -712,11 +713,11 @@ export function usePreviewPlayer({
 
     if (mode === 'hls') {
       const playlistUrl = hlsPlaylistUrl(stream);
+      const playbackUrl = appendSessionQuery(playlistUrl, sessionId);
       const startHlsPlayer = async () => {
         if (!isCurrentSession()) {
           return;
         }
-        const playbackUrl = appendSessionQuery(playlistUrl, sessionId);
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = playbackUrl;
           void video.play().catch(() => {});
@@ -743,7 +744,18 @@ export function usePreviewPlayer({
                 isCurrentSession() &&
                 hlsRef.current === player
               ) {
-                setSessionPreviewState('HLS 播放失败');
+                destroyHls(player);
+                sessionHls = null;
+                if (hlsRef.current === player) {
+                  hlsRef.current = null;
+                }
+                if (!sessionConnected) {
+                  setSessionPreviewState('HLS 重新等待视频流');
+                  hlsWarmupTimer =
+                    window.setTimeout(warmupHls, hlsRetryAfterFatalMs);
+                } else {
+                  setSessionPreviewState('HLS 播放失败');
+                }
               }
             });
           }
@@ -765,7 +777,7 @@ export function usePreviewPlayer({
         if (!isCurrentSession()) {
           return;
         }
-        void waitForHlsPlaylist(playlistUrl, sessionSignal)
+        void waitForHlsPlaylist(playbackUrl, sessionSignal)
           .then((ready) => {
             if (!isCurrentSession() || sessionConnected) {
               return;

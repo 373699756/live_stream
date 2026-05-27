@@ -100,6 +100,19 @@ function normalizeMaskRect(
   };
 }
 
+function scaledOverlayFontSize(
+  fontSize: number,
+  stream: StreamName,
+  frame: { width: number; height: number },
+  mainFrame: { width: number; height: number },
+) {
+  if (stream !== 'sub' || mainFrame.width <= 0 || mainFrame.height <= 0) {
+    return fontSize;
+  }
+  const scale = Math.min(frame.width / mainFrame.width, frame.height / mainFrame.height);
+  return clamp(Math.round(fontSize * scale), 6, fontSize);
+}
+
 function updateMask(
   config: OverlayConfig,
   stream: StreamName,
@@ -181,12 +194,19 @@ export function OverlayConfigPage() {
 
   const streamConfig = videoConfig?.streams[activeStream];
   const capability = capabilities.streams[activeStream];
+  const mainCapability = capabilities.streams.main;
+  const mainFallbackResolution = mainCapability.resolutions[0]
+    ? resolutionValue(mainCapability.resolutions[0])
+    : '1920x1080';
   const fallbackResolution = capability.resolutions[0]
     ? resolutionValue(capability.resolutions[0])
     : activeStream === 'main'
       ? '1920x1080'
       : '640x360';
   const frame = parseResolution(streamConfig?.resolution || fallbackResolution);
+  const mainFrame = parseResolution(
+    videoConfig?.streams.main?.resolution || mainFallbackResolution,
+  );
   const activeMasks = config.privacy_masks[activeStream];
   const activeMask = activeMasks[activeSlot];
   const previewStatuses = statuses.map((status) => ({
@@ -198,6 +218,12 @@ export function OverlayConfigPage() {
   const videoArea = surfaceSize.width > 0 && surfaceSize.height > 0
     ? contentAreaForSurface(frame, surfaceSize)
     : null;
+  const previewFontSize = scaledOverlayFontSize(
+    config.font_size,
+    activeStream,
+    frame,
+    mainFrame,
+  );
 
   const setMask = (slot: number, patch: Partial<PrivacyMaskConfig>) => {
     setConfig(updateMask(config, activeStream, slot, patch));
@@ -214,20 +240,23 @@ export function OverlayConfigPage() {
   };
 
   const pointerToFrame = (event: React.PointerEvent<HTMLDivElement>) => {
-    const videoLayer = event.currentTarget.getBoundingClientRect();
+    if (!videoArea) {
+      return null;
+    }
+    const drawLayer = event.currentTarget.getBoundingClientRect();
     const x = clamp(
-      event.clientX - videoLayer.left,
+      event.clientX - drawLayer.left - videoArea.left,
       0,
-      videoLayer.width,
+      videoArea.width,
     );
     const y = clamp(
-      event.clientY - videoLayer.top,
+      event.clientY - drawLayer.top - videoArea.top,
       0,
-      videoLayer.height,
+      videoArea.height,
     );
     return {
-      x: Math.round((x / videoLayer.width) * frame.width),
-      y: Math.round((y / videoLayer.height) * frame.height),
+      x: Math.round((x / videoArea.width) * frame.width),
+      y: Math.round((y / videoArea.height) * frame.height),
     };
   };
 
@@ -239,6 +268,9 @@ export function OverlayConfigPage() {
       return;
     }
     const point = pointerToFrame(event);
+    if (!point) {
+      return;
+    }
     const rect = normalizeMaskRect(frame, point.x, point.y, 1, 1);
     setDrag({ slot: activeSlot, start_x: point.x, start_y: point.y });
     setMask(activeSlot, {
@@ -253,6 +285,9 @@ export function OverlayConfigPage() {
       return;
     }
     const point = pointerToFrame(event);
+    if (!point) {
+      return;
+    }
     const x = Math.min(drag.start_x, point.x);
     const y = Math.min(drag.start_y, point.y);
     const width = Math.max(1, Math.abs(point.x - drag.start_x));
@@ -427,6 +462,10 @@ export function OverlayConfigPage() {
             <div
               ref={drawRef}
               className={drawingEnabled ? 'mask-draw-layer drawing' : 'mask-draw-layer'}
+              onPointerDown={beginDraw}
+              onPointerMove={updateDraw}
+              onPointerUp={finishDraw}
+              onPointerCancel={finishDraw}
             >
               {videoArea && (
                 <div
@@ -437,10 +476,6 @@ export function OverlayConfigPage() {
                     width: videoArea.width,
                     height: videoArea.height,
                   }}
-                  onPointerDown={beginDraw}
-                  onPointerMove={updateDraw}
-                  onPointerUp={finishDraw}
-                  onPointerCancel={finishDraw}
                 >
                   {config.enabled && config.items.timestamp.enabled && (
                     <div
@@ -450,7 +485,7 @@ export function OverlayConfigPage() {
                         top: timestampRect.top,
                         maxWidth: timestampRect.maxWidth,
                         color: config.font_color,
-                        fontSize: config.font_size,
+                        fontSize: previewFontSize,
                       }}
                     >
                       {timestampPreview}
@@ -464,7 +499,7 @@ export function OverlayConfigPage() {
                         top: deviceNameRect.top,
                         maxWidth: deviceNameRect.maxWidth,
                         color: config.font_color,
-                        fontSize: config.font_size,
+                        fontSize: previewFontSize,
                       }}
                     >
                       {config.items.device_name.text}

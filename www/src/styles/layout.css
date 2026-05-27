@@ -727,7 +727,8 @@
 }
 
 .mask-draw-layer.drawing {
-  cursor: default;
+  cursor: crosshair;
+  pointer-events: auto;
 }
 
 .mask-video-layer {
@@ -737,8 +738,7 @@
 }
 
 .mask-draw-layer.drawing .mask-video-layer {
-  cursor: crosshair;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .mask-rect {

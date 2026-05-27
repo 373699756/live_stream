@@ -17,6 +17,15 @@ constexpr uint32_t kTextPaddingY = 3;
 constexpr uint32_t kTextBitmapWidthAlignment = 16;
 constexpr uint32_t kMaxRenderedFontSize = 32;
 
+bool IsValidVideoSize(const VideoSize &size) {
+    return size.width > 0 && size.height > 0;
+}
+
+bool SameChannel(const MppChannel &left, const MppChannel &right) {
+    return left.module == right.module && left.device == right.device &&
+           left.channel == right.channel;
+}
+
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return alignment == 0 ? value : ((value + alignment - 1) / alignment) *
                                       alignment;
@@ -160,6 +169,32 @@ TextBitmap RenderTextBitmap(const std::string &text, uint32_t font_size,
     return bitmap;
 }
 
+uint32_t RenderedFontSizeForTarget(uint32_t font_size,
+                                   const MediaChannels &media_channels,
+                                   const MppChannel &target) {
+    const uint32_t capped_font_size =
+        std::min(font_size, kMaxRenderedFontSize);
+    if (!SameChannel(target, media_channels.sub_venc) ||
+        !IsValidVideoSize(media_channels.main_size) ||
+        !IsValidVideoSize(media_channels.sub_size)) {
+        return capped_font_size;
+    }
+    const uint32_t scaled_by_width =
+        static_cast<uint32_t>(
+            (static_cast<uint64_t>(capped_font_size) *
+             media_channels.sub_size.width) /
+            media_channels.main_size.width);
+    const uint32_t scaled_by_height =
+        static_cast<uint32_t>(
+            (static_cast<uint64_t>(capped_font_size) *
+             media_channels.sub_size.height) /
+            media_channels.main_size.height);
+    const uint32_t scaled_font_size =
+        std::min(scaled_by_width, scaled_by_height);
+    return std::max<uint32_t>(1, std::min(capped_font_size,
+                                          scaled_font_size));
+}
+
 std::string FormatTimestamp(const std::string &format) {
     const std::time_t now = std::time(nullptr);
     std::tm time_info{};
@@ -233,7 +268,10 @@ bool RegionServiceImpl::ApplyTextOverlay(
     for (const MppChannel &target : targets) {
         if (config.timestamp_enabled) {
             const std::string text = FormatTimestamp(config.timestamp_format);
-            TextBitmap bitmap = RenderTextBitmap(text, config.font_size,
+            const uint32_t font_size =
+                RenderedFontSizeForTarget(config.font_size, media_channels,
+                                          target);
+            TextBitmap bitmap = RenderTextBitmap(text, font_size,
                                                  config.font_color,
                                                  config.background);
             RegionConfig timestamp;
@@ -251,9 +289,11 @@ bool RegionServiceImpl::ApplyTextOverlay(
         }
 
         if (config.device_name_enabled) {
+            const uint32_t font_size =
+                RenderedFontSizeForTarget(config.font_size, media_channels,
+                                          target);
             TextBitmap bitmap = RenderTextBitmap(config.device_name,
-                                                 config.font_size,
-                                                 config.font_color,
+                                                 font_size, config.font_color,
                                                  config.background);
             RegionConfig device_name;
             device_name.target = target;
@@ -283,15 +323,18 @@ bool RegionServiceImpl::UpdateTimestampLocked() {
     if (text.empty()) {
         return false;
     }
-    TextBitmap bitmap = RenderTextBitmap(text, active_config.font_size,
-                                         active_config.font_color,
-                                         active_config.background);
-    const RegionBitmap region_bitmap = BuildRegionBitmap(bitmap);
     bool need_rebuild = false;
     for (auto &region : regions) {
         if (region.name.find("timestamp:") != 0) {
             continue;
         }
+        const uint32_t font_size =
+            RenderedFontSizeForTarget(active_config.font_size, media_channels,
+                                      region.config.target);
+        TextBitmap bitmap = RenderTextBitmap(text, font_size,
+                                             active_config.font_color,
+                                             active_config.background);
+        const RegionBitmap region_bitmap = BuildRegionBitmap(bitmap);
         if (!sdk->SetRegionBitmap(region.mpp_handle,
                                   BuildSdkBitmap(region_bitmap))) {
             need_rebuild = true;

@@ -156,7 +156,7 @@ bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
         }
         const PrivacyMask normalized = NormalizeMaskForDevice(mask, frame_size);
         RegionConfig config;
-        config.type = RegionType::kCover;
+        config.type = RegionType::kCoverEx;
         config.target = target;
         config.position = normalized.position;
         config.size = normalized.size;
