@@ -57,7 +57,9 @@ HI_S32 ExitMppSystemOnce(bool log_errors) {
                      log_errors);
 
     status = HI_MPI_VB_Exit();
-    LogCleanupStatus("HI_MPI_VB_Exit", status, log_errors);
+    if (status != HI_ERR_VB_BUSY) {
+        LogCleanupStatus("HI_MPI_VB_Exit", status, log_errors);
+    }
     return status;
 }
 
@@ -72,13 +74,18 @@ bool ExitMppSystem(bool log_errors, int retry_count) {
             break;
         }
         if (log_errors) {
-            INFRA_LOG_WARN(
+            INFRA_LOG_INFO(
                 "hisi_vendor",
                 "HI_MPI_VB_Exit still busy, retry %d/%d after %u us",
                 attempt + 1, retry_count,
                 static_cast<unsigned>(kMppExitRetryDelayUs));
         }
         usleep(kMppExitRetryDelayUs);
+    }
+    if (log_errors && status == HI_ERR_VB_BUSY) {
+        INFRA_LOG_WARN("hisi_vendor",
+                       "HI_MPI_VB_Exit still busy after %d retries",
+                       retry_count);
     }
     return false;
 }
