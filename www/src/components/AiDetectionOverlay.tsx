@@ -1,5 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { AiDetection, AiStatus, StreamName } from '../api/types';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type {
+  AiDetection,
+  AiInferenceResult,
+  AiStatus,
+  StreamName,
+} from '../api/types';
 
 interface AiDetectionOverlayProps {
   frameResolution?: string;
@@ -12,6 +17,8 @@ interface SurfaceSize {
   width: number;
   height: number;
 }
+
+const kDetectionHoldMs = 2500;
 
 const streamLabel = (stream: StreamName) => (stream === 'main' ? '主码流' : '子码流');
 
@@ -86,17 +93,54 @@ export function AiDetectionOverlay({
 }: AiDetectionOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [surfaceSize, setSurfaceSize] = useState<SurfaceSize>({ width: 0, height: 0 });
+  const [heldResult, setHeldResult] = useState<{
+    expiresAtMs: number;
+    result: AiInferenceResult;
+  } | null>(null);
   const result = status?.last_result;
   const aiReady =
     !error && Boolean(status?.config.enabled) && Boolean(status?.stats.backend_available);
+  const resultHasDetections =
+    aiReady && Boolean(result?.success) && Boolean(result?.detections.length);
+  const displayResult =
+    resultHasDetections && result
+      ? result
+      : aiReady
+        ? heldResult?.result
+        : null;
   const detections =
-    aiReady && result?.success && result.stream === stream
-      ? result.detections
-      : [];
+    aiReady && displayResult?.success ? displayResult.detections : [];
   const resultCount =
     aiReady && result?.success ? result.detections.length : 0;
   const frame = parseResolution(frameResolution);
   const contentStyle = contentAreaStyle(frame, surfaceSize);
+
+  useEffect(() => {
+    if (!aiReady) {
+      setHeldResult(null);
+      return;
+    }
+    if (!result?.success || result.detections.length === 0) {
+      return;
+    }
+    setHeldResult({
+      expiresAtMs: Date.now() + kDetectionHoldMs,
+      result,
+    });
+  }, [aiReady, result]);
+
+  useEffect(() => {
+    if (!heldResult) {
+      return undefined;
+    }
+    const delayMs = Math.max(0, heldResult.expiresAtMs - Date.now());
+    const timer = window.setTimeout(() => {
+      setHeldResult((current) =>
+        current?.expiresAtMs === heldResult.expiresAtMs ? null : current,
+      );
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [heldResult]);
 
   useLayoutEffect(() => {
     const overlay = overlayRef.current;
@@ -120,10 +164,18 @@ export function AiDetectionOverlay({
     statusText = '未启用';
   } else if (status && !status.stats.backend_available) {
     statusText = '后端不可用';
+  } else if (
+    displayResult &&
+    detections.length > 0 &&
+    displayResult.stream !== stream
+  ) {
+    statusText = `${streamLabel(displayResult.stream)}映射 ${detections.length} 个目标`;
+  } else if (detections.length > 0) {
+    statusText = `${detections.length} 个目标`;
   } else if (aiReady && result?.success && result.stream !== stream) {
     statusText = `${streamLabel(result.stream)} ${resultCount} 个目标`;
   } else if (aiReady && result?.success) {
-    statusText = `${detections.length} 个目标`;
+    statusText = `${resultCount} 个目标`;
   } else if (status?.config.enabled) {
     statusText = '无有效结果';
   }
@@ -136,7 +188,7 @@ export function AiDetectionOverlay({
             className={
               detection.y <= 0.08 ? 'ai-detection-box near-top' : 'ai-detection-box'
             }
-            key={`${result?.sequence || 0}-${index}`}
+            key={`${displayResult?.sequence || 0}-${index}`}
             style={detectionStyle(detection)}
           >
             <span>
