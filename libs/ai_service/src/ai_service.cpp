@@ -836,6 +836,10 @@ public:
             started_ = true;
             return true;
         }
+        if (config.task == AiTask::kFaceDetection) {
+            INFRA_LOG_ERROR("ai", "Face detection model is not available");
+            return false;
+        }
         if (config.model_path.empty()) {
             return false;
         }
@@ -1511,9 +1515,6 @@ private:
         }
         const IVE_CCBLOB_S *blob =
             static_cast<const IVE_CCBLOB_S *>(motion_blob_.vir_addr);
-        if (blob->s8LabelStatus != 0) {
-            return detections;
-        }
 
         std::vector<const IVE_REGION_S *> regions;
         regions.reserve(std::min<uint32_t>(IVE_MAX_REGION_NUM,

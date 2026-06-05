@@ -59,6 +59,13 @@ function taskLabel(task: AiAlertRecord['task']) {
   }
 }
 
+function taskSupportedByBackend(
+  backend: AiModelConfig['backend'],
+  task: AiModelConfig['task'],
+) {
+  return backend !== 'hisi3516dv300_nnie' || task !== 'face_detection';
+}
+
 function backendLabel(status: AiStatus) {
   if (!status.config.enabled) {
     return '未启用';
@@ -183,12 +190,16 @@ function AiStatusPanel({
           <span className="form-control">
             <select
               value={config.backend}
-              onChange={(event) =>
+              onChange={(event) => {
+                const backend = event.target.value as AiModelConfig['backend'];
                 setDraft({
                   ...config,
-                  backend: event.target.value as AiModelConfig['backend'],
-                })
-              }
+                  backend,
+                  task: taskSupportedByBackend(backend, config.task)
+                    ? config.task
+                    : 'object_detection',
+                });
+              }}
             >
               <option value="hisi3516dv300_nnie">HiSilicon NNIE/IVS</option>
               <option value="host_stub">Host stub</option>
@@ -208,7 +219,12 @@ function AiStatusPanel({
               }
             >
               <option value="object_detection">目标检测</option>
-              <option value="face_detection">人脸检测</option>
+              <option
+                value="face_detection"
+                disabled={!taskSupportedByBackend(config.backend, 'face_detection')}
+              >
+                人脸检测（需人脸模型）
+              </option>
               <option value="motion_classification">移动侦测</option>
             </select>
           </span>
