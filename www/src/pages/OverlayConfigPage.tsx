@@ -169,8 +169,12 @@ export function OverlayConfigPage() {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const drawRef = useRef<HTMLDivElement | null>(null);
+  const overlayReady = !loading && !videoLoading && config !== null;
 
   useLayoutEffect(() => {
+    if (!overlayReady) {
+      return undefined;
+    }
     const drawLayer = drawRef.current;
     if (!drawLayer) {
       return undefined;
@@ -182,8 +186,12 @@ export function OverlayConfigPage() {
     updateSurfaceSize();
     const observer = new ResizeObserver(updateSurfaceSize);
     observer.observe(drawLayer);
-    return () => observer.disconnect();
-  }, [activeStream]);
+    const animationFrame = window.requestAnimationFrame(updateSurfaceSize);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+    };
+  }, [activeStream, overlayReady]);
 
   if (loading || videoLoading) {
     return <div className="panel">加载 Overlay 配置...</div>;
