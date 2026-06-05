@@ -940,19 +940,60 @@
 }
 
 .ai-waterfall {
-  column-count: 4;
-  column-gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.ai-waterfall-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-waterfall-condition {
+  min-height: 112px;
+  padding: 10px;
+  border: 1px solid #dfe6f0;
+  border-left: 3px solid var(--brand);
+  border-radius: 4px;
+  background: #f7f9fc;
+}
+
+.ai-waterfall-condition > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-waterfall-condition h3 {
+  margin: 0;
+  color: #243044;
+  font-size: 14px;
+}
+
+.ai-waterfall-condition span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-waterfall-condition p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ai-alert-card {
-  display: inline-block;
   width: 100%;
-  margin: 0 0 12px;
   overflow: hidden;
   border: 1px solid #dfe6f0;
   border-radius: 4px;
   background: #fafbfe;
-  break-inside: avoid;
 }
 
 .ai-alert-image-wrap {
@@ -1002,6 +1043,17 @@
   margin-top: 7px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.ai-column-empty {
+  display: grid;
+  min-height: 92px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed #ccd6e3;
+  border-radius: 4px;
+  background: #fafbfe;
 }
 
 .empty-state {
@@ -1161,7 +1213,7 @@
   }
 
   .ai-waterfall {
-    column-count: 2;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -1183,6 +1235,6 @@
   }
 
   .ai-waterfall {
-    column-count: 1;
+    grid-template-columns: 1fr;
   }
 }

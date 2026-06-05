@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { aiAlertImageUrl, saveAiConfig } from '../api/ai';
 import type {
   AiAlertRecord,
@@ -8,6 +8,26 @@ import type {
 } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAiAlerts } from '../hooks/useAiAlerts';
+
+const kMaxVisibleAlertImages = 10;
+
+const kAiAlertColumns: Array<{
+  task: AiAlertRecord['task'];
+  condition: string;
+}> = [
+  {
+    task: 'object_detection',
+    condition: '检测到人员、车辆等目标，且最高置信度达到当前阈值。',
+  },
+  {
+    task: 'face_detection',
+    condition: '检测到人脸目标，且最高置信度达到当前阈值。',
+  },
+  {
+    task: 'motion_classification',
+    condition: '检测到有效画面移动，且最高置信度达到当前阈值。',
+  },
+];
 
 function formatTimestamp(timestampMs: number) {
   if (timestampMs <= 0) {
@@ -331,8 +351,31 @@ function AiAlertCard({ alert }: { alert: AiAlertRecord }) {
   );
 }
 
+function alertGroupsByTask(alerts: AiAlertRecord[]) {
+  const groups: Record<AiAlertRecord['task'], AiAlertRecord[]> = {
+    object_detection: [],
+    face_detection: [],
+    motion_classification: [],
+  };
+  alerts.forEach((alert) => {
+    groups[alert.task].push(alert);
+  });
+  return groups;
+}
+
 export function AiAlertsPage() {
   const { status, alerts, loading, error, refresh } = useAiAlerts();
+  const visibleAlerts = useMemo(
+    () =>
+      [...alerts]
+        .sort((left, right) => right.timestamp_ms - left.timestamp_ms)
+        .slice(0, kMaxVisibleAlertImages),
+    [alerts],
+  );
+  const alertGroups = useMemo(
+    () => alertGroupsByTask(visibleAlerts),
+    [visibleAlerts],
+  );
 
   return (
     <div className="page-grid ai-page-grid">
@@ -360,17 +403,37 @@ export function AiAlertsPage() {
       <section className="panel wide-panel">
         <div className="ai-waterfall-header">
           <h2>图片瀑布流</h2>
-          <span>{loading ? '加载中' : `${alerts.length} 条`}</span>
+          <span>
+            {loading
+              ? '加载中'
+              : `${visibleAlerts.length}/${kMaxVisibleAlertImages} 张`}
+          </span>
         </div>
-        {alerts.length === 0 && !loading ? (
-          <div className="empty-state">暂无 AI 告警图片</div>
-        ) : (
-          <div className="ai-waterfall">
-            {alerts.map((alert) => (
-              <AiAlertCard alert={alert} key={alert.id} />
-            ))}
-          </div>
-        )}
+        <div className="ai-waterfall">
+          {kAiAlertColumns.map((column) => {
+            const columnAlerts = alertGroups[column.task];
+            return (
+              <section className="ai-waterfall-column" key={column.task}>
+                <div className="ai-waterfall-condition">
+                  <div>
+                    <h3>{taskLabel(column.task)}</h3>
+                    <span>{columnAlerts.length} 张</span>
+                  </div>
+                  <p>{column.condition}</p>
+                </div>
+                {columnAlerts.length === 0 ? (
+                  <div className="ai-column-empty">
+                    {loading ? '加载中' : '暂无告警图片'}
+                  </div>
+                ) : (
+                  columnAlerts.map((alert) => (
+                    <AiAlertCard alert={alert} key={alert.id} />
+                  ))
+                )}
+              </section>
+            );
+          })}
+        </div>
       </section>
     </div>
   );
