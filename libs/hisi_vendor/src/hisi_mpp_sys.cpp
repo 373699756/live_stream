@@ -73,13 +73,6 @@ bool ExitMppSystem(bool log_errors, int retry_count) {
         if (status != HI_ERR_VB_BUSY || attempt == retry_count) {
             break;
         }
-        if (log_errors) {
-            INFRA_LOG_INFO(
-                "hisi_vendor",
-                "HI_MPI_VB_Exit still busy, retry %d/%d after %u us",
-                attempt + 1, retry_count,
-                static_cast<unsigned>(kMppExitRetryDelayUs));
-        }
         usleep(kMppExitRetryDelayUs);
     }
     if (log_errors && status == HI_ERR_VB_BUSY) {
