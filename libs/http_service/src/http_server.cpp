@@ -199,9 +199,17 @@ void HttpServer::Stop() {
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
         net_engine = dependencies_.net_engine;
-        stream_client_ids = connections_.TakeAllStreamClients();
-        connection_ids = connections_.ConnectionIds();
-        connections_.Clear();
+        for (const auto &item : sessions_) {
+            connection_ids.push_back(item.first);
+            if (item.second != nullptr) {
+                const HttpStreamClientId stream_client_id =
+                    item.second->TakeStreamClient();
+                if (stream_client_id != 0) {
+                    stream_client_ids.push_back(stream_client_id);
+                }
+            }
+        }
+        sessions_.clear();
         stats_.active_connections = 0;
         stream_executor = stream_executor_.get();
         control_executor = control_executor_.get();
@@ -226,7 +234,7 @@ void HttpServer::Stop() {
 void HttpServer::Release() {
     Stop();
     std::lock_guard<std::mutex> guard(mutex_);
-    connections_.Clear();
+    sessions_.clear();
     stream_executor_.reset();
     control_executor_.reset();
     initialized_ = false;
@@ -355,13 +363,17 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
 
 bool HttpServer::BeginStream(ConnectionId connection_id) {
     std::lock_guard<std::mutex> guard(mutex_);
-    return connections_.BeginStream(connection_id);
+    auto iter = sessions_.find(connection_id);
+    return iter != sessions_.end() && iter->second != nullptr &&
+           iter->second->BeginStream();
 }
 
 bool HttpServer::AttachStreamClient(ConnectionId connection_id,
                                     HttpStreamClientId client_id) {
     std::lock_guard<std::mutex> guard(mutex_);
-    return connections_.AttachStreamClient(connection_id, client_id);
+    auto iter = sessions_.find(connection_id);
+    return iter != sessions_.end() && iter->second != nullptr &&
+           iter->second->AttachStreamClient(client_id);
 }
 
 bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
@@ -474,7 +486,9 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
     NetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.IsStreaming(connection_id)) {
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->is_streaming()) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV enqueue reject conn=%llu reason=closed "
                             "size=%zu",
@@ -516,7 +530,8 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
     std::string peer_ip = peer.ip;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        connections_.Add(connection_id, std::move(peer.ip));
+        sessions_[connection_id].reset(
+            new HttpSession(connection_id, std::move(peer.ip)));
         ++stats_.active_connections;
     }
     INFRA_LOG_INFO(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
@@ -526,13 +541,15 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
 }
 
 void HttpServer::OnClose(ConnectionId connection_id) {
-    ClosedHttpConnectionInfo closed;
+    ClosedHttpSessionInfo closed;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        closed = connections_.Remove(connection_id);
-        if (!closed.found) {
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr) {
             return;
         }
+        closed = iter->second->Close();
+        sessions_.erase(iter);
         if (stats_.active_connections > 0) {
             --stats_.active_connections;
         }
@@ -549,15 +566,17 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
     if (data == nullptr) {
         return;
     }
-    HttpConnectionParseResult parsed;
-    std::vector<HttpConnectionRequestLog> request_logs;
+    HttpSessionParseResult parsed;
+    std::vector<HttpRequestLog> request_logs;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.AppendRequestBytes(connection_id, data, size)) {
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->AppendRequestBytes(data, size)) {
             return;
         }
-        parsed = connections_.ParsePendingRequests(
-            connection_id, MakeConnectionParseOptions(), &request_logs);
+        parsed = iter->second->ParsePendingRequests(
+            MakeConnectionParseOptions(), &request_logs);
     }
     LogRequests(request_logs);
 
@@ -576,7 +595,9 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
     infra::Executor *executor = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.TakeNextRequest(connection_id, &pending)) {
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->TakeNextRequest(&pending)) {
             return;
         }
         executor = ExecutorForRequestLocked(pending.request);
@@ -605,15 +626,16 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
 }
 
 void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
-    HttpConnectionParseResult parsed;
-    std::vector<HttpConnectionRequestLog> request_logs;
+    HttpSessionParseResult parsed;
+    std::vector<HttpRequestLog> request_logs;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        parsed = connections_.CompleteKeepAliveRequest(
-            connection_id, MakeConnectionParseOptions(), &request_logs);
-    }
-    if (!parsed.found) {
-        return;
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr) {
+            return;
+        }
+        parsed = iter->second->CompleteKeepAliveRequest(
+            MakeConnectionParseOptions(), &request_logs);
     }
     LogRequests(request_logs);
     if (!parsed.success) {
@@ -629,8 +651,8 @@ void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
     ArmConnectionTimer(connection_id, options_.connection_idle_timeout_ms);
 }
 
-HttpConnectionParseOptions HttpServer::MakeConnectionParseOptions() const {
-    HttpConnectionParseOptions options;
+HttpSessionParseOptions HttpServer::MakeConnectionParseOptions() const {
+    HttpSessionParseOptions options;
     options.max_request_header_bytes = options_.max_request_header_bytes;
     options.max_request_body_bytes = options_.max_request_body_bytes;
     options.max_pipelined_requests = options_.max_pipelined_requests;
@@ -641,16 +663,16 @@ HttpConnectionParseOptions HttpServer::MakeConnectionParseOptions() const {
 }
 
 HttpResponse HttpServer::ParseFailureResponse(
-    HttpConnectionParseFailure failure) {
-    if (failure == HttpConnectionParseFailure::kPayloadTooLarge) {
+    HttpSessionParseFailure failure) {
+    if (failure == HttpSessionParseFailure::kPayloadTooLarge) {
         return StatusResponse(413, "Payload Too Large");
     }
     return StatusResponse(400, "Bad Request");
 }
 
 void HttpServer::LogRequests(
-    const std::vector<HttpConnectionRequestLog> &request_logs) {
-    for (const HttpConnectionRequestLog &log : request_logs) {
+    const std::vector<HttpRequestLog> &request_logs) {
+    for (const HttpRequestLog &log : request_logs) {
         INFRA_LOG_INFO(kHttpModuleName,
                        "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
                        static_cast<unsigned long long>(log.connection_id),
@@ -665,7 +687,9 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     uint64_t generation = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (!connections_.ArmTimer(connection_id, &generation)) {
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->ArmTimer(&generation)) {
             return;
         }
         net_engine = dependencies_.net_engine;
@@ -679,8 +703,10 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
             bool should_close = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
+                auto iter = sessions_.find(connection_id);
                 should_close =
-                    connections_.IsTimerCurrent(connection_id, generation);
+                    iter != sessions_.end() && iter->second != nullptr &&
+                    iter->second->IsTimerCurrent(generation);
                 engine = dependencies_.net_engine;
             }
             if (should_close && engine != nullptr) {

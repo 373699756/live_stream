@@ -1,13 +1,14 @@
 #ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 
-#include "http_connection_state_table.h"
 #include "http_service.h"
 #include "http_service_dependencies.h"
+#include "http_session.h"
 #include "http_stream_writer.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -76,9 +77,8 @@ private:
     static void HandleRead(void *user, ConnectionId id, const uint8_t *data,
                            size_t size);
     static void HandleClose(void *user, ConnectionId id);
-    static HttpResponse ParseFailureResponse(HttpConnectionParseFailure failure);
-    static void LogRequests(
-        const std::vector<HttpConnectionRequestLog> &request_logs);
+    static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
+    static void LogRequests(const std::vector<HttpRequestLog> &request_logs);
 
     infra::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
@@ -94,7 +94,7 @@ private:
                    uint32_t size);
     void TryPostNextRequest(ConnectionId connection_id);
     void CompleteKeepAliveRequest(ConnectionId connection_id);
-    HttpConnectionParseOptions MakeConnectionParseOptions() const;
+    HttpSessionParseOptions MakeConnectionParseOptions() const;
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
 
     HttpServiceOptions options_;
@@ -105,7 +105,7 @@ private:
     std::unique_ptr<infra::Executor> stream_executor_;
     std::unique_ptr<infra::Executor> control_executor_;
     TcpServerId tcp_server_id_ = 0;
-    HttpConnectionStateTable connections_;
+    std::map<ConnectionId, std::unique_ptr<HttpSession>> sessions_;
     HttpServiceStats stats_;
     bool initialized_ = false;
     bool started_ = false;
