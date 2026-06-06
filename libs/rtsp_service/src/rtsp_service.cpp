@@ -6,6 +6,7 @@
 #include "infra/time.h"
 #include "net_service.h"
 #include "rtsp_protocol.h"
+#include "rtsp_request_handler.h"
 #include "rtsp_session_store.h"
 #include "rtsp_transport.h"
 #include "stream_mux.h"
@@ -39,7 +40,6 @@ struct RtspPeerAuthGrant {
 
 using rtsp_internal::BasicRealmHeader;
 using rtsp_internal::BuildRtspResponse;
-using rtsp_internal::BuildSdp;
 using rtsp_internal::ContainsNoCase;
 using rtsp_internal::CSeq;
 using rtsp_internal::DecodeBase64;
@@ -53,13 +53,16 @@ using stream_mux::IRtpPacketSink;
 using stream_mux::RtpPacketizer;
 using stream_mux::RtpPacketView;
 
-class RtspServiceImpl : public IRtspService, public IFrameSink {
+class RtspServiceImpl : public IRtspService,
+                        public IFrameSink,
+                        public IRtspRequestHandlerDelegate {
 public:
     RtspServiceImpl(RtspServiceOptions options,
                     RtspServiceDependencies dependencies)
         : options_(std::move(options)),
           dependencies_(dependencies),
-          packetizer_(options_.rtp_mtu_bytes) {}
+          packetizer_(options_.rtp_mtu_bytes),
+          request_handler_(this) {}
 
     ~RtspServiceImpl() override {
         ReleaseInternal();
@@ -335,100 +338,16 @@ private:
                 (void)dependencies_.net_engine->CloseAfterSend(connection_id);
                 return;
             }
-            HandleRequest(session, request);
+            request_handler_.HandleRequest(session, request);
         }
     }
 
-    void HandleRequest(const std::shared_ptr<RtspSession>& session,
-                       const RtspRequest& request) {
-        INFRA_LOG_INFO("rtsp_service",
-                       "RTSP request conn=%llu peer=%s:%u method=%s uri=%s",
-                       static_cast<unsigned long long>(session->connection_id),
-                       session->peer.ip.c_str(),
-                       static_cast<unsigned>(session->peer.port),
-                       request.method.c_str(), request.uri.c_str());
-        if (request.method == "OPTIONS") {
-            SendResponse(session->connection_id, 200, CSeq(request),
-                         {{"Public", "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN"}},
-                         "");
-            return;
-        }
-
-        StreamId stream_id = session->stream_id;
-        if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
-            !PathToStreamId(request.uri, &stream_id)) {
-            INFRA_LOG_ERROR("rtsp_service", "RTSP path not found uri=%s",
-                            request.uri.c_str());
-            SendResponse(session->connection_id, 404, CSeq(request), {}, "");
-            return;
-        }
-        if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
-            !IsStreamAvailable(stream_id)) {
-            INFRA_LOG_ERROR("rtsp_service", "RTSP stream unavailable uri=%s",
-                            request.uri.c_str());
-            SendResponse(session->connection_id, 404, CSeq(request), {}, "");
-            return;
-        }
-
-        if (!Authorize(session, request, stream_id)) {
-            return;
-        }
-
-        if (request.method == "DESCRIBE") {
-            session->MarkDescribed(stream_id);
-            const std::string sdp =
-                BuildSdp(local_address_, stream_id, CodecForStream(stream_id));
-            SendResponse(session->connection_id, 200, CSeq(request),
-                         {{"Content-Type", "application/sdp"},
-                          {"Content-Base", request.uri}},
-                         sdp);
-            return;
-        }
-        if (request.method == "SETUP") {
-            HandleSetup(session, request, stream_id);
-            return;
-        }
-        if (request.method == "PLAY") {
-            if (!session->IsReadyForPlay()) {
-                SendResponse(session->connection_id, 455, CSeq(request), {}, "");
-                return;
-            }
-            session->StartPlaying();
-            if (RequestKeyFrame(session->stream_id)) {
-                NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
-            }
-            INFRA_LOG_INFO("rtsp_service",
-                           "RTSP play conn=%llu stream=%s transport=%s",
-                           static_cast<unsigned long long>(
-                               session->connection_id),
-                           StreamPath(session->stream_id),
-                           session->transport ==
-                                   RtspTransportMode::kTcpInterleaved
-                               ? "tcp"
-                               : "udp");
-            SendResponse(session->connection_id, 200, CSeq(request),
-                         {{"Session", std::to_string(session->session_id)},
-                          {"RTP-Info", "url=" + std::string(StreamPath(session->stream_id))}},
-                         "");
-            return;
-        }
-        if (request.method == "TEARDOWN") {
-            SendResponse(session->connection_id, 200, CSeq(request),
-                         {{"Session", std::to_string(session->session_id)}}, "");
-            session->Close();
-            (void)dependencies_.net_engine->CloseAfterSend(session->connection_id);
-            return;
-        }
-
-        SendResponse(session->connection_id, 455, CSeq(request), {}, "");
-    }
-
-    bool IsStreamAvailable(StreamId stream_id) const {
+    bool IsRtspStreamAvailable(StreamId stream_id) const override {
         return dependencies_.media_source != nullptr &&
                dependencies_.media_source->IsStreamAvailable(stream_id);
     }
 
-    VideoCodec CodecForStream(StreamId stream_id) const {
+    VideoCodec RtspCodecForStream(StreamId stream_id) const override {
         if (dependencies_.media_source != nullptr &&
             dependencies_.media_source->IsStreamAvailable(stream_id)) {
             return dependencies_.media_source->GetStreamCodec(stream_id);
@@ -439,9 +358,9 @@ private:
         return options_.main_stream_codec;
     }
 
-    bool Authorize(const std::shared_ptr<RtspSession>& session,
-                   const RtspRequest& request,
-                   StreamId stream_id) {
+    bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession>& session,
+                              const RtspRequest& request,
+                              StreamId stream_id) override {
         if (!options_.enable_auth) {
             return true;
         }
@@ -549,14 +468,14 @@ private:
         return true;
     }
 
-    void HandleSetup(const std::shared_ptr<RtspSession>& session,
-                     const RtspRequest& request,
-                     StreamId stream_id) {
+    bool SetupRtspTransport(const std::shared_ptr<RtspSession>& session,
+                            const RtspRequest& request,
+                            StreamId stream_id) override {
         const std::string transport = HeaderValue(request, "Transport");
         if (transport.empty()) {
             INFRA_LOG_ERROR("rtsp_service", "RTSP setup missing Transport");
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
-            return;
+            return false;
         }
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
@@ -574,7 +493,7 @@ private:
                     transport.c_str(),
                     static_cast<unsigned long long>(udp_socket_id_));
                 SendResponse(session->connection_id, 461, CSeq(request), {}, "");
-                return;
+                return false;
             }
             session->SetupUdp(stream_id, static_cast<uint16_t>(client_port));
             const NetAddress server_rtp =
@@ -591,7 +510,7 @@ private:
                             "RTSP setup unsupported transport=%s",
                             transport.c_str());
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
-            return;
+            return false;
         }
         RememberPeerAuthGrant(session->peer.ip, stream_id,
                               session->authenticated_user);
@@ -607,6 +526,7 @@ private:
                      {{"Transport", response_transport},
                       {"Session", std::to_string(session->session_id)}},
                      "");
+        return true;
     }
 
     class RtspPacketSink final : public IRtpPacketSink {
@@ -725,15 +645,22 @@ private:
         return true;
     }
 
+    void SendRtspResponse(
+        ConnectionId connection_id, int status, const std::string& cseq,
+        const std::map<std::string, std::string>& headers,
+        const std::string& body) override {
+        const std::string response = BuildRtspResponse(status, cseq, headers, body);
+        (void)dependencies_.net_engine->Send(
+            connection_id, reinterpret_cast<const uint8_t*>(response.data()),
+            response.size());
+    }
+
     void SendResponse(ConnectionId connection_id,
                       int status,
                       const std::string& cseq,
                       const std::map<std::string, std::string>& headers,
                       const std::string& body) {
-        const std::string response = BuildRtspResponse(status, cseq, headers, body);
-        (void)dependencies_.net_engine->Send(
-            connection_id, reinterpret_cast<const uint8_t*>(response.data()),
-            response.size());
+        SendRtspResponse(connection_id, status, cseq, headers, body);
     }
 
     void AddParseFailure() {
@@ -798,12 +725,26 @@ private:
             RtspPeerAuthGrant{peer_ip, stream_id, user_name, expires_at_ms});
     }
 
-    bool RequestKeyFrame(StreamId stream_id) {
+    bool RequestRtspKeyFrame(StreamId stream_id) override {
         if (dependencies_.media_source != nullptr) {
             return dependencies_.media_source->RequestKeyFrame(
                 stream_id, KeyFrameReason::kNewClient);
         }
         return false;
+    }
+
+    void OnRtspKeyFrameRequested(const RtspSession& session) override {
+        NotifyAdaptive(session, RtspAdaptiveEventType::kKeyFrameRequested);
+    }
+
+    void CloseRtspConnectionAfterSend(ConnectionId connection_id) override {
+        if (dependencies_.net_engine != nullptr) {
+            (void)dependencies_.net_engine->CloseAfterSend(connection_id);
+        }
+    }
+
+    RtspListenAddress RtspLocalAddress() const override {
+        return local_address_;
     }
 
     void PublishEvent(EventType type, const std::string& target) {
@@ -833,6 +774,7 @@ private:
     RtspServiceOptions options_;
     RtspServiceDependencies dependencies_;
     RtpPacketizer packetizer_;
+    RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
