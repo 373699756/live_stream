@@ -17,3 +17,4 @@
 | 2026-05-24 | AI 默认推理负载走子码流，间隔 500ms。 | 首版 AI 仍有 CPU 前处理，默认配置应优先保护实时预览主链路。 | `ai.stream=sub`、`ai.inference_interval_ms=500`；需要更高频检测时由项目配置显式打开。 |
 | 2026-05-24 | 产品不链接真实音频库，海思 `libmpi.a` 的音频符号用失败 stub 闭合。 | 项目明确不支持音频，但静态 `libmpi.a` 内部会引用 VoiceEngine/DNVQE 符号。 | 默认不链接 `libVoiceEngine.a`、`libupvqe.a`、`libdnvqe.a`；`hisi_vendor` stub 只返回失败，不启用音频能力。 |
 | 2026-05-24 | `AiService` 随媒体子系统常驻创建，推理链路按 `ai.enabled` 热启停。 | Web 需要通过 `PUT /api/config/ai` 即时启用、关闭或切换 AI，不应要求重启进程。 | `ai.enabled=false` 时不创建推理后端和抓帧线程；配置保存成功后由 `AiService` 重建或停止推理链路。 |
+| 2026-06-06 | `stream_hub_service` 对下游协议输出归一化时间戳，HLS playlist 只暴露已完成 segment。 | 借鉴 ZLMediaKit 的相对时间戳和稳定切片思路，避免编码器时间戳跳变、回退或半成品 HLS segment 导致 Web 播放卡顿。 | RTSP/WebRTC/HLS/FLV 共享单调相对 PTS/DTS；HLS 额外保留旧 segment 但索引只列最新窗口。 |

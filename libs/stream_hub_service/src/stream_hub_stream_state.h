@@ -17,7 +17,6 @@ namespace stream_hub_internal {
 
 struct HlsSegmentState {
     bool started = false;
-    bool published = false;
     uint64_t sequence = 0;
     int64_t start_pts_us = 0;
     int64_t last_pts_us = 0;
@@ -50,6 +49,10 @@ struct StreamContext {
     stream_mux::TsMuxerState ts_muxer_state;
     int64_t last_pts_us = -1;
     int64_t last_frame_duration_us = 33333;
+    bool timestamp_base_set = false;
+    int64_t timestamp_base_dts_us = 0;
+    int64_t last_output_dts_us = -1;
+    int64_t last_output_pts_us = -1;
 };
 
 using ParsedFramePayload = FramePayload;
@@ -58,7 +61,6 @@ struct PackagedFrameResult {
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
-    bool hls_segment_updated = false;
     stream_mux::FlvVideoTagView flv_tag_view;
     bool has_flv_tag_view = false;
 };
@@ -79,12 +81,14 @@ void ParsedFramePayloadUnref(ParsedFramePayload *payload);
 void ClearStreamContext(StreamContext *stream);
 
 StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
-                                   uint32_t hls_segment_duration_ms);
+                                   uint32_t hls_segment_duration_ms,
+                                   uint32_t hls_playlist_depth);
 StreamSegmentRef FindHlsSegmentRef(const StreamContext &stream,
                                    uint64_t sequence);
 StreamFlvStartData BuildFlvStartData(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, VideoCodec codec);
+bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,

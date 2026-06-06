@@ -27,6 +27,10 @@ constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
 
+uint32_t HlsSegmentCacheDepth(const StreamHubServiceOptions &options) {
+    return options.hls_playlist_depth + options.hls_segment_retain_count;
+}
+
 class PendingFrameQueue {
 public:
     void Clear() {
@@ -183,7 +187,9 @@ public:
             return false;
         }
         if (options_.hls_segment_duration_ms == 0 ||
-            options_.hls_playlist_depth == 0 || options_.max_flv_clients == 0 ||
+            options_.hls_playlist_depth == 0 ||
+            HlsSegmentCacheDepth(options_) < options_.hls_playlist_depth ||
+            options_.max_flv_clients == 0 ||
             options_.max_mjpeg_clients == 0 || options_.max_frame_sinks == 0) {
             std::lock_guard<std::mutex> guard(mutex_);
             ResetRuntimeStateLocked();
@@ -365,7 +371,8 @@ public:
         }
         stream->hls_requested = true;
         return hub_state::BuildHlsPlaylist(*stream,
-                                           options_.hls_segment_duration_ms);
+                                           options_.hls_segment_duration_ms,
+                                           options_.hls_playlist_depth);
     }
 
     StreamSegmentRef GetHlsSegmentRef(StreamId stream_id,
@@ -408,8 +415,7 @@ public:
         status.mjpeg_ready = hub_state::IsMjpegStreamReady(*stream);
         status.codec = stream->codec;
         status.hls_segment_count = static_cast<uint32_t>(
-            stream->segments.size() +
-            (stream->current_segment.published ? 1U : 0U));
+            stream->segments.size());
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
@@ -613,12 +619,35 @@ private:
                 }
             }
             hub_state::ParsedFramePayload payload;
-            const bool has_payload = BuildParsedFrame(frame, &payload);
+            if (!NormalizeFrameForDownstream(&frame)) {
+                EncodedFrameUnref(&frame);
+                continue;
+            }
+            const bool has_normalized_payload = BuildParsedFrame(frame, &payload);
             DispatchFrameSinks(payload);
-            PackageBrowserFrame(payload, has_payload);
+            PackageBrowserFrame(payload, has_normalized_payload);
             hub_state::ParsedFramePayloadUnref(&payload);
             EncodedFrameUnref(&frame);
         }
+    }
+
+    bool NormalizeFrameForDownstream(EncodedFrame *frame) {
+        if (frame == nullptr) {
+            return false;
+        }
+        std::lock_guard<std::mutex> guard(mutex_);
+        hub_state::StreamContext *stream =
+            FindMutableStream(frame->stream_id);
+        if (stream == nullptr) {
+            return false;
+        }
+        if (stream->codec != frame->codec) {
+            hub_state::ResetStream(stream, frame->codec);
+        }
+        if (!hub_state::IsBrowserStreamReady(stream->state, stream->codec)) {
+            return false;
+        }
+        return hub_state::NormalizeFrameTimestamps(stream, frame);
     }
 
     bool BuildParsedFrame(const EncodedFrame &frame,
@@ -713,7 +742,7 @@ private:
                     stream, frame, payload, package_hls,
                     package_flv || update_flv_cache,
                     options_.hls_segment_duration_ms,
-                    options_.hls_playlist_depth);
+                    HlsSegmentCacheDepth(options_));
             if (!packaged_frame.accepted) {
                 return;
             }
@@ -728,12 +757,9 @@ private:
                     StreamName(frame.stream_id), hls_ready ? 1 : 0,
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
                     stream->flv_gop_cache.size,
-                    stream->segments.size() +
-                        (stream->current_segment.published ? 1U : 0U));
+                    stream->segments.size());
             }
             if (packaged_frame.hls_segment_created) {
-                ++stats_.hls_segments_created;
-            } else if (packaged_frame.hls_segment_updated) {
                 ++stats_.hls_segments_created;
             }
             flv_tag_view = packaged_frame.flv_tag_view;

@@ -13,7 +13,7 @@ namespace live_stream {
 
 constexpr size_t kMaxStreamFlvVideoTagSlices = 130;
 constexpr size_t kMaxStreamFlvHeaderSliceBytes = 24;
-constexpr size_t kMaxStreamFlvCachedVideoTags = 64;
+constexpr size_t kMaxStreamFlvCachedVideoTags = 128;
 
 struct StreamFlvVideoTagSlice {
     const uint8_t *data = nullptr;

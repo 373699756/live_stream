@@ -674,7 +674,15 @@ export function usePreviewPlayer({
             setSessionPreviewState('HLS 播放器不可用');
             return;
           }
-          const player = new Hls({ enableWorker: true });
+          const player = new Hls({
+            backBufferLength: 3,
+            enableWorker: true,
+            liveDurationInfinity: true,
+            liveMaxLatencyDurationCount: 3,
+            liveSyncDurationCount: 1,
+            lowLatencyMode: true,
+            maxLiveSyncPlaybackRate: 1.5,
+          });
           sessionHls = player;
           hlsRef.current = player;
           const errorEvent = Hls.Events?.ERROR;
@@ -738,8 +746,8 @@ export function usePreviewPlayer({
           lazyLoad: false,
           deferLoadAfterSourceOpen: false,
           autoCleanupSourceBuffer: true,
-          autoCleanupMaxBackwardDuration: 8,
-          autoCleanupMinBackwardDuration: 2,
+          autoCleanupMaxBackwardDuration: 4,
+          autoCleanupMinBackwardDuration: 1,
         });
         sessionFlv = player;
         flvRef.current = player;
