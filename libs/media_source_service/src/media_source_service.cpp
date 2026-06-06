@@ -1,12 +1,12 @@
 #include "media_source_service.h"
 
 #include "flv_client_registry.h"
+#include "frame_ring.h"
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
 #include "mjpeg_client_registry.h"
 #include "media_source_stream_state.h"
-#include "media_frame_dispatcher.h"
 #include "stream_codec.h"
 
 #include <array>
@@ -500,10 +500,10 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             if (run_state_ != MediaSourceRunState::kStarted ||
                 FindStream(options.stream_id) == nullptr ||
-                frame_dispatcher_.Size() >= options_.max_frame_sinks) {
+                frame_ring_.ReaderCount() >= options_.max_frame_sinks) {
                 return 0;
             }
-            sink_id = frame_dispatcher_.Attach(options, sink,
+            sink_id = frame_ring_.AttachReader(options, sink,
                                                options_.max_frame_sinks);
             media_service = dependencies_.media_service;
             request_key_frame = options.require_key_frame_first;
@@ -517,7 +517,7 @@ public:
 
     bool DetachFrameSink(FrameAttachId sink_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
-        return frame_dispatcher_.Detach(sink_id);
+        return frame_ring_.DetachReader(sink_id);
     }
 
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
@@ -536,7 +536,7 @@ public:
         stats.active_mjpeg_clients =
             static_cast<uint32_t>(mjpeg_clients_.Size());
         stats.active_frame_sinks =
-            static_cast<uint32_t>(frame_dispatcher_.Size());
+            static_cast<uint32_t>(frame_ring_.ReaderCount());
         return stats;
     }
 
@@ -599,7 +599,7 @@ private:
         last_drained_stream_ = StreamId::kSub;
         flv_clients_.Clear();
         mjpeg_clients_.Clear();
-        frame_dispatcher_.Clear();
+        frame_ring_.Clear();
         source_state::ClearStreamContext(&main_stream_);
         source_state::ClearStreamContext(&sub_stream_);
     }
@@ -640,6 +640,7 @@ private:
         }
         if (stream->codec != frame->codec) {
             source_state::ResetStream(stream, frame->codec);
+            frame_ring_.ClearStreamCache(frame->stream_id);
         }
         if (!source_state::IsBrowserStreamReady(stream->state, stream->codec)) {
             return false;
@@ -657,7 +658,7 @@ private:
     }
 
     void DispatchFrameSinks(const source_state::ParsedFramePayload &payload) {
-        std::vector<source_clients::PendingMediaFrameSinkWrite> frame_sinks;
+        std::vector<source_state::PendingFrameRingWrite> frame_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             source_state::StreamContext *stream =
@@ -671,10 +672,10 @@ private:
             if (stream->state != StreamState::kRunning) {
                 return;
             }
-            frame_sinks = frame_dispatcher_.CollectWrites(payload.encoded_frame);
+            frame_sinks = frame_ring_.Write(payload);
         }
 
-        for (const source_clients::PendingMediaFrameSinkWrite &pending_sink :
+        for (const source_state::PendingFrameRingWrite &pending_sink :
              frame_sinks) {
             if (pending_sink.sink != nullptr) {
                 pending_sink.sink->OnFrame(payload);
@@ -962,9 +963,9 @@ private:
     StreamId last_drained_stream_ = StreamId::kSub;
     source_state::StreamContext main_stream_;
     source_state::StreamContext sub_stream_;
+    source_state::FrameRing frame_ring_;
     source_clients::FlvClientRegistry flv_clients_;
     source_clients::MjpegClientRegistry mjpeg_clients_;
-    source_clients::MediaFrameDispatcher frame_dispatcher_;
     MediaSourceStats stats_;
     FrameAttachId main_attach_id_ = 0;
     FrameAttachId sub_attach_id_ = 0;
