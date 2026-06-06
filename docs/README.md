@@ -1,7 +1,8 @@
 # Documentation Index
 
-文档按“日常入口少、长期参考分类清楚”的原则组织。普通实现任务先读
-`../AGENTS.md` 和 `active/` 下的短文档；长文档只在任务确实相关时读取。
+本文档目录按“总体框架 -> app 组合根 -> Web Console -> libs 模块 ->
+运维交付”的方式组织。长期设计不再优先按 contracts/features/quality 横切分类
+存放；API、配置、事件、AI、升级、质量工具等内容都归入拥有它们的模块文档。
 
 ## Daily Entry
 
@@ -9,33 +10,66 @@
 - `active/module_contracts.md`：短模块边界图。
 - `active/decision_log.md`：固定架构和协作决策。
 
+普通实现任务先读 `../AGENTS.md` 和 `active/*`。只有涉及架构、模块边界、
+接口契约、Web、升级、质量工具或对应模块时，再读下面的长期设计文档。
+
 ## Architecture
 
-- `architecture/overview.md`：整体运行架构、启动顺序、子系统关系。
-- `architecture/module-boundaries.md`：服务职责、依赖方向和禁止范围。
+- `architecture/system-design.md`：产品范围、总体分层、核心数据流和依赖方向。
+- `architecture/runtime-composition-design.md`：Core/Device/Media/Protocol 子系统
+  的组合、启动和关闭关系。
+- `architecture/build-deploy-design.md`：构建、运行路径、配置文件、Web 静态资源、
+  rootfs 和发布包关系。
 
-## Contracts
+旧 `architecture/overview.md`、`architecture/module-boundaries.md` 仅作为迁移期
+参考；新增设计和修订优先写入上面三个文档。
 
-- `contracts/api-config.md`：配置 scope、HTTP API、前后端 DTO 契约。
-- `contracts/event-payloads.md`：进程内事件类型、payload 和命名规则。
-- `../www/README.md`：Web Console 技术栈、开发命令和后端 API 列表。
+## App
 
-## Features
+- `app/app-runtime-design.md`：进程入口、信号、路径解析、运行时配置、启动关闭顺序。
+- `app/platform-adapters-design.md`：Linux system/time/network/upgrade 平台适配。
+- `app/upgrade-runtime-design.md`：SPI NOR 分区、MTD 写入、升级包校验和
+  `live_sysupgrade` 运行边界。
 
-- `features/ai.md`：AI/NNIE/IVE 功能状态、边界和板端验证顺序。
-- `features/spi_nor_upgrade.md`：32M SPI NOR 分区、烧写、启动和升级包方案。
+## Web
 
-## Quality
+- `web/web-console-design.md`：IPC/NVR 管理台页面、导航、表单和 mock fallback。
+- `web/api-consumption-design.md`：前端 API client、DTO、认证上下文和错误处理。
+- `web/live-preview-design.md`：WebRTC/HLS/HTTP-FLV/MJPEG/snapshot 预览状态来源。
 
-- `quality/tooling.md`：嵌入式质量扫描工具、安装建议和使用方式。
-- `quality/quality_report.md`：`scripts/quality_scan.sh` 生成的汇总报告。
-- `quality/reports/<timestamp>/`：质量扫描原始日志目录，默认不纳入 git。
-- `quality/memory_optimization.md`：视频热路径内存和拷贝优化计划。
+## Libs
+
+- `libs/README.md`：模块设计索引和统一模板。
+- `libs/*-design.md`：每个实际 `libs/` 模块的设计文档，包含
+  `stream-hub-service-design.md` 这类 legacy 模块迁移说明。
+
+所有 public C++ API、HTTP API、配置字段、事件 payload、AI 能力、升级状态机等
+都必须归入拥有模块的 `libs/*-design.md` 或 `app/*-design.md`，不要再把实现设计
+写成横切专题文档。
+
+## Operations
+
+- `operations/quality-tooling-design.md`：质量扫描工具、使用入口和报告归属。
+- `operations/memory-optimization-design.md`：热路径内存和拷贝优化设计。
+- `operations/release-package-design.md`：打包脚本、rootfs 脚本、发布包和板端部署。
+
+## Legacy Migration Stubs
+
+- `contracts/`：迁移期索引，原 API/config/event 契约正文已归入拥有模块。
+- `features/`：迁移期索引，AI 和 SPI NOR 升级正文已归入模块设计。
+- `quality/`：迁移期索引，质量工具和优化正文已归入 `operations/`。
+
+这些旧目录不再作为长期设计正文入口。
 
 ## Read Rules
 
 - 日常 bugfix：读 `AGENTS.md`、`active/*` 和相关代码。
-- 跨模块改动：再读 `architecture/module-boundaries.md`。
-- API/config 改动：再读 `contracts/api-config.md` 和 `../www/README.md`。
-- 事件改动：再读 `contracts/event-payloads.md`。
-- AI、升级或质量扫描任务：读对应 `features/*` 或 `quality/*`。
+- 跨模块改动：读 `architecture/system-design.md` 和相关 `libs/*-design.md`。
+- HTTP/API/config/event 改动：读拥有模块文档、`libs/http-service-design.md`、
+  `libs/config-service-design.md`、`libs/event-service-design.md` 和对应 Web 文档。
+- AI 改动：读 `libs/ai-service-design.md`、`libs/media-service-design.md`、
+  `libs/hisi-vendor-design.md`、`web/live-preview-design.md`。
+- 升级/烧写/发布包改动：读 `app/upgrade-runtime-design.md`、
+  `libs/upgrade-service-design.md`、`operations/release-package-design.md`。
+- 质量扫描或热路径优化：读 `operations/quality-tooling-design.md` 和
+  `operations/memory-optimization-design.md`。
