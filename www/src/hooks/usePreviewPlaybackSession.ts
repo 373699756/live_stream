@@ -579,7 +579,6 @@ export function usePreviewPlaybackSession({
                 ))
                 .filter(Boolean)
                 .join(' ');
-              console.error('HTTP-FLV player error', ...args);
               setSessionPreviewState(
                 details ? `HTTP-FLV 播放失败：${details}` : 'HTTP-FLV 播放失败',
               );

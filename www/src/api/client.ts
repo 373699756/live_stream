@@ -1,12 +1,13 @@
 // Core HTTP fetch utilities. Business API functions live in domain-specific
 // modules (video.ts, image.ts, network.ts, system.ts, stream.ts).
 
-import type { AuthPrincipal, AuthState } from './types';
+import {
+  dispatchAuthInvalid,
+  dispatchMustChangePassword,
+  getToken,
+} from './authSession';
 
 const baseHeaders = { 'Content-Type': 'application/json' };
-const tokenKey = 'live_stream_token';
-const authInvalidEvent = 'live-stream-auth-invalid';
-const mustChangePasswordEvent = 'live-stream-must-change-password';
 const defaultTimeoutMs = 8000;
 
 export const useMockFallback = import.meta.env.DEV;
@@ -28,45 +29,6 @@ function fetchOptions(init?: ApiRequestOptions): RequestInit {
   delete options.timeoutMs;
   return options;
 }
-
-// ---------------------------------------------------------------------------
-// Auth token helpers
-// ---------------------------------------------------------------------------
-
-export function getToken(): string | null {
-  return window.localStorage.getItem(tokenKey);
-}
-
-export function hasToken(): boolean {
-  return Boolean(window.localStorage.getItem(tokenKey));
-}
-
-function setToken(token: string): void {
-  window.localStorage.setItem(tokenKey, token);
-}
-
-export function removeToken(): void {
-  window.localStorage.removeItem(tokenKey);
-}
-
-function handleUnauthorized(): void {
-  removeToken();
-  window.dispatchEvent(new Event(authInvalidEvent));
-}
-
-export function onAuthInvalid(listener: () => void): () => void {
-  window.addEventListener(authInvalidEvent, listener);
-  return () => window.removeEventListener(authInvalidEvent, listener);
-}
-
-export function onMustChangePassword(listener: () => void): () => void {
-  window.addEventListener(mustChangePasswordEvent, listener);
-  return () => window.removeEventListener(mustChangePasswordEvent, listener);
-}
-
-// ---------------------------------------------------------------------------
-// Low-level fetch wrappers (exported for domain modules to use)
-// ---------------------------------------------------------------------------
 
 export function authQuery(entries?: Record<string, string>): string {
   const params = new URLSearchParams();
@@ -117,7 +79,7 @@ function timeoutSignal(timeoutMs = defaultTimeoutMs): AbortSignal {
   return controller.signal;
 }
 
-function requestSignal(init?: ApiRequestOptions): AbortSignal {
+export function requestSignal(init?: ApiRequestOptions): AbortSignal {
   return mergeSignals(timeoutSignal(init?.timeoutMs), init?.signal);
 }
 
@@ -139,7 +101,7 @@ export async function readError(response: Response): Promise<string> {
 
 async function handleRejectedResponse(response: Response): Promise<void> {
   if (response.status === 401) {
-    handleUnauthorized();
+    dispatchAuthInvalid();
     return;
   }
   if (response.status !== 403) {
@@ -148,7 +110,7 @@ async function handleRejectedResponse(response: Response): Promise<void> {
   try {
     const body = (await response.clone().json()) as { error?: string };
     if (body.error === 'must_change_password') {
-      window.dispatchEvent(new Event(mustChangePasswordEvent));
+      dispatchMustChangePassword();
     }
   } catch {
     // Ignore malformed error bodies.
@@ -241,140 +203,4 @@ export async function putJson<T>(
     await handleRejectedResponse(response);
     throw new Error(await readError(response));
   }
-}
-
-// ---------------------------------------------------------------------------
-// Auth API (kept here because it manages the token lifecycle)
-// ---------------------------------------------------------------------------
-
-interface AuthResponse {
-  token?: string;
-  expires_at_ms?: number;
-  principal?: AuthPrincipal;
-  must_change_password?: boolean;
-}
-
-export interface LoginResult extends AuthState {
-  error?: string;
-}
-
-function stateFromAuthResponse(body: AuthResponse): AuthState {
-  const mustChangePassword =
-    Boolean(body.must_change_password) ||
-    Boolean(body.principal?.must_change_password);
-  return {
-    authenticated: true,
-    mustChangePassword,
-    principal: body.principal,
-  };
-}
-
-export async function login(
-  userName: string,
-  password: string,
-): Promise<LoginResult> {
-  removeToken();
-  try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: baseHeaders,
-      body: JSON.stringify({ user_name: userName, password }),
-      signal: requestSignal(),
-    });
-    if (!response.ok) {
-      return {
-        authenticated: false,
-        mustChangePassword: false,
-        error: await readError(response),
-      };
-    }
-    const body = (await response.json()) as AuthResponse;
-    if (!body.token) {
-      return {
-        authenticated: false,
-        mustChangePassword: false,
-        error: 'empty_token',
-      };
-    }
-    setToken(body.token);
-    return stateFromAuthResponse(body);
-  } catch {
-    return {
-      authenticated: false,
-      mustChangePassword: false,
-      error: 'network_error',
-    };
-  }
-}
-
-export async function validateSession(): Promise<AuthState> {
-  if (!hasToken()) {
-    return { authenticated: false, mustChangePassword: false };
-  }
-  try {
-    const response = await fetch('/api/auth/me', {
-      method: 'GET',
-      headers: authHeaders(),
-      signal: requestSignal(),
-    });
-    if (!response.ok) {
-      removeToken();
-      return { authenticated: false, mustChangePassword: false };
-    }
-    const body = (await response.json()) as AuthResponse;
-    return stateFromAuthResponse(body);
-  } catch {
-    if (useMockFallback) {
-      return { authenticated: hasToken(), mustChangePassword: false };
-    }
-    removeToken();
-    window.dispatchEvent(new Event(authInvalidEvent));
-    return { authenticated: false, mustChangePassword: false };
-  }
-}
-
-export async function changePassword(
-  oldPassword: string,
-  newPassword: string,
-): Promise<boolean> {
-  if (!hasToken()) {
-    return false;
-  }
-  try {
-    const response = await fetch('/api/auth/change-password', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        old_password: oldPassword,
-        new_password: newPassword,
-      }),
-      signal: requestSignal(),
-    });
-    if (response.status === 401) {
-      handleUnauthorized();
-      return false;
-    }
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function logout(): Promise<void> {
-  if (!hasToken()) {
-    return;
-  }
-  try {
-    const response = await fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: authHeaders(),
-      signal: requestSignal(),
-    });
-    if (response.status === 401) {
-      handleUnauthorized();
-    }
-  } catch {
-    // Local logout still clears the browser session if the device is offline.
-  }
-  removeToken();
 }

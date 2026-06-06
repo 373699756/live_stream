@@ -4,14 +4,8 @@ import type {
   AiDetection,
 } from '../api/types';
 import { useAiAlerts } from '../hooks/useAiAlerts';
+import { formatTimestamp } from '../utils/format';
 import { AiStatusPanel } from './AiStatusPanel';
-
-function formatTimestamp(timestampMs: number) {
-  if (timestampMs <= 0) {
-    return '-';
-  }
-  return new Date(timestampMs).toLocaleString();
-}
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;

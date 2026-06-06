@@ -1,4 +1,5 @@
 import type { UpgradePackageInfo, UpgradeStatus } from '../api/types';
+import { formatBytes, formatTimestamp } from '../utils/format';
 
 interface UpgradePanelProps {
   allowDowngrade: boolean;
@@ -18,26 +19,6 @@ interface UpgradePanelProps {
   startUpgrade: () => Promise<void>;
   upgradeStatus: UpgradeStatus;
   uploadPackage: () => Promise<void>;
-}
-
-function formatTimestamp(timestampMs: number) {
-  if (timestampMs <= 0) {
-    return '-';
-  }
-  return new Date(timestampMs).toLocaleString();
-}
-
-function formatBytes(sizeBytes: number) {
-  if (sizeBytes <= 0) {
-    return '-';
-  }
-  if (sizeBytes >= 1024 * 1024) {
-    return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
-  }
-  if (sizeBytes >= 1024) {
-    return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  }
-  return `${sizeBytes} B`;
 }
 
 function canCancel(status: UpgradeStatus) {

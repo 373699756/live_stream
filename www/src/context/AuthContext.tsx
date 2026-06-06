@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   changePassword as apiChangePassword,
-  hasToken,
   login as apiLogin,
   logout as apiLogout,
+  validateSession,
+} from '../api/auth';
+import {
+  hasToken,
   onAuthInvalid,
   onMustChangePassword,
-  validateSession,
-} from '../api/client';
+} from '../api/authSession';
 import type { AuthPrincipal } from '../api/types';
 
 interface AuthContextValue {
