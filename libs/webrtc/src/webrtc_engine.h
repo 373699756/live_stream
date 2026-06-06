@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_ENGINE_H_
-#define LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_ENGINE_H_
+#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_
+#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_
 
 #include "webrtc.h"
 
@@ -20,7 +20,6 @@ class IWebrtcEngine {
 public:
     virtual ~IWebrtcEngine() = default;
 
-    virtual const char *Name() const = 0;
     virtual bool Available() const = 0;
     virtual bool Start(const WebrtcOptions &options,
                        const WebrtcEngineCallbacks &callbacks) = 0;
@@ -39,4 +38,4 @@ std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine);
 }  // namespace webrtc_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_ENGINE_H_
+#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_

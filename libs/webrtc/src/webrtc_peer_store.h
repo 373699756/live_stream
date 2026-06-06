@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_PEER_STORE_H_
-#define LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_PEER_STORE_H_
+#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_
+#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_
 
 #include "webrtc.h"
 
@@ -60,4 +60,4 @@ class WebrtcPeerStore {
 }  // namespace webrtc_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_PEER_STORE_H_
+#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_SDP_H_
-#define LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_SDP_H_
+#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_SDP_H_
+#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_SDP_H_
 
 #include "webrtc.h"
 
@@ -16,4 +16,4 @@ std::string ReplaceHostCandidateIp(const std::string& candidate,
 }  // namespace webrtc_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_WEBRTC_SERVICE_SRC_WEBRTC_SDP_H_
+#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_SDP_H_

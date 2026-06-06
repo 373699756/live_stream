@@ -7,8 +7,7 @@ OBJ_DIR := $(BUILD_DIR)/obj/app
 BIN_DIR := $(BUILD_DIR)/bin
 THIRDPARTY_DIR := 3rdparty
 THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
-METARTC_SRC := $(THIRDPARTY_SRC)/metaRTC_src
-METARTC_INSTALL := $(THIRDPARTY_DIR)/install
+THIRDPARTY_INSTALL := $(THIRDPARTY_DIR)/install
 DEBUG_DIR ?= debug
 RELEASE_DIR ?= release
 RELEASE_VERSION ?= 1.0.0
@@ -26,11 +25,9 @@ ifeq ($(origin AR),default)
 AR := $(CROSS_COMPILE)ar
 endif
 
-OPENSSL_LIBS := $(METARTC_INSTALL)/lib/libssl.a $(METARTC_INSTALL)/lib/libcrypto.a
-SRTP_LIBS := $(METARTC_INSTALL)/lib/libsrtp2.a
-USRSCTP_LIBS := $(METARTC_INSTALL)/lib/libusrsctp.a
-METARTC_LIBS := $(METARTC_INSTALL)/lib/libmetartc8.a $(METARTC_INSTALL)/lib/libmetartccore8.a $(METARTC_INSTALL)/lib/libyangutil8.a
-THIRDPARTY_LIBS := $(METARTC_LIBS) $(SRTP_LIBS) $(USRSCTP_LIBS) $(OPENSSL_LIBS)
+OPENSSL_LIBS := $(THIRDPARTY_INSTALL)/lib/libssl.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
+SRTP_LIBS := $(THIRDPARTY_INSTALL)/lib/libsrtp2.a
+THIRDPARTY_LIBS := $(SRTP_LIBS) $(OPENSSL_LIBS)
 SYSUPGRADE_LDFLAGS ?= -static
 
 CXXFLAGS += -std=c++17
@@ -66,7 +63,7 @@ CXXFLAGS += -Ilibs/onvif/include
 CXXFLAGS += -Ilibs/alarm/include
 CXXFLAGS += -Ilibs/upgrade/include
 CXXFLAGS += -Ilibs/http/include
-CXXFLAGS += -I$(METARTC_INSTALL)/include
+CXXFLAGS += -I$(THIRDPARTY_INSTALL)/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)/openssl-1.1.1w/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)
 CXXFLAGS += -I$(HISI_MPP_INC)
@@ -182,11 +179,11 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra.a $(METARTC_INSTALL)/lib/libcrypto.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
-	  $(LIB_DIR)/libinfra.a $(METARTC_INSTALL)/lib/libcrypto.a \
+	  $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a \
 	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
 
 $(WEB_STAMP): $(WEB_INPUTS)
