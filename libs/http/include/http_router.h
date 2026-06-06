@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ROUTER_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ROUTER_H_
+#ifndef LIVE_STREAM_HTTP_HTTP_ROUTER_H_
+#define LIVE_STREAM_HTTP_HTTP_ROUTER_H_
 
 #include "http.h"
 
@@ -58,4 +58,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ROUTER_H_
+#endif  // LIVE_STREAM_HTTP_HTTP_ROUTER_H_

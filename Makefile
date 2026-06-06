@@ -63,6 +63,7 @@ CXXFLAGS += -Ilibs/onvif/include
 CXXFLAGS += -Ilibs/alarm/include
 CXXFLAGS += -Ilibs/upgrade/include
 CXXFLAGS += -Ilibs/http/include
+CXXFLAGS += -Ilibs/http_media/include
 CXXFLAGS += -I$(THIRDPARTY_INSTALL)/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)/openssl-1.1.1w/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)
@@ -91,6 +92,7 @@ SERVICES := \
 	onvif \
 	alarm \
 	upgrade \
+	http_media \
 	http \
 	media_codec \
 	media_mux

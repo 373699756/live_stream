@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ACCESS_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ACCESS_H_
+#ifndef LIVE_STREAM_HTTP_HTTP_ACCESS_H_
+#define LIVE_STREAM_HTTP_HTTP_ACCESS_H_
 
 #include "auth.h"
 #include "http.h"
@@ -36,4 +36,4 @@ public:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_ACCESS_H_
+#endif  // LIVE_STREAM_HTTP_HTTP_ACCESS_H_

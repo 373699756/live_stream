@@ -2,6 +2,7 @@
 
 #include "http_console.h"
 #include "http_handler_utils.h"
+#include "http_media.h"
 #include "http_request_utils.h"
 #include "http_static_files.h"
 #include "infra/log.h"

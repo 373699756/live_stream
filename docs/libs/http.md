@@ -6,9 +6,10 @@
 
 ## 模块定位
 
-`http` 是 Web Console 和浏览器预览的 HTTP 边界。它拥有 HTTP server、
-request parsing、认证边界、路由分发、DTO 转换、静态 UI 文件服务以及 HLS/FLV/
-MJPEG/snapshot/WebRTC signaling 的 HTTP 入口。
+`http` 是 Web Console 的普通 HTTP 边界。它拥有 HTTP server、request parsing、
+认证边界、路由分发、控制 API DTO 转换和静态 UI 文件服务。HLS、HTTP-FLV、MJPEG
+和 WebRTC signaling 的实现类归 `http_media`，由 `http` 在启动时注册到同一个
+router。
 
 ## 总体框架图
 
@@ -18,11 +19,13 @@ flowchart LR
   HTTP --> Auth[auth]
   HTTP --> Config[config]
   HTTP --> Media[device_media]
-  HTTP --> Source[media_pipeline]
+  HTTP --> MediaHTTP[http_media]
+  MediaHTTP --> Source[media_source]
+  MediaHTTP --> WebRTC[webrtc]
   HTTP --> Snapshot[snapshot]
   HTTP --> AI[ai IAiView]
   HTTP --> Device[system/time/network/alarm/upgrade]
-  HTTP --> Protocol[rtsp/onvif/webrtc]
+  HTTP --> Protocol[rtsp/onvif]
   HTTP --> Static[www dist]
 ```
 
@@ -30,10 +33,10 @@ flowchart LR
 
 - 处理 HTTP 连接、keep-alive、request timeout、body size 和静态文件。
 - 执行认证和权限检查。
-- 按业务域注册 handlers：auth、config、media、snapshot、stream、AI、system、
-  network、time、upgrade、operations、WebRTC。
+- 按业务域注册 handlers：auth、config、media/status、snapshot、AI、system、
+  network、time、upgrade、operations，以及 `http_media` 提供的媒体 handlers。
 - 做 DTO 转换，不拥有业务状态。
-- 为 HLS、HTTP-FLV、MJPEG 和 snapshot 提供流式响应。
+- 通过 `HttpMediaWriter` 向 `http_media` 提供长连接写入、断连回调和发送队列边界。
 
 ## API 归属
 
@@ -48,21 +51,22 @@ HTTP 路由由本模块实现，但业务语义归拥有模块：
 | `/api/config/snapshot` | `snapshot` |
 | `/api/config/ai`, `/api/ai/*` | `ai` |
 | `/api/media/capabilities` | `device_media` |
-| `/api/status/streams`, `/api/hls/*`, `/api/flv/*`, `/api/mjpeg/*` | `media_source` / `media_pipeline` |
+| `/api/status/streams` | `media_source` / `device_media` |
+| `/api/hls/*`, `/api/flv/*`, `/api/mjpeg/*` | `http_media` / `media_source` |
 | `/api/snapshot/*` | `snapshot` |
 | `/api/system/status` | `system` |
 | `/api/upgrade/*` | `upgrade` |
 | `/api/operations*` | `logger` |
-| `/api/webrtc/*` | `webrtc` |
+| `/api/webrtc/*` | `http_media` / `webrtc` |
 
 ## 状态与资源模型
 
-HTTP 是最宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
-或 Web。流式响应使用 stream/control executor，避免控制 API 被直播写阻塞。
+HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
+或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
 
 HTTP 自有资源只包括 listener、connection、request/response buffer、router、
-executor、静态文件句柄和认证中间态。业务对象生命周期、配置状态、媒体 ready 状态和
-升级状态都必须从拥有模块读取。
+executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句柄。业务对象生命周期、
+配置状态、媒体 ready 状态和升级状态都必须从拥有模块读取。
 
 `HttpOptions` 的资源上限是 HTTP 边界契约：`max_connections`、
 `max_request_header_bytes`、`max_request_body_bytes`、`send_queue_capacity`、
@@ -74,9 +78,10 @@ executor、静态文件句柄和认证中间态。业务对象生命周期、配
 - 不在 HTTP 层推导媒体、升级、AI 或设备运行状态。
 - 不把 Web DTO 反向扩散到业务模块。
 - 不让直播 socket 写持有媒体源内部锁。
+- 不在 `http` 内实现 HLS、HTTP-FLV、MJPEG 或 WebRTC signaling 业务逻辑。
 
 ## 风险与优化方向
 
-- `HttpDependencies` 较宽，后续可把 handlers 变成独立构造的 handler 类。
-- 流式接口必须处理慢客户端和断连，不能持有媒体内部锁长时间写 socket。
+- `HttpDependencies` 较宽，后续可把控制 handlers 变成独立构造的 handler 类。
+- `HttpMediaWriter` 必须处理慢客户端和断连，不能持有媒体内部锁长时间写 socket。
 - DTO 字段变更必须同步 Web API 类型和拥有模块文档。

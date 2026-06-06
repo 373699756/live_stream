@@ -1,7 +1,9 @@
-#include "handlers/http_handlers.h"
+#include "http_media.h"
 
-#include "http_handler_utils.h"
+#include "http_media_utils.h"
+#include "http_router.h"
 
+#include "device_media.h"
 #include "infra/log.h"
 #include "json_utils.h"
 #include "webrtc.h"
@@ -47,9 +49,9 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
     std::string stream;
     StreamId stream_id = StreamId::kMain;
     if (!json_utils::ReadField(body, "stream", &stream) ||
-        !StreamIdFromJsonString(stream, &stream_id) ||
+        !HttpMediaStreamIdFromJsonString(stream, &stream_id) ||
         !json_utils::ReadField(body, "client_id", &create_request.client_id)) {
-        return StatusResponse(400, "Invalid stream");
+        return HttpMediaStatusResponse(400, "Invalid stream");
     }
     create_request.stream_id = stream_id;
     create_request.session_id = principal.session_id;
@@ -61,18 +63,18 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
         ConfigJson root = ConfigJson::object();
         root["ok"] = false;
         root["peer_id"] = "";
-        root["stream"] = StreamIdToJsonString(create_request.stream_id);
+        root["stream"] = HttpMediaStreamIdToJsonString(create_request.stream_id);
         root["state"] = WebrtcPeerStateName(WebrtcPeerState::kFailed);
         root["error"] = "create_peer_failed";
-        return JsonResponse(200, root);
+        return HttpMediaJsonResponse(200, root);
     }
 
     ConfigJson root = ConfigJson::object();
     root["ok"] = true;
     root["peer_id"] = peer.peer_id;
-    root["stream"] = StreamIdToJsonString(peer.stream_id);
+    root["stream"] = HttpMediaStreamIdToJsonString(peer.stream_id);
     root["state"] = WebrtcPeerStateName(peer.state);
-    return JsonResponse(200, root);
+    return HttpMediaJsonResponse(200, root);
 }
 
 HttpResponse HandleOffer(IWebrtc *webrtc,
@@ -83,7 +85,7 @@ HttpResponse HandleOffer(IWebrtc *webrtc,
     WebrtcOfferRequest offer;
     if (!json_utils::ReadField(body, "peer_id", &offer.peer_id) ||
         !json_utils::ReadField(body, "sdp", &offer.sdp)) {
-        return StatusResponse(400, "Missing offer fields");
+        return HttpMediaStatusResponse(400, "Missing offer fields");
     }
 
     const WebrtcAnswer answer = webrtc->HandleOffer(offer);
@@ -95,7 +97,7 @@ HttpResponse HandleOffer(IWebrtc *webrtc,
         root["error"] =
             answer.error.empty() ? std::string("answer_unavailable")
                                  : answer.error;
-        return JsonResponse(200, root);
+        return HttpMediaJsonResponse(200, root);
     }
 
     ConfigJson root = ConfigJson::object();
@@ -103,7 +105,7 @@ HttpResponse HandleOffer(IWebrtc *webrtc,
     root["peer_id"] = answer.peer_id;
     root["sdp"] = answer.sdp;
     root["state"] = WebrtcPeerStateName(answer.state);
-    return JsonResponse(200, root);
+    return HttpMediaJsonResponse(200, root);
 }
 
 HttpResponse HandleCandidate(IWebrtc *webrtc,
@@ -116,7 +118,7 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
     bool has_mline_index = false;
     if (!json_utils::ReadField(body, "peer_id", &candidate.peer_id) ||
         !json_utils::ReadField(body, "candidate", &candidate.candidate)) {
-        return StatusResponse(400, "Missing candidate fields");
+        return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
     if (!json_utils::ReadField(body, "sdp_mid", &candidate.sdp_mid)) {
         (void)json_utils::ReadField(body, "sdpMid", &candidate.sdp_mid);
@@ -129,7 +131,7 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                          &candidate.sdp_mline_index, 0,
                          std::numeric_limits<int32_t>::max());
     if (!has_mline_index) {
-        return StatusResponse(400, "Missing candidate fields");
+        return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
     if (!json_utils::ReadField(body, "username_fragment",
                           &candidate.username_fragment)) {
@@ -137,7 +139,7 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                                &candidate.username_fragment);
     }
 
-    Info(kHttpModuleName,
+    Info(kHttpMediaModuleName,
                    "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
                    candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
                    candidate.sdp_mline_index, candidate.candidate.size());
@@ -145,11 +147,11 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
     root["peer_id"] = candidate.peer_id;
     if (webrtc->AddIceCandidate(candidate)) {
         root["ok"] = true;
-        return JsonResponse(200, root);
+        return HttpMediaJsonResponse(200, root);
     }
     root["ok"] = false;
     root["error"] = "peer_not_found";
-    return JsonResponse(200, root);
+    return HttpMediaJsonResponse(200, root);
 }
 
 HttpResponse HandleClosePeer(IWebrtc *webrtc,
@@ -160,17 +162,17 @@ HttpResponse HandleClosePeer(IWebrtc *webrtc,
     (void)principal;
     std::string peer_id;
     if (!json_utils::ReadField(body, "peer_id", &peer_id)) {
-        return StatusResponse(400, "Missing peer_id");
+        return HttpMediaStatusResponse(400, "Missing peer_id");
     }
     ConfigJson root = ConfigJson::object();
     root["peer_id"] = peer_id;
     if (webrtc->ClosePeer(peer_id)) {
         root["ok"] = true;
-        return JsonResponse(200, root);
+        return HttpMediaJsonResponse(200, root);
     }
     root["ok"] = false;
     root["error"] = "peer_not_found";
-    return JsonResponse(200, root);
+    return HttpMediaJsonResponse(200, root);
 }
 
 }  // namespace
@@ -229,20 +231,20 @@ private:
                               WebrtcRouteHandler handler) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireAuthResponse(access_, request, &principal);
+            RequireHttpMediaAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
         if (webrtc_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
+            return HttpMediaStatusResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(device_media_)) {
-            return StatusResponse(503, "Media pipeline restarting");
+        if (IsHttpMediaRestarting(device_media_)) {
+            return HttpMediaStatusResponse(503, "Media pipeline restarting");
         }
 
         ConfigJson body;
-        if (!ParseOptionalJsonObject(request, &body)) {
-            return StatusResponse(400, "Invalid JSON");
+        if (!ParseHttpMediaOptionalJsonObject(request, &body)) {
+            return HttpMediaStatusResponse(400, "Invalid JSON");
         }
 
         return handler(webrtc_, request, body, principal);

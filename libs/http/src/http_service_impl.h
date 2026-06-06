@@ -5,6 +5,7 @@
 #include "http_router.h"
 #include "http_server.h"
 #include "http_dependencies.h"
+#include "http_media.h"
 #include "handlers/http_handlers.h"
 
 #include <cstdint>

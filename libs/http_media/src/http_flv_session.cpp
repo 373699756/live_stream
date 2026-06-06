@@ -1,6 +1,6 @@
-#include "handlers/http_flv_session.h"
+#include "http_flv_session.h"
 
-#include "http_handler_utils.h"
+#include "http_media_utils.h"
 
 #include "infra/log.h"
 #include "net.h"
@@ -67,7 +67,7 @@ uint8_t ReadFlvVideoPacketType(const uint8_t *data, size_t size) {
   return data[kFlvH264PacketTypeOffset];
 }
 
-bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
+bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
                                 ConnectionId connection_id,
                                 const uint8_t *data, size_t size,
                                 uint32_t timestamp_ms) {
@@ -78,7 +78,7 @@ bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
   std::memcpy(header, data, sizeof(header));
   WriteFlvTimestampMs(timestamp_ms, header);
 
-  HttpStreamSlice slices[2];
+  HttpMediaSlice slices[2];
   slices[0].data = header;
   slices[0].size = sizeof(header);
   slices[1].data = data + sizeof(header);
@@ -86,7 +86,7 @@ bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
   return writer->EnqueueStreamingSlices(connection_id, slices, 2);
 }
 
-bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
+bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
                               ConnectionId connection_id,
                               const MediaFlvVideoTagView &tag,
                               const EncodedFrame &frame,
@@ -98,7 +98,7 @@ bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
 
   size_t index = 0;
   while (index < tag.slice_count) {
-    HttpStreamSlice slices[kMaxNetBufferSlices];
+    HttpMediaSlice slices[kMaxNetBufferSlices];
     size_t slice_count = 0;
     while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
       const MediaFlvVideoTagSlice &source = tag.slices[index];
@@ -127,7 +127,7 @@ bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
   return true;
 }
 
-bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
+bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
                                     ConnectionId connection_id,
                                     const MediaFlvCachedVideoTag &tag,
                                     const uint8_t *rebased_header) {
@@ -138,7 +138,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
 
   size_t index = 0;
   while (index < tag.slice_count) {
-    HttpStreamSlice slices[kMaxNetBufferSlices];
+    HttpMediaSlice slices[kMaxNetBufferSlices];
     size_t slice_count = 0;
     while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
       const MediaFlvCachedVideoTagSlice &source = tag.slices[index];
@@ -197,7 +197,7 @@ bool HttpFlvSessionStartNeedsClose(
          status != HttpFlvSessionStartStatus::kNoSession;
 }
 
-HttpFlvSession::HttpFlvSession(HttpStreamWriter *writer,
+HttpFlvSession::HttpFlvSession(HttpMediaWriter *writer,
                              ConnectionId connection_id,
                              StreamId stream_id)
     : writer_(writer), connection_id_(connection_id),
@@ -216,7 +216,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
   headers["Content-Type"] = "video/x-flv";
   headers["Cache-Control"] = "no-cache";
   headers["Pragma"] = "no-cache";
-  const std::string header_block = BuildStreamingHeaderBlock(200, headers);
+  const std::string header_block = BuildHttpMediaStreamingHeaderBlock(200, headers);
 
   start_block_.clear();
   start_block_.reserve(header_block.size() + start_data.file_header.size());
@@ -246,12 +246,12 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
   if (cached_flv_bytes != nullptr) {
     *cached_flv_bytes = bytes;
   }
-  Info(kHttpModuleName,
+  Info(kHttpMediaModuleName,
                  "HTTP-FLV start conn=%llu stream=%s header=%zu file=%zu "
                  "sequence=%zu cached_flv=%zu cached_bytes=%zu "
                  "gop_complete=%d",
                  static_cast<unsigned long long>(connection_id_),
-                 StreamIdToJsonString(stream_id_),
+                 HttpMediaStreamIdToJsonString(stream_id_),
                  header_block.size(), start_data.file_header.size(),
                  start_data.sequence_header.size(),
                  start_data.cached_video_tags.size(), bytes,
@@ -322,7 +322,7 @@ uint32_t HttpFlvSession::RebaseTimestamp(uint32_t timestamp_ms,
   if (!timestamp_base_set_) {
     timestamp_base_ms_ = timestamp_ms;
     timestamp_base_set_ = true;
-    Info(kHttpModuleName,
+    Info(kHttpMediaModuleName,
                    "HTTP-FLV timestamp base conn=%llu base_ms=%u",
                    static_cast<unsigned long long>(connection_id_),
                    timestamp_base_ms_);

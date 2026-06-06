@@ -2,7 +2,7 @@
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SESSION_H_
 
 #include "http_request_splitter.h"
-#include "http_stream_writer.h"
+#include "http_media_writer.h"
 #include "net.h"
 
 #include <cstdint>

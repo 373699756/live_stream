@@ -1,9 +1,10 @@
-#include "handlers/http_handlers.h"
+#include "http_media.h"
 
-#include "http_handler_utils.h"
+#include "http_media_utils.h"
+#include "http_router.h"
 
+#include "device_media.h"
 #include "infra/log.h"
-#include "media_source.h"
 
 #include <cstdio>
 #include <string>
@@ -66,14 +67,14 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     if (stream_id == nullptr || object_name == nullptr) {
         return false;
     }
-    const std::string remaining = PathSuffix(request.path, "/api/hls/");
+    const std::string remaining = HttpMediaPathSuffix(request.path, "/api/hls/");
     const size_t slash = remaining.find('/');
     if (slash == std::string::npos || slash == 0 ||
         slash + 1 >= remaining.size()) {
         return false;
     }
     const std::string stream_name = remaining.substr(0, slash);
-    if (!StreamIdFromJsonString(stream_name, stream_id)) {
+    if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
         return false;
     }
     *object_name = remaining.substr(slash + 1);
@@ -86,10 +87,10 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
     bool keyframe_requested = RequestBrowserKeyFrame(media_source, stream_id);
     MediaHlsPlaylist playlist = media_source->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
-        Debug(kHttpModuleName,
+        Debug(kHttpMediaModuleName,
                         "HLS warmup stream=%s object=%s codec=%s "
                         "keyframe=%d segments=%u current_segment=%u",
-                        StreamIdToJsonString(stream_id), object_name.c_str(),
+                        HttpMediaStreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         keyframe_requested ? 1 : 0,
                         browser_status.hls_segment_count,
@@ -126,59 +127,59 @@ private:
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireAuthResponse(access_, request, &principal);
+            RequireHttpMediaAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
         if (media_source_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
+            return HttpMediaStatusResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(device_media_)) {
-            return StatusResponse(503, "Media pipeline restarting");
+        if (IsHttpMediaRestarting(device_media_)) {
+            return HttpMediaStatusResponse(503, "Media pipeline restarting");
         }
 
         StreamId stream_id = StreamId::kMain;
         std::string object_name;
         if (!ParseHlsPath(request, &stream_id, &object_name)) {
-            return StatusResponse(400, "Invalid HLS path");
+            return HttpMediaStatusResponse(400, "Invalid HLS path");
         }
 
         const MediaSourceStatus browser_status =
             media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.browser_codec) {
-            Error(kHttpModuleName,
+            Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
                             "codec=%s running=%d hls_ready=%d segments=%u "
                             "current_segment=%u",
-                            StreamIdToJsonString(stream_id),
+                            HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
                             browser_status.hls_current_segment_size);
-            return StatusResponse(409, "HLS requires H.264 or H.265 stream");
+            return HttpMediaStatusResponse(409, "HLS requires H.264 or H.265 stream");
         }
         if (!browser_status.running) {
-            Error(kHttpModuleName,
+            Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=not_ready "
                             "codec=%s running=%d hls_ready=%d "
                             "segments=%u current_segment=%u",
-                            StreamIdToJsonString(stream_id),
+                            HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
                             browser_status.hls_current_segment_size);
-            return StatusResponse(503, "HLS playlist not ready");
+            return HttpMediaStatusResponse(503, "HLS playlist not ready");
         }
 
         if (object_name == "index.m3u8") {
             return HandlePlaylist(media_source_, stream_id,
                                   object_name, browser_status);
         }
-        return StatusResponse(404, "Not Found");
+        return HttpMediaStatusResponse(404, "Not Found");
     }
 
     HttpAccess *access_ = nullptr;

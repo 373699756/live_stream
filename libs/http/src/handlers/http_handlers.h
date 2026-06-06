@@ -3,7 +3,6 @@
 
 #include "http_access.h"
 #include "http_router.h"
-#include "http_stream_writer.h"
 #include "media_source.h"
 
 #include <memory>
@@ -67,29 +66,8 @@ std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
 std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(
     HttpAccess *access, IDeviceMedia *device_media,
     ISnapshotView *snapshot);
-std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
-    IMediaSource *media_source);
-std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
-    IWebrtc *webrtc);
 std::unique_ptr<IHttpHandler> CreateEventStreamHttpHandler(
     HttpAccess *access);
-
-class IStreamingHttpHandler {
-public:
-    virtual ~IStreamingHttpHandler() = default;
-
-    virtual bool CanHandleStreamingRequest(const HttpRequest &request) const = 0;
-    virtual void HandleStreamingRequest(ConnectionId connection_id,
-                                        const HttpRequest &request) = 0;
-};
-
-std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    HttpAccess *access, HttpStreamWriter *writer, IDeviceMedia *device_media,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source);
 
 }  // namespace live_stream
 

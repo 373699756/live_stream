@@ -286,8 +286,8 @@ void HttpServer::IncrementPermissionDenied() {
 void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
-    HttpStreamSlice body_slice;
-    const HttpStreamSlice *body_slices = nullptr;
+    HttpMediaSlice body_slice;
+    const HttpMediaSlice *body_slices = nullptr;
     size_t body_slice_count = 0;
     if (!response.body.empty()) {
         body_slice.data =
@@ -303,7 +303,7 @@ void HttpServer::SendResponse(ConnectionId connection_id,
 
 bool HttpServer::SendResponseSlices(ConnectionId connection_id,
                                     const HttpResponse &response,
-                                    const HttpStreamSlice *body_slices,
+                                    const HttpMediaSlice *body_slices,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) {
@@ -389,7 +389,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
 }
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const HttpStreamSlice *slices,
+                                        const HttpMediaSlice *slices,
                                         size_t slice_count) {
     NetBufferSlices net_slices;
     size_t total_size = 0;
@@ -415,7 +415,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
     return EnqueueStreamingSlices(connection_id, net_slices, total_size);
 }
 
-void HttpServer::SetCloseCallback(HttpStreamCloseCallback callback) {
+void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {
     std::lock_guard<std::mutex> guard(mutex_);
     close_callback_ = std::move(callback);
 }
@@ -464,7 +464,7 @@ infra::Executor *HttpServer::ExecutorForRequestLocked(
 }
 
 void HttpServer::NotifyStreamClosed(const HttpMediaClientHandle &client) {
-    HttpStreamCloseCallback close_callback;
+    HttpMediaCloseCallback close_callback;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         close_callback = close_callback_;

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STREAM_WRITER_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STREAM_WRITER_H_
+#ifndef LIVE_STREAM_HTTP_MEDIA_HTTP_MEDIA_WRITER_H_
+#define LIVE_STREAM_HTTP_MEDIA_HTTP_MEDIA_WRITER_H_
 
 #include "http.h"
 #include "media/media_buffer.h"
@@ -22,27 +22,27 @@ struct HttpMediaClientHandle {
     uint64_t id = 0;
 };
 
-using HttpStreamCloseCallback =
+using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
-struct HttpStreamSlice {
+struct HttpMediaSlice {
     const uint8_t *data = nullptr;
     size_t size = 0;
     VideoBuffer *owner = nullptr;
 };
 
-// Streaming response boundary for long-lived HTTP outputs such as FLV and
-// future SSE event streams.
-class HttpStreamWriter {
+// Streaming response boundary for long-lived HTTP media outputs such as
+// HLS segments, HTTP-FLV, and MJPEG.
+class HttpMediaWriter {
 public:
-    virtual ~HttpStreamWriter() = default;
+    virtual ~HttpMediaWriter() = default;
 
     virtual void SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) = 0;
     virtual bool SendResponseSlices(ConnectionId connection_id,
                                     const HttpResponse &response,
-                                    const HttpStreamSlice *body_slices,
+                                    const HttpMediaSlice *body_slices,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) = 0;
@@ -55,12 +55,12 @@ public:
     // until network send completion. Slices without owner must be small
     // protocol bytes that can be copied into the TCP output queue.
     virtual bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const HttpStreamSlice *slices,
+                                        const HttpMediaSlice *slices,
                                         size_t slice_count) = 0;
-    virtual void SetCloseCallback(HttpStreamCloseCallback callback) = 0;
+    virtual void SetCloseCallback(HttpMediaCloseCallback callback) = 0;
     virtual void CloseConnection(ConnectionId connection_id) = 0;
 };
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STREAM_WRITER_H_
+#endif  // LIVE_STREAM_HTTP_MEDIA_HTTP_MEDIA_WRITER_H_

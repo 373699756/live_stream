@@ -3,8 +3,8 @@
 
 #include "http.h"
 #include "http_dependencies.h"
+#include "http_media_writer.h"
 #include "http_session.h"
-#include "http_stream_writer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +32,7 @@ public:
 
 // Private HTTP server core. It owns TCP, HTTP/1.1 connection parsing,
 // executor selection, keep-alive, response sending, and streaming output.
-class HttpServer : public HttpStreamWriter {
+class HttpServer : public HttpMediaWriter {
 public:
     HttpServer(const HttpOptions &options,
                const HttpDependencies &dependencies,
@@ -57,7 +57,7 @@ public:
                       bool close_after_response) override;
     bool SendResponseSlices(ConnectionId connection_id,
                             const HttpResponse &response,
-                            const HttpStreamSlice *body_slices,
+                            const HttpMediaSlice *body_slices,
                             size_t body_slice_count,
                             size_t body_size,
                             bool close_after_response) override;
@@ -67,9 +67,9 @@ public:
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) override;
     bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                const HttpStreamSlice *slices,
+                                const HttpMediaSlice *slices,
                                 size_t slice_count) override;
-    void SetCloseCallback(HttpStreamCloseCallback callback) override;
+    void SetCloseCallback(HttpMediaCloseCallback callback) override;
     void CloseConnection(ConnectionId connection_id) override;
 
 private:
@@ -101,7 +101,7 @@ private:
     HttpOptions options_;
     HttpDependencies dependencies_;
     HttpRequestHandler *request_handler_ = nullptr;
-    HttpStreamCloseCallback close_callback_;
+    HttpMediaCloseCallback close_callback_;
     mutable std::mutex mutex_;
     std::unique_ptr<infra::Executor> stream_executor_;
     std::unique_ptr<infra::Executor> control_executor_;

@@ -1,7 +1,7 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_
+#ifndef LIVE_STREAM_HTTP_MEDIA_SRC_HTTP_FLV_SESSION_H_
+#define LIVE_STREAM_HTTP_MEDIA_SRC_HTTP_FLV_SESSION_H_
 
-#include "http_stream_writer.h"
+#include "http_media_writer.h"
 #include "media_source.h"
 
 #include <cstddef>
@@ -24,7 +24,7 @@ bool HttpFlvSessionStartNeedsClose(HttpFlvSessionStartStatus status);
 
 class HttpFlvSession : public IMediaFlvSink {
  public:
-  HttpFlvSession(HttpStreamWriter *writer, ConnectionId connection_id,
+  HttpFlvSession(HttpMediaWriter *writer, ConnectionId connection_id,
                  StreamId stream_id);
 
   HttpFlvSessionStartStatus Start(const MediaFlvStartData &start_data,
@@ -37,7 +37,7 @@ class HttpFlvSession : public IMediaFlvSink {
   bool OnCachedFlvVideoTag(const MediaFlvCachedVideoTag &tag);
   uint32_t RebaseTimestamp(uint32_t timestamp_ms, bool clamp_backward);
 
-  HttpStreamWriter *writer_ = nullptr;
+  HttpMediaWriter *writer_ = nullptr;
   ConnectionId connection_id_ = 0;
   StreamId stream_id_ = StreamId::kMain;
   std::string start_block_;
@@ -49,4 +49,4 @@ class HttpFlvSession : public IMediaFlvSink {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_
+#endif  // LIVE_STREAM_HTTP_MEDIA_SRC_HTTP_FLV_SESSION_H_
