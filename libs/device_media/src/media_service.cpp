@@ -316,7 +316,7 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     }
     VideoBuffer *buffer = VideoBufferAlloc(frame.size);
     if (buffer == nullptr) {
-        INFRA_LOG_ERROR("device_media",
+        Error("device_media",
                         "clone key frame alloc failed stream=%s seq=%llu "
                         "size=%u",
                         StreamName(frame.stream_id),
@@ -1073,11 +1073,11 @@ private:
                     if (rebuild_system) {
                         pipeline.DeinitSystem();
                     }
-                    INFRA_LOG_ERROR("device_media",
+                    Error("device_media",
                                     "restore media pipeline after config "
                                     "failure failed");
                 } else {
-                    INFRA_LOG_ERROR("device_media",
+                    Error("device_media",
                                     "media config apply failed, restored "
                                     "previous pipeline");
                 }

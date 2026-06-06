@@ -56,11 +56,11 @@ bool HttpServiceImpl::Prepare() {
 
 bool HttpServiceImpl::Start() {
     if (!Prepare()) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP start prepare failed");
+        Error(kHttpModuleName, "HTTP start prepare failed");
         return false;
     }
     if (server_ == nullptr || !server_->Start()) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP server start failed");
+        Error(kHttpModuleName, "HTTP server start failed");
         return false;
     }
     return true;
@@ -154,7 +154,7 @@ bool HttpServiceImpl::HandleStreamingHttpRequest(
     if (server_ != nullptr) {
         server_->IncrementTotalRequests();
     }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
+    Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
                    static_cast<unsigned long long>(connection_id),
                    request.path.c_str(), request.client_ip.c_str());
     streaming_handler->HandleStreamingRequest(connection_id, request);
@@ -373,7 +373,7 @@ HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
         return StatusResponse(404, "Not Found");
     }
     if (result.status == StaticFileStatus::kForbidden) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP static reject status=%s request=%s relative=%s "
                         "path=%s",
                         StaticStatusText(result.status), request.path.c_str(),

@@ -86,7 +86,7 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
     bool keyframe_requested = RequestBrowserKeyFrame(media_source, stream_id);
     MediaHlsPlaylist playlist = media_source->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
-        INFRA_LOG_DEBUG(kHttpModuleName,
+        Debug(kHttpModuleName,
                         "HLS warmup stream=%s object=%s codec=%s "
                         "keyframe=%d segments=%u current_segment=%u",
                         StreamIdToJsonString(stream_id), object_name.c_str(),
@@ -146,7 +146,7 @@ private:
         const MediaSourceStatus browser_status =
             media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.browser_codec) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
                             "codec=%s running=%d hls_ready=%d segments=%u "
                             "current_segment=%u",
@@ -160,7 +160,7 @@ private:
             return StatusResponse(409, "HLS requires H.264 or H.265 stream");
         }
         if (!browser_status.running) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject stream=%s object=%s reason=not_ready "
                             "codec=%s running=%d hls_ready=%d "
                             "segments=%u current_segment=%u",

@@ -201,7 +201,7 @@ private:
     void HandleHlsSegmentRequest(ConnectionId connection_id,
                                  const HttpRequest &request) {
         if (media_source_ == nullptr) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -209,7 +209,7 @@ private:
             return;
         }
         if (IsMediaRestarting(device_media_)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -221,7 +221,7 @@ private:
         HttpResponse auth_response =
             RequireAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu reason=auth",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id, auth_response);
@@ -245,7 +245,7 @@ private:
         const MediaSourceStatus browser_status =
             media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.browser_codec) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
                             "reason=unsupported codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -259,7 +259,7 @@ private:
             return;
         }
         if (!browser_status.running) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
                             "reason=not_ready codec=%s running=%d hls_ready=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -277,7 +277,7 @@ private:
             media_source_->GetHlsSegmentRef(stream_id, sequence);
         if (!segment.found || segment.body == nullptr ||
             segment.body->data == nullptr || segment.body->size == 0) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
                             "reason=segment_missing sequence=%llu",
                             static_cast<unsigned long long>(connection_id),
@@ -310,7 +310,7 @@ private:
     void HandleFlvRequest(ConnectionId connection_id,
                           const HttpRequest &request) {
         if (media_source_ == nullptr || media_flv_source_ == nullptr) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -318,7 +318,7 @@ private:
             return;
         }
         if (IsMediaRestarting(device_media_)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -330,7 +330,7 @@ private:
         HttpResponse auth_response =
             RequireAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=auth",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id, auth_response);
@@ -340,7 +340,7 @@ private:
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
         if (!ParseFlvStreamName(request, &stream_id, &stream_name)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu reason=path path=%s",
                             static_cast<unsigned long long>(connection_id),
                             request.path.c_str());
@@ -354,7 +354,7 @@ private:
         const MediaSourceStatus browser_status =
             media_source->GetBrowserStatus(stream_id);
         if (!browser_status.flv_supported) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -368,7 +368,7 @@ private:
             return;
         }
         if (!browser_status.running) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s reason=not_ready "
                             "codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -383,7 +383,7 @@ private:
 
         MediaFlvStartData start_data =
             media_source->GetFlvStartData(stream_id);
-        INFRA_LOG_INFO(kHttpModuleName,
+        Info(kHttpModuleName,
                        "HTTP-FLV start-data conn=%llu stream=%s supported=%d "
                        "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d "
                        "generation=%llu",
@@ -399,7 +399,7 @@ private:
         if (!HasUsableFlvStartData(start_data)) {
             const bool keyframe_requested =
                 RequestBrowserKeyFrame(media_source, stream_id);
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=start_data codec=%s running=%d flv_ready=%d "
                             "file=%zu sequence=%zu cached_flv=%zu "
@@ -428,7 +428,7 @@ private:
             stream->Start(start_data, &cached_flv_bytes);
         if (start_status != HttpFlvSessionStartStatus::kStarted) {
             delete stream;
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=%s",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id),
@@ -449,7 +449,7 @@ private:
             stream);
         if (client_id == 0) {
             delete stream;
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=attach",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
@@ -463,14 +463,14 @@ private:
         client.id = client_id;
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_flv_source->DetachFlvClient(client_id);
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
             MediaFlvStartDataUnref(&start_data);
             return;
         }
-        INFRA_LOG_INFO(kHttpModuleName,
+        Info(kHttpModuleName,
                        "HTTP-FLV attached conn=%llu stream=%s client=%llu "
                        "wait_keyframe=%d request_keyframe=1 cached_flv=%zu "
                        "cached_bytes=%zu gop_complete=%d",
@@ -487,7 +487,7 @@ private:
                             const HttpRequest &request) {
         if (media_source_ == nullptr ||
             media_mjpeg_source_ == nullptr) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -495,7 +495,7 @@ private:
             return;
         }
         if (IsMediaRestarting(device_media_)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
@@ -507,7 +507,7 @@ private:
         HttpResponse auth_response =
             RequireAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=auth",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id, auth_response);
@@ -517,7 +517,7 @@ private:
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
         if (!ParseMjpegStreamName(request, &stream_id, &stream_name)) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=path path=%s",
                             static_cast<unsigned long long>(connection_id),
                             request.path.c_str());
@@ -529,7 +529,7 @@ private:
         const MediaSourceStatus browser_status =
             media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.mjpeg_supported) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -542,7 +542,7 @@ private:
             return;
         }
         if (!browser_status.mjpeg_ready) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=not_ready codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -558,7 +558,7 @@ private:
             new MjpegConnectionSink(writer_, connection_id);
         if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {
             delete sink;
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s "
                             "reason=no_session",
                             static_cast<unsigned long long>(connection_id),
@@ -578,7 +578,7 @@ private:
                 reinterpret_cast<const uint8_t *>(header_block.data()),
                 header_block.size())) {
             delete sink;
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=enqueue",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
@@ -590,7 +590,7 @@ private:
             media_mjpeg_source_->AttachMjpegClient(stream_id, sink);
         if (client_id == 0) {
             delete sink;
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=attach",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
@@ -603,13 +603,13 @@ private:
         client.id = client_id;
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_mjpeg_source_->DetachMjpegClient(client_id);
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
             return;
         }
-        INFRA_LOG_INFO(kHttpModuleName,
+        Info(kHttpModuleName,
                        "HTTP-MJPEG attached conn=%llu stream=%s client=%llu",
                        static_cast<unsigned long long>(connection_id),
                        StreamIdToJsonString(stream_id),

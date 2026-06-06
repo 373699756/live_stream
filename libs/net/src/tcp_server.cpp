@@ -37,7 +37,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     if (!loop || options_.backlog == 0 || options_.max_connections == 0 ||
         options_.send_queue_capacity == 0 ||
         options_.send_buffer_limit_bytes == 0) {
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP listen invalid options ip=%s port=%u loop=%d "
                         "backlog=%u max_conn=%u send_q=%u send_limit=%u",
                         options_.address.ip.c_str(),
@@ -52,7 +52,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     sockaddr_in addr = ToSockAddr(options_.address);
     if (addr.sin_family != AF_INET) {
-        INFRA_LOG_ERROR(kModuleName, "TCP listen invalid address ip=%s port=%u",
+        Error(kModuleName, "TCP listen invalid address ip=%s port=%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port));
         return false;
@@ -60,7 +60,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     UniqueFd fd(CreateSocket(AF_INET, SOCK_STREAM, 0));
     if (!fd.valid()) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP socket failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -78,7 +78,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     if (!SetNonBlocking(fd.get())) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP nonblock failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -88,7 +88,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
         0) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP bind failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -97,7 +97,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     if (listen(fd.get(), static_cast<int>(options_.backlog)) != 0) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP listen failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -106,7 +106,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     NetAddress local = GetSocketAddress(fd.get(), false);
     if (local.port == 0) {
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP local address unavailable ip=%s port=%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port));
@@ -123,7 +123,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
             self->AcceptLoop();
         }
     })) {
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "TCP epoll add failed ip=%s port=%u local=%s:%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port),
@@ -133,7 +133,7 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
         loop_.reset();
         return false;
     }
-    INFRA_LOG_INFO(kModuleName, "TCP listening ip=%s port=%u local=%s:%u",
+    Info(kModuleName, "TCP listening ip=%s port=%u local=%s:%u",
                    options_.address.ip.c_str(),
                    static_cast<unsigned>(options_.address.port),
                    local.ip.c_str(), static_cast<unsigned>(local.port));

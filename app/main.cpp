@@ -98,19 +98,19 @@ int main(int argc, char **argv) {
     const ResolvedPaths resolved = BuildPaths(config_dir);
     const live_stream::RuntimePaths paths = resolved.ToRuntimePaths();
 
-    INFRA_LOG_INFO("app", "live_stream starting");
+    Info("app", "live_stream starting");
     live_stream::InstallAppSignalHandlers();
 
     live_stream::AppRuntime &app = live_stream::AppRuntime::Get();
     bool ok = app.Start(paths, static_root);
     if (ok) {
-        INFRA_LOG_INFO("app", "live_stream running");
+        Info("app", "live_stream running");
         app.RunUntilSignal();
     }
 
     app.Stop();
 
-    INFRA_LOG_INFO("app", "live_stream stopped");
+    Info("app", "live_stream stopped");
     infra::Log::Shutdown();
     return ok ? 0 : 1;
 }

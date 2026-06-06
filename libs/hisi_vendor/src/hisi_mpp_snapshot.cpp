@@ -101,7 +101,7 @@ void ReleaseVpssMappedFrame(uint8_t* data, uint32_t capacity, void* user) {
     if (data != nullptr && capacity > 0) {
         const HI_S32 munmap_status = HI_MPI_SYS_Munmap(data, capacity);
         if (munmap_status != HI_SUCCESS) {
-            INFRA_LOG_ERROR(
+            Error(
                 "hisi_vendor",
                 "CaptureYuvFrame: HI_MPI_SYS_Munmap failed: 0x%08x",
                 munmap_status);
@@ -110,7 +110,7 @@ void ReleaseVpssMappedFrame(uint8_t* data, uint32_t capacity, void* user) {
     const HI_S32 release_status = HI_MPI_VPSS_ReleaseChnFrame(
         mapped_frame->group, mapped_frame->channel, &mapped_frame->frame_info);
     if (release_status != HI_SUCCESS) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "CaptureYuvFrame: HI_MPI_VPSS_ReleaseChnFrame failed: 0x%08x",
             release_status);
@@ -283,7 +283,7 @@ bool SendJpegFrame(JpegCaptureContext* context) {
 bool WaitJpegStream(VENC_CHN jpeg_channel, uint32_t timeout_ms) {
     const int fd = HI_MPI_VENC_GetFd(jpeg_channel);
     if (fd < 0 || fd >= FD_SETSIZE) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "CaptureJpeg: HI_MPI_VENC_GetFd failed: %d", fd);
         return false;
     }
@@ -299,10 +299,10 @@ bool WaitJpegStream(VENC_CHN jpeg_channel, uint32_t timeout_ms) {
         select(fd + 1, &read_fds, nullptr, nullptr, &select_timeout);
     if (select_ret <= 0 || !FD_ISSET(fd, &read_fds)) {
         if (select_ret < 0) {
-            INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: select failed: %s",
+            Error("hisi_vendor", "CaptureJpeg: select failed: %s",
                             strerror(errno));
         } else {
-            INFRA_LOG_ERROR("hisi_vendor",
+            Error("hisi_vendor",
                             "CaptureJpeg: timed out after %u ms",
                             timeout_ms);
         }
@@ -321,7 +321,7 @@ bool QueryJpegPacks(VENC_CHN jpeg_channel, VENC_CHN_STATUS_S* status) {
         return false;
     }
     if (status->u32CurPacks == 0) {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: no JPEG packs available");
+        Error("hisi_vendor", "CaptureJpeg: no JPEG packs available");
         return false;
     }
     return true;
@@ -335,7 +335,7 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
     *packs = static_cast<VENC_PACK_S*>(
         std::calloc(status.u32CurPacks, sizeof(VENC_PACK_S)));
     if (*packs == nullptr) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "CaptureJpeg: calloc packs=%u failed",
                         status.u32CurPacks);
         return false;
@@ -425,7 +425,7 @@ void ReleaseJpegStream(VENC_CHN jpeg_channel, VENC_STREAM_S* stream,
         const HI_S32 release_status =
             HI_MPI_VENC_ReleaseStream(jpeg_channel, stream);
         if (release_status != HI_SUCCESS) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "CaptureJpeg: HI_MPI_VENC_ReleaseStream failed: 0x%08x",
             release_status);
@@ -466,7 +466,7 @@ JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
         result.size = buffer->size;
         result.pts_us = stream.pstPack[0].u64PTS;
     } else {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: invalid JPEG stream");
+        Error("hisi_vendor", "CaptureJpeg: invalid JPEG stream");
     }
     ReleaseJpegStream(jpeg_channel, &stream, packs);
     return result;
@@ -481,7 +481,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     result.height = config.size.height;
 
     if (!impl_->system_initialized_) {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureJpeg: system not initialized");
+        Error("hisi_vendor", "CaptureJpeg: system not initialized");
         return result;
     }
     if (config.jpeg_venc_channel < 0 || config.snap_vpss_group < 0 ||
@@ -512,7 +512,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     result.width = size.width;
     result.height = size.height;
     if (!impl_->system_initialized_) {
-        INFRA_LOG_ERROR("hisi_vendor", "CaptureYuvFrame: system not initialized");
+        Error("hisi_vendor", "CaptureYuvFrame: system not initialized");
         return result;
     }
     if (vpss_channel.module != MppModule::kVpss || size.width == 0 ||
@@ -545,7 +545,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     const uint32_t total_size = y_size + uv_size;
     if (stride_y == 0 || width == 0 || height == 0 ||
         frame.u64PhyAddr[0] == 0 || total_size == 0) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "CaptureYuvFrame: invalid frame grp=%d chn=%d width=%u height=%u "
             "stride_y=%u stride_uv=%u phy0=0x%llx phy1=0x%llx vir=0x%llx "
@@ -561,7 +561,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
     void* mapped = HI_MPI_SYS_MmapCache(frame.u64PhyAddr[0], total_size);
     if (mapped == nullptr) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "CaptureYuvFrame: mmap skipped grp=%d chn=%d phy=0x%llx "
             "vir=0x%llx size=%u",

@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: log.h
- * Brief: 定义普通运行日志接口和 INFRA_LOG_* 便捷宏。
+ * Brief: 定义普通运行日志接口和 Trace/Debug/Info/Warn/Error/Fatal 便捷宏。
  */
 
 #ifndef LIVE_STREAM_INFRA_LOG_H_
@@ -76,12 +76,12 @@ public:
      *
      * @param level 日志等级。
      * @param module 模块名，允许为空；为空时实现应使用 "unknown"。
-     * @param file 源文件名，通常由 INFRA_LOG_* 宏传入 __FILE__。
-     * @param line 源文件行号，通常由 INFRA_LOG_* 宏传入 __LINE__。
+     * @param file 源文件名，通常由日志宏传入 __FILE__。
+     * @param line 源文件行号，通常由日志宏传入 __LINE__。
      * @param fmt printf 风格格式字符串，允许为空。
      * @param ... fmt 对应的可变参数。
      *
-     * @note 一般业务代码应使用 INFRA_LOG_* 宏，不直接调用 Write()。
+     * @note 一般业务代码应使用日志宏，不直接调用 Write()。
      */
     static void Write(LogLevel level,
                       const char* module,
@@ -93,17 +93,17 @@ public:
 
 }  // namespace infra
 
-#define INFRA_LOG_TRACE(module, fmt, ...) \
+#define Trace(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kTrace, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define INFRA_LOG_DEBUG(module, fmt, ...) \
+#define Debug(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kDebug, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define INFRA_LOG_INFO(module, fmt, ...) \
+#define Info(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kInfo, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define INFRA_LOG_WARN(module, fmt, ...) \
+#define Warn(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kWarn, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define INFRA_LOG_ERROR(module, fmt, ...) \
+#define Error(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kError, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define INFRA_LOG_FATAL(module, fmt, ...) \
+#define Fatal(module, fmt, ...) \
     infra::Log::Write(infra::LogLevel::kFatal, module, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 #endif  // LIVE_STREAM_INFRA_LOG_H_

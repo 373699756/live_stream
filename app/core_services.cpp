@@ -110,7 +110,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     if (paths.business_config_path == nullptr ||
         paths.default_config_path == nullptr ||
         paths.auth_users_path == nullptr || paths.operation_log_path == nullptr) {
-        INFRA_LOG_ERROR("app", "Core service paths are incomplete");
+        Error("app", "Core service paths are incomplete");
         return false;
     }
 
@@ -118,7 +118,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     logger_config.operation_log_path = paths.operation_log_path;
     logger_ = CreateLogger(logger_config);
     if (!logger_ || !logger_->Start()) {
-        INFRA_LOG_ERROR("app", "Start logger service failed: path=%s",
+        Error("app", "Start logger service failed: path=%s",
                         paths.operation_log_path);
         Stop();
         return false;
@@ -130,20 +130,20 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     config_options.create_storage_if_missing = false;
     config_ = CreateConfig(config_options);
     if (!config_ || !config_->Start()) {
-        INFRA_LOG_ERROR("app", "Start config service failed: config=%s default=%s",
+        Error("app", "Start config service failed: config=%s default=%s",
                         paths.business_config_path, paths.default_config_path);
         Stop();
         return false;
     }
     if (!InstallProductScopeConfigGuards(config_.get())) {
-        INFRA_LOG_ERROR("app", "Install product scope config guards failed");
+        Error("app", "Install product scope config guards failed");
         Stop();
         return false;
     }
 
     event_ = CreateEvent();
     if (!event_ || !event_->Start()) {
-        INFRA_LOG_ERROR("app", "Start event service failed");
+        Error("app", "Start event service failed");
         Stop();
         return false;
     }
@@ -161,7 +161,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
         (void)auth_->SetAuditSink(auth_audit_sink_.get());
     }
     if (!auth_ || !auth_->Start()) {
-        INFRA_LOG_ERROR("app", "Start auth service failed: users=%s",
+        Error("app", "Start auth service failed: users=%s",
                         paths.auth_users_path);
         Stop();
         return false;

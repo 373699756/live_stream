@@ -24,7 +24,7 @@ void RtspRequestHandler::HandleRequest(
   if (session == nullptr || delegate_ == nullptr) {
     return;
   }
-  INFRA_LOG_INFO(kRtspRequestHandlerModule,
+  Info(kRtspRequestHandlerModule,
                  "RTSP request conn=%llu peer=%s:%u method=%s uri=%s",
                  static_cast<unsigned long long>(session->connection_id),
                  session->peer.ip.c_str(),
@@ -41,14 +41,14 @@ void RtspRequestHandler::HandleRequest(
   StreamId stream_id = session->stream_id;
   if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
       !PathToStreamId(request.uri, &stream_id)) {
-    INFRA_LOG_ERROR(kRtspRequestHandlerModule,
+    Error(kRtspRequestHandlerModule,
                     "RTSP path not found uri=%s", request.uri.c_str());
     SendResponse(session->connection_id, 404, request, {}, "");
     return;
   }
   if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
       !delegate_->IsRtspStreamAvailable(stream_id)) {
-    INFRA_LOG_ERROR(kRtspRequestHandlerModule,
+    Error(kRtspRequestHandlerModule,
                     "RTSP stream unavailable uri=%s", request.uri.c_str());
     SendResponse(session->connection_id, 404, request, {}, "");
     return;
@@ -112,7 +112,7 @@ void RtspRequestHandler::HandlePlay(
   if (delegate_->RequestRtspKeyFrame(session->stream_id)) {
     delegate_->OnRtspKeyFrameRequested(*session);
   }
-  INFRA_LOG_INFO(kRtspRequestHandlerModule,
+  Info(kRtspRequestHandlerModule,
                  "RTSP play conn=%llu stream=%s transport=%s",
                  static_cast<unsigned long long>(session->connection_id),
                  StreamPath(session->stream_id),

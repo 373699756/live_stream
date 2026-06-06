@@ -16,10 +16,10 @@ int main() {
         return 1;
     }
 
-    INFRA_LOG_DEBUG("test", "filtered log");
-    INFRA_LOG_INFO("test", "info log %d", 1);
-    INFRA_LOG_WARN("test", "warn log");
-    INFRA_LOG_ERROR("test", "error log");
+    Debug("test", "filtered log");
+    Info("test", "info log %d", 1);
+    Warn("test", "warn log");
+    Error("test", "error log");
     infra::Log::Shutdown();
 
     const std::string content = infra::File::ReadAll(log_path);

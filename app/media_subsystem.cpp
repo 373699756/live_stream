@@ -26,7 +26,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     media_options.sdk = &sdk;
     media_ = CreateDeviceMedia(media_options);
     if (!media_ || !media_->Start()) {
-        INFRA_LOG_ERROR("app", "Start media service failed");
+        Error("app", "Start media service failed");
         Stop();
         return false;
     }
@@ -39,7 +39,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     snapshot_options.sdk = &sdk;
     snapshot_.reset(new Snapshot(snapshot_options));
     if (!snapshot_ || !snapshot_->Start()) {
-        INFRA_LOG_ERROR("app", "Start snapshot service failed");
+        Error("app", "Start snapshot service failed");
         Stop();
         return false;
     }
@@ -53,11 +53,11 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     ai_options.sdk = &sdk;
     ai_.reset(new Ai(ai_options));
     if (!ai_ || !ai_->Start()) {
-        INFRA_LOG_ERROR("app", "Start ai service failed");
+        Error("app", "Start ai service failed");
         Stop();
         return false;
     }
-    INFRA_LOG_INFO("app", "AI service ready");
+    Info("app", "AI service ready");
 
     RegionOptions overlay_options;
     overlay_options.config = config;
@@ -66,7 +66,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     overlay_options.sdk = &sdk;
     overlay_.reset(new Region(overlay_options));
     if (!overlay_ || !overlay_->Start()) {
-        INFRA_LOG_ERROR("app", "Start overlay service failed");
+        Error("app", "Start overlay service failed");
         Stop();
         return false;
     }

@@ -24,7 +24,7 @@ bool DeviceSubsystem::Start(CoreServices &core_services,
     system_options.platform = system_platform_.get();
     system_ = CreateSystem(system_options);
     if (!system_ || !system_->Start()) {
-        INFRA_LOG_ERROR("app", "Start system service failed");
+        Error("app", "Start system service failed");
         Stop();
         return false;
     }
@@ -38,7 +38,7 @@ bool DeviceSubsystem::Start(CoreServices &core_services,
     time_options.default_ntp_config.enabled = false;
     time_ = CreateTime(time_options);
     if (!time_ || !time_->Start()) {
-        INFRA_LOG_ERROR("app", "Start time service failed");
+        Error("app", "Start time service failed");
         Stop();
         return false;
     }
@@ -52,7 +52,7 @@ bool DeviceSubsystem::Start(CoreServices &core_services,
     network_options.platform = network_platform_.get();
     network_ = CreateNetworkConfig(network_options);
     if (!network_ || !network_->Start()) {
-        INFRA_LOG_ERROR("app", "Start network service failed: ifname=%s",
+        Error("app", "Start network service failed: ifname=%s",
                         network_options.default_ifname.c_str());
         Stop();
         return false;
@@ -64,7 +64,7 @@ bool DeviceSubsystem::Start(CoreServices &core_services,
     alarm_options.logger = core_services.logger();
     alarm_ = CreateAlarm(alarm_options);
     if (!alarm_ || !alarm_->Start()) {
-        INFRA_LOG_ERROR("app", "Start alarm service failed");
+        Error("app", "Start alarm service failed");
         Stop();
         return false;
     }
@@ -77,7 +77,7 @@ bool DeviceSubsystem::Start(CoreServices &core_services,
     upgrade_options.platform = upgrade_platform_.get();
     upgrade_ = CreateUpgrade(upgrade_options);
     if (!upgrade_ || !upgrade_->Start()) {
-        INFRA_LOG_ERROR("app", "Start upgrade service failed");
+        Error("app", "Start upgrade service failed");
         Stop();
         return false;
     }

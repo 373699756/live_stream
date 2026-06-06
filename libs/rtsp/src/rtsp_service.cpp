@@ -277,7 +277,7 @@ private:
             (void)dependencies_.net_engine->Close(connection_id);
             return;
         }
-        INFRA_LOG_INFO("rtsp", "RTSP client connected conn=%llu peer=%s:%u",
+        Info("rtsp", "RTSP client connected conn=%llu peer=%s:%u",
                        static_cast<unsigned long long>(connection_id),
                        session->peer.ip.c_str(),
                        static_cast<unsigned>(session->peer.port));
@@ -293,7 +293,7 @@ private:
         if (!session) {
             return;
         }
-        INFRA_LOG_INFO("rtsp",
+        Info("rtsp",
                        "RTSP client disconnected conn=%llu peer=%s:%u",
                        static_cast<unsigned long long>(id),
                        session->peer.ip.c_str(),
@@ -360,7 +360,7 @@ private:
             return true;
         }
         if (dependencies_.auth == nullptr) {
-            INFRA_LOG_ERROR("rtsp", "RTSP auth service unavailable");
+            Error("rtsp", "RTSP auth service unavailable");
             SendResponse(session->connection_id, 500, CSeq(request), {}, "");
             return false;
         }
@@ -374,14 +374,14 @@ private:
             if (FindPeerAuthGrant(session->peer.ip, stream_id,
                                   &cached_user_name)) {
                 session->MarkAuthenticated(stream_id, cached_user_name);
-                INFRA_LOG_INFO("rtsp",
+                Info("rtsp",
                                "RTSP auth reused peer=%s user=%s uri=%s",
                                session->peer.ip.c_str(),
                                cached_user_name.c_str(), request.uri.c_str());
                 return true;
             }
             AddAuthFailure();
-            INFRA_LOG_INFO("rtsp",
+            Info("rtsp",
                            "RTSP auth required peer=%s uri=%s",
                            session->peer.ip.c_str(), request.uri.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
@@ -391,7 +391,7 @@ private:
         std::string decoded;
         if (!DecodeBase64(authorization.substr(prefix.size()), &decoded)) {
             AddAuthFailure();
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP auth invalid base64 peer=%s",
                             session->peer.ip.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
@@ -401,7 +401,7 @@ private:
         const size_t colon = decoded.find(':');
         if (colon == std::string::npos) {
             AddAuthFailure();
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP auth invalid credential peer=%s",
                             session->peer.ip.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
@@ -415,7 +415,7 @@ private:
         LoginResult login_result = dependencies_.auth->Login(login);
         if (login_result.token.empty()) {
             AddAuthFailure();
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP auth rejected peer=%s user=%s",
                             session->peer.ip.c_str(), login.user_name.c_str());
             SendResponse(session->connection_id, 401, CSeq(request),
@@ -429,7 +429,7 @@ private:
             static_cast<void>(
                 dependencies_.auth->Logout(logout_context));
             AddAuthFailure();
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP auth rejected peer=%s user=%s "
                             "reason=must_change_password",
                             session->peer.ip.c_str(), login.user_name.c_str());
@@ -443,7 +443,7 @@ private:
             static_cast<void>(
                 dependencies_.auth->Logout(logout_context));
             AddAuthFailure();
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP auth forbidden peer=%s user=%s target=%s",
                             session->peer.ip.c_str(), login.user_name.c_str(),
                             target.c_str());
@@ -455,7 +455,7 @@ private:
                                    login_result.principal.user_name);
         RememberPeerAuthGrant(session->peer.ip, stream_id,
                               login_result.principal.user_name);
-        INFRA_LOG_INFO("rtsp",
+        Info("rtsp",
                        "RTSP auth accepted peer=%s user=%s target=%s",
                        session->peer.ip.c_str(),
                        login_result.principal.user_name.c_str(),
@@ -468,7 +468,7 @@ private:
                             StreamId stream_id) override {
         const std::string transport = HeaderValue(request, "Transport");
         if (transport.empty()) {
-            INFRA_LOG_ERROR("rtsp", "RTSP setup missing Transport");
+            Error("rtsp", "RTSP setup missing Transport");
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return false;
         }
@@ -482,7 +482,7 @@ private:
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
             if (client_port <= 0 || client_port > 65535 || udp_socket_id_ == 0) {
-                INFRA_LOG_ERROR(
+                Error(
                     "rtsp",
                     "RTSP setup unsupported UDP transport=%s udp=%llu",
                     transport.c_str(),
@@ -501,7 +501,7 @@ private:
                                  std::to_string(server_rtp.port + 1);
             AddUdpSession();
         } else {
-            INFRA_LOG_ERROR("rtsp",
+            Error("rtsp",
                             "RTSP setup unsupported transport=%s",
                             transport.c_str());
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
@@ -509,7 +509,7 @@ private:
         }
         RememberPeerAuthGrant(session->peer.ip, stream_id,
                               session->authenticated_user);
-        INFRA_LOG_INFO("rtsp",
+        Info("rtsp",
                        "RTSP setup conn=%llu stream=%s transport=%s",
                        static_cast<unsigned long long>(
                            session->connection_id),

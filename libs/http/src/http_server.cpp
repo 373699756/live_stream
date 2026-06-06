@@ -107,7 +107,7 @@ bool HttpServer::Prepare() {
 
 bool HttpServer::Start() {
     if (!Prepare()) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP server prepare failed");
+        Error(kHttpModuleName, "HTTP server prepare failed");
         return false;
     }
     infra::Executor *stream_executor = nullptr;
@@ -115,12 +115,12 @@ bool HttpServer::Start() {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (started_) {
-            INFRA_LOG_INFO(kHttpModuleName,
+            Info(kHttpModuleName,
                            "HTTP server start skipped: already started");
             return true;
         }
         if (dependencies_.net_engine == nullptr) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP server start failed: net engine null");
             return false;
         }
@@ -129,13 +129,13 @@ bool HttpServer::Start() {
     }
     if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
                        options_.stream_executor_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP stream executor start failed");
         return false;
     }
     if (!StartExecutor(control_executor, options_.control_executor_worker_count,
                        options_.control_executor_queue_capacity)) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP control executor start failed");
         StopExecutor(stream_executor);
         return false;
@@ -155,7 +155,7 @@ bool HttpServer::Start() {
     TcpServerId server =
         dependencies_.net_engine->ListenTcp(server_config, callbacks);
     if (server == 0) {
-        INFRA_LOG_ERROR(kHttpModuleName, "HTTP listen tcp failed");
+        Error(kHttpModuleName, "HTTP listen tcp failed");
         StopExecutor(control_executor);
         StopExecutor(stream_executor);
         return false;
@@ -171,7 +171,7 @@ bool HttpServer::Start() {
                                  "vendor/hls.min.js"});
     for (const StaticAssetStatus &asset : static_assets) {
         if (!asset.exists || asset.size == 0) {
-            INFRA_LOG_ERROR(
+            Error(
                 kHttpModuleName,
                 "HTTP static asset missing relative=%s path=%s exists=%d "
                 "size=%llu",
@@ -214,7 +214,7 @@ void HttpServer::Stop() {
         stream_executor = stream_executor_.get();
         control_executor = control_executor_.get();
     }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
+    Info(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
                    static_cast<unsigned long long>(server_id),
                    media_clients.size());
     NotifyStreamsClosed(media_clients);
@@ -228,7 +228,7 @@ void HttpServer::Stop() {
     }
     StopExecutor(control_executor);
     StopExecutor(stream_executor);
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP stopped");
+    Info(kHttpModuleName, "HTTP stopped");
 }
 
 void HttpServer::Release() {
@@ -336,14 +336,14 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
     }
     if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
         if (response.status_code >= 500) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP response send failed conn=%llu status=%d "
                             "body=%zu header=%zu close=%d",
                             static_cast<unsigned long long>(connection_id),
                             response.status_code, body_size,
                             header.size(), close_after_response ? 1 : 0);
         } else {
-            INFRA_LOG_DEBUG(kHttpModuleName,
+            Debug(kHttpModuleName,
                             "HTTP response send failed conn=%llu status=%d "
                             "body=%zu header=%zu close=%d",
                             static_cast<unsigned long long>(connection_id),
@@ -489,7 +489,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end() || iter->second == nullptr ||
             !iter->second->is_streaming()) {
-            INFRA_LOG_ERROR(kHttpModuleName,
+            Error(kHttpModuleName,
                             "HTTP-FLV enqueue reject conn=%llu reason=closed "
                             "size=%zu",
                             static_cast<unsigned long long>(connection_id),
@@ -499,14 +499,14 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         net_engine = dependencies_.net_engine;
     }
     if (net_engine == nullptr) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP-FLV enqueue reject conn=%llu reason=no_net "
                         "size=%zu",
                         static_cast<unsigned long long>(connection_id), size);
         return false;
     }
     if (net_engine->PendingBytes(connection_id) >= kMaxStreamingQueuedBytes) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP-FLV close conn=%llu reason=queue_full "
                         "pending=%u limit=%zu next=%zu",
                         static_cast<unsigned long long>(connection_id),
@@ -516,7 +516,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         return false;
     }
     if (!net_engine->SendSlices(connection_id, slices)) {
-        INFRA_LOG_ERROR(kHttpModuleName,
+        Error(kHttpModuleName,
                         "HTTP-FLV send failed conn=%llu size=%zu pending=%u",
                         static_cast<unsigned long long>(connection_id),
                         size, net_engine->PendingBytes(connection_id));
@@ -534,7 +534,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
             new HttpSession(connection_id, std::move(peer.ip)));
         ++stats_.active_connections;
     }
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
+    Info(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
                    static_cast<unsigned long long>(connection_id),
                    peer_ip.c_str());
     ArmConnectionTimer(connection_id, options_.request_timeout_ms);
@@ -555,7 +555,7 @@ void HttpServer::OnClose(ConnectionId connection_id) {
         }
     }
     NotifyStreamClosed(closed.media_client);
-    INFRA_LOG_INFO(kHttpModuleName,
+    Info(kHttpModuleName,
                    "HTTP close conn=%llu streaming=%d media_type=%d client=%llu",
                    static_cast<unsigned long long>(connection_id),
                    closed.was_streaming ? 1 : 0,
@@ -675,7 +675,7 @@ HttpResponse HttpServer::ParseFailureResponse(
 void HttpServer::LogRequests(
     const std::vector<HttpRequestLog> &request_logs) {
     for (const HttpRequestLog &log : request_logs) {
-        INFRA_LOG_INFO(kHttpModuleName,
+        Info(kHttpModuleName,
                        "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
                        static_cast<unsigned long long>(log.connection_id),
                        log.client_ip.c_str(), HttpMethodName(log.method),

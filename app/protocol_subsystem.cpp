@@ -176,7 +176,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     const infra::ExecutorOptions callback_executor_options =
         BuildNetCallbackExecutorOptions();
     if (!net_callback_executor_->Start(callback_executor_options)) {
-        INFRA_LOG_ERROR("app", "Start net callback executor failed");
+        Error("app", "Start net callback executor failed");
         Stop();
         return false;
     }
@@ -185,7 +185,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         BuildNetEngineOptions(net_callback_executor_.get());
     net_engine_ = CreateNetEngine(net_options);
     if (!net_engine_ || !net_engine_->Start()) {
-        INFRA_LOG_ERROR("app", "Start net engine failed");
+        Error("app", "Start net engine failed");
         Stop();
         return false;
     }
@@ -199,7 +199,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         CreateMediaPipeline(media_source_options,
                                  media_source_dependencies);
     if (!media_source_ || !media_source_->Start()) {
-        INFRA_LOG_ERROR("app", "Start media source service failed");
+        Error("app", "Start media source service failed");
         Stop();
         return false;
     }
@@ -209,7 +209,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
-        INFRA_LOG_ERROR("app",
+        Error("app",
                         "Start rtsp service failed, continue without RTSP: "
                         "listen=%s:%u",
                         runtime_config.listen_ip.c_str(),
@@ -222,7 +222,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     } else {
         refs.rtsp = rtsp_.get();
         const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
-        INFRA_LOG_INFO("app", "RTSP service listening %s:%u",
+        Info("app", "RTSP service listening %s:%u",
                        rtsp_address.ip.c_str(),
                        static_cast<unsigned>(rtsp_address.port));
     }
@@ -233,7 +233,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         BuildWebrtcDependencies(refs);
     webrtc_ = CreateWebrtc(webrtc_options, webrtc_dependencies);
     if (!webrtc_ || !webrtc_->Start()) {
-        INFRA_LOG_ERROR(
+        Error(
             "app",
             "Start webrtc service failed, continue without WebRTC: "
             "enabled=%d base=%u",
@@ -253,7 +253,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         BuildOnvifDependencies(refs);
     onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
-        INFRA_LOG_ERROR("app",
+        Error("app",
                         "Start onvif service failed, continue without ONVIF: "
                         "device_port=%u",
                         static_cast<unsigned>(runtime_config.onvif_device_port));
@@ -264,7 +264,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.onvif = nullptr;
     } else {
         refs.onvif = onvif_.get();
-        INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
+        Info("app", "ONVIF service started listen=%s:%u discovery=%u",
                        runtime_config.listen_ip.c_str(),
                        static_cast<unsigned>(runtime_config.onvif_device_port),
                        static_cast<unsigned>(runtime_config.onvif_discovery_port));
@@ -282,7 +282,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.media.snapshot, refs.webrtc, refs.media_pipeline,
         refs.media_pipeline, refs.media_pipeline);
     if (!http_ || !http_->Start()) {
-        INFRA_LOG_ERROR("app", "Start http service failed: listen=%s:%u root=%s",
+        Error("app", "Start http service failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),
                         static_cast<unsigned>(runtime_config.http_port),
                         runtime_config.static_root.c_str());
@@ -290,7 +290,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
     const HttpListenAddress http_address = http_->LocalAddress();
-    INFRA_LOG_INFO("app", "HTTP service listening %s:%u root=%s",
+    Info("app", "HTTP service listening %s:%u root=%s",
                    http_address.ip.c_str(),
                    static_cast<unsigned>(http_address.port),
                    runtime_config.static_root.c_str());
@@ -301,40 +301,40 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
 
 void ProtocolSubsystem::Stop() {
     if (http_) {
-        INFRA_LOG_INFO("app", "Stop HTTP service begin");
+        Info("app", "Stop HTTP service begin");
         http_->Stop();
-        INFRA_LOG_INFO("app", "Stop HTTP service done");
+        Info("app", "Stop HTTP service done");
     }
     if (onvif_) {
-        INFRA_LOG_INFO("app", "Stop ONVIF service begin");
+        Info("app", "Stop ONVIF service begin");
         onvif_->Stop();
-        INFRA_LOG_INFO("app", "Stop ONVIF service done");
+        Info("app", "Stop ONVIF service done");
     }
     if (webrtc_) {
-        INFRA_LOG_INFO("app", "Stop WebRTC service begin");
+        Info("app", "Stop WebRTC service begin");
         webrtc_->Stop();
-        INFRA_LOG_INFO("app", "Stop WebRTC service done");
+        Info("app", "Stop WebRTC service done");
     }
     if (rtsp_) {
-        INFRA_LOG_INFO("app", "Stop RTSP service begin");
+        Info("app", "Stop RTSP service begin");
         rtsp_->Stop();
-        INFRA_LOG_INFO("app", "Stop RTSP service done");
+        Info("app", "Stop RTSP service done");
     }
     if (media_source_) {
-        INFRA_LOG_INFO("app", "Stop media source service begin");
+        Info("app", "Stop media source service begin");
         media_source_->Stop();
-        INFRA_LOG_INFO("app", "Stop media source service done");
+        Info("app", "Stop media source service done");
     }
     if (net_engine_) {
-        INFRA_LOG_INFO("app", "Stop net engine begin");
+        Info("app", "Stop net engine begin");
         net_engine_->Stop();
         net_engine_.reset();
-        INFRA_LOG_INFO("app", "Stop net engine done");
+        Info("app", "Stop net engine done");
     }
     if (net_callback_executor_) {
-        INFRA_LOG_INFO("app", "Stop net callback executor begin");
+        Info("app", "Stop net callback executor begin");
         net_callback_executor_->Stop(infra::StopMode::kDiscard);
-        INFRA_LOG_INFO("app", "Stop net callback executor done");
+        Info("app", "Stop net callback executor done");
     }
     http_.reset();
     onvif_.reset();

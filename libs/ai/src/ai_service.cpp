@@ -899,7 +899,7 @@ private:
         const std::string model_data = infra::File::ReadAll(model_path);
         if (model_data.empty() ||
             model_data.size() > static_cast<size_t>(0xffffffffU)) {
-            INFRA_LOG_ERROR("ai", "Read NNIE model failed: path=%s",
+            Error("ai", "Read NNIE model failed: path=%s",
                             model_path.c_str());
             return false;
         }
@@ -912,7 +912,7 @@ private:
                                          model_size);
         if (ret != HI_SUCCESS || model_phy_addr == 0 ||
             model_vir_addr == nullptr) {
-            INFRA_LOG_ERROR("ai", "Allocate NNIE model MMZ failed: ret=%#x",
+            Error("ai", "Allocate NNIE model MMZ failed: ret=%#x",
                             static_cast<unsigned int>(ret));
             return false;
         }
@@ -926,7 +926,7 @@ private:
 
         ret = HI_MPI_SVP_NNIE_LoadModel(&model_buf_, &model_);
         if (ret != HI_SUCCESS) {
-            INFRA_LOG_ERROR("ai", "Load NNIE model failed: ret=%#x",
+            Error("ai", "Load NNIE model failed: ret=%#x",
                             static_cast<unsigned int>(ret));
             HI_MPI_SYS_MmzFree(model_buf_.u64PhyAddr, model_vir_addr);
             std::memset(&model_buf_, 0, sizeof(model_buf_));
@@ -955,7 +955,7 @@ private:
         if (model_loaded_) {
             const HI_S32 ret = HI_MPI_SVP_NNIE_UnloadModel(&model_);
             if (ret != HI_SUCCESS) {
-                INFRA_LOG_ERROR("ai", "Unload NNIE model failed: ret=%#x",
+                Error("ai", "Unload NNIE model failed: ret=%#x",
                                 static_cast<unsigned int>(ret));
             }
             model_loaded_ = false;
@@ -982,7 +982,7 @@ private:
             kNnieMaxInputNum, 0, &model_, task_buf_sizes_,
             model_.u32NetSegNum);
         if (ret != HI_SUCCESS) {
-            INFRA_LOG_ERROR("ai", "Get NNIE task buffer size failed: ret=%#x",
+            Error("ai", "Get NNIE task buffer size failed: ret=%#x",
                             static_cast<unsigned int>(ret));
             return false;
         }
@@ -1006,7 +1006,7 @@ private:
                                          total_workspace_size);
         if (ret != HI_SUCCESS || workspace_phy_addr == 0 ||
             workspace_vir_addr == nullptr) {
-            INFRA_LOG_ERROR("ai", "Allocate NNIE workspace failed: ret=%#x",
+            Error("ai", "Allocate NNIE workspace failed: ret=%#x",
                             static_cast<unsigned int>(ret));
             return false;
         }
@@ -1014,7 +1014,7 @@ private:
         ret = HI_MPI_SYS_MmzFlushCache(workspace_phy_addr, workspace_vir_addr,
                                        total_workspace_size);
         if (ret != HI_SUCCESS) {
-            INFRA_LOG_ERROR("ai", "Flush NNIE workspace failed: ret=%#x",
+            Error("ai", "Flush NNIE workspace failed: ret=%#x",
                             static_cast<unsigned int>(ret));
             HI_MPI_SYS_MmzFree(workspace_phy_addr, workspace_vir_addr);
             return false;
@@ -1031,7 +1031,7 @@ private:
     bool ValidateLoadedModel() const {
         if (model_.u32NetSegNum == 0 ||
             model_.u32NetSegNum > SVP_NNIE_MAX_NET_SEG_NUM) {
-            INFRA_LOG_ERROR("ai", "Invalid NNIE segment count: count=%u",
+            Error("ai", "Invalid NNIE segment count: count=%u",
                             static_cast<unsigned int>(model_.u32NetSegNum));
             return false;
         }
@@ -1040,7 +1040,7 @@ private:
             if (seg.u16SrcNum == 0 || seg.u16SrcNum > SVP_NNIE_MAX_INPUT_NUM ||
                 seg.u16DstNum > SVP_NNIE_MAX_OUTPUT_NUM ||
                 seg.enNetType != SVP_NNIE_NET_TYPE_CNN) {
-                INFRA_LOG_ERROR(
+                Error(
                     "ai",
                     "Unsupported NNIE segment: index=%u type=%d src=%u dst=%u",
                     static_cast<unsigned int>(i),
@@ -1051,7 +1051,7 @@ private:
             }
             for (HI_U32 j = 0; j < seg.u16SrcNum; ++j) {
                 if (!IsSupportedCnnNode(seg.astSrcNode[j])) {
-                    INFRA_LOG_ERROR("ai",
+                    Error("ai",
                                     "Unsupported NNIE src node: seg=%u node=%u",
                                     static_cast<unsigned int>(i),
                                     static_cast<unsigned int>(j));
@@ -1060,7 +1060,7 @@ private:
             }
             for (HI_U32 j = 0; j < seg.u16DstNum; ++j) {
                 if (!IsSupportedCnnNode(seg.astDstNode[j])) {
-                    INFRA_LOG_ERROR("ai",
+                    Error("ai",
                                     "Unsupported NNIE dst node: seg=%u node=%u",
                                     static_cast<unsigned int>(i),
                                     static_cast<unsigned int>(j));
@@ -1073,7 +1073,7 @@ private:
 
     bool ValidateForwardConfig() const {
         if (model_.u32NetSegNum != 1) {
-            INFRA_LOG_ERROR("ai",
+            Error("ai",
                             "Unsupported NNIE forward segment count: count=%u",
                             static_cast<unsigned int>(model_.u32NetSegNum));
             return false;
@@ -1093,7 +1093,7 @@ private:
             src.enType == SVP_BLOB_TYPE_U8 &&
             src.unShape.stWhc.u32Chn == 3 && dims_match;
         if (!direct_yuv && !planar_u8) {
-            INFRA_LOG_ERROR(
+            Error(
                 "ai",
                 "Unsupported NNIE input: type=%d chn=%u model=%ux%u "
                 "config=%ux%u",
@@ -1263,7 +1263,7 @@ private:
         (void)config;
         motion_started_ = false;
         if (HI_IVS_MD_Init() != HI_SUCCESS) {
-            INFRA_LOG_ERROR("ai", "Init IVS motion detection failed");
+            Error("ai", "Init IVS motion detection failed");
             return false;
         }
         motion_initialized_ = true;
@@ -1275,7 +1275,7 @@ private:
         if (motion_channel_created_) {
             const HI_S32 ret = HI_IVS_MD_DestroyChn(kMotionChannel);
             if (ret != HI_SUCCESS) {
-                INFRA_LOG_ERROR("ai",
+                Error("ai",
                                 "Destroy IVS motion channel failed: ret=%#x",
                                 static_cast<unsigned int>(ret));
             }
@@ -1284,7 +1284,7 @@ private:
         if (motion_initialized_) {
             const HI_S32 ret = HI_IVS_MD_Exit();
             if (ret != HI_SUCCESS) {
-                INFRA_LOG_ERROR("ai", "Exit IVS motion detection failed: ret=%#x",
+                Error("ai", "Exit IVS motion detection failed: ret=%#x",
                                 static_cast<unsigned int>(ret));
             }
             motion_initialized_ = false;
@@ -1322,7 +1322,7 @@ private:
         if (recreate_channel) {
             const HI_S32 ret = HI_IVS_MD_DestroyChn(kMotionChannel);
             if (ret != HI_SUCCESS) {
-                INFRA_LOG_ERROR("ai",
+                Error("ai",
                                 "Destroy IVS motion channel failed: ret=%#x",
                                 static_cast<unsigned int>(ret));
                 return false;
@@ -1343,7 +1343,7 @@ private:
         }
         InitMotionAttr(width, height);
         if (HI_IVS_MD_CreateChn(kMotionChannel, &motion_attr_) != HI_SUCCESS) {
-            INFRA_LOG_ERROR("ai", "Create IVS motion channel failed");
+            Error("ai", "Create IVS motion channel failed");
             FreeMotionWorkspace();
             return false;
         }
@@ -2306,7 +2306,7 @@ private:
         }
         ssd_priors_ = GenerateSsdPriors();
         if (ssd_priors_.size() != kSsdPriorCount) {
-            INFRA_LOG_ERROR("ai", "Prepare SSD priors failed");
+            Error("ai", "Prepare SSD priors failed");
             ClearSsdPostprocessCache();
             return false;
         }
@@ -2583,7 +2583,7 @@ struct Ai::Impl final {
                 return false;
             }
         }
-        INFRA_LOG_INFO("ai", "AI service started: backend=%s stream=%d",
+        Info("ai", "AI service started: backend=%s stream=%d",
                        ToString(start_config.backend),
                        static_cast<int>(start_config.stream_id));
         return true;
@@ -2812,7 +2812,7 @@ struct Ai::Impl final {
                 return true;
             }
             if (StartInferenceLocked(next_config)) {
-                INFRA_LOG_INFO("ai", "AI config applied: backend=%s stream=%d",
+                Info("ai", "AI config applied: backend=%s stream=%d",
                                ToString(next_config.backend),
                                static_cast<int>(next_config.stream_id));
                 return true;
@@ -2829,14 +2829,14 @@ struct Ai::Impl final {
                 return false;
             }
             if (StartInferenceLocked(previous_config)) {
-                INFRA_LOG_ERROR(
+                Error(
                     "ai",
                     "Apply AI config failed, previous backend restored");
                 return false;
             }
         }
 
-        INFRA_LOG_ERROR("ai",
+        Error("ai",
                         "Apply AI config failed, restore previous backend "
                         "failed");
         return false;
@@ -2852,7 +2852,7 @@ struct Ai::Impl final {
             CreateEngine(start_config.backend);
         if (!next_engine || !next_engine->Available() ||
             !next_engine->Start(start_config)) {
-            INFRA_LOG_ERROR("ai", "Start AI backend failed: backend=%s model=%s",
+            Error("ai", "Start AI backend failed: backend=%s model=%s",
                             ToString(start_config.backend),
                             start_config.model_path.c_str());
             if (next_engine) {

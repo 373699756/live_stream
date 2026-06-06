@@ -100,7 +100,7 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                                &candidate.username_fragment);
     }
 
-    INFRA_LOG_INFO(kHttpModuleName,
+    Info(kHttpModuleName,
                    "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
                    candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
                    candidate.sdp_mline_index, candidate.candidate.size());

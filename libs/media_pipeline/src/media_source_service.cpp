@@ -273,7 +273,7 @@ public:
             worker_executor->Stop(infra::StopMode::kDiscard);
             return false;
         }
-        INFRA_LOG_INFO(kServiceName,
+        Info(kServiceName,
                        "media source attached main_attach_id=%llu sub_attach_id=%llu "
                        "main_codec=%s sub_codec=%s need_main_key_frame=%d "
                        "need_sub_key_frame=%d",
@@ -577,7 +577,7 @@ public:
         source_state::StreamContext *stream = FindMutableStream(stream_id);
         if (stream != nullptr) {
             stream->state = state;
-            INFRA_LOG_INFO(kServiceName, "source state stream=%s state=%d",
+            Info(kServiceName, "source state stream=%s state=%d",
                            StreamName(stream_id), static_cast<int>(state));
         }
     }
@@ -747,7 +747,7 @@ private:
             const bool flv_ready = source_state::IsFlvStreamReady(*stream);
             if ((!was_hls_ready && hls_ready) ||
                 (!was_flv_ready && flv_ready)) {
-                INFRA_LOG_INFO(
+                Info(
                     kServiceName,
                     "browser stream ready stream=%s hls=%d flv=%d "
                     "sequence_header=%zu cached_flv=%zu segments=%zu",
@@ -814,7 +814,7 @@ private:
         std::vector<MediaFlvClientId> detach_ids;
         for (const source_state::PendingFlvClientWrite &client : clients) {
             if (client.starts_on_keyframe) {
-                INFRA_LOG_INFO(kServiceName,
+                Info(kServiceName,
                                "HTTP-FLV client starts stream=%s client=%llu "
                                "sequence_header=%zu keyframe=%zu",
                                StreamName(stream_id),

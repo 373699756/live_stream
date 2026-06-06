@@ -246,7 +246,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
   if (cached_flv_bytes != nullptr) {
     *cached_flv_bytes = bytes;
   }
-  INFRA_LOG_INFO(kHttpModuleName,
+  Info(kHttpModuleName,
                  "HTTP-FLV start conn=%llu stream=%s header=%zu file=%zu "
                  "sequence=%zu cached_flv=%zu cached_bytes=%zu "
                  "gop_complete=%d",
@@ -322,7 +322,7 @@ uint32_t HttpFlvSession::RebaseTimestamp(uint32_t timestamp_ms,
   if (!timestamp_base_set_) {
     timestamp_base_ms_ = timestamp_ms;
     timestamp_base_set_ = true;
-    INFRA_LOG_INFO(kHttpModuleName,
+    Info(kHttpModuleName,
                    "HTTP-FLV timestamp base conn=%llu base_ms=%u",
                    static_cast<unsigned long long>(connection_id_),
                    timestamp_base_ms_);

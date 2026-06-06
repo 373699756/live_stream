@@ -349,7 +349,7 @@ private:
                 item["mjpegReady"] = browser.mjpeg_ready;
                 if (browser.running && browser.browser_codec &&
                     !HasReadyBrowserProtocol(browser)) {
-                    INFRA_LOG_WARN(
+                    Warn(
                         kHttpModuleName,
                         "stream browser not ready stream=%s codec=%s "
                         "hls_ready=%d flv_ready=%d mjpeg_ready=%d segments=%u "

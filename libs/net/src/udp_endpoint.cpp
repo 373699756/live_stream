@@ -37,7 +37,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     sockaddr_in addr = ToSockAddr(options_.address);
     if (addr.sin_family != AF_INET) {
-        INFRA_LOG_ERROR(kModuleName, "UDP bind invalid address ip=%s port=%u",
+        Error(kModuleName, "UDP bind invalid address ip=%s port=%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port));
         return false;
@@ -45,7 +45,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     UniqueFd fd(CreateSocket(AF_INET, SOCK_DGRAM, 0));
     if (!fd.valid()) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "UDP socket failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -62,7 +62,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     if (!SetNonBlocking(fd.get())) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "UDP nonblock failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -72,7 +72,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
         0) {
         const int error = errno;
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "UDP bind failed ip=%s port=%u errno=%d (%s)",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port), error,
@@ -81,7 +81,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     }
     NetAddress local = GetSocketAddress(fd.get(), false);
     if (local.port == 0) {
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "UDP local address unavailable ip=%s port=%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port));
@@ -98,7 +98,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
             self->HandleRead();
         }
     })) {
-        INFRA_LOG_ERROR(kModuleName,
+        Error(kModuleName,
                         "UDP epoll add failed ip=%s port=%u local=%s:%u",
                         options_.address.ip.c_str(),
                         static_cast<unsigned>(options_.address.port),
@@ -108,7 +108,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
         loop_.reset();
         return false;
     }
-    INFRA_LOG_INFO(kModuleName, "UDP bound ip=%s port=%u local=%s:%u",
+    Info(kModuleName, "UDP bound ip=%s port=%u local=%s:%u",
                    options_.address.ip.c_str(),
                    static_cast<unsigned>(options_.address.port),
                    local.ip.c_str(), static_cast<unsigned>(local.port));

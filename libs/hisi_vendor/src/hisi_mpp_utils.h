@@ -36,7 +36,7 @@ inline bool MpiOk(const char* expression, HI_S32 status) {
     if (status == HI_SUCCESS) {
         return true;
     }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", expression, status);
+    Error("hisi_vendor", "%s failed: 0x%08x", expression, status);
     return false;
 }
 
@@ -51,7 +51,7 @@ namespace internal {
     do {                                                                       \
         HI_S32 __ret = (expr);                                                 \
         if (__ret != HI_SUCCESS) {                                             \
-            INFRA_LOG_ERROR("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
+            Error("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
             return false;                                                      \
         }                                                                      \
     } while (0)
