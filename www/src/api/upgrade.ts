@@ -1,10 +1,8 @@
 import { mockUpgradeStatus } from './mockUpgrade';
 import {
   postJson,
-  authHeaders,
-  readError,
   requestJson,
-  useMockFallback,
+  uploadBinary,
 } from './client';
 import type {
   UpgradePackageInfo,
@@ -30,23 +28,11 @@ function mockUpgradePackage(file: File): UpgradePackageInfo {
 }
 
 export async function uploadUpgradePackage(file: File): Promise<UpgradePackageInfo> {
-  const response = await fetch(
-    `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
-    {
-      method: 'POST',
-      headers: authHeaders({
-        headers: { 'Content-Type': 'application/octet-stream' },
-      }),
-      body: file,
-    },
-  );
-  if (!response.ok) {
-    if (useMockFallback) {
-      return mockUpgradePackage(file);
-    }
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as UpgradePackageInfo;
+  return uploadBinary<UpgradePackageInfo>({
+    body: file,
+    fallback: mockUpgradePackage(file),
+    path: `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
+  });
 }
 
 export function startUpgrade(value: UpgradeRequest): Promise<UpgradeStatus> {

@@ -16,6 +16,11 @@ export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
 };
 
+interface ManagedRequestSignal {
+  cleanup: () => void;
+  signal: AbortSignal;
+}
+
 type AbortSignalStatic = typeof AbortSignal & {
   any?: (signals: AbortSignal[]) => AbortSignal;
   timeout?: (milliseconds: number) => AbortSignal;
@@ -32,6 +37,10 @@ function fetchOptions(init?: ApiRequestOptions): RequestInit {
 
 export function authQuery(entries?: Record<string, string>): string {
   const params = new URLSearchParams();
+  const token = getToken();
+  if (token) {
+    params.set('access_token', token);
+  }
   if (entries) {
     Object.entries(entries).forEach(([key, value]) => params.set(key, value));
   }
@@ -39,48 +48,73 @@ export function authQuery(entries?: Record<string, string>): string {
 }
 
 export function authHeaders(init?: RequestInit): HeadersInit {
+  const headers = new Headers(baseHeaders);
   const token = getToken();
-  return {
-    ...baseHeaders,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(init?.headers || {}),
-  };
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+  }
+  return headers;
 }
 
 function mergeSignals(
   timeoutSignal: AbortSignal,
   requestSignal?: AbortSignal | null,
-): AbortSignal {
+): ManagedRequestSignal {
   if (!requestSignal) {
-    return timeoutSignal;
+    return { signal: timeoutSignal, cleanup: () => {} };
   }
   const abortSignal = AbortSignal as AbortSignalStatic;
   if (abortSignal.any) {
-    return abortSignal.any([requestSignal, timeoutSignal]);
+    return {
+      signal: abortSignal.any([requestSignal, timeoutSignal]),
+      cleanup: () => {},
+    };
   }
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (requestSignal.aborted || timeoutSignal.aborted) {
     controller.abort();
-    return controller.signal;
+    return { signal: controller.signal, cleanup: () => {} };
   }
   requestSignal.addEventListener('abort', abort, { once: true });
   timeoutSignal.addEventListener('abort', abort, { once: true });
-  return controller.signal;
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      requestSignal.removeEventListener('abort', abort);
+      timeoutSignal.removeEventListener('abort', abort);
+    },
+  };
 }
 
-function timeoutSignal(timeoutMs = defaultTimeoutMs): AbortSignal {
+function timeoutSignal(timeoutMs = defaultTimeoutMs): ManagedRequestSignal {
   const abortSignal = AbortSignal as AbortSignalStatic;
   if (abortSignal.timeout) {
-    return abortSignal.timeout(timeoutMs);
+    return { signal: abortSignal.timeout(timeoutMs), cleanup: () => {} };
   }
   const controller = new AbortController();
-  window.setTimeout(() => controller.abort(), timeoutMs);
-  return controller.signal;
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    cleanup: () => window.clearTimeout(timer),
+  };
 }
 
-export function requestSignal(init?: ApiRequestOptions): AbortSignal {
-  return mergeSignals(timeoutSignal(init?.timeoutMs), init?.signal);
+export function managedRequestSignal(
+  init?: ApiRequestOptions,
+): ManagedRequestSignal {
+  const timeout = timeoutSignal(init?.timeoutMs);
+  const merged = mergeSignals(timeout.signal, init?.signal);
+  return {
+    signal: merged.signal,
+    cleanup: () => {
+      merged.cleanup();
+      timeout.cleanup();
+    },
+  };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -123,26 +157,31 @@ export async function requestJson<T>(
   init?: ApiRequestOptions,
 ): Promise<T> {
   let response: Response;
+  const request = managedRequestSignal(init);
   try {
-    response = await fetch(path, {
-      ...fetchOptions(init),
-      headers: authHeaders(init),
-      signal: requestSignal(init),
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
+    try {
+      response = await fetch(path, {
+        ...fetchOptions(init),
+        headers: authHeaders(init),
+        signal: request.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (useMockFallback) {
+        return fallback;
+      }
       throw error;
     }
-    if (useMockFallback) {
-      return fallback;
+    if (!response.ok) {
+      await handleRejectedResponse(response);
+      throw new Error(await readError(response));
     }
-    throw error;
+    return (await response.json()) as T;
+  } finally {
+    request.cleanup();
   }
-  if (!response.ok) {
-    await handleRejectedResponse(response);
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as T;
 }
 
 export async function postJson<TRequest, TResponse>(
@@ -152,28 +191,33 @@ export async function postJson<TRequest, TResponse>(
   init?: ApiRequestOptions,
 ): Promise<TResponse> {
   let response: Response;
+  const request = managedRequestSignal(init);
   try {
-    response = await fetch(path, {
-      ...fetchOptions(init),
-      method: 'POST',
-      headers: authHeaders(init),
-      body: JSON.stringify(value),
-      signal: requestSignal(init),
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
+    try {
+      response = await fetch(path, {
+        ...fetchOptions(init),
+        method: 'POST',
+        headers: authHeaders(init),
+        body: JSON.stringify(value),
+        signal: request.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (useMockFallback) {
+        return fallback;
+      }
       throw error;
     }
-    if (useMockFallback) {
-      return fallback;
+    if (!response.ok) {
+      await handleRejectedResponse(response);
+      throw new Error(await readError(response));
     }
-    throw error;
+    return (await response.json()) as TResponse;
+  } finally {
+    request.cleanup();
   }
-  if (!response.ok) {
-    await handleRejectedResponse(response);
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as TResponse;
 }
 
 export async function putJson<T>(
@@ -182,25 +226,78 @@ export async function putJson<T>(
   init?: ApiRequestOptions,
 ): Promise<void> {
   let response: Response;
+  const request = managedRequestSignal(init);
   try {
-    response = await fetch(path, {
-      ...fetchOptions(init),
-      method: 'PUT',
-      headers: authHeaders(init),
-      body: JSON.stringify(value),
-      signal: requestSignal(init),
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
+    try {
+      response = await fetch(path, {
+        ...fetchOptions(init),
+        method: 'PUT',
+        headers: authHeaders(init),
+        body: JSON.stringify(value),
+        signal: request.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (useMockFallback) {
+        return;
+      }
       throw error;
     }
-    if (useMockFallback) {
-      return;
+    if (!response.ok) {
+      await handleRejectedResponse(response);
+      throw new Error(await readError(response));
     }
-    throw error;
+  } finally {
+    request.cleanup();
   }
-  if (!response.ok) {
-    await handleRejectedResponse(response);
-    throw new Error(await readError(response));
+}
+
+export async function uploadBinary<TResponse>({
+  body,
+  fallback,
+  path,
+  contentType = 'application/octet-stream',
+  init,
+}: {
+  body: BodyInit;
+  fallback: TResponse;
+  path: string;
+  contentType?: string;
+  init?: ApiRequestOptions;
+}): Promise<TResponse> {
+  let response: Response;
+  const request = managedRequestSignal(init);
+  try {
+    const headers = new Headers(init?.headers);
+    headers.set('Content-Type', contentType);
+    try {
+      response = await fetch(path, {
+        ...fetchOptions(init),
+        method: 'POST',
+        headers: authHeaders({ ...init, headers }),
+        body,
+        signal: request.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (useMockFallback) {
+        return fallback;
+      }
+      throw error;
+    }
+    if (!response.ok) {
+      await handleRejectedResponse(response);
+      if (useMockFallback) {
+        return fallback;
+      }
+      throw new Error(await readError(response));
+    }
+    return (await response.json()) as TResponse;
+  } finally {
+    request.cleanup();
   }
 }

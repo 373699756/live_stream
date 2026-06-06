@@ -6,8 +6,6 @@ import {
   startFlvPreview,
   startHlsPreview,
   startMjpegPreview,
-  startWebrtcPreview,
-  type PreviewSessionControls,
 } from './previewPlaybackProtocols';
 import {
   destroyFlv,
@@ -15,6 +13,8 @@ import {
   type FlvPlayer,
   type HlsPlayer,
 } from './previewPlayerModules';
+import type { PreviewSessionControls } from './previewSession';
+import { startWebrtcPreview } from './webrtcPreviewSession';
 
 interface UsePreviewPlaybackSessionOptions {
   enabled: boolean;
@@ -266,29 +266,35 @@ export function usePreviewPlaybackSession({
 
     if (mode === 'webrtc') {
       startupTimer = startWebrtcPreview({
-        closeWebrtcSession,
         controls,
-        flvPlaybackReady,
-        isSessionConnected: () => sessionConnected,
-        onAutoModeFallback,
-        peerRef,
-        restartPreview,
-        setMode,
-        setPeer: (peer) => {
-          sessionPeer = peer;
-          peerRef.current = peer;
+        fallback: {
+          flvPlaybackReady,
+          isSessionConnected: () => sessionConnected,
+          onAutoModeFallback,
+          restartPreview,
+          setMode,
         },
-        setPeerId: (peerId) => {
-          sessionPeerId = peerId;
-          peerIdRef.current = peerId;
+        peerState: {
+          closeSession: closeWebrtcSession,
+          peerRef,
+          setPeer: (peer) => {
+            sessionPeer = peer;
+            peerRef.current = peer;
+          },
+          setPeerId: (peerId) => {
+            sessionPeerId = peerId;
+            peerIdRef.current = peerId;
+          },
+          videoRef,
         },
         stream,
-        videoRef,
-        webrtcConfig,
-        webrtcConfigError,
-        webrtcConfigLoaded,
-        webrtcEnabled,
-        webrtcReady,
+        webrtc: {
+          config: webrtcConfig,
+          configError: webrtcConfigError,
+          configLoaded: webrtcConfigLoaded,
+          enabled: webrtcEnabled,
+          ready: webrtcReady,
+        },
       });
 
       return cleanupSession;

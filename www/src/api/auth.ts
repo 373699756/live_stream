@@ -1,7 +1,7 @@
 import {
   authHeaders,
+  managedRequestSignal,
   readError,
-  requestSignal,
   useMockFallback,
 } from './client';
 import {
@@ -39,12 +39,13 @@ export async function login(
   password: string,
 ): Promise<LoginResult> {
   removeToken();
+  const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ user_name: userName, password }),
-      signal: requestSignal(),
+      signal: request.signal,
     });
     if (!response.ok) {
       return {
@@ -69,6 +70,8 @@ export async function login(
       mustChangePassword: false,
       error: 'network_error',
     };
+  } finally {
+    request.cleanup();
   }
 }
 
@@ -76,11 +79,12 @@ export async function validateSession(): Promise<AuthState> {
   if (!hasToken()) {
     return { authenticated: false, mustChangePassword: false };
   }
+  const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/me', {
       method: 'GET',
       headers: authHeaders(),
-      signal: requestSignal(),
+      signal: request.signal,
     });
     if (!response.ok) {
       removeToken();
@@ -94,6 +98,8 @@ export async function validateSession(): Promise<AuthState> {
     }
     dispatchAuthInvalid();
     return { authenticated: false, mustChangePassword: false };
+  } finally {
+    request.cleanup();
   }
 }
 
@@ -104,6 +110,7 @@ export async function changePassword(
   if (!hasToken()) {
     return false;
   }
+  const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/change-password', {
       method: 'POST',
@@ -112,7 +119,7 @@ export async function changePassword(
         old_password: oldPassword,
         new_password: newPassword,
       }),
-      signal: requestSignal(),
+      signal: request.signal,
     });
     if (response.status === 401) {
       dispatchAuthInvalid();
@@ -121,6 +128,8 @@ export async function changePassword(
     return response.ok;
   } catch {
     return false;
+  } finally {
+    request.cleanup();
   }
 }
 
@@ -128,17 +137,20 @@ export async function logout(): Promise<void> {
   if (!hasToken()) {
     return;
   }
+  const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/logout', {
       method: 'POST',
       headers: authHeaders(),
-      signal: requestSignal(),
+      signal: request.signal,
     });
     if (response.status === 401) {
       dispatchAuthInvalid();
     }
   } catch {
     // Local logout still clears the browser session if the device is offline.
+  } finally {
+    request.cleanup();
   }
   removeToken();
 }

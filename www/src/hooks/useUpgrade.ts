@@ -15,6 +15,10 @@ import {
 import { getSystemStatus } from '../api/system';
 import type { SystemStatus, UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function useUpgrade() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
@@ -30,8 +34,28 @@ export function useUpgrade() {
   useEffect(() => {
     let mounted = true;
     const load = () => {
-      void getSystemStatus().then((next) => { if (mounted) setStatus(next); });
-      void getUpgradeStatus().then((next) => { if (mounted) setUpgradeStatus(next); });
+      void getSystemStatus()
+        .then((next) => {
+          if (mounted) {
+            setStatus(next);
+          }
+        })
+        .catch((err: unknown) => {
+          if (mounted) {
+            setError(errorMessage(err, '系统状态刷新失败'));
+          }
+        });
+      void getUpgradeStatus()
+        .then((next) => {
+          if (mounted) {
+            setUpgradeStatus(next);
+          }
+        })
+        .catch((err: unknown) => {
+          if (mounted) {
+            setError(errorMessage(err, '升级状态刷新失败'));
+          }
+        });
     };
     load();
     const timer = window.setInterval(load, 2000);
@@ -55,7 +79,7 @@ export function useUpgrade() {
       setPackageInfo(uploaded);
       setMessage(`已上传 ${selectedFile.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败');
+      setError(errorMessage(err, '上传失败'));
     } finally {
       setBusy(false);
     }
@@ -78,7 +102,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('升级任务已提交');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '启动升级失败');
+      setError(errorMessage(err, '启动升级失败'));
     } finally {
       setBusy(false);
     }
@@ -93,7 +117,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('升级任务已取消');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '取消升级失败');
+      setError(errorMessage(err, '取消升级失败'));
     } finally {
       setBusy(false);
     }
@@ -108,7 +132,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('已下发重启应用升级');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '确认重启失败');
+      setError(errorMessage(err, '确认重启失败'));
     } finally {
       setBusy(false);
     }

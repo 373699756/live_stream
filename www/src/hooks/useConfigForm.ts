@@ -12,7 +12,7 @@
  *     useConfigForm(getVideoConfig, saveVideoConfig, mockVideoConfig);
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { cloneDefaultConfig } from '../api/configDefaults';
 
 export function useConfigForm<T>(
@@ -50,9 +50,9 @@ export function useConfigForm<T>(
     return () => {
       mounted = false;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchFn]);
 
-  const save = async () => {
+  const save = useCallback(async () => {
     if (config === null) return;
     setSaving(true);
     setError('');
@@ -66,12 +66,12 @@ export function useConfigForm<T>(
     } finally {
       setSaving(false);
     }
-  };
+  }, [config, saveFn]);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setConfig(cloneDefaultConfig(defaultValue));
     setSavedMsg('已恢复默认值，保存后生效');
-  };
+  }, [defaultValue]);
 
   return { config, setConfig, save, reset, savedMsg, loading, saving, error };
 }
