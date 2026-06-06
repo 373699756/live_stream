@@ -36,9 +36,8 @@ media_source -> RTSP/WebRTC/HLS/HTTP-FLV/MJPEG -> http_service -> www
 
 ## Web
 
-- `web/web-console-design.md`：IPC/NVR 管理台页面、导航、表单和 mock fallback。
-- `web/api-consumption-design.md`：前端 API client、DTO、认证上下文和错误处理。
-- `web/live-preview-design.md`：WebRTC/HLS/HTTP-FLV/MJPEG/snapshot 预览状态来源。
+- `web/web-console-design.md`：IPC/NVR 管理台页面、API 消费、认证上下文、mock
+  fallback、WebRTC/HLS/HTTP-FLV/MJPEG/snapshot 预览状态来源。
 
 ## Libs
 
@@ -60,7 +59,7 @@ media_source -> RTSP/WebRTC/HLS/HTTP-FLV/MJPEG -> http_service -> www
 - HTTP/API/config/event 改动：读拥有模块文档、`libs/http-service-design.md`、
   `libs/config-service-design.md`、`libs/event-service-design.md` 和对应 Web 文档。
 - AI 改动：读 `libs/ai-service-design.md`、`libs/media-service-design.md`、
-  `libs/hisi-vendor-design.md`、`web/live-preview-design.md`。
+  `libs/hisi-vendor-design.md`、`web/web-console-design.md`。
 - 升级/烧写/发布包改动：读 `libs/upgrade-service-design.md`。
 - 质量扫描或热路径优化：读 `optimization/memory.md`。
 
