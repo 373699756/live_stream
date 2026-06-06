@@ -63,7 +63,7 @@ public:
                             bool close_after_response) override;
     bool BeginStream(ConnectionId connection_id) override;
     bool AttachStreamClient(ConnectionId connection_id,
-                            HttpStreamClientId client_id) override;
+                            HttpMediaClientHandle client) override;
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) override;
     bool EnqueueStreamingSlices(ConnectionId connection_id,
@@ -82,9 +82,9 @@ private:
 
     infra::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
-    void NotifyStreamClosed(HttpStreamClientId client_id);
+    void NotifyStreamClosed(const HttpMediaClientHandle &client);
     void NotifyStreamsClosed(
-        const std::vector<HttpStreamClientId> &client_ids);
+        const std::vector<HttpMediaClientHandle> &clients);
     bool EnqueueStreamingSlices(ConnectionId connection_id,
                                 const NetBufferSlices &slices,
                                 size_t size);

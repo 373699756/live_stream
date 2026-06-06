@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_STREAM_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_STREAM_H_
+#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_
+#define LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_
 
 #include "http_stream_writer.h"
 #include "media_source.h"
@@ -10,7 +10,7 @@
 
 namespace live_stream {
 
-enum class HttpFlvStreamStartStatus {
+enum class HttpFlvSessionStartStatus {
   kStarted,
   kNoSession,
   kStartBlock,
@@ -18,23 +18,22 @@ enum class HttpFlvStreamStartStatus {
   kCachedGop,
 };
 
-const char *HttpFlvStreamStartStatusName(
-    HttpFlvStreamStartStatus status);
-bool HttpFlvStreamStartNeedsClose(
-    HttpFlvStreamStartStatus status);
+const char *HttpFlvSessionStartStatusName(
+    HttpFlvSessionStartStatus status);
+bool HttpFlvSessionStartNeedsClose(HttpFlvSessionStartStatus status);
 
-class HttpFlvStream : public IMediaFlvSink {
-public:
-  HttpFlvStream(HttpStreamWriter *writer, ConnectionId connection_id,
-                StreamId stream_id);
+class HttpFlvSession : public IMediaFlvSink {
+ public:
+  HttpFlvSession(HttpStreamWriter *writer, ConnectionId connection_id,
+                 StreamId stream_id);
 
-  HttpFlvStreamStartStatus Start(const MediaFlvStartData &start_data,
-                                 size_t *cached_flv_bytes);
+  HttpFlvSessionStartStatus Start(const MediaFlvStartData &start_data,
+                                  size_t *cached_flv_bytes);
   bool OnFlvChunk(const uint8_t *data, size_t size) override;
   bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                      const EncodedFrame &frame) override;
 
-private:
+ private:
   bool OnCachedFlvVideoTag(const MediaFlvCachedVideoTag &tag);
   uint32_t RebaseTimestamp(uint32_t timestamp_ms, bool clamp_backward);
 
@@ -50,4 +49,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_STREAM_H_
+#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HANDLERS_HTTP_FLV_SESSION_H_

@@ -193,12 +193,15 @@ void HttpServiceImpl::ConfigureConsoleHandlers(
     logger_service_ = logger_service;
     if (server_ != nullptr) {
         server_->SetCloseCallback([media_flv_source,
-                                   media_mjpeg_source](HttpStreamClientId id) {
-            if (media_flv_source != nullptr && id != 0) {
-                (void)media_flv_source->DetachFlvClient(id);
+                                   media_mjpeg_source](
+                                      const HttpMediaClientHandle &client) {
+            if (client.type == HttpMediaClientType::kFlv &&
+                media_flv_source != nullptr && client.id != 0) {
+                (void)media_flv_source->DetachFlvClient(client.id);
             }
-            if (media_mjpeg_source != nullptr && id != 0) {
-                (void)media_mjpeg_source->DetachMjpegClient(id);
+            if (client.type == HttpMediaClientType::kMjpeg &&
+                media_mjpeg_source != nullptr && client.id != 0) {
+                (void)media_mjpeg_source->DetachMjpegClient(client.id);
             }
         });
     }

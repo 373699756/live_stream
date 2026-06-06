@@ -1,4 +1,4 @@
-#include "handlers/http_flv_stream.h"
+#include "handlers/http_flv_session.h"
 
 #include "http_handler_utils.h"
 
@@ -174,42 +174,42 @@ bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
 
 }  // namespace
 
-const char *HttpFlvStreamStartStatusName(
-    HttpFlvStreamStartStatus status) {
+const char *HttpFlvSessionStartStatusName(
+    HttpFlvSessionStartStatus status) {
   switch (status) {
-    case HttpFlvStreamStartStatus::kStarted:
+    case HttpFlvSessionStartStatus::kStarted:
       return "started";
-    case HttpFlvStreamStartStatus::kNoSession:
+    case HttpFlvSessionStartStatus::kNoSession:
       return "no_session";
-    case HttpFlvStreamStartStatus::kStartBlock:
+    case HttpFlvSessionStartStatus::kStartBlock:
       return "start_block";
-    case HttpFlvStreamStartStatus::kSequenceHeader:
+    case HttpFlvSessionStartStatus::kSequenceHeader:
       return "sequence_header";
-    case HttpFlvStreamStartStatus::kCachedGop:
+    case HttpFlvSessionStartStatus::kCachedGop:
       return "cached_gop";
   }
   return "unknown";
 }
 
-bool HttpFlvStreamStartNeedsClose(
-    HttpFlvStreamStartStatus status) {
-  return status != HttpFlvStreamStartStatus::kStarted &&
-         status != HttpFlvStreamStartStatus::kNoSession;
+bool HttpFlvSessionStartNeedsClose(
+    HttpFlvSessionStartStatus status) {
+  return status != HttpFlvSessionStartStatus::kStarted &&
+         status != HttpFlvSessionStartStatus::kNoSession;
 }
 
-HttpFlvStream::HttpFlvStream(HttpStreamWriter *writer,
+HttpFlvSession::HttpFlvSession(HttpStreamWriter *writer,
                              ConnectionId connection_id,
                              StreamId stream_id)
     : writer_(writer), connection_id_(connection_id),
       stream_id_(stream_id) {}
 
-HttpFlvStreamStartStatus HttpFlvStream::Start(
+HttpFlvSessionStartStatus HttpFlvSession::Start(
     const MediaFlvStartData &start_data, size_t *cached_flv_bytes) {
   if (cached_flv_bytes != nullptr) {
     *cached_flv_bytes = 0;
   }
   if (writer_ == nullptr || !writer_->BeginStream(connection_id_)) {
-    return HttpFlvStreamStartStatus::kNoSession;
+    return HttpFlvSessionStartStatus::kNoSession;
   }
 
   std::map<std::string, std::string> headers;
@@ -226,20 +226,20 @@ HttpFlvStreamStartStatus HttpFlvStream::Start(
           connection_id_,
           reinterpret_cast<const uint8_t *>(start_block_.data()),
           start_block_.size())) {
-    return HttpFlvStreamStartStatus::kStartBlock;
+    return HttpFlvSessionStartStatus::kStartBlock;
   }
 
   sequence_header_ = start_data.sequence_header;
   if (!OnFlvChunk(reinterpret_cast<const uint8_t *>(sequence_header_.data()),
                   sequence_header_.size())) {
-    return HttpFlvStreamStartStatus::kSequenceHeader;
+    return HttpFlvSessionStartStatus::kSequenceHeader;
   }
 
   size_t bytes = 0;
   for (const MediaFlvCachedVideoTag &cached_tag :
        start_data.cached_video_tags) {
     if (!OnCachedFlvVideoTag(cached_tag)) {
-      return HttpFlvStreamStartStatus::kCachedGop;
+      return HttpFlvSessionStartStatus::kCachedGop;
     }
     bytes += cached_tag.total_size;
   }
@@ -256,10 +256,10 @@ HttpFlvStreamStartStatus HttpFlvStream::Start(
                  start_data.sequence_header.size(),
                  start_data.cached_video_tags.size(), bytes,
                  start_data.cached_gop_complete ? 1 : 0);
-  return HttpFlvStreamStartStatus::kStarted;
+  return HttpFlvSessionStartStatus::kStarted;
 }
 
-bool HttpFlvStream::OnFlvChunk(const uint8_t *data, size_t size) {
+bool HttpFlvSession::OnFlvChunk(const uint8_t *data, size_t size) {
   if (writer_ == nullptr || data == nullptr || size == 0) {
     return writer_ != nullptr;
   }
@@ -280,7 +280,7 @@ bool HttpFlvStream::OnFlvChunk(const uint8_t *data, size_t size) {
                                     rebased_ms);
 }
 
-bool HttpFlvStream::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
+bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                                   const EncodedFrame &frame) {
   if (writer_ == nullptr || tag.slice_count == 0) {
     return writer_ != nullptr;
@@ -299,7 +299,7 @@ bool HttpFlvStream::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                                   header);
 }
 
-bool HttpFlvStream::OnCachedFlvVideoTag(
+bool HttpFlvSession::OnCachedFlvVideoTag(
     const MediaFlvCachedVideoTag &tag) {
   if (writer_ == nullptr || tag.slice_count == 0) {
     return writer_ != nullptr;
@@ -317,7 +317,7 @@ bool HttpFlvStream::OnCachedFlvVideoTag(
   return EnqueueCachedFlvVideoTagSlices(writer_, connection_id_, tag, header);
 }
 
-uint32_t HttpFlvStream::RebaseTimestamp(uint32_t timestamp_ms,
+uint32_t HttpFlvSession::RebaseTimestamp(uint32_t timestamp_ms,
                                         bool clamp_backward) {
   if (!timestamp_base_set_) {
     timestamp_base_ms_ = timestamp_ms;

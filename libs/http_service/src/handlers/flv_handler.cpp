@@ -1,6 +1,6 @@
 #include "handlers/http_handlers.h"
 
-#include "handlers/http_flv_stream.h"
+#include "handlers/http_flv_session.h"
 #include "http_handler_utils.h"
 
 #include "infra/log.h"
@@ -421,20 +421,20 @@ private:
             return;
         }
 
-        HttpFlvStream *stream =
-            new HttpFlvStream(writer_, connection_id, stream_id);
+        HttpFlvSession *stream =
+            new HttpFlvSession(writer_, connection_id, stream_id);
         size_t cached_flv_bytes = 0;
-        const HttpFlvStreamStartStatus start_status =
+        const HttpFlvSessionStartStatus start_status =
             stream->Start(start_data, &cached_flv_bytes);
-        if (start_status != HttpFlvStreamStartStatus::kStarted) {
+        if (start_status != HttpFlvSessionStartStatus::kStarted) {
             delete stream;
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=%s",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id),
-                            HttpFlvStreamStartStatusName(start_status));
+                            HttpFlvSessionStartStatusName(start_status));
             if (writer_ != nullptr &&
-                HttpFlvStreamStartNeedsClose(start_status)) {
+                HttpFlvSessionStartNeedsClose(start_status)) {
                 writer_->CloseConnection(connection_id);
             }
             MediaFlvStartDataUnref(&start_data);
@@ -458,7 +458,10 @@ private:
             return;
         }
 
-        if (!writer_->AttachStreamClient(connection_id, client_id)) {
+        HttpMediaClientHandle client;
+        client.type = HttpMediaClientType::kFlv;
+        client.id = client_id;
+        if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_flv_source->DetachFlvClient(client_id);
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
@@ -595,7 +598,10 @@ private:
             return;
         }
 
-        if (!writer_->AttachStreamClient(connection_id, client_id)) {
+        HttpMediaClientHandle client;
+        client.type = HttpMediaClientType::kMjpeg;
+        client.id = client_id;
+        if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_mjpeg_source_->DetachMjpegClient(client_id);
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=closed",

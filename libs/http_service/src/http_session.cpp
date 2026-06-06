@@ -110,18 +110,19 @@ bool HttpSession::BeginStream() {
   processing_ = false;
   closing_ = true;
   streaming_ = true;
-  stream_client_id_ = 0;
+  media_client_ = HttpMediaClientHandle{};
   pending_requests_.clear();
   splitter_.Clear();
   ++timeout_generation_;
   return true;
 }
 
-bool HttpSession::AttachStreamClient(HttpStreamClientId client_id) {
-  if (!streaming_) {
+bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
+  if (!streaming_ || client.type == HttpMediaClientType::kNone ||
+      client.id == 0) {
     return false;
   }
-  stream_client_id_ = client_id;
+  media_client_ = client;
   return true;
 }
 
@@ -140,14 +141,14 @@ bool HttpSession::IsTimerCurrent(uint64_t generation) const {
 ClosedHttpSessionInfo HttpSession::Close() {
   ClosedHttpSessionInfo closed;
   closed.was_streaming = streaming_;
-  closed.stream_client_id = TakeStreamClient();
+  closed.media_client = TakeMediaClient();
   return closed;
 }
 
-HttpStreamClientId HttpSession::TakeStreamClient() {
-  const HttpStreamClientId client_id = stream_client_id_;
-  stream_client_id_ = 0;
-  return client_id;
+HttpMediaClientHandle HttpSession::TakeMediaClient() {
+  const HttpMediaClientHandle client = media_client_;
+  media_client_ = HttpMediaClientHandle{};
+  return client;
 }
 
 HttpSessionParseFailure HttpSession::FailureFromSplitStatus(

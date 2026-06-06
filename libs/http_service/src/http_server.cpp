@@ -188,7 +188,7 @@ void HttpServer::Stop() {
     NetEngine *net_engine = nullptr;
     infra::Executor *stream_executor = nullptr;
     infra::Executor *control_executor = nullptr;
-    std::vector<HttpStreamClientId> stream_client_ids;
+    std::vector<HttpMediaClientHandle> media_clients;
     std::vector<ConnectionId> connection_ids;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -202,10 +202,10 @@ void HttpServer::Stop() {
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {
-                const HttpStreamClientId stream_client_id =
-                    item.second->TakeStreamClient();
-                if (stream_client_id != 0) {
-                    stream_client_ids.push_back(stream_client_id);
+                const HttpMediaClientHandle media_client =
+                    item.second->TakeMediaClient();
+                if (media_client.id != 0) {
+                    media_clients.push_back(media_client);
                 }
             }
         }
@@ -216,8 +216,8 @@ void HttpServer::Stop() {
     }
     INFRA_LOG_INFO(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
                    static_cast<unsigned long long>(server_id),
-                   stream_client_ids.size());
-    NotifyStreamsClosed(stream_client_ids);
+                   media_clients.size());
+    NotifyStreamsClosed(media_clients);
     if (net_engine != nullptr && server_id != 0) {
         (void)net_engine->CloseTcp(server_id);
     }
@@ -369,11 +369,11 @@ bool HttpServer::BeginStream(ConnectionId connection_id) {
 }
 
 bool HttpServer::AttachStreamClient(ConnectionId connection_id,
-                                    HttpStreamClientId client_id) {
+                                    HttpMediaClientHandle client) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto iter = sessions_.find(connection_id);
     return iter != sessions_.end() && iter->second != nullptr &&
-           iter->second->AttachStreamClient(client_id);
+           iter->second->AttachStreamClient(client);
 }
 
 bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
@@ -462,21 +462,21 @@ infra::Executor *HttpServer::ExecutorForRequestLocked(
     return control_executor_.get();
 }
 
-void HttpServer::NotifyStreamClosed(HttpStreamClientId client_id) {
+void HttpServer::NotifyStreamClosed(const HttpMediaClientHandle &client) {
     HttpStreamCloseCallback close_callback;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         close_callback = close_callback_;
     }
-    if (client_id != 0 && close_callback) {
-        close_callback(client_id);
+    if (client.id != 0 && close_callback) {
+        close_callback(client);
     }
 }
 
 void HttpServer::NotifyStreamsClosed(
-    const std::vector<HttpStreamClientId> &client_ids) {
-    for (HttpStreamClientId client_id : client_ids) {
-        NotifyStreamClosed(client_id);
+    const std::vector<HttpMediaClientHandle> &clients) {
+    for (const HttpMediaClientHandle &client : clients) {
+        NotifyStreamClosed(client);
     }
 }
 
@@ -554,11 +554,13 @@ void HttpServer::OnClose(ConnectionId connection_id) {
             --stats_.active_connections;
         }
     }
-    NotifyStreamClosed(closed.stream_client_id);
-    INFRA_LOG_INFO(kHttpModuleName, "HTTP close conn=%llu streaming=%d flv=%llu",
+    NotifyStreamClosed(closed.media_client);
+    INFRA_LOG_INFO(kHttpModuleName,
+                   "HTTP close conn=%llu streaming=%d media_type=%d client=%llu",
                    static_cast<unsigned long long>(connection_id),
                    closed.was_streaming ? 1 : 0,
-                   static_cast<unsigned long long>(closed.stream_client_id));
+                   static_cast<int>(closed.media_client.type),
+                   static_cast<unsigned long long>(closed.media_client.id));
 }
 
 void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,

@@ -11,8 +11,19 @@
 
 namespace live_stream {
 
-using HttpStreamClientId = uint64_t;
-using HttpStreamCloseCallback = std::function<void(HttpStreamClientId)>;
+enum class HttpMediaClientType {
+    kNone,
+    kFlv,
+    kMjpeg,
+};
+
+struct HttpMediaClientHandle {
+    HttpMediaClientType type = HttpMediaClientType::kNone;
+    uint64_t id = 0;
+};
+
+using HttpStreamCloseCallback =
+    std::function<void(const HttpMediaClientHandle &)>;
 
 struct HttpStreamSlice {
     const uint8_t *data = nullptr;
@@ -37,7 +48,7 @@ public:
                                     bool close_after_response) = 0;
     virtual bool BeginStream(ConnectionId connection_id) = 0;
     virtual bool AttachStreamClient(ConnectionId connection_id,
-                                    HttpStreamClientId client_id) = 0;
+                                    HttpMediaClientHandle client) = 0;
     virtual bool EnqueueStreamingChunk(ConnectionId connection_id,
                                        const uint8_t *data, size_t size) = 0;
     // Slices with owner may outlive this call; the writer retains the owner

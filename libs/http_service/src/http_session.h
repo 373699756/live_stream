@@ -47,7 +47,7 @@ struct HttpSessionParseResult {
 };
 
 struct ClosedHttpSessionInfo {
-  HttpStreamClientId stream_client_id = 0;
+  HttpMediaClientHandle media_client;
   bool was_streaming = false;
 };
 
@@ -69,11 +69,11 @@ class HttpSession {
       std::vector<HttpRequestLog> *request_logs);
 
   bool BeginStream();
-  bool AttachStreamClient(HttpStreamClientId client_id);
+  bool AttachStreamClient(HttpMediaClientHandle client);
   bool ArmTimer(uint64_t *generation);
   bool IsTimerCurrent(uint64_t generation) const;
   ClosedHttpSessionInfo Close();
-  HttpStreamClientId TakeStreamClient();
+  HttpMediaClientHandle TakeMediaClient();
 
  private:
   static HttpSessionParseFailure FailureFromSplitStatus(
@@ -85,7 +85,7 @@ class HttpSession {
   std::deque<PendingHttpRequest> pending_requests_;
   uint64_t request_count_ = 0;
   uint64_t timeout_generation_ = 0;
-  HttpStreamClientId stream_client_id_ = 0;
+  HttpMediaClientHandle media_client_;
   bool processing_ = false;
   bool closing_ = false;
   bool streaming_ = false;
