@@ -6,9 +6,11 @@
 
 ## 模块定位
 
-`media_pipeline` 是媒体源服务壳，负责从 `device_media` 接收编码帧，并把帧
-送入 `media_source` 状态模型，同时维护下游 frame sink、HTTP-FLV client 和
-MJPEG client 注册。它是生产主链路中的协议媒体源入口。
+`media_pipeline` 是设备帧到媒体源的装配层，负责从 `device_media` 接收编码帧，
+并把帧送入 `media_source` 状态模型，同时维护下游 frame sink、HTTP-FLV client 和
+MJPEG client 注册。它固定生产主链路为
+`device_media -> media_pipeline -> media_source`，不拥有协议 socket、HTTP 请求解析
+或设备 SDK 配置应用。
 
 ## 总体框架图
 
@@ -17,15 +19,21 @@ flowchart LR
   Media[device_media IDeviceMedia] --> Attach[AttachFrameSink]
   Attach --> SourceSvc[media_pipeline]
   SourceSvc --> Source[media_source state]
-  SourceSvc --> RTSP[rtsp via IMediaFrameSource]
-  SourceSvc --> WebRTC[webrtc via IMediaFrameSource]
+  SourceSvc --> Reader[MediaFrameReader ring]
+  Reader --> RTSP[rtsp via IMediaFrameSource]
+  Reader --> WebRTC[webrtc via IMediaFrameSource]
   SourceSvc --> HTTP[http via IMediaSource/FLV/MJPEG]
 ```
 
 ## 核心职责
 
 - 启动时向 `IDeviceMedia` 订阅编码帧。
+- 接收 `device_media` 的 stream running/closed/error 状态，并在 closed/error 时
+  清理对应码流的 `media_source` stream context、reader cache 和 pending frame。
 - 对 RTSP/WebRTC 暴露 `IMediaFrameSource`。
+- 对新协议输出暴露 `AttachFrameReader`、`GetFrameReaderStartData`、
+  `PopFrameReaderFrame` 和 `DetachFrameReader`；旧 `AttachFrameSink` 只作为过渡
+  调用方接入，内部仍使用同一个 reader/ring。
 - 对 HTTP 暴露 HLS/status、FLV 和 MJPEG source 接口。
 - 统一管理客户端数量限制和 keyframe 请求转发。
 
@@ -43,7 +51,9 @@ public API 在 `media_pipeline.h`：
 ## 状态与资源模型
 
 服务壳拥有和 `device_media` 的订阅关系。停止时必须先停止下游输出，再解除 frame
-sink，避免回调访问已释放对象。
+sink，避免回调访问已释放对象。设备码流停止、配置重启或错误时，本模块负责把对应
+stream 的 ready、GOP、HLS/FLV 状态和 reader 缓存重置到 closed/error 语义；下游
+协议不直接订阅 `device_media`，也不重复维护设备侧 GOP 或时间戳修正。
 
 资源上限来自 `MediaPipelineOptions`：
 
@@ -54,11 +64,16 @@ sink，避免回调访问已释放对象。
 | `hls_segment_retain_count` | 额外保留给滞后客户端读取的旧 segment 数量 |
 | `max_flv_clients` | HTTP-FLV 客户端注册上限 |
 | `max_mjpeg_clients` | MJPEG 客户端注册上限 |
-| `max_frame_sinks` | RTSP/WebRTC 等下游 frame sink 上限 |
+| `max_frame_sinks` | RTSP/WebRTC 等下游 reader 和过渡 frame sink 总上限 |
 
 启动后本服务是 `device_media` 到 RTSP/WebRTC/HTTP 的扇出点。新增下游协议必须通过
 `IMediaFrameSource`、`IMediaSource`、`IMediaFlvSource` 或 `IMediaMjpegSource`
 消费，不能直接订阅 `device_media` 并绕过统一 keyframe 请求和资源上限。
+
+`MediaSourceStats` 的 reader 字段由本模块汇总：`active_frame_readers` 表示显式
+pull reader 数，`active_frame_sinks` 表示旧 sink 过渡调用方数，`cached_frames`、
+`cached_bytes`、`slow_reader_count` 和主/子码流 last timestamp 来自同一个
+`FrameRing`。
 
 ## 迁移边界
 
@@ -69,4 +84,5 @@ legacy 文档和历史决策里出现。
 
 - 不解析 HTTP 请求，不写 socket。
 - 不拥有 HLS/FLV/MJPEG 的封装算法细节；封装构造归 `media_mux`。
+- 不应用设备 video/image 配置，不直接调用 `hisi_vendor` SDK。
 - 不保存 Web 前端状态或 mock 数据。

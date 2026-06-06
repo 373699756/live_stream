@@ -209,6 +209,19 @@ MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
     return start_data;
 }
 
+MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream) {
+    MediaTrack track;
+    track.track_type = MediaTrackType::kVideo;
+    track.stream_id = stream_id;
+    track.codec = stream.codec;
+    track.clock_rate = 90000;
+    track.vps = stream.vps;
+    track.sps = stream.sps;
+    track.pps = stream.pps;
+    track.ready = IsBrowserStreamReady(stream.state, stream.codec);
+    return track;
+}
+
 void ResetStream(StreamContext *stream, VideoCodec codec) {
     if (stream == nullptr) {
         return;

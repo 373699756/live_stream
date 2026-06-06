@@ -1,6 +1,8 @@
 #ifndef LIVE_STREAM_MEDIA_SOURCE_MEDIA_SOURCE_H_
 #define LIVE_STREAM_MEDIA_SOURCE_MEDIA_SOURCE_H_
 
+#include "media_frame.h"
+
 #include "media/encoded_frame.h"
 #include "media/frame_attach.h"
 #include "media/stream_types.h"
@@ -45,6 +47,16 @@ struct MediaFlvCachedVideoTag {
 
 using MediaFlvClientId = uint64_t;
 using MediaMjpegClientId = uint64_t;
+using MediaFrameReaderId = uint64_t;
+
+enum class MediaFrameReaderCloseReason {
+    kNone = 0,
+    kDetached,
+    kStreamStopped,
+    kCodecChanged,
+    kTimestampReset,
+    kCacheOverflow,
+};
 
 struct MediaHlsEntry {
     uint64_t sequence = 0;
@@ -72,6 +84,38 @@ struct MediaFlvStartData {
     std::string file_header;
     std::string sequence_header;
     std::vector<MediaFlvCachedVideoTag> cached_video_tags;
+};
+
+struct MediaFrameReaderOptions {
+    StreamId stream_id = StreamId::kMain;
+    bool keyframe_first = true;
+    std::string reader_name;
+};
+
+struct MediaFrameReaderStartData {
+    bool stream_running = false;
+    bool gop_complete = false;
+    uint64_t reader_generation = 0;
+    MediaTrack track;
+    std::vector<MediaFrame> gop_frames;
+};
+
+struct MediaFrameReaderFrame {
+    MediaFrameReaderId reader_id = 0;
+    uint64_t reader_generation = 0;
+    bool starts_on_keyframe = false;
+    MediaFrame frame;
+};
+
+struct MediaFrameReaderStatus {
+    bool attached = false;
+    StreamId stream_id = StreamId::kMain;
+    uint64_t reader_generation = 0;
+    MediaFrameReaderCloseReason close_reason =
+        MediaFrameReaderCloseReason::kNone;
+    bool waiting_for_keyframe = false;
+    bool slow_reader = false;
+    uint32_t pending_frames = 0;
 };
 
 inline void MediaFlvCachedVideoTagUnref(MediaFlvCachedVideoTag *tag) {
@@ -116,12 +160,43 @@ inline void MediaFlvStartDataUnref(MediaFlvStartData *start_data) {
     start_data->config_generation = 0;
 }
 
+inline void MediaFrameReaderStartDataUnref(
+    MediaFrameReaderStartData *start_data) {
+    if (start_data == nullptr) {
+        return;
+    }
+    for (MediaFrame &frame : start_data->gop_frames) {
+        MediaFrameUnref(&frame);
+    }
+    start_data->gop_frames.clear();
+    start_data->stream_running = false;
+    start_data->gop_complete = false;
+    start_data->reader_generation = 0;
+    start_data->track = MediaTrack{};
+}
+
+inline void MediaFrameReaderFrameUnref(MediaFrameReaderFrame *reader_frame) {
+    if (reader_frame == nullptr) {
+        return;
+    }
+    MediaFrameUnref(&reader_frame->frame);
+    reader_frame->reader_id = 0;
+    reader_frame->reader_generation = 0;
+    reader_frame->starts_on_keyframe = false;
+}
+
 struct MediaSourceStats {
     bool enabled = false;
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
     uint32_t active_mjpeg_clients = 0;
     uint32_t active_frame_sinks = 0;
+    uint32_t active_frame_readers = 0;
+    uint32_t cached_frames = 0;
+    uint32_t cached_bytes = 0;
+    uint32_t slow_reader_count = 0;
+    int64_t main_last_frame_timestamp_us = 0;
+    int64_t sub_last_frame_timestamp_us = 0;
 };
 
 struct MediaSourceStatus {
@@ -200,6 +275,16 @@ public:
 
     virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
     virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual MediaFrameReaderId AttachFrameReader(
+        const MediaFrameReaderOptions &options) = 0;
+    virtual bool DetachFrameReader(MediaFrameReaderId reader_id,
+                                   MediaFrameReaderCloseReason reason) = 0;
+    virtual MediaFrameReaderStatus GetFrameReaderStatus(
+        MediaFrameReaderId reader_id) const = 0;
+    virtual MediaFrameReaderStartData GetFrameReaderStartData(
+        MediaFrameReaderId reader_id) const = 0;
+    virtual bool PopFrameReaderFrame(MediaFrameReaderId reader_id,
+                                     MediaFrameReaderFrame *frame) = 0;
     virtual FrameAttachId AttachFrameSink(
         const FrameAttachOptions &options, IFrameSink *sink) = 0;
     virtual bool DetachFrameSink(FrameAttachId sink_id) = 0;
