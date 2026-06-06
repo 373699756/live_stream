@@ -3,10 +3,10 @@
 
 #include <memory>
 
-#include "auth_service.h"
-#include "config_service.h"
-#include "event_service.h"
-#include "logger_service.h"
+#include "auth.h"
+#include "config.h"
+#include "event.h"
+#include "logger.h"
 
 namespace live_stream {
 
@@ -24,10 +24,10 @@ public:
     bool Start(const RuntimePaths& paths);
     void Stop();
 
-    ILoggerService* logger() const { return logger_.get(); }
-    IConfigService* config() const { return config_.get(); }
-    IEventService* event() const { return event_.get(); }
-    IAuthService* auth() const { return auth_.get(); }
+    ILogger* logger() const { return logger_.get(); }
+    IConfig* config() const { return config_.get(); }
+    IEvent* event() const { return event_.get(); }
+    IAuth* auth() const { return auth_.get(); }
 
 private:
     CoreServices() = default;
@@ -36,11 +36,11 @@ private:
     CoreServices(const CoreServices&) = delete;
     CoreServices& operator=(const CoreServices&) = delete;
 
-    std::unique_ptr<ILoggerService> logger_;
-    std::unique_ptr<IConfigService> config_;
-    std::unique_ptr<IEventService> event_;
+    std::unique_ptr<ILogger> logger_;
+    std::unique_ptr<IConfig> config_;
+    std::unique_ptr<IEvent> event_;
     std::unique_ptr<IAuthAuditSink> auth_audit_sink_;
-    std::unique_ptr<IAuthService> auth_;
+    std::unique_ptr<IAuth> auth_;
     bool started_ = false;
 };
 

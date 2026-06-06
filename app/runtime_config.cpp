@@ -162,22 +162,22 @@ bool ApplyOnvifConfig(const ConfigJson &onvif, AppRuntimeConfig *config) {
 
 }  // namespace
 
-bool LoadRuntimeConfig(IConfigService *config_service,
-                       AppRuntimeConfig *config) {
-    if (config_service == nullptr || config == nullptr) {
+bool LoadRuntimeConfig(IConfig *config_store,
+                       AppRuntimeConfig *runtime_config) {
+    if (config_store == nullptr || runtime_config == nullptr) {
         return false;
     }
     AppRuntimeConfig runtime;
-    if (!ApplyRtspVideoCodecConfig(config_service->GetValue("video"), &runtime) ||
-        !ApplyNetworkConfig(config_service->GetValue("network"), &runtime) ||
-        !ApplyHttpConfig(config_service->GetValue("http"), &runtime) ||
-        !ApplyRtspConfig(config_service->GetValue("rtsp"), &runtime) ||
-        !ApplySnapshotConfig(config_service->GetValue("snapshot"), &runtime) ||
-        !ApplyWebrtcConfig(config_service->GetValue("webrtc"), &runtime) ||
-        !ApplyOnvifConfig(config_service->GetValue("onvif"), &runtime)) {
+    if (!ApplyRtspVideoCodecConfig(config_store->GetValue("video"), &runtime) ||
+        !ApplyNetworkConfig(config_store->GetValue("network"), &runtime) ||
+        !ApplyHttpConfig(config_store->GetValue("http"), &runtime) ||
+        !ApplyRtspConfig(config_store->GetValue("rtsp"), &runtime) ||
+        !ApplySnapshotConfig(config_store->GetValue("snapshot"), &runtime) ||
+        !ApplyWebrtcConfig(config_store->GetValue("webrtc"), &runtime) ||
+        !ApplyOnvifConfig(config_store->GetValue("onvif"), &runtime)) {
         return false;
     }
-    *config = runtime;
+    *runtime_config = runtime;
     return true;
 }
 

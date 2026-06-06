@@ -3,20 +3,20 @@
 ## 模块定位
 
 本专项只记录内存和拷贝优化方向。具体实现仍归拥有模块：
-`media_service`、`media_source`、`media_source_service`、`stream_codec`、
-`stream_mux`、`http_service` 和 `webrtc_service`。
+`device_media`、`media_source`、`media_pipeline`、`media_codec`、
+`media_mux`、`http` 和 `webrtc`。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
-  VENC[media_service encoded frames] --> SourceSvc[media_source_service]
+  VENC[device_media encoded frames] --> SourceSvc[media_pipeline]
   SourceSvc --> Source[media_source caches]
   Source --> HLS[HLS segments]
   Source --> FLV[FLV GOP/cache]
   Source --> MJPEG[MJPEG frames]
   SourceSvc --> RTSP[RTSP/WebRTC frame sinks]
-  HTTP[http_service streams] --> Clients[browser clients]
+  HTTP[http streams] --> Clients[browser clients]
 ```
 
 ## 优化原则
@@ -31,10 +31,10 @@ flowchart LR
 
 - `media_source`：HLS segment retain、FLV cached tags、GOP cache 和
   `EncodedFrame` 引用释放。
-- `media_source_service`：下游 client registry 和 frame sink 数量上限。
-- `stream_mux`：封装输出减少临时大 buffer。
-- `http_service`：慢客户端断连、stream executor 队列和 socket 写边界。
-- `webrtc_service`：peer fanout 和 frame dispatch 内存峰值。
+- `media_pipeline`：下游 client registry 和 frame sink 数量上限。
+- `media_mux`：封装输出减少临时大 buffer。
+- `http`：慢客户端断连、stream executor 队列和 socket 写边界。
+- `webrtc`：peer fanout 和 frame dispatch 内存峰值。
 
 ## 基线指标
 
@@ -42,14 +42,14 @@ flowchart LR
 
 | 指标 | 观察点 | 归属模块 |
 | --- | --- | --- |
-| 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http_service` |
+| 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http` |
 | HLS segment 数量和 body 总量 | playlist depth + retain count 是否有界 | `media_source` |
 | FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media_source` |
-| 活跃 FLV/MJPEG/frame sink 数 | 是否受 `MediaSourceServiceOptions` 限制 | `media_source_service` |
-| HTTP active connections / send queue | 慢 socket 是否堆积到上限后断开 | `http_service` |
-| WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc_service` |
+| 活跃 FLV/MJPEG/frame sink 数 | 是否受 `MediaPipelineOptions` 限制 | `media_pipeline` |
+| HTTP active connections / send queue | 慢 socket 是否堆积到上限后断开 | `http` |
+| WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc` |
 
-当前资源上限以 `MediaSourceServiceOptions`、`HttpServiceOptions` 和 WebRTC options
+当前资源上限以 `MediaPipelineOptions`、`HttpOptions` 和 WebRTC options
 为准。新增缓存或队列时必须先定义上限，再补拥有模块文档。
 
 ## 验收口径

@@ -3,7 +3,7 @@
 
 #include "media_source.h"
 
-#include "stream_mux.h"
+#include "media_mux.h"
 
 #include <array>
 #include <cstddef>

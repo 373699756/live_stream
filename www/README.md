@@ -33,7 +33,7 @@ npm run build
 ```
 
 The static output is generated under `dist/`. On the device, configure
-`http_service` with `static_root` pointing to the deployed `dist` directory.
+`http` with `static_root` pointing to the deployed `dist` directory.
 
 ## Backend Contract
 
@@ -123,7 +123,7 @@ under `/mnt/live_stream/models/` when AI is enabled.
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.
 
-Auth users are loaded and saved by `config_service` from
+Auth users are loaded and saved by `config` from
 `configs/auth_users.json` with hashed `password_credential` values only. The
 factory `admin/admin` login is allowed only as an initial setup path when
 `must_change_password` is returned by the auth API; the UI then forces

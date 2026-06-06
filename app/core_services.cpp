@@ -22,7 +22,7 @@ ConfigResult ValidateAudioScopeConfig(const ConfigJson& value) {
     return ConfigResult::Success();
 }
 
-bool InstallProductScopeConfigGuards(IConfigService* config) {
+bool InstallProductScopeConfigGuards(IConfig* config) {
     if (config == nullptr) {
         return false;
     }
@@ -72,7 +72,7 @@ OperationResult MapAuthResult(AuthAuditResult result) {
 
 class AuthAuditToLoggerSink : public IAuthAuditSink {
 public:
-    explicit AuthAuditToLoggerSink(ILoggerService* logger) : logger_(logger) {}
+    explicit AuthAuditToLoggerSink(ILogger* logger) : logger_(logger) {}
 
     bool RecordAuthOperation(const AuthAuditRecord& record) override {
         if (logger_ == nullptr) {
@@ -93,7 +93,7 @@ public:
     }
 
 private:
-    ILoggerService* logger_ = nullptr;
+    ILogger* logger_ = nullptr;
 };
 
 }  // namespace
@@ -114,9 +114,9 @@ bool CoreServices::Start(const RuntimePaths& paths) {
         return false;
     }
 
-    LoggerServiceConfig logger_config;
+    LoggerConfig logger_config;
     logger_config.operation_log_path = paths.operation_log_path;
-    logger_ = CreateLoggerService(logger_config);
+    logger_ = CreateLogger(logger_config);
     if (!logger_ || !logger_->Start()) {
         INFRA_LOG_ERROR("app", "Start logger service failed: path=%s",
                         paths.operation_log_path);
@@ -124,11 +124,11 @@ bool CoreServices::Start(const RuntimePaths& paths) {
         return false;
     }
 
-    ConfigServiceOptions config_options;
+    ConfigOptions config_options;
     config_options.config_path = paths.business_config_path;
     config_options.default_config_path = paths.default_config_path;
     config_options.create_storage_if_missing = false;
-    config_ = CreateConfigService(config_options);
+    config_ = CreateConfig(config_options);
     if (!config_ || !config_->Start()) {
         INFRA_LOG_ERROR("app", "Start config service failed: config=%s default=%s",
                         paths.business_config_path, paths.default_config_path);
@@ -141,19 +141,19 @@ bool CoreServices::Start(const RuntimePaths& paths) {
         return false;
     }
 
-    event_ = CreateEventService();
+    event_ = CreateEvent();
     if (!event_ || !event_->Start()) {
         INFRA_LOG_ERROR("app", "Start event service failed");
         Stop();
         return false;
     }
 
-    AuthServiceOptions auth_options;
+    AuthOptions auth_options;
     auth_options.token_ttl_seconds = 30 * 60;
     auth_options.max_sessions = 16;
-    AuthServiceDependencies auth_dependencies;
-    auth_dependencies.config_service = config_.get();
-    auth_ = CreateAuthService(auth_options, auth_dependencies,
+    AuthDependencies auth_dependencies;
+    auth_dependencies.config = config_.get();
+    auth_ = CreateAuth(auth_options, auth_dependencies,
                               CreateConfigAuthUserStore(paths.auth_users_path),
                               CreatePbkdf2PasswordVerifier());
     auth_audit_sink_.reset(new AuthAuditToLoggerSink(logger_.get()));

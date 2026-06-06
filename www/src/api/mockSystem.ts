@@ -9,10 +9,10 @@ export const mockSystemStatus: SystemStatus = {
   memory: 51,
   temperature: 48,
   services: [
-    { name: 'config_service', state: 'running' },
-    { name: 'auth_service', state: 'running' },
-    { name: 'media_service', state: 'pending' },
-    { name: 'http_service', state: 'running' },
-    { name: 'webrtc_service', state: 'pending' },
+    { name: 'config', state: 'running' },
+    { name: 'auth', state: 'running' },
+    { name: 'device_media', state: 'pending' },
+    { name: 'http', state: 'running' },
+    { name: 'webrtc', state: 'pending' },
   ],
 };

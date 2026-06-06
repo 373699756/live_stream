@@ -1,6 +1,6 @@
 #include "frame_ring.h"
 
-#include "stream_codec.h"
+#include "media_codec.h"
 
 #include <utility>
 

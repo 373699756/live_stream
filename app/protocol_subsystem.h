@@ -3,14 +3,14 @@
 
 #include <memory>
 
-#include "media_source_service.h"
-#include "http_service.h"
+#include "media_pipeline.h"
+#include "http.h"
 #include "infra/executor.h"
-#include "net_service.h"
+#include "net.h"
 #include "onvif_server.h"
-#include "rtsp_service.h"
+#include "rtsp.h"
 #include "runtime_config.h"
-#include "webrtc_service.h"
+#include "webrtc.h"
 
 namespace live_stream {
 
@@ -19,10 +19,10 @@ struct DeviceRefs;
 struct MediaRefs;
 
 struct ProtocolRefs {
-    IRtspService *rtsp = nullptr;
-    IWebrtcService *webrtc = nullptr;
+    IRtsp *rtsp = nullptr;
+    IWebrtc *webrtc = nullptr;
     OnvifServer *onvif = nullptr;
-    IHttpService *http = nullptr;
+    IHttp *http = nullptr;
 };
 
 class ProtocolSubsystem {
@@ -46,11 +46,11 @@ private:
 
     std::unique_ptr<infra::Executor> net_callback_executor_;
     std::unique_ptr<NetEngine> net_engine_;
-    std::unique_ptr<IRtspService> rtsp_;
-    std::unique_ptr<IWebrtcService> webrtc_;
-    std::unique_ptr<IMediaSourceService> media_source_;
+    std::unique_ptr<IRtsp> rtsp_;
+    std::unique_ptr<IWebrtc> webrtc_;
+    std::unique_ptr<IMediaPipeline> media_source_;
     std::unique_ptr<OnvifServer> onvif_;
-    std::unique_ptr<IHttpService> http_;
+    std::unique_ptr<IHttp> http_;
     bool started_ = false;
 };
 

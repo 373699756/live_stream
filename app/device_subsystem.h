@@ -3,23 +3,23 @@
 
 #include <memory>
 
-#include "alarm_service.h"
-#include "network_service.h"
+#include "alarm.h"
+#include "network_config.h"
 #include "platform_factory.h"
-#include "system_service.h"
-#include "time_service.h"
-#include "upgrade_service.h"
+#include "system.h"
+#include "time_api.h"
+#include "upgrade.h"
 
 namespace live_stream {
 
 class CoreServices;
 
 struct DeviceRefs {
-    ISystemService *system = nullptr;
-    ITimeService *time = nullptr;
-    INetworkService *network = nullptr;
-    IAlarmService *alarm = nullptr;
-    IUpgradeService *upgrade = nullptr;
+    ISystem *system = nullptr;
+    ITime *time = nullptr;
+    INetworkConfig *network = nullptr;
+    IAlarm *alarm = nullptr;
+    IUpgrade *upgrade = nullptr;
 };
 
 class DeviceSubsystem {
@@ -43,11 +43,11 @@ private:
     std::unique_ptr<ITimePlatform> time_platform_;
     std::unique_ptr<INetworkPlatform> network_platform_;
     std::unique_ptr<IUpgradePlatform> upgrade_platform_;
-    std::unique_ptr<ISystemService> system_;
-    std::unique_ptr<ITimeService> time_;
-    std::unique_ptr<INetworkService> network_;
-    std::unique_ptr<IAlarmService> alarm_;
-    std::unique_ptr<IUpgradeService> upgrade_;
+    std::unique_ptr<ISystem> system_;
+    std::unique_ptr<ITime> time_;
+    std::unique_ptr<INetworkConfig> network_;
+    std::unique_ptr<IAlarm> alarm_;
+    std::unique_ptr<IUpgrade> upgrade_;
     bool started_ = false;
 };
 

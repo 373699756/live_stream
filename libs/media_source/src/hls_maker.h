@@ -3,7 +3,7 @@
 
 #include "media/frame_attach.h"
 #include "media_source.h"
-#include "stream_mux.h"
+#include "media_mux.h"
 
 #include <cstddef>
 #include <cstdint>

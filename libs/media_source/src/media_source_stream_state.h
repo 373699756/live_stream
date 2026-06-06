@@ -7,7 +7,7 @@
 #include "gop_cache.h"
 #include "hls_maker.h"
 #include "media/frame_attach.h"
-#include "stream_codec.h"
+#include "media_codec.h"
 #include "timestamp_corrector.h"
 
 #include <cstdint>

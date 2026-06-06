@@ -18,13 +18,13 @@ bool MediaSubsystem::Start(CoreServices &core_services,
         return true;
     }
 
-    IConfigService *config = core_services.config();
+    IConfig *config = core_services.config();
     hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
 
-    MediaServiceOptions media_options;
-    media_options.config_service = config;
+    DeviceMediaOptions media_options;
+    media_options.config = config;
     media_options.sdk = &sdk;
-    media_ = CreateMediaService(media_options);
+    media_ = CreateDeviceMedia(media_options);
     if (!media_ || !media_->Start()) {
         INFRA_LOG_ERROR("app", "Start media service failed");
         Stop();
@@ -32,26 +32,26 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     }
     const MediaChannels media_channels = media_->GetChannels();
 
-    SnapshotServiceOptions snapshot_options;
-    snapshot_options.config_service = config;
-    snapshot_options.media_service = media_.get();
+    SnapshotOptions snapshot_options;
+    snapshot_options.config = config;
+    snapshot_options.device_media = media_.get();
     snapshot_options.media_channels = media_channels;
     snapshot_options.sdk = &sdk;
-    snapshot_.reset(new SnapshotService(snapshot_options));
+    snapshot_.reset(new Snapshot(snapshot_options));
     if (!snapshot_ || !snapshot_->Start()) {
         INFRA_LOG_ERROR("app", "Start snapshot service failed");
         Stop();
         return false;
     }
 
-    AiServiceOptions ai_options;
-    ai_options.config_service = config;
-    ai_options.alarm_service = device_refs.alarm;
-    ai_options.media_service = media_.get();
-    ai_options.snapshot_service = snapshot_.get();
+    AiOptions ai_options;
+    ai_options.config = config;
+    ai_options.alarm = device_refs.alarm;
+    ai_options.device_media = media_.get();
+    ai_options.snapshot = snapshot_.get();
     ai_options.media_channels = media_channels;
     ai_options.sdk = &sdk;
-    ai_.reset(new AiService(ai_options));
+    ai_.reset(new Ai(ai_options));
     if (!ai_ || !ai_->Start()) {
         INFRA_LOG_ERROR("app", "Start ai service failed");
         Stop();
@@ -59,12 +59,12 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     }
     INFRA_LOG_INFO("app", "AI service ready");
 
-    RegionServiceOptions overlay_options;
-    overlay_options.config_service = config;
-    overlay_options.media_service = media_.get();
+    RegionOptions overlay_options;
+    overlay_options.config = config;
+    overlay_options.device_media = media_.get();
     overlay_options.media_channels = media_channels;
     overlay_options.sdk = &sdk;
-    overlay_.reset(new RegionService(overlay_options));
+    overlay_.reset(new Region(overlay_options));
     if (!overlay_ || !overlay_->Start()) {
         INFRA_LOG_ERROR("app", "Start overlay service failed");
         Stop();

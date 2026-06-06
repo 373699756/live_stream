@@ -41,31 +41,31 @@ CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
 CXXFLAGS += -Iapp
-CXXFLAGS += -Ilibs/infra_service/include
-CXXFLAGS += -Ilibs/logger_service/include
-CXXFLAGS += -Ilibs/config_service/include
-CXXFLAGS += -Ilibs/auth_service/include
-CXXFLAGS += -Ilibs/event_service/include
-CXXFLAGS += -Ilibs/system_service/include
-CXXFLAGS += -Ilibs/network_service/include
-CXXFLAGS += -Ilibs/network_service/src
-CXXFLAGS += -Ilibs/time_service/include
-CXXFLAGS += -Ilibs/stream_codec/include
-CXXFLAGS += -Ilibs/stream_mux/include
-CXXFLAGS += -Ilibs/net_service/include
-CXXFLAGS += -Ilibs/ai_service/include
-CXXFLAGS += -Ilibs/media_service/include
+CXXFLAGS += -Ilibs/infra/include
+CXXFLAGS += -Ilibs/logger/include
+CXXFLAGS += -Ilibs/config/include
+CXXFLAGS += -Ilibs/auth/include
+CXXFLAGS += -Ilibs/event/include
+CXXFLAGS += -Ilibs/system/include
+CXXFLAGS += -Ilibs/network_config/include
+CXXFLAGS += -Ilibs/network_config/src
+CXXFLAGS += -Ilibs/time/include
+CXXFLAGS += -Ilibs/media_codec/include
+CXXFLAGS += -Ilibs/media_mux/include
+CXXFLAGS += -Ilibs/net/include
+CXXFLAGS += -Ilibs/ai/include
+CXXFLAGS += -Ilibs/device_media/include
 CXXFLAGS += -Ilibs/media_source/include
-CXXFLAGS += -Ilibs/media_source_service/include
+CXXFLAGS += -Ilibs/media_pipeline/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
-CXXFLAGS += -Ilibs/region_service/include
-CXXFLAGS += -Ilibs/rtsp_service/include
-CXXFLAGS += -Ilibs/webrtc_service/include
-CXXFLAGS += -Ilibs/snapshot_service/include
-CXXFLAGS += -Ilibs/onvif_service/include
-CXXFLAGS += -Ilibs/alarm_service/include
-CXXFLAGS += -Ilibs/upgrade_service/include
-CXXFLAGS += -Ilibs/http_service/include
+CXXFLAGS += -Ilibs/region/include
+CXXFLAGS += -Ilibs/rtsp/include
+CXXFLAGS += -Ilibs/webrtc/include
+CXXFLAGS += -Ilibs/snapshot/include
+CXXFLAGS += -Ilibs/onvif/include
+CXXFLAGS += -Ilibs/alarm/include
+CXXFLAGS += -Ilibs/upgrade/include
+CXXFLAGS += -Ilibs/http/include
 CXXFLAGS += -I$(METARTC_INSTALL)/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)/openssl-1.1.1w/include
 CXXFLAGS += -I$(THIRDPARTY_SRC)
@@ -73,30 +73,30 @@ CXXFLAGS += -I$(HISI_MPP_INC)
 CXXFLAGS += -pthread
 
 SERVICES := \
-	infra_service \
-	logger_service \
-	net_service \
-	config_service \
-	event_service \
-	auth_service \
-	system_service \
-	network_service \
-	time_service \
-	ai_service \
+	infra \
+	logger \
+	net \
+	config \
+	event \
+	auth \
+	system \
+	network_config \
+	time \
+	ai \
 	hisi_vendor \
-	media_service \
+	device_media \
 	media_source \
-	media_source_service \
-	region_service \
-	rtsp_service \
-	webrtc_service \
-	snapshot_service \
-	onvif_service \
-	alarm_service \
-	upgrade_service \
-	http_service \
-	stream_codec \
-	stream_mux
+	media_pipeline \
+	region \
+	rtsp \
+	webrtc \
+	snapshot \
+	onvif \
+	alarm \
+	upgrade \
+	http \
+	media_codec \
+	media_mux
 
 SERVICE_LIBS :=
 APP_SRCS := \
@@ -177,16 +177,16 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  -Wl,--start-group \
 	  $(APP_OBJS) \
-	  $(SERVICE_LIBS) $(LIB_DIR)/libinfra_service.a \
+	  $(SERVICE_LIBS) $(LIB_DIR)/libinfra.a \
 	  $(THIRDPARTY_LIBS) $(HISI_MPP_STATIC_LIBS) \
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra_service.a $(METARTC_INSTALL)/lib/libcrypto.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra.a $(METARTC_INSTALL)/lib/libcrypto.a
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
-	  $(LIB_DIR)/libinfra_service.a $(METARTC_INSTALL)/lib/libcrypto.a \
+	  $(LIB_DIR)/libinfra.a $(METARTC_INSTALL)/lib/libcrypto.a \
 	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
 
 $(WEB_STAMP): $(WEB_INPUTS)

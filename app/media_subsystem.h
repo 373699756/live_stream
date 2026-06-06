@@ -3,10 +3,10 @@
 
 #include <memory>
 
-#include "ai_service.h"
-#include "media_service.h"
-#include "region_service.h"
-#include "snapshot_service.h"
+#include "ai.h"
+#include "device_media.h"
+#include "region.h"
+#include "snapshot.h"
 
 namespace live_stream {
 
@@ -14,10 +14,10 @@ class CoreServices;
 struct DeviceRefs;
 
 struct MediaRefs {
-    IMediaService* media = nullptr;
-    AiService* ai = nullptr;
-    RegionService* overlay = nullptr;
-    SnapshotService* snapshot = nullptr;
+    IDeviceMedia* media = nullptr;
+    Ai* ai = nullptr;
+    Region* overlay = nullptr;
+    Snapshot* snapshot = nullptr;
 };
 
 class MediaSubsystem {
@@ -35,10 +35,10 @@ private:
     MediaSubsystem(const MediaSubsystem&) = delete;
     MediaSubsystem& operator=(const MediaSubsystem&) = delete;
 
-    std::unique_ptr<IMediaService> media_;
-    std::unique_ptr<AiService> ai_;
-    std::unique_ptr<RegionService> overlay_;
-    std::unique_ptr<SnapshotService> snapshot_;
+    std::unique_ptr<IDeviceMedia> media_;
+    std::unique_ptr<Ai> ai_;
+    std::unique_ptr<Region> overlay_;
+    std::unique_ptr<Snapshot> snapshot_;
     bool started_ = false;
 };
 

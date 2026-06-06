@@ -245,7 +245,7 @@ export interface AiDetection {
   height: number;
 }
 
-export interface AiServiceStats {
+export interface AiStats {
   enabled: boolean;
   backend_available: boolean;
   alarm_linked: boolean;
@@ -272,7 +272,7 @@ export interface AiInferenceResult {
 
 export interface AiStatus {
   config: AiModelConfig;
-  stats: AiServiceStats;
+  stats: AiStats;
   last_result: AiInferenceResult;
 }
 

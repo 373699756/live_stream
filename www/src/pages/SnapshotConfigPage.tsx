@@ -26,7 +26,7 @@ export function SnapshotConfigPage() {
         <div className="page-heading">
           <div>
             <h2>抓图参数</h2>
-            <p>配置 HTTP/ONVIF 抓图入口参数，实际 JPEG 生成由后端 snapshot_service 完成。</p>
+            <p>配置 HTTP/ONVIF 抓图入口参数，实际 JPEG 生成由后端 snapshot 完成。</p>
           </div>
         </div>
 

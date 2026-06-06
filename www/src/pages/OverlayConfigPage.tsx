@@ -95,7 +95,7 @@ export function OverlayConfigPage() {
         <div className="page-heading">
           <div>
             <h2>视频叠加</h2>
-            <p>文字叠加与隐私遮挡由设备端 region_service 统一应用。</p>
+            <p>文字叠加与隐私遮挡由设备端 region 统一应用。</p>
           </div>
         </div>
         <div className="form-grid">

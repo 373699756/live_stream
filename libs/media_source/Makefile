@@ -2,26 +2,26 @@ SERVICE_NAME := media_source
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
-INFRA_LIB := $(BUILD_DIR)/lib/libinfra_service.a
-MEDIA_LIB := $(BUILD_DIR)/lib/libmedia_service.a
-STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libstream_codec.a
-STREAM_MUX_LIB := $(BUILD_DIR)/lib/libstream_mux.a
+INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
+MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
+STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
+STREAM_MUX_LIB := $(BUILD_DIR)/lib/libmedia_mux.a
 
-CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/stream_mux/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media_mux/include
 
 $(INFRA_LIB):
-	$(MAKE) -C ../infra_service all
+	$(MAKE) -C ../infra all
 
 $(MEDIA_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../media_service all
+	$(MAKE) -C ../device_media all
 
 $(STREAM_CODEC_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../stream_codec all
+	$(MAKE) -C ../media_codec all
 
 $(STREAM_MUX_LIB): $(STREAM_CODEC_LIB)
-	$(MAKE) -C ../stream_mux all
+	$(MAKE) -C ../media_mux all
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
 	$(STREAM_MUX_LIB)

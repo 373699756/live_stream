@@ -4,7 +4,7 @@
 
 #include "core_services.h"
 #include "device_subsystem.h"
-#include "http_console_service.h"
+#include "http_console.h"
 #include "infra/log.h"
 #include "media_subsystem.h"
 
@@ -28,10 +28,10 @@ struct ProtocolRuntimeRefs {
     DeviceRefs device;
     MediaRefs media;
     NetEngine *net_engine = nullptr;
-    IRtspService *rtsp_service = nullptr;
-    OnvifServer *onvif_service = nullptr;
-    IWebrtcService *webrtc_service = nullptr;
-    IMediaSourceService *media_source_service = nullptr;
+    IRtsp *rtsp = nullptr;
+    OnvifServer *onvif = nullptr;
+    IWebrtc *webrtc = nullptr;
+    IMediaPipeline *media_pipeline = nullptr;
 };
 
 infra::ExecutorOptions BuildNetCallbackExecutorOptions() {
@@ -49,8 +49,8 @@ NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor) {
     return options;
 }
 
-RtspServiceOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
-    RtspServiceOptions options;
+RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
+    RtspOptions options;
     options.listen_ip = runtime_config.listen_ip;
     options.listen_port = runtime_config.rtsp_port;
     options.max_sessions = runtime_config.rtsp_max_sessions;
@@ -60,18 +60,18 @@ RtspServiceOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
     return options;
 }
 
-RtspServiceDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
-    RtspServiceDependencies dependencies;
+RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
+    RtspDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
-    dependencies.media_source = refs.media_source_service;
+    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.media_source = refs.media_pipeline;
     return dependencies;
 }
 
-WebrtcServiceOptions BuildWebrtcOptions(
+WebrtcOptions BuildWebrtcOptions(
     const AppRuntimeConfig &runtime_config) {
-    WebrtcServiceOptions options;
+    WebrtcOptions options;
     options.enabled = runtime_config.webrtc_enabled;
     options.local_port_base = runtime_config.webrtc_local_port_base;
     options.max_peers = runtime_config.webrtc_max_peers;
@@ -81,24 +81,24 @@ WebrtcServiceOptions BuildWebrtcOptions(
     return options;
 }
 
-WebrtcServiceDependencies BuildWebrtcDependencies(
+WebrtcDependencies BuildWebrtcDependencies(
     const ProtocolRuntimeRefs &refs) {
-    WebrtcServiceDependencies dependencies;
+    WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.media_source = refs.media_source_service;
+    dependencies.media_source = refs.media_pipeline;
     dependencies.use_fake_engine = false;
     return dependencies;
 }
 
-MediaSourceServiceOptions BuildMediaSourceOptions() {
-    MediaSourceServiceOptions options;
+MediaPipelineOptions BuildMediaSourceOptions() {
+    MediaPipelineOptions options;
     return options;
 }
 
-MediaSourceServiceDependencies BuildMediaSourceDependencies(
+MediaPipelineDependencies BuildMediaSourceDependencies(
     const ProtocolRuntimeRefs &refs) {
-    MediaSourceServiceDependencies dependencies;
-    dependencies.media_service = refs.media.media;
+    MediaPipelineDependencies dependencies;
+    dependencies.device_media = refs.media.media;
     return dependencies;
 }
 
@@ -124,16 +124,16 @@ OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolRuntimeRefs &refs) {
     OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
-    dependencies.system_service = refs.device.system;
-    dependencies.time_service = refs.device.time;
-    dependencies.media_service = refs.media.media;
+    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.system = refs.device.system;
+    dependencies.time = refs.device.time;
+    dependencies.device_media = refs.media.media;
     return dependencies;
 }
 
-HttpServiceOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
-    HttpServiceOptions options;
+HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
+    HttpOptions options;
     options.listen_ip = runtime_config.listen_ip;
     options.listen_port = runtime_config.http_port;
     options.static_root = runtime_config.static_root;
@@ -191,23 +191,23 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
     refs.net_engine = net_engine_.get();
 
-    const MediaSourceServiceOptions media_source_options =
+    const MediaPipelineOptions media_source_options =
         BuildMediaSourceOptions();
-    const MediaSourceServiceDependencies media_source_dependencies =
+    const MediaPipelineDependencies media_source_dependencies =
         BuildMediaSourceDependencies(refs);
     media_source_ =
-        CreateMediaSourceService(media_source_options,
+        CreateMediaPipeline(media_source_options,
                                  media_source_dependencies);
     if (!media_source_ || !media_source_->Start()) {
         INFRA_LOG_ERROR("app", "Start media source service failed");
         Stop();
         return false;
     }
-    refs.media_source_service = media_source_.get();
+    refs.media_pipeline = media_source_.get();
 
-    const RtspServiceOptions rtsp_options = BuildRtspOptions(runtime_config);
-    const RtspServiceDependencies rtsp_dependencies = BuildRtspDependencies(refs);
-    rtsp_ = CreateRtspService(rtsp_options, rtsp_dependencies);
+    const RtspOptions rtsp_options = BuildRtspOptions(runtime_config);
+    const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
+    rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
         INFRA_LOG_ERROR("app",
                         "Start rtsp service failed, continue without RTSP: "
@@ -218,20 +218,20 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
             rtsp_->Stop();
         }
         rtsp_.reset();
-        refs.rtsp_service = nullptr;
+        refs.rtsp = nullptr;
     } else {
-        refs.rtsp_service = rtsp_.get();
+        refs.rtsp = rtsp_.get();
         const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
         INFRA_LOG_INFO("app", "RTSP service listening %s:%u",
                        rtsp_address.ip.c_str(),
                        static_cast<unsigned>(rtsp_address.port));
     }
 
-    const WebrtcServiceOptions webrtc_options =
+    const WebrtcOptions webrtc_options =
         BuildWebrtcOptions(runtime_config);
-    const WebrtcServiceDependencies webrtc_dependencies =
+    const WebrtcDependencies webrtc_dependencies =
         BuildWebrtcDependencies(refs);
-    webrtc_ = CreateWebrtcService(webrtc_options, webrtc_dependencies);
+    webrtc_ = CreateWebrtc(webrtc_options, webrtc_dependencies);
     if (!webrtc_ || !webrtc_->Start()) {
         INFRA_LOG_ERROR(
             "app",
@@ -243,9 +243,9 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
             webrtc_->Stop();
         }
         webrtc_.reset();
-        refs.webrtc_service = nullptr;
+        refs.webrtc = nullptr;
     } else {
-        refs.webrtc_service = webrtc_.get();
+        refs.webrtc = webrtc_.get();
     }
 
     const OnvifServerOptions onvif_options = BuildOnvifOptions(runtime_config);
@@ -261,26 +261,26 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
             onvif_->Stop();
         }
         onvif_.reset();
-        refs.onvif_service = nullptr;
+        refs.onvif = nullptr;
     } else {
-        refs.onvif_service = onvif_.get();
+        refs.onvif = onvif_.get();
         INFRA_LOG_INFO("app", "ONVIF service started listen=%s:%u discovery=%u",
                        runtime_config.listen_ip.c_str(),
                        static_cast<unsigned>(runtime_config.onvif_device_port),
                        static_cast<unsigned>(runtime_config.onvif_discovery_port));
     }
 
-    const HttpServiceOptions http_options = BuildHttpOptions(runtime_config);
-    http_ = CreateHttpConsoleService(
+    const HttpOptions http_options = BuildHttpOptions(runtime_config);
+    http_ = CreateHttpConsole(
         http_options, refs.net_engine,
         refs.core != nullptr ? refs.core->auth() : nullptr,
         refs.core != nullptr ? refs.core->logger() : nullptr,
         refs.core != nullptr ? refs.core->config() : nullptr,
         refs.device.network, refs.device.time, refs.device.alarm,
-        refs.device.upgrade, refs.device.system, refs.rtsp_service,
-        refs.onvif_service, refs.media.ai, refs.media.media,
-        refs.media.snapshot, refs.webrtc_service, refs.media_source_service,
-        refs.media_source_service, refs.media_source_service);
+        refs.device.upgrade, refs.device.system, refs.rtsp,
+        refs.onvif, refs.media.ai, refs.media.media,
+        refs.media.snapshot, refs.webrtc, refs.media_pipeline,
+        refs.media_pipeline, refs.media_pipeline);
     if (!http_ || !http_->Start()) {
         INFRA_LOG_ERROR("app", "Start http service failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),

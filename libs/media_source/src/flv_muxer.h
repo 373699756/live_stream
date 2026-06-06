@@ -2,7 +2,7 @@
 #define LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
 
 #include "media/frame_attach.h"
-#include "stream_mux.h"
+#include "media_mux.h"
 
 #include <cstdint>
 #include <string>

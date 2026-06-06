@@ -13,7 +13,7 @@ flowchart LR
   AppShell[AppShell/navigation] --> Pages[pages/*]
   Pages --> Hooks[hooks/*]
   Hooks --> Api[api/*]
-  Api --> HTTP[http_service /api]
+  Api --> HTTP[http /api]
   Pages --> Components[components/*]
   Api --> Mock[mock fallback]
 ```
@@ -42,7 +42,7 @@ Web 页面只把 HTTP API 返回值作为状态来源。配置语义、设备运
 ## API 消费
 
 前端 API 层负责把 Web Console 的页面动作转成 HTTP 请求，并把响应映射为
-TypeScript DTO。后端 API 的语义归 `http_service` 和对应业务模块，前端只消费。
+TypeScript DTO。后端 API 的语义归 `http` 和对应业务模块，前端只消费。
 
 ```mermaid
 flowchart LR
