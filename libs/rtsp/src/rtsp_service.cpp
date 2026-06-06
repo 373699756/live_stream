@@ -154,6 +154,7 @@ public:
 
 private:
     void StopInternal() {
+        std::vector<ConnectionId> connection_ids;
         if (dependencies_.media_source != nullptr && main_sink_id_ != 0) {
             (void)dependencies_.media_source->DetachFrameSink(main_sink_id_);
             main_sink_id_ = 0;
@@ -165,6 +166,15 @@ private:
         if (server_id_ != 0 && dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseTcp(server_id_);
             server_id_ = 0;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            connection_ids = sessions_.ConnectionIds();
+        }
+        if (dependencies_.net_engine != nullptr) {
+            for (ConnectionId connection_id : connection_ids) {
+                (void)dependencies_.net_engine->Close(connection_id);
+            }
         }
         if (udp_socket_id_ != 0 && dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseUdp(udp_socket_id_);

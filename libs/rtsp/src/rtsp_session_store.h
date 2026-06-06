@@ -17,6 +17,7 @@ class RtspSessionStore {
            std::shared_ptr<RtspSession> *session);
   std::shared_ptr<RtspSession> Find(ConnectionId connection_id) const;
   std::shared_ptr<RtspSession> Remove(ConnectionId connection_id);
+  std::vector<ConnectionId> ConnectionIds() const;
   std::vector<std::shared_ptr<RtspSession>> PlayingTargets(
       StreamId stream_id) const;
   void Clear();

@@ -37,6 +37,14 @@ std::shared_ptr<RtspSession> RtspSessionStore::Remove(
   return session;
 }
 
+std::vector<ConnectionId> RtspSessionStore::ConnectionIds() const {
+  std::vector<ConnectionId> ids;
+  for (const auto &entry : sessions_) {
+    ids.push_back(entry.first);
+  }
+  return ids;
+}
+
 std::vector<std::shared_ptr<RtspSession>> RtspSessionStore::PlayingTargets(
     StreamId stream_id) const {
   std::vector<std::shared_ptr<RtspSession>> targets;
