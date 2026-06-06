@@ -277,11 +277,12 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
     }
 
     if (package_hls) {
-        if (!stream->hls_maker.AppendFrame(
+        bool hls_segment_created = false;
+        if (stream->hls_maker.AppendFrame(
                 frame, payload, stream->vps, stream->sps, stream->pps,
                 keyframe, prepend_parameter_sets, hls_segment_duration_ms,
-                hls_playlist_depth, &result.hls_segment_created)) {
-            return result;
+                hls_playlist_depth, &hls_segment_created)) {
+            result.hls_segment_created = hls_segment_created;
         }
     }
 
