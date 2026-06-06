@@ -3,6 +3,16 @@
 每个实际 `libs/` 模块都有一个对应设计文档。模块文档是长期设计正文入口；
 HTTP API、配置 scope、事件 payload、AI、升级、质量优化等内容都要拆回拥有模块。
 
+## Cross-Module Rules
+
+- `app/` 是组合根。服务之间通过窄接口、Options、Dependencies 或构造参数协作，
+  不通过全局单例互相发现。
+- 状态由最接近真实资源的模块拥有；上层只消费状态，不重复推导。
+- 查询 API 返回具体业务类型；动作型 C++ 函数返回 `bool`。
+- 不新增音频、录像、存储回放、录制 UI/API。
+- 不新增只转调、只包装条件、只隐藏 2-3 行逻辑的 helper/class/hook。
+- HiSilicon MPP/VENC/ISP 细节留在 `media_service` 和 `hisi_vendor` 的 SDK 边界内。
+
 ## Module Documents
 
 ### Core And Infrastructure
