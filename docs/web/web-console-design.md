@@ -35,9 +35,9 @@ flowchart LR
 
 ## 状态来源
 
-Web 页面只把 HTTP API 返回值作为状态来源。直播可用性使用
-`GET /api/status/streams` 的 `browserCodec`、`hlsReady`、`flvReady`、
-`mjpegReady`、`webrtcReady` 等字段。媒体能力使用 `GET /api/media/capabilities`。
+Web 页面只把 HTTP API 返回值作为状态来源。配置语义、设备运行态、媒体 ready、
+升级阶段和 AI 结果都归后端拥有模块；Web 只展示、提交用户动作和处理不可用状态。
+实时预览状态字段在“实时预览”章节集中说明。
 
 ## API 消费
 
@@ -102,7 +102,7 @@ flowchart LR
 - MJPEG：multipart JPEG，通过 `/api/mjpeg/{stream}.mjpg`。
 - snapshot：静态抓图，通过 `/api/snapshot/{stream}.jpg`。
 
-`GET /api/status/streams` 是播放状态权威来源。前端使用：
+实时预览的播放状态权威来源是 `GET /api/status/streams`。前端使用：
 
 - `browserCodec`
 - `hlsSupported` / `hlsReady`
@@ -111,7 +111,7 @@ flowchart LR
 - `webrtcReady`
 
 能力字段来自 `GET /api/media/capabilities`，例如 stream 是否 available 或是否支持
-smart codec。能力不是运行状态。
+smart codec。能力不是运行状态，不能替代 `ready` 字段。
 
 实时预览页轮询 `/api/ai/status`。只有检测结果来自当前码流且坐标有效时，Web 才把
 `last_result.detections` 叠加到视频内容区域。AI 未启用、后端不可用或结果来自其他

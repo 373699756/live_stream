@@ -34,6 +34,11 @@ public API 在 `alarm_service.h`。AI 告警图片归 `ai_service`，告警规�
 告警状态是轻量内存状态，不是录像索引或长期存储。AI 启用时只注入
 `AlarmSource::kAiDetection`，不启用录像、回放或长期保存。
 
+## 非目标
+
+- 不实现录像、回放、云推送或长期告警归档。
+- 不拥有 AI 告警图片存储；该存储归 `ai_service`。
+
 ## 风险与优化方向
 
 - 告警输入应节流或按 `min_duration_ms` 处理，避免频繁事件淹没 Web 和日志。

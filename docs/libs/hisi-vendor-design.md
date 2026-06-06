@@ -30,6 +30,12 @@ flowchart LR
 public SDK interface 位于 `hisi_vendor` include 和 `mpp_hisi_sdk_impl` 相关实现。
 上层模块不直接包含海思 MPI 业务结构；需要新增硬件能力时先扩展 `IHisiSdk`。
 
+## 状态与资源模型
+
+硬件资源生命周期必须由调用方通过 `IHisiSdk` 明确 create/start/stop/destroy。
+`hisi_vendor` 可以保存 SDK 适配所需的句柄和能力缓存，但不能替业务模块决定配置策略、
+Web DTO 或运行状态展示。
+
 ## 非目标
 
 - 不拥有 HTTP DTO。

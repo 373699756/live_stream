@@ -77,6 +77,12 @@ mtdparts=hi_sfc:1M(boot),4M(kernel),12M(rootfs),10M(bin),2M(web),1M(config),2M(d
 生产部署使用 `/config`、`/data`、`/www`、`/opt/app` 等板端路径；`/tmp` 必须是 RAM
 路径，升级临时目录不得落在 flash 长期分区。
 
+## 非目标
+
+- `upgrade_service` 不直接写 MTD，不绕过 `IUpgradePlatform`。
+- 普通在线升级不写 `boot`，当前发布脚本禁用 `kernel-rootfs` 和 `full` profile。
+- 不把 Web 上传进度当作 flash 写入完成状态。
+
 ## 风险与优化方向
 
 - 写 flash 前必须校验签名、manifest、分区白名单和包完整性。

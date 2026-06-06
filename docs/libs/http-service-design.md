@@ -56,6 +56,21 @@ HTTP 路由由本模块实现，但业务语义归拥有模块：
 HTTP 是最宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。流式响应使用 stream/control executor，避免控制 API 被直播写阻塞。
 
+HTTP 自有资源只包括 listener、connection、request/response buffer、router、
+executor、静态文件句柄和认证中间态。业务对象生命周期、配置状态、媒体 ready 状态和
+升级状态都必须从拥有模块读取。
+
+`HttpServiceOptions` 的资源上限是 HTTP 边界契约：`max_connections`、
+`max_request_header_bytes`、`max_request_body_bytes`、`send_queue_capacity`、
+`send_buffer_limit_bytes`、`stream_executor_*`、`control_executor_*` 和 timeout 字段
+用于限制慢客户端、上传体和流式响应对进程内存的影响。
+
+## 非目标
+
+- 不在 HTTP 层推导媒体、升级、AI 或设备运行状态。
+- 不把 Web DTO 反向扩散到业务模块。
+- 不让直播 socket 写持有媒体源内部锁。
+
 ## 风险与优化方向
 
 - `HttpServiceDependencies` 较宽，后续可把 handlers 变成独立构造的 handler 类。

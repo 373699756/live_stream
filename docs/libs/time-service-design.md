@@ -26,6 +26,16 @@ flowchart LR
 
 public API 在 `time_service.h`。前端只消费 HTTP 返回值，不负责设备时间应用策略。
 
+## 状态与资源模型
+
+时间配置来自 `time` scope，平台应用通过 `ITimePlatform` 完成。NTP 配置、时区和手动
+校时会影响日志时间、认证过期和媒体时间戳相关展示，变更时必须发布 `kTimeChanged`。
+
+## 非目标
+
+- 不管理网络接口或 DNS 配置。
+- 不由浏览器本地时间替代设备时间状态。
+
 ## 风险与优化方向
 
 - 时间跳变会影响日志、HLS segment 时间和认证过期判断，需要记录关键变更。

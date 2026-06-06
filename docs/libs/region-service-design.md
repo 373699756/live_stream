@@ -34,6 +34,12 @@ public API 在 `region_service.h`。`GET/PUT /api/config/overlay` 的业务语�
 - 不在本模块直接写 HiSilicon MPI 结构转换；转换留在 `hisi_vendor`。
 - 不拥有 Web 遮挡编辑器状态。
 
+## 状态与资源模型
+
+region 状态由 overlay 配置、media channel 绑定和 SDK region 句柄共同决定。热应用时
+必须先校验配置，再按 create/attach/update/detach/destroy 顺序收敛硬件状态；失败时
+不能留下与配置不一致的遮挡或 OSD。
+
 ## 风险与优化方向
 
 - 区域配置热应用失败必须清理半创建 region，避免遮挡残留。

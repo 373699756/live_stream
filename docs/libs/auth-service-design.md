@@ -35,6 +35,17 @@ public API 在 `auth_service.h`。HTTP 路由归 `http_service`，Web 认证状�
 `admin/admin` 只作为初始设置路径。后端返回 `must_change_password` 时，Web 必须
 先调用改密 API，再进入管理台。RTSP 和 ONVIF 认证拒绝工厂密码，直到密码修改成功。
 
+## 状态与资源模型
+
+认证用户由 `IAuthUserStore` 持久化，当前 app 适配到 `configs/auth_users.json`。
+session/token 表是进程内运行状态，受 TTL、最大 session 和锁定策略限制；重启后不作为
+持久登录凭据恢复。
+
+## 非目标
+
+- 不保存明文密码、token 或认证头。
+- 不拥有 HTTP cookie/header 解析和 Web 页面跳转。
+
 ## 风险与优化方向
 
 - 审计记录不得包含敏感明文。

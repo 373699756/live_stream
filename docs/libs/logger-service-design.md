@@ -34,6 +34,11 @@ public API 在 `logger_service.h`。`OperationAction` 和 `OperationResult` 是�
 日志存储是文件资源，路径由 app 启动配置决定。写入失败只能影响审计记录，不应阻断
 核心媒体链路。
 
+## 非目标
+
+- 不替代 `infra::Log` 的进程日志。
+- 不作为事件总线或告警长期归档。
+
 ## 风险与优化方向
 
 - 不记录密码、token、认证头和大 payload。

@@ -30,6 +30,16 @@ flowchart LR
 
 public API 在 `net_service.h`。协议语义、路由、session 和 DTO 归对应协议模块。
 
+## 状态与资源模型
+
+`NetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
+队列。上层协议停止时必须先解除连接、session 或 endpoint，再停止网络引擎。
+
+## 非目标
+
+- 不解析 HTTP、RTSP、ONVIF、WebRTC 业务协议。
+- 不维护认证、路由、媒体 ready 或客户端业务状态。
+
 ## 风险与优化方向
 
 - 回调队列容量要匹配协议吞吐，避免流量高峰时无限堆积。

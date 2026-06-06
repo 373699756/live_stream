@@ -28,6 +28,16 @@ flowchart LR
 public API 在 `webrtc_service.h`。HTTP signaling 路由归 `http_service`，Web 播放
 状态归 `www`，媒体 ready 仍归 `media_source`。
 
+## 状态与资源模型
+
+WebRTC peer/session 拥有 SDP/ICE 状态、transport、frame sink 和 peer 上限。peer
+关闭、ICE 失败或 HTTP close 时必须解除 frame sink，避免继续持有媒体帧引用。
+
+## 非目标
+
+- 不维护 HLS/FLV/MJPEG ready 或缓存。
+- 不由 Web 前端推导 ICE/public IP 或媒体 codec 状态。
+
 ## 风险与优化方向
 
 - WebRTC peer 生命周期必须和 frame sink 生命周期绑定。

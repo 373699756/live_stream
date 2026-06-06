@@ -31,6 +31,16 @@ flowchart LR
 public API 在 `onvif_service.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
 
+## 状态与资源模型
+
+ONVIF 运行状态包含 discovery socket、HTTP/SOAP request context 和认证校验上下文。
+设备信息、时间、媒体能力和 RTSP/snapshot URL 都从相邻服务或 runtime config 获取。
+
+## 非目标
+
+- 不维护 RTSP session 或媒体帧缓存。
+- 不拥有 Web UI、HTTP API DTO 或设备 SDK 状态。
+
 ## 风险与优化方向
 
 - ONVIF metadata 不应复制 RTSP session 状态。

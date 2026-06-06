@@ -29,6 +29,16 @@ flowchart LR
 public API 在 `rtsp_service.h`。RTSP URL 可被 ONVIF URI provider 使用，但 RTSP
 内部 session 状态不归 ONVIF。
 
+## 状态与资源模型
+
+RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文和 frame sink 注册。
+PLAY 后必须通过 `IMediaFrameSource` 取帧，TEARDOWN 或断连时必须释放 sink。
+
+## 非目标
+
+- 不拥有 HLS/FLV/MJPEG/WebRTC 浏览器预览状态。
+- 不直接访问 `media_service` 或 HiSilicon SDK。
+
 ## 风险与优化方向
 
 - RTSP 客户端断开必须及时解除 frame sink。

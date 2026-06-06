@@ -27,6 +27,16 @@ flowchart LR
 public API 在 `system_service.h`。HTTP `/api/system/status` 路由归
 `http_service`，页面展示归 Web。
 
+## 状态与资源模型
+
+系统状态来自 `ISystemPlatform` 对 Linux/板端信息的即时查询。reboot、factory reset
+等动作必须经权限校验和操作日志记录；模块不缓存媒体 pipeline 状态。
+
+## 非目标
+
+- 不拥有升级包校验、flash 写入或媒体启动停止流程。
+- 不在 Web 侧推导系统状态。
+
 ## 风险与优化方向
 
 - 系统动作必须做权限和审计。

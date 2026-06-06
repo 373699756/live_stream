@@ -36,6 +36,31 @@ flowchart LR
 - `http_service`：慢客户端断连、stream executor 队列和 socket 写边界。
 - `webrtc_service`：peer fanout 和 frame dispatch 内存峰值。
 
+## 基线指标
+
+每次热路径优化前后至少记录以下指标，不能只凭代码直觉判断：
+
+| 指标 | 观察点 | 归属模块 |
+| --- | --- | --- |
+| 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http_service` |
+| HLS segment 数量和 body 总量 | playlist depth + retain count 是否有界 | `media_source` |
+| FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media_source` |
+| 活跃 FLV/MJPEG/frame sink 数 | 是否受 `MediaSourceServiceOptions` 限制 | `media_source_service` |
+| HTTP active connections / send queue | 慢 socket 是否堆积到上限后断开 | `http_service` |
+| WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc_service` |
+
+当前资源上限以 `MediaSourceServiceOptions`、`HttpServiceOptions` 和 WebRTC options
+为准。新增缓存或队列时必须先定义上限，再补拥有模块文档。
+
+## 验收口径
+
+- 单路主码流 + 子码流预览时，HLS/FLV/MJPEG/WebRTC 任一模式启停后资源应回落到稳定值。
+- 客户端达到上限时，新连接失败必须可解释，不能突破 registry 或 HTTP connection 上限。
+- 慢客户端断开后，HTTP send queue、stream executor backlog 和媒体缓存引用必须释放。
+- codec 在 H.264/H.265/MJPEG 间切换后，旧 parameter set、GOP cache 和 segment cache
+  不得继续服务新客户端。
+- 优化结果必须同步回拥有模块文档；专项文档只保留跨模块指标和排查入口。
+
 ## 质量验证
 
 - 文档或小 bugfix 不强制运行质量扫描。

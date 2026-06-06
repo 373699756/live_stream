@@ -37,11 +37,37 @@ flowchart LR
 public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 `GET /api/status/streams` 的浏览器播放字段语义归本模块；HTTP 只序列化。
 
+浏览器播放状态字段：
+
+| 字段 | 语义归属 |
+| --- | --- |
+| `running` | 对应码流是否正在接收有效编码帧 |
+| `browser_codec` | 当前 codec 是否可进入浏览器预览链路 |
+| `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有可播放 playlist/segment |
+| `flv_supported` / `flv_ready` | HTTP-FLV 是否支持当前 codec、是否已有 sequence header 或 GOP 起点 |
+| `mjpeg_supported` / `mjpeg_ready` | MJPEG 是否支持当前 codec、是否已有可输出帧 |
+| `codec` | 当前媒体源观察到的 codec |
+| `hls_segment_count`、`*_size` | 诊断字段，只描述媒体源缓存状态 |
+
+`/api/media/capabilities` 的 stream available/smart codec 等能力字段不归本模块；
+这些字段归 `media_service`。能力字段不是运行 ready 状态。
+
 ## 状态与资源模型
 
 媒体源状态是高频路径共享状态。HLS segment body、FLV cached tag、EncodedFrame
 引用需要明确 retain/unref。读取方拿到引用后必须遵循释放约定，不能直接引用内部
 可变缓存。
+
+缓存资源由 `media_source_service` 注入的 options 限制：HLS segment duration、
+playlist depth、segment retain count、FLV client 上限、MJPEG client 上限和 frame
+sink 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
+sequence header、GOP cache、HLS 当前 segment 和 ready 字段。
+
+## 非目标
+
+- 不暴露内部可变缓存给 HTTP 或协议模块长期持有。
+- 不拥有客户端 socket、peer/session 或 Web UI 状态。
+- 不处理音频 track。
 
 ## 风险与优化方向
 

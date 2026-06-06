@@ -32,6 +32,11 @@ public API 在 `snapshot_service.h`。`GET /api/snapshot/main.jpg` 和
 抓图是低频动作，但会访问媒体和 SDK 资源。失败时返回明确失败状态，不影响实时
 预览主链路。
 
+## 非目标
+
+- 不提供录像、连拍归档或回放索引。
+- 不拥有 HTTP route、静态文件服务或 AI 告警图片保留策略。
+
 ## 风险与优化方向
 
 - 抓图不能阻塞帧路径锁。

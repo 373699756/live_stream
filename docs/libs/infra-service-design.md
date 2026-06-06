@@ -24,6 +24,12 @@ flowchart LR
 - 提供异步 executor，用于网络 callback 和 HTTP stream/control 任务。
 - 提供 hash 能力，供认证、升级或校验路径使用。
 
+## 接口归属
+
+public API 归 `infra_service` include 下的日志、文件、路径、时间、hash 和 executor
+工具。上层模块可以依赖这些基础能力，但不能把业务状态、设备 SDK 句柄或协议 session
+放入 infra 层。
+
 ## 非目标
 
 - 不记录用户操作日志；操作日志归 `logger_service`。
