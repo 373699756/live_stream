@@ -4,7 +4,7 @@
 
 | Date | Decision | Reason | Impact |
 | --- | --- | --- | --- |
-| 2026-05-21 | AI 会话先读短执行文档，再按需读长设计文档。 | 长文档有价值，但每轮都读会浪费 token 并增加跑偏概率。 | 默认入口是 `AGENTS.md` 和 `docs/active/*`；`docs/architecture/*`、`docs/contracts/*`、`docs/features/*`、`docs/quality/*` 只定向读取。 |
+| 2026-05-21 | AI 会话先读短执行文档，再按需读长设计文档。 | 长文档有价值，但每轮都读会浪费 token 并增加跑偏概率。 | 默认入口是 `AGENTS.md` 和 `docs/active/*`；总体设计、模块设计、Web、app 和 operations 文档只定向读取。 |
 | 2026-05-21 | 一轮任务通常只处理一个模块，最多一个相邻接口模块。 | 多模块大任务容易导致重复封装、命名漂移和行为回归。 | 跨模块工作先做接口/状态契约，再做实现。 |
 | 2026-05-21 | 前端直播状态不猜测设备内部状态。 | HLS/FLV/WebRTC ready 已由后端真实链路产生，前端猜测会导致偶现播放卡住。 | Web Console 使用 `browserCodec`、`hlsReady`、`flvReady`、`webrtcReady` 控制预览可用性。 |
 | 2026-05-21 | 精简优先，不为简单顺序逻辑新增抽象。 | 过度使用 Context、State、Manager、Store、helper 会降低可读性。 | 新增抽象前必须说明真实收益；否则使用直线流程。 |

@@ -1,8 +1,8 @@
 # Documentation Index
 
 本文档目录按“总体框架 -> app 组合根 -> Web Console -> libs 模块 ->
-运维交付”的方式组织。长期设计不再优先按 contracts/features/quality 横切分类
-存放；API、配置、事件、AI、升级、质量工具等内容都归入拥有它们的模块文档。
+运维交付”的方式组织。长期设计不再按 contracts/features 这类横切分类存放；
+API、配置、事件、AI、升级、质量工具等内容都归入拥有它们的模块文档。
 
 ## Daily Entry
 
@@ -20,9 +20,6 @@
   的组合、启动和关闭关系。
 - `architecture/build-deploy-design.md`：构建、运行路径、配置文件、Web 静态资源、
   rootfs 和发布包关系。
-
-旧 `architecture/overview.md`、`architecture/module-boundaries.md` 仅作为迁移期
-参考；新增设计和修订优先写入上面三个文档。
 
 ## App
 
@@ -52,14 +49,6 @@
 - `operations/quality-tooling-design.md`：质量扫描工具、使用入口和报告归属。
 - `operations/memory-optimization-design.md`：热路径内存和拷贝优化设计。
 - `operations/release-package-design.md`：打包脚本、rootfs 脚本、发布包和板端部署。
-
-## Legacy Migration Stubs
-
-- `contracts/`：迁移期索引，原 API/config/event 契约正文已归入拥有模块。
-- `features/`：迁移期索引，AI 和 SPI NOR 升级正文已归入模块设计。
-- `quality/`：迁移期索引，质量工具和优化正文已归入 `operations/`。
-
-这些旧目录不再作为长期设计正文入口。
 
 ## Read Rules
 

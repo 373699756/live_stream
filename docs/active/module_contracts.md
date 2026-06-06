@@ -1,7 +1,8 @@
 # Module Contracts
 
 短模块契约图，用来避免每次任务重新发现模块边界。详细说明见
-`docs/architecture/overview.md` 和 `docs/architecture/module-boundaries.md`。
+`docs/architecture/system-design.md`、`docs/architecture/runtime-composition-design.md`
+和 `docs/libs/*-design.md`。
 
 ## Cross-Module Rules
 
@@ -30,7 +31,7 @@
 `logger_service` 拥有操作日志，不拥有普通进程日志策略。
 
 `event_service` 拥有进程内事件分发。事件命名和 payload 见
-`docs/contracts/event-payloads.md`。
+`docs/libs/event-service-design.md`。
 
 ## Device Services
 
@@ -104,4 +105,4 @@ WebRTC 是一种预览链路，不应污染 HLS/FLV 主链路状态。
 1. 后端 handler/DTO。
 2. `www/src/api/types.ts` 和对应 API client。
 3. `www/README.md`。
-4. `docs/contracts/api-config.md`。
+4. 拥有模块的 `docs/libs/*-design.md` 或 `docs/app/*-design.md`。
