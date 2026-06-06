@@ -379,10 +379,7 @@ private:
             item["webrtcReady"] = stream_running && stream_enabled &&
                                   (codec == "h264" || codec == "h265") &&
                                   webrtc_stats.enabled &&
-                                  webrtc_stats.signaling_ready &&
-                                  webrtc_stats.ice_ready &&
-                                  webrtc_stats.dtls_ready &&
-                                  webrtc_stats.srtp_ready;
+                                  webrtc_stats.backend_available;
             items.push_back(item);
         }
         return JsonResponse(200, items);

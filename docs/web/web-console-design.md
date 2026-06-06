@@ -68,11 +68,6 @@ DTO 规则：
   和拥有模块设计文档。
 - 前端不补齐后端缺失状态；缺字段应走兼容默认值或显示不可用状态。
 
-WebRTC signaling 响应使用 native 状态模型。`POST /api/webrtc/peers`、offer、
-candidate 和 close 都返回 `ok`，失败时返回 `error`；peer/offer 响应同时返回
-`peer_id` 和 `state`，offer 成功时才返回 `sdp`。当前 10.1/10.2 native 基线尚未
-生成可播放 SDP，offer 失败会返回 `sdp_not_ready`，前端只展示该状态，不伪造播放。
-
 认证状态由 `AuthContext` 管理。工厂密码路径只允许初始设置，后端返回
 `must_change_password` 时 Web 必须先完成改密再进入管理台。HTTP 错误处理应在
 API client 层统一转换，页面只负责显示业务含义明确的状态。
@@ -114,9 +109,6 @@ flowchart LR
 - `flvSupported` / `flvReady`
 - `mjpegSupported` / `mjpegReady`
 - `webrtcReady`
-
-`webrtcReady` 只有在后端确认 WebRTC 已启用且 native signaling、ICE、DTLS 和
-SRTP 均 ready 时才为 true；单独 signaling 可用不代表浏览器可播放。
 
 能力字段来自 `GET /api/media/capabilities`，例如 stream 是否 available 或是否支持
 smart codec。能力不是运行状态，不能替代 `ready` 字段。

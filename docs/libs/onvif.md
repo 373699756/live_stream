@@ -7,8 +7,8 @@
 ## 模块定位
 
 `onvif` 负责设备端 ONVIF WS-Discovery、device/media service、
-SOAP/XML/HTTP 响应和 ONVIF 认证。它不拥有 RTSP session 内部状态，也不直接构造
-Web UI。
+SOAP/XML/HTTP 响应和 ONVIF 认证。它不拥有 RTSP session 内部状态，不拼接 RTSP
+端口或 stream path，也不直接构造 Web UI。
 
 ## 总体框架图
 
@@ -20,7 +20,7 @@ flowchart LR
   ONVIF --> System[system]
   ONVIF --> Time[time]
   ONVIF --> Media[device_media]
-  ONVIF --> RTSP[RTSP URL provider]
+  ONVIF --> RTSP[rtsp URL contract]
   ONVIF --> Event[event]
 ```
 
@@ -29,12 +29,18 @@ flowchart LR
 - WS-Discovery Probe 响应，包含 EndpointReference、Types、Scopes 和 XAddrs。
 - Device service 和 Media service SOAP 响应。
 - ONVIF auth。
-- 根据 runtime config 生成 RTSP 和 snapshot URL。
+- 从 `rtsp` public 契约读取 RTSP listen address 和 stream path，输出 media
+  profile 的 RTSP URL。
+- 根据 runtime config 生成 snapshot URL。
 
 ## 接口归属
 
 public API 在 `onvif_server.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
+
+`OnvifServerDependencies::rtsp` 指向已启动的 `IRtsp`。ONVIF media service 只调用
+`IRtsp::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；RTSP path 和 URL 拼接规则
+归 `rtsp` 模块所有。
 
 内部实现按职责拆分为 `OnvifServer`、`onvif_discovery`、`onvif_device_service`、
 `onvif_media_service`、`onvif_http`、`onvif_soap` 和 `onvif_auth`。模块不保留旧
@@ -43,7 +49,8 @@ public API 兼容入口。
 ## 状态与资源模型
 
 ONVIF 运行状态包含 discovery socket、HTTP/SOAP request context 和认证校验上下文。
-设备信息、时间、媒体能力和 RTSP/snapshot URL 都从相邻服务或 runtime config 获取。
+设备信息、时间和媒体能力从相邻服务获取；RTSP URL 从 `rtsp` public 契约获取；
+snapshot URL 仍由 ONVIF 使用 HTTP 端口和 snapshot path 生成。
 
 ## 非目标
 

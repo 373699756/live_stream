@@ -143,7 +143,7 @@ export const mockStreamStatus: StreamStatus[] = [
     hlsReady: false,
     flvReady: false,
     mjpegReady: false,
-    webrtcReady: false,
+    webrtcReady: true,
   },
   {
     stream: 'sub',
@@ -159,6 +159,6 @@ export const mockStreamStatus: StreamStatus[] = [
     hlsReady: true,
     flvReady: true,
     mjpegReady: false,
-    webrtcReady: false,
+    webrtcReady: true,
   },
 ];

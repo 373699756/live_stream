@@ -35,19 +35,8 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
-HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
-和 reader 生命周期仍归 `media_source`。
-
-`WebrtcStats` 只暴露 native 链路状态和计数：`enabled`、`signaling_ready`、
-`ice_ready`、`dtls_ready`、`srtp_ready`、peer 数、offer/candidate 数、帧发送/
-丢弃和 RTP 包发送/丢弃。模块不再暴露 `BackendName()` 或 `backend_available`。
-
-10.1/10.2 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与
-libsrtp 作为后续 DTLS/SRTP 依赖；usrsctp/datachannel 首版不启用。当前 native
-engine 接收 create peer、offer、candidate、close 的 signaling 调用，但 SDP/ICE/
-DTLS/SRTP 尚未接通，offer 会以 `sdp_not_ready` 返回失败状态，直到 10.3 之后逐层
-补齐。
+public API 在 `webrtc.h`。HTTP signaling 路由和 DTO 归 `http_media`，Web 播放
+状态归 `www`，媒体 ready 和 reader 生命周期仍归 `media_source`。
 
 ## 状态与资源模型
 

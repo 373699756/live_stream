@@ -17,6 +17,7 @@ namespace live_stream {
 class IAuth;
 class IEvent;
 class IDeviceMedia;
+class IRtsp;
 class NetEngine;
 class ISystem;
 class ITime;
@@ -35,7 +36,6 @@ struct OnvifServerOptions {
     std::string service_path = "/onvif/device_service";
     std::string snapshot_main_path = "/api/snapshot/main.jpg";
     std::string snapshot_sub_path = "/api/snapshot/sub.jpg";
-    uint16_t rtsp_port = 554;
     uint16_t http_port = 80;
     uint32_t max_request_bytes = 16 * 1024;
 };
@@ -56,6 +56,7 @@ struct OnvifServerDependencies {
     ISystem *system = nullptr;
     ITime *time = nullptr;
     IDeviceMedia *device_media = nullptr;
+    IRtsp *rtsp = nullptr;
 };
 
 class OnvifServer {

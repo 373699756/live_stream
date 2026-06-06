@@ -2,14 +2,11 @@
 
 #include "device_media.h"
 #include "onvif_soap.h"
+#include "rtsp.h"
 
 namespace live_stream {
 namespace onvif {
 namespace {
-
-const char *StreamPath(StreamId stream_id) {
-    return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
-}
 
 const std::string &SnapshotPath(const OnvifServerOptions &options,
                                 StreamId stream_id) {
@@ -23,11 +20,14 @@ bool StreamAvailable(const OnvifServerDependencies &dependencies,
            dependencies.device_media->IsStreamStarted(stream_id);
 }
 
-std::string BuildStreamUri(const OnvifServerOptions &options,
+std::string BuildStreamUri(const OnvifServerDependencies &dependencies,
                            StreamId stream_id,
                            const std::string &advertise_ip) {
-    return std::string("rtsp://") + advertise_ip + ":" +
-           std::to_string(options.rtsp_port) + StreamPath(stream_id);
+    if (dependencies.rtsp == nullptr) {
+        return std::string();
+    }
+    const RtspListenAddress address = dependencies.rtsp->LocalAddress();
+    return BuildRtspStreamUrl(address, stream_id, advertise_ip);
 }
 
 std::string BuildSnapshotUri(const OnvifServerOptions &options,
@@ -77,11 +77,11 @@ OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
     OnvifMediaUris media_uris;
     if (StreamAvailable(dependencies, StreamId::kMain)) {
         media_uris.stream_main =
-            BuildStreamUri(options, StreamId::kMain, advertise_ip);
+            BuildStreamUri(dependencies, StreamId::kMain, advertise_ip);
     }
     if (StreamAvailable(dependencies, StreamId::kSub)) {
         media_uris.stream_sub =
-            BuildStreamUri(options, StreamId::kSub, advertise_ip);
+            BuildStreamUri(dependencies, StreamId::kSub, advertise_ip);
     }
     media_uris.snapshot_main =
         BuildSnapshotUri(options, StreamId::kMain, advertise_ip);

@@ -115,7 +115,6 @@ OnvifServerOptions BuildOnvifOptions(const AppRuntimeConfig &runtime_config) {
     options.firmware_version = runtime_config.onvif_firmware_version;
     options.snapshot_main_path = runtime_config.snapshot_main_path;
     options.snapshot_sub_path = runtime_config.snapshot_sub_path;
-    options.rtsp_port = runtime_config.rtsp_port;
     options.http_port = runtime_config.http_port;
     return options;
 }
@@ -129,6 +128,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     dependencies.system = refs.device.system;
     dependencies.time = refs.device.time;
     dependencies.device_media = refs.media.device_media;
+    dependencies.rtsp = refs.rtsp;
     return dependencies;
 }
 

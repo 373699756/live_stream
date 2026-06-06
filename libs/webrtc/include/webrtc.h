@@ -75,8 +75,6 @@ struct WebrtcOfferRequest {
 struct WebrtcAnswer {
     std::string peer_id;
     std::string sdp;
-    WebrtcPeerState state = WebrtcPeerState::kCreated;
-    std::string error;
 };
 
 struct WebrtcIceCandidate {
@@ -89,10 +87,7 @@ struct WebrtcIceCandidate {
 
 struct WebrtcStats {
     bool enabled = false;
-    bool signaling_ready = false;
-    bool ice_ready = false;
-    bool dtls_ready = false;
-    bool srtp_ready = false;
+    bool backend_available = false;
     uint32_t active_peers = 0;
     uint32_t max_peers = 0;
     uint64_t total_peers = 0;
@@ -100,8 +95,6 @@ struct WebrtcStats {
     uint64_t remote_candidates = 0;
     uint64_t sent_frames = 0;
     uint64_t dropped_frames = 0;
-    uint64_t sent_rtp_packets = 0;
-    uint64_t dropped_rtp_packets = 0;
 };
 
 class IWebrtc : public IFrameSink {

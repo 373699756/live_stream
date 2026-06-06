@@ -217,38 +217,6 @@ export interface StreamStatus {
   webrtcReady?: boolean;
 }
 
-export type WebrtcPeerState =
-  | 'created'
-  | 'offer_received'
-  | 'connecting'
-  | 'connected'
-  | 'closing'
-  | 'closed'
-  | 'failed'
-  | 'unknown';
-
-export interface WebrtcPeerResponse {
-  ok: boolean;
-  peer_id: string;
-  stream: StreamName;
-  state: WebrtcPeerState;
-  error?: string;
-}
-
-export interface WebrtcAnswerResponse {
-  ok: boolean;
-  peer_id: string;
-  sdp: string;
-  state: WebrtcPeerState;
-  error?: string;
-}
-
-export interface WebrtcCommandResponse {
-  ok: boolean;
-  peer_id?: string;
-  error?: string;
-}
-
 export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';
 export type AiTaskName =
   | 'object_detection'
