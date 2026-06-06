@@ -65,7 +65,7 @@ RtspServiceDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     dependencies.net_engine = refs.net_engine;
     dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
-    dependencies.stream_hub = refs.media_source_service;
+    dependencies.media_source = refs.media_source_service;
     return dependencies;
 }
 
@@ -85,7 +85,7 @@ WebrtcServiceDependencies BuildWebrtcDependencies(
     const ProtocolRuntimeRefs &refs) {
     WebrtcServiceDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.stream_hub = refs.media_source_service;
+    dependencies.media_source = refs.media_source_service;
     dependencies.use_fake_engine = false;
     return dependencies;
 }

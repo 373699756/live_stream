@@ -9,7 +9,6 @@
 #include "net_service.h"
 #include "rtsp_protocol.h"
 #include "rtsp_session_store.h"
-#include "stream_hub_service.h"
 #include "stream_mux.h"
 
 #include <mutex>
@@ -93,7 +92,7 @@ public:
             return true;
         }
         if (dependencies_.net_engine == nullptr ||
-            dependencies_.stream_hub == nullptr ||
+            dependencies_.media_source == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
             return false;
@@ -151,13 +150,13 @@ public:
         main_options.require_key_frame_first = true;
         main_options.sink_name = kServiceName;
         main_sink_id_ =
-            dependencies_.stream_hub->AttachFrameSink(main_options, this);
+            dependencies_.media_source->AttachFrameSink(main_options, this);
         FrameAttachOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.require_key_frame_first = true;
         sub_options.sink_name = kServiceName;
         sub_sink_id_ =
-            dependencies_.stream_hub->AttachFrameSink(sub_options, this);
+            dependencies_.media_source->AttachFrameSink(sub_options, this);
         NetAddress local_result =
             dependencies_.net_engine->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
@@ -177,12 +176,12 @@ public:
 
 private:
     void StopInternal() {
-        if (dependencies_.stream_hub != nullptr && main_sink_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameSink(main_sink_id_);
+        if (dependencies_.media_source != nullptr && main_sink_id_ != 0) {
+            (void)dependencies_.media_source->DetachFrameSink(main_sink_id_);
             main_sink_id_ = 0;
         }
-        if (dependencies_.stream_hub != nullptr && sub_sink_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameSink(sub_sink_id_);
+        if (dependencies_.media_source != nullptr && sub_sink_id_ != 0) {
+            (void)dependencies_.media_source->DetachFrameSink(sub_sink_id_);
             sub_sink_id_ = 0;
         }
         if (server_id_ != 0 && dependencies_.net_engine != nullptr) {
@@ -461,14 +460,14 @@ private:
     }
 
     bool IsStreamAvailable(StreamId stream_id) const {
-        return dependencies_.stream_hub != nullptr &&
-               dependencies_.stream_hub->IsStreamAvailable(stream_id);
+        return dependencies_.media_source != nullptr &&
+               dependencies_.media_source->IsStreamAvailable(stream_id);
     }
 
     VideoCodec CodecForStream(StreamId stream_id) const {
-        if (dependencies_.stream_hub != nullptr &&
-            dependencies_.stream_hub->IsStreamAvailable(stream_id)) {
-            return dependencies_.stream_hub->GetStreamCodec(stream_id);
+        if (dependencies_.media_source != nullptr &&
+            dependencies_.media_source->IsStreamAvailable(stream_id)) {
+            return dependencies_.media_source->GetStreamCodec(stream_id);
         }
         if (stream_id == StreamId::kSub) {
             return options_.sub_stream_codec;
@@ -870,8 +869,8 @@ private:
     }
 
     bool RequestKeyFrame(StreamId stream_id) {
-        if (dependencies_.stream_hub != nullptr) {
-            return dependencies_.stream_hub->RequestKeyFrame(
+        if (dependencies_.media_source != nullptr) {
+            return dependencies_.media_source->RequestKeyFrame(
                 stream_id, KeyFrameReason::kNewClient);
         }
         return false;

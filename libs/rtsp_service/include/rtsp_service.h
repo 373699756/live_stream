@@ -1,6 +1,8 @@
 #ifndef LIVE_STREAM_RTSP_SERVICE_H_
 #define LIVE_STREAM_RTSP_SERVICE_H_
 
+#include "media_source.h"
+
 #include "media/encoded_frame.h"
 #include "media/stream_types.h"
 
@@ -12,7 +14,6 @@ namespace live_stream {
 
 class IAuthService;
 class IEventService;
-class IStreamFrameSource;
 class NetEngine;
 
 enum class RtspTransportMode {
@@ -103,7 +104,7 @@ struct RtspServiceDependencies {
     NetEngine* net_engine = nullptr;
     IAuthService* auth_service = nullptr;
     IEventService* event_service = nullptr;
-    IStreamFrameSource* stream_hub = nullptr;
+    IMediaFrameSource* media_source = nullptr;
     IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };
 

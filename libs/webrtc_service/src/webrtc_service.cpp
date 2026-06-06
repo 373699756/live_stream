@@ -72,7 +72,7 @@ public:
             state_ = ServiceState::kStarted;
             return true;
         }
-        if (dependencies_.stream_hub == nullptr) {
+        if (dependencies_.media_source == nullptr) {
             return false;
         }
         infra::ExecutorOptions executor_options;
@@ -146,7 +146,7 @@ public:
             }
 
             const VideoCodec codec =
-                dependencies_.stream_hub->GetStreamCodec(request.stream_id);
+                dependencies_.media_source->GetStreamCodec(request.stream_id);
             peer = peer_store_.CreatePeer(request, codec);
         }
 
@@ -505,12 +505,12 @@ private:
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
-        return dependencies_.stream_hub != nullptr &&
-               dependencies_.stream_hub->IsStreamAvailable(stream_id);
+        return dependencies_.media_source != nullptr &&
+               dependencies_.media_source->IsStreamAvailable(stream_id);
     }
 
     bool SubscribeMediaLocked() {
-        if (dependencies_.stream_hub == nullptr) {
+        if (dependencies_.media_source == nullptr) {
             return false;
         }
         if (main_sink_id_ != 0 || sub_sink_id_ != 0) {
@@ -521,13 +521,13 @@ private:
         main_options.stream_id = StreamId::kMain;
         main_options.sink_name = WebrtcService::Name();
         main_sink_id_ =
-            dependencies_.stream_hub->AttachFrameSink(main_options, this);
+            dependencies_.media_source->AttachFrameSink(main_options, this);
 
         FrameAttachOptions sub_options;
         sub_options.stream_id = StreamId::kSub;
         sub_options.sink_name = WebrtcService::Name();
         sub_sink_id_ =
-            dependencies_.stream_hub->AttachFrameSink(sub_options, this);
+            dependencies_.media_source->AttachFrameSink(sub_options, this);
 
         const bool attached =
             main_sink_id_ != 0 || sub_sink_id_ != 0;
@@ -538,28 +538,28 @@ private:
     }
 
     void DetachMediaLocked() {
-        if (dependencies_.stream_hub == nullptr) {
+        if (dependencies_.media_source == nullptr) {
             main_sink_id_ = 0;
             sub_sink_id_ = 0;
             return;
         }
         if (main_sink_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameSink(
+            (void)dependencies_.media_source->DetachFrameSink(
                 main_sink_id_);
             main_sink_id_ = 0;
         }
         if (sub_sink_id_ != 0) {
-            (void)dependencies_.stream_hub->DetachFrameSink(
+            (void)dependencies_.media_source->DetachFrameSink(
                 sub_sink_id_);
             sub_sink_id_ = 0;
         }
     }
 
     void RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) {
-        if (dependencies_.stream_hub == nullptr) {
+        if (dependencies_.media_source == nullptr) {
             return;
         }
-        (void)dependencies_.stream_hub->RequestKeyFrame(stream_id, reason);
+        (void)dependencies_.media_source->RequestKeyFrame(stream_id, reason);
     }
 
     WebrtcServiceOptions options_;

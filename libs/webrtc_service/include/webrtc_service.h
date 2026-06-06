@@ -1,8 +1,9 @@
 #ifndef LIVE_STREAM_WEBRTC_SERVICE_H_
 #define LIVE_STREAM_WEBRTC_SERVICE_H_
 
+#include "media_source.h"
+
 #include "media/stream_types.h"
-#include "stream_hub_service.h"
 
 #include <cstdint>
 #include <memory>
@@ -42,7 +43,7 @@ struct WebrtcServiceOptions {
 };
 
 struct WebrtcServiceDependencies {
-    IStreamFrameSource *stream_hub = nullptr;
+    IMediaFrameSource *media_source = nullptr;
     NetEngine *net_engine = nullptr;
     bool use_fake_engine = false;
 };

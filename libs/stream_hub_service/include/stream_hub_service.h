@@ -24,23 +24,10 @@ struct MediaSourceServiceDependencies {
     IMediaService *media_service = nullptr;
 };
 
-class IStreamFrameSource {
-public:
-    virtual ~IStreamFrameSource() = default;
-
-    virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
-    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
-    virtual FrameAttachId AttachFrameSink(
-        const FrameAttachOptions &options, IFrameSink *sink) = 0;
-    virtual bool DetachFrameSink(FrameAttachId sink_id) = 0;
-    virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason) = 0;
-};
-
 class IMediaSourceService : public IMediaSource,
                             public IMediaFlvSource,
                             public IMediaMjpegSource,
-                          public IStreamFrameSource {
+                            public IMediaFrameSource {
 public:
     ~IMediaSourceService() override = default;
 

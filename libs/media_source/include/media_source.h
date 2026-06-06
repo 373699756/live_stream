@@ -2,6 +2,7 @@
 #define LIVE_STREAM_MEDIA_SOURCE_MEDIA_SOURCE_H_
 
 #include "media/encoded_frame.h"
+#include "media/frame_attach.h"
 #include "media/stream_types.h"
 
 #include <cstddef>
@@ -193,6 +194,19 @@ public:
     virtual bool DetachMjpegClient(MediaMjpegClientId client_id) = 0;
 };
 
+class IMediaFrameSource {
+public:
+    virtual ~IMediaFrameSource() = default;
+
+    virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
+    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual FrameAttachId AttachFrameSink(
+        const FrameAttachOptions &options, IFrameSink *sink) = 0;
+    virtual bool DetachFrameSink(FrameAttachId sink_id) = 0;
+    virtual bool RequestKeyFrame(StreamId stream_id,
+                                 KeyFrameReason reason) = 0;
+};
+
 inline MediaSegmentRef MediaSegmentRefCopy(
     const MediaSegmentRef *segment) {
     MediaSegmentRef ref;
@@ -237,6 +251,7 @@ using IStreamMjpegSink = IMediaMjpegSink;
 using IStreamBrowserSource = IMediaSource;
 using IStreamFlvSource = IMediaFlvSource;
 using IStreamMjpegSource = IMediaMjpegSource;
+using IStreamFrameSource = IMediaFrameSource;
 
 inline void StreamFlvCachedVideoTagUnref(StreamFlvCachedVideoTag *tag) {
     MediaFlvCachedVideoTagUnref(tag);
