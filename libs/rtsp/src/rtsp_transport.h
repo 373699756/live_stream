@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_TRANSPORT_H_
-#define LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_TRANSPORT_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_TRANSPORT_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_TRANSPORT_H_
 
 #include "media/encoded_frame.h"
 #include "net.h"
@@ -29,4 +29,4 @@ class RtspTransport {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_TRANSPORT_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_TRANSPORT_H_

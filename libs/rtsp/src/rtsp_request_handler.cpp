@@ -1,6 +1,7 @@
 #include "rtsp_request_handler.h"
 
 #include "infra/log.h"
+#include "rtsp_muxer.h"
 
 namespace live_stream {
 namespace {
@@ -9,7 +10,6 @@ constexpr const char *kRtspRequestHandlerModule = "rtsp";
 
 }  // namespace
 
-using rtsp_internal::BuildSdp;
 using rtsp_internal::CSeq;
 using rtsp_internal::PathToStreamId;
 using rtsp_internal::StreamPath;
@@ -93,8 +93,10 @@ void RtspRequestHandler::HandleDescribe(
     const std::shared_ptr<RtspSession> &session,
     const rtsp_internal::RtspRequest &request, StreamId stream_id) {
   session->MarkDescribed(stream_id);
-  const std::string sdp = BuildSdp(delegate_->RtspLocalAddress(), stream_id,
-                                   delegate_->RtspCodecForStream(stream_id));
+  MediaTrack track = delegate_->RtspTrackForStream(stream_id);
+  track.stream_id = stream_id;
+  const std::string sdp = RtspMuxer::BuildSdp(delegate_->RtspLocalAddress(),
+                                              track);
   SendResponse(session->connection_id, 200, request,
                {{"Content-Type", "application/sdp"},
                 {"Content-Base", request.uri}},
@@ -108,9 +110,9 @@ void RtspRequestHandler::HandlePlay(
     SendResponse(session->connection_id, 455, request, {}, "");
     return;
   }
-  session->StartPlaying();
-  if (delegate_->RequestRtspKeyFrame(session->stream_id)) {
-    delegate_->OnRtspKeyFrameRequested(*session);
+  if (!delegate_->StartRtspPlayback(session)) {
+    SendResponse(session->connection_id, 500, request, {}, "");
+    return;
   }
   Info(kRtspRequestHandlerModule,
                  "RTSP play conn=%llu stream=%s transport=%s",
@@ -124,6 +126,7 @@ void RtspRequestHandler::HandlePlay(
                 {"RTP-Info",
                  "url=" + std::string(StreamPath(session->stream_id))}},
                "");
+  delegate_->ArmRtspPlayback(session);
 }
 
 void RtspRequestHandler::HandleTeardown(

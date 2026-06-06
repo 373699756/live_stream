@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_REQUEST_HANDLER_H_
-#define LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_REQUEST_HANDLER_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_REQUEST_HANDLER_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_REQUEST_HANDLER_H_
 
 #include "rtsp_protocol.h"
 #include "rtsp_session.h"
@@ -15,15 +15,15 @@ class IRtspRequestHandlerDelegate {
   virtual ~IRtspRequestHandlerDelegate() = default;
 
   virtual bool IsRtspStreamAvailable(StreamId stream_id) const = 0;
-  virtual VideoCodec RtspCodecForStream(StreamId stream_id) const = 0;
+  virtual MediaTrack RtspTrackForStream(StreamId stream_id) const = 0;
   virtual bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession> &session,
                                     const rtsp_internal::RtspRequest &request,
                                     StreamId stream_id) = 0;
   virtual bool SetupRtspTransport(const std::shared_ptr<RtspSession> &session,
                                   const rtsp_internal::RtspRequest &request,
                                   StreamId stream_id) = 0;
-  virtual bool RequestRtspKeyFrame(StreamId stream_id) = 0;
-  virtual void OnRtspKeyFrameRequested(const RtspSession &session) = 0;
+  virtual bool StartRtspPlayback(const std::shared_ptr<RtspSession> &session) = 0;
+  virtual void ArmRtspPlayback(const std::shared_ptr<RtspSession> &session) = 0;
   virtual void CloseRtspConnectionAfterSend(ConnectionId connection_id) = 0;
   virtual void SendRtspResponse(
       ConnectionId connection_id, int status, const std::string &cseq,
@@ -57,4 +57,4 @@ class RtspRequestHandler {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_REQUEST_HANDLER_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_REQUEST_HANDLER_H_

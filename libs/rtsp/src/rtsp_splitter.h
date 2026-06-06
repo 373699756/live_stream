@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_SPLITTER_H_
-#define LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_SPLITTER_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_SPLITTER_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_SPLITTER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -38,4 +38,4 @@ class RtspSplitter {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_SPLITTER_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_SPLITTER_H_

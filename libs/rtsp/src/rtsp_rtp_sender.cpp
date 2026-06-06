@@ -105,8 +105,7 @@ bool RtspRtpSender::SendRtpPacketView(
     std::lock_guard<std::mutex> lock(*context.mutex);
     target.mode = session->transport;
     target.connection_id = session->connection_id;
-    target.udp_socket_id =
-        context.udp_socket_id != nullptr ? *context.udp_socket_id : 0;
+    target.udp_socket_id = session->rtp_socket_id;
     target.udp_peer = session->peer;
     target.udp_peer.port = session->client_rtp_port;
     target.interleaved_rtp_channel = session->interleaved_rtp_channel;

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_RTP_SENDER_H_
-#define LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_RTP_SENDER_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_RTP_SENDER_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_RTP_SENDER_H_
 
 #include "media/encoded_frame.h"
 #include "net.h"
@@ -16,7 +16,6 @@ class RtspRtpPacketSink;
 
 struct RtspRtpSenderContext {
   NetEngine *net_engine = nullptr;
-  const UdpSocketId *udp_socket_id = nullptr;
   std::mutex *mutex = nullptr;
   RtspStats *service_stats = nullptr;
   IRtspAdaptiveObserver *adaptive_observer = nullptr;
@@ -46,4 +45,4 @@ class RtspRtpSender {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_RTP_SENDER_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_RTP_SENDER_H_

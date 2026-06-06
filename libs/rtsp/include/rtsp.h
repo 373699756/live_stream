@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_RTSP_RTSP_H_
 #define LIVE_STREAM_RTSP_RTSP_H_
 
-#include "media_source.h"
-
 #include "media/encoded_frame.h"
 #include "media/stream_types.h"
 
@@ -14,6 +12,7 @@ namespace live_stream {
 
 class IAuth;
 class IEvent;
+class IMediaFrameSource;
 class NetEngine;
 
 enum class RtspTransportMode {
@@ -40,6 +39,22 @@ struct RtspListenAddress {
     std::string ip;
     uint16_t port = 0;
 };
+
+inline const char *RtspStreamPath(StreamId stream_id) {
+    return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
+}
+
+inline std::string BuildRtspStreamUrl(const RtspListenAddress &address,
+                                      StreamId stream_id,
+                                      const std::string &advertise_host) {
+    const std::string host =
+        advertise_host.empty() ? address.ip : advertise_host;
+    if (host.empty() || address.port == 0) {
+        return std::string();
+    }
+    return std::string("rtsp://") + host + ":" +
+           std::to_string(address.port) + RtspStreamPath(stream_id);
+}
 
 struct RtspOptions {
     std::string listen_ip = "0.0.0.0";

@@ -26,6 +26,21 @@ std::shared_ptr<RtspSession> RtspSessionStore::Find(
   return iter->second;
 }
 
+std::shared_ptr<RtspSession> RtspSessionStore::FindByUdpSocket(
+    UdpSocketId socket_id) const {
+  if (socket_id == 0) {
+    return nullptr;
+  }
+  for (const auto &entry : sessions_) {
+    const std::shared_ptr<RtspSession> &session = entry.second;
+    if (session && (session->rtp_socket_id == socket_id ||
+                    session->rtcp_socket_id == socket_id)) {
+      return session;
+    }
+  }
+  return nullptr;
+}
+
 std::shared_ptr<RtspSession> RtspSessionStore::Remove(
     ConnectionId connection_id) {
   const auto iter = sessions_.find(connection_id);
@@ -45,17 +60,14 @@ std::vector<ConnectionId> RtspSessionStore::ConnectionIds() const {
   return ids;
 }
 
-std::vector<std::shared_ptr<RtspSession>> RtspSessionStore::PlayingTargets(
-    StreamId stream_id) const {
-  std::vector<std::shared_ptr<RtspSession>> targets;
+std::vector<std::shared_ptr<RtspSession>> RtspSessionStore::Sessions() const {
+  std::vector<std::shared_ptr<RtspSession>> sessions;
   for (const auto &entry : sessions_) {
-    const std::shared_ptr<RtspSession> &session = entry.second;
-    if (session && session->state == RtspSessionState::kPlaying &&
-        session->stream_id == stream_id) {
-      targets.push_back(session);
+    if (entry.second) {
+      sessions.push_back(entry.second);
     }
   }
-  return targets;
+  return sessions;
 }
 
 void RtspSessionStore::Clear() { sessions_.clear(); }

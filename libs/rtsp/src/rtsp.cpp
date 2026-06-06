@@ -4,6 +4,8 @@
 #include "event.h"
 #include "infra/log.h"
 #include "infra/time.h"
+#include "media_source.h"
+#include "media_mux.h"
 #include "net.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
@@ -20,6 +22,8 @@ namespace {
 
 constexpr const char* kServiceName = "rtsp";
 constexpr int64_t kRtspPeerAuthTtlMs = 10000;
+constexpr uint32_t kRtspReaderDrainIntervalMs = 10;
+constexpr uint32_t kRtspMaxFramesPerDrain = 8;
 enum class ServiceState {
     kCreated = 0,
     kInitialized,
@@ -48,18 +52,16 @@ using rtsp_internal::ParseRtspRequest;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
 
-class RtspServiceImpl : public IRtsp,
-                        public IFrameSink,
-                        public IRtspRequestHandlerDelegate {
+class RtspImpl : public IRtsp,
+                 public IRtspRequestHandlerDelegate {
 public:
-    RtspServiceImpl(RtspOptions options,
-                    RtspDependencies dependencies)
+    RtspImpl(RtspOptions options, RtspDependencies dependencies)
         : options_(std::move(options)),
           dependencies_(dependencies),
           rtp_sender_(options_.rtp_mtu_bytes),
           request_handler_(this) {}
 
-    ~RtspServiceImpl() override {
+    ~RtspImpl() override {
         ReleaseInternal();
     }
 
@@ -104,9 +106,9 @@ public:
         tcp_config.keepalive = true;
         TcpCallbacks tcp_callbacks;
         tcp_callbacks.user = this;
-        tcp_callbacks.on_accept = &RtspServiceImpl::HandleAccept;
-        tcp_callbacks.on_read = &RtspServiceImpl::HandleRead;
-        tcp_callbacks.on_close = &RtspServiceImpl::HandleClose;
+        tcp_callbacks.on_accept = &RtspImpl::HandleAccept;
+        tcp_callbacks.on_read = &RtspImpl::HandleRead;
+        tcp_callbacks.on_close = &RtspImpl::HandleClose;
         TcpServerId server_result = dependencies_.net_engine->ListenTcp(
             tcp_config, tcp_callbacks);
         if (server_result == 0) {
@@ -114,27 +116,6 @@ public:
         }
         server_id_ = server_result;
 
-        UdpBindOptions udp_config;
-        udp_config.address = {options_.listen_ip, 0};
-        UdpCallbacks udp_callbacks;
-        udp_callbacks.user = this;
-        UdpSocketId udp_result = dependencies_.net_engine->BindUdp(
-            udp_config, udp_callbacks);
-        if (udp_result != 0) {
-            udp_socket_id_ = udp_result;
-        }
-        FrameAttachOptions main_options;
-        main_options.stream_id = StreamId::kMain;
-        main_options.require_key_frame_first = true;
-        main_options.sink_name = kServiceName;
-        main_sink_id_ =
-            dependencies_.media_source->AttachFrameSink(main_options, this);
-        FrameAttachOptions sub_options;
-        sub_options.stream_id = StreamId::kSub;
-        sub_options.require_key_frame_first = true;
-        sub_options.sink_name = kServiceName;
-        sub_sink_id_ =
-            dependencies_.media_source->AttachFrameSink(sub_options, this);
         NetAddress local_result =
             dependencies_.net_engine->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
@@ -154,34 +135,31 @@ public:
 
 private:
     void StopInternal() {
+        std::vector<std::shared_ptr<RtspSession>> sessions;
         std::vector<ConnectionId> connection_ids;
-        if (dependencies_.media_source != nullptr && main_sink_id_ != 0) {
-            (void)dependencies_.media_source->DetachFrameSink(main_sink_id_);
-            main_sink_id_ = 0;
-        }
-        if (dependencies_.media_source != nullptr && sub_sink_id_ != 0) {
-            (void)dependencies_.media_source->DetachFrameSink(sub_sink_id_);
-            sub_sink_id_ = 0;
-        }
         if (server_id_ != 0 && dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseTcp(server_id_);
             server_id_ = 0;
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            sessions = sessions_.Sessions();
             connection_ids = sessions_.ConnectionIds();
+        }
+        for (const auto &session : sessions) {
+            CloseSessionResources(session,
+                                  MediaFrameReaderCloseReason::kStreamStopped);
         }
         if (dependencies_.net_engine != nullptr) {
             for (ConnectionId connection_id : connection_ids) {
                 (void)dependencies_.net_engine->Close(connection_id);
             }
         }
-        if (udp_socket_id_ != 0 && dependencies_.net_engine != nullptr) {
-            (void)dependencies_.net_engine->CloseUdp(udp_socket_id_);
-            udp_socket_id_ = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessions_.Clear();
+            peer_auth_grants_.clear();
         }
-        sessions_.Clear();
-        peer_auth_grants_.clear();
         if (state_ == ServiceState::kStarted ||
             state_ == ServiceState::kInitialized) {
             state_ = ServiceState::kStopped;
@@ -196,7 +174,7 @@ private:
     }
 
 public:
-    const char* Name() const override {
+    const char* Name() const {
         return kServiceName;
     }
 
@@ -215,41 +193,9 @@ public:
         return stats;
     }
 
-    bool OnEncodedFrame(const EncodedFrame& frame) {
-        if (!IsValidFrame(frame)) {
-            return false;
-        }
-        std::vector<std::shared_ptr<RtspSession>> targets;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            targets = sessions_.PlayingTargets(frame.stream_id);
-        }
-        for (const auto& session : targets) {
-            rtp_sender_.SendFrame(session, frame, RtpSenderContext());
-        }
-        return true;
-    }
-
-    void OnFrame(const FramePayload& frame) override {
-        (void)OnEncodedFrame(frame.encoded_frame);
-    }
-
-    void OnSourceStateChanged(StreamId stream_id,
-                              StreamState state) override {
-        (void)stream_id;
-        (void)state;
-    }
-
 private:
-    bool IsValidFrame(const EncodedFrame& frame) const {
-        return frame.buffer != nullptr && frame.buffer->data != nullptr &&
-               frame.size > 0 &&
-               frame.offset <= frame.buffer->size &&
-               frame.size <= frame.buffer->size - frame.offset;
-    }
-
     static void HandleAccept(void* user, ConnectionId id, NetAddress peer) {
-        RtspServiceImpl* self = static_cast<RtspServiceImpl*>(user);
+        RtspImpl* self = static_cast<RtspImpl*>(user);
         if (self != nullptr) {
             self->OnConnection(id, std::move(peer));
         }
@@ -259,7 +205,7 @@ private:
                            ConnectionId id,
                            const uint8_t* data,
                            size_t size) {
-        RtspServiceImpl* self = static_cast<RtspServiceImpl*>(user);
+        RtspImpl* self = static_cast<RtspImpl*>(user);
         if (self != nullptr) {
             self->OnMessage(id, data, static_cast<uint32_t>(size));
         }
@@ -268,9 +214,20 @@ private:
     static void HandleClose(void* user,
                             ConnectionId id,
                             TcpCloseReason reason) {
-        RtspServiceImpl* self = static_cast<RtspServiceImpl*>(user);
+        RtspImpl* self = static_cast<RtspImpl*>(user);
         if (self != nullptr) {
             self->OnConnectionClosed(id, reason);
+        }
+    }
+
+    static void HandleUdpRead(void* user,
+                              UdpSocketId socket_id,
+                              NetAddress peer,
+                              const uint8_t* data,
+                              size_t size) {
+        RtspImpl* self = static_cast<RtspImpl*>(user);
+        if (self != nullptr) {
+            self->OnUdpPacket(socket_id, std::move(peer), data, size);
         }
     }
 
@@ -305,6 +262,7 @@ private:
         if (!session) {
             return;
         }
+        CloseSessionResources(session, MediaFrameReaderCloseReason::kDetached);
         Info("rtsp",
                        "RTSP client disconnected conn=%llu reason=%d "
                        "peer=%s:%u",
@@ -313,6 +271,25 @@ private:
                        session->peer.ip.c_str(),
                        static_cast<unsigned>(session->peer.port));
         PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);
+    }
+
+    void OnUdpPacket(UdpSocketId socket_id,
+                     NetAddress peer,
+                     const uint8_t* data,
+                     size_t size) {
+        (void)peer;
+        (void)data;
+        (void)size;
+        std::shared_ptr<RtspSession> session;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session = sessions_.FindByUdpSocket(socket_id);
+        }
+        if (session == nullptr) {
+            return;
+        }
+        // RTCP is accepted to keep UDP clients' receiver reports harmless; RTP
+        // is send-only for the current video preview scope.
     }
 
     void OnMessage(ConnectionId connection_id,
@@ -356,15 +333,18 @@ private:
                dependencies_.media_source->IsStreamAvailable(stream_id);
     }
 
-    VideoCodec RtspCodecForStream(StreamId stream_id) const override {
+    MediaTrack RtspTrackForStream(StreamId stream_id) const override {
+        MediaTrack track;
+        track.stream_id = stream_id;
+        track.codec = stream_id == StreamId::kSub ? options_.sub_stream_codec
+                                                  : options_.main_stream_codec;
+        track.clock_rate = media_mux::kRtpClockRate;
         if (dependencies_.media_source != nullptr &&
             dependencies_.media_source->IsStreamAvailable(stream_id)) {
-            return dependencies_.media_source->GetStreamCodec(stream_id);
+            track.codec = dependencies_.media_source->GetStreamCodec(stream_id);
+            track.ready = true;
         }
-        if (stream_id == StreamId::kSub) {
-            return options_.sub_stream_codec;
-        }
-        return options_.main_stream_codec;
+        return track;
     }
 
     bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession>& session,
@@ -489,30 +469,42 @@ private:
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
+            CloseSessionResources(session,
+                                  MediaFrameReaderCloseReason::kDetached);
             session->SetupTcp(stream_id, 0);
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1";
             AddTcpInterleavedSession();
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
-            if (client_port <= 0 || client_port > 65535 || udp_socket_id_ == 0) {
+            if (client_port <= 0 || client_port > 65534) {
                 Error(
                     "rtsp",
-                    "RTSP setup unsupported UDP transport=%s udp=%llu",
-                    transport.c_str(),
-                    static_cast<unsigned long long>(udp_socket_id_));
+                    "RTSP setup unsupported UDP transport=%s",
+                    transport.c_str());
                 SendResponse(session->connection_id, 461, CSeq(request), {}, "");
                 return false;
             }
-            session->SetupUdp(stream_id, static_cast<uint16_t>(client_port));
-            const NetAddress server_rtp =
-                dependencies_.net_engine->UdpLocalAddress(udp_socket_id_);
+            CloseSessionResources(session,
+                                  MediaFrameReaderCloseReason::kDetached);
+            UdpSocketId rtp_socket_id = 0;
+            UdpSocketId rtcp_socket_id = 0;
+            NetAddress server_rtp;
+            NetAddress server_rtcp;
+            if (!BindSessionUdpSockets(&rtp_socket_id, &rtcp_socket_id,
+                                       &server_rtp, &server_rtcp)) {
+                Error("rtsp", "RTSP setup UDP bind failed");
+                SendResponse(session->connection_id, 461, CSeq(request), {}, "");
+                return false;
+            }
+            session->SetupUdp(stream_id, rtp_socket_id, rtcp_socket_id,
+                              static_cast<uint16_t>(client_port));
             response_transport = "RTP/AVP;unicast;client_port=" +
                                  std::to_string(client_port) + "-" +
                                  std::to_string(client_port + 1) +
                                  ";server_port=" +
                                  std::to_string(server_rtp.port) + "-" +
-                                 std::to_string(server_rtp.port + 1);
+                                 std::to_string(server_rtcp.port);
             AddUdpSession();
         } else {
             Error("rtsp",
@@ -535,6 +527,43 @@ private:
                      {{"Transport", response_transport},
                       {"Session", std::to_string(session->session_id)}},
                      "");
+        return true;
+    }
+
+    bool BindSessionUdpSockets(UdpSocketId* rtp_socket_id,
+                               UdpSocketId* rtcp_socket_id,
+                               NetAddress* server_rtp,
+                               NetAddress* server_rtcp) {
+        if (rtp_socket_id == nullptr || rtcp_socket_id == nullptr ||
+            server_rtp == nullptr || server_rtcp == nullptr ||
+            dependencies_.net_engine == nullptr) {
+            return false;
+        }
+        UdpBindOptions udp_config;
+        udp_config.address = {options_.listen_ip, 0};
+        UdpCallbacks udp_callbacks;
+        udp_callbacks.user = this;
+        udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
+        const UdpSocketId rtp_result = dependencies_.net_engine->BindUdp(
+            udp_config, udp_callbacks);
+        if (rtp_result == 0) {
+            return false;
+        }
+        const UdpSocketId rtcp_result = dependencies_.net_engine->BindUdp(
+            udp_config, udp_callbacks);
+        if (rtcp_result == 0) {
+            (void)dependencies_.net_engine->CloseUdp(rtp_result);
+            return false;
+        }
+        *server_rtp = dependencies_.net_engine->UdpLocalAddress(rtp_result);
+        *server_rtcp = dependencies_.net_engine->UdpLocalAddress(rtcp_result);
+        if (server_rtp->port == 0 || server_rtcp->port == 0) {
+            (void)dependencies_.net_engine->CloseUdp(rtp_result);
+            (void)dependencies_.net_engine->CloseUdp(rtcp_result);
+            return false;
+        }
+        *rtp_socket_id = rtp_result;
+        *rtcp_socket_id = rtcp_result;
         return true;
     }
 
@@ -618,19 +647,53 @@ private:
             RtspPeerAuthGrant{peer_ip, stream_id, user_name, expires_at_ms});
     }
 
-    bool RequestRtspKeyFrame(StreamId stream_id) override {
-        if (dependencies_.media_source != nullptr) {
-            return dependencies_.media_source->RequestKeyFrame(
-                stream_id, KeyFrameReason::kNewClient);
+    bool StartRtspPlayback(
+        const std::shared_ptr<RtspSession>& session) override {
+        if (session == nullptr || dependencies_.media_source == nullptr) {
+            return false;
         }
-        return false;
+        CloseSessionReader(session, MediaFrameReaderCloseReason::kDetached);
+        MediaFrameReaderOptions reader_options;
+        reader_options.stream_id = session->stream_id;
+        reader_options.keyframe_first = true;
+        reader_options.reader_name = kServiceName;
+        const MediaFrameReaderId reader_id =
+            dependencies_.media_source->AttachFrameReader(reader_options);
+        if (reader_id == 0) {
+            return false;
+        }
+        MediaFrameReaderStartData start_data =
+            dependencies_.media_source->GetFrameReaderStartData(reader_id);
+        if (!start_data.stream_running || !start_data.track.ready) {
+            dependencies_.media_source->DetachFrameReader(
+                reader_id, MediaFrameReaderCloseReason::kDetached);
+            MediaFrameReaderStartDataUnref(&start_data);
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session->StartPlaying();
+            session->AttachReader(reader_id, start_data.reader_generation,
+                                  start_data.track);
+            session->SetStartFrames(&start_data.gop_frames);
+        }
+        NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
+        MediaFrameReaderStartDataUnref(&start_data);
+        return true;
     }
 
-    void OnRtspKeyFrameRequested(const RtspSession& session) override {
-        NotifyAdaptive(session, RtspAdaptiveEventType::kKeyFrameRequested);
+    void ArmRtspPlayback(
+        const std::shared_ptr<RtspSession>& session) override {
+        ArmSessionDrainTimer(session);
     }
 
     void CloseRtspConnectionAfterSend(ConnectionId connection_id) override {
+        std::shared_ptr<RtspSession> session;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session = sessions_.Find(connection_id);
+        }
+        CloseSessionResources(session, MediaFrameReaderCloseReason::kDetached);
         if (dependencies_.net_engine != nullptr) {
             (void)dependencies_.net_engine->CloseAfterSend(connection_id);
         }
@@ -664,10 +727,161 @@ private:
         (void)dependencies_.adaptive_observer->OnRtspAdaptiveSample(sample);
     }
 
+    void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
+        if (session == nullptr || dependencies_.net_engine == nullptr) {
+            return;
+        }
+        const NetTimerId timer_id = dependencies_.net_engine->RunOnIoEvery(
+            kRtspReaderDrainIntervalMs, [this, session]() {
+                DrainSessionFrames(session);
+            });
+        if (timer_id == 0) {
+            MediaFrameReaderId reader_id = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                reader_id = session->reader_id;
+                session->DetachReader();
+            }
+            (void)dependencies_.media_source->DetachFrameReader(
+                reader_id, MediaFrameReaderCloseReason::kDetached);
+            return;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        session->SetDrainTimer(timer_id);
+    }
+
+    void DrainSessionFrames(const std::shared_ptr<RtspSession>& session) {
+        if (session == nullptr || dependencies_.media_source == nullptr) {
+            return;
+        }
+        if (!FlushSessionStartFrames(session)) {
+            return;
+        }
+        MediaFrameReaderId reader_id = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (session->state != RtspSessionState::kPlaying ||
+                !session->HasReader()) {
+                return;
+            }
+            reader_id = session->reader_id;
+        }
+        for (uint32_t i = 0; i < kRtspMaxFramesPerDrain; ++i) {
+            MediaFrameReaderFrame reader_frame;
+            if (!dependencies_.media_source->PopFrameReaderFrame(reader_id,
+                                                                 &reader_frame)) {
+                break;
+            }
+            SendMediaFrame(session, reader_frame.frame);
+            MediaFrameReaderFrameUnref(&reader_frame);
+        }
+        MediaFrameReaderStatus status =
+            dependencies_.media_source->GetFrameReaderStatus(reader_id);
+        if (status.attached && status.slow_reader) {
+            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
+        }
+    }
+
+    bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session) {
+        while (true) {
+            MediaFrame frame;
+            bool has_frame = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (session == nullptr ||
+                    session->state != RtspSessionState::kPlaying) {
+                    return false;
+                }
+                if (!session->start_frames.empty()) {
+                    (void)MediaFrameMove(&frame, &session->start_frames.front());
+                    session->start_frames.erase(session->start_frames.begin());
+                    has_frame = true;
+                }
+            }
+            if (!has_frame) {
+                return true;
+            }
+            SendMediaFrame(session, frame);
+            MediaFrameUnref(&frame);
+        }
+    }
+
+    void SendMediaFrame(const std::shared_ptr<RtspSession>& session,
+                        const MediaFrame& frame) {
+        bool should_send = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            should_send = session != nullptr &&
+                          session->state == RtspSessionState::kPlaying &&
+                          session->HasReader() &&
+                          frame.stream_id == session->stream_id &&
+                          frame.codec == session->track.codec;
+        }
+        if (should_send) {
+            rtp_sender_.SendFrame(session, frame.encoded_frame,
+                                  RtpSenderContext());
+        }
+    }
+
+    void CloseSessionResources(
+        const std::shared_ptr<RtspSession>& session,
+        MediaFrameReaderCloseReason reason) {
+        if (session == nullptr) {
+            return;
+        }
+        CloseSessionReader(session, reason);
+        CloseSessionUdp(session);
+    }
+
+    void CloseSessionUdp(const std::shared_ptr<RtspSession>& session) {
+        if (session == nullptr) {
+            return;
+        }
+        UdpSocketId rtp_socket_id = 0;
+        UdpSocketId rtcp_socket_id = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            rtp_socket_id = session->rtp_socket_id;
+            rtcp_socket_id = session->rtcp_socket_id;
+            session->rtp_socket_id = 0;
+            session->rtcp_socket_id = 0;
+        }
+        if (dependencies_.net_engine != nullptr) {
+            if (rtp_socket_id != 0) {
+                (void)dependencies_.net_engine->CloseUdp(rtp_socket_id);
+            }
+            if (rtcp_socket_id != 0) {
+                (void)dependencies_.net_engine->CloseUdp(rtcp_socket_id);
+            }
+        }
+    }
+
+    void CloseSessionReader(const std::shared_ptr<RtspSession>& session,
+                            MediaFrameReaderCloseReason reason) {
+        if (session == nullptr) {
+            return;
+        }
+        MediaFrameReaderId reader_id = 0;
+        NetTimerId drain_timer_id = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            reader_id = session->reader_id;
+            drain_timer_id = session->drain_timer_id;
+            session->DetachReader();
+            session->ClearDrainTimer();
+        }
+        if (dependencies_.net_engine != nullptr && drain_timer_id != 0) {
+            (void)dependencies_.net_engine->CancelIoTimer(drain_timer_id);
+        }
+        if (dependencies_.media_source != nullptr && reader_id != 0) {
+            (void)dependencies_.media_source->DetachFrameReader(reader_id,
+                                                               reason);
+        }
+    }
+
     RtspRtpSenderContext RtpSenderContext() {
         RtspRtpSenderContext context;
         context.net_engine = dependencies_.net_engine;
-        context.udp_socket_id = &udp_socket_id_;
         context.mutex = &mutex_;
         context.service_stats = &stats_;
         context.adaptive_observer = dependencies_.adaptive_observer;
@@ -681,20 +895,17 @@ private:
     mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
-    UdpSocketId udp_socket_id_ = 0;
     RtspListenAddress local_address_;
     RtspSessionStore sessions_;
     std::vector<RtspPeerAuthGrant> peer_auth_grants_;
     RtspStats stats_;
-    FrameAttachId main_sink_id_ = 0;
-    FrameAttachId sub_sink_id_ = 0;
 };
 
 std::unique_ptr<IRtsp> CreateRtsp(
     const RtspOptions& options,
     const RtspDependencies& dependencies) {
     return std::unique_ptr<IRtsp>(
-        new RtspServiceImpl(options, dependencies));
+        new RtspImpl(options, dependencies));
 }
 
 const char* Rtsp::Name() {

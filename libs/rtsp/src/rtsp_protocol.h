@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_PROTOCOL_H_
-#define LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_PROTOCOL_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_PROTOCOL_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_PROTOCOL_H_
 
 #include "rtsp.h"
 
@@ -27,9 +27,6 @@ std::string BuildRtspResponse(int status,
                               const std::string& body);
 bool PathToStreamId(const std::string& uri, StreamId* stream_id);
 const char* StreamPath(StreamId stream_id);
-std::string BuildSdp(const RtspListenAddress& address,
-                     StreamId stream_id,
-                     VideoCodec codec);
 int ParseClientRtpPort(const std::string& transport);
 std::string BasicRealmHeader();
 bool DecodeBase64(const std::string& encoded, std::string* decoded);
@@ -37,4 +34,4 @@ bool DecodeBase64(const std::string& encoded, std::string* decoded);
 }  // namespace rtsp_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SERVICE_SRC_RTSP_PROTOCOL_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_PROTOCOL_H_

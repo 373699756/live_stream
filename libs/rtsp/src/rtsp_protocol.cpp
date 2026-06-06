@@ -8,9 +8,6 @@ namespace live_stream {
 namespace rtsp_internal {
 namespace {
 
-constexpr uint8_t kPayloadTypeH264 = 96;
-constexpr uint8_t kPayloadTypeH265 = 98;
-
 std::string RtspStatusText(int status) {
     switch (status) {
         case 200:
@@ -53,14 +50,6 @@ int Base64Value(char ch) {
         return 63;
     }
     return -1;
-}
-
-uint8_t PayloadType(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? kPayloadTypeH265 : kPayloadTypeH264;
-}
-
-const char* RtpEncodingName(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? "H265" : "H264";
 }
 
 }  // namespace
@@ -183,26 +172,7 @@ bool PathToStreamId(const std::string& uri, StreamId* stream_id) {
 }
 
 const char* StreamPath(StreamId stream_id) {
-    return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
-}
-
-std::string BuildSdp(const RtspListenAddress& address,
-                     StreamId stream_id,
-                     VideoCodec codec) {
-    (void)stream_id;
-    const uint8_t payload_type = PayloadType(codec);
-    std::ostringstream sdp;
-    sdp << "v=0\r\n";
-    sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";
-    sdp << "s=live_stream\r\n";
-    sdp << "c=IN IP4 0.0.0.0\r\n";
-    sdp << "t=0 0\r\n";
-    sdp << "a=control:" << StreamPath(stream_id) << "\r\n";
-    sdp << "m=video 0 RTP/AVP " << static_cast<int>(payload_type) << "\r\n";
-    sdp << "a=rtpmap:" << static_cast<int>(payload_type)
-        << " " << RtpEncodingName(codec) << "/90000\r\n";
-    sdp << "a=control:trackID=0\r\n";
-    return sdp.str();
+    return RtspStreamPath(stream_id);
 }
 
 int ParseClientRtpPort(const std::string& transport) {
