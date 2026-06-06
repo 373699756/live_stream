@@ -420,11 +420,7 @@ public:
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
-            !stream->flv_gop_cache.complete || stream->flv_gop_cache.size == 0
-                ? 0
-                : static_cast<uint32_t>(
-                      stream->flv_gop_cache.frames[stream->flv_gop_cache.head]
-                          .total_size);
+            stream->flv_gop_cache.FirstFlvTagSize();
         status.hls_current_segment_size =
             stream->current_segment.body != nullptr
                 ? stream->current_segment.body->size
@@ -757,7 +753,7 @@ private:
                     "sequence_header=%zu cached_flv=%zu segments=%zu",
                     StreamName(frame.stream_id), hls_ready ? 1 : 0,
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
-                    stream->flv_gop_cache.size,
+                    stream->flv_gop_cache.size(),
                     stream->segments.size());
             }
             if (packaged_frame.hls_segment_created) {

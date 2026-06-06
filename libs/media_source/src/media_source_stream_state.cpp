@@ -26,16 +26,6 @@ uint32_t ClampHlsSegmentCapacity(size_t capacity) {
     return static_cast<uint32_t>(capacity);
 }
 
-void ClearFlvGopCache(StreamContext *stream) {
-    if (stream == nullptr) {
-        return;
-    }
-    for (MediaFlvCachedVideoTag &cached_tag : stream->flv_gop_cache.frames) {
-        MediaFlvCachedVideoTagUnref(&cached_tag);
-    }
-    stream->flv_gop_cache = CachedFlvFrameRing{};
-}
-
 void UnrefHlsSegments(StreamContext *stream) {
     if (stream == nullptr) {
         return;
@@ -145,87 +135,13 @@ bool AppendFrameToHlsSegment(StreamContext *stream,
     return false;
 }
 
-bool CopyFlvTagViewForCache(const EncodedFrame &frame,
-                            const stream_mux::FlvVideoTagView &source,
-                            MediaFlvCachedVideoTag *target) {
-    if (target == nullptr || !EncodedFrameHasPayload(&frame) ||
-        source.slice_count == 0 ||
-        source.slice_count > kMaxMediaFlvVideoTagSlices) {
-        return false;
-    }
-
-    MediaFlvCachedVideoTag cached_tag;
-    if (!EncodedFrameRefCopy(&cached_tag.frame, &frame)) {
-        return false;
-    }
-    cached_tag.slice_count = source.slice_count;
-    cached_tag.total_size = source.total_size;
-    cached_tag.timestamp_ms = source.timestamp_ms;
-    for (size_t i = 0; i < source.slice_count; ++i) {
-        const stream_mux::FlvVideoTagSlice &source_slice = source.slices[i];
-        MediaFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
-        if (source_slice.data == nullptr || source_slice.size == 0) {
-            MediaFlvCachedVideoTagUnref(&cached_tag);
-            return false;
-        }
-        if (source_slice.media_payload) {
-            const uint8_t *payload = EncodedFramePayloadData(&frame);
-            const uintptr_t payload_addr =
-                reinterpret_cast<uintptr_t>(payload);
-            const uintptr_t source_addr =
-                reinterpret_cast<uintptr_t>(source_slice.data);
-            if (payload == nullptr || source_addr < payload_addr ||
-                source_addr - payload_addr > frame.size ||
-                source_slice.size > frame.size - (source_addr - payload_addr)) {
-                MediaFlvCachedVideoTagUnref(&cached_tag);
-                return false;
-            }
-            target_slice.media_data = source_slice.data;
-            target_slice.size = source_slice.size;
-            target_slice.media_payload = true;
-        } else {
-            if (source_slice.size > sizeof(target_slice.header_data)) {
-                MediaFlvCachedVideoTagUnref(&cached_tag);
-                return false;
-            }
-            std::copy(source_slice.data, source_slice.data + source_slice.size,
-                      target_slice.header_data);
-            target_slice.size = source_slice.size;
-            target_slice.media_payload = false;
-        }
-    }
-
-    MediaFlvCachedVideoTagUnref(target);
-    *target = cached_tag;
-    return true;
-}
-
 void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
                      bool keyframe,
                      const stream_mux::FlvVideoTagView &flv_tag_view) {
     if (stream == nullptr || stream->sequence_header_tag.empty()) {
         return;
     }
-    if (keyframe) {
-        ClearFlvGopCache(stream);
-        stream->flv_gop_cache.complete = true;
-    }
-    if (stream->flv_gop_cache.size == 0 && !keyframe) {
-        return;
-    }
-    if (stream->flv_gop_cache.size >= stream->flv_gop_cache.frames.size()) {
-        ClearFlvGopCache(stream);
-        return;
-    }
-    const size_t index =
-        (stream->flv_gop_cache.head + stream->flv_gop_cache.size) %
-        stream->flv_gop_cache.frames.size();
-    if (!CopyFlvTagViewForCache(frame, flv_tag_view,
-                                &stream->flv_gop_cache.frames[index])) {
-        ClearFlvGopCache(stream);
-        return;
-    }
-    ++stream->flv_gop_cache.size;
+    (void)stream->flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
 }
 
 int64_t CurrentSegmentDurationUs(const StreamContext &stream) {
@@ -454,10 +370,23 @@ void ClearStreamContext(StreamContext *stream) {
     if (stream == nullptr) {
         return;
     }
-    ClearFlvGopCache(stream);
+    stream->flv_gop_cache.Clear();
     UnrefHlsSegments(stream);
     HlsSegmentStateUnref(&stream->current_segment);
-    *stream = StreamContext{};
+    stream->codec = VideoCodec::kH264;
+    stream->state = StreamState::kClosed;
+    stream->vps.clear();
+    stream->sps.clear();
+    stream->pps.clear();
+    stream->sequence_header_tag.clear();
+    stream->next_hls_segment_capacity = 0;
+    stream->hls_requested = false;
+    stream->next_segment_sequence = 1;
+    stream->config_generation = 0;
+    stream->ts_muxer_state = stream_mux::TsMuxerState{};
+    stream->last_pts_us = -1;
+    stream->last_frame_duration_us = 33333;
+    stream->timestamp_corrector.Reset();
 }
 
 MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
@@ -510,26 +439,14 @@ MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
     }
 
     start_data.supported = true;
-    start_data.cached_gop_complete = stream.flv_gop_cache.complete;
+    start_data.cached_gop_complete = stream.flv_gop_cache.complete();
     start_data.file_header = stream_mux::BuildFlvFileHeader();
     start_data.sequence_header = stream.sequence_header_tag;
-    if (!stream.flv_gop_cache.complete) {
+    if (!stream.flv_gop_cache.complete()) {
         start_data.config_generation = stream.config_generation;
         return start_data;
     }
-    start_data.cached_video_tags.reserve(stream.flv_gop_cache.size);
-    for (size_t i = 0; i < stream.flv_gop_cache.size; ++i) {
-        const size_t index =
-            (stream.flv_gop_cache.head + i) %
-            stream.flv_gop_cache.frames.size();
-        if (stream.flv_gop_cache.frames[index].slice_count != 0) {
-            MediaFlvCachedVideoTag cached_tag;
-            if (MediaFlvCachedVideoTagRefCopy(
-                    &cached_tag, &stream.flv_gop_cache.frames[index])) {
-                start_data.cached_video_tags.push_back(cached_tag);
-            }
-        }
-    }
+    stream.flv_gop_cache.CopyTo(&start_data);
     start_data.config_generation = stream.config_generation;
     return start_data;
 }
@@ -600,7 +517,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                          &prepend_parameter_sets);
     }
     if (stream->config_generation != config_generation_before) {
-        ClearFlvGopCache(stream);
+        stream->flv_gop_cache.Clear();
     }
 
     if (package_hls && keyframe && stream->current_segment.started &&

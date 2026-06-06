@@ -3,12 +3,12 @@
 
 #include "media_source.h"
 
+#include "gop_cache.h"
 #include "media/frame_attach.h"
 #include "stream_codec.h"
 #include "stream_mux.h"
 #include "timestamp_corrector.h"
 
-#include <array>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -25,13 +25,6 @@ struct HlsSegmentState {
     VideoBuffer *body = nullptr;
 };
 
-struct CachedFlvFrameRing {
-    std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames;
-    size_t head = 0;
-    size_t size = 0;
-    bool complete = false;
-};
-
 // 单路码流的浏览器播放状态。服务层只负责加锁和分发，HLS/FLV 的
 // 参数集、分片缓存和打包游标都集中维护在这里。
 struct StreamContext {
@@ -41,7 +34,7 @@ struct StreamContext {
     std::string sps;
     std::string pps;
     std::string sequence_header_tag;
-    CachedFlvFrameRing flv_gop_cache;
+    GopCache flv_gop_cache;
     std::deque<MediaSegmentRef> segments;
     HlsSegmentState current_segment;
     uint32_t next_hls_segment_capacity = 0;
