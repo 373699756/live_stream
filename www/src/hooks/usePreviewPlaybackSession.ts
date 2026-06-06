@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { flvStreamUrl, hlsPlaylistUrl, mjpegStreamUrl } from '../api/client';
 import {
   closeWebrtcPeer,
   createWebrtcPeer,
+  flvStreamUrl,
+  hlsPlaylistUrl,
+  mjpegStreamUrl,
   sendWebrtcCandidate,
   sendWebrtcOffer,
 } from '../api/stream';

@@ -5,7 +5,7 @@
  */
 
 import { getNetworkConfig, saveNetworkConfig } from '../api/network';
-import { mockNetworkConfig } from '../api/mock';
+import { mockNetworkConfig } from '../api/mockNetwork';
 import { useConfigForm } from './useConfigForm';
 
 export function useNetworkConfig() {

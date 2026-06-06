@@ -1,6 +1,6 @@
 // System status API
 
-import { mockSystemStatus } from './mock';
+import { mockSystemStatus } from './mockSystem';
 import { requestJson } from './client';
 import type { SystemStatus } from './types';
 

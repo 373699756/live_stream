@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { cloneDefaultConfig } from '../api/mock';
+import { cloneDefaultConfig } from '../api/configDefaults';
 
 export function useConfigForm<T>(
   fetchFn: () => Promise<T | null>,

@@ -13,11 +13,8 @@ import type {
   ImageConfig,
   ImageStrategyStatus,
 } from '../api/types';
-import {
-  cloneDefaultConfig,
-  mockImageConfig,
-  mockImageStrategyStatus,
-} from '../api/mock';
+import { cloneDefaultConfig } from '../api/configDefaults';
+import { mockImageConfig, mockImageStrategyStatus } from '../api/mockImage';
 import { usePreviewMetadata } from './usePreviewMetadata';
 
 const configTimeoutMs = 5000;

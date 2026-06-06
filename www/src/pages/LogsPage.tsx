@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getOperations } from '../api/operations';
-import { operationsExportUrl } from '../api/client';
+import { getOperations, operationsExportUrl } from '../api/operations';
 import type { OperationRecord } from '../api/types';
 
 function formatTimestamp(timestampMs: number) {

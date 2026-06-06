@@ -1,7 +1,12 @@
 // Streaming API: WebRTC signaling, RTSP config, WebRTC config
 
-import { mockRtspConfig, mockWebrtcConfig } from './mock';
-import { postJson, requestJson, type ApiRequestOptions } from './client';
+import { mockRtspConfig, mockWebrtcConfig } from './mockStream';
+import {
+  authQuery,
+  postJson,
+  requestJson,
+  type ApiRequestOptions,
+} from './client';
 import type { RtspConfig, WebrtcConfig } from './types';
 
 // RTSP & WebRTC read-only config
@@ -82,4 +87,19 @@ export async function closeWebrtcPeer(peerId: string, init?: ApiRequestOptions) 
   } catch {
     // Best-effort cleanup.
   }
+}
+
+export function hlsPlaylistUrl(stream: string): string {
+  const query = authQuery();
+  return `/api/hls/${stream}/index.m3u8${query ? `?${query}` : ''}`;
+}
+
+export function flvStreamUrl(stream: string): string {
+  const query = authQuery();
+  return `/api/flv/${stream}.flv${query ? `?${query}` : ''}`;
+}
+
+export function mjpegStreamUrl(stream: string): string {
+  const query = authQuery();
+  return `/api/mjpeg/${stream}.mjpg${query ? `?${query}` : ''}`;
 }

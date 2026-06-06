@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { snapshotUrl } from '../api/client';
+import { snapshotUrl } from '../api/snapshot';
 import { useLiveView } from '../hooks/useLiveView';
 import type { StreamName } from '../api/types';
 import { AiDetectionOverlay } from '../components/AiDetectionOverlay';

@@ -3,7 +3,7 @@
  */
 
 import { getOverlayConfig, saveOverlayConfig } from '../api/overlay';
-import { mockOverlayConfig } from '../api/mock';
+import { mockOverlayConfig } from '../api/mockOverlay';
 import { useConfigForm } from './useConfigForm';
 
 export function useOverlayConfig() {

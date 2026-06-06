@@ -1,7 +1,10 @@
 // Video & media API: /api/config/video, /api/media/capabilities, /api/status/streams
 
-import { mockMediaCapabilities, mockVideoConfig } from './mock';
-import { mockStreamStatus } from './mock';
+import {
+  mockMediaCapabilities,
+  mockStreamStatus,
+  mockVideoConfig,
+} from './mockVideo';
 import { requestJson, putJson, type ApiRequestOptions } from './client';
 import { codecSupportsSmartP } from './resolution';
 import type { MediaCapabilities, StreamStatus, VideoConfig, VideoStreamConfig } from './types';

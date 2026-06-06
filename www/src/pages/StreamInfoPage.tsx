@@ -2,8 +2,8 @@ import {
   flvStreamUrl,
   hlsPlaylistUrl,
   mjpegStreamUrl,
-  snapshotUrl,
-} from '../api/client';
+} from '../api/stream';
+import { snapshotUrl } from '../api/snapshot';
 import type { RtspConfig, StreamName } from '../api/types';
 import { useLiveView } from '../hooks/useLiveView';
 

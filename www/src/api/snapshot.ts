@@ -1,5 +1,5 @@
-import { mockSnapshotConfig } from './mock';
-import { requestJson, putJson } from './client';
+import { mockSnapshotConfig } from './mockSnapshot';
+import { authQuery, requestJson, putJson } from './client';
 import type { SnapshotConfig } from './types';
 
 export function getSnapshotConfig(): Promise<SnapshotConfig> {
@@ -8,4 +8,9 @@ export function getSnapshotConfig(): Promise<SnapshotConfig> {
 
 export function saveSnapshotConfig(value: SnapshotConfig): Promise<void> {
   return putJson('/api/config/snapshot', value);
+}
+
+export function snapshotUrl(stream: string, tick = 0): string {
+  const query = authQuery(tick > 0 ? { t: String(tick) } : undefined);
+  return `/api/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
 }

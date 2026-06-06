@@ -4,7 +4,7 @@ import {
   requestJson,
   type ApiRequestOptions,
 } from './client';
-import { mockAiAlerts, mockAiStatus } from './mock';
+import { mockAiAlerts, mockAiStatus } from './mockAi';
 import type { AiAlertList, AiModelConfig, AiStatus } from './types';
 
 export function getAiStatus(init?: ApiRequestOptions): Promise<AiStatus> {

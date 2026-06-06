@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { mockMediaCapabilities } from '../api/mock';
+import { mockMediaCapabilities } from '../api/mockVideo';
 import { getMediaCapabilities, getStreamStatus } from '../api/video';
 import type { MediaCapabilities, StreamStatus } from '../api/types';
 

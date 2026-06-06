@@ -1,6 +1,6 @@
 // Network configuration API: /api/config/network
 
-import { mockNetworkConfig } from './mock';
+import { mockNetworkConfig } from './mockNetwork';
 import { requestJson, putJson } from './client';
 import type { NetworkConfig } from './types';
 

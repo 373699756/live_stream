@@ -3,7 +3,7 @@
  */
 
 import { getSnapshotConfig, saveSnapshotConfig } from '../api/snapshot';
-import { mockSnapshotConfig } from '../api/mock';
+import { mockSnapshotConfig } from '../api/mockSnapshot';
 import { useConfigForm } from './useConfigForm';
 
 export function useSnapshotConfig() {

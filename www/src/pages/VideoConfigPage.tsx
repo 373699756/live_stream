@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveVideoConfig } from '../api/video';
 import { isStreamSupported } from '../api/resolution';
-import { cloneDefaultConfig, mockVideoConfig } from '../api/mock';
+import { cloneDefaultConfig } from '../api/configDefaults';
+import { mockVideoConfig } from '../api/mockVideo';
 import type {
   StreamName,
   VideoStreamConfig,

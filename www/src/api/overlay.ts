@@ -1,4 +1,4 @@
-import { mockOverlayConfig } from './mock';
+import { mockOverlayConfig } from './mockOverlay';
 import { requestJson, putJson } from './client';
 import type { OverlayConfig } from './types';
 

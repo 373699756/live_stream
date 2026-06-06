@@ -378,32 +378,3 @@ export async function logout(): Promise<void> {
   }
   removeToken();
 }
-
-// ---------------------------------------------------------------------------
-// URL helpers (used by pages and components directly)
-// ---------------------------------------------------------------------------
-
-export function snapshotUrl(stream: string, tick = 0): string {
-  const query = authQuery(tick > 0 ? { t: String(tick) } : undefined);
-  return `/api/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
-}
-
-export function operationsExportUrl(): string {
-  const query = authQuery();
-  return `/api/operations/export${query ? `?${query}` : ''}`;
-}
-
-export function hlsPlaylistUrl(stream: string): string {
-  const query = authQuery();
-  return `/api/hls/${stream}/index.m3u8${query ? `?${query}` : ''}`;
-}
-
-export function flvStreamUrl(stream: string): string {
-  const query = authQuery();
-  return `/api/flv/${stream}.flv${query ? `?${query}` : ''}`;
-}
-
-export function mjpegStreamUrl(stream: string): string {
-  const query = authQuery();
-  return `/api/mjpeg/${stream}.mjpg${query ? `?${query}` : ''}`;
-}

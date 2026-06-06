@@ -1,4 +1,4 @@
-import { mockUpgradeStatus } from './mock';
+import { mockUpgradeStatus } from './mockUpgrade';
 import {
   postJson,
   authHeaders,
