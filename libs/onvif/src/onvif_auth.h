@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_AUTH_H_
-#define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_AUTH_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_AUTH_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_AUTH_H_
 
 #include "auth.h"
 #include "onvif_types.h"
@@ -17,4 +17,4 @@ bool AuthorizeOnvifAction(IAuth *auth,
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_AUTH_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_AUTH_H_

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_APP_CORE_SERVICES_H_
-#define LIVE_STREAM_APP_CORE_SERVICES_H_
+#ifndef LIVE_STREAM_APP_CORE_SUBSYSTEM_H_
+#define LIVE_STREAM_APP_CORE_SUBSYSTEM_H_
 
 #include <memory>
 
@@ -17,9 +17,9 @@ struct RuntimePaths {
     const char* operation_log_path = nullptr;
 };
 
-class CoreServices {
+class CoreSubsystem {
 public:
-    static CoreServices& Get();
+    static CoreSubsystem& Get();
 
     bool Start(const RuntimePaths& paths);
     void Stop();
@@ -30,11 +30,11 @@ public:
     IAuth* auth() const { return auth_.get(); }
 
 private:
-    CoreServices() = default;
-    ~CoreServices() = default;
+    CoreSubsystem() = default;
+    ~CoreSubsystem() = default;
 
-    CoreServices(const CoreServices&) = delete;
-    CoreServices& operator=(const CoreServices&) = delete;
+    CoreSubsystem(const CoreSubsystem&) = delete;
+    CoreSubsystem& operator=(const CoreSubsystem&) = delete;
 
     std::unique_ptr<ILogger> logger_;
     std::unique_ptr<IConfig> config_;
@@ -46,4 +46,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_APP_CORE_SERVICES_H_
+#endif  // LIVE_STREAM_APP_CORE_SUBSYSTEM_H_

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_
-#define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_DISCOVERY_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_DISCOVERY_H_
 
 #include "onvif_server.h"
 
@@ -18,4 +18,4 @@ std::string BuildDiscoveryProbeMatches(
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_DISCOVERY_H_

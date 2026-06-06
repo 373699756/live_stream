@@ -339,7 +339,7 @@ export interface SystemStatus {
   cpu: number;
   memory: number;
   temperature: number;
-  services: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
+  modules: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
 }
 
 export interface OperationRecord {

@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: alarm.h
- * Brief: Defines the IPC alarm service public API.
+ * Brief: Defines the IPC alarm public API.
  */
 
 #ifndef LIVE_STREAM_ALARM_ALARM_H_

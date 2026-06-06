@@ -436,7 +436,7 @@
 
 .metric-grid div,
 .info-table div,
-.service-list div,
+.module-list div,
 .log-table div {
   display: flex;
   align-items: center;

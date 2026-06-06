@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: system.h
- * Brief: Defines the IPC system management service public API.
+ * Brief: Defines the IPC system management public API.
  */
 
 #ifndef LIVE_STREAM_SYSTEM_SYSTEM_H_

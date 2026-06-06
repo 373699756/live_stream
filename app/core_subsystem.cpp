@@ -1,4 +1,4 @@
-#include "core_services.h"
+#include "core_subsystem.h"
 
 #include "infra/log.h"
 #include "json_utils.h"
@@ -98,19 +98,19 @@ private:
 
 }  // namespace
 
-CoreServices& CoreServices::Get() {
-    static CoreServices services;
-    return services;
+CoreSubsystem& CoreSubsystem::Get() {
+    static CoreSubsystem subsystem;
+    return subsystem;
 }
 
-bool CoreServices::Start(const RuntimePaths& paths) {
+bool CoreSubsystem::Start(const RuntimePaths& paths) {
     if (started_) {
         return true;
     }
     if (paths.business_config_path == nullptr ||
         paths.default_config_path == nullptr ||
         paths.auth_users_path == nullptr || paths.operation_log_path == nullptr) {
-        Error("app", "Core service paths are incomplete");
+        Error("app", "Core subsystem paths are incomplete");
         return false;
     }
 
@@ -118,7 +118,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     logger_config.operation_log_path = paths.operation_log_path;
     logger_ = CreateLogger(logger_config);
     if (!logger_ || !logger_->Start()) {
-        Error("app", "Start logger service failed: path=%s",
+        Error("app", "Start logger failed: path=%s",
                         paths.operation_log_path);
         Stop();
         return false;
@@ -130,7 +130,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     config_options.create_storage_if_missing = false;
     config_ = CreateConfig(config_options);
     if (!config_ || !config_->Start()) {
-        Error("app", "Start config service failed: config=%s default=%s",
+        Error("app", "Start config failed: config=%s default=%s",
                         paths.business_config_path, paths.default_config_path);
         Stop();
         return false;
@@ -143,7 +143,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
 
     event_ = CreateEvent();
     if (!event_ || !event_->Start()) {
-        Error("app", "Start event service failed");
+        Error("app", "Start event failed");
         Stop();
         return false;
     }
@@ -161,7 +161,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
         (void)auth_->SetAuditSink(auth_audit_sink_.get());
     }
     if (!auth_ || !auth_->Start()) {
-        Error("app", "Start auth service failed: users=%s",
+        Error("app", "Start auth failed: users=%s",
                         paths.auth_users_path);
         Stop();
         return false;
@@ -171,7 +171,7 @@ bool CoreServices::Start(const RuntimePaths& paths) {
     return true;
 }
 
-void CoreServices::Stop() {
+void CoreSubsystem::Stop() {
     if (auth_) {
         auth_->Stop();
         auth_.reset();

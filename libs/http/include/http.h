@@ -75,7 +75,7 @@ class IHttpRouter;
 class IHttpHandler {
 public:
     virtual ~IHttpHandler() = default;
-    // Called once during HttpService startup to register routes.
+    // Called once during IHttp startup to register routes.
     virtual void RegisterRoutes(IHttpRouter *router) = 0;
 };
 

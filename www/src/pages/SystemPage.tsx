@@ -1,7 +1,7 @@
 import { useUpgrade } from '../hooks/useUpgrade';
 import {
   DeviceInfoPanel,
-  ServiceStatusPanel,
+  ModuleStatusPanel,
   SystemStatusPanel,
 } from './SystemStatusPanels';
 import { UpgradePanel } from './UpgradePanel';
@@ -55,7 +55,7 @@ export function SystemPage() {
         upgradeStatus={upgradeStatus}
         uploadPackage={uploadPackage}
       />
-      <ServiceStatusPanel status={status} />
+      <ModuleStatusPanel status={status} />
     </div>
   );
 }

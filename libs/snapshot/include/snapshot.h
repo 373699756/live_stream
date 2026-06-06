@@ -131,7 +131,7 @@ struct SnapshotStats {
     bool capturing = false;
 };
 
-// ISnapshotView is the narrow interface consumed by HttpService (and other
+// ISnapshotView is the narrow interface consumed by http (and other
 // cross-module consumers). Snapshot implements it.
 class ISnapshotView {
 public:

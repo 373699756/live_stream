@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: logger.h
- * Brief: Defines the user operation audit service public interface.
+ * Brief: Defines the user operation audit public interface.
  */
 
 #ifndef LIVE_STREAM_LOGGER_LOGGER_H_

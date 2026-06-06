@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: config.cpp
- * Brief: Unified config service implementation.
+ * Brief: Unified config implementation.
  */
 
 #include "config.h"

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_SOAP_H_
-#define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_SOAP_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_SOAP_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_SOAP_H_
 
 #include "onvif_types.h"
 
@@ -24,4 +24,4 @@ bool ParseOnvifUnixTimeMs(const std::string &request, int64_t *unix_time_ms);
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_SOAP_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_SOAP_H_

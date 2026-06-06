@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_INFRA_SERVICE_JSON_UTILS_H_
-#define LIVE_STREAM_INFRA_SERVICE_JSON_UTILS_H_
+#ifndef LIVE_STREAM_INFRA_JSON_UTILS_H_
+#define LIVE_STREAM_INFRA_JSON_UTILS_H_
 
 #include <cmath>
 #include <cstdint>
@@ -202,4 +202,4 @@ inline bool ReadField(const ConfigJson &object, const char *key,
 }  // namespace json_utils
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_INFRA_SERVICE_JSON_UTILS_H_
+#endif  // LIVE_STREAM_INFRA_JSON_UTILS_H_

@@ -10,7 +10,7 @@
 
 namespace live_stream {
 
-class CoreServices;
+class CoreSubsystem;
 struct DeviceRefs;
 
 struct MediaRefs {
@@ -24,7 +24,7 @@ class MediaSubsystem {
 public:
     static MediaSubsystem& Get();
 
-    bool Start(CoreServices &core_services, const DeviceRefs &device_refs);
+    bool Start(CoreSubsystem &core_subsystem, const DeviceRefs &device_refs);
     void Stop();
     MediaRefs refs() const;
 

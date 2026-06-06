@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: time_api.h
- * Brief: Defines the IPC system time service public API.
+ * Brief: Defines the IPC system time public API.
  */
 
 #ifndef LIVE_STREAM_TIME_TIME_API_H_

@@ -1,6 +1,6 @@
 #include "media_subsystem.h"
 
-#include "core_services.h"
+#include "core_subsystem.h"
 #include "device_subsystem.h"
 #include "infra/log.h"
 #include "hisi_vendor/mpp_hisi_sdk.h"
@@ -12,13 +12,13 @@ MediaSubsystem &MediaSubsystem::Get() {
     return subsystem;
 }
 
-bool MediaSubsystem::Start(CoreServices &core_services,
+bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
                            const DeviceRefs &device_refs) {
     if (started_) {
         return true;
     }
 
-    IConfig *config = core_services.config();
+    IConfig *config = core_subsystem.config();
     hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
 
     DeviceMediaOptions media_options;
@@ -26,7 +26,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     media_options.sdk = &sdk;
     media_ = CreateDeviceMedia(media_options);
     if (!media_ || !media_->Start()) {
-        Error("app", "Start media service failed");
+        Error("app", "Start device_media failed");
         Stop();
         return false;
     }
@@ -39,7 +39,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     snapshot_options.sdk = &sdk;
     snapshot_.reset(new Snapshot(snapshot_options));
     if (!snapshot_ || !snapshot_->Start()) {
-        Error("app", "Start snapshot service failed");
+        Error("app", "Start snapshot failed");
         Stop();
         return false;
     }
@@ -53,11 +53,11 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     ai_options.sdk = &sdk;
     ai_.reset(new Ai(ai_options));
     if (!ai_ || !ai_->Start()) {
-        Error("app", "Start ai service failed");
+        Error("app", "Start ai failed");
         Stop();
         return false;
     }
-    Info("app", "AI service ready");
+    Info("app", "AI ready");
 
     RegionOptions overlay_options;
     overlay_options.config = config;
@@ -66,7 +66,7 @@ bool MediaSubsystem::Start(CoreServices &core_services,
     overlay_options.sdk = &sdk;
     overlay_.reset(new Region(overlay_options));
     if (!overlay_ || !overlay_->Start()) {
-        Error("app", "Start overlay service failed");
+        Error("app", "Start region failed");
         Stop();
         return false;
     }

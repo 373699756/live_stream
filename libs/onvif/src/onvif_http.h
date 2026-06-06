@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_
-#define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_HTTP_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_HTTP_H_
 
 #include <cstdint>
 #include <string>
@@ -23,4 +23,4 @@ std::string BuildOnvifHttpResponse(uint32_t status_code,
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_HTTP_H_

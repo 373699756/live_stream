@@ -134,12 +134,12 @@ private:
         root["cpu"] = system_status.cpu_usage_percent;
         root["memory"] = system_status.memory_usage_percent;
         root["temperature"] = system_status.temperature_celsius;
-        ConfigJson services = ConfigJson::array();
-        auto add_module = [&services](const char *name, bool running) {
+        ConfigJson modules = ConfigJson::array();
+        auto add_module = [&modules](const char *name, bool running) {
             ConfigJson module = ConfigJson::object();
             module["name"] = name;
             module["state"] = running ? "running" : "pending";
-            services.push_back(module);
+            modules.push_back(module);
         };
         add_module("logger",
                     status_sources_.logger != nullptr &&
@@ -191,7 +191,7 @@ private:
         add_module("media_source",
                     status_sources_.media_source != nullptr &&
                         status_sources_.media_source->GetStats().enabled);
-        root["services"] = services;
+        root["modules"] = modules;
         return JsonResponse(200, root);
     }
 

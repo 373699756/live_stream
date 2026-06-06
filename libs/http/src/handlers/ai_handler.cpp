@@ -185,7 +185,7 @@ private:
                 root["last_result"] = AiResultToJson(AiInferenceResult{});
                 return JsonResponse(200, root);
             }
-            return StatusResponse(503, "AI service not running");
+            return StatusResponse(503, "AI not running");
         }
         ConfigJson root = ConfigJson::object();
         root["config"] = AiConfigToJson(ai_->GetConfig());
@@ -206,7 +206,7 @@ private:
             if (!IsAiConfigEnabled(config_)) {
                 return JsonResponse(200, AiAlertListToJson({}));
             }
-            return StatusResponse(503, "AI service not running");
+            return StatusResponse(503, "AI not running");
         }
         return JsonResponse(200, AiAlertListToJson(ai_->ListAlerts()));
     }
@@ -219,7 +219,7 @@ private:
             return auth_response;
         }
         if (ai_ == nullptr) {
-            return StatusResponse(503, "AI service not running");
+            return StatusResponse(503, "AI not running");
         }
         const std::string prefix = "/api/ai/alerts/";
         const std::string suffix = PathSuffix(request.path, prefix);

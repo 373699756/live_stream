@@ -14,7 +14,7 @@
 
 namespace live_stream {
 
-class CoreServices;
+class CoreSubsystem;
 struct DeviceRefs;
 struct MediaRefs;
 
@@ -30,7 +30,7 @@ public:
     static ProtocolSubsystem &Get();
 
     bool Start(const AppRuntimeConfig &runtime_config,
-               CoreServices &core_services,
+               CoreSubsystem &core_subsystem,
                const DeviceRefs &device_refs,
                const MediaRefs &media_refs);
     void Stop();
@@ -48,7 +48,7 @@ private:
     std::unique_ptr<NetEngine> net_engine_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;
-    std::unique_ptr<IMediaPipeline> media_source_;
+    std::unique_ptr<IMediaPipeline> media_pipeline_;
     std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttp> http_;
     bool started_ = false;

@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: config.h
- * Brief: 定义全局配置中心 service 的 public API。
+ * Brief: 定义全局配置中心 public API。
  */
 
 #ifndef LIVE_STREAM_CONFIG_CONFIG_H_

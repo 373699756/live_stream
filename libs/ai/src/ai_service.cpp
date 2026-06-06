@@ -2583,7 +2583,7 @@ struct Ai::Impl final {
                 return false;
             }
         }
-        Info("ai", "AI service started: backend=%s stream=%d",
+        Info("ai", "AI started: backend=%s stream=%d",
                        ToString(start_config.backend),
                        static_cast<int>(start_config.stream_id));
         return true;

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_
-#define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_TYPES_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_TYPES_H_
 
 #include "media/stream_types.h"
 
@@ -35,4 +35,4 @@ const char *ActionName(OnvifAction action);
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_TYPES_H_

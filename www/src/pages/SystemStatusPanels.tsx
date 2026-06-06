@@ -53,15 +53,15 @@ export function DeviceInfoPanel({ status }: SystemStatusPanelsProps) {
   );
 }
 
-export function ServiceStatusPanel({ status }: SystemStatusPanelsProps) {
+export function ModuleStatusPanel({ status }: SystemStatusPanelsProps) {
   return (
     <section className="panel wide-panel">
-      <h2>服务状态</h2>
-      <div className="service-list">
-        {status.services.map((service) => (
-          <div key={service.name}>
-            <span>{service.name}</span>
-            <StatusBadge state={service.state} />
+      <h2>模块状态</h2>
+      <div className="module-list">
+        {status.modules.map((module) => (
+          <div key={module.name}>
+            <span>{module.name}</span>
+            <StatusBadge state={module.state} />
           </div>
         ))}
       </div>

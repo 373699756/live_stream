@@ -102,7 +102,7 @@ SERVICE_LIBS :=
 APP_SRCS := \
 	app/main.cpp \
 	app/app_runtime.cpp \
-	app/core_services.cpp \
+	app/core_subsystem.cpp \
 	app/device_subsystem.cpp \
 	app/linux_network_platform.cpp \
 	app/linux_platform_common.cpp \

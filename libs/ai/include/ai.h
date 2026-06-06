@@ -100,7 +100,7 @@ struct AiOptions {
     uint32_t max_alert_records = 100;
 };
 
-// IAiView is the narrow interface consumed by HttpService (and other
+// IAiView is the narrow interface consumed by http (and other
 // cross-module consumers). Ai implements it.
 class IAiView {
 public:

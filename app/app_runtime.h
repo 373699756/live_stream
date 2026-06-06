@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_APP_APP_RUNTIME_H_
 #define LIVE_STREAM_APP_APP_RUNTIME_H_
 
-#include "core_services.h"
+#include "core_subsystem.h"
 #include "runtime_config.h"
 
 namespace live_stream {

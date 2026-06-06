@@ -45,7 +45,7 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 | `snapshot` | `snapshot` | 抓图开关、路径、质量和超时 |
 | `rtsp` / `webrtc` / `onvif` / `http` | 对应协议模块 | 协议开关、监听端口、认证和会话上限 |
 | `time` / `system` / `alarm` / `log` | 对应设备或基础模块 | 设备管理、告警和日志运行配置 |
-| `audio` | `CoreServices` 守卫 | 兼容字段，只允许 disabled |
+| `audio` | `CoreSubsystem` 守卫 | 兼容字段，只允许 disabled |
 | `user` | `auth` + `CreateConfigAuthUserStore` | 认证用户和密码策略存储 |
 
 `config` 只保证 JSON 加载、默认值、scope 原子替换和 validate/apply 调用顺序。
@@ -53,7 +53,7 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 
 ## 产品范围守卫
 
-`CoreServices` 会为 `audio` scope 安装守卫，允许 disabled 兼容字段存在，但拒绝
+`CoreSubsystem` 会为 `audio` scope 安装守卫，允许 disabled 兼容字段存在，但拒绝
 启用音频。其他不支持范围也应由拥有模块或组合根守卫处理。
 
 ## 状态与资源模型
@@ -67,4 +67,4 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 
 - 配置字段含义必须向后兼容。
 - HTTP、Web DTO 和拥有模块配置应用必须同步，避免保存成功但运行态未应用。
-- 不要在 config service 中加入设备 SDK 解析或前端 DTO 逻辑。
+- 不要在 `config` 中加入设备 SDK 解析或前端 DTO 逻辑。

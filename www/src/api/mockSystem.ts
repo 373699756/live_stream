@@ -8,7 +8,7 @@ export const mockSystemStatus: SystemStatus = {
   cpu: 34,
   memory: 51,
   temperature: 48,
-  services: [
+  modules: [
     { name: 'config', state: 'running' },
     { name: 'auth', state: 'running' },
     { name: 'device_media', state: 'pending' },

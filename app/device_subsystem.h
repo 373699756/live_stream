@@ -12,7 +12,7 @@
 
 namespace live_stream {
 
-class CoreServices;
+class CoreSubsystem;
 
 struct DeviceRefs {
     ISystem *system = nullptr;
@@ -28,7 +28,7 @@ public:
 
     // Start receives pre-built platform adapters so that platform creation is
     // centralised in the caller (app_runtime.cpp / platform_factory.cpp).
-    bool Start(CoreServices &core_services, PlatformAdapters adapters);
+    bool Start(CoreSubsystem &core_subsystem, PlatformAdapters adapters);
     void Stop();
     DeviceRefs refs() const;
 

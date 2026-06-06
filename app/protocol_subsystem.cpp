@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "core_services.h"
+#include "core_subsystem.h"
 #include "device_subsystem.h"
 #include "http_console.h"
 #include "infra/log.h"
@@ -24,7 +24,7 @@ constexpr uint32_t kHttpRequestTimeoutMs = 60000;
 constexpr uint32_t kHttpConnectionIdleTimeoutMs = 60000;
 
 struct ProtocolRuntimeRefs {
-    CoreServices *core = nullptr;
+    CoreSubsystem *core = nullptr;
     DeviceRefs device;
     MediaRefs media;
     NetEngine *net_engine = nullptr;
@@ -90,12 +90,12 @@ WebrtcDependencies BuildWebrtcDependencies(
     return dependencies;
 }
 
-MediaPipelineOptions BuildMediaSourceOptions() {
+MediaPipelineOptions BuildMediaPipelineOptions() {
     MediaPipelineOptions options;
     return options;
 }
 
-MediaPipelineDependencies BuildMediaSourceDependencies(
+MediaPipelineDependencies BuildMediaPipelineDependencies(
     const ProtocolRuntimeRefs &refs) {
     MediaPipelineDependencies dependencies;
     dependencies.device_media = refs.media.media;
@@ -158,7 +158,7 @@ ProtocolSubsystem &ProtocolSubsystem::Get() {
 }
 
 bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
-                              CoreServices &core_services,
+                              CoreSubsystem &core_subsystem,
                               const DeviceRefs &device_refs,
                               const MediaRefs &media_refs) {
     if (started_) {
@@ -166,7 +166,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
 
     ProtocolRuntimeRefs refs;
-    refs.core = &core_services;
+    refs.core = &core_subsystem;
     refs.device = device_refs;
     refs.media = media_refs;
 
@@ -191,26 +191,26 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
     refs.net_engine = net_engine_.get();
 
-    const MediaPipelineOptions media_source_options =
-        BuildMediaSourceOptions();
-    const MediaPipelineDependencies media_source_dependencies =
-        BuildMediaSourceDependencies(refs);
-    media_source_ =
-        CreateMediaPipeline(media_source_options,
-                                 media_source_dependencies);
-    if (!media_source_ || !media_source_->Start()) {
-        Error("app", "Start media source service failed");
+    const MediaPipelineOptions media_pipeline_options =
+        BuildMediaPipelineOptions();
+    const MediaPipelineDependencies media_pipeline_dependencies =
+        BuildMediaPipelineDependencies(refs);
+    media_pipeline_ =
+        CreateMediaPipeline(media_pipeline_options,
+                                 media_pipeline_dependencies);
+    if (!media_pipeline_ || !media_pipeline_->Start()) {
+        Error("app", "Start media_pipeline failed");
         Stop();
         return false;
     }
-    refs.media_pipeline = media_source_.get();
+    refs.media_pipeline = media_pipeline_.get();
 
     const RtspOptions rtsp_options = BuildRtspOptions(runtime_config);
     const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
         Error("app",
-                        "Start rtsp service failed, continue without RTSP: "
+                        "Start rtsp failed, continue without RTSP: "
                         "listen=%s:%u",
                         runtime_config.listen_ip.c_str(),
                         static_cast<unsigned>(runtime_config.rtsp_port));
@@ -222,7 +222,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     } else {
         refs.rtsp = rtsp_.get();
         const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
-        Info("app", "RTSP service listening %s:%u",
+        Info("app", "RTSP listening %s:%u",
                        rtsp_address.ip.c_str(),
                        static_cast<unsigned>(rtsp_address.port));
     }
@@ -235,7 +235,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     if (!webrtc_ || !webrtc_->Start()) {
         Error(
             "app",
-            "Start webrtc service failed, continue without WebRTC: "
+            "Start webrtc failed, continue without WebRTC: "
             "enabled=%d base=%u",
             runtime_config.webrtc_enabled ? 1 : 0,
             static_cast<unsigned>(runtime_config.webrtc_local_port_base));
@@ -254,7 +254,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
         Error("app",
-                        "Start onvif service failed, continue without ONVIF: "
+                        "Start onvif failed, continue without ONVIF: "
                         "device_port=%u",
                         static_cast<unsigned>(runtime_config.onvif_device_port));
         if (onvif_) {
@@ -264,7 +264,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.onvif = nullptr;
     } else {
         refs.onvif = onvif_.get();
-        Info("app", "ONVIF service started listen=%s:%u discovery=%u",
+        Info("app", "ONVIF started listen=%s:%u discovery=%u",
                        runtime_config.listen_ip.c_str(),
                        static_cast<unsigned>(runtime_config.onvif_device_port),
                        static_cast<unsigned>(runtime_config.onvif_discovery_port));
@@ -282,7 +282,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.media.snapshot, refs.webrtc, refs.media_pipeline,
         refs.media_pipeline, refs.media_pipeline);
     if (!http_ || !http_->Start()) {
-        Error("app", "Start http service failed: listen=%s:%u root=%s",
+        Error("app", "Start http failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),
                         static_cast<unsigned>(runtime_config.http_port),
                         runtime_config.static_root.c_str());
@@ -290,7 +290,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
     const HttpListenAddress http_address = http_->LocalAddress();
-    Info("app", "HTTP service listening %s:%u root=%s",
+    Info("app", "HTTP listening %s:%u root=%s",
                    http_address.ip.c_str(),
                    static_cast<unsigned>(http_address.port),
                    runtime_config.static_root.c_str());
@@ -301,29 +301,29 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
 
 void ProtocolSubsystem::Stop() {
     if (http_) {
-        Info("app", "Stop HTTP service begin");
+        Info("app", "Stop http begin");
         http_->Stop();
-        Info("app", "Stop HTTP service done");
+        Info("app", "Stop http done");
     }
     if (onvif_) {
-        Info("app", "Stop ONVIF service begin");
+        Info("app", "Stop onvif begin");
         onvif_->Stop();
-        Info("app", "Stop ONVIF service done");
+        Info("app", "Stop onvif done");
     }
     if (webrtc_) {
-        Info("app", "Stop WebRTC service begin");
+        Info("app", "Stop webrtc begin");
         webrtc_->Stop();
-        Info("app", "Stop WebRTC service done");
+        Info("app", "Stop webrtc done");
     }
     if (rtsp_) {
-        Info("app", "Stop RTSP service begin");
+        Info("app", "Stop rtsp begin");
         rtsp_->Stop();
-        Info("app", "Stop RTSP service done");
+        Info("app", "Stop rtsp done");
     }
-    if (media_source_) {
-        Info("app", "Stop media source service begin");
-        media_source_->Stop();
-        Info("app", "Stop media source service done");
+    if (media_pipeline_) {
+        Info("app", "Stop media_pipeline begin");
+        media_pipeline_->Stop();
+        Info("app", "Stop media_pipeline done");
     }
     if (net_engine_) {
         Info("app", "Stop net engine begin");
@@ -338,7 +338,7 @@ void ProtocolSubsystem::Stop() {
     }
     http_.reset();
     onvif_.reset();
-    media_source_.reset();
+    media_pipeline_.reset();
     webrtc_.reset();
     rtsp_.reset();
     started_ = false;

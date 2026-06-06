@@ -2,7 +2,7 @@
  * Copyright (c) 2026 CBinary
  * Author: CBinary
  * File: auth.h
- * Brief: 定义统一鉴权 service 的 public API。
+ * Brief: 定义统一鉴权 public API。
  */
 
 #ifndef LIVE_STREAM_AUTH_AUTH_H_
@@ -48,7 +48,7 @@ enum class AuthPermission {
 /**
  * @brief 当前认证主体。
  *
- * 不包含 token、密码、认证头等敏感明文，可安全传递给其他 service 做权限判断。
+ * 不包含 token、密码、认证头等敏感明文，可安全传递给其他模块做权限判断。
  */
 struct AuthPrincipal {
     std::string user_name;

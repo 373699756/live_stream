@@ -5,8 +5,8 @@
  * Brief: Defines the ONVIF server public API.
  */
 
-#ifndef LIVE_STREAM_ONVIF_SERVICE_ONVIF_SERVER_H_
-#define LIVE_STREAM_ONVIF_SERVICE_ONVIF_SERVER_H_
+#ifndef LIVE_STREAM_ONVIF_ONVIF_SERVER_H_
+#define LIVE_STREAM_ONVIF_ONVIF_SERVER_H_
 
 #include <cstdint>
 #include <memory>
@@ -85,4 +85,4 @@ std::unique_ptr<OnvifServer> CreateOnvifServer(
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SERVICE_ONVIF_SERVER_H_
+#endif  // LIVE_STREAM_ONVIF_ONVIF_SERVER_H_
