@@ -7,7 +7,24 @@ import {
   requestJson,
   type ApiRequestOptions,
 } from './client';
-import type { RtspConfig, WebrtcConfig } from './types';
+import type {
+  RtspConfig,
+  StreamName,
+  WebrtcAnswerResponse,
+  WebrtcCommandResponse,
+  WebrtcConfig,
+  WebrtcPeerResponse,
+} from './types';
+
+interface WebrtcCreatePeerRequest {
+  client_id: string;
+  stream: string;
+}
+
+interface WebrtcOfferRequest {
+  peer_id: string;
+  sdp: string;
+}
 
 // RTSP & WebRTC read-only config
 export function getRtspConfig(
@@ -23,13 +40,15 @@ export function getWebrtcConfig(
 }
 
 // WebRTC signaling
-export function createWebrtcPeer(stream: string, init?: ApiRequestOptions) {
-  return postJson(
+export function createWebrtcPeer(stream: StreamName, init?: ApiRequestOptions) {
+  return postJson<WebrtcCreatePeerRequest, WebrtcPeerResponse>(
     '/api/webrtc/peers',
     { stream, client_id: 'web' },
     {
+      ok: false,
       peer_id: '',
       stream,
+      state: 'failed',
     },
     init,
   );
@@ -40,12 +59,14 @@ export function sendWebrtcOffer(
   sdp: string,
   init?: ApiRequestOptions,
 ) {
-  return postJson(
+  return postJson<WebrtcOfferRequest, WebrtcAnswerResponse>(
     '/api/webrtc/offer',
     { peer_id: peerId, sdp },
     {
+      ok: false,
       peer_id: peerId,
       sdp: '',
+      state: 'failed',
     },
     init,
   );
@@ -68,7 +89,7 @@ export async function sendWebrtcCandidate(
       sdpMLineIndex: candidate.sdpMLineIndex || 0,
       usernameFragment: candidate.usernameFragment || '',
     },
-    { ok: true },
+    { ok: true, peer_id: peerId } satisfies WebrtcCommandResponse,
     init,
   );
 }
@@ -81,7 +102,7 @@ export async function closeWebrtcPeer(peerId: string, init?: ApiRequestOptions) 
     await postJson(
       '/api/webrtc/close',
       { peer_id: peerId },
-      { ok: true },
+      { ok: true, peer_id: peerId } satisfies WebrtcCommandResponse,
       init,
     );
   } catch {

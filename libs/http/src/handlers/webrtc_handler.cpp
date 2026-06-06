@@ -19,6 +19,26 @@ using WebrtcRouteHandler =
                      const ConfigJson &body,
                      const AuthPrincipal &principal);
 
+const char *WebrtcPeerStateName(WebrtcPeerState state) {
+    switch (state) {
+        case WebrtcPeerState::kCreated:
+            return "created";
+        case WebrtcPeerState::kOfferReceived:
+            return "offer_received";
+        case WebrtcPeerState::kConnecting:
+            return "connecting";
+        case WebrtcPeerState::kConnected:
+            return "connected";
+        case WebrtcPeerState::kClosing:
+            return "closing";
+        case WebrtcPeerState::kClosed:
+            return "closed";
+        case WebrtcPeerState::kFailed:
+            return "failed";
+    }
+    return "unknown";
+}
+
 HttpResponse HandleCreatePeer(IWebrtc *webrtc,
                               const HttpRequest &request,
                               const ConfigJson &body,
@@ -38,12 +58,20 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
 
     const WebrtcPeerInfo peer = webrtc->CreatePeer(create_request);
     if (peer.peer_id.empty()) {
-        return StatusResponse(409, "Could not create peer");
+        ConfigJson root = ConfigJson::object();
+        root["ok"] = false;
+        root["peer_id"] = "";
+        root["stream"] = StreamIdToJsonString(create_request.stream_id);
+        root["state"] = WebrtcPeerStateName(WebrtcPeerState::kFailed);
+        root["error"] = "create_peer_failed";
+        return JsonResponse(200, root);
     }
 
     ConfigJson root = ConfigJson::object();
+    root["ok"] = true;
     root["peer_id"] = peer.peer_id;
     root["stream"] = StreamIdToJsonString(peer.stream_id);
+    root["state"] = WebrtcPeerStateName(peer.state);
     return JsonResponse(200, root);
 }
 
@@ -60,12 +88,21 @@ HttpResponse HandleOffer(IWebrtc *webrtc,
 
     const WebrtcAnswer answer = webrtc->HandleOffer(offer);
     if (answer.sdp.empty()) {
-        return StatusResponse(404, "Peer not found");
+        ConfigJson root = ConfigJson::object();
+        root["ok"] = false;
+        root["peer_id"] = answer.peer_id;
+        root["state"] = WebrtcPeerStateName(answer.state);
+        root["error"] =
+            answer.error.empty() ? std::string("answer_unavailable")
+                                 : answer.error;
+        return JsonResponse(200, root);
     }
 
     ConfigJson root = ConfigJson::object();
+    root["ok"] = true;
     root["peer_id"] = answer.peer_id;
     root["sdp"] = answer.sdp;
+    root["state"] = WebrtcPeerStateName(answer.state);
     return JsonResponse(200, root);
 }
 
@@ -104,9 +141,15 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                    "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
                    candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
                    candidate.sdp_mline_index, candidate.candidate.size());
-    return webrtc->AddIceCandidate(candidate)
-               ? OkResponse()
-               : StatusResponse(404, "Peer not found");
+    ConfigJson root = ConfigJson::object();
+    root["peer_id"] = candidate.peer_id;
+    if (webrtc->AddIceCandidate(candidate)) {
+        root["ok"] = true;
+        return JsonResponse(200, root);
+    }
+    root["ok"] = false;
+    root["error"] = "peer_not_found";
+    return JsonResponse(200, root);
 }
 
 HttpResponse HandleClosePeer(IWebrtc *webrtc,
@@ -119,9 +162,15 @@ HttpResponse HandleClosePeer(IWebrtc *webrtc,
     if (!json_utils::ReadField(body, "peer_id", &peer_id)) {
         return StatusResponse(400, "Missing peer_id");
     }
-    return webrtc->ClosePeer(peer_id)
-               ? OkResponse()
-               : StatusResponse(404, "Peer not found");
+    ConfigJson root = ConfigJson::object();
+    root["peer_id"] = peer_id;
+    if (webrtc->ClosePeer(peer_id)) {
+        root["ok"] = true;
+        return JsonResponse(200, root);
+    }
+    root["ok"] = false;
+    root["error"] = "peer_not_found";
+    return JsonResponse(200, root);
 }
 
 }  // namespace

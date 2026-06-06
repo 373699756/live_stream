@@ -163,6 +163,7 @@ export function startWebrtcPreview({
         signal: controls.sessionSignal,
       });
       if (
+        !peer.ok ||
         !peer.peer_id ||
         !controls.isCurrentSession() ||
         peerState.peerRef.current !== pc
@@ -171,7 +172,7 @@ export function startWebrtcPreview({
           void closeWebrtcPeer(peer.peer_id);
         }
         if (controls.isCurrentSession()) {
-          controls.setPreviewState('WebRTC 后端不可用');
+          controls.setPreviewState(peer.error || 'WebRTC peer 创建失败');
           peerState.closeSession();
         }
         return;
@@ -192,13 +193,14 @@ export function startWebrtcPreview({
         signal: controls.sessionSignal,
       });
       if (
+        !answer.ok ||
         !answer.sdp ||
         !controls.isCurrentSession() ||
         peerState.peerRef.current !== pc
       ) {
         void closeWebrtcPeer(peer.peer_id);
         if (controls.isCurrentSession()) {
-          controls.setPreviewState('WebRTC 应答无效');
+          controls.setPreviewState(answer.error || 'WebRTC 应答无效');
           peerState.closeSession();
         }
         return;

@@ -185,7 +185,7 @@ private:
         if (status_sources_.webrtc != nullptr) {
             const WebrtcStats stats =
                 status_sources_.webrtc->GetStats();
-            webrtc_running = stats.enabled && stats.backend_available;
+            webrtc_running = stats.enabled && stats.signaling_ready;
         }
         add_module("webrtc", webrtc_running);
         add_module("media_source",

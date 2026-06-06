@@ -168,21 +168,29 @@ public:
     }
 
     WebrtcAnswer HandleOffer(const WebrtcOfferRequest &request) override {
+        WebrtcAnswer result;
+        result.peer_id = request.peer_id;
         WebrtcPeerInfo peer;
         std::vector<WebrtcIceCandidate> pending_candidates;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || request.peer_id.empty() ||
                 request.sdp.empty()) {
-                return WebrtcAnswer();
+                result.state = WebrtcPeerState::kFailed;
+                result.error = "invalid_offer";
+                return result;
             }
             if (!peer_store_.BeginOffer(request.peer_id, &peer)) {
-                return WebrtcAnswer();
+                result.state = WebrtcPeerState::kFailed;
+                result.error = "peer_not_found";
+                return result;
             }
         }
 
         if (!engine_) {
-            return WebrtcAnswer();
+            result.state = WebrtcPeerState::kFailed;
+            result.error = "engine_unavailable";
+            return result;
         }
         const std::string answer = engine_->HandleOffer(peer, request.sdp);
 
@@ -194,7 +202,9 @@ public:
             if (engine_ != nullptr) {
                 (void)engine_->ClosePeer(request.peer_id);
             }
-            return WebrtcAnswer();
+            result.state = WebrtcPeerState::kFailed;
+            result.error = "sdp_not_ready";
+            return result;
         }
 
         {
@@ -208,16 +218,17 @@ public:
             if (engine_ != nullptr) {
                 (void)engine_->ClosePeer(request.peer_id);
             }
-            return WebrtcAnswer();
+            result.state = WebrtcPeerState::kFailed;
+            result.error = "peer_not_found";
+            return result;
         }
         for (const WebrtcIceCandidate &candidate : pending_candidates) {
             if (engine_ != nullptr) {
                 (void)engine_->AddIceCandidate(candidate);
             }
         }
-        WebrtcAnswer result;
-        result.peer_id = request.peer_id;
         result.sdp = answer;
+        result.state = peer.state;
         return result;
     }
 
@@ -277,7 +288,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         WebrtcStats result = stats_;
         result.enabled = options_.enabled;
-        result.backend_available = engine_ && engine_->Available();
+        result.signaling_ready = engine_ && engine_->Available();
         result.active_peers = peer_store_.ActivePeerCount();
         result.max_peers = options_.max_peers;
         return result;
