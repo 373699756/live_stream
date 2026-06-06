@@ -244,8 +244,9 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
     stream_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
                                            &stream->pps, &has_sps, &has_pps);
     if (!stream->sps.empty() && !stream->pps.empty() && (has_sps || has_pps)) {
-        stream->sequence_header_tag = stream_mux::BuildH264FlvSequenceHeaderTag(
-            stream->sps, stream->pps, static_cast<uint32_t>(frame.dts_us / 1000));
+        stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
+            VideoCodec::kH264, std::string(), stream->sps, stream->pps,
+            static_cast<uint32_t>(frame.dts_us / 1000));
         ++stream->config_generation;
     }
 
@@ -268,8 +269,8 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
                                            &has_sps, &has_pps);
     if (!stream->vps.empty() && !stream->sps.empty() && !stream->pps.empty() &&
         (has_vps || has_sps || has_pps)) {
-        stream->sequence_header_tag = stream_mux::BuildH265FlvSequenceHeaderTag(
-            stream->vps, stream->sps, stream->pps,
+        stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
+            VideoCodec::kH265, stream->vps, stream->sps, stream->pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
         ++stream->config_generation;
     }
@@ -440,7 +441,7 @@ MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
 
     start_data.supported = true;
     start_data.cached_gop_complete = stream.flv_gop_cache.complete();
-    start_data.file_header = stream_mux::BuildFlvFileHeader();
+    start_data.file_header = FlvMuxer::BuildFileHeader();
     start_data.sequence_header = stream.sequence_header_tag;
     if (!stream.flv_gop_cache.complete()) {
         start_data.config_generation = stream.config_generation;
@@ -538,21 +539,9 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         }
     }
 
-    if (package_flv && frame.codec == VideoCodec::kH264) {
-        const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        result.has_flv_tag_view = stream_mux::BuildH264FlvVideoTagView(
-            keyframe, static_cast<int32_t>(composition_time_ms),
-            static_cast<uint32_t>(frame.dts_us / 1000), payload.h264_units,
-            &result.flv_tag_view);
-        if (result.has_flv_tag_view) {
-            PushFlvGopCache(stream, frame, keyframe, result.flv_tag_view);
-        }
-    } else if (package_flv && frame.codec == VideoCodec::kH265) {
-        const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
-        result.has_flv_tag_view = stream_mux::BuildH265FlvVideoTagView(
-            keyframe, static_cast<int32_t>(composition_time_ms),
-            static_cast<uint32_t>(frame.dts_us / 1000), payload.h265_units,
-            &result.flv_tag_view);
+    if (package_flv && IsFlvCodecSupported(frame.codec)) {
+        result.has_flv_tag_view = FlvMuxer::BuildVideoTagView(
+            frame, payload, keyframe, &result.flv_tag_view);
         if (result.has_flv_tag_view) {
             PushFlvGopCache(stream, frame, keyframe, result.flv_tag_view);
         }

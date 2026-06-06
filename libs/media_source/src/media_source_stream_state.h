@@ -3,6 +3,7 @@
 
 #include "media_source.h"
 
+#include "flv_muxer.h"
 #include "gop_cache.h"
 #include "media/frame_attach.h"
 #include "stream_codec.h"
@@ -53,7 +54,7 @@ struct PackagedFrameResult {
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
-    stream_mux::FlvVideoTagView flv_tag_view;
+    FlvVideoTagView flv_tag_view;
     bool has_flv_tag_view = false;
 };
 
