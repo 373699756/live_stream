@@ -5,26 +5,17 @@
 
 #include "flv_muxer.h"
 #include "gop_cache.h"
+#include "hls_maker.h"
 #include "media/frame_attach.h"
 #include "stream_codec.h"
-#include "stream_mux.h"
 #include "timestamp_corrector.h"
 
 #include <cstdint>
-#include <deque>
 #include <string>
 #include <vector>
 
 namespace live_stream {
 namespace media_source_internal {
-
-struct HlsSegmentState {
-    bool started = false;
-    uint64_t sequence = 0;
-    int64_t start_pts_us = 0;
-    int64_t last_pts_us = 0;
-    VideoBuffer *body = nullptr;
-};
 
 // 单路码流的浏览器播放状态。服务层只负责加锁和分发，HLS/FLV 的
 // 参数集、分片缓存和打包游标都集中维护在这里。
@@ -36,15 +27,8 @@ struct StreamContext {
     std::string pps;
     std::string sequence_header_tag;
     GopCache flv_gop_cache;
-    std::deque<MediaSegmentRef> segments;
-    HlsSegmentState current_segment;
-    uint32_t next_hls_segment_capacity = 0;
-    mutable bool hls_requested = false;
-    uint64_t next_segment_sequence = 1;
+    HlsMaker hls_maker;
     uint64_t config_generation = 0;
-    stream_mux::TsMuxerState ts_muxer_state;
-    int64_t last_pts_us = -1;
-    int64_t last_frame_duration_us = 33333;
     TimestampCorrector timestamp_corrector;
 };
 

@@ -1,6 +1,5 @@
 #include "media_source_stream_state.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <utility>
 
@@ -13,128 +12,6 @@ bool IsBrowserCodec(VideoCodec codec) {
 
 namespace {
 
-constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
-constexpr size_t kMaxHlsSegmentBytes = 4 * 1024 * 1024;
-
-uint32_t ClampHlsSegmentCapacity(size_t capacity) {
-    if (capacity < kInitialHlsSegmentBytes) {
-        return static_cast<uint32_t>(kInitialHlsSegmentBytes);
-    }
-    if (capacity > kMaxHlsSegmentBytes) {
-        return static_cast<uint32_t>(kMaxHlsSegmentBytes);
-    }
-    return static_cast<uint32_t>(capacity);
-}
-
-void UnrefHlsSegments(StreamContext *stream) {
-    if (stream == nullptr) {
-        return;
-    }
-    for (MediaSegmentRef &segment : stream->segments) {
-        MediaSegmentRefUnref(&segment);
-    }
-    stream->segments.clear();
-}
-
-void HlsSegmentStateUnref(HlsSegmentState *segment) {
-    if (segment == nullptr) {
-        return;
-    }
-    VideoBufferUnref(segment->body);
-    *segment = HlsSegmentState{};
-}
-
-bool EnsureHlsSegmentCapacity(HlsSegmentState *segment, size_t extra_bytes) {
-    if (segment == nullptr || segment->body == nullptr ||
-        segment->body->size > segment->body->capacity) {
-        return false;
-    }
-    if (extra_bytes <= segment->body->capacity - segment->body->size) {
-        return true;
-    }
-    uint32_t new_capacity = segment->body->capacity;
-    while (extra_bytes > new_capacity - segment->body->size) {
-        if (new_capacity >= kMaxHlsSegmentBytes) {
-            return false;
-        }
-        const uint32_t doubled = new_capacity * 2U;
-        new_capacity = doubled > new_capacity ? doubled : kMaxHlsSegmentBytes;
-        if (new_capacity > kMaxHlsSegmentBytes) {
-            new_capacity = kMaxHlsSegmentBytes;
-        }
-    }
-    VideoBuffer *new_body = VideoBufferAlloc(new_capacity);
-    if (new_body == nullptr) {
-        return false;
-    }
-    std::copy(segment->body->data, segment->body->data + segment->body->size,
-              new_body->data);
-    if (!VideoBufferSetSize(new_body, segment->body->size)) {
-        VideoBufferUnref(new_body);
-        return false;
-    }
-    VideoBufferUnref(segment->body);
-    segment->body = new_body;
-    return true;
-}
-
-stream_mux::TsSegmentBuffer HlsSegmentBuffer(HlsSegmentState *segment) {
-    stream_mux::TsSegmentBuffer buffer;
-    if (segment == nullptr || segment->body == nullptr) {
-        return buffer;
-    }
-    buffer.data = segment->body->data;
-    buffer.capacity = segment->body->capacity;
-    buffer.size = segment->body->size;
-    return buffer;
-}
-
-bool CommitHlsSegmentBuffer(HlsSegmentState *segment,
-                            const stream_mux::TsSegmentBuffer &buffer) {
-    return segment != nullptr && segment->body != nullptr &&
-           buffer.size <= segment->body->capacity &&
-           VideoBufferSetSize(segment->body, static_cast<uint32_t>(buffer.size));
-}
-
-bool AppendFrameToHlsSegment(StreamContext *stream,
-                             const ParsedFramePayload &payload,
-                             bool prepend_parameter_sets,
-                             const EncodedFrame &frame) {
-    if (stream == nullptr || stream->current_segment.body == nullptr) {
-        return false;
-    }
-    for (size_t attempt = 0; attempt < 8; ++attempt) {
-        stream_mux::TsSegmentBuffer segment_body =
-            HlsSegmentBuffer(&stream->current_segment);
-        const size_t original_size = segment_body.size;
-        stream_mux::TsMuxerState original_state = stream->ts_muxer_state;
-        bool appended = false;
-        if (frame.codec == VideoCodec::kH265) {
-            appended = stream_mux::AppendH265NalUnitsToTsSegmentBuffer(
-                payload.h265_units, stream->vps, stream->sps, stream->pps,
-                prepend_parameter_sets, frame.pts_us, frame.dts_us,
-                &stream->ts_muxer_state, &segment_body);
-        } else {
-            appended = stream_mux::AppendH264NalUnitsToTsSegmentBuffer(
-                payload.h264_units, stream->sps, stream->pps,
-                prepend_parameter_sets, frame.pts_us, frame.dts_us,
-                &stream->ts_muxer_state, &segment_body);
-        }
-        if (appended && CommitHlsSegmentBuffer(&stream->current_segment,
-                                               segment_body)) {
-            return true;
-        }
-        stream->ts_muxer_state = original_state;
-        (void)VideoBufferSetSize(stream->current_segment.body,
-                                 static_cast<uint32_t>(original_size));
-        if (!EnsureHlsSegmentCapacity(&stream->current_segment,
-                                      stream->current_segment.body->capacity)) {
-            return false;
-        }
-    }
-    return false;
-}
-
 void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
                      bool keyframe,
                      const stream_mux::FlvVideoTagView &flv_tag_view) {
@@ -142,98 +19,6 @@ void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
         return;
     }
     (void)stream->flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
-}
-
-int64_t CurrentSegmentDurationUs(const StreamContext &stream) {
-    return std::max<int64_t>(stream.last_frame_duration_us,
-                             stream.current_segment.last_pts_us -
-                                 stream.current_segment.start_pts_us +
-                                 stream.last_frame_duration_us);
-}
-
-void StartSegment(StreamContext *stream, int64_t pts_us) {
-    if (stream == nullptr) {
-        return;
-    }
-    HlsSegmentStateUnref(&stream->current_segment);
-    stream->current_segment = HlsSegmentState{};
-    stream->current_segment.started = true;
-    stream->current_segment.sequence = stream->next_segment_sequence++;
-    stream->current_segment.start_pts_us = pts_us;
-    stream->current_segment.last_pts_us = pts_us;
-    const uint32_t segment_capacity = ClampHlsSegmentCapacity(
-        stream->next_hls_segment_capacity);
-    stream->current_segment.body = VideoBufferAlloc(segment_capacity);
-    if (stream->current_segment.body == nullptr) {
-        HlsSegmentStateUnref(&stream->current_segment);
-        return;
-    }
-    stream_mux::TsSegmentBuffer segment_body =
-        HlsSegmentBuffer(&stream->current_segment);
-    if (!stream_mux::AppendTsSegmentHeader(stream->codec,
-                                           &stream->ts_muxer_state,
-                                           &segment_body) ||
-        !CommitHlsSegmentBuffer(&stream->current_segment, segment_body)) {
-        HlsSegmentStateUnref(&stream->current_segment);
-    }
-}
-
-void RememberHlsSegmentCapacity(StreamContext *stream,
-                                const HlsSegmentState &segment) {
-    if (stream == nullptr || segment.body == nullptr) {
-        return;
-    }
-    stream->next_hls_segment_capacity =
-        ClampHlsSegmentCapacity(segment.body->size);
-}
-
-void PopOldestSegment(StreamContext *stream) {
-    if (stream == nullptr || stream->segments.empty()) {
-        return;
-    }
-    MediaSegmentRefUnref(&stream->segments.front());
-    stream->segments.pop_front();
-}
-
-void PushFinalizedSegment(StreamContext *stream, uint32_t playlist_depth) {
-    if (stream == nullptr || !stream->current_segment.started ||
-        stream->current_segment.body == nullptr ||
-        stream->current_segment.body->size == 0) {
-        return;
-    }
-    MediaSegmentRef segment;
-    segment.found = true;
-    segment.sequence = stream->current_segment.sequence;
-    segment.duration_us = CurrentSegmentDurationUs(*stream);
-    segment.body = stream->current_segment.body;
-    RememberHlsSegmentCapacity(stream, stream->current_segment);
-    stream->current_segment.body = nullptr;
-    stream->segments.push_back(segment);
-    while (stream->segments.size() > playlist_depth) {
-        PopOldestSegment(stream);
-    }
-}
-
-bool FinalizeCurrentSegment(StreamContext *stream, uint32_t playlist_depth) {
-    if (stream == nullptr || !stream->current_segment.started ||
-        stream->current_segment.body == nullptr ||
-        stream->current_segment.body->size == 0) {
-        return false;
-    }
-
-    PushFinalizedSegment(stream, playlist_depth);
-    HlsSegmentStateUnref(&stream->current_segment);
-    return true;
-}
-
-void UpdateFrameTiming(StreamContext *stream, const EncodedFrame &frame) {
-    if (stream == nullptr) {
-        return;
-    }
-    if (stream->last_pts_us > 0 && frame.pts_us > stream->last_pts_us) {
-        stream->last_frame_duration_us = frame.pts_us - stream->last_pts_us;
-    }
-    stream->last_pts_us = frame.pts_us;
 }
 
 void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
@@ -314,7 +99,7 @@ bool IsFlvStreamReady(const StreamContext &stream) {
 bool IsHlsStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
            IsHlsCodecSupported(stream.codec) &&
-           !stream.segments.empty();
+           stream.hls_maker.HasSegments();
 }
 
 bool IsMjpegStreamReady(const StreamContext &stream) {
@@ -372,21 +157,14 @@ void ClearStreamContext(StreamContext *stream) {
         return;
     }
     stream->flv_gop_cache.Clear();
-    UnrefHlsSegments(stream);
-    HlsSegmentStateUnref(&stream->current_segment);
+    stream->hls_maker.Reset();
     stream->codec = VideoCodec::kH264;
     stream->state = StreamState::kClosed;
     stream->vps.clear();
     stream->sps.clear();
     stream->pps.clear();
     stream->sequence_header_tag.clear();
-    stream->next_hls_segment_capacity = 0;
-    stream->hls_requested = false;
-    stream->next_segment_sequence = 1;
     stream->config_generation = 0;
-    stream->ts_muxer_state = stream_mux::TsMuxerState{};
-    stream->last_pts_us = -1;
-    stream->last_frame_duration_us = 33333;
     stream->timestamp_corrector.Reset();
 }
 
@@ -398,24 +176,8 @@ MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
         return playlist;
     }
 
-    playlist.supported = true;
-    const size_t playlist_depth =
-        std::max<size_t>(1, static_cast<size_t>(hls_playlist_depth));
-    const size_t start_index =
-        stream.segments.size() > playlist_depth
-            ? stream.segments.size() - playlist_depth
-            : 0;
-    playlist.media_sequence = stream.segments[start_index].sequence;
-    int64_t max_duration_us = static_cast<int64_t>(hls_segment_duration_ms) * 1000;
-    for (size_t i = start_index; i < stream.segments.size(); ++i) {
-        const MediaSegmentRef &segment = stream.segments[i];
-        playlist.entries.push_back(
-            MediaHlsEntry{segment.sequence, segment.duration_us});
-        max_duration_us = std::max(max_duration_us, segment.duration_us);
-    }
-    playlist.target_duration_sec = static_cast<uint32_t>(
-        std::max<int64_t>(1, (max_duration_us + 999999) / 1000000));
-    return playlist;
+    return stream.hls_maker.BuildPlaylist(hls_segment_duration_ms,
+                                          hls_playlist_depth);
 }
 
 MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
@@ -424,12 +186,7 @@ MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
         return MediaSegmentRef{};
     }
 
-    for (const MediaSegmentRef &segment : stream.segments) {
-        if (segment.sequence == sequence) {
-            return MediaSegmentRefCopy(&segment);
-        }
-    }
-    return MediaSegmentRef{};
+    return stream.hls_maker.FindSegmentRef(sequence);
 }
 
 MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
@@ -505,8 +262,6 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         return result;
     }
 
-    UpdateFrameTiming(stream, frame);
-
     bool keyframe = stream_codec::IsKeyFrame(frame.frame_type);
     bool prepend_parameter_sets = false;
     const uint64_t config_generation_before = stream->config_generation;
@@ -521,21 +276,12 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         stream->flv_gop_cache.Clear();
     }
 
-    if (package_hls && keyframe && stream->current_segment.started &&
-        frame.pts_us - stream->current_segment.start_pts_us >=
-            static_cast<int64_t>(hls_segment_duration_ms) * 1000) {
-        result.hls_segment_created =
-            FinalizeCurrentSegment(stream, hls_playlist_depth);
-    }
-    if (package_hls && keyframe && !stream->current_segment.started) {
-        StartSegment(stream, frame.pts_us);
-    }
-    if (package_hls && stream->current_segment.started) {
-        if (!AppendFrameToHlsSegment(stream, payload, prepend_parameter_sets,
-                                     frame)) {
-            HlsSegmentStateUnref(&stream->current_segment);
-        } else {
-            stream->current_segment.last_pts_us = frame.pts_us;
+    if (package_hls) {
+        if (!stream->hls_maker.AppendFrame(
+                frame, payload, stream->vps, stream->sps, stream->pps,
+                keyframe, prepend_parameter_sets, hls_segment_duration_ms,
+                hls_playlist_depth, &result.hls_segment_created)) {
+            return result;
         }
     }
 
