@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "stream_hub_service.h"
+#include "media_source_service.h"
 #include "http_service.h"
 #include "infra/executor.h"
 #include "net_service.h"

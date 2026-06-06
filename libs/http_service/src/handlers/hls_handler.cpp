@@ -80,11 +80,11 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     return true;
 }
 
-HttpResponse HandlePlaylist(IMediaSource *stream_hub,
+HttpResponse HandlePlaylist(IMediaSource *media_source,
                             StreamId stream_id, const std::string &object_name,
                             const MediaSourceStatus &browser_status) {
-    bool keyframe_requested = RequestBrowserKeyFrame(stream_hub, stream_id);
-    MediaHlsPlaylist playlist = stream_hub->GetHlsPlaylist(stream_id);
+    bool keyframe_requested = RequestBrowserKeyFrame(media_source, stream_id);
+    MediaHlsPlaylist playlist = media_source->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
         INFRA_LOG_DEBUG(kHttpModuleName,
                         "HLS warmup stream=%s object=%s codec=%s "

@@ -56,12 +56,12 @@ CXXFLAGS += -Ilibs/net_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
 CXXFLAGS += -Ilibs/media_source/include
+CXXFLAGS += -Ilibs/media_source_service/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
 CXXFLAGS += -Ilibs/region_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
 CXXFLAGS += -Ilibs/webrtc_service/include
 CXXFLAGS += -Ilibs/snapshot_service/include
-CXXFLAGS += -Ilibs/stream_hub_service/include
 CXXFLAGS += -Ilibs/onvif_service/include
 CXXFLAGS += -Ilibs/alarm_service/include
 CXXFLAGS += -Ilibs/upgrade_service/include
@@ -86,11 +86,11 @@ SERVICES := \
 	hisi_vendor \
 	media_service \
 	media_source \
+	media_source_service \
 	region_service \
 	rtsp_service \
 	webrtc_service \
 	snapshot_service \
-	stream_hub_service \
 	onvif_service \
 	alarm_service \
 	upgrade_service \

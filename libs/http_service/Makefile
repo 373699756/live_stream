@@ -31,20 +31,18 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/time_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/upgrade_service/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/stream_hub_service/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc_service/include
 CXXFLAGS += -Isrc
 
 SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot_service.a
-STREAM_HUB_LIB := $(BUILD_DIR)/lib/libstream_hub_service.a
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc_service.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(STREAM_CODEC_LIB) $(SNAPSHOT_LIB) \
 	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) \
-	$(STREAM_HUB_LIB) $(WEBRTC_LIB)
+	$(WEBRTC_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
-	$(STREAM_HUB_LIB) $(MEDIA_SOURCE_LIB) $(SNAPSHOT_LIB) \
+	$(MEDIA_SOURCE_LIB) $(SNAPSHOT_LIB) \
 	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) \
 	$(MEDIA_LIB) $(STREAM_CODEC_LIB) $(INFRA_LIB)
 
@@ -83,9 +81,6 @@ $(NETWORK_LIB): $(INFRA_LIB)
 
 $(TIME_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../time_service all
-
-$(STREAM_HUB_LIB): $(MEDIA_LIB) $(MEDIA_SOURCE_LIB)
-	$(MAKE) -C ../stream_hub_service all
 
 $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc_service all
