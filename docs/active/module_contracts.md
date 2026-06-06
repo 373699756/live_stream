@@ -58,16 +58,20 @@
 
 不拥有 HiSilicon MPI/API 结构转换；这些实现在 `hisi_vendor` 内。
 
-## Stream Hub
+## Media Source
 
-`stream_hub_service` 拥有：
+`media_source` 拥有：
 
-- 编码帧分发。
 - HLS/FLV 浏览器流封装状态。
 - HLS segment 和 FLV sequence/keyframe 缓存。
+- GOP cache、帧时间戳修正和浏览器协议共享媒体状态。
 - `hls_ready`、`flv_ready`、`browser_codec` 等浏览器播放状态。
 
 不拥有 HTTP 请求解析、Web UI 状态、WebRTC peer 生命周期或媒体配置。
+
+`stream_hub_service` 是当前媒体源服务壳，负责从 `media_service` 接收编码帧、
+维护下游 frame sink 和 HTTP-FLV/MJPEG 客户端注册；内部媒体状态使用
+`media_source`。
 
 ## HTTP
 

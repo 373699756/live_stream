@@ -6,7 +6,7 @@
 #include "infra/log.h"
 #include "media/encoded_frame.h"
 #include "net_service.h"
-#include "stream_browser_source.h"
+#include "media_source.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +29,7 @@ constexpr size_t kFlvVideoTagHeaderSliceIndex = 0;
 constexpr const char *kMjpegBoundary = "live_stream_frame";
 constexpr const char *kMjpegFrameTail = "\r\n";
 
-bool HasUsableFlvStartData(const StreamFlvStartData &start_data) {
+bool HasUsableFlvStartData(const MediaFlvStartData &start_data) {
     return start_data.supported && !start_data.file_header.empty() &&
            !start_data.sequence_header.empty();
 }
@@ -134,10 +134,10 @@ const char *VideoCodecName(VideoCodec codec) {
     return "unknown";
 }
 
-bool RequestBrowserKeyFrame(IStreamBrowserSource *stream_browser_source,
+bool RequestBrowserKeyFrame(IMediaSource *media_source,
                             StreamId stream_id) {
-    return stream_browser_source != nullptr &&
-           stream_browser_source->RequestKeyFrame(stream_id,
+    return media_source != nullptr &&
+           media_source->RequestKeyFrame(stream_id,
                                                KeyFrameReason::kNewClient);
 }
 
@@ -167,7 +167,7 @@ bool EnqueueFlvTagWithTimestamp(HttpStreamWriter *writer,
 
 bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
                               ConnectionId connection_id,
-                              const StreamFlvVideoTagView &tag,
+                              const MediaFlvVideoTagView &tag,
                               const EncodedFrame &frame,
                               const uint8_t *rebased_header) {
     if (writer == nullptr || tag.slice_count == 0 ||
@@ -180,7 +180,7 @@ bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
         HttpStreamSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
-            const StreamFlvVideoTagSlice &source = tag.slices[index];
+            const MediaFlvVideoTagSlice &source = tag.slices[index];
             if (source.data == nullptr || source.size == 0) {
                 return false;
             }
@@ -208,7 +208,7 @@ bool EnqueueFlvVideoTagSlices(HttpStreamWriter *writer,
 
 bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
                                     ConnectionId connection_id,
-                                    const StreamFlvCachedVideoTag &tag,
+                                    const MediaFlvCachedVideoTag &tag,
                                     const uint8_t *rebased_header) {
     if (writer == nullptr || tag.slice_count == 0 ||
         rebased_header == nullptr) {
@@ -220,7 +220,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
         HttpStreamSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
-            const StreamFlvCachedVideoTagSlice &source = tag.slices[index];
+            const MediaFlvCachedVideoTagSlice &source = tag.slices[index];
             if (source.size == 0) {
                 return false;
             }
@@ -251,7 +251,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpStreamWriter *writer,
     return true;
 }
 
-class FlvConnectionSink : public IStreamFlvSink {
+class FlvConnectionSink : public IMediaFlvSink {
 public:
     FlvConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
         : writer_(writer), connection_id_(connection_id) {}
@@ -292,7 +292,7 @@ public:
                                           rebased_ms);
     }
 
-    bool OnFlvVideoTag(const StreamFlvVideoTagView &tag,
+    bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                        const EncodedFrame &frame) override {
         if (writer_ == nullptr || tag.slice_count == 0) {
             return writer_ != nullptr;
@@ -326,7 +326,7 @@ public:
                                         header);
     }
 
-    bool OnCachedFlvVideoTag(const StreamFlvCachedVideoTag &tag) {
+    bool OnCachedFlvVideoTag(const MediaFlvCachedVideoTag &tag) {
         if (writer_ == nullptr || tag.slice_count == 0) {
             return writer_ != nullptr;
         }
@@ -366,7 +366,7 @@ private:
     uint32_t last_timestamp_ms_ = 0;
 };
 
-class MjpegConnectionSink : public IStreamMjpegSink {
+class MjpegConnectionSink : public IMediaMjpegSink {
 public:
     MjpegConnectionSink(HttpStreamWriter *writer, ConnectionId connection_id)
         : writer_(writer), connection_id_(connection_id) {}
@@ -437,13 +437,13 @@ class StreamingHttpHandler : public IStreamingHttpHandler {
 public:
     StreamingHttpHandler(HttpAccess *access, HttpStreamWriter *writer,
                          IMediaService *media_service,
-                         IStreamBrowserSource *stream_browser_source,
-                         IStreamFlvSource *stream_flv_source,
-                         IStreamMjpegSource *stream_mjpeg_source)
+                         IMediaSource *media_source,
+                         IMediaFlvSource *media_flv_source,
+                         IMediaMjpegSource *media_mjpeg_source)
         : access_(access), writer_(writer), media_service_(media_service),
-          stream_browser_source_(stream_browser_source),
-          stream_flv_source_(stream_flv_source),
-          stream_mjpeg_source_(stream_mjpeg_source) {}
+          media_source_(media_source),
+          media_flv_source_(media_flv_source),
+          media_mjpeg_source_(media_mjpeg_source) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
         if (request.method != HttpMethod::kGet) {
@@ -475,9 +475,9 @@ public:
 private:
     void HandleHlsSegmentRequest(ConnectionId connection_id,
                                  const HttpRequest &request) {
-        if (stream_browser_source_ == nullptr) {
+        if (media_source_ == nullptr) {
             INFRA_LOG_ERROR(kHttpModuleName,
-                            "HLS reject conn=%llu reason=no_stream_hub",
+                            "HLS reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
                                StatusResponse(501, "Not Implemented"));
@@ -517,8 +517,8 @@ private:
             return;
         }
 
-        const StreamBrowserStatus browser_status =
-            stream_browser_source_->GetBrowserStatus(stream_id);
+        const MediaSourceStatus browser_status =
+            media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.browser_codec) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
@@ -548,8 +548,8 @@ private:
             return;
         }
 
-        StreamSegmentRef segment =
-            stream_browser_source_->GetHlsSegmentRef(stream_id, sequence);
+        MediaSegmentRef segment =
+            media_source_->GetHlsSegmentRef(stream_id, sequence);
         if (!segment.found || segment.body == nullptr ||
             segment.body->data == nullptr || segment.body->size == 0) {
             INFRA_LOG_ERROR(kHttpModuleName,
@@ -559,7 +559,7 @@ private:
                             StreamIdToJsonString(stream_id),
                             object_name.c_str(),
                             static_cast<unsigned long long>(sequence));
-            StreamSegmentRefUnref(&segment);
+            MediaSegmentRefUnref(&segment);
             SendStreamingError(writer_, connection_id,
                                StatusResponse(404, "HLS segment not found"));
             return;
@@ -576,7 +576,7 @@ private:
                           writer_->SendResponseSlices(
                               connection_id, response, &body_slice, 1,
                               body_slice.size, true);
-        StreamSegmentRefUnref(&segment);
+        MediaSegmentRefUnref(&segment);
         if (!sent && writer_ != nullptr) {
             writer_->CloseConnection(connection_id);
         }
@@ -584,9 +584,9 @@ private:
 
     void HandleFlvRequest(ConnectionId connection_id,
                           const HttpRequest &request) {
-        if (stream_browser_source_ == nullptr || stream_flv_source_ == nullptr) {
+        if (media_source_ == nullptr || media_flv_source_ == nullptr) {
             INFRA_LOG_ERROR(kHttpModuleName,
-                            "HTTP-FLV reject conn=%llu reason=no_stream_hub",
+                            "HTTP-FLV reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
                                StatusResponse(501, "Not Implemented"));
@@ -624,10 +624,10 @@ private:
             return;
         }
 
-        IStreamBrowserSource *browser_source = stream_browser_source_;
-        IStreamFlvSource *flv_source = stream_flv_source_;
-        const StreamBrowserStatus browser_status =
-            browser_source->GetBrowserStatus(stream_id);
+        IMediaSource *media_source = media_source_;
+        IMediaFlvSource *media_flv_source = media_flv_source_;
+        const MediaSourceStatus browser_status =
+            media_source->GetBrowserStatus(stream_id);
         if (!browser_status.flv_supported) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
@@ -656,8 +656,8 @@ private:
             return;
         }
 
-        StreamFlvStartData start_data =
-            browser_source->GetFlvStartData(stream_id);
+        MediaFlvStartData start_data =
+            media_source->GetFlvStartData(stream_id);
         INFRA_LOG_INFO(kHttpModuleName,
                        "HTTP-FLV start-data conn=%llu stream=%s supported=%d "
                        "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d "
@@ -673,7 +673,7 @@ private:
                            start_data.config_generation));
         if (!HasUsableFlvStartData(start_data)) {
             const bool keyframe_requested =
-                RequestBrowserKeyFrame(browser_source, stream_id);
+                RequestBrowserKeyFrame(media_source, stream_id);
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=start_data codec=%s running=%d flv_ready=%d "
@@ -702,7 +702,7 @@ private:
                             "HTTP-FLV close conn=%llu stream=%s reason=no_session",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
-            StreamFlvStartDataUnref(&start_data);
+            MediaFlvStartDataUnref(&start_data);
             return;
         }
 
@@ -735,7 +735,7 @@ private:
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
             writer_->CloseConnection(connection_id);
-            StreamFlvStartDataUnref(&start_data);
+            MediaFlvStartDataUnref(&start_data);
             return;
         }
         if (!sink->OnFlvChunk(
@@ -748,11 +748,11 @@ private:
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
             writer_->CloseConnection(connection_id);
-            StreamFlvStartDataUnref(&start_data);
+            MediaFlvStartDataUnref(&start_data);
             return;
         }
         size_t cached_flv_bytes = 0;
-        for (const StreamFlvCachedVideoTag &cached_tag :
+        for (const MediaFlvCachedVideoTag &cached_tag :
              start_data.cached_video_tags) {
             if (!sink->OnCachedFlvVideoTag(cached_tag)) {
                 delete sink;
@@ -762,7 +762,7 @@ private:
                                 static_cast<unsigned long long>(connection_id),
                                 StreamIdToJsonString(stream_id));
                 writer_->CloseConnection(connection_id);
-                StreamFlvStartDataUnref(&start_data);
+                MediaFlvStartDataUnref(&start_data);
                 return;
             }
             cached_flv_bytes += cached_tag.total_size;
@@ -771,7 +771,7 @@ private:
         const bool wait_for_keyframe =
             start_data.cached_video_tags.empty() ||
             !start_data.cached_gop_complete;
-        const StreamFlvClientId client_id = flv_source->AttachFlvClient(
+        const MediaFlvClientId client_id = media_flv_source->AttachFlvClient(
             stream_id, start_data.config_generation, wait_for_keyframe, sink);
         if (client_id == 0) {
             delete sink;
@@ -780,17 +780,17 @@ private:
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
             writer_->CloseConnection(connection_id);
-            StreamFlvStartDataUnref(&start_data);
+            MediaFlvStartDataUnref(&start_data);
             return;
         }
 
         if (!writer_->AttachStreamClient(connection_id, client_id)) {
-            (void)flv_source->DetachFlvClient(client_id);
+            (void)media_flv_source->DetachFlvClient(client_id);
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
                             StreamIdToJsonString(stream_id));
-            StreamFlvStartDataUnref(&start_data);
+            MediaFlvStartDataUnref(&start_data);
             return;
         }
         INFRA_LOG_INFO(kHttpModuleName,
@@ -803,15 +803,15 @@ private:
                        wait_for_keyframe ? 1 : 0,
                        start_data.cached_video_tags.size(), cached_flv_bytes,
                        start_data.cached_gop_complete ? 1 : 0);
-        StreamFlvStartDataUnref(&start_data);
+        MediaFlvStartDataUnref(&start_data);
     }
 
     void HandleMjpegRequest(ConnectionId connection_id,
                             const HttpRequest &request) {
-        if (stream_browser_source_ == nullptr ||
-            stream_mjpeg_source_ == nullptr) {
+        if (media_source_ == nullptr ||
+            media_mjpeg_source_ == nullptr) {
             INFRA_LOG_ERROR(kHttpModuleName,
-                            "HTTP-MJPEG reject conn=%llu reason=no_stream_hub",
+                            "HTTP-MJPEG reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
             SendStreamingError(writer_, connection_id,
                                StatusResponse(501, "Not Implemented"));
@@ -849,8 +849,8 @@ private:
             return;
         }
 
-        const StreamBrowserStatus browser_status =
-            stream_browser_source_->GetBrowserStatus(stream_id);
+        const MediaSourceStatus browser_status =
+            media_source_->GetBrowserStatus(stream_id);
         if (!browser_status.mjpeg_supported) {
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-MJPEG reject conn=%llu stream=%s "
@@ -877,7 +877,7 @@ private:
             return;
         }
 
-        IStreamMjpegSink *sink =
+        IMediaMjpegSink *sink =
             new MjpegConnectionSink(writer_, connection_id);
         if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {
             delete sink;
@@ -909,8 +909,8 @@ private:
             return;
         }
 
-        const StreamMjpegClientId client_id =
-            stream_mjpeg_source_->AttachMjpegClient(stream_id, sink);
+        const MediaMjpegClientId client_id =
+            media_mjpeg_source_->AttachMjpegClient(stream_id, sink);
         if (client_id == 0) {
             delete sink;
             INFRA_LOG_ERROR(kHttpModuleName,
@@ -922,7 +922,7 @@ private:
         }
 
         if (!writer_->AttachStreamClient(connection_id, client_id)) {
-            (void)stream_mjpeg_source_->DetachMjpegClient(client_id);
+            (void)media_mjpeg_source_->DetachMjpegClient(client_id);
             INFRA_LOG_ERROR(kHttpModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
@@ -939,20 +939,20 @@ private:
     HttpAccess *access_ = nullptr;
     HttpStreamWriter *writer_ = nullptr;
     IMediaService *media_service_ = nullptr;
-    IStreamBrowserSource *stream_browser_source_ = nullptr;
-    IStreamFlvSource *stream_flv_source_ = nullptr;
-    IStreamMjpegSource *stream_mjpeg_source_ = nullptr;
+    IMediaSource *media_source_ = nullptr;
+    IMediaFlvSource *media_flv_source_ = nullptr;
+    IMediaMjpegSource *media_mjpeg_source_ = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     HttpAccess *access, HttpStreamWriter *writer, IMediaService *media_service,
-    IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source,
-    IStreamMjpegSource *stream_mjpeg_source) {
+    IMediaSource *media_source,
+    IMediaFlvSource *media_flv_source,
+    IMediaMjpegSource *media_mjpeg_source) {
     return std::unique_ptr<IStreamingHttpHandler>(
         new StreamingHttpHandler(access, writer, media_service,
-                                 stream_browser_source, stream_flv_source,
-                                 stream_mjpeg_source));
+                                 media_source, media_flv_source,
+                                 media_mjpeg_source));
 }
 
 }  // namespace live_stream

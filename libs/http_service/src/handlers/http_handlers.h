@@ -4,6 +4,7 @@
 #include "http_access.h"
 #include "http_router.h"
 #include "http_stream_writer.h"
+#include "media_source.h"
 
 #include <memory>
 
@@ -23,9 +24,6 @@ class IMediaService;
 class IAiView;
 class ISnapshotView;
 class IWebrtcService;
-class IStreamBrowserSource;
-class IStreamFlvSource;
-class IStreamMjpegSource;
 
 struct SystemStatusSources {
     ILoggerService *logger_service = nullptr;
@@ -41,7 +39,7 @@ struct SystemStatusSources {
     IAiView *ai_service = nullptr;
     ISnapshotView *snapshot_service = nullptr;
     IWebrtcService *webrtc_service = nullptr;
-    IStreamBrowserSource *stream_browser_source = nullptr;
+    IMediaSource *media_source = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> CreateAuthHttpHandler(
@@ -61,7 +59,7 @@ std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
     const SystemStatusSources &status_sources);
 std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
     HttpAccess *access, IConfigService *config_service,
-    IMediaService *media_service, IStreamBrowserSource *stream_browser_source,
+    IMediaService *media_service, IMediaSource *media_source,
     IWebrtcService *webrtc_service);
 std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
     HttpAccess *access, IConfigService *config_service,
@@ -71,7 +69,7 @@ std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(
     ISnapshotView *snapshot_service);
 std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
     HttpAccess *access, IMediaService *media_service,
-    IStreamBrowserSource *stream_browser_source);
+    IMediaSource *media_source);
 std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
     HttpAccess *access, IMediaService *media_service,
     IWebrtcService *webrtc_service);
@@ -89,9 +87,9 @@ public:
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     HttpAccess *access, HttpStreamWriter *writer, IMediaService *media_service,
-    IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source,
-    IStreamMjpegSource *stream_mjpeg_source);
+    IMediaSource *media_source,
+    IMediaFlvSource *media_flv_source,
+    IMediaMjpegSource *media_mjpeg_source);
 
 }  // namespace live_stream
 

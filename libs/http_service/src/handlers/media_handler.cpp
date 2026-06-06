@@ -7,7 +7,7 @@
 #include "media/media_capabilities.h"
 #include "media_service.h"
 #include "infra/log.h"
-#include "stream_browser_source.h"
+#include "media_source.h"
 #include "webrtc_service.h"
 
 #include <cstdint>
@@ -200,18 +200,18 @@ ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
     return root;
 }
 
-bool HasReadyBrowserProtocol(const StreamBrowserStatus &status) {
+bool HasReadyBrowserProtocol(const MediaSourceStatus &status) {
     return status.hls_ready || status.flv_ready || status.mjpeg_ready;
 }
 
-void RequestBrowserRecoveryKeyFrame(IStreamBrowserSource *stream_browser_source,
+void RequestBrowserRecoveryKeyFrame(IMediaSource *media_source,
                                     StreamId stream_id,
-                                    const StreamBrowserStatus &status) {
-    if (stream_browser_source == nullptr || !status.running ||
+                                    const MediaSourceStatus &status) {
+    if (media_source == nullptr || !status.running ||
         !status.browser_codec || HasReadyBrowserProtocol(status)) {
         return;
     }
-    (void)stream_browser_source->RequestKeyFrame(stream_id,
+    (void)media_source->RequestKeyFrame(stream_id,
                                               KeyFrameReason::kRecovery);
 }
 
@@ -222,12 +222,12 @@ public:
     MediaHttpHandler(HttpAccess *access,
                      IConfigService *config_service,
                      IMediaService *media_service,
-                     IStreamBrowserSource *stream_browser_source,
+                     IMediaSource *media_source,
                      IWebrtcService *webrtc_service)
         : access_(access),
           config_service_(config_service),
           media_service_(media_service),
-          stream_browser_source_(stream_browser_source),
+          media_source_(media_source),
           webrtc_service_(webrtc_service) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
@@ -334,11 +334,11 @@ private:
                                 : (stream_running && stream_enabled
                                        ? "running"
                                        : "stopped");
-            if (stream_browser_source_ != nullptr) {
-                const StreamBrowserStatus browser =
-                    stream_browser_source_->GetBrowserStatus(
+            if (media_source_ != nullptr) {
+                const MediaSourceStatus browser =
+                    media_source_->GetBrowserStatus(
                         stream_id);
-                RequestBrowserRecoveryKeyFrame(stream_browser_source_,
+                RequestBrowserRecoveryKeyFrame(media_source_,
                                                stream_id, browser);
                 item["browserCodec"] = browser.browser_codec;
                 item["hlsSupported"] = browser.hls_supported;
@@ -403,18 +403,18 @@ private:
     HttpAccess *access_ = nullptr;
     IConfigService *config_service_ = nullptr;
     IMediaService *media_service_ = nullptr;
-    IStreamBrowserSource *stream_browser_source_ = nullptr;
+    IMediaSource *media_source_ = nullptr;
     IWebrtcService *webrtc_service_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(HttpAccess *access,
                        IConfigService *config_service,
                        IMediaService *media_service,
-                       IStreamBrowserSource *stream_browser_source,
+                       IMediaSource *media_source,
                        IWebrtcService *webrtc_service) {
     return std::unique_ptr<IHttpHandler>(
         new MediaHttpHandler(access, config_service, media_service,
-                             stream_browser_source, webrtc_service));
+                             media_source, webrtc_service));
 }
 
 }  // namespace live_stream

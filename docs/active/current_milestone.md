@@ -10,7 +10,7 @@
 当前优先级：
 
 1. 保持 `make -j2` 和 `www` 构建可验证。
-2. 稳定 `media_service -> stream_hub_service -> HLS/FLV/WebRTC -> HTTP -> www`
+2. 稳定 `media_service -> media_source -> HLS/FLV/WebRTC -> HTTP -> www`
    状态链路。
 3. 收敛命名、日志、过度封装和重复接口，优先做小范围负代码清理。
 4. 前端只消费后端 ready/status 字段，不猜设备内部状态。
@@ -19,7 +19,8 @@
 
 - `app/` 是组合根，负责服务创建、依赖注入、启动顺序和关闭顺序。
 - `libs/media_service` 拥有视频 pipeline、MPP/VENC 适配、码流启动停止和关键帧请求。
-- `libs/stream_hub_service` 拥有编码帧分发、HLS/FLV 浏览器流状态和封装缓存。
+- `libs/media_source` 拥有 HLS/FLV 浏览器流状态、GOP cache、HLS segment 和
+  时间戳修正；`stream_hub_service` 仅保留服务壳和客户端注册兼容边界。
 - `libs/http_service` 拥有 HTTP 路由、认证边界、DTO 转换、静态资源和直播 API。
 - `libs/webrtc_service` 拥有 WebRTC peer/session、SDP/ICE 和媒体传输集成。
 - `www/` 是 React IPC/NVR 管理台，只通过 HTTP API 与设备交互。

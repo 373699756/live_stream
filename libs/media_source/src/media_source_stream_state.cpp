@@ -1,11 +1,11 @@
-#include "stream_hub_stream_state.h"
+#include "media_source_stream_state.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <utility>
 
 namespace live_stream {
-namespace stream_hub_internal {
+namespace media_source_internal {
 bool IsBrowserCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265 ||
            codec == VideoCodec::kMjpeg;
@@ -32,8 +32,8 @@ void ClearFlvGopCache(StreamContext *stream) {
     if (stream == nullptr) {
         return;
     }
-    for (StreamFlvCachedVideoTag &cached_tag : stream->flv_gop_cache.frames) {
-        StreamFlvCachedVideoTagUnref(&cached_tag);
+    for (MediaFlvCachedVideoTag &cached_tag : stream->flv_gop_cache.frames) {
+        MediaFlvCachedVideoTagUnref(&cached_tag);
     }
     stream->flv_gop_cache = CachedFlvFrameRing{};
 }
@@ -42,8 +42,8 @@ void UnrefHlsSegments(StreamContext *stream) {
     if (stream == nullptr) {
         return;
     }
-    for (StreamSegmentRef &segment : stream->segments) {
-        StreamSegmentRefUnref(&segment);
+    for (MediaSegmentRef &segment : stream->segments) {
+        MediaSegmentRefUnref(&segment);
     }
     stream->segments.clear();
 }
@@ -149,14 +149,14 @@ bool AppendFrameToHlsSegment(StreamContext *stream,
 
 bool CopyFlvTagViewForCache(const EncodedFrame &frame,
                             const stream_mux::FlvVideoTagView &source,
-                            StreamFlvCachedVideoTag *target) {
+                            MediaFlvCachedVideoTag *target) {
     if (target == nullptr || !EncodedFrameHasPayload(&frame) ||
         source.slice_count == 0 ||
-        source.slice_count > kMaxStreamFlvVideoTagSlices) {
+        source.slice_count > kMaxMediaFlvVideoTagSlices) {
         return false;
     }
 
-    StreamFlvCachedVideoTag cached_tag;
+    MediaFlvCachedVideoTag cached_tag;
     if (!EncodedFrameRefCopy(&cached_tag.frame, &frame)) {
         return false;
     }
@@ -165,9 +165,9 @@ bool CopyFlvTagViewForCache(const EncodedFrame &frame,
     cached_tag.timestamp_ms = source.timestamp_ms;
     for (size_t i = 0; i < source.slice_count; ++i) {
         const stream_mux::FlvVideoTagSlice &source_slice = source.slices[i];
-        StreamFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
+        MediaFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
         if (source_slice.data == nullptr || source_slice.size == 0) {
-            StreamFlvCachedVideoTagUnref(&cached_tag);
+            MediaFlvCachedVideoTagUnref(&cached_tag);
             return false;
         }
         if (source_slice.media_payload) {
@@ -179,7 +179,7 @@ bool CopyFlvTagViewForCache(const EncodedFrame &frame,
             if (payload == nullptr || source_addr < payload_addr ||
                 source_addr - payload_addr > frame.size ||
                 source_slice.size > frame.size - (source_addr - payload_addr)) {
-                StreamFlvCachedVideoTagUnref(&cached_tag);
+                MediaFlvCachedVideoTagUnref(&cached_tag);
                 return false;
             }
             target_slice.media_data = source_slice.data;
@@ -187,7 +187,7 @@ bool CopyFlvTagViewForCache(const EncodedFrame &frame,
             target_slice.media_payload = true;
         } else {
             if (source_slice.size > sizeof(target_slice.header_data)) {
-                StreamFlvCachedVideoTagUnref(&cached_tag);
+                MediaFlvCachedVideoTagUnref(&cached_tag);
                 return false;
             }
             std::copy(source_slice.data, source_slice.data + source_slice.size,
@@ -197,7 +197,7 @@ bool CopyFlvTagViewForCache(const EncodedFrame &frame,
         }
     }
 
-    StreamFlvCachedVideoTagUnref(target);
+    MediaFlvCachedVideoTagUnref(target);
     *target = cached_tag;
     return true;
 }
@@ -277,7 +277,7 @@ void PopOldestSegment(StreamContext *stream) {
     if (stream == nullptr || stream->segments.empty()) {
         return;
     }
-    StreamSegmentRefUnref(&stream->segments.front());
+    MediaSegmentRefUnref(&stream->segments.front());
     stream->segments.pop_front();
 }
 
@@ -287,7 +287,7 @@ void PushFinalizedSegment(StreamContext *stream, uint32_t playlist_depth) {
         stream->current_segment.body->size == 0) {
         return;
     }
-    StreamSegmentRef segment;
+    MediaSegmentRef segment;
     segment.found = true;
     segment.sequence = stream->current_segment.sequence;
     segment.duration_us = CurrentSegmentDurationUs(*stream);
@@ -467,10 +467,10 @@ void ClearStreamContext(StreamContext *stream) {
     *stream = StreamContext{};
 }
 
-StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
+MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                    uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) {
-    StreamHlsPlaylist playlist;
+    MediaHlsPlaylist playlist;
     if (!IsHlsStreamReady(stream)) {
         return playlist;
     }
@@ -485,9 +485,9 @@ StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
     playlist.media_sequence = stream.segments[start_index].sequence;
     int64_t max_duration_us = static_cast<int64_t>(hls_segment_duration_ms) * 1000;
     for (size_t i = start_index; i < stream.segments.size(); ++i) {
-        const StreamSegmentRef &segment = stream.segments[i];
+        const MediaSegmentRef &segment = stream.segments[i];
         playlist.entries.push_back(
-            StreamHlsEntry{segment.sequence, segment.duration_us});
+            MediaHlsEntry{segment.sequence, segment.duration_us});
         max_duration_us = std::max(max_duration_us, segment.duration_us);
     }
     playlist.target_duration_sec = static_cast<uint32_t>(
@@ -495,22 +495,22 @@ StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
     return playlist;
 }
 
-StreamSegmentRef FindHlsSegmentRef(const StreamContext &stream,
+MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
                                    uint64_t sequence) {
     if (!IsBrowserStreamReady(stream.state, stream.codec)) {
-        return StreamSegmentRef{};
+        return MediaSegmentRef{};
     }
 
-    for (const StreamSegmentRef &segment : stream.segments) {
+    for (const MediaSegmentRef &segment : stream.segments) {
         if (segment.sequence == sequence) {
-            return StreamSegmentRefCopy(&segment);
+            return MediaSegmentRefCopy(&segment);
         }
     }
-    return StreamSegmentRef{};
+    return MediaSegmentRef{};
 }
 
-StreamFlvStartData BuildFlvStartData(const StreamContext &stream) {
-    StreamFlvStartData start_data;
+MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
+    MediaFlvStartData start_data;
     if (!IsBrowserStreamReady(stream.state, stream.codec) ||
         !IsFlvCodecSupported(stream.codec)) {
         return start_data;
@@ -530,8 +530,8 @@ StreamFlvStartData BuildFlvStartData(const StreamContext &stream) {
             (stream.flv_gop_cache.head + i) %
             stream.flv_gop_cache.frames.size();
         if (stream.flv_gop_cache.frames[index].slice_count != 0) {
-            StreamFlvCachedVideoTag cached_tag;
-            if (StreamFlvCachedVideoTagRefCopy(
+            MediaFlvCachedVideoTag cached_tag;
+            if (MediaFlvCachedVideoTagRefCopy(
                     &cached_tag, &stream.flv_gop_cache.frames[index])) {
                 start_data.cached_video_tags.push_back(cached_tag);
             }
@@ -676,5 +676,5 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
     return result;
 }
 
-}  // namespace stream_hub_internal
+}  // namespace media_source_internal
 }  // namespace live_stream

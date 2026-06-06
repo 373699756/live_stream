@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_STREAM_HUB_SERVICE_H_
 #define LIVE_STREAM_STREAM_HUB_SERVICE_H_
 
-#include "stream_browser_source.h"
+#include "media_source.h"
 
 #include "media/frame_attach.h"
 #include "media_service.h"
@@ -11,7 +11,7 @@
 
 namespace live_stream {
 
-struct StreamHubServiceOptions {
+struct MediaSourceServiceOptions {
     uint32_t hls_segment_duration_ms = 1000;
     uint32_t hls_playlist_depth = 4;
     uint32_t hls_segment_retain_count = 2;
@@ -20,7 +20,7 @@ struct StreamHubServiceOptions {
     uint32_t max_frame_sinks = 8;
 };
 
-struct StreamHubServiceDependencies {
+struct MediaSourceServiceDependencies {
     IMediaService *media_service = nullptr;
 };
 
@@ -37,16 +37,24 @@ public:
                                  KeyFrameReason reason) = 0;
 };
 
-class IStreamHubService : public IStreamBrowserSource,
-                          public IStreamFlvSource,
-                          public IStreamMjpegSource,
+class IMediaSourceService : public IMediaSource,
+                            public IMediaFlvSource,
+                            public IMediaMjpegSource,
                           public IStreamFrameSource {
 public:
-    ~IStreamHubService() override = default;
+    ~IMediaSourceService() override = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
 };
+
+std::unique_ptr<IMediaSourceService>
+CreateMediaSourceService(const MediaSourceServiceOptions &options,
+                         const MediaSourceServiceDependencies &dependencies);
+
+using StreamHubServiceOptions = MediaSourceServiceOptions;
+using StreamHubServiceDependencies = MediaSourceServiceDependencies;
+using IStreamHubService = IMediaSourceService;
 
 std::unique_ptr<IStreamHubService>
 CreateStreamHubService(const StreamHubServiceOptions &options,

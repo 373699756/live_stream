@@ -2,6 +2,7 @@
 #define LIVE_STREAM_HTTP_CONSOLE_SERVICE_H_
 
 #include "http_service.h"
+#include "media_source.h"
 
 #include <memory>
 
@@ -17,9 +18,6 @@ class IRtspService;
 class ISystemService;
 class ITimeService;
 class IUpgradeService;
-class IStreamBrowserSource;
-class IStreamFlvSource;
-class IStreamMjpegSource;
 class IWebrtcService;
 class IMediaService;
 class IAiView;
@@ -35,9 +33,9 @@ std::unique_ptr<IHttpService> CreateHttpConsoleService(
     IRtspService *rtsp_service, IOnvifService *onvif_service,
     IAiView *ai_service, IMediaService *media_service,
     ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
-    IStreamBrowserSource *stream_browser_source,
-    IStreamFlvSource *stream_flv_source,
-    IStreamMjpegSource *stream_mjpeg_source);
+    IMediaSource *media_source,
+    IMediaFlvSource *media_flv_source,
+    IMediaMjpegSource *media_mjpeg_source);
 
 }  // namespace live_stream
 

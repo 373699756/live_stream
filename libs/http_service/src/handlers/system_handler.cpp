@@ -9,7 +9,7 @@
 #include "onvif_service.h"
 #include "rtsp_service.h"
 #include "snapshot_service.h"
-#include "stream_browser_source.h"
+#include "media_source.h"
 #include "system_service.h"
 #include "time_service.h"
 #include "upgrade_service.h"
@@ -189,9 +189,9 @@ private:
             webrtc_running = stats.enabled && stats.backend_available;
         }
         add_service("webrtc_service", webrtc_running);
-        add_service("stream_hub_service",
-                    status_sources_.stream_browser_source != nullptr &&
-                        status_sources_.stream_browser_source->GetStats().enabled);
+        add_service("media_source",
+                    status_sources_.media_source != nullptr &&
+                        status_sources_.media_source->GetStats().enabled);
         root["services"] = services;
         return JsonResponse(200, root);
     }

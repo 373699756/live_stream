@@ -55,6 +55,7 @@ CXXFLAGS += -Ilibs/stream_mux/include
 CXXFLAGS += -Ilibs/net_service/include
 CXXFLAGS += -Ilibs/ai_service/include
 CXXFLAGS += -Ilibs/media_service/include
+CXXFLAGS += -Ilibs/media_source/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
 CXXFLAGS += -Ilibs/region_service/include
 CXXFLAGS += -Ilibs/rtsp_service/include
@@ -84,6 +85,7 @@ SERVICES := \
 	ai_service \
 	hisi_vendor \
 	media_service \
+	media_source \
 	region_service \
 	rtsp_service \
 	webrtc_service \

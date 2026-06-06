@@ -1,9 +1,10 @@
-#ifndef LIVE_STREAM_STREAM_HUB_SERVICE_SRC_STREAM_HUB_STREAM_STATE_H_
-#define LIVE_STREAM_STREAM_HUB_SERVICE_SRC_STREAM_HUB_STREAM_STATE_H_
+#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_MEDIA_SOURCE_STREAM_STATE_H_
+#define LIVE_STREAM_MEDIA_SOURCE_SRC_MEDIA_SOURCE_STREAM_STATE_H_
 
-#include "media/encoded_frame.h"
+#include "media_source.h"
+
+#include "media/frame_attach.h"
 #include "stream_codec.h"
-#include "stream_hub_service.h"
 #include "stream_mux.h"
 
 #include <array>
@@ -13,7 +14,7 @@
 #include <vector>
 
 namespace live_stream {
-namespace stream_hub_internal {
+namespace media_source_internal {
 
 struct HlsSegmentState {
     bool started = false;
@@ -24,7 +25,7 @@ struct HlsSegmentState {
 };
 
 struct CachedFlvFrameRing {
-    std::array<StreamFlvCachedVideoTag, kMaxStreamFlvCachedVideoTags> frames;
+    std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames;
     size_t head = 0;
     size_t size = 0;
     bool complete = false;
@@ -40,7 +41,7 @@ struct StreamContext {
     std::string pps;
     std::string sequence_header_tag;
     CachedFlvFrameRing flv_gop_cache;
-    std::deque<StreamSegmentRef> segments;
+    std::deque<MediaSegmentRef> segments;
     HlsSegmentState current_segment;
     uint32_t next_hls_segment_capacity = 0;
     mutable bool hls_requested = false;
@@ -80,12 +81,12 @@ bool HasParsedUnits(const ParsedFramePayload &payload);
 void ParsedFramePayloadUnref(ParsedFramePayload *payload);
 void ClearStreamContext(StreamContext *stream);
 
-StreamHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
-                                   uint32_t hls_segment_duration_ms,
-                                   uint32_t hls_playlist_depth);
-StreamSegmentRef FindHlsSegmentRef(const StreamContext &stream,
-                                   uint64_t sequence);
-StreamFlvStartData BuildFlvStartData(const StreamContext &stream);
+MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
+                                  uint32_t hls_segment_duration_ms,
+                                  uint32_t hls_playlist_depth);
+MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
+                                  uint64_t sequence);
+MediaFlvStartData BuildFlvStartData(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, VideoCodec codec);
 bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame);
@@ -97,7 +98,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth);
 
-}  // namespace stream_hub_internal
+}  // namespace media_source_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_STREAM_HUB_SERVICE_SRC_STREAM_HUB_STREAM_STATE_H_
+#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_MEDIA_SOURCE_STREAM_STATE_H_

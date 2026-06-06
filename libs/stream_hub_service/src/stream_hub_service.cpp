@@ -5,9 +5,9 @@
 #include "infra/log.h"
 #include "media/encoded_frame.h"
 #include "mjpeg_client_registry.h"
+#include "media_source_stream_state.h"
 #include "stream_frame_dispatcher.h"
 #include "stream_codec.h"
-#include "stream_hub_stream_state.h"
 
 #include <array>
 #include <cstddef>
@@ -19,7 +19,8 @@
 #include <vector>
 
 namespace live_stream {
-namespace hub_state = stream_hub_internal;
+namespace hub_state = media_source_internal;
+namespace hub_client = stream_hub_internal;
 namespace {
 
 constexpr const char *kServiceName = "stream_hub_service";
@@ -27,7 +28,7 @@ constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
 constexpr size_t kMaxPendingFramesPerStream = 4;
 
-uint32_t HlsSegmentCacheDepth(const StreamHubServiceOptions &options) {
+uint32_t HlsSegmentCacheDepth(const MediaSourceServiceOptions &options) {
     return options.hls_playlist_depth + options.hls_segment_retain_count;
 }
 
@@ -154,13 +155,13 @@ const char *CodecName(VideoCodec codec) {
     return "unknown";
 }
 
-class StreamHubServiceImpl : public IStreamHubService, public IFrameSink {
+class MediaSourceServiceImpl : public IMediaSourceService, public IFrameSink {
 public:
-    StreamHubServiceImpl(StreamHubServiceOptions options,
-                         StreamHubServiceDependencies dependencies)
+    MediaSourceServiceImpl(MediaSourceServiceOptions options,
+                           MediaSourceServiceDependencies dependencies)
         : options_(std::move(options)), dependencies_(dependencies) {}
 
-    ~StreamHubServiceImpl() override { StopInternal(); }
+    ~MediaSourceServiceImpl() override { StopInternal(); }
 
     bool Start() override {
         IMediaService *media_service = nullptr;
@@ -395,10 +396,10 @@ public:
         return hub_state::BuildFlvStartData(*stream);
     }
 
-    StreamBrowserStatus GetBrowserStatus(StreamId stream_id) const override {
+    MediaSourceStatus GetBrowserStatus(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const hub_state::StreamContext *stream = FindStream(stream_id);
-        StreamBrowserStatus status;
+        MediaSourceStatus status;
         if (stream == nullptr) {
             return status;
         }
@@ -531,9 +532,9 @@ public:
         return dependencies_.media_service->RequestKeyFrame(stream_id, reason);
     }
 
-    StreamHubServiceStats GetStats() const override {
+    MediaSourceStats GetStats() const override {
         std::lock_guard<std::mutex> guard(mutex_);
-        StreamHubServiceStats stats = stats_;
+        MediaSourceStats stats = stats_;
         stats.enabled = run_state_ == StreamHubRunState::kStarted;
         stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.Size());
         stats.active_mjpeg_clients =
@@ -660,7 +661,7 @@ private:
     }
 
     void DispatchFrameSinks(const hub_state::ParsedFramePayload &payload) {
-        std::vector<hub_state::PendingStreamFrameSinkWrite> frame_sinks;
+        std::vector<hub_client::PendingStreamFrameSinkWrite> frame_sinks;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream =
@@ -677,7 +678,7 @@ private:
             frame_sinks = frame_dispatcher_.CollectWrites(payload.encoded_frame);
         }
 
-        for (const hub_state::PendingStreamFrameSinkWrite &pending_sink :
+        for (const hub_client::PendingStreamFrameSinkWrite &pending_sink :
              frame_sinks) {
             if (pending_sink.sink != nullptr) {
                 pending_sink.sink->OnFrame(payload);
@@ -692,7 +693,7 @@ private:
             return;
         }
         const EncodedFrame &frame = payload.encoded_frame;
-        std::vector<hub_state::PendingFlvClientWrite> clients;
+        std::vector<hub_client::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         stream_mux::FlvVideoTagView flv_tag_view;
         bool has_flv_tag_view = false;
@@ -770,7 +771,7 @@ private:
                 frame.stream_id, stream->config_generation,
                 has_flv_tag_view, has_sequence_header,
                 packaged_frame.keyframe);
-            for (const hub_state::PendingFlvClientWrite &client : clients) {
+            for (const hub_client::PendingFlvClientWrite &client : clients) {
                 if (client.send_sequence_header) {
                     sequence_header_tag = stream->sequence_header_tag;
                     break;
@@ -788,7 +789,7 @@ private:
             !EncodedFrameHasPayload(&frame)) {
             return;
         }
-        std::vector<hub_state::PendingMjpegClientWrite> clients;
+        std::vector<hub_client::PendingMjpegClientWrite> clients;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             hub_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -808,14 +809,14 @@ private:
     }
 
     void WriteFlvClients(
-        const std::vector<hub_state::PendingFlvClientWrite> &clients,
+        const std::vector<hub_client::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
         const stream_mux::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
         const EncodedFrame &frame,
         StreamId stream_id) {
         std::vector<StreamFlvClientId> detach_ids;
-        for (const hub_state::PendingFlvClientWrite &client : clients) {
+        for (const hub_client::PendingFlvClientWrite &client : clients) {
             if (client.starts_on_keyframe) {
                 INFRA_LOG_INFO(kServiceName,
                                "HTTP-FLV client starts stream=%s client=%llu "
@@ -861,10 +862,10 @@ private:
     }
 
     void WriteMjpegClients(
-        const std::vector<hub_state::PendingMjpegClientWrite> &clients,
+        const std::vector<hub_client::PendingMjpegClientWrite> &clients,
         const EncodedFrame &frame) {
         std::vector<StreamMjpegClientId> detach_ids;
-        for (const hub_state::PendingMjpegClientWrite &client : clients) {
+        for (const hub_client::PendingMjpegClientWrite &client : clients) {
             if (client.sink == nullptr || !client.sink->OnMjpegFrame(frame)) {
                 detach_ids.push_back(client.client_id);
             }
@@ -955,8 +956,8 @@ private:
         return nullptr;
     }
 
-    StreamHubServiceOptions options_;
-    StreamHubServiceDependencies dependencies_;
+    MediaSourceServiceOptions options_;
+    MediaSourceServiceDependencies dependencies_;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
     PendingFrameQueue main_pending_;
@@ -965,10 +966,10 @@ private:
     StreamId last_drained_stream_ = StreamId::kSub;
     hub_state::StreamContext main_stream_;
     hub_state::StreamContext sub_stream_;
-    hub_state::FlvClientRegistry flv_clients_;
-    hub_state::MjpegClientRegistry mjpeg_clients_;
-    hub_state::StreamFrameDispatcher frame_dispatcher_;
-    StreamHubServiceStats stats_;
+    hub_client::FlvClientRegistry flv_clients_;
+    hub_client::MjpegClientRegistry mjpeg_clients_;
+    hub_client::StreamFrameDispatcher frame_dispatcher_;
+    MediaSourceStats stats_;
     FrameAttachId main_attach_id_ = 0;
     FrameAttachId sub_attach_id_ = 0;
     StreamHubRunState run_state_ = StreamHubRunState::kStopped;
@@ -976,11 +977,17 @@ private:
 
 }  // namespace
 
+std::unique_ptr<IMediaSourceService>
+CreateMediaSourceService(const MediaSourceServiceOptions &options,
+                         const MediaSourceServiceDependencies &dependencies) {
+    return std::unique_ptr<IMediaSourceService>(
+        new MediaSourceServiceImpl(options, dependencies));
+}
+
 std::unique_ptr<IStreamHubService>
 CreateStreamHubService(const StreamHubServiceOptions &options,
                        const StreamHubServiceDependencies &dependencies) {
-    return std::unique_ptr<IStreamHubService>(
-        new StreamHubServiceImpl(options, dependencies));
+    return CreateMediaSourceService(options, dependencies);
 }
 
 }  // namespace live_stream
