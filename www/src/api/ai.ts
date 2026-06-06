@@ -20,7 +20,7 @@ export function saveAiConfig(value: AiModelConfig): Promise<void> {
 }
 
 export function aiAlertImageUrl(imageUrl: string): string {
-  const query = authQuery();
+  const query = authQuery({ includeToken: true });
   const separator = imageUrl.includes('?') ? '&' : '?';
   return `${imageUrl}${query ? `${separator}${query}` : ''}`;
 }

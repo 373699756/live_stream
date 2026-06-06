@@ -48,35 +48,35 @@ export function StreamInfoPage() {
           ))}
           <div>
             <strong>主码流 HLS</strong>
-            <code>{hlsPlaylistUrl('main')}</code>
+            <code>{hlsPlaylistUrl('main', false)}</code>
           </div>
           <div>
             <strong>子码流 HLS</strong>
-            <code>{hlsPlaylistUrl('sub')}</code>
+            <code>{hlsPlaylistUrl('sub', false)}</code>
           </div>
           <div>
             <strong>主码流 HTTP-FLV</strong>
-            <code>{flvStreamUrl('main')}</code>
+            <code>{flvStreamUrl('main', false)}</code>
           </div>
           <div>
             <strong>子码流 HTTP-FLV</strong>
-            <code>{flvStreamUrl('sub')}</code>
+            <code>{flvStreamUrl('sub', false)}</code>
           </div>
           <div>
             <strong>主码流 MJPEG</strong>
-            <code>{mjpegStreamUrl('main')}</code>
+            <code>{mjpegStreamUrl('main', false)}</code>
           </div>
           <div>
             <strong>子码流 MJPEG</strong>
-            <code>{mjpegStreamUrl('sub')}</code>
+            <code>{mjpegStreamUrl('sub', false)}</code>
           </div>
           <div>
             <strong>主码流抓图</strong>
-            <code>{snapshotUrl('main')}</code>
+            <code>{snapshotUrl('main', 0, false)}</code>
           </div>
           <div>
             <strong>子码流抓图</strong>
-            <code>{snapshotUrl('sub')}</code>
+            <code>{snapshotUrl('sub', 0, false)}</code>
           </div>
         </div>
       </section>

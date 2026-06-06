@@ -15,6 +15,9 @@ import {
 import { getSystemStatus } from '../api/system';
 import type { SystemStatus, UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
 
+const pollIntervalMs = 2000;
+const statusTimeoutMs = 1800;
+
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -33,33 +36,38 @@ export function useUpgrade() {
 
   useEffect(() => {
     let mounted = true;
-    const load = () => {
-      void getSystemStatus()
-        .then((next) => {
-          if (mounted) {
-            setStatus(next);
-          }
-        })
-        .catch((err: unknown) => {
-          if (mounted) {
-            setError(errorMessage(err, '系统状态刷新失败'));
-          }
-        });
-      void getUpgradeStatus()
-        .then((next) => {
-          if (mounted) {
-            setUpgradeStatus(next);
-          }
-        })
-        .catch((err: unknown) => {
-          if (mounted) {
-            setError(errorMessage(err, '升级状态刷新失败'));
-          }
-        });
+    let timer = 0;
+    const load = async () => {
+      const startedAt = Date.now();
+      try {
+        const [nextStatus, nextUpgradeStatus] = await Promise.all([
+          getSystemStatus({ timeoutMs: statusTimeoutMs }),
+          getUpgradeStatus({ timeoutMs: statusTimeoutMs }),
+        ]);
+        if (mounted) {
+          setStatus(nextStatus);
+          setUpgradeStatus(nextUpgradeStatus);
+          setError('');
+        }
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(errorMessage(err, '状态刷新失败'));
+        }
+      } finally {
+        if (mounted) {
+          const elapsedMs = Date.now() - startedAt;
+          timer = window.setTimeout(
+            load,
+            Math.max(0, pollIntervalMs - elapsedMs),
+          );
+        }
+      }
     };
-    load();
-    const timer = window.setInterval(load, 2000);
-    return () => { mounted = false; window.clearInterval(timer); };
+    void load();
+    return () => {
+      mounted = false;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   const selectFile = (file: File | null) => {

@@ -21,23 +21,49 @@ export function useLiveView() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
 
   useEffect(() => {
+    let mounted = true;
     let fastRefreshes = 0;
+    let statusRequestRunning = false;
+    const controller = new AbortController();
     const refreshStatuses = () => {
-      void getStreamStatus({ timeoutMs: statusTimeoutMs })
+      if (statusRequestRunning) {
+        return;
+      }
+      statusRequestRunning = true;
+      void getStreamStatus({
+        signal: controller.signal,
+        timeoutMs: statusTimeoutMs,
+      })
         .then((nextStatuses) => {
-          setStatuses(nextStatuses);
-          setLastUpdatedAt(Date.now());
-          setError('');
+          if (mounted) {
+            setStatuses(nextStatuses);
+            setLastUpdatedAt(Date.now());
+            setError('');
+          }
         })
         .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : '码流状态刷新失败');
+          if (mounted) {
+            setError(err instanceof Error ? err.message : '码流状态刷新失败');
+          }
+        })
+        .finally(() => {
+          statusRequestRunning = false;
         });
     };
     refreshStatuses();
-    void getRtspConfig({ timeoutMs: configTimeoutMs })
-      .then(setRtspConfig)
+    void getRtspConfig({
+      signal: controller.signal,
+      timeoutMs: configTimeoutMs,
+    })
+      .then((nextConfig) => {
+        if (mounted) {
+          setRtspConfig(nextConfig);
+        }
+      })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'RTSP 配置加载失败');
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'RTSP 配置加载失败');
+        }
       });
     const fastTimer = window.setInterval(() => {
       fastRefreshes += 1;
@@ -50,6 +76,8 @@ export function useLiveView() {
       refreshStatuses();
     }, steadyRefreshIntervalMs);
     return () => {
+      mounted = false;
+      controller.abort();
       window.clearInterval(fastTimer);
       window.clearInterval(steadyTimer);
     };

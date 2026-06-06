@@ -89,17 +89,17 @@ export async function closeWebrtcPeer(peerId: string, init?: ApiRequestOptions) 
   }
 }
 
-export function hlsPlaylistUrl(stream: string): string {
-  const query = authQuery();
+export function hlsPlaylistUrl(stream: string, includeToken = true): string {
+  const query = authQuery({ includeToken });
   return `/api/hls/${stream}/index.m3u8${query ? `?${query}` : ''}`;
 }
 
-export function flvStreamUrl(stream: string): string {
-  const query = authQuery();
+export function flvStreamUrl(stream: string, includeToken = true): string {
+  const query = authQuery({ includeToken });
   return `/api/flv/${stream}.flv${query ? `?${query}` : ''}`;
 }
 
-export function mjpegStreamUrl(stream: string): string {
-  const query = authQuery();
+export function mjpegStreamUrl(stream: string, includeToken = true): string {
+  const query = authQuery({ includeToken });
   return `/api/mjpeg/${stream}.mjpg${query ? `?${query}` : ''}`;
 }

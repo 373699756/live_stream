@@ -6,6 +6,6 @@ export function getOperations(): Promise<{ items: OperationRecord[] }> {
 }
 
 export function operationsExportUrl(): string {
-  const query = authQuery();
+  const query = authQuery({ includeToken: true });
   return `/api/operations/export${query ? `?${query}` : ''}`;
 }

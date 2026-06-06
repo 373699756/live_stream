@@ -3,6 +3,7 @@ import {
   postJson,
   requestJson,
   uploadBinary,
+  type ApiRequestOptions,
 } from './client';
 import type {
   UpgradePackageInfo,
@@ -10,8 +11,10 @@ import type {
   UpgradeStatus,
 } from './types';
 
-export function getUpgradeStatus(): Promise<UpgradeStatus> {
-  return requestJson<UpgradeStatus>('/api/upgrade/status', mockUpgradeStatus);
+export function getUpgradeStatus(
+  init?: ApiRequestOptions,
+): Promise<UpgradeStatus> {
+  return requestJson<UpgradeStatus>('/api/upgrade/status', mockUpgradeStatus, init);
 }
 
 function mockUpgradePackage(file: File): UpgradePackageInfo {

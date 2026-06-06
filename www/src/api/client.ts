@@ -21,6 +21,16 @@ interface ManagedRequestSignal {
   signal: AbortSignal;
 }
 
+interface SendRequestOptions<TResponse> {
+  allowMockFallback?: boolean;
+  body?: BodyInit;
+  fallback?: TResponse;
+  init?: ApiRequestOptions;
+  method?: string;
+  path: string;
+  responseType: 'json' | 'void';
+}
+
 type AbortSignalStatic = typeof AbortSignal & {
   any?: (signals: AbortSignal[]) => AbortSignal;
   timeout?: (milliseconds: number) => AbortSignal;
@@ -35,10 +45,16 @@ function fetchOptions(init?: ApiRequestOptions): RequestInit {
   return options;
 }
 
-export function authQuery(entries?: Record<string, string>): string {
+export function authQuery({
+  entries,
+  includeToken = false,
+}: {
+  entries?: Record<string, string>;
+  includeToken?: boolean;
+} = {}): string {
   const params = new URLSearchParams();
   const token = getToken();
-  if (token) {
+  if (includeToken && token) {
     params.set('access_token', token);
   }
   if (entries) {
@@ -151,37 +167,68 @@ async function handleRejectedResponse(response: Response): Promise<void> {
   }
 }
 
-export async function requestJson<T>(
-  path: string,
-  fallback: T,
-  init?: ApiRequestOptions,
-): Promise<T> {
+async function sendRequest<TResponse>({
+  allowMockFallback = false,
+  body,
+  fallback,
+  init,
+  method = 'GET',
+  path,
+  responseType,
+}: SendRequestOptions<TResponse>): Promise<TResponse> {
   let response: Response;
   const request = managedRequestSignal(init);
   try {
     try {
       response = await fetch(path, {
         ...fetchOptions(init),
+        method,
         headers: authHeaders(init),
+        body,
         signal: request.signal,
       });
     } catch (error) {
       if (isAbortError(error)) {
         throw error;
       }
-      if (useMockFallback) {
-        return fallback;
+      if (useMockFallback && (allowMockFallback || fallback !== undefined)) {
+        if (fallback !== undefined) {
+          return fallback;
+        }
+        return undefined as TResponse;
       }
       throw error;
     }
     if (!response.ok) {
       await handleRejectedResponse(response);
+      if (useMockFallback && (allowMockFallback || fallback !== undefined)) {
+        if (fallback !== undefined) {
+          return fallback;
+        }
+        return undefined as TResponse;
+      }
       throw new Error(await readError(response));
     }
-    return (await response.json()) as T;
+    if (responseType === 'void') {
+      return undefined as TResponse;
+    }
+    return (await response.json()) as TResponse;
   } finally {
     request.cleanup();
   }
+}
+
+export async function requestJson<T>(
+  path: string,
+  fallback: T,
+  init?: ApiRequestOptions,
+): Promise<T> {
+  return sendRequest<T>({
+    fallback,
+    init,
+    path,
+    responseType: 'json',
+  });
 }
 
 export async function postJson<TRequest, TResponse>(
@@ -190,34 +237,14 @@ export async function postJson<TRequest, TResponse>(
   fallback: TResponse,
   init?: ApiRequestOptions,
 ): Promise<TResponse> {
-  let response: Response;
-  const request = managedRequestSignal(init);
-  try {
-    try {
-      response = await fetch(path, {
-        ...fetchOptions(init),
-        method: 'POST',
-        headers: authHeaders(init),
-        body: JSON.stringify(value),
-        signal: request.signal,
-      });
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      if (useMockFallback) {
-        return fallback;
-      }
-      throw error;
-    }
-    if (!response.ok) {
-      await handleRejectedResponse(response);
-      throw new Error(await readError(response));
-    }
-    return (await response.json()) as TResponse;
-  } finally {
-    request.cleanup();
-  }
+  return sendRequest<TResponse>({
+    body: JSON.stringify(value),
+    fallback,
+    init,
+    method: 'POST',
+    path,
+    responseType: 'json',
+  });
 }
 
 export async function putJson<T>(
@@ -225,33 +252,15 @@ export async function putJson<T>(
   value: T,
   init?: ApiRequestOptions,
 ): Promise<void> {
-  let response: Response;
-  const request = managedRequestSignal(init);
-  try {
-    try {
-      response = await fetch(path, {
-        ...fetchOptions(init),
-        method: 'PUT',
-        headers: authHeaders(init),
-        body: JSON.stringify(value),
-        signal: request.signal,
-      });
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      if (useMockFallback) {
-        return;
-      }
-      throw error;
-    }
-    if (!response.ok) {
-      await handleRejectedResponse(response);
-      throw new Error(await readError(response));
-    }
-  } finally {
-    request.cleanup();
-  }
+  await sendRequest<void>({
+    allowMockFallback: true,
+    body: JSON.stringify(value),
+    fallback: undefined,
+    init,
+    method: 'PUT',
+    path,
+    responseType: 'void',
+  });
 }
 
 export async function uploadBinary<TResponse>({
@@ -267,37 +276,14 @@ export async function uploadBinary<TResponse>({
   contentType?: string;
   init?: ApiRequestOptions;
 }): Promise<TResponse> {
-  let response: Response;
-  const request = managedRequestSignal(init);
-  try {
-    const headers = new Headers(init?.headers);
-    headers.set('Content-Type', contentType);
-    try {
-      response = await fetch(path, {
-        ...fetchOptions(init),
-        method: 'POST',
-        headers: authHeaders({ ...init, headers }),
-        body,
-        signal: request.signal,
-      });
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      if (useMockFallback) {
-        return fallback;
-      }
-      throw error;
-    }
-    if (!response.ok) {
-      await handleRejectedResponse(response);
-      if (useMockFallback) {
-        return fallback;
-      }
-      throw new Error(await readError(response));
-    }
-    return (await response.json()) as TResponse;
-  } finally {
-    request.cleanup();
-  }
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', contentType);
+  return sendRequest<TResponse>({
+    body,
+    fallback,
+    init: { ...init, headers },
+    method: 'POST',
+    path,
+    responseType: 'json',
+  });
 }
