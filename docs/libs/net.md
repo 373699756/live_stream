@@ -6,17 +6,19 @@
 
 ## 模块定位
 
-`net` 提供共享网络引擎、TCP/UDP primitives、event loop 和 callback
-dispatch。它不拥有 HTTP、RTSP、ONVIF 或 WebRTC 的业务语义。
+`net` 提供共享网络引擎、EventPoller 风格 event loop、TCP session、
+UDP endpoint、网络发送 buffer、timer 和 callback dispatch。它不拥有 HTTP、
+RTSP、ONVIF 或 WebRTC 的业务语义。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
   Protocol[ProtocolSubsystem] --> Net[NetEngine]
-  Net --> Loop[event_loop]
-  Net --> TCP[tcp_server/tcp_connection]
+  Net --> Loop[event_loop / timer]
+  Net --> TCP[tcp_server / tcp_session]
   Net --> UDP[udp_endpoint]
+  TCP --> Queue[send queue / pending bytes / close reason]
   Net --> Executor[infra::Executor callback mode]
   HTTP[http] --> Net
   RTSP[rtsp] --> Net
@@ -27,24 +29,61 @@ flowchart LR
 ## 核心职责
 
 - 管理 IO thread 和 callback dispatch。
-- 提供 TCP server/connection、UDP endpoint 和 fd/eventfd 封装。
+- 提供 TCP server/session、UDP endpoint 和 fd/eventfd 封装。
+- 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
+  send stall 检测和 close reason。
+- 提供一次性/周期 IO timer；`CancelIoTimer()` 或 `NetEngine::Stop()` 后
+  timer 不再回调。
+- 提供 UDP `SendTo()` 和 selected peer 模型，供 RTP、ICE/STUN、ONVIF
+  discovery 这类 UDP 生命周期接入。
 - 将网络回调投递到指定 executor，避免协议模块直接阻塞 IO loop。
 
 ## 接口归属
 
 public API 在 `net.h`。协议语义、路由、session 和 DTO 归对应协议模块。
 
+冻结契约：
+
+- `TcpServer`：`ListenTcp()` 创建监听，`CloseTcp()` 先停止 accept，再由上层
+  按连接 id 关闭已有 session。
+- `TcpSession`：以 `ConnectionId` 表达 public session；发送统一走
+  `Send()`/`SendSlices()`，慢客户端由 `send_queue_capacity`、
+  `send_buffer_limit_bytes`、`send_stall_timeout_ms`、`write_timeout_ms`
+  触发关闭。
+- `TcpCloseReason`：`on_close` 必须携带关闭原因；协议模块用它释放 media reader、
+  记录慢客户端和区分 peer/local/timeout/error。
+- `UdpEndpoint`：`BindUdp()`/`CloseUdp()` 管生命周期；`SetUdpPeer()`、
+  `SendToPeer()` 用于已选择 peer 的 RTP 或 ICE/STUN，`SendTo()` 用于
+  ONVIF discovery 这类逐包目标地址。
+- `Timer`：`RunOnIoAfter()` 是一次性 timer，`RunOnIoEvery()` 是周期 timer，
+  id 由 `NetEngine` 全局分配，避免多 IO loop 下取消误命中。
+- `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
+  `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
+
 ## 状态与资源模型
 
 `NetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
 队列。上层协议停止时必须先解除连接、session 或 endpoint，再停止网络引擎。
 
+TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
+复制到网络 buffer；带 `NetBufferOwner` 的 slice 只持有引用，由 owner 的
+ref/unref 回调保证跨线程和异步发送期间 payload 存活。
+
+HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
+只能通过 `NetEngine` 的 pending bytes 和 close callback 观察 backpressure。
+协议模块可以保留业务层 parser/session 状态，但不能绕过 `net` 管 socket 写队列。
+
 ## 非目标
 
 - 不解析 HTTP、RTSP、ONVIF、WebRTC 业务协议。
 - 不维护认证、路由、媒体 ready 或客户端业务状态。
+- 不解析 RTP、RTSP interleaved、HTTP chunk、WebRTC STUN/DTLS/SRTP 等协议包。
 
 ## 风险与优化方向
 
 - 回调队列容量要匹配协议吞吐，避免流量高峰时无限堆积。
 - 网络关闭必须先停止上层协议，再释放 NetEngine。
+- `send_buffer_limit_bytes` 需要按 HTTP-FLV/HLS/MJPEG、RTSP TCP interleaved 和
+  WebRTC signaling 的峰值分别配置，避免慢客户端持有过多媒体 payload 引用。
+- `CallbackMode::kPostToExecutor` 会复制接收数据；热路径协议应优先缩短回调处理，
+  避免 executor 队列成为新的内存堆积点。

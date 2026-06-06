@@ -71,6 +71,18 @@ enum class CallbackMode {
     kPostToExecutor,
 };
 
+enum class TcpCloseReason {
+    kLocalClose = 0,
+    kPeerClose,
+    kReadError,
+    kWriteError,
+    kSendQueueFull,
+    kSendStall,
+    kReadTimeout,
+    kWriteTimeout,
+    kEngineStop,
+};
+
 struct NetEngineOptions {
     uint32_t io_threads = 1;
     uint32_t max_events_per_loop = 64;
@@ -86,6 +98,8 @@ struct TcpListenOptions {
     uint32_t send_queue_capacity = 128;
     uint32_t send_buffer_limit_bytes = 1024 * 1024;
     uint32_t send_stall_timeout_ms = 0;
+    uint32_t read_timeout_ms = 0;
+    uint32_t write_timeout_ms = 0;
     bool reuse_port = false;
     bool tcp_no_delay = false;
     bool keepalive = false;
@@ -100,7 +114,8 @@ struct UdpBindOptions {
 using TcpAcceptFn = void (*)(void *user, ConnectionId id, NetAddress peer);
 using TcpReadFn = void (*)(void *user, ConnectionId id, const uint8_t *data,
                            size_t size);
-using TcpCloseFn = void (*)(void *user, ConnectionId id);
+using TcpCloseFn = void (*)(void *user, ConnectionId id,
+                            TcpCloseReason reason);
 using UdpReadFn = void (*)(void *user, UdpSocketId socket_id, NetAddress peer,
                            const uint8_t *data, size_t size);
 
@@ -164,12 +179,25 @@ public:
         return SendTo(id, std::move(address), slices.slices[0].data,
                       slices.slices[0].size);
     }
+    virtual bool SetUdpPeer(UdpSocketId id, NetAddress peer) = 0;
+    virtual bool SendToPeer(UdpSocketId id, const uint8_t *data,
+                            size_t size) = 0;
+    virtual bool SendToPeerSlices(UdpSocketId id,
+                                  const NetBufferSlices &slices) {
+        if (slices.count != 1) {
+            return false;
+        }
+        return SendToPeer(id, slices.slices[0].data, slices.slices[0].size);
+    }
 
     virtual NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) = 0;
+    virtual NetTimerId RunOnIoEvery(uint32_t interval_ms,
+                                    infra::Task task) = 0;
     virtual bool CancelIoTimer(NetTimerId id) = 0;
 
     virtual NetAddress TcpLocalAddress(TcpServerId id) const = 0;
     virtual NetAddress UdpLocalAddress(UdpSocketId id) const = 0;
+    virtual NetAddress UdpPeerAddress(UdpSocketId id) const = 0;
     virtual uint32_t PendingBytes(ConnectionId id) const = 0;
     virtual NetStats GetStats() const = 0;
 };

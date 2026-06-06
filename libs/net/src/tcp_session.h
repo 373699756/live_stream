@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SERVICE_SRC_TCP_CONNECTION_H_
-#define LIVE_STREAM_NET_SERVICE_SRC_TCP_CONNECTION_H_
+#ifndef LIVE_STREAM_NET_SRC_TCP_SESSION_H_
+#define LIVE_STREAM_NET_SRC_TCP_SESSION_H_
 
 #include "event_loop.h"
 #include "fd.h"
@@ -16,17 +16,17 @@ namespace net_internal {
 
 class NetEngineImpl;
 
-class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
+class TcpSession : public std::enable_shared_from_this<TcpSession> {
 public:
-    TcpConnection(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
-                  ConnectionId id, const TcpListenOptions &options,
-                  TcpCallbacks callbacks, NetAddress local, NetAddress peer);
-    ~TcpConnection();
+    TcpSession(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
+               ConnectionId id, const TcpListenOptions &options,
+               TcpCallbacks callbacks, NetAddress local, NetAddress peer);
+    ~TcpSession();
 
     bool Start();
     bool Send(const uint8_t *data, size_t size);
     bool SendSlices(const NetBufferSlices &slices);
-    bool Close();
+    bool Close(TcpCloseReason reason);
     bool CloseAfterSend();
     uint32_t PendingBytes() const;
     ConnectionId id() const { return id_; }
@@ -65,8 +65,13 @@ private:
     void HandleWrite();
     void EnableWrite();
     void DisableWrite();
-    void CloseInLoop();
+    void CloseInLoop(TcpCloseReason reason);
+    void ArmManagerTimer();
+    void CheckTimeouts();
+    bool IsReadTimedOutLocked(int64_t now_ms) const;
+    bool IsWriteTimedOutLocked(int64_t now_ms) const;
     bool IsSendStalledLocked() const;
+    uint32_t ManagerTickMs() const;
 
     NetEngineImpl *engine_ = nullptr;
     std::shared_ptr<EventLoop> loop_;
@@ -79,6 +84,9 @@ private:
     mutable std::mutex mutex_;
     std::deque<OutBuffer> send_queue_;
     uint32_t pending_bytes_ = 0;
+    NetTimerId manager_timer_id_ = 0;
+    int64_t last_read_ms_ = 0;
+    int64_t last_write_progress_ms_ = 0;
     bool closed_ = false;
     bool close_after_send_ = false;
 };
@@ -86,4 +94,4 @@ private:
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SERVICE_SRC_TCP_CONNECTION_H_
+#endif  // LIVE_STREAM_NET_SRC_TCP_SESSION_H_

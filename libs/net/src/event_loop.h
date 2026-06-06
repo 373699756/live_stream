@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
-#define LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
+#ifndef LIVE_STREAM_NET_SRC_EVENT_LOOP_H_
+#define LIVE_STREAM_NET_SRC_EVENT_LOOP_H_
 
 #include "event_fd.h"
 #include "fd.h"
@@ -9,6 +9,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -30,7 +31,9 @@ public:
     bool AddFd(int fd, uint32_t events, std::function<void(uint32_t)> handler);
     bool ModifyFd(int fd, uint32_t events);
     void RemoveFd(int fd);
-    NetTimerId RunAfter(uint32_t delay_ms, infra::Task task);
+    NetTimerId RunAfter(NetTimerId id, uint32_t delay_ms, infra::Task task);
+    NetTimerId RunEvery(NetTimerId id, uint32_t interval_ms,
+                        infra::Task task);
     bool CancelTimer(NetTimerId id);
 
 private:
@@ -41,7 +44,10 @@ private:
 
     struct Timer {
         int64_t deadline_ms = 0;
+        uint32_t interval_ms = 0;
         infra::Task task;
+        bool cancelled = false;
+        bool executing = false;
     };
 
     bool AddRawFdLocked(int fd, uint32_t events,
@@ -64,8 +70,7 @@ private:
     std::thread thread_;
     std::deque<infra::Task> tasks_;
     std::unordered_map<int, Handler> handlers_;
-    std::map<NetTimerId, Timer> timers_;
-    NetTimerId next_timer_id_ = 1;
+    std::map<NetTimerId, std::shared_ptr<Timer>> timers_;
     bool running_ = false;
     bool stopping_ = false;
 };
@@ -73,4 +78,4 @@ private:
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SERVICE_SRC_EVENT_LOOP_H_
+#endif  // LIVE_STREAM_NET_SRC_EVENT_LOOP_H_

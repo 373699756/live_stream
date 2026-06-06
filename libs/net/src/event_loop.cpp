@@ -127,19 +127,44 @@ void EventLoop::RemoveFd(int fd) {
     handlers_.erase(fd);
 }
 
-NetTimerId EventLoop::RunAfter(uint32_t delay_ms, infra::Task task) {
-    if (!task) {
+NetTimerId EventLoop::RunAfter(NetTimerId id, uint32_t delay_ms,
+                               infra::Task task) {
+    if (id == 0 || !task) {
         return 0;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || stopping_) {
         return 0;
     }
-    const NetTimerId id = next_timer_id_++;
-    Timer timer;
-    timer.deadline_ms = infra::Time::MonotonicMillis() + delay_ms;
-    timer.task = std::move(task);
-    timers_[id] = std::move(timer);
+    if (timers_.find(id) != timers_.end()) {
+        return 0;
+    }
+    std::shared_ptr<Timer> timer(new Timer());
+    timer->deadline_ms = infra::Time::MonotonicMillis() + delay_ms;
+    timer->interval_ms = 0;
+    timer->task = std::move(task);
+    timers_[id] = timer;
+    RearmTimerLocked();
+    return id;
+}
+
+NetTimerId EventLoop::RunEvery(NetTimerId id, uint32_t interval_ms,
+                               infra::Task task) {
+    if (id == 0 || interval_ms == 0 || !task) {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || stopping_) {
+        return 0;
+    }
+    if (timers_.find(id) != timers_.end()) {
+        return 0;
+    }
+    std::shared_ptr<Timer> timer(new Timer());
+    timer->deadline_ms = infra::Time::MonotonicMillis() + interval_ms;
+    timer->interval_ms = interval_ms;
+    timer->task = std::move(task);
+    timers_[id] = timer;
     RearmTimerLocked();
     return id;
 }
@@ -150,7 +175,10 @@ bool EventLoop::CancelTimer(NetTimerId id) {
     if (it == timers_.end()) {
         return false;
     }
-    timers_.erase(it);
+    it->second->cancelled = true;
+    if (!it->second->executing) {
+        timers_.erase(it);
+    }
     RearmTimerLocked();
     return true;
 }
@@ -191,10 +219,10 @@ void EventLoop::RearmTimerLocked() {
     itimerspec spec{};
     if (!timers_.empty()) {
         const int64_t now = infra::Time::MonotonicMillis();
-        int64_t next_ms = timers_.begin()->second.deadline_ms;
+        int64_t next_ms = timers_.begin()->second->deadline_ms;
         for (const auto &entry : timers_) {
-            if (entry.second.deadline_ms < next_ms) {
-                next_ms = entry.second.deadline_ms;
+            if (entry.second->deadline_ms < next_ms) {
+                next_ms = entry.second->deadline_ms;
             }
         }
         int64_t delay_ms = next_ms - now;
@@ -208,25 +236,56 @@ void EventLoop::RearmTimerLocked() {
 }
 
 void EventLoop::RunTimers() {
-    std::vector<infra::Task> ready;
+    std::vector<std::pair<NetTimerId, std::shared_ptr<Timer>>> ready;
     const int64_t now = infra::Time::MonotonicMillis();
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        for (auto it = timers_.begin(); it != timers_.end();) {
-            if (it->second.deadline_ms > now) {
-                ++it;
+        for (const auto &entry : timers_) {
+            if (entry.second->deadline_ms <= now) {
+                ready.push_back(entry);
+            }
+        }
+    }
+    for (const auto &entry : ready) {
+        const NetTimerId id = entry.first;
+        const std::shared_ptr<Timer> timer = entry.second;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = timers_.find(id);
+            if (it == timers_.end() || it->second != timer ||
+                timer->deadline_ms > now || timer->cancelled) {
                 continue;
             }
-            ready.push_back(std::move(it->second.task));
-            it = timers_.erase(it);
+            timer->executing = true;
         }
-        RearmTimerLocked();
-    }
-    for (infra::Task &task : ready) {
-        if (task) {
-            task();
+        if (!timer->task) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            timer->executing = false;
+            continue;
+        }
+        timer->task();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            timer->executing = false;
+            auto it = timers_.find(id);
+            if (it == timers_.end() || it->second != timer ||
+                timer->cancelled) {
+                if (it != timers_.end() && it->second == timer &&
+                    timer->cancelled) {
+                    timers_.erase(it);
+                }
+                continue;
+            }
+            if (timer->interval_ms != 0) {
+                timer->deadline_ms =
+                    infra::Time::MonotonicMillis() + timer->interval_ms;
+            } else {
+                timers_.erase(it);
+            }
         }
     }
+    std::lock_guard<std::mutex> lock(mutex_);
+    RearmTimerLocked();
 }
 
 void EventLoop::RunTasks() {

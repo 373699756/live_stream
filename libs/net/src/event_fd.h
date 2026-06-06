@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SERVICE_SRC_EVENT_FD_H_
-#define LIVE_STREAM_NET_SERVICE_SRC_EVENT_FD_H_
+#ifndef LIVE_STREAM_NET_SRC_EVENT_FD_H_
+#define LIVE_STREAM_NET_SRC_EVENT_FD_H_
 
 #include "fd.h"
 
@@ -28,4 +28,4 @@ private:
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SERVICE_SRC_EVENT_FD_H_
+#endif  // LIVE_STREAM_NET_SRC_EVENT_FD_H_

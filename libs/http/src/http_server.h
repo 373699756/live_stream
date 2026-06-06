@@ -76,7 +76,8 @@ private:
     static void HandleAccept(void *user, ConnectionId id, NetAddress peer);
     static void HandleRead(void *user, ConnectionId id, const uint8_t *data,
                            size_t size);
-    static void HandleClose(void *user, ConnectionId id);
+    static void HandleClose(void *user, ConnectionId id,
+                            TcpCloseReason reason);
     static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
     static void LogRequests(const std::vector<HttpRequestLog> &request_logs);
 
@@ -89,7 +90,7 @@ private:
                                 const NetBufferSlices &slices,
                                 size_t size);
     void OnConnection(ConnectionId connection_id, NetAddress peer);
-    void OnClose(ConnectionId connection_id);
+    void OnClose(ConnectionId connection_id, TcpCloseReason reason);
     void OnMessage(ConnectionId connection_id, const uint8_t *data,
                    uint32_t size);
     void TryPostNextRequest(ConnectionId connection_id);

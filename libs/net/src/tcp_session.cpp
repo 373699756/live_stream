@@ -1,4 +1,4 @@
-#include "tcp_connection.h"
+#include "tcp_session.h"
 
 #include "infra/time.h"
 #include "net_engine_impl.h"
@@ -18,6 +18,7 @@ namespace net_internal {
 namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
+constexpr uint32_t kDefaultManagerTickMs = 1000;
 
 void RefNetBufferOwner(const NetBufferOwner &owner) {
     if (owner.ptr != nullptr && owner.ref != nullptr) {
@@ -33,7 +34,7 @@ void UnrefNetBufferOwner(const NetBufferOwner &owner) {
 
 }  // namespace
 
-TcpConnection::OutSlice::OutSlice(OutSlice&& other) noexcept
+TcpSession::OutSlice::OutSlice(OutSlice&& other) noexcept
     : data(other.data),
       size(other.size),
       offset(other.offset),
@@ -49,7 +50,7 @@ TcpConnection::OutSlice::OutSlice(OutSlice&& other) noexcept
     other.owner = NetBufferOwner{};
 }
 
-TcpConnection::OutSlice& TcpConnection::OutSlice::operator=(
+TcpSession::OutSlice& TcpSession::OutSlice::operator=(
     OutSlice&& other) noexcept {
     if (this == &other) {
         return *this;
@@ -71,30 +72,47 @@ TcpConnection::OutSlice& TcpConnection::OutSlice::operator=(
     return *this;
 }
 
-TcpConnection::OutSlice::~OutSlice() {
+TcpSession::OutSlice::~OutSlice() {
     UnrefNetBufferOwner(owner);
 }
 
-TcpConnection::TcpConnection(NetEngineImpl *engine,
-                             std::shared_ptr<EventLoop> loop, int fd,
-                             ConnectionId id, const TcpListenOptions &options,
-                             TcpCallbacks callbacks, NetAddress local,
-                             NetAddress peer)
-    : engine_(engine), loop_(std::move(loop)), fd_(fd), id_(id), options_(options), callbacks_(callbacks), local_(std::move(local)), peer_(std::move(peer)) {}
+TcpSession::TcpSession(NetEngineImpl *engine,
+                       std::shared_ptr<EventLoop> loop, int fd,
+                       ConnectionId id, const TcpListenOptions &options,
+                       TcpCallbacks callbacks, NetAddress local,
+                       NetAddress peer)
+    : engine_(engine),
+      loop_(std::move(loop)),
+      fd_(fd),
+      id_(id),
+      options_(options),
+      callbacks_(callbacks),
+      local_(std::move(local)),
+      peer_(std::move(peer)) {}
 
-TcpConnection::~TcpConnection() { fd_.Reset(); }
+TcpSession::~TcpSession() { fd_.Reset(); }
 
-bool TcpConnection::Start() {
-    std::weak_ptr<TcpConnection> weak_self = shared_from_this();
-    return loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
+bool TcpSession::Start() {
+    const int64_t now_ms = infra::Time::MonotonicMillis();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_read_ms_ = now_ms;
+        last_write_progress_ms_ = now_ms;
+    }
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
+    if (!loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
         auto self = weak_self.lock();
         if (self) {
             self->HandleEvents(events);
         }
-    });
+    })) {
+        return false;
+    }
+    ArmManagerTimer();
+    return true;
 }
 
-bool TcpConnection::Send(const uint8_t *data, size_t size) {
+bool TcpSession::Send(const uint8_t *data, size_t size) {
     NetBufferSlices slices;
     if (!slices.Add(data, size)) {
         return false;
@@ -102,7 +120,7 @@ bool TcpConnection::Send(const uint8_t *data, size_t size) {
     return SendSlices(slices);
 }
 
-bool TcpConnection::SendSlices(const NetBufferSlices &slices) {
+bool TcpSession::SendSlices(const NetBufferSlices &slices) {
     const size_t total_size = slices.TotalSize();
     if (total_size > std::numeric_limits<uint32_t>::max()) {
         return false;
@@ -121,26 +139,26 @@ bool TcpConnection::SendSlices(const NetBufferSlices &slices) {
             return false;
         }
         if (send_queue_.size() >= options_.send_queue_capacity ||
+            pending_bytes_ >= options_.send_buffer_limit_bytes ||
             buffer.size > options_.send_buffer_limit_bytes - pending_bytes_) {
             engine_->AddSendBusy();
-            close_slow = IsSendStalledLocked();
-            if (close_slow) {
-                engine_->AddSlowClose();
-            } else {
-                return false;
-            }
+            close_slow = true;
         }
         if (!close_slow) {
             buffer.enqueue_ms = infra::Time::MonotonicMillis();
+            if (pending_bytes_ == 0) {
+                last_write_progress_ms_ = buffer.enqueue_ms;
+            }
             pending_bytes_ += buffer.size;
             send_queue_.push_back(std::move(buffer));
         }
     }
     if (close_slow) {
-        (void)Close();
+        engine_->AddSlowClose();
+        (void)Close(TcpCloseReason::kSendQueueFull);
         return false;
     }
-    std::weak_ptr<TcpConnection> weak_self = shared_from_this();
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
     const bool posted = loop_->Post([weak_self]() {
         auto self = weak_self.lock();
         if (!self) {
@@ -159,18 +177,18 @@ bool TcpConnection::SendSlices(const NetBufferSlices &slices) {
     return posted;
 }
 
-bool TcpConnection::Close() {
-    std::weak_ptr<TcpConnection> weak_self = shared_from_this();
-    return loop_->Post([weak_self]() {
+bool TcpSession::Close(TcpCloseReason reason) {
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
+    return loop_->Post([weak_self, reason]() {
         auto self = weak_self.lock();
         if (self) {
-            self->CloseInLoop();
+            self->CloseInLoop(reason);
         }
     });
 }
 
-bool TcpConnection::CloseAfterSend() {
-    std::weak_ptr<TcpConnection> weak_self = shared_from_this();
+bool TcpSession::CloseAfterSend() {
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
     return loop_->Post([weak_self]() {
         auto self = weak_self.lock();
         if (!self) {
@@ -186,21 +204,21 @@ bool TcpConnection::CloseAfterSend() {
             close_now = self->send_queue_.empty();
         }
         if (close_now) {
-            self->CloseInLoop();
+            self->CloseInLoop(TcpCloseReason::kLocalClose);
         } else {
             self->EnableWrite();
         }
     });
 }
 
-uint32_t TcpConnection::PendingBytes() const {
+uint32_t TcpSession::PendingBytes() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return pending_bytes_;
 }
 
-void TcpConnection::HandleEvents(uint32_t events) {
+void TcpSession::HandleEvents(uint32_t events) {
     if ((events & (EPOLLERR | EPOLLHUP)) != 0) {
-        CloseInLoop();
+        CloseInLoop(TcpCloseReason::kReadError);
         return;
     }
     if ((events & EPOLLIN) != 0) {
@@ -211,17 +229,21 @@ void TcpConnection::HandleEvents(uint32_t events) {
     }
 }
 
-void TcpConnection::HandleRead() {
+void TcpSession::HandleRead() {
     uint8_t buffer[kReadBufferSize];
     while (true) {
         const ssize_t n = recv(fd_.get(), buffer, sizeof(buffer), 0);
         if (n > 0) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                last_read_ms_ = infra::Time::MonotonicMillis();
+            }
             engine_->AddRead(static_cast<size_t>(n));
             engine_->DispatchRead(callbacks_, id_, buffer, static_cast<size_t>(n));
             continue;
         }
         if (n == 0) {
-            CloseInLoop();
+            CloseInLoop(TcpCloseReason::kPeerClose);
             return;
         }
         if (errno == EINTR) {
@@ -230,12 +252,12 @@ void TcpConnection::HandleRead() {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         }
-        CloseInLoop();
+        CloseInLoop(TcpCloseReason::kReadError);
         return;
     }
 }
 
-void TcpConnection::HandleWrite() {
+void TcpSession::HandleWrite() {
     while (true) {
         ssize_t n = 0;
         {
@@ -260,6 +282,7 @@ void TcpConnection::HandleWrite() {
             if (n > 0) {
                 slice.offset += static_cast<size_t>(n);
                 pending_bytes_ -= static_cast<uint32_t>(n);
+                last_write_progress_ms_ = infra::Time::MonotonicMillis();
                 if (slice.offset >= slice.size) {
                     ++current.current_slice;
                 }
@@ -279,7 +302,7 @@ void TcpConnection::HandleWrite() {
             EnableWrite();
             return;
         }
-        CloseInLoop();
+        CloseInLoop(TcpCloseReason::kWriteError);
         return;
     }
     bool close_now = false;
@@ -288,42 +311,113 @@ void TcpConnection::HandleWrite() {
         close_now = close_after_send_ && send_queue_.empty();
     }
     if (close_now) {
-        CloseInLoop();
+        CloseInLoop(TcpCloseReason::kLocalClose);
         return;
     }
     DisableWrite();
 }
 
-void TcpConnection::EnableWrite() {
+void TcpSession::EnableWrite() {
     if (fd_.valid()) {
         (void)loop_->ModifyFd(fd_.get(), EPOLLIN | EPOLLOUT);
     }
 }
 
-void TcpConnection::DisableWrite() {
+void TcpSession::DisableWrite() {
     if (fd_.valid()) {
         (void)loop_->ModifyFd(fd_.get(), EPOLLIN);
     }
 }
 
-void TcpConnection::CloseInLoop() {
+void TcpSession::CloseInLoop(TcpCloseReason reason) {
+    NetTimerId manager_timer_id = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_) {
             return;
         }
         closed_ = true;
+        manager_timer_id = manager_timer_id_;
+        manager_timer_id_ = 0;
         send_queue_.clear();
         pending_bytes_ = 0;
+    }
+    if (manager_timer_id != 0) {
+        loop_->CancelTimer(manager_timer_id);
     }
     if (fd_.valid()) {
         loop_->RemoveFd(fd_.get());
     }
     fd_.Reset();
-    engine_->OnConnectionClosed(id_, callbacks_);
+    engine_->OnConnectionClosed(id_, callbacks_, reason);
 }
 
-bool TcpConnection::IsSendStalledLocked() const {
+void TcpSession::ArmManagerTimer() {
+    const uint32_t tick_ms = ManagerTickMs();
+    if (tick_ms == 0) {
+        return;
+    }
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
+    const NetTimerId timer_id = loop_->RunEvery(
+        engine_->AllocateTimerId(), tick_ms, [weak_self]() {
+            auto self = weak_self.lock();
+            if (self) {
+                self->CheckTimeouts();
+            }
+        });
+    if (timer_id == 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) {
+        loop_->CancelTimer(timer_id);
+        return;
+    }
+    manager_timer_id_ = timer_id;
+}
+
+void TcpSession::CheckTimeouts() {
+    TcpCloseReason reason = TcpCloseReason::kLocalClose;
+    bool should_close = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (closed_) {
+            return;
+        }
+        const int64_t now_ms = infra::Time::MonotonicMillis();
+        if (IsReadTimedOutLocked(now_ms)) {
+            reason = TcpCloseReason::kReadTimeout;
+            should_close = true;
+        } else if (IsWriteTimedOutLocked(now_ms)) {
+            reason = TcpCloseReason::kWriteTimeout;
+            should_close = true;
+        } else if (IsSendStalledLocked()) {
+            reason = TcpCloseReason::kSendStall;
+            should_close = true;
+        }
+    }
+    if (!should_close) {
+        return;
+    }
+    if (reason == TcpCloseReason::kSendStall) {
+        engine_->AddSlowClose();
+    }
+    CloseInLoop(reason);
+}
+
+bool TcpSession::IsReadTimedOutLocked(int64_t now_ms) const {
+    return options_.read_timeout_ms != 0 &&
+           now_ms - last_read_ms_ >=
+               static_cast<int64_t>(options_.read_timeout_ms);
+}
+
+bool TcpSession::IsWriteTimedOutLocked(int64_t now_ms) const {
+    return options_.write_timeout_ms != 0 && pending_bytes_ > 0 &&
+           now_ms - last_write_progress_ms_ >=
+               static_cast<int64_t>(options_.write_timeout_ms);
+}
+
+bool TcpSession::IsSendStalledLocked() const {
     if (options_.send_stall_timeout_ms == 0 || send_queue_.empty()) {
         return false;
     }
@@ -332,8 +426,30 @@ bool TcpConnection::IsSendStalledLocked() const {
     return age_ms >= static_cast<int64_t>(options_.send_stall_timeout_ms);
 }
 
-bool TcpConnection::BuildOutBuffer(const NetBufferSlices &slices,
-                                   OutBuffer *buffer) const {
+uint32_t TcpSession::ManagerTickMs() const {
+    uint32_t tick_ms = 0;
+    if (options_.read_timeout_ms != 0) {
+        tick_ms = options_.read_timeout_ms;
+    }
+    if (options_.write_timeout_ms != 0 &&
+        (tick_ms == 0 || options_.write_timeout_ms < tick_ms)) {
+        tick_ms = options_.write_timeout_ms;
+    }
+    if (options_.send_stall_timeout_ms != 0 &&
+        (tick_ms == 0 || options_.send_stall_timeout_ms < tick_ms)) {
+        tick_ms = options_.send_stall_timeout_ms;
+    }
+    if (tick_ms == 0) {
+        return 0;
+    }
+    if (tick_ms > kDefaultManagerTickMs) {
+        return kDefaultManagerTickMs;
+    }
+    return tick_ms;
+}
+
+bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
+                                OutBuffer *buffer) const {
     if (buffer == nullptr || slices.count > kMaxNetBufferSlices) {
         return false;
     }

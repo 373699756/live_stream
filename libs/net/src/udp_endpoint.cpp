@@ -179,9 +179,45 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
     return true;
 }
 
+bool UdpEndpoint::SetPeer(NetAddress peer) {
+    sockaddr_in addr = ToSockAddr(peer);
+    if (addr.sin_family != AF_INET) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    peer_ = std::move(peer);
+    has_peer_ = true;
+    return true;
+}
+
+bool UdpEndpoint::SendToPeer(const uint8_t *data, size_t size) {
+    NetBufferSlices slices;
+    if (!slices.Add(data, size)) {
+        return false;
+    }
+    return SendToPeerSlices(slices);
+}
+
+bool UdpEndpoint::SendToPeerSlices(const NetBufferSlices &slices) {
+    NetAddress peer;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!has_peer_) {
+            return false;
+        }
+        peer = peer_;
+    }
+    return SendToSlices(std::move(peer), slices);
+}
+
 NetAddress UdpEndpoint::LocalAddress() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return local_;
+}
+
+NetAddress UdpEndpoint::PeerAddress() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return has_peer_ ? peer_ : NetAddress{};
 }
 
 void UdpEndpoint::HandleRead() {

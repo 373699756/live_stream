@@ -255,10 +255,12 @@ private:
         }
     }
 
-    static void HandleClose(void* user, ConnectionId id) {
+    static void HandleClose(void* user,
+                            ConnectionId id,
+                            TcpCloseReason reason) {
         RtspServiceImpl* self = static_cast<RtspServiceImpl*>(user);
         if (self != nullptr) {
-            self->OnConnectionClosed(id);
+            self->OnConnectionClosed(id, reason);
         }
     }
 
@@ -284,7 +286,7 @@ private:
         PublishEvent(EventType::kRtspClientConnected, session->peer.ip);
     }
 
-    void OnConnectionClosed(ConnectionId id) {
+    void OnConnectionClosed(ConnectionId id, TcpCloseReason reason) {
         std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -294,8 +296,10 @@ private:
             return;
         }
         Info("rtsp",
-                       "RTSP client disconnected conn=%llu peer=%s:%u",
+                       "RTSP client disconnected conn=%llu reason=%d "
+                       "peer=%s:%u",
                        static_cast<unsigned long long>(id),
+                       static_cast<int>(reason),
                        session->peer.ip.c_str(),
                        static_cast<unsigned>(session->peer.port));
         PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);

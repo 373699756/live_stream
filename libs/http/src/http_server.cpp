@@ -13,8 +13,6 @@
 namespace live_stream {
 namespace {
 
-constexpr size_t kMaxStreamingQueuedBytes = 4U * 1024U * 1024U;
-
 void RefVideoBufferOwner(const void *owner) {
     (void)VideoBufferRef(
         const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
@@ -147,6 +145,8 @@ bool HttpServer::Start() {
     server_config.max_connections = options_.max_connections;
     server_config.send_queue_capacity = options_.send_queue_capacity;
     server_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
+    server_config.send_stall_timeout_ms = options_.connection_idle_timeout_ms;
+    server_config.write_timeout_ms = options_.connection_idle_timeout_ms;
     TcpCallbacks callbacks;
     callbacks.user = this;
     callbacks.on_accept = &HttpServer::HandleAccept;
@@ -446,10 +446,11 @@ void HttpServer::HandleRead(void *user, ConnectionId id, const uint8_t *data,
     }
 }
 
-void HttpServer::HandleClose(void *user, ConnectionId id) {
+void HttpServer::HandleClose(void *user, ConnectionId id,
+                             TcpCloseReason reason) {
     HttpServer *self = static_cast<HttpServer *>(user);
     if (self != nullptr) {
-        self->OnClose(id);
+        self->OnClose(id, reason);
     }
 }
 
@@ -505,13 +506,15 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                         static_cast<unsigned long long>(connection_id), size);
         return false;
     }
-    if (net_engine->PendingBytes(connection_id) >= kMaxStreamingQueuedBytes) {
+    if (net_engine->PendingBytes(connection_id) >=
+        options_.send_buffer_limit_bytes) {
         Error(kHttpModuleName,
                         "HTTP-FLV close conn=%llu reason=queue_full "
                         "pending=%u limit=%zu next=%zu",
                         static_cast<unsigned long long>(connection_id),
                         net_engine->PendingBytes(connection_id),
-                        kMaxStreamingQueuedBytes, size);
+                        static_cast<size_t>(options_.send_buffer_limit_bytes),
+                        size);
         (void)net_engine->Close(connection_id);
         return false;
     }
@@ -540,7 +543,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
     ArmConnectionTimer(connection_id, options_.request_timeout_ms);
 }
 
-void HttpServer::OnClose(ConnectionId connection_id) {
+void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     ClosedHttpSessionInfo closed;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -556,8 +559,10 @@ void HttpServer::OnClose(ConnectionId connection_id) {
     }
     NotifyStreamClosed(closed.media_client);
     Info(kHttpModuleName,
-                   "HTTP close conn=%llu streaming=%d media_type=%d client=%llu",
+                   "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
+                   "client=%llu",
                    static_cast<unsigned long long>(connection_id),
+                   static_cast<int>(reason),
                    closed.was_streaming ? 1 : 0,
                    static_cast<int>(closed.media_client.type),
                    static_cast<unsigned long long>(closed.media_client.id));

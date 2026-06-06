@@ -2,7 +2,7 @@
 
 #include "net_engine_impl.h"
 #include "socket_util.h"
-#include "tcp_connection.h"
+#include "tcp_session.h"
 
 #include "infra/log.h"
 
@@ -196,7 +196,7 @@ void TcpServer::AcceptLoop() {
             continue;
         }
         const ConnectionId id = engine_->AllocateConnectionId();
-        auto connection = std::make_shared<TcpConnection>(
+        auto connection = std::make_shared<TcpSession>(
             engine_, engine_->NextLoop(), accepted.Release(), id, options_,
             callbacks_, local, FromSockAddr(peer_addr));
         if (!connection->Start()) {

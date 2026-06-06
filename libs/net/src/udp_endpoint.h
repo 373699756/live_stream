@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SERVICE_SRC_UDP_ENDPOINT_H_
-#define LIVE_STREAM_NET_SERVICE_SRC_UDP_ENDPOINT_H_
+#ifndef LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
+#define LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
 
 #include "event_loop.h"
 #include "fd.h"
@@ -25,7 +25,11 @@ public:
     void Stop();
     bool SendTo(NetAddress address, const uint8_t *data, size_t size);
     bool SendToSlices(NetAddress address, const NetBufferSlices &slices);
+    bool SetPeer(NetAddress peer);
+    bool SendToPeer(const uint8_t *data, size_t size);
+    bool SendToPeerSlices(const NetBufferSlices &slices);
     NetAddress LocalAddress() const;
+    NetAddress PeerAddress() const;
 
 private:
     void HandleRead();
@@ -38,10 +42,12 @@ private:
     mutable std::mutex mutex_;
     UniqueFd fd_;
     NetAddress local_;
+    NetAddress peer_;
     bool running_ = false;
+    bool has_peer_ = false;
 };
 
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SERVICE_SRC_UDP_ENDPOINT_H_
+#endif  // LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
