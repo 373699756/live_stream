@@ -24,10 +24,17 @@ interface AppShellProps {
   activePage: PageId;
   onNavigate: (page: PageId) => void;
   onLogout?: () => void;
+  userName?: string;
   children: ReactNode;
 }
 
-export function AppShell({ activePage, onNavigate, onLogout, children }: AppShellProps) {
+export function AppShell({
+  activePage,
+  onNavigate,
+  onLogout,
+  userName,
+  children,
+}: AppShellProps) {
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -42,7 +49,7 @@ export function AppShell({ activePage, onNavigate, onLogout, children }: AppShel
           <span className="status-dot online" />
           设备在线
           <span className="divider" />
-          admin
+          {userName || 'admin'}
           {onLogout && (
             <>
               <span className="divider" />

@@ -8,10 +8,12 @@ import {
   onMustChangePassword,
   validateSession,
 } from '../api/client';
+import type { AuthPrincipal } from '../api/types';
 
 interface AuthContextValue {
   authenticated: boolean;
   mustChangePassword: boolean;
+  principal?: AuthPrincipal;
   ready: boolean;
   login: (userName: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
@@ -23,6 +25,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(hasToken);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [principal, setPrincipal] = useState<AuthPrincipal | undefined>();
   const [ready, setReady] = useState(!hasToken());
 
   useEffect(() => {
@@ -37,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted) {
         setAuthenticated(state.authenticated);
         setMustChangePassword(state.mustChangePassword);
+        setPrincipal(state.principal);
         setReady(true);
       }
     });
@@ -49,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return onAuthInvalid(() => {
       setAuthenticated(false);
       setMustChangePassword(false);
+      setPrincipal(undefined);
       setReady(true);
     });
   }, []);
@@ -66,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (state.authenticated) {
       setAuthenticated(true);
       setMustChangePassword(state.mustChangePassword);
+      setPrincipal(state.principal);
     }
     return { ok: state.authenticated, error: state.error };
   }, []);
@@ -75,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (ok) {
       setAuthenticated(false);
       setMustChangePassword(false);
+      setPrincipal(undefined);
       void apiLogout();
     }
     return ok;
@@ -84,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void apiLogout();
     setAuthenticated(false);
     setMustChangePassword(false);
+    setPrincipal(undefined);
   }, []);
 
   return (
@@ -91,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         authenticated,
         mustChangePassword,
+        principal,
         ready,
         login,
         changePassword,

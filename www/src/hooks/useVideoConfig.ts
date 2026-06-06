@@ -4,18 +4,15 @@
  */
 
 import { useEffect, useState } from 'react';
-import { getVideoConfig, getMediaCapabilities, getStreamStatus } from '../api/video';
-import type { VideoConfig, MediaCapabilities, StreamStatus } from '../api/types';
-import { mockMediaCapabilities } from '../api/mock';
+import { getVideoConfig } from '../api/video';
+import type { VideoConfig } from '../api/types';
+import { usePreviewMetadata } from './usePreviewMetadata';
 
 const configTimeoutMs = 5000;
-const statusTimeoutMs = 1800;
-const statusRefreshIntervalMs = 3000;
 
 export function useVideoConfig() {
   const [config, setConfig] = useState<VideoConfig | null>(null);
-  const [capabilities, setCapabilities] = useState<MediaCapabilities>(mockMediaCapabilities);
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
+  const { capabilities, statuses, refreshStatuses } = usePreviewMetadata();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,15 +26,6 @@ export function useVideoConfig() {
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : '加载视频配置失败');
         throw err;
-      });
-
-  const refreshStatuses = () =>
-    getStreamStatus({ timeoutMs: statusTimeoutMs })
-      .then((nextStatuses) => {
-        setStatuses(nextStatuses);
-      })
-      .catch(() => {
-        setStatuses([]);
       });
 
   useEffect(() => {
@@ -63,42 +51,6 @@ export function useVideoConfig() {
       });
     return () => {
       mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadStatuses = () => {
-      void getStreamStatus({ timeoutMs: statusTimeoutMs })
-        .then((nextStatuses) => {
-          if (mounted) {
-            setStatuses(nextStatuses);
-          }
-        })
-        .catch(() => {
-          if (mounted) {
-            setStatuses([]);
-          }
-        });
-    };
-    void getMediaCapabilities({ timeoutMs: statusTimeoutMs })
-      .then((nextCapabilities) => {
-        if (mounted) {
-          setCapabilities(nextCapabilities);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setCapabilities(mockMediaCapabilities);
-        }
-      });
-    loadStatuses();
-    const timer = window.setInterval(() => {
-      loadStatuses();
-    }, statusRefreshIntervalMs);
-    return () => {
-      mounted = false;
-      window.clearInterval(timer);
     };
   }, []);
 
