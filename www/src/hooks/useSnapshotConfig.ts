@@ -2,7 +2,7 @@
  * useSnapshotConfig — fetch and save snapshot configuration.
  */
 
-import { getSnapshotConfig, saveSnapshotConfig } from '../api/system';
+import { getSnapshotConfig, saveSnapshotConfig } from '../api/snapshot';
 import { mockSnapshotConfig } from '../api/mock';
 import { useConfigForm } from './useConfigForm';
 

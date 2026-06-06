@@ -2,51 +2,19 @@ import { useState } from 'react';
 import { useImageConfig } from '../hooks/useImageConfig';
 import type {
   ImageCapabilities,
-  NumericControlCapability,
-  OptionControlCapability,
   StreamName,
 } from '../api/types';
 import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
+import {
+  numericCapability,
+  optionCapability,
+  OptionField,
+  RangeField,
+} from './ImageConfigFields';
+import { ImagePrimarySettings } from './ImagePrimarySettings';
 
 type ImageRecordSection = 'exposure' | 'white_balance' | 'enhancement' | 'backlight';
-
-const basicItems = [
-  ['brightness', '亮度'],
-  ['contrast', '对比度'],
-  ['saturation', '饱和度'],
-  ['sharpness', '锐度'],
-  ['hue', '色调'],
-] as const;
-
-const optionLabels: Record<string, string> = {
-  auto: '自动',
-  manual: '手动',
-  '50hz': '50Hz',
-  '60hz': '60Hz',
-  off: '关闭',
-  low: '低',
-  medium: '中',
-  high: '高',
-  indoor: '室内',
-  outdoor: '室外',
-  drc: '动态范围压缩',
-  color: '彩色',
-  black_white: '黑白',
-};
-
-const tierLabels: Record<string, string> = {
-  day: '日间',
-  indoor: '室内',
-  low_light: '弱光',
-  very_low_light: '极弱光',
-};
-
-const strategyModeLabels: Record<string, string> = {
-  balanced: '均衡',
-  low_noise: '低噪声',
-  detail: '细节优先',
-};
 
 function numberValue(record: Record<string, unknown>, key: string, fallback: number): number {
   const value = record[key];
@@ -63,89 +31,13 @@ function boolValue(record: Record<string, unknown>, key: string, fallback: boole
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function optionLabel(value: string): string {
-  return optionLabels[value] || value;
-}
-
-function numericCapability(
-  controls: Record<string, NumericControlCapability>,
-  key: string,
-): NumericControlCapability | undefined {
-  return controls[key];
-}
-
-function optionCapability(
-  controls: Record<string, OptionControlCapability>,
-  key: string,
-  fallback: string[],
-): OptionControlCapability {
-  return controls[key] || { values: fallback, default: fallback[0] || '' };
-}
-
 function supportsOptionValue(
-  controls: Record<string, OptionControlCapability>,
+  controls: ImageCapabilities['exposure']['options'],
   key: string,
   value: string,
 ): boolean {
   const capability = controls[key];
   return capability ? capability.values.includes(value) : true;
-}
-
-function RangeField({
-  label,
-  capability,
-  value,
-  onChange,
-}: {
-  label: string;
-  capability: NumericControlCapability;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <FormField label={label}>
-      <input
-        type="range"
-        min={capability.min}
-        max={capability.max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <span className="range-value">{value}</span>
-    </FormField>
-  );
-}
-
-function OptionField({
-  label,
-  capability,
-  value,
-  onChange,
-}: {
-  label: string;
-  capability: OptionControlCapability;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <FormField label={label}>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {capability.values.map((item) => (
-          <option value={item} key={item}>
-            {optionLabel(item)}
-          </option>
-        ))}
-      </select>
-    </FormField>
-  );
-}
-
-function tierLabel(value: string): string {
-  return tierLabels[value] || value || '-';
-}
-
-function strategyModeLabel(value: string): string {
-  return strategyModeLabels[value] || value || '-';
 }
 
 export function ImageConfigPage() {
@@ -209,59 +101,15 @@ export function ImageConfigPage() {
             <p>调整基础画质参数，运行态应用由后端图像管线完成。</p>
           </div>
         </div>
-        <div className="form-grid image-settings-grid image-primary-grid">
-          <div className="form-section-title">自动画质策略</div>
-          <FormField label="自动策略">
-            <input
-              type="checkbox"
-              checked={strategyEnabled}
-              onChange={(event) => updateStrategyEnabled(event.target.checked)}
-            />
-          </FormField>
-          <OptionField
-            label="策略模式"
-            capability={{
-              values: ['balanced', 'low_noise', 'detail'],
-              default: 'balanced',
-            }}
-            value={config.strategy?.mode || 'balanced'}
-            onChange={updateStrategyMode}
-          />
-          <div className="strategy-status image-status-strip">
-            <span><strong>状态</strong>{strategyStatus.active ? '运行中' : '未运行'}</span>
-            <span><strong>场景</strong>{tierLabel(strategyStatus.tier)}</span>
-            <span><strong>模式</strong>{strategyModeLabel(strategyStatus.mode)}</span>
-            <span><strong>ISO</strong>{strategyStatus.exposure_valid ? strategyStatus.iso : '-'}</span>
-            <span>
-              <strong>曝光</strong>
-              {strategyStatus.exposure_valid ? `${strategyStatus.exposure_time_us} us` : '-'}
-            </span>
-          </div>
-          <details className="image-status-details">
-            <summary>更多运行值</summary>
-            <div className="strategy-status image-status-grid">
-              <span><strong>饱和</strong>{strategyStatus.saturation}</span>
-              <span><strong>锐度</strong>{strategyStatus.sharpness}</span>
-              <span><strong>2DNR</strong>{strategyStatus.denoise_2d}</span>
-              <span><strong>3DNR</strong>{strategyStatus.denoise_3d}</span>
-              <span><strong>Gamma</strong>{strategyStatus.gamma}</span>
-            </div>
-          </details>
-
-          <div className="form-section-title">基础画质</div>
-          {basicItems.map(([key, label]) => {
-            const capability = numericCapability(capabilities.basic, key);
-            return capability && capability.runtime_supported !== false ? (
-              <RangeField
-                label={label}
-                capability={capability}
-                value={config.basic[key] ?? capability.default}
-                onChange={(value) => updateBasic(key, value)}
-                key={key}
-              />
-            ) : null;
-          })}
-        </div>
+        <ImagePrimarySettings
+          capabilities={capabilities}
+          config={config}
+          onBasicChange={updateBasic}
+          onStrategyEnabledChange={updateStrategyEnabled}
+          onStrategyModeChange={updateStrategyMode}
+          strategyEnabled={strategyEnabled}
+          strategyStatus={strategyStatus}
+        />
 
         <div className="image-advanced-list">
           <details className="image-advanced-section">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getOperations } from '../api/system';
+import { getOperations } from '../api/operations';
 import { operationsExportUrl } from '../api/client';
 import type { OperationRecord } from '../api/types';
 

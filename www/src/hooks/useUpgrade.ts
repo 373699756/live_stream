@@ -6,13 +6,13 @@
 
 import { useEffect, useState } from 'react';
 import {
-  getSystemStatus,
   getUpgradeStatus,
   uploadUpgradePackage,
   startUpgrade as apiStartUpgrade,
   cancelUpgrade as apiCancelUpgrade,
   confirmUpgradeReboot as apiConfirmUpgradeReboot,
-} from '../api/system';
+} from '../api/upgrade';
+import { getSystemStatus } from '../api/system';
 import type { SystemStatus, UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
 
 export function useUpgrade() {
