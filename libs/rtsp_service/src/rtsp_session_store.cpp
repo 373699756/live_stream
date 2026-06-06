@@ -3,11 +3,6 @@
 #include <utility>
 
 namespace live_stream {
-namespace {
-
-constexpr uint32_t kDefaultSsrcBase = 0x52545350;
-
-}  // namespace
 
 bool RtspSessionStore::Add(ConnectionId connection_id, NetAddress peer,
                            uint32_t max_sessions,
@@ -15,12 +10,8 @@ bool RtspSessionStore::Add(ConnectionId connection_id, NetAddress peer,
   if (session == nullptr || sessions_.size() >= max_sessions) {
     return false;
   }
-  std::shared_ptr<RtspSession> next(new RtspSession());
-  next->connection_id = connection_id;
-  next->peer = std::move(peer);
-  next->session_id = next_session_id_++;
-  next->ssrc = kDefaultSsrcBase ^ static_cast<uint32_t>(next->session_id);
-  next->stats.session_id = next->session_id;
+  std::shared_ptr<RtspSession> next(
+      new RtspSession(connection_id, std::move(peer), next_session_id_++));
   sessions_[connection_id] = next;
   *session = next;
   return true;

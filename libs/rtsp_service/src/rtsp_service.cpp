@@ -315,10 +315,10 @@ private:
                 (void)dependencies_.net_engine->Close(connection_id);
                 return;
             }
-            if (!session->splitter.Append(data, size)) {
+            if (!session->AppendBytes(data, size)) {
                 return;
             }
-            split = session->splitter.Split(options_.max_request_bytes);
+            split = session->SplitRequests(options_.max_request_bytes);
         }
 
         if (split.status == RtspSplitterStatus::kPayloadTooLarge) {
@@ -375,7 +375,7 @@ private:
         }
 
         if (request.method == "DESCRIBE") {
-            session->stream_id = stream_id;
+            session->MarkDescribed(stream_id);
             const std::string sdp =
                 BuildSdp(local_address_, stream_id, CodecForStream(stream_id));
             SendResponse(session->connection_id, 200, CSeq(request),
@@ -389,15 +389,11 @@ private:
             return;
         }
         if (request.method == "PLAY") {
-            if (session->state != RtspSessionState::kReady &&
-                session->state != RtspSessionState::kPlaying) {
+            if (!session->IsReadyForPlay()) {
                 SendResponse(session->connection_id, 455, CSeq(request), {}, "");
                 return;
             }
-            session->state = RtspSessionState::kPlaying;
-            session->keyframe_seen = false;
-            session->stats.stream_id = session->stream_id;
-            session->stats.transport = session->transport;
+            session->StartPlaying();
             if (RequestKeyFrame(session->stream_id)) {
                 NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
             }
@@ -419,7 +415,7 @@ private:
         if (request.method == "TEARDOWN") {
             SendResponse(session->connection_id, 200, CSeq(request),
                          {{"Session", std::to_string(session->session_id)}}, "");
-            session->state = RtspSessionState::kClosed;
+            session->Close();
             (void)dependencies_.net_engine->CloseAfterSend(session->connection_id);
             return;
         }
@@ -454,8 +450,7 @@ private:
             SendResponse(session->connection_id, 500, CSeq(request), {}, "");
             return false;
         }
-        if (session->authenticated &&
-            session->authenticated_stream_id == stream_id) {
+        if (session->IsAuthenticatedFor(stream_id)) {
             return true;
         }
         const std::string authorization = HeaderValue(request, "Authorization");
@@ -464,9 +459,7 @@ private:
             std::string cached_user_name;
             if (FindPeerAuthGrant(session->peer.ip, stream_id,
                                   &cached_user_name)) {
-                session->authenticated = true;
-                session->authenticated_stream_id = stream_id;
-                session->authenticated_user = cached_user_name;
+                session->MarkAuthenticated(stream_id, cached_user_name);
                 INFRA_LOG_INFO("rtsp_service",
                                "RTSP auth reused peer=%s user=%s uri=%s",
                                session->peer.ip.c_str(),
@@ -544,9 +537,8 @@ private:
             return false;
         }
         static_cast<void>(dependencies_.auth_service->Logout(logout_context));
-        session->authenticated = true;
-        session->authenticated_stream_id = stream_id;
-        session->authenticated_user = login_result.principal.user_name;
+        session->MarkAuthenticated(stream_id,
+                                   login_result.principal.user_name);
         RememberPeerAuthGrant(session->peer.ip, stream_id,
                               login_result.principal.user_name);
         INFRA_LOG_INFO("rtsp_service",
@@ -566,13 +558,10 @@ private:
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return;
         }
-        session->stream_id = stream_id;
-        session->state = RtspSessionState::kReady;
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
-            session->transport = RtspTransportMode::kTcpInterleaved;
-            session->interleaved_rtp_channel = 0;
+            session->SetupTcp(stream_id, 0);
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1";
             AddTcpInterleavedSession();
@@ -587,8 +576,7 @@ private:
                 SendResponse(session->connection_id, 461, CSeq(request), {}, "");
                 return;
             }
-            session->transport = RtspTransportMode::kUdp;
-            session->client_rtp_port = static_cast<uint16_t>(client_port);
+            session->SetupUdp(stream_id, static_cast<uint16_t>(client_port));
             const NetAddress server_rtp =
                 dependencies_.net_engine->UdpLocalAddress(udp_socket_id_);
             response_transport = "RTP/AVP;unicast;client_port=" +
@@ -605,8 +593,6 @@ private:
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return;
         }
-        session->stats.transport = session->transport;
-        session->stats.stream_id = session->stream_id;
         RememberPeerAuthGrant(session->peer.ip, stream_id,
                               session->authenticated_user);
         INFRA_LOG_INFO("rtsp_service",
