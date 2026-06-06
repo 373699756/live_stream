@@ -64,7 +64,7 @@
 
 - HLS/FLV 浏览器流封装状态。
 - HLS segment 和 FLV sequence/keyframe 缓存。
-- GOP cache、帧时间戳修正和浏览器协议共享媒体状态。
+- GOP cache、`MediaFrame`/`MediaTrack`、帧时间戳修正和浏览器协议共享媒体状态。
 - `hls_ready`、`flv_ready`、`browser_codec` 等浏览器播放状态。
 
 不拥有 HTTP 请求解析、Web UI 状态、WebRTC peer 生命周期或媒体配置。

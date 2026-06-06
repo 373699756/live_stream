@@ -20,7 +20,7 @@
 - `app/` 是组合根，负责服务创建、依赖注入、启动顺序和关闭顺序。
 - `libs/media_service` 拥有视频 pipeline、MPP/VENC 适配、码流启动停止和关键帧请求。
 - `libs/media_source` 拥有 HLS/FLV 浏览器流状态、GOP cache、HLS segment 和
-  时间戳修正。
+  `MediaFrame`/`MediaTrack`/`TimestampCorrector` 基础类型。
 - `libs/media_source_service` 拥有媒体源服务壳、下游 frame sink、
   HTTP-FLV/MJPEG 客户端注册，以及从 `media_service` 接收编码帧的边界。
 - `libs/http_service` 拥有 HTTP 路由、认证边界、DTO 转换、静态资源和直播 API。

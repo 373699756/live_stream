@@ -20,3 +20,4 @@
 | 2026-06-06 | `stream_hub_service` 对下游协议输出归一化时间戳，HLS playlist 只暴露已完成 segment。 | 借鉴 ZLMediaKit 的相对时间戳和稳定切片思路，避免编码器时间戳跳变、回退或半成品 HLS segment 导致 Web 播放卡顿。 | RTSP/WebRTC/HLS/FLV 共享单调相对 PTS/DTS；HLS 额外保留旧 segment 但索引只列最新窗口。 |
 | 2026-06-06 | 媒体状态核心按 ZLMediaKit 风格迁入 `media_source`，旧 `stream_hub_service` 收敛为服务壳。 | HLS/FLV/RTSP/WebRTC 需要共享 MediaSource、GOP cache、segment、时间戳模型，不能继续把媒体状态绑在浏览器 hub 命名下。 | 新代码优先使用 `IMediaSource`、`IMediaFlvSource`、`MediaSourceServiceOptions`；旧 stream hub 名称仅作兼容过渡。 |
 | 2026-06-06 | 生产构建使用 `media_source_service` 替代 `stream_hub_service`。 | 用户要求按 ZLMediaKit 标准化命名和边界，媒体源服务壳不应继续使用浏览器 hub 语义。 | `app`、根构建和相邻 HTTP 依赖切到 `media_source_service`/`media_source`；旧 `stream_hub_service` 不再进入主工程生产构建。 |
+| 2026-06-06 | `media_source` public API 删除旧 `Stream*` 兼容别名，并引入 `MediaFrame`、`MediaTrack`、`TimestampCorrector`。 | 继续按 ZLMediaKit 的 Frame/Track/Stamp 模型收敛，避免新代码继续依赖旧 stream hub 语义。 | 生产 public API 只暴露 `Media*` 命名；时间戳修正从散落字段收拢到独立类型，后续可继续接入 FrameRing/GopCache。 |

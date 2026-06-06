@@ -15,8 +15,6 @@ namespace {
 
 constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
 constexpr size_t kMaxHlsSegmentBytes = 4 * 1024 * 1024;
-constexpr int64_t kDefaultFrameDurationUs = 33333;
-constexpr int64_t kMaxTimestampDeltaUs = 300000;
 
 uint32_t ClampHlsSegmentCapacity(size_t capacity) {
     if (capacity < kInitialHlsSegmentBytes) {
@@ -322,11 +320,6 @@ void UpdateFrameTiming(StreamContext *stream, const EncodedFrame &frame) {
     stream->last_pts_us = frame.pts_us;
 }
 
-int64_t FrameDurationUs(const StreamContext &stream) {
-    return stream.last_frame_duration_us > 0 ? stream.last_frame_duration_us
-                                             : kDefaultFrameDurationUs;
-}
-
 void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
                       const ParsedFramePayload &payload, bool *keyframe,
                       bool *prepend_parameter_sets) {
@@ -568,33 +561,10 @@ bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame) {
         frame->pts_us = 0;
     }
 
-    if (!stream->timestamp_base_set) {
-        stream->timestamp_base_set = true;
-        stream->timestamp_base_dts_us = frame->dts_us;
-        stream->last_output_dts_us = 0;
-        stream->last_output_pts_us = std::max<int64_t>(0,
-            frame->pts_us - frame->dts_us);
-        frame->dts_us = 0;
-        frame->pts_us = stream->last_output_pts_us;
-        return true;
-    }
-
-    int64_t output_dts_us = frame->dts_us - stream->timestamp_base_dts_us;
-    int64_t composition_us = frame->pts_us - frame->dts_us;
-    if (composition_us < 0 || composition_us > kMaxTimestampDeltaUs) {
-        composition_us = std::max<int64_t>(
-            0, stream->last_output_pts_us - stream->last_output_dts_us);
-    }
-    const bool dts_rollback = output_dts_us < stream->last_output_dts_us;
-    const bool dts_jump = output_dts_us - stream->last_output_dts_us >
-                          kMaxTimestampDeltaUs;
-    if (dts_rollback || dts_jump) {
-        output_dts_us = stream->last_output_dts_us + FrameDurationUs(*stream);
-    }
-    frame->dts_us = output_dts_us;
-    frame->pts_us = output_dts_us + composition_us;
-    stream->last_output_dts_us = frame->dts_us;
-    stream->last_output_pts_us = frame->pts_us;
+    const CorrectedTimestamp corrected =
+        stream->timestamp_corrector.Correct(frame->dts_us, frame->pts_us);
+    frame->dts_us = corrected.dts_us;
+    frame->pts_us = corrected.pts_us;
     return true;
 }
 

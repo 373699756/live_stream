@@ -6,6 +6,7 @@
 #include "media/frame_attach.h"
 #include "stream_codec.h"
 #include "stream_mux.h"
+#include "timestamp_corrector.h"
 
 #include <array>
 #include <cstdint>
@@ -50,10 +51,7 @@ struct StreamContext {
     stream_mux::TsMuxerState ts_muxer_state;
     int64_t last_pts_us = -1;
     int64_t last_frame_duration_us = 33333;
-    bool timestamp_base_set = false;
-    int64_t timestamp_base_dts_us = 0;
-    int64_t last_output_dts_us = -1;
-    int64_t last_output_pts_us = -1;
+    TimestampCorrector timestamp_corrector;
 };
 
 using ParsedFramePayload = FramePayload;

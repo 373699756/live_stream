@@ -229,53 +229,6 @@ inline void MediaSegmentRefUnref(MediaSegmentRef *segment) {
     *segment = MediaSegmentRef{};
 }
 
-// Temporary aliases keep existing protocol modules buildable while their
-// implementation is migrated to the MediaSource naming.
-constexpr size_t kMaxStreamFlvVideoTagSlices = kMaxMediaFlvVideoTagSlices;
-constexpr size_t kMaxStreamFlvHeaderSliceBytes = kMaxMediaFlvHeaderSliceBytes;
-constexpr size_t kMaxStreamFlvCachedVideoTags = kMaxMediaFlvCachedVideoTags;
-using StreamFlvVideoTagSlice = MediaFlvVideoTagSlice;
-using StreamFlvVideoTagView = MediaFlvVideoTagView;
-using StreamFlvCachedVideoTagSlice = MediaFlvCachedVideoTagSlice;
-using StreamFlvCachedVideoTag = MediaFlvCachedVideoTag;
-using StreamFlvClientId = MediaFlvClientId;
-using StreamMjpegClientId = MediaMjpegClientId;
-using StreamHlsEntry = MediaHlsEntry;
-using StreamHlsPlaylist = MediaHlsPlaylist;
-using StreamSegmentRef = MediaSegmentRef;
-using StreamFlvStartData = MediaFlvStartData;
-using StreamHubServiceStats = MediaSourceStats;
-using StreamBrowserStatus = MediaSourceStatus;
-using IStreamFlvSink = IMediaFlvSink;
-using IStreamMjpegSink = IMediaMjpegSink;
-using IStreamBrowserSource = IMediaSource;
-using IStreamFlvSource = IMediaFlvSource;
-using IStreamMjpegSource = IMediaMjpegSource;
-using IStreamFrameSource = IMediaFrameSource;
-
-inline void StreamFlvCachedVideoTagUnref(StreamFlvCachedVideoTag *tag) {
-    MediaFlvCachedVideoTagUnref(tag);
-}
-
-inline bool StreamFlvCachedVideoTagRefCopy(
-    StreamFlvCachedVideoTag *target,
-    const StreamFlvCachedVideoTag *source) {
-    return MediaFlvCachedVideoTagRefCopy(target, source);
-}
-
-inline void StreamFlvStartDataUnref(StreamFlvStartData *start_data) {
-    MediaFlvStartDataUnref(start_data);
-}
-
-inline StreamSegmentRef StreamSegmentRefCopy(
-    const StreamSegmentRef *segment) {
-    return MediaSegmentRefCopy(segment);
-}
-
-inline void StreamSegmentRefUnref(StreamSegmentRef *segment) {
-    MediaSegmentRefUnref(segment);
-}
-
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_MEDIA_SOURCE_MEDIA_SOURCE_H_
