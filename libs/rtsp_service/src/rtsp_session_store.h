@@ -3,6 +3,7 @@
 
 #include "net_service.h"
 #include "rtsp_service.h"
+#include "rtsp_splitter.h"
 
 #include <cstdint>
 #include <map>
@@ -34,7 +35,7 @@ struct RtspSession {
   bool authenticated = false;
   StreamId authenticated_stream_id = StreamId::kMain;
   std::string authenticated_user;
-  std::string request_buffer;
+  RtspSplitter splitter;
   RtspSessionStats stats;
 };
 

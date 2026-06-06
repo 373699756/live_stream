@@ -4,11 +4,10 @@
 #include "event_service.h"
 #include "infra/log.h"
 #include "infra/time.h"
-#include "byte_writer.h"
-#include "media/media_buffer.h"
 #include "net_service.h"
 #include "rtsp_protocol.h"
 #include "rtsp_session_store.h"
+#include "rtsp_transport.h"
 #include "stream_mux.h"
 
 #include <mutex>
@@ -28,24 +27,6 @@ enum class ServiceState {
     kStopped,
     kDeinitialized,
 };
-
-void RefVideoBufferOwner(const void *owner) {
-    (void)VideoBufferRef(
-        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
-}
-
-void UnrefVideoBufferOwner(const void *owner) {
-    VideoBufferUnref(
-        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
-}
-
-NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
-    if (buffer == nullptr) {
-        return NetBufferOwner{};
-    }
-    return NetBufferOwner{buffer, RefVideoBufferOwner,
-                          UnrefVideoBufferOwner};
-}
 
 struct RtspPeerAuthGrant {
     std::string peer_ip;
@@ -68,7 +49,6 @@ using rtsp_internal::ParseRtspRequest;
 using rtsp_internal::PathToStreamId;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
-using byte_writer::WriteU16;
 using stream_mux::IRtpPacketSink;
 using stream_mux::RtpPacketizer;
 using stream_mux::RtpPacketView;
@@ -327,6 +307,7 @@ private:
                    const uint8_t* data,
                    uint32_t size) {
         std::shared_ptr<RtspSession> session;
+        RtspSplitterResult split;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session = sessions_.Find(connection_id);
@@ -334,32 +315,19 @@ private:
                 (void)dependencies_.net_engine->Close(connection_id);
                 return;
             }
-            session->request_buffer.append(reinterpret_cast<const char*>(data), size);
+            if (!session->splitter.Append(data, size)) {
+                return;
+            }
+            split = session->splitter.Split(options_.max_request_bytes);
         }
-        while (!session->request_buffer.empty() &&
-               session->request_buffer[0] == '$') {
-            if (session->request_buffer.size() < 4) {
-                return;
-            }
-            const uint16_t payload_size =
-                (static_cast<uint8_t>(session->request_buffer[2]) << 8) |
-                static_cast<uint8_t>(session->request_buffer[3]);
-            if (session->request_buffer.size() < 4U + payload_size) {
-                return;
-            }
-            session->request_buffer.erase(0, 4U + payload_size);
+
+        if (split.status == RtspSplitterStatus::kPayloadTooLarge) {
+            AddParseFailure();
+            (void)dependencies_.net_engine->Close(connection_id);
+            return;
         }
-        while (true) {
-            const size_t end = session->request_buffer.find("\r\n\r\n");
-            if (end == std::string::npos) {
-                if (session->request_buffer.size() > options_.max_request_bytes) {
-                    AddParseFailure();
-                    (void)dependencies_.net_engine->Close(connection_id);
-                }
-                return;
-            }
-            const std::string raw = session->request_buffer.substr(0, end + 4);
-            session->request_buffer.erase(0, end + 4);
+
+        for (const std::string& raw : split.requests) {
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
                 AddParseFailure();
@@ -721,52 +689,23 @@ private:
     bool SendRtpPacketView(const std::shared_ptr<RtspSession>& session,
                            const EncodedFrame& frame,
                            const RtpPacketView& packet) {
-        RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
-        ConnectionId connection_id = 0;
-        UdpSocketId udp_socket_id = 0;
-        NetAddress target;
-        uint8_t interleaved_channel = 0;
+        RtspTransportTarget target;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            transport = session->transport;
-            connection_id = session->connection_id;
-            udp_socket_id = udp_socket_id_;
-            target = session->peer;
-            target.port = session->client_rtp_port;
-            interleaved_channel = session->interleaved_rtp_channel;
+            target.mode = session->transport;
+            target.connection_id = session->connection_id;
+            target.udp_socket_id = udp_socket_id_;
+            target.udp_peer = session->peer;
+            target.udp_peer.port = session->client_rtp_port;
+            target.interleaved_rtp_channel = session->interleaved_rtp_channel;
         }
 
         const size_t packet_size = packet.Size();
-        if (packet_size == 0 || packet_size > 0xffff ||
-            dependencies_.net_engine == nullptr) {
+        if (packet_size == 0 || packet_size > 0xffff) {
             return false;
         }
-        const NetBufferOwner payload_owner = VideoBufferNetOwner(frame.buffer);
-        NetBufferSlices slices;
-        uint8_t interleaved_header[4] = {'$', interleaved_channel, 0, 0};
-        bool ok = true;
-        if (transport == RtspTransportMode::kTcpInterleaved) {
-            WriteU16(interleaved_header + 2,
-                     static_cast<uint16_t>(packet_size));
-            ok = slices.Add(interleaved_header, sizeof(interleaved_header));
-            for (size_t i = 0; ok && i < packet.slice_count; ++i) {
-                const auto& slice = packet.slices[i];
-                ok = slices.Add(slice.data, slice.size,
-                                slice.media_payload ? payload_owner
-                                                    : NetBufferOwner{});
-            }
-            ok = ok && dependencies_.net_engine->SendSlices(connection_id,
-                                                            slices);
-        } else if (udp_socket_id != 0) {
-            for (size_t i = 0; ok && i < packet.slice_count; ++i) {
-                const auto& slice = packet.slices[i];
-                ok = slices.Add(slice.data, slice.size,
-                                slice.media_payload ? payload_owner
-                                                    : NetBufferOwner{});
-            }
-            ok = ok && dependencies_.net_engine->SendToSlices(udp_socket_id,
-                                                              target, slices);
-        }
+        const bool ok = RtspTransport::SendRtpPacket(
+            dependencies_.net_engine, target, frame, packet);
         if (!ok) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -779,7 +718,9 @@ private:
                 ++stats_.slow_client_closes;
             }
             NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
-            (void)dependencies_.net_engine->Close(connection_id);
+            if (dependencies_.net_engine != nullptr) {
+                (void)dependencies_.net_engine->Close(target.connection_id);
+            }
             return false;
         }
         {
@@ -787,7 +728,10 @@ private:
             ++session->stats.sent_rtp_packets;
             session->stats.sent_rtp_bytes += packet_size;
             session->stats.pending_bytes =
-                dependencies_.net_engine->PendingBytes(connection_id);
+                dependencies_.net_engine != nullptr
+                    ? dependencies_.net_engine->PendingBytes(
+                          target.connection_id)
+                    : 0;
             ++stats_.sent_rtp_packets;
             stats_.sent_rtp_bytes += packet_size;
         }
