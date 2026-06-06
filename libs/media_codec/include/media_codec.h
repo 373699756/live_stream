@@ -8,9 +8,20 @@
 #include <string>
 
 namespace live_stream {
-namespace stream_codec {
+namespace media_codec {
 
 constexpr size_t kMaxNalUnitsPerFrame = 64;
+constexpr uint8_t kH264NalTypeIdr = 5;
+constexpr uint8_t kH264NalTypeSps = 7;
+constexpr uint8_t kH264NalTypePps = 8;
+constexpr uint8_t kH264NalTypeAud = 9;
+constexpr uint8_t kH265NalTypeIdrWRadl = 19;
+constexpr uint8_t kH265NalTypeIdrNLp = 20;
+constexpr uint8_t kH265NalTypeCra = 21;
+constexpr uint8_t kH265NalTypeVps = 32;
+constexpr uint8_t kH265NalTypeSps = 33;
+constexpr uint8_t kH265NalTypePps = 34;
+constexpr uint8_t kH265NalTypeAud = 35;
 
 struct H264NalUnit {
     const uint8_t *data = nullptr;
@@ -46,6 +57,23 @@ struct H265NalUnitList {
     bool Add(const H265NalUnit &unit);
 };
 
+struct H264ParameterSets {
+    std::string sps;
+    std::string pps;
+
+    bool complete() const { return !sps.empty() && !pps.empty(); }
+};
+
+struct H265ParameterSets {
+    std::string vps;
+    std::string sps;
+    std::string pps;
+
+    bool complete() const {
+        return !vps.empty() && !sps.empty() && !pps.empty();
+    }
+};
+
 struct AnnexBNalUnit {
     const uint8_t *data = nullptr;
     size_t size = 0;
@@ -61,6 +89,10 @@ public:
 };
 
 bool IsKeyFrame(FrameType frame_type);
+bool IsH264ParameterSetNal(uint8_t nal_type);
+bool IsH265ParameterSetNal(uint8_t nal_type);
+bool IsH264IdrNal(uint8_t nal_type);
+bool IsH265IdrNal(uint8_t nal_type);
 
 void StripAnnexBStartCode(const uint8_t **payload, size_t *size);
 
@@ -86,6 +118,10 @@ bool HasH264KeyFrame(const H264NalUnitList &units);
 
 bool HasH265KeyFrame(const H265NalUnitList &units);
 
+H264ParameterSets ExtractH264ParameterSets(const H264NalUnitList &units);
+
+H265ParameterSets ExtractH265ParameterSets(const H265NalUnitList &units);
+
 void ExtractH264ParameterSets(const H264NalUnitList &units, std::string *sps,
                               std::string *pps, bool *has_sps,
                               bool *has_pps);
@@ -94,7 +130,22 @@ void ExtractH265ParameterSets(const H265NalUnitList &units, std::string *vps,
                               std::string *sps, std::string *pps,
                               bool *has_vps, bool *has_sps, bool *has_pps);
 
-}  // namespace stream_codec
+bool WriteNalLengthPrefix(size_t nal_size, uint8_t *out);
+
+bool AppendLengthPrefixedNal(const uint8_t *data,
+                             size_t size,
+                             std::string *out);
+
+bool BuildH264AvccRecord(const std::string &sps,
+                         const std::string &pps,
+                         std::string *record);
+
+bool BuildH265HvccRecord(const std::string &vps,
+                         const std::string &sps,
+                         const std::string &pps,
+                         std::string *record);
+
+}  // namespace media_codec
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_MEDIA_CODEC_MEDIA_CODEC_H_

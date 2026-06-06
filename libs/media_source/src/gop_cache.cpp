@@ -26,7 +26,7 @@ uint32_t GopCache::FirstFlvTagSize() const {
 
 bool GopCache::AppendFlvTag(
     const EncodedFrame &frame, bool keyframe,
-    const stream_mux::FlvVideoTagView &flv_tag_view) {
+    const media_mux::FlvVideoTagView &flv_tag_view) {
     if (keyframe) {
         Clear();
         complete_ = true;
@@ -65,7 +65,7 @@ void GopCache::CopyTo(MediaFlvStartData *start_data) const {
 }
 
 bool GopCache::CopyFlvTagView(
-    const EncodedFrame &frame, const stream_mux::FlvVideoTagView &source,
+    const EncodedFrame &frame, const media_mux::FlvVideoTagView &source,
     MediaFlvCachedVideoTag *target) const {
     if (target == nullptr || !EncodedFrameHasPayload(&frame) ||
         source.slice_count == 0 ||
@@ -81,7 +81,7 @@ bool GopCache::CopyFlvTagView(
     cached_tag.total_size = source.total_size;
     cached_tag.timestamp_ms = source.timestamp_ms;
     for (size_t i = 0; i < source.slice_count; ++i) {
-        const stream_mux::FlvVideoTagSlice &source_slice = source.slices[i];
+        const media_mux::FlvVideoTagSlice &source_slice = source.slices[i];
         MediaFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
         if (source_slice.data == nullptr || source_slice.size == 0) {
             MediaFlvCachedVideoTagUnref(&cached_tag);

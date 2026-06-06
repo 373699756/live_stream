@@ -35,13 +35,13 @@ class RtspRtpSender {
 
   bool SendRtpPacketView(const std::shared_ptr<RtspSession> &session,
                          const EncodedFrame &frame,
-                         const stream_mux::RtpPacketView &packet,
+                         const media_mux::RtpPacketView &packet,
                          const RtspRtpSenderContext &context);
   void NotifyAdaptive(const RtspRtpSenderContext &context,
                       const RtspSession &session,
                       RtspAdaptiveEventType event) const;
 
-  stream_mux::RtpPacketizer packetizer_;
+  media_mux::RtpPacketizer packetizer_;
 };
 
 }  // namespace live_stream

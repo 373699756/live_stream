@@ -27,7 +27,7 @@ NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
 
 bool RtspTransport::SendRtpPacket(
     NetEngine *net_engine, const RtspTransportTarget &target,
-    const EncodedFrame &frame, const stream_mux::RtpPacketView &packet) {
+    const EncodedFrame &frame, const media_mux::RtpPacketView &packet) {
   const size_t packet_size = packet.Size();
   if (net_engine == nullptr || packet_size == 0 || packet_size > 0xffff) {
     return false;
@@ -43,7 +43,7 @@ bool RtspTransport::SendRtpPacket(
                           static_cast<uint16_t>(packet_size));
     ok = slices.Add(interleaved_header, sizeof(interleaved_header));
     for (size_t i = 0; ok && i < packet.slice_count; ++i) {
-      const stream_mux::RtpPacketSlice &slice = packet.slices[i];
+      const media_mux::RtpPacketSlice &slice = packet.slices[i];
       ok = slices.Add(slice.data, slice.size,
                       slice.media_payload ? payload_owner
                                           : NetBufferOwner{});
@@ -53,7 +53,7 @@ bool RtspTransport::SendRtpPacket(
 
   if (target.mode == RtspTransportMode::kUdp && target.udp_socket_id != 0) {
     for (size_t i = 0; ok && i < packet.slice_count; ++i) {
-      const stream_mux::RtpPacketSlice &slice = packet.slices[i];
+      const media_mux::RtpPacketSlice &slice = packet.slices[i];
       ok = slices.Add(slice.data, slice.size,
                       slice.media_payload ? payload_owner
                                           : NetBufferOwner{});

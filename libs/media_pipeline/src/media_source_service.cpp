@@ -71,7 +71,7 @@ public:
     bool DropOldestNonKeyFrame() {
         for (size_t i = 0; i < size_; ++i) {
             const size_t index = (head_ + i) % frames_.size();
-            if (!stream_codec::IsKeyFrame(frames_[index].frame_type)) {
+            if (!media_codec::IsKeyFrame(frames_[index].frame_type)) {
                 RemoveAt(i);
                 return true;
             }
@@ -110,7 +110,7 @@ private:
 };
 
 MediaFlvVideoTagView ToMediaFlvVideoTagView(
-    const stream_mux::FlvVideoTagView &tag) {
+    const media_mux::FlvVideoTagView &tag) {
     MediaFlvVideoTagView output_tag;
     if (tag.slice_count > kMaxMediaFlvVideoTagSlices) {
         return output_tag;
@@ -691,7 +691,7 @@ private:
         const EncodedFrame &frame = payload.encoded_frame;
         std::vector<source_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
-        stream_mux::FlvVideoTagView flv_tag_view;
+        media_mux::FlvVideoTagView flv_tag_view;
         bool has_flv_tag_view = false;
         bool package_hls = false;
         bool package_flv = false;
@@ -807,7 +807,7 @@ private:
     void WriteFlvClients(
         const std::vector<source_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
-        const stream_mux::FlvVideoTagView &flv_tag_view,
+        const media_mux::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
         const EncodedFrame &frame,
         StreamId stream_id) {
@@ -895,7 +895,7 @@ private:
             return false;
         }
         if (queue->Full()) {
-            if (stream_codec::IsKeyFrame(frame.frame_type)) {
+            if (media_codec::IsKeyFrame(frame.frame_type)) {
                 if (!queue->DropOldestNonKeyFrame() && !queue->Empty()) {
                     queue->PopFront();
                 }

@@ -6,7 +6,7 @@
 
 namespace live_stream {
 
-class RtspRtpPacketSink final : public stream_mux::IRtpPacketSink {
+class RtspRtpPacketSink final : public media_mux::IRtpPacketSink {
  public:
   RtspRtpPacketSink(RtspRtpSender *sender,
                     std::shared_ptr<RtspSession> session,
@@ -17,7 +17,7 @@ class RtspRtpPacketSink final : public stream_mux::IRtpPacketSink {
         frame_(frame),
         context_(context) {}
 
-  bool OnRtpPacket(const stream_mux::RtpPacketView &packet) override {
+  bool OnRtpPacket(const media_mux::RtpPacketView &packet) override {
     if (sender_ == nullptr || frame_ == nullptr || context_ == nullptr ||
         !ok_) {
       return false;
@@ -93,7 +93,7 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
 bool RtspRtpSender::SendRtpPacketView(
     const std::shared_ptr<RtspSession> &session,
     const EncodedFrame &frame,
-    const stream_mux::RtpPacketView &packet,
+    const media_mux::RtpPacketView &packet,
     const RtspRtpSenderContext &context) {
   if (session == nullptr || context.mutex == nullptr ||
       context.service_stats == nullptr) {

@@ -22,8 +22,8 @@ using FrameAttachId = uint64_t;
 struct FramePayload {
     EncodedFrame encoded_frame;
     bool has_nal_units = false;
-    stream_codec::H264NalUnitList h264_units;
-    stream_codec::H265NalUnitList h265_units;
+    media_codec::H264NalUnitList h264_units;
+    media_codec::H265NalUnitList h265_units;
 };
 
 inline void FramePayloadInit(FramePayload *payload) {
@@ -32,8 +32,8 @@ inline void FramePayloadInit(FramePayload *payload) {
     }
     EncodedFrameInit(&payload->encoded_frame);
     payload->has_nal_units = false;
-    payload->h264_units = stream_codec::H264NalUnitList{};
-    payload->h265_units = stream_codec::H265NalUnitList{};
+    payload->h264_units = media_codec::H264NalUnitList{};
+    payload->h265_units = media_codec::H265NalUnitList{};
 }
 
 inline void FramePayloadUnref(FramePayload *payload) {
@@ -42,8 +42,8 @@ inline void FramePayloadUnref(FramePayload *payload) {
     }
     EncodedFrameUnref(&payload->encoded_frame);
     payload->has_nal_units = false;
-    payload->h264_units = stream_codec::H264NalUnitList{};
-    payload->h265_units = stream_codec::H265NalUnitList{};
+    payload->h264_units = media_codec::H264NalUnitList{};
+    payload->h265_units = media_codec::H265NalUnitList{};
 }
 
 inline bool FramePayloadRefCopy(FramePayload *target,
@@ -78,8 +78,8 @@ inline bool FramePayloadMove(FramePayload *target, FramePayload *source) {
     target->h264_units = source->h264_units;
     target->h265_units = source->h265_units;
     source->has_nal_units = false;
-    source->h264_units = stream_codec::H264NalUnitList{};
-    source->h265_units = stream_codec::H265NalUnitList{};
+    source->h264_units = media_codec::H264NalUnitList{};
+    source->h265_units = media_codec::H265NalUnitList{};
     return EncodedFrameMove(&target->encoded_frame, &source->encoded_frame);
 }
 

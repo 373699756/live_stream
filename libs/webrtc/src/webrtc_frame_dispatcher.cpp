@@ -23,9 +23,9 @@ WebrtcFrameQueueResult WebrtcFrameDispatcher::Queue(
     }
     if (slot->ready) {
         const bool existing_keyframe =
-            stream_codec::IsKeyFrame(slot->frame.encoded_frame.frame_type);
+            media_codec::IsKeyFrame(slot->frame.encoded_frame.frame_type);
         const bool new_keyframe =
-            stream_codec::IsKeyFrame(frame.encoded_frame.frame_type);
+            media_codec::IsKeyFrame(frame.encoded_frame.frame_type);
         if (existing_keyframe && !new_keyframe) {
             result.dropped_frames = 1;
             return result;

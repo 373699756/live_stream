@@ -7,6 +7,7 @@
 ## 模块定位
 
 `media_mux` 提供媒体封装辅助，例如 HLS、FLV 或其他下游协议需要的输出构造。
+任务 8 后本模块仍作为过渡封装模块存在，但内部文件已按 RTP、FLV、HLS 职责拆分。
 它不拥有客户端注册、HTTP socket、playlist 状态或媒体源生命周期。
 
 ## 总体框架图
@@ -16,29 +17,54 @@ flowchart LR
   Frame[EncodedFrame + codec metadata] --> Mux[media_mux]
   Mux --> FLV[FLV tags]
   Mux --> HLS[HLS/TS/fMP4 related output]
-  Mux --> Protocol[media_source/http]
+  Mux --> RTP[RTP packets]
+  Mux --> Protocol[media_source/rtsp/webrtc]
 ```
 
 ## 核心职责
 
 - 把编码帧和 codec metadata 转成下游协议需要的封装片段。
+- 提供 RTSP/WebRTC 共用 `RtpPacketizer`，避免协议模块各自实现 H.264/H.265 RTP 分片。
+- 提供 FLV tag 和 HLS/TS segment body 构造；后续任务可以按协议边界继续拆入
+  `http_media`、`rtsp` 或 `webrtc`。
 - 尽量输出 slice/view，减少热路径 string 拼接和 payload 拷贝。
 
 ## 接口归属
 
 public API 在 `media_mux.h`，归 `media_mux` 命名空间：
 
-- RTP：`RtpPacketizer`、`RtpPacketView`、`IRtpPacketSink`。
+- RTP：`RtpPacketizerOptions`、`RtpPacketizerInput`、`RtpPacketizer`、
+  `RtpPacketView`、`IRtpPacketSink`。
 - FLV：`BuildFlvFileHeader`、`BuildH264FlvSequenceHeaderTag`、
   `BuildH265FlvSequenceHeaderTag`、`Build*FlvVideoTagView`。
 - HLS/TS：`TsMuxerState`、`TsSegmentBuffer`、`AppendTsSegmentHeader`、
   `Append*NalUnitsToTsSegmentBuffer`。
 
+实现文件按职责拆分：
+
+- `rtp_packetizer.cpp`：H.264 FU-A、H.265 FU、RTP header、seq、ssrc、
+  timestamp、marker bit 和 payload type。
+- `flv_muxer.cpp`：FLV file header、H.264/H.265 sequence header 和 video tag view。
+- `hls_maker.cpp`：PAT/PMT、PES、TS packet 写入和 HLS segment body 追加。
+
 ## 状态与资源模型
 
-`RtpPacketView` 和 `FlvVideoTagView` 是 slice/view 输出，payload 指针仍指向输入帧或
-调用方提供的临时 header buffer。调用方必须在输入帧生命周期内完成发送或复制。
+`RtpPacketView` 和 `FlvVideoTagView` 是 slice/view 输出。`RtpPacketView` 自持 RTP
+header 和 FU header，media payload slice 仍指向输入帧 payload；发送层如果异步持有
+payload，必须保留输入帧/VideoBuffer 引用。`FlvVideoTagView` 自持 FLV tag header、
+NAL length 和 PreviousTagSize，media payload slice 仍指向输入帧 payload。
 `TsSegmentBuffer` 的内存由调用方分配并控制容量，`media_mux` 只追加封装字节。
+
+## 任务 8 冻结结果
+
+- 生产命名空间已从旧 `stream_mux` 收敛为 `media_mux`。
+- `RtpPacketizer` 冻结为 RTSP/WebRTC 共用契约，支持 H.264/H.265 AnnexB 输入、
+  seq/ssrc/timestamp/payload type、marker bit 和 FU 分片；`RtpPacketizerInput`
+  的 `payload_type=0` 表示按 codec 使用 `RtpPacketizerOptions` 默认值。
+- RTSP 已从 `media_mux::RtpPacketizer` 取 `RtpPacketView`，WebRTC 任务后续应复用
+  同一 packetizer 接口，不再新增私有 RTP 分片器。
+- `media_mux` 继续是过渡模块；FLV/HLS/RTP 的最终协议归属可在任务 7、9、10 中继续
+  下沉，但不能恢复旧 `stream_mux` 泛名接口或只转调 wrapper。
 
 ## 非目标
 

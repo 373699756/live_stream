@@ -55,11 +55,11 @@ private:
     static uint32_t ClampSegmentCapacity(size_t capacity);
     static bool EnsureSegmentCapacity(SegmentState *segment,
                                       size_t extra_bytes);
-    static stream_mux::TsSegmentBuffer SegmentBuffer(
+    static media_mux::TsSegmentBuffer SegmentBuffer(
         SegmentState *segment);
     static bool CommitSegmentBuffer(
         SegmentState *segment,
-        const stream_mux::TsSegmentBuffer &buffer);
+        const media_mux::TsSegmentBuffer &buffer);
 
     void ClearSegments();
     void ObserveFrameTiming(const EncodedFrame &frame);
@@ -78,7 +78,7 @@ private:
 
     std::deque<MediaSegmentRef> segments_;
     SegmentState current_segment_;
-    stream_mux::TsMuxerState ts_muxer_state_;
+    media_mux::TsMuxerState ts_muxer_state_;
     uint32_t next_segment_capacity_ = 0;
     uint64_t next_segment_sequence_ = 1;
     int64_t last_pts_us_ = -1;

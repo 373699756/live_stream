@@ -10,16 +10,21 @@
 #include <string>
 
 namespace live_stream {
-namespace stream_codec {
+namespace media_codec {
 struct H264NalUnitList;
 struct H265NalUnitList;
-}  // namespace stream_codec
+}  // namespace media_codec
 
-namespace stream_mux {
+namespace media_mux {
 
 constexpr size_t kMaxRtpPacketSlices = 4;
+constexpr uint8_t kRtpPayloadTypeH264 = 96;
+constexpr uint8_t kRtpPayloadTypeH265 = 98;
+constexpr uint32_t kRtpClockRate = 90000;
+constexpr size_t kRtpHeaderSize = 12;
+constexpr size_t kMaxRtpPayloadHeaderSize = 3;
 constexpr size_t kMaxFlvVideoTagSlices =
-    stream_codec::kMaxNalUnitsPerFrame * 2 + 2;
+    media_codec::kMaxNalUnitsPerFrame * 2 + 2;
 
 struct RtpPacketSlice {
     const uint8_t *data = nullptr;
@@ -31,12 +36,37 @@ struct RtpPacketView {
     RtpPacketSlice slices[kMaxRtpPacketSlices];
     size_t slice_count = 0;
     bool marker = false;
+    uint8_t payload_type = 0;
+    uint16_t sequence = 0;
+    uint32_t timestamp = 0;
+    uint32_t ssrc = 0;
+    uint8_t rtp_header[kRtpHeaderSize] = {};
+    uint8_t payload_header[kMaxRtpPayloadHeaderSize] = {};
 
-    bool AddHeader(const uint8_t *data, size_t size) {
-        return Add(data, size, false);
+    bool SetRtpHeader(const uint8_t *data, size_t size) {
+        if (data == nullptr || size != sizeof(rtp_header)) {
+            return false;
+        }
+        for (size_t i = 0; i < size; ++i) {
+            rtp_header[i] = data[i];
+        }
+        return Add(rtp_header, size, false);
     }
 
-    bool AddPayload(const uint8_t *data, size_t size) {
+    bool SetPayloadHeader(const uint8_t *data, size_t size) {
+        if (size == 0) {
+            return true;
+        }
+        if (data == nullptr || size > sizeof(payload_header)) {
+            return false;
+        }
+        for (size_t i = 0; i < size; ++i) {
+            payload_header[i] = data[i];
+        }
+        return Add(payload_header, size, false);
+    }
+
+    bool SetPayload(const uint8_t *data, size_t size) {
         return Add(data, size, true);
     }
 
@@ -112,29 +142,48 @@ public:
     virtual bool OnRtpPacket(const RtpPacketView &packet) = 0;
 };
 
+struct RtpPacketizerOptions {
+    uint32_t mtu_bytes = 1200;
+    uint32_t clock_rate = kRtpClockRate;
+    uint8_t h264_payload_type = kRtpPayloadTypeH264;
+    uint8_t h265_payload_type = kRtpPayloadTypeH265;
+};
+
+struct RtpPacketizerInput {
+    VideoCodec codec = VideoCodec::kH264;
+    const uint8_t *payload = nullptr;
+    size_t payload_size = 0;
+    int64_t pts_us = 0;
+    uint16_t *sequence = nullptr;
+    uint32_t ssrc = 0;
+    uint8_t payload_type = 0;
+};
+
 class RtpPacketizer {
 public:
     explicit RtpPacketizer(uint32_t mtu_bytes);
+    explicit RtpPacketizer(const RtpPacketizerOptions &options);
 
+    bool Packetize(const RtpPacketizerInput &input,
+                   IRtpPacketSink *sink) const;
     bool Packetize(const EncodedFrame &frame, uint16_t *sequence, uint32_t ssrc,
                    IRtpPacketSink *sink) const;
 
 private:
-    bool SendRtpPacket(const EncodedFrame &frame, const uint8_t *prefix,
+    bool SendRtpPacket(const RtpPacketizerInput &input, const uint8_t *prefix,
                        uint32_t prefix_size, const uint8_t *payload,
-                       uint32_t size, bool marker, uint16_t *sequence,
-                       uint32_t ssrc, IRtpPacketSink *sink) const;
-    bool PacketizeNal(const EncodedFrame &frame, const uint8_t *payload,
-                      uint32_t size, bool marker, uint16_t *sequence,
-                      uint32_t ssrc, IRtpPacketSink *sink) const;
-    bool PacketizeH264(const EncodedFrame &frame, const uint8_t *payload,
-                       uint32_t size, bool marker, uint16_t *sequence,
-                       uint32_t ssrc, IRtpPacketSink *sink) const;
-    bool PacketizeH265(const EncodedFrame &frame, const uint8_t *payload,
-                       uint32_t size, bool marker, uint16_t *sequence,
-                       uint32_t ssrc, IRtpPacketSink *sink) const;
+                       uint32_t size, bool marker,
+                       IRtpPacketSink *sink) const;
+    bool PacketizeNal(const RtpPacketizerInput &input, const uint8_t *payload,
+                      uint32_t size, bool marker, IRtpPacketSink *sink) const;
+    bool PacketizeH264(const RtpPacketizerInput &input, const uint8_t *payload,
+                       uint32_t size, bool marker,
+                       IRtpPacketSink *sink) const;
+    bool PacketizeH265(const RtpPacketizerInput &input, const uint8_t *payload,
+                       uint32_t size, bool marker,
+                       IRtpPacketSink *sink) const;
 
-    uint32_t mtu_bytes_ = 1200;
+    RtpPacketizerOptions options_;
 };
 
 struct TsMuxerState {
@@ -162,19 +211,19 @@ std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
 
 bool BuildH264FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
                               uint32_t timestamp_ms,
-                              const stream_codec::H264NalUnitList &units,
+                              const media_codec::H264NalUnitList &units,
                               FlvVideoTagView *tag);
 
 bool BuildH265FlvVideoTagView(bool keyframe, int32_t composition_time_ms,
                               uint32_t timestamp_ms,
-                              const stream_codec::H265NalUnitList &units,
+                              const media_codec::H265NalUnitList &units,
                               FlvVideoTagView *tag);
 
 bool AppendTsSegmentHeader(VideoCodec codec, TsMuxerState *state,
                            TsSegmentBuffer *segment_body);
 
 bool AppendH264NalUnitsToTsSegmentBuffer(
-    const stream_codec::H264NalUnitList &units,
+    const media_codec::H264NalUnitList &units,
     const std::string &sps,
     const std::string &pps,
     bool prepend_parameter_sets,
@@ -183,7 +232,7 @@ bool AppendH264NalUnitsToTsSegmentBuffer(
     TsSegmentBuffer *segment_body);
 
 bool AppendH265NalUnitsToTsSegmentBuffer(
-    const stream_codec::H265NalUnitList &units,
+    const media_codec::H265NalUnitList &units,
     const std::string &vps,
     const std::string &sps,
     const std::string &pps,
@@ -192,7 +241,7 @@ bool AppendH265NalUnitsToTsSegmentBuffer(
     TsMuxerState *state,
     TsSegmentBuffer *segment_body);
 
-}  // namespace stream_mux
+}  // namespace media_mux
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_MEDIA_MUX_MEDIA_MUX_H_

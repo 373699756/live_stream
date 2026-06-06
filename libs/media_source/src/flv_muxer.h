@@ -10,7 +10,7 @@
 namespace live_stream {
 namespace media_source_internal {
 
-using FlvVideoTagView = stream_mux::FlvVideoTagView;
+using FlvVideoTagView = media_mux::FlvVideoTagView;
 
 class FlvMuxer {
 public:

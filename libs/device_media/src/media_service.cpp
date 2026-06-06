@@ -269,18 +269,18 @@ bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
     }
 
     if (frame.codec == VideoCodec::kH265) {
-        stream_codec::H265NalUnitList units;
-        return stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
-               stream_codec::HasCompleteH265ParameterSets(units);
+        media_codec::H265NalUnitList units;
+        return media_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
+               media_codec::HasCompleteH265ParameterSets(units);
     }
 
-    stream_codec::H264NalUnitList units;
-    return stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
-           stream_codec::HasCompleteH264ParameterSets(units);
+    media_codec::H264NalUnitList units;
+    return media_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
+           media_codec::HasCompleteH264ParameterSets(units);
 }
 
 bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
-    if (stream_codec::IsKeyFrame(frame.frame_type) ||
+    if (media_codec::IsKeyFrame(frame.frame_type) ||
         frame.frame_type == FrameType::kJpeg) {
         return true;
     }
@@ -290,14 +290,14 @@ bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
     }
 
     if (frame.codec == VideoCodec::kH265) {
-        stream_codec::H265NalUnitList units;
-        return stream_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
-               stream_codec::HasH265KeyFrame(units);
+        media_codec::H265NalUnitList units;
+        return media_codec::ParseH265AnnexBNalUnits(data, frame.size, &units) &&
+               media_codec::HasH265KeyFrame(units);
     }
     if (frame.codec == VideoCodec::kH264) {
-        stream_codec::H264NalUnitList units;
-        return stream_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
-               stream_codec::HasH264KeyFrame(units);
+        media_codec::H264NalUnitList units;
+        return media_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
+               media_codec::HasH264KeyFrame(units);
     }
     return false;
 }

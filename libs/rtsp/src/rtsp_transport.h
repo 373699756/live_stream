@@ -24,7 +24,7 @@ class RtspTransport {
   static bool SendRtpPacket(NetEngine *net_engine,
                             const RtspTransportTarget &target,
                             const EncodedFrame &frame,
-                            const stream_mux::RtpPacketView &packet);
+                            const media_mux::RtpPacketView &packet);
 };
 
 }  // namespace live_stream

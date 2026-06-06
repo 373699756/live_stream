@@ -16,7 +16,7 @@ HlsMaker::~HlsMaker() { Reset(); }
 void HlsMaker::Reset() {
     ClearSegments();
     UnrefSegmentState(&current_segment_);
-    ts_muxer_state_ = stream_mux::TsMuxerState{};
+    ts_muxer_state_ = media_mux::TsMuxerState{};
     next_segment_capacity_ = 0;
     next_segment_sequence_ = 1;
     last_pts_us_ = -1;
@@ -165,9 +165,9 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
     return true;
 }
 
-stream_mux::TsSegmentBuffer HlsMaker::SegmentBuffer(
+media_mux::TsSegmentBuffer HlsMaker::SegmentBuffer(
     SegmentState *segment) {
-    stream_mux::TsSegmentBuffer buffer;
+    media_mux::TsSegmentBuffer buffer;
     if (segment == nullptr || segment->body == nullptr) {
         return buffer;
     }
@@ -179,7 +179,7 @@ stream_mux::TsSegmentBuffer HlsMaker::SegmentBuffer(
 
 bool HlsMaker::CommitSegmentBuffer(
     SegmentState *segment,
-    const stream_mux::TsSegmentBuffer &buffer) {
+    const media_mux::TsSegmentBuffer &buffer) {
     return segment != nullptr && segment->body != nullptr &&
            buffer.size <= segment->body->capacity &&
            VideoBufferSetSize(segment->body,
@@ -210,18 +210,18 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         return false;
     }
     for (size_t attempt = 0; attempt < 8; ++attempt) {
-        stream_mux::TsSegmentBuffer segment_body =
+        media_mux::TsSegmentBuffer segment_body =
             SegmentBuffer(&current_segment_);
         const size_t original_size = segment_body.size;
-        stream_mux::TsMuxerState original_state = ts_muxer_state_;
+        media_mux::TsMuxerState original_state = ts_muxer_state_;
         bool appended = false;
         if (frame.codec == VideoCodec::kH265) {
-            appended = stream_mux::AppendH265NalUnitsToTsSegmentBuffer(
+            appended = media_mux::AppendH265NalUnitsToTsSegmentBuffer(
                 payload.h265_units, vps, sps, pps, prepend_parameter_sets,
                 frame.pts_us, frame.dts_us,
                 &ts_muxer_state_, &segment_body);
         } else {
-            appended = stream_mux::AppendH264NalUnitsToTsSegmentBuffer(
+            appended = media_mux::AppendH264NalUnitsToTsSegmentBuffer(
                 payload.h264_units, sps, pps, prepend_parameter_sets,
                 frame.pts_us, frame.dts_us, &ts_muxer_state_, &segment_body);
         }
@@ -260,9 +260,9 @@ void HlsMaker::StartSegment(VideoCodec codec, int64_t pts_us) {
         UnrefSegmentState(&current_segment_);
         return;
     }
-    stream_mux::TsSegmentBuffer segment_body =
+    media_mux::TsSegmentBuffer segment_body =
         SegmentBuffer(&current_segment_);
-    if (!stream_mux::AppendTsSegmentHeader(codec, &ts_muxer_state_,
+    if (!media_mux::AppendTsSegmentHeader(codec, &ts_muxer_state_,
                                            &segment_body) ||
         !CommitSegmentBuffer(&current_segment_, segment_body)) {
         UnrefSegmentState(&current_segment_);

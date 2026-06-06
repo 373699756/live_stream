@@ -59,7 +59,7 @@ std::vector<PendingFrameRingWrite> FrameRing::Write(
     }
 
     const bool key_frame =
-        stream_codec::IsKeyFrame(encoded_frame.frame_type);
+        media_codec::IsKeyFrame(encoded_frame.frame_type);
     const uint64_t sequence = next_sequence_++;
     (void)AppendToCache(
         FindCache(encoded_frame.stream_id, &main_cache_, &sub_cache_),

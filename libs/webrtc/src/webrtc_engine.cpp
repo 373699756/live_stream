@@ -132,9 +132,9 @@ YangPushData *QueueMetaRtcPayload(YangRtcPacer *pacer,
 }
 
 H264ParameterSets CollectH264ParameterSets(
-    const stream_codec::H264NalUnitList &nals, VideoParameterCache *cache) {
+    const media_codec::H264NalUnitList &nals, VideoParameterCache *cache) {
     H264ParameterSets sets;
-    for (const stream_codec::H264NalUnit &nal : nals) {
+    for (const media_codec::H264NalUnit &nal : nals) {
         if (nal.type == 7) {
             sets.sps = ParameterSetRef{nal.data, nal.size};
             if (cache != nullptr) {
@@ -157,9 +157,9 @@ H264ParameterSets CollectH264ParameterSets(
 }
 
 H265ParameterSets CollectH265ParameterSets(
-    const stream_codec::H265NalUnitList &nals, VideoParameterCache *cache) {
+    const media_codec::H265NalUnitList &nals, VideoParameterCache *cache) {
     H265ParameterSets sets;
-    for (const stream_codec::H265NalUnit &nal : nals) {
+    for (const media_codec::H265NalUnit &nal : nals) {
         if (nal.type == 32) {
             sets.vps = ParameterSetRef{nal.data, nal.size};
             if (cache != nullptr) {
@@ -201,7 +201,7 @@ bool HasH265ParameterSets(const H265ParameterSets &sets) {
 YangPushData *QueueRawFrame(YangRtcPacer *pacer, const EncodedFrame &frame,
                             const uint8_t *data) {
     std::size_t size = frame.size;
-    stream_codec::StripAnnexBStartCode(&data, &size);
+    media_codec::StripAnnexBStartCode(&data, &size);
     const uint64_t pts_us =
         frame.pts_us > 0 ? static_cast<uint64_t>(frame.pts_us) : 0;
     return QueueMetaRtcPayload(pacer, data, size,
@@ -216,7 +216,7 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
     if (data == nullptr) {
         return nullptr;
     }
-    const stream_codec::H264NalUnitList &nals = frame.h264_units;
+    const media_codec::H264NalUnitList &nals = frame.h264_units;
     const uint64_t pts_us = encoded_frame.pts_us > 0
                                 ? static_cast<uint64_t>(encoded_frame.pts_us)
                                 : 0;
@@ -229,7 +229,7 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
     std::vector<uint8_t> idr_payload;
     YangPushData *push_data = nullptr;
     bool sent_idr_with_meta = false;
-    for (const stream_codec::H264NalUnit &nal : nals) {
+    for (const media_codec::H264NalUnit &nal : nals) {
         if (!IsH264VclNal(nal.type)) {
             continue;
         }
@@ -239,11 +239,11 @@ YangPushData *QueueH264Frame(YangRtcPacer *pacer,
             idr_payload.reserve(12 + parameter_sets.sps.size +
                                 parameter_sets.pps.size + nal.size);
             AppendAnnexBNal(
-                stream_codec::H264NalUnit{parameter_sets.sps.data,
+                media_codec::H264NalUnit{parameter_sets.sps.data,
                                           parameter_sets.sps.size, 7},
                 &idr_payload);
             AppendAnnexBNal(
-                stream_codec::H264NalUnit{parameter_sets.pps.data,
+                media_codec::H264NalUnit{parameter_sets.pps.data,
                                           parameter_sets.pps.size, 8},
                 &idr_payload);
             AppendAnnexBNal(nal, &idr_payload);
@@ -272,7 +272,7 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
     if (data == nullptr) {
         return nullptr;
     }
-    const stream_codec::H265NalUnitList &nals = frame.h265_units;
+    const media_codec::H265NalUnitList &nals = frame.h265_units;
     const uint64_t pts_us = encoded_frame.pts_us > 0
                                 ? static_cast<uint64_t>(encoded_frame.pts_us)
                                 : 0;
@@ -285,7 +285,7 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
     std::vector<uint8_t> key_payload;
     YangPushData *push_data = nullptr;
     bool sent_key_frame_with_meta = false;
-    for (const stream_codec::H265NalUnit &nal : nals) {
+    for (const media_codec::H265NalUnit &nal : nals) {
         if (!IsH265VclNal(nal.type)) {
             continue;
         }
@@ -296,15 +296,15 @@ YangPushData *QueueH265Frame(YangRtcPacer *pacer,
                                 parameter_sets.sps.size +
                                 parameter_sets.pps.size + nal.size);
             AppendAnnexBNal(
-                stream_codec::H265NalUnit{parameter_sets.vps.data,
+                media_codec::H265NalUnit{parameter_sets.vps.data,
                                           parameter_sets.vps.size, 32},
                 &key_payload);
             AppendAnnexBNal(
-                stream_codec::H265NalUnit{parameter_sets.sps.data,
+                media_codec::H265NalUnit{parameter_sets.sps.data,
                                           parameter_sets.sps.size, 33},
                 &key_payload);
             AppendAnnexBNal(
-                stream_codec::H265NalUnit{parameter_sets.pps.data,
+                media_codec::H265NalUnit{parameter_sets.pps.data,
                                           parameter_sets.pps.size, 34},
                 &key_payload);
             AppendAnnexBNal(nal, &key_payload);

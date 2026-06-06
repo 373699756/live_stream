@@ -23,12 +23,12 @@ public:
     size_t size() const { return size_; }
     uint32_t FirstFlvTagSize() const;
     bool AppendFlvTag(const EncodedFrame &frame, bool keyframe,
-                      const stream_mux::FlvVideoTagView &flv_tag_view);
+                      const media_mux::FlvVideoTagView &flv_tag_view);
     void CopyTo(MediaFlvStartData *start_data) const;
 
 private:
     bool CopyFlvTagView(const EncodedFrame &frame,
-                        const stream_mux::FlvVideoTagView &source,
+                        const media_mux::FlvVideoTagView &source,
                         MediaFlvCachedVideoTag *target) const;
 
     std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames_;
