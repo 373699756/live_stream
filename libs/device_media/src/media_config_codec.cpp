@@ -1,7 +1,7 @@
 #include "media_config_codec.h"
 
 #include "json_utils.h"
-#include "media_pipeline.h"
+#include "device_media_pipeline.h"
 
 #include <cctype>
 #include <cstdint>

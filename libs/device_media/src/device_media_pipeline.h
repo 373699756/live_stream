@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
-#define LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_PIPELINE_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_PIPELINE_H_
 
 #include "media/frame_attach.h"
 #include "media/stream_types.h"
@@ -18,10 +18,10 @@ struct ExposureInfo;
 bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config);
 bool IsValidMediaStream(StreamId stream_id);
 
-class MediaPipeline {
+class DeviceMediaPipeline {
 public:
-    explicit MediaPipeline(MediaPipelineConfig config);
-    MediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk);
+    explicit DeviceMediaPipeline(MediaPipelineConfig config);
+    DeviceMediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk);
 
     const MediaPipelineConfig& config() const { return config_; }
     void SetConfig(const MediaPipelineConfig& config);
@@ -57,4 +57,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_PIPELINE_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_PIPELINE_H_

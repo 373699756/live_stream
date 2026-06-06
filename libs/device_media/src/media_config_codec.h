@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_CONFIG_CODEC_H_
-#define LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_CONFIG_CODEC_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CONFIG_CODEC_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CONFIG_CODEC_H_
 
 #include "config.h"
 #include "config_json.h"
@@ -59,4 +59,4 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SERVICE_SRC_MEDIA_CONFIG_CODEC_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CONFIG_CODEC_H_

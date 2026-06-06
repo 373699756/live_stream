@@ -6,9 +6,10 @@
 
 ## 模块定位
 
-`device_media` 拥有视频 pipeline 生命周期、主/子码流启动停止、MPP/VENC/ISP
-适配、编码帧输出、抓图来源、关键帧请求和视频/图像配置应用。它不拥有 RTSP、
-HTTP、WebRTC、HLS/FLV 请求解析或 Web Console DTO。
+`device_media` 拥有设备侧视频 pipeline 生命周期、主/子码流启动停止、MPP/VENC/ISP
+适配、编码帧输出、抓图来源、关键帧请求和视频/图像配置应用。它只面向
+`media_pipeline` 输出设备编码帧，不拥有 RTSP、HTTP、WebRTC、HLS/FLV 请求解析、
+协议缓存、socket 发送队列或 Web Console DTO。
 
 ## 总体框架图
 
@@ -29,6 +30,8 @@ flowchart LR
 - 启动和停止视频 pipeline。
 - 维护 stream 是否启动、codec、capabilities、channels。
 - 对外提供 `AttachFrameSink`、`DetachFrameSink`、`RequestKeyFrame`。
+- 通过内部 `DeviceMediaPipeline` 管理 MPP/VI/VPSS/VENC 生命周期；该私有类不是
+  `media_pipeline` 模块，也不参与协议分发。
 - 应用 video/image 配置，并通过 SDK 控制 ISP、VENC 和相关媒体资源。
 - 提供 `ImageStrategyStatus` 供 HTTP/Web 展示图像策略运行状态。
 
@@ -62,8 +65,10 @@ validate/apply。
 ## 状态与资源模型
 
 `device_media` 是最接近硬件 pipeline 的状态拥有者。帧订阅是跨模块边界，订阅方
-不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。关键帧请求必须通过
-`RequestKeyFrame` 进入媒体模块。
+不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。`device_media` 只缓存设备
+订阅所需的最近关键帧，用于新订阅方 keyframe-first 启动；GOP、HLS、FLV、MJPEG
+ready、时间戳修正和协议 reader 缓存归 `media_source`/`media_pipeline` 主链路。
+关键帧请求必须通过 `RequestKeyFrame` 进入媒体模块。
 
 ## 音视频专项边界
 

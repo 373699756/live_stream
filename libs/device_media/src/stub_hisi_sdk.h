@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SERVICE_SRC_STUB_HISI_SDK_H_
-#define LIVE_STREAM_MEDIA_SERVICE_SRC_STUB_HISI_SDK_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_STUB_HISI_SDK_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_STUB_HISI_SDK_H_
 
 #include "hisisdk/hisi_sdk.h"
 
@@ -55,4 +55,4 @@ public:
 }  // namespace hisisdk
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SERVICE_SRC_STUB_HISI_SDK_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_STUB_HISI_SDK_H_

@@ -98,7 +98,7 @@ MediaPipelineOptions BuildMediaPipelineOptions() {
 MediaPipelineDependencies BuildMediaPipelineDependencies(
     const ProtocolRuntimeRefs &refs) {
     MediaPipelineDependencies dependencies;
-    dependencies.device_media = refs.media.media;
+    dependencies.device_media = refs.media.device_media;
     return dependencies;
 }
 
@@ -128,7 +128,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system = refs.device.system;
     dependencies.time = refs.device.time;
-    dependencies.device_media = refs.media.media;
+    dependencies.device_media = refs.media.device_media;
     return dependencies;
 }
 
@@ -278,7 +278,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.core != nullptr ? refs.core->config() : nullptr,
         refs.device.network, refs.device.time, refs.device.alarm,
         refs.device.upgrade, refs.device.system, refs.rtsp,
-        refs.onvif, refs.media.ai, refs.media.media,
+        refs.onvif, refs.media.ai, refs.media.device_media,
         refs.media.snapshot, refs.webrtc, refs.media_pipeline,
         refs.media_pipeline, refs.media_pipeline);
     if (!http_ || !http_->Start()) {

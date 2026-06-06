@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SERVICE_SRC_MJPEG_CLIENT_REGISTRY_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SERVICE_SRC_MJPEG_CLIENT_REGISTRY_H_
+#ifndef LIVE_STREAM_MEDIA_PIPELINE_SRC_MJPEG_CLIENT_REGISTRY_H_
+#define LIVE_STREAM_MEDIA_PIPELINE_SRC_MJPEG_CLIENT_REGISTRY_H_
 
 #include "media_pipeline.h"
 
@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace live_stream {
-namespace media_source_service_internal {
+namespace media_pipeline_internal {
 
 struct PendingMjpegClientWrite {
     MediaMjpegClientId client_id = 0;
@@ -45,7 +45,7 @@ private:
     MediaMjpegClientId next_mjpeg_client_id_ = 0x8000000000000001ULL;
 };
 
-}  // namespace media_source_service_internal
+}  // namespace media_pipeline_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SERVICE_SRC_MJPEG_CLIENT_REGISTRY_H_
+#endif  // LIVE_STREAM_MEDIA_PIPELINE_SRC_MJPEG_CLIENT_REGISTRY_H_

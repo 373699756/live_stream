@@ -1,4 +1,4 @@
-#include "media_pipeline.h"
+#include "device_media_pipeline.h"
 
 #include "hisisdk/hisi_sdk.h"
 
@@ -58,28 +58,30 @@ bool IsValidMediaStream(StreamId stream_id) {
            stream_id == StreamId::kSub;
 }
 
-MediaPipeline::MediaPipeline(MediaPipelineConfig config)
-    : MediaPipeline(std::move(config), &hisisdk::DefaultSdk()) {}
+DeviceMediaPipeline::DeviceMediaPipeline(MediaPipelineConfig config)
+    : DeviceMediaPipeline(std::move(config), &hisisdk::DefaultSdk()) {}
 
-MediaPipeline::MediaPipeline(MediaPipelineConfig config, hisisdk::IHisiSdk* sdk)
+DeviceMediaPipeline::DeviceMediaPipeline(MediaPipelineConfig config,
+                                         hisisdk::IHisiSdk* sdk)
     : sdk_(sdk != nullptr ? sdk : &hisisdk::DefaultSdk()),
       config_(std::move(config)) {}
 
-void MediaPipeline::SetConfig(const MediaPipelineConfig& config) {
+void DeviceMediaPipeline::SetConfig(const MediaPipelineConfig& config) {
     config_ = config;
     BuildChannels();
 }
 
-void MediaPipeline::SetFrameCallback(EncodedFrameCallback callback, void* user) {
+void DeviceMediaPipeline::SetFrameCallback(EncodedFrameCallback callback,
+                                           void* user) {
     frame_callback_ = callback;
     frame_callback_user_ = user;
 }
 
-MediaCapabilities MediaPipeline::GetCapabilities() const {
+MediaCapabilities DeviceMediaPipeline::GetCapabilities() const {
     return sdk_->GetCapabilities();
 }
 
-bool MediaPipeline::InitSystem() {
+bool DeviceMediaPipeline::InitSystem() {
     if (!IsValidMediaPipelineConfig(config_)) {
         return false;
     }
@@ -92,7 +94,7 @@ bool MediaPipeline::InitSystem() {
     return true;
 }
 
-void MediaPipeline::DeinitSystem() {
+void DeviceMediaPipeline::DeinitSystem() {
     Stop();
     if (system_initialized_) {
         sdk_->DeinitSystem();
@@ -100,7 +102,7 @@ void MediaPipeline::DeinitSystem() {
     system_initialized_ = false;
 }
 
-bool MediaPipeline::Start() {
+bool DeviceMediaPipeline::Start() {
     if (!system_initialized_) {
         return false;
     }
@@ -144,7 +146,7 @@ bool MediaPipeline::Start() {
     return true;
 }
 
-void MediaPipeline::Stop() {
+void DeviceMediaPipeline::Stop() {
     if (stream_started_) {
         sdk_->StopVencStream(config_);
         stream_started_ = false;
@@ -171,15 +173,15 @@ void MediaPipeline::Stop() {
     }
 }
 
-bool MediaPipeline::ApplyImageConfig(const ConfigJson& image_config) {
+bool DeviceMediaPipeline::ApplyImageConfig(const ConfigJson& image_config) {
     return sdk_->ApplyImageConfig(config_, image_config);
 }
 
-hisisdk::ExposureInfo MediaPipeline::QueryExposureInfo() const {
+hisisdk::ExposureInfo DeviceMediaPipeline::QueryExposureInfo() const {
     return sdk_->QueryExposureInfo(config_);
 }
 
-void MediaPipeline::BuildChannels() {
+void DeviceMediaPipeline::BuildChannels() {
     channels_.vi = MppChannel{MppModule::kVi, config_.video_pipe,
                               config_.vi_channel};
     channels_.vpss = MppChannel{MppModule::kVpss, config_.vpss_group,
