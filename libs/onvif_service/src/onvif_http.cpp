@@ -1,12 +1,12 @@
 #include "onvif_http.h"
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-HttpRequest ParseHttpRequest(const std::string& raw) {
+OnvifHttpRequest ParseOnvifHttpRequest(const std::string &raw) {
     const std::size_t line_end = raw.find("\r\n");
     if (line_end == std::string::npos) {
-        return HttpRequest();
+        return OnvifHttpRequest();
     }
     const std::string request_line = raw.substr(0, line_end);
     const std::size_t first_space = request_line.find(' ');
@@ -16,30 +16,30 @@ HttpRequest ParseHttpRequest(const std::string& raw) {
             : request_line.find(' ', first_space + 1);
     if (first_space == std::string::npos ||
         second_space == std::string::npos) {
-        return HttpRequest();
+        return OnvifHttpRequest();
     }
 
     const std::size_t header_end = raw.find("\r\n\r\n");
     if (header_end == std::string::npos) {
-        return HttpRequest();
+        return OnvifHttpRequest();
     }
 
-    HttpRequest request;
+    OnvifHttpRequest request;
     request.method = request_line.substr(0, first_space);
     request.path =
         request_line.substr(first_space + 1, second_space - first_space - 1);
     request.headers = raw.substr(line_end + 2, header_end - line_end - 2);
     request.body = raw.substr(header_end + 4);
     if (request.method.empty() || request.path.empty()) {
-        return HttpRequest();
+        return OnvifHttpRequest();
     }
     return request;
 }
 
-std::string HttpResponse(uint32_t status_code,
-                         const std::string& reason,
-                         const std::string& body,
-                         const std::string& extra_headers) {
+std::string BuildOnvifHttpResponse(uint32_t status_code,
+                                   const std::string &reason,
+                                   const std::string &body,
+                                   const std::string &extra_headers) {
     std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
                            reason + "\r\n";
     response += "Content-Type: application/soap+xml; charset=utf-8\r\n";
@@ -50,5 +50,5 @@ std::string HttpResponse(uint32_t status_code,
     return response;
 }
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream

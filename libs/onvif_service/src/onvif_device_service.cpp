@@ -1,4 +1,4 @@
-#include "onvif_device.h"
+#include "onvif_device_service.h"
 
 #include "onvif_soap.h"
 #include "onvif_types.h"
@@ -6,18 +6,18 @@
 #include "time_service.h"
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-std::string DeviceInformationBody(const OnvifServiceOptions& options,
-                                  ISystemService* system_service) {
+std::string BuildDeviceInformationBody(const OnvifServerOptions &options,
+                                       ISystemService *system_service) {
     DeviceInfo info;
     std::string manufacturer = options.manufacturer;
     info.model = options.model;
     info.firmware_version = options.firmware_version;
     if (system_service != nullptr) {
-        DeviceInfo result = system_service->GetDeviceInfo();
-        if (!result.model.empty()) {
-            info = result;
+        const DeviceInfo service_info = system_service->GetDeviceInfo();
+        if (!service_info.model.empty()) {
+            info = service_info;
         }
     }
     return "<tds:GetDeviceInformationResponse>"
@@ -30,7 +30,7 @@ std::string DeviceInformationBody(const OnvifServiceOptions& options,
            "</tds:SerialNumber></tds:GetDeviceInformationResponse>";
 }
 
-std::string SystemDateAndTimeBody(ITimeService* time_service) {
+std::string BuildSystemDateAndTimeBody(ITimeService *time_service) {
     TimeStatus status;
     if (time_service != nullptr) {
         status = time_service->GetTimeStatus();
@@ -44,10 +44,10 @@ std::string SystemDateAndTimeBody(ITimeService* time_service) {
            "</tds:GetSystemDateAndTimeResponse>";
 }
 
-std::string SetSystemDateAndTimeBody(ITimeService* time_service,
-                                     const std::string& request,
-                                     uint32_t* status,
-                                     std::string* reason) {
+std::string BuildSetSystemDateAndTimeBody(ITimeService *time_service,
+                                          const std::string &request,
+                                          uint32_t *status,
+                                          std::string *reason) {
     if (time_service == nullptr) {
         if (status != nullptr) {
             *status = 500;
@@ -55,7 +55,7 @@ std::string SetSystemDateAndTimeBody(ITimeService* time_service,
         if (reason != nullptr) {
             *reason = "Internal Server Status";
         }
-        return SoapFault("time service unavailable");
+        return BuildSoapFaultBody("time service unavailable");
     }
     int64_t unix_time_ms = 0;
     if (!ParseOnvifUnixTimeMs(request, &unix_time_ms)) {
@@ -65,7 +65,7 @@ std::string SetSystemDateAndTimeBody(ITimeService* time_service,
         if (reason != nullptr) {
             *reason = "Bad Request";
         }
-        return SoapFault("invalid date time");
+        return BuildSoapFaultBody("invalid date time");
     }
     live_stream::RequestContext context;
     context.user_name = "onvif";
@@ -77,10 +77,10 @@ std::string SetSystemDateAndTimeBody(ITimeService* time_service,
         if (reason != nullptr) {
             *reason = "Internal Server Status";
         }
-        return SoapFault("time sync failed");
+        return BuildSoapFaultBody("time sync failed");
     }
     return "<tds:SetSystemDateAndTimeResponse/>";
 }
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream

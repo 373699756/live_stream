@@ -1,4 +1,4 @@
-#include "onvif_service.h"
+#include "onvif_server.h"
 
 #include "auth_service.h"
 #include "event_service.h"
@@ -318,24 +318,24 @@ std::string SoapPost(const std::string& body,
          body;
 }
 
-std::unique_ptr<live_stream::IOnvifService> CreateStartedService(
+std::unique_ptr<live_stream::OnvifServer> CreateStartedService(
     FakeNetEngine* net_engine,
     FakeEventService* event_service,
     FakeSystemService* system_service,
     FakeTimeService* time_service,
     FakeMediaService* media_service,
     FakeAuthService* auth_service = nullptr) {
-  live_stream::OnvifServiceOptions options;
+  live_stream::OnvifServerOptions options;
   options.enable_auth = auth_service != nullptr;
-  live_stream::OnvifServiceDependencies deps;
+  live_stream::OnvifServerDependencies deps;
   deps.net_engine = net_engine;
   deps.event_service = event_service;
   deps.system_service = system_service;
   deps.time_service = time_service;
   deps.media_service = media_service;
   deps.auth_service = auth_service;
-  std::unique_ptr<live_stream::IOnvifService> service =
-      live_stream::CreateOnvifService(options, deps);
+  std::unique_ptr<live_stream::OnvifServer> service =
+      live_stream::CreateOnvifServer(options, deps);
   if (!service || !service->Start() || !service->IsStarted()) {
     return nullptr;
   }
@@ -345,21 +345,21 @@ std::unique_ptr<live_stream::IOnvifService> CreateStartedService(
 }  // namespace
 
 int main() {
-  if (std::string(live_stream::OnvifService::Name()) != "onvif_service") {
+  if (std::string(live_stream::OnvifServer::Name()) != "onvif_service") {
     return 1;
   }
 
-  live_stream::OnvifServiceOptions options;
-  live_stream::OnvifServiceDependencies deps;
-  if (live_stream::CreateOnvifService(options, deps)->Start()) {
+  live_stream::OnvifServerOptions options;
+  live_stream::OnvifServerDependencies deps;
+  if (live_stream::CreateOnvifServer(options, deps)->Start()) {
     return 2;
   }
 
   FakeNetEngine cleanup_net;
   deps.net_engine = &cleanup_net;
   cleanup_net.bind_udp_ok = false;
-  std::unique_ptr<live_stream::IOnvifService> cleanup_service =
-      live_stream::CreateOnvifService(options, deps);
+  std::unique_ptr<live_stream::OnvifServer> cleanup_service =
+      live_stream::CreateOnvifServer(options, deps);
   if (cleanup_service->Start() || cleanup_net.close_tcp_count != 1) {
     return 3;
   }
@@ -367,8 +367,8 @@ int main() {
   FakeNetEngine start_fail_net;
   deps.net_engine = &start_fail_net;
   start_fail_net.listen_tcp_ok = false;
-  std::unique_ptr<live_stream::IOnvifService> start_fail_service =
-      live_stream::CreateOnvifService(options, deps);
+  std::unique_ptr<live_stream::OnvifServer> start_fail_service =
+      live_stream::CreateOnvifServer(options, deps);
   if (start_fail_service->Start() || start_fail_net.close_tcp_count != 0 ||
       start_fail_net.close_udp_count != 0) {
     return 4;
@@ -382,7 +382,7 @@ int main() {
   time_service.status.system_time_ms = 123456;
   time_service.status.timezone = "UTC";
 
-  std::unique_ptr<live_stream::IOnvifService> service =
+  std::unique_ptr<live_stream::OnvifServer> service =
       CreateStartedService(&net_engine, &event_service, &system_service,
                            &time_service, &media_service);
   if (!service) {
@@ -426,6 +426,11 @@ int main() {
 
   net_engine.DeliverUdp("<Probe/>");
   if (net_engine.last_udp_send.find("ProbeMatches") == std::string::npos ||
+      net_engine.last_udp_send.find("EndpointReference") ==
+          std::string::npos ||
+      net_engine.last_udp_send.find("NetworkVideoTransmitter") ==
+          std::string::npos ||
+      net_engine.last_udp_send.find("XAddrs") == std::string::npos ||
       service->GetStats().discovery_requests != 1) {
     return 11;
   }
@@ -443,7 +448,7 @@ int main() {
 
   FakeNetEngine missing_time_net;
   FakeEventService missing_time_event;
-  std::unique_ptr<live_stream::IOnvifService> missing_time_service =
+  std::unique_ptr<live_stream::OnvifServer> missing_time_service =
       CreateStartedService(&missing_time_net, &missing_time_event,
                            &system_service, nullptr, &media_service);
   if (!missing_time_service) {
@@ -460,7 +465,7 @@ int main() {
   FakeNetEngine auth_net;
   FakeEventService auth_event;
   FakeAuthService auth_service;
-  std::unique_ptr<live_stream::IOnvifService> auth_onvif =
+  std::unique_ptr<live_stream::OnvifServer> auth_onvif =
       CreateStartedService(&auth_net, &auth_event, &system_service,
                            &time_service, &media_service, &auth_service);
   if (!auth_onvif) {

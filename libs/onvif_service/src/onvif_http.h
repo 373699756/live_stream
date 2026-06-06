@@ -5,22 +5,22 @@
 #include <string>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-struct HttpRequest {
+struct OnvifHttpRequest {
     std::string method;
     std::string path;
     std::string headers;
     std::string body;
 };
 
-HttpRequest ParseHttpRequest(const std::string& raw);
-std::string HttpResponse(uint32_t status_code,
-                         const std::string& reason,
-                         const std::string& body,
-                         const std::string& extra_headers);
+OnvifHttpRequest ParseOnvifHttpRequest(const std::string &raw);
+std::string BuildOnvifHttpResponse(uint32_t status_code,
+                                   const std::string &reason,
+                                   const std::string &body,
+                                   const std::string &extra_headers);
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_HTTP_H_

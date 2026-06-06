@@ -1,17 +1,21 @@
 #ifndef LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_
 #define LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_
 
-#include "onvif_service.h"
+#include "onvif_server.h"
 
 #include <string>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-std::string DiscoveryProbeMatchesBody(const OnvifServiceOptions& options,
-                                      const std::string& advertise_ip);
+bool IsOnvifProbeRequest(const std::string &request);
+std::string BuildDiscoveryProbeMatches(
+    const OnvifServerOptions &options,
+    ISystemService *system_service,
+    const std::string &advertise_ip,
+    const std::string &request);
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_DISCOVERY_H_

@@ -7,9 +7,9 @@
 #include <string>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-constexpr uint32_t kMaxHttpResponseBytes = 32 * 1024;
+constexpr uint32_t kMaxOnvifHttpMessageBytes = 32 * 1024;
 
 enum class OnvifAction {
     kUnknown,
@@ -21,13 +21,18 @@ enum class OnvifAction {
     kGetSnapshotUri,
 };
 
-bool Contains(const std::string& text, const std::string& needle);
-std::string ToLower(std::string value);
-std::string XmlEscape(const std::string& value);
-std::string StreamToken(StreamId stream_id);
-const char* ActionName(OnvifAction action);
+struct OnvifBody {
+    std::string body;
+    bool success = false;
+};
 
-}  // namespace onvif_internal
+bool Contains(const std::string &text, const std::string &needle);
+std::string ToLower(std::string value);
+std::string XmlEscape(const std::string &value);
+std::string StreamToken(StreamId stream_id);
+const char *ActionName(OnvifAction action);
+
+}  // namespace onvif
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_TYPES_H_

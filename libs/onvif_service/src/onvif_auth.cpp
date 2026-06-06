@@ -3,10 +3,12 @@
 #include <cctype>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 namespace {
 
-std::string Base64Decode(const std::string& encoded) {
+constexpr const char *kOnvifServerName = "onvif_service";
+
+std::string Base64Decode(const std::string &encoded) {
     static const std::string kAlphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string decoded;
@@ -33,9 +35,9 @@ std::string Base64Decode(const std::string& encoded) {
     return decoded;
 }
 
-bool ExtractBasicCredentials(const std::string& headers,
-                             std::string* user_name,
-                             std::string* password) {
+bool ExtractBasicCredentials(const std::string &headers,
+                             std::string *user_name,
+                             std::string *password) {
     const std::string lower = ToLower(headers);
     const std::string marker = "authorization: basic ";
     const std::size_t begin = lower.find(marker);
@@ -43,7 +45,7 @@ bool ExtractBasicCredentials(const std::string& headers,
         password == nullptr) {
         return false;
     }
-    std::size_t value_begin = begin + marker.size();
+    const std::size_t value_begin = begin + marker.size();
     std::size_t value_end = headers.find("\r\n", value_begin);
     if (value_end == std::string::npos) {
         value_end = headers.find('\n', value_begin);
@@ -62,7 +64,7 @@ bool ExtractBasicCredentials(const std::string& headers,
     return true;
 }
 
-AuthPermission PermissionForAction(OnvifAction action) {
+AuthPermission PermissionForOnvifAction(OnvifAction action) {
     switch (action) {
         case OnvifAction::kGetStreamUri:
         case OnvifAction::kGetSnapshotUri:
@@ -80,10 +82,10 @@ AuthPermission PermissionForAction(OnvifAction action) {
 
 }  // namespace
 
-bool AuthorizeOnvifRequest(IAuthService* auth_service,
-                           bool enable_auth,
-                           const std::string& headers,
-                           OnvifAction action) {
+bool AuthorizeOnvifAction(IAuthService *auth_service,
+                          bool enable_auth,
+                          const std::string &headers,
+                          OnvifAction action) {
     if (!enable_auth) {
         return true;
     }
@@ -111,10 +113,10 @@ bool AuthorizeOnvifRequest(IAuthService* auth_service,
         return false;
     }
     const bool allowed = auth_service->CheckPermission(
-        result.principal, PermissionForAction(action), "onvif_service");
+        result.principal, PermissionForOnvifAction(action), kOnvifServerName);
     static_cast<void>(auth_service->Logout(logout_context));
     return allowed;
 }
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream

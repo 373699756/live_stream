@@ -6,7 +6,7 @@
 #include "config_service.h"
 #include "media_service.h"
 #include "network_service.h"
-#include "onvif_service.h"
+#include "onvif_server.h"
 #include "rtsp_service.h"
 #include "snapshot_service.h"
 #include "media_source.h"

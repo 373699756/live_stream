@@ -7,9 +7,8 @@
 #include "net_service.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
+#include "rtsp_rtp_sender.h"
 #include "rtsp_session_store.h"
-#include "rtsp_transport.h"
-#include "stream_mux.h"
 
 #include <mutex>
 #include <string>
@@ -46,12 +45,8 @@ using rtsp_internal::DecodeBase64;
 using rtsp_internal::HeaderValue;
 using rtsp_internal::ParseClientRtpPort;
 using rtsp_internal::ParseRtspRequest;
-using rtsp_internal::PathToStreamId;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
-using stream_mux::IRtpPacketSink;
-using stream_mux::RtpPacketizer;
-using stream_mux::RtpPacketView;
 
 class RtspServiceImpl : public IRtspService,
                         public IFrameSink,
@@ -61,7 +56,7 @@ public:
                     RtspServiceDependencies dependencies)
         : options_(std::move(options)),
           dependencies_(dependencies),
-          packetizer_(options_.rtp_mtu_bytes),
+          rtp_sender_(options_.rtp_mtu_bytes),
           request_handler_(this) {}
 
     ~RtspServiceImpl() override {
@@ -220,7 +215,7 @@ public:
             targets = sessions_.PlayingTargets(frame.stream_id);
         }
         for (const auto& session : targets) {
-            SendFrame(session, frame);
+            rtp_sender_.SendFrame(session, frame, RtpSenderContext());
         }
         return true;
     }
@@ -529,122 +524,6 @@ private:
         return true;
     }
 
-    class RtspPacketSink final : public IRtpPacketSink {
-    public:
-        RtspPacketSink(RtspServiceImpl* service,
-                       std::shared_ptr<RtspSession> session,
-                       const EncodedFrame* frame)
-            : service_(service),
-              session_(std::move(session)),
-              frame_(frame) {}
-
-        bool OnRtpPacket(const RtpPacketView& packet) override {
-            if (service_ == nullptr || frame_ == nullptr || !ok_) {
-                return false;
-            }
-            ok_ = service_->SendRtpPacketView(session_, *frame_, packet);
-            return ok_;
-        }
-
-        bool ok() const { return ok_; }
-
-    private:
-        RtspServiceImpl* service_ = nullptr;
-        std::shared_ptr<RtspSession> session_;
-        const EncodedFrame* frame_ = nullptr;
-        bool ok_ = true;
-    };
-
-    void SendFrame(const std::shared_ptr<RtspSession>& session,
-                   const EncodedFrame& frame) {
-        bool should_drop = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!session->keyframe_seen) {
-                if (frame.frame_type != FrameType::kIdr &&
-                    frame.frame_type != FrameType::kI) {
-                    ++session->stats.dropped_frames;
-                    ++stats_.dropped_frames;
-                    should_drop = true;
-                } else {
-                    session->keyframe_seen = true;
-                }
-            }
-        }
-        if (should_drop) {
-            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
-            return;
-        }
-        uint16_t sequence = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            sequence = session->rtp_sequence;
-        }
-        RtspPacketSink sink(this, session, &frame);
-        const bool packetized =
-            packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            session->rtp_sequence = sequence;
-        }
-        if (!packetized) {
-            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
-        }
-    }
-
-    bool SendRtpPacketView(const std::shared_ptr<RtspSession>& session,
-                           const EncodedFrame& frame,
-                           const RtpPacketView& packet) {
-        RtspTransportTarget target;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            target.mode = session->transport;
-            target.connection_id = session->connection_id;
-            target.udp_socket_id = udp_socket_id_;
-            target.udp_peer = session->peer;
-            target.udp_peer.port = session->client_rtp_port;
-            target.interleaved_rtp_channel = session->interleaved_rtp_channel;
-        }
-
-        const size_t packet_size = packet.Size();
-        if (packet_size == 0 || packet_size > 0xffff) {
-            return false;
-        }
-        const bool ok = RtspTransport::SendRtpPacket(
-            dependencies_.net_engine, target, frame, packet);
-        if (!ok) {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                ++session->stats.dropped_frames;
-                ++stats_.dropped_frames;
-            }
-            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                ++stats_.slow_client_closes;
-            }
-            NotifyAdaptive(*session, RtspAdaptiveEventType::kSlowClientClosed);
-            if (dependencies_.net_engine != nullptr) {
-                (void)dependencies_.net_engine->Close(target.connection_id);
-            }
-            return false;
-        }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            ++session->stats.sent_rtp_packets;
-            session->stats.sent_rtp_bytes += packet_size;
-            session->stats.pending_bytes =
-                dependencies_.net_engine != nullptr
-                    ? dependencies_.net_engine->PendingBytes(
-                          target.connection_id)
-                    : 0;
-            ++stats_.sent_rtp_packets;
-            stats_.sent_rtp_bytes += packet_size;
-        }
-        NotifyAdaptive(*session, RtspAdaptiveEventType::kSample);
-        return true;
-    }
-
     void SendRtspResponse(
         ConnectionId connection_id, int status, const std::string& cseq,
         const std::map<std::string, std::string>& headers,
@@ -771,9 +650,19 @@ private:
         (void)dependencies_.adaptive_observer->OnRtspAdaptiveSample(sample);
     }
 
+    RtspRtpSenderContext RtpSenderContext() {
+        RtspRtpSenderContext context;
+        context.net_engine = dependencies_.net_engine;
+        context.udp_socket_id = &udp_socket_id_;
+        context.mutex = &mutex_;
+        context.service_stats = &stats_;
+        context.adaptive_observer = dependencies_.adaptive_observer;
+        return context;
+    }
+
     RtspServiceOptions options_;
     RtspServiceDependencies dependencies_;
-    RtpPacketizer packetizer_;
+    RtspRtpSender rtp_sender_;
     RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;

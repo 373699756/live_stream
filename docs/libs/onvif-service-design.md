@@ -2,14 +2,15 @@
 
 ## 模块定位
 
-`onvif_service` 负责 ONVIF discovery、device/media service、SOAP/XML/HTTP
-响应和 ONVIF 认证。它不拥有 RTSP session 内部状态，也不直接构造 Web UI。
+`onvif_service` 负责设备端 ONVIF WS-Discovery、device/media service、
+SOAP/XML/HTTP 响应和 ONVIF 认证。它不拥有 RTSP session 内部状态，也不直接构造
+Web UI。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
-  Client[ONVIF client/NVR] --> ONVIF[onvif_service]
+  Client[ONVIF client/NVR] --> ONVIF[OnvifServer]
   ONVIF --> Net[net_service]
   ONVIF --> Auth[auth_service]
   ONVIF --> System[system_service]
@@ -21,15 +22,19 @@ flowchart LR
 
 ## 核心职责
 
-- WS-Discovery 设备发现。
+- WS-Discovery Probe 响应，包含 EndpointReference、Types、Scopes 和 XAddrs。
 - Device service 和 Media service SOAP 响应。
 - ONVIF auth。
 - 根据 runtime config 生成 RTSP 和 snapshot URL。
 
 ## 接口归属
 
-public API 在 `onvif_service.h`。ONVIF advertise host、manufacturer、model、
+public API 在 `onvif_server.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
+
+内部实现按职责拆分为 `OnvifServer`、`onvif_discovery`、`onvif_device_service`、
+`onvif_media_service`、`onvif_http`、`onvif_soap` 和 `onvif_auth`。模块不保留旧
+public API 兼容入口。
 
 ## 状态与资源模型
 

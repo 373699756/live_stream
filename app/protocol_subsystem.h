@@ -7,7 +7,7 @@
 #include "http_service.h"
 #include "infra/executor.h"
 #include "net_service.h"
-#include "onvif_service.h"
+#include "onvif_server.h"
 #include "rtsp_service.h"
 #include "runtime_config.h"
 #include "webrtc_service.h"
@@ -21,7 +21,7 @@ struct MediaRefs;
 struct ProtocolRefs {
     IRtspService *rtsp = nullptr;
     IWebrtcService *webrtc = nullptr;
-    IOnvifService *onvif = nullptr;
+    OnvifServer *onvif = nullptr;
     IHttpService *http = nullptr;
 };
 
@@ -49,7 +49,7 @@ private:
     std::unique_ptr<IRtspService> rtsp_;
     std::unique_ptr<IWebrtcService> webrtc_;
     std::unique_ptr<IMediaSourceService> media_source_;
-    std::unique_ptr<IOnvifService> onvif_;
+    std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttpService> http_;
     bool started_ = false;
 };

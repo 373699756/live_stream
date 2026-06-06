@@ -29,7 +29,7 @@ struct ProtocolRuntimeRefs {
     MediaRefs media;
     NetEngine *net_engine = nullptr;
     IRtspService *rtsp_service = nullptr;
-    IOnvifService *onvif_service = nullptr;
+    OnvifServer *onvif_service = nullptr;
     IWebrtcService *webrtc_service = nullptr;
     IMediaSourceService *media_source_service = nullptr;
 };
@@ -102,8 +102,8 @@ MediaSourceServiceDependencies BuildMediaSourceDependencies(
     return dependencies;
 }
 
-OnvifServiceOptions BuildOnvifOptions(const AppRuntimeConfig &runtime_config) {
-    OnvifServiceOptions options;
+OnvifServerOptions BuildOnvifOptions(const AppRuntimeConfig &runtime_config) {
+    OnvifServerOptions options;
     options.listen_ip = runtime_config.listen_ip;
     options.advertise_ip = runtime_config.advertise_host;
     options.device_service_port = runtime_config.onvif_device_port;
@@ -120,12 +120,11 @@ OnvifServiceOptions BuildOnvifOptions(const AppRuntimeConfig &runtime_config) {
     return options;
 }
 
-OnvifServiceDependencies BuildOnvifDependencies(
+OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolRuntimeRefs &refs) {
-    OnvifServiceDependencies dependencies;
+    OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.auth_service = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.config_service = refs.core != nullptr ? refs.core->config() : nullptr;
     dependencies.event_service = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system_service = refs.device.system;
     dependencies.time_service = refs.device.time;
@@ -249,10 +248,10 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.webrtc_service = webrtc_.get();
     }
 
-    const OnvifServiceOptions onvif_options = BuildOnvifOptions(runtime_config);
-    const OnvifServiceDependencies onvif_dependencies =
+    const OnvifServerOptions onvif_options = BuildOnvifOptions(runtime_config);
+    const OnvifServerDependencies onvif_dependencies =
         BuildOnvifDependencies(refs);
-    onvif_ = CreateOnvifService(onvif_options, onvif_dependencies);
+    onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
         INFRA_LOG_ERROR("app",
                         "Start onvif service failed, continue without ONVIF: "

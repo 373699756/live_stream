@@ -7,14 +7,14 @@
 #include <string>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-bool AuthorizeOnvifRequest(IAuthService* auth_service,
-                           bool enable_auth,
-                           const std::string& headers,
-                           OnvifAction action);
+bool AuthorizeOnvifAction(IAuthService *auth_service,
+                          bool enable_auth,
+                          const std::string &headers,
+                          OnvifAction action);
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_AUTH_H_

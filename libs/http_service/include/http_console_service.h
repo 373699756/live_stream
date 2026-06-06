@@ -13,7 +13,7 @@ class IConfigService;
 class ILoggerService;
 class IAlarmService;
 class INetworkService;
-class IOnvifService;
+class OnvifServer;
 class IRtspService;
 class ISystemService;
 class ITimeService;
@@ -30,7 +30,7 @@ std::unique_ptr<IHttpService> CreateHttpConsoleService(
     IConfigService *config_service, INetworkService *network_service,
     ITimeService *time_service, IAlarmService *alarm_service,
     IUpgradeService *upgrade_service, ISystemService *system_service,
-    IRtspService *rtsp_service, IOnvifService *onvif_service,
+    IRtspService *rtsp_service, OnvifServer *onvif_service,
     IAiView *ai_service, IMediaService *media_service,
     ISnapshotView *snapshot_service, IWebrtcService *webrtc_service,
     IMediaSource *media_source,

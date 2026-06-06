@@ -19,7 +19,7 @@ class ITimeService;
 class IUpgradeService;
 class ISystemService;
 class IRtspService;
-class IOnvifService;
+class OnvifServer;
 class IMediaService;
 class IAiView;
 class ISnapshotView;
@@ -34,7 +34,7 @@ struct SystemStatusSources {
     IAlarmService *alarm_service = nullptr;
     IUpgradeService *upgrade_service = nullptr;
     IRtspService *rtsp_service = nullptr;
-    IOnvifService *onvif_service = nullptr;
+    OnvifServer *onvif_service = nullptr;
     IMediaService *media_service = nullptr;
     IAiView *ai_service = nullptr;
     ISnapshotView *snapshot_service = nullptr;

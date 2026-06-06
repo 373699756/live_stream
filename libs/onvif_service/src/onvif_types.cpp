@@ -4,9 +4,9 @@
 #include <cctype>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-bool Contains(const std::string& text, const std::string& needle) {
+bool Contains(const std::string &text, const std::string &needle) {
     return text.find(needle) != std::string::npos;
 }
 
@@ -17,7 +17,7 @@ std::string ToLower(std::string value) {
     return value;
 }
 
-std::string XmlEscape(const std::string& value) {
+std::string XmlEscape(const std::string &value) {
     std::string escaped;
     for (char c : value) {
         switch (c) {
@@ -45,7 +45,7 @@ std::string StreamToken(StreamId stream_id) {
     return stream_id == StreamId::kSub ? "profile_sub" : "profile_main";
 }
 
-const char* ActionName(OnvifAction action) {
+const char *ActionName(OnvifAction action) {
     switch (action) {
         case OnvifAction::kGetDeviceInformation:
             return "GetDeviceInformation";
@@ -65,5 +65,5 @@ const char* ActionName(OnvifAction action) {
     return "Unknown";
 }
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream

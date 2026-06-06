@@ -7,17 +7,21 @@
 #include <string>
 
 namespace live_stream {
-namespace onvif_internal {
+namespace onvif {
 
-std::string SoapEnvelope(const std::string& body);
-std::string SoapFault(const std::string& reason);
-OnvifAction ParseAction(const std::string& body);
-bool ExtractInt64Tag(const std::string& text,
-                     const std::string& tag,
-                     int64_t* value);
-bool ParseOnvifUnixTimeMs(const std::string& request, int64_t* unix_time_ms);
+std::string BuildSoapEnvelope(const std::string &body);
+std::string BuildSoapFaultBody(const std::string &reason);
+std::string BuildSoapFaultEnvelope(const std::string &reason);
+OnvifAction ParseSoapAction(const std::string &body);
+bool ExtractXmlTagText(const std::string &text,
+                       const std::string &local_name,
+                       std::string *value);
+bool ExtractInt64Tag(const std::string &text,
+                     const std::string &local_name,
+                     int64_t *value);
+bool ParseOnvifUnixTimeMs(const std::string &request, int64_t *unix_time_ms);
 
-}  // namespace onvif_internal
+}  // namespace onvif
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_ONVIF_SERVICE_SRC_ONVIF_SOAP_H_
