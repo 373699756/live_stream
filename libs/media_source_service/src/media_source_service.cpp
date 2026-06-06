@@ -1,6 +1,6 @@
 #include "media_source_service.h"
 
-#include "flv_client_registry.h"
+#include "flv_live_ring.h"
 #include "frame_ring.h"
 #include "infra/executor.h"
 #include "infra/log.h"
@@ -443,10 +443,10 @@ public:
                 !source_state::IsBrowserStreamReady(stream->state,
                                                  stream->codec) ||
                 !source_state::IsFlvCodecSupported(stream->codec) ||
-                flv_clients_.Size() >= options_.max_flv_clients) {
+                flv_live_ring_.ReaderCount() >= options_.max_flv_clients) {
                 return 0;
             }
-            client_id = flv_clients_.Attach(
+            client_id = flv_live_ring_.AttachReader(
                 stream_id, config_generation, wait_for_keyframe, sink,
                 options_.max_flv_clients);
             media_service = dependencies_.media_service;
@@ -460,7 +460,7 @@ public:
 
     bool DetachFlvClient(MediaFlvClientId client_id) override {
         std::lock_guard<std::mutex> guard(mutex_);
-        return flv_clients_.Detach(client_id);
+        return flv_live_ring_.DetachReader(client_id);
     }
 
     MediaMjpegClientId
@@ -532,7 +532,8 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         MediaSourceStats stats = stats_;
         stats.enabled = run_state_ == MediaSourceRunState::kStarted;
-        stats.active_flv_clients = static_cast<uint32_t>(flv_clients_.Size());
+        stats.active_flv_clients =
+            static_cast<uint32_t>(flv_live_ring_.ReaderCount());
         stats.active_mjpeg_clients =
             static_cast<uint32_t>(mjpeg_clients_.Size());
         stats.active_frame_sinks =
@@ -597,7 +598,7 @@ private:
         sub_pending_.Clear();
         drain_task_posted_ = false;
         last_drained_stream_ = StreamId::kSub;
-        flv_clients_.Clear();
+        flv_live_ring_.Clear();
         mjpeg_clients_.Clear();
         frame_ring_.Clear();
         source_state::ClearStreamContext(&main_stream_);
@@ -690,7 +691,7 @@ private:
             return;
         }
         const EncodedFrame &frame = payload.encoded_frame;
-        std::vector<source_clients::PendingFlvClientWrite> clients;
+        std::vector<source_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         stream_mux::FlvVideoTagView flv_tag_view;
         bool has_flv_tag_view = false;
@@ -710,7 +711,7 @@ private:
                 return;
             }
             package_hls = stream->hls_requested;
-            package_flv = flv_clients_.HasClient(frame.stream_id);
+            package_flv = flv_live_ring_.HasReader(frame.stream_id);
             update_flv_cache = source_state::IsFlvCodecSupported(stream->codec);
         }
         if (!package_hls && !package_flv && !update_flv_cache) {
@@ -732,7 +733,7 @@ private:
             const bool was_hls_ready = source_state::IsHlsStreamReady(*stream);
             const bool was_flv_ready = source_state::IsFlvStreamReady(*stream);
             package_hls = stream->hls_requested;
-            package_flv = flv_clients_.HasClient(frame.stream_id);
+            package_flv = flv_live_ring_.HasReader(frame.stream_id);
             update_flv_cache = source_state::IsFlvCodecSupported(stream->codec);
 
             source_state::PackagedFrameResult packaged_frame =
@@ -764,11 +765,11 @@ private:
             has_flv_tag_view = packaged_frame.has_flv_tag_view;
             const bool has_sequence_header =
                 source_state::HasFlvSequenceHeader(*stream);
-            clients = flv_clients_.CollectWrites(
+            clients = flv_live_ring_.CollectWrites(
                 frame.stream_id, stream->config_generation,
                 has_flv_tag_view, has_sequence_header,
                 packaged_frame.keyframe);
-            for (const source_clients::PendingFlvClientWrite &client : clients) {
+            for (const source_state::PendingFlvClientWrite &client : clients) {
                 if (client.send_sequence_header) {
                     sequence_header_tag = stream->sequence_header_tag;
                     break;
@@ -806,14 +807,14 @@ private:
     }
 
     void WriteFlvClients(
-        const std::vector<source_clients::PendingFlvClientWrite> &clients,
+        const std::vector<source_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
         const stream_mux::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
         const EncodedFrame &frame,
         StreamId stream_id) {
         std::vector<MediaFlvClientId> detach_ids;
-        for (const source_clients::PendingFlvClientWrite &client : clients) {
+        for (const source_state::PendingFlvClientWrite &client : clients) {
             if (client.starts_on_keyframe) {
                 INFRA_LOG_INFO(kServiceName,
                                "HTTP-FLV client starts stream=%s client=%llu "
@@ -855,7 +856,7 @@ private:
 
     void ReleaseFlvClientWrite(MediaFlvClientId client_id) {
         std::lock_guard<std::mutex> guard(mutex_);
-        flv_clients_.ReleaseWrite(client_id);
+        flv_live_ring_.ReleaseWrite(client_id);
     }
 
     void WriteMjpegClients(
@@ -964,7 +965,7 @@ private:
     source_state::StreamContext main_stream_;
     source_state::StreamContext sub_stream_;
     source_state::FrameRing frame_ring_;
-    source_clients::FlvClientRegistry flv_clients_;
+    source_state::FlvLiveRing flv_live_ring_;
     source_clients::MjpegClientRegistry mjpeg_clients_;
     MediaSourceStats stats_;
     FrameAttachId main_attach_id_ = 0;
