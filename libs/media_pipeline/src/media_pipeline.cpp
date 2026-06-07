@@ -651,13 +651,13 @@ public:
     }
 
     void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
-        VideoCodec stream_codec = VideoCodec::kH264;
+        VideoCodec video_codec = VideoCodec::kH264;
         if (state == StreamState::kRunning &&
             dependencies_.device_media != nullptr) {
-            stream_codec = dependencies_.device_media->GetStreamCodec(stream_id);
+            video_codec = dependencies_.device_media->GetStreamCodec(stream_id);
         }
         std::lock_guard<std::mutex> guard(mutex_);
-        SetStreamStateLocked(stream_id, state, stream_codec);
+        SetStreamStateLocked(stream_id, state, video_codec);
     }
 
 private:
@@ -1032,13 +1032,13 @@ private:
     }
 
     void SetStreamStateLocked(StreamId stream_id, StreamState state,
-                              VideoCodec stream_codec) {
+                              VideoCodec video_codec) {
         source_state::StreamContext *stream = FindMutableStream(stream_id);
         if (stream == nullptr) {
             return;
         }
         if (state == StreamState::kRunning) {
-            stream->codec = stream_codec;
+            stream->codec = video_codec;
             stream->state = StreamState::kRunning;
         } else {
             source_state::ClearStreamContext(stream);

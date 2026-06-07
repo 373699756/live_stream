@@ -42,8 +42,9 @@ firmware version 等运行参数由 app 加载后传入。
 `IRtsp::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；RTSP path 和 URL 拼接规则
 归 `rtsp` 模块所有。
 
-内部实现按职责拆分为 `OnvifServer`、`onvif_discovery`、`onvif_device_service`、
-`onvif_media_service`、`onvif_http`、`onvif_soap` 和 `onvif_auth`。模块不保留旧
+内部实现按职责拆分为 `OnvifServer`、`onvif_discovery`、`onvif_device`、
+`onvif_media`、`onvif_http`、`onvif_soap` 和 `onvif_auth`。ONVIF 规范里的
+device/media service 概念可以保留在协议字段和 SOAP 语义中，但模块不保留旧
 public API 兼容入口。
 
 ## 状态与资源模型

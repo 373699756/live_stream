@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVICE_IMPL_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVICE_IMPL_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_IMPL_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_IMPL_H_
 
 #include "http_access.h"
 #include "http_router.h"
@@ -91,4 +91,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVICE_IMPL_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_IMPL_H_

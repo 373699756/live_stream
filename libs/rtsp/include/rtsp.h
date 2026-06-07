@@ -68,8 +68,8 @@ struct RtspOptions {
     uint32_t send_stall_timeout_ms = 5000;
     RtspTransportMode default_transport = RtspTransportMode::kTcpInterleaved;
     bool enable_auth = false;
-    VideoCodec main_stream_codec = VideoCodec::kH264;
-    VideoCodec sub_stream_codec = VideoCodec::kH264;
+    VideoCodec main_video_codec = VideoCodec::kH264;
+    VideoCodec sub_video_codec = VideoCodec::kH264;
 };
 
 struct RtspSessionStats {

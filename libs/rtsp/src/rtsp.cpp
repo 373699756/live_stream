@@ -336,8 +336,8 @@ private:
     MediaTrack RtspTrackForStream(StreamId stream_id) const override {
         MediaTrack track;
         track.stream_id = stream_id;
-        track.codec = stream_id == StreamId::kSub ? options_.sub_stream_codec
-                                                  : options_.main_stream_codec;
+        track.codec = stream_id == StreamId::kSub ? options_.sub_video_codec
+                                                  : options_.main_video_codec;
         track.clock_rate = media_mux::kRtpClockRate;
         if (dependencies_.media_source != nullptr &&
             dependencies_.media_source->IsStreamAvailable(stream_id)) {

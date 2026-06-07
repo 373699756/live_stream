@@ -1,4 +1,4 @@
-#include "onvif_media_service.h"
+#include "onvif_media.h"
 
 #include "device_media.h"
 #include "onvif_soap.h"

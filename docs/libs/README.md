@@ -67,6 +67,9 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - `onvif.md`
 - `media_codec.md`
 - `media_mux.md`
+
+### Historical Migration Notes
+
 - `stream_hub_legacy.md`
 
 ## Unified Template

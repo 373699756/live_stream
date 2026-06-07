@@ -42,8 +42,8 @@ RTSP、WebRTC、ONVIF、HTTP Media 和 HTTP。
 ## Libs
 
 - `libs/README.md`：模块设计索引和统一模板。
-- `libs/<module>.md`：每个实际 `libs/` 模块的设计文档，包含
-  `stream_hub_legacy.md` 这类 legacy 模块迁移说明。
+- `libs/<module>.md`：每个实际 `libs/` 模块的设计文档。
+- `libs/stream_hub_legacy.md`：历史迁移说明，不对应当前实际 `libs/` 模块。
 - 根目录 `重构.md` 的“任务 1 命名迁移基线”是当前目录名、库名、public header、
   public interface、工厂函数、变量名和旧兼容层删除边界的唯一命名标准。
 

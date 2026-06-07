@@ -55,8 +55,8 @@ RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
     options.listen_port = runtime_config.rtsp_port;
     options.max_sessions = runtime_config.rtsp_max_sessions;
     options.enable_auth = runtime_config.rtsp_auth_required;
-    options.main_stream_codec = runtime_config.rtsp_main_codec;
-    options.sub_stream_codec = runtime_config.rtsp_sub_codec;
+    options.main_video_codec = runtime_config.rtsp_main_codec;
+    options.sub_video_codec = runtime_config.rtsp_sub_codec;
     return options;
 }
 

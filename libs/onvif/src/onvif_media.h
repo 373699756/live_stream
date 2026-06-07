@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_SERVICE_H_
-#define LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_SERVICE_H_
+#ifndef LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_H_
+#define LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_H_
 
 #include "media/stream_types.h"
 #include "onvif_server.h"
@@ -35,4 +35,4 @@ OnvifBody BuildSnapshotUriBody(const OnvifMediaUris &media_uris,
 }  // namespace onvif
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_SERVICE_H_
+#endif  // LIVE_STREAM_ONVIF_SRC_ONVIF_MEDIA_H_

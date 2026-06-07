@@ -3,10 +3,10 @@
 #include "event.h"
 #include "net.h"
 #include "onvif_auth.h"
-#include "onvif_device_service.h"
+#include "onvif_device.h"
 #include "onvif_discovery.h"
 #include "onvif_http.h"
-#include "onvif_media_service.h"
+#include "onvif_media.h"
 #include "onvif_soap.h"
 #include "onvif_types.h"
 
