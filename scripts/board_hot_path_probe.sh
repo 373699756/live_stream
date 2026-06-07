@@ -205,6 +205,7 @@ CurlToFile() {
     local path="$1"
     local output_file="$2"
     shift 2
+    mkdir -p "$(dirname "${output_file}")"
     local time_file="${output_file}.time"
     local status_file="${output_file}.status"
     local args=()
@@ -220,6 +221,9 @@ CurlToFile() {
     )"
     printf '%s\n' "${status%% *}" >"${status_file}"
     printf '%s\n' "${status#* }" >"${time_file}"
+    if [[ ! -f "${output_file}" ]]; then
+        : >"${output_file}"
+    fi
 }
 
 TimeMsFromFile() {
@@ -231,6 +235,9 @@ JsonStreamField() {
     local json_file="$1"
     local stream="$2"
     local field="$3"
+    if [[ ! -f "${json_file}" ]]; then
+        return 0
+    fi
     tr '{}' '\n' <"${json_file}" \
         | sed -n "/\"stream\":\"${stream}\"/s/.*\"${field}\":\\([0-9][0-9]*\\).*/\\1/p" \
         | head -n 1
@@ -240,6 +247,9 @@ JsonStringStreamField() {
     local json_file="$1"
     local stream="$2"
     local field="$3"
+    if [[ ! -f "${json_file}" ]]; then
+        return 0
+    fi
     tr '{}' '\n' <"${json_file}" \
         | sed -n "/\"stream\":\"${stream}\"/s/.*\"${field}\":\"\\([^\"]*\\)\".*/\\1/p" \
         | head -n 1
@@ -248,12 +258,19 @@ JsonStringStreamField() {
 JsonNumberField() {
     local json_file="$1"
     local field="$2"
+    if [[ ! -f "${json_file}" ]]; then
+        return 0
+    fi
     sed -n "s/.*\"${field}\":\\([0-9][0-9]*\\).*/\\1/p" "${json_file}" | head -n 1
 }
 
 JsonSumField() {
     local json_file="$1"
     local field="$2"
+    if [[ ! -f "${json_file}" ]]; then
+        printf '0'
+        return 0
+    fi
     tr '{}' '\n' <"${json_file}" \
         | sed -n "s/.*\"${field}\":\\([0-9][0-9]*\\).*/\\1/p" \
         | awk '{sum += $1} END {print sum + 0}'
@@ -262,6 +279,10 @@ JsonSumField() {
 JsonCountField() {
     local json_file="$1"
     local field="$2"
+    if [[ ! -f "${json_file}" ]]; then
+        printf '0'
+        return 0
+    fi
     tr '{}' '\n' <"${json_file}" \
         | sed -n "s/.*\"${field}\":\\([0-9][0-9]*\\).*/x/p" \
         | wc -l \
