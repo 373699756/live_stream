@@ -118,6 +118,7 @@ bool ApplyWebrtcConfig(const ConfigJson &webrtc, AppRuntimeConfig *config) {
         public_ip.empty()) {
         return false;
     }
+    config->webrtc_public_ip = public_ip;
     if (!webrtc.contains("ice_servers") ||
         !webrtc.at("ice_servers").is_array()) {
         return false;

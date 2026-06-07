@@ -76,7 +76,7 @@ WebrtcOptions BuildWebrtcOptions(
     options.local_port_base = runtime_config.webrtc_local_port_base;
     options.max_peers = runtime_config.webrtc_max_peers;
     options.prefer_tcp = runtime_config.webrtc_prefer_tcp;
-    options.public_ip = runtime_config.advertise_host;
+    options.public_ip = runtime_config.webrtc_public_ip;
     options.ice_servers = runtime_config.webrtc_ice_servers;
     return options;
 }

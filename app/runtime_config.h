@@ -30,6 +30,7 @@ struct AppRuntimeConfig {
     uint16_t webrtc_local_port_base = 16000;
     uint32_t rtsp_max_sessions = 16;
     uint32_t webrtc_max_peers = 4;
+    std::string webrtc_public_ip;
     VideoCodec rtsp_main_codec = VideoCodec::kH264;
     VideoCodec rtsp_sub_codec = VideoCodec::kH264;
     bool rtsp_auth_required = true;
