@@ -583,7 +583,7 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(INetEngine *net_engine) {
+std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(INetEngine *net_engine) {
     return std::unique_ptr<IWebrtcEngine>(new NativeWebrtcEngine(net_engine));
 }
 

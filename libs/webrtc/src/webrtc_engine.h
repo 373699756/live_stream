@@ -62,7 +62,7 @@ public:
     virtual void FillStats(WebrtcStats *stats) const = 0;
 };
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(INetEngine *net_engine);
+std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(INetEngine *net_engine);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream

@@ -418,7 +418,7 @@ private:
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
-            webrtc_internal::CreateEngine(net_engine_);
+            webrtc_internal::CreateWebrtcEngine(net_engine_);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
         callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged = &WebrtcImpl::OnEnginePeerStateChanged;
