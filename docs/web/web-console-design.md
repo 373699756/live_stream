@@ -70,8 +70,9 @@ DTO 规则：
 
 WebRTC signaling 响应使用 native 状态模型。`POST /api/webrtc/peers`、offer、
 candidate 和 close 都返回 `ok`，失败时返回 `error`；peer/offer 响应同时返回
-`peer_id` 和 `state`，offer 成功时才返回 `sdp`。当前 10.1/10.2 native 基线尚未
-生成可播放 SDP，offer 失败会返回 `sdp_not_ready`，前端只展示该状态，不伪造播放。
+`peer_id` 和 `state`，offer 成功时返回 video-only sendonly SDP answer。SDP answer
+可生成不代表 WebRTC 已可播放；`webrtcReady` 仍必须等 ICE、DTLS 和 SRTP 都 ready。
+offer 失败时前端只展示后端 `error`，不伪造播放。
 
 认证状态由 `AuthContext` 管理。工厂密码路径只允许初始设置，后端返回
 `must_change_password` 时 Web 必须先完成改密再进入管理台。HTTP 错误处理应在

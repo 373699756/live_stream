@@ -98,15 +98,16 @@ struct WebrtcStats {
     uint64_t total_peers = 0;
     uint64_t offers = 0;
     uint64_t remote_candidates = 0;
+    uint32_t selected_ice_pairs = 0;
     uint64_t sent_frames = 0;
     uint64_t dropped_frames = 0;
     uint64_t sent_rtp_packets = 0;
     uint64_t dropped_rtp_packets = 0;
 };
 
-class IWebrtc : public IFrameSink {
+class IWebrtc {
 public:
-    ~IWebrtc() override = default;
+    virtual ~IWebrtc() = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;

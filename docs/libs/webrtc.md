@@ -40,14 +40,45 @@ HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒�
 和 reader 生命周期仍归 `media_source`。
 
 `WebrtcStats` 只暴露 native 链路状态和计数：`enabled`、`signaling_ready`、
-`ice_ready`、`dtls_ready`、`srtp_ready`、peer 数、offer/candidate 数、帧发送/
-丢弃和 RTP 包发送/丢弃。模块不再暴露 `BackendName()` 或 `backend_available`。
+`ice_ready`、`dtls_ready`、`srtp_ready`、`selected_ice_pairs`、peer 数、
+offer/candidate 数、帧发送/丢弃和 RTP 包发送/丢弃。`ice_ready`、`dtls_ready` 和
+`srtp_ready` 表示本地协议栈可用于创建 peer；peer 级 ICE connected/completed 通过
+`selected_ice_pairs` 统计观测。模块不再暴露 `BackendName()` 或
+`backend_available`。
 
-10.1/10.2 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与
-libsrtp 作为后续 DTLS/SRTP 依赖；usrsctp/datachannel 首版不启用。当前 native
-engine 接收 create peer、offer、candidate、close 的 signaling 调用，但 SDP/ICE/
-DTLS/SRTP 尚未接通，offer 会以 `sdp_not_ready` 返回失败状态，直到 10.3 之后逐层
-补齐。
+10.5 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与 libsrtp；
+usrsctp/datachannel 首版不启用。`dtls_transport.*` 负责生成本地自签名证书、输出
+SHA-256 fingerprint、执行 DTLS server role 握手、校验 remote fingerprint，并通过
+`EXTRACTOR-dtls_srtp` 导出 AES_CM_128_HMAC_SHA1_80 的 SRTP master key/salt。
+native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE transport
+和 server-role DTLS transport，answer 使用实际绑定端口和同一组 ICE ufrag/pwd。
+
+10.4 已接入 STUN/ICE 层：`stun_packet.*` 支持 binding request/response、
+USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；
+`ice_transport.*` 绑定 UDP host candidate，校验浏览器 STUN binding request，
+回复 XOR-MAPPED-ADDRESS，记录 selected pair，并通过 `selected_ice_pairs` 暴露
+已选中的 candidate pair 数。首版不实现 TURN、relay 或 TCP candidate。
+
+UDP 收包先由 STUN/ICE 建立 selected pair，随后 DTLS packet 进入 `DtlsTransport`，
+outgoing handshake packet 通过 selected pair 发回；握手 timeout 由 `net` timer
+重传驱动。DTLS connected 后 engine 建立 outbound/inbound SRTP context。
+
+10.3 已接入 SDP 层：native engine 可解析 Chrome/Edge video offer，选择 H.264
+90000Hz 且 `packetization-mode=1` 的 payload，并生成 video-only sendonly answer，
+包含 `mid`、ICE ufrag/pwd、本地 SHA-256 fingerprint、`setup:passive`、`rtpmap`、
+`fmtp`、首版支持的 PLI/FIR `rtcp-fb`、SSRC 和 host candidate。
+
+10.6 当前基线已经把 SRTP/RTCP 接入 native engine：RTP sender 交出的 RTP packet
+view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP 会解密
+并解析 PLI/FIR，触发 `media_source.RequestKeyFrame()`。NACK 和 TWCC 仅保留反馈
+类型识别，重传和拥塞控制后置。
+
+10.7 当前基线已经把视频发送路径从旧 push sink 迁移到 `media_source`
+`MediaFrameReader`：peer connected 后按连接 attach keyframe-first reader，先发送
+启动 GOP，再周期拉取 live frame。`webrtc_rtp_sender.*` 复用
+`media_mux::RtpPacketizer` 生成 H.264/H.265 RTP packet view，维护每 peer 的 SSRC、
+sequence、首帧关键帧门禁和 RTP 包/帧统计；peer close、service stop 或失败时会取消
+drain timer、detach reader 并释放启动帧引用。
 
 ## 状态与资源模型
 

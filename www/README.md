@@ -104,11 +104,10 @@ mode for H.264/H.265 streams.
 `GET /api/status/streams` is the runtime source of truth for stream access
 links, including `hlsSupported/hlsReady`, `flvSupported/flvReady`,
 `mjpegSupported/mjpegReady`, and `webrtcReady`.
-`webrtcReady` is true only when the native WebRTC signaling, ICE, DTLS, and
-SRTP stages are ready. Signaling calls return structured JSON: peer and offer
-responses include `ok`, `peer_id`, `state`, and `error` on failure; successful
-offers also include `sdp`. The current native baseline returns `sdp_not_ready`
-for offers until the SDP/ICE/DTLS/SRTP tasks are implemented.
+`webrtcReady` is true when the native WebRTC signaling stack and local
+ICE/DTLS/SRTP dependencies are available to start a peer. Signaling calls return
+structured JSON: peer and offer responses include `ok`, `peer_id`, `state`, and
+`error` on failure; successful offers include a video-only sendonly SDP answer.
 
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,

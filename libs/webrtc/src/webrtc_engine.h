@@ -3,10 +3,18 @@
 
 #include "webrtc.h"
 
+#include "media_mux.h"
+
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace live_stream {
+
+class NetEngine;
+
 namespace webrtc_internal {
 
 struct WebrtcEngineCallbacks {
@@ -14,6 +22,13 @@ struct WebrtcEngineCallbacks {
     void (*OnPeerStateChanged)(void *user, const char *peer_id,
                                WebrtcPeerState state) = nullptr;
     void (*OnPeerKeyFrameRequested)(void *user, const char *peer_id) = nullptr;
+};
+
+struct WebrtcRtpSendParameters {
+    VideoCodec codec = VideoCodec::kH264;
+    uint8_t payload_type = 0;
+    uint32_t clock_rate = media_mux::kRtpClockRate;
+    uint32_t ssrc = 0;
 };
 
 class IWebrtcEngine {
@@ -29,11 +44,22 @@ public:
                                     const std::string &offer_sdp) = 0;
     virtual bool AddIceCandidate(const WebrtcIceCandidate &candidate) = 0;
     virtual bool ClosePeer(const std::string &peer_id) = 0;
-    virtual bool SendFrame(const WebrtcPeerInfo &peer,
-                           const FramePayload &frame) = 0;
+    virtual bool HandleDtlsPacket(const std::string &peer_id,
+                                  const uint8_t *data, size_t size,
+                                  std::vector<uint8_t> *outgoing_dtls) = 0;
+    virtual bool HandleSrtcpPacket(const std::string &peer_id,
+                                   const uint8_t *data, size_t size) = 0;
+    virtual bool SendRtpPacket(const WebrtcPeerInfo &peer,
+                               const EncodedFrame &frame,
+                               const media_mux::RtpPacketView &packet) = 0;
+    virtual bool GetRtpSendParameters(
+        const std::string &peer_id,
+        WebrtcRtpSendParameters *parameters) const = 0;
+    virtual void FillStats(WebrtcStats *stats) const = 0;
 };
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine);
+std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine,
+                                           NetEngine *net_engine);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream
