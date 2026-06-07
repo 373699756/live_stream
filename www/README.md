@@ -67,7 +67,9 @@ The UI calls these JSON API groups:
 - `GET /api/ai/status`
 - `GET /api/ai/alerts`
 - `GET /api/ai/alerts/{id}/image`
-- `GET /api/system/*`
+- `GET/POST /api/system/*`
+- `GET/PUT/POST /api/system/time/*`
+- `GET/PUT/POST /api/system/network/*`
 - `GET/POST /api/upgrade/*`
 - `GET /api/operations`
 - `GET /api/operations/export`

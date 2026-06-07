@@ -100,7 +100,7 @@ bool HttpServiceImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/live/") ||
-               StartsWith(request.path, "/api/snapshot/");
+               StartsWith(request.path, "/snapshot/");
     }
     if (StartsWith(request.path, "/live/") &&
         (request.method == HttpMethod::kPost ||
@@ -113,34 +113,46 @@ bool HttpServiceImpl::ShouldUseStreamExecutor(
 }
 
 HttpResponse HttpServiceImpl::HandleHttpRequest(const HttpRequest &request) {
+    HttpRequest request_with_id = request;
+    if (request_with_id.request_id.empty()) {
+        request_with_id.request_id = MakeRequestId(NextRequestId());
+    }
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!initialized_) {
-            return StatusResponse(500, "Service not initialized");
+            return AddJsonEnvelope(
+                request_with_id,
+                StatusResponse(500, "Service not initialized"));
         }
     }
     if (server_ != nullptr) {
         server_->IncrementTotalRequests();
     }
 
-    if (request.path.empty() || request.path[0] != '/') {
+    if (request_with_id.path.empty() || request_with_id.path[0] != '/') {
         IncrementParseFailures();
-        return StatusResponse(400, "Invalid request path");
+        return AddJsonEnvelope(request_with_id,
+                               StatusResponse(400, "Invalid request path"));
     }
 
-    const HttpRouteMatch route = router_.Match(request);
+    const HttpRouteMatch route = router_.Match(request_with_id);
     if (route.found && route.callback != nullptr) {
-        return route.callback(route.user, request);
+        return AddJsonEnvelope(
+            request_with_id,
+            route.callback(route.user, request_with_id));
     }
-    if (StartsWith(request.path, "/api/")) {
-        return StatusResponse(501, "Not Implemented");
+    if (StartsWith(request_with_id.path, "/api/")) {
+        return AddJsonEnvelope(request_with_id,
+                               StatusResponse(501, "Not Implemented"));
     }
-    if (request.method == HttpMethod::kGet && options_.enable_static_files) {
-        return HandleStaticFile(request);
+    if (request_with_id.method == HttpMethod::kGet &&
+        options_.enable_static_files) {
+        return HandleStaticFile(request_with_id);
     }
 
     IncrementNotFound();
-    return StatusResponse(404, "Not Found");
+    return AddJsonEnvelope(request_with_id,
+                           StatusResponse(404, "Not Found"));
 }
 
 bool HttpServiceImpl::HandleStreamingHttpRequest(
@@ -236,7 +248,7 @@ void HttpServiceImpl::ConfigureConsoleHandlers(
 
     handlers_.push_back(CreateMediaHttpHandler(
         this, config, device_media, media_source,
-        webrtc));
+        rtsp, webrtc));
     handlers_.push_back(CreateAiHttpHandler(this, config, ai));
     handlers_.push_back(CreateSnapshotHttpHandler(
         this, device_media, snapshot));
@@ -283,7 +295,9 @@ void HttpServiceImpl::IncrementPermissionDenied() {
 live_stream::RequestContext HttpServiceImpl::MakeContext(
     const HttpRequest &request, const AuthPrincipal *principal) {
     live_stream::RequestContext context;
-    context.request_id = MakeRequestId(NextRequestId());
+    context.request_id =
+        request.request_id.empty() ? MakeRequestId(NextRequestId())
+                                   : request.request_id;
     context.client_ip = request.client_ip;
     context.user_agent = RequestUserAgent(request);
     if (principal != nullptr) {

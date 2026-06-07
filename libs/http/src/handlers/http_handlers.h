@@ -59,7 +59,7 @@ std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
 std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(
     HttpAccess *access, IConfig *config,
     IDeviceMedia *device_media, IMediaSource *media_source,
-    IWebrtc *webrtc);
+    IRtsp *rtsp, IWebrtc *webrtc);
 std::unique_ptr<IHttpHandler> CreateAiHttpHandler(
     HttpAccess *access, IConfig *config,
     IAiView *ai);

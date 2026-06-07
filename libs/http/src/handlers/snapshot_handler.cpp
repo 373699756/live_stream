@@ -14,6 +14,14 @@ namespace live_stream {
 
 namespace {
 
+HttpResponse SnapshotTextResponse(int status_code, const std::string &reason) {
+    HttpResponse response;
+    response.status_code = status_code;
+    response.headers["Content-Type"] = "text/plain";
+    response.body = reason;
+    return response;
+}
+
 bool LooksLikeJpeg(const SnapshotFrame &frame) {
     const uint8_t *data = frame.PayloadData();
     return data != nullptr && frame.size >= 2 && data[0] == 0xff &&
@@ -34,7 +42,7 @@ public:
         if (router == nullptr) {
             return;
         }
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/snapshot/",
+        router->AddPrefixRoute(HttpMethod::kGet, "/snapshot/",
                                &SnapshotHttpHandler::HandleSnapshotRoute,
                                this);
     }
@@ -54,12 +62,12 @@ private:
             return auth_response;
         }
         if (snapshot_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
+            return SnapshotTextResponse(501, "Not Implemented");
         }
         if (IsMediaRestarting(device_media_)) {
-            return StatusResponse(503, "Media pipeline restarting");
+            return SnapshotTextResponse(503, "Media pipeline restarting");
         }
-        const std::string prefix = "/api/snapshot/";
+        const std::string prefix = "/snapshot/";
         std::string name = request.path.substr(prefix.size());
         const size_t dot = name.find('.');
         if (dot != std::string::npos) {
@@ -67,14 +75,14 @@ private:
         }
         StreamId stream_id = StreamId::kMain;
         if (!StreamIdFromJsonString(name, &stream_id)) {
-            return StatusResponse(400, "Invalid stream");
+            return SnapshotTextResponse(400, "Invalid stream");
         }
         CaptureRequest capture_request;
         capture_request.stream_id = stream_id;
         SnapshotFrame frame =
             snapshot_->Capture(capture_request);
         if (!frame.HasValidPayload() || !LooksLikeJpeg(frame)) {
-            return StatusResponse(500, "Invalid snapshot frame");
+            return SnapshotTextResponse(500, "Invalid snapshot frame");
         }
         const uint8_t *data = frame.PayloadData();
         HttpResponse response;

@@ -17,10 +17,33 @@ class IDeviceMedia;
 
 constexpr const char *kHttpModuleName = "http";
 
+enum class HttpErrorCode {
+    kInvalidArgument,
+    kUnauthenticated,
+    kPermissionDenied,
+    kStreamNotFound,
+    kProtocolUnavailable,
+    kPeerNotFound,
+    kResourceBusy,
+    kInternalError,
+};
+
 HttpResponse JsonResponse(int status_code, const ConfigJson &value);
+HttpResponse JsonEnvelopeResponse(int status_code, const ConfigJson &data,
+                                  const std::string &request_id);
+HttpResponse ErrorResponse(int status_code, HttpErrorCode code,
+                           const std::string &message);
+HttpResponse ErrorEnvelopeResponse(int status_code, HttpErrorCode code,
+                                   const std::string &message,
+                                   const std::string &request_id);
 HttpResponse StatusResponse(int status_code, const std::string &reason);
 HttpResponse ForbiddenResponse(const AuthPrincipal &principal);
 HttpResponse OkResponse();
+HttpResponse AddJsonEnvelope(const HttpRequest &request,
+                             const HttpResponse &response);
+std::string RequestIdForResponse(const HttpRequest &request);
+const char *HttpErrorCodeName(HttpErrorCode code);
+HttpErrorCode HttpErrorCodeForStatus(int status_code);
 bool RequireAuth(HttpAccess *access, const HttpRequest &request,
                  AuthPrincipal *principal);
 HttpResponse RequireAuthResponse(HttpAccess *access,

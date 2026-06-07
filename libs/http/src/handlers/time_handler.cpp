@@ -69,15 +69,16 @@ public:
         if (router == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/time/status",
+        router->AddExactRoute(HttpMethod::kGet, "/api/system/time/status",
                               &TimeHttpHandler::HandleStatusRoute, this);
-        router->AddExactRoute(HttpMethod::kPut, "/api/time/timezone",
+        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/timezone",
                               &TimeHttpHandler::HandleTimezoneRoute, this);
-        router->AddExactRoute(HttpMethod::kPut, "/api/time/ntp",
+        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/ntp",
                               &TimeHttpHandler::HandleNtpRoute, this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/time/system-time",
+        router->AddExactRoute(HttpMethod::kPost,
+                              "/api/system/time/system-time",
                               &TimeHttpHandler::HandleSystemTimeRoute, this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/time/sync",
+        router->AddExactRoute(HttpMethod::kPost, "/api/system/time/sync",
                               &TimeHttpHandler::HandleSyncRoute, this);
     }
 

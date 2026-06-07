@@ -616,16 +616,22 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
                 return;
             }
             if (request_handler_ == nullptr) {
-                SendResponse(connection_id,
-                             StatusResponse(503, "Service Unavailable"),
-                             true);
+                SendResponse(
+                    connection_id,
+                    AddJsonEnvelope(
+                        pending.request,
+                        StatusResponse(503, "Service Unavailable")),
+                    true);
                 return;
             }
             HttpResponse handled =
                 request_handler_->HandleHttpRequest(pending.request);
             SendResponse(connection_id, handled, pending.close_after_response);
         }) == false) {
-        SendResponse(connection_id, StatusResponse(503, "Service Unavailable"),
+        SendResponse(connection_id,
+                     AddJsonEnvelope(
+                         pending.request,
+                         StatusResponse(503, "Service Unavailable")),
                      true);
     }
 }

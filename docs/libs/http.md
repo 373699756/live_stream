@@ -56,6 +56,8 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/webrtc/peers/{peer_id}/candidates` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}` | `http_media` / `webrtc` |
 | `/api/system/*` | `system`、`time`、`network_config` |
+| `/api/system/time/*` | `time` |
+| `/api/system/network/*` | `network_config` |
 | `/api/upgrade/*` | `upgrade` |
 | `/api/operations*` | `logger` |
 | `/api/ai/*` | `ai` |

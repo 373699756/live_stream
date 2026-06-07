@@ -24,6 +24,7 @@ struct HttpRequest {
     std::map<std::string, std::string> headers;
     std::string body;
     std::string client_ip;
+    std::string request_id;
 };
 
 struct HttpResponse {

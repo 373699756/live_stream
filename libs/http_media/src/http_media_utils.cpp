@@ -16,7 +16,22 @@ HttpResponse HttpMediaJsonResponse(int status_code,
 HttpResponse HttpMediaStatusResponse(int status_code,
                                      const std::string &reason) {
     ConfigJson root = ConfigJson::object();
-    root["error"] = reason;
+    ConfigJson error = ConfigJson::object();
+    if (status_code == 401) {
+        error["code"] = "unauthenticated";
+    } else if (status_code == 403) {
+        error["code"] = "permission_denied";
+    } else if (status_code == 409) {
+        error["code"] = "resource_busy";
+    } else if (status_code == 501 || status_code == 503) {
+        error["code"] = "protocol_unavailable";
+    } else if (status_code >= 400 && status_code < 500) {
+        error["code"] = "invalid_argument";
+    } else {
+        error["code"] = "internal_error";
+    }
+    error["message"] = reason;
+    root["error"] = error;
     return HttpMediaJsonResponse(status_code, root);
 }
 
@@ -37,9 +52,7 @@ HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal) {
 }
 
 HttpResponse HttpMediaOkResponse() {
-    ConfigJson root = ConfigJson::object();
-    root["ok"] = true;
-    return HttpMediaJsonResponse(200, root);
+    return HttpMediaJsonResponse(200, ConfigJson::object());
 }
 
 HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,

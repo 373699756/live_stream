@@ -32,16 +32,20 @@ public:
         if (router == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/network/interfaces",
+        router->AddExactRoute(HttpMethod::kGet,
+                              "/api/system/network/interfaces",
                               &NetworkHttpHandler::HandleInterfacesRoute,
                               this);
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/network/interfaces/",
+        router->AddPrefixRoute(HttpMethod::kGet,
+                               "/api/system/network/interfaces/",
                                &NetworkHttpHandler::HandleInterfaceRoute,
                                this);
-        router->AddPrefixRoute(HttpMethod::kPut, "/api/network/interfaces/",
+        router->AddPrefixRoute(HttpMethod::kPut,
+                               "/api/system/network/interfaces/",
                                &NetworkHttpHandler::HandleInterfaceRoute,
                                this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/network/reload",
+        router->AddExactRoute(HttpMethod::kPost,
+                              "/api/system/network/reload",
                               &NetworkHttpHandler::HandleReloadRoute, this);
     }
 
@@ -92,7 +96,7 @@ private:
             return StatusResponse(501, "Not Implemented");
         }
         const std::string ifname =
-            PathSuffix(request.path, "/api/network/interfaces/");
+            PathSuffix(request.path, "/api/system/network/interfaces/");
         if (ifname.empty()) {
             return StatusResponse(400, "Missing interface");
         }
