@@ -73,12 +73,13 @@ WebrtcSdpAnswerOptions BuildAnswerOptions(
     const DtlsFingerprint &local_fingerprint,
     const std::string &local_ice_ufrag,
     const std::string &local_ice_pwd,
-    uint16_t local_port) {
+    const NetAddress &local_candidate) {
     WebrtcSdpAnswerOptions answer_options;
     answer_options.peer_id = peer.peer_id;
     answer_options.local_codec = peer.codec;
     answer_options.local_ip = LocalCandidateIp(options);
-    answer_options.local_port = local_port;
+    answer_options.local_candidate_ip = local_candidate.ip;
+    answer_options.local_port = local_candidate.port;
     answer_options.local_ice_ufrag = local_ice_ufrag;
     answer_options.local_ice_pwd = local_ice_pwd;
     answer_options.local_fingerprint_hash =
@@ -253,9 +254,13 @@ public:
                 return std::string();
             }
 
+            NetAddress local_candidate = ice->local_address();
+            if (local_candidate.port == 0) {
+                local_candidate.port = local_port;
+            }
             const WebrtcSdpAnswerOptions answer_options = BuildAnswerOptions(
                 peer, options_, local_fingerprint_, local_ice_ufrag,
-                local_ice_pwd, local_port);
+                local_ice_pwd, local_candidate);
             answer = BuildWebrtcAnswer(parsed_offer, answer_options);
             if (answer.empty()) {
                 return std::string();
