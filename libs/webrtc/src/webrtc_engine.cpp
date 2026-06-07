@@ -177,8 +177,8 @@ public:
     }
 
     ~NativeWebrtcEngine() override {
-        Stop();
         UnregisterEngine(engine_id_);
+        Stop();
     }
 
     bool Available() const override { return net_engine_ != nullptr; }
