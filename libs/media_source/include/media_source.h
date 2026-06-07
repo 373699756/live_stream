@@ -195,6 +195,8 @@ struct MediaSourceStats {
     uint32_t cached_frames = 0;
     uint32_t cached_bytes = 0;
     uint32_t slow_reader_count = 0;
+    uint32_t main_slow_reader_count = 0;
+    uint32_t sub_slow_reader_count = 0;
     int64_t main_last_frame_timestamp_us = 0;
     int64_t sub_last_frame_timestamp_us = 0;
 };

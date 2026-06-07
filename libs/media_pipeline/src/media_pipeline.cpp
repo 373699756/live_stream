@@ -611,6 +611,10 @@ public:
         stats.cached_frames = frame_ring_.CachedFrameCount();
         stats.cached_bytes = frame_ring_.CachedBytes();
         stats.slow_reader_count = frame_ring_.SlowReaderCount();
+        stats.main_slow_reader_count =
+            frame_ring_.SlowReaderCount(StreamId::kMain);
+        stats.sub_slow_reader_count =
+            frame_ring_.SlowReaderCount(StreamId::kSub);
         stats.main_last_frame_timestamp_us =
             frame_ring_.LastFrameTimestamp(StreamId::kMain);
         stats.sub_last_frame_timestamp_us =

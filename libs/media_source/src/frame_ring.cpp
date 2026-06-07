@@ -189,6 +189,17 @@ uint32_t FrameRing::SlowReaderCount() const {
     return count;
 }
 
+uint32_t FrameRing::SlowReaderCount(StreamId stream_id) const {
+    uint32_t count = 0;
+    for (const auto &item : readers_) {
+        if (item.second.stream_id == stream_id &&
+            item.second.live_queue.overflow) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 uint32_t FrameRing::CachedFrameCount() const {
     return static_cast<uint32_t>(main_cache_.size + sub_cache_.size);
 }

@@ -104,7 +104,7 @@ reader/GOP 资源模型：
 | --- | --- |
 | GOP cache | 每路最多 128 帧，从关键帧开始重建；codec 切换、stream stop 和 cache overflow 清理。 |
 | reader live queue | 每 reader 最多 32 帧；溢出时清空该 reader live queue，标记 slow reader，并等待下一个关键帧。 |
-| reader count | 由 `MediaPipelineOptions` 限制，runtime snapshot 报告 active reader/client 数。 |
+| reader count | 由 `MediaPipelineOptions` 限制，runtime snapshot 报告 active reader/client 数；`MediaSourceStats` 同时报告总 slow reader 和 main/sub slow reader。 |
 | timestamp | `TimestampCorrector` 在每路 stream 内独立维护；stream stop、codec 切换时 reset。 |
 | last frame timestamp | `GetStats()` 报告主/子码流最新 corrected DTS，用于资源观测和慢读者排查。 |
 

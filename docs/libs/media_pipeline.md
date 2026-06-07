@@ -72,8 +72,8 @@ stream 的 ready、GOP、HLS/FLV 状态和 reader 缓存重置到 closed/error �
 
 `MediaSourceStats` 的 reader 字段由本模块汇总：`active_frame_readers` 表示显式
 pull reader 数，`active_frame_sinks` 表示旧 sink 过渡调用方数，`cached_frames`、
-`cached_bytes`、`slow_reader_count` 和主/子码流 last timestamp 来自同一个
-`FrameRing`。
+`cached_bytes`、总 slow reader、main/sub slow reader 和主/子码流 last timestamp
+来自同一个 `FrameRing`。
 
 ## 迁移边界
 

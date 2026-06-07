@@ -46,6 +46,7 @@ public:
     size_t SinkReaderCount() const;
     size_t PullReaderCount() const;
     uint32_t SlowReaderCount() const;
+    uint32_t SlowReaderCount(StreamId stream_id) const;
     uint32_t CachedFrameCount() const;
     uint32_t CachedBytes() const;
     int64_t LastFrameTimestamp(StreamId stream_id) const;

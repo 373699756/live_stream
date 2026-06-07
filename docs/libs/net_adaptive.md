@@ -79,5 +79,5 @@ public API 在 `net_adaptive.h`。协议模块不包含该头文件，不持有
 - v1 建议不自动执行，避免误伤实时预览主链路。
 - 后续如果要自动执行，只能通过 media_pipeline/device_media 的显式执行接口接入。
 - WebRTC 的 PLI/FIR/NACK/TWCC 仍是协议反馈；`net_adaptive` 只观察其结果。
-- 当前 `media_source` 只提供全局 slow reader 数，无法精确区分 main/sub；如需更准
-  的按流执行策略，应先扩展 `MediaSourceStats` 的按流慢读者统计。
+- `media_source` 提供 main/sub slow reader 数，`net_adaptive` 按实际 stream 归档
+  慢读压力，避免子码流慢读误触发主码流决策。

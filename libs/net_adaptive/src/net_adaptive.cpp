@@ -380,35 +380,53 @@ private:
         }
         const MediaSourceStats media_stats = media_source_->GetStats();
         stats->slow_media_readers = media_stats.slow_reader_count;
-        if (media_stats.slow_reader_count > 0) {
+        SampleMediaSourceStream(now_ms, StreamId::kMain,
+                                media_stats.main_slow_reader_count, stats,
+                                recommendations);
+        SampleMediaSourceStream(now_ms, StreamId::kSub,
+                                media_stats.sub_slow_reader_count, stats,
+                                recommendations);
+    }
+
+    void SampleMediaSourceStream(
+        int64_t now_ms,
+        StreamId stream_id,
+        uint32_t slow_reader_count,
+        NetAdaptiveStats *stats,
+        std::vector<NetAdaptiveRecommendation> *recommendations) {
+        if (stats == nullptr || recommendations == nullptr) {
+            return;
+        }
+        if (slow_reader_count > 0) {
             std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "media_source",
                 "media_source",
                 "readers",
-                StreamId::kMain,
+                stream_id,
                 PressureMetric::kSlowReaders,
-                media_stats.slow_reader_count,
+                slow_reader_count,
                 0,
                 now_ms);
-            if (state != nullptr) {
-                stats->level = MaxLevel(stats->level, state->level);
-                AddRecommendationIfReady(recommendations,
-                              state,
-                              NetAdaptiveRecommendationType::kRequestKeyFrame,
-                              now_ms,
-                              RecommendationReason(*state, false));
+            if (state == nullptr) {
+                return;
             }
-        } else {
-            std::lock_guard<std::mutex> lock(mutex_);
-            MaybeUpdateClearedTarget("media_source",
-                                     "media_source",
-                                     "readers",
-                                     StreamId::kMain,
-                                     PressureMetric::kSlowReaders,
-                                     0,
-                                     now_ms);
+            stats->level = MaxLevel(stats->level, state->level);
+            AddRecommendationIfReady(recommendations,
+                          state,
+                          NetAdaptiveRecommendationType::kRequestKeyFrame,
+                          now_ms,
+                          RecommendationReason(*state, false));
+            return;
         }
+        std::lock_guard<std::mutex> lock(mutex_);
+        MaybeUpdateClearedTarget("media_source",
+                                 "media_source",
+                                 "readers",
+                                 stream_id,
+                                 PressureMetric::kSlowReaders,
+                                 0,
+                                 now_ms);
     }
 
     ObservedTargetState *UpdateConnectionTarget(
