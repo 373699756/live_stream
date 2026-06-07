@@ -33,9 +33,10 @@ bool IsKeyFrame(FrameType frame_type) {
 bool ForEachAnnexBNalUnit(const uint8_t *data,
                           size_t size,
                           IAnnexBNalUnitSink *sink) {
-    if (sink == nullptr) {
+    if (data == nullptr || size == 0 || sink == nullptr) {
         return false;
     }
+    bool emitted_unit = false;
     size_t offset = 0;
     while (true) {
         const size_t start = FindStartCode(data, size, offset);
@@ -46,30 +47,35 @@ bool ForEachAnnexBNalUnit(const uint8_t *data,
             start + 3 < size && data[start + 2] == 0 && data[start + 3] == 1 ? 4
                                                                              : 3;
         const size_t nal_begin = start + prefix;
+        if (nal_begin >= size) {
+            return false;
+        }
         const size_t next = FindStartCode(data, size, nal_begin);
         size_t nal_end = next == std::string::npos ? size : next;
         while (nal_end > nal_begin && data[nal_end - 1] == 0) {
             --nal_end;
         }
-        if (nal_end > nal_begin) {
-            AnnexBNalUnit unit;
-            unit.data = data + nal_begin;
-            unit.size = nal_end - nal_begin;
-            unit.h264_type = static_cast<uint8_t>(data[nal_begin] & 0x1f);
-            if (unit.size > 1) {
-                unit.h265_type =
-                    static_cast<uint8_t>((data[nal_begin] >> 1) & 0x3f);
-            }
-            if (!sink->OnAnnexBNalUnit(unit, next == std::string::npos)) {
-                return false;
-            }
+        if (nal_end <= nal_begin) {
+            return false;
+        }
+        AnnexBNalUnit unit;
+        unit.data = data + nal_begin;
+        unit.size = nal_end - nal_begin;
+        unit.h264_type = static_cast<uint8_t>(data[nal_begin] & 0x1f);
+        if (unit.size > 1) {
+            unit.h265_type =
+                static_cast<uint8_t>((data[nal_begin] >> 1) & 0x3f);
+        }
+        emitted_unit = true;
+        if (!sink->OnAnnexBNalUnit(unit, next == std::string::npos)) {
+            return false;
         }
         if (next == std::string::npos) {
             break;
         }
         offset = next;
     }
-    return true;
+    return emitted_unit;
 }
 
 void StripAnnexBStartCode(const uint8_t **payload, size_t *size) {

@@ -59,9 +59,10 @@ NAL length 和 PreviousTagSize，media payload slice 仍指向输入帧 payload�
 
 - 生产命名空间已从旧 `stream_mux` 收敛为 `media_mux`。
 - `RtpPacketizer` 冻结为 RTSP/WebRTC 共用契约，支持 H.264/H.265 AnnexB 输入、
-  seq/ssrc/90k timestamp/payload type、marker bit 和 FU 分片；`RtpPacketizerInput`
-  的 `payload_type=0` 表示按 codec 使用 `RtpPacketizerOptions` 默认值，`ssrc`
-  必须非 0。
+  seq/ssrc/90k timestamp/payload type、marker bit 和 FU 分片；时钟固定为
+  `kRtpClockRate`，`RtpPacketizerOptions` 只配置 MTU 和默认 payload type。
+  `RtpPacketizerInput` 的 `payload_type=0` 表示按 codec 使用默认值，`ssrc`
+  必须非 0，归一化后的 payload type 也必须非 0。
 - `RtpPacketizerInput.pts_us` 必须是 `media_source` corrected PTS；RTSP 和 WebRTC
   不得再各自修正 RTP timestamp。
 - `RtpPacketView` 输出后立即交给 transport；异步发送时调用方必须通过

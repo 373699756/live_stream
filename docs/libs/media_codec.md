@@ -63,8 +63,8 @@ metadata 输出。
   `media_source`。
 - RTSP/WebRTC/HLS/HTTP-FLV 相邻接口只消费 `media_codec` 的 parser/metadata，
   不在协议模块内新增私有 H.264/H.265 parser。
-- `ForEachAnnexBNalUnit` 输入为一帧 AnnexB payload，输出 NAL view；输入异常、
-  start code 不完整或 sink 返回失败时整体返回失败。
+- `ForEachAnnexBNalUnit` 输入为一帧 AnnexB payload，输出非空 NAL view；空输入、
+  没有可用 NAL、start code 不完整或 sink 返回失败时整体返回失败。
 - `ExtractH264ParameterSets` 和 `ExtractH265ParameterSets` 只用于低频 metadata
   输出，例如 SDP、FLV sequence header 或 track 初始化；热路径不得每包重复提取。
 - `BuildH264AvccRecord` 和 `BuildH265HvccRecord` 输出调用方拥有的字符串，用于

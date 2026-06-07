@@ -144,7 +144,6 @@ public:
 
 struct RtpPacketizerOptions {
     uint32_t mtu_bytes = 1200;
-    uint32_t clock_rate = kRtpClockRate;
     uint8_t h264_payload_type = kRtpPayloadTypeH264;
     uint8_t h265_payload_type = kRtpPayloadTypeH265;
 };

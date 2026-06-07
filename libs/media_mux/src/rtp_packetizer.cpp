@@ -26,12 +26,12 @@ uint8_t PayloadTypeForCodec(const RtpPacketizerOptions &options,
                                       : options.h264_payload_type;
 }
 
-uint32_t RtpTimestamp(const RtpPacketizerInput &input, uint32_t clock_rate) {
+uint32_t RtpTimestamp(const RtpPacketizerInput &input) {
     if (input.pts_us <= 0) {
         return 0;
     }
     return static_cast<uint32_t>(
-        (static_cast<uint64_t>(input.pts_us) * clock_rate) / 1000000U);
+        (static_cast<uint64_t>(input.pts_us) * kRtpClockRate) / 1000000U);
 }
 
 void WriteRtpHeader(const RtpPacketizerInput &input,
@@ -88,9 +88,6 @@ RtpPacketizer::RtpPacketizer(const RtpPacketizerOptions &options)
     if (options_.mtu_bytes < kMinRtpMtuBytes) {
         options_.mtu_bytes = kMinRtpMtuBytes;
     }
-    if (options_.clock_rate == 0) {
-        options_.clock_rate = kRtpClockRate;
-    }
 }
 
 bool RtpPacketizer::Packetize(const EncodedFrame &frame,
@@ -110,7 +107,8 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
         NormalizeRtpInput(input, options_);
     if (normalized_input.payload == nullptr ||
         normalized_input.payload_size == 0 ||
-        normalized_input.sequence == nullptr || sink == nullptr ||
+        normalized_input.sequence == nullptr || normalized_input.ssrc == 0 ||
+        normalized_input.payload_type == 0 || sink == nullptr ||
         (normalized_input.codec != VideoCodec::kH264 &&
          normalized_input.codec != VideoCodec::kH265) ||
         normalized_input.payload_size > std::numeric_limits<uint32_t>::max()) {
@@ -182,7 +180,7 @@ bool RtpPacketizer::SendRtpPacket(const RtpPacketizerInput &input,
 
     const uint16_t sequence = *input.sequence;
     ++(*input.sequence);
-    const uint32_t timestamp = RtpTimestamp(input, options_.clock_rate);
+    const uint32_t timestamp = RtpTimestamp(input);
     uint8_t header[kRtpHeaderSize];
     WriteRtpHeader(input, marker, sequence, timestamp, header);
 

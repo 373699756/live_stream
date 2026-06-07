@@ -99,7 +99,8 @@ bool ParseH265AnnexBNalUnits(const uint8_t *data,
     private:
         H265NalUnitList *units_ = nullptr;
     } builder(units);
-    return ForEachAnnexBNalUnit(data, size, &builder) && !units->overflow;
+    return ForEachAnnexBNalUnit(data, size, &builder) && !units->overflow &&
+           !units->empty();
 }
 
 bool HasH265ParameterSets(const H265NalUnitList &units) {
