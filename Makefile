@@ -111,6 +111,8 @@ APP_SRCS := \
 	app/linux_time_platform.cpp \
 	app/media_subsystem.cpp \
 	app/platform_factory.cpp \
+	app/protocol_options.cpp \
+	app/protocol_runtime_config.cpp \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp \
 	app/upgrade_flash.cpp \
