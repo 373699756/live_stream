@@ -142,6 +142,7 @@ bool HttpServer::Start() {
     TcpListenOptions server_config;
     server_config.address.ip = options_.listen_ip;
     server_config.address.port = options_.listen_port;
+    server_config.owner_protocol = kHttpModuleName;
     server_config.max_connections = options_.max_connections;
     server_config.send_queue_capacity = options_.send_queue_capacity;
     server_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;

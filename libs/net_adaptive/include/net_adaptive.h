@@ -21,6 +21,14 @@ enum class NetAdaptivePressureLevel {
     kConstrained,
 };
 
+enum class NetAdaptivePressureSignal {
+    kNone = 0,
+    kTcpPendingBytes,
+    kSendQueue,
+    kMediaSlowReader,
+    kWebrtcDroppedFrames,
+};
+
 enum class NetAdaptiveRecommendationType {
     kNone = 0,
     kRequestKeyFrame,
@@ -35,6 +43,13 @@ struct NetAdaptiveOptions {
     uint32_t pending_bytes_constrained = 768 * 1024;
     uint32_t watch_sample_threshold = 2;
     uint32_t constrained_sample_threshold = 2;
+    uint32_t recovery_sample_threshold = 5;
+    uint32_t send_queue_watch = 32;
+    uint32_t send_queue_constrained = 96;
+    uint32_t slow_readers_watch = 1;
+    uint32_t slow_readers_constrained = 2;
+    uint32_t webrtc_dropped_frames_watch = 1;
+    uint32_t webrtc_dropped_frames_constrained = 8;
     uint32_t recommendation_cooldown_ms = 5000;
     uint32_t recommendation_history_limit = 64;
 };
@@ -53,6 +68,10 @@ struct NetAdaptiveRecommendation {
     std::string target;
     StreamId stream_id = StreamId::kMain;
     std::string reason;
+    NetAdaptivePressureSignal pressure_signal =
+        NetAdaptivePressureSignal::kNone;
+    uint32_t pressure_value = 0;
+    uint32_t pressure_value_ewma = 0;
     uint32_t pending_bytes = 0;
     uint32_t pending_bytes_ewma = 0;
     uint32_t consecutive_watch_samples = 0;
@@ -66,8 +85,11 @@ struct NetAdaptiveStats {
     uint32_t sampled_connections = 0;
     uint32_t tracked_targets = 0;
     uint32_t watch_targets = 0;
+    uint32_t recovering_targets = 0;
     uint32_t constrained_connections = 0;
     uint32_t constrained_targets = 0;
+    uint32_t stream_decisions = 0;
+    uint32_t recovering_streams = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
     uint32_t slow_media_readers = 0;
@@ -79,12 +101,39 @@ struct NetAdaptiveTargetState {
     std::string protocol;
     std::string target;
     StreamId stream_id = StreamId::kMain;
+    NetAdaptivePressureSignal pressure_signal =
+        NetAdaptivePressureSignal::kNone;
+    uint32_t pressure_value = 0;
+    uint32_t pressure_value_ewma = 0;
     uint32_t pending_bytes = 0;
     uint32_t pending_bytes_ewma = 0;
     uint32_t consecutive_watch_samples = 0;
     uint32_t consecutive_constrained_samples = 0;
+    uint32_t consecutive_normal_samples = 0;
+    int64_t pressure_started_at_ms = 0;
+    int64_t normal_since_ms = 0;
     int64_t last_seen_ms = 0;
     int64_t last_recommendation_ms = 0;
+};
+
+struct NetAdaptiveStreamDecision {
+    StreamId stream_id = StreamId::kMain;
+    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+    bool should_request_key_frame = false;
+    bool should_prefer_sub_stream = false;
+    bool should_close_slow_clients = false;
+    bool may_restore_main_stream = false;
+    std::string reason;
+    uint32_t tracked_targets = 0;
+    uint32_t watch_targets = 0;
+    uint32_t constrained_targets = 0;
+    uint32_t peak_pending_bytes_ewma = 0;
+    uint32_t peak_pressure_value_ewma = 0;
+    uint32_t slow_media_readers = 0;
+    uint32_t webrtc_dropped_frames_delta = 0;
+    int64_t updated_at_ms = 0;
+    int64_t pressure_started_at_ms = 0;
+    int64_t normal_since_ms = 0;
 };
 
 class INetAdaptive {
@@ -100,6 +149,8 @@ public:
     GetRecommendationHistory() const = 0;
     virtual std::vector<NetAdaptiveTargetState>
     GetTargetStates() const = 0;
+    virtual std::vector<NetAdaptiveStreamDecision>
+    GetStreamDecisions() const = 0;
 };
 
 std::unique_ptr<INetAdaptive> CreateNetAdaptive(
