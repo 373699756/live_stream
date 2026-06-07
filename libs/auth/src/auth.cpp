@@ -177,7 +177,11 @@ public:
                     std::unique_ptr<IAuthUserStore> user_store,
                     std::unique_ptr<IPasswordVerifier> password_verifier,
                     IAuthTokenGenerator *token_generator)
-        : options_(options), dependencies_(dependencies), user_store_(std::move(user_store)), password_verifier_(std::move(password_verifier)), token_generator_(token_generator) {}
+        : options_(options),
+          config_(dependencies.config),
+          user_store_(std::move(user_store)),
+          password_verifier_(std::move(password_verifier)),
+          token_generator_(token_generator) {}
 
     bool Prepare() {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -188,8 +192,8 @@ public:
             !IsValidPolicy(options_)) {
             return false;
         }
-        if (dependencies_.config != nullptr) {
-            ConfigJson user_config = dependencies_.config->GetValue("user");
+        if (config_ != nullptr) {
+            ConfigJson user_config = config_->GetValue("user");
             if (user_config.is_object()) {
                 if (!ApplyConfigLocked(user_config)) {
                     return false;
@@ -208,7 +212,7 @@ public:
                                ? ConfigResult::Success()
                                : ConfigResult::Failure("", "apply user config failed");
                 };
-                if (!dependencies_.config->AttachConfig("user", attachment)) {
+                if (!config_->AttachConfig("user", attachment)) {
                     return false;
                 }
                 config_attached_ = true;
@@ -733,7 +737,7 @@ private:
     }
 
     AuthOptions options_;
-    AuthDependencies dependencies_;
+    IConfig* config_ = nullptr;
     std::unique_ptr<IAuthUserStore> user_store_;
     std::unique_ptr<IPasswordVerifier> password_verifier_;
     IAuthTokenGenerator *token_generator_ = nullptr;

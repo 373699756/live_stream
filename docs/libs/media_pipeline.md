@@ -30,6 +30,9 @@ flowchart LR
 - 启动时向 `IDeviceMedia` 订阅编码帧。
 - 接收 `device_media` 的 stream running/closed/error 状态，并在 closed/error 时
   清理对应码流的 `media_source` stream context、reader cache 和 pending frame。
+- 在 stream start、stream stop、codec 切换和 `TimestampCorrector` 发现回退/跳变时，
+  统一清理 GOP、HLS、FLV sequence/GOP、MJPEG latest frame、reader live queue 和
+  pending frame。
 - 对 RTSP/WebRTC 暴露 `IMediaFrameSource`。
 - 对新协议输出暴露 `AttachFrameReader`、`GetFrameReaderStartData`、
   `PopFrameReaderFrame` 和 `DetachFrameReader`；旧 `AttachFrameSink` 只作为过渡
@@ -52,8 +55,9 @@ public API 在 `media_pipeline.h`：
 
 服务壳拥有和 `device_media` 的订阅关系。停止时必须先停止下游输出，再解除 frame
 sink，避免回调访问已释放对象。设备码流停止、配置重启或错误时，本模块负责把对应
-stream 的 ready、GOP、HLS/FLV 状态和 reader 缓存重置到 closed/error 语义；下游
-协议不直接订阅 `device_media`，也不重复维护设备侧 GOP 或时间戳修正。
+stream 的 ready、GOP、HLS/FLV/MJPEG 状态和 reader 缓存重置到 closed/error 语义；
+codec 切换和 timestamp reset 走同一 `ResetStreamForReasonLocked` 路径，下游协议
+不直接订阅 `device_media`，也不重复维护设备侧 GOP 或时间戳修正。
 
 资源上限来自 `MediaPipelineOptions`：
 
@@ -73,7 +77,8 @@ stream 的 ready、GOP、HLS/FLV 状态和 reader 缓存重置到 closed/error �
 `MediaSourceStats` 的 reader 字段由本模块汇总：`active_frame_readers` 表示显式
 pull reader 数，`active_frame_sinks` 表示旧 sink 过渡调用方数，`cached_frames`、
 `cached_bytes`、总 slow reader、main/sub slow reader 和主/子码流 last timestamp
-来自同一个 `FrameRing`。
+来自同一个 `FrameRing`。codec generation 和 last reset reason 来自对应
+`media_source` stream context，用于 HTTP/Web API 后续序列化。
 
 ## 迁移边界
 
@@ -83,6 +88,6 @@ legacy 文档和历史决策里出现。
 ## 非目标
 
 - 不解析 HTTP 请求，不写 socket。
-- 不拥有 HLS/FLV/MJPEG 的封装算法细节；封装构造归 `media_mux`。
+- 不拥有 HLS/FLV/MJPEG 的封装算法细节；HLS/FLV 构造归 `media_source` 内部。
 - 不应用设备 video/image 配置，不直接调用 `hisi_vendor` SDK。
 - 不保存 Web 前端状态或 mock 数据。

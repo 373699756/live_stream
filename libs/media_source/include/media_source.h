@@ -49,6 +49,15 @@ using MediaFlvClientId = uint64_t;
 using MediaMjpegClientId = uint64_t;
 using MediaFrameReaderId = uint64_t;
 
+enum class MediaSourceResetReason {
+    kNone = 0,
+    kStreamStarted,
+    kStreamStopped,
+    kCodecChanged,
+    kTimestampReset,
+    kCacheOverflow,
+};
+
 enum class MediaFrameReaderCloseReason {
     kNone = 0,
     kDetached,
@@ -57,6 +66,25 @@ enum class MediaFrameReaderCloseReason {
     kTimestampReset,
     kCacheOverflow,
 };
+
+inline const char *MediaSourceResetReasonName(
+    MediaSourceResetReason reason) {
+    switch (reason) {
+        case MediaSourceResetReason::kNone:
+            return "none";
+        case MediaSourceResetReason::kStreamStarted:
+            return "stream_started";
+        case MediaSourceResetReason::kStreamStopped:
+            return "stream_stopped";
+        case MediaSourceResetReason::kCodecChanged:
+            return "codec_changed";
+        case MediaSourceResetReason::kTimestampReset:
+            return "timestamp_reset";
+        case MediaSourceResetReason::kCacheOverflow:
+            return "cache_overflow";
+    }
+    return "unknown";
+}
 
 struct MediaHlsEntry {
     uint64_t sequence = 0;
@@ -199,19 +227,27 @@ struct MediaSourceStats {
     uint32_t sub_slow_reader_count = 0;
     int64_t main_last_frame_timestamp_us = 0;
     int64_t sub_last_frame_timestamp_us = 0;
+    uint64_t main_codec_generation = 0;
+    uint64_t sub_codec_generation = 0;
+    std::string main_last_reset_reason;
+    std::string sub_last_reset_reason;
 };
 
 struct MediaSourceStatus {
     bool running = false;
+    bool track_ready = false;
     bool browser_codec = false;
     bool hls_ready = false;
     bool flv_ready = false;
     bool mjpeg_ready = false;
     VideoCodec codec = VideoCodec::kH264;
+    uint64_t codec_generation = 0;
     uint32_t hls_segment_count = 0;
     uint32_t flv_sequence_header_size = 0;
     uint32_t flv_last_keyframe_size = 0;
     uint32_t hls_current_segment_size = 0;
+    int64_t last_dts_us = 0;
+    std::string last_reset_reason;
     bool hls_supported = false;
     bool flv_supported = false;
     bool mjpeg_supported = false;

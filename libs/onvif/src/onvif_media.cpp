@@ -14,19 +14,18 @@ const std::string &SnapshotPath(const OnvifServerOptions &options,
                                        : options.snapshot_main_path;
 }
 
-bool StreamAvailable(const OnvifServerDependencies &dependencies,
-                     StreamId stream_id) {
-    return dependencies.device_media == nullptr ||
-           dependencies.device_media->IsStreamStarted(stream_id);
+bool StreamAvailable(IDeviceMedia *device_media, StreamId stream_id) {
+    return device_media == nullptr ||
+           device_media->IsStreamStarted(stream_id);
 }
 
-std::string BuildStreamUri(const OnvifServerDependencies &dependencies,
+std::string BuildStreamUri(IRtsp *rtsp,
                            StreamId stream_id,
                            const std::string &advertise_ip) {
-    if (dependencies.rtsp == nullptr) {
+    if (rtsp == nullptr) {
         return std::string();
     }
-    const RtspListenAddress address = dependencies.rtsp->LocalAddress();
+    const RtspListenAddress address = rtsp->LocalAddress();
     return BuildRtspStreamUrl(address, stream_id, advertise_ip);
 }
 
@@ -72,16 +71,17 @@ const std::string &SnapshotUriForId(const OnvifMediaUris &media_uris,
 }  // namespace
 
 OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
-                                   const OnvifServerDependencies &dependencies,
+                                   IDeviceMedia *device_media,
+                                   IRtsp *rtsp,
                                    const std::string &advertise_ip) {
     OnvifMediaUris media_uris;
-    if (StreamAvailable(dependencies, StreamId::kMain)) {
+    if (StreamAvailable(device_media, StreamId::kMain)) {
         media_uris.stream_main =
-            BuildStreamUri(dependencies, StreamId::kMain, advertise_ip);
+            BuildStreamUri(rtsp, StreamId::kMain, advertise_ip);
     }
-    if (StreamAvailable(dependencies, StreamId::kSub)) {
+    if (StreamAvailable(device_media, StreamId::kSub)) {
         media_uris.stream_sub =
-            BuildStreamUri(dependencies, StreamId::kSub, advertise_ip);
+            BuildStreamUri(rtsp, StreamId::kSub, advertise_ip);
     }
     media_uris.snapshot_main =
         BuildSnapshotUri(options, StreamId::kMain, advertise_ip);

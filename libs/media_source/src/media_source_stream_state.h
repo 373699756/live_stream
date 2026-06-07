@@ -29,6 +29,10 @@ struct StreamContext {
     GopCache flv_gop_cache;
     HlsMaker hls_maker;
     uint64_t config_generation = 0;
+    uint64_t codec_generation = 0;
+    EncodedFrame latest_mjpeg_frame;
+    bool has_latest_mjpeg_frame = false;
+    MediaSourceResetReason last_reset_reason = MediaSourceResetReason::kNone;
     TimestampCorrector timestamp_corrector;
 };
 
@@ -40,6 +44,11 @@ struct PackagedFrameResult {
     bool hls_segment_created = false;
     FlvVideoTagView flv_tag_view;
     bool has_flv_tag_view = false;
+};
+
+struct NormalizedFrameResult {
+    bool accepted = false;
+    bool timestamp_reset = false;
 };
 
 bool IsBrowserStreamReady(StreamState state, VideoCodec codec);
@@ -65,8 +74,12 @@ MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
 MediaFlvStartData BuildFlvStartData(const StreamContext &stream);
 MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream);
 
-void ResetStream(StreamContext *stream, VideoCodec codec);
-bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame);
+void ResetStream(StreamContext *stream, VideoCodec codec,
+                 MediaSourceResetReason reason);
+void ResetStreamCaches(StreamContext *stream, MediaSourceResetReason reason);
+NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
+                                               EncodedFrame *frame);
+bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,

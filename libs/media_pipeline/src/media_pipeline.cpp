@@ -110,7 +110,7 @@ private:
 };
 
 MediaFlvVideoTagView ToMediaFlvVideoTagView(
-    const media_mux::FlvVideoTagView &tag) {
+    const source_state::FlvVideoTagView &tag) {
     MediaFlvVideoTagView output_tag;
     if (tag.slice_count > kMaxMediaFlvVideoTagSlices) {
         return output_tag;
@@ -153,6 +153,24 @@ const char *CodecName(VideoCodec codec) {
             return "jpeg";
     }
     return "unknown";
+}
+
+MediaFrameReaderCloseReason ReaderCloseReasonForReset(
+    MediaSourceResetReason reason) {
+    switch (reason) {
+        case MediaSourceResetReason::kCodecChanged:
+            return MediaFrameReaderCloseReason::kCodecChanged;
+        case MediaSourceResetReason::kTimestampReset:
+            return MediaFrameReaderCloseReason::kTimestampReset;
+        case MediaSourceResetReason::kCacheOverflow:
+            return MediaFrameReaderCloseReason::kCacheOverflow;
+        case MediaSourceResetReason::kStreamStarted:
+        case MediaSourceResetReason::kStreamStopped:
+            return MediaFrameReaderCloseReason::kStreamStopped;
+        case MediaSourceResetReason::kNone:
+            return MediaFrameReaderCloseReason::kNone;
+    }
+    return MediaFrameReaderCloseReason::kStreamStopped;
 }
 
 class MediaPipelineImpl : public IMediaPipeline, public IFrameSink {
@@ -412,10 +430,13 @@ public:
         status.browser_codec =
             status.hls_supported || status.flv_supported ||
             status.mjpeg_supported;
+        status.track_ready =
+            source_state::BuildMediaTrack(stream_id, *stream).ready;
         status.hls_ready = source_state::IsHlsStreamReady(*stream);
         status.flv_ready = source_state::IsFlvStreamReady(*stream);
         status.mjpeg_ready = source_state::IsMjpegStreamReady(*stream);
         status.codec = stream->codec;
+        status.codec_generation = stream->codec_generation;
         status.hls_segment_count = static_cast<uint32_t>(
             stream->hls_maker.SegmentCount());
         status.flv_sequence_header_size =
@@ -424,6 +445,9 @@ public:
             stream->flv_gop_cache.FirstFlvTagSize();
         status.hls_current_segment_size =
             stream->hls_maker.CurrentSegmentSize();
+        status.last_dts_us = stream->timestamp_corrector.last_dts_us();
+        status.last_reset_reason =
+            MediaSourceResetReasonName(stream->last_reset_reason);
         return status;
     }
 
@@ -619,6 +643,12 @@ public:
             frame_ring_.LastFrameTimestamp(StreamId::kMain);
         stats.sub_last_frame_timestamp_us =
             frame_ring_.LastFrameTimestamp(StreamId::kSub);
+        stats.main_codec_generation = main_stream_.codec_generation;
+        stats.sub_codec_generation = sub_stream_.codec_generation;
+        stats.main_last_reset_reason =
+            MediaSourceResetReasonName(main_stream_.last_reset_reason);
+        stats.sub_last_reset_reason =
+            MediaSourceResetReasonName(sub_stream_.last_reset_reason);
         return stats;
     }
 
@@ -721,14 +751,21 @@ private:
             return false;
         }
         if (stream->codec != frame->codec) {
-            source_state::ResetStream(stream, frame->codec);
-            frame_ring_.ClearStream(frame->stream_id,
-                                    MediaFrameReaderCloseReason::kCodecChanged);
+            ResetStreamForReasonLocked(frame->stream_id, frame->codec,
+                                       MediaSourceResetReason::kCodecChanged);
         }
         if (!source_state::IsBrowserStreamReady(stream->state, stream->codec)) {
             return false;
         }
-        return source_state::NormalizeFrameTimestamps(stream, frame);
+        const source_state::NormalizedFrameResult normalized =
+            source_state::NormalizeFrameTimestamps(stream, frame);
+        if (normalized.timestamp_reset) {
+            frame_ring_.ClearStream(
+                frame->stream_id,
+                MediaFrameReaderCloseReason::kTimestampReset);
+            ClearPendingQueueLocked(frame->stream_id);
+        }
+        return normalized.accepted;
     }
 
     bool BuildParsedFrame(const EncodedFrame &frame,
@@ -750,7 +787,10 @@ private:
                 return;
             }
             if (stream->codec != payload.encoded_frame.codec) {
-                source_state::ResetStream(stream, payload.encoded_frame.codec);
+                ResetStreamForReasonLocked(
+                    payload.encoded_frame.stream_id,
+                    payload.encoded_frame.codec,
+                    MediaSourceResetReason::kCodecChanged);
             }
             if (stream->state != StreamState::kRunning) {
                 return;
@@ -775,7 +815,7 @@ private:
         const EncodedFrame &frame = payload.encoded_frame;
         std::vector<source_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
-        media_mux::FlvVideoTagView flv_tag_view;
+        source_state::FlvVideoTagView flv_tag_view;
         bool has_flv_tag_view = false;
         bool package_hls = false;
         bool package_flv = false;
@@ -787,7 +827,8 @@ private:
                 return;
             }
             if (stream->codec != frame.codec) {
-                source_state::ResetStream(stream, frame.codec);
+                ResetStreamForReasonLocked(frame.stream_id, frame.codec,
+                                           MediaSourceResetReason::kCodecChanged);
             }
             if (!source_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
@@ -807,7 +848,8 @@ private:
                 return;
             }
             if (stream->codec != frame.codec) {
-                source_state::ResetStream(stream, frame.codec);
+                ResetStreamForReasonLocked(frame.stream_id, frame.codec,
+                                           MediaSourceResetReason::kCodecChanged);
             }
             if (!source_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
@@ -877,10 +919,20 @@ private:
                 return;
             }
             if (stream->codec != frame.codec) {
-                source_state::ResetStream(stream, frame.codec);
+                ResetStreamForReasonLocked(frame.stream_id, frame.codec,
+                                           MediaSourceResetReason::kCodecChanged);
             }
-            if (!source_state::IsMjpegStreamReady(*stream) ||
-                !mjpeg_clients_.HasClient(frame.stream_id)) {
+            const bool was_mjpeg_ready = source_state::IsMjpegStreamReady(*stream);
+            if (!source_state::StoreMjpegFrame(stream, frame)) {
+                return;
+            }
+            const bool mjpeg_ready = source_state::IsMjpegStreamReady(*stream);
+            if (!was_mjpeg_ready && mjpeg_ready) {
+                Info(kServiceName,
+                     "browser stream ready stream=%s mjpeg=1 bytes=%u",
+                     StreamName(frame.stream_id), frame.size);
+            }
+            if (!mjpeg_clients_.HasClient(frame.stream_id)) {
                 return;
             }
             clients = mjpeg_clients_.CollectWrites(frame.stream_id);
@@ -891,7 +943,7 @@ private:
     void WriteFlvClients(
         const std::vector<source_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
-        const media_mux::FlvVideoTagView &flv_tag_view,
+        const source_state::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
         const EncodedFrame &frame,
         StreamId stream_id) {
@@ -1036,6 +1088,22 @@ private:
         return nullptr;
     }
 
+    void ResetStreamForReasonLocked(StreamId stream_id, VideoCodec codec,
+                                    MediaSourceResetReason reason) {
+        source_state::StreamContext *stream = FindMutableStream(stream_id);
+        if (stream == nullptr) {
+            return;
+        }
+        source_state::ResetStream(stream, codec, reason);
+        frame_ring_.ClearStream(stream_id, ReaderCloseReasonForReset(reason));
+        if (reason == MediaSourceResetReason::kCodecChanged ||
+            reason == MediaSourceResetReason::kStreamStarted ||
+            reason == MediaSourceResetReason::kStreamStopped ||
+            reason == MediaSourceResetReason::kTimestampReset) {
+            ClearPendingQueueLocked(stream_id);
+        }
+    }
+
     void SetStreamStateLocked(StreamId stream_id, StreamState state,
                               VideoCodec video_codec) {
         source_state::StreamContext *stream = FindMutableStream(stream_id);
@@ -1043,12 +1111,21 @@ private:
             return;
         }
         if (state == StreamState::kRunning) {
+            if (stream->state != StreamState::kRunning) {
+                ResetStreamForReasonLocked(
+                    stream_id, video_codec,
+                    MediaSourceResetReason::kStreamStarted);
+            } else if (stream->codec != video_codec) {
+                ResetStreamForReasonLocked(
+                    stream_id, video_codec,
+                    MediaSourceResetReason::kCodecChanged);
+            }
             stream->codec = video_codec;
             stream->state = StreamState::kRunning;
         } else {
-            source_state::ClearStreamContext(stream);
-            frame_ring_.ClearStream(
-                stream_id, MediaFrameReaderCloseReason::kStreamStopped);
+            ResetStreamForReasonLocked(stream_id, stream->codec,
+                                       MediaSourceResetReason::kStreamStopped);
+            stream->state = state;
             ClearPendingQueueLocked(stream_id);
         }
         Info(kServiceName, "source state stream=%s state=%d",

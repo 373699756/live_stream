@@ -17,6 +17,7 @@ struct MediaTrack {
     StreamId stream_id = StreamId::kMain;
     VideoCodec codec = VideoCodec::kH264;
     uint32_t clock_rate = 90000;
+    uint64_t codec_generation = 0;
     std::string vps;
     std::string sps;
     std::string pps;

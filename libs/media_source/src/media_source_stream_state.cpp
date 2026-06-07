@@ -14,7 +14,7 @@ namespace {
 
 void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
                      bool keyframe,
-                     const media_mux::FlvVideoTagView &flv_tag_view) {
+                     const FlvVideoTagView &flv_tag_view) {
     if (stream == nullptr || stream->sequence_header_tag.empty()) {
         return;
     }
@@ -104,7 +104,8 @@ bool IsHlsStreamReady(const StreamContext &stream) {
 
 bool IsMjpegStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
-           IsMjpegCodecSupported(stream.codec);
+           IsMjpegCodecSupported(stream.codec) &&
+           stream.has_latest_mjpeg_frame;
 }
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
@@ -158,6 +159,7 @@ void ClearStreamContext(StreamContext *stream) {
     }
     stream->flv_gop_cache.Clear();
     stream->hls_maker.Reset();
+    EncodedFrameUnref(&stream->latest_mjpeg_frame);
     stream->codec = VideoCodec::kH264;
     stream->state = StreamState::kClosed;
     stream->vps.clear();
@@ -165,6 +167,9 @@ void ClearStreamContext(StreamContext *stream) {
     stream->pps.clear();
     stream->sequence_header_tag.clear();
     stream->config_generation = 0;
+    stream->codec_generation = 0;
+    stream->has_latest_mjpeg_frame = false;
+    stream->last_reset_reason = MediaSourceResetReason::kStreamStopped;
     stream->timestamp_corrector.Reset();
 }
 
@@ -215,27 +220,51 @@ MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream) {
     track.stream_id = stream_id;
     track.codec = stream.codec;
     track.clock_rate = 90000;
+    track.codec_generation = stream.codec_generation;
     track.vps = stream.vps;
     track.sps = stream.sps;
     track.pps = stream.pps;
-    track.ready = IsBrowserStreamReady(stream.state, stream.codec);
+    track.ready =
+        IsBrowserStreamReady(stream.state, stream.codec) &&
+        ((IsFlvCodecSupported(stream.codec) && HasFlvSequenceHeader(stream)) ||
+         IsMjpegStreamReady(stream));
     return track;
 }
 
-void ResetStream(StreamContext *stream, VideoCodec codec) {
+void ResetStreamCaches(StreamContext *stream, MediaSourceResetReason reason) {
     if (stream == nullptr) {
         return;
     }
+    stream->flv_gop_cache.Clear();
+    stream->hls_maker.Reset();
+    EncodedFrameUnref(&stream->latest_mjpeg_frame);
+    stream->has_latest_mjpeg_frame = false;
+    stream->vps.clear();
+    stream->sps.clear();
+    stream->pps.clear();
+    stream->sequence_header_tag.clear();
+    stream->config_generation = 0;
+    ++stream->codec_generation;
+    stream->last_reset_reason = reason;
+}
 
+void ResetStream(StreamContext *stream, VideoCodec codec,
+                 MediaSourceResetReason reason) {
+    if (stream == nullptr) {
+        return;
+    }
     const StreamState state = stream->state;
-    ClearStreamContext(stream);
+    ResetStreamCaches(stream, reason);
+    stream->timestamp_corrector.Reset();
     stream->codec = codec;
     stream->state = state;
 }
 
-bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame) {
+NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
+                                               EncodedFrame *frame) {
+    NormalizedFrameResult result;
     if (stream == nullptr || frame == nullptr) {
-        return false;
+        return result;
     }
 
     if (frame->dts_us <= 0) {
@@ -249,10 +278,31 @@ bool NormalizeFrameTimestamps(StreamContext *stream, EncodedFrame *frame) {
         frame->pts_us = 0;
     }
 
-    const CorrectedTimestamp corrected =
-        stream->timestamp_corrector.Correct(frame->dts_us, frame->pts_us);
-    frame->dts_us = corrected.dts_us;
-    frame->pts_us = corrected.pts_us;
+    const TimestampCorrectionResult corrected =
+        stream->timestamp_corrector.CorrectWithReset(frame->dts_us,
+                                                     frame->pts_us);
+    if (corrected.reset != TimestampCorrectionReset::kNone) {
+        ResetStreamCaches(stream, MediaSourceResetReason::kTimestampReset);
+        result.timestamp_reset = true;
+    }
+    frame->dts_us = corrected.timestamp.dts_us;
+    frame->pts_us = corrected.timestamp.pts_us;
+    result.accepted = true;
+    return result;
+}
+
+bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
+    if (stream == nullptr || frame.codec != VideoCodec::kMjpeg ||
+        !EncodedFrameHasPayload(&frame)) {
+        return false;
+    }
+    EncodedFrame retained_frame;
+    if (!EncodedFrameRefCopy(&retained_frame, &frame)) {
+        return false;
+    }
+    EncodedFrameUnref(&stream->latest_mjpeg_frame);
+    stream->latest_mjpeg_frame = retained_frame;
+    stream->has_latest_mjpeg_frame = true;
     return true;
 }
 
@@ -269,7 +319,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         return result;
     }
     if (stream->codec != frame.codec) {
-        ResetStream(stream, frame.codec);
+        ResetStream(stream, frame.codec, MediaSourceResetReason::kCodecChanged);
     }
     if (!IsBrowserStreamReady(stream->state, stream->codec)) {
         return result;

@@ -4,7 +4,7 @@
 
 本专项只记录内存和拷贝优化方向。具体实现仍归拥有模块：
 `device_media`、`media_source`、`media_pipeline`、`media_codec`、
-`media_mux`、`net`、`http` 和 `webrtc`。
+`rtp`、`net`、`http` 和 `webrtc`。
 
 ## 总体框架图
 
@@ -33,10 +33,11 @@ flowchart LR
 
 ## 当前重点
 
-- `media_source`：HLS segment retain、FLV cached tags、GOP cache 和
-  `EncodedFrame` 引用释放。
+- `media_source`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest
+  frame 和 `EncodedFrame` 引用释放。
 - `media_pipeline`：下游 client registry 和 frame sink 数量上限。
-- `media_mux`：封装输出减少临时大 buffer。
+- `media_source`：HLS/FLV 封装输出减少临时大 buffer。
+- `rtp`：RTSP/WebRTC RTP packet view 避免复制 media payload。
 - `net`：慢客户端断连、TCP pending bytes、send queue 和 UDP endpoint 生命周期。
 - `http`：stream executor 队列和 HTTP 业务 session 释放。
 - `webrtc`：peer fanout 和 frame dispatch 内存峰值。
@@ -67,6 +68,8 @@ flowchart LR
 - 慢客户端断开后，`net` send queue、stream executor backlog 和媒体缓存引用必须释放。
 - codec 在 H.264/H.265/MJPEG 间切换后，旧 parameter set、GOP cache 和 segment cache
   不得继续服务新客户端。
+- 时间戳回退或大跳变后，GOP、HLS、FLV、MJPEG latest frame 和 reader live queue
+  必须按 reset reason 回落，后续客户端从新的可解码点开始。
 - 优化结果必须同步回拥有模块文档；专项文档只保留跨模块指标和排查入口。
 
 ## 质量验证

@@ -54,6 +54,7 @@ RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adap
 ## Optimization
 
 - `optimization/memory.md`：热路径内存、拷贝、客户端 fanout 和质量扫描专项。
+- `optimization/board-hot-path-probe.md`：板端 HLS/FLV/MJPEG/WebRTC 多客户端热路径采集入口。
 
 ## Read Rules
 

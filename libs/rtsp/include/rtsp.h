@@ -21,21 +21,6 @@ enum class RtspTransportMode {
     kUdp,
 };
 
-enum class RtspAdaptiveEventType {
-    kSample = 0,
-    kFrameDropped,
-    kSlowClientClosed,
-    kKeyFrameRequested,
-};
-
-enum class RtspAdaptiveActionType {
-    kNone = 0,
-    kRequestKeyFrame,
-    kPreferSubStream,
-    kReduceBitrate,
-    kReduceFrameRate,
-};
-
 struct RtspListenAddress {
     std::string ip;
     uint16_t port = 0;
@@ -109,32 +94,11 @@ struct RtspStats {
     uint64_t slow_client_closes = 0;
 };
 
-struct RtspAdaptiveSample {
-    RtspAdaptiveEventType event = RtspAdaptiveEventType::kSample;
-    RtspSessionStats session;
-};
-
-struct RtspAdaptiveAction {
-    RtspAdaptiveActionType type = RtspAdaptiveActionType::kNone;
-    StreamId stream_id = StreamId::kMain;
-    uint32_t target_bitrate_kbps = 0;
-    uint32_t target_fps = 0;
-};
-
-class IRtspAdaptiveObserver {
-public:
-    virtual ~IRtspAdaptiveObserver() = default;
-
-    virtual RtspAdaptiveAction OnRtspAdaptiveSample(
-        const RtspAdaptiveSample& sample) = 0;
-};
-
 struct RtspDependencies {
     NetEngine* net_engine = nullptr;
     IAuth* auth = nullptr;
     IEvent* event = nullptr;
     IMediaFrameSource* media_source = nullptr;
-    IRtspAdaptiveObserver* adaptive_observer = nullptr;
 };
 
 class IRtsp {

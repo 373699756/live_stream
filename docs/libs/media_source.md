@@ -10,6 +10,8 @@
 reader、GOP cache、HLS segment、FLV sequence/header、MJPEG 可用性、
 `MediaFrame`/`MediaTrack` 基础类型、时间戳修正和播放 ready 字段。它不拥有
 HTTP 请求解析、Web UI 状态、WebRTC peer 生命周期或媒体配置应用。
+HLS/TS 和 FLV tag 构造是本模块内部实现细节，跟随 cache、ready 状态和 codec
+generation 一起重建。
 
 ## 总体框架图
 
@@ -53,8 +55,8 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 | 接口/类型 | 语义 |
 | --- | --- |
 | `MediaFrame` | 协议热路径唯一帧对象，持有 `EncodedFrame` owner 引用，显式携带 stream id、codec、video track、keyframe、corrected DTS/PTS 和 duration。 |
-| `MediaTrack` | video-only track，携带 stream id、codec、90000 clock rate、VPS/SPS/PPS、ready 状态和 codec generation。 |
-| `TimestampCorrector` | 每路 stream 独立维护 corrected DTS/PTS；处理时间戳回退、跳变、relative timestamp、stream stop、codec 切换和 reset。 |
+| `MediaTrack` | video-only track，携带 stream id、codec、90000 clock rate、VPS/SPS/PPS、ready 状态和 codec generation。H.264/H.265 只有拿到参数集后 ready，MJPEG 只有拿到 latest frame 后 ready。 |
+| `TimestampCorrector` | 每路 stream 独立维护 corrected DTS/PTS；按 ZLM `Stamp/DeltaStamp` 思路处理时间戳回退、超过 3s 的跳变、relative timestamp、stream stop、codec 切换和 reset，并把 rollback/jump 作为 reset 信号返回给 `media_pipeline`。 |
 | `AttachFrameReader` | 创建 reader；`keyframe_first=true` 时 live 输出从下一个关键帧开始。 |
 | `GetFrameReaderStartData` | 返回 reader 创建后可用的 stream running、track、当前 GOP 和 reader generation。 |
 | `PopFrameReaderFrame` | 拉取 live frame；空队列返回 `false`，不会复制 payload，只增加底层 `VideoBuffer` 引用。 |
@@ -73,6 +75,7 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 | `available` | 当前固件是否支持该码流 |
 | `running` | 对应码流是否正在接收有效编码帧 |
 | `codec` | 当前媒体源观察到的 codec |
+| `codec_generation` | codec、stream start/stop 或 timestamp reset 后递增，用于诊断缓存代际 |
 | `track_ready` | video track 是否可用于协议输出 |
 | `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有完整 playlist/segment |
 | `http_flv_supported` / `http_flv_ready` | HTTP-FLV 是否支持当前 codec、是否已有 sequence header 或 GOP 起点 |
@@ -96,7 +99,7 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 缓存资源由 `media_pipeline` 注入的 options 限制：HLS segment duration、
 playlist depth、segment retain count、FLV client 上限、MJPEG client 上限和 frame
 reader/client 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
-sequence header、GOP cache、HLS 当前 segment 和 ready 字段。
+sequence header、GOP cache、HLS 当前 segment、MJPEG latest frame 和 ready 字段。
 
 reader/GOP 资源模型：
 
@@ -105,7 +108,7 @@ reader/GOP 资源模型：
 | GOP cache | 每路最多 128 帧，从关键帧开始重建；codec 切换、stream stop 和 cache overflow 清理。 |
 | reader live queue | 每 reader 最多 32 帧；溢出时清空该 reader live queue，标记 slow reader，并等待下一个关键帧。 |
 | reader count | 由 `MediaPipelineOptions` 限制，runtime snapshot 报告 active reader/client 数；`MediaSourceStats` 同时报告总 slow reader 和 main/sub slow reader。 |
-| timestamp | `TimestampCorrector` 在每路 stream 内独立维护；stream stop、codec 切换时 reset。 |
+| timestamp | `TimestampCorrector` 在每路 stream 内独立维护；stream stop、codec 切换时 reset。时间戳回退或大跳变会平滑为 last delta，并触发缓存/reader reset。 |
 | last frame timestamp | `GetStats()` 报告主/子码流最新 corrected DTS，用于资源观测和慢读者排查。 |
 
 ## 非目标
