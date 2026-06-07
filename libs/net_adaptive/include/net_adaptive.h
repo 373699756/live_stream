@@ -33,6 +33,9 @@ struct NetAdaptiveOptions {
     uint32_t sample_interval_ms = 1000;
     uint32_t pending_bytes_watch = 256 * 1024;
     uint32_t pending_bytes_constrained = 768 * 1024;
+    uint32_t watch_sample_threshold = 2;
+    uint32_t constrained_sample_threshold = 2;
+    uint32_t recommendation_cooldown_ms = 5000;
 };
 
 struct NetAdaptiveDependencies {
@@ -49,13 +52,21 @@ struct NetAdaptiveRecommendation {
     std::string target;
     StreamId stream_id = StreamId::kMain;
     std::string reason;
+    uint32_t pending_bytes = 0;
+    uint32_t pending_bytes_ewma = 0;
+    uint32_t consecutive_watch_samples = 0;
+    uint32_t consecutive_constrained_samples = 0;
+    int64_t recommended_at_ms = 0;
 };
 
 struct NetAdaptiveStats {
     bool enabled = false;
     NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
     uint32_t sampled_connections = 0;
+    uint32_t tracked_targets = 0;
+    uint32_t watch_targets = 0;
     uint32_t constrained_connections = 0;
+    uint32_t constrained_targets = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
     uint32_t slow_media_readers = 0;

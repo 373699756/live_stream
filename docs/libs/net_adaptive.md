@@ -32,6 +32,8 @@ flowchart LR
 - 周期采样网络和媒体公开状态。
 - 将 pending bytes、send queue、slow reader、dropped frame 归一化为
   `normal/watch/constrained` pressure level。
+- 按 protocol、target 和 stream 保存目标状态，对 pending bytes 使用 EWMA 平滑。
+- 连续多次采样达到阈值后才输出建议，并使用 cooldown 避免重复抖动建议。
 - 给出 request key frame、prefer sub stream、close slow client 等建议。
 
 ## 接口归属
@@ -43,7 +45,17 @@ public API 在 `net_adaptive.h`。协议模块不包含该头文件，不持有
 
 `net_adaptive` 使用自有轻量采样线程，避免把 diagnostics 聚合放进 `net` IO loop。
 停止时必须唤醒并 join 采样线程。内部只缓存最近一次 stats 和 recommendations，
-不保存协议 session 所有权。
+以及有限的目标状态，不保存协议 session 所有权。目标长时间不再出现会自动过期。
+
+策略默认值：
+
+| 字段 | 默认值 | 语义 |
+| --- | --- | --- |
+| `pending_bytes_watch` | 256 KiB | 进入 watch 状态的 pending bytes EWMA |
+| `pending_bytes_constrained` | 768 KiB | 进入 constrained 状态的 pending bytes EWMA |
+| `watch_sample_threshold` | 2 | 连续 watch 样本数达到后才建议 |
+| `constrained_sample_threshold` | 2 | 连续 constrained 样本数达到后才建议 |
+| `recommendation_cooldown_ms` | 5000 | 同一目标重复建议冷却时间 |
 
 ## 风险与优化方向
 
