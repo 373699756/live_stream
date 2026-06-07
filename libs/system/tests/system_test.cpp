@@ -110,15 +110,15 @@ public:
 int main() {
     live_stream::SystemOptions default_options;
     default_options.heartbeat_timeout_ms = 1;
-    std::unique_ptr<live_stream::ISystem> default_service =
+    std::unique_ptr<live_stream::ISystem> default_system =
         live_stream::CreateSystem(default_options);
     live_stream::RequestContext default_context;
-    if (!default_service ||
-        !default_service->Start() ||
-        default_service->Reboot(default_context)) {
+    if (!default_system ||
+        !default_system->Start() ||
+        default_system->Reboot(default_context)) {
         return 8;
     }
-    default_service->Stop();
+    default_system->Stop();
 
     FakeSystemPlatform platform;
     FakeEvent event;

@@ -21,9 +21,9 @@ int main() {
     live_stream::WebrtcOptions invalid_options;
     invalid_options.max_peers = 0;
     live_stream::WebrtcDependencies dependencies;
-    std::unique_ptr<live_stream::IWebrtc> invalid_service =
+    std::unique_ptr<live_stream::IWebrtc> invalid_webrtc =
         live_stream::CreateWebrtc(invalid_options, dependencies);
-    if (Expect(!invalid_service->Start())) {
+    if (Expect(!invalid_webrtc->Start())) {
         return 1;
     }
 

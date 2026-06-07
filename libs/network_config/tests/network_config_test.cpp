@@ -269,13 +269,13 @@ int main() {
   }
 
   live_stream::NetworkConfigOptions empty_options;
-  std::unique_ptr<live_stream::INetworkConfig> default_service =
+  std::unique_ptr<live_stream::INetworkConfig> default_network =
       live_stream::CreateNetworkConfig(empty_options);
-  if (!default_service || !default_service->Start()) {
+  if (!default_network || !default_network->Start()) {
     return 2;
   }
-  default_service->Stop();
-  default_service->Stop();
+  default_network->Stop();
+  default_network->Stop();
 
   FakeNetworkPlatform platform;
   platform.status.ifname = "eth0";

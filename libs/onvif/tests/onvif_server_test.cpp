@@ -368,7 +368,7 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
 }  // namespace
 
 int main() {
-  if (std::string(live_stream::OnvifServer::Name()) != "onvif_service") {
+  if (std::string(live_stream::OnvifServer::Name()) != "onvif") {
     return 1;
   }
 
@@ -381,18 +381,18 @@ int main() {
   FakeNetEngine cleanup_net;
   deps.net_engine = &cleanup_net;
   cleanup_net.bind_udp_ok = false;
-  std::unique_ptr<live_stream::OnvifServer> cleanup_service =
+  std::unique_ptr<live_stream::OnvifServer> cleanup_server =
       live_stream::CreateOnvifServer(options, deps);
-  if (cleanup_service->Start() || cleanup_net.close_tcp_count != 1) {
+  if (cleanup_server->Start() || cleanup_net.close_tcp_count != 1) {
     return 3;
   }
 
   FakeNetEngine start_fail_net;
   deps.net_engine = &start_fail_net;
   start_fail_net.listen_tcp_ok = false;
-  std::unique_ptr<live_stream::OnvifServer> start_fail_service =
+  std::unique_ptr<live_stream::OnvifServer> start_fail_server =
       live_stream::CreateOnvifServer(options, deps);
-  if (start_fail_service->Start() || start_fail_net.close_tcp_count != 0 ||
+  if (start_fail_server->Start() || start_fail_net.close_tcp_count != 0 ||
       start_fail_net.close_udp_count != 0) {
     return 4;
   }

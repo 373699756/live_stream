@@ -123,17 +123,17 @@ int main() {
   live_stream::TimeOptions lifecycle_options;
   lifecycle_options.default_timezone = "UTC";
   lifecycle_options.default_ntp_config.enabled = false;
-  std::unique_ptr<live_stream::ITime> lifecycle_service =
+  std::unique_ptr<live_stream::ITime> lifecycle_time =
       live_stream::CreateTime(lifecycle_options);
-  if (!lifecycle_service || lifecycle_service->IsStarted()) {
+  if (!lifecycle_time || lifecycle_time->IsStarted()) {
     return 2;
   }
-  if (!lifecycle_service->Start() || !lifecycle_service->IsStarted()) {
+  if (!lifecycle_time->Start() || !lifecycle_time->IsStarted()) {
     return 3;
   }
-  lifecycle_service->Stop();
-  if (lifecycle_service->SetSystemTime(live_stream::RequestContext(), 4000,
-                                       live_stream::TimeSyncSource::kManual)) {
+  lifecycle_time->Stop();
+  if (lifecycle_time->SetSystemTime(live_stream::RequestContext(), 4000,
+                                    live_stream::TimeSyncSource::kManual)) {
     return 4;
   }
 
