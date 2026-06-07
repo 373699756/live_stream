@@ -265,11 +265,23 @@ std::string BuildLocalH264Fmtp(const std::string& offer_fmtp) {
     return "packetization-mode=1";
 }
 
-bool SelectH264Codec(const std::vector<int>& payload_types,
-                     const std::map<int, WebrtcSdpVideoCodec>& codecs,
-                     const std::map<int, std::string>& fmtps,
-                     const std::map<int, std::vector<std::string>>& feedback,
-                     WebrtcSdpVideoCodec *selected_codec) {
+std::string BuildLocalCodecFmtp(VideoCodec codec,
+                                const std::string& offer_fmtp) {
+    if (codec == VideoCodec::kH264) {
+        return BuildLocalH264Fmtp(offer_fmtp);
+    }
+    if (codec == VideoCodec::kH265) {
+        return offer_fmtp;
+    }
+    return std::string();
+}
+
+bool SelectVideoCodec(const std::vector<int>& payload_types,
+                      const std::map<int, WebrtcSdpVideoCodec>& codecs,
+                      const std::map<int, std::string>& fmtps,
+                      const std::map<int, std::vector<std::string>>& feedback,
+                      VideoCodec local_codec,
+                      WebrtcSdpVideoCodec *selected_codec) {
     if (selected_codec == nullptr) {
         return false;
     }
@@ -277,7 +289,7 @@ bool SelectH264Codec(const std::vector<int>& payload_types,
     for (int payload_type : payload_types) {
         auto codec_iter = codecs.find(payload_type);
         if (codec_iter == codecs.end() ||
-            codec_iter->second.codec != VideoCodec::kH264 ||
+            codec_iter->second.codec != local_codec ||
             codec_iter->second.clock_rate != 90000) {
             continue;
         }
@@ -287,8 +299,8 @@ bool SelectH264Codec(const std::vector<int>& payload_types,
         if (fmtp_iter != fmtps.end()) {
             candidate.fmtp = fmtp_iter->second;
         }
-        candidate.fmtp = BuildLocalH264Fmtp(candidate.fmtp);
-        if (candidate.fmtp.empty()) {
+        candidate.fmtp = BuildLocalCodecFmtp(local_codec, candidate.fmtp);
+        if (local_codec == VideoCodec::kH264 && candidate.fmtp.empty()) {
             continue;
         }
         auto wildcard_feedback = feedback.find(-1);
@@ -329,6 +341,16 @@ std::string AnswerSetupRole(const std::string& offer_setup) {
         return "passive";
     }
     return std::string();
+}
+
+const char *CodecRtpmapName(VideoCodec codec) {
+    if (codec == VideoCodec::kH264) {
+        return "H264";
+    }
+    if (codec == VideoCodec::kH265) {
+        return "H265";
+    }
+    return nullptr;
 }
 
 }  // namespace
@@ -393,8 +415,12 @@ uint32_t BuildWebrtcSsrc(const std::string& peer_id) {
     return value == 0 ? 0x57454252U : value;
 }
 
-bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer) {
+bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
+                      WebrtcSdpOffer *offer) {
     if (offer == nullptr || offer_sdp.empty()) {
+        return false;
+    }
+    if (local_codec != VideoCodec::kH264 && local_codec != VideoCodec::kH265) {
         return false;
     }
 
@@ -535,8 +561,9 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer) {
         !parsed_offer.rtcp_mux) {
         return false;
     }
-    if (!SelectH264Codec(video_payload_types, video_codecs, video_fmtps,
-                         video_feedback, &parsed_offer.video_codec)) {
+    if (!SelectVideoCodec(video_payload_types, video_codecs, video_fmtps,
+                          video_feedback, local_codec,
+                          &parsed_offer.video_codec)) {
         return false;
     }
 
@@ -546,8 +573,9 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer) {
 
 std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
                               const WebrtcSdpAnswerOptions& options) {
-    if (options.local_codec != VideoCodec::kH264 ||
-        offer.video_codec.codec != VideoCodec::kH264 ||
+    if ((options.local_codec != VideoCodec::kH264 &&
+         options.local_codec != VideoCodec::kH265) ||
+        offer.video_codec.codec != options.local_codec ||
         offer.video_codec.payload_type < 0 ||
         offer.video_codec.clock_rate != 90000 || !offer.rtcp_mux ||
         options.local_port == 0 || options.local_ice_ufrag.empty() ||
@@ -578,6 +606,10 @@ std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
     const std::string fingerprint_hash =
         options.local_fingerprint_hash.empty() ? "sha-256"
                                                : options.local_fingerprint_hash;
+    const char *rtpmap_codec = CodecRtpmapName(options.local_codec);
+    if (rtpmap_codec == nullptr) {
+        return std::string();
+    }
 
     std::ostringstream sdp;
     sdp << "v=0\r\n";
@@ -600,8 +632,8 @@ std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
     sdp << "a=fingerprint:" << fingerprint_hash << " "
         << options.local_fingerprint << "\r\n";
     sdp << "a=setup:" << setup << "\r\n";
-    sdp << "a=rtpmap:" << offer.video_codec.payload_type
-        << " H264/90000\r\n";
+    sdp << "a=rtpmap:" << offer.video_codec.payload_type << " "
+        << rtpmap_codec << "/90000\r\n";
     if (!offer.video_codec.fmtp.empty()) {
         sdp << "a=fmtp:" << offer.video_codec.payload_type << " "
             << offer.video_codec.fmtp << "\r\n";
@@ -626,7 +658,8 @@ bool ParseRemoteFingerprint(const std::string& sdp,
     }
 
     WebrtcSdpOffer offer;
-    if (!ParseWebrtcOffer(sdp, &offer)) {
+    if (!ParseWebrtcOffer(sdp, VideoCodec::kH264, &offer) &&
+        !ParseWebrtcOffer(sdp, VideoCodec::kH265, &offer)) {
         return false;
     }
     fingerprint->algorithm =

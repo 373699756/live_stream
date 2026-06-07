@@ -8,12 +8,13 @@ LOGGER_LIB := $(BUILD_DIR)/lib/liblogger.a
 NET_LIB := $(BUILD_DIR)/lib/libnet.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
 MEDIA_SOURCE_LIB := $(BUILD_DIR)/lib/libmedia_source.a
-STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
+MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 HTTP_MEDIA_LIB := $(BUILD_DIR)/lib/libhttp_media.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem.a
 UPGRADE_LIB := $(BUILD_DIR)/lib/libupgrade.a
 NETWORK_LIB := $(BUILD_DIR)/lib/libnetwork_config.a
 TIME_LIB := $(BUILD_DIR)/lib/libtime.a
+ONVIF_LIB := $(BUILD_DIR)/lib/libonvif.a
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai/include
@@ -40,13 +41,13 @@ SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot.a
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
-	$(MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(STREAM_CODEC_LIB) $(SNAPSHOT_LIB) \
+	$(MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(MEDIA_CODEC_LIB) $(SNAPSHOT_LIB) \
 	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) \
-	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB)
+	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(HTTP_MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(SNAPSHOT_LIB) \
-	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) \
-	$(MEDIA_LIB) $(STREAM_CODEC_LIB) $(INFRA_LIB)
+	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) $(ONVIF_LIB) \
+	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra all
@@ -63,10 +64,10 @@ $(NET_LIB): $(INFRA_LIB)
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../device_media all
 
-$(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(STREAM_CODEC_LIB)
+$(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(MEDIA_CODEC_LIB)
 	$(MAKE) -C ../media_source all
 
-$(STREAM_CODEC_LIB): $(INFRA_LIB)
+$(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
 
 $(SNAPSHOT_LIB): $(MEDIA_LIB)
@@ -83,6 +84,9 @@ $(NETWORK_LIB): $(INFRA_LIB)
 
 $(TIME_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../time all
+
+$(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB) $(TIME_LIB)
+	$(MAKE) -C ../onvif all
 
 $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc all

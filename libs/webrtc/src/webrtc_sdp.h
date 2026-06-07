@@ -52,7 +52,8 @@ std::string BuildCandidateJson(const WebrtcIceCandidate& candidate);
 std::string ReplaceHostCandidateIp(const std::string& candidate,
                                    const std::string& public_ip);
 uint32_t BuildWebrtcSsrc(const std::string& peer_id);
-bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer);
+bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
+                      WebrtcSdpOffer *offer);
 std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
                               const WebrtcSdpAnswerOptions& options);
 bool ParseRemoteFingerprint(const std::string& sdp,

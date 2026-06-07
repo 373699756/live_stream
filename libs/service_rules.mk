@@ -26,6 +26,7 @@ SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 TEST_SRCS := $(wildcard tests/*.cpp)
 TEST_BINS := $(patsubst tests/%.cpp,$(TEST_DIR)/$(SERVICE_NAME)_%,$(TEST_SRCS))
+TEST_CXXFLAGS ?= -I$(ROOT_DIR)/tests/support
 EXTRA_TEST_DEPS ?=
 EXTRA_TEST_LIBS ?=
 
@@ -44,7 +45,7 @@ $(OBJ_DIR)/%.o: src/%.cpp
 
 $(TEST_DIR)/$(SERVICE_NAME)_%: tests/%.cpp $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_DEPS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $< $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(TEST_CXXFLAGS) $< $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_LIBS) -o $@
 
 test: all $(TEST_BINS)
 	@for test_bin in $(TEST_BINS); do \

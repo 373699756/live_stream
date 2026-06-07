@@ -67,7 +67,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     }
 
     WebrtcSdpOffer parsed_offer;
-    if (!ParseWebrtcOffer(offer_sdp, &parsed_offer)) {
+    if (!ParseWebrtcOffer(offer_sdp, peer_.codec, &parsed_offer)) {
         return false;
     }
     DtlsFingerprint remote_fingerprint;

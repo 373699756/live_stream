@@ -95,10 +95,12 @@ UDP 收包先由 STUN/ICE 建立 selected pair，随后 DTLS packet 进入
 pair 发回；握手 timeout 由 `net` timer 重传驱动。DTLS connected 后
 `webrtc_transport` 建立 outbound/inbound SRTP context。
 
-10.3 已接入 SDP 层：native engine 可解析 Chrome/Edge video offer，选择 H.264
-90000Hz 且 `packetization-mode=1` 的 payload，并生成 video-only sendonly answer，
-包含 `mid`、ICE ufrag/pwd、本地 SHA-256 fingerprint、`setup:passive`、`rtpmap`、
-`fmtp`、首版支持的 PLI/FIR `rtcp-fb`、SSRC 和 host candidate。
+10.3 已接入 SDP 层：native engine 可解析浏览器 video offer，并按本地 stream codec
+选择同 codec 的 90000Hz payload。H.264 仍要求 `packetization-mode=1`；H.265/HEVC
+offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answer 包含
+`mid`、ICE ufrag/pwd、本地 SHA-256 fingerprint、`setup:passive`、`rtpmap`、`fmtp`、
+首版支持的 PLI/FIR `rtcp-fb`、SSRC 和 host candidate。H.265 WebRTC 播放仍依赖
+浏览器是否实际提供 HEVC WebRTC 解码能力。
 
 10.6 当前基线已经把 SRTP/RTCP 接入 `webrtc_transport`：RTP sender 交出的 RTP
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
