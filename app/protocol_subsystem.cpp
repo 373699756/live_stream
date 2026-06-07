@@ -86,7 +86,6 @@ WebrtcDependencies BuildWebrtcDependencies(
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.media_source = refs.media_pipeline;
-    dependencies.use_fake_engine = false;
     return dependencies;
 }
 

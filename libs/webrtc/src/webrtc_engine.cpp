@@ -571,9 +571,7 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine,
-                                           NetEngine *net_engine) {
-    (void)use_fake_engine;
+std::unique_ptr<IWebrtcEngine> CreateEngine(NetEngine *net_engine) {
     return std::unique_ptr<IWebrtcEngine>(new NativeWebrtcEngine(net_engine));
 }
 

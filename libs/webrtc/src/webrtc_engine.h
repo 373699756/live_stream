@@ -61,8 +61,7 @@ public:
     virtual void FillStats(WebrtcStats *stats) const = 0;
 };
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(bool use_fake_engine,
-                                           NetEngine *net_engine);
+std::unique_ptr<IWebrtcEngine> CreateEngine(NetEngine *net_engine);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream

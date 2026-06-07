@@ -68,7 +68,6 @@ public:
         : options_(std::move(options)),
           media_source_(dependencies.media_source),
           net_engine_(dependencies.net_engine),
-          use_fake_engine_(dependencies.use_fake_engine),
           callback_guard_(new WebrtcServiceCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         std::lock_guard<std::mutex> guard(callback_guard_->mutex);
@@ -384,7 +383,7 @@ private:
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
-            webrtc_internal::CreateEngine(use_fake_engine_, net_engine_);
+            webrtc_internal::CreateEngine(net_engine_);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
         callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged = &WebrtcServiceImpl::OnEnginePeerStateChanged;
@@ -914,7 +913,6 @@ private:
     WebrtcOptions options_;
     IMediaFrameSource *media_source_ = nullptr;
     NetEngine *net_engine_ = nullptr;
-    bool use_fake_engine_ = false;
     ServiceState state_ = ServiceState::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::shared_ptr<WebrtcServiceCallbackGuard> callback_guard_;

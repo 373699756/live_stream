@@ -45,7 +45,6 @@ struct WebrtcOptions {
 struct WebrtcDependencies {
     IMediaFrameSource *media_source = nullptr;
     NetEngine *net_engine = nullptr;
-    bool use_fake_engine = false;
 };
 
 struct WebrtcCreatePeerRequest {
