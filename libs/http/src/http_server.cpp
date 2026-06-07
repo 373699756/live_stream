@@ -190,6 +190,7 @@ void HttpServer::Stop() {
     infra::Executor *control_executor = nullptr;
     std::vector<HttpMediaClientHandle> media_clients;
     std::vector<ConnectionId> connection_ids;
+    std::vector<NetTimerId> timer_ids;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!started_) {
@@ -202,6 +203,10 @@ void HttpServer::Stop() {
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {
+                const NetTimerId timer_id = item.second->CancelTimer();
+                if (timer_id != 0) {
+                    timer_ids.push_back(timer_id);
+                }
                 const HttpMediaClientHandle media_client =
                     item.second->TakeMediaClient();
                 if (media_client.id != 0) {
@@ -218,6 +223,11 @@ void HttpServer::Stop() {
                    static_cast<unsigned long long>(server_id),
                    media_clients.size());
     NotifyStreamsClosed(media_clients);
+    if (net_engine != nullptr) {
+        for (NetTimerId timer_id : timer_ids) {
+            CancelNetTimer(net_engine, timer_id);
+        }
+    }
     if (net_engine != nullptr && server_id != 0) {
         (void)net_engine->CloseTcp(server_id);
     }
@@ -544,18 +554,23 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
 
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     ClosedHttpSessionInfo closed;
+    NetEngine *net_engine = nullptr;
+    NetTimerId timer_id = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end() || iter->second == nullptr) {
             return;
         }
+        timer_id = iter->second->CancelTimer();
         closed = iter->second->Close();
         sessions_.erase(iter);
         if (stats_.active_connections > 0) {
             --stats_.active_connections;
         }
+        net_engine = net_engine_;
     }
+    CancelNetTimer(net_engine, timer_id);
     NotifyStreamClosed(closed.media_client);
     Info(kHttpModuleName,
                    "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
@@ -697,11 +712,12 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
     NetEngine *net_engine = nullptr;
     uint64_t generation = 0;
+    NetTimerId previous_timer_id = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end() || iter->second == nullptr ||
-            !iter->second->ArmTimer(&generation)) {
+            !iter->second->ArmTimer(&generation, &previous_timer_id)) {
             return;
         }
         net_engine = net_engine_;
@@ -709,7 +725,8 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     if (net_engine == nullptr) {
         return;
     }
-    (void)net_engine->RunOnIoAfter(
+    CancelNetTimer(net_engine, previous_timer_id);
+    const NetTimerId timer_id = net_engine->RunOnIoAfter(
         delay_ms, [this, connection_id, generation]() {
             NetEngine *engine = nullptr;
             bool should_close = false;
@@ -718,13 +735,32 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                 auto iter = sessions_.find(connection_id);
                 should_close =
                     iter != sessions_.end() && iter->second != nullptr &&
-                    iter->second->IsTimerCurrent(generation);
+                    iter->second->ConsumeTimer(generation);
                 engine = net_engine_;
             }
             if (should_close && engine != nullptr) {
                 (void)engine->Close(connection_id);
             }
         });
+    if (timer_id == 0) {
+        return;
+    }
+    bool stored = false;
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        stored = iter != sessions_.end() && iter->second != nullptr &&
+                 iter->second->StoreTimer(generation, timer_id);
+    }
+    if (!stored) {
+        CancelNetTimer(net_engine, timer_id);
+    }
+}
+
+void HttpServer::CancelNetTimer(NetEngine *net_engine, NetTimerId timer_id) {
+    if (net_engine != nullptr && timer_id != 0) {
+        (void)net_engine->CancelIoTimer(timer_id);
+    }
 }
 
 }  // namespace live_stream

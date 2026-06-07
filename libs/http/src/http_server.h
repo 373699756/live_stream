@@ -97,6 +97,7 @@ private:
     void CompleteKeepAliveRequest(ConnectionId connection_id);
     HttpSessionParseOptions MakeConnectionParseOptions() const;
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
+    static void CancelNetTimer(NetEngine *net_engine, NetTimerId timer_id);
 
     HttpOptions options_;
     NetEngine *net_engine_ = nullptr;

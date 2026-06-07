@@ -126,11 +126,37 @@ bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
   return true;
 }
 
-bool HttpSession::ArmTimer(uint64_t *generation) {
-  if (generation == nullptr) {
+bool HttpSession::ArmTimer(uint64_t *generation,
+                           NetTimerId *previous_timer_id) {
+  if (generation == nullptr || previous_timer_id == nullptr) {
     return false;
   }
+  *previous_timer_id = timer_id_;
+  timer_id_ = 0;
   *generation = ++timeout_generation_;
+  return true;
+}
+
+bool HttpSession::StoreTimer(uint64_t generation, NetTimerId timer_id) {
+  if (timer_id == 0 || timeout_generation_ != generation) {
+    return false;
+  }
+  timer_id_ = timer_id;
+  return true;
+}
+
+NetTimerId HttpSession::CancelTimer() {
+  const NetTimerId timer_id = timer_id_;
+  timer_id_ = 0;
+  ++timeout_generation_;
+  return timer_id;
+}
+
+bool HttpSession::ConsumeTimer(uint64_t generation) {
+  if (timeout_generation_ != generation || timer_id_ == 0) {
+    return false;
+  }
+  timer_id_ = 0;
   return true;
 }
 

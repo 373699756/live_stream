@@ -70,7 +70,10 @@ class HttpSession {
 
   bool BeginStream();
   bool AttachStreamClient(HttpMediaClientHandle client);
-  bool ArmTimer(uint64_t *generation);
+  bool ArmTimer(uint64_t *generation, NetTimerId *previous_timer_id);
+  bool StoreTimer(uint64_t generation, NetTimerId timer_id);
+  NetTimerId CancelTimer();
+  bool ConsumeTimer(uint64_t generation);
   bool IsTimerCurrent(uint64_t generation) const;
   ClosedHttpSessionInfo Close();
   HttpMediaClientHandle TakeMediaClient();
@@ -85,6 +88,7 @@ class HttpSession {
   std::deque<PendingHttpRequest> pending_requests_;
   uint64_t request_count_ = 0;
   uint64_t timeout_generation_ = 0;
+  NetTimerId timer_id_ = 0;
   HttpMediaClientHandle media_client_;
   bool processing_ = false;
   bool closing_ = false;
