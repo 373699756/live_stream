@@ -258,6 +258,13 @@ bool HasPacketizationModeOne(const std::string& fmtp) {
            std::string::npos;
 }
 
+std::string BuildLocalH264Fmtp(const std::string& offer_fmtp) {
+    if (!HasPacketizationModeOne(offer_fmtp)) {
+        return std::string();
+    }
+    return "packetization-mode=1";
+}
+
 bool SelectH264Codec(const std::vector<int>& payload_types,
                      const std::map<int, WebrtcSdpVideoCodec>& codecs,
                      const std::map<int, std::string>& fmtps,
@@ -280,7 +287,8 @@ bool SelectH264Codec(const std::vector<int>& payload_types,
         if (fmtp_iter != fmtps.end()) {
             candidate.fmtp = fmtp_iter->second;
         }
-        if (!HasPacketizationModeOne(candidate.fmtp)) {
+        candidate.fmtp = BuildLocalH264Fmtp(candidate.fmtp);
+        if (candidate.fmtp.empty()) {
             continue;
         }
         auto wildcard_feedback = feedback.find(-1);
@@ -472,6 +480,7 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer) {
             const std::string value = Trim(line.substr(6));
             if (!value.empty()) {
                 parsed_offer.video_mid = value;
+                parsed_offer.has_video_mid = true;
             }
         } else if (in_video_section && line == "a=rtcp-mux") {
             parsed_offer.rtcp_mux = true;
@@ -522,7 +531,8 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, WebrtcSdpOffer *offer) {
     }
     if (!saw_video_section || parsed_offer.ice_ufrag.empty() ||
         parsed_offer.ice_pwd.empty() || parsed_offer.fingerprint.empty() ||
-        parsed_offer.setup.empty() || !parsed_offer.rtcp_mux) {
+        parsed_offer.setup.empty() || !parsed_offer.has_video_mid ||
+        !parsed_offer.rtcp_mux) {
         return false;
     }
     if (!SelectH264Codec(video_payload_types, video_codecs, video_fmtps,
@@ -552,9 +562,15 @@ std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
 
     std::string local_ip = options.local_ip;
     if (local_ip.empty() || local_ip == "0.0.0.0") {
-        local_ip = "127.0.0.1";
+        local_ip = options.local_candidate_ip;
     }
-    const std::string mid = SafeSdpToken(offer.video_mid, "0");
+    if (local_ip.empty() || local_ip == "0.0.0.0") {
+        return std::string();
+    }
+    const std::string mid = SafeSdpToken(offer.video_mid, std::string());
+    if (mid.empty()) {
+        return std::string();
+    }
     const std::string peer_id = SafeSdpToken(options.peer_id, "live_stream");
     const uint32_t ssrc =
         options.local_ssrc == 0 ? BuildWebrtcSsrc(peer_id)

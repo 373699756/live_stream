@@ -22,6 +22,7 @@ struct WebrtcSdpVideoCodec {
 
 struct WebrtcSdpOffer {
     std::string video_mid = "0";
+    bool has_video_mid = false;
     std::string ice_ufrag;
     std::string ice_pwd;
     std::string fingerprint_hash;
@@ -37,6 +38,7 @@ struct WebrtcSdpAnswerOptions {
     std::string peer_id;
     VideoCodec local_codec = VideoCodec::kH264;
     std::string local_ip = "127.0.0.1";
+    std::string local_candidate_ip;
     uint16_t local_port = 0;
     std::string local_ice_ufrag;
     std::string local_ice_pwd;

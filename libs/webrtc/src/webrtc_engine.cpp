@@ -54,7 +54,7 @@ std::string LocalCandidateIp(const WebrtcOptions &options) {
     if (!options.public_ip.empty() && options.public_ip != "0.0.0.0") {
         return options.public_ip;
     }
-    return "127.0.0.1";
+    return std::string();
 }
 
 std::string BuildLocalIceUfrag(const std::string &peer_id) {
