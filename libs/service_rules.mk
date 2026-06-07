@@ -30,7 +30,7 @@ TEST_CXXFLAGS ?= -I$(ROOT_DIR)/tests/support
 EXTRA_TEST_DEPS ?=
 EXTRA_TEST_LIBS ?=
 
-.PHONY: all test test-build clean
+.PHONY: all test test-build host-test board-test board-test-build clean
 
 all: $(LIB_DIR)/lib$(SERVICE_NAME).a
 
@@ -47,12 +47,19 @@ $(TEST_DIR)/$(SERVICE_NAME)_%: tests/%.cpp $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXT
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(TEST_CXXFLAGS) $< $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_LIBS) -o $@
 
-test: all $(TEST_BINS)
+test: board-test
+
+host-test:
+	@echo "No host tests for $(SERVICE_NAME); use board-test-build or board-test for cross-built tests."
+
+board-test: all $(TEST_BINS)
 	@for test_bin in $(TEST_BINS); do \
 		$$test_bin || exit $$?; \
 	done
 
-test-build: all $(TEST_BINS)
+board-test-build: all $(TEST_BINS)
+
+test-build: board-test-build
 
 clean:
 	rm -rf $(OBJ_DIR) $(LIB_DIR)/lib$(SERVICE_NAME).a $(TEST_BINS)

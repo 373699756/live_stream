@@ -69,6 +69,8 @@ RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adap
 ## Work Rules
 
 - 一轮 AI 任务通常只碰一个模块，最多再碰一个相邻接口模块。
+- `make test` 等同 `make host-test`，只跑宿主质量检查；交叉编译测试使用
+  `make board-test-build`，目标板执行使用 `make board-test`。
 - 写代码前先说明目标、范围、不做什么和验证方式。
 - bugfix、rename、cleanup、refactor 不混在一个提交里。
 - 新增接口、helper、class、hook 前先查已有接口；能直接写清楚就不要抽象。

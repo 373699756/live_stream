@@ -33,6 +33,8 @@
 ```sh
 make -j2
 make clean
+make host-test
+make board-test-build
 ```
 
 构建单个服务模块：
@@ -40,6 +42,13 @@ make clean
 ```sh
 make -C libs/<service>
 ```
+
+测试目标语义：
+
+- `make host-test` / `make test` 只运行宿主可执行的质量检查，例如 HTTP/Web
+  契约、C++ 风格契约和前端构建。
+- `make board-test-build` / `make test-build` 交叉编译各模块测试二进制。
+- `make board-test` 会执行交叉编译测试二进制，只应在目标板或兼容运行环境使用。
 
 前端开发和构建在 `www/` 目录下执行：
 
@@ -56,7 +65,7 @@ npm run build
   取值型函数返回原本业务类型，失败时返回空字符串、空容器、0、空对象或
   `nullptr` 等该类型的默认失败值。
 - 保持现有 Google-like 风格：
-  - 缩进使用 2 个空格。
+  - 缩进使用 4 个空格，和 `.clang-format` 保持一致。
   - 类型名使用 `PascalCase`。
   - 函数名使用 `PascalCase`。
   - 变量和参数使用 `snake_case`。

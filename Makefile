@@ -141,7 +141,8 @@ endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
 
-.PHONY: all test test-build clean thirdparty compiledb debug release \
+.PHONY: all test test-build host-test board-test board-test-build clean \
+	thirdparty compiledb debug release \
 	$(SERVICES)
 
 all: debug
@@ -200,18 +201,28 @@ debug: $(SERVICES) $(BIN_DIR)/live_stream $(WEB_STAMP)
 release: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
-test:
-	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
-		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) test || exit $$?; \
-	done
+test: host-test
 
-test-build:
+host-test:
+	python3 scripts/check_http_web_contract.py
+	python3 scripts/check_cpp_style_contract.py
+	cd www && npm run build
+
+board-test:
 	@for service in $(SERVICES); do \
 		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
 		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) ENABLE_HISI_MPP=1 \
-		  test-build || exit $$?; \
+		  board-test || exit $$?; \
 	done
+
+board-test-build:
+	@for service in $(SERVICES); do \
+		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) ENABLE_HISI_MPP=1 \
+		  board-test-build || exit $$?; \
+	done
+
+test-build: board-test-build
 
 clean:
 	@for service in $(SERVICES); do \
