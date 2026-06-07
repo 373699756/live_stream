@@ -1,4 +1,4 @@
-import type { StreamStatus, WebrtcConfig } from '../api/types';
+import type { MediaPlaybackUrls, MediaStreamRuntime } from '../api/types';
 
 export type PreviewMode = 'webrtc' | 'hls' | 'flv' | 'mjpeg';
 
@@ -33,23 +33,21 @@ export interface PreviewModeState {
 }
 
 export function buildPreviewModeState(
-  active: StreamStatus | undefined,
+  active: MediaStreamRuntime | undefined,
   mode: PreviewMode,
-  webrtcConfig: WebrtcConfig | null,
-  webrtcConfigLoaded: boolean,
+  playbackUrls: MediaPlaybackUrls | null,
 ): PreviewModeState {
-  const hlsReady = active?.hlsReady ?? false;
-  const flvReady = active?.flvReady ?? false;
-  const mjpegReady = active?.mjpegReady ?? false;
-  const webrtcReady = active?.webrtcReady ?? false;
-  const hlsSupported = active?.hlsSupported ?? false;
-  const flvSupported = active?.flvSupported ?? false;
-  const mjpegSupported = active?.mjpegSupported ?? false;
-  const webrtcSupported = webrtcReady;
-  const webrtcEnabled = Boolean(webrtcConfig?.enabled);
-  const streamRunning = active?.state === 'running';
-  const webrtcModeEnabled =
-    webrtcConfigLoaded && webrtcEnabled && webrtcSupported;
+  const hlsReady = active?.hls_ready ?? false;
+  const flvReady = active?.http_flv_ready ?? false;
+  const mjpegReady = active?.mjpeg_ready ?? false;
+  const webrtcReady = active?.webrtc_ready ?? false;
+  const hlsSupported = Boolean(active?.hls_supported && playbackUrls?.hls);
+  const flvSupported = Boolean(active?.http_flv_supported && playbackUrls?.http_flv);
+  const mjpegSupported = Boolean(active?.mjpeg_supported && playbackUrls?.mjpeg);
+  const webrtcSupported = Boolean(active?.webrtc_supported);
+  const webrtcEnabled = webrtcSupported;
+  const streamRunning = active?.running ?? false;
+  const webrtcModeEnabled = webrtcEnabled && streamRunning;
   const hlsModeEnabled = hlsSupported && streamRunning;
   const flvModeEnabled = flvSupported && streamRunning;
   const mjpegModeEnabled = mjpegSupported && streamRunning;

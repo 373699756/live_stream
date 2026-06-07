@@ -4,7 +4,7 @@ import {
   sendWebrtcCandidate,
   sendWebrtcOffer,
 } from '../api/stream';
-import type { StreamName, WebrtcConfig } from '../api/types';
+import type { StreamName } from '../api/types';
 import type { PreviewMode } from './previewMode';
 import {
   isAbortError,
@@ -13,9 +13,6 @@ import {
 } from './previewSession';
 
 interface WebrtcPreviewConfig {
-  config: WebrtcConfig | null;
-  configError: string;
-  configLoaded: boolean;
   enabled: boolean;
   ready: boolean;
 }
@@ -51,14 +48,6 @@ export function startWebrtcPreview({
   stream,
   webrtc,
 }: StartWebrtcPreviewOptions): number {
-  if (!webrtc.configLoaded) {
-    controls.setPreviewState('正在读取 WebRTC 配置');
-    return 0;
-  }
-  if (webrtc.configError) {
-    controls.setPreviewState(webrtc.configError);
-    return 0;
-  }
   if (!webrtc.enabled) {
     controls.setPreviewState('WebRTC 未启用');
     return 0;
@@ -84,11 +73,6 @@ export function startWebrtcPreview({
   const pc = new RTCPeerConnection({
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
-    iceServers: (webrtc.config?.ice_servers || []).map((server) => ({
-      urls: server.url,
-      username: server.username,
-      credential: server.credential,
-    })),
   });
   peerState.setPeer(pc);
   pc.addTransceiver('video', { direction: 'recvonly' });
@@ -163,7 +147,6 @@ export function startWebrtcPreview({
         signal: controls.sessionSignal,
       });
       if (
-        !peer.ok ||
         !peer.peer_id ||
         !controls.isCurrentSession() ||
         peerState.peerRef.current !== pc
@@ -172,7 +155,7 @@ export function startWebrtcPreview({
           void closeWebrtcPeer(peer.peer_id);
         }
         if (controls.isCurrentSession()) {
-          controls.setPreviewState(peer.error || 'WebRTC peer 创建失败');
+          controls.setPreviewState('WebRTC peer 创建失败');
           peerState.closeSession();
         }
         return;
@@ -193,14 +176,13 @@ export function startWebrtcPreview({
         signal: controls.sessionSignal,
       });
       if (
-        !answer.ok ||
         !answer.sdp ||
         !controls.isCurrentSession() ||
         peerState.peerRef.current !== pc
       ) {
         void closeWebrtcPeer(peer.peer_id);
         if (controls.isCurrentSession()) {
-          controls.setPreviewState(answer.error || 'WebRTC 应答无效');
+          controls.setPreviewState('WebRTC 应答无效');
           peerState.closeSession();
         }
         return;
@@ -214,7 +196,9 @@ export function startWebrtcPreview({
         return;
       }
       if (controls.isCurrentSession()) {
-        controls.setPreviewState('WebRTC 连接失败');
+        controls.setPreviewState(
+          error instanceof Error ? error.message : 'WebRTC 连接失败',
+        );
         peerState.closeSession();
       }
     }

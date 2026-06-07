@@ -1,4 +1,4 @@
-import type { StreamName, StreamStatus } from '../api/types';
+import type { MediaStreamRuntime, StreamName } from '../api/types';
 import { previewModeLabels, type PreviewMode } from '../hooks/previewMode';
 
 export interface PreviewStreamSummary {
@@ -24,11 +24,11 @@ export function previewDetailText(stream: StreamName, mode: PreviewMode) {
 }
 
 export function previewStreamSummary(
-  statuses: StreamStatus[],
+  statuses: MediaStreamRuntime[],
   stream: StreamName,
 ): PreviewStreamSummary {
   const status = statuses.find((item) => item.stream === stream);
-  const running = status?.state === 'running';
+  const running = status?.running ?? false;
 
   return {
     label: previewStreamLabel(stream),

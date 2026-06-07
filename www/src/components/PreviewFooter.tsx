@@ -1,10 +1,10 @@
-import type { StreamName, StreamStatus } from '../api/types';
+import type { MediaStreamRuntime, StreamName } from '../api/types';
 import { previewModeLabels, type PreviewMode } from '../hooks/previewMode';
 import { StatusBadge } from './StatusBadge';
 import { previewStreamLabel, previewValueText } from './previewDisplay';
 
 interface PreviewFooterProps {
-  active?: StreamStatus;
+  active?: MediaStreamRuntime;
   decodedSize: string;
   displaySize: string;
   mode: PreviewMode;
@@ -20,7 +20,7 @@ export function PreviewFooter({
 }: PreviewFooterProps) {
   return (
     <div className="preview-footer">
-      <StatusBadge state={active?.state === 'running' ? 'running' : 'pending'} />
+      <StatusBadge state={active?.running ? 'running' : 'pending'} />
       <span>{previewStreamLabel(stream)}</span>
       <span>{previewModeLabels[mode]}</span>
       <span>{previewValueText(active?.codec)}</span>
@@ -28,7 +28,7 @@ export function PreviewFooter({
       {decodedSize && <span>实际 {decodedSize}</span>}
       {displaySize && <span>显示 {displaySize}</span>}
       <span>{previewValueText(active?.fps, '--')} fps</span>
-      <span>{previewValueText(active?.bitrateKbps, '--')} kbps</span>
+      <span>{previewValueText(active?.bitrate_kbps, '--')} kbps</span>
     </div>
   );
 }

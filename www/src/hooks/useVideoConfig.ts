@@ -5,14 +5,15 @@
 
 import { useEffect, useState } from 'react';
 import { getVideoConfig } from '../api/video';
-import type { VideoConfig } from '../api/types';
+import type { StreamName, VideoConfig } from '../api/types';
 import { usePreviewMetadata } from './usePreviewMetadata';
 
 const configTimeoutMs = 5000;
 
-export function useVideoConfig() {
+export function useVideoConfig(selectedStream?: StreamName) {
   const [config, setConfig] = useState<VideoConfig | null>(null);
-  const { capabilities, statuses, refreshStatuses } = usePreviewMetadata();
+  const { capabilities, statuses, playbackUrls, refreshStatuses } =
+    usePreviewMetadata(selectedStream);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -59,6 +60,7 @@ export function useVideoConfig() {
     setConfig,
     capabilities,
     statuses,
+    playbackUrls,
     reloadConfig,
     refreshStatuses,
     loading,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { closeWebrtcPeer } from '../api/stream';
-import type { StreamName, WebrtcConfig } from '../api/types';
+import type { MediaPlaybackUrls, StreamName } from '../api/types';
 import type { PreviewMode, PreviewModeState } from './previewMode';
 import {
   startFlvPreview,
@@ -21,11 +21,9 @@ interface UsePreviewPlaybackSessionOptions {
   mode: PreviewMode;
   modeState: PreviewModeState;
   onAutoModeFallback: () => void;
+  playbackUrls: MediaPlaybackUrls | null;
   setMode: (mode: PreviewMode) => void;
   stream: StreamName;
-  webrtcConfig: WebrtcConfig | null;
-  webrtcConfigError: string;
-  webrtcConfigLoaded: boolean;
 }
 
 function stopVideoTracks(video: HTMLMediaElement | null) {
@@ -41,11 +39,9 @@ export function usePreviewPlaybackSession({
   mode,
   modeState,
   onAutoModeFallback,
+  playbackUrls,
   setMode,
   stream,
-  webrtcConfig,
-  webrtcConfigError,
-  webrtcConfigLoaded,
 }: UsePreviewPlaybackSessionOptions) {
   const [previewState, setPreviewState] = useState('等待 WebRTC 视频流');
   const [connected, setConnected] = useState(false);
@@ -70,13 +66,6 @@ export function usePreviewPlaybackSession({
     webrtcEnabled,
     webrtcReady,
   } = modeState;
-  const webrtcIceServerKey = (webrtcConfig?.ice_servers || [])
-    .map((server) => [
-      server.url,
-      server.username || '',
-      server.credential || '',
-    ].join(','))
-    .join('|');
 
   const restartPreview = useCallback((message: string) => {
     sessionRef.current += 1;
@@ -229,10 +218,10 @@ export function usePreviewPlaybackSession({
         startMjpegPreview({
           controls,
           image,
+          mjpegUrl: playbackUrls?.mjpeg || '',
           mjpegModeEnabled,
           mjpegReady,
           sessionId,
-          stream,
         });
         return cleanupSession;
       }
@@ -289,9 +278,6 @@ export function usePreviewPlaybackSession({
         },
         stream,
         webrtc: {
-          config: webrtcConfig,
-          configError: webrtcConfigError,
-          configLoaded: webrtcConfigLoaded,
           enabled: webrtcEnabled,
           ready: webrtcReady,
         },
@@ -313,11 +299,11 @@ export function usePreviewPlaybackSession({
         controls,
         hlsReady,
         hlsRef,
+        hlsUrl: playbackUrls?.hls || '',
         setHlsPlayer: (player) => {
           sessionHls = player;
           hlsRef.current = player;
         },
-        stream,
         video,
       });
       return cleanupSession;
@@ -327,12 +313,12 @@ export function usePreviewPlaybackSession({
       controls,
       flvReady,
       flvRef,
+      flvUrl: playbackUrls?.http_flv || '',
       sessionId,
       setFlvPlayer: (player) => {
         sessionFlv = player;
         flvRef.current = player;
       },
-      stream,
       video,
     });
     return cleanupSession;
@@ -347,13 +333,10 @@ export function usePreviewPlaybackSession({
     mjpegReady,
     mode,
     onAutoModeFallback,
+    playbackUrls,
     setMode,
     stream,
-    webrtcConfig,
-    webrtcConfigError,
-    webrtcConfigLoaded,
     webrtcEnabled,
-    webrtcIceServerKey,
     webrtcReady,
   ]);
 

@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { StreamName, StreamStatus } from '../api/types';
+import type { MediaPlaybackUrls, MediaStreamRuntime, StreamName } from '../api/types';
 import {
   buildPreviewModeState,
   previewModeLabels,
   type PreviewMode,
 } from './previewMode';
 import { usePreviewPlaybackSession } from './usePreviewPlaybackSession';
-import { usePreviewWebrtcConfig } from './usePreviewWebrtcConfig';
 
 export { previewModeLabels, type PreviewMode } from './previewMode';
 
 interface UsePreviewPlayerOptions {
-  active?: StreamStatus;
+  active?: MediaStreamRuntime;
   enabled: boolean;
   mode: PreviewMode;
+  playbackUrls: MediaPlaybackUrls | null;
   setMode: (mode: PreviewMode) => void;
   stream: StreamName;
 }
@@ -22,23 +22,18 @@ export function usePreviewPlayer({
   active,
   enabled,
   mode,
+  playbackUrls,
   setMode,
   stream,
 }: UsePreviewPlayerOptions) {
   const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
-  const {
-    config: webrtcConfig,
-    loaded: webrtcConfigLoaded,
-    error: webrtcConfigError,
-  } = usePreviewWebrtcConfig();
   const onAutoModeFallback = useCallback(() => {
     modeSelectionRef.current = 'auto';
   }, []);
   const modeState = buildPreviewModeState(
     active,
     mode,
-    webrtcConfig,
-    webrtcConfigLoaded,
+    playbackUrls,
   );
   const {
     connected,
@@ -53,11 +48,9 @@ export function usePreviewPlayer({
     mode,
     modeState,
     onAutoModeFallback,
+    playbackUrls,
     setMode,
     stream,
-    webrtcConfig,
-    webrtcConfigError,
-    webrtcConfigLoaded,
   });
 
   const switchMode = useCallback((nextMode: PreviewMode) => {
@@ -70,7 +63,7 @@ export function usePreviewPlayer({
   }, [mode, restartPreview, setMode]);
 
   useEffect(() => {
-    if (!enabled || (mode === 'webrtc' && !webrtcConfigLoaded)) {
+    if (!enabled) {
       return;
     }
 
@@ -96,7 +89,6 @@ export function usePreviewPlayer({
     modeState.selectedModeEnabled,
     restartPreview,
     setMode,
-    webrtcConfigLoaded,
   ]);
 
   return {

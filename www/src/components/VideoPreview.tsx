@@ -1,5 +1,9 @@
 import { type ReactNode, useRef, useState } from 'react';
-import type { StreamName, StreamStatus } from '../api/types';
+import type {
+  MediaPlaybackUrls,
+  MediaStreamRuntime,
+  StreamName,
+} from '../api/types';
 import { usePreviewPlayer, type PreviewMode } from '../hooks/usePreviewPlayer';
 import { PreviewFooter } from './PreviewFooter';
 import { PreviewSurface } from './PreviewSurface';
@@ -8,7 +12,8 @@ import { previewDetailText, previewStreamSummary } from './previewDisplay';
 
 interface VideoPreviewProps {
   stream: StreamName;
-  statuses: StreamStatus[];
+  statuses: MediaStreamRuntime[];
+  playbackUrls: MediaPlaybackUrls | null;
   onStreamChange: (stream: StreamName) => void;
   enabled?: boolean;
   onSnapshot?: (stream: StreamName) => void;
@@ -18,6 +23,7 @@ interface VideoPreviewProps {
 export function VideoPreview({
   stream,
   statuses,
+  playbackUrls,
   onStreamChange,
   enabled = true,
   onSnapshot,
@@ -45,7 +51,14 @@ export function VideoPreview({
     webrtcEnabled,
     webrtcPlaybackEnabled,
     webrtcSupported,
-  } = usePreviewPlayer({ active, enabled, mode, setMode, stream });
+  } = usePreviewPlayer({
+    active,
+    enabled,
+    mode,
+    playbackUrls,
+    setMode,
+    stream,
+  });
   const switchStream = (nextStream: StreamName) => {
     if (nextStream === stream) {
       return;

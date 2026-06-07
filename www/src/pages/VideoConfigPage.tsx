@@ -12,17 +12,18 @@ import { useVideoConfig } from '../hooks/useVideoConfig';
 import { VideoStreamForm } from './VideoStreamForm';
 
 export function VideoConfigPage() {
+  const [active, setActive] = useState<StreamName>('sub');
   const {
     config,
     setConfig,
     capabilities,
     statuses,
+    playbackUrls,
     reloadConfig,
     refreshStatuses,
     loading,
     error,
-  } = useVideoConfig();
-  const [active, setActive] = useState<StreamName>('sub');
+  } = useVideoConfig(active);
   const [saved, setSaved] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [previewEnabled, setPreviewEnabled] = useState(true);
@@ -50,7 +51,7 @@ export function VideoConfigPage() {
     ...status,
     resolution: config.streams[status.stream].resolution,
     fps: config.streams[status.stream].fps,
-    bitrateKbps: config.streams[status.stream].bitrate_kbps,
+    bitrate_kbps: config.streams[status.stream].bitrate_kbps,
   }));
   const resetDefault = () => {
     setConfig(cloneDefaultConfig(mockVideoConfig));
@@ -137,6 +138,7 @@ export function VideoConfigPage() {
       <VideoPreview
         stream={active}
         statuses={previewStatuses}
+        playbackUrls={playbackUrls}
         onStreamChange={setActive}
         enabled={previewEnabled}
       />

@@ -11,11 +11,13 @@ import { ImagePrimarySettings } from './ImagePrimarySettings';
 type ImageRecordSection = 'exposure' | 'white_balance' | 'enhancement' | 'backlight';
 
 export function ImageConfigPage() {
+  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
   const {
     config,
     setConfig,
     capabilities: mediaCapabilities,
     statuses,
+    playbackUrls,
     strategyStatus,
     save,
     reset,
@@ -23,9 +25,8 @@ export function ImageConfigPage() {
     loading,
     saving,
     error,
-  } = useImageConfig();
+  } = useImageConfig(previewStream);
   const capabilities: ImageCapabilities = mediaCapabilities.image;
-  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
 
   if (loading) {
     return <div className="panel">加载图像配置...</div>;
@@ -99,7 +100,12 @@ export function ImageConfigPage() {
         {savedMsg && <div className="save-hint">{savedMsg}</div>}
         {error && <div className="status-note error-note">{error}</div>}
       </section>
-      <VideoPreview stream={previewStream} statuses={statuses} onStreamChange={setPreviewStream} />
+      <VideoPreview
+        stream={previewStream}
+        statuses={statuses}
+        playbackUrls={playbackUrls}
+        onStreamChange={setPreviewStream}
+      />
     </div>
   );
 }

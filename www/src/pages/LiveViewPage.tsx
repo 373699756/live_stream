@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { snapshotUrl } from '../api/snapshot';
 import { useLiveView } from '../hooks/useLiveView';
 import type { StreamName } from '../api/types';
 import { AiDetectionOverlay } from '../components/AiDetectionOverlay';
@@ -8,12 +7,21 @@ import { useAiStatus } from '../hooks/useAiStatus';
 
 export function LiveViewPage() {
   const [stream, setStream] = useState<StreamName>('main');
-  const { statuses } = useLiveView();
+  const { statuses, playbackUrls } = useLiveView(stream);
   const { status: aiStatus, error: aiError } = useAiStatus();
   const activeStatus = statuses.find((status) => status.stream === stream);
 
   const captureSnapshot = (nextStream: StreamName) => {
-    window.open(snapshotUrl(nextStream, Date.now()), '_blank', 'noopener,noreferrer');
+    const snapshot = playbackUrls?.stream === nextStream ? playbackUrls.snapshot : '';
+    if (!snapshot) {
+      return;
+    }
+    const separator = snapshot.includes('?') ? '&' : '?';
+    window.open(
+      `${snapshot}${separator}t=${Date.now()}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
   };
 
   return (
@@ -21,6 +29,7 @@ export function LiveViewPage() {
       <VideoPreview
         stream={stream}
         statuses={statuses}
+        playbackUrls={playbackUrls}
         onStreamChange={setStream}
         onSnapshot={captureSnapshot}
         surfaceOverlay={

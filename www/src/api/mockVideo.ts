@@ -1,6 +1,5 @@
 import type {
   MediaCapabilities,
-  StreamStatus,
   VideoConfig,
 } from './types';
 
@@ -127,38 +126,3 @@ export const mockMediaCapabilities: MediaCapabilities = {
     orientation: { mirror: true, flip: true },
   },
 };
-
-export const mockStreamStatus: StreamStatus[] = [
-  {
-    stream: 'main',
-    codec: 'H.264',
-    resolution: mockVideoConfig.streams.main.resolution,
-    fps: 25,
-    bitrateKbps: 12288,
-    state: 'running',
-    browserCodec: true,
-    hlsSupported: true,
-    flvSupported: true,
-    mjpegSupported: false,
-    hlsReady: false,
-    flvReady: false,
-    mjpegReady: false,
-    webrtcReady: false,
-  },
-  {
-    stream: 'sub',
-    codec: 'H.265',
-    resolution: mockVideoConfig.streams.sub.resolution,
-    fps: 15,
-    bitrateKbps: 768,
-    state: 'running',
-    browserCodec: true,
-    hlsSupported: true,
-    flvSupported: true,
-    mjpegSupported: false,
-    hlsReady: true,
-    flvReady: true,
-    mjpegReady: false,
-    webrtcReady: false,
-  },
-];

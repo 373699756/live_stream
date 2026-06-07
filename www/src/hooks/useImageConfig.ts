@@ -12,6 +12,7 @@ import {
 import type {
   ImageConfig,
   ImageStrategyStatus,
+  StreamName,
 } from '../api/types';
 import { cloneDefaultConfig } from '../api/configDefaults';
 import { mockImageConfig, mockImageStrategyStatus } from '../api/mockImage';
@@ -20,9 +21,10 @@ import { usePreviewMetadata } from './usePreviewMetadata';
 const configTimeoutMs = 5000;
 const statusTimeoutMs = 1800;
 
-export function useImageConfig() {
+export function useImageConfig(selectedStream?: StreamName) {
   const [config, setConfig] = useState<ImageConfig | null>(null);
-  const { capabilities, statuses } = usePreviewMetadata();
+  const { capabilities, statuses, playbackUrls } =
+    usePreviewMetadata(selectedStream);
   const [strategyStatus, setStrategyStatus] =
     useState<ImageStrategyStatus>(mockImageStrategyStatus);
   const [savedMsg, setSavedMsg] = useState('');
@@ -106,6 +108,7 @@ export function useImageConfig() {
     setConfig,
     capabilities,
     statuses,
+    playbackUrls,
     strategyStatus,
     save,
     reset,

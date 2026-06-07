@@ -1,10 +1,4 @@
 import {
-  flvStreamUrl,
-  hlsPlaylistUrl,
-  mjpegStreamUrl,
-} from '../api/stream';
-import type { StreamName } from '../api/types';
-import {
   loadLocalFlvModule,
   loadLocalHlsModule,
   PlayerModuleUnavailableError,
@@ -37,17 +31,17 @@ function playerErrorDetails(args: unknown[]): string {
 export function startMjpegPreview({
   controls,
   image,
+  mjpegUrl,
   mjpegModeEnabled,
   mjpegReady,
   sessionId,
-  stream,
 }: {
   controls: PreviewSessionControls;
   image: HTMLImageElement;
+  mjpegUrl: string;
   mjpegModeEnabled: boolean;
   mjpegReady: boolean;
   sessionId: number;
-  stream: StreamName;
 }) {
   if (!mjpegModeEnabled) {
     controls.setPreviewState('MJPEG 码流不可用');
@@ -55,6 +49,10 @@ export function startMjpegPreview({
   }
   if (!mjpegReady) {
     controls.setPreviewState('正在等待 MJPEG 首帧');
+    return;
+  }
+  if (!mjpegUrl) {
+    controls.setPreviewState('MJPEG 地址不可用');
     return;
   }
   image.onload = () => {
@@ -72,28 +70,31 @@ export function startMjpegPreview({
     controls.setPreviewState('MJPEG 播放失败');
   };
   controls.setPreviewState('正在拉取 MJPEG 码流');
-  image.src = streamSessionUrl(mjpegStreamUrl(stream), sessionId);
+  image.src = streamSessionUrl(mjpegUrl, sessionId);
 }
 
 export function startHlsPreview({
   controls,
   hlsReady,
   hlsRef,
+  hlsUrl,
   setHlsPlayer,
-  stream,
   video,
 }: {
   controls: PreviewSessionControls;
   hlsReady: boolean;
   hlsRef: CurrentRef<HlsPlayer | null>;
+  hlsUrl: string;
   setHlsPlayer: (player: HlsPlayer) => void;
-  stream: StreamName;
   video: HTMLVideoElement;
 }) {
-  const url = hlsPlaylistUrl(stream);
+  if (!hlsUrl) {
+    controls.setPreviewState('HLS 地址不可用');
+    return;
+  }
   if (!hlsReady) {
     controls.setPreviewState('正在启动 HLS 码流');
-    void fetch(url, {
+    void fetch(hlsUrl, {
       cache: 'no-store',
       signal: controls.sessionSignal,
     }).catch((error: unknown) => {
@@ -105,7 +106,7 @@ export function startHlsPreview({
   }
   controls.setPreviewState('等待 HLS 视频流');
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
+    video.src = hlsUrl;
     void video.play().catch(() => {});
     controls.setPreviewState('正在拉取 HLS 码流');
     return;
@@ -139,7 +140,7 @@ export function startHlsPreview({
         });
       }
       player.attachMedia(video);
-      player.loadSource(url);
+      player.loadSource(hlsUrl);
       void video.play().catch(() => {});
       controls.setPreviewState('正在拉取 HLS 码流');
     } catch (error) {
@@ -158,21 +159,25 @@ export function startFlvPreview({
   controls,
   flvReady,
   flvRef,
+  flvUrl,
   sessionId,
   setFlvPlayer,
-  stream,
   video,
 }: {
   controls: PreviewSessionControls;
   flvReady: boolean;
   flvRef: CurrentRef<FlvPlayer | null>;
+  flvUrl: string;
   sessionId: number;
   setFlvPlayer: (player: FlvPlayer) => void;
-  stream: StreamName;
   video: HTMLVideoElement;
 }) {
   if (!flvReady) {
     controls.setPreviewState('正在等待 HTTP-FLV 首帧');
+    return;
+  }
+  if (!flvUrl) {
+    controls.setPreviewState('HTTP-FLV 地址不可用');
     return;
   }
   controls.setPreviewState('等待 HTTP-FLV 视频流');
@@ -192,7 +197,7 @@ export function startFlvPreview({
       const player = flvModule.createPlayer({
         type: 'flv',
         isLive: true,
-        url: streamSessionUrl(flvStreamUrl(stream), sessionId),
+        url: streamSessionUrl(flvUrl, sessionId),
         hasAudio: false,
         hasVideo: true,
       }, {

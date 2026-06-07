@@ -16,6 +16,42 @@ export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
 };
 
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+}
+
+export interface ApiEnvelope<T> {
+  ok: boolean;
+  data?: T | null;
+  error?: ApiErrorBody | string | null;
+  request_id?: string;
+}
+
+export class ApiClientError extends Error {
+  code: string;
+  requestId: string;
+  status: number;
+
+  constructor({
+    code,
+    message,
+    requestId = '',
+    status = 0,
+  }: {
+    code: string;
+    message: string;
+    requestId?: string;
+    status?: number;
+  }) {
+    super(message);
+    this.name = 'ApiClientError';
+    this.code = code;
+    this.requestId = requestId;
+    this.status = status;
+  }
+}
+
 interface ManagedRequestSignal {
   cleanup: () => void;
   signal: AbortSignal;
@@ -137,16 +173,104 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-export async function readError(response: Response): Promise<string> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function hasEnvelopeShape(value: unknown): value is ApiEnvelope<unknown> {
+  return (
+    isRecord(value) &&
+    typeof value.ok === 'boolean' &&
+    ('data' in value || 'error' in value || 'request_id' in value)
+  );
+}
+
+function errorFromEnvelope(
+  body: ApiEnvelope<unknown>,
+  status = 0,
+): ApiClientError {
+  const error = body.error;
+  if (isRecord(error)) {
+    const code =
+      typeof error.code === 'string' && error.code
+        ? error.code
+        : 'request_failed';
+    const message =
+      typeof error.message === 'string' && error.message
+        ? error.message
+        : code;
+    return new ApiClientError({
+      code,
+      message,
+      requestId: body.request_id || '',
+      status,
+    });
+  }
+  const message = typeof error === 'string' && error ? error : 'request_failed';
+  return new ApiClientError({
+    code: message,
+    message,
+    requestId: body.request_id || '',
+    status,
+  });
+}
+
+function unwrapEnvelope<T>(body: unknown, status = 0): T {
+  if (!hasEnvelopeShape(body)) {
+    return body as T;
+  }
+  if (!body.ok) {
+    throw errorFromEnvelope(body, status);
+  }
+  return body.data as T;
+}
+
+async function readJsonBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) {
+    return undefined;
+  }
+  return JSON.parse(text) as unknown;
+}
+
+async function readResponseError(response: Response): Promise<ApiClientError> {
   try {
-    const body = (await response.json()) as { error?: string };
-    if (body.error) {
-      return body.error;
+    const body = await readJsonBody(response);
+    if (hasEnvelopeShape(body)) {
+      return errorFromEnvelope(body, response.status);
+    }
+    if (isRecord(body)) {
+      const error = body.error;
+      if (typeof error === 'string' && error) {
+        return new ApiClientError({
+          code: error,
+          message: error,
+          status: response.status,
+        });
+      }
+      if (isRecord(error) && typeof error.message === 'string') {
+        return new ApiClientError({
+          code: typeof error.code === 'string' ? error.code : 'request_failed',
+          message: error.message,
+          status: response.status,
+        });
+      }
     }
   } catch {
     // Ignore JSON parse failures for error responses.
   }
-  return `${response.status} ${response.statusText}`;
+  return new ApiClientError({
+    code: 'http_error',
+    message: `${response.status} ${response.statusText}`,
+    status: response.status,
+  });
+}
+
+export async function readError(response: Response): Promise<string> {
+  const error = await readResponseError(response);
+  return error.requestId
+    ? `${error.message} (${error.code}, ${error.requestId})`
+    : `${error.message} (${error.code})`;
 }
 
 async function handleRejectedResponse(response: Response): Promise<void> {
@@ -158,8 +282,19 @@ async function handleRejectedResponse(response: Response): Promise<void> {
     return;
   }
   try {
-    const body = (await response.clone().json()) as { error?: string };
-    if (body.error === 'must_change_password') {
+    const body = await readJsonBody(response.clone());
+    const error = hasEnvelopeShape(body)
+      ? body.error
+      : isRecord(body)
+        ? body.error
+        : null;
+    const errorCode =
+      isRecord(error) && typeof error.code === 'string'
+        ? error.code
+        : typeof error === 'string'
+          ? error
+          : '';
+    if (errorCode === 'must_change_password') {
       dispatchMustChangePassword();
     }
   } catch {
@@ -207,12 +342,20 @@ async function sendRequest<TResponse>({
         }
         return undefined as TResponse;
       }
-      throw new Error(await readError(response));
+      throw await readResponseError(response);
     }
     if (responseType === 'void') {
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) {
+        const responseBody = await readJsonBody(response);
+        if (responseBody !== undefined) {
+          unwrapEnvelope<unknown>(responseBody, response.status);
+        }
+      }
       return undefined as TResponse;
     }
-    return (await response.json()) as TResponse;
+    const responseBody = await readJsonBody(response);
+    return unwrapEnvelope<TResponse>(responseBody, response.status);
   } finally {
     request.cleanup();
   }
@@ -260,6 +403,20 @@ export async function putJson<T>(
     method: 'PUT',
     path,
     responseType: 'void',
+  });
+}
+
+export async function deleteJson<TResponse>(
+  path: string,
+  fallback: TResponse,
+  init?: ApiRequestOptions,
+): Promise<TResponse> {
+  return sendRequest<TResponse>({
+    fallback,
+    init,
+    method: 'DELETE',
+    path,
+    responseType: 'json',
   });
 }
 

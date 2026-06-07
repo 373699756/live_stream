@@ -200,23 +200,6 @@ export interface WebrtcConfig {
   prefer_tcp: boolean;
 }
 
-export interface StreamStatus {
-  stream: StreamName;
-  codec: string;
-  resolution: string;
-  fps: number;
-  bitrateKbps: number;
-  state: 'running' | 'stopped' | 'pending';
-  browserCodec?: boolean;
-  hlsSupported?: boolean;
-  flvSupported?: boolean;
-  mjpegSupported?: boolean;
-  hlsReady?: boolean;
-  flvReady?: boolean;
-  mjpegReady?: boolean;
-  webrtcReady?: boolean;
-}
-
 export type WebrtcPeerState =
   | 'created'
   | 'offer_received'
@@ -227,26 +210,80 @@ export type WebrtcPeerState =
   | 'failed'
   | 'unknown';
 
-export interface WebrtcPeerResponse {
-  ok: boolean;
-  peer_id: string;
+export interface MediaStreamRuntime {
   stream: StreamName;
-  state: WebrtcPeerState;
-  error?: string;
+  available: boolean;
+  running: boolean;
+  codec: string;
+  codec_generation: number;
+  track_ready: boolean;
+  hls_supported: boolean;
+  hls_ready: boolean;
+  http_flv_supported: boolean;
+  http_flv_ready: boolean;
+  mjpeg_supported: boolean;
+  mjpeg_ready: boolean;
+  webrtc_supported: boolean;
+  webrtc_ready: boolean;
+  reader_count: number;
+  client_count: number;
+  cached_frames: number;
+  cached_bytes: number;
+  hls_bytes: number;
+  last_dts: number;
+  last_reset_reason: string;
+  resolution?: string;
+  fps?: number;
+  bitrate_kbps?: number;
 }
 
-export interface WebrtcAnswerResponse {
-  ok: boolean;
+export interface MediaPlaybackUrls {
+  stream: StreamName;
+  rtsp: string;
+  hls: string;
+  http_flv: string;
+  mjpeg: string;
+  snapshot: string;
+  webrtc_whep?: string;
+}
+
+export interface MediaSessionInfo {
+  session_id: string;
+  protocol: string;
+  stream: StreamName;
+  state: string;
+  client_ip?: string;
+  user_name?: string;
+  peer_id?: string;
+  pending_bytes?: number;
+  close_reason?: string;
+  created_at_ms?: number;
+  updated_at_ms?: number;
+}
+
+export interface WebrtcPeerInfo {
+  peer_id: string;
+  stream: StreamName;
+  codec: string;
+  state: WebrtcPeerState;
+  client_id: string;
+  session_id: string;
+  user_name: string;
+  client_ip: string;
+  ice_selected: boolean;
+  dtls_state: string;
+  srtp_ready: boolean;
+  rtp_packets: number;
+  rtp_bytes: number;
+  last_error: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface WebrtcOfferAnswer {
   peer_id: string;
   sdp: string;
   state: WebrtcPeerState;
-  error?: string;
-}
-
-export interface WebrtcCommandResponse {
-  ok: boolean;
-  peer_id?: string;
-  error?: string;
 }
 
 export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';

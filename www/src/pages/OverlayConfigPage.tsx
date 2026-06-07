@@ -34,15 +34,16 @@ function updateMask(
 }
 
 export function OverlayConfigPage() {
+  const [activeStream, setActiveStream] = useState<StreamName>('sub');
+  const [activeSlot, setActiveSlot] = useState(0);
   const { config, setConfig, save, reset, savedMsg, loading, saving, error } = useOverlayConfig();
   const {
     config: videoConfig,
     capabilities,
     statuses,
+    playbackUrls,
     loading: videoLoading,
-  } = useVideoConfig();
-  const [activeStream, setActiveStream] = useState<StreamName>('sub');
-  const [activeSlot, setActiveSlot] = useState(0);
+  } = useVideoConfig(activeStream);
 
   if (loading || videoLoading) {
     return <div className="panel">加载 Overlay 配置...</div>;
@@ -65,7 +66,8 @@ export function OverlayConfigPage() {
     ...status,
     resolution: videoConfig?.streams[status.stream]?.resolution || status.resolution,
     fps: videoConfig?.streams[status.stream]?.fps || status.fps,
-    bitrateKbps: videoConfig?.streams[status.stream]?.bitrate_kbps || status.bitrateKbps,
+    bitrate_kbps:
+      videoConfig?.streams[status.stream]?.bitrate_kbps || status.bitrate_kbps,
   }));
 
   const setMask = (slot: number, patch: Partial<PrivacyMaskConfig>) => {
@@ -128,6 +130,7 @@ export function OverlayConfigPage() {
         <VideoPreview
           stream={activeStream}
           statuses={previewStatuses}
+          playbackUrls={playbackUrls}
           onStreamChange={setActiveStream}
           surfaceOverlay={maskEditor.drawLayer}
         />
