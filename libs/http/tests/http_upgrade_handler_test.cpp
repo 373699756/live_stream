@@ -319,10 +319,12 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
     FakeLogger* logger,
     FakeUpgrade* upgrade) {
     live_stream::HttpOptions options;
-    return live_stream::CreateHttpConsole(
-        options, net_engine, auth, logger, nullptr, nullptr, nullptr, nullptr,
-        upgrade, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr);
+    live_stream::HttpConsoleDependencies dependencies;
+    dependencies.net_engine = net_engine;
+    dependencies.auth = auth;
+    dependencies.logger = logger;
+    dependencies.upgrade = upgrade;
+    return live_stream::CreateHttpConsole(options, dependencies);
 }
 
 int TestUpgradeUploadAndStart() {

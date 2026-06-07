@@ -408,27 +408,23 @@ CreateHttp(const HttpOptions &options,
 }
 
 std::unique_ptr<IHttp> CreateHttpConsole(
-    const HttpOptions &options, NetEngine *net_engine,
-    IAuth *auth, ILogger *logger,
-    IConfig *config, INetworkConfig *network_config,
-    ITime *time, IAlarm *alarm,
-    IUpgrade *upgrade, ISystem *system,
-    IRtsp *rtsp, OnvifServer *onvif,
-    IAiView *ai, IDeviceMedia *device_media,
-    ISnapshotView *snapshot, IWebrtc *webrtc,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source) {
+    const HttpOptions &options,
+    const HttpConsoleDependencies &console_dependencies) {
     HttpDependencies dependencies;
-    dependencies.net_engine = net_engine;
+    dependencies.net_engine = console_dependencies.net_engine;
     std::unique_ptr<HttpConsole> service(
         new HttpConsole(options, dependencies));
     service->ConfigureConsoleHandlers(
-        auth, logger, config, network_config,
-        time, alarm, upgrade, system,
-        rtsp, onvif, ai, device_media,
-        snapshot, webrtc, media_source,
-        media_flv_source, media_mjpeg_source);
+        console_dependencies.auth, console_dependencies.logger,
+        console_dependencies.config, console_dependencies.network_config,
+        console_dependencies.time, console_dependencies.alarm,
+        console_dependencies.upgrade, console_dependencies.system,
+        console_dependencies.rtsp, console_dependencies.onvif,
+        console_dependencies.ai, console_dependencies.device_media,
+        console_dependencies.snapshot, console_dependencies.webrtc,
+        console_dependencies.media_source,
+        console_dependencies.media_flv_source,
+        console_dependencies.media_mjpeg_source);
     return std::unique_ptr<IHttp>(service.release());
 }
 

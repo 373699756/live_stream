@@ -492,16 +492,29 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
 
     const HttpOptions http_options = BuildHttpOptions(runtime_config);
-    http_ = CreateHttpConsole(
-        http_options, refs.net_engine,
-        refs.core != nullptr ? refs.core->auth() : nullptr,
-        refs.core != nullptr ? refs.core->logger() : nullptr,
-        refs.core != nullptr ? refs.core->config() : nullptr,
-        refs.device.network, refs.device.time, refs.device.alarm,
-        refs.device.upgrade, refs.device.system, refs.rtsp,
-        refs.onvif, refs.media.ai, refs.media.device_media,
-        refs.media.snapshot, refs.webrtc, refs.media_pipeline,
-        refs.media_pipeline, refs.media_pipeline);
+    HttpConsoleDependencies http_dependencies;
+    http_dependencies.net_engine = refs.net_engine;
+    http_dependencies.auth =
+        refs.core != nullptr ? refs.core->auth() : nullptr;
+    http_dependencies.logger =
+        refs.core != nullptr ? refs.core->logger() : nullptr;
+    http_dependencies.config =
+        refs.core != nullptr ? refs.core->config() : nullptr;
+    http_dependencies.network_config = refs.device.network;
+    http_dependencies.time = refs.device.time;
+    http_dependencies.alarm = refs.device.alarm;
+    http_dependencies.upgrade = refs.device.upgrade;
+    http_dependencies.system = refs.device.system;
+    http_dependencies.rtsp = refs.rtsp;
+    http_dependencies.onvif = refs.onvif;
+    http_dependencies.ai = refs.media.ai;
+    http_dependencies.device_media = refs.media.device_media;
+    http_dependencies.snapshot = refs.media.snapshot;
+    http_dependencies.webrtc = refs.webrtc;
+    http_dependencies.media_source = refs.media_pipeline;
+    http_dependencies.media_flv_source = refs.media_pipeline;
+    http_dependencies.media_mjpeg_source = refs.media_pipeline;
+    http_ = CreateHttpConsole(http_options, http_dependencies);
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),

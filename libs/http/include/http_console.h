@@ -24,18 +24,30 @@ class IAiView;
 class ISnapshotView;
 class NetEngine;
 
+struct HttpConsoleDependencies {
+    NetEngine *net_engine = nullptr;
+    IAuth *auth = nullptr;
+    ILogger *logger = nullptr;
+    IConfig *config = nullptr;
+    INetworkConfig *network_config = nullptr;
+    ITime *time = nullptr;
+    IAlarm *alarm = nullptr;
+    IUpgrade *upgrade = nullptr;
+    ISystem *system = nullptr;
+    IRtsp *rtsp = nullptr;
+    OnvifServer *onvif = nullptr;
+    IAiView *ai = nullptr;
+    IDeviceMedia *device_media = nullptr;
+    ISnapshotView *snapshot = nullptr;
+    IWebrtc *webrtc = nullptr;
+    IMediaSource *media_source = nullptr;
+    IMediaFlvSource *media_flv_source = nullptr;
+    IMediaMjpegSource *media_mjpeg_source = nullptr;
+};
+
 std::unique_ptr<IHttp> CreateHttpConsole(
-    const HttpOptions &options, NetEngine *net_engine,
-    IAuth *auth, ILogger *logger,
-    IConfig *config, INetworkConfig *network_config,
-    ITime *time, IAlarm *alarm,
-    IUpgrade *upgrade, ISystem *system,
-    IRtsp *rtsp, OnvifServer *onvif,
-    IAiView *ai, IDeviceMedia *device_media,
-    ISnapshotView *snapshot, IWebrtc *webrtc,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source);
+    const HttpOptions &options,
+    const HttpConsoleDependencies &dependencies);
 
 }  // namespace live_stream
 

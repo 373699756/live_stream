@@ -263,11 +263,14 @@ int main() {
     return 1;
   }
 
+  live_stream::HttpConsoleDependencies console_deps;
+  console_deps.net_engine = &net_engine;
+  console_deps.auth = &auth;
+  console_deps.logger = &logger;
+  console_deps.config = &config;
+  console_deps.device_media = &media;
   std::unique_ptr<live_stream::IHttp> console =
-      live_stream::CreateHttpConsole(
-          options, &net_engine, &auth, &logger, &config, nullptr, nullptr,
-          nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &media,
-          nullptr, nullptr, nullptr, nullptr, nullptr);
+      live_stream::CreateHttpConsole(options, console_deps);
   if (!console || !console->Start()) {
     return 2;
   }
