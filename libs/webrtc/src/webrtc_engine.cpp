@@ -6,6 +6,8 @@
 #include "stun_packet.h"
 #include "webrtc_sdp.h"
 
+#include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -18,6 +20,8 @@
 namespace live_stream {
 namespace webrtc_internal {
 namespace {
+
+class NativeWebrtcEngine;
 
 bool IsSupportedCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
@@ -84,10 +88,98 @@ WebrtcSdpAnswerOptions BuildAnswerOptions(
     return answer_options;
 }
 
+std::atomic<uintptr_t> &NextEngineId() {
+    static std::atomic<uintptr_t> next_engine_id{1};
+    return next_engine_id;
+}
+
+std::mutex &EngineRegistryMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::map<uintptr_t, NativeWebrtcEngine *> &EngineRegistry() {
+    static std::map<uintptr_t, NativeWebrtcEngine *> registry;
+    return registry;
+}
+
+std::map<uintptr_t, uint32_t> &EngineActiveCallbacks() {
+    static std::map<uintptr_t, uint32_t> active_callbacks;
+    return active_callbacks;
+}
+
+std::map<uintptr_t, bool> &EngineClosingFlags() {
+    static std::map<uintptr_t, bool> closing_flags;
+    return closing_flags;
+}
+
+std::condition_variable &EngineRegistryCondition() {
+    static std::condition_variable condition;
+    return condition;
+}
+
+uintptr_t AllocateEngineId() {
+    return NextEngineId().fetch_add(1);
+}
+
+void RegisterEngine(uintptr_t engine_id, NativeWebrtcEngine *engine) {
+    if (engine_id == 0 || engine == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
+    EngineRegistry()[engine_id] = engine;
+    EngineActiveCallbacks()[engine_id] = 0;
+    EngineClosingFlags()[engine_id] = false;
+}
+
+void UnregisterEngine(uintptr_t engine_id) {
+    std::unique_lock<std::mutex> guard(EngineRegistryMutex());
+    EngineClosingFlags()[engine_id] = true;
+    EngineRegistryCondition().wait(guard, [engine_id]() {
+        const auto iter = EngineActiveCallbacks().find(engine_id);
+        return iter == EngineActiveCallbacks().end() || iter->second == 0;
+    });
+    EngineRegistry().erase(engine_id);
+    EngineActiveCallbacks().erase(engine_id);
+    EngineClosingFlags().erase(engine_id);
+}
+
+NativeWebrtcEngine *EnterEngineCallback(uintptr_t engine_id) {
+    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
+    const auto engine_iter = EngineRegistry().find(engine_id);
+    const auto closing_iter = EngineClosingFlags().find(engine_id);
+    if (engine_iter == EngineRegistry().end() ||
+        closing_iter == EngineClosingFlags().end() || closing_iter->second) {
+        return nullptr;
+    }
+    ++EngineActiveCallbacks()[engine_id];
+    return engine_iter->second;
+}
+
+void LeaveEngineCallback(uintptr_t engine_id) {
+    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
+    auto iter = EngineActiveCallbacks().find(engine_id);
+    if (iter == EngineActiveCallbacks().end() || iter->second == 0) {
+        return;
+    }
+    --iter->second;
+    if (iter->second == 0) {
+        EngineRegistryCondition().notify_all();
+    }
+}
+
 class NativeWebrtcEngine : public IWebrtcEngine {
 public:
     explicit NativeWebrtcEngine(NetEngine *net_engine)
-        : net_engine_(net_engine) {}
+        : net_engine_(net_engine),
+          engine_id_(AllocateEngineId()) {
+        RegisterEngine(engine_id_, this);
+    }
+
+    ~NativeWebrtcEngine() override {
+        Stop();
+        UnregisterEngine(engine_id_);
+    }
 
     bool Available() const override { return net_engine_ != nullptr; }
 
@@ -367,8 +459,29 @@ private:
         if (user == nullptr) {
             return;
         }
-        static_cast<NativeWebrtcEngine *>(user)->HandleUdpPacket(
-            socket_id, std::move(peer), data, size);
+        const uintptr_t engine_id = reinterpret_cast<uintptr_t>(user);
+        DispatchUdpPacket(engine_id, socket_id, std::move(peer), data, size);
+    }
+
+    static void DispatchUdpPacket(uintptr_t engine_id, UdpSocketId socket_id,
+                                  NetAddress peer, const uint8_t *data,
+                                  size_t size) {
+        NativeWebrtcEngine *engine = EnterEngineCallback(engine_id);
+        if (engine == nullptr) {
+            return;
+        }
+        engine->HandleUdpPacket(socket_id, std::move(peer), data, size);
+        LeaveEngineCallback(engine_id);
+    }
+
+    static void DispatchDtlsTimeout(uintptr_t engine_id,
+                                    const std::string &peer_id) {
+        NativeWebrtcEngine *engine = EnterEngineCallback(engine_id);
+        if (engine == nullptr) {
+            return;
+        }
+        engine->HandleDtlsTimeout(peer_id);
+        LeaveEngineCallback(engine_id);
     }
 
     bool StartIceTransportLocked(const std::string &peer_id,
@@ -382,7 +495,7 @@ private:
         }
 
         UdpCallbacks callbacks;
-        callbacks.user = this;
+        callbacks.user = reinterpret_cast<void *>(engine_id_);
         callbacks.on_read = &NativeWebrtcEngine::OnUdpPacket;
 
         const uint32_t port_count =
@@ -617,8 +730,11 @@ private:
             return true;
         }
         CancelDtlsTimerLocked(runtime);
+        const uintptr_t engine_id = engine_id_;
         const NetTimerId timer_id = net_engine_->RunOnIoAfter(
-            timeout_ms, [this, peer_id]() { HandleDtlsTimeout(peer_id); });
+            timeout_ms, [engine_id, peer_id]() {
+                DispatchDtlsTimeout(engine_id, peer_id);
+            });
         if (timer_id == 0) {
             return false;
         }
@@ -719,6 +835,7 @@ private:
     }
 
     NetEngine *net_engine_ = nullptr;
+    uintptr_t engine_id_ = 0;
     mutable std::mutex mutex_;
     WebrtcEngineCallbacks callbacks_;
     WebrtcOptions options_;
