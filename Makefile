@@ -50,6 +50,7 @@ CXXFLAGS += -Ilibs/time/include
 CXXFLAGS += -Ilibs/media_codec/include
 CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
+CXXFLAGS += -Ilibs/net_adaptive/include
 CXXFLAGS += -Ilibs/ai/include
 CXXFLAGS += -Ilibs/device_media/include
 CXXFLAGS += -Ilibs/media_source/include
@@ -84,6 +85,7 @@ SERVICES := \
 	hisi_vendor \
 	device_media \
 	rtp \
+	net_adaptive \
 	media_source \
 	media_pipeline \
 	region \

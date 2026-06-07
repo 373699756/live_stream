@@ -7,6 +7,7 @@
 #include "http.h"
 #include "infra/executor.h"
 #include "net.h"
+#include "net_adaptive.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "runtime_config.h"
@@ -51,6 +52,7 @@ private:
     std::unique_ptr<IMediaPipeline> media_pipeline_;
     std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttp> http_;
+    std::unique_ptr<INetAdaptive> net_adaptive_;
     bool started_ = false;
 };
 

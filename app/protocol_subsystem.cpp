@@ -149,6 +149,21 @@ HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     return options;
 }
 
+NetAdaptiveOptions BuildNetAdaptiveOptions() {
+    NetAdaptiveOptions options;
+    return options;
+}
+
+NetAdaptiveDependencies BuildNetAdaptiveDependencies(
+    const ProtocolRuntimeRefs &refs) {
+    NetAdaptiveDependencies dependencies;
+    dependencies.net_engine = refs.net_engine;
+    dependencies.rtsp = refs.rtsp;
+    dependencies.webrtc = refs.webrtc;
+    dependencies.media_source = refs.media_pipeline;
+    return dependencies;
+}
+
 }  // namespace
 
 ProtocolSubsystem &ProtocolSubsystem::Get() {
@@ -294,11 +309,28 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
                    static_cast<unsigned>(http_address.port),
                    runtime_config.static_root.c_str());
 
+    const NetAdaptiveOptions net_adaptive_options =
+        BuildNetAdaptiveOptions();
+    const NetAdaptiveDependencies net_adaptive_dependencies =
+        BuildNetAdaptiveDependencies(refs);
+    net_adaptive_ =
+        CreateNetAdaptive(net_adaptive_options, net_adaptive_dependencies);
+    if (!net_adaptive_ || !net_adaptive_->Start()) {
+        Error("app", "Start net_adaptive failed");
+        Stop();
+        return false;
+    }
+
     started_ = true;
     return true;
 }
 
 void ProtocolSubsystem::Stop() {
+    if (net_adaptive_) {
+        Info("app", "Stop net_adaptive begin");
+        net_adaptive_->Stop();
+        Info("app", "Stop net_adaptive done");
+    }
     if (http_) {
         Info("app", "Stop http begin");
         http_->Stop();
@@ -336,6 +368,7 @@ void ProtocolSubsystem::Stop() {
         Info("app", "Stop net callback executor done");
     }
     http_.reset();
+    net_adaptive_.reset();
     onvif_.reset();
     media_pipeline_.reset();
     webrtc_.reset();
