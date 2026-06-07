@@ -76,6 +76,10 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
 }
 
 void MediaSubsystem::Stop() {
+    if (overlay_) {
+        overlay_->Stop();
+        overlay_.reset();
+    }
     if (ai_) {
         ai_->Stop();
         ai_.reset();
@@ -83,10 +87,6 @@ void MediaSubsystem::Stop() {
     if (snapshot_) {
         snapshot_->Stop();
         snapshot_.reset();
-    }
-    if (overlay_) {
-        overlay_->Stop();
-        overlay_.reset();
     }
     if (device_media_) {
         device_media_->Stop();

@@ -43,6 +43,8 @@ public API 在 `region.h`。`GET/PUT /api/config/overlay` 的业务语义归本
 region 状态由 overlay 配置、media channel 绑定和 SDK region 句柄共同决定。热应用时
 必须先校验配置，再按 create/attach/update/detach/destroy 顺序收敛硬件状态；失败时
 不能留下与配置不一致的遮挡或 OSD。
+组合根停止时，`region` 必须先于 `device_media` 停止，以便刷新线程退出并完成
+region detach/destroy 后，MPP channel 再由 `device_media` 释放。
 
 ## 风险与优化方向
 

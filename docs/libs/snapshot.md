@@ -35,6 +35,8 @@ public API 在 `snapshot.h`。`GET /api/snapshot/main.jpg` 和
 
 抓图是低频动作，但会访问媒体和 SDK 资源。失败时返回明确失败状态，不影响实时
 预览主链路。
+组合根停止时，`snapshot` 必须先于 `device_media` 停止；停止后不再持有或使用
+`device_media` 提供的 channel 信息和 SDK 抓图路径。
 
 ## 非目标
 
