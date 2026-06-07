@@ -116,14 +116,12 @@ APP_SRCS := \
 	app/protocol_subsystem.cpp \
 	app/runtime_config.cpp \
 	app/upgrade_flash.cpp \
-	app/upgrade_package.cpp \
 	app/upgrade_platform.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 SYSUPGRADE_SRCS := \
 	app/live_sysupgrade.cpp \
 	app/linux_platform_common.cpp \
-	app/upgrade_flash.cpp \
-	app/upgrade_package.cpp
+	app/upgrade_flash.cpp
 SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
 WEB_INPUTS := \
 	www/index.html \
@@ -186,11 +184,12 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libupgrade.a $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
-	  $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a \
+	  $(LIB_DIR)/libupgrade.a $(LIB_DIR)/libinfra.a \
+	  $(THIRDPARTY_INSTALL)/lib/libcrypto.a \
 	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
 
 $(WEB_STAMP): $(WEB_INPUTS)

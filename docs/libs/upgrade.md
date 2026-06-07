@@ -6,8 +6,8 @@
 
 ## 模块定位
 
-`upgrade` 负责升级工作流状态、升级包接收后的校验入口、平台动作调用、进度
-事件、发布包布局、32M SPI NOR 分区和 `live_sysupgrade` 写入边界。
+`upgrade` 负责升级工作流状态、升级包接收后的校验入口、升级包格式和 manifest
+解析、进度事件、发布包布局、32M SPI NOR 分区描述和 `live_sysupgrade` 写入边界。
 
 ## 总体框架图
 
@@ -25,11 +25,13 @@ flowchart LR
 ## 核心职责
 
 - 管理上传、校验、准备写入、写入、等待重启、取消等升级状态。
-- 调用 `IUpgradePlatform` 完成包校验和平台动作。
+- 校验 upgrade.zip、Install manifest、签名、镜像 sha256、分区白名单和包完整性。
+- 调用 `IUpgradePlatform` 完成板端写入、helper、重启等平台动作。
 - 发布 `kUpgradeProgressChanged`。
 - 记录上传、启动、取消、确认重启等操作。
 
-`IUpgradePlatform` 由 app 组合根创建并注入，它封装升级包校验、平台写入和重启确认
+`upgrade_package` 由 `upgrade` 模块拥有，负责包格式、manifest 和解包校验。
+`IUpgradePlatform` 由 app 组合根创建并注入，它封装平台写入、helper 和重启确认
 等板端动作；`upgrade` 不直接写 MTD。
 
 ## HTTP API 归属
