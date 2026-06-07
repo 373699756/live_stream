@@ -18,7 +18,7 @@ struct EnginePeerStateUpdate {
 };
 
 // WebrtcPeerStore owns signaling peer state and pending ICE candidates. It is
-// intentionally not internally synchronized; WebrtcServiceImpl protects it.
+// intentionally not internally synchronized; WebrtcCore protects it.
 class WebrtcPeerStore {
  public:
   WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request,

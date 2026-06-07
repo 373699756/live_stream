@@ -125,7 +125,7 @@ RTP timestamp 单调门禁和 RTP 包/帧统计。drain timer 发送帧时持有
 避免 service stop/release 与 SRTP 发送并发释放 native transport。peer close、
 service stop 或失败时会取消 drain timer、detach reader 并释放启动帧引用。
 
-10.8 当前基线收口 peer/session 生命周期：`WebrtcServiceImpl` 统一编排 peer id、
+10.8 当前基线收口 peer/session 生命周期：`WebrtcCore` 统一编排 peer id、
 stream id、pending ICE candidate、reader、drain timer、setup timeout 和 close；
 `webrtc_engine` 只做 session 注册、UDP/timer 回调分发、状态回调和 service-facing
 接口适配；`webrtc_session` 拥有 offer/answer、SDP 参数和 RTP 发送参数；
@@ -140,14 +140,14 @@ offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media reader 状�
 `created_at_ms`、`updated_at_ms` 和 `last_error`，session/transport 回填
 `ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets` 和 `rtp_bytes`。HTTP
 DELETE、setup timeout、SDP/DTLS/SRTP 失败和 reader attach 失败都经
-`WebrtcServiceImpl` 的 peer close path 收敛，关闭前保存最后一次 transport 诊断，
+`WebrtcCore` 的 peer close path 收敛，关闭前保存最后一次 transport 诊断，
 关闭后保留 peer 的 closed/failed 状态供 HTTP/API 聚合查询。
 
 ## 状态与资源模型
 
 WebRTC peer/session 拥有 SDP offer/answer 和 RTP 发送参数；ICE/DTLS/SRTP 状态、
 UDP endpoint 和 DTLS timer 归 `webrtc_transport`；RTP sender 和 media reader 归
-`WebrtcServiceImpl` 管理。peer 关闭、ICE 失败、DTLS 失败或 HTTP close 时必须按顺序
+`WebrtcCore` 管理。peer 关闭、ICE 失败、DTLS 失败或 HTTP close 时必须按顺序
 detach reader、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，避免继续持有媒体帧引用。
 
 关闭入口统一为 peer close path：SRTP 初始化失败、DTLS failed、setup timeout、

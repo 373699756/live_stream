@@ -170,13 +170,13 @@ bool ParseUserConfig(const ConfigJson &value,
     return true;
 }
 
-class AuthServiceImpl : public IAuth {
+class AuthCore : public IAuth {
 public:
-    AuthServiceImpl(const AuthOptions &options,
-                    const AuthDependencies &dependencies,
-                    std::unique_ptr<IAuthUserStore> user_store,
-                    std::unique_ptr<IPasswordVerifier> password_verifier,
-                    IAuthTokenGenerator *token_generator)
+    AuthCore(const AuthOptions &options,
+             const AuthDependencies &dependencies,
+             std::unique_ptr<IAuthUserStore> user_store,
+             std::unique_ptr<IPasswordVerifier> password_verifier,
+             IAuthTokenGenerator *token_generator)
         : options_(options),
           config_(dependencies.config),
           user_store_(std::move(user_store)),
@@ -769,8 +769,8 @@ CreateAuth(const AuthOptions &options,
                   std::unique_ptr<IPasswordVerifier> password_verifier,
                   IAuthTokenGenerator *token_generator) {
     return std::unique_ptr<IAuth>(
-        new AuthServiceImpl(options, dependencies, std::move(user_store),
-                            std::move(password_verifier), token_generator));
+        new AuthCore(options, dependencies, std::move(user_store),
+                     std::move(password_verifier), token_generator));
 }
 
 }  // namespace live_stream
