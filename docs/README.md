@@ -15,6 +15,7 @@
 app -> Core/Device/Media/Protocol
 device_media -> media_pipeline -> media_source
 media_source -> http_media/rtsp/webrtc -> http -> www
+net/media_source/rtsp/webrtc diagnostics -> net_adaptive
 ```
 
 ## System Frame
@@ -22,7 +23,7 @@ media_source -> http_media/rtsp/webrtc -> http -> www
 `app/` 是组合根，负责路径解析、服务创建、依赖注入、启动顺序和关闭顺序。
 启动顺序是 CoreSubsystem、DeviceSubsystem、MediaSubsystem、ProtocolSubsystem；
 停止顺序反向执行。Protocol 内部先启动 `net` 和 `media_pipeline`，再启动
-RTSP、WebRTC、ONVIF、HTTP Media 和 HTTP。
+RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adaptive`。
 
 全局边界：
 
