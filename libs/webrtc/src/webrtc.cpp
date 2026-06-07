@@ -51,19 +51,19 @@ bool IsValidStream(StreamId stream_id) {
 
 }  // namespace
 
-class WebrtcCore;
+class WebrtcImpl;
 
 struct WebrtcCallbackGuard {
     std::mutex mutex;
     std::condition_variable condition;
-    WebrtcCore *service = nullptr;
+    WebrtcImpl *service = nullptr;
     uint32_t active_callbacks = 0;
     bool closing = false;
 };
 
-class WebrtcCore : public IWebrtc {
+class WebrtcImpl : public IWebrtc {
 public:
-    WebrtcCore(WebrtcOptions options,
+    WebrtcImpl(WebrtcOptions options,
                       WebrtcDependencies dependencies)
         : options_(std::move(options)),
           media_source_(dependencies.media_source),
@@ -74,7 +74,7 @@ public:
         callback_guard_->service = this;
     }
 
-    ~WebrtcCore() override { Release(); }
+    ~WebrtcImpl() override { Release(); }
 
     bool Start() override {
         if (!Prepare()) {
@@ -337,7 +337,7 @@ public:
     }
 
 private:
-    static WebrtcCore *EnterServiceCallback(
+    static WebrtcImpl *EnterServiceCallback(
         WebrtcCallbackGuard *callback_guard) {
         if (callback_guard == nullptr) {
             return nullptr;
@@ -369,7 +369,7 @@ private:
         const std::shared_ptr<WebrtcCallbackGuard> &callback_guard,
         const std::string &peer_id) {
         WebrtcCallbackGuard *guard = callback_guard.get();
-        WebrtcCore *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterServiceCallback(guard);
         if (service == nullptr) {
             return;
         }
@@ -385,7 +385,7 @@ private:
         }
         WebrtcCallbackGuard *guard =
             static_cast<WebrtcCallbackGuard *>(user);
-        WebrtcCore *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterServiceCallback(guard);
         if (service == nullptr) {
             return;
         }
@@ -400,7 +400,7 @@ private:
         }
         WebrtcCallbackGuard *guard =
             static_cast<WebrtcCallbackGuard *>(user);
-        WebrtcCore *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterServiceCallback(guard);
         if (service == nullptr) {
             return;
         }
@@ -421,9 +421,9 @@ private:
             webrtc_internal::CreateEngine(net_engine_);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
         callbacks.user = callback_guard_.get();
-        callbacks.OnPeerStateChanged = &WebrtcCore::OnEnginePeerStateChanged;
+        callbacks.OnPeerStateChanged = &WebrtcImpl::OnEnginePeerStateChanged;
         callbacks.OnPeerKeyFrameRequested =
-            &WebrtcCore::OnEngineKeyFrameRequested;
+            &WebrtcImpl::OnEngineKeyFrameRequested;
         if (!engine || !engine->Start(options_, callbacks)) {
             return false;
         }
@@ -686,7 +686,7 @@ private:
             callback_guard_;
         const NetTimerId timer_id = net_engine_->RunOnIoEvery(
             kWebrtcReaderDrainIntervalMs, [callback_guard, peer_id]() {
-                WebrtcCore::DispatchPeerDrain(callback_guard, peer_id);
+                WebrtcImpl::DispatchPeerDrain(callback_guard, peer_id);
             });
         if (timer_id == 0) {
             ClosePeerReader(peer_id, MediaFrameReaderCloseReason::kDetached);
@@ -963,7 +963,7 @@ std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
                     const WebrtcDependencies &dependencies) {
     return std::unique_ptr<IWebrtc>(
-        new WebrtcCore(options, dependencies));
+        new WebrtcImpl(options, dependencies));
 }
 
 const char *Webrtc::Name() { return "webrtc"; }

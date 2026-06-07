@@ -170,9 +170,9 @@ bool ParseUserConfig(const ConfigJson &value,
     return true;
 }
 
-class AuthCore : public IAuth {
+class AuthImpl : public IAuth {
 public:
-    AuthCore(const AuthOptions &options,
+    AuthImpl(const AuthOptions &options,
              const AuthDependencies &dependencies,
              std::unique_ptr<IAuthUserStore> user_store,
              std::unique_ptr<IPasswordVerifier> password_verifier,
@@ -769,7 +769,7 @@ CreateAuth(const AuthOptions &options,
                   std::unique_ptr<IPasswordVerifier> password_verifier,
                   IAuthTokenGenerator *token_generator) {
     return std::unique_ptr<IAuth>(
-        new AuthCore(options, dependencies, std::move(user_store),
+        new AuthImpl(options, dependencies, std::move(user_store),
                      std::move(password_verifier), token_generator));
 }
 
