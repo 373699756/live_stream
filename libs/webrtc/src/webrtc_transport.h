@@ -38,6 +38,15 @@ struct WebrtcTransportDtlsResult {
     std::vector<uint8_t> outgoing_dtls;
     bool connected_now = false;
     bool failed = false;
+    std::string error;
+};
+
+struct WebrtcTransportDiagnostics {
+    bool ice_selected = false;
+    std::string dtls_state;
+    bool srtp_ready = false;
+    uint64_t rtp_packets = 0;
+    uint64_t rtp_bytes = 0;
 };
 
 class WebrtcTransport {
@@ -69,6 +78,7 @@ public:
     bool srtp_ready() const;
     UdpSocketId socket_id() const;
     NetAddress local_address() const;
+    WebrtcTransportDiagnostics GetDiagnostics() const;
     void FillStats(WebrtcStats *stats) const;
 
     static bool IsIcePacket(const uint8_t *data, size_t size);

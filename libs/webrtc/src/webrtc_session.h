@@ -57,6 +57,7 @@ public:
                        const media_mux::RtpPacketView &packet);
 
     bool GetRtpSendParameters(WebrtcRtpSendParameters *parameters) const;
+    void FillPeerDiagnostics(WebrtcPeerInfo *peer) const;
     void FillStats(WebrtcStats *stats) const;
     bool ice_connected() const;
 

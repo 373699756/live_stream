@@ -26,6 +26,22 @@ SrtpCryptoSuite ToSrtpCryptoSuite(DtlsSrtpCryptoSuite suite) {
     return SrtpCryptoSuite::kNone;
 }
 
+const char *DtlsStateName(DtlsState state) {
+    switch (state) {
+        case DtlsState::kNew:
+            return "new";
+        case DtlsState::kConnecting:
+            return "connecting";
+        case DtlsState::kConnected:
+            return "connected";
+        case DtlsState::kFailed:
+            return "failed";
+        case DtlsState::kClosed:
+            return "closed";
+    }
+    return "unknown";
+}
+
 }  // namespace
 
 WebrtcTransport::~WebrtcTransport() {
@@ -124,6 +140,7 @@ bool WebrtcTransport::ProcessDtlsPacket(
     DtlsProcessResult dtls_result;
     if (!dtls_->ProcessPacket(data, size, &dtls_result)) {
         result->failed = true;
+        result->error = dtls_result.error;
         return false;
     }
     return ApplyDtlsResult(dtls_result, result);
@@ -143,6 +160,7 @@ bool WebrtcTransport::HandleDtlsTimeout(
     DtlsProcessResult dtls_result;
     if (!dtls_->HandleTimeout(&dtls_result)) {
         result->failed = true;
+        result->error = dtls_result.error;
         return false;
     }
     return ApplyDtlsResult(dtls_result, result);
@@ -217,6 +235,17 @@ NetAddress WebrtcTransport::local_address() const {
     return ice_ == nullptr ? NetAddress() : ice_->local_address();
 }
 
+WebrtcTransportDiagnostics WebrtcTransport::GetDiagnostics() const {
+    WebrtcTransportDiagnostics diagnostics;
+    diagnostics.ice_selected = ice_ != nullptr && ice_->connected();
+    diagnostics.dtls_state =
+        dtls_ == nullptr ? "closed" : DtlsStateName(dtls_->state());
+    diagnostics.srtp_ready = srtp_ready();
+    diagnostics.rtp_packets = protected_rtp_packets_;
+    diagnostics.rtp_bytes = protected_rtp_bytes_;
+    return diagnostics;
+}
+
 void WebrtcTransport::FillStats(WebrtcStats *stats) const {
     if (stats == nullptr) {
         return;
@@ -286,6 +315,7 @@ bool WebrtcTransport::ApplyDtlsResult(
     if (dtls_result.state == DtlsState::kConnected && !dtls_connected_) {
         if (!StartSrtp(dtls_result.srtp_keys)) {
             result->failed = true;
+            result->error = "srtp_start_failed";
             return false;
         }
         dtls_connected_ = true;
@@ -294,10 +324,12 @@ bool WebrtcTransport::ApplyDtlsResult(
     } else if (dtls_result.state == DtlsState::kConnecting) {
         if (!ArmDtlsTimer()) {
             result->failed = true;
+            result->error = "dtls_timer_failed";
             return false;
         }
     } else if (dtls_result.state == DtlsState::kFailed) {
         result->failed = true;
+        result->error = dtls_result.error;
         return false;
     }
     return true;

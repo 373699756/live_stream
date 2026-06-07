@@ -38,12 +38,15 @@ class WebrtcPeerStore {
                      std::vector<WebrtcIceCandidate> *pending_candidates);
   bool AddOrQueueCandidate(const WebrtcIceCandidate &candidate, bool *queued);
   void Touch(const std::string &peer_id);
-  bool MarkClosing(const std::string &peer_id);
+  bool UpdateDiagnostics(const WebrtcPeerInfo &peer);
+  bool MarkClosing(const std::string &peer_id,
+                   const std::string &last_error);
 
   EnginePeerStateUpdate ApplyEngineState(const std::string &peer_id,
-                                         WebrtcPeerState state);
+                                         WebrtcPeerState state,
+                                         const std::string &last_error);
   bool GetOpenPeerStream(const std::string &peer_id, StreamId *stream_id) const;
-  std::vector<std::string> TakeStaleSetupPeerIds(int64_t timeout_ms);
+  std::vector<std::string> FindStaleSetupPeerIds(int64_t timeout_ms);
 
  private:
   static bool IsOpenPeerState(WebrtcPeerState state);

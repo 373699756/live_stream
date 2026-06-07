@@ -65,6 +65,14 @@ struct WebrtcPeerInfo {
     std::string session_id;
     std::string user_name;
     std::string client_ip;
+    bool ice_selected = false;
+    std::string dtls_state = "new";
+    bool srtp_ready = false;
+    uint64_t rtp_packets = 0;
+    uint64_t rtp_bytes = 0;
+    std::string last_error;
+    int64_t created_at_ms = 0;
+    int64_t updated_at_ms = 0;
 };
 
 struct WebrtcOfferRequest {

@@ -16,6 +16,8 @@ WebrtcPeerInfo WebrtcPeerStore::CreatePeer(
   peer.session_id = request.session_id;
   peer.user_name = request.user_name;
   peer.client_ip = request.client_ip;
+  peer.created_at_ms = NowMs();
+  peer.updated_at_ms = peer.created_at_ms;
   peers_[peer.peer_id] = peer;
   Touch(peer.peer_id);
   return peer;
@@ -54,6 +56,7 @@ std::vector<std::string> WebrtcPeerStore::MarkAllClosing() {
   std::vector<std::string> peer_ids;
   for (auto &item : peers_) {
     item.second.state = WebrtcPeerState::kClosing;
+    item.second.updated_at_ms = NowMs();
     peer_ids.push_back(item.first);
   }
   peer_activity_ms_.clear();
@@ -152,20 +155,43 @@ bool WebrtcPeerStore::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
 }
 
 void WebrtcPeerStore::Touch(const std::string &peer_id) {
-  peer_activity_ms_[peer_id] = NowMs();
+  const int64_t now_ms = NowMs();
+  peer_activity_ms_[peer_id] = now_ms;
+  auto iter = peers_.find(peer_id);
+  if (iter != peers_.end()) {
+    iter->second.updated_at_ms = now_ms;
+  }
 }
 
-bool WebrtcPeerStore::MarkClosing(const std::string &peer_id) {
+bool WebrtcPeerStore::UpdateDiagnostics(const WebrtcPeerInfo &peer) {
+  auto iter = peers_.find(peer.peer_id);
+  if (iter == peers_.end()) {
+    return false;
+  }
+  iter->second.ice_selected = peer.ice_selected;
+  iter->second.dtls_state = peer.dtls_state;
+  iter->second.srtp_ready = peer.srtp_ready;
+  iter->second.rtp_packets = peer.rtp_packets;
+  iter->second.rtp_bytes = peer.rtp_bytes;
+  iter->second.updated_at_ms = NowMs();
+  return true;
+}
+
+bool WebrtcPeerStore::MarkClosing(const std::string &peer_id,
+                                  const std::string &last_error) {
   auto iter = peers_.find(peer_id);
   if (iter == peers_.end()) {
     return false;
   }
   iter->second.state = WebrtcPeerState::kClosing;
+  iter->second.last_error = last_error;
+  iter->second.updated_at_ms = NowMs();
   return true;
 }
 
 EnginePeerStateUpdate WebrtcPeerStore::ApplyEngineState(
-    const std::string &peer_id, WebrtcPeerState state) {
+    const std::string &peer_id, WebrtcPeerState state,
+    const std::string &last_error) {
   EnginePeerStateUpdate update;
   auto iter = peers_.find(peer_id);
   if (iter == peers_.end()) {
@@ -177,12 +203,16 @@ EnginePeerStateUpdate WebrtcPeerStore::ApplyEngineState(
       if (IsOpenPeerState(iter->second.state) &&
           iter->second.state != WebrtcPeerState::kConnected) {
         iter->second.state = WebrtcPeerState::kConnecting;
+        iter->second.last_error.clear();
+        iter->second.updated_at_ms = NowMs();
         Touch(peer_id);
       }
       break;
     case WebrtcPeerState::kConnected:
       if (iter->second.state != WebrtcPeerState::kConnected) {
         iter->second.state = WebrtcPeerState::kConnected;
+        iter->second.last_error.clear();
+        iter->second.updated_at_ms = NowMs();
         update.stream_id = iter->second.stream_id;
         update.request_key_frame = true;
       }
@@ -190,12 +220,20 @@ EnginePeerStateUpdate WebrtcPeerStore::ApplyEngineState(
       break;
     case WebrtcPeerState::kFailed:
       iter->second.state = WebrtcPeerState::kFailed;
-      RemovePeer(peer_id);
+      iter->second.last_error = last_error;
+      iter->second.updated_at_ms = NowMs();
+      peer_activity_ms_.erase(peer_id);
+      pending_candidates_.erase(peer_id);
       break;
     case WebrtcPeerState::kClosed:
     case WebrtcPeerState::kClosing:
       iter->second.state = WebrtcPeerState::kClosed;
-      RemovePeer(peer_id);
+      if (!last_error.empty()) {
+        iter->second.last_error = last_error;
+      }
+      iter->second.updated_at_ms = NowMs();
+      peer_activity_ms_.erase(peer_id);
+      pending_candidates_.erase(peer_id);
       break;
     case WebrtcPeerState::kCreated:
     case WebrtcPeerState::kOfferReceived:
@@ -217,11 +255,11 @@ bool WebrtcPeerStore::GetOpenPeerStream(const std::string &peer_id,
   return true;
 }
 
-std::vector<std::string> WebrtcPeerStore::TakeStaleSetupPeerIds(
+std::vector<std::string> WebrtcPeerStore::FindStaleSetupPeerIds(
     int64_t timeout_ms) {
   std::vector<std::string> peer_ids;
   const int64_t now_ms = NowMs();
-  for (auto iter = peers_.begin(); iter != peers_.end();) {
+  for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
     auto activity_iter = peer_activity_ms_.find(iter->first);
     if (activity_iter == peer_activity_ms_.end()) {
       activity_iter =
@@ -230,11 +268,6 @@ std::vector<std::string> WebrtcPeerStore::TakeStaleSetupPeerIds(
     if (IsSetupPeerState(iter->second.state) &&
         now_ms - activity_iter->second >= timeout_ms) {
       peer_ids.push_back(iter->first);
-      pending_candidates_.erase(iter->first);
-      peer_activity_ms_.erase(iter->first);
-      iter = peers_.erase(iter);
-    } else {
-      ++iter;
     }
   }
   return peer_ids;

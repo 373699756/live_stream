@@ -123,6 +123,13 @@ service release 会先关闭 callback guard 并等待 engine/timer 回调退出�
 native transport。`http_media` WebRTC handler 只做鉴权、JSON DTO 转换和 create peer、
 offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media reader 状态。
 
+10.9 当前基线把 peer diagnostics 落到 public `WebrtcPeerInfo`：service/store 记录
+`created_at_ms`、`updated_at_ms` 和 `last_error`，session/transport 回填
+`ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets` 和 `rtp_bytes`。HTTP
+DELETE、setup timeout、SDP/DTLS/SRTP 失败和 reader attach 失败都经
+`WebrtcServiceImpl` 的 peer close path 收敛，关闭前保存最后一次 transport 诊断，
+关闭后保留 peer 的 closed/failed 状态供 HTTP/API 聚合查询。
+
 ## 状态与资源模型
 
 WebRTC peer/session 拥有 SDP offer/answer 和 RTP 发送参数；ICE/DTLS/SRTP 状态、

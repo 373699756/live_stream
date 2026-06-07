@@ -225,6 +225,7 @@ public:
         WebrtcEngineCallbacks callbacks;
         bool connected_now = false;
         bool failed = false;
+        std::string failure_error;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
@@ -233,6 +234,8 @@ public:
             }
             WebrtcTransportDtlsResult result;
             if (!it->second->ProcessDtlsPacket(data, size, &result)) {
+                failure_error = result.error.empty() ? "dtls_failed" :
+                    result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 *outgoing_dtls = result.outgoing_dtls;
@@ -241,7 +244,8 @@ public:
             }
         }
         if (failed) {
-            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed);
+            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed,
+                            failure_error);
             return false;
         }
         if (connected_now) {
@@ -296,6 +300,20 @@ public:
             return false;
         }
         return it->second->GetRtpSendParameters(parameters);
+    }
+
+    bool FillPeerDiagnostics(const std::string &peer_id,
+                             WebrtcPeerInfo *peer) const override {
+        if (peer == nullptr) {
+            return false;
+        }
+        std::lock_guard<std::mutex> guard(mutex_);
+        const auto it = sessions_.find(peer_id);
+        if (it == sessions_.end() || it->second == nullptr) {
+            return false;
+        }
+        it->second->FillPeerDiagnostics(peer);
+        return true;
     }
 
     void FillStats(WebrtcStats *stats) const override {
@@ -404,6 +422,7 @@ private:
         std::string peer_id;
         bool connected_now = false;
         bool failed = false;
+        std::string failure_error;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             WebrtcSession *session =
@@ -412,8 +431,13 @@ private:
                 return;
             }
             WebrtcTransportDtlsResult result;
-            if (!session->ProcessDtlsPacket(data, size, &result) ||
-                !session->SendDtlsResult(result)) {
+            const bool processed =
+                session->ProcessDtlsPacket(data, size, &result);
+            const bool sent = processed && session->SendDtlsResult(result);
+            if (!processed || !sent) {
+                failure_error = result.error.empty()
+                    ? (processed ? "dtls_send_failed" : "dtls_failed")
+                    : result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 connected_now = result.connected_now;
@@ -421,7 +445,8 @@ private:
             }
         }
         if (failed) {
-            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed);
+            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed,
+                            failure_error);
             return;
         }
         if (connected_now) {
@@ -455,6 +480,7 @@ private:
         WebrtcEngineCallbacks callbacks;
         bool connected_now = false;
         bool failed = false;
+        std::string failure_error;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
@@ -462,8 +488,13 @@ private:
                 return;
             }
             WebrtcTransportDtlsResult result;
-            if (!it->second->HandleDtlsTimeout(&result) ||
-                !it->second->SendDtlsResult(result)) {
+            const bool handled =
+                it->second->HandleDtlsTimeout(&result);
+            const bool sent = handled && it->second->SendDtlsResult(result);
+            if (!handled || !sent) {
+                failure_error = result.error.empty()
+                    ? (handled ? "dtls_send_failed" : "dtls_timeout")
+                    : result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 connected_now = result.connected_now;
@@ -471,7 +502,8 @@ private:
             }
         }
         if (failed) {
-            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed);
+            NotifyPeerState(callbacks, peer_id, WebrtcPeerState::kFailed,
+                            failure_error);
             return;
         }
         if (connected_now) {
@@ -519,10 +551,11 @@ private:
 
     static void NotifyPeerState(const WebrtcEngineCallbacks &callbacks,
                                 const std::string &peer_id,
-                                WebrtcPeerState state) {
+                                WebrtcPeerState state,
+                                const std::string &last_error = std::string()) {
         if (callbacks.OnPeerStateChanged != nullptr) {
             callbacks.OnPeerStateChanged(callbacks.user, peer_id.c_str(),
-                                         state);
+                                         state, last_error.c_str());
         }
     }
 

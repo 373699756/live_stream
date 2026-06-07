@@ -192,6 +192,19 @@ bool WebrtcSession::GetRtpSendParameters(
     return true;
 }
 
+void WebrtcSession::FillPeerDiagnostics(WebrtcPeerInfo *peer) const {
+    if (peer == nullptr || transport_ == nullptr) {
+        return;
+    }
+    const WebrtcTransportDiagnostics diagnostics =
+        transport_->GetDiagnostics();
+    peer->ice_selected = diagnostics.ice_selected;
+    peer->dtls_state = diagnostics.dtls_state;
+    peer->srtp_ready = diagnostics.srtp_ready;
+    peer->rtp_packets = diagnostics.rtp_packets;
+    peer->rtp_bytes = diagnostics.rtp_bytes;
+}
+
 void WebrtcSession::FillStats(WebrtcStats *stats) const {
     if (transport_ != nullptr) {
         transport_->FillStats(stats);
