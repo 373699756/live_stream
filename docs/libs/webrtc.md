@@ -79,6 +79,10 @@ SHA-256 fingerprint、执行 DTLS server role 握手、校验 remote fingerprint
 `EXTRACTOR-dtls_srtp` 导出 AES_CM_128_HMAC_SHA1_80 的 SRTP master key/salt。
 native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE transport
 和 server-role DTLS transport，answer 使用实际绑定端口和同一组 ICE ufrag/pwd。
+`webrtc.public_ip` 缺省、为空或为 `"auto"` 时，组合根在启动 WebRTC 前按
+`network.default_ifname` 读取设备当前 IPv4，并把解析出的地址写入 SDP/ICE candidate。
+多网卡、NAT、VPN 或端口映射部署可以显式填写浏览器真实可达的 IPv4；如果自动解析不
+到可用地址，WebRTC 不启动，但不影响 RTSP、HTTP 或其他预览协议。
 
 10.4 已接入 STUN/ICE 层：`stun_packet.*` 支持 binding request/response、
 USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；
@@ -154,6 +158,7 @@ WebRTC 模块，也不替代 PLI/FIR/NACK/TWCC 这类协议反馈。
 ## 风险与优化方向
 
 - WebRTC peer 生命周期必须和 media reader 生命周期绑定。
-- ICE/public IP 配置来自 runtime config，不能由 Web 前端推导。
+- ICE/public IP 来自 runtime config；`"auto"` 由 app 通过 network 状态解析，
+  不能由 Web 前端推导。
 - 失败时只影响 WebRTC 预览，不影响 HLS/FLV/MJPEG。
 - SDP/ICE/DTLS/SRTP 的失败路径必须返回明确状态并释放资源；不能依赖异常或 RTTI。

@@ -104,7 +104,7 @@
   "webrtc": {
     "enabled": true,
     "local_port_base": 16000,
-    "public_ip": "192.168.1.100",
+    "public_ip": "auto",
     "signaling_path": "/api/webrtc",
     "ice_servers": [],
     "max_peers": 4,

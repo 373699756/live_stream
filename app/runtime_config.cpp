@@ -107,15 +107,17 @@ bool ApplyWebrtcConfig(const ConfigJson &webrtc, AppRuntimeConfig *config) {
     if (config == nullptr || !webrtc.is_object()) {
         return false;
     }
-    std::string public_ip;
+    std::string public_ip = config->webrtc_public_ip;
     if (!json_utils::ReadField(webrtc, "enabled", &config->webrtc_enabled) ||
         !json_utils::ReadField(webrtc, "prefer_tcp", &config->webrtc_prefer_tcp) ||
         !json_utils::ReadField(webrtc, "local_port_base",
                           &config->webrtc_local_port_base, 1, 65535) ||
         !json_utils::ReadField(webrtc, "max_peers", &config->webrtc_max_peers, 1,
-                          0xffffffffU) ||
-        !json_utils::ReadField(webrtc, "public_ip", &public_ip) ||
-        public_ip.empty()) {
+                          0xffffffffU)) {
+        return false;
+    }
+    if (webrtc.contains("public_ip") &&
+        !json_utils::ReadField(webrtc, "public_ip", &public_ip)) {
         return false;
     }
     config->webrtc_public_ip = public_ip;

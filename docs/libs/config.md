@@ -50,6 +50,9 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 
 `config` 只保证 JSON 加载、默认值、scope 原子替换和 validate/apply 调用顺序。
 字段枚举值、取值范围、热应用失败回滚策略和 HTTP DTO 映射都归拥有模块。
+`webrtc.public_ip` 缺省、为空或为 `"auto"` 时，运行时由 app 按
+`network.default_ifname` 读取设备当前 IPv4；显式 IPv4 仍作为多网卡、NAT 或端口映射
+场景的手动覆盖值。
 
 ## 产品范围守卫
 
