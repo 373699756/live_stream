@@ -102,6 +102,8 @@ Bearer` header。Web 不在 URL query 中携带 access token。
 
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
+`CreateHttpConsole()` 通过 `HttpConsoleDependencies` 命名字段接收 app 组合根注入，
+避免认证、设备、协议和媒体源依赖靠长参数位置传递。
 
 HTTP 自有资源只包括 listener、connection、request/response buffer、router、
 executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句柄。业务对象生命周期、
