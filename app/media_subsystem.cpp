@@ -59,13 +59,13 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
     }
     Info("app", "AI ready");
 
-    RegionOptions overlay_options;
-    overlay_options.config = config;
-    overlay_options.device_media = device_media_.get();
-    overlay_options.media_channels = media_channels;
-    overlay_options.sdk = &sdk;
-    overlay_.reset(new Region(overlay_options));
-    if (!overlay_ || !overlay_->Start()) {
+    RegionOptions region_options;
+    region_options.config = config;
+    region_options.device_media = device_media_.get();
+    region_options.media_channels = media_channels;
+    region_options.sdk = &sdk;
+    region_.reset(new Region(region_options));
+    if (!region_ || !region_->Start()) {
         Error("app", "Start region failed");
         Stop();
         return false;
@@ -76,9 +76,9 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
 }
 
 void MediaSubsystem::Stop() {
-    if (overlay_) {
-        overlay_->Stop();
-        overlay_.reset();
+    if (region_) {
+        region_->Stop();
+        region_.reset();
     }
     if (ai_) {
         ai_->Stop();
@@ -99,7 +99,6 @@ MediaRefs MediaSubsystem::refs() const {
     MediaRefs refs;
     refs.device_media = device_media_.get();
     refs.ai = ai_.get();
-    refs.overlay = overlay_.get();
     refs.snapshot = snapshot_.get();
     return refs;
 }

@@ -16,7 +16,6 @@ struct DeviceRefs;
 struct MediaRefs {
     IDeviceMedia* device_media = nullptr;
     Ai* ai = nullptr;
-    Region* overlay = nullptr;
     Snapshot* snapshot = nullptr;
 };
 
@@ -40,7 +39,7 @@ private:
 
     std::unique_ptr<IDeviceMedia> device_media_;
     std::unique_ptr<Ai> ai_;
-    std::unique_ptr<Region> overlay_;
+    std::unique_ptr<Region> region_;
     std::unique_ptr<Snapshot> snapshot_;
     bool started_ = false;
 };
