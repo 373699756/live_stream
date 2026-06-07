@@ -98,9 +98,9 @@ private:
     ISnapshotView *snapshot_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateSnapshotHttpHandler(HttpAccess *access,
-                          IDeviceMedia *device_media,
-                          ISnapshotView *snapshot) {
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(HttpAccess *access,
+                                               IDeviceMedia *device_media,
+                                               ISnapshotView *snapshot) {
     return std::unique_ptr<IHttpHandler>(
         new SnapshotHttpHandler(access, device_media, snapshot));
 }

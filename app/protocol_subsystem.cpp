@@ -4,6 +4,7 @@
 
 #include "core_subsystem.h"
 #include "device_subsystem.h"
+#include "http_dependencies.h"
 #include "infra/log.h"
 #include "media_subsystem.h"
 #include "protocol_options.h"
@@ -130,9 +131,8 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     }
 
     const HttpOptions http_options = BuildHttpOptions(runtime_config);
-    const HttpConsoleDependencies http_dependencies =
-        BuildHttpConsoleDependencies(refs);
-    http_ = CreateHttpConsole(http_options, http_dependencies);
+    const HttpDependencies http_dependencies = BuildHttpDependencies(refs);
+    http_ = CreateHttp(http_options, http_dependencies);
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
                         runtime_config.listen_ip.c_str(),

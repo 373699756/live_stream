@@ -40,7 +40,7 @@ public:
     HttpListenAddress LocalAddress() const override;
     HttpStats GetStats() const override;
 
-    void ConfigureConsoleHandlers(
+    void ConfigureHandlers(
         IAuth *auth, ILogger *logger,
         IConfig *config, INetworkConfig *network_config,
         ITime *time, IAlarm *alarm,

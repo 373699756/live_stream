@@ -158,7 +158,7 @@ private:
     IAuth *auth_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateAuthHttpHandler(
+std::unique_ptr<IHttpHandler> MakeAuthHandler(
     HttpAccess *access, IAuth *auth) {
     return std::unique_ptr<IHttpHandler>(
         new AuthHttpHandler(access, auth));

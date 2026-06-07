@@ -244,7 +244,7 @@ private:
 
 }  // namespace
 
-std::unique_ptr<ISystemPlatform> CreateLinuxSystemPlatform() {
+std::unique_ptr<ISystemPlatform> CreateSystemPlatform() {
     return std::unique_ptr<ISystemPlatform>(new LinuxSystemPlatform());
 }
 

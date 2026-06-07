@@ -255,7 +255,7 @@ private:
     SystemStatusSources status_sources_;
 };
 
-std::unique_ptr<IHttpHandler> CreateSystemHttpHandler(
+std::unique_ptr<IHttpHandler> MakeSystemHandler(
     HttpAccess *access, ISystem *system,
     const SystemStatusSources &status_sources) {
     return std::unique_ptr<IHttpHandler>(

@@ -1,6 +1,5 @@
 #include "http.h"
 #include "http_dependencies.h"
-#include "http_console.h"
 
 #include "auth.h"
 #include "config.h"
@@ -163,11 +162,11 @@ int main() {
   options.stream_executor_worker_count = 1;
   options.control_executor_worker_count = 1;
 
-  live_stream::HttpConsoleDependencies console_deps;
-  console_deps.net_engine = net_engine.get();
-  console_deps.auth = &auth;
-  console_deps.config = &config;
-  auto http = live_stream::CreateHttpConsole(options, console_deps);
+  live_stream::HttpDependencies http_dependencies;
+  http_dependencies.net_engine = net_engine.get();
+  http_dependencies.auth = &auth;
+  http_dependencies.config = &config;
+  auto http = live_stream::CreateHttp(options, http_dependencies);
   if (!http || !http->Start()) {
     return 2;
   }

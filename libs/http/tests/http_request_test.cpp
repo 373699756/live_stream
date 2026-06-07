@@ -1,4 +1,3 @@
-#include "http_console.h"
 #include "http.h"
 #include "http_dependencies.h"
 
@@ -263,14 +262,14 @@ int main() {
     return 1;
   }
 
-  live_stream::HttpConsoleDependencies console_deps;
-  console_deps.net_engine = &net_engine;
-  console_deps.auth = &auth;
-  console_deps.logger = &logger;
-  console_deps.config = &config;
-  console_deps.device_media = &media;
+  live_stream::HttpDependencies http_dependencies;
+  http_dependencies.net_engine = &net_engine;
+  http_dependencies.auth = &auth;
+  http_dependencies.logger = &logger;
+  http_dependencies.config = &config;
+  http_dependencies.device_media = &media;
   std::unique_ptr<live_stream::IHttp> console =
-      live_stream::CreateHttpConsole(options, console_deps);
+      live_stream::CreateHttp(options, http_dependencies);
   if (!console || !console->Start()) {
     return 2;
   }

@@ -56,11 +56,17 @@ std::unique_ptr<live_stream::IAuth> CreateStarted(
   options.lockout_seconds = 1;
   options.password_min_length = 8;
 
+  live_stream::AuthUserStoreOptions user_store_options;
+  user_store_options.kind = live_stream::AuthUserStoreKind::kMemory;
+  user_store_options.users = users;
+
   std::unique_ptr<live_stream::IAuth> service =
       live_stream::CreateAuth(
           options, live_stream::AuthDependencies(),
-          live_stream::CreateMemoryAuthUserStore(users),
-          live_stream::CreatePlainTextPasswordVerifier(), token_generator);
+          live_stream::CreateAuthUserStore(user_store_options),
+          live_stream::CreatePasswordVerifier(
+              live_stream::PasswordVerifierKind::kPlainText),
+          token_generator);
   if (!service || !service->Start() || !service->SetAuditSink(audit_sink)) {
     return nullptr;
   }

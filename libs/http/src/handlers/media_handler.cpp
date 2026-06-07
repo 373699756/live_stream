@@ -563,12 +563,12 @@ private:
     IWebrtc *webrtc_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateMediaHttpHandler(HttpAccess *access,
-                       IConfig *config,
-                       IDeviceMedia *device_media,
-                       IMediaSource *media_source,
-                       IRtsp *rtsp,
-                       IWebrtc *webrtc) {
+std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
+                                            IConfig *config,
+                                            IDeviceMedia *device_media,
+                                            IMediaSource *media_source,
+                                            IRtsp *rtsp,
+                                            IWebrtc *webrtc) {
     return std::unique_ptr<IHttpHandler>(
         new MediaHttpHandler(access, config, device_media,
                              media_source, rtsp, webrtc));

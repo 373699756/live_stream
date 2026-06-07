@@ -244,25 +244,27 @@ public:
     virtual AuthStats GetStats() const { return AuthStats{}; }
 };
 
-/**
- * @brief 创建仅用于开发和测试的内存用户存储。
- */
-std::unique_ptr<IAuthUserStore> CreateMemoryAuthUserStore(
-    const std::vector<AuthUserRecord>& users);
+enum class AuthUserStoreKind {
+    kMemory = 0,
+    kConfig,
+};
 
-/**
- * @brief 创建明文密码校验器。
- *
- * 该校验器只适用于单元测试、开发调试或无生产凭据接入的骨架阶段。
- */
-std::unique_ptr<IPasswordVerifier> CreatePlainTextPasswordVerifier();
+struct AuthUserStoreOptions {
+    AuthUserStoreKind kind = AuthUserStoreKind::kMemory;
+    std::vector<AuthUserRecord> users;
+    std::string config_path;
+};
 
-/**
- * @brief 创建默认密码校验器。
- *
- * 支持的生产凭据格式为 pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>。
- */
-std::unique_ptr<IPasswordVerifier> CreatePbkdf2PasswordVerifier();
+std::unique_ptr<IAuthUserStore> CreateAuthUserStore(
+    const AuthUserStoreOptions& options);
+
+enum class PasswordVerifierKind {
+    kPlainText = 0,
+    kPbkdf2,
+};
+
+std::unique_ptr<IPasswordVerifier> CreatePasswordVerifier(
+    PasswordVerifierKind kind);
 
 /**
  * @brief 创建统一鉴权 service。

@@ -102,8 +102,8 @@ private:
     IConfig *config_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateConfigHttpHandler(HttpAccess *access,
-                                                      IConfig *config) {
+std::unique_ptr<IHttpHandler> MakeConfigHandler(HttpAccess *access,
+                                                   IConfig *config) {
     return std::unique_ptr<IHttpHandler>(
         new ConfigHttpHandler(access, config));
 }

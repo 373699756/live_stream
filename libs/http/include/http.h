@@ -91,9 +91,9 @@ public:
     virtual HttpStats GetStats() const = 0;
 };
 
-std::unique_ptr<IHttp>
-CreateHttp(const HttpOptions &options,
-                  const HttpDependencies &dependencies);
+std::unique_ptr<IHttp> CreateHttp(
+    const HttpOptions &options,
+    const HttpDependencies &dependencies);
 
 }  // namespace live_stream
 

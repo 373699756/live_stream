@@ -58,12 +58,17 @@ public:
 
 }  // namespace
 
-std::unique_ptr<IPasswordVerifier> CreatePlainTextPasswordVerifier() {
-    return std::unique_ptr<IPasswordVerifier>(new PlainTextPasswordVerifier());
-}
-
-std::unique_ptr<IPasswordVerifier> CreatePbkdf2PasswordVerifier() {
-    return std::unique_ptr<IPasswordVerifier>(new Pbkdf2PasswordVerifier());
+std::unique_ptr<IPasswordVerifier> CreatePasswordVerifier(
+    PasswordVerifierKind kind) {
+    if (kind == PasswordVerifierKind::kPlainText) {
+        return std::unique_ptr<IPasswordVerifier>(
+            new PlainTextPasswordVerifier());
+    }
+    if (kind == PasswordVerifierKind::kPbkdf2) {
+        return std::unique_ptr<IPasswordVerifier>(
+            new Pbkdf2PasswordVerifier());
+    }
+    return nullptr;
 }
 
 }  // namespace live_stream

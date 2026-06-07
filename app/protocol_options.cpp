@@ -1,6 +1,7 @@
 #include "protocol_options.h"
 
 #include "core_subsystem.h"
+#include "http_dependencies.h"
 #include "infra/log.h"
 
 #include <cctype>
@@ -238,9 +239,9 @@ HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     return options;
 }
 
-HttpConsoleDependencies BuildHttpConsoleDependencies(
+HttpDependencies BuildHttpDependencies(
     const ProtocolRuntimeRefs &refs) {
-    HttpConsoleDependencies dependencies;
+    HttpDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;

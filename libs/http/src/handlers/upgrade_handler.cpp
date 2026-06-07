@@ -354,8 +354,8 @@ private:
     IUpgrade *upgrade_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateUpgradeHttpHandler(HttpAccess *access,
-                         IUpgrade *upgrade) {
+std::unique_ptr<IHttpHandler> MakeUpgradeHandler(HttpAccess *access,
+                                             IUpgrade *upgrade) {
     return std::unique_ptr<IHttpHandler>(
         new UpgradeHttpHandler(access, upgrade));
 }

@@ -638,14 +638,13 @@ private:
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    HttpAccess *access, HttpMediaWriter *writer, IDeviceMedia *device_media,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source) {
+    const StreamingHttpHandlerDependencies &dependencies) {
     return std::unique_ptr<IStreamingHttpHandler>(
-        new StreamingHttpHandler(access, writer, device_media,
-                                 media_source, media_flv_source,
-                                 media_mjpeg_source));
+        new StreamingHttpHandler(
+            dependencies.access, dependencies.writer,
+            dependencies.device_media, dependencies.media_source,
+            dependencies.media_flv_source,
+            dependencies.media_mjpeg_source));
 }
 
 }  // namespace live_stream

@@ -296,9 +296,9 @@ private:
     IDeviceMedia *device_media_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateAiHttpHandler(HttpAccess *access,
-                    IConfig *config, IAiView *ai,
-                    IDeviceMedia *device_media) {
+std::unique_ptr<IHttpHandler> MakeAiHandler(HttpAccess *access,
+                                         IConfig *config, IAiView *ai,
+                                         IDeviceMedia *device_media) {
     return std::unique_ptr<IHttpHandler>(
         new AiHttpHandler(access, config, ai, device_media));
 }

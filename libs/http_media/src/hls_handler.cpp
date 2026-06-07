@@ -192,9 +192,9 @@ private:
     IMediaSource *media_source_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(HttpAccess *access,
-                     IDeviceMedia *device_media,
-                     IMediaSource *media_source) {
+std::unique_ptr<IHttpHandler> MakeHlsHandler(
+    HttpAccess *access, IDeviceMedia *device_media,
+    IMediaSource *media_source) {
     return std::unique_ptr<IHttpHandler>(
         new HlsHttpHandler(access, device_media, media_source));
 }

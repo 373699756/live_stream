@@ -156,8 +156,8 @@ private:
     INetworkConfig *network_config_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateNetworkHttpHandler(HttpAccess *access,
-                         INetworkConfig *network_config) {
+std::unique_ptr<IHttpHandler> MakeNetworkHandler(HttpAccess *access,
+                                             INetworkConfig *network_config) {
     return std::unique_ptr<IHttpHandler>(
         new NetworkHttpHandler(access, network_config));
 }

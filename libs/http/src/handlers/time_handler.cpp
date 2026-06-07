@@ -222,7 +222,7 @@ private:
     ITime *time_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateTimeHttpHandler(
+std::unique_ptr<IHttpHandler> MakeTimeHandler(
     HttpAccess *access, ITime *time) {
     return std::unique_ptr<IHttpHandler>(
         new TimeHttpHandler(access, time));

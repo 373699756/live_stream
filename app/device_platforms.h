@@ -11,8 +11,8 @@
 
 namespace live_stream {
 
-std::unique_ptr<ISystemPlatform> CreateLinuxSystemPlatform();
-std::unique_ptr<ITimePlatform> CreateLinuxTimePlatform();
+std::unique_ptr<ISystemPlatform> CreateSystemPlatform();
+std::unique_ptr<ITimePlatform> CreateTimePlatform();
 std::unique_ptr<INetworkPlatform>
 CreateNetworkPlatform(const std::string &default_ifname);
 std::unique_ptr<IUpgradePlatform> CreateUpgradePlatform();

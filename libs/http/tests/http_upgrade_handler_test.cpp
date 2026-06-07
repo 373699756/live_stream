@@ -1,4 +1,4 @@
-#include "http_console.h"
+#include "http_dependencies.h"
 
 #include "auth.h"
 #include "config.h"
@@ -319,12 +319,12 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
     FakeLogger* logger,
     FakeUpgrade* upgrade) {
     live_stream::HttpOptions options;
-    live_stream::HttpConsoleDependencies dependencies;
+    live_stream::HttpDependencies dependencies;
     dependencies.net_engine = net_engine;
     dependencies.auth = auth;
     dependencies.logger = logger;
     dependencies.upgrade = upgrade;
-    return live_stream::CreateHttpConsole(options, dependencies);
+    return live_stream::CreateHttp(options, dependencies);
 }
 
 int TestUpgradeUploadAndStart() {

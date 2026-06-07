@@ -13,7 +13,7 @@ public:
     }
 };
 
-std::unique_ptr<IHttpHandler> CreateEventStreamHttpHandler(
+std::unique_ptr<IHttpHandler> MakeEventStreamHandler(
     HttpAccess *access) {
     (void)access;
     return std::unique_ptr<IHttpHandler>(

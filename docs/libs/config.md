@@ -18,7 +18,7 @@ flowchart LR
   Modules[service attachments] --> Config
   Config --> GetSet[GetValue/SetValue/SetDefault]
   Config --> Apply[validate/apply callbacks]
-  AuthUsers[configs/auth_users.json] --> UserStore[CreateConfigAuthUserStore]
+  AuthUsers[configs/auth_users.json] --> UserStore[CreateAuthUserStore]
 ```
 
 ## 核心职责
@@ -26,7 +26,7 @@ flowchart LR
 - 启动时加载默认配置和业务配置。
 - 为每个 scope 提供 `GetValue`、`SetValue`、`GetDefault`、`SetDefault`。
 - 通过 `ConfigAttachment` 先 validate 再 apply，失败时拒绝配置变更。
-- 提供 `CreateConfigAuthUserStore()` 给 `auth` 持久化认证用户。
+- 认证用户持久化由 `auth` 的 `CreateAuthUserStore()` 读取 `configs/auth_users.json`。
 
 ## 接口归属
 
@@ -46,7 +46,7 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 | `rtsp` / `webrtc` / `onvif` / `http` | 对应协议模块 | 协议开关、监听端口、认证和会话上限 |
 | `time` / `system` / `alarm` / `log` | 对应设备或基础模块 | 设备管理、告警和日志运行配置 |
 | `audio` | `CoreSubsystem` 守卫 | 兼容字段，只允许 disabled |
-| `user` | `auth` + `CreateConfigAuthUserStore` | 认证用户和密码策略存储 |
+| `user` | `auth` + `CreateAuthUserStore` | 认证用户和密码策略存储 |
 
 `config` 只保证 JSON 加载、默认值、scope 原子替换和 validate/apply 调用顺序。
 字段枚举值、取值范围、热应用失败回滚策略和 HTTP DTO 映射都归拥有模块。

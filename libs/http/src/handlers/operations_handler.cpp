@@ -170,8 +170,8 @@ private:
     ILogger *logger_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateOperationsHttpHandler(HttpAccess *access,
-                            ILogger *logger) {
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(HttpAccess *access,
+                                                ILogger *logger) {
     return std::unique_ptr<IHttpHandler>(
         new OperationsHttpHandler(access, logger));
 }

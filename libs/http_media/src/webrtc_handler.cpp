@@ -443,9 +443,9 @@ private:
     IWebrtc *webrtc_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(HttpAccess *access,
-                        IDeviceMedia *device_media,
-                        IWebrtc *webrtc) {
+std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
+    HttpAccess *access, IDeviceMedia *device_media,
+    IWebrtc *webrtc) {
     return std::unique_ptr<IHttpHandler>(
         new WebrtcHttpHandler(access, device_media, webrtc));
 }

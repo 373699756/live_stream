@@ -22,17 +22,33 @@ public:
                                         const HttpRequest &request) = 0;
 };
 
-std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
-    IMediaSource *media_source);
-std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
-    IWebrtc *webrtc);
+enum class HttpMediaHandlerKind {
+    kHls = 0,
+    kWebrtc,
+};
+
+struct HttpMediaHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IDeviceMedia *device_media = nullptr;
+    IMediaSource *media_source = nullptr;
+    IWebrtc *webrtc = nullptr;
+};
+
+std::unique_ptr<IHttpHandler> CreateHttpHandler(
+    HttpMediaHandlerKind kind,
+    const HttpMediaHandlerDependencies &dependencies);
+
+struct StreamingHttpHandlerDependencies {
+    HttpAccess *access = nullptr;
+    HttpMediaWriter *writer = nullptr;
+    IDeviceMedia *device_media = nullptr;
+    IMediaSource *media_source = nullptr;
+    IMediaFlvSource *media_flv_source = nullptr;
+    IMediaMjpegSource *media_mjpeg_source = nullptr;
+};
+
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    HttpAccess *access, HttpMediaWriter *writer, IDeviceMedia *device_media,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source);
+    const StreamingHttpHandlerDependencies &dependencies);
 
 }  // namespace live_stream
 
