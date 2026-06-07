@@ -17,7 +17,7 @@ struct MediaPipelineOptions {
     uint32_t hls_segment_retain_count = 2;
     uint32_t max_flv_clients = 8;
     uint32_t max_mjpeg_clients = 8;
-    uint32_t max_frame_sinks = 8;
+    uint32_t max_frame_readers = 8;
 };
 
 struct MediaPipelineDependencies {

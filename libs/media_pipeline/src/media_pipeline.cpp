@@ -210,7 +210,8 @@ public:
             options_.hls_playlist_depth == 0 ||
             HlsSegmentCacheDepth(options_) < options_.hls_playlist_depth ||
             options_.max_flv_clients == 0 ||
-            options_.max_mjpeg_clients == 0 || options_.max_frame_sinks == 0) {
+            options_.max_mjpeg_clients == 0 ||
+            options_.max_frame_readers == 0) {
             std::lock_guard<std::mutex> guard(mutex_);
             ResetRuntimeStateLocked();
             run_state_ = MediaPipelineRunState::kStopped;
@@ -523,11 +524,11 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             if (run_state_ != MediaPipelineRunState::kStarted ||
                 FindStream(options.stream_id) == nullptr ||
-                frame_ring_.ReaderCount() >= options_.max_frame_sinks) {
+                frame_ring_.ReaderCount() >= options_.max_frame_readers) {
                 return 0;
             }
-            reader_id = frame_ring_.AttachReader(options, nullptr,
-                                                 options_.max_frame_sinks);
+            reader_id = frame_ring_.AttachReader(options,
+                                                 options_.max_frame_readers);
             device_media = device_media_;
             request_key_frame = options.keyframe_first;
         }
@@ -575,43 +576,6 @@ public:
         return frame_ring_.PopFrame(reader_id, frame);
     }
 
-    FrameAttachId AttachFrameSink(
-        const FrameAttachOptions &options, IFrameSink *sink) override {
-        if (sink == nullptr || !IsStreamSupported(options.stream_id)) {
-            return 0;
-        }
-        IDeviceMedia *device_media = nullptr;
-        FrameAttachId sink_id = 0;
-        bool request_key_frame = false;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            if (run_state_ != MediaPipelineRunState::kStarted ||
-                FindStream(options.stream_id) == nullptr ||
-                frame_ring_.ReaderCount() >= options_.max_frame_sinks) {
-                return 0;
-            }
-            MediaFrameReaderOptions reader_options;
-            reader_options.stream_id = options.stream_id;
-            reader_options.keyframe_first = options.require_key_frame_first;
-            reader_options.reader_name = options.sink_name;
-            sink_id = frame_ring_.AttachReader(reader_options, sink,
-                                               options_.max_frame_sinks);
-            device_media = device_media_;
-            request_key_frame = options.require_key_frame_first;
-        }
-        if (device_media != nullptr && request_key_frame) {
-            (void)device_media->RequestKeyFrame(options.stream_id,
-                                                KeyFrameReason::kNewClient);
-        }
-        return sink_id;
-    }
-
-    bool DetachFrameSink(FrameAttachId sink_id) override {
-        std::lock_guard<std::mutex> guard(mutex_);
-        return frame_ring_.DetachReader(
-            sink_id, MediaFrameReaderCloseReason::kDetached);
-    }
-
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
         if (!IsStreamSupported(stream_id) ||
             device_media_ == nullptr) {
@@ -628,10 +592,8 @@ public:
             static_cast<uint32_t>(flv_live_ring_.ReaderCount());
         stats.active_mjpeg_clients =
             static_cast<uint32_t>(mjpeg_clients_.Size());
-        stats.active_frame_sinks =
-            static_cast<uint32_t>(frame_ring_.SinkReaderCount());
         stats.active_frame_readers =
-            static_cast<uint32_t>(frame_ring_.PullReaderCount());
+            static_cast<uint32_t>(frame_ring_.ReaderCount());
         stats.cached_frames = frame_ring_.CachedFrameCount();
         stats.cached_bytes = frame_ring_.CachedBytes();
         stats.slow_reader_count = frame_ring_.SlowReaderCount();
@@ -733,7 +695,7 @@ private:
                 continue;
             }
             const bool has_normalized_payload = BuildParsedFrame(frame, &payload);
-            DispatchFrameSinks(payload);
+            QueueReaderFrame(payload);
             PackageBrowserFrame(payload, has_normalized_payload);
             source_state::ParsedFramePayloadUnref(&payload);
             EncodedFrameUnref(&frame);
@@ -777,8 +739,7 @@ private:
         return source_state::HasParsedUnits(*payload);
     }
 
-    void DispatchFrameSinks(const source_state::ParsedFramePayload &payload) {
-        source_state::FrameRingWriteResult frame_write_result;
+    void QueueReaderFrame(const source_state::ParsedFramePayload &payload) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
             source_state::StreamContext *stream =
@@ -795,14 +756,7 @@ private:
             if (stream->state != StreamState::kRunning) {
                 return;
             }
-            frame_write_result = frame_ring_.Write(payload);
-        }
-
-        for (const source_state::PendingFrameRingWrite &pending_sink :
-             frame_write_result.sink_writes) {
-            if (pending_sink.sink != nullptr) {
-                pending_sink.sink->OnFrame(payload);
-            }
+            frame_ring_.Write(payload);
         }
     }
 

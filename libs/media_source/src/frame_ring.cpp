@@ -10,8 +10,7 @@ namespace media_source_internal {
 FrameRing::~FrameRing() { Clear(); }
 
 MediaFrameReaderId FrameRing::AttachReader(
-    const MediaFrameReaderOptions &options, IFrameSink *sink,
-    size_t max_readers) {
+    const MediaFrameReaderOptions &options, size_t max_readers) {
     if (readers_.size() >= max_readers) {
         return 0;
     }
@@ -25,7 +24,6 @@ MediaFrameReaderId FrameRing::AttachReader(
     reader.stream_id = options.stream_id;
     reader.keyframe_first = options.keyframe_first;
     reader.waiting_for_keyframe = options.keyframe_first && !cache->complete;
-    reader.sink = sink;
     reader.reader_name = options.reader_name;
     reader.start_sequence = next_sequence_;
     reader.start_generation = cache->generation;
@@ -159,26 +157,6 @@ void FrameRing::ClearStream(StreamId stream_id,
 
 size_t FrameRing::ReaderCount() const { return readers_.size(); }
 
-size_t FrameRing::SinkReaderCount() const {
-    size_t count = 0;
-    for (const auto &item : readers_) {
-        if (item.second.sink != nullptr) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-size_t FrameRing::PullReaderCount() const {
-    size_t count = 0;
-    for (const auto &item : readers_) {
-        if (item.second.sink == nullptr) {
-            ++count;
-        }
-    }
-    return count;
-}
-
 uint32_t FrameRing::SlowReaderCount() const {
     uint32_t count = 0;
     for (const auto &item : readers_) {
@@ -214,17 +192,16 @@ int64_t FrameRing::LastFrameTimestamp(StreamId stream_id) const {
     return cache != nullptr ? cache->last_frame_timestamp_us : 0;
 }
 
-FrameRingWriteResult FrameRing::Write(const FramePayload &frame) {
-    FrameRingWriteResult result;
+void FrameRing::Write(const FramePayload &frame) {
     const EncodedFrame &encoded_frame = frame.encoded_frame;
     if (!EncodedFrameHasPayload(&encoded_frame)) {
-        return result;
+        return;
     }
 
     StreamCache *cache =
         FindCache(encoded_frame.stream_id, &main_cache_, &sub_cache_);
     if (cache == nullptr) {
-        return result;
+        return;
     }
     const bool key_frame =
         media_codec::IsKeyFrame(encoded_frame.frame_type);
@@ -248,18 +225,8 @@ FrameRingWriteResult FrameRing::Write(const FramePayload &frame) {
         reader.next_sequence = sequence + 1;
         reader.generation = cache->generation;
 
-        if (reader.sink != nullptr) {
-            PendingFrameRingWrite write;
-            write.reader_id = item.first;
-            write.sink = reader.sink;
-            write.starts_on_keyframe = starts_on_keyframe;
-            result.sink_writes.push_back(write);
-            reader.close_reason = MediaFrameReaderCloseReason::kNone;
-            continue;
-        }
         if (!PushLiveQueue(&reader.live_queue, sequence, key_frame,
                            starts_on_keyframe, duration_us, frame)) {
-            ++result.slow_reader_count;
             reader.waiting_for_keyframe = true;
             reader.next_sequence = next_sequence_;
             reader.close_reason = MediaFrameReaderCloseReason::kCacheOverflow;
@@ -267,7 +234,6 @@ FrameRingWriteResult FrameRing::Write(const FramePayload &frame) {
             reader.close_reason = MediaFrameReaderCloseReason::kNone;
         }
     }
-    return result;
 }
 
 FrameRing::StreamCache *FrameRing::FindCache(StreamId stream_id,

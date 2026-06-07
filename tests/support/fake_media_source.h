@@ -113,21 +113,6 @@ public:
     return MediaFrameMove(&frame->frame, &next_frame);
   }
 
-  FrameAttachId AttachFrameSink(
-      const FrameAttachOptions &options, IFrameSink *sink) override {
-    if (sink == nullptr || !IsStreamAvailable(options.stream_id)) {
-      return 0;
-    }
-    const FrameAttachId sink_id = next_sink_id_++;
-    sinks_[sink_id] = Sink{options.stream_id, sink};
-    ++attached_sinks;
-    return sink_id;
-  }
-
-  bool DetachFrameSink(FrameAttachId sink_id) override {
-    return sinks_.erase(sink_id) != 0;
-  }
-
   bool RequestKeyFrame(StreamId stream_id,
                        KeyFrameReason reason) override {
     last_key_frame_stream = stream_id;
@@ -158,19 +143,6 @@ public:
       }
       delivered = true;
     }
-    for (auto &item : sinks_) {
-      Sink &sink = item.second;
-      if (sink.stream_id != encoded_frame.stream_id || sink.sink == nullptr) {
-        continue;
-      }
-      FramePayload payload;
-      if (!EncodedFrameRefCopy(&payload.encoded_frame, &encoded_frame)) {
-        return false;
-      }
-      sink.sink->OnFrame(payload);
-      FramePayloadUnref(&payload);
-      delivered = true;
-    }
     return delivered;
   }
 
@@ -182,7 +154,6 @@ public:
   MediaFrameReaderId sub_reader_id = 0;
   int attached_readers = 0;
   int detached_readers = 0;
-  int attached_sinks = 0;
   StreamId last_key_frame_stream = StreamId::kMain;
   KeyFrameReason last_key_frame_reason = KeyFrameReason::kRecovery;
   int key_frame_requests = 0;
@@ -192,11 +163,6 @@ private:
     StreamId stream_id = StreamId::kMain;
     uint64_t generation = 0;
     std::vector<MediaFrame> pending_frames;
-  };
-
-  struct Sink {
-    StreamId stream_id = StreamId::kMain;
-    IFrameSink *sink = nullptr;
   };
 
   static MediaTrack TrackForStream(StreamId stream_id) {
@@ -231,10 +197,8 @@ private:
   }
 
   MediaFrameReaderId next_reader_id_ = 1;
-  FrameAttachId next_sink_id_ = 1;
   uint64_t next_generation_ = 1;
   std::map<MediaFrameReaderId, Reader> readers_;
-  std::map<FrameAttachId, Sink> sinks_;
 };
 
 }  // namespace test

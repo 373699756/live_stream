@@ -218,7 +218,6 @@ struct MediaSourceStats {
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
     uint32_t active_mjpeg_clients = 0;
-    uint32_t active_frame_sinks = 0;
     uint32_t active_frame_readers = 0;
     uint32_t cached_frames = 0;
     uint32_t cached_bytes = 0;
@@ -323,9 +322,6 @@ public:
         MediaFrameReaderId reader_id) const = 0;
     virtual bool PopFrameReaderFrame(MediaFrameReaderId reader_id,
                                      MediaFrameReaderFrame *frame) = 0;
-    virtual FrameAttachId AttachFrameSink(
-        const FrameAttachOptions &options, IFrameSink *sink) = 0;
-    virtual bool DetachFrameSink(FrameAttachId sink_id) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
                                  KeyFrameReason reason) = 0;
 };

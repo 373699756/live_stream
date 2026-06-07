@@ -8,21 +8,9 @@
 #include <cstdint>
 #include <map>
 #include <string>
-#include <vector>
 
 namespace live_stream {
 namespace media_source_internal {
-
-struct PendingFrameRingWrite {
-    MediaFrameReaderId reader_id = 0;
-    IFrameSink *sink = nullptr;
-    bool starts_on_keyframe = false;
-};
-
-struct FrameRingWriteResult {
-    std::vector<PendingFrameRingWrite> sink_writes;
-    uint32_t slow_reader_count = 0;
-};
 
 class FrameRing {
 public:
@@ -32,7 +20,7 @@ public:
     ~FrameRing();
 
     MediaFrameReaderId AttachReader(const MediaFrameReaderOptions &options,
-                                    IFrameSink *sink, size_t max_readers);
+                                    size_t max_readers);
     bool DetachReader(MediaFrameReaderId reader_id,
                       MediaFrameReaderCloseReason reason);
     MediaFrameReaderStatus GetReaderStatus(MediaFrameReaderId reader_id) const;
@@ -43,14 +31,12 @@ public:
     void Clear();
     void ClearStream(StreamId stream_id, MediaFrameReaderCloseReason reason);
     size_t ReaderCount() const;
-    size_t SinkReaderCount() const;
-    size_t PullReaderCount() const;
     uint32_t SlowReaderCount() const;
     uint32_t SlowReaderCount(StreamId stream_id) const;
     uint32_t CachedFrameCount() const;
     uint32_t CachedBytes() const;
     int64_t LastFrameTimestamp(StreamId stream_id) const;
-    FrameRingWriteResult Write(const FramePayload &frame);
+    void Write(const FramePayload &frame);
 
 private:
     static constexpr size_t kMaxCachedGopFrames = 128;
@@ -93,7 +79,6 @@ private:
         StreamId stream_id = StreamId::kMain;
         bool keyframe_first = true;
         bool waiting_for_keyframe = true;
-        IFrameSink *sink = nullptr;
         std::string reader_name;
         uint64_t start_sequence = 0;
         uint64_t start_generation = 0;

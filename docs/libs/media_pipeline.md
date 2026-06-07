@@ -34,9 +34,8 @@ flowchart LR
   统一清理 GOP、HLS、FLV sequence/GOP、MJPEG latest frame、reader live queue 和
   pending frame。
 - 对 RTSP/WebRTC 暴露 `IMediaFrameSource`。
-- 对新协议输出暴露 `AttachFrameReader`、`GetFrameReaderStartData`、
-  `PopFrameReaderFrame` 和 `DetachFrameReader`；旧 `AttachFrameSink` 只作为过渡
-  调用方接入，内部仍使用同一个 reader/ring。
+- 对协议输出暴露 `AttachFrameReader`、`GetFrameReaderStartData`、
+  `PopFrameReaderFrame` 和 `DetachFrameReader`。
 - 对 HTTP 暴露 HLS/status、FLV 和 MJPEG source 接口。
 - 统一管理客户端数量限制和 keyframe 请求转发。
 
@@ -68,15 +67,15 @@ codec 切换和 timestamp reset 走同一 `ResetStreamForReasonLocked` 路径，
 | `hls_segment_retain_count` | 额外保留给滞后客户端读取的旧 segment 数量 |
 | `max_flv_clients` | HTTP-FLV 客户端注册上限 |
 | `max_mjpeg_clients` | MJPEG 客户端注册上限 |
-| `max_frame_sinks` | RTSP/WebRTC 等下游 reader 和过渡 frame sink 总上限 |
+| `max_frame_readers` | RTSP/WebRTC 等下游 reader 总上限 |
 
 启动后本服务是 `device_media` 到 RTSP/WebRTC/HTTP 的扇出点。新增下游协议必须通过
 `IMediaFrameSource`、`IMediaSource`、`IMediaFlvSource` 或 `IMediaMjpegSource`
 消费，不能直接订阅 `device_media` 并绕过统一 keyframe 请求和资源上限。
 
 `MediaSourceStats` 的 reader 字段由本模块汇总：`active_frame_readers` 表示显式
-pull reader 数，`active_frame_sinks` 表示旧 sink 过渡调用方数，`cached_frames`、
-`cached_bytes`、总 slow reader、main/sub slow reader 和主/子码流 last timestamp
+reader 数，`cached_frames`、`cached_bytes`、总 slow reader、main/sub slow reader
+和主/子码流 last timestamp
 来自同一个 `FrameRing`。codec generation 和 last reset reason 来自对应
 `media_source` stream context，用于 HTTP/Web API 后续序列化。
 
