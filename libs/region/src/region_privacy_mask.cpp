@@ -72,7 +72,7 @@ std::string PrivacyMaskName(const char *stream_name, uint32_t slot) {
     return std::string(text);
 }
 
-bool ApplyMaskSet(RegionServiceImpl *service, const char *stream_name,
+bool ApplyMaskSet(RegionOverlay *service, const char *stream_name,
                   const MppChannel &target, const PrivacyMask *masks) {
     if (service == nullptr || stream_name == nullptr || masks == nullptr) {
         return false;
@@ -118,7 +118,7 @@ bool ParsePrivacyMasksConfig(const ConfigJson &value,
                                  masks->sub);
 }
 
-bool RegionServiceImpl::ApplyPrivacyMasks(const PrivacyMasks &masks) {
+bool RegionOverlay::ApplyPrivacyMasks(const PrivacyMasks &masks) {
     if (!ApplyMaskSet(this, "main", media_channels.vpss, masks.main)) {
         return false;
     }

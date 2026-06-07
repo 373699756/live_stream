@@ -20,13 +20,13 @@ class Executor;
 
 namespace live_stream {
 
-class HttpServiceImpl : public IHttp,
+class HttpConsole : public IHttp,
                         public HttpAccess,
                         public HttpRequestHandler {
 public:
-    HttpServiceImpl(const HttpOptions &options,
+    HttpConsole(const HttpOptions &options,
                     const HttpDependencies &dependencies);
-    ~HttpServiceImpl() override;
+    ~HttpConsole() override;
 
     bool Prepare();
     bool Start() override;

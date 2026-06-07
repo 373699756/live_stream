@@ -109,11 +109,11 @@ bool AtomicWriteJson(const std::string &path, const ConfigJson &root) {
 
 }  // namespace
 
-class ConfigServiceImpl : public IConfig {
+class ConfigStore : public IConfig {
 public:
-    explicit ConfigServiceImpl(const ConfigOptions &opts) : opts_(opts) {}
+    explicit ConfigStore(const ConfigOptions &opts) : opts_(opts) {}
 
-    ~ConfigServiceImpl() override { ReleaseInternal(); }
+    ~ConfigStore() override { ReleaseInternal(); }
 
     bool Prepare() {
         {
@@ -415,7 +415,7 @@ private:
 
 std::unique_ptr<IConfig>
 CreateConfig(const ConfigOptions &options) {
-    return std::unique_ptr<IConfig>(new ConfigServiceImpl(options));
+    return std::unique_ptr<IConfig>(new ConfigStore(options));
 }
 
 }  // namespace live_stream

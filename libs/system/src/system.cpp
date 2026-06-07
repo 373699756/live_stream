@@ -121,9 +121,9 @@ public:
     }
 };
 
-class SystemServiceImpl : public ISystem {
+class SystemControl : public ISystem {
 public:
-    explicit SystemServiceImpl(const SystemOptions& options)
+    explicit SystemControl(const SystemOptions& options)
         : options_(options),
           owned_platform_(options.platform == nullptr
                               ? new DefaultSystemPlatform()
@@ -322,7 +322,7 @@ private:
 
 std::unique_ptr<ISystem> CreateSystem(
     const SystemOptions& options) {
-    return std::unique_ptr<ISystem>(new SystemServiceImpl(options));
+    return std::unique_ptr<ISystem>(new SystemControl(options));
 }
 
 }  // namespace live_stream

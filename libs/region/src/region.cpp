@@ -197,13 +197,13 @@ std::string RegionTargetSuffix(const MppChannel &channel) {
     return std::string(text);
 }
 
-RegionServiceImpl::RegionServiceImpl(
+RegionOverlay::RegionOverlay(
     const RegionOptions &service_options)
     : options(service_options),
       sdk(service_options.sdk != nullptr ? service_options.sdk
                                          : &hisisdk::DefaultSdk()) {}
 
-bool RegionServiceImpl::Prepare() {
+bool RegionOverlay::Prepare() {
     std::lock_guard<std::mutex> lock(mutex);
     if (state == RegionServiceState::kInitialized ||
         state == RegionServiceState::kStarted ||
@@ -233,7 +233,7 @@ bool RegionServiceImpl::Prepare() {
     return true;
 }
 
-void RegionServiceImpl::Release() {
+void RegionOverlay::Release() {
     StopRefreshThread();
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -245,7 +245,7 @@ void RegionServiceImpl::Release() {
     }
 }
 
-RegionServiceImpl::RegionRecord *RegionServiceImpl::Find(RegionId id) {
+RegionOverlay::RegionRecord *RegionOverlay::Find(RegionId id) {
     for (auto &region : regions) {
         if (region.id.value == id.value) {
             return &region;
@@ -254,7 +254,7 @@ RegionServiceImpl::RegionRecord *RegionServiceImpl::Find(RegionId id) {
     return nullptr;
 }
 
-const RegionServiceImpl::RegionRecord *RegionServiceImpl::Find(
+const RegionOverlay::RegionRecord *RegionOverlay::Find(
     RegionId id) const {
     for (const auto &region : regions) {
         if (region.id.value == id.value) {
@@ -264,7 +264,7 @@ const RegionServiceImpl::RegionRecord *RegionServiceImpl::Find(
     return nullptr;
 }
 
-RegionServiceImpl::RegionRecord *RegionServiceImpl::FindByName(
+RegionOverlay::RegionRecord *RegionOverlay::FindByName(
     const std::string &name) {
     for (auto &region : regions) {
         if (region.name == name) {
@@ -274,7 +274,7 @@ RegionServiceImpl::RegionRecord *RegionServiceImpl::FindByName(
     return nullptr;
 }
 
-int32_t RegionServiceImpl::AllocateHandle(RegionType type) const {
+int32_t RegionOverlay::AllocateHandle(RegionType type) const {
     const int32_t min_handle = MinHandle(type);
     if (min_handle < 0) {
         return -1;
@@ -295,7 +295,7 @@ int32_t RegionServiceImpl::AllocateHandle(RegionType type) const {
     return -1;
 }
 
-void RegionServiceImpl::DetachAll() {
+void RegionOverlay::DetachAll() {
     for (auto &region : regions) {
         if (region.attached) {
             (void)sdk->DetachRegion(region.mpp_handle,
@@ -305,7 +305,7 @@ void RegionServiceImpl::DetachAll() {
     }
 }
 
-void RegionServiceImpl::DestroyAll() {
+void RegionOverlay::DestroyAll() {
     DetachAll();
     for (const auto &region : regions) {
         if (region.created) {
@@ -315,7 +315,7 @@ void RegionServiceImpl::DestroyAll() {
     regions.clear();
 }
 
-void RegionServiceImpl::DestroyRegionByPrefix(const std::string &prefix) {
+void RegionOverlay::DestroyRegionByPrefix(const std::string &prefix) {
     for (auto iter = regions.begin(); iter != regions.end();) {
         if (iter->name.find(prefix) != 0) {
             ++iter;
@@ -332,11 +332,11 @@ void RegionServiceImpl::DestroyRegionByPrefix(const std::string &prefix) {
     }
 }
 
-MediaChannels RegionServiceImpl::ActiveChannels() const {
+MediaChannels RegionOverlay::ActiveChannels() const {
     return media_bound ? media_channels : options.media_channels;
 }
 
-std::vector<MppChannel> RegionServiceImpl::OverlayTargets() const {
+std::vector<MppChannel> RegionOverlay::OverlayTargets() const {
     std::vector<MppChannel> targets;
     if (IsValidChannel(media_channels.venc)) {
         targets.push_back(media_channels.venc);
@@ -358,7 +358,7 @@ std::vector<MppChannel> RegionServiceImpl::OverlayTargets() const {
     return targets;
 }
 
-bool RegionServiceImpl::UpsertBitmapRegion(const std::string &name,
+bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
                                            const RegionConfig &config,
                                            const TextBitmap &text_bitmap) {
     RegionRecord *region = FindByName(name);
@@ -409,7 +409,7 @@ bool RegionServiceImpl::UpsertBitmapRegion(const std::string &name,
     return true;
 }
 
-bool RegionServiceImpl::UpsertDisplayRegion(const std::string &name,
+bool RegionOverlay::UpsertDisplayRegion(const std::string &name,
                                             const RegionConfig &config) {
     RegionRecord *region = FindByName(name);
     if (region != nullptr) {
@@ -448,14 +448,14 @@ bool RegionServiceImpl::UpsertDisplayRegion(const std::string &name,
     return true;
 }
 
-bool RegionServiceImpl::VerifyConfig(const ConfigJson &value) const {
+bool RegionOverlay::VerifyConfig(const ConfigJson &value) const {
     ParsedOverlayConfig parsed;
     return ParseTextOverlayConfig(value, &parsed) &&
            ParsePrivacyMasksConfig(value, ActiveChannels(),
                                    &parsed.privacy_masks);
 }
 
-bool RegionServiceImpl::ApplyConfig(const ConfigJson &value) {
+bool RegionOverlay::ApplyConfig(const ConfigJson &value) {
     ParsedOverlayConfig parsed;
     if (!ParseTextOverlayConfig(value, &parsed) ||
         !ParsePrivacyMasksConfig(value, ActiveChannels(),
@@ -481,7 +481,7 @@ bool RegionServiceImpl::ApplyConfig(const ConfigJson &value) {
 Region::Region() : Region(RegionOptions{}) {}
 
 Region::Region(const RegionOptions &options)
-    : impl_(new RegionServiceImpl(options)) {}
+    : impl_(new RegionOverlay(options)) {}
 
 Region::~Region() {
     if (impl_ != nullptr) {
@@ -580,7 +580,7 @@ RegionId Region::CreateRegion(const RegionConfig &config) {
         return RegionId{};
     }
 
-    RegionServiceImpl::RegionRecord record{};
+    RegionOverlay::RegionRecord record{};
     record.id.value = impl_->next_id++;
     record.mpp_handle = handle;
     record.config = config;
@@ -597,7 +597,7 @@ bool Region::Attach(RegionId id) {
         return false;
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    RegionServiceImpl::RegionRecord *region = impl_->Find(id);
+    RegionOverlay::RegionRecord *region = impl_->Find(id);
     if (region == nullptr || impl_->state != RegionServiceState::kStarted) {
         return false;
     }
@@ -614,7 +614,7 @@ bool Region::Detach(RegionId id) {
         return false;
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    RegionServiceImpl::RegionRecord *region = impl_->Find(id);
+    RegionOverlay::RegionRecord *region = impl_->Find(id);
     if (region == nullptr) {
         return false;
     }
@@ -631,7 +631,7 @@ bool Region::SetVisible(RegionId id, bool visible) {
         return false;
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    RegionServiceImpl::RegionRecord *region = impl_->Find(id);
+    RegionOverlay::RegionRecord *region = impl_->Find(id);
     if (region == nullptr) {
         return false;
     }
@@ -650,7 +650,7 @@ bool Region::UpdateBitmap(RegionId id, const RegionBitmap &bitmap) {
         return false;
     }
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    RegionServiceImpl::RegionRecord *region = impl_->Find(id);
+    RegionOverlay::RegionRecord *region = impl_->Find(id);
     if (region == nullptr || !IsValidBitmap(bitmap)) {
         return false;
     }

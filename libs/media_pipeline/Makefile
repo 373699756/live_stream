@@ -8,11 +8,11 @@ MEDIA_SOURCE_LIB := $(BUILD_DIR)/lib/libmedia_source.a
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/src
-STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
+MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(MEDIA_LIB) $(MEDIA_SOURCE_LIB) \
-	$(STREAM_CODEC_LIB)
-EXTRA_TEST_LIBS := $(MEDIA_SOURCE_LIB) $(STREAM_CODEC_LIB) $(MEDIA_LIB) \
+	$(MEDIA_CODEC_LIB)
+EXTRA_TEST_LIBS := $(MEDIA_SOURCE_LIB) $(MEDIA_CODEC_LIB) $(MEDIA_LIB) \
 	$(INFRA_LIB) -pthread
 
 $(INFRA_LIB):
@@ -21,10 +21,10 @@ $(INFRA_LIB):
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../device_media all
 
-$(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(STREAM_CODEC_LIB)
+$(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(MEDIA_CODEC_LIB)
 	$(MAKE) -C ../media_source all
 
-$(STREAM_CODEC_LIB): $(INFRA_LIB)
+$(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
 
 include ../service_rules.mk

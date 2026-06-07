@@ -215,7 +215,7 @@ bool ParseTextOverlayConfig(const ConfigJson &value,
     return true;
 }
 
-bool RegionServiceImpl::ApplyTextOverlay(
+bool RegionOverlay::ApplyTextOverlay(
     const ParsedOverlayConfig &config) {
     if (!config.enabled) {
         DestroyRegionByPrefix("timestamp:");
@@ -269,7 +269,7 @@ bool RegionServiceImpl::ApplyTextOverlay(
     return true;
 }
 
-bool RegionServiceImpl::UpdateTimestampLocked() {
+bool RegionOverlay::UpdateTimestampLocked() {
     if (!active_config.enabled || !active_config.timestamp_enabled) {
         return true;
     }
@@ -296,7 +296,7 @@ bool RegionServiceImpl::UpdateTimestampLocked() {
     return true;
 }
 
-void RegionServiceImpl::StartRefreshThreadLocked() {
+void RegionOverlay::StartRefreshThreadLocked() {
     if (refresh_running) {
         return;
     }
@@ -312,7 +312,7 @@ void RegionServiceImpl::StartRefreshThreadLocked() {
     });
 }
 
-void RegionServiceImpl::StopRefreshThread() {
+void RegionOverlay::StopRefreshThread() {
     {
         std::lock_guard<std::mutex> lock(mutex);
         refresh_running = false;

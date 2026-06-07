@@ -76,9 +76,9 @@ private:
     std::string default_ifname_;
 };
 
-class NetworkServiceImpl : public INetworkConfig {
+class NetworkConfigCore : public INetworkConfig {
 public:
-    explicit NetworkServiceImpl(const NetworkConfigOptions &options)
+    explicit NetworkConfigCore(const NetworkConfigOptions &options)
         : options_(options),
           owned_platform_(
               options.platform == nullptr
@@ -480,7 +480,7 @@ private:
 
 std::unique_ptr<INetworkConfig>
 CreateNetworkConfig(const NetworkConfigOptions &options) {
-    return std::unique_ptr<INetworkConfig>(new NetworkServiceImpl(options));
+    return std::unique_ptr<INetworkConfig>(new NetworkConfigCore(options));
 }
 
 const char *NetworkConfig::Name() { return "network_config"; }

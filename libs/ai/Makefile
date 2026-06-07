@@ -5,7 +5,7 @@ BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
 SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot.a
-STREAM_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
+MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 CONFIG_LIB := $(BUILD_DIR)/lib/libconfig.a
 ALARM_LIB := $(BUILD_DIR)/lib/libalarm.a
 
@@ -27,9 +27,9 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/alarm/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
-EXTRA_TEST_DEPS := $(CONFIG_LIB) $(ALARM_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
+EXTRA_TEST_DEPS := $(CONFIG_LIB) $(ALARM_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) \
 	$(SNAPSHOT_LIB) $(INFRA_LIB)
-EXTRA_TEST_LIBS := $(CONFIG_LIB) $(ALARM_LIB) $(MEDIA_LIB) $(STREAM_CODEC_LIB) \
+EXTRA_TEST_LIBS := $(CONFIG_LIB) $(ALARM_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) \
 	$(SNAPSHOT_LIB) $(INFRA_LIB) -pthread
 
 ifeq ($(ENABLE_HISI_MPP),1)
@@ -41,7 +41,7 @@ endif
 $(INFRA_LIB):
 	$(MAKE) -C ../infra all
 
-$(STREAM_CODEC_LIB): $(INFRA_LIB)
+$(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
 
 $(CONFIG_LIB): $(INFRA_LIB)
@@ -50,7 +50,7 @@ $(CONFIG_LIB): $(INFRA_LIB)
 $(ALARM_LIB): $(INFRA_LIB) $(CONFIG_LIB)
 	$(MAKE) -C ../alarm all
 
-$(MEDIA_LIB): $(INFRA_LIB) $(STREAM_CODEC_LIB) $(CONFIG_LIB)
+$(MEDIA_LIB): $(INFRA_LIB) $(MEDIA_CODEC_LIB) $(CONFIG_LIB)
 	$(MAKE) -C ../device_media all
 
 $(SNAPSHOT_LIB): $(INFRA_LIB) $(MEDIA_LIB) $(CONFIG_LIB)

@@ -75,9 +75,9 @@ bool ParsePrivacyMasksConfig(const ConfigJson &value,
                              const MediaChannels &channels,
                              PrivacyMasks *masks);
 
-class RegionServiceImpl {
+class RegionOverlay {
 public:
-    explicit RegionServiceImpl(const RegionOptions &service_options);
+    explicit RegionOverlay(const RegionOptions &service_options);
 
     bool Prepare();
     void Release();

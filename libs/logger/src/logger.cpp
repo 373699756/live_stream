@@ -9,12 +9,12 @@
 namespace live_stream {
 namespace {
 
-class LoggerServiceImpl : public ILogger {
+class OperationLogger : public ILogger {
 public:
-    explicit LoggerServiceImpl(std::unique_ptr<IOperationLogStore> store)
+    explicit OperationLogger(std::unique_ptr<IOperationLogStore> store)
         : store_(std::move(store)) {}
 
-    ~LoggerServiceImpl() override {
+    ~OperationLogger() override {
         ReleaseInternal();
     }
 
@@ -108,7 +108,7 @@ private:
 
 std::unique_ptr<ILogger> CreateLogger(
     const LoggerConfig& config) {
-    return std::unique_ptr<ILogger>(new LoggerServiceImpl(
+    return std::unique_ptr<ILogger>(new OperationLogger(
         std::unique_ptr<IOperationLogStore>(new FileOperationLogStore(config))));
 }
 

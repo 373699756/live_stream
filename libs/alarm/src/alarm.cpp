@@ -111,9 +111,9 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
     return true;
 }
 
-class AlarmServiceImpl : public IAlarm {
+class AlarmCore : public IAlarm {
 public:
-    explicit AlarmServiceImpl(const AlarmOptions &options)
+    explicit AlarmCore(const AlarmOptions &options)
         : options_(options) {
         for (const AlarmRule &rule : options.default_rules) {
             rules_[rule.source] = rule;
@@ -419,7 +419,7 @@ private:
 
 std::unique_ptr<IAlarm>
 CreateAlarm(const AlarmOptions &options) {
-    return std::unique_ptr<IAlarm>(new AlarmServiceImpl(options));
+    return std::unique_ptr<IAlarm>(new AlarmCore(options));
 }
 
 const char *AlarmSourceToString(AlarmSource source) {

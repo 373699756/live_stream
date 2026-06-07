@@ -9,7 +9,7 @@ namespace live_stream {
 
 class IConfig;
 class IDeviceMedia;
-class RegionServiceImpl;
+class RegionOverlay;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -100,7 +100,7 @@ public:
     RegionStats GetStats() const;
 
 private:
-    RegionServiceImpl* impl_;
+    RegionOverlay* impl_;
 };
 
 }  // namespace live_stream

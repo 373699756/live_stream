@@ -32,17 +32,17 @@ const char *StaticStatusText(StaticFileStatus status) {
 
 }  // namespace
 
-HttpServiceImpl::HttpServiceImpl(
+HttpConsole::HttpConsole(
     const HttpOptions &options,
     const HttpDependencies &dependencies)
     : options_(options),
       server_(new HttpServer(options, dependencies, this)) {}
 
-HttpServiceImpl::~HttpServiceImpl() {
+HttpConsole::~HttpConsole() {
     ReleaseInternal();
 }
 
-bool HttpServiceImpl::Prepare() {
+bool HttpConsole::Prepare() {
     std::lock_guard<std::mutex> guard(mutex_);
     if (initialized_) {
         return true;
@@ -54,7 +54,7 @@ bool HttpServiceImpl::Prepare() {
     return true;
 }
 
-bool HttpServiceImpl::Start() {
+bool HttpConsole::Start() {
     if (!Prepare()) {
         Error(kHttpModuleName, "HTTP start prepare failed");
         return false;
@@ -66,21 +66,21 @@ bool HttpServiceImpl::Start() {
     return true;
 }
 
-void HttpServiceImpl::Stop() {
+void HttpConsole::Stop() {
     StopInternal();
 }
 
-void HttpServiceImpl::StopInternal() {
+void HttpConsole::StopInternal() {
     if (server_ != nullptr) {
         server_->Stop();
     }
 }
 
-void HttpServiceImpl::Release() {
+void HttpConsole::Release() {
     ReleaseInternal();
 }
 
-void HttpServiceImpl::ReleaseInternal() {
+void HttpConsole::ReleaseInternal() {
     StopInternal();
     std::lock_guard<std::mutex> guard(mutex_);
     if (server_ != nullptr) {
@@ -92,11 +92,11 @@ void HttpServiceImpl::ReleaseInternal() {
     initialized_ = false;
 }
 
-HttpResponse HttpServiceImpl::HandleRequest(const HttpRequest &request) {
+HttpResponse HttpConsole::HandleRequest(const HttpRequest &request) {
     return HandleHttpRequest(request);
 }
 
-bool HttpServiceImpl::ShouldUseStreamExecutor(
+bool HttpConsole::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/live/") ||
@@ -112,7 +112,7 @@ bool HttpServiceImpl::ShouldUseStreamExecutor(
             request.method == HttpMethod::kDelete);
 }
 
-HttpResponse HttpServiceImpl::HandleHttpRequest(const HttpRequest &request) {
+HttpResponse HttpConsole::HandleHttpRequest(const HttpRequest &request) {
     HttpRequest request_with_id = request;
     if (request_with_id.request_id.empty()) {
         request_with_id.request_id = MakeRequestId(NextRequestId());
@@ -155,7 +155,7 @@ HttpResponse HttpServiceImpl::HandleHttpRequest(const HttpRequest &request) {
                            StatusResponse(404, "Not Found"));
 }
 
-bool HttpServiceImpl::HandleStreamingHttpRequest(
+bool HttpConsole::HandleStreamingHttpRequest(
     ConnectionId connection_id, const HttpRequest &request) {
     IStreamingHttpHandler *streaming_handler = nullptr;
     {
@@ -176,21 +176,21 @@ bool HttpServiceImpl::HandleStreamingHttpRequest(
     return true;
 }
 
-HttpStats HttpServiceImpl::GetStats() const {
+HttpStats HttpConsole::GetStats() const {
     if (server_ == nullptr) {
         return HttpStats{};
     }
     return server_->GetStats();
 }
 
-HttpListenAddress HttpServiceImpl::LocalAddress() const {
+HttpListenAddress HttpConsole::LocalAddress() const {
     if (server_ == nullptr) {
         return HttpListenAddress{};
     }
     return server_->LocalAddress();
 }
 
-void HttpServiceImpl::ConfigureConsoleHandlers(
+void HttpConsole::ConfigureConsoleHandlers(
     IAuth *auth, ILogger *logger,
     IConfig *config, INetworkConfig *network_config,
     ITime *time, IAlarm *alarm,
@@ -268,31 +268,31 @@ void HttpServiceImpl::ConfigureConsoleHandlers(
     }
 }
 
-void HttpServiceImpl::IncrementParseFailures() {
+void HttpConsole::IncrementParseFailures() {
     if (server_ != nullptr) {
         server_->IncrementParseFailures();
     }
 }
 
-void HttpServiceImpl::IncrementNotFound() {
+void HttpConsole::IncrementNotFound() {
     if (server_ != nullptr) {
         server_->IncrementNotFound();
     }
 }
 
-void HttpServiceImpl::IncrementAuthFailures() {
+void HttpConsole::IncrementAuthFailures() {
     if (server_ != nullptr) {
         server_->IncrementAuthFailures();
     }
 }
 
-void HttpServiceImpl::IncrementPermissionDenied() {
+void HttpConsole::IncrementPermissionDenied() {
     if (server_ != nullptr) {
         server_->IncrementPermissionDenied();
     }
 }
 
-live_stream::RequestContext HttpServiceImpl::MakeContext(
+live_stream::RequestContext HttpConsole::MakeContext(
     const HttpRequest &request, const AuthPrincipal *principal) {
     live_stream::RequestContext context;
     context.request_id =
@@ -307,12 +307,12 @@ live_stream::RequestContext HttpServiceImpl::MakeContext(
     return context;
 }
 
-uint64_t HttpServiceImpl::NextRequestId() {
+uint64_t HttpConsole::NextRequestId() {
     std::lock_guard<std::mutex> guard(mutex_);
     return ++next_request_id_;
 }
 
-AuthPrincipal HttpServiceImpl::Authenticate(const HttpRequest &request) {
+AuthPrincipal HttpConsole::Authenticate(const HttpRequest &request) {
     const std::string token = ExtractBearerToken(request);
     if (token.empty()) {
         IncrementAuthFailures();
@@ -330,7 +330,7 @@ AuthPrincipal HttpServiceImpl::Authenticate(const HttpRequest &request) {
     return validated.principal;
 }
 
-bool HttpServiceImpl::RequirePermission(const HttpRequest &request,
+bool HttpConsole::RequirePermission(const HttpRequest &request,
                                         AuthPermission permission,
                                         const std::string &target,
                                         AuthPrincipal *principal) {
@@ -360,7 +360,7 @@ bool HttpServiceImpl::RequirePermission(const HttpRequest &request,
     return true;
 }
 
-void HttpServiceImpl::RecordOperation(
+void HttpConsole::RecordOperation(
     const HttpRequest &request, const AuthPrincipal &principal,
     OperationAction action, const std::string &target, OperationResult result,
     const std::string &reason) {
@@ -382,7 +382,7 @@ void HttpServiceImpl::RecordOperation(
     (void)logger_->RecordOperation(record);
 }
 
-HttpResponse HttpServiceImpl::HandleStaticFile(const HttpRequest &request) {
+HttpResponse HttpConsole::HandleStaticFile(const HttpRequest &request) {
     const StaticFileResult result =
         BuildStaticFileResponse(request, options_.static_root);
     if (result.status == StaticFileStatus::kNotFound) {
@@ -404,7 +404,7 @@ std::unique_ptr<IHttp>
 CreateHttp(const HttpOptions &options,
                   const HttpDependencies &dependencies) {
     return std::unique_ptr<IHttp>(
-        new HttpServiceImpl(options, dependencies));
+        new HttpConsole(options, dependencies));
 }
 
 std::unique_ptr<IHttp> CreateHttpConsole(
@@ -421,8 +421,8 @@ std::unique_ptr<IHttp> CreateHttpConsole(
     IMediaMjpegSource *media_mjpeg_source) {
     HttpDependencies dependencies;
     dependencies.net_engine = net_engine;
-    std::unique_ptr<HttpServiceImpl> service(
-        new HttpServiceImpl(options, dependencies));
+    std::unique_ptr<HttpConsole> service(
+        new HttpConsole(options, dependencies));
     service->ConfigureConsoleHandlers(
         auth, logger, config, network_config,
         time, alarm, upgrade, system,

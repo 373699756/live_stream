@@ -83,9 +83,9 @@ ConfigJson BuildTimeConfig(const ConfigJson &current,
     return root;
 }
 
-class TimeServiceImpl : public ITime {
+class TimeCore : public ITime {
 public:
-    explicit TimeServiceImpl(const TimeOptions &options)
+    explicit TimeCore(const TimeOptions &options)
         : options_(options) {
         status_.timezone = options.default_timezone;
         status_.ntp = options.default_ntp_config;
@@ -455,7 +455,7 @@ private:
 
 std::unique_ptr<ITime>
 CreateTime(const TimeOptions &options) {
-    return std::unique_ptr<ITime>(new TimeServiceImpl(options));
+    return std::unique_ptr<ITime>(new TimeCore(options));
 }
 
 const char *TimeSyncSourceToString(TimeSyncSource source) {
