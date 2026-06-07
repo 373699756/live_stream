@@ -83,12 +83,12 @@ public:
     }
 };
 
-class UpgradeController : public IUpgrade {
+class UpgradeImpl : public IUpgrade {
 public:
-    explicit UpgradeController(UpgradeOptions options)
+    explicit UpgradeImpl(UpgradeOptions options)
         : options_(std::move(options)) {}
 
-    ~UpgradeController() override {
+    ~UpgradeImpl() override {
         ReleaseInternal();
     }
 
@@ -679,7 +679,7 @@ const char* UpgradeStateToString(UpgradeState state) {
 
 std::unique_ptr<IUpgrade> CreateUpgrade(
     const UpgradeOptions& options) {
-    return std::unique_ptr<IUpgrade>(new UpgradeController(options));
+    return std::unique_ptr<IUpgrade>(new UpgradeImpl(options));
 }
 
 }  // namespace live_stream

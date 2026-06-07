@@ -32,17 +32,17 @@ const char *StaticStatusText(StaticFileStatus status) {
 
 }  // namespace
 
-HttpConsole::HttpConsole(
+HttpImpl::HttpImpl(
     const HttpOptions &options,
     const HttpDependencies &dependencies)
     : options_(options),
       server_(new HttpServer(options, dependencies, this)) {}
 
-HttpConsole::~HttpConsole() {
+HttpImpl::~HttpImpl() {
     ReleaseInternal();
 }
 
-bool HttpConsole::Prepare() {
+bool HttpImpl::Prepare() {
     std::lock_guard<std::mutex> guard(mutex_);
     if (initialized_) {
         return true;
@@ -54,7 +54,7 @@ bool HttpConsole::Prepare() {
     return true;
 }
 
-bool HttpConsole::Start() {
+bool HttpImpl::Start() {
     if (!Prepare()) {
         Error(kHttpModuleName, "HTTP start prepare failed");
         return false;
@@ -66,21 +66,21 @@ bool HttpConsole::Start() {
     return true;
 }
 
-void HttpConsole::Stop() {
+void HttpImpl::Stop() {
     StopInternal();
 }
 
-void HttpConsole::StopInternal() {
+void HttpImpl::StopInternal() {
     if (server_ != nullptr) {
         server_->Stop();
     }
 }
 
-void HttpConsole::Release() {
+void HttpImpl::Release() {
     ReleaseInternal();
 }
 
-void HttpConsole::ReleaseInternal() {
+void HttpImpl::ReleaseInternal() {
     StopInternal();
     std::lock_guard<std::mutex> guard(mutex_);
     if (server_ != nullptr) {
@@ -92,11 +92,11 @@ void HttpConsole::ReleaseInternal() {
     initialized_ = false;
 }
 
-HttpResponse HttpConsole::HandleRequest(const HttpRequest &request) {
+HttpResponse HttpImpl::HandleRequest(const HttpRequest &request) {
     return HandleHttpRequest(request);
 }
 
-bool HttpConsole::ShouldUseStreamExecutor(
+bool HttpImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/live/") ||
@@ -112,7 +112,7 @@ bool HttpConsole::ShouldUseStreamExecutor(
             request.method == HttpMethod::kDelete);
 }
 
-HttpResponse HttpConsole::HandleHttpRequest(const HttpRequest &request) {
+HttpResponse HttpImpl::HandleHttpRequest(const HttpRequest &request) {
     HttpRequest request_with_id = request;
     if (request_with_id.request_id.empty()) {
         request_with_id.request_id = MakeRequestId(NextRequestId());
@@ -155,7 +155,7 @@ HttpResponse HttpConsole::HandleHttpRequest(const HttpRequest &request) {
                            StatusResponse(404, "Not Found"));
 }
 
-bool HttpConsole::HandleStreamingHttpRequest(
+bool HttpImpl::HandleStreamingHttpRequest(
     ConnectionId connection_id, const HttpRequest &request) {
     IStreamingHttpHandler *streaming_handler = nullptr;
     {
@@ -176,21 +176,21 @@ bool HttpConsole::HandleStreamingHttpRequest(
     return true;
 }
 
-HttpStats HttpConsole::GetStats() const {
+HttpStats HttpImpl::GetStats() const {
     if (server_ == nullptr) {
         return HttpStats{};
     }
     return server_->GetStats();
 }
 
-HttpListenAddress HttpConsole::LocalAddress() const {
+HttpListenAddress HttpImpl::LocalAddress() const {
     if (server_ == nullptr) {
         return HttpListenAddress{};
     }
     return server_->LocalAddress();
 }
 
-void HttpConsole::ConfigureConsoleHandlers(
+void HttpImpl::ConfigureConsoleHandlers(
     IAuth *auth, ILogger *logger,
     IConfig *config, INetworkConfig *network_config,
     ITime *time, IAlarm *alarm,
@@ -268,31 +268,31 @@ void HttpConsole::ConfigureConsoleHandlers(
     }
 }
 
-void HttpConsole::IncrementParseFailures() {
+void HttpImpl::IncrementParseFailures() {
     if (server_ != nullptr) {
         server_->IncrementParseFailures();
     }
 }
 
-void HttpConsole::IncrementNotFound() {
+void HttpImpl::IncrementNotFound() {
     if (server_ != nullptr) {
         server_->IncrementNotFound();
     }
 }
 
-void HttpConsole::IncrementAuthFailures() {
+void HttpImpl::IncrementAuthFailures() {
     if (server_ != nullptr) {
         server_->IncrementAuthFailures();
     }
 }
 
-void HttpConsole::IncrementPermissionDenied() {
+void HttpImpl::IncrementPermissionDenied() {
     if (server_ != nullptr) {
         server_->IncrementPermissionDenied();
     }
 }
 
-live_stream::RequestContext HttpConsole::MakeContext(
+live_stream::RequestContext HttpImpl::MakeContext(
     const HttpRequest &request, const AuthPrincipal *principal) {
     live_stream::RequestContext context;
     context.request_id =
@@ -307,12 +307,12 @@ live_stream::RequestContext HttpConsole::MakeContext(
     return context;
 }
 
-uint64_t HttpConsole::NextRequestId() {
+uint64_t HttpImpl::NextRequestId() {
     std::lock_guard<std::mutex> guard(mutex_);
     return ++next_request_id_;
 }
 
-AuthPrincipal HttpConsole::Authenticate(const HttpRequest &request) {
+AuthPrincipal HttpImpl::Authenticate(const HttpRequest &request) {
     const std::string token = ExtractBearerToken(request);
     if (token.empty()) {
         IncrementAuthFailures();
@@ -330,7 +330,7 @@ AuthPrincipal HttpConsole::Authenticate(const HttpRequest &request) {
     return validated.principal;
 }
 
-bool HttpConsole::RequirePermission(const HttpRequest &request,
+bool HttpImpl::RequirePermission(const HttpRequest &request,
                                         AuthPermission permission,
                                         const std::string &target,
                                         AuthPrincipal *principal) {
@@ -360,7 +360,7 @@ bool HttpConsole::RequirePermission(const HttpRequest &request,
     return true;
 }
 
-void HttpConsole::RecordOperation(
+void HttpImpl::RecordOperation(
     const HttpRequest &request, const AuthPrincipal &principal,
     OperationAction action, const std::string &target, OperationResult result,
     const std::string &reason) {
@@ -382,7 +382,7 @@ void HttpConsole::RecordOperation(
     (void)logger_->RecordOperation(record);
 }
 
-HttpResponse HttpConsole::HandleStaticFile(const HttpRequest &request) {
+HttpResponse HttpImpl::HandleStaticFile(const HttpRequest &request) {
     const StaticFileResult result =
         BuildStaticFileResponse(request, options_.static_root);
     if (result.status == StaticFileStatus::kNotFound) {
@@ -404,7 +404,7 @@ std::unique_ptr<IHttp>
 CreateHttp(const HttpOptions &options,
                   const HttpDependencies &dependencies) {
     return std::unique_ptr<IHttp>(
-        new HttpConsole(options, dependencies));
+        new HttpImpl(options, dependencies));
 }
 
 std::unique_ptr<IHttp> CreateHttpConsole(
@@ -412,8 +412,8 @@ std::unique_ptr<IHttp> CreateHttpConsole(
     const HttpConsoleDependencies &console_dependencies) {
     HttpDependencies dependencies;
     dependencies.net_engine = console_dependencies.net_engine;
-    std::unique_ptr<HttpConsole> service(
-        new HttpConsole(options, dependencies));
+    std::unique_ptr<HttpImpl> service(
+        new HttpImpl(options, dependencies));
     service->ConfigureConsoleHandlers(
         console_dependencies.auth, console_dependencies.logger,
         console_dependencies.config, console_dependencies.network_config,

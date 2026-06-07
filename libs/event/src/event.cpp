@@ -28,10 +28,10 @@ bool IsEventSizeValid(const Event& event) {
            event.message.size() <= kMaxMessageLength;
 }
 
-class EventBus : public IEvent {
+class EventImpl : public IEvent {
 public:
-    EventBus() = default;
-    ~EventBus() override {
+    EventImpl() = default;
+    ~EventImpl() override {
         ReleaseInternal();
     }
 
@@ -179,7 +179,7 @@ private:
 }  // namespace
 
 std::unique_ptr<IEvent> CreateEvent() {
-    return std::unique_ptr<IEvent>(new EventBus());
+    return std::unique_ptr<IEvent>(new EventImpl());
 }
 
 }  // namespace live_stream
