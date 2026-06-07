@@ -47,6 +47,18 @@ bool IsSupportedCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
 }
 
+uint32_t RtpTimestampFromPts(int64_t pts_us, uint32_t clock_rate) {
+    if (pts_us <= 0 || clock_rate == 0) {
+        return 0;
+    }
+    return static_cast<uint32_t>(
+        (static_cast<uint64_t>(pts_us) * clock_rate) / 1000000U);
+}
+
+bool IsRtpTimestampBackwards(uint32_t timestamp, uint32_t previous_timestamp) {
+    return static_cast<int32_t>(timestamp - previous_timestamp) < 0;
+}
+
 }  // namespace
 
 WebrtcRtpSender::WebrtcRtpSender(uint32_t rtp_mtu_bytes)
@@ -75,7 +87,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
                                 const MediaFrame &frame,
                                 const WebrtcRtpSenderContext &context) {
     if (context.mutex == nullptr || context.service_stats == nullptr ||
-        context.engine == nullptr || peer.peer_id.empty() ||
+        !context.engine || peer.peer_id.empty() ||
         frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
         !EncodedFrameHasPayload(&frame.encoded_frame)) {
         return false;
@@ -86,11 +98,14 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     WebrtcRtpSendParameters parameters;
     if (!context.engine->GetRtpSendParameters(peer.peer_id, &parameters) ||
         parameters.codec != frame.codec || parameters.payload_type == 0 ||
-        parameters.clock_rate == 0 || parameters.ssrc == 0) {
+        parameters.clock_rate != media_mux::kRtpClockRate ||
+        parameters.ssrc == 0) {
         std::lock_guard<std::mutex> guard(*context.mutex);
         ++context.service_stats->dropped_frames;
         return false;
     }
+    const uint32_t rtp_timestamp =
+        RtpTimestampFromPts(frame.pts_us, parameters.clock_rate);
 
     {
         std::lock_guard<std::mutex> guard(*context.mutex);
@@ -106,6 +121,12 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         state.ssrc = parameters.ssrc;
         state.payload_type = parameters.payload_type;
         state.clock_rate = parameters.clock_rate;
+        if (state.has_last_rtp_timestamp &&
+            IsRtpTimestampBackwards(rtp_timestamp,
+                                    state.last_rtp_timestamp)) {
+            ++context.service_stats->dropped_frames;
+            return false;
+        }
         if (!state.keyframe_seen) {
             if (!frame_is_keyframe) {
                 ++context.service_stats->dropped_frames;
@@ -134,6 +155,10 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
             if (packetized && frame_is_keyframe) {
                 iter->second.keyframe_seen = true;
             }
+            if (packetized) {
+                iter->second.last_rtp_timestamp = rtp_timestamp;
+                iter->second.has_last_rtp_timestamp = true;
+            }
         }
         if (!packetized) {
             ++context.service_stats->dropped_frames;
@@ -149,7 +174,7 @@ bool WebrtcRtpSender::SendRtpPacketView(
     const EncodedFrame &frame,
     const media_mux::RtpPacketView &packet,
     const WebrtcRtpSenderContext &context) {
-    if (context.engine == nullptr || context.mutex == nullptr ||
+    if (!context.engine || context.mutex == nullptr ||
         context.service_stats == nullptr || packet.Size() == 0) {
         return false;
     }

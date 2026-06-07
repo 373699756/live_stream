@@ -7,7 +7,9 @@
 #include "webrtc_rtp_sender.h"
 #include "webrtc_sdp.h"
 
+#include <condition_variable>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -49,13 +51,27 @@ bool IsValidStream(StreamId stream_id) {
 
 }  // namespace
 
+class WebrtcServiceImpl;
+
+struct WebrtcServiceCallbackGuard {
+    std::mutex mutex;
+    std::condition_variable condition;
+    WebrtcServiceImpl *service = nullptr;
+    uint32_t active_callbacks = 0;
+    bool closing = false;
+};
+
 class WebrtcServiceImpl : public IWebrtc {
 public:
     WebrtcServiceImpl(WebrtcOptions options,
                       WebrtcDependencies dependencies)
         : options_(std::move(options)),
           dependencies_(std::move(dependencies)),
-          rtp_sender_(kWebrtcRtpMtuBytes) {}
+          callback_guard_(new WebrtcServiceCallbackGuard()),
+          rtp_sender_(kWebrtcRtpMtuBytes) {
+        std::lock_guard<std::mutex> guard(callback_guard_->mutex);
+        callback_guard_->service = this;
+    }
 
     ~WebrtcServiceImpl() override { Release(); }
 
@@ -87,21 +103,27 @@ public:
     void Stop() override {
         std::vector<std::string> peer_ids;
         std::vector<PeerReaderResources> reader_resources;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
-            std::lock_guard<std::mutex> guard(mutex_);
+            std::unique_lock<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted) {
                 return;
             }
             state_ = ServiceState::kStopped;
-            reader_resources = TakeAllPeerReadersLocked();
             peer_ids = peer_store_.MarkAllClosing();
+            MarkAllPeerReadersClosingLocked();
+            reader_condition_.wait(guard, [this]() {
+                return NoPeerReaderDrainingLocked();
+            });
+            reader_resources = TakeAllPeerReadersLocked();
+            engine = engine_;
         }
 
         ReleasePeerReaders(&reader_resources,
                            MediaFrameReaderCloseReason::kDetached);
-        if (engine_) {
+        if (engine) {
             for (const std::string &peer_id : peer_ids) {
-                (void)engine_->ClosePeer(peer_id);
+                (void)engine->ClosePeer(peer_id);
             }
         }
 
@@ -114,6 +136,7 @@ public:
     WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request) override {
         CloseEnginePeers(TakeStalePeerIds());
         WebrtcPeerInfo peer;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted) {
@@ -131,20 +154,32 @@ public:
             const VideoCodec codec =
                 dependencies_.media_source->GetStreamCodec(request.stream_id);
             peer = peer_store_.CreatePeer(request, codec);
+            engine = engine_;
         }
 
-        if (!engine_ || !engine_->CreatePeer(peer)) {
+        if (!engine || !engine->CreatePeer(peer)) {
             std::lock_guard<std::mutex> guard(mutex_);
             peer_store_.RemovePeer(peer.peer_id);
             return WebrtcPeerInfo();
         }
 
+        bool close_engine_peer = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!peer_store_.Contains(peer.peer_id)) {
-                return WebrtcPeerInfo();
+            const WebrtcPeerInfo current_peer = peer_store_.GetPeer(peer.peer_id);
+            if (state_ != ServiceState::kStarted ||
+                current_peer.peer_id.empty() ||
+                current_peer.state == WebrtcPeerState::kClosing ||
+                current_peer.state == WebrtcPeerState::kClosed ||
+                current_peer.state == WebrtcPeerState::kFailed) {
+                close_engine_peer = true;
+            } else {
+                ++stats_.total_peers;
             }
-            ++stats_.total_peers;
+        }
+        if (close_engine_peer) {
+            (void)engine->ClosePeer(peer.peer_id);
+            return WebrtcPeerInfo();
         }
         RequestKeyFrame(peer.stream_id, KeyFrameReason::kNewClient);
         return peer;
@@ -154,6 +189,7 @@ public:
         WebrtcAnswer result;
         result.peer_id = request.peer_id;
         WebrtcPeerInfo peer;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         std::vector<WebrtcIceCandidate> pending_candidates;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -168,23 +204,22 @@ public:
                 result.error = "peer_not_found";
                 return result;
             }
+            engine = engine_;
         }
 
-        if (!engine_) {
+        if (!engine) {
             result.state = WebrtcPeerState::kFailed;
             result.error = "engine_unavailable";
             return result;
         }
-        const std::string answer = engine_->HandleOffer(peer, request.sdp);
+        const std::string answer = engine->HandleOffer(peer, request.sdp);
 
         if (answer.empty()) {
             {
                 std::lock_guard<std::mutex> guard(mutex_);
                 peer_store_.RemovePeer(request.peer_id);
             }
-            if (engine_ != nullptr) {
-                (void)engine_->ClosePeer(request.peer_id);
-            }
+            (void)engine->ClosePeer(request.peer_id);
             result.state = WebrtcPeerState::kFailed;
             result.error = "sdp_not_ready";
             return result;
@@ -198,17 +233,13 @@ public:
             }
         }
         if (peer.peer_id.empty()) {
-            if (engine_ != nullptr) {
-                (void)engine_->ClosePeer(request.peer_id);
-            }
+            (void)engine->ClosePeer(request.peer_id);
             result.state = WebrtcPeerState::kFailed;
             result.error = "peer_not_found";
             return result;
         }
         for (const WebrtcIceCandidate &candidate : pending_candidates) {
-            if (engine_ != nullptr) {
-                (void)engine_->AddIceCandidate(candidate);
-            }
+            (void)engine->AddIceCandidate(candidate);
         }
         result.sdp = answer;
         result.state = peer.state;
@@ -217,6 +248,7 @@ public:
 
     bool AddIceCandidate(const WebrtcIceCandidate &candidate) override {
         bool queued = false;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || candidate.peer_id.empty() ||
@@ -230,9 +262,10 @@ public:
                 ++stats_.remote_candidates;
                 return true;
             }
+            engine = engine_;
         }
 
-        if (!engine_ || !engine_->AddIceCandidate(candidate)) {
+        if (!engine || !engine->AddIceCandidate(candidate)) {
             return false;
         }
 
@@ -243,6 +276,7 @@ public:
     }
 
     bool ClosePeer(const std::string &peer_id) override {
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (peer_id.empty()) {
@@ -251,12 +285,13 @@ public:
             if (!peer_store_.MarkClosing(peer_id)) {
                 return false;
             }
+            engine = engine_;
         }
 
-        if (engine_ != nullptr) {
-            (void)engine_->ClosePeer(peer_id);
-        }
         ClosePeerReader(peer_id, MediaFrameReaderCloseReason::kDetached);
+        if (engine) {
+            (void)engine->ClosePeer(peer_id);
+        }
 
         std::lock_guard<std::mutex> guard(mutex_);
         (void)peer_store_.RemovePeer(peer_id);
@@ -269,34 +304,91 @@ public:
     }
 
     WebrtcStats GetStats() const override {
-        std::lock_guard<std::mutex> guard(mutex_);
-        WebrtcStats result = stats_;
-        result.enabled = options_.enabled;
-        result.signaling_ready = engine_ && engine_->Available();
-        result.active_peers = peer_store_.ActivePeerCount();
-        result.max_peers = options_.max_peers;
-        if (engine_ != nullptr) {
-            engine_->FillStats(&result);
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        WebrtcStats result;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            result = stats_;
+            result.enabled = options_.enabled;
+            result.active_peers = peer_store_.ActivePeerCount();
+            result.max_peers = options_.max_peers;
+            engine = engine_;
+        }
+        result.signaling_ready = engine && engine->Available();
+        if (engine) {
+            engine->FillStats(&result);
         }
         return result;
     }
 
 private:
+    static WebrtcServiceImpl *EnterServiceCallback(
+        WebrtcServiceCallbackGuard *callback_guard) {
+        if (callback_guard == nullptr) {
+            return nullptr;
+        }
+        std::lock_guard<std::mutex> guard(callback_guard->mutex);
+        if (callback_guard->closing || callback_guard->service == nullptr) {
+            return nullptr;
+        }
+        ++callback_guard->active_callbacks;
+        return callback_guard->service;
+    }
+
+    static void LeaveServiceCallback(
+        WebrtcServiceCallbackGuard *callback_guard) {
+        if (callback_guard == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> guard(callback_guard->mutex);
+        if (callback_guard->active_callbacks == 0) {
+            return;
+        }
+        --callback_guard->active_callbacks;
+        if (callback_guard->active_callbacks == 0) {
+            callback_guard->condition.notify_all();
+        }
+    }
+
+    static void DispatchPeerDrain(
+        const std::shared_ptr<WebrtcServiceCallbackGuard> &callback_guard,
+        const std::string &peer_id) {
+        WebrtcServiceCallbackGuard *guard = callback_guard.get();
+        WebrtcServiceImpl *service = EnterServiceCallback(guard);
+        if (service == nullptr) {
+            return;
+        }
+        service->DrainPeerFrames(peer_id);
+        LeaveServiceCallback(guard);
+    }
+
     static void OnEnginePeerStateChanged(void *user, const char *peer_id,
                                          WebrtcPeerState state) {
         if (user == nullptr || peer_id == nullptr) {
             return;
         }
-        static_cast<WebrtcServiceImpl *>(user)->HandleEnginePeerStateChanged(
-            peer_id, state);
+        WebrtcServiceCallbackGuard *guard =
+            static_cast<WebrtcServiceCallbackGuard *>(user);
+        WebrtcServiceImpl *service = EnterServiceCallback(guard);
+        if (service == nullptr) {
+            return;
+        }
+        service->HandleEnginePeerStateChanged(peer_id, state);
+        LeaveServiceCallback(guard);
     }
 
     static void OnEngineKeyFrameRequested(void *user, const char *peer_id) {
         if (user == nullptr || peer_id == nullptr) {
             return;
         }
-        static_cast<WebrtcServiceImpl *>(user)->HandleEngineKeyFrameRequested(
-            peer_id);
+        WebrtcServiceCallbackGuard *guard =
+            static_cast<WebrtcServiceCallbackGuard *>(user);
+        WebrtcServiceImpl *service = EnterServiceCallback(guard);
+        if (service == nullptr) {
+            return;
+        }
+        service->HandleEngineKeyFrameRequested(peer_id);
+        LeaveServiceCallback(guard);
     }
 
     bool Prepare() {
@@ -308,23 +400,27 @@ private:
             state_ == ServiceState::kStarted || state_ == ServiceState::kStopped) {
             return true;
         }
-        engine_ = webrtc_internal::CreateEngine(
-            dependencies_.use_fake_engine, dependencies_.net_engine);
+        std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
+            webrtc_internal::CreateEngine(dependencies_.use_fake_engine,
+                                          dependencies_.net_engine);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
-        callbacks.user = this;
+        callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged = &WebrtcServiceImpl::OnEnginePeerStateChanged;
         callbacks.OnPeerKeyFrameRequested =
             &WebrtcServiceImpl::OnEngineKeyFrameRequested;
-        if (!engine_->Start(options_, callbacks)) {
-            engine_.reset();
+        if (!engine || !engine->Start(options_, callbacks)) {
             return false;
         }
+        engine_ = std::shared_ptr<webrtc_internal::IWebrtcEngine>(
+            std::move(engine));
         state_ = ServiceState::kInitialized;
         return true;
     }
 
     void Release() {
-        std::unique_ptr<webrtc_internal::IWebrtcEngine> engine;
+        CloseServiceCallbacks();
+        WaitServiceCallbacks();
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         std::vector<PeerReaderResources> reader_resources;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -343,6 +439,19 @@ private:
         }
     }
 
+    void CloseServiceCallbacks() {
+        std::lock_guard<std::mutex> guard(callback_guard_->mutex);
+        callback_guard_->closing = true;
+        callback_guard_->service = nullptr;
+    }
+
+    void WaitServiceCallbacks() {
+        std::unique_lock<std::mutex> guard(callback_guard_->mutex);
+        callback_guard_->condition.wait(guard, [this]() {
+            return callback_guard_->active_callbacks == 0;
+        });
+    }
+
     void HandleEnginePeerStateChanged(const std::string &peer_id,
                                       WebrtcPeerState state) {
         webrtc_internal::EnginePeerStateUpdate update;
@@ -353,8 +462,10 @@ private:
 
         if (state == WebrtcPeerState::kConnected) {
             if (!AttachPeerReader(peer_id)) {
-                if (engine_ != nullptr) {
-                    (void)engine_->ClosePeer(peer_id);
+                std::shared_ptr<webrtc_internal::IWebrtcEngine> engine =
+                    EngineSnapshot();
+                if (engine) {
+                    (void)engine->ClosePeer(peer_id);
                 }
                 std::lock_guard<std::mutex> guard(mutex_);
                 (void)peer_store_.RemovePeer(peer_id);
@@ -391,12 +502,19 @@ private:
     }
 
     void CloseEnginePeers(const std::vector<std::string> &peer_ids) {
-        if (engine_ == nullptr) {
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine =
+            EngineSnapshot();
+        if (!engine) {
             return;
         }
         for (const std::string &peer_id : peer_ids) {
-            (void)engine_->ClosePeer(peer_id);
+            (void)engine->ClosePeer(peer_id);
         }
+    }
+
+    std::shared_ptr<webrtc_internal::IWebrtcEngine> EngineSnapshot() const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return engine_;
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
@@ -418,6 +536,7 @@ private:
         std::vector<MediaFrame> start_frames;
         NetTimerId drain_timer_id = 0;
         bool draining = false;
+        bool closing = false;
     };
 
     struct PeerReaderResources {
@@ -502,9 +621,11 @@ private:
         if (dependencies_.net_engine == nullptr) {
             return;
         }
+        std::shared_ptr<WebrtcServiceCallbackGuard> callback_guard =
+            callback_guard_;
         const NetTimerId timer_id = dependencies_.net_engine->RunOnIoEvery(
-            kWebrtcReaderDrainIntervalMs, [this, peer_id]() {
-                DrainPeerFrames(peer_id);
+            kWebrtcReaderDrainIntervalMs, [callback_guard, peer_id]() {
+                WebrtcServiceImpl::DispatchPeerDrain(callback_guard, peer_id);
             });
         if (timer_id == 0) {
             ClosePeerReader(peer_id, MediaFrameReaderCloseReason::kDetached);
@@ -517,6 +638,7 @@ private:
             auto iter = peer_readers_.find(peer_id);
             if (state_ == ServiceState::kStarted &&
                 iter != peer_readers_.end() &&
+                !iter->second.closing &&
                 iter->second.drain_timer_id == 0) {
                 iter->second.drain_timer_id = timer_id;
                 keep_timer = true;
@@ -541,7 +663,8 @@ private:
             std::lock_guard<std::mutex> guard(mutex_);
             auto iter = peer_readers_.find(peer_id);
             if (state_ == ServiceState::kStarted &&
-                iter != peer_readers_.end()) {
+                iter != peer_readers_.end() &&
+                !iter->second.closing) {
                 reader_id = iter->second.reader_id;
             }
         }
@@ -573,7 +696,12 @@ private:
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = peer_readers_.find(peer_id);
         if (state_ != ServiceState::kStarted ||
-            iter == peer_readers_.end() || iter->second.draining) {
+            iter == peer_readers_.end() || iter->second.draining ||
+            iter->second.closing) {
+            return false;
+        }
+        const WebrtcPeerInfo peer = peer_store_.GetPeer(peer_id);
+        if (peer.state != WebrtcPeerState::kConnected) {
             return false;
         }
         iter->second.draining = true;
@@ -586,6 +714,7 @@ private:
         if (iter != peer_readers_.end()) {
             iter->second.draining = false;
         }
+        reader_condition_.notify_all();
     }
 
     bool FlushPeerStartFrames(const std::string &peer_id) {
@@ -596,7 +725,8 @@ private:
                 std::lock_guard<std::mutex> guard(mutex_);
                 auto iter = peer_readers_.find(peer_id);
                 if (state_ != ServiceState::kStarted ||
-                    iter == peer_readers_.end()) {
+                    iter == peer_readers_.end() ||
+                    iter->second.closing) {
                     return false;
                 }
                 if (!iter->second.start_frames.empty()) {
@@ -618,11 +748,17 @@ private:
     void SendPeerMediaFrame(const std::string &peer_id,
                             const MediaFrame &frame) {
         WebrtcPeerInfo peer;
-        webrtc_internal::IWebrtcEngine *engine = nullptr;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || engine_ == nullptr ||
                 peer_readers_.find(peer_id) == peer_readers_.end()) {
+                ++stats_.dropped_frames;
+                return;
+            }
+            const auto reader_iter = peer_readers_.find(peer_id);
+            if (reader_iter == peer_readers_.end() ||
+                reader_iter->second.closing) {
                 ++stats_.dropped_frames;
                 return;
             }
@@ -632,7 +768,7 @@ private:
                 ++stats_.dropped_frames;
                 return;
             }
-            engine = engine_.get();
+            engine = engine_;
         }
 
         webrtc_internal::WebrtcRtpSenderContext context;
@@ -640,6 +776,22 @@ private:
         context.mutex = &mutex_;
         context.service_stats = &stats_;
         (void)rtp_sender_.SendFrame(peer, frame, context);
+    }
+
+    PeerReaderResources TakePeerReader(const std::string &peer_id) {
+        PeerReaderResources resources;
+        std::unique_lock<std::mutex> guard(mutex_);
+        auto iter = peer_readers_.find(peer_id);
+        if (iter == peer_readers_.end()) {
+            return resources;
+        }
+        iter->second.closing = true;
+        reader_condition_.wait(guard, [this, &peer_id]() {
+            auto reader_iter = peer_readers_.find(peer_id);
+            return reader_iter == peer_readers_.end() ||
+                   !reader_iter->second.draining;
+        });
+        return TakePeerReaderLocked(peer_id);
     }
 
     PeerReaderResources TakePeerReaderLocked(const std::string &peer_id) {
@@ -654,6 +806,21 @@ private:
         peer_readers_.erase(iter);
         rtp_sender_.RemovePeer(peer_id);
         return resources;
+    }
+
+    void MarkAllPeerReadersClosingLocked() {
+        for (auto &item : peer_readers_) {
+            item.second.closing = true;
+        }
+    }
+
+    bool NoPeerReaderDrainingLocked() const {
+        for (const auto &item : peer_readers_) {
+            if (item.second.draining) {
+                return false;
+            }
+        }
+        return true;
     }
 
     std::vector<PeerReaderResources> TakeAllPeerReadersLocked() {
@@ -672,11 +839,7 @@ private:
 
     void ClosePeerReader(const std::string &peer_id,
                          MediaFrameReaderCloseReason reason) {
-        PeerReaderResources resources;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            resources = TakePeerReaderLocked(peer_id);
-        }
+        PeerReaderResources resources = TakePeerReader(peer_id);
         ReleasePeerReader(&resources, reason);
     }
 
@@ -724,8 +887,10 @@ private:
     WebrtcOptions options_;
     WebrtcDependencies dependencies_;
     ServiceState state_ = ServiceState::kCreated;
-    std::unique_ptr<webrtc_internal::IWebrtcEngine> engine_;
+    std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
+    std::shared_ptr<WebrtcServiceCallbackGuard> callback_guard_;
     mutable std::mutex mutex_;
+    std::condition_variable reader_condition_;
     webrtc_internal::WebrtcPeerStore peer_store_;
     std::map<std::string, PeerReader> peer_readers_;
     webrtc_internal::WebrtcRtpSender rtp_sender_;

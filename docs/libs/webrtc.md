@@ -78,8 +78,11 @@ view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入�
 启动 GOP，再周期拉取 live frame。`webrtc_rtp_sender.*` 复用
 `media_mux::RtpPacketizer` 生成 H.264/H.265 RTP packet view，RTP payload type 和
 SSRC 使用 SDP answer 中协商出的发送参数，timestamp 使用 `media_source` 修正后的
-`MediaFrame` PTS，维护每 peer 的 sequence、首帧关键帧门禁和 RTP 包/帧统计；peer
-close、service stop 或失败时会取消 drain timer、detach reader 并释放启动帧引用。
+`MediaFrame` PTS，维护每 peer 的 sequence、首帧关键帧门禁、90k clock rate 校验、
+RTP timestamp 单调门禁和 RTP 包/帧统计。drain timer 发送帧时持有 WebRTC engine
+共享快照；engine 状态回调和 drain timer 通过同一个 callback guard 进入 service，
+避免 service stop/release 与 SRTP 发送并发释放 native transport。peer close、
+service stop 或失败时会取消 drain timer、detach reader 并释放启动帧引用。
 
 ## 状态与资源模型
 

@@ -6,6 +6,7 @@
 #include "webrtc.h"
 
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -16,7 +17,7 @@ class IWebrtcEngine;
 class WebrtcRtpPacketSink;
 
 struct WebrtcRtpSenderContext {
-    IWebrtcEngine *engine = nullptr;
+    std::shared_ptr<IWebrtcEngine> engine;
     std::mutex *mutex = nullptr;
     WebrtcStats *service_stats = nullptr;
 };
@@ -42,6 +43,8 @@ private:
         uint8_t payload_type = 0;
         uint32_t clock_rate = media_mux::kRtpClockRate;
         bool keyframe_seen = false;
+        uint32_t last_rtp_timestamp = 0;
+        bool has_last_rtp_timestamp = false;
     };
 
     bool SendRtpPacketView(const WebrtcPeerInfo &peer,
