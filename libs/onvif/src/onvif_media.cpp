@@ -8,10 +8,8 @@ namespace live_stream {
 namespace onvif {
 namespace {
 
-const std::string &SnapshotPath(const OnvifServerOptions &options,
-                                StreamId stream_id) {
-    return stream_id == StreamId::kSub ? options.snapshot_sub_path
-                                       : options.snapshot_main_path;
+std::string SnapshotPath(StreamId stream_id) {
+    return std::string("/snapshot/") + StreamToken(stream_id) + ".jpg";
 }
 
 bool StreamAvailable(IDeviceMedia *device_media, StreamId stream_id) {
@@ -33,7 +31,7 @@ std::string BuildSnapshotUri(const OnvifServerOptions &options,
                              StreamId stream_id,
                              const std::string &advertise_ip) {
     return std::string("http://") + advertise_ip + ":" +
-           std::to_string(options.http_port) + SnapshotPath(options, stream_id);
+           std::to_string(options.http_port) + SnapshotPath(stream_id);
 }
 
 std::string UnavailableUriFault(uint32_t *status, std::string *reason) {

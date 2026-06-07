@@ -42,7 +42,7 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 | `overlay` | `region` | OSD、隐私遮挡和坐标合法性 |
 | `ai` | `ai` | AI 开关、后端、模型、阈值和告警联动 |
 | `network` | `network_config` | 网口、DHCP/static、DNS、端口展示 |
-| `snapshot` | `snapshot` | 抓图开关、路径、质量和超时 |
+| `snapshot` | `snapshot` | 抓图开关、JPEG 质量和超时 |
 | `rtsp` / `webrtc` / `onvif` / `http` | 对应协议模块 | 协议开关、监听端口、认证和会话上限 |
 | `time` / `system` / `alarm` / `log` | 对应设备或基础模块 | 设备管理、告警和日志运行配置 |
 | `audio` | `CoreSubsystem` 守卫 | 兼容字段，只允许 disabled |
@@ -50,6 +50,8 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 
 `config` 只保证 JSON 加载、默认值、scope 原子替换和 validate/apply 调用顺序。
 字段枚举值、取值范围、热应用失败回滚策略和 HTTP DTO 映射都归拥有模块。
+RTSP stream path、WebRTC signaling path 和 snapshot HTTP path 是协议固定契约，
+不作为可配置字段存放在对应 scope 中。
 `webrtc.public_ip` 缺省、为空或为 `"auto"` 时，运行时由 app 按
 `network.default_ifname` 读取设备当前 IPv4；显式 IPv4 仍作为多网卡、NAT 或端口映射
 场景的手动覆盖值。

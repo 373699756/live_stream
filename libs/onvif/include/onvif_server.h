@@ -34,8 +34,6 @@ struct OnvifServerOptions {
     std::string model = "live_stream_ipc";
     std::string firmware_version = "0.1.0";
     std::string service_path = "/onvif/device_service";
-    std::string snapshot_main_path = "/api/snapshot/main.jpg";
-    std::string snapshot_sub_path = "/api/snapshot/sub.jpg";
     uint16_t http_port = 80;
     uint32_t max_request_bytes = 16 * 1024;
 };

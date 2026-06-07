@@ -170,8 +170,6 @@ export interface NetworkConfig {
 
 export interface SnapshotConfig {
   enabled: boolean;
-  main_path: string;
-  sub_path: string;
   jpeg_quality: number;
   timeout_ms: number;
 }
@@ -180,17 +178,12 @@ export interface RtspConfig {
   enabled: boolean;
   port: number;
   auth_required: boolean;
-  paths: {
-    main: string;
-    sub: string;
-  };
   max_sessions: number;
   session_timeout_sec: number;
 }
 
 export interface WebrtcConfig {
   enabled: boolean;
-  signaling_path: string;
   ice_servers: Array<{
     url: string;
     username?: string;

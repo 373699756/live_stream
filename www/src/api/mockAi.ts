@@ -62,7 +62,7 @@ export const mockAiAlerts: AiAlertList = {
       timestamp_ms: Date.now() - 45_000,
       stream: 'sub',
       task: 'object_detection',
-      image_url: '/api/snapshot/sub.jpg',
+      image_url: '/snapshot/sub.jpg',
       detection_count: 2,
       confidence_max: 0.91,
       detections: mockAiStatus.last_result.detections,
@@ -72,7 +72,7 @@ export const mockAiAlerts: AiAlertList = {
       timestamp_ms: Date.now() - 180_000,
       stream: 'sub',
       task: 'object_detection',
-      image_url: '/api/snapshot/sub.jpg',
+      image_url: '/snapshot/sub.jpg',
       detection_count: 1,
       confidence_max: 0.82,
       detections: [
@@ -91,7 +91,7 @@ export const mockAiAlerts: AiAlertList = {
       timestamp_ms: Date.now() - 360_000,
       stream: 'sub',
       task: 'motion_classification',
-      image_url: '/api/snapshot/sub.jpg',
+      image_url: '/snapshot/sub.jpg',
       detection_count: 1,
       confidence_max: 0.69,
       detections: [

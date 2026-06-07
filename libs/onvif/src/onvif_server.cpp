@@ -97,8 +97,6 @@ public:
         options_.manufacturer = options.manufacturer;
         options_.model = options.model;
         options_.firmware_version = options.firmware_version;
-        options_.snapshot_main_path = options.snapshot_main_path;
-        options_.snapshot_sub_path = options.snapshot_sub_path;
         options_.http_port = options.http_port;
         return true;
     }

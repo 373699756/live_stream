@@ -20,16 +20,6 @@ bool ParseRtspVideoCodec(const std::string &value, VideoCodec *codec) {
     return false;
 }
 
-bool NormalizePath(std::string *path) {
-    if (path == nullptr || path->empty()) {
-        return false;
-    }
-    if ((*path)[0] != '/') {
-        path->insert(path->begin(), '/');
-    }
-    return true;
-}
-
 bool ApplyRtspVideoCodecConfig(const ConfigJson &video,
                                AppRuntimeConfig *config) {
     if (config == nullptr || !video.is_object()) {
@@ -94,13 +84,14 @@ bool ApplySnapshotConfig(const ConfigJson &snapshot, AppRuntimeConfig *config) {
     if (config == nullptr || !snapshot.is_object()) {
         return false;
     }
-    if (!json_utils::ReadField(snapshot, "main_path", &config->snapshot_main_path) ||
-        !NormalizePath(&config->snapshot_main_path) ||
-        !json_utils::ReadField(snapshot, "sub_path", &config->snapshot_sub_path) ||
-        !NormalizePath(&config->snapshot_sub_path)) {
-        return false;
-    }
-    return true;
+    bool enabled = true;
+    uint32_t jpeg_quality = 0;
+    uint32_t timeout_ms = 0;
+    return json_utils::ReadField(snapshot, "enabled", &enabled) &&
+           json_utils::ReadField(snapshot, "jpeg_quality", &jpeg_quality, 1,
+                                 100) &&
+           json_utils::ReadField(snapshot, "timeout_ms", &timeout_ms, 1,
+                                 0xffffffffU);
 }
 
 bool ApplyWebrtcConfig(const ConfigJson &webrtc, AppRuntimeConfig *config) {

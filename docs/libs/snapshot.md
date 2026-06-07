@@ -28,8 +28,10 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `snapshot.h`。`GET /api/snapshot/main.jpg` 和
-`GET /api/snapshot/sub.jpg` 的路由归 HTTP，抓图能力和配置语义归本模块。
+public API 在 `snapshot.h`。`GET /snapshot/main.jpg` 和
+`GET /snapshot/sub.jpg` 的路由归 HTTP，抓图能力和配置语义归本模块。
+snapshot 配置只控制启用状态、JPEG 质量和超时；HTTP/ONVIF 抓图路径固定为
+`/snapshot/{stream}.jpg`，不保留旧 `/api/snapshot/*` 路径配置。
 
 ## 状态与资源模型
 

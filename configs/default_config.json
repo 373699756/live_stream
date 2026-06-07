@@ -94,10 +94,6 @@
     "enabled": true,
     "port": 554,
     "auth_required": true,
-    "paths": {
-      "main": "/live/main",
-      "sub": "/live/sub"
-    },
     "max_sessions": 8,
     "session_timeout_sec": 60
   },
@@ -105,7 +101,6 @@
     "enabled": true,
     "local_port_base": 16000,
     "public_ip": "auto",
-    "signaling_path": "/api/webrtc",
     "ice_servers": [],
     "max_peers": 4,
     "prefer_tcp": false
@@ -127,8 +122,6 @@
   },
   "snapshot": {
     "enabled": true,
-    "main_path": "/api/snapshot/main.jpg",
-    "sub_path": "/api/snapshot/sub.jpg",
     "jpeg_quality": 85,
     "timeout_ms": 2000
   },

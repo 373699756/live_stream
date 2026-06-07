@@ -31,7 +31,7 @@ flowchart LR
 - ONVIF auth。
 - 从 `rtsp` public 契约读取 RTSP listen address 和 stream path，输出 media
   profile 的 RTSP URL。
-- 根据 runtime config 生成 snapshot URL。
+- 按固定 `/snapshot/{stream}.jpg` HTTP 契约生成 snapshot URL。
 
 ## 接口归属
 
@@ -39,7 +39,7 @@ public API 在 `onvif_server.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
 
 `OnvifServer::ApplyOptions()` 支持运行态更新 `advertise_ip`、认证开关、厂商/型号/
-固件版本、snapshot path 和 HTTP 端口，用于后续 discovery、device/media SOAP 响应。
+固件版本和 HTTP 端口，用于后续 discovery、device/media SOAP 响应。
 `device_service_port`、`discovery_port`、`discovery_enabled`、`service_path` 和
 request size 上限涉及 TCP/UDP listener 或 parser 边界，运行时修改会被 app 的
 config attachment 拒绝，必须重启后生效。
@@ -57,7 +57,7 @@ public API 兼容入口。
 
 ONVIF 运行状态包含 discovery socket、HTTP/SOAP request context 和认证校验上下文。
 设备信息、时间和媒体能力从相邻服务获取；RTSP URL 从 `rtsp` public 契约获取；
-snapshot URL 仍由 ONVIF 使用 HTTP 端口和 snapshot path 生成。
+snapshot URL 由 ONVIF 使用 HTTP 端口和固定 `/snapshot/{stream}.jpg` 契约生成。
 
 ## 非目标
 

@@ -15,8 +15,6 @@ struct AppRuntimeConfig {
     std::string listen_ip = "0.0.0.0";
     std::string advertise_host = "127.0.0.1";
     std::string static_root = "web";
-    std::string snapshot_main_path = "/api/snapshot/main.jpg";
-    std::string snapshot_sub_path = "/api/snapshot/sub.jpg";
     std::string onvif_manufacturer = "CBinary";
     std::string onvif_model = "live_stream_ipc";
     std::string onvif_firmware_version = "0.1.0";
