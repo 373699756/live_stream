@@ -15,15 +15,14 @@
 ## AI 入口与上下文策略
 
 - 每次任务先读本文件。
-- 普通编码任务再读：
-  - `docs/active/current_milestone.md`
-  - `docs/active/module_contracts.md`
-  - `docs/active/decision_log.md`
-- `docs/README.md` 是文档索引。`docs/architecture/*`、`docs/contracts/*`、
-  `docs/features/*` 和 `docs/quality/*` 是低频参考文档，只在架构、接口、契约、
-  功能方案、质量扫描或对应模块问题需要时定向读取。
-- 不要在普通实现任务里扩写长设计文档；当前状态更新放 `docs/active/*`，
-  固定架构决策写入 `docs/active/decision_log.md`。
+- 普通编码任务再读 `docs/README.md`，再按任务范围定向读取相关
+  `docs/libs/<module>.md`、`docs/web/web-console-design.md` 或
+  `docs/optimization/memory.md`。
+- `docs/README.md` 是文档索引。长期设计不再按 active、architecture、
+  contracts、features、quality 这类横切目录存放；API、配置、事件、AI、
+  升级、质量工具等内容都归入拥有它们的模块文档。
+- 不要在普通实现任务里扩写长设计文档；状态、接口、契约或架构决策更新到
+  对应模块文档，索引变化同步更新 `docs/README.md`。
 - 为控制 token，日常任务默认只读相关模块和相邻接口；全工程扫描只用于明确的
   架构 review、技术债盘点或用户要求。
 

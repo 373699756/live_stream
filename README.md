@@ -62,4 +62,5 @@ npm run build
 ## Documentation
 
 Start from [docs/README.md](docs/README.md). For AI-assisted work, read
-[AGENTS.md](AGENTS.md) first, then the short files under `docs/active/`.
+[AGENTS.md](AGENTS.md) first, then [docs/README.md](docs/README.md) and the
+module document that owns the change.
