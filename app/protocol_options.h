@@ -5,6 +5,7 @@
 #include "runtime_config.h"
 
 #include "http.h"
+#include "http_console.h"
 #include "infra/executor.h"
 #include "media_pipeline.h"
 #include "net.h"
@@ -35,6 +36,8 @@ OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolRuntimeRefs &refs);
 
 HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config);
+HttpConsoleDependencies BuildHttpConsoleDependencies(
+    const ProtocolRuntimeRefs &refs);
 
 NetAdaptiveOptions BuildNetAdaptiveOptions();
 NetAdaptiveDependencies BuildNetAdaptiveDependencies(

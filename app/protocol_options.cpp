@@ -238,6 +238,30 @@ HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     return options;
 }
 
+HttpConsoleDependencies BuildHttpConsoleDependencies(
+    const ProtocolRuntimeRefs &refs) {
+    HttpConsoleDependencies dependencies;
+    dependencies.net_engine = refs.net_engine;
+    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
+    dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
+    dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;
+    dependencies.network_config = refs.device.network;
+    dependencies.time = refs.device.time;
+    dependencies.alarm = refs.device.alarm;
+    dependencies.upgrade = refs.device.upgrade;
+    dependencies.system = refs.device.system;
+    dependencies.rtsp = refs.rtsp;
+    dependencies.onvif = refs.onvif;
+    dependencies.ai = refs.media.ai;
+    dependencies.device_media = refs.media.device_media;
+    dependencies.snapshot = refs.media.snapshot;
+    dependencies.webrtc = refs.webrtc;
+    dependencies.media_source = refs.media_pipeline;
+    dependencies.media_flv_source = refs.media_pipeline;
+    dependencies.media_mjpeg_source = refs.media_pipeline;
+    return dependencies;
+}
+
 NetAdaptiveOptions BuildNetAdaptiveOptions() {
     NetAdaptiveOptions options;
     return options;
