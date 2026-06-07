@@ -1,6 +1,6 @@
 #include "rtsp_muxer.h"
 
-#include "media_mux.h"
+#include "rtp.h"
 #include "rtsp_protocol.h"
 
 #include <sstream>
@@ -9,8 +9,8 @@ namespace live_stream {
 namespace {
 
 uint8_t PayloadType(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? media_mux::kRtpPayloadTypeH265
-                                      : media_mux::kRtpPayloadTypeH264;
+    return codec == VideoCodec::kH265 ? rtp::kRtpPayloadTypeH265
+                                      : rtp::kRtpPayloadTypeH264;
 }
 
 const char *RtpEncodingName(VideoCodec codec) {
@@ -34,7 +34,7 @@ std::string RtspMuxer::BuildSdp(const RtspListenAddress &address,
     sdp << "a=rtpmap:" << static_cast<int>(payload_type) << " "
         << RtpEncodingName(track.codec) << "/"
         << (track.clock_rate != 0 ? track.clock_rate
-                                  : media_mux::kRtpClockRate)
+                                  : rtp::kRtpClockRate)
         << "\r\n";
     sdp << "a=control:trackID=0\r\n";
     return sdp.str();

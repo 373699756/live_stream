@@ -279,7 +279,7 @@ public:
 
     bool SendRtpPacket(const WebrtcPeerInfo &peer,
                        const EncodedFrame &frame,
-                       const media_mux::RtpPacketView &packet) override {
+                       const rtp::RtpPacketView &packet) override {
         std::lock_guard<std::mutex> guard(mutex_);
         auto it = sessions_.find(peer.peer_id);
         if (it == sessions_.end() || it->second == nullptr) {

@@ -34,7 +34,7 @@ flowchart LR
 - DESCRIBE 只在 `MediaTrack.ready=true` 时生成 SDP；stream 不存在返回 404，
   stream 存在但媒体 track 尚未 ready 返回 455。
 - PLAY 后为 session 创建 `MediaFrameReader`，先输出启动 GOP，再拉取 live
-  frame 并通过 `media_mux::RtpPacketizer` 输出 RTP。
+  frame 并通过 `rtp::RtpPacketizer` 输出 RTP。
 - SETUP 绑定 TCP interleaved 或 session 私有 UDP RTP/RTCP transport。
 
 ## 接口归属
@@ -61,7 +61,7 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 - TEARDOWN、控制连接断开、SETUP 切换 transport 或服务停止时必须取消发送
   timer、detach reader，并关闭 session 私有 UDP socket。
 
-RTP 分片统一使用 `media_mux::RtpPacketizer`。发送层只负责把
+RTP 分片统一使用 `rtp::RtpPacketizer`。发送层只负责把
 `RtpPacketView` 转成 TCP interleaved 或 UDP datagram。TCP interleaved 提交
 interleaved header slice 和 RTP packet view，media payload slice 异步发送时由
 `net` 的 `NetBufferOwner` 保留底层 `VideoBuffer` 引用；UDP 使用同步
@@ -94,6 +94,6 @@ HLS/FLV/MJPEG/WebRTC ready 状态。
 
 - RTSP 客户端断开必须及时 detach reader，`media_source` 的 reader count 应回落。
 - reader 溢出时会由 `media_source` 标记 slow reader 并等待下一个关键帧；
-  RTSP 只上报丢帧/慢客户端自适应事件，不维护私有缓存。
+  RTSP 只维护协议统计和连接状态，不触发降码率、降帧率、切子码流等自适应策略。
 - 关键帧请求由 `AttachFrameReader(keyframe_first=true)` 触发媒体链路，
   RTSP 不额外维护关键帧调试开关。

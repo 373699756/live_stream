@@ -1,4 +1,4 @@
-#include "media_mux.h"
+#include "rtp.h"
 
 #include "byte_writer.h"
 #include "media_codec.h"
@@ -9,7 +9,7 @@
 #include <limits>
 
 namespace live_stream {
-namespace media_mux {
+namespace rtp {
 namespace {
 
 constexpr uint32_t kMinRtpMtuBytes = 64;
@@ -287,5 +287,5 @@ bool RtpPacketizer::PacketizeH265(const RtpPacketizerInput &input,
     return true;
 }
 
-}  // namespace media_mux
+}  // namespace rtp
 }  // namespace live_stream

@@ -3,7 +3,6 @@
 
 #include "media/frame_attach.h"
 #include "media_source.h"
-#include "media_mux.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +11,18 @@
 
 namespace live_stream {
 namespace media_source_internal {
+
+struct TsMuxerState {
+    uint8_t pat_continuity = 0;
+    uint8_t pmt_continuity = 0;
+    uint8_t video_continuity = 0;
+};
+
+struct TsSegmentBuffer {
+    uint8_t *data = nullptr;
+    size_t capacity = 0;
+    size_t size = 0;
+};
 
 // Owns the in-memory MPEG-TS HLS segment lifecycle for one media stream.
 // Segments become visible to playlists only after FinalizeCurrentSegment().
@@ -55,11 +66,10 @@ private:
     static uint32_t ClampSegmentCapacity(size_t capacity);
     static bool EnsureSegmentCapacity(SegmentState *segment,
                                       size_t extra_bytes);
-    static media_mux::TsSegmentBuffer SegmentBuffer(
-        SegmentState *segment);
+    static TsSegmentBuffer SegmentBuffer(SegmentState *segment);
     static bool CommitSegmentBuffer(
         SegmentState *segment,
-        const media_mux::TsSegmentBuffer &buffer);
+        const TsSegmentBuffer &buffer);
 
     void ClearSegments();
     void ObserveFrameTiming(const EncodedFrame &frame);
@@ -78,7 +88,7 @@ private:
 
     std::deque<MediaSegmentRef> segments_;
     SegmentState current_segment_;
-    media_mux::TsMuxerState ts_muxer_state_;
+    TsMuxerState ts_muxer_state_;
     uint32_t next_segment_capacity_ = 0;
     uint64_t next_segment_sequence_ = 1;
     int64_t last_pts_us_ = -1;

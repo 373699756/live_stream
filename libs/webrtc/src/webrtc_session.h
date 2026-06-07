@@ -54,7 +54,7 @@ public:
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
                            bool *request_key_frame);
     bool SendRtpPacket(const EncodedFrame &frame,
-                       const media_mux::RtpPacketView &packet);
+                       const rtp::RtpPacketView &packet);
 
     bool GetRtpSendParameters(WebrtcRtpSendParameters *parameters) const;
     void FillPeerDiagnostics(WebrtcPeerInfo *peer) const;
@@ -73,7 +73,7 @@ private:
     std::string local_ice_pwd_;
     std::unique_ptr<WebrtcTransport> transport_;
     uint8_t rtp_payload_type_ = 0;
-    uint32_t rtp_clock_rate_ = media_mux::kRtpClockRate;
+    uint32_t rtp_clock_rate_ = rtp::kRtpClockRate;
     uint32_t rtp_ssrc_ = 0;
     bool has_remote_candidate_ = false;
 };

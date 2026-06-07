@@ -3,7 +3,7 @@
 
 #include "webrtc.h"
 
-#include "media_mux.h"
+#include "rtp.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +28,7 @@ struct WebrtcEngineCallbacks {
 struct WebrtcRtpSendParameters {
     VideoCodec codec = VideoCodec::kH264;
     uint8_t payload_type = 0;
-    uint32_t clock_rate = media_mux::kRtpClockRate;
+    uint32_t clock_rate = rtp::kRtpClockRate;
     uint32_t ssrc = 0;
 };
 
@@ -52,7 +52,7 @@ public:
                                    const uint8_t *data, size_t size) = 0;
     virtual bool SendRtpPacket(const WebrtcPeerInfo &peer,
                                const EncodedFrame &frame,
-                               const media_mux::RtpPacketView &packet) = 0;
+                               const rtp::RtpPacketView &packet) = 0;
     virtual bool GetRtpSendParameters(
         const std::string &peer_id,
         WebrtcRtpSendParameters *parameters) const = 0;

@@ -99,7 +99,7 @@ bool BuildPolicy(SrtpDirection direction, SrtpCryptoSuite suite,
   return true;
 }
 
-bool CopyRtpPacket(const media_mux::RtpPacketView &packet,
+bool CopyRtpPacket(const rtp::RtpPacketView &packet,
                    std::vector<uint8_t> *buffer) {
   if (buffer == nullptr || packet.Size() == 0) {
     return false;
@@ -108,7 +108,7 @@ bool CopyRtpPacket(const media_mux::RtpPacketView &packet,
   buffer->assign(packet_size + SRTP_MAX_TRAILER_LEN, 0);
   size_t offset = 0;
   for (size_t i = 0; i < packet.slice_count; ++i) {
-    const media_mux::RtpPacketSlice &slice = packet.slices[i];
+    const rtp::RtpPacketSlice &slice = packet.slices[i];
     if (slice.data == nullptr || slice.size == 0 ||
         offset > packet_size || slice.size > packet_size - offset) {
       return false;
@@ -174,7 +174,7 @@ void SrtpSession::Close() {
 }
 
 bool SrtpSession::ProtectRtp(
-    const media_mux::RtpPacketView &packet,
+    const rtp::RtpPacketView &packet,
     std::vector<uint8_t> *protected_packet) {
   if (session_ == nullptr || protected_packet == nullptr ||
       !CopyRtpPacket(packet, protected_packet)) {

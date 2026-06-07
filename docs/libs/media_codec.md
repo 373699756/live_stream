@@ -6,8 +6,9 @@
 
 ## 模块定位
 
-`media_codec` 提供 H.264/H.265/MJPEG 等码流解析和格式辅助能力。它是媒体和协议
-热路径的工具模块，不拥有 client session、HTTP 路由或媒体源状态。
+`media_codec` 提供 H.264/H.265 等码流解析和格式辅助能力。它是媒体和协议
+热路径的 codec 工具模块，不拥有 client session、HTTP 路由、RTP packetizer 或
+媒体源状态。
 
 ## 总体框架图
 
@@ -15,14 +16,15 @@
 flowchart LR
   Encoded[EncodedFrame] --> Codec[media_codec]
   Codec --> Parse[NAL/codec metadata]
-  Codec --> Mux[media_mux/media_source]
+  Codec --> Source[media_source FLV/HLS metadata]
+  Codec --> RTP[rtp packetizer]
   Codec --> Protocol[RTSP/WebRTC/HTTP-FLV/HLS]
 ```
 
 ## 核心职责
 
 - 遍历 AnnexB NAL，解析 H.264/H.265 NAL type、关键帧和 parameter sets。
-- 为 HLS/FLV/RTP 等下游封装提供 codec metadata、SPS/PPS/VPS 和 IDR 判断。
+- 为 HLS/FLV/RTP 等下游输出提供 codec metadata、SPS/PPS/VPS 和 IDR 判断。
 - 提供 AnnexB/AVCC/HVCC 基础转换工具，异常输入必须返回失败状态。
 - 保持无业务状态或极少状态，供热路径复用。
 
@@ -63,6 +65,8 @@ metadata 输出。
   `media_source`。
 - RTSP/WebRTC/HLS/HTTP-FLV 相邻接口只消费 `media_codec` 的 parser/metadata，
   不在协议模块内新增私有 H.264/H.265 parser。
+- RTP packet view 归 `rtp`，FLV/HLS 封装归 `media_source`/`http_media`
+  等拥有边界。
 - `ForEachAnnexBNalUnit` 输入为一帧 AnnexB payload，输出非空 NAL view；空输入、
   没有可用 NAL、start code 不完整或 sink 返回失败时整体返回失败。
 - `ExtractH264ParameterSets` 和 `ExtractH265ParameterSets` 只用于低频 metadata
@@ -72,7 +76,7 @@ metadata 输出。
 
 ## 非目标
 
-- 不拥有 HLS/FLV/RTP 封装输出。
+- 不拥有 HLS/FLV/RTP 封装输出或 packetizer。
 - 不维护 GOP cache、sequence header cache 或媒体 ready 状态。
 - 不处理音频 codec。
 

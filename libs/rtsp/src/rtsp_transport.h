@@ -4,7 +4,7 @@
 #include "media/encoded_frame.h"
 #include "net.h"
 #include "rtsp.h"
-#include "media_mux.h"
+#include "rtp.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +24,7 @@ class RtspTransport {
   static bool SendRtpPacket(NetEngine *net_engine,
                             const RtspTransportTarget &target,
                             const EncodedFrame &frame,
-                            const media_mux::RtpPacketView &packet);
+                            const rtp::RtpPacketView &packet);
 };
 
 }  // namespace live_stream

@@ -5,7 +5,7 @@
 #include "infra/log.h"
 #include "infra/time.h"
 #include "media_source.h"
-#include "media_mux.h"
+#include "rtp.h"
 #include "net.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
@@ -68,7 +68,6 @@ public:
           auth_(dependencies.auth),
           event_(dependencies.event),
           media_source_(dependencies.media_source),
-          adaptive_observer_(dependencies.adaptive_observer),
           rtp_sender_(options_.rtp_mtu_bytes),
           request_handler_(this) {}
 
@@ -412,7 +411,7 @@ private:
         track.stream_id = stream_id;
         track.codec = stream_id == StreamId::kSub ? options_.sub_video_codec
                                                   : options_.main_video_codec;
-        track.clock_rate = media_mux::kRtpClockRate;
+        track.clock_rate = rtp::kRtpClockRate;
         if (media_source_ == nullptr ||
             !media_source_->IsStreamAvailable(stream_id)) {
             return track;
@@ -772,7 +771,6 @@ private:
                                   start_data.track);
             session->SetStartFrames(&start_data.gop_frames);
         }
-        NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
         MediaFrameReaderStartDataUnref(&start_data);
         return 200;
     }
@@ -807,19 +805,6 @@ private:
         event.source = kServiceName;
         event.target = target;
         (void)event_->Publish(event);
-    }
-
-    void NotifyAdaptive(const RtspSession& session, RtspAdaptiveEventType event) {
-        if (adaptive_observer_ == nullptr) {
-            return;
-        }
-        RtspAdaptiveSample sample;
-        sample.event = event;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            sample.session = session.stats;
-        }
-        (void)adaptive_observer_->OnRtspAdaptiveSample(sample);
     }
 
     void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
@@ -869,11 +854,6 @@ private:
             }
             SendMediaFrame(session, reader_frame.frame);
             MediaFrameReaderFrameUnref(&reader_frame);
-        }
-        MediaFrameReaderStatus status =
-            media_source_->GetFrameReaderStatus(reader_id);
-        if (status.attached && status.slow_reader) {
-            NotifyAdaptive(*session, RtspAdaptiveEventType::kFrameDropped);
         }
     }
 
@@ -978,7 +958,6 @@ private:
         context.net_engine = net_engine_;
         context.mutex = &mutex_;
         context.service_stats = &stats_;
-        context.adaptive_observer = adaptive_observer_;
         return context;
     }
 
@@ -987,7 +966,6 @@ private:
     IAuth* auth_ = nullptr;
     IEvent* event_ = nullptr;
     IMediaFrameSource* media_source_ = nullptr;
-    IRtspAdaptiveObserver* adaptive_observer_ = nullptr;
     RtspRtpSender rtp_sender_;
     RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;

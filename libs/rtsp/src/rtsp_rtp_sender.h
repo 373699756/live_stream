@@ -5,7 +5,7 @@
 #include "net.h"
 #include "rtsp.h"
 #include "rtsp_session.h"
-#include "media_mux.h"
+#include "rtp.h"
 
 #include <memory>
 #include <mutex>
@@ -18,7 +18,6 @@ struct RtspRtpSenderContext {
   NetEngine *net_engine = nullptr;
   std::mutex *mutex = nullptr;
   RtspStats *service_stats = nullptr;
-  IRtspAdaptiveObserver *adaptive_observer = nullptr;
 };
 
 class RtspRtpSender {
@@ -34,13 +33,9 @@ class RtspRtpSender {
 
   bool SendRtpPacketView(const std::shared_ptr<RtspSession> &session,
                          const EncodedFrame &frame,
-                         const media_mux::RtpPacketView &packet,
+                         const rtp::RtpPacketView &packet,
                          const RtspRtpSenderContext &context);
-  void NotifyAdaptive(const RtspRtpSenderContext &context,
-                      const RtspSession &session,
-                      RtspAdaptiveEventType event) const;
-
-  media_mux::RtpPacketizer packetizer_;
+  rtp::RtpPacketizer packetizer_;
 };
 
 }  // namespace live_stream

@@ -3,7 +3,7 @@
 
 #include "dtls_transport.h"
 #include "ice_transport.h"
-#include "media_mux.h"
+#include "rtp.h"
 #include "net.h"
 #include "srtp_session.h"
 #include "webrtc.h"
@@ -71,7 +71,7 @@ public:
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
                            bool *request_key_frame);
     bool SendRtpPacket(const EncodedFrame &frame,
-                       const media_mux::RtpPacketView &packet);
+                       const rtp::RtpPacketView &packet);
 
     bool MatchesSocket(UdpSocketId socket_id) const;
     bool ice_connected() const;

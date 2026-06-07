@@ -2,7 +2,7 @@
 #define LIVE_STREAM_WEBRTC_SRC_WEBRTC_RTP_SENDER_H_
 
 #include "media_source.h"
-#include "media_mux.h"
+#include "rtp.h"
 #include "webrtc.h"
 
 #include <map>
@@ -41,7 +41,7 @@ private:
         uint32_t ssrc = 0;
         VideoCodec codec = VideoCodec::kH264;
         uint8_t payload_type = 0;
-        uint32_t clock_rate = media_mux::kRtpClockRate;
+        uint32_t clock_rate = rtp::kRtpClockRate;
         bool keyframe_seen = false;
         uint32_t last_rtp_timestamp = 0;
         bool has_last_rtp_timestamp = false;
@@ -49,10 +49,10 @@ private:
 
     bool SendRtpPacketView(const WebrtcPeerInfo &peer,
                            const EncodedFrame &frame,
-                           const media_mux::RtpPacketView &packet,
+                           const rtp::RtpPacketView &packet,
                            const WebrtcRtpSenderContext &context);
 
-    media_mux::RtpPacketizer packetizer_;
+    rtp::RtpPacketizer packetizer_;
     std::map<std::string, PeerRtpState> peers_;
 };
 

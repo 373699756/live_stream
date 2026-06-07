@@ -6,7 +6,7 @@
 
 namespace live_stream {
 
-class RtspRtpPacketSink final : public media_mux::IRtpPacketSink {
+class RtspRtpPacketSink final : public rtp::IRtpPacketSink {
  public:
   RtspRtpPacketSink(RtspRtpSender *sender,
                     std::shared_ptr<RtspSession> session,
@@ -17,7 +17,7 @@ class RtspRtpPacketSink final : public media_mux::IRtpPacketSink {
         frame_(frame),
         context_(context) {}
 
-  bool OnRtpPacket(const media_mux::RtpPacketView &packet) override {
+  bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
     if (sender_ == nullptr || frame_ == nullptr || context_ == nullptr ||
         !ok_) {
       return false;
@@ -68,7 +68,6 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
     }
   }
   if (should_drop) {
-    NotifyAdaptive(context, *session, RtspAdaptiveEventType::kFrameDropped);
     return;
   }
 
@@ -79,21 +78,17 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
   }
 
   RtspRtpPacketSink sink(this, session, &frame, &context);
-  const bool packetized =
-      packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
+  (void)packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
   {
     std::lock_guard<std::mutex> lock(*context.mutex);
     session->rtp_sequence = sequence;
-  }
-  if (!packetized) {
-    NotifyAdaptive(context, *session, RtspAdaptiveEventType::kFrameDropped);
   }
 }
 
 bool RtspRtpSender::SendRtpPacketView(
     const std::shared_ptr<RtspSession> &session,
     const EncodedFrame &frame,
-    const media_mux::RtpPacketView &packet,
+    const rtp::RtpPacketView &packet,
     const RtspRtpSenderContext &context) {
   if (session == nullptr || context.mutex == nullptr ||
       context.service_stats == nullptr) {
@@ -123,12 +118,10 @@ bool RtspRtpSender::SendRtpPacketView(
       ++session->stats.dropped_frames;
       ++context.service_stats->dropped_frames;
     }
-    NotifyAdaptive(context, *session, RtspAdaptiveEventType::kFrameDropped);
     {
       std::lock_guard<std::mutex> lock(*context.mutex);
       ++context.service_stats->slow_client_closes;
     }
-    NotifyAdaptive(context, *session, RtspAdaptiveEventType::kSlowClientClosed);
     if (context.net_engine != nullptr) {
       (void)context.net_engine->Close(target.connection_id);
     }
@@ -146,23 +139,7 @@ bool RtspRtpSender::SendRtpPacketView(
     ++context.service_stats->sent_rtp_packets;
     context.service_stats->sent_rtp_bytes += packet_size;
   }
-  NotifyAdaptive(context, *session, RtspAdaptiveEventType::kSample);
   return true;
-}
-
-void RtspRtpSender::NotifyAdaptive(const RtspRtpSenderContext &context,
-                                   const RtspSession &session,
-                                   RtspAdaptiveEventType event) const {
-  if (context.adaptive_observer == nullptr || context.mutex == nullptr) {
-    return;
-  }
-  RtspAdaptiveSample sample;
-  sample.event = event;
-  {
-    std::lock_guard<std::mutex> lock(*context.mutex);
-    sample.session = session.stats;
-  }
-  (void)context.adaptive_observer->OnRtspAdaptiveSample(sample);
 }
 
 }  // namespace live_stream

@@ -48,7 +48,7 @@ CXXFLAGS += -Ilibs/network_config/include
 CXXFLAGS += -Ilibs/network_config/src
 CXXFLAGS += -Ilibs/time/include
 CXXFLAGS += -Ilibs/media_codec/include
-CXXFLAGS += -Ilibs/media_mux/include
+CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
 CXXFLAGS += -Ilibs/ai/include
 CXXFLAGS += -Ilibs/device_media/include
@@ -83,6 +83,7 @@ SERVICES := \
 	ai \
 	hisi_vendor \
 	device_media \
+	rtp \
 	media_source \
 	media_pipeline \
 	region \
@@ -94,8 +95,7 @@ SERVICES := \
 	upgrade \
 	http_media \
 	http \
-	media_codec \
-	media_mux
+	media_codec
 
 SERVICE_LIBS :=
 APP_SRCS := \

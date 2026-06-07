@@ -1,9 +1,8 @@
 #ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_GOP_CACHE_H_
 #define LIVE_STREAM_MEDIA_SOURCE_SRC_GOP_CACHE_H_
 
+#include "flv_muxer.h"
 #include "media_source.h"
-
-#include "media_mux.h"
 
 #include <array>
 #include <cstddef>
@@ -23,12 +22,12 @@ public:
     size_t size() const { return size_; }
     uint32_t FirstFlvTagSize() const;
     bool AppendFlvTag(const EncodedFrame &frame, bool keyframe,
-                      const media_mux::FlvVideoTagView &flv_tag_view);
+                      const FlvVideoTagView &flv_tag_view);
     void CopyTo(MediaFlvStartData *start_data) const;
 
 private:
     bool CopyFlvTagView(const EncodedFrame &frame,
-                        const media_mux::FlvVideoTagView &source,
+                        const FlvVideoTagView &source,
                         MediaFlvCachedVideoTag *target) const;
 
     std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames_;

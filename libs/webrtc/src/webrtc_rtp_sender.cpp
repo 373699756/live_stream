@@ -8,7 +8,7 @@
 namespace live_stream {
 namespace webrtc_internal {
 
-class WebrtcRtpPacketSink final : public media_mux::IRtpPacketSink {
+class WebrtcRtpPacketSink final : public rtp::IRtpPacketSink {
 public:
     WebrtcRtpPacketSink(WebrtcRtpSender *sender,
                         const WebrtcPeerInfo *peer,
@@ -19,7 +19,7 @@ public:
           frame_(frame),
           context_(context) {}
 
-    bool OnRtpPacket(const media_mux::RtpPacketView &packet) override {
+    bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
         if (sender_ == nullptr || peer_ == nullptr || frame_ == nullptr ||
             context_ == nullptr || !ok_) {
             return false;
@@ -98,7 +98,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     WebrtcRtpSendParameters parameters;
     if (!context.engine->GetRtpSendParameters(peer.peer_id, &parameters) ||
         parameters.codec != frame.codec || parameters.payload_type == 0 ||
-        parameters.clock_rate != media_mux::kRtpClockRate ||
+        parameters.clock_rate != rtp::kRtpClockRate ||
         parameters.ssrc == 0) {
         std::lock_guard<std::mutex> guard(*context.mutex);
         ++context.service_stats->dropped_frames;
@@ -137,7 +137,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     }
 
     WebrtcRtpPacketSink sink(this, &peer, &frame.encoded_frame, &context);
-    media_mux::RtpPacketizerInput input;
+    rtp::RtpPacketizerInput input;
     input.codec = frame.codec;
     input.payload = EncodedFramePayloadData(&frame.encoded_frame);
     input.payload_size = frame.encoded_frame.size;
@@ -172,7 +172,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
 bool WebrtcRtpSender::SendRtpPacketView(
     const WebrtcPeerInfo &peer,
     const EncodedFrame &frame,
-    const media_mux::RtpPacketView &packet,
+    const rtp::RtpPacketView &packet,
     const WebrtcRtpSenderContext &context) {
     if (!context.engine || context.mutex == nullptr ||
         context.service_stats == nullptr || packet.Size() == 0) {

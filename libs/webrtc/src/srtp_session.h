@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_SRC_SRTP_SESSION_H_
 #define LIVE_STREAM_WEBRTC_SRC_SRTP_SESSION_H_
 
-#include "media_mux.h"
+#include "rtp.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -54,7 +54,7 @@ class SrtpSession {
              const std::vector<uint8_t> &master_key);
   void Close();
 
-  bool ProtectRtp(const media_mux::RtpPacketView &packet,
+  bool ProtectRtp(const rtp::RtpPacketView &packet,
                   std::vector<uint8_t> *protected_packet);
   bool ProtectRtcp(const uint8_t *data, size_t size,
                    std::vector<uint8_t> *protected_packet);
