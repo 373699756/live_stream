@@ -68,7 +68,7 @@ HttpServer::HttpServer(const HttpOptions &options,
                        const HttpDependencies &dependencies,
                        HttpRequestHandler *request_handler)
     : options_(options),
-      dependencies_(dependencies),
+      net_engine_(dependencies.net_engine),
       request_handler_(request_handler) {}
 
 HttpServer::~HttpServer() {
@@ -81,7 +81,7 @@ bool HttpServer::Prepare() {
     if (initialized_) {
         return true;
     }
-    if (dependencies_.net_engine == nullptr || request_handler_ == nullptr) {
+    if (net_engine_ == nullptr || request_handler_ == nullptr) {
         return false;
     }
     if (options_.max_request_header_bytes == 0 ||
@@ -117,7 +117,7 @@ bool HttpServer::Start() {
                            "HTTP server start skipped: already started");
             return true;
         }
-        if (dependencies_.net_engine == nullptr) {
+        if (net_engine_ == nullptr) {
             Error(kHttpModuleName,
                             "HTTP server start failed: net engine null");
             return false;
@@ -152,8 +152,7 @@ bool HttpServer::Start() {
     callbacks.on_accept = &HttpServer::HandleAccept;
     callbacks.on_read = &HttpServer::HandleRead;
     callbacks.on_close = &HttpServer::HandleClose;
-    TcpServerId server =
-        dependencies_.net_engine->ListenTcp(server_config, callbacks);
+    TcpServerId server = net_engine_->ListenTcp(server_config, callbacks);
     if (server == 0) {
         Error(kHttpModuleName, "HTTP listen tcp failed");
         StopExecutor(control_executor);
@@ -198,7 +197,7 @@ void HttpServer::Stop() {
         started_ = false;
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
-        net_engine = dependencies_.net_engine;
+        net_engine = net_engine_;
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {
@@ -242,11 +241,10 @@ void HttpServer::Release() {
 
 HttpListenAddress HttpServer::LocalAddress() const {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (dependencies_.net_engine == nullptr || tcp_server_id_ == 0) {
+    if (net_engine_ == nullptr || tcp_server_id_ == 0) {
         return HttpListenAddress{};
     }
-    NetAddress address =
-        dependencies_.net_engine->TcpLocalAddress(tcp_server_id_);
+    NetAddress address = net_engine_->TcpLocalAddress(tcp_server_id_);
     HttpListenAddress result;
     result.ip = address.ip;
     result.port = address.port;
@@ -310,7 +308,7 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
     NetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = dependencies_.net_engine;
+        net_engine = net_engine_;
     }
     if (net_engine == nullptr) {
         return false;
@@ -424,7 +422,7 @@ void HttpServer::CloseConnection(ConnectionId connection_id) {
     NetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = dependencies_.net_engine;
+        net_engine = net_engine_;
     }
     if (net_engine != nullptr) {
         (void)net_engine->Close(connection_id);
@@ -497,7 +495,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                             size);
             return false;
         }
-        net_engine = dependencies_.net_engine;
+        net_engine = net_engine_;
     }
     if (net_engine == nullptr) {
         Error(kHttpModuleName,
@@ -699,7 +697,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
             !iter->second->ArmTimer(&generation)) {
             return;
         }
-        net_engine = dependencies_.net_engine;
+        net_engine = net_engine_;
     }
     if (net_engine == nullptr) {
         return;
@@ -714,7 +712,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                 should_close =
                     iter != sessions_.end() && iter->second != nullptr &&
                     iter->second->IsTimerCurrent(generation);
-                engine = dependencies_.net_engine;
+                engine = net_engine_;
             }
             if (should_close && engine != nullptr) {
                 (void)engine->Close(connection_id);

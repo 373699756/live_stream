@@ -81,6 +81,9 @@ npm run build
   等整个项目功能完成后再统一处理，除非任务明确要求。
 - 不随意修改 public API、配置 JSON schema 或 HTTP API 契约，除非任务明确要求。
 - 配置文件中的字段语义应保持向后兼容；确需变更时，要同步更新调用方和文档。
+- `*Dependencies` struct 只作为组合根构造注入 DTO，不作为实现类长期保存的依赖包；
+  实现类应解包为语义明确的非 owning 成员指针。业务 service、net、media、auth
+  不做全局单例或 ServiceLocator。
 
 ## 前端约定
 

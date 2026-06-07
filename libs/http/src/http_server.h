@@ -99,7 +99,7 @@ private:
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
 
     HttpOptions options_;
-    HttpDependencies dependencies_;
+    NetEngine *net_engine_ = nullptr;
     HttpRequestHandler *request_handler_ = nullptr;
     HttpMediaCloseCallback close_callback_;
     mutable std::mutex mutex_;

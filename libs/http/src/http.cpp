@@ -36,7 +36,6 @@ HttpServiceImpl::HttpServiceImpl(
     const HttpOptions &options,
     const HttpDependencies &dependencies)
     : options_(options),
-      dependencies_(dependencies),
       server_(new HttpServer(options, dependencies, this)) {}
 
 HttpServiceImpl::~HttpServiceImpl() {

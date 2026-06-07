@@ -159,7 +159,8 @@ class MediaPipelineImpl : public IMediaPipeline, public IFrameSink {
 public:
     MediaPipelineImpl(MediaPipelineOptions options,
                       MediaPipelineDependencies dependencies)
-        : options_(std::move(options)), dependencies_(dependencies) {}
+        : options_(std::move(options)),
+          device_media_(dependencies.device_media) {}
 
     ~MediaPipelineImpl() override { StopInternal(); }
 
@@ -174,7 +175,7 @@ public:
             if (run_state_ == MediaPipelineRunState::kStarting) {
                 return false;
             }
-            device_media = dependencies_.device_media;
+            device_media = device_media_;
             if (!worker_executor_) {
                 worker_executor_.reset(new infra::Executor());
             }
@@ -308,7 +309,7 @@ private:
             if (run_state_ == MediaPipelineRunState::kStopped) {
                 return;
             }
-            device_media = dependencies_.device_media;
+            device_media = device_media_;
             main_attach_id = main_attach_id_;
             sub_attach_id = sub_attach_id_;
             ResetRuntimeStateLocked();
@@ -447,7 +448,7 @@ public:
             client_id = flv_live_ring_.AttachReader(
                 stream_id, config_generation, wait_for_keyframe, sink,
                 options_.max_flv_clients);
-            device_media = dependencies_.device_media;
+            device_media = device_media_;
         }
         if (device_media != nullptr) {
             (void)device_media->RequestKeyFrame(stream_id,
@@ -503,7 +504,7 @@ public:
             }
             reader_id = frame_ring_.AttachReader(options, nullptr,
                                                  options_.max_frame_sinks);
-            device_media = dependencies_.device_media;
+            device_media = device_media_;
             request_key_frame = options.keyframe_first;
         }
         if (device_media != nullptr && request_key_frame) {
@@ -571,7 +572,7 @@ public:
             reader_options.reader_name = options.sink_name;
             sink_id = frame_ring_.AttachReader(reader_options, sink,
                                                options_.max_frame_sinks);
-            device_media = dependencies_.device_media;
+            device_media = device_media_;
             request_key_frame = options.require_key_frame_first;
         }
         if (device_media != nullptr && request_key_frame) {
@@ -589,10 +590,10 @@ public:
 
     bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
         if (!IsStreamSupported(stream_id) ||
-            dependencies_.device_media == nullptr) {
+            device_media_ == nullptr) {
             return false;
         }
-        return dependencies_.device_media->RequestKeyFrame(stream_id, reason);
+        return device_media_->RequestKeyFrame(stream_id, reason);
     }
 
     MediaSourceStats GetStats() const override {
@@ -653,8 +654,8 @@ public:
     void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
         VideoCodec video_codec = VideoCodec::kH264;
         if (state == StreamState::kRunning &&
-            dependencies_.device_media != nullptr) {
-            video_codec = dependencies_.device_media->GetStreamCodec(stream_id);
+            device_media_ != nullptr) {
+            video_codec = device_media_->GetStreamCodec(stream_id);
         }
         std::lock_guard<std::mutex> guard(mutex_);
         SetStreamStateLocked(stream_id, state, video_codec);
@@ -1058,7 +1059,7 @@ private:
     }
 
     MediaPipelineOptions options_;
-    MediaPipelineDependencies dependencies_;
+    IDeviceMedia *device_media_ = nullptr;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
     PendingFrameQueue main_pending_;

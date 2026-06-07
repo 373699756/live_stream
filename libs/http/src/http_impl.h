@@ -77,7 +77,6 @@ private:
     HttpResponse HandleStaticFile(const HttpRequest &request);
 
     HttpOptions options_;
-    HttpDependencies dependencies_;
     IAuth *auth_ = nullptr;
     ILogger *logger_ = nullptr;
     mutable std::mutex mutex_;
