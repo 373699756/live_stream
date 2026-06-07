@@ -48,9 +48,11 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/auth/*` | `auth` |
 | `/api/config/*` | `device_media`、`region`、`network_config`、`snapshot`、`ai` |
 | `/api/media/streams` | `media_source` / `device_media` |
+| `/api/media/capabilities` | `device_media` |
 | `/api/media/streams/{stream}` | `media_source` / `device_media` |
 | `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `snapshot` |
 | `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` diagnostics |
+| `/api/status/image-strategy` | `device_media` |
 | `/api/webrtc/peers` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/offer` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/candidates` | `http_media` / `webrtc` |
@@ -89,6 +91,9 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `snapshot` | `/snapshot/{stream}.jpg` | `snapshot` |
 | `rtsp` | 后端按 Host、RTSP 端口、认证配置生成完整 URL | `rtsp` / `http` helper |
 | `webrtc_whep` | `/live/{stream}/whep`，可选 | `http_media` / `webrtc` |
+
+`/snapshot/{stream}.jpg`、`/live/*` 和 WHEP SDP 路径是播放/二进制媒体入口，
+不返回 JSON envelope；它们仍由 HTTP 路由鉴权和资源上限保护。
 
 ## 状态与资源模型
 

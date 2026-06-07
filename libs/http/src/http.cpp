@@ -249,7 +249,7 @@ void HttpConsole::ConfigureConsoleHandlers(
     handlers_.push_back(CreateMediaHttpHandler(
         this, config, device_media, media_source,
         rtsp, webrtc));
-    handlers_.push_back(CreateAiHttpHandler(this, config, ai));
+    handlers_.push_back(CreateAiHttpHandler(this, config, ai, device_media));
     handlers_.push_back(CreateSnapshotHttpHandler(
         this, device_media, snapshot));
     handlers_.push_back(CreateHlsHttpHandler(

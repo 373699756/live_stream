@@ -4,6 +4,7 @@
 
 #include "ai.h"
 #include "config.h"
+#include "device_media.h"
 
 #include <cctype>
 #include <string>
@@ -132,19 +133,43 @@ ConfigJson AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
     return root;
 }
 
+ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
+    ConfigJson root = ConfigJson::object();
+    root["enabled"] = status.enabled;
+    root["active"] = status.active;
+    root["exposure_valid"] = status.exposure_valid;
+    root["iso"] = status.iso;
+    root["exposure_time_us"] = status.exposure_time_us;
+    root["analog_gain"] = status.analog_gain;
+    root["digital_gain"] = status.digital_gain;
+    root["isp_digital_gain"] = status.isp_digital_gain;
+    root["mode"] = status.mode;
+    root["tier"] = status.tier;
+    root["saturation"] = status.saturation;
+    root["sharpness"] = status.sharpness;
+    root["denoise_2d"] = status.denoise_2d;
+    root["denoise_3d"] = status.denoise_3d;
+    root["gamma"] = status.gamma;
+    return root;
+}
+
 }  // namespace
 
 class AiHttpHandler : public IHttpHandler {
 public:
     AiHttpHandler(HttpAccess *access, IConfig *config,
-                  IAiView *ai)
+                  IAiView *ai, IDeviceMedia *device_media)
         : access_(access), config_(config),
-          ai_(ai) {}
+          ai_(ai), device_media_(device_media) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
             return;
         }
+        router->AddExactRoute(HttpMethod::kGet,
+                              "/api/status/image-strategy",
+                              &AiHttpHandler::HandleImageStrategyRoute,
+                              this);
         router->AddExactRoute(HttpMethod::kGet, "/api/ai/status",
                               &AiHttpHandler::HandleStatusRoute, this);
         router->AddExactRoute(HttpMethod::kGet, "/api/ai/alerts",
@@ -164,9 +189,30 @@ private:
         return static_cast<AiHttpHandler *>(user)->HandleAlerts(request);
     }
 
+    static HttpResponse HandleImageStrategyRoute(void *user,
+                                                 const HttpRequest &request) {
+        return static_cast<AiHttpHandler *>(user)->HandleImageStrategy(
+            request);
+    }
+
     static HttpResponse HandleAlertImageRoute(void *user,
                                               const HttpRequest &request) {
         return static_cast<AiHttpHandler *>(user)->HandleAlertImage(request);
+    }
+
+    HttpResponse HandleImageStrategy(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        if (device_media_ == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        return JsonResponse(
+            200, ImageStrategyStatusToJson(
+                     device_media_->GetImageStrategyStatus()));
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
@@ -247,12 +293,14 @@ private:
     HttpAccess *access_ = nullptr;
     IConfig *config_ = nullptr;
     IAiView *ai_ = nullptr;
+    IDeviceMedia *device_media_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> CreateAiHttpHandler(HttpAccess *access,
-                    IConfig *config, IAiView *ai) {
+                    IConfig *config, IAiView *ai,
+                    IDeviceMedia *device_media) {
     return std::unique_ptr<IHttpHandler>(
-        new AiHttpHandler(access, config, ai));
+        new AiHttpHandler(access, config, ai, device_media));
 }
 
 }  // namespace live_stream

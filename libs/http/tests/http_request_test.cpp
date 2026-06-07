@@ -215,7 +215,13 @@ public:
     return channels;
   }
   live_stream::ImageStrategyStatus GetImageStrategyStatus() const override {
-    return live_stream::ImageStrategyStatus();
+    live_stream::ImageStrategyStatus status;
+    status.enabled = true;
+    status.active = true;
+    status.mode = "balanced";
+    status.tier = "day";
+    status.saturation = 52;
+    return status;
   }
 };
 
@@ -295,13 +301,23 @@ int main() {
     return 5;
   }
 
+  live_stream::HttpResponse image_strategy =
+      console->HandleRequest(Request(live_stream::HttpMethod::kGet,
+                                     "/api/status/image-strategy",
+                                     "",
+                                     "admin-token"));
+  if (image_strategy.status_code != 200 ||
+      !Contains(image_strategy.body, "\"balanced\"")) {
+    return 6;
+  }
+
   live_stream::HttpResponse snapshot =
       console->HandleRequest(Request(live_stream::HttpMethod::kGet,
-                                     "/api/snapshot/main.jpg",
+                                     "/snapshot/main.jpg",
                                      "",
                                      "admin-token"));
   if (snapshot.status_code != 501) {
-    return 6;
+    return 7;
   }
 
   live_stream::HttpResponse not_impl =
@@ -310,7 +326,7 @@ int main() {
                                      "",
                                      "admin-token"));
   if (not_impl.status_code != 501) {
-    return 7;
+    return 8;
   }
 
   console->Stop();

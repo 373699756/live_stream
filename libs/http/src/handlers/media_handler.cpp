@@ -32,6 +32,192 @@ const char *VideoCodecToJsonString(VideoCodec codec) {
     return "unknown";
 }
 
+const char *RateControlToJsonString(RateControlMode mode) {
+    switch (mode) {
+        case RateControlMode::kCbr:
+            return "cbr";
+        case RateControlMode::kVbr:
+            return "vbr";
+        case RateControlMode::kFixQp:
+            return "fixqp";
+    }
+    return "cbr";
+}
+
+ConfigJson NumericControlToJson(const NumericControlCapability &capability) {
+    ConfigJson root = ConfigJson::object();
+    root["min"] = capability.min;
+    root["max"] = capability.max;
+    root["default"] = capability.default_value;
+    root["runtime_supported"] = capability.runtime_supported;
+    return root;
+}
+
+ConfigJson OptionControlToJson(const OptionControlCapability &capability) {
+    ConfigJson root = ConfigJson::object();
+    ConfigJson values = ConfigJson::array();
+    for (const std::string &value : capability.values) {
+        values.push_back(value);
+    }
+    root["values"] = values;
+    root["default"] = capability.default_value;
+    root["runtime_supported"] = capability.runtime_supported;
+    return root;
+}
+
+ConfigJson NumericControlsToJson(
+    const std::vector<NumericControlCapability> &capabilities) {
+    ConfigJson root = ConfigJson::object();
+    for (const NumericControlCapability &capability : capabilities) {
+        root[capability.name] = NumericControlToJson(capability);
+    }
+    return root;
+}
+
+ConfigJson OptionControlsToJson(
+    const std::vector<OptionControlCapability> &capabilities) {
+    ConfigJson root = ConfigJson::object();
+    for (const OptionControlCapability &capability : capabilities) {
+        root[capability.name] = OptionControlToJson(capability);
+    }
+    return root;
+}
+
+ConfigJson VideoStreamCapabilitiesToJson(
+    StreamId stream_id, const VideoStreamCapabilities *capabilities) {
+    ConfigJson root = ConfigJson::object();
+    root["stream"] = StreamIdToJsonString(stream_id);
+    root["available"] = capabilities != nullptr;
+    root["codecs"] = ConfigJson::array();
+    root["resolutions"] = ConfigJson::array();
+    root["rate_control"] = ConfigJson::array();
+    root["smart_codec"] = false;
+    if (capabilities == nullptr) {
+        ConfigJson fps = ConfigJson::object();
+        fps["min"] = 0;
+        fps["max"] = 0;
+        root["fps"] = fps;
+        ConfigJson bitrate = ConfigJson::object();
+        bitrate["min"] = 0;
+        bitrate["max"] = 0;
+        root["bitrate_kbps"] = bitrate;
+        ConfigJson gop = ConfigJson::object();
+        gop["min"] = 0;
+        gop["max"] = 0;
+        root["gop"] = gop;
+        return root;
+    }
+
+    ConfigJson codecs = ConfigJson::array();
+    for (const CodecCapability &codec : capabilities->codecs) {
+        ConfigJson item = ConfigJson::object();
+        item["codec"] = VideoCodecToJsonString(codec.codec);
+        ConfigJson profiles = ConfigJson::array();
+        for (const std::string &profile : codec.profiles) {
+            profiles.push_back(profile);
+        }
+        item["profiles"] = profiles;
+        codecs.push_back(item);
+    }
+    root["codecs"] = codecs;
+
+    ConfigJson resolutions = ConfigJson::array();
+    for (const VideoResolution &resolution : capabilities->resolutions) {
+        ConfigJson item = ConfigJson::object();
+        item["width"] = resolution.width;
+        item["height"] = resolution.height;
+        resolutions.push_back(item);
+    }
+    root["resolutions"] = resolutions;
+
+    ConfigJson fps = ConfigJson::object();
+    fps["min"] = capabilities->frame_rate.min_fps;
+    fps["max"] = capabilities->frame_rate.max_fps;
+    root["fps"] = fps;
+
+    ConfigJson bitrate = ConfigJson::object();
+    bitrate["min"] = capabilities->bitrate.min_kbps;
+    bitrate["max"] = capabilities->bitrate.max_kbps;
+    root["bitrate_kbps"] = bitrate;
+
+    ConfigJson rate_control = ConfigJson::array();
+    for (RateControlMode mode : capabilities->rate_control_modes) {
+        rate_control.push_back(RateControlToJsonString(mode));
+    }
+    root["rate_control"] = rate_control;
+
+    ConfigJson gop = ConfigJson::object();
+    gop["min"] = capabilities->gop.min;
+    gop["max"] = capabilities->gop.max;
+    root["gop"] = gop;
+    root["smart_codec"] = capabilities->smart_codec_supported;
+    return root;
+}
+
+const VideoStreamCapabilities *FindStreamCapabilities(
+    const MediaCapabilities &capabilities, StreamId stream_id) {
+    for (const VideoStreamCapabilities &stream : capabilities.streams) {
+        if (stream.stream_id == stream_id) {
+            return &stream;
+        }
+    }
+    return nullptr;
+}
+
+ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
+    ConfigJson root = ConfigJson::object();
+    root["basic"] = NumericControlsToJson(capabilities.basic);
+
+    ConfigJson exposure = ConfigJson::object();
+    exposure["options"] =
+        OptionControlsToJson(capabilities.exposure_options);
+    exposure["ranges"] = NumericControlsToJson(capabilities.exposure_ranges);
+    root["exposure"] = exposure;
+
+    ConfigJson white_balance = ConfigJson::object();
+    white_balance["options"] =
+        OptionControlsToJson(capabilities.white_balance_options);
+    white_balance["ranges"] =
+        NumericControlsToJson(capabilities.white_balance_ranges);
+    root["white_balance"] = white_balance;
+
+    ConfigJson enhancement = ConfigJson::object();
+    enhancement["options"] =
+        OptionControlsToJson(capabilities.enhancement_options);
+    enhancement["ranges"] =
+        NumericControlsToJson(capabilities.enhancement_ranges);
+    root["enhancement"] = enhancement;
+
+    ConfigJson backlight = ConfigJson::object();
+    backlight["options"] =
+        OptionControlsToJson(capabilities.backlight_options);
+    backlight["ranges"] = NumericControlsToJson(capabilities.backlight_ranges);
+    root["backlight"] = backlight;
+
+    root["color_mode"] =
+        OptionControlsToJson(capabilities.color_mode_options);
+
+    ConfigJson orientation = ConfigJson::object();
+    orientation["mirror"] = capabilities.mirror_supported;
+    orientation["flip"] = capabilities.flip_supported;
+    root["orientation"] = orientation;
+    return root;
+}
+
+ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
+    ConfigJson root = ConfigJson::object();
+    ConfigJson streams = ConfigJson::object();
+    streams["main"] = VideoStreamCapabilitiesToJson(
+        StreamId::kMain,
+        FindStreamCapabilities(capabilities, StreamId::kMain));
+    streams["sub"] = VideoStreamCapabilitiesToJson(
+        StreamId::kSub,
+        FindStreamCapabilities(capabilities, StreamId::kSub));
+    root["streams"] = streams;
+    root["image"] = ImageCapabilitiesToJson(capabilities.image);
+    return root;
+}
+
 bool HasReadyBrowserProtocol(const MediaSourceStatus &status) {
     return status.hls_ready || status.flv_ready || status.mjpeg_ready;
 }
@@ -242,6 +428,9 @@ public:
         }
         router->AddExactRoute(HttpMethod::kGet, "/api/media/streams",
                               &MediaHttpHandler::HandleStreamsRoute, this);
+        router->AddExactRoute(HttpMethod::kGet, "/api/media/capabilities",
+                              &MediaHttpHandler::HandleCapabilitiesRoute,
+                              this);
         router->AddPrefixRoute(HttpMethod::kGet, "/api/media/streams/",
                                &MediaHttpHandler::HandleStreamRoute, this);
         router->AddExactRoute(HttpMethod::kGet, "/api/media/sessions",
@@ -257,6 +446,12 @@ private:
     static HttpResponse HandleStreamRoute(void *user,
                                           const HttpRequest &request) {
         return static_cast<MediaHttpHandler *>(user)->HandleStream(request);
+    }
+
+    static HttpResponse HandleCapabilitiesRoute(void *user,
+                                                const HttpRequest &request) {
+        return static_cast<MediaHttpHandler *>(user)->HandleCapabilities(
+            request);
     }
 
     static HttpResponse HandleSessionsRoute(void *user,
@@ -284,6 +479,18 @@ private:
                                             media_source_, webrtc_));
         root["items"] = items;
         return JsonResponse(200, root);
+    }
+
+    HttpResponse HandleCapabilities(const HttpRequest &request) {
+        AuthPrincipal principal;
+        if (!RequireReadStatus(request, &principal)) {
+            return ForbiddenResponse(principal);
+        }
+        if (device_media_ == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        return JsonResponse(
+            200, MediaCapabilitiesToJson(device_media_->GetCapabilities()));
     }
 
     HttpResponse HandleStream(const HttpRequest &request) {

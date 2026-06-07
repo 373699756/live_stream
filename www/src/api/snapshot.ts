@@ -19,5 +19,5 @@ export function snapshotUrl(
     entries: tick > 0 ? { t: String(tick) } : undefined,
     includeToken,
   });
-  return `/api/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
+  return `/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
 }

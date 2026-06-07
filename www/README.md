@@ -57,9 +57,11 @@ The UI calls these JSON API groups:
 - `GET /api/auth/me`
 - `GET/PUT /api/config/*`
 - `GET /api/media/streams`
+- `GET /api/media/capabilities`
 - `GET /api/media/streams/{stream}`
 - `GET /api/media/streams/{stream}/urls`
 - `GET /api/media/sessions`
+- `GET /api/status/image-strategy`
 - `POST /api/webrtc/peers`
 - `POST /api/webrtc/peers/{peer_id}/offer`
 - `POST /api/webrtc/peers/{peer_id}/candidates`
@@ -98,6 +100,8 @@ or the WebRTC implementation. MJPEG preview uses the backend-provided
 `mjpeg` URL when the active stream codec is `mjpeg`.
 
 `GET /api/media/streams` is the runtime source of truth for preview state.
+`GET /api/media/capabilities` is the runtime source of truth for video and
+image form capability limits.
 `GET /api/media/streams/{stream}/urls` returns all playback URLs:
 
 - HLS: `/live/{stream}/hls/index.m3u8`

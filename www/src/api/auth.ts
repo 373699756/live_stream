@@ -1,5 +1,6 @@
 import {
   authHeaders,
+  type ApiEnvelope,
   managedRequestSignal,
   readError,
   useMockFallback,
@@ -17,6 +18,13 @@ interface AuthResponse {
   expires_at_ms?: number;
   principal?: AuthPrincipal;
   must_change_password?: boolean;
+}
+
+function unwrapAuthResponse(body: AuthResponse | ApiEnvelope<AuthResponse>): AuthResponse {
+  if ('ok' in body && typeof body.ok === 'boolean') {
+    return (body.data || {}) as AuthResponse;
+  }
+  return body as AuthResponse;
 }
 
 export interface LoginResult extends AuthState {
@@ -54,7 +62,9 @@ export async function login(
         error: await readError(response),
       };
     }
-    const body = (await response.json()) as AuthResponse;
+    const body = unwrapAuthResponse(
+      (await response.json()) as AuthResponse | ApiEnvelope<AuthResponse>,
+    );
     if (!body.token) {
       return {
         authenticated: false,
@@ -90,7 +100,9 @@ export async function validateSession(): Promise<AuthState> {
       removeToken();
       return { authenticated: false, mustChangePassword: false };
     }
-    const body = (await response.json()) as AuthResponse;
+    const body = unwrapAuthResponse(
+      (await response.json()) as AuthResponse | ApiEnvelope<AuthResponse>,
+    );
     return stateFromAuthResponse(body);
   } catch {
     if (useMockFallback) {
