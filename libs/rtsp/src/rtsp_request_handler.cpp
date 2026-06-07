@@ -94,6 +94,12 @@ void RtspRequestHandler::HandleDescribe(
     const rtsp_internal::RtspRequest &request, StreamId stream_id) {
   session->MarkDescribed(stream_id);
   MediaTrack track = delegate_->RtspTrackForStream(stream_id);
+  if (!track.ready) {
+    Error(kRtspRequestHandlerModule,
+          "RTSP describe stream not ready uri=%s", request.uri.c_str());
+    SendResponse(session->connection_id, 455, request, {}, "");
+    return;
+  }
   track.stream_id = stream_id;
   const std::string sdp = RtspMuxer::BuildSdp(delegate_->RtspLocalAddress(),
                                               track);
@@ -110,8 +116,9 @@ void RtspRequestHandler::HandlePlay(
     SendResponse(session->connection_id, 455, request, {}, "");
     return;
   }
-  if (!delegate_->StartRtspPlayback(session)) {
-    SendResponse(session->connection_id, 500, request, {}, "");
+  const int playback_status = delegate_->StartRtspPlayback(session);
+  if (playback_status != 200) {
+    SendResponse(session->connection_id, playback_status, request, {}, "");
     return;
   }
   Info(kRtspRequestHandlerModule,

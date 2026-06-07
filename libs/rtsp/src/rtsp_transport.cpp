@@ -54,9 +54,7 @@ bool RtspTransport::SendRtpPacket(
   if (target.mode == RtspTransportMode::kUdp && target.udp_socket_id != 0) {
     for (size_t i = 0; ok && i < packet.slice_count; ++i) {
       const media_mux::RtpPacketSlice &slice = packet.slices[i];
-      ok = slices.Add(slice.data, slice.size,
-                      slice.media_payload ? payload_owner
-                                          : NetBufferOwner{});
+      ok = slices.Add(slice.data, slice.size);
     }
     return ok && net_engine->SendToSlices(target.udp_socket_id,
                                           target.udp_peer, slices);

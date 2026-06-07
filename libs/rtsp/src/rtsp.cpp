@@ -39,6 +39,13 @@ struct RtspPeerAuthGrant {
     int64_t expires_at_ms = 0;
 };
 
+std::string AddressText(const NetAddress &address) {
+    if (address.ip.empty() || address.port == 0) {
+        return std::string();
+    }
+    return address.ip + ":" + std::to_string(address.port);
+}
+
 }  // namespace
 
 using rtsp_internal::BasicRealmHeader;
@@ -102,6 +109,7 @@ public:
 
         TcpListenOptions tcp_config;
         tcp_config.address = {options_.listen_ip, options_.listen_port};
+        tcp_config.owner_protocol = kServiceName;
         tcp_config.max_connections = options_.max_sessions;
         tcp_config.send_queue_capacity = options_.send_queue_capacity;
         tcp_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
@@ -196,6 +204,65 @@ public:
         return stats;
     }
 
+    std::vector<RtspSessionDiagnostics>
+    GetSessionDiagnostics() const override {
+        std::vector<std::shared_ptr<RtspSession>> sessions;
+        RtspListenAddress local_address;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessions = sessions_.Sessions();
+            local_address = local_address_;
+        }
+
+        std::vector<RtspSessionDiagnostics> diagnostics;
+        diagnostics.reserve(sessions.size());
+        for (const std::shared_ptr<RtspSession> &session : sessions) {
+            if (session == nullptr) {
+                continue;
+            }
+            RtspSessionDiagnostics item;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                item.session_id = session->session_id;
+                item.stream_id = session->stream_id;
+                item.transport = session->transport;
+                item.remote_address = AddressText(session->peer);
+                item.reader_id = session->reader_id;
+                item.pending_bytes = session->stats.pending_bytes;
+                item.rtp_packets = session->stats.sent_rtp_packets;
+                item.rtp_bytes = session->stats.sent_rtp_bytes;
+                item.close_reason = TcpCloseReasonName(session->close_reason);
+            }
+            if (net_engine_ != nullptr) {
+                const NetConnectionDiagnostics net_diagnostics =
+                    net_engine_->GetConnectionDiagnostics(
+                        session->connection_id);
+                const bool has_net_diagnostics =
+                    net_diagnostics.connection_id == session->connection_id;
+                if (has_net_diagnostics &&
+                    !net_diagnostics.local_address.ip.empty() &&
+                    net_diagnostics.local_address.port != 0) {
+                    item.local_address =
+                        AddressText(net_diagnostics.local_address);
+                }
+                if (has_net_diagnostics && item.pending_bytes == 0) {
+                    item.pending_bytes = net_diagnostics.pending_bytes;
+                }
+                if (has_net_diagnostics) {
+                    item.close_reason =
+                        TcpCloseReasonName(net_diagnostics.close_reason);
+                }
+            }
+            if (item.local_address.empty()) {
+                item.local_address =
+                    local_address.ip + ":" +
+                    std::to_string(local_address.port);
+            }
+            diagnostics.push_back(std::move(item));
+        }
+        return diagnostics;
+    }
+
 private:
     static void HandleAccept(void* user, ConnectionId id, NetAddress peer) {
         RtspImpl* self = static_cast<RtspImpl*>(user);
@@ -264,6 +331,10 @@ private:
         }
         if (!session) {
             return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session->MarkCloseReason(reason);
         }
         CloseSessionResources(session, MediaFrameReaderCloseReason::kDetached);
         Info("rtsp",
@@ -342,11 +413,29 @@ private:
         track.codec = stream_id == StreamId::kSub ? options_.sub_video_codec
                                                   : options_.main_video_codec;
         track.clock_rate = media_mux::kRtpClockRate;
-        if (media_source_ != nullptr &&
-            media_source_->IsStreamAvailable(stream_id)) {
-            track.codec = media_source_->GetStreamCodec(stream_id);
-            track.ready = true;
+        if (media_source_ == nullptr ||
+            !media_source_->IsStreamAvailable(stream_id)) {
+            return track;
         }
+
+        MediaFrameReaderOptions reader_options;
+        reader_options.stream_id = stream_id;
+        reader_options.keyframe_first = false;
+        reader_options.reader_name = kServiceName;
+        const MediaFrameReaderId reader_id =
+            media_source_->AttachFrameReader(reader_options);
+        if (reader_id == 0) {
+            return track;
+        }
+
+        MediaFrameReaderStartData start_data =
+            media_source_->GetFrameReaderStartData(reader_id);
+        if (start_data.track.ready) {
+            track = start_data.track;
+        }
+        MediaFrameReaderStartDataUnref(&start_data);
+        (void)media_source_->DetachFrameReader(
+            reader_id, MediaFrameReaderCloseReason::kDetached);
         return track;
     }
 
@@ -650,10 +739,13 @@ private:
             RtspPeerAuthGrant{peer_ip, stream_id, user_name, expires_at_ms});
     }
 
-    bool StartRtspPlayback(
+    int StartRtspPlayback(
         const std::shared_ptr<RtspSession>& session) override {
         if (session == nullptr || media_source_ == nullptr) {
-            return false;
+            return 500;
+        }
+        if (!media_source_->IsStreamAvailable(session->stream_id)) {
+            return 404;
         }
         CloseSessionReader(session, MediaFrameReaderCloseReason::kDetached);
         MediaFrameReaderOptions reader_options;
@@ -663,7 +755,7 @@ private:
         const MediaFrameReaderId reader_id =
             media_source_->AttachFrameReader(reader_options);
         if (reader_id == 0) {
-            return false;
+            return 455;
         }
         MediaFrameReaderStartData start_data =
             media_source_->GetFrameReaderStartData(reader_id);
@@ -671,7 +763,7 @@ private:
             media_source_->DetachFrameReader(
                 reader_id, MediaFrameReaderCloseReason::kDetached);
             MediaFrameReaderStartDataUnref(&start_data);
-            return false;
+            return 455;
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -682,7 +774,7 @@ private:
         }
         NotifyAdaptive(*session, RtspAdaptiveEventType::kKeyFrameRequested);
         MediaFrameReaderStartDataUnref(&start_data);
-        return true;
+        return 200;
     }
 
     void ArmRtspPlayback(

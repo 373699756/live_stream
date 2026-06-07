@@ -43,6 +43,7 @@ class RtspSession {
   void SetDrainTimer(NetTimerId timer_id);
   void ClearDrainTimer();
   void Close();
+  void MarkCloseReason(TcpCloseReason reason);
   void MarkAuthenticated(StreamId stream_id, std::string user_name);
   bool IsAuthenticatedFor(StreamId stream_id) const;
 
@@ -67,6 +68,7 @@ class RtspSession {
   bool authenticated = false;
   StreamId authenticated_stream_id = StreamId::kMain;
   std::string authenticated_user;
+  TcpCloseReason close_reason = TcpCloseReason::kNormal;
   RtspSessionStats stats;
 
  private:

@@ -119,6 +119,10 @@ void RtspSession::Close() {
   state = RtspSessionState::kClosed;
 }
 
+void RtspSession::MarkCloseReason(TcpCloseReason reason) {
+  close_reason = reason;
+}
+
 void RtspSession::MarkAuthenticated(StreamId next_stream_id,
                                     std::string user_name) {
   authenticated = true;

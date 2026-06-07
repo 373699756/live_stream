@@ -31,7 +31,8 @@ flowchart LR
 - 监听 RTSP 端口并管理 sessions。
 - 处理 DESCRIBE/SETUP/PLAY/TEARDOWN 等 RTSP 控制。
 - 通过认证服务保护 RTSP 访问。
-- DESCRIBE 根据 `MediaTrack` 生成 SDP。
+- DESCRIBE 只在 `MediaTrack.ready=true` 时生成 SDP；stream 不存在返回 404，
+  stream 存在但媒体 track 尚未 ready 返回 455。
 - PLAY 后为 session 创建 `MediaFrameReader`，先输出启动 GOP，再拉取 live
   frame 并通过 `media_mux::RtpPacketizer` 输出 RTP。
 - SETUP 绑定 TCP interleaved 或 session 私有 UDP RTP/RTCP transport。
@@ -61,8 +62,10 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
   timer、detach reader，并关闭 session 私有 UDP socket。
 
 RTP 分片统一使用 `media_mux::RtpPacketizer`。发送层只负责把
-`RtpPacketView` 转成 TCP interleaved 或 UDP datagram；media payload slice
-异步发送时由 `net` 的 `NetBufferOwner` 保留底层 `VideoBuffer` 引用。
+`RtpPacketView` 转成 TCP interleaved 或 UDP datagram。TCP interleaved 提交
+interleaved header slice 和 RTP packet view，media payload slice 异步发送时由
+`net` 的 `NetBufferOwner` 保留底层 `VideoBuffer` 引用；UDP 使用同步
+`sendmsg` 发送 packet view，不保留无主 owner 引用。
 
 `RtspSessionDiagnostics` 字段冻结为：
 
@@ -77,7 +80,9 @@ RTP 分片统一使用 `media_mux::RtpPacketizer`。发送层只负责把
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
 | `close_reason` | 来自 `net` 或 RTSP close path 的关闭原因 |
 
-这些字段由 `/api/media/sessions` 聚合给 Web；RTSP 模块只提供协议诊断，不提供
+`IRtsp::GetSessionDiagnostics()` 输出当前 RTSP sessions 的上述字段；pending
+bytes 和 close reason 优先读取 `net` 的 connection diagnostics。这些字段由
+`/api/media/sessions` 聚合给 Web；RTSP 模块只提供协议诊断，不提供
 HLS/FLV/MJPEG/WebRTC ready 状态。
 
 ## 非目标

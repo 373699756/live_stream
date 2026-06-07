@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 
@@ -82,6 +83,19 @@ struct RtspSessionStats {
     uint64_t dropped_frames = 0;
 };
 
+struct RtspSessionDiagnostics {
+    uint64_t session_id = 0;
+    StreamId stream_id = StreamId::kMain;
+    RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
+    std::string remote_address;
+    std::string local_address;
+    uint64_t reader_id = 0;
+    uint32_t pending_bytes = 0;
+    uint64_t rtp_packets = 0;
+    uint64_t rtp_bytes = 0;
+    std::string close_reason;
+};
+
 struct RtspStats {
     uint32_t active_sessions = 0;
     uint64_t total_sessions = 0;
@@ -131,6 +145,8 @@ public:
     virtual void Stop() = 0;
     virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspStats GetStats() const = 0;
+    virtual std::vector<RtspSessionDiagnostics>
+    GetSessionDiagnostics() const = 0;
 };
 
 std::unique_ptr<IRtsp> CreateRtsp(

@@ -22,7 +22,7 @@ class IRtspRequestHandlerDelegate {
   virtual bool SetupRtspTransport(const std::shared_ptr<RtspSession> &session,
                                   const rtsp_internal::RtspRequest &request,
                                   StreamId stream_id) = 0;
-  virtual bool StartRtspPlayback(const std::shared_ptr<RtspSession> &session) = 0;
+  virtual int StartRtspPlayback(const std::shared_ptr<RtspSession> &session) = 0;
   virtual void ArmRtspPlayback(const std::shared_ptr<RtspSession> &session) = 0;
   virtual void CloseRtspConnectionAfterSend(ConnectionId connection_id) = 0;
   virtual void SendRtspResponse(
