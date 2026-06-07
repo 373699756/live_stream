@@ -40,6 +40,39 @@ const char *WebrtcPeerStateName(WebrtcPeerState state) {
     return "unknown";
 }
 
+std::string RequiredWhepPrefix(StreamId stream_id) {
+    return std::string("/live/") + HttpMediaStreamIdToJsonString(stream_id) +
+           "/whep";
+}
+
+bool ParseWhepPath(const HttpRequest &request, StreamId *stream_id,
+                   std::string *peer_id) {
+    if (stream_id == nullptr || peer_id == nullptr) {
+        return false;
+    }
+    const std::string remaining = HttpMediaPathSuffix(request.path, "/live/");
+    const size_t slash = remaining.find('/');
+    if (slash == std::string::npos || slash == 0) {
+        return false;
+    }
+    const std::string stream_name = remaining.substr(0, slash);
+    if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
+        return false;
+    }
+    const std::string whep_path = remaining.substr(slash + 1);
+    if (whep_path == "whep") {
+        peer_id->clear();
+        return true;
+    }
+    const std::string prefix = "whep/";
+    if (!HttpMediaStartsWith(whep_path, prefix) ||
+        whep_path.size() <= prefix.size()) {
+        return false;
+    }
+    *peer_id = whep_path.substr(prefix.size());
+    return !peer_id->empty();
+}
+
 HttpResponse HandleCreatePeer(IWebrtc *webrtc,
                               const HttpRequest &request,
                               const ConfigJson &body,
@@ -170,6 +203,64 @@ HttpResponse HandleClosePeer(IWebrtc *webrtc,
     return HttpMediaJsonResponse(200, root);
 }
 
+HttpResponse BuildWhepCreateResponse(IWebrtc *webrtc,
+                                     const HttpRequest &request,
+                                     const AuthPrincipal &principal) {
+    StreamId stream_id = StreamId::kMain;
+    std::string path_peer_id;
+    if (!ParseWhepPath(request, &stream_id, &path_peer_id) ||
+        !path_peer_id.empty()) {
+        return HttpMediaTextResponse(404, "Not Found");
+    }
+    if (request.body.empty()) {
+        return HttpMediaTextResponse(400, "Missing SDP offer");
+    }
+
+    WebrtcCreatePeerRequest create_request;
+    create_request.stream_id = stream_id;
+    create_request.client_id = "whep";
+    create_request.session_id = principal.session_id;
+    create_request.user_name = principal.user_name;
+    create_request.client_ip = request.client_ip;
+    const WebrtcPeerInfo peer = webrtc->CreatePeer(create_request);
+    if (peer.peer_id.empty()) {
+        return HttpMediaTextResponse(503, "Could not create WHEP peer");
+    }
+
+    WebrtcOfferRequest offer;
+    offer.peer_id = peer.peer_id;
+    offer.sdp = request.body;
+    const WebrtcAnswer answer = webrtc->HandleOffer(offer);
+    if (answer.sdp.empty()) {
+        (void)webrtc->ClosePeer(peer.peer_id);
+        return HttpMediaTextResponse(
+            503, answer.error.empty() ? "Could not create WHEP answer"
+                                      : answer.error);
+    }
+
+    HttpResponse response;
+    response.status_code = 201;
+    response.headers["Content-Type"] = "application/sdp";
+    response.headers["Location"] =
+        RequiredWhepPrefix(stream_id) + "/" + peer.peer_id;
+    response.body = answer.sdp;
+    return response;
+}
+
+HttpResponse BuildWhepDeleteResponse(IWebrtc *webrtc,
+                                     const HttpRequest &request) {
+    StreamId stream_id = StreamId::kMain;
+    std::string peer_id;
+    if (!ParseWhepPath(request, &stream_id, &peer_id) || peer_id.empty()) {
+        return HttpMediaTextResponse(404, "Not Found");
+    }
+    (void)stream_id;
+    if (!webrtc->ClosePeer(peer_id)) {
+        return HttpMediaTextResponse(404, "WHEP peer not found");
+    }
+    return HttpMediaTextResponse(204, std::string());
+}
+
 }  // namespace
 
 class WebrtcHttpHandler : public IHttpHandler {
@@ -195,6 +286,10 @@ public:
                               &WebrtcHttpHandler::HandleClosePeerRoute, this);
         router->AddExactRoute(HttpMethod::kDelete, "/api/webrtc/close",
                               &WebrtcHttpHandler::HandleClosePeerRoute, this);
+        router->AddPrefixRoute(HttpMethod::kPost, "/live/",
+                              &WebrtcHttpHandler::HandleWhepCreateRoute, this);
+        router->AddPrefixRoute(HttpMethod::kDelete, "/live/",
+                              &WebrtcHttpHandler::HandleWhepDeleteRoute, this);
     }
 
 private:
@@ -222,6 +317,18 @@ private:
             request, &HandleClosePeer);
     }
 
+    static HttpResponse HandleWhepCreateRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWhepCreate(
+            request);
+    }
+
+    static HttpResponse HandleWhepDeleteRoute(void *user,
+                                              const HttpRequest &request) {
+        return static_cast<WebrtcHttpHandler *>(user)->HandleWhepDelete(
+            request);
+    }
+
     HttpResponse HandleWebrtc(const HttpRequest &request,
                               WebrtcRouteHandler handler) {
         AuthPrincipal principal;
@@ -243,6 +350,37 @@ private:
         }
 
         return handler(webrtc_, request, body, principal);
+    }
+
+    HttpResponse HandleWhepCreate(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireHttpMediaPlaybackAuthResponse(access_, request,
+                                                 &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        if (webrtc_ == nullptr) {
+            return HttpMediaTextResponse(501, "Not Implemented");
+        }
+        if (IsHttpMediaRestarting(device_media_)) {
+            return HttpMediaTextResponse(503, "Media pipeline restarting");
+        }
+        return BuildWhepCreateResponse(webrtc_, request, principal);
+    }
+
+    HttpResponse HandleWhepDelete(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireHttpMediaPlaybackAuthResponse(access_, request,
+                                                 &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        if (webrtc_ == nullptr) {
+            return HttpMediaTextResponse(501, "Not Implemented");
+        }
+        return BuildWhepDeleteResponse(webrtc_, request);
     }
 
     HttpAccess *access_ = nullptr;

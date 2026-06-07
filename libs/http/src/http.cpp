@@ -99,10 +99,13 @@ HttpResponse HttpServiceImpl::HandleRequest(const HttpRequest &request) {
 bool HttpServiceImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
-        return StartsWith(request.path, "/api/flv/") ||
-               StartsWith(request.path, "/api/mjpeg/") ||
-               StartsWith(request.path, "/api/hls/") ||
+        return StartsWith(request.path, "/live/") ||
                StartsWith(request.path, "/api/snapshot/");
+    }
+    if (StartsWith(request.path, "/live/") &&
+        (request.method == HttpMethod::kPost ||
+         request.method == HttpMethod::kDelete)) {
+        return true;
     }
     return StartsWith(request.path, "/api/webrtc") &&
            (request.method == HttpMethod::kPost ||

@@ -19,11 +19,16 @@ class IDeviceMedia;
 HttpResponse HttpMediaJsonResponse(int status_code, const ConfigJson &value);
 HttpResponse HttpMediaStatusResponse(int status_code,
                                      const std::string &reason);
+HttpResponse HttpMediaTextResponse(int status_code,
+                                   const std::string &reason);
 HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal);
 HttpResponse HttpMediaOkResponse();
 HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
                                           const HttpRequest &request,
                                           AuthPrincipal *principal);
+HttpResponse RequireHttpMediaPlaybackAuthResponse(HttpAccess *access,
+                                                  const HttpRequest &request,
+                                                  AuthPrincipal *principal);
 bool ParseHttpMediaOptionalJsonObject(const HttpRequest &request,
                                       ConfigJson *body);
 bool IsHttpMediaRestarting(IDeviceMedia *device_media);

@@ -67,7 +67,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     if (stream_id == nullptr || object_name == nullptr) {
         return false;
     }
-    const std::string remaining = HttpMediaPathSuffix(request.path, "/api/hls/");
+    const std::string remaining = HttpMediaPathSuffix(request.path, "/live/");
     const size_t slash = remaining.find('/');
     if (slash == std::string::npos || slash == 0 ||
         slash + 1 >= remaining.size()) {
@@ -77,7 +77,11 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
         return false;
     }
-    *object_name = remaining.substr(slash + 1);
+    const std::string hls_path = remaining.substr(slash + 1);
+    if (!HttpMediaStartsWith(hls_path, "hls/") || hls_path.size() <= 4) {
+        return false;
+    }
+    *object_name = hls_path.substr(4);
     return true;
 }
 
@@ -114,7 +118,7 @@ public:
         if (router == nullptr) {
             return;
         }
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/hls/",
+        router->AddPrefixRoute(HttpMethod::kGet, "/live/",
                                &HlsHttpHandler::HandleHlsRoute, this);
     }
 
@@ -127,26 +131,26 @@ private:
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaAuthResponse(access_, request, &principal);
+            RequireHttpMediaPlaybackAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
         if (media_source_ == nullptr) {
-            return HttpMediaStatusResponse(501, "Not Implemented");
+            return HttpMediaTextResponse(501, "Not Implemented");
         }
         if (IsHttpMediaRestarting(device_media_)) {
-            return HttpMediaStatusResponse(503, "Media pipeline restarting");
+            return HttpMediaTextResponse(503, "Media pipeline restarting");
         }
 
         StreamId stream_id = StreamId::kMain;
         std::string object_name;
         if (!ParseHlsPath(request, &stream_id, &object_name)) {
-            return HttpMediaStatusResponse(400, "Invalid HLS path");
+            return HttpMediaTextResponse(404, "Not Found");
         }
 
         const MediaSourceStatus browser_status =
             media_source_->GetBrowserStatus(stream_id);
-        if (!browser_status.browser_codec) {
+        if (!browser_status.hls_supported) {
             Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
                             "codec=%s running=%d hls_ready=%d segments=%u "
@@ -158,7 +162,8 @@ private:
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
                             browser_status.hls_current_segment_size);
-            return HttpMediaStatusResponse(409, "HLS requires H.264 or H.265 stream");
+            return HttpMediaTextResponse(
+                409, "HLS requires H.264 or H.265 stream");
         }
         if (!browser_status.running) {
             Error(kHttpMediaModuleName,
@@ -172,14 +177,14 @@ private:
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
                             browser_status.hls_current_segment_size);
-            return HttpMediaStatusResponse(503, "HLS playlist not ready");
+            return HttpMediaTextResponse(503, "HLS playlist not ready");
         }
 
         if (object_name == "index.m3u8") {
             return HandlePlaylist(media_source_, stream_id,
                                   object_name, browser_status);
         }
-        return HttpMediaStatusResponse(404, "Not Found");
+        return HttpMediaTextResponse(404, "Not Found");
     }
 
     HttpAccess *access_ = nullptr;

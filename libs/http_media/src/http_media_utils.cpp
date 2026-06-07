@@ -20,6 +20,15 @@ HttpResponse HttpMediaStatusResponse(int status_code,
     return HttpMediaJsonResponse(status_code, root);
 }
 
+HttpResponse HttpMediaTextResponse(int status_code,
+                                   const std::string &reason) {
+    HttpResponse response;
+    response.status_code = status_code;
+    response.headers["Content-Type"] = "text/plain";
+    response.body = reason;
+    return response;
+}
+
 HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal) {
     if (principal.must_change_password) {
         return HttpMediaStatusResponse(403, "must_change_password");
@@ -49,6 +58,24 @@ HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
     HttpResponse response;
     response.status_code = 0;
     return response;
+}
+
+HttpResponse RequireHttpMediaPlaybackAuthResponse(
+    HttpAccess *access, const HttpRequest &request,
+    AuthPrincipal *principal) {
+    HttpResponse response =
+        RequireHttpMediaAuthResponse(access, request, principal);
+    if (response.status_code == 0) {
+        return response;
+    }
+    if (response.status_code == 403 &&
+        principal != nullptr && principal->must_change_password) {
+        return HttpMediaTextResponse(403, "must_change_password");
+    }
+    if (response.status_code == 401) {
+        return HttpMediaTextResponse(401, "Unauthorized");
+    }
+    return HttpMediaTextResponse(response.status_code, "Forbidden");
 }
 
 bool ParseHttpMediaOptionalJsonObject(const HttpRequest &request,
