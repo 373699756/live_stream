@@ -15,7 +15,7 @@ namespace live_stream {
 class RtspRtpPacketSink;
 
 struct RtspRtpSenderContext {
-  NetEngine *net_engine = nullptr;
+  INetEngine *net_engine = nullptr;
   std::mutex *mutex = nullptr;
   RtspStats *service_stats = nullptr;
 };

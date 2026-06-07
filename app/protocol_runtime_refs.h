@@ -18,7 +18,7 @@ struct ProtocolRuntimeRefs {
     CoreSubsystem *core = nullptr;
     DeviceRefs device;
     MediaRefs media;
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
     IWebrtc *webrtc = nullptr;

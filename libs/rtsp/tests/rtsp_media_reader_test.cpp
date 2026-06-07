@@ -4,7 +4,7 @@
 #include "net.h"
 
 int main() {
-    std::unique_ptr<live_stream::NetEngine> net_engine =
+    std::unique_ptr<live_stream::INetEngine> net_engine =
         live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
     if (!net_engine || !net_engine->Start()) {
         return 1;

@@ -156,7 +156,7 @@ public:
     bool confirm_reboot_ok = true;
 };
 
-class FakeNetEngine : public live_stream::NetEngine {
+class FakeNetEngine : public live_stream::INetEngine {
 public:
     bool Start() override { return true; }
     void Stop() override {}

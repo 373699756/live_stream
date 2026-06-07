@@ -14,7 +14,7 @@ RTSP、ONVIF 或 WebRTC 的业务语义。
 
 ```mermaid
 flowchart LR
-  Protocol[ProtocolSubsystem] --> Net[NetEngine]
+  Protocol[ProtocolSubsystem] --> Net[INetEngine]
   Net --> Loop[event_loop / timer]
   Net --> TCP[tcp_server / tcp_session]
   Net --> UDP[udp_endpoint]
@@ -32,7 +32,7 @@ flowchart LR
 - 提供 TCP server/session、UDP endpoint 和 fd/eventfd 封装。
 - 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
   send stall 检测和 close reason。
-- 提供一次性/周期 IO timer；`CancelIoTimer()` 或 `NetEngine::Stop()` 后
+- 提供一次性/周期 IO timer；`CancelIoTimer()` 或 `INetEngine::Stop()` 后
   timer 不再回调。
 - 提供 UDP `SendTo()` 和 selected peer 模型，供 RTP、ICE/STUN、ONVIF
   discovery 这类 UDP 生命周期接入。
@@ -40,7 +40,8 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `net.h`。协议语义、路由、session 和 DTO 归对应协议模块。
+public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
+`NetEngineImpl` 是 `net` 内部实现。协议语义、路由、session 和 DTO 归对应协议模块。
 
 冻结契约：
 
@@ -59,7 +60,7 @@ public API 在 `net.h`。协议语义、路由、session 和 DTO 归对应协议
   `SendToPeer()` 用于已选择 peer 的 RTP 或 ICE/STUN，`SendTo()` 用于
   ONVIF discovery 这类逐包目标地址。
 - `Timer`：`RunOnIoAfter()` 是一次性 timer，`RunOnIoEvery()` 是周期 timer，
-  id 由 `NetEngine` 全局分配，避免多 IO loop 下取消误命中。
+  id 由 `INetEngine` 全局分配，避免多 IO loop 下取消误命中。
 - `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
   `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
 
@@ -87,7 +88,7 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 
 ## 状态与资源模型
 
-`NetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
+`INetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
 队列。上层协议停止时必须先解除连接、session 或 endpoint，再停止网络引擎。
 
 TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
@@ -95,7 +96,7 @@ TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复
 ref/unref 回调保证跨线程和异步发送期间 payload 存活。
 
 HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
-只能通过 `NetEngine` 的 pending bytes、connection diagnostics 和 close callback
+只能通过 `INetEngine` 的 pending bytes、connection diagnostics 和 close callback
 观察 backpressure。
 协议模块可以保留业务层 parser/session 状态，但不能绕过 `net` 管 socket 写队列。
 
@@ -108,7 +109,7 @@ HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送�
 ## 风险与优化方向
 
 - 回调队列容量要匹配协议吞吐，避免流量高峰时无限堆积。
-- 网络关闭必须先停止上层协议，再释放 NetEngine。
+- 网络关闭必须先停止上层协议，再释放 INetEngine。
 - `send_buffer_limit_bytes` 需要按 HTTP-FLV/HLS/MJPEG、RTSP TCP interleaved 和
   WebRTC signaling 的峰值分别配置，避免慢客户端持有过多媒体 payload 引用。
 - `CallbackMode::kPostToExecutor` 会复制接收数据；热路径协议应优先缩短回调处理，

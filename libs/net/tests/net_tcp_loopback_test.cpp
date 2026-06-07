@@ -11,7 +11,7 @@
 namespace {
 
 struct TcpState {
-    live_stream::NetEngine* engine = nullptr;
+    live_stream::INetEngine* engine = nullptr;
     live_stream::ConnectionId connection_id = 0;
     bool received = false;
 };

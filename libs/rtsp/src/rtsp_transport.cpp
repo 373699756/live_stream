@@ -26,7 +26,7 @@ NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
 }  // namespace
 
 bool RtspTransport::SendRtpPacket(
-    NetEngine *net_engine, const RtspTransportTarget &target,
+    INetEngine *net_engine, const RtspTransportTarget &target,
     const EncodedFrame &frame, const rtp::RtpPacketView &packet) {
   const size_t packet_size = packet.Size();
   if (net_engine == nullptr || packet_size == 0 || packet_size > 0xffff) {

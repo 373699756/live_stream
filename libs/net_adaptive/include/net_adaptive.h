@@ -13,7 +13,7 @@ namespace live_stream {
 class IMediaSource;
 class IRtsp;
 class IWebrtc;
-class NetEngine;
+class INetEngine;
 
 enum class NetAdaptivePressureLevel {
     kNormal = 0,
@@ -55,7 +55,7 @@ struct NetAdaptiveOptions {
 };
 
 struct NetAdaptiveDependencies {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
     IMediaSource *media_source = nullptr;

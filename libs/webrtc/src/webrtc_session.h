@@ -18,7 +18,7 @@ namespace webrtc_internal {
 struct WebrtcSessionOfferContext {
     WebrtcOptions options;
     DtlsFingerprint local_fingerprint;
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     UdpCallbacks udp_callbacks;
     uint32_t next_port_offset = 0;
     void *timer_user = nullptr;

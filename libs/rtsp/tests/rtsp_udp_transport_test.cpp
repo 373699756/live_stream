@@ -105,7 +105,7 @@ int main() {
         return 1;
     }
 
-    std::unique_ptr<live_stream::NetEngine> net_engine =
+    std::unique_ptr<live_stream::INetEngine> net_engine =
         live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
     if (!net_engine || !net_engine->Start()) {
         close(udp_fd);

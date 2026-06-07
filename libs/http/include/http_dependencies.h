@@ -5,10 +5,10 @@
 
 namespace live_stream {
 
-class NetEngine;
+class INetEngine;
 
 struct HttpDependencies {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
 };
 
 }  // namespace live_stream

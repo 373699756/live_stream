@@ -14,7 +14,7 @@ namespace live_stream {
 class IAuth;
 class IEvent;
 class IMediaFrameSource;
-class NetEngine;
+class INetEngine;
 
 enum class RtspTransportMode {
     kTcpInterleaved = 0,
@@ -95,7 +95,7 @@ struct RtspStats {
 };
 
 struct RtspDependencies {
-    NetEngine* net_engine = nullptr;
+    INetEngine* net_engine = nullptr;
     IAuth* auth = nullptr;
     IEvent* event = nullptr;
     IMediaFrameSource* media_source = nullptr;

@@ -989,7 +989,7 @@ private:
     }
 
     RtspOptions options_;
-    NetEngine* net_engine_ = nullptr;
+    INetEngine* net_engine_ = nullptr;
     IAuth* auth_ = nullptr;
     IEvent* event_ = nullptr;
     IMediaFrameSource* media_source_ = nullptr;

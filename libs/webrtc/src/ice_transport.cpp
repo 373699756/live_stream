@@ -19,7 +19,7 @@ IceTransport::IceTransport(std::string peer_id)
 
 IceTransport::~IceTransport() { Stop(); }
 
-bool IceTransport::Start(NetEngine *net_engine, const UdpCallbacks &callbacks,
+bool IceTransport::Start(INetEngine *net_engine, const UdpCallbacks &callbacks,
                          const std::string &listen_ip, uint16_t port,
                          std::string local_ufrag,
                          std::string local_password) {

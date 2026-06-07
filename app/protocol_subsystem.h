@@ -37,7 +37,7 @@ public:
                const MediaRefs &media_refs);
     void Stop();
     ProtocolRefs refs() const;
-    NetEngine *net_engine() const { return net_engine_.get(); }
+    INetEngine *net_engine() const { return net_engine_.get(); }
 
 private:
     ProtocolSubsystem() = default;
@@ -57,7 +57,7 @@ private:
                                 AppRuntimeConfig *next_config) const;
 
     std::unique_ptr<infra::Executor> net_callback_executor_;
-    std::unique_ptr<NetEngine> net_engine_;
+    std::unique_ptr<INetEngine> net_engine_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;
     std::unique_ptr<IMediaPipeline> media_pipeline_;

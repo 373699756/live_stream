@@ -97,10 +97,10 @@ private:
     void CompleteKeepAliveRequest(ConnectionId connection_id);
     HttpSessionParseOptions MakeConnectionParseOptions() const;
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
-    static void CancelNetTimer(NetEngine *net_engine, NetTimerId timer_id);
+    static void CancelNetTimer(INetEngine *net_engine, NetTimerId timer_id);
 
     HttpOptions options_;
-    NetEngine *net_engine_ = nullptr;
+    INetEngine *net_engine_ = nullptr;
     HttpRequestHandler *request_handler_ = nullptr;
     HttpMediaCloseCallback close_callback_;
     mutable std::mutex mutex_;

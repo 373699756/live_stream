@@ -108,7 +108,7 @@ void LeaveEngineCallback(uintptr_t engine_id) {
 
 class NativeWebrtcEngine : public IWebrtcEngine {
 public:
-    explicit NativeWebrtcEngine(NetEngine *net_engine)
+    explicit NativeWebrtcEngine(INetEngine *net_engine)
         : net_engine_(net_engine),
           engine_id_(AllocateEngineId()) {
         RegisterEngine(engine_id_, this);
@@ -571,7 +571,7 @@ private:
         }
     }
 
-    NetEngine *net_engine_ = nullptr;
+    INetEngine *net_engine_ = nullptr;
     uintptr_t engine_id_ = 0;
     mutable std::mutex mutex_;
     WebrtcEngineCallbacks callbacks_;
@@ -583,7 +583,7 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IWebrtcEngine> CreateEngine(NetEngine *net_engine) {
+std::unique_ptr<IWebrtcEngine> CreateEngine(INetEngine *net_engine) {
     return std::unique_ptr<IWebrtcEngine>(new NativeWebrtcEngine(net_engine));
 }
 

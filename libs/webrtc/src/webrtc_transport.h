@@ -21,7 +21,7 @@ using WebrtcTransportTimerFn = void (*)(void *user,
                                         const std::string &peer_id);
 
 struct WebrtcTransportStartOptions {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     UdpCallbacks udp_callbacks;
     std::string peer_id;
     uint16_t local_port_base = 0;
@@ -96,7 +96,7 @@ private:
     void CancelDtlsTimer();
 
     std::string peer_id_;
-    NetEngine *net_engine_ = nullptr;
+    INetEngine *net_engine_ = nullptr;
     void *timer_user_ = nullptr;
     WebrtcTransportTimerFn on_dtls_timeout_ = nullptr;
     std::unique_ptr<IceTransport> ice_;

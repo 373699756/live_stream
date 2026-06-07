@@ -22,10 +22,10 @@ class IWebrtc;
 class IDeviceMedia;
 class IAiView;
 class ISnapshotView;
-class NetEngine;
+class INetEngine;
 
 struct HttpConsoleDependencies {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;
     IConfig *config = nullptr;

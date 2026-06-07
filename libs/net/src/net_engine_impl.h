@@ -18,7 +18,7 @@ class TcpSession;
 class TcpServer;
 class UdpEndpoint;
 
-class NetEngineImpl : public NetEngine {
+class NetEngineImpl : public INetEngine {
 public:
     explicit NetEngineImpl(const NetEngineOptions &options);
     ~NetEngineImpl() override;

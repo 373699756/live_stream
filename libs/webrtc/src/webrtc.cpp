@@ -947,7 +947,7 @@ private:
 
     WebrtcOptions options_;
     IMediaFrameSource *media_source_ = nullptr;
-    NetEngine *net_engine_ = nullptr;
+    INetEngine *net_engine_ = nullptr;
     ServiceState state_ = ServiceState::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;

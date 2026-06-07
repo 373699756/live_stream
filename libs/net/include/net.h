@@ -163,9 +163,9 @@ struct NetConnectionDiagnostics {
 
 const char *TcpCloseReasonName(TcpCloseReason reason);
 
-class NetEngine {
+class INetEngine {
 public:
-    virtual ~NetEngine() = default;
+    virtual ~INetEngine() = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
@@ -234,7 +234,7 @@ public:
     virtual NetStats GetStats() const = 0;
 };
 
-std::unique_ptr<NetEngine> CreateNetEngine(const NetEngineOptions &options);
+std::unique_ptr<INetEngine> CreateNetEngine(const NetEngineOptions &options);
 
 }  // namespace live_stream
 

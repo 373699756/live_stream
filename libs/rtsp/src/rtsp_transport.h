@@ -21,7 +21,7 @@ struct RtspTransportTarget {
 
 class RtspTransport {
  public:
-  static bool SendRtpPacket(NetEngine *net_engine,
+  static bool SendRtpPacket(INetEngine *net_engine,
                             const RtspTransportTarget &target,
                             const EncodedFrame &frame,
                             const rtp::RtpPacketView &packet);

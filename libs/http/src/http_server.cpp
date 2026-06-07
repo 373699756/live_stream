@@ -185,7 +185,7 @@ bool HttpServer::Start() {
 
 void HttpServer::Stop() {
     TcpServerId server_id = 0;
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     infra::Executor *stream_executor = nullptr;
     infra::Executor *control_executor = nullptr;
     std::vector<HttpMediaClientHandle> media_clients;
@@ -316,7 +316,7 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         net_engine = net_engine_;
@@ -430,7 +430,7 @@ void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {
 }
 
 void HttpServer::CloseConnection(ConnectionId connection_id) {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         net_engine = net_engine_;
@@ -493,7 +493,7 @@ void HttpServer::NotifyStreamsClosed(
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                                         const NetBufferSlices &slices,
                                         size_t size) {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
@@ -554,7 +554,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
 
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     ClosedHttpSessionInfo closed;
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     NetTimerId timer_id = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -710,7 +710,7 @@ void HttpServer::LogRequests(
 
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
-    NetEngine *net_engine = nullptr;
+    INetEngine *net_engine = nullptr;
     uint64_t generation = 0;
     NetTimerId previous_timer_id = 0;
     {
@@ -728,7 +728,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     CancelNetTimer(net_engine, previous_timer_id);
     const NetTimerId timer_id = net_engine->RunOnIoAfter(
         delay_ms, [this, connection_id, generation]() {
-            NetEngine *engine = nullptr;
+            INetEngine *engine = nullptr;
             bool should_close = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -757,7 +757,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     }
 }
 
-void HttpServer::CancelNetTimer(NetEngine *net_engine, NetTimerId timer_id) {
+void HttpServer::CancelNetTimer(INetEngine *net_engine, NetTimerId timer_id) {
     if (net_engine != nullptr && timer_id != 0) {
         (void)net_engine->CancelIoTimer(timer_id);
     }

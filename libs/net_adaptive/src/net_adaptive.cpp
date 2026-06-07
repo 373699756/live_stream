@@ -828,7 +828,7 @@ private:
     }
 
     NetAdaptiveOptions options_;
-    NetEngine *net_engine_ = nullptr;
+    INetEngine *net_engine_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
     IMediaSource *media_source_ = nullptr;
