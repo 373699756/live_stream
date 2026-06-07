@@ -104,6 +104,7 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             stats_ = NetAdaptiveStats{};
             recommendations_.clear();
+            recommendation_history_.clear();
             stopping_ = false;
         }
         started_ = false;
@@ -118,6 +119,23 @@ public:
     GetRecommendations() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         return recommendations_;
+    }
+
+    std::vector<NetAdaptiveRecommendation>
+    GetRecommendationHistory() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return recommendation_history_;
+    }
+
+    std::vector<NetAdaptiveTargetState>
+    GetTargetStates() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<NetAdaptiveTargetState> states;
+        states.reserve(target_states_.size());
+        for (const auto &entry : target_states_) {
+            states.push_back(ToPublicTargetState(entry.second));
+        }
+        return states;
     }
 
 private:
@@ -146,14 +164,15 @@ private:
         SampleRtsp(now_ms, &next_stats, &next_recommendations);
         SampleWebrtc(now_ms, &next_stats, &next_recommendations);
         SampleMediaSource(now_ms, &next_stats, &next_recommendations);
-        ExpireIdleTargets(now_ms);
-        FillTargetStats(&next_stats);
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            ExpireIdleTargets(now_ms);
+            FillTargetStats(&next_stats);
             next_stats.samples = stats_.samples + 1;
             stats_ = next_stats;
             recommendations_ = next_recommendations;
+            AppendRecommendationHistory(next_recommendations);
         }
     }
 
@@ -171,6 +190,7 @@ private:
                 continue;
             }
             ++stats->sampled_connections;
+            std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "net",
                 connection.owner_protocol,
@@ -212,6 +232,7 @@ private:
         const std::vector<RtspSessionDiagnostics> sessions =
             rtsp_->GetSessionDiagnostics();
         for (const RtspSessionDiagnostics &session : sessions) {
+            std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "rtsp",
                 "rtsp",
@@ -253,6 +274,7 @@ private:
                 std::min<uint64_t>(webrtc_stats.dropped_frames -
                                        last_webrtc_dropped_frames_,
                                    options_.pending_bytes_constrained));
+            std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "webrtc",
                 "webrtc",
@@ -283,6 +305,7 @@ private:
         const MediaSourceStats media_stats = media_source_->GetStats();
         stats->slow_media_readers = media_stats.slow_reader_count;
         if (media_stats.slow_reader_count > 0) {
+            std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "media_source",
                 "media_source",
@@ -387,6 +410,22 @@ private:
         state->last_recommendation_ms = now_ms;
     }
 
+    void AppendRecommendationHistory(
+        const std::vector<NetAdaptiveRecommendation> &recommendations) {
+        if (recommendations.empty() ||
+            options_.recommendation_history_limit == 0) {
+            return;
+        }
+        for (const NetAdaptiveRecommendation &recommendation :
+             recommendations) {
+            recommendation_history_.push_back(recommendation);
+        }
+        while (recommendation_history_.size() >
+               options_.recommendation_history_limit) {
+            recommendation_history_.erase(recommendation_history_.begin());
+        }
+    }
+
     void ExpireIdleTargets(int64_t now_ms) {
         for (auto it = target_states_.begin(); it != target_states_.end();) {
             if (now_ms - it->second.last_seen_ms > kTargetIdleExpireMs) {
@@ -413,6 +452,23 @@ private:
         }
     }
 
+    NetAdaptiveTargetState ToPublicTargetState(
+        const ObservedTargetState &source) const {
+        NetAdaptiveTargetState target;
+        target.level = source.level;
+        target.protocol = source.protocol;
+        target.target = source.target;
+        target.stream_id = source.stream_id;
+        target.pending_bytes = source.pending_bytes;
+        target.pending_bytes_ewma = source.pending_bytes_ewma;
+        target.consecutive_watch_samples = source.consecutive_watch_samples;
+        target.consecutive_constrained_samples =
+            source.consecutive_constrained_samples;
+        target.last_seen_ms = source.last_seen_ms;
+        target.last_recommendation_ms = source.last_recommendation_ms;
+        return target;
+    }
+
     NetAdaptiveOptions options_;
     NetEngine *net_engine_ = nullptr;
     IRtsp *rtsp_ = nullptr;
@@ -427,6 +483,7 @@ private:
     mutable std::mutex mutex_;
     NetAdaptiveStats stats_;
     std::vector<NetAdaptiveRecommendation> recommendations_;
+    std::vector<NetAdaptiveRecommendation> recommendation_history_;
 };
 
 std::unique_ptr<INetAdaptive> CreateNetAdaptive(

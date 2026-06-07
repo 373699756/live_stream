@@ -36,6 +36,7 @@ struct NetAdaptiveOptions {
     uint32_t watch_sample_threshold = 2;
     uint32_t constrained_sample_threshold = 2;
     uint32_t recommendation_cooldown_ms = 5000;
+    uint32_t recommendation_history_limit = 64;
 };
 
 struct NetAdaptiveDependencies {
@@ -73,6 +74,19 @@ struct NetAdaptiveStats {
     uint64_t samples = 0;
 };
 
+struct NetAdaptiveTargetState {
+    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+    std::string protocol;
+    std::string target;
+    StreamId stream_id = StreamId::kMain;
+    uint32_t pending_bytes = 0;
+    uint32_t pending_bytes_ewma = 0;
+    uint32_t consecutive_watch_samples = 0;
+    uint32_t consecutive_constrained_samples = 0;
+    int64_t last_seen_ms = 0;
+    int64_t last_recommendation_ms = 0;
+};
+
 class INetAdaptive {
 public:
     virtual ~INetAdaptive() = default;
@@ -82,6 +96,10 @@ public:
     virtual NetAdaptiveStats GetStats() const = 0;
     virtual std::vector<NetAdaptiveRecommendation>
     GetRecommendations() const = 0;
+    virtual std::vector<NetAdaptiveRecommendation>
+    GetRecommendationHistory() const = 0;
+    virtual std::vector<NetAdaptiveTargetState>
+    GetTargetStates() const = 0;
 };
 
 std::unique_ptr<INetAdaptive> CreateNetAdaptive(

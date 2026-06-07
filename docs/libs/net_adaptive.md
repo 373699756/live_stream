@@ -41,6 +41,10 @@ flowchart LR
 public API 在 `net_adaptive.h`。协议模块不包含该头文件，不持有
 `INetAdaptive`。依赖由 app 组合根创建和注入。
 
+`GetRecommendations()` 返回最近一次采样窗口产生的建议；`GetRecommendationHistory()`
+返回有界历史，供后续 HTTP/API 或执行器消费；`GetTargetStates()` 返回当前被观察
+目标的 pressure、EWMA 和连续异常计数。
+
 ## 状态与资源模型
 
 `net_adaptive` 使用自有轻量采样线程，避免把 diagnostics 聚合放进 `net` IO loop。
@@ -56,6 +60,7 @@ public API 在 `net_adaptive.h`。协议模块不包含该头文件，不持有
 | `watch_sample_threshold` | 2 | 连续 watch 样本数达到后才建议 |
 | `constrained_sample_threshold` | 2 | 连续 constrained 样本数达到后才建议 |
 | `recommendation_cooldown_ms` | 5000 | 同一目标重复建议冷却时间 |
+| `recommendation_history_limit` | 64 | 保留的建议历史条数 |
 
 ## 风险与优化方向
 
