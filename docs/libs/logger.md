@@ -47,3 +47,5 @@ public API 在 `logger.h`。`OperationAction` 和 `OperationResult` 是操作
 
 - 不记录密码、token、认证头和大 payload。
 - 操作日志查询必须限制 `limit`，避免 Web 查询放大 IO。
+- CSV 导出由 HTTP 边界做字段引号转义和表格公式前缀防护，避免逗号、换行、
+  双引号或 `= + - @` 开头字段破坏导出文件。

@@ -1,4 +1,4 @@
-import { authQuery, requestJson } from './client';
+import { requestJson } from './client';
 import type { OperationRecord } from './types';
 
 export function getOperations(): Promise<{ items: OperationRecord[] }> {
@@ -6,6 +6,5 @@ export function getOperations(): Promise<{ items: OperationRecord[] }> {
 }
 
 export function operationsExportUrl(): string {
-  const query = authQuery({ includeToken: true });
-  return `/api/operations/export${query ? `?${query}` : ''}`;
+  return '/api/operations/export';
 }

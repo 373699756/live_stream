@@ -1,5 +1,4 @@
 import {
-  authQuery,
   putJson,
   requestJson,
   type ApiRequestOptions,
@@ -20,7 +19,5 @@ export function saveAiConfig(value: AiModelConfig): Promise<void> {
 }
 
 export function aiAlertImageUrl(imageUrl: string): string {
-  const query = authQuery({ includeToken: true });
-  const separator = imageUrl.includes('?') ? '&' : '?';
-  return `${imageUrl}${query ? `${separator}${query}` : ''}`;
+  return imageUrl;
 }

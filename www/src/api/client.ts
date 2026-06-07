@@ -83,16 +83,10 @@ function fetchOptions(init?: ApiRequestOptions): RequestInit {
 
 export function authQuery({
   entries,
-  includeToken = false,
 }: {
   entries?: Record<string, string>;
-  includeToken?: boolean;
 } = {}): string {
   const params = new URLSearchParams();
-  const token = getToken();
-  if (includeToken && token) {
-    params.set('access_token', token);
-  }
   if (entries) {
     Object.entries(entries).forEach(([key, value]) => params.set(key, value));
   }

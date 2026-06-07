@@ -13,11 +13,9 @@ export function saveSnapshotConfig(value: SnapshotConfig): Promise<void> {
 export function snapshotUrl(
   stream: string,
   tick = 0,
-  includeToken = true,
 ): string {
   const query = authQuery({
     entries: tick > 0 ? { t: String(tick) } : undefined,
-    includeToken,
   });
   return `/snapshot/${stream}.jpg${query ? `?${query}` : ''}`;
 }

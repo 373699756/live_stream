@@ -24,6 +24,64 @@ ConfigJson OperationRecordToJson(const OperationRecord &record) {
     return root;
 }
 
+bool NeedsSpreadsheetLiteralPrefix(const std::string &value) {
+    for (char c : value) {
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            continue;
+        }
+        return c == '=' || c == '+' || c == '-' || c == '@';
+    }
+    return false;
+}
+
+std::string CsvField(const std::string &value) {
+    std::string cell;
+    cell.reserve(value.size() + 4);
+    if (NeedsSpreadsheetLiteralPrefix(value)) {
+        cell.push_back('\'');
+    }
+    cell += value;
+
+    std::string escaped;
+    escaped.reserve(cell.size() + 2);
+    escaped.push_back('"');
+    for (char c : cell) {
+        if (c == '"') {
+            escaped += "\"\"";
+        } else {
+            escaped.push_back(c);
+        }
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
+void AppendCsvRow(const OperationRecord &record, std::string *body) {
+    if (body == nullptr) {
+        return;
+    }
+    *body += std::to_string(record.timestamp_ms);
+    *body += ",";
+    *body += CsvField(record.request_id);
+    *body += ",";
+    *body += CsvField(record.user_name);
+    *body += ",";
+    *body += CsvField(record.session_id);
+    *body += ",";
+    *body += CsvField(record.client_ip);
+    *body += ",";
+    *body += CsvField(record.module);
+    *body += ",";
+    *body += CsvField(OperationActionToString(record.action));
+    *body += ",";
+    *body += CsvField(record.target);
+    *body += ",";
+    *body += CsvField(OperationResultToString(record.result));
+    *body += ",";
+    *body += CsvField(record.reason);
+    *body += "\n";
+}
+
 }  // namespace
 
 class OperationsHttpHandler : public IHttpHandler {
@@ -96,18 +154,7 @@ private:
             "timestamp_ms,request_id,user_name,session_id,client_ip,module,"
             "action,target,result,reason\n";
         for (const OperationRecord &record : records) {
-            body += std::to_string(record.timestamp_ms) + ",";
-            body += record.request_id + ",";
-            body += record.user_name + ",";
-            body += record.session_id + ",";
-            body += record.client_ip + ",";
-            body += record.module + ",";
-            body += OperationActionToString(record.action);
-            body += ",";
-            body += record.target + ",";
-            body += OperationResultToString(record.result);
-            body += ",";
-            body += record.reason + "\n";
+            AppendCsvRow(record, &body);
         }
 
         HttpResponse response;

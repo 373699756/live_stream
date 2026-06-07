@@ -79,6 +79,10 @@ The UI calls these JSON API groups:
 `stream` is always `main` or `sub`. The frontend must not construct internal
 `vhost/app` names or derive stream paths from SDK fields.
 
+Browser media URLs, AI alert image URLs, and `/api/operations/export` use the
+same-origin `HttpOnly` session cookie set by login. The frontend must not append
+access tokens to URL query strings.
+
 Product scope is video-only live preview, snapshots, configuration, and
 maintenance. Audio capture, audio encoding, audio transport, recording,
 storage playback, and related UI/API surfaces are intentionally out of scope.

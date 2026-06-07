@@ -84,6 +84,8 @@ diagnostics 确认。offer 失败时前端只展示后端 `error`，不伪造播
 认证状态由 `AuthContext` 管理。工厂密码路径只允许初始设置，后端返回
 `must_change_password` 时 Web 必须先完成改密再进入管理台。HTTP 错误处理应在
 API client 层统一转换，页面只负责显示业务含义明确的状态。
+媒体 URL、AI 告警图片和操作日志导出 URL 依赖同源 `HttpOnly` session cookie
+鉴权；前端不得把 access token 拼进 URL query。
 
 mock 只用于后端不可用时的 UI 开发和交互验证。mock 数据不得成为真实设备状态或
 API schema 的权威来源。
