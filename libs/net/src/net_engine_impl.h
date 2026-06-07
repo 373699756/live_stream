@@ -5,6 +5,7 @@
 #include "net.h"
 
 #include <atomic>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -33,6 +34,7 @@ public:
     bool Send(ConnectionId id, const uint8_t *data, size_t size) override;
     bool SendSlices(ConnectionId id, const NetBufferSlices &slices) override;
     bool Close(ConnectionId id) override;
+    bool Close(ConnectionId id, TcpCloseReason reason) override;
     bool CloseAfterSend(ConnectionId id) override;
     bool SendTo(UdpSocketId id, NetAddress address, const uint8_t *data,
                 size_t size) override;
@@ -50,11 +52,16 @@ public:
     NetAddress UdpLocalAddress(UdpSocketId id) const override;
     NetAddress UdpPeerAddress(UdpSocketId id) const override;
     uint32_t PendingBytes(ConnectionId id) const override;
+    NetConnectionDiagnostics GetConnectionDiagnostics(
+        ConnectionId id) const override;
+    std::vector<NetConnectionDiagnostics>
+    GetConnectionDiagnosticsSnapshot() const override;
     NetStats GetStats() const override;
 
     void RegisterConnection(const std::shared_ptr<TcpSession> &connection);
     void OnConnectionClosed(ConnectionId id, const TcpCallbacks &callbacks,
-                            TcpCloseReason reason);
+                            TcpCloseReason reason,
+                            NetConnectionDiagnostics diagnostics);
     void DispatchAccept(const TcpCallbacks &callbacks, ConnectionId id,
                         NetAddress peer);
     void DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
@@ -79,6 +86,8 @@ public:
 private:
     void StopInternal();
     std::shared_ptr<TcpSession> FindConnection(ConnectionId id) const;
+    void RememberClosedConnectionLocked(
+        const NetConnectionDiagnostics &diagnostics);
 
     NetEngineOptions options_;
     mutable std::mutex mutex_;
@@ -87,6 +96,9 @@ private:
     std::unordered_map<TcpServerId, std::shared_ptr<TcpServer>> servers_;
     std::unordered_map<UdpSocketId, std::shared_ptr<UdpEndpoint>> udp_sockets_;
     std::unordered_map<ConnectionId, std::shared_ptr<TcpSession>> connections_;
+    std::unordered_map<ConnectionId, NetConnectionDiagnostics>
+        closed_connections_;
+    std::deque<ConnectionId> closed_connection_order_;
     std::atomic<uint64_t> next_server_id_{1};
     std::atomic<uint64_t> next_udp_id_{1};
     std::atomic<uint64_t> next_connection_id_{1};

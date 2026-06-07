@@ -132,19 +132,22 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
     if (!BuildOutBuffer(slices, &buffer)) {
         return false;
     }
-    bool close_slow = false;
+    TcpCloseReason close_reason = TcpCloseReason::kNormal;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_ || close_after_send_) {
             return false;
         }
-        if (send_queue_.size() >= options_.send_queue_capacity ||
-            pending_bytes_ >= options_.send_buffer_limit_bytes ||
-            buffer.size > options_.send_buffer_limit_bytes - pending_bytes_) {
+        if (send_queue_.size() >= options_.send_queue_capacity) {
             engine_->AddSendBusy();
-            close_slow = true;
+            close_reason = TcpCloseReason::kQueueFull;
+        } else if (pending_bytes_ >= options_.send_buffer_limit_bytes ||
+                   buffer.size >
+                       options_.send_buffer_limit_bytes - pending_bytes_) {
+            engine_->AddSendBusy();
+            close_reason = TcpCloseReason::kPendingLimit;
         }
-        if (!close_slow) {
+        if (close_reason == TcpCloseReason::kNormal) {
             buffer.enqueue_ms = infra::Time::MonotonicMillis();
             if (pending_bytes_ == 0) {
                 last_write_progress_ms_ = buffer.enqueue_ms;
@@ -153,9 +156,9 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
             send_queue_.push_back(std::move(buffer));
         }
     }
-    if (close_slow) {
+    if (close_reason != TcpCloseReason::kNormal) {
         engine_->AddSlowClose();
-        (void)Close(TcpCloseReason::kSendQueueFull);
+        (void)Close(close_reason);
         return false;
     }
     std::weak_ptr<TcpSession> weak_self = shared_from_this();
@@ -204,7 +207,7 @@ bool TcpSession::CloseAfterSend() {
             close_now = self->send_queue_.empty();
         }
         if (close_now) {
-            self->CloseInLoop(TcpCloseReason::kLocalClose);
+            self->CloseInLoop(TcpCloseReason::kNormal);
         } else {
             self->EnableWrite();
         }
@@ -216,9 +219,24 @@ uint32_t TcpSession::PendingBytes() const {
     return pending_bytes_;
 }
 
+NetConnectionDiagnostics TcpSession::Diagnostics() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    NetConnectionDiagnostics diagnostics;
+    diagnostics.connection_id = id_;
+    diagnostics.owner_protocol = options_.owner_protocol;
+    diagnostics.remote_address = peer_;
+    diagnostics.local_address = local_;
+    diagnostics.pending_bytes = pending_bytes_;
+    diagnostics.send_queue_length = static_cast<uint32_t>(send_queue_.size());
+    diagnostics.last_write_at_ms = last_write_progress_ms_;
+    diagnostics.close_reason = close_reason_;
+    diagnostics.open = !closed_;
+    return diagnostics;
+}
+
 void TcpSession::HandleEvents(uint32_t events) {
     if ((events & (EPOLLERR | EPOLLHUP)) != 0) {
-        CloseInLoop(TcpCloseReason::kReadError);
+        CloseInLoop(TcpCloseReason::kInternalError);
         return;
     }
     if ((events & EPOLLIN) != 0) {
@@ -243,7 +261,7 @@ void TcpSession::HandleRead() {
             continue;
         }
         if (n == 0) {
-            CloseInLoop(TcpCloseReason::kPeerClose);
+            CloseInLoop(TcpCloseReason::kRemoteClose);
             return;
         }
         if (errno == EINTR) {
@@ -252,7 +270,7 @@ void TcpSession::HandleRead() {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         }
-        CloseInLoop(TcpCloseReason::kReadError);
+        CloseInLoop(TcpCloseReason::kInternalError);
         return;
     }
 }
@@ -302,7 +320,7 @@ void TcpSession::HandleWrite() {
             EnableWrite();
             return;
         }
-        CloseInLoop(TcpCloseReason::kWriteError);
+        CloseInLoop(TcpCloseReason::kInternalError);
         return;
     }
     bool close_now = false;
@@ -311,7 +329,7 @@ void TcpSession::HandleWrite() {
         close_now = close_after_send_ && send_queue_.empty();
     }
     if (close_now) {
-        CloseInLoop(TcpCloseReason::kLocalClose);
+        CloseInLoop(TcpCloseReason::kNormal);
         return;
     }
     DisableWrite();
@@ -331,12 +349,24 @@ void TcpSession::DisableWrite() {
 
 void TcpSession::CloseInLoop(TcpCloseReason reason) {
     NetTimerId manager_timer_id = 0;
+    NetConnectionDiagnostics diagnostics;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_) {
             return;
         }
+        diagnostics.connection_id = id_;
+        diagnostics.owner_protocol = options_.owner_protocol;
+        diagnostics.remote_address = peer_;
+        diagnostics.local_address = local_;
+        diagnostics.pending_bytes = pending_bytes_;
+        diagnostics.send_queue_length =
+            static_cast<uint32_t>(send_queue_.size());
+        diagnostics.last_write_at_ms = last_write_progress_ms_;
+        diagnostics.close_reason = reason;
+        diagnostics.open = false;
         closed_ = true;
+        close_reason_ = reason;
         manager_timer_id = manager_timer_id_;
         manager_timer_id_ = 0;
         send_queue_.clear();
@@ -349,7 +379,7 @@ void TcpSession::CloseInLoop(TcpCloseReason reason) {
         loop_->RemoveFd(fd_.get());
     }
     fd_.Reset();
-    engine_->OnConnectionClosed(id_, callbacks_, reason);
+    engine_->OnConnectionClosed(id_, callbacks_, reason, diagnostics);
 }
 
 void TcpSession::ArmManagerTimer() {
@@ -377,7 +407,7 @@ void TcpSession::ArmManagerTimer() {
 }
 
 void TcpSession::CheckTimeouts() {
-    TcpCloseReason reason = TcpCloseReason::kLocalClose;
+    TcpCloseReason reason = TcpCloseReason::kNormal;
     bool should_close = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -399,7 +429,8 @@ void TcpSession::CheckTimeouts() {
     if (!should_close) {
         return;
     }
-    if (reason == TcpCloseReason::kSendStall) {
+    if (reason == TcpCloseReason::kSendStall ||
+        reason == TcpCloseReason::kWriteTimeout) {
         engine_->AddSlowClose();
     }
     CloseInLoop(reason);

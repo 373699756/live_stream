@@ -5,7 +5,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace live_stream {
 
@@ -72,15 +75,16 @@ enum class CallbackMode {
 };
 
 enum class TcpCloseReason {
-    kLocalClose = 0,
-    kPeerClose,
-    kReadError,
-    kWriteError,
-    kSendQueueFull,
+    kNormal = 0,
+    kRemoteClose,
+    kParseError,
+    kAuthFailed,
+    kQueueFull,
+    kPendingLimit,
     kSendStall,
     kReadTimeout,
     kWriteTimeout,
-    kEngineStop,
+    kInternalError,
 };
 
 struct NetEngineOptions {
@@ -93,6 +97,7 @@ struct NetEngineOptions {
 
 struct TcpListenOptions {
     NetAddress address;
+    std::string owner_protocol;
     uint32_t backlog = 128;
     uint32_t max_connections = 64;
     uint32_t send_queue_capacity = 128;
@@ -144,6 +149,20 @@ struct NetStats {
     uint64_t slow_client_closes = 0;
 };
 
+struct NetConnectionDiagnostics {
+    ConnectionId connection_id = 0;
+    std::string owner_protocol;
+    NetAddress remote_address;
+    NetAddress local_address;
+    uint32_t pending_bytes = 0;
+    uint32_t send_queue_length = 0;
+    int64_t last_write_at_ms = 0;
+    TcpCloseReason close_reason = TcpCloseReason::kNormal;
+    bool open = false;
+};
+
+const char *TcpCloseReasonName(TcpCloseReason reason);
+
 class NetEngine {
 public:
     virtual ~NetEngine() = default;
@@ -168,6 +187,10 @@ public:
         return true;
     }
     virtual bool Close(ConnectionId id) = 0;
+    virtual bool Close(ConnectionId id, TcpCloseReason reason) {
+        (void)reason;
+        return Close(id);
+    }
     virtual bool CloseAfterSend(ConnectionId id) = 0;
     virtual bool SendTo(UdpSocketId id, NetAddress address, const uint8_t *data,
                         size_t size) = 0;
@@ -199,6 +222,15 @@ public:
     virtual NetAddress UdpLocalAddress(UdpSocketId id) const = 0;
     virtual NetAddress UdpPeerAddress(UdpSocketId id) const = 0;
     virtual uint32_t PendingBytes(ConnectionId id) const = 0;
+    virtual NetConnectionDiagnostics GetConnectionDiagnostics(
+        ConnectionId id) const {
+        (void)id;
+        return NetConnectionDiagnostics{};
+    }
+    virtual std::vector<NetConnectionDiagnostics>
+    GetConnectionDiagnosticsSnapshot() const {
+        return std::vector<NetConnectionDiagnostics>();
+    }
     virtual NetStats GetStats() const = 0;
 };
 

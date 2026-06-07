@@ -9,6 +9,11 @@
 
 namespace live_stream {
 namespace net_internal {
+namespace {
+
+constexpr size_t kClosedConnectionDiagnosticsLimit = 128;
+
+}  // namespace
 
 NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
     : options_(options) {}
@@ -85,7 +90,7 @@ void NetEngineImpl::StopInternal() {
         socket->Stop();
     }
     for (const auto &connection : connections) {
-        (void)connection->Close(TcpCloseReason::kEngineStop);
+        (void)connection->Close(TcpCloseReason::kInternalError);
     }
     for (const auto &loop : loops_) {
         loop->Stop();
@@ -176,7 +181,12 @@ bool NetEngineImpl::SendSlices(ConnectionId id,
 
 bool NetEngineImpl::Close(ConnectionId id) {
     auto connection = FindConnection(id);
-    return connection ? connection->Close(TcpCloseReason::kLocalClose) : false;
+    return connection ? connection->Close(TcpCloseReason::kNormal) : false;
+}
+
+bool NetEngineImpl::Close(ConnectionId id, TcpCloseReason reason) {
+    auto connection = FindConnection(id);
+    return connection ? connection->Close(reason) : false;
 }
 
 bool NetEngineImpl::CloseAfterSend(ConnectionId id) {
@@ -311,6 +321,49 @@ uint32_t NetEngineImpl::PendingBytes(ConnectionId id) const {
     return connection ? connection->PendingBytes() : 0;
 }
 
+NetConnectionDiagnostics NetEngineImpl::GetConnectionDiagnostics(
+    ConnectionId id) const {
+    auto connection = FindConnection(id);
+    if (connection) {
+        return connection->Diagnostics();
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = closed_connections_.find(id);
+    return it == closed_connections_.end() ? NetConnectionDiagnostics{}
+                                          : it->second;
+}
+
+std::vector<NetConnectionDiagnostics>
+NetEngineImpl::GetConnectionDiagnosticsSnapshot() const {
+    std::vector<std::shared_ptr<TcpSession>> connections;
+    std::vector<NetConnectionDiagnostics> closed_diagnostics;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        connections.reserve(connections_.size());
+        for (const auto &entry : connections_) {
+            connections.push_back(entry.second);
+        }
+        closed_diagnostics.reserve(closed_connection_order_.size());
+        for (ConnectionId id : closed_connection_order_) {
+            const auto it = closed_connections_.find(id);
+            if (it != closed_connections_.end()) {
+                closed_diagnostics.push_back(it->second);
+            }
+        }
+    }
+
+    std::vector<NetConnectionDiagnostics> diagnostics;
+    diagnostics.reserve(connections.size() + closed_diagnostics.size());
+    for (const auto &connection : connections) {
+        if (connection) {
+            diagnostics.push_back(connection->Diagnostics());
+        }
+    }
+    diagnostics.insert(diagnostics.end(), closed_diagnostics.begin(),
+                       closed_diagnostics.end());
+    return diagnostics;
+}
+
 NetStats NetEngineImpl::GetStats() const {
     NetStats stats;
     uint32_t active_connections = 0;
@@ -379,9 +432,13 @@ void NetEngineImpl::RegisterConnection(
 
 void NetEngineImpl::OnConnectionClosed(ConnectionId id,
                                        const TcpCallbacks &callbacks,
-                                       TcpCloseReason reason) {
+                                       TcpCloseReason reason,
+                                       NetConnectionDiagnostics diagnostics) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (connections_.find(id) != connections_.end()) {
+            RememberClosedConnectionLocked(diagnostics);
+        }
         connections_.erase(id);
     }
     {
@@ -389,6 +446,23 @@ void NetEngineImpl::OnConnectionClosed(ConnectionId id,
         ++stats_.closed_connections;
     }
     DispatchClose(callbacks, id, reason);
+}
+
+void NetEngineImpl::RememberClosedConnectionLocked(
+    const NetConnectionDiagnostics &diagnostics) {
+    if (diagnostics.connection_id == 0) {
+        return;
+    }
+    if (closed_connections_.find(diagnostics.connection_id) ==
+        closed_connections_.end()) {
+        closed_connection_order_.push_back(diagnostics.connection_id);
+    }
+    closed_connections_[diagnostics.connection_id] = diagnostics;
+    while (closed_connection_order_.size() > kClosedConnectionDiagnosticsLimit) {
+        const ConnectionId oldest = closed_connection_order_.front();
+        closed_connection_order_.pop_front();
+        closed_connections_.erase(oldest);
+    }
 }
 
 void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,

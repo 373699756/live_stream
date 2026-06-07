@@ -29,6 +29,7 @@ public:
     bool Close(TcpCloseReason reason);
     bool CloseAfterSend();
     uint32_t PendingBytes() const;
+    NetConnectionDiagnostics Diagnostics() const;
     ConnectionId id() const { return id_; }
     NetAddress peer() const { return peer_; }
 
@@ -87,6 +88,7 @@ private:
     NetTimerId manager_timer_id_ = 0;
     int64_t last_read_ms_ = 0;
     int64_t last_write_progress_ms_ = 0;
+    TcpCloseReason close_reason_ = TcpCloseReason::kNormal;
     bool closed_ = false;
     bool close_after_send_ = false;
 };

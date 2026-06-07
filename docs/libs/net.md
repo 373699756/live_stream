@@ -49,9 +49,12 @@ public API 在 `net.h`。协议语义、路由、session 和 DTO 归对应协议
 - `TcpSession`：以 `ConnectionId` 表达 public session；发送统一走
   `Send()`/`SendSlices()`，慢客户端由 `send_queue_capacity`、
   `send_buffer_limit_bytes`、`send_stall_timeout_ms`、`write_timeout_ms`
-  触发关闭。
+  触发关闭。队列项数达到上限关闭原因为 `queue_full`，pending bytes 超过
+  `send_buffer_limit_bytes` 关闭原因为 `pending_limit`。
 - `TcpCloseReason`：`on_close` 必须携带关闭原因；协议模块用它释放 media reader、
-  记录慢客户端和区分 peer/local/timeout/error。
+  记录慢客户端和区分 peer/local/timeout/error。协议模块需要主动标记解析失败或
+  鉴权失败时，可以调用 `Close(connection_id, reason)`；普通本地关闭继续调用
+  `Close(connection_id)`。
 - `UdpEndpoint`：`BindUdp()`/`CloseUdp()` 管生命周期；`SetUdpPeer()`、
   `SendToPeer()` 用于已选择 peer 的 RTP 或 ICE/STUN，`SendTo()` 用于
   ONVIF discovery 这类逐包目标地址。
@@ -76,8 +79,11 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 | `send_queue_length` | 当前等待发送的队列长度 |
 | `last_write_at_ms` | 最近一次成功写 socket 的时间 |
 | `close_reason` | 关闭后保留的 `TcpCloseReason` 文本 |
+| `open` | 连接是否仍在 `net` 活跃连接表中 |
 
-`/api/media/sessions` 可以聚合这些字段，但字段语义仍归 `net`。
+`GetConnectionDiagnostics(connection_id)` 返回单连接诊断；连接关闭后 `net` 会保留最近
+128 条关闭诊断，`GetConnectionDiagnosticsSnapshot()` 同时返回当前活跃连接和最近关闭
+连接，供 `/api/media/sessions` 聚合。字段语义仍归 `net`。
 
 ## 状态与资源模型
 
@@ -89,7 +95,8 @@ TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复
 ref/unref 回调保证跨线程和异步发送期间 payload 存活。
 
 HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
-只能通过 `NetEngine` 的 pending bytes 和 close callback 观察 backpressure。
+只能通过 `NetEngine` 的 pending bytes、connection diagnostics 和 close callback
+观察 backpressure。
 协议模块可以保留业务层 parser/session 状态，但不能绕过 `net` 管 socket 写队列。
 
 ## 非目标
