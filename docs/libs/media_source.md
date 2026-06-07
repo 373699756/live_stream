@@ -22,12 +22,12 @@ flowchart LR
   State --> HLS[HLS playlist/segments]
   State --> FLV[FLV sequence/header cache]
   State --> MJPEG[MJPEG latest frame]
-  State --> Status[browser status]
+  State --> Runtime[runtime snapshot]
   HLS --> HTTP[http HLS]
   Ring --> Protocols[RTSP/WebRTC/HTTP-FLV/MJPEG]
   FLV --> HttpFlv[http FLV]
   MJPEG --> MjpegApi[http MJPEG]
-  Status --> StreamStatus[/api/status/streams]
+  Runtime --> MediaStreams[/api/media/streams]
 ```
 
 ## 核心职责
@@ -37,45 +37,55 @@ flowchart LR
   GOP，之后从 live queue 拉取 `MediaFrameReaderFrame`。
 - HLS playlist 只暴露已完成 segment，额外保留旧 segment 供短暂滞后客户端读取。
 - 缓存 FLV sequence header 和关键帧 GOP，支持新客户端从可解码点开始。
-- 维护 `browser_codec`、`hls_ready`、`flv_ready`、`mjpeg_ready`。
+- 维护 runtime snapshot：track ready、codec、running、protocol support/ready、
+  reader/client count、cached frames/bytes、HLS bytes、last DTS 和 last reset reason。
 - 暴露 `IMediaSource`、`IMediaFlvSource`、`IMediaMjpegSource` 和
   `IMediaFrameSource` 的基础数据结构。
 
 ## 接口归属
 
 public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
-`GET /api/status/streams` 的浏览器播放字段语义归本模块；HTTP 只序列化。
+`GET /api/media/streams` 和 `GET /api/media/streams/{stream}` 的媒体 runtime 字段
+语义归本模块；HTTP 只按冻结 DTO 序列化。
 
-任务 5 冻结的 reader 契约：
+第二阶段冻结的媒体核心契约：
 
 | 接口/类型 | 语义 |
 | --- | --- |
-| `MediaFrame` | 持有 `EncodedFrame` 引用，显式携带 video track、stream id、codec、keyframe、DTS/PTS 和 duration。 |
-| `MediaTrack` | video-only track，携带 stream id、codec、90000 clock rate、VPS/SPS/PPS 和 ready 状态。 |
+| `MediaFrame` | 协议热路径唯一帧对象，持有 `EncodedFrame` owner 引用，显式携带 stream id、codec、video track、keyframe、corrected DTS/PTS 和 duration。 |
+| `MediaTrack` | video-only track，携带 stream id、codec、90000 clock rate、VPS/SPS/PPS、ready 状态和 codec generation。 |
+| `TimestampCorrector` | 每路 stream 独立维护 corrected DTS/PTS；处理时间戳回退、跳变、relative timestamp、stream stop、codec 切换和 reset。 |
 | `AttachFrameReader` | 创建 reader；`keyframe_first=true` 时 live 输出从下一个关键帧开始。 |
 | `GetFrameReaderStartData` | 返回 reader 创建后可用的 stream running、track、当前 GOP 和 reader generation。 |
 | `PopFrameReaderFrame` | 拉取 live frame；空队列返回 `false`，不会复制 payload，只增加底层 `VideoBuffer` 引用。 |
 | `DetachFrameReader` | 释放 reader live queue，调用方必须先 unref 已取出的 frame。 |
 | `GetFrameReaderStatus` | 返回 attached、pending frames、waiting keyframe、slow reader 和 close reason。 |
 
-旧 `AttachFrameSink` 当前只作为 RTSP/WebRTC 过渡接入点保留，内部使用同一个
-`FrameRing`、GOP cache 和 keyframe-first 状态；后续协议重构应改为显式持有
-`MediaFrameReaderId`。
+生产协议输出必须使用 corrected DTS/PTS。RTSP、WebRTC、HTTP-FLV、MJPEG 不再通过
+旧 push sink 注册全局 fanout；每个 client/session/peer 必须显式持有
+`MediaFrameReaderId` 并在关闭路径 detach。
 
-浏览器播放状态字段：
+`MediaStreamRuntime` 字段冻结为：
 
 | 字段 | 语义归属 |
 | --- | --- |
+| `stream` | `main` 或 `sub` |
+| `available` | 当前固件是否支持该码流 |
 | `running` | 对应码流是否正在接收有效编码帧 |
-| `browser_codec` | 当前 codec 是否可进入浏览器预览链路 |
-| `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有可播放 playlist/segment |
-| `flv_supported` / `flv_ready` | HTTP-FLV 是否支持当前 codec、是否已有 sequence header 或 GOP 起点 |
-| `mjpeg_supported` / `mjpeg_ready` | MJPEG 是否支持当前 codec、是否已有可输出帧 |
 | `codec` | 当前媒体源观察到的 codec |
-| `hls_segment_count`、`*_size` | 诊断字段，只描述媒体源缓存状态 |
+| `track_ready` | video track 是否可用于协议输出 |
+| `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有完整 playlist/segment |
+| `http_flv_supported` / `http_flv_ready` | HTTP-FLV 是否支持当前 codec、是否已有 sequence header 或 GOP 起点 |
+| `mjpeg_supported` / `mjpeg_ready` | MJPEG 是否支持当前 codec、是否已有可输出帧 |
+| `webrtc_supported` / `webrtc_ready` | WebRTC 是否支持当前 codec、native 协议栈是否可创建 peer |
+| `reader_count` / `client_count` | 当前 media reader 和 HTTP media client 数 |
+| `cached_frames` / `cached_bytes` | GOP/live cache 诊断字段 |
+| `hls_bytes` | 已保留 HLS segment body 字节数 |
+| `last_dts` | 最新 corrected DTS |
+| `last_reset_reason` | 最近一次 stream reset、codec switch 或 timestamp reset 原因 |
 
-`/api/media/capabilities` 的 stream available/smart codec 等能力字段不归本模块；
-这些字段归 `device_media`。能力字段不是运行 ready 状态。
+`/api/config/*` 的能力和配置字段不归本模块；这些字段归 `device_media` 或对应配置
+模块。能力字段不是运行 ready 状态。
 
 ## 状态与资源模型
 
@@ -85,7 +95,7 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 
 缓存资源由 `media_pipeline` 注入的 options 限制：HLS segment duration、
 playlist depth、segment retain count、FLV client 上限、MJPEG client 上限和 frame
-sink 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
+reader/client 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
 sequence header、GOP cache、HLS 当前 segment 和 ready 字段。
 
 reader/GOP 资源模型：
@@ -94,7 +104,7 @@ reader/GOP 资源模型：
 | --- | --- |
 | GOP cache | 每路最多 128 帧，从关键帧开始重建；codec 切换、stream stop 和 cache overflow 清理。 |
 | reader live queue | 每 reader 最多 32 帧；溢出时清空该 reader live queue，标记 slow reader，并等待下一个关键帧。 |
-| reader count | 与旧 frame sink 共用 `MediaPipelineOptions::max_frame_sinks`，`GetStats()` 分别报告 pull reader 和 sink reader 数。 |
+| reader count | 由 `MediaPipelineOptions` 限制，runtime snapshot 报告 active reader/client 数。 |
 | timestamp | `TimestampCorrector` 在每路 stream 内独立维护；stream stop、codec 切换时 reset。 |
 | last frame timestamp | `GetStats()` 报告主/子码流最新 corrected DTS，用于资源观测和慢读者排查。 |
 

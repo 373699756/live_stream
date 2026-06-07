@@ -57,22 +57,29 @@ API 分组：
 
 - Auth：login、logout、change password、current user。
 - Config：video、image、overlay、network、snapshot、AI。
-- Media/status：capabilities、stream status、snapshot、HLS、FLV、MJPEG。
+- Media：stream runtime、playback URLs、session diagnostics。
 - System/operations：system status、upgrade、operation logs。
-- WebRTC signaling：peer、offer、candidate、close。
+- WebRTC signaling：RESTful peer、offer、candidate、DELETE close。
 
 DTO 规则：
 
 - `www/src/api/types.ts` 描述 Web 消费字段，不描述隐藏 SDK 内部结构。
 - 字段新增、删除或语义变更必须同步后端 handler、前端 API、`www/README.md`
-  和拥有模块设计文档。
+  和拥有模块设计文档。冻结 DTO 名称是 `MediaStreamRuntime`、
+  `MediaPlaybackUrls`、`MediaSessionInfo` 和 `WebrtcPeerInfo`。
 - 前端不补齐后端缺失状态；缺字段应走兼容默认值或显示不可用状态。
 
-WebRTC signaling 响应使用 native 状态模型。`POST /api/webrtc/peers`、offer、
-candidate 和 close 都返回 `ok`，失败时返回 `error`；peer/offer 响应同时返回
-`peer_id` 和 `state`，offer 成功时返回 video-only sendonly SDP answer。SDP answer
-可生成不代表 WebRTC 已可播放；`webrtcReady` 仍必须等 ICE、DTLS 和 SRTP 都 ready。
-offer 失败时前端只展示后端 `error`，不伪造播放。
+所有 JSON API 使用 `{ ok, data, error, request_id }` envelope。前端 API client
+统一解析 envelope；页面只消费 `data` 或展示 `error.code`、`error.message` 和
+`request_id`。错误码由后端冻结，前端不得发明本地业务错误码替代后端语义。
+
+WebRTC signaling 响应使用 native 状态模型。`POST /api/webrtc/peers`、
+`POST /api/webrtc/peers/{peer_id}/offer`、
+`POST /api/webrtc/peers/{peer_id}/candidates` 和
+`DELETE /api/webrtc/peers/{peer_id}` 都返回 envelope；peer/offer 响应在 `data`
+里返回 `peer_id` 和 `state`，offer 成功时返回 video-only sendonly SDP answer。
+SDP answer 可生成不代表 WebRTC 已可播放；播放状态必须等后端 runtime 和 peer
+diagnostics 确认。offer 失败时前端只展示后端 `error`，不伪造播放。
 
 认证状态由 `AuthContext` 管理。工厂密码路径只允许初始设置，后端返回
 `must_change_password` 时 Web 必须先完成改密再进入管理台。HTTP 错误处理应在
@@ -92,35 +99,43 @@ flowchart LR
   LiveView --> Session[usePreviewPlaybackSession]
   Session --> Player[usePreviewPlayer]
   Player --> WebRTC[WebRTC signaling]
-  Player --> HLS[/api/hls]
-  Player --> FLV[/api/flv]
-  Player --> MJPEG[/api/mjpeg]
-  Player --> Snapshot[/api/snapshot]
-  Metadata --> Status[/api/status/streams]
+  Player --> HLS[/live/{stream}/hls]
+  Player --> FLV[/live/{stream}.live.flv]
+  Player --> MJPEG[/live/{stream}.mjpg]
+  Player --> Snapshot[/snapshot/{stream}.jpg]
+  Metadata --> Runtime[/api/media/streams]
+  Metadata --> URLs[/api/media/streams/{stream}/urls]
   LiveView --> Ai[useAiStatus / overlay]
 ```
 
 预览模式：
 
-- WebRTC：低延迟预览，信令通过 `/api/webrtc/*`。
-- HLS：浏览器兼容分段播放，通过 `/api/hls/{stream}/index.m3u8`。
-- HTTP-FLV：连续直播，通过 `/api/flv/{stream}.flv`。
-- MJPEG：multipart JPEG，通过 `/api/mjpeg/{stream}.mjpg`。
-- snapshot：静态抓图，通过 `/api/snapshot/{stream}.jpg`。
+- WebRTC：低延迟预览，信令通过 `/api/webrtc/peers` 及其 peer 子路径。
+- HLS：浏览器兼容分段播放，通过后端返回的 `/live/{stream}/hls/index.m3u8`。
+- HTTP-FLV：连续直播，通过后端返回的 `/live/{stream}.live.flv`。
+- MJPEG：multipart JPEG，通过后端返回的 `/live/{stream}.mjpg`。
+- snapshot：静态抓图，通过后端返回的 `/snapshot/{stream}.jpg`。
 
-实时预览的播放状态权威来源是 `GET /api/status/streams`。前端使用：
+实时预览的播放状态权威来源是 `GET /api/media/streams` 和
+`GET /api/media/streams/{stream}`。前端使用：
 
-- `browserCodec`
+- `available`
+- `running`
+- `codec`
 - `hlsSupported` / `hlsReady`
-- `flvSupported` / `flvReady`
+- `httpFlvSupported` / `httpFlvReady`
 - `mjpegSupported` / `mjpegReady`
-- `webrtcReady`
+- `webrtcSupported` / `webrtcReady`
+- `readerCount` / `clientCount`
+- `lastDts`
+- `lastResetReason`
 
 `webrtcReady` 只有在后端确认 WebRTC 已启用且 native signaling、ICE、DTLS 和
 SRTP 均 ready 时才为 true；单独 signaling 可用不代表浏览器可播放。
 
-能力字段来自 `GET /api/media/capabilities`，例如 stream 是否 available 或是否支持
-smart codec。能力不是运行状态，不能替代 `ready` 字段。
+播放 URL 只来自 `GET /api/media/streams/{stream}/urls`。Web 不再本地拼接
+RTSP、HLS、HTTP-FLV、MJPEG、snapshot 或 WHEP URL，也不消费旧
+`/api/status/streams`、`/api/hls`、`/api/flv`、`/api/mjpeg` 路径。
 
 实时预览页轮询 `/api/ai/status`。只有检测结果来自当前码流且坐标有效时，Web 才把
 `last_result.detections` 叠加到视频内容区域。AI 未启用、后端不可用或结果来自其他

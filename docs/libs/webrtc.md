@@ -37,7 +37,17 @@ flowchart LR
 
 public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
 HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
-和 reader 生命周期仍归 `media_source`。
+和 reader 生命周期仍归 `media_source`。冻结后的 signaling 路径为：
+
+| API | 语义 |
+| --- | --- |
+| `POST /api/webrtc/peers` | 创建 peer，输入 `stream`、`client_id`、`session_id` |
+| `POST /api/webrtc/peers/{peer_id}/offer` | 提交 SDP offer，返回 SDP answer |
+| `POST /api/webrtc/peers/{peer_id}/candidates` | 提交 remote ICE candidate |
+| `DELETE /api/webrtc/peers/{peer_id}` | 关闭 peer |
+
+WebRTC 模块只暴露 service/session 能力；JSON envelope、鉴权和路径参数解析归
+`http_media`/`http`。
 
 `WebrtcStats` 只暴露 native 链路状态和计数：`enabled`、`signaling_ready`、
 `ice_ready`、`dtls_ready`、`srtp_ready`、`selected_ice_pairs`、peer 数、
@@ -45,6 +55,23 @@ offer/candidate 数、帧发送/丢弃和 RTP 包发送/丢弃。`ice_ready`、`
 `srtp_ready` 表示本地协议栈可用于创建 peer；peer 级 ICE connected/completed 通过
 `selected_ice_pairs` 统计观测。模块不再暴露 `BackendName()` 或
 `backend_available`。
+
+`WebrtcPeerInfo` / peer diagnostics 字段冻结为：
+
+| 字段 | 语义 |
+| --- | --- |
+| `peer_id` | peer 标识 |
+| `stream` | `main` 或 `sub` |
+| `state` | created、offer_received、connecting、connected、closing、closed、failed |
+| `ice_selected` | 是否已有 selected ICE pair |
+| `dtls_state` | DTLS 状态文本 |
+| `srtp_ready` | outbound/inbound SRTP context 是否可用 |
+| `rtp_packets` / `rtp_bytes` | 已发送 RTP/SRTP 统计 |
+| `last_error` | 最近一次明确失败原因 |
+| `created_at_ms` / `updated_at_ms` | peer 生命周期时间戳 |
+
+`/api/media/sessions` 可以聚合这些字段；`/api/media/streams/{stream}` 只展示
+protocol ready 汇总，不替代 peer 级 diagnostics。
 
 10.5 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与 libsrtp；
 usrsctp/datachannel 首版不启用。`dtls_transport.*` 负责生成本地自签名证书、输出
@@ -102,6 +129,11 @@ WebRTC peer/session 拥有 SDP offer/answer 和 RTP 发送参数；ICE/DTLS/SRTP
 UDP endpoint 和 DTLS timer 归 `webrtc_transport`；RTP sender 和 media reader 归
 `WebrtcServiceImpl` 管理。peer 关闭、ICE 失败、DTLS 失败或 HTTP close 时必须按顺序
 detach reader、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，避免继续持有媒体帧引用。
+
+关闭入口统一为 peer close path：SRTP 初始化失败、DTLS failed、setup timeout、
+HTTP DELETE、WHEP DELETE、ICE 异常和 service stop 都不得各自释放一半资源。
+`PLI`/`FIR` 必须调用 `media_source.RequestKeyFrame()`；`NACK`/`TWCC` 只识别和记录，
+首版不实现重传或拥塞控制。
 
 ## 非目标
 

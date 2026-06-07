@@ -55,16 +55,24 @@ payload，必须保留输入帧/VideoBuffer 引用。`FlvVideoTagView` 自持 FL
 NAL length 和 PreviousTagSize，media payload slice 仍指向输入帧 payload。
 `TsSegmentBuffer` 的内存由调用方分配并控制容量，`media_mux` 只追加封装字节。
 
-## 任务 8 冻结结果
+## 第二阶段冻结契约
 
 - 生产命名空间已从旧 `stream_mux` 收敛为 `media_mux`。
 - `RtpPacketizer` 冻结为 RTSP/WebRTC 共用契约，支持 H.264/H.265 AnnexB 输入、
-  seq/ssrc/timestamp/payload type、marker bit 和 FU 分片；`RtpPacketizerInput`
-  的 `payload_type=0` 表示按 codec 使用 `RtpPacketizerOptions` 默认值。
-- RTSP 已从 `media_mux::RtpPacketizer` 取 `RtpPacketView`，WebRTC 任务后续应复用
-  同一 packetizer 接口，不再新增私有 RTP 分片器。
-- `media_mux` 继续是过渡模块；FLV/HLS/RTP 的最终协议归属可在任务 7、9、10 中继续
-  下沉，但不能恢复旧 `stream_mux` 泛名接口或只转调 wrapper。
+  seq/ssrc/90k timestamp/payload type、marker bit 和 FU 分片；`RtpPacketizerInput`
+  的 `payload_type=0` 表示按 codec 使用 `RtpPacketizerOptions` 默认值，`ssrc`
+  必须非 0。
+- `RtpPacketizerInput.pts_us` 必须是 `media_source` corrected PTS；RTSP 和 WebRTC
+  不得再各自修正 RTP timestamp。
+- `RtpPacketView` 输出后立即交给 transport；异步发送时调用方必须通过
+  `NetBufferOwner` 或等价 owner 保留 `MediaFrame` / `VideoBuffer` 引用。
+- `FlvVideoTagView` 输出 FLV tag header、payload slices 和 previous tag size；
+  HTTP-FLV 起播顺序固定为 FLV header、metadata/sequence header、cached GOP、
+  live tag。
+- HLS/TS append 只追加 segment body。调用方必须先 finalize segment body，再更新
+  playlist；半成品 segment 不得暴露给 HTTP。
+- `media_mux` 继续是格式工具模块，不能恢复旧泛名接口、私有 socket 状态或只转调
+  wrapper。
 
 ## 非目标
 

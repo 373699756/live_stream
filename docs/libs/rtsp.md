@@ -41,7 +41,9 @@ flowchart LR
 public API 在 `rtsp.h`。RTSP URL 可被 ONVIF URI provider 使用，但 RTSP
 内部 session 状态不归 ONVIF。`RtspStreamPath()` 和 `BuildRtspStreamUrl()` 是
 跨模块唯一的 stream path/URL 契约，调用方只能配合 `IRtsp::LocalAddress()` 使用，
-不得在其它模块复制 `/live/main`、`/live/sub` 或 RTSP 端口拼接规则。
+不得在其它模块复制 `/live/main`、`/live/sub` 或 RTSP 端口拼接规则。Web 获取
+RTSP URL 只能通过 `GET /api/media/streams/{stream}/urls`，由后端结合 Host、
+RTSP 端口、认证配置和 stream 生成完整 URL。
 
 ## 状态与资源模型
 
@@ -61,6 +63,22 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 RTP 分片统一使用 `media_mux::RtpPacketizer`。发送层只负责把
 `RtpPacketView` 转成 TCP interleaved 或 UDP datagram；media payload slice
 异步发送时由 `net` 的 `NetBufferOwner` 保留底层 `VideoBuffer` 引用。
+
+`RtspSessionDiagnostics` 字段冻结为：
+
+| 字段 | 语义 |
+| --- | --- |
+| `session_id` | RTSP session id |
+| `stream` | `main` 或 `sub` |
+| `transport` | `tcp_interleaved` 或 `udp` |
+| `remote_address` / `local_address` | 控制连接地址 |
+| `reader_id` | 当前 `MediaFrameReaderId`，未 PLAY 时为 0 |
+| `pending_bytes` | TCP interleaved 发送积压字节数，UDP session 为 0 或诊断值 |
+| `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
+| `close_reason` | 来自 `net` 或 RTSP close path 的关闭原因 |
+
+这些字段由 `/api/media/sessions` 聚合给 Web；RTSP 模块只提供协议诊断，不提供
+HLS/FLV/MJPEG/WebRTC ready 状态。
 
 ## 非目标
 

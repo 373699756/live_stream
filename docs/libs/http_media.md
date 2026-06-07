@@ -4,8 +4,9 @@
 
 `http_media` 是 HTTP 媒体入口模块，负责 HLS、HTTP-FLV、MJPEG 和 WebRTC signaling
 等与浏览器预览相关的 HTTP 媒体输出。普通控制 API、认证和静态资源仍归 `http`。
-当前任务 7 拆分保持既有 REST 路径和 DTO 不变，Web Console 不需要因为模块拆分调整
-调用路径。
+第二阶段重构后，媒体播放 URL 使用 `/live/*` 和 `/snapshot/*`，控制面 JSON API
+使用 `/api/*` envelope；本模块不保留旧 `/api/hls`、`/api/flv`、`/api/mjpeg`
+或旧 WebRTC signaling alias。
 
 ## 总体框架图
 
@@ -24,16 +25,16 @@ flowchart LR
 - 通过 `media_source` 的 HLS/FLV/MJPEG public API 获取媒体数据，通过 `http` 提供的
   `HttpMediaWriter` 输出长连接数据。
 - REST 路径或 DTO 变更时同步迁移 `www/` 的 API client、mock 数据、类型定义和页面调用；
-  本次拆分未改变路径或 DTO。
+  本阶段冻结新路径和 DTO，不保留旧路径适配。
 - 不拥有设备编码入口、GOP cache、私有 socket 队列或 WebRTC ICE/DTLS/SRTP 状态。
 - 不保留旧 REST route alias 或旧 DTO 适配层。
 
 ## 核心职责
 
-- HLS playlist/segment HTTP 输出，路径保持 `/api/hls/{stream}/...`。
+- HLS playlist/segment HTTP 输出，路径为 `/live/{stream}/hls/...`。
 - HTTP-FLV 长连接输出。
 - MJPEG 输出。
-- WebRTC signaling HTTP DTO 转换和鉴权入口。
+- WebRTC RESTful signaling 和可选 WHEP HTTP 入口的 DTO 转换和鉴权。
 - 媒体长连接的慢客户端断开、reader detach 和资源回落验收。
 
 ## 依赖边界
@@ -49,8 +50,31 @@ flowchart LR
 
 | API | 实现归属 |
 | --- | --- |
-| `GET /api/hls/{stream}/index.m3u8` | `http_media` HLS handler |
-| `GET /api/hls/{stream}/seg-{sequence}.ts` | `http_media` streaming handler |
-| `GET /api/flv/{stream}.flv` | `http_media` HTTP-FLV handler |
-| `GET /api/mjpeg/{stream}.mjpg` | `http_media` MJPEG handler |
-| `POST /api/webrtc/*`, `DELETE /api/webrtc/close` | `http_media` WebRTC signaling handler |
+| `GET /live/{stream}/hls/index.m3u8` | `http_media` HLS playlist handler |
+| `GET /live/{stream}/hls/seg-{sequence}.ts` | `http_media` HLS segment handler |
+| `GET /live/{stream}.live.flv` | `http_media` HTTP-FLV handler |
+| `GET /live/{stream}.mjpg` | `http_media` MJPEG handler |
+| `POST /live/{stream}/whep` | 可选 WHEP handler，body/response 都是 SDP |
+| `DELETE /live/{stream}/whep/{peer_id}` | 可选 WHEP close handler |
+| `POST /api/webrtc/peers` | `http_media` WebRTC create peer JSON handler |
+| `POST /api/webrtc/peers/{peer_id}/offer` | `http_media` WebRTC offer JSON handler |
+| `POST /api/webrtc/peers/{peer_id}/candidates` | `http_media` WebRTC candidate JSON handler |
+| `DELETE /api/webrtc/peers/{peer_id}` | `http_media` WebRTC close JSON handler |
+
+`stream` 只接受 `main` 或 `sub`。HLS、HTTP-FLV、MJPEG 和 WHEP 属于播放 URL，
+不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。WebRTC JSON signaling
+必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
+
+WebRTC JSON DTO 冻结为：
+
+| DTO | 字段 |
+| --- | --- |
+| create peer request | `stream`、`client_id`、`session_id` |
+| peer response | `peer_id`、`stream`、`state`、`created_at_ms`、`updated_at_ms` |
+| offer request | `sdp` |
+| offer response | `peer_id`、`state`、`sdp` |
+| candidate request | `candidate`、`sdp_mid`、`sdp_mline_index`、`username_fragment` |
+| close response | `peer_id`、`state` |
+
+WHEP 成功时返回 `201 Created`、`Content-Type: application/sdp` 和 `Location`；
+`Location` 指向对应 DELETE URL。WHEP 失败不返回 JSON envelope。

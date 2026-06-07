@@ -60,6 +60,25 @@ public API 在 `net.h`。协议语义、路由、session 和 DTO 归对应协议
 - `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
   `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
 
+`TcpCloseReason` 枚举值冻结为：`normal`、`remote_close`、`parse_error`、
+`auth_failed`、`queue_full`、`pending_limit`、`send_stall`、`read_timeout`、
+`write_timeout`、`internal_error`。协议模块可以把这些原因映射为自己的业务
+diagnostics，但不能新增一套不可比较的 socket close reason。
+
+`NetConnectionDiagnostics` 字段冻结为：
+
+| 字段 | 语义 |
+| --- | --- |
+| `connection_id` | `net` 分配的 TCP connection id |
+| `owner_protocol` | `http`、`rtsp`、`onvif` 等上层协议 |
+| `remote_address` / `local_address` | 文本地址和端口 |
+| `pending_bytes` | 当前等待发送的总字节数 |
+| `send_queue_length` | 当前等待发送的队列长度 |
+| `last_write_at_ms` | 最近一次成功写 socket 的时间 |
+| `close_reason` | 关闭后保留的 `TcpCloseReason` 文本 |
+
+`/api/media/sessions` 可以聚合这些字段，但字段语义仍归 `net`。
+
 ## 状态与资源模型
 
 `NetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch

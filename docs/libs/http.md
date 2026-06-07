@@ -33,31 +33,60 @@ flowchart LR
 
 - 处理 HTTP 连接、keep-alive、request timeout、body size 和静态文件。
 - 执行认证和权限检查。
-- 按业务域注册 handlers：auth、config、media/status、snapshot、AI、system、
+- 按业务域注册 handlers：auth、config、media、snapshot、AI、system、
   network、time、upgrade、operations，以及 `http_media` 提供的媒体 handlers。
 - 做 DTO 转换，不拥有业务状态。
 - 通过 `HttpMediaWriter` 向 `http_media` 提供长连接写入、断连回调和发送队列边界。
 
-## API 归属
+## API 契约
 
-HTTP 路由由本模块实现，但业务语义归拥有模块：
+HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重构冻结后的 JSON API
+不保留旧路径 alias；媒体播放 URL 与 JSON API 分离。
 
 | API 组 | 业务归属 |
 | --- | --- |
 | `/api/auth/*` | `auth` |
-| `/api/config/video`, `/api/config/image` | `device_media` |
-| `/api/config/overlay` | `region` |
-| `/api/config/network` | `network_config` |
-| `/api/config/snapshot` | `snapshot` |
-| `/api/config/ai`, `/api/ai/*` | `ai` |
-| `/api/media/capabilities` | `device_media` |
-| `/api/status/streams` | `media_source` / `device_media` |
-| `/api/hls/*`, `/api/flv/*`, `/api/mjpeg/*` | `http_media` / `media_source` |
-| `/api/snapshot/*` | `snapshot` |
-| `/api/system/status` | `system` |
+| `/api/config/*` | `device_media`、`region`、`network_config`、`snapshot`、`ai` |
+| `/api/media/streams` | `media_source` / `device_media` |
+| `/api/media/streams/{stream}` | `media_source` / `device_media` |
+| `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `snapshot` |
+| `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` diagnostics |
+| `/api/webrtc/peers` | `http_media` / `webrtc` |
+| `/api/webrtc/peers/{peer_id}/offer` | `http_media` / `webrtc` |
+| `/api/webrtc/peers/{peer_id}/candidates` | `http_media` / `webrtc` |
+| `/api/webrtc/peers/{peer_id}` | `http_media` / `webrtc` |
+| `/api/system/*` | `system`、`time`、`network_config` |
 | `/api/upgrade/*` | `upgrade` |
 | `/api/operations*` | `logger` |
-| `/api/webrtc/*` | `http_media` / `webrtc` |
+| `/api/ai/*` | `ai` |
+
+所有 JSON API 统一响应 envelope：
+
+| 字段 | 语义 |
+| --- | --- |
+| `ok` | `true` 表示请求成功，`false` 表示失败。 |
+| `data` | 成功时的业务数据；无返回数据时为对象或 `null`，由具体 API 固定。 |
+| `error` | 失败对象，成功时为 `null`。 |
+| `request_id` | 本次请求 id，日志和前端错误提示都使用同一值。 |
+
+`error.code` 冻结为小写蛇形命名：`invalid_argument`、`unauthenticated`、
+`permission_denied`、`stream_not_found`、`protocol_unavailable`、`peer_not_found`、
+`resource_busy`、`internal_error`。`error.message` 是给 Web 展示和运维排查的短文本。
+
+`stream` 路径参数只允许 `main` 或 `sub`。HTTP 内部可以把它映射到 `live/main`、
+`live/sub` 或模块内部枚举，但不得把 `vhost/app`、旧 `stream_*` 字段或设备 SDK
+细节暴露给 Web。
+
+播放 URL 由 `GET /api/media/streams/{stream}/urls` 返回：
+
+| 字段 | URL 规则 | 归属 |
+| --- | --- | --- |
+| `hls` | `/live/{stream}/hls/index.m3u8` | `http_media` |
+| `http_flv` | `/live/{stream}.live.flv` | `http_media` |
+| `mjpeg` | `/live/{stream}.mjpg` | `http_media` |
+| `snapshot` | `/snapshot/{stream}.jpg` | `snapshot` |
+| `rtsp` | 后端按 Host、RTSP 端口、认证配置生成完整 URL | `rtsp` / `http` helper |
+| `webrtc_whep` | `/live/{stream}/whep`，可选 | `http_media` / `webrtc` |
 
 ## 状态与资源模型
 
