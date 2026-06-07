@@ -104,6 +104,10 @@ executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句�
 `send_buffer_limit_bytes`、`stream_executor_*`、`control_executor_*` 和 timeout 字段
 用于限制慢客户端、上传体和流式响应对进程内存的影响。
 
+`http.port` 和 `http.static_root` 属于 HTTP listener/static file 运行态边界。当前
+阶段 app 为 `http` scope 安装 config attachment，运行时修改会被拒绝，避免配置落盘
+成功但当前 HTTP 服务仍使用旧端口或旧静态目录；需要重启后生效。
+
 ## 非目标
 
 - 不在 HTTP 层推导媒体、升级、AI 或设备运行状态。

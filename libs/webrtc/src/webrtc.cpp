@@ -132,6 +132,41 @@ public:
         peer_store_.Clear();
     }
 
+    bool ApplyOptions(const WebrtcOptions &options) override {
+        if (!IsValidOptions(options)) {
+            return false;
+        }
+
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (options.session_timeout_ms != options_.session_timeout_ms ||
+                options.send_queue_capacity != options_.send_queue_capacity ||
+                options.send_worker_count != options_.send_worker_count ||
+                options.local_port_base != options_.local_port_base) {
+                return false;
+            }
+            engine = engine_;
+        }
+
+        if (engine && !engine->ApplyOptions(options)) {
+            return false;
+        }
+
+        std::vector<std::string> peer_ids;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            options_ = options;
+            if (!options_.enabled) {
+                peer_ids = peer_store_.OpenPeerIds();
+            }
+        }
+        for (const std::string &peer_id : peer_ids) {
+            (void)ClosePeerByService(peer_id, "webrtc_disabled", false);
+        }
+        return true;
+    }
+
     const char *Name() const { return Webrtc::Name(); }
 
     WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request) override {

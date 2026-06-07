@@ -143,6 +143,18 @@ public:
         sessions_.clear();
     }
 
+    bool ApplyOptions(const WebrtcOptions &options) override {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (options.session_timeout_ms != options_.session_timeout_ms ||
+            options.send_queue_capacity != options_.send_queue_capacity ||
+            options.send_worker_count != options_.send_worker_count ||
+            options.local_port_base != options_.local_port_base) {
+            return false;
+        }
+        options_ = options;
+        return true;
+    }
+
     bool CreatePeer(const WebrtcPeerInfo &peer) override {
         std::lock_guard<std::mutex> guard(mutex_);
         if (peer.peer_id.empty() || !IsSupportedCodec(peer.codec) ||

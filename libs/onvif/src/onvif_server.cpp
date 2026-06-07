@@ -24,7 +24,14 @@ class OnvifServer::Impl {
 public:
     Impl(const OnvifServerOptions &options,
          const OnvifServerDependencies &dependencies)
-        : options_(options), dependencies_(dependencies) {}
+        : options_(options),
+          net_engine_(dependencies.net_engine),
+          auth_(dependencies.auth),
+          event_(dependencies.event),
+          system_(dependencies.system),
+          time_(dependencies.time),
+          device_media_(dependencies.device_media),
+          rtsp_(dependencies.rtsp) {}
 
     ~Impl() {
         Stop();
@@ -47,7 +54,7 @@ public:
         tcp_callbacks.user = this;
         tcp_callbacks.on_read = &OnvifServer::Impl::HandleTcpRead;
         const TcpServerId tcp_server_id =
-            dependencies_.net_engine->ListenTcp(tcp_options, tcp_callbacks);
+            net_engine_->ListenTcp(tcp_options, tcp_callbacks);
         if (tcp_server_id == 0) {
             return false;
         }
@@ -61,7 +68,7 @@ public:
             udp_callbacks.user = this;
             udp_callbacks.on_read = &OnvifServer::Impl::HandleUdpRead;
             const UdpSocketId udp_socket_id =
-                dependencies_.net_engine->BindUdp(udp_options, udp_callbacks);
+                net_engine_->BindUdp(udp_options, udp_callbacks);
             if (udp_socket_id == 0) {
                 CleanupSocketsLocked();
                 return false;
@@ -80,6 +87,22 @@ public:
         prepared_ = false;
     }
 
+    bool ApplyOptions(const OnvifServerOptions &options) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!CanApplyOptionsLocked(options)) {
+            return false;
+        }
+        options_.advertise_ip = options.advertise_ip;
+        options_.enable_auth = options.enable_auth;
+        options_.manufacturer = options.manufacturer;
+        options_.model = options.model;
+        options_.firmware_version = options.firmware_version;
+        options_.snapshot_main_path = options.snapshot_main_path;
+        options_.snapshot_sub_path = options.snapshot_sub_path;
+        options_.http_port = options.http_port;
+        return true;
+    }
+
     bool IsStarted() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return prepared_ && started_;
@@ -95,7 +118,7 @@ private:
         if (prepared_) {
             return true;
         }
-        if (dependencies_.net_engine == nullptr ||
+        if (net_engine_ == nullptr ||
             options_.device_service_port == 0 ||
             options_.discovery_port == 0 ||
             options_.max_request_bytes == 0 ||
@@ -103,11 +126,22 @@ private:
             options_.service_path.empty()) {
             return false;
         }
-        if (options_.enable_auth && dependencies_.auth == nullptr) {
+        if (options_.enable_auth && auth_ == nullptr) {
             return false;
         }
         prepared_ = true;
         return true;
+    }
+
+    bool CanApplyOptionsLocked(const OnvifServerOptions &options) const {
+        return options.listen_ip == options_.listen_ip &&
+               options.endpoint_uuid == options_.endpoint_uuid &&
+               options.device_service_port ==
+                   options_.device_service_port &&
+               options.discovery_port == options_.discovery_port &&
+               options.discovery_enabled == options_.discovery_enabled &&
+               options.service_path == options_.service_path &&
+               options.max_request_bytes == options_.max_request_bytes;
     }
 
     static void HandleTcpRead(void *user,
@@ -149,9 +183,9 @@ private:
             ++stats_.discovery_requests;
         }
         const std::string response = onvif::BuildDiscoveryProbeMatches(
-            options_, dependencies_.system, AdvertiseIp(), request);
-        if (udp_socket_id_ != 0 && dependencies_.net_engine != nullptr) {
-            static_cast<void>(dependencies_.net_engine->SendTo(
+            options_, system_, AdvertiseIp(), request);
+        if (udp_socket_id_ != 0 && net_engine_ != nullptr) {
+            static_cast<void>(net_engine_->SendTo(
                 udp_socket_id_, address,
                 reinterpret_cast<const uint8_t *>(response.data()),
                 response.size()));
@@ -188,7 +222,7 @@ private:
                 body = onvif::BuildSoapFaultEnvelope(
                     "unsupported onvif action");
             } else if (!onvif::AuthorizeOnvifAction(
-                           dependencies_.auth, options_.enable_auth,
+                           auth_, options_.enable_auth,
                            parsed.headers, action)) {
                 IncrementAuthFailures();
                 status = 401;
@@ -208,11 +242,11 @@ private:
 
         const std::string response =
             onvif::BuildOnvifHttpResponse(status, reason, body, extra_headers);
-        static_cast<void>(dependencies_.net_engine->Send(
+        static_cast<void>(net_engine_->Send(
             connection_id, reinterpret_cast<const uint8_t *>(response.data()),
             response.size()));
         static_cast<void>(
-            dependencies_.net_engine->CloseAfterSend(connection_id));
+            net_engine_->CloseAfterSend(connection_id));
     }
 
     std::string HandleSoapAction(onvif::OnvifAction action,
@@ -223,15 +257,15 @@ private:
             case onvif::OnvifAction::kGetDeviceInformation:
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildDeviceInformationBody(
-                        options_, dependencies_.system));
+                        options_, system_));
             case onvif::OnvifAction::kGetSystemDateAndTime:
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildSystemDateAndTimeBody(
-                        dependencies_.time));
+                        time_));
             case onvif::OnvifAction::kSetSystemDateAndTime:
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildSetSystemDateAndTimeBody(
-                        dependencies_.time, request, status, reason));
+                        time_, request, status, reason));
             case onvif::OnvifAction::kGetProfiles: {
                 const onvif::OnvifMediaUris media_uris =
                     BuildMediaUrisForRequest();
@@ -283,7 +317,7 @@ private:
     }
 
     onvif::OnvifMediaUris BuildMediaUrisForRequest() const {
-        return onvif::BuildOnvifMediaUris(options_, dependencies_,
+        return onvif::BuildOnvifMediaUris(options_, device_media_, rtsp_,
                                           AdvertiseIp());
     }
 
@@ -298,14 +332,14 @@ private:
     }
 
     void PublishRequestEvent(onvif::OnvifAction action) {
-        if (dependencies_.event == nullptr) {
+        if (event_ == nullptr) {
             return;
         }
         Event event;
         event.type = EventType::kOnvifRequestReceived;
         event.source = kOnvifServerName;
         event.message = onvif::ActionName(action);
-        static_cast<void>(dependencies_.event->Publish(event));
+        static_cast<void>(event_->Publish(event));
     }
 
     void IncrementParseFailures() {
@@ -329,20 +363,24 @@ private:
     }
 
     void CleanupSocketsLocked() {
-        if (udp_socket_id_ != 0 && dependencies_.net_engine != nullptr) {
-            static_cast<void>(dependencies_.net_engine->CloseUdp(
-                udp_socket_id_));
+        if (udp_socket_id_ != 0 && net_engine_ != nullptr) {
+            static_cast<void>(net_engine_->CloseUdp(udp_socket_id_));
             udp_socket_id_ = 0;
         }
-        if (tcp_server_id_ != 0 && dependencies_.net_engine != nullptr) {
-            static_cast<void>(dependencies_.net_engine->CloseTcp(
-                tcp_server_id_));
+        if (tcp_server_id_ != 0 && net_engine_ != nullptr) {
+            static_cast<void>(net_engine_->CloseTcp(tcp_server_id_));
             tcp_server_id_ = 0;
         }
     }
 
     OnvifServerOptions options_;
-    OnvifServerDependencies dependencies_;
+    NetEngine *net_engine_ = nullptr;
+    IAuth *auth_ = nullptr;
+    IEvent *event_ = nullptr;
+    ISystem *system_ = nullptr;
+    ITime *time_ = nullptr;
+    IDeviceMedia *device_media_ = nullptr;
+    IRtsp *rtsp_ = nullptr;
     TcpServerId tcp_server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;
     mutable std::mutex mutex_;
@@ -365,6 +403,10 @@ void OnvifServer::Stop() {
     if (impl_ != nullptr) {
         impl_->Stop();
     }
+}
+
+bool OnvifServer::ApplyOptions(const OnvifServerOptions &options) {
+    return impl_ != nullptr && impl_->ApplyOptions(options);
 }
 
 bool OnvifServer::IsStarted() const {

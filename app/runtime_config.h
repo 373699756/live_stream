@@ -43,6 +43,8 @@ struct AppRuntimeConfig {
 
 bool LoadRuntimeConfig(IConfig *config_store,
                        AppRuntimeConfig *runtime_config);
+bool LoadRuntimeConfigFromRoot(const ConfigJson &root,
+                               AppRuntimeConfig *runtime_config);
 
 }  // namespace live_stream
 

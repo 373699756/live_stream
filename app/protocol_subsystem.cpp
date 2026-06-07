@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <string>
+#include <vector>
 
 #include "core_subsystem.h"
 #include "device_subsystem.h"
@@ -124,6 +125,21 @@ bool IsUsableWebrtcPublicIp(const std::string &public_ip) {
         return false;
     }
     return octets[0] != 0 && octets[0] != 127;
+}
+
+bool SameIceServers(const std::vector<WebrtcIceServer> &left,
+                    const std::vector<WebrtcIceServer> &right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        if (left[i].url != right[i].url ||
+            left[i].username != right[i].username ||
+            left[i].credential != right[i].credential) {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::string ResolveWebrtcPublicIp(
@@ -264,6 +280,95 @@ NetAdaptiveDependencies BuildNetAdaptiveDependencies(
     dependencies.webrtc = refs.webrtc;
     dependencies.media_source = refs.media_pipeline;
     return dependencies;
+}
+
+ConfigResult RejectRuntimeConfigChange(const char *field) {
+    return ConfigResult::Failure(field == nullptr ? "" : field,
+                                 "restart required");
+}
+
+ConfigResult ValidateRuntimeConfigScope(
+    const AppRuntimeConfig &current_config,
+    const AppRuntimeConfig &next_config,
+    const std::string &scope) {
+    if (scope == "http") {
+        if (next_config.http_port != current_config.http_port) {
+            return RejectRuntimeConfigChange("port");
+        }
+        if (next_config.static_root != current_config.static_root) {
+            return RejectRuntimeConfigChange("static_root");
+        }
+        return ConfigResult::Success();
+    }
+    if (scope == "rtsp") {
+        if (next_config.rtsp_port != current_config.rtsp_port) {
+            return RejectRuntimeConfigChange("port");
+        }
+        if (next_config.rtsp_max_sessions !=
+            current_config.rtsp_max_sessions) {
+            return RejectRuntimeConfigChange("max_sessions");
+        }
+        return ConfigResult::Success();
+    }
+    if (scope == "webrtc") {
+        if (next_config.webrtc_local_port_base !=
+            current_config.webrtc_local_port_base) {
+            return RejectRuntimeConfigChange("local_port_base");
+        }
+        return ConfigResult::Success();
+    }
+    if (scope == "onvif") {
+        if (next_config.onvif_device_port !=
+            current_config.onvif_device_port) {
+            return RejectRuntimeConfigChange("device_service_port");
+        }
+        if (next_config.onvif_discovery_port !=
+            current_config.onvif_discovery_port) {
+            return RejectRuntimeConfigChange("discovery_port");
+        }
+        if (next_config.onvif_discovery_enabled !=
+            current_config.onvif_discovery_enabled) {
+            return RejectRuntimeConfigChange("discovery_enabled");
+        }
+        return ConfigResult::Success();
+    }
+    return ConfigResult::Failure("", "unsupported runtime config scope");
+}
+
+bool IsRtspRuntimeChanged(const AppRuntimeConfig &current_config,
+                          const AppRuntimeConfig &next_config) {
+    return current_config.rtsp_auth_required !=
+               next_config.rtsp_auth_required ||
+           current_config.rtsp_main_codec != next_config.rtsp_main_codec ||
+           current_config.rtsp_sub_codec != next_config.rtsp_sub_codec;
+}
+
+bool IsWebrtcRuntimeChanged(const AppRuntimeConfig &current_config,
+                            const AppRuntimeConfig &next_config) {
+    return current_config.webrtc_enabled != next_config.webrtc_enabled ||
+           current_config.webrtc_prefer_tcp != next_config.webrtc_prefer_tcp ||
+           current_config.webrtc_max_peers != next_config.webrtc_max_peers ||
+           current_config.webrtc_public_ip != next_config.webrtc_public_ip ||
+           current_config.network_ifname != next_config.network_ifname ||
+           current_config.advertise_host != next_config.advertise_host ||
+           !SameIceServers(current_config.webrtc_ice_servers,
+                           next_config.webrtc_ice_servers);
+}
+
+bool IsOnvifRuntimeChanged(const AppRuntimeConfig &current_config,
+                           const AppRuntimeConfig &next_config) {
+    return current_config.advertise_host != next_config.advertise_host ||
+           current_config.onvif_auth_required !=
+               next_config.onvif_auth_required ||
+           current_config.onvif_manufacturer !=
+               next_config.onvif_manufacturer ||
+           current_config.onvif_model != next_config.onvif_model ||
+           current_config.onvif_firmware_version !=
+               next_config.onvif_firmware_version ||
+           current_config.snapshot_main_path !=
+               next_config.snapshot_main_path ||
+           current_config.snapshot_sub_path != next_config.snapshot_sub_path ||
+           current_config.http_port != next_config.http_port;
 }
 
 }  // namespace
@@ -423,11 +528,141 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
 
+    config_ = core_subsystem.config();
+    network_config_ = device_refs.network;
+    runtime_config_ = runtime_config;
+    if (!InstallRuntimeConfigAttachments()) {
+        Error("app", "Install protocol runtime config attachments failed");
+        Stop();
+        return false;
+    }
+
     started_ = true;
     return true;
 }
 
+bool ProtocolSubsystem::InstallRuntimeConfigAttachments() {
+    if (config_ == nullptr) {
+        return false;
+    }
+    const char *scopes[] = {"http", "rtsp", "webrtc", "onvif"};
+    for (const char *scope : scopes) {
+        ConfigAttachment attachment;
+        attachment.validate = [this, scope](const ConfigJson &value) {
+            return ValidateRuntimeConfigUpdate(scope, value);
+        };
+        attachment.apply = [this, scope](const ConfigJson &value) {
+            return ApplyRuntimeConfigUpdate(scope, value);
+        };
+        if (!config_->AttachConfig(scope, attachment)) {
+            for (const char *attached_scope : scopes) {
+                if (std::string(attached_scope) == scope) {
+                    break;
+                }
+                static_cast<void>(config_->DetachConfig(attached_scope));
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+void ProtocolSubsystem::DetachRuntimeConfigAttachments() {
+    if (config_ == nullptr) {
+        return;
+    }
+    static_cast<void>(config_->DetachConfig("http"));
+    static_cast<void>(config_->DetachConfig("rtsp"));
+    static_cast<void>(config_->DetachConfig("webrtc"));
+    static_cast<void>(config_->DetachConfig("onvif"));
+    config_ = nullptr;
+    network_config_ = nullptr;
+}
+
+bool ProtocolSubsystem::BuildNextRuntimeConfig(
+    const std::string &scope,
+    const ConfigJson &value,
+    AppRuntimeConfig *next_config) const {
+    if (config_ == nullptr || next_config == nullptr) {
+        return false;
+    }
+    ConfigJson root = ConfigJson::object();
+    const char *scopes[] = {"video", "network", "http", "rtsp",
+                            "snapshot", "webrtc", "onvif"};
+    for (const char *item : scopes) {
+        if (scope == item) {
+            root[item] = value;
+        } else {
+            root[item] = config_->GetValue(item);
+        }
+    }
+    return LoadRuntimeConfigFromRoot(root, next_config);
+}
+
+ConfigResult ProtocolSubsystem::ValidateRuntimeConfigUpdate(
+    const std::string &scope,
+    const ConfigJson &value) {
+    AppRuntimeConfig next_config;
+    if (!BuildNextRuntimeConfig(scope, value, &next_config)) {
+        return ConfigResult::Failure("", "invalid runtime config");
+    }
+    return ValidateRuntimeConfigScope(runtime_config_, next_config, scope);
+}
+
+ConfigResult ProtocolSubsystem::ApplyRuntimeConfigUpdate(
+    const std::string &scope,
+    const ConfigJson &value) {
+    AppRuntimeConfig next_config;
+    if (!BuildNextRuntimeConfig(scope, value, &next_config)) {
+        return ConfigResult::Failure("", "invalid runtime config");
+    }
+    const ConfigResult validate_result =
+        ValidateRuntimeConfigScope(runtime_config_, next_config, scope);
+    if (!validate_result.ok) {
+        return validate_result;
+    }
+
+    if (scope == "rtsp" &&
+        IsRtspRuntimeChanged(runtime_config_, next_config)) {
+        if (rtsp_ == nullptr) {
+            return ConfigResult::Failure("", "rtsp unavailable");
+        }
+        if (!rtsp_->ApplyOptions(BuildRtspOptions(next_config))) {
+            return ConfigResult::Failure("", "apply rtsp config failed");
+        }
+    }
+    if (scope == "webrtc" &&
+        IsWebrtcRuntimeChanged(runtime_config_, next_config)) {
+        if (webrtc_ == nullptr) {
+            return ConfigResult::Failure("", "webrtc unavailable");
+        }
+        ProtocolRuntimeRefs refs;
+        refs.device.network = network_config_;
+        refs.net_engine = net_engine_.get();
+        refs.rtsp = rtsp_.get();
+        refs.onvif = onvif_.get();
+        refs.webrtc = webrtc_.get();
+        refs.media_pipeline = media_pipeline_.get();
+        const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
+        if (!webrtc_->ApplyOptions(options)) {
+            return ConfigResult::Failure("", "apply webrtc config failed");
+        }
+    }
+    if (scope == "onvif" &&
+        IsOnvifRuntimeChanged(runtime_config_, next_config)) {
+        if (onvif_ == nullptr) {
+            return ConfigResult::Failure("", "onvif unavailable");
+        }
+        if (!onvif_->ApplyOptions(BuildOnvifOptions(next_config))) {
+            return ConfigResult::Failure("", "apply onvif config failed");
+        }
+    }
+    runtime_config_ = next_config;
+    return ConfigResult::Success();
+}
+
 void ProtocolSubsystem::Stop() {
+    DetachRuntimeConfigAttachments();
     if (net_adaptive_) {
         Info("app", "Stop net_adaptive begin");
         net_adaptive_->Stop();

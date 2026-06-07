@@ -64,6 +64,16 @@ std::vector<std::string> WebrtcPeerStore::MarkAllClosing() {
   return peer_ids;
 }
 
+std::vector<std::string> WebrtcPeerStore::OpenPeerIds() const {
+  std::vector<std::string> peer_ids;
+  for (const auto &item : peers_) {
+    if (IsOpenPeerState(item.second.state)) {
+      peer_ids.push_back(item.first);
+    }
+  }
+  return peer_ids;
+}
+
 uint32_t WebrtcPeerStore::ActivePeerCount() const {
   uint32_t count = 0;
   for (const auto &item : peers_) {

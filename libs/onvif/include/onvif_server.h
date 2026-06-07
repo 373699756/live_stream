@@ -70,6 +70,7 @@ public:
 
     bool Start();
     void Stop();
+    bool ApplyOptions(const OnvifServerOptions &options);
     bool IsStarted() const;
     OnvifServerStats GetStats() const;
 

@@ -29,6 +29,7 @@ class WebrtcPeerStore {
   void Clear();
 
   std::vector<std::string> MarkAllClosing();
+  std::vector<std::string> OpenPeerIds() const;
   uint32_t ActivePeerCount() const;
   bool HasConnectedPeer(StreamId stream_id) const;
   std::vector<WebrtcPeerInfo> ConnectedPeers(StreamId stream_id) const;

@@ -143,6 +143,7 @@ public:
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
+    virtual bool ApplyOptions(const RtspOptions& options) = 0;
     virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspStats GetStats() const = 0;
     virtual std::vector<RtspSessionDiagnostics>

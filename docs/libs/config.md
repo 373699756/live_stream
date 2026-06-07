@@ -54,6 +54,11 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 `network.default_ifname` 读取设备当前 IPv4；显式 IPv4 仍作为多网卡、NAT 或端口映射
 场景的手动覆盖值。
 
+`ProtocolSubsystem` 为 `http`、`rtsp`、`webrtc` 和 `onvif` scope 安装运行态
+attachment。`SetValue` 成功代表对应协议运行态已经应用；会重绑 listener、端口、
+executor 或连接上限的字段在运行时直接拒绝保存并要求重启，不能落盘成“看似成功但
+未生效”的状态。
+
 ## 产品范围守卫
 
 `CoreSubsystem` 会为 `audio` scope 安装守卫，允许 disabled 兼容字段存在，但拒绝
@@ -70,4 +75,7 @@ AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
 
 - 配置字段含义必须向后兼容。
 - HTTP、Web DTO 和拥有模块配置应用必须同步，避免保存成功但运行态未应用。
+- `network` scope 当前只能由 `network_config` 挂载一个 attachment；协议层依赖
+  `network.advertise_ip` 或自动 WebRTC IP 的运行态联动，需要后续改成事件订阅或
+  多 attachment 机制，不能抢占 `network_config` 的平台应用回调。
 - 不要在 `config` 中加入设备 SDK 解析或前端 DTO 逻辑。

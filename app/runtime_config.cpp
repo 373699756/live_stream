@@ -170,14 +170,36 @@ bool LoadRuntimeConfig(IConfig *config_store,
     if (config_store == nullptr || runtime_config == nullptr) {
         return false;
     }
+    ConfigJson root = ConfigJson::object();
+    root["video"] = config_store->GetValue("video");
+    root["network"] = config_store->GetValue("network");
+    root["http"] = config_store->GetValue("http");
+    root["rtsp"] = config_store->GetValue("rtsp");
+    root["snapshot"] = config_store->GetValue("snapshot");
+    root["webrtc"] = config_store->GetValue("webrtc");
+    root["onvif"] = config_store->GetValue("onvif");
+    return LoadRuntimeConfigFromRoot(root, runtime_config);
+}
+
+bool LoadRuntimeConfigFromRoot(const ConfigJson &root,
+                               AppRuntimeConfig *runtime_config) {
+    if (runtime_config == nullptr || !root.is_object()) {
+        return false;
+    }
     AppRuntimeConfig runtime;
-    if (!ApplyRtspVideoCodecConfig(config_store->GetValue("video"), &runtime) ||
-        !ApplyNetworkConfig(config_store->GetValue("network"), &runtime) ||
-        !ApplyHttpConfig(config_store->GetValue("http"), &runtime) ||
-        !ApplyRtspConfig(config_store->GetValue("rtsp"), &runtime) ||
-        !ApplySnapshotConfig(config_store->GetValue("snapshot"), &runtime) ||
-        !ApplyWebrtcConfig(config_store->GetValue("webrtc"), &runtime) ||
-        !ApplyOnvifConfig(config_store->GetValue("onvif"), &runtime)) {
+    if (!root.contains("video") || !root.contains("network") ||
+        !root.contains("http") || !root.contains("rtsp") ||
+        !root.contains("snapshot") || !root.contains("webrtc") ||
+        !root.contains("onvif")) {
+        return false;
+    }
+    if (!ApplyRtspVideoCodecConfig(root.at("video"), &runtime) ||
+        !ApplyNetworkConfig(root.at("network"), &runtime) ||
+        !ApplyHttpConfig(root.at("http"), &runtime) ||
+        !ApplyRtspConfig(root.at("rtsp"), &runtime) ||
+        !ApplySnapshotConfig(root.at("snapshot"), &runtime) ||
+        !ApplyWebrtcConfig(root.at("webrtc"), &runtime) ||
+        !ApplyOnvifConfig(root.at("onvif"), &runtime)) {
         return false;
     }
     *runtime_config = runtime;

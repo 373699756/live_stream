@@ -16,6 +16,7 @@
 namespace live_stream {
 
 class CoreSubsystem;
+class INetworkConfig;
 struct DeviceRefs;
 struct MediaRefs;
 
@@ -45,6 +46,16 @@ private:
     ProtocolSubsystem(const ProtocolSubsystem &) = delete;
     ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
+    bool InstallRuntimeConfigAttachments();
+    void DetachRuntimeConfigAttachments();
+    ConfigResult ValidateRuntimeConfigUpdate(const std::string &scope,
+                                             const ConfigJson &value);
+    ConfigResult ApplyRuntimeConfigUpdate(const std::string &scope,
+                                          const ConfigJson &value);
+    bool BuildNextRuntimeConfig(const std::string &scope,
+                                const ConfigJson &value,
+                                AppRuntimeConfig *next_config) const;
+
     std::unique_ptr<infra::Executor> net_callback_executor_;
     std::unique_ptr<NetEngine> net_engine_;
     std::unique_ptr<IRtsp> rtsp_;
@@ -53,6 +64,9 @@ private:
     std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttp> http_;
     std::unique_ptr<INetAdaptive> net_adaptive_;
+    IConfig *config_ = nullptr;
+    INetworkConfig *network_config_ = nullptr;
+    AppRuntimeConfig runtime_config_;
     bool started_ = false;
 };
 

@@ -139,6 +139,17 @@ public:
         StopInternal();
     }
 
+    bool ApplyOptions(const RtspOptions& options) override {
+        if (!CanApplyOptions(options)) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(mutex_);
+        options_.enable_auth = options.enable_auth;
+        options_.main_video_codec = options.main_video_codec;
+        options_.sub_video_codec = options.sub_video_codec;
+        return true;
+    }
+
     void Release() {
         ReleaseInternal();
     }
@@ -174,6 +185,22 @@ private:
             state_ == ServiceState::kInitialized) {
             state_ = ServiceState::kStopped;
         }
+    }
+
+    bool CanApplyOptions(const RtspOptions& options) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return options.listen_ip == options_.listen_ip &&
+               options.listen_port == options_.listen_port &&
+               options.max_sessions == options_.max_sessions &&
+               options.max_request_bytes == options_.max_request_bytes &&
+               options.session_timeout_ms == options_.session_timeout_ms &&
+               options.rtp_mtu_bytes == options_.rtp_mtu_bytes &&
+               options.send_queue_capacity == options_.send_queue_capacity &&
+               options.send_buffer_limit_bytes ==
+                   options_.send_buffer_limit_bytes &&
+               options.send_stall_timeout_ms ==
+                   options_.send_stall_timeout_ms &&
+               options.default_transport == options_.default_transport;
     }
 
     void ReleaseInternal() {

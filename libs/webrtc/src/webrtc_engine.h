@@ -40,6 +40,7 @@ public:
     virtual bool Start(const WebrtcOptions &options,
                        const WebrtcEngineCallbacks &callbacks) = 0;
     virtual void Stop() = 0;
+    virtual bool ApplyOptions(const WebrtcOptions &options) = 0;
     virtual bool CreatePeer(const WebrtcPeerInfo &peer) = 0;
     virtual std::string HandleOffer(const WebrtcPeerInfo &peer,
                                     const std::string &offer_sdp) = 0;

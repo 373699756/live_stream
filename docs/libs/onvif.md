@@ -38,6 +38,12 @@ flowchart LR
 public API 在 `onvif_server.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
 
+`OnvifServer::ApplyOptions()` 支持运行态更新 `advertise_ip`、认证开关、厂商/型号/
+固件版本、snapshot path 和 HTTP 端口，用于后续 discovery、device/media SOAP 响应。
+`device_service_port`、`discovery_port`、`discovery_enabled`、`service_path` 和
+request size 上限涉及 TCP/UDP listener 或 parser 边界，运行时修改会被 app 的
+config attachment 拒绝，必须重启后生效。
+
 `OnvifServerDependencies::rtsp` 指向已启动的 `IRtsp`。ONVIF media service 只调用
 `IRtsp::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；RTSP path 和 URL 拼接规则
 归 `rtsp` 模块所有。

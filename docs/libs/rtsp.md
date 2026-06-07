@@ -46,6 +46,10 @@ public API 在 `rtsp.h`。RTSP URL 可被 ONVIF URI provider 使用，但 RTSP
 RTSP URL 只能通过 `GET /api/media/streams/{stream}/urls`，由后端结合 Host、
 RTSP 端口、认证配置和 stream 生成完整 URL。
 
+`IRtsp::ApplyOptions()` 只用于运行态安全字段：`auth_required` 以及主/子码流
+codec。`rtsp.port` 和 `rtsp.max_sessions` 参与 TCP listener 和 Net 层连接上限，
+运行时修改会被 app 的 config attachment 拒绝，必须重启后生效。
+
 ## 状态与资源模型
 
 RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、

@@ -84,6 +84,13 @@ native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE 
 多网卡、NAT、VPN 或端口映射部署可以显式填写浏览器真实可达的 IPv4；如果自动解析不
 到可用地址，WebRTC 不启动，但不影响 RTSP、HTTP 或其他预览协议。
 
+`IWebrtc::ApplyOptions()` 支持运行态更新 `enabled`、`prefer_tcp`、`max_peers`、
+`public_ip` 和 `ice_servers`，新 peer 使用更新后的 SDP/ICE 参数。`enabled=false`
+会关闭当前 open peer。`local_port_base` 参与 UDP host candidate 端口分配，运行时
+修改会被 app 的 config attachment 拒绝，必须重启后生效。`public_ip="auto"` 的
+解析仍由 app 读取 `network.default_ifname` 的当前 IPv4；若网络地址变化但 WebRTC
+scope JSON 未变化，后续需要通过 network 事件联动触发重新应用。
+
 10.4 已接入 STUN/ICE 层：`stun_packet.*` 支持 binding request/response、
 USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；
 `ice_transport.*` 绑定 UDP host candidate，校验浏览器 STUN binding request，

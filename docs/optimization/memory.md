@@ -82,3 +82,6 @@ flowchart LR
 - 直播客户端数量增加会放大缓存和 socket backpressure。
 - H.265/H.264 parameter set 和 keyframe 缓存要随 codec 切换重建。
 - 临时大 buffer、跨线程队列积压、`NetBufferOwner` 持帧时间和慢 socket 写是优先排查点。
+- 配置运行态联动仍需补 `network` 事件订阅或多 attachment 机制，让
+  `network.advertise_ip`、`network.default_ifname` 和 WebRTC auto public IP 变化能
+  驱动协议 URL/SDP 重新应用，而不抢占 `network_config` 的配置 apply 回调。
