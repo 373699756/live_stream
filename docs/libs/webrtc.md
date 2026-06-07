@@ -84,6 +84,15 @@ RTP timestamp 单调门禁和 RTP 包/帧统计。drain timer 发送帧时持有
 避免 service stop/release 与 SRTP 发送并发释放 native transport。peer close、
 service stop 或失败时会取消 drain timer、detach reader 并释放启动帧引用。
 
+10.8 当前基线收口 peer/session 生命周期：`WebrtcServiceImpl` 统一编排 peer id、
+stream id、offer/answer 状态、pending ICE candidate、native transport、reader、
+drain timer、setup timeout 和 close；engine 内部仍拥有 ICE/DTLS/SRTP 具体资源。
+关闭 peer 时先阻止 reader 继续 drain，等待正在运行的 drain 回调退出，再取消 timer、
+detach reader、释放 RTP sender 状态，最后关闭 engine peer 以释放 SRTP/DTLS/ICE；
+service release 会先关闭 callback guard 并等待 engine/timer 回调退出，再释放 reader 和
+native transport。`http_media` WebRTC handler 只做鉴权、JSON DTO 转换和 create peer、
+offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media reader 状态。
+
 ## 状态与资源模型
 
 WebRTC peer/session 拥有 SDP/ICE/DTLS/SRTP 状态、UDP endpoint、RTP sender、

@@ -4,7 +4,6 @@
 #include "http_router.h"
 
 #include "device_media.h"
-#include "infra/log.h"
 #include "json_utils.h"
 #include "webrtc.h"
 
@@ -139,10 +138,6 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                                &candidate.username_fragment);
     }
 
-    Info(kHttpMediaModuleName,
-                   "WebRTC candidate peer=%s mid=%s index=%d size=%zu",
-                   candidate.peer_id.c_str(), candidate.sdp_mid.c_str(),
-                   candidate.sdp_mline_index, candidate.candidate.size());
     ConfigJson root = ConfigJson::object();
     root["peer_id"] = candidate.peer_id;
     if (webrtc->AddIceCandidate(candidate)) {
