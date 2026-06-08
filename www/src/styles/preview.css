@@ -154,6 +154,7 @@
   gap: 8px;
   color: #93a4bd;
   text-align: center;
+  pointer-events: none;
 }
 
 .retained-frame-status {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { Component, lazy, Suspense, useState, type ReactNode } from 'react';
 import { AppShell } from './components/AppShell';
 import { useAuth } from './context/AuthContext';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
@@ -51,6 +51,47 @@ const VideoConfigPage = lazy(() =>
     default: module.VideoConfigPage,
   })),
 );
+
+interface PageErrorBoundaryProps {
+  children: ReactNode;
+  page: PageId;
+}
+
+interface PageErrorBoundaryState {
+  message: string;
+}
+
+class PageErrorBoundary extends Component<
+  PageErrorBoundaryProps,
+  PageErrorBoundaryState
+> {
+  state: PageErrorBoundaryState = { message: '' };
+
+  static getDerivedStateFromError(error: unknown): PageErrorBoundaryState {
+    return {
+      message: error instanceof Error ? error.message : '页面加载失败',
+    };
+  }
+
+  componentDidUpdate(previousProps: PageErrorBoundaryProps) {
+    if (previousProps.page !== this.props.page && this.state.message) {
+      this.setState({ message: '' });
+    }
+  }
+
+  render() {
+    if (this.state.message) {
+      return (
+        <div className="panel">
+          <div className="status-note error-note">
+            页面加载失败：{this.state.message}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function renderPage(page: PageId) {
   switch (page) {
@@ -121,9 +162,11 @@ export default function App() {
       onLogout={logout}
       userName={principal?.user_name}
     >
-      <Suspense fallback={<div className="panel">正在加载页面...</div>}>
-        {renderPage(page)}
-      </Suspense>
+      <PageErrorBoundary page={page}>
+        <Suspense fallback={<div className="panel">正在加载页面...</div>}>
+          {renderPage(page)}
+        </Suspense>
+      </PageErrorBoundary>
     </AppShell>
   );
 }

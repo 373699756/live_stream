@@ -58,7 +58,15 @@ function scaleMaskToSurface(
 function contentAreaForSurface(
   frame: FrameSize,
   surface: { width: number; height: number },
-): SurfaceRect {
+): SurfaceRect | null {
+  if (
+    frame.width <= 0 ||
+    frame.height <= 0 ||
+    surface.width <= 0 ||
+    surface.height <= 0
+  ) {
+    return null;
+  }
   const frameRatio = frame.width / frame.height;
   const surfaceRatio = surface.width / surface.height;
   if (surfaceRatio > frameRatio) {
@@ -101,6 +109,10 @@ export function useOverlayMaskEditor({
       setSurfaceSize({ width: rect.width, height: rect.height });
     };
     updateSurfaceSize();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateSurfaceSize);
+      return () => window.removeEventListener('resize', updateSurfaceSize);
+    }
     const observer = new ResizeObserver(updateSurfaceSize);
     observer.observe(drawLayer);
     return () => observer.disconnect();
@@ -119,6 +131,9 @@ export function useOverlayMaskEditor({
       width: surface.width,
       height: surface.height,
     });
+    if (!contentArea) {
+      return null;
+    }
     const x = clamp(
       event.clientX - surface.left - contentArea.left,
       0,
@@ -140,6 +155,9 @@ export function useOverlayMaskEditor({
       return;
     }
     const point = pointerToFrame(event);
+    if (!point) {
+      return;
+    }
     setDrag({ slot: activeSlot, start_x: point.x, start_y: point.y });
     onMaskPatch(activeSlot, {
       enabled: true,
@@ -156,6 +174,9 @@ export function useOverlayMaskEditor({
       return;
     }
     const point = pointerToFrame(event);
+    if (!point) {
+      return;
+    }
     const x = Math.min(drag.start_x, point.x);
     const y = Math.min(drag.start_y, point.y);
     const width = Math.max(1, Math.abs(point.x - drag.start_x));

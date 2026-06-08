@@ -20,6 +20,14 @@ const streamLabels: Record<StreamName, string> = {
 };
 const runtimeTimeoutMs = 3000;
 
+function streamLabel(stream: string) {
+  return stream === 'main' || stream === 'sub' ? streamLabels[stream] : stream || '--';
+}
+
+function validStream(stream: string): stream is StreamName {
+  return stream === 'main' || stream === 'sub';
+}
+
 function readyText(value: boolean) {
   return value ? 'ready' : 'not ready';
 }
@@ -94,6 +102,8 @@ export function StreamInfoPage() {
     useState<Partial<Record<StreamName, MediaPlaybackUrls>>>({});
   const [sessions, setSessions] = useState<MediaSessionInfo[]>([]);
   const [error, setError] = useState('');
+  const safeRuntimes = runtimes.filter((runtime) => validStream(runtime.stream));
+  const safeSessions = sessions.filter((session) => validStream(session.stream));
 
   useEffect(() => {
     let mounted = true;
@@ -122,8 +132,8 @@ export function StreamInfoPage() {
         if (!mounted) {
           return;
         }
-        setRuntimes(nextRuntimes);
-        setSessions(nextSessions);
+        setRuntimes(Array.isArray(nextRuntimes) ? nextRuntimes : []);
+        setSessions(Array.isArray(nextSessions) ? nextSessions : []);
         setUrlsByStream({ main: mainUrls, sub: subUrls });
         setError('');
       } catch (err: unknown) {
@@ -153,11 +163,11 @@ export function StreamInfoPage() {
         {error && <div className="status-note error-note">{error}</div>}
         <div className="address-table">
           {streams.map((stream) => {
-            const runtime = runtimes.find((item) => item.stream === stream);
+            const runtime = safeRuntimes.find((item) => item.stream === stream);
             if (!runtime) {
               return (
                 <div key={stream}>
-                  <strong>{streamLabels[stream]}</strong>
+                  <strong>{streamLabel(stream)}</strong>
                   <span>运行态不可用</span>
                 </div>
               );
@@ -165,14 +175,14 @@ export function StreamInfoPage() {
             return (
               <div key={stream}>
                 <strong>
-                  {streamLabels[stream]} / {runtime.running ? '运行中' : '未运行'}
+                  {streamLabel(stream)} / {runtime.running ? '运行中' : '未运行'}
                 </strong>
                 <span>
                   {previewValueText(runtime.codec)} /{' '}
                   {previewValueText(runtime.resolution, '--')} /{' '}
                   {previewValueText(runtime.fps, '--')}fps
                 </span>
-                {protocolRows(runtime, urlsByStream[stream], sessions).map((row) => (
+                {protocolRows(runtime, urlsByStream[stream], safeSessions).map((row) => (
                   <code key={row.label}>
                     {row.label}: {row.url || 'unavailable'} [{row.ready}, sessions {row.sessions}]
                   </code>
@@ -191,15 +201,15 @@ export function StreamInfoPage() {
           </div>
         </div>
         <div className="info-table">
-          {sessions.length === 0 ? (
+          {safeSessions.length === 0 ? (
             <div>
               <span>当前无活动会话</span>
               <strong>0</strong>
             </div>
-          ) : sessions.map((session) => (
-            <div key={session.session_id}>
+          ) : safeSessions.map((session, index) => (
+            <div key={session.session_id || `${session.protocol}-${session.stream}-${index}`}>
               <span>
-                {session.protocol} / {streamLabels[session.stream]} /{' '}
+                {session.protocol || '--'} / {streamLabel(session.stream)} /{' '}
                 {session.client_ip || '--'}
               </span>
               <strong>
@@ -219,10 +229,10 @@ export function StreamInfoPage() {
           </div>
         </div>
         <div className="info-table">
-          {runtimes.map((runtime) => (
+          {safeRuntimes.map((runtime) => (
             <div key={runtime.stream}>
               <span>
-                {streamLabels[runtime.stream]} / readers {runtime.reader_count} /{' '}
+                {streamLabel(runtime.stream)} / readers {runtime.reader_count} /{' '}
                 clients {runtime.client_count}
               </span>
               <strong>

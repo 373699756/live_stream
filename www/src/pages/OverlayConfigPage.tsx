@@ -16,13 +16,47 @@ const parseResolution = (resolution: string) => {
   return { width, height };
 };
 
+function cloneMask(mask: PrivacyMaskConfig): PrivacyMaskConfig {
+  return { ...mask };
+}
+
+function defaultMask(stream: StreamName): PrivacyMaskConfig {
+  const defaults = mockOverlayConfig.privacy_masks[stream];
+  return cloneMask(defaults[0]);
+}
+
+function normalizedMasks(
+  masks: PrivacyMaskConfig[] | undefined,
+  stream: StreamName,
+): PrivacyMaskConfig[] {
+  const defaults = mockOverlayConfig.privacy_masks[stream];
+  return defaults.map((mask, index) => ({
+    ...mask,
+    ...(masks?.[index] ?? {}),
+  }));
+}
+
+function normalizeOverlayConfig(config: OverlayConfig): OverlayConfig {
+  return {
+    ...config,
+    privacy_masks: {
+      main: normalizedMasks(config.privacy_masks?.main, 'main'),
+      sub: normalizedMasks(config.privacy_masks?.sub, 'sub'),
+    },
+  };
+}
+
+function clampSlot(slot: number, masks: PrivacyMaskConfig[]) {
+  return Math.min(Math.max(slot, 0), Math.max(masks.length - 1, 0));
+}
+
 function updateMask(
   config: OverlayConfig,
   stream: StreamName,
   slot: number,
   patch: Partial<PrivacyMaskConfig>,
 ): OverlayConfig {
-  const masks = config.privacy_masks[stream].map((item, index) =>
+  const masks = normalizedMasks(config.privacy_masks?.[stream], stream).map((item, index) =>
     index === slot ? { ...item, ...patch } : item,
   );
   return {
@@ -46,7 +80,7 @@ export function OverlayConfigPage() {
     loading: videoLoading,
   } = useVideoConfig(activeStream);
 
-  const draftConfig = config ?? mockOverlayConfig;
+  const draftConfig = config ? normalizeOverlayConfig(config) : mockOverlayConfig;
   const streamConfig = videoConfig?.streams[activeStream];
   const capability = capabilities.streams[activeStream];
   const fallbackResolution = capability.resolutions[0]
@@ -56,7 +90,8 @@ export function OverlayConfigPage() {
       : '640x360';
   const frame = parseResolution(streamConfig?.resolution || fallbackResolution);
   const activeMasks = draftConfig.privacy_masks[activeStream];
-  const activeMask = activeMasks[activeSlot];
+  const safeActiveSlot = clampSlot(activeSlot, activeMasks);
+  const activeMask = activeMasks[safeActiveSlot] ?? defaultMask(activeStream);
   const previewStatuses = statuses.map((status) => ({
     ...status,
     resolution: videoConfig?.streams[status.stream]?.resolution || status.resolution,
@@ -72,12 +107,12 @@ export function OverlayConfigPage() {
   const maskEditor = useOverlayMaskEditor({
     activeMask,
     activeMasks,
-    activeSlot,
+    activeSlot: safeActiveSlot,
     activeStream,
     frame,
-    onClearCurrent: () => setMask(activeSlot, { enabled: false }),
+    onClearCurrent: () => setMask(safeActiveSlot, { enabled: false }),
     onMaskPatch: setMask,
-    onSlotChange: setActiveSlot,
+    onSlotChange: (slot) => setActiveSlot(clampSlot(slot, activeMasks)),
     onStreamChange: setActiveStream,
     reset,
     save,
