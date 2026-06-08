@@ -120,11 +120,13 @@ APP_SRCS := \
 	app/platform/linux/upgrade_platform.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
+APP_DEPS := $(APP_OBJS:.o=.d)
 SYSUPGRADE_SRCS := \
 	app/tools/sysupgrade/live_sysupgrade.cpp \
 	app/platform/linux/linux_platform_common.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
+SYSUPGRADE_DEPS := $(SYSUPGRADE_OBJS:.o=.d)
 WEB_INPUTS := \
 	www/index.html \
 	www/package.json \
@@ -168,13 +170,13 @@ $(MODULES):
 	$(MAKE) -C libs/$@ ROOT_DIR=$(ROOT_DIR) \
 	  ENABLE_HISI_MPP=1
 
-$(OBJ_DIR)/%.o: app/%.cpp
+$(OBJ_DIR)/%.o: app/%.cpp Makefile
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
 
-$(OBJ_DIR)/sysupgrade_%.o: app/%.cpp
+$(OBJ_DIR)/sysupgrade_%.o: app/%.cpp Makefile
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
 
 $(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULES)
 	@mkdir -p $(dir $@)
@@ -234,3 +236,5 @@ clean:
 	done
 	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade \
 	  $(DEBUG_DIR) $(RELEASE_DIR)
+
+-include $(APP_DEPS) $(SYSUPGRADE_DEPS)

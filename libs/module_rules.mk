@@ -24,8 +24,10 @@ CXXFLAGS += -I$(ROOT_DIR)/3rdparty/open_src
 
 SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
+DEPS := $(OBJS:.o=.d)
 TEST_SRCS := $(wildcard tests/*.cpp)
 TEST_BINS := $(patsubst tests/%.cpp,$(TEST_DIR)/$(MODULE_NAME)_%,$(TEST_SRCS))
+TEST_DEPS := $(TEST_BINS:=.d)
 TEST_CXXFLAGS ?= -I$(ROOT_DIR)/tests/support
 EXTRA_TEST_DEPS ?=
 EXTRA_TEST_LIBS ?=
@@ -39,13 +41,14 @@ $(LIB_DIR)/lib$(MODULE_NAME).a: $(OBJS)
 	rm -f $@
 	$(AR) rcs $@ $^
 
-$(OBJ_DIR)/%.o: src/%.cpp
+$(OBJ_DIR)/%.o: src/%.cpp Makefile $(ROOT_DIR)/libs/module_rules.mk
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
 
 $(TEST_DIR)/$(MODULE_NAME)_%: tests/%.cpp $(LIB_DIR)/lib$(MODULE_NAME).a $(EXTRA_TEST_DEPS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(TEST_CXXFLAGS) $< $(LIB_DIR)/lib$(MODULE_NAME).a $(EXTRA_TEST_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(TEST_CXXFLAGS) -MMD -MP -MF $@.d -MT $@ \
+	  $< $(LIB_DIR)/lib$(MODULE_NAME).a $(EXTRA_TEST_LIBS) -o $@
 
 test: board-test
 
@@ -62,4 +65,6 @@ board-test-build: all $(TEST_BINS)
 test-build: board-test-build
 
 clean:
-	rm -rf $(OBJ_DIR) $(LIB_DIR)/lib$(MODULE_NAME).a $(TEST_BINS)
+	rm -rf $(OBJ_DIR) $(LIB_DIR)/lib$(MODULE_NAME).a $(TEST_BINS) $(TEST_DEPS)
+
+-include $(DEPS) $(TEST_DEPS)
