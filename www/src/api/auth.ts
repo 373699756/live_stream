@@ -7,8 +7,10 @@ import {
 } from './client';
 import {
   dispatchAuthInvalid,
+  getToken,
   hasToken,
   removeToken,
+  removeTokenIfCurrent,
   setToken,
 } from './authSession';
 import type { AuthPrincipal, AuthState } from './types';
@@ -148,7 +150,8 @@ export async function changePassword(
 }
 
 export async function logout(): Promise<void> {
-  if (!hasToken()) {
+  const token = getToken();
+  if (!token) {
     return;
   }
   const request = managedRequestSignal();
@@ -166,5 +169,5 @@ export async function logout(): Promise<void> {
   } finally {
     request.cleanup();
   }
-  removeToken();
+  removeTokenIfCurrent(token);
 }

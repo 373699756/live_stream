@@ -18,6 +18,12 @@ export function removeToken(): void {
   window.localStorage.removeItem(tokenKey);
 }
 
+export function removeTokenIfCurrent(token: string | null): void {
+  if (!token || window.localStorage.getItem(tokenKey) === token) {
+    window.localStorage.removeItem(tokenKey);
+  }
+}
+
 export function dispatchAuthInvalid(): void {
   removeToken();
   window.dispatchEvent(new Event(authInvalidEvent));
