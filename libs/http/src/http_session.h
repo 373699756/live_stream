@@ -51,6 +51,11 @@ struct ClosedHttpSessionInfo {
   bool was_streaming = false;
 };
 
+struct RenewedHttpSessionTimeout {
+  uint64_t generation = 0;
+  NetTimerId replaced_timer_id = 0;
+};
+
 class HttpSession {
  public:
   HttpSession(ConnectionId connection_id, std::string client_ip);
@@ -70,11 +75,10 @@ class HttpSession {
 
   bool BeginStream();
   bool AttachStreamClient(HttpMediaClientHandle client);
-  bool ArmTimer(uint64_t *generation, NetTimerId *previous_timer_id);
-  bool StoreTimer(uint64_t generation, NetTimerId timer_id);
-  NetTimerId CancelTimer();
-  bool ConsumeTimer(uint64_t generation);
-  bool IsTimerCurrent(uint64_t generation) const;
+  RenewedHttpSessionTimeout RenewTimeout();
+  bool InstallTimeout(uint64_t generation, NetTimerId timer_id);
+  NetTimerId CancelTimeout();
+  bool ExpireTimeout(uint64_t generation);
   ClosedHttpSessionInfo Close();
   HttpMediaClientHandle TakeMediaClient();
 

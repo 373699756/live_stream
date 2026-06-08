@@ -132,7 +132,7 @@ public:
             return false;
         }
 
-        std::vector<EventHandler> handlers;
+        std::vector<EventSubscriptionId> subscription_ids;
         infra::Executor* executor = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -142,16 +142,26 @@ public:
             executor = executor_.get();
             for (const auto& entry : subscriptions_) {
                 if (entry.second.type == event.type) {
-                    handlers.push_back(entry.second.handler);
+                    subscription_ids.push_back(entry.first);
                 }
             }
         }
-        if (handlers.empty()) {
+        if (subscription_ids.empty()) {
             return true;
         }
 
-        return executor->Post([event, handlers]() {
-            for (const EventHandler& handler : handlers) {
+        return executor->Post([this, event, subscription_ids]() {
+            for (EventSubscriptionId subscription_id : subscription_ids) {
+                EventHandler handler;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    const auto entry = subscriptions_.find(subscription_id);
+                    if (entry == subscriptions_.end() ||
+                        entry->second.type != event.type) {
+                        continue;
+                    }
+                    handler = entry->second.handler;
+                }
                 handler(event);
             }
         });

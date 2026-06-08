@@ -126,18 +126,15 @@ bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
   return true;
 }
 
-bool HttpSession::ArmTimer(uint64_t *generation,
-                           NetTimerId *previous_timer_id) {
-  if (generation == nullptr || previous_timer_id == nullptr) {
-    return false;
-  }
-  *previous_timer_id = timer_id_;
+RenewedHttpSessionTimeout HttpSession::RenewTimeout() {
+  RenewedHttpSessionTimeout timeout;
+  timeout.replaced_timer_id = timer_id_;
   timer_id_ = 0;
-  *generation = ++timeout_generation_;
-  return true;
+  timeout.generation = ++timeout_generation_;
+  return timeout;
 }
 
-bool HttpSession::StoreTimer(uint64_t generation, NetTimerId timer_id) {
+bool HttpSession::InstallTimeout(uint64_t generation, NetTimerId timer_id) {
   if (timer_id == 0 || timeout_generation_ != generation) {
     return false;
   }
@@ -145,23 +142,19 @@ bool HttpSession::StoreTimer(uint64_t generation, NetTimerId timer_id) {
   return true;
 }
 
-NetTimerId HttpSession::CancelTimer() {
+NetTimerId HttpSession::CancelTimeout() {
   const NetTimerId timer_id = timer_id_;
   timer_id_ = 0;
   ++timeout_generation_;
   return timer_id;
 }
 
-bool HttpSession::ConsumeTimer(uint64_t generation) {
+bool HttpSession::ExpireTimeout(uint64_t generation) {
   if (timeout_generation_ != generation || timer_id_ == 0) {
     return false;
   }
   timer_id_ = 0;
   return true;
-}
-
-bool HttpSession::IsTimerCurrent(uint64_t generation) const {
-  return timeout_generation_ == generation;
 }
 
 ClosedHttpSessionInfo HttpSession::Close() {

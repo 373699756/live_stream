@@ -203,7 +203,7 @@ void HttpServer::Stop() {
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {
-                const NetTimerId timer_id = item.second->CancelTimer();
+                const NetTimerId timer_id = item.second->CancelTimeout();
                 if (timer_id != 0) {
                     timer_ids.push_back(timer_id);
                 }
@@ -562,7 +562,7 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
         if (iter == sessions_.end() || iter->second == nullptr) {
             return;
         }
-        timer_id = iter->second->CancelTimer();
+        timer_id = iter->second->CancelTimeout();
         closed = iter->second->Close();
         sessions_.erase(iter);
         if (stats_.active_connections > 0) {
@@ -711,23 +711,23 @@ void HttpServer::LogRequests(
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
     INetEngine *net_engine = nullptr;
-    uint64_t generation = 0;
-    NetTimerId previous_timer_id = 0;
+    RenewedHttpSessionTimeout timeout;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
-            !iter->second->ArmTimer(&generation, &previous_timer_id)) {
+        if (iter == sessions_.end() || iter->second == nullptr) {
             return;
         }
+        timeout = iter->second->RenewTimeout();
         net_engine = net_engine_;
     }
     if (net_engine == nullptr) {
         return;
     }
-    CancelNetTimer(net_engine, previous_timer_id);
+    CancelNetTimer(net_engine, timeout.replaced_timer_id);
     const NetTimerId timer_id = net_engine->RunOnIoAfter(
-        delay_ms, [this, connection_id, generation]() {
+        delay_ms, [this, connection_id,
+                   generation = timeout.generation]() {
             INetEngine *engine = nullptr;
             bool should_close = false;
             {
@@ -735,7 +735,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                 auto iter = sessions_.find(connection_id);
                 should_close =
                     iter != sessions_.end() && iter->second != nullptr &&
-                    iter->second->ConsumeTimer(generation);
+                    iter->second->ExpireTimeout(generation);
                 engine = net_engine_;
             }
             if (should_close && engine != nullptr) {
@@ -750,7 +750,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         stored = iter != sessions_.end() && iter->second != nullptr &&
-                 iter->second->StoreTimer(generation, timer_id);
+                 iter->second->InstallTimeout(timeout.generation, timer_id);
     }
     if (!stored) {
         CancelNetTimer(net_engine, timer_id);

@@ -23,7 +23,6 @@ struct MediaPipelineReadyChange {
 
 struct MediaPipelineFrameChange {
     bool first_frame_seen = false;
-    bool keyframe_seen = false;
 };
 
 class MediaPipelineRuntimeDiagnostics {

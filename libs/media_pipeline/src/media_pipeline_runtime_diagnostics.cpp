@@ -6,16 +6,20 @@ namespace live_stream {
 namespace media_pipeline_internal {
 namespace {
 
+constexpr int32_t kHlsReadyFlag = 1;
+constexpr int32_t kFlvReadyFlag = 2;
+constexpr int32_t kMjpegReadyFlag = 4;
+
 int32_t ReadyStateValue(const MediaPipelineReadyState &ready_state) {
     int32_t value = 0;
     if (ready_state.hls_ready) {
-        value |= 1;
+        value |= kHlsReadyFlag;
     }
     if (ready_state.flv_ready) {
-        value |= 2;
+        value |= kFlvReadyFlag;
     }
     if (ready_state.mjpeg_ready) {
-        value |= 4;
+        value |= kMjpegReadyFlag;
     }
     return value;
 }
@@ -59,7 +63,6 @@ MediaPipelineFrameChange MediaPipelineRuntimeDiagnostics::MarkFrame(
     }
     if (keyframe) {
         diagnostics->last_keyframe_seen_ms = now_ms;
-        change.keyframe_seen = true;
     }
     return change;
 }

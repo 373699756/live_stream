@@ -86,7 +86,11 @@ export function useLiveView(selectedStream?: StreamName) {
     let eventSource: EventSource | null = null;
     if (typeof EventSource !== 'undefined') {
       eventSource = openMediaEvents((event) => {
-        if (event.type === 'media_status_changed') {
+        const readyChanged =
+          event.target.endsWith('.ready') && event.message === 'changed';
+        const firstFrame =
+          event.target.endsWith('.frame') && event.message === 'first';
+        if (event.type === 'media_status_changed' && (readyChanged || firstFrame)) {
           refreshStatuses();
         }
       });

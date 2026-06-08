@@ -264,10 +264,9 @@ private:
             return;
         }
 
-        HttpMediaWriter *writer = writer_;
         const EventSubscriptionId subscription_id = event_->Subscribe(
             EventType::kMediaStatusChanged,
-            [writer, connection_id](const Event &event) {
+            [writer = writer_, connection_id](const Event &event) {
                 if (writer == nullptr) {
                     return;
                 }
@@ -289,6 +288,7 @@ private:
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)event_->Unsubscribe(subscription_id);
             writer_->CloseConnection(connection_id);
+            return;
         }
     }
 

@@ -1033,9 +1033,6 @@ private:
         if (change.first_frame_seen) {
             PublishMediaStatusEvent(stream_id, "frame", "first", 1);
         }
-        if (change.keyframe_seen) {
-            PublishMediaStatusEvent(stream_id, "keyframe", "received", 1);
-        }
     }
 
     void NoteReadyDiagnostics(StreamId stream_id,
