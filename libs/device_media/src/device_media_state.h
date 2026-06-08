@@ -11,6 +11,7 @@ enum class DeviceMediaState {
     kStopping,
     kStopped,
     kDeinitialized,
+    kFailed,
 };
 
 inline bool DeviceMediaCanPrepare(DeviceMediaState state) {

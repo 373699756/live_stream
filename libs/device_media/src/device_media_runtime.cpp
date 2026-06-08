@@ -153,19 +153,29 @@ bool DeviceMediaImpl::Prepare() {
 
     pipeline_.SetConfig(startup_config);
     if (!pipeline_.InitSystem()) {
-        pipeline_.DeinitSystem();
+        const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
-        state_ = DeviceMediaState::kDeinitialized;
-        system_initialized_ = false;
+        if (deinit_ok) {
+            state_ = DeviceMediaState::kDeinitialized;
+            system_initialized_ = false;
+        } else {
+            state_ = DeviceMediaState::kFailed;
+            system_initialized_ = true;
+        }
         return false;
     }
 
     AttachedConfigs attached_now;
     if (!AttachConfigs(&attached_now)) {
-        pipeline_.DeinitSystem();
+        const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
-        state_ = DeviceMediaState::kDeinitialized;
-        system_initialized_ = false;
+        if (deinit_ok) {
+            state_ = DeviceMediaState::kDeinitialized;
+            system_initialized_ = false;
+        } else {
+            state_ = DeviceMediaState::kFailed;
+            system_initialized_ = true;
+        }
         return false;
     }
 
@@ -264,19 +274,31 @@ void DeviceMediaImpl::Release() {
                 state_ != DeviceMediaState::kCreated) {
                 deinit_pipeline = true;
                 key_frame_cache_.Clear();
-                state_ = DeviceMediaState::kDeinitialized;
+                state_ = DeviceMediaState::kStopping;
             }
             detach_video = video_config_attached_;
             detach_image = image_config_attached_;
             video_config_attached_ = false;
             image_config_attached_ = false;
-            system_initialized_ = false;
         }
         if (stop_pipeline) {
             pipeline_.Stop();
         }
         if (deinit_pipeline) {
-            pipeline_.DeinitSystem();
+            const bool deinit_ok = pipeline_.DeinitSystem();
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (deinit_ok) {
+                state_ = DeviceMediaState::kDeinitialized;
+                system_initialized_ = false;
+            } else {
+                state_ = DeviceMediaState::kFailed;
+                system_initialized_ = true;
+            }
+        } else {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (state_ != DeviceMediaState::kFailed) {
+                system_initialized_ = false;
+            }
         }
     }
     NotifySourceState(source_state_events);
@@ -512,7 +534,8 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
     std::vector<FrameAttachments::SourceStateNotice> source_closed_events;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (state_ == DeviceMediaState::kStopping) {
+        if (state_ == DeviceMediaState::kStopping ||
+            state_ == DeviceMediaState::kFailed) {
             return false;
         }
         state_before_change = state_;
@@ -540,26 +563,33 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
         if (restart_stream) {
             pipeline_.Stop();
         }
+        bool deinit_ok = true;
         if (rebuild_system) {
-            pipeline_.DeinitSystem();
+            deinit_ok = pipeline_.DeinitSystem();
         }
 
-        pipeline_.SetConfig(config);
+        if (!deinit_ok) {
+            device_config_applied = false;
+        } else {
+            pipeline_.SetConfig(config);
 
-        device_config_applied = true;
-        if (rebuild_system && !pipeline_.InitSystem()) {
-            device_config_applied = false;
-        } else if (restart_stream && !pipeline_.Start()) {
-            device_config_applied = false;
-        } else if (restart_stream &&
-                   !ApplyImageConfigToPipeline(image_config_before_change)) {
-            device_config_applied = false;
+            device_config_applied = true;
+            if (rebuild_system && !pipeline_.InitSystem()) {
+                device_config_applied = false;
+            } else if (restart_stream && !pipeline_.Start()) {
+                device_config_applied = false;
+            } else if (restart_stream &&
+                       !ApplyImageConfigToPipeline(
+                           image_config_before_change)) {
+                device_config_applied = false;
+            }
         }
 
-        if (!device_config_applied && (restart_stream || rebuild_system)) {
+        if (!device_config_applied && deinit_ok &&
+            (restart_stream || rebuild_system)) {
             pipeline_.Stop();
             if (rebuild_system) {
-                pipeline_.DeinitSystem();
+                (void)pipeline_.DeinitSystem();
             }
             pipeline_.SetConfig(config_before_change);
             bool restored = true;
@@ -576,7 +606,7 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
             if (!restored) {
                 pipeline_.Stop();
                 if (rebuild_system) {
-                    pipeline_.DeinitSystem();
+                    (void)pipeline_.DeinitSystem();
                 }
                 Error("device_media",
                       "restore media pipeline after config failure failed");
@@ -621,15 +651,21 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
                 StartImageStrategyLocked();
             }
         } else {
-            system_initialized_ = false;
-            if (restart_stream) {
-                state_ = rebuild_system ? DeviceMediaState::kDeinitialized
-                                        : DeviceMediaState::kStopped;
+            if (rebuild_system) {
+                system_initialized_ = true;
+                state_ = DeviceMediaState::kFailed;
+                if (restart_stream) {
+                    source_state_events =
+                        BuildSourceStateEventsLocked(StreamState::kError);
+                }
+            } else if (restart_stream) {
+                system_initialized_ = false;
+                state_ = DeviceMediaState::kStopped;
                 source_state_events =
                     BuildSourceStateEventsLocked(StreamState::kError);
             } else {
-                state_ = rebuild_system ? DeviceMediaState::kDeinitialized
-                                        : state_before_change;
+                system_initialized_ = false;
+                state_ = state_before_change;
             }
         }
     }
@@ -823,7 +859,7 @@ MediaCapabilities DeviceMediaImpl::GetCapabilities() const {
 
 MediaChannels DeviceMediaImpl::GetChannels() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!system_initialized_) {
+    if (!system_initialized_ || state_ == DeviceMediaState::kFailed) {
         return MediaChannels{};
     }
     return active_channels_;

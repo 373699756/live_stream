@@ -123,7 +123,7 @@ public:
     return live_stream::MediaCapabilities();
   }
   bool InitSystem(const live_stream::MediaPipelineConfig&) override { return true; }
-  void DeinitSystem() override {}
+  bool DeinitSystem() override { return true; }
   bool StartVi(const live_stream::MediaPipelineConfig&) override { return true; }
   void StopVi(const live_stream::MediaPipelineConfig&) override {}
   bool StartVpss(const live_stream::MediaPipelineConfig&) override { return true; }

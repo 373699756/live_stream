@@ -256,7 +256,7 @@ public:
     virtual MediaCapabilities GetCapabilities() = 0;
 
     virtual bool InitSystem(const MediaPipelineConfig& config) = 0;
-    virtual void DeinitSystem() = 0;
+    virtual bool DeinitSystem() = 0;
 
     virtual bool StartVi(const MediaPipelineConfig& config) = 0;
     virtual void StopVi(const MediaPipelineConfig& config) = 0;

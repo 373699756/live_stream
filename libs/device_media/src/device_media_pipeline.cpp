@@ -94,12 +94,13 @@ bool DeviceMediaPipeline::InitSystem() {
     return true;
 }
 
-void DeviceMediaPipeline::DeinitSystem() {
+bool DeviceMediaPipeline::DeinitSystem() {
     Stop();
-    if (system_initialized_) {
-        sdk_->DeinitSystem();
+    if (!sdk_->DeinitSystem()) {
+        return false;
     }
     system_initialized_ = false;
+    return true;
 }
 
 bool DeviceMediaPipeline::Start() {

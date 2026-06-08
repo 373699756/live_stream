@@ -29,7 +29,7 @@ public:
 
     MediaCapabilities GetCapabilities() const;
     bool InitSystem();
-    void DeinitSystem();
+    bool DeinitSystem();
     bool Start();
     void Stop();
     bool ApplyImageConfig(const ConfigJson& image_config);

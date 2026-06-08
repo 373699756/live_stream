@@ -215,7 +215,7 @@ MediaCapabilities StubHisiSdk::GetCapabilities() { return StubCapabilities(); }
 bool StubHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     return config.vb_block_count > 0;
 }
-void StubHisiSdk::DeinitSystem() {}
+bool StubHisiSdk::DeinitSystem() { return true; }
 
 bool StubHisiSdk::StartVi(const MediaPipelineConfig& config) {
     return config.video_pipe >= 0;

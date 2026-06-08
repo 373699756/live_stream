@@ -15,7 +15,7 @@ public:
 
     MediaCapabilities GetCapabilities() override;
     bool InitSystem(const MediaPipelineConfig& config) override;
-    void DeinitSystem() override;
+    bool DeinitSystem() override;
     bool StartVi(const MediaPipelineConfig& config) override;
     void StopVi(const MediaPipelineConfig& config) override;
     bool StartVpss(const MediaPipelineConfig& config) override;

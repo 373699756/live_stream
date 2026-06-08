@@ -17,6 +17,7 @@ struct MppHisiSdk::Impl {
     bool has_active_config_ = false;
 
     bool system_initialized_ = false;
+    bool system_cleanup_failed_ = false;
     bool vi_started_ = false;
     bool mipi_started_ = false;
     bool isp_started_ = false;
