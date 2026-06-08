@@ -17,7 +17,7 @@
         "codec": "h264",
         "resolution": "1280x720",
         "fps": 30,
-        "bitrate_kbps": 2048,
+        "bitrate_kbps": 3072,
         "rate_control": "cbr",
         "gop": 60,
         "gop_mode": "normal_p",
@@ -60,8 +60,8 @@
       "blue_gain": 45
     },
     "enhancement": {
-      "denoise_2d": 68,
-      "denoise_3d": 62,
+      "denoise_2d": 60,
+      "denoise_3d": 52,
       "gamma": 50,
       "defog": false
     },

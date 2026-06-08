@@ -16,8 +16,8 @@ constexpr int32_t kControlMax = 100;
 struct ImageStrategyControls {
     int32_t saturation = 52;
     int32_t sharpness = 32;
-    int32_t denoise_2d = 68;
-    int32_t denoise_3d = 62;
+    int32_t denoise_2d = 60;
+    int32_t denoise_3d = 52;
     int32_t gamma = 50;
 };
 
@@ -52,6 +52,11 @@ int32_t ClampImageControl(int32_t value) {
     return infra::Clamp(value, kControlMin, kControlMax);
 }
 
+int32_t ClampDenoise3dForLowNoise(int32_t value, int tier) {
+    constexpr int32_t kLowNoiseDenoise3dMax[] = {56, 66, 84, 88};
+    return infra::Clamp(value, kControlMin, kLowNoiseDenoise3dMax[tier]);
+}
+
 ImageStrategyControls LoadImageStrategyControls(
     const ConfigJson &image_config) {
     ImageStrategyControls controls;
@@ -79,23 +84,25 @@ ImageStrategyControls ControlsForIsoTier(
     int32_t denoise_2d_delta[] = {0, 8, 18, 30};
     int32_t denoise_3d_delta[] = {0, 10, 22, 34};
     int32_t gamma_delta[] = {0, 2, 5, 8};
+    bool low_noise_mode = false;
     if (mode == "low_noise") {
+        low_noise_mode = true;
         saturation_delta[0] = 0;
-        saturation_delta[1] = -4;
-        saturation_delta[2] = -10;
-        saturation_delta[3] = -18;
-        sharpness_delta[0] = -6;
-        sharpness_delta[1] = -12;
-        sharpness_delta[2] = -22;
-        sharpness_delta[3] = -32;
-        denoise_2d_delta[0] = 8;
-        denoise_2d_delta[1] = 16;
-        denoise_2d_delta[2] = 30;
-        denoise_2d_delta[3] = 42;
-        denoise_3d_delta[0] = 10;
-        denoise_3d_delta[1] = 22;
-        denoise_3d_delta[2] = 38;
-        denoise_3d_delta[3] = 50;
+        saturation_delta[1] = -2;
+        saturation_delta[2] = -6;
+        saturation_delta[3] = -12;
+        sharpness_delta[0] = -2;
+        sharpness_delta[1] = -4;
+        sharpness_delta[2] = -10;
+        sharpness_delta[3] = -16;
+        denoise_2d_delta[0] = 4;
+        denoise_2d_delta[1] = 10;
+        denoise_2d_delta[2] = 18;
+        denoise_2d_delta[3] = 26;
+        denoise_3d_delta[0] = 4;
+        denoise_3d_delta[1] = 12;
+        denoise_3d_delta[2] = 26;
+        denoise_3d_delta[3] = 36;
         gamma_delta[0] = 0;
         gamma_delta[1] = 1;
         gamma_delta[2] = 4;
@@ -131,6 +138,10 @@ ImageStrategyControls ControlsForIsoTier(
         ClampImageControl(base.denoise_2d + denoise_2d_delta[tier]);
     controls.denoise_3d =
         ClampImageControl(base.denoise_3d + denoise_3d_delta[tier]);
+    if (low_noise_mode) {
+        controls.denoise_3d =
+            ClampDenoise3dForLowNoise(controls.denoise_3d, tier);
+    }
     controls.gamma = ClampImageControl(base.gamma + gamma_delta[tier]);
     return controls;
 }

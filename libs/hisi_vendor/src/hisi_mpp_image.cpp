@@ -5,6 +5,7 @@
 #include "infra/clamp.h"
 #include "json_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -20,8 +21,6 @@ constexpr uint16_t kGainBase = 0x400;
 constexpr uint16_t kWbGainMin = 0x200;
 constexpr uint16_t kWbGainMax = 0x800;
 constexpr uint16_t kSharpenStrengthMax = 0x0600;
-constexpr uint16_t kSharpenFreqMax = 0x0800;
-constexpr uint8_t kSharpenShootMax = 48;
 constexpr uint16_t kNrCoarseMax = 0x02c0;
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
@@ -232,15 +231,11 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
     attr.bEnable = HI_TRUE;
     attr.enOpType = OP_TYPE_MANUAL;
     const uint16_t texture = ScaleControlU16(sharpness, 0, kSharpenStrengthMax);
-    const uint16_t edge = ScaleControlU16(sharpness, 0, kSharpenStrengthMax);
+    const uint16_t edge = ScaleControlU16(sharpness, 0, kSharpenStrengthMax / 2);
     std::fill(std::begin(attr.stManual.au16TextureStr),
               std::end(attr.stManual.au16TextureStr), texture);
     std::fill(std::begin(attr.stManual.au16EdgeStr),
               std::end(attr.stManual.au16EdgeStr), edge);
-    attr.stManual.u16TextureFreq = ScaleControlU16(sharpness, 0, kSharpenFreqMax);
-    attr.stManual.u16EdgeFreq = ScaleControlU16(sharpness, 0, kSharpenFreqMax);
-    attr.stManual.u8OverShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
-    attr.stManual.u8UnderShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
     return MpiOk("HI_MPI_ISP_SetIspSharpenAttr",
                  HI_MPI_ISP_SetIspSharpenAttr(vi_pipe, &attr));
 }

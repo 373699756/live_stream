@@ -199,10 +199,10 @@ export function ImageAdvancedSettings({
               numericCapability(capabilities.enhancement.ranges, 'denoise_2d') || {
                 min: 0,
                 max: 100,
-                default: 68,
+                default: 60,
               }
             }
-            value={numberValue(config.enhancement, 'denoise_2d', 68)}
+            value={numberValue(config.enhancement, 'denoise_2d', 60)}
             onChange={(value) =>
               onSectionChange('enhancement', 'denoise_2d', value)
             }
@@ -213,10 +213,10 @@ export function ImageAdvancedSettings({
               numericCapability(capabilities.enhancement.ranges, 'denoise_3d') || {
                 min: 0,
                 max: 100,
-                default: 62,
+                default: 52,
               }
             }
-            value={numberValue(config.enhancement, 'denoise_3d', 62)}
+            value={numberValue(config.enhancement, 'denoise_3d', 52)}
             onChange={(value) =>
               onSectionChange('enhancement', 'denoise_3d', value)
             }

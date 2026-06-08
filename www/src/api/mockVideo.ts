@@ -21,7 +21,7 @@ export const mockVideoConfig: VideoConfig = {
       codec: 'h264',
       resolution: '1280x720',
       fps: 30,
-      bitrate_kbps: 2048,
+      bitrate_kbps: 3072,
       rate_control: 'cbr',
       gop: 60,
       gop_mode: 'normal_p',
@@ -109,8 +109,8 @@ export const mockMediaCapabilities: MediaCapabilities = {
     enhancement: {
       options: { defog: { values: ['false', 'true'], default: 'false' } },
       ranges: {
-        denoise_2d: { min: 0, max: 100, default: 68 },
-        denoise_3d: { min: 0, max: 100, default: 62 },
+        denoise_2d: { min: 0, max: 100, default: 60 },
+        denoise_3d: { min: 0, max: 100, default: 52 },
         gamma: { min: 0, max: 100, default: 50 },
       },
     },

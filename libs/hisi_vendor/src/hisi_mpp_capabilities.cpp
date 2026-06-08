@@ -99,8 +99,8 @@ ImageCapabilities DefaultImageCapabilities() {
     image.white_balance_ranges.push_back(Range("red_gain", 0, 100, 50));
     image.white_balance_ranges.push_back(Range("blue_gain", 0, 100, 50));
 
-    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 68));
-    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 62));
+    image.enhancement_ranges.push_back(Range("denoise_2d", 0, 100, 60));
+    image.enhancement_ranges.push_back(Range("denoise_3d", 0, 100, 52));
     image.enhancement_ranges.push_back(Range("gamma", 0, 100, 50));
     image.enhancement_options.push_back(
         Options("defog", {"false", "true"}, "false"));

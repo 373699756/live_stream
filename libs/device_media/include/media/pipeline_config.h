@@ -47,7 +47,7 @@ struct MediaPipelineConfig {
                                  VideoCodec::kH264,
                                  VideoSize{1280, 720},
                                  FrameRate{30, 30},
-                                 2048,
+                                 3072,
                                  60,
                                  RateControlMode::kCbr,
                                  GopMode::kNormalP};

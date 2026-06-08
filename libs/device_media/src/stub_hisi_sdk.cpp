@@ -84,8 +84,8 @@ ImageCapabilities DefaultImage() {
         Options("defog", {"false", "true"}, "false"),
     };
     img.enhancement_ranges = {
-        Range("denoise_2d", 0, 100, 68),
-        Range("denoise_3d", 0, 100, 62),
+        Range("denoise_2d", 0, 100, 60),
+        Range("denoise_3d", 0, 100, 52),
         Range("gamma", 0, 100, 50),
     };
     img.backlight_options = {

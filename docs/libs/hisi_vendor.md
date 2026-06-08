@@ -41,7 +41,9 @@ public SDK interface 位于 `hisi_vendor` include 和 `mpp_hisi_sdk_impl` 相关
 Web DTO 或运行状态展示。
 VPSS group 启动时启用视频降噪，参数保持和海思示例工程一致：
 `VPSS_NR_TYPE_VIDEO`、`NR_MOTION_MODE_NORMAL`、`COMPRESS_MODE_FRAME`。ISP 画质控制仍由
-`device_media` 的 image 配置和自动图像策略决定。
+`device_media` 的 image 配置和自动图像策略决定。IMX290 普通模式保留 RAW12/非 WDR
+链路，ISP sharpen 映射只调 texture/edge 强度并降低 edge 上限，保留当前频率和
+overshoot，避免把低照噪声锐化成点状颗粒。
 MPP system 清理失败必须 fail fast：`DeinitSystem()` 返回 `false` 时，内部保持
 initialized 状态，不把 VB busy、stale resource 或二次清理失败伪装成已清理；调用方
 不得继续重建媒体管线。
