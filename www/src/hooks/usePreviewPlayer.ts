@@ -73,21 +73,21 @@ export function usePreviewPlayer({
       if (!modeState.selectedModeEnabled) {
         modeSelectionRef.current = 'auto';
         restartPreview(`${previewModeLabels[mode]} 暂不可用`);
-        if (modeState.nextReadyMode && modeState.nextReadyMode !== mode) {
-          setMode(modeState.nextReadyMode);
+        if (modeState.nextAutoMode && modeState.nextAutoMode !== mode) {
+          setMode(modeState.nextAutoMode);
         }
       }
       return;
     }
 
-    if (modeState.nextReadyMode && modeState.nextReadyMode !== mode) {
+    if (modeState.nextAutoMode && modeState.nextAutoMode !== mode) {
       restartPreview('正在切换预览链路');
-      setMode(modeState.nextReadyMode);
+      setMode(modeState.nextAutoMode);
     }
   }, [
     enabled,
     mode,
-    modeState.nextReadyMode,
+    modeState.nextAutoMode,
     modeState.selectedModeEnabled,
     restartPreview,
     setMode,

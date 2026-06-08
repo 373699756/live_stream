@@ -30,7 +30,6 @@ using venc_internal::ValidateVencStreamConfig;
 
 namespace {
 
-constexpr uint32_t kDefaultStatTimeSec = 1;
 constexpr uint32_t kDefaultFixQpI = 25;
 constexpr uint32_t kDefaultFixQpP = 30;
 constexpr uint32_t kDefaultFixQpB = 32;

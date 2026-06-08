@@ -23,6 +23,7 @@ export interface PreviewModeState {
   mjpegPlaybackReady: boolean;
   mjpegReady: boolean;
   mjpegSupported: boolean;
+  nextAutoMode: PreviewMode | null;
   nextReadyMode: PreviewMode | null;
   selectedModeEnabled: boolean;
   streamRunning: boolean;
@@ -68,6 +69,7 @@ export function buildPreviewModeState(
     hlsPlaybackReady ? 'hls' :
     mjpegPlaybackReady ? 'mjpeg' :
     null;
+  const nextAutoMode = nextReadyMode ?? (hlsLaunchable ? 'hls' : null);
 
   return {
     flvModeEnabled,
@@ -83,6 +85,7 @@ export function buildPreviewModeState(
     mjpegPlaybackReady,
     mjpegReady,
     mjpegSupported,
+    nextAutoMode,
     nextReadyMode,
     selectedModeEnabled,
     streamRunning,
