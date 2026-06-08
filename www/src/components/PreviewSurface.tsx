@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import type { PreviewMediaLayerRefs } from '../hooks/usePreviewPlaybackSession';
+import type { PreviewMediaLayerRefs } from './previewSurfaceTypes';
 
 interface PreviewSurfaceProps {
   connected: boolean;
@@ -8,6 +8,7 @@ interface PreviewSurfaceProps {
   onToggleFullscreen: () => void;
   previewDetail: string;
   previewState: string;
+  retainedFrameVisible: boolean;
   surfaceOverlay?: ReactNode;
   surfaceRef: RefObject<HTMLDivElement | null>;
   visibleLayer: number;
@@ -20,10 +21,15 @@ export function PreviewSurface({
   onToggleFullscreen,
   previewDetail,
   previewState,
+  retainedFrameVisible,
   surfaceOverlay,
   surfaceRef,
   visibleLayer,
 }: PreviewSurfaceProps) {
+  const placeholderClass = retainedFrameVisible
+    ? 'video-placeholder retained-frame-status'
+    : 'video-placeholder';
+
   return (
     <div className="video-surface" ref={surfaceRef} onDoubleClick={onToggleFullscreen}>
       {!enabled ? (
@@ -54,7 +60,7 @@ export function PreviewSurface({
         ))
       )}
       {!connected && (
-        <div className="video-placeholder">
+        <div className={placeholderClass}>
           <div className="lens-ring" />
           <strong>{previewState}</strong>
           <span>{previewDetail}</span>

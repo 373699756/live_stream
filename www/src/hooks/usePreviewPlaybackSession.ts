@@ -1,25 +1,29 @@
 import {
-  type RefObject,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { closeWebrtcPeer } from '../api/stream';
 import type { MediaPlaybackUrls, StreamName } from '../api/types';
+import type {
+  PreviewLayerMediaKind,
+  PreviewMediaLayerRefs,
+} from '../components/previewSurfaceTypes';
+import {
+  clearPreviewImage,
+  clearPreviewVideo,
+  closePreviewWebrtcSession,
+  releasePreviewLayerSession,
+  type PreviewLayerSession,
+} from './previewLayerSession';
 import type { PreviewMode, PreviewModeState } from './previewMode';
 import {
   startFlvPreview,
   startHlsPreview,
   startMjpegPreview,
 } from './previewPlaybackProtocols';
-import {
-  destroyFlv,
-  destroyHls,
-  type FlvPlayer,
-  type HlsPlayer,
-} from './previewPlayerModules';
+import type { FlvPlayer, HlsPlayer } from './previewPlayerModules';
 import type { PreviewSessionControls } from './previewSession';
 import { startWebrtcPreview } from './webrtcPreviewSession';
 
@@ -32,59 +36,6 @@ interface UsePreviewPlaybackSessionOptions {
   playbackUrls: MediaPlaybackUrls | null;
   setMode: (mode: PreviewMode) => void;
   stream: StreamName;
-}
-
-export type PreviewLayerMediaKind = 'video' | 'mjpeg';
-
-export interface PreviewMediaLayerRefs {
-  imageRef: RefObject<HTMLImageElement | null>;
-  mediaKind: PreviewLayerMediaKind;
-  videoRef: RefObject<HTMLVideoElement | null>;
-}
-
-interface PreviewLayerSession {
-  controller: AbortController;
-  flv: FlvPlayer | null;
-  hls: HlsPlayer | null;
-  image: HTMLImageElement | null;
-  layerIndex: number;
-  peer: RTCPeerConnection | null;
-  peerId: string;
-  promoted: boolean;
-  startupTimer: number;
-  video: HTMLVideoElement | null;
-}
-
-function stopVideoTracks(video: HTMLMediaElement | null) {
-  if (video?.srcObject instanceof MediaStream) {
-    for (const track of video.srcObject.getTracks()) {
-      track.stop();
-    }
-  }
-}
-
-function clearImageElement(image: HTMLImageElement | null) {
-  if (!image) {
-    return;
-  }
-  image.removeAttribute('src');
-  image.onload = null;
-  image.onerror = null;
-}
-
-function clearVideoElement(video: HTMLVideoElement | null) {
-  if (!video) {
-    return;
-  }
-  video.pause();
-  stopVideoTracks(video);
-  video.srcObject = null;
-  video.removeAttribute('src');
-  video.load();
-  video.onloadeddata = null;
-  video.onloadedmetadata = null;
-  video.onplaying = null;
-  video.onerror = null;
 }
 
 export function usePreviewPlaybackSession({
@@ -101,6 +52,7 @@ export function usePreviewPlaybackSession({
   const [connected, setConnected] = useState(false);
   const [decodedSize, setDecodedSize] = useState('');
   const [displaySize, setDisplaySize] = useState('');
+  const [retainedFrameVisible, setRetainedFrameVisible] = useState(false);
   const [visibleLayer, setVisibleLayer] = useState(0);
   const [layerMediaKinds, setLayerMediaKinds] =
     useState<PreviewLayerMediaKind[]>(['video', 'video']);
@@ -144,40 +96,12 @@ export function usePreviewPlaybackSession({
   } = modeState;
 
   const releaseSession = useCallback((session: PreviewLayerSession | null) => {
-    if (!session) {
-      return;
-    }
-    session.controller.abort();
-    if (session.startupTimer !== 0) {
-      window.clearTimeout(session.startupTimer);
-      session.startupTimer = 0;
-    }
-    destroyHls(session.hls);
-    destroyFlv(session.flv);
-    if (session.peer) {
-      session.peer.onicecandidate = null;
-      session.peer.ontrack = null;
-      session.peer.onconnectionstatechange = null;
-      session.peer.oniceconnectionstatechange = null;
-      session.peer.close();
-      if (peerRef.current === session.peer) {
-        peerRef.current = null;
-      }
-    }
-    if (session.peerId) {
-      void closeWebrtcPeer(session.peerId);
-      if (peerIdRef.current === session.peerId) {
-        peerIdRef.current = '';
-      }
-    }
-    if (hlsRef.current === session.hls) {
-      hlsRef.current = null;
-    }
-    if (flvRef.current === session.flv) {
-      flvRef.current = null;
-    }
-    clearVideoElement(session.video);
-    clearImageElement(session.image);
+    releasePreviewLayerSession(session, {
+      flvRef,
+      hlsRef,
+      peerIdRef,
+      peerRef,
+    });
   }, []);
 
   const releaseRetiredSessions = useCallback(() => {
@@ -203,29 +127,31 @@ export function usePreviewPlaybackSession({
 
   const restartPreview = useCallback((message: string) => {
     sessionRef.current += 1;
-    if (!activeSessionRef.current?.promoted && !hasVisibleRetiredSession()) {
-      setConnected(false);
-    }
+    setConnected(false);
+    setRetainedFrameVisible(
+      Boolean(activeSessionRef.current?.promoted) || hasVisibleRetiredSession(),
+    );
     setPreviewState(message);
   }, [hasVisibleRetiredSession]);
 
   useEffect(() => () => {
     releaseAllSessions();
-    clearVideoElement(layerAVideoRef.current);
-    clearVideoElement(layerBVideoRef.current);
-    clearImageElement(layerAImageRef.current);
-    clearImageElement(layerBImageRef.current);
+    clearPreviewVideo(layerAVideoRef.current);
+    clearPreviewVideo(layerBVideoRef.current);
+    clearPreviewImage(layerAImageRef.current);
+    clearPreviewImage(layerBImageRef.current);
   }, [releaseAllSessions]);
 
   useEffect(() => {
     if (!enabled) {
       sessionRef.current += 1;
       releaseAllSessions();
-      clearVideoElement(layerAVideoRef.current);
-      clearVideoElement(layerBVideoRef.current);
-      clearImageElement(layerAImageRef.current);
-      clearImageElement(layerBImageRef.current);
+      clearPreviewVideo(layerAVideoRef.current);
+      clearPreviewVideo(layerBVideoRef.current);
+      clearPreviewImage(layerAImageRef.current);
+      clearPreviewImage(layerBImageRef.current);
       setConnected(false);
+      setRetainedFrameVisible(false);
       setDecodedSize('');
       setDisplaySize('');
       setPreviewState('预览已暂停');
@@ -263,8 +189,8 @@ export function usePreviewPlaybackSession({
       }
     }
     activeSessionRef.current = session;
-    clearVideoElement(video);
-    clearImageElement(image);
+    clearPreviewVideo(video);
+    clearPreviewImage(image);
     setLayerMediaKinds((currentKinds) => {
       if (currentKinds[layerIndex] === mediaKind) {
         return currentKinds;
@@ -273,8 +199,9 @@ export function usePreviewPlaybackSession({
       nextKinds[layerIndex] = mediaKind;
       return nextKinds;
     });
-    setConnected(
-      previousSession?.promoted || hasVisibleRetiredSession() ? true : false,
+    setConnected(false);
+    setRetainedFrameVisible(
+      Boolean(previousSession?.promoted) || hasVisibleRetiredSession(),
     );
     setDecodedSize('');
     setDisplaySize('');
@@ -297,6 +224,7 @@ export function usePreviewPlaybackSession({
         session.promoted = true;
         visibleLayerRef.current = session.layerIndex;
         setVisibleLayer(session.layerIndex);
+        setRetainedFrameVisible(false);
         window.requestAnimationFrame(() => {
           releaseRetiredSessions();
         });
@@ -310,7 +238,8 @@ export function usePreviewPlaybackSession({
       }
       sessionConnected = false;
       if (isCurrentSession()) {
-        setConnected(hasVisibleRetiredSession() ? true : false);
+        setConnected(false);
+        setRetainedFrameVisible(hasVisibleRetiredSession());
       }
     };
     const setSessionPreviewState = (value: string) => {
@@ -337,28 +266,7 @@ export function usePreviewPlaybackSession({
       updateDisplaySize,
     };
     const closeWebrtcSession = () => {
-      if (session.peer) {
-        session.peer.onicecandidate = null;
-        session.peer.ontrack = null;
-        session.peer.onconnectionstatechange = null;
-        session.peer.oniceconnectionstatechange = null;
-        session.peer.close();
-        if (peerRef.current === session.peer) {
-          peerRef.current = null;
-        }
-        session.peer = null;
-      }
-      if (session.peerId) {
-        void closeWebrtcPeer(session.peerId);
-        if (peerIdRef.current === session.peerId) {
-          peerIdRef.current = '';
-        }
-        session.peerId = '';
-      }
-      stopVideoTracks(video);
-      if (video) {
-        video.srcObject = null;
-      }
+      closePreviewWebrtcSession(session, { peerIdRef, peerRef });
     };
 
     if (mode === 'mjpeg') {
@@ -517,6 +425,7 @@ export function usePreviewPlaybackSession({
     displaySize,
     mediaLayers,
     previewState,
+    retainedFrameVisible,
     restartPreview,
     visibleLayer,
   };

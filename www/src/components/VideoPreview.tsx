@@ -44,6 +44,7 @@ export function VideoPreview({
     mjpegPlaybackEnabled,
     mjpegSupported,
     previewState,
+    retainedFrameVisible,
     restartPreview,
     streamRunning,
     switchMode,
@@ -111,6 +112,7 @@ export function VideoPreview({
         onToggleFullscreen={toggleFullscreen}
         previewDetail={previewDetailText(stream, mode)}
         previewState={previewState}
+        retainedFrameVisible={retainedFrameVisible}
         surfaceOverlay={surfaceOverlay}
         surfaceRef={surfaceRef}
         visibleLayer={visibleLayer}

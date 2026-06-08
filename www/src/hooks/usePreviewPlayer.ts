@@ -42,6 +42,7 @@ export function usePreviewPlayer({
     displaySize,
     mediaLayers,
     previewState,
+    retainedFrameVisible,
     restartPreview,
     visibleLayer,
   } = usePreviewPlaybackSession({
@@ -105,6 +106,7 @@ export function usePreviewPlayer({
     mjpegPlaybackEnabled: modeState.mjpegPlaybackReady,
     mjpegSupported: modeState.mjpegSupported,
     previewState,
+    retainedFrameVisible,
     restartPreview,
     streamRunning: modeState.streamRunning,
     switchMode,
