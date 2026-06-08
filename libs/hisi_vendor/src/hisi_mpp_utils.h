@@ -34,23 +34,6 @@ namespace hisisdk {
 
 namespace internal {
 
-// ------------------------------------------------------------------
-// Helper macros
-// ------------------------------------------------------------------
-
-// Check HiSilicon SDK return code, log on failure, return false.
-#define HISI_CHECK(expr)                                                       \
-    do {                                                                       \
-        HI_S32 __ret = (expr);                                                 \
-        if (__ret != HI_SUCCESS) {                                             \
-            Error("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
-            return false;                                                      \
-        }                                                                      \
-    } while (0)
-
-// Single-expression version for use in ternary / assignment.
-inline bool HiOk(HI_S32 status) { return status == HI_SUCCESS; }
-
 struct VencPacketSpan {
     const uint8_t* data = nullptr;
     uint32_t size = 0;
