@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { OverlayConfig, PrivacyMaskConfig, StreamName } from '../api/types';
 import { resolutionValue } from '../api/resolution';
+import { mockOverlayConfig } from '../api/mockOverlay';
 import { FormField } from '../components/FormField';
 import { VideoPreview } from '../components/VideoPreview';
 import { useOverlayConfig } from '../hooks/useOverlayConfig';
@@ -45,13 +46,7 @@ export function OverlayConfigPage() {
     loading: videoLoading,
   } = useVideoConfig(activeStream);
 
-  if (loading || videoLoading) {
-    return <div className="panel">加载 Overlay 配置...</div>;
-  }
-  if (!config) {
-    return <div className="panel">Overlay 配置加载失败：{error || '无可用配置'}</div>;
-  }
-
+  const draftConfig = config ?? mockOverlayConfig;
   const streamConfig = videoConfig?.streams[activeStream];
   const capability = capabilities.streams[activeStream];
   const fallbackResolution = capability.resolutions[0]
@@ -60,7 +55,7 @@ export function OverlayConfigPage() {
       ? '1920x1080'
       : '640x360';
   const frame = parseResolution(streamConfig?.resolution || fallbackResolution);
-  const activeMasks = config.privacy_masks[activeStream];
+  const activeMasks = draftConfig.privacy_masks[activeStream];
   const activeMask = activeMasks[activeSlot];
   const previewStatuses = statuses.map((status) => ({
     ...status,
@@ -71,7 +66,7 @@ export function OverlayConfigPage() {
   }));
 
   const setMask = (slot: number, patch: Partial<PrivacyMaskConfig>) => {
-    setConfig(updateMask(config, activeStream, slot, patch));
+    setConfig(updateMask(draftConfig, activeStream, slot, patch));
   };
 
   const maskEditor = useOverlayMaskEditor({
@@ -91,6 +86,13 @@ export function OverlayConfigPage() {
     error,
   });
 
+  if (loading || videoLoading) {
+    return <div className="panel">加载 Overlay 配置...</div>;
+  }
+  if (!config) {
+    return <div className="panel">Overlay 配置加载失败：{error || '无可用配置'}</div>;
+  }
+
   return (
     <div className="config-preview-layout overlay-config-layout">
       <section className="panel settings-column">
@@ -102,25 +104,25 @@ export function OverlayConfigPage() {
         </div>
         <div className="form-grid">
           <FormField label="启用文字叠加">
-            <input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />
+            <input type="checkbox" checked={draftConfig.enabled} onChange={(e) => setConfig({ ...draftConfig, enabled: e.target.checked })} />
           </FormField>
           <FormField label="时间水印">
-            <input type="checkbox" checked={config.items.timestamp.enabled} onChange={(e) => setConfig({ ...config, items: { ...config.items, timestamp: { ...config.items.timestamp, enabled: e.target.checked } } })} />
+            <input type="checkbox" checked={draftConfig.items.timestamp.enabled} onChange={(e) => setConfig({ ...draftConfig, items: { ...draftConfig.items, timestamp: { ...draftConfig.items.timestamp, enabled: e.target.checked } } })} />
           </FormField>
           <FormField label="时间格式">
-            <input value={config.items.timestamp.format} onChange={(e) => setConfig({ ...config, items: { ...config.items, timestamp: { ...config.items.timestamp, format: e.target.value } } })} />
+            <input value={draftConfig.items.timestamp.format} onChange={(e) => setConfig({ ...draftConfig, items: { ...draftConfig.items, timestamp: { ...draftConfig.items.timestamp, format: e.target.value } } })} />
           </FormField>
           <FormField label="设备名称">
-            <input value={config.items.device_name.text} onChange={(e) => setConfig({ ...config, items: { ...config.items, device_name: { ...config.items.device_name, text: e.target.value } } })} />
+            <input value={draftConfig.items.device_name.text} onChange={(e) => setConfig({ ...draftConfig, items: { ...draftConfig.items, device_name: { ...draftConfig.items.device_name, text: e.target.value } } })} />
           </FormField>
           <FormField label="字体大小">
-            <input type="number" value={config.font_size} onChange={(e) => setConfig({ ...config, font_size: Number(e.target.value) })} />
+            <input type="number" value={draftConfig.font_size} onChange={(e) => setConfig({ ...draftConfig, font_size: Number(e.target.value) })} />
           </FormField>
           <FormField label="字体颜色">
-            <input type="color" value={config.font_color} onChange={(e) => setConfig({ ...config, font_color: e.target.value })} />
+            <input type="color" value={draftConfig.font_color} onChange={(e) => setConfig({ ...draftConfig, font_color: e.target.value })} />
           </FormField>
           <FormField label="背景">
-            <input type="checkbox" checked={config.background} onChange={(e) => setConfig({ ...config, background: e.target.checked })} />
+            <input type="checkbox" checked={draftConfig.background} onChange={(e) => setConfig({ ...draftConfig, background: e.target.checked })} />
           </FormField>
         </div>
         {maskEditor.controls}
