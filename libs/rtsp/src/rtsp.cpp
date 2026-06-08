@@ -1,12 +1,11 @@
 #include "rtsp.h"
 
-#include "auth.h"
 #include "event.h"
 #include "infra/log.h"
-#include "infra/time.h"
 #include "media_source.h"
 #include "rtp.h"
 #include "net.h"
+#include "rtsp_auth.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
 #include "rtsp_rtp_sender.h"
@@ -21,7 +20,6 @@ namespace live_stream {
 namespace {
 
 constexpr const char* kServiceName = "rtsp";
-constexpr int64_t kRtspPeerAuthTtlMs = 10000;
 constexpr uint32_t kRtspReaderDrainIntervalMs = 10;
 constexpr uint32_t kRtspMaxFramesPerDrain = 8;
 enum class ServiceState {
@@ -30,13 +28,6 @@ enum class ServiceState {
     kStarted,
     kStopped,
     kDeinitialized,
-};
-
-struct RtspPeerAuthGrant {
-    std::string peer_ip;
-    StreamId stream_id = StreamId::kMain;
-    std::string user_name;
-    int64_t expires_at_ms = 0;
 };
 
 std::string AddressText(const NetAddress &address) {
@@ -52,15 +43,17 @@ using rtsp_internal::BasicRealmHeader;
 using rtsp_internal::BuildRtspResponse;
 using rtsp_internal::ContainsNoCase;
 using rtsp_internal::CSeq;
-using rtsp_internal::DecodeBase64;
 using rtsp_internal::HeaderValue;
+using rtsp_internal::IRtspAuthResponder;
 using rtsp_internal::ParseClientRtpPort;
 using rtsp_internal::ParseRtspRequest;
+using rtsp_internal::RtspAuth;
 using rtsp_internal::RtspRequest;
 using rtsp_internal::StreamPath;
 
 class RtspImpl : public IRtsp,
-                 public IRtspRequestHandlerDelegate {
+                 public IRtspRequestHandlerDelegate,
+                 public IRtspAuthResponder {
 public:
     RtspImpl(RtspOptions options, RtspDependencies dependencies)
         : options_(std::move(options)),
@@ -69,6 +62,7 @@ public:
           event_(dependencies.event),
           media_source_(dependencies.media_source),
           rtp_sender_(options_.rtp_mtu_bytes),
+          rtsp_auth_(auth_, this),
           request_handler_(this) {}
 
     ~RtspImpl() override {
@@ -179,8 +173,8 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             sessions_.Clear();
-            peer_auth_grants_.clear();
         }
+        rtsp_auth_.Clear();
         if (state_ == ServiceState::kStarted ||
             state_ == ServiceState::kInitialized) {
             state_ = ServiceState::kStopped;
@@ -471,108 +465,7 @@ private:
         if (!options_.enable_auth) {
             return true;
         }
-        if (auth_ == nullptr) {
-            Error("rtsp", "RTSP auth service unavailable");
-            SendResponse(session->connection_id, 500, CSeq(request), {}, "");
-            return false;
-        }
-        if (session->IsAuthenticatedFor(stream_id)) {
-            return true;
-        }
-        const std::string authorization = HeaderValue(request, "Authorization");
-        const std::string prefix = "Basic ";
-        if (authorization.compare(0, prefix.size(), prefix) != 0) {
-            std::string cached_user_name;
-            if (FindPeerAuthGrant(session->peer.ip, stream_id,
-                                  &cached_user_name)) {
-                session->MarkAuthenticated(stream_id, cached_user_name);
-                Info("rtsp",
-                               "RTSP auth reused peer=%s user=%s uri=%s",
-                               session->peer.ip.c_str(),
-                               cached_user_name.c_str(), request.uri.c_str());
-                return true;
-            }
-            AddAuthFailure();
-            Info("rtsp",
-                           "RTSP auth required peer=%s uri=%s",
-                           session->peer.ip.c_str(), request.uri.c_str());
-            SendResponse(session->connection_id, 401, CSeq(request),
-                         {{"WWW-Authenticate", BasicRealmHeader()}}, "");
-            return false;
-        }
-        std::string decoded;
-        if (!DecodeBase64(authorization.substr(prefix.size()), &decoded)) {
-            AddAuthFailure();
-            Error("rtsp",
-                            "RTSP auth invalid base64 peer=%s",
-                            session->peer.ip.c_str());
-            SendResponse(session->connection_id, 401, CSeq(request),
-                         {{"WWW-Authenticate", BasicRealmHeader()}}, "");
-            return false;
-        }
-        const size_t colon = decoded.find(':');
-        if (colon == std::string::npos) {
-            AddAuthFailure();
-            Error("rtsp",
-                            "RTSP auth invalid credential peer=%s",
-                            session->peer.ip.c_str());
-            SendResponse(session->connection_id, 401, CSeq(request),
-                         {{"WWW-Authenticate", BasicRealmHeader()}}, "");
-            return false;
-        }
-        LoginRequest login;
-        login.context.client_ip = session->peer.ip;
-        login.user_name = decoded.substr(0, colon);
-        login.password = decoded.substr(colon + 1);
-        LoginResult login_result = auth_->Login(login);
-        if (login_result.token.empty()) {
-            AddAuthFailure();
-            Error("rtsp",
-                            "RTSP auth rejected peer=%s user=%s",
-                            session->peer.ip.c_str(), login.user_name.c_str());
-            SendResponse(session->connection_id, 401, CSeq(request),
-                         {{"WWW-Authenticate", BasicRealmHeader()}}, "");
-            return false;
-        }
-        live_stream::RequestContext logout_context;
-        logout_context.user_name = login_result.principal.user_name;
-        logout_context.session_id = login_result.principal.session_id;
-        if (login_result.must_change_password) {
-            static_cast<void>(
-                auth_->Logout(logout_context));
-            AddAuthFailure();
-            Error("rtsp",
-                            "RTSP auth rejected peer=%s user=%s "
-                            "reason=must_change_password",
-                            session->peer.ip.c_str(), login.user_name.c_str());
-            SendResponse(session->connection_id, 403, CSeq(request), {}, "");
-            return false;
-        }
-        const std::string target = StreamPath(stream_id);
-        if (!auth_->CheckPermission(
-                login_result.principal, AuthPermission::kPreviewVideo,
-                target)) {
-            static_cast<void>(
-                auth_->Logout(logout_context));
-            AddAuthFailure();
-            Error("rtsp",
-                            "RTSP auth forbidden peer=%s user=%s target=%s",
-                            session->peer.ip.c_str(), login.user_name.c_str(),
-                            target.c_str());
-            SendResponse(session->connection_id, 403, CSeq(request), {}, "");
-            return false;
-        }
-        static_cast<void>(auth_->Logout(logout_context));
-        session->MarkAuthenticated(stream_id,
-                                   login_result.principal.user_name);
-        RememberPeerAuthGrant(session->peer.ip, stream_id,
-                              login_result.principal.user_name);
-        Info("rtsp",
-                       "RTSP auth accepted peer=%s user=%s target=%s",
-                       session->peer.ip.c_str(),
-                       login_result.principal.user_name.c_str(),
-                       target.c_str());
-        return true;
+        return rtsp_auth_.Authorize(session, request, stream_id);
     }
 
     bool SetupRtspTransport(const std::shared_ptr<RtspSession>& session,
@@ -631,8 +524,6 @@ private:
             SendResponse(session->connection_id, 461, CSeq(request), {}, "");
             return false;
         }
-        RememberPeerAuthGrant(session->peer.ip, stream_id,
-                              session->authenticated_user);
         Info("rtsp",
                        "RTSP setup conn=%llu stream=%s transport=%s",
                        static_cast<unsigned long long>(
@@ -713,6 +604,13 @@ private:
         ++stats_.auth_failures;
     }
 
+    void SendAuthResponse(
+        ConnectionId connection_id, int status, const std::string &cseq,
+        const std::map<std::string, std::string> &headers,
+        const std::string &body) override {
+        SendResponse(connection_id, status, cseq, headers, body);
+    }
+
     void AddTcpInterleavedSession() {
         std::lock_guard<std::mutex> lock(mutex_);
         ++stats_.tcp_interleaved_sessions;
@@ -721,48 +619,6 @@ private:
     void AddUdpSession() {
         std::lock_guard<std::mutex> lock(mutex_);
         ++stats_.udp_sessions;
-    }
-
-    bool FindPeerAuthGrant(const std::string& peer_ip,
-                           StreamId stream_id,
-                           std::string* user_name) {
-        const int64_t now_ms = infra::Time::MonotonicMillis();
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (auto it = peer_auth_grants_.begin();
-             it != peer_auth_grants_.end();) {
-            if (it->expires_at_ms <= now_ms) {
-                it = peer_auth_grants_.erase(it);
-                continue;
-            }
-            if (it->peer_ip == peer_ip && it->stream_id == stream_id) {
-                if (user_name != nullptr) {
-                    *user_name = it->user_name;
-                }
-                return true;
-            }
-            ++it;
-        }
-        return false;
-    }
-
-    void RememberPeerAuthGrant(const std::string& peer_ip,
-                               StreamId stream_id,
-                               const std::string& user_name) {
-        if (peer_ip.empty() || user_name.empty()) {
-            return;
-        }
-        const int64_t expires_at_ms =
-            infra::Time::MonotonicMillis() + kRtspPeerAuthTtlMs;
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (RtspPeerAuthGrant& grant : peer_auth_grants_) {
-            if (grant.peer_ip == peer_ip && grant.stream_id == stream_id) {
-                grant.user_name = user_name;
-                grant.expires_at_ms = expires_at_ms;
-                return;
-            }
-        }
-        peer_auth_grants_.push_back(
-            RtspPeerAuthGrant{peer_ip, stream_id, user_name, expires_at_ms});
     }
 
     int StartRtspPlayback(
@@ -994,13 +850,13 @@ private:
     IEvent* event_ = nullptr;
     IMediaFrameSource* media_source_ = nullptr;
     RtspRtpSender rtp_sender_;
+    RtspAuth rtsp_auth_;
     RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
     RtspListenAddress local_address_;
     RtspSessionStore sessions_;
-    std::vector<RtspPeerAuthGrant> peer_auth_grants_;
     RtspStats stats_;
 };
 
