@@ -1,4 +1,4 @@
-#include "img_strat.h"
+#include "image_strategy.h"
 
 #include "infra/clamp.h"
 #include "json_utils.h"

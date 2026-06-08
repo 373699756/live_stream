@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DM_STATE_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_DM_STATE_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_STATE_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_STATE_H_
 
 namespace live_stream {
 namespace device_media_internal {
@@ -27,4 +27,4 @@ inline bool DeviceMediaPrepared(DeviceMediaState state) {
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DM_STATE_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_STATE_H_

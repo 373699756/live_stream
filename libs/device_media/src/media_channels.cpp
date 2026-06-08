@@ -1,4 +1,4 @@
-#include "dm_chan.h"
+#include "media_channels.h"
 
 #include "hisisdk/hisi_sdk.h"
 

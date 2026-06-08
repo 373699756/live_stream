@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CHAN_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CHAN_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CHANNELS_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CHANNELS_H_
 
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
@@ -20,4 +20,4 @@ bool IsValidSnapshotVencChannel(const MediaPipelineConfig &config);
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CHAN_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_MEDIA_CHANNELS_H_

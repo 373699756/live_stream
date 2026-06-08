@@ -1,6 +1,6 @@
-#include "dm_sink.h"
+#include "frame_sinks.h"
 
-#include "dm_chan.h"
+#include "media_channels.h"
 
 namespace live_stream {
 namespace device_media_internal {

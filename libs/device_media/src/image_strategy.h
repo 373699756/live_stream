@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_IMG_STRAT_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_IMG_STRAT_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_IMAGE_STRATEGY_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_IMAGE_STRATEGY_H_
 
 #include "config.h"
 #include "device_media.h"
@@ -18,4 +18,4 @@ ConfigJson BuildImageStrategyConfig(
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_IMG_STRAT_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_IMAGE_STRATEGY_H_

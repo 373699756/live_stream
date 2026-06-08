@@ -1,6 +1,6 @@
 #include "device_media.h"
 
-#include "dm_core.h"
+#include "device_media_runtime.h"
 
 namespace live_stream {
 

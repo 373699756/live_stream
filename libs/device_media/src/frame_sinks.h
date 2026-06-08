@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DM_SINK_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_DM_SINK_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_FRAME_SINKS_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_FRAME_SINKS_H_
 
 #include "media/frame_attach.h"
 #include "media/pipeline_config.h"
@@ -48,4 +48,4 @@ void NotifySourceState(
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DM_SINK_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_FRAME_SINKS_H_

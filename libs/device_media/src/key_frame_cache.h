@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DM_KEY_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_DM_KEY_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_KEY_FRAME_CACHE_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_KEY_FRAME_CACHE_H_
 
 #include "media/encoded_frame.h"
 
@@ -31,4 +31,4 @@ private:
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DM_KEY_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_KEY_FRAME_CACHE_H_

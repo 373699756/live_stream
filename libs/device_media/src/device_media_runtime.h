@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CORE_H_
-#define LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CORE_H_
+#ifndef LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_RUNTIME_H_
+#define LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_RUNTIME_H_
 
 #include "device_media.h"
 
@@ -14,4 +14,4 @@ std::unique_ptr<IDeviceMedia> CreateDeviceMediaCore(
 }  // namespace device_media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DM_CORE_H_
+#endif  // LIVE_STREAM_DEVICE_MEDIA_SRC_DEVICE_MEDIA_RUNTIME_H_

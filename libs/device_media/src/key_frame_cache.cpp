@@ -1,6 +1,6 @@
-#include "dm_key.h"
+#include "key_frame_cache.h"
 
-#include "dm_chan.h"
+#include "media_channels.h"
 #include "infra/log.h"
 #include "media/media_buffer.h"
 #include "media_codec.h"
