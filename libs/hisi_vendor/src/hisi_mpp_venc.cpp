@@ -280,8 +280,14 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
 bool StartRecvFrame(VENC_CHN venc) {
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = -1;
-    return MpiOk("HI_MPI_VENC_StartRecvFrame",
-                 HI_MPI_VENC_StartRecvFrame(venc, &recv_param));
+    const HI_S32 status = HI_MPI_VENC_StartRecvFrame(venc, &recv_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_StartRecvFrame chn=%d failed: 0x%08x", venc,
+              status);
+        return false;
+    }
+    return true;
 }
 
 void StopRecvFrame(VENC_CHN venc, int32_t chn) {
@@ -301,9 +307,15 @@ bool RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
     if (!IsIdrCodec(codec)) {
         return false;
     }
-    return MpiOk("HI_MPI_VENC_RequestIDR",
-                 HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel),
-                                        HI_TRUE));
+    const HI_S32 status =
+        HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel), HI_TRUE);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_RequestIDR chn=%d codec=%s failed: 0x%08x",
+              venc_channel, CodecName(codec), status);
+        return false;
+    }
+    return true;
 }
 
 void CloseReEncode(VENC_RC_PARAM_S* rc_param, VENC_RC_MODE_E rc_mode) {
@@ -360,8 +372,10 @@ void TuneH265VbrParam(VENC_PARAM_H265_VBR_S* param) {
 
 bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
     VENC_RC_PARAM_S rc_param{};
-    if (!MpiOk("HI_MPI_VENC_GetRcParam",
-               HI_MPI_VENC_GetRcParam(venc, &rc_param))) {
+    HI_S32 status = HI_MPI_VENC_GetRcParam(venc, &rc_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_GetRcParam chn=%d failed: 0x%08x", venc, status);
         return false;
     }
 
@@ -372,8 +386,14 @@ bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
         TuneH265VbrParam(&rc_param.stParamH265Vbr);
     }
 
-    return MpiOk("HI_MPI_VENC_SetRcParam",
-                 HI_MPI_VENC_SetRcParam(venc, &rc_param));
+    status = HI_MPI_VENC_SetRcParam(venc, &rc_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_SetRcParam chn=%d rc_mode=%d failed: 0x%08x",
+              venc, static_cast<int>(rc_mode), status);
+        return false;
+    }
+    return true;
 }
 
 bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -388,8 +408,15 @@ bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
     dst.s32DevId = 0;
     dst.s32ChnId = venc_channel;
 
-    return MpiOk("HI_MPI_SYS_Bind(VPSS-VENC)",
-                 HI_MPI_SYS_Bind(&src, &dst));
+    const HI_S32 status = HI_MPI_SYS_Bind(&src, &dst);
+    if (status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "HI_MPI_SYS_Bind VPSS-VENC vpss=%d:%d venc=%d failed: 0x%08x",
+            vpss_group, vpss_channel, venc_channel, status);
+        return false;
+    }
+    return true;
 }
 
 void UnbindVpssFromVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -513,8 +540,13 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         GopModeName(stream.gop_mode), stream.size.width, stream.size.height,
         stream.frame_rate.source_fps, stream.frame_rate.target_fps,
         stream.bitrate_kbps, stream.gop, stat_time, attr.stVencAttr.u32BufSize);
-    if (!MpiOk("HI_MPI_VENC_CreateChn",
-               HI_MPI_VENC_CreateChn(venc, &attr))) {
+    const HI_S32 create_status = HI_MPI_VENC_CreateChn(venc, &attr);
+    if (create_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_CreateChn chn=%d codec=%s size=%ux%u failed: "
+              "0x%08x",
+              chn, CodecName(stream.codec), stream.size.width,
+              stream.size.height, create_status);
         return false;
     }
     if (!TuneRcParam(venc, attr.stRcAttr.enRcMode)) {
@@ -1018,6 +1050,11 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
         return true;
     }
     if (HasCreatedVenc(impl_->main_venc_) || HasCreatedVenc(impl_->sub_venc_)) {
+        if (impl_->stream_running_.load() || impl_->stream_thread_.joinable()) {
+            Error("hisi_vendor",
+                  "reconfigure VENC while stream thread is running");
+            return false;
+        }
         DestroyVencRuntime(&impl_->sub_venc_);
         DestroyVencRuntime(&impl_->main_venc_);
     }

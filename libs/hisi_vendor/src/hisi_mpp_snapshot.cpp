@@ -9,7 +9,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <utility>
@@ -37,22 +36,6 @@ struct JpegCaptureContext {
     bool has_frame = false;
     bool has_channel = false;
     bool receiving = false;
-};
-
-class SnapshotInProgressGuard {
-public:
-    explicit SnapshotInProgressGuard(bool* in_progress)
-        : in_progress_(in_progress) {}
-    SnapshotInProgressGuard(const SnapshotInProgressGuard&) = delete;
-    SnapshotInProgressGuard& operator=(const SnapshotInProgressGuard&) = delete;
-    ~SnapshotInProgressGuard() {
-        if (in_progress_ != nullptr) {
-            *in_progress_ = false;
-        }
-    }
-
-private:
-    bool* in_progress_ = nullptr;
 };
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
@@ -149,28 +132,46 @@ uint32_t JpegQualityFromConfig(uint32_t quality) {
 bool EnsureVpssFrameDepth(VPSS_GRP group, VPSS_CHN channel) {
     if (channel >= VPSS_MAX_PHY_CHN_NUM) {
         VPSS_EXT_CHN_ATTR_S attr{};
-        if (!MpiOk("HI_MPI_VPSS_GetExtChnAttr",
-                          HI_MPI_VPSS_GetExtChnAttr(group, channel, &attr))) {
+        HI_S32 status = HI_MPI_VPSS_GetExtChnAttr(group, channel, &attr);
+        if (status != HI_SUCCESS) {
+            Error("hisi_vendor",
+                  "HI_MPI_VPSS_GetExtChnAttr grp=%d chn=%d failed: 0x%08x",
+                  group, channel, status);
             return false;
         }
         if (attr.u32Depth == 0) {
             attr.u32Depth = 2;
-            return MpiOk("HI_MPI_VPSS_SetExtChnAttr",
-                                HI_MPI_VPSS_SetExtChnAttr(group, channel,
-                                                          &attr));
+            status = HI_MPI_VPSS_SetExtChnAttr(group, channel, &attr);
+            if (status != HI_SUCCESS) {
+                Error(
+                    "hisi_vendor",
+                    "HI_MPI_VPSS_SetExtChnAttr grp=%d chn=%d depth=%u "
+                    "failed: 0x%08x",
+                    group, channel, attr.u32Depth, status);
+                return false;
+            }
         }
         return true;
     }
 
     VPSS_CHN_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_VPSS_GetChnAttr",
-                      HI_MPI_VPSS_GetChnAttr(group, channel, &attr))) {
+    HI_S32 status = HI_MPI_VPSS_GetChnAttr(group, channel, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_GetChnAttr grp=%d chn=%d failed: 0x%08x",
+              group, channel, status);
         return false;
     }
     if (attr.u32Depth == 0) {
         attr.u32Depth = 2;
-        return MpiOk("HI_MPI_VPSS_SetChnAttr",
-                            HI_MPI_VPSS_SetChnAttr(group, channel, &attr));
+        status = HI_MPI_VPSS_SetChnAttr(group, channel, &attr);
+        if (status != HI_SUCCESS) {
+            Error("hisi_vendor",
+                  "HI_MPI_VPSS_SetChnAttr grp=%d chn=%d depth=%u failed: "
+                  "0x%08x",
+                  group, channel, attr.u32Depth, status);
+            return false;
+        }
     }
     return true;
 }
@@ -188,10 +189,14 @@ void ReleaseCaptureContext(JpegCaptureContext* context) {
         context->has_channel = false;
     }
     if (context->has_frame) {
-        (void)MpiOk("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(
-                               context->vpss_group, context->vpss_channel,
-                               &context->frame_info));
+        const HI_S32 release_status = HI_MPI_VPSS_ReleaseChnFrame(
+            context->vpss_group, context->vpss_channel, &context->frame_info);
+        if (release_status != HI_SUCCESS) {
+            Warn("hisi_vendor",
+                 "CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame grp=%d chn=%d "
+                 "failed: 0x%08x",
+                 context->vpss_group, context->vpss_channel, release_status);
+        }
         context->has_frame = false;
     }
 }
@@ -216,10 +221,16 @@ bool InitJpegCaptureContext(const SnapshotConfig& config,
     if (!EnsureVpssFrameDepth(context->vpss_group, context->vpss_channel)) {
         return false;
     }
-    if (!MpiOk("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
-                      HI_MPI_VPSS_GetChnFrame(
-                          context->vpss_group, context->vpss_channel,
-                          &context->frame_info, context->timeout))) {
+    const HI_S32 get_status = HI_MPI_VPSS_GetChnFrame(
+        context->vpss_group, context->vpss_channel, &context->frame_info,
+        context->timeout);
+    if (get_status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "CaptureJpeg: HI_MPI_VPSS_GetChnFrame grp=%d chn=%d timeout=%d "
+            "failed: 0x%08x",
+            context->vpss_group, context->vpss_channel, context->timeout,
+            get_status);
         return false;
     }
     context->has_frame = true;
@@ -262,8 +273,15 @@ bool CreateJpegChannel(const SnapshotConfig& config,
     }
     VENC_CHN_ATTR_S attr =
         MakeJpegChannelAttr(config, context->frame_info.stVFrame);
-    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_CreateChn",
-                      HI_MPI_VENC_CreateChn(context->jpeg_channel, &attr))) {
+    HI_S32 status = HI_MPI_VENC_CreateChn(context->jpeg_channel, &attr);
+    if (status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "CaptureJpeg: HI_MPI_VENC_CreateChn chn=%d size=%ux%u "
+            "quality=%u failed: 0x%08x",
+            context->jpeg_channel, context->frame_info.stVFrame.u32Width,
+            context->frame_info.stVFrame.u32Height, config.jpeg_quality,
+            status);
         return false;
     }
     context->has_channel = true;
@@ -273,9 +291,14 @@ bool CreateJpegChannel(const SnapshotConfig& config,
     channel_param.u32PollWakeUpFrmCnt = 1;
     channel_param.stFrameRate.s32SrcFrmRate = 1;
     channel_param.stFrameRate.s32DstFrmRate = 1;
-    return MpiOk("CaptureJpeg: HI_MPI_VENC_SetChnParam",
-                        HI_MPI_VENC_SetChnParam(context->jpeg_channel,
-                                                &channel_param));
+    status = HI_MPI_VENC_SetChnParam(context->jpeg_channel, &channel_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "CaptureJpeg: HI_MPI_VENC_SetChnParam chn=%d failed: 0x%08x",
+              context->jpeg_channel, status);
+        return false;
+    }
+    return true;
 }
 
 bool SendJpegFrame(JpegCaptureContext* context) {
@@ -284,23 +307,36 @@ bool SendJpegFrame(JpegCaptureContext* context) {
     }
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = 1;
-    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
-                      HI_MPI_VENC_StartRecvFrame(context->jpeg_channel,
-                                                &recv_param))) {
+    HI_S32 status =
+        HI_MPI_VENC_StartRecvFrame(context->jpeg_channel, &recv_param);
+    if (status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "CaptureJpeg: HI_MPI_VENC_StartRecvFrame chn=%d frames=%d "
+            "failed: 0x%08x",
+            context->jpeg_channel, recv_param.s32RecvPicNum, status);
         return false;
     }
     context->receiving = true;
-    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_SendFrame",
-                      HI_MPI_VENC_SendFrame(context->jpeg_channel,
-                                            &context->frame_info,
-                                            context->timeout))) {
+    status = HI_MPI_VENC_SendFrame(context->jpeg_channel,
+                                   &context->frame_info, context->timeout);
+    if (status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "CaptureJpeg: HI_MPI_VENC_SendFrame chn=%d timeout=%d failed: "
+            "0x%08x",
+            context->jpeg_channel, context->timeout, status);
         return false;
     }
     if (context->has_frame) {
-        (void)MpiOk("CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame",
-                           HI_MPI_VPSS_ReleaseChnFrame(
-                               context->vpss_group, context->vpss_channel,
-                               &context->frame_info));
+        const HI_S32 release_status = HI_MPI_VPSS_ReleaseChnFrame(
+            context->vpss_group, context->vpss_channel, &context->frame_info);
+        if (release_status != HI_SUCCESS) {
+            Warn("hisi_vendor",
+                 "CaptureJpeg: HI_MPI_VPSS_ReleaseChnFrame grp=%d chn=%d "
+                 "failed: 0x%08x",
+                 context->vpss_group, context->vpss_channel, release_status);
+        }
         context->has_frame = false;
     }
     return true;
@@ -342,8 +378,12 @@ bool QueryJpegPacks(VENC_CHN jpeg_channel, VENC_CHN_STATUS_S* status) {
         return false;
     }
     *status = VENC_CHN_STATUS_S{};
-    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_QueryStatus",
-                      HI_MPI_VENC_QueryStatus(jpeg_channel, status))) {
+    const HI_S32 query_status =
+        HI_MPI_VENC_QueryStatus(jpeg_channel, status);
+    if (query_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "CaptureJpeg: HI_MPI_VENC_QueryStatus chn=%d failed: 0x%08x",
+              jpeg_channel, query_status);
         return false;
     }
     if (status->u32CurPacks == 0) {
@@ -369,8 +409,12 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
     *stream = VENC_STREAM_S{};
     stream->pstPack = *packs;
     stream->u32PackCount = status.u32CurPacks;
-    if (!MpiOk("CaptureJpeg: HI_MPI_VENC_GetStream",
-                      HI_MPI_VENC_GetStream(jpeg_channel, stream, -1))) {
+    const HI_S32 get_status = HI_MPI_VENC_GetStream(jpeg_channel, stream, -1);
+    if (get_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "CaptureJpeg: HI_MPI_VENC_GetStream chn=%d packs=%u failed: "
+              "0x%08x",
+              jpeg_channel, status.u32CurPacks, get_status);
         std::free(*packs);
         *packs = nullptr;
         return false;
@@ -462,10 +506,10 @@ void ReleaseJpegStream(VENC_CHN jpeg_channel, VENC_STREAM_S* stream,
         const HI_S32 release_status =
             HI_MPI_VENC_ReleaseStream(jpeg_channel, stream);
         if (release_status != HI_SUCCESS) {
-        Error(
-            "hisi_vendor",
-            "CaptureJpeg: HI_MPI_VENC_ReleaseStream failed: 0x%08x",
-            release_status);
+            Error(
+                "hisi_vendor",
+                "CaptureJpeg: HI_MPI_VENC_ReleaseStream failed: 0x%08x",
+                release_status);
         }
     }
     std::free(packs);
@@ -513,12 +557,6 @@ JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
 
 JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     std::lock_guard<std::mutex> snapshot_lock(impl_->snapshot_mutex_);
-    if (impl_->snapshot_in_progress_) {
-        Error("hisi_vendor", "CaptureJpeg: snapshot already in progress");
-        return JpegFrame{};
-    }
-    impl_->snapshot_in_progress_ = true;
-    SnapshotInProgressGuard snapshot_guard(&impl_->snapshot_in_progress_);
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     JpegFrame result{};
     result.width = config.size.width;
@@ -587,9 +625,14 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
 
     const HI_S32 timeout = static_cast<HI_S32>(timeout_ms);
-    if (!MpiOk("CaptureYuvFrame: HI_MPI_VPSS_GetChnFrame",
-                      HI_MPI_VPSS_GetChnFrame(group, channel, &frame_info,
-                                              timeout))) {
+    const HI_S32 get_status =
+        HI_MPI_VPSS_GetChnFrame(group, channel, &frame_info, timeout);
+    if (get_status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "CaptureYuvFrame: HI_MPI_VPSS_GetChnFrame grp=%d chn=%d "
+            "timeout=%d failed: 0x%08x",
+            group, channel, timeout, get_status);
         return result;
     }
 

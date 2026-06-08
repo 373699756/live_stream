@@ -43,7 +43,6 @@ struct MppHisiSdk::Impl {
     std::atomic<bool> stream_running_{false};
     std::recursive_mutex control_mutex_;
     std::mutex snapshot_mutex_;
-    bool snapshot_in_progress_ = false;
 
     EncodedFrameCallback frame_callback_ = nullptr;
     void* frame_callback_user_ = nullptr;
