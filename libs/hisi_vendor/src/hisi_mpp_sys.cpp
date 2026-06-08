@@ -285,7 +285,7 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
         return false;
     }
 
-    Warn("hisi_vendor",
+    Info("hisi_vendor",
                    "reuse existing compatible HISI VB configuration");
     return true;
 }
@@ -341,12 +341,12 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config) {
 
     HI_S32 status = HI_MPI_VB_SetConfig(&vb_conf);
     if (status == HI_ERR_VB_BUSY) {
+        if (TryReuseExistingVideoBuffer(vb_conf)) {
+            return true;
+        }
         ForceCleanupPipelineResources(config);
         (void)ExitMppSystem(true, kMppExitRetryCount);
         status = HI_MPI_VB_SetConfig(&vb_conf);
-    }
-    if (status == HI_ERR_VB_BUSY && TryReuseExistingVideoBuffer(vb_conf)) {
-        return true;
     }
     if (status != HI_SUCCESS) {
         Error("hisi_vendor",
