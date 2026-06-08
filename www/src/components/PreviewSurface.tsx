@@ -40,6 +40,7 @@ export function PreviewSurface({
                     <span>正在应用视频参数</span>
                 </div>
             ) : (
+                // 两个媒体层始终同时挂载，避免切协议时反复创建页面节点造成闪烁。
                 mediaLayers.map((layer, index) => (
                     <div
                         className={`video-layer${index === visibleLayer ? ' active' : ''}`}

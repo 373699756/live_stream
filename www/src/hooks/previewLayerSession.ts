@@ -20,6 +20,7 @@ export interface PreviewLayerSession {
     video: HTMLVideoElement | null;
 }
 
+// 这些引用由播放钩子持有，释放会话时只清理仍指向当前资源的全局引用。
 interface PreviewPeerRefs {
     peerIdRef: CurrentRef<string>;
     peerRef: CurrentRef<RTCPeerConnection | null>;
@@ -51,6 +52,7 @@ export function clearPreviewVideo(video: HTMLVideoElement | null) {
     if (!video) {
         return;
     }
+    // 清理媒体对象前先停轨道，否则 WebRTC 切换后浏览器仍可能保留解码资源。
     video.pause();
     stopVideoTracks(video);
     video.srcObject = null;
@@ -104,6 +106,7 @@ export function releasePreviewLayerSession(
         window.clearTimeout(session.startupTimer);
         session.startupTimer = 0;
     }
+    // HLS/FLV 播放器内部会持有媒体源和事件监听，必须显式销毁。
     destroyHls(session.hls);
     destroyFlv(session.flv);
     closePreviewWebrtcSession(session, refs);

@@ -69,6 +69,8 @@ export function usePreviewPlaybackSession({
     const peerIdRef = useRef('');
     const hlsRef = useRef<HlsPlayer | null>(null);
     const flvRef = useRef<FlvPlayer | null>(null);
+    // 固定维护两个媒体层，切流时先在隐藏层启动目标链路，出帧后再切换可见层。
+    // 这样能减少黑屏，但也要求连接状态只跟目标会话绑定，不能跟可见旧层绑定。
     const mediaLayers = useMemo<PreviewMediaLayerRefs[]>(() => [
         {
             imageRef: layerAImageRef,
@@ -108,6 +110,7 @@ export function usePreviewPlaybackSession({
     const releaseRetiredSessions = useCallback(() => {
         const retiringSessions = retiringSessionsRef.current;
         retiringSessionsRef.current = [];
+        // 已退役层只在新层成功显示后释放，避免切换期间把最后一帧提前清掉。
         for (const session of retiringSessions) {
             releaseSession(session);
         }
@@ -129,6 +132,7 @@ export function usePreviewPlaybackSession({
     const restartPreview = useCallback((message: string) => {
         sessionRef.current += 1;
         setConnected(false);
+        // 重启目标链路时先保留旧画面作为过渡，同时让状态浮层继续显示新目标状态。
         setRetainedFrameVisible(
             Boolean(activeSessionRef.current?.promoted) || hasVisibleRetiredSession(),
         );
@@ -161,6 +165,7 @@ export function usePreviewPlaybackSession({
 
         const sessionId = sessionRef.current + 1;
         sessionRef.current = sessionId;
+        // 总是在不可见层准备新目标。只有出帧提升流程才能把它切到前台。
         const layerIndex = visibleLayerRef.current === 0 ? 1 : 0;
         const videoRef = layerIndex === 0 ? layerAVideoRef : layerBVideoRef;
         const imageRef = layerIndex === 0 ? layerAImageRef : layerBImageRef;
@@ -187,6 +192,7 @@ export function usePreviewPlaybackSession({
                 // 已显示的旧会话可能仍在承载画面，等新目标会话出帧后再释放。
                 retiringSessionsRef.current.push(previousSession);
             } else {
+                // 未出帧的旧目标没有可保留价值，直接释放，避免后台请求继续跑。
                 releaseSession(previousSession);
             }
         }
@@ -202,6 +208,7 @@ export function usePreviewPlaybackSession({
             return nextKinds;
         });
         setConnected(false);
+        // 启动新目标时连接状态必须归零；旧画面只通过保留帧标记表示。
         setRetainedFrameVisible(
             Boolean(previousSession?.promoted) || hasVisibleRetiredSession(),
         );
@@ -209,6 +216,7 @@ export function usePreviewPlaybackSession({
         setDisplaySize('');
 
         let sessionConnected = false;
+        // 所有异步回调都必须经过这个检查，防止旧会话的延迟事件污染当前状态。
         const isCurrentSession = () =>
             !session.controller.signal.aborted &&
             activeSessionRef.current === session &&
@@ -241,6 +249,7 @@ export function usePreviewPlaybackSession({
             }
             sessionConnected = false;
             if (isCurrentSession()) {
+                // 失败/断开时保留旧画面可以继续显示，但状态必须明确变为未连接。
                 setConnected(false);
                 setRetainedFrameVisible(hasVisibleRetiredSession());
             }
@@ -273,6 +282,7 @@ export function usePreviewPlaybackSession({
         };
 
         if (mode === 'mjpeg') {
+            // MJPEG 使用图片元素，不能和 HLS/FLV/WebRTC 共用视频层。
             if (!image) {
                 setSessionPreviewState('MJPEG 预览器不可用');
                 return;
@@ -318,6 +328,7 @@ export function usePreviewPlaybackSession({
         };
 
         if (mode === 'webrtc') {
+            // WebRTC 的对端连接生命周期由当前层会话承载，切流时统一关闭。
             session.startupTimer = startWebrtcPreview({
                 controls,
                 fallback: {
@@ -358,6 +369,7 @@ export function usePreviewPlaybackSession({
         }
 
         if (mode === 'hls') {
+            // HLS 允许先拉播放列表触发后端生成，但必须等真实出帧后才切到前台。
             session.startupTimer = startHlsPreview({
                 autoFallback: {
                     autoModeSelected,
@@ -384,6 +396,7 @@ export function usePreviewPlaybackSession({
             return;
         }
 
+        // HTTP-FLV 走视频元素和媒体源扩展，播放器实例挂在会话上才能精确销毁。
         startFlvPreview({
             controls,
             flvReady,
