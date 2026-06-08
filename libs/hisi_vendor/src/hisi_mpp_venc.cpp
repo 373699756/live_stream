@@ -176,7 +176,7 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig& stream) {
         stream.frame_rate.target_fps <= 0 ||
         stream.frame_rate.target_fps > stream.frame_rate.source_fps ||
         stream.frame_rate.source_fps > static_cast<int32_t>(kMaxInputFrameRate)) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "invalid VENC config chn=%d codec=%s %ux%u src_fps=%d "
             "dst_fps=%d gop=%u",
@@ -188,7 +188,7 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig& stream) {
     if (stream.rc_mode != RateControlMode::kFixQp &&
         (stream.bitrate_kbps < kMinRcBitrateKbps ||
          stream.bitrate_kbps > kMaxRcBitrateKbps)) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "invalid VENC bitrate chn=%d codec=%s rc=%s bitrate=%u",
             chn, CodecName(stream.codec), RcModeName(stream.rc_mode),
@@ -196,7 +196,7 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig& stream) {
         return false;
     }
     if (stream.codec == VideoCodec::kJpeg) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "JPEG VENC stream mode is not supported chn=%d", chn);
         return false;
     }
@@ -501,7 +501,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         attr.stGopAttr.stNormalP.s32IPQpDelta = 0;
     }
 
-    INFRA_LOG_INFO(
+    Info(
         "hisi_vendor",
         "Create VENC chn=%d codec=%s rc=%s gop_mode=%s size=%ux%u "
         "src_fps=%d dst_fps=%d bitrate=%u gop=%u stat_time=%u buf=%u",
@@ -545,12 +545,12 @@ bool InitVencStreamContext(int32_t chn,
     context->codec = codec;
     context->fd = HI_MPI_VENC_GetFd(context->venc);
     if (context->fd < 0) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VENC_GetFd failed for channel %d", chn);
         return false;
     }
     if (context->fd >= FD_SETSIZE) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "VENC fd %d exceeds FD_SETSIZE", context->fd);
         return false;
     }
@@ -565,7 +565,7 @@ bool QueryVencStreamStatus(const VencStreamContext& context,
     *status = VENC_CHN_STATUS_S{};
     HI_S32 s32_ret = HI_MPI_VENC_QueryStatus(context.venc, status);
     if (s32_ret != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VENC_QueryStatus chn %d failed: 0x%08x",
                         context.chn, s32_ret);
         return false;
@@ -584,7 +584,7 @@ bool GetVencStream(const VencStreamContext& context,
     *packs = static_cast<VENC_PACK_S*>(
         std::calloc(status.u32CurPacks, sizeof(VENC_PACK_S)));
     if (*packs == nullptr) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "calloc VENC packs chn %d packs=%u failed",
                         context.chn, status.u32CurPacks);
         return false;
@@ -595,7 +595,7 @@ bool GetVencStream(const VencStreamContext& context,
     stream->u32PackCount = status.u32CurPacks;
     const HI_S32 s32_ret = HI_MPI_VENC_GetStream(context.venc, stream, 0);
     if (s32_ret != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VENC_GetStream chn %d failed: 0x%08x",
                         context.chn, s32_ret);
         std::free(*packs);
@@ -603,7 +603,7 @@ bool GetVencStream(const VencStreamContext& context,
         return false;
     }
     if (stream->u32PackCount > status.u32CurPacks) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "invalid VENC pack count chn=%d seq=%u packs=%u allocated=%u",
             context.chn, stream->u32Seq, stream->u32PackCount,
@@ -648,7 +648,7 @@ bool MeasureVencPayload(const VencStreamContext& context,
         payload->size += packet_data.size;
     }
     if (!valid_stream || payload->size == 0) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "invalid VENC stream chn=%d seq=%u packs=%u size=%u",
                         context.chn, stream.u32Seq, stream.u32PackCount,
                         payload->size);
@@ -663,7 +663,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                              uint32_t payload_size) {
     VideoBuffer* buffer = VideoBufferAlloc(payload_size);
     if (buffer == nullptr) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "alloc VENC payload chn=%d seq=%u size=%u failed",
                         context.chn, stream.u32Seq, payload_size);
         return nullptr;
@@ -674,7 +674,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
         const VENC_PACK_S& pack = stream.pstPack[i];
         internal::VencPacketData packet_data;
         if (!internal::GetVencPacketData(pack, stream_buffer, &packet_data)) {
-            INFRA_LOG_ERROR("hisi_vendor",
+            Error("hisi_vendor",
                             "copy VENC stream invalid pack chn=%d seq=%u "
                             "pack=%u len=%u offset=%u addr=%p",
                             context.chn, stream.u32Seq, i, pack.u32Len,
@@ -683,7 +683,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
             return nullptr;
         }
         if (packet_data.size > payload_size - offset) {
-            INFRA_LOG_ERROR("hisi_vendor",
+            Error("hisi_vendor",
                             "copy VENC stream overflow chn=%d seq=%u "
                             "offset=%u len=%u size=%u",
                             context.chn, stream.u32Seq, offset,
@@ -703,7 +703,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
         }
     }
     if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "copy VENC stream chn=%d seq=%u size=%u expect=%u "
                         "failed",
                         context.chn, stream.u32Seq, offset, payload_size);
@@ -735,7 +735,7 @@ void ReleaseVencStream(const VencStreamContext& context,
                        VENC_PACK_S* packs) {
     if (stream != nullptr &&
         HI_MPI_VENC_ReleaseStream(context.venc, stream) != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VENC_ReleaseStream chn %d failed",
                         context.chn);
     }
@@ -827,7 +827,7 @@ void VencStreamLoop(MediaPipelineConfig config,
             if (errno == EINTR) {
                 continue;
             }
-            INFRA_LOG_ERROR("hisi_vendor", "select on VENC failed: %s",
+            Error("hisi_vendor", "select on VENC failed: %s",
                             strerror(errno));
             break;
         }
@@ -857,7 +857,7 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
 
     // Main stream
     if (!ConfigureVencChannel(config.venc_channel, config.main_stream)) {
-        INFRA_LOG_ERROR(
+        Error(
             "hisi_vendor",
             "start main VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
             "size=%ux%u src_fps=%d dst_fps=%d bitrate=%u gop=%u",
@@ -875,7 +875,7 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     if (config.sub_stream.enabled) {
         if (!ConfigureVencChannel(config.sub_venc_channel, config.sub_stream)) {
             DestroyVencChannel(static_cast<VENC_CHN>(config.venc_channel));
-            INFRA_LOG_ERROR(
+            Error(
                 "hisi_vendor",
                 "start sub VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
                 "size=%ux%u src_fps=%d dst_fps=%d bitrate=%u gop=%u",
@@ -919,7 +919,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     // Main stream: VPSS CHN → VENC
     if (!BindVpssToVenc(config.vpss_group, config.vpss_channel,
                         config.venc_channel)) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "bind main VPSS to VENC failed vpss=%d:%d venc=%d",
                         config.vpss_group, config.vpss_channel,
                         config.venc_channel);
@@ -932,7 +932,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
                             config.sub_venc_channel)) {
             UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                                config.venc_channel);
-            INFRA_LOG_ERROR("hisi_vendor",
+            Error("hisi_vendor",
                             "bind sub VPSS to VENC failed vpss=%d:%d venc=%d",
                             config.vpss_group, config.sub_vpss_channel,
                             config.sub_venc_channel);
@@ -947,7 +947,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
         }
         UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                            config.venc_channel);
-        INFRA_LOG_ERROR("hisi_vendor", "start main VENC recv failed chn=%d",
+        Error("hisi_vendor", "start main VENC recv failed chn=%d",
                         config.venc_channel);
         return false;
     }
@@ -959,7 +959,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
                            config.sub_venc_channel);
         UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
                            config.venc_channel);
-        INFRA_LOG_ERROR("hisi_vendor", "start sub VENC recv failed chn=%d",
+        Error("hisi_vendor", "start sub VENC recv failed chn=%d",
                         config.sub_venc_channel);
         return false;
     }

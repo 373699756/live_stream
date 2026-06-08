@@ -1,0 +1,145 @@
+#include "rtsp_rtp_sender.h"
+
+#include "rtsp_transport.h"
+
+#include <utility>
+
+namespace live_stream {
+
+class RtspRtpPacketSink final : public rtp::IRtpPacketSink {
+ public:
+  RtspRtpPacketSink(RtspRtpSender *sender,
+                    std::shared_ptr<RtspSession> session,
+                    const EncodedFrame *frame,
+                    const RtspRtpSenderContext *context)
+      : sender_(sender),
+        session_(std::move(session)),
+        frame_(frame),
+        context_(context) {}
+
+  bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
+    if (sender_ == nullptr || frame_ == nullptr || context_ == nullptr ||
+        !ok_) {
+      return false;
+    }
+    ok_ = sender_->SendRtpPacketView(session_, *frame_, packet, *context_);
+    return ok_;
+  }
+
+ private:
+  RtspRtpSender *sender_ = nullptr;
+  std::shared_ptr<RtspSession> session_;
+  const EncodedFrame *frame_ = nullptr;
+  const RtspRtpSenderContext *context_ = nullptr;
+  bool ok_ = true;
+};
+
+namespace {
+
+bool IsKeyFrame(const EncodedFrame &frame) {
+  return frame.frame_type == FrameType::kIdr ||
+         frame.frame_type == FrameType::kI;
+}
+
+}  // namespace
+
+RtspRtpSender::RtspRtpSender(uint32_t rtp_mtu_bytes)
+    : packetizer_(rtp_mtu_bytes) {}
+
+void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
+                              const EncodedFrame &frame,
+                              const RtspRtpSenderContext &context) {
+  if (session == nullptr || context.mutex == nullptr ||
+      context.service_stats == nullptr) {
+    return;
+  }
+
+  bool should_drop = false;
+  {
+    std::lock_guard<std::mutex> lock(*context.mutex);
+    if (!session->keyframe_seen) {
+      if (!IsKeyFrame(frame)) {
+        ++session->stats.dropped_frames;
+        ++context.service_stats->dropped_frames;
+        should_drop = true;
+      } else {
+        session->keyframe_seen = true;
+      }
+    }
+  }
+  if (should_drop) {
+    return;
+  }
+
+  uint16_t sequence = 0;
+  {
+    std::lock_guard<std::mutex> lock(*context.mutex);
+    sequence = session->rtp_sequence;
+  }
+
+  RtspRtpPacketSink sink(this, session, &frame, &context);
+  (void)packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
+  {
+    std::lock_guard<std::mutex> lock(*context.mutex);
+    session->rtp_sequence = sequence;
+  }
+}
+
+bool RtspRtpSender::SendRtpPacketView(
+    const std::shared_ptr<RtspSession> &session,
+    const EncodedFrame &frame,
+    const rtp::RtpPacketView &packet,
+    const RtspRtpSenderContext &context) {
+  if (session == nullptr || context.mutex == nullptr ||
+      context.service_stats == nullptr) {
+    return false;
+  }
+
+  RtspTransportTarget target;
+  {
+    std::lock_guard<std::mutex> lock(*context.mutex);
+    target.mode = session->transport;
+    target.connection_id = session->connection_id;
+    target.udp_socket_id = session->rtp_socket_id;
+    target.udp_peer = session->peer;
+    target.udp_peer.port = session->client_rtp_port;
+    target.interleaved_rtp_channel = session->interleaved_rtp_channel;
+  }
+
+  const size_t packet_size = packet.Size();
+  if (packet_size == 0 || packet_size > 0xffff) {
+    return false;
+  }
+  const bool sent = RtspTransport::SendRtpPacket(
+      context.net_engine, target, frame, packet);
+  if (!sent) {
+    {
+      std::lock_guard<std::mutex> lock(*context.mutex);
+      ++session->stats.dropped_frames;
+      ++context.service_stats->dropped_frames;
+    }
+    {
+      std::lock_guard<std::mutex> lock(*context.mutex);
+      ++context.service_stats->slow_client_closes;
+    }
+    if (context.net_engine != nullptr) {
+      (void)context.net_engine->Close(target.connection_id);
+    }
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(*context.mutex);
+    ++session->stats.sent_rtp_packets;
+    session->stats.sent_rtp_bytes += packet_size;
+    session->stats.pending_bytes =
+        context.net_engine != nullptr
+            ? context.net_engine->PendingBytes(target.connection_id)
+            : 0;
+    ++context.service_stats->sent_rtp_packets;
+    context.service_stats->sent_rtp_bytes += packet_size;
+  }
+  return true;
+}
+
+}  // namespace live_stream

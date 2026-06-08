@@ -81,6 +81,7 @@ export default function App() {
   const {
     authenticated,
     mustChangePassword,
+    principal,
     ready,
     login,
     changePassword,
@@ -114,7 +115,12 @@ export default function App() {
   }
 
   return (
-    <AppShell activePage={page} onNavigate={setPage} onLogout={logout}>
+    <AppShell
+      activePage={page}
+      onNavigate={setPage}
+      onLogout={logout}
+      userName={principal?.user_name}
+    >
       <Suspense fallback={<div className="panel">正在加载页面...</div>}>
         {renderPage(page)}
       </Suspense>

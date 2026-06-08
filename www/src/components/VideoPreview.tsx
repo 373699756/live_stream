@@ -1,15 +1,19 @@
 import { type ReactNode, useRef, useState } from 'react';
-import type { StreamName, StreamStatus } from '../api/types';
-import {
-  previewModeLabels,
-  usePreviewPlayer,
-  type PreviewMode,
-} from '../hooks/usePreviewPlayer';
-import { StatusBadge } from './StatusBadge';
+import type {
+  MediaPlaybackUrls,
+  MediaStreamRuntime,
+  StreamName,
+} from '../api/types';
+import { usePreviewPlayer, type PreviewMode } from '../hooks/usePreviewPlayer';
+import { PreviewFooter } from './PreviewFooter';
+import { PreviewSurface } from './PreviewSurface';
+import { PreviewToolbar } from './PreviewToolbar';
+import { previewDetailText, previewStreamSummary } from './previewDisplay';
 
 interface VideoPreviewProps {
   stream: StreamName;
-  statuses: StreamStatus[];
+  statuses: MediaStreamRuntime[];
+  playbackUrls: MediaPlaybackUrls | null;
   onStreamChange: (stream: StreamName) => void;
   enabled?: boolean;
   onSnapshot?: (stream: StreamName) => void;
@@ -19,6 +23,7 @@ interface VideoPreviewProps {
 export function VideoPreview({
   stream,
   statuses,
+  playbackUrls,
   onStreamChange,
   enabled = true,
   onSnapshot,
@@ -46,7 +51,14 @@ export function VideoPreview({
     webrtcEnabled,
     webrtcPlaybackEnabled,
     webrtcSupported,
-  } = usePreviewPlayer({ active, enabled, mode, setMode, stream });
+  } = usePreviewPlayer({
+    active,
+    enabled,
+    mode,
+    playbackUrls,
+    setMode,
+    stream,
+  });
   const switchStream = (nextStream: StreamName) => {
     if (nextStream === stream) {
       return;
@@ -67,139 +79,49 @@ export function VideoPreview({
     void surface.requestFullscreen?.();
   };
 
-  const streamLabel = stream === 'main' ? '主码流' : '子码流';
-  const streamText = (value: string | number | undefined, fallback = '未知') =>
-    value === undefined || value === '' ? fallback : String(value);
-  const previewDetail =
-    mode === 'webrtc'
-      ? `${streamLabel} / WebRTC`
-      : mode === 'hls'
-        ? `${streamLabel} / HLS`
-        : mode === 'flv'
-          ? `${streamLabel} / HTTP-FLV`
-          : mode === 'mjpeg'
-            ? `${streamLabel} / MJPEG`
-            : `${streamLabel} / WebRTC`;
-  const protocolLabel = previewModeLabels[mode];
-  const streamSummary = (name: StreamName) => {
-    const item = statuses.find((status) => status.stream === name);
-    const running = item?.state === 'running';
-    return {
-      label: name === 'main' ? '主码流' : '子码流',
-      running,
-      state: running ? '运行中' : '未运行',
-      detail: `${streamText(item?.codec)} / ${streamText(item?.resolution, '--')} / ${streamText(item?.fps, '--')}fps`,
-    };
-  };
-  const mainSummary = streamSummary('main');
-  const subSummary = streamSummary('sub');
+  const mainSummary = previewStreamSummary(statuses, 'main');
+  const subSummary = previewStreamSummary(statuses, 'sub');
 
   return (
     <section className="preview-panel">
-      <div className="preview-toolbar">
-        <div className="stream-switcher">
-          <button
-            type="button"
-            className={stream === 'main' ? 'active' : ''}
-            onClick={() => switchStream('main')}
-          >
-            <strong>{mainSummary.label}</strong>
-            <span className={mainSummary.running ? 'running' : ''}>{mainSummary.state}</span>
-            <em>{mainSummary.detail}</em>
-          </button>
-          <button
-            type="button"
-            className={stream === 'sub' ? 'active' : ''}
-            onClick={() => switchStream('sub')}
-          >
-            <strong>{subSummary.label}</strong>
-            <span className={subSummary.running ? 'running' : ''}>{subSummary.state}</span>
-            <em>{subSummary.detail}</em>
-          </button>
-        </div>
-        <div className="preview-actions">
-          <button
-            type="button"
-            className={mode === 'webrtc' ? 'active' : ''}
-            disabled={!webrtcEnabled || !webrtcSupported || !webrtcPlaybackEnabled}
-            title={!webrtcSupported ? '当前编码不支持 WebRTC 预览' : undefined}
-            onClick={() => switchMode('webrtc')}
-          >
-            WebRTC
-          </button>
-          <button
-            type="button"
-            className={mode === 'hls' ? 'active' : ''}
-            disabled={!hlsSupported || !streamRunning}
-            title={!hlsSupported ? '当前编码不支持 HLS 预览' : undefined}
-            onClick={() => switchMode('hls')}
-          >
-            HLS
-          </button>
-          <button
-            type="button"
-            className={mode === 'flv' ? 'active' : ''}
-            disabled={!flvSupported || !flvPlaybackEnabled}
-            title={!flvSupported ? '当前编码不支持 HTTP-FLV 预览' : undefined}
-            onClick={() => switchMode('flv')}
-          >
-            HTTP-FLV
-          </button>
-          <button
-            type="button"
-            className={mode === 'mjpeg' ? 'active' : ''}
-            disabled={!mjpegSupported || !mjpegPlaybackEnabled}
-            title={!mjpegSupported ? '当前编码不支持 MJPEG 预览' : undefined}
-            onClick={() => switchMode('mjpeg')}
-          >
-            MJPEG
-          </button>
-          {onSnapshot && (
-            <button
-              type="button"
-              disabled={!streamRunning}
-              onClick={() => onSnapshot(stream)}
-            >
-              抓图
-            </button>
-          )}
-          <button type="button" onClick={toggleFullscreen}>全屏</button>
-        </div>
-      </div>
-
-      <div className="video-surface" ref={surfaceRef} onDoubleClick={toggleFullscreen}>
-        {!enabled ? (
-          <div className="video-placeholder">
-            <div className="lens-ring paused" />
-            <strong>预览已暂停</strong>
-            <span>正在应用视频参数</span>
-          </div>
-        ) : isMjpegMode ? (
-          <img ref={imageRef} className="video-element" alt="" />
-        ) : (
-          <video ref={videoRef} className="video-element" autoPlay muted playsInline />
-        )}
-        {!connected && (
-          <div className="video-placeholder">
-            <div className="lens-ring" />
-            <strong>{previewState}</strong>
-            <span>{previewDetail}</span>
-          </div>
-        )}
-        {surfaceOverlay}
-      </div>
-
-      <div className="preview-footer">
-        <StatusBadge state={active?.state === 'running' ? 'running' : 'pending'} />
-        <span>{streamLabel}</span>
-        <span>{protocolLabel}</span>
-        <span>{streamText(active?.codec)}</span>
-        <span>分辨率 {streamText(active?.resolution, '--')}</span>
-        {decodedSize && <span>实际 {decodedSize}</span>}
-        {displaySize && <span>显示 {displaySize}</span>}
-        <span>{streamText(active?.fps, '--')} fps</span>
-        <span>{streamText(active?.bitrateKbps, '--')} kbps</span>
-      </div>
+      <PreviewToolbar
+        flvPlaybackEnabled={flvPlaybackEnabled}
+        flvSupported={flvSupported}
+        hlsSupported={hlsSupported}
+        mainSummary={mainSummary}
+        mjpegPlaybackEnabled={mjpegPlaybackEnabled}
+        mjpegSupported={mjpegSupported}
+        mode={mode}
+        onModeChange={switchMode}
+        onSnapshot={onSnapshot}
+        onStreamChange={switchStream}
+        onToggleFullscreen={toggleFullscreen}
+        stream={stream}
+        streamRunning={streamRunning}
+        subSummary={subSummary}
+        webrtcEnabled={webrtcEnabled}
+        webrtcPlaybackEnabled={webrtcPlaybackEnabled}
+        webrtcSupported={webrtcSupported}
+      />
+      <PreviewSurface
+        connected={connected}
+        enabled={enabled}
+        imageRef={imageRef}
+        isMjpegMode={isMjpegMode}
+        onToggleFullscreen={toggleFullscreen}
+        previewDetail={previewDetailText(stream, mode)}
+        previewState={previewState}
+        surfaceOverlay={surfaceOverlay}
+        surfaceRef={surfaceRef}
+        videoRef={videoRef}
+      />
+      <PreviewFooter
+        active={active}
+        decodedSize={decodedSize}
+        displaySize={displaySize}
+        mode={mode}
+        stream={stream}
+      />
     </section>
   );
 }

@@ -1,28 +1,145 @@
+import { useEffect, useState } from 'react';
 import {
-  flvStreamUrl,
-  hlsPlaylistUrl,
-  mjpegStreamUrl,
-  snapshotUrl,
-} from '../api/client';
-import type { RtspConfig, StreamName } from '../api/types';
-import { useLiveView } from '../hooks/useLiveView';
+  getMediaPlaybackUrls,
+  getMediaSessions,
+  getMediaStreams,
+} from '../api/stream';
+import type {
+  MediaPlaybackUrls,
+  MediaSessionInfo,
+  MediaStreamRuntime,
+  StreamName,
+} from '../api/types';
+import { StatusBadge } from '../components/StatusBadge';
+import { previewValueText } from '../components/previewDisplay';
 
-function rtspAddress(config: RtspConfig | null, stream: StreamName) {
-  const host = window.location.hostname || 'device';
-  const port = config?.port || 554;
-  const portText = port === 554 ? '' : `:${port}`;
-  const path = config?.paths?.[stream] || `/live/${stream}`;
-  const credential = config?.auth_required ? 'admin:<password>@' : '';
-  return `rtsp://${credential}${host}${portText}${path}`;
-}
-
+const streams: StreamName[] = ['main', 'sub'];
 const streamLabels: Record<StreamName, string> = {
   main: '主码流',
   sub: '子码流',
 };
+const runtimeTimeoutMs = 3000;
+
+function readyText(value: boolean) {
+  return value ? 'ready' : 'not ready';
+}
+
+function protocolReady(runtime: MediaStreamRuntime, protocol: string) {
+  if (protocol === 'HLS') {
+    return [
+      readyText(runtime.hls_ready),
+      runtime.hls_supported ? 'supported' : 'unsupported',
+    ].join(' / ');
+  }
+  if (protocol === 'HTTP-FLV') {
+    return [
+      readyText(runtime.http_flv_ready),
+      runtime.http_flv_supported ? 'supported' : 'unsupported',
+    ].join(' / ');
+  }
+  if (protocol === 'MJPEG') {
+    return [
+      readyText(runtime.mjpeg_ready),
+      runtime.mjpeg_supported ? 'supported' : 'unsupported',
+    ].join(' / ');
+  }
+  if (protocol === 'WebRTC') {
+    return [
+      readyText(runtime.webrtc_ready),
+      runtime.webrtc_supported ? 'supported' : 'unsupported',
+    ].join(' / ');
+  }
+  if (protocol === 'RTSP') {
+    return runtime.track_ready ? 'track ready' : 'track not ready';
+  }
+  return runtime.running ? 'available' : 'not running';
+}
+
+function sessionCount(
+  sessions: MediaSessionInfo[],
+  stream: StreamName,
+  protocol?: string,
+) {
+  return sessions.filter((session) => (
+    session.stream === stream &&
+    (!protocol || session.protocol === protocol)
+  )).length;
+}
+
+function protocolRows(
+  runtime: MediaStreamRuntime,
+  urls: MediaPlaybackUrls | undefined,
+  sessions: MediaSessionInfo[],
+) {
+  return [
+    { label: 'RTSP', url: urls?.rtsp || '', protocol: 'rtsp' },
+    { label: 'HLS', url: urls?.hls || '', protocol: 'hls' },
+    { label: 'HTTP-FLV', url: urls?.http_flv || '', protocol: 'http_flv' },
+    { label: 'MJPEG', url: urls?.mjpeg || '', protocol: 'mjpeg' },
+    { label: 'WebRTC WHEP', url: urls?.webrtc_whep || '', protocol: 'webrtc' },
+    { label: 'Snapshot', url: urls?.snapshot || '', protocol: 'snapshot' },
+  ].map((row) => ({
+    ...row,
+    ready: protocolReady(
+      runtime,
+      row.label === 'WebRTC WHEP' ? 'WebRTC' : row.label,
+    ),
+    sessions: sessionCount(sessions, runtime.stream, row.protocol),
+  }));
+}
 
 export function StreamInfoPage() {
-  const { rtspConfig, error } = useLiveView();
+  const [runtimes, setRuntimes] = useState<MediaStreamRuntime[]>([]);
+  const [urlsByStream, setUrlsByStream] =
+    useState<Partial<Record<StreamName, MediaPlaybackUrls>>>({});
+  const [sessions, setSessions] = useState<MediaSessionInfo[]>([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const [nextRuntimes, nextSessions, mainUrls, subUrls] =
+          await Promise.all([
+            getMediaStreams({
+              signal: controller.signal,
+              timeoutMs: runtimeTimeoutMs,
+            }),
+            getMediaSessions({
+              signal: controller.signal,
+              timeoutMs: runtimeTimeoutMs,
+            }),
+            getMediaPlaybackUrls('main', {
+              signal: controller.signal,
+              timeoutMs: runtimeTimeoutMs,
+            }),
+            getMediaPlaybackUrls('sub', {
+              signal: controller.signal,
+              timeoutMs: runtimeTimeoutMs,
+            }),
+          ]);
+        if (!mounted) {
+          return;
+        }
+        setRuntimes(nextRuntimes);
+        setSessions(nextSessions);
+        setUrlsByStream({ main: mainUrls, sub: subUrls });
+        setError('');
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : '媒体信息加载失败');
+        }
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 5000);
+    return () => {
+      mounted = false;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
 
   return (
     <div className="page-grid stream-info-grid">
@@ -30,54 +147,91 @@ export function StreamInfoPage() {
         <div className="page-heading">
           <div>
             <h2>访问地址</h2>
-            <p>RTSP、HLS、HTTP-FLV、MJPEG 和抓图接口地址</p>
+            <p>后端生成的 RTSP、HLS、HTTP-FLV、MJPEG、WebRTC 和抓图地址</p>
           </div>
         </div>
         {error && <div className="status-note error-note">{error}</div>}
-        {rtspConfig?.auth_required && (
-          <div className="status-note">
-            RTSP 已启用鉴权，地址中的 &lt;password&gt; 替换为登录密码
-          </div>
-        )}
         <div className="address-table">
-          {(['main', 'sub'] as StreamName[]).map((stream) => (
-            <div key={stream}>
-              <strong>{streamLabels[stream]} RTSP</strong>
-              <code>{rtspAddress(rtspConfig, stream)}</code>
+          {streams.map((stream) => {
+            const runtime = runtimes.find((item) => item.stream === stream);
+            if (!runtime) {
+              return (
+                <div key={stream}>
+                  <strong>{streamLabels[stream]}</strong>
+                  <span>运行态不可用</span>
+                </div>
+              );
+            }
+            return (
+              <div key={stream}>
+                <strong>
+                  {streamLabels[stream]} / {runtime.running ? '运行中' : '未运行'}
+                </strong>
+                <span>
+                  {previewValueText(runtime.codec)} /{' '}
+                  {previewValueText(runtime.resolution, '--')} /{' '}
+                  {previewValueText(runtime.fps, '--')}fps
+                </span>
+                {protocolRows(runtime, urlsByStream[stream], sessions).map((row) => (
+                  <code key={row.label}>
+                    {row.label}: {row.url || 'unavailable'} [{row.ready}, sessions {row.sessions}]
+                  </code>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="page-heading">
+          <div>
+            <h2>会话诊断</h2>
+            <p>媒体 reader、RTSP 和 WebRTC 会话的连接状态</p>
+          </div>
+        </div>
+        <div className="info-table">
+          {sessions.length === 0 ? (
+            <div>
+              <span>当前无活动会话</span>
+              <strong>0</strong>
+            </div>
+          ) : sessions.map((session) => (
+            <div key={session.session_id}>
+              <span>
+                {session.protocol} / {streamLabels[session.stream]} /{' '}
+                {session.client_ip || '--'}
+              </span>
+              <strong>
+                {session.state || 'unknown'} / pending {session.pending_bytes ?? 0}
+                {session.close_reason ? ` / ${session.close_reason}` : ''}
+              </strong>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="page-heading">
           <div>
-            <strong>主码流 HLS</strong>
-            <code>{hlsPlaylistUrl('main')}</code>
+            <h2>运行状态</h2>
+            <p>媒体源 ready、reader 和缓存诊断</p>
           </div>
-          <div>
-            <strong>子码流 HLS</strong>
-            <code>{hlsPlaylistUrl('sub')}</code>
-          </div>
-          <div>
-            <strong>主码流 HTTP-FLV</strong>
-            <code>{flvStreamUrl('main')}</code>
-          </div>
-          <div>
-            <strong>子码流 HTTP-FLV</strong>
-            <code>{flvStreamUrl('sub')}</code>
-          </div>
-          <div>
-            <strong>主码流 MJPEG</strong>
-            <code>{mjpegStreamUrl('main')}</code>
-          </div>
-          <div>
-            <strong>子码流 MJPEG</strong>
-            <code>{mjpegStreamUrl('sub')}</code>
-          </div>
-          <div>
-            <strong>主码流抓图</strong>
-            <code>{snapshotUrl('main')}</code>
-          </div>
-          <div>
-            <strong>子码流抓图</strong>
-            <code>{snapshotUrl('sub')}</code>
-          </div>
+        </div>
+        <div className="info-table">
+          {runtimes.map((runtime) => (
+            <div key={runtime.stream}>
+              <span>
+                {streamLabels[runtime.stream]} / readers {runtime.reader_count} /{' '}
+                clients {runtime.client_count}
+              </span>
+              <strong>
+                <StatusBadge state={runtime.running ? 'running' : 'pending'} />
+                {' '}
+                cache {runtime.cached_frames} frames / {runtime.cached_bytes} bytes
+              </strong>
+            </div>
+          ))}
         </div>
       </section>
     </div>

@@ -74,6 +74,9 @@ endif
 
 # ---- HiSilicon static libraries ----
 HISI_MPI_LIBS := $(HISI_MPP_LIB)/libmpi.a $(HISI_MPP_LIB)/libhdmi.a
+HISI_MPP_AUDIO_DEP_LIBS := $(HISI_MPP_LIB)/libupvqe.a \
+  $(HISI_MPP_LIB)/libdnvqe.a \
+  $(HISI_MPP_LIB)/libVoiceEngine.a
 HISI_SENSOR_LIBS := $(HISI_MPP_LIB)/lib_hiae.a \
   $(HISI_MPP_LIB)/libisp.a \
   $(HISI_MPP_LIB)/lib_hidehaze.a \
@@ -95,7 +98,8 @@ HISI_SECUREC_LIB := $(HISI_MPP_LIB)/libsecurec.a
 
 CONFIG_HISI_AI_LIBS ?= y
 
-HISI_MPP_STATIC_LIBS := $(HISI_MPI_LIBS) $(HISI_SENSOR_LIBS) \
+HISI_MPP_STATIC_LIBS := $(HISI_MPI_LIBS) $(HISI_MPP_AUDIO_DEP_LIBS) \
+  $(HISI_SENSOR_LIBS) \
   $(HISI_SECUREC_LIB)
 ifeq ($(CONFIG_HISI_AI_LIBS),y)
 HISI_MPP_STATIC_LIBS += $(HISI_OPTIONAL_AI_LIBS)

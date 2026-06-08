@@ -1,0 +1,109 @@
+import type { AiAlertList, AiStatus } from './types';
+
+export const mockAiStatus: AiStatus = {
+  config: {
+    enabled: true,
+    backend: 'host_stub',
+    task: 'object_detection',
+    stream: 'sub',
+    model_path: 'models/inst_ssd_cycle.wk',
+    input_width: 300,
+    input_height: 300,
+    inference_interval_ms: 500,
+    confidence_threshold: 0.5,
+    max_results: 16,
+  },
+  stats: {
+    enabled: true,
+    backend_available: true,
+    alarm_linked: true,
+    last_success_time_ms: Date.now() - 1200,
+    last_failure_time_ms: 0,
+    received_frames: 2841,
+    skipped_frames: 3,
+    inference_count: 942,
+    inference_failed_count: 1,
+    dropped_tasks: 0,
+    last_inference_time_ms: 34,
+    max_inference_time_ms: 71,
+    average_inference_time_ms: 38,
+    active_results: 2,
+  },
+  last_result: {
+    success: true,
+    stream: 'sub',
+    sequence: 942,
+    pts_us: 190214000,
+    detections: [
+      {
+        label: 'person',
+        confidence: 0.91,
+        x: 0.18,
+        y: 0.24,
+        width: 0.16,
+        height: 0.42,
+      },
+      {
+        label: 'vehicle',
+        confidence: 0.78,
+        x: 0.58,
+        y: 0.44,
+        width: 0.22,
+        height: 0.18,
+      },
+    ],
+  },
+};
+
+export const mockAiAlerts: AiAlertList = {
+  items: [
+    {
+      id: 'mock-3',
+      timestamp_ms: Date.now() - 45_000,
+      stream: 'sub',
+      task: 'object_detection',
+      image_url: '/snapshot/sub.jpg',
+      detection_count: 2,
+      confidence_max: 0.91,
+      detections: mockAiStatus.last_result.detections,
+    },
+    {
+      id: 'mock-2',
+      timestamp_ms: Date.now() - 180_000,
+      stream: 'sub',
+      task: 'occlusion_detection',
+      image_url: '/snapshot/sub.jpg',
+      detection_count: 1,
+      confidence_max: 0.88,
+      detections: [
+        {
+          label: 'occlusion',
+          confidence: 0.88,
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+        },
+      ],
+    },
+    {
+      id: 'mock-1',
+      timestamp_ms: Date.now() - 360_000,
+      stream: 'sub',
+      task: 'motion_classification',
+      image_url: '/snapshot/sub.jpg',
+      detection_count: 1,
+      confidence_max: 0.69,
+      detections: [
+        {
+          label: 'motion',
+          confidence: 0.69,
+          x: 0.08,
+          y: 0.16,
+          width: 0.3,
+          height: 0.22,
+        },
+      ],
+    },
+  ],
+};

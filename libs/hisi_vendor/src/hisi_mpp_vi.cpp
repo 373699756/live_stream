@@ -25,7 +25,7 @@ bool CheckSysCall(const char* expression, int status) {
     if (status == 0) {
         return true;
     }
-    INFRA_LOG_ERROR("hisi_vendor", "%s failed: %d", expression, status);
+    Error("hisi_vendor", "%s failed: %d", expression, status);
     return false;
 }
 
@@ -161,7 +161,7 @@ ISP_PUB_ATTR_S MakeIspPubAttr(const SensorProfile& profile) {
 bool MipiIoctl(const char* expression, unsigned long request, void* arg) {
     const int fd = open(kMipiDeviceNode, O_RDWR);
     if (fd < 0) {
-        INFRA_LOG_ERROR("hisi_vendor", "open %s failed", kMipiDeviceNode);
+        Error("hisi_vendor", "open %s failed", kMipiDeviceNode);
         return false;
     }
     const int status = ioctl(fd, request, arg);
@@ -245,7 +245,7 @@ void* IspThread(void* arg) {
         reinterpret_cast<intptr_t>(arg));
     const HI_S32 status = HI_MPI_ISP_Run(vi_pipe);
     if (status != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor", "HI_MPI_ISP_Run pipe %d failed: 0x%08x",
+        Error("hisi_vendor", "HI_MPI_ISP_Run pipe %d failed: 0x%08x",
                         vi_pipe, status);
     }
     return nullptr;
@@ -265,7 +265,7 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
     if (profile.sns_obj == nullptr ||
         profile.sns_obj->pfnRegisterCallback == nullptr ||
         profile.sns_obj->pfnSetBusInfo == nullptr) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "%s sensor callbacks are unavailable", profile.name);
         return false;
     }

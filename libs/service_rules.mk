@@ -17,7 +17,7 @@ CXXFLAGS += -Wall -Wextra -Werror
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
 CXXFLAGS += -Iinclude
-CXXFLAGS += -I$(ROOT_DIR)/libs/infra_service/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/infra/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/install/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/open_src
 
@@ -26,10 +26,11 @@ SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 TEST_SRCS := $(wildcard tests/*.cpp)
 TEST_BINS := $(patsubst tests/%.cpp,$(TEST_DIR)/$(SERVICE_NAME)_%,$(TEST_SRCS))
+TEST_CXXFLAGS ?= -I$(ROOT_DIR)/tests/support
 EXTRA_TEST_DEPS ?=
 EXTRA_TEST_LIBS ?=
 
-.PHONY: all test test-build clean
+.PHONY: all test test-build host-test board-test board-test-build clean
 
 all: $(LIB_DIR)/lib$(SERVICE_NAME).a
 
@@ -44,14 +45,21 @@ $(OBJ_DIR)/%.o: src/%.cpp
 
 $(TEST_DIR)/$(SERVICE_NAME)_%: tests/%.cpp $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_DEPS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $< $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(TEST_CXXFLAGS) $< $(LIB_DIR)/lib$(SERVICE_NAME).a $(EXTRA_TEST_LIBS) -o $@
 
-test: all $(TEST_BINS)
+test: board-test
+
+host-test:
+	@echo "No host tests for $(SERVICE_NAME); use board-test-build or board-test for cross-built tests."
+
+board-test: all $(TEST_BINS)
 	@for test_bin in $(TEST_BINS); do \
 		$$test_bin || exit $$?; \
 	done
 
-test-build: all $(TEST_BINS)
+board-test-build: all $(TEST_BINS)
+
+test-build: board-test-build
 
 clean:
 	rm -rf $(OBJ_DIR) $(LIB_DIR)/lib$(SERVICE_NAME).a $(TEST_BINS)

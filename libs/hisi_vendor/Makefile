@@ -11,9 +11,9 @@ CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -I$(HISI_MPP_INC)
 
-# IHisiSdk interface header lives in media_service
-CXXFLAGS += -I$(ROOT_DIR)/libs/media_service/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/stream_codec/include
+# IHisiSdk interface header lives in device_media
+CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 
 
 include ../service_rules.mk

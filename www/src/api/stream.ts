@@ -1,8 +1,38 @@
-// Streaming API: WebRTC signaling, RTSP config, WebRTC config
+// Streaming API: media runtime, playback URLs, WebRTC signaling, RTSP config.
 
-import { mockRtspConfig, mockWebrtcConfig } from './mock';
-import { postJson, requestJson, type ApiRequestOptions } from './client';
-import type { RtspConfig, WebrtcConfig } from './types';
+import {
+  deleteJson,
+  postJson,
+  requestJson,
+  type ApiRequestOptions,
+} from './client';
+import {
+  mockMediaPlaybackUrls,
+  mockMediaSessions,
+  mockMediaStreams,
+  mockRtspConfig,
+  mockWebrtcConfig,
+  mockWebrtcPeer,
+} from './mockStream';
+import type {
+  MediaPlaybackUrls,
+  MediaSessionInfo,
+  MediaStreamRuntime,
+  RtspConfig,
+  StreamName,
+  WebrtcConfig,
+  WebrtcOfferAnswer,
+  WebrtcPeerInfo,
+} from './types';
+
+interface WebrtcCreatePeerRequest {
+  client_id: string;
+  stream: string;
+}
+
+interface WebrtcOfferRequest {
+  sdp: string;
+}
 
 // RTSP & WebRTC read-only config
 export function getRtspConfig(
@@ -17,15 +47,56 @@ export function getWebrtcConfig(
   return requestJson<WebrtcConfig>('/api/config/webrtc', mockWebrtcConfig, init);
 }
 
+export function getMediaStreams(
+  init?: ApiRequestOptions,
+): Promise<MediaStreamRuntime[]> {
+  return requestJson<MediaStreamRuntime[]>(
+    '/api/media/streams',
+    mockMediaStreams,
+    init,
+  );
+}
+
+export function getMediaStream(
+  stream: StreamName,
+  init?: ApiRequestOptions,
+): Promise<MediaStreamRuntime> {
+  const fallback =
+    mockMediaStreams.find((item) => item.stream === stream) || mockMediaStreams[0];
+  return requestJson<MediaStreamRuntime>(
+    `/api/media/streams/${stream}`,
+    fallback,
+    init,
+  );
+}
+
+export function getMediaPlaybackUrls(
+  stream: StreamName,
+  init?: ApiRequestOptions,
+): Promise<MediaPlaybackUrls> {
+  return requestJson<MediaPlaybackUrls>(
+    `/api/media/streams/${stream}/urls`,
+    mockMediaPlaybackUrls[stream],
+    init,
+  );
+}
+
+export function getMediaSessions(
+  init?: ApiRequestOptions,
+): Promise<MediaSessionInfo[]> {
+  return requestJson<MediaSessionInfo[]>(
+    '/api/media/sessions',
+    mockMediaSessions,
+    init,
+  );
+}
+
 // WebRTC signaling
-export function createWebrtcPeer(stream: string, init?: ApiRequestOptions) {
-  return postJson(
+export function createWebrtcPeer(stream: StreamName, init?: ApiRequestOptions) {
+  return postJson<WebrtcCreatePeerRequest, WebrtcPeerInfo>(
     '/api/webrtc/peers',
     { stream, client_id: 'web' },
-    {
-      peer_id: '',
-      stream,
-    },
+    mockWebrtcPeer(stream),
     init,
   );
 }
@@ -35,12 +106,13 @@ export function sendWebrtcOffer(
   sdp: string,
   init?: ApiRequestOptions,
 ) {
-  return postJson(
-    '/api/webrtc/offer',
-    { peer_id: peerId, sdp },
+  return postJson<WebrtcOfferRequest, WebrtcOfferAnswer>(
+    `/api/webrtc/peers/${encodeURIComponent(peerId)}/offer`,
+    { sdp },
     {
       peer_id: peerId,
       sdp: '',
+      state: 'offer_received',
     },
     init,
   );
@@ -52,18 +124,14 @@ export async function sendWebrtcCandidate(
   init?: ApiRequestOptions,
 ) {
   await postJson(
-    '/api/webrtc/candidate',
+    `/api/webrtc/peers/${encodeURIComponent(peerId)}/candidates`,
     {
-      peer_id: peerId,
       candidate: candidate.candidate || '',
       sdp_mid: candidate.sdpMid || '0',
       sdp_mline_index: candidate.sdpMLineIndex || 0,
       username_fragment: candidate.usernameFragment || '',
-      sdpMid: candidate.sdpMid || '0',
-      sdpMLineIndex: candidate.sdpMLineIndex || 0,
-      usernameFragment: candidate.usernameFragment || '',
     },
-    { ok: true },
+    { peer_id: peerId },
     init,
   );
 }
@@ -73,10 +141,9 @@ export async function closeWebrtcPeer(peerId: string, init?: ApiRequestOptions) 
     return;
   }
   try {
-    await postJson(
-      '/api/webrtc/close',
+    await deleteJson(
+      `/api/webrtc/peers/${encodeURIComponent(peerId)}`,
       { peer_id: peerId },
-      { ok: true },
       init,
     );
   } catch {

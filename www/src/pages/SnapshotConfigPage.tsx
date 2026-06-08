@@ -26,7 +26,7 @@ export function SnapshotConfigPage() {
         <div className="page-heading">
           <div>
             <h2>抓图参数</h2>
-            <p>配置 HTTP/ONVIF 抓图入口参数，实际 JPEG 生成由后端 snapshot_service 完成。</p>
+            <p>配置 JPEG 生成参数，HTTP/ONVIF 抓图入口由后端固定生成。</p>
           </div>
         </div>
 
@@ -58,22 +58,6 @@ export function SnapshotConfigPage() {
               value={config.timeout_ms}
               onChange={(event) =>
                 setConfig({ ...config, timeout_ms: Number(event.target.value) })
-              }
-            />
-          </FormField>
-          <FormField label="主码流路径">
-            <input
-              value={config.main_path}
-              onChange={(event) =>
-                setConfig({ ...config, main_path: event.target.value })
-              }
-            />
-          </FormField>
-          <FormField label="子码流路径">
-            <input
-              value={config.sub_path}
-              onChange={(event) =>
-                setConfig({ ...config, sub_path: event.target.value })
               }
             />
           </FormField>

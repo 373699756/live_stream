@@ -16,7 +16,7 @@ export function NetworkConfigPage() {
       <div className="page-heading">
         <div>
           <h2>网络设置</h2>
-          <p>配置主机名和服务端口，IP 配置由后端 network_service 应用。</p>
+          <p>配置主机名和服务端口，IP 配置由后端 network_config 应用。</p>
         </div>
       </div>
       <div className="form-grid">

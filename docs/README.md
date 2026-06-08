@@ -1,41 +1,83 @@
 # Documentation Index
 
-文档按“日常入口少、长期参考分类清楚”的原则组织。普通实现任务先读
-`../AGENTS.md` 和 `active/` 下的短文档；长文档只在任务确实相关时读取。
+本文档目录按“README 总入口 -> libs 模块 -> Web Console -> optimization”的方式组织。
+长期设计不再按 active/app/architecture/contracts/features 这类横切分类存放；API、
+配置、事件、AI、升级、质量工具等内容都归入拥有它们的模块文档。
 
-## Daily Entry
+## Current Focus
 
-- `active/current_milestone.md`：当前阶段、基线和近期任务。
-- `active/module_contracts.md`：短模块边界图。
-- `active/decision_log.md`：固定架构和协作决策。
+稳定现有视频实时预览、抓图、配置和运维管理功能。优先保持后端主链路、HTTP API
+和 Web Console 一致，不扩大到音频、录像、存储回放或无关 UI/API。
 
-## Architecture
+当前主链路是：
 
-- `architecture/overview.md`：整体运行架构、启动顺序、子系统关系。
-- `architecture/module-boundaries.md`：服务职责、依赖方向和禁止范围。
+```text
+app -> Core/Device/Media/Protocol
+device_media -> media_pipeline -> media_source
+media_source -> http_media/rtsp/webrtc -> http -> www
+net/media_source/rtsp/webrtc diagnostics -> net_adaptive
+```
 
-## Contracts
+## System Frame
 
-- `contracts/api-config.md`：配置 scope、HTTP API、前后端 DTO 契约。
-- `contracts/event-payloads.md`：进程内事件类型、payload 和命名规则。
-- `../www/README.md`：Web Console 技术栈、开发命令和后端 API 列表。
+`app/` 是组合根，负责路径解析、服务创建、依赖注入、启动顺序和关闭顺序。
+启动顺序是 CoreSubsystem、DeviceSubsystem、MediaSubsystem、ProtocolSubsystem；
+停止顺序反向执行。Protocol 内部先启动 `net` 和 `media_pipeline`，再启动
+RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adaptive`。
 
-## Features
+全局边界：
 
-- `features/ai.md`：AI/NNIE/IVE 功能状态、边界和板端验证顺序。
-- `features/spi_nor_upgrade.md`：32M SPI NOR 分区、烧写、启动和升级包方案。
+- `libs/*` 是业务和协议模块，模块通过 public interface、Options、
+  Dependencies 或构造参数协作。
+- `www/` 只消费 HTTP API 和 ready/status 字段。
+- `scripts/`、`tools/`、`libs/upgrade.md` 和优化专项文档负责
+  打包、rootfs 脚本、质量扫描和板端交付说明。
+- 禁止 `libs/* -> app`、`libs/* -> www`、`www -> device SDK`。
+- 产品不实现音频、录像、存储回放或相关 UI/API。
 
-## Quality
+## Web
 
-- `quality/tooling.md`：嵌入式质量扫描工具、安装建议和使用方式。
-- `quality/quality_report.md`：`scripts/quality_scan.sh` 生成的汇总报告。
-- `quality/reports/<timestamp>/`：质量扫描原始日志目录，默认不纳入 git。
-- `quality/memory_optimization.md`：视频热路径内存和拷贝优化计划。
+- `web/web-console-design.md`：IPC/NVR 管理台页面、API 消费、认证上下文、mock
+  fallback、WebRTC/HLS/HTTP-FLV/MJPEG/snapshot 预览状态来源。
+
+## Libs
+
+- `libs/README.md`：模块设计索引和统一模板。
+- `libs/<module>.md`：每个实际 `libs/` 模块的设计文档。
+- `libs/stream_hub_legacy.md`：历史迁移说明，不对应当前实际 `libs/` 模块。
+- 根目录 `重构.md` 的“任务 1 命名迁移基线”是当前目录名、库名、public header、
+  public interface、工厂函数、变量名和旧兼容层删除边界的唯一命名标准。
+
+所有 public C++ API、HTTP API、配置字段、事件 payload、AI 能力、升级状态机等
+都必须归入拥有模块的 `libs/<module>.md`，不要再写成横切专题文档。
+
+## Optimization
+
+- `optimization/memory.md`：热路径内存、拷贝、客户端 fanout 和质量扫描专项。
+- `optimization/board-hot-path-probe.md`：板端 HLS/FLV/MJPEG/WebRTC 多客户端热路径采集入口。
 
 ## Read Rules
 
-- 日常 bugfix：读 `AGENTS.md`、`active/*` 和相关代码。
-- 跨模块改动：再读 `architecture/module-boundaries.md`。
-- API/config 改动：再读 `contracts/api-config.md` 和 `../www/README.md`。
-- 事件改动：再读 `contracts/event-payloads.md`。
-- AI、升级或质量扫描任务：读对应 `features/*` 或 `quality/*`。
+- 日常 bugfix：读 `AGENTS.md`、本文件和相关模块文档。
+- 跨模块改动：读本文件和相关 `libs/<module>.md`。
+- HTTP/API/config/event 改动：读拥有模块文档、`libs/http.md`、`libs/http_media.md`、
+  `libs/config.md`、`libs/event.md` 和对应 Web 文档。
+- AI 改动：读 `libs/ai.md`、`libs/device_media.md`、`libs/hisi_vendor.md`、
+  `web/web-console-design.md`。
+- 升级/烧写/发布包改动：读 `libs/upgrade.md`。
+- 质量扫描或热路径优化：读 `optimization/memory.md`。
+
+## Work Rules
+
+- 一轮 AI 任务通常只碰一个模块，最多再碰一个相邻接口模块。
+- `make test` 等同 `make host-test`，只跑宿主质量检查；交叉编译测试使用
+  `make board-test-build`，目标板执行使用 `make board-test`。
+- 写代码前先说明目标、范围、不做什么和验证方式。
+- bugfix、rename、cleanup、refactor 不混在一个提交里。
+- 新增接口、helper、class、hook 前先查已有接口；能直接写清楚就不要抽象。
+- 涉及模块重命名、public header、接口类、工厂函数或变量名时，先按 `重构.md`
+  的任务 1 基线确认目标名；不要新增临时 `*_service`、`stream_*`、`MetaRtc*` 或
+  `Yang*` 命名。
+- 配置和 HTTP API 变更必须同步后端 handler/DTO、`www/src/api/types.ts`、
+  `www/README.md` 和拥有模块文档。
+- 帧路径和高频路径不加普通日志；只保留错误、启动停止、配置变化和关键状态变化。

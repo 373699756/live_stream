@@ -45,7 +45,7 @@ public:
 
 }  // namespace
 
-std::unique_ptr<ITimePlatform> CreateLinuxTimePlatform() {
+std::unique_ptr<ITimePlatform> CreateTimePlatform() {
     return std::unique_ptr<ITimePlatform>(new LinuxTimePlatform());
 }
 

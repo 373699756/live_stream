@@ -1,12 +1,15 @@
 /**
- * useLiveView — fetch stream statuses and RTSP config for the live-view page.
+ * useLiveView — fetch media runtime and playback URLs for the live-view page.
  * It refreshes faster right after page entry so preview readiness catches up.
  */
 
 import { useEffect, useState } from 'react';
-import { getStreamStatus } from '../api/video';
-import { getRtspConfig } from '../api/stream';
-import type { RtspConfig, StreamStatus } from '../api/types';
+import { getMediaPlaybackUrls, getMediaStreams } from '../api/stream';
+import type {
+  MediaPlaybackUrls,
+  MediaStreamRuntime,
+  StreamName,
+} from '../api/types';
 
 const configTimeoutMs = 3000;
 const statusTimeoutMs = 1800;
@@ -14,31 +17,61 @@ const fastRefreshIntervalMs = 2000;
 const steadyRefreshIntervalMs = 5000;
 const fastRefreshCount = 4;
 
-export function useLiveView() {
-  const [statuses, setStatuses] = useState<StreamStatus[]>([]);
-  const [rtspConfig, setRtspConfig] = useState<RtspConfig | null>(null);
+export function useLiveView(selectedStream?: StreamName) {
+  const [statuses, setStatuses] = useState<MediaStreamRuntime[]>([]);
+  const [playbackUrls, setPlaybackUrls] = useState<MediaPlaybackUrls | null>(null);
   const [error, setError] = useState('');
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
 
   useEffect(() => {
+    let mounted = true;
     let fastRefreshes = 0;
+    let statusRequestRunning = false;
+    const controller = new AbortController();
     const refreshStatuses = () => {
-      void getStreamStatus({ timeoutMs: statusTimeoutMs })
+      if (statusRequestRunning) {
+        return;
+      }
+      statusRequestRunning = true;
+      void getMediaStreams({
+        signal: controller.signal,
+        timeoutMs: statusTimeoutMs,
+      })
         .then((nextStatuses) => {
-          setStatuses(nextStatuses);
-          setLastUpdatedAt(Date.now());
-          setError('');
+          if (mounted) {
+            setStatuses(nextStatuses);
+            setLastUpdatedAt(Date.now());
+            setError('');
+          }
         })
         .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : '码流状态刷新失败');
+          if (mounted) {
+            setError(err instanceof Error ? err.message : '码流状态刷新失败');
+          }
+        })
+        .finally(() => {
+          statusRequestRunning = false;
         });
     };
     refreshStatuses();
-    void getRtspConfig({ timeoutMs: configTimeoutMs })
-      .then(setRtspConfig)
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'RTSP 配置加载失败');
-      });
+    setPlaybackUrls(null);
+    if (selectedStream) {
+      void getMediaPlaybackUrls(selectedStream, {
+        signal: controller.signal,
+        timeoutMs: configTimeoutMs,
+      })
+        .then((nextUrls) => {
+          if (mounted) {
+            setPlaybackUrls(nextUrls);
+          }
+        })
+        .catch((err: unknown) => {
+          if (mounted) {
+            setPlaybackUrls(null);
+            setError(err instanceof Error ? err.message : '播放地址加载失败');
+          }
+        });
+    }
     const fastTimer = window.setInterval(() => {
       fastRefreshes += 1;
       refreshStatuses();
@@ -50,10 +83,12 @@ export function useLiveView() {
       refreshStatuses();
     }, steadyRefreshIntervalMs);
     return () => {
+      mounted = false;
+      controller.abort();
       window.clearInterval(fastTimer);
       window.clearInterval(steadyTimer);
     };
-  }, []);
+  }, [selectedStream]);
 
-  return { statuses, rtspConfig, error, lastUpdatedAt };
+  return { statuses, playbackUrls, error, lastUpdatedAt };
 }

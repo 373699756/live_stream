@@ -44,7 +44,7 @@ void LogCleanupStatus(const char* step, HI_S32 status, bool log_errors) {
     if (!log_errors || IsExpectedCleanupStatus(status)) {
         return;
     }
-    INFRA_LOG_WARN("hisi_vendor", "%s during cleanup returned 0x%08x", step,
+    Warn("hisi_vendor", "%s during cleanup returned 0x%08x", step,
                    status);
 }
 
@@ -76,7 +76,7 @@ bool ExitMppSystem(bool log_errors, int retry_count) {
         usleep(kMppExitRetryDelayUs);
     }
     if (log_errors && status == HI_ERR_VB_BUSY) {
-        INFRA_LOG_WARN("hisi_vendor",
+        Warn("hisi_vendor",
                        "HI_MPI_VB_Exit still busy after %d retries",
                        retry_count);
     }
@@ -150,7 +150,7 @@ void DestroyVencDirect(int32_t channel) {
 }
 
 void ForceCleanupPipelineResources(const MediaPipelineConfig& config) {
-    INFRA_LOG_WARN(
+    Warn(
         "hisi_vendor",
         "stale HISI MPP resources detected, force cleanup known channels");
 
@@ -237,7 +237,7 @@ void LogVbConfigSummary(const char* prefix, const VB_CONFIG_S& config) {
     if (prefix == nullptr) {
         return;
     }
-    INFRA_LOG_WARN(
+    Warn(
         "hisi_vendor",
         "%s max_pool=%u pool0=%llu/%u pool1=%llu/%u pool2=%llu/%u "
         "pool3=%llu/%u",
@@ -256,7 +256,7 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
     VB_CONFIG_S current{};
     HI_S32 status = HI_MPI_VB_GetConfig(&current);
     if (status != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VB_GetConfig failed while reusing VB: 0x%08x",
                         status);
         return false;
@@ -271,7 +271,7 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
     status = HI_MPI_VB_Init();
     if (status != HI_SUCCESS && status != HI_ERR_VB_BUSY &&
         status != HI_ERR_VB_NOT_PERM) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VB_Init failed while reusing VB: 0x%08x",
                         status);
         return false;
@@ -279,13 +279,13 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
 
     status = HI_MPI_SYS_Init();
     if (status != HI_SUCCESS && status != HI_ERR_SYS_NOT_PERM) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_SYS_Init failed while reusing VB: 0x%08x",
                         status);
         return false;
     }
 
-    INFRA_LOG_WARN("hisi_vendor",
+    Warn("hisi_vendor",
                    "reuse existing compatible HISI VB configuration");
     return true;
 }
@@ -293,7 +293,7 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
 bool InitConfiguredVideoBuffer() {
     HI_S32 status = HI_MPI_VB_Init();
     if (status != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor", "HI_MPI_VB_Init failed: 0x%08x",
+        Error("hisi_vendor", "HI_MPI_VB_Init failed: 0x%08x",
                         status);
         (void)ExitMppSystem(true, kMppExitRetryCount);
         return false;
@@ -301,7 +301,7 @@ bool InitConfiguredVideoBuffer() {
 
     status = HI_MPI_SYS_Init();
     if (status != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x",
+        Error("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x",
                         status);
         (void)ExitMppSystem(true, kMppExitRetryCount);
         return false;
@@ -349,7 +349,7 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config) {
         return true;
     }
     if (status != HI_SUCCESS) {
-        INFRA_LOG_ERROR("hisi_vendor",
+        Error("hisi_vendor",
                         "HI_MPI_VB_SetConfig(&vb_conf) failed: 0x%08x",
                         status);
         return false;
@@ -389,14 +389,14 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
 
     MPP_VERSION_S version{};
     HISI_CHECK(HI_MPI_SYS_GetVersion(&version));
-    INFRA_LOG_INFO("hisi_vendor", "HISI MPP version: %s", version.aVersion);
+    Info("hisi_vendor", "HISI MPP version: %s", version.aVersion);
 
     if (!ConfigureVideoBuffer(config)) {
-        INFRA_LOG_ERROR("hisi_vendor", "ConfigureVideoBuffer failed");
+        Error("hisi_vendor", "ConfigureVideoBuffer failed");
         return false;
     }
     if (!ConfigureViVpssMode(config)) {
-        INFRA_LOG_ERROR("hisi_vendor", "ConfigureViVpssMode failed");
+        Error("hisi_vendor", "ConfigureViVpssMode failed");
         (void)ExitMppSystem(true, kMppExitRetryCount);
         return false;
     }

@@ -1,10 +1,12 @@
-// Video & media API: /api/config/video, /api/media/capabilities, /api/status/streams
+// Video & media API: /api/config/video and /api/media/capabilities
 
-import { mockMediaCapabilities, mockVideoConfig } from './mock';
-import { mockStreamStatus } from './mock';
+import {
+  mockMediaCapabilities,
+  mockVideoConfig,
+} from './mockVideo';
 import { requestJson, putJson, type ApiRequestOptions } from './client';
 import { codecSupportsSmartP } from './resolution';
-import type { MediaCapabilities, StreamStatus, VideoConfig, VideoStreamConfig } from './types';
+import type { MediaCapabilities, VideoConfig, VideoStreamConfig } from './types';
 
 function normalizeStreamConfig(stream: VideoStreamConfig): VideoStreamConfig {
   const next: VideoStreamConfig = {
@@ -50,16 +52,6 @@ export function getMediaCapabilities(
   return requestJson<MediaCapabilities>(
     '/api/media/capabilities',
     mockMediaCapabilities,
-    options,
-  );
-}
-
-export function getStreamStatus(
-  options?: ApiRequestOptions,
-): Promise<StreamStatus[]> {
-  return requestJson<StreamStatus[]>(
-    '/api/status/streams',
-    mockStreamStatus,
     options,
   );
 }

@@ -93,20 +93,20 @@ bool AppRuntime::Start(const RuntimePaths &paths,
         return true;
     }
 
-    CoreServices &core_services = CoreServices::Get();
+    CoreSubsystem &core_subsystem = CoreSubsystem::Get();
     DeviceSubsystem &device_subsystem = DeviceSubsystem::Get();
     MediaSubsystem &media_subsystem = MediaSubsystem::Get();
     ProtocolSubsystem &protocol_subsystem = ProtocolSubsystem::Get();
 
-    if (!core_services.Start(paths)) {
-        INFRA_LOG_ERROR("app", "Start core services failed");
+    if (!core_subsystem.Start(paths)) {
+        Error("app", "Start core subsystem failed");
         Stop();
         return false;
     }
 
     AppRuntimeConfig runtime_config;
-    if (!LoadRuntimeConfig(core_services.config(), &runtime_config)) {
-        INFRA_LOG_ERROR("app", "Load runtime config failed");
+    if (!LoadRuntimeConfig(core_subsystem.config(), &runtime_config)) {
+        Error("app", "Load runtime config failed");
         Stop();
         return false;
     }
@@ -114,7 +114,7 @@ bool AppRuntime::Start(const RuntimePaths &paths,
         runtime_config.static_root = static_root_override;
     }
     runtime_config_ = runtime_config;
-    INFRA_LOG_INFO("app",
+    Info("app",
                    "Runtime config: http=%u rtsp=%u onvif=%u "
                    "advertise=%s static_root=%s",
                    static_cast<unsigned>(runtime_config_.http_port),
@@ -124,21 +124,21 @@ bool AppRuntime::Start(const RuntimePaths &paths,
                    runtime_config_.static_root.c_str());
 
     if (!device_subsystem.Start(
-            core_services,
+            core_subsystem,
             CreateLinuxPlatformAdapters(runtime_config_.network_ifname))) {
-        INFRA_LOG_ERROR("app", "Start device subsystem failed");
+        Error("app", "Start device subsystem failed");
         Stop();
         return false;
     }
-    if (!media_subsystem.Start(core_services, device_subsystem.refs())) {
-        INFRA_LOG_ERROR("app", "Start media subsystem failed");
+    if (!media_subsystem.Start(core_subsystem, device_subsystem.refs())) {
+        Error("app", "Start media subsystem failed");
         Stop();
         return false;
     }
-    if (!protocol_subsystem.Start(runtime_config_, core_services,
+    if (!protocol_subsystem.Start(runtime_config_, core_subsystem,
                                   device_subsystem.refs(),
                                   media_subsystem.refs())) {
-        INFRA_LOG_ERROR("app", "Start protocol subsystem failed");
+        Error("app", "Start protocol subsystem failed");
         Stop();
         return false;
     }
@@ -148,18 +148,18 @@ bool AppRuntime::Start(const RuntimePaths &paths,
 }
 
 void AppRuntime::Stop() {
-    INFRA_LOG_INFO("app", "Stop protocol subsystem begin");
+    Info("app", "Stop protocol subsystem begin");
     ProtocolSubsystem::Get().Stop();
-    INFRA_LOG_INFO("app", "Stop protocol subsystem done");
-    INFRA_LOG_INFO("app", "Stop media subsystem begin");
+    Info("app", "Stop protocol subsystem done");
+    Info("app", "Stop media subsystem begin");
     MediaSubsystem::Get().Stop();
-    INFRA_LOG_INFO("app", "Stop media subsystem done");
-    INFRA_LOG_INFO("app", "Stop device subsystem begin");
+    Info("app", "Stop media subsystem done");
+    Info("app", "Stop device subsystem begin");
     DeviceSubsystem::Get().Stop();
-    INFRA_LOG_INFO("app", "Stop device subsystem done");
-    INFRA_LOG_INFO("app", "Stop core services begin");
-    CoreServices::Get().Stop();
-    INFRA_LOG_INFO("app", "Stop core services done");
+    Info("app", "Stop device subsystem done");
+    Info("app", "Stop core subsystem begin");
+    CoreSubsystem::Get().Stop();
+    Info("app", "Stop core subsystem done");
     started_ = false;
 }
 
@@ -167,7 +167,7 @@ void AppRuntime::RunUntilSignal() {
     while (g_stop_requested == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    INFRA_LOG_INFO("app", "stop signal received");
+    Info("app", "stop signal received");
 }
 
 }  // namespace live_stream

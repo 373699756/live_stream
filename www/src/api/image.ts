@@ -1,6 +1,6 @@
 // Image / ISP API: /api/config/image
 
-import { mockImageConfig, mockImageStrategyStatus } from './mock';
+import { mockImageConfig, mockImageStrategyStatus } from './mockImage';
 import { requestJson, putJson, type ApiRequestOptions } from './client';
 import type { ImageConfig, ImageStrategyStatus } from './types';
 

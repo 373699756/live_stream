@@ -1,10 +1,9 @@
 import {
-  authQuery,
   putJson,
   requestJson,
   type ApiRequestOptions,
 } from './client';
-import { mockAiAlerts, mockAiStatus } from './mock';
+import { mockAiAlerts, mockAiStatus } from './mockAi';
 import type { AiAlertList, AiModelConfig, AiStatus } from './types';
 
 export function getAiStatus(init?: ApiRequestOptions): Promise<AiStatus> {
@@ -20,7 +19,5 @@ export function saveAiConfig(value: AiModelConfig): Promise<void> {
 }
 
 export function aiAlertImageUrl(imageUrl: string): string {
-  const query = authQuery();
-  const separator = imageUrl.includes('?') ? '&' : '?';
-  return `${imageUrl}${query ? `${separator}${query}` : ''}`;
+  return imageUrl;
 }

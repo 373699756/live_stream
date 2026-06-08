@@ -6,14 +6,21 @@
 
 import { useEffect, useState } from 'react';
 import {
-  getSystemStatus,
   getUpgradeStatus,
   uploadUpgradePackage,
   startUpgrade as apiStartUpgrade,
   cancelUpgrade as apiCancelUpgrade,
   confirmUpgradeReboot as apiConfirmUpgradeReboot,
-} from '../api/system';
+} from '../api/upgrade';
+import { getSystemStatus } from '../api/system';
 import type { SystemStatus, UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
+
+const pollIntervalMs = 2000;
+const statusTimeoutMs = 1800;
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export function useUpgrade() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -29,13 +36,38 @@ export function useUpgrade() {
 
   useEffect(() => {
     let mounted = true;
-    const load = () => {
-      void getSystemStatus().then((next) => { if (mounted) setStatus(next); });
-      void getUpgradeStatus().then((next) => { if (mounted) setUpgradeStatus(next); });
+    let timer = 0;
+    const load = async () => {
+      const startedAt = Date.now();
+      try {
+        const [nextStatus, nextUpgradeStatus] = await Promise.all([
+          getSystemStatus({ timeoutMs: statusTimeoutMs }),
+          getUpgradeStatus({ timeoutMs: statusTimeoutMs }),
+        ]);
+        if (mounted) {
+          setStatus(nextStatus);
+          setUpgradeStatus(nextUpgradeStatus);
+          setError('');
+        }
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(errorMessage(err, '状态刷新失败'));
+        }
+      } finally {
+        if (mounted) {
+          const elapsedMs = Date.now() - startedAt;
+          timer = window.setTimeout(
+            load,
+            Math.max(0, pollIntervalMs - elapsedMs),
+          );
+        }
+      }
     };
-    load();
-    const timer = window.setInterval(load, 2000);
-    return () => { mounted = false; window.clearInterval(timer); };
+    void load();
+    return () => {
+      mounted = false;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   const selectFile = (file: File | null) => {
@@ -55,7 +87,7 @@ export function useUpgrade() {
       setPackageInfo(uploaded);
       setMessage(`已上传 ${selectedFile.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败');
+      setError(errorMessage(err, '上传失败'));
     } finally {
       setBusy(false);
     }
@@ -78,7 +110,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('升级任务已提交');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '启动升级失败');
+      setError(errorMessage(err, '启动升级失败'));
     } finally {
       setBusy(false);
     }
@@ -93,7 +125,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('升级任务已取消');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '取消升级失败');
+      setError(errorMessage(err, '取消升级失败'));
     } finally {
       setBusy(false);
     }
@@ -108,7 +140,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('已下发重启应用升级');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '确认重启失败');
+      setError(errorMessage(err, '确认重启失败'));
     } finally {
       setBusy(false);
     }

@@ -653,6 +653,12 @@ StepLogFile() {
     "www build")
       printf 'www-build.log'
       ;;
+    "http/web contract")
+      printf 'http-web-contract.log'
+      ;;
+    "cpp style contract")
+      printf 'cpp-style-contract.log'
+      ;;
     cppcheck)
       printf 'cppcheck.log'
       ;;
@@ -789,6 +795,11 @@ if HaveTool git; then
 fi
 
 RunStep "make" "make.log" make -j2
+
+RunStep "http/web contract" "http-web-contract.log" \
+  python3 scripts/check_http_web_contract.py
+RunStep "cpp style contract" "cpp-style-contract.log" \
+  python3 scripts/check_cpp_style_contract.py
 
 if [[ -d "${ROOT_DIR}/www" ]]; then
   Log "running frontend build"

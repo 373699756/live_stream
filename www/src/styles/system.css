@@ -1,0 +1,95 @@
+.upgrade-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.1fr) minmax(340px, 0.9fr);
+  gap: 16px;
+}
+
+.upgrade-section {
+  min-width: 0;
+}
+
+.upgrade-progress {
+  margin-bottom: 14px;
+  padding: 12px;
+  background: #f8fbff;
+  border: 1px solid #dbe7f5;
+  border-radius: 4px;
+}
+
+.upgrade-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.progress-track {
+  height: 10px;
+  overflow: hidden;
+  background: #dbe4f0;
+  border-radius: 999px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--brand);
+  border-radius: 999px;
+}
+
+.upgrade-meta {
+  margin-top: 16px;
+}
+
+.upgrade-status-grid,
+.upgrade-package-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upgrade-package-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.upgrade-status-grid div,
+.upgrade-package-grid div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #fafbfe;
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+}
+
+.upgrade-status-grid span,
+.upgrade-package-grid span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.upgrade-status-grid strong,
+.upgrade-package-grid strong,
+.upgrade-package-grid code {
+  min-width: 0;
+  color: #243044;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.upgrade-package-grid code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 980px) {
+  .upgrade-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .upgrade-status-grid,
+  .upgrade-package-grid {
+    grid-template-columns: 1fr;
+  }
+}

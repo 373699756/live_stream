@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "config_service.h"
+#include "config.h"
 #include "media/stream_types.h"
-#include "webrtc_service.h"
+#include "webrtc.h"
 
 namespace live_stream {
 
@@ -15,12 +15,10 @@ struct AppRuntimeConfig {
     std::string listen_ip = "0.0.0.0";
     std::string advertise_host = "127.0.0.1";
     std::string static_root = "web";
-    std::string snapshot_main_path = "/api/snapshot/main.jpg";
-    std::string snapshot_sub_path = "/api/snapshot/sub.jpg";
     std::string onvif_manufacturer = "CBinary";
     std::string onvif_model = "live_stream_ipc";
     std::string onvif_firmware_version = "0.1.0";
-    // Primary network interface used by NetworkService and platform adapter.
+    // Primary network interface used by NetworkConfig and platform adapter.
     // Defaults to "eth0"; read from network.default_ifname in the config.
     std::string network_ifname = "eth0";
     uint16_t http_port = 80;
@@ -30,6 +28,7 @@ struct AppRuntimeConfig {
     uint16_t webrtc_local_port_base = 16000;
     uint32_t rtsp_max_sessions = 16;
     uint32_t webrtc_max_peers = 1;
+    std::string webrtc_public_ip = "auto";
     VideoCodec rtsp_main_codec = VideoCodec::kH264;
     VideoCodec rtsp_sub_codec = VideoCodec::kH264;
     bool rtsp_auth_required = true;
@@ -40,8 +39,10 @@ struct AppRuntimeConfig {
     std::vector<WebrtcIceServer> webrtc_ice_servers;
 };
 
-bool LoadRuntimeConfig(IConfigService *config_service,
-                       AppRuntimeConfig *config);
+bool LoadRuntimeConfig(IConfig *config_store,
+                       AppRuntimeConfig *runtime_config);
+bool LoadRuntimeConfigFromRoot(const ConfigJson &root,
+                               AppRuntimeConfig *runtime_config);
 
 }  // namespace live_stream
 

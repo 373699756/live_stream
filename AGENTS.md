@@ -15,15 +15,14 @@
 ## AI 入口与上下文策略
 
 - 每次任务先读本文件。
-- 普通编码任务再读：
-  - `docs/active/current_milestone.md`
-  - `docs/active/module_contracts.md`
-  - `docs/active/decision_log.md`
-- `docs/README.md` 是文档索引。`docs/architecture/*`、`docs/contracts/*`、
-  `docs/features/*` 和 `docs/quality/*` 是低频参考文档，只在架构、接口、契约、
-  功能方案、质量扫描或对应模块问题需要时定向读取。
-- 不要在普通实现任务里扩写长设计文档；当前状态更新放 `docs/active/*`，
-  固定架构决策写入 `docs/active/decision_log.md`。
+- 普通编码任务再读 `docs/README.md`，再按任务范围定向读取相关
+  `docs/libs/<module>.md`、`docs/web/web-console-design.md` 或
+  `docs/optimization/memory.md`。
+- `docs/README.md` 是文档索引。长期设计不再按 active、architecture、
+  contracts、features、quality 这类横切目录存放；API、配置、事件、AI、
+  升级、质量工具等内容都归入拥有它们的模块文档。
+- 不要在普通实现任务里扩写长设计文档；状态、接口、契约或架构决策更新到
+  对应模块文档，索引变化同步更新 `docs/README.md`。
 - 为控制 token，日常任务默认只读相关模块和相邻接口；全工程扫描只用于明确的
   架构 review、技术债盘点或用户要求。
 
@@ -34,6 +33,8 @@
 ```sh
 make -j2
 make clean
+make host-test
+make board-test-build
 ```
 
 构建单个服务模块：
@@ -41,6 +42,13 @@ make clean
 ```sh
 make -C libs/<service>
 ```
+
+测试目标语义：
+
+- `make host-test` / `make test` 只运行宿主可执行的质量检查，例如 HTTP/Web
+  契约、C++ 风格契约和前端构建。
+- `make board-test-build` / `make test-build` 交叉编译各模块测试二进制。
+- `make board-test` 会执行交叉编译测试二进制，只应在目标板或兼容运行环境使用。
 
 前端开发和构建在 `www/` 目录下执行：
 
@@ -57,7 +65,7 @@ npm run build
   取值型函数返回原本业务类型，失败时返回空字符串、空容器、0、空对象或
   `nullptr` 等该类型的默认失败值。
 - 保持现有 Google-like 风格：
-  - 缩进使用 2 个空格。
+  - 缩进使用 4 个空格，和 `.clang-format` 保持一致。
   - 类型名使用 `PascalCase`。
   - 函数名使用 `PascalCase`。
   - 变量和参数使用 `snake_case`。
@@ -82,6 +90,9 @@ npm run build
   等整个项目功能完成后再统一处理，除非任务明确要求。
 - 不随意修改 public API、配置 JSON schema 或 HTTP API 契约，除非任务明确要求。
 - 配置文件中的字段语义应保持向后兼容；确需变更时，要同步更新调用方和文档。
+- `*Dependencies` struct 只作为组合根构造注入 DTO，不作为实现类长期保存的依赖包；
+  实现类应解包为语义明确的非 owning 成员指针。业务 service、net、media、auth
+  不做全局单例或 ServiceLocator。
 
 ## 前端约定
 

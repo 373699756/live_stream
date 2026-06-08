@@ -6,8 +6,8 @@ namespace live_stream {
 
 PlatformAdapters CreateLinuxPlatformAdapters(const std::string& network_ifname) {
     PlatformAdapters adapters;
-    adapters.system = CreateLinuxSystemPlatform();
-    adapters.time = CreateLinuxTimePlatform();
+    adapters.system = CreateSystemPlatform();
+    adapters.time = CreateTimePlatform();
     adapters.network = CreateNetworkPlatform(network_ifname);
     adapters.upgrade = CreateUpgradePlatform();
     adapters.network_ifname = network_ifname;

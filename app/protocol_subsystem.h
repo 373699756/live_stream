@@ -3,26 +3,28 @@
 
 #include <memory>
 
-#include "stream_hub_service.h"
-#include "http_service.h"
+#include "media_pipeline.h"
+#include "http.h"
 #include "infra/executor.h"
-#include "net_service.h"
-#include "onvif_service.h"
-#include "rtsp_service.h"
+#include "net.h"
+#include "net_adaptive.h"
+#include "onvif_server.h"
+#include "rtsp.h"
 #include "runtime_config.h"
-#include "webrtc_service.h"
+#include "webrtc.h"
 
 namespace live_stream {
 
-class CoreServices;
+class CoreSubsystem;
+class INetworkConfig;
 struct DeviceRefs;
 struct MediaRefs;
 
 struct ProtocolRefs {
-    IRtspService *rtsp = nullptr;
-    IWebrtcService *webrtc = nullptr;
-    IOnvifService *onvif = nullptr;
-    IHttpService *http = nullptr;
+    IRtsp *rtsp = nullptr;
+    IWebrtc *webrtc = nullptr;
+    OnvifServer *onvif = nullptr;
+    IHttp *http = nullptr;
 };
 
 class ProtocolSubsystem {
@@ -30,12 +32,12 @@ public:
     static ProtocolSubsystem &Get();
 
     bool Start(const AppRuntimeConfig &runtime_config,
-               CoreServices &core_services,
+               CoreSubsystem &core_subsystem,
                const DeviceRefs &device_refs,
                const MediaRefs &media_refs);
     void Stop();
     ProtocolRefs refs() const;
-    NetEngine *net_engine() const { return net_engine_.get(); }
+    INetEngine *net_engine() const { return net_engine_.get(); }
 
 private:
     ProtocolSubsystem() = default;
@@ -44,13 +46,27 @@ private:
     ProtocolSubsystem(const ProtocolSubsystem &) = delete;
     ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
+    bool InstallRuntimeConfigAttachments();
+    void DetachRuntimeConfigAttachments();
+    ConfigResult ValidateRuntimeConfigUpdate(const std::string &scope,
+                                             const ConfigJson &value);
+    ConfigResult ApplyRuntimeConfigUpdate(const std::string &scope,
+                                          const ConfigJson &value);
+    bool BuildNextRuntimeConfig(const std::string &scope,
+                                const ConfigJson &value,
+                                AppRuntimeConfig *next_config) const;
+
     std::unique_ptr<infra::Executor> net_callback_executor_;
-    std::unique_ptr<NetEngine> net_engine_;
-    std::unique_ptr<IRtspService> rtsp_;
-    std::unique_ptr<IWebrtcService> webrtc_;
-    std::unique_ptr<IStreamHubService> stream_hub_;
-    std::unique_ptr<IOnvifService> onvif_;
-    std::unique_ptr<IHttpService> http_;
+    std::unique_ptr<INetEngine> net_engine_;
+    std::unique_ptr<IRtsp> rtsp_;
+    std::unique_ptr<IWebrtc> webrtc_;
+    std::unique_ptr<IMediaPipeline> media_pipeline_;
+    std::unique_ptr<OnvifServer> onvif_;
+    std::unique_ptr<IHttp> http_;
+    std::unique_ptr<INetAdaptive> net_adaptive_;
+    IConfig *config_ = nullptr;
+    INetworkConfig *network_config_ = nullptr;
+    AppRuntimeConfig runtime_config_;
     bool started_ = false;
 };
 

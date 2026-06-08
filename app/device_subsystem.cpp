@@ -1,6 +1,6 @@
 #include "device_subsystem.h"
 
-#include "core_services.h"
+#include "core_subsystem.h"
 #include "infra/log.h"
 
 namespace live_stream {
@@ -10,74 +10,74 @@ DeviceSubsystem &DeviceSubsystem::Get() {
     return subsystem;
 }
 
-bool DeviceSubsystem::Start(CoreServices &core_services,
+bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
                             PlatformAdapters adapters) {
     if (started_) {
         return true;
     }
 
     system_platform_ = std::move(adapters.system);
-    SystemServiceOptions system_options;
-    system_options.config_service = core_services.config();
-    system_options.event_service = core_services.event();
-    system_options.logger_service = core_services.logger();
+    SystemOptions system_options;
+    system_options.config = core_subsystem.config();
+    system_options.event = core_subsystem.event();
+    system_options.logger = core_subsystem.logger();
     system_options.platform = system_platform_.get();
-    system_ = CreateSystemService(system_options);
+    system_ = CreateSystem(system_options);
     if (!system_ || !system_->Start()) {
-        INFRA_LOG_ERROR("app", "Start system service failed");
+        Error("app", "Start system failed");
         Stop();
         return false;
     }
 
     time_platform_ = std::move(adapters.time);
-    TimeServiceOptions time_options;
-    time_options.config_service = core_services.config();
-    time_options.event_service = core_services.event();
-    time_options.logger_service = core_services.logger();
+    TimeOptions time_options;
+    time_options.config = core_subsystem.config();
+    time_options.event = core_subsystem.event();
+    time_options.logger = core_subsystem.logger();
     time_options.platform = time_platform_.get();
     time_options.default_ntp_config.enabled = false;
-    time_ = CreateTimeService(time_options);
+    time_ = CreateTime(time_options);
     if (!time_ || !time_->Start()) {
-        INFRA_LOG_ERROR("app", "Start time service failed");
+        Error("app", "Start time failed");
         Stop();
         return false;
     }
 
     network_platform_ = std::move(adapters.network);
-    NetworkServiceOptions network_options;
-    network_options.config_service = core_services.config();
-    network_options.event_service = core_services.event();
-    network_options.logger_service = core_services.logger();
+    NetworkConfigOptions network_options;
+    network_options.config = core_subsystem.config();
+    network_options.event = core_subsystem.event();
+    network_options.logger = core_subsystem.logger();
     network_options.default_ifname = adapters.network_ifname;
     network_options.platform = network_platform_.get();
-    network_ = CreateNetworkService(network_options);
+    network_ = CreateNetworkConfig(network_options);
     if (!network_ || !network_->Start()) {
-        INFRA_LOG_ERROR("app", "Start network service failed: ifname=%s",
+        Error("app", "Start network_config failed: ifname=%s",
                         network_options.default_ifname.c_str());
         Stop();
         return false;
     }
 
-    AlarmServiceOptions alarm_options;
-    alarm_options.config_service = core_services.config();
-    alarm_options.event_service = core_services.event();
-    alarm_options.logger_service = core_services.logger();
-    alarm_ = CreateAlarmService(alarm_options);
+    AlarmOptions alarm_options;
+    alarm_options.config = core_subsystem.config();
+    alarm_options.event = core_subsystem.event();
+    alarm_options.logger = core_subsystem.logger();
+    alarm_ = CreateAlarm(alarm_options);
     if (!alarm_ || !alarm_->Start()) {
-        INFRA_LOG_ERROR("app", "Start alarm service failed");
+        Error("app", "Start alarm failed");
         Stop();
         return false;
     }
 
-    UpgradeServiceOptions upgrade_options;
-    upgrade_options.config_service = core_services.config();
-    upgrade_options.event_service = core_services.event();
-    upgrade_options.logger_service = core_services.logger();
+    UpgradeOptions upgrade_options;
+    upgrade_options.config = core_subsystem.config();
+    upgrade_options.event = core_subsystem.event();
+    upgrade_options.logger = core_subsystem.logger();
     upgrade_platform_ = std::move(adapters.upgrade);
     upgrade_options.platform = upgrade_platform_.get();
-    upgrade_ = CreateUpgradeService(upgrade_options);
+    upgrade_ = CreateUpgrade(upgrade_options);
     if (!upgrade_ || !upgrade_->Start()) {
-        INFRA_LOG_ERROR("app", "Start upgrade service failed");
+        Error("app", "Start upgrade failed");
         Stop();
         return false;
     }

@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getOperations } from '../api/system';
-import { operationsExportUrl } from '../api/client';
+import { getOperations, operationsExportUrl } from '../api/operations';
 import type { OperationRecord } from '../api/types';
-
-function formatTimestamp(timestampMs: number) {
-  if (timestampMs <= 0) {
-    return '-';
-  }
-  return new Date(timestampMs).toLocaleString();
-}
+import { formatTimestamp } from '../utils/format';
 
 export function LogsPage() {
   const [records, setRecords] = useState<OperationRecord[]>([]);

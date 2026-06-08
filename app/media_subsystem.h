@@ -3,28 +3,30 @@
 
 #include <memory>
 
-#include "ai_service.h"
-#include "media_service.h"
-#include "region_service.h"
-#include "snapshot_service.h"
+#include "ai.h"
+#include "device_media.h"
+#include "region.h"
+#include "snapshot.h"
 
 namespace live_stream {
 
-class CoreServices;
+class CoreSubsystem;
 struct DeviceRefs;
 
 struct MediaRefs {
-    IMediaService* media = nullptr;
-    AiService* ai = nullptr;
-    RegionService* overlay = nullptr;
-    SnapshotService* snapshot = nullptr;
+    IDeviceMedia* device_media = nullptr;
+    Ai* ai = nullptr;
+    Snapshot* snapshot = nullptr;
 };
 
 class MediaSubsystem {
 public:
     static MediaSubsystem& Get();
 
-    bool Start(CoreServices &core_services, const DeviceRefs &device_refs);
+    // Start order is device_media -> snapshot -> ai -> region. Stop keeps the
+    // reverse order so SDK regions, AI capture, and snapshots release MPP
+    // channel use before device_media tears down the hardware pipeline.
+    bool Start(CoreSubsystem &core_subsystem, const DeviceRefs &device_refs);
     void Stop();
     MediaRefs refs() const;
 
@@ -35,10 +37,10 @@ private:
     MediaSubsystem(const MediaSubsystem&) = delete;
     MediaSubsystem& operator=(const MediaSubsystem&) = delete;
 
-    std::unique_ptr<IMediaService> media_;
-    std::unique_ptr<AiService> ai_;
-    std::unique_ptr<RegionService> overlay_;
-    std::unique_ptr<SnapshotService> snapshot_;
+    std::unique_ptr<IDeviceMedia> device_media_;
+    std::unique_ptr<Ai> ai_;
+    std::unique_ptr<Region> region_;
+    std::unique_ptr<Snapshot> snapshot_;
     bool started_ = false;
 };
 

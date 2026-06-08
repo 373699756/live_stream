@@ -170,8 +170,6 @@ export interface NetworkConfig {
 
 export interface SnapshotConfig {
   enabled: boolean;
-  main_path: string;
-  sub_path: string;
   jpeg_quality: number;
   timeout_ms: number;
 }
@@ -180,17 +178,12 @@ export interface RtspConfig {
   enabled: boolean;
   port: number;
   auth_required: boolean;
-  paths: {
-    main: string;
-    sub: string;
-  };
   max_sessions: number;
   session_timeout_sec: number;
 }
 
 export interface WebrtcConfig {
   enabled: boolean;
-  signaling_path: string;
   ice_servers: Array<{
     url: string;
     username?: string;
@@ -200,21 +193,90 @@ export interface WebrtcConfig {
   prefer_tcp: boolean;
 }
 
-export interface StreamStatus {
+export type WebrtcPeerState =
+  | 'created'
+  | 'offer_received'
+  | 'connecting'
+  | 'connected'
+  | 'closing'
+  | 'closed'
+  | 'failed'
+  | 'unknown';
+
+export interface MediaStreamRuntime {
+  stream: StreamName;
+  available: boolean;
+  running: boolean;
+  codec: string;
+  codec_generation: number;
+  track_ready: boolean;
+  hls_supported: boolean;
+  hls_ready: boolean;
+  http_flv_supported: boolean;
+  http_flv_ready: boolean;
+  mjpeg_supported: boolean;
+  mjpeg_ready: boolean;
+  webrtc_supported: boolean;
+  webrtc_ready: boolean;
+  reader_count: number;
+  client_count: number;
+  cached_frames: number;
+  cached_bytes: number;
+  hls_bytes: number;
+  last_dts: number;
+  last_reset_reason: string;
+  resolution?: string;
+  fps?: number;
+  bitrate_kbps?: number;
+}
+
+export interface MediaPlaybackUrls {
+  stream: StreamName;
+  rtsp: string;
+  hls: string;
+  http_flv: string;
+  mjpeg: string;
+  snapshot: string;
+  webrtc_whep?: string;
+}
+
+export interface MediaSessionInfo {
+  session_id: string;
+  protocol: string;
+  stream: StreamName;
+  state: string;
+  client_ip?: string;
+  user_name?: string;
+  peer_id?: string;
+  pending_bytes?: number;
+  close_reason?: string;
+  created_at_ms?: number;
+  updated_at_ms?: number;
+}
+
+export interface WebrtcPeerInfo {
+  peer_id: string;
   stream: StreamName;
   codec: string;
-  resolution: string;
-  fps: number;
-  bitrateKbps: number;
-  state: 'running' | 'stopped' | 'pending';
-  browserCodec?: boolean;
-  hlsSupported?: boolean;
-  flvSupported?: boolean;
-  mjpegSupported?: boolean;
-  hlsReady?: boolean;
-  flvReady?: boolean;
-  mjpegReady?: boolean;
-  webrtcReady?: boolean;
+  state: WebrtcPeerState;
+  client_id: string;
+  session_id: string;
+  user_name: string;
+  client_ip: string;
+  ice_selected: boolean;
+  dtls_state: string;
+  srtp_ready: boolean;
+  rtp_packets: number;
+  rtp_bytes: number;
+  last_error: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface WebrtcOfferAnswer {
+  peer_id: string;
+  sdp: string;
+  state: WebrtcPeerState;
 }
 
 export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';
@@ -246,7 +308,7 @@ export interface AiDetection {
   height: number;
 }
 
-export interface AiServiceStats {
+export interface AiStats {
   enabled: boolean;
   backend_available: boolean;
   alarm_linked: boolean;
@@ -273,7 +335,7 @@ export interface AiInferenceResult {
 
 export interface AiStatus {
   config: AiModelConfig;
-  stats: AiServiceStats;
+  stats: AiStats;
   last_result: AiInferenceResult;
 }
 
@@ -340,7 +402,7 @@ export interface SystemStatus {
   cpu: number;
   memory: number;
   temperature: number;
-  services: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
+  modules: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
 }
 
 export interface OperationRecord {
