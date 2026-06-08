@@ -38,6 +38,8 @@ void RtspRequestHandler::HandleRequest(
     return;
   }
 
+  // DESCRIBE/SETUP 从 URI 解析 stream；PLAY/TEARDOWN 使用 session 中已经
+  // SETUP 的 stream，避免客户端在 PLAY 阶段换 URI 绕过状态机。
   StreamId stream_id = session->stream_id;
   if ((request.method == "DESCRIBE" || request.method == "SETUP") &&
       !PathToStreamId(request.uri, &stream_id)) {
@@ -93,6 +95,8 @@ void RtspRequestHandler::HandleDescribe(
     const std::shared_ptr<RtspSession> &session,
     const rtsp_internal::RtspRequest &request, StreamId stream_id) {
   session->MarkDescribed(stream_id);
+  // DESCRIBE 只生成 SDP，不创建长期 reader。track 未 ready 返回 455，
+  // 让客户端稍后重试，而不是暴露一个无法播放的 SDP。
   MediaTrack track = delegate_->RtspTrackForStream(stream_id);
   if (!track.ready) {
     Error(kRtspRequestHandlerModule,
@@ -116,6 +120,8 @@ void RtspRequestHandler::HandlePlay(
     SendResponse(session->connection_id, 455, request, {}, "");
     return;
   }
+  // StartRtspPlayback 会 attach keyframe_first reader 并准备启动 GOP；
+  // 200 响应发出后才 arm drain timer，避免客户端未收到 PLAY 成功就收到 RTP。
   const int playback_status = delegate_->StartRtspPlayback(session);
   if (playback_status != 200) {
     SendResponse(session->connection_id, playback_status, request, {}, "");

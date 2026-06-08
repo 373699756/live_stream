@@ -128,6 +128,8 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
     if (total_size == 0) {
         return true;
     }
+    // 发送队列只能保存稳定内存：媒体 payload 用 NetBufferOwner 延长生命周期，
+    // 其他小块/无 owner 数据在入队前复制，避免调用方栈内存跨线程悬空。
     OutBuffer buffer;
     if (!BuildOutBuffer(slices, &buffer)) {
         return false;
@@ -138,6 +140,8 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
         if (closed_ || close_after_send_) {
             return false;
         }
+        // 队列项数和 pending bytes 是慢客户端的硬边界。命中后直接关闭连接，
+        // 让 HTTP-FLV/RTSP 等热路径释放 reader 或媒体 buffer 引用。
         if (send_queue_.size() >= options_.send_queue_capacity) {
             engine_->AddSendBusy();
             close_reason = TcpCloseReason::kQueueFull;
@@ -203,6 +207,8 @@ bool TcpSession::CloseAfterSend() {
             if (self->closed_) {
                 return;
             }
+            // HTTP/RTSP 短响应需要先把已入队数据写完再关 socket；
+            // close_after_send_ 只影响当前队列，不再接受新的发送。
             self->close_after_send_ = true;
             close_now = self->send_queue_.empty();
         }
@@ -283,6 +289,8 @@ void TcpSession::HandleWrite() {
             if (closed_ || send_queue_.empty()) {
                 break;
             }
+            // send_queue_ 保存分片视图和每片偏移，短写时只推进 offset，
+            // 下一次 EPOLLOUT 从同一片继续，pending_bytes_ 始终反映未写字节。
             OutBuffer &current = send_queue_.front();
             while (current.current_slice < current.slice_count &&
                    current.slices[current.current_slice].offset >=
@@ -415,6 +423,8 @@ void TcpSession::CheckTimeouts() {
             return;
         }
         const int64_t now_ms = infra::Time::MonotonicMillis();
+        // read timeout 保护空闲控制连接；write timeout/send stall 保护媒体长连接
+        // 或 RTSP interleaved 慢客户端，关闭原因会进入 net diagnostics。
         if (IsReadTimedOutLocked(now_ms)) {
             reason = TcpCloseReason::kReadTimeout;
             should_close = true;
@@ -499,6 +509,8 @@ bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
         out.size = input.size;
         out.owner = input.owner;
         if (out.owner.ptr != nullptr) {
+            // owner 由 media_source/media buffer 提供。这里加引用后，异步发送期间
+            // payload 不需要复制；OutSlice 析构时会 unref。
             RefNetBufferOwner(out.owner);
             out.data = input.data;
         } else if (input.size <= out.inline_data.size()) {

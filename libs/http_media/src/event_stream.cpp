@@ -37,6 +37,8 @@ std::string BuildEventStreamMessage(const Event &event) {
     const ConfigJson data = BuildEventJson(event, event_type_name);
     const std::string data_text = data.dump();
 
+    // SSE 每条消息用 event/data 双行格式；payload 交给 ConfigJson 序列化，
+    // 避免手写 JSON 转义漏掉引号、换行或反斜杠。
     std::string message;
     message.reserve(data_text.size() + 32);
     message += "event: ";

@@ -126,6 +126,8 @@ bool ExtractXmlTagText(const std::string &text,
     if (value == nullptr || local_name.empty()) {
         return false;
     }
+    // 这里是轻量 SOAP 字段提取，不是通用 XML 解析器。只按 local name 匹配
+    // ONVIF 当前支持的简单请求字段，命名空间前缀不同也能识别。
     const std::string wanted = LocalNameFromInput(local_name);
     std::size_t search_pos = 0;
     while (true) {
@@ -186,6 +188,8 @@ bool ParseOnvifUnixTimeMs(const std::string &request, int64_t *unix_time_ms) {
     if (unix_time_ms == nullptr) {
         return false;
     }
+    // Web 控制面扩展字段 UnixTimeMs 优先；标准 ONVIF 客户端则走
+    // Year/Month/Day/Hour/Minute/Second 组合。
     int64_t unix_ms = 0;
     if (ExtractInt64Tag(request, "UnixTimeMs", &unix_ms)) {
         *unix_time_ms = unix_ms;

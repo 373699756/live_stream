@@ -4,6 +4,8 @@ namespace live_stream {
 namespace onvif {
 
 OnvifHttpRequest ParseOnvifHttpRequest(const std::string &raw) {
+    // ONVIF device service 使用简单的 SOAP over HTTP POST。这里按一次完整
+    // TCP message 解析，不实现 keep-alive pipeline，响应后由 server 关闭连接。
     const std::size_t line_end = raw.find("\r\n");
     if (line_end == std::string::npos) {
         return OnvifHttpRequest();
@@ -40,6 +42,8 @@ std::string BuildOnvifHttpResponse(uint32_t status_code,
                                    const std::string &reason,
                                    const std::string &body,
                                    const std::string &extra_headers) {
+    // ONVIF 客户端兼容性优先：每个 SOAP 响应带明确 Content-Length 并关闭连接，
+    // 避免不同 NVR 对 persistent HTTP 的处理差异。
     std::string response = "HTTP/1.1 " + std::to_string(status_code) + " " +
                            reason + "\r\n";
     response += "Content-Type: application/soap+xml; charset=utf-8\r\n";

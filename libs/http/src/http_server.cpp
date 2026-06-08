@@ -125,6 +125,8 @@ bool HttpServer::Start() {
         stream_executor = stream_executor_.get();
         control_executor = control_executor_.get();
     }
+    // 媒体长连接和控制 API 分开执行：/live、SSE、WHEP 可能长时间写 socket，
+    // 不能占住修改配置、登录等控制请求的 worker。
     if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
                        options_.stream_executor_queue_capacity)) {
         Error(kHttpModuleName,
@@ -200,6 +202,8 @@ void HttpServer::Stop() {
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
         net_engine = net_engine_;
+        // Stop() 先摘出 session 状态，再在锁外通知媒体模块 detach client。
+        // close callback 可能回到 media_source/event，不能拿着 HTTP 锁跨模块调用。
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {
@@ -336,6 +340,8 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
     header_response.headers = std::move(response_headers);
     const std::string header =
         SerializeResponseHeaderWithBodySize(header_response, body_size);
+    // header 是本函数局部字符串，net 层会复制无 owner slice；媒体 body 带 owner
+    // 时由 net 引用 VideoBuffer，避免 HLS segment/FLV frame 热路径复制 payload。
     NetBufferSlices slices;
     bool slices_ok = slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
                                 header.size());
@@ -515,6 +521,8 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                         static_cast<unsigned long long>(connection_id), size);
         return false;
     }
+    // 流式响应没有 Content-Length 和请求结束点，只能用 net pending bytes
+    // 判定慢客户端；超限立即关连接，让媒体 reader/client 在 close callback 里回落。
     if (net_engine->PendingBytes(connection_id) >=
         options_.send_buffer_limit_bytes) {
         Error(kHttpModuleName,
@@ -570,6 +578,8 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
         }
         net_engine = net_engine_;
     }
+    // TCP close 是所有媒体长连接的最终回收点；无论是浏览器断开、超时还是队列满，
+    // 都必须在这里通知 http_media 解除 FLV/MJPEG/SSE 订阅。
     CancelNetTimer(net_engine, timer_id);
     NotifyStreamClosed(closed.media_client);
     Info(kHttpModuleName,
@@ -626,6 +636,8 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
     if (executor == nullptr ||
         executor->Post([this, connection_id,
                         pending = std::move(pending)]() mutable {
+            // Streaming handler 成功后会调用 BeginStream()，session 进入 streaming
+            // 状态，不再回到 keep-alive parser；普通 HTTP 响应才继续解析管线请求。
             if (request_handler_ != nullptr &&
                 request_handler_->HandleStreamingHttpRequest(
                     connection_id, pending.request)) {
@@ -724,6 +736,8 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     if (net_engine == nullptr) {
         return;
     }
+    // timeout_generation_ 用来淘汰旧 timer：请求推进或进入 streaming 后，
+    // 旧 timer 即使晚到也不会误关新状态下的连接。
     CancelNetTimer(net_engine, timeout.replaced_timer_id);
     const NetTimerId timer_id = net_engine->RunOnIoAfter(
         delay_ms, [this, connection_id,

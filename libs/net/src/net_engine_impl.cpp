@@ -83,6 +83,8 @@ void NetEngineImpl::StopInternal() {
             connections.push_back(entry.second);
         }
     }
+    // 先停 listen/UDP endpoint，再关闭已接入 TCP session，最后停 IO loop。
+    // 这样上层 close 回调仍能在 loop 停止前释放协议资源。
     for (const auto &server : servers) {
         server->Stop();
     }
@@ -268,6 +270,8 @@ NetTimerId NetEngineImpl::RunOnIoAfter(uint32_t delay_ms, infra::Task task) {
     if (!loop) {
         return 0;
     }
+    // timer id 在 NetEngineImpl 全局递增；CancelIoTimer() 可以跨多个 IO loop 查找，
+    // 不会因为不同 loop 的本地 id 重复而取消错 timer。
     return loop->RunAfter(AllocateTimerId(), delay_ms, std::move(task));
 }
 
@@ -352,6 +356,8 @@ NetEngineImpl::GetConnectionDiagnosticsSnapshot() const {
         }
     }
 
+    // 活跃连接实时读取 session，已关闭连接只保留最近 N 条快照，供 Web 诊断
+    // 慢客户端/超时关闭原因，不让协议模块各自维护 socket 诊断表。
     std::vector<NetConnectionDiagnostics> diagnostics;
     diagnostics.reserve(connections.size() + closed_diagnostics.size());
     for (const auto &connection : connections) {
@@ -486,6 +492,8 @@ void NetEngineImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
         return;
     }
     if (options_.callback_mode == CallbackMode::kPostToExecutor) {
+        // data 指向 IO 栈缓冲区，投递到 executor 前必须复制；直接回调模式只允许
+        // 协议在当前调用栈内消费，不得保存该指针。
         std::vector<uint8_t> copy(data, data + size);
         (void)options_.callback_executor->Post(
             [callbacks, id, copy = std::move(copy)]() mutable {
@@ -519,6 +527,8 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
         return;
     }
     if (options_.callback_mode == CallbackMode::kPostToExecutor) {
+        // UDP 接收同样来自 IO 栈缓冲区；ONVIF discovery/RTSP RTCP 等上层
+        // 在 executor 中处理时只能看拷贝。
         std::vector<uint8_t> copy(data, data + size);
         (void)options_.callback_executor->Post([callbacks, socket_id,
                                                 peer = std::move(peer),

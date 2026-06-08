@@ -23,6 +23,8 @@ std::string BuildStreamUri(IRtsp *rtsp,
     if (rtsp == nullptr) {
         return std::string();
     }
+    // RTSP URL 规则归 rtsp 模块所有；ONVIF 只提供 advertise_ip，
+    // 不复制 /live/main 或端口拼接规则。
     const RtspListenAddress address = rtsp->LocalAddress();
     return BuildRtspStreamUrl(address, stream_id, advertise_ip);
 }
@@ -73,6 +75,8 @@ OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
                                    IRtsp *rtsp,
                                    const std::string &advertise_ip) {
     OnvifMediaUris media_uris;
+    // 只有设备侧认为 stream 已启动时才发布 RTSP URI；snapshot URI 使用 HTTP
+    // 固定契约生成，不代表 ONVIF 拥有 HTTP handler 状态。
     if (StreamAvailable(device_media, StreamId::kMain)) {
         media_uris.stream_main =
             BuildStreamUri(rtsp, StreamId::kMain, advertise_ip);
@@ -94,6 +98,7 @@ bool ParseProfileToken(const std::string &body, StreamId *stream_id) {
     }
     std::string token;
     if (!ExtractXmlTagText(body, "ProfileToken", &token)) {
+        // 部分 NVR 的 GetStreamUri 不带 ProfileToken，按 ONVIF 互通习惯默认主码流。
         *stream_id = StreamId::kMain;
         return true;
     }

@@ -100,6 +100,8 @@ HttpResponse HttpImpl::HandleRequest(const HttpRequest &request) {
 
 bool HttpImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
+    // 这些入口可能创建长连接、拉取大块媒体或等待 WebRTC signaling，
+    // 必须走 stream executor，避免阻塞登录、配置、状态查询等控制面。
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/live/") ||
                StartsWith(request.path, "/snapshot/") ||
@@ -175,6 +177,8 @@ bool HttpImpl::HandleStreamingHttpRequest(
     Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
                    static_cast<unsigned long long>(connection_id),
                    request.path.c_str(), request.client_ip.c_str());
+    // streaming_handler 拥有把 HTTP session 切到 streaming 状态的责任；
+    // 成功后 HttpServer 不再发送普通响应，也不再触发 keep-alive 续解析。
     streaming_handler->HandleStreamingRequest(connection_id, request);
     return true;
 }
@@ -194,6 +198,8 @@ HttpListenAddress HttpImpl::LocalAddress() const {
 }
 
 void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
+    // handler/router 只在构造期初始化。运行期不重建路由，避免请求线程读 router
+    // 时和热重配同时修改 handler 容器。
     router_.Clear();
     handlers_.clear();
     streaming_handler_.reset();

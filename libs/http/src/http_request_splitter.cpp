@@ -51,6 +51,8 @@ HttpRequestSplitResult HttpRequestSplitter::SplitNext(
     return result;
   }
 
+  // ParseRawRequest 只消费一个完整 HTTP message；剩余字节留在 recv_buffer_，
+  // 由 HttpSession 的 pipeline 上限控制继续排队。
   RawParseResult parsed = ParseRawRequest(
       recv_buffer_, options.max_header_bytes, options.max_body_bytes,
       client_ip);

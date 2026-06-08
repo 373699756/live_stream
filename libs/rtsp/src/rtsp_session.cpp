@@ -41,6 +41,8 @@ void RtspSession::MarkDescribed(StreamId next_stream_id) {
 
 void RtspSession::SetupTcp(StreamId next_stream_id,
                            uint8_t next_interleaved_rtp_channel) {
+  // SETUP 只把控制连接推进到 Ready；真正的 media reader 在 PLAY 时创建，
+  // 避免客户端只 SETUP 不 PLAY 时占用帧队列。
   stream_id = next_stream_id;
   state = RtspSessionState::kReady;
   transport = RtspTransportMode::kTcpInterleaved;
@@ -55,6 +57,8 @@ void RtspSession::SetupTcp(StreamId next_stream_id,
 void RtspSession::SetupUdp(StreamId next_stream_id, UdpSocketId next_rtp_socket_id,
                            UdpSocketId next_rtcp_socket_id,
                            uint16_t next_client_rtp_port) {
+  // UDP transport 归单个 RTSP session 所有，TEARDOWN、断连或重新 SETUP 时必须
+  // 关闭这两个 socket。
   stream_id = next_stream_id;
   state = RtspSessionState::kReady;
   transport = RtspTransportMode::kUdp;
@@ -75,6 +79,8 @@ void RtspSession::StartPlaying() {
 void RtspSession::AttachReader(MediaFrameReaderId next_reader_id,
                                uint64_t next_reader_generation,
                                MediaTrack next_track) {
+  // reader_generation 来自 media_source，用于后续诊断和防止旧 reader 状态混入
+  // 新一轮播放；RTSP 自己不维护 GOP cache。
   reader_id = next_reader_id;
   reader_generation = next_reader_generation;
   track = std::move(next_track);
@@ -94,6 +100,8 @@ bool RtspSession::HasReader() const {
 }
 
 void RtspSession::SetStartFrames(std::vector<MediaFrame> *frames) {
+  // Start frames 是 PLAY 时 media_source 返回的启动 GOP，只在首轮 drain 中发送，
+  // 发送后立即 unref，不在 RTSP session 中长期缓存。
   ClearStartFrames();
   if (frames != nullptr) {
     start_frames.swap(*frames);

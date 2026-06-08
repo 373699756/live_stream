@@ -46,6 +46,8 @@ public:
             return true;
         }
 
+        // ONVIF 有两个入口：TCP device service 处理 SOAP，UDP discovery 只处理
+        // Probe。二者共享 net engine，但协议状态不跨入口保存。
         TcpListenOptions tcp_options;
         tcp_options.address.ip = options_.listen_ip;
         tcp_options.address.port = options_.device_service_port;
@@ -171,6 +173,8 @@ private:
             IncrementParseFailures();
             return;
         }
+        // Discovery 是无连接 UDP，请求体不能超过 ONVIF HTTP 消息上限；
+        // 回复直接发回 Probe 来源地址，不使用 selected peer。
         const std::string request(reinterpret_cast<const char *>(data), size);
         if (!onvif::IsOnvifProbeRequest(request)) {
             IncrementParseFailures();
@@ -197,6 +201,8 @@ private:
             IncrementParseFailures();
             return;
         }
+        // 当前 device service 一次 TCP read 处理一个完整 SOAP HTTP 请求，
+        // 响应后 CloseAfterSend；不做 HTTP keep-alive/pipeline。
         const std::string request(reinterpret_cast<const char *>(data), size);
         const onvif::OnvifHttpRequest parsed =
             onvif::ParseOnvifHttpRequest(request);
@@ -238,6 +244,7 @@ private:
         }
         PublishRequestEvent(action);
 
+        // 无论成功还是 SOAP fault，都用 HTTP 响应承载，并在发送完成后关闭连接。
         const std::string response =
             onvif::BuildOnvifHttpResponse(status, reason, body, extra_headers);
         static_cast<void>(net_engine_->Send(
@@ -251,6 +258,7 @@ private:
                                  const std::string &request,
                                  uint32_t *status,
                                  std::string *reason) {
+        // action 分发只做协议 DTO 转换；设备信息、时间、媒体 URL 分别从拥有模块读取。
         switch (action) {
             case onvif::OnvifAction::kGetDeviceInformation:
                 return onvif::BuildSoapEnvelope(

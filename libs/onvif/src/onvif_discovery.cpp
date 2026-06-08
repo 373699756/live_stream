@@ -49,6 +49,8 @@ std::string NormalizeEndpointUuid(const std::string &endpoint_uuid) {
 
 std::string BuildDefaultEndpointUuid(const OnvifServerOptions &options,
                                      ISystem *system) {
+    // 未配置 endpoint_uuid 时用设备静态信息生成稳定 UUID。它不是随机值，
+    // 否则 NVR 每次发现都会把同一台设备当成新设备。
     std::string seed = options.manufacturer + ":" + options.model + ":" +
                        options.firmware_version;
     if (system != nullptr) {
@@ -98,6 +100,8 @@ std::string BuildScopes(const OnvifServerOptions &options,
         }
     }
 
+    // Scopes 是 NVR 做设备筛选的主要字段，只暴露设备类型、硬件名和 Profile，
+    // 不把内部模块名或 Web API 路径带到 ONVIF 协议里。
     return "onvif://www.onvif.org/type/video_encoder "
            "onvif://www.onvif.org/hardware/" +
            XmlEscape(ScopeValue(info.model)) +
@@ -115,6 +119,8 @@ std::string DeviceServiceUrl(const OnvifServerOptions &options,
 std::string DiscoveryHeader(const std::string &request) {
     std::string relates_to;
     static_cast<void>(ExtractXmlTagText(request, "MessageID", &relates_to));
+    // RelatesTo 回填客户端 Probe 的 MessageID；部分 NVR 依赖它把异步 UDP 响应
+    // 和自己的发现请求对应起来。
     std::string header =
         "<s:Header>"
         "<a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/"
@@ -151,6 +157,8 @@ std::string BuildDiscoveryProbeMatches(
     ISystem *system,
     const std::string &advertise_ip,
     const std::string &request) {
+    // WS-Discovery 只返回 device service 的 XAddr。后续 media/device SOAP
+    // 都通过这个 HTTP 入口继续协商。
     const std::string endpoint_uuid = EndpointUuid(options, system);
     const std::string service_url = DeviceServiceUrl(options, advertise_ip);
     const std::string body =

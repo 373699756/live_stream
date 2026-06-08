@@ -161,6 +161,8 @@ private:
             sessions = sessions_.Sessions();
             connection_ids = sessions_.ConnectionIds();
         }
+        // 停服务时先停 listener，再关闭每个 session 的 reader/timer/UDP socket，
+        // 最后关闭 TCP 控制连接，防止 media_source 继续给已关闭 transport 推帧。
         for (const auto &session : sessions) {
             CloseSessionResources(session,
                                   MediaFrameReaderCloseReason::kStreamStopped);
@@ -382,8 +384,8 @@ private:
         if (session == nullptr) {
             return;
         }
-        // RTCP is accepted to keep UDP clients' receiver reports harmless; RTP
-        // is send-only for the current video preview scope.
+        // 当前产品只发视频预览 RTP，不根据 RTCP receiver report 做码率控制。
+        // 这里接收并忽略 RTCP，避免客户端上报包触发解析错误或断连。
     }
 
     void OnMessage(ConnectionId connection_id,
@@ -410,6 +412,8 @@ private:
             return;
         }
 
+        // splitter 同时能切 RTSP request 和 TCP interleaved frame；当前只处理控制
+        // request。客户端经 TCP interleaved 发来的 RTCP 暂不参与码率控制。
         for (const std::string& raw : split.requests) {
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
@@ -438,6 +442,8 @@ private:
             return track;
         }
 
+        // 为 DESCRIBE 临时 attach reader 只为读取 track metadata，马上 detach；
+        // 长期 reader 必须等 PLAY，避免探测请求占用媒体 fanout。
         MediaFrameReaderOptions reader_options;
         reader_options.stream_id = stream_id;
         reader_options.keyframe_first = false;
@@ -480,6 +486,8 @@ private:
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
+            // 重新 SETUP 会切换 transport，必须先清掉旧 reader 和 UDP socket，
+            // 否则旧 transport 仍可能收到 drain timer 推送。
             CloseSessionResources(session,
                                   MediaFrameReaderCloseReason::kDetached);
             session->SetupTcp(stream_id, 0);
@@ -496,6 +504,8 @@ private:
                 SendResponse(session->connection_id, 461, CSeq(request), {}, "");
                 return false;
             }
+            // UDP 每个 session 独立绑定本地 RTP/RTCP 端口，响应里的 server_port
+            // 必须来自实际 bind 结果，不能用配置端口推导。
             CloseSessionResources(session,
                                   MediaFrameReaderCloseReason::kDetached);
             UdpSocketId rtp_socket_id = 0;
@@ -630,6 +640,8 @@ private:
             return 404;
         }
         CloseSessionReader(session, MediaFrameReaderCloseReason::kDetached);
+        // PLAY 才创建长期 reader，keyframe_first 让媒体链路优先给关键帧，
+        // 并把当前 GOP 作为 start frames 返回给本 session。
         MediaFrameReaderOptions reader_options;
         reader_options.stream_id = session->stream_id;
         reader_options.keyframe_first = true;
@@ -694,6 +706,8 @@ private:
         if (session == nullptr || net_engine_ == nullptr) {
             return;
         }
+        // drain timer 运行在 net IO loop 上，周期性从 media_source reader 拉帧；
+        // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
         const NetTimerId timer_id = net_engine_->RunOnIoEvery(
             kRtspReaderDrainIntervalMs, [this, session]() {
                 DrainSessionFrames(session);
@@ -828,6 +842,8 @@ private:
             session->DetachReader();
             session->ClearDrainTimer();
         }
+        // 先取消 drain timer，再 detach reader。timer 若已在执行，EventLoop 的
+        // cancelled 标记会阻止下一次触发；reader_id 清零后本次执行也会快速退出。
         if (net_engine_ != nullptr && drain_timer_id != 0) {
             (void)net_engine_->CancelIoTimer(drain_timer_id);
         }

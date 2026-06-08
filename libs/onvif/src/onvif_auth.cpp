@@ -97,6 +97,8 @@ bool AuthorizeOnvifAction(IAuth *auth,
     if (!ExtractBasicCredentials(headers, &user_name, &password)) {
         return false;
     }
+    // ONVIF Basic auth 只用来做本次 SOAP action 的权限校验。校验后立即 Logout，
+    // 不把 Web token 或 session 生命周期暴露给 NVR 客户端。
     LoginRequest login;
     login.context.client_ip = "onvif";
     login.user_name = user_name;

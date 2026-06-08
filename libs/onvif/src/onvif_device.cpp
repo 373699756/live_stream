@@ -14,6 +14,8 @@ std::string BuildDeviceInformationBody(const OnvifServerOptions &options,
     std::string manufacturer = options.manufacturer;
     info.model = options.model;
     info.firmware_version = options.firmware_version;
+    // 优先使用 system 模块的真实设备信息；缺失时回退到 ONVIF 配置，保证
+    // discovery 和 device service 返回的型号/固件保持一致。
     if (system != nullptr) {
         const DeviceInfo service_info = system->GetDeviceInfo();
         if (!service_info.model.empty()) {
@@ -67,6 +69,8 @@ std::string BuildSetSystemDateAndTimeBody(ITime *time,
         }
         return BuildSoapFaultBody("invalid date time");
     }
+    // ONVIF 校时走 time 模块统一入口，审计上下文标记为 onvif，
+    // 不在协议层直接改系统时间。
     live_stream::RequestContext context;
     context.user_name = "onvif";
     if (!time->SetSystemTime(context, unix_time_ms,

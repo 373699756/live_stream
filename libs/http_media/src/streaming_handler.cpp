@@ -236,6 +236,8 @@ private:
             SendStreamingError(writer_, connection_id, auth_response);
             return;
         }
+        // SSE 是无 Content-Length 的长连接，必须先把 HttpSession 切成 streaming；
+        // 之后断连时由 HTTP close callback 自动 Unsubscribe。
         if (!writer_->BeginStream(connection_id)) {
             writer_->CloseConnection(connection_id);
             return;
@@ -285,6 +287,8 @@ private:
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kEventStream;
         client.id = subscription_id;
+        // AttachStreamClient 把 event subscription id 交给 HTTP session，
+        // 连接异常关闭时才能从统一 close path 解除订阅。
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)event_->Unsubscribe(subscription_id);
             writer_->CloseConnection(connection_id);
@@ -384,6 +388,8 @@ private:
             return;
         }
 
+        // HLS segment 是一次性响应，但 body 可能引用 media_source 的 segment buffer；
+        // SendResponseSlices 会把 owner 交给 net，发送完成前不能提前释放 payload。
         HttpResponse response;
         response.status_code = 200;
         response.headers["Content-Type"] = "video/mp2t";
@@ -475,6 +481,8 @@ private:
             return;
         }
 
+        // 新 FLV 客户端必须先拿 file header、sequence header 和当前 GOP，
+        // 浏览器才能在不等待下一轮 SPS/PPS 的情况下尽快解码。
         MediaFlvStartData start_data =
             media_source->GetFlvStartData(stream_id);
         Info(kHttpMediaModuleName,
@@ -535,6 +543,8 @@ private:
             return;
         }
 
+        // GOP 不完整时 live attach 必须等下一个关键帧，否则客户端会从 P/B 帧开始
+        // 导致首屏花屏或解码器长时间等待参考帧。
         const bool wait_for_keyframe =
             start_data.cached_video_tags.empty() ||
             !start_data.cached_gop_complete;
@@ -555,6 +565,8 @@ private:
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kFlv;
         client.id = client_id;
+        // FLV client id 挂到 HTTP session，TCP close 时统一 DetachFlvClient，
+        // 不能靠浏览器主动关闭请求来释放媒体 fanout。
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_flv_source->DetachFlvClient(client_id);
             Error(kHttpMediaModuleName,
@@ -648,6 +660,8 @@ private:
             return;
         }
 
+        // MJPEG sink 生命周期归 media_source；HTTP session 只保存 client id。
+        // AttachStreamClient 失败时必须立刻 detach，避免 sink 泄漏。
         IMediaMjpegSink *sink =
             new MjpegConnectionSink(writer_, connection_id);
         if (writer_ == nullptr || !writer_->BeginStream(connection_id)) {

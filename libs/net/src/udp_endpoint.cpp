@@ -149,6 +149,8 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
         }
         fd = fd_.get();
     }
+    // UDP 不维护发送队列，直接用 sendmsg 聚合分片。调用返回后网络层不再持有
+    // slice 指针，适合 RTP datagram 和 WS-Discovery 这类逐包发送。
     iovec iov[kMaxNetBufferSlices];
     size_t iov_count = 0;
     for (size_t i = 0; i < slices.count; ++i) {
@@ -184,6 +186,8 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     if (addr.sin_family != AF_INET) {
         return false;
     }
+    // selected peer 只给 RTP/ICE 这类已协商对端使用；ONVIF discovery 仍走
+    // SendTo()，因为每个 Probe 的回复目标不同。
     std::lock_guard<std::mutex> lock(mutex_);
     peer_ = std::move(peer);
     has_peer_ = true;

@@ -20,6 +20,8 @@ bool RtspAuth::Authorize(const std::shared_ptr<RtspSession> &session,
                                      CSeq(request), {}, "");
         return false;
     }
+    // RTSP Basic auth 只在本 session 内缓存“已授权的 stream”，不同码流必须重新校验，
+    // 避免拿 main 的权限直接播放 sub 或反过来。
     if (session->IsAuthenticatedFor(stream_id)) {
         return true;
     }
@@ -54,6 +56,8 @@ bool RtspAuth::Authorize(const std::shared_ptr<RtspSession> &session,
     login.context.client_ip = session->peer.ip;
     login.user_name = decoded.substr(0, colon);
     login.password = decoded.substr(colon + 1);
+    // 复用 auth 登录/权限逻辑做校验，但 RTSP 不持有 Web session token；
+    // 校验结束立即 Logout，只把本 RTSP session 标记为已授权。
     LoginResult login_result = auth_->Login(login);
     if (login_result.token.empty()) {
         responder_->AddAuthFailure();

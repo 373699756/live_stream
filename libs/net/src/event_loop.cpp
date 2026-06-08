@@ -25,6 +25,8 @@ bool EventLoop::Start() {
     if (running_) {
         return true;
     }
+    // 每个 EventLoop 只由自己的 IO 线程执行 fd/timer 回调；跨线程工作统一先进入
+    // tasks_，再用 eventfd 唤醒 epoll，避免协议模块直接抢占 IO 线程状态。
     const int epoll_fd = CreateEpollFd(EPOLL_CLOEXEC);
     const int timer_fd =
         CreateTimerFd(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -80,6 +82,8 @@ bool EventLoop::Post(infra::Task task) {
         if (!running_ || stopping_) {
             return false;
         }
+        // task_capacity_ 是 IO 线程的背压边界；队列满时上层必须感知失败，
+        // 不能在网络层无限堆积控制任务或媒体发送任务。
         if (tasks_.size() >= task_capacity_) {
             return false;
         }
@@ -175,6 +179,8 @@ bool EventLoop::CancelTimer(NetTimerId id) {
     if (it == timers_.end()) {
         return false;
     }
+    // timer 可能正在 IO 线程回调中执行。执行中的 timer 只打 cancelled 标记，
+    // 回调返回后由 RunTimers() 收尾删除，保证 CancelTimer() 后不会再次触发。
     it->second->cancelled = true;
     if (!it->second->executing) {
         timers_.erase(it);
@@ -246,6 +252,8 @@ void EventLoop::RunTimers() {
             }
         }
     }
+    // 先拷贝 ready timer，再逐个执行。执行前重新校验 id 和 shared_ptr，
+    // 可以挡住回调期间的取消、重建或 Stop() 清理。
     for (const auto &entry : ready) {
         const NetTimerId id = entry.first;
         const std::shared_ptr<Timer> timer = entry.second;
@@ -294,6 +302,7 @@ void EventLoop::RunTasks() {
         std::lock_guard<std::mutex> lock(mutex_);
         tasks.swap(tasks_);
     }
+    // 任务在锁外执行，避免协议回调里再次 Post()/CancelTimer() 时自锁。
     while (!tasks.empty()) {
         infra::Task task = std::move(tasks.front());
         tasks.pop_front();

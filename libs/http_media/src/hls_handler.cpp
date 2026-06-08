@@ -101,6 +101,8 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
                             const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
                             const MediaSourceStatus &browser_status) {
+    // playlist 请求是浏览器开始预览的信号，顺手请求关键帧可以缩短首个完整
+    // HLS segment 生成时间；真正的 segment 数据仍由 media_source 缓存提供。
     bool keyframe_requested = RequestBrowserKeyFrame(media_source, stream_id);
     MediaHlsPlaylist playlist = media_source->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {

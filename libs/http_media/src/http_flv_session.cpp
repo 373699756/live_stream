@@ -96,6 +96,8 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
         return writer != nullptr;
     }
 
+    // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 VideoBuffer，
+    // 由 HttpMediaSlice.owner 保证异步发送期间 buffer 存活。
     size_t index = 0;
     while (index < tag.slice_count) {
         HttpMediaSlice slices[kMaxNetBufferSlices];
@@ -228,6 +230,8 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
         return HttpFlvSessionStartStatus::kStartBlock;
     }
 
+    // sequence header 先于缓存 GOP 输出，保证浏览器解码器拿到 SPS/PPS/VPS 后
+    // 再处理后续视频 tag。
     sequence_header_ = start_data.sequence_header;
     if (!OnFlvChunk(reinterpret_cast<const uint8_t *>(sequence_header_.data()),
                     sequence_header_.size())) {
@@ -326,6 +330,8 @@ uint32_t HttpFlvSession::RebaseTimestamp(uint32_t timestamp_ms,
              static_cast<unsigned long long>(connection_id_),
              timestamp_base_ms_);
     }
+    // 每个 HTTP-FLV 连接从 0 开始计时；回放缓存 GOP 再切 live frame 时，
+    // clamp_backward 防止时间戳回跳造成浏览器播放卡顿。
     uint32_t rebased_ms =
         timestamp_ms >= timestamp_base_ms_ ? timestamp_ms - timestamp_base_ms_
                                            : last_timestamp_ms_;

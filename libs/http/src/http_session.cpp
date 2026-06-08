@@ -23,6 +23,7 @@ bool HttpSession::AppendRequestBytes(const uint8_t *data, uint32_t size) {
   if (data == nullptr || closing_ || streaming_) {
     return false;
   }
+  // 收到新字节就推进 timeout generation，旧请求超时 timer 不能再关闭当前连接。
   ++timeout_generation_;
   return splitter_.Append(data, size);
 }
@@ -57,6 +58,8 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
       return result;
     }
 
+    // 支持有限 HTTP pipeline：先把已完整请求排队，执行层一次只取一个，
+    // 避免同一连接上的多个控制请求并发修改共享业务状态。
     ++request_count_;
     PendingHttpRequest pending;
     pending.request = std::move(split.request);
@@ -107,6 +110,8 @@ HttpSessionParseResult HttpSession::CompleteKeepAliveRequest(
 }
 
 bool HttpSession::BeginStream() {
+  // 进入 streaming 后该 TCP 连接不再解析 HTTP request；后续字节视为非法输入，
+  // 生命周期由媒体 client 和 TCP close callback 接管。
   processing_ = false;
   closing_ = true;
   streaming_ = true;
