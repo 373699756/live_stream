@@ -6,9 +6,7 @@
 #include "rtsp_session.h"
 
 #include <map>
-#include <mutex>
 #include <string>
-#include <vector>
 
 namespace live_stream {
 namespace rtsp_internal {
@@ -34,25 +32,10 @@ public:
     void Clear();
 
 private:
-    struct PeerAuthGrant {
-        std::string peer_ip;
-        StreamId stream_id = StreamId::kMain;
-        std::string user_name;
-        int64_t expires_at_ms = 0;
-    };
-
-    bool FindPeerGrant(const std::string &peer_ip,
-                       StreamId stream_id,
-                       std::string *user_name);
-    void RememberPeerGrant(const std::string &peer_ip,
-                           StreamId stream_id,
-                           const std::string &user_name);
     void SendChallenge(ConnectionId connection_id, const std::string &cseq);
 
     IAuth *auth_ = nullptr;
     IRtspAuthResponder *responder_ = nullptr;
-    std::mutex mutex_;
-    std::vector<PeerAuthGrant> peer_auth_grants_;
 };
 
 }  // namespace rtsp_internal

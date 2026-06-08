@@ -163,34 +163,50 @@ int main() {
         return 6;
     }
     const char* auth_header = "Authorization: Basic dmlld2VyOnBhc3M=\r\n";
-    if (!SendAndRead(fd, std::string("DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+    if (!SendAndRead(fd, std::string("DESCRIBE "
+                                     "rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
                                      "CSeq: 2\r\n") +
                              auth_header + "\r\n",
                      "application/sdp") ||
-        !SendAndRead(fd, std::string("SETUP rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                                     "CSeq: 3\r\n") +
-                             auth_header + "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n",
+        !SendAndRead(fd,
+                     "SETUP rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                     "CSeq: 3\r\n"
+                     "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n",
                      "interleaved=0-1") ||
-        !SendAndRead(fd, std::string("PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
-                                     "CSeq: 4\r\n") +
-                             auth_header + "\r\n",
+        !SendAndRead(fd,
+                     "PLAY rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                     "CSeq: 4\r\n\r\n",
                      "200 OK")) {
         close(fd);
         return 7;
     }
-    if (!media_source.DeliverFrame(MakeFrame())) {
+    int unauthenticated_fd = ConnectTcp(local.port);
+    if (unauthenticated_fd < 0) {
         close(fd);
         return 8;
+    }
+    if (!SendAndRead(unauthenticated_fd,
+                     "DESCRIBE rtsp://127.0.0.1/live/main RTSP/1.0\r\n"
+                     "CSeq: 5\r\n\r\n",
+                     "401 Unauthorized")) {
+        close(unauthenticated_fd);
+        close(fd);
+        return 9;
+    }
+    close(unauthenticated_fd);
+    if (!media_source.DeliverFrame(MakeFrame())) {
+        close(fd);
+        return 10;
     }
     char buffer[256];
     if (recv(fd, buffer, sizeof(buffer), 0) <= 0) {
         close(fd);
-        return 9;
+        return 11;
     }
     if (rtsp->GetStats().auth_failures == 0 ||
         rtsp->GetStats().tcp_interleaved_sessions == 0) {
         close(fd);
-        return 10;
+        return 12;
     }
 
     close(fd);
