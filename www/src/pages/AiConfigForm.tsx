@@ -82,7 +82,7 @@ export function AiConfigForm({
           </select>
         </span>
       </label>
-      <label className="form-field ai-config-path">
+      <label className="form-field">
         <span className="form-label">模型</span>
         <span className="form-control">
           <input
