@@ -92,10 +92,16 @@ private:
     NetEngineOptions options_;
     mutable std::mutex mutex_;
     mutable std::mutex stats_mutex_;
+    // loops_ 按 round-robin 分配 listener、UDP endpoint 和 timer。timer id 是全局
+    // 唯一的，CancelIoTimer() 才能跨 loop 安全取消。
     std::vector<std::shared_ptr<EventLoop>> loops_;
+    // servers_/udp_sockets_/connections_ 是 net 的资源所有权表；协议模块只保存 id，
+    // 不能保存内部对象指针。
     std::unordered_map<TcpServerId, std::shared_ptr<TcpServer>> servers_;
     std::unordered_map<UdpSocketId, std::shared_ptr<UdpEndpoint>> udp_sockets_;
     std::unordered_map<ConnectionId, std::shared_ptr<TcpSession>> connections_;
+    // 关闭诊断只保留最近一小段历史，用于 Web 排查慢客户端和超时原因；
+    // 不把它当作 session 生命周期来源。
     std::unordered_map<ConnectionId, NetConnectionDiagnostics>
         closed_connections_;
     std::deque<ConnectionId> closed_connection_order_;

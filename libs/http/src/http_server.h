@@ -30,8 +30,8 @@ public:
                                             const HttpRequest &request) = 0;
 };
 
-// Private HTTP server core. It owns TCP, HTTP/1.1 connection parsing,
-// executor selection, keep-alive, response sending, and streaming output.
+// HTTP server 内核只负责连接和 HTTP/1.1 生命周期。业务路由在 HttpImpl，
+// HLS/FLV/MJPEG/SSE 等长连接通过 HttpMediaWriter 回调进来。
 class HttpServer : public HttpMediaWriter {
 public:
     HttpServer(const HttpOptions &options,
@@ -101,12 +101,19 @@ private:
 
     HttpOptions options_;
     INetEngine *net_engine_ = nullptr;
+    // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。
     HttpRequestHandler *request_handler_ = nullptr;
+    // close_callback_ 由 http_media 注册，必须在锁外调用，避免 HTTP 锁和媒体锁
+    // 互相等待。
     HttpMediaCloseCallback close_callback_;
     mutable std::mutex mutex_;
+    // stream_executor_ 处理 /live、SSE、WHEP 等可能长时间占用的请求；
+    // control_executor_ 处理登录、配置、状态等短请求。
     std::unique_ptr<infra::Executor> stream_executor_;
     std::unique_ptr<infra::Executor> control_executor_;
     TcpServerId tcp_server_id_ = 0;
+    // sessions_ 是 HTTP 层唯一的连接状态表。进入 streaming 后仍保留 session，
+    // 但只用于断连回收媒体 client，不再解析 HTTP 请求。
     std::map<ConnectionId, std::unique_ptr<HttpSession>> sessions_;
     HttpStats stats_;
     bool initialized_ = false;

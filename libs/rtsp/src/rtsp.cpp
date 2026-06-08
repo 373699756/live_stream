@@ -408,6 +408,7 @@ private:
 
         if (split.status == RtspSplitterStatus::kPayloadTooLarge) {
             AddParseFailure();
+            // request 超过上限时不尝试返回部分响应，直接断开控制连接。
             (void)net_engine_->Close(connection_id);
             return;
         }
@@ -418,6 +419,8 @@ private:
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
                 AddParseFailure();
+                // 解析失败仍带一个兜底 CSeq，方便部分客户端把错误归到当前请求；
+                // 响应排队后关闭，避免继续处理错乱的控制连接。
                 SendResponse(connection_id, 400, "1", {}, "");
                 (void)net_engine_->CloseAfterSend(connection_id);
                 return;
@@ -654,6 +657,8 @@ private:
         MediaFrameReaderStartData start_data =
             media_source_->GetFrameReaderStartData(reader_id);
         if (!start_data.stream_running || !start_data.track.ready) {
+            // reader 创建成功但启动数据不可用，必须立刻 detach，避免空 reader
+            // 长期占用 media_source。
             media_source_->DetachFrameReader(
                 reader_id, MediaFrameReaderCloseReason::kDetached);
             MediaFrameReaderStartDataUnref(&start_data);
@@ -719,6 +724,7 @@ private:
                 reader_id = session->reader_id;
                 session->DetachReader();
             }
+            // timer 创建失败时不能继续保留 reader，否则没有 drain 消费帧队列。
             (void)media_source_->DetachFrameReader(
                 reader_id, MediaFrameReaderCloseReason::kDetached);
             return;
@@ -749,6 +755,8 @@ private:
                                                     &reader_frame)) {
                 break;
             }
+            // Pop 出来的 frame 带引用，发送路径只在本次调用内使用；
+            // SendMediaFrame 返回后必须 unref。
             SendMediaFrame(session, reader_frame.frame);
             MediaFrameReaderFrameUnref(&reader_frame);
         }
@@ -765,6 +773,8 @@ private:
                     return false;
                 }
                 if (!session->start_frames.empty()) {
+                    // Move 后 vector 中的原 frame 被置空，锁外发送可以缩短 RTSP mutex
+                    // 持有时间，避免发送慢客户端时阻塞其它控制请求。
                     (void)MediaFrameMove(&frame, &session->start_frames.front());
                     session->start_frames.erase(session->start_frames.begin());
                     has_frame = true;
@@ -790,6 +800,8 @@ private:
                           frame.codec == session->track.codec;
         }
         if (should_send) {
+            // SendFrame 内部会再次读取 transport 和统计字段；这里先过滤 stream/codec，
+            // 防止旧 reader 或错误码流的数据进入当前 session。
             rtp_sender_.SendFrame(session, frame.encoded_frame,
                                   RtpSenderContext());
         }
@@ -818,6 +830,8 @@ private:
             session->rtp_socket_id = 0;
             session->rtcp_socket_id = 0;
         }
+        // socket id 清零后再关闭 net endpoint，避免关闭回调里再次找到同一 session
+        // 并重复关闭相同 UDP socket。
         if (net_engine_ != nullptr) {
             if (rtp_socket_id != 0) {
                 (void)net_engine_->CloseUdp(rtp_socket_id);

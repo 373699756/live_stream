@@ -94,6 +94,8 @@ public:
         if (!CanApplyOptionsLocked(options)) {
             return false;
         }
+        // 只允许更新不会重建 socket/parser 边界的字段。端口、service_path、
+        // discovery 开关和消息上限必须重启后生效。
         options_.advertise_ip = options.advertise_ip;
         options_.enable_auth = options.enable_auth;
         options_.manufacturer = options.manufacturer;
@@ -134,6 +136,8 @@ private:
     }
 
     bool CanApplyOptionsLocked(const OnvifServerOptions &options) const {
+        // listener 和 parser 相关字段一旦启动就固定，避免配置落盘成功但当前
+        // ONVIF socket 仍运行在旧边界。
         return options.listen_ip == options_.listen_ip &&
                options.endpoint_uuid == options_.endpoint_uuid &&
                options.device_service_port ==
@@ -220,6 +224,7 @@ private:
         } else {
             action = onvif::ParseSoapAction(parsed.body);
             if (action == onvif::OnvifAction::kUnknown) {
+                // 未识别 action 仍返回 SOAP fault，保持 NVR 互通；统计为 parse failure。
                 IncrementParseFailures();
                 status = 400;
                 reason = "Bad Request";
@@ -331,6 +336,8 @@ private:
         if (!options_.advertise_ip.empty()) {
             return options_.advertise_ip;
         }
+        // listen_ip 为 0.0.0.0 时不能作为 XAddr 主机名，只能回退到本地默认值；
+        // 正式部署应由 app 配置 advertise_ip。
         if (!options_.listen_ip.empty() && options_.listen_ip != "0.0.0.0") {
             return options_.listen_ip;
         }

@@ -27,6 +27,8 @@ NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
     if (buffer == nullptr) {
         return NetBufferOwner{};
     }
+    // 把 HTTP 媒体 slice 的 VideoBuffer owner 转成 net 层 owner。net 入队时 ref，
+    // OutSlice 发送完成或丢弃时 unref。
     return NetBufferOwner{buffer, RefVideoBufferOwner,
                           UnrefVideoBufferOwner};
 }
@@ -236,6 +238,8 @@ void HttpServer::Stop() {
         (void)net_engine->CloseTcp(server_id);
     }
     if (net_engine != nullptr) {
+        // 主动关闭所有连接可以触发 net close path，但 sessions_ 已经在上面摘除，
+        // 所以 OnClose() 不会重复 detach media client。
         for (ConnectionId connection_id : connection_ids) {
             (void)net_engine->Close(connection_id);
         }
@@ -346,6 +350,8 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
     bool slices_ok = slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
                                 header.size());
     for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
+        // 带 owner 的 body slice 不复制；无 owner 的小块会在 tcp_session 中复制到
+        // inline/heap out buffer。
         slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
                                VideoBufferNetOwner(body_slices[i].owner));
     }
@@ -379,6 +385,8 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
 bool HttpServer::BeginStream(ConnectionId connection_id) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto iter = sessions_.find(connection_id);
+    // BeginStream 是普通 HTTP request 到媒体长连接的单向状态迁移；
+    // 失败通常说明连接已经被关闭或已进入 streaming。
     return iter != sessions_.end() && iter->second != nullptr &&
            iter->second->BeginStream();
 }
@@ -418,6 +426,8 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         if (slices[i].size == 0) {
             continue;
         }
+        // FLV/MJPEG 媒体 payload 带 VideoBuffer owner，HTTP header/边界字符串
+        // 不带 owner 并由 net 层复制。
         if (!net_slices.Add(slices[i].data, slices[i].size,
                             VideoBufferNetOwner(slices[i].owner))) {
             return false;
@@ -613,6 +623,7 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
 
     if (!parsed.success) {
         IncrementParseFailures();
+        // HTTP parser 失败后只发送短错误响应并关闭，不把半包继续留在 session。
         SendResponse(connection_id, ParseFailureResponse(parsed.failure),
                      true);
         return;
@@ -679,6 +690,7 @@ void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
     LogRequests(request_logs);
     if (!parsed.success) {
         IncrementParseFailures();
+        // keep-alive 后续管线请求解析失败，同样结束该 TCP 连接，避免请求边界错乱。
         SendResponse(connection_id, ParseFailureResponse(parsed.failure),
                      true);
         return;

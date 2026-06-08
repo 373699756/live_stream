@@ -49,6 +49,8 @@ std::string UnavailableUriFault(uint32_t *status, std::string *reason) {
 void AppendProfile(std::string *body,
                    StreamId stream_id,
                    const char *name) {
+    // Profile token 使用 main/sub 的稳定值，和 GetStreamUri/GetSnapshotUri 的
+    // ProfileToken 解析保持一致。
     *body += "<trt:Profiles token=\"";
     *body += StreamToken(stream_id);
     *body += "\"><tt:Name>";
@@ -116,6 +118,7 @@ bool ParseProfileToken(const std::string &body, StreamId *stream_id) {
 
 std::string BuildProfilesBody(const OnvifMediaUris &media_uris) {
     std::string body = "<trt:GetProfilesResponse>";
+    // 只发布有 RTSP URI 的 profile，避免 NVR 选择一个当前不可播放的码流。
     if (!media_uris.stream_main.empty()) {
         AppendProfile(&body, StreamId::kMain, "MainStream");
     }
@@ -142,6 +145,7 @@ OnvifBody BuildStreamUriBody(const OnvifMediaUris &media_uris,
                              std::string *reason) {
     const std::string &uri = StreamUriForId(media_uris, stream_id);
     if (uri.empty()) {
+        // stream 不可用时返回 SOAP fault，而不是拼空 URI，避免 NVR 缓存坏地址。
         return OnvifBody{UnavailableUriFault(status, reason), false};
     }
     return OnvifBody{
@@ -159,6 +163,8 @@ OnvifBody BuildSnapshotUriBody(const OnvifMediaUris &media_uris,
                                std::string *reason) {
     const std::string &uri = SnapshotUriForId(media_uris, stream_id);
     if (uri.empty()) {
+        // snapshot URI 目前按 HTTP 固定路径生成，理论上不应为空；保留 fault 分支
+        // 让调用方能用统一错误处理。
         return OnvifBody{UnavailableUriFault(status, reason), false};
     }
     return OnvifBody{

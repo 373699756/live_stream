@@ -61,6 +61,8 @@ void EventLoop::Stop() {
         if (!running_ && !thread_.joinable()) {
             return;
         }
+        // Stop() 可能从 IO 线程自己的回调里触发，此时不能 join 自己；
+        // 只设置 stopping_ 并通过 wakeup_ 让 Run() 尽快退出。
         stopping_ = true;
         should_join =
             thread_.joinable() && thread_.get_id() != std::this_thread::get_id();
@@ -113,6 +115,8 @@ bool EventLoop::ModifyFd(int fd, uint32_t events) {
     if (it == handlers_.end()) {
         return false;
     }
+    // 调用方只传业务关心的事件；EPOLLERR/EPOLLHUP 始终保留，
+    // 让 TcpSession 能统一走 close path。
     epoll_event event{};
     event.events = events | EPOLLERR | EPOLLHUP;
     event.data.fd = fd;
@@ -128,6 +132,8 @@ void EventLoop::RemoveFd(int fd) {
     if (epoll_fd_.valid() && fd >= 0) {
         epoll_ctl(epoll_fd_.get(), EPOLL_CTL_DEL, fd, nullptr);
     }
+    // fd 从 handlers_ 删除后，即使 epoll 已经返回旧事件，FindHandler() 也会拿不到
+    // 回调，从而避免关闭后的 fd 被再次处理。
     handlers_.erase(fd);
 }
 
@@ -224,6 +230,8 @@ void EventLoop::RearmTimerLocked() {
     }
     itimerspec spec{};
     if (!timers_.empty()) {
+        // timers_ 按 id 存储，不按 deadline 排序，因此重设 timerfd 前必须扫描
+        // 最近 deadline。timer 数量由协议连接和 session 数限制，线性扫描足够直接。
         const int64_t now = infra::Time::MonotonicMillis();
         int64_t next_ms = timers_.begin()->second->deadline_ms;
         for (const auto &entry : timers_) {
@@ -320,6 +328,8 @@ bool EventLoop::ShouldStop() const {
 std::function<void(uint32_t)> EventLoop::FindHandler(int fd) {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = handlers_.find(fd);
+    // 返回 std::function 副本，在锁外执行实际 handler。handler 可以安全调用
+    // RemoveFd()/ModifyFd()/Post()，不会和 EventLoop mutex 自锁。
     return it == handlers_.end() ? nullptr : it->second.callback;
 }
 

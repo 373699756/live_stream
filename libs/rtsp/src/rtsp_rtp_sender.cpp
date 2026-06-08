@@ -102,6 +102,8 @@ bool RtspRtpSender::SendRtpPacketView(
   RtspTransportTarget target;
   {
     std::lock_guard<std::mutex> lock(*context.mutex);
+    // 发送前复制 transport 快照，避免持锁调用 net。SETUP/TEARDOWN 同时发生时，
+    // 发送失败会走统一关闭路径。
     target.mode = session->transport;
     target.connection_id = session->connection_id;
     target.udp_socket_id = session->rtp_socket_id;
@@ -136,6 +138,7 @@ bool RtspRtpSender::SendRtpPacketView(
 
   {
     std::lock_guard<std::mutex> lock(*context.mutex);
+    // pending_bytes 只对 TCP interleaved 有意义；UDP 下 net 返回 0 或当前诊断值。
     ++session->stats.sent_rtp_packets;
     session->stats.sent_rtp_bytes += packet_size;
     session->stats.pending_bytes =

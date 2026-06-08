@@ -99,6 +99,8 @@ std::string BuildSoapFaultEnvelope(const std::string &reason) {
 }
 
 OnvifAction ParseSoapAction(const std::string &body) {
+    // 当前只匹配已支持 action 的标签名；ONVIF namespace 前缀不固定，
+    // 所以不按完整限定名判断。
     if (Contains(body, "GetDeviceInformation")) {
         return OnvifAction::kGetDeviceInformation;
     }
@@ -175,6 +177,7 @@ bool ExtractInt64Tag(const std::string &text,
     if (!ExtractXmlTagText(text, local_name, &raw)) {
         return false;
     }
+    // 只接受纯整数字段；带单位、空白尾巴或嵌套 XML 都视为无效输入。
     char *parse_end = nullptr;
     const long long parsed = std::strtoll(raw.c_str(), &parse_end, 10);
     if (parse_end == raw.c_str() || *parse_end != '\0') {

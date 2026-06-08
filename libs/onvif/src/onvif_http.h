@@ -8,6 +8,8 @@ namespace live_stream {
 namespace onvif {
 
 struct OnvifHttpRequest {
+    // ONVIF 只使用 device service 的 POST + SOAP body。headers 保留原始块，
+    // 供 Basic auth 按大小写不敏感方式查找 Authorization。
     std::string method;
     std::string path;
     std::string headers;

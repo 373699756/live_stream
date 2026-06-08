@@ -180,6 +180,7 @@ void TcpServer::AcceptLoop() {
         }
         UniqueFd accepted(fd);
         if (!engine_->CanAccept(options_.max_connections)) {
+            // 超过协议配置的连接上限时直接丢弃 accepted fd；UniqueFd 析构会关闭它。
             engine_->AddRejected();
             continue;
         }
@@ -203,6 +204,8 @@ void TcpServer::AcceptLoop() {
             engine_->AddRejected();
             continue;
         }
+        // Start() 先把 fd 加入 IO loop，再注册到 engine 连接表。这样 on_read/on_close
+        // 回调到达时，协议层已经能通过 connection id 查询诊断。
         engine_->RegisterConnection(connection);
         engine_->AddAccepted();
         engine_->DispatchAccept(callbacks_, id, connection->peer());

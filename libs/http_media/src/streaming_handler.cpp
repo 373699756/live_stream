@@ -126,6 +126,7 @@ public:
         slices[0].size = frame_header.size();
         slices[1].data = payload;
         slices[1].size = frame.size;
+        // JPEG payload 不复制进 HTTP 层；owner 保证异步发送期间 frame.buffer 存活。
         slices[1].owner = frame.buffer;
         slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
         slices[2].size = 2;
@@ -187,6 +188,9 @@ public:
         if (request.method != HttpMethod::kGet) {
             return false;
         }
+        // 只有真正需要直接占用 TCP 连接的入口走 streaming path。
+        // HLS playlist 仍是普通 HTTP handler，segment 走 streaming 是为了复用
+        // SendResponseSlices 的 media buffer owner 发送能力。
         if (request.path == kEventStreamPath) {
             return true;
         }
@@ -203,6 +207,8 @@ public:
 
     void HandleStreamingRequest(ConnectionId connection_id,
                                 const HttpRequest &request) override {
+        // 分发顺序先匹配最明确的 SSE/HLS/MJPEG，最后才按 FLV 处理；
+        // 这样非法 /live/... 路径不会被误当成 FLV。
         if (request.path == kEventStreamPath) {
             HandleEventStreamRequest(connection_id, request);
             return;
@@ -273,6 +279,8 @@ private:
                     return;
                 }
                 const std::string message = BuildEventStreamMessage(event);
+                // SSE 推送失败说明 TCP 队列关闭或客户端过慢，直接关连接，
+                // 后续 HTTP close callback 会取消订阅。
                 if (!writer->EnqueueStreamingChunk(
                         connection_id,
                         reinterpret_cast<const uint8_t *>(message.data()),
@@ -394,6 +402,8 @@ private:
         response.status_code = 200;
         response.headers["Content-Type"] = "video/mp2t";
         HttpMediaSlice body_slice;
+        // body_slice.owner 是 segment.body，自身带 ref 计数。SendResponseSlices
+        // 入队后 net 会再 ref，随后本函数可以安全 unref 本地 segment。
         body_slice.data = segment.body->data;
         body_slice.size = segment.body->size;
         body_slice.owner = segment.body;
@@ -501,6 +511,8 @@ private:
         if (!HasUsableFlvStartData(start_data)) {
             const bool keyframe_requested =
                 RequestBrowserKeyFrame(media_source, stream_id);
+            // start data 不完整时不创建 FLV client，只请求关键帧让 media_source 尽快
+            // 生成新的 sequence header/GOP，客户端需要重新发起请求。
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=start_data codec=%s running=%d flv_ready=%d "
@@ -529,6 +541,7 @@ private:
         const HttpFlvSessionStartStatus start_status =
             stream->Start(start_data, &cached_flv_bytes);
         if (start_status != HttpFlvSessionStartStatus::kStarted) {
+            // Start() 失败时 stream 尚未 attach 到 media_source，调用方仍拥有对象。
             delete stream;
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=%s",
@@ -552,6 +565,7 @@ private:
             stream_id, start_data.config_generation, wait_for_keyframe,
             stream);
         if (client_id == 0) {
+            // attach 失败后 media_source 不会接管 stream 生命周期，必须在这里删除。
             delete stream;
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=attach",
@@ -569,6 +583,7 @@ private:
         // 不能靠浏览器主动关闭请求来释放媒体 fanout。
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_flv_source->DetachFlvClient(client_id);
+            // DetachFlvClient 会释放 attach 时交给 media_source 的 HttpFlvSession。
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
@@ -697,6 +712,7 @@ private:
         const MediaMjpegClientId client_id =
             media_mjpeg_source_->AttachMjpegClient(stream_id, sink);
         if (client_id == 0) {
+            // attach 失败时 sink 仍归当前函数所有。
             delete sink;
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=attach",

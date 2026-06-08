@@ -24,6 +24,8 @@ bool HttpRequestSplitter::Append(const uint8_t *data, uint32_t size) {
   if (data == nullptr) {
     return false;
   }
+  // recv_buffer_ 允许包含多个 pipeline request，也允许只包含半包；
+  // 大小上限在 SplitNext() 中统一按 header+body 边界判断。
   recv_buffer_.append(reinterpret_cast<const char *>(data), size);
   return true;
 }
@@ -47,6 +49,7 @@ HttpRequestSplitResult HttpRequestSplitter::SplitNext(
     return result;
   }
   if (recv_buffer_.size() > max_buffer_size) {
+    // 请求头还没完整时也要受总上限约束，避免恶意客户端一直发无结束符头部。
     result.status = HttpRequestSplitStatus::kPayloadTooLarge;
     return result;
   }
@@ -66,6 +69,8 @@ HttpRequestSplitResult HttpRequestSplitter::SplitNext(
   }
 
   recv_buffer_.erase(0, parsed.consumed_bytes);
+  // erase 后剩余字节可能已经是下一个 pipeline request 的开头，
+  // HttpSession 会按 max_pipelined_requests 控制本轮继续解析多少个。
   result.request = std::move(parsed.request);
   result.keep_alive = parsed.keep_alive;
   return result;

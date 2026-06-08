@@ -121,6 +121,8 @@ void UdpEndpoint::Stop() {
     if (loop_ && fd_.valid()) {
         loop_->RemoveFd(fd_.get());
     }
+    // UDP endpoint 没有连接级 close callback；上层协议必须在 CloseUdp() 前清理
+    // 自己保存的 session/transport 状态。
     fd_.Reset();
 }
 
@@ -241,6 +243,8 @@ void UdpEndpoint::HandleRead() {
                                    reinterpret_cast<sockaddr *>(&peer), &peer_len);
         if (n > 0) {
             engine_->AddUdpRx();
+            // buffer 是栈内存。DispatchUdp() 在 executor 模式下会复制；直接回调模式
+            // 要求上层当场消费，不得保存指针。
             engine_->DispatchUdp(callbacks_, id_, FromSockAddr(peer), buffer,
                                  static_cast<size_t>(n));
             continue;

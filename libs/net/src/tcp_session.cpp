@@ -22,6 +22,7 @@ constexpr uint32_t kDefaultManagerTickMs = 1000;
 
 void RefNetBufferOwner(const NetBufferOwner &owner) {
     if (owner.ptr != nullptr && owner.ref != nullptr) {
+        // owner 可能是 VideoBuffer。这里统一走协议无关的 ref 回调。
         owner.ref(owner.ptr);
     }
 }

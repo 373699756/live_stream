@@ -22,6 +22,7 @@ enum class OnvifAction {
 };
 
 struct OnvifBody {
+    // body 是 SOAP Body 内部片段，不包含 Envelope；success 用于统计成功 URI 请求。
     std::string body;
     bool success = false;
 };

@@ -74,11 +74,15 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
     if (writer == nullptr || data == nullptr || size < kFlvTagHeaderSize) {
         return writer != nullptr;
     }
+    // FLV tag header 中 timestamp 分散在 4/5/6/7 字节。只复制 header 并重写
+    // timestamp，tag body 仍直接引用原输入，减少热路径复制。
     uint8_t header[kFlvTagHeaderSize];
     std::memcpy(header, data, sizeof(header));
     WriteFlvTimestampMs(timestamp_ms, header);
 
     HttpMediaSlice slices[2];
+    // data 指向 start/sequence 这类 session 内字符串或栈上 header，未带 owner；
+    // HTTP/net 入队时会复制这些小块。
     slices[0].data = header;
     slices[0].size = sizeof(header);
     slices[1].data = data + sizeof(header);
@@ -138,6 +142,8 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
         return writer != nullptr;
     }
 
+    // cached GOP 的 header 和媒体 payload 可能已经拆成不同内存块；这里保持原分片
+    // 输出，只在第一个 header slice 上替换 rebased timestamp。
     size_t index = 0;
     while (index < tag.slice_count) {
         HttpMediaSlice slices[kMaxNetBufferSlices];
@@ -160,6 +166,8 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
                 if (tag.frame.buffer == nullptr) {
                     return false;
                 }
+                // cached GOP 的媒体 payload 仍在 tag.frame.buffer 中；owner 让
+                // net send queue 在异步写 socket 期间持有该 VideoBuffer。
                 slices[slice_count].owner = tag.frame.buffer;
             }
             ++slice_count;
@@ -195,6 +203,8 @@ const char *HttpFlvSessionStartStatusName(
 
 bool HttpFlvSessionStartNeedsClose(
     HttpFlvSessionStartStatus status) {
+    // kNoSession 表示 HTTP session 已不存在，调用方无需再 CloseConnection；
+    // 其他启动中失败都可能已经发出部分 FLV 响应，需要主动关闭连接。
     return status != HttpFlvSessionStartStatus::kStarted &&
            status != HttpFlvSessionStartStatus::kNoSession;
 }
@@ -269,6 +279,7 @@ bool HttpFlvSession::OnFlvChunk(const uint8_t *data, size_t size) {
 
     uint32_t body_size = 0;
     if (!IsCompleteFlvVideoTag(data, size, &body_size)) {
+        // file header、metadata 或非完整视频 tag 不做时间戳重写，直接按原始块发送。
         return writer_->EnqueueStreamingChunk(connection_id_, data, size);
     }
 
@@ -290,6 +301,8 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
     }
     const uint32_t rebased_ms = RebaseTimestamp(tag.timestamp_ms, true);
 
+    // live video tag 的第一个 slice 必须是 FLV header，后续 slice 可以引用媒体帧。
+    // header 放栈上即可，因为 net 对无 owner slice 会复制。
     uint8_t header[kMaxMediaFlvHeaderSliceBytes] = {};
     if (tag.slices[0].data == nullptr ||
         tag.slices[0].size > sizeof(header)) {
@@ -298,6 +311,8 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
     std::memcpy(header, tag.slices[0].data, tag.slices[0].size);
     WriteFlvTimestampMs(rebased_ms, header);
 
+    // header 是本函数栈内小数组，net 会复制；后续 media_payload slice
+    // 通过 frame.buffer owner 零拷贝排入发送队列。
     return EnqueueFlvVideoTagSlices(writer_, connection_id_, tag, frame,
                                     header);
 }
@@ -309,6 +324,8 @@ bool HttpFlvSession::OnCachedFlvVideoTag(
     }
     const uint32_t rebased_ms = RebaseTimestamp(tag.timestamp_ms, true);
 
+    // cached tag 的第一个 slice 必须来自缓存 header，不能是 media_payload；
+    // 否则无法安全重写 timestamp。
     uint8_t header[kMaxMediaFlvHeaderSliceBytes] = {};
     if (tag.slices[0].media_payload ||
         tag.slices[0].size > sizeof(header)) {

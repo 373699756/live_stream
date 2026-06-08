@@ -96,6 +96,8 @@ bool HttpSession::TakeNextRequest(PendingHttpRequest *pending) {
   if (pending == nullptr || processing_ || pending_requests_.empty()) {
     return false;
   }
+  // processing_ 从这里置位，到普通响应完成或 BeginStream() 时释放。
+  // 这保证同一连接上不会并行执行两个 handler。
   *pending = std::move(pending_requests_.front());
   pending_requests_.pop_front();
   processing_ = true;
@@ -127,6 +129,8 @@ bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
       client.id == 0) {
     return false;
   }
+  // 同一个 HTTP streaming session 只绑定一个媒体 client。切换协议应先关闭
+  // 原连接，而不是在一个 TCP session 中替换 client。
   media_client_ = client;
   return true;
 }
@@ -158,6 +162,7 @@ bool HttpSession::ExpireTimeout(uint64_t generation) {
   if (timeout_generation_ != generation || timer_id_ == 0) {
     return false;
   }
+  // 只有当前 generation 的 timer 才能消费 timer_id_ 并触发关闭。
   timer_id_ = 0;
   return true;
 }

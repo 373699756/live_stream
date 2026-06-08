@@ -14,6 +14,8 @@ class IRtspRequestHandlerDelegate {
  public:
   virtual ~IRtspRequestHandlerDelegate() = default;
 
+  // Delegate 负责所有跨模块动作：媒体状态、认证、transport、reader 和网络发送。
+  // RtspRequestHandler 只解析 RTSP 方法并维护协议状态码。
   virtual bool IsRtspStreamAvailable(StreamId stream_id) const = 0;
   virtual MediaTrack RtspTrackForStream(StreamId stream_id) const = 0;
   virtual bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession> &session,
@@ -40,6 +42,7 @@ class RtspRequestHandler {
                      const rtsp_internal::RtspRequest &request);
 
  private:
+  // SendResponse 保留 CSeq，符合 RTSP 客户端用 CSeq 匹配异步响应的习惯。
   void SendResponse(ConnectionId connection_id, int status,
                     const rtsp_internal::RtspRequest &request,
                     const std::map<std::string, std::string> &headers,

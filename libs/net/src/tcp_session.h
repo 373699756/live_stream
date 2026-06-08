@@ -36,6 +36,8 @@ public:
 private:
     static constexpr size_t kInlineSliceBytes = 64;
 
+    // OutSlice 是写队列里的最小发送单元。data 只允许指向三类稳定内存：
+    // inline_data、heap_data，或由 owner ref 住的外部媒体 buffer。
     struct OutSlice {
         OutSlice() = default;
         OutSlice(OutSlice&& other) noexcept;
@@ -52,6 +54,8 @@ private:
         std::unique_ptr<uint8_t[]> heap_data;
     };
 
+    // OutBuffer 对应一次 SendSlices() 调用。current_slice/offset 记录短写进度，
+    // enqueue_ms 用于 send stall 检测，size 计入 pending_bytes_。
     struct OutBuffer {
         std::array<OutSlice, kMaxNetBufferSlices> slices{};
         size_t slice_count = 0;
@@ -83,13 +87,21 @@ private:
     NetAddress local_;
     NetAddress peer_;
     mutable std::mutex mutex_;
+    // send_queue_ 只能由 IO loop 写出，但 SendSlices()/Diagnostics() 可能来自
+    // 协议线程，因此队列和 pending_bytes_ 都由 mutex_ 保护。
     std::deque<OutBuffer> send_queue_;
+    // pending_bytes_ 是 net 对慢客户端的统一背压指标，上层协议不应再维护
+    // 独立 socket 写队列。
     uint32_t pending_bytes_ = 0;
+    // manager timer 周期检查 read/write/stall timeout。CloseInLoop() 会先取消它，
+    // 避免 session 已关闭后还有 timer 回调访问状态。
     NetTimerId manager_timer_id_ = 0;
     int64_t last_read_ms_ = 0;
     int64_t last_write_progress_ms_ = 0;
     TcpCloseReason close_reason_ = TcpCloseReason::kNormal;
     bool closed_ = false;
+    // close_after_send_ 表示“排空当前队列后关闭”，用于 HTTP/RTSP 短响应；
+    // 设置后不再接收新的 SendSlices()。
     bool close_after_send_ = false;
 };
 
