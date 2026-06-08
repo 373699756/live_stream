@@ -12,7 +12,7 @@ import { useVideoConfig } from '../hooks/useVideoConfig';
 import { VideoStreamForm } from './VideoStreamForm';
 
 export function VideoConfigPage() {
-  const [active, setActive] = useState<StreamName>('sub');
+  const [active, setActive] = useState<StreamName>('main');
   const {
     config,
     setConfig,

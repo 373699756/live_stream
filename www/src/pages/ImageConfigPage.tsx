@@ -11,7 +11,7 @@ import { ImagePrimarySettings } from './ImagePrimarySettings';
 type ImageRecordSection = 'exposure' | 'white_balance' | 'enhancement' | 'backlight';
 
 export function ImageConfigPage() {
-  const [previewStream, setPreviewStream] = useState<StreamName>('sub');
+  const [previewStream, setPreviewStream] = useState<StreamName>('main');
   const {
     config,
     setConfig,
@@ -47,7 +47,7 @@ export function ImageConfigPage() {
   const updateStrategyEnabled = (enabled: boolean) => {
     setConfig({
       ...config,
-      strategy: { enabled, mode: config.strategy?.mode || 'balanced' },
+      strategy: { enabled, mode: config.strategy?.mode || 'low_noise' },
     });
   };
   const strategyEnabled = config.strategy?.enabled ?? true;

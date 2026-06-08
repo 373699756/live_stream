@@ -138,7 +138,9 @@ stream runtime and peer diagnostics rather than frontend inference.
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,
 AE maximum exposure time, DRC backlight strength, color/black-white mode, and
-the automatic strategy modes `balanced`, `low_noise`, and `detail`.
+the automatic strategy modes `balanced`, `low_noise`, and `detail`. The default
+image strategy is `low_noise`, with 30 fps preview defaults and conservative
+sharpening to reduce point-like sensor noise.
 
 AI is an optional device capability and is disabled by default. The current Web
 alarm surface is the AI alert image waterfall backed by `/api/ai/alerts`; it is

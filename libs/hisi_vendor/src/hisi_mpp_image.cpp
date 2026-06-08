@@ -73,6 +73,10 @@ bool ParseExposureTimeUs(const std::string& value, uint32_t* exposure_us) {
         *exposure_us = 40000;
         return true;
     }
+    if (value == "1/30") {
+        *exposure_us = 33333;
+        return true;
+    }
     if (value == "1/50") {
         *exposure_us = 20000;
         return true;

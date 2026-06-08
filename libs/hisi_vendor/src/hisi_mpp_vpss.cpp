@@ -44,7 +44,10 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     grp_attr.u32MaxH = sensor_profile.input_height;
     grp_attr.enPixelFormat = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     grp_attr.enDynamicRange = DYNAMIC_RANGE_SDR8;
-    grp_attr.bNrEn = HI_FALSE;
+    grp_attr.bNrEn = HI_TRUE;
+    grp_attr.stNrAttr.enNrType = VPSS_NR_TYPE_VIDEO;
+    grp_attr.stNrAttr.enNrMotionMode = NR_MOTION_MODE_NORMAL;
+    grp_attr.stNrAttr.enCompressMode = COMPRESS_MODE_FRAME;
     grp_attr.stFrameRate.s32SrcFrameRate =
         config.main_stream.frame_rate.source_fps;
     grp_attr.stFrameRate.s32DstFrameRate =

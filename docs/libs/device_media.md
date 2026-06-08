@@ -58,6 +58,9 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 | `image.white_balance` / `image.enhancement` | white balance、denoise、gamma、defog | ISP 图像增强 |
 | `image.backlight` / `image.orientation` / `image.color_mode` / `image.strategy` | 背光、镜像翻转、彩黑模式、自动图像策略 | 运行时图像策略和状态展示 |
 
+默认视频配置面向清晰预览：主码流为 1080P/30fps，子码流为 720P/30fps。默认图像策略为
+`low_noise`，配合较低锐度和较高 2D/3D 降噪，避免 ISP 手动锐化放大点状噪声。
+
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和
 `www/README.md`。保存成功不能只代表 JSON 写入成功，还必须代表配置已经通过本模块
 validate/apply。

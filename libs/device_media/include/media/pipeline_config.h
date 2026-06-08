@@ -45,10 +45,10 @@ struct MediaPipelineConfig {
     VideoStreamConfig sub_stream{StreamId::kSub,
                                  true,
                                  VideoCodec::kH264,
-                                 VideoSize{640, 360},
+                                 VideoSize{1280, 720},
                                  FrameRate{30, 30},
-                                 768,
-                                 30,
+                                 2048,
+                                 60,
                                  RateControlMode::kCbr,
                                  GopMode::kNormalP};
 };

@@ -55,17 +55,18 @@ ImageCapabilities DefaultImage() {
         Range("brightness", 0, 100, 50),
         Range("contrast", 0, 100, 50),
         Range("saturation", 0, 100, 52),
-        Range("sharpness", 0, 100, 42),
+        Range("sharpness", 0, 100, 32),
         Range("hue", 0, 100, 50),
     };
     img.exposure_options = {
         Options("mode", {"auto", "manual"}, "auto"),
         Options("anti_flicker", {"50hz", "60hz", "off"}, "50hz"),
         Options("exposure_time",
-                {"auto", "1/12", "1/25", "1/50", "1/100", "1/250"},
+                {"auto", "1/12", "1/25", "1/30", "1/50", "1/100",
+                 "1/250"},
                 "auto"),
-        Options("max_exposure_time", {"1/12", "1/25", "1/50", "1/100",
-                                      "1/250"}, "1/25"),
+        Options("max_exposure_time", {"1/12", "1/25", "1/30", "1/50",
+                                      "1/100", "1/250"}, "1/30"),
         Options("gain", {"auto", "low", "medium", "high"}, "auto"),
         Options("slow_shutter", {"false", "true"}, "false"),
     };
@@ -83,8 +84,8 @@ ImageCapabilities DefaultImage() {
         Options("defog", {"false", "true"}, "false"),
     };
     img.enhancement_ranges = {
-        Range("denoise_2d", 0, 100, 60),
-        Range("denoise_3d", 0, 100, 52),
+        Range("denoise_2d", 0, 100, 68),
+        Range("denoise_3d", 0, 100, 62),
         Range("gamma", 0, 100, 50),
     };
     img.backlight_options = {
@@ -126,7 +127,7 @@ MediaCapabilities StubCapabilities() {
     sub.codecs = main.codecs;
     sub.resolutions = {{1280, 720}, {704, 576}, {640, 360}, {352, 288}};
     sub.frame_rate = {1, 30};
-    sub.bitrate = {64, 2048};
+    sub.bitrate = {64, 4096};
     sub.rate_control_modes = main.rate_control_modes;
     sub.gop = {1, 120};
     sub.smart_codec_supported = true;

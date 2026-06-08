@@ -12,13 +12,13 @@ function normalizeImageConfig(config: ImageConfig): ImageConfig {
     color_mode: { ...config.color_mode },
     strategy: config.strategy
       ? { ...config.strategy }
-      : { enabled: true, mode: 'balanced' },
+      : { enabled: true, mode: 'low_noise' },
   };
   if (!next.color_mode.mode) {
     next.color_mode.mode = 'color';
   }
   if (!next.strategy?.mode) {
-    next.strategy = { enabled: next.strategy?.enabled ?? true, mode: 'balanced' };
+    next.strategy = { enabled: next.strategy?.enabled ?? true, mode: 'low_noise' };
   }
   return next;
 }

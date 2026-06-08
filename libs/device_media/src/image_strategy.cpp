@@ -15,9 +15,9 @@ constexpr int32_t kControlMax = 100;
 
 struct ImageStrategyControls {
     int32_t saturation = 52;
-    int32_t sharpness = 42;
-    int32_t denoise_2d = 60;
-    int32_t denoise_3d = 52;
+    int32_t sharpness = 32;
+    int32_t denoise_2d = 68;
+    int32_t denoise_3d = 62;
     int32_t gamma = 50;
 };
 
@@ -157,9 +157,9 @@ ImageStrategyControls SmoothImageStrategyControls(
 std::string ImageStrategyMode(const ConfigJson &image_config) {
     const auto strategy = image_config.find("strategy");
     if (strategy == image_config.end() || !strategy->is_object()) {
-        return "balanced";
+        return "low_noise";
     }
-    return strategy->value("mode", std::string("balanced"));
+    return strategy->value("mode", std::string("low_noise"));
 }
 
 }  // namespace

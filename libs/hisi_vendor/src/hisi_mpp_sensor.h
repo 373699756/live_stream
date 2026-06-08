@@ -315,6 +315,8 @@ inline SensorProfile MakeSelectedSensorProfile() {
     return MakeImx4582m90FpsProfile();
 #elif SENSOR0_TYPE == SONY_IMX458_MIPI_1M_129FPS_10BIT
     return MakeImx4581m129FpsProfile();
+#elif SENSOR0_TYPE == SONY_IMX290_MIPI_2M_30FPS_12BIT
+    return MakeImx290Profile();
 #elif SENSOR0_TYPE == SONY_IMX290_MIPI_2M_30FPS_10BIT_WDR2TO1
     return MakeImx290WdrProfile();
 #else

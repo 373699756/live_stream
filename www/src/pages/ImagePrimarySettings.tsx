@@ -65,9 +65,9 @@ export function ImagePrimarySettings({
         label="策略模式"
         capability={{
           values: ['balanced', 'low_noise', 'detail'],
-          default: 'balanced',
+          default: 'low_noise',
         }}
-        value={config.strategy?.mode || 'balanced'}
+        value={config.strategy?.mode || 'low_noise'}
         onChange={onStrategyModeChange}
       />
       <div className="strategy-status image-status-strip">

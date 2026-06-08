@@ -640,7 +640,7 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
 
     if (value.contains("strategy") && value.at("strategy").is_object()) {
         const ConfigJson &strategy = value.at("strategy");
-        const std::string mode = strategy.value("mode", "balanced");
+        const std::string mode = strategy.value("mode", "low_noise");
         if (mode != "balanced" && mode != "low_noise" && mode != "detail") {
             return ConfigResult::Failure("strategy.mode", "unsupported value");
         }

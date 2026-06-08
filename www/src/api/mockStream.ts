@@ -47,7 +47,7 @@ export const mockMediaStreams: MediaStreamRuntime[] = [
     last_dts: 63822704000,
     last_reset_reason: '',
     resolution: '1920x1080',
-    fps: 25,
+    fps: 30,
     bitrate_kbps: 12288,
   },
   {
@@ -67,14 +67,14 @@ export const mockMediaStreams: MediaStreamRuntime[] = [
     webrtc_ready: true,
     reader_count: 1,
     client_count: 1,
-    cached_frames: 30,
-    cached_bytes: 184320,
+    cached_frames: 60,
+    cached_bytes: 491520,
     hls_bytes: 524288,
     last_dts: 63822704200,
     last_reset_reason: '',
-    resolution: '640x360',
-    fps: 15,
-    bitrate_kbps: 768,
+    resolution: '1280x720',
+    fps: 30,
+    bitrate_kbps: 2048,
   },
 ];
 

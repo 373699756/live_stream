@@ -5,21 +5,21 @@
         "enabled": true,
         "codec": "h264",
         "resolution": "1920x1080",
-        "fps": 25,
+        "fps": 30,
         "bitrate_kbps": 12288,
         "rate_control": "cbr",
-        "gop": 50,
+        "gop": 60,
         "gop_mode": "normal_p",
         "smart_codec": false
       },
       "sub": {
         "enabled": true,
         "codec": "h264",
-        "resolution": "640x360",
-        "fps": 15,
-        "bitrate_kbps": 768,
+        "resolution": "1280x720",
+        "fps": 30,
+        "bitrate_kbps": 2048,
         "rate_control": "cbr",
-        "gop": 30,
+        "gop": 60,
         "gop_mode": "normal_p",
         "smart_codec": false
       }
@@ -42,7 +42,7 @@
       "brightness": 50,
       "contrast": 50,
       "saturation": 52,
-      "sharpness": 42,
+      "sharpness": 32,
       "hue": 50
     },
     "exposure": {
@@ -52,7 +52,7 @@
       "gain": "auto",
       "compensation": 50,
       "slow_shutter": false,
-      "max_exposure_time": "1/25"
+      "max_exposure_time": "1/30"
     },
     "white_balance": {
       "mode": "auto",
@@ -60,8 +60,8 @@
       "blue_gain": 45
     },
     "enhancement": {
-      "denoise_2d": 60,
-      "denoise_3d": 52,
+      "denoise_2d": 68,
+      "denoise_3d": 62,
       "gamma": 50,
       "defog": false
     },
@@ -78,7 +78,7 @@
     },
     "strategy": {
       "enabled": true,
-      "mode": "balanced"
+      "mode": "low_noise"
     }
   },
   "rtsp": {
