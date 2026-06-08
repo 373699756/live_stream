@@ -76,7 +76,7 @@ flowchart LR
 
 - 文档或小 bugfix 不强制运行质量扫描。
 - 架构 review、技术债盘点、热路径优化和用户明确要求时运行
-  `scripts/quality_scan.sh`。
+  `python3 scripts/quality_scan.py`。
 - 扫描报告只作为输入，结论需要结合源码判断后落到模块文档或具体代码任务。
 - 优化前后至少做聚焦构建和板端预览验证，避免只降低分配却破坏可播放性。
 
