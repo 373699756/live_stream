@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,infra))
+$(eval $(call ADD_MODULE_LIBRARY,infra))

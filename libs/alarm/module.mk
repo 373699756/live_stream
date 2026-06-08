@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,alarm))
+$(eval $(call ADD_MODULE_LIBRARY,alarm))

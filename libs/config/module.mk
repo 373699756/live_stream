@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,config))
+$(eval $(call ADD_MODULE_LIBRARY,config))

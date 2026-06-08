@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,hisi_vendor))
+$(eval $(call ADD_MODULE_LIBRARY,hisi_vendor))

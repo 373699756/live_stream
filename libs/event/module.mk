@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,event))
+$(eval $(call ADD_MODULE_LIBRARY,event))

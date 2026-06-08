@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,media_source))
+$(eval $(call ADD_MODULE_LIBRARY,media_source))

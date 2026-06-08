@@ -1,4 +1,4 @@
-SERVICE_NAME := hisi_vendor
+MODULE_NAME := hisi_vendor
 .DEFAULT_GOAL := all
 
 
@@ -16,6 +16,6 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 
 
-include ../service_rules.mk
+include ../module_rules.mk
 
 endif

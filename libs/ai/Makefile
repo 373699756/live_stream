@@ -1,4 +1,4 @@
-SERVICE_NAME := ai
+MODULE_NAME := ai
 .DEFAULT_GOAL := all
 ROOT_DIR ?= ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -56,4 +56,4 @@ $(MEDIA_LIB): $(INFRA_LIB) $(MEDIA_CODEC_LIB) $(CONFIG_LIB)
 $(SNAPSHOT_LIB): $(INFRA_LIB) $(MEDIA_LIB) $(CONFIG_LIB)
 	$(MAKE) -C ../snapshot all
 
-include ../service_rules.mk
+include ../module_rules.mk

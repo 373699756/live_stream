@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,logger))
+$(eval $(call ADD_MODULE_LIBRARY,logger))

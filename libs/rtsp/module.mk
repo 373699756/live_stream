@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,rtsp))
+$(eval $(call ADD_MODULE_LIBRARY,rtsp))

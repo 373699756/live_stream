@@ -1,4 +1,4 @@
-SERVICE_NAME := system
+MODULE_NAME := system
 .DEFAULT_GOAL := all
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
@@ -9,4 +9,4 @@ EXTRA_TEST_LIBS := $(INFRA_LIB)
 $(INFRA_LIB):
 	$(MAKE) -C ../infra
 
-include ../service_rules.mk
+include ../module_rules.mk

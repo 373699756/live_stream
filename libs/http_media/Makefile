@@ -1,4 +1,4 @@
-SERVICE_NAME := http_media
+MODULE_NAME := http_media
 .DEFAULT_GOAL := all
 ROOT_DIR ?= ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -50,4 +50,4 @@ $(MEDIA_SOURCE_LIB): $(DEVICE_MEDIA_LIB) $(MEDIA_CODEC_LIB)
 $(WEBRTC_LIB): $(DEVICE_MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc all
 
-include ../service_rules.mk
+include ../module_rules.mk

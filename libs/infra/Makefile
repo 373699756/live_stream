@@ -1,4 +1,4 @@
-SERVICE_NAME := infra
+MODULE_NAME := infra
 .DEFAULT_GOAL := all
 CXXFLAGS += -pthread
-include ../service_rules.mk
+include ../module_rules.mk

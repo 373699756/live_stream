@@ -1,7 +1,7 @@
-SERVICE_NAME := device_media
+MODULE_NAME := device_media
 .DEFAULT_GOAL := all
 
-include ../service_rules.mk
+include ../module_rules.mk
 
 INFRA_LIB := $(LIB_DIR)/libinfra.a
 CONFIG_LIB := $(LIB_DIR)/libconfig.a

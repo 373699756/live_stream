@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,upgrade))
+$(eval $(call ADD_MODULE_LIBRARY,upgrade))

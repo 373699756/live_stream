@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,time))
+$(eval $(call ADD_MODULE_LIBRARY,time))

@@ -1,4 +1,4 @@
-SERVICE_NAME := rtsp
+MODULE_NAME := rtsp
 .DEFAULT_GOAL := all
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth/include
@@ -20,7 +20,7 @@ EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/librtp.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia_codec.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libnet.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libinfra.a
-include ../service_rules.mk
+include ../module_rules.mk
 
 $(BUILD_DIR)/lib/libdevice_media.a: $(BUILD_DIR)/lib/libinfra.a
 	$(MAKE) -C ../device_media all

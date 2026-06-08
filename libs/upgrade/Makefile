@@ -1,4 +1,4 @@
-SERVICE_NAME := upgrade
+MODULE_NAME := upgrade
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -15,4 +15,4 @@ CXXFLAGS += -pthread
 $(INFRA_LIB):
 	$(MAKE) -C ../infra
 
-include ../service_rules.mk
+include ../module_rules.mk

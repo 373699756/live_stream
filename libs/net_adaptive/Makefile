@@ -1,4 +1,4 @@
-SERVICE_NAME := net_adaptive
+MODULE_NAME := net_adaptive
 .DEFAULT_GOAL := all
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
@@ -22,7 +22,7 @@ EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia_codec.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libdevice_media.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libinfra.a
 
-include ../service_rules.mk
+include ../module_rules.mk
 
 $(BUILD_DIR)/lib/libnet.a:
 	$(MAKE) -C ../net all

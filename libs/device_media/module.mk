@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,device_media))
+$(eval $(call ADD_MODULE_LIBRARY,device_media))

@@ -3,9 +3,9 @@
 ## 项目结构
 
 - `app/` 是 C++ 程序入口，当前主入口为 `app/runtime/main.cpp`。
-- `libs/*_service/` 是服务模块目录，通常包含 `include/`、`src/`、
+- `libs/<module>/` 是模块目录，通常包含 `include/`、`src/`、
   `Makefile` 和 `module.mk`。
-- `libs/service_rules.mk` 定义服务模块的通用构建规则。
+- `libs/module_rules.mk` 定义模块的通用构建规则。
 - `configs/` 存放运行配置 JSON，例如业务配置和认证用户配置。
 - `www/` 是 IPC Web Console，技术栈为 Vite、React、TypeScript 和
   plain CSS/CSS variables。
@@ -37,10 +37,10 @@ make host-test
 make board-test-build
 ```
 
-构建单个服务模块：
+构建单个模块：
 
 ```sh
-make -C libs/<service>
+make -C libs/<module>
 ```
 
 测试目标语义：
@@ -79,9 +79,9 @@ npm run build
 
 ## 模块约定
 
-- 新增服务模块时遵循现有模式：`libs/<service>/Makefile`、`module.mk`、
+- 新增模块时遵循现有模式：`libs/<module>/Makefile`、`module.mk`、
   `include/` 和 `src/`。
-- 服务模块构建规则应复用 `libs/service_rules.mk`，不要复制一套新的通用规则。
+- 模块构建规则应复用 `libs/module_rules.mk`，不要复制一套新的通用规则。
 - 产品范围固定为视频实时预览、抓图、配置和运维管理；不实现音频采集、音频编码、
   音频传输，也不实现录像、录制、存储回放或相关 UI/API。
 - 测试内容默认不修改；除非用户明确要求修复、新增或迁移测试，不主动编辑

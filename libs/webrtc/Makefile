@@ -1,4 +1,4 @@
-SERVICE_NAME := webrtc
+MODULE_NAME := webrtc
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -43,4 +43,4 @@ $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 $(RTP_LIB): $(MEDIA_CODEC_LIB)
 	$(MAKE) -C ../rtp all
 
-include ../service_rules.mk
+include ../module_rules.mk

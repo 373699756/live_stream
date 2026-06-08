@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,http))
+$(eval $(call ADD_MODULE_LIBRARY,http))

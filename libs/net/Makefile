@@ -1,10 +1,10 @@
-SERVICE_NAME := net
+MODULE_NAME := net
 .DEFAULT_GOAL := all
 CXXFLAGS += -pthread
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 EXTRA_TEST_DEPS += $(INFRA_LIB)
 EXTRA_TEST_LIBS += $(INFRA_LIB)
-include ../service_rules.mk
+include ../module_rules.mk
 
 all: $(INFRA_LIB)
 

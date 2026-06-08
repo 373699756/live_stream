@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,net_adaptive))
+$(eval $(call ADD_MODULE_LIBRARY,net_adaptive))

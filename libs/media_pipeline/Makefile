@@ -1,4 +1,4 @@
-SERVICE_NAME := media_pipeline
+MODULE_NAME := media_pipeline
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -27,4 +27,4 @@ $(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(MEDIA_CODEC_LIB)
 $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
 
-include ../service_rules.mk
+include ../module_rules.mk

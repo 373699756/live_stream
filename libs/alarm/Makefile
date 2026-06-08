@@ -1,4 +1,4 @@
-SERVICE_NAME := alarm
+MODULE_NAME := alarm
 .DEFAULT_GOAL := all
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 CONFIG_LIB := $(BUILD_DIR)/lib/libconfig.a
@@ -14,4 +14,4 @@ $(INFRA_LIB):
 $(CONFIG_LIB):
 	$(MAKE) -C ../config
 
-include ../service_rules.mk
+include ../module_rules.mk

@@ -1,4 +1,4 @@
-SERVICE_NAME := snapshot
+MODULE_NAME := snapshot
 .DEFAULT_GOAL := all
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
@@ -24,4 +24,4 @@ $(INFRA_LIB):
 $(CONFIG_LIB):
 	$(MAKE) -C ../config
 
-include ../service_rules.mk
+include ../module_rules.mk

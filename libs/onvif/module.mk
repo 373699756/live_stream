@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,onvif))
+$(eval $(call ADD_MODULE_LIBRARY,onvif))

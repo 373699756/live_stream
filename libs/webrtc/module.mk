@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,webrtc))
+$(eval $(call ADD_MODULE_LIBRARY,webrtc))

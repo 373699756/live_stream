@@ -1,4 +1,4 @@
-SERVICE_NAME := http
+MODULE_NAME := http
 .DEFAULT_GOAL := all
 ROOT_DIR ?= ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -94,11 +94,11 @@ $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 $(HTTP_MEDIA_LIB): $(MEDIA_SOURCE_LIB) $(WEBRTC_LIB)
 	$(MAKE) -C ../http_media all
 
-include ../service_rules.mk
+include ../module_rules.mk
 
 HANDLER_SRCS := $(wildcard src/handlers/*.cpp)
 HANDLER_OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(HANDLER_SRCS))
-$(LIB_DIR)/lib$(SERVICE_NAME).a: $(HANDLER_OBJS)
+$(LIB_DIR)/lib$(MODULE_NAME).a: $(HANDLER_OBJS)
 
 $(OBJ_DIR)/handlers/%.o: src/handlers/%.cpp
 	@mkdir -p $(dir $@)

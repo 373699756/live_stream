@@ -1,4 +1,4 @@
-SERVICE_NAME := media_source
+MODULE_NAME := media_source
 .DEFAULT_GOAL := all
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
@@ -21,4 +21,4 @@ $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB)
 EXTRA_TEST_LIBS := $(MEDIA_CODEC_LIB) $(MEDIA_LIB) $(INFRA_LIB) -pthread
 
-include ../service_rules.mk
+include ../module_rules.mk

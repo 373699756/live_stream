@@ -1,1 +1,1 @@
-$(eval $(call ADD_SERVICE_LIBRARY,region))
+$(eval $(call ADD_MODULE_LIBRARY,region))
