@@ -270,33 +270,48 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         return false;
     }
 
-    if (!MpiOk("sensor.pfnRegisterCallback",
-                      profile.sns_obj->pfnRegisterCallback(vi_pipe, &ae_lib,
-                                                           &awb_lib))) {
+    HI_S32 status =
+        profile.sns_obj->pfnRegisterCallback(vi_pipe, &ae_lib, &awb_lib);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "%s sensor RegisterCallback pipe=%d failed: 0x%08x",
+              profile.name, vi_pipe, status);
         return false;
     }
 
     ISP_SNS_COMMBUS_U bus_info{};
     bus_info.s8I2cDev = profile.i2c_device;
-    if (!MpiOk("sensor.pfnSetBusInfo",
-                      profile.sns_obj->pfnSetBusInfo(vi_pipe, bus_info))) {
+    status = profile.sns_obj->pfnSetBusInfo(vi_pipe, bus_info);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "%s sensor SetBusInfo pipe=%d i2c=%d failed: 0x%08x",
+              profile.name, vi_pipe, profile.i2c_device, status);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    if (!MpiOk("HI_MPI_AE_Register",
-                      HI_MPI_AE_Register(vi_pipe, &ae_lib))) {
+    status = HI_MPI_AE_Register(vi_pipe, &ae_lib);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_AE_Register pipe=%d failed: 0x%08x", vi_pipe, status);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
-    if (!MpiOk("HI_MPI_AWB_Register",
-                      HI_MPI_AWB_Register(vi_pipe, &awb_lib))) {
+    status = HI_MPI_AWB_Register(vi_pipe, &awb_lib);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_AWB_Register pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    if (!MpiOk("HI_MPI_ISP_MemInit", HI_MPI_ISP_MemInit(vi_pipe))) {
+    status = HI_MPI_ISP_MemInit(vi_pipe);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_MemInit pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
@@ -304,15 +319,21 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
     }
 
     ISP_PUB_ATTR_S pub_attr = MakeIspPubAttr(profile);
-    if (!MpiOk("HI_MPI_ISP_SetPubAttr",
-                      HI_MPI_ISP_SetPubAttr(vi_pipe, &pub_attr))) {
+    status = HI_MPI_ISP_SetPubAttr(vi_pipe, &pub_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetPubAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
         return false;
     }
 
-    if (!MpiOk("HI_MPI_ISP_Init", HI_MPI_ISP_Init(vi_pipe))) {
+    status = HI_MPI_ISP_Init(vi_pipe);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_Init pipe=%d failed: 0x%08x", vi_pipe, status);
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
         UnregisterSensorCallback(profile, vi_pipe, &ae_lib, &awb_lib);
@@ -353,8 +374,14 @@ bool BindDevPipe(VI_DEV vi_dev, VI_PIPE vi_pipe) {
     VI_DEV_BIND_PIPE_S bind_pipe{};
     bind_pipe.u32Num = 1;
     bind_pipe.PipeId[0] = vi_pipe;
-    return MpiOk("HI_MPI_VI_SetDevBindPipe",
-                        HI_MPI_VI_SetDevBindPipe(vi_dev, &bind_pipe));
+    const HI_S32 status = HI_MPI_VI_SetDevBindPipe(vi_dev, &bind_pipe);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetDevBindPipe dev=%d pipe=%d failed: 0x%08x",
+              vi_dev, vi_pipe, status);
+        return false;
+    }
+    return true;
 }
 
 void StopPipe(VI_PIPE vi_pipe) {
@@ -400,16 +427,22 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     // ─── VI DEV attribute ─────────────────────────────────────
     VI_DEV_ATTR_S dev_attr = MakeViDevAttr(sensor_profile);
     VI_DEV vi_dev = static_cast<VI_DEV>(config.sensor_id);
-    if (!MpiOk("HI_MPI_VI_SetDevAttr",
-                      HI_MPI_VI_SetDevAttr(vi_dev, &dev_attr))) {
+    HI_S32 status = HI_MPI_VI_SetDevAttr(vi_dev, &dev_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetDevAttr dev=%d failed: 0x%08x", vi_dev,
+              status);
         CleanupStartedVi(vi_dev, static_cast<VI_PIPE>(config.video_pipe),
                          static_cast<VI_CHN>(config.vi_channel), chn_enabled,
                          pipe_created, dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;
         return false;
     }
-    if (!MpiOk("HI_MPI_VI_EnableDev",
-                      HI_MPI_VI_EnableDev(vi_dev))) {
+    status = HI_MPI_VI_EnableDev(vi_dev);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_EnableDev dev=%d failed: 0x%08x", vi_dev,
+              status);
         CleanupStartedVi(vi_dev, static_cast<VI_PIPE>(config.video_pipe),
                          static_cast<VI_CHN>(config.vi_channel), chn_enabled,
                          pipe_created, dev_enabled, impl_->mipi_started_);
@@ -428,16 +461,22 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     }
 
     VI_PIPE_ATTR_S pipe_attr = MakePipeAttr(sensor_profile);
-    if (!MpiOk("HI_MPI_VI_CreatePipe",
-                      HI_MPI_VI_CreatePipe(vi_pipe, &pipe_attr))) {
+    status = HI_MPI_VI_CreatePipe(vi_pipe, &pipe_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_CreatePipe pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;
         return false;
     }
     pipe_created = true;
-    if (!MpiOk("HI_MPI_VI_StartPipe",
-                      HI_MPI_VI_StartPipe(vi_pipe))) {
+    status = HI_MPI_VI_StartPipe(vi_pipe);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_StartPipe pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;
@@ -447,15 +486,21 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     // ─── VI CHN attribute ─────────────────────────────────────
     VI_CHN_ATTR_S chn_attr = MakeViChannelAttr(config);
 
-    if (!MpiOk("HI_MPI_VI_SetChnAttr",
-                      HI_MPI_VI_SetChnAttr(vi_pipe, vi_chn, &chn_attr))) {
+    status = HI_MPI_VI_SetChnAttr(vi_pipe, vi_chn, &chn_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetChnAttr pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_chn, status);
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;
         return false;
     }
-    if (!MpiOk("HI_MPI_VI_EnableChn",
-                      HI_MPI_VI_EnableChn(vi_pipe, vi_chn))) {
+    status = HI_MPI_VI_EnableChn(vi_pipe, vi_chn);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_EnableChn pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_chn, status);
         CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                          dev_enabled, impl_->mipi_started_);
         impl_->mipi_started_ = false;

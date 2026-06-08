@@ -10,12 +10,23 @@ namespace {
 
 bool EnableVpssChannel(VPSS_GRP vpss_grp, VPSS_CHN vpss_chn,
                        const VPSS_CHN_ATTR_S& chn_attr) {
-    if (!MpiOk("HI_MPI_VPSS_SetChnAttr",
-                      HI_MPI_VPSS_SetChnAttr(vpss_grp, vpss_chn, &chn_attr))) {
+    HI_S32 status = HI_MPI_VPSS_SetChnAttr(vpss_grp, vpss_chn, &chn_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_SetChnAttr grp=%d chn=%d size=%ux%u failed: "
+              "0x%08x",
+              vpss_grp, vpss_chn, chn_attr.u32Width, chn_attr.u32Height,
+              status);
         return false;
     }
-    return MpiOk("HI_MPI_VPSS_EnableChn",
-                        HI_MPI_VPSS_EnableChn(vpss_grp, vpss_chn));
+    status = HI_MPI_VPSS_EnableChn(vpss_grp, vpss_chn);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_EnableChn grp=%d chn=%d failed: 0x%08x",
+              vpss_grp, vpss_chn, status);
+        return false;
+    }
+    return true;
 }
 
 void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
@@ -101,8 +112,11 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
         sub_enabled = true;
     }
 
-    if (!MpiOk("HI_MPI_VPSS_StartGrp",
-                      HI_MPI_VPSS_StartGrp(vpss_grp))) {
+    const HI_S32 start_status = HI_MPI_VPSS_StartGrp(vpss_grp);
+    if (start_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_StartGrp grp=%d failed: 0x%08x", vpss_grp,
+              start_status);
         CleanupVpssGroup(vpss_grp, vpss_chn, main_enabled, sub_chn, sub_enabled);
         return false;
     }
