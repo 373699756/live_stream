@@ -436,8 +436,7 @@
 
 .metric-grid div,
 .info-table div,
-.module-list div,
-.log-table div {
+.module-list div {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -479,8 +478,7 @@
 }
 
 .metric-grid span,
-.info-table span,
-.log-table span {
+.info-table span {
   color: var(--muted);
   font-size: 12px;
 }
@@ -489,6 +487,100 @@
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.log-table {
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.log-table .log-row {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 0.8fr)
+    minmax(280px, 1.6fr)
+    minmax(130px, 0.6fr);
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.log-table .log-row:last-child {
+  border-bottom: 0;
+}
+
+.log-header {
+  background: #f7f9fc;
+}
+
+.log-table .log-header span,
+.log-table .log-header strong,
+.log-table .log-header em {
+  color: #475569;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.log-table .log-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.log-content {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.log-table .log-action {
+  color: #243044;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.log-content small,
+.log-result small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.log-result {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+  font-style: normal;
+}
+
+.log-result > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.log-result.success > span {
+  color: #0f6b3a;
+  background: #e9f8ef;
+}
+
+.log-result.failed > span {
+  color: #9b1c1c;
+  background: #fdecec;
+}
+
+.log-result.rejected > span {
+  color: #875a12;
+  background: #fff7df;
 }
 
 .log-table em {
@@ -523,6 +615,13 @@
   .image-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .log-table .log-row {
+    grid-template-columns:
+      minmax(140px, 0.8fr)
+      minmax(220px, 1.3fr)
+      minmax(100px, 0.6fr);
+  }
 }
 
 @media (max-width: 620px) {
@@ -532,5 +631,11 @@
 
   .auth-action-row button {
     width: 100%;
+  }
+
+  .log-table .log-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 6px;
   }
 }
