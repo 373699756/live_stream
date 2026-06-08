@@ -133,6 +133,7 @@ bool RtspAuth::FindPeerGrant(const std::string &peer_ip,
             if (user_name != nullptr) {
                 *user_name = it->user_name;
             }
+            it->expires_at_ms = now_ms + kRtspPeerAuthTtlMs;
             return true;
         }
         ++it;

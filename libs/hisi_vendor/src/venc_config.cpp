@@ -1,9 +1,10 @@
-#include "hisi_mpp_venc_helpers.h"
+#include "venc_config.h"
 
 #include "infra/clamp.h"
 
 namespace live_stream {
 namespace hisisdk {
+namespace venc_internal {
 namespace {
 
 constexpr uint32_t kDefaultStatTimeSec = 1;
@@ -256,5 +257,6 @@ bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
                  HI_MPI_VENC_SetRcParam(venc, &rc_param));
 }
 
+}  // namespace venc_internal
 }  // namespace hisisdk
 }  // namespace live_stream

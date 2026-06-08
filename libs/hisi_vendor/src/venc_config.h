@@ -1,11 +1,12 @@
-#ifndef LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_VENC_HELPERS_H_
-#define LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_VENC_HELPERS_H_
+#ifndef LIVE_STREAM_HISI_VENDOR_SRC_VENC_CONFIG_H_
+#define LIVE_STREAM_HISI_VENDOR_SRC_VENC_CONFIG_H_
 
 #include "hisi_vendor/mpp_hisi_sdk.h"
 #include "hisi_mpp_utils.h"
 
 namespace live_stream {
 namespace hisisdk {
+namespace venc_internal {
 
 PAYLOAD_TYPE_E PayloadFromCodec(VideoCodec codec);
 VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode);
@@ -18,7 +19,8 @@ bool IsIdrCodec(VideoCodec codec);
 bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig &stream);
 bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode);
 
+}  // namespace venc_internal
 }  // namespace hisisdk
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_VENC_HELPERS_H_
+#endif  // LIVE_STREAM_HISI_VENDOR_SRC_VENC_CONFIG_H_

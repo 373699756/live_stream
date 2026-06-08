@@ -9,6 +9,8 @@
 namespace live_stream {
 namespace media_pipeline_internal {
 
+constexpr size_t kMaxPendingFramesPerStream = 4;
+
 class PendingFrameQueue {
 public:
     void Clear();
@@ -22,7 +24,7 @@ public:
 private:
     void RemoveAt(size_t position);
 
-    std::array<EncodedFrame, 4> frames_{};
+    std::array<EncodedFrame, kMaxPendingFramesPerStream> frames_{};
     size_t head_ = 0;
     size_t size_ = 0;
 };

@@ -1,7 +1,7 @@
 #include "hisi_vendor/mpp_hisi_sdk.h"
 #include "hisi_mpp_utils.h"
-#include "hisi_mpp_venc_helpers.h"
 #include "mpp_hisi_sdk_impl.h"
+#include "venc_config.h"
 
 #include "infra/clamp.h"
 
@@ -17,6 +17,16 @@
 
 namespace live_stream {
 namespace hisisdk {
+using venc_internal::CodecName;
+using venc_internal::GopAttrFromConfig;
+using venc_internal::GopModeName;
+using venc_internal::IsIdrCodec;
+using venc_internal::PayloadFromCodec;
+using venc_internal::RcModeFromConfig;
+using venc_internal::RcModeName;
+using venc_internal::StatTimeFromConfig;
+using venc_internal::TuneRcParam;
+using venc_internal::ValidateVencStreamConfig;
 
 namespace {
 
