@@ -38,7 +38,7 @@ export function VideoPreview({
     displaySize,
     flvPlaybackEnabled,
     flvSupported,
-    hlsPlaybackEnabled,
+    hlsLaunchable,
     hlsSupported,
     imageRef,
     isMjpegMode,
@@ -88,7 +88,7 @@ export function VideoPreview({
       <PreviewToolbar
         flvPlaybackEnabled={flvPlaybackEnabled}
         flvSupported={flvSupported}
-        hlsPlaybackEnabled={hlsPlaybackEnabled}
+        hlsLaunchable={hlsLaunchable}
         hlsSupported={hlsSupported}
         mainSummary={mainSummary}
         mjpegPlaybackEnabled={mjpegPlaybackEnabled}

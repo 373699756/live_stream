@@ -5,7 +5,7 @@ import type { PreviewStreamSummary } from './previewDisplay';
 interface PreviewToolbarProps {
   flvPlaybackEnabled: boolean;
   flvSupported: boolean;
-  hlsPlaybackEnabled: boolean;
+  hlsLaunchable: boolean;
   hlsSupported: boolean;
   mainSummary: PreviewStreamSummary;
   mjpegPlaybackEnabled: boolean;
@@ -26,7 +26,7 @@ interface PreviewToolbarProps {
 export function PreviewToolbar({
   flvPlaybackEnabled,
   flvSupported,
-  hlsPlaybackEnabled,
+  hlsLaunchable,
   hlsSupported,
   mainSummary,
   mjpegPlaybackEnabled,
@@ -77,7 +77,7 @@ export function PreviewToolbar({
         <button
           type="button"
           className={mode === 'hls' ? 'active' : ''}
-          disabled={!hlsSupported || !hlsPlaybackEnabled}
+          disabled={!hlsSupported || !hlsLaunchable}
           title={!hlsSupported ? '当前编码不支持 HLS 预览' : undefined}
           onClick={() => onModeChange('hls')}
         >

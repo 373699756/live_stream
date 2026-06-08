@@ -27,6 +27,7 @@ export function usePreviewPlayer({
   stream,
 }: UsePreviewPlayerOptions) {
   const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
+  const autoModeSelected = modeSelectionRef.current === 'auto';
   const onAutoModeFallback = useCallback(() => {
     modeSelectionRef.current = 'auto';
   }, []);
@@ -48,6 +49,7 @@ export function usePreviewPlayer({
     mode,
     modeState,
     onAutoModeFallback,
+    autoModeSelected,
     playbackUrls,
     setMode,
     stream,
@@ -97,7 +99,7 @@ export function usePreviewPlayer({
     displaySize,
     flvPlaybackEnabled: modeState.flvPlaybackReady,
     flvSupported: modeState.flvSupported,
-    hlsPlaybackEnabled: modeState.hlsPlaybackReady,
+    hlsLaunchable: modeState.hlsLaunchable,
     hlsSupported: modeState.hlsSupported,
     imageRef,
     isMjpegMode: mode === 'mjpeg',

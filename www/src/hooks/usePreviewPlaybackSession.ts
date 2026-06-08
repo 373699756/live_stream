@@ -17,6 +17,7 @@ import type { PreviewSessionControls } from './previewSession';
 import { startWebrtcPreview } from './webrtcPreviewSession';
 
 interface UsePreviewPlaybackSessionOptions {
+  autoModeSelected: boolean;
   enabled: boolean;
   mode: PreviewMode;
   modeState: PreviewModeState;
@@ -35,6 +36,7 @@ function stopVideoTracks(video: HTMLMediaElement | null) {
 }
 
 export function usePreviewPlaybackSession({
+  autoModeSelected,
   enabled,
   mode,
   modeState,
@@ -61,8 +63,10 @@ export function usePreviewPlaybackSession({
     flvReady,
     hlsModeEnabled,
     hlsReady,
+    mjpegPlaybackReady,
     mjpegModeEnabled,
     mjpegReady,
+    nextReadyMode,
     webrtcEnabled,
     webrtcReady,
   } = modeState;
@@ -295,8 +299,20 @@ export function usePreviewPlaybackSession({
     }
 
     if (mode === 'hls') {
-      startHlsPreview({
+      startupTimer = startHlsPreview({
+        autoFallback: {
+          autoModeSelected,
+          isSessionConnected: () => sessionConnected,
+          nextReadyMode,
+          onAutoModeFallback,
+          restartPreview,
+          setMode,
+        },
         controls,
+        fallbackReady: {
+          flvPlaybackReady,
+          mjpegPlaybackReady,
+        },
         hlsReady,
         hlsRef,
         hlsUrl: playbackUrls?.hls || '',
@@ -323,15 +339,18 @@ export function usePreviewPlaybackSession({
     });
     return cleanupSession;
   }, [
+    autoModeSelected,
     enabled,
     flvModeEnabled,
     flvPlaybackReady,
     flvReady,
     hlsModeEnabled,
     hlsReady,
+    mjpegPlaybackReady,
     mjpegModeEnabled,
     mjpegReady,
     mode,
+    nextReadyMode,
     onAutoModeFallback,
     playbackUrls,
     setMode,

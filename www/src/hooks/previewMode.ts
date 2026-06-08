@@ -14,6 +14,7 @@ export interface PreviewModeState {
   flvPlaybackReady: boolean;
   flvReady: boolean;
   flvSupported: boolean;
+  hlsLaunchable: boolean;
   hlsModeEnabled: boolean;
   hlsPlaybackReady: boolean;
   hlsReady: boolean;
@@ -48,16 +49,17 @@ export function buildPreviewModeState(
   const webrtcEnabled = webrtcSupported;
   const streamRunning = active?.running ?? false;
   const webrtcModeEnabled = webrtcEnabled && streamRunning;
-  const hlsModeEnabled = hlsSupported && streamRunning;
+  const hlsLaunchable = hlsSupported && streamRunning;
+  const hlsModeEnabled = hlsLaunchable;
   const flvModeEnabled = flvSupported && streamRunning;
   const mjpegModeEnabled = mjpegSupported && streamRunning;
   const webrtcPlaybackReady = webrtcModeEnabled && webrtcReady;
-  const hlsPlaybackReady = hlsModeEnabled && (hlsReady || streamRunning);
+  const hlsPlaybackReady = hlsLaunchable && hlsReady;
   const flvPlaybackReady = flvModeEnabled && flvReady;
   const mjpegPlaybackReady = mjpegModeEnabled && mjpegReady;
   const selectedModeEnabled =
     (mode === 'webrtc' && webrtcPlaybackReady) ||
-    (mode === 'hls' && hlsPlaybackReady) ||
+    (mode === 'hls' && hlsLaunchable) ||
     (mode === 'flv' && flvPlaybackReady) ||
     (mode === 'mjpeg' && mjpegPlaybackReady);
   const nextReadyMode =
@@ -72,6 +74,7 @@ export function buildPreviewModeState(
     flvPlaybackReady,
     flvReady,
     flvSupported,
+    hlsLaunchable,
     hlsModeEnabled,
     hlsPlaybackReady,
     hlsReady,
