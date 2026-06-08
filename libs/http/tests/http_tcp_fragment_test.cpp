@@ -188,7 +188,8 @@ int main() {
   net_engine->Stop();
 
   if (!Contains(response, "HTTP/1.1 200 OK") ||
-      !Contains(response, "admin-token")) {
+      !Contains(response, "live_stream_token=admin-token") ||
+      Contains(response, "\"token\"")) {
     return 6;
   }
   return 0;

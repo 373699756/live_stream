@@ -279,7 +279,10 @@ int main() {
                                      "/api/auth/login",
                                      "{\"user_name\":\"admin\",\"password\":\"pass\"}",
                                      ""));
-  if (login.status_code != 200 || !Contains(login.body, "admin-token")) {
+  const auto cookie = login.headers.find("Set-Cookie");
+  if (login.status_code != 200 || Contains(login.body, "admin-token") ||
+      cookie == login.headers.end() ||
+      !Contains(cookie->second, "live_stream_token=admin-token")) {
     return 3;
   }
 

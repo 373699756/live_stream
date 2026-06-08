@@ -202,7 +202,8 @@ int main() {
   net_engine->Stop();
 
   if (Count(response, "HTTP/1.1 200 OK") != 2 ||
-      Count(response, "admin-token") != 2 ||
+      Count(response, "live_stream_token=admin-token") != 2 ||
+      Count(response, "\"token\"") != 0 ||
       response.find("Connection: keep-alive") == std::string::npos ||
       response.find("Connection: close") == std::string::npos) {
     return 6;

@@ -5,9 +5,6 @@
 
 #include <cstdint>
 
-#ifndef SENSOR0_TYPE
-#define SENSOR0_TYPE SONY_IMX290_MIPI_2M_30FPS_12BIT
-#endif
 #ifndef SONY_IMX327_MIPI_2M_30FPS_12BIT
 #define SONY_IMX327_MIPI_2M_30FPS_12BIT 0
 #endif
@@ -282,11 +279,10 @@ inline SensorProfile MakeImx290Profile() {
     return MakeBase2mProfile("imx290", &stSnsImx290Obj);
 }
 
-inline SensorProfile MakeLegacyUnknownProfile() {
-    return MakeImx290Profile();
-}
-
 inline SensorProfile MakeSelectedSensorProfile() {
+#ifndef SENSOR0_TYPE
+#error "SENSOR0_TYPE must be defined by the HiSilicon toolchain configuration"
+#endif
 #if SENSOR0_TYPE == SONY_IMX327_MIPI_2M_30FPS_12BIT
     return MakeImx327Profile();
 #elif SENSOR0_TYPE == SONY_IMX327_MIPI_2M_30FPS_12BIT_WDR2TO1
@@ -322,7 +318,7 @@ inline SensorProfile MakeSelectedSensorProfile() {
 #elif SENSOR0_TYPE == SONY_IMX290_MIPI_2M_30FPS_10BIT_WDR2TO1
     return MakeImx290WdrProfile();
 #else
-    return MakeLegacyUnknownProfile();
+#error "Unsupported SENSOR0_TYPE; add an explicit SensorProfile mapping"
 #endif
 }
 

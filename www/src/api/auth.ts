@@ -14,8 +14,6 @@ import type { AuthPrincipal, AuthState } from './types';
 const credentialTimeoutMs = 60000;
 
 interface AuthResponse {
-  token?: string;
-  expires_at_ms?: number;
   principal?: AuthPrincipal;
   must_change_password?: boolean;
 }

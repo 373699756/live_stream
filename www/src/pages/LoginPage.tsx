@@ -8,9 +8,6 @@ function loginErrorMessage(error?: string): string {
   if (error === 'network_error') {
     return '设备无响应，请检查网络后重试';
   }
-  if (error === 'empty_token') {
-    return '登录响应异常，请刷新后重试';
-  }
   return '用户名或密码错误；连续错误会临时锁定账号';
 }
 

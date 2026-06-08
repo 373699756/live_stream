@@ -90,8 +90,6 @@ private:
         }
 
         ConfigJson root = ConfigJson::object();
-        root["token"] = login.token;
-        root["expires_at_ms"] = login.expires_at_ms;
         root["must_change_password"] = login.must_change_password;
         root["principal"] = PrincipalToJson(login.principal);
         HttpResponse response = JsonResponse(200, root);
