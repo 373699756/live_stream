@@ -29,6 +29,8 @@ const char *AiTaskToJsonString(AiTask task) {
             return "object_detection";
         case AiTask::kFaceDetection:
             return "face_detection";
+        case AiTask::kPerimeterDetection:
+            return "perimeter_detection";
         case AiTask::kMotionClassification:
             return "motion_classification";
         case AiTask::kOcclusionDetection:
@@ -49,6 +51,17 @@ ConfigJson AiConfigToJson(const AiModelConfig &config) {
     root["inference_interval_ms"] = config.inference_interval_ms;
     root["confidence_threshold"] = config.confidence_threshold;
     root["max_results"] = config.max_results;
+    ConfigJson regions = ConfigJson::array();
+    for (const AiPerimeterRegion &region : config.perimeter.regions) {
+        ConfigJson item = ConfigJson::object();
+        item["name"] = region.name;
+        item["x"] = region.x;
+        item["y"] = region.y;
+        item["width"] = region.width;
+        item["height"] = region.height;
+        regions.push_back(item);
+    }
+    root["perimeter_regions"] = regions;
     return root;
 }
 

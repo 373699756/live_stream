@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -26,6 +27,8 @@ constexpr uint32_t kVgsFrameAlign = 32;
 constexpr uint32_t kIveImageAlign = 16;
 constexpr uint32_t kIveCscMinWidth = 64;
 constexpr uint32_t kIveCscMinHeight = 64;
+constexpr uint32_t kDetectionOutItemWidth = 7;
+constexpr int32_t kDetectionOutQuantBase = 4096;
 
 std::array<int, 256> BuildYuvYTable() {
     std::array<int, 256> table{};
@@ -221,6 +224,17 @@ bool BlobDataSize(const SVP_BLOB_S &blob, HI_U32 *size) {
                    size);
 }
 
+bool BlobElementCount(const SVP_BLOB_S &blob, uint32_t *count) {
+    if (count == nullptr || blob.enType == SVP_BLOB_TYPE_SEQ_S32) {
+        return false;
+    }
+    return ToHiU32(static_cast<uint64_t>(blob.u32Num) *
+                       blob.unShape.stWhc.u32Width *
+                       blob.unShape.stWhc.u32Height *
+                       blob.unShape.stWhc.u32Chn,
+                   count);
+}
+
 bool FlushBlob(const SVP_BLOB_S &blob) {
     HI_U32 size = 0;
     if (!BlobDataSize(blob, &size) || blob.u64PhyAddr == 0 ||
@@ -240,6 +254,24 @@ uint8_t ClampToByte(int value) {
         return 255;
     }
     return static_cast<uint8_t>(value);
+}
+
+float ClampUnit(float value) {
+    if (value < 0.0f) {
+        return 0.0f;
+    }
+    if (value > 1.0f) {
+        return 1.0f;
+    }
+    return value;
+}
+
+float DetectionOutValue(int32_t value) {
+    const float direct = static_cast<float>(value);
+    if (std::fabs(direct) <= 1.5f) {
+        return direct;
+    }
+    return direct / static_cast<float>(kDetectionOutQuantBase);
 }
 
 #endif
@@ -270,10 +302,6 @@ public:
             model_path_ = config.model_path;
             started_ = true;
             return true;
-        }
-        if (config.task == AiTask::kFaceDetection) {
-            Error("ai", "Face detection model is not available");
-            return false;
         }
         if (config.model_path.empty()) {
             return false;
@@ -326,8 +354,12 @@ public:
             return result;
         }
         result.success = true;
-        if (config.task == AiTask::kObjectDetection && ssd_model_ready_) {
+        if ((config.task == AiTask::kObjectDetection ||
+             config.task == AiTask::kPerimeterDetection) &&
+            ssd_model_ready_) {
             result.detections = DecodeSsdDetections(config);
+        } else if (config.task == AiTask::kFaceDetection) {
+            result.detections = DecodeFaceDetections(config);
         }
 #else
         (void)config;
@@ -387,6 +419,10 @@ private:
             return false;
         }
         if (!PrepareSsdPostprocess()) {
+            UnloadModel();
+            return false;
+        }
+        if (!ValidateTaskModel(config)) {
             UnloadModel();
             return false;
         }
@@ -551,6 +587,25 @@ private:
         return true;
     }
 
+    bool ValidateTaskModel(const AiModelConfig &config) const {
+        if (config.task == AiTask::kFaceDetection) {
+            if (detection_out_model_ready_ || ssd_model_ready_) {
+                return true;
+            }
+            Error("ai", "Unsupported face detection NNIE model outputs");
+            return false;
+        }
+        if (config.task == AiTask::kObjectDetection ||
+            config.task == AiTask::kPerimeterDetection) {
+            if (ssd_model_ready_) {
+                return true;
+            }
+            Error("ai", "Unsupported object detection NNIE model outputs");
+            return false;
+        }
+        return true;
+    }
+
     bool IsSsdModel() const {
         if (model_.u32NetSegNum != 1) {
             return false;
@@ -570,6 +625,24 @@ private:
             }
         }
         return true;
+    }
+
+    bool IsDetectionOutModel() const {
+        if (model_.u32NetSegNum != 1) {
+            return false;
+        }
+        const SVP_NNIE_SEG_S &seg = model_.astSeg[0];
+        const SVP_SRC_BLOB_S &src = seg_data_[0].src[0];
+        if (seg.u16SrcNum != 1 || seg.u16DstNum != 1 ||
+            src.enType != SVP_BLOB_TYPE_U8 || src.unShape.stWhc.u32Chn != 3) {
+            return false;
+        }
+        const SVP_DST_BLOB_S &dst = seg_data_[0].dst[0];
+        uint32_t element_count = 0;
+        return dst.enType == SVP_BLOB_TYPE_S32 &&
+               BlobElementCount(dst, &element_count) &&
+               element_count >= kDetectionOutItemWidth &&
+               element_count % kDetectionOutItemWidth == 0;
     }
 
     bool FillForwardInfo() {
@@ -1390,8 +1463,10 @@ private:
 
     bool PrepareSsdPostprocess() {
         ssd_model_ready_ = IsSsdModel();
+        detection_out_model_ready_ = IsDetectionOutModel();
         if (!ssd_model_ready_) {
-            ClearSsdPostprocessCache();
+            ssd_layer_values_.clear();
+            ssd_postprocess_.Clear();
             return true;
         }
         if (!ssd_postprocess_.Prepare()) {
@@ -1405,6 +1480,7 @@ private:
 
     void ClearSsdPostprocessCache() {
         ssd_model_ready_ = false;
+        detection_out_model_ready_ = false;
         ssd_layer_values_.clear();
         ssd_postprocess_.Clear();
     }
@@ -1414,6 +1490,65 @@ private:
             return std::vector<AiDetection>();
         }
         return ssd_postprocess_.DecodeDetections(config);
+    }
+
+    std::vector<AiDetection> DecodeDetectionOutDetections(
+        const AiModelConfig &config, const char *label) const {
+        std::vector<int32_t> values;
+        if (!detection_out_model_ready_ ||
+            !AppendS32BlobValues(seg_data_[0].dst[0], &values) ||
+            values.size() < kDetectionOutItemWidth) {
+            return std::vector<AiDetection>();
+        }
+
+        std::vector<AiDetection> detections;
+        detections.reserve(values.size() / kDetectionOutItemWidth);
+        for (size_t offset = 0; offset + kDetectionOutItemWidth <= values.size();
+             offset += kDetectionOutItemWidth) {
+            const float confidence = DetectionOutValue(values[offset + 2]);
+            if (confidence < config.confidence_threshold) {
+                continue;
+            }
+            const float x_min = ClampUnit(DetectionOutValue(values[offset + 3]));
+            const float y_min = ClampUnit(DetectionOutValue(values[offset + 4]));
+            const float x_max = ClampUnit(DetectionOutValue(values[offset + 5]));
+            const float y_max = ClampUnit(DetectionOutValue(values[offset + 6]));
+            if (x_max <= x_min || y_max <= y_min) {
+                continue;
+            }
+            AiDetection detection;
+            detection.label = label == nullptr ? "target" : label;
+            detection.confidence = ClampUnit(confidence);
+            detection.x = x_min;
+            detection.y = y_min;
+            detection.width = x_max - x_min;
+            detection.height = y_max - y_min;
+            detections.push_back(detection);
+            if (detections.size() >= config.max_results) {
+                break;
+            }
+        }
+        return detections;
+    }
+
+    std::vector<AiDetection> DecodeFaceDetections(
+        const AiModelConfig &config) {
+        if (detection_out_model_ready_) {
+            return DecodeDetectionOutDetections(config, "face");
+        }
+        if (!ssd_model_ready_) {
+            return std::vector<AiDetection>();
+        }
+        const std::vector<AiDetection> detections = DecodeSsdDetections(config);
+        std::vector<AiDetection> faces;
+        faces.reserve(detections.size());
+        for (AiDetection detection : detections) {
+            if (detection.label == "person") {
+                detection.label = "face";
+                faces.push_back(detection);
+            }
+        }
+        return faces;
     }
 
     SVP_SRC_MEM_INFO_S model_buf_{};
@@ -1438,6 +1573,7 @@ private:
     SsdPostprocess ssd_postprocess_;
     bool model_loaded_ = false;
     bool ssd_model_ready_ = false;
+    bool detection_out_model_ready_ = false;
 #endif
     MotionBackend motion_backend_;
     OcclusionBackend occlusion_backend_;

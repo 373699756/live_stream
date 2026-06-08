@@ -87,6 +87,7 @@ live_stream::ConfigJson DisabledAiConfig() {
       {"inference_interval_ms", 200},
       {"max_results", 16},
       {"confidence_threshold", 0.5},
+      {"perimeter_regions", live_stream::ConfigJson::array()},
   };
 }
 

@@ -66,6 +66,8 @@ const char *TaskAlarmName(AiTask task) {
     switch (task) {
         case AiTask::kFaceDetection:
             return "face";
+        case AiTask::kPerimeterDetection:
+            return "perimeter";
         case AiTask::kMotionClassification:
             return "motion";
         case AiTask::kOcclusionDetection:
@@ -74,6 +76,46 @@ const char *TaskAlarmName(AiTask task) {
             return "object";
     }
     return "ai";
+}
+
+bool IsPerimeterTargetLabel(const std::string &label) {
+    return label == "person" || label == "car" || label == "bus" ||
+           label == "truck" || label == "motorbike" || label == "bicycle" ||
+           label == "vehicle";
+}
+
+bool DetectionCenterInsideRegion(const AiDetection &detection,
+                                 const AiPerimeterRegion &region) {
+    const float center_x = detection.x + detection.width * 0.5f;
+    const float center_y = detection.y + detection.height * 0.5f;
+    return center_x >= region.x && center_x <= region.x + region.width &&
+           center_y >= region.y && center_y <= region.y + region.height;
+}
+
+bool DetectionInsidePerimeter(const AiDetection &detection,
+                              const AiPerimeterConfig &perimeter) {
+    if (perimeter.regions.empty()) {
+        return true;
+    }
+    for (const AiPerimeterRegion &region : perimeter.regions) {
+        if (DetectionCenterInsideRegion(detection, region)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+AiInferenceResult FilterPerimeterDetections(
+    const AiInferenceResult &result, const AiPerimeterConfig &perimeter) {
+    AiInferenceResult filtered = result;
+    filtered.detections.clear();
+    for (const AiDetection &detection : result.detections) {
+        if (IsPerimeterTargetLabel(detection.label) &&
+            DetectionInsidePerimeter(detection, perimeter)) {
+            filtered.detections.push_back(detection);
+        }
+    }
+    return filtered;
 }
 
 bool LooksLikeJpeg(const SnapshotFrame &frame) {
@@ -270,6 +312,9 @@ struct AiRuntime::State final {
             run_engine->Run(frame, run_config.stream_id, run_config);
         const int64_t inference_time_ms =
             infra::Time::MonotonicMillis() - inference_start_ms;
+        if (run_config.task == AiTask::kPerimeterDetection) {
+            result = FilterPerimeterDetections(result, run_config.perimeter);
+        }
 
         {
             std::lock_guard<std::mutex> lock(mutex);

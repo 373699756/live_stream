@@ -262,6 +262,14 @@ export interface MediaSessionInfo {
   updated_at_ms?: number;
 }
 
+export interface MediaSessionsResponse {
+  items: MediaSessionInfo[];
+  http_flv_active_clients?: number;
+  mjpeg_active_clients?: number;
+  rtsp_active_sessions?: number;
+  webrtc_active_peers?: number;
+}
+
 export interface WebrtcPeerInfo {
   peer_id: string;
   stream: StreamName;
@@ -291,8 +299,17 @@ export type AiBackendName = 'hisi3516dv300_nnie';
 export type AiTaskName =
   | 'object_detection'
   | 'face_detection'
+  | 'perimeter_detection'
   | 'motion_classification'
   | 'occlusion_detection';
+
+export interface AiPerimeterRegion {
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface AiModelConfig {
   enabled: boolean;
@@ -305,6 +322,7 @@ export interface AiModelConfig {
   inference_interval_ms: number;
   confidence_threshold: number;
   max_results: number;
+  perimeter_regions: AiPerimeterRegion[];
 }
 
 export interface AiDetection {

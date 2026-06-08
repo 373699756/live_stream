@@ -4,9 +4,85 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 namespace ai_internal {
+namespace {
+
+constexpr std::size_t kMaxPerimeterRegions = 8;
+constexpr std::size_t kMaxPerimeterRegionNameLength = 32;
+
+bool ReadOptionalStringField(const ConfigJson &object, const char *key,
+                             std::string *value) {
+    if (value == nullptr || key == nullptr) {
+        return false;
+    }
+    if (!object.contains(key)) {
+        value->clear();
+        return true;
+    }
+    if (!object.at(key).is_string()) {
+        return false;
+    }
+    *value = object.at(key).get<std::string>();
+    return value->size() <= kMaxPerimeterRegionNameLength;
+}
+
+bool ParsePerimeterRegion(const ConfigJson &value,
+                          AiPerimeterRegion *region) {
+    if (region == nullptr || !value.is_object()) {
+        return false;
+    }
+    AiPerimeterRegion parsed;
+    if (!ReadOptionalStringField(value, "name", &parsed.name) ||
+        !json_utils::ReadField(value, "x", &parsed.x, 0.0f, 1.0f) ||
+        !json_utils::ReadField(value, "y", &parsed.y, 0.0f, 1.0f) ||
+        !json_utils::ReadField(value, "width", &parsed.width, 0.0f, 1.0f) ||
+        !json_utils::ReadField(value, "height", &parsed.height, 0.0f,
+                               1.0f)) {
+        return false;
+    }
+    if (parsed.width <= 0.0f || parsed.height <= 0.0f ||
+        parsed.x + parsed.width > 1.0f || parsed.y + parsed.height > 1.0f) {
+        return false;
+    }
+    *region = parsed;
+    return true;
+}
+
+bool ParsePerimeterRegions(const ConfigJson &value,
+                           std::vector<AiPerimeterRegion> *regions) {
+    if (regions == nullptr || !value.is_array() ||
+        value.size() > kMaxPerimeterRegions) {
+        return false;
+    }
+    std::vector<AiPerimeterRegion> parsed_regions;
+    parsed_regions.reserve(value.size());
+    for (const ConfigJson &item : value) {
+        AiPerimeterRegion region;
+        if (!ParsePerimeterRegion(item, &region)) {
+            return false;
+        }
+        parsed_regions.push_back(region);
+    }
+    *regions = parsed_regions;
+    return true;
+}
+
+bool ParseOptionalPerimeterConfig(const ConfigJson &value,
+                                  AiPerimeterConfig *perimeter) {
+    if (perimeter == nullptr) {
+        return false;
+    }
+    if (!value.contains("perimeter_regions")) {
+        return true;
+    }
+    return ParsePerimeterRegions(value.at("perimeter_regions"),
+                                 &perimeter->regions);
+}
+
+}  // namespace
 
 bool IsFiniteConfidence(float value) {
     return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
@@ -43,6 +119,10 @@ bool ParseTask(const std::string &value, AiTask *task) {
     }
     if (value == "face_detection") {
         *task = AiTask::kFaceDetection;
+        return true;
+    }
+    if (value == "perimeter_detection") {
+        *task = AiTask::kPerimeterDetection;
         return true;
     }
     if (value == "motion_classification") {
@@ -116,7 +196,8 @@ bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
         !json_utils::ReadField(value, "max_results", &config.max_results, 1,
                                0xffffffffU) ||
         !json_utils::ReadField(value, "confidence_threshold",
-                               &config.confidence_threshold, 0.0f, 1.0f)) {
+                               &config.confidence_threshold, 0.0f, 1.0f) ||
+        !ParseOptionalPerimeterConfig(value, &config.perimeter)) {
         return false;
     }
     if (!IsValidAiConfig(config)) {

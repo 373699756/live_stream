@@ -12,6 +12,15 @@ export const mockAiStatus: AiStatus = {
     inference_interval_ms: 500,
     confidence_threshold: 0.5,
     max_results: 16,
+    perimeter_regions: [
+      {
+        name: 'gate',
+        x: 0.5,
+        y: 0.25,
+        width: 0.42,
+        height: 0.55,
+      },
+    ],
   },
   stats: {
     enabled: true,
@@ -71,6 +80,25 @@ export const mockAiAlerts: AiAlertList = {
       id: 'mock-2',
       timestamp_ms: Date.now() - 180_000,
       stream: 'sub',
+      task: 'perimeter_detection',
+      image_url: '/snapshot/sub.jpg',
+      detection_count: 1,
+      confidence_max: 0.84,
+      detections: [
+        {
+          label: 'person',
+          confidence: 0.84,
+          x: 0.58,
+          y: 0.34,
+          width: 0.18,
+          height: 0.36,
+        },
+      ],
+    },
+    {
+      id: 'mock-1',
+      timestamp_ms: Date.now() - 360_000,
+      stream: 'sub',
       task: 'occlusion_detection',
       image_url: '/snapshot/sub.jpg',
       detection_count: 1,
@@ -87,8 +115,8 @@ export const mockAiAlerts: AiAlertList = {
       ],
     },
     {
-      id: 'mock-1',
-      timestamp_ms: Date.now() - 360_000,
+      id: 'mock-0',
+      timestamp_ms: Date.now() - 540_000,
       stream: 'sub',
       task: 'motion_classification',
       image_url: '/snapshot/sub.jpg',

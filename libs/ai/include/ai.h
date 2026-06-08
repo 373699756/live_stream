@@ -23,6 +23,7 @@ class IHisiSdk;
 enum class AiTask {
     kObjectDetection = 0,
     kFaceDetection,
+    kPerimeterDetection,
     kMotionClassification,
     kOcclusionDetection,
 };
@@ -30,6 +31,18 @@ enum class AiTask {
 enum class AiBackend {
     kHi3516Dv300Nnie = 0,
     kHostStub,
+};
+
+struct AiPerimeterRegion {
+    std::string name;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 1.0f;
+    float height = 1.0f;
+};
+
+struct AiPerimeterConfig {
+    std::vector<AiPerimeterRegion> regions;
 };
 
 struct AiModelConfig {
@@ -43,6 +56,7 @@ struct AiModelConfig {
     uint32_t inference_interval_ms = 500;
     uint32_t max_results = 16;
     float confidence_threshold = 0.5f;
+    AiPerimeterConfig perimeter;
 };
 
 struct AiDetection {

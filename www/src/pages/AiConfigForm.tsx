@@ -1,4 +1,5 @@
-import type { AiModelConfig } from '../api/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AiModelConfig, AiPerimeterRegion } from '../api/types';
 
 interface AiConfigFormProps {
   config: AiModelConfig;
@@ -9,6 +10,27 @@ interface AiConfigFormProps {
   onSave: () => void;
 }
 
+function isValidRegion(region: unknown): region is AiPerimeterRegion {
+  if (!region || typeof region !== 'object') {
+    return false;
+  }
+  const candidate = region as AiPerimeterRegion;
+  const values = [
+    candidate.x,
+    candidate.y,
+    candidate.width,
+    candidate.height,
+  ];
+  return (
+    typeof candidate.name === 'string' &&
+    values.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) &&
+    candidate.width > 0 &&
+    candidate.height > 0 &&
+    candidate.x + candidate.width <= 1 &&
+    candidate.y + candidate.height <= 1
+  );
+}
+
 export function AiConfigForm({
   config,
   saving,
@@ -17,6 +39,39 @@ export function AiConfigForm({
   onRestore,
   onSave,
 }: AiConfigFormProps) {
+  const [regionJson, setRegionJson] = useState('');
+  const [regionError, setRegionError] = useState('');
+  const syncedConfig = useRef<AiModelConfig | null>(null);
+  const regionText = useMemo(
+    () => JSON.stringify(config.perimeter_regions ?? [], null, 2),
+    [config.perimeter_regions],
+  );
+  useEffect(() => {
+    if (syncedConfig.current !== config) {
+      syncedConfig.current = config;
+      setRegionJson(regionText);
+      setRegionError('');
+    }
+  }, [config, regionText]);
+  const applyRegionJson = (nextText: string) => {
+    setRegionJson(nextText);
+    try {
+      const parsed = JSON.parse(nextText) as AiPerimeterRegion[];
+      if (!Array.isArray(parsed)) {
+        setRegionError('区域必须是数组');
+        return;
+      }
+      if (!parsed.every(isValidRegion)) {
+        setRegionError('区域字段必须是 0-1 内的有效矩形');
+        return;
+      }
+      setRegionError('');
+      onChange({ ...config, perimeter_regions: parsed });
+    } catch {
+      setRegionError('区域 JSON 无效');
+    }
+  };
+
   return (
     <div className="ai-config-grid">
       <label className="form-field">
@@ -60,6 +115,8 @@ export function AiConfigForm({
             }
           >
             <option value="object_detection">目标检测</option>
+            <option value="face_detection">人脸检测</option>
+            <option value="perimeter_detection">周界检测</option>
             <option value="motion_classification">移动侦测</option>
             <option value="occlusion_detection">遮挡检测</option>
           </select>
@@ -142,6 +199,17 @@ export function AiConfigForm({
           />
         </span>
       </label>
+      <label className="form-field ai-config-regions">
+        <span className="form-label">周界区域</span>
+        <span className="form-control">
+          <textarea
+            rows={5}
+            value={regionJson}
+            onChange={(event) => applyRegionJson(event.target.value)}
+          />
+          {regionError ? <span className="form-error">{regionError}</span> : null}
+        </span>
+      </label>
       <div className="ai-config-actions">
         <button
           type="button"
@@ -153,7 +221,7 @@ export function AiConfigForm({
         <button
           type="button"
           className="primary"
-          disabled={saving}
+          disabled={saving || Boolean(regionError)}
           onClick={onSave}
         >
           {saving ? '保存中' : '保存配置'}

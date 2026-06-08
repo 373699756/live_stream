@@ -13,6 +13,8 @@ function taskLabel(task: AiAlertRecord['task']) {
   switch (task) {
     case 'face_detection':
       return '人脸检测';
+    case 'perimeter_detection':
+      return '周界检测';
     case 'motion_classification':
       return '移动侦测';
     case 'occlusion_detection':
@@ -20,10 +22,6 @@ function taskLabel(task: AiAlertRecord['task']) {
     case 'object_detection':
       return '目标检测';
   }
-}
-
-function visibleTaskOrDefault(task: AiModelConfig['task']) {
-  return task === 'face_detection' ? 'object_detection' : task;
 }
 
 function backendLabel(status: AiStatus) {
@@ -44,11 +42,7 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
   const [saveMessage, setSaveMessage] = useState('');
 
   useEffect(() => {
-    setDraft(
-      status
-        ? { ...status.config, task: visibleTaskOrDefault(status.config.task) }
-        : null,
-    );
+    setDraft(status ? { ...status.config } : null);
   }, [status]);
 
   if (!status) {
@@ -63,10 +57,7 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
         ? 'error'
         : 'pending';
   const restoreConfig = () => {
-    setDraft({
-      ...status.config,
-      task: visibleTaskOrDefault(status.config.task),
-    });
+    setDraft({ ...status.config });
     setSaveMessage('');
   };
   const saveConfig = () => {

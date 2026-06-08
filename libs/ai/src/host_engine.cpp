@@ -70,6 +70,14 @@ private:
                 detection.width = 1.0f;
                 detection.height = 1.0f;
                 return detection;
+            case AiTask::kPerimeterDetection:
+                detection.label = "person";
+                detection.confidence = 0.84f;
+                detection.x = 0.58f;
+                detection.y = 0.34f;
+                detection.width = 0.18f;
+                detection.height = 0.36f;
+                return detection;
             case AiTask::kObjectDetection:
                 detection.label = "person";
                 detection.confidence = 0.86f;

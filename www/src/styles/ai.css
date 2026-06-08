@@ -108,6 +108,16 @@
   font-size: 12px;
 }
 
+.ai-config-regions {
+  grid-column: 1 / -1;
+  align-items: start;
+}
+
+.ai-config-regions .form-control {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .ai-waterfall-header span {
   color: var(--muted);
   font-size: 13px;

@@ -35,7 +35,8 @@
     "input_height": 300,
     "inference_interval_ms": 500,
     "confidence_threshold": 0.5,
-    "max_results": 16
+    "max_results": 16,
+    "perimeter_regions": []
   },
   "image": {
     "basic": {

@@ -120,14 +120,34 @@
 }
 
 .form-control input:not([type="checkbox"]):not([type="range"]),
-.form-control select {
+.form-control select,
+.form-control textarea {
   width: 100%;
-  height: 32px;
   padding: 0 9px;
   color: #1f2937;
   background: #fff;
   border: 1px solid #bcc6d4;
   border-radius: 3px;
+}
+
+.form-control input:not([type="checkbox"]):not([type="range"]),
+.form-control select {
+  height: 32px;
+}
+
+.form-control textarea {
+  min-height: 92px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.form-error {
+  color: #b42318;
+  font-size: 12px;
 }
 
 .settings-column .form-control input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
