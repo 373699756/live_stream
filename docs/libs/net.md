@@ -94,6 +94,8 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
 复制到网络 buffer；带 `NetBufferOwner` 的 slice 只持有引用，由 owner 的
 ref/unref 回调保证跨线程和异步发送期间 payload 存活。
+写侧按队列项内的 slice 组 `sendmsg()` 聚合发送；部分写成功后按实际写入字节推进
+slice offset 并释放已完成队列项。`net` 仍不解析媒体语义，也不跨队列项重排发送顺序。
 
 HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
 只能通过 `INetEngine` 的 pending bytes、connection diagnostics 和 close callback

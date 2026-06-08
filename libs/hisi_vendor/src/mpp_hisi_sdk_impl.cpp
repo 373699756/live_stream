@@ -3,7 +3,7 @@
 namespace live_stream {
 namespace hisisdk {
 
-MppHisiSdk::MppHisiSdk() : impl_(new Impl()) {}
+MppHisiSdk::MppHisiSdk() : impl_(new MppHisiSdkImpl()) {}
 
 MppHisiSdk::~MppHisiSdk() {
     if (impl_ != nullptr) {

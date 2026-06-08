@@ -25,12 +25,6 @@ struct HttpMediaClientHandle {
 using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
-struct HttpMediaSlice {
-    const uint8_t *data = nullptr;
-    size_t size = 0;
-    VideoBuffer *owner = nullptr;
-};
-
 // Streaming response boundary for long-lived HTTP media outputs such as
 // HLS segments, HTTP-FLV, and MJPEG.
 class HttpMediaWriter {
@@ -42,7 +36,7 @@ public:
                               bool close_after_response) = 0;
     virtual bool SendResponseSlices(ConnectionId connection_id,
                                     const HttpResponse &response,
-                                    const HttpMediaSlice *body_slices,
+                                    const MediaSlice *body_slices,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) = 0;
@@ -55,7 +49,7 @@ public:
     // until network send completion. Slices without owner must be small
     // protocol bytes that can be copied into the TCP output queue.
     virtual bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const HttpMediaSlice *slices,
+                                        const MediaSlice *slices,
                                         size_t slice_count) = 0;
     virtual void SetCloseCallback(HttpMediaCloseCallback callback) = 0;
     virtual void CloseConnection(ConnectionId connection_id) = 0;

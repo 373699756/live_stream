@@ -105,7 +105,7 @@ bool CopyRtpPacket(const rtp::RtpPacketView &packet,
     return false;
   }
   const size_t packet_size = packet.Size();
-  buffer->assign(packet_size + SRTP_MAX_TRAILER_LEN, 0);
+  buffer->resize(packet_size + SRTP_MAX_TRAILER_LEN);
   size_t offset = 0;
   for (size_t i = 0; i < packet.slice_count; ++i) {
     const rtp::RtpPacketSlice &slice = packet.slices[i];
@@ -119,7 +119,6 @@ bool CopyRtpPacket(const rtp::RtpPacketView &packet,
   if (offset != packet_size) {
     return false;
   }
-  buffer->resize(packet_size + SRTP_MAX_TRAILER_LEN);
   return true;
 }
 
@@ -199,7 +198,7 @@ bool SrtpSession::ProtectRtcp(const uint8_t *data, size_t size,
     return false;
   }
 
-  protected_packet->assign(size + SRTP_MAX_SRTCP_TRAILER_LEN, 0);
+  protected_packet->resize(size + SRTP_MAX_SRTCP_TRAILER_LEN);
   std::memcpy(protected_packet->data(), data, size);
   int packet_size = static_cast<int>(size);
   if (srtp_protect_rtcp(session_, protected_packet->data(), &packet_size) !=
@@ -219,7 +218,8 @@ bool SrtpSession::UnprotectRtcp(const uint8_t *data, size_t size,
     return false;
   }
 
-  plain_packet->assign(data, data + size);
+  plain_packet->resize(size);
+  std::memcpy(plain_packet->data(), data, size);
   int packet_size = static_cast<int>(plain_packet->size());
   if (srtp_unprotect_rtcp(session_, plain_packet->data(), &packet_size) !=
           srtp_err_status_ok ||

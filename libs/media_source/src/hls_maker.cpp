@@ -16,6 +16,7 @@ namespace {
 
 constexpr size_t kInitialHlsSegmentBytes = 256 * 1024;
 constexpr size_t kMaxHlsSegmentBytes = 4 * 1024 * 1024;
+constexpr size_t kHlsSegmentCapacitySlackBytes = 64 * 1024;
 constexpr uint16_t kPatPid = 0x0000;
 constexpr uint16_t kPmtPid = 0x1000;
 constexpr uint16_t kVideoPid = 0x0100;
@@ -178,6 +179,29 @@ void WritePcr(char *target, uint64_t pcr_90k) {
     target[5] = static_cast<char>(0);
 }
 
+uint64_t TimestampUsTo90k(int64_t timestamp_us) {
+    return static_cast<uint64_t>(std::max<int64_t>(0, timestamp_us) * 9 / 100);
+}
+
+bool TsPacketBytesForPesSize(size_t pes_size, size_t *ts_bytes) {
+    if (ts_bytes == nullptr) {
+        return false;
+    }
+    *ts_bytes = 0;
+    if (pes_size == 0) {
+        return true;
+    }
+    if (pes_size > std::numeric_limits<size_t>::max() - 175U) {
+        return false;
+    }
+    const size_t packet_count = (pes_size + 175U) / 176U;
+    if (packet_count > std::numeric_limits<size_t>::max() / kTsPacketSize) {
+        return false;
+    }
+    *ts_bytes = packet_count * kTsPacketSize;
+    return true;
+}
+
 struct MediaSliceList {
     struct Slice {
         const uint8_t *data = nullptr;
@@ -208,6 +232,13 @@ struct MediaSliceList {
                Add(reinterpret_cast<const uint8_t *>(data.data()),
                    data.size());
     }
+};
+
+struct TsFrameSlices {
+    std::string pes_header;
+    MediaSliceList pes_slices;
+    uint64_t dts_90k = 0;
+    size_t ts_bytes = 0;
 };
 
 size_t CopyPesBytes(const MediaSliceList &pes_slices,
@@ -245,11 +276,14 @@ bool AppendTsPayloadToBuffer(const MediaSliceList &pes_slices,
         return false;
     }
     const size_t pes_size = pes_slices.total_size;
-    const size_t packet_count = pes_size == 0 ? 0 : (pes_size + 175) / 176;
+    size_t ts_bytes = 0;
+    if (!TsPacketBytesForPesSize(pes_size, &ts_bytes)) {
+        return false;
+    }
     if (out->size > out->capacity) {
         return false;
     }
-    if (packet_count > (out->capacity - out->size) / kTsPacketSize) {
+    if (ts_bytes > out->capacity - out->size) {
         return false;
     }
 
@@ -400,59 +434,55 @@ bool AppendTsSegmentHeader(VideoCodec codec,
            AppendTsString(segment_body, pmt);
 }
 
-bool AppendH264NalUnitsToTsSegmentBuffer(
-    const media_codec::H264NalUnitList &units,
-    const std::string &sps,
-    const std::string &pps,
-    bool prepend_parameter_sets,
-    int64_t pts_us,
-    int64_t dts_us,
-    TsMuxerState *state,
-    TsSegmentBuffer *segment_body) {
-    if (units.empty() || state == nullptr || segment_body == nullptr) {
+bool BuildH264TsFrameSlices(const media_codec::H264NalUnitList &units,
+                            const std::string &sps,
+                            const std::string &pps,
+                            bool prepend_parameter_sets,
+                            int64_t pts_us,
+                            int64_t dts_us,
+                            TsFrameSlices *frame_slices) {
+    if (units.empty() || frame_slices == nullptr) {
         return false;
     }
-    const uint64_t pts_90k =
-        static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
-    const uint64_t dts_90k =
-        static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
-    const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
-    MediaSliceList pes_slices;
-    if (!pes_slices.AddString(pes_header) ||
+    *frame_slices = TsFrameSlices{};
+    const uint64_t pts_90k = TimestampUsTo90k(pts_us);
+    const uint64_t dts_90k = TimestampUsTo90k(dts_us);
+    frame_slices->pes_header = BuildPesHeader(pts_90k, dts_90k);
+    frame_slices->dts_90k = dts_90k;
+    if (!frame_slices->pes_slices.AddString(frame_slices->pes_header) ||
         !AddH264AccessUnitSlices(units, sps, pps, prepend_parameter_sets,
-                                 &pes_slices)) {
+                                 &frame_slices->pes_slices) ||
+        !TsPacketBytesForPesSize(frame_slices->pes_slices.total_size,
+                                 &frame_slices->ts_bytes)) {
         return false;
     }
-    return AppendTsPayloadToBuffer(pes_slices, dts_90k,
-                                   &state->video_continuity, segment_body);
+    return true;
 }
 
-bool AppendH265NalUnitsToTsSegmentBuffer(
-    const media_codec::H265NalUnitList &units,
-    const std::string &vps,
-    const std::string &sps,
-    const std::string &pps,
-    bool prepend_parameter_sets,
-    int64_t pts_us,
-    int64_t dts_us,
-    TsMuxerState *state,
-    TsSegmentBuffer *segment_body) {
-    if (units.empty() || state == nullptr || segment_body == nullptr) {
+bool BuildH265TsFrameSlices(const media_codec::H265NalUnitList &units,
+                            const std::string &vps,
+                            const std::string &sps,
+                            const std::string &pps,
+                            bool prepend_parameter_sets,
+                            int64_t pts_us,
+                            int64_t dts_us,
+                            TsFrameSlices *frame_slices) {
+    if (units.empty() || frame_slices == nullptr) {
         return false;
     }
-    const uint64_t pts_90k =
-        static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
-    const uint64_t dts_90k =
-        static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
-    const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
-    MediaSliceList pes_slices;
-    if (!pes_slices.AddString(pes_header) ||
+    *frame_slices = TsFrameSlices{};
+    const uint64_t pts_90k = TimestampUsTo90k(pts_us);
+    const uint64_t dts_90k = TimestampUsTo90k(dts_us);
+    frame_slices->pes_header = BuildPesHeader(pts_90k, dts_90k);
+    frame_slices->dts_90k = dts_90k;
+    if (!frame_slices->pes_slices.AddString(frame_slices->pes_header) ||
         !AddH265AccessUnitSlices(units, vps, sps, pps, prepend_parameter_sets,
-                                 &pes_slices)) {
+                                 &frame_slices->pes_slices) ||
+        !TsPacketBytesForPesSize(frame_slices->pes_slices.total_size,
+                                 &frame_slices->ts_bytes)) {
         return false;
     }
-    return AppendTsPayloadToBuffer(pes_slices, dts_90k,
-                                   &state->video_continuity, segment_body);
+    return true;
 }
 
 }  // namespace
@@ -654,33 +684,34 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
     if (current_segment_.body == nullptr) {
         return false;
     }
-    for (size_t attempt = 0; attempt < 8; ++attempt) {
-        TsSegmentBuffer segment_body =
-            SegmentBuffer(&current_segment_);
-        const size_t original_size = segment_body.size;
-        TsMuxerState original_state = ts_muxer_state_;
-        bool appended = false;
-        if (frame.codec == VideoCodec::kH265) {
-            appended = AppendH265NalUnitsToTsSegmentBuffer(
-                payload.h265_units, vps, sps, pps, prepend_parameter_sets,
-                frame.pts_us, frame.dts_us,
-                &ts_muxer_state_, &segment_body);
-        } else {
-            appended = AppendH264NalUnitsToTsSegmentBuffer(
-                payload.h264_units, sps, pps, prepend_parameter_sets,
-                frame.pts_us, frame.dts_us, &ts_muxer_state_, &segment_body);
-        }
-        if (appended && CommitSegmentBuffer(&current_segment_, segment_body)) {
-            return true;
-        }
-        ts_muxer_state_ = original_state;
-        (void)VideoBufferSetSize(current_segment_.body,
-                                 static_cast<uint32_t>(original_size));
-        if (!EnsureSegmentCapacity(&current_segment_,
-                                   current_segment_.body->capacity)) {
+    TsFrameSlices frame_slices;
+    if (frame.codec == VideoCodec::kH265) {
+        if (!BuildH265TsFrameSlices(payload.h265_units, vps, sps, pps,
+                                    prepend_parameter_sets, frame.pts_us,
+                                    frame.dts_us, &frame_slices)) {
             return false;
         }
+    } else if (!BuildH264TsFrameSlices(payload.h264_units, sps, pps,
+                                       prepend_parameter_sets, frame.pts_us,
+                                       frame.dts_us, &frame_slices)) {
+        return false;
     }
+    if (!EnsureSegmentCapacity(&current_segment_, frame_slices.ts_bytes)) {
+        return false;
+    }
+
+    TsSegmentBuffer segment_body = SegmentBuffer(&current_segment_);
+    const size_t original_size = segment_body.size;
+    const TsMuxerState original_state = ts_muxer_state_;
+    const bool appended = AppendTsPayloadToBuffer(
+        frame_slices.pes_slices, frame_slices.dts_90k,
+        &ts_muxer_state_.video_continuity, &segment_body);
+    if (appended && CommitSegmentBuffer(&current_segment_, segment_body)) {
+        return true;
+    }
+    ts_muxer_state_ = original_state;
+    (void)VideoBufferSetSize(current_segment_.body,
+                             static_cast<uint32_t>(original_size));
     return false;
 }
 
@@ -716,7 +747,15 @@ void HlsMaker::RememberSegmentCapacity(const SegmentState &segment) {
     if (segment.body == nullptr) {
         return;
     }
-    next_segment_capacity_ = ClampSegmentCapacity(segment.body->size);
+    size_t next_capacity = segment.body->size;
+    const size_t slack =
+        std::max(next_capacity / 8U, kHlsSegmentCapacitySlackBytes);
+    if (next_capacity <= kMaxHlsSegmentBytes - slack) {
+        next_capacity += slack;
+    } else {
+        next_capacity = kMaxHlsSegmentBytes;
+    }
+    next_segment_capacity_ = ClampSegmentCapacity(next_capacity);
 }
 
 void HlsMaker::PopOldestSegment() {

@@ -103,6 +103,8 @@ private:
     std::unique_ptr<DtlsTransport> dtls_;
     SrtpSession outbound_srtp_;
     SrtpSession inbound_srtp_;
+    std::vector<uint8_t> protected_rtp_packet_;
+    std::vector<uint8_t> plain_rtcp_packet_;
     NetTimerId dtls_timer_id_ = 0;
     uint64_t protected_rtp_packets_ = 0;
     uint64_t protected_rtp_bytes_ = 0;

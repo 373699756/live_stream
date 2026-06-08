@@ -102,7 +102,7 @@ public:
           webrtc_(dependencies.webrtc),
           media_source_(dependencies.media_source) {}
 
-    ~NetAdaptiveImpl() override { Stop(); }
+    ~NetAdaptiveImpl() override { StopInternal(); }
 
     bool Start() override {
         if (started_) {
@@ -129,28 +129,7 @@ public:
         return true;
     }
 
-    void Stop() override {
-        if (!started_) {
-            return;
-        }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            stopping_ = true;
-        }
-        condition_.notify_all();
-        if (sample_thread_.joinable()) {
-            sample_thread_.join();
-        }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            stats_ = NetAdaptiveStats{};
-            recommendations_.clear();
-            recommendation_history_.clear();
-            stream_decisions_.clear();
-            stopping_ = false;
-        }
-        started_ = false;
-    }
+    void Stop() override { StopInternal(); }
 
     NetAdaptiveStats GetStats() const override {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -192,6 +171,29 @@ public:
     }
 
 private:
+    void StopInternal() {
+        if (!started_) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        condition_.notify_all();
+        if (sample_thread_.joinable()) {
+            sample_thread_.join();
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stats_ = NetAdaptiveStats{};
+            recommendations_.clear();
+            recommendation_history_.clear();
+            stream_decisions_.clear();
+            stopping_ = false;
+        }
+        started_ = false;
+    }
+
     void SampleLoop() {
         while (true) {
             {

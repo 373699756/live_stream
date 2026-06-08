@@ -12,6 +12,9 @@ reader、GOP cache、HLS segment、FLV sequence/header、MJPEG 可用性、
 HTTP 请求解析、Web UI 状态、WebRTC peer 生命周期或媒体配置应用。
 HLS/TS 和 FLV tag 构造是本模块内部实现细节，跟随 cache、ready 状态和 codec
 generation 一起重建。
+HLS 当前 segment append 前会按 PES/TS 分包结果预估本帧输出字节并预留容量；
+完成 segment 后记录带余量的下一段容量，减少 segment 中途扩容时对已写 TS body 的
+整段复制。
 
 ## 总体框架图
 
@@ -100,6 +103,8 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 playlist depth、segment retain count、FLV client 上限、MJPEG client 上限和 frame
 reader/client 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
 sequence header、GOP cache、HLS 当前 segment、MJPEG latest frame 和 ready 字段。
+FLV GOP cache 只引用底层 `EncodedFrame`/`VideoBuffer`，只复制固定小头部；
+payload 不做 GOP 级二次拷贝。
 
 reader/GOP 资源模型：
 

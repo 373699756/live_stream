@@ -295,8 +295,8 @@ void HttpServer::IncrementPermissionDenied() {
 void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
-    HttpMediaSlice body_slice;
-    const HttpMediaSlice *body_slices = nullptr;
+    MediaSlice body_slice;
+    const MediaSlice *body_slices = nullptr;
     size_t body_slice_count = 0;
     if (!response.body.empty()) {
         body_slice.data =
@@ -312,7 +312,7 @@ void HttpServer::SendResponse(ConnectionId connection_id,
 
 bool HttpServer::SendResponseSlices(ConnectionId connection_id,
                                     const HttpResponse &response,
-                                    const HttpMediaSlice *body_slices,
+                                    const MediaSlice *body_slices,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) {
@@ -398,7 +398,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
 }
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const HttpMediaSlice *slices,
+                                        const MediaSlice *slices,
                                         size_t slice_count) {
     NetBufferSlices net_slices;
     size_t total_size = 0;

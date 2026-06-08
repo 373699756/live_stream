@@ -2,6 +2,7 @@
 #define LIVE_STREAM_MEDIA_MEDIA_BUFFER_H_
 
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 
 namespace live_stream {
@@ -26,6 +27,12 @@ struct BufferSlice {
     const VideoBuffer* buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
+};
+
+struct MediaSlice {
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    VideoBuffer *owner = nullptr;
 };
 
 struct MediaBufferPoolStats {

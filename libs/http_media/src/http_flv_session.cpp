@@ -78,7 +78,7 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
   std::memcpy(header, data, sizeof(header));
   WriteFlvTimestampMs(timestamp_ms, header);
 
-  HttpMediaSlice slices[2];
+  MediaSlice slices[2];
   slices[0].data = header;
   slices[0].size = sizeof(header);
   slices[1].data = data + sizeof(header);
@@ -98,7 +98,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
 
   size_t index = 0;
   while (index < tag.slice_count) {
-    HttpMediaSlice slices[kMaxNetBufferSlices];
+    MediaSlice slices[kMaxNetBufferSlices];
     size_t slice_count = 0;
     while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
       const MediaFlvVideoTagSlice &source = tag.slices[index];
@@ -138,7 +138,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
 
   size_t index = 0;
   while (index < tag.slice_count) {
-    HttpMediaSlice slices[kMaxNetBufferSlices];
+    MediaSlice slices[kMaxNetBufferSlices];
     size_t slice_count = 0;
     while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
       const MediaFlvCachedVideoTagSlice &source = tag.slices[index];

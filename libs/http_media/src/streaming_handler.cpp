@@ -119,7 +119,7 @@ public:
         frame_header.append(std::to_string(frame.size));
         frame_header.append("\r\n\r\n");
 
-        HttpMediaSlice slices[3];
+        MediaSlice slices[3];
         slices[0].data = reinterpret_cast<const uint8_t *>(frame_header.data());
         slices[0].size = frame_header.size();
         slices[1].data = payload;
@@ -306,7 +306,7 @@ private:
         HttpResponse response;
         response.status_code = 200;
         response.headers["Content-Type"] = "video/mp2t";
-        HttpMediaSlice body_slice;
+        MediaSlice body_slice;
         body_slice.data = segment.body->data;
         body_slice.size = segment.body->size;
         body_slice.owner = segment.body;

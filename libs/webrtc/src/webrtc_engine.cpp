@@ -116,7 +116,7 @@ public:
 
     ~NativeWebrtcEngine() override {
         UnregisterEngine(engine_id_);
-        Stop();
+        StopInternal();
     }
 
     bool Available() const override { return net_engine_ != nullptr; }
@@ -137,11 +137,7 @@ public:
         return true;
     }
 
-    void Stop() override {
-        std::lock_guard<std::mutex> guard(mutex_);
-        CloseAllSessionsLocked();
-        sessions_.clear();
-    }
+    void Stop() override { StopInternal(); }
 
     bool ApplyOptions(const WebrtcOptions &options) override {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -345,6 +341,12 @@ public:
     }
 
 private:
+    void StopInternal() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        CloseAllSessionsLocked();
+        sessions_.clear();
+    }
+
     static void OnUdpPacket(void *user, UdpSocketId socket_id,
                             NetAddress peer, const uint8_t *data,
                             size_t size) {
