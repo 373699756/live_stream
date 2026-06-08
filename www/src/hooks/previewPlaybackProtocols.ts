@@ -83,6 +83,7 @@ export function startHlsPreview({
   hlsReady,
   hlsRef,
   hlsUrl,
+  sessionId,
   setHlsPlayer,
   video,
 }: {
@@ -102,6 +103,7 @@ export function startHlsPreview({
   hlsReady: boolean;
   hlsRef: CurrentRef<HlsPlayer | null>;
   hlsUrl: string;
+  sessionId: number;
   setHlsPlayer: (player: HlsPlayer) => void;
   video: HTMLVideoElement;
 }): number {
@@ -109,9 +111,32 @@ export function startHlsPreview({
     controls.setPreviewState('HLS 地址不可用');
     return 0;
   }
+  const hlsSessionUrl = streamSessionUrl(hlsUrl, sessionId);
+  const fallbackFromHlsFailure = (message: string) => {
+    controls.setConnected(false);
+    if (!autoFallback.autoModeSelected) {
+      controls.setPreviewState(message);
+      return;
+    }
+    const fallbackMode =
+      autoFallback.nextReadyMode && autoFallback.nextReadyMode !== 'hls'
+        ? autoFallback.nextReadyMode
+        : fallbackReady.flvPlaybackReady
+          ? 'flv'
+          : fallbackReady.mjpegPlaybackReady
+            ? 'mjpeg'
+            : null;
+    if (!fallbackMode) {
+      controls.setPreviewState(message);
+      return;
+    }
+    autoFallback.onAutoModeFallback();
+    autoFallback.restartPreview(`${message}，切换 ${previewModeLabels[fallbackMode]}`);
+    autoFallback.setMode(fallbackMode);
+  };
   if (!hlsReady) {
     controls.setPreviewState('正在启动 HLS 码流');
-    void fetch(hlsUrl, {
+    void fetch(hlsSessionUrl, {
       cache: 'no-store',
       signal: controls.sessionSignal,
     }).catch((error: unknown) => {
@@ -127,28 +152,12 @@ export function startHlsPreview({
         controls.setPreviewState('HLS 启动超时');
         return;
       }
-      const fallbackMode =
-        autoFallback.nextReadyMode && autoFallback.nextReadyMode !== 'hls'
-          ? autoFallback.nextReadyMode
-          : fallbackReady.flvPlaybackReady
-            ? 'flv'
-            : fallbackReady.mjpegPlaybackReady
-              ? 'mjpeg'
-              : null;
-      if (fallbackMode) {
-        autoFallback.onAutoModeFallback();
-        autoFallback.restartPreview(
-          `HLS 启动超时，切换 ${previewModeLabels[fallbackMode]}`,
-        );
-        autoFallback.setMode(fallbackMode);
-        return;
-      }
-      controls.setPreviewState('HLS 启动超时');
+      fallbackFromHlsFailure('HLS 启动超时');
     }, hlsStartupTimeoutMs);
   }
   controls.setPreviewState('等待 HLS 视频流');
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = hlsUrl;
+    video.src = hlsSessionUrl;
     void video.play().catch(() => {});
     controls.setPreviewState('正在拉取 HLS 码流');
     return 0;
@@ -177,12 +186,12 @@ export function startHlsPreview({
       if (errorEvent && player.on) {
         player.on(errorEvent, () => {
           if (controls.isCurrentSession() && hlsRef.current === player) {
-            controls.setPreviewState('HLS 播放失败');
+            fallbackFromHlsFailure('HLS 播放失败');
           }
         });
       }
       player.attachMedia(video);
-      player.loadSource(hlsUrl);
+      player.loadSource(hlsSessionUrl);
       void video.play().catch(() => {});
       controls.setPreviewState('正在拉取 HLS 码流');
     } catch (error) {

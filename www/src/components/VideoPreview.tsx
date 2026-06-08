@@ -32,6 +32,8 @@ export function VideoPreview({
     const [mode, setMode] = useState<PreviewMode>('webrtc');
     const surfaceRef = useRef<HTMLDivElement | null>(null);
     const active = statuses.find((item) => item.stream === stream);
+    const activePlaybackUrls =
+        playbackUrls?.stream === stream ? playbackUrls : null;
     const {
         connected,
         decodedSize,
@@ -56,7 +58,7 @@ export function VideoPreview({
         active,
         enabled,
         mode,
-        playbackUrls,
+        playbackUrls: activePlaybackUrls,
         setMode,
         stream,
     });

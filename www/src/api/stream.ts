@@ -16,6 +16,7 @@ import {
 } from './mockStream';
 import type {
   MediaPlaybackUrls,
+  MediaSessionsResponse,
   MediaStreamsResponse,
   MediaSessionInfo,
   MediaStreamRuntime,
@@ -35,6 +36,40 @@ interface WebrtcOfferRequest {
   sdp: string;
 }
 
+const webrtcPeerCloseTimeoutMs = 3000;
+
+let webrtcClientSequence = 0;
+let pendingWebrtcPeerClose: Promise<void> = Promise.resolve();
+
+function nextWebrtcClientId(stream: StreamName): string {
+  webrtcClientSequence += 1;
+  return `web-${stream}-${Date.now().toString(36)}-${webrtcClientSequence}`;
+}
+
+function normalizeMediaSessions(
+  response: MediaSessionInfo[] | MediaSessionsResponse,
+): MediaSessionInfo[] {
+  if (Array.isArray(response)) {
+    return response;
+  }
+  if (Array.isArray(response.items)) {
+    return response.items;
+  }
+  return [];
+}
+
+function normalizeMediaStreams(
+  response: MediaStreamRuntime[] | MediaStreamsResponse,
+): MediaStreamRuntime[] {
+  if (Array.isArray(response)) {
+    return response;
+  }
+  if (Array.isArray(response.items)) {
+    return response.items;
+  }
+  return [];
+}
+
 // RTSP & WebRTC read-only config
 export function getRtspConfig(
   init?: ApiRequestOptions,
@@ -51,11 +86,11 @@ export function getWebrtcConfig(
 export function getMediaStreams(
   init?: ApiRequestOptions,
 ): Promise<MediaStreamRuntime[]> {
-  return requestJson<MediaStreamsResponse>(
+  return requestJson<MediaStreamRuntime[] | MediaStreamsResponse>(
     '/api/media/streams',
     { items: mockMediaStreams },
     init,
-  ).then((response) => response.items);
+  ).then(normalizeMediaStreams);
 }
 
 export function getMediaStream(
@@ -85,18 +120,23 @@ export function getMediaPlaybackUrls(
 export function getMediaSessions(
   init?: ApiRequestOptions,
 ): Promise<MediaSessionInfo[]> {
-  return requestJson<MediaSessionInfo[]>(
+  return requestJson<MediaSessionInfo[] | MediaSessionsResponse>(
     '/api/media/sessions',
-    mockMediaSessions,
+    { items: mockMediaSessions },
     init,
-  );
+  ).then(normalizeMediaSessions);
 }
 
 // WebRTC signaling
-export function createWebrtcPeer(stream: StreamName, init?: ApiRequestOptions) {
+export async function createWebrtcPeer(
+  stream: StreamName,
+  init?: ApiRequestOptions,
+) {
+  // 后端默认只允许一个 WebRTC peer；快速切流时必须串行关闭旧 peer 再创建新 peer。
+  await pendingWebrtcPeerClose;
   return postJson<WebrtcCreatePeerRequest, WebrtcPeerInfo>(
     '/api/webrtc/peers',
-    { stream, client_id: 'web' },
+    { stream, client_id: nextWebrtcClientId(stream) },
     mockWebrtcPeer(stream),
     init,
   );
@@ -141,13 +181,23 @@ export async function closeWebrtcPeer(peerId: string, init?: ApiRequestOptions) 
   if (!peerId) {
     return;
   }
-  try {
-    await deleteJson(
-      `/api/webrtc/peers/${encodeURIComponent(peerId)}`,
-      { peer_id: peerId },
-      init,
-    );
-  } catch {
-    // Best-effort cleanup.
-  }
+  const closeInit: ApiRequestOptions = {
+    timeoutMs: webrtcPeerCloseTimeoutMs,
+    ...init,
+  };
+  const closeRequest = pendingWebrtcPeerClose
+    .catch(() => {})
+    .then(async () => {
+      try {
+        await deleteJson(
+          `/api/webrtc/peers/${encodeURIComponent(peerId)}`,
+          { peer_id: peerId },
+          closeInit,
+        );
+      } catch {
+        // 关闭是切流清理动作，失败只影响本次释放，不能卡住后续预览链路。
+      }
+    });
+  pendingWebrtcPeerClose = closeRequest.catch(() => {});
+  await closeRequest;
 }

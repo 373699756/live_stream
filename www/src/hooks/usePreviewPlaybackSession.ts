@@ -17,7 +17,11 @@ import {
     releasePreviewLayerSession,
     type PreviewLayerSession,
 } from './previewLayerSession';
-import type { PreviewMode, PreviewModeState } from './previewMode';
+import {
+    previewModeLabels,
+    type PreviewMode,
+    type PreviewModeState,
+} from './previewMode';
 import {
     startFlvPreview,
     startHlsPreview,
@@ -122,6 +126,15 @@ export function usePreviewPlaybackSession({
         releaseSession(activeSession);
         releaseRetiredSessions();
     }, [releaseRetiredSessions, releaseSession]);
+
+    const releaseRetainedSessionsBeforeWebrtc = useCallback(() => {
+        if (retiringSessionsRef.current.length === 0) {
+            return;
+        }
+        // 后端默认只允许一个 WebRTC 对端，切回 WebRTC 前必须先释放保留层旧连接。
+        releaseRetiredSessions();
+        setRetainedFrameVisible(false);
+    }, [releaseRetiredSessions]);
 
     const hasVisibleRetiredSession = useCallback(() => (
         retiringSessionsRef.current.some((session) => (
@@ -321,6 +334,14 @@ export function usePreviewPlaybackSession({
         video.onerror = () => {
             setSessionConnected(false);
             if (mode === 'hls') {
+                if (autoModeSelected && nextReadyMode && nextReadyMode !== 'hls') {
+                    onAutoModeFallback();
+                    restartPreview(
+                        `HLS 播放失败，切换 ${previewModeLabels[nextReadyMode]}`,
+                    );
+                    setMode(nextReadyMode);
+                    return;
+                }
                 setSessionPreviewState('HLS 播放失败');
             } else if (mode === 'flv') {
                 setSessionPreviewState('HTTP-FLV 播放失败');
@@ -329,7 +350,8 @@ export function usePreviewPlaybackSession({
 
         if (mode === 'webrtc') {
             // WebRTC 的对端连接生命周期由当前层会话承载，切流时统一关闭。
-            session.startupTimer = startWebrtcPreview({
+            releaseRetainedSessionsBeforeWebrtc();
+            startWebrtcPreview({
                 controls,
                 fallback: {
                     flvPlaybackReady,
@@ -348,6 +370,13 @@ export function usePreviewPlaybackSession({
                     setPeerId: (peerId) => {
                         session.peerId = peerId;
                         peerIdRef.current = peerId;
+                    },
+                    setStartupTimer: (timer) => {
+                        // WebRTC timer 在后端 peer 创建后才注册，因此必须回写到当前层会话。
+                        if (session.startupTimer !== 0) {
+                            window.clearTimeout(session.startupTimer);
+                        }
+                        session.startupTimer = timer;
                     },
                     videoRef,
                 },
@@ -387,6 +416,7 @@ export function usePreviewPlaybackSession({
                 hlsReady,
                 hlsRef,
                 hlsUrl: playbackUrls?.hls || '',
+                sessionId,
                 setHlsPlayer: (player) => {
                     session.hls = player;
                     hlsRef.current = player;
@@ -425,6 +455,7 @@ export function usePreviewPlaybackSession({
         onAutoModeFallback,
         playbackUrls,
         releaseAllSessions,
+        releaseRetainedSessionsBeforeWebrtc,
         releaseRetiredSessions,
         releaseSession,
         restartPreview,
