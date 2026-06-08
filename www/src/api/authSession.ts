@@ -1,31 +1,12 @@
-const tokenKey = 'live_stream_token';
 export const authInvalidEvent = 'live-stream-auth-invalid';
 export const mustChangePasswordEvent = 'live-stream-must-change-password';
 
-export function getToken(): string | null {
-  return window.localStorage.getItem(tokenKey);
-}
-
-export function hasToken(): boolean {
-  return Boolean(window.localStorage.getItem(tokenKey));
-}
-
-export function setToken(token: string): void {
-  window.localStorage.setItem(tokenKey, token);
-}
-
-export function removeToken(): void {
-  window.localStorage.removeItem(tokenKey);
-}
-
-export function removeTokenIfCurrent(token: string | null): void {
-  if (!token || window.localStorage.getItem(tokenKey) === token) {
-    window.localStorage.removeItem(tokenKey);
-  }
+export function clearBrowserAuthState(): void {
+  window.localStorage.removeItem('live_stream_token');
 }
 
 export function dispatchAuthInvalid(): void {
-  removeToken();
+  clearBrowserAuthState();
   window.dispatchEvent(new Event(authInvalidEvent));
 }
 

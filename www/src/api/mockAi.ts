@@ -3,7 +3,7 @@ import type { AiAlertList, AiStatus } from './types';
 export const mockAiStatus: AiStatus = {
   config: {
     enabled: true,
-    backend: 'host_stub',
+    backend: 'hisi3516dv300_nnie',
     task: 'object_detection',
     stream: 'sub',
     model_path: 'models/inst_ssd_cycle.wk',

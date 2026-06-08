@@ -44,7 +44,6 @@ export function AiConfigForm({
             }
           >
             <option value="hisi3516dv300_nnie">HiSilicon NNIE/IVS</option>
-            <option value="host_stub">Host stub</option>
           </select>
         </span>
       </label>

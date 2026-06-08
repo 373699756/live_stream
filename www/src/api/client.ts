@@ -4,7 +4,6 @@
 import {
   dispatchAuthInvalid,
   dispatchMustChangePassword,
-  getToken,
 } from './authSession';
 
 const baseHeaders = { 'Content-Type': 'application/json' };
@@ -95,10 +94,6 @@ export function authQuery({
 
 export function authHeaders(init?: RequestInit): HeadersInit {
   const headers = new Headers(baseHeaders);
-  const token = getToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
   if (init?.headers) {
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   }

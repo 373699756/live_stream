@@ -80,14 +80,15 @@ The UI calls these JSON API groups:
 `vhost/app` names or derive stream paths from SDK fields.
 
 Browser media URLs, AI alert image URLs, and `/api/operations/export` use the
-same-origin `HttpOnly` session cookie set by login. The frontend must not append
-access tokens to URL query strings.
+same-origin `HttpOnly` session cookie set by login. The frontend must not store
+the session token in JavaScript-readable storage or append access tokens to URL
+query strings.
 
 Product scope is video-only live preview, snapshots, configuration, and
 maintenance. Audio capture, audio encoding, audio transport, recording,
 storage playback, and related UI/API surfaces are intentionally out of scope.
-Existing config fields that mention audio or recording are compatibility
-placeholders and must not be treated as enabled product features.
+Old config fields that mention audio or recording are ignored for upgrade
+compatibility and must not be shown or saved by the Web UI.
 
 The web live preview exposes these modes:
 

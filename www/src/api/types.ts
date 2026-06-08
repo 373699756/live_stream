@@ -279,7 +279,7 @@ export interface WebrtcOfferAnswer {
   state: WebrtcPeerState;
 }
 
-export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';
+export type AiBackendName = 'hisi3516dv300_nnie';
 export type AiTaskName =
   | 'object_detection'
   | 'face_detection'

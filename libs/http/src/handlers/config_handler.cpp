@@ -10,10 +10,15 @@ namespace live_stream {
 namespace {
 
 const char *kSetConfigFailed = "set config failed";
+const char *kUnsupportedConfigScopeAudio = "audio";
 
 bool IsWrappedConfigPayload(const std::string &name, const ConfigJson &value) {
     return value.is_object() && value.size() == 1 && value.contains(name) &&
            value.at(name).is_object();
+}
+
+bool IsUnsupportedConfigScope(const std::string &name) {
+    return name == kUnsupportedConfigScopeAudio;
 }
 
 }  // namespace
@@ -55,6 +60,9 @@ private:
             if (auth_response.status_code != 0) {
                 return auth_response;
             }
+            if (IsUnsupportedConfigScope(name)) {
+                return StatusResponse(404, "Not Found");
+            }
             ConfigJson value = config->GetValue(name);
             if (value.is_null()) {
                 return StatusResponse(404, "Not Found");
@@ -71,6 +79,9 @@ private:
                                               AuthPermission::kModifyConfig,
                                               name, &principal)) {
                 return ForbiddenResponse(principal);
+            }
+            if (IsUnsupportedConfigScope(name)) {
+                return StatusResponse(404, "Not Found");
             }
             ConfigJson value;
             if (!ParseJsonObject(request, &value)) {

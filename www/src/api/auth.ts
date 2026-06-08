@@ -6,12 +6,8 @@ import {
   useMockFallback,
 } from './client';
 import {
+  clearBrowserAuthState,
   dispatchAuthInvalid,
-  getToken,
-  hasToken,
-  removeToken,
-  removeTokenIfCurrent,
-  setToken,
 } from './authSession';
 import type { AuthPrincipal, AuthState } from './types';
 
@@ -50,7 +46,7 @@ export async function login(
   userName: string,
   password: string,
 ): Promise<LoginResult> {
-  removeToken();
+  clearBrowserAuthState();
   const request = managedRequestSignal({ timeoutMs: credentialTimeoutMs });
   try {
     const response = await fetch('/api/auth/login', {
@@ -69,14 +65,6 @@ export async function login(
     const body = unwrapAuthResponse(
       (await response.json()) as AuthResponse | ApiEnvelope<AuthResponse>,
     );
-    if (!body.token) {
-      return {
-        authenticated: false,
-        mustChangePassword: false,
-        error: 'empty_token',
-      };
-    }
-    setToken(body.token);
     return stateFromAuthResponse(body);
   } catch {
     return {
@@ -90,9 +78,6 @@ export async function login(
 }
 
 export async function validateSession(): Promise<AuthState> {
-  if (!hasToken()) {
-    return { authenticated: false, mustChangePassword: false };
-  }
   const request = managedRequestSignal({ timeoutMs: credentialTimeoutMs });
   try {
     const response = await fetch('/api/auth/me', {
@@ -101,7 +86,7 @@ export async function validateSession(): Promise<AuthState> {
       signal: request.signal,
     });
     if (!response.ok) {
-      removeToken();
+      clearBrowserAuthState();
       return { authenticated: false, mustChangePassword: false };
     }
     const body = unwrapAuthResponse(
@@ -110,7 +95,7 @@ export async function validateSession(): Promise<AuthState> {
     return stateFromAuthResponse(body);
   } catch {
     if (useMockFallback) {
-      return { authenticated: hasToken(), mustChangePassword: false };
+      return { authenticated: false, mustChangePassword: false };
     }
     dispatchAuthInvalid();
     return { authenticated: false, mustChangePassword: false };
@@ -123,9 +108,6 @@ export async function changePassword(
   oldPassword: string,
   newPassword: string,
 ): Promise<boolean> {
-  if (!hasToken()) {
-    return false;
-  }
   const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/change-password', {
@@ -150,10 +132,6 @@ export async function changePassword(
 }
 
 export async function logout(): Promise<void> {
-  const token = getToken();
-  if (!token) {
-    return;
-  }
   const request = managedRequestSignal();
   try {
     const response = await fetch('/api/auth/logout', {
@@ -169,5 +147,5 @@ export async function logout(): Promise<void> {
   } finally {
     request.cleanup();
   }
-  removeTokenIfCurrent(token);
+  clearBrowserAuthState();
 }

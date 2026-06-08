@@ -30,10 +30,6 @@ bool ParseBackend(const std::string &value, AiBackend *backend) {
         *backend = AiBackend::kHi3516Dv300Nnie;
         return true;
     }
-    if (value == "host_stub") {
-        *backend = AiBackend::kHostStub;
-        return true;
-    }
     return false;
 }
 

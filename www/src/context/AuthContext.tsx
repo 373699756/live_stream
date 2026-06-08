@@ -6,7 +6,6 @@ import {
   validateSession,
 } from '../api/auth';
 import {
-  hasToken,
   onAuthInvalid,
   onMustChangePassword,
 } from '../api/authSession';
@@ -25,19 +24,13 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authenticated, setAuthenticated] = useState(hasToken);
+  const [authenticated, setAuthenticated] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [principal, setPrincipal] = useState<AuthPrincipal | undefined>();
-  const [ready, setReady] = useState(!hasToken());
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    if (!hasToken()) {
-      setReady(true);
-      return () => {
-        mounted = false;
-      };
-    }
     void validateSession().then((state) => {
       if (mounted) {
         setAuthenticated(state.authenticated);

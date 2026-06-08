@@ -96,7 +96,8 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 不返回 JSON envelope；它们仍由 HTTP 路由鉴权和资源上限保护。
 浏览器侧访问这些媒体入口、AI 告警图片和 `/api/operations/export` 时依赖
 登录接口下发的 `HttpOnly` session cookie；JSON API 仍可使用 `Authorization:
-Bearer` header。Web 不在 URL query 中携带 access token。
+Bearer` header 供非浏览器客户端使用。Web 不在 JavaScript 可读存储或 URL query
+中携带 session token。
 
 ## 状态与资源模型
 

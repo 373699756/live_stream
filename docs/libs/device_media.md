@@ -72,8 +72,8 @@ ready、时间戳修正和协议 reader 缓存归 `media_source`/`media_pipeline
 
 ## 音视频专项边界
 
-产品只支持视频。音频配置兼容字段只能保持 disabled；不启动音频采集、编码、传输
-或 UI/API。HiSilicon 静态库中的音频符号由 `hisi_vendor` 失败 stub 闭合。
+产品只支持视频。旧配置文件中的音频字段只做升级兼容忽略；不启动音频采集、编码、
+传输或 UI/API。HiSilicon 静态库中的音频符号由 `hisi_vendor` 失败 stub 闭合。
 
 ## 风险与优化方向
 

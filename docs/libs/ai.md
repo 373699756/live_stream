@@ -30,6 +30,8 @@ flowchart LR
 - 配置热应用：关闭会停止推理链路，开启或修改后端/任务/模型/阈值会重建链路。
 - 默认使用子码流，默认推理间隔 500ms。
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
+- 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
+  配置或 Web 选项暴露。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
 - 维护最近推理结果、统计、告警图片和 `/api/ai/*` view。
 - 有检测结果时向 `alarm` 注入 `ai_detection`。

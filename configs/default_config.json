@@ -25,15 +25,6 @@
       }
     }
   },
-  "audio": {
-    "enabled": false,
-    "codec": "aac",
-    "sample_rate": 16000,
-    "channels": 1,
-    "bitrate_kbps": 64,
-    "input_gain": 50,
-    "noise_suppression": true
-  },
   "ai": {
     "enabled": false,
     "backend": "hisi3516dv300_nnie",
@@ -211,7 +202,6 @@
     },
     "actions": {
       "snapshot": true,
-      "record": false,
       "notify": true
     },
     "schedule": {

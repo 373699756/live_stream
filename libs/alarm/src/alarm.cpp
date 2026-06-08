@@ -29,10 +29,8 @@ bool VerifyActionsConfig(const ConfigJson &value) {
         return false;
     }
     bool ignored = false;
-    bool record = false;
     return json_utils::ReadField(value, "snapshot", &ignored) &&
-           json_utils::ReadField(value, "record", &record) &&
-           json_utils::ReadField(value, "notify", &ignored) && !record;
+           json_utils::ReadField(value, "notify", &ignored);
 }
 
 bool VerifyScheduleConfig(const ConfigJson &value) {
