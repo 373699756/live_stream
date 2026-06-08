@@ -71,7 +71,7 @@ CXXFLAGS += -I$(THIRDPARTY_SRC)
 CXXFLAGS += -I$(HISI_MPP_INC)
 CXXFLAGS += -pthread
 
-SERVICES := \
+MODULES := \
 	infra \
 	logger \
 	net \
@@ -99,29 +99,31 @@ SERVICES := \
 	http \
 	media_codec
 
-SERVICE_LIBS :=
+MODULE_LIBS :=
 APP_SRCS := \
-	app/main.cpp \
-	app/app_runtime.cpp \
-	app/core_subsystem.cpp \
-	app/device_subsystem.cpp \
-	app/linux_network_platform.cpp \
-	app/linux_platform_common.cpp \
-	app/linux_system_platform.cpp \
-	app/linux_time_platform.cpp \
-	app/media_subsystem.cpp \
-	app/platform_factory.cpp \
-	app/protocol_options.cpp \
-	app/protocol_runtime_config.cpp \
-	app/protocol_subsystem.cpp \
-	app/runtime_config.cpp \
-	app/upgrade_flash.cpp \
-	app/upgrade_platform.cpp
+	app/runtime/main.cpp \
+	app/runtime/app_runtime.cpp \
+	app/runtime/runtime_paths.cpp \
+	app/subsystems/core_subsystem.cpp \
+	app/subsystems/device_subsystem.cpp \
+	app/subsystems/media_subsystem.cpp \
+	app/subsystems/protocol_options.cpp \
+	app/subsystems/protocol_runtime_updates.cpp \
+	app/subsystems/protocol_subsystem.cpp \
+	app/config/protocol_runtime_config.cpp \
+	app/config/runtime_config.cpp \
+	app/platform/linux/linux_network_platform.cpp \
+	app/platform/linux/linux_platform_common.cpp \
+	app/platform/linux/linux_system_platform.cpp \
+	app/platform/linux/linux_time_platform.cpp \
+	app/platform/linux/platform_factory.cpp \
+	app/platform/linux/upgrade_platform.cpp \
+	app/tools/sysupgrade/upgrade_flash.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 SYSUPGRADE_SRCS := \
-	app/live_sysupgrade.cpp \
-	app/linux_platform_common.cpp \
-	app/upgrade_flash.cpp
+	app/tools/sysupgrade/live_sysupgrade.cpp \
+	app/platform/linux/linux_platform_common.cpp \
+	app/tools/sysupgrade/upgrade_flash.cpp
 SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
 WEB_INPUTS := \
 	www/index.html \
@@ -133,17 +135,17 @@ WEB_INPUTS := \
 	$(shell find www/public www/src -type f | sort)
 WEB_STAMP := www/dist/.live_stream_build_stamp
 
-define ADD_SERVICE_LIBRARY
-SERVICE_LIBS += $(LIB_DIR)/lib$(1).a
+define ADD_MODULE_LIBRARY
+MODULE_LIBS += $(LIB_DIR)/lib$(1).a
 $(LIB_DIR)/lib$(1).a:
 	$(MAKE) -C libs/$(1) ROOT_DIR=$(ROOT_DIR)
 endef
 
-include $(addprefix libs/,$(addsuffix /module.mk,$(SERVICES)))
+include $(addprefix libs/,$(addsuffix /module.mk,$(MODULES)))
 
 .PHONY: all test test-build host-test board-test board-test-build clean \
 	thirdparty compiledb debug release \
-	$(SERVICES)
+	$(MODULES)
 
 all: debug
 
@@ -162,7 +164,7 @@ compiledb:
 $(THIRDPARTY_LIBS): $(THIRDPARTY_SRC)/build_deps.sh
 	$(THIRDPARTY_SRC)/build_deps.sh
 
-$(SERVICES):
+$(MODULES):
 	$(MAKE) -C libs/$@ ROOT_DIR=$(ROOT_DIR) \
 	  ENABLE_HISI_MPP=1
 
@@ -174,12 +176,12 @@ $(OBJ_DIR)/sysupgrade_%.o: app/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BIN_DIR)/live_stream: $(APP_OBJS) $(SERVICES)
+$(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  -Wl,--start-group \
 	  $(APP_OBJS) \
-	  $(SERVICE_LIBS) $(LIB_DIR)/libinfra.a \
+	  $(MODULE_LIBS) $(LIB_DIR)/libinfra.a \
 	  $(THIRDPARTY_LIBS) $(HISI_MPP_STATIC_LIBS) \
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
@@ -196,10 +198,10 @@ $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-debug: $(SERVICES) $(BIN_DIR)/live_stream $(WEB_STAMP)
+debug: $(MODULES) $(BIN_DIR)/live_stream $(WEB_STAMP)
 	scripts/package_debug.sh $(DEBUG_DIR)
 
-release: $(SERVICES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
+release: $(MODULES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
 test: host-test
@@ -210,15 +212,15 @@ host-test:
 	cd www && npm run build
 
 board-test:
-	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+	@for module in $(MODULES); do \
+		$(MAKE) -C libs/$$module ROOT_DIR=$(ROOT_DIR) \
 		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) ENABLE_HISI_MPP=1 \
 		  board-test || exit $$?; \
 	done
 
 board-test-build:
-	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+	@for module in $(MODULES); do \
+		$(MAKE) -C libs/$$module ROOT_DIR=$(ROOT_DIR) \
 		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) ENABLE_HISI_MPP=1 \
 		  board-test-build || exit $$?; \
 	done
@@ -226,8 +228,8 @@ board-test-build:
 test-build: board-test-build
 
 clean:
-	@for service in $(SERVICES); do \
-		$(MAKE) -C libs/$$service ROOT_DIR=$(ROOT_DIR) \
+	@for module in $(MODULES); do \
+		$(MAKE) -C libs/$$module ROOT_DIR=$(ROOT_DIR) \
 		  BUILD_DIR=$(ROOT_DIR)/$(BUILD_DIR) clean || exit $$?; \
 	done
 	rm -rf $(OBJ_DIR) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade \

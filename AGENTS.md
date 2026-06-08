@@ -2,7 +2,7 @@
 
 ## 项目结构
 
-- `app/` 是 C++ 程序入口，当前主入口为 `app/main.cpp`。
+- `app/` 是 C++ 程序入口，当前主入口为 `app/runtime/main.cpp`。
 - `libs/*_service/` 是服务模块目录，通常包含 `include/`、`src/`、
   `Makefile` 和 `module.mk`。
 - `libs/service_rules.mk` 定义服务模块的通用构建规则。

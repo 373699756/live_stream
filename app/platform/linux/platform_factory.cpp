@@ -1,0 +1,17 @@
+#include "platform/linux/platform_factory.h"
+
+#include "platform/linux/device_platforms.h"
+
+namespace live_stream {
+
+PlatformAdapters CreateLinuxPlatformAdapters(const std::string& network_ifname) {
+    PlatformAdapters adapters;
+    adapters.system = CreateSystemPlatform();
+    adapters.time = CreateTimePlatform();
+    adapters.network = CreateNetworkPlatform(network_ifname);
+    adapters.upgrade = CreateUpgradePlatform();
+    adapters.network_ifname = network_ifname;
+    return adapters;
+}
+
+}  // namespace live_stream
