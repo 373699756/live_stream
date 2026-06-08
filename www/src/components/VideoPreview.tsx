@@ -40,15 +40,14 @@ export function VideoPreview({
     flvSupported,
     hlsLaunchable,
     hlsSupported,
-    imageRef,
-    isMjpegMode,
+    mediaLayers,
     mjpegPlaybackEnabled,
     mjpegSupported,
     previewState,
     restartPreview,
     streamRunning,
     switchMode,
-    videoRef,
+    visibleLayer,
     webrtcEnabled,
     webrtcPlaybackEnabled,
     webrtcSupported,
@@ -108,14 +107,13 @@ export function VideoPreview({
       <PreviewSurface
         connected={connected}
         enabled={enabled}
-        imageRef={imageRef}
-        isMjpegMode={isMjpegMode}
+        mediaLayers={mediaLayers}
         onToggleFullscreen={toggleFullscreen}
         previewDetail={previewDetailText(stream, mode)}
         previewState={previewState}
         surfaceOverlay={surfaceOverlay}
         surfaceRef={surfaceRef}
-        videoRef={videoRef}
+        visibleLayer={visibleLayer}
       />
       <PreviewFooter
         active={active}

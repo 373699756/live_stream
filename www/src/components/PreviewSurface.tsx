@@ -1,29 +1,28 @@
 import type { ReactNode, RefObject } from 'react';
+import type { PreviewMediaLayerRefs } from '../hooks/usePreviewPlaybackSession';
 
 interface PreviewSurfaceProps {
   connected: boolean;
   enabled: boolean;
-  imageRef: RefObject<HTMLImageElement | null>;
-  isMjpegMode: boolean;
+  mediaLayers: PreviewMediaLayerRefs[];
   onToggleFullscreen: () => void;
   previewDetail: string;
   previewState: string;
   surfaceOverlay?: ReactNode;
   surfaceRef: RefObject<HTMLDivElement | null>;
-  videoRef: RefObject<HTMLVideoElement | null>;
+  visibleLayer: number;
 }
 
 export function PreviewSurface({
   connected,
   enabled,
-  imageRef,
-  isMjpegMode,
+  mediaLayers,
   onToggleFullscreen,
   previewDetail,
   previewState,
   surfaceOverlay,
   surfaceRef,
-  videoRef,
+  visibleLayer,
 }: PreviewSurfaceProps) {
   return (
     <div className="video-surface" ref={surfaceRef} onDoubleClick={onToggleFullscreen}>
@@ -33,10 +32,26 @@ export function PreviewSurface({
           <strong>预览已暂停</strong>
           <span>正在应用视频参数</span>
         </div>
-      ) : isMjpegMode ? (
-        <img ref={imageRef} className="video-element" alt="" />
       ) : (
-        <video ref={videoRef} className="video-element" autoPlay muted playsInline />
+        mediaLayers.map((layer, index) => (
+          <div
+            className={`video-layer${index === visibleLayer ? ' active' : ''}`}
+            key={index}
+          >
+            <video
+              ref={layer.videoRef}
+              className={layer.mediaKind === 'video' ? 'video-element' : 'video-element hidden'}
+              autoPlay
+              muted
+              playsInline
+            />
+            <img
+              ref={layer.imageRef}
+              className={layer.mediaKind === 'mjpeg' ? 'video-element' : 'video-element hidden'}
+              alt=""
+            />
+          </div>
+        ))
       )}
       {!connected && (
         <div className="video-placeholder">

@@ -88,8 +88,7 @@ export function startWebrtcPreview({
     if (peerState.videoRef.current) {
       peerState.videoRef.current.srcObject = mediaStream;
       void peerState.videoRef.current.play().catch(() => {});
-      controls.setConnected(true);
-      controls.setPreviewState('视频已连接');
+      controls.setPreviewState('正在拉取 WebRTC 码流');
     }
   };
   let currentPeerId = '';
@@ -110,7 +109,6 @@ export function startWebrtcPreview({
       return;
     }
     if (pc.connectionState === 'connected') {
-      controls.setConnected(true);
       controls.setPreviewState('WebRTC 已连接');
     } else if (
       pc.connectionState === 'failed' ||

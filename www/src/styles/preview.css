@@ -131,6 +131,21 @@
   object-fit: contain;
 }
 
+.video-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.video-layer.active {
+  opacity: 1;
+}
+
+.video-element.hidden {
+  display: none;
+}
+
 .video-placeholder {
   position: relative;
   display: grid;
