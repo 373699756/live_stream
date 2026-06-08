@@ -4,14 +4,15 @@
 
 namespace live_stream {
 
-PlatformAdapters CreateLinuxPlatformAdapters(const std::string& network_ifname) {
-    PlatformAdapters adapters;
-    adapters.system = CreateSystemPlatform();
-    adapters.time = CreateTimePlatform();
-    adapters.network = CreateNetworkPlatform(network_ifname);
-    adapters.upgrade = CreateUpgradePlatform();
-    adapters.network_ifname = network_ifname;
-    return adapters;
+DevicePlatformDependencies CreateLinuxDevicePlatformDependencies(
+    const std::string &network_ifname) {
+    DevicePlatformDependencies dependencies;
+    dependencies.system_platform = CreateSystemPlatform();
+    dependencies.time_platform = CreateTimePlatform();
+    dependencies.network_platform = CreateNetworkPlatform(network_ifname);
+    dependencies.upgrade_platform = CreateUpgradePlatform();
+    dependencies.network_ifname = network_ifname;
+    return dependencies;
 }
 
 }  // namespace live_stream

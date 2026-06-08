@@ -5,7 +5,7 @@
 
 #include "alarm.h"
 #include "network_config.h"
-#include "platform/linux/platform_factory.h"
+#include "subsystems/device_platform_dependencies.h"
 #include "system.h"
 #include "time_api.h"
 #include "upgrade.h"
@@ -26,9 +26,8 @@ class DeviceSubsystem {
 public:
     static DeviceSubsystem &Get();
 
-    // Start receives pre-built platform adapters so that platform creation is
-    // centralised in the caller (app_runtime.cpp / platform_factory.cpp).
-    bool Start(CoreSubsystem &core_subsystem, PlatformAdapters adapters);
+    bool Start(CoreSubsystem &core_subsystem,
+               DevicePlatformDependencies dependencies);
     void Stop();
     DeviceRefs refs() const;
 

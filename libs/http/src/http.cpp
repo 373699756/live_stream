@@ -35,7 +35,9 @@ HttpImpl::HttpImpl(
     const HttpOptions &options,
     const HttpDependencies &dependencies)
     : options_(options),
-      server_(new HttpServer(options, dependencies, this)) {}
+      server_(new HttpServer(options, dependencies, this)) {
+    InitializeHandlers(dependencies);
+}
 
 HttpImpl::~HttpImpl() {
     ReleaseInternal();
@@ -189,25 +191,17 @@ HttpListenAddress HttpImpl::LocalAddress() const {
     return server_->LocalAddress();
 }
 
-void HttpImpl::ConfigureHandlers(
-    IAuth *auth, ILogger *logger,
-    IConfig *config, INetworkConfig *network_config,
-    ITime *time, IAlarm *alarm,
-    IUpgrade *upgrade, ISystem *system,
-    IRtsp *rtsp, OnvifServer *onvif,
-    IAiView *ai, IDeviceMedia *device_media,
-    ISnapshotView *snapshot, IWebrtc *webrtc,
-    IMediaSource *media_source,
-    IMediaFlvSource *media_flv_source,
-    IMediaMjpegSource *media_mjpeg_source) {
+void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     router_.Clear();
     handlers_.clear();
     streaming_handler_.reset();
-    auth_ = auth;
-    logger_ = logger;
+    auth_ = dependencies.auth;
+    logger_ = dependencies.logger;
     if (server_ != nullptr) {
-        server_->SetCloseCallback([media_flv_source,
-                                   media_mjpeg_source](
+        server_->SetCloseCallback([media_flv_source =
+                                       dependencies.media_flv_source,
+                                   media_mjpeg_source =
+                                       dependencies.media_mjpeg_source](
                                       const HttpMediaClientHandle &client) {
             if (client.type == HttpMediaClientType::kFlv &&
                 media_flv_source != nullptr && client.id != 0) {
@@ -222,19 +216,19 @@ void HttpImpl::ConfigureHandlers(
 
     HttpHandlerDependencies handler_dependencies;
     handler_dependencies.access = this;
-    handler_dependencies.auth = auth;
-    handler_dependencies.config = config;
-    handler_dependencies.logger = logger;
-    handler_dependencies.network_config = network_config;
-    handler_dependencies.time = time;
-    handler_dependencies.upgrade = upgrade;
-    handler_dependencies.system = system;
-    handler_dependencies.device_media = device_media;
-    handler_dependencies.media_source = media_source;
-    handler_dependencies.rtsp = rtsp;
-    handler_dependencies.webrtc = webrtc;
-    handler_dependencies.ai = ai;
-    handler_dependencies.snapshot = snapshot;
+    handler_dependencies.auth = dependencies.auth;
+    handler_dependencies.config = dependencies.config;
+    handler_dependencies.logger = dependencies.logger;
+    handler_dependencies.network_config = dependencies.network_config;
+    handler_dependencies.time = dependencies.time;
+    handler_dependencies.upgrade = dependencies.upgrade;
+    handler_dependencies.system = dependencies.system;
+    handler_dependencies.device_media = dependencies.device_media;
+    handler_dependencies.media_source = dependencies.media_source;
+    handler_dependencies.rtsp = dependencies.rtsp;
+    handler_dependencies.webrtc = dependencies.webrtc;
+    handler_dependencies.ai = dependencies.ai;
+    handler_dependencies.snapshot = dependencies.snapshot;
 
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kAuth, handler_dependencies));
@@ -250,20 +244,20 @@ void HttpImpl::ConfigureHandlers(
         HttpHandlerKind::kUpgrade, handler_dependencies));
 
     SystemStatusSources system_status_sources;
-    system_status_sources.logger = logger;
-    system_status_sources.config = config;
-    system_status_sources.auth = auth;
-    system_status_sources.time = time;
-    system_status_sources.network_config = network_config;
-    system_status_sources.alarm = alarm;
-    system_status_sources.upgrade = upgrade;
-    system_status_sources.rtsp = rtsp;
-    system_status_sources.onvif = onvif;
-    system_status_sources.device_media = device_media;
-    system_status_sources.ai = ai;
-    system_status_sources.snapshot = snapshot;
-    system_status_sources.webrtc = webrtc;
-    system_status_sources.media_source = media_source;
+    system_status_sources.logger = dependencies.logger;
+    system_status_sources.config = dependencies.config;
+    system_status_sources.auth = dependencies.auth;
+    system_status_sources.time = dependencies.time;
+    system_status_sources.network_config = dependencies.network_config;
+    system_status_sources.alarm = dependencies.alarm;
+    system_status_sources.upgrade = dependencies.upgrade;
+    system_status_sources.rtsp = dependencies.rtsp;
+    system_status_sources.onvif = dependencies.onvif;
+    system_status_sources.device_media = dependencies.device_media;
+    system_status_sources.ai = dependencies.ai;
+    system_status_sources.snapshot = dependencies.snapshot;
+    system_status_sources.webrtc = dependencies.webrtc;
+    system_status_sources.media_source = dependencies.media_source;
     handler_dependencies.system_status_sources = system_status_sources;
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kSystem, handler_dependencies));
@@ -276,9 +270,9 @@ void HttpImpl::ConfigureHandlers(
         HttpHandlerKind::kSnapshot, handler_dependencies));
     HttpMediaHandlerDependencies media_handler_dependencies;
     media_handler_dependencies.access = this;
-    media_handler_dependencies.device_media = device_media;
-    media_handler_dependencies.media_source = media_source;
-    media_handler_dependencies.webrtc = webrtc;
+    media_handler_dependencies.device_media = dependencies.device_media;
+    media_handler_dependencies.media_source = dependencies.media_source;
+    media_handler_dependencies.webrtc = dependencies.webrtc;
     handlers_.push_back(CreateHttpHandler(
         HttpMediaHandlerKind::kHls, media_handler_dependencies));
     handlers_.push_back(CreateHttpHandler(
@@ -288,10 +282,12 @@ void HttpImpl::ConfigureHandlers(
     StreamingHttpHandlerDependencies streaming_handler_dependencies;
     streaming_handler_dependencies.access = this;
     streaming_handler_dependencies.writer = server_.get();
-    streaming_handler_dependencies.device_media = device_media;
-    streaming_handler_dependencies.media_source = media_source;
-    streaming_handler_dependencies.media_flv_source = media_flv_source;
-    streaming_handler_dependencies.media_mjpeg_source = media_mjpeg_source;
+    streaming_handler_dependencies.device_media = dependencies.device_media;
+    streaming_handler_dependencies.media_source = dependencies.media_source;
+    streaming_handler_dependencies.media_flv_source =
+        dependencies.media_flv_source;
+    streaming_handler_dependencies.media_mjpeg_source =
+        dependencies.media_mjpeg_source;
     streaming_handler_ = CreateStreamingHttpHandler(
         streaming_handler_dependencies);
 
@@ -439,17 +435,6 @@ CreateHttp(const HttpOptions &options,
                   const HttpDependencies &dependencies) {
     std::unique_ptr<HttpImpl> service(
         new HttpImpl(options, dependencies));
-    service->ConfigureHandlers(
-        dependencies.auth, dependencies.logger,
-        dependencies.config, dependencies.network_config,
-        dependencies.time, dependencies.alarm,
-        dependencies.upgrade, dependencies.system,
-        dependencies.rtsp, dependencies.onvif,
-        dependencies.ai, dependencies.device_media,
-        dependencies.snapshot, dependencies.webrtc,
-        dependencies.media_source,
-        dependencies.media_flv_source,
-        dependencies.media_mjpeg_source);
     return std::unique_ptr<IHttp>(service.release());
 }
 

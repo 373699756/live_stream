@@ -11,12 +11,12 @@ DeviceSubsystem &DeviceSubsystem::Get() {
 }
 
 bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
-                            PlatformAdapters adapters) {
+                            DevicePlatformDependencies dependencies) {
     if (started_) {
         return true;
     }
 
-    system_platform_ = std::move(adapters.system);
+    system_platform_ = std::move(dependencies.system_platform);
     SystemOptions system_options;
     system_options.config = core_subsystem.config();
     system_options.event = core_subsystem.event();
@@ -29,7 +29,7 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
         return false;
     }
 
-    time_platform_ = std::move(adapters.time);
+    time_platform_ = std::move(dependencies.time_platform);
     TimeOptions time_options;
     time_options.config = core_subsystem.config();
     time_options.event = core_subsystem.event();
@@ -43,12 +43,12 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
         return false;
     }
 
-    network_platform_ = std::move(adapters.network);
+    network_platform_ = std::move(dependencies.network_platform);
     NetworkConfigOptions network_options;
     network_options.config = core_subsystem.config();
     network_options.event = core_subsystem.event();
     network_options.logger = core_subsystem.logger();
-    network_options.default_ifname = adapters.network_ifname;
+    network_options.default_ifname = dependencies.network_ifname;
     network_options.platform = network_platform_.get();
     network_ = CreateNetworkConfig(network_options);
     if (!network_ || !network_->Start()) {
@@ -73,7 +73,7 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
     upgrade_options.config = core_subsystem.config();
     upgrade_options.event = core_subsystem.event();
     upgrade_options.logger = core_subsystem.logger();
-    upgrade_platform_ = std::move(adapters.upgrade);
+    upgrade_platform_ = std::move(dependencies.upgrade_platform);
     upgrade_options.platform = upgrade_platform_.get();
     upgrade_ = CreateUpgrade(upgrade_options);
     if (!upgrade_ || !upgrade_->Start()) {

@@ -40,18 +40,6 @@ public:
     HttpListenAddress LocalAddress() const override;
     HttpStats GetStats() const override;
 
-    void ConfigureHandlers(
-        IAuth *auth, ILogger *logger,
-        IConfig *config, INetworkConfig *network_config,
-        ITime *time, IAlarm *alarm,
-        IUpgrade *upgrade, ISystem *system,
-        IRtsp *rtsp, OnvifServer *onvif,
-        IAiView *ai, IDeviceMedia *device_media,
-        ISnapshotView *snapshot, IWebrtc *webrtc,
-        IMediaSource *media_source,
-        IMediaFlvSource *media_flv_source,
-        IMediaMjpegSource *media_mjpeg_source);
-
 private:
     AuthPrincipal Authenticate(const HttpRequest &request) override;
     bool RequirePermission(const HttpRequest &request,
@@ -70,6 +58,7 @@ private:
     void IncrementAuthFailures() override;
     void IncrementPermissionDenied() override;
 
+    void InitializeHandlers(const HttpDependencies &dependencies);
     void StopInternal();
     void ReleaseInternal();
     void IncrementNotFound();

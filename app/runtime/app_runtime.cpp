@@ -126,7 +126,8 @@ bool AppRuntime::Start(const RuntimePaths &paths,
 
     if (!device_subsystem.Start(
             core_subsystem,
-            CreateLinuxPlatformAdapters(runtime_config_.network_ifname))) {
+            CreateLinuxDevicePlatformDependencies(
+                runtime_config_.network_ifname))) {
         Error("app", "Start device subsystem failed");
         Stop();
         return false;
