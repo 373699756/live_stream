@@ -2,12 +2,12 @@
 
 #include "infra/log.h"
 #include "net.h"
+#include "webrtc_callback_guard.h"
 #include "webrtc_engine.h"
 #include "webrtc_peer_store.h"
 #include "webrtc_rtp_sender.h"
 #include "webrtc_sdp.h"
 
-#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -51,16 +51,6 @@ bool IsValidStream(StreamId stream_id) {
 
 }  // namespace
 
-class WebrtcImpl;
-
-struct WebrtcCallbackGuard {
-    std::mutex mutex;
-    std::condition_variable condition;
-    WebrtcImpl *service = nullptr;
-    uint32_t active_callbacks = 0;
-    bool closing = false;
-};
-
 class WebrtcImpl : public IWebrtc {
 public:
     WebrtcImpl(WebrtcOptions options,
@@ -70,8 +60,10 @@ public:
           net_engine_(dependencies.net_engine),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
-        std::lock_guard<std::mutex> guard(callback_guard_->mutex);
-        callback_guard_->service = this;
+        {
+            std::lock_guard<std::mutex> guard(callback_guard_->mutex);
+            callback_guard_->service = this;
+        }
     }
 
     ~WebrtcImpl() override { Release(); }
@@ -337,44 +329,16 @@ public:
     }
 
 private:
-    static WebrtcImpl *EnterServiceCallback(
-        WebrtcCallbackGuard *callback_guard) {
-        if (callback_guard == nullptr) {
-            return nullptr;
-        }
-        std::lock_guard<std::mutex> guard(callback_guard->mutex);
-        if (callback_guard->closing || callback_guard->service == nullptr) {
-            return nullptr;
-        }
-        ++callback_guard->active_callbacks;
-        return callback_guard->service;
-    }
-
-    static void LeaveServiceCallback(
-        WebrtcCallbackGuard *callback_guard) {
-        if (callback_guard == nullptr) {
-            return;
-        }
-        std::lock_guard<std::mutex> guard(callback_guard->mutex);
-        if (callback_guard->active_callbacks == 0) {
-            return;
-        }
-        --callback_guard->active_callbacks;
-        if (callback_guard->active_callbacks == 0) {
-            callback_guard->condition.notify_all();
-        }
-    }
-
     static void DispatchPeerDrain(
         const std::shared_ptr<WebrtcCallbackGuard> &callback_guard,
         const std::string &peer_id) {
         WebrtcCallbackGuard *guard = callback_guard.get();
-        WebrtcImpl *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterWebrtcCallback(guard);
         if (service == nullptr) {
             return;
         }
         service->DrainPeerFrames(peer_id);
-        LeaveServiceCallback(guard);
+        LeaveWebrtcCallback(guard);
     }
 
     static void OnEnginePeerStateChanged(void *user, const char *peer_id,
@@ -385,13 +349,13 @@ private:
         }
         WebrtcCallbackGuard *guard =
             static_cast<WebrtcCallbackGuard *>(user);
-        WebrtcImpl *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterWebrtcCallback(guard);
         if (service == nullptr) {
             return;
         }
         service->HandleEnginePeerStateChanged(
             peer_id, state, last_error == nullptr ? "" : last_error);
-        LeaveServiceCallback(guard);
+        LeaveWebrtcCallback(guard);
     }
 
     static void OnEngineKeyFrameRequested(void *user, const char *peer_id) {
@@ -400,12 +364,12 @@ private:
         }
         WebrtcCallbackGuard *guard =
             static_cast<WebrtcCallbackGuard *>(user);
-        WebrtcImpl *service = EnterServiceCallback(guard);
+        WebrtcImpl *service = EnterWebrtcCallback(guard);
         if (service == nullptr) {
             return;
         }
         service->HandleEngineKeyFrameRequested(peer_id);
-        LeaveServiceCallback(guard);
+        LeaveWebrtcCallback(guard);
     }
 
     bool Prepare() {
@@ -456,16 +420,11 @@ private:
     }
 
     void CloseServiceCallbacks() {
-        std::lock_guard<std::mutex> guard(callback_guard_->mutex);
-        callback_guard_->closing = true;
-        callback_guard_->service = nullptr;
+        CloseWebrtcCallbacks(callback_guard_.get());
     }
 
     void WaitServiceCallbacks() {
-        std::unique_lock<std::mutex> guard(callback_guard_->mutex);
-        callback_guard_->condition.wait(guard, [this]() {
-            return callback_guard_->active_callbacks == 0;
-        });
+        WaitWebrtcCallbacks(callback_guard_.get());
     }
 
     void HandleEnginePeerStateChanged(const std::string &peer_id,
