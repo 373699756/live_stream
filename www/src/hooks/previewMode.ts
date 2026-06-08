@@ -52,17 +52,17 @@ export function buildPreviewModeState(
   const flvModeEnabled = flvSupported && streamRunning;
   const mjpegModeEnabled = mjpegSupported && streamRunning;
   const webrtcPlaybackReady = webrtcModeEnabled && webrtcReady;
-  const hlsPlaybackReady = hlsModeEnabled && hlsReady;
+  const hlsPlaybackReady = hlsModeEnabled && (hlsReady || streamRunning);
   const flvPlaybackReady = flvModeEnabled && flvReady;
   const mjpegPlaybackReady = mjpegModeEnabled && mjpegReady;
   const selectedModeEnabled =
-    (mode === 'webrtc' && webrtcModeEnabled) ||
-    (mode === 'hls' && hlsModeEnabled) ||
-    (mode === 'flv' && flvModeEnabled) ||
-    (mode === 'mjpeg' && mjpegModeEnabled);
+    (mode === 'webrtc' && webrtcPlaybackReady) ||
+    (mode === 'hls' && hlsPlaybackReady) ||
+    (mode === 'flv' && flvPlaybackReady) ||
+    (mode === 'mjpeg' && mjpegPlaybackReady);
   const nextReadyMode =
-    flvPlaybackReady ? 'flv' :
     webrtcPlaybackReady ? 'webrtc' :
+    flvPlaybackReady ? 'flv' :
     hlsPlaybackReady ? 'hls' :
     mjpegPlaybackReady ? 'mjpeg' :
     null;

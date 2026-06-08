@@ -15,6 +15,12 @@ constexpr int kMppExitRetryCount = 20;
 constexpr useconds_t kMppExitRetryDelayUs = 100 * 1000;
 constexpr int kMaxCleanupVencChannels = 4;
 
+enum class MppExitBusyLog {
+    kSilent = 0,
+    kInfo,
+    kWarn,
+};
+
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
     return ((value + alignment - 1) / alignment) * alignment;
 }
@@ -63,7 +69,8 @@ HI_S32 ExitMppSystemOnce(bool log_errors) {
     return status;
 }
 
-bool ExitMppSystem(bool log_errors, int retry_count) {
+bool ExitMppSystem(bool log_errors, int retry_count,
+                   MppExitBusyLog busy_log) {
     HI_S32 status = HI_SUCCESS;
     for (int attempt = 0; attempt <= retry_count; ++attempt) {
         status = ExitMppSystemOnce(log_errors);
@@ -76,9 +83,15 @@ bool ExitMppSystem(bool log_errors, int retry_count) {
         usleep(kMppExitRetryDelayUs);
     }
     if (log_errors && status == HI_ERR_VB_BUSY) {
-        Warn("hisi_vendor",
-                       "HI_MPI_VB_Exit still busy after %d retries",
-                       retry_count);
+        if (busy_log == MppExitBusyLog::kWarn) {
+            Warn("hisi_vendor",
+                 "HI_MPI_VB_Exit still busy after %d retries", retry_count);
+        } else if (busy_log == MppExitBusyLog::kInfo) {
+            Info("hisi_vendor",
+                 "HI_MPI_VB_Exit still busy after %d retries; "
+                 "continuing recovery",
+                 retry_count);
+        }
     }
     return false;
 }
@@ -149,10 +162,15 @@ void DestroyVencDirect(int32_t channel) {
     (void)HI_MPI_VENC_DestroyChn(venc);
 }
 
-void ForceCleanupPipelineResources(const MediaPipelineConfig& config) {
-    Warn(
-        "hisi_vendor",
-        "stale HISI MPP resources detected, force cleanup known channels");
+void ForceCleanupPipelineResources(const MediaPipelineConfig& config,
+                                   bool warn) {
+    if (warn) {
+        Warn("hisi_vendor",
+             "stale HISI MPP resources detected, force cleanup known channels");
+    } else {
+        Info("hisi_vendor",
+             "stale HISI MPP resources detected, force cleanup known channels");
+    }
 
     const int32_t jpeg_venc_channel = SnapshotConfig{}.jpeg_venc_channel;
     UnbindVpssVencDirect(config.vpss_group, config.vpss_channel,
@@ -237,7 +255,7 @@ void LogVbConfigSummary(const char* prefix, const VB_CONFIG_S& config) {
     if (prefix == nullptr) {
         return;
     }
-    Warn(
+    Info(
         "hisi_vendor",
         "%s max_pool=%u pool0=%llu/%u pool1=%llu/%u pool2=%llu/%u "
         "pool3=%llu/%u",
@@ -256,9 +274,9 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
     VB_CONFIG_S current{};
     HI_S32 status = HI_MPI_VB_GetConfig(&current);
     if (status != HI_SUCCESS) {
-        Error("hisi_vendor",
-                        "HI_MPI_VB_GetConfig failed while reusing VB: 0x%08x",
-                        status);
+        Info("hisi_vendor",
+             "HI_MPI_VB_GetConfig failed while checking VB reuse: 0x%08x",
+             status);
         return false;
     }
 
@@ -271,17 +289,15 @@ bool TryReuseExistingVideoBuffer(const VB_CONFIG_S& expected) {
     status = HI_MPI_VB_Init();
     if (status != HI_SUCCESS && status != HI_ERR_VB_BUSY &&
         status != HI_ERR_VB_NOT_PERM) {
-        Error("hisi_vendor",
-                        "HI_MPI_VB_Init failed while reusing VB: 0x%08x",
-                        status);
+        Info("hisi_vendor",
+             "HI_MPI_VB_Init failed while checking VB reuse: 0x%08x", status);
         return false;
     }
 
     status = HI_MPI_SYS_Init();
     if (status != HI_SUCCESS && status != HI_ERR_SYS_NOT_PERM) {
-        Error("hisi_vendor",
-                        "HI_MPI_SYS_Init failed while reusing VB: 0x%08x",
-                        status);
+        Info("hisi_vendor",
+             "HI_MPI_SYS_Init failed while checking VB reuse: 0x%08x", status);
         return false;
     }
 
@@ -295,7 +311,8 @@ bool InitConfiguredVideoBuffer() {
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_VB_Init failed: 0x%08x",
                         status);
-        (void)ExitMppSystem(true, kMppExitRetryCount);
+        (void)ExitMppSystem(true, kMppExitRetryCount,
+                            MppExitBusyLog::kWarn);
         return false;
     }
 
@@ -303,7 +320,8 @@ bool InitConfiguredVideoBuffer() {
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x",
                         status);
-        (void)ExitMppSystem(true, kMppExitRetryCount);
+        (void)ExitMppSystem(true, kMppExitRetryCount,
+                            MppExitBusyLog::kWarn);
         return false;
     }
 
@@ -337,15 +355,18 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config) {
 
     // Match the HiSilicon sample sequence and clear stale global MPP state
     // before VB_SetConfig. A killed previous process can leave VB initialized.
-    (void)ExitMppSystem(false, 1);
+    (void)ExitMppSystem(false, 1, MppExitBusyLog::kSilent);
 
     HI_S32 status = HI_MPI_VB_SetConfig(&vb_conf);
     if (status == HI_ERR_VB_BUSY) {
+        Info("hisi_vendor",
+             "HISI VB is busy before configuration, trying recovery");
         if (TryReuseExistingVideoBuffer(vb_conf)) {
             return true;
         }
-        ForceCleanupPipelineResources(config);
-        (void)ExitMppSystem(true, kMppExitRetryCount);
+        ForceCleanupPipelineResources(config, false);
+        (void)ExitMppSystem(true, kMppExitRetryCount,
+                            MppExitBusyLog::kInfo);
         status = HI_MPI_VB_SetConfig(&vb_conf);
     }
     if (status != HI_SUCCESS) {
@@ -397,7 +418,8 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     }
     if (!ConfigureViVpssMode(config)) {
         Error("hisi_vendor", "ConfigureViVpssMode failed");
-        (void)ExitMppSystem(true, kMppExitRetryCount);
+        (void)ExitMppSystem(true, kMppExitRetryCount,
+                            MppExitBusyLog::kWarn);
         return false;
     }
 
@@ -420,9 +442,11 @@ void MppHisiSdk::DeinitSystem() {
     StopVpss(config);
     StopVi(config);
 
-    if (!ExitMppSystem(true, kMppExitRetryCount)) {
-        ForceCleanupPipelineResources(config);
-        (void)ExitMppSystem(true, kMppExitRetryCount);
+    if (!ExitMppSystem(true, kMppExitRetryCount,
+                       MppExitBusyLog::kWarn)) {
+        ForceCleanupPipelineResources(config, true);
+        (void)ExitMppSystem(true, kMppExitRetryCount,
+                            MppExitBusyLog::kWarn);
     }
 
     impl_->system_initialized_ = false;

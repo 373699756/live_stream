@@ -81,10 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const changePassword = useCallback(async (oldPassword: string, newPassword: string) => {
     const ok = await apiChangePassword(oldPassword, newPassword);
     if (ok) {
-      await apiLogout();
-      setAuthenticated(false);
+      setAuthenticated(true);
       setMustChangePassword(false);
-      setPrincipal(undefined);
+      setPrincipal((current) => (
+        current ? { ...current, must_change_password: false } : current
+      ));
     }
     return ok;
   }, []);

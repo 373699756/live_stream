@@ -290,7 +290,8 @@ ConfigJson StreamRuntimeToJson(StreamId stream_id,
     const bool webrtc_supported = IsWebrtcSupported(codec, webrtc);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
-        stream_running && webrtc_supported && IsWebrtcReady(webrtc);
+        stream_running && status.track_ready && webrtc_supported &&
+        IsWebrtcReady(webrtc);
     root["reader_count"] = stats.active_frame_readers;
     root["client_count"] =
         stats.active_flv_clients + stats.active_mjpeg_clients;
