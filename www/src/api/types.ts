@@ -230,6 +230,10 @@ export interface MediaStreamRuntime {
   bitrate_kbps?: number;
 }
 
+export interface MediaStreamsResponse {
+  items: MediaStreamRuntime[];
+}
+
 export interface MediaPlaybackUrls {
   stream: StreamName;
   rtsp: string;

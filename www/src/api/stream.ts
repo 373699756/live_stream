@@ -16,6 +16,7 @@ import {
 } from './mockStream';
 import type {
   MediaPlaybackUrls,
+  MediaStreamsResponse,
   MediaSessionInfo,
   MediaStreamRuntime,
   RtspConfig,
@@ -50,11 +51,11 @@ export function getWebrtcConfig(
 export function getMediaStreams(
   init?: ApiRequestOptions,
 ): Promise<MediaStreamRuntime[]> {
-  return requestJson<MediaStreamRuntime[]>(
+  return requestJson<MediaStreamsResponse>(
     '/api/media/streams',
-    mockMediaStreams,
+    { items: mockMediaStreams },
     init,
-  );
+  ).then((response) => response.items);
 }
 
 export function getMediaStream(
