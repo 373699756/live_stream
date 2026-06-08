@@ -17,12 +17,16 @@ constexpr size_t kRtpHeaderSize = 12;
 constexpr size_t kMaxRtpPayloadHeaderSize = 3;
 
 struct RtpPacketSlice {
+    // RTP packet 用多个 slice 描述，避免把 header、FU header 和媒体 payload
+    // 拼成一块临时大 buffer。
     const uint8_t *data = nullptr;
     size_t size = 0;
     bool media_payload = false;
 };
 
 struct RtpPacketView {
+    // packet view 只在 OnRtpPacket 回调期间有效。media_payload=true 的 slice
+    // 指向输入 EncodedFrame payload，异步发送方必须自己持有底层 VideoBuffer。
     RtpPacketSlice slices[kMaxRtpPacketSlices];
     size_t slice_count = 0;
     bool marker = false;
@@ -99,9 +103,14 @@ struct RtpPacketizerOptions {
 
 struct RtpPacketizerInput {
     VideoCodec codec = VideoCodec::kH264;
+    // payload 是一帧 AnnexB 视频码流；RTP 模块只分片，不拥有 SDP、SRTP、
+    // socket/session，也不做 FLV/HLS 封装。
     const uint8_t *payload = nullptr;
     size_t payload_size = 0;
+    // pts_us 必须使用 media_source 修正后的 PTS，packetizer 内部转换成
+    // 90kHz RTP timestamp。
     int64_t pts_us = 0;
+    // sequence 由调用方保存跨帧递增状态；每发送一个 RTP packet 本模块递增一次。
     uint16_t *sequence = nullptr;
     uint32_t ssrc = 0;
     uint8_t payload_type = 0;

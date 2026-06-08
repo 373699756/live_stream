@@ -23,6 +23,8 @@ MediaFrameReaderId FrameRing::AttachReader(
     ReaderState reader;
     reader.stream_id = options.stream_id;
     reader.keyframe_first = options.keyframe_first;
+    // 如果当前 GOP cache 尚不完整，keyframe-first reader 只能等待后续关键帧，
+    // 不能从中间 P 帧开始推送给协议客户端。
     reader.waiting_for_keyframe = options.keyframe_first && !cache->complete;
     reader.reader_name = options.reader_name;
     reader.start_sequence = next_sequence_;
@@ -84,6 +86,8 @@ MediaFrameReaderStartData FrameRing::GetStartData(
     if (!start_data.gop_complete) {
         return start_data;
     }
+    // start data 只返回 reader 创建之前已经存在的 GOP；创建后的帧走
+    // live queue，避免同一帧在起始数据和 live 数据中重复。
     start_data.gop_frames.reserve(cache->size);
     for (size_t i = 0; i < cache->size; ++i) {
         if (cache->frames[i].sequence >= reader.start_sequence) {
@@ -147,6 +151,8 @@ void FrameRing::ClearStream(StreamId stream_id,
     }
     ClearCache(cache);
     ++cache->generation;
+    // stream stop、codec 切换或 timestamp reset 后，所有 reader 都必须从
+    // 新一代缓存的关键帧重新开始。
     for (auto &item : readers_) {
         ReaderState &reader = item.second;
         if (reader.stream_id == stream_id) {
@@ -227,6 +233,8 @@ void FrameRing::Write(const FramePayload &frame) {
 
         if (!PushLiveQueue(&reader.live_queue, sequence, key_frame,
                            starts_on_keyframe, duration_us, frame)) {
+            // 慢 reader 队列溢出后丢弃旧帧并等待下一个关键帧，避免从 P 帧
+            // 继续输出导致下游解码花屏或卡住。
             reader.waiting_for_keyframe = true;
             reader.next_sequence = next_sequence_;
             reader.close_reason = MediaFrameReaderCloseReason::kCacheOverflow;
@@ -375,11 +383,15 @@ bool FrameRing::AppendToCache(StreamCache *cache, uint64_t sequence,
         return false;
     }
     if (key_frame) {
+        // GOP cache 以关键帧为边界重建；关键帧之前的帧不能作为新客户端
+        // 起播点。
         ClearCache(cache);
         cache->complete = true;
         ++cache->generation;
     }
     if (!cache->complete) {
+        // 还没见到关键帧前不缓存 P 帧，但 live reader 若不要求 keyframe-first
+        // 仍可按上层策略接收 live queue。
         return true;
     }
     if (cache->size >= cache->frames.size()) {

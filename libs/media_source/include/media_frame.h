@@ -16,8 +16,13 @@ struct MediaTrack {
     MediaTrackType track_type = MediaTrackType::kVideo;
     StreamId stream_id = StreamId::kMain;
     VideoCodec codec = VideoCodec::kH264;
+    // 当前只做视频预览链路，RTP/HLS 时间基统一按视频 90kHz 时钟输出。
     uint32_t clock_rate = 90000;
+    // codec_generation 在 codec、参数集、时间戳或缓存重置时递增，用于调用方
+    // 判断旧 reader/缓存是否还属于当前可播放代际。
     uint64_t codec_generation = 0;
+    // 参数集由 media_source 持有副本，reader/协议模块可在原始帧释放后继续
+    // 构造 SDP、sequence header 或关键帧前置参数集。
     std::string vps;
     std::string sps;
     std::string pps;
@@ -25,11 +30,15 @@ struct MediaTrack {
 };
 
 struct MediaFrame {
+    // 协议热路径的统一帧对象。encoded_frame 持有底层 VideoBuffer 引用，
+    // 不复制大块视频 payload；析构或丢弃前必须调用 MediaFrameUnref。
     EncodedFrame encoded_frame;
     MediaTrackType track_type = MediaTrackType::kVideo;
     StreamId stream_id = StreamId::kMain;
     VideoCodec codec = VideoCodec::kH264;
     bool key_frame = false;
+    // dts_us/pts_us 是 media_source 修正后的相对时间戳，不再是设备 SDK
+    // 原始时间戳；RTSP/WebRTC/HLS/FLV 都应使用这组时间。
     int64_t dts_us = 0;
     int64_t pts_us = 0;
     int64_t duration_us = 0;

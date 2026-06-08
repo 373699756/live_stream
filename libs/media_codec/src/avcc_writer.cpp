@@ -26,6 +26,8 @@ void AppendHvccArray(std::string *record,
 }  // namespace
 
 bool WriteNalLengthPrefix(size_t nal_size, uint8_t *out) {
+    // FLV/AVCC/HVCC 中的视频 NAL 不使用 AnnexB 起始码，而使用
+    // 4 字节 big-endian 长度前缀标出后续 NAL payload 大小。
     if (out == nullptr || nal_size > std::numeric_limits<uint32_t>::max()) {
         return false;
     }
@@ -60,6 +62,8 @@ bool BuildH264AvccRecord(const std::string &sps,
         return false;
     }
     record->clear();
+    // avcC 记录里的 profile/compatibility/level 来自 SPS。异常短 SPS
+    // 只在防御路径使用保守默认值，正常编码器都会给出完整 SPS。
     byte_writer::AppendU8(record, 1);
     byte_writer::AppendU8(record,
                           sps.size() > 1 ? static_cast<uint8_t>(sps[1])
@@ -93,6 +97,8 @@ bool BuildH265HvccRecord(const std::string &vps,
     record->clear();
     byte_writer::AppendU8(record, 1);
     if (sps.size() >= 15) {
+        // hvcC 的 profile/tier/level 等字段从 SPS 复制；VPS/SPS/PPS
+        // 则在后面的 array 中按 NAL type 分组写出。
         byte_writer::AppendU8(record, static_cast<uint8_t>(sps[3]));
         record->append(sps.data() + 4, 4);
         record->append(sps.data() + 8, 6);
@@ -115,6 +121,8 @@ bool BuildH265HvccRecord(const std::string &vps,
     byte_writer::AppendU8(record, 0x0f);
 
     byte_writer::AppendU8(record, 3);
+    // 每个 array 只保存一条当前生效的参数集，调用方在 codec 切换或参数集
+    // 更新时会重新生成 sequence header。
     AppendHvccArray(record, kH265NalTypeVps, vps);
     AppendHvccArray(record, kH265NalTypeSps, sps);
     AppendHvccArray(record, kH265NalTypePps, pps);

@@ -16,6 +16,8 @@ constexpr size_t kMaxFlvVideoTagSlices =
     media_codec::kMaxNalUnitsPerFrame * 2 + 2;
 
 struct FlvVideoTagSlice {
+    // tag view 以 slice 方式描述 FLV tag：小 header 存在本对象内部，
+    // 大块视频 payload 直接引用 EncodedFrame，发送端按 slice 顺序写出即可。
     const uint8_t *data = nullptr;
     size_t size = 0;
     bool media_payload = false;

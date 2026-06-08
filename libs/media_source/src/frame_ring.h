@@ -39,7 +39,10 @@ public:
     void Write(const FramePayload &frame);
 
 private:
+    // GOP cache 从关键帧开始保存，给新 reader 提供可独立解码的起始数据。
     static constexpr size_t kMaxCachedGopFrames = 128;
+    // 每个 reader 的 live queue 有上限；超过上限认为客户端太慢，清空队列
+    // 并等待下一帧关键帧重新开始。
     static constexpr size_t kMaxQueuedLiveFrames = 32;
 
     struct CachedFrame {

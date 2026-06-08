@@ -86,6 +86,8 @@ void AppendPsiPid(std::string *out, uint16_t pid) {
 
 std::string BuildPatPacket(uint8_t *continuity_counter) {
     std::string section;
+    // PAT 告诉播放器本 TS 里 PMT 所在 PID；这里每个 segment 起始都重新写入，
+    // 方便客户端从任意 segment 独立开始解析。
     AppendU8(&section, 0x00);
     AppendPsiSectionLength(&section, 13);
     AppendU16(&section, 1);
@@ -113,6 +115,8 @@ std::string BuildPatPacket(uint8_t *continuity_counter) {
 
 std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
     std::string section;
+    // PMT 描述 video elementary stream 的 codec 和 PID。当前产品只有视频，
+    // 所以 PMT 中只登记一个 video PID。
     AppendU8(&section, 0x02);
     AppendPsiSectionLength(&section, 18);
     AppendU16(&section, 1);
@@ -142,6 +146,7 @@ std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
 }
 
 void AppendPts(std::string *out, uint8_t prefix, uint64_t value) {
+    // PES PTS/DTS 使用 33 bit 90kHz 时间基并带 marker bit，不能直接写微秒值。
     const uint64_t pts = value & 0x1ffffffffULL;
     AppendU8(out, static_cast<uint8_t>(
                       (prefix << 4) | (((pts >> 30) & 0x07) << 1) | 0x01));
@@ -159,6 +164,7 @@ std::string BuildPesHeader(uint64_t pts_90k, uint64_t dts_90k) {
     AppendU16(&header, 0);
     AppendU8(&header, 0x80);
     const bool has_dts = pts_90k != dts_90k;
+    // 无 B 帧时 PTS==DTS，只写 PTS；存在重排时同时写 PTS 和 DTS。
     AppendU8(&header, has_dts ? 0xc0 : 0x80);
     AppendU8(&header, has_dts ? 10 : 5);
     AppendPts(&header, has_dts ? 0x03 : 0x02, pts_90k);
@@ -169,6 +175,8 @@ std::string BuildPesHeader(uint64_t pts_90k, uint64_t dts_90k) {
 }
 
 void WritePcr(char *target, uint64_t pcr_90k) {
+    // PCR 放在每个 access unit 的首个 TS packet adaptation field 中，
+    // 这里直接使用 DTS 的 90kHz 基准，供播放器恢复时钟。
     const uint64_t base = pcr_90k & 0x1ffffffffULL;
     target[0] = static_cast<char>((base >> 25) & 0xff);
     target[1] = static_cast<char>((base >> 17) & 0xff);
@@ -267,6 +275,7 @@ bool AppendTsPayloadToBuffer(const MediaSliceList &pes_slices,
             }
         }
         const bool use_adaptation = first_packet || payload_size < 184;
+        // 首包需要写 PCR，尾包通常需要 stuffing 对齐到 188 字节 TS packet。
         if (use_adaptation && payload_size == 183) {
             --payload_size;
         }
@@ -324,6 +333,8 @@ bool AddH264AccessUnitSlices(const media_codec::H264NalUnitList &units,
         !slices->Add(kAud, sizeof(kAud))) {
         return false;
     }
+    // HLS/TS payload 保持 AnnexB 形式。关键帧缺少参数集时，前置当前缓存的
+    // SPS/PPS，保证客户端从 segment 边界开始也能解码。
     if (prepend_parameter_sets && !sps.empty() && !pps.empty()) {
         if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
             !slices->Add(reinterpret_cast<const uint8_t *>(sps.data()),
@@ -361,6 +372,8 @@ bool AddH265AccessUnitSlices(const media_codec::H265NalUnitList &units,
         !slices->Add(kAud, sizeof(kAud))) {
         return false;
     }
+    // HEVC segment 边界需要 VPS/SPS/PPS 三类参数集；只在关键帧且当前帧未自带
+    // 参数集时前置，避免每帧重复扩大 TS 体积。
     if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
         if (!slices->Add(kStartCode, sizeof(kStartCode)) ||
             !slices->Add(reinterpret_cast<const uint8_t *>(vps.data()),
@@ -416,6 +429,7 @@ bool AppendH264NalUnitsToTsSegmentBuffer(
         static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
     const uint64_t dts_90k =
         static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
+    // MPEG-TS/PES 使用 90kHz 时间基；输入是修正后的微秒时间戳。
     const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
     MediaSliceList pes_slices;
     if (!pes_slices.AddString(pes_header) ||
@@ -444,6 +458,7 @@ bool AppendH265NalUnitsToTsSegmentBuffer(
         static_cast<uint64_t>(std::max<int64_t>(0, pts_us) * 9 / 100);
     const uint64_t dts_90k =
         static_cast<uint64_t>(std::max<int64_t>(0, dts_us) * 9 / 100);
+    // MPEG-TS/PES 使用 90kHz 时间基；输入是修正后的微秒时间戳。
     const std::string pes_header = BuildPesHeader(pts_90k, dts_90k);
     MediaSliceList pes_slices;
     if (!pes_slices.AddString(pes_header) ||
@@ -537,6 +552,8 @@ bool HlsMaker::AppendFrame(const EncodedFrame &frame,
     if (keyframe && current_segment_.started &&
         frame.pts_us - current_segment_.start_pts_us >=
             static_cast<int64_t>(hls_segment_duration_ms) * 1000) {
+        // 只在关键帧边界切 segment，避免 playlist 中出现不能独立解码的
+        // segment 起点。
         const bool finalized =
             FinalizeCurrentSegment(hls_segment_cache_depth);
         if (segment_created != nullptr) {
@@ -544,6 +561,7 @@ bool HlsMaker::AppendFrame(const EncodedFrame &frame,
         }
     }
     if (keyframe && !current_segment_.started) {
+        // HLS 首个 segment 必须从关键帧开始；关键帧前的 P/B 帧直接忽略。
         StartSegment(frame.codec, frame.pts_us);
     }
     if (!current_segment_.started) {
@@ -673,6 +691,8 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         if (appended && CommitSegmentBuffer(&current_segment_, segment_body)) {
             return true;
         }
+        // buffer 容量不足时回滚 TS continuity 和 segment size，再扩容重试，
+        // 避免生成半个 PES/TS packet。
         ts_muxer_state_ = original_state;
         (void)VideoBufferSetSize(current_segment_.body,
                                  static_cast<uint32_t>(original_size));

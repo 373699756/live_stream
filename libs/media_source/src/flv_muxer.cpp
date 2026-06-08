@@ -47,6 +47,8 @@ void AppendFourCc(std::string *out, const char *fourcc) {
 }
 
 bool IsH264FlvVideoNal(const media_codec::H264NalUnit &unit) {
+    // FLV video tag 不重复写 SPS/PPS/AUD；参数集走 sequence header，
+    // 真实图像 NAL 才写入 coded frames payload。
     return unit.data != nullptr && unit.size > 0 &&
            !media_codec::IsH264ParameterSetNal(unit.type) &&
            unit.type != media_codec::kH264NalTypeAud;
@@ -85,6 +87,8 @@ std::string BuildH264FlvSequenceHeaderTagBody(uint32_t timestamp_ms,
         return tag;
     }
     const uint32_t body_size = 5U + static_cast<uint32_t>(payload.size());
+    // 标准 AVC FLV video tag body:
+    // FrameType/CodecID + AVCPacketType + CompositionTime + avcC record。
     AppendU8(&tag, 9);
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
@@ -108,6 +112,8 @@ std::string BuildEnhancedFlvVideoTag(bool keyframe,
     }
     const uint32_t body_size = 8U + static_cast<uint32_t>(payload.size());
     tag.reserve(11U + body_size + 4U);
+    // H.265 走 enhanced FLV：VideoTagHeader 带扩展标志，后面跟 FourCC "hvc1"
+    // 和 composition time，再写 hvcC 或 length-prefixed NAL payload。
     AppendU8(&tag, 9);
     AppendU24(&tag, body_size);
     AppendFlvTimestamp(&tag, timestamp_ms);
@@ -168,6 +174,8 @@ bool BuildH264FlvVideoTagView(bool keyframe,
     header[11] =
         static_cast<uint8_t>(((keyframe ? 1 : 2) << 4) | kFlvCodecIdAvc);
     header[12] = kFlvPacketTypeCodedFrames;
+    // CompositionTime = PTS - DTS，FLV 使用 24 bit 有符号语义；这里按协议
+    // 字节写入，输入时间戳已由 media_source 修正为相对单调时间。
     WriteU24Bytes(static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU,
                   header + 13);
     if (!tag->AddHeader(header, 16)) {
@@ -183,6 +191,8 @@ bool BuildH264FlvVideoTagView(bool keyframe,
                                                tag->nal_lengths[nal_index])) {
             return false;
         }
+        // FLV/AVCC payload 使用 4 字节长度前缀，而不是 AnnexB 起始码。
+        // NAL 数据本身仍直接引用原始 EncodedFrame payload。
         if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
             !tag->AddPayload(unit.data, unit.size)) {
             return false;
@@ -225,6 +235,8 @@ bool BuildH265FlvVideoTagView(bool keyframe,
     header[13] = 'v';
     header[14] = 'c';
     header[15] = '1';
+    // enhanced FLV 的 H.265 coded frames 同样携带 composition time，
+    // 便于有 B 帧时播放器按 PTS 呈现。
     WriteU24Bytes(static_cast<uint32_t>(composition_time_ms) & 0x00ffffffU,
                   header + 16);
     if (!tag->AddHeader(header, 19)) {
@@ -240,6 +252,8 @@ bool BuildH265FlvVideoTagView(bool keyframe,
                                                tag->nal_lengths[nal_index])) {
             return false;
         }
+        // 这里生成的是 slice view，不深拷贝视频 payload；HTTP-FLV 发送端
+        // 必须在写完前保持 EncodedFrame 引用有效。
         if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
             !tag->AddPayload(unit.data, unit.size)) {
             return false;
@@ -258,6 +272,7 @@ bool BuildH265FlvVideoTagView(bool keyframe,
 
 std::string FlvMuxer::BuildFileHeader() {
     std::string header;
+    // 当前 FLV 只声明 video flag，不启用音频；产品范围也不包含音频链路。
     header.append("FLV", 3);
     AppendU8(&header, 1);
     AppendU8(&header, 1);
@@ -295,6 +310,7 @@ bool FlvMuxer::BuildVideoTagView(const EncodedFrame &frame,
     }
     const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
     const uint32_t timestamp_ms = static_cast<uint32_t>(frame.dts_us / 1000);
+    // FLV 时间戳以 DTS 为基准，CompositionTime 单独表达 PTS 偏移。
     if (frame.codec == VideoCodec::kH264) {
         return BuildH264FlvVideoTagView(
             keyframe, static_cast<int32_t>(composition_time_ms), timestamp_ms,

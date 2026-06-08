@@ -13,6 +13,8 @@ namespace live_stream {
 namespace media_source_internal {
 
 struct TsMuxerState {
+    // PAT、PMT 和 video PID 各自维护 continuity counter；TS packet 丢包或
+    // 重排诊断会依赖这些 4 bit 计数。
     uint8_t pat_continuity = 0;
     uint8_t pmt_continuity = 0;
     uint8_t video_continuity = 0;
@@ -24,8 +26,8 @@ struct TsSegmentBuffer {
     size_t size = 0;
 };
 
-// Owns the in-memory MPEG-TS HLS segment lifecycle for one media stream.
-// Segments become visible to playlists only after FinalizeCurrentSegment().
+// 管理单路码流的内存 MPEG-TS HLS segment 生命周期。
+// 当前 segment 只有在 FinalizeCurrentSegment 后才进入 playlist，对外不可见。
 class HlsMaker {
 public:
     HlsMaker() = default;

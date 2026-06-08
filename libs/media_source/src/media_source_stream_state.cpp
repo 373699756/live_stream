@@ -24,6 +24,8 @@ void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
 void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
                       const ParsedFramePayload &payload, bool *keyframe,
                       bool *prepend_parameter_sets) {
+    // H.264 参数集既决定 FLV sequence header，也决定 WebRTC/RTSP track 是否 ready。
+    // 参数集可能在 IDR 前重复出现，因此帧内携带 SPS/PPS 时重建输出配置。
     bool has_sps = false;
     bool has_pps = false;
     media_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
@@ -32,6 +34,8 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
         stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
             VideoCodec::kH264, std::string(), stream->sps, stream->pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
+        // config_generation 只描述 FLV/codec 配置更新，不等同于 reader 的
+        // codec_generation；FLV client 用它判断是否需要重发 sequence header。
         ++stream->config_generation;
     }
 
@@ -39,6 +43,8 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
     const bool frame_has_parameter_sets =
         media_codec::HasH264ParameterSets(payload.h264_units);
     if (prepend_parameter_sets != nullptr) {
+        // 当前帧是关键帧但不自带参数集时，HLS segment 需要前置缓存的 SPS/PPS，
+        // 保证从 segment 边界接入的播放器也能解码。
         *prepend_parameter_sets = *keyframe && !frame_has_parameter_sets;
     }
 }
@@ -46,6 +52,8 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
 void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
                       const EncodedFrame &frame, bool *keyframe,
                       bool *prepend_parameter_sets) {
+    // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才生成 enhanced FLV
+    // sequence header，并允许浏览器协议链路进入 ready。
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
@@ -64,6 +72,7 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
     const bool frame_has_parameter_sets =
         media_codec::HasH265ParameterSets(payload.h265_units);
     if (prepend_parameter_sets != nullptr) {
+        // HEVC 关键帧前置参数集时必须一次带上 VPS/SPS/PPS。
         *prepend_parameter_sets = *keyframe && !frame_has_parameter_sets;
     }
 }
@@ -116,6 +125,8 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
     if (!EncodedFrameRefCopy(&payload->encoded_frame, &frame)) {
         return;
     }
+    // FramePayload 持有原始 EncodedFrame 引用，NAL list 只是指向该 payload 的视图；
+    // 不在解析阶段复制整帧视频数据。
     payload->has_nal_units = true;
     const uint8_t *data = EncodedFramePayloadData(&frame);
     if (data == nullptr) {
@@ -206,6 +217,8 @@ MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
     start_data.file_header = FlvMuxer::BuildFileHeader();
     start_data.sequence_header = stream.sequence_header_tag;
     if (!stream.flv_gop_cache.complete()) {
+        // sequence header 已可发送但还没有完整 GOP 时，新客户端需要等待 live
+        // 关键帧，不能从缓存 P 帧起播。
         start_data.config_generation = stream.config_generation;
         return start_data;
     }
@@ -224,6 +237,8 @@ MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream) {
     track.vps = stream.vps;
     track.sps = stream.sps;
     track.pps = stream.pps;
+    // track_ready 面向 RTSP/WebRTC/HTTP-FLV 等协议输出。H.264/H.265 必须已有
+    // sequence header；MJPEG 则至少要有一帧最新 JPEG。
     track.ready =
         IsBrowserStreamReady(stream.state, stream.codec) &&
         ((IsFlvCodecSupported(stream.codec) && HasFlvSequenceHeader(stream)) ||
@@ -244,6 +259,8 @@ void ResetStreamCaches(StreamContext *stream, MediaSourceResetReason reason) {
     stream->pps.clear();
     stream->sequence_header_tag.clear();
     stream->config_generation = 0;
+    // codec_generation 表示所有依赖 codec/时间连续性的缓存都进入新代际。
+    // reader 用它判断旧 GOP/start data 是否仍可用。
     ++stream->codec_generation;
     stream->last_reset_reason = reason;
 }
@@ -282,6 +299,8 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
         stream->timestamp_corrector.CorrectWithReset(frame->dts_us,
                                                      frame->pts_us);
     if (corrected.reset != TimestampCorrectionReset::kNone) {
+        // 时间戳回退或大跳变会破坏 HLS segment 时长、GOP cache 和 reader
+        // 起播点，必须统一清理后从后续关键帧恢复。
         ResetStreamCaches(stream, MediaSourceResetReason::kTimestampReset);
         result.timestamp_reset = true;
     }
@@ -319,6 +338,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         return result;
     }
     if (stream->codec != frame.codec) {
+        // codec 切换会让旧参数集、sequence header、HLS 当前 segment 和 GOP
+        // 都失效，不能只改 codec 字段继续复用旧缓存。
         ResetStream(stream, frame.codec, MediaSourceResetReason::kCodecChanged);
     }
     if (!IsBrowserStreamReady(stream->state, stream->codec)) {
@@ -336,6 +357,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                          &prepend_parameter_sets);
     }
     if (stream->config_generation != config_generation_before) {
+        // sequence header 更新后，旧 FLV GOP 对应旧配置，必须清空等待新关键帧。
         stream->flv_gop_cache.Clear();
     }
 

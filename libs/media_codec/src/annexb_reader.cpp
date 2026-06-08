@@ -6,6 +6,8 @@ namespace live_stream {
 namespace media_codec {
 namespace {
 
+// AnnexB access unit 由 3 字节或 4 字节起始码分隔。扫描器只返回
+// prefix 位置，codec 语义留给调用方解释，这样 H.264/H.265 可复用同一遍历。
 size_t FindStartCode(const uint8_t *data, size_t size, size_t offset) {
     if (data == nullptr || size < 3 || offset >= size) {
         return std::string::npos;
@@ -52,6 +54,8 @@ bool ForEachAnnexBNalUnit(const uint8_t *data,
         }
         const size_t next = FindStartCode(data, size, nal_begin);
         size_t nal_end = next == std::string::npos ? size : next;
+        // 有些编码器会在下一个起始码前填充 0 字节；这些字节不属于
+        // RBSP payload，保留下来会干扰下游 NAL 长度判断。
         while (nal_end > nal_begin && data[nal_end - 1] == 0) {
             --nal_end;
         }
@@ -61,6 +65,8 @@ bool ForEachAnnexBNalUnit(const uint8_t *data,
         AnnexBNalUnit unit;
         unit.data = data + nal_begin;
         unit.size = nal_end - nal_begin;
+        // H.264/H.265 的 nal_unit_type 位于不同 bit 段；通用扫描阶段同时
+        // 填好两个字段，具体 parser 只取自己关心的类型。
         unit.h264_type = static_cast<uint8_t>(data[nal_begin] & 0x1f);
         if (unit.size > 1) {
             unit.h265_type =

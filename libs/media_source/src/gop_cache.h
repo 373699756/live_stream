@@ -26,6 +26,8 @@ public:
     void CopyTo(MediaFlvStartData *start_data) const;
 
 private:
+    // FLV GOP cache 从最近关键帧开始保存完整 GOP。HTTP-FLV 新客户端连接时
+    // 先拿 sequence header，再从这里取得可解码起点。
     bool CopyFlvTagView(const EncodedFrame &frame,
                         const FlvVideoTagView &source,
                         MediaFlvCachedVideoTag *target) const;

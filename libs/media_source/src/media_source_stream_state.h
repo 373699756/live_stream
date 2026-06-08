@@ -39,6 +39,8 @@ struct StreamContext {
 using ParsedFramePayload = FramePayload;
 
 struct PackagedFrameResult {
+    // accepted 只表示该帧被媒体源接收并完成必要封装；具体 HLS/FLV 是否产出
+    // 数据由 hls_segment_created/has_flv_tag_view 分别表达。
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
@@ -47,6 +49,7 @@ struct PackagedFrameResult {
 };
 
 struct NormalizedFrameResult {
+    // timestamp_reset=true 时，上层需要同步重置 reader/GOP/HLS 等依赖时间连续性的缓存。
     bool accepted = false;
     bool timestamp_reset = false;
 };

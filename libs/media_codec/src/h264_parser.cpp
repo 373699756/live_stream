@@ -27,6 +27,8 @@ void ExtractH264ParameterSetsFromUnits(const H264NalUnitList &units,
                                        std::string *pps,
                                        bool *has_sps,
                                        bool *has_pps) {
+    // 保留本帧最后出现的 SPS/PPS。编码器可能在 IDR 前重复发送参数集，
+    // 下游 sequence header 需要拿到当前生效的一组。
     bool local_has_sps = false;
     bool local_has_pps = false;
     for (const H264NalUnit &unit : units) {
@@ -78,6 +80,8 @@ bool ParseH264AnnexBNalUnits(const uint8_t *data,
 
         bool OnAnnexBNalUnit(const AnnexBNalUnit &unit, bool last) override {
             (void)last;
+            // H.264 的 nal_unit_type 位于第一个 NAL 字节低 5 bit。
+            // 共用 AnnexB 扫描器已经去掉起始码，这里只保存 payload 视图。
             return units_->Add({unit.data, unit.size, unit.h264_type});
         }
 
@@ -111,6 +115,7 @@ bool HasCompleteH264ParameterSets(const H264NalUnitList &units) {
 }
 
 bool HasH264KeyFrame(const H264NalUnitList &units) {
+    // H.264 只有 IDR NAL 才能作为协议输出的独立解码起点。
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return IsH264IdrNal(unit.type);
     });

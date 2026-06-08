@@ -28,10 +28,12 @@ bool GopCache::AppendFlvTag(
     const EncodedFrame &frame, bool keyframe,
     const FlvVideoTagView &flv_tag_view) {
     if (keyframe) {
+        // 新关键帧代表新的可解码 GOP 起点，旧 GOP 立即丢弃。
         Clear();
         complete_ = true;
     }
     if (size_ == 0 && !keyframe) {
+        // 尚未看到关键帧时不缓存 P/B 帧；新客户端不能从这里起播。
         return true;
     }
     if (size_ >= frames_.size()) {
@@ -88,6 +90,8 @@ bool GopCache::CopyFlvTagView(
             return false;
         }
         if (source_slice.media_payload) {
+            // media payload slice 必须落在当前 EncodedFrame payload 范围内，
+            // 否则缓存后指针生命周期无法保证。
             const uint8_t *payload = EncodedFramePayloadData(&frame);
             const uintptr_t payload_addr =
                 reinterpret_cast<uintptr_t>(payload);
@@ -103,6 +107,7 @@ bool GopCache::CopyFlvTagView(
             target_slice.size = source_slice.size;
             target_slice.media_payload = true;
         } else {
+            // 小 header 数据复制到 cache 自己的数组中，避免引用临时 tag view。
             if (source_slice.size > sizeof(target_slice.header_data)) {
                 MediaFlvCachedVideoTagUnref(&cached_tag);
                 return false;

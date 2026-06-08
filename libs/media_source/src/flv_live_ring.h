@@ -17,8 +17,8 @@ struct PendingFlvClientWrite {
     bool starts_on_keyframe = false;
 };
 
-// Tracks HTTP-FLV live readers for one media source. The owning service provides
-// synchronization and calls this class under its mutex.
+// 跟踪单个 media source 下的 HTTP-FLV live reader。外层服务负责加锁，
+// 本类所有方法都应在同一把 mutex 保护下调用。
 class FlvLiveRing {
 public:
     MediaFlvClientId AttachReader(StreamId stream_id,

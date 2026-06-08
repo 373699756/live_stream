@@ -29,6 +29,8 @@ void ExtractH265ParameterSetsFromUnits(const H265NalUnitList &units,
                                        bool *has_vps,
                                        bool *has_sps,
                                        bool *has_pps) {
+    // HEVC 需要 VPS/SPS/PPS 三类参数集。和 H.264 一样保留本帧最后出现
+    // 的一组，避免旧参数集覆盖编码器刚切换出的新配置。
     bool local_has_vps = false;
     bool local_has_sps = false;
     bool local_has_pps = false;
@@ -72,6 +74,8 @@ bool IsH265ParameterSetNal(uint8_t nal_type) {
 }
 
 bool IsH265IdrNal(uint8_t nal_type) {
+    // CRA 不是 IDR，但同样可作为随机访问点；播放缓存和 reader 等待关键帧
+    // 时把它当作可启动的关键帧处理。
     return nal_type == kH265NalTypeIdrWRadl ||
            nal_type == kH265NalTypeIdrNLp ||
            nal_type == kH265NalTypeCra;
@@ -93,6 +97,8 @@ bool ParseH265AnnexBNalUnits(const uint8_t *data,
             if (unit.size <= 1) {
                 return true;
             }
+            // HEVC NAL 头至少 2 字节，nal_unit_type 位于首字节 bit[6:1]。
+            // 这里仍只保存 payload 视图，不复制底层视频数据。
             return units_->Add({unit.data, unit.size, unit.h265_type});
         }
 

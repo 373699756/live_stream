@@ -30,6 +30,8 @@ uint32_t RtpTimestamp(const RtpPacketizerInput &input) {
     if (input.pts_us <= 0) {
         return 0;
     }
+    // 视频 RTP 固定使用 90kHz 时钟。输入是微秒时间戳，因此乘 90000 再除
+    // 1000000 得到 RTP timestamp。
     return static_cast<uint32_t>(
         (static_cast<uint64_t>(input.pts_us) * kRtpClockRate) / 1000000U);
 }
@@ -39,6 +41,8 @@ void WriteRtpHeader(const RtpPacketizerInput &input,
                     uint16_t sequence,
                     uint32_t timestamp,
                     uint8_t *header) {
+    // 这里只写最小 12 字节 RTP header：V=2，无扩展、无 CSRC。payload type、
+    // sequence、timestamp、SSRC 均由调用方协商或维护。
     header[0] = 0x80;
     header[1] =
         static_cast<uint8_t>((marker ? 0x80 : 0x00) | input.payload_type);
@@ -161,6 +165,8 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
         }
     }
 
+    // 正常输入应为 AnnexB。保留兜底路径是为了上层已经传入单个裸 NAL 时仍能
+    // 分片输出，但协议模块不应依赖它绕过 media_codec parser。
     return PacketizeNal(normalized_input, normalized_input.payload,
                         static_cast<uint32_t>(normalized_input.payload_size),
                         true, sink);
@@ -195,6 +201,8 @@ bool RtpPacketizer::SendRtpPacket(const RtpPacketizerInput &input,
         !packet.SetPayload(payload, size)) {
         return false;
     }
+    // packet 的 slice 指针指向栈上 header 副本和输入 payload；sink 必须在
+    // 回调内完成发送或复制自己需要的内容。
     return sink->OnRtpPacket(packet);
 }
 
@@ -207,6 +215,7 @@ bool RtpPacketizer::PacketizeNal(const RtpPacketizerInput &input,
         return false;
     }
     if (size + kRtpHeaderSize <= options_.mtu_bytes) {
+        // 单个 NAL 可以放进 MTU 时直接作为一个 RTP payload 发送。
         return SendRtpPacket(input, nullptr, 0, payload, size, marker, sink);
     }
     if (input.codec == VideoCodec::kH265) {
@@ -231,6 +240,8 @@ bool RtpPacketizer::PacketizeH264(const RtpPacketizerInput &input,
     bool start = true;
     while (offset < size) {
         const uint32_t chunk = std::min(max_fragment, size - offset);
+        // H.264 FU-A：第 1 字节保留原 NRI 并把 type 改为 28，第 2 字节携带
+        // 原始 nal_unit_type 以及 start/end 标志。
         uint8_t fu[2] = {fu_indicator, nal_type};
         uint8_t fu_header = nal_type;
         if (start) {
@@ -266,6 +277,8 @@ bool RtpPacketizer::PacketizeH265(const RtpPacketizerInput &input,
     bool start = true;
     while (offset < size) {
         const uint32_t chunk = std::min(max_fragment, size - offset);
+        // H.265 FU：payload header 前 2 字节保留层级和 TID 信息，NAL type 改为
+        // 49；第 3 字节携带原始 nal_unit_type 和 start/end 标志。
         uint8_t fu[3] = {
             static_cast<uint8_t>((nal0 & 0x81) | (kH265FuNalType << 1)), nal1,
             nal_type};
