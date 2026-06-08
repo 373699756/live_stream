@@ -224,6 +224,10 @@ export interface MediaStreamRuntime {
   cached_bytes: number;
   hls_bytes: number;
   last_dts: number;
+  last_keyframe_request_ms: number;
+  last_keyframe_seen_ms: number;
+  last_first_frame_ms: number;
+  last_protocol_ready_ms: number;
   last_reset_reason: string;
   resolution?: string;
   fps?: number;

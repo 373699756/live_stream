@@ -69,7 +69,7 @@ export function startWebrtcPreview({
     }
     controls.setPreviewState('WebRTC 连接超时');
     peerState.closeSession();
-  }, 3500);
+  }, 2200);
   const pc = new RTCPeerConnection({
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',

@@ -66,10 +66,10 @@ export function buildPreviewModeState(
   const nextReadyMode =
     webrtcPlaybackReady ? 'webrtc' :
     flvPlaybackReady ? 'flv' :
-    hlsPlaybackReady ? 'hls' :
     mjpegPlaybackReady ? 'mjpeg' :
+    hlsPlaybackReady ? 'hls' :
     null;
-  const nextAutoMode = nextReadyMode ?? (hlsLaunchable ? 'hls' : null);
+  const nextAutoMode = nextReadyMode;
 
   return {
     flvModeEnabled,

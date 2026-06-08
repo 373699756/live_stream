@@ -299,6 +299,10 @@ ConfigJson StreamRuntimeToJson(StreamId stream_id,
     root["cached_bytes"] = stats.cached_bytes;
     root["hls_bytes"] = status.hls_current_segment_size;
     root["last_dts"] = status.last_dts_us;
+    root["last_keyframe_request_ms"] = status.last_keyframe_request_ms;
+    root["last_keyframe_seen_ms"] = status.last_keyframe_seen_ms;
+    root["last_first_frame_ms"] = status.last_first_frame_ms;
+    root["last_protocol_ready_ms"] = status.last_protocol_ready_ms;
     root["last_reset_reason"] = status.last_reset_reason;
     return root;
 }

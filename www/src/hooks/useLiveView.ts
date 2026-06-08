@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { openMediaEvents } from '../api/mediaEvents';
 import { getMediaPlaybackUrls, getMediaStreams } from '../api/stream';
 import type {
   MediaPlaybackUrls,
@@ -14,7 +15,7 @@ import type {
 const configTimeoutMs = 3000;
 const statusTimeoutMs = 1800;
 const fastRefreshIntervalMs = 2000;
-const steadyRefreshIntervalMs = 5000;
+const steadyRefreshIntervalMs = 12000;
 const fastRefreshCount = 4;
 
 export function useLiveView(selectedStream?: StreamName) {
@@ -82,9 +83,21 @@ export function useLiveView(selectedStream?: StreamName) {
     const steadyTimer = window.setInterval(() => {
       refreshStatuses();
     }, steadyRefreshIntervalMs);
+    let eventSource: EventSource | null = null;
+    if (typeof EventSource !== 'undefined') {
+      eventSource = openMediaEvents((event) => {
+        if (event.type === 'media_status_changed') {
+          refreshStatuses();
+        }
+      });
+      eventSource.onerror = () => {
+        refreshStatuses();
+      };
+    }
     return () => {
       mounted = false;
       controller.abort();
+      eventSource?.close();
       window.clearInterval(fastTimer);
       window.clearInterval(steadyTimer);
     };

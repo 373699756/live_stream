@@ -189,6 +189,7 @@ MediaPipelineDependencies BuildMediaPipelineDependencies(
     const ProtocolRuntimeRefs &refs) {
     MediaPipelineDependencies dependencies;
     dependencies.device_media = refs.media.device_media;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     return dependencies;
 }
 
@@ -260,6 +261,7 @@ HttpDependencies BuildHttpDependencies(
     dependencies.media_source = refs.media_pipeline;
     dependencies.media_flv_source = refs.media_pipeline;
     dependencies.media_mjpeg_source = refs.media_pipeline;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     return dependencies;
 }
 

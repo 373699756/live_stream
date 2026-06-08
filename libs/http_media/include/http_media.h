@@ -12,6 +12,7 @@ namespace live_stream {
 
 class IDeviceMedia;
 class IWebrtc;
+class IEvent;
 
 class IStreamingHttpHandler {
 public:
@@ -45,6 +46,7 @@ struct StreamingHttpHandlerDependencies {
     IMediaSource *media_source = nullptr;
     IMediaFlvSource *media_flv_source = nullptr;
     IMediaMjpegSource *media_mjpeg_source = nullptr;
+    IEvent *event = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(

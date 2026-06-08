@@ -21,6 +21,7 @@ class IWebrtc;
 class IDeviceMedia;
 class IAiView;
 class ISnapshotView;
+class IEvent;
 
 struct HttpDependencies {
     INetEngine *net_engine = nullptr;
@@ -41,6 +42,7 @@ struct HttpDependencies {
     IMediaSource *media_source = nullptr;
     IMediaFlvSource *media_flv_source = nullptr;
     IMediaMjpegSource *media_mjpeg_source = nullptr;
+    IEvent *event = nullptr;
 };
 
 }  // namespace live_stream

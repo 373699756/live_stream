@@ -54,6 +54,7 @@ flowchart LR
 | `GET /live/{stream}/hls/seg-{sequence}.ts` | `http_media` HLS segment handler |
 | `GET /live/{stream}.live.flv` | `http_media` HTTP-FLV handler |
 | `GET /live/{stream}.mjpg` | `http_media` MJPEG handler |
+| `GET /api/events` | `http_media` SSE event stream |
 | `POST /live/{stream}/whep` | 可选 WHEP handler，body/response 都是 SDP |
 | `DELETE /live/{stream}/whep/{peer_id}` | 可选 WHEP close handler |
 | `POST /api/webrtc/peers` | `http_media` WebRTC create peer JSON handler |
@@ -61,9 +62,9 @@ flowchart LR
 | `POST /api/webrtc/peers/{peer_id}/candidates` | `http_media` WebRTC candidate JSON handler |
 | `DELETE /api/webrtc/peers/{peer_id}` | `http_media` WebRTC close JSON handler |
 
-`stream` 只接受 `main` 或 `sub`。HLS、HTTP-FLV、MJPEG 和 WHEP 属于播放 URL，
-不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。WebRTC JSON signaling
-必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
+`stream` 只接受 `main` 或 `sub`。HLS、HTTP-FLV、MJPEG、SSE events 和 WHEP 属于
+流式/播放 URL，不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。WebRTC
+JSON signaling 必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
 
 WebRTC JSON DTO 冻结为：
 

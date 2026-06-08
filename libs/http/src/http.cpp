@@ -4,6 +4,7 @@
 #include "http_media.h"
 #include "http_request_utils.h"
 #include "http_static_files.h"
+#include "event.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "logger.h"
@@ -101,7 +102,8 @@ bool HttpImpl::ShouldUseStreamExecutor(
     const HttpRequest &request) const {
     if (request.method == HttpMethod::kGet) {
         return StartsWith(request.path, "/live/") ||
-               StartsWith(request.path, "/snapshot/");
+               StartsWith(request.path, "/snapshot/") ||
+               request.path == "/api/events";
     }
     if (StartsWith(request.path, "/live/") &&
         (request.method == HttpMethod::kPost ||
@@ -201,7 +203,8 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         server_->SetCloseCallback([media_flv_source =
                                        dependencies.media_flv_source,
                                    media_mjpeg_source =
-                                       dependencies.media_mjpeg_source](
+                                       dependencies.media_mjpeg_source,
+                                   event = dependencies.event](
                                       const HttpMediaClientHandle &client) {
             if (client.type == HttpMediaClientType::kFlv &&
                 media_flv_source != nullptr && client.id != 0) {
@@ -210,6 +213,10 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
             if (client.type == HttpMediaClientType::kMjpeg &&
                 media_mjpeg_source != nullptr && client.id != 0) {
                 (void)media_mjpeg_source->DetachMjpegClient(client.id);
+            }
+            if (client.type == HttpMediaClientType::kEventStream &&
+                event != nullptr && client.id != 0) {
+                (void)event->Unsubscribe(client.id);
             }
         });
     }
@@ -288,6 +295,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         dependencies.media_flv_source;
     streaming_handler_dependencies.media_mjpeg_source =
         dependencies.media_mjpeg_source;
+    streaming_handler_dependencies.event = dependencies.event;
     streaming_handler_ = CreateStreamingHttpHandler(
         streaming_handler_dependencies);
 

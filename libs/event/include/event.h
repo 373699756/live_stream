@@ -13,6 +13,7 @@ enum class EventType {
     kMediaPipelineStarted,
     kMediaPipelineStopped,
     kMediaPipelineError,
+    kMediaStatusChanged,
     kStreamStarted,
     kStreamStopped,
     kRtspClientConnected,

@@ -246,6 +246,10 @@ struct MediaSourceStatus {
     uint32_t flv_last_keyframe_size = 0;
     uint32_t hls_current_segment_size = 0;
     int64_t last_dts_us = 0;
+    int64_t last_keyframe_request_ms = 0;
+    int64_t last_keyframe_seen_ms = 0;
+    int64_t last_first_frame_ms = 0;
+    int64_t last_protocol_ready_ms = 0;
     std::string last_reset_reason;
     bool hls_supported = false;
     bool flv_supported = false;

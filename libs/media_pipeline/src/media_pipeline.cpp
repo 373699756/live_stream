@@ -1,10 +1,12 @@
 #include "media_pipeline.h"
 
+#include "event.h"
 #include "flv_live_ring.h"
 #include "frame_ring.h"
 #include "infra/executor.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
+#include "media_pipeline_runtime_diagnostics.h"
 #include "mjpeg_client_registry.h"
 #include "media_source_stream_state.h"
 #include "media_codec.h"
@@ -100,7 +102,8 @@ public:
     MediaPipelineImpl(MediaPipelineOptions options,
                       MediaPipelineDependencies dependencies)
         : options_(std::move(options)),
-          device_media_(dependencies.device_media) {}
+          device_media_(dependencies.device_media),
+          event_(dependencies.event) {}
 
     ~MediaPipelineImpl() override { StopInternal(); }
 
@@ -369,6 +372,7 @@ public:
         status.hls_current_segment_size =
             stream->hls_maker.CurrentSegmentSize();
         status.last_dts_us = stream->timestamp_corrector.last_dts_us();
+        runtime_diagnostics_.FillStatus(stream_id, &status);
         status.last_reset_reason =
             MediaSourceResetReasonName(stream->last_reset_reason);
         return status;
@@ -397,9 +401,10 @@ public:
                 options_.max_flv_clients);
             device_media = device_media_;
         }
-        if (device_media != nullptr) {
-            (void)device_media->RequestKeyFrame(stream_id,
-                                                KeyFrameReason::kNewClient);
+        const KeyFrameReason reason = KeyFrameReason::kNewClient;
+        if (device_media != nullptr &&
+            device_media->RequestKeyFrame(stream_id, reason)) {
+            NoteKeyFrameRequest(stream_id);
         }
         return client_id;
     }
@@ -454,9 +459,10 @@ public:
             device_media = device_media_;
             request_key_frame = options.keyframe_first;
         }
-        if (device_media != nullptr && request_key_frame) {
-            (void)device_media->RequestKeyFrame(options.stream_id,
-                                                KeyFrameReason::kNewClient);
+        const KeyFrameReason reason = KeyFrameReason::kNewClient;
+        if (device_media != nullptr && request_key_frame &&
+            device_media->RequestKeyFrame(options.stream_id, reason)) {
+            NoteKeyFrameRequest(options.stream_id);
         }
         return reader_id;
     }
@@ -503,7 +509,11 @@ public:
             device_media_ == nullptr) {
             return false;
         }
-        return device_media_->RequestKeyFrame(stream_id, reason);
+        const bool requested = device_media_->RequestKeyFrame(stream_id, reason);
+        if (requested) {
+            NoteKeyFrameRequest(stream_id);
+        }
+        return requested;
     }
 
     MediaSourceStats GetStats() const override {
@@ -599,6 +609,8 @@ private:
         frame_ring_.Clear();
         source_state::ClearStreamContext(&main_stream_);
         source_state::ClearStreamContext(&sub_stream_);
+        runtime_diagnostics_.ResetStream(StreamId::kMain);
+        runtime_diagnostics_.ResetStream(StreamId::kSub);
     }
 
     void DrainPendingFrames() {
@@ -617,6 +629,8 @@ private:
                 EncodedFrameUnref(&frame);
                 continue;
             }
+            NoteFrameDiagnostics(
+                frame.stream_id, media_codec::IsKeyFrame(frame.frame_type));
             const bool has_normalized_payload = BuildParsedFrame(frame, &payload);
             QueueReaderFrame(payload);
             PackageBrowserFrame(payload, has_normalized_payload);
@@ -697,6 +711,9 @@ private:
         bool package_hls = false;
         bool package_flv = false;
         bool update_flv_cache = false;
+        bool notify_ready = false;
+        bool next_hls_ready = false;
+        bool next_flv_ready = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             source_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -758,6 +775,9 @@ private:
                     flv_ready ? 1 : 0, stream->sequence_header_tag.size(),
                     stream->flv_gop_cache.size(),
                     stream->hls_maker.SegmentCount());
+                notify_ready = true;
+                next_hls_ready = hls_ready;
+                next_flv_ready = flv_ready;
             }
             if (packaged_frame.hls_segment_created) {
                 ++stats_.hls_segments_created;
@@ -778,6 +798,10 @@ private:
             }
         }
 
+        if (notify_ready) {
+            NoteReadyDiagnostics(frame.stream_id, next_hls_ready,
+                                 next_flv_ready, false);
+        }
         WriteFlvClients(clients, sequence_header_tag, flv_tag_view,
                         has_flv_tag_view, frame, frame.stream_id);
     }
@@ -789,6 +813,7 @@ private:
             return;
         }
         std::vector<source_clients::PendingMjpegClientWrite> clients;
+        bool notify_ready = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             source_state::StreamContext *stream = FindMutableStream(frame.stream_id);
@@ -808,11 +833,17 @@ private:
                 Info(kServiceName,
                      "browser stream ready stream=%s mjpeg=1 bytes=%u",
                      StreamName(frame.stream_id), frame.size);
+                notify_ready = true;
             }
-            if (!mjpeg_clients_.HasClient(frame.stream_id)) {
-                return;
+            if (mjpeg_clients_.HasClient(frame.stream_id)) {
+                clients = mjpeg_clients_.CollectWrites(frame.stream_id);
             }
-            clients = mjpeg_clients_.CollectWrites(frame.stream_id);
+        }
+        if (notify_ready) {
+            NoteReadyDiagnostics(frame.stream_id, false, false, true);
+        }
+        if (clients.empty()) {
+            return;
         }
         WriteMjpegClients(clients, frame);
     }
@@ -966,6 +997,66 @@ private:
         return nullptr;
     }
 
+    void PublishMediaStatusEvent(StreamId stream_id,
+                                 const std::string &target,
+                                 const std::string &message,
+                                 int32_t value) {
+        if (event_ == nullptr) {
+            return;
+        }
+        Event event;
+        event.type = EventType::kMediaStatusChanged;
+        event.source = kServiceName;
+        event.target = std::string(StreamName(stream_id)) + "." + target;
+        event.message = message;
+        event.value = value;
+        (void)event_->Publish(event);
+    }
+
+    void ResetDiagnosticsLocked(StreamId stream_id) {
+        runtime_diagnostics_.ResetStream(stream_id);
+    }
+
+    void NoteKeyFrameRequest(StreamId stream_id) {
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            runtime_diagnostics_.MarkKeyFrameRequest(stream_id);
+        }
+    }
+
+    void NoteFrameDiagnostics(StreamId stream_id, bool keyframe) {
+        source_clients::MediaPipelineFrameChange change;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            change = runtime_diagnostics_.MarkFrame(stream_id, keyframe);
+        }
+        if (change.first_frame_seen) {
+            PublishMediaStatusEvent(stream_id, "frame", "first", 1);
+        }
+        if (change.keyframe_seen) {
+            PublishMediaStatusEvent(stream_id, "keyframe", "received", 1);
+        }
+    }
+
+    void NoteReadyDiagnostics(StreamId stream_id,
+                              bool hls_ready,
+                              bool flv_ready,
+                              bool mjpeg_ready) {
+        source_clients::MediaPipelineReadyState ready_state;
+        ready_state.hls_ready = hls_ready;
+        ready_state.flv_ready = flv_ready;
+        ready_state.mjpeg_ready = mjpeg_ready;
+        source_clients::MediaPipelineReadyChange change;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            change = runtime_diagnostics_.MarkReady(stream_id, ready_state);
+        }
+        if (!change.changed) {
+            return;
+        }
+        PublishMediaStatusEvent(stream_id, "ready", "changed", change.value);
+    }
+
     void ResetStreamForReasonLocked(StreamId stream_id, VideoCodec codec,
                                     MediaSourceResetReason reason) {
         source_state::StreamContext *stream = FindMutableStream(stream_id);
@@ -974,6 +1065,7 @@ private:
         }
         source_state::ResetStream(stream, codec, reason);
         frame_ring_.ClearStream(stream_id, ReaderCloseReasonForReset(reason));
+        ResetDiagnosticsLocked(stream_id);
         if (reason == MediaSourceResetReason::kCodecChanged ||
             reason == MediaSourceResetReason::kStreamStarted ||
             reason == MediaSourceResetReason::kStreamStopped ||
@@ -1019,6 +1111,7 @@ private:
 
     MediaPipelineOptions options_;
     IDeviceMedia *device_media_ = nullptr;
+    IEvent *event_ = nullptr;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
     source_clients::PendingFrameQueue main_pending_;
@@ -1030,6 +1123,7 @@ private:
     source_state::FrameRing frame_ring_;
     source_state::FlvLiveRing flv_live_ring_;
     source_clients::MjpegClientRegistry mjpeg_clients_;
+    source_clients::MediaPipelineRuntimeDiagnostics runtime_diagnostics_;
     MediaSourceStats stats_;
     FrameAttachId main_attach_id_ = 0;
     FrameAttachId sub_attach_id_ = 0;

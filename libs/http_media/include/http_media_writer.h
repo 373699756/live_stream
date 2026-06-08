@@ -15,6 +15,7 @@ enum class HttpMediaClientType {
     kNone,
     kFlv,
     kMjpeg,
+    kEventStream,
 };
 
 struct HttpMediaClientHandle {

@@ -12,7 +12,7 @@ import {
 } from './previewSession';
 import { previewModeLabels, type PreviewMode } from './previewMode';
 
-const hlsStartupTimeoutMs = 5000;
+const hlsStartupTimeoutMs = 2500;
 
 function streamSessionUrl(baseUrl: string, sessionId: number): string {
   return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}session=${sessionId}`;

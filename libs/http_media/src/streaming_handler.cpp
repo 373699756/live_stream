@@ -1,10 +1,12 @@
 #include "http_media.h"
 
+#include "event_stream.h"
 #include "http_flv_session.h"
 #include "http_media_utils.h"
 #include "http_router.h"
 
 #include "device_media.h"
+#include "event.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
 
@@ -173,15 +175,20 @@ public:
                          IDeviceMedia *device_media,
                          IMediaSource *media_source,
                          IMediaFlvSource *media_flv_source,
-                         IMediaMjpegSource *media_mjpeg_source)
+                         IMediaMjpegSource *media_mjpeg_source,
+                         IEvent *event)
         : access_(access), writer_(writer), device_media_(device_media),
           media_source_(media_source),
           media_flv_source_(media_flv_source),
-          media_mjpeg_source_(media_mjpeg_source) {}
+          media_mjpeg_source_(media_mjpeg_source),
+          event_(event) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
         if (request.method != HttpMethod::kGet) {
             return false;
+        }
+        if (request.path == kEventStreamPath) {
+            return true;
         }
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
@@ -196,6 +203,10 @@ public:
 
     void HandleStreamingRequest(ConnectionId connection_id,
                                 const HttpRequest &request) override {
+        if (request.path == kEventStreamPath) {
+            HandleEventStreamRequest(connection_id, request);
+            return;
+        }
         StreamId stream_id = StreamId::kMain;
         std::string object_name;
         if (ParseHlsPath(request, &stream_id, &object_name)) {
@@ -211,6 +222,76 @@ public:
     }
 
 private:
+    void HandleEventStreamRequest(ConnectionId connection_id,
+                                  const HttpRequest &request) {
+        if (event_ == nullptr || writer_ == nullptr) {
+            SendStreamingError(writer_, connection_id,
+                               HttpMediaTextResponse(501, "Not Implemented"));
+            return;
+        }
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireHttpMediaAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            SendStreamingError(writer_, connection_id, auth_response);
+            return;
+        }
+        if (!writer_->BeginStream(connection_id)) {
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+
+        std::map<std::string, std::string> headers;
+        headers["Content-Type"] = "text/event-stream";
+        headers["Cache-Control"] = "no-cache";
+        headers["Pragma"] = "no-cache";
+        headers["X-Accel-Buffering"] = "no";
+        const std::string header_block =
+            BuildHttpMediaStreamingHeaderBlock(200, headers);
+        if (!writer_->EnqueueStreamingChunk(
+                connection_id,
+                reinterpret_cast<const uint8_t *>(header_block.data()),
+                header_block.size())) {
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+
+        const std::string hello = BuildEventStreamHello();
+        if (!writer_->EnqueueStreamingChunk(
+                connection_id, reinterpret_cast<const uint8_t *>(hello.data()),
+                hello.size())) {
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+
+        HttpMediaWriter *writer = writer_;
+        const EventSubscriptionId subscription_id = event_->Subscribe(
+            EventType::kMediaStatusChanged,
+            [writer, connection_id](const Event &event) {
+                if (writer == nullptr) {
+                    return;
+                }
+                const std::string message = BuildEventStreamMessage(event);
+                if (!writer->EnqueueStreamingChunk(
+                        connection_id,
+                        reinterpret_cast<const uint8_t *>(message.data()),
+                        message.size())) {
+                    writer->CloseConnection(connection_id);
+                }
+            });
+        if (subscription_id == 0) {
+            writer_->CloseConnection(connection_id);
+            return;
+        }
+        HttpMediaClientHandle client;
+        client.type = HttpMediaClientType::kEventStream;
+        client.id = subscription_id;
+        if (!writer_->AttachStreamClient(connection_id, client)) {
+            (void)event_->Unsubscribe(subscription_id);
+            writer_->CloseConnection(connection_id);
+        }
+    }
+
     void HandleHlsSegmentRequest(ConnectionId connection_id,
                                  const HttpRequest &request) {
         if (media_source_ == nullptr) {
@@ -635,6 +716,7 @@ private:
     IMediaSource *media_source_ = nullptr;
     IMediaFlvSource *media_flv_source_ = nullptr;
     IMediaMjpegSource *media_mjpeg_source_ = nullptr;
+    IEvent *event_ = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
@@ -644,7 +726,7 @@ std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
             dependencies.access, dependencies.writer,
             dependencies.device_media, dependencies.media_source,
             dependencies.media_flv_source,
-            dependencies.media_mjpeg_source));
+            dependencies.media_mjpeg_source, dependencies.event));
 }
 
 }  // namespace live_stream

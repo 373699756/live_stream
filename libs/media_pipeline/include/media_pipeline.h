@@ -11,6 +11,8 @@
 
 namespace live_stream {
 
+class IEvent;
+
 struct MediaPipelineOptions {
     uint32_t hls_segment_duration_ms = 1000;
     uint32_t hls_playlist_depth = 4;
@@ -22,6 +24,7 @@ struct MediaPipelineOptions {
 
 struct MediaPipelineDependencies {
     IDeviceMedia *device_media = nullptr;
+    IEvent *event = nullptr;
 };
 
 class IMediaPipeline : public IMediaSource,

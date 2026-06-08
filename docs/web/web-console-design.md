@@ -131,7 +131,13 @@ flowchart LR
 - `webrtcSupported` / `webrtcReady`
 - `readerCount` / `clientCount`
 - `lastDts`
+- `lastKeyframeRequestMs` / `lastKeyframeSeenMs`
+- `lastFirstFrameMs` / `lastProtocolReadyMs`
 - `lastResetReason`
+
+Web 通过 `GET /api/events` 订阅后端 SSE 事件，并在媒体状态变化时立即刷新
+`GET /api/media/streams`；轮询只作为事件流不可用时的兜底。协议自动选择优先使用
+WebRTC、HTTP-FLV、MJPEG，HLS 作为高延迟浏览器兼容兜底，不抢占低延迟协议。
 
 `webrtcReady` 只有在后端确认 WebRTC 已启用且 native signaling、ICE、DTLS 和
 SRTP 均 ready 时才为 true；单独 signaling 可用不代表浏览器可播放。
