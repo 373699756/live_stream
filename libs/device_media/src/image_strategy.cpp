@@ -165,6 +165,16 @@ ImageStrategyControls SmoothImageStrategyControls(
     return controls;
 }
 
+ImageStrategyControls ClampFinalControlsForMode(
+    const ImageStrategyControls &controls, const std::string &mode, int tier) {
+    ImageStrategyControls clamped = controls;
+    if (mode == "low_noise") {
+        clamped.denoise_3d =
+            ClampDenoise3dForLowNoise(clamped.denoise_3d, tier);
+    }
+    return clamped;
+}
+
 std::string ImageStrategyMode(const ConfigJson &image_config) {
     const auto strategy = image_config.find("strategy");
     if (strategy == image_config.end() || !strategy->is_object()) {
@@ -195,10 +205,11 @@ ConfigJson BuildImageStrategyConfig(
 
     const int tier = IsoTier(exposure.iso);
     const std::string strategy_mode = ImageStrategyMode(image_config);
-    const ImageStrategyControls controls = SmoothImageStrategyControls(
-        ControlsForIsoTier(LoadImageStrategyControls(image_config),
-                           strategy_mode, tier),
-        current_status);
+    const ImageStrategyControls target = ControlsForIsoTier(
+        LoadImageStrategyControls(image_config), strategy_mode, tier);
+    const ImageStrategyControls controls = ClampFinalControlsForMode(
+        SmoothImageStrategyControls(target, current_status), strategy_mode,
+        tier);
 
     adjusted["basic"]["saturation"] = controls.saturation;
     adjusted["basic"]["sharpness"] = controls.sharpness;

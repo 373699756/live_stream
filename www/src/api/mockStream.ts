@@ -82,7 +82,7 @@ export const mockMediaStreams: MediaStreamRuntime[] = [
     last_reset_reason: '',
     resolution: '1280x720',
     fps: 30,
-    bitrate_kbps: 2048,
+    bitrate_kbps: 3072,
   },
 ];
 
