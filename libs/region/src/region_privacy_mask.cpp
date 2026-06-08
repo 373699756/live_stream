@@ -164,7 +164,7 @@ bool ApplyMaskSet(RegionOverlay *service, const char *stream_name,
         config.visible = true;
         if (!service->UpsertDisplayRegion(name, config)) {
             Error(
-                "region_service",
+                "region",
                 "apply privacy mask failed stream=%s slot=%u target=%d:%d:%d "
                 "x=%d y=%d width=%u height=%u color=0x%06x",
                 stream_name, slot, static_cast<int>(target.module),
