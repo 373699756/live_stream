@@ -139,6 +139,8 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     WebrtcRtpPacketSink sink(this, &peer, &frame.encoded_frame, &context);
     rtp::RtpPacketizerInput input;
     input.codec = frame.codec;
+    // WebRTC 发送使用 MediaFrame 持有的 EncodedFrame payload；RTP packetizer
+    // 输出 packet view，不在分包阶段复制整帧。
     input.payload = EncodedFramePayloadData(&frame.encoded_frame);
     input.payload_size = frame.encoded_frame.size;
     input.pts_us = frame.pts_us;
@@ -179,6 +181,8 @@ bool WebrtcRtpSender::SendRtpPacketView(
         return false;
     }
 
+    // packet view 中的媒体 slice 只在当前调用栈有效。engine/transport 会在
+    // SRTP protect 阶段复制成加密后的连续 UDP packet。
     const bool sent = context.engine->SendRtpPacket(peer, frame, packet);
     {
         std::lock_guard<std::mutex> guard(*context.mutex);

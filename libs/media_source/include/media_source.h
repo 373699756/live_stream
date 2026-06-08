@@ -114,6 +114,8 @@ struct MediaSegmentRef {
 struct MediaFlvStartData {
     // 新 HTTP-FLV client 先发送 file_header/sequence_header，再从
     // cached_video_tags 的关键帧 GOP 起点继续发送 live tag。
+    // cached_video_tags 持有对应 EncodedFrame 引用，媒体 payload 不会因
+    // GetFlvStartData 返回对象离开 media_source 锁而失效。
     bool supported = false;
     bool cached_gop_complete = false;
     uint64_t config_generation = 0;
@@ -131,6 +133,7 @@ struct MediaFrameReaderOptions {
 struct MediaFrameReaderStartData {
     // reader 创建后先读取 start data：如果 gop_complete=true，调用方可先发送
     // gop_frames，再进入 PopFrameReaderFrame 的 live queue。
+    // gop_frames 里的 MediaFrame 只 ref 底层 VideoBuffer，不按 reader 深拷贝 GOP。
     bool stream_running = false;
     bool gop_complete = false;
     uint64_t reader_generation = 0;
@@ -141,6 +144,8 @@ struct MediaFrameReaderStartData {
 struct MediaFrameReaderFrame {
     // starts_on_keyframe 表示该 live frame 是等待关键帧后的第一个可解码点，
     // WebRTC/RTSP 可据此刷新协议侧状态。
+    // frame 持有自己的 VideoBuffer 引用，调用方发送结束后必须
+    // MediaFrameReaderFrameUnref()。
     MediaFrameReaderId reader_id = 0;
     uint64_t reader_generation = 0;
     bool starts_on_keyframe = false;

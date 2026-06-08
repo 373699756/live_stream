@@ -9,10 +9,13 @@ namespace live_stream {
 using VideoBufferFreeCallback = void (*)(uint8_t* data, uint32_t capacity,
                                          void* user);
 
-// VideoBuffer owns one contiguous media payload reference. Callers that store a
-// pointer beyond the current scope must call VideoBufferRef() and later
-// VideoBufferUnref(). If free_callback is null, the final unref frees data with
-// free(); otherwise free_callback must free the external mapping or pool block.
+// VideoBuffer 是编码后媒体 payload 的唯一内存 owner。跨模块保存或异步发送
+// 只增加引用计数，不深拷贝 payload；最后一次 VideoBufferUnref() 才释放 malloc
+// 内存或归还 pool block。
+//
+// data 可以来自 VideoBufferAlloc() 的堆内存，也可以来自
+// VideoBufferCreateExternal() 包装的外部块。调用方只要把 data 指针保存到当前
+// 调用栈之外，就必须先 VideoBufferRef()，并在不再使用时 VideoBufferUnref()。
 struct VideoBuffer {
     uint8_t* data = nullptr;
     uint32_t capacity = 0;
@@ -23,6 +26,8 @@ struct VideoBuffer {
 };
 
 struct BufferSlice {
+    // slice 不持有引用，只描述 VideoBuffer 中的一段有效 payload。调用方需要
+    // 另外持有 buffer 引用，才能把 slice 交给异步队列或协议 sender。
     const VideoBuffer* buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;

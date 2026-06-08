@@ -316,6 +316,8 @@ bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
         return false;
     }
     EncodedFrame retained_frame;
+    // MJPEG latest frame 只保存 VideoBuffer 引用；HTTP-MJPEG 发送时通过
+    // HttpMediaSlice.owner 继续把同一块 payload 持有到网络发送完成。
     if (!EncodedFrameRefCopy(&retained_frame, &frame)) {
         return false;
     }
@@ -363,6 +365,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     if (package_hls) {
         bool hls_segment_created = false;
+        // HLS 是转封装输出，会把输入 NAL 复制成独立 TS segment body。
+        // FLV/WebRTC/RTSP 路径仍使用原 EncodedFrame 引用或 slice view。
         if (stream->hls_maker.AppendFrame(
                 frame, payload, stream->vps, stream->sps, stream->pps,
                 keyframe, prepend_parameter_sets, hls_segment_duration_ms,
@@ -372,6 +376,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
     }
 
     if (package_flv && IsFlvCodecSupported(frame.codec)) {
+        // FLV tag view 只生成小 header 和 length prefix；媒体 NAL payload
+        // 仍指向 payload.encoded_frame 的 VideoBuffer。
         result.has_flv_tag_view = FlvMuxer::BuildVideoTagView(
             frame, payload, keyframe, &result.flv_tag_view);
         if (result.has_flv_tag_view) {

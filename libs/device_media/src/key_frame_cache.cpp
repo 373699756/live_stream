@@ -68,6 +68,8 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     if (payload == nullptr || frame.size == 0) {
         return copy;
     }
+    // device_media 的最近关键帧缓存是有意的深拷贝：它要独立于实时帧的
+    // VideoBuffer 引用生命周期存在，供新订阅方 keyframe-first 立即起播。
     VideoBuffer *buffer = VideoBufferAlloc(frame.size);
     if (buffer == nullptr) {
         Error("device_media",
@@ -103,6 +105,8 @@ void KeyFrameCache::Remember(const EncodedFrame &frame) {
     }
     if (cached->has_frame && cached->has_parameter_sets &&
         !has_parameter_sets) {
+        // 已有带完整参数集的关键帧时，不用不完整的新关键帧覆盖，避免新订阅方
+        // 拿不到 SPS/PPS/VPS。
         return;
     }
     EncodedFrame cached_frame = CloneEncodedFramePayload(frame);

@@ -21,6 +21,8 @@ bool PendingFrameQueue::PushBack(const EncodedFrame &frame) {
     if (Full()) {
         return false;
     }
+    // worker 线程稍后 drain，因此队列必须持有自己的 VideoBuffer 引用。
+    // 这里只 ref copy，不复制编码 payload。
     if (!EncodedFrameRefCopy(&frames_[(head_ + size_) % frames_.size()],
                              &frame)) {
         return false;
@@ -54,6 +56,7 @@ bool PendingFrameQueue::TakeFront(EncodedFrame *frame) {
     if (frame == nullptr || Empty()) {
         return false;
     }
+    // 出队时转移 owner，避免 ref/unref 抖动；调用方负责最终 EncodedFrameUnref。
     (void)EncodedFrameMove(frame, &frames_[head_]);
     head_ = (head_ + 1) % frames_.size();
     --size_;

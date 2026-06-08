@@ -94,6 +94,8 @@ MediaFrameReaderStartData FrameRing::GetStartData(
             continue;
         }
         MediaFrame media_frame;
+        // ToMediaFrame 会 ref copy payload.encoded_frame；返回给 reader 的
+        // start data 与内部 GOP cache 共享 VideoBuffer，不深拷贝帧内容。
         if (ToMediaFrame(cache->frames[i].payload, cache->frames[i].key_frame,
                          cache->frames[i].duration_us, &media_frame)) {
             start_data.gop_frames.push_back(media_frame);
@@ -402,6 +404,8 @@ bool FrameRing::AppendToCache(StreamCache *cache, uint64_t sequence,
     CachedFrame &cached_frame = cache->frames[cache->size];
     cache->bytes -= CachedFrameBytes(cached_frame);
     FramePayloadUnref(&cached_frame.payload);
+    // GOP cache 只增加 FramePayload/VideoBuffer 引用，缓存的是编码帧 owner；
+    // 不按 GOP 再复制一份大 payload。
     if (!FramePayloadRefCopy(&cached_frame.payload, &frame)) {
         ClearCache(cache);
         ++cache->generation;

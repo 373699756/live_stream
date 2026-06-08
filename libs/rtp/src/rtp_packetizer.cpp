@@ -203,6 +203,8 @@ bool RtpPacketizer::SendRtpPacket(const RtpPacketizerInput &input,
     }
     // packet 的 slice 指针指向栈上 header 副本和输入 payload；sink 必须在
     // 回调内完成发送或复制自己需要的内容。
+    // 这里不持有 VideoBuffer owner，owner 由调用 packetizer 的 MediaFrame/EncodedFrame
+    // 在整个 Packetize 调用期间保证。
     return sink->OnRtpPacket(packet);
 }
 

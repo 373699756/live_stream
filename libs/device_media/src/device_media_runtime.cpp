@@ -321,6 +321,8 @@ void DeviceMediaImpl::OnPipelineFrame(const EncodedFrame &frame, void *user) {
 
 void DeviceMediaImpl::DispatchFrame(const EncodedFrame &frame) {
     FramePayload payload;
+    // hisi_vendor 回调给出的 frame 在回调返回后会 unref。这里先增加一份
+    // VideoBuffer 引用，保证同步分发期间 payload 有效；不会深拷贝整帧。
     if (!EncodedFrameRefCopy(&payload.encoded_frame, &frame)) {
         return;
     }
@@ -331,10 +333,14 @@ void DeviceMediaImpl::DispatchFrame(const EncodedFrame &frame) {
             FramePayloadUnref(&payload);
             return;
         }
+        // key_frame_cache_ 是单独的关键帧深拷贝缓存；普通 sink 分发仍共享
+        // payload 的 VideoBuffer 引用。
         key_frame_cache_.Remember(frame);
         matching_sinks = frame_attachments_.CollectSinks(frame.stream_id);
     }
     for (IFrameSink *sink : matching_sinks) {
+        // 同步调用 sink。sink 要异步保存帧必须自己 ref copy；本函数结束会释放
+        // payload 持有的引用。
         sink->OnFrame(payload);
     }
     FramePayloadUnref(&payload);
@@ -814,6 +820,8 @@ FrameAttachId DeviceMediaImpl::AttachFrameSink(
     sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
     if (has_last_key_frame) {
         FramePayload payload;
+        // last_key_frame 来自 key_frame_cache_ 的深拷贝结果，move 到 payload 后
+        // 由本次 OnFrame/Unref 生命周期管理。
         if (!EncodedFrameMove(&payload.encoded_frame, &last_key_frame)) {
             EncodedFrameUnref(&last_key_frame);
             return id;

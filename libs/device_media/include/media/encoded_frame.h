@@ -9,6 +9,8 @@
 namespace live_stream {
 
 struct EncodedFrame {
+    // 从 hisi_vendor 输出后，buffer 指向项目自己的 VideoBuffer，而不是
+    // HiSilicon VENC 内部 pack 内存。offset/size 描述当前帧在 buffer 中的 payload。
     StreamId stream_id = StreamId::kMain;
     VideoCodec codec = VideoCodec::kH264;
     FrameType frame_type = FrameType::kP;
@@ -70,6 +72,9 @@ inline bool EncodedFrameRefCopy(EncodedFrame *target,
     if (target == source) {
         return true;
     }
+    // 帧对象拷贝只增加 VideoBuffer 引用计数，不复制编码码流 payload。
+    // 这保证 media_pipeline、media_source、HTTP/WebRTC 多路扇出不会按客户端数
+    // 放大整帧内存。
     VideoBuffer *retained = VideoBufferRef(source->buffer);
     if (source->buffer != nullptr && retained == nullptr) {
         return false;
@@ -87,6 +92,7 @@ inline bool EncodedFrameMove(EncodedFrame *target, EncodedFrame *source) {
     if (target == source) {
         return true;
     }
+    // move 转移 buffer owner，不增加引用计数；source 会被清空，避免双重 unref。
     EncodedFrameUnref(target);
     *target = *source;
     EncodedFrameInit(source);

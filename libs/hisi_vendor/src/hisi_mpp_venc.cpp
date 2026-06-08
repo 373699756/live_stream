@@ -355,6 +355,8 @@ bool GetVencStream(const VencStreamContext& context,
     *stream = VENC_STREAM_S{};
     stream->pstPack = *packs;
     stream->u32PackCount = status.u32CurPacks;
+    // HI_MPI_VENC_GetStream 返回的 pack 指针和数据仍归 MPP/VENC 管理；
+    // 在 HI_MPI_VENC_ReleaseStream 之后不能再引用这些地址。
     const HI_S32 s32_ret = HI_MPI_VENC_GetStream(context.venc, stream, 0);
     if (s32_ret != HI_SUCCESS) {
         Error("hisi_vendor",
@@ -398,6 +400,8 @@ bool MeasureVencPayload(const VencStreamContext& context,
     bool valid_stream = stream.u32PackCount > 0 && stream.pstPack != nullptr;
     for (uint32_t i = 0; valid_stream && i < stream.u32PackCount; ++i) {
         internal::VencPacketData packet_data;
+        // 一个 VENC pack 可能因为环形码流 buffer 回绕被拆成 first/second 两段。
+        // 这里先只测量总长度，真正复制时再按同样切片顺序拷贝。
         if (!internal::GetVencPacketData(stream.pstPack[i], stream_buffer,
                                          &packet_data)) {
             valid_stream = false;
@@ -423,6 +427,9 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                              const VENC_STREAM_S& stream,
                              const VENC_STREAM_BUF_INFO_S& stream_buffer,
                              uint32_t payload_size) {
+    // 这是从 HiSilicon VENC 内部 stream buffer 到项目内存的唯一深拷贝点。
+    // 复制完成后 EncodedFrame 持有 VideoBuffer；随后即可 ReleaseStream，把
+    // MPP 的 pack buffer 还给驱动，不影响上层继续发送该帧。
     VideoBuffer* buffer = VideoBufferAlloc(payload_size);
     if (buffer == nullptr) {
         Error("hisi_vendor",
@@ -454,6 +461,8 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
             return nullptr;
         }
         if (packet_data.first.size > 0) {
+            // first/second 都是 VENC ring buffer 中的只读片段，按 AnnexB 原顺序
+            // 拼进一个连续 VideoBuffer，便于后续 parser/packetizer 直接使用。
             std::memcpy(buffer->data + offset, packet_data.first.data,
                         packet_data.first.size);
             offset += packet_data.first.size;
@@ -484,6 +493,7 @@ EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
     frame.codec = context.codec;
     frame.frame_type = frame_type;
     frame.sequence = stream.u32Seq;
+    // PTS 取自 VENC pack；media_source 后续会修正为从流起点开始的单调相对时间。
     frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = frame.pts_us;
     frame.buffer = buffer;
@@ -538,9 +548,13 @@ void HandleVencStream(VencStreamContext* context,
         return;
     }
     EncodedFrame frame = BuildEncodedFrame(*context, stream, frame_type, buffer);
+    // frame 已经拥有项目 VideoBuffer。ReleaseVencStream 只释放 MPP stream 和
+    // 临时 pack 数组，不会释放 frame.buffer。
     ReleaseVencStream(*context, &stream, packs);
 
     if (callback != nullptr) {
+        // callback 是同步调用；返回后本函数会 unref 自己持有的 frame。
+        // 上层保存帧必须在回调内 EncodedFrameRefCopy()。
         callback(frame, user);
     }
     EncodedFrameUnref(&frame);

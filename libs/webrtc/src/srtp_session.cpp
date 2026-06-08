@@ -105,6 +105,9 @@ bool CopyRtpPacket(const rtp::RtpPacketView &packet,
     return false;
   }
   const size_t packet_size = packet.Size();
+  // libsrtp 需要一块可原地追加认证尾部的连续 RTP buffer。这里会把 RTP
+  // header、FU header 和媒体 payload slice 复制一次；这是 WebRTC/SRTP 路径
+  // 为加密必需的拷贝，不会长期保存原始 EncodedFrame 指针。
   buffer->assign(packet_size + SRTP_MAX_TRAILER_LEN, 0);
   size_t offset = 0;
   for (size_t i = 0; i < packet.slice_count; ++i) {

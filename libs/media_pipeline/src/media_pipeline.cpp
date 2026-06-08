@@ -564,6 +564,8 @@ public:
             }
             source_clients::PendingFrameQueue *queue =
                 FindPendingQueue(frame.stream_id);
+            // device_media 的 OnFrame 是同步回调，media_pipeline 需要跨线程处理，
+            // 所以 pending queue 会增加 VideoBuffer 引用；不会在这里深拷贝 payload。
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
                 return;
             }
@@ -624,6 +626,8 @@ private:
                     return;
                 }
             }
+            // frame 从 pending queue move 出来，当前函数持有这一份 VideoBuffer 引用。
+            // 后续 Parse/FrameRing/FLV/MJPEG 需要保存时再各自 ref copy。
             source_state::ParsedFramePayload payload;
             if (!NormalizeFrameForDownstream(&frame)) {
                 EncodedFrameUnref(&frame);
@@ -673,6 +677,8 @@ private:
             return false;
         }
         source_state::ParseFramePayload(frame, payload);
+        // payload 内部 EncodedFrameRefCopy，NAL list 只是指向这份 payload；
+        // DrainPendingFrames 结束前会 ParsedFramePayloadUnref。
         return source_state::HasParsedUnits(*payload);
     }
 
@@ -693,6 +699,8 @@ private:
             if (stream->state != StreamState::kRunning) {
                 return;
             }
+            // frame_ring_ 为 RTSP/WebRTC reader 保存 GOP/live queue 引用；
+            // 这里不会深拷贝编码 payload。
             frame_ring_.Write(payload);
         }
     }
@@ -760,6 +768,8 @@ private:
                     package_flv || update_flv_cache,
                     options_.hls_segment_duration_ms,
                     HlsSegmentCacheDepth(options_));
+            // AppendFrameToStream 内部：HLS 会复制成独立 TS segment；FLV 只生成
+            // tag view 和 GOP cache 引用，仍共享原 EncodedFrame payload。
             if (!packaged_frame.accepted) {
                 return;
             }

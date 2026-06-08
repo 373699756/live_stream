@@ -409,6 +409,8 @@ bool AppendTsSegmentHeader(VideoCodec codec,
     }
     const std::string pat = BuildPatPacket(&state->pat_continuity);
     const std::string pmt = BuildPmtPacket(codec, &state->pmt_continuity);
+    // HLS segment body 是新的 TS 连续内存，PAT/PMT/PES 都会复制/拼装进去；
+    // 它不直接引用原始 EncodedFrame payload。
     return AppendTsString(segment_body, pat) &&
            AppendTsString(segment_body, pmt);
 }
@@ -437,6 +439,8 @@ bool AppendH264NalUnitsToTsSegmentBuffer(
                                  &pes_slices)) {
         return false;
     }
+    // AppendTsPayloadToBuffer 会把 PES header、AnnexB 起始码和 NAL payload
+    // 复制进 segment_body。HLS 为独立 .ts 文件，不能保存原帧 slice 指针。
     return AppendTsPayloadToBuffer(pes_slices, dts_90k,
                                    &state->video_continuity, segment_body);
 }
@@ -466,6 +470,8 @@ bool AppendH265NalUnitsToTsSegmentBuffer(
                                  &pes_slices)) {
         return false;
     }
+    // 和 H.264 一样，HEVC 的 PES/TS 输出是独立 segment body，不能引用输入帧
+    // 的 NAL slice 生命周期。
     return AppendTsPayloadToBuffer(pes_slices, dts_90k,
                                    &state->video_continuity, segment_body);
 }
@@ -720,6 +726,8 @@ void HlsMaker::StartSegment(VideoCodec codec, int64_t pts_us) {
     current_segment_.last_pts_us = pts_us;
     const uint32_t segment_capacity =
         ClampSegmentCapacity(next_segment_capacity_);
+    // segment body 是 HLS 自己的 VideoBuffer，生命周期随 playlist retain 管理；
+    // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 EncodedFrame。
     current_segment_.body = VideoBufferAlloc(segment_capacity);
     if (current_segment_.body == nullptr) {
         UnrefSegmentState(&current_segment_);

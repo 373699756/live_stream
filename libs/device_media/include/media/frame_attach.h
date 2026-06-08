@@ -20,6 +20,9 @@ enum class StreamState {
 using FrameAttachId = uint64_t;
 
 struct FramePayload {
+    // 帧分发时使用的热路径对象。encoded_frame 持有 VideoBuffer 引用；
+    // h264_units/h265_units 只是指向 encoded_frame payload 的 NAL 视图，不能脱离
+    // encoded_frame 生命周期单独保存。
     EncodedFrame encoded_frame;
     bool has_nal_units = false;
     media_codec::H264NalUnitList h264_units;
@@ -58,6 +61,8 @@ inline bool FramePayloadRefCopy(FramePayload *target,
     if (!EncodedFrameRefCopy(&retained_frame, &source->encoded_frame)) {
         return false;
     }
+    // NAL list 可以浅拷贝，因为它们指向同一个 retained_frame payload。
+    // 这里不会重新解析或复制视频码流。
     FramePayloadUnref(target);
     target->encoded_frame = retained_frame;
     target->has_nal_units = source->has_nal_units;
@@ -94,11 +99,15 @@ public:
     virtual ~IFrameSink() = default;
 
     virtual const char* Name() const = 0;
+    // OnFrame 是同步回调。sink 如果要把 frame 放入异步队列，必须在回调内
+    // FramePayloadRefCopy()/EncodedFrameRefCopy()；回调返回后上游会释放自己的引用。
     virtual void OnFrame(const FramePayload& frame) = 0;
     virtual void OnSourceStateChanged(StreamId stream_id,
                                       StreamState state) = 0;
 };
 
+// hisi_vendor -> device_media 的同步帧回调。frame 内存由 callback 调用方临时持有；
+// 接收方若要保存必须 EncodedFrameRefCopy()。
 using EncodedFrameCallback = void (*)(const EncodedFrame& frame, void* user);
 
 }  // namespace live_stream

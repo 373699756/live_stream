@@ -204,6 +204,8 @@ bool WebrtcTransport::SendRtpPacket(
         return false;
     }
     std::vector<uint8_t> protected_packet;
+    // ProtectRtp 会把 packet view 复制成连续 RTP buffer 并原地加密/追加认证尾部。
+    // UDP 发送只使用 protected_packet；函数返回后不再持有 frame payload。
     if (!outbound_srtp_.ProtectRtp(packet, &protected_packet) ||
         protected_packet.empty() ||
         !ice_->SendToSelected(protected_packet.data(),
