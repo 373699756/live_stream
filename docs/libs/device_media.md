@@ -59,7 +59,8 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 | `image.backlight` / `image.orientation` / `image.color_mode` / `image.strategy` | 背光、镜像翻转、彩黑模式、自动图像策略 | 运行时图像策略和状态展示 |
 
 默认视频配置面向清晰预览：主码流为 1080P/30fps，子码流为
-720P/30fps/3072kbps。默认图像策略为 `low_noise`，按 IMX290 的低照特性使用较低
+720P/30fps/3072kbps，GOP 为 30 帧以降低 WebRTC、HLS 和 HTTP-FLV 首播等待。
+默认图像策略为 `low_noise`，按 IMX290 的低照特性使用较低
 锐度、温和 2D/3D 降噪和 3DNR 上限，避免 ISP 手动锐化放大点状噪声或过度发蜡。
 
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和

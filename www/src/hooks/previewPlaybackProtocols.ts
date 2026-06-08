@@ -258,9 +258,10 @@ export function startFlvPreview({
         stashInitialSize: 128,
         lazyLoad: false,
         deferLoadAfterSourceOpen: false,
+        // 直播预览只保留很短的回看窗口，避免 MSE 缓冲累计成数秒延时。
         autoCleanupSourceBuffer: true,
-        autoCleanupMaxBackwardDuration: 4,
-        autoCleanupMinBackwardDuration: 1,
+        autoCleanupMaxBackwardDuration: 1,
+        autoCleanupMinBackwardDuration: 0.2,
       });
       setFlvPlayer(player);
       const errorEvent = flvModule.Events?.ERROR;

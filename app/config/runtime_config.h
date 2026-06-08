@@ -27,7 +27,7 @@ struct AppRuntimeConfig {
     uint16_t onvif_discovery_port = 3702;
     uint16_t webrtc_local_port_base = 16000;
     uint32_t rtsp_max_sessions = 16;
-    uint32_t webrtc_max_peers = 1;
+    uint32_t webrtc_max_peers = 2;
     std::string webrtc_public_ip = "auto";
     VideoCodec rtsp_main_codec = VideoCodec::kH264;
     VideoCodec rtsp_sub_codec = VideoCodec::kH264;

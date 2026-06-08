@@ -90,6 +90,8 @@ native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE 
 修改会被 app 的 config attachment 拒绝，必须重启后生效。`public_ip="auto"` 的
 解析仍由 app 读取 `network.default_ifname` 的当前 IPv4；若网络地址变化但 WebRTC
 scope JSON 未变化，后续需要通过 network 事件联动触发重新应用。
+默认 `max_peers=2`，用于覆盖 Web 预览切换时新旧 peer 短暂重叠的窗口；不是面向多
+用户并发观看的容量承诺。
 
 10.4 已接入 STUN/ICE 层：`stun_packet.*` 支持 binding request/response、
 USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；

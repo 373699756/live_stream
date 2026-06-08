@@ -19,7 +19,7 @@ export const mockRtspConfig: RtspConfig = {
 export const mockWebrtcConfig: WebrtcConfig = {
   enabled: true,
   ice_servers: [],
-  max_peers: 4,
+  max_peers: 2,
   prefer_tcp: false,
 };
 

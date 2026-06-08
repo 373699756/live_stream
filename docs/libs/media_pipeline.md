@@ -69,6 +69,9 @@ codec 切换和 timestamp reset 走同一 `ResetStreamForReasonLocked` 路径，
 | `max_mjpeg_clients` | MJPEG 客户端注册上限 |
 | `max_frame_readers` | RTSP/WebRTC 等下游 reader 总上限 |
 
+默认 HLS 使用 1s segment、2 个完成 segment 的 playlist 和 3 个旧 segment 保留。
+这个配置优先降低浏览器预览首播等待，同时保留少量余量给滞后 segment 请求。
+
 启动后本服务是 `device_media` 到 RTSP/WebRTC/HTTP 的扇出点。新增下游协议必须通过
 `IMediaFrameSource`、`IMediaSource`、`IMediaFlvSource` 或 `IMediaMjpegSource`
 消费，不能直接订阅 `device_media` 并绕过统一 keyframe 请求和资源上限。

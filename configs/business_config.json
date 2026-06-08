@@ -8,7 +8,7 @@
         "fps": 30,
         "bitrate_kbps": 12288,
         "rate_control": "cbr",
-        "gop": 60,
+        "gop": 30,
         "gop_mode": "normal_p",
         "smart_codec": false
       },
@@ -19,7 +19,7 @@
         "fps": 30,
         "bitrate_kbps": 3072,
         "rate_control": "cbr",
-        "gop": 60,
+        "gop": 30,
         "gop_mode": "normal_p",
         "smart_codec": false
       }
@@ -94,7 +94,7 @@
     "local_port_base": 16000,
     "public_ip": "auto",
     "ice_servers": [],
-    "max_peers": 1,
+    "max_peers": 2,
     "prefer_tcp": false
   },
   "http": {
