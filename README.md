@@ -15,7 +15,7 @@ and related UI/API.
 ## Layout
 
 - `app/`: process entry and service composition root.
-- `libs/*_service/`: backend service modules.
+- `libs/<module>/`: backend modules.
 - `configs/`: runtime JSON configuration.
 - `www/`: Vite + React + TypeScript IPC Web Console.
 - `docs/`: architecture, contracts, AI workflow, and focused engineering notes.

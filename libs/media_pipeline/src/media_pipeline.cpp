@@ -8,8 +8,8 @@
 #include "mjpeg_client_registry.h"
 #include "media_source_stream_state.h"
 #include "media_codec.h"
+#include "pending_frame_queue.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -26,88 +26,10 @@ namespace {
 constexpr const char *kServiceName = "media_pipeline";
 constexpr uint32_t kWorkerQueueCapacity = 4;
 constexpr uint32_t kWorkerThreadCount = 1;
-constexpr size_t kMaxPendingFramesPerStream = 4;
 
 uint32_t HlsSegmentCacheDepth(const MediaPipelineOptions &options) {
     return options.hls_playlist_depth + options.hls_segment_retain_count;
 }
-
-class PendingFrameQueue {
-public:
-    void Clear() {
-        for (EncodedFrame &frame : frames_) {
-            EncodedFrameUnref(&frame);
-        }
-        head_ = 0;
-        size_ = 0;
-    }
-
-    bool Empty() const { return size_ == 0; }
-
-    bool Full() const { return size_ >= frames_.size(); }
-
-    bool PushBack(const EncodedFrame &frame) {
-        if (Full()) {
-            return false;
-        }
-        if (!EncodedFrameRefCopy(&frames_[(head_ + size_) % frames_.size()],
-                                    &frame)) {
-            return false;
-        }
-        ++size_;
-        return true;
-    }
-
-    bool PopFront() {
-        if (Empty()) {
-            return false;
-        }
-        EncodedFrameUnref(&frames_[head_]);
-        head_ = (head_ + 1) % frames_.size();
-        --size_;
-        return true;
-    }
-
-    bool DropOldestNonKeyFrame() {
-        for (size_t i = 0; i < size_; ++i) {
-            const size_t index = (head_ + i) % frames_.size();
-            if (!media_codec::IsKeyFrame(frames_[index].frame_type)) {
-                RemoveAt(i);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool TakeFront(EncodedFrame *frame) {
-        if (frame == nullptr || Empty()) {
-            return false;
-        }
-        (void)EncodedFrameMove(frame, &frames_[head_]);
-        head_ = (head_ + 1) % frames_.size();
-        --size_;
-        return true;
-    }
-
-private:
-    void RemoveAt(size_t position) {
-        if (position >= size_) {
-            return;
-        }
-        for (size_t i = position; i + 1 < size_; ++i) {
-            const size_t target = (head_ + i) % frames_.size();
-            const size_t source = (head_ + i + 1) % frames_.size();
-            (void)EncodedFrameMove(&frames_[target], &frames_[source]);
-        }
-        const size_t tail = (head_ + size_ - 1) % frames_.size();
-        EncodedFrameUnref(&frames_[tail]);
-        --size_;
-    }
-
-    std::array<EncodedFrame, kMaxPendingFramesPerStream> frames_{};
-    size_t head_ = 0;
-    size_t size_ = 0;
-};
 
 MediaFlvVideoTagView ToMediaFlvVideoTagView(
     const source_state::FlvVideoTagView &tag) {
@@ -630,7 +552,8 @@ public:
                 worker_executor_ == nullptr) {
                 return;
             }
-            PendingFrameQueue *queue = FindPendingQueue(frame.stream_id);
+            source_clients::PendingFrameQueue *queue =
+                FindPendingQueue(frame.stream_id);
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
                 return;
             }
@@ -969,7 +892,7 @@ private:
         mjpeg_clients_.ReleaseWrite(client_id);
     }
 
-    PendingFrameQueue *FindPendingQueue(StreamId stream_id) {
+    source_clients::PendingFrameQueue *FindPendingQueue(StreamId stream_id) {
         if (stream_id == StreamId::kMain) {
             return &main_pending_;
         }
@@ -979,7 +902,7 @@ private:
         return nullptr;
     }
 
-    bool EnqueuePendingFrameLocked(PendingFrameQueue *queue,
+    bool EnqueuePendingFrameLocked(source_clients::PendingFrameQueue *queue,
                                    const EncodedFrame &frame) {
         if (queue == nullptr) {
             return false;
@@ -1006,7 +929,8 @@ private:
         const StreamId fallback_stream = preferred_stream == StreamId::kMain
                                              ? StreamId::kSub
                                              : StreamId::kMain;
-        PendingFrameQueue *queue = FindPendingQueue(preferred_stream);
+        source_clients::PendingFrameQueue *queue =
+            FindPendingQueue(preferred_stream);
         StreamId selected_stream = preferred_stream;
         if (queue == nullptr || queue->Empty()) {
             queue = FindPendingQueue(fallback_stream);
@@ -1087,7 +1011,7 @@ private:
     }
 
     void ClearPendingQueueLocked(StreamId stream_id) {
-        PendingFrameQueue *queue = FindPendingQueue(stream_id);
+        source_clients::PendingFrameQueue *queue = FindPendingQueue(stream_id);
         if (queue != nullptr) {
             queue->Clear();
         }
@@ -1097,8 +1021,8 @@ private:
     IDeviceMedia *device_media_ = nullptr;
     std::unique_ptr<infra::Executor> worker_executor_;
     mutable std::mutex mutex_;
-    PendingFrameQueue main_pending_;
-    PendingFrameQueue sub_pending_;
+    source_clients::PendingFrameQueue main_pending_;
+    source_clients::PendingFrameQueue sub_pending_;
     bool drain_task_posted_ = false;
     StreamId last_drained_stream_ = StreamId::kSub;
     source_state::StreamContext main_stream_;
