@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -36,6 +37,22 @@ struct JpegCaptureContext {
     bool has_frame = false;
     bool has_channel = false;
     bool receiving = false;
+};
+
+class SnapshotInProgressGuard {
+public:
+    explicit SnapshotInProgressGuard(bool* in_progress)
+        : in_progress_(in_progress) {}
+    SnapshotInProgressGuard(const SnapshotInProgressGuard&) = delete;
+    SnapshotInProgressGuard& operator=(const SnapshotInProgressGuard&) = delete;
+    ~SnapshotInProgressGuard() {
+        if (in_progress_ != nullptr) {
+            *in_progress_ = false;
+        }
+    }
+
+private:
+    bool* in_progress_ = nullptr;
 };
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
@@ -188,8 +205,17 @@ bool InitJpegCaptureContext(const SnapshotConfig& config,
     context->vpss_group = static_cast<VPSS_GRP>(config.snap_vpss_group);
     context->vpss_channel = static_cast<VPSS_CHN>(config.snap_vpss_channel);
     context->jpeg_channel = static_cast<VENC_CHN>(config.jpeg_venc_channel);
+    if (config.timeout_ms >
+        static_cast<uint32_t>(std::numeric_limits<HI_S32>::max())) {
+        Error("hisi_vendor", "CaptureJpeg: timeout out of range: %u",
+              config.timeout_ms);
+        return false;
+    }
     context->timeout = static_cast<HI_S32>(config.timeout_ms);
 
+    if (!EnsureVpssFrameDepth(context->vpss_group, context->vpss_channel)) {
+        return false;
+    }
     if (!MpiOk("CaptureJpeg: HI_MPI_VPSS_GetChnFrame",
                       HI_MPI_VPSS_GetChnFrame(
                           context->vpss_group, context->vpss_channel,
@@ -257,7 +283,7 @@ bool SendJpegFrame(JpegCaptureContext* context) {
         return false;
     }
     VENC_RECV_PIC_PARAM_S recv_param{};
-    recv_param.s32RecvPicNum = -1;
+    recv_param.s32RecvPicNum = 1;
     if (!MpiOk("CaptureJpeg: HI_MPI_VENC_StartRecvFrame",
                       HI_MPI_VENC_StartRecvFrame(context->jpeg_channel,
                                                 &recv_param))) {
@@ -345,6 +371,17 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
     stream->u32PackCount = status.u32CurPacks;
     if (!MpiOk("CaptureJpeg: HI_MPI_VENC_GetStream",
                       HI_MPI_VENC_GetStream(jpeg_channel, stream, -1))) {
+        std::free(*packs);
+        *packs = nullptr;
+        return false;
+    }
+    if (stream->u32PackCount == 0 ||
+        stream->u32PackCount > status.u32CurPacks) {
+        Error(
+            "hisi_vendor",
+            "CaptureJpeg: invalid pack count seq=%u packs=%u allocated=%u",
+            stream->u32Seq, stream->u32PackCount, status.u32CurPacks);
+        (void)HI_MPI_VENC_ReleaseStream(jpeg_channel, stream);
         std::free(*packs);
         *packs = nullptr;
         return false;
@@ -475,6 +512,13 @@ JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
 }  // namespace
 
 JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
+    std::lock_guard<std::mutex> snapshot_lock(impl_->snapshot_mutex_);
+    if (impl_->snapshot_in_progress_) {
+        Error("hisi_vendor", "CaptureJpeg: snapshot already in progress");
+        return JpegFrame{};
+    }
+    impl_->snapshot_in_progress_ = true;
+    SnapshotInProgressGuard snapshot_guard(&impl_->snapshot_in_progress_);
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     JpegFrame result{};
     result.width = config.size.width;
@@ -486,7 +530,22 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     }
     if (config.jpeg_venc_channel < 0 || config.snap_vpss_group < 0 ||
         config.snap_vpss_channel < 0 || config.size.width == 0 ||
-        config.size.height == 0 || config.timeout_ms == 0) {
+        config.size.height == 0 || config.timeout_ms == 0 ||
+        config.frame_count == 0 || config.repeat_send_times == 0) {
+        return result;
+    }
+    if ((impl_->main_venc_.created &&
+         impl_->main_venc_.venc_channel == config.jpeg_venc_channel) ||
+        (impl_->sub_venc_.created &&
+         impl_->sub_venc_.venc_channel == config.jpeg_venc_channel) ||
+        (impl_->has_active_config_ &&
+         (impl_->active_config_.venc_channel == config.jpeg_venc_channel ||
+          (impl_->active_config_.sub_stream.enabled &&
+           impl_->active_config_.sub_venc_channel ==
+               config.jpeg_venc_channel)))) {
+        Error("hisi_vendor",
+              "CaptureJpeg: JPEG VENC channel conflicts with stream chn=%d",
+              config.jpeg_venc_channel);
         return result;
     }
 

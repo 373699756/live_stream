@@ -40,6 +40,16 @@ public SDK interface 位于 `hisi_vendor` include 和 `mpp_hisi_sdk_impl` 相关
 `hisi_vendor` 可以保存 SDK 适配所需的句柄和能力缓存，但不能替业务模块决定配置策略、
 Web DTO 或运行状态展示。
 
+VENC 封装以 Hi3516 Encode 库为主要参考，保持 `StartVenc -> BindVpssVenc ->
+StartVencStream` 的上层调用契约，但模块内部按每路 VENC runtime 记录 channel、
+VPSS 绑定、接收状态和 codec。失败回滚和停止顺序必须遵循创建的反向路径：
+停止取流线程、停止接收、解绑 VPSS、销毁 VENC channel。
+
+JPEG 抓图保持同步 `CaptureJpeg` 接口，底层使用 VPSS 取帧后送入独立 JPEG VENC
+channel，再按 `GetStream/ReleaseStream` 成对读取编码结果。抓图控制语义借鉴 Capture
+库的抓图请求和状态边界，但不引入 Capture 的 task、Binder 或共享内存通信模型；
+抓图必须串行执行，不能复用主/子码流 VENC channel，也不能破坏实时预览码流。
+
 ## 非目标
 
 - 不拥有 HTTP DTO。
