@@ -105,6 +105,10 @@ Runtime startup usage:
 
 - `MediaSubsystem` always creates `AiService`. `ai.enabled=false` keeps the
   service attached to config/status only and does not start inference.
+- `task` accepts `object_detection`, `face_detection`,
+  `motion_classification`, and `occlusion_detection`. Device-side
+  `motion_classification` and `occlusion_detection` do not require a `.wk`
+  `model_path`.
 - `PUT /api/config/ai` hot-applies runtime changes by stopping or rebuilding
   the AI inference path.
 

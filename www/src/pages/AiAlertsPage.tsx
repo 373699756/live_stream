@@ -20,12 +20,12 @@ const kAiAlertColumns: Array<{
     condition: '检测到人员、车辆等目标，且最高置信度达到当前阈值。',
   },
   {
-    task: 'face_detection',
-    condition: '检测到人脸目标，且最高置信度达到当前阈值。',
-  },
-  {
     task: 'motion_classification',
     condition: '检测到有效画面移动，且最高置信度达到当前阈值。',
+  },
+  {
+    task: 'occlusion_detection',
+    condition: '检测到画面大面积变暗或镜头被遮挡，且置信度达到当前阈值。',
   },
 ];
 
@@ -54,16 +54,15 @@ function taskLabel(task: AiAlertRecord['task']) {
       return '人脸检测';
     case 'motion_classification':
       return '移动侦测';
+    case 'occlusion_detection':
+      return '遮挡检测';
     case 'object_detection':
       return '目标检测';
   }
 }
 
-function taskSupportedByBackend(
-  backend: AiModelConfig['backend'],
-  task: AiModelConfig['task'],
-) {
-  return backend !== 'hisi3516dv300_nnie' || task !== 'face_detection';
+function visibleTaskOrDefault(task: AiModelConfig['task']) {
+  return task === 'face_detection' ? 'object_detection' : task;
 }
 
 function backendLabel(status: AiStatus) {
@@ -104,7 +103,11 @@ function AiStatusPanel({
   const [saveMessage, setSaveMessage] = useState('');
 
   useEffect(() => {
-    setDraft(status?.config ?? null);
+    setDraft(
+      status
+        ? { ...status.config, task: visibleTaskOrDefault(status.config.task) }
+        : null,
+    );
   }, [status]);
 
   if (!status) {
@@ -125,7 +128,7 @@ function AiStatusPanel({
         <div>
           <h2>AI 状态</h2>
           <p>
-            {status.config.backend} / {taskLabel(status.config.task)}
+            {config.backend} / {taskLabel(config.task)}
           </p>
         </div>
         <StatusBadge state={badgeState} label={backendLabel(status)} />
@@ -195,9 +198,7 @@ function AiStatusPanel({
                 setDraft({
                   ...config,
                   backend,
-                  task: taskSupportedByBackend(backend, config.task)
-                    ? config.task
-                    : 'object_detection',
+                  task: visibleTaskOrDefault(config.task),
                 });
               }}
             >
@@ -219,13 +220,8 @@ function AiStatusPanel({
               }
             >
               <option value="object_detection">目标检测</option>
-              <option
-                value="face_detection"
-                disabled={!taskSupportedByBackend(config.backend, 'face_detection')}
-              >
-                人脸检测（需人脸模型）
-              </option>
               <option value="motion_classification">移动侦测</option>
+              <option value="occlusion_detection">遮挡检测</option>
             </select>
           </span>
         </label>
@@ -311,7 +307,10 @@ function AiStatusPanel({
             type="button"
             disabled={saving}
             onClick={() => {
-              setDraft(status.config);
+              setDraft({
+                ...status.config,
+                task: visibleTaskOrDefault(status.config.task),
+              });
               setSaveMessage('');
             }}
           >
@@ -372,6 +371,7 @@ function alertGroupsByTask(alerts: AiAlertRecord[]) {
     object_detection: [],
     face_detection: [],
     motion_classification: [],
+    occlusion_detection: [],
   };
   alerts.forEach((alert) => {
     groups[alert.task].push(alert);

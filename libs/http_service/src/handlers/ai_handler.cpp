@@ -30,6 +30,8 @@ const char *AiTaskToJsonString(AiTask task) {
             return "face_detection";
         case AiTask::kMotionClassification:
             return "motion_classification";
+        case AiTask::kOcclusionDetection:
+            return "occlusion_detection";
     }
     return "unknown";
 }

@@ -24,6 +24,7 @@ enum class AiTask {
     kObjectDetection = 0,
     kFaceDetection,
     kMotionClassification,
+    kOcclusionDetection,
 };
 
 enum class AiBackend {

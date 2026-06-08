@@ -50,6 +50,9 @@
   - `motion_classification` 在设备构建下已接入 IVS_MD：按实际 VPSS YVU420SP
     帧尺寸建立 U8C1 双帧工作区，用 IVE DMA 拷贝亮度平面，再调用
     `HI_IVS_MD_Process` 输出 motion 检测框；此任务不依赖 `.wk` 模型文件。
+  - `occlusion_detection` 在设备构建下已接入 IVE 积分图遮挡检测：按实际
+    VPSS YVU420SP 帧尺寸建立 U8C1 亮度图和 U64C1 积分图，统计 8x8 分块的
+    暗块数量，输出全画面 `occlusion` 检测框；此任务不依赖 `.wk` 模型文件。
 - 设备构建默认链接 `libnnie.a`、`libmd.a` 和 `libive.a`；产品不支持音频，
   不链接 `libVoiceEngine.a`、`libupvqe.a`、`libdnvqe.a`。海思 `libmpi.a`
   内部音频符号由 `hisi_vendor` 失败 stub 闭合，不启用音频能力。
@@ -60,6 +63,7 @@
   - `object_detection` 输出 `person`。
   - `face_detection` 输出 `face`。
   - `motion_classification` 输出 `motion`。
+  - `occlusion_detection` 输出 `occlusion`。
   生产默认配置仍使用 `hisi3516dv300_nnie` 且 `ai.enabled=false`。
 - 默认模型为
   `3rdparty/hisi_svp/sample/svp/nnie/data/nnie_model/detection/inst_ssd_cycle.wk`，
@@ -76,6 +80,8 @@
   - `GET /api/ai/alerts/{id}/image` 返回 JPEG 图片。
   - AI 告警页可通过已有 `PUT /api/config/ai` 保存启用状态、后端、任务、码流、
     模型路径、推理间隔、阈值和最大结果数；保存成功后后端即时应用配置。
+  - AI 告警页当前展示目标检测、移动侦测和遮挡检测三列；人脸检测入口暂时隐藏，
+    但后端仍保留 `face_detection` 配置解析兼容。
 - AI 有检测结果时会向 `alarm_service` 注入 `ai_detection` 输入，触发已有
   `kAlarmTriggered` 事件链路；该联动不启用录像、回放或长期存储。
 - 实时预览页已轮询 `/api/ai/status`，把当前码流的
@@ -91,6 +97,7 @@
    `models/inst_ssd_cycle.wk` 路径、NNIE forward 和 Web 告警瀑布流。
 3. 在板端实测 VGS + IVE CSC 前处理耗时和检测结果，确认色彩顺序与模型输入一致。
 4. 在板端验证 `task=motion_classification` 的 IVS_MD 框坐标、灵敏度和瀑布流告警。
+5. 在板端验证 `task=occlusion_detection` 的遮挡触发阈值、整帧检测框和瀑布流告警。
 
 ## Acceptance
 

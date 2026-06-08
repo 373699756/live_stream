@@ -71,6 +71,17 @@ constexpr uint32_t kMotionAreaThresholdStep = 8;
 constexpr HI_U16 kMotionSadThreshold = 200;
 constexpr HI_U0Q16 kMotionBackgroundBlend = 32768;
 constexpr MD_CHN kMotionChannel = 0;
+constexpr uint32_t kOcclusionGridWidth = 8;
+constexpr uint32_t kOcclusionGridHeight = 8;
+constexpr uint32_t kOcclusionGridCount =
+    kOcclusionGridWidth * kOcclusionGridHeight;
+constexpr uint32_t kOcclusionHitThreshold = kOcclusionGridCount / 2U;
+constexpr int32_t kOcclusionLineMean0 = 80;
+constexpr int32_t kOcclusionLineSigma0 = 0;
+constexpr int32_t kOcclusionLineMean1 = 80;
+constexpr int32_t kOcclusionLineSigma1 = 20;
+constexpr HI_U64 kOcclusionIntegSumMask = 0x0fffffffULL;
+constexpr uint32_t kOcclusionIntegSquareShift = 28;
 
 constexpr std::array<uint32_t, kSsdLayerCount> kSsdPriorBoxWidth = {
     {38, 19, 10, 5, 3, 1}};
@@ -209,6 +220,16 @@ struct IveRgbFrame {
 };
 
 struct MotionImage {
+    IVE_IMAGE_S image{};
+    HI_U64 phy_addr = 0;
+    HI_VOID *vir_addr = nullptr;
+    uint32_t size = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+};
+
+struct OcclusionImage {
     IVE_IMAGE_S image{};
     HI_U64 phy_addr = 0;
     HI_VOID *vir_addr = nullptr;
@@ -660,6 +681,10 @@ bool ParseTask(const std::string &value, AiTask *task) {
         *task = AiTask::kMotionClassification;
         return true;
     }
+    if (value == "occlusion_detection") {
+        *task = AiTask::kOcclusionDetection;
+        return true;
+    }
     return false;
 }
 
@@ -689,6 +714,7 @@ bool IsValidConfig(const AiModelConfig &config) {
     }
     if (config.backend == AiBackend::kHi3516Dv300Nnie &&
         config.task != AiTask::kMotionClassification &&
+        config.task != AiTask::kOcclusionDetection &&
         config.model_path.empty()) {
         return false;
     }
@@ -801,6 +827,14 @@ private:
                 detection.width = 0.46f;
                 detection.height = 0.34f;
                 return detection;
+            case AiTask::kOcclusionDetection:
+                detection.label = "occlusion";
+                detection.confidence = 0.88f;
+                detection.x = 0.0f;
+                detection.y = 0.0f;
+                detection.width = 1.0f;
+                detection.height = 1.0f;
+                return detection;
             case AiTask::kObjectDetection:
                 detection.label = "person";
                 detection.confidence = 0.86f;
@@ -836,6 +870,14 @@ public:
             started_ = true;
             return true;
         }
+        if (config.task == AiTask::kOcclusionDetection) {
+            if (!StartOcclusionBackend(config)) {
+                return false;
+            }
+            model_path_ = config.model_path;
+            started_ = true;
+            return true;
+        }
         if (config.task == AiTask::kFaceDetection) {
             INFRA_LOG_ERROR("ai", "Face detection model is not available");
             return false;
@@ -859,6 +901,7 @@ public:
 #if LIVE_STREAM_HAS_HISI_NNIE
         UnloadModel();
         StopMotionBackend();
+        StopOcclusionBackend();
 #endif
         model_path_.clear();
         started_ = false;
@@ -874,6 +917,9 @@ public:
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
+        if (occlusion_started_) {
+            return RunOcclusionDetection(frame, stream_id, config);
+        }
         if (motion_started_) {
             return RunMotionDetection(frame, stream_id, config);
         }
@@ -1590,6 +1636,302 @@ private:
                region.u16Bottom >= region.u16Top &&
                region.u16Right < motion_attr_.u32Width &&
                region.u16Bottom < motion_attr_.u32Height;
+    }
+
+    bool StartOcclusionBackend(const AiModelConfig &config) {
+        if (config.input_width == 0 || config.input_height == 0) {
+            return false;
+        }
+        (void)config;
+        occlusion_started_ = false;
+        std::memset(&occlusion_integ_ctrl_, 0,
+                    sizeof(occlusion_integ_ctrl_));
+        occlusion_integ_ctrl_.enOutCtrl = IVE_INTEG_OUT_CTRL_COMBINE;
+        occlusion_started_ = true;
+        return true;
+    }
+
+    void StopOcclusionBackend() {
+        occlusion_started_ = false;
+        FreeOcclusionWorkspace();
+        std::memset(&occlusion_integ_ctrl_, 0,
+                    sizeof(occlusion_integ_ctrl_));
+        occlusion_sequence_ = 0;
+    }
+
+    void FreeOcclusionWorkspace() {
+        FreeOcclusionImage(&occlusion_src_image_);
+        FreeOcclusionImage(&occlusion_integ_image_);
+    }
+
+    void FreeOcclusionImage(OcclusionImage *occlusion_image) {
+        if (occlusion_image == nullptr) {
+            return;
+        }
+        if (occlusion_image->phy_addr != 0 &&
+            occlusion_image->vir_addr != nullptr) {
+            HI_MPI_SYS_MmzFree(occlusion_image->phy_addr,
+                               occlusion_image->vir_addr);
+        }
+        *occlusion_image = OcclusionImage{};
+    }
+
+    bool EnsureOcclusionWorkspace(uint32_t width, uint32_t height) {
+        if (occlusion_src_image_.phy_addr != 0 &&
+            occlusion_src_image_.vir_addr != nullptr &&
+            occlusion_src_image_.width == width &&
+            occlusion_src_image_.height == height &&
+            occlusion_integ_image_.phy_addr != 0 &&
+            occlusion_integ_image_.vir_addr != nullptr &&
+            occlusion_integ_image_.width == width &&
+            occlusion_integ_image_.height == height) {
+            return true;
+        }
+        if (width < kOcclusionGridWidth || height < kOcclusionGridHeight) {
+            return false;
+        }
+        FreeOcclusionWorkspace();
+        if (!AllocOcclusionImage(IVE_IMAGE_TYPE_U8C1,
+                                 static_cast<uint32_t>(sizeof(HI_U8)),
+                                 "LIVE_AI_OD_SRC", width, height,
+                                 &occlusion_src_image_)) {
+            FreeOcclusionWorkspace();
+            return false;
+        }
+        if (!AllocOcclusionImage(IVE_IMAGE_TYPE_U64C1,
+                                 static_cast<uint32_t>(sizeof(HI_U64)),
+                                 "LIVE_AI_OD_INTEG", width, height,
+                                 &occlusion_integ_image_)) {
+            FreeOcclusionWorkspace();
+            return false;
+        }
+        return true;
+    }
+
+    bool AllocOcclusionImage(IVE_IMAGE_TYPE_E image_type,
+                             uint32_t element_size,
+                             const char *mmz_name,
+                             uint32_t width,
+                             uint32_t height,
+                             OcclusionImage *occlusion_image) {
+        if (occlusion_image == nullptr || element_size == 0 || width == 0 ||
+            height == 0) {
+            return false;
+        }
+        const uint32_t stride = AlignUpU32(width, kIveImageAlign);
+        const uint64_t image_size = static_cast<uint64_t>(stride) * height *
+                                    element_size;
+        if (stride < width || image_size == 0 || image_size > kMaxHiU32) {
+            return false;
+        }
+        HI_U64 phy_addr = 0;
+        HI_VOID *vir_addr = nullptr;
+        HI_S32 ret = HI_MPI_SYS_MmzAlloc(
+            &phy_addr, &vir_addr, mmz_name, nullptr,
+            static_cast<HI_U32>(image_size));
+        if (ret != HI_SUCCESS || phy_addr == 0 || vir_addr == nullptr) {
+            return false;
+        }
+        std::memset(vir_addr, 0, static_cast<size_t>(image_size));
+        occlusion_image->phy_addr = phy_addr;
+        occlusion_image->vir_addr = vir_addr;
+        occlusion_image->size = static_cast<uint32_t>(image_size);
+        occlusion_image->width = width;
+        occlusion_image->height = height;
+        occlusion_image->stride = stride;
+        IVE_IMAGE_S &image = occlusion_image->image;
+        std::memset(&image, 0, sizeof(image));
+        image.enType = image_type;
+        image.u32Width = width;
+        image.u32Height = height;
+        image.au32Stride[0] = stride;
+        image.au64PhyAddr[0] = phy_addr;
+        image.au64VirAddr[0] =
+            static_cast<HI_U64>(reinterpret_cast<HI_UL>(vir_addr));
+        return true;
+    }
+
+    bool CopyFrameLumaToOcclusionImage(
+        const hisisdk::YuvFrame &frame,
+        OcclusionImage *occlusion_image) const {
+        if (occlusion_image == nullptr || occlusion_image->phy_addr == 0 ||
+            occlusion_image->vir_addr == nullptr ||
+            occlusion_image->width != frame.width ||
+            occlusion_image->height != frame.height ||
+            !CanUseOcclusionFrame(frame)) {
+            return false;
+        }
+        IVE_SRC_DATA_S src{};
+        src.u64PhyAddr = frame.mpp_info.phy_addr[0];
+        src.u32Width = frame.width;
+        src.u32Height = frame.height;
+        src.u32Stride = frame.mpp_info.stride[0];
+        IVE_DST_DATA_S dst{};
+        dst.u64PhyAddr = occlusion_image->image.au64PhyAddr[0];
+        dst.u32Width = occlusion_image->image.u32Width;
+        dst.u32Height = occlusion_image->image.u32Height;
+        dst.u32Stride = occlusion_image->image.au32Stride[0];
+        IVE_DMA_CTRL_S ctrl{};
+        ctrl.enMode = IVE_DMA_MODE_DIRECT_COPY;
+        IVE_HANDLE handle = 0;
+        HI_S32 ret = HI_MPI_IVE_DMA(&handle, &src, &dst, &ctrl, HI_TRUE);
+        if (ret != HI_SUCCESS) {
+            return false;
+        }
+        return QueryIveTask(handle);
+    }
+
+    bool CanUseOcclusionFrame(const hisisdk::YuvFrame &frame) const {
+        const hisisdk::MppYuvFrameInfo &info = frame.mpp_info;
+        return occlusion_started_ && info.valid && frame.width != 0 &&
+               frame.height != 0 &&
+               info.phy_addr[0] != 0 && info.stride[0] >= frame.width &&
+               info.pixel_format ==
+                   static_cast<int32_t>(PIXEL_FORMAT_YVU_SEMIPLANAR_420) &&
+               info.compress_mode == static_cast<int32_t>(COMPRESS_MODE_NONE);
+    }
+
+    AiInferenceResult RunOcclusionDetection(
+        const hisisdk::YuvFrame &frame,
+        StreamId stream_id,
+        const AiModelConfig &config) {
+        AiInferenceResult result;
+        result.stream_id = stream_id;
+        result.pts_us = frame.pts_us;
+        if (config.max_results == 0 || !CanUseOcclusionFrame(frame) ||
+            !EnsureOcclusionWorkspace(frame.width, frame.height)) {
+            return result;
+        }
+        if (!CopyFrameLumaToOcclusionImage(frame, &occlusion_src_image_)) {
+            return result;
+        }
+
+        std::memset(occlusion_integ_image_.vir_addr, 0,
+                    occlusion_integ_image_.size);
+        IVE_HANDLE handle = 0;
+        HI_S32 ret = HI_MPI_IVE_Integ(&handle, &occlusion_src_image_.image,
+                                      &occlusion_integ_image_.image,
+                                      &occlusion_integ_ctrl_, HI_TRUE);
+        if (ret != HI_SUCCESS || !QueryIveTask(handle)) {
+            return result;
+        }
+
+        result.success = true;
+        result.sequence = ++occlusion_sequence_;
+        const uint32_t hit_count = CountOcclusionHits();
+        if (hit_count > kOcclusionHitThreshold) {
+            AiDetection detection;
+            detection.label = "occlusion";
+            detection.confidence =
+                static_cast<float>(hit_count) /
+                static_cast<float>(kOcclusionGridCount);
+            detection.x = 0.0f;
+            detection.y = 0.0f;
+            detection.width = 1.0f;
+            detection.height = 1.0f;
+            if (detection.confidence >= config.confidence_threshold) {
+                result.detections.push_back(detection);
+            }
+        }
+        return result;
+    }
+
+    uint32_t CountOcclusionHits() const {
+        if (occlusion_integ_image_.vir_addr == nullptr ||
+            occlusion_integ_image_.width < kOcclusionGridWidth ||
+            occlusion_integ_image_.height < kOcclusionGridHeight) {
+            return 0;
+        }
+        const uint32_t block_width =
+            occlusion_integ_image_.width / kOcclusionGridWidth;
+        const uint32_t block_height =
+            occlusion_integ_image_.height / kOcclusionGridHeight;
+        if (block_width == 0 || block_height == 0) {
+            return 0;
+        }
+
+        uint32_t hit_count = 0;
+        const HI_U64 *integral = static_cast<const HI_U64 *>(
+            occlusion_integ_image_.vir_addr);
+        for (uint32_t grid_y = 0; grid_y < kOcclusionGridHeight; ++grid_y) {
+            for (uint32_t grid_x = 0; grid_x < kOcclusionGridWidth; ++grid_x) {
+                uint32_t mean = 0;
+                uint32_t sigma = 0;
+                if (ReadOcclusionBlockStats(integral, block_width,
+                                            block_height, grid_x, grid_y,
+                                            &mean, &sigma) &&
+                    IsOcclusionBlock(mean, sigma)) {
+                    ++hit_count;
+                }
+            }
+        }
+        return hit_count;
+    }
+
+    bool ReadOcclusionBlockStats(const HI_U64 *integral,
+                                 uint32_t block_width,
+                                 uint32_t block_height,
+                                 uint32_t grid_x,
+                                 uint32_t grid_y,
+                                 uint32_t *mean,
+                                 uint32_t *sigma) const {
+        if (integral == nullptr || mean == nullptr || sigma == nullptr ||
+            block_width == 0 || block_height == 0) {
+            return false;
+        }
+        const uint32_t left = grid_x * block_width;
+        const uint32_t top = grid_y * block_height;
+        const uint32_t right = (grid_x + 1U) * block_width - 1U;
+        const uint32_t bottom = (grid_y + 1U) * block_height - 1U;
+        const uint32_t stride = occlusion_integ_image_.stride;
+        const HI_U64 *top_row =
+            top == 0 ? integral : integral + (top - 1U) * stride;
+        const HI_U64 *bottom_row = integral + bottom * stride;
+        const HI_U64 top_left =
+            top == 0 || left == 0 ? 0 : top_row[left - 1U];
+        const HI_U64 top_right = top == 0 ? 0 : top_row[right];
+        const HI_U64 bottom_left = left == 0 ? 0 : bottom_row[left - 1U];
+        const HI_U64 bottom_right = bottom_row[right];
+        const int64_t block_sum =
+            static_cast<int64_t>(top_left & kOcclusionIntegSumMask) +
+            static_cast<int64_t>(bottom_right & kOcclusionIntegSumMask) -
+            static_cast<int64_t>(bottom_left & kOcclusionIntegSumMask) -
+            static_cast<int64_t>(top_right & kOcclusionIntegSumMask);
+        const int64_t block_square =
+            static_cast<int64_t>(top_left >> kOcclusionIntegSquareShift) +
+            static_cast<int64_t>(bottom_right >>
+                                 kOcclusionIntegSquareShift) -
+            static_cast<int64_t>(bottom_left >>
+                                 kOcclusionIntegSquareShift) -
+            static_cast<int64_t>(top_right >>
+                                 kOcclusionIntegSquareShift);
+        if (block_sum < 0 || block_square < 0) {
+            return false;
+        }
+        const double block_area =
+            static_cast<double>(block_width) * static_cast<double>(block_height);
+        const double mean_value = static_cast<double>(block_sum) / block_area;
+        const double variance =
+            static_cast<double>(block_square) / block_area -
+            mean_value * mean_value;
+        *mean = static_cast<uint32_t>(mean_value);
+        *sigma = static_cast<uint32_t>(std::sqrt(std::max(0.0, variance)));
+        return true;
+    }
+
+    bool IsOcclusionBlock(uint32_t mean, uint32_t sigma) const {
+        const int64_t line_mean_delta =
+            kOcclusionLineMean1 - kOcclusionLineMean0;
+        if (line_mean_delta == 0) {
+            return static_cast<int64_t>(mean) <= kOcclusionLineMean0;
+        }
+        const int64_t lhs =
+            (static_cast<int64_t>(sigma) - kOcclusionLineSigma0) *
+            line_mean_delta;
+        const int64_t rhs =
+            (static_cast<int64_t>(mean) - kOcclusionLineMean0) *
+            (kOcclusionLineSigma1 - kOcclusionLineSigma0);
+        return lhs <= rhs;
     }
 
     void FreeScaledYvuFrame() {
@@ -2431,12 +2773,17 @@ private:
     MD_ATTR_S motion_attr_{};
     FrameSequence motion_sequence_ = 0;
     uint32_t motion_current_index_ = 0;
+    OcclusionImage occlusion_src_image_;
+    OcclusionImage occlusion_integ_image_;
+    IVE_INTEG_CTRL_S occlusion_integ_ctrl_{};
+    FrameSequence occlusion_sequence_ = 0;
     bool model_loaded_ = false;
     bool ssd_model_ready_ = false;
     bool motion_initialized_ = false;
     bool motion_channel_created_ = false;
     bool motion_started_ = false;
     bool motion_has_reference_ = false;
+    bool occlusion_started_ = false;
 #endif
     std::string model_path_;
     bool started_ = false;
@@ -2485,6 +2832,8 @@ const char *TaskAlarmName(AiTask task) {
             return "face";
         case AiTask::kMotionClassification:
             return "motion";
+        case AiTask::kOcclusionDetection:
+            return "occlusion";
         case AiTask::kObjectDetection:
             return "object";
     }

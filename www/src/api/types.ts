@@ -221,7 +221,8 @@ export type AiBackendName = 'hisi3516dv300_nnie' | 'host_stub';
 export type AiTaskName =
   | 'object_detection'
   | 'face_detection'
-  | 'motion_classification';
+  | 'motion_classification'
+  | 'occlusion_detection';
 
 export interface AiModelConfig {
   enabled: boolean;
