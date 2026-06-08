@@ -332,6 +332,10 @@ export function usePreviewPlaybackSession({
             updateDisplaySize();
         };
         video.onerror = () => {
+            if (!isCurrentSession()) {
+                // 旧视频元素在清理 src/load 时也可能补发 error，不能让旧事件触发当前会话降级。
+                return;
+            }
             setSessionConnected(false);
             if (mode === 'hls') {
                 if (autoModeSelected && nextReadyMode && nextReadyMode !== 'hls') {
