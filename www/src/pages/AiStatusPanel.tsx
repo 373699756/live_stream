@@ -11,8 +11,6 @@ import { AiMetricsPanel } from './AiMetricsPanel';
 
 function taskLabel(task: AiAlertRecord['task']) {
   switch (task) {
-    case 'face_detection':
-      return '人脸检测';
     case 'perimeter_detection':
       return '周界检测';
     case 'motion_classification':

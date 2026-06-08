@@ -28,7 +28,7 @@
   "ai": {
     "enabled": false,
     "backend": "hisi3516dv300_nnie",
-    "task": "object_detection",
+    "task": "perimeter_detection",
     "stream": "sub",
     "model_path": "models/inst_ssd_cycle.wk",
     "input_width": 300,

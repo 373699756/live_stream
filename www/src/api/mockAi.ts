@@ -4,7 +4,7 @@ export const mockAiStatus: AiStatus = {
   config: {
     enabled: true,
     backend: 'hisi3516dv300_nnie',
-    task: 'object_detection',
+    task: 'perimeter_detection',
     stream: 'sub',
     model_path: 'models/inst_ssd_cycle.wk',
     input_width: 300,
@@ -70,7 +70,7 @@ export const mockAiAlerts: AiAlertList = {
       id: 'mock-3',
       timestamp_ms: Date.now() - 45_000,
       stream: 'sub',
-      task: 'object_detection',
+      task: 'perimeter_detection',
       image_url: '/snapshot/sub.jpg',
       detection_count: 2,
       confidence_max: 0.91,

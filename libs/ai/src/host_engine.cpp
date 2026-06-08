@@ -46,14 +46,6 @@ private:
     AiDetection DetectionForTask(AiTask task) const {
         AiDetection detection;
         switch (task) {
-            case AiTask::kFaceDetection:
-                detection.label = "face";
-                detection.confidence = 0.82f;
-                detection.x = 0.42f;
-                detection.y = 0.18f;
-                detection.width = 0.16f;
-                detection.height = 0.22f;
-                return detection;
             case AiTask::kMotionClassification:
                 detection.label = "motion";
                 detection.confidence = 0.79f;

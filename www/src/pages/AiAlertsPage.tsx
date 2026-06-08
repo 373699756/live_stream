@@ -19,10 +19,6 @@ const kAiAlertColumns: Array<{
     condition: '检测到人员、车辆等目标，且最高置信度达到当前阈值。',
   },
   {
-    task: 'face_detection',
-    condition: '检测到画面中出现人脸，且最高置信度达到当前阈值。',
-  },
-  {
     task: 'perimeter_detection',
     condition: '检测到人员或车辆进入周界区域，且最高置信度达到当前阈值。',
   },
@@ -50,8 +46,6 @@ function labelText(detections: AiDetection[]) {
 
 function taskLabel(task: AiAlertRecord['task']) {
   switch (task) {
-    case 'face_detection':
-      return '人脸检测';
     case 'perimeter_detection':
       return '周界检测';
     case 'motion_classification':
@@ -87,7 +81,6 @@ function AiAlertCard({ alert }: { alert: AiAlertRecord }) {
 function alertGroupsByTask(alerts: AiAlertRecord[]) {
   const groups: Record<AiAlertRecord['task'], AiAlertRecord[]> = {
     object_detection: [],
-    face_detection: [],
     perimeter_detection: [],
     motion_classification: [],
     occlusion_detection: [],

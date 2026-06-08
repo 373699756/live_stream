@@ -27,8 +27,6 @@ const char *AiTaskToJsonString(AiTask task) {
     switch (task) {
         case AiTask::kObjectDetection:
             return "object_detection";
-        case AiTask::kFaceDetection:
-            return "face_detection";
         case AiTask::kPerimeterDetection:
             return "perimeter_detection";
         case AiTask::kMotionClassification:

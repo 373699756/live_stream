@@ -115,7 +115,6 @@ export function AiConfigForm({
             }
           >
             <option value="object_detection">目标检测</option>
-            <option value="face_detection">人脸检测</option>
             <option value="perimeter_detection">周界检测</option>
             <option value="motion_classification">移动侦测</option>
             <option value="occlusion_detection">遮挡检测</option>

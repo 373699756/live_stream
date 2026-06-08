@@ -298,7 +298,6 @@ export interface WebrtcOfferAnswer {
 export type AiBackendName = 'hisi3516dv300_nnie';
 export type AiTaskName =
   | 'object_detection'
-  | 'face_detection'
   | 'perimeter_detection'
   | 'motion_classification'
   | 'occlusion_detection';

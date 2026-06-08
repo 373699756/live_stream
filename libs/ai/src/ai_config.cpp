@@ -117,10 +117,6 @@ bool ParseTask(const std::string &value, AiTask *task) {
         *task = AiTask::kObjectDetection;
         return true;
     }
-    if (value == "face_detection") {
-        *task = AiTask::kFaceDetection;
-        return true;
-    }
     if (value == "perimeter_detection") {
         *task = AiTask::kPerimeterDetection;
         return true;

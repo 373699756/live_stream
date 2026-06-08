@@ -9,6 +9,7 @@
 #include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
+#include "perimeter_filter.h"
 #include "snapshot.h"
 
 #include <algorithm>
@@ -29,6 +30,7 @@ constexpr int64_t kMinAlertIntervalMs = 1000;
 using ai_internal::AiBackendName;
 using ai_internal::AiInferenceEngine;
 using ai_internal::CreateAiEngine;
+using ai_internal::FilterPerimeterDetections;
 using ai_internal::IsValidAiConfig;
 using ai_internal::ParseAiConfig;
 
@@ -64,8 +66,6 @@ std::string AlertImagePath(const std::string &dir, const std::string &id) {
 
 const char *TaskAlarmName(AiTask task) {
     switch (task) {
-        case AiTask::kFaceDetection:
-            return "face";
         case AiTask::kPerimeterDetection:
             return "perimeter";
         case AiTask::kMotionClassification:
@@ -76,46 +76,6 @@ const char *TaskAlarmName(AiTask task) {
             return "object";
     }
     return "ai";
-}
-
-bool IsPerimeterTargetLabel(const std::string &label) {
-    return label == "person" || label == "car" || label == "bus" ||
-           label == "truck" || label == "motorbike" || label == "bicycle" ||
-           label == "vehicle";
-}
-
-bool DetectionCenterInsideRegion(const AiDetection &detection,
-                                 const AiPerimeterRegion &region) {
-    const float center_x = detection.x + detection.width * 0.5f;
-    const float center_y = detection.y + detection.height * 0.5f;
-    return center_x >= region.x && center_x <= region.x + region.width &&
-           center_y >= region.y && center_y <= region.y + region.height;
-}
-
-bool DetectionInsidePerimeter(const AiDetection &detection,
-                              const AiPerimeterConfig &perimeter) {
-    if (perimeter.regions.empty()) {
-        return true;
-    }
-    for (const AiPerimeterRegion &region : perimeter.regions) {
-        if (DetectionCenterInsideRegion(detection, region)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-AiInferenceResult FilterPerimeterDetections(
-    const AiInferenceResult &result, const AiPerimeterConfig &perimeter) {
-    AiInferenceResult filtered = result;
-    filtered.detections.clear();
-    for (const AiDetection &detection : result.detections) {
-        if (IsPerimeterTargetLabel(detection.label) &&
-            DetectionInsidePerimeter(detection, perimeter)) {
-            filtered.detections.push_back(detection);
-        }
-    }
-    return filtered;
 }
 
 bool LooksLikeJpeg(const SnapshotFrame &frame) {

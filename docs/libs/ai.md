@@ -32,8 +32,6 @@ flowchart LR
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
 - 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
   配置或 Web 选项暴露。
-- `face_detection` 支持专用人脸检测 `.wk` 模型，输出 `face` 检测框；本模块不做人脸
-  识别、人员库或名单比对。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
@@ -60,9 +58,8 @@ HTTP 路由由 `http` 实现，但业务语义归本模块：
 
 默认模型路径为 `models/inst_ssd_cycle.wk`，开发参考和模型资源保存在
 `3rdparty/hisi_svp`。`object_detection` 和 `perimeter_detection` 使用现有 VOC SSD
-12 输出节点后处理；`face_detection` 支持单输出 detection-out 风格模型，输出记录为
-`image_id,label,confidence,x_min,y_min,x_max,y_max`，也兼容现有 SSD 结构但统一标记为
-`face`。设备构建默认链接 `libnnie.a`、`libmd.a` 和 `libive.a`。
+12 输出节点后处理。当前设备配置不暴露人脸检测任务；人脸需要专用 `.wk` 模型和
+匹配后处理后再单独接入。设备构建默认链接 `libnnie.a`、`libmd.a` 和 `libive.a`。
 
 `perimeter_regions` 是可选归一化矩形数组，字段为 `name`、`x`、`y`、`width`、
 `height`。空数组表示整幅画面都是周界区域。

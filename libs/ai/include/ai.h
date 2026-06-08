@@ -22,10 +22,9 @@ class IHisiSdk;
 
 enum class AiTask {
     kObjectDetection = 0,
-    kFaceDetection,
-    kPerimeterDetection,
-    kMotionClassification,
-    kOcclusionDetection,
+    kPerimeterDetection = 2,
+    kMotionClassification = 3,
+    kOcclusionDetection = 4,
 };
 
 enum class AiBackend {
