@@ -331,9 +331,29 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.system-maintenance-page {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.system-maintenance-heading {
+  margin-bottom: 0;
+}
+
+.system-maintenance-tabs {
+  margin-bottom: 0;
+}
+
+.system-overview-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .stream-info-grid {
-  grid-template-columns: minmax(420px, 760px);
+  grid-template-columns: minmax(420px, 860px);
   align-items: start;
+}
+
+.stream-info-heading {
+  margin-bottom: 0;
 }
 
 .ai-page-grid {
@@ -443,6 +463,54 @@
   gap: 12px;
   padding: 10px;
   border-bottom: 1px solid #edf1f6;
+}
+
+.module-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.module-summary-row div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #fafbfe;
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+}
+
+.module-summary-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.module-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.module-group {
+  min-width: 0;
+}
+
+.module-list div {
+  min-width: 0;
+}
+
+.module-list span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.module-list small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .address-table {
@@ -598,6 +666,7 @@
   .live-grid,
   .overlay-grid,
   .system-grid,
+  .system-overview-grid,
   .stream-info-grid,
   .ai-page-grid {
     grid-template-columns: 1fr;
@@ -616,11 +685,32 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .module-summary-row,
+  .module-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .log-table .log-row {
     grid-template-columns:
       minmax(140px, 0.8fr)
       minmax(220px, 1.3fr)
       minmax(100px, 0.6fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .module-summary-row,
+  .module-group-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+
+  .tabs button {
+    white-space: nowrap;
   }
 }
 

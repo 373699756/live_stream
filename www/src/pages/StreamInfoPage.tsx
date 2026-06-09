@@ -153,6 +153,13 @@ export function StreamInfoPage() {
 
   return (
     <div className="page-grid stream-info-grid">
+      <div className="page-heading stream-info-heading">
+        <div>
+          <h2>码流信息</h2>
+          <p>媒体访问地址、码流运行状态和客户端会话诊断</p>
+        </div>
+      </div>
+
       <section className="panel">
         <div className="page-heading">
           <div>
@@ -196,8 +203,37 @@ export function StreamInfoPage() {
       <section className="panel">
         <div className="page-heading">
           <div>
+            <h2>码流运行状态</h2>
+            <p>主/子码流 ready、reader、缓存和协议可用性</p>
+          </div>
+        </div>
+        <div className="info-table">
+          {safeRuntimes.length === 0 ? (
+            <div>
+              <span>码流运行态不可用</span>
+              <strong>--</strong>
+            </div>
+          ) : safeRuntimes.map((runtime) => (
+            <div key={runtime.stream}>
+              <span>
+                {streamLabel(runtime.stream)} / readers {runtime.reader_count} /{' '}
+                clients {runtime.client_count}
+              </span>
+              <strong>
+                <StatusBadge state={runtime.running ? 'running' : 'pending'} />
+                {' '}
+                cache {runtime.cached_frames} frames / {runtime.cached_bytes} bytes
+              </strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="page-heading">
+          <div>
             <h2>会话诊断</h2>
-            <p>媒体 reader、RTSP 和 WebRTC 会话的连接状态</p>
+            <p>媒体 reader、RTSP、HTTP-FLV、MJPEG 和 WebRTC 会话连接状态</p>
           </div>
         </div>
         <div className="info-table">
@@ -215,30 +251,6 @@ export function StreamInfoPage() {
               <strong>
                 {session.state || 'unknown'} / pending {session.pending_bytes ?? 0}
                 {session.close_reason ? ` / ${session.close_reason}` : ''}
-              </strong>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="page-heading">
-          <div>
-            <h2>运行状态</h2>
-            <p>媒体源 ready、reader 和缓存诊断</p>
-          </div>
-        </div>
-        <div className="info-table">
-          {safeRuntimes.map((runtime) => (
-            <div key={runtime.stream}>
-              <span>
-                {streamLabel(runtime.stream)} / readers {runtime.reader_count} /{' '}
-                clients {runtime.client_count}
-              </span>
-              <strong>
-                <StatusBadge state={runtime.running ? 'running' : 'pending'} />
-                {' '}
-                cache {runtime.cached_frames} frames / {runtime.cached_bytes} bytes
               </strong>
             </div>
           ))}

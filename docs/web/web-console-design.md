@@ -23,7 +23,7 @@ flowchart LR
 - 登录和认证：`LoginPage`、`ChangePasswordPage`、`AuthContext`。
 - 实时预览：`LiveViewPage`、`VideoPreview`、AI 叠框和播放 hooks。
 - 视频/图像/抓图/叠加：配置表单、能力字段、遮挡编辑器和状态面板。
-- 网络/系统/升级：设备状态、网络配置、升级上传和进度。
+- 网络/系统/升级：网络配置、系统概览、独立模块状态、升级上传校验和进度。
 - 日志和 AI 告警：操作日志查询导出、AI 告警图片瀑布流。
 
 ## UI 约束
@@ -37,6 +37,9 @@ flowchart LR
 
 Web 页面只把 HTTP API 返回值作为状态来源。配置语义、设备运行态、媒体 ready、
 升级阶段和 AI 结果都归后端拥有模块；Web 只展示、提交用户动作和处理不可用状态。
+系统维护页内的“模块状态”只展示 `/api/system/status` 返回的后端模块注册和启动
+状态；码流信息页只展示 `/api/media/streams`、`/api/media/sessions` 和播放 URL
+返回的媒体运行诊断，两者不得互相推导。
 实时预览状态字段在“实时预览”章节集中说明。
 
 ## API 消费
@@ -58,7 +61,7 @@ API 分组：
 - Auth：login、logout、change password、current user。
 - Config：video、image、overlay、network、snapshot、AI。
 - Media：stream runtime、playback URLs、session diagnostics。
-- System/operations：system status、upgrade、operation logs。
+- System/operations：system overview、module status、upgrade、operation logs。
 - WebRTC signaling：RESTful peer、offer、candidate、DELETE close。
 
 DTO 规则：
@@ -159,6 +162,17 @@ tab 只切换查看分类，不表示四个 AI 任务并行运行。当前运行
 
 播放器失败时只切换当前播放状态或允许用户选择其他模式，不反向修改后端配置。
 后端 ready=false 时前端显示不可用，不自行请求关键帧或猜测编码器状态。
+
+## 系统维护与升级
+
+系统维护页使用页签分离“系统概览”“模块状态”和“固件升级”。系统概览只展示资源、
+设备型号和固件版本；模块状态独立展示后端模块的 running/pending/error，不和媒体
+reader、client 或协议 ready 合并。
+
+固件升级 UI 按流程展示：当前升级状态、选择升级包、上传并校验、升级选项、开始升级
+/ 取消 / 确认重启、已校验包信息。上传校验和开始写入是两个独立动作；Web 不把上传
+成功显示成写 flash 完成。取消按钮只在后端状态允许的阶段启用，提交和等待重启阶段
+显示为不可取消。
 
 ## 非目标
 
