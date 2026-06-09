@@ -155,6 +155,22 @@
   width: min(100%, 220px);
 }
 
+.overlay-config-layout .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.overlay-config-layout .form-field {
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.overlay-config-layout .form-control input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+.overlay-config-layout .form-control select {
+  width: 100%;
+  max-width: 100%;
+}
+
 .form-control input[type="color"] {
   width: 52px;
   padding: 2px;
@@ -431,6 +447,12 @@
   border-color: #fecaca;
 }
 
+.warning-note {
+  color: #875a12;
+  background: #fff7df;
+  border-color: #ead89a;
+}
+
 .save-hint {
   margin-top: 14px;
   padding: 9px 10px;
@@ -443,6 +465,10 @@
 
 @media (max-width: 760px) {
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overlay-config-layout .form-grid {
     grid-template-columns: 1fr;
   }
 

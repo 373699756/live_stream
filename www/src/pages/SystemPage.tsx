@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSystemStatus } from '../hooks/useSystemStatus';
 import { useUpgrade } from '../hooks/useUpgrade';
 import {
   DeviceInfoPanel,
@@ -23,6 +24,9 @@ export function SystemPage() {
     useState<SystemMaintenanceTab>('overview');
   const {
     status,
+    refreshError: systemRefreshError,
+  } = useSystemStatus();
+  const {
     upgradeStatus,
     packageInfo,
     selectedFile,
@@ -34,21 +38,14 @@ export function SystemPage() {
     setAutoReboot,
     busy,
     message,
-    error,
+    actionError,
+    refreshError: upgradeRefreshError,
     selectFile,
     uploadPackage,
     startUpgrade,
     cancelUpgrade,
     confirmReboot,
   } = useUpgrade();
-
-  if (!status || !upgradeStatus) {
-    return (
-      <div className="panel">
-        {error ? `系统维护状态加载失败：${error}` : '加载系统维护状态...'}
-      </div>
-    );
-  }
 
   return (
     <div className="page-grid system-maintenance-page">
@@ -73,34 +70,61 @@ export function SystemPage() {
       </div>
 
       {activeTab === 'overview' ? (
-        <div className="page-grid system-overview-grid">
-          <SystemStatusPanel status={status} />
-          <DeviceInfoPanel status={status} />
-        </div>
+        status ? (
+          <div className="page-grid system-overview-grid">
+            <SystemStatusPanel status={status} />
+            <DeviceInfoPanel status={status} />
+          </div>
+        ) : (
+          <div className="panel">
+            {systemRefreshError
+              ? `系统状态加载失败：${systemRefreshError}`
+              : '加载系统状态...'}
+          </div>
+        )
       ) : null}
 
-      {activeTab === 'modules' ? <ModuleStatusPanel status={status} /> : null}
+      {activeTab === 'modules' ? (
+        status ? (
+          <ModuleStatusPanel status={status} />
+        ) : (
+          <div className="panel">
+            {systemRefreshError
+              ? `模块状态加载失败：${systemRefreshError}`
+              : '加载模块状态...'}
+          </div>
+        )
+      ) : null}
 
       {activeTab === 'upgrade' ? (
-        <UpgradePanel
-          allowDowngrade={allowDowngrade}
-          allowSameVersion={allowSameVersion}
-          autoReboot={autoReboot}
-          busy={busy}
-          cancelUpgrade={cancelUpgrade}
-          confirmReboot={confirmReboot}
-          error={error}
-          message={message}
-          packageInfo={packageInfo}
-          selectedFile={selectedFile}
-          selectFile={selectFile}
-          setAllowDowngrade={setAllowDowngrade}
-          setAllowSameVersion={setAllowSameVersion}
-          setAutoReboot={setAutoReboot}
-          startUpgrade={startUpgrade}
-          upgradeStatus={upgradeStatus}
-          uploadPackage={uploadPackage}
-        />
+        upgradeStatus ? (
+          <UpgradePanel
+            actionError={actionError}
+            allowDowngrade={allowDowngrade}
+            allowSameVersion={allowSameVersion}
+            autoReboot={autoReboot}
+            busy={busy}
+            cancelUpgrade={cancelUpgrade}
+            confirmReboot={confirmReboot}
+            message={message}
+            packageInfo={packageInfo}
+            refreshError={upgradeRefreshError}
+            selectedFile={selectedFile}
+            selectFile={selectFile}
+            setAllowDowngrade={setAllowDowngrade}
+            setAllowSameVersion={setAllowSameVersion}
+            setAutoReboot={setAutoReboot}
+            startUpgrade={startUpgrade}
+            upgradeStatus={upgradeStatus}
+            uploadPackage={uploadPackage}
+          />
+        ) : (
+          <div className="panel">
+            {upgradeRefreshError
+              ? `升级状态加载失败：${upgradeRefreshError}`
+              : '加载升级状态...'}
+          </div>
+        )
       ) : null}
     </div>
   );

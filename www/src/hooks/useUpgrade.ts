@@ -1,6 +1,6 @@
 /**
  * useUpgrade — manages upgrade workflow state:
- * - Polls system status and upgrade status every 2 seconds
+ * - Polls upgrade status every 2 seconds
  * - Handles file upload, start, cancel, confirm-reboot actions
  */
 
@@ -12,8 +12,7 @@ import {
   cancelUpgrade as apiCancelUpgrade,
   confirmUpgradeReboot as apiConfirmUpgradeReboot,
 } from '../api/upgrade';
-import { getSystemStatus } from '../api/system';
-import type { SystemStatus, UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
+import type { UpgradePackageInfo, UpgradeRequest, UpgradeStatus } from '../api/types';
 
 const pollIntervalMs = 2000;
 const statusTimeoutMs = 1800;
@@ -23,7 +22,6 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function useUpgrade() {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
   const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
   const [packageInfo, setPackageInfo] = useState<UpgradePackageInfo | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -32,7 +30,8 @@ export function useUpgrade() {
   const [autoReboot, setAutoReboot] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [refreshError, setRefreshError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -40,18 +39,14 @@ export function useUpgrade() {
     const load = async () => {
       const startedAt = Date.now();
       try {
-        const [nextStatus, nextUpgradeStatus] = await Promise.all([
-          getSystemStatus({ timeoutMs: statusTimeoutMs }),
-          getUpgradeStatus({ timeoutMs: statusTimeoutMs }),
-        ]);
+        const nextUpgradeStatus = await getUpgradeStatus({ timeoutMs: statusTimeoutMs });
         if (mounted) {
-          setStatus(nextStatus);
           setUpgradeStatus(nextUpgradeStatus);
-          setError('');
+          setRefreshError('');
         }
       } catch (err: unknown) {
         if (mounted) {
-          setError(errorMessage(err, '状态刷新失败'));
+          setRefreshError(errorMessage(err, '升级状态刷新失败'));
         }
       } finally {
         if (mounted) {
@@ -73,21 +68,21 @@ export function useUpgrade() {
   const selectFile = (file: File | null) => {
     setSelectedFile(file);
     setPackageInfo(null);
-    setError('');
+    setActionError('');
     setMessage('');
   };
 
   const uploadPackage = async () => {
     if (!selectedFile) return;
     setBusy(true);
-    setError('');
+    setActionError('');
     setMessage('');
     try {
       const uploaded = await uploadUpgradePackage(selectedFile);
       setPackageInfo(uploaded);
       setMessage(`已上传 ${selectedFile.name}`);
     } catch (err) {
-      setError(errorMessage(err, '上传失败'));
+      setActionError(errorMessage(err, '上传失败'));
     } finally {
       setBusy(false);
     }
@@ -96,7 +91,7 @@ export function useUpgrade() {
   const startUpgrade = async () => {
     if (!packageInfo) return;
     setBusy(true);
-    setError('');
+    setActionError('');
     setMessage('');
     const request: UpgradeRequest = {
       package_path: packageInfo.package_path,
@@ -110,7 +105,7 @@ export function useUpgrade() {
       setUpgradeStatus(next);
       setMessage('升级任务已提交');
     } catch (err) {
-      setError(errorMessage(err, '启动升级失败'));
+      setActionError(errorMessage(err, '启动升级失败'));
     } finally {
       setBusy(false);
     }
@@ -118,14 +113,14 @@ export function useUpgrade() {
 
   const cancelUpgrade = async () => {
     setBusy(true);
-    setError('');
+    setActionError('');
     setMessage('');
     try {
       const next = await apiCancelUpgrade();
       setUpgradeStatus(next);
       setMessage('升级任务已取消');
     } catch (err) {
-      setError(errorMessage(err, '取消升级失败'));
+      setActionError(errorMessage(err, '取消升级失败'));
     } finally {
       setBusy(false);
     }
@@ -133,21 +128,20 @@ export function useUpgrade() {
 
   const confirmReboot = async () => {
     setBusy(true);
-    setError('');
+    setActionError('');
     setMessage('');
     try {
       const next = await apiConfirmUpgradeReboot();
       setUpgradeStatus(next);
       setMessage('已下发重启应用升级');
     } catch (err) {
-      setError(errorMessage(err, '确认重启失败'));
+      setActionError(errorMessage(err, '确认重启失败'));
     } finally {
       setBusy(false);
     }
   };
 
   return {
-    status,
     upgradeStatus,
     packageInfo,
     selectedFile,
@@ -159,7 +153,8 @@ export function useUpgrade() {
     setAutoReboot,
     busy,
     message,
-    error,
+    actionError,
+    refreshError,
     selectFile,
     uploadPackage,
     startUpgrade,

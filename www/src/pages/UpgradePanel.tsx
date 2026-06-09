@@ -2,15 +2,16 @@ import type { UpgradePackageInfo, UpgradeStatus } from '../api/types';
 import { formatBytes, formatTimestamp } from '../utils/format';
 
 interface UpgradePanelProps {
+  actionError: string;
   allowDowngrade: boolean;
   allowSameVersion: boolean;
   autoReboot: boolean;
   busy: boolean;
   cancelUpgrade: () => Promise<void>;
   confirmReboot: () => Promise<void>;
-  error: string;
   message: string;
   packageInfo: UpgradePackageInfo | null;
+  refreshError: string;
   selectedFile: File | null;
   selectFile: (file: File | null) => void;
   setAllowDowngrade: (value: boolean) => void;
@@ -40,6 +41,10 @@ function canStartUpgrade(status: UpgradeStatus) {
     status.state === 'failed' ||
     status.state === 'canceled'
   );
+}
+
+function hasActiveUpgrade(status: UpgradeStatus) {
+  return !canStartUpgrade(status);
 }
 
 const upgradeStateLabels: Record<UpgradeStatus['state'], string> = {
@@ -85,15 +90,16 @@ function cancelHint(status: UpgradeStatus) {
 }
 
 export function UpgradePanel({
+  actionError,
   allowDowngrade,
   allowSameVersion,
   autoReboot,
   busy,
   cancelUpgrade,
   confirmReboot,
-  error,
   message,
   packageInfo,
+  refreshError,
   selectedFile,
   selectFile,
   setAllowDowngrade,
@@ -103,6 +109,9 @@ export function UpgradePanel({
   upgradeStatus,
   uploadPackage,
 }: UpgradePanelProps) {
+  const activeUpgrade = hasActiveUpgrade(upgradeStatus);
+  const packageInputsDisabled = busy || activeUpgrade;
+
   return (
     <section className="panel wide-panel upgrade-panel">
       <div className="page-heading">
@@ -171,6 +180,7 @@ export function UpgradePanel({
               <input
                 type="file"
                 accept=".bin,.img,.tar,.tgz,.zip"
+                disabled={packageInputsDisabled}
                 onChange={(event) => {
                   selectFile(event.target.files?.[0] ?? null);
                 }}
@@ -178,7 +188,7 @@ export function UpgradePanel({
               <button
                 type="button"
                 className="primary"
-                disabled={!selectedFile || busy}
+                disabled={!selectedFile || packageInputsDisabled}
                 onClick={() => {
                   void uploadPackage();
                 }}
@@ -191,7 +201,9 @@ export function UpgradePanel({
           <div className="upgrade-file-summary">
             <span>已选择</span>
             <strong>
-              {selectedFile
+              {activeUpgrade
+                ? '升级流程运行中，不能更换升级包'
+                : selectedFile
                 ? `${selectedFile.name} / ${formatBytes(selectedFile.size)}`
                 : '未选择升级包'}
             </strong>
@@ -205,6 +217,7 @@ export function UpgradePanel({
               <input
                 type="checkbox"
                 checked={allowSameVersion}
+                disabled={packageInputsDisabled}
                 onChange={(event) => setAllowSameVersion(event.target.checked)}
               />
               允许同版本覆盖
@@ -213,6 +226,7 @@ export function UpgradePanel({
               <input
                 type="checkbox"
                 checked={allowDowngrade}
+                disabled={packageInputsDisabled}
                 onChange={(event) => setAllowDowngrade(event.target.checked)}
               />
               允许降级
@@ -221,6 +235,7 @@ export function UpgradePanel({
               <input
                 type="checkbox"
                 checked={autoReboot}
+                disabled={packageInputsDisabled}
                 onChange={(event) => setAutoReboot(event.target.checked)}
               />
               完成后自动重启
@@ -268,7 +283,10 @@ export function UpgradePanel({
           </div>
 
           {message ? <div className="status-note success-note">{message}</div> : null}
-          {error ? <div className="status-note error-note">{error}</div> : null}
+          {actionError ? <div className="status-note error-note">{actionError}</div> : null}
+          {refreshError ? (
+            <div className="status-note warning-note">{refreshError}</div>
+          ) : null}
         </div>
       </div>
 
