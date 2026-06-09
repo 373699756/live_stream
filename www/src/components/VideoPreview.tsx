@@ -3,6 +3,7 @@ import type {
     MediaPlaybackUrls,
     MediaStreamRuntime,
     StreamName,
+    WebrtcConfig,
 } from '../api/types';
 import { usePreviewPlayer, type PreviewMode } from '../hooks/usePreviewPlayer';
 import { PreviewFooter } from './PreviewFooter';
@@ -18,6 +19,7 @@ interface VideoPreviewProps {
     enabled?: boolean;
     onSnapshot?: (stream: StreamName) => void;
     surfaceOverlay?: ReactNode;
+    webrtcConfig?: WebrtcConfig | null;
 }
 
 export function VideoPreview({
@@ -28,6 +30,7 @@ export function VideoPreview({
     enabled = true,
     onSnapshot,
     surfaceOverlay,
+    webrtcConfig = null,
 }: VideoPreviewProps) {
     const [mode, setMode] = useState<PreviewMode>('webrtc');
     const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -61,6 +64,7 @@ export function VideoPreview({
         playbackUrls: activePlaybackUrls,
         setMode,
         stream,
+        webrtcConfig,
     });
     const switchStream = (nextStream: StreamName) => {
         if (nextStream === stream) {

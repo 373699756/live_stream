@@ -143,6 +143,12 @@ error, and created/updated timestamps.
 WebRTC signaling uses RESTful peer paths. A successful offer response includes
 a video-only sendonly SDP answer, but playback readiness still comes from the
 stream runtime and peer diagnostics rather than frontend inference.
+The Web preview also reads `/api/config/webrtc` and passes `ice_servers` into
+`RTCPeerConnection`. Public address advertisement and UDP reachability remain
+backend/network responsibilities; direct external viewing needs the HTTP(S)
+signaling entrypoint plus the WebRTC UDP port range to be reachable, while
+CGNAT or symmetric NAT deployments require VPN, relay, or cloud media gateway
+work outside the browser UI.
 
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,

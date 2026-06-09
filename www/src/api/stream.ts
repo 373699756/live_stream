@@ -3,6 +3,7 @@
 import {
   deleteJson,
   postJson,
+  putJson,
   requestJson,
   type ApiRequestOptions,
 } from './client';
@@ -38,12 +39,14 @@ interface WebrtcOfferRequest {
 
 const webrtcPeerCloseTimeoutMs = 3000;
 
-let webrtcClientSequence = 0;
 let pendingWebrtcPeerClose: Promise<void> = Promise.resolve();
+const webrtcClientIds: Partial<Record<StreamName, string>> = {};
 
 function nextWebrtcClientId(stream: StreamName): string {
-  webrtcClientSequence += 1;
-  return `web-${stream}-${Date.now().toString(36)}-${webrtcClientSequence}`;
+  if (!webrtcClientIds[stream]) {
+    webrtcClientIds[stream] = `web-${stream}-${Date.now().toString(36)}`;
+  }
+  return webrtcClientIds[stream];
 }
 
 const emptyMediaSessions: MediaSessionsResponse = {
@@ -52,6 +55,16 @@ const emptyMediaSessions: MediaSessionsResponse = {
   mjpeg_active_clients: 0,
   rtsp_active_sessions: 0,
   webrtc_active_peers: 0,
+  webrtc_dtls_ready: false,
+  webrtc_enabled: false,
+  webrtc_ice_ready: false,
+  webrtc_ice_server_count: 0,
+  webrtc_local_port_base: 0,
+  webrtc_max_peers: 0,
+  webrtc_public_ip: '',
+  webrtc_selected_ice_pairs: 0,
+  webrtc_signaling_ready: false,
+  webrtc_srtp_ready: false,
 };
 
 function normalizeMediaSessions(
@@ -90,6 +103,13 @@ export function getWebrtcConfig(
   init?: ApiRequestOptions,
 ): Promise<WebrtcConfig> {
   return requestJson<WebrtcConfig>('/api/config/webrtc', mockWebrtcConfig, init);
+}
+
+export function saveWebrtcConfig(
+  value: WebrtcConfig,
+  init?: ApiRequestOptions,
+): Promise<void> {
+  return putJson('/api/config/webrtc', value, init);
 }
 
 export function getMediaStreams(

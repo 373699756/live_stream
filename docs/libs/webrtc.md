@@ -89,8 +89,9 @@ native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE 
 和 server-role DTLS transport，answer 使用实际绑定端口和同一组 ICE ufrag/pwd。
 `webrtc.public_ip` 缺省、为空或为 `"auto"` 时，组合根在启动 WebRTC 前按
 `network.default_ifname` 读取设备当前 IPv4，并把解析出的地址写入 SDP/ICE candidate。
-多网卡、NAT、VPN 或端口映射部署可以显式填写浏览器真实可达的 IPv4；如果自动解析不
-到可用地址，WebRTC 不启动，但不影响 RTSP、HTTP 或其他预览协议。
+多网卡、NAT、VPN 或端口映射部署可以显式填写浏览器真实可达的 IPv4；外网直连还必须
+让 HTTP/HTTPS 信令入口和 `webrtc.local_port_base` 开始的 UDP 端口段对浏览器可达。
+如果自动解析不到可用地址，WebRTC 不启动，但不影响 RTSP、HTTP 或其他预览协议。
 
 `IWebrtc::ApplyOptions()` 支持运行态更新 `enabled`、`prefer_tcp`、`max_peers`、
 `public_ip` 和 `ice_servers`，新 peer 使用更新后的 SDP/ICE 参数。`enabled=false`
@@ -99,7 +100,10 @@ native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE 
 解析仍由 app 读取 `network.default_ifname` 的当前 IPv4；若网络地址变化但 WebRTC
 scope JSON 未变化，后续需要通过 network 事件联动触发重新应用。
 默认 `max_peers=2`，用于覆盖 Web 预览切换时新旧 peer 短暂重叠的窗口；不是面向多
-用户并发观看的容量承诺。
+用户并发观看的容量承诺。`ice_servers` 会下发给浏览器 `RTCPeerConnection` 用于
+浏览器侧 STUN/TURN candidate gathering；当前设备端仍只发布 host candidate，不生成
+TURN relay candidate。设备在 CGNAT 或对称 NAT 后面时，需要 VPN、端口映射、TURN relay
+增强或云端媒体中继单独解决。
 
 10.4 已接入 STUN/ICE 层：`stun_packet.*` 支持 binding request/response、
 USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；

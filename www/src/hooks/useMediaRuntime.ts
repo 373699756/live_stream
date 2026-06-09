@@ -38,6 +38,16 @@ const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
   mjpeg_active_clients: 0,
   rtsp_active_sessions: 0,
   webrtc_active_peers: 0,
+  webrtc_dtls_ready: false,
+  webrtc_enabled: false,
+  webrtc_ice_ready: false,
+  webrtc_ice_server_count: 0,
+  webrtc_local_port_base: 0,
+  webrtc_max_peers: 0,
+  webrtc_public_ip: '',
+  webrtc_selected_ice_pairs: 0,
+  webrtc_signaling_ready: false,
+  webrtc_srtp_ready: false,
 };
 
 function uniqueStreams(streams: StreamName[]): StreamName[] {

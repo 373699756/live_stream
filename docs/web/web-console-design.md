@@ -144,6 +144,10 @@ WebRTC、HTTP-FLV、MJPEG，HLS 作为高延迟浏览器兼容兜底，不抢占
 
 `webrtcReady` 只有在后端确认 WebRTC 已启用且 native signaling、ICE、DTLS 和
 SRTP 均 ready 时才为 true；单独 signaling 可用不代表浏览器可播放。
+WebRTC 播放创建 `RTCPeerConnection` 时消费 `/api/config/webrtc` 的 `ice_servers`；
+`public_ip` 和 UDP 端口可达性仍由后端 SDP/ICE candidate 和现场网络负责。外网直连
+场景需要 HTTP/HTTPS 信令入口以及 `webrtc.local_port_base` 起始的 UDP 端口段对浏览器
+可达；CGNAT 或对称 NAT 场景需要 VPN、TURN relay 或云端中继，不能只靠 Web 页面兜底。
 
 播放 URL 只来自 `GET /api/media/streams/{stream}/urls`。Web 不再本地拼接
 RTSP、HLS、HTTP-FLV、MJPEG、snapshot 或 WHEP URL，也不消费旧

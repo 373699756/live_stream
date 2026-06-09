@@ -5,7 +5,11 @@ import {
     useRef,
     useState,
 } from 'react';
-import type { MediaPlaybackUrls, StreamName } from '../api/types';
+import type {
+    MediaPlaybackUrls,
+    StreamName,
+    WebrtcConfig,
+} from '../api/types';
 import type {
     PreviewLayerMediaKind,
     PreviewMediaLayerRefs,
@@ -40,6 +44,7 @@ interface UsePreviewPlaybackSessionOptions {
     playbackUrls: MediaPlaybackUrls | null;
     setMode: (mode: PreviewMode) => void;
     stream: StreamName;
+    webrtcConfig: WebrtcConfig | null;
 }
 
 export function usePreviewPlaybackSession({
@@ -51,6 +56,7 @@ export function usePreviewPlaybackSession({
     playbackUrls,
     setMode,
     stream,
+    webrtcConfig,
 }: UsePreviewPlaybackSessionOptions) {
     const [previewState, setPreviewState] = useState('等待 WebRTC 视频流');
     const [connected, setConnected] = useState(false);
@@ -358,6 +364,7 @@ export function usePreviewPlaybackSession({
             startWebrtcPreview({
                 controls,
                 fallback: {
+                    autoModeSelected,
                     flvPlaybackReady,
                     isSessionConnected: () => sessionConnected,
                     onAutoModeFallback,
@@ -387,6 +394,7 @@ export function usePreviewPlaybackSession({
                 stream,
                 webrtc: {
                     enabled: webrtcEnabled,
+                    iceServers: webrtcConfig?.ice_servers ?? [],
                     ready: webrtcReady,
                 },
             });
@@ -466,6 +474,7 @@ export function usePreviewPlaybackSession({
         hasVisibleRetiredSession,
         setMode,
         stream,
+        webrtcConfig,
         webrtcEnabled,
         webrtcReady,
     ]);

@@ -636,12 +636,33 @@ private:
         if (webrtc_ != nullptr) {
             webrtc_stats = webrtc_->GetStats();
             root["webrtc_active_peers"] = webrtc_stats.active_peers;
+            root["webrtc_enabled"] = webrtc_stats.enabled;
+            root["webrtc_signaling_ready"] = webrtc_stats.signaling_ready;
+            root["webrtc_ice_ready"] = webrtc_stats.ice_ready;
+            root["webrtc_dtls_ready"] = webrtc_stats.dtls_ready;
+            root["webrtc_srtp_ready"] = webrtc_stats.srtp_ready;
+            root["webrtc_public_ip"] = webrtc_stats.public_ip;
+            root["webrtc_local_port_base"] = webrtc_stats.local_port_base;
+            root["webrtc_max_peers"] = webrtc_stats.max_peers;
+            root["webrtc_ice_server_count"] = webrtc_stats.ice_server_count;
+            root["webrtc_selected_ice_pairs"] =
+                webrtc_stats.selected_ice_pairs;
             const std::vector<WebrtcPeerInfo> peers = webrtc_->GetPeers();
             for (const WebrtcPeerInfo &peer : peers) {
                 items.push_back(WebrtcSessionToJson(peer));
             }
         } else {
             root["webrtc_active_peers"] = 0;
+            root["webrtc_enabled"] = false;
+            root["webrtc_signaling_ready"] = false;
+            root["webrtc_ice_ready"] = false;
+            root["webrtc_dtls_ready"] = false;
+            root["webrtc_srtp_ready"] = false;
+            root["webrtc_public_ip"] = "";
+            root["webrtc_local_port_base"] = 0;
+            root["webrtc_max_peers"] = 0;
+            root["webrtc_ice_server_count"] = 0;
+            root["webrtc_selected_ice_pairs"] = 0;
         }
         MediaSourceStats media_stats;
         if (media_source_ != nullptr) {

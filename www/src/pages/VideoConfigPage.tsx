@@ -9,6 +9,7 @@ import type {
 } from '../api/types';
 import { VideoPreview } from '../components/VideoPreview';
 import { useVideoConfig } from '../hooks/useVideoConfig';
+import { useWebrtcConfig } from '../hooks/useWebrtcConfig';
 import { VideoStreamForm } from './VideoStreamForm';
 
 export function VideoConfigPage() {
@@ -24,6 +25,7 @@ export function VideoConfigPage() {
     loading,
     error,
   } = useVideoConfig(active);
+  const { config: webrtcConfig } = useWebrtcConfig();
   const [saved, setSaved] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [previewEnabled, setPreviewEnabled] = useState(true);
@@ -141,6 +143,7 @@ export function VideoConfigPage() {
         playbackUrls={playbackUrls}
         onStreamChange={setActive}
         enabled={previewEnabled}
+        webrtcConfig={webrtcConfig}
       />
     </div>
   );

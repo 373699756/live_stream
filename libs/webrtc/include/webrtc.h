@@ -109,8 +109,10 @@ struct WebrtcStats {
     bool ice_ready = false;
     bool dtls_ready = false;
     bool srtp_ready = false;
+    uint16_t local_port_base = 0;
     uint32_t active_peers = 0;
     uint32_t max_peers = 0;
+    uint32_t ice_server_count = 0;
     uint64_t total_peers = 0;
     uint64_t offers = 0;
     uint64_t remote_candidates = 0;
@@ -126,6 +128,7 @@ struct WebrtcStats {
     uint64_t rtcp_nack_count = 0;
     uint64_t rtcp_transport_cc_count = 0;
     uint64_t rtcp_keyframe_requests = 0;
+    std::string public_ip;
 };
 
 class IWebrtc {

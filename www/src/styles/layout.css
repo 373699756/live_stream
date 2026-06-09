@@ -483,6 +483,34 @@
   gap: 12px;
 }
 
+.stream-webrtc-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stream-webrtc-diagnostics > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+  background: #fafbfe;
+}
+
+.stream-webrtc-diagnostics span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stream-webrtc-diagnostics strong {
+  min-width: 0;
+  color: #243044;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .stream-protocol-group,
 .stream-session-group {
   min-width: 0;
@@ -993,6 +1021,7 @@
 @media (max-width: 720px) {
   .stream-runtime-cards,
   .stream-protocol-grid,
+  .stream-webrtc-diagnostics,
   .stream-session-groups,
   .time-status-row {
     grid-template-columns: 1fr;

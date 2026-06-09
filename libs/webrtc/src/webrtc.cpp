@@ -366,7 +366,11 @@ public:
             result = stats_;
             result.enabled = options_.enabled;
             result.active_peers = peer_store_.ActivePeerCount();
+            result.local_port_base = options_.local_port_base;
             result.max_peers = options_.max_peers;
+            result.ice_server_count =
+                static_cast<uint32_t>(options_.ice_servers.size());
+            result.public_ip = options_.public_ip;
             engine = engine_;
         }
         result.signaling_ready = engine && engine->Available();

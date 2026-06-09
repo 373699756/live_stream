@@ -202,6 +202,8 @@ export interface RtspConfig {
 
 export interface WebrtcConfig {
   enabled: boolean;
+  local_port_base: number;
+  public_ip: string;
   ice_servers: Array<{
     url: string;
     username?: string;
@@ -309,6 +311,16 @@ export interface MediaSessionsResponse {
   mjpeg_active_clients?: number;
   rtsp_active_sessions?: number;
   webrtc_active_peers?: number;
+  webrtc_dtls_ready?: boolean;
+  webrtc_enabled?: boolean;
+  webrtc_ice_ready?: boolean;
+  webrtc_ice_server_count?: number;
+  webrtc_local_port_base?: number;
+  webrtc_max_peers?: number;
+  webrtc_public_ip?: string;
+  webrtc_selected_ice_pairs?: number;
+  webrtc_signaling_ready?: boolean;
+  webrtc_srtp_ready?: boolean;
 }
 
 export interface WebrtcPeerInfo {

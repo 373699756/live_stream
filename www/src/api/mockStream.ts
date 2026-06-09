@@ -18,6 +18,8 @@ export const mockRtspConfig: RtspConfig = {
 
 export const mockWebrtcConfig: WebrtcConfig = {
   enabled: true,
+  local_port_base: 16000,
+  public_ip: 'auto',
   ice_servers: [],
   max_peers: 2,
   prefer_tcp: false,

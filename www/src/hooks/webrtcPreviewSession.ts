@@ -4,7 +4,7 @@ import {
     sendWebrtcCandidate,
     sendWebrtcOffer,
 } from '../api/stream';
-import type { StreamName } from '../api/types';
+import type { StreamName, WebrtcConfig } from '../api/types';
 import type { PreviewMode } from './previewMode';
 import {
     isAbortError,
@@ -14,10 +14,12 @@ import {
 
 interface WebrtcPreviewConfig {
     enabled: boolean;
+    iceServers: WebrtcConfig['ice_servers'];
     ready: boolean;
 }
 
 interface WebrtcPreviewFallback {
+    autoModeSelected: boolean;
     flvPlaybackReady: boolean;
     isSessionConnected: () => boolean;
     onAutoModeFallback: () => void;
@@ -42,6 +44,18 @@ interface StartWebrtcPreviewOptions {
     webrtc: WebrtcPreviewConfig;
 }
 
+function rtcIceServers(
+    iceServers: WebrtcConfig['ice_servers'],
+): RTCIceServer[] {
+    return iceServers
+        .filter((server) => server.url.trim())
+        .map((server) => ({
+            credential: server.credential || undefined,
+            urls: server.url.trim(),
+            username: server.username || undefined,
+        }));
+}
+
 export function startWebrtcPreview({
     controls,
     fallback,
@@ -57,6 +71,17 @@ export function startWebrtcPreview({
         controls.setPreviewState('WebRTC 暂未就绪');
         return;
     }
+    const fallbackFromWebrtcFailure = (message: string) => {
+        controls.setConnected(false);
+        peerState.closeSession();
+        if (fallback.autoModeSelected && fallback.flvPlaybackReady) {
+            fallback.onAutoModeFallback();
+            fallback.restartPreview(`${message}，切换 HTTP-FLV`);
+            fallback.setMode('flv');
+            return;
+        }
+        controls.setPreviewState(message);
+    };
 
     controls.setPreviewState('正在创建 WebRTC peer');
     void (async () => {
@@ -69,8 +94,7 @@ export function startWebrtcPreview({
                     void closeWebrtcPeer(peer.peer_id);
                 }
                 if (controls.isCurrentSession()) {
-                    controls.setPreviewState('WebRTC peer 创建失败');
-                    peerState.closeSession();
+                    fallbackFromWebrtcFailure('WebRTC peer 创建失败');
                 }
                 return;
             }
@@ -78,6 +102,7 @@ export function startWebrtcPreview({
             peerState.setPeerId(peer.peer_id);
             const pc = new RTCPeerConnection({
                 bundlePolicy: 'max-bundle',
+                iceServers: rtcIceServers(webrtc.iceServers),
                 rtcpMuxPolicy: 'require',
             });
             peerState.setPeer(pc);
@@ -88,14 +113,7 @@ export function startWebrtcPreview({
                     return;
                 }
                 peerState.setStartupTimer(0);
-                if (fallback.flvPlaybackReady) {
-                    fallback.onAutoModeFallback();
-                    fallback.restartPreview('WebRTC 连接超时，切换 HTTP-FLV');
-                    fallback.setMode('flv');
-                    return;
-                }
-                controls.setPreviewState('WebRTC 连接超时');
-                peerState.closeSession();
+                fallbackFromWebrtcFailure('WebRTC 连接超时');
             }, 2200);
             peerState.setStartupTimer(startupTimer);
 
@@ -140,13 +158,11 @@ export function startWebrtcPreview({
                     pc.connectionState === 'disconnected' ||
                     pc.connectionState === 'closed'
                 ) {
-                    controls.setConnected(false);
-                    controls.setPreviewState(
+                    fallbackFromWebrtcFailure(
                         pc.connectionState === 'failed'
                             ? 'WebRTC 连接失败'
                             : 'WebRTC 已断开',
                     );
-                    peerState.closeSession();
                 } else {
                     controls.setPreviewState(`WebRTC ${pc.connectionState}`);
                 }
@@ -160,9 +176,7 @@ export function startWebrtcPreview({
                     pc.iceConnectionState === 'disconnected' ||
                     pc.iceConnectionState === 'closed'
                 ) {
-                    controls.setConnected(false);
-                    controls.setPreviewState('ICE 连接失败');
-                    peerState.closeSession();
+                    fallbackFromWebrtcFailure('ICE 连接失败');
                 }
             };
 
@@ -187,8 +201,7 @@ export function startWebrtcPreview({
             ) {
                 void closeWebrtcPeer(peer.peer_id);
                 if (controls.isCurrentSession()) {
-                    controls.setPreviewState('WebRTC 应答无效');
-                    peerState.closeSession();
+                    fallbackFromWebrtcFailure('WebRTC 应答无效');
                 }
                 return;
             }
@@ -201,10 +214,9 @@ export function startWebrtcPreview({
                 return;
             }
             if (controls.isCurrentSession()) {
-                controls.setPreviewState(
+                fallbackFromWebrtcFailure(
                     error instanceof Error ? error.message : 'WebRTC 连接失败',
                 );
-                peerState.closeSession();
             }
         }
     })();

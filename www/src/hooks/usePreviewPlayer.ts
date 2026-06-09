@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { MediaPlaybackUrls, MediaStreamRuntime, StreamName } from '../api/types';
+import type {
+    MediaPlaybackUrls,
+    MediaStreamRuntime,
+    StreamName,
+    WebrtcConfig,
+} from '../api/types';
 import {
     buildPreviewModeState,
     previewModeLabels,
@@ -16,6 +21,7 @@ interface UsePreviewPlayerOptions {
     playbackUrls: MediaPlaybackUrls | null;
     setMode: (mode: PreviewMode) => void;
     stream: StreamName;
+    webrtcConfig: WebrtcConfig | null;
 }
 
 export function usePreviewPlayer({
@@ -25,6 +31,7 @@ export function usePreviewPlayer({
     playbackUrls,
     setMode,
     stream,
+    webrtcConfig,
 }: UsePreviewPlayerOptions) {
     const modeSelectionRef = useRef<'auto' | 'manual'>('auto');
     const autoModeSelected = modeSelectionRef.current === 'auto';
@@ -55,6 +62,7 @@ export function usePreviewPlayer({
         playbackUrls,
         setMode,
         stream,
+        webrtcConfig,
     });
 
     const switchMode = useCallback((nextMode: PreviewMode) => {
