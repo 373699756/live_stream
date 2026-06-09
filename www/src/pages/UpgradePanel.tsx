@@ -122,6 +122,165 @@ export function UpgradePanel({
       </div>
 
       <div className="upgrade-grid">
+        <div className="upgrade-flow-column">
+          <div className="upgrade-section">
+            <div className="panel-title">1. 选择升级包</div>
+            <div className="form-field form-field-stacked">
+              <span className="form-label">升级包</span>
+              <div className="form-control file-upload-control">
+                <input
+                  type="file"
+                  accept=".bin,.img,.tar,.tgz,.zip"
+                  disabled={packageInputsDisabled}
+                  onChange={(event) => {
+                    selectFile(event.target.files?.[0] ?? null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!selectedFile || packageInputsDisabled}
+                  onClick={() => {
+                    void uploadPackage();
+                  }}
+                >
+                  上传并校验
+                </button>
+              </div>
+            </div>
+
+            <div className="upgrade-file-summary">
+              <span>已选择</span>
+              <strong>
+                {activeUpgrade
+                  ? '升级流程运行中，不能更换升级包'
+                  : selectedFile
+                  ? `${selectedFile.name} / ${formatBytes(selectedFile.size)}`
+                  : '未选择升级包'}
+              </strong>
+            </div>
+          </div>
+
+          <div className="upgrade-section">
+            <div className="panel-title">2. 升级选项</div>
+            <div className="inline-checks upgrade-option-list">
+              <label className="form-control">
+                <input
+                  type="checkbox"
+                  checked={allowSameVersion}
+                  disabled={packageInputsDisabled}
+                  onChange={(event) => setAllowSameVersion(event.target.checked)}
+                />
+                允许同版本覆盖
+              </label>
+              <label className="form-control">
+                <input
+                  type="checkbox"
+                  checked={allowDowngrade}
+                  disabled={packageInputsDisabled}
+                  onChange={(event) => setAllowDowngrade(event.target.checked)}
+                />
+                允许降级
+              </label>
+              <label className="form-control">
+                <input
+                  type="checkbox"
+                  checked={autoReboot}
+                  disabled={packageInputsDisabled}
+                  onChange={(event) => setAutoReboot(event.target.checked)}
+                />
+                完成后自动重启
+              </label>
+            </div>
+          </div>
+
+          <div className="upgrade-section upgrade-action-section">
+            <div className="panel-title">3. 执行动作</div>
+            <div className="form-actions form-actions-left">
+              <button
+                type="button"
+                className="primary"
+                disabled={!packageInfo || busy || !canStartUpgrade(upgradeStatus)}
+                onClick={() => {
+                  void startUpgrade();
+                }}
+              >
+                开始升级
+              </button>
+              <button
+                type="button"
+                className="danger-action"
+                disabled={busy || !canCancel(upgradeStatus)}
+                onClick={() => {
+                  void cancelUpgrade();
+                }}
+              >
+                取消升级
+              </button>
+              <button
+                type="button"
+                disabled={busy || !canConfirmReboot(upgradeStatus)}
+                onClick={() => {
+                  void confirmReboot();
+                }}
+              >
+                确认重启
+              </button>
+            </div>
+
+            <div className="upgrade-action-notes">
+              <span>{startHint(packageInfo, upgradeStatus)}</span>
+              <span>{cancelHint(upgradeStatus)}</span>
+            </div>
+
+            {message ? <div className="status-note success-note">{message}</div> : null}
+            {actionError ? <div className="status-note error-note">{actionError}</div> : null}
+            {refreshError ? (
+              <div className="status-note warning-note">{refreshError}</div>
+            ) : null}
+          </div>
+
+          <div className="upgrade-meta">
+            <div className="panel-title">已校验包信息</div>
+            <div className="upgrade-package-grid">
+              <div>
+                <span>包路径</span>
+                <strong>{packageInfo?.package_path || '-'}</strong>
+              </div>
+              <div>
+                <span>版本</span>
+                <strong>{packageInfo?.version || '-'}</strong>
+              </div>
+              <div>
+                <span>大小</span>
+                <strong>
+                  {packageInfo ? formatBytes(packageInfo.size_bytes) : '-'}
+                </strong>
+              </div>
+              <div>
+                <span>摘要</span>
+                <code>{packageInfo?.digest || '-'}</code>
+              </div>
+              <div>
+                <span>目标型号</span>
+                <strong>{packageInfo?.target_model || '-'}</strong>
+              </div>
+              <div>
+                <span>构建时间</span>
+                <strong>
+                  {packageInfo ? formatTimestamp(packageInfo.build_time_ms) : '-'}
+                </strong>
+              </div>
+              <div>
+                <span>需要重启</span>
+                <strong>
+                  {packageInfo ? (packageInfo.requires_reboot ? '是' : '否') : '-'}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="upgrade-section upgrade-status-section">
           <div className="panel-title">当前升级状态</div>
           <div className={`upgrade-state-banner state-${upgradeStatus.state}`}>
@@ -169,159 +328,6 @@ export function UpgradePanel({
               <span>错误</span>
               <strong>{upgradeStatus.error_message || '-'}</strong>
             </div>
-          </div>
-        </div>
-
-        <div className="upgrade-section">
-          <div className="panel-title">1. 选择升级包</div>
-          <div className="form-field form-field-stacked">
-            <span className="form-label">升级包</span>
-            <div className="form-control file-upload-control">
-              <input
-                type="file"
-                accept=".bin,.img,.tar,.tgz,.zip"
-                disabled={packageInputsDisabled}
-                onChange={(event) => {
-                  selectFile(event.target.files?.[0] ?? null);
-                }}
-              />
-              <button
-                type="button"
-                className="primary"
-                disabled={!selectedFile || packageInputsDisabled}
-                onClick={() => {
-                  void uploadPackage();
-                }}
-              >
-                上传并校验
-              </button>
-            </div>
-          </div>
-
-          <div className="upgrade-file-summary">
-            <span>已选择</span>
-            <strong>
-              {activeUpgrade
-                ? '升级流程运行中，不能更换升级包'
-                : selectedFile
-                ? `${selectedFile.name} / ${formatBytes(selectedFile.size)}`
-                : '未选择升级包'}
-            </strong>
-          </div>
-        </div>
-
-        <div className="upgrade-section">
-          <div className="panel-title">2. 升级选项</div>
-          <div className="inline-checks upgrade-option-list">
-            <label className="form-control">
-              <input
-                type="checkbox"
-                checked={allowSameVersion}
-                disabled={packageInputsDisabled}
-                onChange={(event) => setAllowSameVersion(event.target.checked)}
-              />
-              允许同版本覆盖
-            </label>
-            <label className="form-control">
-              <input
-                type="checkbox"
-                checked={allowDowngrade}
-                disabled={packageInputsDisabled}
-                onChange={(event) => setAllowDowngrade(event.target.checked)}
-              />
-              允许降级
-            </label>
-            <label className="form-control">
-              <input
-                type="checkbox"
-                checked={autoReboot}
-                disabled={packageInputsDisabled}
-                onChange={(event) => setAutoReboot(event.target.checked)}
-              />
-              完成后自动重启
-            </label>
-          </div>
-        </div>
-
-        <div className="upgrade-section upgrade-action-section">
-          <div className="panel-title">3. 执行动作</div>
-          <div className="form-actions form-actions-left">
-            <button
-              type="button"
-              className="primary"
-              disabled={!packageInfo || busy || !canStartUpgrade(upgradeStatus)}
-              onClick={() => {
-                void startUpgrade();
-              }}
-            >
-              开始升级
-            </button>
-            <button
-              type="button"
-              className="danger-action"
-              disabled={busy || !canCancel(upgradeStatus)}
-              onClick={() => {
-                void cancelUpgrade();
-              }}
-            >
-              取消升级
-            </button>
-            <button
-              type="button"
-              disabled={busy || !canConfirmReboot(upgradeStatus)}
-              onClick={() => {
-                void confirmReboot();
-              }}
-            >
-              确认重启
-            </button>
-          </div>
-
-          <div className="upgrade-action-notes">
-            <span>{startHint(packageInfo, upgradeStatus)}</span>
-            <span>{cancelHint(upgradeStatus)}</span>
-          </div>
-
-          {message ? <div className="status-note success-note">{message}</div> : null}
-          {actionError ? <div className="status-note error-note">{actionError}</div> : null}
-          {refreshError ? (
-            <div className="status-note warning-note">{refreshError}</div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="upgrade-meta">
-        <div className="panel-title">已校验包信息</div>
-        <div className="upgrade-package-grid">
-          <div>
-            <span>包路径</span>
-            <strong>{packageInfo?.package_path || '-'}</strong>
-          </div>
-          <div>
-            <span>版本</span>
-            <strong>{packageInfo?.version || '-'}</strong>
-          </div>
-          <div>
-            <span>大小</span>
-            <strong>{packageInfo ? formatBytes(packageInfo.size_bytes) : '-'}</strong>
-          </div>
-          <div>
-            <span>摘要</span>
-            <code>{packageInfo?.digest || '-'}</code>
-          </div>
-          <div>
-            <span>目标型号</span>
-            <strong>{packageInfo?.target_model || '-'}</strong>
-          </div>
-          <div>
-            <span>构建时间</span>
-            <strong>
-              {packageInfo ? formatTimestamp(packageInfo.build_time_ms) : '-'}
-            </strong>
-          </div>
-          <div>
-            <span>需要重启</span>
-            <strong>{packageInfo ? (packageInfo.requires_reboot ? '是' : '否') : '-'}</strong>
           </div>
         </div>
       </div>
