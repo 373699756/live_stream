@@ -7,6 +7,7 @@ import {
 } from '../api/stream';
 import type {
   MediaPlaybackUrls,
+  MediaSessionsResponse,
   MediaSessionInfo,
   MediaStreamRuntime,
   StreamName,
@@ -32,6 +33,12 @@ interface UseMediaRuntimeOptions {
 }
 
 const defaultStatusTimeoutMs = 1800;
+const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
+  http_flv_active_clients: 0,
+  mjpeg_active_clients: 0,
+  rtsp_active_sessions: 0,
+  webrtc_active_peers: 0,
+};
 
 function uniqueStreams(streams: StreamName[]): StreamName[] {
   return streams.filter((stream, index) => streams.indexOf(stream) === index);
@@ -63,6 +70,8 @@ export function useMediaRuntime({
   const playbackStreamKey = requestedPlaybackStreams.join(',');
   const [statuses, setStatuses] = useState<MediaStreamRuntime[]>([]);
   const [sessions, setSessions] = useState<MediaSessionInfo[]>([]);
+  const [sessionSummary, setSessionSummary] =
+    useState<Omit<MediaSessionsResponse, 'items'>>(emptySessionSummary);
   const [urlsByStream, setUrlsByStream] =
     useState<Partial<Record<StreamName, MediaPlaybackUrls>>>({});
   const [errors, setErrors] =
@@ -162,7 +171,9 @@ export function useMediaRuntime({
         if (!mountedRef.current || controller.signal.aborted) {
           return;
         }
-        setSessions(Array.isArray(nextSessions) ? nextSessions : []);
+        const { items, ...summary } = nextSessions;
+        setSessions(Array.isArray(items) ? items : []);
+        setSessionSummary({ ...emptySessionSummary, ...summary });
         setRuntimeError('sessions', '');
       })
       .catch((error: unknown) => {
@@ -368,6 +379,7 @@ export function useMediaRuntime({
   return {
     statuses,
     sessions,
+    sessionSummary,
     playbackUrls,
     urlsByStream,
     error,

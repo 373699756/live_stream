@@ -1,6 +1,7 @@
 import type {
   MediaPlaybackUrls,
   MediaSessionInfo,
+  MediaSessionsResponse,
   MediaStreamRuntime,
   StreamName,
 } from '../api/types';
@@ -15,8 +16,18 @@ const streamLabels: Record<StreamName, string> = {
 };
 const runtimeTimeoutMs = 3000;
 
+interface ProtocolRow {
+  activeCount: number;
+  label: string;
+  protocol: string;
+  ready: string;
+  url: string;
+}
+
 function streamLabel(stream: string) {
-  return stream === 'main' || stream === 'sub' ? streamLabels[stream] : stream || '--';
+  return stream === 'main' || stream === 'sub'
+    ? streamLabels[stream]
+    : stream || '--';
 }
 
 function validStream(stream: string): stream is StreamName {
@@ -69,11 +80,30 @@ function sessionCount(
   )).length;
 }
 
+function summaryCount(
+  sessionSummary: Omit<MediaSessionsResponse, 'items'>,
+  protocol: string,
+) {
+  if (protocol === 'rtsp') {
+    return sessionSummary.rtsp_active_sessions ?? 0;
+  }
+  if (protocol === 'http_flv') {
+    return sessionSummary.http_flv_active_clients ?? 0;
+  }
+  if (protocol === 'mjpeg') {
+    return sessionSummary.mjpeg_active_clients ?? 0;
+  }
+  if (protocol === 'webrtc') {
+    return sessionSummary.webrtc_active_peers ?? 0;
+  }
+  return 0;
+}
+
 function protocolRows(
   runtime: MediaStreamRuntime,
   urls: MediaPlaybackUrls | undefined,
   sessions: MediaSessionInfo[],
-) {
+): ProtocolRow[] {
   return [
     { label: 'RTSP', url: urls?.rtsp || '', protocol: 'rtsp' },
     { label: 'HLS', url: urls?.hls || '', protocol: 'hls' },
@@ -83,12 +113,76 @@ function protocolRows(
     { label: 'Snapshot', url: urls?.snapshot || '', protocol: 'snapshot' },
   ].map((row) => ({
     ...row,
+    activeCount: sessionCount(sessions, runtime.stream, row.protocol),
     ready: protocolReady(
       runtime,
       row.label === 'WebRTC WHEP' ? 'WebRTC' : row.label,
     ),
-    sessions: sessionCount(sessions, runtime.stream, row.protocol),
   }));
+}
+
+function runtimeForStream(
+  runtimes: MediaStreamRuntime[],
+  stream: StreamName,
+) {
+  return runtimes.find((runtime) => runtime.stream === stream) ?? null;
+}
+
+function sessionGroupTitle(protocol: string) {
+  switch (protocol) {
+    case 'rtsp':
+      return 'RTSP';
+    case 'http_flv':
+      return 'HTTP-FLV';
+    case 'mjpeg':
+      return 'MJPEG';
+    case 'webrtc':
+      return 'WebRTC';
+    default:
+      return protocol || '--';
+  }
+}
+
+function sessionPeer(session: MediaSessionInfo) {
+  return (
+    session.client_ip ||
+    session.remote_address ||
+    session.peer_id ||
+    session.client_id ||
+    '--'
+  );
+}
+
+function sessionTransport(session: MediaSessionInfo) {
+  if (session.transport) {
+    return session.transport;
+  }
+  if (session.ice_selected) {
+    return 'ice selected';
+  }
+  return '--';
+}
+
+function sessionState(session: MediaSessionInfo) {
+  return session.state || session.stream_state || 'unknown';
+}
+
+function groupedSessions(sessions: MediaSessionInfo[]) {
+  return ['rtsp', 'http_flv', 'mjpeg', 'webrtc'].map((protocol) => ({
+    protocol,
+    sessions: sessions.filter((session) => session.protocol === protocol),
+  }));
+}
+
+function totalSummarySessions(
+  sessionSummary: Omit<MediaSessionsResponse, 'items'>,
+) {
+  return (
+    (sessionSummary.rtsp_active_sessions ?? 0) +
+    (sessionSummary.http_flv_active_clients ?? 0) +
+    (sessionSummary.mjpeg_active_clients ?? 0) +
+    (sessionSummary.webrtc_active_peers ?? 0)
+  );
 }
 
 export function StreamInfoPage() {
@@ -96,6 +190,7 @@ export function StreamInfoPage() {
     statuses,
     urlsByStream,
     sessions,
+    sessionSummary,
     error,
   } = useMediaRuntime({
     playbackStreams: streams,
@@ -111,6 +206,8 @@ export function StreamInfoPage() {
   });
   const safeRuntimes = statuses.filter((runtime) => validStream(runtime.stream));
   const safeSessions = sessions.filter((session) => validStream(session.stream));
+  const sessionGroups = groupedSessions(safeSessions);
+  const totalActiveSessions = totalSummarySessions(sessionSummary);
 
   return (
     <div className="page-grid stream-info-grid">
@@ -121,100 +218,160 @@ export function StreamInfoPage() {
         </div>
       </div>
 
-      <section className="panel">
+      {error ? <div className="status-note error-note">{error}</div> : null}
+
+      <section className="panel wide-panel stream-runtime-panel">
         <div className="page-heading">
           <div>
-            <h2>访问地址</h2>
-            <p>后端生成的 RTSP、HLS、HTTP-FLV、MJPEG、WebRTC 和抓图地址</p>
+            <h2>运行总览</h2>
+            <p>主/子码流运行态、reader/client 和缓存状态</p>
           </div>
         </div>
-        {error && <div className="status-note error-note">{error}</div>}
-        <div className="address-table">
+        <div className="stream-runtime-cards">
           {streams.map((stream) => {
-            const runtime = safeRuntimes.find((item) => item.stream === stream);
+            const runtime = runtimeForStream(safeRuntimes, stream);
             if (!runtime) {
               return (
-                <div key={stream}>
-                  <strong>{streamLabel(stream)}</strong>
-                  <span>运行态不可用</span>
+                <article className="stream-runtime-card unavailable" key={stream}>
+                  <div>
+                    <h3>{streamLabel(stream)}</h3>
+                    <StatusBadge state="error" label="运行态不可用" />
+                  </div>
+                  <span>后端未返回该码流运行信息</span>
+                </article>
+              );
+            }
+            return (
+              <article className="stream-runtime-card" key={stream}>
+                <div>
+                  <h3>{streamLabel(stream)}</h3>
+                  <StatusBadge
+                    state={runtime.running ? 'running' : 'pending'}
+                    label={runtime.running ? '运行中' : '未运行'}
+                  />
+                </div>
+                <dl>
+                  <div>
+                    <dt>编码</dt>
+                    <dd>{previewValueText(runtime.codec)}</dd>
+                  </div>
+                  <div>
+                    <dt>分辨率</dt>
+                    <dd>{previewValueText(runtime.resolution, '--')}</dd>
+                  </div>
+                  <div>
+                    <dt>帧率</dt>
+                    <dd>{previewValueText(runtime.fps, '--')} fps</dd>
+                  </div>
+                  <div>
+                    <dt>读者/客户端</dt>
+                    <dd>{runtime.reader_count} / {runtime.client_count}</dd>
+                  </div>
+                  <div>
+                    <dt>缓存</dt>
+                    <dd>{runtime.cached_frames} 帧 / {runtime.cached_bytes} B</dd>
+                  </div>
+                  <div>
+                    <dt>最近 DTS</dt>
+                    <dd>{runtime.last_dts || '--'}</dd>
+                  </div>
+                </dl>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="panel wide-panel stream-protocol-panel">
+        <div className="page-heading">
+          <div>
+            <h2>访问地址与协议状态</h2>
+            <p>后端生成的访问地址、协议 ready 和活动会话数</p>
+          </div>
+        </div>
+        <div className="stream-protocol-grid">
+          {streams.map((stream) => {
+            const runtime = runtimeForStream(safeRuntimes, stream);
+            if (!runtime) {
+              return (
+                <div className="stream-protocol-group" key={stream}>
+                  <h3>{streamLabel(stream)}</h3>
+                  <div className="empty-state">运行态不可用</div>
                 </div>
               );
             }
             return (
-              <div key={stream}>
-                <strong>
-                  {streamLabel(stream)} / {runtime.running ? '运行中' : '未运行'}
-                </strong>
-                <span>
-                  {previewValueText(runtime.codec)} /{' '}
-                  {previewValueText(runtime.resolution, '--')} /{' '}
-                  {previewValueText(runtime.fps, '--')}fps
-                </span>
-                {protocolRows(runtime, urlsByStream[stream], safeSessions).map((row) => (
-                  <code key={row.label}>
-                    {row.label}: {row.url || 'unavailable'} [{row.ready}, sessions {row.sessions}]
-                  </code>
-                ))}
+              <div className="stream-protocol-group" key={stream}>
+                <h3>{streamLabel(stream)}</h3>
+                <div className="stream-protocol-table">
+                  {protocolRows(
+                    runtime,
+                    urlsByStream[stream],
+                    safeSessions,
+                  ).map((row) => (
+                    <div className="stream-protocol-row" key={row.label}>
+                      <span>{row.label}</span>
+                      <code>{row.url || 'unavailable'}</code>
+                      <em>{row.ready}</em>
+                      <strong>{row.activeCount}</strong>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })}
         </div>
       </section>
 
-      <section className="panel">
-        <div className="page-heading">
-          <div>
-            <h2>码流运行状态</h2>
-            <p>主/子码流 ready、reader、缓存和协议可用性</p>
-          </div>
-        </div>
-        <div className="info-table">
-          {safeRuntimes.length === 0 ? (
-            <div>
-              <span>码流运行态不可用</span>
-              <strong>--</strong>
-            </div>
-          ) : safeRuntimes.map((runtime) => (
-            <div key={runtime.stream}>
-              <span>
-                {streamLabel(runtime.stream)} / readers {runtime.reader_count} /{' '}
-                clients {runtime.client_count}
-              </span>
-              <strong>
-                <StatusBadge state={runtime.running ? 'running' : 'pending'} />
-                {' '}
-                cache {runtime.cached_frames} frames / {runtime.cached_bytes} bytes
-              </strong>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
+      <section className="panel wide-panel stream-session-panel">
         <div className="page-heading">
           <div>
             <h2>会话诊断</h2>
-            <p>媒体 reader、RTSP、HTTP-FLV、MJPEG 和 WebRTC 会话连接状态</p>
+            <p>RTSP、HTTP-FLV、MJPEG 和 WebRTC 活动连接</p>
           </div>
+          <span className="stream-session-total">
+            活动 <strong>{totalActiveSessions}</strong>
+          </span>
         </div>
-        <div className="info-table">
-          {safeSessions.length === 0 ? (
-            <div>
-              <span>当前无活动会话</span>
-              <strong>0</strong>
-            </div>
-          ) : safeSessions.map((session, index) => (
-            <div key={session.session_id || `${session.protocol}-${session.stream}-${index}`}>
-              <span>
-                {session.protocol || '--'} / {streamLabel(session.stream)} /{' '}
-                {session.client_ip || '--'}
-              </span>
-              <strong>
-                {session.state || 'unknown'} / pending {session.pending_bytes ?? 0}
-                {session.close_reason ? ` / ${session.close_reason}` : ''}
-              </strong>
-            </div>
-          ))}
+        <div className="stream-session-groups">
+          {sessionGroups.map((group) => {
+            const summaryActive = summaryCount(sessionSummary, group.protocol);
+            const missingDetails =
+              group.protocol === 'rtsp' &&
+              summaryActive > 0 &&
+              group.sessions.length === 0;
+            return (
+              <div className="stream-session-group" key={group.protocol}>
+                <div className="stream-session-group-heading">
+                  <h3>{sessionGroupTitle(group.protocol)}</h3>
+                  <span>{summaryActive || group.sessions.length}</span>
+                </div>
+                {missingDetails ? (
+                  <div className="stream-session-empty">
+                    RTSP 控制会话存在，详情暂不可用
+                  </div>
+                ) : null}
+                {!missingDetails && group.sessions.length === 0 ? (
+                  <div className="stream-session-empty">无活动会话</div>
+                ) : null}
+                {group.sessions.map((session, index) => (
+                  <div
+                    className="stream-session-row"
+                    key={session.session_id || `${session.protocol}-${index}`}
+                  >
+                    <span>
+                      {streamLabel(session.stream)} / {sessionPeer(session)}
+                    </span>
+                    <strong>{sessionState(session)}</strong>
+                    <em>
+                      pending {session.pending_bytes ?? 0} / {sessionTransport(session)}
+                    </em>
+                    {session.close_reason ? <small>{session.close_reason}</small> : null}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

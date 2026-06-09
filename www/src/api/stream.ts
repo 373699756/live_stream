@@ -46,16 +46,25 @@ function nextWebrtcClientId(stream: StreamName): string {
   return `web-${stream}-${Date.now().toString(36)}-${webrtcClientSequence}`;
 }
 
+const emptyMediaSessions: MediaSessionsResponse = {
+  items: [],
+  http_flv_active_clients: 0,
+  mjpeg_active_clients: 0,
+  rtsp_active_sessions: 0,
+  webrtc_active_peers: 0,
+};
+
 function normalizeMediaSessions(
   response: MediaSessionInfo[] | MediaSessionsResponse,
-): MediaSessionInfo[] {
+): MediaSessionsResponse {
   if (Array.isArray(response)) {
-    return response;
+    return { ...emptyMediaSessions, items: response };
   }
-  if (Array.isArray(response.items)) {
-    return response.items;
-  }
-  return [];
+  return {
+    ...emptyMediaSessions,
+    ...response,
+    items: Array.isArray(response.items) ? response.items : [],
+  };
 }
 
 function normalizeMediaStreams(
@@ -119,7 +128,7 @@ export function getMediaPlaybackUrls(
 
 export function getMediaSessions(
   init?: ApiRequestOptions,
-): Promise<MediaSessionInfo[]> {
+): Promise<MediaSessionsResponse> {
   return requestJson<MediaSessionInfo[] | MediaSessionsResponse>(
     '/api/media/sessions',
     { items: mockMediaSessions },
