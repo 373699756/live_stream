@@ -89,6 +89,23 @@ HttpResponse WebrtcErrorResponse(int status_code, const std::string &code,
     return HttpMediaJsonResponse(status_code, root);
 }
 
+HttpResponse WebrtcCreatePeerErrorResponse(const std::string &last_error) {
+    const std::string reason =
+        last_error.empty() ? "peer_create_failed" : last_error;
+    if (reason == "invalid_stream") {
+        return WebrtcErrorResponse(400, "stream_not_found",
+                                   "WebRTC stream not found");
+    }
+    if (reason == "stream_unavailable" || reason == "unsupported_codec") {
+        return WebrtcErrorResponse(409, "resource_busy", reason);
+    }
+    if (reason == "peer_limit_reached") {
+        return WebrtcErrorResponse(409, "resource_busy",
+                                   "WebRTC peer limit reached");
+    }
+    return WebrtcErrorResponse(503, "protocol_unavailable", reason);
+}
+
 bool ParsePeerSubPath(const HttpRequest &request, const std::string &suffix,
                       std::string *peer_id) {
     const std::string prefix = "/api/webrtc/peers/";
@@ -171,8 +188,7 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
 
     const WebrtcPeerInfo peer = webrtc->CreatePeer(create_request);
     if (peer.peer_id.empty()) {
-        return WebrtcErrorResponse(503, "protocol_unavailable",
-                                   "Could not create WebRTC peer");
+        return WebrtcCreatePeerErrorResponse(peer.last_error);
     }
 
     return HttpMediaJsonResponse(200, WebrtcPeerInfoToJson(peer));
@@ -286,7 +302,9 @@ HttpResponse BuildWhepCreateResponse(IWebrtc *webrtc,
     create_request.client_ip = request.client_ip;
     const WebrtcPeerInfo peer = webrtc->CreatePeer(create_request);
     if (peer.peer_id.empty()) {
-        return HttpMediaTextResponse(503, "Could not create WHEP peer");
+        return HttpMediaTextResponse(
+            503, peer.last_error.empty() ? "Could not create WHEP peer"
+                                         : peer.last_error);
     }
 
     WebrtcOfferRequest offer;

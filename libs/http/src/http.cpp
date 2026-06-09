@@ -190,6 +190,14 @@ HttpStats HttpImpl::GetStats() const {
     return server_->GetStats();
 }
 
+std::vector<HttpStreamingSessionDiagnostics>
+HttpImpl::GetStreamingSessionDiagnostics() const {
+    if (server_ == nullptr) {
+        return std::vector<HttpStreamingSessionDiagnostics>();
+    }
+    return server_->GetStreamingSessionDiagnostics();
+}
+
 HttpListenAddress HttpImpl::LocalAddress() const {
     if (server_ == nullptr) {
         return HttpListenAddress{};
@@ -229,6 +237,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
 
     HttpHandlerDependencies handler_dependencies;
     handler_dependencies.access = this;
+    handler_dependencies.http = this;
     handler_dependencies.auth = dependencies.auth;
     handler_dependencies.config = dependencies.config;
     handler_dependencies.logger = dependencies.logger;

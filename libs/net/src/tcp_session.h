@@ -65,6 +65,7 @@ private:
     };
 
     bool BuildOutBuffer(const NetBufferSlices &slices, OutBuffer *buffer) const;
+    bool EnqueueOutBuffer(OutBuffer buffer);
     void HandleEvents(uint32_t events);
     void HandleRead();
     void HandleWrite();

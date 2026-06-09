@@ -47,6 +47,12 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
     refs.net_engine = net_engine_.get();
+    refs.net_executor = net_engine_->DefaultExecutor();
+    if (refs.net_executor == nullptr) {
+        Error("app", "Get net default executor failed");
+        Stop();
+        return false;
+    }
 
     const MediaPipelineOptions media_pipeline_options =
         BuildMediaPipelineOptions();

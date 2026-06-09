@@ -1,10 +1,13 @@
 #ifndef LIVE_STREAM_HTTP_HTTP_H_
 #define LIVE_STREAM_HTTP_HTTP_H_
 
+#include "media/stream_types.h"
+
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 
@@ -68,6 +71,22 @@ struct HttpStats {
     uint32_t active_connections = 0;
 };
 
+struct HttpStreamingSessionDiagnostics {
+    uint64_t connection_id = 0;
+    std::string protocol;
+    std::string session_id;
+    std::string client_id;
+    StreamId stream_id = StreamId::kMain;
+    std::string client_ip;
+    std::string remote_address;
+    std::string local_address;
+    uint32_t pending_bytes = 0;
+    uint32_t send_queue_length = 0;
+    int64_t last_write_at_ms = 0;
+    std::string close_reason;
+    bool open = false;
+};
+
 // IHttpHandler is the extension point for domain-specific route handlers.
 // Implementations register routes with the router in RegisterRoutes().
 // This interface enables handlers/ subdirectory decomposition (Phase 1 goal).
@@ -89,6 +108,8 @@ public:
     virtual HttpResponse HandleRequest(const HttpRequest &request) = 0;
     virtual HttpListenAddress LocalAddress() const = 0;
     virtual HttpStats GetStats() const = 0;
+    virtual std::vector<HttpStreamingSessionDiagnostics>
+    GetStreamingSessionDiagnostics() const = 0;
 };
 
 std::unique_ptr<IHttp> CreateHttp(

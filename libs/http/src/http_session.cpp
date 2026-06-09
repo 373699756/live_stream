@@ -180,6 +180,15 @@ HttpMediaClientHandle HttpSession::TakeMediaClient() {
   return client;
 }
 
+HttpSessionStreamingInfo HttpSession::StreamingInfo() const {
+  HttpSessionStreamingInfo info;
+  info.connection_id = connection_id_;
+  info.client_ip = client_ip_;
+  info.media_client = media_client_;
+  info.streaming = streaming_;
+  return info;
+}
+
 HttpSessionParseFailure HttpSession::FailureFromSplitStatus(
     HttpRequestSplitStatus status) {
   if (status == HttpRequestSplitStatus::kPayloadTooLarge) {

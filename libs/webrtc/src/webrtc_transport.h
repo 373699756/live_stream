@@ -22,6 +22,7 @@ using WebrtcTransportTimerFn = void (*)(void *user,
 
 struct WebrtcTransportStartOptions {
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     UdpCallbacks udp_callbacks;
     std::string peer_id;
     uint16_t local_port_base = 0;
@@ -101,10 +102,11 @@ private:
     bool StartSrtp(const DtlsSrtpKeys &keys);
     bool ArmDtlsTimer();
     void CancelDtlsTimer();
-    void RecordRtcpFeedback(RtcpFeedbackType type);
+    void RecordRtcpFeedback(const RtcpFeedbackCounters &counters);
 
     std::string peer_id_;
     INetEngine *net_engine_ = nullptr;
+    INetExecutor *net_executor_ = nullptr;
     void *timer_user_ = nullptr;
     WebrtcTransportTimerFn on_dtls_timeout_ = nullptr;
     std::unique_ptr<IceTransport> ice_;

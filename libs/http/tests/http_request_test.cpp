@@ -103,10 +103,43 @@ public:
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
+  class FakeNetExecutor : public live_stream::INetExecutor {
+  public:
+    bool Post(infra::Task task) override {
+      if (task) {
+        task();
+      }
+      return true;
+    }
+
+    live_stream::NetTimerId RunAfter(uint32_t, infra::Task task) override {
+      if (task) {
+        task();
+      }
+      return 1;
+    }
+
+    live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+      return 1;
+    }
+
+    bool CancelTimer(live_stream::NetTimerId) override { return true; }
+    bool IsCurrentThread() const override { return true; }
+  };
+
   bool Start() override { return true; }
   void Stop() override {}
 
+  live_stream::INetExecutor* DefaultExecutor() override {
+    return &executor_;
+  }
+
+  live_stream::INetExecutor* PickExecutor() override {
+    return &executor_;
+  }
+
   live_stream::TcpServerId ListenTcp(
+      live_stream::INetExecutor*,
       const live_stream::TcpListenOptions&,
       const live_stream::TcpCallbacks&) override {
     return 1;
@@ -115,6 +148,7 @@ public:
   bool CloseTcp(live_stream::TcpServerId) override { return true; }
 
   live_stream::UdpSocketId BindUdp(
+      live_stream::INetExecutor*,
       const live_stream::UdpBindOptions&,
       const live_stream::UdpCallbacks&) override {
     return 1;
@@ -143,16 +177,6 @@ public:
     return true;
   }
 
-  live_stream::NetTimerId RunOnIoAfter(uint32_t, infra::Task) override {
-    return 1;
-  }
-
-  live_stream::NetTimerId RunOnIoEvery(uint32_t, infra::Task) override {
-    return 1;
-  }
-
-  bool CancelIoTimer(live_stream::NetTimerId) override { return true; }
-
   live_stream::NetAddress TcpLocalAddress(
       live_stream::TcpServerId) const override {
     return live_stream::NetAddress{"127.0.0.1", 8080};
@@ -173,6 +197,9 @@ public:
   live_stream::NetStats GetStats() const override {
     return live_stream::NetStats();
   }
+
+private:
+  FakeNetExecutor executor_;
 };
 
 class FakeDeviceMedia : public live_stream::IDeviceMedia {
@@ -264,6 +291,7 @@ int main() {
 
   live_stream::HttpDependencies http_dependencies;
   http_dependencies.net_engine = &net_engine;
+  http_dependencies.net_executor = net_engine.DefaultExecutor();
   http_dependencies.auth = &auth;
   http_dependencies.logger = &logger;
   http_dependencies.config = &config;

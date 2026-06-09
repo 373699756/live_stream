@@ -11,10 +11,49 @@ namespace {
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
+    class FakeNetExecutor : public live_stream::INetExecutor {
+    public:
+        explicit FakeNetExecutor(FakeNetEngine *engine) : engine_(engine) {}
+
+        bool Post(infra::Task task) override {
+            if (task) {
+                task();
+            }
+            return true;
+        }
+
+        live_stream::NetTimerId RunAfter(uint32_t, infra::Task) override {
+            return 1;
+        }
+
+        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+            ++engine_->periodic_timer_count;
+            return static_cast<live_stream::NetTimerId>(
+                engine_->periodic_timer_count);
+        }
+
+        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool IsCurrentThread() const override { return true; }
+
+    private:
+        FakeNetEngine *engine_ = nullptr;
+    };
+
+    FakeNetEngine() : executor_(this) {}
+
     bool Start() override { return true; }
     void Stop() override {}
 
+    live_stream::INetExecutor *DefaultExecutor() override {
+        return &executor_;
+    }
+
+    live_stream::INetExecutor *PickExecutor() override {
+        return &executor_;
+    }
+
     live_stream::TcpServerId ListenTcp(
+        live_stream::INetExecutor *,
         const live_stream::TcpListenOptions&,
         const live_stream::TcpCallbacks&) override {
         return 1;
@@ -23,6 +62,7 @@ public:
     bool CloseTcp(live_stream::TcpServerId) override { return true; }
 
     live_stream::UdpSocketId BindUdp(
+        live_stream::INetExecutor *,
         const live_stream::UdpBindOptions& options,
         const live_stream::UdpCallbacks&) override {
         last_udp_bind = options.address;
@@ -56,17 +96,6 @@ public:
         return true;
     }
 
-    live_stream::NetTimerId RunOnIoAfter(uint32_t, infra::Task) override {
-        return 1;
-    }
-
-    live_stream::NetTimerId RunOnIoEvery(uint32_t, infra::Task) override {
-        ++periodic_timer_count;
-        return static_cast<live_stream::NetTimerId>(periodic_timer_count);
-    }
-
-    bool CancelIoTimer(live_stream::NetTimerId) override { return true; }
-
     live_stream::NetAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
         return live_stream::NetAddress{"127.0.0.1", 8000};
@@ -95,6 +124,9 @@ public:
     int send_to_count = 0;
     int periodic_timer_count = 0;
     live_stream::NetAddress last_udp_bind;
+
+private:
+    FakeNetExecutor executor_;
 };
 
 std::string ValidOfferSdp() {
@@ -131,6 +163,7 @@ int main() {
     live_stream::WebrtcDependencies dependencies;
     dependencies.media_source = &media_source;
     dependencies.net_engine = &net_engine;
+    dependencies.net_executor = net_engine.DefaultExecutor();
 
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);

@@ -130,9 +130,12 @@ keyframe/first-frame/protocol-ready timestamps, and last reset reason.
 `MediaPlaybackUrls` contains only backend-generated URLs. Live preview listens
 to `/api/events` for media status changes and keeps slow polling only as a
 fallback; automatic playback prefers WebRTC, HTTP-FLV, then MJPEG before HLS.
-`MediaSessionInfo` describes active HLS/FLV/MJPEG/RTSP/WebRTC sessions with
-pending bytes, close reason, and RTP/RTCP diagnostics where the backend
-provides them. `WebrtcPeerInfo` mirrors backend peer state, stream, ICE
+`MediaSessionInfo` describes active HTTP-FLV/MJPEG/RTSP/WebRTC sessions with
+connection id, media client id, pending bytes, send queue length, last write
+timestamp, close reason, and RTP/RTCP diagnostics where the backend provides
+them. HLS playlist/segment requests are short HTTP responses and are diagnosed
+through stream readiness and HTTP error logs rather than persistent sessions.
+`WebrtcPeerInfo` mirrors backend peer state, stream, ICE
 selected flag, DTLS/SRTP readiness, RTP counters, RTCP feedback counters, last
 error, and created/updated timestamps.
 

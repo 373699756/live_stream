@@ -40,6 +40,13 @@ int main() {
     if (!engine) {
         return 1;
     }
+    if (!engine->Start()) {
+        return 2;
+    }
+    live_stream::INetExecutor *executor = engine->DefaultExecutor();
+    if (executor == nullptr) {
+        return 3;
+    }
 
     TcpState state;
     state.engine = engine.get();
@@ -50,13 +57,14 @@ int main() {
     callbacks.user = &state;
     callbacks.on_accept = OnAccept;
     callbacks.on_read = OnRead;
-    live_stream::TcpServerId server = engine->ListenTcp(listen, callbacks);
-    if (server == 0 || !engine->Start()) {
-        return 2;
+    live_stream::TcpServerId server =
+        engine->ListenTcp(executor, listen, callbacks);
+    if (server == 0) {
+        return 4;
     }
     live_stream::NetAddress local = engine->TcpLocalAddress(server);
     if (local.port == 0) {
-        return 3;
+        return 5;
     }
 
     const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -66,11 +74,11 @@ int main() {
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         close(fd);
-        return 4;
+        return 6;
     }
     if (send(fd, "ping", 4, 0) != 4) {
         close(fd);
-        return 5;
+        return 7;
     }
     char buffer[8] = {};
     const ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
@@ -78,5 +86,5 @@ int main() {
     engine->Stop();
     return n == 4 && std::memcmp(buffer, "ping", 4) == 0 && state.received
                ? 0
-               : 6;
+               : 8;
 }

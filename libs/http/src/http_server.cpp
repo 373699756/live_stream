@@ -9,29 +9,10 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace live_stream {
 namespace {
-
-void RefVideoBufferOwner(const void *owner) {
-    (void)VideoBufferRef(
-        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
-}
-
-void UnrefVideoBufferOwner(const void *owner) {
-    VideoBufferUnref(
-        const_cast<VideoBuffer*>(static_cast<const VideoBuffer*>(owner)));
-}
-
-NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
-    if (buffer == nullptr) {
-        return NetBufferOwner{};
-    }
-    // 把 HTTP 媒体 slice 的 VideoBuffer owner 转成 net 层 owner。net 入队时 ref，
-    // OutSlice 发送完成或丢弃时 unref。
-    return NetBufferOwner{buffer, RefVideoBufferOwner,
-                          UnrefVideoBufferOwner};
-}
 
 const char *HttpMethodName(HttpMethod method) {
     switch (method) {
@@ -70,7 +51,9 @@ HttpServer::HttpServer(const HttpOptions &options,
                        const HttpDependencies &dependencies,
                        HttpRequestHandler *request_handler)
     : options_(options),
+      connection_writer_(options.send_buffer_limit_bytes),
       net_engine_(dependencies.net_engine),
+      net_executor_(dependencies.net_executor),
       request_handler_(request_handler) {}
 
 HttpServer::~HttpServer() {
@@ -84,6 +67,9 @@ bool HttpServer::Prepare() {
         return true;
     }
     if (net_engine_ == nullptr || request_handler_ == nullptr) {
+        return false;
+    }
+    if (net_executor_ == nullptr) {
         return false;
     }
     if (options_.max_request_header_bytes == 0 ||
@@ -157,7 +143,8 @@ bool HttpServer::Start() {
     callbacks.on_accept = &HttpServer::HandleAccept;
     callbacks.on_read = &HttpServer::HandleRead;
     callbacks.on_close = &HttpServer::HandleClose;
-    TcpServerId server = net_engine_->ListenTcp(server_config, callbacks);
+    TcpServerId server = net_engine_->ListenTcp(net_executor_, server_config,
+                                                callbacks);
     if (server == 0) {
         Error(kHttpModuleName, "HTTP listen tcp failed");
         StopExecutor(control_executor);
@@ -190,6 +177,7 @@ bool HttpServer::Start() {
 void HttpServer::Stop() {
     TcpServerId server_id = 0;
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     infra::Executor *stream_executor = nullptr;
     infra::Executor *control_executor = nullptr;
     std::vector<HttpMediaClientHandle> media_clients;
@@ -204,6 +192,7 @@ void HttpServer::Stop() {
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
         net_engine = net_engine_;
+        net_executor = net_executor_;
         // Stop() 先摘出 session 状态，再在锁外通知媒体模块 detach client。
         // close callback 可能回到 media_source/event，不能拿着 HTTP 锁跨模块调用。
         for (const auto &item : sessions_) {
@@ -231,7 +220,7 @@ void HttpServer::Stop() {
     NotifyStreamsClosed(media_clients);
     if (net_engine != nullptr) {
         for (NetTimerId timer_id : timer_ids) {
-            CancelNetTimer(net_engine, timer_id);
+            CancelNetTimer(net_executor, timer_id);
         }
     }
     if (net_engine != nullptr && server_id != 0) {
@@ -275,6 +264,39 @@ HttpStats HttpServer::GetStats() const {
     return stats_;
 }
 
+std::vector<HttpStreamingSessionDiagnostics>
+HttpServer::GetStreamingSessionDiagnostics() const {
+    INetEngine *net_engine = nullptr;
+    std::vector<HttpSessionStreamingInfo> sessions;
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        net_engine = net_engine_;
+        sessions.reserve(sessions_.size());
+        for (const auto &item : sessions_) {
+            if (item.second != nullptr && item.second->is_streaming()) {
+                const HttpSessionStreamingInfo info =
+                    item.second->StreamingInfo();
+                if (info.media_client.type != HttpMediaClientType::kNone &&
+                    info.media_client.id != 0) {
+                    sessions.push_back(info);
+                }
+            }
+        }
+    }
+    if (net_engine == nullptr) {
+        return std::vector<HttpStreamingSessionDiagnostics>();
+    }
+
+    std::vector<HttpStreamingSessionDiagnostics> diagnostics;
+    diagnostics.reserve(sessions.size());
+    for (const HttpSessionStreamingInfo &session : sessions) {
+        diagnostics.push_back(BuildStreamingDiagnostics(
+            session,
+            net_engine->GetConnectionDiagnostics(session.connection_id)));
+    }
+    return diagnostics;
+}
+
 void HttpServer::IncrementTotalRequests() {
     std::lock_guard<std::mutex> guard(mutex_);
     ++stats_.total_requests;
@@ -303,19 +325,11 @@ void HttpServer::IncrementPermissionDenied() {
 void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
-    MediaSlice body_slice;
-    const MediaSlice *body_slices = nullptr;
-    size_t body_slice_count = 0;
-    if (!response.body.empty()) {
-        body_slice.data =
-            reinterpret_cast<const uint8_t *>(response.body.data());
-        body_slice.size = response.body.size();
-        body_slices = &body_slice;
-        body_slice_count = 1;
+    const bool sent = connection_writer_.SendResponse(
+        net_engine_, connection_id, response, close_after_response);
+    if (sent && !close_after_response) {
+        CompleteKeepAliveRequest(connection_id);
     }
-    (void)SendResponseSlices(connection_id, response, body_slices,
-                             body_slice_count, response.body.size(),
-                             close_after_response);
 }
 
 bool HttpServer::SendResponseSlices(ConnectionId connection_id,
@@ -324,62 +338,13 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) {
-    INetEngine *net_engine = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = net_engine_;
+    const bool sent = connection_writer_.SendResponseSlices(
+        net_engine_, connection_id, response, body_slices, body_slice_count,
+        body_size, close_after_response);
+    if (sent && !close_after_response) {
+        CompleteKeepAliveRequest(connection_id);
     }
-    if (net_engine == nullptr) {
-        return false;
-    }
-    if (body_slice_count > kMaxNetBufferSlices - 1 ||
-        (body_slice_count != 0 && body_slices == nullptr)) {
-        return false;
-    }
-    std::map<std::string, std::string> response_headers = response.headers;
-    response_headers["Connection"] =
-        close_after_response ? "close" : "keep-alive";
-    HttpResponse header_response;
-    header_response.status_code = response.status_code;
-    header_response.headers = std::move(response_headers);
-    const std::string header =
-        SerializeResponseHeaderWithBodySize(header_response, body_size);
-    // header 是本函数局部字符串，net 层会复制无 owner slice；媒体 body 带 owner
-    // 时由 net 引用 VideoBuffer，避免 HLS segment/FLV frame 热路径复制 payload。
-    NetBufferSlices slices;
-    bool slices_ok = slices.Add(reinterpret_cast<const uint8_t *>(header.data()),
-                                header.size());
-    for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
-        // 带 owner 的 body slice 不复制；无 owner 的小块会在 tcp_session 中复制到
-        // inline/heap out buffer。
-        slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
-                               VideoBufferNetOwner(body_slices[i].owner));
-    }
-    if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
-        if (response.status_code >= 500) {
-            Error(kHttpModuleName,
-                            "HTTP response send failed conn=%llu status=%d "
-                            "body=%zu header=%zu close=%d",
-                            static_cast<unsigned long long>(connection_id),
-                            response.status_code, body_size,
-                            header.size(), close_after_response ? 1 : 0);
-        } else {
-            Debug(kHttpModuleName,
-                            "HTTP response send failed conn=%llu status=%d "
-                            "body=%zu header=%zu close=%d",
-                            static_cast<unsigned long long>(connection_id),
-                            response.status_code, body_size,
-                            header.size(), close_after_response ? 1 : 0);
-        }
-        (void)net_engine->Close(connection_id);
-        return false;
-    }
-    if (close_after_response) {
-        (void)net_engine->CloseAfterSend(connection_id);
-        return true;
-    }
-    CompleteKeepAliveRequest(connection_id);
-    return true;
+    return sent;
 }
 
 bool HttpServer::BeginStream(ConnectionId connection_id) {
@@ -401,43 +366,40 @@ bool HttpServer::AttachStreamClient(ConnectionId connection_id,
 
 bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
                                        const uint8_t *data, size_t size) {
-    NetBufferSlices slices;
     if (data == nullptr || size == 0) {
         return true;
     }
-    if (!slices.Add(data, size)) {
-        return false;
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->is_streaming()) {
+            Error(kHttpModuleName,
+                  "HTTP stream enqueue reject conn=%llu reason=closed",
+                  static_cast<unsigned long long>(connection_id));
+            return false;
+        }
     }
-    return EnqueueStreamingSlices(connection_id, slices, size);
+    return connection_writer_.EnqueueStreamingChunk(
+        net_engine_, connection_id, data, size);
 }
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                                         const MediaSlice *slices,
                                         size_t slice_count) {
-    NetBufferSlices net_slices;
-    size_t total_size = 0;
-    if (slice_count == 0) {
-        return true;
-    }
-    if (slices == nullptr || slice_count > kMaxNetBufferSlices) {
-        return false;
-    }
-    for (size_t i = 0; i < slice_count; ++i) {
-        if (slices[i].size == 0) {
-            continue;
-        }
-        // FLV/MJPEG 媒体 payload 带 VideoBuffer owner，HTTP header/边界字符串
-        // 不带 owner 并由 net 层复制。
-        if (!net_slices.Add(slices[i].data, slices[i].size,
-                            VideoBufferNetOwner(slices[i].owner))) {
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        if (iter == sessions_.end() || iter->second == nullptr ||
+            !iter->second->is_streaming()) {
+            Error(kHttpModuleName,
+                  "HTTP stream enqueue reject conn=%llu reason=closed",
+                  static_cast<unsigned long long>(connection_id));
             return false;
         }
-        total_size += slices[i].size;
     }
-    if (total_size == 0) {
-        return true;
-    }
-    return EnqueueStreamingSlices(connection_id, net_slices, total_size);
+    return connection_writer_.EnqueueStreamingSlices(
+        net_engine_, connection_id, slices, slice_count);
 }
 
 void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {
@@ -452,7 +414,8 @@ void HttpServer::CloseConnection(ConnectionId connection_id) {
         net_engine = net_engine_;
     }
     if (net_engine != nullptr) {
-        (void)net_engine->Close(connection_id);
+        connection_writer_.CloseConnection(net_engine, connection_id,
+                                           TcpCloseReason::kNormal);
     }
 }
 
@@ -506,56 +469,6 @@ void HttpServer::NotifyStreamsClosed(
     }
 }
 
-bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const NetBufferSlices &slices,
-                                        size_t size) {
-    INetEngine *net_engine = nullptr;
-    {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
-            !iter->second->is_streaming()) {
-            Error(kHttpModuleName,
-                            "HTTP-FLV enqueue reject conn=%llu reason=closed "
-                            "size=%zu",
-                            static_cast<unsigned long long>(connection_id),
-                            size);
-            return false;
-        }
-        net_engine = net_engine_;
-    }
-    if (net_engine == nullptr) {
-        Error(kHttpModuleName,
-                        "HTTP-FLV enqueue reject conn=%llu reason=no_net "
-                        "size=%zu",
-                        static_cast<unsigned long long>(connection_id), size);
-        return false;
-    }
-    // 流式响应没有 Content-Length 和请求结束点，只能用 net pending bytes
-    // 判定慢客户端；超限立即关连接，让媒体 reader/client 在 close callback 里回落。
-    if (net_engine->PendingBytes(connection_id) >=
-        options_.send_buffer_limit_bytes) {
-        Error(kHttpModuleName,
-                        "HTTP-FLV close conn=%llu reason=queue_full "
-                        "pending=%u limit=%zu next=%zu",
-                        static_cast<unsigned long long>(connection_id),
-                        net_engine->PendingBytes(connection_id),
-                        static_cast<size_t>(options_.send_buffer_limit_bytes),
-                        size);
-        (void)net_engine->Close(connection_id);
-        return false;
-    }
-    if (!net_engine->SendSlices(connection_id, slices)) {
-        Error(kHttpModuleName,
-                        "HTTP-FLV send failed conn=%llu size=%zu pending=%u",
-                        static_cast<unsigned long long>(connection_id),
-                        size, net_engine->PendingBytes(connection_id));
-        (void)net_engine->Close(connection_id);
-        return false;
-    }
-    return true;
-}
-
 void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
     std::string peer_ip = peer.ip;
     {
@@ -572,7 +485,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
 
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     ClosedHttpSessionInfo closed;
-    INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     NetTimerId timer_id = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -586,11 +499,11 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
         if (stats_.active_connections > 0) {
             --stats_.active_connections;
         }
-        net_engine = net_engine_;
+        net_executor = net_executor_;
     }
     // TCP close 是所有媒体长连接的最终回收点；无论是浏览器断开、超时还是队列满，
     // 都必须在这里通知 http_media 解除 FLV/MJPEG/SSE 订阅。
-    CancelNetTimer(net_engine, timer_id);
+    CancelNetTimer(net_executor, timer_id);
     NotifyStreamClosed(closed.media_client);
     Info(kHttpModuleName,
                    "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
@@ -732,9 +645,42 @@ void HttpServer::LogRequests(
     }
 }
 
+HttpStreamingSessionDiagnostics HttpServer::BuildStreamingDiagnostics(
+    const HttpSessionStreamingInfo &session,
+    const NetConnectionDiagnostics &connection) {
+    HttpStreamingSessionDiagnostics diagnostics;
+    diagnostics.connection_id = session.connection_id;
+    diagnostics.protocol = HttpMediaClientTypeName(session.media_client.type);
+    diagnostics.session_id = std::to_string(session.connection_id);
+    diagnostics.client_id = std::to_string(session.media_client.id);
+    diagnostics.stream_id = session.media_client.stream_id;
+    diagnostics.client_ip = session.client_ip;
+    diagnostics.pending_bytes = connection.pending_bytes;
+    diagnostics.send_queue_length = connection.send_queue_length;
+    diagnostics.last_write_at_ms = connection.last_write_at_ms;
+    diagnostics.open = connection.connection_id == session.connection_id
+                           ? connection.open
+                           : session.streaming;
+    if (!diagnostics.open) {
+        diagnostics.close_reason = TcpCloseReasonName(connection.close_reason);
+    }
+    if (!connection.remote_address.ip.empty()) {
+        diagnostics.remote_address = connection.remote_address.ip + ":" +
+                                     std::to_string(
+                                         connection.remote_address.port);
+    }
+    if (!connection.local_address.ip.empty()) {
+        diagnostics.local_address = connection.local_address.ip + ":" +
+                                    std::to_string(
+                                        connection.local_address.port);
+    }
+    return diagnostics;
+}
+
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     RenewedHttpSessionTimeout timeout;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -744,14 +690,15 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
         }
         timeout = iter->second->RenewTimeout();
         net_engine = net_engine_;
+        net_executor = net_executor_;
     }
-    if (net_engine == nullptr) {
+    if (net_engine == nullptr || net_executor == nullptr) {
         return;
     }
     // timeout_generation_ 用来淘汰旧 timer：请求推进或进入 streaming 后，
     // 旧 timer 即使晚到也不会误关新状态下的连接。
-    CancelNetTimer(net_engine, timeout.replaced_timer_id);
-    const NetTimerId timer_id = net_engine->RunOnIoAfter(
+    CancelNetTimer(net_executor, timeout.replaced_timer_id);
+    const NetTimerId timer_id = net_executor->RunAfter(
         delay_ms, [this, connection_id,
                    generation = timeout.generation]() {
             INetEngine *engine = nullptr;
@@ -779,13 +726,13 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                  iter->second->InstallTimeout(timeout.generation, timer_id);
     }
     if (!stored) {
-        CancelNetTimer(net_engine, timer_id);
+        CancelNetTimer(net_executor, timer_id);
     }
 }
 
-void HttpServer::CancelNetTimer(INetEngine *net_engine, NetTimerId timer_id) {
-    if (net_engine != nullptr && timer_id != 0) {
-        (void)net_engine->CancelIoTimer(timer_id);
+void HttpServer::CancelNetTimer(INetExecutor *executor, NetTimerId timer_id) {
+    if (executor != nullptr && timer_id != 0) {
+        (void)executor->CancelTimer(timer_id);
     }
 }
 

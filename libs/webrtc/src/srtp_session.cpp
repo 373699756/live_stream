@@ -293,6 +293,52 @@ bool SrtpSession::ParseRtcpFeedback(const uint8_t *data, size_t size,
   return false;
 }
 
+bool SrtpSession::CountRtcpFeedback(const uint8_t *data, size_t size,
+                                    RtcpFeedbackCounters *counters) {
+  if (counters == nullptr) {
+    return false;
+  }
+  *counters = RtcpFeedbackCounters();
+  if (data == nullptr || size < kRtcpCommonHeaderSize) {
+    return false;
+  }
+
+  size_t offset = 0;
+  while (offset + kRtcpCommonHeaderSize <= size) {
+    const uint8_t fmt = data[offset] & 0x1f;
+    const uint8_t packet_type = data[offset + 1];
+    const uint16_t length_words =
+        (static_cast<uint16_t>(data[offset + 2]) << 8) |
+        static_cast<uint16_t>(data[offset + 3]);
+    const size_t packet_size =
+        (static_cast<size_t>(length_words) + 1) * 4;
+    if (packet_size < kRtcpCommonHeaderSize ||
+        packet_size > size - offset) {
+      return false;
+    }
+
+    if ((packet_type == kRtcpPacketTypePayloadFeedback ||
+         packet_type == kRtcpPacketTypeRtpFeedback) &&
+        packet_size >= kRtcpFeedbackHeaderSize) {
+      if (packet_type == kRtcpPacketTypePayloadFeedback &&
+          fmt == kRtcpFeedbackFormatPli) {
+        ++counters->pli_count;
+      } else if (packet_type == kRtcpPacketTypePayloadFeedback &&
+                 fmt == kRtcpFeedbackFormatFir) {
+        ++counters->fir_count;
+      } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
+                 fmt == kRtcpFeedbackFormatNack) {
+        ++counters->nack_count;
+      } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
+                 fmt == kRtcpFeedbackFormatTransportCc) {
+        ++counters->transport_cc_count;
+      }
+    }
+    offset += packet_size;
+  }
+  return offset == size;
+}
+
 bool SrtpSession::IsKeyFrameRequest(RtcpFeedbackType type) {
   return type == RtcpFeedbackType::kPli || type == RtcpFeedbackType::kFir;
 }

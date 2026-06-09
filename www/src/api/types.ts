@@ -253,6 +253,8 @@ export interface MediaSessionInfo {
   protocol: string;
   stream: StreamName;
   state: string;
+  connection_id?: number;
+  client_id?: string;
   client_ip?: string;
   user_name?: string;
   peer_id?: string;
@@ -275,6 +277,8 @@ export interface MediaSessionInfo {
   last_rtcp_ms?: number;
   last_error?: string;
   pending_bytes?: number;
+  send_queue_length?: number;
+  last_write_at_ms?: number;
   close_reason?: string;
   created_at_ms?: number;
   updated_at_ms?: number;

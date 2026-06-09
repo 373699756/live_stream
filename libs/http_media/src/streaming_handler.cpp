@@ -295,6 +295,7 @@ private:
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kEventStream;
         client.id = subscription_id;
+        client.stream_id = StreamId::kMain;
         // AttachStreamClient 把 event subscription id 交给 HTTP session，
         // 连接异常关闭时才能从统一 close path 解除订阅。
         if (!writer_->AttachStreamClient(connection_id, client)) {
@@ -595,6 +596,7 @@ private:
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kFlv;
         client.id = client_id;
+        client.stream_id = stream_id;
         // FLV client id 挂到 HTTP session，TCP close 时统一 DetachFlvClient，
         // 不能靠浏览器主动关闭请求来释放媒体 fanout。
         if (!writer_->AttachStreamClient(connection_id, client)) {
@@ -744,6 +746,7 @@ private:
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kMjpeg;
         client.id = client_id;
+        client.stream_id = stream_id;
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_mjpeg_source_->DetachMjpegClient(client_id);
             Error(kHttpMediaModuleName,

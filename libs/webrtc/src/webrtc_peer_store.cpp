@@ -58,8 +58,8 @@ std::vector<std::string> WebrtcPeerStore::TakePeerIdsForClient(
   if (session_id.empty() && client_id.empty()) {
     return peer_ids;
   }
-  const bool use_session = !session_id.empty();
-  const bool use_client = !use_session && !client_id.empty();
+  const bool use_client = !client_id.empty();
+  const bool use_session = !use_client && !session_id.empty();
   for (auto iter = peers_.begin(); iter != peers_.end();) {
     const WebrtcPeerInfo &peer = iter->second;
     const bool same_session = use_session && peer.session_id == session_id;
@@ -126,6 +126,17 @@ std::vector<WebrtcPeerInfo> WebrtcPeerStore::ConnectedPeers(
   for (const auto &item : peers_) {
     if (item.second.stream_id == stream_id &&
         item.second.state == WebrtcPeerState::kConnected) {
+      peers.push_back(item.second);
+    }
+  }
+  return peers;
+}
+
+std::vector<WebrtcPeerInfo> WebrtcPeerStore::OpenPeers() const {
+  std::vector<WebrtcPeerInfo> peers;
+  peers.reserve(peers_.size());
+  for (const auto &item : peers_) {
+    if (IsOpenPeerState(item.second.state)) {
       peers.push_back(item.second);
     }
   }

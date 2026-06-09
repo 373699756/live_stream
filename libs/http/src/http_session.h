@@ -53,6 +53,13 @@ struct ClosedHttpSessionInfo {
   bool was_streaming = false;
 };
 
+struct HttpSessionStreamingInfo {
+  ConnectionId connection_id = 0;
+  std::string client_ip;
+  HttpMediaClientHandle media_client;
+  bool streaming = false;
+};
+
 struct RenewedHttpSessionTimeout {
   // generation 是超时 timer 的版本号。请求推进、响应完成或进入 streaming 时会
   // 增加版本，旧 timer 回调必须被忽略。
@@ -85,6 +92,7 @@ class HttpSession {
   bool ExpireTimeout(uint64_t generation);
   ClosedHttpSessionInfo Close();
   HttpMediaClientHandle TakeMediaClient();
+  HttpSessionStreamingInfo StreamingInfo() const;
 
  private:
   static HttpSessionParseFailure FailureFromSplitStatus(

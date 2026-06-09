@@ -137,6 +137,31 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
     if (!BuildOutBuffer(slices, &buffer)) {
         return false;
     }
+    if (loop_->IsCurrentThread()) {
+        if (!EnqueueOutBuffer(std::move(buffer))) {
+            return false;
+        }
+        EnableWrite();
+        HandleWrite();
+        return true;
+    }
+    std::shared_ptr<OutBuffer> queued_buffer =
+        std::make_shared<OutBuffer>(std::move(buffer));
+    std::weak_ptr<TcpSession> weak_self = shared_from_this();
+    return loop_->Post([weak_self, queued_buffer]() mutable {
+        auto self = weak_self.lock();
+        if (!self) {
+            return;
+        }
+        if (!self->EnqueueOutBuffer(std::move(*queued_buffer))) {
+            return;
+        }
+        self->EnableWrite();
+        self->HandleWrite();
+    });
+}
+
+bool TcpSession::EnqueueOutBuffer(OutBuffer buffer) {
     TcpCloseReason close_reason = TcpCloseReason::kNormal;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -168,26 +193,14 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
         (void)Close(close_reason);
         return false;
     }
-    std::weak_ptr<TcpSession> weak_self = shared_from_this();
-    const bool posted = loop_->Post([weak_self]() {
-        auto self = weak_self.lock();
-        if (!self) {
-            return;
-        }
-        self->EnableWrite();
-        self->HandleWrite();
-    });
-    if (!posted) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!send_queue_.empty()) {
-            pending_bytes_ -= send_queue_.back().size;
-            send_queue_.pop_back();
-        }
-    }
-    return posted;
+    return true;
 }
 
 bool TcpSession::Close(TcpCloseReason reason) {
+    if (loop_->IsCurrentThread()) {
+        CloseInLoop(reason);
+        return true;
+    }
     std::weak_ptr<TcpSession> weak_self = shared_from_this();
     return loop_->Post([weak_self, reason]() {
         auto self = weak_self.lock();
@@ -198,6 +211,23 @@ bool TcpSession::Close(TcpCloseReason reason) {
 }
 
 bool TcpSession::CloseAfterSend() {
+    if (loop_->IsCurrentThread()) {
+        bool close_now = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (closed_) {
+                return true;
+            }
+            close_after_send_ = true;
+            close_now = send_queue_.empty();
+        }
+        if (close_now) {
+            CloseInLoop(TcpCloseReason::kNormal);
+        } else {
+            EnableWrite();
+        }
+        return true;
+    }
     std::weak_ptr<TcpSession> weak_self = shared_from_this();
     return loop_->Post([weak_self]() {
         auto self = weak_self.lock();

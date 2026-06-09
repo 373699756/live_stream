@@ -13,6 +13,7 @@
 namespace live_stream {
 
 class INetEngine;
+class INetExecutor;
 
 enum class WebrtcPeerState {
     kCreated = 0,
@@ -45,6 +46,7 @@ struct WebrtcOptions {
 struct WebrtcDependencies {
     IMediaFrameSource *media_source = nullptr;
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
 };
 
 struct WebrtcCreatePeerRequest {

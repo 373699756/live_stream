@@ -17,6 +17,7 @@ namespace net_internal {
 class TcpSession;
 class TcpServer;
 class UdpEndpoint;
+class NetExecutor;
 
 class NetEngineImpl : public INetEngine {
 public:
@@ -25,10 +26,14 @@ public:
 
     bool Start() override;
     void Stop() override;
-    TcpServerId ListenTcp(const TcpListenOptions &options,
+    INetExecutor *DefaultExecutor() override;
+    INetExecutor *PickExecutor() override;
+    TcpServerId ListenTcp(INetExecutor *executor,
+                          const TcpListenOptions &options,
                           const TcpCallbacks &callbacks) override;
     bool CloseTcp(TcpServerId id) override;
-    UdpSocketId BindUdp(const UdpBindOptions &options,
+    UdpSocketId BindUdp(INetExecutor *executor,
+                        const UdpBindOptions &options,
                         const UdpCallbacks &callbacks) override;
     bool CloseUdp(UdpSocketId id) override;
     bool Send(ConnectionId id, const uint8_t *data, size_t size) override;
@@ -45,9 +50,6 @@ public:
                     size_t size) override;
     bool SendToPeerSlices(UdpSocketId id,
                           const NetBufferSlices &slices) override;
-    NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) override;
-    NetTimerId RunOnIoEvery(uint32_t interval_ms, infra::Task task) override;
-    bool CancelIoTimer(NetTimerId id) override;
     NetAddress TcpLocalAddress(TcpServerId id) const override;
     NetAddress UdpLocalAddress(UdpSocketId id) const override;
     NetAddress UdpPeerAddress(UdpSocketId id) const override;
@@ -71,6 +73,7 @@ public:
     void DispatchUdp(const UdpCallbacks &callbacks, UdpSocketId socket_id,
                      NetAddress peer, const uint8_t *data, size_t size);
     std::shared_ptr<EventLoop> NextLoop();
+    std::shared_ptr<NetExecutor> ResolveExecutor(INetExecutor *executor) const;
     ConnectionId AllocateConnectionId() { return next_connection_id_++; }
     NetTimerId AllocateTimerId() { return next_timer_id_++; }
     void AddAccepted();
@@ -92,9 +95,10 @@ private:
     NetEngineOptions options_;
     mutable std::mutex mutex_;
     mutable std::mutex stats_mutex_;
-    // loops_ 按 round-robin 分配 listener、UDP endpoint 和 timer。timer id 是全局
-    // 唯一的，CancelIoTimer() 才能跨 loop 安全取消。
+    // executors_ 按 round-robin 分配 accepted session；listener、UDP endpoint
+    // 和 timer 必须由调用方显式指定执行域。
     std::vector<std::shared_ptr<EventLoop>> loops_;
+    std::vector<std::shared_ptr<NetExecutor>> executors_;
     // servers_/udp_sockets_/connections_ 是 net 的资源所有权表；协议模块只保存 id，
     // 不能保存内部对象指针。
     std::unordered_map<TcpServerId, std::shared_ptr<TcpServer>> servers_;
@@ -109,7 +113,7 @@ private:
     std::atomic<uint64_t> next_udp_id_{1};
     std::atomic<uint64_t> next_connection_id_{1};
     std::atomic<uint64_t> next_timer_id_{1};
-    std::atomic<uint32_t> next_loop_{0};
+    mutable std::atomic<uint32_t> next_loop_{0};
     std::atomic<bool> running_{false};
     mutable NetStats stats_;
 };

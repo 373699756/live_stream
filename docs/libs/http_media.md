@@ -49,6 +49,10 @@ flowchart LR
 媒体正文输出统一使用 `MediaSlice` 表达 header、payload 和可选 `VideoBuffer`
 owner。HLS segment、HTTP-FLV cached GOP 和 MJPEG frame 只提交 slice；跨线程或异步
 TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner 引用保持。
+HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
+包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
+`/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。
+SSE 使用同一 close callback 解除订阅，但不作为媒体会话列入 `/api/media/sessions`。
 
 ## API 归属
 

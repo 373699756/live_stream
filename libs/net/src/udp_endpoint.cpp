@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 #include <utility>
 
 namespace live_stream {
@@ -116,14 +117,22 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
 }
 
 void UdpEndpoint::Stop() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    running_ = false;
-    if (loop_ && fd_.valid()) {
-        loop_->RemoveFd(fd_.get());
+    std::shared_ptr<EventLoop> loop;
+    int fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        running_ = false;
+        loop = loop_;
+        fd = fd_.get();
+    }
+    if (loop && fd >= 0) {
+        loop->RemoveFd(fd);
     }
     // UDP endpoint 没有连接级 close callback；上层协议必须在 CloseUdp() 前清理
     // 自己保存的 session/transport 状态。
+    std::lock_guard<std::mutex> lock(mutex_);
     fd_.Reset();
+    loop_.reset();
 }
 
 bool UdpEndpoint::SendTo(NetAddress address, const uint8_t *data, size_t size) {
@@ -139,6 +148,62 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
     if (slices.count > kMaxNetBufferSlices) {
         return false;
     }
+    if (loop_ != nullptr && loop_->IsCurrentThread()) {
+        return SendToSlicesInLoop(std::move(address), slices);
+    }
+    size_t total_size = 0;
+    for (size_t i = 0; i < slices.count; ++i) {
+        const NetBufferSlice &slice = slices.slices[i];
+        if (slice.size == 0) {
+            continue;
+        }
+        if (slice.data == nullptr) {
+            return false;
+        }
+        total_size += slice.size;
+    }
+    if (total_size == 0) {
+        return true;
+    }
+    auto datagram = std::make_shared<std::vector<uint8_t>>();
+    datagram->resize(total_size);
+    size_t offset = 0;
+    for (size_t i = 0; i < slices.count; ++i) {
+        const NetBufferSlice &slice = slices.slices[i];
+        if (slice.size == 0) {
+            continue;
+        }
+        std::memcpy(datagram->data() + offset, slice.data, slice.size);
+        offset += slice.size;
+    }
+    std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
+    return loop_ != nullptr &&
+           loop_->Post([weak_self, address = std::move(address),
+                        datagram]() mutable {
+               auto self = weak_self.lock();
+               if (self) {
+                   static_cast<void>(
+                       self->SendPreparedDatagram(std::move(address),
+                                                  datagram));
+               }
+           });
+}
+
+bool UdpEndpoint::SendPreparedDatagram(
+    NetAddress address,
+    const std::shared_ptr<std::vector<uint8_t>> &datagram) {
+    if (!datagram || datagram->empty()) {
+        return false;
+    }
+    NetBufferSlices slices;
+    if (!slices.Add(datagram->data(), datagram->size())) {
+        return false;
+    }
+    return SendToSlicesInLoop(std::move(address), slices);
+}
+
+bool UdpEndpoint::SendToSlicesInLoop(NetAddress address,
+                                     const NetBufferSlices &slices) {
     sockaddr_in addr = ToSockAddr(address);
     if (addr.sin_family != AF_INET) {
         return false;
@@ -190,10 +255,24 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     }
     // selected peer 只给 RTP/ICE 这类已协商对端使用；ONVIF discovery 仍走
     // SendTo()，因为每个 Probe 的回复目标不同。
-    std::lock_guard<std::mutex> lock(mutex_);
-    peer_ = std::move(peer);
-    has_peer_ = true;
-    return true;
+    if (loop_ != nullptr && loop_->IsCurrentThread()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        peer_ = std::move(peer);
+        has_peer_ = true;
+        return true;
+    }
+    auto selected_peer = std::make_shared<NetAddress>(std::move(peer));
+    std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
+    return loop_ != nullptr &&
+           loop_->Post([weak_self, selected_peer]() {
+               auto self = weak_self.lock();
+               if (!self) {
+                   return;
+               }
+               std::lock_guard<std::mutex> lock(self->mutex_);
+               self->peer_ = *selected_peer;
+               self->has_peer_ = true;
+           });
 }
 
 bool UdpEndpoint::SendToPeer(const uint8_t *data, size_t size) {

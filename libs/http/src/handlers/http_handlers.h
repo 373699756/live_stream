@@ -23,6 +23,7 @@ class IDeviceMedia;
 class IAiView;
 class ISnapshotView;
 class IWebrtc;
+class IHttp;
 
 struct SystemStatusSources {
     ILogger *logger = nullptr;
@@ -70,6 +71,7 @@ struct HttpHandlerDependencies {
     IAlarm *alarm = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
+    IHttp *http = nullptr;
     IAiView *ai = nullptr;
     ISnapshotView *snapshot = nullptr;
     SystemStatusSources system_status_sources;
@@ -99,7 +101,7 @@ std::unique_ptr<IHttpHandler> MakeAlarmHandler(
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
     HttpAccess *access, IConfig *config,
     IDeviceMedia *device_media, IMediaSource *media_source,
-    IRtsp *rtsp, IWebrtc *webrtc);
+    IRtsp *rtsp, IWebrtc *webrtc, IHttp *http);
 std::unique_ptr<IHttpHandler> MakeAiHandler(
     HttpAccess *access, IConfig *config,
     IAiView *ai, IDeviceMedia *device_media);

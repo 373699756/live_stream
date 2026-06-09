@@ -100,6 +100,14 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 Bearer` header 供非浏览器客户端使用。Web 不在 JavaScript 可读存储或 URL query
 中携带 session token。
 
+`/api/media/sessions` 由 media handler 聚合 HTTP streaming、RTSP 和 WebRTC
+diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
+`session_id`、`connection_id`、`client_id`、`stream`、`state`、`client_ip`、
+`remote_address`、`local_address`、`pending_bytes`、`send_queue_length`、
+`last_write_at_ms` 和 `close_reason`；`pending_bytes`、`send_queue_length` 和
+`last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端和发送队列
+积压。HLS playlist/segment 是短 HTTP 响应，不作为活跃 session 常驻展示。
+
 ## 状态与资源模型
 
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
@@ -107,6 +115,16 @@ HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许
 `CreateHttp()` 通过 `HttpDependencies` 命名字段接收 app 组合根注入，
 避免认证、设备、协议和媒体源依赖靠长参数位置传递。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
+
+HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body
+发送边界和发送状态可观察思路，但不把第三方 HTTP 框架复制进来：
+`HttpRequestSplitter` 只负责 HTTP message 边界，`HttpServer` 拥有 socket/session
+生命周期、keep-alive、timeout 和 streaming 状态迁移，`HttpConnectionWriter` 负责
+普通响应、HLS segment body slice、HTTP-FLV/MJPEG/SSE 流式 chunk 的 header/body
+组包、`VideoBuffer` owner 转 `NetBufferOwner`、发送队列背压和慢客户端关闭。
+`HttpMediaWriter` 只暴露 begin stream、attach client、enqueue slices、close
+callback 和 streaming diagnostics。这样 `http_media` 不直接接触 socket 队列，却能
+通过 `IHttp::GetStreamingSessionDiagnostics()` 让 Web 看到 HTTP-FLV/MJPEG 的发送积压。
 
 HTTP 自有资源只包括 listener、connection、request/response buffer、router、
 executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句柄。业务对象生命周期、

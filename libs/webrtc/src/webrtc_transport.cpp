@@ -52,8 +52,8 @@ bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
                             uint32_t *next_port_offset,
                             NetAddress *local_candidate) {
     if (next_port_offset == nullptr || local_candidate == nullptr ||
-        options.net_engine == nullptr || options.peer_id.empty() ||
-        options.local_ice_ufrag.empty() ||
+        options.net_engine == nullptr || options.net_executor == nullptr ||
+        options.peer_id.empty() || options.local_ice_ufrag.empty() ||
         options.local_ice_password.empty()) {
         return false;
     }
@@ -74,6 +74,7 @@ bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
 
     peer_id_ = options.peer_id;
     net_engine_ = options.net_engine;
+    net_executor_ = options.net_executor;
     timer_user_ = options.timer_user;
     on_dtls_timeout_ = options.on_dtls_timeout;
     ice_ = std::move(ice);
@@ -97,6 +98,7 @@ void WebrtcTransport::Close() {
     ice_.reset();
     peer_id_.clear();
     net_engine_ = nullptr;
+    net_executor_ = nullptr;
     timer_user_ = nullptr;
     on_dtls_timeout_ = nullptr;
     protected_rtp_packets_ = 0;
@@ -196,15 +198,16 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
     }
     ++rtcp_packets_;
     rtcp_bytes_ += plain_rtcp_packet_.size();
-    RtcpFeedback feedback;
-    if (!SrtpSession::ParseRtcpFeedback(plain_rtcp_packet_.data(),
+    RtcpFeedbackCounters counters;
+    if (!SrtpSession::CountRtcpFeedback(plain_rtcp_packet_.data(),
                                         plain_rtcp_packet_.size(),
-                                        &feedback)) {
+                                        &counters)) {
         *request_key_frame = false;
         return true;
     }
-    RecordRtcpFeedback(feedback.type);
-    *request_key_frame = SrtpSession::IsKeyFrameRequest(feedback.type);
+    RecordRtcpFeedback(counters);
+    *request_key_frame = counters.pli_count != 0 ||
+                         counters.fir_count != 0;
     return true;
 }
 
@@ -300,7 +303,7 @@ bool WebrtcTransport::StartIceTransport(
     uint32_t *next_port_offset,
     std::unique_ptr<IceTransport> *ice) {
     if (next_port_offset == nullptr || ice == nullptr ||
-        options.net_engine == nullptr) {
+        options.net_engine == nullptr || options.net_executor == nullptr) {
         return false;
     }
 
@@ -315,7 +318,8 @@ bool WebrtcTransport::StartIceTransport(
         }
         std::unique_ptr<IceTransport> candidate(
             new IceTransport(options.peer_id));
-        if (!candidate->Start(options.net_engine, options.udp_callbacks,
+        if (!candidate->Start(options.net_engine, options.net_executor,
+                              options.udp_callbacks,
                               "0.0.0.0", port, options.local_ice_ufrag,
                               options.local_ice_password)) {
             continue;
@@ -382,7 +386,7 @@ bool WebrtcTransport::StartSrtp(const DtlsSrtpKeys &keys) {
 }
 
 bool WebrtcTransport::ArmDtlsTimer() {
-    if (net_engine_ == nullptr || dtls_ == nullptr ||
+    if (net_executor_ == nullptr || dtls_ == nullptr ||
         dtls_->state() != DtlsState::kConnecting ||
         on_dtls_timeout_ == nullptr) {
         return true;
@@ -396,7 +400,7 @@ bool WebrtcTransport::ArmDtlsTimer() {
     void *timer_user = timer_user_;
     WebrtcTransportTimerFn on_dtls_timeout = on_dtls_timeout_;
     const std::string peer_id = peer_id_;
-    const NetTimerId timer_id = net_engine_->RunOnIoAfter(
+    const NetTimerId timer_id = net_executor_->RunAfter(
         timeout_ms, [timer_user, on_dtls_timeout, peer_id]() {
             on_dtls_timeout(timer_user, peer_id);
         });
@@ -411,31 +415,19 @@ void WebrtcTransport::CancelDtlsTimer() {
     if (dtls_timer_id_ == 0) {
         return;
     }
-    if (net_engine_ != nullptr) {
-        (void)net_engine_->CancelIoTimer(dtls_timer_id_);
+    if (net_executor_ != nullptr) {
+        (void)net_executor_->CancelTimer(dtls_timer_id_);
     }
     dtls_timer_id_ = 0;
 }
 
-void WebrtcTransport::RecordRtcpFeedback(RtcpFeedbackType type) {
-    switch (type) {
-        case RtcpFeedbackType::kPli:
-            ++rtcp_pli_count_;
-            ++rtcp_keyframe_requests_;
-            break;
-        case RtcpFeedbackType::kFir:
-            ++rtcp_fir_count_;
-            ++rtcp_keyframe_requests_;
-            break;
-        case RtcpFeedbackType::kNack:
-            ++rtcp_nack_count_;
-            break;
-        case RtcpFeedbackType::kTransportCc:
-            ++rtcp_transport_cc_count_;
-            break;
-        case RtcpFeedbackType::kNone:
-            break;
-    }
+void WebrtcTransport::RecordRtcpFeedback(
+    const RtcpFeedbackCounters &counters) {
+    rtcp_pli_count_ += counters.pli_count;
+    rtcp_fir_count_ += counters.fir_count;
+    rtcp_nack_count_ += counters.nack_count;
+    rtcp_transport_cc_count_ += counters.transport_cc_count;
+    rtcp_keyframe_requests_ += counters.pli_count + counters.fir_count;
 }
 
 }  // namespace webrtc_internal

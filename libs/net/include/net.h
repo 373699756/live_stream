@@ -167,6 +167,17 @@ struct NetConnectionDiagnostics {
 
 const char *TcpCloseReasonName(TcpCloseReason reason);
 
+class INetExecutor {
+public:
+    virtual ~INetExecutor() = default;
+
+    virtual bool Post(infra::Task task) = 0;
+    virtual NetTimerId RunAfter(uint32_t delay_ms, infra::Task task) = 0;
+    virtual NetTimerId RunEvery(uint32_t interval_ms, infra::Task task) = 0;
+    virtual bool CancelTimer(NetTimerId id) = 0;
+    virtual bool IsCurrentThread() const = 0;
+};
+
 class INetEngine {
 public:
     virtual ~INetEngine() = default;
@@ -174,10 +185,15 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
 
-    virtual TcpServerId ListenTcp(const TcpListenOptions &options,
+    virtual INetExecutor *DefaultExecutor() = 0;
+    virtual INetExecutor *PickExecutor() = 0;
+
+    virtual TcpServerId ListenTcp(INetExecutor *executor,
+                                  const TcpListenOptions &options,
                                   const TcpCallbacks &callbacks) = 0;
     virtual bool CloseTcp(TcpServerId id) = 0;
-    virtual UdpSocketId BindUdp(const UdpBindOptions &options,
+    virtual UdpSocketId BindUdp(INetExecutor *executor,
+                                const UdpBindOptions &options,
                                 const UdpCallbacks &callbacks) = 0;
     virtual bool CloseUdp(UdpSocketId id) = 0;
 
@@ -216,11 +232,6 @@ public:
         }
         return SendToPeer(id, slices.slices[0].data, slices.slices[0].size);
     }
-
-    virtual NetTimerId RunOnIoAfter(uint32_t delay_ms, infra::Task task) = 0;
-    virtual NetTimerId RunOnIoEvery(uint32_t interval_ms,
-                                    infra::Task task) = 0;
-    virtual bool CancelIoTimer(NetTimerId id) = 0;
 
     virtual NetAddress TcpLocalAddress(TcpServerId id) const = 0;
     virtual NetAddress UdpLocalAddress(UdpSocketId id) const = 0;

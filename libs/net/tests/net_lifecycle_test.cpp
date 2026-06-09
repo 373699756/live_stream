@@ -25,15 +25,38 @@ int main() {
         return 3;
     }
 
-    const live_stream::NetTimerId timer = engine->RunOnIoAfter(100, []() {});
-    if (timer == 0) {
+    live_stream::INetExecutor *executor = engine->DefaultExecutor();
+    if (executor == nullptr) {
         return 4;
     }
-    if (!engine->CancelIoTimer(timer)) {
+
+    const live_stream::NetTimerId timer = executor->RunAfter(100, []() {});
+    if (timer == 0) {
         return 5;
     }
-    if (engine->CancelIoTimer(timer)) {
+    if (!executor->CancelTimer(timer)) {
         return 6;
+    }
+    if (executor->CancelTimer(timer)) {
+        return 7;
+    }
+
+    live_stream::TcpListenOptions invalid_listen;
+    invalid_listen.address.ip = "127.0.0.1";
+    invalid_listen.address.port = 0;
+    live_stream::TcpCallbacks invalid_tcp_callbacks;
+    invalid_tcp_callbacks.on_accept = OnAccept;
+    if (engine->ListenTcp(nullptr, invalid_listen, invalid_tcp_callbacks) != 0) {
+        return 8;
+    }
+
+    live_stream::UdpBindOptions invalid_bind;
+    invalid_bind.address.ip = "127.0.0.1";
+    invalid_bind.address.port = 0;
+    live_stream::UdpCallbacks invalid_udp_callbacks;
+    invalid_udp_callbacks.on_read = OnUdp;
+    if (engine->BindUdp(nullptr, invalid_bind, invalid_udp_callbacks) != 0) {
+        return 9;
     }
 
     live_stream::TcpListenOptions listen;
@@ -41,18 +64,19 @@ int main() {
     listen.address.port = 0;
     live_stream::TcpCallbacks tcp_callbacks;
     tcp_callbacks.on_accept = OnAccept;
-    const live_stream::TcpServerId server = engine->ListenTcp(listen, tcp_callbacks);
+    const live_stream::TcpServerId server =
+        engine->ListenTcp(executor, listen, tcp_callbacks);
     if (server == 0) {
-        return 7;
+        return 10;
     }
     if (engine->TcpLocalAddress(server).port == 0) {
-        return 8;
+        return 11;
     }
     if (!engine->CloseTcp(server)) {
-        return 9;
+        return 12;
     }
     if (engine->TcpLocalAddress(server).port != 0) {
-        return 10;
+        return 13;
     }
 
     live_stream::UdpBindOptions bind;
@@ -60,18 +84,19 @@ int main() {
     bind.address.port = 0;
     live_stream::UdpCallbacks udp_callbacks;
     udp_callbacks.on_read = OnUdp;
-    const live_stream::UdpSocketId socket_id = engine->BindUdp(bind, udp_callbacks);
+    const live_stream::UdpSocketId socket_id =
+        engine->BindUdp(executor, bind, udp_callbacks);
     if (socket_id == 0) {
-        return 11;
+        return 14;
     }
     if (engine->UdpLocalAddress(socket_id).port == 0) {
-        return 12;
+        return 15;
     }
     if (!engine->CloseUdp(socket_id)) {
-        return 13;
+        return 16;
     }
     if (engine->UdpLocalAddress(socket_id).port != 0) {
-        return 14;
+        return 17;
     }
 
     engine->Stop();

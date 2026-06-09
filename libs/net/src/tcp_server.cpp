@@ -141,12 +141,20 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
 }
 
 void TcpServer::Stop() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    running_ = false;
-    if (loop_ && listen_fd_.valid()) {
-        loop_->RemoveFd(listen_fd_.get());
+    std::shared_ptr<EventLoop> loop;
+    int fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        running_ = false;
+        loop = loop_;
+        fd = listen_fd_.get();
     }
+    if (loop && fd >= 0) {
+        loop->RemoveFd(fd);
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
     listen_fd_.Reset();
+    loop_.reset();
 }
 
 NetAddress TcpServer::LocalAddress() const {

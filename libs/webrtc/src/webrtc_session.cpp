@@ -80,6 +80,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
 
     WebrtcTransportStartOptions transport_options;
     transport_options.net_engine = context.net_engine;
+    transport_options.net_executor = context.net_executor;
     transport_options.udp_callbacks = context.udp_callbacks;
     transport_options.peer_id = peer_.peer_id;
     transport_options.local_port_base = context.options.local_port_base;

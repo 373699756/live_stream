@@ -16,10 +16,40 @@ namespace {
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
+  class FakeNetExecutor : public live_stream::INetExecutor {
+  public:
+    bool Post(infra::Task task) override {
+      if (task) {
+        task();
+      }
+      return true;
+    }
+
+    live_stream::NetTimerId RunAfter(uint32_t, infra::Task) override {
+      return 1;
+    }
+
+    live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+      return 1;
+    }
+
+    bool CancelTimer(live_stream::NetTimerId) override { return true; }
+    bool IsCurrentThread() const override { return true; }
+  };
+
   bool Start() override { return true; }
   void Stop() override {}
 
+  live_stream::INetExecutor* DefaultExecutor() override {
+    return &executor_;
+  }
+
+  live_stream::INetExecutor* PickExecutor() override {
+    return &executor_;
+  }
+
   live_stream::TcpServerId ListenTcp(
+      live_stream::INetExecutor*,
       const live_stream::TcpListenOptions&,
       const live_stream::TcpCallbacks& callbacks) override {
     tcp_callbacks = callbacks;
@@ -33,6 +63,7 @@ public:
   }
 
   live_stream::UdpSocketId BindUdp(
+      live_stream::INetExecutor*,
       const live_stream::UdpBindOptions&,
       const live_stream::UdpCallbacks& callbacks) override {
     udp_callbacks = callbacks;
@@ -84,16 +115,6 @@ public:
     return true;
   }
 
-  live_stream::NetTimerId RunOnIoAfter(uint32_t, infra::Task) override {
-    return 1;
-  }
-
-  live_stream::NetTimerId RunOnIoEvery(uint32_t, infra::Task) override {
-    return 1;
-  }
-
-  bool CancelIoTimer(live_stream::NetTimerId) override { return true; }
-
   live_stream::NetAddress TcpLocalAddress(
       live_stream::TcpServerId) const override {
     return live_stream::NetAddress{"127.0.0.1", 8000};
@@ -142,6 +163,9 @@ public:
   int send_count = 0;
   int send_to_count = 0;
   int close_after_send_count = 0;
+
+private:
+  FakeNetExecutor executor_;
 };
 
 class FakeEvent : public live_stream::IEvent {
@@ -352,6 +376,8 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
   options.enable_auth = auth != nullptr;
   live_stream::OnvifServerDependencies deps;
   deps.net_engine = net_engine;
+  deps.net_executor =
+      net_engine == nullptr ? nullptr : net_engine->DefaultExecutor();
   deps.event = event;
   deps.system = system;
   deps.time = time;
@@ -380,6 +406,7 @@ int main() {
 
   FakeNetEngine cleanup_net;
   deps.net_engine = &cleanup_net;
+  deps.net_executor = cleanup_net.DefaultExecutor();
   cleanup_net.bind_udp_ok = false;
   std::unique_ptr<live_stream::OnvifServer> cleanup_server =
       live_stream::CreateOnvifServer(options, deps);
@@ -389,6 +416,7 @@ int main() {
 
   FakeNetEngine start_fail_net;
   deps.net_engine = &start_fail_net;
+  deps.net_executor = start_fail_net.DefaultExecutor();
   start_fail_net.listen_tcp_ok = false;
   std::unique_ptr<live_stream::OnvifServer> start_fail_server =
       live_stream::CreateOnvifServer(options, deps);

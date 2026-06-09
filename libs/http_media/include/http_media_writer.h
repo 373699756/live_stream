@@ -3,11 +3,13 @@
 
 #include "http.h"
 #include "media/media_buffer.h"
+#include "media/stream_types.h"
 #include "net.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace live_stream {
 
@@ -21,7 +23,22 @@ enum class HttpMediaClientType {
 struct HttpMediaClientHandle {
     HttpMediaClientType type = HttpMediaClientType::kNone;
     uint64_t id = 0;
+    StreamId stream_id = StreamId::kMain;
 };
+
+inline const char *HttpMediaClientTypeName(HttpMediaClientType type) {
+    switch (type) {
+        case HttpMediaClientType::kFlv:
+            return "http_flv";
+        case HttpMediaClientType::kMjpeg:
+            return "mjpeg";
+        case HttpMediaClientType::kEventStream:
+            return "event_stream";
+        case HttpMediaClientType::kNone:
+            break;
+    }
+    return "none";
+}
 
 using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;

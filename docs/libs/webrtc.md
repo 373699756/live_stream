@@ -76,7 +76,9 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 | `last_error` | 最近一次明确失败原因 |
 | `created_at_ms` / `updated_at_ms` | peer 生命周期时间戳 |
 
-`/api/media/sessions` 可以聚合这些字段；`/api/media/streams/{stream}` 只展示
+`/api/media/sessions` 聚合当前 open peer 的这些字段；closed/failed peer 仍可通过
+`GetPeer(peer_id)` 保留诊断，但不会混入 active sessions，避免历史 peer 影响
+`webrtc_active_peers` 和会话列表一致性。`/api/media/streams/{stream}` 只展示
 protocol ready 汇总，不替代 peer 级 diagnostics。
 
 10.5 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与 libsrtp；
@@ -119,7 +121,7 @@ offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answ
 
 10.6 当前基线已经把 SRTP/RTCP 接入 `webrtc_transport`：RTP sender 交出的 RTP
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
-会解密并解析 PLI/FIR/NACK/TWCC。PLI/FIR 会触发
+会解密并解析 compound RTCP 内的 PLI/FIR/NACK/TWCC feedback packet。PLI/FIR 会触发
 `media_source.RequestKeyFrame()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
 RTP 重传缓存和拥塞控制后置。
 `webrtc_transport` 为每个 peer 复用 SRTP RTP 输出 buffer 和 SRTCP 输入解密 buffer；

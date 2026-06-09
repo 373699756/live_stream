@@ -152,6 +152,7 @@ int main() {
   FakeConfig config;
   live_stream::HttpDependencies deps;
   deps.net_engine = net_engine.get();
+  deps.net_executor = net_engine->DefaultExecutor();
 
   live_stream::HttpOptions options;
   options.listen_ip = "127.0.0.1";
@@ -164,6 +165,7 @@ int main() {
 
   live_stream::HttpDependencies http_dependencies;
   http_dependencies.net_engine = net_engine.get();
+  http_dependencies.net_executor = net_engine->DefaultExecutor();
   http_dependencies.auth = &auth;
   http_dependencies.config = &config;
   auto http = live_stream::CreateHttp(options, http_dependencies);

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace live_stream {
 namespace net_internal {
@@ -33,6 +34,10 @@ public:
 
 private:
     void HandleRead();
+    bool SendPreparedDatagram(NetAddress address,
+                              const std::shared_ptr<std::vector<uint8_t>>
+                                  &datagram);
+    bool SendToSlicesInLoop(NetAddress address, const NetBufferSlices &slices);
 
     NetEngineImpl *engine_ = nullptr;
     UdpSocketId id_ = 0;

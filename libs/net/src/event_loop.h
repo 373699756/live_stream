@@ -28,6 +28,7 @@ public:
     bool Start();
     void Stop();
     bool Post(infra::Task task);
+    bool IsCurrentThread() const;
     bool AddFd(int fd, uint32_t events, std::function<void(uint32_t)> handler);
     bool ModifyFd(int fd, uint32_t events);
     void RemoveFd(int fd);
@@ -68,6 +69,7 @@ private:
     UniqueFd timer_fd_;
     EventFd wakeup_;
     std::thread thread_;
+    std::thread::id thread_id_;
     std::deque<infra::Task> tasks_;
     std::unordered_map<int, Handler> handlers_;
     std::map<NetTimerId, std::shared_ptr<Timer>> timers_;

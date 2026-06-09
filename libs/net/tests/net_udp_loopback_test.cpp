@@ -30,6 +30,13 @@ int main() {
     if (!engine) {
         return 1;
     }
+    if (!engine->Start()) {
+        return 2;
+    }
+    live_stream::INetExecutor *executor = engine->DefaultExecutor();
+    if (executor == nullptr) {
+        return 3;
+    }
     UdpState state;
     live_stream::UdpBindOptions bind;
     bind.address.ip = "127.0.0.1";
@@ -37,13 +44,14 @@ int main() {
     live_stream::UdpCallbacks callbacks;
     callbacks.user = &state;
     callbacks.on_read = OnUdp;
-    live_stream::UdpSocketId socket_id = engine->BindUdp(bind, callbacks);
-    if (socket_id == 0 || !engine->Start()) {
-        return 2;
+    live_stream::UdpSocketId socket_id =
+        engine->BindUdp(executor, bind, callbacks);
+    if (socket_id == 0) {
+        return 4;
     }
     live_stream::NetAddress local = engine->UdpLocalAddress(socket_id);
     if (local.port == 0) {
-        return 3;
+        return 5;
     }
     const int fd = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in addr{};
@@ -57,5 +65,5 @@ int main() {
     }
     close(fd);
     engine->Stop();
-    return state.received ? 0 : 4;
+    return state.received ? 0 : 6;
 }

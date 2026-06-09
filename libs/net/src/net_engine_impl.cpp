@@ -15,6 +15,46 @@ constexpr size_t kClosedConnectionDiagnosticsLimit = 128;
 
 }  // namespace
 
+class NetExecutor : public INetExecutor {
+public:
+    NetExecutor(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop)
+        : engine_(engine), loop_(std::move(loop)) {}
+
+    bool Post(infra::Task task) override {
+        return loop_ != nullptr && loop_->Post(std::move(task));
+    }
+
+    NetTimerId RunAfter(uint32_t delay_ms, infra::Task task) override {
+        if (engine_ == nullptr || loop_ == nullptr) {
+            return 0;
+        }
+        return loop_->RunAfter(engine_->AllocateTimerId(), delay_ms,
+                               std::move(task));
+    }
+
+    NetTimerId RunEvery(uint32_t interval_ms, infra::Task task) override {
+        if (engine_ == nullptr || loop_ == nullptr) {
+            return 0;
+        }
+        return loop_->RunEvery(engine_->AllocateTimerId(), interval_ms,
+                               std::move(task));
+    }
+
+    bool CancelTimer(NetTimerId id) override {
+        return loop_ != nullptr && loop_->CancelTimer(id);
+    }
+
+    bool IsCurrentThread() const override {
+        return loop_ != nullptr && loop_->IsCurrentThread();
+    }
+
+    std::shared_ptr<EventLoop> loop() const { return loop_; }
+
+private:
+    NetEngineImpl *engine_ = nullptr;
+    std::shared_ptr<EventLoop> loop_;
+};
+
 NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
     : options_(options) {}
 
@@ -35,8 +75,11 @@ bool NetEngineImpl::Start() {
         }
         if (loops_.empty()) {
             for (uint32_t i = 0; i < options_.io_threads; ++i) {
-                loops_.push_back(std::make_shared<EventLoop>(
-                    options_.max_events_per_loop, options_.task_queue_capacity));
+                auto loop = std::make_shared<EventLoop>(
+                    options_.max_events_per_loop, options_.task_queue_capacity);
+                loops_.push_back(loop);
+                executors_.push_back(
+                    std::make_shared<NetExecutor>(this, loop));
             }
         }
     }
@@ -47,18 +90,6 @@ bool NetEngineImpl::Start() {
         }
     }
     running_ = true;
-    for (auto &entry : servers_) {
-        if (!entry.second->Start(NextLoop())) {
-            Stop();
-            return false;
-        }
-    }
-    for (auto &entry : udp_sockets_) {
-        if (!entry.second->Start(NextLoop())) {
-            Stop();
-            return false;
-        }
-    }
     return true;
 }
 
@@ -101,9 +132,29 @@ void NetEngineImpl::StopInternal() {
     connections_.clear();
 }
 
-TcpServerId NetEngineImpl::ListenTcp(const TcpListenOptions &options,
+INetExecutor *NetEngineImpl::DefaultExecutor() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return executors_.empty() ? nullptr : executors_.front().get();
+}
+
+INetExecutor *NetEngineImpl::PickExecutor() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (executors_.empty()) {
+        return nullptr;
+    }
+    const uint32_t index =
+        next_loop_.fetch_add(1) % static_cast<uint32_t>(executors_.size());
+    return executors_[index].get();
+}
+
+TcpServerId NetEngineImpl::ListenTcp(INetExecutor *executor,
+                                     const TcpListenOptions &options,
                                      const TcpCallbacks &callbacks) {
     if (callbacks.on_read == nullptr && callbacks.on_accept == nullptr) {
+        return 0;
+    }
+    std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
+    if (!owner_executor || !running_) {
         return 0;
     }
     const TcpServerId id = next_server_id_++;
@@ -112,30 +163,31 @@ TcpServerId NetEngineImpl::ListenTcp(const TcpListenOptions &options,
         std::lock_guard<std::mutex> lock(mutex_);
         servers_[id] = server;
     }
-    if (running_) {
-        if (!server->Start(NextLoop())) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            servers_.erase(id);
-            return 0;
-        }
+    if (!server->Start(owner_executor->loop())) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        servers_.erase(id);
+        return 0;
     }
     return id;
 }
 
-UdpSocketId NetEngineImpl::BindUdp(const UdpBindOptions &options,
+UdpSocketId NetEngineImpl::BindUdp(INetExecutor *executor,
+                                   const UdpBindOptions &options,
                                    const UdpCallbacks &callbacks) {
+    std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
+    if (!owner_executor || !running_) {
+        return 0;
+    }
     const UdpSocketId id = next_udp_id_++;
     auto socket = std::make_shared<UdpEndpoint>(this, id, options, callbacks);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         udp_sockets_[id] = socket;
     }
-    if (running_) {
-        if (!socket->Start(NextLoop())) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            udp_sockets_.erase(id);
-            return 0;
-        }
+    if (!socket->Start(owner_executor->loop())) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        udp_sockets_.erase(id);
+        return 0;
     }
     return id;
 }
@@ -263,34 +315,6 @@ bool NetEngineImpl::SendToPeerSlices(UdpSocketId id,
         socket = it->second;
     }
     return socket->SendToPeerSlices(slices);
-}
-
-NetTimerId NetEngineImpl::RunOnIoAfter(uint32_t delay_ms, infra::Task task) {
-    auto loop = NextLoop();
-    if (!loop) {
-        return 0;
-    }
-    // timer id 在 NetEngineImpl 全局递增；CancelIoTimer() 可以跨多个 IO loop 查找，
-    // 不会因为不同 loop 的本地 id 重复而取消错 timer。
-    return loop->RunAfter(AllocateTimerId(), delay_ms, std::move(task));
-}
-
-NetTimerId NetEngineImpl::RunOnIoEvery(uint32_t interval_ms,
-                                       infra::Task task) {
-    auto loop = NextLoop();
-    if (!loop) {
-        return 0;
-    }
-    return loop->RunEvery(AllocateTimerId(), interval_ms, std::move(task));
-}
-
-bool NetEngineImpl::CancelIoTimer(NetTimerId id) {
-    for (const auto &loop : loops_) {
-        if (loop->CancelTimer(id)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 NetAddress NetEngineImpl::TcpLocalAddress(TcpServerId id) const {
@@ -549,6 +573,23 @@ std::shared_ptr<EventLoop> NetEngineImpl::NextLoop() {
     const uint32_t index =
         next_loop_.fetch_add(1) % static_cast<uint32_t>(loops_.size());
     return loops_[index];
+}
+
+std::shared_ptr<NetExecutor> NetEngineImpl::ResolveExecutor(
+    INetExecutor *executor) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (executors_.empty()) {
+        return nullptr;
+    }
+    if (executor == nullptr) {
+        return nullptr;
+    }
+    for (const auto &candidate : executors_) {
+        if (candidate.get() == executor) {
+            return candidate;
+        }
+    }
+    return nullptr;
 }
 
 std::shared_ptr<TcpSession>

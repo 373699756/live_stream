@@ -158,10 +158,43 @@ public:
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
+    class FakeNetExecutor : public live_stream::INetExecutor {
+    public:
+        bool Post(infra::Task task) override {
+            if (task) {
+                task();
+            }
+            return true;
+        }
+
+        live_stream::NetTimerId RunAfter(uint32_t, infra::Task task) override {
+            if (task) {
+                task();
+            }
+            return 1;
+        }
+
+        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+            return 1;
+        }
+
+        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool IsCurrentThread() const override { return true; }
+    };
+
     bool Start() override { return true; }
     void Stop() override {}
 
+    live_stream::INetExecutor *DefaultExecutor() override {
+        return &executor_;
+    }
+
+    live_stream::INetExecutor *PickExecutor() override {
+        return &executor_;
+    }
+
     live_stream::TcpServerId ListenTcp(
+        live_stream::INetExecutor *,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         (void)options;
@@ -175,6 +208,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
+        live_stream::INetExecutor *,
         const live_stream::UdpBindOptions& options,
         const live_stream::UdpCallbacks& callbacks) override {
         (void)options;
@@ -233,27 +267,6 @@ public:
         return true;
     }
 
-    live_stream::NetTimerId RunOnIoAfter(uint32_t delay_ms,
-                                         infra::Task task) override {
-        (void)delay_ms;
-        if (task) {
-            task();
-        }
-        return 1;
-    }
-
-    live_stream::NetTimerId RunOnIoEvery(uint32_t interval_ms,
-                                         infra::Task task) override {
-        (void)interval_ms;
-        (void)task;
-        return 1;
-    }
-
-    bool CancelIoTimer(live_stream::NetTimerId id) override {
-        (void)id;
-        return true;
-    }
-
     live_stream::NetAddress TcpLocalAddress(
         live_stream::TcpServerId id) const override {
         (void)id;
@@ -289,6 +302,9 @@ public:
     live_stream::NetStats GetStats() const override {
         return live_stream::NetStats();
     }
+
+private:
+    FakeNetExecutor executor_;
 };
 
 live_stream::HttpRequest Request(live_stream::HttpMethod method,
@@ -321,6 +337,8 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
     live_stream::HttpOptions options;
     live_stream::HttpDependencies dependencies;
     dependencies.net_engine = net_engine;
+    dependencies.net_executor =
+        net_engine == nullptr ? nullptr : net_engine->DefaultExecutor();
     dependencies.auth = auth;
     dependencies.logger = logger;
     dependencies.upgrade = upgrade;

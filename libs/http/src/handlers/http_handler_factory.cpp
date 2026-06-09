@@ -35,7 +35,7 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
             return MakeMediaHandler(
                 dependencies.access, dependencies.config,
                 dependencies.device_media, dependencies.media_source,
-                dependencies.rtsp, dependencies.webrtc);
+                dependencies.rtsp, dependencies.webrtc, dependencies.http);
         case HttpHandlerKind::kAi:
             return MakeAiHandler(
                 dependencies.access, dependencies.config,

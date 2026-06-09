@@ -49,6 +49,16 @@ bool IsValidStream(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
 }
 
+bool IsWebrtcCodecSupported(VideoCodec codec) {
+    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+}
+
+WebrtcPeerInfo CreatePeerError(const std::string &last_error) {
+    WebrtcPeerInfo peer;
+    peer.last_error = last_error;
+    return peer;
+}
+
 }  // namespace
 
 class WebrtcImpl : public IWebrtc {
@@ -58,6 +68,7 @@ public:
         : options_(std::move(options)),
           media_source_(dependencies.media_source),
           net_engine_(dependencies.net_engine),
+          net_executor_(dependencies.net_executor),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         {
@@ -165,30 +176,50 @@ public:
         CloseStaleSetupPeers(TakeStalePeerIds());
         WebrtcPeerInfo peer;
         std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::vector<std::string> replaced_peer_ids;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted) {
-                return WebrtcPeerInfo();
+                return CreatePeerError("service_not_started");
             }
-            if (!options_.enabled || !engine_ || !engine_->Available()) {
-                return WebrtcPeerInfo();
+            if (!options_.enabled) {
+                return CreatePeerError("webrtc_disabled");
             }
-            if (!IsValidStream(request.stream_id) ||
-                !IsStreamAvailableLocked(request.stream_id) ||
-                peer_store_.ActivePeerCount() >= options_.max_peers) {
-                return WebrtcPeerInfo();
+            if (!engine_ || !engine_->Available()) {
+                return CreatePeerError("engine_unavailable");
+            }
+            if (!IsValidStream(request.stream_id)) {
+                return CreatePeerError("invalid_stream");
+            }
+            if (!IsStreamAvailableLocked(request.stream_id)) {
+                return CreatePeerError("stream_unavailable");
             }
 
             const VideoCodec codec =
                 media_source_->GetStreamCodec(request.stream_id);
+            if (!IsWebrtcCodecSupported(codec)) {
+                return CreatePeerError("unsupported_codec");
+            }
+            replaced_peer_ids = peer_store_.TakePeerIdsForClient(
+                request.session_id, request.client_id);
+            if (peer_store_.ActivePeerCount() >= options_.max_peers) {
+                return CreatePeerError("peer_limit_reached");
+            }
             peer = peer_store_.CreatePeer(request, codec);
             engine = engine_;
+        }
+
+        for (const std::string &peer_id : replaced_peer_ids) {
+            ClosePeerReader(peer_id, MediaFrameReaderCloseReason::kDetached);
+            if (engine) {
+                (void)engine->ClosePeer(peer_id);
+            }
         }
 
         if (!engine || !engine->CreatePeer(peer)) {
             std::lock_guard<std::mutex> guard(mutex_);
             (void)peer_store_.RemovePeer(peer.peer_id);
-            return WebrtcPeerInfo();
+            return CreatePeerError("engine_create_failed");
         }
 
         bool close_engine_peer = false;
@@ -209,7 +240,7 @@ public:
             (void)engine->ClosePeer(peer.peer_id);
             std::lock_guard<std::mutex> guard(mutex_);
             (void)peer_store_.RemovePeer(peer.peer_id);
-            return WebrtcPeerInfo();
+            return CreatePeerError("peer_create_interrupted");
         }
         RequestKeyFrame(peer.stream_id, KeyFrameReason::kNewClient);
         return peer;
@@ -315,7 +346,7 @@ public:
         std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            peers = peer_store_.Peers();
+            peers = peer_store_.OpenPeers();
             engine = engine_;
         }
         if (!engine) {
@@ -399,7 +430,7 @@ private:
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
-            webrtc_internal::CreateWebrtcEngine(net_engine_);
+            webrtc_internal::CreateWebrtcEngine(net_engine_, net_executor_);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
         callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged = &WebrtcImpl::OnEnginePeerStateChanged;
@@ -655,12 +686,12 @@ private:
     }
 
     void ArmPeerDrainTimer(const std::string &peer_id) {
-        if (net_engine_ == nullptr) {
+        if (net_executor_ == nullptr) {
             return;
         }
         std::shared_ptr<WebrtcCallbackGuard> callback_guard =
             callback_guard_;
-        const NetTimerId timer_id = net_engine_->RunOnIoEvery(
+        const NetTimerId timer_id = net_executor_->RunEvery(
             kWebrtcReaderDrainIntervalMs, [callback_guard, peer_id]() {
                 WebrtcImpl::DispatchPeerDrain(callback_guard, peer_id);
             });
@@ -682,7 +713,7 @@ private:
             }
         }
         if (!keep_timer) {
-            (void)net_engine_->CancelIoTimer(timer_id);
+            (void)net_executor_->CancelTimer(timer_id);
         }
     }
 
@@ -896,9 +927,9 @@ private:
         if (resources == nullptr) {
             return;
         }
-        if (net_engine_ != nullptr &&
+        if (net_executor_ != nullptr &&
             resources->drain_timer_id != 0) {
-            (void)net_engine_->CancelIoTimer(
+            (void)net_executor_->CancelTimer(
                 resources->drain_timer_id);
         }
         if (media_source_ != nullptr &&
@@ -924,6 +955,7 @@ private:
     WebrtcOptions options_;
     IMediaFrameSource *media_source_ = nullptr;
     INetEngine *net_engine_ = nullptr;
+    INetExecutor *net_executor_ = nullptr;
     ServiceState state_ = ServiceState::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;

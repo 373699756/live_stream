@@ -94,6 +94,11 @@ bool EventLoop::Post(infra::Task task) {
     return wakeup_.Notify();
 }
 
+bool EventLoop::IsCurrentThread() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return thread_id_ == std::this_thread::get_id();
+}
+
 bool EventLoop::AddFd(int fd, uint32_t events,
                       std::function<void(uint32_t)> handler) {
     if (fd < 0 || !handler) {
@@ -210,6 +215,7 @@ bool EventLoop::AddRawFdLocked(int fd, uint32_t events,
 void EventLoop::CleanupLocked() {
     running_ = false;
     stopping_ = false;
+    thread_id_ = std::thread::id();
     tasks_.clear();
     handlers_.clear();
     timers_.clear();
@@ -334,6 +340,10 @@ std::function<void(uint32_t)> EventLoop::FindHandler(int fd) {
 }
 
 void EventLoop::Run() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        thread_id_ = std::this_thread::get_id();
+    }
     std::vector<epoll_event> events(max_events_);
     while (!ShouldStop()) {
         const int count = epoll_wait(epoll_fd_.get(), events.data(),

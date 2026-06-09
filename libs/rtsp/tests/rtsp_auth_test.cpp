@@ -135,6 +135,7 @@ int main() {
     options.enable_auth = true;
     live_stream::RtspDependencies deps;
     deps.net_engine = net_engine.get();
+    deps.net_executor = net_engine->DefaultExecutor();
     deps.auth = &auth;
     deps.media_source = &media_source;
     auto rtsp = live_stream::CreateRtsp(options, deps);

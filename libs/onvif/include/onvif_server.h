@@ -19,6 +19,7 @@ class IEvent;
 class IDeviceMedia;
 class IRtsp;
 class INetEngine;
+class INetExecutor;
 class ISystem;
 class ITime;
 
@@ -49,6 +50,7 @@ struct OnvifServerStats {
 
 struct OnvifServerDependencies {
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     IAuth *auth = nullptr;
     IEvent *event = nullptr;
     ISystem *system = nullptr;

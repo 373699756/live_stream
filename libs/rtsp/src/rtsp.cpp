@@ -59,6 +59,7 @@ public:
     RtspImpl(RtspOptions options, RtspDependencies dependencies)
         : options_(std::move(options)),
           net_engine_(dependencies.net_engine),
+          net_executor_(dependencies.net_executor),
           auth_(dependencies.auth),
           event_(dependencies.event),
           media_source_(dependencies.media_source),
@@ -77,6 +78,7 @@ public:
             return true;
         }
         if (net_engine_ == nullptr ||
+            net_executor_ == nullptr ||
             media_source_ == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
@@ -115,8 +117,11 @@ public:
         tcp_callbacks.on_accept = &RtspImpl::HandleAccept;
         tcp_callbacks.on_read = &RtspImpl::HandleRead;
         tcp_callbacks.on_close = &RtspImpl::HandleClose;
+        if (net_executor_ == nullptr) {
+            return false;
+        }
         TcpServerId server_result = net_engine_->ListenTcp(
-            tcp_config, tcp_callbacks);
+            net_executor_, tcp_config, tcp_callbacks);
         if (server_result == 0) {
             return false;
         }
@@ -443,9 +448,9 @@ private:
         if (session == nullptr || packets.empty()) {
             return;
         }
-        const uint8_t rtcp_channel = session->interleaved_rtp_channel + 1;
         const int64_t now_ms = infra::Time::MonotonicMillis();
         std::lock_guard<std::mutex> lock(mutex_);
+        const uint8_t rtcp_channel = session->interleaved_rtp_channel + 1;
         for (const RtspInterleavedPacket &packet : packets) {
             if (session->transport == RtspTransportMode::kTcpInterleaved &&
                 packet.channel == rtcp_channel) {
@@ -592,12 +597,12 @@ private:
         udp_callbacks.user = this;
         udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
         const UdpSocketId rtp_result = net_engine_->BindUdp(
-            udp_config, udp_callbacks);
+            net_executor_, udp_config, udp_callbacks);
         if (rtp_result == 0) {
             return false;
         }
         const UdpSocketId rtcp_result = net_engine_->BindUdp(
-            udp_config, udp_callbacks);
+            net_executor_, udp_config, udp_callbacks);
         if (rtcp_result == 0) {
             (void)net_engine_->CloseUdp(rtp_result);
             return false;
@@ -738,7 +743,10 @@ private:
         }
         // drain timer 运行在 net IO loop 上，周期性从 media_source reader 拉帧；
         // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
-        const NetTimerId timer_id = net_engine_->RunOnIoEvery(
+        if (net_executor_ == nullptr) {
+            return;
+        }
+        const NetTimerId timer_id = net_executor_->RunEvery(
             kRtspReaderDrainIntervalMs, [this, session]() {
                 DrainSessionFrames(session);
             });
@@ -883,8 +891,8 @@ private:
         }
         // 先取消 drain timer，再 detach reader。timer 若已在执行，EventLoop 的
         // cancelled 标记会阻止下一次触发；reader_id 清零后本次执行也会快速退出。
-        if (net_engine_ != nullptr && drain_timer_id != 0) {
-            (void)net_engine_->CancelIoTimer(drain_timer_id);
+        if (net_executor_ != nullptr && drain_timer_id != 0) {
+            (void)net_executor_->CancelTimer(drain_timer_id);
         }
         if (media_source_ != nullptr && reader_id != 0) {
             (void)media_source_->DetachFrameReader(reader_id, reason);
@@ -901,6 +909,7 @@ private:
 
     RtspOptions options_;
     INetEngine* net_engine_ = nullptr;
+    INetExecutor *net_executor_ = nullptr;
     IAuth* auth_ = nullptr;
     IEvent* event_ = nullptr;
     IMediaFrameSource* media_source_ = nullptr;

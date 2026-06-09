@@ -7,6 +7,7 @@
 namespace live_stream {
 
 class INetEngine;
+class INetExecutor;
 class IAuth;
 class IConfig;
 class ILogger;
@@ -25,6 +26,7 @@ class IEvent;
 
 struct HttpDependencies {
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;
     IConfig *config = nullptr;

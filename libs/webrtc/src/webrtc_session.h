@@ -19,6 +19,7 @@ struct WebrtcSessionOfferContext {
     WebrtcOptions options;
     DtlsFingerprint local_fingerprint;
     INetEngine *net_engine = nullptr;
+    INetExecutor *net_executor = nullptr;
     UdpCallbacks udp_callbacks;
     uint32_t next_port_offset = 0;
     void *timer_user = nullptr;

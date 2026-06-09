@@ -148,6 +148,7 @@ RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
 RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     RtspDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
+    dependencies.net_executor = refs.net_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.media_source = refs.media_pipeline;
@@ -176,6 +177,7 @@ WebrtcDependencies BuildWebrtcDependencies(
     const ProtocolRuntimeRefs &refs) {
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
+    dependencies.net_executor = refs.net_executor;
     dependencies.media_source = refs.media_pipeline;
     return dependencies;
 }
@@ -213,6 +215,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolRuntimeRefs &refs) {
     OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
+    dependencies.net_executor = refs.net_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system = refs.device.system;
@@ -244,6 +247,7 @@ HttpDependencies BuildHttpDependencies(
     const ProtocolRuntimeRefs &refs) {
     HttpDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
+    dependencies.net_executor = refs.net_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
     dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;

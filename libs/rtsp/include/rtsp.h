@@ -15,6 +15,7 @@ class IAuth;
 class IEvent;
 class IMediaFrameSource;
 class INetEngine;
+class INetExecutor;
 
 enum class RtspTransportMode {
     kTcpInterleaved = 0,
@@ -102,6 +103,7 @@ struct RtspStats {
 
 struct RtspDependencies {
     INetEngine* net_engine = nullptr;
+    INetExecutor* net_executor = nullptr;
     IAuth* auth = nullptr;
     IEvent* event = nullptr;
     IMediaFrameSource* media_source = nullptr;

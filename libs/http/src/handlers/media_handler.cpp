@@ -460,6 +460,29 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     return root;
 }
 
+ConfigJson HttpStreamingSessionToJson(
+    const HttpStreamingSessionDiagnostics &session) {
+    ConfigJson root = ConfigJson::object();
+    root["protocol"] = session.protocol;
+    root["session_id"] = session.session_id;
+    root["connection_id"] = session.connection_id;
+    root["client_id"] = session.client_id;
+    root["stream"] = StreamIdToJsonString(session.stream_id);
+    root["state"] = session.open ? "streaming" : "closed";
+    root["client_ip"] = session.client_ip;
+    root["remote_address"] = session.remote_address;
+    root["local_address"] = session.local_address;
+    root["pending_bytes"] = session.pending_bytes;
+    root["send_queue_length"] = session.send_queue_length;
+    root["last_write_at_ms"] = session.last_write_at_ms;
+    root["close_reason"] = session.close_reason;
+    return root;
+}
+
+bool IsMediaStreamingSession(const HttpStreamingSessionDiagnostics &session) {
+    return session.protocol == "http_flv" || session.protocol == "mjpeg";
+}
+
 }  // namespace
 
 class MediaHttpHandler : public IHttpHandler {
@@ -469,13 +492,15 @@ public:
                      IDeviceMedia *device_media,
                      IMediaSource *media_source,
                      IRtsp *rtsp,
-                     IWebrtc *webrtc)
+                     IWebrtc *webrtc,
+                     IHttp *http)
         : access_(access),
           config_(config),
           device_media_(device_media),
           media_source_(media_source),
           rtsp_(rtsp),
-          webrtc_(webrtc) {}
+          webrtc_(webrtc),
+          http_(http) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -591,6 +616,15 @@ private:
                 items.push_back(RtspSessionToJson(session));
             }
         }
+        if (http_ != nullptr) {
+            const std::vector<HttpStreamingSessionDiagnostics> sessions =
+                http_->GetStreamingSessionDiagnostics();
+            for (const HttpStreamingSessionDiagnostics &session : sessions) {
+                if (IsMediaStreamingSession(session)) {
+                    items.push_back(HttpStreamingSessionToJson(session));
+                }
+            }
+        }
         WebrtcStats webrtc_stats;
         if (webrtc_ != nullptr) {
             webrtc_stats = webrtc_->GetStats();
@@ -620,6 +654,7 @@ private:
     IMediaSource *media_source_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
+    IHttp *http_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
@@ -627,10 +662,11 @@ std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
                                             IDeviceMedia *device_media,
                                             IMediaSource *media_source,
                                             IRtsp *rtsp,
-                                            IWebrtc *webrtc) {
+                                            IWebrtc *webrtc,
+                                            IHttp *http) {
     return std::unique_ptr<IHttpHandler>(
         new MediaHttpHandler(access, config, device_media,
-                             media_source, rtsp, webrtc));
+                             media_source, rtsp, webrtc, http));
 }
 
 }  // namespace live_stream

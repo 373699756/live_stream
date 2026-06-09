@@ -40,6 +40,13 @@ struct RtcpFeedback {
   uint32_t media_ssrc = 0;
 };
 
+struct RtcpFeedbackCounters {
+  uint64_t pli_count = 0;
+  uint64_t fir_count = 0;
+  uint64_t nack_count = 0;
+  uint64_t transport_cc_count = 0;
+};
+
 class SrtpSession {
  public:
   SrtpSession() = default;
@@ -64,6 +71,8 @@ class SrtpSession {
   static bool Available();
   static bool ParseRtcpFeedback(const uint8_t *data, size_t size,
                                 RtcpFeedback *feedback);
+  static bool CountRtcpFeedback(const uint8_t *data, size_t size,
+                                RtcpFeedbackCounters *counters);
   static bool IsKeyFrameRequest(RtcpFeedbackType type);
 
   bool ready() const { return session_ != nullptr; }

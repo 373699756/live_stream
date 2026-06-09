@@ -2,6 +2,7 @@
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 
 #include "http.h"
+#include "http_connection_writer.h"
 #include "http_dependencies.h"
 #include "http_media_writer.h"
 #include "http_session.h"
@@ -46,6 +47,8 @@ public:
 
     HttpListenAddress LocalAddress() const;
     HttpStats GetStats() const;
+    std::vector<HttpStreamingSessionDiagnostics>
+    GetStreamingSessionDiagnostics() const;
 
     void IncrementTotalRequests();
     void IncrementParseFailures();
@@ -80,15 +83,15 @@ private:
                             TcpCloseReason reason);
     static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
     static void LogRequests(const std::vector<HttpRequestLog> &request_logs);
+    static HttpStreamingSessionDiagnostics BuildStreamingDiagnostics(
+        const HttpSessionStreamingInfo &session,
+        const NetConnectionDiagnostics &connection);
 
     infra::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
     void NotifyStreamClosed(const HttpMediaClientHandle &client);
     void NotifyStreamsClosed(
         const std::vector<HttpMediaClientHandle> &clients);
-    bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                const NetBufferSlices &slices,
-                                size_t size);
     void OnConnection(ConnectionId connection_id, NetAddress peer);
     void OnClose(ConnectionId connection_id, TcpCloseReason reason);
     void OnMessage(ConnectionId connection_id, const uint8_t *data,
@@ -97,10 +100,12 @@ private:
     void CompleteKeepAliveRequest(ConnectionId connection_id);
     HttpSessionParseOptions MakeConnectionParseOptions() const;
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
-    static void CancelNetTimer(INetEngine *net_engine, NetTimerId timer_id);
+    static void CancelNetTimer(INetExecutor *executor, NetTimerId timer_id);
 
     HttpOptions options_;
+    HttpConnectionWriter connection_writer_;
     INetEngine *net_engine_ = nullptr;
+    INetExecutor *net_executor_ = nullptr;
     // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。
     HttpRequestHandler *request_handler_ = nullptr;
     // close_callback_ 由 http_media 注册，必须在锁外调用，避免 HTTP 锁和媒体锁

@@ -26,6 +26,7 @@ public:
          const OnvifServerDependencies &dependencies)
         : options_(options),
           net_engine_(dependencies.net_engine),
+          net_executor_(dependencies.net_executor),
           auth_(dependencies.auth),
           event_(dependencies.event),
           system_(dependencies.system),
@@ -55,8 +56,11 @@ public:
         TcpCallbacks tcp_callbacks;
         tcp_callbacks.user = this;
         tcp_callbacks.on_read = &OnvifServer::Impl::HandleTcpRead;
+        if (net_executor_ == nullptr) {
+            return false;
+        }
         const TcpServerId tcp_server_id =
-            net_engine_->ListenTcp(tcp_options, tcp_callbacks);
+            net_engine_->ListenTcp(net_executor_, tcp_options, tcp_callbacks);
         if (tcp_server_id == 0) {
             return false;
         }
@@ -70,7 +74,8 @@ public:
             udp_callbacks.user = this;
             udp_callbacks.on_read = &OnvifServer::Impl::HandleUdpRead;
             const UdpSocketId udp_socket_id =
-                net_engine_->BindUdp(udp_options, udp_callbacks);
+                net_engine_->BindUdp(net_executor_, udp_options,
+                                     udp_callbacks);
             if (udp_socket_id == 0) {
                 CleanupSocketsLocked();
                 return false;
@@ -121,6 +126,7 @@ private:
             return true;
         }
         if (net_engine_ == nullptr ||
+            net_executor_ == nullptr ||
             options_.device_service_port == 0 ||
             options_.discovery_port == 0 ||
             options_.max_request_bytes == 0 ||
@@ -388,6 +394,7 @@ private:
 
     OnvifServerOptions options_;
     INetEngine *net_engine_ = nullptr;
+    INetExecutor *net_executor_ = nullptr;
     IAuth *auth_ = nullptr;
     IEvent *event_ = nullptr;
     ISystem *system_ = nullptr;

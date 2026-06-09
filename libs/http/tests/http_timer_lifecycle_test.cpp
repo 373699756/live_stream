@@ -38,10 +38,51 @@ public:
         bool cancelled = false;
     };
 
+    class FakeNetExecutor : public live_stream::INetExecutor {
+    public:
+        explicit FakeNetExecutor(FakeNetEngine *engine) : engine_(engine) {}
+
+        bool Post(infra::Task task) override {
+            if (task) {
+                task();
+            }
+            return true;
+        }
+
+        live_stream::NetTimerId RunAfter(uint32_t delay_ms,
+                                         infra::Task task) override {
+            return engine_->RunTimerAfter(delay_ms, std::move(task));
+        }
+
+        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+            return 0;
+        }
+
+        bool CancelTimer(live_stream::NetTimerId id) override {
+            return engine_->CancelTimerById(id);
+        }
+
+        bool IsCurrentThread() const override { return true; }
+
+    private:
+        FakeNetEngine *engine_ = nullptr;
+    };
+
+    FakeNetEngine() : executor_(this) {}
+
     bool Start() override { return true; }
     void Stop() override {}
 
+    live_stream::INetExecutor *DefaultExecutor() override {
+        return &executor_;
+    }
+
+    live_stream::INetExecutor *PickExecutor() override {
+        return &executor_;
+    }
+
     live_stream::TcpServerId ListenTcp(
+        live_stream::INetExecutor *,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         listen_options = options;
@@ -56,6 +97,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
+        live_stream::INetExecutor *,
         const live_stream::UdpBindOptions&,
         const live_stream::UdpCallbacks&) override {
         return 1;
@@ -95,8 +137,8 @@ public:
         return true;
     }
 
-    live_stream::NetTimerId RunOnIoAfter(uint32_t delay_ms,
-                                         infra::Task task) override {
+    live_stream::NetTimerId RunTimerAfter(uint32_t delay_ms,
+                                          infra::Task task) {
         last_delay_ms = delay_ms;
         Timer timer;
         timer.id = next_timer_id++;
@@ -105,12 +147,7 @@ public:
         return timers.back().id;
     }
 
-    live_stream::NetTimerId RunOnIoEvery(uint32_t,
-                                         infra::Task) override {
-        return 0;
-    }
-
-    bool CancelIoTimer(live_stream::NetTimerId id) override {
+    bool CancelTimerById(live_stream::NetTimerId id) {
         ++cancel_count;
         cancelled_timer_ids.push_back(id);
         for (Timer& timer : timers) {
@@ -186,6 +223,7 @@ public:
     int cancel_count = 0;
 
 private:
+    FakeNetExecutor executor_;
     live_stream::TcpCallbacks callbacks_;
     live_stream::NetTimerId next_timer_id = 1;
 };
@@ -216,6 +254,7 @@ int main() {
 
     live_stream::HttpDependencies dependencies;
     dependencies.net_engine = &net_engine;
+    dependencies.net_executor = net_engine.DefaultExecutor();
     live_stream::HttpServer server(options, dependencies, &handler);
     if (!server.Start()) {
         return 1;
