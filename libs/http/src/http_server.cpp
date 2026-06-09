@@ -276,8 +276,7 @@ HttpServer::GetStreamingSessionDiagnostics() const {
             if (item.second != nullptr && item.second->is_streaming()) {
                 const HttpSessionStreamingInfo info =
                     item.second->StreamingInfo();
-                if (info.media_client.type != HttpMediaClientType::kNone &&
-                    info.media_client.id != 0) {
+                if (info.media_type != HttpMediaClientType::kNone) {
                     sessions.push_back(info);
                 }
             }
@@ -347,13 +346,15 @@ bool HttpServer::SendResponseSlices(ConnectionId connection_id,
     return sent;
 }
 
-bool HttpServer::BeginStream(ConnectionId connection_id) {
+bool HttpServer::BeginStream(ConnectionId connection_id,
+                             HttpMediaClientType type,
+                             StreamId stream_id) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto iter = sessions_.find(connection_id);
     // BeginStream 是普通 HTTP request 到媒体长连接的单向状态迁移；
     // 失败通常说明连接已经被关闭或已进入 streaming。
     return iter != sessions_.end() && iter->second != nullptr &&
-           iter->second->BeginStream();
+           iter->second->BeginStream(type, stream_id);
 }
 
 bool HttpServer::AttachStreamClient(ConnectionId connection_id,
@@ -560,12 +561,16 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
     if (executor == nullptr ||
         executor->Post([this, connection_id,
                         pending = std::move(pending)]() mutable {
-            // Streaming handler 成功后会调用 BeginStream()，session 进入 streaming
-            // 状态，不再回到 keep-alive parser；普通 HTTP 响应才继续解析管线请求。
-            if (request_handler_ != nullptr &&
-                request_handler_->HandleStreamingHttpRequest(
-                    connection_id, pending.request)) {
-                return;
+            if (request_handler_ != nullptr) {
+                const HttpStreamingRequestResult stream_result =
+                    request_handler_->HandleStreamingHttpRequest(
+                        connection_id, pending.request);
+                if (stream_result != HttpStreamingRequestResult::kNotHandled) {
+                    if (stream_result == HttpStreamingRequestResult::kFailed) {
+                        CloseConnection(connection_id);
+                    }
+                    return;
+                }
             }
             if (request_handler_ == nullptr) {
                 SendResponse(
@@ -650,10 +655,13 @@ HttpStreamingSessionDiagnostics HttpServer::BuildStreamingDiagnostics(
     const NetConnectionDiagnostics &connection) {
     HttpStreamingSessionDiagnostics diagnostics;
     diagnostics.connection_id = session.connection_id;
-    diagnostics.protocol = HttpMediaClientTypeName(session.media_client.type);
+    diagnostics.protocol = HttpMediaClientTypeName(session.media_type);
     diagnostics.session_id = std::to_string(session.connection_id);
-    diagnostics.client_id = std::to_string(session.media_client.id);
-    diagnostics.stream_id = session.media_client.stream_id;
+    diagnostics.client_id = session.media_client.id == 0
+                                ? std::string()
+                                : std::to_string(session.media_client.id);
+    diagnostics.stream_state = HttpMediaStreamStateName(session.stream_state);
+    diagnostics.stream_id = session.stream_id;
     diagnostics.client_ip = session.client_ip;
     diagnostics.pending_bytes = connection.pending_bytes;
     diagnostics.send_queue_length = connection.send_queue_length;

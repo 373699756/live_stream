@@ -19,8 +19,8 @@ public:
     virtual ~IStreamingHttpHandler() = default;
 
     virtual bool CanHandleStreamingRequest(const HttpRequest &request) const = 0;
-    virtual void HandleStreamingRequest(ConnectionId connection_id,
-                                        const HttpRequest &request) = 0;
+    virtual HttpStreamingRequestResult HandleStreamingRequest(
+        ConnectionId connection_id, const HttpRequest &request) = 0;
 };
 
 enum class HttpMediaHandlerKind {

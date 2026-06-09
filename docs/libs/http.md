@@ -102,11 +102,14 @@ Bearer` header 供非浏览器客户端使用。Web 不在 JavaScript 可读存�
 
 `/api/media/sessions` 由 media handler 聚合 HTTP streaming、RTSP 和 WebRTC
 diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
-`session_id`、`connection_id`、`client_id`、`stream`、`state`、`client_ip`、
-`remote_address`、`local_address`、`pending_bytes`、`send_queue_length`、
-`last_write_at_ms` 和 `close_reason`；`pending_bytes`、`send_queue_length` 和
-`last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端和发送队列
-积压。HLS playlist/segment 是短 HTTP 响应，不作为活跃 session 常驻展示。
+`session_id`、`connection_id`、`client_id`、`stream`、`state`、`stream_state`、
+`client_ip`、`remote_address`、`local_address`、`pending_bytes`、
+`send_queue_length`、`last_write_at_ms` 和 `close_reason`；`stream_state=opening`
+表示 HTTP session 已经被流式请求接管但还没有绑定媒体 client id，`attached`
+表示已经绑定 FLV/MJPEG client。`pending_bytes`、`send_queue_length` 和
+`last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端、发送队列
+积压和媒体 attach 卡住的连接。HLS playlist/segment 是短 HTTP 响应，不作为活跃
+session 常驻展示。
 
 ## 状态与资源模型
 
@@ -124,7 +127,8 @@ HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、respo
 组包、`VideoBuffer` owner 转 `NetBufferOwner`、发送队列背压和慢客户端关闭。
 `HttpMediaWriter` 只暴露 begin stream、attach client、enqueue slices、close
 callback 和 streaming diagnostics。这样 `http_media` 不直接接触 socket 队列，却能
-通过 `IHttp::GetStreamingSessionDiagnostics()` 让 Web 看到 HTTP-FLV/MJPEG 的发送积压。
+通过 `IHttp::GetStreamingSessionDiagnostics()` 让 Web 看到 HTTP-FLV/MJPEG 的 opening
+状态和发送积压。
 
 HTTP 自有资源只包括 listener、connection、request/response buffer、router、
 executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句柄。业务对象生命周期、

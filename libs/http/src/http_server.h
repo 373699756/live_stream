@@ -27,8 +27,8 @@ public:
 
     virtual bool ShouldUseStreamExecutor(const HttpRequest &request) const = 0;
     virtual HttpResponse HandleHttpRequest(const HttpRequest &request) = 0;
-    virtual bool HandleStreamingHttpRequest(ConnectionId connection_id,
-                                            const HttpRequest &request) = 0;
+    virtual HttpStreamingRequestResult HandleStreamingHttpRequest(
+        ConnectionId connection_id, const HttpRequest &request) = 0;
 };
 
 // HTTP server 内核只负责连接和 HTTP/1.1 生命周期。业务路由在 HttpImpl，
@@ -64,7 +64,9 @@ public:
                             size_t body_slice_count,
                             size_t body_size,
                             bool close_after_response) override;
-    bool BeginStream(ConnectionId connection_id) override;
+    bool BeginStream(ConnectionId connection_id,
+                     HttpMediaClientType type,
+                     StreamId stream_id) override;
     bool AttachStreamClient(ConnectionId connection_id,
                             HttpMediaClientHandle client) override;
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,

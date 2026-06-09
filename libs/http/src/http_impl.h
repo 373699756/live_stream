@@ -35,8 +35,8 @@ public:
     HttpResponse HandleRequest(const HttpRequest &request) override;
     bool ShouldUseStreamExecutor(const HttpRequest &request) const override;
     HttpResponse HandleHttpRequest(const HttpRequest &request) override;
-    bool HandleStreamingHttpRequest(ConnectionId connection_id,
-                                    const HttpRequest &request) override;
+    HttpStreamingRequestResult HandleStreamingHttpRequest(
+        ConnectionId connection_id, const HttpRequest &request) override;
     HttpListenAddress LocalAddress() const override;
     HttpStats GetStats() const override;
     std::vector<HttpStreamingSessionDiagnostics>

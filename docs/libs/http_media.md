@@ -52,7 +52,10 @@ TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
 `/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。
-SSE 使用同一 close callback 解除订阅，但不作为媒体会话列入 `/api/media/sessions`。
+在调用 `BeginStream(type, stream_id)` 到 `AttachStreamClient()` 完成之间，HTTP session
+会以 `stream_state=opening` 暴露，便于定位已接管 TCP 但卡在 header/GOP/sink attach
+阶段的连接；attach 成功后变为 `attached`。SSE 使用同一 close callback 解除订阅，
+但不作为媒体会话列入 `/api/media/sessions`。
 
 ## API 归属
 
@@ -73,6 +76,12 @@ SSE 使用同一 close callback 解除订阅，但不作为媒体会话列入 `/
 `stream` 只接受 `main` 或 `sub`。HLS、HTTP-FLV、MJPEG、SSE events 和 WHEP 属于
 流式/播放 URL，不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。WebRTC
 JSON signaling 必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
+
+HTTP streaming handler 必须返回明确的接管结果：`not_handled` 交回普通 router，
+`response_sent` 表示短响应已经入队，`streaming` 表示连接已经进入长连接状态，
+`closed` 表示 handler 已经关闭或安排关闭连接，`failed` 表示 HTTP server 需要关闭
+连接。这样 HLS segment 这类短响应不会误落入普通 keep-alive 管线，FLV/MJPEG 也不会
+在切换或 attach 失败时留下半接管连接。
 
 WebRTC JSON DTO 冻结为：
 

@@ -131,7 +131,8 @@ keyframe/first-frame/protocol-ready timestamps, and last reset reason.
 to `/api/events` for media status changes and keeps slow polling only as a
 fallback; automatic playback prefers WebRTC, HTTP-FLV, then MJPEG before HLS.
 `MediaSessionInfo` describes active HTTP-FLV/MJPEG/RTSP/WebRTC sessions with
-connection id, media client id, pending bytes, send queue length, last write
+connection id, media client id, `stream_state` (`opening` before media client
+attach, `attached` after attach), pending bytes, send queue length, last write
 timestamp, close reason, and RTP/RTCP diagnostics where the backend provides
 them. HLS playlist/segment requests are short HTTP responses and are diagnosed
 through stream readiness and HTTP error logs rather than persistent sessions.

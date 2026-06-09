@@ -111,13 +111,19 @@ HttpSessionParseResult HttpSession::CompleteKeepAliveRequest(
   return ParsePendingRequests(options, request_logs);
 }
 
-bool HttpSession::BeginStream() {
+bool HttpSession::BeginStream(HttpMediaClientType type, StreamId stream_id) {
+  if (type == HttpMediaClientType::kNone || !processing_ || streaming_) {
+    return false;
+  }
   // 进入 streaming 后该 TCP 连接不再解析 HTTP request；后续字节视为非法输入，
   // 生命周期由媒体 client 和 TCP close callback 接管。
   processing_ = false;
   closing_ = true;
   streaming_ = true;
   media_client_ = HttpMediaClientHandle{};
+  media_type_ = type;
+  stream_state_ = HttpMediaStreamState::kOpening;
+  stream_id_ = stream_id;
   pending_requests_.clear();
   splitter_.Clear();
   ++timeout_generation_;
@@ -126,12 +132,16 @@ bool HttpSession::BeginStream() {
 
 bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
   if (!streaming_ || client.type == HttpMediaClientType::kNone ||
-      client.id == 0) {
+      client.id == 0 || stream_state_ != HttpMediaStreamState::kOpening ||
+      client.type != media_type_ || client.stream_id != stream_id_) {
     return false;
   }
   // 同一个 HTTP streaming session 只绑定一个媒体 client。切换协议应先关闭
   // 原连接，而不是在一个 TCP session 中替换 client。
   media_client_ = client;
+  media_type_ = client.type;
+  stream_state_ = HttpMediaStreamState::kAttached;
+  stream_id_ = client.stream_id;
   return true;
 }
 
@@ -184,7 +194,10 @@ HttpSessionStreamingInfo HttpSession::StreamingInfo() const {
   HttpSessionStreamingInfo info;
   info.connection_id = connection_id_;
   info.client_ip = client_ip_;
+  info.media_type = media_type_;
+  info.stream_state = stream_state_;
   info.media_client = media_client_;
+  info.stream_id = stream_id_;
   info.streaming = streaming_;
   return info;
 }

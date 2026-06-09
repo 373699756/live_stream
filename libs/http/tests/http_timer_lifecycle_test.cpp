@@ -23,10 +23,10 @@ public:
         return response;
     }
 
-    bool HandleStreamingHttpRequest(
+    live_stream::HttpStreamingRequestResult HandleStreamingHttpRequest(
         live_stream::ConnectionId,
         const live_stream::HttpRequest&) override {
-        return false;
+        return live_stream::HttpStreamingRequestResult::kNotHandled;
     }
 };
 

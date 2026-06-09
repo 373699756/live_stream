@@ -160,7 +160,7 @@ HttpResponse HttpImpl::HandleHttpRequest(const HttpRequest &request) {
                            StatusResponse(404, "Not Found"));
 }
 
-bool HttpImpl::HandleStreamingHttpRequest(
+HttpStreamingRequestResult HttpImpl::HandleStreamingHttpRequest(
     ConnectionId connection_id, const HttpRequest &request) {
     IStreamingHttpHandler *streaming_handler = nullptr;
     {
@@ -169,7 +169,7 @@ bool HttpImpl::HandleStreamingHttpRequest(
     }
     if (streaming_handler == nullptr ||
         !streaming_handler->CanHandleStreamingRequest(request)) {
-        return false;
+        return HttpStreamingRequestResult::kNotHandled;
     }
     if (server_ != nullptr) {
         server_->IncrementTotalRequests();
@@ -177,10 +177,7 @@ bool HttpImpl::HandleStreamingHttpRequest(
     Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
                    static_cast<unsigned long long>(connection_id),
                    request.path.c_str(), request.client_ip.c_str());
-    // streaming_handler 拥有把 HTTP session 切到 streaming 状态的责任；
-    // 成功后 HttpServer 不再发送普通响应，也不再触发 keep-alive 续解析。
-    streaming_handler->HandleStreamingRequest(connection_id, request);
-    return true;
+    return streaming_handler->HandleStreamingRequest(connection_id, request);
 }
 
 HttpStats HttpImpl::GetStats() const {

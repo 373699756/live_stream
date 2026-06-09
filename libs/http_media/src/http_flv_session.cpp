@@ -219,7 +219,9 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
     if (cached_flv_bytes != nullptr) {
         *cached_flv_bytes = 0;
     }
-    if (writer_ == nullptr || !writer_->BeginStream(connection_id_)) {
+    if (writer_ == nullptr ||
+        !writer_->BeginStream(connection_id_, HttpMediaClientType::kFlv,
+                              stream_id_)) {
         return HttpFlvSessionStartStatus::kNoSession;
     }
 

@@ -20,6 +20,37 @@ enum class HttpMediaClientType {
     kEventStream,
 };
 
+enum class HttpMediaStreamState {
+    kNone,
+    kOpening,
+    kAttached,
+};
+
+inline const char *HttpMediaStreamStateName(HttpMediaStreamState state) {
+    switch (state) {
+        case HttpMediaStreamState::kOpening:
+            return "opening";
+        case HttpMediaStreamState::kAttached:
+            return "attached";
+        case HttpMediaStreamState::kNone:
+            break;
+    }
+    return "none";
+}
+
+enum class HttpStreamingRequestResult {
+    // The request is not a streaming/media request; run the normal router.
+    kNotHandled,
+    // A short response was queued. The handler owns any required close policy.
+    kResponseSent,
+    // The TCP session was converted to a long-lived streaming session.
+    kStreaming,
+    // The handler already closed or scheduled close for the connection.
+    kClosed,
+    // The server should close the connection because takeover failed.
+    kFailed,
+};
+
 struct HttpMediaClientHandle {
     HttpMediaClientType type = HttpMediaClientType::kNone;
     uint64_t id = 0;
@@ -63,7 +94,11 @@ public:
                                     size_t body_size,
                                     bool close_after_response) = 0;
     // 将 HTTP session 切成流式模式。调用成功后不能再按普通 keep-alive 请求处理。
-    virtual bool BeginStream(ConnectionId connection_id) = 0;
+    // type/stream_id 会先作为 opening 诊断保存在 HTTP session，AttachStreamClient()
+    // 成功后切换为 attached。
+    virtual bool BeginStream(ConnectionId connection_id,
+                             HttpMediaClientType type,
+                             StreamId stream_id) = 0;
     // 绑定媒体模块的 client id，TCP close 时 writer 会通过 close callback 归还。
     virtual bool AttachStreamClient(ConnectionId connection_id,
                                     HttpMediaClientHandle client) = 0;

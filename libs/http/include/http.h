@@ -76,6 +76,7 @@ struct HttpStreamingSessionDiagnostics {
     std::string protocol;
     std::string session_id;
     std::string client_id;
+    std::string stream_state;
     StreamId stream_id = StreamId::kMain;
     std::string client_ip;
     std::string remote_address;

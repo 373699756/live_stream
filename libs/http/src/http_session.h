@@ -56,7 +56,10 @@ struct ClosedHttpSessionInfo {
 struct HttpSessionStreamingInfo {
   ConnectionId connection_id = 0;
   std::string client_ip;
+  HttpMediaClientType media_type = HttpMediaClientType::kNone;
+  HttpMediaStreamState stream_state = HttpMediaStreamState::kNone;
   HttpMediaClientHandle media_client;
+  StreamId stream_id = StreamId::kMain;
   bool streaming = false;
 };
 
@@ -84,7 +87,7 @@ class HttpSession {
       const HttpSessionParseOptions &options,
       std::vector<HttpRequestLog> *request_logs);
 
-  bool BeginStream();
+  bool BeginStream(HttpMediaClientType type, StreamId stream_id);
   bool AttachStreamClient(HttpMediaClientHandle client);
   RenewedHttpSessionTimeout RenewTimeout();
   bool InstallTimeout(uint64_t generation, NetTimerId timer_id);
@@ -109,6 +112,9 @@ class HttpSession {
   // media_client_ 只在 streaming 状态有效，保存 FLV/MJPEG/SSE 的外部 client id，
   // TCP close 时交给 HttpServer 统一 detach/unsubscribe。
   HttpMediaClientHandle media_client_;
+  HttpMediaClientType media_type_ = HttpMediaClientType::kNone;
+  HttpMediaStreamState stream_state_ = HttpMediaStreamState::kNone;
+  StreamId stream_id_ = StreamId::kMain;
   // processing_ 保证同一 HTTP session 一次只执行一个 request。
   bool processing_ = false;
   // closing_ 表示当前连接不会再接收新的普通 HTTP 请求；可能是响应后关闭，

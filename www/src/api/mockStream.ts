@@ -113,6 +113,7 @@ export const mockMediaSessions: MediaSessionInfo[] = [
     protocol: 'http_flv',
     stream: 'sub',
     state: 'streaming',
+    stream_state: 'attached',
     connection_id: 101,
     client_id: '7001',
     client_ip: '192.168.1.32',
