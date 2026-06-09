@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
   AiDetection,
   AiInferenceResult,
+  AiTaskStatus,
   AiStatus,
   StreamName,
 } from '../api/types';
@@ -85,6 +86,44 @@ function detectionStyle(detection: AiDetection) {
   };
 }
 
+function taskHasUsableResult(task: AiTaskStatus, stream: StreamName) {
+  return (
+    task.config.enabled &&
+    task.stats.enabled &&
+    task.stats.backend_available &&
+    task.last_result.success &&
+    task.last_result.stream === stream &&
+    task.last_result.detections.length > 0
+  );
+}
+
+function resultForStream(status: AiStatus | null, stream: StreamName) {
+  if (!status?.enabled) {
+    return null;
+  }
+  const detections: AiDetection[] = [];
+  let latestSequence = 0;
+  let latestPtsUs = 0;
+  for (const task of status.tasks ?? []) {
+    if (!taskHasUsableResult(task, stream)) {
+      continue;
+    }
+    detections.push(...task.last_result.detections);
+    latestSequence = Math.max(latestSequence, task.last_result.sequence);
+    latestPtsUs = Math.max(latestPtsUs, task.last_result.pts_us);
+  }
+  if (detections.length === 0) {
+    return null;
+  }
+  return {
+    success: true,
+    stream,
+    sequence: latestSequence,
+    pts_us: latestPtsUs,
+    detections,
+  };
+}
+
 export function AiDetectionOverlay({
   frameResolution,
   status,
@@ -97,9 +136,10 @@ export function AiDetectionOverlay({
     expiresAtMs: number;
     result: AiInferenceResult;
   } | null>(null);
-  const result = status?.last_result;
-  const aiReady =
-    !error && Boolean(status?.config.enabled) && Boolean(status?.stats.backend_available);
+  const result = resultForStream(status, stream);
+  const enabledTasks = status?.tasks?.filter((task) => task.config.enabled) ?? [];
+  const hasRunnableTask = enabledTasks.some((task) => task.stats.backend_available);
+  const aiReady = !error && Boolean(status?.enabled) && hasRunnableTask;
   const resultHasDetections =
     aiReady && Boolean(result?.success) && Boolean(result?.detections.length);
   const displayResult =
@@ -160,24 +200,22 @@ export function AiDetectionOverlay({
   let statusText = '读取中';
   if (error) {
     statusText = '状态异常';
-  } else if (status && !status.config.enabled) {
+  } else if (status && !status.enabled) {
     statusText = '未启用';
-  } else if (status && !status.stats.backend_available) {
+  } else if (status?.enabled && !hasRunnableTask) {
     statusText = '后端不可用';
-  } else if (
-    displayResult &&
-    detections.length > 0 &&
-    displayResult.stream !== stream
-  ) {
-    statusText = `${streamLabel(displayResult.stream)}映射 ${detections.length} 个目标`;
   } else if (detections.length > 0) {
     statusText = `${detections.length} 个目标`;
-  } else if (aiReady && result?.success && result.stream !== stream) {
-    statusText = `${streamLabel(result.stream)} ${resultCount} 个目标`;
   } else if (aiReady && result?.success) {
     statusText = `${resultCount} 个目标`;
-  } else if (status?.config.enabled) {
-    statusText = '无有效结果';
+  } else if (status?.enabled) {
+    const otherStream = stream === 'main' ? 'sub' : 'main';
+    const hasOtherStreamResult = (status.tasks ?? []).some(
+      (task) => taskHasUsableResult(task, otherStream),
+    );
+    statusText = hasOtherStreamResult
+      ? `${streamLabel(otherStream)}有结果`
+      : '无有效结果';
   }
 
   return (

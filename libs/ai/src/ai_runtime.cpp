@@ -24,7 +24,7 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
-constexpr uint32_t kAlertExecutorQueueCapacity = 1;
+constexpr uint32_t kAlertExecutorQueueCapacity = 8;
 constexpr uint32_t kCaptureStopPollMs = 50;
 constexpr int64_t kMinAlertIntervalMs = 1000;
 
@@ -85,23 +85,78 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
            data[1] == 0xd8;
 }
 
-bool CanHotUpdateConfig(const AiModelConfig &previous_config,
-                        const AiModelConfig &next_config) {
-    return previous_config.enabled && next_config.enabled &&
-           previous_config.backend == next_config.backend &&
-           previous_config.task == next_config.task &&
-           previous_config.stream_id == next_config.stream_id &&
-           previous_config.model_path == next_config.model_path &&
-           previous_config.input_width == next_config.input_width &&
-           previous_config.input_height == next_config.input_height;
+AiModelConfig DefaultTaskConfig(AiTask task) {
+    AiModelConfig config;
+    config.enabled = false;
+    config.backend = AiBackend::kHi3516Dv300Nnie;
+    config.task = task;
+    config.stream_id = StreamId::kSub;
+    config.input_width = 300;
+    config.input_height = 300;
+    config.inference_interval_ms = 500;
+    config.max_results = 16;
+    config.confidence_threshold = 0.5f;
+    if (task == AiTask::kObjectDetection ||
+        task == AiTask::kPerimeterDetection) {
+        config.model_path = "models/inst_ssd_cycle.wk";
+    }
+    return config;
+}
+
+AiConfig DefaultAiConfig() {
+    AiConfig config;
+    config.enabled = false;
+    config.tasks.push_back(DefaultTaskConfig(AiTask::kObjectDetection));
+    AiModelConfig perimeter = DefaultTaskConfig(AiTask::kPerimeterDetection);
+    perimeter.enabled = true;
+    config.tasks.push_back(perimeter);
+    config.tasks.push_back(DefaultTaskConfig(AiTask::kMotionClassification));
+    config.tasks.push_back(DefaultTaskConfig(AiTask::kOcclusionDetection));
+    return config;
+}
+
+uint32_t ClampInferenceTime(int64_t inference_time_ms) {
+    if (inference_time_ms <= 0) {
+        return 0;
+    }
+    return static_cast<uint32_t>(std::min<int64_t>(
+        inference_time_ms,
+        static_cast<int64_t>(std::numeric_limits<uint32_t>::max())));
 }
 
 }  // namespace
 
+struct AiTaskRuntime final {
+    explicit AiTaskRuntime(const AiModelConfig &task_config)
+        : config(task_config) {}
+
+    AiModelConfig config;
+    std::shared_ptr<AiInferenceEngine> engine;
+    std::unique_ptr<infra::Executor> executor;
+    AiInferenceResult last_result;
+    AiStats stats;
+    uint64_t inference_time_total_ms = 0;
+    int64_t last_result_time_ms = 0;
+    int64_t last_alert_ms = 0;
+    bool running = false;
+};
+
 struct PendingAlertCapture {
     AiInferenceResult result;
     AiModelConfig config;
+    std::shared_ptr<AiTaskRuntime> task_runtime;
     int64_t timestamp_ms = 0;
+};
+
+struct StoppedTaskRuntime {
+    std::unique_ptr<infra::Executor> executor;
+    std::shared_ptr<AiInferenceEngine> engine;
+};
+
+struct TaskRuntimeStartup {
+    std::shared_ptr<AiTaskRuntime> task_runtime;
+    std::shared_ptr<AiInferenceEngine> engine;
+    std::unique_ptr<infra::Executor> executor;
 };
 
 struct AiRuntime::State final {
@@ -110,54 +165,69 @@ struct AiRuntime::State final {
         if (options.max_alert_records == 0) {
             options.max_alert_records = 100;
         }
+        if (!IsValidAiConfig(config)) {
+            config = DefaultAiConfig();
+        }
+        RebuildTaskRuntimesLocked();
     }
 
     bool Prepare() {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (!IsValidAiConfig(config)) {
-            return false;
-        }
-        if (options.config != nullptr && !config_attached) {
-            ConfigAttachment attachment;
-            attachment.validate = [this](const ConfigJson &value) {
-                AiModelConfig current_config;
-                {
-                    std::lock_guard<std::mutex> guard(mutex);
-                    current_config = config;
-                }
-                AiModelConfig parsed;
-                return ParseAiConfig(value, current_config, &parsed)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "invalid ai config");
-            };
-            attachment.apply = [this](const ConfigJson &value) {
-                AiModelConfig current_config;
-                {
-                    std::lock_guard<std::mutex> guard(mutex);
-                    current_config = config;
-                }
-                AiModelConfig parsed;
-                if (!ParseAiConfig(value, current_config, &parsed)) {
-                    return ConfigResult::Failure("", "invalid ai config");
-                }
-                return ApplyConfig(parsed)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure(
-                                 "", "apply ai config failed");
-            };
-            if (!options.config->AttachConfig("ai", attachment)) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!IsValidAiConfig(config)) {
                 return false;
             }
-            config_attached = true;
+            if (options.config != nullptr && !config_attached) {
+                ConfigAttachment attachment;
+                attachment.validate = [this](const ConfigJson &value) {
+                    AiConfig current_config;
+                    {
+                        std::lock_guard<std::mutex> guard(mutex);
+                        current_config = config;
+                    }
+                    AiConfig parsed;
+                    return ParseAiConfig(value, current_config, &parsed)
+                               ? ConfigResult::Success()
+                               : ConfigResult::Failure(
+                                     "", "invalid ai config");
+                };
+                attachment.apply = [this](const ConfigJson &value) {
+                    AiConfig current_config;
+                    {
+                        std::lock_guard<std::mutex> guard(mutex);
+                        current_config = config;
+                    }
+                    AiConfig parsed;
+                    if (!ParseAiConfig(value, current_config, &parsed)) {
+                        return ConfigResult::Failure("", "invalid ai config");
+                    }
+                    return ApplyConfig(parsed)
+                               ? ConfigResult::Success()
+                               : ConfigResult::Failure(
+                                     "", "apply ai config failed");
+                };
+                if (!options.config->AttachConfig("ai", attachment)) {
+                    return false;
+                }
+                config_attached = true;
+            }
         }
+
         if (options.config != nullptr) {
             ConfigJson ai_config = options.config->GetValue("ai");
             if (ai_config.is_object()) {
-                AiModelConfig parsed;
-                if (!ParseAiConfig(ai_config, config, &parsed)) {
+                AiConfig current_config;
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    current_config = config;
+                }
+                AiConfig parsed;
+                if (!ParseAiConfig(ai_config, current_config, &parsed)) {
                     return false;
                 }
+                std::lock_guard<std::mutex> lock(mutex);
                 config = parsed;
+                RebuildTaskRuntimesLocked();
             }
         }
         return true;
@@ -168,58 +238,43 @@ struct AiRuntime::State final {
             return false;
         }
 
-        AiModelConfig start_config;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (started) {
                 return true;
             }
-            start_config = config;
-            stats.enabled = start_config.enabled;
-            stats.backend_available = false;
-            if (!start_config.enabled) {
-                started = true;
-                return true;
-            }
             started = true;
-            if (!StartInferenceLocked(start_config)) {
-                started = false;
-                stats.enabled = false;
-                stats.backend_available = false;
-                return false;
-            }
+            RebuildTaskRuntimesLocked();
         }
-        Info("ai", "AI started: backend=%s stream=%d",
-             AiBackendName(start_config.backend),
-             static_cast<int>(start_config.stream_id));
+
+        StartConfiguredTaskRuntimes();
+
+        AiStats summary = SnapshotSummaryStats();
+        std::size_t configured_task_count = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            configured_task_count = task_runtimes.size();
+        }
+        Info("ai", "AI started: enabled=%d tasks=%u",
+             summary.enabled ? 1 : 0,
+             static_cast<unsigned int>(configured_task_count));
         return true;
     }
 
     void Stop() {
-        std::unique_ptr<infra::Executor> stopped_executor;
-        std::shared_ptr<AiInferenceEngine> stopped_engine;
+        std::vector<StoppedTaskRuntime> stopped_tasks;
         std::shared_ptr<infra::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started && !executor && !engine && !alert_executor) {
+            if (!started && task_runtimes.empty() && !alert_executor) {
                 return;
             }
             started = false;
-            inference_running = false;
-            stopped_executor = std::move(executor);
-            stopped_engine = std::move(engine);
+            StopTaskRuntimesLocked(&stopped_tasks);
             stopped_alert_executor = std::move(alert_executor);
-            stats.backend_available = false;
         }
-        if (stopped_executor) {
-            stopped_executor->Stop(infra::StopMode::kDiscard);
-        }
-        if (stopped_alert_executor) {
-            stopped_alert_executor->Stop(infra::StopMode::kDiscard);
-        }
-        if (stopped_engine) {
-            stopped_engine->Stop();
-        }
+        StopStoppedTaskRuntimes(&stopped_tasks);
+        StopAlertExecutor(stopped_alert_executor);
         ClearAlarmInput();
     }
 
@@ -236,17 +291,18 @@ struct AiRuntime::State final {
         }
     }
 
-    void CaptureLoop() {
+    void CaptureLoop(std::shared_ptr<AiTaskRuntime> task_runtime) {
         int64_t next_inference_ms = infra::Time::MonotonicMillis();
         while (true) {
             AiModelConfig run_config;
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                if (!started || !inference_running || !config.enabled) {
+                if (!CanTaskRunLocked(task_runtime)) {
                     return;
                 }
-                run_config = config;
+                run_config = task_runtime->config;
             }
+
             const int64_t now_ms = infra::Time::MonotonicMillis();
             if (now_ms < next_inference_ms) {
                 const int64_t wait_ms = next_inference_ms - now_ms;
@@ -257,47 +313,53 @@ struct AiRuntime::State final {
             next_inference_ms =
                 infra::Time::MonotonicMillis() +
                 static_cast<int64_t>(run_config.inference_interval_ms);
-            PendingAlertCapture pending_alert;
-            bool should_capture_alert = false;
+
+            hisisdk::YuvFrame frame;
             {
-                hisisdk::YuvFrame frame = options.sdk->CaptureYuvFrame(
+                std::lock_guard<std::mutex> capture_lock(capture_mutex);
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (!CanTaskRunLocked(task_runtime)) {
+                        return;
+                    }
+                }
+                frame = options.sdk->CaptureYuvFrame(
                     VpssChannelForStream(options.media_channels,
                                          run_config.stream_id),
                     YuvSizeForStream(options.media_channels,
                                      run_config.stream_id),
                     run_config.inference_interval_ms);
-                if (!frame.buffer || frame.size == 0) {
-                    {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        ++stats.skipped_frames;
-                        ++stats.inference_failed_count;
-                        stats.last_failure_time_ms =
-                            infra::Time::SystemTimeMillis();
-                    }
-                    ClearAlarmInput();
-                    continue;
-                }
-                should_capture_alert =
-                    RunInference(frame, run_config, &pending_alert);
             }
-            if (should_capture_alert) {
+
+            if (!frame.buffer || frame.size == 0) {
+                MarkCaptureFailure(task_runtime, run_config);
+                PublishAlarmInputForState(task_runtime);
+                continue;
+            }
+
+            PendingAlertCapture pending_alert;
+            if (RunInference(frame, task_runtime, run_config,
+                             &pending_alert)) {
                 PostAlertCapture(pending_alert);
             }
         }
     }
 
     bool RunInference(const hisisdk::YuvFrame &frame,
+                      const std::shared_ptr<AiTaskRuntime> &task_runtime,
                       const AiModelConfig &run_config,
                       PendingAlertCapture *pending_alert) {
         std::shared_ptr<AiInferenceEngine> run_engine;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || !inference_running || !engine) {
-                ++stats.inference_failed_count;
+            if (!CanTaskRunLocked(task_runtime) || !task_runtime->engine) {
+                ++task_runtime->stats.inference_failed_count;
+                task_runtime->stats.last_failure_time_ms =
+                    infra::Time::SystemTimeMillis();
                 return false;
             }
-            ++stats.received_frames;
-            run_engine = engine;
+            ++task_runtime->stats.received_frames;
+            run_engine = task_runtime->engine;
         }
 
         const int64_t inference_start_ms = infra::Time::MonotonicMillis();
@@ -311,43 +373,55 @@ struct AiRuntime::State final {
 
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || !inference_running) {
+            if (!CanTaskRunLocked(task_runtime)) {
                 return false;
             }
             if (result.success) {
-                ++stats.inference_count;
-                stats.last_success_time_ms = infra::Time::SystemTimeMillis();
-                UpdateInferenceTimeStatsLocked(inference_time_ms);
+                ++task_runtime->stats.inference_count;
+                task_runtime->stats.last_success_time_ms =
+                    infra::Time::SystemTimeMillis();
+                UpdateInferenceTimeStatsLocked(task_runtime,
+                                               inference_time_ms);
             } else {
-                ++stats.inference_failed_count;
-                stats.last_failure_time_ms = infra::Time::SystemTimeMillis();
+                ++task_runtime->stats.inference_failed_count;
+                task_runtime->stats.last_failure_time_ms =
+                    infra::Time::SystemTimeMillis();
             }
-            last_result = result;
-            stats.active_results =
-                static_cast<uint32_t>(last_result.detections.size());
+            task_runtime->last_result = result;
+            task_runtime->last_result_time_ms =
+                infra::Time::MonotonicMillis();
+            task_runtime->stats.active_results =
+                HasAlertDetections(result)
+                    ? static_cast<uint32_t>(result.detections.size())
+                    : 0;
         }
-        UpdateAlarmInput(result, run_config);
-        return PrepareAlertCapture(result, run_config, pending_alert);
+
+        PublishAlarmInputForState(task_runtime);
+        return PrepareAlertCapture(result, run_config, task_runtime,
+                                   pending_alert);
     }
 
-    bool PrepareAlertCapture(const AiInferenceResult &result,
-                             const AiModelConfig &run_config,
-                             PendingAlertCapture *pending_alert) {
-        if (!HasAlertDetections(result) ||
-            options.snapshot == nullptr || pending_alert == nullptr) {
+    bool PrepareAlertCapture(
+        const AiInferenceResult &result,
+        const AiModelConfig &run_config,
+        const std::shared_ptr<AiTaskRuntime> &task_runtime,
+        PendingAlertCapture *pending_alert) {
+        if (!HasAlertDetections(result) || options.snapshot == nullptr ||
+            pending_alert == nullptr) {
             return false;
         }
         const int64_t now_ms = infra::Time::SystemTimeMillis();
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || !inference_running ||
-                now_ms - last_alert_ms < kMinAlertIntervalMs) {
+            if (!CanTaskRunLocked(task_runtime) ||
+                now_ms - task_runtime->last_alert_ms < kMinAlertIntervalMs) {
                 return false;
             }
-            last_alert_ms = now_ms;
+            task_runtime->last_alert_ms = now_ms;
         }
         pending_alert->result = result;
         pending_alert->config = run_config;
+        pending_alert->task_runtime = task_runtime;
         pending_alert->timestamp_ms = now_ms;
         return true;
     }
@@ -364,8 +438,7 @@ struct AiRuntime::State final {
         if (!executor_snapshot->Post([this, pending_alert]() {
                 SaveAlertCapture(pending_alert);
             })) {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++stats.dropped_tasks;
+            IncrementDroppedTasks(pending_alert.task_runtime);
         }
     }
 
@@ -375,14 +448,12 @@ struct AiRuntime::State final {
         request.include_thumbnail = false;
         SnapshotFrame frame = options.snapshot->Capture(request);
         if (!LooksLikeJpeg(frame)) {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++stats.dropped_tasks;
+            IncrementDroppedTasks(pending_alert.task_runtime);
             return;
         }
 
         if (!infra::Path::MakeDirs(options.alert_image_dir)) {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++stats.dropped_tasks;
+            IncrementDroppedTasks(pending_alert.task_runtime);
             return;
         }
 
@@ -394,8 +465,7 @@ struct AiRuntime::State final {
         image.assign(reinterpret_cast<const char *>(data), frame.size);
         if (!infra::File::WriteAll(AlertImagePath(options.alert_image_dir, id),
                                    image)) {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++stats.dropped_tasks;
+            IncrementDroppedTasks(pending_alert.task_runtime);
             return;
         }
 
@@ -411,105 +481,98 @@ struct AiRuntime::State final {
         AddAlert(alert);
     }
 
-    void UpdateAlarmInput(const AiInferenceResult &result,
-                          const AiModelConfig &run_config) {
-        if (options.alarm == nullptr) {
-            return;
-        }
-        AlarmInput input;
-        input.source = AlarmSource::kAiDetection;
-        input.active = HasAlertDetections(result);
-        input.value = static_cast<int32_t>(result.detections.size());
-        if (input.active) {
-            input.message = std::string("ai_") + TaskAlarmName(run_config.task);
-        }
-        if (!options.alarm->InjectAlarmInput(input)) {
-            std::lock_guard<std::mutex> lock(mutex);
-            ++stats.dropped_tasks;
-        }
-    }
-
-    bool ApplyConfig(const AiModelConfig &next_config) {
+    bool ApplyConfig(const AiConfig &next_config) {
         if (!IsValidAiConfig(next_config)) {
             return false;
         }
 
-        AiModelConfig previous_config;
         bool service_started = false;
+        std::vector<StoppedTaskRuntime> stopped_tasks;
+        std::shared_ptr<infra::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            previous_config = config;
             service_started = started;
-            if (!service_started) {
-                config = next_config;
-                stats.enabled = next_config.enabled;
-                stats.backend_available = false;
-                ClearLastResultLocked();
-                return true;
-            }
-            if (inference_running && engine && executor &&
-                CanHotUpdateConfig(previous_config, next_config)) {
-                config = next_config;
-                stats.enabled = next_config.enabled;
-                return true;
-            }
-        }
-
-        StopInference();
-
-        {
-            std::lock_guard<std::mutex> lock(mutex);
+            StopTaskRuntimesLocked(&stopped_tasks);
+            stopped_alert_executor = std::move(alert_executor);
             config = next_config;
-            stats.enabled = next_config.enabled;
-            stats.backend_available = false;
-            ClearLastResultLocked();
-            if (!started || !next_config.enabled) {
-                return true;
-            }
-            if (StartInferenceLocked(next_config)) {
-                Info("ai", "AI config applied: backend=%s stream=%d",
-                     AiBackendName(next_config.backend),
-                     static_cast<int>(next_config.stream_id));
-                return true;
-            }
+            RebuildTaskRuntimesLocked();
+        }
+        StopStoppedTaskRuntimes(&stopped_tasks);
+        StopAlertExecutor(stopped_alert_executor);
+
+        if (!service_started) {
+            return true;
         }
 
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            config = previous_config;
-            stats.enabled = previous_config.enabled;
-            stats.backend_available = false;
-            ClearLastResultLocked();
-            if (!started || !previous_config.enabled) {
-                return false;
-            }
-            if (StartInferenceLocked(previous_config)) {
-                Error(
-                    "ai",
-                    "Apply AI config failed, previous backend restored");
-                return false;
-            }
+        StartConfiguredTaskRuntimes();
+        PublishAlarmInputForState(nullptr);
+        Info("ai", "AI config applied: enabled=%d tasks=%u",
+             next_config.enabled ? 1 : 0,
+             static_cast<unsigned int>(next_config.tasks.size()));
+        if (!next_config.enabled) {
+            ClearAlarmInput();
         }
-
-        Error("ai",
-              "Apply AI config failed, restore previous backend "
-              "failed");
-        return false;
+        return true;
     }
 
-    bool StartInferenceLocked(const AiModelConfig &start_config) {
-        if (options.device_media == nullptr || options.sdk == nullptr ||
-            !options.device_media->IsStarted()) {
-            return false;
+    void StartConfiguredTaskRuntimes() {
+        std::vector<std::shared_ptr<AiTaskRuntime>> enabled_task_runtimes;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started || !config.enabled) {
+                return;
+            }
+            if (options.device_media == nullptr || options.sdk == nullptr ||
+                !options.device_media->IsStarted()) {
+                MarkAllEnabledTaskBackendsUnavailableLocked();
+                return;
+            }
+            if (!EnsureAlertExecutorLocked()) {
+                MarkAllEnabledTaskBackendsUnavailableLocked();
+                return;
+            }
+            for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+                 task_runtimes) {
+                if (!task_runtime->config.enabled) {
+                    task_runtime->stats.enabled = false;
+                    continue;
+                }
+                task_runtime->stats.enabled = true;
+                task_runtime->stats.backend_available = false;
+                enabled_task_runtimes.push_back(task_runtime);
+            }
         }
 
+        for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+             enabled_task_runtimes) {
+            TaskRuntimeStartup startup;
+            if (!BuildTaskRuntimeStartup(task_runtime, &startup)) {
+                MarkTaskBackendUnavailable(task_runtime);
+                continue;
+            }
+
+            StoppedTaskRuntime failed_runtime;
+            if (!CommitTaskRuntimeStartup(&startup, &failed_runtime)) {
+                StopTaskRuntimeStartup(&startup);
+                StopStoppedTaskRuntime(&failed_runtime);
+            }
+        }
+    }
+
+    bool BuildTaskRuntimeStartup(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime,
+        TaskRuntimeStartup *startup) {
+        if (!task_runtime || startup == nullptr) {
+            return false;
+        }
         std::shared_ptr<AiInferenceEngine> next_engine =
-            CreateAiEngine(start_config.backend);
+            CreateAiEngine(task_runtime->config.backend);
         if (!next_engine || !next_engine->Available() ||
-            !next_engine->Start(start_config)) {
-            Error("ai", "Start AI backend failed: backend=%s model=%s",
-                  AiBackendName(start_config.backend),
-                  start_config.model_path.c_str());
+            !next_engine->Start(task_runtime->config)) {
+            Error("ai", "Start AI backend failed: backend=%s task=%d model=%s",
+                  AiBackendName(task_runtime->config.backend),
+                  static_cast<int>(task_runtime->config.task),
+                  task_runtime->config.model_path.c_str());
             if (next_engine) {
                 next_engine->Stop();
             }
@@ -524,66 +587,338 @@ struct AiRuntime::State final {
             next_engine->Stop();
             return false;
         }
-        engine = next_engine;
-        executor = std::move(next_executor);
-        if (!alert_executor) {
-            std::shared_ptr<infra::Executor> next_alert_executor(
-                new infra::Executor());
-            infra::ExecutorOptions alert_executor_options;
-            alert_executor_options.worker_count = 1;
-            alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
-            if (!next_alert_executor->Start(alert_executor_options)) {
-                executor->Stop(infra::StopMode::kDiscard);
-                next_engine->Stop();
-                engine.reset();
-                executor.reset();
-                return false;
-            }
-            alert_executor = std::move(next_alert_executor);
+
+        startup->task_runtime = task_runtime;
+        startup->engine = next_engine;
+        startup->executor = std::move(next_executor);
+        return true;
+    }
+
+    bool CommitTaskRuntimeStartup(TaskRuntimeStartup *startup,
+                                  StoppedTaskRuntime *failed_runtime) {
+        if (startup == nullptr || !startup->task_runtime || !startup->engine ||
+            !startup->executor) {
+            return false;
         }
-        inference_running = true;
-        stats.backend_available = engine->Available();
-        if (!executor->Post([this]() { CaptureLoop(); })) {
-            std::unique_ptr<infra::Executor> failed_executor =
-                std::move(executor);
-            std::shared_ptr<AiInferenceEngine> failed_engine =
-                std::move(engine);
-            std::shared_ptr<infra::Executor> failed_alert_executor =
-                std::move(alert_executor);
-            inference_running = false;
-            stats.backend_available = false;
-            failed_executor->Stop(infra::StopMode::kDiscard);
-            if (failed_alert_executor) {
-                failed_alert_executor->Stop(infra::StopMode::kDiscard);
+
+        std::lock_guard<std::mutex> lock(mutex);
+        std::shared_ptr<AiTaskRuntime> task_runtime = startup->task_runtime;
+        if (!CanStartTaskRuntimeLocked(task_runtime)) {
+            return false;
+        }
+
+        task_runtime->engine = startup->engine;
+        task_runtime->executor = std::move(startup->executor);
+        task_runtime->stats.enabled = true;
+        task_runtime->stats.backend_available = startup->engine->Available();
+        task_runtime->running = true;
+        startup->engine.reset();
+        if (!task_runtime->executor->Post([this, task_runtime]() {
+                CaptureLoop(task_runtime);
+            })) {
+            task_runtime->running = false;
+            task_runtime->stats.backend_available = false;
+            if (failed_runtime != nullptr) {
+                failed_runtime->executor = std::move(task_runtime->executor);
+                failed_runtime->engine = std::move(task_runtime->engine);
+            } else {
+                task_runtime->executor.reset();
+                task_runtime->engine.reset();
             }
-            failed_engine->Stop();
             return false;
         }
         return true;
     }
 
-    void StopInference() {
-        std::unique_ptr<infra::Executor> stopped_executor;
-        std::shared_ptr<AiInferenceEngine> stopped_engine;
-        std::shared_ptr<infra::Executor> stopped_alert_executor;
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            inference_running = false;
-            stopped_executor = std::move(executor);
-            stopped_engine = std::move(engine);
-            stopped_alert_executor = std::move(alert_executor);
-            stats.backend_available = false;
+    bool EnsureAlertExecutorLocked() {
+        if (alert_executor) {
+            return true;
         }
-        if (stopped_executor) {
-            stopped_executor->Stop(infra::StopMode::kDiscard);
+        std::shared_ptr<infra::Executor> next_alert_executor(
+            new infra::Executor());
+        infra::ExecutorOptions alert_executor_options;
+        alert_executor_options.worker_count = 1;
+        alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
+        if (!next_alert_executor->Start(alert_executor_options)) {
+            return false;
         }
+        alert_executor = next_alert_executor;
+        return true;
+    }
+
+    void MarkAllEnabledTaskBackendsUnavailableLocked() {
+        for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+             task_runtimes) {
+            if (!task_runtime || !task_runtime->config.enabled) {
+                continue;
+            }
+            task_runtime->stats.enabled = true;
+            task_runtime->stats.backend_available = false;
+        }
+    }
+
+    bool CanStartTaskRuntimeLocked(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) const {
+        if (!task_runtime || !started || !config.enabled ||
+            !task_runtime->config.enabled) {
+            return false;
+        }
+        for (const std::shared_ptr<AiTaskRuntime> &current : task_runtimes) {
+            if (current == task_runtime) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void MarkTaskBackendUnavailable(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!CanStartTaskRuntimeLocked(task_runtime)) {
+            return;
+        }
+        task_runtime->running = false;
+        task_runtime->stats.enabled = true;
+        task_runtime->stats.backend_available = false;
+    }
+
+    bool CanTaskRunLocked(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) const {
+        return task_runtime && started && config.enabled &&
+               task_runtime->running && task_runtime->config.enabled;
+    }
+
+    void MarkCaptureFailure(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime,
+        const AiModelConfig &run_config) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!task_runtime) {
+            return;
+        }
+        ++task_runtime->stats.skipped_frames;
+        ++task_runtime->stats.inference_failed_count;
+        task_runtime->stats.last_failure_time_ms =
+            infra::Time::SystemTimeMillis();
+        task_runtime->last_result = AiInferenceResult{};
+        task_runtime->last_result.stream_id = run_config.stream_id;
+        task_runtime->last_result_time_ms = infra::Time::MonotonicMillis();
+        task_runtime->stats.active_results = 0;
+    }
+
+    void StopTaskRuntimesLocked(
+        std::vector<StoppedTaskRuntime> *stopped_tasks) {
+        if (stopped_tasks == nullptr) {
+            return;
+        }
+        for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+             task_runtimes) {
+            if (!task_runtime) {
+                continue;
+            }
+            task_runtime->running = false;
+            task_runtime->stats.backend_available = false;
+            StoppedTaskRuntime stopped;
+            stopped.executor = std::move(task_runtime->executor);
+            stopped.engine = std::move(task_runtime->engine);
+            if (stopped.executor || stopped.engine) {
+                stopped_tasks->push_back(std::move(stopped));
+            }
+        }
+    }
+
+    static void StopStoppedTaskRuntimes(
+        std::vector<StoppedTaskRuntime> *stopped_tasks) {
+        if (stopped_tasks == nullptr) {
+            return;
+        }
+        for (StoppedTaskRuntime &stopped : *stopped_tasks) {
+            StopStoppedTaskRuntime(&stopped);
+        }
+        stopped_tasks->clear();
+    }
+
+    static void StopStoppedTaskRuntime(StoppedTaskRuntime *stopped) {
+        if (stopped == nullptr) {
+            return;
+        }
+        if (stopped->executor) {
+            stopped->executor->Stop(infra::StopMode::kDiscard);
+        }
+        if (stopped->engine) {
+            stopped->engine->Stop();
+        }
+        stopped->executor.reset();
+        stopped->engine.reset();
+    }
+
+    static void StopAlertExecutor(
+        std::shared_ptr<infra::Executor> stopped_alert_executor) {
         if (stopped_alert_executor) {
             stopped_alert_executor->Stop(infra::StopMode::kDiscard);
         }
-        if (stopped_engine) {
-            stopped_engine->Stop();
+    }
+
+    static void StopTaskRuntimeStartup(TaskRuntimeStartup *startup) {
+        if (startup == nullptr) {
+            return;
         }
-        ClearAlarmInput();
+        if (startup->executor) {
+            startup->executor->Stop(infra::StopMode::kDiscard);
+        }
+        if (startup->engine) {
+            startup->engine->Stop();
+        }
+        startup->executor.reset();
+        startup->engine.reset();
+    }
+
+    void RebuildTaskRuntimesLocked() {
+        task_runtimes.clear();
+        task_runtimes.reserve(config.tasks.size());
+        for (const AiModelConfig &task_config : config.tasks) {
+            std::shared_ptr<AiTaskRuntime> task_runtime(
+                new AiTaskRuntime(task_config));
+            task_runtime->stats.enabled = config.enabled && task_config.enabled;
+            task_runtime->stats.alarm_linked = options.alarm != nullptr;
+            task_runtimes.push_back(task_runtime);
+        }
+    }
+
+    AiStats TaskStatsLocked(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) const {
+        if (!task_runtime) {
+            return AiStats{};
+        }
+        AiStats stats = task_runtime->stats;
+        stats.enabled = config.enabled && task_runtime->config.enabled;
+        stats.backend_available =
+            stats.enabled && task_runtime->running && task_runtime->engine &&
+            task_runtime->engine->Available();
+        stats.alarm_linked = options.alarm != nullptr;
+        stats.active_results =
+            stats.enabled && HasAlertDetections(task_runtime->last_result)
+                ? static_cast<uint32_t>(
+                      task_runtime->last_result.detections.size())
+                : 0;
+        return stats;
+    }
+
+    AiStats SummaryStatsLocked() const {
+        AiStats summary;
+        summary.enabled = config.enabled;
+        summary.alarm_linked = options.alarm != nullptr;
+        bool any_enabled_task = false;
+        bool all_enabled_backends_available = true;
+        uint64_t total_inference_time_ms = 0;
+        for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+             task_runtimes) {
+            const AiStats task_stats = TaskStatsLocked(task_runtime);
+            if (task_runtime && config.enabled && task_runtime->config.enabled) {
+                any_enabled_task = true;
+                if (!task_stats.backend_available) {
+                    all_enabled_backends_available = false;
+                }
+            }
+            summary.last_success_time_ms =
+                std::max(summary.last_success_time_ms,
+                         task_stats.last_success_time_ms);
+            summary.last_failure_time_ms =
+                std::max(summary.last_failure_time_ms,
+                         task_stats.last_failure_time_ms);
+            summary.received_frames += task_stats.received_frames;
+            summary.skipped_frames += task_stats.skipped_frames;
+            summary.inference_count += task_stats.inference_count;
+            summary.inference_failed_count +=
+                task_stats.inference_failed_count;
+            summary.dropped_tasks += task_stats.dropped_tasks;
+            summary.last_inference_time_ms =
+                std::max(summary.last_inference_time_ms,
+                         task_stats.last_inference_time_ms);
+            summary.max_inference_time_ms =
+                std::max(summary.max_inference_time_ms,
+                         task_stats.max_inference_time_ms);
+            summary.active_results += task_stats.active_results;
+            if (task_runtime) {
+                total_inference_time_ms +=
+                    task_runtime->inference_time_total_ms;
+            }
+        }
+        summary.backend_available =
+            !config.enabled || !any_enabled_task ||
+            all_enabled_backends_available;
+        if (summary.inference_count != 0) {
+            summary.average_inference_time_ms = static_cast<uint32_t>(
+                total_inference_time_ms / summary.inference_count);
+        }
+        return summary;
+    }
+
+    AiStats SnapshotSummaryStats() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return SummaryStatsLocked();
+    }
+
+    void UpdateInferenceTimeStatsLocked(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime,
+        int64_t inference_time_ms) {
+        if (!task_runtime) {
+            return;
+        }
+        const uint32_t clamped_time_ms =
+            ClampInferenceTime(inference_time_ms);
+        task_runtime->stats.last_inference_time_ms = clamped_time_ms;
+        task_runtime->stats.max_inference_time_ms =
+            std::max(task_runtime->stats.max_inference_time_ms,
+                     clamped_time_ms);
+        task_runtime->inference_time_total_ms += clamped_time_ms;
+        if (task_runtime->stats.inference_count != 0) {
+            task_runtime->stats.average_inference_time_ms =
+                static_cast<uint32_t>(
+                    task_runtime->inference_time_total_ms /
+                    task_runtime->stats.inference_count);
+        }
+    }
+
+    AlarmInput AlarmInputLocked() const {
+        AlarmInput input;
+        input.source = AlarmSource::kAiDetection;
+        int64_t latest_active_result_time_ms = 0;
+        AiTask latest_active_task = AiTask::kObjectDetection;
+        for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+             task_runtimes) {
+            if (!task_runtime || !HasAlertDetections(task_runtime->last_result)) {
+                continue;
+            }
+            input.active = true;
+            input.value +=
+                static_cast<int32_t>(task_runtime->last_result.detections.size());
+            if (task_runtime->last_result_time_ms >=
+                latest_active_result_time_ms) {
+                latest_active_result_time_ms =
+                    task_runtime->last_result_time_ms;
+                latest_active_task = task_runtime->config.task;
+            }
+        }
+        if (input.active) {
+            input.message =
+                std::string("ai_") + TaskAlarmName(latest_active_task);
+        }
+        return input;
+    }
+
+    void PublishAlarmInputForState(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) {
+        if (options.alarm == nullptr) {
+            return;
+        }
+        AlarmInput input;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            input = AlarmInputLocked();
+        }
+        if (!options.alarm->InjectAlarmInput(input)) {
+            IncrementDroppedTasks(task_runtime);
+        }
     }
 
     void ClearAlarmInput() {
@@ -596,43 +931,27 @@ struct AiRuntime::State final {
         static_cast<void>(options.alarm->InjectAlarmInput(input));
     }
 
-    void ClearLastResultLocked() {
-        last_result = AiInferenceResult{};
-        stats.active_results = 0;
-    }
-
-    void UpdateInferenceTimeStatsLocked(int64_t inference_time_ms) {
-        const uint32_t clamped_time_ms =
-            inference_time_ms <= 0
-                ? 0
-                : static_cast<uint32_t>(std::min<int64_t>(
-                      inference_time_ms,
-                      static_cast<int64_t>(
-                          std::numeric_limits<uint32_t>::max())));
-        stats.last_inference_time_ms = clamped_time_ms;
-        stats.max_inference_time_ms =
-            std::max(stats.max_inference_time_ms, clamped_time_ms);
-        inference_time_total_ms += clamped_time_ms;
-        if (stats.inference_count != 0) {
-            stats.average_inference_time_ms =
-                static_cast<uint32_t>(inference_time_total_ms /
-                                      stats.inference_count);
+    void IncrementDroppedTasks(
+        const std::shared_ptr<AiTaskRuntime> &task_runtime) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (task_runtime) {
+            ++task_runtime->stats.dropped_tasks;
         }
     }
 
     void AddAlert(const AiAlertRecord &alert) {
-        std::string expired_image_path;
+        std::vector<std::string> expired_image_paths;
         {
             std::lock_guard<std::mutex> lock(mutex);
             alerts.push_back(alert);
             while (alerts.size() > options.max_alert_records) {
-                expired_image_path =
-                    AlertImagePath(options.alert_image_dir, alerts.front().id);
+                expired_image_paths.push_back(AlertImagePath(
+                    options.alert_image_dir, alerts.front().id));
                 alerts.erase(alerts.begin());
             }
         }
-        if (!expired_image_path.empty()) {
-            static_cast<void>(infra::File::Remove(expired_image_path));
+        for (const std::string &path : expired_image_paths) {
+            static_cast<void>(infra::File::Remove(path));
         }
     }
 
@@ -642,20 +961,15 @@ struct AiRuntime::State final {
     }
 
     AiOptions options;
-    AiModelConfig config;
-    std::shared_ptr<AiInferenceEngine> engine;
-    std::unique_ptr<infra::Executor> executor;
+    AiConfig config;
+    std::vector<std::shared_ptr<AiTaskRuntime>> task_runtimes;
     std::shared_ptr<infra::Executor> alert_executor;
-    AiInferenceResult last_result;
-    AiStats stats;
     std::vector<AiAlertRecord> alerts;
-    uint64_t inference_time_total_ms = 0;
     uint64_t next_alert_id = 1;
-    int64_t last_alert_ms = 0;
     bool config_attached = false;
     bool started = false;
-    bool inference_running = false;
     mutable std::mutex mutex;
+    std::mutex capture_mutex;
 };
 
 AiRuntime::AiRuntime(const AiOptions &options) : state_(new State(options)) {}
@@ -674,9 +988,9 @@ void AiRuntime::Stop() {
     }
 }
 
-AiModelConfig AiRuntime::GetConfig() const {
+AiConfig AiRuntime::GetConfig() const {
     if (!state_) {
-        return AiModelConfig{};
+        return AiConfig{};
     }
     std::lock_guard<std::mutex> lock(state_->mutex);
     return state_->config;
@@ -687,11 +1001,7 @@ AiStats AiRuntime::GetStats() const {
         return AiStats{};
     }
     std::lock_guard<std::mutex> lock(state_->mutex);
-    AiStats stats = state_->stats;
-    stats.enabled = state_->config.enabled;
-    stats.backend_available = state_->engine && state_->engine->Available();
-    stats.alarm_linked = state_->options.alarm != nullptr;
-    return stats;
+    return state_->SummaryStatsLocked();
 }
 
 AiInferenceResult AiRuntime::GetLastResult() const {
@@ -699,7 +1009,40 @@ AiInferenceResult AiRuntime::GetLastResult() const {
         return AiInferenceResult{};
     }
     std::lock_guard<std::mutex> lock(state_->mutex);
-    return state_->last_result;
+    AiInferenceResult latest_result;
+    int64_t latest_result_time_ms = 0;
+    for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+         state_->task_runtimes) {
+        if (!task_runtime || !task_runtime->last_result.success) {
+            continue;
+        }
+        if (task_runtime->last_result_time_ms >= latest_result_time_ms) {
+            latest_result_time_ms = task_runtime->last_result_time_ms;
+            latest_result = task_runtime->last_result;
+        }
+    }
+    return latest_result;
+}
+
+std::vector<AiTaskStatus> AiRuntime::GetTaskStatuses() const {
+    if (!state_) {
+        return std::vector<AiTaskStatus>();
+    }
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    std::vector<AiTaskStatus> statuses;
+    statuses.reserve(state_->task_runtimes.size());
+    for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
+         state_->task_runtimes) {
+        if (!task_runtime) {
+            continue;
+        }
+        AiTaskStatus status;
+        status.config = task_runtime->config;
+        status.stats = state_->TaskStatsLocked(task_runtime);
+        status.last_result = task_runtime->last_result;
+        statuses.push_back(status);
+    }
+    return statuses;
 }
 
 std::vector<AiAlertRecord> AiRuntime::ListAlerts() const {
