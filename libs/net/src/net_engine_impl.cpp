@@ -98,12 +98,12 @@ void NetEngineImpl::Stop() {
 }
 
 void NetEngineImpl::StopInternal() {
-    running_ = false;
     std::vector<std::shared_ptr<TcpServer>> servers;
     std::vector<std::shared_ptr<UdpEndpoint>> udp_sockets;
     std::vector<std::shared_ptr<TcpSession>> connections;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        running_ = false;
         for (auto &entry : servers_) {
             servers.push_back(entry.second);
         }
@@ -113,6 +113,8 @@ void NetEngineImpl::StopInternal() {
         for (auto &entry : connections_) {
             connections.push_back(entry.second);
         }
+        servers_.clear();
+        udp_sockets_.clear();
     }
     // 先停 listen/UDP endpoint，再关闭已接入 TCP session，最后停 IO loop。
     // 这样上层 close 回调仍能在 loop 停止前释放协议资源。
