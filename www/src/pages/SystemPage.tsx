@@ -29,7 +29,6 @@ export function SystemPage() {
     status,
     refreshError: systemRefreshError,
   } = useSystemStatus();
-  const timeConfig = useTimeConfig();
   const {
     upgradeStatus,
     packageInfo,
@@ -101,35 +100,7 @@ export function SystemPage() {
       ) : null}
 
       {activeTab === 'time' ? (
-        timeConfig.status ? (
-          <TimeConfigPanel
-            browserSyncOnLogin={timeConfig.browserSyncOnLogin}
-            busy={timeConfig.busy}
-            error={timeConfig.error}
-            manualSyncAllowed={timeConfig.manualSyncAllowed}
-            message={timeConfig.message}
-            ntpEnabled={timeConfig.ntpEnabled}
-            ntpIntervalSec={timeConfig.ntpIntervalSec}
-            ntpServersText={timeConfig.ntpServersText}
-            saveConfig={timeConfig.saveConfig}
-            setBrowserSyncOnLogin={timeConfig.setBrowserSyncOnLogin}
-            setManualSyncAllowed={timeConfig.setManualSyncAllowed}
-            setNtpEnabled={timeConfig.setNtpEnabled}
-            setNtpIntervalSec={timeConfig.setNtpIntervalSec}
-            setNtpServersText={timeConfig.setNtpServersText}
-            setTimezone={timeConfig.setTimezone}
-            status={timeConfig.status}
-            syncBrowserNow={timeConfig.syncBrowserNow}
-            syncNtp={timeConfig.syncNtp}
-            timezone={timeConfig.timezone}
-          />
-        ) : (
-          <div className="panel">
-            {timeConfig.error
-              ? `时间状态加载失败：${timeConfig.error}`
-              : '加载时间状态...'}
-          </div>
-        )
+        <TimeMaintenancePanel />
       ) : null}
 
       {activeTab === 'upgrade' ? (
@@ -163,5 +134,43 @@ export function SystemPage() {
         )
       ) : null}
     </div>
+  );
+}
+
+function TimeMaintenancePanel() {
+  const timeConfig = useTimeConfig();
+
+  if (!timeConfig.status) {
+    return (
+      <div className="panel">
+        {timeConfig.error
+          ? `时间状态加载失败：${timeConfig.error}`
+          : '加载时间状态...'}
+      </div>
+    );
+  }
+
+  return (
+    <TimeConfigPanel
+      browserSyncOnLogin={timeConfig.browserSyncOnLogin}
+      busy={timeConfig.busy}
+      error={timeConfig.error}
+      manualSyncAllowed={timeConfig.manualSyncAllowed}
+      message={timeConfig.message}
+      ntpEnabled={timeConfig.ntpEnabled}
+      ntpIntervalSec={timeConfig.ntpIntervalSec}
+      ntpServersText={timeConfig.ntpServersText}
+      saveConfig={timeConfig.saveConfig}
+      setBrowserSyncOnLogin={timeConfig.setBrowserSyncOnLogin}
+      setManualSyncAllowed={timeConfig.setManualSyncAllowed}
+      setNtpEnabled={timeConfig.setNtpEnabled}
+      setNtpIntervalSec={timeConfig.setNtpIntervalSec}
+      setNtpServersText={timeConfig.setNtpServersText}
+      setTimezone={timeConfig.setTimezone}
+      status={timeConfig.status}
+      syncBrowserNow={timeConfig.syncBrowserNow}
+      syncNtp={timeConfig.syncNtp}
+      timezone={timeConfig.timezone}
+    />
   );
 }

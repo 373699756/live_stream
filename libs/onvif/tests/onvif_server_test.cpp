@@ -245,6 +245,11 @@ public:
     return true;
   }
 
+  bool UpdateTimeConfig(const live_stream::RequestContext&,
+                        const live_stream::TimeConfig&) override {
+    return true;
+  }
+
   bool UpdateNtpConfig(const live_stream::RequestContext&,
                        const live_stream::NtpConfig&) override {
     return true;

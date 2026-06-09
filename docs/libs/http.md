@@ -112,9 +112,11 @@ diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 session 常驻展示。
 
 `/api/system/time/status` 返回设备时间、时区、NTP 配置、`manual_sync_allowed`、
-`browser_sync_on_login`、最近同步来源和最近同步结果。`POST
-/api/system/time/browser-time` 使用浏览器提交的 Unix 毫秒时间执行一次浏览器校时；
-`PUT /api/system/time/browser-sync` 保存手动/浏览器校时允许状态和登录后浏览器校时开关。
+`browser_sync_on_login`、最近同步来源和最近同步结果。`PUT /api/system/time/config`
+一次保存时区、NTP、手动/浏览器校时允许状态和登录后浏览器校时开关，避免前端多请求
+保存导致半成功配置。`POST /api/system/time/browser-time` 使用浏览器提交的 Unix
+毫秒时间执行一次浏览器校时；`PUT /api/system/time/browser-sync` 只用于单独保存
+手动/浏览器校时允许状态和登录后浏览器校时开关。
 
 ## 状态与资源模型
 

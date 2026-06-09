@@ -195,9 +195,10 @@ RTSP and ONVIF authentication reject the factory password until that password
 change succeeds.
 
 The system maintenance time page consumes `/api/system/time/status`,
-`/api/system/time/timezone`, `/api/system/time/ntp`,
-`/api/system/time/browser-sync`, `/api/system/time/browser-time`, and
-`/api/system/time/sync`. After an explicit account/password login succeeds,
-the Web UI reads time status and, when `browser_sync_on_login` and
-`manual_sync_allowed` are both true, submits the browser's current Unix
-millisecond time once. Browser time sync failure does not invalidate login.
+`/api/system/time/config`, `/api/system/time/browser-time`, and
+`/api/system/time/sync`; the older timezone/NTP/browser-sync endpoints remain
+available for narrow updates. After an explicit account/password login succeeds
+without `must_change_password`, the Web UI reads time status and, when
+`browser_sync_on_login` and `manual_sync_allowed` are both true, submits the
+browser's current Unix millisecond time once. Browser time sync failure does not
+invalidate login.

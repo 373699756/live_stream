@@ -34,6 +34,13 @@ struct NtpConfig {
     uint32_t sync_interval_sec = 3600;
 };
 
+struct TimeConfig {
+    std::string timezone = "UTC";
+    NtpConfig ntp;
+    bool manual_sync_allowed = true;
+    bool browser_sync_on_login = true;
+};
+
 struct TimeStatus {
     int64_t system_time_ms = 0;
     std::string timezone = "UTC";
@@ -79,6 +86,8 @@ public:
                                TimeSyncSource source) = 0;
     virtual bool SyncNow(const live_stream::RequestContext& context,
                          TimeSyncSource source) = 0;
+    virtual bool UpdateTimeConfig(const live_stream::RequestContext& context,
+                                  const TimeConfig& config) = 0;
     virtual bool UpdateNtpConfig(const live_stream::RequestContext& context,
                                  const NtpConfig& config) = 0;
     virtual bool UpdateBrowserSyncConfig(

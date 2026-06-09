@@ -39,6 +39,24 @@ bool NtpConfigFromJson(const ConfigJson &value, NtpConfig *config) {
     return true;
 }
 
+bool TimeConfigFromJson(const ConfigJson &value, TimeConfig *config) {
+    if (config == nullptr || !value.is_object()) {
+        return false;
+    }
+    TimeConfig parsed;
+    if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
+        !value.contains("ntp") || !value.at("ntp").is_object() ||
+        !NtpConfigFromJson(value.at("ntp"), &parsed.ntp) ||
+        !json_utils::ReadField(value, "manual_sync_allowed",
+                               &parsed.manual_sync_allowed) ||
+        !json_utils::ReadField(value, "browser_sync_on_login",
+                               &parsed.browser_sync_on_login)) {
+        return false;
+    }
+    *config = parsed;
+    return true;
+}
+
 ConfigJson TimeStatusToJson(const TimeStatus &status) {
     ConfigJson root = ConfigJson::object();
     root["system_time_ms"] = status.system_time_ms;
@@ -73,6 +91,8 @@ public:
         }
         router->AddExactRoute(HttpMethod::kGet, "/api/system/time/status",
                               &TimeHttpHandler::HandleStatusRoute, this);
+        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/config",
+                              &TimeHttpHandler::HandleConfigRoute, this);
         router->AddExactRoute(HttpMethod::kPut, "/api/system/time/timezone",
                               &TimeHttpHandler::HandleTimezoneRoute, this);
         router->AddExactRoute(HttpMethod::kPut, "/api/system/time/ntp",
@@ -99,6 +119,11 @@ private:
     static HttpResponse HandleTimezoneRoute(void *user,
                                             const HttpRequest &request) {
         return static_cast<TimeHttpHandler *>(user)->HandleTimezone(request);
+    }
+
+    static HttpResponse HandleConfigRoute(void *user,
+                                          const HttpRequest &request) {
+        return static_cast<TimeHttpHandler *>(user)->HandleConfig(request);
     }
 
     static HttpResponse HandleNtpRoute(void *user,
@@ -138,6 +163,33 @@ private:
         }
         return JsonResponse(200,
                             TimeStatusToJson(time->GetTimeStatus()));
+    }
+
+    HttpResponse HandleConfig(const HttpRequest &request) {
+        ITime *time = time_;
+        if (time == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!RequireTimePermission(access_, request,
+                                   AuthPermission::kModifyConfig,
+                                   &principal)) {
+            return ForbiddenResponse(principal);
+        }
+        ConfigJson body;
+        if (!ParseJsonObject(request, &body)) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+        TimeConfig config;
+        if (!TimeConfigFromJson(body, &config)) {
+            return StatusResponse(400, "Invalid time config");
+        }
+        return time
+                       ->UpdateTimeConfig(access_->MakeContext(request,
+                                                               &principal),
+                                          config)
+                   ? OkResponse()
+                   : StatusResponse(400, "Could not update time config");
     }
 
     HttpResponse HandleTimezone(const HttpRequest &request) {

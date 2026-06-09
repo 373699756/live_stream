@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   getTimeStatus,
-  saveBrowserSyncConfig,
-  saveNtpConfig,
-  saveTimezone,
+  saveTimeConfig,
   syncBrowserTime,
   syncNtpNow,
 } from '../api/time';
@@ -87,15 +85,18 @@ export function useTimeConfig() {
       servers: parseServers(ntpServersText),
       sync_interval_sec: Math.max(1, Math.trunc(ntpIntervalSec)),
     };
+    const nextManualSyncAllowed = manualSyncAllowed;
+    const nextBrowserSyncOnLogin =
+      nextManualSyncAllowed && browserSyncOnLogin;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      await saveTimezone(timezone.trim() || 'UTC');
-      await saveNtpConfig(ntp);
-      await saveBrowserSyncConfig({
-        manual_sync_allowed: manualSyncAllowed,
-        browser_sync_on_login: browserSyncOnLogin,
+      await saveTimeConfig({
+        timezone: timezone.trim() || 'UTC',
+        ntp,
+        manual_sync_allowed: nextManualSyncAllowed,
+        browser_sync_on_login: nextBrowserSyncOnLogin,
       });
       await refresh();
       setMessage('时间配置已保存');

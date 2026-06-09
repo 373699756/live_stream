@@ -38,7 +38,8 @@ public API 在 `time.h`。前端只消费 HTTP 返回值，不负责设备时间
 
 `browser_sync_on_login` 控制 Web 账号密码登录成功后是否使用浏览器当前 Unix
 毫秒时间同步一次设备时间，默认开启；已有配置缺字段时按开启处理。`manual_sync_allowed`
-同时约束手动系统时间设置和浏览器时间设置。
+同时约束手动系统时间设置和浏览器时间设置；当 `manual_sync_allowed=false` 时，
+`time` 会把 `browser_sync_on_login` 归一化为 `false`。
 
 ## 非目标
 

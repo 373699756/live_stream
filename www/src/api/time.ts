@@ -7,7 +7,12 @@ import {
   requestJson,
   type ApiRequestOptions,
 } from './client';
-import type { BrowserSyncConfig, NtpConfig, TimeStatus } from './types';
+import type {
+  BrowserSyncConfig,
+  NtpConfig,
+  TimeConfig,
+  TimeStatus,
+} from './types';
 
 const timeSyncTimeoutMs = 5000;
 
@@ -46,6 +51,13 @@ export function saveTimezone(
   init?: ApiRequestOptions,
 ): Promise<void> {
   return putJson('/api/system/time/timezone', { timezone }, init);
+}
+
+export function saveTimeConfig(
+  config: TimeConfig,
+  init?: ApiRequestOptions,
+): Promise<void> {
+  return putJson('/api/system/time/config', config, init);
 }
 
 export function saveNtpConfig(

@@ -558,6 +558,13 @@ export interface TimeStatus {
   last_sync_ok: boolean;
 }
 
+export interface TimeConfig {
+  timezone: string;
+  ntp: NtpConfig;
+  manual_sync_allowed: boolean;
+  browser_sync_on_login: boolean;
+}
+
 export interface BrowserSyncConfig {
   manual_sync_allowed: boolean;
   browser_sync_on_login: boolean;

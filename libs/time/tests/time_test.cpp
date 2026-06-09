@@ -215,6 +215,28 @@ int main() {
     return 22;
   }
 
+  live_stream::TimeConfig config;
+  config.timezone = "Asia/Tokyo";
+  config.ntp.enabled = false;
+  config.ntp.sync_interval_sec = 3600;
+  config.manual_sync_allowed = false;
+  config.browser_sync_on_login = true;
+  if (!service->UpdateTimeConfig(context, config) ||
+      service->GetTimeStatus().timezone != "Asia/Tokyo" ||
+      service->GetTimeStatus().manual_sync_allowed ||
+      service->GetTimeStatus().browser_sync_on_login) {
+    return 23;
+  }
+
+  config.timezone = "UTC";
+  config.ntp.enabled = true;
+  config.ntp.servers = {"pool.ntp.org"};
+  config.manual_sync_allowed = true;
+  config.browser_sync_on_login = true;
+  if (!service->UpdateTimeConfig(context, config)) {
+    return 24;
+  }
+
   if (!service->SyncNow(context, live_stream::TimeSyncSource::kNtp) ||
       platform.now_ms != platform.ntp_time_ms || platform.ntp_count != 1 ||
       platform.last_servers.empty()) {
