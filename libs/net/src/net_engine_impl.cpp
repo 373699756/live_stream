@@ -75,8 +75,13 @@ bool NetEngineImpl::Start() {
         }
         if (loops_.empty()) {
             for (uint32_t i = 0; i < options_.io_threads; ++i) {
+                const int affinity_cpu =
+                    options_.enable_thread_affinity
+                        ? static_cast<int>(options_.first_io_cpu + i)
+                        : -1;
                 auto loop = std::make_shared<EventLoop>(
-                    options_.max_events_per_loop, options_.task_queue_capacity);
+                    options_.max_events_per_loop, options_.task_queue_capacity,
+                    affinity_cpu);
                 loops_.push_back(loop);
                 executors_.push_back(
                     std::make_shared<NetExecutor>(this, loop));

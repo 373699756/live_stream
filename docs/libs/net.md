@@ -90,6 +90,11 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 
 `INetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
 队列。上层协议停止时必须先解除连接、session 或 endpoint，再停止网络引擎。
+板端默认按 Hi3516DV300 双核 Cortex-A7 配置 2 个 net IO thread；线程亲和性是
+`NetEngineOptions` 的可选实验项，默认关闭。只有板端实测确认某个协议或 IRQ 抖动
+需要隔离时，才打开 `enable_thread_affinity` 并指定 `first_io_cpu`，避免在双核
+设备上把 net、media、SDK callback 和 kernel softirq 过早绑死导致反向排队。
+
 
 TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
 复制到网络 buffer；带 `NetBufferOwner` 的 slice 只持有引用，由 owner 的

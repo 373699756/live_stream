@@ -95,6 +95,8 @@ struct NetEngineOptions {
     uint32_t io_threads = 1;
     uint32_t max_events_per_loop = 64;
     uint32_t task_queue_capacity = 4096;
+    bool enable_thread_affinity = false;
+    uint32_t first_io_cpu = 0;
     CallbackMode callback_mode = CallbackMode::kInlineOnIo;
     infra::Executor *callback_executor = nullptr;
 };

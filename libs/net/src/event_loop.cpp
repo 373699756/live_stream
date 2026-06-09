@@ -4,6 +4,8 @@
 #include "socket_util.h"
 
 #include <cerrno>
+#include <pthread.h>
+#include <sched.h>
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -13,10 +15,25 @@
 
 namespace live_stream {
 namespace net_internal {
+namespace {
 
-EventLoop::EventLoop(uint32_t max_events, uint32_t task_capacity)
+void SetCurrentThreadAffinity(int cpu) {
+    if (cpu < 0 || cpu >= CPU_SETSIZE) {
+        return;
+    }
+    cpu_set_t cpu_set;
+    CPU_ZERO(&cpu_set);
+    CPU_SET(static_cast<unsigned>(cpu), &cpu_set);
+    (void)pthread_setaffinity_np(pthread_self(), sizeof(cpu_set), &cpu_set);
+}
+
+}  // namespace
+
+EventLoop::EventLoop(uint32_t max_events, uint32_t task_capacity,
+                     int affinity_cpu)
     : max_events_(max_events == 0 ? 64 : max_events),
-      task_capacity_(task_capacity == 0 ? 1 : task_capacity) {}
+      task_capacity_(task_capacity == 0 ? 1 : task_capacity),
+      affinity_cpu_(affinity_cpu) {}
 
 EventLoop::~EventLoop() { Stop(); }
 
@@ -340,6 +357,7 @@ std::function<void(uint32_t)> EventLoop::FindHandler(int fd) {
 }
 
 void EventLoop::Run() {
+    SetCurrentThreadAffinity(affinity_cpu_);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         thread_id_ = std::this_thread::get_id();

@@ -10,7 +10,7 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kNetIoThreadCount = 1;
+constexpr uint32_t kNetIoThreadCount = 2;
 constexpr uint32_t kNetCallbackWorkerCount = 1;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpStreamExecutorWorkerCount = 4;
@@ -129,6 +129,7 @@ infra::ExecutorOptions BuildNetCallbackExecutorOptions() {
 NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor) {
     NetEngineOptions options;
     options.io_threads = kNetIoThreadCount;
+    options.enable_thread_affinity = false;
     options.callback_mode = CallbackMode::kPostToExecutor;
     options.callback_executor = callback_executor;
     return options;

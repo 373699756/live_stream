@@ -19,7 +19,8 @@ namespace net_internal {
 
 class EventLoop {
 public:
-    EventLoop(uint32_t max_events, uint32_t task_capacity);
+    EventLoop(uint32_t max_events, uint32_t task_capacity,
+              int affinity_cpu);
     ~EventLoop();
 
     EventLoop(const EventLoop &) = delete;
@@ -64,6 +65,7 @@ private:
 
     const uint32_t max_events_;
     const uint32_t task_capacity_;
+    const int affinity_cpu_;
     mutable std::mutex mutex_;
     UniqueFd epoll_fd_;
     UniqueFd timer_fd_;
