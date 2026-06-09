@@ -21,6 +21,110 @@ flowchart LR
   Net --> Clients[browser clients]
 ```
 
+Draw.io 源文件：[video-pipeline-memory.drawio](video-pipeline-memory.drawio)。
+
+## 视频热路径链路
+
+主码流和子码流走同一套热路径，只是 `StreamId`、VENC channel、缓存状态和
+client/reader 计数分开维护。下游协议不能直接订阅 HiSilicon SDK；必须通过
+`device_media -> media_pipeline -> media_source` 这条链路消费同一份归一化编码帧。
+
+1. `hisi_vendor` 通过 `HI_MPI_VENC_GetStream` 取到 VENC pack。pack 数据仍归 MPP
+   stream buffer 管理，`HI_MPI_VENC_ReleaseStream` 后不能继续引用。
+2. `hisi_vendor` 把一个 VENC frame 的多个 pack、以及环形 buffer 回绕后的
+   first/second slice，按原始 AnnexB 顺序拼成项目自己的连续 `VideoBuffer`。
+   这是进入项目内存的必要 payload 深拷贝点。
+3. `device_media` 用 `EncodedFrame` 描述 `VideoBuffer + offset + size + codec +
+   pts/dts + frame_type`，同步分发给 `media_pipeline`。后续保存帧只做
+   `EncodedFrameRefCopy()`，增加 `VideoBuffer` 引用计数，不复制整帧。
+4. `media_pipeline` 在 worker 线程归一化时间戳，解析 H.264/H.265 AnnexB NAL
+   视图，写入 `media_source` 的 reader ring、GOP cache、FLV cache、HLS segment
+   和 MJPEG latest frame。
+5. `media_source` 统一维护 corrected DTS/PTS、参数集、GOP、reader live queue、
+   HLS playlist/segment、FLV sequence header 和 runtime ready 状态。codec 切换、
+   stream stop、时间戳回退或大跳变都会重建这些缓存。
+6. `http_media`、`rtsp`、`webrtc` 只消费 `media_source` 暴露的 reader、FLV tag
+   view 或 HLS segment ref，并把带 owner 的 slice 交给 `http/net` 发送。
+
+## 设计考量
+
+- VENC pack 生命周期由 MPP 驱动控制，不能把 pack 指针直接传给异步协议层；
+  先复制到项目 `VideoBuffer` 后即可尽早 `ReleaseStream`，避免硬件码流 buffer
+  被 Web 慢客户端反压拖住。
+- `VideoBuffer` 是编码 payload 的唯一 owner。GOP cache、reader queue、
+  HTTP-FLV cache、RTSP TCP queue 和 HTTP response queue 都通过引用计数保活，
+  避免按协议数、客户端数或 GOP 数量重复复制大帧。
+- HLS 是独立 HTTP 对象和 MPEG-TS 转封装结果，segment 必须自包含，不能保存原始
+  `EncodedFrame` slice 指针。因此 HLS 主动把 PES header、TS packet header 和
+  NAL payload 写入独立 segment body。
+- FLV 和 RTP 是流式发送格式，可以把协议小头部和原始 NAL payload 分成 slices。
+  小头部可复制入 socket 队列，媒体 payload 通过 `MediaSlice.owner` /
+  `NetBufferOwner` 延长 `VideoBuffer` 生命周期。
+- WebRTC RTP 分包阶段仍使用 slice view；SRTP 加密阶段必须形成可原地加密并追加
+  认证尾部的连续 UDP packet，所以会有每个 RTP packet 的加密前复制。
+- 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，媒体模块只持有
+  有界缓存和 reader/client registry，不在协议层各自堆积 socket buffer。
+
+## Payload 拷贝次数
+
+下表只统计视频 payload 大块拷贝；协议 header、NAL length、HTTP header、RTP/FU
+header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从用户态到 socket/网卡
+的复制不在本表统计范围内。
+
+| 阶段 | Payload 深拷贝次数 | 说明 |
+| --- | ---: | --- |
+| VENC pack -> `VideoBuffer` | 1 | 必要拷贝。把 MPP pack 和回绕 slice 拼成连续 AnnexB payload，随后释放 VENC stream。 |
+| `device_media` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数。最近关键帧缓存是例外，会为新订阅方 keyframe-first 深拷贝一份关键帧。 |
+| `media_pipeline` pending / parse | 0 | pending、NAL parser 和 `ParsedFramePayload` 引用同一份 payload；NAL list 只是指针视图。 |
+| `media_source` reader / GOP cache | 0 | `FrameRing`、GOP cache、reader live queue 保存 `FramePayload` 引用，不按 reader 或 GOP 复制 payload。 |
+| HLS 封装 | 1 | `HlsMaker` 把 PES/TS header、AnnexB 起始码和 NAL payload 写入独立 TS segment body。segment 扩容时可能复制已写 segment body，当前实现会预估并预留容量降低扩容概率。 |
+| HLS HTTP 发送 | 0 | TS segment 已在 `VideoBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
+| HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `VideoBuffer`。 |
+| RTSP RTP packetize | 0 | `RtpPacketizer` 生成 RTP header/FU header slice，媒体 payload 仍指向原帧。TCP interleaved 用 owner 保活，UDP 在调用内发送。 |
+| WebRTC RTP packetize | 0 | 与 RTSP 一样，RTP packet view 不复制媒体 payload。 |
+| WebRTC SRTP protect | 1/packet | libsrtp 需要连续可写 buffer；每个 RTP packet view 会复制成连续 buffer 后原地加密并追加认证尾部。 |
+| `net` TCP send queue | 0 或小块复制 | 有 owner 的媒体 slice 不复制；无 owner 的栈上 header、小字符串会复制到 inline/heap out buffer。 |
+
+## 协议封装与分包
+
+### HLS / MPEG-TS
+
+- 输入是 H.264/H.265 AnnexB NAL 视图，输出是独立 `.ts` segment body。
+- segment 只在关键帧边界开始和切分；关键帧前的 P/B 帧不会进入首个 segment。
+- H.264 关键帧缺 SPS/PPS、H.265 关键帧缺 VPS/SPS/PPS 时，会在 segment 边界前置
+  已缓存参数集，保证从 segment 接入的浏览器可以解码。
+- `AppendTsPayloadToBuffer()` 把 PES header、TS 188 字节包、连续计数和 NAL payload
+  写进 segment body。playlist 只暴露 finalized segment，半成品 segment 不对外服务。
+
+### HTTP-FLV
+
+- 新客户端先收到 HTTP streaming header、FLV file header、sequence header，再从
+  cached GOP 的关键帧起点进入 live tag。
+- H.264 sequence header 使用 AVCDecoderConfigurationRecord；H.265 使用 enhanced
+  FLV 的 `hvc1` sequence header。
+- coded frame tag 由 FLV tag header、video tag header、4 字节 NAL length、NAL
+  payload slice 和 previous tag size 组成。SPS/PPS/VPS/AUD 不重复写入 coded frame。
+- 每个 HTTP-FLV 连接会把 timestamp rebase 到从 0 开始；只复制第一个小 header
+  来重写 timestamp，payload 仍通过 owner 引用原帧。
+
+### RTSP / RTP
+
+- RTP 时间戳使用 90kHz clock，由 corrected PTS 转换得到；sequence number 按 session
+  维护。
+- 单个 NAL 加 RTP header 后不超过 MTU 时直接作为一个 RTP packet。
+- H.264 超 MTU 使用 FU-A：RTP header + 2 字节 FU indicator/header + NAL 剩余 payload。
+- H.265 超 MTU 使用 FU：RTP header + 3 字节 FU payload header + NAL 剩余 payload。
+- TCP transport 使用 RTSP interleaved framing：`$ + channel + length + RTP packet`；
+  UDP transport 直接把 RTP slices 聚合为 datagram 发送。
+
+### WebRTC / RTP / SRTP
+
+- WebRTC 复用 RTP packetizer，但 payload type、SSRC、clock rate 来自 SDP/peer 运行态。
+- peer 未见关键帧时丢弃非关键帧，reader 溢出后也等待下一个关键帧恢复。
+- RTP packet view 进入 `SrtpSession::ProtectRtp()` 后，会复制成连续 buffer，libsrtp
+  原地加密并追加认证尾部，再通过 ICE selected pair 的 UDP socket 发送。
+- WebRTC 的额外拷贝是加密所需，不会长期保存原始 `EncodedFrame` 指针。
+
 ## 优化原则
 
 - 帧路径避免普通日志、重复分配和不必要 string 拼接。
