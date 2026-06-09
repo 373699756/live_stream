@@ -32,32 +32,7 @@ extern "C" {
 namespace live_stream {
 namespace hisisdk {
 
-inline bool MpiOk(const char* expression, HI_S32 status) {
-    if (status == HI_SUCCESS) {
-        return true;
-    }
-    Error("hisi_vendor", "%s failed: 0x%08x", expression, status);
-    return false;
-}
-
 namespace internal {
-
-// ------------------------------------------------------------------
-// Helper macros
-// ------------------------------------------------------------------
-
-// Check HiSilicon SDK return code, log on failure, return false.
-#define HISI_CHECK(expr)                                                       \
-    do {                                                                       \
-        HI_S32 __ret = (expr);                                                 \
-        if (__ret != HI_SUCCESS) {                                             \
-            Error("hisi_vendor", "%s failed: 0x%08x", #expr, __ret); \
-            return false;                                                      \
-        }                                                                      \
-    } while (0)
-
-// Single-expression version for use in ternary / assignment.
-inline bool HiOk(HI_S32 status) { return status == HI_SUCCESS; }
 
 struct VencPacketSpan {
     const uint8_t* data = nullptr;

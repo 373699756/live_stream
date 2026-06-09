@@ -115,6 +115,9 @@ offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answ
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
 会解密并解析 PLI/FIR，触发 `media_source.RequestKeyFrame()`。NACK 和 TWCC 仅保留
 反馈类型识别，重传和拥塞控制后置。
+`webrtc_transport` 为每个 peer 复用 SRTP RTP 输出 buffer 和 SRTCP 输入解密 buffer；
+`srtp_session` 只 resize 调用方提供的 vector 并复制有效输入，不为每个 RTP packet
+重新构造临时输出 vector。
 
 10.7 当前基线已经把视频发送路径从旧 push sink 迁移到 `media_source`
 `MediaFrameReader`：peer connected 后按连接 attach keyframe-first reader，先发送

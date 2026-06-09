@@ -80,7 +80,7 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
     std::memcpy(header, data, sizeof(header));
     WriteFlvTimestampMs(timestamp_ms, header);
 
-    HttpMediaSlice slices[2];
+    MediaSlice slices[2];
     // data 指向 start/sequence 这类 session 内字符串或栈上 header，未带 owner；
     // HTTP/net 入队时会复制这些小块。
     slices[0].data = header;
@@ -101,10 +101,10 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
     }
 
     // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 VideoBuffer，
-    // 由 HttpMediaSlice.owner 保证异步发送期间 buffer 存活。
+    // 由 MediaSlice.owner 保证异步发送期间 buffer 存活。
     size_t index = 0;
     while (index < tag.slice_count) {
-        HttpMediaSlice slices[kMaxNetBufferSlices];
+        MediaSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
             const MediaFlvVideoTagSlice &source = tag.slices[index];
@@ -146,7 +146,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
     // 输出，只在第一个 header slice 上替换 rebased timestamp。
     size_t index = 0;
     while (index < tag.slice_count) {
-        HttpMediaSlice slices[kMaxNetBufferSlices];
+        MediaSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
             const MediaFlvCachedVideoTagSlice &source = tag.slices[index];

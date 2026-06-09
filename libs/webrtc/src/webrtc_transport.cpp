@@ -101,6 +101,8 @@ void WebrtcTransport::Close() {
     on_dtls_timeout_ = nullptr;
     protected_rtp_packets_ = 0;
     protected_rtp_bytes_ = 0;
+    protected_rtp_packet_.clear();
+    plain_rtcp_packet_.clear();
     ice_connected_ = false;
     dtls_connected_ = false;
 }
@@ -182,13 +184,13 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
         data == nullptr || size == 0) {
         return false;
     }
-    std::vector<uint8_t> plain_rtcp;
-    if (!inbound_srtp_.UnprotectRtcp(data, size, &plain_rtcp)) {
+    if (!inbound_srtp_.UnprotectRtcp(data, size, &plain_rtcp_packet_)) {
         return false;
     }
     RtcpFeedback feedback;
-    if (!SrtpSession::ParseRtcpFeedback(plain_rtcp.data(),
-                                        plain_rtcp.size(), &feedback)) {
+    if (!SrtpSession::ParseRtcpFeedback(plain_rtcp_packet_.data(),
+                                        plain_rtcp_packet_.size(),
+                                        &feedback)) {
         *request_key_frame = false;
         return true;
     }
@@ -203,17 +205,16 @@ bool WebrtcTransport::SendRtpPacket(
         packet.ssrc == 0 || packet.payload_type == 0) {
         return false;
     }
-    std::vector<uint8_t> protected_packet;
     // ProtectRtp 会把 packet view 复制成连续 RTP buffer 并原地加密/追加认证尾部。
-    // UDP 发送只使用 protected_packet；函数返回后不再持有 frame payload。
-    if (!outbound_srtp_.ProtectRtp(packet, &protected_packet) ||
-        protected_packet.empty() ||
-        !ice_->SendToSelected(protected_packet.data(),
-                              protected_packet.size())) {
+    // UDP 发送只使用 protected_rtp_packet_；函数返回后不再持有 frame payload。
+    if (!outbound_srtp_.ProtectRtp(packet, &protected_rtp_packet_) ||
+        protected_rtp_packet_.empty() ||
+        !ice_->SendToSelected(protected_rtp_packet_.data(),
+                              protected_rtp_packet_.size())) {
         return false;
     }
     ++protected_rtp_packets_;
-    protected_rtp_bytes_ += protected_packet.size();
+    protected_rtp_bytes_ += protected_rtp_packet_.size();
     return true;
 }
 

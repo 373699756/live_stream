@@ -5,8 +5,10 @@
 
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <limits>
@@ -302,17 +304,44 @@ void TcpSession::HandleWrite() {
                 send_queue_.pop_front();
                 continue;
             }
-            OutSlice &slice = current.slices[current.current_slice];
-            const uint8_t *data = slice.data + slice.offset;
-            const size_t remain = slice.size - slice.offset;
-            n = send(fd_.get(), data, remain, MSG_NOSIGNAL);
-            if (n > 0) {
-                slice.offset += static_cast<size_t>(n);
-                pending_bytes_ -= static_cast<uint32_t>(n);
-                last_write_progress_ms_ = infra::Time::MonotonicMillis();
+            iovec iov[kMaxNetBufferSlices];
+            size_t iov_count = 0;
+            for (size_t i = current.current_slice;
+                 i < current.slice_count && iov_count < kMaxNetBufferSlices;
+                 ++i) {
+                OutSlice &slice = current.slices[i];
                 if (slice.offset >= slice.size) {
+                    continue;
+                }
+                iov[iov_count].iov_base =
+                    const_cast<uint8_t *>(slice.data + slice.offset);
+                iov[iov_count].iov_len = slice.size - slice.offset;
+                ++iov_count;
+            }
+            if (iov_count == 0) {
+                send_queue_.pop_front();
+                continue;
+            }
+            msghdr message{};
+            message.msg_iov = iov;
+            message.msg_iovlen = iov_count;
+            n = sendmsg(fd_.get(), &message, MSG_NOSIGNAL);
+            if (n > 0) {
+                size_t consumed = static_cast<size_t>(n);
+                while (consumed > 0 &&
+                       current.current_slice < current.slice_count) {
+                    OutSlice &slice = current.slices[current.current_slice];
+                    const size_t remain = slice.size - slice.offset;
+                    const size_t slice_written = std::min(consumed, remain);
+                    slice.offset += slice_written;
+                    consumed -= slice_written;
+                    if (slice.offset < slice.size) {
+                        break;
+                    }
                     ++current.current_slice;
                 }
+                pending_bytes_ -= static_cast<uint32_t>(n);
+                last_write_progress_ms_ = infra::Time::MonotonicMillis();
                 if (current.current_slice >= current.slice_count) {
                     send_queue_.pop_front();
                 }

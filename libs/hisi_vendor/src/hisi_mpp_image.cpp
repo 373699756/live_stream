@@ -21,6 +21,8 @@ constexpr uint16_t kGainBase = 0x400;
 constexpr uint16_t kWbGainMin = 0x200;
 constexpr uint16_t kWbGainMax = 0x800;
 constexpr uint16_t kSharpenStrengthMax = 0x0600;
+constexpr uint16_t kSharpenFreqMax = 0x0800;
+constexpr uint8_t kSharpenShootMax = 48;
 constexpr uint16_t kNrCoarseMax = 0x02c0;
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
@@ -109,8 +111,11 @@ void ApplyAntiFlicker(const ConfigJson& exposure, ISP_EXPOSURE_ATTR_S* attr) {
 
 bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     ISP_EXPOSURE_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetExposureAttr",
-               HI_MPI_ISP_GetExposureAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetExposureAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetExposureAttr pipe=%d failed: 0x%08x",
+              vi_pipe, status);
         return false;
     }
 
@@ -175,8 +180,14 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
         }
     }
 
-    return MpiOk("HI_MPI_ISP_SetExposureAttr",
-                 HI_MPI_ISP_SetExposureAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetExposureAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetExposureAttr pipe=%d failed: 0x%08x",
+              vi_pipe, status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
@@ -196,8 +207,11 @@ bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
         return true;
     }
     ISP_CSC_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetCSCAttr",
-               HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetCSCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -213,8 +227,14 @@ bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
     if (has_hue) {
         attr.u8Hue = ScaleControlU8(hue, 0, 100);
     }
-    return MpiOk("HI_MPI_ISP_SetCSCAttr",
-                 HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetCSCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
@@ -224,8 +244,11 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
         return true;
     }
     ISP_SHARPEN_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetIspSharpenAttr",
-               HI_MPI_ISP_GetIspSharpenAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetIspSharpenAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetIspSharpenAttr pipe=%d failed: 0x%08x",
+              vi_pipe, status);
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -236,14 +259,27 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
               std::end(attr.stManual.au16TextureStr), texture);
     std::fill(std::begin(attr.stManual.au16EdgeStr),
               std::end(attr.stManual.au16EdgeStr), edge);
-    return MpiOk("HI_MPI_ISP_SetIspSharpenAttr",
-                 HI_MPI_ISP_SetIspSharpenAttr(vi_pipe, &attr));
+    attr.stManual.u16TextureFreq = ScaleControlU16(sharpness, 0, kSharpenFreqMax);
+    attr.stManual.u16EdgeFreq = ScaleControlU16(sharpness, 0, kSharpenFreqMax);
+    attr.stManual.u8OverShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
+    attr.stManual.u8UnderShoot = ScaleControlU8(sharpness, 0, kSharpenShootMax);
+    status = HI_MPI_ISP_SetIspSharpenAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetIspSharpenAttr pipe=%d failed: 0x%08x",
+              vi_pipe, status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     ISP_WB_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetWBAttr",
-               HI_MPI_ISP_GetWBAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetWBAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetWBAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
 
@@ -265,8 +301,14 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     attr.stManual.u16Grgain = kGainBase;
     attr.stManual.u16Gbgain = kGainBase;
 
-    return MpiOk("HI_MPI_ISP_SetWBAttr",
-                 HI_MPI_ISP_SetWBAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetWBAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetWBAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -281,8 +323,11 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     }
 
     ISP_NR_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetNRAttr",
-               HI_MPI_ISP_GetNRAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetNRAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetNRAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -298,8 +343,14 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         std::fill(std::begin(attr.stManual.au16CoarseStr),
                   std::end(attr.stManual.au16CoarseStr), coarse);
     }
-    return MpiOk("HI_MPI_ISP_SetNRAttr",
-                 HI_MPI_ISP_SetNRAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetNRAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetNRAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -309,8 +360,11 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         return true;
     }
     ISP_GAMMA_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetGammaAttr",
-               HI_MPI_ISP_GetGammaAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetGammaAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetGammaAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -324,8 +378,14 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         const double clamped = infra::Clamp(mapped, 0.0, 4095.0);
         attr.u16Table[i] = static_cast<HI_U16>(clamped);
     }
-    return MpiOk("HI_MPI_ISP_SetGammaAttr",
-                 HI_MPI_ISP_SetGammaAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetGammaAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetGammaAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
@@ -334,15 +394,24 @@ bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
         return true;
     }
     ISP_DEHAZE_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetDehazeAttr",
-               HI_MPI_ISP_GetDehazeAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetDehazeAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetDehazeAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     attr.bEnable = defog ? HI_TRUE : HI_FALSE;
     attr.enOpType = OP_TYPE_AUTO;
     attr.stAuto.u8strength = defog ? 128 : 0;
-    return MpiOk("HI_MPI_ISP_SetDehazeAttr",
-                 HI_MPI_ISP_SetDehazeAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetDehazeAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetDehazeAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
@@ -355,8 +424,11 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
         return true;
     }
     ISP_DRC_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetDRCAttr",
-               HI_MPI_ISP_GetDRCAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetDRCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetDRCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     if (has_mode) {
@@ -376,8 +448,14 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
         attr.stAuto.u16StrengthMin = 0;
         attr.stAuto.u16StrengthMax = 0x03ff;
     }
-    return MpiOk("HI_MPI_ISP_SetDRCAttr",
-                 HI_MPI_ISP_SetDRCAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetDRCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetDRCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
@@ -390,8 +468,11 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
         return true;
     }
     VI_CHN_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_VI_GetChnAttr",
-               HI_MPI_VI_GetChnAttr(vi_pipe, vi_channel, &attr))) {
+    HI_S32 status = HI_MPI_VI_GetChnAttr(vi_pipe, vi_channel, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_GetChnAttr pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_channel, status);
         return false;
     }
     if (has_mirror) {
@@ -400,8 +481,14 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
     if (has_flip) {
         attr.bFlip = flip ? HI_TRUE : HI_FALSE;
     }
-    return MpiOk("HI_MPI_VI_SetChnAttr",
-                 HI_MPI_VI_SetChnAttr(vi_pipe, vi_channel, &attr));
+    status = HI_MPI_VI_SetChnAttr(vi_pipe, vi_channel, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetChnAttr pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_channel, status);
+        return false;
+    }
+    return true;
 }
 
 bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
@@ -414,8 +501,11 @@ bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
         return true;
     }
     ISP_CSC_ATTR_S attr{};
-    if (!MpiOk("HI_MPI_ISP_GetCSCAttr",
-               HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr))) {
+    HI_S32 status = HI_MPI_ISP_GetCSCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_GetCSCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
         return false;
     }
     attr.bEnable = HI_TRUE;
@@ -432,8 +522,14 @@ bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
     } else {
         return true;
     }
-    return MpiOk("HI_MPI_ISP_SetCSCAttr",
-                 HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr));
+    status = HI_MPI_ISP_SetCSCAttr(vi_pipe, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_SetCSCAttr pipe=%d failed: 0x%08x", vi_pipe,
+              status);
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -503,8 +599,11 @@ ExposureInfo MppHisiSdk::QueryExposureInfo(
 
     ISP_EXP_INFO_S exp_info{};
     const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
-    if (!MpiOk("HI_MPI_ISP_QueryExposureInfo",
-               HI_MPI_ISP_QueryExposureInfo(vi_pipe, &exp_info))) {
+    const HI_S32 status = HI_MPI_ISP_QueryExposureInfo(vi_pipe, &exp_info);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_ISP_QueryExposureInfo pipe=%d failed: 0x%08x",
+              vi_pipe, status);
         return info;
     }
 

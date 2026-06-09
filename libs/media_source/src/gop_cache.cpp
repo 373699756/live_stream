@@ -9,8 +9,10 @@ namespace media_source_internal {
 GopCache::~GopCache() { Clear(); }
 
 void GopCache::Clear() {
-    for (MediaFlvCachedVideoTag &cached_tag : frames_) {
-        MediaFlvCachedVideoTagUnref(&cached_tag);
+    const size_t cached_count = std::min(size_, frames_.size());
+    for (size_t i = 0; i < cached_count; ++i) {
+        const size_t index = (head_ + i) % frames_.size();
+        MediaFlvCachedVideoTagUnref(&frames_[index]);
     }
     head_ = 0;
     size_ = 0;

@@ -10,12 +10,23 @@ namespace {
 
 bool EnableVpssChannel(VPSS_GRP vpss_grp, VPSS_CHN vpss_chn,
                        const VPSS_CHN_ATTR_S& chn_attr) {
-    if (!MpiOk("HI_MPI_VPSS_SetChnAttr",
-                      HI_MPI_VPSS_SetChnAttr(vpss_grp, vpss_chn, &chn_attr))) {
+    HI_S32 status = HI_MPI_VPSS_SetChnAttr(vpss_grp, vpss_chn, &chn_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_SetChnAttr grp=%d chn=%d size=%ux%u failed: "
+              "0x%08x",
+              vpss_grp, vpss_chn, chn_attr.u32Width, chn_attr.u32Height,
+              status);
         return false;
     }
-    return MpiOk("HI_MPI_VPSS_EnableChn",
-                        HI_MPI_VPSS_EnableChn(vpss_grp, vpss_chn));
+    status = HI_MPI_VPSS_EnableChn(vpss_grp, vpss_chn);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_EnableChn grp=%d chn=%d failed: 0x%08x",
+              vpss_grp, vpss_chn, status);
+        return false;
+    }
+    return true;
 }
 
 void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
@@ -58,7 +69,13 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     bool main_enabled = false;
     bool sub_enabled = false;
 
-    HISI_CHECK(HI_MPI_VPSS_CreateGrp(vpss_grp, &grp_attr));
+    HI_S32 status = HI_MPI_VPSS_CreateGrp(vpss_grp, &grp_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_CreateGrp grp=%d max=%ux%u failed: 0x%08x",
+              vpss_grp, grp_attr.u32MaxW, grp_attr.u32MaxH, status);
+        return false;
+    }
 
     // ─── Main-stream VPSS CHN ─────────────────────────────────
     VPSS_CHN_ATTR_S chn_attr{};
@@ -104,8 +121,11 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
         sub_enabled = true;
     }
 
-    if (!MpiOk("HI_MPI_VPSS_StartGrp",
-                      HI_MPI_VPSS_StartGrp(vpss_grp))) {
+    const HI_S32 start_status = HI_MPI_VPSS_StartGrp(vpss_grp);
+    if (start_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_StartGrp grp=%d failed: 0x%08x", vpss_grp,
+              start_status);
         CleanupVpssGroup(vpss_grp, vpss_chn, main_enabled, sub_chn, sub_enabled);
         return false;
     }
@@ -147,7 +167,14 @@ bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
     dst.s32DevId = config.vpss_group;
     dst.s32ChnId = 0;
 
-    HISI_CHECK(HI_MPI_SYS_Bind(&src, &dst));
+    const HI_S32 status = HI_MPI_SYS_Bind(&src, &dst);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_SYS_Bind VI-VPSS vi=%d:%d vpss=%d:%d failed: 0x%08x",
+              src.s32DevId, src.s32ChnId, dst.s32DevId, dst.s32ChnId,
+              status);
+        return false;
+    }
     impl_->vi_bound_vpss_ = true;
     return true;
 }

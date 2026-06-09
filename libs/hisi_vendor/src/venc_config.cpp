@@ -241,8 +241,10 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig &stream) {
 
 bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
     VENC_RC_PARAM_S rc_param{};
-    if (!MpiOk("HI_MPI_VENC_GetRcParam",
-               HI_MPI_VENC_GetRcParam(venc, &rc_param))) {
+    HI_S32 status = HI_MPI_VENC_GetRcParam(venc, &rc_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_GetRcParam chn=%d failed: 0x%08x", venc, status);
         return false;
     }
 
@@ -253,8 +255,14 @@ bool TuneRcParam(VENC_CHN venc, VENC_RC_MODE_E rc_mode) {
         TuneH265VbrParam(&rc_param.stParamH265Vbr);
     }
 
-    return MpiOk("HI_MPI_VENC_SetRcParam",
-                 HI_MPI_VENC_SetRcParam(venc, &rc_param));
+    status = HI_MPI_VENC_SetRcParam(venc, &rc_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_SetRcParam chn=%d rc_mode=%d failed: 0x%08x",
+              venc, static_cast<int>(rc_mode), status);
+        return false;
+    }
+    return true;
 }
 
 }  // namespace venc_internal

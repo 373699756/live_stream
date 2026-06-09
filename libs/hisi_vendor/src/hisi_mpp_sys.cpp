@@ -11,7 +11,14 @@ namespace {
 
 bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
     VI_VPSS_MODE_S vi_vpss_mode{};
-    HISI_CHECK(HI_MPI_SYS_GetVIVPSSMode(&vi_vpss_mode));
+    HI_S32 status = HI_MPI_SYS_GetVIVPSSMode(&vi_vpss_mode);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_SYS_GetVIVPSSMode video_pipe=%d snap_pipe=%d failed: "
+              "0x%08x",
+              config.video_pipe, config.snap_pipe, status);
+        return false;
+    }
 
     if (config.video_pipe >= 0 && config.video_pipe < VI_MAX_PIPE_NUM) {
         vi_vpss_mode.aenMode[config.video_pipe] = VI_OFFLINE_VPSS_OFFLINE;
@@ -20,7 +27,14 @@ bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
         vi_vpss_mode.aenMode[config.snap_pipe] = VI_OFFLINE_VPSS_OFFLINE;
     }
 
-    HISI_CHECK(HI_MPI_SYS_SetVIVPSSMode(&vi_vpss_mode));
+    status = HI_MPI_SYS_SetVIVPSSMode(&vi_vpss_mode);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_SYS_SetVIVPSSMode video_pipe=%d snap_pipe=%d failed: "
+              "0x%08x",
+              config.video_pipe, config.snap_pipe, status);
+        return false;
+    }
     return true;
 }
 
@@ -44,7 +58,12 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     }
 
     MPP_VERSION_S version{};
-    HISI_CHECK(HI_MPI_SYS_GetVersion(&version));
+    const HI_S32 version_status = HI_MPI_SYS_GetVersion(&version);
+    if (version_status != HI_SUCCESS) {
+        Error("hisi_vendor", "HI_MPI_SYS_GetVersion failed: 0x%08x",
+              version_status);
+        return false;
+    }
     Info("hisi_vendor", "HISI MPP version: %s", version.aVersion);
 
     bool resource_recovery_failed = false;

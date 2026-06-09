@@ -75,6 +75,10 @@ validate/apply。
 ready、时间戳修正和协议 reader 缓存归 `media_source`/`media_pipeline` 主链路。
 关键帧请求必须通过 `RequestKeyFrame` 进入媒体模块。
 
+`media/media_buffer.h` 提供基础 `MediaSlice`，只表达一段待发送数据和可选
+`VideoBuffer` owner。HTTP/FLV/MJPEG/HLS 等协议边界可以直接提交 slice，异步发送时
+由拥有 socket 队列的模块保留 owner 引用；`device_media` 不因此持有协议状态。
+
 ## 音视频专项边界
 
 产品只支持视频。旧配置文件中的音频字段只做升级兼容忽略；不启动音频采集、编码、

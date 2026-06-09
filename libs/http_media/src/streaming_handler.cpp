@@ -121,7 +121,7 @@ public:
         frame_header.append(std::to_string(frame.size));
         frame_header.append("\r\n\r\n");
 
-        HttpMediaSlice slices[3];
+        MediaSlice slices[3];
         slices[0].data = reinterpret_cast<const uint8_t *>(frame_header.data());
         slices[0].size = frame_header.size();
         slices[1].data = payload;
@@ -401,7 +401,7 @@ private:
         HttpResponse response;
         response.status_code = 200;
         response.headers["Content-Type"] = "video/mp2t";
-        HttpMediaSlice body_slice;
+        MediaSlice body_slice;
         // body_slice.owner 是 segment.body，自身带 ref 计数。SendResponseSlices
         // 入队后 net 会再 ref，随后本函数可以安全 unref 本地 segment。
         body_slice.data = segment.body->data;
@@ -591,14 +591,17 @@ private:
             MediaFlvStartDataUnref(&start_data);
             return;
         }
+        const bool keyframe_requested =
+            RequestBrowserKeyFrame(media_source, stream_id);
         Info(kHttpMediaModuleName,
                        "HTTP-FLV attached conn=%llu stream=%s client=%llu "
-                       "wait_keyframe=%d request_keyframe=1 cached_flv=%zu "
+                       "wait_keyframe=%d request_keyframe=%d cached_flv=%zu "
                        "cached_bytes=%zu gop_complete=%d",
                        static_cast<unsigned long long>(connection_id),
                        HttpMediaStreamIdToJsonString(stream_id),
                        static_cast<unsigned long long>(client_id),
                        wait_for_keyframe ? 1 : 0,
+                       keyframe_requested ? 1 : 0,
                        start_data.cached_video_tags.size(), cached_flv_bytes,
                        start_data.cached_gop_complete ? 1 : 0);
         MediaFlvStartDataUnref(&start_data);

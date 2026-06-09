@@ -6,6 +6,8 @@
 namespace live_stream {
 namespace hisisdk {
 
+struct MppHisiSdkImpl;
+
 // MppHisiSdk implements IHisiSdk by calling HiSilicon MPP SDK APIs directly.
 // This is the production implementation for Hi3516CV500 / Hi3516DV300 platforms.
 // Use it in HISI MPP builds. Non-MPP builds use StubHisiSdk instead.
@@ -53,8 +55,7 @@ public:
                              uint32_t timeout_ms) override;
 
 private:
-    struct Impl;
-    Impl* impl_;
+    MppHisiSdkImpl* impl_;
 };
 
 // Factory function – returns a static MppHisiSdk instance.

@@ -112,10 +112,10 @@ public:
         VideoBuffer* buffer = VideoBufferCreateExternal(
             block, state_->block_size, 0, FreePoolBlock, ref);
         if (buffer == nullptr) {
-            PoolStateUnref(state_);
             std::free(ref);
             UnrefIndexLocked(index);
             ++state_->no_memory_count;
+            PoolStateUnref(state_);
             return nullptr;
         }
         return buffer;

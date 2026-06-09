@@ -112,26 +112,42 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
 bool StartRecvFrame(VENC_CHN venc) {
     VENC_RECV_PIC_PARAM_S recv_param{};
     recv_param.s32RecvPicNum = -1;
-    return MpiOk("HI_MPI_VENC_StartRecvFrame",
-                 HI_MPI_VENC_StartRecvFrame(venc, &recv_param));
+    const HI_S32 status = HI_MPI_VENC_StartRecvFrame(venc, &recv_param);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_StartRecvFrame chn=%d failed: 0x%08x", venc,
+              status);
+        return false;
+    }
+    return true;
 }
 
-void StopRecvFrame(VENC_CHN venc) {
-    (void)HI_MPI_VENC_StopRecvFrame(venc);
+void StopRecvFrame(VENC_CHN venc, int32_t chn) {
+    const HI_S32 stop_status = HI_MPI_VENC_StopRecvFrame(venc);
+    if (stop_status != HI_SUCCESS) {
+        Warn("hisi_vendor",
+             "HI_MPI_VENC_StopRecvFrame chn=%d failed: 0x%08x", chn,
+             stop_status);
+    }
 }
 
 void DestroyVencChannel(VENC_CHN venc) {
-    StopRecvFrame(venc);
     (void)HI_MPI_VENC_DestroyChn(venc);
 }
 
-void RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
+bool RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
     if (!IsIdrCodec(codec)) {
-        return;
+        return false;
     }
-    (void)MpiOk(
-        "HI_MPI_VENC_RequestIDR",
-        HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel), HI_TRUE));
+    const HI_S32 status =
+        HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel), HI_TRUE);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_RequestIDR chn=%d codec=%s failed: 0x%08x",
+              venc_channel, CodecName(codec), status);
+        return false;
+    }
+    return true;
 }
 
 bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -146,8 +162,15 @@ bool BindVpssToVenc(int32_t vpss_group, int32_t vpss_channel,
     dst.s32DevId = 0;
     dst.s32ChnId = venc_channel;
 
-    return MpiOk("HI_MPI_SYS_Bind(VPSS-VENC)",
-                 HI_MPI_SYS_Bind(&src, &dst));
+    const HI_S32 status = HI_MPI_SYS_Bind(&src, &dst);
+    if (status != HI_SUCCESS) {
+        Error(
+            "hisi_vendor",
+            "HI_MPI_SYS_Bind VPSS-VENC vpss=%d:%d venc=%d failed: 0x%08x",
+            vpss_group, vpss_channel, venc_channel, status);
+        return false;
+    }
+    return true;
 }
 
 void UnbindVpssFromVenc(int32_t vpss_group, int32_t vpss_channel,
@@ -271,8 +294,13 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         GopModeName(stream.gop_mode), stream.size.width, stream.size.height,
         stream.frame_rate.source_fps, stream.frame_rate.target_fps,
         stream.bitrate_kbps, stream.gop, stat_time, attr.stVencAttr.u32BufSize);
-    if (!MpiOk("HI_MPI_VENC_CreateChn",
-               HI_MPI_VENC_CreateChn(venc, &attr))) {
+    const HI_S32 create_status = HI_MPI_VENC_CreateChn(venc, &attr);
+    if (create_status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_CreateChn chn=%d codec=%s size=%ux%u failed: "
+              "0x%08x",
+              chn, CodecName(stream.codec), stream.size.width,
+              stream.size.height, create_status);
         return false;
     }
     if (!TuneRcParam(venc, attr.stRcAttr.enRcMode)) {
@@ -619,6 +647,156 @@ void VencStreamLoop(MediaPipelineConfig config,
     }
 }
 
+bool HasCreatedVenc(const VencChannelRuntime& runtime) {
+    return runtime.created;
+}
+
+bool HasBoundVenc(const VencChannelRuntime& runtime) {
+    return runtime.bound_to_vpss;
+}
+
+bool VencRuntimeMatches(const VencChannelRuntime& runtime,
+                        int32_t venc_channel,
+                        int32_t vpss_group,
+                        int32_t vpss_channel,
+                        const VideoStreamConfig& stream) {
+    return runtime.created && runtime.venc_channel == venc_channel &&
+           runtime.vpss_group == vpss_group &&
+           runtime.vpss_channel == vpss_channel &&
+           runtime.stream_config.stream_id == stream.stream_id &&
+           runtime.stream_config.enabled == stream.enabled &&
+           runtime.stream_config.codec == stream.codec &&
+           runtime.stream_config.size.width == stream.size.width &&
+           runtime.stream_config.size.height == stream.size.height &&
+           runtime.stream_config.frame_rate.source_fps ==
+               stream.frame_rate.source_fps &&
+           runtime.stream_config.frame_rate.target_fps ==
+               stream.frame_rate.target_fps &&
+           runtime.stream_config.bitrate_kbps == stream.bitrate_kbps &&
+           runtime.stream_config.gop == stream.gop &&
+           runtime.stream_config.rc_mode == stream.rc_mode &&
+           runtime.stream_config.gop_mode == stream.gop_mode;
+}
+
+void ResetVencRuntime(VencChannelRuntime* runtime) {
+    if (runtime == nullptr) {
+        return;
+    }
+    *runtime = VencChannelRuntime{};
+}
+
+void InitVencRuntime(VencChannelRuntime* runtime,
+                     StreamId stream_id,
+                     int32_t venc_channel,
+                     int32_t vpss_group,
+                     int32_t vpss_channel,
+                     VideoCodec codec) {
+    if (runtime == nullptr) {
+        return;
+    }
+    runtime->stream_id = stream_id;
+    runtime->venc_channel = venc_channel;
+    runtime->vpss_group = vpss_group;
+    runtime->vpss_channel = vpss_channel;
+    runtime->codec = codec;
+    runtime->created = false;
+    runtime->bound_to_vpss = false;
+    runtime->receiving = false;
+    runtime->fd = -1;
+}
+
+bool CreateVencRuntime(VencChannelRuntime* runtime,
+                       const VideoStreamConfig& stream) {
+    if (runtime == nullptr) {
+        return false;
+    }
+    if (runtime->created) {
+        return true;
+    }
+    if (!ConfigureVencChannel(runtime->venc_channel, stream)) {
+        return false;
+    }
+    runtime->created = true;
+    runtime->codec = stream.codec;
+    runtime->stream_config = stream;
+    runtime->fd = HI_MPI_VENC_GetFd(
+        static_cast<VENC_CHN>(runtime->venc_channel));
+    return true;
+}
+
+void StopVencReceiving(VencChannelRuntime* runtime) {
+    if (runtime == nullptr || !runtime->receiving) {
+        return;
+    }
+    StopRecvFrame(static_cast<VENC_CHN>(runtime->venc_channel),
+                  runtime->venc_channel);
+    runtime->receiving = false;
+}
+
+void UnbindVencRuntime(VencChannelRuntime* runtime) {
+    if (runtime == nullptr || !runtime->bound_to_vpss) {
+        return;
+    }
+    StopVencReceiving(runtime);
+    UnbindVpssFromVenc(runtime->vpss_group, runtime->vpss_channel,
+                       runtime->venc_channel);
+    runtime->bound_to_vpss = false;
+}
+
+void DestroyVencRuntime(VencChannelRuntime* runtime) {
+    if (runtime == nullptr || !runtime->created) {
+        ResetVencRuntime(runtime);
+        return;
+    }
+    StopVencReceiving(runtime);
+    UnbindVencRuntime(runtime);
+    DestroyVencChannel(static_cast<VENC_CHN>(runtime->venc_channel));
+    ResetVencRuntime(runtime);
+}
+
+bool BindVencRuntime(VencChannelRuntime* runtime) {
+    if (runtime == nullptr || !runtime->created) {
+        return false;
+    }
+    if (runtime->bound_to_vpss) {
+        return true;
+    }
+    if (!BindVpssToVenc(runtime->vpss_group, runtime->vpss_channel,
+                        runtime->venc_channel)) {
+        return false;
+    }
+    runtime->bound_to_vpss = true;
+    return true;
+}
+
+bool StartVencRuntimeRecv(VencChannelRuntime* runtime) {
+    if (runtime == nullptr || !runtime->created || !runtime->bound_to_vpss) {
+        return false;
+    }
+    if (runtime->receiving) {
+        return true;
+    }
+    if (!StartRecvFrame(static_cast<VENC_CHN>(runtime->venc_channel))) {
+        return false;
+    }
+    runtime->receiving = true;
+    return true;
+}
+
+VencChannelRuntime* FindVencRuntime(VencChannelRuntime* main_runtime,
+                                    VencChannelRuntime* sub_runtime,
+                                    int32_t venc_channel) {
+    if (main_runtime != nullptr && main_runtime->created &&
+        main_runtime->venc_channel == venc_channel) {
+        return main_runtime;
+    }
+    if (sub_runtime != nullptr && sub_runtime->created &&
+        sub_runtime->venc_channel == venc_channel) {
+        return sub_runtime;
+    }
+    return nullptr;
+}
+
 }  // anonymous namespace
 
 // ====================================================================
@@ -626,13 +804,36 @@ void VencStreamLoop(MediaPipelineConfig config,
 // ====================================================================
 bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (impl_->venc_started_) return true;
+    const bool need_sub_stream = config.sub_stream.enabled;
+    const bool all_required_channels_created =
+        VencRuntimeMatches(impl_->main_venc_, config.venc_channel,
+                           config.vpss_group, config.vpss_channel,
+                           config.main_stream) &&
+        (need_sub_stream
+             ? VencRuntimeMatches(impl_->sub_venc_, config.sub_venc_channel,
+                                  config.vpss_group, config.sub_vpss_channel,
+                                  config.sub_stream)
+             : !HasCreatedVenc(impl_->sub_venc_));
+    if (all_required_channels_created) {
+        return true;
+    }
+    if (HasCreatedVenc(impl_->main_venc_) || HasCreatedVenc(impl_->sub_venc_)) {
+        if (impl_->stream_running_.load() || impl_->stream_thread_.joinable()) {
+            Error("hisi_vendor",
+                  "reconfigure VENC while stream thread is running");
+            return false;
+        }
+        DestroyVencRuntime(&impl_->sub_venc_);
+        DestroyVencRuntime(&impl_->main_venc_);
+    }
 
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
 
-    // Main stream
-    if (!ConfigureVencChannel(config.venc_channel, config.main_stream)) {
+    InitVencRuntime(&impl_->main_venc_, StreamId::kMain, config.venc_channel,
+                    config.vpss_group, config.vpss_channel,
+                    config.main_stream.codec);
+    if (!CreateVencRuntime(&impl_->main_venc_, config.main_stream)) {
         Error(
             "hisi_vendor",
             "start main VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
@@ -644,13 +845,17 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
             config.main_stream.frame_rate.source_fps,
             config.main_stream.frame_rate.target_fps,
             config.main_stream.bitrate_kbps, config.main_stream.gop);
+        ResetVencRuntime(&impl_->main_venc_);
         return false;
     }
 
-    // Sub stream (if enabled)
-    if (config.sub_stream.enabled) {
-        if (!ConfigureVencChannel(config.sub_venc_channel, config.sub_stream)) {
-            DestroyVencChannel(static_cast<VENC_CHN>(config.venc_channel));
+    if (need_sub_stream) {
+        InitVencRuntime(&impl_->sub_venc_, StreamId::kSub,
+                        config.sub_venc_channel, config.vpss_group,
+                        config.sub_vpss_channel, config.sub_stream.codec);
+        if (!CreateVencRuntime(&impl_->sub_venc_, config.sub_stream)) {
+            DestroyVencRuntime(&impl_->main_venc_);
+            ResetVencRuntime(&impl_->sub_venc_);
             Error(
                 "hisi_vendor",
                 "start sub VENC failed chn=%d codec=%s rc=%s gop_mode=%s "
@@ -664,25 +869,18 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
                 config.sub_stream.bitrate_kbps, config.sub_stream.gop);
             return false;
         }
+    } else {
+        ResetVencRuntime(&impl_->sub_venc_);
     }
 
-    impl_->venc_started_ = true;
     return true;
 }
 
 void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (!impl_->venc_started_) return;
-
-    VENC_CHN main_venc = static_cast<VENC_CHN>(config.venc_channel);
-    DestroyVencChannel(main_venc);
-
-    if (config.sub_stream.enabled) {
-        VENC_CHN sub_venc = static_cast<VENC_CHN>(config.sub_venc_channel);
-        DestroyVencChannel(sub_venc);
-    }
-
-    impl_->venc_started_ = false;
+    StopVencStream(config);
+    DestroyVencRuntime(&impl_->sub_venc_);
+    DestroyVencRuntime(&impl_->main_venc_);
 }
 
 // ====================================================================
@@ -690,86 +888,67 @@ void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
 // ====================================================================
 bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (impl_->vpss_bound_venc_) return true;
+    const bool need_sub_stream = config.sub_stream.enabled;
+    const bool all_required_channels_bound =
+        HasBoundVenc(impl_->main_venc_) &&
+        (need_sub_stream ? HasBoundVenc(impl_->sub_venc_)
+                         : !HasBoundVenc(impl_->sub_venc_));
+    if (all_required_channels_bound) {
+        return true;
+    }
+    if (!HasCreatedVenc(impl_->main_venc_) ||
+        (need_sub_stream && !HasCreatedVenc(impl_->sub_venc_))) {
+        Error("hisi_vendor", "bind VPSS to VENC before VENC is created");
+        return false;
+    }
 
-    // Main stream: VPSS CHN → VENC
-    if (!BindVpssToVenc(config.vpss_group, config.vpss_channel,
-                        config.venc_channel)) {
+    if (!BindVencRuntime(&impl_->main_venc_)) {
         Error("hisi_vendor",
                         "bind main VPSS to VENC failed vpss=%d:%d venc=%d",
                         config.vpss_group, config.vpss_channel,
                         config.venc_channel);
         return false;
     }
+    if (!StartVencRuntimeRecv(&impl_->main_venc_)) {
+        UnbindVencRuntime(&impl_->main_venc_);
+        Error("hisi_vendor", "start main VENC recv failed chn=%d",
+                        config.venc_channel);
+        return false;
+    }
 
-    // Sub stream (if enabled)
-    if (config.sub_stream.enabled) {
-        if (!BindVpssToVenc(config.vpss_group, config.sub_vpss_channel,
-                            config.sub_venc_channel)) {
-            UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
-                               config.venc_channel);
+    if (need_sub_stream) {
+        if (!BindVencRuntime(&impl_->sub_venc_)) {
+            UnbindVencRuntime(&impl_->main_venc_);
             Error("hisi_vendor",
                             "bind sub VPSS to VENC failed vpss=%d:%d venc=%d",
                             config.vpss_group, config.sub_vpss_channel,
                             config.sub_venc_channel);
             return false;
         }
-    }
-
-    if (!StartRecvFrame(static_cast<VENC_CHN>(config.venc_channel))) {
-        if (config.sub_stream.enabled) {
-            UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
-                               config.sub_venc_channel);
+        if (!StartVencRuntimeRecv(&impl_->sub_venc_)) {
+            UnbindVencRuntime(&impl_->sub_venc_);
+            UnbindVencRuntime(&impl_->main_venc_);
+            Error("hisi_vendor", "start sub VENC recv failed chn=%d",
+                            config.sub_venc_channel);
+            return false;
         }
-        UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
-                           config.venc_channel);
-        Error("hisi_vendor", "start main VENC recv failed chn=%d",
-                        config.venc_channel);
-        return false;
     }
 
-    if (config.sub_stream.enabled &&
-        !StartRecvFrame(static_cast<VENC_CHN>(config.sub_venc_channel))) {
-        StopRecvFrame(static_cast<VENC_CHN>(config.venc_channel));
-        UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
-                           config.sub_venc_channel);
-        UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
-                           config.venc_channel);
-        Error("hisi_vendor", "start sub VENC recv failed chn=%d",
-                        config.sub_venc_channel);
-        return false;
+    (void)RequestIdrFrame(impl_->main_venc_.venc_channel,
+                          impl_->main_venc_.codec);
+    if (need_sub_stream) {
+        (void)RequestIdrFrame(impl_->sub_venc_.venc_channel,
+                              impl_->sub_venc_.codec);
     }
 
-    RequestIdrFrame(config.venc_channel, config.main_stream.codec);
-    if (config.sub_stream.enabled) {
-        RequestIdrFrame(config.sub_venc_channel, config.sub_stream.codec);
-    }
-
-    impl_->vpss_bound_venc_ = true;
     return true;
 }
 
 void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (!impl_->vpss_bound_venc_) return;
-
-    if (impl_->venc_started_) {
-        if (config.sub_stream.enabled) {
-            StopRecvFrame(static_cast<VENC_CHN>(config.sub_venc_channel));
-        }
-        StopRecvFrame(static_cast<VENC_CHN>(config.venc_channel));
-    }
-
-    // Main stream unbind
-    UnbindVpssFromVenc(config.vpss_group, config.vpss_channel,
-                       config.venc_channel);
-
-    if (config.sub_stream.enabled) {
-        UnbindVpssFromVenc(config.vpss_group, config.sub_vpss_channel,
-                           config.sub_venc_channel);
-    }
-
-    impl_->vpss_bound_venc_ = false;
+    StopVencStream(config);
+    UnbindVencRuntime(&impl_->sub_venc_);
+    UnbindVencRuntime(&impl_->main_venc_);
 }
 
 // ====================================================================
@@ -779,7 +958,14 @@ bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
                                  EncodedFrameCallback callback,
                                  void* user) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (impl_->stream_started_) return true;
+    if (impl_->stream_running_.load() || impl_->stream_thread_.joinable()) {
+        return true;
+    }
+    if (!impl_->main_venc_.receiving ||
+        (config.sub_stream.enabled && !impl_->sub_venc_.receiving)) {
+        Error("hisi_vendor", "start VENC stream before VENC recv is running");
+        return false;
+    }
 
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
@@ -792,7 +978,6 @@ bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
     impl_->stream_thread_ = std::thread(
         VencStreamLoop, config, callback, user, &impl_->stream_running_);
 
-    impl_->stream_started_ = true;
     return true;
 }
 
@@ -801,7 +986,7 @@ void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
     // Stop uses the same configured channel set as StartVencStream.
     (void)config;
 
-    if (!impl_->stream_started_ && !impl_->stream_thread_.joinable()) {
+    if (!impl_->stream_running_.load() && !impl_->stream_thread_.joinable()) {
         return;
     }
 
@@ -813,7 +998,6 @@ void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
 
     impl_->frame_callback_ = nullptr;
     impl_->frame_callback_user_ = nullptr;
-    impl_->stream_started_ = false;
 }
 
 // ====================================================================
@@ -821,11 +1005,15 @@ void MppHisiSdk::StopVencStream(const MediaPipelineConfig& config) {
 // ====================================================================
 bool MppHisiSdk::RequestIdr(int32_t venc_channel) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (venc_channel < 0) return false;
-
-    return MpiOk("HI_MPI_VENC_RequestIDR",
-                 HI_MPI_VENC_RequestIDR(static_cast<VENC_CHN>(venc_channel),
-                                        HI_TRUE));
+    if (venc_channel < 0) {
+        return false;
+    }
+    VencChannelRuntime* runtime =
+        FindVencRuntime(&impl_->main_venc_, &impl_->sub_venc_, venc_channel);
+    if (runtime == nullptr || !runtime->created || !IsIdrCodec(runtime->codec)) {
+        return false;
+    }
+    return RequestIdrFrame(runtime->venc_channel, runtime->codec);
 }
 
 }  // namespace hisisdk

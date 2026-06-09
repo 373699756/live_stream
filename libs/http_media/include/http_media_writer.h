@@ -26,16 +26,8 @@ struct HttpMediaClientHandle {
 using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
-struct HttpMediaSlice {
-    // owner 为空时 data 必须在本次调用内可复制；owner 非空时 data 可指向
-    // VideoBuffer payload，HTTP/net 会在异步发送期间 ref/unref owner。
-    const uint8_t *data = nullptr;
-    size_t size = 0;
-    VideoBuffer *owner = nullptr;
-};
-
 // 长连接 HTTP 媒体输出边界，例如 HLS segment、HTTP-FLV 和 MJPEG。
-// 调用方只描述 slice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
+// 调用方只描述 MediaSlice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
 class HttpMediaWriter {
 public:
     virtual ~HttpMediaWriter() = default;
@@ -49,7 +41,7 @@ public:
     // 用于生成正确 Content-Length。
     virtual bool SendResponseSlices(ConnectionId connection_id,
                                     const HttpResponse &response,
-                                    const HttpMediaSlice *body_slices,
+                                    const MediaSlice *body_slices,
                                     size_t body_slice_count,
                                     size_t body_size,
                                     bool close_after_response) = 0;
@@ -64,7 +56,7 @@ public:
     // 带 owner 的 slice 可以在本调用返回后继续有效，writer 会保留 owner 到
     // 网络发送完成；无 owner 的 slice 必须是可立即复制进 TCP 输出队列的小协议字节。
     virtual bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const HttpMediaSlice *slices,
+                                        const MediaSlice *slices,
                                         size_t slice_count) = 0;
     // close callback 由 HTTP close path 触发，用于 detach FLV/MJPEG 或 unsubscribe SSE。
     virtual void SetCloseCallback(HttpMediaCloseCallback callback) = 0;

@@ -46,6 +46,10 @@ flowchart LR
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。
 
+媒体正文输出统一使用 `MediaSlice` 表达 header、payload 和可选 `VideoBuffer`
+owner。HLS segment、HTTP-FLV cached GOP 和 MJPEG frame 只提交 slice；跨线程或异步
+TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner 引用保持。
+
 ## API 归属
 
 | API | 实现归属 |
