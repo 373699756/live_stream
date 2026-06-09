@@ -36,7 +36,8 @@ flowchart LR
 - 对 RTSP/WebRTC 暴露 `IMediaFrameSource`。
 - 对协议输出暴露 `AttachFrameReader`、`GetFrameReaderStartData`、
   `PopFrameReaderFrame` 和 `DetachFrameReader`。
-- 对 HTTP 暴露 HLS/status、FLV 和 MJPEG source 接口。
+- 对 HTTP 暴露 HLS/status、FLV 和 MJPEG source 接口；H.264/H.265 运行码流持续维护
+  短 HLS playlist 窗口，避免 WebRTC/HTTP-FLV 切 HLS 时从空 segment 冷启动。
 - 统一管理客户端数量限制和 keyframe 请求转发。
 
 ## 接口归属
@@ -69,8 +70,9 @@ codec 切换和 timestamp reset 走同一 `ResetStreamForReasonLocked` 路径，
 | `max_mjpeg_clients` | MJPEG 客户端注册上限 |
 | `max_frame_readers` | RTSP/WebRTC 等下游 reader 总上限 |
 
-默认 HLS 使用 1s segment、2 个完成 segment 的 playlist 和 3 个旧 segment 保留。
-这个配置优先降低浏览器预览首播等待，同时保留少量余量给滞后 segment 请求。
+默认 HLS 使用 2s segment、3 个完成 segment 的 playlist 和 6 个旧 segment 保留。
+服务在 H.264/H.265 码流运行时持续生成这组短窗口，使浏览器从 WebRTC/HTTP-FLV
+切到 HLS 时可以直接拿到 playlist；旧 segment 保留给短暂滞后的 segment 请求。
 
 启动后本服务是 `device_media` 到 RTSP/WebRTC/HTTP 的扇出点。新增下游协议必须通过
 `IMediaFrameSource`、`IMediaSource`、`IMediaFlvSource` 或 `IMediaMjpegSource`

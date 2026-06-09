@@ -40,7 +40,8 @@ flowchart LR
 - 归一化下游协议时间戳，向 RTSP/WebRTC/HLS/FLV 提供单调相对 PTS/DTS。
 - 暴露 `MediaFrameReader`：新 reader 可选择 keyframe-first，启动时可读取当前
   GOP，之后从 live queue 拉取 `MediaFrameReaderFrame`。
-- HLS playlist 只暴露已完成 segment，额外保留旧 segment 供短暂滞后客户端读取。
+- HLS playlist 只暴露已完成 segment，额外保留旧 segment 供短暂滞后客户端读取；
+  上游 media pipeline 对 H.264/H.265 运行码流持续维护短 HLS 窗口。
 - 缓存 FLV sequence header 和关键帧 GOP，支持新客户端从可解码点开始。
 - 维护 runtime snapshot：track ready、codec、running、protocol support/ready、
   reader/client count、cached frames/bytes、HLS bytes、last DTS 和 last reset reason。
@@ -80,7 +81,7 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 | `codec` | 当前媒体源观察到的 codec |
 | `codec_generation` | codec、stream start/stop 或 timestamp reset 后递增，用于诊断缓存代际 |
 | `track_ready` | video track 是否可用于协议输出 |
-| `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有完整 playlist/segment |
+| `hls_supported` / `hls_ready` | HLS 是否支持当前 codec、是否已有运行时持续维护的完整 playlist/segment |
 | `http_flv_supported` / `http_flv_ready` | HTTP-FLV 是否支持当前 codec、是否已有 sequence header 或 GOP 起点 |
 | `mjpeg_supported` / `mjpeg_ready` | MJPEG 是否支持当前 codec、是否已有可输出帧 |
 | `webrtc_supported` / `webrtc_ready` | WebRTC 是否支持当前 codec、native 协议栈是否可创建 peer |
@@ -103,6 +104,8 @@ public API 在 `media_source.h`、`media_frame.h`、`timestamp_corrector.h`。
 playlist depth、segment retain count、FLV client 上限、MJPEG client 上限和 frame
 reader/client 上限。`media_source` 内部必须在 codec 切换、时间戳重置或 stream 停止时重建
 sequence header、GOP cache、HLS 当前 segment、MJPEG latest frame 和 ready 字段。
+HLS handler 日志会带出当前保留的 segment sequence 范围、segment 请求落空次数和
+segment 淘汰次数，用于判断 playlist 发布和 retain 是否足够。
 FLV GOP cache 只引用底层 `EncodedFrame`/`VideoBuffer`，只复制固定小头部；
 payload 不做 GOP 级二次拷贝。
 

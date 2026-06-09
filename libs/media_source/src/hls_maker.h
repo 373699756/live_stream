@@ -40,6 +40,10 @@ public:
     bool Requested() const;
     bool HasSegments() const;
     size_t SegmentCount() const;
+    uint64_t FirstSegmentSequence() const;
+    uint64_t LastSegmentSequence() const;
+    uint64_t MissingSegmentCount() const;
+    uint64_t EvictedSegmentCount() const;
     uint32_t CurrentSegmentSize() const;
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;
@@ -93,6 +97,8 @@ private:
     TsMuxerState ts_muxer_state_;
     uint32_t next_segment_capacity_ = 0;
     uint64_t next_segment_sequence_ = 1;
+    mutable uint64_t missing_segment_count_ = 0;
+    uint64_t evicted_segment_count_ = 0;
     int64_t last_pts_us_ = -1;
     int64_t last_frame_duration_us_ = 33333;
     mutable bool requested_ = false;

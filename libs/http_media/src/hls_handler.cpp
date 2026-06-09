@@ -108,11 +108,20 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
     if (playlist.entries.empty()) {
         Debug(kHttpMediaModuleName,
                         "HLS warmup stream=%s object=%s codec=%s "
-                        "keyframe=%d segments=%u current_segment=%u",
+                        "keyframe=%d segments=%u range=%llu-%llu "
+                        "missing=%llu evicted=%llu current_segment=%u",
                         HttpMediaStreamIdToJsonString(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         keyframe_requested ? 1 : 0,
                         browser_status.hls_segment_count,
+                        static_cast<unsigned long long>(
+                            browser_status.hls_first_segment_sequence),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_last_segment_sequence),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_missing_segment_count),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_evicted_segment_count),
                         browser_status.hls_current_segment_size);
         return BuildPlaylistResponse(playlist, request);
     }
@@ -169,6 +178,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
                             "codec=%s running=%d hls_ready=%d segments=%u "
+                            "range=%llu-%llu missing=%llu evicted=%llu "
                             "current_segment=%u",
                             HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
@@ -176,6 +186,14 @@ private:
                             browser_status.running ? 1 : 0,
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
+                            static_cast<unsigned long long>(
+                                browser_status.hls_first_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_last_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_missing_segment_count),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_evicted_segment_count),
                             browser_status.hls_current_segment_size);
             return HttpMediaTextResponse(
                 409, "HLS requires H.264 or H.265 stream");
@@ -184,13 +202,22 @@ private:
             Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=not_ready "
                             "codec=%s running=%d hls_ready=%d "
-                            "segments=%u current_segment=%u",
+                            "segments=%u range=%llu-%llu missing=%llu "
+                            "evicted=%llu current_segment=%u",
                             HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.hls_ready ? 1 : 0,
                             browser_status.hls_segment_count,
+                            static_cast<unsigned long long>(
+                                browser_status.hls_first_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_last_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_missing_segment_count),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_evicted_segment_count),
                             browser_status.hls_current_segment_size);
             return HttpMediaTextResponse(503, "HLS playlist not ready");
         }

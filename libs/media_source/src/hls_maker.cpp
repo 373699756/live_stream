@@ -510,6 +510,8 @@ void HlsMaker::Reset() {
     ts_muxer_state_ = TsMuxerState{};
     next_segment_capacity_ = 0;
     next_segment_sequence_ = 1;
+    missing_segment_count_ = 0;
+    evicted_segment_count_ = 0;
     last_pts_us_ = -1;
     last_frame_duration_us_ = 33333;
     requested_ = false;
@@ -523,6 +525,22 @@ bool HlsMaker::HasSegments() const { return !segments_.empty(); }
 
 size_t HlsMaker::SegmentCount() const { return segments_.size(); }
 
+uint64_t HlsMaker::FirstSegmentSequence() const {
+    return segments_.empty() ? 0 : segments_.front().sequence;
+}
+
+uint64_t HlsMaker::LastSegmentSequence() const {
+    return segments_.empty() ? 0 : segments_.back().sequence;
+}
+
+uint64_t HlsMaker::MissingSegmentCount() const {
+    return missing_segment_count_;
+}
+
+uint64_t HlsMaker::EvictedSegmentCount() const {
+    return evicted_segment_count_;
+}
+
 uint32_t HlsMaker::CurrentSegmentSize() const {
     return current_segment_.body != nullptr ? current_segment_.body->size : 0;
 }
@@ -535,6 +553,8 @@ MediaHlsPlaylist HlsMaker::BuildPlaylist(
     }
 
     playlist.supported = true;
+    playlist.first_cached_sequence = FirstSegmentSequence();
+    playlist.last_cached_sequence = LastSegmentSequence();
     const size_t playlist_depth =
         std::max<size_t>(1, static_cast<size_t>(hls_playlist_depth));
     const size_t start_index =
@@ -561,6 +581,7 @@ MediaSegmentRef HlsMaker::FindSegmentRef(uint64_t sequence) const {
             return MediaSegmentRefCopy(&segment);
         }
     }
+    ++missing_segment_count_;
     return MediaSegmentRef{};
 }
 
@@ -784,6 +805,7 @@ void HlsMaker::PopOldestSegment() {
     if (segments_.empty()) {
         return;
     }
+    ++evicted_segment_count_;
     MediaSegmentRefUnref(&segments_.front());
     segments_.pop_front();
 }

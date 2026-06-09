@@ -365,6 +365,14 @@ public:
         status.codec_generation = stream->codec_generation;
         status.hls_segment_count = static_cast<uint32_t>(
             stream->hls_maker.SegmentCount());
+        status.hls_first_segment_sequence =
+            stream->hls_maker.FirstSegmentSequence();
+        status.hls_last_segment_sequence =
+            stream->hls_maker.LastSegmentSequence();
+        status.hls_missing_segment_count =
+            stream->hls_maker.MissingSegmentCount();
+        status.hls_evicted_segment_count =
+            stream->hls_maker.EvictedSegmentCount();
         status.flv_sequence_header_size =
             static_cast<uint32_t>(stream->sequence_header_tag.size());
         status.flv_last_keyframe_size =
@@ -735,7 +743,7 @@ private:
             if (!source_state::IsBrowserStreamReady(stream->state, stream->codec)) {
                 return;
             }
-            package_hls = stream->hls_maker.Requested();
+            package_hls = source_state::IsHlsCodecSupported(stream->codec);
             package_flv = flv_live_ring_.HasReader(frame.stream_id);
             update_flv_cache = source_state::IsFlvCodecSupported(stream->codec);
         }
@@ -758,7 +766,7 @@ private:
             }
             const bool was_hls_ready = source_state::IsHlsStreamReady(*stream);
             const bool was_flv_ready = source_state::IsFlvStreamReady(*stream);
-            package_hls = stream->hls_maker.Requested();
+            package_hls = source_state::IsHlsCodecSupported(stream->codec);
             package_flv = flv_live_ring_.HasReader(frame.stream_id);
             update_flv_cache = source_state::IsFlvCodecSupported(stream->codec);
 

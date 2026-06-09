@@ -367,13 +367,19 @@ private:
         if (!browser_status.running) {
             Error(kHttpMediaModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
-                            "reason=not_ready codec=%s running=%d hls_ready=%d",
+                            "reason=not_ready codec=%s running=%d hls_ready=%d "
+                            "segments=%u range=%llu-%llu",
                             static_cast<unsigned long long>(connection_id),
                             HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
-                            browser_status.hls_ready ? 1 : 0);
+                            browser_status.hls_ready ? 1 : 0,
+                            browser_status.hls_segment_count,
+                            static_cast<unsigned long long>(
+                                browser_status.hls_first_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_last_segment_sequence));
             SendStreamingError(writer_, connection_id,
                                HttpMediaTextResponse(503, "HLS playlist not ready"));
             return;
@@ -385,11 +391,21 @@ private:
             segment.body->data == nullptr || segment.body->size == 0) {
             Error(kHttpMediaModuleName,
                             "HLS reject conn=%llu stream=%s object=%s "
-                            "reason=segment_missing sequence=%llu",
+                            "reason=segment_missing sequence=%llu range=%llu-%llu "
+                            "segments=%u missing=%llu evicted=%llu",
                             static_cast<unsigned long long>(connection_id),
                             HttpMediaStreamIdToJsonString(stream_id),
                             object_name.c_str(),
-                            static_cast<unsigned long long>(sequence));
+                            static_cast<unsigned long long>(sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_first_segment_sequence),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_last_segment_sequence),
+                            browser_status.hls_segment_count,
+                            static_cast<unsigned long long>(
+                                browser_status.hls_missing_segment_count),
+                            static_cast<unsigned long long>(
+                                browser_status.hls_evicted_segment_count));
             MediaSegmentRefUnref(&segment);
             SendStreamingError(writer_, connection_id,
                                HttpMediaTextResponse(404, "HLS segment not found"));

@@ -99,6 +99,8 @@ struct MediaHlsPlaylist {
     bool supported = false;
     uint32_t target_duration_sec = 0;
     uint64_t media_sequence = 0;
+    uint64_t first_cached_sequence = 0;
+    uint64_t last_cached_sequence = 0;
     std::vector<MediaHlsEntry> entries;
 };
 
@@ -263,6 +265,10 @@ struct MediaSourceStatus {
     VideoCodec codec = VideoCodec::kH264;
     uint64_t codec_generation = 0;
     uint32_t hls_segment_count = 0;
+    uint64_t hls_first_segment_sequence = 0;
+    uint64_t hls_last_segment_sequence = 0;
+    uint64_t hls_missing_segment_count = 0;
+    uint64_t hls_evicted_segment_count = 0;
     uint32_t flv_sequence_header_size = 0;
     uint32_t flv_last_keyframe_size = 0;
     uint32_t hls_current_segment_size = 0;
