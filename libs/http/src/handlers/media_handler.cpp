@@ -406,7 +406,57 @@ ConfigJson RtspSessionToJson(const RtspSessionDiagnostics &session) {
     root["pending_bytes"] = session.pending_bytes;
     root["rtp_packets"] = session.rtp_packets;
     root["rtp_bytes"] = session.rtp_bytes;
+    root["rtcp_packets"] = session.rtcp_packets;
+    root["rtcp_bytes"] = session.rtcp_bytes;
+    root["last_rtcp_ms"] = session.last_rtcp_ms;
     root["close_reason"] = session.close_reason;
+    return root;
+}
+
+const char *WebrtcPeerStateToJsonString(WebrtcPeerState state) {
+    switch (state) {
+        case WebrtcPeerState::kCreated:
+            return "created";
+        case WebrtcPeerState::kOfferReceived:
+            return "offer_received";
+        case WebrtcPeerState::kConnecting:
+            return "connecting";
+        case WebrtcPeerState::kConnected:
+            return "connected";
+        case WebrtcPeerState::kClosing:
+            return "closing";
+        case WebrtcPeerState::kClosed:
+            return "closed";
+        case WebrtcPeerState::kFailed:
+            return "failed";
+    }
+    return "unknown";
+}
+
+ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
+    ConfigJson root = ConfigJson::object();
+    root["protocol"] = "webrtc";
+    root["session_id"] = peer.peer_id;
+    root["peer_id"] = peer.peer_id;
+    root["stream"] = StreamIdToJsonString(peer.stream_id);
+    root["state"] = WebrtcPeerStateToJsonString(peer.state);
+    root["client_ip"] = peer.client_ip;
+    root["user_name"] = peer.user_name;
+    root["ice_selected"] = peer.ice_selected;
+    root["dtls_state"] = peer.dtls_state;
+    root["srtp_ready"] = peer.srtp_ready;
+    root["rtp_packets"] = peer.rtp_packets;
+    root["rtp_bytes"] = peer.rtp_bytes;
+    root["rtcp_packets"] = peer.rtcp_packets;
+    root["rtcp_bytes"] = peer.rtcp_bytes;
+    root["rtcp_pli_count"] = peer.rtcp_pli_count;
+    root["rtcp_fir_count"] = peer.rtcp_fir_count;
+    root["rtcp_nack_count"] = peer.rtcp_nack_count;
+    root["rtcp_transport_cc_count"] = peer.rtcp_transport_cc_count;
+    root["rtcp_keyframe_requests"] = peer.rtcp_keyframe_requests;
+    root["last_error"] = peer.last_error;
+    root["created_at_ms"] = peer.created_at_ms;
+    root["updated_at_ms"] = peer.updated_at_ms;
     return root;
 }
 
@@ -545,6 +595,10 @@ private:
         if (webrtc_ != nullptr) {
             webrtc_stats = webrtc_->GetStats();
             root["webrtc_active_peers"] = webrtc_stats.active_peers;
+            const std::vector<WebrtcPeerInfo> peers = webrtc_->GetPeers();
+            for (const WebrtcPeerInfo &peer : peers) {
+                items.push_back(WebrtcSessionToJson(peer));
+            }
         } else {
             root["webrtc_active_peers"] = 0;
         }

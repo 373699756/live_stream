@@ -310,6 +310,23 @@ public:
         return BuildPeerDiagnostics(peer_id);
     }
 
+    std::vector<WebrtcPeerInfo> GetPeers() const override {
+        std::vector<WebrtcPeerInfo> peers;
+        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            peers = peer_store_.Peers();
+            engine = engine_;
+        }
+        if (!engine) {
+            return peers;
+        }
+        for (WebrtcPeerInfo &peer : peers) {
+            (void)engine->FillPeerDiagnostics(peer.peer_id, &peer);
+        }
+        return peers;
+    }
+
     WebrtcStats GetStats() const override {
         std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         WebrtcStats result;

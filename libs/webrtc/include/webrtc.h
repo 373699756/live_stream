@@ -69,6 +69,13 @@ struct WebrtcPeerInfo {
     bool srtp_ready = false;
     uint64_t rtp_packets = 0;
     uint64_t rtp_bytes = 0;
+    uint64_t rtcp_packets = 0;
+    uint64_t rtcp_bytes = 0;
+    uint64_t rtcp_pli_count = 0;
+    uint64_t rtcp_fir_count = 0;
+    uint64_t rtcp_nack_count = 0;
+    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_keyframe_requests = 0;
     std::string last_error;
     int64_t created_at_ms = 0;
     int64_t updated_at_ms = 0;
@@ -110,6 +117,13 @@ struct WebrtcStats {
     uint64_t dropped_frames = 0;
     uint64_t sent_rtp_packets = 0;
     uint64_t dropped_rtp_packets = 0;
+    uint64_t rtcp_packets = 0;
+    uint64_t rtcp_bytes = 0;
+    uint64_t rtcp_pli_count = 0;
+    uint64_t rtcp_fir_count = 0;
+    uint64_t rtcp_nack_count = 0;
+    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_keyframe_requests = 0;
 };
 
 class IWebrtc {
@@ -124,6 +138,7 @@ public:
     virtual bool AddIceCandidate(const WebrtcIceCandidate &candidate) = 0;
     virtual bool ClosePeer(const std::string &peer_id) = 0;
     virtual WebrtcPeerInfo GetPeer(const std::string &peer_id) const = 0;
+    virtual std::vector<WebrtcPeerInfo> GetPeers() const = 0;
     virtual WebrtcStats GetStats() const = 0;
 };
 

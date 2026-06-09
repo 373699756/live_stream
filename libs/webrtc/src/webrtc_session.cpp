@@ -203,6 +203,13 @@ void WebrtcSession::FillPeerDiagnostics(WebrtcPeerInfo *peer) const {
     peer->srtp_ready = diagnostics.srtp_ready;
     peer->rtp_packets = diagnostics.rtp_packets;
     peer->rtp_bytes = diagnostics.rtp_bytes;
+    peer->rtcp_packets = diagnostics.rtcp_packets;
+    peer->rtcp_bytes = diagnostics.rtcp_bytes;
+    peer->rtcp_pli_count = diagnostics.rtcp_pli_count;
+    peer->rtcp_fir_count = diagnostics.rtcp_fir_count;
+    peer->rtcp_nack_count = diagnostics.rtcp_nack_count;
+    peer->rtcp_transport_cc_count = diagnostics.rtcp_transport_cc_count;
+    peer->rtcp_keyframe_requests = diagnostics.rtcp_keyframe_requests;
 }
 
 void WebrtcSession::FillStats(WebrtcStats *stats) const {

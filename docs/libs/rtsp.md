@@ -61,7 +61,8 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 - live frame 通过 `PopFrameReaderFrame` 拉取，RTSP 不再注册全局
   `AttachFrameSink` fanout。
 - TCP interleaved 与控制连接绑定；UDP SETUP 为该 session 创建 RTP 和 RTCP
-  socket，RTCP 包当前只做基础接收忽略，避免客户端 receiver report 影响连接。
+  socket。RTCP receiver report 当前只记录收包数量、字节数和最后接收时间，用于诊断；
+  不根据 receiver report 做码率控制或断连决策。
 - TEARDOWN、控制连接断开、SETUP 切换 transport 或服务停止时必须取消发送
   timer、detach reader，并关闭 session 私有 UDP socket。
 
@@ -82,6 +83,8 @@ interleaved header slice 和 RTP packet view，media payload slice 异步发送�
 | `reader_id` | 当前 `MediaFrameReaderId`，未 PLAY 时为 0 |
 | `pending_bytes` | TCP interleaved 发送积压字节数，UDP session 为 0 或诊断值 |
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
+| `rtcp_packets` / `rtcp_bytes` | 已收到 RTCP 统计 |
+| `last_rtcp_ms` | 最近一次收到 RTCP 的 monotonic ms，未收到时为 0 |
 | `close_reason` | 来自 `net` 或 RTSP close path 的关闭原因 |
 
 `IRtsp::GetSessionDiagnostics()` 输出当前 RTSP sessions 的上述字段；pending

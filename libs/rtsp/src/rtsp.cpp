@@ -2,6 +2,7 @@
 
 #include "event.h"
 #include "infra/log.h"
+#include "infra/time.h"
 #include "media_source.h"
 #include "rtp.h"
 #include "net.h"
@@ -253,6 +254,9 @@ public:
                 item.pending_bytes = session->stats.pending_bytes;
                 item.rtp_packets = session->stats.sent_rtp_packets;
                 item.rtp_bytes = session->stats.sent_rtp_bytes;
+                item.rtcp_packets = session->stats.received_rtcp_packets;
+                item.rtcp_bytes = session->stats.received_rtcp_bytes;
+                item.last_rtcp_ms = session->stats.last_rtcp_ms;
                 item.close_reason = TcpCloseReasonName(session->close_reason);
             }
             if (net_engine_ != nullptr) {
@@ -375,11 +379,14 @@ private:
                      size_t size) {
         (void)peer;
         (void)data;
-        (void)size;
         std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session = sessions_.FindByUdpSocket(socket_id);
+            if (session != nullptr && session->rtcp_socket_id == socket_id) {
+                session->RecordRtcpPacket(size,
+                                          infra::Time::MonotonicMillis());
+            }
         }
         if (session == nullptr) {
             return;
@@ -413,8 +420,9 @@ private:
             return;
         }
 
-        // splitter 同时能切 RTSP request 和 TCP interleaved frame；当前只处理控制
-        // request。客户端经 TCP interleaved 发来的 RTCP 暂不参与码率控制。
+        // splitter 同时能切 RTSP request 和 TCP interleaved frame；当前只记录
+        // RTCP 反馈用于诊断，不根据 receiver report 做码率控制。
+        RecordInterleavedRtcpPackets(session, split.interleaved_packets);
         for (const std::string& raw : split.requests) {
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
@@ -426,6 +434,23 @@ private:
                 return;
             }
             request_handler_.HandleRequest(session, request);
+        }
+    }
+
+    void RecordInterleavedRtcpPackets(
+        const std::shared_ptr<RtspSession> &session,
+        const std::vector<RtspInterleavedPacket> &packets) {
+        if (session == nullptr || packets.empty()) {
+            return;
+        }
+        const uint8_t rtcp_channel = session->interleaved_rtp_channel + 1;
+        const int64_t now_ms = infra::Time::MonotonicMillis();
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const RtspInterleavedPacket &packet : packets) {
+            if (session->transport == RtspTransportMode::kTcpInterleaved &&
+                packet.channel == rtcp_channel) {
+                session->RecordRtcpPacket(packet.payload.size(), now_ms);
+            }
         }
     }
 

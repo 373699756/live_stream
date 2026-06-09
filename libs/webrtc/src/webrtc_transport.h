@@ -47,6 +47,13 @@ struct WebrtcTransportDiagnostics {
     bool srtp_ready = false;
     uint64_t rtp_packets = 0;
     uint64_t rtp_bytes = 0;
+    uint64_t rtcp_packets = 0;
+    uint64_t rtcp_bytes = 0;
+    uint64_t rtcp_pli_count = 0;
+    uint64_t rtcp_fir_count = 0;
+    uint64_t rtcp_nack_count = 0;
+    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_keyframe_requests = 0;
 };
 
 class WebrtcTransport {
@@ -94,6 +101,7 @@ private:
     bool StartSrtp(const DtlsSrtpKeys &keys);
     bool ArmDtlsTimer();
     void CancelDtlsTimer();
+    void RecordRtcpFeedback(RtcpFeedbackType type);
 
     std::string peer_id_;
     INetEngine *net_engine_ = nullptr;
@@ -108,6 +116,13 @@ private:
     NetTimerId dtls_timer_id_ = 0;
     uint64_t protected_rtp_packets_ = 0;
     uint64_t protected_rtp_bytes_ = 0;
+    uint64_t rtcp_packets_ = 0;
+    uint64_t rtcp_bytes_ = 0;
+    uint64_t rtcp_pli_count_ = 0;
+    uint64_t rtcp_fir_count_ = 0;
+    uint64_t rtcp_nack_count_ = 0;
+    uint64_t rtcp_transport_cc_count_ = 0;
+    uint64_t rtcp_keyframe_requests_ = 0;
     bool ice_connected_ = false;
     bool dtls_connected_ = false;
 };

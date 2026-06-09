@@ -6,6 +6,7 @@
 #include "rtsp.h"
 #include "rtsp_splitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -50,6 +51,7 @@ class RtspSession {
   void MarkCloseReason(TcpCloseReason reason);
   void MarkAuthenticated(StreamId stream_id, std::string user_name);
   bool IsAuthenticatedFor(StreamId stream_id) const;
+  void RecordRtcpPacket(size_t packet_size, int64_t now_ms);
 
   uint64_t session_id = 0;
   ConnectionId connection_id = 0;

@@ -65,6 +65,9 @@ struct RtspSessionStats {
     uint32_t pending_bytes = 0;
     uint64_t sent_rtp_packets = 0;
     uint64_t sent_rtp_bytes = 0;
+    uint64_t received_rtcp_packets = 0;
+    uint64_t received_rtcp_bytes = 0;
+    int64_t last_rtcp_ms = 0;
     uint64_t dropped_frames = 0;
 };
 
@@ -78,6 +81,9 @@ struct RtspSessionDiagnostics {
     uint32_t pending_bytes = 0;
     uint64_t rtp_packets = 0;
     uint64_t rtp_bytes = 0;
+    uint64_t rtcp_packets = 0;
+    uint64_t rtcp_bytes = 0;
+    int64_t last_rtcp_ms = 0;
     std::string close_reason;
 };
 

@@ -35,6 +35,7 @@ class WebrtcPeerStore {
   uint32_t ActivePeerCount() const;
   bool HasConnectedPeer(StreamId stream_id) const;
   std::vector<WebrtcPeerInfo> ConnectedPeers(StreamId stream_id) const;
+  std::vector<WebrtcPeerInfo> Peers() const;
 
   bool BeginOffer(const std::string &peer_id, WebrtcPeerInfo *peer);
   bool CompleteOffer(const std::string &peer_id, WebrtcPeerInfo *peer,

@@ -131,9 +131,10 @@ keyframe/first-frame/protocol-ready timestamps, and last reset reason.
 to `/api/events` for media status changes and keeps slow polling only as a
 fallback; automatic playback prefers WebRTC, HTTP-FLV, then MJPEG before HLS.
 `MediaSessionInfo` describes active HLS/FLV/MJPEG/RTSP/WebRTC sessions with
-pending bytes and close reason. `WebrtcPeerInfo` mirrors backend peer state,
-stream, ICE selected flag, DTLS/SRTP readiness, packet counters, last error,
-and created/updated timestamps.
+pending bytes, close reason, and RTP/RTCP diagnostics where the backend
+provides them. `WebrtcPeerInfo` mirrors backend peer state, stream, ICE
+selected flag, DTLS/SRTP readiness, RTP counters, RTCP feedback counters, last
+error, and created/updated timestamps.
 
 WebRTC signaling uses RESTful peer paths. A successful offer response includes
 a video-only sendonly SDP answer, but playback readiness still comes from the

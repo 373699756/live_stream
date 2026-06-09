@@ -101,6 +101,13 @@ void WebrtcTransport::Close() {
     on_dtls_timeout_ = nullptr;
     protected_rtp_packets_ = 0;
     protected_rtp_bytes_ = 0;
+    rtcp_packets_ = 0;
+    rtcp_bytes_ = 0;
+    rtcp_pli_count_ = 0;
+    rtcp_fir_count_ = 0;
+    rtcp_nack_count_ = 0;
+    rtcp_transport_cc_count_ = 0;
+    rtcp_keyframe_requests_ = 0;
     protected_rtp_packet_.clear();
     plain_rtcp_packet_.clear();
     ice_connected_ = false;
@@ -187,6 +194,8 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
     if (!inbound_srtp_.UnprotectRtcp(data, size, &plain_rtcp_packet_)) {
         return false;
     }
+    ++rtcp_packets_;
+    rtcp_bytes_ += plain_rtcp_packet_.size();
     RtcpFeedback feedback;
     if (!SrtpSession::ParseRtcpFeedback(plain_rtcp_packet_.data(),
                                         plain_rtcp_packet_.size(),
@@ -194,6 +203,7 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
         *request_key_frame = false;
         return true;
     }
+    RecordRtcpFeedback(feedback.type);
     *request_key_frame = SrtpSession::IsKeyFrameRequest(feedback.type);
     return true;
 }
@@ -246,6 +256,13 @@ WebrtcTransportDiagnostics WebrtcTransport::GetDiagnostics() const {
     diagnostics.srtp_ready = srtp_ready();
     diagnostics.rtp_packets = protected_rtp_packets_;
     diagnostics.rtp_bytes = protected_rtp_bytes_;
+    diagnostics.rtcp_packets = rtcp_packets_;
+    diagnostics.rtcp_bytes = rtcp_bytes_;
+    diagnostics.rtcp_pli_count = rtcp_pli_count_;
+    diagnostics.rtcp_fir_count = rtcp_fir_count_;
+    diagnostics.rtcp_nack_count = rtcp_nack_count_;
+    diagnostics.rtcp_transport_cc_count = rtcp_transport_cc_count_;
+    diagnostics.rtcp_keyframe_requests = rtcp_keyframe_requests_;
     return diagnostics;
 }
 
@@ -256,6 +273,13 @@ void WebrtcTransport::FillStats(WebrtcStats *stats) const {
     if (ice_ != nullptr && ice_->connected()) {
         ++stats->selected_ice_pairs;
     }
+    stats->rtcp_packets += rtcp_packets_;
+    stats->rtcp_bytes += rtcp_bytes_;
+    stats->rtcp_pli_count += rtcp_pli_count_;
+    stats->rtcp_fir_count += rtcp_fir_count_;
+    stats->rtcp_nack_count += rtcp_nack_count_;
+    stats->rtcp_transport_cc_count += rtcp_transport_cc_count_;
+    stats->rtcp_keyframe_requests += rtcp_keyframe_requests_;
 }
 
 bool WebrtcTransport::IsIcePacket(const uint8_t *data, size_t size) {
@@ -391,6 +415,27 @@ void WebrtcTransport::CancelDtlsTimer() {
         (void)net_engine_->CancelIoTimer(dtls_timer_id_);
     }
     dtls_timer_id_ = 0;
+}
+
+void WebrtcTransport::RecordRtcpFeedback(RtcpFeedbackType type) {
+    switch (type) {
+        case RtcpFeedbackType::kPli:
+            ++rtcp_pli_count_;
+            ++rtcp_keyframe_requests_;
+            break;
+        case RtcpFeedbackType::kFir:
+            ++rtcp_fir_count_;
+            ++rtcp_keyframe_requests_;
+            break;
+        case RtcpFeedbackType::kNack:
+            ++rtcp_nack_count_;
+            break;
+        case RtcpFeedbackType::kTransportCc:
+            ++rtcp_transport_cc_count_;
+            break;
+        case RtcpFeedbackType::kNone:
+            break;
+    }
 }
 
 }  // namespace webrtc_internal

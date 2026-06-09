@@ -132,6 +132,15 @@ std::vector<WebrtcPeerInfo> WebrtcPeerStore::ConnectedPeers(
   return peers;
 }
 
+std::vector<WebrtcPeerInfo> WebrtcPeerStore::Peers() const {
+  std::vector<WebrtcPeerInfo> peers;
+  peers.reserve(peers_.size());
+  for (const auto &item : peers_) {
+    peers.push_back(item.second);
+  }
+  return peers;
+}
+
 bool WebrtcPeerStore::BeginOffer(const std::string &peer_id,
                                  WebrtcPeerInfo *peer) {
   if (peer == nullptr) {
@@ -209,6 +218,13 @@ bool WebrtcPeerStore::UpdateDiagnostics(const WebrtcPeerInfo &peer) {
   iter->second.srtp_ready = peer.srtp_ready;
   iter->second.rtp_packets = peer.rtp_packets;
   iter->second.rtp_bytes = peer.rtp_bytes;
+  iter->second.rtcp_packets = peer.rtcp_packets;
+  iter->second.rtcp_bytes = peer.rtcp_bytes;
+  iter->second.rtcp_pli_count = peer.rtcp_pli_count;
+  iter->second.rtcp_fir_count = peer.rtcp_fir_count;
+  iter->second.rtcp_nack_count = peer.rtcp_nack_count;
+  iter->second.rtcp_transport_cc_count = peer.rtcp_transport_cc_count;
+  iter->second.rtcp_keyframe_requests = peer.rtcp_keyframe_requests;
   iter->second.updated_at_ms = NowMs();
   return true;
 }

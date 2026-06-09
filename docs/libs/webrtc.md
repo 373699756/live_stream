@@ -51,9 +51,11 @@ WebRTC 模块只暴露 service/session 能力；JSON envelope、鉴权和路径�
 
 `WebrtcStats` 只暴露 native 链路状态和计数：`enabled`、`signaling_ready`、
 `ice_ready`、`dtls_ready`、`srtp_ready`、`selected_ice_pairs`、peer 数、
-offer/candidate 数、帧发送/丢弃和 RTP 包发送/丢弃。`ice_ready`、`dtls_ready` 和
-`srtp_ready` 表示本地协议栈可用于创建 peer；peer 级 ICE connected/completed 通过
-`selected_ice_pairs` 统计观测。模块不再暴露 `BackendName()` 或
+offer/candidate 数、帧发送/丢弃、RTP 包发送/丢弃和 RTCP 反馈计数。`ice_ready`、
+`dtls_ready` 和 `srtp_ready` 表示本地协议栈可用于创建 peer；peer 级 ICE
+connected/completed 通过 `selected_ice_pairs` 统计观测。RTCP 反馈计数覆盖
+PLI、FIR、NACK 和 TWCC；其中 `rtcp_keyframe_requests` 只统计会触发关键帧请求的
+PLI/FIR。模块不再暴露 `BackendName()` 或
 `backend_available`。
 
 `WebrtcPeerInfo` / peer diagnostics 字段冻结为：
@@ -67,6 +69,10 @@ offer/candidate 数、帧发送/丢弃和 RTP 包发送/丢弃。`ice_ready`、`
 | `dtls_state` | DTLS 状态文本 |
 | `srtp_ready` | outbound/inbound SRTP context 是否可用 |
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP/SRTP 统计 |
+| `rtcp_packets` / `rtcp_bytes` | 已收到并解密的 SRTCP/RTCP 统计 |
+| `rtcp_pli_count` / `rtcp_fir_count` | 浏览器关键帧请求计数 |
+| `rtcp_nack_count` / `rtcp_transport_cc_count` | 浏览器丢包反馈和 TWCC 反馈计数 |
+| `rtcp_keyframe_requests` | 已识别为关键帧请求的 RTCP 反馈总数 |
 | `last_error` | 最近一次明确失败原因 |
 | `created_at_ms` / `updated_at_ms` | peer 生命周期时间戳 |
 
@@ -113,8 +119,9 @@ offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answ
 
 10.6 当前基线已经把 SRTP/RTCP 接入 `webrtc_transport`：RTP sender 交出的 RTP
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
-会解密并解析 PLI/FIR，触发 `media_source.RequestKeyFrame()`。NACK 和 TWCC 仅保留
-反馈类型识别，重传和拥塞控制后置。
+会解密并解析 PLI/FIR/NACK/TWCC。PLI/FIR 会触发
+`media_source.RequestKeyFrame()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
+RTP 重传缓存和拥塞控制后置。
 `webrtc_transport` 为每个 peer 复用 SRTP RTP 输出 buffer 和 SRTCP 输入解密 buffer；
 `srtp_session` 只 resize 调用方提供的 vector 并复制有效输入，不为每个 RTP packet
 重新构造临时输出 vector。
@@ -143,7 +150,8 @@ offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media reader 状�
 
 10.9 当前基线把 peer diagnostics 落到 public `WebrtcPeerInfo`：service/store 记录
 `created_at_ms`、`updated_at_ms` 和 `last_error`，session/transport 回填
-`ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets` 和 `rtp_bytes`。HTTP
+`ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets`、`rtp_bytes` 和 RTCP
+反馈计数。HTTP
 DELETE、setup timeout、SDP/DTLS/SRTP 失败和 reader attach 失败都经
 `WebrtcImpl` 的 peer close path 收敛，关闭前保存最后一次 transport 诊断，
 关闭后保留 peer 的 closed/failed 状态供 HTTP/API 聚合查询。

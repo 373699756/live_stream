@@ -142,4 +142,13 @@ bool RtspSession::IsAuthenticatedFor(StreamId next_stream_id) const {
   return authenticated && authenticated_stream_id == next_stream_id;
 }
 
+void RtspSession::RecordRtcpPacket(size_t packet_size, int64_t now_ms) {
+  if (packet_size == 0) {
+    return;
+  }
+  ++stats.received_rtcp_packets;
+  stats.received_rtcp_bytes += packet_size;
+  stats.last_rtcp_ms = now_ms;
+}
+
 }  // namespace live_stream
