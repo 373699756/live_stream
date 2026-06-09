@@ -67,6 +67,33 @@ export const mockAiStatus: AiStatus = {
 export const mockAiAlerts: AiAlertList = {
   items: [
     {
+      id: 'mock-4',
+      timestamp_ms: Date.now() - 24_000,
+      stream: 'sub',
+      task: 'object_detection',
+      image_url: '/snapshot/sub.jpg',
+      detection_count: 2,
+      confidence_max: 0.89,
+      detections: [
+        {
+          label: 'person',
+          confidence: 0.89,
+          x: 0.22,
+          y: 0.28,
+          width: 0.16,
+          height: 0.4,
+        },
+        {
+          label: 'vehicle',
+          confidence: 0.76,
+          x: 0.6,
+          y: 0.48,
+          width: 0.24,
+          height: 0.2,
+        },
+      ],
+    },
+    {
       id: 'mock-3',
       timestamp_ms: Date.now() - 45_000,
       stream: 'sub',

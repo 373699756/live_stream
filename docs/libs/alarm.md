@@ -32,10 +32,20 @@ flowchart LR
 
 public API 在 `alarm.h`。AI 告警图片归 `ai`，告警规则和触发状态归 `alarm`。
 
+HTTP 路由由 `http` 实现，但业务语义归本模块：
+
+- `GET /api/alarm/status`
+
+`/api/alarm/status` 返回当前告警模块是否可用和轻量运行态：
+`active`、`source`、`active_since_ms`、`last_trigger_time_ms`、`message`。
+时间戳使用系统毫秒时间，供 Web Console 直接格式化展示；持续时间判断仍由模块内部
+单调时钟完成。
+
 ## 状态与资源模型
 
 告警状态是轻量内存状态，不是录像索引或长期存储。AI 启用时只注入
-`AlarmSource::kAiDetection`，不启用录像、回放或长期保存。
+`AlarmSource::kAiDetection`，不启用录像、回放或长期保存。AI 告警规则未启用时，
+AI 仍可保存抓拍图片，但不会发布 `kAlarmTriggered` 系统告警事件。
 
 ## 非目标
 

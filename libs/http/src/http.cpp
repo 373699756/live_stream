@@ -238,6 +238,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handler_dependencies.system = dependencies.system;
     handler_dependencies.device_media = dependencies.device_media;
     handler_dependencies.media_source = dependencies.media_source;
+    handler_dependencies.alarm = dependencies.alarm;
     handler_dependencies.rtsp = dependencies.rtsp;
     handler_dependencies.webrtc = dependencies.webrtc;
     handler_dependencies.ai = dependencies.ai;
@@ -274,6 +275,8 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handler_dependencies.system_status_sources = system_status_sources;
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kSystem, handler_dependencies));
+    handlers_.push_back(CreateHttpHandler(
+        HttpHandlerKind::kAlarm, handler_dependencies));
 
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kMedia, handler_dependencies));

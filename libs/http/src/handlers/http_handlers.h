@@ -49,6 +49,7 @@ enum class HttpHandlerKind {
     kTime,
     kUpgrade,
     kSystem,
+    kAlarm,
     kMedia,
     kAi,
     kSnapshot,
@@ -66,6 +67,7 @@ struct HttpHandlerDependencies {
     ISystem *system = nullptr;
     IDeviceMedia *device_media = nullptr;
     IMediaSource *media_source = nullptr;
+    IAlarm *alarm = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
     IAiView *ai = nullptr;
@@ -92,6 +94,8 @@ std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
     HttpAccess *access, ISystem *system,
     const SystemStatusSources &status_sources);
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(
+    HttpAccess *access, IAlarm *alarm);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
     HttpAccess *access, IConfig *config,
     IDeviceMedia *device_media, IMediaSource *media_source,

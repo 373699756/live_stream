@@ -379,6 +379,55 @@ export interface AiAlertList {
   items: AiAlertRecord[];
 }
 
+export interface AlarmRuleConfig {
+  enabled: boolean;
+  sensitivity: number;
+  min_duration_ms: number;
+  regions: unknown[];
+  [key: string]: unknown;
+}
+
+export interface AlarmActionsConfig {
+  snapshot: boolean;
+  notify: boolean;
+  [key: string]: unknown;
+}
+
+export interface AlarmScheduleConfig {
+  mode: string;
+  weekly: unknown[];
+  [key: string]: unknown;
+}
+
+export interface AlarmConfig {
+  motion_detection: AlarmRuleConfig;
+  ai_detection: AlarmRuleConfig;
+  actions: AlarmActionsConfig;
+  schedule: AlarmScheduleConfig;
+  [key: string]: unknown;
+}
+
+export type AlarmSourceName =
+  | 'motion'
+  | 'ai_detection'
+  | 'io_input'
+  | 'tamper'
+  | 'network'
+  | 'unknown';
+
+export interface AlarmRuntimeStatus {
+  active: boolean;
+  source: AlarmSourceName;
+  active_since_ms: number;
+  last_trigger_time_ms: number;
+  message: string;
+}
+
+export interface AlarmStatusResponse {
+  available: boolean;
+  status: AlarmRuntimeStatus;
+}
+
 export type UpgradeState =
   | 'idle'
   | 'validating'

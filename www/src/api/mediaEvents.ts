@@ -18,6 +18,7 @@ export function openMediaEvents(onEvent: (event: MediaEvent) => void): EventSour
   };
 
   source.addEventListener('media_status_changed', handleMessage);
+  source.addEventListener('alarm_triggered', handleMessage);
   source.onmessage = handleMessage;
   return source;
 }

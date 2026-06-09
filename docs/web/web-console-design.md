@@ -151,6 +151,11 @@ RTSP、HLS、HTTP-FLV、MJPEG、snapshot 或 WHEP URL，也不消费旧
 码流时，只显示状态，不阻塞预览。
 AI 配置页只提交后端拥有的任务、模型、阈值和可选 `perimeter_regions` 归一化矩形；
 周界命中和告警联动都由后端 `ai` 模块判断。
+AI 告警页按任务 tab 展示 `/api/ai/alerts` 历史抓拍，每个 tab 最多显示最近 10 张；
+tab 只切换查看分类，不表示四个 AI 任务并行运行。当前运行任务来自 `/api/ai/status`
+的 `config.task`，切换任务通过保存 `ai.task` 完成。系统报警触发状态来自
+`GET /api/alarm/status`，页面同时监听 `/api/events` 的 `alarm_triggered` 事件刷新
+告警状态和抓拍列表。
 
 播放器失败时只切换当前播放状态或允许用户选择其他模式，不反向修改后端配置。
 后端 ready=false 时前端显示不可用，不自行请求关键帧或猜测编码器状态。

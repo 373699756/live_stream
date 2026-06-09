@@ -290,10 +290,11 @@ public:
                 return true;
             }
             if (!status_.active || status_.source != input.source) {
+                const int64_t system_now = infra::Time::SystemTimeMillis();
                 status_.active = true;
                 status_.source = input.source;
-                status_.active_since_ms = since;
-                status_.last_trigger_time_ms = now;
+                status_.active_since_ms = system_now;
+                status_.last_trigger_time_ms = system_now;
                 status_.message = input.message;
                 triggered = status_;
                 should_publish = true;

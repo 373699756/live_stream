@@ -32,6 +32,9 @@ flowchart LR
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
 - 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
   配置或 Web 选项暴露。
+- 当前运行模型是单任务模型：配置中的 `task` 表示唯一正在运行的 AI 任务。
+  `object_detection`、`perimeter_detection`、`motion_classification` 和
+  `occlusion_detection` 是可切换任务，不代表四路并行推理。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
@@ -53,6 +56,11 @@ HTTP 路由由 `http` 实现，但业务语义归本模块：
 - `GET /api/ai/alerts`
 - `GET /api/ai/alerts/{id}/image`
 - `PUT /api/config/ai`
+
+Web Console 按任务 tab 分类展示 `/api/ai/alerts` 中的历史抓拍，每个 tab 最多展示
+最近 10 张。tab 切换只改变查看分类；切换当前运行任务必须保存新的 `ai.task` 配置。
+周界抓拍卡片上的 `person`、`vehicle` 等标签来自目标检测模型类别，表示进入周界区域
+的目标类别，不表示周界事件被错误归类为目标检测任务。
 
 ## 模型和资源
 

@@ -60,6 +60,7 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/system/*` | `system`、`time`、`network_config` |
 | `/api/system/time/*` | `time` |
 | `/api/system/network/*` | `network_config` |
+| `/api/alarm/status` | `alarm` |
 | `/api/upgrade/*` | `upgrade` |
 | `/api/operations*` | `logger` |
 | `/api/ai/*` | `ai` |

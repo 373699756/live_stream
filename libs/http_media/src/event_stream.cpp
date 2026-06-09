@@ -14,6 +14,8 @@ const char *EventTypeName(EventType type) {
             return "stream_started";
         case EventType::kStreamStopped:
             return "stream_stopped";
+        case EventType::kAlarmTriggered:
+            return "alarm_triggered";
         default:
             return "event";
     }

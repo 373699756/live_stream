@@ -28,6 +28,9 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
             return MakeSystemHandler(
                 dependencies.access, dependencies.system,
                 dependencies.system_status_sources);
+        case HttpHandlerKind::kAlarm:
+            return MakeAlarmHandler(dependencies.access,
+                                    dependencies.alarm);
         case HttpHandlerKind::kMedia:
             return MakeMediaHandler(
                 dependencies.access, dependencies.config,

@@ -69,6 +69,7 @@ The UI calls these JSON API groups:
 - `GET /api/ai/status`
 - `GET /api/ai/alerts`
 - `GET /api/ai/alerts/{id}/image`
+- `GET /api/alarm/status`
 - `GET/POST /api/system/*`
 - `GET/PUT/POST /api/system/time/*`
 - `GET/PUT/POST /api/system/network/*`
@@ -146,11 +147,16 @@ image strategy is `low_noise`, with 30 fps preview defaults and conservative
 sharpening to reduce point-like sensor noise.
 
 AI is an optional device capability and is disabled by default. The current Web
-alarm surface is the AI alert image waterfall backed by `/api/ai/alerts`; it is
-not recording, playback, or long-term storage.
+alarm surface is the AI alert image view backed by `/api/ai/alerts`; it is not
+recording, playback, or long-term storage.
 `/api/ai/status` also exposes backend availability, alarm linkage, last/max/
 average inference time, and last success/failure timestamps for board-side
 validation.
+The device currently runs one AI task at a time. AI alert tabs classify
+historical snapshots by task and show at most 10 images per tab; switching tabs
+does not change the running task. Changing the running task saves `ai.task`.
+`GET /api/alarm/status` exposes whether the system alarm event has fired, and
+the Web UI also listens to `/api/events` for `alarm_triggered`.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300
 input, sub-stream inference, and a 500 ms interval. Deploy optional model assets
 under `/mnt/live_stream/models/` when AI is enabled.
