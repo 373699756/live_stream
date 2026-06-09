@@ -57,6 +57,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <span>密码</span>
             <input
               type="password"
+              autoFocus
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

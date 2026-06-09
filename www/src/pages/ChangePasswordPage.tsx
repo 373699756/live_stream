@@ -85,6 +85,7 @@ export function ChangePasswordPage({
             <span>当前密码</span>
             <input
               type="password"
+              autoFocus
               autoComplete="current-password"
               value={oldPassword}
               onChange={(event) => setOldPassword(event.target.value)}
