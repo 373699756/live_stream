@@ -55,6 +55,8 @@ struct VideoStreamCapabilities {
     std::vector<RateControlMode> rate_control_modes;
     GopRange gop;
     bool smart_codec_supported = false;
+    bool roi_supported = false;
+    uint32_t max_roi_regions = 0;
 };
 
 struct NumericControlCapability {

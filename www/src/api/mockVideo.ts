@@ -15,6 +15,7 @@ export const mockVideoConfig: VideoConfig = {
       gop: 30,
       gop_mode: 'normal_p',
       smart_codec: false,
+      roi: { enabled: false, regions: [] },
     },
     sub: {
       enabled: true,
@@ -26,6 +27,7 @@ export const mockVideoConfig: VideoConfig = {
       gop: 30,
       gop_mode: 'normal_p',
       smart_codec: false,
+      roi: { enabled: false, regions: [] },
     },
   },
 };
@@ -51,6 +53,8 @@ export const mockMediaCapabilities: MediaCapabilities = {
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
       smart_codec: true,
+      roi_supported: true,
+      max_roi_regions: 8,
     },
     sub: {
       stream: 'sub',
@@ -70,6 +74,8 @@ export const mockMediaCapabilities: MediaCapabilities = {
       rate_control: ['cbr', 'vbr', 'fixqp'],
       gop: { min: 1, max: 120 },
       smart_codec: true,
+      roi_supported: true,
+      max_roi_regions: 8,
     },
   },
   image: {

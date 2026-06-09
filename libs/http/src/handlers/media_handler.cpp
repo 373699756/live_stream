@@ -92,6 +92,8 @@ ConfigJson VideoStreamCapabilitiesToJson(
     root["resolutions"] = ConfigJson::array();
     root["rate_control"] = ConfigJson::array();
     root["smart_codec"] = false;
+    root["roi_supported"] = false;
+    root["max_roi_regions"] = 0;
     if (capabilities == nullptr) {
         ConfigJson fps = ConfigJson::object();
         fps["min"] = 0;
@@ -151,6 +153,8 @@ ConfigJson VideoStreamCapabilitiesToJson(
     gop["max"] = capabilities->gop.max;
     root["gop"] = gop;
     root["smart_codec"] = capabilities->smart_codec_supported;
+    root["roi_supported"] = capabilities->roi_supported;
+    root["max_roi_regions"] = capabilities->max_roi_regions;
     return root;
 }
 

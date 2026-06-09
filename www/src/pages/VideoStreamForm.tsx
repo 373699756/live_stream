@@ -5,6 +5,7 @@ import {
   resolutionValue,
 } from '../api/resolution';
 import type {
+  VideoRoiRegion,
   VideoStreamCapabilities,
   VideoStreamConfig,
 } from '../api/types';
@@ -31,6 +32,34 @@ const rateControlLabel = (mode: VideoStreamConfig['rate_control']) => {
   if (mode === 'fixqp') return 'Fix QP';
   return String(mode).toUpperCase();
 };
+
+function parseResolutionSize(resolution: string) {
+  const match = /^(\d+)x(\d+)$/.exec(resolution);
+  if (!match) {
+    return { width: 0, height: 0 };
+  }
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+function defaultRoiRegion(index: number, resolution: string): VideoRoiRegion {
+  const size = parseResolutionSize(resolution);
+  const width = Math.max(16, Math.floor((size.width || 640) / 4));
+  const height = Math.max(16, Math.floor((size.height || 360) / 4));
+  return {
+    enabled: true,
+    x: Math.max(0, Math.floor(index * 16)),
+    y: Math.max(0, Math.floor(index * 16)),
+    width,
+    height,
+    qp: -6,
+    absolute_qp: false,
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(Math.max(Math.round(value), min), max);
+}
 
 interface VideoStreamFormProps {
   stream: VideoStreamConfig;
@@ -84,6 +113,49 @@ export function VideoStreamForm({
       ? 'SmartP 仅对 H.264/H.265 生效，保存后后端按智能 GOP 应用。'
       : '选择 Smart P 即启用 Smart H.264/H.265；Normal/Dual P 会关闭智能编码。'
     : '当前编码或固件能力不支持 SmartP。';
+  const roiSupported =
+    Boolean(capabilities.roi_supported) &&
+    (stream.codec === 'h264' || stream.codec === 'h265');
+  const maxRoiRegions = capabilities.max_roi_regions || 0;
+  const roiRegions = stream.roi?.regions ?? [];
+  const streamSize = parseResolutionSize(stream.resolution);
+  const patchRoi = (value: Partial<VideoStreamConfig['roi']>) => {
+    patch({
+      roi: {
+        enabled: stream.roi?.enabled ?? false,
+        regions: roiRegions,
+        ...value,
+      },
+    });
+  };
+  const addRoiRegion = () => {
+    if (!roiSupported || roiRegions.length >= maxRoiRegions) return;
+    patchRoi({
+      regions: [
+        ...roiRegions,
+        defaultRoiRegion(roiRegions.length, stream.resolution),
+      ],
+    });
+  };
+  const updateRoiRegion = (
+    index: number,
+    value: Partial<VideoRoiRegion>,
+  ) => {
+    const nextRegions = roiRegions.map((region, regionIndex) => {
+      if (regionIndex !== index) return region;
+      const next = { ...region, ...value };
+      next.x = clampNumber(next.x, 0, Math.max(0, streamSize.width - 1));
+      next.y = clampNumber(next.y, 0, Math.max(0, streamSize.height - 1));
+      next.width = clampNumber(next.width, 1, Math.max(1, streamSize.width - next.x));
+      next.height = clampNumber(next.height, 1, Math.max(1, streamSize.height - next.y));
+      next.qp = clampNumber(next.qp, -51, 51);
+      return next;
+    });
+    patchRoi({ regions: nextRegions });
+  };
+  const removeRoiRegion = (index: number) => {
+    patchRoi({ regions: roiRegions.filter((_, regionIndex) => regionIndex !== index) });
+  };
 
   return (
     <div className="form-grid form-grid-single">
@@ -198,6 +270,113 @@ export function VideoStreamForm({
           />
         </FormField>
         <div className="stream-advanced-hint">{smartCodecHint}</div>
+      </div>
+      <div className="stream-advanced-block">
+        <div className="stream-advanced-block-title">ROI 编码</div>
+        <FormField label="启用">
+          <input
+            type="checkbox"
+            disabled={!available || !roiSupported}
+            checked={Boolean(stream.roi?.enabled)}
+            onChange={(e) => patchRoi({ enabled: e.target.checked })}
+          />
+        </FormField>
+        <div className="stream-state-line">
+          <span>{roiRegions.length} / {maxRoiRegions || 0} 区域</span>
+          <button
+            type="button"
+            disabled={!available || !roiSupported || roiRegions.length >= maxRoiRegions}
+            onClick={addRoiRegion}
+          >
+            添加区域
+          </button>
+        </div>
+        {roiRegions.length > 0 && (
+          <div className="roi-region-table">
+            <div className="roi-region-head">
+              <span>开关</span>
+              <span>X</span>
+              <span>Y</span>
+              <span>宽</span>
+              <span>高</span>
+              <span>QP</span>
+              <span>模式</span>
+              <span>操作</span>
+            </div>
+            {roiRegions.map((region, index) => (
+              <div className="roi-region-row" key={`${index}-${region.x}-${region.y}`}>
+                <input
+                  type="checkbox"
+                  disabled={!available || !roiSupported}
+                  checked={region.enabled}
+                  onChange={(e) => updateRoiRegion(index, { enabled: e.target.checked })}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={Math.max(0, streamSize.width - 1)}
+                  disabled={!available || !roiSupported}
+                  value={region.x}
+                  onChange={(e) => updateRoiRegion(index, { x: Number(e.target.value) })}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={Math.max(0, streamSize.height - 1)}
+                  disabled={!available || !roiSupported}
+                  value={region.y}
+                  onChange={(e) => updateRoiRegion(index, { y: Number(e.target.value) })}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, streamSize.width - region.x)}
+                  disabled={!available || !roiSupported}
+                  value={region.width}
+                  onChange={(e) => updateRoiRegion(index, { width: Number(e.target.value) })}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, streamSize.height - region.y)}
+                  disabled={!available || !roiSupported}
+                  value={region.height}
+                  onChange={(e) => updateRoiRegion(index, { height: Number(e.target.value) })}
+                />
+                <input
+                  type="number"
+                  min={-51}
+                  max={51}
+                  disabled={!available || !roiSupported}
+                  value={region.qp}
+                  onChange={(e) => updateRoiRegion(index, { qp: Number(e.target.value) })}
+                />
+                <select
+                  disabled={!available || !roiSupported}
+                  value={region.absolute_qp ? 'absolute' : 'relative'}
+                  onChange={(e) => updateRoiRegion(index, {
+                    absolute_qp: e.target.value === 'absolute',
+                  })}
+                >
+                  <option value="relative">相对</option>
+                  <option value="absolute">绝对</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={!available}
+                  onClick={() => removeRoiRegion(index)}
+                >
+                  删除
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="stream-advanced-hint">
+          {roiSupported
+            ? '相对 QP 使用负值可提升区域清晰度；画面仍保持完整输出。'
+            : 'ROI 仅对支持的 H.264/H.265 编码通道生效。'}
+        </div>
       </div>
       {!available && <div className="save-hint">当前固件未启用该码流管线。</div>}
       {available && !supported && <div className="save-hint">当前参数不在设备能力范围内，请修正后保存。</div>}

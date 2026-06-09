@@ -10,7 +10,11 @@
         "rate_control": "cbr",
         "gop": 30,
         "gop_mode": "normal_p",
-        "smart_codec": false
+        "smart_codec": false,
+        "roi": {
+          "enabled": false,
+          "regions": []
+        }
       },
       "sub": {
         "enabled": true,
@@ -21,7 +25,11 @@
         "rate_control": "cbr",
         "gop": 30,
         "gop_mode": "normal_p",
-        "smart_codec": false
+        "smart_codec": false,
+        "roi": {
+          "enabled": false,
+          "regions": []
+        }
       }
     }
   },

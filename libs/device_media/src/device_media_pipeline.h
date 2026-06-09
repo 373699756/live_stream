@@ -32,6 +32,7 @@ public:
     bool DeinitSystem();
     bool Start();
     void Stop();
+    bool ApplyVencRoi(StreamId stream_id);
     bool ApplyImageConfig(const ConfigJson& image_config);
     hisisdk::ExposureInfo QueryExposureInfo() const;
 

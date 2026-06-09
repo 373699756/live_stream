@@ -274,6 +274,8 @@ public:
         void* user) = 0;
     virtual void StopVencStream(const MediaPipelineConfig& config) = 0;
     virtual bool RequestIdr(int32_t venc_channel) = 0;
+    virtual bool ApplyVencRoi(int32_t venc_channel,
+                              const VideoStreamConfig& stream_config) = 0;
     virtual bool ApplyImageConfig(const MediaPipelineConfig& config,
                                   const ConfigJson& image_config) = 0;
     virtual ExposureInfo QueryExposureInfo(

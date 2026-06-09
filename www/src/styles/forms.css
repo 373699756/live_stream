@@ -347,6 +347,7 @@
 
 .stream-state-line {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -365,6 +366,55 @@
   color: #526174;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.roi-region-table {
+  overflow-x: auto;
+  border: 1px solid #d7e2ef;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.roi-region-head,
+.roi-region-row {
+  display: grid;
+  grid-template-columns: 44px repeat(5, minmax(58px, 1fr)) minmax(78px, 1fr) 64px;
+  gap: 6px;
+  align-items: center;
+  min-width: 680px;
+  padding: 7px 8px;
+}
+
+.roi-region-head {
+  color: #526174;
+  background: #f1f5fa;
+  border-bottom: 1px solid #dbe4ef;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roi-region-row + .roi-region-row {
+  border-top: 1px solid #eef2f7;
+}
+
+.roi-region-row input:not([type="checkbox"]),
+.roi-region-row select {
+  width: 100%;
+  height: 30px;
+  padding: 0 7px;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid #bcc6d4;
+  border-radius: 3px;
+}
+
+.roi-region-row input[type="checkbox"] {
+  justify-self: start;
+}
+
+.roi-region-row button,
+.stream-state-line button {
+  min-height: 30px;
 }
 
 .form-actions {

@@ -1,6 +1,7 @@
 #include "device_media_pipeline.h"
 
 #include "hisisdk/hisi_sdk.h"
+#include "media_channels.h"
 
 #include <utility>
 
@@ -172,6 +173,17 @@ void DeviceMediaPipeline::Stop() {
         sdk_->StopVi(config_);
         vi_started_ = false;
     }
+}
+
+bool DeviceMediaPipeline::ApplyVencRoi(StreamId stream_id) {
+    const VideoStreamConfig* stream =
+        device_media_internal::FindConfiguredStream(config_, stream_id);
+    if (stream == nullptr || !stream->enabled) {
+        return false;
+    }
+    const int32_t venc_channel =
+        device_media_internal::VencChannelForStream(config_, stream_id);
+    return sdk_->ApplyVencRoi(venc_channel, *stream);
 }
 
 bool DeviceMediaPipeline::ApplyImageConfig(const ConfigJson& image_config) {

@@ -133,6 +133,8 @@ VideoStreamCapabilities BuildMainStreamCaps() {
     AddCommonRcModes(main.rate_control_modes);
     main.gop = GopRange{1, 120};
     main.smart_codec_supported = true;
+    main.roi_supported = true;
+    main.max_roi_regions = VENC_MAX_ROI_NUM;
     return main;
 }
 
@@ -151,6 +153,8 @@ VideoStreamCapabilities BuildSubStreamCaps() {
     AddCommonRcModes(sub.rate_control_modes);
     sub.gop = GopRange{1, 120};
     sub.smart_codec_supported = true;
+    sub.roi_supported = true;
+    sub.max_roi_regions = VENC_MAX_ROI_NUM;
     return sub;
 }
 

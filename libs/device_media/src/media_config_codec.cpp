@@ -208,6 +208,44 @@ void from_json(const ConfigJson &json, GopMode &mode) {
     (void)detail::ParseGopModeText(text, &mode);
 }
 
+void to_json(ConfigJson &json, const VideoRoiRegion &region) {
+    json = ConfigJson::object();
+    json["enabled"] = region.enabled;
+    json["x"] = region.x;
+    json["y"] = region.y;
+    json["width"] = region.width;
+    json["height"] = region.height;
+    json["qp"] = region.qp;
+    json["absolute_qp"] = region.absolute_qp;
+}
+
+void from_json(const ConfigJson &json, VideoRoiRegion &region) {
+    json.at("enabled").get_to(region.enabled);
+    json.at("x").get_to(region.x);
+    json.at("y").get_to(region.y);
+    json.at("width").get_to(region.width);
+    json.at("height").get_to(region.height);
+    json.at("qp").get_to(region.qp);
+    json.at("absolute_qp").get_to(region.absolute_qp);
+}
+
+void to_json(ConfigJson &json, const VideoRoiConfig &roi) {
+    json = ConfigJson::object();
+    json["enabled"] = roi.enabled;
+    json["regions"] = ConfigJson::array();
+    for (const VideoRoiRegion &region : roi.regions) {
+        json["regions"].push_back(region);
+    }
+}
+
+void from_json(const ConfigJson &json, VideoRoiConfig &roi) {
+    json.at("enabled").get_to(roi.enabled);
+    roi.regions.clear();
+    for (const ConfigJson &region : json.at("regions")) {
+        roi.regions.push_back(region.get<VideoRoiRegion>());
+    }
+}
+
 namespace media_internal {
 
 using detail::ParseCodecText;
@@ -216,6 +254,9 @@ using detail::ParseRateControlText;
 using detail::ParseResolutionText;
 
 constexpr uint32_t kDefaultSensorFrameRate = 30;
+constexpr uint32_t kMaxVideoRoiRegions = 8;
+constexpr int32_t kMinVideoRoiQp = -51;
+constexpr int32_t kMaxVideoRoiQp = 51;
 
 std::string JoinField(const std::string &parent, const char *child) {
     if (parent.empty()) {
@@ -285,6 +326,44 @@ bool ValidateVideoStreamJson(const ConfigJson &stream) {
     if (stream.contains("smart_codec") &&
         !json_utils::ReadField(stream, "smart_codec", &smart_codec)) {
         return false;
+    }
+    if (stream.contains("roi")) {
+        const ConfigJson &roi = stream.at("roi");
+        if (!roi.is_object()) {
+            return false;
+        }
+        bool roi_enabled = false;
+        if (!json_utils::ReadField(roi, "enabled", &roi_enabled)) {
+            return false;
+        }
+        if (!roi.contains("regions") || !roi.at("regions").is_array() ||
+            roi.at("regions").size() > kMaxVideoRoiRegions) {
+            return false;
+        }
+        for (const ConfigJson &region : roi.at("regions")) {
+            if (!region.is_object()) {
+                return false;
+            }
+            bool region_enabled = false;
+            uint32_t x = 0;
+            uint32_t y = 0;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            int32_t qp = 0;
+            bool absolute_qp = false;
+            if (!json_utils::ReadField(region, "enabled",
+                                       &region_enabled) ||
+                !json_utils::ReadField(region, "x", &x) ||
+                !json_utils::ReadField(region, "y", &y) ||
+                !json_utils::ReadField(region, "width", &width) ||
+                !json_utils::ReadField(region, "height", &height) ||
+                !json_utils::ReadField(region, "qp", &qp,
+                                       kMinVideoRoiQp, kMaxVideoRoiQp) ||
+                !json_utils::ReadField(region, "absolute_qp",
+                                       &absolute_qp)) {
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -427,6 +506,48 @@ ConfigResult ValidateVideoStreamConfig(
         return ConfigResult::Failure(JoinField(stream_prefix, "smart_codec"),
                                      "unsupported codec");
     }
+    if (stream.roi.enabled || !stream.roi.regions.empty()) {
+        if (!stream_capabilities.roi_supported ||
+            stream_capabilities.max_roi_regions == 0) {
+            return ConfigResult::Failure(JoinField(stream_prefix, "roi"),
+                                         "unsupported value");
+        }
+        if (stream.codec != VideoCodec::kH264 &&
+            stream.codec != VideoCodec::kH265) {
+            return ConfigResult::Failure(JoinField(stream_prefix, "roi"),
+                                         "unsupported codec");
+        }
+        const uint32_t max_roi_regions =
+            stream_capabilities.max_roi_regions < kMaxVideoRoiRegions
+                ? stream_capabilities.max_roi_regions
+                : kMaxVideoRoiRegions;
+        if (stream.roi.regions.size() > max_roi_regions) {
+            return ConfigResult::Failure(JoinField(stream_prefix, "roi"),
+                                         "too many regions");
+        }
+        for (size_t i = 0; i < stream.roi.regions.size(); ++i) {
+            const VideoRoiRegion &region = stream.roi.regions[i];
+            const std::string region_prefix =
+                JoinField(JoinField(JoinField(stream_prefix, "roi"),
+                                    "regions"),
+                          std::to_string(i));
+            if (region.width == 0 || region.height == 0) {
+                return ConfigResult::Failure(region_prefix,
+                                             "invalid region size");
+            }
+            if (region.x >= stream.resolution.width ||
+                region.y >= stream.resolution.height ||
+                region.width > stream.resolution.width - region.x ||
+                region.height > stream.resolution.height - region.y) {
+                return ConfigResult::Failure(region_prefix,
+                                             "region outside stream frame");
+            }
+            if (region.qp < kMinVideoRoiQp || region.qp > kMaxVideoRoiQp) {
+                return ConfigResult::Failure(JoinField(region_prefix, "qp"),
+                                             "unsupported value");
+            }
+        }
+    }
     return ConfigResult::Success();
 }
 
@@ -447,6 +568,7 @@ void ApplyStreamConfig(StreamId stream_id,
     target->rc_mode = source.rate_control;
     target->gop_mode = source.smart_codec ? GopMode::kSmartP
                                           : source.gop_mode;
+    target->roi = source.roi;
 }
 
 void to_json(ConfigJson &json, const VideoConfig::Stream &stream) {
@@ -460,6 +582,7 @@ void to_json(ConfigJson &json, const VideoConfig::Stream &stream) {
     json["gop"] = stream.gop;
     json["gop_mode"] = stream.gop_mode;
     json["smart_codec"] = stream.smart_codec;
+    json["roi"] = stream.roi;
 }
 
 void from_json(const ConfigJson &json, VideoConfig::Stream &stream) {
@@ -475,6 +598,10 @@ void from_json(const ConfigJson &json, VideoConfig::Stream &stream) {
     const auto smart_codec = json.find("smart_codec");
     if (smart_codec != json.end()) {
         smart_codec->get_to(stream.smart_codec);
+    }
+    const auto roi = json.find("roi");
+    if (roi != json.end()) {
+        roi->get_to(stream.roi);
     }
 }
 

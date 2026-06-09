@@ -151,6 +151,12 @@ the automatic strategy modes `balanced`, `low_noise`, and `detail`. The default
 image strategy is `low_noise`, with 30 fps preview defaults and conservative
 sharpening to reduce point-like sensor noise.
 
+Video stream config may include `roi` under `streams.main` and `streams.sub`.
+ROI keeps the full output frame and only biases encoder QP/bit allocation for
+important regions. `roi.regions` uses stream-resolution pixel coordinates and
+supports at most the backend-reported `max_roi_regions` entries. ROI is exposed
+only when `roi_supported=true` and is valid for H.264/H.265 streams.
+
 AI is an optional device capability and is disabled by default. The current Web
 alarm surface is the AI alert image view backed by `/api/ai/alerts`; it is not
 recording, playback, or long-term storage.

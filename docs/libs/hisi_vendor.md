@@ -52,6 +52,9 @@ VENC 封装以 Hi3516 Encode 库为主要参考，保持 `StartVenc -> BindVpssV
 StartVencStream` 的上层调用契约，但模块内部按每路 VENC runtime 记录 channel、
 VPSS 绑定、接收状态和 codec。失败回滚和停止顺序必须遵循创建的反向路径：
 停止取流线程、停止接收、解绑 VPSS、销毁 VENC channel。
+VENC ROI 使用 `HI_MPI_VENC_SetRoiAttrEx`，创建 VENC channel 后应用所有 ROI slot；
+未使用的 slot 必须显式关闭，避免旧区域残留。上层只传项目内 `VideoRoiConfig`，
+不直接暴露海思 `VENC_ROI_ATTR_EX_S`。
 
 JPEG 抓图保持同步 `CaptureJpeg` 接口，底层使用 VPSS 取帧后送入独立 JPEG VENC
 channel，再按 `GetStream/ReleaseStream` 成对读取编码结果。抓图控制语义借鉴 Capture

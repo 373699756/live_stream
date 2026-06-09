@@ -53,6 +53,7 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 | --- | --- | --- |
 | `video.streams.<main/sub>` | `enabled`、`codec`、`resolution`、`fps`、`bitrate_kbps` | VENC 通道和码流能力应用 |
 | `video.streams.<main/sub>` | `rate_control`、`gop`、`gop_mode`、`smart_codec` | 编码控制和 HiSilicon SmartP/GOP 映射 |
+| `video.streams.<main/sub>.roi` | `enabled`、`regions[]`、`qp`、`absolute_qp` | VENC ROI 编码区域和 QP 策略 |
 | `image.basic` | brightness、contrast、saturation、sharpness、hue | ISP/CSC 基础图像控制 |
 | `image.exposure` | mode、anti_flicker、exposure_time、gain、compensation、slow_shutter、max_exposure_time | AE/曝光策略 |
 | `image.white_balance` / `image.enhancement` | white balance、denoise、gamma、defog | ISP 图像增强 |
@@ -62,6 +63,11 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 720P/30fps/3072kbps，GOP 为 30 帧以降低 WebRTC、HLS 和 HTTP-FLV 首播等待。
 默认图像策略为 `low_noise`，按 IMX290 的低照特性使用较低
 锐度、温和 2D/3D 降噪和 3DNR 上限，避免 ISP 手动锐化放大点状噪声或过度发蜡。
+
+ROI 编码只改变 VENC 码率/QP 分配，不裁剪画面，也不改变协议输出分辨率。当前配置
+每路最多 8 个区域，坐标使用该码流分辨率下的像素坐标。`absolute_qp=false` 时
+`qp` 是相对 QP，负值提高区域画质；`absolute_qp=true` 时 `qp` 是绝对 QP。ROI 只对
+H.264/H.265 生效，JPEG/MJPEG 配置 ROI 会被拒绝。
 
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和
 `www/README.md`。保存成功不能只代表 JSON 写入成功，还必须代表配置已经通过本模块

@@ -28,6 +28,24 @@ export function isResolutionSupported(stream: VideoStreamConfig, capabilities: V
 
 export function isStreamSupported(stream: VideoStreamConfig, capabilities: VideoStreamCapabilities): boolean {
   const smartCodecEnabled = stream.smart_codec || stream.gop_mode === 'smart_p';
+  const roiEnabled = Boolean(stream.roi?.enabled || stream.roi?.regions?.length);
+  const [widthText, heightText] = stream.resolution.split('x');
+  const streamWidth = Number(widthText);
+  const streamHeight = Number(heightText);
+  const roiSupported =
+    !roiEnabled ||
+    (Boolean(capabilities.roi_supported) &&
+      (stream.codec === 'h264' || stream.codec === 'h265') &&
+      stream.roi.regions.length <= capabilities.max_roi_regions &&
+      stream.roi.regions.every((region) =>
+        region.width > 0 &&
+        region.height > 0 &&
+        region.qp >= -51 &&
+        region.qp <= 51 &&
+        region.x >= 0 &&
+        region.y >= 0 &&
+        region.x + region.width <= streamWidth &&
+        region.y + region.height <= streamHeight));
   return (
     capabilities.available !== false &&
     capabilities.codecs.some((item) => item.codec === stream.codec) &&
@@ -40,6 +58,7 @@ export function isStreamSupported(stream: VideoStreamConfig, capabilities: Video
     stream.gop >= capabilities.gop.min &&
     stream.gop <= capabilities.gop.max &&
     (!smartCodecEnabled || codecSupportsSmartP(stream.codec)) &&
-    (!smartCodecEnabled || capabilities.smart_codec)
+    (!smartCodecEnabled || capabilities.smart_codec) &&
+    roiSupported
   );
 }

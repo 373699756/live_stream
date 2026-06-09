@@ -27,6 +27,22 @@ export interface VideoStreamConfig {
   gop: number;
   gop_mode: GopMode;
   smart_codec: boolean;
+  roi: VideoRoiConfig;
+}
+
+export interface VideoRoiRegion {
+  enabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  qp: number;
+  absolute_qp: boolean;
+}
+
+export interface VideoRoiConfig {
+  enabled: boolean;
+  regions: VideoRoiRegion[];
 }
 
 export interface VideoConfig {
@@ -61,6 +77,8 @@ export interface VideoStreamCapabilities {
   rate_control: VideoStreamConfig['rate_control'][];
   gop: NumberRange;
   smart_codec: boolean;
+  roi_supported: boolean;
+  max_roi_regions: number;
 }
 
 export interface NumericControlCapability {

@@ -141,6 +141,10 @@ public:
   }
   void StopVencStream(const live_stream::MediaPipelineConfig&) override {}
   bool RequestIdr(int32_t) override { return true; }
+  bool ApplyVencRoi(int32_t,
+                    const live_stream::VideoStreamConfig&) override {
+    return true;
+  }
   bool ApplyImageConfig(const live_stream::MediaPipelineConfig&,
                         const live_stream::ConfigJson&) override {
     return true;

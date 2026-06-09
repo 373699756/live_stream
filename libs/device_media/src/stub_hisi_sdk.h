@@ -31,6 +31,8 @@ public:
                          void* user) override;
     void StopVencStream(const MediaPipelineConfig& config) override;
     bool RequestIdr(int32_t venc_channel) override;
+    bool ApplyVencRoi(int32_t venc_channel,
+                      const VideoStreamConfig& stream_config) override;
     bool ApplyImageConfig(const MediaPipelineConfig& config,
                           const ConfigJson& image_config) override;
     ExposureInfo QueryExposureInfo(

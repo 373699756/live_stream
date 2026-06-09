@@ -5,6 +5,7 @@
 #include "media/media_capabilities.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace live_stream {
 
@@ -18,6 +19,21 @@ struct FrameRate {
     int32_t target_fps = 30;
 };
 
+struct VideoRoiRegion {
+    bool enabled = false;
+    uint32_t x = 0;
+    uint32_t y = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    int32_t qp = -6;
+    bool absolute_qp = false;
+};
+
+struct VideoRoiConfig {
+    bool enabled = false;
+    std::vector<VideoRoiRegion> regions;
+};
+
 struct VideoStreamConfig {
     StreamId stream_id = StreamId::kMain;
     bool enabled = true;
@@ -28,6 +44,7 @@ struct VideoStreamConfig {
     uint32_t gop = 30;
     RateControlMode rc_mode = RateControlMode::kCbr;
     GopMode gop_mode = GopMode::kNormalP;
+    VideoRoiConfig roi;
 };
 
 struct MediaPipelineConfig {
@@ -50,7 +67,8 @@ struct MediaPipelineConfig {
                                  3072,
                                  60,
                                  RateControlMode::kCbr,
-                                 GopMode::kNormalP};
+                                 GopMode::kNormalP,
+                                 VideoRoiConfig{}};
 };
 
 }  // namespace live_stream

@@ -34,6 +34,7 @@ constexpr uint32_t kDefaultFixQpI = 25;
 constexpr uint32_t kDefaultFixQpP = 30;
 constexpr uint32_t kDefaultFixQpB = 32;
 constexpr uint32_t kDefaultMjpegQfactor = 95;
+constexpr uint32_t kMaxVencRoiRegions = 8;
 
 void UpdateFrameTypeFromH264(H264E_NALU_TYPE_E type, FrameType* frame_type) {
     if (frame_type == nullptr || *frame_type == FrameType::kIdr) {
@@ -146,6 +147,72 @@ bool RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
               "HI_MPI_VENC_RequestIDR chn=%d codec=%s failed: 0x%08x",
               venc_channel, CodecName(codec), status);
         return false;
+    }
+    return true;
+}
+
+void FillRoiFrameAttr(const VideoRoiRegion& region,
+                      VENC_ROI_ATTR_EX_S* roi_attr) {
+    if (roi_attr == nullptr) {
+        return;
+    }
+    for (uint32_t frame_index = 0; frame_index < 3; ++frame_index) {
+        roi_attr->bEnable[frame_index] = region.enabled ? HI_TRUE : HI_FALSE;
+        roi_attr->bAbsQp[frame_index] =
+            region.absolute_qp ? HI_TRUE : HI_FALSE;
+        roi_attr->s32Qp[frame_index] = region.qp;
+        roi_attr->stRect[frame_index].s32X = static_cast<HI_S32>(region.x);
+        roi_attr->stRect[frame_index].s32Y = static_cast<HI_S32>(region.y);
+        roi_attr->stRect[frame_index].u32Width = region.width;
+        roi_attr->stRect[frame_index].u32Height = region.height;
+    }
+}
+
+bool ApplyVencRoiSlot(VENC_CHN venc, uint32_t index,
+                      const VideoRoiRegion* region) {
+    VENC_ROI_ATTR_EX_S roi_attr{};
+    roi_attr.u32Index = index;
+    if (region != nullptr) {
+        FillRoiFrameAttr(*region, &roi_attr);
+    }
+    const HI_S32 status = HI_MPI_VENC_SetRoiAttrEx(venc, &roi_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VENC_SetRoiAttrEx chn=%d index=%u failed: 0x%08x",
+              venc, index, status);
+        return false;
+    }
+    return true;
+}
+
+bool ApplyVencRoiConfig(int32_t venc_channel,
+                        const VideoStreamConfig& stream_config) {
+    if (venc_channel < 0) {
+        return false;
+    }
+    if (stream_config.roi.regions.size() > kMaxVencRoiRegions) {
+        Error("hisi_vendor", "VENC ROI regions exceed limit chn=%d count=%zu",
+              venc_channel, stream_config.roi.regions.size());
+        return false;
+    }
+    if (stream_config.roi.enabled &&
+        stream_config.codec != VideoCodec::kH264 &&
+        stream_config.codec != VideoCodec::kH265) {
+        Error("hisi_vendor", "VENC ROI unsupported codec chn=%d codec=%s",
+              venc_channel, CodecName(stream_config.codec));
+        return false;
+    }
+
+    const VENC_CHN venc = static_cast<VENC_CHN>(venc_channel);
+    for (uint32_t index = 0; index < kMaxVencRoiRegions; ++index) {
+        const VideoRoiRegion* region = nullptr;
+        if (stream_config.roi.enabled &&
+            index < stream_config.roi.regions.size()) {
+            region = &stream_config.roi.regions[index];
+        }
+        if (!ApplyVencRoiSlot(venc, index, region)) {
+            return false;
+        }
     }
     return true;
 }
@@ -304,6 +371,10 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         return false;
     }
     if (!TuneRcParam(venc, attr.stRcAttr.enRcMode)) {
+        DestroyVencChannel(venc);
+        return false;
+    }
+    if (!ApplyVencRoiConfig(chn, stream)) {
         DestroyVencChannel(venc);
         return false;
     }
@@ -655,6 +726,28 @@ bool HasBoundVenc(const VencChannelRuntime& runtime) {
     return runtime.bound_to_vpss;
 }
 
+bool RoiRegionMatches(const VideoRoiRegion& left,
+                      const VideoRoiRegion& right) {
+    return left.enabled == right.enabled && left.x == right.x &&
+           left.y == right.y && left.width == right.width &&
+           left.height == right.height && left.qp == right.qp &&
+           left.absolute_qp == right.absolute_qp;
+}
+
+bool RoiConfigMatches(const VideoRoiConfig& left,
+                      const VideoRoiConfig& right) {
+    if (left.enabled != right.enabled ||
+        left.regions.size() != right.regions.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < left.regions.size(); ++i) {
+        if (!RoiRegionMatches(left.regions[i], right.regions[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool VencRuntimeMatches(const VencChannelRuntime& runtime,
                         int32_t venc_channel,
                         int32_t vpss_group,
@@ -675,7 +768,8 @@ bool VencRuntimeMatches(const VencChannelRuntime& runtime,
            runtime.stream_config.bitrate_kbps == stream.bitrate_kbps &&
            runtime.stream_config.gop == stream.gop &&
            runtime.stream_config.rc_mode == stream.rc_mode &&
-           runtime.stream_config.gop_mode == stream.gop_mode;
+           runtime.stream_config.gop_mode == stream.gop_mode &&
+           RoiConfigMatches(runtime.stream_config.roi, stream.roi);
 }
 
 void ResetVencRuntime(VencChannelRuntime* runtime) {
@@ -1013,6 +1107,21 @@ bool MppHisiSdk::RequestIdr(int32_t venc_channel) {
     if (runtime == nullptr || !runtime->created || !IsIdrCodec(runtime->codec)) {
         return false;
     }
+    return RequestIdrFrame(runtime->venc_channel, runtime->codec);
+}
+
+bool MppHisiSdk::ApplyVencRoi(int32_t venc_channel,
+                              const VideoStreamConfig& stream_config) {
+    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    VencChannelRuntime* runtime =
+        FindVencRuntime(&impl_->main_venc_, &impl_->sub_venc_, venc_channel);
+    if (runtime == nullptr || !runtime->created) {
+        return false;
+    }
+    if (!ApplyVencRoiConfig(venc_channel, stream_config)) {
+        return false;
+    }
+    runtime->stream_config.roi = stream_config.roi;
     return RequestIdrFrame(runtime->venc_channel, runtime->codec);
 }
 

@@ -120,6 +120,8 @@ MediaCapabilities StubCapabilities() {
                                RateControlMode::kFixQp};
     main.gop = {1, 120};
     main.smart_codec_supported = true;
+    main.roi_supported = true;
+    main.max_roi_regions = 8;
     caps.streams.push_back(main);
 
     VideoStreamCapabilities sub;
@@ -131,6 +133,8 @@ MediaCapabilities StubCapabilities() {
     sub.rate_control_modes = main.rate_control_modes;
     sub.gop = {1, 120};
     sub.smart_codec_supported = true;
+    sub.roi_supported = true;
+    sub.max_roi_regions = 8;
     caps.streams.push_back(sub);
 
     caps.image = DefaultImage();
@@ -254,6 +258,25 @@ void StubHisiSdk::StopVencStream(const MediaPipelineConfig&) {}
 
 bool StubHisiSdk::RequestIdr(int32_t venc_channel) {
     return venc_channel >= 0;
+}
+
+bool StubHisiSdk::ApplyVencRoi(int32_t venc_channel,
+                               const VideoStreamConfig& stream_config) {
+    if (venc_channel < 0) {
+        return false;
+    }
+    if (!stream_config.roi.enabled) {
+        return true;
+    }
+    if (stream_config.roi.regions.size() > 8) {
+        return false;
+    }
+    for (const VideoRoiRegion& region : stream_config.roi.regions) {
+        if (region.enabled && (region.width == 0 || region.height == 0)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool StubHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,

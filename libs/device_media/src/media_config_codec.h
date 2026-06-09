@@ -18,6 +18,10 @@ void to_json(ConfigJson &json, const RateControlMode &mode);
 void from_json(const ConfigJson &json, RateControlMode &mode);
 void to_json(ConfigJson &json, const GopMode &mode);
 void from_json(const ConfigJson &json, GopMode &mode);
+void to_json(ConfigJson &json, const VideoRoiRegion &region);
+void from_json(const ConfigJson &json, VideoRoiRegion &region);
+void to_json(ConfigJson &json, const VideoRoiConfig &roi);
+void from_json(const ConfigJson &json, VideoRoiConfig &roi);
 
 namespace media_internal {
 
@@ -32,6 +36,7 @@ struct VideoConfig {
         uint32_t gop = 0;
         GopMode gop_mode = GopMode::kNormalP;
         bool smart_codec = false;
+        VideoRoiConfig roi;
     };
 
     Stream main;
