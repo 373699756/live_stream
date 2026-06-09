@@ -1,9 +1,3 @@
-import { useEffect, useState } from 'react';
-import {
-  getMediaPlaybackUrls,
-  getMediaSessions,
-  getMediaStreams,
-} from '../api/stream';
 import type {
   MediaPlaybackUrls,
   MediaSessionInfo,
@@ -12,6 +6,7 @@ import type {
 } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { previewValueText } from '../components/previewDisplay';
+import { useMediaRuntime } from '../hooks/useMediaRuntime';
 
 const streams: StreamName[] = ['main', 'sub'];
 const streamLabels: Record<StreamName, string> = {
@@ -97,59 +92,25 @@ function protocolRows(
 }
 
 export function StreamInfoPage() {
-  const [runtimes, setRuntimes] = useState<MediaStreamRuntime[]>([]);
-  const [urlsByStream, setUrlsByStream] =
-    useState<Partial<Record<StreamName, MediaPlaybackUrls>>>({});
-  const [sessions, setSessions] = useState<MediaSessionInfo[]>([]);
-  const [error, setError] = useState('');
-  const safeRuntimes = runtimes.filter((runtime) => validStream(runtime.stream));
+  const {
+    statuses,
+    urlsByStream,
+    sessions,
+    error,
+  } = useMediaRuntime({
+    playbackStreams: streams,
+    includeSessions: true,
+    refreshIntervalMs: 5000,
+    refreshPlaybackUrlsOnInterval: true,
+    statusTimeoutMs: runtimeTimeoutMs,
+    playbackUrlTimeoutMs: runtimeTimeoutMs,
+    sessionTimeoutMs: runtimeTimeoutMs,
+    statusErrorMessage: '媒体运行态加载失败',
+    playbackUrlErrorMessage: '媒体访问地址加载失败',
+    sessionErrorMessage: '媒体会话加载失败',
+  });
+  const safeRuntimes = statuses.filter((runtime) => validStream(runtime.stream));
   const safeSessions = sessions.filter((session) => validStream(session.stream));
-
-  useEffect(() => {
-    let mounted = true;
-    const controller = new AbortController();
-    const load = async () => {
-      try {
-        const [nextRuntimes, nextSessions, mainUrls, subUrls] =
-          await Promise.all([
-            getMediaStreams({
-              signal: controller.signal,
-              timeoutMs: runtimeTimeoutMs,
-            }),
-            getMediaSessions({
-              signal: controller.signal,
-              timeoutMs: runtimeTimeoutMs,
-            }),
-            getMediaPlaybackUrls('main', {
-              signal: controller.signal,
-              timeoutMs: runtimeTimeoutMs,
-            }),
-            getMediaPlaybackUrls('sub', {
-              signal: controller.signal,
-              timeoutMs: runtimeTimeoutMs,
-            }),
-          ]);
-        if (!mounted) {
-          return;
-        }
-        setRuntimes(Array.isArray(nextRuntimes) ? nextRuntimes : []);
-        setSessions(Array.isArray(nextSessions) ? nextSessions : []);
-        setUrlsByStream({ main: mainUrls, sub: subUrls });
-        setError('');
-      } catch (err: unknown) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : '媒体信息加载失败');
-        }
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, 5000);
-    return () => {
-      mounted = false;
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, []);
 
   return (
     <div className="page-grid stream-info-grid">
