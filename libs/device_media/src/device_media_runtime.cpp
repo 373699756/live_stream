@@ -132,7 +132,7 @@ bool DeviceMediaImpl::Prepare() {
     const bool has_image_config = next_image_config.is_object();
     if (has_image_config) {
         const ConfigResult result = ValidateImageConfig(
-            next_image_config, capabilities_snapshot.image);
+            next_image_config, capabilities_snapshot.image, startup_config);
         if (!result.ok) {
             return false;
         }
@@ -392,7 +392,7 @@ ConfigResult DeviceMediaImpl::ApplyVideoConfig(const ConfigJson &value) {
 
 ConfigResult DeviceMediaImpl::CheckImageConfig(
     const ConfigJson &value) const {
-    return ValidateImageConfig(value, capabilities_.image);
+    return ValidateImageConfig(value, capabilities_.image, active_config_);
 }
 
 ConfigResult DeviceMediaImpl::ApplyImageConfig(const ConfigJson &value) {

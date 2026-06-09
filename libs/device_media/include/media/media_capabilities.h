@@ -85,6 +85,11 @@ struct ImageCapabilities {
     std::vector<OptionControlCapability> backlight_options;
     std::vector<NumericControlCapability> backlight_ranges;
     std::vector<OptionControlCapability> color_mode_options;
+    std::vector<OptionControlCapability> lens_correction_options;
+    std::vector<NumericControlCapability> lens_correction_ranges;
+    bool lens_correction_supported = false;
+    uint32_t lens_correction_min_width = 0;
+    uint32_t lens_correction_min_height = 0;
     bool mirror_supported = true;
     bool flip_supported = true;
 };

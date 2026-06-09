@@ -24,6 +24,12 @@ constexpr uint16_t kSharpenStrengthMax = 0x0600;
 constexpr uint16_t kSharpenFreqMax = 0x0800;
 constexpr uint8_t kSharpenShootMax = 48;
 constexpr uint16_t kNrCoarseMax = 0x02c0;
+constexpr int32_t kLdcRatioMin = 0;
+constexpr int32_t kLdcRatioMax = 100;
+constexpr int32_t kLdcCenterOffsetMin = -511;
+constexpr int32_t kLdcCenterOffsetMax = 511;
+constexpr int32_t kLdcDistortionMin = -300;
+constexpr int32_t kLdcDistortionMax = 500;
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
     const int32_t clamped = infra::Clamp(value, 0, kConfigMax);
@@ -532,6 +538,104 @@ bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
     return true;
 }
 
+bool ApplyVpssChannelLdc(VPSS_GRP vpss_group, VPSS_CHN vpss_channel,
+                         const ConfigJson& lens_correction) {
+    bool enabled = false;
+    if (!json_utils::ReadField(lens_correction, "enabled", &enabled)) {
+        return false;
+    }
+
+    VPSS_LDC_ATTR_S attr{};
+    attr.bEnable = enabled ? HI_TRUE : HI_FALSE;
+    attr.stAttr.bAspect = HI_TRUE;
+    attr.stAttr.s32XRatio = kLdcRatioMax;
+    attr.stAttr.s32YRatio = kLdcRatioMax;
+    attr.stAttr.s32XYRatio = kLdcRatioMax;
+
+    bool aspect = true;
+    if (json_utils::ReadField(lens_correction, "aspect", &aspect)) {
+        attr.stAttr.bAspect = aspect ? HI_TRUE : HI_FALSE;
+    }
+    int32_t value = 0;
+    if (json_utils::ReadField(lens_correction, "x_ratio", &value,
+                              kLdcRatioMin, kLdcRatioMax)) {
+        attr.stAttr.s32XRatio = value;
+    }
+    if (json_utils::ReadField(lens_correction, "y_ratio", &value,
+                              kLdcRatioMin, kLdcRatioMax)) {
+        attr.stAttr.s32YRatio = value;
+    }
+    if (json_utils::ReadField(lens_correction, "xy_ratio", &value,
+                              kLdcRatioMin, kLdcRatioMax)) {
+        attr.stAttr.s32XYRatio = value;
+    }
+    if (json_utils::ReadField(lens_correction, "center_x_offset", &value,
+                              kLdcCenterOffsetMin, kLdcCenterOffsetMax)) {
+        attr.stAttr.s32CenterXOffset = value;
+    }
+    if (json_utils::ReadField(lens_correction, "center_y_offset", &value,
+                              kLdcCenterOffsetMin, kLdcCenterOffsetMax)) {
+        attr.stAttr.s32CenterYOffset = value;
+    }
+    if (json_utils::ReadField(lens_correction, "distortion_ratio", &value,
+                              kLdcDistortionMin, kLdcDistortionMax)) {
+        attr.stAttr.s32DistortionRatio = value;
+    }
+
+    const HI_S32 status =
+        HI_MPI_VPSS_SetChnLDCAttr(vpss_group, vpss_channel, &attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VPSS_SetChnLDCAttr grp=%d chn=%d failed: 0x%08x",
+              vpss_group, vpss_channel, status);
+        return false;
+    }
+    return true;
+}
+
+bool IsLdcStreamSizeSupported(const VideoStreamConfig& stream_config) {
+    return stream_config.size.width >= LDC_MIN_IMAGE_WIDTH &&
+           stream_config.size.height >= LDC_MIN_IMAGE_HEIGHT;
+}
+
+bool ApplyLensCorrection(const MediaPipelineConfig& config,
+                         const ConfigJson& image_config) {
+    const ConfigJson* lens_correction = nullptr;
+    ConfigJson disabled_lens_correction = ConfigJson::object();
+    if (!FindSection(image_config, "lens_correction", &lens_correction)) {
+        disabled_lens_correction["enabled"] = false;
+        lens_correction = &disabled_lens_correction;
+    }
+    bool enabled = false;
+    if (!json_utils::ReadField(*lens_correction, "enabled", &enabled)) {
+        return false;
+    }
+    if (enabled && !IsLdcStreamSizeSupported(config.main_stream)) {
+        Error("hisi_vendor", "VPSS LDC main stream size unsupported: %ux%u",
+              config.main_stream.size.width, config.main_stream.size.height);
+        return false;
+    }
+    if (enabled && config.sub_stream.enabled &&
+        !IsLdcStreamSizeSupported(config.sub_stream)) {
+        Error("hisi_vendor", "VPSS LDC sub stream size unsupported: %ux%u",
+              config.sub_stream.size.width, config.sub_stream.size.height);
+        return false;
+    }
+    const VPSS_GRP vpss_group = static_cast<VPSS_GRP>(config.vpss_group);
+    if (!ApplyVpssChannelLdc(vpss_group,
+                             static_cast<VPSS_CHN>(config.vpss_channel),
+                             *lens_correction)) {
+        return false;
+    }
+    if (config.sub_stream.enabled &&
+        !ApplyVpssChannelLdc(
+            vpss_group, static_cast<VPSS_CHN>(config.sub_vpss_channel),
+            *lens_correction)) {
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
@@ -584,6 +688,9 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     }
 
     if (!ApplyColorMode(vi_pipe, image_config)) {
+        return false;
+    }
+    if (!ApplyLensCorrection(config, image_config)) {
         return false;
     }
     return true;

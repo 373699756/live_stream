@@ -16,6 +16,16 @@ export const mockImageConfig: ImageConfig = {
   backlight: { mode: 'off', level: 50 },
   orientation: { mirror: false, flip: false },
   color_mode: { mode: 'color' },
+  lens_correction: {
+    enabled: false,
+    aspect: true,
+    x_ratio: 100,
+    y_ratio: 100,
+    xy_ratio: 100,
+    center_x_offset: 0,
+    center_y_offset: 0,
+    distortion_ratio: 0,
+  },
   strategy: { enabled: true, mode: 'low_noise' },
 };
 

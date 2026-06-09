@@ -10,6 +10,16 @@ function normalizeImageConfig(config: ImageConfig): ImageConfig {
     exposure: { ...config.exposure },
     backlight: { ...config.backlight },
     color_mode: { ...config.color_mode },
+    lens_correction: {
+      enabled: config.lens_correction?.enabled ?? false,
+      aspect: config.lens_correction?.aspect ?? true,
+      x_ratio: config.lens_correction?.x_ratio ?? 100,
+      y_ratio: config.lens_correction?.y_ratio ?? 100,
+      xy_ratio: config.lens_correction?.xy_ratio ?? 100,
+      center_x_offset: config.lens_correction?.center_x_offset ?? 0,
+      center_y_offset: config.lens_correction?.center_y_offset ?? 0,
+      distortion_ratio: config.lens_correction?.distortion_ratio ?? 0,
+    },
     strategy: config.strategy
       ? { ...config.strategy }
       : { enabled: true, mode: 'low_noise' },

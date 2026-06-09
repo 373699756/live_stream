@@ -97,6 +97,20 @@ ImageCapabilities DefaultImage() {
     img.color_mode_options = {
         Options("mode", {"color", "black_white"}, "color"),
     };
+    img.lens_correction_options = {
+        Options("aspect", {"false", "true"}, "true"),
+    };
+    img.lens_correction_ranges = {
+        Range("x_ratio", 0, 100, 100),
+        Range("y_ratio", 0, 100, 100),
+        Range("xy_ratio", 0, 100, 100),
+        Range("center_x_offset", -511, 511, 0),
+        Range("center_y_offset", -511, 511, 0),
+        Range("distortion_ratio", -300, 500, 0),
+    };
+    img.lens_correction_supported = true;
+    img.lens_correction_min_width = 640;
+    img.lens_correction_min_height = 480;
     img.mirror_supported = true;
     img.flip_supported = true;
     return img;

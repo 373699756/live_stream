@@ -9,6 +9,8 @@ import {
 
 type ImageRecordSection = 'exposure' | 'white_balance' | 'enhancement' | 'backlight';
 
+type LensCorrectionConfig = NonNullable<ImageConfig['lens_correction']>;
+
 function numberValue(record: Record<string, unknown>, key: string, fallback: number): number {
   const value = record[key];
   return typeof value === 'number' ? value : fallback;
@@ -43,6 +45,7 @@ interface ImageAdvancedSettingsProps {
     key: string,
     value: unknown,
   ) => void;
+  onLensCorrectionChange: (lensCorrection: LensCorrectionConfig) => void;
 }
 
 export function ImageAdvancedSettings({
@@ -51,9 +54,32 @@ export function ImageAdvancedSettings({
   onColorModeChange,
   onOrientationChange,
   onSectionChange,
+  onLensCorrectionChange,
 }: ImageAdvancedSettingsProps) {
   const showOrientationControls =
     capabilities.orientation.mirror || capabilities.orientation.flip;
+  const lensCorrectionCapabilities = capabilities.lens_correction || {
+    supported: false,
+    min_width: 0,
+    min_height: 0,
+    options: {},
+    ranges: {},
+  };
+  const lensCorrection = config.lens_correction || {
+    enabled: false,
+    aspect: true,
+    x_ratio: 100,
+    y_ratio: 100,
+    xy_ratio: 100,
+    center_x_offset: 0,
+    center_y_offset: 0,
+    distortion_ratio: 0,
+  };
+  const updateLensCorrection = (
+    value: Partial<LensCorrectionConfig>,
+  ) => {
+    onLensCorrectionChange({ ...lensCorrection, ...value });
+  };
 
   return (
     <div className="image-advanced-list">
@@ -250,6 +276,106 @@ export function ImageAdvancedSettings({
           )}
         </div>
       </details>
+
+      {lensCorrectionCapabilities.supported && (
+        <details className="image-advanced-section">
+          <summary>镜头畸变校正</summary>
+          <div className="form-grid image-settings-grid image-detail-grid">
+            <FormField label="启用">
+              <input
+                type="checkbox"
+                checked={lensCorrection.enabled}
+                onChange={(e) =>
+                  updateLensCorrection({ enabled: e.target.checked })
+                }
+              />
+            </FormField>
+            {lensCorrectionCapabilities.options.aspect && (
+              <FormField label="保持比例">
+                <input
+                  type="checkbox"
+                  checked={lensCorrection.aspect}
+                  onChange={(e) =>
+                    updateLensCorrection({ aspect: e.target.checked })
+                  }
+                />
+              </FormField>
+            )}
+            <RangeField
+              label="横向视角"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'x_ratio',
+                ) || { min: 0, max: 100, default: 100 }
+              }
+              value={lensCorrection.x_ratio}
+              onChange={(value) => updateLensCorrection({ x_ratio: value })}
+            />
+            <RangeField
+              label="纵向视角"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'y_ratio',
+                ) || { min: 0, max: 100, default: 100 }
+              }
+              value={lensCorrection.y_ratio}
+              onChange={(value) => updateLensCorrection({ y_ratio: value })}
+            />
+            <RangeField
+              label="整体视角"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'xy_ratio',
+                ) || { min: 0, max: 100, default: 100 }
+              }
+              value={lensCorrection.xy_ratio}
+              onChange={(value) => updateLensCorrection({ xy_ratio: value })}
+            />
+            <RangeField
+              label="中心X偏移"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'center_x_offset',
+                ) || { min: -511, max: 511, default: 0 }
+              }
+              value={lensCorrection.center_x_offset}
+              onChange={(value) =>
+                updateLensCorrection({ center_x_offset: value })
+              }
+            />
+            <RangeField
+              label="中心Y偏移"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'center_y_offset',
+                ) || { min: -511, max: 511, default: 0 }
+              }
+              value={lensCorrection.center_y_offset}
+              onChange={(value) =>
+                updateLensCorrection({ center_y_offset: value })
+              }
+            />
+            <RangeField
+              label="畸变强度"
+              capability={
+                numericCapability(
+                  lensCorrectionCapabilities.ranges,
+                  'distortion_ratio',
+                ) || { min: -300, max: 500, default: 0 }
+              }
+              value={lensCorrection.distortion_ratio}
+              onChange={(value) =>
+                updateLensCorrection({ distortion_ratio: value })
+              }
+            />
+          </div>
+        </details>
+      )}
 
       <details className="image-advanced-section">
         <summary>背光与日夜</summary>

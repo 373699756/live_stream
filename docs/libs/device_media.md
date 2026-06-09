@@ -58,6 +58,7 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 | `image.exposure` | mode、anti_flicker、exposure_time、gain、compensation、slow_shutter、max_exposure_time | AE/曝光策略 |
 | `image.white_balance` / `image.enhancement` | white balance、denoise、gamma、defog | ISP 图像增强 |
 | `image.backlight` / `image.orientation` / `image.color_mode` / `image.strategy` | 背光、镜像翻转、彩黑模式、自动图像策略 | 运行时图像策略和状态展示 |
+| `image.lens_correction` | `enabled`、`aspect`、视角 ratio、中心偏移、畸变强度 | VPSS LDC 镜头畸变校正 |
 
 默认视频配置面向清晰预览：主码流为 1080P/30fps，子码流为
 720P/30fps/3072kbps，GOP 为 30 帧以降低 WebRTC、HLS 和 HTTP-FLV 首播等待。
@@ -68,6 +69,11 @@ ROI 编码只改变 VENC 码率/QP 分配，不裁剪画面，也不改变协议
 每路最多 8 个区域，坐标使用该码流分辨率下的像素坐标。`absolute_qp=false` 时
 `qp` 是相对 QP，负值提高区域画质；`absolute_qp=true` 时 `qp` 是绝对 QP。ROI 只对
 H.264/H.265 生效，JPEG/MJPEG 配置 ROI 会被拒绝。
+
+镜头畸变校正通过 VPSS LDC 下发到主/子码流输出通道。`enabled=false` 时关闭校正；
+开启后 `aspect=true` 使用 `xy_ratio` 保持横纵一致，`aspect=false` 分别使用
+`x_ratio`、`y_ratio`；`distortion_ratio` 范围为 -300..500，中心偏移范围为
+-511..511。该功能只改变几何映射，不改变编码协议或码流分辨率。
 
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和
 `www/README.md`。保存成功不能只代表 JSON 写入成功，还必须代表配置已经通过本模块

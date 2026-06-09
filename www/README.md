@@ -153,9 +153,13 @@ work outside the browser UI.
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,
 AE maximum exposure time, DRC backlight strength, color/black-white mode, and
-the automatic strategy modes `balanced`, `low_noise`, and `detail`. The default
-image strategy is `low_noise`, with 30 fps preview defaults and conservative
-sharpening to reduce point-like sensor noise.
+VPSS lens correction, and the automatic strategy modes `balanced`, `low_noise`,
+and `detail`. The default image strategy is `low_noise`, with 30 fps preview
+defaults and conservative sharpening to reduce point-like sensor noise.
+
+Image config may include `lens_correction`. It controls hardware VPSS LDC for
+the active video pipeline with `enabled`, `aspect`, ratio, center-offset, and
+distortion fields. Old configs without this object are treated as disabled.
 
 Video stream config may include `roi` under `streams.main` and `streams.sub`.
 ROI keeps the full output frame and only biases encoder QP/bit allocation for

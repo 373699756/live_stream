@@ -129,6 +129,22 @@ export const mockMediaCapabilities: MediaCapabilities = {
     color_mode: {
       mode: { values: ['color', 'black_white'], default: 'color' },
     },
+    lens_correction: {
+      supported: true,
+      min_width: 640,
+      min_height: 480,
+      options: {
+        aspect: { values: ['false', 'true'], default: 'true' },
+      },
+      ranges: {
+        x_ratio: { min: 0, max: 100, default: 100 },
+        y_ratio: { min: 0, max: 100, default: 100 },
+        xy_ratio: { min: 0, max: 100, default: 100 },
+        center_x_offset: { min: -511, max: 511, default: 0 },
+        center_y_offset: { min: -511, max: 511, default: 0 },
+        distortion_ratio: { min: -300, max: 500, default: 0 },
+      },
+    },
     orientation: { mirror: true, flip: true },
   },
 };

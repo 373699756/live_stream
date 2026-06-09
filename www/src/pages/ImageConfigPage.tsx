@@ -83,6 +83,9 @@ export function ImageConfigPage() {
           capabilities={capabilities}
           config={config}
           onColorModeChange={updateColorMode}
+          onLensCorrectionChange={(lensCorrection) =>
+            setConfig({ ...config, lens_correction: lensCorrection })
+          }
           onOrientationChange={(orientation) => setConfig({ ...config, orientation })}
           onSectionChange={updateSection}
         />

@@ -110,6 +110,20 @@ ImageCapabilities DefaultImageCapabilities() {
     image.backlight_ranges.push_back(Range("level", 0, 100, 50));
     image.color_mode_options.push_back(
         Options("mode", {"color", "black_white"}, "color"));
+    image.lens_correction_options.push_back(
+        Options("aspect", {"false", "true"}, "true"));
+    image.lens_correction_ranges.push_back(Range("x_ratio", 0, 100, 100));
+    image.lens_correction_ranges.push_back(Range("y_ratio", 0, 100, 100));
+    image.lens_correction_ranges.push_back(Range("xy_ratio", 0, 100, 100));
+    image.lens_correction_ranges.push_back(
+        Range("center_x_offset", -511, 511, 0));
+    image.lens_correction_ranges.push_back(
+        Range("center_y_offset", -511, 511, 0));
+    image.lens_correction_ranges.push_back(
+        Range("distortion_ratio", -300, 500, 0));
+    image.lens_correction_supported = true;
+    image.lens_correction_min_width = LDC_MIN_IMAGE_WIDTH;
+    image.lens_correction_min_height = LDC_MIN_IMAGE_HEIGHT;
     image.mirror_supported = true;
     image.flip_supported = true;
 

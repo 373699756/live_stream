@@ -459,6 +459,59 @@ ValidateOptionControls(const ConfigJson &section,
     return ConfigResult::Success();
 }
 
+ConfigResult ValidateLensCorrectionConfig(
+    const ConfigJson &value,
+    const ImageCapabilities &capabilities,
+    const MediaPipelineConfig &active_config) {
+    if (!value.contains("lens_correction")) {
+        return ConfigResult::Success();
+    }
+    if (!value.at("lens_correction").is_object()) {
+        return ConfigResult::Failure("lens_correction",
+                                     "missing or invalid value");
+    }
+    const ConfigJson &lens_correction = value.at("lens_correction");
+    bool enabled = false;
+    if (!json_utils::ReadField(lens_correction, "enabled", &enabled)) {
+        return ConfigResult::Failure("lens_correction.enabled",
+                                     "missing or invalid value");
+    }
+    if (enabled && !capabilities.lens_correction_supported) {
+        return ConfigResult::Failure("lens_correction.enabled",
+                                     "unsupported value");
+    }
+    if (enabled) {
+        if (active_config.main_stream.size.width <
+                capabilities.lens_correction_min_width ||
+            active_config.main_stream.size.height <
+                capabilities.lens_correction_min_height) {
+            return ConfigResult::Failure("lens_correction.enabled",
+                                         "main stream size unsupported");
+        }
+        if (active_config.sub_stream.enabled &&
+            (active_config.sub_stream.size.width <
+                 capabilities.lens_correction_min_width ||
+             active_config.sub_stream.size.height <
+                 capabilities.lens_correction_min_height)) {
+            return ConfigResult::Failure("lens_correction.enabled",
+                                         "sub stream size unsupported");
+        }
+    }
+    const ConfigResult range_result = ValidateNumericControls(
+        lens_correction, "lens_correction",
+        capabilities.lens_correction_ranges);
+    if (!range_result.ok) {
+        return range_result;
+    }
+    const ConfigResult option_result = ValidateOptionControls(
+        lens_correction, "lens_correction",
+        capabilities.lens_correction_options);
+    if (!option_result.ok) {
+        return option_result;
+    }
+    return ConfigResult::Success();
+}
+
 ConfigResult ValidateVideoStreamConfig(
     const VideoConfig::Stream &stream,
     const VideoStreamCapabilities &stream_capabilities,
@@ -700,7 +753,8 @@ ConfigResult BuildPipelineConfig(const VideoConfig &config,
 }
 
 ConfigResult ValidateImageConfig(const ConfigJson &value,
-                                 const ImageCapabilities &capabilities) {
+                                 const ImageCapabilities &capabilities,
+                                 const MediaPipelineConfig &active_config) {
     if (!value.is_object()) {
         return ConfigResult::Failure("", "invalid image config");
     }
@@ -772,7 +826,7 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
             return ConfigResult::Failure("strategy.mode", "unsupported value");
         }
     }
-    return ConfigResult::Success();
+    return ValidateLensCorrectionConfig(value, capabilities, active_config);
 }
 
 ConfigResult ParseVideoConfig(const ConfigJson &value,

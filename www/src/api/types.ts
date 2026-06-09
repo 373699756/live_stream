@@ -113,6 +113,13 @@ export interface ImageCapabilities {
     ranges: Record<string, NumericControlCapability>;
   };
   color_mode: Record<string, OptionControlCapability>;
+  lens_correction?: {
+    supported: boolean;
+    min_width: number;
+    min_height: number;
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
   orientation: { mirror: boolean; flip: boolean };
 }
 
@@ -132,6 +139,16 @@ export interface ImageConfig {
   enhancement: Record<string, unknown>;
   orientation: { mirror: boolean; flip: boolean };
   color_mode: Record<string, string>;
+  lens_correction?: {
+    enabled: boolean;
+    aspect: boolean;
+    x_ratio: number;
+    y_ratio: number;
+    xy_ratio: number;
+    center_x_offset: number;
+    center_y_offset: number;
+    distortion_ratio: number;
+  };
   strategy?: {
     enabled: boolean;
     mode: ImageStrategyMode;

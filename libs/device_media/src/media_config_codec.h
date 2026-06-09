@@ -59,7 +59,8 @@ ConfigResult ParseVideoConfig(const ConfigJson &value,
                               const MediaCapabilities &capabilities,
                               MediaPipelineConfig *parsed);
 ConfigResult ValidateImageConfig(const ConfigJson &value,
-                                 const ImageCapabilities &capabilities);
+                                 const ImageCapabilities &capabilities,
+                                 const MediaPipelineConfig &active_config);
 
 }  // namespace media_internal
 }  // namespace live_stream
