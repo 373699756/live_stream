@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { saveAiAlarmRule } from '../../api/alarm';
 import { saveAiConfig } from '../../api/ai';
 import type {
@@ -33,13 +33,18 @@ export function AiCommonConfigPanel({
   const [alarmRuleDirty, setAlarmRuleDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const preserveSaveMessageOnStatusSync = useRef(false);
 
   useEffect(() => {
     if (configDirty) {
       return;
     }
     setDraft(status ? { ...status.config } : null);
-    setSaveMessage('');
+    if (preserveSaveMessageOnStatusSync.current) {
+      preserveSaveMessageOnStatusSync.current = false;
+    } else {
+      setSaveMessage('');
+    }
   }, [configDirty, status]);
 
   useEffect(() => {
@@ -69,20 +74,24 @@ export function AiCommonConfigPanel({
   const updateDraft = (nextConfig: AiModelConfig) => {
     setDraft(nextConfig);
     setConfigDirty(true);
+    preserveSaveMessageOnStatusSync.current = false;
     setSaveMessage('');
   };
   const updateAlarmRule = (nextRule: AlarmRuleConfig | null) => {
     setAlarmRule(nextRule);
     setAlarmRuleDirty(true);
+    preserveSaveMessageOnStatusSync.current = false;
     setSaveMessage('');
   };
   const saveEventConfig = () => {
     const nextConfig = normalizeAiConfigForSave(draft);
     if (nextConfig.enabled && taskUsesModel(nextConfig.task) && !nextConfig.model_path.trim()) {
+      preserveSaveMessageOnStatusSync.current = false;
       setSaveMessage('保存失败：模型路径不能为空');
       return;
     }
     setSaving(true);
+    preserveSaveMessageOnStatusSync.current = false;
     setSaveMessage('');
     const requests: Promise<void>[] = [saveAiConfig(nextConfig)];
     if (alarmConfig && alarmRule) {
@@ -94,7 +103,10 @@ export function AiCommonConfigPanel({
       );
     }
     void Promise.all(requests)
-      .then(onSaved)
+      .then(() => {
+        preserveSaveMessageOnStatusSync.current = true;
+        return onSaved();
+      })
       .then(() => {
         setConfigDirty(false);
         setAlarmRuleDirty(false);
@@ -102,6 +114,7 @@ export function AiCommonConfigPanel({
         setSaveMessage('已保存并应用');
       })
       .catch((err: unknown) => {
+        preserveSaveMessageOnStatusSync.current = false;
         setSaveMessage(err instanceof Error ? err.message : '保存失败');
       })
       .finally(() => setSaving(false));
@@ -297,6 +310,7 @@ export function AiCommonConfigPanel({
               });
               setAlarmRuleDirty(false);
             }
+            preserveSaveMessageOnStatusSync.current = false;
             setSaveMessage('');
           }}
         >

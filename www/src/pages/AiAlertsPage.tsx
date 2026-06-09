@@ -16,8 +16,8 @@ import {
   latestAlarmTimeText,
   latestTimeText,
 } from '../features/ai-alerts/aiAlertFormat';
+import { AiPerimeterEditor } from '../features/ai-alerts/AiPerimeterEditor';
 import { useAiAlerts } from '../hooks/useAiAlerts';
-import { AiPerimeterEditor } from './AiPerimeterEditor';
 import '../styles/ai-alerts.css';
 
 export function AiAlertsPage() {

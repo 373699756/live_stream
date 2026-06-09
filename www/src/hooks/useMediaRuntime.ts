@@ -41,10 +41,6 @@ function requestErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof Error && error.name === 'AbortError';
-}
-
 export function useMediaRuntime({
   selectedStream,
   playbackStreams,
@@ -132,9 +128,6 @@ export function useMediaRuntime({
         setRuntimeError('statuses', '');
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) {
-          return;
-        }
         if (mountedRef.current && !controller.signal.aborted) {
           setRuntimeError(
             'statuses',
@@ -173,9 +166,6 @@ export function useMediaRuntime({
         setRuntimeError('sessions', '');
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) {
-          return;
-        }
         if (mountedRef.current && !controller.signal.aborted) {
           setRuntimeError(
             'sessions',
@@ -238,9 +228,6 @@ export function useMediaRuntime({
         setRuntimeError('playbackUrls', '');
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) {
-          return;
-        }
         if (
           !mountedRef.current ||
           controller.signal.aborted ||

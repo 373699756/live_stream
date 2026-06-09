@@ -7,14 +7,14 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { saveAiConfig } from '../api/ai';
+import { saveAiConfig } from '../../api/ai';
 import type {
   AiPerimeterRegion,
   AiStatus,
   StreamName,
-} from '../api/types';
-import { VideoPreview } from '../components/VideoPreview';
-import { useVideoConfig } from '../hooks/useVideoConfig';
+} from '../../api/types';
+import { VideoPreview } from '../../components/VideoPreview';
+import { useVideoConfig } from '../../hooks/useVideoConfig';
 
 interface AiPerimeterEditorProps {
   status: AiStatus | null;
