@@ -93,13 +93,21 @@ export function AiAlertsPage() {
         <div className="ai-event-tabs" role="tablist" aria-label="AI 抓拍分类">
           {kAiEventTabs.map((tab) => {
             const selected = tab.task === activeTask;
+            const running = status?.config.task === tab.task;
+            const classNames = [
+              'ai-event-tab',
+              selected ? 'active' : '',
+              running ? 'running' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
             return (
               <button
                 type="button"
                 role="tab"
                 aria-controls={`ai-event-${tab.task}`}
                 aria-selected={selected}
-                className={selected ? 'ai-event-tab active' : 'ai-event-tab'}
+                className={classNames}
                 key={tab.task}
                 onClick={() => setActiveTask(tab.task)}
               >
@@ -107,6 +115,7 @@ export function AiAlertsPage() {
                   <strong>{tab.label}</strong>
                   <em>{tabStateLabel(status, tab.task)}</em>
                 </span>
+                {running ? <span className="ai-event-tab-run">运行中</span> : null}
                 <span className="ai-event-tab-count">
                   {loading ? '...' : alertsForTask(alertGroups, tab.task).length}
                 </span>
@@ -128,7 +137,7 @@ export function AiAlertsPage() {
             <div className="ai-event-stats">
               <span>
                 运行{' '}
-                <strong>
+                <strong className={status?.config.task === activeTask ? 'is-running' : ''}>
                   {status?.config.task === activeTask ? '当前任务' : '未运行'}
                 </strong>
               </span>

@@ -9,6 +9,26 @@ import type {
   AlarmStatusResponse,
 } from '../api/types';
 
+const kRealtimePollMs = 3000;
+const kMaxStoredAlerts = 80;
+const kAlertRetryDelaysMs = [300, 1000, 2500];
+
+function normalizeAlerts(alerts: AiAlertRecord[]): AiAlertRecord[] {
+  const alertsById = new Map<string, AiAlertRecord>();
+  alerts.forEach((alert) => {
+    if (!alertsById.has(alert.id)) {
+      alertsById.set(alert.id, alert);
+    }
+  });
+  return Array.from(alertsById.values())
+    .sort((left, right) =>
+      right.timestamp_ms === left.timestamp_ms
+        ? right.id.localeCompare(left.id)
+        : right.timestamp_ms - left.timestamp_ms,
+    )
+    .slice(0, kMaxStoredAlerts);
+}
+
 interface AiAlertsState {
   status: AiStatus | null;
   alarmConfig: AlarmConfig | null;
@@ -32,6 +52,17 @@ export function useAiAlerts(): AiAlertsState {
   const [error, setError] = useState('');
   const refreshAbortRef = useRef<AbortController | null>(null);
   const refreshRequestIdRef = useRef(0);
+
+  const applyAlerts = useCallback(
+    (nextAlerts: AiAlertRecord[], mergeCurrent: boolean) => {
+      setAlerts((currentAlerts) =>
+        normalizeAlerts(
+          mergeCurrent ? [...nextAlerts, ...currentAlerts] : nextAlerts,
+        ),
+      );
+    },
+    [],
+  );
 
   const abortRefresh = useCallback(() => {
     refreshAbortRef.current?.abort();
@@ -65,7 +96,7 @@ export function useAiAlerts(): AiAlertsState {
         return;
       }
       setStatus(nextStatus);
-      setAlerts(nextAlerts.items);
+      applyAlerts(nextAlerts.items, false);
       setAlarmConfig(nextAlarmConfig);
       setAlarmStatus(nextAlarmStatus);
     } catch (err) {
@@ -82,7 +113,7 @@ export function useAiAlerts(): AiAlertsState {
         setLoading(false);
       }
     }
-  }, [abortRefresh]);
+  }, [abortRefresh, applyAlerts]);
 
   useEffect(() => {
     void refresh();
@@ -90,47 +121,85 @@ export function useAiAlerts(): AiAlertsState {
   }, [abortRefresh, refresh]);
 
   useEffect(() => {
-    if (typeof EventSource === 'undefined') {
-      return undefined;
-    }
-    let refreshTimer: number | undefined;
+    let alertRetryTimers: number[] = [];
+    let pollTimer: number | undefined;
+    let aiStatusController: AbortController | null = null;
     let alarmStatusController: AbortController | null = null;
     let alertListController: AbortController | null = null;
-    const eventSource = openMediaEvents((event) => {
-      if (event.type !== 'alarm_triggered' || event.target !== 'ai_detection') {
-        return;
-      }
-      setLastAlarmEvent(event);
+    const clearAlertRetryTimers = () => {
+      alertRetryTimers.forEach((timer) => window.clearTimeout(timer));
+      alertRetryTimers = [];
+    };
+    const refreshAiStatus = () => {
+      aiStatusController?.abort();
+      aiStatusController = new AbortController();
+      void getAiStatus({ signal: aiStatusController.signal })
+        .then(setStatus)
+        .catch(() => {
+          // The manual refresh path reports persistent status failures.
+        });
+    };
+    const refreshAlarmStatus = () => {
       alarmStatusController?.abort();
       alarmStatusController = new AbortController();
       void getAlarmStatus({ signal: alarmStatusController.signal })
         .then(setAlarmStatus)
         .catch(() => {
-          // The periodic/manual refresh path will surface persistent failures.
+          // The manual refresh path reports persistent alarm failures.
         });
-      if (refreshTimer !== undefined) {
-        window.clearTimeout(refreshTimer);
+    };
+    const refreshAlertList = () => {
+      alertListController?.abort();
+      alertListController = new AbortController();
+      void getAiAlerts({ signal: alertListController.signal })
+        .then((nextAlerts) => applyAlerts(nextAlerts.items, true))
+        .catch(() => {
+          // The next SSE retry or visible-page poll will try again.
+        });
+    };
+    const refreshVisibleData = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
       }
-      refreshTimer = window.setTimeout(() => {
-        alertListController?.abort();
-        alertListController = new AbortController();
-        void getAiAlerts({ signal: alertListController.signal })
-          .then((nextAlerts) => setAlerts(nextAlerts.items))
-          .catch(() => {
-            // Alarm status is the primary event signal; manual refresh covers
-            // transient image-list failures after the snapshot is written.
-          });
-      }, 600);
-    });
+      refreshAiStatus();
+      refreshAlarmStatus();
+      refreshAlertList();
+    };
+    const scheduleAlertRetries = () => {
+      clearAlertRetryTimers();
+      alertRetryTimers = kAlertRetryDelaysMs.map((delayMs) =>
+        window.setTimeout(refreshAlertList, delayMs),
+      );
+    };
+    const handleAlarmEvent = (event: MediaEvent) => {
+      if (event.type !== 'alarm_triggered' || event.target !== 'ai_detection') {
+        return;
+      }
+      setLastAlarmEvent(event);
+      refreshAlarmStatus();
+      scheduleAlertRetries();
+    };
+    const eventSource =
+      typeof EventSource === 'undefined' ? null : openMediaEvents(handleAlarmEvent);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshVisibleData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    pollTimer = window.setInterval(refreshVisibleData, kRealtimePollMs);
     return () => {
-      if (refreshTimer !== undefined) {
-        window.clearTimeout(refreshTimer);
+      clearAlertRetryTimers();
+      if (pollTimer !== undefined) {
+        window.clearInterval(pollTimer);
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      aiStatusController?.abort();
       alarmStatusController?.abort();
       alertListController?.abort();
-      eventSource.close();
+      eventSource?.close();
     };
-  }, []);
+  }, [applyAlerts]);
 
   return {
     status,

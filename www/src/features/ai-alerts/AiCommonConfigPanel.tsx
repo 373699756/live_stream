@@ -14,7 +14,7 @@ import {
   normalizeAiConfigForSave,
 } from './aiAlertFormat';
 import { backendBadgeState } from './aiAlertStatus';
-import { taskLabel, taskUsesModel } from './aiAlertTasks';
+import { taskLabel, taskRequiresModelPath } from './aiAlertTasks';
 
 interface AiCommonConfigPanelProps {
   status: AiStatus | null;
@@ -69,7 +69,8 @@ export function AiCommonConfigPanel({
     );
   }
 
-  const modelRequired = draft.enabled && taskUsesModel(draft.task);
+  const modelRequired =
+    draft.enabled && taskRequiresModelPath(draft.task, draft.backend);
   const modelMissing = modelRequired && draft.model_path.trim() === '';
   const updateDraft = (nextConfig: AiModelConfig) => {
     setDraft(nextConfig);
@@ -85,7 +86,11 @@ export function AiCommonConfigPanel({
   };
   const saveEventConfig = () => {
     const nextConfig = normalizeAiConfigForSave(draft);
-    if (nextConfig.enabled && taskUsesModel(nextConfig.task) && !nextConfig.model_path.trim()) {
+    if (
+      nextConfig.enabled &&
+      taskRequiresModelPath(nextConfig.task, nextConfig.backend) &&
+      !nextConfig.model_path.trim()
+    ) {
       preserveSaveMessageOnStatusSync.current = false;
       setSaveMessage('保存失败：模型路径不能为空');
       return;

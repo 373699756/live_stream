@@ -1,4 +1,9 @@
-import type { AiAlertRecord, AiStatus, AiTaskName } from '../../api/types';
+import type {
+  AiAlertRecord,
+  AiBackendName,
+  AiStatus,
+  AiTaskName,
+} from '../../api/types';
 
 export interface AiEventTab {
   task: AiTaskName;
@@ -80,6 +85,13 @@ export function taskCaptureScope(task: AiTaskName) {
 
 export function taskUsesModel(task: AiTaskName) {
   return task === 'object_detection' || task === 'perimeter_detection';
+}
+
+export function taskRequiresModelPath(
+  task: AiTaskName,
+  backend: AiBackendName,
+) {
+  return backend === 'hisi3516dv300_nnie' && taskUsesModel(task);
 }
 
 export function alertGroupsByTask(alerts: AiAlertRecord[]) {

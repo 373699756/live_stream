@@ -20,8 +20,12 @@ export function saveAiConfig(value: AiModelConfig): Promise<void> {
   return putJson('/api/config/ai', value);
 }
 
-export function aiAlertImageUrl(imageUrl: string): string {
-  return imageUrl;
+export function aiAlertImageUrl(imageUrl: string, timestampMs?: number): string {
+  if (!timestampMs) {
+    return imageUrl;
+  }
+  const separator = imageUrl.includes('?') ? '&' : '?';
+  return `${imageUrl}${separator}t=${timestampMs}`;
 }
 
 function normalizeAiStatus(status: AiStatus): AiStatus {

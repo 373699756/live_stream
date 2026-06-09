@@ -11,7 +11,11 @@ function AiAlertCard({ alert }: { alert: AiAlertRecord }) {
   return (
     <article className="ai-alert-card">
       <div className="ai-alert-image-wrap">
-        <img src={aiAlertImageUrl(alert.image_url)} alt="" loading="lazy" />
+        <img
+          src={aiAlertImageUrl(alert.image_url, alert.timestamp_ms)}
+          alt=""
+          loading="lazy"
+        />
       </div>
       <div className="ai-alert-body">
         <div className="ai-alert-title">

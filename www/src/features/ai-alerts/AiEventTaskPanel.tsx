@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { saveAiConfig } from '../../api/ai';
+import { getAiStatus, saveAiConfig } from '../../api/ai';
 import type { AiStatus, AiTaskName } from '../../api/types';
 import { StatusBadge } from '../../components/StatusBadge';
 import { normalizeAiConfigForSave } from './aiAlertFormat';
@@ -8,8 +8,10 @@ import {
   taskCaptureScope,
   taskDescription,
   taskLabel,
-  taskUsesModel,
+  taskRequiresModelPath,
 } from './aiAlertTasks';
+
+const kSwitchConfirmDelaysMs = [300, 900, 1800];
 
 interface AiEventTaskPanelProps {
   status: AiStatus | null;
@@ -25,6 +27,21 @@ export function AiEventTaskPanel({
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
+  const confirmSwitch = async () => {
+    for (const delayMs of kSwitchConfirmDelaysMs) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+      try {
+        const nextStatus = await getAiStatus();
+        if (nextStatus.config.task === activeTask) {
+          return true;
+        }
+      } catch {
+        // The page-level realtime refresh continues syncing after save.
+      }
+    }
+    return false;
+  };
+
   if (!status) {
     return (
       <section className="ai-task-panel">
@@ -37,7 +54,7 @@ export function AiEventTaskPanel({
   const switchTask = () => {
     if (
       status.config.enabled &&
-      taskUsesModel(activeTask) &&
+      taskRequiresModelPath(activeTask, status.config.backend) &&
       !status.config.model_path.trim()
     ) {
       setSaveMessage('切换失败：模型路径不能为空');
@@ -51,9 +68,15 @@ export function AiEventTaskPanel({
         task: activeTask,
       }),
     )
-      .then(onSaved)
       .then(() => {
-        setSaveMessage('已切换当前任务');
+        setSaveMessage('已提交切换，正在确认');
+        return confirmSwitch();
+      })
+      .then((confirmed) => {
+        setSaveMessage(confirmed ? '已切换当前任务' : '已提交，等待设备同步');
+        return onSaved().catch(() => {
+          // The page-level realtime refresh keeps syncing status after save.
+        });
       })
       .catch((err: unknown) => {
         setSaveMessage(err instanceof Error ? err.message : '切换失败');
