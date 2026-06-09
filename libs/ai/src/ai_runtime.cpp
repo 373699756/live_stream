@@ -24,6 +24,7 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
+constexpr uint32_t kAlertExecutorQueueCapacity = 1;
 constexpr uint32_t kCaptureStopPollMs = 50;
 constexpr int64_t kMinAlertIntervalMs = 1000;
 
@@ -84,7 +85,24 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
            data[1] == 0xd8;
 }
 
+bool CanHotUpdateConfig(const AiModelConfig &previous_config,
+                        const AiModelConfig &next_config) {
+    return previous_config.enabled && next_config.enabled &&
+           previous_config.backend == next_config.backend &&
+           previous_config.task == next_config.task &&
+           previous_config.stream_id == next_config.stream_id &&
+           previous_config.model_path == next_config.model_path &&
+           previous_config.input_width == next_config.input_width &&
+           previous_config.input_height == next_config.input_height;
+}
+
 }  // namespace
+
+struct PendingAlertCapture {
+    AiInferenceResult result;
+    AiModelConfig config;
+    int64_t timestamp_ms = 0;
+};
 
 struct AiRuntime::State final {
     explicit State(const AiOptions &service_options)
@@ -180,19 +198,24 @@ struct AiRuntime::State final {
     void Stop() {
         std::unique_ptr<infra::Executor> stopped_executor;
         std::shared_ptr<AiInferenceEngine> stopped_engine;
+        std::shared_ptr<infra::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started && !executor && !engine) {
+            if (!started && !executor && !engine && !alert_executor) {
                 return;
             }
             started = false;
             inference_running = false;
             stopped_executor = std::move(executor);
             stopped_engine = std::move(engine);
+            stopped_alert_executor = std::move(alert_executor);
             stats.backend_available = false;
         }
         if (stopped_executor) {
             stopped_executor->Stop(infra::StopMode::kDiscard);
+        }
+        if (stopped_alert_executor) {
+            stopped_alert_executor->Stop(infra::StopMode::kDiscard);
         }
         if (stopped_engine) {
             stopped_engine->Stop();
@@ -234,34 +257,44 @@ struct AiRuntime::State final {
             next_inference_ms =
                 infra::Time::MonotonicMillis() +
                 static_cast<int64_t>(run_config.inference_interval_ms);
-            hisisdk::YuvFrame frame = options.sdk->CaptureYuvFrame(
-                VpssChannelForStream(options.media_channels,
+            PendingAlertCapture pending_alert;
+            bool should_capture_alert = false;
+            {
+                hisisdk::YuvFrame frame = options.sdk->CaptureYuvFrame(
+                    VpssChannelForStream(options.media_channels,
+                                         run_config.stream_id),
+                    YuvSizeForStream(options.media_channels,
                                      run_config.stream_id),
-                YuvSizeForStream(options.media_channels,
-                                 run_config.stream_id),
-                run_config.inference_interval_ms);
-            if (!frame.buffer || frame.size == 0) {
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    ++stats.skipped_frames;
-                    ++stats.inference_failed_count;
-                    stats.last_failure_time_ms = infra::Time::SystemTimeMillis();
+                    run_config.inference_interval_ms);
+                if (!frame.buffer || frame.size == 0) {
+                    {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        ++stats.skipped_frames;
+                        ++stats.inference_failed_count;
+                        stats.last_failure_time_ms =
+                            infra::Time::SystemTimeMillis();
+                    }
+                    ClearAlarmInput();
+                    continue;
                 }
-                ClearAlarmInput();
-                continue;
+                should_capture_alert =
+                    RunInference(frame, run_config, &pending_alert);
             }
-            RunInference(frame, run_config);
+            if (should_capture_alert) {
+                PostAlertCapture(pending_alert);
+            }
         }
     }
 
-    void RunInference(const hisisdk::YuvFrame &frame,
-                      const AiModelConfig &run_config) {
+    bool RunInference(const hisisdk::YuvFrame &frame,
+                      const AiModelConfig &run_config,
+                      PendingAlertCapture *pending_alert) {
         std::shared_ptr<AiInferenceEngine> run_engine;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started || !inference_running || !engine) {
                 ++stats.inference_failed_count;
-                return;
+                return false;
             }
             ++stats.received_frames;
             run_engine = engine;
@@ -279,7 +312,7 @@ struct AiRuntime::State final {
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started || !inference_running) {
-                return;
+                return false;
             }
             if (result.success) {
                 ++stats.inference_count;
@@ -294,27 +327,51 @@ struct AiRuntime::State final {
                 static_cast<uint32_t>(last_result.detections.size());
         }
         UpdateAlarmInput(result, run_config);
-        MaybeSaveAlert(result, run_config);
+        return PrepareAlertCapture(result, run_config, pending_alert);
     }
 
-    void MaybeSaveAlert(const AiInferenceResult &result,
-                        const AiModelConfig &run_config) {
+    bool PrepareAlertCapture(const AiInferenceResult &result,
+                             const AiModelConfig &run_config,
+                             PendingAlertCapture *pending_alert) {
         if (!HasAlertDetections(result) ||
-            options.snapshot == nullptr) {
-            return;
+            options.snapshot == nullptr || pending_alert == nullptr) {
+            return false;
         }
         const int64_t now_ms = infra::Time::SystemTimeMillis();
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started || !inference_running ||
                 now_ms - last_alert_ms < kMinAlertIntervalMs) {
-                return;
+                return false;
             }
             last_alert_ms = now_ms;
         }
+        pending_alert->result = result;
+        pending_alert->config = run_config;
+        pending_alert->timestamp_ms = now_ms;
+        return true;
+    }
 
+    void PostAlertCapture(PendingAlertCapture pending_alert) {
+        std::shared_ptr<infra::Executor> executor_snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!started || !alert_executor) {
+                return;
+            }
+            executor_snapshot = alert_executor;
+        }
+        if (!executor_snapshot->Post([this, pending_alert]() {
+                SaveAlertCapture(pending_alert);
+            })) {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++stats.dropped_tasks;
+        }
+    }
+
+    void SaveAlertCapture(const PendingAlertCapture &pending_alert) {
         CaptureRequest request;
-        request.stream_id = run_config.stream_id;
+        request.stream_id = pending_alert.config.stream_id;
         request.include_thumbnail = false;
         SnapshotFrame frame = options.snapshot->Capture(request);
         if (!LooksLikeJpeg(frame)) {
@@ -330,7 +387,8 @@ struct AiRuntime::State final {
         }
 
         const std::string id =
-            std::to_string(now_ms) + "-" + std::to_string(next_alert_id++);
+            std::to_string(pending_alert.timestamp_ms) + "-" +
+            std::to_string(NextAlertId());
         const uint8_t *data = frame.PayloadData();
         std::string image;
         image.assign(reinterpret_cast<const char *>(data), frame.size);
@@ -343,13 +401,13 @@ struct AiRuntime::State final {
 
         AiAlertRecord alert;
         alert.id = id;
-        alert.timestamp_ms = now_ms;
-        alert.stream_id = result.stream_id;
-        alert.task = run_config.task;
+        alert.timestamp_ms = pending_alert.timestamp_ms;
+        alert.stream_id = pending_alert.result.stream_id;
+        alert.task = pending_alert.config.task;
         alert.detection_count =
-            static_cast<uint32_t>(result.detections.size());
-        alert.max_confidence = MaxConfidence(result.detections);
-        alert.detections = result.detections;
+            static_cast<uint32_t>(pending_alert.result.detections.size());
+        alert.max_confidence = MaxConfidence(pending_alert.result.detections);
+        alert.detections = pending_alert.result.detections;
         AddAlert(alert);
     }
 
@@ -387,6 +445,12 @@ struct AiRuntime::State final {
                 stats.enabled = next_config.enabled;
                 stats.backend_available = false;
                 ClearLastResultLocked();
+                return true;
+            }
+            if (inference_running && engine && executor &&
+                CanHotUpdateConfig(previous_config, next_config)) {
+                config = next_config;
+                stats.enabled = next_config.enabled;
                 return true;
             }
         }
@@ -462,6 +526,21 @@ struct AiRuntime::State final {
         }
         engine = next_engine;
         executor = std::move(next_executor);
+        if (!alert_executor) {
+            std::shared_ptr<infra::Executor> next_alert_executor(
+                new infra::Executor());
+            infra::ExecutorOptions alert_executor_options;
+            alert_executor_options.worker_count = 1;
+            alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
+            if (!next_alert_executor->Start(alert_executor_options)) {
+                executor->Stop(infra::StopMode::kDiscard);
+                next_engine->Stop();
+                engine.reset();
+                executor.reset();
+                return false;
+            }
+            alert_executor = std::move(next_alert_executor);
+        }
         inference_running = true;
         stats.backend_available = engine->Available();
         if (!executor->Post([this]() { CaptureLoop(); })) {
@@ -469,9 +548,14 @@ struct AiRuntime::State final {
                 std::move(executor);
             std::shared_ptr<AiInferenceEngine> failed_engine =
                 std::move(engine);
+            std::shared_ptr<infra::Executor> failed_alert_executor =
+                std::move(alert_executor);
             inference_running = false;
             stats.backend_available = false;
             failed_executor->Stop(infra::StopMode::kDiscard);
+            if (failed_alert_executor) {
+                failed_alert_executor->Stop(infra::StopMode::kDiscard);
+            }
             failed_engine->Stop();
             return false;
         }
@@ -481,15 +565,20 @@ struct AiRuntime::State final {
     void StopInference() {
         std::unique_ptr<infra::Executor> stopped_executor;
         std::shared_ptr<AiInferenceEngine> stopped_engine;
+        std::shared_ptr<infra::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
             inference_running = false;
             stopped_executor = std::move(executor);
             stopped_engine = std::move(engine);
+            stopped_alert_executor = std::move(alert_executor);
             stats.backend_available = false;
         }
         if (stopped_executor) {
             stopped_executor->Stop(infra::StopMode::kDiscard);
+        }
+        if (stopped_alert_executor) {
+            stopped_alert_executor->Stop(infra::StopMode::kDiscard);
         }
         if (stopped_engine) {
             stopped_engine->Stop();
@@ -547,10 +636,16 @@ struct AiRuntime::State final {
         }
     }
 
+    uint64_t NextAlertId() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return next_alert_id++;
+    }
+
     AiOptions options;
     AiModelConfig config;
     std::shared_ptr<AiInferenceEngine> engine;
     std::unique_ptr<infra::Executor> executor;
+    std::shared_ptr<infra::Executor> alert_executor;
     AiInferenceResult last_result;
     AiStats stats;
     std::vector<AiAlertRecord> alerts;

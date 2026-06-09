@@ -25,6 +25,7 @@ interface DragState {
   region_index: number;
   start_x: number;
   start_y: number;
+  region_name: string;
 }
 
 interface FrameSize {
@@ -159,6 +160,10 @@ function videoAreaStyle(videoArea: SurfaceRect) {
   };
 }
 
+function regionsSignature(regions: AiPerimeterRegion[]) {
+  return JSON.stringify(regions.map((region, index) => normalizeRegion(region, index)));
+}
+
 export function AiPerimeterEditor({
   status,
   onSaved,
@@ -171,6 +176,10 @@ export function AiPerimeterEditor({
   const [saveMessage, setSaveMessage] = useState('');
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const drawRef = useRef<HTMLDivElement | null>(null);
+  const draftDirtyRef = useRef(false);
+  const lastStatusConfigRef = useRef('');
+  const pendingDragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragFrameRef = useRef(0);
   const [drawLayer, setDrawLayer] = useState<HTMLDivElement | null>(null);
   const {
     config: videoConfig,
@@ -199,15 +208,49 @@ export function AiPerimeterEditor({
     if (!status) {
       return;
     }
-    setActiveStream(status.config.stream);
-    setRegions(
-      status.config.perimeter_regions.map((region, index) =>
-        normalizeRegion(region, index),
-      ),
+    const nextRegions = status.config.perimeter_regions.map((region, index) =>
+      normalizeRegion(region, index),
     );
+    const nextConfigSignature = [
+      status.config.stream,
+      regionsSignature(nextRegions),
+    ].join('|');
+    if (draftDirtyRef.current && lastStatusConfigRef.current !== '') {
+      return;
+    }
+    if (lastStatusConfigRef.current === nextConfigSignature) {
+      return;
+    }
+    lastStatusConfigRef.current = nextConfigSignature;
+    setActiveStream(status.config.stream);
+    setRegions(nextRegions);
     setActiveRegionIndex(0);
     setSaveMessage('');
   }, [status]);
+
+  useEffect(() => () => {
+    if (dragFrameRef.current !== 0) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+    }
+  }, []);
+
+  const markDraftDirty = () => {
+    draftDirtyRef.current = true;
+  };
+
+  const applyDragPoint = useCallback((dragState: DragState, point: { x: number; y: number }) => {
+    setRegions((currentRegions) =>
+      replaceRegionAt(
+        currentRegions,
+        dragState.region_index,
+        regionFromPoints(
+          dragState.region_name,
+          { x: dragState.start_x, y: dragState.start_y },
+          point,
+        ),
+      ),
+    );
+  }, []);
 
   const setDrawLayerRef = useCallback((node: HTMLDivElement | null) => {
     drawRef.current = node;
@@ -264,10 +307,12 @@ export function AiPerimeterEditor({
     }
     const regionIndex = pendingNewRegion ? regions.length : activeRegionIndex;
     const regionName = regions[regionIndex]?.name || `region-${regionIndex + 1}`;
+    markDraftDirty();
     setDrag({
       region_index: regionIndex,
       start_x: point.x,
       start_y: point.y,
+      region_name: regionName,
     });
     setActiveRegionIndex(regionIndex);
     setSaveMessage('');
@@ -289,18 +334,18 @@ export function AiPerimeterEditor({
     if (!point) {
       return;
     }
-    setRegions((currentRegions) => {
-      const regionName =
-        currentRegions[drag.region_index]?.name || `region-${drag.region_index + 1}`;
-      return replaceRegionAt(
-        currentRegions,
-        drag.region_index,
-        regionFromPoints(
-          regionName,
-          { x: drag.start_x, y: drag.start_y },
-          point,
-        ),
-      );
+    pendingDragPointRef.current = point;
+    if (dragFrameRef.current !== 0) {
+      return;
+    }
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = 0;
+      const pendingPoint = pendingDragPointRef.current;
+      pendingDragPointRef.current = null;
+      if (!pendingPoint) {
+        return;
+      }
+      applyDragPoint(drag, pendingPoint);
     });
   };
 
@@ -308,16 +353,26 @@ export function AiPerimeterEditor({
     if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (drag && pendingDragPointRef.current) {
+      applyDragPoint(drag, pendingDragPointRef.current);
+      pendingDragPointRef.current = null;
+    }
+    if (dragFrameRef.current !== 0) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = 0;
+    }
     setDrag(null);
   };
 
   const clearRegions = () => {
+    markDraftDirty();
     setRegions([]);
     setActiveRegionIndex(0);
     setSaveMessage('');
   };
 
   const deleteRegion = (index: number) => {
+    markDraftDirty();
     const nextRegions = regions.filter((_, itemIndex) => itemIndex !== index);
     setRegions(nextRegions);
     setActiveRegionIndex((currentIndex) =>
@@ -332,14 +387,21 @@ export function AiPerimeterEditor({
     }
     setSaving(true);
     setSaveMessage('');
+    const normalizedRegions = regions.map((region, index) => normalizeRegion(region, index));
     const nextConfig = {
       ...status.config,
       stream: activeStream,
-      perimeter_regions: regions.map((region, index) => normalizeRegion(region, index)),
+      perimeter_regions: normalizedRegions,
     };
     void saveAiConfig(nextConfig)
       .then(onSaved)
       .then(() => {
+        draftDirtyRef.current = false;
+        lastStatusConfigRef.current = [
+          activeStream,
+          regionsSignature(normalizedRegions),
+        ].join('|');
+        setRegions(normalizedRegions);
         setSaveMessage(
           status.config.task === 'perimeter_detection'
             ? '已保存并应用'
@@ -414,6 +476,7 @@ export function AiPerimeterEditor({
             statuses={statuses}
             playbackUrls={playbackUrls}
             onStreamChange={(nextStream) => {
+              markDraftDirty();
               setActiveStream(nextStream);
               setSaveMessage('');
             }}
@@ -472,6 +535,7 @@ export function AiPerimeterEditor({
             <button
               type="button"
               onClick={() => {
+                markDraftDirty();
                 setActiveRegionIndex(regions.length);
                 setSaveMessage('');
               }}
