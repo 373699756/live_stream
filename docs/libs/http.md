@@ -111,6 +111,11 @@ diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 积压和媒体 attach 卡住的连接。HLS playlist/segment 是短 HTTP 响应，不作为活跃
 session 常驻展示。
 
+`/api/system/time/status` 返回设备时间、时区、NTP 配置、`manual_sync_allowed`、
+`browser_sync_on_login`、最近同步来源和最近同步结果。`POST
+/api/system/time/browser-time` 使用浏览器提交的 Unix 毫秒时间执行一次浏览器校时；
+`PUT /api/system/time/browser-sync` 保存手动/浏览器校时允许状态和登录后浏览器校时开关。
+
 ## 状态与资源模型
 
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP

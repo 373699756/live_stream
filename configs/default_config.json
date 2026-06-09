@@ -160,7 +160,8 @@
       ],
       "sync_interval_sec": 3600
     },
-    "manual_sync_allowed": true
+    "manual_sync_allowed": true,
+    "browser_sync_on_login": true
   },
   "overlay": {
     "enabled": true,

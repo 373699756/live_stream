@@ -187,3 +187,11 @@ factory `admin/admin` login is allowed only as an initial setup path when
 `POST /api/auth/change-password` before showing the management console.
 RTSP and ONVIF authentication reject the factory password until that password
 change succeeds.
+
+The system maintenance time page consumes `/api/system/time/status`,
+`/api/system/time/timezone`, `/api/system/time/ntp`,
+`/api/system/time/browser-sync`, `/api/system/time/browser-time`, and
+`/api/system/time/sync`. After an explicit account/password login succeeds,
+the Web UI reads time status and, when `browser_sync_on_login` and
+`manual_sync_allowed` are both true, submits the browser's current Unix
+millisecond time once. Browser time sync failure does not invalidate login.

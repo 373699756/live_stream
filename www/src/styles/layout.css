@@ -347,6 +347,55 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.time-config-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.time-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.time-status-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.time-status-row div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+  background: #fafbfe;
+}
+
+.time-status-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.time-status-row strong {
+  min-width: 0;
+  color: #243044;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.time-server-field {
+  grid-column: 1 / -1;
+}
+
+.time-server-field textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+}
+
 .stream-info-grid {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
@@ -905,6 +954,7 @@
   .overlay-grid,
   .system-grid,
   .system-overview-grid,
+  .time-config-grid,
   .stream-info-grid,
   .ai-page-grid {
     grid-template-columns: 1fr;
@@ -925,6 +975,7 @@
 
   .module-summary-row,
   .module-group-grid,
+  .time-status-row,
   .stream-runtime-cards,
   .stream-protocol-grid,
   .stream-session-groups {
@@ -942,8 +993,13 @@
 @media (max-width: 720px) {
   .stream-runtime-cards,
   .stream-protocol-grid,
-  .stream-session-groups {
+  .stream-session-groups,
+  .time-status-row {
     grid-template-columns: 1fr;
+  }
+
+  .time-action-row {
+    justify-content: flex-start;
   }
 
   .stream-runtime-card dl {

@@ -250,6 +250,12 @@ public:
     return true;
   }
 
+  bool UpdateBrowserSyncConfig(const live_stream::RequestContext&,
+                               bool,
+                               bool) override {
+    return true;
+  }
+
   live_stream::TimeStatus status;
   live_stream::RequestContext last_context;
   live_stream::TimeSyncSource last_source = live_stream::TimeSyncSource::kManual;

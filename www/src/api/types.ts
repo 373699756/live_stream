@@ -527,6 +527,30 @@ export interface SystemStatus {
   modules: Array<{ name: string; state: 'running' | 'pending' | 'error' }>;
 }
 
+export type TimeSyncSource = 'manual' | 'onvif' | 'ntp' | 'browser' | 'unknown';
+
+export interface NtpConfig {
+  enabled: boolean;
+  servers: string[];
+  sync_interval_sec: number;
+}
+
+export interface TimeStatus {
+  system_time_ms: number;
+  timezone: string;
+  ntp: NtpConfig;
+  manual_sync_allowed: boolean;
+  browser_sync_on_login: boolean;
+  last_sync_source: TimeSyncSource;
+  last_sync_time_ms: number;
+  last_sync_ok: boolean;
+}
+
+export interface BrowserSyncConfig {
+  manual_sync_allowed: boolean;
+  browser_sync_on_login: boolean;
+}
+
 export type OperationAction =
   | 'Login'
   | 'Logout'

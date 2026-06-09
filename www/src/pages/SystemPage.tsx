@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useSystemStatus } from '../hooks/useSystemStatus';
+import { useTimeConfig } from '../hooks/useTimeConfig';
 import { useUpgrade } from '../hooks/useUpgrade';
 import {
   DeviceInfoPanel,
   ModuleStatusPanel,
   SystemStatusPanel,
 } from './SystemStatusPanels';
+import { TimeConfigPanel } from './TimeConfigPanel';
 import { UpgradePanel } from './UpgradePanel';
 
-type SystemMaintenanceTab = 'overview' | 'modules' | 'upgrade';
+type SystemMaintenanceTab = 'overview' | 'modules' | 'time' | 'upgrade';
 
 const systemMaintenanceTabs: Array<{
   key: SystemMaintenanceTab;
@@ -16,6 +18,7 @@ const systemMaintenanceTabs: Array<{
 }> = [
   { key: 'overview', label: '系统概览' },
   { key: 'modules', label: '模块状态' },
+  { key: 'time', label: '时间同步' },
   { key: 'upgrade', label: '固件升级' },
 ];
 
@@ -26,6 +29,7 @@ export function SystemPage() {
     status,
     refreshError: systemRefreshError,
   } = useSystemStatus();
+  const timeConfig = useTimeConfig();
   const {
     upgradeStatus,
     packageInfo,
@@ -92,6 +96,38 @@ export function SystemPage() {
             {systemRefreshError
               ? `模块状态加载失败：${systemRefreshError}`
               : '加载模块状态...'}
+          </div>
+        )
+      ) : null}
+
+      {activeTab === 'time' ? (
+        timeConfig.status ? (
+          <TimeConfigPanel
+            browserSyncOnLogin={timeConfig.browserSyncOnLogin}
+            busy={timeConfig.busy}
+            error={timeConfig.error}
+            manualSyncAllowed={timeConfig.manualSyncAllowed}
+            message={timeConfig.message}
+            ntpEnabled={timeConfig.ntpEnabled}
+            ntpIntervalSec={timeConfig.ntpIntervalSec}
+            ntpServersText={timeConfig.ntpServersText}
+            saveConfig={timeConfig.saveConfig}
+            setBrowserSyncOnLogin={timeConfig.setBrowserSyncOnLogin}
+            setManualSyncAllowed={timeConfig.setManualSyncAllowed}
+            setNtpEnabled={timeConfig.setNtpEnabled}
+            setNtpIntervalSec={timeConfig.setNtpIntervalSec}
+            setNtpServersText={timeConfig.setNtpServersText}
+            setTimezone={timeConfig.setTimezone}
+            status={timeConfig.status}
+            syncBrowserNow={timeConfig.syncBrowserNow}
+            syncNtp={timeConfig.syncNtp}
+            timezone={timeConfig.timezone}
+          />
+        ) : (
+          <div className="panel">
+            {timeConfig.error
+              ? `时间状态加载失败：${timeConfig.error}`
+              : '加载时间状态...'}
           </div>
         )
       ) : null}

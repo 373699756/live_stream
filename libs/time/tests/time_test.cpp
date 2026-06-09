@@ -119,6 +119,10 @@ int main() {
           live_stream::TimeSyncSource::kNtp)) != "ntp") {
     return 1;
   }
+  if (std::string(live_stream::TimeSyncSourceToString(
+          live_stream::TimeSyncSource::kBrowser)) != "browser") {
+    return 17;
+  }
 
   live_stream::TimeOptions lifecycle_options;
   lifecycle_options.default_timezone = "UTC";
@@ -179,6 +183,36 @@ int main() {
       logger.last_record.result !=
           live_stream::OperationResult::kSuccess) {
     return 10;
+  }
+
+  if (!service->SetSystemTime(context, 3500,
+                              live_stream::TimeSyncSource::kBrowser) ||
+      platform.now_ms != 3500 ||
+      service->GetTimeStatus().last_sync_source !=
+          live_stream::TimeSyncSource::kBrowser) {
+    return 18;
+  }
+
+  if (!service->UpdateBrowserSyncConfig(context, true, false) ||
+      !service->GetTimeStatus().manual_sync_allowed ||
+      service->GetTimeStatus().browser_sync_on_login) {
+    return 19;
+  }
+
+  if (!service->SetSystemTime(context, 3600,
+                              live_stream::TimeSyncSource::kBrowser) ||
+      platform.now_ms != 3600) {
+    return 20;
+  }
+
+  if (!service->UpdateBrowserSyncConfig(context, false, false) ||
+      service->SetSystemTime(context, 3700,
+                             live_stream::TimeSyncSource::kBrowser)) {
+    return 21;
+  }
+
+  if (!service->UpdateBrowserSyncConfig(context, true, true)) {
+    return 22;
   }
 
   if (!service->SyncNow(context, live_stream::TimeSyncSource::kNtp) ||

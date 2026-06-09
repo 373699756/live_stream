@@ -22,7 +22,7 @@ flowchart LR
 
 ## 核心职责
 
-- 加载和应用时间/NTP 配置。
+- 加载和应用时间/NTP/浏览器登录校时配置。
 - 提供时间状态查询。
 - 发布 `kTimeChanged` 并记录运维操作。
 
@@ -32,8 +32,13 @@ public API 在 `time.h`。前端只消费 HTTP 返回值，不负责设备时间
 
 ## 状态与资源模型
 
-时间配置来自 `time` scope，平台应用通过 `ITimePlatform` 完成。NTP 配置、时区和手动
-校时会影响日志时间、认证过期和媒体时间戳相关展示，变更时必须发布 `kTimeChanged`。
+时间配置来自 `time` scope，平台应用通过 `ITimePlatform` 完成。NTP 配置、时区、
+手动校时和浏览器校时会影响日志时间、认证过期和媒体时间戳相关展示，变更时必须发布
+`kTimeChanged`。
+
+`browser_sync_on_login` 控制 Web 账号密码登录成功后是否使用浏览器当前 Unix
+毫秒时间同步一次设备时间，默认开启；已有配置缺字段时按开启处理。`manual_sync_allowed`
+同时约束手动系统时间设置和浏览器时间设置。
 
 ## 非目标
 

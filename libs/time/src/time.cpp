@@ -21,6 +21,7 @@ struct TimeConfigState {
     std::string timezone = "UTC";
     NtpConfig ntp;
     bool manual_sync_allowed = true;
+    bool browser_sync_on_login = true;
 };
 
 bool IsNtpConfigValid(const NtpConfig &config) {
@@ -47,9 +48,17 @@ bool LoadTimeConfig(const ConfigJson &value, TimeConfigState *config) {
     }
     TimeConfigState parsed;
     if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
-        !json_utils::ReadField(value, "manual_sync_allowed",
-                          &parsed.manual_sync_allowed) ||
         !value.contains("ntp") || !value.at("ntp").is_object()) {
+        return false;
+    }
+    if (value.contains("manual_sync_allowed") &&
+        !json_utils::ReadField(value, "manual_sync_allowed",
+                               &parsed.manual_sync_allowed)) {
+        return false;
+    }
+    if (value.contains("browser_sync_on_login") &&
+        !json_utils::ReadField(value, "browser_sync_on_login",
+                               &parsed.browser_sync_on_login)) {
         return false;
     }
     const ConfigJson &ntp = value.at("ntp");
@@ -71,6 +80,7 @@ ConfigJson BuildTimeConfig(const ConfigJson &current,
     ConfigJson root = current.is_object() ? current : ConfigJson::object();
     root["timezone"] = config.timezone;
     root["manual_sync_allowed"] = config.manual_sync_allowed;
+    root["browser_sync_on_login"] = config.browser_sync_on_login;
     ConfigJson ntp = ConfigJson::object();
     ntp["enabled"] = config.ntp.enabled;
     ConfigJson servers = ConfigJson::array();
@@ -96,6 +106,7 @@ public:
         loaded_config.timezone = status_.timezone;
         loaded_config.ntp = status_.ntp;
         loaded_config.manual_sync_allowed = manual_sync_allowed_;
+        loaded_config.browser_sync_on_login = browser_sync_on_login_;
         ConfigJson loaded_json = ConfigJson::object();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -130,7 +141,10 @@ public:
         }
         status_.timezone = loaded_config.timezone;
         status_.ntp = loaded_config.ntp;
+        status_.manual_sync_allowed = loaded_config.manual_sync_allowed;
+        status_.browser_sync_on_login = loaded_config.browser_sync_on_login;
         manual_sync_allowed_ = loaded_config.manual_sync_allowed;
+        browser_sync_on_login_ = loaded_config.browser_sync_on_login;
         time_config_json_ = loaded_json;
         if (options_.config != nullptr && !config_attached_) {
             ConfigAttachment attachment;
@@ -218,14 +232,17 @@ public:
         }
         NtpConfig ntp;
         bool manual_sync_allowed = true;
+        bool browser_sync_on_login = true;
         ConfigJson current_json = ConfigJson::object();
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ntp = status_.ntp;
             manual_sync_allowed = manual_sync_allowed_;
+            browser_sync_on_login = browser_sync_on_login_;
             current_json = time_config_json_;
         }
-        if (!PersistConfig(current_json, timezone, ntp, manual_sync_allowed)) {
+        if (!PersistConfig(current_json, timezone, ntp, manual_sync_allowed,
+                           browser_sync_on_login)) {
             return false;
         }
         {
@@ -233,7 +250,9 @@ public:
             status_.timezone = timezone;
             time_config_json_ = BuildTimeConfig(
                 time_config_json_,
-                TimeConfigState{status_.timezone, status_.ntp, manual_sync_allowed_});
+                TimeConfigState{status_.timezone, status_.ntp,
+                                manual_sync_allowed_,
+                                browser_sync_on_login_});
         }
         PublishTimeChanged("timezone");
         RecordAudit(context, true, "timezone");
@@ -249,6 +268,12 @@ public:
             return false;
         }
         if (source == TimeSyncSource::kManual) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!manual_sync_allowed_) {
+                return false;
+            }
+        }
+        if (source == TimeSyncSource::kBrowser) {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!manual_sync_allowed_) {
                 return false;
@@ -315,15 +340,18 @@ public:
             return false;
         }
         bool manual_sync_allowed = true;
+        bool browser_sync_on_login = true;
         std::string timezone;
         ConfigJson current_json = ConfigJson::object();
         {
             std::lock_guard<std::mutex> lock(mutex_);
             timezone = status_.timezone;
             manual_sync_allowed = manual_sync_allowed_;
+            browser_sync_on_login = browser_sync_on_login_;
             current_json = time_config_json_;
         }
-        if (!PersistConfig(current_json, timezone, config, manual_sync_allowed)) {
+        if (!PersistConfig(current_json, timezone, config, manual_sync_allowed,
+                           browser_sync_on_login)) {
             return false;
         }
         {
@@ -334,9 +362,48 @@ public:
                                                        status_.timezone,
                                                        status_.ntp,
                                                        manual_sync_allowed_,
+                                                       browser_sync_on_login_,
                                                    });
         }
         RecordAudit(context, true, "ntp_config");
+        return true;
+    }
+
+    bool UpdateBrowserSyncConfig(const live_stream::RequestContext &context,
+                                 bool manual_sync_allowed,
+                                 bool browser_sync_on_login) override {
+        if (!IsStarted()) {
+            return false;
+        }
+        NtpConfig ntp;
+        std::string timezone;
+        ConfigJson current_json = ConfigJson::object();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            timezone = status_.timezone;
+            ntp = status_.ntp;
+            current_json = time_config_json_;
+        }
+        if (!PersistConfig(current_json, timezone, ntp, manual_sync_allowed,
+                           browser_sync_on_login)) {
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            manual_sync_allowed_ = manual_sync_allowed;
+            browser_sync_on_login_ = browser_sync_on_login;
+            status_.manual_sync_allowed = manual_sync_allowed_;
+            status_.browser_sync_on_login = browser_sync_on_login_;
+            time_config_json_ =
+                BuildTimeConfig(time_config_json_, TimeConfigState{
+                                                       status_.timezone,
+                                                       status_.ntp,
+                                                       manual_sync_allowed_,
+                                                       browser_sync_on_login_,
+                                                   });
+        }
+        PublishTimeChanged("browser_sync_config");
+        RecordAudit(context, true, "browser_sync_config");
         return true;
     }
 
@@ -367,7 +434,10 @@ private:
             }
             status_.timezone = config.timezone;
             status_.ntp = config.ntp;
+            status_.manual_sync_allowed = config.manual_sync_allowed;
+            status_.browser_sync_on_login = config.browser_sync_on_login;
             manual_sync_allowed_ = config.manual_sync_allowed;
+            browser_sync_on_login_ = config.browser_sync_on_login;
             time_config_json_ = value;
         }
         PublishTimeChanged("config");
@@ -376,7 +446,8 @@ private:
 
     bool PersistConfig(const ConfigJson &current_json,
                        const std::string &timezone, const NtpConfig &ntp,
-                       bool manual_sync_allowed) {
+                       bool manual_sync_allowed,
+                       bool browser_sync_on_login) {
         if (options_.config == nullptr) {
             return true;
         }
@@ -384,6 +455,7 @@ private:
         config.timezone = timezone;
         config.ntp = ntp;
         config.manual_sync_allowed = manual_sync_allowed;
+        config.browser_sync_on_login = browser_sync_on_login;
         const ConfigJson next_json = BuildTimeConfig(current_json, config);
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -445,6 +517,7 @@ private:
     ConfigJson time_config_json_ = ConfigJson::object();
     mutable std::mutex mutex_;
     bool manual_sync_allowed_ = true;
+    bool browser_sync_on_login_ = true;
     bool config_attached_ = false;
     bool suppress_config_apply_ = false;
     bool initialized_ = false;
@@ -466,6 +539,8 @@ const char *TimeSyncSourceToString(TimeSyncSource source) {
             return "onvif";
         case TimeSyncSource::kNtp:
             return "ntp";
+        case TimeSyncSource::kBrowser:
+            return "browser";
     }
     return "unknown";
 }

@@ -9,6 +9,7 @@ import {
   onAuthInvalid,
   onMustChangePassword,
 } from '../api/authSession';
+import { getTimeStatus, syncBrowserTime } from '../api/time';
 import type { AuthPrincipal } from '../api/types';
 
 interface AuthContextValue {
@@ -67,6 +68,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthenticated(true);
       setMustChangePassword(state.mustChangePassword);
       setPrincipal(state.principal);
+      void getTimeStatus()
+        .then((status) => {
+          if (status.browser_sync_on_login && status.manual_sync_allowed) {
+            return syncBrowserTime();
+          }
+          return undefined;
+        })
+        .catch(() => {
+          // 浏览器校时失败不能阻断登录，系统维护页仍可手动重试。
+        });
     }
     return { ok: state.authenticated, error: state.error };
   }, []);

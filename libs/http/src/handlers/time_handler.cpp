@@ -44,6 +44,8 @@ ConfigJson TimeStatusToJson(const TimeStatus &status) {
     root["system_time_ms"] = status.system_time_ms;
     root["timezone"] = status.timezone;
     root["ntp"] = NtpConfigToJson(status.ntp);
+    root["manual_sync_allowed"] = status.manual_sync_allowed;
+    root["browser_sync_on_login"] = status.browser_sync_on_login;
     root["last_sync_source"] = TimeSyncSourceToString(status.last_sync_source);
     root["last_sync_time_ms"] = status.last_sync_time_ms;
     root["last_sync_ok"] = status.last_sync_ok;
@@ -78,6 +80,12 @@ public:
         router->AddExactRoute(HttpMethod::kPost,
                               "/api/system/time/system-time",
                               &TimeHttpHandler::HandleSystemTimeRoute, this);
+        router->AddExactRoute(HttpMethod::kPost,
+                              "/api/system/time/browser-time",
+                              &TimeHttpHandler::HandleBrowserTimeRoute, this);
+        router->AddExactRoute(HttpMethod::kPut,
+                              "/api/system/time/browser-sync",
+                              &TimeHttpHandler::HandleBrowserSyncRoute, this);
         router->AddExactRoute(HttpMethod::kPost, "/api/system/time/sync",
                               &TimeHttpHandler::HandleSyncRoute, this);
     }
@@ -106,6 +114,16 @@ private:
     static HttpResponse HandleSyncRoute(void *user,
                                         const HttpRequest &request) {
         return static_cast<TimeHttpHandler *>(user)->HandleSync(request);
+    }
+
+    static HttpResponse HandleBrowserTimeRoute(void *user,
+                                               const HttpRequest &request) {
+        return static_cast<TimeHttpHandler *>(user)->HandleBrowserTime(request);
+    }
+
+    static HttpResponse HandleBrowserSyncRoute(void *user,
+                                               const HttpRequest &request) {
+        return static_cast<TimeHttpHandler *>(user)->HandleBrowserSync(request);
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
@@ -198,6 +216,64 @@ private:
                                        system_time_ms, TimeSyncSource::kManual)
                    ? OkResponse()
                    : StatusResponse(503, "Could not set system time");
+    }
+
+    HttpResponse HandleBrowserTime(const HttpRequest &request) {
+        ITime *time = time_;
+        if (time == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!RequireTimePermission(access_, request,
+                                   AuthPermission::kModifyConfig,
+                                   &principal)) {
+            return ForbiddenResponse(principal);
+        }
+        ConfigJson body;
+        if (!ParseJsonObject(request, &body)) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+        int64_t system_time_ms = 0;
+        if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
+                              std::numeric_limits<int64_t>::max())) {
+            return StatusResponse(400, "Invalid time request");
+        }
+        return time
+                       ->SetSystemTime(access_->MakeContext(request, &principal),
+                                       system_time_ms, TimeSyncSource::kBrowser)
+                   ? OkResponse()
+                   : StatusResponse(503, "Could not sync browser time");
+    }
+
+    HttpResponse HandleBrowserSync(const HttpRequest &request) {
+        ITime *time = time_;
+        if (time == nullptr) {
+            return StatusResponse(501, "Not Implemented");
+        }
+        AuthPrincipal principal;
+        if (!RequireTimePermission(access_, request,
+                                   AuthPermission::kModifyConfig,
+                                   &principal)) {
+            return ForbiddenResponse(principal);
+        }
+        ConfigJson body;
+        if (!ParseJsonObject(request, &body)) {
+            return StatusResponse(400, "Invalid JSON");
+        }
+        bool manual_sync_allowed = true;
+        bool browser_sync_on_login = true;
+        if (!json_utils::ReadField(body, "manual_sync_allowed",
+                              &manual_sync_allowed) ||
+            !json_utils::ReadField(body, "browser_sync_on_login",
+                              &browser_sync_on_login)) {
+            return StatusResponse(400, "Invalid browser sync config");
+        }
+        return time
+                       ->UpdateBrowserSyncConfig(
+                           access_->MakeContext(request, &principal),
+                           manual_sync_allowed, browser_sync_on_login)
+                   ? OkResponse()
+                   : StatusResponse(400, "Could not update browser sync config");
     }
 
     HttpResponse HandleSync(const HttpRequest &request) {
