@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAlarmConfig, getAlarmStatus } from '../api/alarm';
 import { getAiAlerts, getAiStatus } from '../api/ai';
 import { openMediaEvents, type MediaEvent } from '../api/mediaEvents';
@@ -30,8 +30,20 @@ export function useAiAlerts(): AiAlertsState {
   const [alerts, setAlerts] = useState<AiAlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshRequestIdRef = useRef(0);
+
+  const abortRefresh = useCallback(() => {
+    refreshAbortRef.current?.abort();
+    refreshAbortRef.current = null;
+    refreshRequestIdRef.current += 1;
+  }, []);
 
   const refresh = useCallback(async () => {
+    abortRefresh();
+    const requestId = refreshRequestIdRef.current;
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
@@ -41,37 +53,57 @@ export function useAiAlerts(): AiAlertsState {
         nextAlarmConfig,
         nextAlarmStatus,
       ] = await Promise.all([
-        getAiStatus(),
-        getAiAlerts(),
-        getAlarmConfig(),
-        getAlarmStatus(),
+        getAiStatus({ signal: controller.signal }),
+        getAiAlerts({ signal: controller.signal }),
+        getAlarmConfig({ signal: controller.signal }),
+        getAlarmStatus({ signal: controller.signal }),
       ]);
+      if (
+        controller.signal.aborted ||
+        refreshRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
       setStatus(nextStatus);
       setAlerts(nextAlerts.items);
       setAlarmConfig(nextAlarmConfig);
       setAlarmStatus(nextAlarmStatus);
     } catch (err) {
+      if (
+        controller.signal.aborted ||
+        refreshRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
       setError(err instanceof Error ? err.message : '加载 AI 告警失败');
     } finally {
-      setLoading(false);
+      if (refreshRequestIdRef.current === requestId) {
+        refreshAbortRef.current = null;
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [abortRefresh]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    return abortRefresh;
+  }, [abortRefresh, refresh]);
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') {
       return undefined;
     }
     let refreshTimer: number | undefined;
+    let alarmStatusController: AbortController | null = null;
+    let alertListController: AbortController | null = null;
     const eventSource = openMediaEvents((event) => {
       if (event.type !== 'alarm_triggered' || event.target !== 'ai_detection') {
         return;
       }
       setLastAlarmEvent(event);
-      void getAlarmStatus()
+      alarmStatusController?.abort();
+      alarmStatusController = new AbortController();
+      void getAlarmStatus({ signal: alarmStatusController.signal })
         .then(setAlarmStatus)
         .catch(() => {
           // The periodic/manual refresh path will surface persistent failures.
@@ -80,7 +112,9 @@ export function useAiAlerts(): AiAlertsState {
         window.clearTimeout(refreshTimer);
       }
       refreshTimer = window.setTimeout(() => {
-        void getAiAlerts()
+        alertListController?.abort();
+        alertListController = new AbortController();
+        void getAiAlerts({ signal: alertListController.signal })
           .then((nextAlerts) => setAlerts(nextAlerts.items))
           .catch(() => {
             // Alarm status is the primary event signal; manual refresh covers
@@ -92,6 +126,8 @@ export function useAiAlerts(): AiAlertsState {
       if (refreshTimer !== undefined) {
         window.clearTimeout(refreshTimer);
       }
+      alarmStatusController?.abort();
+      alertListController?.abort();
       eventSource.close();
     };
   }, []);

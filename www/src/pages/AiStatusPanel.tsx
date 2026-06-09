@@ -6,8 +6,8 @@ import type {
   AiStatus,
 } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
+import { AiMetricsPanel } from '../features/ai-alerts/AiMetricsPanel';
 import { AiConfigForm } from './AiConfigForm';
-import { AiMetricsPanel } from './AiMetricsPanel';
 
 function taskLabel(task: AiAlertRecord['task']) {
   switch (task) {

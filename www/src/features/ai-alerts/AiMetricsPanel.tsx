@@ -1,4 +1,4 @@
-import type { AiStatus } from '../api/types';
+import type { AiStatus } from '../../api/types';
 
 function metricValue(value: number) {
   return Number.isFinite(value) ? String(value) : '-';

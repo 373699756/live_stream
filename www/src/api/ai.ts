@@ -12,8 +12,8 @@ export function getAiStatus(init?: ApiRequestOptions): Promise<AiStatus> {
   );
 }
 
-export function getAiAlerts(): Promise<AiAlertList> {
-  return requestJson<AiAlertList>('/api/ai/alerts', mockAiAlerts);
+export function getAiAlerts(init?: ApiRequestOptions): Promise<AiAlertList> {
+  return requestJson<AiAlertList>('/api/ai/alerts', mockAiAlerts, init);
 }
 
 export function saveAiConfig(value: AiModelConfig): Promise<void> {

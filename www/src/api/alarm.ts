@@ -1,4 +1,4 @@
-import { requestJson, putJson } from './client';
+import { requestJson, putJson, type ApiRequestOptions } from './client';
 import { mockAlarmConfig, mockAlarmStatus } from './mockAlarm';
 import type {
   AlarmConfig,
@@ -8,16 +8,21 @@ import type {
   AlarmRuleConfig,
 } from './types';
 
-export function getAlarmConfig(): Promise<AlarmConfig> {
-  return requestJson<AlarmConfig>('/api/config/alarm', mockAlarmConfig).then(
-    normalizeAlarmConfig,
-  );
+export function getAlarmConfig(init?: ApiRequestOptions): Promise<AlarmConfig> {
+  return requestJson<AlarmConfig>(
+    '/api/config/alarm',
+    mockAlarmConfig,
+    init,
+  ).then(normalizeAlarmConfig);
 }
 
-export function getAlarmStatus(): Promise<AlarmStatusResponse> {
+export function getAlarmStatus(
+  init?: ApiRequestOptions,
+): Promise<AlarmStatusResponse> {
   return requestJson<AlarmStatusResponse>(
     '/api/alarm/status',
     mockAlarmStatus,
+    init,
   ).then(normalizeAlarmStatusResponse);
 }
 

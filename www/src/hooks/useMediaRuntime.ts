@@ -41,6 +41,10 @@ function requestErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 export function useMediaRuntime({
   selectedStream,
   playbackStreams,
@@ -71,6 +75,9 @@ export function useMediaRuntime({
   const mountedRef = useRef(true);
   const statusRequestRef = useRef<Promise<void> | null>(null);
   const sessionRequestRef = useRef<Promise<void> | null>(null);
+  const statusAbortRef = useRef<AbortController | null>(null);
+  const sessionAbortRef = useRef<AbortController | null>(null);
+  const playbackUrlAbortRef = useRef<AbortController | null>(null);
   const playbackUrlRequestIdRef = useRef(0);
 
   const setRuntimeError = useCallback((
@@ -88,13 +95,36 @@ export function useMediaRuntime({
     });
   }, []);
 
+  const abortStatusRequest = useCallback(() => {
+    statusAbortRef.current?.abort();
+    statusAbortRef.current = null;
+    statusRequestRef.current = null;
+  }, []);
+
+  const abortSessionRequest = useCallback(() => {
+    sessionAbortRef.current?.abort();
+    sessionAbortRef.current = null;
+    sessionRequestRef.current = null;
+  }, []);
+
+  const abortPlaybackUrlRequest = useCallback(() => {
+    playbackUrlAbortRef.current?.abort();
+    playbackUrlAbortRef.current = null;
+    playbackUrlRequestIdRef.current += 1;
+  }, []);
+
   const refreshStatuses = useCallback(() => {
     if (statusRequestRef.current) {
       return statusRequestRef.current;
     }
-    const request = getMediaStreams({ timeoutMs: statusTimeoutMs })
+    const controller = new AbortController();
+    statusAbortRef.current = controller;
+    const request = getMediaStreams({
+      signal: controller.signal,
+      timeoutMs: statusTimeoutMs,
+    })
       .then((nextStatuses) => {
-        if (!mountedRef.current) {
+        if (!mountedRef.current || controller.signal.aborted) {
           return;
         }
         setStatuses(Array.isArray(nextStatuses) ? nextStatuses : []);
@@ -102,7 +132,10 @@ export function useMediaRuntime({
         setRuntimeError('statuses', '');
       })
       .catch((error: unknown) => {
-        if (mountedRef.current) {
+        if (isAbortError(error)) {
+          return;
+        }
+        if (mountedRef.current && !controller.signal.aborted) {
           setRuntimeError(
             'statuses',
             requestErrorMessage(error, statusErrorMessage),
@@ -112,6 +145,7 @@ export function useMediaRuntime({
       .finally(() => {
         if (statusRequestRef.current === request) {
           statusRequestRef.current = null;
+          statusAbortRef.current = null;
         }
       });
     statusRequestRef.current = request;
@@ -125,16 +159,24 @@ export function useMediaRuntime({
     if (sessionRequestRef.current) {
       return sessionRequestRef.current;
     }
-    const request = getMediaSessions({ timeoutMs: sessionTimeoutMs })
+    const controller = new AbortController();
+    sessionAbortRef.current = controller;
+    const request = getMediaSessions({
+      signal: controller.signal,
+      timeoutMs: sessionTimeoutMs,
+    })
       .then((nextSessions) => {
-        if (!mountedRef.current) {
+        if (!mountedRef.current || controller.signal.aborted) {
           return;
         }
         setSessions(Array.isArray(nextSessions) ? nextSessions : []);
         setRuntimeError('sessions', '');
       })
       .catch((error: unknown) => {
-        if (mountedRef.current) {
+        if (isAbortError(error)) {
+          return;
+        }
+        if (mountedRef.current && !controller.signal.aborted) {
           setRuntimeError(
             'sessions',
             requestErrorMessage(error, sessionErrorMessage),
@@ -144,6 +186,7 @@ export function useMediaRuntime({
       .finally(() => {
         if (sessionRequestRef.current === request) {
           sessionRequestRef.current = null;
+          sessionAbortRef.current = null;
         }
       });
     sessionRequestRef.current = request;
@@ -156,10 +199,14 @@ export function useMediaRuntime({
   ]);
 
   const refreshPlaybackUrls = useCallback(() => {
+    playbackUrlAbortRef.current?.abort();
+    const controller = new AbortController();
+    playbackUrlAbortRef.current = controller;
     playbackUrlRequestIdRef.current += 1;
     const requestId = playbackUrlRequestIdRef.current;
     const streamsToLoad = requestedPlaybackStreams;
     if (streamsToLoad.length === 0) {
+      playbackUrlAbortRef.current = null;
       setUrlsByStream({});
       setRuntimeError('playbackUrls', '');
       return Promise.resolve();
@@ -168,12 +215,17 @@ export function useMediaRuntime({
       streamsToLoad.map(async (stream) => ({
         stream,
         urls: await getMediaPlaybackUrls(stream, {
+          signal: controller.signal,
           timeoutMs: playbackUrlTimeoutMs,
         }),
       })),
     )
       .then((entries) => {
-        if (!mountedRef.current || playbackUrlRequestIdRef.current !== requestId) {
+        if (
+          !mountedRef.current ||
+          controller.signal.aborted ||
+          playbackUrlRequestIdRef.current !== requestId
+        ) {
           return;
         }
         setUrlsByStream((current) => {
@@ -186,7 +238,14 @@ export function useMediaRuntime({
         setRuntimeError('playbackUrls', '');
       })
       .catch((error: unknown) => {
-        if (!mountedRef.current || playbackUrlRequestIdRef.current !== requestId) {
+        if (isAbortError(error)) {
+          return;
+        }
+        if (
+          !mountedRef.current ||
+          controller.signal.aborted ||
+          playbackUrlRequestIdRef.current !== requestId
+        ) {
           return;
         }
         setUrlsByStream((current) => {
@@ -200,6 +259,11 @@ export function useMediaRuntime({
           'playbackUrls',
           requestErrorMessage(error, playbackUrlErrorMessage),
         );
+      })
+      .finally(() => {
+        if (playbackUrlRequestIdRef.current === requestId) {
+          playbackUrlAbortRef.current = null;
+        }
       });
   }, [
     playbackStreamKey,
@@ -228,8 +292,15 @@ export function useMediaRuntime({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      abortStatusRequest();
+      abortSessionRequest();
+      abortPlaybackUrlRequest();
     };
-  }, []);
+  }, [
+    abortPlaybackUrlRequest,
+    abortSessionRequest,
+    abortStatusRequest,
+  ]);
 
   useEffect(() => {
     if (requestedPlaybackStreams.length > 0) {
@@ -246,7 +317,8 @@ export function useMediaRuntime({
       });
     }
     void refreshPlaybackUrls();
-  }, [refreshPlaybackUrls]);
+    return abortPlaybackUrlRequest;
+  }, [abortPlaybackUrlRequest, refreshPlaybackUrls]);
 
   useEffect(() => {
     let fastRefreshes = 0;
@@ -286,8 +358,12 @@ export function useMediaRuntime({
       if (steadyTimer !== 0) {
         window.clearInterval(steadyTimer);
       }
+      abortStatusRequest();
+      abortSessionRequest();
     };
   }, [
+    abortSessionRequest,
+    abortStatusRequest,
     fastRefreshCount,
     fastRefreshIntervalMs,
     refreshIntervalMs,
