@@ -5,6 +5,8 @@ interface Window {
       destroy: () => void;
       loadSource: (url: string) => void;
       on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      recoverMediaError?: () => void;
+      startLoad?: (startPosition?: number) => void;
     };
     isSupported?: () => boolean;
     Events?: Record<string, string>;
