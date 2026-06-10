@@ -75,7 +75,7 @@ MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
 MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
                                   uint64_t sequence);
 MediaFlvStartData BuildFlvStartData(const StreamContext &stream);
-MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream);
+MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, Codec codec,
                  MediaStreamResetReason reason);

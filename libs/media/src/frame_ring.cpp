@@ -66,7 +66,8 @@ FrameSubscriptionInfo FrameRing::GetReaderStatus(
 }
 
 FrameSubscriptionStartData FrameRing::GetStartData(
-    FrameSubscriptionId reader_id, const MediaTrack &track) const {
+    FrameSubscriptionId reader_id,
+    const MediaStreamInfo &stream_info) const {
     FrameSubscriptionStartData start_data;
     const auto reader_iter = readers_.find(reader_id);
     if (reader_iter == readers_.end()) {
@@ -78,11 +79,11 @@ FrameSubscriptionStartData FrameRing::GetStartData(
     if (cache == nullptr) {
         return start_data;
     }
-    start_data.stream_running = track.ready;
+    start_data.stream_running = stream_info.running;
     start_data.gop_complete =
         cache->complete && reader.start_generation == cache->generation;
     start_data.subscription_generation = reader.start_generation;
-    start_data.track = track;
+    start_data.stream_info = stream_info;
     if (!start_data.gop_complete) {
         return start_data;
     }
@@ -93,12 +94,12 @@ FrameSubscriptionStartData FrameRing::GetStartData(
         if (cache->frames[i].sequence >= reader.start_sequence) {
             continue;
         }
-        MediaFrame media_frame;
-        // ToMediaFrame 会 ref copy payload.encoded_frame；返回给 reader 的
+        EncodedFrame frame;
+        // CopyFrameForSubscription 会 ref copy payload.encoded_frame；返回给 reader 的
         // start data 与内部 GOP cache 共享 FrameBuffer，不深拷贝帧内容。
-        if (ToMediaFrame(cache->frames[i].payload, cache->frames[i].key_frame,
-                         cache->frames[i].duration_us, &media_frame)) {
-            start_data.gop_frames.push_back(media_frame);
+        if (CopyFrameForSubscription(cache->frames[i].payload,
+                                     cache->frames[i].duration_us, &frame)) {
+            start_data.gop_frames.push_back(frame);
         }
     }
     return start_data;
@@ -122,11 +123,11 @@ bool FrameRing::PopFrame(FrameSubscriptionId reader_id,
     frame->subscription_id = reader_id;
     frame->subscription_generation = reader.generation;
     frame->starts_on_keyframe = queued_frame.starts_on_keyframe;
-    const bool converted =
-        ToMediaFrame(queued_frame.payload, queued_frame.key_frame,
-                     queued_frame.duration_us, &frame->frame);
+    const bool copied =
+        CopyFrameForSubscription(queued_frame.payload,
+                                 queued_frame.duration_us, &frame->frame);
     FramePayloadUnref(&queued_frame.payload);
-    if (!converted) {
+    if (!copied) {
         SubscribedFrameUnref(frame);
         return false;
     }
@@ -357,11 +358,14 @@ bool FrameRing::PopLiveQueue(LiveQueue *queue, QueuedFrame *frame) {
     return true;
 }
 
-bool FrameRing::ToMediaFrame(const FramePayload &payload, bool key_frame,
-                             int64_t duration_us, MediaFrame *frame) {
-    return MediaFrameSetEncodedFrame(frame, &payload.encoded_frame,
-                                     MediaTrackType::kVideo, key_frame,
-                                     duration_us);
+bool FrameRing::CopyFrameForSubscription(const FramePayload &payload,
+                                         int64_t duration_us,
+                                         EncodedFrame *frame) {
+    if (!EncodedFrameRefCopy(frame, &payload.encoded_frame)) {
+        return false;
+    }
+    frame->duration_us = duration_us;
+    return true;
 }
 
 uint32_t FrameRing::CachedFrameBytes(const CachedFrame &frame) {

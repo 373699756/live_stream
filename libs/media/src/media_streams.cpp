@@ -145,21 +145,21 @@ void FrameSubscriptionStartDataUnref(
     if (start_data == nullptr) {
         return;
     }
-    for (MediaFrame &frame : start_data->gop_frames) {
-        MediaFrameUnref(&frame);
+    for (EncodedFrame &frame : start_data->gop_frames) {
+        EncodedFrameUnref(&frame);
     }
     start_data->gop_frames.clear();
     start_data->stream_running = false;
     start_data->gop_complete = false;
     start_data->subscription_generation = 0;
-    start_data->track = MediaTrack{};
+    start_data->stream_info = MediaStreamInfo{};
 }
 
 void SubscribedFrameUnref(SubscribedFrame *subscribed_frame) {
     if (subscribed_frame == nullptr) {
         return;
     }
-    MediaFrameUnref(&subscribed_frame->frame);
+    EncodedFrameUnref(&subscribed_frame->frame);
     subscribed_frame->subscription_id = 0;
     subscribed_frame->subscription_generation = 0;
     subscribed_frame->starts_on_keyframe = false;
@@ -333,45 +333,11 @@ public:
 
     MediaStreamInfo GetStreamInfo(StreamId stream_id) const {
         std::lock_guard<std::mutex> guard(mutex_);
-        MediaStreamInfo info;
         const source_state::StreamContext *stream = FindStream(stream_id);
         if (stream == nullptr) {
-            return info;
+            return MediaStreamInfo{};
         }
-        info.running = stream->state == MediaStreamState::kRunning;
-        info.hls_supported = source_state::IsHlsCodecSupported(stream->codec);
-        info.flv_supported = source_state::IsFlvCodecSupported(stream->codec);
-        info.mjpeg_supported =
-            source_state::IsMjpegCodecSupported(stream->codec);
-        info.browser_codec =
-            info.hls_supported || info.flv_supported || info.mjpeg_supported;
-        info.track_ready =
-            source_state::BuildMediaTrack(stream_id, *stream).ready;
-        info.hls_ready = source_state::IsHlsStreamReady(*stream);
-        info.flv_ready = source_state::IsFlvStreamReady(*stream);
-        info.mjpeg_ready = source_state::IsMjpegStreamReady(*stream);
-        info.codec = stream->codec;
-        info.codec_generation = stream->codec_generation;
-        info.hls_segment_count =
-            static_cast<uint32_t>(stream->hls_maker.SegmentCount());
-        info.hls_first_segment_sequence =
-            stream->hls_maker.FirstSegmentSequence();
-        info.hls_last_segment_sequence =
-            stream->hls_maker.LastSegmentSequence();
-        info.hls_missing_segment_count =
-            stream->hls_maker.MissingSegmentCount();
-        info.hls_evicted_segment_count =
-            stream->hls_maker.EvictedSegmentCount();
-        info.flv_sequence_header_size =
-            static_cast<uint32_t>(stream->sequence_header_tag.size());
-        info.flv_last_keyframe_size =
-            stream->flv_gop_cache.FirstFlvTagSize();
-        info.hls_current_segment_size =
-            stream->hls_maker.CurrentSegmentSize();
-        info.last_dts_us = stream->timestamp_corrector.last_dts_us();
-        info.last_reset_reason =
-            MediaStreamResetReasonName(stream->last_reset_reason);
-        return info;
+        return source_state::BuildMediaStreamInfo(*stream);
     }
 
     MediaStreamCounters GetStreamCounters() const {
@@ -488,10 +454,9 @@ public:
         if (stream == nullptr) {
             return FrameSubscriptionStartData{};
         }
-        const MediaTrack track =
-            source_state::BuildMediaTrack(subscription_info.stream_id,
-                                          *stream);
-        return frame_ring_.GetStartData(subscription_id, track);
+        const MediaStreamInfo stream_info =
+            source_state::BuildMediaStreamInfo(*stream);
+        return frame_ring_.GetStartData(subscription_id, stream_info);
     }
 
     bool PopSubscribedFrame(FrameSubscriptionId subscription_id,

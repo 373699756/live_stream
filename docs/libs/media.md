@@ -14,6 +14,9 @@
   帧订阅 live queue。
 - 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamCounters`、
   `FrameSubscription` 相关接口。
+- 帧订阅起播 GOP 和 live frame 直接返回带引用计数 payload 的 `EncodedFrame`；
+  参数集、codec generation 和 90kHz clock rate 等播放元信息收敛在
+  `MediaStreamInfo`。
 
 ## 状态与资源模型
 
@@ -23,6 +26,9 @@
 
 codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG 和
 订阅 live queue，后续从新的关键帧重新建立可播放状态。
+
+`MediaFrame` 和 `MediaTrack` 不再作为公共 API 存在。订阅方需要保存帧时只保留
+`EncodedFrame` 引用，发送完成后调用对应 unref 接口释放。
 
 ## 非目标
 

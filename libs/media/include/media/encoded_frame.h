@@ -17,6 +17,9 @@ struct EncodedFrame {
     FrameSequence sequence = 0;
     int64_t pts_us = 0;
     int64_t dts_us = 0;
+    // duration_us 由 MediaStreams 在订阅/GOP 输出时按连续帧时间戳估算；
+    // 设备侧刚输出的帧可以保持 0。
+    int64_t duration_us = 0;
     FrameSlice payload;
 };
 
@@ -30,6 +33,7 @@ inline void EncodedFrameInit(EncodedFrame *frame) {
     frame->sequence = 0;
     frame->pts_us = 0;
     frame->dts_us = 0;
+    frame->duration_us = 0;
     frame->payload = FrameSlice{};
 }
 

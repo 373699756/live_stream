@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_FRAME_RING_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SRC_FRAME_RING_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_FRAME_RING_H_
+#define LIVE_STREAM_MEDIA_SRC_FRAME_RING_H_
 
 #include "media/media_streams.h"
 
@@ -24,8 +24,9 @@ public:
     bool DetachReader(FrameSubscriptionId reader_id,
                       FrameSubscriptionCloseReason reason);
     FrameSubscriptionInfo GetReaderStatus(FrameSubscriptionId reader_id) const;
-    FrameSubscriptionStartData GetStartData(FrameSubscriptionId reader_id,
-                                           const MediaTrack &track) const;
+    FrameSubscriptionStartData GetStartData(
+        FrameSubscriptionId reader_id,
+        const MediaStreamInfo &stream_info) const;
     bool PopFrame(FrameSubscriptionId reader_id,
                   SubscribedFrame *frame);
     void Clear();
@@ -105,8 +106,9 @@ private:
                               int64_t duration_us,
                               const FramePayload &frame);
     static bool PopLiveQueue(LiveQueue *queue, QueuedFrame *frame);
-    static bool ToMediaFrame(const FramePayload &payload, bool key_frame,
-                             int64_t duration_us, MediaFrame *frame);
+    static bool CopyFrameForSubscription(const FramePayload &payload,
+                                         int64_t duration_us,
+                                         EncodedFrame *frame);
     static uint32_t CachedFrameBytes(const CachedFrame &frame);
     static int64_t EstimateFrameDuration(const StreamCache &cache,
                                          const FramePayload &frame);
@@ -127,4 +129,4 @@ private:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_FRAME_RING_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_FRAME_RING_H_

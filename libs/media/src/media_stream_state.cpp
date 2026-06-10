@@ -227,23 +227,42 @@ MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
     return start_data;
 }
 
-MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream) {
-    MediaTrack track;
-    track.track_type = MediaTrackType::kVideo;
-    track.stream_id = stream_id;
-    track.codec = stream.codec;
-    track.clock_rate = 90000;
-    track.codec_generation = stream.codec_generation;
-    track.vps = stream.vps;
-    track.sps = stream.sps;
-    track.pps = stream.pps;
+MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
+    MediaStreamInfo info;
+    info.running = stream.state == MediaStreamState::kRunning;
+    info.hls_supported = IsHlsCodecSupported(stream.codec);
+    info.flv_supported = IsFlvCodecSupported(stream.codec);
+    info.mjpeg_supported = IsMjpegCodecSupported(stream.codec);
+    info.browser_codec =
+        info.hls_supported || info.flv_supported || info.mjpeg_supported;
     // track_ready 面向 RTSP/WebRTC/HTTP-FLV 等协议输出。H.264/H.265 必须已有
     // sequence header；MJPEG 则至少要有一帧最新 JPEG。
-    track.ready =
+    info.track_ready =
         IsBrowserStreamReady(stream.state, stream.codec) &&
         ((IsFlvCodecSupported(stream.codec) && HasFlvSequenceHeader(stream)) ||
          IsMjpegStreamReady(stream));
-    return track;
+    info.hls_ready = IsHlsStreamReady(stream);
+    info.flv_ready = IsFlvStreamReady(stream);
+    info.mjpeg_ready = IsMjpegStreamReady(stream);
+    info.codec = stream.codec;
+    info.clock_rate = 90000;
+    info.codec_generation = stream.codec_generation;
+    info.vps = stream.vps;
+    info.sps = stream.sps;
+    info.pps = stream.pps;
+    info.hls_segment_count =
+        static_cast<uint32_t>(stream.hls_maker.SegmentCount());
+    info.hls_first_segment_sequence = stream.hls_maker.FirstSegmentSequence();
+    info.hls_last_segment_sequence = stream.hls_maker.LastSegmentSequence();
+    info.hls_missing_segment_count = stream.hls_maker.MissingSegmentCount();
+    info.hls_evicted_segment_count = stream.hls_maker.EvictedSegmentCount();
+    info.flv_sequence_header_size =
+        static_cast<uint32_t>(stream.sequence_header_tag.size());
+    info.flv_last_keyframe_size = stream.flv_gop_cache.FirstFlvTagSize();
+    info.hls_current_segment_size = stream.hls_maker.CurrentSegmentSize();
+    info.last_dts_us = stream.timestamp_corrector.last_dts_us();
+    info.last_reset_reason = MediaStreamResetReasonName(stream.last_reset_reason);
+    return info;
 }
 
 void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason) {

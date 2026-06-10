@@ -3,7 +3,6 @@
 
 #include "media/encoded_frame.h"
 #include "media/frame_sink.h"
-#include "media/media_frame.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -125,15 +124,43 @@ struct FrameSubscriptionOptions {
     std::string subscriber_name;
 };
 
+struct MediaStreamInfo {
+    bool running = false;
+    bool track_ready = false;
+    bool browser_codec = false;
+    bool hls_ready = false;
+    bool flv_ready = false;
+    bool mjpeg_ready = false;
+    Codec codec = Codec::kH264;
+    uint32_t clock_rate = 90000;
+    uint64_t codec_generation = 0;
+    std::string vps;
+    std::string sps;
+    std::string pps;
+    uint32_t hls_segment_count = 0;
+    uint64_t hls_first_segment_sequence = 0;
+    uint64_t hls_last_segment_sequence = 0;
+    uint64_t hls_missing_segment_count = 0;
+    uint64_t hls_evicted_segment_count = 0;
+    uint32_t flv_sequence_header_size = 0;
+    uint32_t flv_last_keyframe_size = 0;
+    uint32_t hls_current_segment_size = 0;
+    int64_t last_dts_us = 0;
+    std::string last_reset_reason;
+    bool hls_supported = false;
+    bool flv_supported = false;
+    bool mjpeg_supported = false;
+};
+
 struct FrameSubscriptionStartData {
     // subscription 创建后先读取 start data：如果 gop_complete=true，调用方可先发送
     // gop_frames，再进入 PopSubscribedFrame 的 live queue。
-    // gop_frames 里的 MediaFrame 只 ref 底层 FrameBuffer，不按 subscriber 深拷贝 GOP。
+    // gop_frames 里的 EncodedFrame 只 ref 底层 FrameBuffer，不按 subscriber 深拷贝 GOP。
     bool stream_running = false;
     bool gop_complete = false;
     uint64_t subscription_generation = 0;
-    MediaTrack track;
-    std::vector<MediaFrame> gop_frames;
+    MediaStreamInfo stream_info;
+    std::vector<EncodedFrame> gop_frames;
 };
 
 struct SubscribedFrame {
@@ -144,7 +171,7 @@ struct SubscribedFrame {
     FrameSubscriptionId subscription_id = 0;
     uint64_t subscription_generation = 0;
     bool starts_on_keyframe = false;
-    MediaFrame frame;
+    EncodedFrame frame;
 };
 
 struct FrameSubscriptionInfo {
@@ -177,30 +204,6 @@ struct MediaStreamCounters {
     uint64_t sub_codec_generation = 0;
     std::string main_last_reset_reason;
     std::string sub_last_reset_reason;
-};
-
-struct MediaStreamInfo {
-    bool running = false;
-    bool track_ready = false;
-    bool browser_codec = false;
-    bool hls_ready = false;
-    bool flv_ready = false;
-    bool mjpeg_ready = false;
-    Codec codec = Codec::kH264;
-    uint64_t codec_generation = 0;
-    uint32_t hls_segment_count = 0;
-    uint64_t hls_first_segment_sequence = 0;
-    uint64_t hls_last_segment_sequence = 0;
-    uint64_t hls_missing_segment_count = 0;
-    uint64_t hls_evicted_segment_count = 0;
-    uint32_t flv_sequence_header_size = 0;
-    uint32_t flv_last_keyframe_size = 0;
-    uint32_t hls_current_segment_size = 0;
-    int64_t last_dts_us = 0;
-    std::string last_reset_reason;
-    bool hls_supported = false;
-    bool flv_supported = false;
-    bool mjpeg_supported = false;
 };
 
 class IMediaFlvSink {
