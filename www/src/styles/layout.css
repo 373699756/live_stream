@@ -349,6 +349,7 @@
 
 .time-config-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .time-action-row {
@@ -386,14 +387,148 @@
   overflow-wrap: anywhere;
 }
 
-.time-server-field {
-  grid-column: 1 / -1;
+.time-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.time-server-field textarea {
+.time-panel-heading h2 {
+  margin: 0;
+}
+
+.time-panel-heading span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.time-panel-heading button {
+  flex: 0 0 auto;
+}
+
+.time-setting-list {
+  display: grid;
+  gap: 10px;
+}
+
+.time-setting-row,
+.time-switch-row {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e2e7ef;
+  border-radius: 4px;
+  background: #fbfdff;
+}
+
+.time-switch-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.time-setting-row > span,
+.time-switch-row > span,
+.time-server-editor-heading > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.time-setting-row strong,
+.time-switch-row strong,
+.time-server-editor-heading strong {
+  color: #243044;
+  font-size: 13px;
+}
+
+.time-setting-row em,
+.time-switch-row em,
+.time-server-editor-heading em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.time-setting-row input {
   width: 100%;
-  min-height: 92px;
-  resize: vertical;
+}
+
+.time-server-editor {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #d5e6fa;
+  border-radius: 4px;
+  background: #f4f9ff;
+}
+
+.time-server-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.time-server-list {
+  display: grid;
+  gap: 8px;
+}
+
+.time-server-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.time-server-row > strong {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  background: #eff6ff;
+  font-size: 12px;
+}
+
+.time-server-row input {
+  width: 100%;
+}
+
+.time-server-row button {
+  min-width: 64px;
+}
+
+.time-server-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.time-server-presets button {
+  min-height: 28px;
+  padding: 4px 9px;
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  font-size: 12px;
+}
+
+.time-server-presets button:disabled {
+  color: #8a97aa;
+  border-color: #d7dee8;
+  background: #f4f6f9;
+  cursor: not-allowed;
 }
 
 .stream-info-grid {
@@ -1029,6 +1164,20 @@
 
   .time-action-row {
     justify-content: flex-start;
+  }
+
+  .time-panel-heading,
+  .time-server-editor-heading {
+    display: grid;
+  }
+
+  .time-server-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .time-server-row button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .stream-runtime-card dl {
