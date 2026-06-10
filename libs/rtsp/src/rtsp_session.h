@@ -44,6 +44,7 @@ class RtspSession {
   void DetachReader();
   bool HasReader() const;
   void SetStartFrames(std::vector<MediaFrame> *frames);
+  void SetPlayRtpTimestamp(uint32_t timestamp);
   void ClearStartFrames();
   void SetDrainTimer(NetTimerId timer_id);
   void ClearDrainTimer();
@@ -69,6 +70,7 @@ class RtspSession {
   // RTP sequence/ssrc 是每个 RTSP session 独立的发送状态。
   uint16_t rtp_sequence = 1;
   uint32_t ssrc = 0;
+  uint32_t play_rtp_timestamp = 0;
   MediaTrack track;
   // PLAY 后必须先发送关键帧；未看到关键帧前的非关键帧会在 RtspRtpSender 丢弃。
   bool keyframe_seen = false;

@@ -92,6 +92,7 @@ void RtspSession::DetachReader() {
   reader_generation = 0;
   track = MediaTrack{};
   keyframe_seen = false;
+  play_rtp_timestamp = 0;
   ClearStartFrames();
 }
 
@@ -106,6 +107,10 @@ void RtspSession::SetStartFrames(std::vector<MediaFrame> *frames) {
   if (frames != nullptr) {
     start_frames.swap(*frames);
   }
+}
+
+void RtspSession::SetPlayRtpTimestamp(uint32_t timestamp) {
+  play_rtp_timestamp = timestamp;
 }
 
 void RtspSession::ClearStartFrames() {

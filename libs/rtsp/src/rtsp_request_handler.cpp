@@ -8,6 +8,17 @@ namespace {
 
 constexpr const char *kRtspRequestHandlerModule = "rtsp";
 
+std::string BuildRtpInfo(const std::shared_ptr<RtspSession> &session,
+                         const rtsp_internal::RtspRequest &request) {
+  const std::string control_url =
+      request.uri.empty()
+          ? std::string(rtsp_internal::StreamPath(session->stream_id))
+          : request.uri;
+  return "url=" + control_url +
+         ";seq=" + std::to_string(session->rtp_sequence) +
+         ";rtptime=" + std::to_string(session->play_rtp_timestamp);
+}
+
 }  // namespace
 
 using rtsp_internal::CSeq;
@@ -136,8 +147,8 @@ void RtspRequestHandler::HandlePlay(
                      : "udp");
   SendResponse(session->connection_id, 200, request,
                {{"Session", std::to_string(session->session_id)},
-                {"RTP-Info",
-                 "url=" + std::string(StreamPath(session->stream_id))}},
+                {"Range", "npt=0.000-"},
+                {"RTP-Info", BuildRtpInfo(session, request)}},
                "");
   delegate_->ArmRtspPlayback(session);
 }

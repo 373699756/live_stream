@@ -12,7 +12,9 @@
 #include "rtsp_rtp_sender.h"
 #include "rtsp_session_store.h"
 
+#include <iomanip>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +38,29 @@ std::string AddressText(const NetAddress &address) {
         return std::string();
     }
     return address.ip + ":" + std::to_string(address.port);
+}
+
+std::string Hex32(uint32_t value) {
+    std::ostringstream output;
+    output << std::hex << std::nouppercase << std::setw(8)
+           << std::setfill('0') << value;
+    return output.str();
+}
+
+uint32_t RtpTimestampFromPtsUs(int64_t pts_us) {
+    if (pts_us <= 0) {
+        return 0;
+    }
+    return static_cast<uint32_t>(
+        (static_cast<uint64_t>(pts_us) * rtp::kRtpClockRate) / 1000000U);
+}
+
+uint32_t FirstStartFrameRtpTimestamp(
+    const MediaFrameReaderStartData &start_data) {
+    if (start_data.gop_frames.empty()) {
+        return 0;
+    }
+    return RtpTimestampFromPtsUs(start_data.gop_frames.front().pts_us);
 }
 
 }  // namespace
@@ -525,7 +550,8 @@ private:
                                   MediaFrameReaderCloseReason::kDetached);
             session->SetupTcp(stream_id, 0);
             response_transport =
-                "RTP/AVP/TCP;unicast;interleaved=0-1";
+                "RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=" +
+                Hex32(session->ssrc);
             AddTcpInterleavedSession();
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
@@ -553,12 +579,13 @@ private:
             }
             session->SetupUdp(stream_id, rtp_socket_id, rtcp_socket_id,
                               static_cast<uint16_t>(client_port));
-            response_transport = "RTP/AVP;unicast;client_port=" +
+            response_transport = "RTP/AVP/UDP;unicast;client_port=" +
                                  std::to_string(client_port) + "-" +
                                  std::to_string(client_port + 1) +
                                  ";server_port=" +
                                  std::to_string(server_rtp.port) + "-" +
-                                 std::to_string(server_rtcp.port);
+                                 std::to_string(server_rtcp.port) +
+                                 ";ssrc=" + Hex32(session->ssrc);
             AddUdpSession();
         } else {
             Error("rtsp",
@@ -694,11 +721,14 @@ private:
             MediaFrameReaderStartDataUnref(&start_data);
             return 455;
         }
+        const uint32_t play_rtp_timestamp =
+            FirstStartFrameRtpTimestamp(start_data);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session->StartPlaying();
             session->AttachReader(reader_id, start_data.reader_generation,
                                   start_data.track);
+            session->SetPlayRtpTimestamp(play_rtp_timestamp);
             session->SetStartFrames(&start_data.gop_frames);
         }
         MediaFrameReaderStartDataUnref(&start_data);
