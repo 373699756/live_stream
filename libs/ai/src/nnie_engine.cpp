@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -337,17 +338,26 @@ private:
 #if LIVE_STREAM_HAS_HISI_NNIE
     bool LoadModel(const AiModelConfig &config) {
         const std::string &model_path = config.model_path;
-        const std::string model_data = infra::File::ReadAll(model_path);
-        if (model_data.empty() ||
-            model_data.size() > static_cast<size_t>(0xffffffffU)) {
-            Error("ai", "Read NNIE model failed: path=%s",
+        const uint64_t model_file_size = infra::File::Size(model_path);
+        if (model_file_size == 0 || model_file_size > kMaxHiU32) {
+            Error("ai", "Invalid NNIE model size: path=%s size=%llu",
+                  model_path.c_str(),
+                  static_cast<unsigned long long>(model_file_size));
+            return false;
+        }
+
+        std::FILE *model_file = std::fopen(model_path.c_str(), "rb");
+        if (model_file == nullptr) {
+            Error("ai", "Open NNIE model failed: path=%s",
                   model_path.c_str());
             return false;
         }
 
         HI_U64 model_phy_addr = 0;
         HI_VOID *model_vir_addr = nullptr;
-        const HI_U32 model_size = static_cast<HI_U32>(model_data.size());
+        const HI_U32 model_size = static_cast<HI_U32>(model_file_size);
+        Info("ai", "Loading NNIE model: path=%s size=%u",
+             model_path.c_str(), static_cast<unsigned int>(model_size));
         HI_S32 ret = HI_MPI_SYS_MmzAlloc(&model_phy_addr, &model_vir_addr,
                                          "LIVE_AI_NNIE_MODEL", nullptr,
                                          model_size);
@@ -355,10 +365,22 @@ private:
             model_vir_addr == nullptr) {
             Error("ai", "Allocate NNIE model MMZ failed: ret=%#x",
                   static_cast<unsigned int>(ret));
+            std::fclose(model_file);
             return false;
         }
 
-        std::memcpy(model_vir_addr, model_data.data(), model_data.size());
+        const size_t read_size =
+            std::fread(model_vir_addr, 1, model_size, model_file);
+        const int close_status = std::fclose(model_file);
+        if (read_size != static_cast<size_t>(model_size) ||
+            close_status != 0) {
+            Error("ai", "Read NNIE model failed: path=%s read=%u size=%u",
+                  model_path.c_str(), static_cast<unsigned int>(read_size),
+                  static_cast<unsigned int>(model_size));
+            HI_MPI_SYS_MmzFree(model_phy_addr, model_vir_addr);
+            return false;
+        }
+
         model_buf_.u32Size = model_size;
         model_buf_.u64PhyAddr = model_phy_addr;
         model_buf_.u64VirAddr =
@@ -442,6 +464,10 @@ private:
             !AddBlobSizes(&total_workspace_size)) {
             return false;
         }
+        Info("ai", "NNIE workspace size=%u task=%u tmp=%u",
+             static_cast<unsigned int>(total_workspace_size),
+             static_cast<unsigned int>(total_task_size),
+             static_cast<unsigned int>(tmp_buf_size_));
 
         HI_U64 workspace_phy_addr = 0;
         HI_VOID *workspace_vir_addr = nullptr;
