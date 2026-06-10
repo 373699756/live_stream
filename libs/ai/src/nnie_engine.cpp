@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -337,17 +338,29 @@ private:
 #if LIVE_STREAM_HAS_HISI_NNIE
     bool LoadModel(const AiModelConfig &config) {
         const std::string &model_path = config.model_path;
-        const std::string model_data = infra::File::ReadAll(model_path);
-        if (model_data.empty() ||
-            model_data.size() > static_cast<size_t>(0xffffffffU)) {
-            Error("ai", "Read NNIE model failed: path=%s",
+        const uint64_t model_file_size = infra::File::Size(model_path);
+        Info("ai", "NNIE model read begin: task=%d path=%s file_size=%llu",
+             static_cast<int>(config.task), model_path.c_str(),
+             static_cast<unsigned long long>(model_file_size));
+        if (model_file_size == 0 || model_file_size > kMaxHiU32) {
+            Error("ai", "Invalid NNIE model size: path=%s size=%llu",
+                  model_path.c_str(),
+                  static_cast<unsigned long long>(model_file_size));
+            return false;
+        }
+
+        std::FILE *model_file = std::fopen(model_path.c_str(), "rb");
+        if (model_file == nullptr) {
+            Error("ai", "Open NNIE model failed: path=%s",
                   model_path.c_str());
             return false;
         }
 
         HI_U64 model_phy_addr = 0;
         HI_VOID *model_vir_addr = nullptr;
-        const HI_U32 model_size = static_cast<HI_U32>(model_data.size());
+        const HI_U32 model_size = static_cast<HI_U32>(model_file_size);
+        Info("ai", "NNIE model MMZ alloc begin: size=%u",
+             static_cast<unsigned int>(model_size));
         HI_S32 ret = HI_MPI_SYS_MmzAlloc(&model_phy_addr, &model_vir_addr,
                                          "LIVE_AI_NNIE_MODEL", nullptr,
                                          model_size);
@@ -355,16 +368,35 @@ private:
             model_vir_addr == nullptr) {
             Error("ai", "Allocate NNIE model MMZ failed: ret=%#x",
                   static_cast<unsigned int>(ret));
+            std::fclose(model_file);
             return false;
         }
 
-        std::memcpy(model_vir_addr, model_data.data(), model_data.size());
+        Info("ai", "NNIE model MMZ alloc done: phy=0x%llx vir=%p",
+             static_cast<unsigned long long>(model_phy_addr), model_vir_addr);
+        Info("ai", "NNIE model file read begin: size=%u",
+             static_cast<unsigned int>(model_size));
+        const size_t read_size =
+            std::fread(model_vir_addr, 1, model_size, model_file);
+        const int close_status = std::fclose(model_file);
+        if (read_size != static_cast<size_t>(model_size) ||
+            close_status != 0) {
+            Error("ai", "Read NNIE model failed: path=%s read=%u size=%u",
+                  model_path.c_str(), static_cast<unsigned int>(read_size),
+                  static_cast<unsigned int>(model_size));
+            HI_MPI_SYS_MmzFree(model_phy_addr, model_vir_addr);
+            return false;
+        }
+        Info("ai", "NNIE model file read done: size=%u",
+             static_cast<unsigned int>(model_size));
         model_buf_.u32Size = model_size;
         model_buf_.u64PhyAddr = model_phy_addr;
         model_buf_.u64VirAddr =
             static_cast<HI_U64>(reinterpret_cast<HI_UL>(model_vir_addr));
         std::memset(&model_, 0, sizeof(model_));
 
+        Info("ai", "HI_MPI_SVP_NNIE_LoadModel begin: size=%u",
+             static_cast<unsigned int>(model_size));
         ret = HI_MPI_SVP_NNIE_LoadModel(&model_buf_, &model_);
         if (ret != HI_SUCCESS) {
             Error("ai", "Load NNIE model failed: ret=%#x",
@@ -374,6 +406,9 @@ private:
             std::memset(&model_, 0, sizeof(model_));
             return false;
         }
+        Info("ai", "HI_MPI_SVP_NNIE_LoadModel done: segs=%u tmp=%u",
+             static_cast<unsigned int>(model_.u32NetSegNum),
+             static_cast<unsigned int>(model_.u32TmpBufSize));
 
         model_loaded_ = true;
         if (!PrepareForwardWorkspace()) {
@@ -417,6 +452,8 @@ private:
     }
 
     bool PrepareForwardWorkspace() {
+        Info("ai", "NNIE workspace prepare begin: segs=%u",
+             static_cast<unsigned int>(model_.u32NetSegNum));
         if (!ValidateLoadedModel() || !FillForwardInfo()) {
             return false;
         }
@@ -437,6 +474,9 @@ private:
             }
         }
         tmp_buf_size_ = model_.u32TmpBufSize;
+        Info("ai", "NNIE task buffers ready: total_task=%u tmp=%u",
+             static_cast<unsigned int>(total_task_size),
+             static_cast<unsigned int>(tmp_buf_size_));
         if (!AddHiU32(total_task_size, &total_workspace_size) ||
             !AddHiU32(tmp_buf_size_, &total_workspace_size) ||
             !AddBlobSizes(&total_workspace_size)) {
@@ -445,6 +485,8 @@ private:
 
         HI_U64 workspace_phy_addr = 0;
         HI_VOID *workspace_vir_addr = nullptr;
+        Info("ai", "NNIE workspace MMZ alloc begin: size=%u",
+             static_cast<unsigned int>(total_workspace_size));
         ret = HI_MPI_SYS_MmzAlloc_Cached(&workspace_phy_addr,
                                          &workspace_vir_addr,
                                          "LIVE_AI_NNIE_TASK", nullptr,
@@ -455,7 +497,16 @@ private:
                   static_cast<unsigned int>(ret));
             return false;
         }
+        Info("ai", "NNIE workspace MMZ alloc done: phy=0x%llx vir=%p",
+             static_cast<unsigned long long>(workspace_phy_addr),
+             workspace_vir_addr);
+        Info("ai", "NNIE workspace memset begin: size=%u",
+             static_cast<unsigned int>(total_workspace_size));
         std::memset(workspace_vir_addr, 0, total_workspace_size);
+        Info("ai", "NNIE workspace memset done: size=%u",
+             static_cast<unsigned int>(total_workspace_size));
+        Info("ai", "NNIE workspace flush begin: size=%u",
+             static_cast<unsigned int>(total_workspace_size));
         ret = HI_MPI_SYS_MmzFlushCache(workspace_phy_addr, workspace_vir_addr,
                                        total_workspace_size);
         if (ret != HI_SUCCESS) {
@@ -464,6 +515,8 @@ private:
             HI_MPI_SYS_MmzFree(workspace_phy_addr, workspace_vir_addr);
             return false;
         }
+        Info("ai", "NNIE workspace flush done: size=%u",
+             static_cast<unsigned int>(total_workspace_size));
 
         workspace_buf_.u32Size = total_workspace_size;
         workspace_buf_.u64PhyAddr = workspace_phy_addr;

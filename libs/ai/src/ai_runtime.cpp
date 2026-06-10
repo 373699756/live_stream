@@ -484,6 +484,17 @@ struct AiRuntime::State final {
             return false;
         }
 
+        uint32_t enabled_task_count = 0;
+        for (const AiModelConfig &task_config : next_config.tasks) {
+            if (task_config.enabled) {
+                ++enabled_task_count;
+            }
+        }
+        Info("ai", "AI config apply begin: enabled=%d tasks=%u enabled=%u",
+             next_config.enabled ? 1 : 0,
+             static_cast<unsigned int>(next_config.tasks.size()),
+             static_cast<unsigned int>(enabled_task_count));
+
         bool service_started = false;
         std::vector<StoppedTaskRuntime> stopped_tasks;
         std::shared_ptr<infra::Executor> stopped_alert_executor;
@@ -522,10 +533,12 @@ struct AiRuntime::State final {
             }
             if (options.device_media == nullptr || options.sdk == nullptr ||
                 !options.device_media->IsStarted()) {
+                Error("ai", "AI startup skipped: device media or sdk unavailable");
                 MarkAllEnabledTaskBackendsUnavailableLocked();
                 return;
             }
             if (!EnsureAlertExecutorLocked()) {
+                Error("ai", "AI startup skipped: alert executor unavailable");
                 MarkAllEnabledTaskBackendsUnavailableLocked();
                 return;
             }
@@ -541,6 +554,8 @@ struct AiRuntime::State final {
             }
         }
 
+        Info("ai", "AI enabled task startup count=%u",
+             static_cast<unsigned int>(enabled_task_runtimes.size()));
         for (const std::shared_ptr<AiTaskRuntime> &task_runtime :
              enabled_task_runtimes) {
             TaskRuntimeStartup startup;
@@ -563,19 +578,42 @@ struct AiRuntime::State final {
         if (!task_runtime || startup == nullptr) {
             return false;
         }
+        const AiModelConfig &task_config = task_runtime->config;
+        Info("ai",
+             "AI backend start begin: backend=%s task=%d model=%s stream=%d "
+             "input=%ux%u interval=%u threshold=%.3f max=%u",
+             AiBackendName(task_config.backend),
+             static_cast<int>(task_config.task),
+             task_config.model_path.c_str(),
+             static_cast<int>(task_config.stream_id),
+             static_cast<unsigned int>(task_config.input_width),
+             static_cast<unsigned int>(task_config.input_height),
+             static_cast<unsigned int>(task_config.inference_interval_ms),
+             static_cast<double>(task_config.confidence_threshold),
+             static_cast<unsigned int>(task_config.max_results));
         std::shared_ptr<AiInferenceEngine> next_engine =
-            CreateAiEngine(task_runtime->config.backend);
-        if (!next_engine || !next_engine->Available() ||
-            !next_engine->Start(task_runtime->config)) {
-            Error("ai", "Start AI backend failed: backend=%s task=%d model=%s",
-                  AiBackendName(task_runtime->config.backend),
-                  static_cast<int>(task_runtime->config.task),
-                  task_runtime->config.model_path.c_str());
-            if (next_engine) {
-                next_engine->Stop();
-            }
+            CreateAiEngine(task_config.backend);
+        if (!next_engine) {
+            Error("ai", "Create AI backend failed: backend=%s task=%d",
+                  AiBackendName(task_config.backend),
+                  static_cast<int>(task_config.task));
             return false;
         }
+        Info("ai", "AI backend created: backend=%s task=%d available=%d",
+             AiBackendName(task_config.backend),
+             static_cast<int>(task_config.task),
+             next_engine->Available() ? 1 : 0);
+        if (!next_engine->Available() || !next_engine->Start(task_config)) {
+            Error("ai", "Start AI backend failed: backend=%s task=%d model=%s",
+                  AiBackendName(task_config.backend),
+                  static_cast<int>(task_config.task),
+                  task_config.model_path.c_str());
+            next_engine->Stop();
+            return false;
+        }
+        Info("ai", "AI backend start done: backend=%s task=%d",
+             AiBackendName(task_config.backend),
+             static_cast<int>(task_config.task));
 
         std::unique_ptr<infra::Executor> next_executor(new infra::Executor());
         infra::ExecutorOptions executor_options;
