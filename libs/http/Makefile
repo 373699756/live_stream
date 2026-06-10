@@ -12,9 +12,7 @@ MEDIA_SOURCE_LIB := $(BUILD_DIR)/lib/libmedia_source.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 HTTP_MEDIA_LIB := $(BUILD_DIR)/lib/libhttp_media.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem.a
-UPGRADE_LIB := $(BUILD_DIR)/lib/libupgrade.a
 NETWORK_LIB := $(BUILD_DIR)/lib/libnetwork_config.a
-TIME_LIB := $(BUILD_DIR)/lib/libtime.a
 ONVIF_LIB := $(BUILD_DIR)/lib/libonvif.a
 
 CXXFLAGS += -pthread
@@ -33,8 +31,6 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/onvif/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/time/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/upgrade/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/http_media/include
 CXXFLAGS += -Isrc
@@ -44,11 +40,11 @@ WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(MEDIA_CODEC_LIB) $(SNAPSHOT_LIB) \
-	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) \
+	$(SYSTEM_LIB) $(NETWORK_LIB) \
 	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(HTTP_MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(SNAPSHOT_LIB) \
-	$(SYSTEM_LIB) $(UPGRADE_LIB) $(NETWORK_LIB) $(TIME_LIB) $(ONVIF_LIB) \
+	$(SYSTEM_LIB) $(NETWORK_LIB) $(ONVIF_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
@@ -81,16 +77,10 @@ $(SNAPSHOT_LIB): $(MEDIA_LIB)
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system all
 
-$(UPGRADE_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../upgrade all
-
 $(NETWORK_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../network_config all
 
-$(TIME_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../time all
-
-$(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB) $(TIME_LIB)
+$(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB)
 	$(MAKE) -C ../onvif all
 
 $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)

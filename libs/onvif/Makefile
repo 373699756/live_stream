@@ -8,7 +8,6 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/time/include
 EXTRA_TEST_DEPS = $(INFRA_LIB)
 EXTRA_TEST_LIBS = $(INFRA_LIB)
 
