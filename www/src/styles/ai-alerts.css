@@ -408,8 +408,14 @@
   position: absolute;
   inset: 0;
   z-index: 6;
-  cursor: crosshair;
+  pointer-events: none;
+  cursor: default;
   touch-action: none;
+}
+
+.ai-perimeter-draw-layer.editing {
+  pointer-events: auto;
+  cursor: crosshair;
 }
 
 .ai-perimeter-video-area {
@@ -435,6 +441,15 @@
     0 0 0 1px rgba(3, 7, 18, 0.78),
     inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   pointer-events: none;
+}
+
+.ai-perimeter-region.selectable {
+  pointer-events: none;
+}
+
+.ai-perimeter-region.selectable span {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .ai-perimeter-region.active {
@@ -643,7 +658,7 @@
 .ai-console-layout {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 12px;
   align-items: start;
 }
@@ -664,7 +679,7 @@
 }
 
 .ai-runtime-compact,
-.ai-config-panel,
+.ai-event-workbench,
 .ai-snapshot-rail {
   min-width: 0;
   padding: 12px;
@@ -753,12 +768,12 @@
   font-size: 12px;
 }
 
-.ai-config-panel {
+.ai-event-workbench {
   display: grid;
   gap: 12px;
 }
 
-.ai-config-panel-header,
+.ai-event-workbench-header,
 .ai-snapshot-rail-header {
   display: flex;
   align-items: flex-start;
@@ -766,14 +781,14 @@
   gap: 12px;
 }
 
-.ai-config-panel-header h3,
+.ai-event-workbench-header h3,
 .ai-snapshot-rail-header h3 {
   margin: 0;
   color: #202b3c;
   font-size: 16px;
 }
 
-.ai-config-panel-header span,
+.ai-event-workbench-header span,
 .ai-snapshot-rail-header span {
   display: block;
   margin-top: 3px;
@@ -781,21 +796,50 @@
   font-size: 12px;
 }
 
-.ai-task-enable {
-  display: inline-flex;
+.ai-sensitivity-control {
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  color: #202b3c;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.ai-task-config-list {
-  display: grid;
   gap: 8px;
 }
 
-.ai-task-config-row {
+.ai-sensitivity-control > span {
+  margin: 0;
+  color: #526174;
+  font-size: 12px;
+}
+
+.ai-sensitivity-control > div {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(42px, 1fr));
+  gap: 1px;
+  padding: 2px;
+  background: #e2e8f0;
+  border: 1px solid #cbd6e3;
+  border-radius: 4px;
+}
+
+.ai-sensitivity-control button {
+  min-width: 42px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.ai-sensitivity-control button.active {
+  color: #fff;
+  background: var(--brand);
+}
+
+.ai-event-switch-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ai-event-switch-row {
   min-width: 0;
   display: grid;
   gap: 8px;
@@ -805,49 +849,113 @@
   border-radius: 4px;
 }
 
-.ai-task-config-main {
+.ai-event-switch-main {
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ai-task-config-fields {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(90px, 0.65fr) minmax(86px, 0.6fr)
-    minmax(96px, 0.7fr) minmax(86px, 0.55fr) minmax(220px, 1.5fr);
   gap: 8px;
 }
 
-.ai-task-config-fields label {
+.ai-event-switch-main input {
+  flex: 0 0 auto;
+}
+
+.ai-event-switch-main span {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
-.ai-task-config-fields span {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.ai-task-config-fields input,
-.ai-task-config-fields select {
-  width: 100%;
+.ai-event-switch-main strong,
+.ai-event-switch-main em {
   min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  color: #1f2a3a;
-  background: #fff;
-  border: 1px solid #cbd6e3;
-  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-event-switch-main strong {
+  color: #202b3c;
   font-size: 13px;
 }
 
-.ai-task-config-fields input[aria-invalid='true'] {
-  border-color: #d14343;
-  background: #fff6f6;
+.ai-event-switch-main em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.ai-event-switch-row > button {
+  min-width: 0;
+}
+
+.ai-event-switch-row > button.active {
+  color: #0f5132;
+  border-color: #86efac;
+  background: #ecfdf5;
+}
+
+.ai-perimeter-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #d5e6fa;
+  border-radius: 4px;
+  background: #f2f8ff;
+}
+
+.ai-perimeter-toolbar > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.ai-perimeter-toolbar strong,
+.ai-perimeter-toolbar span,
+.ai-perimeter-toolbar em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-perimeter-toolbar strong {
+  color: #202b3c;
+}
+
+.ai-perimeter-toolbar span,
+.ai-perimeter-toolbar em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.ai-perimeter-region-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.ai-perimeter-region-list button {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+
+.ai-perimeter-region-list button.active {
+  color: #fff;
+  border-color: #15803d;
+  background: #16a34a;
+}
+
+.ai-perimeter-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .ai-config-actions {
@@ -864,10 +972,6 @@
   font-size: 12px;
 }
 
-.ai-config-actions strong {
-  color: #202b3c;
-}
-
 .ai-config-actions button {
   min-width: 86px;
 }
@@ -881,13 +985,10 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.ai-snapshot-waterfall {
+.ai-snapshot-list {
   min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-flow: dense;
-  align-items: start;
   gap: 8px;
   margin-top: 10px;
   padding-right: 2px;
@@ -895,57 +996,61 @@
 
 .ai-snapshot-card {
   min-width: 0;
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  text-align: left;
   background: #0d1421;
   border: 1px solid #202d41;
   border-radius: 6px;
 }
 
-.ai-snapshot-card.is-tall {
-  grid-row: span 2;
+.ai-snapshot-card:hover {
+  border-color: #3b82f6;
 }
 
 .ai-snapshot-card img {
-  width: 100%;
+  width: 112px;
   aspect-ratio: 4 / 3;
   display: block;
   object-fit: contain;
   background: #101827;
+  border-radius: 4px;
 }
 
-.ai-snapshot-card.is-tall img {
-  aspect-ratio: 3 / 4;
-}
-
-.ai-snapshot-card-meta {
+.ai-snapshot-card-body {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 6px;
-  padding: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 6px;
+  align-content: center;
   color: #dce7f7;
   font-size: 11px;
 }
 
-.ai-snapshot-card-meta strong,
-.ai-snapshot-card-meta span {
+.ai-snapshot-card-body strong,
+.ai-snapshot-card-body em,
+.ai-snapshot-card-body span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ai-snapshot-card-meta strong {
+.ai-snapshot-card-body strong {
+  grid-column: 1 / -1;
   color: #fff;
-  font-size: 12px;
+  font-size: 13px;
 }
 
-.ai-snapshot-card-meta span:last-child {
+.ai-snapshot-card-body em {
   grid-column: 1 / -1;
   color: #9fb0c8;
+  font-style: normal;
 }
 
 .ai-snapshot-empty {
-  grid-column: 1 / -1;
   min-height: 160px;
   display: grid;
   place-items: center;
@@ -966,8 +1071,8 @@
     max-height: none;
   }
 
-  .ai-snapshot-waterfall {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+  .ai-snapshot-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow: visible;
   }
 }
@@ -982,42 +1087,41 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .ai-task-strip {
+  .ai-task-strip,
+  .ai-event-switch-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ai-task-config-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ai-task-model-field {
-    grid-column: 1 / -1;
-  }
-
-  .ai-snapshot-waterfall {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 620px) {
   .ai-runtime-kpis,
   .ai-task-strip,
-  .ai-task-config-fields,
-  .ai-snapshot-waterfall {
+  .ai-event-switch-list,
+  .ai-snapshot-list {
     grid-template-columns: 1fr;
   }
 
-  .ai-config-panel-header,
+  .ai-event-workbench-header,
   .ai-snapshot-rail-header,
-  .ai-task-config-main {
+  .ai-perimeter-toolbar {
     display: grid;
   }
 
-  .ai-config-actions {
+  .ai-sensitivity-control,
+  .ai-config-actions,
+  .ai-perimeter-actions {
     justify-content: flex-start;
   }
 
   .ai-console-main .video-surface {
     min-height: 300px;
+  }
+
+  .ai-snapshot-card {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .ai-snapshot-card img {
+    width: 96px;
   }
 }

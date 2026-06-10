@@ -34,8 +34,9 @@ flowchart LR
   配置或 Web 选项暴露。
 - 当前运行模型是多任务模型：Web 只暴露 `ai.tasks[]` 中
   `object_detection`、`perimeter_detection`、`motion_classification` 和
-  `occlusion_detection` 的独立开关；保存配置时由任务开关自动派生
-  `ai.enabled` 这个内部运行闸门。
+  `occlusion_detection` 的独立开关和一个全局灵敏度；保存配置时由任务开关自动
+  派生 `ai.enabled` 这个内部运行闸门，并把隐藏的模型、码流、输入尺寸、
+  推理间隔和结果数收敛为一份共享运行配置。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
@@ -60,7 +61,7 @@ HTTP 路由由 `http` 实现，但业务语义归本模块：
 
 `GET /api/ai/status` 返回 `enabled`、完整 `config`、汇总 `summary` 和每个任务的
 `tasks[]` 状态；每个任务状态包含任务配置、统计和最近一次结果。`GET /api/ai/alerts`
-返回最新告警抓拍列表，Web Console 在 AI 页面右侧按实时瀑布流展示最近 10 张。
+返回最新告警抓拍列表，Web Console 在 AI 页面右侧按卡片列表展示最近 10 张。
 周界抓拍卡片上的 `person`、`vehicle` 等标签来自目标检测模型类别，表示进入周界区域
 的目标类别，不表示周界事件被错误归类为目标检测任务。
 

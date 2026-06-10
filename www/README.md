@@ -181,8 +181,11 @@ run the existing AI tasks in parallel. The Web UI exposes only per-task
 switches and derives the backend `ai.enabled` runtime gate from whether any
 task is enabled.
 The AI page is preview-first: it overlays current-stream detections from all
-enabled tasks and shows the latest 10 alert snapshots in the right-side
-waterfall.
+enabled tasks, exposes per-task switches plus one global sensitivity control,
+lets perimeter regions be drawn on top of the video, and shows the latest 10
+alert snapshots as right-side cards.
+Hidden model, stream, input-size, interval, and result-count fields are saved
+as one shared runtime configuration for all event tasks.
 `GET /api/alarm/status` exposes whether the system alarm event has fired, and
 the Web UI also listens to `/api/events` for `alarm_triggered`.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300
