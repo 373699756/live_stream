@@ -5,8 +5,8 @@
  * Brief: Defines the IPC system time public API.
  */
 
-#ifndef LIVE_STREAM_TIME_TIME_API_H_
-#define LIVE_STREAM_TIME_TIME_API_H_
+#ifndef LIVE_STREAM_SYSTEM_TIME_API_H_
+#define LIVE_STREAM_SYSTEM_TIME_API_H_
 
 #include "request_context.h"
 
@@ -103,4 +103,4 @@ const char* TimeSyncSourceToString(TimeSyncSource source);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_TIME_TIME_API_H_
+#endif  // LIVE_STREAM_SYSTEM_TIME_API_H_

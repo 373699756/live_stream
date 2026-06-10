@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_UPGRADE_UPGRADE_H_
-#define LIVE_STREAM_UPGRADE_UPGRADE_H_
+#ifndef LIVE_STREAM_SYSTEM_UPGRADE_H_
+#define LIVE_STREAM_SYSTEM_UPGRADE_H_
 
 #include "request_context.h"
 
@@ -117,4 +117,4 @@ const char* UpgradeStateToString(UpgradeState state);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_UPGRADE_UPGRADE_H_
+#endif  // LIVE_STREAM_SYSTEM_UPGRADE_H_

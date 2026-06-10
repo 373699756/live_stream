@@ -42,10 +42,8 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Device Modules
 
 - `system.md`
-- `time.md`
 - `network_config.md`
 - `alarm.md`
-- `upgrade.md`
 
 ### Media Modules
 

@@ -46,7 +46,6 @@ CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
 CXXFLAGS += -Ilibs/network_config/include
 CXXFLAGS += -Ilibs/network_config/src
-CXXFLAGS += -Ilibs/time/include
 CXXFLAGS += -Ilibs/media_codec/include
 CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
@@ -62,7 +61,6 @@ CXXFLAGS += -Ilibs/webrtc/include
 CXXFLAGS += -Ilibs/snapshot/include
 CXXFLAGS += -Ilibs/onvif/include
 CXXFLAGS += -Ilibs/alarm/include
-CXXFLAGS += -Ilibs/upgrade/include
 CXXFLAGS += -Ilibs/http/include
 CXXFLAGS += -Ilibs/http_media/include
 CXXFLAGS += -I$(THIRDPARTY_INSTALL)/include
@@ -80,7 +78,6 @@ MODULES := \
 	auth \
 	system \
 	network_config \
-	time \
 	ai \
 	hisi_vendor \
 	device_media \
@@ -94,7 +91,6 @@ MODULES := \
 	snapshot \
 	onvif \
 	alarm \
-	upgrade \
 	http_media \
 	http \
 	media_codec
@@ -188,11 +184,11 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libupgrade.a $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libsystem.a $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
-	  $(LIB_DIR)/libupgrade.a $(LIB_DIR)/libinfra.a \
+	  $(LIB_DIR)/libsystem.a $(LIB_DIR)/libinfra.a \
 	  $(THIRDPARTY_INSTALL)/lib/libcrypto.a \
 	  $(SYSUPGRADE_LDFLAGS) $(LDFLAGS) $(LDLIBS)
 

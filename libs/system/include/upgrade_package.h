@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_UPGRADE_UPGRADE_PACKAGE_H_
-#define LIVE_STREAM_UPGRADE_UPGRADE_PACKAGE_H_
+#ifndef LIVE_STREAM_SYSTEM_UPGRADE_PACKAGE_H_
+#define LIVE_STREAM_SYSTEM_UPGRADE_PACKAGE_H_
 
 #include <cstdint>
 #include <functional>
@@ -65,4 +65,4 @@ bool UpgradePackageIsWebOnly(const UpgradeManifest& manifest);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_UPGRADE_UPGRADE_PACKAGE_H_
+#endif  // LIVE_STREAM_SYSTEM_UPGRADE_PACKAGE_H_
