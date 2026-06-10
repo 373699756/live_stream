@@ -7,6 +7,10 @@ namespace {
 
 constexpr uint32_t kDefaultSsrcBase = 0x52545350;
 
+bool SameAddress(const NetAddress &left, const NetAddress &right) {
+  return left.ip == right.ip && left.port == right.port;
+}
+
 }  // namespace
 
 RtspSession::RtspSession(ConnectionId next_connection_id,
@@ -50,6 +54,8 @@ void RtspSession::SetupTcp(StreamId next_stream_id,
   rtp_socket_id = 0;
   rtcp_socket_id = 0;
   client_rtp_port = 0;
+  udp_rtp_peer = NetAddress{};
+  udp_rtcp_peer = NetAddress{};
   stats.transport = transport;
   stats.stream_id = stream_id;
 }
@@ -65,8 +71,30 @@ void RtspSession::SetupUdp(StreamId next_stream_id, UdpSocketId next_rtp_socket_
   rtp_socket_id = next_rtp_socket_id;
   rtcp_socket_id = next_rtcp_socket_id;
   client_rtp_port = next_client_rtp_port;
+  udp_rtp_peer = peer;
+  udp_rtp_peer.port = next_client_rtp_port;
+  udp_rtcp_peer = peer;
+  udp_rtcp_peer.port = static_cast<uint16_t>(next_client_rtp_port + 1);
   stats.transport = transport;
   stats.stream_id = stream_id;
+}
+
+bool RtspSession::LearnUdpRtpPeer(NetAddress next_udp_rtp_peer) {
+  if (next_udp_rtp_peer.ip.empty() || next_udp_rtp_peer.port == 0 ||
+      SameAddress(udp_rtp_peer, next_udp_rtp_peer)) {
+    return false;
+  }
+  udp_rtp_peer = std::move(next_udp_rtp_peer);
+  return true;
+}
+
+bool RtspSession::LearnUdpRtcpPeer(NetAddress next_udp_rtcp_peer) {
+  if (next_udp_rtcp_peer.ip.empty() || next_udp_rtcp_peer.port == 0 ||
+      SameAddress(udp_rtcp_peer, next_udp_rtcp_peer)) {
+    return false;
+  }
+  udp_rtcp_peer = std::move(next_udp_rtcp_peer);
+  return true;
 }
 
 void RtspSession::StartPlaying() {

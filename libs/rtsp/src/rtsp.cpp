@@ -407,19 +407,33 @@ private:
                      NetAddress peer,
                      const uint8_t* data,
                      size_t size) {
-        (void)peer;
         (void)data;
         std::shared_ptr<RtspSession> session;
+        bool learned_rtp_peer = false;
+        bool learned_rtcp_peer = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session = sessions_.FindByUdpSocket(socket_id);
-            if (session != nullptr && session->rtcp_socket_id == socket_id) {
+            if (session == nullptr || peer.ip != session->peer.ip) {
+                return;
+            }
+            if (session->rtp_socket_id == socket_id) {
+                learned_rtp_peer = session->LearnUdpRtpPeer(peer);
+            } else if (session->rtcp_socket_id == socket_id) {
+                learned_rtcp_peer = session->LearnUdpRtcpPeer(peer);
                 session->RecordRtcpPacket(size,
                                           infra::Time::MonotonicMillis());
             }
         }
         if (session == nullptr) {
             return;
+        }
+        if (learned_rtp_peer || learned_rtcp_peer) {
+            Info("rtsp",
+                 "RTSP UDP peer learned conn=%llu type=%s peer=%s:%u",
+                 static_cast<unsigned long long>(session->connection_id),
+                 learned_rtp_peer ? "rtp" : "rtcp", peer.ip.c_str(),
+                 static_cast<unsigned>(peer.port));
         }
         // 当前产品只发视频预览 RTP，不根据 RTCP receiver report 做码率控制。
         // 这里接收并忽略 RTCP，避免客户端上报包触发解析错误或断连。

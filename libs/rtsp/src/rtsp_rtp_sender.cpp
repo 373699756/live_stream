@@ -107,8 +107,7 @@ bool RtspRtpSender::SendRtpPacketView(
     target.mode = session->transport;
     target.connection_id = session->connection_id;
     target.udp_socket_id = session->rtp_socket_id;
-    target.udp_peer = session->peer;
-    target.udp_peer.port = session->client_rtp_port;
+    target.udp_peer = session->udp_rtp_peer;
     target.interleaved_rtp_channel = session->interleaved_rtp_channel;
   }
 

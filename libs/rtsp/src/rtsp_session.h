@@ -38,6 +38,8 @@ class RtspSession {
   void SetupTcp(StreamId stream_id, uint8_t interleaved_rtp_channel);
   void SetupUdp(StreamId stream_id, UdpSocketId rtp_socket_id,
                 UdpSocketId rtcp_socket_id, uint16_t client_rtp_port);
+  bool LearnUdpRtpPeer(NetAddress next_udp_rtp_peer);
+  bool LearnUdpRtcpPeer(NetAddress next_udp_rtcp_peer);
   void StartPlaying();
   void AttachReader(MediaFrameReaderId next_reader_id,
                     uint64_t reader_generation, MediaTrack next_track);
@@ -67,6 +69,10 @@ class RtspSession {
   UdpSocketId rtp_socket_id = 0;
   UdpSocketId rtcp_socket_id = 0;
   uint16_t client_rtp_port = 0;
+  // UDP RTP/RTCP 发送目标先来自 SETUP client_port；收到客户端 UDP 打洞包后
+  // 更新为实际来源地址和端口，匹配 ZLMediaKit 的 NAT peer 学习行为。
+  NetAddress udp_rtp_peer;
+  NetAddress udp_rtcp_peer;
   // RTP sequence/ssrc 是每个 RTSP session 独立的发送状态。
   uint16_t rtp_sequence = 1;
   uint32_t ssrc = 0;
