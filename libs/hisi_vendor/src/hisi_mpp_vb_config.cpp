@@ -67,19 +67,23 @@ bool CleanupConfiguredVideoBuffer(bool* cleanup_failed) {
 }
 
 bool InitConfiguredVideoBuffer(bool* cleanup_failed) {
+    Info("hisi_vendor", "HI_MPI_VB_Init begin");
     HI_S32 status = HI_MPI_VB_Init();
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_VB_Init failed: 0x%08x", status);
         (void)CleanupConfiguredVideoBuffer(cleanup_failed);
         return false;
     }
+    Info("hisi_vendor", "HI_MPI_VB_Init done");
 
+    Info("hisi_vendor", "HI_MPI_SYS_Init begin");
     status = HI_MPI_SYS_Init();
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x", status);
         (void)CleanupConfiguredVideoBuffer(cleanup_failed);
         return false;
     }
+    Info("hisi_vendor", "HI_MPI_SYS_Init done");
 
     return true;
 }
@@ -93,9 +97,22 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config,
     }
     const VB_CONFIG_S vb_conf = BuildVideoBufferConfig(config);
 
+    Info("hisi_vendor", "HISI MPP pre-cleanup begin");
     (void)mpp_resource_recovery::ExitMppSystem(
         false, 1, mpp_resource_recovery::MppExitBusyLog::kSilent);
+    Info("hisi_vendor", "HISI MPP pre-cleanup done");
 
+    Info("hisi_vendor",
+         "HI_MPI_VB_SetConfig begin pools=%u sensor_blk=%llu main_blk=%llu "
+         "sub_enabled=%d sub_blk=%llu",
+         vb_conf.u32MaxPoolCnt,
+         static_cast<unsigned long long>(
+             vb_conf.astCommPool[0].u64BlkSize),
+         static_cast<unsigned long long>(
+             vb_conf.astCommPool[1].u64BlkSize),
+         config.sub_stream.enabled ? 1 : 0,
+         static_cast<unsigned long long>(
+             vb_conf.astCommPool[2].u64BlkSize));
     HI_S32 status = HI_MPI_VB_SetConfig(&vb_conf);
     if (status == HI_ERR_VB_BUSY) {
         Info("hisi_vendor",
@@ -119,6 +136,7 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config,
         }
         return false;
     }
+    Info("hisi_vendor", "HI_MPI_VB_SetConfig done");
 
     return InitConfiguredVideoBuffer(cleanup_failed);
 }

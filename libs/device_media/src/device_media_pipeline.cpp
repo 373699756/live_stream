@@ -1,6 +1,7 @@
 #include "device_media_pipeline.h"
 
 #include "hisisdk/hisi_sdk.h"
+#include "infra/log.h"
 #include "media_channels.h"
 
 #include <utility>
@@ -87,11 +88,20 @@ bool DeviceMediaPipeline::InitSystem() {
         return false;
     }
 
+    Info("device_media",
+         "MPP system init begin sensor=%d pipe=%d vi=%d vpss=%d:%d "
+         "venc=%d main=%ux%u sub_enabled=%d sub=%ux%u",
+         config_.sensor_id, config_.video_pipe, config_.vi_channel,
+         config_.vpss_group, config_.vpss_channel, config_.venc_channel,
+         config_.main_stream.size.width, config_.main_stream.size.height,
+         config_.sub_stream.enabled ? 1 : 0,
+         config_.sub_stream.size.width, config_.sub_stream.size.height);
     if (!sdk_->InitSystem(config_)) {
         return false;
     }
     BuildChannels();
     system_initialized_ = true;
+    Info("device_media", "MPP system init done");
     return true;
 }
 
@@ -109,42 +119,54 @@ bool DeviceMediaPipeline::Start() {
         return false;
     }
 
+    Info("device_media", "Start VI begin");
     if (!sdk_->StartVi(config_)) {
         return false;
     }
     vi_started_ = true;
+    Info("device_media", "Start VI done");
 
+    Info("device_media", "Start VPSS begin");
     if (!sdk_->StartVpss(config_)) {
         Stop();
         return false;
     }
     vpss_started_ = true;
+    Info("device_media", "Start VPSS done");
 
+    Info("device_media", "Bind VI-VPSS begin");
     if (!sdk_->BindViVpss(config_)) {
         Stop();
         return false;
     }
     vi_bound_vpss_ = true;
+    Info("device_media", "Bind VI-VPSS done");
 
     // VENC receive is started by BindVpssVenc() after the source is connected.
+    Info("device_media", "Start VENC begin");
     if (!sdk_->StartVenc(config_)) {
         Stop();
         return false;
     }
     venc_started_ = true;
+    Info("device_media", "Start VENC done");
 
+    Info("device_media", "Bind VPSS-VENC begin");
     if (!sdk_->BindVpssVenc(config_)) {
         Stop();
         return false;
     }
     vpss_bound_venc_ = true;
+    Info("device_media", "Bind VPSS-VENC done");
 
+    Info("device_media", "Start VENC stream begin");
     if (!sdk_->StartVencStream(config_, frame_callback_,
                                frame_callback_user_)) {
         Stop();
         return false;
     }
     stream_started_ = true;
+    Info("device_media", "Start VENC stream done");
     return true;
 }
 
