@@ -145,6 +145,16 @@ bool HttpSession::AttachStreamClient(HttpMediaClientHandle client) {
   return true;
 }
 
+bool HttpSession::MarkStreamClosing() {
+  if (!streaming_) {
+    return false;
+  }
+  stream_state_ = HttpMediaStreamState::kClosing;
+  closing_ = true;
+  ++timeout_generation_;
+  return true;
+}
+
 RenewedHttpSessionTimeout HttpSession::RenewTimeout() {
   RenewedHttpSessionTimeout timeout;
   timeout.replaced_timer_id = timer_id_;

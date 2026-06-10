@@ -493,9 +493,13 @@ ConfigJson HttpStreamingSessionToJson(
     root["client_id"] = session.client_id;
     root["stream"] = StreamIdToJsonString(session.stream_id);
     root["stream_state"] = session.stream_state;
-    root["state"] = session.open && session.stream_state == "opening"
-                        ? "opening"
-                        : (session.open ? "streaming" : "closed");
+    if (session.open && session.stream_state == "opening") {
+        root["state"] = "opening";
+    } else if (session.open && session.stream_state == "closing") {
+        root["state"] = "closing";
+    } else {
+        root["state"] = session.open ? "streaming" : "closed";
+    }
     root["client_ip"] = session.client_ip;
     root["remote_address"] = session.remote_address;
     root["local_address"] = session.local_address;

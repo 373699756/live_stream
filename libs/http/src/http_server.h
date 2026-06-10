@@ -94,6 +94,12 @@ private:
     void NotifyStreamClosed(const HttpMediaClientHandle &client);
     void NotifyStreamsClosed(
         const std::vector<HttpMediaClientHandle> &clients);
+    void CloseConnectionWithReason(ConnectionId connection_id,
+                                   TcpCloseReason reason);
+    bool MarkStreamingClosing(ConnectionId connection_id);
+    bool HandleStreamingRequestResult(ConnectionId connection_id,
+                                      const HttpRequest &request,
+                                      HttpStreamingRequestResult result);
     void OnConnection(ConnectionId connection_id, NetAddress peer);
     void OnClose(ConnectionId connection_id, TcpCloseReason reason);
     void OnMessage(ConnectionId connection_id, const uint8_t *data,

@@ -54,8 +54,9 @@ HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP ses
 `/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。
 在调用 `BeginStream(type, stream_id)` 到 `AttachStreamClient()` 完成之间，HTTP session
 会以 `stream_state=opening` 暴露，便于定位已接管 TCP 但卡在 header/GOP/sink attach
-阶段的连接；attach 成功后变为 `attached`。SSE 使用同一 close callback 解除订阅，
-但不作为媒体会话列入 `/api/media/sessions`。
+阶段的连接；attach 成功后变为 `attached`，HTTP 层主动关闭或发送失败后先标记为
+`closing`，直到 TCP close callback 完成 detach。SSE 使用同一 close callback 解除
+订阅，但不作为媒体会话列入 `/api/media/sessions`。
 
 ## API 归属
 

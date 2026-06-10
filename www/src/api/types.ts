@@ -308,7 +308,7 @@ export interface MediaSessionInfo {
   protocol: string;
   stream: StreamName;
   state: string;
-  stream_state?: 'opening' | 'attached' | 'none' | string;
+  stream_state?: 'opening' | 'attached' | 'closing' | 'none' | string;
   connection_id?: number;
   client_id?: string;
   client_ip?: string;

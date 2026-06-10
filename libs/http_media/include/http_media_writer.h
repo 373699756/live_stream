@@ -24,6 +24,7 @@ enum class HttpMediaStreamState {
     kNone,
     kOpening,
     kAttached,
+    kClosing,
 };
 
 inline const char *HttpMediaStreamStateName(HttpMediaStreamState state) {
@@ -32,6 +33,8 @@ inline const char *HttpMediaStreamStateName(HttpMediaStreamState state) {
             return "opening";
         case HttpMediaStreamState::kAttached:
             return "attached";
+        case HttpMediaStreamState::kClosing:
+            return "closing";
         case HttpMediaStreamState::kNone:
             break;
     }

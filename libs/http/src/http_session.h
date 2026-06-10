@@ -89,6 +89,7 @@ class HttpSession {
 
   bool BeginStream(HttpMediaClientType type, StreamId stream_id);
   bool AttachStreamClient(HttpMediaClientHandle client);
+  bool MarkStreamClosing();
   RenewedHttpSessionTimeout RenewTimeout();
   bool InstallTimeout(uint64_t generation, NetTimerId timer_id);
   NetTimerId CancelTimeout();

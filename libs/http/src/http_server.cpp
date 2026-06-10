@@ -381,8 +381,12 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
             return false;
         }
     }
-    return connection_writer_.EnqueueStreamingChunk(
+    const bool enqueued = connection_writer_.EnqueueStreamingChunk(
         net_engine_, connection_id, data, size);
+    if (!enqueued) {
+        (void)MarkStreamingClosing(connection_id);
+    }
+    return enqueued;
 }
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
@@ -399,8 +403,12 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
             return false;
         }
     }
-    return connection_writer_.EnqueueStreamingSlices(
+    const bool enqueued = connection_writer_.EnqueueStreamingSlices(
         net_engine_, connection_id, slices, slice_count);
+    if (!enqueued) {
+        (void)MarkStreamingClosing(connection_id);
+    }
+    return enqueued;
 }
 
 void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {
@@ -409,14 +417,22 @@ void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {
 }
 
 void HttpServer::CloseConnection(ConnectionId connection_id) {
+    CloseConnectionWithReason(connection_id, TcpCloseReason::kNormal);
+}
+
+void HttpServer::CloseConnectionWithReason(ConnectionId connection_id,
+                                           TcpCloseReason reason) {
     INetEngine *net_engine = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = sessions_.find(connection_id);
+        if (iter != sessions_.end() && iter->second != nullptr) {
+            (void)iter->second->MarkStreamClosing();
+        }
         net_engine = net_engine_;
     }
     if (net_engine != nullptr) {
-        connection_writer_.CloseConnection(net_engine, connection_id,
-                                           TcpCloseReason::kNormal);
+        connection_writer_.CloseConnection(net_engine, connection_id, reason);
     }
 }
 
@@ -468,6 +484,50 @@ void HttpServer::NotifyStreamsClosed(
     for (const HttpMediaClientHandle &client : clients) {
         NotifyStreamClosed(client);
     }
+}
+
+bool HttpServer::MarkStreamingClosing(ConnectionId connection_id) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    auto iter = sessions_.find(connection_id);
+    return iter != sessions_.end() && iter->second != nullptr &&
+           iter->second->MarkStreamClosing();
+}
+
+bool HttpServer::HandleStreamingRequestResult(
+    ConnectionId connection_id, const HttpRequest &request,
+    HttpStreamingRequestResult result) {
+    switch (result) {
+        case HttpStreamingRequestResult::kNotHandled:
+            return false;
+        case HttpStreamingRequestResult::kResponseSent:
+            Debug(kHttpModuleName,
+                  "HTTP streaming request response sent conn=%llu path=%s",
+                  static_cast<unsigned long long>(connection_id),
+                  request.path.c_str());
+            return true;
+        case HttpStreamingRequestResult::kStreaming:
+            Debug(kHttpModuleName,
+                  "HTTP streaming request attached conn=%llu path=%s",
+                  static_cast<unsigned long long>(connection_id),
+                  request.path.c_str());
+            return true;
+        case HttpStreamingRequestResult::kClosed:
+            (void)MarkStreamingClosing(connection_id);
+            Debug(kHttpModuleName,
+                  "HTTP streaming request closed conn=%llu path=%s",
+                  static_cast<unsigned long long>(connection_id),
+                  request.path.c_str());
+            return true;
+        case HttpStreamingRequestResult::kFailed:
+            Warn(kHttpModuleName,
+                 "HTTP streaming request failed conn=%llu path=%s",
+                 static_cast<unsigned long long>(connection_id),
+                 request.path.c_str());
+            CloseConnectionWithReason(connection_id,
+                                      TcpCloseReason::kInternalError);
+            return true;
+    }
+    return true;
 }
 
 void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
@@ -565,10 +625,8 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
                 const HttpStreamingRequestResult stream_result =
                     request_handler_->HandleStreamingHttpRequest(
                         connection_id, pending.request);
-                if (stream_result != HttpStreamingRequestResult::kNotHandled) {
-                    if (stream_result == HttpStreamingRequestResult::kFailed) {
-                        CloseConnection(connection_id);
-                    }
+                if (HandleStreamingRequestResult(
+                        connection_id, pending.request, stream_result)) {
                     return;
                 }
             }

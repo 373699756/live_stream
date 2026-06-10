@@ -106,7 +106,8 @@ diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 `client_ip`、`remote_address`、`local_address`、`pending_bytes`、
 `send_queue_length`、`last_write_at_ms` 和 `close_reason`；`stream_state=opening`
 表示 HTTP session 已经被流式请求接管但还没有绑定媒体 client id，`attached`
-表示已经绑定 FLV/MJPEG client。`pending_bytes`、`send_queue_length` 和
+表示已经绑定 FLV/MJPEG client，`closing` 表示 HTTP 层已经触发关闭但 TCP close
+回调尚未完成。`pending_bytes`、`send_queue_length` 和
 `last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端、发送队列
 积压和媒体 attach 卡住的连接。HLS playlist/segment 是短 HTTP 响应，不作为活跃
 session 常驻展示。
