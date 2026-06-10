@@ -246,6 +246,12 @@ bool UdpEndpoint::SendToSlicesInLoop(NetAddress address,
     message.msg_iovlen = iov_count;
     const ssize_t ret = sendmsg(fd, &message, 0);
     if (ret < 0) {
+        const int error = errno;
+        Error(kModuleName,
+              "UDP send failed local=%s:%u peer=%s:%u errno=%d (%s)",
+              local_.ip.c_str(), static_cast<unsigned>(local_.port),
+              address.ip.c_str(), static_cast<unsigned>(address.port), error,
+              ErrnoText(error));
         return false;
     }
     engine_->AddUdpTx();
@@ -259,29 +265,13 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     }
     // selected peer 只给 RTP/ICE 这类已协商对端使用；ONVIF discovery 仍走
     // SendTo()，因为每个 Probe 的回复目标不同。
-    std::shared_ptr<EventLoop> loop;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        loop = loop_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || loop_ == nullptr) {
+        return false;
     }
-    if (loop != nullptr && loop->IsCurrentThread()) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        peer_ = std::move(peer);
-        has_peer_ = true;
-        return true;
-    }
-    auto selected_peer = std::make_shared<NetAddress>(std::move(peer));
-    std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
-    return loop != nullptr &&
-           loop->Post([weak_self, selected_peer]() {
-               auto self = weak_self.lock();
-               if (!self) {
-                   return;
-               }
-               std::lock_guard<std::mutex> lock(self->mutex_);
-               self->peer_ = *selected_peer;
-               self->has_peer_ = true;
-           });
+    peer_ = std::move(peer);
+    has_peer_ = true;
+    return true;
 }
 
 bool UdpEndpoint::SendToPeer(const uint8_t *data, size_t size) {
