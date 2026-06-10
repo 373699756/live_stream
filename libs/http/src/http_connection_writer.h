@@ -2,7 +2,6 @@
 #define LIVE_STREAM_HTTP_SRC_HTTP_CONNECTION_WRITER_H_
 
 #include "http.h"
-#include "http_media_writer.h"
 #include "net.h"
 
 #include <cstddef>

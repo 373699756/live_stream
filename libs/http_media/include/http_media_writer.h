@@ -77,25 +77,17 @@ inline const char *HttpMediaClientTypeName(HttpMediaClientType type) {
 using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
-// 长连接 HTTP 媒体输出边界，例如 HLS segment、HTTP-FLV 和 MJPEG。
+// 长连接 HTTP 媒体输出边界，例如 HTTP-FLV、MJPEG 和 SSE。
 // 调用方只描述 MediaSlice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
 class HttpMediaWriter {
 public:
     virtual ~HttpMediaWriter() = default;
 
-    // 发送一次性 HTTP 响应。close_after_response=true 时 writer 会等队列写完后
-    // 关闭 TCP，适合 HLS segment、错误响应和普通短响应。
+    // 在长连接接管失败前发送一次性错误响应。普通 HLS playlist/segment
+    // 短响应由 HTTP router 返回 HttpResponse，不走 HttpMediaWriter。
     virtual void SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) = 0;
-    // 发送带多段 body 的一次性响应。body_size 必须等于 body_slices 总长度，
-    // 用于生成正确 Content-Length。
-    virtual bool SendResponseSlices(ConnectionId connection_id,
-                                    const HttpResponse &response,
-                                    const MediaSlice *body_slices,
-                                    size_t body_slice_count,
-                                    size_t body_size,
-                                    bool close_after_response) = 0;
     // 将 HTTP session 切成流式模式。调用成功后不能再按普通 keep-alive 请求处理。
     // type/stream_id 会先作为 opening 诊断保存在 HTTP session，AttachStreamClient()
     // 成功后切换为 attached。

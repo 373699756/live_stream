@@ -331,21 +331,6 @@ void HttpServer::SendResponse(ConnectionId connection_id,
     }
 }
 
-bool HttpServer::SendResponseSlices(ConnectionId connection_id,
-                                    const HttpResponse &response,
-                                    const MediaSlice *body_slices,
-                                    size_t body_slice_count,
-                                    size_t body_size,
-                                    bool close_after_response) {
-    const bool sent = connection_writer_.SendResponseSlices(
-        net_engine_, connection_id, response, body_slices, body_slice_count,
-        body_size, close_after_response);
-    if (sent && !close_after_response) {
-        CompleteKeepAliveRequest(connection_id);
-    }
-    return sent;
-}
-
 bool HttpServer::BeginStream(ConnectionId connection_id,
                              HttpMediaClientType type,
                              StreamId stream_id) {

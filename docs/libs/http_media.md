@@ -22,8 +22,9 @@ flowchart LR
 
 ## 设计目标与非目标
 
-- 通过 `media_source` 的 HLS/FLV/MJPEG public API 获取媒体数据，通过 `http` 提供的
-  `HttpMediaWriter` 输出长连接数据。
+- 通过 `media_source` 的 HLS/FLV/MJPEG public API 获取媒体数据；HLS 作为普通短响应
+  返回 `HttpResponse`，HTTP-FLV、MJPEG 和 SSE 通过 `http` 提供的 `HttpMediaWriter`
+  输出长连接数据。
 - REST 路径或 DTO 变更时同步迁移 `www/` 的 API client、mock 数据、类型定义和页面调用；
   本阶段冻结新路径和 DTO，不保留旧路径适配。
 - 不拥有设备编码入口、GOP cache、私有 socket 队列或 WebRTC ICE/DTLS/SRTP 状态。
@@ -46,8 +47,9 @@ flowchart LR
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。
 
-媒体正文输出统一使用 `MediaSlice` 表达 header、payload 和可选 `VideoBuffer`
-owner。HLS segment、HTTP-FLV cached GOP 和 MJPEG frame 只提交 slice；跨线程或异步
+媒体正文输出统一使用 slice/owner 模型表达 header、payload 和可选 `VideoBuffer`
+owner。HLS segment 通过 `HttpResponse.body_slices` 作为普通短响应返回；HTTP-FLV
+cached GOP 和 MJPEG frame 通过 `HttpMediaWriter` 提交流式 `MediaSlice`。跨线程或异步
 TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner 引用保持。
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
@@ -79,10 +81,10 @@ HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP ses
 JSON signaling 必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
 
 HTTP streaming handler 必须返回明确的接管结果：`not_handled` 交回普通 router，
-`response_sent` 表示短响应已经入队，`streaming` 表示连接已经进入长连接状态，
+`response_sent` 表示接管前错误短响应已经入队，`streaming` 表示连接已经进入长连接状态，
 `closed` 表示 handler 已经关闭或安排关闭连接，`failed` 表示 HTTP server 需要关闭
-连接。这样 HLS segment 这类短响应不会误落入普通 keep-alive 管线，FLV/MJPEG 也不会
-在切换或 attach 失败时留下半接管连接。
+连接。HLS playlist/segment 不进入 streaming handler，FLV/MJPEG/SSE 才会切换 HTTP
+session 到 streaming 状态，避免短响应和长连接生命周期混在一起。
 
 WebRTC JSON DTO 冻结为：
 

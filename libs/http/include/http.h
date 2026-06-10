@@ -1,8 +1,10 @@
 #ifndef LIVE_STREAM_HTTP_HTTP_H_
 #define LIVE_STREAM_HTTP_HTTP_H_
 
+#include "media/media_buffer.h"
 #include "media/stream_types.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -30,10 +32,62 @@ struct HttpRequest {
     std::string request_id;
 };
 
+struct HttpResponseBodySlice {
+    HttpResponseBodySlice() = default;
+    HttpResponseBodySlice(const uint8_t *slice_data, size_t slice_size,
+                          VideoBuffer *slice_owner)
+        : data(slice_data),
+          size(slice_size),
+          owner(VideoBufferRef(slice_owner)) {}
+    HttpResponseBodySlice(const HttpResponseBodySlice &other)
+        : data(other.data),
+          size(other.size),
+          owner(VideoBufferRef(other.owner)) {}
+    HttpResponseBodySlice &operator=(const HttpResponseBodySlice &other) {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBuffer *retained = VideoBufferRef(other.owner);
+        VideoBufferUnref(owner);
+        data = other.data;
+        size = other.size;
+        owner = retained;
+        return *this;
+    }
+    HttpResponseBodySlice(HttpResponseBodySlice &&other) noexcept
+        : data(other.data), size(other.size), owner(other.owner) {
+        other.data = nullptr;
+        other.size = 0;
+        other.owner = nullptr;
+    }
+    HttpResponseBodySlice &operator=(HttpResponseBodySlice &&other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        VideoBufferUnref(owner);
+        data = other.data;
+        size = other.size;
+        owner = other.owner;
+        other.data = nullptr;
+        other.size = 0;
+        other.owner = nullptr;
+        return *this;
+    }
+    ~HttpResponseBodySlice() { VideoBufferUnref(owner); }
+
+    const uint8_t *data = nullptr;
+    size_t size = 0;
+    VideoBuffer *owner = nullptr;
+};
+
 struct HttpResponse {
     int status_code = 200;
     std::map<std::string, std::string> headers;
     std::string body;
+    // Optional zero-copy body for short responses such as HLS segments. When
+    // body_slices is non-empty, body must stay empty and Content-Length is
+    // derived from the slices.
+    std::vector<HttpResponseBodySlice> body_slices;
 };
 
 struct HttpListenAddress {

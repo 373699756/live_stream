@@ -7,6 +7,7 @@
 #include "infra/log.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace live_stream {
@@ -97,6 +98,28 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
     return true;
 }
 
+bool IsHlsSegmentObjectName(const std::string &object_name) {
+    return HttpMediaStartsWith(object_name, "seg-") && object_name.size() > 7 &&
+           object_name.substr(object_name.size() - 3) == ".ts";
+}
+
+bool ParseHlsSegmentSequence(const std::string &object_name,
+                             uint64_t *sequence) {
+    if (sequence == nullptr || !IsHlsSegmentObjectName(object_name)) {
+        return false;
+    }
+    const std::string sequence_text =
+        object_name.substr(4, object_name.size() - 7);
+    char *end = nullptr;
+    const unsigned long long parsed =
+        std::strtoull(sequence_text.c_str(), &end, 10);
+    if (end == nullptr || *end != '\0') {
+        return false;
+    }
+    *sequence = static_cast<uint64_t>(parsed);
+    return true;
+}
+
 HttpResponse HandlePlaylist(IMediaSource *media_source,
                             const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
@@ -126,6 +149,46 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
         return BuildPlaylistResponse(playlist, request);
     }
     return BuildPlaylistResponse(playlist, request);
+}
+
+HttpResponse HandleSegment(IMediaSource *media_source, StreamId stream_id,
+                           const std::string &object_name,
+                           const MediaSourceStatus &browser_status) {
+    uint64_t sequence = 0;
+    if (!ParseHlsSegmentSequence(object_name, &sequence)) {
+        return HttpMediaTextResponse(400, "Invalid HLS segment");
+    }
+
+    MediaSegmentRef segment =
+        media_source->GetHlsSegmentRef(stream_id, sequence);
+    if (!segment.found || segment.body == nullptr ||
+        segment.body->data == nullptr || segment.body->size == 0) {
+        Error(kHttpMediaModuleName,
+                        "HLS reject stream=%s object=%s "
+                        "reason=segment_missing sequence=%llu range=%llu-%llu "
+                        "segments=%u missing=%llu evicted=%llu",
+                        MediaStreamIdToJson(stream_id), object_name.c_str(),
+                        static_cast<unsigned long long>(sequence),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_first_segment_sequence),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_last_segment_sequence),
+                        browser_status.hls_segment_count,
+                        static_cast<unsigned long long>(
+                            browser_status.hls_missing_segment_count),
+                        static_cast<unsigned long long>(
+                            browser_status.hls_evicted_segment_count));
+        MediaSegmentRefUnref(&segment);
+        return HttpMediaTextResponse(404, "HLS segment not found");
+    }
+
+    HttpResponse response;
+    response.status_code = 200;
+    response.headers["Content-Type"] = "video/mp2t";
+    response.body_slices.emplace_back(segment.body->data, segment.body->size,
+                                      segment.body);
+    MediaSegmentRefUnref(&segment);
+    return response;
 }
 
 }  // namespace
@@ -225,6 +288,10 @@ private:
         if (object_name == "index.m3u8") {
             return HandlePlaylist(media_source_, request, stream_id,
                                   object_name, browser_status);
+        }
+        if (IsHlsSegmentObjectName(object_name)) {
+            return HandleSegment(media_source_, stream_id, object_name,
+                                 browser_status);
         }
         return HttpMediaTextResponse(404, "Not Found");
     }

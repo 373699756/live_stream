@@ -12,7 +12,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <map>
 #include <string>
 
@@ -25,51 +24,6 @@ constexpr const char *kMjpegFrameTail = "\r\n";
 bool HasUsableFlvStartData(const MediaFlvStartData &start_data) {
     return start_data.supported && !start_data.file_header.empty() &&
            !start_data.sequence_header.empty();
-}
-
-bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
-                  std::string *object_name) {
-    if (stream_id == nullptr || object_name == nullptr) {
-        return false;
-    }
-    const std::string remaining = HttpMediaPathSuffix(request.path, "/live/");
-    const size_t slash = remaining.find('/');
-    if (slash == std::string::npos || slash == 0 ||
-        slash + 1 >= remaining.size()) {
-        return false;
-    }
-    const std::string stream_name = remaining.substr(0, slash);
-    if (!MediaStreamIdFromJson(stream_name, stream_id)) {
-        return false;
-    }
-    const std::string hls_path = remaining.substr(slash + 1);
-    if (!HttpMediaStartsWith(hls_path, "hls/") || hls_path.size() <= 4) {
-        return false;
-    }
-    *object_name = hls_path.substr(4);
-    return true;
-}
-
-bool IsHlsSegmentObjectName(const std::string &object_name) {
-    return HttpMediaStartsWith(object_name, "seg-") && object_name.size() > 7 &&
-           object_name.substr(object_name.size() - 3) == ".ts";
-}
-
-bool ParseHlsSegmentSequence(const std::string &object_name,
-                             uint64_t *sequence) {
-    if (sequence == nullptr || !IsHlsSegmentObjectName(object_name)) {
-        return false;
-    }
-    const std::string sequence_text =
-        object_name.substr(4, object_name.size() - 7);
-    char *end = nullptr;
-    const unsigned long long parsed =
-        std::strtoull(sequence_text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
-        return false;
-    }
-    *sequence = static_cast<uint64_t>(parsed);
-    return true;
 }
 
 const char *VideoCodecName(VideoCodec codec) {
@@ -201,34 +155,24 @@ public:
             return false;
         }
         // 只有真正需要直接占用 TCP 连接的入口走 streaming path。
-        // HLS playlist 仍是普通 HTTP handler，segment 走 streaming 是为了复用
-        // SendResponseSlices 的 media buffer owner 发送能力。
+        // HLS playlist/segment 都是短响应，由普通 HTTP route 发送。
         if (request.path == kEventStreamPath) {
             return true;
         }
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
-        if (ParseFlvStreamName(request, &stream_id, &stream_name) ||
-            ParseMjpegStreamName(request, &stream_id, &stream_name)) {
-            return true;
-        }
-        std::string object_name;
-        return ParseHlsPath(request, &stream_id, &object_name) &&
-               IsHlsSegmentObjectName(object_name);
+        return ParseFlvStreamName(request, &stream_id, &stream_name) ||
+               ParseMjpegStreamName(request, &stream_id, &stream_name);
     }
 
     HttpStreamingRequestResult HandleStreamingRequest(
         ConnectionId connection_id, const HttpRequest &request) override {
-        // 分发顺序先匹配最明确的 SSE/HLS/MJPEG，最后才按 FLV 处理；
+        // 分发顺序先匹配最明确的 SSE/MJPEG，最后才按 FLV 处理；
         // 这样非法 /live/... 路径不会被误当成 FLV。
         if (request.path == kEventStreamPath) {
             return HandleEventStreamRequest(connection_id, request);
         }
         StreamId stream_id = StreamId::kMain;
-        std::string object_name;
-        if (ParseHlsPath(request, &stream_id, &object_name)) {
-            return HandleHlsSegmentRequest(connection_id, request);
-        }
         std::string stream_name;
         if (ParseMjpegStreamName(request, &stream_id, &stream_name)) {
             return HandleMjpegRequest(connection_id, request);
@@ -309,135 +253,6 @@ private:
             return CloseStreamingConnection(writer_, connection_id);
         }
         return HttpStreamingRequestResult::kStreaming;
-    }
-
-    HttpStreamingRequestResult HandleHlsSegmentRequest(
-        ConnectionId connection_id, const HttpRequest &request) {
-        if (media_source_ == nullptr) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu reason=no_media_source",
-                            static_cast<unsigned long long>(connection_id));
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(501, "Not Implemented"));
-        }
-        if (IsHttpMediaRestarting(device_media_)) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu reason=media_restarting",
-                            static_cast<unsigned long long>(connection_id));
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(503, "Media pipeline restarting"));
-        }
-        AuthPrincipal principal;
-        HttpResponse auth_response =
-            RequirePlaybackAuthResponse(access_, request, &principal);
-        if (auth_response.status_code != 0) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu reason=auth",
-                            static_cast<unsigned long long>(connection_id));
-            return SendStreamingError(writer_, connection_id, auth_response);
-        }
-
-        StreamId stream_id = StreamId::kMain;
-        std::string object_name;
-        if (!ParseHlsPath(request, &stream_id, &object_name)) {
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(400, "Invalid HLS path"));
-        }
-        uint64_t sequence = 0;
-        if (!ParseHlsSegmentSequence(object_name, &sequence)) {
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(400, "Invalid HLS segment"));
-        }
-
-        const MediaSourceStatus browser_status =
-            media_source_->GetBrowserStatus(stream_id);
-        if (!browser_status.hls_supported) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu stream=%s object=%s "
-                            "reason=unsupported codec=%s running=%d",
-                            static_cast<unsigned long long>(connection_id),
-                            MediaStreamIdToJson(stream_id),
-                            object_name.c_str(),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0);
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(409, "HLS requires H.264 or H.265 stream"));
-        }
-        if (!browser_status.running) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu stream=%s object=%s "
-                            "reason=not_ready codec=%s running=%d hls_ready=%d "
-                            "segments=%u range=%llu-%llu",
-                            static_cast<unsigned long long>(connection_id),
-                            MediaStreamIdToJson(stream_id),
-                            object_name.c_str(),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.hls_ready ? 1 : 0,
-                            browser_status.hls_segment_count,
-                            static_cast<unsigned long long>(
-                                browser_status.hls_first_segment_sequence),
-                            static_cast<unsigned long long>(
-                                browser_status.hls_last_segment_sequence));
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(503, "HLS playlist not ready"));
-        }
-
-        MediaSegmentRef segment =
-            media_source_->GetHlsSegmentRef(stream_id, sequence);
-        if (!segment.found || segment.body == nullptr ||
-            segment.body->data == nullptr || segment.body->size == 0) {
-            Error(kHttpMediaModuleName,
-                            "HLS reject conn=%llu stream=%s object=%s "
-                            "reason=segment_missing sequence=%llu range=%llu-%llu "
-                            "segments=%u missing=%llu evicted=%llu",
-                            static_cast<unsigned long long>(connection_id),
-                            MediaStreamIdToJson(stream_id),
-                            object_name.c_str(),
-                            static_cast<unsigned long long>(sequence),
-                            static_cast<unsigned long long>(
-                                browser_status.hls_first_segment_sequence),
-                            static_cast<unsigned long long>(
-                                browser_status.hls_last_segment_sequence),
-                            browser_status.hls_segment_count,
-                            static_cast<unsigned long long>(
-                                browser_status.hls_missing_segment_count),
-                            static_cast<unsigned long long>(
-                                browser_status.hls_evicted_segment_count));
-            MediaSegmentRefUnref(&segment);
-            return SendStreamingError(
-                writer_, connection_id,
-                HttpMediaTextResponse(404, "HLS segment not found"));
-        }
-
-        // HLS segment 是一次性响应，但 body 可能引用 media_source 的 segment buffer；
-        // SendResponseSlices 会把 owner 交给 net，发送完成前不能提前释放 payload。
-        HttpResponse response;
-        response.status_code = 200;
-        response.headers["Content-Type"] = "video/mp2t";
-        MediaSlice body_slice;
-        // body_slice.owner 是 segment.body，自身带 ref 计数。SendResponseSlices
-        // 入队后 net 会再 ref，随后本函数可以安全 unref 本地 segment。
-        body_slice.data = segment.body->data;
-        body_slice.size = segment.body->size;
-        body_slice.owner = segment.body;
-        const bool sent = writer_ != nullptr &&
-                          writer_->SendResponseSlices(
-                              connection_id, response, &body_slice, 1,
-                              body_slice.size, true);
-        MediaSegmentRefUnref(&segment);
-        if (!sent && writer_ != nullptr) {
-            writer_->CloseConnection(connection_id);
-            return HttpStreamingRequestResult::kClosed;
-        }
-        return sent ? HttpStreamingRequestResult::kResponseSent
-                    : HttpStreamingRequestResult::kFailed;
     }
 
     HttpStreamingRequestResult HandleFlvRequest(

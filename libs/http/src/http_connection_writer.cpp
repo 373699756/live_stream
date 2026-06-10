@@ -4,6 +4,7 @@
 #include "http_protocol.h"
 #include "infra/log.h"
 
+#include <array>
 #include <map>
 #include <string>
 #include <utility>
@@ -38,6 +39,55 @@ HttpConnectionWriter::HttpConnectionWriter(
 bool HttpConnectionWriter::SendResponse(
     INetEngine *net_engine, ConnectionId connection_id,
     const HttpResponse &response, bool close_after_response) const {
+    if (!response.body.empty() && !response.body_slices.empty()) {
+        Error(kHttpModuleName,
+              "HTTP response reject conn=%llu reason=mixed_body status=%d",
+              static_cast<unsigned long long>(connection_id),
+              response.status_code);
+        CloseConnection(net_engine, connection_id,
+                        TcpCloseReason::kInternalError);
+        return false;
+    }
+    if (!response.body_slices.empty()) {
+        if (response.body_slices.size() > kMaxNetBufferSlices - 1) {
+            Error(kHttpModuleName,
+                  "HTTP response reject conn=%llu reason=too_many_slices "
+                  "status=%d slices=%zu",
+                  static_cast<unsigned long long>(connection_id),
+                  response.status_code, response.body_slices.size());
+            CloseConnection(net_engine, connection_id,
+                            TcpCloseReason::kInternalError);
+            return false;
+        }
+
+        std::array<MediaSlice, kMaxNetBufferSlices - 1> body_slices{};
+        size_t body_slice_count = 0;
+        size_t body_size = 0;
+        for (const HttpResponseBodySlice &slice : response.body_slices) {
+            if (slice.size == 0) {
+                continue;
+            }
+            if (slice.data == nullptr) {
+                Error(kHttpModuleName,
+                      "HTTP response reject conn=%llu reason=null_slice "
+                      "status=%d",
+                      static_cast<unsigned long long>(connection_id),
+                      response.status_code);
+                CloseConnection(net_engine, connection_id,
+                                TcpCloseReason::kInternalError);
+                return false;
+            }
+            body_slices[body_slice_count].data = slice.data;
+            body_slices[body_slice_count].size = slice.size;
+            body_slices[body_slice_count].owner = slice.owner;
+            body_size += slice.size;
+            ++body_slice_count;
+        }
+        return SendResponseSlices(net_engine, connection_id, response,
+                                  body_slices.data(), body_slice_count,
+                                  body_size, close_after_response);
+    }
+
     MediaSlice body_slice;
     const MediaSlice *body_slices = nullptr;
     size_t body_slice_count = 0;
