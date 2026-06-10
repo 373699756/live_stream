@@ -119,10 +119,10 @@ export function tabStateLabel(status: AiStatus | null, task: AiTaskName) {
     return '读取中';
   }
   const taskStatus = status.tasks.find((item) => item.config.task === task);
-  if (!status.enabled) {
-    return '当前未启用';
-  }
   if (!taskStatus?.config.enabled) {
+    return '未运行';
+  }
+  if (!taskStatus.stats.enabled) {
     return '未运行';
   }
   return taskStatus.stats.backend_available ? '当前运行' : '后端异常';
@@ -137,8 +137,13 @@ export function emptyTextForTask(
   if (status && !taskStatus?.config.enabled) {
     return `${taskLabel(activeTask)} 未启用，开启后才会生成新的抓拍。`;
   }
-  if (status && status.enabled && !status.summary.backend_available) {
-    return 'AI 已启用，但推理后端当前不可用。';
+  if (
+    status &&
+    taskStatus?.config.enabled &&
+    taskStatus.stats.enabled &&
+    !taskStatus.stats.backend_available
+  ) {
+    return '推理后端当前不可用。';
   }
   return activeTab.emptyText;
 }

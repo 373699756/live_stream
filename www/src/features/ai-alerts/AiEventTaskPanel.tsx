@@ -37,7 +37,22 @@ export function AiEventTaskPanel({
     status.config.tasks.find((item) => item.task === activeTask) ??
     taskStatus?.config;
   const taskEnabled = Boolean(taskConfig?.enabled);
+  const taskRunning = Boolean(taskStatus?.stats.enabled);
   const backendOk = Boolean(taskStatus?.stats.backend_available);
+  const taskState: 'running' | 'pending' | 'error' = !taskEnabled
+    ? 'pending'
+    : taskRunning
+      ? backendOk
+        ? 'running'
+        : 'error'
+      : 'pending';
+  const taskStateLabel = !taskEnabled
+    ? '未启用'
+    : taskRunning
+      ? backendOk
+        ? '运行中'
+        : '后端异常'
+      : '未运行';
 
   const toggleTask = () => {
     if (!taskConfig) {
@@ -45,7 +60,6 @@ export function AiEventTaskPanel({
     }
     const nextEnabled = !taskEnabled;
     if (
-      status.enabled &&
       nextEnabled &&
       taskRequiresModelPath(taskConfig.task, taskConfig.backend) &&
       !taskConfig.model_path.trim()
@@ -83,8 +97,8 @@ export function AiEventTaskPanel({
       </div>
       <div className="ai-task-panel-actions">
         <StatusBadge
-          state={taskEnabled ? (backendOk ? 'running' : 'error') : 'pending'}
-          label={taskEnabled ? (backendOk ? '运行中' : '后端异常') : '未启用'}
+          state={taskState}
+          label={taskStateLabel}
         />
         <button
           type="button"

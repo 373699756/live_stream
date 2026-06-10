@@ -96,7 +96,6 @@ export function AiCommonConfigPanel({
       currentRoot
         ? {
             ...currentRoot,
-            enabled: nextConfig.enabled,
             tasks: currentRoot.tasks.map((task) =>
               task.task === nextConfig.task ? nextConfig : task,
             ),
@@ -120,7 +119,6 @@ export function AiCommonConfigPanel({
     const nextConfig = normalizeAiConfigForSave(draft);
     const nextRootConfig = {
       ...rootDraft,
-      enabled: nextConfig.enabled,
       tasks: rootDraft.tasks.map((task) =>
         task.task === nextConfig.task ? nextConfig : task,
       ),
@@ -182,7 +180,7 @@ export function AiCommonConfigPanel({
 
       <div className="ai-event-config-grid">
         <label className="form-field">
-          <span className="form-label">AI 使能</span>
+          <span className="form-label">任务使能</span>
           <span className="form-control">
             <input
               checked={draft.enabled}

@@ -177,8 +177,9 @@ alarm surface is the AI alert image view backed by `/api/ai/alerts`; it is not
 recording, playback, or long-term storage.
 `/api/ai/status` exposes `enabled`, full `config`, aggregate `summary`, and
 per-task `tasks[]` entries with config, stats, and last result. The device can
-run the existing AI tasks in parallel when `ai.enabled` and each task's
-`enabled` flag are both true.
+run the existing AI tasks in parallel. The Web UI exposes only per-task
+switches and derives the backend `ai.enabled` runtime gate from whether any
+task is enabled.
 The AI page is preview-first: it overlays current-stream detections from all
 enabled tasks and shows the latest 10 alert snapshots in the right-side
 waterfall.

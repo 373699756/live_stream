@@ -781,7 +781,6 @@
   font-size: 12px;
 }
 
-.ai-root-enable,
 .ai-task-enable {
   display: inline-flex;
   align-items: center;
@@ -789,15 +788,6 @@
   color: #202b3c;
   font-size: 13px;
   font-weight: 700;
-}
-
-.ai-root-enable {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 0 9px;
-  background: #eef5ff;
-  border: 1px solid #c8d9ee;
-  border-radius: 4px;
 }
 
 .ai-task-config-list {
@@ -1021,10 +1011,6 @@
   .ai-snapshot-rail-header,
   .ai-task-config-main {
     display: grid;
-  }
-
-  .ai-root-enable {
-    justify-self: start;
   }
 
   .ai-config-actions {

@@ -78,14 +78,16 @@ function cloneTaskConfig(task: AiModelConfig): AiModelConfig {
 }
 
 function completeAiConfig(config: AiConfig): AiConfig {
+  const tasks = kTaskOrder.map((taskName) =>
+    cloneTaskConfig(
+      config.tasks.find((task) => task.task === taskName) ??
+        defaultTaskConfig(taskName),
+    ),
+  );
   return {
     ...config,
-    tasks: kTaskOrder.map((taskName) =>
-      cloneTaskConfig(
-        config.tasks.find((task) => task.task === taskName) ??
-          defaultTaskConfig(taskName),
-      ),
-    ),
+    enabled: tasks.some((task) => task.enabled),
+    tasks,
   };
 }
 
@@ -115,6 +117,9 @@ function taskStatusText(task: AiTaskStatus | undefined) {
   if (!task.config.enabled) {
     return '关闭';
   }
+  if (!task.stats.enabled) {
+    return '未运行';
+  }
   if (!task.stats.backend_available) {
     return '后端异常';
   }
@@ -123,6 +128,9 @@ function taskStatusText(task: AiTaskStatus | undefined) {
 
 function taskBadgeState(task: AiTaskStatus | undefined) {
   if (!task || !task.config.enabled) {
+    return 'pending' as const;
+  }
+  if (!task.stats.enabled) {
     return 'pending' as const;
   }
   return task.stats.backend_available ? ('running' as const) : ('error' as const);
@@ -238,7 +246,6 @@ function TaskConfigRow({
     );
   }
   const modelMissing =
-    draft.enabled &&
     task.enabled &&
     taskRequiresModelPath(task.task, task.backend) &&
     task.model_path.trim() === '';
@@ -375,7 +382,7 @@ export function AiAlertsPage() {
     [status],
   );
   const hasModelError = useMemo(() => {
-    if (!draft?.enabled) {
+    if (!draft) {
       return false;
     }
     return draft.tasks.some(
@@ -505,19 +512,6 @@ export function AiAlertsPage() {
                   {numberText(summary.average_inference_time_ms)} ms
                 </span>
               </div>
-              <label className="ai-root-enable">
-                <input
-                  checked={draft?.enabled ?? false}
-                  disabled={!draft}
-                  type="checkbox"
-                  onChange={(event) =>
-                    draft
-                      ? updateDraft({ ...draft, enabled: event.target.checked })
-                      : undefined
-                  }
-                />
-                <span>总开关</span>
-              </label>
             </div>
 
             {!draft ? (

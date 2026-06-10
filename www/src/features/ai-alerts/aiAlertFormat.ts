@@ -105,8 +105,10 @@ export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
 }
 
 export function normalizeAiRootConfigForSave(config: AiConfig): AiConfig {
+  const tasks = config.tasks.map(normalizeAiConfigForSave);
   return {
     ...config,
-    tasks: config.tasks.map(normalizeAiConfigForSave),
+    enabled: tasks.some((task) => task.enabled),
+    tasks,
   };
 }

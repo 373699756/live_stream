@@ -50,7 +50,7 @@
         "perimeter_regions": []
       },
       {
-        "enabled": true,
+        "enabled": false,
         "backend": "hisi3516dv300_nnie",
         "task": "perimeter_detection",
         "stream": "sub",

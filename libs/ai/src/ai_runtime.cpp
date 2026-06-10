@@ -107,9 +107,7 @@ AiConfig DefaultAiConfig() {
     AiConfig config;
     config.enabled = false;
     config.tasks.push_back(DefaultTaskConfig(AiTask::kObjectDetection));
-    AiModelConfig perimeter = DefaultTaskConfig(AiTask::kPerimeterDetection);
-    perimeter.enabled = true;
-    config.tasks.push_back(perimeter);
+    config.tasks.push_back(DefaultTaskConfig(AiTask::kPerimeterDetection));
     config.tasks.push_back(DefaultTaskConfig(AiTask::kMotionClassification));
     config.tasks.push_back(DefaultTaskConfig(AiTask::kOcclusionDetection));
     return config;

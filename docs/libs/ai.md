@@ -32,9 +32,10 @@ flowchart LR
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
 - 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
   配置或 Web 选项暴露。
-- 当前运行模型是多任务模型：`ai.enabled` 是总开关，`ai.tasks[]` 中的
+- 当前运行模型是多任务模型：Web 只暴露 `ai.tasks[]` 中
   `object_detection`、`perimeter_detection`、`motion_classification` 和
-  `occlusion_detection` 可以各自启停并并行运行。
+  `occlusion_detection` 的独立开关；保存配置时由任务开关自动派生
+  `ai.enabled` 这个内部运行闸门。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
