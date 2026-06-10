@@ -79,6 +79,12 @@ struct RtspSessionDiagnostics {
     std::string remote_address;
     std::string local_address;
     uint64_t reader_id = 0;
+    bool reader_attached = false;
+    uint64_t reader_generation = 0;
+    uint32_t reader_pending_frames = 0;
+    bool reader_waiting_keyframe = false;
+    bool reader_slow = false;
+    std::string reader_close_reason;
     uint32_t pending_bytes = 0;
     uint64_t rtp_packets = 0;
     uint64_t rtp_bytes = 0;

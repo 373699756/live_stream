@@ -65,6 +65,13 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 | `peer_id` | peer 标识 |
 | `stream` | `main` 或 `sub` |
 | `state` | created、offer_received、connecting、connected、closing、closed、failed |
+| `reader_id` | 已连接 peer 绑定的 `MediaFrameReaderId`，未连接时为 0 |
+| `reader_attached` | reader 当前是否仍挂在 `media_source` |
+| `reader_generation` | reader 所在 GOP/cache generation |
+| `reader_pending_frames` | reader live queue 中待发送帧数 |
+| `reader_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
+| `reader_slow` | reader live queue 是否发生过溢出 |
+| `reader_close_reason` | reader 最近一次 reset/overflow 原因 |
 | `ice_selected` | 是否已有 selected ICE pair |
 | `dtls_state` | DTLS 状态文本 |
 | `srtp_ready` | outbound/inbound SRTP context 是否可用 |

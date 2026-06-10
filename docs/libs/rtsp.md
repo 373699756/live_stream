@@ -81,6 +81,12 @@ interleaved header slice 和 RTP packet view，media payload slice 异步发送�
 | `transport` | `tcp_interleaved` 或 `udp` |
 | `remote_address` / `local_address` | 控制连接地址 |
 | `reader_id` | 当前 `MediaFrameReaderId`，未 PLAY 时为 0 |
+| `reader_attached` | reader 当前是否仍挂在 `media_source` |
+| `reader_generation` | reader 所在 GOP/cache generation |
+| `reader_pending_frames` | reader live queue 中待发送帧数 |
+| `reader_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
+| `reader_slow` | reader live queue 是否发生过溢出 |
+| `reader_close_reason` | reader 最近一次 reset/overflow 原因 |
 | `pending_bytes` | TCP interleaved 发送积压字节数，UDP session 为 0 或诊断值 |
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
 | `rtcp_packets` / `rtcp_bytes` | 已收到 RTCP 统计 |

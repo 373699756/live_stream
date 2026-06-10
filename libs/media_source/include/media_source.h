@@ -90,6 +90,25 @@ inline const char *MediaSourceResetReasonName(
     return "unknown";
 }
 
+inline const char *MediaFrameReaderCloseReasonName(
+    MediaFrameReaderCloseReason reason) {
+    switch (reason) {
+        case MediaFrameReaderCloseReason::kNone:
+            return "none";
+        case MediaFrameReaderCloseReason::kDetached:
+            return "detached";
+        case MediaFrameReaderCloseReason::kStreamStopped:
+            return "stream_stopped";
+        case MediaFrameReaderCloseReason::kCodecChanged:
+            return "codec_changed";
+        case MediaFrameReaderCloseReason::kTimestampReset:
+            return "timestamp_reset";
+        case MediaFrameReaderCloseReason::kCacheOverflow:
+            return "cache_overflow";
+    }
+    return "unknown";
+}
+
 struct MediaHlsEntry {
     uint64_t sequence = 0;
     int64_t duration_us = 0;

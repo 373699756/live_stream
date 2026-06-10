@@ -302,6 +302,23 @@ public:
                         TcpCloseReasonName(net_diagnostics.close_reason);
                 }
             }
+            if (media_source_ != nullptr && item.reader_id != 0) {
+                const MediaFrameReaderStatus reader_status =
+                    media_source_->GetFrameReaderStatus(item.reader_id);
+                item.reader_attached = reader_status.attached;
+                if (reader_status.attached) {
+                    item.reader_generation =
+                        reader_status.reader_generation;
+                    item.reader_pending_frames =
+                        reader_status.pending_frames;
+                    item.reader_waiting_keyframe =
+                        reader_status.waiting_for_keyframe;
+                    item.reader_slow = reader_status.slow_reader;
+                    item.reader_close_reason =
+                        MediaFrameReaderCloseReasonName(
+                            reader_status.close_reason);
+                }
+            }
             if (item.local_address.empty()) {
                 item.local_address =
                     local_address.ip + ":" +

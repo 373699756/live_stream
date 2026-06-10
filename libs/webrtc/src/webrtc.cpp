@@ -349,11 +349,11 @@ public:
             peers = peer_store_.OpenPeers();
             engine = engine_;
         }
-        if (!engine) {
-            return peers;
-        }
         for (WebrtcPeerInfo &peer : peers) {
-            (void)engine->FillPeerDiagnostics(peer.peer_id, &peer);
+            if (engine) {
+                (void)engine->FillPeerDiagnostics(peer.peer_id, &peer);
+            }
+            FillPeerReaderDiagnostics(&peer);
         }
         return peers;
     }
@@ -586,7 +586,39 @@ private:
         if (!peer.peer_id.empty() && engine) {
             (void)engine->FillPeerDiagnostics(peer_id, &peer);
         }
+        FillPeerReaderDiagnostics(&peer);
         return peer;
+    }
+
+    void FillPeerReaderDiagnostics(WebrtcPeerInfo *peer) const {
+        if (peer == nullptr || peer->peer_id.empty() ||
+            media_source_ == nullptr) {
+            return;
+        }
+        MediaFrameReaderId reader_id = 0;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            const auto iter = peer_readers_.find(peer->peer_id);
+            if (iter != peer_readers_.end()) {
+                reader_id = iter->second.reader_id;
+            }
+        }
+        peer->reader_id = reader_id;
+        if (reader_id == 0) {
+            return;
+        }
+        const MediaFrameReaderStatus reader_status =
+            media_source_->GetFrameReaderStatus(reader_id);
+        peer->reader_attached = reader_status.attached;
+        if (!reader_status.attached) {
+            return;
+        }
+        peer->reader_generation = reader_status.reader_generation;
+        peer->reader_pending_frames = reader_status.pending_frames;
+        peer->reader_waiting_keyframe = reader_status.waiting_for_keyframe;
+        peer->reader_slow = reader_status.slow_reader;
+        peer->reader_close_reason =
+            MediaFrameReaderCloseReasonName(reader_status.close_reason);
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {

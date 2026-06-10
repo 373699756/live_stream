@@ -61,6 +61,13 @@ ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
     root["codec"] = VideoCodecToJsonString(peer.codec);
     root["state"] = WebrtcPeerStateName(peer.state);
     root["client_id"] = peer.client_id;
+    root["reader_id"] = peer.reader_id;
+    root["reader_attached"] = peer.reader_attached;
+    root["reader_generation"] = peer.reader_generation;
+    root["reader_pending_frames"] = peer.reader_pending_frames;
+    root["reader_waiting_keyframe"] = peer.reader_waiting_keyframe;
+    root["reader_slow"] = peer.reader_slow;
+    root["reader_close_reason"] = peer.reader_close_reason;
     root["ice_selected"] = peer.ice_selected;
     root["dtls_state"] = peer.dtls_state;
     root["srtp_ready"] = peer.srtp_ready;

@@ -427,6 +427,12 @@ ConfigJson RtspSessionToJson(const RtspSessionDiagnostics &session) {
     root["remote_address"] = session.remote_address;
     root["local_address"] = session.local_address;
     root["reader_id"] = session.reader_id;
+    root["reader_attached"] = session.reader_attached;
+    root["reader_generation"] = session.reader_generation;
+    root["reader_pending_frames"] = session.reader_pending_frames;
+    root["reader_waiting_keyframe"] = session.reader_waiting_keyframe;
+    root["reader_slow"] = session.reader_slow;
+    root["reader_close_reason"] = session.reader_close_reason;
     root["pending_bytes"] = session.pending_bytes;
     root["rtp_packets"] = session.rtp_packets;
     root["rtp_bytes"] = session.rtp_bytes;
@@ -466,6 +472,13 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     root["state"] = WebrtcPeerStateToJsonString(peer.state);
     root["client_ip"] = peer.client_ip;
     root["user_name"] = peer.user_name;
+    root["reader_id"] = peer.reader_id;
+    root["reader_attached"] = peer.reader_attached;
+    root["reader_generation"] = peer.reader_generation;
+    root["reader_pending_frames"] = peer.reader_pending_frames;
+    root["reader_waiting_keyframe"] = peer.reader_waiting_keyframe;
+    root["reader_slow"] = peer.reader_slow;
+    root["reader_close_reason"] = peer.reader_close_reason;
     root["ice_selected"] = peer.ice_selected;
     root["dtls_state"] = peer.dtls_state;
     root["srtp_ready"] = peer.srtp_ready;

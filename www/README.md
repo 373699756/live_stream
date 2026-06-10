@@ -134,9 +134,11 @@ fallback; automatic playback prefers WebRTC, HTTP-FLV, then MJPEG before HLS.
 connection id, media client id, `stream_state` (`opening` before media client
 attach, `attached` after attach, `closing` after HTTP starts connection close),
 pending bytes, send queue length, last write timestamp, close reason, and
-RTP/RTCP diagnostics where the backend provides them. HLS playlist/segment
-requests are short HTTP responses and are diagnosed through stream readiness
-and HTTP error logs rather than persistent sessions.
+RTP/RTCP diagnostics where the backend provides them. RTSP/WebRTC sessions also
+include `media_source` reader diagnostics such as pending frames, waiting
+keyframe, slow reader, and reader close reason. HLS playlist/segment requests
+are short HTTP responses and are diagnosed through stream readiness and HTTP
+error logs rather than persistent sessions.
 `WebrtcPeerInfo` mirrors backend peer state, stream, ICE
 selected flag, DTLS/SRTP readiness, RTP counters, RTCP feedback counters, last
 error, and created/updated timestamps.

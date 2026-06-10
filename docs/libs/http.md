@@ -110,7 +110,9 @@ diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 回调尚未完成。`pending_bytes`、`send_queue_length` 和
 `last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端、发送队列
 积压和媒体 attach 卡住的连接。HLS playlist/segment 是短 HTTP 响应，不作为活跃
-session 常驻展示。
+session 常驻展示。RTSP/WebRTC 会额外输出对应 `media_source` reader 的 attached、
+pending frames、waiting keyframe、slow reader 和 close reason 字段，用于定位协议
+会话与 reader/ring 分发之间的状态。
 
 `/api/system/time/status` 返回设备时间、时区、NTP 配置、`manual_sync_allowed`、
 `browser_sync_on_login`、最近同步来源和最近同步结果。`PUT /api/system/time/config`

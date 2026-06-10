@@ -318,6 +318,12 @@ export interface MediaSessionInfo {
   remote_address?: string;
   local_address?: string;
   reader_id?: number;
+  reader_attached?: boolean;
+  reader_generation?: number;
+  reader_pending_frames?: number;
+  reader_waiting_keyframe?: boolean;
+  reader_slow?: boolean;
+  reader_close_reason?: string;
   ice_selected?: boolean;
   dtls_state?: string;
   srtp_ready?: boolean;
@@ -367,6 +373,13 @@ export interface WebrtcPeerInfo {
   session_id: string;
   user_name: string;
   client_ip: string;
+  reader_id: number;
+  reader_attached: boolean;
+  reader_generation: number;
+  reader_pending_frames: number;
+  reader_waiting_keyframe: boolean;
+  reader_slow: boolean;
+  reader_close_reason: string;
   ice_selected: boolean;
   dtls_state: string;
   srtp_ready: boolean;
