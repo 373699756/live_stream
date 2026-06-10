@@ -497,8 +497,26 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     return root;
 }
 
+void AddHttpStreamingMediaSourceStatus(ConfigJson *root,
+                                       IMediaSource *media_source,
+                                       StreamId stream_id) {
+    if (root == nullptr || media_source == nullptr) {
+        return;
+    }
+    const MediaSourceStatus status = media_source->GetBrowserStatus(stream_id);
+    (*root)["media_running"] = status.running;
+    (*root)["media_track_ready"] = status.track_ready;
+    (*root)["media_codec"] = VideoCodecToJsonString(status.codec);
+    (*root)["media_codec_generation"] = status.codec_generation;
+    (*root)["media_http_flv_ready"] = status.flv_ready;
+    (*root)["media_mjpeg_ready"] = status.mjpeg_ready;
+    (*root)["media_last_dts"] = status.last_dts_us;
+    (*root)["media_last_reset_reason"] = status.last_reset_reason;
+}
+
 ConfigJson HttpStreamingSessionToJson(
-    const HttpStreamingSessionDiagnostics &session) {
+    const HttpStreamingSessionDiagnostics &session,
+    IMediaSource *media_source) {
     ConfigJson root = ConfigJson::object();
     root["protocol"] = session.protocol;
     root["session_id"] = session.session_id;
@@ -520,6 +538,8 @@ ConfigJson HttpStreamingSessionToJson(
     root["send_queue_length"] = session.send_queue_length;
     root["last_write_at_ms"] = session.last_write_at_ms;
     root["close_reason"] = session.close_reason;
+    AddHttpStreamingMediaSourceStatus(&root, media_source,
+                                      session.stream_id);
     return root;
 }
 
@@ -665,7 +685,8 @@ private:
                 http_->GetStreamingSessionDiagnostics();
             for (const HttpStreamingSessionDiagnostics &session : sessions) {
                 if (IsMediaStreamingSession(session)) {
-                    items.push_back(HttpStreamingSessionToJson(session));
+                    items.push_back(HttpStreamingSessionToJson(
+                        session, media_source_));
                 }
             }
         }

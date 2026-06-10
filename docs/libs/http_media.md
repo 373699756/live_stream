@@ -54,6 +54,9 @@ TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
 `/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。
+会话条目同时补充同 stream 的 `media_source` 只读状态，包括 running、track ready、
+codec/generation、HTTP-FLV/MJPEG ready、last DTS 和 reset reason，便于在同一个
+诊断条目里判断是连接慢、媒体未 ready，还是 codec/reset 导致没有新数据。
 在调用 `BeginStream(type, stream_id)` 到 `AttachStreamClient()` 完成之间，HTTP session
 会以 `stream_state=opening` 暴露，便于定位已接管 TCP 但卡在 header/GOP/sink attach
 阶段的连接；attach 成功后变为 `attached`，HTTP 层主动关闭或发送失败后先标记为

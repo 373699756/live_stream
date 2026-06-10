@@ -342,6 +342,14 @@ export interface MediaSessionInfo {
   send_queue_length?: number;
   last_write_at_ms?: number;
   close_reason?: string;
+  media_running?: boolean;
+  media_track_ready?: boolean;
+  media_codec?: string;
+  media_codec_generation?: number;
+  media_http_flv_ready?: boolean;
+  media_mjpeg_ready?: boolean;
+  media_last_dts?: number;
+  media_last_reset_reason?: string;
   created_at_ms?: number;
   updated_at_ms?: number;
 }
