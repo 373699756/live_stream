@@ -1,8 +1,9 @@
-#include "media/timestamp_corrector.h"
+#include "timestamp_corrector.h"
 
 #include <cstdlib>
 
 namespace live_stream {
+namespace media_internal {
 
 void TimestampCorrector::Reset() {
     initialized_ = false;
@@ -93,4 +94,5 @@ TimestampCorrectionResult TimestampCorrector::CorrectWithReset(
     return result;
 }
 
+}  // namespace media_internal
 }  // namespace live_stream

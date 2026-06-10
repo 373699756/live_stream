@@ -4,11 +4,12 @@
 #include "media/media_streams.h"
 
 #include "flv_muxer.h"
+#include "frame_payload.h"
 #include "gop_cache.h"
 #include "hls_maker.h"
 #include "media/frame_sink.h"
 #include "media_codec.h"
-#include "media/timestamp_corrector.h"
+#include "timestamp_corrector.h"
 
 #include <cstdint>
 #include <string>

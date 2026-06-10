@@ -1,7 +1,7 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_FLV_MUXER_H_
+#define LIVE_STREAM_MEDIA_SRC_FLV_MUXER_H_
 
-#include "media/frame_sink.h"
+#include "frame_payload.h"
 #include "media_codec.h"
 
 #include <cstddef>
@@ -75,4 +75,4 @@ public:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_FLV_MUXER_H_

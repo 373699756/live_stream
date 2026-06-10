@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_LIVE_RING_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_LIVE_RING_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_
+#define LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_
 
 #include "media/media_streams.h"
 
@@ -56,4 +56,4 @@ private:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_LIVE_RING_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_

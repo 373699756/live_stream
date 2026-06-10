@@ -79,7 +79,7 @@ FrameSubscriptionStartData FrameRing::GetStartData(
     if (cache == nullptr) {
         return start_data;
     }
-    start_data.stream_running = stream_info.running;
+    start_data.track_ready = stream_info.track_ready;
     start_data.gop_complete =
         cache->complete && reader.start_generation == cache->generation;
     start_data.subscription_generation = reader.start_generation;

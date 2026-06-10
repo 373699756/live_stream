@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_GOP_CACHE_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SRC_GOP_CACHE_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_GOP_CACHE_H_
+#define LIVE_STREAM_MEDIA_SRC_GOP_CACHE_H_
 
 #include "flv_muxer.h"
 #include "media/media_streams.h"
@@ -41,4 +41,4 @@ private:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_GOP_CACHE_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_GOP_CACHE_H_

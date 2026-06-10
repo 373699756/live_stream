@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_PIPELINE_SRC_PENDING_FRAME_QUEUE_H_
-#define LIVE_STREAM_MEDIA_PIPELINE_SRC_PENDING_FRAME_QUEUE_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_PENDING_FRAME_QUEUE_H_
+#define LIVE_STREAM_MEDIA_SRC_PENDING_FRAME_QUEUE_H_
 
 #include "media/encoded_frame.h"
 
@@ -32,4 +32,4 @@ private:
 }  // namespace media_streams_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_PIPELINE_SRC_PENDING_FRAME_QUEUE_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_PENDING_FRAME_QUEUE_H_

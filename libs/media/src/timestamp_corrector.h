@@ -1,9 +1,10 @@
-#ifndef LIVE_STREAM_MEDIA_TIMESTAMP_CORRECTOR_H_
-#define LIVE_STREAM_MEDIA_TIMESTAMP_CORRECTOR_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_TIMESTAMP_CORRECTOR_H_
+#define LIVE_STREAM_MEDIA_SRC_TIMESTAMP_CORRECTOR_H_
 
 #include <cstdint>
 
 namespace live_stream {
+namespace media_internal {
 
 struct CorrectedTimestamp {
     // 输出是从本轮 stream 起点开始的单调相对时间戳，单位微秒。
@@ -46,6 +47,7 @@ private:
     int64_t last_delta_us_ = 33333;
 };
 
+}  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_TIMESTAMP_CORRECTOR_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_TIMESTAMP_CORRECTOR_H_

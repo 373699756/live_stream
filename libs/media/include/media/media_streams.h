@@ -16,6 +16,10 @@ constexpr size_t kMaxMediaFlvVideoTagSlices = 130;
 constexpr size_t kMaxMediaFlvHeaderSliceBytes = 24;
 constexpr size_t kMaxMediaFlvCachedVideoTags = 128;
 
+using KeyFrameRequestCallback = bool (*)(StreamId stream_id,
+                                         KeyFrameRequestType request_type,
+                                         void *user);
+
 struct MediaStreamsOptions {
     uint32_t hls_segment_duration_ms = 2000;
     uint32_t hls_playlist_depth = 3;
@@ -23,6 +27,8 @@ struct MediaStreamsOptions {
     uint32_t max_flv_clients = 8;
     uint32_t max_mjpeg_clients = 8;
     uint32_t max_frame_subscriptions = 8;
+    KeyFrameRequestCallback key_frame_request = nullptr;
+    void *key_frame_request_user = nullptr;
 };
 
 struct MediaFlvVideoTagSlice {
@@ -153,10 +159,10 @@ struct MediaStreamInfo {
 };
 
 struct FrameSubscriptionStartData {
-    // subscription 创建后先读取 start data：如果 gop_complete=true，调用方可先发送
-    // gop_frames，再进入 PopSubscribedFrame 的 live queue。
+    // subscription 创建后先读取 start data：如果 track_ready/gop_complete=true，
+    // 调用方可先发送 gop_frames，再进入 PopSubscribedFrame 的 live queue。
     // gop_frames 里的 EncodedFrame 只 ref 底层 FrameBuffer，不按 subscriber 深拷贝 GOP。
-    bool stream_running = false;
+    bool track_ready = false;
     bool gop_complete = false;
     uint64_t subscription_generation = 0;
     MediaStreamInfo stream_info;
@@ -254,6 +260,8 @@ public:
     MediaFlvStartData GetFlvStartData(StreamId stream_id) const;
     MediaStreamInfo GetStreamInfo(StreamId stream_id) const;
     MediaStreamCounters GetStreamCounters() const;
+    bool RequestKeyFrame(StreamId stream_id,
+                         KeyFrameRequestType request_type);
 
     MediaFlvClientId AttachFlvClient(StreamId stream_id,
                                      uint64_t config_generation,

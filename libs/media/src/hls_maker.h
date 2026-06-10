@@ -1,7 +1,7 @@
-#ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_HLS_MAKER_H_
-#define LIVE_STREAM_MEDIA_SOURCE_SRC_HLS_MAKER_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_HLS_MAKER_H_
+#define LIVE_STREAM_MEDIA_SRC_HLS_MAKER_H_
 
-#include "media/frame_sink.h"
+#include "frame_payload.h"
 #include "media/media_streams.h"
 
 #include <cstddef>
@@ -107,4 +107,4 @@ private:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SOURCE_SRC_HLS_MAKER_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_HLS_MAKER_H_
