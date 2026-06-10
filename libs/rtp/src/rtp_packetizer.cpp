@@ -10,7 +10,6 @@
 
 namespace live_stream {
 namespace rtp {
-namespace {
 
 constexpr uint32_t kMinRtpMtuBytes = 64;
 constexpr uint32_t kH264FuOverhead =
@@ -20,20 +19,36 @@ constexpr uint32_t kH265FuOverhead =
 constexpr uint8_t kH264FuANalType = 28;
 constexpr uint8_t kH265FuNalType = 49;
 
-uint8_t PayloadTypeForCodec(const RtpPacketizerOptions &options,
-                            VideoCodec codec) {
+uint32_t RtpTimestampFromPtsUs(int64_t pts_us, uint32_t clock_rate) {
+    if (pts_us <= 0 || clock_rate == 0) {
+        return 0;
+    }
+    return static_cast<uint32_t>(
+        (static_cast<uint64_t>(pts_us) * clock_rate) / 1000000U);
+}
+
+bool IsRtpTimestampBackwards(uint32_t timestamp,
+                             uint32_t previous_timestamp) {
+    return static_cast<int32_t>(timestamp - previous_timestamp) < 0;
+}
+
+uint8_t RtpPayloadTypeForCodec(VideoCodec codec) {
+    return codec == VideoCodec::kH265 ? kRtpPayloadTypeH265
+                                      : kRtpPayloadTypeH264;
+}
+
+uint8_t RtpPayloadTypeForCodec(const RtpPacketizerOptions &options,
+                               VideoCodec codec) {
     return codec == VideoCodec::kH265 ? options.h265_payload_type
                                       : options.h264_payload_type;
 }
 
+namespace {
+
 uint32_t RtpTimestamp(const RtpPacketizerInput &input) {
-    if (input.pts_us <= 0) {
-        return 0;
-    }
     // 视频 RTP 固定使用 90kHz 时钟。输入是微秒时间戳，因此乘 90000 再除
     // 1000000 得到 RTP timestamp。
-    return static_cast<uint32_t>(
-        (static_cast<uint64_t>(input.pts_us) * kRtpClockRate) / 1000000U);
+    return RtpTimestampFromPtsUs(input.pts_us);
 }
 
 void WriteRtpHeader(const RtpPacketizerInput &input,
@@ -66,7 +81,7 @@ bool BuildRtpInput(const EncodedFrame &frame,
     input->pts_us = frame.pts_us;
     input->sequence = sequence;
     input->ssrc = ssrc;
-    input->payload_type = PayloadTypeForCodec(options, frame.codec);
+    input->payload_type = RtpPayloadTypeForCodec(options, frame.codec);
     return input->payload != nullptr && input->payload_size > 0;
 }
 
@@ -74,7 +89,8 @@ RtpPacketizerInput NormalizeRtpInput(const RtpPacketizerInput &input,
                                      const RtpPacketizerOptions &options) {
     RtpPacketizerInput normalized = input;
     if (normalized.payload_type == 0) {
-        normalized.payload_type = PayloadTypeForCodec(options, input.codec);
+        normalized.payload_type = RtpPayloadTypeForCodec(options,
+                                                         input.codec);
     }
     return normalized;
 }

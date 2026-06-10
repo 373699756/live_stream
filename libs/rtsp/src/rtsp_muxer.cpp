@@ -8,11 +8,6 @@
 namespace live_stream {
 namespace {
 
-uint8_t PayloadType(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? rtp::kRtpPayloadTypeH265
-                                      : rtp::kRtpPayloadTypeH264;
-}
-
 const char *RtpEncodingName(VideoCodec codec) {
     return codec == VideoCodec::kH265 ? "H265" : "H264";
 }
@@ -21,7 +16,7 @@ const char *RtpEncodingName(VideoCodec codec) {
 
 std::string RtspMuxer::BuildSdp(const RtspListenAddress &address,
                                 const MediaTrack &track) {
-    const uint8_t payload_type = PayloadType(track.codec);
+    const uint8_t payload_type = rtp::RtpPayloadTypeForCodec(track.codec);
     std::ostringstream sdp;
     sdp << "v=0\r\n";
     sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";

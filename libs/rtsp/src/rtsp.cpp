@@ -47,20 +47,13 @@ std::string Hex32(uint32_t value) {
     return output.str();
 }
 
-uint32_t RtpTimestampFromPtsUs(int64_t pts_us) {
-    if (pts_us <= 0) {
-        return 0;
-    }
-    return static_cast<uint32_t>(
-        (static_cast<uint64_t>(pts_us) * rtp::kRtpClockRate) / 1000000U);
-}
-
 uint32_t FirstStartFrameRtpTimestamp(
     const MediaFrameReaderStartData &start_data) {
     if (start_data.gop_frames.empty()) {
         return 0;
     }
-    return RtpTimestampFromPtsUs(start_data.gop_frames.front().pts_us);
+    return rtp::RtpTimestampFromPtsUs(
+        start_data.gop_frames.front().pts_us);
 }
 
 }  // namespace

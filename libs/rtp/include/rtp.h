@@ -16,6 +16,11 @@ constexpr uint32_t kRtpClockRate = 90000;
 constexpr size_t kRtpHeaderSize = 12;
 constexpr size_t kMaxRtpPayloadHeaderSize = 3;
 
+uint32_t RtpTimestampFromPtsUs(int64_t pts_us,
+                               uint32_t clock_rate = kRtpClockRate);
+bool IsRtpTimestampBackwards(uint32_t timestamp,
+                             uint32_t previous_timestamp);
+
 struct RtpPacketSlice {
     // RTP packet 用多个 slice 描述，避免把 header、FU header 和媒体 payload
     // 拼成一块临时大 buffer。
@@ -100,6 +105,10 @@ struct RtpPacketizerOptions {
     uint8_t h264_payload_type = kRtpPayloadTypeH264;
     uint8_t h265_payload_type = kRtpPayloadTypeH265;
 };
+
+uint8_t RtpPayloadTypeForCodec(VideoCodec codec);
+uint8_t RtpPayloadTypeForCodec(const RtpPacketizerOptions &options,
+                               VideoCodec codec);
 
 struct RtpPacketizerInput {
     VideoCodec codec = VideoCodec::kH264;

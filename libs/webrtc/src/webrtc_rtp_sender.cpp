@@ -47,18 +47,6 @@ bool IsSupportedCodec(VideoCodec codec) {
     return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
 }
 
-uint32_t RtpTimestampFromPts(int64_t pts_us, uint32_t clock_rate) {
-    if (pts_us <= 0 || clock_rate == 0) {
-        return 0;
-    }
-    return static_cast<uint32_t>(
-        (static_cast<uint64_t>(pts_us) * clock_rate) / 1000000U);
-}
-
-bool IsRtpTimestampBackwards(uint32_t timestamp, uint32_t previous_timestamp) {
-    return static_cast<int32_t>(timestamp - previous_timestamp) < 0;
-}
-
 }  // namespace
 
 WebrtcRtpSender::WebrtcRtpSender(uint32_t rtp_mtu_bytes)
@@ -105,7 +93,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         return false;
     }
     const uint32_t rtp_timestamp =
-        RtpTimestampFromPts(frame.pts_us, parameters.clock_rate);
+        rtp::RtpTimestampFromPtsUs(frame.pts_us, parameters.clock_rate);
 
     {
         std::lock_guard<std::mutex> guard(*context.mutex);
@@ -122,8 +110,8 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         state.payload_type = parameters.payload_type;
         state.clock_rate = parameters.clock_rate;
         if (state.has_last_rtp_timestamp &&
-            IsRtpTimestampBackwards(rtp_timestamp,
-                                    state.last_rtp_timestamp)) {
+            rtp::IsRtpTimestampBackwards(rtp_timestamp,
+                                         state.last_rtp_timestamp)) {
             ++context.service_stats->dropped_frames;
             return false;
         }
