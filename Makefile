@@ -80,6 +80,7 @@ MODULES := \
 	network_config \
 	ai \
 	hisi_vendor \
+	media \
 	device_media \
 	rtp \
 	net_adaptive \

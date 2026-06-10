@@ -47,6 +47,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 ### Media Modules
 
+- `media.md`
 - `device_media.md`
 - `media_source.md`
 - `media_pipeline.md`

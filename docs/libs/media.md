@@ -1,0 +1,31 @@
+# media
+
+## 模块定位
+
+`media` 是重构后的通用媒体核心，承载视频帧内存、主/子码流缓存、HLS/FLV/MJPEG
+输出数据和协议帧订阅。它不启动设备硬件、不解析 HTTP/RTSP/WebRTC 请求，也不依赖
+`device_media`、`hisi_vendor` 或配置系统。
+
+## 核心职责
+
+- 定义 `Codec`、`FrameBuffer`、`FrameSlice`、`EncodedFrame` 等通用媒体类型。
+- 通过 `FrameSink::PushFrame()` 接收设备侧输出的编码帧。
+- 维护主/子码流的 GOP cache、HLS segment、FLV 起播缓存、MJPEG latest frame 和
+  帧订阅 live queue。
+- 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamCounters`、
+  `FrameSubscription` 相关接口。
+
+## 状态与资源模型
+
+`MediaStreams` 拥有码流缓存和订阅队列。输入帧使用 `FrameBuffer` 引用计数保活，
+协议订阅和 FLV GOP cache 只增加引用，不复制整帧 payload；HLS segment 是独立
+转封装后的 TS buffer。
+
+codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG 和
+订阅 live queue，后续从新的关键帧重新建立可播放状态。
+
+## 非目标
+
+- 不直接调用 HiSilicon SDK。
+- 不拥有设备启动、停止、抓图、图像参数或区域叠加。
+- 不拥有 HTTP/RTSP/WebRTC socket、会话或认证状态。
