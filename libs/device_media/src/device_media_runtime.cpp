@@ -69,6 +69,8 @@ private:
     ConfigResult ApplyVideoConfig(const ConfigJson &value);
     ConfigResult CheckImageConfig(const ConfigJson &value) const;
     ConfigResult ApplyImageConfig(const ConfigJson &value);
+    ConfigResult CheckImageConfigForPipelineLocked(
+        const MediaPipelineConfig &pipeline_config) const;
     bool ApplyImageConfigToPipeline(const ConfigJson &value);
     ConfigJson BuildImageStrategyConfigLocked(
         const hisisdk::ExposureInfo &exposure,
@@ -361,10 +363,11 @@ ConfigResult DeviceMediaImpl::CheckVideoConfig(
     if (!result.ok) {
         return result;
     }
-    return IsValidSnapshotVencChannel(parsed)
-               ? ConfigResult::Success()
-               : ConfigResult::Failure("streams",
-                                       "snapshot VENC channel conflicts");
+    if (!IsValidSnapshotVencChannel(parsed)) {
+        return ConfigResult::Failure("streams",
+                                     "snapshot VENC channel conflicts");
+    }
+    return CheckImageConfigForPipelineLocked(parsed);
 }
 
 ConfigResult DeviceMediaImpl::ApplyVideoConfig(const ConfigJson &value) {
@@ -382,6 +385,11 @@ ConfigResult DeviceMediaImpl::ApplyVideoConfig(const ConfigJson &value) {
         if (!IsValidSnapshotVencChannel(next_config)) {
             return ConfigResult::Failure(
                 "streams", "snapshot VENC channel conflicts");
+        }
+        const ConfigResult image_result =
+            CheckImageConfigForPipelineLocked(next_config);
+        if (!image_result.ok) {
+            return image_result;
         }
     }
     if (!ApplyPipelineConfig(next_config)) {
@@ -420,6 +428,17 @@ ConfigResult DeviceMediaImpl::ApplyImageConfig(const ConfigJson &value) {
         image_config_ = value;
     }
     return ConfigResult::Success();
+}
+
+ConfigResult DeviceMediaImpl::CheckImageConfigForPipelineLocked(
+    const MediaPipelineConfig &pipeline_config) const {
+    if (!image_config_.is_object() || image_config_.empty()) {
+        return ConfigResult::Success();
+    }
+    // Image features such as VPSS LDC depend on stream dimensions, so video
+    // config changes must be checked against the current image config.
+    return ValidateImageConfig(image_config_, capabilities_.image,
+                               pipeline_config);
 }
 
 bool DeviceMediaImpl::ApplyImageConfigToPipeline(

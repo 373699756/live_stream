@@ -111,6 +111,21 @@ ImageCapabilities DefaultImage() {
     img.lens_correction_supported = true;
     img.lens_correction_min_width = 640;
     img.lens_correction_min_height = 480;
+    img.stabilization_options = {
+        Options("motion_level", {"low", "normal", "high"}, "normal"),
+    };
+    img.stabilization_ranges = {
+        Range("crop_ratio", 50, 98, 80),
+        Range("buffer_count", 5, 10, 6),
+        Range("frame_rate", 1, 60, 30),
+        Range("moving_subject_level", 0, 6, 0),
+        Range("rolling_shutter_coef", 0, 1000, 0),
+        Range("horizontal_limit", 0, 1000, 512),
+        Range("vertical_limit", 0, 1000, 512),
+    };
+    img.stabilization_supported = true;
+    img.stabilization_min_width = 1280;
+    img.stabilization_min_height = 720;
     img.mirror_supported = true;
     img.flip_supported = true;
     return img;

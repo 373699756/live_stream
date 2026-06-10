@@ -26,6 +26,17 @@ export const mockImageConfig: ImageConfig = {
     center_y_offset: 0,
     distortion_ratio: 0,
   },
+  stabilization: {
+    enabled: false,
+    motion_level: 'normal',
+    crop_ratio: 80,
+    buffer_count: 6,
+    frame_rate: 30,
+    moving_subject_level: 0,
+    rolling_shutter_coef: 0,
+    horizontal_limit: 512,
+    vertical_limit: 512,
+  },
   strategy: { enabled: true, mode: 'low_noise' },
 };
 

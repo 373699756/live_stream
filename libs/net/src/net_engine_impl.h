@@ -60,7 +60,10 @@ public:
     GetConnectionDiagnosticsSnapshot() const override;
     NetStats GetStats() const override;
 
-    void RegisterConnection(const std::shared_ptr<TcpSession> &connection);
+    bool AddAcceptedConnection(
+        const std::shared_ptr<TcpSession> &connection,
+        uint32_t max_connections);
+    void RemoveConnection(ConnectionId id);
     void OnConnectionClosed(ConnectionId id, const TcpCallbacks &callbacks,
                             TcpCloseReason reason,
                             NetConnectionDiagnostics diagnostics);
@@ -72,7 +75,6 @@ public:
                        TcpCloseReason reason);
     void DispatchUdp(const UdpCallbacks &callbacks, UdpSocketId socket_id,
                      NetAddress peer, const uint8_t *data, size_t size);
-    std::shared_ptr<EventLoop> NextLoop();
     std::shared_ptr<NetExecutor> ResolveExecutor(INetExecutor *executor) const;
     ConnectionId AllocateConnectionId() { return next_connection_id_++; }
     NetTimerId AllocateTimerId() { return next_timer_id_++; }
@@ -84,7 +86,6 @@ public:
     void AddSlowClose();
     void AddUdpRx();
     void AddUdpTx();
-    bool CanAccept(uint32_t max_connections) const;
 
 private:
     void StopInternal();
@@ -95,8 +96,8 @@ private:
     NetEngineOptions options_;
     mutable std::mutex mutex_;
     mutable std::mutex stats_mutex_;
-    // executors_ 按 round-robin 分配 accepted session；listener、UDP endpoint
-    // 和 timer 必须由调用方显式指定执行域。
+    // executors_ 由调用方显式 pick；listener、accepted session、UDP endpoint
+    // 和 timer 都绑定到指定执行域。
     std::vector<std::shared_ptr<EventLoop>> loops_;
     std::vector<std::shared_ptr<NetExecutor>> executors_;
     // servers_/udp_sockets_/connections_ 是 net 的资源所有权表；协议模块只保存 id，

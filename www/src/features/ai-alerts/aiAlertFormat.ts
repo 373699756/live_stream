@@ -1,5 +1,6 @@
 import type {
   AiAlertRecord,
+  AiConfig,
   AiDetection,
   AiModelConfig,
   AlarmStatusResponse,
@@ -100,5 +101,12 @@ export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
     confidence_threshold: clampPercent(config.confidence_threshold),
     max_results: positiveInteger(config.max_results, 16),
     perimeter_regions: config.perimeter_regions ?? [],
+  };
+}
+
+export function normalizeAiRootConfigForSave(config: AiConfig): AiConfig {
+  return {
+    ...config,
+    tasks: config.tasks.map(normalizeAiConfigForSave),
   };
 }

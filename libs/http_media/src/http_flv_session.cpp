@@ -229,7 +229,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
     headers["Content-Type"] = "video/x-flv";
     headers["Cache-Control"] = "no-cache";
     headers["Pragma"] = "no-cache";
-    const std::string header_block = BuildHttpMediaStreamingHeaderBlock(200, headers);
+    const std::string header_block = BuildHttpStreamHeaderBlock(200, headers);
 
     start_block_.clear();
     start_block_.reserve(header_block.size() + start_data.file_header.size());
@@ -266,7 +266,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
          "sequence=%zu cached_flv=%zu cached_bytes=%zu "
          "gop_complete=%d",
          static_cast<unsigned long long>(connection_id_),
-         HttpMediaStreamIdToJsonString(stream_id_),
+         MediaStreamIdToJson(stream_id_),
          header_block.size(), start_data.file_header.size(),
          start_data.sequence_header.size(),
          start_data.cached_video_tags.size(), bytes,

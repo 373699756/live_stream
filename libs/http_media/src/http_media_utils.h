@@ -26,21 +26,19 @@ HttpResponse HttpMediaOkResponse();
 HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
                                           const HttpRequest &request,
                                           AuthPrincipal *principal);
-HttpResponse RequireHttpMediaPlaybackAuthResponse(HttpAccess *access,
-                                                  const HttpRequest &request,
-                                                  AuthPrincipal *principal);
-bool ParseHttpMediaOptionalJsonObject(const HttpRequest &request,
-                                      ConfigJson *body);
+HttpResponse RequirePlaybackAuthResponse(HttpAccess *access,
+                                         const HttpRequest &request,
+                                         AuthPrincipal *principal);
+bool ParseOptionalJsonBody(const HttpRequest &request, ConfigJson *body);
 bool IsHttpMediaRestarting(IDeviceMedia *device_media);
 std::string HttpMediaPathSuffix(const std::string &path,
                                 const std::string &prefix);
-std::string BuildHttpMediaStreamingHeaderBlock(
+std::string BuildHttpStreamHeaderBlock(
     int status_code, const std::map<std::string, std::string> &headers);
 bool HttpMediaStartsWith(const std::string &value,
                          const std::string &prefix);
-const char *HttpMediaStreamIdToJsonString(StreamId stream_id);
-bool HttpMediaStreamIdFromJsonString(const std::string &value,
-                                     StreamId *stream_id);
+const char *MediaStreamIdToJson(StreamId stream_id);
+bool MediaStreamIdFromJson(const std::string &value, StreamId *stream_id);
 
 }  // namespace live_stream
 

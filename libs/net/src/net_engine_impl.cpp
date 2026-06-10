@@ -161,19 +161,21 @@ TcpServerId NetEngineImpl::ListenTcp(INetExecutor *executor,
         return 0;
     }
     std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
-    if (!owner_executor || !running_) {
+    if (!owner_executor) {
         return 0;
     }
     const TcpServerId id = next_server_id_++;
     auto server = std::make_shared<TcpServer>(this, id, options, callbacks);
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!running_) {
+            return 0;
+        }
         servers_[id] = server;
-    }
-    if (!server->Start(owner_executor->loop())) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        servers_.erase(id);
-        return 0;
+        if (!server->Start(owner_executor->loop())) {
+            servers_.erase(id);
+            return 0;
+        }
     }
     return id;
 }
@@ -182,19 +184,21 @@ UdpSocketId NetEngineImpl::BindUdp(INetExecutor *executor,
                                    const UdpBindOptions &options,
                                    const UdpCallbacks &callbacks) {
     std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
-    if (!owner_executor || !running_) {
+    if (!owner_executor) {
         return 0;
     }
     const UdpSocketId id = next_udp_id_++;
     auto socket = std::make_shared<UdpEndpoint>(this, id, options, callbacks);
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!running_) {
+            return 0;
+        }
         udp_sockets_[id] = socket;
-    }
-    if (!socket->Start(owner_executor->loop())) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        udp_sockets_.erase(id);
-        return 0;
+        if (!socket->Start(owner_executor->loop())) {
+            udp_sockets_.erase(id);
+            return 0;
+        }
     }
     return id;
 }
@@ -456,15 +460,23 @@ void NetEngineImpl::AddUdpTx() {
     ++stats_.sent_datagrams;
 }
 
-bool NetEngineImpl::CanAccept(uint32_t max_connections) const {
+bool NetEngineImpl::AddAcceptedConnection(
+    const std::shared_ptr<TcpSession> &connection,
+    uint32_t max_connections) {
+    if (connection == nullptr) {
+        return false;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
-    return connections_.size() < max_connections;
+    if (!running_ || connections_.size() >= max_connections) {
+        return false;
+    }
+    connections_[connection->id()] = connection;
+    return true;
 }
 
-void NetEngineImpl::RegisterConnection(
-    const std::shared_ptr<TcpSession> &connection) {
+void NetEngineImpl::RemoveConnection(ConnectionId id) {
     std::lock_guard<std::mutex> lock(mutex_);
-    connections_[connection->id()] = connection;
+    connections_.erase(id);
 }
 
 void NetEngineImpl::OnConnectionClosed(ConnectionId id,
@@ -570,16 +582,6 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
         return;
     }
     callbacks.on_read(callbacks.user, socket_id, std::move(peer), data, size);
-}
-
-std::shared_ptr<EventLoop> NetEngineImpl::NextLoop() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (loops_.empty()) {
-        return nullptr;
-    }
-    const uint32_t index =
-        next_loop_.fetch_add(1) % static_cast<uint32_t>(loops_.size());
-    return loops_[index];
 }
 
 std::shared_ptr<NetExecutor> NetEngineImpl::ResolveExecutor(

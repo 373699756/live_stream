@@ -12,7 +12,7 @@ public:
     bool Available() const override { return true; }
 
     bool Start(const AiModelConfig &config) override {
-        started_ = IsValidAiConfig(config);
+        started_ = IsValidAiTaskConfig(config);
         if (started_) {
             sequence_ = 0;
         }

@@ -145,6 +145,23 @@ export const mockMediaCapabilities: MediaCapabilities = {
         distortion_ratio: { min: -300, max: 500, default: 0 },
       },
     },
+    stabilization: {
+      supported: true,
+      min_width: 1280,
+      min_height: 720,
+      options: {
+        motion_level: { values: ['low', 'normal', 'high'], default: 'normal' },
+      },
+      ranges: {
+        crop_ratio: { min: 50, max: 98, default: 80 },
+        buffer_count: { min: 5, max: 10, default: 6 },
+        frame_rate: { min: 1, max: 60, default: 30 },
+        moving_subject_level: { min: 0, max: 6, default: 0 },
+        rolling_shutter_coef: { min: 0, max: 1000, default: 0 },
+        horizontal_limit: { min: 0, max: 1000, default: 512 },
+        vertical_limit: { min: 0, max: 1000, default: 512 },
+      },
+    },
     orientation: { mirror: true, flip: true },
   },
 };

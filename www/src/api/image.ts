@@ -20,6 +20,19 @@ function normalizeImageConfig(config: ImageConfig): ImageConfig {
       center_y_offset: config.lens_correction?.center_y_offset ?? 0,
       distortion_ratio: config.lens_correction?.distortion_ratio ?? 0,
     },
+    stabilization: {
+      enabled: config.stabilization?.enabled ?? false,
+      motion_level: config.stabilization?.motion_level ?? 'normal',
+      crop_ratio: config.stabilization?.crop_ratio ?? 80,
+      buffer_count: config.stabilization?.buffer_count ?? 6,
+      frame_rate: config.stabilization?.frame_rate ?? 30,
+      moving_subject_level:
+        config.stabilization?.moving_subject_level ?? 0,
+      rolling_shutter_coef:
+        config.stabilization?.rolling_shutter_coef ?? 0,
+      horizontal_limit: config.stabilization?.horizontal_limit ?? 512,
+      vertical_limit: config.stabilization?.vertical_limit ?? 512,
+    },
     strategy: config.strategy
       ? { ...config.strategy }
       : { enabled: true, mode: 'low_noise' },

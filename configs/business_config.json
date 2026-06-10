@@ -35,16 +35,60 @@
   },
   "ai": {
     "enabled": false,
-    "backend": "hisi3516dv300_nnie",
-    "task": "perimeter_detection",
-    "stream": "sub",
-    "model_path": "models/inst_ssd_cycle.wk",
-    "input_width": 300,
-    "input_height": 300,
-    "inference_interval_ms": 500,
-    "confidence_threshold": 0.5,
-    "max_results": 16,
-    "perimeter_regions": []
+    "tasks": [
+      {
+        "enabled": false,
+        "backend": "hisi3516dv300_nnie",
+        "task": "object_detection",
+        "stream": "sub",
+        "model_path": "models/inst_ssd_cycle.wk",
+        "input_width": 300,
+        "input_height": 300,
+        "inference_interval_ms": 500,
+        "confidence_threshold": 0.5,
+        "max_results": 16,
+        "perimeter_regions": []
+      },
+      {
+        "enabled": true,
+        "backend": "hisi3516dv300_nnie",
+        "task": "perimeter_detection",
+        "stream": "sub",
+        "model_path": "models/inst_ssd_cycle.wk",
+        "input_width": 300,
+        "input_height": 300,
+        "inference_interval_ms": 500,
+        "confidence_threshold": 0.5,
+        "max_results": 16,
+        "perimeter_regions": []
+      },
+      {
+        "enabled": false,
+        "backend": "hisi3516dv300_nnie",
+        "task": "motion_classification",
+        "stream": "sub",
+        "model_path": "",
+        "input_width": 300,
+        "input_height": 300,
+        "inference_interval_ms": 500,
+        "confidence_threshold": 0.5,
+        "max_results": 16,
+        "perimeter_regions": []
+      },
+      {
+        "enabled": false,
+        "backend": "hisi3516dv300_nnie",
+        "task": "occlusion_detection",
+        "stream": "sub",
+        "model_path": "",
+        "input_width": 300,
+        "input_height": 300,
+        "inference_interval_ms": 500,
+        "confidence_threshold": 0.5,
+        "max_results": 16,
+        "perimeter_regions": []
+      }
+    ]
   },
   "image": {
     "basic": {
@@ -94,6 +138,17 @@
       "center_x_offset": 0,
       "center_y_offset": 0,
       "distortion_ratio": 0
+    },
+    "stabilization": {
+      "enabled": false,
+      "motion_level": "normal",
+      "crop_ratio": 80,
+      "buffer_count": 6,
+      "frame_rate": 30,
+      "moving_subject_level": 0,
+      "rolling_shutter_coef": 0,
+      "horizontal_limit": 512,
+      "vertical_limit": 512
     },
     "strategy": {
       "enabled": true,

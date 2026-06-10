@@ -1,4 +1,4 @@
-import type { AiStatus } from '../../api/types';
+import type { AiStats } from '../../api/types';
 
 function metricValue(value: number) {
   return Number.isFinite(value) ? String(value) : '-';
@@ -24,7 +24,7 @@ function timeSince(timestampMs: number) {
 }
 
 interface AiMetricsPanelProps {
-  stats: AiStatus['stats'];
+  stats: AiStats;
 }
 
 export function AiMetricsPanel({ stats }: AiMetricsPanelProps) {

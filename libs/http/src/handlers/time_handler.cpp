@@ -46,9 +46,15 @@ bool TimeConfigFromJson(const ConfigJson &value, TimeConfig *config) {
     TimeConfig parsed;
     if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
         !value.contains("ntp") || !value.at("ntp").is_object() ||
-        !NtpConfigFromJson(value.at("ntp"), &parsed.ntp) ||
+        !NtpConfigFromJson(value.at("ntp"), &parsed.ntp)) {
+        return false;
+    }
+    if (value.contains("manual_sync_allowed") &&
         !json_utils::ReadField(value, "manual_sync_allowed",
-                               &parsed.manual_sync_allowed) ||
+                               &parsed.manual_sync_allowed)) {
+        return false;
+    }
+    if (value.contains("browser_sync_on_login") &&
         !json_utils::ReadField(value, "browser_sync_on_login",
                                &parsed.browser_sync_on_login)) {
         return false;

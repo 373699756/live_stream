@@ -154,13 +154,12 @@ RTSP、HLS、HTTP-FLV、MJPEG、snapshot 或 WHEP URL，也不消费旧
 `/api/status/streams`、`/api/hls`、`/api/flv`、`/api/mjpeg` 路径。
 
 实时预览页轮询 `/api/ai/status`。只有检测结果来自当前码流且坐标有效时，Web 才把
-`last_result.detections` 叠加到视频内容区域。AI 未启用、后端不可用或结果来自其他
-码流时，只显示状态，不阻塞预览。
-AI 配置页只提交后端拥有的任务、模型、阈值和可选 `perimeter_regions` 归一化矩形；
-周界命中和告警联动都由后端 `ai` 模块判断。
-AI 告警页按任务 tab 展示 `/api/ai/alerts` 历史抓拍，每个 tab 最多显示最近 10 张；
-tab 只切换查看分类，不表示四个 AI 任务并行运行。当前运行任务来自 `/api/ai/status`
-的 `config.task`，切换任务通过保存 `ai.task` 完成。系统报警触发状态来自
+`tasks[].last_result.detections` 合并叠加到视频内容区域。AI 未启用、后端不可用或
+结果来自其他码流时，只显示状态，不阻塞预览。
+AI 配置页提交后端拥有的 `ai.enabled`、`tasks[]`、模型、阈值和可选
+`perimeter_regions` 归一化矩形；周界命中和告警联动都由后端 `ai` 模块判断。
+AI 页面采用预览优先布局：左侧是实时预览、汇总状态和四类任务独立开关，右侧是
+`/api/ai/alerts` 最新 10 张抓图瀑布流。系统报警触发状态来自
 `GET /api/alarm/status`，页面同时监听 `/api/events` 的 `alarm_triggered` 事件刷新
 告警状态和抓拍列表。
 

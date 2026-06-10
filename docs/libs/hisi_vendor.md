@@ -59,6 +59,10 @@ VENC ROI 使用 `HI_MPI_VENC_SetRoiAttrEx`，创建 VENC channel 后应用所有
 `image.lens_correction` 参数分别应用到主码流和已启用的子码流 VPSS channel；
 当前 Hi3516DV300/CV500 路径使用通用 `VPSS_LDC_ATTR_S`，不使用标注为 EV200 的
 VPSS LDCV3 接口。
+电子防抖使用 VI 通道级 `HI_MPI_VI_SetChnDISConfig` 和
+`HI_MPI_VI_SetChnDISAttr`。Hi3516CV500/DV300 的 ISP DIS 接口不支持本芯片路径，
+所以本模块只接 VI DIS；当前配置固定使用 IPC 产品类型和无陀螺仪 GME 模式，不暴露
+gyro/hybrid DIS 承诺。
 
 JPEG 抓图保持同步 `CaptureJpeg` 接口，底层使用 VPSS 取帧后送入独立 JPEG VENC
 channel，再按 `GetStream/ReleaseStream` 成对读取编码结果。抓图控制语义借鉴 Capture

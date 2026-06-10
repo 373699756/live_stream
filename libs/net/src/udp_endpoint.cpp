@@ -148,7 +148,12 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
     if (slices.count > kMaxNetBufferSlices) {
         return false;
     }
-    if (loop_ != nullptr && loop_->IsCurrentThread()) {
+    std::shared_ptr<EventLoop> loop;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        loop = loop_;
+    }
+    if (loop != nullptr && loop->IsCurrentThread()) {
         return SendToSlicesInLoop(std::move(address), slices);
     }
     size_t total_size = 0;
@@ -177,14 +182,13 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
         offset += slice.size;
     }
     std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
-    return loop_ != nullptr &&
-           loop_->Post([weak_self, address = std::move(address),
-                        datagram]() mutable {
+    return loop != nullptr &&
+           loop->Post([weak_self, address = std::move(address),
+                       datagram]() mutable {
                auto self = weak_self.lock();
                if (self) {
-                   static_cast<void>(
-                       self->SendPreparedDatagram(std::move(address),
-                                                  datagram));
+                   static_cast<void>(self->SendPreparedDatagram(
+                       std::move(address), datagram));
                }
            });
 }
@@ -255,7 +259,12 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     }
     // selected peer 只给 RTP/ICE 这类已协商对端使用；ONVIF discovery 仍走
     // SendTo()，因为每个 Probe 的回复目标不同。
-    if (loop_ != nullptr && loop_->IsCurrentThread()) {
+    std::shared_ptr<EventLoop> loop;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        loop = loop_;
+    }
+    if (loop != nullptr && loop->IsCurrentThread()) {
         std::lock_guard<std::mutex> lock(mutex_);
         peer_ = std::move(peer);
         has_peer_ = true;
@@ -263,8 +272,8 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     }
     auto selected_peer = std::make_shared<NetAddress>(std::move(peer));
     std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
-    return loop_ != nullptr &&
-           loop_->Post([weak_self, selected_peer]() {
+    return loop != nullptr &&
+           loop->Post([weak_self, selected_peer]() {
                auto self = weak_self.lock();
                if (!self) {
                    return;

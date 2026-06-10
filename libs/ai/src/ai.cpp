@@ -24,8 +24,8 @@ void Ai::Stop() {
     }
 }
 
-AiModelConfig Ai::GetConfig() const {
-    return impl_ != nullptr ? impl_->core.GetConfig() : AiModelConfig{};
+AiConfig Ai::GetConfig() const {
+    return impl_ != nullptr ? impl_->core.GetConfig() : AiConfig{};
 }
 
 AiStats Ai::GetStats() const {
@@ -35,6 +35,11 @@ AiStats Ai::GetStats() const {
 AiInferenceResult Ai::GetLastResult() const {
     return impl_ != nullptr ? impl_->core.GetLastResult()
                             : AiInferenceResult{};
+}
+
+std::vector<AiTaskStatus> Ai::GetTaskStatuses() const {
+    return impl_ != nullptr ? impl_->core.GetTaskStatuses()
+                            : std::vector<AiTaskStatus>();
 }
 
 std::vector<AiAlertRecord> Ai::ListAlerts() const {

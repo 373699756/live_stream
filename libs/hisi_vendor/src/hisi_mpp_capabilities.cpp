@@ -124,6 +124,22 @@ ImageCapabilities DefaultImageCapabilities() {
     image.lens_correction_supported = true;
     image.lens_correction_min_width = LDC_MIN_IMAGE_WIDTH;
     image.lens_correction_min_height = LDC_MIN_IMAGE_HEIGHT;
+    image.stabilization_options.push_back(
+        Options("motion_level", {"low", "normal", "high"}, "normal"));
+    image.stabilization_ranges.push_back(Range("crop_ratio", 50, 98, 80));
+    image.stabilization_ranges.push_back(Range("buffer_count", 5, 10, 6));
+    image.stabilization_ranges.push_back(Range("frame_rate", 1, 60, 30));
+    image.stabilization_ranges.push_back(
+        Range("moving_subject_level", 0, 6, 0));
+    image.stabilization_ranges.push_back(
+        Range("rolling_shutter_coef", 0, 1000, 0));
+    image.stabilization_ranges.push_back(
+        Range("horizontal_limit", 0, 1000, 512));
+    image.stabilization_ranges.push_back(
+        Range("vertical_limit", 0, 1000, 512));
+    image.stabilization_supported = true;
+    image.stabilization_min_width = DIS_MIN_IMAGE_WIDTH;
+    image.stabilization_min_height = DIS_MIN_IMAGE_HEIGHT;
     image.mirror_supported = true;
     image.flip_supported = true;
 

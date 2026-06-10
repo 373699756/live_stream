@@ -30,6 +30,18 @@ constexpr int32_t kLdcCenterOffsetMin = -511;
 constexpr int32_t kLdcCenterOffsetMax = 511;
 constexpr int32_t kLdcDistortionMin = -300;
 constexpr int32_t kLdcDistortionMax = 500;
+constexpr int32_t kDisCropRatioMin = 50;
+constexpr int32_t kDisCropRatioMax = 98;
+constexpr int32_t kDisBufferCountMin = 5;
+constexpr int32_t kDisBufferCountMax = 10;
+constexpr int32_t kDisFrameRateMin = 1;
+constexpr int32_t kDisFrameRateMax = 60;
+constexpr int32_t kDisMovingSubjectLevelMin = 0;
+constexpr int32_t kDisMovingSubjectLevelMax = 6;
+constexpr int32_t kDisRollingShutterCoefMin = 0;
+constexpr int32_t kDisRollingShutterCoefMax = 1000;
+constexpr int32_t kDisDriftLimitMin = 0;
+constexpr int32_t kDisDriftLimitMax = 1000;
 
 uint32_t ScaleControl(int32_t value, uint32_t min_value, uint32_t max_value) {
     const int32_t clamped = infra::Clamp(value, 0, kConfigMax);
@@ -636,6 +648,123 @@ bool ApplyLensCorrection(const MediaPipelineConfig& config,
     return true;
 }
 
+DIS_MOTION_LEVEL_E ParseDisMotionLevel(const ConfigJson& stabilization) {
+    std::string motion_level;
+    if (!json_utils::ReadField(stabilization, "motion_level",
+                               &motion_level)) {
+        return DIS_MOTION_LEVEL_NORMAL;
+    }
+    if (motion_level == "low") {
+        return DIS_MOTION_LEVEL_LOW;
+    }
+    if (motion_level == "high") {
+        return DIS_MOTION_LEVEL_HIGH;
+    }
+    return DIS_MOTION_LEVEL_NORMAL;
+}
+
+bool IsDisStreamSizeSupported(const VideoStreamConfig& stream_config) {
+    return stream_config.size.width >= DIS_MIN_IMAGE_WIDTH &&
+           stream_config.size.height >= DIS_MIN_IMAGE_HEIGHT;
+}
+
+bool ApplyStabilization(const MediaPipelineConfig& config,
+                        const ConfigJson& image_config) {
+    const ConfigJson* stabilization = nullptr;
+    ConfigJson disabled_stabilization = ConfigJson::object();
+    if (!FindSection(image_config, "stabilization", &stabilization)) {
+        disabled_stabilization["enabled"] = false;
+        stabilization = &disabled_stabilization;
+    }
+    bool enabled = false;
+    if (!json_utils::ReadField(*stabilization, "enabled", &enabled)) {
+        return false;
+    }
+    if (enabled && !IsDisStreamSizeSupported(config.main_stream)) {
+        Error("hisi_vendor", "VI DIS main stream size unsupported: %ux%u",
+              config.main_stream.size.width, config.main_stream.size.height);
+        return false;
+    }
+    if (enabled && config.sub_stream.enabled &&
+        !IsDisStreamSizeSupported(config.sub_stream)) {
+        Error("hisi_vendor", "VI DIS sub stream size unsupported: %ux%u",
+              config.sub_stream.size.width, config.sub_stream.size.height);
+        return false;
+    }
+
+    DIS_CONFIG_S dis_config{};
+    dis_config.enMode = DIS_MODE_4_DOF_GME;
+    dis_config.enMotionLevel = ParseDisMotionLevel(*stabilization);
+    dis_config.enPdtType = DIS_PDT_TYPE_IPC;
+    dis_config.u32BufNum = 6;
+    dis_config.u32CropRatio = 80;
+    dis_config.u32FrameRate =
+        static_cast<HI_U32>(config.main_stream.frame_rate.target_fps);
+    dis_config.bCameraSteady = HI_FALSE;
+    dis_config.bScale = HI_TRUE;
+
+    int32_t value = 0;
+    if (json_utils::ReadField(*stabilization, "buffer_count", &value,
+                              kDisBufferCountMin, kDisBufferCountMax)) {
+        dis_config.u32BufNum = static_cast<HI_U32>(value);
+    }
+    if (json_utils::ReadField(*stabilization, "crop_ratio", &value,
+                              kDisCropRatioMin, kDisCropRatioMax)) {
+        dis_config.u32CropRatio = static_cast<HI_U32>(value);
+    }
+    if (json_utils::ReadField(*stabilization, "frame_rate", &value,
+                              kDisFrameRateMin, kDisFrameRateMax)) {
+        dis_config.u32FrameRate = static_cast<HI_U32>(value);
+    }
+
+    DIS_ATTR_S dis_attr{};
+    dis_attr.bEnable = enabled ? HI_TRUE : HI_FALSE;
+    dis_attr.bGdcBypass = HI_FALSE;
+    dis_attr.u32MovingSubjectLevel = 0;
+    dis_attr.s32RollingShutterCoef = 0;
+    dis_attr.u32HorizontalLimit = 512;
+    dis_attr.u32VerticalLimit = 512;
+    dis_attr.bStillCrop = HI_FALSE;
+
+    if (json_utils::ReadField(*stabilization, "moving_subject_level", &value,
+                              kDisMovingSubjectLevelMin,
+                              kDisMovingSubjectLevelMax)) {
+        dis_attr.u32MovingSubjectLevel = static_cast<HI_U32>(value);
+    }
+    if (json_utils::ReadField(*stabilization, "rolling_shutter_coef", &value,
+                              kDisRollingShutterCoefMin,
+                              kDisRollingShutterCoefMax)) {
+        dis_attr.s32RollingShutterCoef = value;
+    }
+    if (json_utils::ReadField(*stabilization, "horizontal_limit", &value,
+                              kDisDriftLimitMin, kDisDriftLimitMax)) {
+        dis_attr.u32HorizontalLimit = static_cast<HI_U32>(value);
+    }
+    if (json_utils::ReadField(*stabilization, "vertical_limit", &value,
+                              kDisDriftLimitMin, kDisDriftLimitMax)) {
+        dis_attr.u32VerticalLimit = static_cast<HI_U32>(value);
+    }
+
+    const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
+    const VI_CHN vi_channel = static_cast<VI_CHN>(config.vi_channel);
+    HI_S32 status =
+        HI_MPI_VI_SetChnDISConfig(vi_pipe, vi_channel, &dis_config);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetChnDISConfig pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_channel, status);
+        return false;
+    }
+    status = HI_MPI_VI_SetChnDISAttr(vi_pipe, vi_channel, &dis_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetChnDISAttr pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_channel, status);
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
@@ -691,6 +820,9 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
         return false;
     }
     if (!ApplyLensCorrection(config, image_config)) {
+        return false;
+    }
+    if (!ApplyStabilization(config, image_config)) {
         return false;
     }
     return true;

@@ -90,6 +90,11 @@ struct ImageCapabilities {
     bool lens_correction_supported = false;
     uint32_t lens_correction_min_width = 0;
     uint32_t lens_correction_min_height = 0;
+    std::vector<OptionControlCapability> stabilization_options;
+    std::vector<NumericControlCapability> stabilization_ranges;
+    bool stabilization_supported = false;
+    uint32_t stabilization_min_width = 0;
+    uint32_t stabilization_min_height = 0;
     bool mirror_supported = true;
     bool flip_supported = true;
 };

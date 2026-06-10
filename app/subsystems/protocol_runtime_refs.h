@@ -19,7 +19,10 @@ struct ProtocolRuntimeRefs {
     DeviceRefs device;
     MediaRefs media;
     INetEngine *net_engine = nullptr;
-    INetExecutor *net_executor = nullptr;
+    INetExecutor *rtsp_executor = nullptr;
+    INetExecutor *webrtc_executor = nullptr;
+    INetExecutor *onvif_executor = nullptr;
+    INetExecutor *http_executor = nullptr;
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
     IWebrtc *webrtc = nullptr;

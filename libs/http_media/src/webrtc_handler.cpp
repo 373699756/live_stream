@@ -57,7 +57,7 @@ const char *VideoCodecToJsonString(VideoCodec codec) {
 ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
     ConfigJson root = ConfigJson::object();
     root["peer_id"] = peer.peer_id;
-    root["stream"] = HttpMediaStreamIdToJsonString(peer.stream_id);
+    root["stream"] = MediaStreamIdToJson(peer.stream_id);
     root["codec"] = VideoCodecToJsonString(peer.codec);
     root["state"] = WebrtcPeerStateName(peer.state);
     root["client_id"] = peer.client_id;
@@ -136,7 +136,7 @@ bool ParsePeerPath(const HttpRequest &request, std::string *peer_id) {
 }
 
 std::string RequiredWhepPrefix(StreamId stream_id) {
-    return std::string("/live/") + HttpMediaStreamIdToJsonString(stream_id) +
+    return std::string("/live/") + MediaStreamIdToJson(stream_id) +
            "/whep";
 }
 
@@ -151,7 +151,7 @@ bool ParseWhepPath(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     const std::string stream_name = remaining.substr(0, slash);
-    if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
+    if (!MediaStreamIdFromJson(stream_name, stream_id)) {
         return false;
     }
     const std::string whep_path = remaining.substr(slash + 1);
@@ -176,7 +176,7 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
     std::string stream;
     StreamId stream_id = StreamId::kMain;
     if (!json_utils::ReadField(body, "stream", &stream) ||
-        !HttpMediaStreamIdFromJsonString(stream, &stream_id) ||
+        !MediaStreamIdFromJson(stream, &stream_id) ||
         !json_utils::ReadField(body, "client_id", &create_request.client_id)) {
         return WebrtcErrorResponse(400, "stream_not_found",
                                    "Stream not found");
@@ -424,7 +424,7 @@ private:
         }
 
         ConfigJson body;
-        if (!ParseHttpMediaOptionalJsonObject(request, &body)) {
+        if (!ParseOptionalJsonBody(request, &body)) {
             return WebrtcErrorResponse(400, "invalid_argument",
                                        "Invalid JSON");
         }
@@ -435,7 +435,7 @@ private:
     HttpResponse HandleWhepCreate(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request,
+            RequirePlaybackAuthResponse(access_, request,
                                                  &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
@@ -452,7 +452,7 @@ private:
     HttpResponse HandleWhepDelete(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request,
+            RequirePlaybackAuthResponse(access_, request,
                                                  &principal);
         if (auth_response.status_code != 0) {
             return auth_response;

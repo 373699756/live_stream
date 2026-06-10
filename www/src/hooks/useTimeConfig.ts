@@ -88,6 +88,7 @@ export function useTimeConfig() {
     const nextManualSyncAllowed = manualSyncAllowed;
     const nextBrowserSyncOnLogin =
       nextManualSyncAllowed && browserSyncOnLogin;
+    setBrowserSyncOnLogin(nextBrowserSyncOnLogin);
     setBusy(true);
     setError('');
     setMessage('');

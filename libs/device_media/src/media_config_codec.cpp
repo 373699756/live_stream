@@ -512,6 +512,57 @@ ConfigResult ValidateLensCorrectionConfig(
     return ConfigResult::Success();
 }
 
+ConfigResult ValidateStabilizationConfig(
+    const ConfigJson &value,
+    const ImageCapabilities &capabilities,
+    const MediaPipelineConfig &active_config) {
+    if (!value.contains("stabilization")) {
+        return ConfigResult::Success();
+    }
+    if (!value.at("stabilization").is_object()) {
+        return ConfigResult::Failure("stabilization",
+                                     "missing or invalid value");
+    }
+    const ConfigJson &stabilization = value.at("stabilization");
+    bool enabled = false;
+    if (!json_utils::ReadField(stabilization, "enabled", &enabled)) {
+        return ConfigResult::Failure("stabilization.enabled",
+                                     "missing or invalid value");
+    }
+    if (enabled && !capabilities.stabilization_supported) {
+        return ConfigResult::Failure("stabilization.enabled",
+                                     "unsupported value");
+    }
+    if (enabled) {
+        if (active_config.main_stream.size.width <
+                capabilities.stabilization_min_width ||
+            active_config.main_stream.size.height <
+                capabilities.stabilization_min_height) {
+            return ConfigResult::Failure("stabilization.enabled",
+                                         "main stream size unsupported");
+        }
+        if (active_config.sub_stream.enabled &&
+            (active_config.sub_stream.size.width <
+                 capabilities.stabilization_min_width ||
+             active_config.sub_stream.size.height <
+                 capabilities.stabilization_min_height)) {
+            return ConfigResult::Failure("stabilization.enabled",
+                                         "sub stream size unsupported");
+        }
+    }
+    const ConfigResult range_result = ValidateNumericControls(
+        stabilization, "stabilization", capabilities.stabilization_ranges);
+    if (!range_result.ok) {
+        return range_result;
+    }
+    const ConfigResult option_result = ValidateOptionControls(
+        stabilization, "stabilization", capabilities.stabilization_options);
+    if (!option_result.ok) {
+        return option_result;
+    }
+    return ConfigResult::Success();
+}
+
 ConfigResult ValidateVideoStreamConfig(
     const VideoConfig::Stream &stream,
     const VideoStreamCapabilities &stream_capabilities,
@@ -826,7 +877,12 @@ ConfigResult ValidateImageConfig(const ConfigJson &value,
             return ConfigResult::Failure("strategy.mode", "unsupported value");
         }
     }
-    return ValidateLensCorrectionConfig(value, capabilities, active_config);
+    ConfigResult result =
+        ValidateLensCorrectionConfig(value, capabilities, active_config);
+    if (!result.ok) {
+        return result;
+    }
+    return ValidateStabilizationConfig(value, capabilities, active_config);
 }
 
 ConfigResult ParseVideoConfig(const ConfigJson &value,

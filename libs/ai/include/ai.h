@@ -58,6 +58,11 @@ struct AiModelConfig {
     AiPerimeterConfig perimeter;
 };
 
+struct AiConfig {
+    bool enabled = false;
+    std::vector<AiModelConfig> tasks;
+};
+
 struct AiDetection {
     std::string label;
     float confidence = 0.0f;
@@ -92,6 +97,12 @@ struct AiStats {
     uint32_t active_results = 0;
 };
 
+struct AiTaskStatus {
+    AiModelConfig config;
+    AiStats stats;
+    AiInferenceResult last_result;
+};
+
 struct AiAlertRecord {
     std::string id;
     int64_t timestamp_ms = 0;
@@ -103,7 +114,7 @@ struct AiAlertRecord {
 };
 
 struct AiOptions {
-    AiModelConfig default_config;
+    AiConfig default_config;
     IConfig* config = nullptr;
     IAlarm* alarm = nullptr;
     IDeviceMedia* device_media = nullptr;
@@ -119,9 +130,10 @@ struct AiOptions {
 class IAiView {
 public:
     virtual ~IAiView() = default;
-    virtual AiModelConfig GetConfig() const = 0;
+    virtual AiConfig GetConfig() const = 0;
     virtual AiStats GetStats() const = 0;
     virtual AiInferenceResult GetLastResult() const = 0;
+    virtual std::vector<AiTaskStatus> GetTaskStatuses() const = 0;
     virtual std::vector<AiAlertRecord> ListAlerts() const = 0;
     virtual std::string ReadAlertImage(const std::string& id) const = 0;
 };
@@ -135,9 +147,10 @@ public:
     bool Start();
     void Stop();
 
-    AiModelConfig GetConfig() const override;
+    AiConfig GetConfig() const override;
     AiStats GetStats() const override;
     AiInferenceResult GetLastResult() const override;
+    std::vector<AiTaskStatus> GetTaskStatuses() const override;
     std::vector<AiAlertRecord> ListAlerts() const override;
     std::string ReadAlertImage(const std::string& id) const override;
 

@@ -15,11 +15,13 @@ RTSP、ONVIF 或 WebRTC 的业务语义。
 ```mermaid
 flowchart LR
   Protocol[ProtocolSubsystem] --> Net[INetEngine]
-  Net --> Loop[event_loop / timer]
+  Net --> Loop[event_loop]
+  Loop --> Timer[timer]
+  Net --> NetExec[INetExecutor]
   Net --> TCP[tcp_server / tcp_session]
   Net --> UDP[udp_endpoint]
   TCP --> Queue[send queue / pending bytes / close reason]
-  Net --> Executor[infra::Executor callback mode]
+  Net --> CallbackExec[infra::Executor callback mode]
   HTTP[http] --> Net
   RTSP[rtsp] --> Net
   WebRTC[webrtc] --> Net
@@ -28,15 +30,16 @@ flowchart LR
 
 ## 核心职责
 
-- 管理 IO thread 和 callback dispatch。
+- 管理 IO thread、`INetExecutor` 执行域和 callback dispatch。
 - 提供 TCP server/session、UDP endpoint 和 fd/eventfd 封装。
 - 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
   send stall 检测和 close reason。
-- 提供一次性/周期 IO timer；`CancelIoTimer()` 或 `INetEngine::Stop()` 后
-  timer 不再回调。
+- 通过指定 `INetExecutor` 提供一次性/周期 IO timer；`CancelTimer()` 或
+  `INetEngine::Stop()` 后 timer 不再回调。
 - 提供 UDP `SendTo()` 和 selected peer 模型，供 RTP、ICE/STUN、ONVIF
   discovery 这类 UDP 生命周期接入。
-- 将网络回调投递到指定 executor，避免协议模块直接阻塞 IO loop。
+- 将网络回调按 `CallbackMode` 直接在 IO loop 执行或投递到 callback executor；
+  协议模块不能自行跨过 `net` 操作 fd。
 
 ## 接口归属
 
@@ -45,8 +48,13 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
 
 冻结契约：
 
-- `TcpServer`：`ListenTcp()` 创建监听，`CloseTcp()` 先停止 accept，再由上层
-  按连接 id 关闭已有 session。
+- `INetExecutor`：代表一个 `net` IO loop 的执行域，提供 `Post()`、
+  `RunAfter()`、`RunEvery()`、`CancelTimer()` 和 `IsCurrentThread()`。
+  executor 由 `INetEngine::DefaultExecutor()` 或 `PickExecutor()` 返回，只在
+  对应 `INetEngine` 生命周期内有效；`INetEngine::Stop()` 后不能再继续使用。
+- `TcpServer`：`ListenTcp(executor, ...)` 创建监听，`executor` 必须来自同一个
+  `INetEngine` 且非空；accept 和 accepted session 都绑定到该 executor 所属
+  IO loop。`CloseTcp()` 先停止 accept，再由上层按连接 id 关闭已有 session。
 - `TcpSession`：以 `ConnectionId` 表达 public session；发送统一走
   `Send()`/`SendSlices()`，慢客户端由 `send_queue_capacity`、
   `send_buffer_limit_bytes`、`send_stall_timeout_ms`、`write_timeout_ms`
@@ -56,11 +64,12 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
   记录慢客户端和区分 peer/local/timeout/error。协议模块需要主动标记解析失败或
   鉴权失败时，可以调用 `Close(connection_id, reason)`；普通本地关闭继续调用
   `Close(connection_id)`。
-- `UdpEndpoint`：`BindUdp()`/`CloseUdp()` 管生命周期；`SetUdpPeer()`、
-  `SendToPeer()` 用于已选择 peer 的 RTP 或 ICE/STUN，`SendTo()` 用于
-  ONVIF discovery 这类逐包目标地址。
-- `Timer`：`RunOnIoAfter()` 是一次性 timer，`RunOnIoEvery()` 是周期 timer，
-  id 由 `INetEngine` 全局分配，避免多 IO loop 下取消误命中。
+- `UdpEndpoint`：`BindUdp(executor, ...)`/`CloseUdp()` 管生命周期，`executor`
+  必须来自同一个 `INetEngine` 且非空；`SetUdpPeer()`、`SendToPeer()` 用于已选择
+  peer 的 RTP 或 ICE/STUN，`SendTo()` 用于 ONVIF discovery 这类逐包目标地址。
+- `Timer`：`INetExecutor::RunAfter()` 是一次性 timer，`RunEvery()` 是周期
+  timer，timer 固定归属创建它的 executor；取消必须通过同一个 executor 的
+  `CancelTimer()`。timer id 由 `INetEngine` 全局分配，避免多 IO loop 下重复。
 - `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
   `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
 
@@ -88,19 +97,24 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 
 ## 状态与资源模型
 
-`INetEngine` 拥有 IO thread、fd/eventfd、TCP/UDP endpoint 和 callback dispatch
-队列。上层协议停止时必须先解除连接、session 或 endpoint，再停止网络引擎。
+`INetEngine` 拥有 IO thread、executor、fd/eventfd、TCP/UDP endpoint 和 callback
+dispatch 队列。组合根为 HTTP、RTSP、ONVIF 和 WebRTC 分别通过 `PickExecutor()`
+选择执行域；协议模块的监听、accepted session、UDP endpoint 和协议 timer 都绑定到
+注入的 executor。上层协议停止时必须先解除连接、session、timer 或 endpoint，再停止
+网络引擎。
 板端默认按 Hi3516DV300 双核 Cortex-A7 配置 2 个 net IO thread；线程亲和性是
 `NetEngineOptions` 的可选实验项，默认关闭。只有板端实测确认某个协议或 IRQ 抖动
 需要隔离时，才打开 `enable_thread_affinity` 并指定 `first_io_cpu`，避免在双核
 设备上把 net、media、SDK callback 和 kernel softirq 过早绑死导致反向排队。
-
 
 TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
 复制到网络 buffer；带 `NetBufferOwner` 的 slice 只持有引用，由 owner 的
 ref/unref 回调保证跨线程和异步发送期间 payload 存活。
 写侧按队列项内的 slice 组 `sendmsg()` 聚合发送；部分写成功后按实际写入字节推进
 slice offset 并释放已完成队列项。`net` 仍不解析媒体语义，也不跨队列项重排发送顺序。
+`Send()`/`SendSlices()`、`Close()`、`CloseAfterSend()` 可以从非 owner loop 线程调用；
+`net` 会复制或引用稳定 payload 后投递到 session owner loop。UDP `SendToSlices()`
+在 owner loop 上直接 `sendmsg()`，跨线程调用时先复制为单个 datagram 再投递。
 
 HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
 只能通过 `INetEngine` 的 pending bytes、connection diagnostics 和 close callback

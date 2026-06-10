@@ -24,6 +24,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function syncBrowserTimeAfterAuth() {
+  void getTimeStatus()
+    .then((status) => {
+      if (status.browser_sync_on_login && status.manual_sync_allowed) {
+        return syncBrowserTime();
+      }
+      return undefined;
+    })
+    .catch(() => {
+      // 浏览器校时失败不能阻断登录，系统维护页仍可手动重试。
+    });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -69,16 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setMustChangePassword(state.mustChangePassword);
       setPrincipal(state.principal);
       if (!state.mustChangePassword) {
-        void getTimeStatus()
-          .then((status) => {
-            if (status.browser_sync_on_login && status.manual_sync_allowed) {
-              return syncBrowserTime();
-            }
-            return undefined;
-          })
-          .catch(() => {
-            // 浏览器校时失败不能阻断登录，系统维护页仍可手动重试。
-          });
+        syncBrowserTimeAfterAuth();
       }
     }
     return { ok: state.authenticated, error: state.error };
@@ -92,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPrincipal((current) => (
         current ? { ...current, must_change_password: false } : current
       ));
+      syncBrowserTimeAfterAuth();
     }
     return ok;
   }, []);

@@ -13,10 +13,10 @@ namespace {
 constexpr uint32_t kNetIoThreadCount = 2;
 constexpr uint32_t kNetCallbackWorkerCount = 1;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
-constexpr uint32_t kHttpStreamExecutorWorkerCount = 4;
-constexpr uint32_t kHttpStreamExecutorQueueCapacity = 256;
-constexpr uint32_t kHttpControlExecutorWorkerCount = 1;
-constexpr uint32_t kHttpControlExecutorQueueCapacity = 16;
+constexpr uint32_t kHttpStreamWorkers = 4;
+constexpr uint32_t kHttpStreamQueueCapacity = 256;
+constexpr uint32_t kHttpControlWorkers = 1;
+constexpr uint32_t kHttpControlQueueCapacity = 16;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
 constexpr uint32_t kHttpMaxRequestBodyBytes = 32U * 1024U * 1024U;
 constexpr uint32_t kHttpRequestTimeoutMs = 60000;
@@ -119,7 +119,7 @@ std::string ResolveWebrtcPublicIp(
 
 }  // namespace
 
-infra::ExecutorOptions BuildNetCallbackExecutorOptions() {
+infra::ExecutorOptions BuildNetCallbackOptions() {
     infra::ExecutorOptions options;
     options.worker_count = kNetCallbackWorkerCount;
     options.queue_capacity = kNetCallbackQueueCapacity;
@@ -149,7 +149,7 @@ RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
 RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     RtspDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.net_executor;
+    dependencies.net_executor = refs.rtsp_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.media_source = refs.media_pipeline;
@@ -178,7 +178,7 @@ WebrtcDependencies BuildWebrtcDependencies(
     const ProtocolRuntimeRefs &refs) {
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.net_executor;
+    dependencies.net_executor = refs.webrtc_executor;
     dependencies.media_source = refs.media_pipeline;
     return dependencies;
 }
@@ -216,7 +216,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolRuntimeRefs &refs) {
     OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.net_executor;
+    dependencies.net_executor = refs.onvif_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system = refs.device.system;
@@ -233,10 +233,10 @@ HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
     options.static_root = runtime_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
-    options.stream_executor_worker_count = kHttpStreamExecutorWorkerCount;
-    options.stream_executor_queue_capacity = kHttpStreamExecutorQueueCapacity;
-    options.control_executor_worker_count = kHttpControlExecutorWorkerCount;
-    options.control_executor_queue_capacity = kHttpControlExecutorQueueCapacity;
+    options.stream_executor_worker_count = kHttpStreamWorkers;
+    options.stream_executor_queue_capacity = kHttpStreamQueueCapacity;
+    options.control_executor_worker_count = kHttpControlWorkers;
+    options.control_executor_queue_capacity = kHttpControlQueueCapacity;
     options.max_requests_per_connection = kHttpMaxRequestsPerConnection;
     options.max_request_body_bytes = kHttpMaxRequestBodyBytes;
     options.request_timeout_ms = kHttpRequestTimeoutMs;
@@ -248,7 +248,7 @@ HttpDependencies BuildHttpDependencies(
     const ProtocolRuntimeRefs &refs) {
     HttpDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.net_executor;
+    dependencies.net_executor = refs.http_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
     dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;

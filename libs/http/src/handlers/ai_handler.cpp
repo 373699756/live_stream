@@ -5,6 +5,7 @@
 #include "ai.h"
 #include "config.h"
 #include "device_media.h"
+#include "json_utils.h"
 
 #include <cctype>
 #include <string>
@@ -37,7 +38,7 @@ const char *AiTaskToJsonString(AiTask task) {
     return "unknown";
 }
 
-ConfigJson AiConfigToJson(const AiModelConfig &config) {
+ConfigJson AiTaskConfigToJson(const AiModelConfig &config) {
     ConfigJson root = ConfigJson::object();
     root["enabled"] = config.enabled;
     root["backend"] = AiBackendToJsonString(config.backend);
@@ -63,6 +64,17 @@ ConfigJson AiConfigToJson(const AiModelConfig &config) {
     return root;
 }
 
+ConfigJson AiConfigToJson(const AiConfig &config) {
+    ConfigJson root = ConfigJson::object();
+    root["enabled"] = config.enabled;
+    ConfigJson tasks = ConfigJson::array();
+    for (const AiModelConfig &task_config : config.tasks) {
+        tasks.push_back(AiTaskConfigToJson(task_config));
+    }
+    root["tasks"] = tasks;
+    return root;
+}
+
 ConfigJson AiStatsToJson(const AiStats &stats) {
     ConfigJson root = ConfigJson::object();
     root["enabled"] = stats.enabled;
@@ -79,6 +91,45 @@ ConfigJson AiStatsToJson(const AiStats &stats) {
     root["max_inference_time_ms"] = stats.max_inference_time_ms;
     root["average_inference_time_ms"] = stats.average_inference_time_ms;
     root["active_results"] = stats.active_results;
+    return root;
+}
+
+ConfigJson AiResultToJson(const AiInferenceResult &result);
+
+ConfigJson AiTaskStatusToJson(const AiTaskStatus &status) {
+    ConfigJson root = ConfigJson::object();
+    root["config"] = AiTaskConfigToJson(status.config);
+    root["stats"] = AiStatsToJson(status.stats);
+    root["last_result"] = AiResultToJson(status.last_result);
+    return root;
+}
+
+ConfigJson AiTaskStatusesToJson(const std::vector<AiTaskStatus> &statuses) {
+    ConfigJson items = ConfigJson::array();
+    for (const AiTaskStatus &status : statuses) {
+        items.push_back(AiTaskStatusToJson(status));
+    }
+    return items;
+}
+
+ConfigJson DisabledAiStatusToJson(IConfig *config) {
+    ConfigJson root = ConfigJson::object();
+    ConfigJson ai_config =
+        config != nullptr ? config->GetValue("ai") : ConfigJson::object();
+    bool enabled = false;
+    if (ai_config.is_object()) {
+        static_cast<void>(
+            json_utils::ReadField(ai_config, "enabled", &enabled));
+    } else {
+        ai_config = ConfigJson::object();
+        ai_config["enabled"] = false;
+        ai_config["tasks"] = ConfigJson::array();
+    }
+    root["enabled"] = enabled;
+    root["config"] = ai_config;
+    root["summary"] = AiStatsToJson(AiStats{});
+    root["tasks"] = ConfigJson::array();
+    root["last_result"] = AiResultToJson(AiInferenceResult{});
     return root;
 }
 
@@ -237,20 +288,17 @@ private:
         }
         if (ai_ == nullptr) {
             if (!IsAiConfigEnabled(config_)) {
-                ConfigJson root = ConfigJson::object();
-                root["config"] =
-                    config_->GetValue("ai");
-                root["stats"] = AiStatsToJson(AiStats{});
-                root["last_result"] = AiResultToJson(AiInferenceResult{});
-                return JsonResponse(200, root);
+                return JsonResponse(200, DisabledAiStatusToJson(config_));
             }
             return StatusResponse(503, "AI not running");
         }
+        const AiConfig config = ai_->GetConfig();
         ConfigJson root = ConfigJson::object();
-        root["config"] = AiConfigToJson(ai_->GetConfig());
-        root["stats"] = AiStatsToJson(ai_->GetStats());
-        root["last_result"] =
-            AiResultToJson(ai_->GetLastResult());
+        root["enabled"] = config.enabled;
+        root["config"] = AiConfigToJson(config);
+        root["summary"] = AiStatsToJson(ai_->GetStats());
+        root["tasks"] = AiTaskStatusesToJson(ai_->GetTaskStatuses());
+        root["last_result"] = AiResultToJson(ai_->GetLastResult());
         return JsonResponse(200, root);
     }
 

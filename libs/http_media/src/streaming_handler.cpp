@@ -39,7 +39,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     const std::string stream_name = remaining.substr(0, slash);
-    if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
+    if (!MediaStreamIdFromJson(stream_name, stream_id)) {
         return false;
     }
     const std::string hls_path = remaining.substr(slash + 1);
@@ -163,7 +163,7 @@ bool ParseFlvStreamName(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     stream_name->resize(stream_name->size() - kSuffixSize);
-    return HttpMediaStreamIdFromJsonString(*stream_name, stream_id);
+    return MediaStreamIdFromJson(*stream_name, stream_id);
 }
 
 bool ParseMjpegStreamName(const HttpRequest &request, StreamId *stream_id,
@@ -177,7 +177,7 @@ bool ParseMjpegStreamName(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     stream_name->resize(stream_name->size() - 5);
-    return HttpMediaStreamIdFromJsonString(*stream_name, stream_id);
+    return MediaStreamIdFromJson(*stream_name, stream_id);
 }
 
 }  // namespace
@@ -264,7 +264,7 @@ private:
         headers["Pragma"] = "no-cache";
         headers["X-Accel-Buffering"] = "no";
         const std::string header_block =
-            BuildHttpMediaStreamingHeaderBlock(200, headers);
+            BuildHttpStreamHeaderBlock(200, headers);
         if (!writer_->EnqueueStreamingChunk(
                 connection_id,
                 reinterpret_cast<const uint8_t *>(header_block.data()),
@@ -331,7 +331,7 @@ private:
         }
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request, &principal);
+            RequirePlaybackAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             Error(kHttpMediaModuleName,
                             "HLS reject conn=%llu reason=auth",
@@ -360,7 +360,7 @@ private:
                             "HLS reject conn=%llu stream=%s object=%s "
                             "reason=unsupported codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0);
@@ -374,7 +374,7 @@ private:
                             "reason=not_ready codec=%s running=%d hls_ready=%d "
                             "segments=%u range=%llu-%llu",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
@@ -398,7 +398,7 @@ private:
                             "reason=segment_missing sequence=%llu range=%llu-%llu "
                             "segments=%u missing=%llu evicted=%llu",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
                             static_cast<unsigned long long>(sequence),
                             static_cast<unsigned long long>(
@@ -460,7 +460,7 @@ private:
         }
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request, &principal);
+            RequirePlaybackAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu reason=auth",
@@ -489,7 +489,7 @@ private:
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.flv_ready ? 1 : 0);
@@ -502,7 +502,7 @@ private:
                             "HTTP-FLV reject conn=%llu stream=%s reason=not_ready "
                             "codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.flv_ready ? 1 : 0);
@@ -520,7 +520,7 @@ private:
                        "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d "
                        "generation=%llu",
                        static_cast<unsigned long long>(connection_id),
-                       HttpMediaStreamIdToJsonString(stream_id),
+                       MediaStreamIdToJson(stream_id),
                        start_data.supported ? 1 : 0,
                        start_data.file_header.size(),
                        start_data.sequence_header.size(),
@@ -540,7 +540,7 @@ private:
                             "gop_complete=%d "
                             "keyframe=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
                             browser_status.flv_ready ? 1 : 0,
@@ -566,7 +566,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=%s",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             HttpFlvSessionStartStatusName(start_status));
             if (writer_ != nullptr &&
                 HttpFlvSessionStartNeedsClose(start_status)) {
@@ -594,7 +594,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=attach",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             writer_->CloseConnection(connection_id);
             MediaFlvStartDataUnref(&start_data);
             return HttpStreamingRequestResult::kClosed;
@@ -612,7 +612,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             MediaFlvStartDataUnref(&start_data);
             writer_->CloseConnection(connection_id);
             return HttpStreamingRequestResult::kClosed;
@@ -624,7 +624,7 @@ private:
                        "wait_keyframe=%d request_keyframe=%d cached_flv=%zu "
                        "cached_bytes=%zu gop_complete=%d",
                        static_cast<unsigned long long>(connection_id),
-                       HttpMediaStreamIdToJsonString(stream_id),
+                       MediaStreamIdToJson(stream_id),
                        static_cast<unsigned long long>(client_id),
                        wait_for_keyframe ? 1 : 0,
                        keyframe_requested ? 1 : 0,
@@ -655,7 +655,7 @@ private:
         }
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request, &principal);
+            RequirePlaybackAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=auth",
@@ -682,7 +682,7 @@ private:
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0);
             return SendStreamingError(
@@ -694,7 +694,7 @@ private:
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=not_ready codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0);
             return SendStreamingError(
@@ -714,7 +714,7 @@ private:
                             "HTTP-MJPEG close conn=%llu stream=%s "
                             "reason=no_session",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             return HttpStreamingRequestResult::kFailed;
         }
 
@@ -724,7 +724,7 @@ private:
             kMjpegBoundary;
         headers["Cache-Control"] = "no-cache";
         headers["Pragma"] = "no-cache";
-        const std::string header_block = BuildHttpMediaStreamingHeaderBlock(200, headers);
+        const std::string header_block = BuildHttpStreamHeaderBlock(200, headers);
         if (!writer_->EnqueueStreamingChunk(
                 connection_id,
                 reinterpret_cast<const uint8_t *>(header_block.data()),
@@ -733,7 +733,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=enqueue",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             writer_->CloseConnection(connection_id);
             return HttpStreamingRequestResult::kClosed;
         }
@@ -746,7 +746,7 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=attach",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             writer_->CloseConnection(connection_id);
             return HttpStreamingRequestResult::kClosed;
         }
@@ -760,14 +760,14 @@ private:
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
-                            HttpMediaStreamIdToJsonString(stream_id));
+                            MediaStreamIdToJson(stream_id));
             writer_->CloseConnection(connection_id);
             return HttpStreamingRequestResult::kClosed;
         }
         Info(kHttpMediaModuleName,
                        "HTTP-MJPEG attached conn=%llu stream=%s client=%llu",
                        static_cast<unsigned long long>(connection_id),
-                       HttpMediaStreamIdToJsonString(stream_id),
+                       MediaStreamIdToJson(stream_id),
                        static_cast<unsigned long long>(client_id));
         return HttpStreamingRequestResult::kStreaming;
     }

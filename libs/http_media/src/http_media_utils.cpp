@@ -73,7 +73,7 @@ HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
     return response;
 }
 
-HttpResponse RequireHttpMediaPlaybackAuthResponse(
+HttpResponse RequirePlaybackAuthResponse(
     HttpAccess *access, const HttpRequest &request,
     AuthPrincipal *principal) {
     HttpResponse response =
@@ -91,8 +91,7 @@ HttpResponse RequireHttpMediaPlaybackAuthResponse(
     return HttpMediaTextResponse(response.status_code, "Forbidden");
 }
 
-bool ParseHttpMediaOptionalJsonObject(const HttpRequest &request,
-                                      ConfigJson *body) {
+bool ParseOptionalJsonBody(const HttpRequest &request, ConfigJson *body) {
     if (body == nullptr) {
         return false;
     }
@@ -116,7 +115,7 @@ std::string HttpMediaPathSuffix(const std::string &path,
     return path.substr(prefix.size());
 }
 
-std::string BuildHttpMediaStreamingHeaderBlock(
+std::string BuildHttpStreamHeaderBlock(
     int status_code, const std::map<std::string, std::string> &headers) {
     std::string out = "HTTP/1.1 " + std::to_string(status_code) + " OK\r\n";
     for (const auto &header : headers) {
@@ -133,7 +132,7 @@ bool HttpMediaStartsWith(const std::string &value,
            value.substr(0, prefix.size()) == prefix;
 }
 
-const char *HttpMediaStreamIdToJsonString(StreamId stream_id) {
+const char *MediaStreamIdToJson(StreamId stream_id) {
     switch (stream_id) {
         case StreamId::kMain:
             return "main";
@@ -145,8 +144,7 @@ const char *HttpMediaStreamIdToJsonString(StreamId stream_id) {
     return "unknown";
 }
 
-bool HttpMediaStreamIdFromJsonString(const std::string &value,
-                                     StreamId *stream_id) {
+bool MediaStreamIdFromJson(const std::string &value, StreamId *stream_id) {
     if (stream_id == nullptr) {
         return false;
     }

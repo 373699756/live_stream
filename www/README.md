@@ -152,14 +152,19 @@ work outside the browser UI.
 
 Image capabilities expose only runtime-supported ISP controls. Current image
 runtime mappings include CSC brightness/contrast/saturation/hue, sharpen,
-AE maximum exposure time, DRC backlight strength, color/black-white mode, and
-VPSS lens correction, and the automatic strategy modes `balanced`, `low_noise`,
-and `detail`. The default image strategy is `low_noise`, with 30 fps preview
-defaults and conservative sharpening to reduce point-like sensor noise.
+AE maximum exposure time, DRC backlight strength, color/black-white mode, VPSS
+lens correction, VI electronic stabilization, and the automatic strategy modes
+`balanced`, `low_noise`, and `detail`. The default image strategy is
+`low_noise`, with 30 fps preview defaults and conservative sharpening to reduce
+point-like sensor noise.
 
 Image config may include `lens_correction`. It controls hardware VPSS LDC for
 the active video pipeline with `enabled`, `aspect`, ratio, center-offset, and
 distortion fields. Old configs without this object are treated as disabled.
+Image config may also include `stabilization` for VI DIS electronic
+stabilization. It is disabled by default, uses the backend-reported hardware
+ranges, and requires the active video pipeline to satisfy the reported minimum
+input size.
 
 Video stream config may include `roi` under `streams.main` and `streams.sub`.
 ROI keeps the full output frame and only biases encoder QP/bit allocation for
@@ -170,12 +175,13 @@ only when `roi_supported=true` and is valid for H.264/H.265 streams.
 AI is an optional device capability and is disabled by default. The current Web
 alarm surface is the AI alert image view backed by `/api/ai/alerts`; it is not
 recording, playback, or long-term storage.
-`/api/ai/status` also exposes backend availability, alarm linkage, last/max/
-average inference time, and last success/failure timestamps for board-side
-validation.
-The device currently runs one AI task at a time. AI alert tabs classify
-historical snapshots by task and show at most 10 images per tab; switching tabs
-does not change the running task. Changing the running task saves `ai.task`.
+`/api/ai/status` exposes `enabled`, full `config`, aggregate `summary`, and
+per-task `tasks[]` entries with config, stats, and last result. The device can
+run the existing AI tasks in parallel when `ai.enabled` and each task's
+`enabled` flag are both true.
+The AI page is preview-first: it overlays current-stream detections from all
+enabled tasks and shows the latest 10 alert snapshots in the right-side
+waterfall.
 `GET /api/alarm/status` exposes whether the system alarm event has fired, and
 the Web UI also listens to `/api/events` for `alarm_triggered`.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300

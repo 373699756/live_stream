@@ -12,6 +12,7 @@ namespace {
 
 constexpr std::size_t kMaxPerimeterRegions = 8;
 constexpr std::size_t kMaxPerimeterRegionNameLength = 32;
+constexpr std::size_t kMaxAiTasks = 4;
 
 bool ReadOptionalStringField(const ConfigJson &object, const char *key,
                              std::string *value) {
@@ -82,6 +83,15 @@ bool ParseOptionalPerimeterConfig(const ConfigJson &value,
                                  &perimeter->regions);
 }
 
+bool HasTask(const std::vector<AiModelConfig> &tasks, AiTask task) {
+    for (const AiModelConfig &item : tasks) {
+        if (item.task == task) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 bool IsFiniteConfidence(float value) {
@@ -147,7 +157,7 @@ bool ParseStream(const std::string &value, StreamId *stream_id) {
     return false;
 }
 
-bool IsValidAiConfig(const AiModelConfig &config) {
+bool IsValidAiTaskConfig(const AiModelConfig &config) {
     if (config.input_width == 0 || config.input_height == 0 ||
         config.inference_interval_ms == 0 || config.max_results == 0 ||
         !IsFiniteConfidence(config.confidence_threshold)) {
@@ -166,8 +176,24 @@ bool IsValidAiConfig(const AiModelConfig &config) {
            config.stream_id == StreamId::kSub;
 }
 
-bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
-                   AiModelConfig *parsed) {
+bool IsValidAiConfig(const AiConfig &config) {
+    if (config.tasks.empty() || config.tasks.size() > kMaxAiTasks) {
+        return false;
+    }
+    std::vector<AiModelConfig> seen_tasks;
+    seen_tasks.reserve(config.tasks.size());
+    for (const AiModelConfig &task_config : config.tasks) {
+        if (!IsValidAiTaskConfig(task_config) ||
+            HasTask(seen_tasks, task_config.task)) {
+            return false;
+        }
+        seen_tasks.push_back(task_config);
+    }
+    return true;
+}
+
+bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
+                       AiModelConfig *parsed) {
     if (parsed == nullptr || !value.is_object()) {
         return false;
     }
@@ -196,6 +222,50 @@ bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
         !ParseOptionalPerimeterConfig(value, &config.perimeter)) {
         return false;
     }
+    if (!IsValidAiTaskConfig(config)) {
+        return false;
+    }
+    *parsed = config;
+    return true;
+}
+
+bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
+                   AiConfig *parsed) {
+    if (parsed == nullptr || !value.is_object() || !value.contains("tasks") ||
+        !value.at("tasks").is_array() ||
+        value.at("tasks").size() > kMaxAiTasks) {
+        return false;
+    }
+    AiConfig config = fallback;
+    if (!json_utils::ReadField(value, "enabled", &config.enabled)) {
+        return false;
+    }
+
+    std::vector<AiModelConfig> parsed_tasks;
+    parsed_tasks.reserve(value.at("tasks").size());
+    for (const ConfigJson &item : value.at("tasks")) {
+        AiModelConfig fallback_task;
+        if (item.is_object() && item.contains("task") &&
+            item.at("task").is_string()) {
+            AiTask task = AiTask::kObjectDetection;
+            if (!ParseTask(item.at("task").get<std::string>(), &task)) {
+                return false;
+            }
+            for (const AiModelConfig &candidate : fallback.tasks) {
+                if (candidate.task == task) {
+                    fallback_task = candidate;
+                    break;
+                }
+            }
+        }
+        AiModelConfig task_config;
+        if (!ParseAiTaskConfig(item, fallback_task, &task_config) ||
+            HasTask(parsed_tasks, task_config.task)) {
+            return false;
+        }
+        parsed_tasks.push_back(task_config);
+    }
+    config.tasks = parsed_tasks;
     if (!IsValidAiConfig(config)) {
         return false;
     }

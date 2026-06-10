@@ -1,17 +1,14 @@
 import { useState } from 'react';
-import { getAiStatus, saveAiConfig } from '../../api/ai';
+import { saveAiConfig } from '../../api/ai';
 import type { AiStatus, AiTaskName } from '../../api/types';
 import { StatusBadge } from '../../components/StatusBadge';
-import { normalizeAiConfigForSave } from './aiAlertFormat';
-import { backendBadgeState } from './aiAlertStatus';
+import { normalizeAiRootConfigForSave } from './aiAlertFormat';
 import {
   taskCaptureScope,
   taskDescription,
   taskLabel,
   taskRequiresModelPath,
 } from './aiAlertTasks';
-
-const kSwitchConfirmDelaysMs = [300, 900, 1800];
 
 interface AiEventTaskPanelProps {
   status: AiStatus | null;
@@ -27,21 +24,6 @@ export function AiEventTaskPanel({
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
-  const confirmSwitch = async () => {
-    for (const delayMs of kSwitchConfirmDelaysMs) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
-      try {
-        const nextStatus = await getAiStatus();
-        if (nextStatus.config.task === activeTask) {
-          return true;
-        }
-      } catch {
-        // The page-level realtime refresh continues syncing after save.
-      }
-    }
-    return false;
-  };
-
   if (!status) {
     return (
       <section className="ai-task-panel">
@@ -50,36 +32,44 @@ export function AiEventTaskPanel({
     );
   }
 
-  const isCurrentTask = status.config.task === activeTask;
-  const switchTask = () => {
-    if (
-      status.config.enabled &&
-      taskRequiresModelPath(activeTask, status.config.backend) &&
-      !status.config.model_path.trim()
-    ) {
-      setSaveMessage('切换失败：模型路径不能为空');
+  const taskStatus = status.tasks.find((item) => item.config.task === activeTask);
+  const taskConfig =
+    status.config.tasks.find((item) => item.task === activeTask) ??
+    taskStatus?.config;
+  const taskEnabled = Boolean(taskConfig?.enabled);
+  const backendOk = Boolean(taskStatus?.stats.backend_available);
+
+  const toggleTask = () => {
+    if (!taskConfig) {
       return;
     }
+    const nextEnabled = !taskEnabled;
+    if (
+      status.enabled &&
+      nextEnabled &&
+      taskRequiresModelPath(taskConfig.task, taskConfig.backend) &&
+      !taskConfig.model_path.trim()
+    ) {
+      setSaveMessage('启用失败：模型路径不能为空');
+      return;
+    }
+    const nextConfig = {
+      ...status.config,
+      tasks: status.config.tasks.map((task) =>
+        task.task === activeTask
+          ? { ...task, enabled: nextEnabled }
+          : task,
+      ),
+    };
     setSaving(true);
     setSaveMessage('');
-    void saveAiConfig(
-      normalizeAiConfigForSave({
-        ...status.config,
-        task: activeTask,
-      }),
-    )
+    void saveAiConfig(normalizeAiRootConfigForSave(nextConfig))
+      .then(onSaved)
       .then(() => {
-        setSaveMessage('已提交切换，正在确认');
-        return confirmSwitch();
-      })
-      .then((confirmed) => {
-        setSaveMessage(confirmed ? '已切换当前任务' : '已提交，等待设备同步');
-        return onSaved().catch(() => {
-          // The page-level realtime refresh keeps syncing status after save.
-        });
+        setSaveMessage(nextEnabled ? '已启用任务' : '已关闭任务');
       })
       .catch((err: unknown) => {
-        setSaveMessage(err instanceof Error ? err.message : '切换失败');
+        setSaveMessage(err instanceof Error ? err.message : '保存失败');
       })
       .finally(() => setSaving(false));
   };
@@ -93,16 +83,16 @@ export function AiEventTaskPanel({
       </div>
       <div className="ai-task-panel-actions">
         <StatusBadge
-          state={isCurrentTask ? backendBadgeState(status) : 'pending'}
-          label={isCurrentTask ? '当前运行任务' : '未运行'}
+          state={taskEnabled ? (backendOk ? 'running' : 'error') : 'pending'}
+          label={taskEnabled ? (backendOk ? '运行中' : '后端异常') : '未启用'}
         />
         <button
           type="button"
-          className={isCurrentTask ? '' : 'primary'}
-          disabled={isCurrentTask || saving}
-          onClick={switchTask}
+          className={taskEnabled ? '' : 'primary'}
+          disabled={!taskConfig || saving}
+          onClick={toggleTask}
         >
-          {saving ? '切换中' : isCurrentTask ? '已是当前任务' : '切换为当前任务'}
+          {saving ? '保存中' : taskEnabled ? '关闭任务' : '启用任务'}
         </button>
         {saveMessage ? <span>{saveMessage}</span> : null}
       </div>

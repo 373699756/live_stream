@@ -1,5 +1,6 @@
 #include "time_api.h"
 
+#include "config.h"
 #include "event.h"
 #include "logger.h"
 
@@ -90,6 +91,57 @@ public:
 
   int record_count = 0;
   live_stream::OperationRecord last_record;
+};
+
+class FakeConfig : public live_stream::IConfig {
+public:
+  bool Start() override { return true; }
+  void Stop() override {}
+  bool IsStarted() const override { return true; }
+
+  bool SetValue(const std::string& name,
+                const live_stream::ConfigJson& value) override {
+    if (!set_ok) {
+      return false;
+    }
+    if (name == attachment_name && attachment.apply) {
+      const live_stream::ConfigResult result = attachment.apply(value);
+      if (!result.ok) {
+        return false;
+      }
+    }
+    value_name = name;
+    value_json = value;
+    return set_ok;
+  }
+
+  live_stream::ConfigJson GetValue(const std::string& name) override {
+    return name == value_name ? value_json : live_stream::ConfigJson();
+  }
+
+  bool SetDefault(const std::string&) override { return false; }
+
+  live_stream::ConfigJson GetDefault(const std::string&) override {
+    return live_stream::ConfigJson();
+  }
+
+  bool RestoreDefaults() override { return false; }
+
+  bool AttachConfig(const std::string& name,
+                    const live_stream::ConfigAttachment& next_attachment)
+      override {
+    attachment_name = name;
+    attachment = next_attachment;
+    return true;
+  }
+
+  bool DetachConfig(const std::string&) override { return true; }
+
+  std::string value_name;
+  std::string attachment_name;
+  live_stream::ConfigJson value_json;
+  live_stream::ConfigAttachment attachment;
+  bool set_ok = true;
 };
 
 std::unique_ptr<live_stream::ITime> CreateStarted(
@@ -228,13 +280,47 @@ int main() {
     return 23;
   }
 
+  FakeConfig stored_config;
+  live_stream::TimeOptions stored_options;
+  stored_options.config = &stored_config;
+  stored_options.default_timezone = "UTC";
+  stored_options.default_ntp_config.enabled = false;
+  stored_options.default_ntp_config.sync_interval_sec = 3600;
+  std::unique_ptr<live_stream::ITime> stored_service =
+      live_stream::CreateTime(stored_options);
+  if (!stored_service || !stored_service->Start()) {
+    return 24;
+  }
+  config.timezone = "Asia/Tokyo";
+  config.ntp.enabled = false;
+  config.ntp.servers.clear();
+  config.ntp.sync_interval_sec = 3600;
+  config.manual_sync_allowed = false;
+  config.browser_sync_on_login = true;
+  if (!stored_service->UpdateTimeConfig(context, config) ||
+      stored_config.value_name != "time" ||
+      stored_config.value_json["browser_sync_on_login"].get<bool>()) {
+    return 25;
+  }
+  live_stream::ConfigJson external_config = stored_config.value_json;
+  external_config["manual_sync_allowed"] = false;
+  external_config["browser_sync_on_login"] = true;
+  if (!stored_config.SetValue("time", external_config) ||
+      stored_service->GetTimeStatus().browser_sync_on_login) {
+    return 26;
+  }
+  if (!stored_service->UpdateBrowserSyncConfig(context, false, true) ||
+      stored_config.value_json["browser_sync_on_login"].get<bool>()) {
+    return 27;
+  }
+
   config.timezone = "UTC";
   config.ntp.enabled = true;
   config.ntp.servers = {"pool.ntp.org"};
   config.manual_sync_allowed = true;
   config.browser_sync_on_login = true;
   if (!service->UpdateTimeConfig(context, config)) {
-    return 24;
+    return 28;
   }
 
   if (!service->SyncNow(context, live_stream::TimeSyncSource::kNtp) ||

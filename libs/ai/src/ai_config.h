@@ -8,9 +8,12 @@ namespace live_stream {
 namespace ai_internal {
 
 const char *AiBackendName(AiBackend backend);
-bool IsValidAiConfig(const AiModelConfig &config);
-bool ParseAiConfig(const ConfigJson &value, const AiModelConfig &fallback,
-                   AiModelConfig *parsed);
+bool IsValidAiTaskConfig(const AiModelConfig &config);
+bool IsValidAiConfig(const AiConfig &config);
+bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
+                       AiModelConfig *parsed);
+bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
+                   AiConfig *parsed);
 
 }  // namespace ai_internal
 }  // namespace live_stream

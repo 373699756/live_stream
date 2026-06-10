@@ -16,9 +16,10 @@ public:
 
     bool Start();
     void Stop();
-    AiModelConfig GetConfig() const;
+    AiConfig GetConfig() const;
     AiStats GetStats() const;
     AiInferenceResult GetLastResult() const;
+    std::vector<AiTaskStatus> GetTaskStatuses() const;
     std::vector<AiAlertRecord> ListAlerts() const;
     std::string ReadAlertImage(const std::string &id) const;
 

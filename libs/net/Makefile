@@ -1,5 +1,7 @@
 MODULE_NAME := net
 .DEFAULT_GOAL := all
+ROOT_DIR ?= ../..
+BUILD_DIR ?= $(ROOT_DIR)/build
 CXXFLAGS += -pthread
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 EXTRA_TEST_DEPS += $(INFRA_LIB)

@@ -8,6 +8,29 @@
 #include "subsystems/protocol_options.h"
 
 namespace live_stream {
+namespace {
+
+INetExecutor *RequireNetExecutor(INetEngine *net_engine,
+                                 const char *owner_protocol) {
+    const char *protocol =
+        owner_protocol != nullptr ? owner_protocol : "unknown";
+    if (net_engine == nullptr) {
+        Error("app", "Pick net executor failed protocol=%s", protocol);
+        return nullptr;
+    }
+
+    INetExecutor *executor = net_engine->PickExecutor();
+    if (executor != nullptr) {
+        return executor;
+    }
+    executor = net_engine->DefaultExecutor();
+    if (executor == nullptr) {
+        Error("app", "Pick net executor failed protocol=%s", protocol);
+    }
+    return executor;
+}
+
+}  // namespace
 
 ProtocolSubsystem &ProtocolSubsystem::Get() {
     static ProtocolSubsystem subsystem;
@@ -31,7 +54,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         net_callback_executor_.reset(new infra::Executor());
     }
     const infra::ExecutorOptions callback_executor_options =
-        BuildNetCallbackExecutorOptions();
+        BuildNetCallbackOptions();
     if (!net_callback_executor_->Start(callback_executor_options)) {
         Error("app", "Start net callback executor failed");
         Stop();
@@ -47,9 +70,14 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
     refs.net_engine = net_engine_.get();
-    refs.net_executor = net_engine_->DefaultExecutor();
-    if (refs.net_executor == nullptr) {
-        Error("app", "Get net default executor failed");
+    refs.rtsp_executor = RequireNetExecutor(refs.net_engine, "rtsp");
+    refs.webrtc_executor = RequireNetExecutor(refs.net_engine, "webrtc");
+    refs.onvif_executor = RequireNetExecutor(refs.net_engine, "onvif");
+    refs.http_executor = RequireNetExecutor(refs.net_engine, "http");
+    if (refs.rtsp_executor == nullptr ||
+        refs.webrtc_executor == nullptr ||
+        refs.onvif_executor == nullptr ||
+        refs.http_executor == nullptr) {
         Stop();
         return false;
     }

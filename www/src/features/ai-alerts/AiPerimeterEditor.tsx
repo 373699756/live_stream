@@ -9,12 +9,14 @@ import {
 } from 'react';
 import { saveAiConfig } from '../../api/ai';
 import type {
+  AiModelConfig,
   AiPerimeterRegion,
   AiStatus,
   StreamName,
 } from '../../api/types';
 import { VideoPreview } from '../../components/VideoPreview';
 import { useVideoConfig } from '../../hooks/useVideoConfig';
+import { normalizeAiRootConfigForSave } from './aiAlertFormat';
 
 interface AiPerimeterEditorProps {
   status: AiStatus | null;
@@ -164,6 +166,13 @@ function regionsSignature(regions: AiPerimeterRegion[]) {
   return JSON.stringify(regions.map((region, index) => normalizeRegion(region, index)));
 }
 
+function perimeterTask(status: AiStatus | null): AiModelConfig | null {
+  return (
+    status?.config.tasks.find((task) => task.task === 'perimeter_detection') ??
+    null
+  );
+}
+
 export function AiPerimeterEditor({
   status,
   onSaved,
@@ -203,16 +212,19 @@ export function AiPerimeterEditor({
     : activeStatus?.running
       ? '运行中'
       : '未运行';
+  const perimeterConfig = perimeterTask(status);
 
   useEffect(() => {
-    if (!status) {
+    const nextPerimeterConfig = perimeterTask(status);
+    if (!nextPerimeterConfig) {
       return;
     }
-    const nextRegions = status.config.perimeter_regions.map((region, index) =>
-      normalizeRegion(region, index),
+    const nextRegions = nextPerimeterConfig.perimeter_regions.map(
+      (region: AiPerimeterRegion, index: number) =>
+        normalizeRegion(region, index),
     );
     const nextConfigSignature = [
-      status.config.stream,
+      nextPerimeterConfig.stream,
       regionsSignature(nextRegions),
     ].join('|');
     if (draftDirtyRef.current && lastStatusConfigRef.current !== '') {
@@ -222,7 +234,7 @@ export function AiPerimeterEditor({
       return;
     }
     lastStatusConfigRef.current = nextConfigSignature;
-    setActiveStream(status.config.stream);
+    setActiveStream(nextPerimeterConfig.stream);
     setRegions(nextRegions);
     setActiveRegionIndex(0);
     setSaveMessage('');
@@ -382,7 +394,7 @@ export function AiPerimeterEditor({
   };
 
   const saveRegions = () => {
-    if (!status) {
+    if (!status || !perimeterConfig) {
       return;
     }
     setSaving(true);
@@ -390,10 +402,17 @@ export function AiPerimeterEditor({
     const normalizedRegions = regions.map((region, index) => normalizeRegion(region, index));
     const nextConfig = {
       ...status.config,
-      stream: activeStream,
-      perimeter_regions: normalizedRegions,
+      tasks: status.config.tasks.map((task) =>
+        task.task === 'perimeter_detection'
+          ? {
+              ...task,
+              stream: activeStream,
+              perimeter_regions: normalizedRegions,
+            }
+          : task,
+      ),
     };
-    void saveAiConfig(nextConfig)
+    void saveAiConfig(normalizeAiRootConfigForSave(nextConfig))
       .then(onSaved)
       .then(() => {
         draftDirtyRef.current = false;
@@ -403,9 +422,9 @@ export function AiPerimeterEditor({
         ].join('|');
         setRegions(normalizedRegions);
         setSaveMessage(
-          status.config.task === 'perimeter_detection'
+          perimeterConfig.enabled
             ? '已保存并应用'
-            : '已保存周界区域，切换为周界任务后生效',
+            : '已保存周界区域，启用周界任务后生效',
         );
       })
       .catch((err: unknown) => {
@@ -444,7 +463,7 @@ export function AiPerimeterEditor({
     </div>
   );
 
-  if (!status) {
+  if (!status || !perimeterConfig) {
     return (
       <section className="ai-perimeter-editor">
         <div className="empty-state">加载周界配置...</div>
@@ -458,9 +477,9 @@ export function AiPerimeterEditor({
         <div>
           <h3>周界事件源</h3>
           <p>
-            {status.config.task === 'perimeter_detection'
-              ? status.config.model_path
-              : '当前未运行周界任务'}
+            {perimeterConfig.enabled
+              ? perimeterConfig.model_path
+              : '当前未启用周界任务'}
           </p>
         </div>
         <div className="ai-perimeter-source">

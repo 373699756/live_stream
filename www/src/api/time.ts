@@ -57,7 +57,10 @@ export function saveTimeConfig(
   config: TimeConfig,
   init?: ApiRequestOptions,
 ): Promise<void> {
-  return putJson('/api/system/time/config', config, init);
+  return putJson('/api/system/time/config', config, {
+    timeoutMs: timeSyncTimeoutMs,
+    ...init,
+  });
 }
 
 export function saveNtpConfig(

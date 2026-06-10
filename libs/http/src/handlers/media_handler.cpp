@@ -211,6 +211,16 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
         NumericControlsToJson(capabilities.lens_correction_ranges);
     root["lens_correction"] = lens_correction;
 
+    ConfigJson stabilization = ConfigJson::object();
+    stabilization["supported"] = capabilities.stabilization_supported;
+    stabilization["min_width"] = capabilities.stabilization_min_width;
+    stabilization["min_height"] = capabilities.stabilization_min_height;
+    stabilization["options"] =
+        OptionControlsToJson(capabilities.stabilization_options);
+    stabilization["ranges"] =
+        NumericControlsToJson(capabilities.stabilization_ranges);
+    root["stabilization"] = stabilization;
+
     ConfigJson orientation = ConfigJson::object();
     orientation["mirror"] = capabilities.mirror_supported;
     orientation["flip"] = capabilities.flip_supported;

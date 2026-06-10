@@ -187,34 +187,45 @@ void TcpServer::AcceptLoop() {
             return;
         }
         UniqueFd accepted(fd);
-        if (!engine_->CanAccept(options_.max_connections)) {
-            // 超过协议配置的连接上限时直接丢弃 accepted fd；UniqueFd 析构会关闭它。
-            engine_->AddRejected();
-            continue;
-        }
         int enabled = 1;
         if (options_.tcp_no_delay) {
-            (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
+            (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
+                             sizeof(enabled));
         }
         if (options_.keepalive) {
-            (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled));
+            (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enabled,
+                             sizeof(enabled));
         }
         NetAddress local = GetSocketAddress(fd, false);
         if (local.port == 0) {
             engine_->AddRejected();
             continue;
         }
-        const ConnectionId id = engine_->AllocateConnectionId();
-        auto connection = std::make_shared<TcpSession>(
-            engine_, engine_->NextLoop(), accepted.Release(), id, options_,
-            callbacks_, local, FromSockAddr(peer_addr));
-        if (!connection->Start()) {
+        std::shared_ptr<EventLoop> session_loop;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            session_loop = loop_;
+        }
+        if (!session_loop) {
             engine_->AddRejected();
             continue;
         }
-        // Start() 先把 fd 加入 IO loop，再注册到 engine 连接表。这样 on_read/on_close
-        // 回调到达时，协议层已经能通过 connection id 查询诊断。
-        engine_->RegisterConnection(connection);
+        const ConnectionId id = engine_->AllocateConnectionId();
+        auto connection = std::make_shared<TcpSession>(
+            engine_, session_loop, accepted.Release(), id, options_,
+            callbacks_, local, FromSockAddr(peer_addr));
+        if (!engine_->AddAcceptedConnection(connection,
+                                            options_.max_connections)) {
+            engine_->AddRejected();
+            continue;
+        }
+        if (!connection->Start()) {
+            engine_->RemoveConnection(id);
+            engine_->AddRejected();
+            continue;
+        }
+        // fd 加入 IO loop 前先注册到连接表，后续 read/close 回调到达时，
+        // 协议层已经能通过 connection id 查询诊断。
         engine_->AddAccepted();
         engine_->DispatchAccept(callbacks_, id, connection->peer());
     }

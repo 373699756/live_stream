@@ -59,6 +59,7 @@ HTTP `/api/config/video`、`/api/config/image` 的业务配置语义归本模块
 | `image.white_balance` / `image.enhancement` | white balance、denoise、gamma、defog | ISP 图像增强 |
 | `image.backlight` / `image.orientation` / `image.color_mode` / `image.strategy` | 背光、镜像翻转、彩黑模式、自动图像策略 | 运行时图像策略和状态展示 |
 | `image.lens_correction` | `enabled`、`aspect`、视角 ratio、中心偏移、畸变强度 | VPSS LDC 镜头畸变校正 |
+| `image.stabilization` | `enabled`、运动等级、裁剪比例、缓冲帧数、漂移限制 | VI DIS 电子防抖 |
 
 默认视频配置面向清晰预览：主码流为 1080P/30fps，子码流为
 720P/30fps/3072kbps，GOP 为 30 帧以降低 WebRTC、HLS 和 HTTP-FLV 首播等待。
@@ -74,6 +75,11 @@ H.264/H.265 生效，JPEG/MJPEG 配置 ROI 会被拒绝。
 开启后 `aspect=true` 使用 `xy_ratio` 保持横纵一致，`aspect=false` 分别使用
 `x_ratio`、`y_ratio`；`distortion_ratio` 范围为 -300..500，中心偏移范围为
 -511..511。该功能只改变几何映射，不改变编码协议或码流分辨率。
+
+电子防抖通过 VI 通道 DIS 下发，当前只支持无陀螺仪的 GME 模式。`enabled=false`
+时关闭 DIS；开启后要求当前主码流和启用的子码流都不小于硬件最小尺寸
+1280x720。DIS 会按 `crop_ratio` 预留稳定裁剪边界，可能改变有效视场，但不改变
+编码协议或配置中的输出分辨率。
 
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和
 `www/README.md`。保存成功不能只代表 JSON 写入成功，还必须代表配置已经通过本模块

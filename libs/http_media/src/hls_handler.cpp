@@ -86,7 +86,7 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     const std::string stream_name = remaining.substr(0, slash);
-    if (!HttpMediaStreamIdFromJsonString(stream_name, stream_id)) {
+    if (!MediaStreamIdFromJson(stream_name, stream_id)) {
         return false;
     }
     const std::string hls_path = remaining.substr(slash + 1);
@@ -110,7 +110,7 @@ HttpResponse HandlePlaylist(IMediaSource *media_source,
                         "HLS warmup stream=%s object=%s codec=%s "
                         "keyframe=%d segments=%u range=%llu-%llu "
                         "missing=%llu evicted=%llu current_segment=%u",
-                        HttpMediaStreamIdToJsonString(stream_id), object_name.c_str(),
+                        MediaStreamIdToJson(stream_id), object_name.c_str(),
                         VideoCodecName(browser_status.codec),
                         keyframe_requested ? 1 : 0,
                         browser_status.hls_segment_count,
@@ -155,7 +155,7 @@ private:
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequireHttpMediaPlaybackAuthResponse(access_, request, &principal);
+            RequirePlaybackAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
@@ -180,7 +180,7 @@ private:
                             "codec=%s running=%d hls_ready=%d segments=%u "
                             "range=%llu-%llu missing=%llu evicted=%llu "
                             "current_segment=%u",
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,
@@ -204,7 +204,7 @@ private:
                             "codec=%s running=%d hls_ready=%d "
                             "segments=%u range=%llu-%llu missing=%llu "
                             "evicted=%llu current_segment=%u",
-                            HttpMediaStreamIdToJsonString(stream_id),
+                            MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
                             VideoCodecName(browser_status.codec),
                             browser_status.running ? 1 : 0,

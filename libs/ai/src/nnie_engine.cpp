@@ -250,7 +250,7 @@ public:
     bool Available() const override { return LIVE_STREAM_HAS_HISI_NNIE != 0; }
 
     bool Start(const AiModelConfig &config) override {
-        if (!IsValidAiConfig(config)) {
+        if (!IsValidAiTaskConfig(config)) {
             return false;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE

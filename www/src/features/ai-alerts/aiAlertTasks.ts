@@ -118,13 +118,14 @@ export function tabStateLabel(status: AiStatus | null, task: AiTaskName) {
   if (!status) {
     return '读取中';
   }
-  if (status.config.task !== task) {
-    return '未运行';
-  }
-  if (!status.config.enabled) {
+  const taskStatus = status.tasks.find((item) => item.config.task === task);
+  if (!status.enabled) {
     return '当前未启用';
   }
-  return status.stats.backend_available ? '当前运行' : '后端异常';
+  if (!taskStatus?.config.enabled) {
+    return '未运行';
+  }
+  return taskStatus.stats.backend_available ? '当前运行' : '后端异常';
 }
 
 export function emptyTextForTask(
@@ -132,10 +133,11 @@ export function emptyTextForTask(
   activeTab: AiEventTab,
   activeTask: AiTaskName,
 ) {
-  if (status && status.config.task !== activeTask) {
-    return `当前运行任务是 ${taskLabel(status.config.task)}，切换为当前任务后才会生成新的 ${taskLabel(activeTask)} 抓拍。`;
+  const taskStatus = status?.tasks.find((item) => item.config.task === activeTask);
+  if (status && !taskStatus?.config.enabled) {
+    return `${taskLabel(activeTask)} 未启用，开启后才会生成新的抓拍。`;
   }
-  if (status && status.config.enabled && !status.stats.backend_available) {
+  if (status && status.enabled && !status.summary.backend_available) {
     return 'AI 已启用，但推理后端当前不可用。';
   }
   return activeTab.emptyText;

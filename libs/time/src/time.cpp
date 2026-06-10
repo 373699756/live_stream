@@ -134,7 +134,7 @@ public:
                 if (!LoadTimeConfig(value, &loaded_config)) {
                     return false;
                 }
-                loaded_json = value;
+                loaded_json = BuildTimeConfig(value, loaded_config);
             } else {
                 loaded_json = BuildTimeConfig(loaded_json, loaded_config);
             }
@@ -383,7 +383,7 @@ private:
                 return true;
             }
             ApplyLoadedConfigLocked(config);
-            time_config_json_ = value;
+            time_config_json_ = BuildTimeConfig(value, config);
         }
         PublishTimeChanged("config");
         return true;

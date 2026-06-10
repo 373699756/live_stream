@@ -88,6 +88,9 @@ export function ImageConfigPage() {
           }
           onOrientationChange={(orientation) => setConfig({ ...config, orientation })}
           onSectionChange={updateSection}
+          onStabilizationChange={(stabilization) =>
+            setConfig({ ...config, stabilization })
+          }
         />
         <div className="form-actions">
           <button type="button" onClick={reset}>恢复默认</button>

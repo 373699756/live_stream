@@ -32,9 +32,9 @@ flowchart LR
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
 - 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
   配置或 Web 选项暴露。
-- 当前运行模型是单任务模型：配置中的 `task` 表示唯一正在运行的 AI 任务。
+- 当前运行模型是多任务模型：`ai.enabled` 是总开关，`ai.tasks[]` 中的
   `object_detection`、`perimeter_detection`、`motion_classification` 和
-  `occlusion_detection` 是可切换任务，不代表四路并行推理。
+  `occlusion_detection` 可以各自启停并并行运行。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。
@@ -57,8 +57,9 @@ HTTP 路由由 `http` 实现，但业务语义归本模块：
 - `GET /api/ai/alerts/{id}/image`
 - `PUT /api/config/ai`
 
-Web Console 按任务 tab 分类展示 `/api/ai/alerts` 中的历史抓拍，每个 tab 最多展示
-最近 10 张。tab 切换只改变查看分类；切换当前运行任务必须保存新的 `ai.task` 配置。
+`GET /api/ai/status` 返回 `enabled`、完整 `config`、汇总 `summary` 和每个任务的
+`tasks[]` 状态；每个任务状态包含任务配置、统计和最近一次结果。`GET /api/ai/alerts`
+返回最新告警抓拍列表，Web Console 在 AI 页面右侧按实时瀑布流展示最近 10 张。
 周界抓拍卡片上的 `person`、`vehicle` 等标签来自目标检测模型类别，表示进入周界区域
 的目标类别，不表示周界事件被错误归类为目标检测任务。
 
@@ -77,9 +78,10 @@ AI 告警图片默认保存到运行目录下的 `ai_alerts` 存储，保留最�
 
 ## 状态与资源模型
 
-AI 运行状态包含启用状态、后端可用性、抓帧/推理线程、最近一次推理结果、统计指标和
-告警图片索引。配置关闭或热应用失败时必须释放推理后端和抓帧资源；`/api/ai/status`
-只能反映 AI 自身状态，不能阻塞直播 ready。
+AI 运行状态包含总启用状态、每个任务的后端可用性、抓帧/推理线程、最近一次推理结果、
+统计指标和告警图片索引。每个启用任务拥有独立推理后端和 executor；AI 抓帧入口共享
+串行化保护，避免多个任务同时阻塞 VPSS。配置关闭或热应用失败时必须释放推理后端和
+抓帧资源；`/api/ai/status` 只能反映 AI 自身状态，不能阻塞直播 ready。
 组合根停止时，`ai` 必须在 `snapshot` 和 `device_media` 之前停止，确保推理线程和
 抓帧调度不再访问即将释放的 snapshot view 或 MPP channel。
 

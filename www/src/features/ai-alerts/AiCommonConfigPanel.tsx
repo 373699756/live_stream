@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { saveAiAlarmRule } from '../../api/alarm';
 import { saveAiConfig } from '../../api/ai';
 import type {
+  AiConfig,
   AiModelConfig,
   AiStatus,
   AlarmConfig,
@@ -12,6 +13,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import {
   nonNegativeInteger,
   normalizeAiConfigForSave,
+  normalizeAiRootConfigForSave,
 } from './aiAlertFormat';
 import { backendBadgeState } from './aiAlertStatus';
 import { taskLabel, taskRequiresModelPath } from './aiAlertTasks';
@@ -28,6 +30,7 @@ export function AiCommonConfigPanel({
   onSaved,
 }: AiCommonConfigPanelProps) {
   const [draft, setDraft] = useState<AiModelConfig | null>(null);
+  const [rootDraft, setRootDraft] = useState<AiConfig | null>(null);
   const [alarmRule, setAlarmRule] = useState<AlarmRuleConfig | null>(null);
   const [configDirty, setConfigDirty] = useState(false);
   const [alarmRuleDirty, setAlarmRuleDirty] = useState(false);
@@ -39,7 +42,22 @@ export function AiCommonConfigPanel({
     if (configDirty) {
       return;
     }
-    setDraft(status ? { ...status.config } : null);
+    const rootConfig = status
+      ? {
+          ...status.config,
+          tasks: status.config.tasks.map((task) => ({ ...task })),
+        }
+      : null;
+    setRootDraft(rootConfig);
+    setDraft(
+      rootConfig
+        ? {
+            ...(rootConfig.tasks.find(
+              (task) => task.task === 'perimeter_detection',
+            ) ?? rootConfig.tasks[0]),
+          }
+        : null,
+    );
     if (preserveSaveMessageOnStatusSync.current) {
       preserveSaveMessageOnStatusSync.current = false;
     } else {
@@ -74,6 +92,17 @@ export function AiCommonConfigPanel({
   const modelMissing = modelRequired && draft.model_path.trim() === '';
   const updateDraft = (nextConfig: AiModelConfig) => {
     setDraft(nextConfig);
+    setRootDraft((currentRoot) =>
+      currentRoot
+        ? {
+            ...currentRoot,
+            enabled: nextConfig.enabled,
+            tasks: currentRoot.tasks.map((task) =>
+              task.task === nextConfig.task ? nextConfig : task,
+            ),
+          }
+        : currentRoot,
+    );
     setConfigDirty(true);
     preserveSaveMessageOnStatusSync.current = false;
     setSaveMessage('');
@@ -85,7 +114,17 @@ export function AiCommonConfigPanel({
     setSaveMessage('');
   };
   const saveEventConfig = () => {
+    if (!rootDraft) {
+      return;
+    }
     const nextConfig = normalizeAiConfigForSave(draft);
+    const nextRootConfig = {
+      ...rootDraft,
+      enabled: nextConfig.enabled,
+      tasks: rootDraft.tasks.map((task) =>
+        task.task === nextConfig.task ? nextConfig : task,
+      ),
+    };
     if (
       nextConfig.enabled &&
       taskRequiresModelPath(nextConfig.task, nextConfig.backend) &&
@@ -98,7 +137,9 @@ export function AiCommonConfigPanel({
     setSaving(true);
     preserveSaveMessageOnStatusSync.current = false;
     setSaveMessage('');
-    const requests: Promise<void>[] = [saveAiConfig(nextConfig)];
+    const requests: Promise<void>[] = [
+      saveAiConfig(normalizeAiRootConfigForSave(nextRootConfig)),
+    ];
     if (alarmConfig && alarmRule) {
       requests.push(
         saveAiAlarmRule(alarmConfig, {
@@ -116,6 +157,7 @@ export function AiCommonConfigPanel({
         setConfigDirty(false);
         setAlarmRuleDirty(false);
         setDraft(nextConfig);
+        setRootDraft(nextRootConfig);
         setSaveMessage('已保存并应用');
       })
       .catch((err: unknown) => {
@@ -130,7 +172,7 @@ export function AiCommonConfigPanel({
       <div className="ai-event-config-header">
         <div>
           <h3>智能配置</h3>
-          <p>当前设备一次只运行一个 AI 任务；这里保存公共参数和报警联动。</p>
+          <p>四类 AI 任务可独立启停；这里保存任务参数和报警联动。</p>
         </div>
         <StatusBadge
           state={status ? backendBadgeState(status) : 'pending'}
@@ -305,7 +347,16 @@ export function AiCommonConfigPanel({
           disabled={saving}
           onClick={() => {
             if (status) {
-              setDraft({ ...status.config });
+              const rootConfig = {
+                ...status.config,
+                tasks: status.config.tasks.map((task) => ({ ...task })),
+              };
+              setRootDraft(rootConfig);
+              setDraft({
+                ...(rootConfig.tasks.find(
+                  (task) => task.task === 'perimeter_detection',
+                ) ?? rootConfig.tasks[0]),
+              });
               setConfigDirty(false);
             }
             if (alarmConfig) {

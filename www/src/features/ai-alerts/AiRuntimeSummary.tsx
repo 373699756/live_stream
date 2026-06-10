@@ -41,9 +41,13 @@ export function AiRuntimeSummary({
     );
   }
 
+  const primaryTask =
+    status.tasks.find((item) => item.config.task === 'perimeter_detection') ??
+    status.tasks[0];
+  const primaryConfig = primaryTask?.config ?? status.config.tasks[0];
   const regionText =
-    status.config.perimeter_regions.length > 0
-      ? `${status.config.perimeter_regions.length} 个区域`
+    (primaryConfig?.perimeter_regions.length ?? 0) > 0
+      ? `${primaryConfig?.perimeter_regions.length ?? 0} 个区域`
       : '整幅画面';
   const alarmMessage =
     lastAlarmEvent?.message || alarmStatus?.status.message || '--';
@@ -57,7 +61,9 @@ export function AiRuntimeSummary({
         <div>
           <h2>AI 状态</h2>
           <p>
-            {status.config.backend} / {taskLabel(status.config.task)}
+            {primaryConfig
+              ? `${primaryConfig.backend} / ${taskLabel(primaryConfig.task)}`
+              : '未配置任务'}
           </p>
         </div>
         <div className="ai-status-badges">
@@ -71,19 +77,19 @@ export function AiRuntimeSummary({
           />
         </div>
       </div>
-      <AiMetricsPanel stats={status.stats} />
+      <AiMetricsPanel stats={status.summary} />
       <div className="ai-runtime-detail-row">
         <span>
-          当前任务 <strong>{taskLabel(status.config.task)}</strong>
+          并行任务 <strong>{status.config.tasks.length}</strong>
         </span>
         <span>
-          事件源 <strong>{streamLabel(status.config.stream)}</strong>
+          事件源 <strong>{primaryConfig ? streamLabel(primaryConfig.stream) : '--'}</strong>
         </span>
         <span>
-          阈值 <strong>{formatPercent(status.config.confidence_threshold)}</strong>
+          阈值 <strong>{formatPercent(primaryConfig?.confidence_threshold ?? 0)}</strong>
         </span>
         <span>
-          间隔 <strong>{status.config.inference_interval_ms} ms</strong>
+          间隔 <strong>{primaryConfig?.inference_interval_ms ?? 0} ms</strong>
         </span>
         <span>
           周界 <strong>{regionText}</strong>
@@ -96,7 +102,7 @@ export function AiRuntimeSummary({
           报警源 <strong>{alarmSourceLabel(alarmSource)}</strong>
         </span>
       </div>
-      {status.stats.alarm_linked && alarmConfig && !alarmConfig.ai_detection.enabled ? (
+      {status.summary.alarm_linked && alarmConfig && !alarmConfig.ai_detection.enabled ? (
         <div className="status-note warning-note ai-runtime-warning">
           AI 可以生成告警抓拍，但系统报警事件不会触发，因为 AI 告警联动规则未启用。
         </div>

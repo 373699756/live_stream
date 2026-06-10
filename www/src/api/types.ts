@@ -120,6 +120,13 @@ export interface ImageCapabilities {
     options: Record<string, OptionControlCapability>;
     ranges: Record<string, NumericControlCapability>;
   };
+  stabilization?: {
+    supported: boolean;
+    min_width: number;
+    min_height: number;
+    options: Record<string, OptionControlCapability>;
+    ranges: Record<string, NumericControlCapability>;
+  };
   orientation: { mirror: boolean; flip: boolean };
 }
 
@@ -148,6 +155,17 @@ export interface ImageConfig {
     center_x_offset: number;
     center_y_offset: number;
     distortion_ratio: number;
+  };
+  stabilization?: {
+    enabled: boolean;
+    motion_level: string;
+    crop_ratio: number;
+    buffer_count: number;
+    frame_rate: number;
+    moving_subject_level: number;
+    rolling_shutter_coef: number;
+    horizontal_limit: number;
+    vertical_limit: number;
   };
   strategy?: {
     enabled: boolean;
@@ -401,6 +419,11 @@ export interface AiModelConfig {
   perimeter_regions: AiPerimeterRegion[];
 }
 
+export interface AiConfig {
+  enabled: boolean;
+  tasks: AiModelConfig[];
+}
+
 export interface AiDetection {
   label: string;
   confidence: number;
@@ -435,9 +458,17 @@ export interface AiInferenceResult {
   detections: AiDetection[];
 }
 
-export interface AiStatus {
+export interface AiTaskStatus {
   config: AiModelConfig;
   stats: AiStats;
+  last_result: AiInferenceResult;
+}
+
+export interface AiStatus {
+  enabled: boolean;
+  config: AiConfig;
+  summary: AiStats;
+  tasks: AiTaskStatus[];
   last_result: AiInferenceResult;
 }
 

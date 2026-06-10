@@ -15,7 +15,7 @@
 
 namespace live_stream {
 
-infra::ExecutorOptions BuildNetCallbackExecutorOptions();
+infra::ExecutorOptions BuildNetCallbackOptions();
 NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor);
 
 RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config);
