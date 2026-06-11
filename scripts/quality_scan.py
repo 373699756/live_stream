@@ -43,7 +43,9 @@ CPPCHECK_DIAGNOSTIC_RE = re.compile(
     r"(^|.*/)(app|libs)/.*:[0-9]+:[0-9]+: "
     r"(error|warning|style|performance|portability):"
 )
-CPPCHECK_ERROR_RE = re.compile(r"(^|.*/)(app|libs)/.*:[0-9]+:[0-9]+: error:")
+CPPCHECK_ERROR_RE = re.compile(
+    r"^(?!.*\[cppcheckError\])(^|.*/)(app|libs)/.*:[0-9]+:[0-9]+: error:"
+)
 CLANG_TIDY_DIAGNOSTIC_RE = re.compile(
     r"(^|.*/)(app|libs)/.*:[0-9]+:[0-9]+: (error|warning):"
 )
@@ -1137,6 +1139,9 @@ class QualityScan:
             severity = error_node.get("severity", "warning")
             rule_id = error_node.get("id", "cppcheck")
             message = error_node.get("msg") or error_node.get("verbose") or rule_id
+            if rule_id == "cppcheckError":
+                self.record_warning(f"cppcheck internal analysis error: {message}")
+                continue
             locations = error_node.findall("location")
             location = None
             for candidate in locations:

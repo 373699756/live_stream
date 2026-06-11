@@ -277,9 +277,9 @@ bool IsWebrtcSupported(Codec codec, IWebrtc *webrtc) {
 }
 
 ConfigJson MediaStreamInfoToJson(StreamId stream_id,
-                               DeviceMedia *device,
-                               MediaStreams *media_streams,
-                               IWebrtc *webrtc) {
+                                 DeviceMedia *device,
+                                 MediaStreams *media_streams,
+                                 IWebrtc *webrtc) {
     MediaStreamInfo stream_info;
     MediaStreamStats stats;
     bool media_stream_available = false;
@@ -619,9 +619,9 @@ private:
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
         items.push_back(MediaStreamInfoToJson(StreamId::kMain, device_,
-                                            media_streams_, webrtc_));
+                                              media_streams_, webrtc_));
         items.push_back(MediaStreamInfoToJson(StreamId::kSub, device_,
-                                            media_streams_, webrtc_));
+                                              media_streams_, webrtc_));
         root["items"] = items;
         return JsonResponse(200, root);
     }
@@ -664,7 +664,7 @@ private:
         }
         return JsonResponse(
             200, MediaStreamInfoToJson(stream_id, device_,
-                                     media_streams_, webrtc_));
+                                       media_streams_, webrtc_));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {
