@@ -11,7 +11,7 @@ HTTP API、配置 scope、事件 payload、AI、升级、质量优化等内容�
 - 查询 API 返回具体业务类型；动作型 C++ 函数返回 `bool`。
 - 不新增音频、录像、存储回放、录制 UI/API。
 - 不新增只转调、只包装条件、只隐藏 2-3 行逻辑的 helper/class/hook。
-- HiSilicon MPP/VENC/ISP 细节留在 `device_media` 和 `hisi_vendor` 的 SDK 边界内。
+- HiSilicon MPP/VENC/ISP 细节留在 `device` 和 `hisi_vendor` 的 SDK 边界内。
 
 ## Naming Migration Baseline
 
@@ -20,7 +20,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 - 目录和静态库使用业务域名，不再默认使用 `_service` 后缀。
 - public header 使用目标模块名，例如 `http.h`、`rtsp.h`、`webrtc.h`、
-  `media_pipeline.h`。
+  `media.h`。
 - public interface 从 `I*Service` 收敛到 `I*`；options/dependencies/stats 同步去掉
   多余 `Service`。
 - 工厂函数统一为 `Create<Module>()`；变量和 dependency 字段使用目标模块名。
@@ -48,9 +48,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Media Modules
 
 - `media.md`
-- `device_media.md`
-- `media_source.md`
-- `media_pipeline.md`
+- `device.md`
 - `snapshot.md`
 - `region.md`
 - `ai.md`

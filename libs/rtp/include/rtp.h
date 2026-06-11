@@ -119,7 +119,7 @@ struct RtpPacketizerInput {
     // socket/session，也不做 FLV/HLS 封装。
     const uint8_t *payload = nullptr;
     size_t payload_size = 0;
-    // pts_us 必须使用 media_source 修正后的 PTS，packetizer 内部转换成
+    // pts_us 必须使用 media 修正后的 PTS，packetizer 内部转换成
     // 90kHz RTP timestamp。
     int64_t pts_us = 0;
     // sequence 由调用方保存跨帧递增状态；每发送一个 RTP packet 本模块递增一次。

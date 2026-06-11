@@ -569,7 +569,7 @@ bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
         out.size = input.size;
         out.owner = input.owner;
         if (out.owner.ptr != nullptr) {
-            // owner 由 media_source/media buffer 提供。这里加引用后，异步发送期间
+            // owner 由上游媒体 buffer 提供。这里加引用后，异步发送期间
             // payload 不需要复制；OutSlice 析构时会 unref。
             RefNetBufferOwner(out.owner);
             out.data = input.data;

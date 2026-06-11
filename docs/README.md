@@ -13,16 +13,16 @@
 
 ```text
 app -> Core/Device/Media/Protocol
-device_media -> media_pipeline -> media_source
-media_source -> http_media/rtsp/webrtc -> http -> www
-net/media_source/rtsp/webrtc diagnostics -> net_adaptive
+device -> media
+media -> http_media/rtsp/webrtc -> http -> www
+net/media/rtsp/webrtc diagnostics -> net_adaptive
 ```
 
 ## System Frame
 
 `app/` 是组合根，负责路径解析、服务创建、依赖注入、启动顺序和关闭顺序。
 启动顺序是 CoreSubsystem、DeviceSubsystem、MediaSubsystem、ProtocolSubsystem；
-停止顺序反向执行。Protocol 内部先启动 `net` 和 `media_pipeline`，再启动
+停止顺序反向执行。Protocol 内部先启动 `net`，再启动
 RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adaptive`。
 
 全局边界：
@@ -62,7 +62,7 @@ RTSP、WebRTC、ONVIF 和 HTTP，最后启动只观察 diagnostics 的 `net_adap
 - 跨模块改动：读本文件和相关 `libs/<module>.md`。
 - HTTP/API/config/event 改动：读拥有模块文档、`libs/http.md`、`libs/http_media.md`、
   `libs/config.md`、`libs/event.md` 和对应 Web 文档。
-- AI 改动：读 `libs/ai.md`、`libs/device_media.md`、`libs/hisi_vendor.md`、
+- AI 改动：读 `libs/ai.md`、`libs/device.md`、`libs/hisi_vendor.md`、
   `web/web-console-design.md`。
 - 升级/烧写/发布包改动：读 `libs/upgrade.md`。
 - 质量扫描或热路径优化：读 `optimization/memory.md`。

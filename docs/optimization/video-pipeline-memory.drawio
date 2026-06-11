@@ -52,13 +52,13 @@
         <mxCell id="encodedFrame" value="EncodedFrame&lt;br&gt;VideoBuffer + offset + size&lt;br&gt;codec / PTS / DTS / frame type" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#E0F2FE;strokeColor=#0284C7;fontSize=15;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="370" y="315" width="220" height="96" as="geometry"/>
         </mxCell>
-        <mxCell id="deviceMedia" value="device_media&lt;br&gt;FrameAttach / keyframe cache" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#ECFDF5;strokeColor=#16A34A;fontSize=15;" vertex="1" parent="1">
+        <mxCell id="deviceMedia" value="device&lt;br&gt;FrameAttach / keyframe cache" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#ECFDF5;strokeColor=#16A34A;fontSize=15;" vertex="1" parent="1">
           <mxGeometry x="385" y="465" width="190" height="70" as="geometry"/>
         </mxCell>
-        <mxCell id="mediaPipeline" value="media_pipeline&lt;br&gt;worker drain / timestamp normalize&lt;br&gt;parse AnnexB NAL views" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="mediaPipeline" value="media&lt;br&gt;ingest / timestamp normalize&lt;br&gt;parse AnnexB NAL views" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=15;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="655" y="350" width="230" height="95" as="geometry"/>
         </mxCell>
-        <mxCell id="mediaSource" value="media_source&lt;br&gt;GOP cache / reader ring&lt;br&gt;HLS segments / FLV sequence&lt;br&gt;runtime ready" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="mediaSource" value="media&lt;br&gt;GOP cache / subscriptions&lt;br&gt;HLS segments / FLV sequence&lt;br&gt;runtime ready" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=15;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="650" y="565" width="240" height="120" as="geometry"/>
         </mxCell>
         <mxCell id="reset" value="reset 边界&lt;br&gt;codec switch / stream stop&lt;br&gt;timestamp rollback / jump" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;dashed=1;fillColor=#F8FAFC;strokeColor=#64748B;fontSize=14;" vertex="1" parent="1">
@@ -343,7 +343,7 @@
         <mxCell id="stream4" value="主/子码流&lt;br&gt;H.264 / H.265 running" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=17;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="110" y="220" width="220" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="source4" value="media_source stream context&lt;br&gt;corrected DTS/PTS&lt;br&gt;codec generation&lt;br&gt;last reset reason" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="source4" value="media stream context&lt;br&gt;corrected DTS/PTS&lt;br&gt;codec generation&lt;br&gt;last reset reason" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#DCFCE7;strokeColor=#16A34A;fontSize=16;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="460" y="200" width="270" height="130" as="geometry"/>
         </mxCell>
         <mxCell id="hls4" value="HLS short window&lt;br&gt;completed segments + retain&lt;br&gt;playlist ready" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#FEE2E2;strokeColor=#DC2626;fontSize=16;fontStyle=1;" vertex="1" parent="1">

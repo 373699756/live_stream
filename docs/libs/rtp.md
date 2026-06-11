@@ -26,7 +26,7 @@ flowchart LR
 ## 接口归属
 
 public API 在 `rtp.h`，归 `live_stream::rtp` 命名空间。`rtp` 依赖
-`media_codec` 解析 H.264/H.265 NAL，不依赖 `media_source`、RTSP、WebRTC、HTTP、
+`media_codec` 解析 H.264/H.265 NAL，不依赖 `media`、RTSP、WebRTC、HTTP、
 FLV 或 HLS。
 
 `RtpPacketizerInput` 只接收 `rtp::Codec`、AnnexB payload、PTS、payload type、

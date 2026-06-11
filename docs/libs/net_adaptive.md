@@ -3,7 +3,7 @@
 ## 模块定位
 
 `net_adaptive` 是网络质量与实时预览自适应协调器。它从 `net`、
-`media_source`、RTSP 和 WebRTC 的公开 diagnostics 采样，计算网络压力和策略建议。
+`media`、RTSP 和 WebRTC 的公开 diagnostics 采样，计算网络压力和策略建议。
 它不反向注入 RTSP/WebRTC/HLS/FLV，也不直接修改码率、帧率或码流选择。
 
 ## 设计目标与非目标
@@ -11,7 +11,7 @@
 - 统一观察 TCP pending bytes、send queue、RTSP session、WebRTC peer 和
   media reader slow 等事实。
 - 输出 `NetAdaptiveRecommendation` 和按流 `NetAdaptiveStreamDecision`，供 app
-  或后续 media_pipeline/device_media 决定是否执行。
+  或后续 media/device 决定是否执行。
 - v1 只观察和建议，不自动降码率、降帧率、切子码流。
 - HLS 按分段拉取观察，不套用 RTSP/WebRTC/FLV 的慢推流模型。
 
@@ -23,7 +23,7 @@ flowchart LR
   NA --> Net[net diagnostics]
   NA --> RTSP[RTSP diagnostics]
   NA --> WebRTC[WebRTC stats]
-  NA --> Media[media_source stats]
+  NA --> Media[media stats]
   NA --> Rec[recommendations]
 ```
 
@@ -77,7 +77,7 @@ public API 在 `net_adaptive.h`。协议模块不包含该头文件，不持有
 ## 风险与优化方向
 
 - v1 建议不自动执行，避免误伤实时预览主链路。
-- 后续如果要自动执行，只能通过 media_pipeline/device_media 的显式执行接口接入。
+- 后续如果要自动执行，只能通过 media/device 的显式执行接口接入。
 - WebRTC 的 PLI/FIR/NACK/TWCC 仍是协议反馈；`net_adaptive` 只观察其结果。
-- `media_source` 提供 main/sub slow reader 数，`net_adaptive` 按实际 stream 归档
+- `media` 提供 main/sub slow reader 数，`net_adaptive` 按实际 stream 归档
   慢读压力，避免子码流慢读误触发主码流决策。

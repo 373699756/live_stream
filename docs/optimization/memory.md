@@ -3,20 +3,18 @@
 ## 模块定位
 
 本专项只记录内存和拷贝优化方向。具体实现仍归拥有模块：
-`device_media`、`media_source`、`media_pipeline`、`media_codec`、
-`rtp`、`net`、`http` 和 `webrtc`。
+`device`、`media`、`media_codec`、`rtp`、`net`、`http` 和 `webrtc`。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
-  VENC[device_media encoded frames] --> SourceSvc[media_pipeline]
-  SourceSvc --> Source[media_source caches]
-  Source --> HLS[HLS segments]
-  Source --> FLV[FLV GOP/cache]
-  Source --> MJPEG[MJPEG frames]
-  SourceSvc --> RTSP[RTSP/WebRTC frame sinks]
-  Source --> Protocol[HTTP/RTSP/WebRTC writers]
+  VENC[device encoded frames] --> Media[media caches / subscriptions]
+  Media --> HLS[HLS segments]
+  Media --> FLV[FLV GOP/cache]
+  Media --> MJPEG[MJPEG frames]
+  Media --> Subscriptions[RTSP/WebRTC frame subscriptions]
+  Media --> Protocol[HTTP/RTSP/WebRTC writers]
   Protocol --> Net[net send queue / UDP endpoint]
   Net --> Clients[browser clients]
 ```
@@ -26,32 +24,31 @@ Draw.io 源文件：[video-pipeline-memory.drawio](video-pipeline-memory.drawio)
 ## 视频热路径链路
 
 主码流和子码流走同一套热路径，只是 `StreamId`、VENC channel、缓存状态和
-client/reader 计数分开维护。下游协议不能直接订阅 HiSilicon SDK；必须通过
-`device_media -> media_pipeline -> media_source` 这条链路消费同一份归一化编码帧。
+client/subscription 计数分开维护。下游协议不能直接订阅 HiSilicon SDK；必须通过
+`device -> media` 这条链路消费同一份归一化编码帧。
 
 1. `hisi_vendor` 通过 `HI_MPI_VENC_GetStream` 取到 VENC pack。pack 数据仍归 MPP
    stream buffer 管理，`HI_MPI_VENC_ReleaseStream` 后不能继续引用。
 2. `hisi_vendor` 把一个 VENC frame 的多个 pack、以及环形 buffer 回绕后的
    first/second slice，按原始 AnnexB 顺序拼成项目自己的连续 `VideoBuffer`。
    这是进入项目内存的必要 payload 深拷贝点。
-3. `device_media` 用 `EncodedFrame` 描述 `VideoBuffer + offset + size + codec +
-   pts/dts + frame_type`，同步分发给 `media_pipeline`。后续保存帧只做
+3. `device` 用 `EncodedFrame` 描述 `VideoBuffer + offset + size + codec +
+   pts/dts + frame_type`，通过 `FrameSink::PushFrame()` 分发给 `media`。后续保存帧只做
    `EncodedFrameRefCopy()`，增加 `VideoBuffer` 引用计数，不复制整帧。
-4. `media_pipeline` 在 worker 线程归一化时间戳，解析 H.264/H.265 AnnexB NAL
-   视图，写入 `media_source` 的 reader ring、GOP cache、FLV cache、HLS segment
-   和 MJPEG latest frame。
-5. `media_source` 统一维护 corrected DTS/PTS、参数集、GOP、reader live queue、
+4. `media` 归一化时间戳，解析 H.264/H.265 AnnexB NAL 视图，写入 GOP cache、
+   FrameSubscription live queue、FLV cache、HLS segment 和 MJPEG latest frame。
+5. `media` 统一维护 corrected DTS/PTS、参数集、GOP、frame subscription、
    HLS playlist/segment、FLV sequence header 和 runtime ready 状态。codec 切换、
    stream stop、时间戳回退或大跳变都会重建这些缓存。
-6. `http_media`、`rtsp`、`webrtc` 只消费 `media_source` 暴露的 reader、FLV tag
-   view 或 HLS segment ref，并把带 owner 的 slice 交给 `http/net` 发送。
+6. `http_media`、`rtsp`、`webrtc` 只消费 `media` 暴露的 FrameSubscription、
+   FLV tag view 或 HLS segment ref，并把带 owner 的 slice 交给 `http/net` 发送。
 
 ## 设计考量
 
 - VENC pack 生命周期由 MPP 驱动控制，不能把 pack 指针直接传给异步协议层；
   先复制到项目 `VideoBuffer` 后即可尽早 `ReleaseStream`，避免硬件码流 buffer
   被 Web 慢客户端反压拖住。
-- `VideoBuffer` 是编码 payload 的唯一 owner。GOP cache、reader queue、
+- `VideoBuffer` 是编码 payload 的唯一 owner。GOP cache、subscription queue、
   HTTP-FLV cache、RTSP TCP queue 和 HTTP response queue 都通过引用计数保活，
   避免按协议数、客户端数或 GOP 数量重复复制大帧。
 - HLS 是独立 HTTP 对象和 MPEG-TS 转封装结果，segment 必须自包含，不能保存原始
@@ -63,7 +60,7 @@ client/reader 计数分开维护。下游协议不能直接订阅 HiSilicon SDK�
 - WebRTC RTP 分包阶段仍使用 slice view；SRTP 加密阶段必须形成可原地加密并追加
   认证尾部的连续 UDP packet，所以会有每个 RTP packet 的加密前复制。
 - 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，媒体模块只持有
-  有界缓存和 reader/client registry，不在协议层各自堆积 socket buffer。
+  有界缓存和 subscription/client registry，不在协议层各自堆积 socket buffer。
 
 ## Payload 拷贝次数
 
@@ -74,9 +71,8 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | 阶段 | Payload 深拷贝次数 | 说明 |
 | --- | ---: | --- |
 | VENC pack -> `VideoBuffer` | 1 | 必要拷贝。把 MPP pack 和回绕 slice 拼成连续 AnnexB payload，随后释放 VENC stream。 |
-| `device_media` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数。最近关键帧缓存是例外，会为新订阅方 keyframe-first 深拷贝一份关键帧。 |
-| `media_pipeline` pending / parse | 0 | pending、NAL parser 和 `ParsedFramePayload` 引用同一份 payload；NAL list 只是指针视图。 |
-| `media_source` reader / GOP cache | 0 | `FrameRing`、GOP cache、reader live queue 保存 `FramePayload` 引用，不按 reader 或 GOP 复制 payload。 |
+| `device` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数。最近关键帧缓存是例外，会为新订阅方 keyframe-first 深拷贝一份关键帧。 |
+| `media` ingest / parse / cache | 0 | NAL parser、GOP cache 和 FrameSubscription live queue 引用同一份 payload；NAL list 只是指针视图，不按 subscription 或 GOP 复制 payload。 |
 | HLS 封装 | 1 | `HlsMaker` 把 PES/TS header、AnnexB 起始码和 NAL payload 写入独立 TS segment body。segment 扩容时可能复制已写 segment body，当前实现会预估并预留容量降低扩容概率。 |
 | HLS HTTP 发送 | 0 | TS segment 已在 `VideoBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
 | HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `VideoBuffer`。 |
@@ -130,17 +126,17 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 - 帧路径避免普通日志、重复分配和不必要 string 拼接。
 - HLS/FLV 缓存使用有界数量，客户端数量使用 options 限制。
 - 优先传递 slice/view 或引用计数 buffer，只有跨生命周期边界时才复制。
-- 时间戳修正、GOP cache、segment cache 归 `media_source`，不要散落在协议层。
+- 时间戳修正、GOP cache、segment cache 归 `media`，不要散落在协议层。
 - TCP send queue、pending bytes、写 buffer 上限、写 timeout 和慢客户端关闭归
   `net`，协议模块不要各自维护 socket 发送队列。
 - 优化结论必须回写拥有模块文档，不能长期停留在专项文档里。
 
 ## 当前重点
 
-- `media_source`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest
-  frame 和 `EncodedFrame` 引用释放。
-- `media_pipeline`：下游 client registry 和 frame sink 数量上限。
-- `media_source`：HLS/FLV 封装输出减少临时大 buffer。
+- `media`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest
+  frame、FrameSubscription live queue 和 `EncodedFrame` 引用释放。
+- `media`：下游 client registry 和 frame subscription 数量上限。
+- `media`：HLS/FLV 封装输出减少临时大 buffer。
 - `rtp`：RTSP/WebRTC RTP packet view 避免复制 media payload。
 - `net`：慢客户端断连、TCP pending bytes、send queue 和 UDP endpoint 生命周期。
 - `http`：stream executor 队列和 HTTP 业务 session 释放。
@@ -153,14 +149,14 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | 指标 | 观察点 | 归属模块 |
 | --- | --- | --- |
 | 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http` |
-| HLS segment 数量和 body 总量 | playlist depth + retain count 是否有界 | `media_source` |
-| FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media_source` |
-| 活跃 FLV/MJPEG/frame sink 数 | 是否受 `MediaPipelineOptions` 限制 | `media_pipeline` |
+| HLS segment 数量和 body 总量 | playlist depth + retain count 是否有界 | `media` |
+| FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media` |
+| 活跃 FLV/MJPEG/frame subscription 数 | 是否受 `MediaStreamsOptions` 限制 | `media` |
 | TCP active connections / pending bytes | 慢 socket 是否堆积到 `send_buffer_limit_bytes` 后断开 | `net` |
 | TCP slow close count / close reason | 队列满、send stall、读写 timeout 是否可区分 | `net` |
 | WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc` |
 
-当前资源上限以 `MediaPipelineOptions`、`HttpOptions` 和 WebRTC options
+当前资源上限以 `MediaStreamsOptions`、`HttpOptions` 和 WebRTC options
 为准；socket 写侧统一落到 `TcpListenOptions` 的 `send_queue_capacity`、
 `send_buffer_limit_bytes`、`send_stall_timeout_ms`、`read_timeout_ms` 和
 `write_timeout_ms`。新增缓存或队列时必须先定义上限，再补拥有模块文档。
@@ -172,7 +168,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 - 慢客户端断开后，`net` send queue、stream executor backlog 和媒体缓存引用必须释放。
 - codec 在 H.264/H.265/MJPEG 间切换后，旧 parameter set、GOP cache 和 segment cache
   不得继续服务新客户端。
-- 时间戳回退或大跳变后，GOP、HLS、FLV、MJPEG latest frame 和 reader live queue
+- 时间戳回退或大跳变后，GOP、HLS、FLV、MJPEG latest frame 和 subscription live queue
   必须按 reset reason 回落，后续客户端从新的可解码点开始。
 - 优化结果必须同步回拥有模块文档；专项文档只保留跨模块指标和排查入口。
 

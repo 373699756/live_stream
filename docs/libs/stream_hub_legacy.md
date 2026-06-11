@@ -6,17 +6,16 @@
 
 ## 模块定位
 
-`stream_hub_service` 是旧浏览器流 hub 命名下的过渡模块。生产主链路已经迁到
-`media_source` 和 `media_pipeline`，旧兼容目录已删除。新设计和新代码不应继续
-依赖 `stream_hub_service`。
+`stream_hub_service` 是旧浏览器流 hub 命名下的过渡模块。生产主链路已经并入
+`media`，旧兼容目录已删除。新设计和新代码不应继续依赖 `stream_hub_service`。
 
 ## 历史职责
 
 旧模块曾承载 HLS/FLV 浏览器流状态、时间戳归一化、缓存和 HTTP 直播 fanout。
-这些职责现在拆分为：
+这些职责现在归属为：
 
-- `media_source`：媒体源状态、HLS/FLV/MJPEG ready、GOP cache 和时间戳修正。
-- `media_pipeline`：设备帧入口、媒体源装配和生命周期。
+- `media`：媒体状态、HLS/FLV/MJPEG ready、GOP cache、FrameSubscription 和时间戳修正。
+- `device`：设备帧入口、硬件 pipeline 生命周期和关键帧请求。
 - `http` / `http_media`：HTTP 路由、媒体 HTTP 输出和 WebRTC signaling。
 
 ## 迁移规则
@@ -24,7 +23,7 @@
 - 生产构建不再把 `stream_hub_service` 作为主链路依赖。
 - 新 public API 使用 `Media*` 命名，不新增 `StreamHub*` 兼容别名。
 - 旧名称只能出现在历史决策、迁移说明和删除前的兼容审计中。
-- 顶层 `Makefile` 当前构建主链路使用 `media_pipeline`；`stream_hub_service`
+- 顶层 `Makefile` 当前构建主链路使用 `media`；`stream_hub_service`
   不应重新作为模块目录、库名或 public API 引入。
 
 ## 删除条件
@@ -36,7 +35,7 @@
 ## 状态与资源模型
 
 该模块不再是当前媒体源状态拥有者。HLS/FLV/MJPEG ready、GOP cache、时间戳修正和
-客户端注册上限都以 `media_source` / `media_pipeline` 文档为准。
+客户端注册上限都以 `media` 文档为准。
 
 ## 风险与优化方向
 

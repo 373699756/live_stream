@@ -32,9 +32,9 @@ public API 在 `event.h`。事件 payload 归 `event` 文档维护：
 | EventType | source | target | message | value |
 | --- | --- | --- | --- | ---: |
 | `kConfigChanged` | 发布模块 | 配置 scope | 可读变更说明 | 保留为 0 |
-| `kMediaPipelineStarted` / `kMediaPipelineStopped` | `device_media` | stream 或 pipeline | 状态说明 | 保留为 0 |
-| `kMediaPipelineError` | `device_media` | stream 或 pipeline | 错误原因 | 错误码或 0 |
-| `kMediaStatusChanged` | `media_pipeline` | `{main,sub}.ready/frame` | `changed` / `first` | ready 状态位或保留为 1 |
+| `kMediaPipelineStarted` / `kMediaPipelineStopped` | `device` | stream 或 pipeline | 状态说明 | 保留为 0 |
+| `kMediaPipelineError` | `device` | stream 或 pipeline | 错误原因 | 错误码或 0 |
+| `kMediaStatusChanged` | `media` | `{main,sub}.ready/frame` | `changed` / `first` | ready 状态位或保留为 1 |
 | `kStreamStarted` / `kStreamStopped` | 码流拥有模块 | `main` / `sub` | 状态说明 | 保留为 0 |
 | `kRtspClientConnected` / `kRtspClientDisconnected` | `rtsp` | session/client id | 客户端地址或原因 | 活跃数或 0 |
 | `kWebRtcClientConnected` / `kWebRtcClientDisconnected` | `webrtc` | peer id | 状态说明 | 活跃数或 0 |

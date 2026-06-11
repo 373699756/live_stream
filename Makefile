@@ -52,14 +52,10 @@ CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
 CXXFLAGS += -Ilibs/net_adaptive/include
 CXXFLAGS += -Ilibs/ai/include
-CXXFLAGS += -Ilibs/device_media/include
-CXXFLAGS += -Ilibs/media_source/include
-CXXFLAGS += -Ilibs/media_pipeline/include
+CXXFLAGS += -Ilibs/device/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
-CXXFLAGS += -Ilibs/region/include
 CXXFLAGS += -Ilibs/rtsp/include
 CXXFLAGS += -Ilibs/webrtc/include
-CXXFLAGS += -Ilibs/snapshot/include
 CXXFLAGS += -Ilibs/onvif/include
 CXXFLAGS += -Ilibs/alarm/include
 CXXFLAGS += -Ilibs/http/include
@@ -82,15 +78,11 @@ MODULES := \
 	ai \
 	hisi_vendor \
 	media \
-	device_media \
+	device \
 	rtp \
 	net_adaptive \
-	media_source \
-	media_pipeline \
-	region \
 	rtsp \
 	webrtc \
-	snapshot \
 	onvif \
 	alarm \
 	http_media \

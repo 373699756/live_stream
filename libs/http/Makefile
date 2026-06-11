@@ -7,8 +7,8 @@ AUTH_LIB := $(BUILD_DIR)/lib/libauth.a
 ALARM_LIB := $(BUILD_DIR)/lib/libalarm.a
 LOGGER_LIB := $(BUILD_DIR)/lib/liblogger.a
 NET_LIB := $(BUILD_DIR)/lib/libnet.a
-MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
-MEDIA_SOURCE_LIB := $(BUILD_DIR)/lib/libmedia_source.a
+MEDIA_LIB := $(BUILD_DIR)/lib/libdevice.a
+MEDIA_STREAMS_LIB := $(BUILD_DIR)/lib/libmedia.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 HTTP_MEDIA_LIB := $(BUILD_DIR)/lib/libhttp_media.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem.a
@@ -23,28 +23,25 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/network_config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/onvif/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/http_media/include
 CXXFLAGS += -Isrc
 
-SNAPSHOT_LIB := $(BUILD_DIR)/lib/libsnapshot.a
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) \
-	$(MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(MEDIA_CODEC_LIB) $(SNAPSHOT_LIB) \
+	$(MEDIA_LIB) $(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
 	$(SYSTEM_LIB) $(NETWORK_LIB) \
 	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
-	$(HTTP_MEDIA_LIB) $(MEDIA_SOURCE_LIB) $(SNAPSHOT_LIB) \
+	$(HTTP_MEDIA_LIB) $(MEDIA_STREAMS_LIB) \
 	$(SYSTEM_LIB) $(NETWORK_LIB) $(ONVIF_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
 
@@ -64,16 +61,13 @@ $(NET_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../net all
 
 $(MEDIA_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../device_media all
+	$(MAKE) -C ../device all
 
-$(MEDIA_SOURCE_LIB): $(MEDIA_LIB) $(MEDIA_CODEC_LIB)
-	$(MAKE) -C ../media_source all
+$(MEDIA_STREAMS_LIB): $(MEDIA_CODEC_LIB)
+	$(MAKE) -C ../media all
 
 $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
-
-$(SNAPSHOT_LIB): $(MEDIA_LIB)
-	$(MAKE) -C ../snapshot all
 
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system all
@@ -87,7 +81,7 @@ $(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_L
 $(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
 	$(MAKE) -C ../webrtc all
 
-$(HTTP_MEDIA_LIB): $(MEDIA_SOURCE_LIB) $(WEBRTC_LIB)
+$(HTTP_MEDIA_LIB): $(MEDIA_STREAMS_LIB) $(WEBRTC_LIB)
 	$(MAKE) -C ../http_media all
 
 include ../module_rules.mk

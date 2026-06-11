@@ -592,7 +592,7 @@ EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
     frame.codec = context.codec;
     frame.frame_type = frame_type;
     frame.sequence = stream.u32Seq;
-    // PTS 取自 VENC pack；media_source 后续会修正为从流起点开始的单调相对时间。
+    // PTS 取自 VENC pack；media 后续会修正为从流起点开始的单调相对时间。
     frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = frame.pts_us;
     frame.payload.buffer = buffer;

@@ -16,7 +16,7 @@
 flowchart LR
   Payload[AnnexB payload] --> Codec[media_codec]
   Codec --> Parse[NAL/codec metadata]
-  Codec --> Source[media_source FLV/HLS metadata]
+  Codec --> Media[media FLV/HLS metadata]
   Codec --> RTP[rtp packetizer]
   Codec --> Protocol[RTSP/WebRTC/HTTP-FLV/HLS]
 ```
@@ -62,17 +62,17 @@ payload 指针和长度，不依赖 `EncodedFrame` 或基础媒体类型，不�
 - parser 契约冻结为 AnnexB 遍历、H.264/H.265 参数集提取、IDR 判断和
   AnnexB/AVCC/HVCC 辅助。
 - `media_codec` 只依赖 `infra` 和标准库，不依赖基础媒体类型、HTTP、RTSP、WebRTC
-  或 `media_source`。
+  或 `media`。
 - RTSP/WebRTC/HLS/HTTP-FLV 相邻接口只消费 `media_codec` 的 parser/metadata，
   不在协议模块内新增私有 H.264/H.265 parser。
-- RTP packet view 归 `rtp`，FLV/HLS 封装归 `media_source`/`http_media`
+- RTP packet view 归 `rtp`，FLV/HLS 封装归 `media`/`http_media`
   等拥有边界。
 - `ForEachAnnexBNalUnit` 输入为一帧 AnnexB payload，输出非空 NAL view；空输入、
   没有可用 NAL、start code 不完整或 sink 返回失败时整体返回失败。
 - `ExtractH264ParameterSets` 和 `ExtractH265ParameterSets` 只用于低频 metadata
   输出，例如 SDP、FLV sequence header 或 track 初始化；热路径不得每包重复提取。
 - `BuildH264AvccRecord` 和 `BuildH265HvccRecord` 输出调用方拥有的字符串，用于
-  sequence header；codec 切换时由 `media_source` 触发重建。
+  sequence header；codec 切换时由 `media` 触发重建。
 
 ## 非目标
 

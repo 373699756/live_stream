@@ -17,11 +17,11 @@ const moduleLabels: Record<string, string> = {
   rtsp: 'RTSP 服务',
   onvif: 'ONVIF 服务',
   http: 'HTTP 服务',
-  device_media: '视频采集',
+  device: '视频采集',
   ai: 'AI 分析',
   snapshot: '抓图服务',
   webrtc: 'WebRTC 服务',
-  media_source: '媒体源',
+  media: '媒体核心',
 };
 
 const moduleGroups = [
@@ -31,7 +31,7 @@ const moduleGroups = [
   },
   {
     title: '媒体与智能',
-    names: ['device_media', 'media_source', 'snapshot', 'alarm', 'ai'],
+    names: ['device', 'media', 'snapshot', 'alarm', 'ai'],
   },
   {
     title: '协议与运维',

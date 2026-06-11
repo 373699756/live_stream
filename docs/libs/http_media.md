@@ -15,14 +15,14 @@ flowchart LR
   HTTP[http router/auth/session] --> MediaHTTP[http_media handlers]
   MediaHTTP --> Writer[HttpMediaWriter]
   Writer --> Net[net TCP session]
-  MediaHTTP --> Source[media_source]
-  MediaHTTP --> Device[device_media restarting/status]
+  MediaHTTP --> Media[media]
+  MediaHTTP --> Device[device restarting/status]
   MediaHTTP --> WebRTC[webrtc signaling]
 ```
 
 ## 设计目标与非目标
 
-- 通过 `media_source` 的 HLS/FLV/MJPEG public API 获取媒体数据；HLS 作为普通短响应
+- 通过 `media` 的 HLS/FLV/MJPEG public API 获取媒体数据；HLS 作为普通短响应
   返回 `HttpResponse`，HTTP-FLV、MJPEG 和 SSE 通过 `http` 提供的 `HttpMediaWriter`
   输出长连接数据。
 - REST 路径或 DTO 变更时同步迁移 `www/` 的 API client、mock 数据、类型定义和页面调用；
@@ -41,7 +41,7 @@ flowchart LR
 ## 依赖边界
 
 - 依赖 `http` 的路由、认证边界、`IHttpHandler` 和 `HttpMediaWriter`。
-- 依赖 `media_source` 的 HLS segment/playlist、HTTP-FLV start data/client、MJPEG client
+- 依赖 `media` 的 HLS segment/playlist、HTTP-FLV start data/client、MJPEG client
   和 reader/client count。
 - 间接依赖 `net` 的 session、send queue、buffer limit 和 close callback；socket 生命周期
   仍由 `http` server 持有。
@@ -54,7 +54,7 @@ TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
 `/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。
-会话条目同时补充同 stream 的 `media_source` 只读状态，包括 running、track ready、
+会话条目同时补充同 stream 的 `media` 只读状态，包括 running、track ready、
 codec/generation、HTTP-FLV/MJPEG ready、last DTS 和 reset reason，便于在同一个
 诊断条目里判断是连接慢、媒体未 ready，还是 codec/reset 导致没有新数据。
 在调用 `BeginStream(type, stream_id)` 到 `AttachStreamClient()` 完成之间，HTTP session

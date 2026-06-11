@@ -18,9 +18,9 @@ flowchart LR
   Browser[www/browser clients] --> HTTP[http]
   HTTP --> Auth[auth]
   HTTP --> Config[config]
-  HTTP --> Media[device_media]
+  HTTP --> Media[device]
   HTTP --> MediaHTTP[http_media]
-  MediaHTTP --> Source[media_source]
+  MediaHTTP --> MediaCore[media]
   MediaHTTP --> WebRTC[webrtc]
   HTTP --> Snapshot[snapshot]
   HTTP --> AI[ai IAiView]
@@ -46,13 +46,13 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | API 组 | 业务归属 |
 | --- | --- |
 | `/api/auth/*` | `auth` |
-| `/api/config/*` | `device_media`、`region`、`network_config`、`snapshot`、`ai` |
-| `/api/media/streams` | `media_source` / `device_media` |
-| `/api/media/capabilities` | `device_media` |
-| `/api/media/streams/{stream}` | `media_source` / `device_media` |
+| `/api/config/*` | `device`、`region`、`network_config`、`snapshot`、`ai` |
+| `/api/media/streams` | `media` / `device` |
+| `/api/media/capabilities` | `device` |
+| `/api/media/streams/{stream}` | `media` / `device` |
 | `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `snapshot` |
 | `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` diagnostics |
-| `/api/status/image-strategy` | `device_media` |
+| `/api/status/image-strategy` | `device` |
 | `/api/webrtc/peers` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/offer` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/candidates` | `http_media` / `webrtc` |
@@ -114,7 +114,7 @@ diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 `media_http_flv_ready`、`media_mjpeg_ready`、`media_last_dts` 和
 `media_last_reset_reason`，用于在一个会话条目内同时定位连接背压和媒体源 ready
 状态。HLS playlist/segment 是短 HTTP 响应，不作为活跃 session 常驻展示。
-RTSP/WebRTC 会额外输出对应 `media_source` reader 的 attached、pending frames、
+RTSP/WebRTC 会额外输出对应 `media` frame subscription 的 attached、pending frames、
 waiting keyframe、slow reader 和 close reason 字段，用于定位协议会话与 reader/ring
 分发之间的状态。
 
@@ -130,7 +130,7 @@ waiting keyframe、slow reader 和 close reason 字段，用于定位协议会�
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
 `CreateHttp()` 通过 `HttpDependencies` 命名字段接收 app 组合根注入，
-避免认证、设备、协议和媒体源依赖靠长参数位置传递。
+避免认证、设备、协议和媒体依赖靠长参数位置传递。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
 
 HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body
@@ -140,7 +140,7 @@ HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、respo
 普通响应、HLS segment body slice、HTTP-FLV/MJPEG/SSE 流式 chunk 的 header/body
 组包、`VideoBuffer` owner 转 `NetBufferOwner`、发送队列背压和慢客户端关闭。
 普通短响应可以使用 `HttpResponse.body` 或 `HttpResponse.body_slices`，其中
-`body_slices` 用于 HLS segment 这类由 `media_source` 持有 payload 的一次性响应；
+`body_slices` 用于 HLS segment 这类由 `media` 持有 payload 的一次性响应；
 它仍走普通 router 和 `SendResponse()`，不创建 HTTP streaming session。
 `HttpMediaWriter` 只暴露 begin stream、attach client、enqueue slices、close
 callback 和 streaming diagnostics。这样 `http_media` 不直接接触 socket 队列，却能

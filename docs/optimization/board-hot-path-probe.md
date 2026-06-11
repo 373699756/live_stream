@@ -46,7 +46,7 @@ WebRTC 需要真实 SDP/ICE 客户端。脚本不内置伪客户端；需要时�
 
 采集 HLS、FLV、MJPEG、WebRTC 多客户端数据后再做代码改动：
 
-- `cached_bytes` 或 `hls_bytes` 随客户端数增长：先查 `media_source` cache 引用和 retain。
+- `cached_bytes` 或 `hls_bytes` 随客户端数增长：先查 `media` cache 引用和 retain。
 - `sessions_pending_bytes` 或 CPU 持续升高：先查 `net` send queue 和慢客户端关闭。
 - `webrtc_dropped_frames` / `rtsp_dropped_frames` 增长：先查 fanout 和 RTP 发送路径。
 - RSS/VmHWM 不回落：先查 HTTP session、media reader/client detach 和缓存引用释放。

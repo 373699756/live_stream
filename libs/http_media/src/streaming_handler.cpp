@@ -5,7 +5,7 @@
 #include "http_media_utils.h"
 #include "http_router.h"
 
-#include "device_media.h"
+#include "device.h"
 #include "event.h"
 #include "infra/log.h"
 #include "media/encoded_frame.h"
@@ -141,10 +141,10 @@ bool ParseMjpegStreamName(const HttpRequest &request, StreamId *stream_id,
 class StreamingHttpHandler : public IStreamingHttpHandler {
 public:
     StreamingHttpHandler(HttpAccess *access, HttpMediaWriter *writer,
-                         IDeviceMedia *device_media,
+                         DeviceMedia *device,
                          MediaStreams *media_streams,
                          IEvent *event)
-        : access_(access), writer_(writer), device_media_(device_media),
+        : access_(access), writer_(writer), device_(device),
           media_streams_(media_streams),
           event_(event) {}
 
@@ -264,13 +264,13 @@ private:
         ConnectionId connection_id, const HttpRequest &request) {
         if (media_streams_ == nullptr) {
             Error(kHttpMediaModuleName,
-                            "HTTP-FLV reject conn=%llu reason=no_media_source",
+                            "HTTP-FLV reject conn=%llu reason=no_media_streams",
                             static_cast<unsigned long long>(connection_id));
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(501, "Not Implemented"));
         }
-        if (IsHttpMediaRestarting(device_media_)) {
+        if (IsHttpMediaRestarting(device_)) {
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
@@ -380,7 +380,7 @@ private:
         const HttpFlvSessionStartStatus start_status =
             stream->Start(start_data, &cached_flv_bytes);
         if (start_status != HttpFlvSessionStartStatus::kStarted) {
-            // Start() 失败时 stream 尚未 attach 到 media_source，调用方仍拥有对象。
+            // Start() 失败时 stream 尚未 attach 到 MediaStreams，调用方仍拥有对象。
             delete stream;
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=%s",
@@ -457,13 +457,13 @@ private:
         ConnectionId connection_id, const HttpRequest &request) {
         if (media_streams_ == nullptr) {
             Error(kHttpMediaModuleName,
-                            "HTTP-MJPEG reject conn=%llu reason=no_media_source",
+                            "HTTP-MJPEG reject conn=%llu reason=no_media_streams",
                             static_cast<unsigned long long>(connection_id));
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(501, "Not Implemented"));
         }
-        if (IsHttpMediaRestarting(device_media_)) {
+        if (IsHttpMediaRestarting(device_)) {
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=media_restarting",
                             static_cast<unsigned long long>(connection_id));
@@ -592,7 +592,7 @@ private:
 
     HttpAccess *access_ = nullptr;
     HttpMediaWriter *writer_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
     IEvent *event_ = nullptr;
 };
@@ -602,7 +602,7 @@ std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     return std::unique_ptr<IStreamingHttpHandler>(
         new StreamingHttpHandler(
             dependencies.access, dependencies.writer,
-            dependencies.device_media, dependencies.media_streams,
+            dependencies.device, dependencies.media_streams,
             dependencies.event));
 }
 

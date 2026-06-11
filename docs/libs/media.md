@@ -4,7 +4,7 @@
 
 `media` 是重构后的通用媒体核心，承载视频帧内存、主/子码流缓存、HLS/FLV/MJPEG
 输出数据和协议帧订阅。它不启动设备硬件、不解析 HTTP/RTSP/WebRTC 请求，也不依赖
-`device_media`、`hisi_vendor` 或配置系统。
+`device`、`hisi_vendor` 或配置系统。
 
 ## 核心职责
 
