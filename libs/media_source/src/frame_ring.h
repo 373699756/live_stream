@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_FRAME_RING_H_
 #define LIVE_STREAM_MEDIA_SOURCE_SRC_FRAME_RING_H_
 
+#include "frame_payload.h"
 #include "media_source.h"
 
 #include <array>

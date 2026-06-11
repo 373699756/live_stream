@@ -7,7 +7,6 @@
 #include "gop_cache.h"
 #include "hls_maker.h"
 #include "media/frame_attach.h"
-#include "media_codec.h"
 #include "timestamp_corrector.h"
 
 #include <cstdint>
@@ -20,7 +19,7 @@ namespace media_source_internal {
 // 单路码流的浏览器播放状态。服务层只负责加锁和分发，HLS/FLV 的
 // 参数集、分片缓存和打包游标都集中维护在这里。
 struct StreamContext {
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     StreamState state = StreamState::kClosed;
     std::string vps;
     std::string sps;
@@ -54,11 +53,11 @@ struct NormalizedFrameResult {
     bool timestamp_reset = false;
 };
 
-bool IsBrowserStreamReady(StreamState state, VideoCodec codec);
-bool IsBrowserCodec(VideoCodec codec);
-bool IsFlvCodecSupported(VideoCodec codec);
-bool IsHlsCodecSupported(VideoCodec codec);
-bool IsMjpegCodecSupported(VideoCodec codec);
+bool IsBrowserStreamReady(StreamState state, Codec codec);
+bool IsBrowserCodec(Codec codec);
+bool IsFlvCodecSupported(Codec codec);
+bool IsHlsCodecSupported(Codec codec);
+bool IsMjpegCodecSupported(Codec codec);
 bool HasFlvSequenceHeader(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);
@@ -77,7 +76,7 @@ MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
 MediaFlvStartData BuildFlvStartData(const StreamContext &stream);
 MediaTrack BuildMediaTrack(StreamId stream_id, const StreamContext &stream);
 
-void ResetStream(StreamContext *stream, VideoCodec codec,
+void ResetStream(StreamContext *stream, Codec codec,
                  MediaSourceResetReason reason);
 void ResetStreamCaches(StreamContext *stream, MediaSourceResetReason reason);
 NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,

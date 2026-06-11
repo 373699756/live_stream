@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
 #define LIVE_STREAM_MEDIA_SOURCE_SRC_FLV_MUXER_H_
 
-#include "media/frame_attach.h"
+#include "frame_payload.h"
 #include "media_codec.h"
 
 #include <cstddef>
@@ -61,7 +61,7 @@ private:
 class FlvMuxer {
 public:
     static std::string BuildFileHeader();
-    static std::string BuildSequenceHeader(VideoCodec codec,
+    static std::string BuildSequenceHeader(Codec codec,
                                            const std::string &vps,
                                            const std::string &sps,
                                            const std::string &pps,

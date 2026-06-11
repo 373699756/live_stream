@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SOURCE_SRC_HLS_MAKER_H_
 #define LIVE_STREAM_MEDIA_SOURCE_SRC_HLS_MAKER_H_
 
-#include "media/frame_attach.h"
+#include "frame_payload.h"
 #include "media_source.h"
 
 #include <cstddef>
@@ -65,7 +65,7 @@ private:
         uint64_t sequence = 0;
         int64_t start_pts_us = 0;
         int64_t last_pts_us = 0;
-        VideoBuffer *body = nullptr;
+        FrameBuffer *body = nullptr;
     };
 
     static void UnrefSegmentState(SegmentState *segment);
@@ -86,7 +86,7 @@ private:
                               bool prepend_parameter_sets,
                               const EncodedFrame &frame);
     int64_t CurrentSegmentDurationUs() const;
-    void StartSegment(VideoCodec codec, int64_t pts_us);
+    void StartSegment(Codec codec, int64_t pts_us);
     void RememberSegmentCapacity(const SegmentState &segment);
     void PopOldestSegment();
     void PushFinalizedSegment(uint32_t segment_cache_depth);

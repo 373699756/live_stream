@@ -4,7 +4,6 @@
 #include "media_frame.h"
 
 #include "media/encoded_frame.h"
-#include "media/frame_attach.h"
 #include "media/stream_types.h"
 
 #include <cstddef>
@@ -34,7 +33,7 @@ struct MediaFlvVideoTagView {
 
 struct MediaFlvCachedVideoTagSlice {
     // GOP cache 只复制小 header。真正的视频 payload 仍通过 frame 持有
-    // VideoBuffer 引用，避免为每个新 FLV client 深拷贝整帧。
+    // FrameBuffer 引用，避免为每个新 FLV client 深拷贝整帧。
     const uint8_t *media_data = nullptr;
     uint8_t header_data[kMaxMediaFlvHeaderSliceBytes] = {};
     size_t size = 0;
@@ -129,7 +128,7 @@ struct MediaSegmentRef {
     bool found = false;
     uint64_t sequence = 0;
     int64_t duration_us = 0;
-    VideoBuffer *body = nullptr;
+    FrameBuffer *body = nullptr;
 };
 
 struct MediaFlvStartData {
@@ -154,7 +153,7 @@ struct MediaFrameReaderOptions {
 struct MediaFrameReaderStartData {
     // reader 创建后先读取 start data：如果 gop_complete=true，调用方可先发送
     // gop_frames，再进入 PopFrameReaderFrame 的 live queue。
-    // gop_frames 里的 MediaFrame 只 ref 底层 VideoBuffer，不按 reader 深拷贝 GOP。
+    // gop_frames 里的 MediaFrame 只 ref 底层 FrameBuffer，不按 reader 深拷贝 GOP。
     bool stream_running = false;
     bool gop_complete = false;
     uint64_t reader_generation = 0;
@@ -165,7 +164,7 @@ struct MediaFrameReaderStartData {
 struct MediaFrameReaderFrame {
     // starts_on_keyframe 表示该 live frame 是等待关键帧后的第一个可解码点，
     // WebRTC/RTSP 可据此刷新协议侧状态。
-    // frame 持有自己的 VideoBuffer 引用，调用方发送结束后必须
+    // frame 持有自己的 FrameBuffer 引用，调用方发送结束后必须
     // MediaFrameReaderFrameUnref()。
     MediaFrameReaderId reader_id = 0;
     uint64_t reader_generation = 0;
@@ -281,7 +280,7 @@ struct MediaSourceStatus {
     bool hls_ready = false;
     bool flv_ready = false;
     bool mjpeg_ready = false;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     uint64_t codec_generation = 0;
     uint32_t hls_segment_count = 0;
     uint64_t hls_first_segment_sequence = 0;
@@ -326,14 +325,14 @@ public:
     virtual bool IsFlvSupported(StreamId stream_id) const = 0;
     virtual bool IsMjpegSupported(StreamId stream_id) const = 0;
     virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
-    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual Codec GetStreamCodec(StreamId stream_id) const = 0;
     virtual MediaHlsPlaylist GetHlsPlaylist(StreamId stream_id) const = 0;
     virtual MediaSegmentRef GetHlsSegmentRef(StreamId stream_id,
                                              uint64_t sequence) const = 0;
     virtual MediaFlvStartData GetFlvStartData(StreamId stream_id) const = 0;
     virtual MediaSourceStatus GetBrowserStatus(StreamId stream_id) const = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason) = 0;
+                                 KeyFrameRequestType reason) = 0;
     virtual MediaSourceStats GetStats() const = 0;
 };
 
@@ -361,7 +360,7 @@ public:
     virtual ~IMediaFrameSource() = default;
 
     virtual bool IsStreamAvailable(StreamId stream_id) const = 0;
-    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual Codec GetStreamCodec(StreamId stream_id) const = 0;
     virtual MediaFrameReaderId AttachFrameReader(
         const MediaFrameReaderOptions &options) = 0;
     virtual bool DetachFrameReader(MediaFrameReaderId reader_id,
@@ -371,11 +370,11 @@ public:
     virtual MediaFrameReaderStartData GetFrameReaderStartData(
         MediaFrameReaderId reader_id) const = 0;
     // Pop 只从 reader live queue 取一帧；空队列返回 false，不代表 reader 关闭。
-    // 返回的 frame 持有 VideoBuffer 引用，调用方用完必须 unref。
+    // 返回的 frame 持有 FrameBuffer 引用，调用方用完必须 unref。
     virtual bool PopFrameReaderFrame(MediaFrameReaderId reader_id,
                                      MediaFrameReaderFrame *frame) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason) = 0;
+                                 KeyFrameRequestType reason) = 0;
 };
 
 inline MediaSegmentRef MediaSegmentRefCopy(
@@ -385,7 +384,7 @@ inline MediaSegmentRef MediaSegmentRefCopy(
         return ref;
     }
     ref = *segment;
-    ref.body = VideoBufferRef(segment->body);
+    ref.body = FrameBufferRef(segment->body);
     if (ref.body == nullptr) {
         return MediaSegmentRef{};
     }
@@ -396,7 +395,7 @@ inline void MediaSegmentRefUnref(MediaSegmentRef *segment) {
     if (segment == nullptr) {
         return;
     }
-    VideoBufferUnref(segment->body);
+    FrameBufferUnref(segment->body);
     *segment = MediaSegmentRef{};
 }
 
