@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_RTSP_SRC_RTSP_SESSION_H_
 #define LIVE_STREAM_RTSP_SRC_RTSP_SESSION_H_
 
-#include "media_source.h"
+#include "media/media_streams.h"
 #include "net.h"
 #include "rtsp.h"
 #include "rtsp_splitter.h"
@@ -16,9 +16,9 @@ namespace live_stream {
 enum class RtspSessionState {
   // 初始状态：只接收 OPTIONS/DESCRIBE/SETUP，不允许 PLAY。
   kInit = 0,
-  // SETUP 完成，transport 已绑定，PLAY 可以创建 reader。
+  // SETUP 完成，transport 已绑定，PLAY 可以创建 subscription。
   kReady,
-  // PLAY 成功，drain timer 正在把 media_source reader 的帧转成 RTP。
+  // PLAY 成功，drain timer 正在把 media_streams subscription 的帧转成 RTP。
   kPlaying,
   // TEARDOWN 或连接关闭后的终态；资源清理由 RtspImpl 统一执行。
   kClosed,
@@ -41,11 +41,12 @@ class RtspSession {
   bool LearnUdpRtpPeer(NetAddress next_udp_rtp_peer);
   bool LearnUdpRtcpPeer(NetAddress next_udp_rtcp_peer);
   void StartPlaying();
-  void AttachReader(MediaFrameReaderId next_reader_id,
-                    uint64_t reader_generation, MediaTrack next_track);
-  void DetachReader();
-  bool HasReader() const;
-  void SetStartFrames(std::vector<MediaFrame> *frames);
+  void AttachSubscription(FrameSubscriptionId next_subscription_id,
+                          uint64_t next_subscription_generation,
+                          MediaStreamInfo next_stream_info);
+  void DetachSubscription();
+  bool HasSubscription() const;
+  void SetStartFrames(std::vector<EncodedFrame> *frames);
   void SetPlayRtpTimestamp(uint32_t timestamp);
   void ClearStartFrames();
   void SetDrainTimer(NetTimerId timer_id);
@@ -77,13 +78,13 @@ class RtspSession {
   uint16_t rtp_sequence = 1;
   uint32_t ssrc = 0;
   uint32_t play_rtp_timestamp = 0;
-  MediaTrack track;
+  MediaStreamInfo stream_info;
   // PLAY 后必须先发送关键帧；未看到关键帧前的非关键帧会在 RtspRtpSender 丢弃。
   bool keyframe_seen = false;
-  MediaFrameReaderId reader_id = 0;
-  uint64_t reader_generation = 0;
+  FrameSubscriptionId subscription_id = 0;
+  uint64_t subscription_generation = 0;
   // start_frames 是 PLAY 时抓取的启动 GOP，只在第一次 drain 时发送并释放。
-  std::vector<MediaFrame> start_frames;
+  std::vector<EncodedFrame> start_frames;
   NetTimerId drain_timer_id = 0;
   // Basic auth 成功只缓存到本 RTSP session，不持有 auth token。
   bool authenticated = false;

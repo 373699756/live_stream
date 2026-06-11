@@ -3,7 +3,6 @@
 #include "event.h"
 #include "infra/log.h"
 #include "infra/time.h"
-#include "media_source.h"
 #include "rtp.h"
 #include "net.h"
 #include "rtsp_auth.h"
@@ -48,7 +47,7 @@ std::string Hex32(uint32_t value) {
 }
 
 uint32_t FirstStartFrameRtpTimestamp(
-    const MediaFrameReaderStartData &start_data) {
+    const FrameSubscriptionStartData &start_data) {
     if (start_data.gop_frames.empty()) {
         return 0;
     }
@@ -80,7 +79,7 @@ public:
           net_executor_(dependencies.net_executor),
           auth_(dependencies.auth),
           event_(dependencies.event),
-          media_source_(dependencies.media_source),
+          media_streams_(dependencies.media_streams),
           rtp_sender_(options_.rtp_mtu_bytes),
           rtsp_auth_(auth_, this),
           request_handler_(this) {}
@@ -97,7 +96,7 @@ public:
         }
         if (net_engine_ == nullptr ||
             net_executor_ == nullptr ||
-            media_source_ == nullptr ||
+            media_streams_ == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
             return false;
@@ -185,11 +184,11 @@ private:
             sessions = sessions_.Sessions();
             connection_ids = sessions_.ConnectionIds();
         }
-        // 停服务时先停 listener，再关闭每个 session 的 reader/timer/UDP socket，
-        // 最后关闭 TCP 控制连接，防止 media_source 继续给已关闭 transport 推帧。
+        // 停服务时先停 listener，再关闭每个 session 的 subscription/timer/UDP socket，
+        // 最后关闭 TCP 控制连接，防止 media_streams 继续给已关闭 transport 推帧。
         for (const auto &session : sessions) {
-            CloseSessionResources(session,
-                                  MediaFrameReaderCloseReason::kStreamStopped);
+            CloseSessionResources(
+                session, FrameSubscriptionCloseReason::kStreamStopped);
         }
         if (net_engine_ != nullptr) {
             for (ConnectionId connection_id : connection_ids) {
@@ -273,7 +272,7 @@ public:
                 item.stream_id = session->stream_id;
                 item.transport = session->transport;
                 item.remote_address = AddressText(session->peer);
-                item.reader_id = session->reader_id;
+                item.reader_id = session->subscription_id;
                 item.pending_bytes = session->stats.pending_bytes;
                 item.rtp_packets = session->stats.sent_rtp_packets;
                 item.rtp_bytes = session->stats.sent_rtp_bytes;
@@ -302,20 +301,21 @@ public:
                         TcpCloseReasonName(net_diagnostics.close_reason);
                 }
             }
-            if (media_source_ != nullptr && item.reader_id != 0) {
-                const MediaFrameReaderStatus reader_status =
-                    media_source_->GetFrameReaderStatus(item.reader_id);
+            if (media_streams_ != nullptr && item.reader_id != 0) {
+                const FrameSubscriptionInfo reader_status =
+                    media_streams_->GetFrameSubscriptionInfo(
+                        item.reader_id);
                 item.reader_attached = reader_status.attached;
                 if (reader_status.attached) {
                     item.reader_generation =
-                        reader_status.reader_generation;
+                        reader_status.subscription_generation;
                     item.reader_pending_frames =
                         reader_status.pending_frames;
                     item.reader_waiting_keyframe =
                         reader_status.waiting_for_keyframe;
-                    item.reader_slow = reader_status.slow_reader;
+                    item.reader_slow = reader_status.slow_subscriber;
                     item.reader_close_reason =
-                        MediaFrameReaderCloseReasonName(
+                        FrameSubscriptionCloseReasonName(
                             reader_status.close_reason);
                 }
             }
@@ -402,7 +402,8 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session->MarkCloseReason(reason);
         }
-        CloseSessionResources(session, MediaFrameReaderCloseReason::kDetached);
+        CloseSessionResources(session,
+                              FrameSubscriptionCloseReason::kUnsubscribed);
         Info("rtsp",
                        "RTSP client disconnected conn=%llu reason=%d "
                        "peer=%s:%u",
@@ -509,42 +510,16 @@ private:
     }
 
     bool IsRtspStreamAvailable(StreamId stream_id) const override {
-        return media_source_ != nullptr &&
-               media_source_->IsStreamAvailable(stream_id);
+        return media_streams_ != nullptr &&
+               media_streams_->IsStreamAvailable(stream_id);
     }
 
-    MediaTrack RtspTrackForStream(StreamId stream_id) const override {
-        MediaTrack track;
-        track.stream_id = stream_id;
-        track.codec = stream_id == StreamId::kSub ? options_.sub_video_codec
-                                                  : options_.main_video_codec;
-        track.clock_rate = rtp::kRtpClockRate;
-        if (media_source_ == nullptr ||
-            !media_source_->IsStreamAvailable(stream_id)) {
-            return track;
+    MediaStreamInfo RtspStreamInfoForStream(StreamId stream_id) const override {
+        if (media_streams_ == nullptr ||
+            !media_streams_->IsStreamAvailable(stream_id)) {
+            return MediaStreamInfo{};
         }
-
-        // 为 DESCRIBE 临时 attach reader 只为读取 track metadata，马上 detach；
-        // 长期 reader 必须等 PLAY，避免探测请求占用媒体 fanout。
-        MediaFrameReaderOptions reader_options;
-        reader_options.stream_id = stream_id;
-        reader_options.keyframe_first = false;
-        reader_options.reader_name = kServiceName;
-        const MediaFrameReaderId reader_id =
-            media_source_->AttachFrameReader(reader_options);
-        if (reader_id == 0) {
-            return track;
-        }
-
-        MediaFrameReaderStartData start_data =
-            media_source_->GetFrameReaderStartData(reader_id);
-        if (start_data.track.ready) {
-            track = start_data.track;
-        }
-        MediaFrameReaderStartDataUnref(&start_data);
-        (void)media_source_->DetachFrameReader(
-            reader_id, MediaFrameReaderCloseReason::kDetached);
-        return track;
+        return media_streams_->GetStreamInfo(stream_id);
     }
 
     bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession>& session,
@@ -568,10 +543,10 @@ private:
         std::string response_transport;
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
-            // 重新 SETUP 会切换 transport，必须先清掉旧 reader 和 UDP socket，
+            // 重新 SETUP 会切换 transport，必须先清掉旧 subscription 和 UDP socket，
             // 否则旧 transport 仍可能收到 drain timer 推送。
             CloseSessionResources(session,
-                                  MediaFrameReaderCloseReason::kDetached);
+                                  FrameSubscriptionCloseReason::kUnsubscribed);
             session->SetupTcp(stream_id, 0);
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=" +
@@ -590,7 +565,7 @@ private:
             // UDP 每个 session 独立绑定本地 RTP/RTCP 端口，响应里的 server_port
             // 必须来自实际 bind 结果，不能用配置端口推导。
             CloseSessionResources(session,
-                                  MediaFrameReaderCloseReason::kDetached);
+                                  FrameSubscriptionCloseReason::kUnsubscribed);
             UdpSocketId rtp_socket_id = 0;
             UdpSocketId rtcp_socket_id = 0;
             NetAddress server_rtp;
@@ -717,32 +692,33 @@ private:
 
     int StartRtspPlayback(
         const std::shared_ptr<RtspSession>& session) override {
-        if (session == nullptr || media_source_ == nullptr) {
+        if (session == nullptr || media_streams_ == nullptr) {
             return 500;
         }
-        if (!media_source_->IsStreamAvailable(session->stream_id)) {
+        if (!media_streams_->IsStreamAvailable(session->stream_id)) {
             return 404;
         }
-        CloseSessionReader(session, MediaFrameReaderCloseReason::kDetached);
-        // PLAY 才创建长期 reader，keyframe_first 让媒体链路优先给关键帧，
+        CloseSessionSubscription(session,
+                                 FrameSubscriptionCloseReason::kUnsubscribed);
+        // PLAY 才创建长期 subscription，keyframe_first 让媒体链路优先给关键帧，
         // 并把当前 GOP 作为 start frames 返回给本 session。
-        MediaFrameReaderOptions reader_options;
-        reader_options.stream_id = session->stream_id;
-        reader_options.keyframe_first = true;
-        reader_options.reader_name = kServiceName;
-        const MediaFrameReaderId reader_id =
-            media_source_->AttachFrameReader(reader_options);
-        if (reader_id == 0) {
+        FrameSubscriptionOptions subscription_options;
+        subscription_options.stream_id = session->stream_id;
+        subscription_options.keyframe_first = true;
+        subscription_options.subscriber_name = kServiceName;
+        const FrameSubscriptionId subscription_id =
+            media_streams_->SubscribeFrames(subscription_options);
+        if (subscription_id == 0) {
             return 455;
         }
-        MediaFrameReaderStartData start_data =
-            media_source_->GetFrameReaderStartData(reader_id);
-        if (!start_data.stream_running || !start_data.track.ready) {
-            // reader 创建成功但启动数据不可用，必须立刻 detach，避免空 reader
-            // 长期占用 media_source。
-            media_source_->DetachFrameReader(
-                reader_id, MediaFrameReaderCloseReason::kDetached);
-            MediaFrameReaderStartDataUnref(&start_data);
+        FrameSubscriptionStartData start_data =
+            media_streams_->GetFrameSubscriptionStartData(subscription_id);
+        if (!start_data.stream_info.track_ready) {
+            // subscription 创建成功但启动数据不可用，必须立刻 unsubscribe，
+            // 避免空 subscription 长期占用 media_streams。
+            media_streams_->UnsubscribeFrames(
+                subscription_id, FrameSubscriptionCloseReason::kUnsubscribed);
+            FrameSubscriptionStartDataUnref(&start_data);
             return 455;
         }
         const uint32_t play_rtp_timestamp =
@@ -750,12 +726,13 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             session->StartPlaying();
-            session->AttachReader(reader_id, start_data.reader_generation,
-                                  start_data.track);
+            session->AttachSubscription(subscription_id,
+                                        start_data.subscription_generation,
+                                        start_data.stream_info);
             session->SetPlayRtpTimestamp(play_rtp_timestamp);
             session->SetStartFrames(&start_data.gop_frames);
         }
-        MediaFrameReaderStartDataUnref(&start_data);
+        FrameSubscriptionStartDataUnref(&start_data);
         return 200;
     }
 
@@ -770,7 +747,8 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session = sessions_.Find(connection_id);
         }
-        CloseSessionResources(session, MediaFrameReaderCloseReason::kDetached);
+        CloseSessionResources(session,
+                              FrameSubscriptionCloseReason::kUnsubscribed);
         if (net_engine_ != nullptr) {
             (void)net_engine_->CloseAfterSend(connection_id);
         }
@@ -795,7 +773,7 @@ private:
         if (session == nullptr || net_engine_ == nullptr) {
             return;
         }
-        // drain timer 运行在 net IO loop 上，周期性从 media_source reader 拉帧；
+        // drain timer 运行在 net IO loop 上，周期性从 media_streams subscription 拉帧；
         // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
         if (net_executor_ == nullptr) {
             return;
@@ -805,15 +783,15 @@ private:
                 DrainSessionFrames(session);
             });
         if (timer_id == 0) {
-            MediaFrameReaderId reader_id = 0;
+            FrameSubscriptionId subscription_id = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                reader_id = session->reader_id;
-                session->DetachReader();
+                subscription_id = session->subscription_id;
+                session->DetachSubscription();
             }
-            // timer 创建失败时不能继续保留 reader，否则没有 drain 消费帧队列。
-            (void)media_source_->DetachFrameReader(
-                reader_id, MediaFrameReaderCloseReason::kDetached);
+            // timer 创建失败时不能继续保留 subscription，否则没有 drain 消费帧队列。
+            (void)media_streams_->UnsubscribeFrames(
+                subscription_id, FrameSubscriptionCloseReason::kUnsubscribed);
             return;
         }
         std::lock_guard<std::mutex> lock(mutex_);
@@ -821,37 +799,37 @@ private:
     }
 
     void DrainSessionFrames(const std::shared_ptr<RtspSession>& session) {
-        if (session == nullptr || media_source_ == nullptr) {
+        if (session == nullptr || media_streams_ == nullptr) {
             return;
         }
         if (!FlushSessionStartFrames(session)) {
             return;
         }
-        MediaFrameReaderId reader_id = 0;
+        FrameSubscriptionId subscription_id = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (session->state != RtspSessionState::kPlaying ||
-                !session->HasReader()) {
+                !session->HasSubscription()) {
                 return;
             }
-            reader_id = session->reader_id;
+            subscription_id = session->subscription_id;
         }
         for (uint32_t i = 0; i < kRtspMaxFramesPerDrain; ++i) {
-            MediaFrameReaderFrame reader_frame;
-            if (!media_source_->PopFrameReaderFrame(reader_id,
-                                                    &reader_frame)) {
+            SubscribedFrame subscribed_frame;
+            if (!media_streams_->PopSubscribedFrame(subscription_id,
+                                                    &subscribed_frame)) {
                 break;
             }
             // Pop 出来的 frame 带引用，发送路径只在本次调用内使用；
             // SendMediaFrame 返回后必须 unref。
-            SendMediaFrame(session, reader_frame.frame);
-            MediaFrameReaderFrameUnref(&reader_frame);
+            SendMediaFrame(session, subscribed_frame.frame);
+            SubscribedFrameUnref(&subscribed_frame);
         }
     }
 
     bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session) {
         while (true) {
-            MediaFrame frame;
+            EncodedFrame frame;
             bool has_frame = false;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -862,7 +840,7 @@ private:
                 if (!session->start_frames.empty()) {
                     // Move 后 vector 中的原 frame 被置空，锁外发送可以缩短 RTSP mutex
                     // 持有时间，避免发送慢客户端时阻塞其它控制请求。
-                    (void)MediaFrameMove(&frame, &session->start_frames.front());
+                    (void)EncodedFrameMove(&frame, &session->start_frames.front());
                     session->start_frames.erase(session->start_frames.begin());
                     has_frame = true;
                 }
@@ -871,36 +849,36 @@ private:
                 return true;
             }
             SendMediaFrame(session, frame);
-            MediaFrameUnref(&frame);
+            EncodedFrameUnref(&frame);
         }
     }
 
     void SendMediaFrame(const std::shared_ptr<RtspSession>& session,
-                        const MediaFrame& frame) {
+                        const EncodedFrame& frame) {
         bool should_send = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             should_send = session != nullptr &&
                           session->state == RtspSessionState::kPlaying &&
-                          session->HasReader() &&
+                          session->HasSubscription() &&
                           frame.stream_id == session->stream_id &&
-                          frame.codec == session->track.codec;
+                          frame.codec == session->stream_info.codec;
         }
         if (should_send) {
             // SendFrame 内部会再次读取 transport 和统计字段；这里先过滤 stream/codec，
-            // 防止旧 reader 或错误码流的数据进入当前 session。
-            rtp_sender_.SendFrame(session, frame.encoded_frame,
+            // 防止旧 subscription 或错误码流的数据进入当前 session。
+            rtp_sender_.SendFrame(session, frame,
                                   RtpSenderContext());
         }
     }
 
     void CloseSessionResources(
         const std::shared_ptr<RtspSession>& session,
-        MediaFrameReaderCloseReason reason) {
+        FrameSubscriptionCloseReason reason) {
         if (session == nullptr) {
             return;
         }
-        CloseSessionReader(session, reason);
+        CloseSessionSubscription(session, reason);
         CloseSessionUdp(session);
     }
 
@@ -929,27 +907,28 @@ private:
         }
     }
 
-    void CloseSessionReader(const std::shared_ptr<RtspSession>& session,
-                            MediaFrameReaderCloseReason reason) {
+    void CloseSessionSubscription(const std::shared_ptr<RtspSession>& session,
+                                  FrameSubscriptionCloseReason reason) {
         if (session == nullptr) {
             return;
         }
-        MediaFrameReaderId reader_id = 0;
+        FrameSubscriptionId subscription_id = 0;
         NetTimerId drain_timer_id = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            reader_id = session->reader_id;
+            subscription_id = session->subscription_id;
             drain_timer_id = session->drain_timer_id;
-            session->DetachReader();
+            session->DetachSubscription();
             session->ClearDrainTimer();
         }
-        // 先取消 drain timer，再 detach reader。timer 若已在执行，EventLoop 的
-        // cancelled 标记会阻止下一次触发；reader_id 清零后本次执行也会快速退出。
+        // 先取消 drain timer，再 unsubscribe subscription。timer 若已在执行，
+        // EventLoop 的 cancelled 标记会阻止下一次触发；subscription_id 清零后
+        // 本次执行也会快速退出。
         if (net_executor_ != nullptr && drain_timer_id != 0) {
             (void)net_executor_->CancelTimer(drain_timer_id);
         }
-        if (media_source_ != nullptr && reader_id != 0) {
-            (void)media_source_->DetachFrameReader(reader_id, reason);
+        if (media_streams_ != nullptr && subscription_id != 0) {
+            (void)media_streams_->UnsubscribeFrames(subscription_id, reason);
         }
     }
 
@@ -966,7 +945,7 @@ private:
     INetExecutor *net_executor_ = nullptr;
     IAuth* auth_ = nullptr;
     IEvent* event_ = nullptr;
-    IMediaFrameSource* media_source_ = nullptr;
+    MediaStreams* media_streams_ = nullptr;
     RtspRtpSender rtp_sender_;
     RtspAuth rtsp_auth_;
     RtspRequestHandler request_handler_;

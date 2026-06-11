@@ -106,18 +106,17 @@ void RtspRequestHandler::HandleDescribe(
     const std::shared_ptr<RtspSession> &session,
     const rtsp_internal::RtspRequest &request, StreamId stream_id) {
   session->MarkDescribed(stream_id);
-  // DESCRIBE 只生成 SDP，不创建长期 reader。track 未 ready 返回 455，
+  // DESCRIBE 只生成 SDP，不创建长期 subscription。stream_info 未 ready 返回 455，
   // 让客户端稍后重试，而不是暴露一个无法播放的 SDP。
-  MediaTrack track = delegate_->RtspTrackForStream(stream_id);
-  if (!track.ready) {
+  MediaStreamInfo stream_info = delegate_->RtspStreamInfoForStream(stream_id);
+  if (!stream_info.track_ready) {
     Error(kRtspRequestHandlerModule,
           "RTSP describe stream not ready uri=%s", request.uri.c_str());
     SendResponse(session->connection_id, 455, request, {}, "");
     return;
   }
-  track.stream_id = stream_id;
   const std::string sdp = RtspMuxer::BuildSdp(delegate_->RtspLocalAddress(),
-                                              track);
+                                              stream_id, stream_info);
   SendResponse(session->connection_id, 200, request,
                {{"Content-Type", "application/sdp"},
                 {"Content-Base", request.uri}},
@@ -131,7 +130,7 @@ void RtspRequestHandler::HandlePlay(
     SendResponse(session->connection_id, 455, request, {}, "");
     return;
   }
-  // StartRtspPlayback 会 attach keyframe_first reader 并准备启动 GOP；
+  // StartRtspPlayback 会 attach keyframe_first subscription 并准备启动 GOP；
   // 200 响应发出后才 arm drain timer，避免客户端未收到 PLAY 成功就收到 RTP。
   const int playback_status = delegate_->StartRtspPlayback(session);
   if (playback_status != 200) {

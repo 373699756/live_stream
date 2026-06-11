@@ -90,7 +90,7 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
     return;
   }
 
-  // 每个 RTSP session 必须从关键帧开始；如果 reader 溢出后重新等待关键帧，
+  // 每个 RTSP session 必须从关键帧开始；如果 subscription 溢出后重新等待关键帧，
   // 非关键帧直接丢弃，避免客户端解码参考帧缺失。
   bool should_drop = false;
   {
@@ -158,7 +158,7 @@ bool RtspRtpSender::SendRtpPacketView(
       context.net_engine, target, frame, packet);
   if (!sent) {
     // 发送失败通常表示 TCP 队列满、连接关闭或 UDP socket 不可用。这里按慢客户端
-    // 处理并关闭控制连接，让 CloseSessionResources 释放 reader/UDP socket。
+    // 处理并关闭控制连接，让 CloseSessionResources 释放 subscription/UDP socket。
     {
       std::lock_guard<std::mutex> lock(*context.mutex);
       ++session->stats.dropped_frames;

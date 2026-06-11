@@ -45,7 +45,7 @@ void RtspSession::MarkDescribed(StreamId next_stream_id) {
 
 void RtspSession::SetupTcp(StreamId next_stream_id,
                            uint8_t next_interleaved_rtp_channel) {
-  // SETUP 只把控制连接推进到 Ready；真正的 media reader 在 PLAY 时创建，
+  // SETUP 只把控制连接推进到 Ready；真正的 media subscription 在 PLAY 时创建，
   // 避免客户端只 SETUP 不 PLAY 时占用帧队列。
   stream_id = next_stream_id;
   state = RtspSessionState::kReady;
@@ -104,32 +104,33 @@ void RtspSession::StartPlaying() {
   stats.transport = transport;
 }
 
-void RtspSession::AttachReader(MediaFrameReaderId next_reader_id,
-                               uint64_t next_reader_generation,
-                               MediaTrack next_track) {
-  // reader_generation 来自 media_source，用于后续诊断和防止旧 reader 状态混入
+void RtspSession::AttachSubscription(
+    FrameSubscriptionId next_subscription_id,
+    uint64_t next_subscription_generation,
+    MediaStreamInfo next_stream_info) {
+  // subscription_generation 来自 media_streams，用于后续诊断和防止旧订阅状态混入
   // 新一轮播放；RTSP 自己不维护 GOP cache。
-  reader_id = next_reader_id;
-  reader_generation = next_reader_generation;
-  track = std::move(next_track);
+  subscription_id = next_subscription_id;
+  subscription_generation = next_subscription_generation;
+  stream_info = std::move(next_stream_info);
   keyframe_seen = false;
 }
 
-void RtspSession::DetachReader() {
-  reader_id = 0;
-  reader_generation = 0;
-  track = MediaTrack{};
+void RtspSession::DetachSubscription() {
+  subscription_id = 0;
+  subscription_generation = 0;
+  stream_info = MediaStreamInfo{};
   keyframe_seen = false;
   play_rtp_timestamp = 0;
   ClearStartFrames();
 }
 
-bool RtspSession::HasReader() const {
-  return reader_id != 0;
+bool RtspSession::HasSubscription() const {
+  return subscription_id != 0;
 }
 
-void RtspSession::SetStartFrames(std::vector<MediaFrame> *frames) {
-  // Start frames 是 PLAY 时 media_source 返回的启动 GOP，只在首轮 drain 中发送，
+void RtspSession::SetStartFrames(std::vector<EncodedFrame> *frames) {
+  // Start frames 是 PLAY 时 media_streams 返回的启动 GOP，只在首轮 drain 中发送，
   // 发送后立即 unref，不在 RTSP session 中长期缓存。
   ClearStartFrames();
   if (frames != nullptr) {
@@ -142,8 +143,8 @@ void RtspSession::SetPlayRtpTimestamp(uint32_t timestamp) {
 }
 
 void RtspSession::ClearStartFrames() {
-  for (MediaFrame &frame : start_frames) {
-    MediaFrameUnref(&frame);
+  for (EncodedFrame &frame : start_frames) {
+    EncodedFrameUnref(&frame);
   }
   start_frames.clear();
 }

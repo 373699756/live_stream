@@ -20,22 +20,23 @@ rtp::Codec RtpCodecFromCodec(Codec codec) {
 }  // namespace
 
 std::string RtspMuxer::BuildSdp(const RtspListenAddress &address,
-                                const MediaTrack &track) {
-    const uint8_t payload_type =
-        rtp::RtpPayloadTypeForCodec(RtpCodecFromCodec(track.codec));
+                                StreamId stream_id,
+                                const MediaStreamInfo &stream_info) {
+    const uint8_t payload_type = rtp::RtpPayloadTypeForCodec(
+        RtpCodecFromCodec(stream_info.codec));
     std::ostringstream sdp;
     sdp << "v=0\r\n";
     sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";
     sdp << "s=live_stream\r\n";
     sdp << "c=IN IP4 0.0.0.0\r\n";
     sdp << "t=0 0\r\n";
-    sdp << "a=control:" << rtsp_internal::StreamPath(track.stream_id)
+    sdp << "a=control:" << rtsp_internal::StreamPath(stream_id)
         << "\r\n";
     sdp << "m=video 0 RTP/AVP " << static_cast<int>(payload_type) << "\r\n";
     sdp << "a=rtpmap:" << static_cast<int>(payload_type) << " "
-        << RtpEncodingName(track.codec) << "/"
-        << (track.clock_rate != 0 ? track.clock_rate
-                                  : rtp::kRtpClockRate)
+        << RtpEncodingName(stream_info.codec) << "/"
+        << (stream_info.clock_rate != 0 ? stream_info.clock_rate
+                                        : rtp::kRtpClockRate)
         << "\r\n";
     sdp << "a=control:trackID=0\r\n";
     return sdp.str();

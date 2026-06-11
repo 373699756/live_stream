@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_RTSP_SRC_RTSP_REQUEST_HANDLER_H_
 #define LIVE_STREAM_RTSP_SRC_RTSP_REQUEST_HANDLER_H_
 
+#include "media/media_streams.h"
 #include "rtsp_protocol.h"
 #include "rtsp_session.h"
 
@@ -14,10 +15,10 @@ class IRtspRequestHandlerDelegate {
  public:
   virtual ~IRtspRequestHandlerDelegate() = default;
 
-  // Delegate 负责所有跨模块动作：媒体状态、认证、transport、reader 和网络发送。
+  // Delegate 负责所有跨模块动作：媒体状态、认证、transport、subscription 和网络发送。
   // RtspRequestHandler 只解析 RTSP 方法并维护协议状态码。
   virtual bool IsRtspStreamAvailable(StreamId stream_id) const = 0;
-  virtual MediaTrack RtspTrackForStream(StreamId stream_id) const = 0;
+  virtual MediaStreamInfo RtspStreamInfoForStream(StreamId stream_id) const = 0;
   virtual bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession> &session,
                                     const rtsp_internal::RtspRequest &request,
                                     StreamId stream_id) = 0;

@@ -6,8 +6,8 @@
 
 ## 模块定位
 
-`rtsp` 负责 RTSP protocol、session、认证和通过 `IMediaFrameSource`
-reader 拉取视频帧。它不拥有 WebRTC signaling、HTTP API 路由或 ONVIF
+`rtsp` 负责 RTSP protocol、session、认证和通过 `MediaStreams`
+subscription 拉取视频帧。它不拥有 WebRTC signaling、HTTP API 路由或 ONVIF
 metadata。
 
 ## 总体框架图
@@ -18,12 +18,12 @@ flowchart LR
   RTSP --> Net[net]
   RTSP --> Auth[auth]
   RTSP --> Events[event]
-  RTSP --> Reader[MediaFrameReader]
+  RTSP --> Subscription[FrameSubscription]
   RTSP --> Mux[RtpPacketizer/RtspMuxer]
-  RTSP --> Source[IMediaFrameSource/media_pipeline]
-  Reader --> Source
+  RTSP --> Source[MediaStreams/media]
+  Subscription --> Source
   Mux --> Net
-  Source --> Media[media_source]
+  Source --> Media[media]
 ```
 
 ## 核心职责
@@ -31,9 +31,9 @@ flowchart LR
 - 监听 RTSP 端口并管理 sessions。
 - 处理 DESCRIBE/SETUP/PLAY/TEARDOWN 等 RTSP 控制。
 - 通过认证服务保护 RTSP 访问。
-- DESCRIBE 只在 `MediaTrack.ready=true` 时生成 SDP；stream 不存在返回 404，
-  stream 存在但媒体 track 尚未 ready 返回 455。
-- PLAY 后为 session 创建 `MediaFrameReader`，先输出启动 GOP，再拉取 live
+- DESCRIBE 只在 `MediaStreamInfo.track_ready=true` 时生成 SDP；stream 不存在返回 404，
+  stream 存在但媒体流尚未 ready 返回 455。
+- PLAY 后为 session 创建 `FrameSubscription`，先输出启动 GOP，再拉取 live
   frame 并通过 `rtp::RtpPacketizer` 输出 RTP。
 - SETUP 绑定 TCP interleaved 或 session 私有 UDP RTP/RTCP transport。
 
@@ -53,18 +53,18 @@ codec。`rtsp.port` 和 `rtsp.max_sessions` 参与 TCP listener 和 Net 层连�
 ## 状态与资源模型
 
 RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
-`MediaFrameReaderId`、RTP sequence/SSRC 和发送统计。PLAY 后必须通过
-`AttachFrameReader(keyframe_first=true)` 进入 reader 模型：
+`FrameSubscriptionId`、RTP sequence/SSRC 和发送统计。PLAY 后必须通过
+`SubscribeFrames(keyframe_first=true)` 进入 subscription 模型：
 
-- `GetFrameReaderStartData` 返回的当前 GOP 只作为启动待发送帧临时持有，
+- `GetFrameSubscriptionStartData` 返回的当前 GOP 只作为启动待发送帧临时持有，
   发送后立即释放，不在 RTSP 内部维护私有 GOP cache。
-- live frame 通过 `PopFrameReaderFrame` 拉取，RTSP 不再注册全局
+- live frame 通过 `PopSubscribedFrame` 拉取，RTSP 不再注册全局
   `AttachFrameSink` fanout。
 - TCP interleaved 与控制连接绑定；UDP SETUP 为该 session 创建 RTP 和 RTCP
   socket。RTCP receiver report 当前只记录收包数量、字节数和最后接收时间，用于诊断；
   不根据 receiver report 做码率控制或断连决策。
 - TEARDOWN、控制连接断开、SETUP 切换 transport 或服务停止时必须取消发送
-  timer、detach reader，并关闭 session 私有 UDP socket。
+  timer、detach subscription，并关闭 session 私有 UDP socket。
 
 RTP 分片统一使用 `rtp::RtpPacketizer`。发送层只负责把
 `RtpPacketView` 转成 TCP interleaved 或 UDP datagram。TCP interleaved 提交
@@ -80,13 +80,13 @@ interleaved header slice 和 RTP packet view，media payload slice 异步发送�
 | `stream` | `main` 或 `sub` |
 | `transport` | `tcp_interleaved` 或 `udp` |
 | `remote_address` / `local_address` | 控制连接地址 |
-| `reader_id` | 当前 `MediaFrameReaderId`，未 PLAY 时为 0 |
-| `reader_attached` | reader 当前是否仍挂在 `media_source` |
-| `reader_generation` | reader 所在 GOP/cache generation |
-| `reader_pending_frames` | reader live queue 中待发送帧数 |
-| `reader_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
-| `reader_slow` | reader live queue 是否发生过溢出 |
-| `reader_close_reason` | reader 最近一次 reset/overflow 原因 |
+| `reader_id` | 当前 `FrameSubscriptionId`，未 PLAY 时为 0 |
+| `reader_attached` | subscription 当前是否仍挂在 `MediaStreams` |
+| `reader_generation` | subscription 所在 GOP/cache generation |
+| `reader_pending_frames` | subscription live queue 中待发送帧数 |
+| `reader_waiting_keyframe` | 慢 subscriber、reset 或 keyframe-first 后是否等待关键帧 |
+| `reader_slow` | subscription live queue 是否发生过溢出 |
+| `reader_close_reason` | subscription 最近一次 reset/overflow 原因 |
 | `pending_bytes` | TCP interleaved 发送积压字节数，UDP session 为 0 或诊断值 |
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
 | `rtcp_packets` / `rtcp_bytes` | 已收到 RTCP 统计 |
@@ -105,8 +105,8 @@ HLS/FLV/MJPEG/WebRTC ready 状态。
 
 ## 风险与优化方向
 
-- RTSP 客户端断开必须及时 detach reader，`media_source` 的 reader count 应回落。
-- reader 溢出时会由 `media_source` 标记 slow reader 并等待下一个关键帧；
+- RTSP 客户端断开必须及时 detach subscription，`MediaStreams` 的 subscription count 应回落。
+- subscription 溢出时会由 `MediaStreams` 标记 slow subscriber 并等待下一个关键帧；
   RTSP 只维护协议统计和连接状态，不触发降码率、降帧率、切子码流等自适应策略。
-- 关键帧请求由 `AttachFrameReader(keyframe_first=true)` 触发媒体链路，
+- 关键帧请求由 `SubscribeFrames(keyframe_first=true)` 触发媒体链路，
   RTSP 不额外维护关键帧调试开关。
