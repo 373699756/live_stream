@@ -58,7 +58,7 @@ struct AuthPrincipal {
 };
 
 /**
- * @brief 用户存储记录。
+ * @brief 认证用户记录。
  *
  * password_credential 是密码校验器可理解的不透明凭据。当前生产格式固定为
  * pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>；auth 不会把它写入日志或审计。
@@ -182,11 +182,11 @@ public:
 };
 
 /**
- * @brief 用户存储接口。
+ * @brief 认证用户集合接口。
  */
-class IAuthUserStore {
+class IAuthUsers {
 public:
-    virtual ~IAuthUserStore() = default;
+    virtual ~IAuthUsers() = default;
 
     virtual AuthUserRecord FindUser(
         const std::string& user_name) = 0;
@@ -244,19 +244,19 @@ public:
     virtual AuthStats GetStats() const { return AuthStats{}; }
 };
 
-enum class AuthUserStoreKind {
+enum class AuthUsersKind {
     kMemory = 0,
     kConfig,
 };
 
-struct AuthUserStoreOptions {
-    AuthUserStoreKind kind = AuthUserStoreKind::kMemory;
+struct AuthUsersOptions {
+    AuthUsersKind kind = AuthUsersKind::kMemory;
     std::vector<AuthUserRecord> users;
     std::string config_path;
 };
 
-std::unique_ptr<IAuthUserStore> CreateAuthUserStore(
-    const AuthUserStoreOptions& options);
+std::unique_ptr<IAuthUsers> CreateAuthUsers(
+    const AuthUsersOptions& options);
 
 enum class PasswordVerifierKind {
     kPlainText = 0,
@@ -271,13 +271,13 @@ std::unique_ptr<IPasswordVerifier> CreatePasswordVerifier(
  */
 std::unique_ptr<IAuth> CreateAuth(
     const AuthOptions& options,
-    std::unique_ptr<IAuthUserStore> user_store,
+    std::unique_ptr<IAuthUsers> auth_users,
     std::unique_ptr<IPasswordVerifier> password_verifier);
 
 std::unique_ptr<IAuth> CreateAuth(
     const AuthOptions& options,
     const AuthDependencies& dependencies,
-    std::unique_ptr<IAuthUserStore> user_store,
+    std::unique_ptr<IAuthUsers> auth_users,
     std::unique_ptr<IPasswordVerifier> password_verifier,
     IAuthTokenGenerator* token_generator = nullptr);
 

@@ -180,7 +180,7 @@ unsubscribe subscription、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，
 HTTP DELETE、WHEP DELETE、ICE 异常和 service stop 都不得各自释放一半资源。
 `PLI`/`FIR` 必须调用 `media_streams.RequestKeyFrame()`；`NACK`/`TWCC` 只识别和记录，
 首版不实现重传或拥塞控制。
-`net_adaptive` 只通过 public stats/diagnostics 观察 WebRTC 网络压力，不注入
+`net_stat` 只通过 public stats/diagnostics 观察 WebRTC 网络压力，不注入
 WebRTC 模块，也不替代 PLI/FIR/NACK/TWCC 这类协议反馈。
 
 ## 非目标

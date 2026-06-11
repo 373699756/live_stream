@@ -8,7 +8,7 @@
 #include "http.h"
 #include "infra/executor.h"
 #include "net.h"
-#include "net_adaptive.h"
+#include "net_stat.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "webrtc.h"
@@ -62,7 +62,7 @@ private:
     std::unique_ptr<IWebrtc> webrtc_;
     std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttp> http_;
-    std::unique_ptr<INetAdaptive> net_adaptive_;
+    std::unique_ptr<INetStat> net_stat_;
     IConfig *config_ = nullptr;
     INetworkConfig *network_config_ = nullptr;
     AppRuntimeConfig runtime_config_;

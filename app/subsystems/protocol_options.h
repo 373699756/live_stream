@@ -7,7 +7,7 @@
 #include "http.h"
 #include "infra/executor.h"
 #include "net.h"
-#include "net_adaptive.h"
+#include "net_stat.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "webrtc.h"
@@ -32,8 +32,8 @@ OnvifServerDependencies BuildOnvifDependencies(
 HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config);
 HttpDependencies BuildHttpDependencies(const ProtocolRuntimeRefs &refs);
 
-NetAdaptiveOptions BuildNetAdaptiveOptions();
-NetAdaptiveDependencies BuildNetAdaptiveDependencies(
+NetStatOptions BuildNetStatOptions();
+NetStatDependencies BuildNetStatDependencies(
     const ProtocolRuntimeRefs &refs);
 
 }  // namespace live_stream

@@ -15,8 +15,8 @@
 flowchart LR
   Auth[auth audit sink] --> Logger[logger]
   HTTP[HTTP operation handlers] --> Logger
-  Logger --> Store[file_operation_log_store]
-  Store --> File[log/operation.log or /data/operation.log]
+  Logger --> OperationLog[file_operation_log]
+  OperationLog --> File[log/operation.log or /data/operation.log]
   Web[www LogsPage] --> HTTP[http operations API]
   HTTP --> Logger
 ```
@@ -35,7 +35,7 @@ public API 在 `logger.h`。`OperationAction` 和 `OperationResult` 是操作
 
 ## 状态与资源模型
 
-日志存储是文件资源，路径由 app 启动配置决定。写入失败只能影响审计记录，不应阻断
+操作日志是文件资源，路径由 app 启动配置决定。写入失败只能影响审计记录，不应阻断
 核心媒体链路。
 
 ## 非目标

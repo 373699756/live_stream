@@ -1,4 +1,4 @@
-MODULE_NAME := net_adaptive
+MODULE_NAME := net_stat
 .DEFAULT_GOAL := all
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include

@@ -1,4 +1,4 @@
-#include "net_adaptive.h"
+#include "net_stat.h"
 
 #include "infra/log.h"
 #include "infra/time.h"
@@ -20,7 +20,7 @@
 namespace live_stream {
 namespace {
 
-constexpr const char *kServiceName = "net_adaptive";
+constexpr const char *kServiceName = "net_stat";
 constexpr size_t kMaxRecommendations = 16;
 constexpr uint32_t kEwmaNumerator = 3;
 constexpr uint32_t kEwmaDenominator = 4;
@@ -33,8 +33,7 @@ enum class PressureMetric {
     kWebrtcDroppedFrames,
 };
 
-NetAdaptivePressureLevel MaxLevel(NetAdaptivePressureLevel left,
-                                  NetAdaptivePressureLevel right) {
+NetPressureLevel MaxLevel(NetPressureLevel left, NetPressureLevel right) {
     return static_cast<int>(left) >= static_cast<int>(right) ? left : right;
 }
 
@@ -42,7 +41,7 @@ std::string StreamIdName(StreamId stream_id) {
     return stream_id == StreamId::kSub ? "sub" : "main";
 }
 
-std::string StreamDecisionKey(StreamId stream_id) {
+std::string StreamPressureKey(StreamId stream_id) {
     return StreamIdName(stream_id);
 }
 
@@ -54,18 +53,18 @@ std::string TargetKey(const std::string &key_prefix,
            StreamIdName(stream_id);
 }
 
-NetAdaptivePressureSignal SignalForMetric(PressureMetric metric) {
+NetPressureSignal SignalForMetric(PressureMetric metric) {
     switch (metric) {
         case PressureMetric::kPendingBytes:
-            return NetAdaptivePressureSignal::kTcpPendingBytes;
+            return NetPressureSignal::kTcpPendingBytes;
         case PressureMetric::kSendQueue:
-            return NetAdaptivePressureSignal::kSendQueue;
+            return NetPressureSignal::kSendQueue;
         case PressureMetric::kSlowReaders:
-            return NetAdaptivePressureSignal::kMediaSlowReader;
+            return NetPressureSignal::kMediaSlowReader;
         case PressureMetric::kWebrtcDroppedFrames:
-            return NetAdaptivePressureSignal::kWebrtcDroppedFrames;
+            return NetPressureSignal::kWebrtcDroppedFrames;
     }
-    return NetAdaptivePressureSignal::kNone;
+    return NetPressureSignal::kNone;
 }
 
 struct ObservedTargetState {
@@ -73,8 +72,7 @@ struct ObservedTargetState {
     std::string protocol;
     std::string target;
     StreamId stream_id = StreamId::kMain;
-    NetAdaptivePressureSignal pressure_signal =
-        NetAdaptivePressureSignal::kNone;
+    NetPressureSignal pressure_signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
     uint32_t pressure_value_ewma = 0;
     uint32_t pending_bytes = 0;
@@ -86,22 +84,21 @@ struct ObservedTargetState {
     int64_t normal_since_ms = 0;
     int64_t last_seen_ms = 0;
     int64_t last_recommendation_ms = 0;
-    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+    NetPressureLevel level = NetPressureLevel::kNormal;
 };
 
 }  // namespace
 
-class NetAdaptiveImpl final : public INetAdaptive {
+class NetStatImpl final : public INetStat {
 public:
-    NetAdaptiveImpl(NetAdaptiveOptions options,
-                    NetAdaptiveDependencies dependencies)
+    NetStatImpl(NetStatOptions options, NetStatDependencies dependencies)
         : options_(std::move(options)),
           net_engine_(dependencies.net_engine),
           rtsp_(dependencies.rtsp),
           webrtc_(dependencies.webrtc),
           media_streams_(dependencies.media_streams) {}
 
-    ~NetAdaptiveImpl() override { StopInternal(); }
+    ~NetStatImpl() override { StopInternal(); }
 
     bool Start() override {
         if (started_) {
@@ -121,7 +118,7 @@ public:
             stopping_ = false;
             stats_.enabled = true;
         }
-        sample_thread_ = std::thread(&NetAdaptiveImpl::SampleLoop, this);
+        sample_thread_ = std::thread(&NetStatImpl::SampleLoop, this);
         started_ = true;
         Info(kServiceName, "started interval_ms=%u",
              static_cast<unsigned>(options_.sample_interval_ms));
@@ -130,43 +127,43 @@ public:
 
     void Stop() override { StopInternal(); }
 
-    NetAdaptiveStats GetStats() const override {
+    NetStatSnapshot GetSnapshot() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         return stats_;
     }
 
-    std::vector<NetAdaptiveRecommendation>
+    std::vector<NetRecommendation>
     GetRecommendations() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         return recommendations_;
     }
 
-    std::vector<NetAdaptiveRecommendation>
+    std::vector<NetRecommendation>
     GetRecommendationHistory() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         return recommendation_history_;
     }
 
-    std::vector<NetAdaptiveTargetState>
-    GetTargetStates() const override {
+    std::vector<NetPressureTarget>
+    GetPressureTargets() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<NetAdaptiveTargetState> states;
-        states.reserve(target_states_.size());
+        std::vector<NetPressureTarget> pressure_targets;
+        pressure_targets.reserve(target_states_.size());
         for (const auto &entry : target_states_) {
-            states.push_back(ToPublicTargetState(entry.second));
+            pressure_targets.push_back(ToPressureTarget(entry.second));
         }
-        return states;
+        return pressure_targets;
     }
 
-    std::vector<NetAdaptiveStreamDecision>
-    GetStreamDecisions() const override {
+    std::vector<NetStreamPressure>
+    GetStreamPressures() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<NetAdaptiveStreamDecision> decisions;
-        decisions.reserve(stream_decisions_.size());
-        for (const auto &entry : stream_decisions_) {
-            decisions.push_back(entry.second);
+        std::vector<NetStreamPressure> pressures;
+        pressures.reserve(stream_pressures_.size());
+        for (const auto &entry : stream_pressures_) {
+            pressures.push_back(entry.second);
         }
-        return decisions;
+        return pressures;
     }
 
 private:
@@ -184,10 +181,10 @@ private:
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            stats_ = NetAdaptiveStats{};
+            stats_ = NetStatSnapshot{};
             recommendations_.clear();
             recommendation_history_.clear();
-            stream_decisions_.clear();
+            stream_pressures_.clear();
             stopping_ = false;
         }
         started_ = false;
@@ -209,8 +206,8 @@ private:
     }
 
     void Sample() {
-        NetAdaptiveStats next_stats;
-        std::vector<NetAdaptiveRecommendation> next_recommendations;
+        NetStatSnapshot next_stats;
+        std::vector<NetRecommendation> next_recommendations;
         const int64_t now_ms = infra::Time::MonotonicMillis();
         next_stats.enabled = options_.enabled;
 
@@ -222,7 +219,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ExpireIdleTargets(now_ms);
-            RebuildStreamDecisions(now_ms, &next_stats);
+            RebuildStreamPressures(now_ms, &next_stats);
             FillTargetStats(&next_stats);
             next_stats.samples = stats_.samples + 1;
             stats_ = next_stats;
@@ -232,8 +229,8 @@ private:
     }
 
     void SampleNet(int64_t now_ms,
-                   NetAdaptiveStats *stats,
-                   std::vector<NetAdaptiveRecommendation> *recommendations) {
+                   NetStatSnapshot *stats,
+                   std::vector<NetRecommendation> *recommendations) {
         if (net_engine_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
@@ -255,17 +252,17 @@ private:
                 continue;
             }
             stats->level = MaxLevel(stats->level, state->level);
-            if (state->level == NetAdaptivePressureLevel::kConstrained) {
+            if (state->level == NetPressureLevel::kConstrained) {
                 ++stats->constrained_connections;
                 AddRecommendationIfReady(recommendations,
                                   state,
-                                  NetAdaptiveRecommendationType::kCloseSlowClient,
+                                  NetRecommendationType::kCloseSlowClient,
                                   now_ms,
                                   RecommendationReason(*state, true));
-            } else if (state->level == NetAdaptivePressureLevel::kWatch) {
+            } else if (state->level == NetPressureLevel::kWatch) {
                 AddRecommendationIfReady(recommendations,
                                   state,
-                                  NetAdaptiveRecommendationType::kPreferSubStream,
+                                  NetRecommendationType::kPreferSubStream,
                                   now_ms,
                                   RecommendationReason(*state, false));
             }
@@ -284,8 +281,8 @@ private:
     }
 
     void SampleRtsp(int64_t now_ms,
-                    NetAdaptiveStats *stats,
-                    std::vector<NetAdaptiveRecommendation> *recommendations) {
+                    NetStatSnapshot *stats,
+                    std::vector<NetRecommendation> *recommendations) {
         if (rtsp_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
@@ -310,16 +307,16 @@ private:
                 continue;
             }
             stats->level = MaxLevel(stats->level, state->level);
-            if (state->level == NetAdaptivePressureLevel::kConstrained) {
+            if (state->level == NetPressureLevel::kConstrained) {
                 AddRecommendationIfReady(recommendations,
                                   state,
-                                  NetAdaptiveRecommendationType::kCloseSlowClient,
+                                  NetRecommendationType::kCloseSlowClient,
                                   now_ms,
                                   RecommendationReason(*state, true));
-            } else if (state->level == NetAdaptivePressureLevel::kWatch) {
+            } else if (state->level == NetPressureLevel::kWatch) {
                 AddRecommendationIfReady(recommendations,
                                   state,
-                                  NetAdaptiveRecommendationType::kPreferSubStream,
+                                  NetRecommendationType::kPreferSubStream,
                                   now_ms,
                                   RecommendationReason(*state, false));
             }
@@ -327,8 +324,8 @@ private:
     }
 
     void SampleWebrtc(int64_t now_ms,
-                      NetAdaptiveStats *stats,
-                      std::vector<NetAdaptiveRecommendation> *recommendations) {
+                      NetStatSnapshot *stats,
+                      std::vector<NetRecommendation> *recommendations) {
         if (webrtc_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
@@ -354,7 +351,7 @@ private:
                 stats->level = MaxLevel(stats->level, state->level);
                 AddRecommendationIfReady(recommendations,
                               state,
-                              NetAdaptiveRecommendationType::kRequestKeyFrame,
+                              NetRecommendationType::kRequestKeyFrame,
                               now_ms,
                               RecommendationReason(*state, false));
             }
@@ -373,8 +370,8 @@ private:
 
     void SampleMediaStreams(
         int64_t now_ms,
-        NetAdaptiveStats *stats,
-        std::vector<NetAdaptiveRecommendation> *recommendations) {
+        NetStatSnapshot *stats,
+        std::vector<NetRecommendation> *recommendations) {
         if (media_streams_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
@@ -394,8 +391,8 @@ private:
         int64_t now_ms,
         StreamId stream_id,
         uint32_t slow_subscriber_count,
-        NetAdaptiveStats *stats,
-        std::vector<NetAdaptiveRecommendation> *recommendations) {
+        NetStatSnapshot *stats,
+        std::vector<NetRecommendation> *recommendations) {
         if (stats == nullptr || recommendations == nullptr) {
             return;
         }
@@ -416,7 +413,7 @@ private:
             stats->level = MaxLevel(stats->level, state->level);
             AddRecommendationIfReady(recommendations,
                           state,
-                          NetAdaptiveRecommendationType::kRequestKeyFrame,
+                          NetRecommendationType::kRequestKeyFrame,
                           now_ms,
                           RecommendationReason(*state, false));
             return;
@@ -505,10 +502,10 @@ private:
 
         const uint32_t watch_threshold = WatchThreshold(metric);
         const uint32_t constrained_threshold = ConstrainedThreshold(metric);
-        const NetAdaptivePressureLevel previous_level = state.level;
+        const NetPressureLevel previous_level = state.level;
         if (constrained_threshold != 0 &&
             state.pressure_value_ewma >= constrained_threshold) {
-            state.level = NetAdaptivePressureLevel::kConstrained;
+            state.level = NetPressureLevel::kConstrained;
             ++state.consecutive_constrained_samples;
             ++state.consecutive_watch_samples;
             state.consecutive_normal_samples = 0;
@@ -518,7 +515,7 @@ private:
             }
         } else if (watch_threshold != 0 &&
                    state.pressure_value_ewma >= watch_threshold) {
-            state.level = NetAdaptivePressureLevel::kWatch;
+            state.level = NetPressureLevel::kWatch;
             state.consecutive_constrained_samples = 0;
             ++state.consecutive_watch_samples;
             state.consecutive_normal_samples = 0;
@@ -527,11 +524,11 @@ private:
                 state.pressure_started_at_ms = now_ms;
             }
         } else {
-            state.level = NetAdaptivePressureLevel::kNormal;
+            state.level = NetPressureLevel::kNormal;
             state.consecutive_constrained_samples = 0;
             state.consecutive_watch_samples = 0;
             ++state.consecutive_normal_samples;
-            if (previous_level != NetAdaptivePressureLevel::kNormal) {
+            if (previous_level != NetPressureLevel::kNormal) {
                 state.normal_since_ms = now_ms;
             }
             if (state.consecutive_normal_samples >=
@@ -596,28 +593,28 @@ private:
     std::string RecommendationReason(const ObservedTargetState &state,
                                      bool constrained) const {
         switch (state.pressure_signal) {
-            case NetAdaptivePressureSignal::kTcpPendingBytes:
+            case NetPressureSignal::kTcpPendingBytes:
                 return constrained ? "tcp_pending_bytes_high"
                                    : "tcp_pending_bytes_watch";
-            case NetAdaptivePressureSignal::kSendQueue:
+            case NetPressureSignal::kSendQueue:
                 return constrained ? "tcp_send_queue_high"
                                    : "tcp_send_queue_watch";
-            case NetAdaptivePressureSignal::kMediaSlowReader:
+            case NetPressureSignal::kMediaSlowReader:
                 return constrained ? "media_readers_constrained"
                                    : "media_reader_slow";
-            case NetAdaptivePressureSignal::kWebrtcDroppedFrames:
+            case NetPressureSignal::kWebrtcDroppedFrames:
                 return constrained ? "webrtc_frames_dropped_high"
                                    : "webrtc_frame_dropped";
-            case NetAdaptivePressureSignal::kNone:
+            case NetPressureSignal::kNone:
                 break;
         }
         return "pressure_observed";
     }
 
     void AddRecommendationIfReady(
-        std::vector<NetAdaptiveRecommendation> *recommendations,
+        std::vector<NetRecommendation> *recommendations,
         ObservedTargetState *state,
-        NetAdaptiveRecommendationType type,
+        NetRecommendationType type,
         int64_t now_ms,
         const std::string &reason) const {
         if (recommendations == nullptr ||
@@ -626,11 +623,11 @@ private:
             return;
         }
         const bool enough_constrained =
-            state->level == NetAdaptivePressureLevel::kConstrained &&
+            state->level == NetPressureLevel::kConstrained &&
             state->consecutive_constrained_samples >=
                 options_.constrained_sample_threshold;
         const bool enough_watch =
-            state->level == NetAdaptivePressureLevel::kWatch &&
+            state->level == NetPressureLevel::kWatch &&
             state->consecutive_watch_samples >= options_.watch_sample_threshold;
         if (!enough_constrained && !enough_watch) {
             return;
@@ -640,7 +637,7 @@ private:
                 static_cast<int64_t>(options_.recommendation_cooldown_ms)) {
             return;
         }
-        NetAdaptiveRecommendation recommendation;
+        NetRecommendation recommendation;
         recommendation.type = type;
         recommendation.level = state->level;
         recommendation.protocol = state->protocol;
@@ -662,12 +659,12 @@ private:
     }
 
     void AppendRecommendationHistory(
-        const std::vector<NetAdaptiveRecommendation> &recommendations) {
+        const std::vector<NetRecommendation> &recommendations) {
         if (recommendations.empty() ||
             options_.recommendation_history_limit == 0) {
             return;
         }
-        for (const NetAdaptiveRecommendation &recommendation :
+        for (const NetRecommendation &recommendation :
              recommendations) {
             recommendation_history_.push_back(recommendation);
         }
@@ -687,22 +684,22 @@ private:
         }
     }
 
-    void FillTargetStats(NetAdaptiveStats *stats) const {
+    void FillTargetStats(NetStatSnapshot *stats) const {
         if (stats == nullptr) {
             return;
         }
         stats->tracked_targets =
             static_cast<uint32_t>(target_states_.size());
-        stats->stream_decisions =
-            static_cast<uint32_t>(stream_decisions_.size());
+        stats->pressure_streams =
+            static_cast<uint32_t>(stream_pressures_.size());
         for (const auto &entry : target_states_) {
-            if (entry.second.level == NetAdaptivePressureLevel::kWatch) {
+            if (entry.second.level == NetPressureLevel::kWatch) {
                 ++stats->watch_targets;
             } else if (entry.second.level ==
-                       NetAdaptivePressureLevel::kConstrained) {
+                       NetPressureLevel::kConstrained) {
                 ++stats->constrained_targets;
             }
-            if (entry.second.level == NetAdaptivePressureLevel::kNormal &&
+            if (entry.second.level == NetPressureLevel::kNormal &&
                 entry.second.consecutive_normal_samples > 0 &&
                 entry.second.normal_since_ms != 0) {
                 ++stats->recovering_targets;
@@ -710,105 +707,108 @@ private:
         }
     }
 
-    void RebuildStreamDecisions(int64_t now_ms,
-                                NetAdaptiveStats *stats) {
-        std::map<std::string, NetAdaptiveStreamDecision> next_decisions;
+    void RebuildStreamPressures(int64_t now_ms,
+                                NetStatSnapshot *stats) {
+        std::map<std::string, NetStreamPressure> next_pressures;
         for (const auto &entry : target_states_) {
             const ObservedTargetState &target = entry.second;
-            NetAdaptiveStreamDecision &decision =
-                next_decisions[StreamDecisionKey(target.stream_id)];
-            if (decision.tracked_targets == 0) {
-                decision.stream_id = target.stream_id;
-                decision.updated_at_ms = now_ms;
-                decision.normal_since_ms = now_ms;
+            NetStreamPressure &stream_pressure =
+                next_pressures[StreamPressureKey(target.stream_id)];
+            if (stream_pressure.tracked_targets == 0) {
+                stream_pressure.stream_id = target.stream_id;
+                stream_pressure.updated_at_ms = now_ms;
+                stream_pressure.normal_since_ms = now_ms;
             }
-            ++decision.tracked_targets;
-            decision.level = MaxLevel(decision.level, target.level);
-            if (target.level == NetAdaptivePressureLevel::kWatch) {
-                ++decision.watch_targets;
-            } else if (target.level == NetAdaptivePressureLevel::kConstrained) {
-                ++decision.constrained_targets;
+            ++stream_pressure.tracked_targets;
+            stream_pressure.level =
+                MaxLevel(stream_pressure.level, target.level);
+            if (target.level == NetPressureLevel::kWatch) {
+                ++stream_pressure.watch_targets;
+            } else if (target.level == NetPressureLevel::kConstrained) {
+                ++stream_pressure.constrained_targets;
             }
-            decision.peak_pending_bytes_ewma =
-                std::max(decision.peak_pending_bytes_ewma,
+            stream_pressure.peak_pending_bytes_ewma =
+                std::max(stream_pressure.peak_pending_bytes_ewma,
                          target.pending_bytes_ewma);
-            decision.peak_pressure_value_ewma =
-                std::max(decision.peak_pressure_value_ewma,
+            stream_pressure.peak_pressure_value_ewma =
+                std::max(stream_pressure.peak_pressure_value_ewma,
                          target.pressure_value_ewma);
             if (target.pressure_signal ==
-                NetAdaptivePressureSignal::kMediaSlowReader) {
-                decision.slow_media_readers += target.pressure_value;
+                NetPressureSignal::kMediaSlowReader) {
+                stream_pressure.slow_media_readers += target.pressure_value;
             } else if (target.pressure_signal ==
-                       NetAdaptivePressureSignal::kWebrtcDroppedFrames) {
-                decision.webrtc_dropped_frames_delta += target.pressure_value;
+                       NetPressureSignal::kWebrtcDroppedFrames) {
+                stream_pressure.webrtc_dropped_frames_delta +=
+                    target.pressure_value;
             }
             if (target.pressure_started_at_ms != 0 &&
-                (decision.pressure_started_at_ms == 0 ||
+                (stream_pressure.pressure_started_at_ms == 0 ||
                  target.pressure_started_at_ms <
-                     decision.pressure_started_at_ms)) {
-                decision.pressure_started_at_ms =
+                     stream_pressure.pressure_started_at_ms)) {
+                stream_pressure.pressure_started_at_ms =
                     target.pressure_started_at_ms;
             }
             if (target.normal_since_ms == 0 ||
                 target.consecutive_normal_samples <
                     options_.recovery_sample_threshold) {
-                decision.normal_since_ms = 0;
-            } else if (decision.normal_since_ms != 0 &&
-                       target.normal_since_ms > decision.normal_since_ms) {
-                decision.normal_since_ms = target.normal_since_ms;
+                stream_pressure.normal_since_ms = 0;
+            } else if (stream_pressure.normal_since_ms != 0 &&
+                       target.normal_since_ms >
+                           stream_pressure.normal_since_ms) {
+                stream_pressure.normal_since_ms = target.normal_since_ms;
             }
         }
 
-        for (auto &entry : next_decisions) {
-            NetAdaptiveStreamDecision &decision = entry.second;
-            decision.should_request_key_frame =
-                decision.slow_media_readers > 0 ||
-                decision.webrtc_dropped_frames_delta > 0 ||
-                decision.level != NetAdaptivePressureLevel::kNormal;
-            decision.should_prefer_sub_stream =
-                decision.stream_id == StreamId::kMain &&
-                decision.level != NetAdaptivePressureLevel::kNormal;
-            decision.should_close_slow_clients =
-                decision.constrained_targets > 0;
-            decision.may_restore_main_stream =
-                decision.stream_id == StreamId::kMain &&
-                decision.level == NetAdaptivePressureLevel::kNormal &&
-                decision.tracked_targets > 0 &&
-                decision.normal_since_ms != 0;
-            decision.reason = StreamDecisionReason(decision);
+        for (auto &entry : next_pressures) {
+            NetStreamPressure &stream_pressure = entry.second;
+            stream_pressure.request_key_frame =
+                stream_pressure.slow_media_readers > 0 ||
+                stream_pressure.webrtc_dropped_frames_delta > 0 ||
+                stream_pressure.level != NetPressureLevel::kNormal;
+            stream_pressure.prefer_sub_stream =
+                stream_pressure.stream_id == StreamId::kMain &&
+                stream_pressure.level != NetPressureLevel::kNormal;
+            stream_pressure.close_slow_clients =
+                stream_pressure.constrained_targets > 0;
+            stream_pressure.can_restore_main_stream =
+                stream_pressure.stream_id == StreamId::kMain &&
+                stream_pressure.level == NetPressureLevel::kNormal &&
+                stream_pressure.tracked_targets > 0 &&
+                stream_pressure.normal_since_ms != 0;
+            stream_pressure.reason = StreamPressureReason(stream_pressure);
             if (stats != nullptr) {
-                stats->level = MaxLevel(stats->level, decision.level);
-                if (decision.may_restore_main_stream) {
+                stats->level = MaxLevel(stats->level, stream_pressure.level);
+                if (stream_pressure.can_restore_main_stream) {
                     ++stats->recovering_streams;
                 }
             }
         }
-        stream_decisions_ = std::move(next_decisions);
+        stream_pressures_ = std::move(next_pressures);
     }
 
-    std::string StreamDecisionReason(
-        const NetAdaptiveStreamDecision &decision) const {
-        if (decision.constrained_targets > 0) {
+    std::string StreamPressureReason(
+        const NetStreamPressure &stream_pressure) const {
+        if (stream_pressure.constrained_targets > 0) {
             return "stream_constrained_targets";
         }
-        if (decision.watch_targets > 0) {
+        if (stream_pressure.watch_targets > 0) {
             return "stream_watch_targets";
         }
-        if (decision.webrtc_dropped_frames_delta > 0) {
+        if (stream_pressure.webrtc_dropped_frames_delta > 0) {
             return "stream_webrtc_drops";
         }
-        if (decision.slow_media_readers > 0) {
+        if (stream_pressure.slow_media_readers > 0) {
             return "stream_slow_readers";
         }
-        if (decision.may_restore_main_stream) {
+        if (stream_pressure.can_restore_main_stream) {
             return "stream_recovered";
         }
         return "stream_normal";
     }
 
-    NetAdaptiveTargetState ToPublicTargetState(
+    NetPressureTarget ToPressureTarget(
         const ObservedTargetState &source) const {
-        NetAdaptiveTargetState target;
+        NetPressureTarget target;
         target.level = source.level;
         target.protocol = source.protocol;
         target.target = source.target;
@@ -829,7 +829,7 @@ private:
         return target;
     }
 
-    NetAdaptiveOptions options_;
+    NetStatOptions options_;
     INetEngine *net_engine_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
@@ -841,19 +841,19 @@ private:
     std::thread sample_thread_;
     std::condition_variable condition_;
     mutable std::mutex mutex_;
-    NetAdaptiveStats stats_;
-    std::vector<NetAdaptiveRecommendation> recommendations_;
-    std::vector<NetAdaptiveRecommendation> recommendation_history_;
-    std::map<std::string, NetAdaptiveStreamDecision> stream_decisions_;
+    NetStatSnapshot stats_;
+    std::vector<NetRecommendation> recommendations_;
+    std::vector<NetRecommendation> recommendation_history_;
+    std::map<std::string, NetStreamPressure> stream_pressures_;
 };
 
-std::unique_ptr<INetAdaptive> CreateNetAdaptive(
-    const NetAdaptiveOptions &options,
-    const NetAdaptiveDependencies &dependencies) {
-    return std::unique_ptr<INetAdaptive>(
-        new NetAdaptiveImpl(options, dependencies));
+std::unique_ptr<INetStat> CreateNetStat(
+    const NetStatOptions &options,
+    const NetStatDependencies &dependencies) {
+    return std::unique_ptr<INetStat>(
+        new NetStatImpl(options, dependencies));
 }
 
-const char *NetAdaptive::Name() { return kServiceName; }
+const char *NetStat::Name() { return kServiceName; }
 
 }  // namespace live_stream

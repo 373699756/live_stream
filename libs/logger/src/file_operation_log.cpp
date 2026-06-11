@@ -1,11 +1,11 @@
 /*
  * Copyright (c) 2026 CBinary
  * Author: CBinary
- * File: file_operation_log_store.cpp
+ * File: file_operation_log.cpp
  * Brief: Implements the JSON Lines file backend for operation audit records.
  */
 
-#include "operation_log_store.h"
+#include "operation_log.h"
 
 #include "infra/fs.h"
 #include "operation_record_codec.h"
@@ -54,10 +54,10 @@ std::vector<std::string> SplitLines(const std::string& content) {
 
 }  // namespace
 
-FileOperationLogStore::FileOperationLogStore(const LoggerConfig& config)
+FileOperationLog::FileOperationLog(const LoggerConfig& config)
     : config_(config) {}
 
-bool FileOperationLogStore::Open() {
+bool FileOperationLog::Open() {
     if (config_.operation_log_path.empty()) {
         return false;
     }
@@ -78,12 +78,12 @@ bool FileOperationLogStore::Open() {
     return true;
 }
 
-void FileOperationLogStore::Close() {
+void FileOperationLog::Close() {
     std::lock_guard<std::mutex> lock(mutex_);
     opened_ = false;
 }
 
-bool FileOperationLogStore::Append(const OperationRecord& record) {
+bool FileOperationLog::Append(const OperationRecord& record) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!opened_) {
         return false;
@@ -97,7 +97,7 @@ bool FileOperationLogStore::Append(const OperationRecord& record) {
                                EncodeOperationRecord(record));
 }
 
-std::vector<OperationRecord> FileOperationLogStore::Query(
+std::vector<OperationRecord> FileOperationLog::Query(
     const OperationLogQuery& query) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!opened_) {
@@ -136,7 +136,7 @@ std::vector<OperationRecord> FileOperationLogStore::Query(
     return records;
 }
 
-bool FileOperationLogStore::Export(
+bool FileOperationLog::Export(
     const OperationLogExportOptions& options) {
     if (options.output_path.empty()) {
         return false;
@@ -155,7 +155,7 @@ bool FileOperationLogStore::Export(
     return infra::File::WriteAll(options.output_path, output);
 }
 
-std::vector<std::string> FileOperationLogStore::LogPathsNewestFirst() const {
+std::vector<std::string> FileOperationLog::LogPathsNewestFirst() const {
     std::vector<std::string> paths;
     paths.push_back(config_.operation_log_path);
     for (uint32_t i = 1; i <= config_.max_rotate_files; ++i) {
@@ -164,7 +164,7 @@ std::vector<std::string> FileOperationLogStore::LogPathsNewestFirst() const {
     return paths;
 }
 
-bool FileOperationLogStore::RotateIfNeededLocked() {
+bool FileOperationLog::RotateIfNeededLocked() {
     uint64_t size = infra::File::Size(config_.operation_log_path);
     if (size == 0 && !infra::File::Exists(config_.operation_log_path)) {
         return true;

@@ -50,7 +50,7 @@ CXXFLAGS += -Ilibs/media/include
 CXXFLAGS += -Ilibs/media_codec/include
 CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
-CXXFLAGS += -Ilibs/net_adaptive/include
+CXXFLAGS += -Ilibs/net_stat/include
 CXXFLAGS += -Ilibs/ai/include
 CXXFLAGS += -Ilibs/device/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
@@ -80,7 +80,7 @@ MODULES := \
 	media \
 	device \
 	rtp \
-	net_adaptive \
+	net_stat \
 	rtsp \
 	webrtc \
 	onvif \

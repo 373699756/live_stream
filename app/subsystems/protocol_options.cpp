@@ -254,14 +254,14 @@ HttpDependencies BuildHttpDependencies(
     return dependencies;
 }
 
-NetAdaptiveOptions BuildNetAdaptiveOptions() {
-    NetAdaptiveOptions options;
+NetStatOptions BuildNetStatOptions() {
+    NetStatOptions options;
     return options;
 }
 
-NetAdaptiveDependencies BuildNetAdaptiveDependencies(
+NetStatDependencies BuildNetStatDependencies(
     const ProtocolRuntimeRefs &refs) {
-    NetAdaptiveDependencies dependencies;
+    NetStatDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.rtsp = refs.rtsp;
     dependencies.webrtc = refs.webrtc;

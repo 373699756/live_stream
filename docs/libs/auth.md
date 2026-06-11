@@ -7,18 +7,18 @@
 ## 模块定位
 
 `auth` 统一管理登录、token、session、权限和密码修改。它不拥有 HTTP
-路由、操作日志存储或 Web session UI。
+路由、操作日志文件或 Web session UI。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
   HTTP[http auth middleware] --> Auth[auth]
-  Auth --> Store[IAuthUserStore]
+  Auth --> Users[IAuthUsers]
   Auth --> Verifier[IPasswordVerifier]
   Auth --> Sessions[token/session table]
   Auth --> Audit[IAuthAuditSink]
-  Store --> ConfigUsers[configs/auth_users.json]
+  Users --> ConfigUsers[configs/auth_users.json]
   Audit --> Logger[logger]
 ```
 
@@ -41,7 +41,7 @@ public API 在 `auth.h`。HTTP 路由归 `http`，Web 认证状态归
 
 ## 状态与资源模型
 
-认证用户由 `IAuthUserStore` 持久化，当前 app 适配到 `configs/auth_users.json`。
+认证用户由 `IAuthUsers` 持久化，当前 app 适配到 `configs/auth_users.json`。
 session/token 表是进程内运行状态，受 TTL、最大 session 和锁定策略限制；重启后不作为
 持久登录凭据恢复。
 
@@ -54,4 +54,4 @@ session/token 表是进程内运行状态，受 TTL、最大 session 和锁定�
 
 - 审计记录不得包含敏感明文。
 - 权限点要按管理动作收敛，避免每个 handler 自行判断角色。
-- 用户存储变更必须保持 `auth_users.json` 向后兼容。
+- 认证用户变更必须保持 `auth_users.json` 向后兼容。

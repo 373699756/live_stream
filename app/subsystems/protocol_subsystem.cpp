@@ -164,14 +164,14 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
                    static_cast<unsigned>(http_address.port),
                    runtime_config.static_root.c_str());
 
-    const NetAdaptiveOptions net_adaptive_options =
-        BuildNetAdaptiveOptions();
-    const NetAdaptiveDependencies net_adaptive_dependencies =
-        BuildNetAdaptiveDependencies(refs);
-    net_adaptive_ =
-        CreateNetAdaptive(net_adaptive_options, net_adaptive_dependencies);
-    if (!net_adaptive_ || !net_adaptive_->Start()) {
-        Error("app", "Start net_adaptive failed");
+    const NetStatOptions net_stat_options =
+        BuildNetStatOptions();
+    const NetStatDependencies net_stat_dependencies =
+        BuildNetStatDependencies(refs);
+    net_stat_ =
+        CreateNetStat(net_stat_options, net_stat_dependencies);
+    if (!net_stat_ || !net_stat_->Start()) {
+        Error("app", "Start net_stat failed");
         Stop();
         return false;
     }
@@ -191,10 +191,10 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
 
 void ProtocolSubsystem::Stop() {
     DetachRuntimeConfigAttachments();
-    if (net_adaptive_) {
-        Info("app", "Stop net_adaptive begin");
-        net_adaptive_->Stop();
-        Info("app", "Stop net_adaptive done");
+    if (net_stat_) {
+        Info("app", "Stop net_stat begin");
+        net_stat_->Stop();
+        Info("app", "Stop net_stat done");
     }
     if (http_) {
         Info("app", "Stop http begin");
@@ -228,7 +228,7 @@ void ProtocolSubsystem::Stop() {
         Info("app", "Stop net callback executor done");
     }
     http_.reset();
-    net_adaptive_.reset();
+    net_stat_.reset();
     onvif_.reset();
     webrtc_.reset();
     rtsp_.reset();

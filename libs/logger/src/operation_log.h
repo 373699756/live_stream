@@ -1,12 +1,12 @@
 /*
  * Copyright (c) 2026 CBinary
  * Author: CBinary
- * File: operation_log_store.h
+ * File: operation_log.h
  * Brief: Defines internal operation audit storage interfaces.
  */
 
-#ifndef LIVE_STREAM_LOGGER_SERVICE_OPERATION_LOG_STORE_H_
-#define LIVE_STREAM_LOGGER_SERVICE_OPERATION_LOG_STORE_H_
+#ifndef LIVE_STREAM_LOGGER_OPERATION_LOG_H_
+#define LIVE_STREAM_LOGGER_OPERATION_LOG_H_
 
 #include "logger.h"
 
@@ -15,9 +15,9 @@
 
 namespace live_stream {
 
-class IOperationLogStore {
+class IOperationLog {
 public:
-    virtual ~IOperationLogStore() = default;
+    virtual ~IOperationLog() = default;
 
     virtual bool Open() = 0;
     virtual void Close() = 0;
@@ -27,9 +27,9 @@ public:
     virtual bool Export(const OperationLogExportOptions& options) = 0;
 };
 
-class FileOperationLogStore : public IOperationLogStore {
+class FileOperationLog : public IOperationLog {
 public:
-    explicit FileOperationLogStore(const LoggerConfig& config);
+    explicit FileOperationLog(const LoggerConfig& config);
 
     bool Open() override;
     void Close() override;
@@ -49,4 +49,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_LOGGER_SERVICE_OPERATION_LOG_STORE_H_
+#endif  // LIVE_STREAM_LOGGER_OPERATION_LOG_H_

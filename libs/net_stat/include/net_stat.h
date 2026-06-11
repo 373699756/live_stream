@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_ADAPTIVE_NET_ADAPTIVE_H_
-#define LIVE_STREAM_NET_ADAPTIVE_NET_ADAPTIVE_H_
+#ifndef LIVE_STREAM_NET_STAT_NET_STAT_H_
+#define LIVE_STREAM_NET_STAT_NET_STAT_H_
 
 #include "media/media_streams.h"
 
@@ -14,13 +14,13 @@ class IRtsp;
 class IWebrtc;
 class INetEngine;
 
-enum class NetAdaptivePressureLevel {
+enum class NetPressureLevel {
     kNormal = 0,
     kWatch,
     kConstrained,
 };
 
-enum class NetAdaptivePressureSignal {
+enum class NetPressureSignal {
     kNone = 0,
     kTcpPendingBytes,
     kSendQueue,
@@ -28,14 +28,14 @@ enum class NetAdaptivePressureSignal {
     kWebrtcDroppedFrames,
 };
 
-enum class NetAdaptiveRecommendationType {
+enum class NetRecommendationType {
     kNone = 0,
     kRequestKeyFrame,
     kPreferSubStream,
     kCloseSlowClient,
 };
 
-struct NetAdaptiveOptions {
+struct NetStatOptions {
     bool enabled = true;
     uint32_t sample_interval_ms = 1000;
     uint32_t pending_bytes_watch = 256 * 1024;
@@ -53,22 +53,21 @@ struct NetAdaptiveOptions {
     uint32_t recommendation_history_limit = 64;
 };
 
-struct NetAdaptiveDependencies {
+struct NetStatDependencies {
     INetEngine *net_engine = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
     MediaStreams *media_streams = nullptr;
 };
 
-struct NetAdaptiveRecommendation {
-    NetAdaptiveRecommendationType type = NetAdaptiveRecommendationType::kNone;
-    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+struct NetRecommendation {
+    NetRecommendationType type = NetRecommendationType::kNone;
+    NetPressureLevel level = NetPressureLevel::kNormal;
     std::string protocol;
     std::string target;
     StreamId stream_id = StreamId::kMain;
     std::string reason;
-    NetAdaptivePressureSignal pressure_signal =
-        NetAdaptivePressureSignal::kNone;
+    NetPressureSignal pressure_signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
     uint32_t pressure_value_ewma = 0;
     uint32_t pending_bytes = 0;
@@ -78,16 +77,16 @@ struct NetAdaptiveRecommendation {
     int64_t recommended_at_ms = 0;
 };
 
-struct NetAdaptiveStats {
+struct NetStatSnapshot {
     bool enabled = false;
-    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+    NetPressureLevel level = NetPressureLevel::kNormal;
     uint32_t sampled_connections = 0;
     uint32_t tracked_targets = 0;
     uint32_t watch_targets = 0;
     uint32_t recovering_targets = 0;
     uint32_t constrained_connections = 0;
     uint32_t constrained_targets = 0;
-    uint32_t stream_decisions = 0;
+    uint32_t pressure_streams = 0;
     uint32_t recovering_streams = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
@@ -95,13 +94,12 @@ struct NetAdaptiveStats {
     uint64_t samples = 0;
 };
 
-struct NetAdaptiveTargetState {
-    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
+struct NetPressureTarget {
+    NetPressureLevel level = NetPressureLevel::kNormal;
     std::string protocol;
     std::string target;
     StreamId stream_id = StreamId::kMain;
-    NetAdaptivePressureSignal pressure_signal =
-        NetAdaptivePressureSignal::kNone;
+    NetPressureSignal pressure_signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
     uint32_t pressure_value_ewma = 0;
     uint32_t pending_bytes = 0;
@@ -115,13 +113,13 @@ struct NetAdaptiveTargetState {
     int64_t last_recommendation_ms = 0;
 };
 
-struct NetAdaptiveStreamDecision {
+struct NetStreamPressure {
     StreamId stream_id = StreamId::kMain;
-    NetAdaptivePressureLevel level = NetAdaptivePressureLevel::kNormal;
-    bool should_request_key_frame = false;
-    bool should_prefer_sub_stream = false;
-    bool should_close_slow_clients = false;
-    bool may_restore_main_stream = false;
+    NetPressureLevel level = NetPressureLevel::kNormal;
+    bool request_key_frame = false;
+    bool prefer_sub_stream = false;
+    bool close_slow_clients = false;
+    bool can_restore_main_stream = false;
     std::string reason;
     uint32_t tracked_targets = 0;
     uint32_t watch_targets = 0;
@@ -135,32 +133,32 @@ struct NetAdaptiveStreamDecision {
     int64_t normal_since_ms = 0;
 };
 
-class INetAdaptive {
+class INetStat {
 public:
-    virtual ~INetAdaptive() = default;
+    virtual ~INetStat() = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
-    virtual NetAdaptiveStats GetStats() const = 0;
-    virtual std::vector<NetAdaptiveRecommendation>
+    virtual NetStatSnapshot GetSnapshot() const = 0;
+    virtual std::vector<NetRecommendation>
     GetRecommendations() const = 0;
-    virtual std::vector<NetAdaptiveRecommendation>
+    virtual std::vector<NetRecommendation>
     GetRecommendationHistory() const = 0;
-    virtual std::vector<NetAdaptiveTargetState>
-    GetTargetStates() const = 0;
-    virtual std::vector<NetAdaptiveStreamDecision>
-    GetStreamDecisions() const = 0;
+    virtual std::vector<NetPressureTarget>
+    GetPressureTargets() const = 0;
+    virtual std::vector<NetStreamPressure>
+    GetStreamPressures() const = 0;
 };
 
-std::unique_ptr<INetAdaptive> CreateNetAdaptive(
-    const NetAdaptiveOptions &options,
-    const NetAdaptiveDependencies &dependencies);
+std::unique_ptr<INetStat> CreateNetStat(
+    const NetStatOptions &options,
+    const NetStatDependencies &dependencies);
 
-class NetAdaptive {
+class NetStat {
 public:
     static const char *Name();
 };
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_ADAPTIVE_NET_ADAPTIVE_H_
+#endif  // LIVE_STREAM_NET_STAT_NET_STAT_H_

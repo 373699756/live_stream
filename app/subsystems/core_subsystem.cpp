@@ -120,11 +120,11 @@ bool CoreSubsystem::Start(const RuntimePaths& paths) {
     auth_options.max_sessions = 16;
     AuthDependencies auth_dependencies;
     auth_dependencies.config = config_.get();
-    AuthUserStoreOptions auth_user_store_options;
-    auth_user_store_options.kind = AuthUserStoreKind::kConfig;
-    auth_user_store_options.config_path = paths.auth_users_path;
+    AuthUsersOptions auth_users_options;
+    auth_users_options.kind = AuthUsersKind::kConfig;
+    auth_users_options.config_path = paths.auth_users_path;
     auth_ = CreateAuth(auth_options, auth_dependencies,
-                       CreateAuthUserStore(auth_user_store_options),
+                       CreateAuthUsers(auth_users_options),
                        CreatePasswordVerifier(PasswordVerifierKind::kPbkdf2));
     auth_audit_sink_.reset(new AuthAuditToLoggerSink(logger_.get()));
     if (auth_ != nullptr) {

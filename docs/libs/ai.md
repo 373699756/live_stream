@@ -18,7 +18,7 @@ flowchart LR
   AI --> Snapshot[device snapshot]
   AI --> SDK[hisi_vendor NNIE/IVE/VGS]
   AI --> Alarm[alarm ai_detection]
-  AI --> Alerts[ai alert image store]
+  AI --> Alerts[ai alert images]
   HTTP[http /api/ai] --> AIView[IAiView]
   AIView --> AI
   Web[AI pages/live overlay] --> HTTP

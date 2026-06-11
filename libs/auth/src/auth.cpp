@@ -173,12 +173,12 @@ class AuthImpl : public IAuth {
 public:
     AuthImpl(const AuthOptions &options,
              const AuthDependencies &dependencies,
-             std::unique_ptr<IAuthUserStore> user_store,
+             std::unique_ptr<IAuthUsers> auth_users,
              std::unique_ptr<IPasswordVerifier> password_verifier,
              IAuthTokenGenerator *token_generator)
         : options_(options),
           config_(dependencies.config),
-          user_store_(std::move(user_store)),
+          auth_users_(std::move(auth_users)),
           password_verifier_(std::move(password_verifier)),
           token_generator_(token_generator) {}
 
@@ -187,7 +187,7 @@ public:
         if (initialized_) {
             return true;
         }
-        if (user_store_ == nullptr || password_verifier_ == nullptr ||
+        if (auth_users_ == nullptr || password_verifier_ == nullptr ||
             !IsValidPolicy(options_)) {
             return false;
         }
@@ -272,7 +272,7 @@ public:
             return LoginResult{};
         }
 
-        AuthUserRecord user = user_store_->FindUser(request.user_name);
+        AuthUserRecord user = auth_users_->FindUser(request.user_name);
         if (user.user_name.empty() || !user.enabled) {
             RegisterFailedAttempt(request.user_name);
             RecordLoginFailure(request.context, request.user_name,
@@ -412,7 +412,7 @@ public:
             return false;
         }
 
-        AuthUserRecord user = user_store_->FindUser(request.context.user_name);
+        AuthUserRecord user = auth_users_->FindUser(request.context.user_name);
         if (user.user_name.empty() || !user.enabled) {
             return false;
         }
@@ -429,7 +429,7 @@ public:
         if (credential.empty()) {
             return false;
         }
-        if (!user_store_->UpdatePassword(user.user_name, credential, false)) {
+        if (!auth_users_->UpdatePassword(user.user_name, credential, false)) {
             return false;
         }
         ClearFailedAttempts(user.user_name);
@@ -739,7 +739,7 @@ private:
 
     AuthOptions options_;
     IConfig* config_ = nullptr;
-    std::unique_ptr<IAuthUserStore> user_store_;
+    std::unique_ptr<IAuthUsers> auth_users_;
     std::unique_ptr<IPasswordVerifier> password_verifier_;
     IAuthTokenGenerator *token_generator_ = nullptr;
     mutable std::mutex mutex_;
@@ -756,21 +756,21 @@ private:
 
 std::unique_ptr<IAuth>
 CreateAuth(const AuthOptions &options,
-                  std::unique_ptr<IAuthUserStore> user_store,
+                  std::unique_ptr<IAuthUsers> auth_users,
                   std::unique_ptr<IPasswordVerifier> password_verifier) {
     return CreateAuth(options, AuthDependencies{},
-                             std::move(user_store), std::move(password_verifier),
+                             std::move(auth_users), std::move(password_verifier),
                              nullptr);
 }
 
 std::unique_ptr<IAuth>
 CreateAuth(const AuthOptions &options,
                   const AuthDependencies &dependencies,
-                  std::unique_ptr<IAuthUserStore> user_store,
+                  std::unique_ptr<IAuthUsers> auth_users,
                   std::unique_ptr<IPasswordVerifier> password_verifier,
                   IAuthTokenGenerator *token_generator) {
     return std::unique_ptr<IAuth>(
-        new AuthImpl(options, dependencies, std::move(user_store),
+        new AuthImpl(options, dependencies, std::move(auth_users),
                      std::move(password_verifier), token_generator));
 }
 

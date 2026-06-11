@@ -33,9 +33,9 @@ const char *RoleToConfigString(AuthRole role) {
     return "viewer";
 }
 
-class MemoryAuthUserStore : public IAuthUserStore {
+class MemoryAuthUsers : public IAuthUsers {
 public:
-    explicit MemoryAuthUserStore(const std::vector<AuthUserRecord> &users) {
+    explicit MemoryAuthUsers(const std::vector<AuthUserRecord> &users) {
         for (const AuthUserRecord &user : users) {
             users_[user.user_name] = user;
         }
@@ -70,9 +70,9 @@ private:
     std::map<std::string, AuthUserRecord> users_;
 };
 
-class ConfigAuthUserStore : public IAuthUserStore {
+class ConfigAuthUsers : public IAuthUsers {
 public:
-    explicit ConfigAuthUserStore(const std::string &config_path)
+    explicit ConfigAuthUsers(const std::string &config_path)
         : config_path_(config_path) {}
 
     AuthUserRecord FindUser(const std::string &user_name) override {
@@ -222,18 +222,18 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IAuthUserStore>
-CreateAuthUserStore(const AuthUserStoreOptions &options) {
-    if (options.kind == AuthUserStoreKind::kMemory) {
-        return std::unique_ptr<IAuthUserStore>(
-            new MemoryAuthUserStore(options.users));
+std::unique_ptr<IAuthUsers>
+CreateAuthUsers(const AuthUsersOptions &options) {
+    if (options.kind == AuthUsersKind::kMemory) {
+        return std::unique_ptr<IAuthUsers>(
+            new MemoryAuthUsers(options.users));
     }
-    if (options.kind == AuthUserStoreKind::kConfig) {
+    if (options.kind == AuthUsersKind::kConfig) {
         if (options.config_path.empty()) {
             return nullptr;
         }
-        return std::unique_ptr<IAuthUserStore>(
-            new ConfigAuthUserStore(options.config_path));
+        return std::unique_ptr<IAuthUsers>(
+            new ConfigAuthUsers(options.config_path));
     }
     return nullptr;
 }
