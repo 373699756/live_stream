@@ -1,4 +1,4 @@
-#include "udp_endpoint.h"
+#include "udp_socket.h"
 
 #include "net_engine_impl.h"
 #include "socket_util.h"
@@ -24,14 +24,14 @@ constexpr const char *kModuleName = "net";
 
 }  // namespace
 
-UdpEndpoint::UdpEndpoint(NetEngineImpl *engine, UdpSocketId id,
+UdpSocket::UdpSocket(NetEngineImpl *engine, UdpSocketId id,
                          const UdpBindOptions &options,
                          const UdpCallbacks &callbacks)
     : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
 
-UdpEndpoint::~UdpEndpoint() { Stop(); }
+UdpSocket::~UdpSocket() { Stop(); }
 
-bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
+bool UdpSocket::Start(const std::shared_ptr<EventLoop> &loop) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) {
         return true;
@@ -92,7 +92,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     fd_ = std::move(fd);
     local_ = local;
     running_ = true;
-    std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
+    std::weak_ptr<UdpSocket> weak_self = shared_from_this();
     if (!loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
         auto self = weak_self.lock();
         if (self && (events & EPOLLIN) != 0) {
@@ -116,7 +116,7 @@ bool UdpEndpoint::Start(const std::shared_ptr<EventLoop> &loop) {
     return true;
 }
 
-void UdpEndpoint::Stop() {
+void UdpSocket::Stop() {
     std::shared_ptr<EventLoop> loop;
     int fd = -1;
     {
@@ -135,7 +135,7 @@ void UdpEndpoint::Stop() {
     loop_.reset();
 }
 
-bool UdpEndpoint::SendTo(NetAddress address, const uint8_t *data, size_t size) {
+bool UdpSocket::SendTo(NetAddress address, const uint8_t *data, size_t size) {
     NetBufferSlices slices;
     if (!slices.Add(data, size)) {
         return false;
@@ -143,7 +143,7 @@ bool UdpEndpoint::SendTo(NetAddress address, const uint8_t *data, size_t size) {
     return SendToSlices(std::move(address), slices);
 }
 
-bool UdpEndpoint::SendToSlices(NetAddress address,
+bool UdpSocket::SendToSlices(NetAddress address,
                                const NetBufferSlices &slices) {
     if (slices.count > kMaxNetBufferSlices) {
         return false;
@@ -181,7 +181,7 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
         std::memcpy(datagram->data() + offset, slice.data, slice.size);
         offset += slice.size;
     }
-    std::weak_ptr<UdpEndpoint> weak_self = shared_from_this();
+    std::weak_ptr<UdpSocket> weak_self = shared_from_this();
     return loop != nullptr &&
            loop->Post([weak_self, address = std::move(address),
                        datagram]() mutable {
@@ -193,7 +193,7 @@ bool UdpEndpoint::SendToSlices(NetAddress address,
            });
 }
 
-bool UdpEndpoint::SendPreparedDatagram(
+bool UdpSocket::SendPreparedDatagram(
     NetAddress address,
     const std::shared_ptr<std::vector<uint8_t>> &datagram) {
     if (!datagram || datagram->empty()) {
@@ -206,7 +206,7 @@ bool UdpEndpoint::SendPreparedDatagram(
     return SendToSlicesInLoop(std::move(address), slices);
 }
 
-bool UdpEndpoint::SendToSlicesInLoop(NetAddress address,
+bool UdpSocket::SendToSlicesInLoop(NetAddress address,
                                      const NetBufferSlices &slices) {
     sockaddr_in addr = ToSockAddr(address);
     if (addr.sin_family != AF_INET) {
@@ -258,7 +258,7 @@ bool UdpEndpoint::SendToSlicesInLoop(NetAddress address,
     return true;
 }
 
-bool UdpEndpoint::SetPeer(NetAddress peer) {
+bool UdpSocket::SetPeer(NetAddress peer) {
     sockaddr_in addr = ToSockAddr(peer);
     if (addr.sin_family != AF_INET) {
         return false;
@@ -274,7 +274,7 @@ bool UdpEndpoint::SetPeer(NetAddress peer) {
     return true;
 }
 
-bool UdpEndpoint::SendToPeer(const uint8_t *data, size_t size) {
+bool UdpSocket::SendToPeer(const uint8_t *data, size_t size) {
     NetBufferSlices slices;
     if (!slices.Add(data, size)) {
         return false;
@@ -282,7 +282,7 @@ bool UdpEndpoint::SendToPeer(const uint8_t *data, size_t size) {
     return SendToPeerSlices(slices);
 }
 
-bool UdpEndpoint::SendToPeerSlices(const NetBufferSlices &slices) {
+bool UdpSocket::SendToPeerSlices(const NetBufferSlices &slices) {
     NetAddress peer;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -294,17 +294,17 @@ bool UdpEndpoint::SendToPeerSlices(const NetBufferSlices &slices) {
     return SendToSlices(std::move(peer), slices);
 }
 
-NetAddress UdpEndpoint::LocalAddress() const {
+NetAddress UdpSocket::LocalAddress() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return local_;
 }
 
-NetAddress UdpEndpoint::PeerAddress() const {
+NetAddress UdpSocket::PeerAddress() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return has_peer_ ? peer_ : NetAddress{};
 }
 
-void UdpEndpoint::HandleRead() {
+void UdpSocket::HandleRead() {
     uint8_t buffer[kReadBufferSize];
     while (true) {
         int fd = -1;

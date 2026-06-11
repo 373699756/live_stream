@@ -7,7 +7,7 @@
 ## 模块定位
 
 `net` 提供共享网络引擎、EventPoller 风格 event loop、TCP session、
-UDP endpoint、网络发送 buffer、timer 和 callback dispatch。它不拥有 HTTP、
+UDP socket、网络发送 buffer、timer 和 callback dispatch。它不拥有 HTTP、
 RTSP、ONVIF 或 WebRTC 的业务语义。
 
 ## 总体框架图
@@ -19,7 +19,7 @@ flowchart LR
   Loop --> Timer[timer]
   Net --> NetExec[INetExecutor]
   Net --> TCP[tcp_server / tcp_session]
-  Net --> UDP[udp_endpoint]
+  Net --> UDP[udp_socket]
   TCP --> Queue[send queue / pending bytes / close reason]
   Net --> CallbackExec[infra::Executor callback mode]
   HTTP[http] --> Net
@@ -31,7 +31,7 @@ flowchart LR
 ## 核心职责
 
 - 管理 IO thread、`INetExecutor` 执行域和 callback dispatch。
-- 提供 TCP server/session、UDP endpoint 和 fd/eventfd 封装。
+- 提供 TCP server/session、UDP socket 和 fd/eventfd 封装。
 - 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
   send stall 检测和 close reason。
 - 通过指定 `INetExecutor` 提供一次性/周期 IO timer；`CancelTimer()` 或
@@ -64,7 +64,7 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
   记录慢客户端和区分 peer/local/timeout/error。协议模块需要主动标记解析失败或
   鉴权失败时，可以调用 `Close(connection_id, reason)`；普通本地关闭继续调用
   `Close(connection_id)`。
-- `UdpEndpoint`：`BindUdp(executor, ...)`/`CloseUdp()` 管生命周期，`executor`
+- `UdpSocket`：`BindUdp(executor, ...)`/`CloseUdp()` 管生命周期，`executor`
   必须来自同一个 `INetEngine` 且非空；`SetUdpPeer()`、`SendToPeer()` 用于已选择
   peer 的 RTP 或 ICE/STUN，`SendTo()` 用于 ONVIF discovery 这类逐包目标地址。
 - `Timer`：`INetExecutor::RunAfter()` 是一次性 timer，`RunEvery()` 是周期
@@ -97,9 +97,9 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 
 ## 状态与资源模型
 
-`INetEngine` 拥有 IO thread、executor、fd/eventfd、TCP/UDP endpoint 和 callback
+`INetEngine` 拥有 IO thread、executor、fd/eventfd、TCP/UDP socket 和 callback
 dispatch 队列。组合根为 HTTP、RTSP、ONVIF 和 WebRTC 分别通过 `PickExecutor()`
-选择执行域；协议模块的监听、accepted session、UDP endpoint 和协议 timer 都绑定到
+选择执行域；协议模块的监听、accepted session、UDP socket 和协议 timer 都绑定到
 注入的 executor。上层协议停止时必须先解除连接、session、timer 或 endpoint，再停止
 网络引擎。
 板端默认按 Hi3516DV300 双核 Cortex-A7 配置 2 个 net IO thread；线程亲和性是

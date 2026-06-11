@@ -2,7 +2,7 @@
 
 #include "tcp_session.h"
 #include "tcp_server.h"
-#include "udp_endpoint.h"
+#include "udp_socket.h"
 
 #include <utility>
 #include <vector>
@@ -104,7 +104,7 @@ void NetEngineImpl::Stop() {
 
 void NetEngineImpl::StopInternal() {
     std::vector<std::shared_ptr<TcpServer>> servers;
-    std::vector<std::shared_ptr<UdpEndpoint>> udp_sockets;
+    std::vector<std::shared_ptr<UdpSocket>> udp_sockets;
     std::vector<std::shared_ptr<TcpSession>> connections;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -188,7 +188,7 @@ UdpSocketId NetEngineImpl::BindUdp(INetExecutor *executor,
         return 0;
     }
     const UdpSocketId id = next_udp_id_++;
-    auto socket = std::make_shared<UdpEndpoint>(this, id, options, callbacks);
+    auto socket = std::make_shared<UdpSocket>(this, id, options, callbacks);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_) {
@@ -219,7 +219,7 @@ bool NetEngineImpl::CloseTcp(TcpServerId id) {
 }
 
 bool NetEngineImpl::CloseUdp(UdpSocketId id) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);
@@ -261,7 +261,7 @@ bool NetEngineImpl::CloseAfterSend(ConnectionId id) {
 
 bool NetEngineImpl::SendTo(UdpSocketId id, NetAddress address,
                            const uint8_t *data, size_t size) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);
@@ -275,7 +275,7 @@ bool NetEngineImpl::SendTo(UdpSocketId id, NetAddress address,
 
 bool NetEngineImpl::SendToSlices(UdpSocketId id, NetAddress address,
                                  const NetBufferSlices &slices) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);
@@ -288,7 +288,7 @@ bool NetEngineImpl::SendToSlices(UdpSocketId id, NetAddress address,
 }
 
 bool NetEngineImpl::SetUdpPeer(UdpSocketId id, NetAddress peer) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);
@@ -302,7 +302,7 @@ bool NetEngineImpl::SetUdpPeer(UdpSocketId id, NetAddress peer) {
 
 bool NetEngineImpl::SendToPeer(UdpSocketId id, const uint8_t *data,
                                size_t size) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);
@@ -316,7 +316,7 @@ bool NetEngineImpl::SendToPeer(UdpSocketId id, const uint8_t *data,
 
 bool NetEngineImpl::SendToPeerSlices(UdpSocketId id,
                                      const NetBufferSlices &slices) {
-    std::shared_ptr<UdpEndpoint> socket;
+    std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto it = udp_sockets_.find(id);

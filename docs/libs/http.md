@@ -136,7 +136,7 @@ handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运�
 HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body
 发送边界和发送状态可观察思路，但不把第三方 HTTP 框架复制进来：
 `HttpRequestSplitter` 只负责 HTTP message 边界，`HttpServer` 拥有 socket/session
-生命周期、keep-alive、timeout 和 streaming 状态迁移，`HttpConnectionWriter` 负责
+生命周期、keep-alive、timeout 和 streaming 状态迁移，`HttpResponseSender` 负责
 普通响应、HLS segment body slice、HTTP-FLV/MJPEG/SSE 流式 chunk 的 header/body
 组包、`VideoBuffer` owner 转 `NetBufferOwner`、发送队列背压和慢客户端关闭。
 普通短响应可以使用 `HttpResponse.body` 或 `HttpResponse.body_slices`，其中

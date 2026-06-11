@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTSP_SRC_RTSP_SESSION_STORE_H_
-#define LIVE_STREAM_RTSP_SRC_RTSP_SESSION_STORE_H_
+#ifndef LIVE_STREAM_RTSP_SRC_RTSP_SESSION_TABLE_H_
+#define LIVE_STREAM_RTSP_SRC_RTSP_SESSION_TABLE_H_
 
 #include "rtsp_session.h"
 
@@ -9,9 +9,9 @@
 
 namespace live_stream {
 
-// RtspSessionStore owns RTSP connection/session indexing. It is intentionally
+// RtspSessionTable owns RTSP connection/session indexing. It is intentionally
 // not internally synchronized; RtspImpl protects it with its mutex.
-class RtspSessionStore {
+class RtspSessionTable {
  public:
   bool Add(ConnectionId connection_id, NetAddress peer, uint32_t max_sessions,
            std::shared_ptr<RtspSession> *session);
@@ -30,4 +30,4 @@ class RtspSessionStore {
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTSP_SRC_RTSP_SESSION_STORE_H_
+#endif  // LIVE_STREAM_RTSP_SRC_RTSP_SESSION_TABLE_H_

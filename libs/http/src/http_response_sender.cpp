@@ -1,4 +1,4 @@
-#include "http_connection_writer.h"
+#include "http_response_sender.h"
 
 #include "http_handler_utils.h"
 #include "http_protocol.h"
@@ -32,11 +32,11 @@ NetBufferOwner FrameBufferNetOwner(FrameBuffer *buffer) {
 
 }  // namespace
 
-HttpConnectionWriter::HttpConnectionWriter(
+HttpResponseSender::HttpResponseSender(
     uint32_t send_buffer_limit_bytes)
     : send_buffer_limit_bytes_(send_buffer_limit_bytes) {}
 
-bool HttpConnectionWriter::SendResponse(
+bool HttpResponseSender::SendResponse(
     INetEngine *net_engine, ConnectionId connection_id,
     const HttpResponse &response, bool close_after_response) const {
     if (!response.body.empty() && !response.body_slices.empty()) {
@@ -103,7 +103,7 @@ bool HttpConnectionWriter::SendResponse(
                               close_after_response);
 }
 
-bool HttpConnectionWriter::SendResponseSlices(
+bool HttpResponseSender::SendResponseSlices(
     INetEngine *net_engine, ConnectionId connection_id,
     const HttpResponse &response, const MediaSlice *body_slices,
     size_t body_slice_count, size_t body_size,
@@ -159,7 +159,7 @@ bool HttpConnectionWriter::SendResponseSlices(
     return true;
 }
 
-bool HttpConnectionWriter::EnqueueStreamingChunk(
+bool HttpResponseSender::EnqueueStreamingChunk(
     INetEngine *net_engine, ConnectionId connection_id, const uint8_t *data,
     size_t size) const {
     NetBufferSlices slices;
@@ -172,7 +172,7 @@ bool HttpConnectionWriter::EnqueueStreamingChunk(
     return SendStreamingNetSlices(net_engine, connection_id, slices, size);
 }
 
-bool HttpConnectionWriter::EnqueueStreamingSlices(
+bool HttpResponseSender::EnqueueStreamingSlices(
     INetEngine *net_engine, ConnectionId connection_id,
     const MediaSlice *slices, size_t slice_count) const {
     NetBufferSlices net_slices;
@@ -200,7 +200,7 @@ bool HttpConnectionWriter::EnqueueStreamingSlices(
                                   total_size);
 }
 
-void HttpConnectionWriter::CloseConnection(
+void HttpResponseSender::CloseConnection(
     INetEngine *net_engine, ConnectionId connection_id,
     TcpCloseReason reason) const {
     if (net_engine != nullptr) {
@@ -208,7 +208,7 @@ void HttpConnectionWriter::CloseConnection(
     }
 }
 
-bool HttpConnectionWriter::SendStreamingNetSlices(
+bool HttpResponseSender::SendStreamingNetSlices(
     INetEngine *net_engine, ConnectionId connection_id,
     const NetBufferSlices &slices, size_t size) const {
     if (net_engine == nullptr) {

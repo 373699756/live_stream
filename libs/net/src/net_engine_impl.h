@@ -16,7 +16,7 @@ namespace net_internal {
 
 class TcpSession;
 class TcpServer;
-class UdpEndpoint;
+class UdpSocket;
 class NetExecutor;
 
 class NetEngineImpl : public INetEngine {
@@ -103,7 +103,7 @@ private:
     // servers_/udp_sockets_/connections_ 是 net 的资源所有权表；协议模块只保存 id，
     // 不能保存内部对象指针。
     std::unordered_map<TcpServerId, std::shared_ptr<TcpServer>> servers_;
-    std::unordered_map<UdpSocketId, std::shared_ptr<UdpEndpoint>> udp_sockets_;
+    std::unordered_map<UdpSocketId, std::shared_ptr<UdpSocket>> udp_sockets_;
     std::unordered_map<ConnectionId, std::shared_ptr<TcpSession>> connections_;
     // 关闭诊断只保留最近一小段历史，用于 Web 排查慢客户端和超时原因；
     // 不把它当作 session 生命周期来源。

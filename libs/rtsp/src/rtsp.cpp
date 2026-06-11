@@ -9,7 +9,7 @@
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
 #include "rtsp_rtp_sender.h"
-#include "rtsp_session_store.h"
+#include "rtsp_session_table.h"
 
 #include <iomanip>
 #include <mutex>
@@ -181,8 +181,8 @@ private:
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            sessions = sessions_.Sessions();
-            connection_ids = sessions_.ConnectionIds();
+            sessions = session_table_.Sessions();
+            connection_ids = session_table_.ConnectionIds();
         }
         // 停服务时先停 listener，再关闭每个 session 的 subscription/timer/UDP socket，
         // 最后关闭 TCP 控制连接，防止 media_streams 继续给已关闭 transport 推帧。
@@ -197,7 +197,7 @@ private:
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            sessions_.Clear();
+            session_table_.Clear();
         }
         rtsp_auth_.Clear();
         if (state_ == ServiceState::kStarted ||
@@ -245,7 +245,7 @@ public:
     RtspStats GetStats() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         RtspStats stats = stats_;
-        stats.active_sessions = static_cast<uint32_t>(sessions_.Size());
+        stats.active_sessions = static_cast<uint32_t>(session_table_.Size());
         return stats;
     }
 
@@ -255,7 +255,7 @@ public:
         RtspListenAddress local_address;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            sessions = sessions_.Sessions();
+            sessions = session_table_.Sessions();
             local_address = local_address_;
         }
 
@@ -372,7 +372,7 @@ private:
         bool accepted = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (sessions_.Add(connection_id, std::move(peer),
+            if (session_table_.Add(connection_id, std::move(peer),
                               options_.max_sessions, &session)) {
                 ++stats_.total_sessions;
                 accepted = true;
@@ -393,7 +393,7 @@ private:
         std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            session = sessions_.Remove(id);
+            session = session_table_.Remove(id);
         }
         if (!session) {
             return;
@@ -424,7 +424,7 @@ private:
         bool learned_rtcp_peer = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            session = sessions_.FindByUdpSocket(socket_id);
+            session = session_table_.FindByUdpSocket(socket_id);
             if (session == nullptr || peer.ip != session->peer.ip) {
                 return;
             }
@@ -457,7 +457,7 @@ private:
         RtspSplitterResult split;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            session = sessions_.Find(connection_id);
+            session = session_table_.Find(connection_id);
             if (!session) {
                 (void)net_engine_->Close(connection_id);
                 return;
@@ -745,7 +745,7 @@ private:
         std::shared_ptr<RtspSession> session;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            session = sessions_.Find(connection_id);
+            session = session_table_.Find(connection_id);
         }
         CloseSessionResources(session,
                               FrameSubscriptionCloseReason::kUnsubscribed);
@@ -953,7 +953,7 @@ private:
     ServiceState state_ = ServiceState::kCreated;
     TcpServerId server_id_ = 0;
     RtspListenAddress local_address_;
-    RtspSessionStore sessions_;
+    RtspSessionTable session_table_;
     RtspStats stats_;
 };
 

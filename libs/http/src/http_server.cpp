@@ -51,7 +51,7 @@ HttpServer::HttpServer(const HttpOptions &options,
                        const HttpDependencies &dependencies,
                        HttpRequestHandler *request_handler)
     : options_(options),
-      connection_writer_(options.send_buffer_limit_bytes),
+      response_sender_(options.send_buffer_limit_bytes),
       net_engine_(dependencies.net_engine),
       net_executor_(dependencies.net_executor),
       request_handler_(request_handler) {}
@@ -324,7 +324,7 @@ void HttpServer::IncrementPermissionDenied() {
 void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
-    const bool sent = connection_writer_.SendResponse(
+    const bool sent = response_sender_.SendResponse(
         net_engine_, connection_id, response, close_after_response);
     if (sent && !close_after_response) {
         CompleteKeepAliveRequest(connection_id);
@@ -366,7 +366,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
             return false;
         }
     }
-    const bool enqueued = connection_writer_.EnqueueStreamingChunk(
+    const bool enqueued = response_sender_.EnqueueStreamingChunk(
         net_engine_, connection_id, data, size);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
@@ -388,7 +388,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
             return false;
         }
     }
-    const bool enqueued = connection_writer_.EnqueueStreamingSlices(
+    const bool enqueued = response_sender_.EnqueueStreamingSlices(
         net_engine_, connection_id, slices, slice_count);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
@@ -417,7 +417,7 @@ void HttpServer::CloseConnectionWithReason(ConnectionId connection_id,
         net_engine = net_engine_;
     }
     if (net_engine != nullptr) {
-        connection_writer_.CloseConnection(net_engine, connection_id, reason);
+        response_sender_.CloseConnection(net_engine, connection_id, reason);
     }
 }
 

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
-#define LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
+#ifndef LIVE_STREAM_NET_SRC_UDP_SOCKET_H_
+#define LIVE_STREAM_NET_SRC_UDP_SOCKET_H_
 
 #include "event_loop.h"
 #include "fd.h"
@@ -16,11 +16,11 @@ namespace net_internal {
 
 class NetEngineImpl;
 
-class UdpEndpoint : public std::enable_shared_from_this<UdpEndpoint> {
+class UdpSocket : public std::enable_shared_from_this<UdpSocket> {
 public:
-    UdpEndpoint(NetEngineImpl *engine, UdpSocketId id,
+    UdpSocket(NetEngineImpl *engine, UdpSocketId id,
                 const UdpBindOptions &options, const UdpCallbacks &callbacks);
-    ~UdpEndpoint();
+    ~UdpSocket();
 
     bool Start(const std::shared_ptr<EventLoop> &loop);
     void Stop();
@@ -55,4 +55,4 @@ private:
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SRC_UDP_ENDPOINT_H_
+#endif  // LIVE_STREAM_NET_SRC_UDP_SOCKET_H_

@@ -2,7 +2,7 @@
 #define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
 
 #include "http.h"
-#include "http_connection_writer.h"
+#include "http_response_sender.h"
 #include "http_dependencies.h"
 #include "http_media_writer.h"
 #include "http_session.h"
@@ -105,7 +105,7 @@ private:
     static void CancelNetTimer(INetExecutor *executor, NetTimerId timer_id);
 
     HttpOptions options_;
-    HttpConnectionWriter connection_writer_;
+    HttpResponseSender response_sender_;
     INetEngine *net_engine_ = nullptr;
     INetExecutor *net_executor_ = nullptr;
     // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。

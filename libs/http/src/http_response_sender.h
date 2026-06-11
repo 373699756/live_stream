@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SRC_HTTP_CONNECTION_WRITER_H_
-#define LIVE_STREAM_HTTP_SRC_HTTP_CONNECTION_WRITER_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_RESPONSE_SENDER_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_RESPONSE_SENDER_H_
 
 #include "http.h"
 #include "net.h"
@@ -12,13 +12,13 @@ namespace live_stream {
 // Owns HTTP response serialization and TCP enqueue policy for one HTTP server.
 // HttpServer keeps connection/session lifecycle; this class keeps body slicing,
 // FrameBuffer lifetime bridging and slow-client close decisions in one place.
-class HttpConnectionWriter {
+class HttpResponseSender {
 public:
     // send_buffer_limit_bytes must be > 0. It sets the maximum outstanding
-    // (pending) bytes per streaming connection before the writer closes the
+    // (pending) bytes per streaming connection before the sender closes the
     // connection with kPendingLimit. A value of 0 is rejected by the streaming
     // send path and will cause every write to fail immediately.
-    explicit HttpConnectionWriter(uint32_t send_buffer_limit_bytes);
+    explicit HttpResponseSender(uint32_t send_buffer_limit_bytes);
 
     bool SendResponse(INetEngine *net_engine, ConnectionId connection_id,
                       const HttpResponse &response,
@@ -49,4 +49,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SRC_HTTP_CONNECTION_WRITER_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_RESPONSE_SENDER_H_

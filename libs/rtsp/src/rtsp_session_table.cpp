@@ -1,10 +1,10 @@
-#include "rtsp_session_store.h"
+#include "rtsp_session_table.h"
 
 #include <utility>
 
 namespace live_stream {
 
-bool RtspSessionStore::Add(ConnectionId connection_id, NetAddress peer,
+bool RtspSessionTable::Add(ConnectionId connection_id, NetAddress peer,
                            uint32_t max_sessions,
                            std::shared_ptr<RtspSession> *session) {
   if (session == nullptr || sessions_.size() >= max_sessions) {
@@ -17,7 +17,7 @@ bool RtspSessionStore::Add(ConnectionId connection_id, NetAddress peer,
   return true;
 }
 
-std::shared_ptr<RtspSession> RtspSessionStore::Find(
+std::shared_ptr<RtspSession> RtspSessionTable::Find(
     ConnectionId connection_id) const {
   const auto iter = sessions_.find(connection_id);
   if (iter == sessions_.end()) {
@@ -26,7 +26,7 @@ std::shared_ptr<RtspSession> RtspSessionStore::Find(
   return iter->second;
 }
 
-std::shared_ptr<RtspSession> RtspSessionStore::FindByUdpSocket(
+std::shared_ptr<RtspSession> RtspSessionTable::FindByUdpSocket(
     UdpSocketId socket_id) const {
   if (socket_id == 0) {
     return nullptr;
@@ -41,7 +41,7 @@ std::shared_ptr<RtspSession> RtspSessionStore::FindByUdpSocket(
   return nullptr;
 }
 
-std::shared_ptr<RtspSession> RtspSessionStore::Remove(
+std::shared_ptr<RtspSession> RtspSessionTable::Remove(
     ConnectionId connection_id) {
   const auto iter = sessions_.find(connection_id);
   if (iter == sessions_.end()) {
@@ -52,7 +52,7 @@ std::shared_ptr<RtspSession> RtspSessionStore::Remove(
   return session;
 }
 
-std::vector<ConnectionId> RtspSessionStore::ConnectionIds() const {
+std::vector<ConnectionId> RtspSessionTable::ConnectionIds() const {
   std::vector<ConnectionId> ids;
   for (const auto &entry : sessions_) {
     ids.push_back(entry.first);
@@ -60,7 +60,7 @@ std::vector<ConnectionId> RtspSessionStore::ConnectionIds() const {
   return ids;
 }
 
-std::vector<std::shared_ptr<RtspSession>> RtspSessionStore::Sessions() const {
+std::vector<std::shared_ptr<RtspSession>> RtspSessionTable::Sessions() const {
   std::vector<std::shared_ptr<RtspSession>> sessions;
   for (const auto &entry : sessions_) {
     if (entry.second) {
@@ -70,8 +70,8 @@ std::vector<std::shared_ptr<RtspSession>> RtspSessionStore::Sessions() const {
   return sessions;
 }
 
-void RtspSessionStore::Clear() { sessions_.clear(); }
+void RtspSessionTable::Clear() { sessions_.clear(); }
 
-size_t RtspSessionStore::Size() const { return sessions_.size(); }
+size_t RtspSessionTable::Size() const { return sessions_.size(); }
 
 }  // namespace live_stream
