@@ -4,6 +4,7 @@ ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 CXXFLAGS += -pthread
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include

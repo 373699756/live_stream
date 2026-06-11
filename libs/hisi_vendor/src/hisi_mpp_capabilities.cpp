@@ -13,21 +13,21 @@ namespace {
 // ─── Static capability helpers (from SDK compile-time constants) ─
 CodecCapability H264Capability() {
     CodecCapability cap;
-    cap.codec = VideoCodec::kH264;
+    cap.codec = Codec::kH264;
     cap.profiles = {"baseline", "main", "high"};
     return cap;
 }
 
 CodecCapability H265Capability() {
     CodecCapability cap;
-    cap.codec = VideoCodec::kH265;
+    cap.codec = Codec::kH265;
     cap.profiles = {"main", "main10"};
     return cap;
 }
 
 CodecCapability MjpegCapability() {
     CodecCapability cap;
-    cap.codec = VideoCodec::kMjpeg;
+    cap.codec = Codec::kMjpeg;
     return cap;
 }
 

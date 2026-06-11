@@ -14,7 +14,7 @@
 
 ```mermaid
 flowchart LR
-  Encoded[EncodedFrame] --> Codec[media_codec]
+  Payload[AnnexB payload] --> Codec[media_codec]
   Codec --> Parse[NAL/codec metadata]
   Codec --> Source[media_source FLV/HLS metadata]
   Codec --> RTP[rtp packetizer]
@@ -51,18 +51,18 @@ public API 在 `media_codec.h`，归 `media_codec` 命名空间：
 ## 状态与资源模型
 
 NAL list 是栈上固定容量结构，最多记录 `kMaxNalUnitsPerFrame` 个单帧 NAL。`overflow`
-只表示输入超过可记录数量，上层必须把它当作解析风险处理。模块不持有
-`EncodedFrame`、不复制 payload 所有权，也不缓存 codec 状态。参数集提取函数会把
-SPS/PPS/VPS 拷贝到调用方提供的 `std::string`，用于 sequence header 或 SDP 等低频
-metadata 输出。
+只表示输入超过可记录数量，上层必须把它当作解析风险处理。模块只接收 AnnexB
+payload 指针和长度，不依赖 `EncodedFrame` 或基础媒体类型，不复制 payload 所有权，
+也不缓存 codec 状态。参数集提取函数会把 SPS/PPS/VPS 拷贝到调用方提供的
+`std::string`，用于 sequence header 或 SDP 等低频 metadata 输出。
 
 ## 第二阶段冻结契约
 
 - 生产命名空间已从旧 `stream_codec` 收敛为 `media_codec`。
 - parser 契约冻结为 AnnexB 遍历、H.264/H.265 参数集提取、IDR 判断和
   AnnexB/AVCC/HVCC 辅助。
-- `media_codec` 只依赖 `infra` 和基础媒体类型，不依赖 HTTP、RTSP、WebRTC 或
-  `media_source`。
+- `media_codec` 只依赖 `infra` 和标准库，不依赖基础媒体类型、HTTP、RTSP、WebRTC
+  或 `media_source`。
 - RTSP/WebRTC/HLS/HTTP-FLV 相邻接口只消费 `media_codec` 的 parser/metadata，
   不在协议模块内新增私有 H.264/H.265 parser。
 - RTP packet view 归 `rtp`，FLV/HLS 封装归 `media_source`/`http_media`

@@ -12,8 +12,8 @@ namespace live_stream {
 
 void to_json(ConfigJson &json, const VideoSize &size);
 void from_json(const ConfigJson &json, VideoSize &size);
-void to_json(ConfigJson &json, const VideoCodec &codec);
-void from_json(const ConfigJson &json, VideoCodec &codec);
+void to_json(ConfigJson &json, const Codec &codec);
+void from_json(const ConfigJson &json, Codec &codec);
 void to_json(ConfigJson &json, const RateControlMode &mode);
 void from_json(const ConfigJson &json, RateControlMode &mode);
 void to_json(ConfigJson &json, const GopMode &mode);
@@ -28,7 +28,7 @@ namespace media_internal {
 struct VideoConfig {
     struct Stream {
         bool enabled = false;
-        VideoCodec codec = VideoCodec::kH264;
+        Codec codec = Codec::kH264;
         VideoSize resolution;
         uint32_t fps = 0;
         uint32_t bitrate_kbps = 0;

@@ -152,7 +152,7 @@ RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     dependencies.net_executor = refs.rtsp_executor;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
-    dependencies.media_source = refs.media_pipeline;
+    dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
 
@@ -179,20 +179,7 @@ WebrtcDependencies BuildWebrtcDependencies(
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.net_executor = refs.webrtc_executor;
-    dependencies.media_source = refs.media_pipeline;
-    return dependencies;
-}
-
-MediaPipelineOptions BuildMediaPipelineOptions() {
-    MediaPipelineOptions options;
-    return options;
-}
-
-MediaPipelineDependencies BuildMediaPipelineDependencies(
-    const ProtocolRuntimeRefs &refs) {
-    MediaPipelineDependencies dependencies;
-    dependencies.device_media = refs.media.device_media;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
 
@@ -263,9 +250,7 @@ HttpDependencies BuildHttpDependencies(
     dependencies.device_media = refs.media.device_media;
     dependencies.snapshot = refs.media.snapshot;
     dependencies.webrtc = refs.webrtc;
-    dependencies.media_source = refs.media_pipeline;
-    dependencies.media_flv_source = refs.media_pipeline;
-    dependencies.media_mjpeg_source = refs.media_pipeline;
+    dependencies.media_streams = refs.media.media_streams;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     return dependencies;
 }
@@ -281,7 +266,7 @@ NetAdaptiveDependencies BuildNetAdaptiveDependencies(
     dependencies.net_engine = refs.net_engine;
     dependencies.rtsp = refs.rtsp;
     dependencies.webrtc = refs.webrtc;
-    dependencies.media_source = refs.media_pipeline;
+    dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
 

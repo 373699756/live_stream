@@ -22,7 +22,7 @@ struct EnginePeerStateUpdate {
 class WebrtcPeerStore {
  public:
   WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request,
-                            VideoCodec codec);
+                            Codec codec);
   bool Contains(const std::string &peer_id) const;
   WebrtcPeerInfo GetPeer(const std::string &peer_id) const;
   bool RemovePeer(const std::string &peer_id);

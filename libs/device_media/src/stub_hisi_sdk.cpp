@@ -19,7 +19,7 @@ namespace hisisdk {
 namespace {
 
 // ── Capabilities helpers ──────────────────────────────────────
-CodecCapability MakeCodecCap(VideoCodec codec,
+CodecCapability MakeCodecCap(Codec codec,
                              std::vector<std::string> profiles) {
     CodecCapability cap;
     cap.codec = codec;
@@ -137,9 +137,9 @@ MediaCapabilities StubCapabilities() {
     VideoStreamCapabilities main;
     main.stream_id = StreamId::kMain;
     main.codecs = {
-        MakeCodecCap(VideoCodec::kH264, {"baseline", "main", "high"}),
-        MakeCodecCap(VideoCodec::kH265, {"main"}),
-        MakeCodecCap(VideoCodec::kMjpeg, {}),
+        MakeCodecCap(Codec::kH264, {"baseline", "main", "high"}),
+        MakeCodecCap(Codec::kH265, {"main"}),
+        MakeCodecCap(Codec::kMjpeg, {}),
     };
     main.resolutions = {{1920, 1080}, {1280, 720}, {704, 576}, {640, 360},
                         {352, 288}};
@@ -220,16 +220,16 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
         0x14, 0x11, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xff, 0xda, 0x00, 0x08,
         0x01, 0x03, 0x01, 0x01, 0x3f, 0x00, 0x7f, 0xff, 0xd9};
-    auto pool = CreateVideoBufferPool(EstimateJpegBlockSize(config),
+    auto pool = CreateFrameBufferPool(EstimateJpegBlockSize(config),
                                       kDefaultJpegPoolBlocks);
     if (!pool) return JpegFrame{};
     auto buffer = pool->Acquire();
     if (buffer == nullptr || buffer->capacity < sizeof(kMinimalJpeg)) {
-        VideoBufferUnref(buffer);
+        FrameBufferUnref(buffer);
         return JpegFrame{};
     }
     std::memcpy(buffer->data, kMinimalJpeg, sizeof(kMinimalJpeg));
-    VideoBufferSetSize(buffer, static_cast<uint32_t>(sizeof(kMinimalJpeg)));
+    FrameBufferSetSize(buffer, static_cast<uint32_t>(sizeof(kMinimalJpeg)));
     JpegFrame frame;
     frame.buffer = buffer;
     frame.offset = 0;
@@ -363,13 +363,13 @@ YuvFrame StubHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
     const uint32_t y_size = size.width * size.height;
     const uint32_t uv_size = y_size / 2;
-    VideoBuffer* buffer = VideoBufferAlloc(y_size + uv_size);
+    FrameBuffer* buffer = FrameBufferAlloc(y_size + uv_size);
     if (buffer == nullptr) {
         return YuvFrame{};
     }
     std::memset(buffer->data, 0x10, y_size);
     std::memset(buffer->data + y_size, 0x80, uv_size);
-    VideoBufferSetSize(buffer, y_size + uv_size);
+    FrameBufferSetSize(buffer, y_size + uv_size);
     YuvFrame frame;
     frame.buffer = buffer;
     frame.offset = 0;

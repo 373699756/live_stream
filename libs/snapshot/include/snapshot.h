@@ -38,7 +38,7 @@ struct CaptureRequest {
 };
 
 struct SnapshotFrame {
-    VideoBuffer *buffer = nullptr;
+    FrameBuffer *buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t width = 0;
@@ -48,7 +48,7 @@ struct SnapshotFrame {
     SnapshotFrame() = default;
 
     SnapshotFrame(const SnapshotFrame &other)
-        : buffer(VideoBufferRef(other.buffer)),
+        : buffer(FrameBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -59,8 +59,8 @@ struct SnapshotFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer *retained = VideoBufferRef(other.buffer);
-        VideoBufferUnref(buffer);
+        FrameBuffer *retained = FrameBufferRef(other.buffer);
+        FrameBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -86,7 +86,7 @@ struct SnapshotFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferUnref(buffer);
+        FrameBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -99,16 +99,16 @@ struct SnapshotFrame {
         return *this;
     }
 
-    ~SnapshotFrame() { VideoBufferUnref(buffer); }
+    ~SnapshotFrame() { FrameBufferUnref(buffer); }
 
-    BufferSlice PayloadSlice() const { return BufferSlice{buffer, offset, size}; }
+    FrameSlice PayloadSlice() const { return FrameSlice{buffer, offset, size}; }
 
     bool HasValidPayload() const {
-        return size != 0 && IsValidBufferSlice(PayloadSlice());
+        return size != 0 && IsValidFrameSlice(PayloadSlice());
     }
 
     const uint8_t *PayloadData() const {
-        return HasValidPayload() ? BufferSliceData(PayloadSlice()) : nullptr;
+        return HasValidPayload() ? FrameSliceData(PayloadSlice()) : nullptr;
     }
 };
 

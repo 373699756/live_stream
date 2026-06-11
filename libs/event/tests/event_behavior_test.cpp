@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -36,15 +37,19 @@ int PublishSubscribeTest() {
     int32_t value = 0;
 
     const live_stream::EventSubscriptionId subscription =
-        service->Subscribe(live_stream::EventType::kConfigChanged,
-                           [&](const live_stream::Event& event) {
-                               std::lock_guard<std::mutex> lock(mutex);
-                               received = true;
-                               message = event.message;
-                               target = event.target;
-                               value = event.value;
-                               condition.notify_one();
-                           });
+        service->Subscribe(
+            std::vector<live_stream::EventType>{
+                live_stream::EventType::kConfigChanged,
+                live_stream::EventType::kAlarmOn,
+            },
+            [&](const live_stream::Event& event) {
+                std::lock_guard<std::mutex> lock(mutex);
+                received = true;
+                message = event.message;
+                target = event.target;
+                value = event.value;
+                condition.notify_one();
+            });
     if (subscription == 0) {
         return 11;
     }
@@ -89,6 +94,23 @@ int PublishSubscribeTest() {
     }
 
     received = false;
+    live_stream::Event alarm_event;
+    alarm_event.type = live_stream::EventType::kAlarmOn;
+    alarm_event.source = "alarm";
+    alarm_event.target = "motion";
+    alarm_event.message = "motion";
+    if (!service->Publish(alarm_event)) {
+        return 24;
+    }
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!condition.wait_for(lock, std::chrono::seconds(1),
+                                [&]() { return received; })) {
+            return 26;
+        }
+    }
+
+    received = false;
     if (!service->Unsubscribe(subscription)) {
         return 17;
     }
@@ -101,6 +123,11 @@ int PublishSubscribeTest() {
                                [&]() { return received; })) {
             return 19;
         }
+    }
+
+    const live_stream::EventCounts counts = service->GetCounts();
+    if (counts.published < 4 || counts.handled < 2 || counts.queued != 0) {
+        return 25;
     }
 
     service->Stop();
@@ -116,20 +143,20 @@ int SubscriptionLimitTest() {
 
     for (int i = 0; i < 128; ++i) {
         const live_stream::EventSubscriptionId subscription =
-            service->Subscribe(live_stream::EventType::kConfigChanged,
-                               [](const live_stream::Event& event) {
-                                   (void)event;
-                               });
+            service->Subscribe(
+                std::vector<live_stream::EventType>{
+                    live_stream::EventType::kConfigChanged},
+                [](const live_stream::Event& event) { (void)event; });
         if (subscription == 0) {
             return 30;
         }
     }
 
     const live_stream::EventSubscriptionId overflow =
-        service->Subscribe(live_stream::EventType::kConfigChanged,
-                           [](const live_stream::Event& event) {
-                               (void)event;
-                           });
+        service->Subscribe(
+            std::vector<live_stream::EventType>{
+                live_stream::EventType::kConfigChanged},
+            [](const live_stream::Event& event) { (void)event; });
     if (overflow != 0) {
         return 31;
     }
@@ -173,11 +200,13 @@ int ErrorPathTest() {
     if (service->Publish(event)) {
         return 20;
     }
-    if (service->Subscribe(live_stream::EventType::kConfigChanged,
+    if (service->Subscribe(std::vector<live_stream::EventType>{
+                               live_stream::EventType::kConfigChanged},
                            live_stream::EventHandler()) != 0) {
         return 21;
     }
-    if (service->Subscribe(live_stream::EventType::kConfigChanged,
+    if (service->Subscribe(std::vector<live_stream::EventType>{
+                               live_stream::EventType::kConfigChanged},
                            [](const live_stream::Event& received_event) {
                                (void)received_event;
                            }) != 0) {

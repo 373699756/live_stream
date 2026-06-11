@@ -4,7 +4,7 @@
 #include "http.h"
 #include "http_access.h"
 #include "http_media_writer.h"
-#include "media_source.h"
+#include "media/media_streams.h"
 
 #include <memory>
 
@@ -31,7 +31,7 @@ enum class HttpMediaHandlerKind {
 struct HttpMediaHandlerDependencies {
     HttpAccess *access = nullptr;
     IDeviceMedia *device_media = nullptr;
-    IMediaSource *media_source = nullptr;
+    MediaStreams *media_streams = nullptr;
     IWebrtc *webrtc = nullptr;
 };
 
@@ -43,9 +43,7 @@ struct StreamingHttpHandlerDependencies {
     HttpAccess *access = nullptr;
     HttpMediaWriter *writer = nullptr;
     IDeviceMedia *device_media = nullptr;
-    IMediaSource *media_source = nullptr;
-    IMediaFlvSource *media_flv_source = nullptr;
-    IMediaMjpegSource *media_mjpeg_source = nullptr;
+    MediaStreams *media_streams = nullptr;
     IEvent *event = nullptr;
 };
 

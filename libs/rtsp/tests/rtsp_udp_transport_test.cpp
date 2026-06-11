@@ -79,16 +79,16 @@ bool Exchange(int fd, const std::string& request, const std::string& expected) {
 }
 
 live_stream::EncodedFrame MakeFrame() {
-    live_stream::VideoBuffer* buffer = live_stream::VideoBufferAlloc(4);
+    live_stream::FrameBuffer* buffer = live_stream::FrameBufferAlloc(4);
     uint8_t* data = buffer->data;
     data[0] = 0x65;
     data[1] = 9;
     data[2] = 8;
     data[3] = 7;
-    (void)live_stream::VideoBufferSetSize(buffer, 4);
+    (void)live_stream::FrameBufferSetSize(buffer, 4);
     live_stream::EncodedFrame frame;
     frame.stream_id = live_stream::StreamId::kMain;
-    frame.codec = live_stream::VideoCodec::kH264;
+    frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 200000;
     frame.buffer = buffer;

@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 
@@ -24,7 +25,8 @@ enum class EventType {
     kSnapshotCreated,
     kTimeChanged,
     kNetworkChanged,
-    kAlarmTriggered,
+    kAlarmOn,
+    kAlarmOff,
     kSystemStatusChanged,
     kUpgradeProgressChanged,
 };
@@ -37,9 +39,24 @@ struct Event {
     std::string target;
     std::string message;
     int32_t value = 0;
+    int64_t timestamp_ms = 0;
+    uint8_t level = 0;
 };
 
 using EventSubscriptionId = uint64_t;
+
+struct EventOptions {
+    uint32_t queue_capacity = 1024;
+    uint32_t max_subscriptions = 128;
+};
+
+struct EventCounts {
+    uint64_t published = 0;
+    uint64_t handled = 0;
+    uint64_t dropped = 0;
+    uint64_t rejected = 0;
+    uint32_t queued = 0;
+};
 
 // Handlers must be lightweight. If business work is needed, post it to the
 // subscriber service's own TaskQueue instead of blocking event-thread.
@@ -53,12 +70,14 @@ public:
     virtual void Stop() = 0;
     // The handler is invoked asynchronously on event-thread.
     virtual EventSubscriptionId Subscribe(
-        EventType type, EventHandler handler) = 0;
+        const std::vector<EventType> &types, EventHandler handler) = 0;
     virtual bool Unsubscribe(EventSubscriptionId subscription_id) = 0;
     virtual bool Publish(const Event& event) = 0;
+    virtual EventCounts GetCounts() const = 0;
 };
 
-std::unique_ptr<IEvent> CreateEvent();
+std::unique_ptr<IEvent> CreateEvent(
+    const EventOptions &options = EventOptions());
 
 }  // namespace live_stream
 

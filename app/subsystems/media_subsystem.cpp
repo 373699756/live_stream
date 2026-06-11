@@ -6,6 +6,38 @@
 #include "subsystems/device_subsystem.h"
 
 namespace live_stream {
+namespace {
+
+bool RequestDeviceKeyFrame(StreamId stream_id,
+                           KeyFrameRequestType request_type,
+                           void *user) {
+    IDeviceMedia *device_media = static_cast<IDeviceMedia *>(user);
+    return device_media != nullptr &&
+           device_media->RequestKeyFrame(stream_id, request_type);
+}
+
+MediaStreamState StreamStateForDeviceStream(IDeviceMedia *device_media,
+                                            StreamId stream_id) {
+    if (device_media == nullptr ||
+        !device_media->IsStreamStarted(stream_id)) {
+        return MediaStreamState::kClosed;
+    }
+    return MediaStreamState::kRunning;
+}
+
+void SetInitialMediaStreamState(IDeviceMedia *device_media,
+                                MediaStreams *media_streams,
+                                StreamId stream_id) {
+    if (device_media == nullptr || media_streams == nullptr) {
+        return;
+    }
+    media_streams->SetStreamState(stream_id,
+                                  StreamStateForDeviceStream(device_media,
+                                                             stream_id),
+                                  device_media->GetStreamCodec(stream_id));
+}
+
+}  // namespace
 
 MediaSubsystem &MediaSubsystem::Get() {
     static MediaSubsystem subsystem;
@@ -25,11 +57,33 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
     device_media_options.config = config;
     device_media_options.sdk = &sdk;
     device_media_ = CreateDeviceMedia(device_media_options);
-    if (!device_media_ || !device_media_->Start()) {
+    if (!device_media_) {
+        Error("app", "Create device_media failed");
+        Stop();
+        return false;
+    }
+
+    MediaStreamsOptions media_streams_options;
+    media_streams_options.key_frame_request = RequestDeviceKeyFrame;
+    media_streams_options.key_frame_request_user = device_media_.get();
+    media_streams_.reset(new MediaStreams(media_streams_options));
+    if (!media_streams_ || !media_streams_->Start() ||
+        !device_media_->SetFrameSink(media_streams_.get())) {
+        Error("app", "Start media streams failed");
+        Stop();
+        return false;
+    }
+
+    if (!device_media_->Start()) {
         Error("app", "Start device_media failed");
         Stop();
         return false;
     }
+
+    SetInitialMediaStreamState(device_media_.get(), media_streams_.get(),
+                               StreamId::kMain);
+    SetInitialMediaStreamState(device_media_.get(), media_streams_.get(),
+                               StreamId::kSub);
     const MediaChannels media_channels = device_media_->GetChannels();
 
     SnapshotOptions snapshot_options;
@@ -89,6 +143,19 @@ void MediaSubsystem::Stop() {
         snapshot_.reset();
     }
     if (device_media_) {
+        (void)device_media_->SetFrameSink(nullptr);
+    }
+    if (media_streams_) {
+        media_streams_->SetStreamState(StreamId::kMain,
+                                       MediaStreamState::kClosed,
+                                       Codec::kH264);
+        media_streams_->SetStreamState(StreamId::kSub,
+                                       MediaStreamState::kClosed,
+                                       Codec::kH264);
+        media_streams_->Stop();
+        media_streams_.reset();
+    }
+    if (device_media_) {
         device_media_->Stop();
         device_media_.reset();
     }
@@ -98,6 +165,7 @@ void MediaSubsystem::Stop() {
 MediaRefs MediaSubsystem::refs() const {
     MediaRefs refs;
     refs.device_media = device_media_.get();
+    refs.media_streams = media_streams_.get();
     refs.ai = ai_.get();
     refs.snapshot = snapshot_.get();
     return refs;

@@ -1,7 +1,5 @@
 #include "pending_frame_queue.h"
 
-#include "media_codec.h"
-
 namespace live_stream {
 namespace media_pipeline_internal {
 
@@ -21,7 +19,7 @@ bool PendingFrameQueue::PushBack(const EncodedFrame &frame) {
     if (Full()) {
         return false;
     }
-    // worker 线程稍后 drain，因此队列必须持有自己的 VideoBuffer 引用。
+    // worker 线程稍后 drain，因此队列必须持有自己的 FrameBuffer 引用。
     // 这里只 ref copy，不复制编码 payload。
     if (!EncodedFrameRefCopy(&frames_[(head_ + size_) % frames_.size()],
                              &frame)) {
@@ -44,7 +42,10 @@ bool PendingFrameQueue::PopFront() {
 bool PendingFrameQueue::DropOldestNonKeyFrame() {
     for (size_t i = 0; i < size_; ++i) {
         const size_t index = (head_ + i) % frames_.size();
-        if (!media_codec::IsKeyFrame(frames_[index].frame_type)) {
+        const bool key_frame =
+            frames_[index].frame_type == FrameType::kIdr ||
+            frames_[index].frame_type == FrameType::kI;
+        if (!key_frame) {
             RemoveAt(i);
             return true;
         }

@@ -6,21 +6,21 @@
 namespace live_stream {
 namespace {
 
-void RefVideoBufferOwner(const void *owner) {
-  (void)VideoBufferRef(
-      const_cast<VideoBuffer *>(static_cast<const VideoBuffer *>(owner)));
+void RefFrameBufferOwner(const void *owner) {
+  (void)FrameBufferRef(
+      const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
 }
 
-void UnrefVideoBufferOwner(const void *owner) {
-  VideoBufferUnref(
-      const_cast<VideoBuffer *>(static_cast<const VideoBuffer *>(owner)));
+void UnrefFrameBufferOwner(const void *owner) {
+  FrameBufferUnref(
+      const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
 }
 
-NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
+NetBufferOwner FrameBufferNetOwner(FrameBuffer *buffer) {
   if (buffer == nullptr) {
     return NetBufferOwner{};
   }
-  return NetBufferOwner{buffer, RefVideoBufferOwner, UnrefVideoBufferOwner};
+  return NetBufferOwner{buffer, RefFrameBufferOwner, UnrefFrameBufferOwner};
 }
 
 }  // namespace
@@ -33,9 +33,9 @@ bool RtspTransport::SendRtpPacket(
     return false;
   }
 
-  // TCP interleaved 异步排队，media payload 必须带 VideoBuffer owner；
+  // TCP interleaved 异步排队，media payload 必须带 FrameBuffer owner；
   // UDP sendmsg 调用返回后不保留 slice，所以不需要 owner。
-  const NetBufferOwner payload_owner = VideoBufferNetOwner(frame.buffer);
+  const NetBufferOwner payload_owner = FrameBufferNetOwner(frame.payload.buffer);
   NetBufferSlices slices;
   bool ok = true;
   uint8_t interleaved_header[4] = {

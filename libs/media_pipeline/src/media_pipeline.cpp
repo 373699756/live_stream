@@ -9,7 +9,6 @@
 #include "media_pipeline_runtime_diagnostics.h"
 #include "mjpeg_client_registry.h"
 #include "media_source_stream_state.h"
-#include "media_codec.h"
 #include "pending_frame_queue.h"
 
 #include <cstddef>
@@ -65,15 +64,15 @@ const char *StreamName(StreamId stream_id) {
     return "unknown";
 }
 
-const char *CodecName(VideoCodec codec) {
+const char *CodecName(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
     }
     return "unknown";
@@ -151,9 +150,9 @@ public:
             run_state_ = MediaPipelineRunState::kStopped;
             return false;
         }
-        const VideoCodec main_codec =
+        const Codec main_codec =
             device_media->GetStreamCodec(StreamId::kMain);
-        const VideoCodec sub_codec =
+        const Codec sub_codec =
             device_media->GetStreamCodec(StreamId::kSub);
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -229,11 +228,11 @@ public:
                        need_sub_key_frame ? 1 : 0);
         if (need_main_key_frame) {
             (void)device_media->RequestKeyFrame(StreamId::kMain,
-                                                KeyFrameReason::kRecovery);
+                                                KeyFrameRequestType::kRecovery);
         }
         if (need_sub_key_frame) {
             (void)device_media->RequestKeyFrame(StreamId::kSub,
-                                                KeyFrameReason::kRecovery);
+                                                KeyFrameRequestType::kRecovery);
         }
         return true;
     }
@@ -300,13 +299,13 @@ public:
         return stream != nullptr && stream->state == StreamState::kRunning;
     }
 
-    VideoCodec GetStreamCodec(StreamId stream_id) const override {
+    Codec GetStreamCodec(StreamId stream_id) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const source_state::StreamContext *stream = FindStream(stream_id);
         if (stream != nullptr) {
             return stream->codec;
         }
-        return VideoCodec::kH264;
+        return Codec::kH264;
     }
 
     MediaHlsPlaylist GetHlsPlaylist(StreamId stream_id) const override {
@@ -409,7 +408,7 @@ public:
                 options_.max_flv_clients);
             device_media = device_media_;
         }
-        const KeyFrameReason reason = KeyFrameReason::kNewClient;
+        const KeyFrameRequestType reason = KeyFrameRequestType::kNewSubscriber;
         if (device_media != nullptr &&
             device_media->RequestKeyFrame(stream_id, reason)) {
             NoteKeyFrameRequest(stream_id);
@@ -467,7 +466,7 @@ public:
             device_media = device_media_;
             request_key_frame = options.keyframe_first;
         }
-        const KeyFrameReason reason = KeyFrameReason::kNewClient;
+        const KeyFrameRequestType reason = KeyFrameRequestType::kNewSubscriber;
         if (device_media != nullptr && request_key_frame &&
             device_media->RequestKeyFrame(options.stream_id, reason)) {
             NoteKeyFrameRequest(options.stream_id);
@@ -512,7 +511,7 @@ public:
         return frame_ring_.PopFrame(reader_id, frame);
     }
 
-    bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override {
+    bool RequestKeyFrame(StreamId stream_id, KeyFrameRequestType reason) override {
         if (!IsStreamSupported(stream_id) ||
             device_media_ == nullptr) {
             return false;
@@ -556,26 +555,25 @@ public:
 
     const char *Name() const override { return kServiceName; }
 
-    void OnFrame(const FramePayload &input_frame) override {
-        const EncodedFrame &frame = input_frame.encoded_frame;
+    bool PushFrame(const EncodedFrame &frame) override {
         infra::Executor *worker_executor = nullptr;
         bool post_drain = false;
         if (!EncodedFrameHasPayload(&frame) ||
             !IsStreamSupported(frame.stream_id)) {
-            return;
+            return true;
         }
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (run_state_ != MediaPipelineRunState::kStarted ||
                 worker_executor_ == nullptr) {
-                return;
+                return false;
             }
             source_clients::PendingFrameQueue *queue =
                 FindPendingQueue(frame.stream_id);
-            // device_media 的 OnFrame 是同步回调，media_pipeline 需要跨线程处理，
-            // 所以 pending queue 会增加 VideoBuffer 引用；不会在这里深拷贝 payload。
+            // device_media 的 PushFrame 是同步回调，media_pipeline 需要跨线程处理，
+            // 所以 pending queue 会增加 FrameBuffer 引用；不会在这里深拷贝 payload。
             if (queue == nullptr || !EnqueuePendingFrameLocked(queue, frame)) {
-                return;
+                return false;
             }
             if (!drain_task_posted_) {
                 drain_task_posted_ = true;
@@ -587,11 +585,13 @@ public:
             !worker_executor->Post([this]() { DrainPendingFrames(); })) {
             std::lock_guard<std::mutex> guard(mutex_);
             drain_task_posted_ = false;
+            return false;
         }
+        return true;
     }
 
     void OnSourceStateChanged(StreamId stream_id, StreamState state) override {
-        VideoCodec video_codec = VideoCodec::kH264;
+        Codec video_codec = Codec::kH264;
         if (state == StreamState::kRunning &&
             device_media_ != nullptr) {
             video_codec = device_media_->GetStreamCodec(stream_id);
@@ -634,15 +634,16 @@ private:
                     return;
                 }
             }
-            // frame 从 pending queue move 出来，当前函数持有这一份 VideoBuffer 引用。
+            // frame 从 pending queue move 出来，当前函数持有这一份 FrameBuffer 引用。
             // 后续 Parse/FrameRing/FLV/MJPEG 需要保存时再各自 ref copy。
             source_state::ParsedFramePayload payload;
             if (!NormalizeFrameForDownstream(&frame)) {
                 EncodedFrameUnref(&frame);
                 continue;
             }
-            NoteFrameDiagnostics(
-                frame.stream_id, media_codec::IsKeyFrame(frame.frame_type));
+            const bool key_frame = frame.frame_type == FrameType::kIdr ||
+                                   frame.frame_type == FrameType::kI;
+            NoteFrameDiagnostics(frame.stream_id, key_frame);
             const bool has_normalized_payload = BuildParsedFrame(frame, &payload);
             QueueReaderFrame(payload);
             PackageBrowserFrame(payload, has_normalized_payload);
@@ -826,7 +827,7 @@ private:
 
     void PackageMjpegFrame(const source_state::ParsedFramePayload &payload) {
         const EncodedFrame &frame = payload.encoded_frame;
-        if (frame.codec != VideoCodec::kMjpeg ||
+        if (frame.codec != Codec::kMjpeg ||
             !EncodedFrameHasPayload(&frame)) {
             return;
         }
@@ -850,7 +851,7 @@ private:
             if (!was_mjpeg_ready && mjpeg_ready) {
                 Info(kServiceName,
                      "browser stream ready stream=%s mjpeg=1 bytes=%u",
-                     StreamName(frame.stream_id), frame.size);
+                     StreamName(frame.stream_id), frame.payload.size);
                 notify_ready = true;
             }
             if (mjpeg_clients_.HasClient(frame.stream_id)) {
@@ -957,7 +958,9 @@ private:
             return false;
         }
         if (queue->Full()) {
-            if (media_codec::IsKeyFrame(frame.frame_type)) {
+            const bool key_frame = frame.frame_type == FrameType::kIdr ||
+                                   frame.frame_type == FrameType::kI;
+            if (key_frame) {
                 if (!queue->DropOldestNonKeyFrame() && !queue->Empty()) {
                     queue->PopFront();
                 }
@@ -1072,7 +1075,7 @@ private:
         PublishMediaStatusEvent(stream_id, "ready", "changed", change.value);
     }
 
-    void ResetStreamForReasonLocked(StreamId stream_id, VideoCodec codec,
+    void ResetStreamForReasonLocked(StreamId stream_id, Codec codec,
                                     MediaSourceResetReason reason) {
         source_state::StreamContext *stream = FindMutableStream(stream_id);
         if (stream == nullptr) {
@@ -1090,7 +1093,7 @@ private:
     }
 
     void SetStreamStateLocked(StreamId stream_id, StreamState state,
-                              VideoCodec video_codec) {
+                              Codec video_codec) {
         source_state::StreamContext *stream = FindMutableStream(stream_id);
         if (stream == nullptr) {
             return;

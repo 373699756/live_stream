@@ -1,6 +1,5 @@
 #include "webrtc_rtp_sender.h"
 
-#include "media_codec.h"
 #include "webrtc_engine.h"
 
 #include <cstdint>
@@ -40,11 +39,17 @@ namespace {
 
 bool IsKeyFrame(const MediaFrame &frame) {
     return frame.key_frame ||
-           media_codec::IsKeyFrame(frame.encoded_frame.frame_type);
+           frame.encoded_frame.frame_type == FrameType::kIdr ||
+           frame.encoded_frame.frame_type == FrameType::kI;
 }
 
-bool IsSupportedCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsSupportedCodec(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
+}
+
+rtp::Codec RtpCodecFromCodec(Codec codec) {
+    return codec == Codec::kH265 ? rtp::Codec::kH265
+                                      : rtp::Codec::kH264;
 }
 
 }  // namespace
@@ -126,11 +131,12 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
 
     WebrtcRtpPacketSink sink(this, &peer, &frame.encoded_frame, &context);
     rtp::RtpPacketizerInput input;
-    input.codec = frame.codec;
+    const auto payload = EncodedFramePayloadSlice(&frame.encoded_frame);
+    input.codec = RtpCodecFromCodec(frame.codec);
     // WebRTC 发送使用 MediaFrame 持有的 EncodedFrame payload；RTP packetizer
     // 输出 packet view，不在分包阶段复制整帧。
     input.payload = EncodedFramePayloadData(&frame.encoded_frame);
-    input.payload_size = frame.encoded_frame.size;
+    input.payload_size = payload.size;
     input.pts_us = frame.pts_us;
     input.sequence = &sequence;
     input.ssrc = parameters.ssrc;

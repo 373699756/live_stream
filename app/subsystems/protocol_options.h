@@ -6,7 +6,6 @@
 
 #include "http.h"
 #include "infra/executor.h"
-#include "media_pipeline.h"
 #include "net.h"
 #include "net_adaptive.h"
 #include "onvif_server.h"
@@ -24,10 +23,6 @@ RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs);
 WebrtcOptions BuildWebrtcOptions(const AppRuntimeConfig &runtime_config,
                                  const ProtocolRuntimeRefs &refs);
 WebrtcDependencies BuildWebrtcDependencies(const ProtocolRuntimeRefs &refs);
-
-MediaPipelineOptions BuildMediaPipelineOptions();
-MediaPipelineDependencies BuildMediaPipelineDependencies(
-    const ProtocolRuntimeRefs &refs);
 
 OnvifServerOptions BuildOnvifOptions(
     const AppRuntimeConfig &runtime_config);

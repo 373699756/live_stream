@@ -2,7 +2,6 @@
 
 #include "infra/log.h"
 #include "infra/time.h"
-#include "media_source.h"
 #include "net.h"
 #include "rtsp.h"
 #include "webrtc.h"
@@ -100,7 +99,7 @@ public:
           net_engine_(dependencies.net_engine),
           rtsp_(dependencies.rtsp),
           webrtc_(dependencies.webrtc),
-          media_source_(dependencies.media_source) {}
+          media_streams_(dependencies.media_streams) {}
 
     ~NetAdaptiveImpl() override { StopInternal(); }
 
@@ -218,7 +217,7 @@ private:
         SampleNet(now_ms, &next_stats, &next_recommendations);
         SampleRtsp(now_ms, &next_stats, &next_recommendations);
         SampleWebrtc(now_ms, &next_stats, &next_recommendations);
-        SampleMediaSource(now_ms, &next_stats, &next_recommendations);
+        SampleMediaStreams(now_ms, &next_stats, &next_recommendations);
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -372,42 +371,43 @@ private:
         last_webrtc_dropped_frames_ = webrtc_stats.dropped_frames;
     }
 
-    void SampleMediaSource(
+    void SampleMediaStreams(
         int64_t now_ms,
         NetAdaptiveStats *stats,
         std::vector<NetAdaptiveRecommendation> *recommendations) {
-        if (media_source_ == nullptr || stats == nullptr ||
+        if (media_streams_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
         }
-        const MediaSourceStats media_stats = media_source_->GetStats();
-        stats->slow_media_readers = media_stats.slow_reader_count;
-        SampleMediaSourceStream(now_ms, StreamId::kMain,
-                                media_stats.main_slow_reader_count, stats,
-                                recommendations);
-        SampleMediaSourceStream(now_ms, StreamId::kSub,
-                                media_stats.sub_slow_reader_count, stats,
-                                recommendations);
+        const MediaStreamCounters media_counters =
+            media_streams_->GetStreamCounters();
+        stats->slow_media_readers = media_counters.slow_subscriber_count;
+        SampleMediaStream(now_ms, StreamId::kMain,
+                          media_counters.main_slow_subscriber_count, stats,
+                          recommendations);
+        SampleMediaStream(now_ms, StreamId::kSub,
+                          media_counters.sub_slow_subscriber_count, stats,
+                          recommendations);
     }
 
-    void SampleMediaSourceStream(
+    void SampleMediaStream(
         int64_t now_ms,
         StreamId stream_id,
-        uint32_t slow_reader_count,
+        uint32_t slow_subscriber_count,
         NetAdaptiveStats *stats,
         std::vector<NetAdaptiveRecommendation> *recommendations) {
         if (stats == nullptr || recommendations == nullptr) {
             return;
         }
-        if (slow_reader_count > 0) {
+        if (slow_subscriber_count > 0) {
             std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
-                "media_source",
-                "media_source",
-                "readers",
+                "media",
+                "media",
+                "subscribers",
                 stream_id,
                 PressureMetric::kSlowReaders,
-                slow_reader_count,
+                slow_subscriber_count,
                 0,
                 now_ms);
             if (state == nullptr) {
@@ -422,9 +422,9 @@ private:
             return;
         }
         std::lock_guard<std::mutex> lock(mutex_);
-        MaybeUpdateClearedTarget("media_source",
-                                 "media_source",
-                                 "readers",
+        MaybeUpdateClearedTarget("media",
+                                 "media",
+                                 "subscribers",
                                  stream_id,
                                  PressureMetric::kSlowReaders,
                                  0,
@@ -833,7 +833,7 @@ private:
     INetEngine *net_engine_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
-    IMediaSource *media_source_ = nullptr;
+    MediaStreams *media_streams_ = nullptr;
     bool started_ = false;
     bool stopping_ = false;
     uint64_t last_webrtc_dropped_frames_ = 0;

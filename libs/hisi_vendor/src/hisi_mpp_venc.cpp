@@ -84,8 +84,8 @@ void UpdateFrameTypeFromH265Pack(const VENC_PACK_S& pack,
     }
 }
 
-FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
-    if (codec == VideoCodec::kJpeg || codec == VideoCodec::kMjpeg) {
+FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, Codec codec) {
+    if (codec == Codec::kJpeg || codec == Codec::kMjpeg) {
         return FrameType::kJpeg;
     }
     if (stream.pstPack == nullptr || stream.u32PackCount == 0) {
@@ -97,9 +97,9 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, VideoCodec codec) {
         const VENC_PACK_S& pack = stream.pstPack[i];
         const uint32_t data_num =
             infra::Clamp<uint32_t>(pack.u32DataNum, 0U, 8U);
-        if (codec == VideoCodec::kH264) {
+        if (codec == Codec::kH264) {
             UpdateFrameTypeFromH264Pack(pack, data_num, &frame_type);
-        } else if (codec == VideoCodec::kH265) {
+        } else if (codec == Codec::kH265) {
             UpdateFrameTypeFromH265Pack(pack, data_num, &frame_type);
         }
         if (frame_type == FrameType::kIdr) {
@@ -136,7 +136,7 @@ void DestroyVencChannel(VENC_CHN venc) {
     (void)HI_MPI_VENC_DestroyChn(venc);
 }
 
-bool RequestIdrFrame(int32_t venc_channel, VideoCodec codec) {
+bool RequestIdrFrame(int32_t venc_channel, Codec codec) {
     if (!IsIdrCodec(codec)) {
         return false;
     }
@@ -196,8 +196,8 @@ bool ApplyVencRoiConfig(int32_t venc_channel,
         return false;
     }
     if (stream_config.roi.enabled &&
-        stream_config.codec != VideoCodec::kH264 &&
-        stream_config.codec != VideoCodec::kH265) {
+        stream_config.codec != Codec::kH264 &&
+        stream_config.codec != Codec::kH265) {
         Error("hisi_vendor", "VENC ROI unsupported codec chn=%d codec=%s",
               venc_channel, CodecName(stream_config.codec));
         return false;
@@ -277,7 +277,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
 
     // RC parameters
     attr.stRcAttr.enRcMode = RcModeFromConfig(stream.codec, stream.rc_mode);
-    if (stream.codec == VideoCodec::kH264) {
+    if (stream.codec == Codec::kH264) {
         attr.stVencAttr.stAttrH264e.bRcnRefShareBuf = HI_FALSE;
         if (stream.rc_mode == RateControlMode::kCbr) {
             attr.stRcAttr.stH264Cbr.u32BitRate = stream.bitrate_kbps;
@@ -302,7 +302,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
             attr.stRcAttr.stH264FixQp.u32PQp = kDefaultFixQpP;
             attr.stRcAttr.stH264FixQp.u32BQp = kDefaultFixQpB;
         }
-    } else if (stream.codec == VideoCodec::kH265) {
+    } else if (stream.codec == Codec::kH265) {
         attr.stVencAttr.stAttrH265e.bRcnRefShareBuf = HI_FALSE;
         if (stream.rc_mode == RateControlMode::kCbr) {
             attr.stRcAttr.stH265Cbr.u32BitRate = stream.bitrate_kbps;
@@ -327,7 +327,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
             attr.stRcAttr.stH265FixQp.u32PQp = kDefaultFixQpP;
             attr.stRcAttr.stH265FixQp.u32BQp = kDefaultFixQpB;
         }
-    } else if (stream.codec == VideoCodec::kMjpeg) {
+    } else if (stream.codec == Codec::kMjpeg) {
         if (stream.rc_mode == RateControlMode::kCbr) {
             attr.stRcAttr.stMjpegCbr.u32BitRate = stream.bitrate_kbps;
             attr.stRcAttr.stMjpegCbr.u32StatTime = stat_time;
@@ -348,7 +348,7 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         }
     }
 
-    if (stream.codec == VideoCodec::kMjpeg) {
+    if (stream.codec == Codec::kMjpeg) {
         attr.stGopAttr.enGopMode = VENC_GOPMODE_NORMALP;
         attr.stGopAttr.stNormalP.s32IPQpDelta = 0;
     }
@@ -386,7 +386,7 @@ struct VencStreamContext {
     VENC_CHN venc = 0;
     int fd = -1;
     StreamId stream_id = StreamId::kMain;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
 };
 
 struct VencPayloadInfo {
@@ -395,7 +395,7 @@ struct VencPayloadInfo {
 
 bool InitVencStreamContext(int32_t chn,
                            StreamId stream_id,
-                           VideoCodec codec,
+                           Codec codec,
                            VencStreamContext* context) {
     if (context == nullptr) {
         return false;
@@ -522,14 +522,14 @@ bool MeasureVencPayload(const VencStreamContext& context,
     return true;
 }
 
-VideoBuffer* CopyVencPayload(const VencStreamContext& context,
+FrameBuffer* CopyVencPayload(const VencStreamContext& context,
                              const VENC_STREAM_S& stream,
                              const VENC_STREAM_BUF_INFO_S& stream_buffer,
                              uint32_t payload_size) {
     // 这是从 HiSilicon VENC 内部 stream buffer 到项目内存的唯一深拷贝点。
-    // 复制完成后 EncodedFrame 持有 VideoBuffer；随后即可 ReleaseStream，把
+    // 复制完成后 EncodedFrame 持有 FrameBuffer；随后即可 ReleaseStream，把
     // MPP 的 pack buffer 还给驱动，不影响上层继续发送该帧。
-    VideoBuffer* buffer = VideoBufferAlloc(payload_size);
+    FrameBuffer* buffer = FrameBufferAlloc(payload_size);
     if (buffer == nullptr) {
         Error("hisi_vendor",
                         "alloc VENC payload chn=%d seq=%u size=%u failed",
@@ -547,7 +547,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                             "pack=%u len=%u offset=%u addr=%p",
                             context.chn, stream.u32Seq, i, pack.u32Len,
                             pack.u32Offset, static_cast<void*>(pack.pu8Addr));
-            VideoBufferUnref(buffer);
+            FrameBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.size > payload_size - offset) {
@@ -556,12 +556,12 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
                             "offset=%u len=%u size=%u",
                             context.chn, stream.u32Seq, offset,
                             packet_data.size, payload_size);
-            VideoBufferUnref(buffer);
+            FrameBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.first.size > 0) {
             // first/second 都是 VENC ring buffer 中的只读片段，按 AnnexB 原顺序
-            // 拼进一个连续 VideoBuffer，便于后续 parser/packetizer 直接使用。
+            // 拼进一个连续 FrameBuffer，便于后续 parser/packetizer 直接使用。
             std::memcpy(buffer->data + offset, packet_data.first.data,
                         packet_data.first.size);
             offset += packet_data.first.size;
@@ -572,12 +572,12 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
             offset += packet_data.second.size;
         }
     }
-    if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
+    if (offset != payload_size || !FrameBufferSetSize(buffer, offset)) {
         Error("hisi_vendor",
                         "copy VENC stream chn=%d seq=%u size=%u expect=%u "
                         "failed",
                         context.chn, stream.u32Seq, offset, payload_size);
-        VideoBufferUnref(buffer);
+        FrameBufferUnref(buffer);
         return nullptr;
     }
     return buffer;
@@ -586,7 +586,7 @@ VideoBuffer* CopyVencPayload(const VencStreamContext& context,
 EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
                                const VENC_STREAM_S& stream,
                                FrameType frame_type,
-                               VideoBuffer* buffer) {
+                               FrameBuffer* buffer) {
     EncodedFrame frame;
     frame.stream_id = context.stream_id;
     frame.codec = context.codec;
@@ -595,9 +595,9 @@ EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
     // PTS 取自 VENC pack；media_source 后续会修正为从流起点开始的单调相对时间。
     frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = frame.pts_us;
-    frame.buffer = buffer;
-    frame.offset = 0;
-    frame.size = buffer != nullptr ? buffer->size : 0;
+    frame.payload.buffer = buffer;
+    frame.payload.offset = 0;
+    frame.payload.size = buffer != nullptr ? buffer->size : 0;
     return frame;
 }
 
@@ -640,15 +640,15 @@ void HandleVencStream(VencStreamContext* context,
     }
 
     const FrameType frame_type = FrameTypeFromStream(stream, context->codec);
-    VideoBuffer* buffer =
+    FrameBuffer* buffer =
         CopyVencPayload(*context, stream, stream_buffer, payload.size);
     if (buffer == nullptr) {
         ReleaseVencStream(*context, &stream, packs);
         return;
     }
     EncodedFrame frame = BuildEncodedFrame(*context, stream, frame_type, buffer);
-    // frame 已经拥有项目 VideoBuffer。ReleaseVencStream 只释放 MPP stream 和
-    // 临时 pack 数组，不会释放 frame.buffer。
+    // frame 已经拥有项目 FrameBuffer。ReleaseVencStream 只释放 MPP stream 和
+    // 临时 pack 数组，不会释放 frame.payload.buffer。
     ReleaseVencStream(*context, &stream, packs);
 
     if (callback != nullptr) {
@@ -784,7 +784,7 @@ void InitVencRuntime(VencChannelRuntime* runtime,
                      int32_t venc_channel,
                      int32_t vpss_group,
                      int32_t vpss_channel,
-                     VideoCodec codec) {
+                     Codec codec) {
     if (runtime == nullptr) {
         return;
     }

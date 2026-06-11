@@ -103,15 +103,15 @@ bool SendAndRead(int fd,
 }
 
 live_stream::EncodedFrame MakeFrame() {
-    live_stream::VideoBuffer* buffer = live_stream::VideoBufferAlloc(3);
+    live_stream::FrameBuffer* buffer = live_stream::FrameBufferAlloc(3);
     uint8_t* data = buffer->data;
     data[0] = 0x65;
     data[1] = 1;
     data[2] = 2;
-    (void)live_stream::VideoBufferSetSize(buffer, 3);
+    (void)live_stream::FrameBufferSetSize(buffer, 3);
     live_stream::EncodedFrame frame;
     frame.stream_id = live_stream::StreamId::kMain;
-    frame.codec = live_stream::VideoCodec::kH264;
+    frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 300000;
     frame.buffer = buffer;

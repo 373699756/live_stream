@@ -87,9 +87,9 @@ public:
   bool IsStarted() const override { return true; }
   bool IsRestarting() const override { return false; }
   bool IsStreamStarted(live_stream::StreamId) const override { return true; }
-  live_stream::VideoCodec GetStreamCodec(
+  live_stream::Codec GetStreamCodec(
       live_stream::StreamId) const override {
-    return live_stream::VideoCodec::kH264;
+    return live_stream::Codec::kH264;
   }
   live_stream::FrameAttachId AttachFrameSink(
       const live_stream::FrameAttachOptions&, live_stream::IFrameSink*) override {
@@ -97,7 +97,7 @@ public:
   }
   bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
   bool RequestKeyFrame(live_stream::StreamId,
-                       live_stream::KeyFrameReason) override {
+                       live_stream::KeyFrameRequestType) override {
     return true;
   }
   live_stream::MediaCapabilities GetCapabilities() const override {
@@ -172,11 +172,11 @@ public:
   live_stream::hisisdk::JpegFrame CaptureJpeg(
       const live_stream::hisisdk::SnapshotConfig&) override {
     live_stream::hisisdk::JpegFrame frame;
-    frame.buffer = live_stream::VideoBufferAlloc(8);
+    frame.buffer = live_stream::FrameBufferAlloc(8);
     if (frame.buffer != nullptr) {
       frame.buffer->data[0] = 0xff;
       frame.buffer->data[1] = 0xd8;
-      live_stream::VideoBufferSetSize(frame.buffer, 8);
+      live_stream::FrameBufferSetSize(frame.buffer, 8);
       frame.size = 8;
       frame.width = 1920;
       frame.height = 1080;
@@ -189,9 +189,9 @@ public:
       live_stream::hisisdk::Size size,
       uint32_t) override {
     live_stream::hisisdk::YuvFrame frame;
-    frame.buffer = live_stream::VideoBufferAlloc(size.width * size.height * 3 / 2);
+    frame.buffer = live_stream::FrameBufferAlloc(size.width * size.height * 3 / 2);
     if (frame.buffer != nullptr) {
-      live_stream::VideoBufferSetSize(frame.buffer, size.width * size.height * 3 / 2);
+      live_stream::FrameBufferSetSize(frame.buffer, size.width * size.height * 3 / 2);
       frame.size = size.width * size.height * 3 / 2;
       frame.width = size.width;
       frame.height = size.height;
@@ -232,7 +232,7 @@ int main() {
   live_stream::SnapshotFrame frame = snapshot.Capture(request);
   if (!frame.buffer || frame.width != 1920 || frame.height != 1080 ||
       !frame.HasValidPayload() ||
-      !live_stream::IsValidBufferSlice(frame.PayloadSlice())) {
+      !live_stream::IsValidFrameSlice(frame.PayloadSlice())) {
     return 4;
   }
   snapshot.Stop();

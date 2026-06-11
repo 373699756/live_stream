@@ -43,9 +43,9 @@ struct FakeEvent : live_stream::IEvent {
     void Stop() override {}
 
     live_stream::EventSubscriptionId Subscribe(
-        live_stream::EventType type,
+        const std::vector<live_stream::EventType>& types,
         live_stream::EventHandler handler) override {
-        (void)type;
+        (void)types;
         (void)handler;
         return 1;
     }
@@ -59,6 +59,9 @@ struct FakeEvent : live_stream::IEvent {
     bool Publish(const live_stream::Event& event) override {
         events.push_back(event);
         return true;
+    }
+    live_stream::EventCounts GetCounts() const override {
+        return live_stream::EventCounts();
     }
 
     std::vector<live_stream::Event> events;

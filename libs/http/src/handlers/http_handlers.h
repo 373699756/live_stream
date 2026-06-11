@@ -3,7 +3,7 @@
 
 #include "http_access.h"
 #include "http_router.h"
-#include "media_source.h"
+#include "media/media_streams.h"
 
 #include <memory>
 
@@ -39,7 +39,7 @@ struct SystemStatusSources {
     IAiView *ai = nullptr;
     ISnapshotView *snapshot = nullptr;
     IWebrtc *webrtc = nullptr;
-    IMediaSource *media_source = nullptr;
+    MediaStreams *media_streams = nullptr;
 };
 
 enum class HttpHandlerKind {
@@ -67,7 +67,7 @@ struct HttpHandlerDependencies {
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
     IDeviceMedia *device_media = nullptr;
-    IMediaSource *media_source = nullptr;
+    MediaStreams *media_streams = nullptr;
     IAlarm *alarm = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
@@ -100,7 +100,7 @@ std::unique_ptr<IHttpHandler> MakeAlarmHandler(
     HttpAccess *access, IAlarm *alarm);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
     HttpAccess *access, IConfig *config,
-    IDeviceMedia *device_media, IMediaSource *media_source,
+    IDeviceMedia *device_media, MediaStreams *media_streams,
     IRtsp *rtsp, IWebrtc *webrtc, IHttp *http);
 std::unique_ptr<IHttpHandler> MakeAiHandler(
     HttpAccess *access, IConfig *config,

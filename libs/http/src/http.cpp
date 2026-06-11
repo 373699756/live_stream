@@ -8,7 +8,6 @@
 #include "infra/log.h"
 #include "infra/time.h"
 #include "logger.h"
-#include "media_source.h"
 
 #include <memory>
 #include <mutex>
@@ -211,19 +210,17 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     auth_ = dependencies.auth;
     logger_ = dependencies.logger;
     if (server_ != nullptr) {
-        server_->SetCloseCallback([media_flv_source =
-                                       dependencies.media_flv_source,
-                                   media_mjpeg_source =
-                                       dependencies.media_mjpeg_source,
+        server_->SetCloseCallback([media_streams =
+                                       dependencies.media_streams,
                                    event = dependencies.event](
                                       const HttpMediaClientHandle &client) {
             if (client.type == HttpMediaClientType::kFlv &&
-                media_flv_source != nullptr && client.id != 0) {
-                (void)media_flv_source->DetachFlvClient(client.id);
+                media_streams != nullptr && client.id != 0) {
+                (void)media_streams->DetachFlvClient(client.id);
             }
             if (client.type == HttpMediaClientType::kMjpeg &&
-                media_mjpeg_source != nullptr && client.id != 0) {
-                (void)media_mjpeg_source->DetachMjpegClient(client.id);
+                media_streams != nullptr && client.id != 0) {
+                (void)media_streams->DetachMjpegClient(client.id);
             }
             if (client.type == HttpMediaClientType::kEventStream &&
                 event != nullptr && client.id != 0) {
@@ -243,7 +240,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handler_dependencies.upgrade = dependencies.upgrade;
     handler_dependencies.system = dependencies.system;
     handler_dependencies.device_media = dependencies.device_media;
-    handler_dependencies.media_source = dependencies.media_source;
+    handler_dependencies.media_streams = dependencies.media_streams;
     handler_dependencies.alarm = dependencies.alarm;
     handler_dependencies.rtsp = dependencies.rtsp;
     handler_dependencies.webrtc = dependencies.webrtc;
@@ -277,7 +274,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     system_status_sources.ai = dependencies.ai;
     system_status_sources.snapshot = dependencies.snapshot;
     system_status_sources.webrtc = dependencies.webrtc;
-    system_status_sources.media_source = dependencies.media_source;
+    system_status_sources.media_streams = dependencies.media_streams;
     handler_dependencies.system_status_sources = system_status_sources;
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kSystem, handler_dependencies));
@@ -293,7 +290,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     HttpMediaHandlerDependencies media_handler_dependencies;
     media_handler_dependencies.access = this;
     media_handler_dependencies.device_media = dependencies.device_media;
-    media_handler_dependencies.media_source = dependencies.media_source;
+    media_handler_dependencies.media_streams = dependencies.media_streams;
     media_handler_dependencies.webrtc = dependencies.webrtc;
     handlers_.push_back(CreateHttpHandler(
         HttpMediaHandlerKind::kHls, media_handler_dependencies));
@@ -305,11 +302,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_dependencies.access = this;
     streaming_handler_dependencies.writer = server_.get();
     streaming_handler_dependencies.device_media = dependencies.device_media;
-    streaming_handler_dependencies.media_source = dependencies.media_source;
-    streaming_handler_dependencies.media_flv_source =
-        dependencies.media_flv_source;
-    streaming_handler_dependencies.media_mjpeg_source =
-        dependencies.media_mjpeg_source;
+    streaming_handler_dependencies.media_streams = dependencies.media_streams;
     streaming_handler_dependencies.event = dependencies.event;
     streaming_handler_ = CreateStreamingHttpHandler(
         streaming_handler_dependencies);

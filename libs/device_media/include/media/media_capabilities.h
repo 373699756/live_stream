@@ -42,7 +42,7 @@ enum class GopMode {
 };
 
 struct CodecCapability {
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     std::vector<std::string> profiles;
 };
 

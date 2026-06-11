@@ -1,7 +1,5 @@
 #include "frame_ring.h"
 
-#include "media_codec.h"
-
 #include <utility>
 
 namespace live_stream {
@@ -95,7 +93,7 @@ MediaFrameReaderStartData FrameRing::GetStartData(
         }
         MediaFrame media_frame;
         // ToMediaFrame 会 ref copy payload.encoded_frame；返回给 reader 的
-        // start data 与内部 GOP cache 共享 VideoBuffer，不深拷贝帧内容。
+        // start data 与内部 GOP cache 共享 FrameBuffer，不深拷贝帧内容。
         if (ToMediaFrame(cache->frames[i].payload, cache->frames[i].key_frame,
                          cache->frames[i].duration_us, &media_frame)) {
             start_data.gop_frames.push_back(media_frame);
@@ -211,8 +209,8 @@ void FrameRing::Write(const FramePayload &frame) {
     if (cache == nullptr) {
         return;
     }
-    const bool key_frame =
-        media_codec::IsKeyFrame(encoded_frame.frame_type);
+    const bool key_frame = encoded_frame.frame_type == FrameType::kIdr ||
+                           encoded_frame.frame_type == FrameType::kI;
     const int64_t duration_us = EstimateFrameDuration(*cache, frame);
     const uint64_t sequence = next_sequence_++;
     (void)AppendToCache(cache, sequence, key_frame, duration_us, frame);
@@ -404,7 +402,7 @@ bool FrameRing::AppendToCache(StreamCache *cache, uint64_t sequence,
     CachedFrame &cached_frame = cache->frames[cache->size];
     cache->bytes -= CachedFrameBytes(cached_frame);
     FramePayloadUnref(&cached_frame.payload);
-    // GOP cache 只增加 FramePayload/VideoBuffer 引用，缓存的是编码帧 owner；
+    // GOP cache 只增加 FramePayload/FrameBuffer 引用，缓存的是编码帧 owner；
     // 不按 GOP 再复制一份大 payload。
     if (!FramePayloadRefCopy(&cached_frame.payload, &frame)) {
         ClearCache(cache);
@@ -414,7 +412,7 @@ bool FrameRing::AppendToCache(StreamCache *cache, uint64_t sequence,
     cached_frame.sequence = sequence;
     cached_frame.key_frame = key_frame;
     cached_frame.duration_us = duration_us;
-    cached_frame.bytes = frame.encoded_frame.size;
+    cached_frame.bytes = frame.encoded_frame.payload.size;
     cache->bytes += cached_frame.bytes;
     ++cache->size;
     return true;

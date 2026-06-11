@@ -3,6 +3,7 @@ MODULE_NAME := net_adaptive
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include

@@ -1,4 +1,5 @@
 ROOT_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
+ROOT_DIR := $(ROOT_DIR)
 BUILD_DIR ?= $(ROOT_DIR)/build
 LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/$(MODULE_NAME)

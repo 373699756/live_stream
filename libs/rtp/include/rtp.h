@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_RTP_RTP_H_
 #define LIVE_STREAM_RTP_RTP_H_
 
-#include "media/encoded_frame.h"
-
 #include <cstddef>
 #include <cstdint>
 
@@ -15,6 +13,11 @@ constexpr uint8_t kRtpPayloadTypeH265 = 98;
 constexpr uint32_t kRtpClockRate = 90000;
 constexpr size_t kRtpHeaderSize = 12;
 constexpr size_t kMaxRtpPayloadHeaderSize = 3;
+
+enum class Codec {
+    kH264 = 0,
+    kH265,
+};
 
 uint32_t RtpTimestampFromPtsUs(int64_t pts_us,
                                uint32_t clock_rate = kRtpClockRate);
@@ -31,7 +34,7 @@ struct RtpPacketSlice {
 
 struct RtpPacketView {
     // packet view 只在 OnRtpPacket 回调期间有效。media_payload=true 的 slice
-    // 指向输入 EncodedFrame payload，异步发送方必须自己持有底层 VideoBuffer。
+    // 指向输入 payload，异步发送方必须自己持有底层媒体 buffer。
     RtpPacketSlice slices[kMaxRtpPacketSlices];
     size_t slice_count = 0;
     bool marker = false;
@@ -106,12 +109,12 @@ struct RtpPacketizerOptions {
     uint8_t h265_payload_type = kRtpPayloadTypeH265;
 };
 
-uint8_t RtpPayloadTypeForCodec(VideoCodec codec);
+uint8_t RtpPayloadTypeForCodec(Codec codec);
 uint8_t RtpPayloadTypeForCodec(const RtpPacketizerOptions &options,
-                               VideoCodec codec);
+                               Codec codec);
 
 struct RtpPacketizerInput {
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     // payload 是一帧 AnnexB 视频码流；RTP 模块只分片，不拥有 SDP、SRTP、
     // socket/session，也不做 FLV/HLS 封装。
     const uint8_t *payload = nullptr;
@@ -131,8 +134,6 @@ public:
     explicit RtpPacketizer(const RtpPacketizerOptions &options);
 
     bool Packetize(const RtpPacketizerInput &input,
-                   IRtpPacketSink *sink) const;
-    bool Packetize(const EncodedFrame &frame, uint16_t *sequence, uint32_t ssrc,
                    IRtpPacketSink *sink) const;
 
 private:

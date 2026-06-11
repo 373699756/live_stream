@@ -209,9 +209,9 @@ public:
   bool IsStarted() const override { return true; }
   bool IsRestarting() const override { return false; }
   bool IsStreamStarted(live_stream::StreamId) const override { return true; }
-  live_stream::VideoCodec GetStreamCodec(
+  live_stream::Codec GetStreamCodec(
       live_stream::StreamId) const override {
-    return live_stream::VideoCodec::kH264;
+    return live_stream::Codec::kH264;
   }
   live_stream::FrameAttachId AttachFrameSink(
       const live_stream::FrameAttachOptions&,
@@ -220,7 +220,7 @@ public:
   }
   bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
   bool RequestKeyFrame(live_stream::StreamId,
-                       live_stream::KeyFrameReason) override {
+                       live_stream::KeyFrameRequestType) override {
     return true;
   }
   live_stream::MediaCapabilities GetCapabilities() const override {
@@ -228,7 +228,7 @@ public:
     live_stream::VideoStreamCapabilities main;
     main.stream_id = live_stream::StreamId::kMain;
     main.codecs.push_back(
-        live_stream::CodecCapability{live_stream::VideoCodec::kH264, {}});
+        live_stream::CodecCapability{live_stream::Codec::kH264, {}});
     main.resolutions.push_back({1920, 1080});
     capabilities.streams.push_back(main);
     capabilities.image.basic.push_back({"brightness", 0, 100, 50, true});

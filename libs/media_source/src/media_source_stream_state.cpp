@@ -5,9 +5,9 @@
 
 namespace live_stream {
 namespace media_source_internal {
-bool IsBrowserCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265 ||
-           codec == VideoCodec::kMjpeg;
+bool IsBrowserCodec(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265 ||
+           codec == Codec::kMjpeg;
 }
 
 namespace {
@@ -32,7 +32,7 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
                                            &stream->pps, &has_sps, &has_pps);
     if (!stream->sps.empty() && !stream->pps.empty() && (has_sps || has_pps)) {
         stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
-            VideoCodec::kH264, std::string(), stream->sps, stream->pps,
+            Codec::kH264, std::string(), stream->sps, stream->pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
         // config_generation 只描述 FLV/codec 配置更新，不等同于 reader 的
         // codec_generation；FLV client 用它判断是否需要重发 sequence header。
@@ -63,7 +63,7 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
     if (!stream->vps.empty() && !stream->sps.empty() && !stream->pps.empty() &&
         (has_vps || has_sps || has_pps)) {
         stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
-            VideoCodec::kH265, stream->vps, stream->sps, stream->pps,
+            Codec::kH265, stream->vps, stream->sps, stream->pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
         ++stream->config_generation;
     }
@@ -79,20 +79,20 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
 
 }  // namespace
 
-bool IsBrowserStreamReady(StreamState state, VideoCodec codec) {
+bool IsBrowserStreamReady(StreamState state, Codec codec) {
     return state == StreamState::kRunning && IsBrowserCodec(codec);
 }
 
-bool IsFlvCodecSupported(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsFlvCodecSupported(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
-bool IsHlsCodecSupported(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsHlsCodecSupported(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
-bool IsMjpegCodecSupported(VideoCodec codec) {
-    return codec == VideoCodec::kMjpeg;
+bool IsMjpegCodecSupported(Codec codec) {
+    return codec == Codec::kMjpeg;
 }
 
 bool HasFlvSequenceHeader(const StreamContext &stream) {
@@ -128,19 +128,20 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
     // FramePayload 持有原始 EncodedFrame 引用，NAL list 只是指向该 payload 的视图；
     // 不在解析阶段复制整帧视频数据。
     payload->has_nal_units = true;
-    const uint8_t *data = EncodedFramePayloadData(&frame);
+    const FrameSlice payload_slice = EncodedFramePayloadSlice(&frame);
+    const uint8_t *data = FrameSliceData(payload_slice);
     if (data == nullptr) {
         payload->has_nal_units = false;
         return;
     }
 
-    if (frame.codec == VideoCodec::kH264) {
+    if (frame.codec == Codec::kH264) {
         payload->has_nal_units =
-            media_codec::ParseH264AnnexBNalUnits(data, frame.size,
+            media_codec::ParseH264AnnexBNalUnits(data, payload_slice.size,
                                                   &payload->h264_units);
-    } else if (frame.codec == VideoCodec::kH265) {
+    } else if (frame.codec == Codec::kH265) {
         payload->has_nal_units =
-            media_codec::ParseH265AnnexBNalUnits(data, frame.size,
+            media_codec::ParseH265AnnexBNalUnits(data, payload_slice.size,
                                                   &payload->h265_units);
     } else {
         payload->has_nal_units = false;
@@ -151,10 +152,10 @@ bool HasParsedUnits(const ParsedFramePayload &payload) {
     if (!payload.has_nal_units) {
         return false;
     }
-    if (payload.encoded_frame.codec == VideoCodec::kH264) {
+    if (payload.encoded_frame.codec == Codec::kH264) {
         return !payload.h264_units.empty();
     }
-    if (payload.encoded_frame.codec == VideoCodec::kH265) {
+    if (payload.encoded_frame.codec == Codec::kH265) {
         return !payload.h265_units.empty();
     }
     return false;
@@ -171,7 +172,7 @@ void ClearStreamContext(StreamContext *stream) {
     stream->flv_gop_cache.Clear();
     stream->hls_maker.Reset();
     EncodedFrameUnref(&stream->latest_mjpeg_frame);
-    stream->codec = VideoCodec::kH264;
+    stream->codec = Codec::kH264;
     stream->state = StreamState::kClosed;
     stream->vps.clear();
     stream->sps.clear();
@@ -265,7 +266,7 @@ void ResetStreamCaches(StreamContext *stream, MediaSourceResetReason reason) {
     stream->last_reset_reason = reason;
 }
 
-void ResetStream(StreamContext *stream, VideoCodec codec,
+void ResetStream(StreamContext *stream, Codec codec,
                  MediaSourceResetReason reason) {
     if (stream == nullptr) {
         return;
@@ -311,12 +312,12 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
 }
 
 bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
-    if (stream == nullptr || frame.codec != VideoCodec::kMjpeg ||
+    if (stream == nullptr || frame.codec != Codec::kMjpeg ||
         !EncodedFrameHasPayload(&frame)) {
         return false;
     }
     EncodedFrame retained_frame;
-    // MJPEG latest frame 只保存 VideoBuffer 引用；HTTP-MJPEG 发送时通过
+    // MJPEG latest frame 只保存 FrameBuffer 引用；HTTP-MJPEG 发送时通过
     // HttpMediaSlice.owner 继续把同一块 payload 持有到网络发送完成。
     if (!EncodedFrameRefCopy(&retained_frame, &frame)) {
         return false;
@@ -348,10 +349,11 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         return result;
     }
 
-    bool keyframe = media_codec::IsKeyFrame(frame.frame_type);
+    bool keyframe = frame.frame_type == FrameType::kIdr ||
+                    frame.frame_type == FrameType::kI;
     bool prepend_parameter_sets = false;
     const uint64_t config_generation_before = stream->config_generation;
-    if (frame.codec == VideoCodec::kH265) {
+    if (frame.codec == Codec::kH265) {
         BuildH265Outputs(stream, payload, frame, &keyframe,
                          &prepend_parameter_sets);
     } else {
@@ -377,7 +379,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     if (package_flv && IsFlvCodecSupported(frame.codec)) {
         // FLV tag view 只生成小 header 和 length prefix；媒体 NAL payload
-        // 仍指向 payload.encoded_frame 的 VideoBuffer。
+        // 仍指向 payload.encoded_frame 的 FrameBuffer。
         result.has_flv_tag_view = FlvMuxer::BuildVideoTagView(
             frame, payload, keyframe, &result.flv_tag_view);
         if (result.has_flv_tag_view) {

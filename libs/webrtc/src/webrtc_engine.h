@@ -27,7 +27,7 @@ struct WebrtcEngineCallbacks {
 };
 
 struct WebrtcRtpSendParameters {
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     uint8_t payload_type = 0;
     uint32_t clock_rate = rtp::kRtpClockRate;
     uint32_t ssrc = 0;

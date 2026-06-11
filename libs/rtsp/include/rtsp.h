@@ -2,6 +2,7 @@
 #define LIVE_STREAM_RTSP_RTSP_H_
 
 #include "media/encoded_frame.h"
+#include "media/media_streams.h"
 #include "media/stream_types.h"
 
 #include <cstdint>
@@ -13,7 +14,6 @@ namespace live_stream {
 
 class IAuth;
 class IEvent;
-class IMediaFrameSource;
 class INetEngine;
 class INetExecutor;
 
@@ -55,8 +55,8 @@ struct RtspOptions {
     uint32_t send_stall_timeout_ms = 5000;
     RtspTransportMode default_transport = RtspTransportMode::kTcpInterleaved;
     bool enable_auth = false;
-    VideoCodec main_video_codec = VideoCodec::kH264;
-    VideoCodec sub_video_codec = VideoCodec::kH264;
+    Codec main_video_codec = Codec::kH264;
+    Codec sub_video_codec = Codec::kH264;
 };
 
 struct RtspSessionStats {
@@ -112,7 +112,7 @@ struct RtspDependencies {
     INetExecutor* net_executor = nullptr;
     IAuth* auth = nullptr;
     IEvent* event = nullptr;
-    IMediaFrameSource* media_source = nullptr;
+    MediaStreams* media_streams = nullptr;
 };
 
 class IRtsp {

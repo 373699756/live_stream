@@ -180,7 +180,7 @@ int main() {
     if (peer.peer_id.empty() || media_source.key_frame_requests != 1 ||
         media_source.last_key_frame_stream != live_stream::StreamId::kSub ||
         media_source.last_key_frame_reason !=
-            live_stream::KeyFrameReason::kNewClient) {
+            live_stream::KeyFrameRequestType::kNewSubscriber) {
         return 3;
     }
 

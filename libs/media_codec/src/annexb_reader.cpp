@@ -28,10 +28,6 @@ size_t FindStartCode(const uint8_t *data, size_t size, size_t offset) {
 
 }  // namespace
 
-bool IsKeyFrame(FrameType frame_type) {
-    return frame_type == FrameType::kIdr || frame_type == FrameType::kI;
-}
-
 bool ForEachAnnexBNalUnit(const uint8_t *data,
                           size_t size,
                           IAnnexBNalUnitSink *sink) {

@@ -40,15 +40,15 @@ const char *WebrtcPeerStateName(WebrtcPeerState state) {
     return "unknown";
 }
 
-const char *VideoCodecToJsonString(VideoCodec codec) {
+const char *CodecToJsonString(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
     }
     return "unknown";
@@ -58,7 +58,7 @@ ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
     ConfigJson root = ConfigJson::object();
     root["peer_id"] = peer.peer_id;
     root["stream"] = MediaStreamIdToJson(peer.stream_id);
-    root["codec"] = VideoCodecToJsonString(peer.codec);
+    root["codec"] = CodecToJsonString(peer.codec);
     root["state"] = WebrtcPeerStateName(peer.state);
     root["client_id"] = peer.client_id;
     root["reader_id"] = peer.reader_id;

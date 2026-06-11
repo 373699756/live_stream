@@ -46,6 +46,7 @@ CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
 CXXFLAGS += -Ilibs/network_config/include
 CXXFLAGS += -Ilibs/network_config/src
+CXXFLAGS += -Ilibs/media/include
 CXXFLAGS += -Ilibs/media_codec/include
 CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include

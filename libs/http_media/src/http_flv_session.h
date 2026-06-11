@@ -2,7 +2,7 @@
 #define LIVE_STREAM_HTTP_MEDIA_SRC_HTTP_FLV_SESSION_H_
 
 #include "http_media_writer.h"
-#include "media_source.h"
+#include "media/media_streams.h"
 
 #include <cstddef>
 #include <cstdint>

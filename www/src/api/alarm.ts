@@ -4,6 +4,7 @@ import type {
   AlarmConfig,
   AlarmRuntimeStatus,
   AlarmSourceName,
+  AlarmSourceState,
   AlarmStatusResponse,
   AlarmRuleConfig,
 } from './types';
@@ -82,7 +83,27 @@ function normalizeAlarmRuntimeStatus(
     source: normalizeAlarmSource(status?.source),
     active_since_ms: nonNegativeNumber(status?.active_since_ms, 0),
     last_trigger_time_ms: nonNegativeNumber(status?.last_trigger_time_ms, 0),
+    level: clampNumber(Math.round(finiteNumber(status?.level, 0)), 0, 5),
     message: typeof status?.message === 'string' ? status.message : '',
+    sources: Array.isArray(status?.sources)
+      ? status.sources.map(normalizeAlarmSourceState)
+      : [],
+  };
+}
+
+function normalizeAlarmSourceState(
+  state: AlarmSourceState | undefined,
+): AlarmSourceState {
+  return {
+    source: normalizeAlarmSource(state?.source),
+    enabled: state?.enabled === true,
+    waiting: state?.waiting === true,
+    active: state?.active === true,
+    waiting_since_ms: nonNegativeNumber(state?.waiting_since_ms, 0),
+    active_since_ms: nonNegativeNumber(state?.active_since_ms, 0),
+    last_alarm_time_ms: nonNegativeNumber(state?.last_alarm_time_ms, 0),
+    level: clampNumber(Math.round(finiteNumber(state?.level, 0)), 0, 5),
+    message: typeof state?.message === 'string' ? state.message : '',
   };
 }
 
@@ -101,6 +122,18 @@ function normalizeAlarmRule(
     min_duration_ms: Math.max(
       0,
       Math.round(finiteNumber(rule?.min_duration_ms, fallback.min_duration_ms)),
+    ),
+    repeat_interval_ms: Math.max(
+      0,
+      Math.round(
+        finiteNumber(rule?.repeat_interval_ms, fallback.repeat_interval_ms ?? 0),
+      ),
+    ),
+    manual_clear: rule?.manual_clear ?? fallback.manual_clear ?? false,
+    level: clampNumber(
+      Math.round(finiteNumber(rule?.level, fallback.level ?? 1)),
+      0,
+      5,
     ),
     regions: Array.isArray(rule?.regions) ? rule.regions : [],
   };

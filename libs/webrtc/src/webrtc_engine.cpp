@@ -22,8 +22,8 @@ namespace {
 
 class NativeWebrtcEngine;
 
-bool IsSupportedCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsSupportedCodec(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
 std::atomic<uintptr_t> &NextEngineId() {

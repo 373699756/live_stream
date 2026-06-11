@@ -7,7 +7,7 @@ namespace live_stream {
 namespace hisisdk {
 namespace mpp_vb_config {
 
-bool ConfigureVideoBuffer(const MediaPipelineConfig& config,
+bool ConfigureFrameBuffer(const MediaPipelineConfig& config,
                           bool* cleanup_failed);
 
 }  // namespace mpp_vb_config

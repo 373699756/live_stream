@@ -6,7 +6,7 @@ namespace live_stream {
 namespace webrtc_internal {
 
 WebrtcPeerInfo WebrtcPeerStore::CreatePeer(
-    const WebrtcCreatePeerRequest &request, VideoCodec codec) {
+    const WebrtcCreatePeerRequest &request, Codec codec) {
   WebrtcPeerInfo peer;
   peer.peer_id = NextPeerId();
   peer.stream_id = request.stream_id;

@@ -11,9 +11,13 @@ namespace live_stream {
 
 // Owns HTTP response serialization and TCP enqueue policy for one HTTP server.
 // HttpServer keeps connection/session lifecycle; this class keeps body slicing,
-// VideoBuffer lifetime bridging and slow-client close decisions in one place.
+// FrameBuffer lifetime bridging and slow-client close decisions in one place.
 class HttpConnectionWriter {
 public:
+    // send_buffer_limit_bytes must be > 0. It sets the maximum outstanding
+    // (pending) bytes per streaming connection before the writer closes the
+    // connection with kPendingLimit. A value of 0 is rejected by the streaming
+    // send path and will cause every write to fail immediately.
     explicit HttpConnectionWriter(uint32_t send_buffer_limit_bytes);
 
     bool SendResponse(INetEngine *net_engine, ConnectionId connection_id,

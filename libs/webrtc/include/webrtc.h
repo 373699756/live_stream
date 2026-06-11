@@ -1,8 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_WEBRTC_H_
 #define LIVE_STREAM_WEBRTC_WEBRTC_H_
 
-#include "media_source.h"
-
+#include "media/media_streams.h"
 #include "media/stream_types.h"
 
 #include <cstdint>
@@ -44,7 +43,7 @@ struct WebrtcOptions {
 };
 
 struct WebrtcDependencies {
-    IMediaFrameSource *media_source = nullptr;
+    MediaStreams *media_streams = nullptr;
     INetEngine *net_engine = nullptr;
     INetExecutor *net_executor = nullptr;
 };
@@ -60,7 +59,7 @@ struct WebrtcCreatePeerRequest {
 struct WebrtcPeerInfo {
     std::string peer_id;
     StreamId stream_id = StreamId::kMain;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     WebrtcPeerState state = WebrtcPeerState::kCreated;
     std::string client_id;
     std::string session_id;

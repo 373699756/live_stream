@@ -41,6 +41,42 @@ bool IsKeyFrame(const EncodedFrame &frame) {
          frame.frame_type == FrameType::kI;
 }
 
+bool RtpCodecFromCodec(Codec codec, rtp::Codec *rtp_codec) {
+  if (rtp_codec == nullptr) {
+    return false;
+  }
+  if (codec == Codec::kH264) {
+    *rtp_codec = rtp::Codec::kH264;
+    return true;
+  }
+  if (codec == Codec::kH265) {
+    *rtp_codec = rtp::Codec::kH265;
+    return true;
+  }
+  return false;
+}
+
+bool BuildRtpInput(const EncodedFrame &frame, uint16_t *sequence,
+                   uint32_t ssrc, rtp::RtpPacketizerInput *input) {
+  if (input == nullptr || sequence == nullptr ||
+      !EncodedFrameHasPayload(&frame)) {
+    return false;
+  }
+  rtp::Codec rtp_codec = rtp::Codec::kH264;
+  if (!RtpCodecFromCodec(frame.codec, &rtp_codec)) {
+    return false;
+  }
+  const auto payload = EncodedFramePayloadSlice(&frame);
+  input->codec = rtp_codec;
+  input->payload = EncodedFramePayloadData(&frame);
+  input->payload_size = payload.size;
+  input->pts_us = frame.pts_us;
+  input->sequence = sequence;
+  input->ssrc = ssrc;
+  input->payload_type = rtp::RtpPayloadTypeForCodec(input->codec);
+  return input->payload != nullptr && input->payload_size > 0;
+}
+
 }  // namespace
 
 RtspRtpSender::RtspRtpSender(uint32_t rtp_mtu_bytes)
@@ -82,7 +118,10 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
   // Packetize 会按 MTU 拆出一个或多个 RTP packet，并通过 sink 立即发送；
   // sequence 在锁外推进，发送结束后再写回 session，减少锁持有时间。
   RtspRtpPacketSink sink(this, session, &frame, &context);
-  (void)packetizer_.Packetize(frame, &sequence, session->ssrc, &sink);
+  rtp::RtpPacketizerInput input;
+  if (BuildRtpInput(frame, &sequence, session->ssrc, &input)) {
+    (void)packetizer_.Packetize(input, &sink);
+  }
   {
     std::lock_guard<std::mutex> lock(*context.mutex);
     session->rtp_sequence = sequence;

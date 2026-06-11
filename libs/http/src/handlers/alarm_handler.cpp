@@ -11,13 +11,33 @@ const char *AlarmSourceToJsonString(AlarmSource source) {
     return AlarmSourceToString(source);
 }
 
+ConfigJson AlarmSourceStateToJson(const AlarmSourceState &state) {
+    ConfigJson root = ConfigJson::object();
+    root["source"] = AlarmSourceToJsonString(state.source);
+    root["enabled"] = state.enabled;
+    root["waiting"] = state.waiting;
+    root["active"] = state.active;
+    root["waiting_since_ms"] = state.waiting_since_ms;
+    root["active_since_ms"] = state.active_since_ms;
+    root["last_alarm_time_ms"] = state.last_alarm_time_ms;
+    root["level"] = state.level;
+    root["message"] = state.message;
+    return root;
+}
+
 ConfigJson AlarmStatusToJson(const AlarmStatus &status) {
     ConfigJson root = ConfigJson::object();
     root["active"] = status.active;
     root["source"] = AlarmSourceToJsonString(status.source);
     root["active_since_ms"] = status.active_since_ms;
     root["last_trigger_time_ms"] = status.last_trigger_time_ms;
+    root["level"] = status.level;
     root["message"] = status.message;
+    ConfigJson sources = ConfigJson::array();
+    for (const AlarmSourceState &source : status.sources) {
+        sources.push_back(AlarmSourceStateToJson(source));
+    }
+    root["sources"] = sources;
     return root;
 }
 

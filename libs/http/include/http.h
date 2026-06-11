@@ -35,20 +35,20 @@ struct HttpRequest {
 struct HttpResponseBodySlice {
     HttpResponseBodySlice() = default;
     HttpResponseBodySlice(const uint8_t *slice_data, size_t slice_size,
-                          VideoBuffer *slice_owner)
+                          FrameBuffer *slice_owner)
         : data(slice_data),
           size(slice_size),
-          owner(VideoBufferRef(slice_owner)) {}
+          owner(FrameBufferRef(slice_owner)) {}
     HttpResponseBodySlice(const HttpResponseBodySlice &other)
         : data(other.data),
           size(other.size),
-          owner(VideoBufferRef(other.owner)) {}
+          owner(FrameBufferRef(other.owner)) {}
     HttpResponseBodySlice &operator=(const HttpResponseBodySlice &other) {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer *retained = VideoBufferRef(other.owner);
-        VideoBufferUnref(owner);
+        FrameBuffer *retained = FrameBufferRef(other.owner);
+        FrameBufferUnref(owner);
         data = other.data;
         size = other.size;
         owner = retained;
@@ -64,7 +64,7 @@ struct HttpResponseBodySlice {
         if (this == &other) {
             return *this;
         }
-        VideoBufferUnref(owner);
+        FrameBufferUnref(owner);
         data = other.data;
         size = other.size;
         owner = other.owner;
@@ -73,11 +73,11 @@ struct HttpResponseBodySlice {
         other.owner = nullptr;
         return *this;
     }
-    ~HttpResponseBodySlice() { VideoBufferUnref(owner); }
+    ~HttpResponseBodySlice() { FrameBufferUnref(owner); }
 
     const uint8_t *data = nullptr;
     size_t size = 0;
-    VideoBuffer *owner = nullptr;
+    FrameBuffer *owner = nullptr;
 };
 
 struct HttpResponse {

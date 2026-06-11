@@ -29,8 +29,8 @@ struct AppRuntimeConfig {
     uint32_t rtsp_max_sessions = 16;
     uint32_t webrtc_max_peers = 2;
     std::string webrtc_public_ip = "auto";
-    VideoCodec rtsp_main_codec = VideoCodec::kH264;
-    VideoCodec rtsp_sub_codec = VideoCodec::kH264;
+    Codec rtsp_main_codec = Codec::kH264;
+    Codec rtsp_sub_codec = Codec::kH264;
     bool rtsp_auth_required = true;
     bool onvif_auth_required = true;
     bool onvif_discovery_enabled = true;

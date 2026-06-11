@@ -16,7 +16,7 @@ struct VencChannelRuntime {
     int32_t venc_channel = -1;
     int32_t vpss_group = -1;
     int32_t vpss_channel = -1;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     VideoStreamConfig stream_config;
     bool created = false;
     bool bound_to_vpss = false;

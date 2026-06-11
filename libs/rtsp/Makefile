@@ -3,6 +3,7 @@ MODULE_NAME := rtsp
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include

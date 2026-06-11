@@ -39,7 +39,7 @@ private:
     struct PeerRtpState {
         uint16_t sequence = 1;
         uint32_t ssrc = 0;
-        VideoCodec codec = VideoCodec::kH264;
+        Codec codec = Codec::kH264;
         uint8_t payload_type = 0;
         uint32_t clock_rate = rtp::kRtpClockRate;
         bool keyframe_seen = false;

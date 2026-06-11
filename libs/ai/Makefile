@@ -24,6 +24,7 @@ endif
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/alarm/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/snapshot/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include

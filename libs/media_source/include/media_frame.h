@@ -15,7 +15,7 @@ enum class MediaTrackType {
 struct MediaTrack {
     MediaTrackType track_type = MediaTrackType::kVideo;
     StreamId stream_id = StreamId::kMain;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     // 当前只做视频预览链路，RTP/HLS 时间基统一按视频 90kHz 时钟输出。
     uint32_t clock_rate = 90000;
     // codec_generation 在 codec、参数集、时间戳或缓存重置时递增，用于调用方
@@ -30,12 +30,12 @@ struct MediaTrack {
 };
 
 struct MediaFrame {
-    // 协议热路径的统一帧对象。encoded_frame 持有底层 VideoBuffer 引用，
+    // 协议热路径的统一帧对象。encoded_frame 持有底层 FrameBuffer 引用，
     // 不复制大块视频 payload；析构或丢弃前必须调用 MediaFrameUnref。
     EncodedFrame encoded_frame;
     MediaTrackType track_type = MediaTrackType::kVideo;
     StreamId stream_id = StreamId::kMain;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     bool key_frame = false;
     // dts_us/pts_us 是 media_source 修正后的相对时间戳，不再是设备 SDK
     // 原始时间戳；RTSP/WebRTC/HLS/FLV 都应使用这组时间。
@@ -51,7 +51,7 @@ inline void MediaFrameInit(MediaFrame *frame) {
     EncodedFrameInit(&frame->encoded_frame);
     frame->track_type = MediaTrackType::kVideo;
     frame->stream_id = StreamId::kMain;
-    frame->codec = VideoCodec::kH264;
+    frame->codec = Codec::kH264;
     frame->key_frame = false;
     frame->dts_us = 0;
     frame->pts_us = 0;
@@ -65,7 +65,7 @@ inline void MediaFrameUnref(MediaFrame *frame) {
     EncodedFrameUnref(&frame->encoded_frame);
     frame->track_type = MediaTrackType::kVideo;
     frame->stream_id = StreamId::kMain;
-    frame->codec = VideoCodec::kH264;
+    frame->codec = Codec::kH264;
     frame->key_frame = false;
     frame->dts_us = 0;
     frame->pts_us = 0;
@@ -137,7 +137,7 @@ inline bool MediaFrameMove(MediaFrame *target, MediaFrame *source) {
     target->duration_us = source->duration_us;
     source->track_type = MediaTrackType::kVideo;
     source->stream_id = StreamId::kMain;
-    source->codec = VideoCodec::kH264;
+    source->codec = Codec::kH264;
     source->key_frame = false;
     source->dts_us = 0;
     source->pts_us = 0;

@@ -30,8 +30,8 @@ using byte_writer::AppendU16;
 using byte_writer::AppendU24;
 using byte_writer::AppendU32;
 
-uint8_t TsStreamType(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? kTsStreamTypeH265 : kTsStreamTypeH264;
+uint8_t TsStreamType(Codec codec) {
+    return codec == Codec::kH265 ? kTsStreamTypeH265 : kTsStreamTypeH264;
 }
 
 void FillBytes(char *target, size_t size, uint8_t value) {
@@ -114,7 +114,7 @@ std::string BuildPatPacket(uint8_t *continuity_counter) {
     return packet;
 }
 
-std::string BuildPmtPacket(VideoCodec codec, uint8_t *continuity_counter) {
+std::string BuildPmtPacket(Codec codec, uint8_t *continuity_counter) {
     std::string section;
     // PMT 描述 video elementary stream 的 codec 和 PID。当前产品只有视频，
     // 所以 PMT 中只登记一个 video PID。
@@ -433,7 +433,7 @@ bool AddH265AccessUnitSlices(const media_codec::H265NalUnitList &units,
     return true;
 }
 
-bool AppendTsSegmentHeader(VideoCodec codec,
+bool AppendTsSegmentHeader(Codec codec,
                            TsMuxerState *state,
                            TsSegmentBuffer *segment_body) {
     if (state == nullptr || segment_body == nullptr ||
@@ -631,7 +631,7 @@ void HlsMaker::UnrefSegmentState(SegmentState *segment) {
     if (segment == nullptr) {
         return;
     }
-    VideoBufferUnref(segment->body);
+    FrameBufferUnref(segment->body);
     *segment = SegmentState{};
 }
 
@@ -665,17 +665,17 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
             new_capacity = kMaxHlsSegmentBytes;
         }
     }
-    VideoBuffer *new_body = VideoBufferAlloc(new_capacity);
+    FrameBuffer *new_body = FrameBufferAlloc(new_capacity);
     if (new_body == nullptr) {
         return false;
     }
     std::copy(segment->body->data, segment->body->data + segment->body->size,
               new_body->data);
-    if (!VideoBufferSetSize(new_body, segment->body->size)) {
-        VideoBufferUnref(new_body);
+    if (!FrameBufferSetSize(new_body, segment->body->size)) {
+        FrameBufferUnref(new_body);
         return false;
     }
-    VideoBufferUnref(segment->body);
+    FrameBufferUnref(segment->body);
     segment->body = new_body;
     return true;
 }
@@ -696,7 +696,7 @@ bool HlsMaker::CommitSegmentBuffer(
     const TsSegmentBuffer &buffer) {
     return segment != nullptr && segment->body != nullptr &&
            buffer.size <= segment->body->capacity &&
-           VideoBufferSetSize(segment->body,
+           FrameBufferSetSize(segment->body,
                               static_cast<uint32_t>(buffer.size));
 }
 
@@ -724,7 +724,7 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         return false;
     }
     TsFrameSlices frame_slices;
-    if (frame.codec == VideoCodec::kH265) {
+    if (frame.codec == Codec::kH265) {
         if (!BuildH265TsFrameSlices(payload.h265_units, vps, sps, pps,
                                     prepend_parameter_sets, frame.pts_us,
                                     frame.dts_us, &frame_slices)) {
@@ -751,7 +751,7 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         return true;
     }
     ts_muxer_state_ = original_state;
-    (void)VideoBufferSetSize(current_segment_.body,
+    (void)FrameBufferSetSize(current_segment_.body,
                              static_cast<uint32_t>(original_size));
     return false;
 }
@@ -763,7 +763,7 @@ int64_t HlsMaker::CurrentSegmentDurationUs() const {
                                  last_frame_duration_us_);
 }
 
-void HlsMaker::StartSegment(VideoCodec codec, int64_t pts_us) {
+void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
     UnrefSegmentState(&current_segment_);
     current_segment_ = SegmentState{};
     current_segment_.started = true;
@@ -772,9 +772,9 @@ void HlsMaker::StartSegment(VideoCodec codec, int64_t pts_us) {
     current_segment_.last_pts_us = pts_us;
     const uint32_t segment_capacity =
         ClampSegmentCapacity(next_segment_capacity_);
-    // segment body 是 HLS 自己的 VideoBuffer，生命周期随 playlist retain 管理；
+    // segment body 是 HLS 自己的 FrameBuffer，生命周期随 playlist retain 管理；
     // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 EncodedFrame。
-    current_segment_.body = VideoBufferAlloc(segment_capacity);
+    current_segment_.body = FrameBufferAlloc(segment_capacity);
     if (current_segment_.body == nullptr) {
         UnrefSegmentState(&current_segment_);
         return;

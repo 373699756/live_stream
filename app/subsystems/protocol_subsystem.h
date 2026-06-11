@@ -5,7 +5,6 @@
 #include <string>
 
 #include "config/runtime_config.h"
-#include "media_pipeline.h"
 #include "http.h"
 #include "infra/executor.h"
 #include "net.h"
@@ -61,7 +60,6 @@ private:
     std::unique_ptr<INetEngine> net_engine_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;
-    std::unique_ptr<IMediaPipeline> media_pipeline_;
     std::unique_ptr<OnvifServer> onvif_;
     std::unique_ptr<IHttp> http_;
     std::unique_ptr<INetAdaptive> net_adaptive_;

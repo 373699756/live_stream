@@ -512,6 +512,9 @@ export interface AlarmRuleConfig {
   enabled: boolean;
   sensitivity: number;
   min_duration_ms: number;
+  repeat_interval_ms?: number;
+  manual_clear?: boolean;
+  level?: number;
   regions: unknown[];
   [key: string]: unknown;
 }
@@ -544,12 +547,26 @@ export type AlarmSourceName =
   | 'network'
   | 'unknown';
 
+export interface AlarmSourceState {
+  source: AlarmSourceName;
+  enabled: boolean;
+  waiting: boolean;
+  active: boolean;
+  waiting_since_ms: number;
+  active_since_ms: number;
+  last_alarm_time_ms: number;
+  level: number;
+  message: string;
+}
+
 export interface AlarmRuntimeStatus {
   active: boolean;
   source: AlarmSourceName;
   active_since_ms: number;
   last_trigger_time_ms: number;
+  level: number;
   message: string;
+  sources: AlarmSourceState[];
 }
 
 export interface AlarmStatusResponse {

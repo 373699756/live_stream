@@ -10,7 +10,7 @@ session、socket、SRTP、SDP、媒体源缓存或 FLV/HLS 封装状态。
 
 ```mermaid
 flowchart LR
-  Frame[MediaFrame/EncodedFrame] --> RTP[rtp packetizer]
+  Payload[AnnexB payload] --> RTP[rtp packetizer]
   Codec[media_codec parser] --> RTP
   RTP --> RTSP[rtsp transport]
   RTP --> WebRTC[webrtc SRTP transport]
@@ -29,10 +29,10 @@ public API 在 `rtp.h`，归 `live_stream::rtp` 命名空间。`rtp` 依赖
 `media_codec` 解析 H.264/H.265 NAL，不依赖 `media_source`、RTSP、WebRTC、HTTP、
 FLV 或 HLS。
 
-`RtpPacketizerInput.pts_us` 必须使用 `media_source` 修正后的 PTS；payload type、
-sequence 和 SSRC 由调用方按协议协商结果传入。`RtpPacketView` 输出后立即交给
-RTSP transport 或 WebRTC SRTP；异步发送时调用方必须通过自己的 owner 机制保持底层
-`VideoBuffer` 生命周期。
+`RtpPacketizerInput` 只接收 `rtp::Codec`、AnnexB payload、PTS、payload type、
+sequence 和 SSRC，不直接依赖 `EncodedFrame` 或设备侧媒体类型。`pts_us` 必须使用
+媒体层修正后的 PTS。`RtpPacketView` 输出后立即交给 RTSP transport 或 WebRTC
+SRTP；异步发送时调用方必须通过自己的 owner 机制保持底层媒体 buffer 生命周期。
 
 ## 非目标
 

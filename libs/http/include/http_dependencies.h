@@ -2,7 +2,7 @@
 #define LIVE_STREAM_HTTP_HTTP_DEPENDENCIES_H_
 
 #include "http.h"
-#include "media_source.h"
+#include "media/media_streams.h"
 
 namespace live_stream {
 
@@ -41,9 +41,7 @@ struct HttpDependencies {
     IDeviceMedia *device_media = nullptr;
     ISnapshotView *snapshot = nullptr;
     IWebrtc *webrtc = nullptr;
-    IMediaSource *media_source = nullptr;
-    IMediaFlvSource *media_flv_source = nullptr;
-    IMediaMjpegSource *media_mjpeg_source = nullptr;
+    MediaStreams *media_streams = nullptr;
     IEvent *event = nullptr;
 };
 

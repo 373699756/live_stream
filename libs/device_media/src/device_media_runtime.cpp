@@ -3,8 +3,6 @@
 #include "config.h"
 #include "device_media_pipeline.h"
 #include "media_channels.h"
-#include "key_frame_cache.h"
-#include "frame_sinks.h"
 #include "device_media_state.h"
 #include "hisisdk/hisi_sdk.h"
 #include "image_strategy.h"
@@ -43,11 +41,9 @@ public:
     bool IsStarted() const override;
     bool IsRestarting() const override;
     bool IsStreamStarted(StreamId stream_id) const override;
-    VideoCodec GetStreamCodec(StreamId stream_id) const override;
-    FrameAttachId AttachFrameSink(const FrameAttachOptions &options,
-                                  IFrameSink *sink) override;
-    bool DetachFrameSink(FrameAttachId attach_id) override;
-    bool RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) override;
+    Codec GetStreamCodec(StreamId stream_id) const override;
+    bool SetFrameSink(FrameSink *sink) override;
+    bool RequestKeyFrame(StreamId stream_id, KeyFrameRequestType reason) override;
     MediaCapabilities GetCapabilities() const override;
     MediaChannels GetChannels() const override;
     ImageStrategyStatus GetImageStrategyStatus() const override;
@@ -63,8 +59,6 @@ private:
     void Release();
     static void OnPipelineFrame(const EncodedFrame &frame, void *user);
     void DispatchFrame(const EncodedFrame &frame);
-    std::vector<FrameAttachments::SourceStateNotice>
-    BuildSourceStateEventsLocked(StreamState stream_state) const;
     ConfigResult CheckVideoConfig(const ConfigJson &value) const;
     ConfigResult ApplyVideoConfig(const ConfigJson &value);
     ConfigResult CheckImageConfig(const ConfigJson &value) const;
@@ -86,10 +80,9 @@ private:
     MediaChannels active_channels_;
     MediaCapabilities capabilities_;
     DeviceMediaState state_ = DeviceMediaState::kCreated;
-    FrameAttachments frame_attachments_;
+    FrameSink *frame_sink_ = nullptr;
     ConfigJson image_config_ = ConfigJson::object();
     ImageStrategyStatus image_strategy_status_;
-    KeyFrameCache key_frame_cache_;
     mutable std::mutex mutex_;
     std::mutex pipeline_op_mutex_;
     bool video_config_attached_ = false;
@@ -150,7 +143,6 @@ bool DeviceMediaImpl::Prepare() {
             return false;
         }
         state_ = DeviceMediaState::kStopping;
-        key_frame_cache_.Clear();
     }
 
     pipeline_.SetConfig(startup_config);
@@ -259,23 +251,18 @@ void DeviceMediaImpl::Release() {
     bool detach_image = false;
     bool stop_pipeline = false;
     bool deinit_pipeline = false;
-    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (state_ == DeviceMediaState::kStarted) {
                 state_ = DeviceMediaState::kStopping;
-                source_state_events =
-                    BuildSourceStateEventsLocked(StreamState::kClosed);
                 stop_pipeline = true;
-                key_frame_cache_.Clear();
                 state_ = DeviceMediaState::kStopped;
             }
             if (state_ != DeviceMediaState::kDeinitialized &&
                 state_ != DeviceMediaState::kCreated) {
                 deinit_pipeline = true;
-                key_frame_cache_.Clear();
                 state_ = DeviceMediaState::kStopping;
             }
             detach_video = video_config_attached_;
@@ -303,7 +290,6 @@ void DeviceMediaImpl::Release() {
             }
         }
     }
-    NotifySourceState(source_state_events);
 
     if (options_.config != nullptr) {
         if (detach_video) {
@@ -322,37 +308,17 @@ void DeviceMediaImpl::OnPipelineFrame(const EncodedFrame &frame, void *user) {
 }
 
 void DeviceMediaImpl::DispatchFrame(const EncodedFrame &frame) {
-    FramePayload payload;
-    // hisi_vendor 回调给出的 frame 在回调返回后会 unref。这里先增加一份
-    // VideoBuffer 引用，保证同步分发期间 payload 有效；不会深拷贝整帧。
-    if (!EncodedFrameRefCopy(&payload.encoded_frame, &frame)) {
-        return;
-    }
-    std::vector<IFrameSink *> matching_sinks;
+    FrameSink *frame_sink = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != DeviceMediaState::kStarted) {
-            FramePayloadUnref(&payload);
             return;
         }
-        // key_frame_cache_ 是单独的关键帧深拷贝缓存；普通 sink 分发仍共享
-        // payload 的 VideoBuffer 引用。
-        key_frame_cache_.Remember(frame);
-        matching_sinks = frame_attachments_.CollectSinks(frame.stream_id);
+        frame_sink = frame_sink_;
     }
-    for (IFrameSink *sink : matching_sinks) {
-        // 同步调用 sink。sink 要异步保存帧必须自己 ref copy；本函数结束会释放
-        // payload 持有的引用。
-        sink->OnFrame(payload);
+    if (frame_sink != nullptr) {
+        (void)frame_sink->PushFrame(frame);
     }
-    FramePayloadUnref(&payload);
-}
-
-std::vector<FrameAttachments::SourceStateNotice>
-DeviceMediaImpl::BuildSourceStateEventsLocked(
-    StreamState stream_state) const {
-    return BuildSourceStateEvents(frame_attachments_, active_config_,
-                                  stream_state);
 }
 
 ConfigResult DeviceMediaImpl::CheckVideoConfig(
@@ -556,7 +522,6 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
     DeviceMediaState state_before_change = DeviceMediaState::kCreated;
     MediaPipelineConfig config_before_change;
     ConfigJson image_config_before_change;
-    std::vector<FrameAttachments::SourceStateNotice> source_closed_events;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (state_ == DeviceMediaState::kStopping ||
@@ -569,13 +534,7 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
         config_before_change = active_config_;
         image_config_before_change = image_config_;
         state_ = DeviceMediaState::kStopping;
-        if (restart_stream) {
-            source_closed_events =
-                BuildSourceStateEventsLocked(StreamState::kClosed);
-        }
-        key_frame_cache_.Clear();
     }
-    NotifySourceState(source_closed_events);
 
     if (restart_stream) {
         StopImageStrategy();
@@ -643,7 +602,6 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
         }
     }
 
-    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     if (device_config_applied) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -653,12 +611,9 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
             state_ = restart_stream ? DeviceMediaState::kStarted
                                     : state_before_change;
             if (restart_stream) {
-                source_state_events =
-                    BuildSourceStateEventsLocked(StreamState::kRunning);
                 StartImageStrategyLocked();
             }
         }
-        NotifySourceState(source_state_events);
         return true;
     }
 
@@ -671,30 +626,21 @@ bool DeviceMediaImpl::ApplyPipelineConfig(
             state_ = restart_stream ? DeviceMediaState::kStarted
                                     : state_before_change;
             if (restart_stream) {
-                source_state_events =
-                    BuildSourceStateEventsLocked(StreamState::kRunning);
                 StartImageStrategyLocked();
             }
         } else {
             if (rebuild_system) {
                 system_initialized_ = true;
                 state_ = DeviceMediaState::kFailed;
-                if (restart_stream) {
-                    source_state_events =
-                        BuildSourceStateEventsLocked(StreamState::kError);
-                }
             } else if (restart_stream) {
                 system_initialized_ = false;
                 state_ = DeviceMediaState::kStopped;
-                source_state_events =
-                    BuildSourceStateEventsLocked(StreamState::kError);
             } else {
                 system_initialized_ = false;
                 state_ = state_before_change;
             }
         }
     }
-    NotifySourceState(source_state_events);
     return false;
 }
 
@@ -721,7 +667,6 @@ bool DeviceMediaImpl::Start() {
             return false;
         }
         state_ = DeviceMediaState::kStopping;
-        key_frame_cache_.Clear();
         image_config_before_change = image_config_;
     }
 
@@ -737,33 +682,23 @@ bool DeviceMediaImpl::Start() {
         }
     }
     if (!ok) {
-        std::vector<FrameAttachments::SourceStateNotice> source_state_events;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            key_frame_cache_.Clear();
             state_ = DeviceMediaState::kInitialized;
-            source_state_events =
-                BuildSourceStateEventsLocked(StreamState::kError);
         }
-        NotifySourceState(source_state_events);
         return false;
     }
-    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         state_ = DeviceMediaState::kStarted;
-        source_state_events =
-            BuildSourceStateEventsLocked(StreamState::kRunning);
         StartImageStrategyLocked();
     }
-    NotifySourceState(source_state_events);
     return true;
 }
 
 void DeviceMediaImpl::Stop() {
     StopImageStrategy();
     bool should_stop = false;
-    std::vector<FrameAttachments::SourceStateNotice> source_state_events;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (state_ != DeviceMediaState::kStarted) {
@@ -774,12 +709,8 @@ void DeviceMediaImpl::Stop() {
         }
 
         state_ = DeviceMediaState::kStopping;
-        source_state_events =
-            BuildSourceStateEventsLocked(StreamState::kClosed);
-        key_frame_cache_.Clear();
         should_stop = true;
     }
-    NotifySourceState(source_state_events);
 
     if (should_stop) {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
@@ -807,59 +738,24 @@ bool DeviceMediaImpl::IsStreamStarted(StreamId stream_id) const {
            stream->enabled;
 }
 
-VideoCodec DeviceMediaImpl::GetStreamCodec(StreamId stream_id) const {
+Codec DeviceMediaImpl::GetStreamCodec(StreamId stream_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const VideoStreamConfig *stream =
         FindConfiguredStream(active_config_, stream_id);
     if (stream != nullptr) {
         return stream->codec;
     }
-    return VideoCodec::kH264;
+    return Codec::kH264;
 }
 
-FrameAttachId DeviceMediaImpl::AttachFrameSink(
-    const FrameAttachOptions &options, IFrameSink *sink) {
-    FrameAttachId id = 0;
-    EncodedFrame last_key_frame;
-    bool has_last_key_frame = false;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const VideoStreamConfig *stream =
-            FindConfiguredStream(active_config_, options.stream_id);
-        if (sink == nullptr || stream == nullptr || !stream->enabled ||
-            state_ != DeviceMediaState::kStarted) {
-            return 0;
-        }
-        has_last_key_frame =
-            options.require_key_frame_first &&
-            key_frame_cache_.Get(options.stream_id, &last_key_frame);
-        id = frame_attachments_.ReserveId();
-        frame_attachments_.Add(id, options, sink);
-    }
-    sink->OnSourceStateChanged(options.stream_id, StreamState::kRunning);
-    if (has_last_key_frame) {
-        FramePayload payload;
-        // last_key_frame 来自 key_frame_cache_ 的深拷贝结果，move 到 payload 后
-        // 由本次 OnFrame/Unref 生命周期管理。
-        if (!EncodedFrameMove(&payload.encoded_frame, &last_key_frame)) {
-            EncodedFrameUnref(&last_key_frame);
-            return id;
-        }
-        sink->OnFrame(payload);
-        FramePayloadUnref(&payload);
-    } else {
-        EncodedFrameUnref(&last_key_frame);
-    }
-    return id;
-}
-
-bool DeviceMediaImpl::DetachFrameSink(FrameAttachId attach_id) {
+bool DeviceMediaImpl::SetFrameSink(FrameSink *sink) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return frame_attachments_.Remove(attach_id);
+    frame_sink_ = sink;
+    return true;
 }
 
 bool DeviceMediaImpl::RequestKeyFrame(StreamId stream_id,
-                                      KeyFrameReason reason) {
+                                      KeyFrameRequestType reason) {
     (void)reason;
     int32_t venc_channel = -1;
     hisisdk::IHisiSdk *sdk = nullptr;

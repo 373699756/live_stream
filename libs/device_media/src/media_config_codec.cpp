@@ -13,8 +13,8 @@ namespace live_stream {
 
 void to_json(ConfigJson &json, const VideoSize &size);
 void from_json(const ConfigJson &json, VideoSize &size);
-void to_json(ConfigJson &json, const VideoCodec &codec);
-void from_json(const ConfigJson &json, VideoCodec &codec);
+void to_json(ConfigJson &json, const Codec &codec);
+void from_json(const ConfigJson &json, Codec &codec);
 void to_json(ConfigJson &json, const RateControlMode &mode);
 void from_json(const ConfigJson &json, RateControlMode &mode);
 void to_json(ConfigJson &json, const GopMode &mode);
@@ -62,38 +62,38 @@ bool ParseResolutionText(const std::string &text, VideoSize *size) {
     return true;
 }
 
-bool ParseCodecText(const std::string &codec, VideoCodec *parsed) {
+bool ParseCodecText(const std::string &codec, Codec *parsed) {
     if (parsed == nullptr) {
         return false;
     }
     if (codec == "h264") {
-        *parsed = VideoCodec::kH264;
+        *parsed = Codec::kH264;
         return true;
     }
     if (codec == "h265") {
-        *parsed = VideoCodec::kH265;
+        *parsed = Codec::kH265;
         return true;
     }
     if (codec == "jpeg") {
-        *parsed = VideoCodec::kJpeg;
+        *parsed = Codec::kJpeg;
         return true;
     }
     if (codec == "mjpeg") {
-        *parsed = VideoCodec::kMjpeg;
+        *parsed = Codec::kMjpeg;
         return true;
     }
     return false;
 }
 
-const char *CodecToString(VideoCodec codec) {
+const char *CodecToString(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
     }
     return "h264";
@@ -178,11 +178,11 @@ void from_json(const ConfigJson &json, VideoSize &size) {
     }
 }
 
-void to_json(ConfigJson &json, const VideoCodec &codec) {
+void to_json(ConfigJson &json, const Codec &codec) {
     json = detail::CodecToString(codec);
 }
 
-void from_json(const ConfigJson &json, VideoCodec &codec) {
+void from_json(const ConfigJson &json, Codec &codec) {
     std::string text;
     json.get_to(text);
     (void)detail::ParseCodecText(text, &codec);
@@ -280,7 +280,7 @@ bool ValidateVideoStreamJson(const ConfigJson &stream) {
     }
 
     std::string codec_text;
-    VideoCodec dummy_codec = VideoCodec::kH264;
+    Codec dummy_codec = Codec::kH264;
     if (!json_utils::ReadField(stream, "codec", &codec_text) ||
         !ParseCodecText(codec_text, &dummy_codec)) {
         return false;
@@ -381,7 +381,7 @@ FindStreamCapabilities(const MediaCapabilities &capabilities,
 
 const CodecCapability *
 FindCodecCapability(const VideoStreamCapabilities &capabilities,
-                    VideoCodec codec) {
+                    Codec codec) {
     for (const CodecCapability &item : capabilities.codecs) {
         if (item.codec == codec) {
             return &item;
@@ -606,7 +606,7 @@ ConfigResult ValidateVideoStreamConfig(
                                      "unsupported value");
     }
     if ((stream.smart_codec || stream.gop_mode == GopMode::kSmartP) &&
-        stream.codec != VideoCodec::kH264 && stream.codec != VideoCodec::kH265) {
+        stream.codec != Codec::kH264 && stream.codec != Codec::kH265) {
         return ConfigResult::Failure(JoinField(stream_prefix, "smart_codec"),
                                      "unsupported codec");
     }
@@ -616,8 +616,8 @@ ConfigResult ValidateVideoStreamConfig(
             return ConfigResult::Failure(JoinField(stream_prefix, "roi"),
                                          "unsupported value");
         }
-        if (stream.codec != VideoCodec::kH264 &&
-            stream.codec != VideoCodec::kH265) {
+        if (stream.codec != Codec::kH264 &&
+            stream.codec != Codec::kH265) {
             return ConfigResult::Failure(JoinField(stream_prefix, "roi"),
                                          "unsupported codec");
         }

@@ -466,10 +466,10 @@ bool MeasureJpegPayload(const VENC_STREAM_S& stream,
     return *payload_size > 0;
 }
 
-VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
+FrameBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
                              const VENC_STREAM_BUF_INFO_S& stream_buffer,
                              uint32_t payload_size) {
-    VideoBuffer* buffer = VideoBufferAlloc(payload_size);
+    FrameBuffer* buffer = FrameBufferAlloc(payload_size);
     if (buffer == nullptr) {
         return nullptr;
     }
@@ -479,7 +479,7 @@ VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
         internal::VencPacketData packet_data;
         if (!internal::GetVencPacketData(pack, stream_buffer, &packet_data) ||
             packet_data.size > payload_size - offset) {
-            VideoBufferUnref(buffer);
+            FrameBufferUnref(buffer);
             return nullptr;
         }
         if (packet_data.first.size > 0) {
@@ -493,8 +493,8 @@ VideoBuffer* CopyJpegPayload(const VENC_STREAM_S& stream,
             offset += packet_data.second.size;
         }
     }
-    if (offset != payload_size || !VideoBufferSetSize(buffer, offset)) {
-        VideoBufferUnref(buffer);
+    if (offset != payload_size || !FrameBufferSetSize(buffer, offset)) {
+        FrameBufferUnref(buffer);
         return nullptr;
     }
     return buffer;
@@ -537,7 +537,7 @@ JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
     const VENC_STREAM_BUF_INFO_S stream_buffer =
         GetJpegStreamBufferInfo(jpeg_channel);
     uint32_t payload_size = 0;
-    VideoBuffer* buffer = nullptr;
+    FrameBuffer* buffer = nullptr;
     if (MeasureJpegPayload(stream, status, stream_buffer, &payload_size)) {
         buffer = CopyJpegPayload(stream, stream_buffer, payload_size);
     }
@@ -685,7 +685,7 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     mapped_frame->channel = channel;
     mapped_frame->frame_info = frame_info;
 
-    VideoBuffer* buffer = VideoBufferCreateExternal(
+    FrameBuffer* buffer = FrameBufferCreateExternal(
         static_cast<uint8_t*>(mapped), total_size, total_size,
         ReleaseVpssMappedFrame, mapped_frame);
     if (buffer == nullptr) {

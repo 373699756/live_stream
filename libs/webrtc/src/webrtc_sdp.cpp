@@ -140,24 +140,24 @@ bool ParseMediaPayloadTypes(const std::string& media_line,
     return !payload_types->empty();
 }
 
-bool ParseCodecName(const std::string& name, VideoCodec *codec) {
+bool ParseCodecName(const std::string& name, Codec *codec) {
     if (codec == nullptr) {
         return false;
     }
     const std::string lower_name = ToLowerAscii(name);
     if (lower_name == "h264") {
-        *codec = VideoCodec::kH264;
+        *codec = Codec::kH264;
         return true;
     }
     if (lower_name == "h265" || lower_name == "hevc") {
-        *codec = VideoCodec::kH265;
+        *codec = Codec::kH265;
         return true;
     }
     return false;
 }
 
 bool ParseRtpmapValue(const std::string& value,
-                      WebrtcSdpVideoCodec *codec) {
+                      WebrtcSdpCodec *codec) {
     if (codec == nullptr) {
         return false;
     }
@@ -222,7 +222,7 @@ bool ParseRtcpFeedbackValue(const std::string& value, int *payload_type,
 }
 
 void AddUniqueFeedback(const std::string& feedback,
-                       WebrtcSdpVideoCodec *codec) {
+                       WebrtcSdpCodec *codec) {
     if (codec == nullptr || feedback.empty()) {
         return;
     }
@@ -246,7 +246,7 @@ bool IsSupportedRtcpFeedback(const std::string& feedback,
 }
 
 void AddSupportedFeedback(const std::string& feedback,
-                          WebrtcSdpVideoCodec *codec) {
+                          WebrtcSdpCodec *codec) {
     std::string normalized_feedback;
     if (IsSupportedRtcpFeedback(feedback, &normalized_feedback)) {
         AddUniqueFeedback(normalized_feedback, codec);
@@ -265,23 +265,23 @@ std::string BuildLocalH264Fmtp(const std::string& offer_fmtp) {
     return "packetization-mode=1";
 }
 
-std::string BuildLocalCodecFmtp(VideoCodec codec,
+std::string BuildLocalCodecFmtp(Codec codec,
                                 const std::string& offer_fmtp) {
-    if (codec == VideoCodec::kH264) {
+    if (codec == Codec::kH264) {
         return BuildLocalH264Fmtp(offer_fmtp);
     }
-    if (codec == VideoCodec::kH265) {
+    if (codec == Codec::kH265) {
         return offer_fmtp;
     }
     return std::string();
 }
 
-bool SelectVideoCodec(const std::vector<int>& payload_types,
-                      const std::map<int, WebrtcSdpVideoCodec>& codecs,
+bool SelectCodec(const std::vector<int>& payload_types,
+                      const std::map<int, WebrtcSdpCodec>& codecs,
                       const std::map<int, std::string>& fmtps,
                       const std::map<int, std::vector<std::string>>& feedback,
-                      VideoCodec local_codec,
-                      WebrtcSdpVideoCodec *selected_codec) {
+                      Codec local_codec,
+                      WebrtcSdpCodec *selected_codec) {
     if (selected_codec == nullptr) {
         return false;
     }
@@ -294,13 +294,13 @@ bool SelectVideoCodec(const std::vector<int>& payload_types,
             continue;
         }
 
-        WebrtcSdpVideoCodec candidate = codec_iter->second;
+        WebrtcSdpCodec candidate = codec_iter->second;
         auto fmtp_iter = fmtps.find(payload_type);
         if (fmtp_iter != fmtps.end()) {
             candidate.fmtp = fmtp_iter->second;
         }
         candidate.fmtp = BuildLocalCodecFmtp(local_codec, candidate.fmtp);
-        if (local_codec == VideoCodec::kH264 && candidate.fmtp.empty()) {
+        if (local_codec == Codec::kH264 && candidate.fmtp.empty()) {
             continue;
         }
         auto wildcard_feedback = feedback.find(-1);
@@ -343,11 +343,11 @@ std::string AnswerSetupRole(const std::string& offer_setup) {
     return std::string();
 }
 
-const char *CodecRtpmapName(VideoCodec codec) {
-    if (codec == VideoCodec::kH264) {
+const char *CodecRtpmapName(Codec codec) {
+    if (codec == Codec::kH264) {
         return "H264";
     }
-    if (codec == VideoCodec::kH265) {
+    if (codec == Codec::kH265) {
         return "H265";
     }
     return nullptr;
@@ -415,12 +415,12 @@ uint32_t BuildWebrtcSsrc(const std::string& peer_id) {
     return value == 0 ? 0x57454252U : value;
 }
 
-bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
+bool ParseWebrtcOffer(const std::string& offer_sdp, Codec local_codec,
                       WebrtcSdpOffer *offer) {
     if (offer == nullptr || offer_sdp.empty()) {
         return false;
     }
-    if (local_codec != VideoCodec::kH264 && local_codec != VideoCodec::kH265) {
+    if (local_codec != Codec::kH264 && local_codec != Codec::kH265) {
         return false;
     }
 
@@ -430,7 +430,7 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
     std::string session_fingerprint;
     std::string session_setup;
     std::vector<int> video_payload_types;
-    std::map<int, WebrtcSdpVideoCodec> video_codecs;
+    std::map<int, WebrtcSdpCodec> video_codecs;
     std::map<int, std::string> video_fmtps;
     std::map<int, std::vector<std::string>> video_feedback;
 
@@ -515,7 +515,7 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
         } else if (in_video_section && StartsWith(line, "a=candidate:")) {
             parsed_offer.candidates.push_back(line.substr(2));
         } else if (in_video_section && StartsWith(line, "a=rtpmap:")) {
-            WebrtcSdpVideoCodec codec;
+            WebrtcSdpCodec codec;
             if (ParseRtpmapValue(line.substr(9), &codec) &&
                 ContainsPayloadType(video_payload_types, codec.payload_type)) {
                 video_codecs[codec.payload_type] = codec;
@@ -561,7 +561,7 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
         !parsed_offer.rtcp_mux) {
         return false;
     }
-    if (!SelectVideoCodec(video_payload_types, video_codecs, video_fmtps,
+    if (!SelectCodec(video_payload_types, video_codecs, video_fmtps,
                           video_feedback, local_codec,
                           &parsed_offer.video_codec)) {
         return false;
@@ -573,8 +573,8 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
 
 std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
                               const WebrtcSdpAnswerOptions& options) {
-    if ((options.local_codec != VideoCodec::kH264 &&
-         options.local_codec != VideoCodec::kH265) ||
+    if ((options.local_codec != Codec::kH264 &&
+         options.local_codec != Codec::kH265) ||
         offer.video_codec.codec != options.local_codec ||
         offer.video_codec.payload_type < 0 ||
         offer.video_codec.clock_rate != 90000 || !offer.rtcp_mux ||
@@ -658,8 +658,8 @@ bool ParseRemoteFingerprint(const std::string& sdp,
     }
 
     WebrtcSdpOffer offer;
-    if (!ParseWebrtcOffer(sdp, VideoCodec::kH264, &offer) &&
-        !ParseWebrtcOffer(sdp, VideoCodec::kH265, &offer)) {
+    if (!ParseWebrtcOffer(sdp, Codec::kH264, &offer) &&
+        !ParseWebrtcOffer(sdp, Codec::kH265, &offer)) {
         return false;
     }
     fingerprint->algorithm =

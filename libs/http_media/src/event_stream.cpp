@@ -14,8 +14,10 @@ const char *EventTypeName(EventType type) {
             return "stream_started";
         case EventType::kStreamStopped:
             return "stream_stopped";
-        case EventType::kAlarmTriggered:
-            return "alarm_triggered";
+        case EventType::kAlarmOn:
+            return "alarm_on";
+        case EventType::kAlarmOff:
+            return "alarm_off";
         default:
             return "event";
     }
@@ -28,7 +30,10 @@ ConfigJson BuildEventJson(const Event &event, const char *event_type_name) {
     data["target"] = event.target;
     data["message"] = event.message;
     data["value"] = event.value;
-    data["timestamp_ms"] = infra::Time::SystemTimeMillis();
+    data["timestamp_ms"] = event.timestamp_ms != 0
+                               ? event.timestamp_ms
+                               : infra::Time::SystemTimeMillis();
+    data["level"] = event.level;
     return data;
 }
 

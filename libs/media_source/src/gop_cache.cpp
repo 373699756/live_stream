@@ -94,14 +94,16 @@ bool GopCache::CopyFlvTagView(
         if (source_slice.media_payload) {
             // media payload slice 必须落在当前 EncodedFrame payload 范围内，
             // 否则缓存后指针生命周期无法保证。
-            const uint8_t *payload = EncodedFramePayloadData(&frame);
+            const FrameSlice payload_slice = EncodedFramePayloadSlice(&frame);
+            const uint8_t *payload = FrameSliceData(payload_slice);
             const uintptr_t payload_addr =
                 reinterpret_cast<uintptr_t>(payload);
             const uintptr_t source_addr =
                 reinterpret_cast<uintptr_t>(source_slice.data);
             if (payload == nullptr || source_addr < payload_addr ||
-                source_addr - payload_addr > frame.size ||
-                source_slice.size > frame.size - (source_addr - payload_addr)) {
+                source_addr - payload_addr > payload_slice.size ||
+                source_slice.size >
+                    payload_slice.size - (source_addr - payload_addr)) {
                 MediaFlvCachedVideoTagUnref(&cached_tag);
                 return false;
             }

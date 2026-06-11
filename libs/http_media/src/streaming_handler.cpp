@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 namespace {
@@ -26,25 +27,25 @@ bool HasUsableFlvStartData(const MediaFlvStartData &start_data) {
            !start_data.sequence_header.empty();
 }
 
-const char *VideoCodecName(VideoCodec codec) {
+const char *CodecName(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
     }
     return "unknown";
 }
 
-bool RequestBrowserKeyFrame(IMediaSource *media_source,
+bool RequestBrowserKeyFrame(MediaStreams *media_streams,
                             StreamId stream_id) {
-    return media_source != nullptr &&
-           media_source->RequestKeyFrame(stream_id,
-                                               KeyFrameReason::kNewClient);
+    return media_streams != nullptr &&
+           media_streams->RequestKeyFrame(stream_id,
+                                          KeyFrameRequestType::kNewSubscriber);
 }
 
 HttpStreamingRequestResult SendStreamingError(
@@ -75,8 +76,9 @@ public:
         if (writer_ == nullptr) {
             return false;
         }
-        const uint8_t *payload = EncodedFramePayloadData(&frame);
-        if (payload == nullptr || frame.size == 0) {
+        const FrameSlice payload_slice = EncodedFramePayloadSlice(&frame);
+        const uint8_t *payload = FrameSliceData(payload_slice);
+        if (payload == nullptr || payload_slice.size == 0) {
             return true;
         }
         std::string frame_header;
@@ -84,16 +86,16 @@ public:
         frame_header.append("--");
         frame_header.append(kMjpegBoundary);
         frame_header.append("\r\nContent-Type: image/jpeg\r\nContent-Length: ");
-        frame_header.append(std::to_string(frame.size));
+        frame_header.append(std::to_string(payload_slice.size));
         frame_header.append("\r\n\r\n");
 
         MediaSlice slices[3];
         slices[0].data = reinterpret_cast<const uint8_t *>(frame_header.data());
         slices[0].size = frame_header.size();
         slices[1].data = payload;
-        slices[1].size = frame.size;
-        // JPEG payload 不复制进 HTTP 层；owner 保证异步发送期间 frame.buffer 存活。
-        slices[1].owner = frame.buffer;
+        slices[1].size = payload_slice.size;
+        // JPEG payload 不复制进 HTTP 层；owner 保证异步发送期间 payload buffer 存活。
+        slices[1].owner = frame.payload.buffer;
         slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
         slices[2].size = 2;
         return writer_->EnqueueStreamingSlices(connection_id_, slices, 3);
@@ -140,14 +142,10 @@ class StreamingHttpHandler : public IStreamingHttpHandler {
 public:
     StreamingHttpHandler(HttpAccess *access, HttpMediaWriter *writer,
                          IDeviceMedia *device_media,
-                         IMediaSource *media_source,
-                         IMediaFlvSource *media_flv_source,
-                         IMediaMjpegSource *media_mjpeg_source,
+                         MediaStreams *media_streams,
                          IEvent *event)
         : access_(access), writer_(writer), device_media_(device_media),
-          media_source_(media_source),
-          media_flv_source_(media_flv_source),
-          media_mjpeg_source_(media_mjpeg_source),
+          media_streams_(media_streams),
           event_(event) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
@@ -223,8 +221,15 @@ private:
             return CloseStreamingConnection(writer_, connection_id);
         }
 
-        const EventSubscriptionId subscription_id = event_->Subscribe(
+        const std::vector<EventType> event_types = {
             EventType::kMediaStatusChanged,
+            EventType::kStreamStarted,
+            EventType::kStreamStopped,
+            EventType::kAlarmOn,
+            EventType::kAlarmOff,
+        };
+        const EventSubscriptionId subscription_id = event_->Subscribe(
+            event_types,
             [writer = writer_, connection_id](const Event &event) {
                 if (writer == nullptr) {
                     return;
@@ -257,7 +262,7 @@ private:
 
     HttpStreamingRequestResult HandleFlvRequest(
         ConnectionId connection_id, const HttpRequest &request) {
-        if (media_source_ == nullptr || media_flv_source_ == nullptr) {
+        if (media_streams_ == nullptr) {
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
@@ -295,32 +300,31 @@ private:
                 HttpMediaTextResponse(400, "Invalid FLV path"));
         }
 
-        IMediaSource *media_source = media_source_;
-        IMediaFlvSource *media_flv_source = media_flv_source_;
-        const MediaSourceStatus browser_status =
-            media_source->GetBrowserStatus(stream_id);
-        if (!browser_status.flv_supported) {
+        MediaStreams *media_streams = media_streams_;
+        const MediaStreamInfo stream_info =
+            media_streams->GetStreamInfo(stream_id);
+        if (!stream_info.flv_supported) {
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
                             MediaStreamIdToJson(stream_id),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.flv_ready ? 1 : 0);
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0,
+                            stream_info.flv_ready ? 1 : 0);
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(409, "HTTP-FLV requires H.264/H.265 stream"));
         }
-        if (!browser_status.running) {
+        if (!stream_info.running) {
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s reason=not_ready "
                             "codec=%s running=%d flv_ready=%d",
                             static_cast<unsigned long long>(connection_id),
                             MediaStreamIdToJson(stream_id),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.flv_ready ? 1 : 0);
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0,
+                            stream_info.flv_ready ? 1 : 0);
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(503, "FLV stream not ready"));
@@ -329,7 +333,7 @@ private:
         // 新 FLV 客户端必须先拿 file header、sequence header 和当前 GOP，
         // 浏览器才能在不等待下一轮 SPS/PPS 的情况下尽快解码。
         MediaFlvStartData start_data =
-            media_source->GetFlvStartData(stream_id);
+            media_streams->GetFlvStartData(stream_id);
         Info(kHttpMediaModuleName,
                        "HTTP-FLV start-data conn=%llu stream=%s supported=%d "
                        "file=%zu sequence=%zu cached_flv=%zu gop_complete=%d "
@@ -345,8 +349,8 @@ private:
                            start_data.config_generation));
         if (!HasUsableFlvStartData(start_data)) {
             const bool keyframe_requested =
-                RequestBrowserKeyFrame(media_source, stream_id);
-            // start data 不完整时不创建 FLV client，只请求关键帧让 media_source 尽快
+                RequestBrowserKeyFrame(media_streams, stream_id);
+            // start data 不完整时不创建 FLV client，只请求关键帧让 MediaStreams 尽快
             // 生成新的 sequence header/GOP，客户端需要重新发起请求。
             Error(kHttpMediaModuleName,
                             "HTTP-FLV reject conn=%llu stream=%s "
@@ -356,9 +360,9 @@ private:
                             "keyframe=%d",
                             static_cast<unsigned long long>(connection_id),
                             MediaStreamIdToJson(stream_id),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.flv_ready ? 1 : 0,
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0,
+                            stream_info.flv_ready ? 1 : 0,
                             start_data.file_header.size(),
                             start_data.sequence_header.size(),
                             start_data.cached_video_tags.size(),
@@ -400,11 +404,11 @@ private:
         const bool wait_for_keyframe =
             start_data.cached_video_tags.empty() ||
             !start_data.cached_gop_complete;
-        const MediaFlvClientId client_id = media_flv_source->AttachFlvClient(
+        const MediaFlvClientId client_id = media_streams->AttachFlvClient(
             stream_id, start_data.config_generation, wait_for_keyframe,
             stream);
         if (client_id == 0) {
-            // attach 失败后 media_source 不会接管 stream 生命周期，必须在这里删除。
+            // attach 失败后 MediaStreams 不会接管 stream 生命周期，必须在这里删除。
             delete stream;
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=attach",
@@ -422,8 +426,8 @@ private:
         // FLV client id 挂到 HTTP session，TCP close 时统一 DetachFlvClient，
         // 不能靠浏览器主动关闭请求来释放媒体 fanout。
         if (!writer_->AttachStreamClient(connection_id, client)) {
-            (void)media_flv_source->DetachFlvClient(client_id);
-            // DetachFlvClient 会释放 attach 时交给 media_source 的 HttpFlvSession。
+            (void)media_streams->DetachFlvClient(client_id);
+            // DetachFlvClient 会释放 attach 时交给 MediaStreams 的 HttpFlvSession。
             Error(kHttpMediaModuleName,
                             "HTTP-FLV close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
@@ -433,7 +437,7 @@ private:
             return HttpStreamingRequestResult::kClosed;
         }
         const bool keyframe_requested =
-            RequestBrowserKeyFrame(media_source, stream_id);
+            RequestBrowserKeyFrame(media_streams, stream_id);
         Info(kHttpMediaModuleName,
                        "HTTP-FLV attached conn=%llu stream=%s client=%llu "
                        "wait_keyframe=%d request_keyframe=%d cached_flv=%zu "
@@ -451,8 +455,7 @@ private:
 
     HttpStreamingRequestResult HandleMjpegRequest(
         ConnectionId connection_id, const HttpRequest &request) {
-        if (media_source_ == nullptr ||
-            media_mjpeg_source_ == nullptr) {
+        if (media_streams_ == nullptr) {
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG reject conn=%llu reason=no_media_source",
                             static_cast<unsigned long long>(connection_id));
@@ -490,34 +493,34 @@ private:
                 HttpMediaTextResponse(400, "Invalid MJPEG path"));
         }
 
-        const MediaSourceStatus browser_status =
-            media_source_->GetBrowserStatus(stream_id);
-        if (!browser_status.mjpeg_supported) {
+        const MediaStreamInfo stream_info =
+            media_streams_->GetStreamInfo(stream_id);
+        if (!stream_info.mjpeg_supported) {
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=unsupported codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
                             MediaStreamIdToJson(stream_id),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0);
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0);
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(409, "MJPEG preview requires MJPEG stream"));
         }
-        if (!browser_status.mjpeg_ready) {
+        if (!stream_info.mjpeg_ready) {
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG reject conn=%llu stream=%s "
                             "reason=not_ready codec=%s running=%d",
                             static_cast<unsigned long long>(connection_id),
                             MediaStreamIdToJson(stream_id),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0);
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0);
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(503, "MJPEG stream not ready"));
         }
 
-        // MJPEG sink 生命周期归 media_source；HTTP session 只保存 client id。
+        // MJPEG sink 生命周期归 MediaStreams；HTTP session 只保存 client id。
         // AttachStreamClient 失败时必须立刻 detach，避免 sink 泄漏。
         IMediaMjpegSink *sink =
             new MjpegConnectionSink(writer_, connection_id);
@@ -554,7 +557,7 @@ private:
         }
 
         const MediaMjpegClientId client_id =
-            media_mjpeg_source_->AttachMjpegClient(stream_id, sink);
+            media_streams_->AttachMjpegClient(stream_id, sink);
         if (client_id == 0) {
             // attach 失败时 sink 仍归当前函数所有。
             delete sink;
@@ -571,7 +574,7 @@ private:
         client.id = client_id;
         client.stream_id = stream_id;
         if (!writer_->AttachStreamClient(connection_id, client)) {
-            (void)media_mjpeg_source_->DetachMjpegClient(client_id);
+            (void)media_streams_->DetachMjpegClient(client_id);
             Error(kHttpMediaModuleName,
                             "HTTP-MJPEG close conn=%llu stream=%s reason=closed",
                             static_cast<unsigned long long>(connection_id),
@@ -590,9 +593,7 @@ private:
     HttpAccess *access_ = nullptr;
     HttpMediaWriter *writer_ = nullptr;
     IDeviceMedia *device_media_ = nullptr;
-    IMediaSource *media_source_ = nullptr;
-    IMediaFlvSource *media_flv_source_ = nullptr;
-    IMediaMjpegSource *media_mjpeg_source_ = nullptr;
+    MediaStreams *media_streams_ = nullptr;
     IEvent *event_ = nullptr;
 };
 
@@ -601,9 +602,8 @@ std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
     return std::unique_ptr<IStreamingHttpHandler>(
         new StreamingHttpHandler(
             dependencies.access, dependencies.writer,
-            dependencies.device_media, dependencies.media_source,
-            dependencies.media_flv_source,
-            dependencies.media_mjpeg_source, dependencies.event));
+            dependencies.device_media, dependencies.media_streams,
+            dependencies.event));
 }
 
 }  // namespace live_stream

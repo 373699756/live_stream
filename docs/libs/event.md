@@ -20,9 +20,10 @@ flowchart LR
 
 ## 核心职责
 
-- 提供 `Subscribe`、`Unsubscribe`、`Publish`。
+- 提供多事件类型 `Subscribe`、`Unsubscribe`、`Publish` 和 `GetCounts`。
 - 通过 event thread 异步调用 handler。
-- 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`。
+- 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`、
+  `timestamp_ms`、`level`。
 
 ## 接口归属
 
@@ -41,7 +42,7 @@ public API 在 `event.h`。事件 payload 归 `event` 文档维护：
 | `kSnapshotCreated` | `snapshot` | stream | 输出摘要 | 字节数或 0 |
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |
 | `kNetworkChanged` | `network_config` | interface 或 port | 变更摘要 | 保留为 0 |
-| `kAlarmTriggered` | `alarm` | alarm type | 告警摘要 | 严重度或 0 |
+| `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
 | `kSystemStatusChanged` | `system` | status key | 状态摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |
 
@@ -58,3 +59,7 @@ payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTT
 
 handler 必须轻量。需要耗时业务时，subscriber 应投递到自己的任务队列，不能阻塞
 event thread。
+
+`EventCounts` 使用通俗计数字段描述事件库负载：`published`、`handled`、
+`dropped`、`rejected`、`queued`。队列满时 `Publish` 返回 `false`，并递增
+`dropped` 和 `rejected`，优先保护实时路径。

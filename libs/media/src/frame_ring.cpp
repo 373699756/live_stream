@@ -1,7 +1,5 @@
 #include "frame_ring.h"
 
-#include "media_codec.h"
-
 #include <utility>
 
 namespace live_stream {
@@ -212,8 +210,8 @@ void FrameRing::Write(const FramePayload &frame) {
     if (cache == nullptr) {
         return;
     }
-    const bool key_frame =
-        media_codec::IsKeyFrame(encoded_frame.frame_type);
+    const bool key_frame = encoded_frame.frame_type == FrameType::kIdr ||
+                           encoded_frame.frame_type == FrameType::kI;
     const int64_t duration_us = EstimateFrameDuration(*cache, frame);
     const uint64_t sequence = next_sequence_++;
     (void)AppendToCache(cache, sequence, key_frame, duration_us, frame);

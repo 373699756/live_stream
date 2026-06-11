@@ -281,18 +281,18 @@ std::string FlvMuxer::BuildFileHeader() {
     return header;
 }
 
-std::string FlvMuxer::BuildSequenceHeader(VideoCodec codec,
+std::string FlvMuxer::BuildSequenceHeader(Codec codec,
                                           const std::string &vps,
                                           const std::string &sps,
                                           const std::string &pps,
                                           uint32_t timestamp_ms) {
-    if (codec == VideoCodec::kH264) {
+    if (codec == Codec::kH264) {
         if (sps.empty() || pps.empty()) {
             return std::string();
         }
         return BuildH264FlvSequenceHeaderTag(sps, pps, timestamp_ms);
     }
-    if (codec == VideoCodec::kH265) {
+    if (codec == Codec::kH265) {
         if (vps.empty() || sps.empty() || pps.empty()) {
             return std::string();
         }
@@ -311,12 +311,12 @@ bool FlvMuxer::BuildVideoTagView(const EncodedFrame &frame,
     const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;
     const uint32_t timestamp_ms = static_cast<uint32_t>(frame.dts_us / 1000);
     // FLV 时间戳以 DTS 为基准，CompositionTime 单独表达 PTS 偏移。
-    if (frame.codec == VideoCodec::kH264) {
+    if (frame.codec == Codec::kH264) {
         return BuildH264FlvVideoTagView(
             keyframe, static_cast<int32_t>(composition_time_ms), timestamp_ms,
             payload.h264_units, tag_view);
     }
-    if (frame.codec == VideoCodec::kH265) {
+    if (frame.codec == Codec::kH265) {
         return BuildH265FlvVideoTagView(
             keyframe, static_cast<int32_t>(composition_time_ms), timestamp_ms,
             payload.h265_units, tag_view);

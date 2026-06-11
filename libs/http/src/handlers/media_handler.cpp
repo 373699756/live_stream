@@ -7,7 +7,6 @@
 #include "json_utils.h"
 #include "device_media.h"
 #include "infra/log.h"
-#include "media_source.h"
 #include "rtsp.h"
 #include "webrtc.h"
 
@@ -18,15 +17,15 @@
 namespace live_stream {
 namespace {
 
-const char *VideoCodecToJsonString(VideoCodec codec) {
+const char *CodecToJsonString(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
     }
     return "unknown";
@@ -113,7 +112,7 @@ ConfigJson VideoStreamCapabilitiesToJson(
     ConfigJson codecs = ConfigJson::array();
     for (const CodecCapability &codec : capabilities->codecs) {
         ConfigJson item = ConfigJson::object();
-        item["codec"] = VideoCodecToJsonString(codec.codec);
+        item["codec"] = CodecToJsonString(codec.codec);
         ConfigJson profiles = ConfigJson::array();
         for (const std::string &profile : codec.profiles) {
             profiles.push_back(profile);
@@ -242,19 +241,21 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
     return root;
 }
 
-bool HasReadyBrowserProtocol(const MediaSourceStatus &status) {
-    return status.hls_ready || status.flv_ready || status.mjpeg_ready;
+bool HasReadyBrowserProtocol(const MediaStreamInfo &stream_info) {
+    return stream_info.hls_ready || stream_info.flv_ready ||
+           stream_info.mjpeg_ready;
 }
 
-void RequestBrowserRecoveryKeyFrame(IMediaSource *media_source,
+void RequestBrowserRecoveryKeyFrame(MediaStreams *media_streams,
                                     StreamId stream_id,
-                                    const MediaSourceStatus &status) {
-    if (media_source == nullptr || !status.running ||
-        !status.browser_codec || HasReadyBrowserProtocol(status)) {
+                                    const MediaStreamInfo &stream_info) {
+    if (media_streams == nullptr || !stream_info.running ||
+        !stream_info.browser_codec ||
+        HasReadyBrowserProtocol(stream_info)) {
         return;
     }
-    (void)media_source->RequestKeyFrame(stream_id,
-                                              KeyFrameReason::kRecovery);
+    (void)media_streams->RequestKeyFrame(stream_id,
+                                         KeyFrameRequestType::kRecovery);
 }
 
 bool IsWebrtcReady(IWebrtc *webrtc) {
@@ -266,68 +267,68 @@ bool IsWebrtcReady(IWebrtc *webrtc) {
            stats.dtls_ready && stats.srtp_ready;
 }
 
-bool IsWebrtcSupported(VideoCodec codec, IWebrtc *webrtc) {
+bool IsWebrtcSupported(Codec codec, IWebrtc *webrtc) {
     if (webrtc == nullptr) {
         return false;
     }
     const WebrtcStats stats = webrtc->GetStats();
-    return stats.enabled && (codec == VideoCodec::kH264 ||
-                             codec == VideoCodec::kH265);
+    return stats.enabled && (codec == Codec::kH264 ||
+                             codec == Codec::kH265);
 }
 
 ConfigJson StreamRuntimeToJson(StreamId stream_id,
                                IDeviceMedia *device_media,
-                               IMediaSource *media_source,
+                               MediaStreams *media_streams,
                                IWebrtc *webrtc) {
-    MediaSourceStatus status;
-    MediaSourceStats stats;
-    bool media_source_available = false;
-    if (media_source != nullptr) {
-        status = media_source->GetBrowserStatus(stream_id);
-        stats = media_source->GetStats();
-        media_source_available = media_source->IsStreamAvailable(stream_id);
-        RequestBrowserRecoveryKeyFrame(media_source, stream_id, status);
+    MediaStreamInfo stream_info;
+    MediaStreamCounters counters;
+    bool media_stream_available = false;
+    if (media_streams != nullptr) {
+        stream_info = media_streams->GetStreamInfo(stream_id);
+        counters = media_streams->GetStreamCounters();
+        media_stream_available = media_streams->IsStreamAvailable(stream_id);
+        RequestBrowserRecoveryKeyFrame(media_streams, stream_id, stream_info);
     }
 
     const bool device_stream_running =
         device_media != nullptr && device_media->IsStreamStarted(stream_id);
-    const bool stream_running = status.running || device_stream_running;
-    const VideoCodec codec =
-        media_source != nullptr ? status.codec
+    const bool stream_running = stream_info.running || device_stream_running;
+    const Codec codec =
+        media_streams != nullptr ? stream_info.codec
                                 : (device_media != nullptr
                                        ? device_media->GetStreamCodec(stream_id)
-                                       : VideoCodec::kH264);
+                                       : Codec::kH264);
 
     ConfigJson root = ConfigJson::object();
     root["stream"] = StreamIdToJsonString(stream_id);
-    root["available"] = media_source_available || device_media != nullptr;
+    root["available"] = media_stream_available || device_media != nullptr;
     root["running"] = stream_running;
-    root["codec"] = VideoCodecToJsonString(codec);
-    root["codec_generation"] = status.codec_generation;
-    root["track_ready"] = status.track_ready;
-    root["hls_supported"] = status.hls_supported;
-    root["hls_ready"] = status.hls_ready;
-    root["http_flv_supported"] = status.flv_supported;
-    root["http_flv_ready"] = status.flv_ready;
-    root["mjpeg_supported"] = status.mjpeg_supported;
-    root["mjpeg_ready"] = status.mjpeg_ready;
+    root["codec"] = CodecToJsonString(codec);
+    root["codec_generation"] = stream_info.codec_generation;
+    root["track_ready"] = stream_info.track_ready;
+    root["hls_supported"] = stream_info.hls_supported;
+    root["hls_ready"] = stream_info.hls_ready;
+    root["http_flv_supported"] = stream_info.flv_supported;
+    root["http_flv_ready"] = stream_info.flv_ready;
+    root["mjpeg_supported"] = stream_info.mjpeg_supported;
+    root["mjpeg_ready"] = stream_info.mjpeg_ready;
     const bool webrtc_supported = IsWebrtcSupported(codec, webrtc);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
-        stream_running && status.track_ready && webrtc_supported &&
+        stream_running && stream_info.track_ready && webrtc_supported &&
         IsWebrtcReady(webrtc);
-    root["reader_count"] = stats.active_frame_readers;
+    root["reader_count"] = counters.active_frame_subscriptions;
     root["client_count"] =
-        stats.active_flv_clients + stats.active_mjpeg_clients;
-    root["cached_frames"] = stats.cached_frames;
-    root["cached_bytes"] = stats.cached_bytes;
-    root["hls_bytes"] = status.hls_current_segment_size;
-    root["last_dts"] = status.last_dts_us;
-    root["last_keyframe_request_ms"] = status.last_keyframe_request_ms;
-    root["last_keyframe_seen_ms"] = status.last_keyframe_seen_ms;
-    root["last_first_frame_ms"] = status.last_first_frame_ms;
-    root["last_protocol_ready_ms"] = status.last_protocol_ready_ms;
-    root["last_reset_reason"] = status.last_reset_reason;
+        counters.active_flv_clients + counters.active_mjpeg_clients;
+    root["cached_frames"] = counters.cached_frames;
+    root["cached_bytes"] = counters.cached_bytes;
+    root["hls_bytes"] = stream_info.hls_current_segment_size;
+    root["last_dts"] = stream_info.last_dts_us;
+    root["last_keyframe_request_ms"] = 0;
+    root["last_keyframe_seen_ms"] = 0;
+    root["last_first_frame_ms"] = 0;
+    root["last_protocol_ready_ms"] = 0;
+    root["last_reset_reason"] = stream_info.last_reset_reason;
     return root;
 }
 
@@ -497,26 +498,27 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     return root;
 }
 
-void AddHttpStreamingMediaSourceStatus(ConfigJson *root,
-                                       IMediaSource *media_source,
-                                       StreamId stream_id) {
-    if (root == nullptr || media_source == nullptr) {
+void AddHttpStreamingMediaStatus(ConfigJson *root,
+                                 MediaStreams *media_streams,
+                                 StreamId stream_id) {
+    if (root == nullptr || media_streams == nullptr) {
         return;
     }
-    const MediaSourceStatus status = media_source->GetBrowserStatus(stream_id);
-    (*root)["media_running"] = status.running;
-    (*root)["media_track_ready"] = status.track_ready;
-    (*root)["media_codec"] = VideoCodecToJsonString(status.codec);
-    (*root)["media_codec_generation"] = status.codec_generation;
-    (*root)["media_http_flv_ready"] = status.flv_ready;
-    (*root)["media_mjpeg_ready"] = status.mjpeg_ready;
-    (*root)["media_last_dts"] = status.last_dts_us;
-    (*root)["media_last_reset_reason"] = status.last_reset_reason;
+    const MediaStreamInfo stream_info =
+        media_streams->GetStreamInfo(stream_id);
+    (*root)["media_running"] = stream_info.running;
+    (*root)["media_track_ready"] = stream_info.track_ready;
+    (*root)["media_codec"] = CodecToJsonString(stream_info.codec);
+    (*root)["media_codec_generation"] = stream_info.codec_generation;
+    (*root)["media_http_flv_ready"] = stream_info.flv_ready;
+    (*root)["media_mjpeg_ready"] = stream_info.mjpeg_ready;
+    (*root)["media_last_dts"] = stream_info.last_dts_us;
+    (*root)["media_last_reset_reason"] = stream_info.last_reset_reason;
 }
 
 ConfigJson HttpStreamingSessionToJson(
     const HttpStreamingSessionDiagnostics &session,
-    IMediaSource *media_source) {
+    MediaStreams *media_streams) {
     ConfigJson root = ConfigJson::object();
     root["protocol"] = session.protocol;
     root["session_id"] = session.session_id;
@@ -538,8 +540,7 @@ ConfigJson HttpStreamingSessionToJson(
     root["send_queue_length"] = session.send_queue_length;
     root["last_write_at_ms"] = session.last_write_at_ms;
     root["close_reason"] = session.close_reason;
-    AddHttpStreamingMediaSourceStatus(&root, media_source,
-                                      session.stream_id);
+    AddHttpStreamingMediaStatus(&root, media_streams, session.stream_id);
     return root;
 }
 
@@ -554,14 +555,14 @@ public:
     MediaHttpHandler(HttpAccess *access,
                      IConfig *config,
                      IDeviceMedia *device_media,
-                     IMediaSource *media_source,
+                     MediaStreams *media_streams,
                      IRtsp *rtsp,
                      IWebrtc *webrtc,
                      IHttp *http)
         : access_(access),
           config_(config),
           device_media_(device_media),
-          media_source_(media_source),
+          media_streams_(media_streams),
           rtsp_(rtsp),
           webrtc_(webrtc),
           http_(http) {}
@@ -618,9 +619,9 @@ private:
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
         items.push_back(StreamRuntimeToJson(StreamId::kMain, device_media_,
-                                            media_source_, webrtc_));
+                                            media_streams_, webrtc_));
         items.push_back(StreamRuntimeToJson(StreamId::kSub, device_media_,
-                                            media_source_, webrtc_));
+                                            media_streams_, webrtc_));
         root["items"] = items;
         return JsonResponse(200, root);
     }
@@ -663,7 +664,7 @@ private:
         }
         return JsonResponse(
             200, StreamRuntimeToJson(stream_id, device_media_,
-                                     media_source_, webrtc_));
+                                     media_streams_, webrtc_));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {
@@ -686,7 +687,7 @@ private:
             for (const HttpStreamingSessionDiagnostics &session : sessions) {
                 if (IsMediaStreamingSession(session)) {
                     items.push_back(HttpStreamingSessionToJson(
-                        session, media_source_));
+                        session, media_streams_));
                 }
             }
         }
@@ -722,12 +723,12 @@ private:
             root["webrtc_ice_server_count"] = 0;
             root["webrtc_selected_ice_pairs"] = 0;
         }
-        MediaSourceStats media_stats;
-        if (media_source_ != nullptr) {
-            media_stats = media_source_->GetStats();
+        MediaStreamCounters media_counters;
+        if (media_streams_ != nullptr) {
+            media_counters = media_streams_->GetStreamCounters();
         }
-        root["http_flv_active_clients"] = media_stats.active_flv_clients;
-        root["mjpeg_active_clients"] = media_stats.active_mjpeg_clients;
+        root["http_flv_active_clients"] = media_counters.active_flv_clients;
+        root["mjpeg_active_clients"] = media_counters.active_mjpeg_clients;
         root["rtsp_active_sessions"] =
             rtsp_ == nullptr ? 0 : rtsp_->GetStats().active_sessions;
         root["items"] = items;
@@ -737,7 +738,7 @@ private:
     HttpAccess *access_ = nullptr;
     IConfig *config_ = nullptr;
     IDeviceMedia *device_media_ = nullptr;
-    IMediaSource *media_source_ = nullptr;
+    MediaStreams *media_streams_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
     IHttp *http_ = nullptr;
@@ -746,13 +747,13 @@ private:
 std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
                                             IConfig *config,
                                             IDeviceMedia *device_media,
-                                            IMediaSource *media_source,
+                                            MediaStreams *media_streams,
                                             IRtsp *rtsp,
                                             IWebrtc *webrtc,
                                             IHttp *http) {
     return std::unique_ptr<IHttpHandler>(
         new MediaHttpHandler(access, config, device_media,
-                             media_source, rtsp, webrtc, http));
+                             media_streams, rtsp, webrtc, http));
 }
 
 }  // namespace live_stream

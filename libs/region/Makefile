@@ -4,6 +4,7 @@ MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 CONFIG_LIB := $(BUILD_DIR)/lib/libconfig.a
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/config/include

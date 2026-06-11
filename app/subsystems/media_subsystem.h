@@ -5,6 +5,7 @@
 
 #include "ai.h"
 #include "device_media.h"
+#include "media/media_streams.h"
 #include "region.h"
 #include "snapshot.h"
 
@@ -15,6 +16,7 @@ struct DeviceRefs;
 
 struct MediaRefs {
     IDeviceMedia* device_media = nullptr;
+    MediaStreams *media_streams = nullptr;
     Ai* ai = nullptr;
     Snapshot* snapshot = nullptr;
 };
@@ -38,6 +40,7 @@ private:
     MediaSubsystem& operator=(const MediaSubsystem&) = delete;
 
     std::unique_ptr<IDeviceMedia> device_media_;
+    std::unique_ptr<MediaStreams> media_streams_;
     std::unique_ptr<Ai> ai_;
     std::unique_ptr<Region> region_;
     std::unique_ptr<Snapshot> snapshot_;

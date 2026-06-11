@@ -25,7 +25,7 @@ VideoSize SensorInputSize() {
     return VideoSize{profile.input_width, profile.input_height};
 }
 
-VB_CONFIG_S BuildVideoBufferConfig(const MediaPipelineConfig& config) {
+VB_CONFIG_S BuildFrameBufferConfig(const MediaPipelineConfig& config) {
     VB_CONFIG_S vb_conf{};
     const VideoSize sensor_input_size = SensorInputSize();
 
@@ -56,7 +56,7 @@ void MarkCleanupFailure(bool* cleanup_failed) {
     }
 }
 
-bool CleanupConfiguredVideoBuffer(bool* cleanup_failed) {
+bool CleanupConfiguredFrameBuffer(bool* cleanup_failed) {
     if (mpp_resource_recovery::ExitMppSystem(
             true, mpp_resource_recovery::kMppExitRetryCount,
             mpp_resource_recovery::MppExitBusyLog::kWarn)) {
@@ -66,12 +66,12 @@ bool CleanupConfiguredVideoBuffer(bool* cleanup_failed) {
     return false;
 }
 
-bool InitConfiguredVideoBuffer(bool* cleanup_failed) {
+bool InitConfiguredFrameBuffer(bool* cleanup_failed) {
     Info("hisi_vendor", "HI_MPI_VB_Init begin");
     HI_S32 status = HI_MPI_VB_Init();
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_VB_Init failed: 0x%08x", status);
-        (void)CleanupConfiguredVideoBuffer(cleanup_failed);
+        (void)CleanupConfiguredFrameBuffer(cleanup_failed);
         return false;
     }
     Info("hisi_vendor", "HI_MPI_VB_Init done");
@@ -80,7 +80,7 @@ bool InitConfiguredVideoBuffer(bool* cleanup_failed) {
     status = HI_MPI_SYS_Init();
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_SYS_Init failed: 0x%08x", status);
-        (void)CleanupConfiguredVideoBuffer(cleanup_failed);
+        (void)CleanupConfiguredFrameBuffer(cleanup_failed);
         return false;
     }
     Info("hisi_vendor", "HI_MPI_SYS_Init done");
@@ -90,12 +90,12 @@ bool InitConfiguredVideoBuffer(bool* cleanup_failed) {
 
 }  // namespace
 
-bool ConfigureVideoBuffer(const MediaPipelineConfig& config,
+bool ConfigureFrameBuffer(const MediaPipelineConfig& config,
                           bool* cleanup_failed) {
     if (cleanup_failed != nullptr) {
         *cleanup_failed = false;
     }
-    const VB_CONFIG_S vb_conf = BuildVideoBufferConfig(config);
+    const VB_CONFIG_S vb_conf = BuildFrameBufferConfig(config);
 
     Info("hisi_vendor", "HISI MPP pre-cleanup begin");
     (void)mpp_resource_recovery::ExitMppSystem(
@@ -138,7 +138,7 @@ bool ConfigureVideoBuffer(const MediaPipelineConfig& config,
     }
     Info("hisi_vendor", "HI_MPI_VB_SetConfig done");
 
-    return InitConfiguredVideoBuffer(cleanup_failed);
+    return InitConfiguredFrameBuffer(cleanup_failed);
 }
 
 }  // namespace mpp_vb_config

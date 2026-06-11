@@ -5,6 +5,7 @@ export interface MediaEvent {
   message: string;
   value: number;
   timestamp_ms: number;
+  level: number;
 }
 
 export function openMediaEvents(onEvent: (event: MediaEvent) => void): EventSource {
@@ -18,7 +19,8 @@ export function openMediaEvents(onEvent: (event: MediaEvent) => void): EventSour
   };
 
   source.addEventListener('media_status_changed', handleMessage);
-  source.addEventListener('alarm_triggered', handleMessage);
+  source.addEventListener('alarm_on', handleMessage);
+  source.addEventListener('alarm_off', handleMessage);
   source.onmessage = handleMessage;
   return source;
 }

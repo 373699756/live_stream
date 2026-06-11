@@ -8,25 +8,15 @@
 
 namespace {
 
-class TestFrameSink : public live_stream::IFrameSink {
+class TestFrameSink : public live_stream::FrameSink {
 public:
-    const char* Name() const override { return "test_sink"; }
-
-    void OnFrame(const live_stream::FramePayload& frame) override {
+    bool PushFrame(const live_stream::EncodedFrame& frame) override {
         (void)frame;
         ++frames;
-    }
-
-    void OnSourceStateChanged(live_stream::StreamId stream_id,
-                              live_stream::StreamState state) override {
-        (void)stream_id;
-        last_state = state;
-        ++state_changes;
+        return true;
     }
 
     int frames = 0;
-    int state_changes = 0;
-    live_stream::StreamState last_state = live_stream::StreamState::kClosed;
 };
 
 class FakeConfig : public live_stream::IConfig {
@@ -124,32 +114,16 @@ int main() {
     }
 
     TestFrameSink sink;
-    live_stream::FrameAttachOptions attach_options;
-    if (service->AttachFrameSink(attach_options, &sink) != 0) {
+    if (!service->SetFrameSink(&sink)) {
         return 5;
     }
     if (!service->Start() || !service->IsStarted()) {
         return 6;
     }
-    const live_stream::FrameAttachId attach_id =
-        service->AttachFrameSink(attach_options, &sink);
-    if (attach_id == 0) {
-        return 7;
-    }
-    if (sink.last_state != live_stream::StreamState::kRunning ||
-        sink.state_changes != 1) {
-        return 8;
-    }
     if (!service->RequestKeyFrame(
             live_stream::StreamId::kMain,
-            live_stream::KeyFrameReason::kNewClient)) {
-        return 9;
-    }
-    if (!service->DetachFrameSink(attach_id)) {
-        return 10;
-    }
-    if (service->DetachFrameSink(attach_id)) {
-        return 11;
+            live_stream::KeyFrameRequestType::kNewSubscriber)) {
+        return 7;
     }
     service->Stop();
     service->Stop();
@@ -161,16 +135,16 @@ int main() {
     std::unique_ptr<live_stream::IDeviceMedia> configured =
         live_stream::CreateDeviceMedia(service_options);
     if (!configured || !configured->Start()) {
-        return 12;
+        return 8;
     }
     if (config.attach_count != 2 ||
         config.attachments.find("video") == config.attachments.end() ||
         config.attachments.find("image") == config.attachments.end()) {
-        return 13;
+        return 9;
     }
     config.values["video"] = BuildVideoConfig(2048);
     if (!config.SetValue("video", config.values["video"])) {
-        return 14;
+        return 10;
     }
     configured->Stop();
     return 0;

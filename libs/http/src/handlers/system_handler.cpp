@@ -9,7 +9,6 @@
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "snapshot.h"
-#include "media_source.h"
 #include "system.h"
 #include "time_api.h"
 #include "upgrade.h"
@@ -188,9 +187,12 @@ private:
             webrtc_running = stats.enabled && stats.signaling_ready;
         }
         add_module("webrtc", webrtc_running);
-        add_module("media_source",
-                    status_sources_.media_source != nullptr &&
-                        status_sources_.media_source->GetStats().enabled);
+        bool media_running = false;
+        if (status_sources_.media_streams != nullptr) {
+            media_running =
+                status_sources_.media_streams->GetStreamCounters().enabled;
+        }
+        add_module("media", media_running);
         root["modules"] = modules;
         return JsonResponse(200, root);
     }

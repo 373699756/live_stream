@@ -37,7 +37,7 @@ struct VideoRoiConfig {
 struct VideoStreamConfig {
     StreamId stream_id = StreamId::kMain;
     bool enabled = true;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     VideoSize size;
     FrameRate frame_rate;
     uint32_t bitrate_kbps = 2048;
@@ -61,7 +61,7 @@ struct MediaPipelineConfig {
     VideoStreamConfig main_stream;
     VideoStreamConfig sub_stream{StreamId::kSub,
                                  true,
-                                 VideoCodec::kH264,
+                                 Codec::kH264,
                                  VideoSize{1280, 720},
                                  FrameRate{30, 30},
                                  3072,

@@ -108,7 +108,6 @@ ConfigResult ProtocolSubsystem::ApplyRuntimeConfigUpdate(
         refs.rtsp = rtsp_.get();
         refs.onvif = onvif_.get();
         refs.webrtc = webrtc_.get();
-        refs.media_pipeline = media_pipeline_.get();
         const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
         if (!webrtc_->ApplyOptions(options)) {
             return ConfigResult::Failure("", "apply webrtc config failed");

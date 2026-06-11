@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_NET_ADAPTIVE_NET_ADAPTIVE_H_
 #define LIVE_STREAM_NET_ADAPTIVE_NET_ADAPTIVE_H_
 
-#include "media/stream_types.h"
+#include "media/media_streams.h"
 
 #include <cstdint>
 #include <memory>
@@ -10,7 +10,6 @@
 
 namespace live_stream {
 
-class IMediaSource;
 class IRtsp;
 class IWebrtc;
 class INetEngine;
@@ -58,7 +57,7 @@ struct NetAdaptiveDependencies {
     INetEngine *net_engine = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
-    IMediaSource *media_source = nullptr;
+    MediaStreams *media_streams = nullptr;
 };
 
 struct NetAdaptiveRecommendation {

@@ -12,6 +12,7 @@ CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -I$(HISI_MPP_INC)
 
 # IHisiSdk interface header lives in device_media
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 

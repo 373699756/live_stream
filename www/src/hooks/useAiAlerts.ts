@@ -172,12 +172,17 @@ export function useAiAlerts(): AiAlertsState {
       );
     };
     const handleAlarmEvent = (event: MediaEvent) => {
-      if (event.type !== 'alarm_triggered' || event.target !== 'ai_detection') {
+      if (
+        (event.type !== 'alarm_on' && event.type !== 'alarm_off') ||
+        event.target !== 'ai_detection'
+      ) {
         return;
       }
       setLastAlarmEvent(event);
       refreshAlarmStatus();
-      scheduleAlertRetries();
+      if (event.type === 'alarm_on') {
+        scheduleAlertRetries();
+      }
     };
     const eventSource =
       typeof EventSource === 'undefined' ? null : openMediaEvents(handleAlarmEvent);

@@ -67,19 +67,19 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     Info("hisi_vendor", "HISI MPP version: %s", version.aVersion);
 
     bool resource_recovery_failed = false;
-    Info("hisi_vendor", "ConfigureVideoBuffer begin");
-    if (!mpp_vb_config::ConfigureVideoBuffer(
+    Info("hisi_vendor", "ConfigureFrameBuffer begin");
+    if (!mpp_vb_config::ConfigureFrameBuffer(
             config, &resource_recovery_failed)) {
         if (resource_recovery_failed) {
             impl_->system_cleanup_failed_ = true;
             Error("hisi_vendor",
-                  "ConfigureVideoBuffer failed after HISI MPP recovery");
+                  "ConfigureFrameBuffer failed after HISI MPP recovery");
         } else {
-            Error("hisi_vendor", "ConfigureVideoBuffer failed");
+            Error("hisi_vendor", "ConfigureFrameBuffer failed");
         }
         return false;
     }
-    Info("hisi_vendor", "ConfigureVideoBuffer done");
+    Info("hisi_vendor", "ConfigureFrameBuffer done");
 
     Info("hisi_vendor", "ConfigureViVpssMode begin");
     if (!ConfigureViVpssMode(config)) {

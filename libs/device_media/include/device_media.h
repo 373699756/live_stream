@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_DEVICE_MEDIA_DEVICE_MEDIA_H_
 #define LIVE_STREAM_DEVICE_MEDIA_DEVICE_MEDIA_H_
 
-#include "media/frame_attach.h"
+#include "media/frame_sink.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
 #include "media/pipeline_config.h"
@@ -51,12 +51,10 @@ public:
     virtual bool IsStarted() const = 0;
     virtual bool IsRestarting() const = 0;
     virtual bool IsStreamStarted(StreamId stream_id) const = 0;
-    virtual VideoCodec GetStreamCodec(StreamId stream_id) const = 0;
-    virtual FrameAttachId AttachFrameSink(
-        const FrameAttachOptions& options, IFrameSink* sink) = 0;
-    virtual bool DetachFrameSink(FrameAttachId attach_id) = 0;
+    virtual Codec GetStreamCodec(StreamId stream_id) const = 0;
+    virtual bool SetFrameSink(FrameSink *sink) = 0;
     virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameReason reason) = 0;
+                                 KeyFrameRequestType reason) = 0;
     virtual MediaCapabilities GetCapabilities() const = 0;
     virtual MediaChannels GetChannels() const = 0;
     virtual ImageStrategyStatus GetImageStrategyStatus() const = 0;

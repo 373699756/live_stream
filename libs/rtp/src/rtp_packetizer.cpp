@@ -32,15 +32,15 @@ bool IsRtpTimestampBackwards(uint32_t timestamp,
     return static_cast<int32_t>(timestamp - previous_timestamp) < 0;
 }
 
-uint8_t RtpPayloadTypeForCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? kRtpPayloadTypeH265
-                                      : kRtpPayloadTypeH264;
+uint8_t RtpPayloadTypeForCodec(Codec codec) {
+    return codec == Codec::kH265 ? kRtpPayloadTypeH265
+                                 : kRtpPayloadTypeH264;
 }
 
 uint8_t RtpPayloadTypeForCodec(const RtpPacketizerOptions &options,
-                               VideoCodec codec) {
-    return codec == VideoCodec::kH265 ? options.h265_payload_type
-                                      : options.h264_payload_type;
+                               Codec codec) {
+    return codec == Codec::kH265 ? options.h265_payload_type
+                                 : options.h264_payload_type;
 }
 
 namespace {
@@ -64,25 +64,6 @@ void WriteRtpHeader(const RtpPacketizerInput &input,
     byte_writer::WriteU16(header + 2, sequence);
     byte_writer::WriteU32(header + 4, timestamp);
     byte_writer::WriteU32(header + 8, input.ssrc);
-}
-
-bool BuildRtpInput(const EncodedFrame &frame,
-                   uint16_t *sequence,
-                   uint32_t ssrc,
-                   const RtpPacketizerOptions &options,
-                   RtpPacketizerInput *input) {
-    if (input == nullptr || !EncodedFrameHasPayload(&frame) ||
-        sequence == nullptr) {
-        return false;
-    }
-    input->codec = frame.codec;
-    input->payload = EncodedFramePayloadData(&frame);
-    input->payload_size = frame.size;
-    input->pts_us = frame.pts_us;
-    input->sequence = sequence;
-    input->ssrc = ssrc;
-    input->payload_type = RtpPayloadTypeForCodec(options, frame.codec);
-    return input->payload != nullptr && input->payload_size > 0;
 }
 
 RtpPacketizerInput NormalizeRtpInput(const RtpPacketizerInput &input,
@@ -110,17 +91,6 @@ RtpPacketizer::RtpPacketizer(const RtpPacketizerOptions &options)
     }
 }
 
-bool RtpPacketizer::Packetize(const EncodedFrame &frame,
-                              uint16_t *sequence,
-                              uint32_t ssrc,
-                              IRtpPacketSink *sink) const {
-    RtpPacketizerInput input;
-    if (!BuildRtpInput(frame, sequence, ssrc, options_, &input)) {
-        return false;
-    }
-    return Packetize(input, sink);
-}
-
 bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
                               IRtpPacketSink *sink) const {
     const RtpPacketizerInput normalized_input =
@@ -129,13 +99,13 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
         normalized_input.payload_size == 0 ||
         normalized_input.sequence == nullptr || normalized_input.ssrc == 0 ||
         normalized_input.payload_type == 0 || sink == nullptr ||
-        (normalized_input.codec != VideoCodec::kH264 &&
-         normalized_input.codec != VideoCodec::kH265) ||
+        (normalized_input.codec != Codec::kH264 &&
+         normalized_input.codec != Codec::kH265) ||
         normalized_input.payload_size > std::numeric_limits<uint32_t>::max()) {
         return false;
     }
 
-    if (normalized_input.codec == VideoCodec::kH265) {
+    if (normalized_input.codec == Codec::kH265) {
         media_codec::H265NalUnitList units;
         if (!media_codec::ParseH265AnnexBNalUnits(
                 normalized_input.payload, normalized_input.payload_size,
@@ -219,8 +189,8 @@ bool RtpPacketizer::SendRtpPacket(const RtpPacketizerInput &input,
     }
     // packet 的 slice 指针指向栈上 header 副本和输入 payload；sink 必须在
     // 回调内完成发送或复制自己需要的内容。
-    // 这里不持有 VideoBuffer owner，owner 由调用 packetizer 的 MediaFrame/EncodedFrame
-    // 在整个 Packetize 调用期间保证。
+    // 这里不持有媒体 buffer owner；调用方必须在整个 Packetize 调用期间保证
+    // input payload 生命周期。
     return sink->OnRtpPacket(packet);
 }
 
@@ -236,7 +206,7 @@ bool RtpPacketizer::PacketizeNal(const RtpPacketizerInput &input,
         // 单个 NAL 可以放进 MTU 时直接作为一个 RTP payload 发送。
         return SendRtpPacket(input, nullptr, 0, payload, size, marker, sink);
     }
-    if (input.codec == VideoCodec::kH265) {
+    if (input.codec == Codec::kH265) {
         return PacketizeH265(input, payload, size, marker, sink);
     }
     return PacketizeH264(input, payload, size, marker, sink);

@@ -5,22 +5,22 @@
 namespace live_stream {
 namespace {
 
-bool ParseRtspVideoCodec(const std::string &value, VideoCodec *codec) {
+bool ParseRtspCodec(const std::string &value, Codec *codec) {
     if (codec == nullptr) {
         return false;
     }
     if (value == "h265") {
-        *codec = VideoCodec::kH265;
+        *codec = Codec::kH265;
         return true;
     }
     if (value == "h264") {
-        *codec = VideoCodec::kH264;
+        *codec = Codec::kH264;
         return true;
     }
     return false;
 }
 
-bool ApplyRtspVideoCodecConfig(const ConfigJson &video,
+bool ApplyRtspCodecConfig(const ConfigJson &video,
                                AppRuntimeConfig *config) {
     if (config == nullptr || !video.is_object()) {
         return false;
@@ -39,13 +39,13 @@ bool ApplyRtspVideoCodecConfig(const ConfigJson &video,
     if (!json_utils::ReadField(main, "codec", &codec)) {
         return false;
     }
-    if (!ParseRtspVideoCodec(codec, &config->rtsp_main_codec)) {
+    if (!ParseRtspCodec(codec, &config->rtsp_main_codec)) {
         return false;
     }
     if (!json_utils::ReadField(sub, "codec", &codec)) {
         return false;
     }
-    if (!ParseRtspVideoCodec(codec, &config->rtsp_sub_codec)) {
+    if (!ParseRtspCodec(codec, &config->rtsp_sub_codec)) {
         return false;
     }
     return true;
@@ -246,7 +246,7 @@ bool LoadRuntimeConfigFromRoot(const ConfigJson &root,
         !root.contains("onvif")) {
         return false;
     }
-    if (!ApplyRtspVideoCodecConfig(root.at("video"), &runtime)) {
+    if (!ApplyRtspCodecConfig(root.at("video"), &runtime)) {
         return false;
     }
     if (!ApplyNetworkConfig(root.at("network"), &runtime)) {

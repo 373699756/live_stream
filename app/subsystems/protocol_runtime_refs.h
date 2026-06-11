@@ -4,7 +4,6 @@
 #include "subsystems/device_subsystem.h"
 #include "subsystems/media_subsystem.h"
 
-#include "media_pipeline.h"
 #include "net.h"
 #include "onvif_server.h"
 #include "rtsp.h"
@@ -26,7 +25,6 @@ struct ProtocolRuntimeRefs {
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
     IWebrtc *webrtc = nullptr;
-    IMediaPipeline *media_pipeline = nullptr;
 };
 
 }  // namespace live_stream

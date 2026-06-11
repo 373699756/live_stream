@@ -12,9 +12,9 @@ namespace webrtc_internal {
 
 struct DtlsFingerprint;
 
-struct WebrtcSdpVideoCodec {
+struct WebrtcSdpCodec {
     int payload_type = -1;
-    VideoCodec codec = VideoCodec::kH264;
+    Codec codec = Codec::kH264;
     uint32_t clock_rate = 0;
     std::string fmtp;
     std::vector<std::string> rtcp_feedback;
@@ -31,12 +31,12 @@ struct WebrtcSdpOffer {
     bool rtcp_mux = false;
     bool rtcp_rsize = false;
     std::vector<std::string> candidates;
-    WebrtcSdpVideoCodec video_codec;
+    WebrtcSdpCodec video_codec;
 };
 
 struct WebrtcSdpAnswerOptions {
     std::string peer_id;
-    VideoCodec local_codec = VideoCodec::kH264;
+    Codec local_codec = Codec::kH264;
     std::string local_ip = "127.0.0.1";
     std::string local_candidate_ip;
     uint16_t local_port = 0;
@@ -52,7 +52,7 @@ std::string BuildCandidateJson(const WebrtcIceCandidate& candidate);
 std::string ReplaceHostCandidateIp(const std::string& candidate,
                                    const std::string& public_ip);
 uint32_t BuildWebrtcSsrc(const std::string& peer_id);
-bool ParseWebrtcOffer(const std::string& offer_sdp, VideoCodec local_codec,
+bool ParseWebrtcOffer(const std::string& offer_sdp, Codec local_codec,
                       WebrtcSdpOffer *offer);
 std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
                               const WebrtcSdpAnswerOptions& options);

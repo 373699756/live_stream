@@ -4,7 +4,7 @@ namespace live_stream {
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
     HttpAccess *access, IDeviceMedia *device_media,
-    IMediaSource *media_source);
+    MediaStreams *media_streams);
 std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
     HttpAccess *access, IDeviceMedia *device_media,
     IWebrtc *webrtc);
@@ -16,7 +16,7 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
         case HttpMediaHandlerKind::kHls:
             return MakeHlsHandler(
                 dependencies.access, dependencies.device_media,
-                dependencies.media_source);
+                dependencies.media_streams);
         case HttpMediaHandlerKind::kWebrtc:
             return MakeWebrtcHandler(
                 dependencies.access, dependencies.device_media,

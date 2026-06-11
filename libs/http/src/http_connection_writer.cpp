@@ -12,22 +12,22 @@
 namespace live_stream {
 namespace {
 
-void RefVideoBufferOwner(const void *owner) {
-    (void)VideoBufferRef(
-        const_cast<VideoBuffer *>(static_cast<const VideoBuffer *>(owner)));
+void RefFrameBufferOwner(const void *owner) {
+    (void)FrameBufferRef(
+        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
 }
 
-void UnrefVideoBufferOwner(const void *owner) {
-    VideoBufferUnref(
-        const_cast<VideoBuffer *>(static_cast<const VideoBuffer *>(owner)));
+void UnrefFrameBufferOwner(const void *owner) {
+    FrameBufferUnref(
+        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
 }
 
-NetBufferOwner VideoBufferNetOwner(VideoBuffer *buffer) {
+NetBufferOwner FrameBufferNetOwner(FrameBuffer *buffer) {
     if (buffer == nullptr) {
         return NetBufferOwner{};
     }
-    return NetBufferOwner{buffer, RefVideoBufferOwner,
-                          UnrefVideoBufferOwner};
+    return NetBufferOwner{buffer, RefFrameBufferOwner,
+                          UnrefFrameBufferOwner};
 }
 
 }  // namespace
@@ -130,7 +130,7 @@ bool HttpConnectionWriter::SendResponseSlices(
         reinterpret_cast<const uint8_t *>(header.data()), header.size());
     for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
         slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
-                               VideoBufferNetOwner(body_slices[i].owner));
+                               FrameBufferNetOwner(body_slices[i].owner));
     }
 
     if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
@@ -188,7 +188,7 @@ bool HttpConnectionWriter::EnqueueStreamingSlices(
             continue;
         }
         if (!net_slices.Add(slices[i].data, slices[i].size,
-                            VideoBufferNetOwner(slices[i].owner))) {
+                            FrameBufferNetOwner(slices[i].owner))) {
             return false;
         }
         total_size += slices[i].size;

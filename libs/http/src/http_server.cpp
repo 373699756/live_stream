@@ -194,7 +194,7 @@ void HttpServer::Stop() {
         net_engine = net_engine_;
         net_executor = net_executor_;
         // Stop() 先摘出 session 状态，再在锁外通知媒体模块 detach client。
-        // close callback 可能回到 media_source/event，不能拿着 HTTP 锁跨模块调用。
+        // close callback 可能回到 media/event，不能拿着 HTTP 锁跨模块调用。
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
             if (item.second != nullptr) {

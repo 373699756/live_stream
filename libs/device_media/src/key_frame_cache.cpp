@@ -13,26 +13,28 @@ namespace {
 
 bool EncodedFrameHasCompleteParameterSets(const EncodedFrame &frame) {
     const uint8_t *data = EncodedFramePayloadData(&frame);
+    const FrameSlice payload = EncodedFramePayloadSlice(&frame);
     if (data == nullptr ||
-        (frame.codec != VideoCodec::kH264 &&
-         frame.codec != VideoCodec::kH265)) {
+        (frame.codec != Codec::kH264 &&
+         frame.codec != Codec::kH265)) {
         return false;
     }
 
-    if (frame.codec == VideoCodec::kH265) {
+    if (frame.codec == Codec::kH265) {
         media_codec::H265NalUnitList units;
-        return media_codec::ParseH265AnnexBNalUnits(data, frame.size,
+        return media_codec::ParseH265AnnexBNalUnits(data, payload.size,
                                                     &units) &&
                media_codec::HasCompleteH265ParameterSets(units);
     }
 
     media_codec::H264NalUnitList units;
-    return media_codec::ParseH264AnnexBNalUnits(data, frame.size, &units) &&
+    return media_codec::ParseH264AnnexBNalUnits(data, payload.size, &units) &&
            media_codec::HasCompleteH264ParameterSets(units);
 }
 
 bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
-    if (media_codec::IsKeyFrame(frame.frame_type) ||
+    if (frame.frame_type == FrameType::kIdr ||
+        frame.frame_type == FrameType::kI ||
         frame.frame_type == FrameType::kJpeg) {
         return true;
     }
@@ -41,15 +43,17 @@ bool EncodedFrameHasKeyPicture(const EncodedFrame &frame) {
         return false;
     }
 
-    if (frame.codec == VideoCodec::kH265) {
+    if (frame.codec == Codec::kH265) {
         media_codec::H265NalUnitList units;
-        return media_codec::ParseH265AnnexBNalUnits(data, frame.size,
+        const FrameSlice payload = EncodedFramePayloadSlice(&frame);
+        return media_codec::ParseH265AnnexBNalUnits(data, payload.size,
                                                     &units) &&
                media_codec::HasH265KeyFrame(units);
     }
-    if (frame.codec == VideoCodec::kH264) {
+    if (frame.codec == Codec::kH264) {
         media_codec::H264NalUnitList units;
-        return media_codec::ParseH264AnnexBNalUnits(data, frame.size,
+        const FrameSlice payload = EncodedFramePayloadSlice(&frame);
+        return media_codec::ParseH264AnnexBNalUnits(data, payload.size,
                                                     &units) &&
                media_codec::HasH264KeyFrame(units);
     }
@@ -65,27 +69,29 @@ EncodedFrame CloneEncodedFramePayload(const EncodedFrame &frame) {
     copy.pts_us = frame.pts_us;
     copy.dts_us = frame.dts_us;
     const uint8_t *payload = EncodedFramePayloadData(&frame);
-    if (payload == nullptr || frame.size == 0) {
+    const FrameSlice payload_slice = EncodedFramePayloadSlice(&frame);
+    if (payload == nullptr || payload_slice.size == 0) {
         return copy;
     }
     // device_media 的最近关键帧缓存是有意的深拷贝：它要独立于实时帧的
-    // VideoBuffer 引用生命周期存在，供新订阅方 keyframe-first 立即起播。
-    VideoBuffer *buffer = VideoBufferAlloc(frame.size);
+    // FrameBuffer 引用生命周期存在，供新订阅方 keyframe-first 立即起播。
+    FrameBuffer *buffer = FrameBufferAlloc(payload_slice.size);
     if (buffer == nullptr) {
         Error("device_media",
               "clone key frame alloc failed stream=%s seq=%llu size=%u",
               StreamName(frame.stream_id),
-              static_cast<unsigned long long>(frame.sequence), frame.size);
+              static_cast<unsigned long long>(frame.sequence),
+              payload_slice.size);
         return EncodedFrame{};
     }
-    std::memcpy(buffer->data, payload, frame.size);
-    if (!VideoBufferSetSize(buffer, frame.size)) {
-        VideoBufferUnref(buffer);
+    std::memcpy(buffer->data, payload, payload_slice.size);
+    if (!FrameBufferSetSize(buffer, payload_slice.size)) {
+        FrameBufferUnref(buffer);
         return EncodedFrame{};
     }
-    copy.buffer = buffer;
-    copy.offset = 0;
-    copy.size = frame.size;
+    copy.payload.buffer = buffer;
+    copy.payload.offset = 0;
+    copy.payload.size = payload_slice.size;
     return copy;
 }
 

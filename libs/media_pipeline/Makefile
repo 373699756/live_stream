@@ -6,6 +6,7 @@ INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice_media.a
 MEDIA_SOURCE_LIB := $(BUILD_DIR)/lib/libmedia_source.a
 EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
+CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_source/include

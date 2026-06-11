@@ -1,8 +1,8 @@
 #include "alarm.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -16,12 +16,87 @@
 namespace live_stream {
 namespace {
 
-constexpr std::size_t kMaxRules = 16;
+constexpr std::size_t kAlarmSourceCount = 5;
 constexpr std::size_t kMaxAlarmMessageLength = 128;
 constexpr uint32_t kMaxAlarmDurationMs = 60U * 60U * 1000U;
+constexpr uint8_t kMaxAlarmLevel = 5;
+
+const std::array<AlarmSource, kAlarmSourceCount> kAlarmSources = {
+    {AlarmSource::kMotion, AlarmSource::kAiDetection, AlarmSource::kIoInput,
+     AlarmSource::kTamper, AlarmSource::kNetwork}};
+
+bool AlarmSourceIndex(AlarmSource source, std::size_t *index) {
+    if (index == nullptr) {
+        return false;
+    }
+    switch (source) {
+        case AlarmSource::kMotion:
+            *index = 0;
+            return true;
+        case AlarmSource::kAiDetection:
+            *index = 1;
+            return true;
+        case AlarmSource::kIoInput:
+            *index = 2;
+            return true;
+        case AlarmSource::kTamper:
+            *index = 3;
+            return true;
+        case AlarmSource::kNetwork:
+            *index = 4;
+            return true;
+    }
+    return false;
+}
+
+AlarmRule MakeDefaultRule(AlarmSource source) {
+    AlarmRule rule;
+    rule.source = source;
+    return rule;
+}
+
+AlarmSourceState MakeDefaultSourceState(AlarmSource source) {
+    AlarmSourceState state;
+    state.source = source;
+    state.level = 1;
+    return state;
+}
 
 bool IsRuleValid(const AlarmRule &rule) {
-    return rule.min_duration_ms <= kMaxAlarmDurationMs;
+    std::size_t index = 0;
+    return AlarmSourceIndex(rule.source, &index) &&
+           rule.min_duration_ms <= kMaxAlarmDurationMs &&
+           rule.repeat_interval_ms <= kMaxAlarmDurationMs &&
+           rule.level <= kMaxAlarmLevel;
+}
+
+bool ReadOptionalBool(const ConfigJson &object, const char *key, bool *value) {
+    if (!object.contains(key)) {
+        return true;
+    }
+    return json_utils::ReadField(object, key, value);
+}
+
+bool ReadOptionalUint32(const ConfigJson &object, const char *key,
+                        uint32_t min_value, uint32_t max_value,
+                        uint32_t *value) {
+    if (!object.contains(key)) {
+        return true;
+    }
+    return json_utils::ReadField(object, key, value, min_value, max_value);
+}
+
+bool ReadOptionalLevel(const ConfigJson &object, const char *key,
+                       uint8_t *value) {
+    if (!object.contains(key)) {
+        return true;
+    }
+    uint32_t parsed = 0;
+    if (!json_utils::ReadField(object, key, &parsed, 0, kMaxAlarmLevel)) {
+        return false;
+    }
+    *value = static_cast<uint8_t>(parsed);
+    return true;
 }
 
 bool VerifyActionsConfig(const ConfigJson &value) {
@@ -47,8 +122,7 @@ bool VerifyScheduleConfig(const ConfigJson &value) {
 
 bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
                           AlarmSource source, const AlarmRule &fallback,
-                          bool required,
-                          AlarmRule *rule) {
+                          bool required, AlarmRule *rule) {
     if (rule == nullptr || !value.is_object()) {
         return false;
     }
@@ -73,6 +147,11 @@ bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
         !json_utils::ReadField(rule_config, "min_duration_ms",
                                &parsed.min_duration_ms, 0,
                                kMaxAlarmDurationMs) ||
+        !ReadOptionalUint32(rule_config, "repeat_interval_ms", 0,
+                            kMaxAlarmDurationMs,
+                            &parsed.repeat_interval_ms) ||
+        !ReadOptionalBool(rule_config, "manual_clear", &parsed.manual_clear) ||
+        !ReadOptionalLevel(rule_config, "level", &parsed.level) ||
         !rule_config.contains("regions") ||
         !rule_config.at("regions").is_array()) {
         return false;
@@ -95,8 +174,8 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
     if (!ParseAlarmRuleConfig(value, "motion_detection", AlarmSource::kMotion,
                               motion_fallback, true, &parsed_motion) ||
         !ParseAlarmRuleConfig(value, "ai_detection",
-                              AlarmSource::kAiDetection, ai_fallback,
-                              false, &parsed_ai)) {
+                              AlarmSource::kAiDetection, ai_fallback, false,
+                              &parsed_ai)) {
         return false;
     }
     if (!value.contains("actions") || !VerifyActionsConfig(value.at("actions")) ||
@@ -109,29 +188,57 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
     return true;
 }
 
+Event MakeAlarmEvent(EventType type, AlarmSource source,
+                     const std::string &message, int32_t value,
+                     uint8_t level) {
+    Event event;
+    event.type = type;
+    event.source = "alarm";
+    event.target = AlarmSourceToString(source);
+    event.message = message;
+    event.value = value;
+    event.timestamp_ms = infra::Time::SystemTimeMillis();
+    event.level = level;
+    return event;
+}
+
 class AlarmImpl : public IAlarm {
 public:
-    explicit AlarmImpl(const AlarmOptions &options)
-        : options_(options) {
+    explicit AlarmImpl(const AlarmOptions &options) : options_(options) {
+        for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+            rules_[i] = MakeDefaultRule(kAlarmSources[i]);
+            source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
+        }
         for (const AlarmRule &rule : options.default_rules) {
-            rules_[rule.source] = rule;
+            std::size_t index = 0;
+            if (!AlarmSourceIndex(rule.source, &index)) {
+                invalid_default_rule_ = true;
+                continue;
+            }
+            rules_[index] = rule;
+            SyncRuleStateLocked(index);
         }
     }
 
+    ~AlarmImpl() override { ReleaseInternal(); }
+
     bool Prepare() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (initialized_) {
-            return true;
-        }
-        if (rules_.size() > kMaxRules) {
-            return false;
-        }
-        for (const auto &entry : rules_) {
-            if (!IsRuleValid(entry.second)) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (initialized_) {
+                return true;
+            }
+            if (invalid_default_rule_) {
                 return false;
             }
+            for (const AlarmRule &rule : rules_) {
+                if (!IsRuleValid(rule)) {
+                    return false;
+                }
+            }
         }
-        if (options_.config != nullptr && !config_attached_) {
+
+        if (options_.config != nullptr && !IsConfigAttached()) {
             ConfigAttachment attachment;
             attachment.validate = [this](const ConfigJson &value) {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -140,16 +247,25 @@ public:
                            : ConfigResult::Failure("", "invalid alarm config");
             };
             attachment.apply = [this](const ConfigJson &value) {
-                std::lock_guard<std::mutex> guard(mutex_);
-                return ApplyConfigLocked(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "apply alarm config failed");
+                std::vector<Event> events;
+                {
+                    std::lock_guard<std::mutex> guard(mutex_);
+                    if (!ApplyConfigLocked(value, &events)) {
+                        return ConfigResult::Failure(
+                            "", "apply alarm config failed");
+                    }
+                }
+                PublishEvents(events);
+                return ConfigResult::Success();
             };
             if (!options_.config->AttachConfig("alarm", attachment)) {
                 return false;
             }
+            std::lock_guard<std::mutex> lock(mutex_);
             config_attached_ = true;
         }
+
+        std::lock_guard<std::mutex> lock(mutex_);
         initialized_ = true;
         return true;
     }
@@ -158,17 +274,22 @@ public:
         if (!Prepare()) {
             return false;
         }
-        std::lock_guard<std::mutex> lock(mutex_);
+
+        ConfigJson alarm_config;
         if (options_.config != nullptr) {
-            const ConfigJson alarm_config =
-                options_.config->GetValue("alarm");
-            if (!alarm_config.is_null()) {
-                if (!ApplyConfigLocked(alarm_config)) {
-                    return false;
-                }
-            }
+            alarm_config = options_.config->GetValue("alarm");
         }
-        started_ = true;
+
+        std::vector<Event> events;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!alarm_config.is_null() &&
+                !ApplyConfigLocked(alarm_config, &events)) {
+                return false;
+            }
+            started_ = true;
+        }
+        PublishEvents(events);
         return true;
     }
 
@@ -182,76 +303,95 @@ public:
         return initialized_ && started_;
     }
 
-    void Release() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        pending_since_ms_.clear();
-        status_ = AlarmStatus();
-        started_ = false;
-        initialized_ = false;
-    }
+    void Release() { ReleaseInternal(); }
 
     AlarmStatus GetAlarmStatus() override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_) {
             return AlarmStatus();
         }
-        return status_;
+        return BuildStatusLocked();
     }
 
     bool UpdateRules(const live_stream::RequestContext &context,
                      const std::vector<AlarmRule> &rules) override {
-        if (rules.size() > kMaxRules) {
+        if (rules.size() > kAlarmSourceCount) {
             RecordAudit(context, OperationResult::kRejected, "alarm",
                         "too_many_rules");
             return false;
         }
-        std::map<AlarmSource, AlarmRule> next_rules;
+
+        std::array<AlarmRule, kAlarmSourceCount> next_rules;
+        for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+            next_rules[i] = MakeDefaultRule(kAlarmSources[i]);
+        }
         for (const AlarmRule &rule : rules) {
-            if (!IsRuleValid(rule)) {
+            std::size_t index = 0;
+            if (!IsRuleValid(rule) || !AlarmSourceIndex(rule.source, &index)) {
                 RecordAudit(context, OperationResult::kRejected,
                             AlarmSourceToString(rule.source), "invalid_rule");
                 return false;
             }
-            next_rules[rule.source] = rule;
+            next_rules[index] = rule;
         }
-        if (!IsStarted()) {
+
+        std::vector<Event> events;
+        bool service_not_started = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!initialized_ || !started_) {
+                service_not_started = true;
+            } else {
+                rules_ = next_rules;
+                for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+                    SyncRuleStateLocked(i);
+                    if (!rules_[i].enabled) {
+                        ClearSourceLocked(i, &events);
+                    }
+                }
+            }
+        }
+        if (service_not_started) {
             RecordAudit(context, OperationResult::kFailed, "alarm",
                         "service_not_started");
             return false;
         }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            rules_.swap(next_rules);
-            pending_since_ms_.clear();
-            if (status_.active && !IsRuleEnabledLocked(status_.source)) {
-                status_ = AlarmStatus();
-            }
-        }
+        PublishEvents(events);
         RecordAudit(context, OperationResult::kSuccess, "alarm", "");
         return true;
     }
 
     bool EnableRule(const live_stream::RequestContext &context,
                     AlarmSource source, bool enabled) override {
-        if (!IsStarted()) {
+        std::size_t index = 0;
+        if (!AlarmSourceIndex(source, &index)) {
+            RecordAudit(context, OperationResult::kRejected,
+                        AlarmSourceToString(source), "invalid_source");
+            return false;
+        }
+
+        std::vector<Event> events;
+        bool service_not_started = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!initialized_ || !started_) {
+                service_not_started = true;
+            } else {
+                rules_[index].enabled = enabled;
+                SyncRuleStateLocked(index);
+                if (!enabled) {
+                    ClearSourceLocked(index, &events);
+                }
+            }
+        }
+        if (service_not_started) {
             RecordAudit(context, OperationResult::kFailed,
                         AlarmSourceToString(source), "service_not_started");
             return false;
         }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            AlarmRule &rule = rules_[source];
-            rule.source = source;
-            rule.enabled = enabled;
-            if (!enabled) {
-                pending_since_ms_.erase(source);
-                if (status_.active && status_.source == source) {
-                    status_ = AlarmStatus();
-                }
-            }
-        }
-        RecordAudit(context, OperationResult::kSuccess, AlarmSourceToString(source),
-                    "");
+        PublishEvents(events);
+        RecordAudit(context, OperationResult::kSuccess,
+                    AlarmSourceToString(source), "");
         return true;
     }
 
@@ -259,83 +399,76 @@ public:
         if (input.message.size() > kMaxAlarmMessageLength) {
             return false;
         }
-        if (!IsStarted()) {
+        std::size_t index = 0;
+        if (!AlarmSourceIndex(input.source, &index)) {
             return false;
         }
 
-        AlarmStatus triggered;
-        bool should_publish = false;
+        std::vector<Event> events;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            const auto rule_iter = rules_.find(input.source);
-            if (rule_iter == rules_.end() || !rule_iter->second.enabled) {
-                return true;
+            if (!initialized_ || !started_) {
+                return false;
             }
-
-            if (!input.active) {
-                pending_since_ms_.erase(input.source);
-                if (status_.active && status_.source == input.source) {
-                    status_ = AlarmStatus();
-                }
-                return true;
-            }
-
-            const int64_t now = infra::Time::MonotonicMillis();
-            int64_t &since = pending_since_ms_[input.source];
-            if (since == 0) {
-                since = now;
-            }
-            if (now - since <
-                static_cast<int64_t>(rule_iter->second.min_duration_ms)) {
-                return true;
-            }
-            if (!status_.active || status_.source != input.source) {
-                const int64_t system_now = infra::Time::SystemTimeMillis();
-                status_.active = true;
-                status_.source = input.source;
-                status_.active_since_ms = system_now;
-                status_.last_trigger_time_ms = system_now;
-                status_.message = input.message;
-                triggered = status_;
-                should_publish = true;
-            }
+            ApplyAlarmInputLocked(index, input, &events);
         }
-
-        if (should_publish) {
-            PublishAlarmTriggered(triggered);
-        }
+        PublishEvents(events);
         return true;
     }
 
     bool ClearAlarm(const live_stream::RequestContext &context) override {
-        if (!IsStarted()) {
+        std::vector<Event> events;
+        bool service_not_started = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!initialized_ || !started_) {
+                service_not_started = true;
+            } else {
+                for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+                    ClearSourceLocked(i, &events);
+                }
+            }
+        }
+        if (service_not_started) {
             RecordAudit(context, OperationResult::kFailed, "alarm",
                         "service_not_started");
             return false;
         }
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            pending_since_ms_.clear();
-            status_ = AlarmStatus();
-        }
+        PublishEvents(events);
         RecordAudit(context, OperationResult::kSuccess, "alarm", "");
         return true;
     }
 
 private:
-    AlarmRule CurrentRuleLocked(AlarmSource source) const {
-        const auto iter = rules_.find(source);
-        if (iter == rules_.end()) {
-            AlarmRule rule;
-            rule.source = source;
-            return rule;
+    void ReleaseInternal() {
+        bool should_detach = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+                source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
+                SyncRuleStateLocked(i);
+            }
+            started_ = false;
+            initialized_ = false;
+            should_detach = config_attached_;
+            config_attached_ = false;
         }
-        return iter->second;
+        if (should_detach && options_.config != nullptr) {
+            static_cast<void>(options_.config->DetachConfig("alarm"));
+        }
     }
 
-    bool IsRuleEnabledLocked(AlarmSource source) const {
-        const auto iter = rules_.find(source);
-        return iter != rules_.end() && iter->second.enabled;
+    bool IsConfigAttached() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return config_attached_;
+    }
+
+    AlarmRule CurrentRuleLocked(AlarmSource source) const {
+        std::size_t index = 0;
+        if (!AlarmSourceIndex(source, &index)) {
+            return AlarmRule();
+        }
+        return rules_[index];
     }
 
     bool VerifyConfigLocked(const ConfigJson &value) const {
@@ -346,7 +479,8 @@ private:
                                 &motion_rule, &ai_rule);
     }
 
-    bool ApplyConfigLocked(const ConfigJson &value) {
+    bool ApplyConfigLocked(const ConfigJson &value,
+                           std::vector<Event> *events) {
         AlarmRule motion_rule;
         AlarmRule ai_rule;
         if (!ParseAlarmConfig(value, CurrentRuleLocked(AlarmSource::kMotion),
@@ -354,35 +488,136 @@ private:
                               &motion_rule, &ai_rule)) {
             return false;
         }
-        rules_[AlarmSource::kMotion] = motion_rule;
-        rules_[AlarmSource::kAiDetection] = ai_rule;
-        if (!motion_rule.enabled) {
-            ClearSourceLocked(AlarmSource::kMotion);
-        }
-        if (!ai_rule.enabled) {
-            ClearSourceLocked(AlarmSource::kAiDetection);
-        }
+        SetRuleLocked(motion_rule, events);
+        SetRuleLocked(ai_rule, events);
         return true;
     }
 
-    void ClearSourceLocked(AlarmSource source) {
-        pending_since_ms_.erase(source);
-        if (status_.active && status_.source == source) {
-            status_ = AlarmStatus();
+    void SetRuleLocked(const AlarmRule &rule, std::vector<Event> *events) {
+        std::size_t index = 0;
+        if (!AlarmSourceIndex(rule.source, &index)) {
+            return;
+        }
+        rules_[index] = rule;
+        SyncRuleStateLocked(index);
+        if (!rule.enabled) {
+            ClearSourceLocked(index, events);
         }
     }
 
-    void PublishAlarmTriggered(const AlarmStatus &status) {
+    void SyncRuleStateLocked(std::size_t index) {
+        source_states_[index].source = rules_[index].source;
+        source_states_[index].enabled = rules_[index].enabled;
+        source_states_[index].level = rules_[index].level;
+    }
+
+    void ApplyAlarmInputLocked(std::size_t index, const AlarmInput &input,
+                               std::vector<Event> *events) {
+        const AlarmRule &rule = rules_[index];
+        AlarmSourceState &state = source_states_[index];
+        SyncRuleStateLocked(index);
+
+        if (!rule.enabled) {
+            ClearSourceLocked(index, events);
+            return;
+        }
+
+        if (!input.active) {
+            state.waiting = false;
+            state.waiting_since_ms = 0;
+            if (state.active && !rule.manual_clear) {
+                ClearSourceLocked(index, events);
+            }
+            return;
+        }
+
+        const int64_t now = infra::Time::MonotonicMillis();
+        if (!state.waiting) {
+            state.waiting = true;
+            state.waiting_since_ms = now;
+        }
+        state.message = input.message;
+
+        if (now - state.waiting_since_ms <
+            static_cast<int64_t>(rule.min_duration_ms)) {
+            return;
+        }
+
+        if (state.active) {
+            return;
+        }
+
+        const int64_t system_now = infra::Time::SystemTimeMillis();
+        if (state.last_alarm_time_ms > 0 &&
+            system_now - state.last_alarm_time_ms <
+                static_cast<int64_t>(rule.repeat_interval_ms)) {
+            return;
+        }
+
+        state.waiting = false;
+        state.waiting_since_ms = 0;
+        state.active = true;
+        state.active_since_ms = system_now;
+        state.last_alarm_time_ms = system_now;
+        state.level = rule.level;
+        events->push_back(MakeAlarmEvent(EventType::kAlarmOn, state.source,
+                                         state.message, input.value,
+                                         state.level));
+    }
+
+    void ClearSourceLocked(std::size_t index, std::vector<Event> *events) {
+        AlarmSourceState &state = source_states_[index];
+        const bool was_active = state.active;
+        const std::string previous_message = state.message;
+        const uint8_t previous_level = state.level;
+
+        state.waiting = false;
+        state.waiting_since_ms = 0;
+        state.active = false;
+        state.active_since_ms = 0;
+        state.message.clear();
+        SyncRuleStateLocked(index);
+
+        if (was_active && events != nullptr) {
+            events->push_back(MakeAlarmEvent(EventType::kAlarmOff, state.source,
+                                             previous_message, 0,
+                                             previous_level));
+        }
+    }
+
+    AlarmStatus BuildStatusLocked() const {
+        AlarmStatus status;
+        status.sources.reserve(kAlarmSourceCount);
+
+        bool found_active_source = false;
+        int64_t newest_alarm_time_ms = 0;
+        for (const AlarmSourceState &state : source_states_) {
+            status.sources.push_back(state);
+            if (!state.active) {
+                continue;
+            }
+            if (!found_active_source ||
+                state.last_alarm_time_ms >= newest_alarm_time_ms) {
+                found_active_source = true;
+                newest_alarm_time_ms = state.last_alarm_time_ms;
+                status.active = true;
+                status.source = state.source;
+                status.active_since_ms = state.active_since_ms;
+                status.last_trigger_time_ms = state.last_alarm_time_ms;
+                status.level = state.level;
+                status.message = state.message;
+            }
+        }
+        return status;
+    }
+
+    void PublishEvents(const std::vector<Event> &events) {
         if (options_.event == nullptr) {
             return;
         }
-        Event event;
-        event.type = EventType::kAlarmTriggered;
-        event.source = "alarm";
-        event.target = AlarmSourceToString(status.source);
-        event.message = status.message;
-        event.value = 1;
-        static_cast<void>(options_.event->Publish(event));
+        for (const Event &event : events) {
+            static_cast<void>(options_.event->Publish(event));
+        }
     }
 
     void RecordAudit(const live_stream::RequestContext &context,
@@ -405,10 +640,10 @@ private:
     }
 
     AlarmOptions options_;
-    std::map<AlarmSource, AlarmRule> rules_;
-    std::map<AlarmSource, int64_t> pending_since_ms_;
-    AlarmStatus status_;
+    std::array<AlarmRule, kAlarmSourceCount> rules_;
+    std::array<AlarmSourceState, kAlarmSourceCount> source_states_;
     mutable std::mutex mutex_;
+    bool invalid_default_rule_ = false;
     bool config_attached_ = false;
     bool initialized_ = false;
     bool started_ = false;

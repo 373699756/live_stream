@@ -33,6 +33,9 @@ struct AlarmRule {
     AlarmSource source = AlarmSource::kMotion;
     bool enabled = false;
     uint32_t min_duration_ms = 500;
+    uint32_t repeat_interval_ms = 0;
+    bool manual_clear = false;
+    uint8_t level = 1;
 };
 
 struct AlarmInput {
@@ -42,12 +45,26 @@ struct AlarmInput {
     std::string message;
 };
 
+struct AlarmSourceState {
+    AlarmSource source = AlarmSource::kMotion;
+    bool enabled = false;
+    bool waiting = false;
+    bool active = false;
+    int64_t waiting_since_ms = 0;
+    int64_t active_since_ms = 0;
+    int64_t last_alarm_time_ms = 0;
+    uint8_t level = 0;
+    std::string message;
+};
+
 struct AlarmStatus {
     bool active = false;
     AlarmSource source = AlarmSource::kMotion;
     int64_t active_since_ms = 0;
     int64_t last_trigger_time_ms = 0;
+    uint8_t level = 0;
     std::string message;
+    std::vector<AlarmSourceState> sources;
 };
 
 struct AlarmOptions {

@@ -84,7 +84,8 @@ public:
   bool Start() override { return true; }
   void Stop() override {}
   live_stream::EventSubscriptionId Subscribe(
-      live_stream::EventType, live_stream::EventHandler) override {
+      const std::vector<live_stream::EventType>&,
+      live_stream::EventHandler) override {
     return 1;
   }
   bool Unsubscribe(live_stream::EventSubscriptionId) override { return true; }
@@ -92,6 +93,9 @@ public:
     ++publish_count;
     last_event = event;
     return true;
+  }
+  live_stream::EventCounts GetCounts() const override {
+    return live_stream::EventCounts();
   }
 
   int publish_count = 0;
@@ -152,20 +156,22 @@ int main() {
     return 4;
   }
   if (!service->InjectAlarmInput(input) || event.publish_count != 1 ||
-      event.last_event.type != live_stream::EventType::kAlarmTriggered ||
-      event.last_event.target != "motion") {
+      event.last_event.type != live_stream::EventType::kAlarmOn ||
+      event.last_event.target != "motion" || event.last_event.level != 1) {
     return 5;
   }
 
   live_stream::AlarmStatus status = service->GetAlarmStatus();
-  if (!status.active || status.source != live_stream::AlarmSource::kMotion) {
+  if (!status.active || status.source != live_stream::AlarmSource::kMotion ||
+      status.sources.size() != 5U) {
     return 6;
   }
 
   if (!service->ClearAlarm(context)) {
     return 7;
   }
-  if (service->GetAlarmStatus().active) {
+  if (service->GetAlarmStatus().active || event.publish_count != 2 ||
+      event.last_event.type != live_stream::EventType::kAlarmOff) {
     return 8;
   }
 

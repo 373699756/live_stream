@@ -1,8 +1,6 @@
 #ifndef LIVE_STREAM_MEDIA_CODEC_MEDIA_CODEC_H_
 #define LIVE_STREAM_MEDIA_CODEC_MEDIA_CODEC_H_
 
-#include "media/stream_types.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -103,7 +101,6 @@ public:
                                  bool last) = 0;
 };
 
-bool IsKeyFrame(FrameType frame_type);
 bool IsH264ParameterSetNal(uint8_t nal_type);
 bool IsH265ParameterSetNal(uint8_t nal_type);
 bool IsH264IdrNal(uint8_t nal_type);

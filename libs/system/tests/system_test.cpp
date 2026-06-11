@@ -60,7 +60,8 @@ public:
     void Stop() override {}
 
     live_stream::EventSubscriptionId Subscribe(
-        live_stream::EventType, live_stream::EventHandler) override {
+        const std::vector<live_stream::EventType>&,
+        live_stream::EventHandler) override {
         return 1;
     }
 
@@ -72,6 +73,9 @@ public:
         ++publish_count;
         last_event = event;
         return true;
+    }
+    live_stream::EventCounts GetCounts() const override {
+        return live_stream::EventCounts();
     }
 
     int publish_count = 0;

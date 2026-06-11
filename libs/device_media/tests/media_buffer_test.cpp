@@ -4,30 +4,30 @@
 #include <cstring>
 #include <memory>
 
-using live_stream::CreateVideoBufferPool;
+using live_stream::CreateFrameBufferPool;
 using live_stream::EncodedFrame;
 using live_stream::EncodedFramePayloadSlice;
 using live_stream::FrameType;
-using live_stream::IsValidBufferSlice;
+using live_stream::IsValidFrameSlice;
 using live_stream::MediaBufferPoolStats;
 using live_stream::StreamId;
-using live_stream::VideoBuffer;
-using live_stream::VideoBufferAlloc;
-using live_stream::VideoBufferUnref;
-using live_stream::VideoBufferRef;
-using live_stream::VideoBufferSetSize;
-using live_stream::VideoCodec;
-using live_stream::IVideoBufferPool;
+using live_stream::FrameBuffer;
+using live_stream::FrameBufferAlloc;
+using live_stream::FrameBufferUnref;
+using live_stream::FrameBufferRef;
+using live_stream::FrameBufferSetSize;
+using live_stream::Codec;
+using live_stream::IFrameBufferPool;
 
 int main() {
-    VideoBuffer* buffer = VideoBufferAlloc(16);
+    FrameBuffer* buffer = FrameBufferAlloc(16);
     if (buffer == nullptr || buffer->capacity != 16U || buffer->size != 0U) {
         return 1;
     }
 
     const char* payload = "frame";
     std::memcpy(buffer->data, payload, std::strlen(payload));
-    if (!VideoBufferSetSize(buffer,
+    if (!FrameBufferSetSize(buffer,
                             static_cast<uint32_t>(std::strlen(payload)))) {
         return 2;
     }
@@ -35,39 +35,39 @@ int main() {
         std::memcmp(buffer->data, payload, std::strlen(payload)) != 0) {
         return 3;
     }
-    if (VideoBufferSetSize(buffer, buffer->capacity + 1U) ||
+    if (FrameBufferSetSize(buffer, buffer->capacity + 1U) ||
         buffer->size != 5U) {
         return 4;
     }
 
     EncodedFrame frame;
     frame.stream_id = StreamId::kMain;
-    frame.codec = VideoCodec::kH265;
+    frame.codec = Codec::kH265;
     frame.frame_type = FrameType::kIdr;
     frame.sequence = 9;
     frame.pts_us = 100;
     frame.dts_us = 90;
-    frame.buffer = VideoBufferRef(buffer);
+    frame.buffer = FrameBufferRef(buffer);
     frame.offset = 0;
     frame.size = buffer->size;
 
     if (buffer->ref_count != 2U || frame.size != 5U ||
-        frame.codec != VideoCodec::kH265) {
+        frame.codec != Codec::kH265) {
         return 5;
     }
-    if (!IsValidBufferSlice(EncodedFramePayloadSlice(&frame))) {
+    if (!IsValidFrameSlice(EncodedFramePayloadSlice(&frame))) {
         return 6;
     }
 
-    VideoBufferUnref(buffer);
+    FrameBufferUnref(buffer);
 
-    std::unique_ptr<IVideoBufferPool> pool = CreateVideoBufferPool(8, 2);
+    std::unique_ptr<IFrameBufferPool> pool = CreateFrameBufferPool(8, 2);
     if (!pool) {
         return 7;
     }
-    VideoBuffer* pooled_a = pool->Acquire();
-    VideoBuffer* pooled_b = pool->Acquire();
-    VideoBuffer* pooled_c = pool->Acquire();
+    FrameBuffer* pooled_a = pool->Acquire();
+    FrameBuffer* pooled_b = pool->Acquire();
+    FrameBuffer* pooled_c = pool->Acquire();
     if (pooled_a == nullptr || pooled_b == nullptr || pooled_c != nullptr) {
         return 8;
     }
@@ -76,13 +76,13 @@ int main() {
         stats.no_memory_count != 1U) {
         return 9;
     }
-    VideoBufferUnref(pooled_a);
+    FrameBufferUnref(pooled_a);
     pooled_a = nullptr;
     stats = pool->Stats();
     if (stats.in_use_count != 1U || stats.free_count != 1U) {
         return 10;
     }
-    VideoBufferUnref(pooled_b);
+    FrameBufferUnref(pooled_b);
     pooled_b = nullptr;
     stats = pool->Stats();
     if (stats.in_use_count != 0U || stats.free_count != 2U ||
@@ -104,15 +104,15 @@ int main() {
         return 13;
     }
 
-    std::unique_ptr<IVideoBufferPool> temp_pool = CreateVideoBufferPool(8, 1);
-    VideoBuffer* outstanding = temp_pool->Acquire();
+    std::unique_ptr<IFrameBufferPool> temp_pool = CreateFrameBufferPool(8, 1);
+    FrameBuffer* outstanding = temp_pool->Acquire();
     temp_pool.reset();
-    VideoBufferUnref(outstanding);
+    FrameBufferUnref(outstanding);
 
-    VideoBufferUnref(pooled_a);
-    VideoBufferUnref(pooled_b);
+    FrameBufferUnref(pooled_a);
+    FrameBufferUnref(pooled_b);
 
-    if (VideoBufferAlloc(0) != nullptr || CreateVideoBufferPool(0, 2)) {
+    if (FrameBufferAlloc(0) != nullptr || CreateFrameBufferPool(0, 2)) {
         return 14;
     }
 

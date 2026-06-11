@@ -174,7 +174,8 @@ public:
   void Stop() override {}
 
   live_stream::EventSubscriptionId Subscribe(
-      live_stream::EventType, live_stream::EventHandler) override {
+      const std::vector<live_stream::EventType>&,
+      live_stream::EventHandler) override {
     return 1;
   }
 
@@ -184,6 +185,9 @@ public:
     ++publish_count;
     last_event = event;
     return true;
+  }
+  live_stream::EventCounts GetCounts() const override {
+    return live_stream::EventCounts();
   }
 
   int publish_count = 0;
@@ -279,9 +283,9 @@ public:
     return stream_id == live_stream::StreamId::kMain ||
            stream_id == live_stream::StreamId::kSub;
   }
-  live_stream::VideoCodec GetStreamCodec(
+  live_stream::Codec GetStreamCodec(
       live_stream::StreamId) const override {
-    return live_stream::VideoCodec::kH264;
+    return live_stream::Codec::kH264;
   }
   live_stream::FrameAttachId AttachFrameSink(
       const live_stream::FrameAttachOptions&,
@@ -290,7 +294,7 @@ public:
   }
   bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
   bool RequestKeyFrame(live_stream::StreamId,
-                       live_stream::KeyFrameReason) override {
+                       live_stream::KeyFrameRequestType) override {
     return true;
   }
   live_stream::MediaCapabilities GetCapabilities() const override {

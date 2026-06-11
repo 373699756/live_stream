@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HISISDK_HISI_SDK_H_
 #define LIVE_STREAM_HISISDK_HISI_SDK_H_
 
-#include "media/frame_attach.h"
+#include "media/frame_sink.h"
 #include "media/media_buffer.h"
 #include "media/media_capabilities.h"
 #include "media/mpp_types.h"
@@ -73,7 +73,7 @@ struct SnapshotConfig {
 };
 
 struct JpegFrame {
-    VideoBuffer* buffer = nullptr;
+    FrameBuffer* buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t width = 0;
@@ -82,7 +82,7 @@ struct JpegFrame {
 
     JpegFrame() = default;
     JpegFrame(const JpegFrame& other)
-        : buffer(VideoBufferRef(other.buffer)),
+        : buffer(FrameBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -92,8 +92,8 @@ struct JpegFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer* retained = VideoBufferRef(other.buffer);
-        VideoBufferUnref(buffer);
+        FrameBuffer* retained = FrameBufferRef(other.buffer);
+        FrameBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -117,7 +117,7 @@ struct JpegFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferUnref(buffer);
+        FrameBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -129,7 +129,7 @@ struct JpegFrame {
         other.size = 0;
         return *this;
     }
-    ~JpegFrame() { VideoBufferUnref(buffer); }
+    ~JpegFrame() { FrameBufferUnref(buffer); }
 };
 
 struct MppYuvFrameInfo {
@@ -164,7 +164,7 @@ struct MppYuvFrameInfo {
 };
 
 struct YuvFrame {
-    VideoBuffer* buffer = nullptr;
+    FrameBuffer* buffer = nullptr;
     uint32_t offset = 0;
     uint32_t size = 0;
     uint32_t width = 0;
@@ -176,7 +176,7 @@ struct YuvFrame {
 
     YuvFrame() = default;
     YuvFrame(const YuvFrame& other)
-        : buffer(VideoBufferRef(other.buffer)),
+        : buffer(FrameBufferRef(other.buffer)),
           offset(other.offset),
           size(other.size),
           width(other.width),
@@ -189,8 +189,8 @@ struct YuvFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBuffer* retained = VideoBufferRef(other.buffer);
-        VideoBufferUnref(buffer);
+        FrameBuffer* retained = FrameBufferRef(other.buffer);
+        FrameBufferUnref(buffer);
         buffer = retained;
         offset = other.offset;
         size = other.size;
@@ -221,7 +221,7 @@ struct YuvFrame {
         if (this == &other) {
             return *this;
         }
-        VideoBufferUnref(buffer);
+        FrameBufferUnref(buffer);
         buffer = other.buffer;
         offset = other.offset;
         size = other.size;
@@ -237,7 +237,7 @@ struct YuvFrame {
         other.mpp_info = MppYuvFrameInfo{};
         return *this;
     }
-    ~YuvFrame() { VideoBufferUnref(buffer); }
+    ~YuvFrame() { FrameBufferUnref(buffer); }
 };
 
 struct ExposureInfo {

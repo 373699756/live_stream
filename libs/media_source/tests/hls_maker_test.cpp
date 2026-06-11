@@ -146,12 +146,12 @@ bool ValidateVideoPackets(const live_stream::MediaSegmentRef &segment) {
            HasStartCodeNal(segment.body->data, segment.body->size, 5);
 }
 
-live_stream::EncodedFrame MakeH264Frame(live_stream::VideoBuffer *buffer,
+live_stream::EncodedFrame MakeH264Frame(live_stream::FrameBuffer *buffer,
                                         live_stream::FrameType frame_type,
                                         int64_t timestamp_us) {
     live_stream::EncodedFrame frame;
     frame.stream_id = live_stream::StreamId::kMain;
-    frame.codec = live_stream::VideoCodec::kH264;
+    frame.codec = live_stream::Codec::kH264;
     frame.frame_type = frame_type;
     frame.pts_us = timestamp_us;
     frame.dts_us = timestamp_us;
@@ -161,7 +161,7 @@ live_stream::EncodedFrame MakeH264Frame(live_stream::VideoBuffer *buffer,
     return frame;
 }
 
-bool StoreBytes(live_stream::VideoBuffer *buffer, const uint8_t *data,
+bool StoreBytes(live_stream::FrameBuffer *buffer, const uint8_t *data,
                 size_t size) {
     if (buffer == nullptr || data == nullptr || size > buffer->capacity) {
         return false;
@@ -169,16 +169,16 @@ bool StoreBytes(live_stream::VideoBuffer *buffer, const uint8_t *data,
     for (size_t i = 0; i < size; ++i) {
         buffer->data[i] = data[i];
     }
-    return live_stream::VideoBufferSetSize(buffer, static_cast<uint32_t>(size));
+    return live_stream::FrameBufferSetSize(buffer, static_cast<uint32_t>(size));
 }
 
 bool AppendFrame(live_stream::media_source_internal::StreamContext *stream,
                  const uint8_t *data, size_t size,
                  live_stream::FrameType frame_type, int64_t timestamp_us) {
-    live_stream::VideoBuffer *buffer =
-        live_stream::VideoBufferAlloc(static_cast<uint32_t>(size));
+    live_stream::FrameBuffer *buffer =
+        live_stream::FrameBufferAlloc(static_cast<uint32_t>(size));
     if (!StoreBytes(buffer, data, size)) {
-        live_stream::VideoBufferUnref(buffer);
+        live_stream::FrameBufferUnref(buffer);
         return false;
     }
     live_stream::EncodedFrame frame =
@@ -189,7 +189,7 @@ bool AppendFrame(live_stream::media_source_internal::StreamContext *stream,
         live_stream::media_source_internal::AppendFrameToStream(
             stream, frame, payload, true, false, 2000, 9);
     live_stream::media_source_internal::ParsedFramePayloadUnref(&payload);
-    live_stream::VideoBufferUnref(buffer);
+    live_stream::FrameBufferUnref(buffer);
     return result.accepted;
 }
 
@@ -210,7 +210,7 @@ int main() {
 
     live_stream::media_source_internal::StreamContext stream;
     stream.state = live_stream::StreamState::kRunning;
-    stream.codec = live_stream::VideoCodec::kH264;
+    stream.codec = live_stream::Codec::kH264;
     if (!AppendFrame(&stream, kH264IdrWithParams, sizeof(kH264IdrWithParams),
                      live_stream::FrameType::kI, 0) ||
         !AppendFrame(&stream, kH264PFrame, sizeof(kH264PFrame),

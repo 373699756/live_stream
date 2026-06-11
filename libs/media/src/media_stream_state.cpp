@@ -367,7 +367,8 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         return result;
     }
 
-    bool keyframe = media_codec::IsKeyFrame(frame.frame_type);
+    bool keyframe = frame.frame_type == FrameType::kIdr ||
+                    frame.frame_type == FrameType::kI;
     bool prepend_parameter_sets = false;
     const uint64_t config_generation_before = stream->config_generation;
     if (frame.codec == Codec::kH265) {

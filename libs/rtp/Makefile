@@ -6,7 +6,6 @@ INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/device_media/include
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra all

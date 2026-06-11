@@ -6,8 +6,8 @@ namespace live_stream {
 namespace webrtc_internal {
 namespace {
 
-bool IsSupportedCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsSupportedCodec(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
 std::string LocalCandidateIp(const WebrtcOptions &options) {

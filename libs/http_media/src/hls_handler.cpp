@@ -13,25 +13,25 @@
 namespace live_stream {
 namespace {
 
-const char *VideoCodecName(VideoCodec codec) {
+const char *CodecName(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
     }
     return "unknown";
 }
 
-bool RequestBrowserKeyFrame(IMediaSource *media_source,
+bool RequestBrowserKeyFrame(MediaStreams *media_streams,
                             StreamId stream_id) {
-    return media_source != nullptr &&
-           media_source->RequestKeyFrame(stream_id,
-                                               KeyFrameReason::kNewClient);
+    return media_streams != nullptr &&
+           media_streams->RequestKeyFrame(stream_id,
+                                          KeyFrameRequestType::kNewSubscriber);
 }
 
 std::string SegmentQuerySuffix(const HttpRequest &request) {
@@ -120,47 +120,47 @@ bool ParseHlsSegmentSequence(const std::string &object_name,
     return true;
 }
 
-HttpResponse HandlePlaylist(IMediaSource *media_source,
+HttpResponse HandlePlaylist(MediaStreams *media_streams,
                             const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
-                            const MediaSourceStatus &browser_status) {
+                            const MediaStreamInfo &stream_info) {
     // playlist 请求是浏览器开始预览的信号，顺手请求关键帧可以缩短首个完整
-    // HLS segment 生成时间；真正的 segment 数据仍由 media_source 缓存提供。
-    bool keyframe_requested = RequestBrowserKeyFrame(media_source, stream_id);
-    MediaHlsPlaylist playlist = media_source->GetHlsPlaylist(stream_id);
+    // HLS segment 生成时间；真正的 segment 数据仍由 MediaStreams 缓存提供。
+    bool keyframe_requested = RequestBrowserKeyFrame(media_streams, stream_id);
+    MediaHlsPlaylist playlist = media_streams->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
         Debug(kHttpMediaModuleName,
                         "HLS warmup stream=%s object=%s codec=%s "
                         "keyframe=%d segments=%u range=%llu-%llu "
                         "missing=%llu evicted=%llu current_segment=%u",
                         MediaStreamIdToJson(stream_id), object_name.c_str(),
-                        VideoCodecName(browser_status.codec),
+                        CodecName(stream_info.codec),
                         keyframe_requested ? 1 : 0,
-                        browser_status.hls_segment_count,
+                        stream_info.hls_segment_count,
                         static_cast<unsigned long long>(
-                            browser_status.hls_first_segment_sequence),
+                            stream_info.hls_first_segment_sequence),
                         static_cast<unsigned long long>(
-                            browser_status.hls_last_segment_sequence),
+                            stream_info.hls_last_segment_sequence),
                         static_cast<unsigned long long>(
-                            browser_status.hls_missing_segment_count),
+                            stream_info.hls_missing_segment_count),
                         static_cast<unsigned long long>(
-                            browser_status.hls_evicted_segment_count),
-                        browser_status.hls_current_segment_size);
+                            stream_info.hls_evicted_segment_count),
+                        stream_info.hls_current_segment_size);
         return BuildPlaylistResponse(playlist, request);
     }
     return BuildPlaylistResponse(playlist, request);
 }
 
-HttpResponse HandleSegment(IMediaSource *media_source, StreamId stream_id,
+HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
                            const std::string &object_name,
-                           const MediaSourceStatus &browser_status) {
+                           const MediaStreamInfo &stream_info) {
     uint64_t sequence = 0;
     if (!ParseHlsSegmentSequence(object_name, &sequence)) {
         return HttpMediaTextResponse(400, "Invalid HLS segment");
     }
 
     MediaSegmentRef segment =
-        media_source->GetHlsSegmentRef(stream_id, sequence);
+        media_streams->GetHlsSegmentRef(stream_id, sequence);
     if (!segment.found || segment.body == nullptr ||
         segment.body->data == nullptr || segment.body->size == 0) {
         Error(kHttpMediaModuleName,
@@ -170,14 +170,14 @@ HttpResponse HandleSegment(IMediaSource *media_source, StreamId stream_id,
                         MediaStreamIdToJson(stream_id), object_name.c_str(),
                         static_cast<unsigned long long>(sequence),
                         static_cast<unsigned long long>(
-                            browser_status.hls_first_segment_sequence),
+                            stream_info.hls_first_segment_sequence),
                         static_cast<unsigned long long>(
-                            browser_status.hls_last_segment_sequence),
-                        browser_status.hls_segment_count,
+                            stream_info.hls_last_segment_sequence),
+                        stream_info.hls_segment_count,
                         static_cast<unsigned long long>(
-                            browser_status.hls_missing_segment_count),
+                            stream_info.hls_missing_segment_count),
                         static_cast<unsigned long long>(
-                            browser_status.hls_evicted_segment_count));
+                            stream_info.hls_evicted_segment_count));
         MediaSegmentRefUnref(&segment);
         return HttpMediaTextResponse(404, "HLS segment not found");
     }
@@ -197,9 +197,9 @@ class HlsHttpHandler : public IHttpHandler {
 public:
     HlsHttpHandler(HttpAccess *access,
                    IDeviceMedia *device_media,
-                   IMediaSource *media_source)
+                   MediaStreams *media_streams)
         : access_(access), device_media_(device_media),
-          media_source_(media_source) {}
+          media_streams_(media_streams) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -222,7 +222,7 @@ private:
         if (auth_response.status_code != 0) {
             return auth_response;
         }
-        if (media_source_ == nullptr) {
+        if (media_streams_ == nullptr) {
             return HttpMediaTextResponse(501, "Not Implemented");
         }
         if (IsHttpMediaRestarting(device_media_)) {
@@ -235,9 +235,9 @@ private:
             return HttpMediaTextResponse(404, "Not Found");
         }
 
-        const MediaSourceStatus browser_status =
-            media_source_->GetBrowserStatus(stream_id);
-        if (!browser_status.hls_supported) {
+        const MediaStreamInfo stream_info =
+            media_streams_->GetStreamInfo(stream_id);
+        if (!stream_info.hls_supported) {
             Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=unsupported "
                             "codec=%s running=%d hls_ready=%d segments=%u "
@@ -245,23 +245,23 @@ private:
                             "current_segment=%u",
                             MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.hls_ready ? 1 : 0,
-                            browser_status.hls_segment_count,
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0,
+                            stream_info.hls_ready ? 1 : 0,
+                            stream_info.hls_segment_count,
                             static_cast<unsigned long long>(
-                                browser_status.hls_first_segment_sequence),
+                                stream_info.hls_first_segment_sequence),
                             static_cast<unsigned long long>(
-                                browser_status.hls_last_segment_sequence),
+                                stream_info.hls_last_segment_sequence),
                             static_cast<unsigned long long>(
-                                browser_status.hls_missing_segment_count),
+                                stream_info.hls_missing_segment_count),
                             static_cast<unsigned long long>(
-                                browser_status.hls_evicted_segment_count),
-                            browser_status.hls_current_segment_size);
+                                stream_info.hls_evicted_segment_count),
+                            stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(
                 409, "HLS requires H.264 or H.265 stream");
         }
-        if (!browser_status.running) {
+        if (!stream_info.running) {
             Error(kHttpMediaModuleName,
                             "HLS reject stream=%s object=%s reason=not_ready "
                             "codec=%s running=%d hls_ready=%d "
@@ -269,43 +269,43 @@ private:
                             "evicted=%llu current_segment=%u",
                             MediaStreamIdToJson(stream_id),
                             object_name.c_str(),
-                            VideoCodecName(browser_status.codec),
-                            browser_status.running ? 1 : 0,
-                            browser_status.hls_ready ? 1 : 0,
-                            browser_status.hls_segment_count,
+                            CodecName(stream_info.codec),
+                            stream_info.running ? 1 : 0,
+                            stream_info.hls_ready ? 1 : 0,
+                            stream_info.hls_segment_count,
                             static_cast<unsigned long long>(
-                                browser_status.hls_first_segment_sequence),
+                                stream_info.hls_first_segment_sequence),
                             static_cast<unsigned long long>(
-                                browser_status.hls_last_segment_sequence),
+                                stream_info.hls_last_segment_sequence),
                             static_cast<unsigned long long>(
-                                browser_status.hls_missing_segment_count),
+                                stream_info.hls_missing_segment_count),
                             static_cast<unsigned long long>(
-                                browser_status.hls_evicted_segment_count),
-                            browser_status.hls_current_segment_size);
+                                stream_info.hls_evicted_segment_count),
+                            stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(503, "HLS playlist not ready");
         }
 
         if (object_name == "index.m3u8") {
-            return HandlePlaylist(media_source_, request, stream_id,
-                                  object_name, browser_status);
+            return HandlePlaylist(media_streams_, request, stream_id,
+                                  object_name, stream_info);
         }
         if (IsHlsSegmentObjectName(object_name)) {
-            return HandleSegment(media_source_, stream_id, object_name,
-                                 browser_status);
+            return HandleSegment(media_streams_, stream_id, object_name,
+                                 stream_info);
         }
         return HttpMediaTextResponse(404, "Not Found");
     }
 
     HttpAccess *access_ = nullptr;
     IDeviceMedia *device_media_ = nullptr;
-    IMediaSource *media_source_ = nullptr;
+    MediaStreams *media_streams_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
     HttpAccess *access, IDeviceMedia *device_media,
-    IMediaSource *media_source) {
+    MediaStreams *media_streams) {
     return std::unique_ptr<IHttpHandler>(
-        new HlsHttpHandler(access, device_media, media_source));
+        new HlsHttpHandler(access, device_media, media_streams));
 }
 
 }  // namespace live_stream

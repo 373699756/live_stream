@@ -78,23 +78,23 @@ void TuneH265VbrParam(VENC_PARAM_H265_VBR_S *param) {
 
 }  // namespace
 
-PAYLOAD_TYPE_E PayloadFromCodec(VideoCodec codec) {
+PAYLOAD_TYPE_E PayloadFromCodec(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return PT_H264;
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return PT_H265;
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return PT_MJPEG;
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return PT_JPEG;
     }
     return PT_H265;
 }
 
-VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode) {
+VENC_RC_MODE_E RcModeFromConfig(Codec codec, RateControlMode mode) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             switch (mode) {
                 case RateControlMode::kCbr:
                     return VENC_RC_MODE_H264CBR;
@@ -104,7 +104,7 @@ VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode) {
                     return VENC_RC_MODE_H264FIXQP;
             }
             break;
-        case VideoCodec::kH265:
+        case Codec::kH265:
             switch (mode) {
                 case RateControlMode::kCbr:
                     return VENC_RC_MODE_H265CBR;
@@ -114,7 +114,7 @@ VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode) {
                     return VENC_RC_MODE_H265FIXQP;
             }
             break;
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             switch (mode) {
                 case RateControlMode::kCbr:
                     return VENC_RC_MODE_MJPEGCBR;
@@ -124,7 +124,7 @@ VENC_RC_MODE_E RcModeFromConfig(VideoCodec codec, RateControlMode mode) {
                     return VENC_RC_MODE_MJPEGFIXQP;
             }
             break;
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return VENC_RC_MODE_H264CBR;
     }
     return VENC_RC_MODE_H264CBR;
@@ -164,15 +164,15 @@ uint32_t StatTimeFromConfig(const VENC_GOP_ATTR_S &gop_attr, uint32_t gop) {
     return kDefaultStatTimeSec;
 }
 
-const char *CodecName(VideoCodec codec) {
+const char *CodecName(Codec codec) {
     switch (codec) {
-        case VideoCodec::kH264:
+        case Codec::kH264:
             return "h264";
-        case VideoCodec::kH265:
+        case Codec::kH265:
             return "h265";
-        case VideoCodec::kMjpeg:
+        case Codec::kMjpeg:
             return "mjpeg";
-        case VideoCodec::kJpeg:
+        case Codec::kJpeg:
             return "jpeg";
     }
     return "unknown";
@@ -202,8 +202,8 @@ const char *GopModeName(GopMode mode) {
     return "unknown";
 }
 
-bool IsIdrCodec(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsIdrCodec(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
 bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig &stream) {
@@ -231,7 +231,7 @@ bool ValidateVencStreamConfig(int32_t chn, const VideoStreamConfig &stream) {
               stream.bitrate_kbps);
         return false;
     }
-    if (stream.codec == VideoCodec::kJpeg) {
+    if (stream.codec == Codec::kJpeg) {
         Error("hisi_vendor", "JPEG VENC stream mode is not supported chn=%d",
               chn);
         return false;

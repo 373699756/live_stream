@@ -82,20 +82,6 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
 
-    const MediaPipelineOptions media_pipeline_options =
-        BuildMediaPipelineOptions();
-    const MediaPipelineDependencies media_pipeline_dependencies =
-        BuildMediaPipelineDependencies(refs);
-    media_pipeline_ =
-        CreateMediaPipeline(media_pipeline_options,
-                                 media_pipeline_dependencies);
-    if (!media_pipeline_ || !media_pipeline_->Start()) {
-        Error("app", "Start media_pipeline failed");
-        Stop();
-        return false;
-    }
-    refs.media_pipeline = media_pipeline_.get();
-
     const RtspOptions rtsp_options = BuildRtspOptions(runtime_config);
     const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
@@ -230,11 +216,6 @@ void ProtocolSubsystem::Stop() {
         rtsp_->Stop();
         Info("app", "Stop rtsp done");
     }
-    if (media_pipeline_) {
-        Info("app", "Stop media_pipeline begin");
-        media_pipeline_->Stop();
-        Info("app", "Stop media_pipeline done");
-    }
     if (net_engine_) {
         Info("app", "Stop net engine begin");
         net_engine_->Stop();
@@ -249,7 +230,6 @@ void ProtocolSubsystem::Stop() {
     http_.reset();
     net_adaptive_.reset();
     onvif_.reset();
-    media_pipeline_.reset();
     webrtc_.reset();
     rtsp_.reset();
     started_ = false;

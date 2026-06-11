@@ -49,8 +49,8 @@ bool IsValidStream(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
 }
 
-bool IsWebrtcCodecSupported(VideoCodec codec) {
-    return codec == VideoCodec::kH264 || codec == VideoCodec::kH265;
+bool IsWebrtcCodecSupported(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
 WebrtcPeerInfo CreatePeerError(const std::string &last_error) {
@@ -195,7 +195,7 @@ public:
                 return CreatePeerError("stream_unavailable");
             }
 
-            const VideoCodec codec =
+            const Codec codec =
                 media_source_->GetStreamCodec(request.stream_id);
             if (!IsWebrtcCodecSupported(codec)) {
                 return CreatePeerError("unsupported_codec");
@@ -242,7 +242,7 @@ public:
             (void)peer_store_.RemovePeer(peer.peer_id);
             return CreatePeerError("peer_create_interrupted");
         }
-        RequestKeyFrame(peer.stream_id, KeyFrameReason::kNewClient);
+        RequestKeyFrame(peer.stream_id, KeyFrameRequestType::kNewSubscriber);
         return peer;
     }
 
@@ -502,7 +502,7 @@ private:
         }
 
         if (update.request_key_frame) {
-            RequestKeyFrame(update.stream_id, KeyFrameReason::kRecovery);
+            RequestKeyFrame(update.stream_id, KeyFrameRequestType::kRecovery);
         }
     }
 
@@ -514,7 +514,7 @@ private:
                 return;
             }
         }
-        RequestKeyFrame(stream_id, KeyFrameReason::kPacketLoss);
+        RequestKeyFrame(stream_id, KeyFrameRequestType::kPacketLoss);
     }
 
     std::vector<std::string> TakeStalePeerIds() {
@@ -626,7 +626,7 @@ private:
                media_source_->IsStreamAvailable(stream_id);
     }
 
-    void RequestKeyFrame(StreamId stream_id, KeyFrameReason reason) {
+    void RequestKeyFrame(StreamId stream_id, KeyFrameRequestType reason) {
         if (media_source_ == nullptr) {
             return;
         }
