@@ -1,11 +1,11 @@
-#include "webrtc_peer_store.h"
+#include "webrtc_peer_table.h"
 
 #include "infra/time.h"
 
 namespace live_stream {
 namespace webrtc_internal {
 
-WebrtcPeerInfo WebrtcPeerStore::CreatePeer(
+WebrtcPeerInfo WebrtcPeerTable::CreatePeer(
     const WebrtcCreatePeerRequest &request, Codec codec) {
   WebrtcPeerInfo peer;
   peer.peer_id = NextPeerId();
@@ -23,11 +23,11 @@ WebrtcPeerInfo WebrtcPeerStore::CreatePeer(
   return peer;
 }
 
-bool WebrtcPeerStore::Contains(const std::string &peer_id) const {
+bool WebrtcPeerTable::Contains(const std::string &peer_id) const {
   return peers_.find(peer_id) != peers_.end();
 }
 
-WebrtcPeerInfo WebrtcPeerStore::GetPeer(const std::string &peer_id) const {
+WebrtcPeerInfo WebrtcPeerTable::GetPeer(const std::string &peer_id) const {
   const auto iter = peers_.find(peer_id);
   if (iter == peers_.end()) {
     return WebrtcPeerInfo();
@@ -35,7 +35,7 @@ WebrtcPeerInfo WebrtcPeerStore::GetPeer(const std::string &peer_id) const {
   return iter->second;
 }
 
-bool WebrtcPeerStore::RemovePeer(const std::string &peer_id) {
+bool WebrtcPeerTable::RemovePeer(const std::string &peer_id) {
   const auto iter = peers_.find(peer_id);
   if (iter == peers_.end()) {
     return false;
@@ -46,13 +46,13 @@ bool WebrtcPeerStore::RemovePeer(const std::string &peer_id) {
   return true;
 }
 
-void WebrtcPeerStore::Clear() {
+void WebrtcPeerTable::Clear() {
   peers_.clear();
   peer_activity_ms_.clear();
   pending_candidates_.clear();
 }
 
-std::vector<std::string> WebrtcPeerStore::TakePeerIdsForClient(
+std::vector<std::string> WebrtcPeerTable::TakePeerIdsForClient(
     const std::string &session_id, const std::string &client_id) {
   std::vector<std::string> peer_ids;
   if (session_id.empty() && client_id.empty()) {
@@ -78,7 +78,7 @@ std::vector<std::string> WebrtcPeerStore::TakePeerIdsForClient(
   return peer_ids;
 }
 
-std::vector<std::string> WebrtcPeerStore::MarkAllClosing() {
+std::vector<std::string> WebrtcPeerTable::MarkAllClosing() {
   std::vector<std::string> peer_ids;
   for (auto &item : peers_) {
     item.second.state = WebrtcPeerState::kClosing;
@@ -90,7 +90,7 @@ std::vector<std::string> WebrtcPeerStore::MarkAllClosing() {
   return peer_ids;
 }
 
-std::vector<std::string> WebrtcPeerStore::OpenPeerIds() const {
+std::vector<std::string> WebrtcPeerTable::OpenPeerIds() const {
   std::vector<std::string> peer_ids;
   for (const auto &item : peers_) {
     if (IsOpenPeerState(item.second.state)) {
@@ -100,7 +100,7 @@ std::vector<std::string> WebrtcPeerStore::OpenPeerIds() const {
   return peer_ids;
 }
 
-uint32_t WebrtcPeerStore::ActivePeerCount() const {
+uint32_t WebrtcPeerTable::ActivePeerCount() const {
   uint32_t count = 0;
   for (const auto &item : peers_) {
     if (IsOpenPeerState(item.second.state)) {
@@ -110,7 +110,7 @@ uint32_t WebrtcPeerStore::ActivePeerCount() const {
   return count;
 }
 
-bool WebrtcPeerStore::HasConnectedPeer(StreamId stream_id) const {
+bool WebrtcPeerTable::HasConnectedPeer(StreamId stream_id) const {
   for (const auto &item : peers_) {
     if (item.second.stream_id == stream_id &&
         item.second.state == WebrtcPeerState::kConnected) {
@@ -120,7 +120,7 @@ bool WebrtcPeerStore::HasConnectedPeer(StreamId stream_id) const {
   return false;
 }
 
-std::vector<WebrtcPeerInfo> WebrtcPeerStore::ConnectedPeers(
+std::vector<WebrtcPeerInfo> WebrtcPeerTable::ConnectedPeers(
     StreamId stream_id) const {
   std::vector<WebrtcPeerInfo> peers;
   for (const auto &item : peers_) {
@@ -132,7 +132,7 @@ std::vector<WebrtcPeerInfo> WebrtcPeerStore::ConnectedPeers(
   return peers;
 }
 
-std::vector<WebrtcPeerInfo> WebrtcPeerStore::OpenPeers() const {
+std::vector<WebrtcPeerInfo> WebrtcPeerTable::OpenPeers() const {
   std::vector<WebrtcPeerInfo> peers;
   peers.reserve(peers_.size());
   for (const auto &item : peers_) {
@@ -143,7 +143,7 @@ std::vector<WebrtcPeerInfo> WebrtcPeerStore::OpenPeers() const {
   return peers;
 }
 
-std::vector<WebrtcPeerInfo> WebrtcPeerStore::Peers() const {
+std::vector<WebrtcPeerInfo> WebrtcPeerTable::Peers() const {
   std::vector<WebrtcPeerInfo> peers;
   peers.reserve(peers_.size());
   for (const auto &item : peers_) {
@@ -152,7 +152,7 @@ std::vector<WebrtcPeerInfo> WebrtcPeerStore::Peers() const {
   return peers;
 }
 
-bool WebrtcPeerStore::BeginOffer(const std::string &peer_id,
+bool WebrtcPeerTable::BeginOffer(const std::string &peer_id,
                                  WebrtcPeerInfo *peer) {
   if (peer == nullptr) {
     return false;
@@ -167,7 +167,7 @@ bool WebrtcPeerStore::BeginOffer(const std::string &peer_id,
   return true;
 }
 
-bool WebrtcPeerStore::CompleteOffer(
+bool WebrtcPeerTable::CompleteOffer(
     const std::string &peer_id, WebrtcPeerInfo *peer,
     std::vector<WebrtcIceCandidate> *pending_candidates) {
   if (peer == nullptr || pending_candidates == nullptr) {
@@ -191,7 +191,7 @@ bool WebrtcPeerStore::CompleteOffer(
   return true;
 }
 
-bool WebrtcPeerStore::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
+bool WebrtcPeerTable::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
                                           bool *queued) {
   if (queued == nullptr) {
     return false;
@@ -210,7 +210,7 @@ bool WebrtcPeerStore::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
   return true;
 }
 
-void WebrtcPeerStore::Touch(const std::string &peer_id) {
+void WebrtcPeerTable::Touch(const std::string &peer_id) {
   const int64_t now_ms = NowMs();
   peer_activity_ms_[peer_id] = now_ms;
   auto iter = peers_.find(peer_id);
@@ -219,7 +219,7 @@ void WebrtcPeerStore::Touch(const std::string &peer_id) {
   }
 }
 
-bool WebrtcPeerStore::UpdateDiagnostics(const WebrtcPeerInfo &peer) {
+bool WebrtcPeerTable::UpdateDiagnostics(const WebrtcPeerInfo &peer) {
   auto iter = peers_.find(peer.peer_id);
   if (iter == peers_.end()) {
     return false;
@@ -240,7 +240,7 @@ bool WebrtcPeerStore::UpdateDiagnostics(const WebrtcPeerInfo &peer) {
   return true;
 }
 
-bool WebrtcPeerStore::MarkClosing(const std::string &peer_id,
+bool WebrtcPeerTable::MarkClosing(const std::string &peer_id,
                                   const std::string &last_error) {
   auto iter = peers_.find(peer_id);
   if (iter == peers_.end()) {
@@ -252,7 +252,7 @@ bool WebrtcPeerStore::MarkClosing(const std::string &peer_id,
   return true;
 }
 
-EnginePeerStateUpdate WebrtcPeerStore::ApplyEngineState(
+EnginePeerStateUpdate WebrtcPeerTable::ApplyEngineState(
     const std::string &peer_id, WebrtcPeerState state,
     const std::string &last_error) {
   EnginePeerStateUpdate update;
@@ -305,7 +305,7 @@ EnginePeerStateUpdate WebrtcPeerStore::ApplyEngineState(
   return update;
 }
 
-bool WebrtcPeerStore::GetOpenPeerStream(const std::string &peer_id,
+bool WebrtcPeerTable::GetOpenPeerStream(const std::string &peer_id,
                                         StreamId *stream_id) const {
   if (stream_id == nullptr) {
     return false;
@@ -318,7 +318,7 @@ bool WebrtcPeerStore::GetOpenPeerStream(const std::string &peer_id,
   return true;
 }
 
-std::vector<std::string> WebrtcPeerStore::FindStaleSetupPeerIds(
+std::vector<std::string> WebrtcPeerTable::FindStaleSetupPeerIds(
     int64_t timeout_ms) {
   std::vector<std::string> peer_ids;
   const int64_t now_ms = NowMs();
@@ -336,21 +336,21 @@ std::vector<std::string> WebrtcPeerStore::FindStaleSetupPeerIds(
   return peer_ids;
 }
 
-bool WebrtcPeerStore::IsOpenPeerState(WebrtcPeerState state) {
+bool WebrtcPeerTable::IsOpenPeerState(WebrtcPeerState state) {
   return state != WebrtcPeerState::kClosing &&
          state != WebrtcPeerState::kClosed &&
          state != WebrtcPeerState::kFailed;
 }
 
-bool WebrtcPeerStore::IsSetupPeerState(WebrtcPeerState state) {
+bool WebrtcPeerTable::IsSetupPeerState(WebrtcPeerState state) {
   return state == WebrtcPeerState::kCreated ||
          state == WebrtcPeerState::kOfferReceived ||
          state == WebrtcPeerState::kConnecting;
 }
 
-int64_t WebrtcPeerStore::NowMs() { return infra::Time::MonotonicMillis(); }
+int64_t WebrtcPeerTable::NowMs() { return infra::Time::MonotonicMillis(); }
 
-std::string WebrtcPeerStore::NextPeerId() {
+std::string WebrtcPeerTable::NextPeerId() {
   std::string id = "webrtc-";
   id += std::to_string(next_peer_id_++);
   return id;

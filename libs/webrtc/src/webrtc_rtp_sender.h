@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_RTP_SENDER_H_
 #define LIVE_STREAM_WEBRTC_SRC_WEBRTC_RTP_SENDER_H_
 
-#include "media_source.h"
+#include "media/encoded_frame.h"
 #include "rtp.h"
 #include "webrtc.h"
 
@@ -30,7 +30,7 @@ public:
     void RemovePeer(const std::string &peer_id);
     void Clear();
 
-    bool SendFrame(const WebrtcPeerInfo &peer, const MediaFrame &frame,
+    bool SendFrame(const WebrtcPeerInfo &peer, const EncodedFrame &frame,
                    const WebrtcRtpSenderContext &context);
 
 private:

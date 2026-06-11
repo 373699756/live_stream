@@ -31,14 +31,14 @@ std::atomic<uintptr_t> &NextEngineId() {
     return next_engine_id;
 }
 
-std::mutex &EngineRegistryMutex() {
+std::mutex &EngineTableMutex() {
     static std::mutex mutex;
     return mutex;
 }
 
-std::map<uintptr_t, NativeWebrtcEngine *> &EngineRegistry() {
-    static std::map<uintptr_t, NativeWebrtcEngine *> registry;
-    return registry;
+std::map<uintptr_t, NativeWebrtcEngine *> &EngineTable() {
+    static std::map<uintptr_t, NativeWebrtcEngine *> table;
+    return table;
 }
 
 std::map<uintptr_t, uint32_t> &EngineActiveCallbacks() {
@@ -51,7 +51,7 @@ std::map<uintptr_t, bool> &EngineClosingFlags() {
     return closing_flags;
 }
 
-std::condition_variable &EngineRegistryCondition() {
+std::condition_variable &EngineTableCondition() {
     static std::condition_variable condition;
     return condition;
 }
@@ -64,29 +64,29 @@ void RegisterEngine(uintptr_t engine_id, NativeWebrtcEngine *engine) {
     if (engine_id == 0 || engine == nullptr) {
         return;
     }
-    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
-    EngineRegistry()[engine_id] = engine;
+    std::lock_guard<std::mutex> guard(EngineTableMutex());
+    EngineTable()[engine_id] = engine;
     EngineActiveCallbacks()[engine_id] = 0;
     EngineClosingFlags()[engine_id] = false;
 }
 
 void UnregisterEngine(uintptr_t engine_id) {
-    std::unique_lock<std::mutex> guard(EngineRegistryMutex());
+    std::unique_lock<std::mutex> guard(EngineTableMutex());
     EngineClosingFlags()[engine_id] = true;
-    EngineRegistryCondition().wait(guard, [engine_id]() {
+    EngineTableCondition().wait(guard, [engine_id]() {
         const auto iter = EngineActiveCallbacks().find(engine_id);
         return iter == EngineActiveCallbacks().end() || iter->second == 0;
     });
-    EngineRegistry().erase(engine_id);
+    EngineTable().erase(engine_id);
     EngineActiveCallbacks().erase(engine_id);
     EngineClosingFlags().erase(engine_id);
 }
 
 NativeWebrtcEngine *EnterEngineCallback(uintptr_t engine_id) {
-    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
-    const auto engine_iter = EngineRegistry().find(engine_id);
+    std::lock_guard<std::mutex> guard(EngineTableMutex());
+    const auto engine_iter = EngineTable().find(engine_id);
     const auto closing_iter = EngineClosingFlags().find(engine_id);
-    if (engine_iter == EngineRegistry().end() ||
+    if (engine_iter == EngineTable().end() ||
         closing_iter == EngineClosingFlags().end() || closing_iter->second) {
         return nullptr;
     }
@@ -95,14 +95,14 @@ NativeWebrtcEngine *EnterEngineCallback(uintptr_t engine_id) {
 }
 
 void LeaveEngineCallback(uintptr_t engine_id) {
-    std::lock_guard<std::mutex> guard(EngineRegistryMutex());
+    std::lock_guard<std::mutex> guard(EngineTableMutex());
     auto iter = EngineActiveCallbacks().find(engine_id);
     if (iter == EngineActiveCallbacks().end() || iter->second == 0) {
         return;
     }
     --iter->second;
     if (iter->second == 0) {
-        EngineRegistryCondition().notify_all();
+        EngineTableCondition().notify_all();
     }
 }
 

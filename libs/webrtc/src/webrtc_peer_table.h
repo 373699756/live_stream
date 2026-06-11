@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_
-#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_
+#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_TABLE_H_
+#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_TABLE_H_
 
 #include "webrtc.h"
 
@@ -17,9 +17,9 @@ struct EnginePeerStateUpdate {
   StreamId stream_id = StreamId::kMain;
 };
 
-// WebrtcPeerStore owns signaling peer state and pending ICE candidates. It is
+// WebrtcPeerTable owns signaling peer state and pending ICE candidates. It is
 // intentionally not internally synchronized; WebrtcImpl protects it.
-class WebrtcPeerStore {
+class WebrtcPeerTable {
  public:
   WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request,
                             Codec codec);
@@ -68,4 +68,4 @@ class WebrtcPeerStore {
 }  // namespace webrtc_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_STORE_H_
+#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_TABLE_H_

@@ -21,7 +21,7 @@ flowchart LR
   Transport --> DTLS[dtls_transport]
   Transport --> SRTP[srtp_session]
   Session --> Sender[webrtc_rtp_sender]
-  Sender --> Source[media_source reader]
+  Sender --> Source[media_streams FrameSubscription]
   ICE --> Net[net udp endpoint]
 ```
 
@@ -30,14 +30,14 @@ flowchart LR
 - 创建和关闭 peer。
 - 解析 offer、生成 answer、处理 ICE candidate。
 - 管理 ICE、DTLS、SRTP、RTCP 和 selected candidate pair。
-- 从 `media_source` reader 获取关键帧优先的视频帧，经 RTP sender 输出 SRTP。
+- 从 `media_streams` 的 FrameSubscription 获取关键帧优先的视频帧，经 RTP sender 输出 SRTP。
 - 暴露状态给 `http_media` signaling handlers。
 
 ## 接口归属
 
 public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
 HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
-和 reader 生命周期仍归 `media_source`。冻结后的 signaling 路径为：
+和 frame subscription 生命周期仍归 `media_streams`。冻结后的 signaling 路径为：
 
 | API | 语义 |
 | --- | --- |
@@ -65,13 +65,13 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 | `peer_id` | peer 标识 |
 | `stream` | `main` 或 `sub` |
 | `state` | created、offer_received、connecting、connected、closing、closed、failed |
-| `reader_id` | 已连接 peer 绑定的 `MediaFrameReaderId`，未连接时为 0 |
-| `reader_attached` | reader 当前是否仍挂在 `media_source` |
-| `reader_generation` | reader 所在 GOP/cache generation |
-| `reader_pending_frames` | reader live queue 中待发送帧数 |
+| `reader_id` | 已连接 peer 绑定的 `FrameSubscriptionId`，未连接时为 0 |
+| `reader_attached` | subscription 当前是否仍挂在 `media_streams` |
+| `reader_generation` | subscription 所在 GOP/cache generation |
+| `reader_pending_frames` | subscription live queue 中待发送帧数 |
 | `reader_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
-| `reader_slow` | reader live queue 是否发生过溢出 |
-| `reader_close_reason` | reader 最近一次 reset/overflow 原因 |
+| `reader_slow` | subscription live queue 是否发生过溢出 |
+| `reader_close_reason` | subscription 最近一次 reset/overflow 原因 |
 | `ice_selected` | 是否已有 selected ICE pair |
 | `dtls_state` | DTLS 状态文本 |
 | `srtp_ready` | outbound/inbound SRTP context 是否可用 |
@@ -133,52 +133,52 @@ offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answ
 10.6 当前基线已经把 SRTP/RTCP 接入 `webrtc_transport`：RTP sender 交出的 RTP
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
 会解密并解析 compound RTCP 内的 PLI/FIR/NACK/TWCC feedback packet。PLI/FIR 会触发
-`media_source.RequestKeyFrame()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
+`media_streams.RequestKeyFrame()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
 RTP 重传缓存和拥塞控制后置。
 `webrtc_transport` 为每个 peer 复用 SRTP RTP 输出 buffer 和 SRTCP 输入解密 buffer；
 `srtp_session` 只 resize 调用方提供的 vector 并复制有效输入，不为每个 RTP packet
 重新构造临时输出 vector。
 
-10.7 当前基线已经把视频发送路径从旧 push sink 迁移到 `media_source`
-`MediaFrameReader`：peer connected 后按连接 attach keyframe-first reader，先发送
+10.7 当前基线已经把视频发送路径从旧 push sink 迁移到 `media_streams`
+`FrameSubscription`：peer connected 后按连接 subscribe keyframe-first subscription，先发送
 启动 GOP，再周期拉取 live frame。`webrtc_rtp_sender.*` 复用
 `rtp::RtpPacketizer` 生成 H.264/H.265 RTP packet view，RTP payload type 和
-SSRC 使用 SDP answer 中协商出的发送参数，timestamp 使用 `media_source` 修正后的
-`MediaFrame` PTS，维护每 peer 的 sequence、首帧关键帧门禁、90k clock rate 校验、
+SSRC 使用 SDP answer 中协商出的发送参数，timestamp 使用 `media_streams` 修正后的
+`EncodedFrame` PTS，维护每 peer 的 sequence、首帧关键帧门禁、90k clock rate 校验、
 RTP timestamp 单调门禁和 RTP 包/帧统计。drain timer 发送帧时持有 WebRTC engine
 共享快照；engine 状态回调和 drain timer 通过同一个 callback guard 进入 service，
 避免 service stop/release 与 SRTP 发送并发释放 native transport。peer close、
-service stop 或失败时会取消 drain timer、detach reader 并释放启动帧引用。
+service stop 或失败时会取消 drain timer、unsubscribe subscription 并释放启动帧引用。
 
 10.8 当前基线收口 peer/session 生命周期：`WebrtcImpl` 统一编排 peer id、
-stream id、pending ICE candidate、reader、drain timer、setup timeout 和 close；
+stream id、pending ICE candidate、subscription、drain timer、setup timeout 和 close；
 `webrtc_engine` 只做 session 注册、UDP/timer 回调分发、状态回调和 service-facing
 接口适配；`webrtc_session` 拥有 offer/answer、SDP 参数和 RTP 发送参数；
 `webrtc_transport` 持有 ICE/DTLS/SRTP、UDP endpoint、DTLS timer 和 selected pair。
-关闭 peer 时先阻止 reader 继续 drain，等待正在运行的 drain 回调退出，再取消 timer、
-detach reader、释放 RTP sender 状态，最后关闭 engine peer 以释放 SRTP/DTLS/ICE；
-service release 会先关闭 callback guard 并等待 engine/timer 回调退出，再释放 reader 和
+关闭 peer 时先阻止 subscription 继续 drain，等待正在运行的 drain 回调退出，再取消 timer、
+unsubscribe subscription、释放 RTP sender 状态，最后关闭 engine peer 以释放 SRTP/DTLS/ICE；
+service release 会先关闭 callback guard 并等待 engine/timer 回调退出，再释放 subscription 和
 native transport。`http_media` WebRTC handler 只做鉴权、JSON DTO 转换和 create peer、
-offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media reader 状态。
+offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media subscription 状态。
 
-10.9 当前基线把 peer diagnostics 落到 public `WebrtcPeerInfo`：service/store 记录
+10.9 当前基线把 peer diagnostics 落到 public `WebrtcPeerInfo`：peer table 记录
 `created_at_ms`、`updated_at_ms` 和 `last_error`，session/transport 回填
 `ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets`、`rtp_bytes` 和 RTCP
 反馈计数。HTTP
-DELETE、setup timeout、SDP/DTLS/SRTP 失败和 reader attach 失败都经
+DELETE、setup timeout、SDP/DTLS/SRTP 失败和 subscription attach 失败都经
 `WebrtcImpl` 的 peer close path 收敛，关闭前保存最后一次 transport 诊断，
 关闭后保留 peer 的 closed/failed 状态供 HTTP/API 聚合查询。
 
 ## 状态与资源模型
 
 WebRTC peer/session 拥有 SDP offer/answer 和 RTP 发送参数；ICE/DTLS/SRTP 状态、
-UDP endpoint 和 DTLS timer 归 `webrtc_transport`；RTP sender 和 media reader 归
+UDP endpoint 和 DTLS timer 归 `webrtc_transport`；RTP sender 和 media subscription 归
 `WebrtcImpl` 管理。peer 关闭、ICE 失败、DTLS 失败或 HTTP close 时必须按顺序
-detach reader、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，避免继续持有媒体帧引用。
+unsubscribe subscription、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，避免继续持有媒体帧引用。
 
 关闭入口统一为 peer close path：SRTP 初始化失败、DTLS failed、setup timeout、
 HTTP DELETE、WHEP DELETE、ICE 异常和 service stop 都不得各自释放一半资源。
-`PLI`/`FIR` 必须调用 `media_source.RequestKeyFrame()`；`NACK`/`TWCC` 只识别和记录，
+`PLI`/`FIR` 必须调用 `media_streams.RequestKeyFrame()`；`NACK`/`TWCC` 只识别和记录，
 首版不实现重传或拥塞控制。
 `net_adaptive` 只通过 public stats/diagnostics 观察 WebRTC 网络压力，不注入
 WebRTC 模块，也不替代 PLI/FIR/NACK/TWCC 这类协议反馈。

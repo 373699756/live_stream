@@ -37,10 +37,9 @@ private:
 
 namespace {
 
-bool IsKeyFrame(const MediaFrame &frame) {
-    return frame.key_frame ||
-           frame.encoded_frame.frame_type == FrameType::kIdr ||
-           frame.encoded_frame.frame_type == FrameType::kI;
+bool IsKeyFrame(const EncodedFrame &frame) {
+    return frame.frame_type == FrameType::kIdr ||
+           frame.frame_type == FrameType::kI;
 }
 
 bool IsSupportedCodec(Codec codec) {
@@ -77,12 +76,12 @@ void WebrtcRtpSender::Clear() {
 }
 
 bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
-                                const MediaFrame &frame,
+                                const EncodedFrame &frame,
                                 const WebrtcRtpSenderContext &context) {
     if (context.mutex == nullptr || context.service_stats == nullptr ||
         !context.engine || peer.peer_id.empty() ||
         frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
-        !EncodedFrameHasPayload(&frame.encoded_frame)) {
+        !EncodedFrameHasPayload(&frame)) {
         return false;
     }
 
@@ -129,13 +128,13 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         sequence = state.sequence;
     }
 
-    WebrtcRtpPacketSink sink(this, &peer, &frame.encoded_frame, &context);
+    WebrtcRtpPacketSink sink(this, &peer, &frame, &context);
     rtp::RtpPacketizerInput input;
-    const auto payload = EncodedFramePayloadSlice(&frame.encoded_frame);
+    const auto payload = EncodedFramePayloadSlice(&frame);
     input.codec = RtpCodecFromCodec(frame.codec);
-    // WebRTC 发送使用 MediaFrame 持有的 EncodedFrame payload；RTP packetizer
+    // WebRTC 发送使用 EncodedFrame 持有的 payload；RTP packetizer
     // 输出 packet view，不在分包阶段复制整帧。
-    input.payload = EncodedFramePayloadData(&frame.encoded_frame);
+    input.payload = EncodedFramePayloadData(&frame);
     input.payload_size = payload.size;
     input.pts_us = frame.pts_us;
     input.sequence = &sequence;
