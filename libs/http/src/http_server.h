@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_SERVER_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_SERVER_H_
 
 #include "http.h"
 #include "http_response_sender.h"
@@ -47,8 +47,8 @@ public:
 
     HttpListenAddress LocalAddress() const;
     HttpStats GetStats() const;
-    std::vector<HttpStreamingSessionDiagnostics>
-    GetStreamingSessionDiagnostics() const;
+    std::vector<HttpStreamSessionInfo>
+    ListStreamSessionInfo() const;
 
     void IncrementTotalRequests();
     void IncrementParseFailures();
@@ -79,9 +79,9 @@ private:
                             TcpCloseReason reason);
     static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
     static void LogRequests(const std::vector<HttpRequestLog> &request_logs);
-    static HttpStreamingSessionDiagnostics BuildStreamingDiagnostics(
+    static HttpStreamSessionInfo BuildStreamSessionInfo(
         const HttpSessionStreamingInfo &session,
-        const NetConnectionDiagnostics &connection);
+        const NetConnectionInfo &connection);
 
     infra::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
@@ -129,4 +129,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_SERVER_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_SERVER_H_

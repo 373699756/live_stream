@@ -23,7 +23,7 @@ public:
     uint32_t FirstFlvTagSize() const;
     bool AppendFlvTag(const EncodedFrame &frame, bool keyframe,
                       const FlvVideoTagView &flv_tag_view);
-    void CopyTo(MediaFlvStartData *start_data) const;
+    void CopyTo(MediaFlvStart *flv_start) const;
 
 private:
     // FLV GOP cache 从最近关键帧开始保存完整 GOP。HTTP-FLV 新客户端连接时

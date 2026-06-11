@@ -4,7 +4,7 @@
 #include "frame_ring.h"
 #include "media_stream_state.h"
 #include "media_codec.h"
-#include "mjpeg_client_registry.h"
+#include "mjpeg_clients.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -42,22 +42,22 @@ MediaFlvVideoTagView ToMediaFlvVideoTagView(
     return output_tag;
 }
 
-FrameSubscriptionCloseReason CloseReasonForReset(
+SubscriptionClose CloseReasonForReset(
     MediaStreamResetReason reason) {
     switch (reason) {
         case MediaStreamResetReason::kCodecChanged:
-            return FrameSubscriptionCloseReason::kCodecChanged;
+            return SubscriptionClose::kCodecChanged;
         case MediaStreamResetReason::kTimestampReset:
-            return FrameSubscriptionCloseReason::kTimestampReset;
+            return SubscriptionClose::kTimestampReset;
         case MediaStreamResetReason::kCacheOverflow:
-            return FrameSubscriptionCloseReason::kCacheOverflow;
+            return SubscriptionClose::kCacheOverflow;
         case MediaStreamResetReason::kStreamStarted:
         case MediaStreamResetReason::kStreamStopped:
-            return FrameSubscriptionCloseReason::kStreamStopped;
+            return SubscriptionClose::kStreamStopped;
         case MediaStreamResetReason::kNone:
-            return FrameSubscriptionCloseReason::kNone;
+            return SubscriptionClose::kNone;
     }
-    return FrameSubscriptionCloseReason::kStreamStopped;
+    return SubscriptionClose::kStreamStopped;
 }
 
 }  // namespace
@@ -80,20 +80,20 @@ const char *MediaStreamResetReasonName(MediaStreamResetReason reason) {
     return "unknown";
 }
 
-const char *FrameSubscriptionCloseReasonName(
-    FrameSubscriptionCloseReason reason) {
+const char *SubscriptionCloseName(
+    SubscriptionClose reason) {
     switch (reason) {
-        case FrameSubscriptionCloseReason::kNone:
+        case SubscriptionClose::kNone:
             return "none";
-        case FrameSubscriptionCloseReason::kUnsubscribed:
+        case SubscriptionClose::kUnsubscribed:
             return "unsubscribed";
-        case FrameSubscriptionCloseReason::kStreamStopped:
+        case SubscriptionClose::kStreamStopped:
             return "stream_stopped";
-        case FrameSubscriptionCloseReason::kCodecChanged:
+        case SubscriptionClose::kCodecChanged:
             return "codec_changed";
-        case FrameSubscriptionCloseReason::kTimestampReset:
+        case SubscriptionClose::kTimestampReset:
             return "timestamp_reset";
-        case FrameSubscriptionCloseReason::kCacheOverflow:
+        case SubscriptionClose::kCacheOverflow:
             return "cache_overflow";
     }
     return "unknown";
@@ -125,23 +125,23 @@ bool MediaFlvCachedVideoTagRefCopy(MediaFlvCachedVideoTag *target,
     return true;
 }
 
-void MediaFlvStartDataUnref(MediaFlvStartData *start_data) {
-    if (start_data == nullptr) {
+void MediaFlvStartUnref(MediaFlvStart *flv_start) {
+    if (flv_start == nullptr) {
         return;
     }
-    for (MediaFlvCachedVideoTag &tag : start_data->cached_video_tags) {
+    for (MediaFlvCachedVideoTag &tag : flv_start->cached_video_tags) {
         MediaFlvCachedVideoTagUnref(&tag);
     }
-    start_data->cached_video_tags.clear();
-    start_data->file_header.clear();
-    start_data->sequence_header.clear();
-    start_data->supported = false;
-    start_data->cached_gop_complete = false;
-    start_data->config_generation = 0;
+    flv_start->cached_video_tags.clear();
+    flv_start->file_header.clear();
+    flv_start->sequence_header.clear();
+    flv_start->supported = false;
+    flv_start->cached_gop_complete = false;
+    flv_start->config_generation = 0;
 }
 
-void FrameSubscriptionStartDataUnref(
-    FrameSubscriptionStartData *start_data) {
+void SubscriptionStartUnref(
+    SubscriptionStart *start_data) {
     if (start_data == nullptr) {
         return;
     }
@@ -151,17 +151,17 @@ void FrameSubscriptionStartDataUnref(
     start_data->gop_frames.clear();
     start_data->track_ready = false;
     start_data->gop_complete = false;
-    start_data->subscription_generation = 0;
+    start_data->generation = 0;
     start_data->stream_info = MediaStreamInfo{};
 }
 
-void SubscribedFrameUnref(SubscribedFrame *subscribed_frame) {
+void SubscriptionFrameUnref(SubscriptionFrame *subscribed_frame) {
     if (subscribed_frame == nullptr) {
         return;
     }
     EncodedFrameUnref(&subscribed_frame->frame);
     subscribed_frame->subscription_id = 0;
-    subscribed_frame->subscription_generation = 0;
+    subscribed_frame->generation = 0;
     subscribed_frame->starts_on_keyframe = false;
 }
 
@@ -200,7 +200,7 @@ public:
         if (!ValidateOptions()) {
             return false;
         }
-        ResetRuntimeStateLocked();
+        ResetMediaStateLocked();
         started_ = true;
         return true;
     }
@@ -210,7 +210,7 @@ public:
         if (!started_) {
             return;
         }
-        ResetRuntimeStateLocked();
+        ResetMediaStateLocked();
         started_ = false;
     }
 
@@ -244,7 +244,7 @@ public:
             if (result.timestamp_reset) {
                 frame_ring_.ClearStream(
                     frame.stream_id,
-                    FrameSubscriptionCloseReason::kTimestampReset);
+                    SubscriptionClose::kTimestampReset);
             }
             normalized = result.accepted;
         }
@@ -256,7 +256,7 @@ public:
 
         source_state::ParsedFramePayload payload;
         source_state::ParseFramePayload(frame, &payload);
-        QueueFrameForSubscribers(payload);
+        QueueFrameForSubscriptions(payload);
         PackageBrowserFrame(payload, source_state::HasParsedUnits(payload));
         source_state::ParsedFramePayloadUnref(&payload);
         EncodedFrameUnref(&frame);
@@ -322,13 +322,13 @@ public:
         return source_state::FindHlsSegmentRef(*stream, sequence);
     }
 
-    MediaFlvStartData GetFlvStartData(StreamId stream_id) const {
+    MediaFlvStart GetFlvStart(StreamId stream_id) const {
         std::lock_guard<std::mutex> guard(mutex_);
         const source_state::StreamContext *stream = FindStream(stream_id);
         if (stream == nullptr) {
-            return MediaFlvStartData{};
+            return MediaFlvStart{};
         }
-        return source_state::BuildFlvStartData(*stream);
+        return source_state::BuildFlvStart(*stream);
     }
 
     MediaStreamInfo GetStreamInfo(StreamId stream_id) const {
@@ -340,44 +340,44 @@ public:
         return source_state::BuildMediaStreamInfo(*stream);
     }
 
-    MediaStreamCounters GetStreamCounters() const {
+    MediaStreamStats GetStreamStats() const {
         std::lock_guard<std::mutex> guard(mutex_);
-        MediaStreamCounters counters = counters_;
-        counters.enabled = started_;
-        counters.active_flv_clients =
-            static_cast<uint32_t>(flv_live_ring_.ReaderCount());
-        counters.active_mjpeg_clients =
+        MediaStreamStats stats = stats_;
+        stats.enabled = started_;
+        stats.active_flv_clients =
+            static_cast<uint32_t>(flv_live_ring_.ClientCount());
+        stats.active_mjpeg_clients =
             static_cast<uint32_t>(mjpeg_clients_.Size());
-        counters.active_frame_subscriptions =
-            static_cast<uint32_t>(frame_ring_.ReaderCount());
-        counters.cached_frames = frame_ring_.CachedFrameCount();
-        counters.cached_bytes = frame_ring_.CachedBytes();
-        counters.slow_subscriber_count = frame_ring_.SlowReaderCount();
-        counters.main_slow_subscriber_count =
-            frame_ring_.SlowReaderCount(StreamId::kMain);
-        counters.sub_slow_subscriber_count =
-            frame_ring_.SlowReaderCount(StreamId::kSub);
-        counters.main_last_frame_timestamp_us =
+        stats.active_subscriptions =
+            static_cast<uint32_t>(frame_ring_.SubscriptionCount());
+        stats.cached_frames = frame_ring_.CachedFrameCount();
+        stats.cached_bytes = frame_ring_.CachedBytes();
+        stats.slow_subscriptions = frame_ring_.SlowSubscriptionCount();
+        stats.main_slow_subscriptions =
+            frame_ring_.SlowSubscriptionCount(StreamId::kMain);
+        stats.sub_slow_subscriptions =
+            frame_ring_.SlowSubscriptionCount(StreamId::kSub);
+        stats.main_last_frame_timestamp_us =
             frame_ring_.LastFrameTimestamp(StreamId::kMain);
-        counters.sub_last_frame_timestamp_us =
+        stats.sub_last_frame_timestamp_us =
             frame_ring_.LastFrameTimestamp(StreamId::kSub);
-        counters.main_codec_generation = main_stream_.codec_generation;
-        counters.sub_codec_generation = sub_stream_.codec_generation;
-        counters.main_last_reset_reason =
+        stats.main_codec_generation = main_stream_.codec_generation;
+        stats.sub_codec_generation = sub_stream_.codec_generation;
+        stats.main_last_reset_reason =
             MediaStreamResetReasonName(main_stream_.last_reset_reason);
-        counters.sub_last_reset_reason =
+        stats.sub_last_reset_reason =
             MediaStreamResetReasonName(sub_stream_.last_reset_reason);
-        return counters;
+        return stats;
     }
 
-    bool RequestKeyFrame(StreamId stream_id,
-                         KeyFrameRequestType request_type) {
+    bool RequestKeyframe(StreamId stream_id,
+                         KeyframeRequestSource source) {
         if (!IsStreamSupported(stream_id) ||
-            options_.key_frame_request == nullptr) {
+            options_.request_keyframe == nullptr) {
             return false;
         }
-        return options_.key_frame_request(stream_id, request_type,
-                                          options_.key_frame_request_user);
+        return options_.request_keyframe(stream_id, source,
+                                         options_.request_keyframe_user);
     }
 
     MediaFlvClientId AttachFlvClient(StreamId stream_id,
@@ -393,22 +393,22 @@ public:
             source_state::StreamContext *stream = FindMutableStream(stream_id);
             if (!started_ || stream == nullptr ||
                 !source_state::IsFlvStreamReady(*stream) ||
-                flv_live_ring_.ReaderCount() >= options_.max_flv_clients) {
+                flv_live_ring_.ClientCount() >= options_.max_flv_clients) {
                 return 0;
             }
-            client_id = flv_live_ring_.AttachReader(
+            client_id = flv_live_ring_.AttachClient(
                 stream_id, config_generation, wait_for_keyframe, sink,
                 options_.max_flv_clients);
         }
         if (client_id != 0) {
-            (void)RequestKeyFrame(stream_id, KeyFrameRequestType::kNewSubscriber);
+            (void)RequestKeyframe(stream_id, KeyframeRequestSource::kNewClient);
         }
         return client_id;
     }
 
     bool DetachFlvClient(MediaFlvClientId client_id) {
         std::lock_guard<std::mutex> guard(mutex_);
-        return flv_live_ring_.DetachReader(client_id);
+        return flv_live_ring_.DetachClient(client_id);
     }
 
     MediaMjpegClientId AttachMjpegClient(StreamId stream_id,
@@ -433,7 +433,7 @@ public:
     }
 
     FrameSubscriptionId SubscribeFrames(
-        const FrameSubscriptionOptions &options) {
+        const SubscriptionOptions &options) {
         if (!IsStreamSupported(options.stream_id)) {
             return 0;
         }
@@ -441,51 +441,52 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (!started_ || FindStream(options.stream_id) == nullptr ||
-                frame_ring_.ReaderCount() >= options_.max_frame_subscriptions) {
+                frame_ring_.SubscriptionCount() >=
+                    options_.max_frame_subscriptions) {
                 return 0;
             }
-            subscription_id = frame_ring_.AttachReader(
+            subscription_id = frame_ring_.AttachSubscription(
                 options, options_.max_frame_subscriptions);
         }
         if (subscription_id != 0 && options.keyframe_first) {
-            (void)RequestKeyFrame(options.stream_id,
-                                  KeyFrameRequestType::kNewSubscriber);
+            (void)RequestKeyframe(options.stream_id,
+                                  KeyframeRequestSource::kNewClient);
         }
         return subscription_id;
     }
 
     bool UnsubscribeFrames(FrameSubscriptionId subscription_id,
-                           FrameSubscriptionCloseReason reason) {
+                           SubscriptionClose reason) {
         std::lock_guard<std::mutex> guard(mutex_);
-        return frame_ring_.DetachReader(subscription_id, reason);
+        return frame_ring_.DetachSubscription(subscription_id, reason);
     }
 
-    FrameSubscriptionInfo GetFrameSubscriptionInfo(
+    SubscriptionInfo GetSubscriptionInfo(
         FrameSubscriptionId subscription_id) const {
         std::lock_guard<std::mutex> guard(mutex_);
-        return frame_ring_.GetReaderStatus(subscription_id);
+        return frame_ring_.GetSubscriptionInfo(subscription_id);
     }
 
-    FrameSubscriptionStartData GetFrameSubscriptionStartData(
+    SubscriptionStart GetSubscriptionStart(
         FrameSubscriptionId subscription_id) const {
         std::lock_guard<std::mutex> guard(mutex_);
-        const FrameSubscriptionInfo subscription_info =
-            frame_ring_.GetReaderStatus(subscription_id);
-        if (!subscription_info.attached) {
-            return FrameSubscriptionStartData{};
+        const SubscriptionInfo subscription_info =
+            frame_ring_.GetSubscriptionInfo(subscription_id);
+        if (!subscription_info.open) {
+            return SubscriptionStart{};
         }
         const source_state::StreamContext *stream =
             FindStream(subscription_info.stream_id);
         if (stream == nullptr) {
-            return FrameSubscriptionStartData{};
+            return SubscriptionStart{};
         }
         const MediaStreamInfo stream_info =
             source_state::BuildMediaStreamInfo(*stream);
-        return frame_ring_.GetStartData(subscription_id, stream_info);
+        return frame_ring_.GetSubscriptionStart(subscription_id, stream_info);
     }
 
-    bool PopSubscribedFrame(FrameSubscriptionId subscription_id,
-                            SubscribedFrame *frame) {
+    bool PopSubscriptionFrame(FrameSubscriptionId subscription_id,
+                              SubscriptionFrame *frame) {
         std::lock_guard<std::mutex> guard(mutex_);
         return frame_ring_.PopFrame(subscription_id, frame);
     }
@@ -500,13 +501,13 @@ private:
                options_.max_frame_subscriptions != 0;
     }
 
-    void ResetRuntimeStateLocked() {
+    void ResetMediaStateLocked() {
         frame_ring_.Clear();
         flv_live_ring_.Clear();
         mjpeg_clients_.Clear();
         source_state::ClearStreamContext(&main_stream_);
         source_state::ClearStreamContext(&sub_stream_);
-        counters_ = MediaStreamCounters{};
+        stats_ = MediaStreamStats{};
     }
 
     void EnsureRunningStreamLocked(source_state::StreamContext *stream,
@@ -530,7 +531,7 @@ private:
         }
     }
 
-    void QueueFrameForSubscribers(
+    void QueueFrameForSubscriptions(
         const source_state::ParsedFramePayload &payload) {
         std::lock_guard<std::mutex> guard(mutex_);
         source_state::StreamContext *stream =
@@ -568,7 +569,7 @@ private:
             }
             const bool package_hls =
                 source_state::IsHlsCodecSupported(stream->codec);
-            const bool package_flv = flv_live_ring_.HasReader(frame.stream_id);
+            const bool package_flv = flv_live_ring_.HasClient(frame.stream_id);
             const bool update_flv_cache =
                 source_state::IsFlvCodecSupported(stream->codec);
             if (!package_hls && !package_flv && !update_flv_cache) {
@@ -585,7 +586,7 @@ private:
                 return;
             }
             if (packaged_frame.hls_segment_created) {
-                ++counters_.hls_segments_created;
+                ++stats_.hls_segments_created;
             }
             flv_tag_view = packaged_frame.flv_tag_view;
             has_flv_tag_view = packaged_frame.has_flv_tag_view;
@@ -621,7 +622,7 @@ private:
                 return;
             }
             EnsureRunningStreamLocked(stream, frame.stream_id, frame.codec);
-            if (!source_state::StoreMjpegFrame(stream, frame)) {
+            if (!source_state::CacheMjpegFrame(stream, frame)) {
                 return;
             }
             if (mjpeg_clients_.HasClient(frame.stream_id)) {
@@ -746,8 +747,8 @@ private:
     source_state::StreamContext sub_stream_;
     source_state::FrameRing frame_ring_;
     source_state::FlvLiveRing flv_live_ring_;
-    source_clients::MjpegClientRegistry mjpeg_clients_;
-    MediaStreamCounters counters_;
+    source_clients::MjpegClients mjpeg_clients_;
+    MediaStreamStats stats_;
 };
 
 MediaStreams::MediaStreams(MediaStreamsOptions options)
@@ -797,21 +798,21 @@ MediaSegmentRef MediaStreams::GetHlsSegmentRef(
     return impl_->GetHlsSegmentRef(stream_id, sequence);
 }
 
-MediaFlvStartData MediaStreams::GetFlvStartData(StreamId stream_id) const {
-    return impl_->GetFlvStartData(stream_id);
+MediaFlvStart MediaStreams::GetFlvStart(StreamId stream_id) const {
+    return impl_->GetFlvStart(stream_id);
 }
 
 MediaStreamInfo MediaStreams::GetStreamInfo(StreamId stream_id) const {
     return impl_->GetStreamInfo(stream_id);
 }
 
-MediaStreamCounters MediaStreams::GetStreamCounters() const {
-    return impl_->GetStreamCounters();
+MediaStreamStats MediaStreams::GetStreamStats() const {
+    return impl_->GetStreamStats();
 }
 
-bool MediaStreams::RequestKeyFrame(StreamId stream_id,
-                                   KeyFrameRequestType request_type) {
-    return impl_->RequestKeyFrame(stream_id, request_type);
+bool MediaStreams::RequestKeyframe(StreamId stream_id,
+                                   KeyframeRequestSource source) {
+    return impl_->RequestKeyframe(stream_id, source);
 }
 
 MediaFlvClientId MediaStreams::AttachFlvClient(
@@ -835,28 +836,28 @@ bool MediaStreams::DetachMjpegClient(MediaMjpegClientId client_id) {
 }
 
 FrameSubscriptionId MediaStreams::SubscribeFrames(
-    const FrameSubscriptionOptions &options) {
+    const SubscriptionOptions &options) {
     return impl_->SubscribeFrames(options);
 }
 
 bool MediaStreams::UnsubscribeFrames(FrameSubscriptionId subscription_id,
-                                     FrameSubscriptionCloseReason reason) {
+                                     SubscriptionClose reason) {
     return impl_->UnsubscribeFrames(subscription_id, reason);
 }
 
-FrameSubscriptionInfo MediaStreams::GetFrameSubscriptionInfo(
+SubscriptionInfo MediaStreams::GetSubscriptionInfo(
     FrameSubscriptionId subscription_id) const {
-    return impl_->GetFrameSubscriptionInfo(subscription_id);
+    return impl_->GetSubscriptionInfo(subscription_id);
 }
 
-FrameSubscriptionStartData MediaStreams::GetFrameSubscriptionStartData(
+SubscriptionStart MediaStreams::GetSubscriptionStart(
     FrameSubscriptionId subscription_id) const {
-    return impl_->GetFrameSubscriptionStartData(subscription_id);
+    return impl_->GetSubscriptionStart(subscription_id);
 }
 
-bool MediaStreams::PopSubscribedFrame(FrameSubscriptionId subscription_id,
-                                      SubscribedFrame *frame) {
-    return impl_->PopSubscribedFrame(subscription_id, frame);
+bool MediaStreams::PopSubscriptionFrame(FrameSubscriptionId subscription_id,
+                                        SubscriptionFrame *frame) {
+    return impl_->PopSubscriptionFrame(subscription_id, frame);
 }
 
 }  // namespace live_stream

@@ -37,7 +37,7 @@ private:
 
 namespace {
 
-bool IsKeyFrame(const EncodedFrame &frame) {
+bool IsKeyframe(const EncodedFrame &frame) {
     return frame.frame_type == FrameType::kIdr ||
            frame.frame_type == FrameType::kI;
 }
@@ -48,7 +48,7 @@ bool IsSupportedCodec(Codec codec) {
 
 rtp::Codec RtpCodecFromCodec(Codec codec) {
     return codec == Codec::kH265 ? rtp::Codec::kH265
-                                      : rtp::Codec::kH264;
+                                 : rtp::Codec::kH264;
 }
 
 }  // namespace
@@ -85,7 +85,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         return false;
     }
 
-    const bool frame_is_keyframe = IsKeyFrame(frame);
+    const bool frame_is_keyframe = IsKeyframe(frame);
     uint16_t sequence = 0;
     WebrtcRtpSendParameters parameters;
     if (!context.engine->GetRtpSendParameters(peer.peer_id, &parameters) ||

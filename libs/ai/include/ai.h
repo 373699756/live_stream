@@ -119,12 +119,12 @@ struct AiOptions {
     DeviceMedia* device = nullptr;
     MediaChannels media_channels;
     hisisdk::IHisiSdk* sdk = nullptr;
-    std::string alert_image_dir = "build/runtime/ai_alerts";
+    std::string alert_image_dir = "build/ai_alerts";
     uint32_t max_alert_records = 100;
 };
 
-// IAiView is the narrow interface consumed by http (and other
-// cross-module consumers). Ai implements it.
+// IAiView is the narrow interface used by http and other cross-module callers.
+// Ai implements it.
 class IAiView {
 public:
     virtual ~IAiView() = default;

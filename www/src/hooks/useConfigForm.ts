@@ -16,62 +16,64 @@ import { useCallback, useEffect, useState } from 'react';
 import { cloneDefaultConfig } from '../api/configDefaults';
 
 export function useConfigForm<T>(
-  fetchFn: () => Promise<T | null>,
-  saveFn: (config: T) => Promise<void>,
-  defaultValue: T,
+    fetchFn: () => Promise<T | null>,
+    saveFn: (config: T) => Promise<void>,
+    defaultValue: T,
 ) {
-  const [config, setConfig] = useState<T | null>(null);
-  const [savedMsg, setSavedMsg] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+    const [config, setConfig] = useState<T | null>(null);
+    const [savedMsg, setSavedMsg] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    void fetchFn()
-      .then((result) => {
-        if (!mounted) return;
-        if (result !== null) {
-          setConfig(result);
-        }
+    useEffect(() => {
+        let mounted = true;
+        setLoading(true);
+        void fetchFn()
+            .then((result) => {
+                if (!mounted) return;
+                if (result !== null) {
+                    setConfig(result);
+                }
+                setError('');
+            })
+            .catch((err: unknown) => {
+                if (mounted) {
+                    setError(
+                        err instanceof Error ? err.message : '加载配置失败',
+                    );
+                }
+            })
+            .finally(() => {
+                if (mounted) {
+                    setLoading(false);
+                }
+            });
+        return () => {
+            mounted = false;
+        };
+    }, [fetchFn]);
+
+    const save = useCallback(async () => {
+        if (config === null) return;
+        setSaving(true);
         setError('');
-      })
-      .catch((err: unknown) => {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : '加载配置失败');
+        try {
+            await saveFn(config);
+            setSavedMsg('已提交保存');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : '保存失败';
+            setSavedMsg(`保存失败：${message}`);
+            setError(message);
+        } finally {
+            setSaving(false);
         }
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [fetchFn]);
+    }, [config, saveFn]);
 
-  const save = useCallback(async () => {
-    if (config === null) return;
-    setSaving(true);
-    setError('');
-    try {
-      await saveFn(config);
-      setSavedMsg('已提交保存');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '保存失败';
-      setSavedMsg(`保存失败：${message}`);
-      setError(message);
-    } finally {
-      setSaving(false);
-    }
-  }, [config, saveFn]);
+    const reset = useCallback(() => {
+        setConfig(cloneDefaultConfig(defaultValue));
+        setSavedMsg('已恢复默认值，保存后生效');
+    }, [defaultValue]);
 
-  const reset = useCallback(() => {
-    setConfig(cloneDefaultConfig(defaultValue));
-    setSavedMsg('已恢复默认值，保存后生效');
-  }, [defaultValue]);
-
-  return { config, setConfig, save, reset, savedMsg, loading, saving, error };
+    return { config, setConfig, save, reset, savedMsg, loading, saving, error };
 }

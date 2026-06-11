@@ -60,7 +60,7 @@ bool IsKnownEventType(EventType type) {
     return false;
 }
 
-bool IsEventSizeValid(const Event& event) {
+bool IsEventSizeValid(const Event &event) {
     return event.source.size() <= kMaxSourceLength &&
            event.target.size() <= kMaxTargetLength &&
            event.message.size() <= kMaxMessageLength;
@@ -186,7 +186,7 @@ public:
         return erased != 0;
     }
 
-    bool Publish(const Event& event) override {
+    bool Publish(const Event &event) override {
         if (!IsKnownEventType(event.type) || !IsEventSizeValid(event)) {
             IncrementRejected();
             return false;
@@ -202,7 +202,7 @@ public:
         }
 
         std::vector<EventSubscriptionId> subscription_ids;
-        infra::Executor* executor = nullptr;
+        infra::Executor *executor = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!executor_) {
@@ -210,7 +210,7 @@ public:
                 return false;
             }
             executor = executor_.get();
-            for (const auto& entry : subscriptions_) {
+            for (const auto &entry : subscriptions_) {
                 if (HasEventType(entry.second.types, event_to_publish.type)) {
                     subscription_ids.push_back(entry.first);
                 }
@@ -223,24 +223,24 @@ public:
 
         IncrementQueued();
         if (!executor->Post([this, event_to_publish, subscription_ids]() {
-            uint64_t handled_count = 0;
-            for (EventSubscriptionId subscription_id : subscription_ids) {
-                EventHandler handler;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    const auto entry = subscriptions_.find(subscription_id);
-                    if (entry == subscriptions_.end() ||
-                        !HasEventType(entry->second.types,
-                                      event_to_publish.type)) {
-                        continue;
+                uint64_t handled_count = 0;
+                for (EventSubscriptionId subscription_id : subscription_ids) {
+                    EventHandler handler;
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        const auto entry = subscriptions_.find(subscription_id);
+                        if (entry == subscriptions_.end() ||
+                            !HasEventType(entry->second.types,
+                                          event_to_publish.type)) {
+                            continue;
+                        }
+                        handler = entry->second.handler;
                     }
-                    handler = entry->second.handler;
+                    handler(event_to_publish);
+                    ++handled_count;
                 }
-                handler(event_to_publish);
-                ++handled_count;
-            }
-            FinishQueuedEvent(handled_count);
-        })) {
+                FinishQueuedEvent(handled_count);
+            })) {
             DropQueuedEvent();
             return false;
         }

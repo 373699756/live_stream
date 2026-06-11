@@ -29,17 +29,17 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
     bool has_sps = false;
     bool has_pps = false;
     media_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
-                                           &stream->pps, &has_sps, &has_pps);
+                                          &stream->pps, &has_sps, &has_pps);
     if (!stream->sps.empty() && !stream->pps.empty() && (has_sps || has_pps)) {
         stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
             Codec::kH264, std::string(), stream->sps, stream->pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
-        // config_generation 只描述 FLV/codec 配置更新，不等同于 reader 的
+        // config_generation 只描述 FLV/codec 配置更新，不等同于 subscription 的
         // codec_generation；FLV client 用它判断是否需要重发 sequence header。
         ++stream->config_generation;
     }
 
-    *keyframe = *keyframe || media_codec::HasH264KeyFrame(payload.h264_units);
+    *keyframe = *keyframe || media_codec::HasH264Keyframe(payload.h264_units);
     const bool frame_has_parameter_sets =
         media_codec::HasH264ParameterSets(payload.h264_units);
     if (prepend_parameter_sets != nullptr) {
@@ -58,8 +58,8 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
     bool has_sps = false;
     bool has_pps = false;
     media_codec::ExtractH265ParameterSets(payload.h265_units, &stream->vps,
-                                           &stream->sps, &stream->pps, &has_vps,
-                                           &has_sps, &has_pps);
+                                          &stream->sps, &stream->pps, &has_vps,
+                                          &has_sps, &has_pps);
     if (!stream->vps.empty() && !stream->sps.empty() && !stream->pps.empty() &&
         (has_vps || has_sps || has_pps)) {
         stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
@@ -68,7 +68,7 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
         ++stream->config_generation;
     }
 
-    *keyframe = *keyframe || media_codec::HasH265KeyFrame(payload.h265_units);
+    *keyframe = *keyframe || media_codec::HasH265Keyframe(payload.h265_units);
     const bool frame_has_parameter_sets =
         media_codec::HasH265ParameterSets(payload.h265_units);
     if (prepend_parameter_sets != nullptr) {
@@ -137,11 +137,11 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
     if (frame.codec == Codec::kH264) {
         payload->has_nal_units =
             media_codec::ParseH264AnnexBNalUnits(data, frame.payload.size,
-                                                  &payload->h264_units);
+                                                 &payload->h264_units);
     } else if (frame.codec == Codec::kH265) {
         payload->has_nal_units =
             media_codec::ParseH265AnnexBNalUnits(data, frame.payload.size,
-                                                  &payload->h265_units);
+                                                 &payload->h265_units);
     } else {
         payload->has_nal_units = false;
     }
@@ -185,8 +185,8 @@ void ClearStreamContext(StreamContext *stream) {
 }
 
 MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
-                                   uint32_t hls_segment_duration_ms,
-                                   uint32_t hls_playlist_depth) {
+                                  uint32_t hls_segment_duration_ms,
+                                  uint32_t hls_playlist_depth) {
     MediaHlsPlaylist playlist;
     if (!IsHlsStreamReady(stream)) {
         return playlist;
@@ -197,7 +197,7 @@ MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
 }
 
 MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
-                                   uint64_t sequence) {
+                                  uint64_t sequence) {
     if (!IsBrowserStreamReady(stream.state, stream.codec)) {
         return MediaSegmentRef{};
     }
@@ -205,26 +205,26 @@ MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
     return stream.hls_maker.FindSegmentRef(sequence);
 }
 
-MediaFlvStartData BuildFlvStartData(const StreamContext &stream) {
-    MediaFlvStartData start_data;
+MediaFlvStart BuildFlvStart(const StreamContext &stream) {
+    MediaFlvStart flv_start;
     if (!IsBrowserStreamReady(stream.state, stream.codec) ||
         !IsFlvCodecSupported(stream.codec)) {
-        return start_data;
+        return flv_start;
     }
 
-    start_data.supported = true;
-    start_data.cached_gop_complete = stream.flv_gop_cache.complete();
-    start_data.file_header = FlvMuxer::BuildFileHeader();
-    start_data.sequence_header = stream.sequence_header_tag;
+    flv_start.supported = true;
+    flv_start.cached_gop_complete = stream.flv_gop_cache.complete();
+    flv_start.file_header = FlvMuxer::BuildFileHeader();
+    flv_start.sequence_header = stream.sequence_header_tag;
     if (!stream.flv_gop_cache.complete()) {
         // sequence header 已可发送但还没有完整 GOP 时，新客户端需要等待 live
         // 关键帧，不能从缓存 P 帧起播。
-        start_data.config_generation = stream.config_generation;
-        return start_data;
+        flv_start.config_generation = stream.config_generation;
+        return flv_start;
     }
-    stream.flv_gop_cache.CopyTo(&start_data);
-    start_data.config_generation = stream.config_generation;
-    return start_data;
+    stream.flv_gop_cache.CopyTo(&flv_start);
+    flv_start.config_generation = stream.config_generation;
+    return flv_start;
 }
 
 MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
@@ -279,7 +279,7 @@ void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason) {
     stream->sequence_header_tag.clear();
     stream->config_generation = 0;
     // codec_generation 表示所有依赖 codec/时间连续性的缓存都进入新代际。
-    // reader 用它判断旧 GOP/start data 是否仍可用。
+    // subscription 用它判断旧 GOP/start data 是否仍可用。
     ++stream->codec_generation;
     stream->last_reset_reason = reason;
 }
@@ -318,7 +318,7 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
         stream->timestamp_corrector.CorrectWithReset(frame->dts_us,
                                                      frame->pts_us);
     if (corrected.reset != TimestampCorrectionReset::kNone) {
-        // 时间戳回退或大跳变会破坏 HLS segment 时长、GOP cache 和 reader
+        // 时间戳回退或大跳变会破坏 HLS segment 时长、GOP cache 和 subscription
         // 起播点，必须统一清理后从后续关键帧恢复。
         ResetStreamCaches(stream, MediaStreamResetReason::kTimestampReset);
         result.timestamp_reset = true;
@@ -329,7 +329,7 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
     return result;
 }
 
-bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
+bool CacheMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
     if (stream == nullptr || frame.codec != Codec::kMjpeg ||
         !EncodedFrameHasPayload(&frame)) {
         return false;

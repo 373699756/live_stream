@@ -32,7 +32,7 @@ bool NtpConfigFromJson(const ConfigJson &value, NtpConfig *config) {
     if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
         !json_utils::ReadStringArray(value, "servers", &parsed.servers) ||
         !json_utils::ReadField(value, "sync_interval_sec", &parsed.sync_interval_sec,
-                          1, 0xffffffffU)) {
+                               1, 0xffffffffU)) {
         return false;
     }
     *config = parsed;
@@ -266,7 +266,7 @@ private:
         }
         int64_t system_time_ms = 0;
         if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
-                              std::numeric_limits<int64_t>::max())) {
+                                   std::numeric_limits<int64_t>::max())) {
             return StatusResponse(400, "Invalid time request");
         }
         return time
@@ -293,7 +293,7 @@ private:
         }
         int64_t system_time_ms = 0;
         if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
-                              std::numeric_limits<int64_t>::max())) {
+                                   std::numeric_limits<int64_t>::max())) {
             return StatusResponse(400, "Invalid time request");
         }
         return time
@@ -321,9 +321,9 @@ private:
         bool manual_sync_allowed = true;
         bool browser_sync_on_login = true;
         if (!json_utils::ReadField(body, "manual_sync_allowed",
-                              &manual_sync_allowed) ||
+                                   &manual_sync_allowed) ||
             !json_utils::ReadField(body, "browser_sync_on_login",
-                              &browser_sync_on_login)) {
+                                   &browser_sync_on_login)) {
             return StatusResponse(400, "Invalid browser sync config");
         }
         return time

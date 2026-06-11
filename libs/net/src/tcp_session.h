@@ -29,7 +29,7 @@ public:
     bool Close(TcpCloseReason reason);
     bool CloseAfterSend();
     uint32_t PendingBytes() const;
-    NetConnectionDiagnostics Diagnostics() const;
+    NetConnectionInfo GetInfo() const;
     ConnectionId id() const { return id_; }
     NetAddress peer() const { return peer_; }
 
@@ -40,10 +40,10 @@ private:
     // inline_data、heap_data，或由 owner ref 住的外部媒体 buffer。
     struct OutSlice {
         OutSlice() = default;
-        OutSlice(OutSlice&& other) noexcept;
-        OutSlice& operator=(OutSlice&& other) noexcept;
-        OutSlice(const OutSlice&) = delete;
-        OutSlice& operator=(const OutSlice&) = delete;
+        OutSlice(OutSlice &&other) noexcept;
+        OutSlice &operator=(OutSlice &&other) noexcept;
+        OutSlice(const OutSlice &) = delete;
+        OutSlice &operator=(const OutSlice &) = delete;
         ~OutSlice();
 
         const uint8_t *data = nullptr;
@@ -72,12 +72,12 @@ private:
     void EnableWrite();
     void DisableWrite();
     void CloseInLoop(TcpCloseReason reason);
-    void ArmManagerTimer();
+    void ArmTimeoutTimer();
     void CheckTimeouts();
     bool IsReadTimedOutLocked(int64_t now_ms) const;
     bool IsWriteTimedOutLocked(int64_t now_ms) const;
     bool IsSendStalledLocked() const;
-    uint32_t ManagerTickMs() const;
+    uint32_t TimeoutCheckIntervalMs() const;
 
     NetEngineImpl *engine_ = nullptr;
     std::shared_ptr<EventLoop> loop_;
@@ -88,15 +88,15 @@ private:
     NetAddress local_;
     NetAddress peer_;
     mutable std::mutex mutex_;
-    // send_queue_ 只能由 IO loop 写出，但 SendSlices()/Diagnostics() 可能来自
+    // send_queue_ 只能由 IO loop 写出，但 SendSlices()/GetInfo() 可能来自
     // 协议线程，因此队列和 pending_bytes_ 都由 mutex_ 保护。
     std::deque<OutBuffer> send_queue_;
     // pending_bytes_ 是 net 对慢客户端的统一背压指标，上层协议不应再维护
     // 独立 socket 写队列。
     uint32_t pending_bytes_ = 0;
-    // manager timer 周期检查 read/write/stall timeout。CloseInLoop() 会先取消它，
+    // timeout timer 周期检查 read/write/stall timeout。CloseInLoop() 会先取消它，
     // 避免 session 已关闭后还有 timer 回调访问状态。
-    NetTimerId manager_timer_id_ = 0;
+    NetTimerId timeout_timer_id_ = 0;
     int64_t last_read_ms_ = 0;
     int64_t last_write_progress_ms_ = 0;
     TcpCloseReason close_reason_ = TcpCloseReason::kNormal;

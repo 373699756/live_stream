@@ -192,7 +192,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
             return false;
         }
         const uint32_t progress = 25U + static_cast<uint32_t>(
-            ((i + 1) * 70ULL) / package.manifest.commands.size());
+                                            ((i + 1) * 70ULL) / package.manifest.commands.size());
         WriteUpgradeStatus("writing", infra::Clamp<uint32_t>(progress, 25U, 95U),
                            true, package.manifest.version, "");
     }

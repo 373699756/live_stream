@@ -53,7 +53,7 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
     network_ = CreateNetworkConfig(network_options);
     if (!network_ || !network_->Start()) {
         Error("app", "Start network_config failed: ifname=%s",
-                        network_options.default_ifname.c_str());
+              network_options.default_ifname.c_str());
         Stop();
         return false;
     }

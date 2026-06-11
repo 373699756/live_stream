@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -14,7 +14,7 @@
 ```mermaid
 flowchart LR
   Publishers[modules] --> Event[event]
-  Event --> Subscribers[module handlers]
+  Event --> Handlers[module handlers]
   Event --> Queue[event thread/queue]
 ```
 
@@ -47,7 +47,7 @@ public API 在 `event.h`。事件 payload 归 `event` 文档维护：
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |
 
 payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTTP body、大 JSON 和指针不能
-通过 event payload 传递；需要详细数据时，subscriber 应通过拥有模块的查询接口读取。
+通过 event payload 传递；需要详细数据时，handler 应通过拥有模块的查询接口读取。
 
 ## 非目标
 
@@ -57,7 +57,7 @@ payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTT
 
 ## 状态与资源模型
 
-handler 必须轻量。需要耗时业务时，subscriber 应投递到自己的任务队列，不能阻塞
+handler 必须轻量。需要耗时业务时，handler 应投递到自己的任务队列，不能阻塞
 event thread。
 
 `EventCounts` 使用通俗计数字段描述事件库负载：`published`、`handled`、

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NETWORK_SERVICE_SRC_NETWORK_CONFIG_CODEC_H_
-#define LIVE_STREAM_NETWORK_SERVICE_SRC_NETWORK_CONFIG_CODEC_H_
+#ifndef LIVE_STREAM_NETWORK_CONFIG_SRC_NETWORK_CONFIG_CODEC_H_
+#define LIVE_STREAM_NETWORK_CONFIG_SRC_NETWORK_CONFIG_CODEC_H_
 
 #include "network_config.h"
 
@@ -31,4 +31,4 @@ std::string PrefixLengthToNetmask(uint8_t prefix_length);
 }  // namespace network_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NETWORK_SERVICE_SRC_NETWORK_CONFIG_CODEC_H_
+#endif  // LIVE_STREAM_NETWORK_CONFIG_SRC_NETWORK_CONFIG_CODEC_H_

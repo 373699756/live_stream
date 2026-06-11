@@ -39,8 +39,8 @@ public:
         ConnectionId connection_id, const HttpRequest &request) override;
     HttpListenAddress LocalAddress() const override;
     HttpStats GetStats() const override;
-    std::vector<HttpStreamingSessionDiagnostics>
-    GetStreamingSessionDiagnostics() const override;
+    std::vector<HttpStreamSessionInfo>
+    ListStreamSessionInfo() const override;
 
 private:
     AuthPrincipal Authenticate(const HttpRequest &request) override;

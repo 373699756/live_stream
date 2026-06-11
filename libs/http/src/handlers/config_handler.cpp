@@ -114,7 +114,7 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeConfigHandler(HttpAccess *access,
-                                                   IConfig *config) {
+                                                IConfig *config) {
     return std::unique_ptr<IHttpHandler>(
         new ConfigHttpHandler(access, config));
 }

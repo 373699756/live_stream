@@ -37,7 +37,7 @@ ProtocolSubsystem &ProtocolSubsystem::Get() {
     return subsystem;
 }
 
-bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
+bool ProtocolSubsystem::Start(const AppConfig &app_config,
                               CoreSubsystem &core_subsystem,
                               const DeviceRefs &device_refs,
                               const MediaRefs &media_refs) {
@@ -45,7 +45,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return true;
     }
 
-    ProtocolRuntimeRefs refs;
+    ProtocolStartupRefs refs;
     refs.core = &core_subsystem;
     refs.device = device_refs;
     refs.media = media_refs;
@@ -82,15 +82,15 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         return false;
     }
 
-    const RtspOptions rtsp_options = BuildRtspOptions(runtime_config);
+    const RtspOptions rtsp_options = BuildRtspOptions(app_config);
     const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
     rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
         Error("app",
-                        "Start rtsp failed, continue without RTSP: "
-                        "listen=%s:%u",
-                        runtime_config.listen_ip.c_str(),
-                        static_cast<unsigned>(runtime_config.rtsp_port));
+              "Start rtsp failed, continue without RTSP: "
+              "listen=%s:%u",
+              app_config.listen_ip.c_str(),
+              static_cast<unsigned>(app_config.rtsp_port));
         if (rtsp_) {
             rtsp_->Stop();
         }
@@ -100,12 +100,12 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.rtsp = rtsp_.get();
         const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
         Info("app", "RTSP listening %s:%u",
-                       rtsp_address.ip.c_str(),
-                       static_cast<unsigned>(rtsp_address.port));
+             rtsp_address.ip.c_str(),
+             static_cast<unsigned>(rtsp_address.port));
     }
 
     const WebrtcOptions webrtc_options =
-        BuildWebrtcOptions(runtime_config, refs);
+        BuildWebrtcOptions(app_config, refs);
     const WebrtcDependencies webrtc_dependencies =
         BuildWebrtcDependencies(refs);
     webrtc_ = CreateWebrtc(webrtc_options, webrtc_dependencies);
@@ -114,8 +114,8 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
             "app",
             "Start webrtc failed, continue without WebRTC: "
             "enabled=%d base=%u",
-            runtime_config.webrtc_enabled ? 1 : 0,
-            static_cast<unsigned>(runtime_config.webrtc_local_port_base));
+            app_config.webrtc_enabled ? 1 : 0,
+            static_cast<unsigned>(app_config.webrtc_local_port_base));
         if (webrtc_) {
             webrtc_->Stop();
         }
@@ -125,15 +125,15 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
         refs.webrtc = webrtc_.get();
     }
 
-    const OnvifServerOptions onvif_options = BuildOnvifOptions(runtime_config);
+    const OnvifServerOptions onvif_options = BuildOnvifOptions(app_config);
     const OnvifServerDependencies onvif_dependencies =
         BuildOnvifDependencies(refs);
     onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
         Error("app",
-                        "Start onvif failed, continue without ONVIF: "
-                        "device_port=%u",
-                        static_cast<unsigned>(runtime_config.onvif_device_port));
+              "Start onvif failed, continue without ONVIF: "
+              "device_port=%u",
+              static_cast<unsigned>(app_config.onvif_device_port));
         if (onvif_) {
             onvif_->Stop();
         }
@@ -142,27 +142,27 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
     } else {
         refs.onvif = onvif_.get();
         Info("app", "ONVIF started listen=%s:%u discovery=%u",
-                       runtime_config.listen_ip.c_str(),
-                       static_cast<unsigned>(runtime_config.onvif_device_port),
-                       static_cast<unsigned>(runtime_config.onvif_discovery_port));
+             app_config.listen_ip.c_str(),
+             static_cast<unsigned>(app_config.onvif_device_port),
+             static_cast<unsigned>(app_config.onvif_discovery_port));
     }
 
-    const HttpOptions http_options = BuildHttpOptions(runtime_config);
+    const HttpOptions http_options = BuildHttpOptions(app_config);
     const HttpDependencies http_dependencies = BuildHttpDependencies(refs);
     http_ = CreateHttp(http_options, http_dependencies);
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
-                        runtime_config.listen_ip.c_str(),
-                        static_cast<unsigned>(runtime_config.http_port),
-                        runtime_config.static_root.c_str());
+              app_config.listen_ip.c_str(),
+              static_cast<unsigned>(app_config.http_port),
+              app_config.static_root.c_str());
         Stop();
         return false;
     }
     const HttpListenAddress http_address = http_->LocalAddress();
     Info("app", "HTTP listening %s:%u root=%s",
-                   http_address.ip.c_str(),
-                   static_cast<unsigned>(http_address.port),
-                   runtime_config.static_root.c_str());
+         http_address.ip.c_str(),
+         static_cast<unsigned>(http_address.port),
+         app_config.static_root.c_str());
 
     const NetStatOptions net_stat_options =
         BuildNetStatOptions();
@@ -178,9 +178,9 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
 
     config_ = core_subsystem.config();
     network_config_ = device_refs.network;
-    runtime_config_ = runtime_config;
-    if (!InstallRuntimeConfigAttachments()) {
-        Error("app", "Install protocol runtime config attachments failed");
+    app_config_ = app_config;
+    if (!InstallConfigUpdateAttachments()) {
+        Error("app", "Install protocol config update attachments failed");
         Stop();
         return false;
     }
@@ -190,7 +190,7 @@ bool ProtocolSubsystem::Start(const AppRuntimeConfig &runtime_config,
 }
 
 void ProtocolSubsystem::Stop() {
-    DetachRuntimeConfigAttachments();
+    DetachConfigUpdateAttachments();
     if (net_stat_) {
         Info("app", "Stop net_stat begin");
         net_stat_->Stop();

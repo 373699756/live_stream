@@ -91,17 +91,17 @@ MODULES := \
 
 MODULE_LIBS :=
 APP_SRCS := \
-	app/runtime/main.cpp \
-	app/runtime/app_runtime.cpp \
-	app/runtime/runtime_paths.cpp \
+	app/application/main.cpp \
+	app/application/application.cpp \
+	app/application/startup_paths.cpp \
 	app/subsystems/core_subsystem.cpp \
 	app/subsystems/device_subsystem.cpp \
 	app/subsystems/media_subsystem.cpp \
 	app/subsystems/protocol_options.cpp \
-	app/subsystems/protocol_runtime_updates.cpp \
+	app/subsystems/protocol_config_updates.cpp \
 	app/subsystems/protocol_subsystem.cpp \
-	app/config/protocol_runtime_config.cpp \
-	app/config/runtime_config.cpp \
+	app/config/protocol_config_update.cpp \
+	app/config/app_config.cpp \
 	app/platform/linux/linux_network_platform.cpp \
 	app/platform/linux/linux_platform_common.cpp \
 	app/platform/linux/linux_system_platform.cpp \

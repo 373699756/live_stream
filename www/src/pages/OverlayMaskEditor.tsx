@@ -37,7 +37,8 @@ interface UseOverlayMaskEditorOptions {
     error: string;
 }
 
-const streamLabel = (stream: StreamName) => (stream === 'main' ? '主码流' : '子码流');
+const streamLabel = (stream: StreamName) =>
+    stream === 'main' ? '主码流' : '子码流';
 
 const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
@@ -115,16 +116,18 @@ export function useOverlayMaskEditor({
         updateSurfaceSize();
         if (typeof ResizeObserver === 'undefined') {
             window.addEventListener('resize', updateSurfaceSize);
-            return () => window.removeEventListener('resize', updateSurfaceSize);
+            return () =>
+                window.removeEventListener('resize', updateSurfaceSize);
         }
         const observer = new ResizeObserver(updateSurfaceSize);
         observer.observe(drawElement);
         return () => observer.disconnect();
     }, [drawElement]);
 
-    const videoArea = surfaceSize.width > 0 && surfaceSize.height > 0
-        ? contentAreaForSurface(frame, surfaceSize)
-        : null;
+    const videoArea =
+        surfaceSize.width > 0 && surfaceSize.height > 0
+            ? contentAreaForSurface(frame, surfaceSize)
+            : null;
 
     const pointerToFrame = (event: React.PointerEvent<HTMLDivElement>) => {
         const surface = drawRef.current?.getBoundingClientRect();
@@ -220,7 +223,11 @@ export function useOverlayMaskEditor({
                 return (
                     <div
                         key={index}
-                        className={activeSlot === index ? 'mask-rect active' : 'mask-rect'}
+                        className={
+                            activeSlot === index
+                                ? 'mask-rect active'
+                                : 'mask-rect'
+                        }
                         style={{
                             left: rect.left,
                             top: rect.top,
@@ -264,7 +271,11 @@ export function useOverlayMaskEditor({
                         onClick={() => onSlotChange(index)}
                     >
                         <span>{index + 1}</span>
-                        <em>{mask.enabled ? `${mask.width}x${mask.height}` : '未启用'}</em>
+                        <em>
+                            {mask.enabled
+                                ? `${mask.width}x${mask.height}`
+                                : '未启用'}
+                        </em>
                     </button>
                 ))}
             </div>
@@ -273,28 +284,40 @@ export function useOverlayMaskEditor({
                     <input
                         type="checkbox"
                         checked={activeMask.enabled}
-                        onChange={(e) => onMaskPatch(activeSlot, { enabled: e.target.checked })}
+                        onChange={(e) =>
+                            onMaskPatch(activeSlot, {
+                                enabled: e.target.checked,
+                            })
+                        }
                     />
                 </FormField>
                 <FormField label="遮挡颜色">
                     <input
                         type="color"
                         value={activeMask.color}
-                        onChange={(e) => onMaskPatch(activeSlot, { color: e.target.value })}
+                        onChange={(e) =>
+                            onMaskPatch(activeSlot, { color: e.target.value })
+                        }
                     />
                 </FormField>
             </div>
             <div className="mask-coordinate-row">
                 <span>{streamLabel(activeStream)}</span>
-                <span>{frame.width}x{frame.height}</span>
+                <span>
+                    {frame.width}x{frame.height}
+                </span>
                 <span>x {activeMask.x}</span>
                 <span>y {activeMask.y}</span>
                 <span>w {activeMask.width}</span>
                 <span>h {activeMask.height}</span>
             </div>
             <div className="form-actions">
-                <button type="button" onClick={onClearCurrent}>清除当前</button>
-                <button type="button" onClick={reset}>恢复默认</button>
+                <button type="button" onClick={onClearCurrent}>
+                    清除当前
+                </button>
+                <button type="button" onClick={reset}>
+                    恢复默认
+                </button>
                 <button
                     type="button"
                     className="primary"

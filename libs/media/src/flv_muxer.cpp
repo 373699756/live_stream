@@ -18,9 +18,9 @@ constexpr uint8_t kFlvPacketTypeCodedFrames = 1;
 constexpr uint8_t kFlvFrameKey = 1 << 4;
 constexpr uint8_t kFlvFrameInter = 2 << 4;
 
-using byte_writer::AppendU8;
 using byte_writer::AppendU24;
 using byte_writer::AppendU32;
+using byte_writer::AppendU8;
 
 void WriteU24Bytes(uint32_t value, uint8_t *target) {
     target[0] = static_cast<uint8_t>((value >> 16) & 0xff);

@@ -16,9 +16,9 @@ constexpr size_t kMaxMediaFlvVideoTagSlices = 130;
 constexpr size_t kMaxMediaFlvHeaderSliceBytes = 24;
 constexpr size_t kMaxMediaFlvCachedVideoTags = 128;
 
-using KeyFrameRequestCallback = bool (*)(StreamId stream_id,
-                                         KeyFrameRequestType request_type,
-                                         void *user);
+using RequestKeyframeFn = bool (*)(StreamId stream_id,
+                                   KeyframeRequestSource source,
+                                   void *user);
 
 struct MediaStreamsOptions {
     uint32_t hls_segment_duration_ms = 2000;
@@ -27,8 +27,8 @@ struct MediaStreamsOptions {
     uint32_t max_flv_clients = 8;
     uint32_t max_mjpeg_clients = 8;
     uint32_t max_frame_subscriptions = 8;
-    KeyFrameRequestCallback key_frame_request = nullptr;
-    void *key_frame_request_user = nullptr;
+    RequestKeyframeFn request_keyframe = nullptr;
+    void *request_keyframe_user = nullptr;
 };
 
 struct MediaFlvVideoTagSlice {
@@ -75,7 +75,7 @@ enum class MediaStreamResetReason {
     kCacheOverflow,
 };
 
-enum class FrameSubscriptionCloseReason {
+enum class SubscriptionClose {
     kNone = 0,
     kUnsubscribed,
     kStreamStopped,
@@ -85,8 +85,8 @@ enum class FrameSubscriptionCloseReason {
 };
 
 const char *MediaStreamResetReasonName(MediaStreamResetReason reason);
-const char *FrameSubscriptionCloseReasonName(
-    FrameSubscriptionCloseReason reason);
+const char *SubscriptionCloseName(
+    SubscriptionClose reason);
 
 struct MediaHlsEntry {
     uint64_t sequence = 0;
@@ -111,11 +111,11 @@ struct MediaSegmentRef {
     FrameBuffer *body = nullptr;
 };
 
-struct MediaFlvStartData {
+struct MediaFlvStart {
     // 新 HTTP-FLV client 先发送 file_header/sequence_header，再从
     // cached_video_tags 的关键帧 GOP 起点继续发送 live tag。
     // cached_video_tags 持有对应 EncodedFrame 引用，媒体 payload 不会因
-    // GetFlvStartData 返回对象离开 MediaStreams 锁而失效。
+    // GetFlvStart 返回对象离开 MediaStreams 锁而失效。
     bool supported = false;
     bool cached_gop_complete = false;
     uint64_t config_generation = 0;
@@ -124,10 +124,9 @@ struct MediaFlvStartData {
     std::vector<MediaFlvCachedVideoTag> cached_video_tags;
 };
 
-struct FrameSubscriptionOptions {
+struct SubscriptionOptions {
     StreamId stream_id = StreamId::kMain;
     bool keyframe_first = true;
-    std::string subscriber_name;
 };
 
 struct MediaStreamInfo {
@@ -158,52 +157,52 @@ struct MediaStreamInfo {
     bool mjpeg_supported = false;
 };
 
-struct FrameSubscriptionStartData {
+struct SubscriptionStart {
     // subscription 创建后先读取 start data：如果 track_ready/gop_complete=true，
-    // 调用方可先发送 gop_frames，再进入 PopSubscribedFrame 的 live queue。
-    // gop_frames 里的 EncodedFrame 只 ref 底层 FrameBuffer，不按 subscriber 深拷贝 GOP。
+    // 调用方可先发送 gop_frames，再进入 PopSubscriptionFrame 的 live queue。
+    // gop_frames 里的 EncodedFrame 只 ref 底层 FrameBuffer，不按 subscription 深拷贝 GOP。
     bool track_ready = false;
     bool gop_complete = false;
-    uint64_t subscription_generation = 0;
+    uint64_t generation = 0;
     MediaStreamInfo stream_info;
     std::vector<EncodedFrame> gop_frames;
 };
 
-struct SubscribedFrame {
+struct SubscriptionFrame {
     // starts_on_keyframe 表示该 live frame 是等待关键帧后的第一个可解码点，
     // WebRTC/RTSP 可据此刷新协议侧状态。
     // frame 持有自己的 FrameBuffer 引用，调用方发送结束后必须
-    // SubscribedFrameUnref()。
+    // SubscriptionFrameUnref()。
     FrameSubscriptionId subscription_id = 0;
-    uint64_t subscription_generation = 0;
+    uint64_t generation = 0;
     bool starts_on_keyframe = false;
     EncodedFrame frame;
 };
 
-struct FrameSubscriptionInfo {
-    bool attached = false;
+struct SubscriptionInfo {
+    bool open = false;
     StreamId stream_id = StreamId::kMain;
-    uint64_t subscription_generation = 0;
-    FrameSubscriptionCloseReason close_reason =
-        FrameSubscriptionCloseReason::kNone;
+    uint64_t generation = 0;
+    SubscriptionClose close_reason =
+        SubscriptionClose::kNone;
     bool waiting_for_keyframe = false;
-    // slow_subscriber 表示该 subscriber 的 live queue 溢出过，MediaStreams 会丢弃
+    // slow 表示该 subscription 的 live queue 溢出过，MediaStreams 会丢弃
     // 旧队列并等待下一个关键帧，避免客户端从不可解码的中间帧恢复。
-    bool slow_subscriber = false;
+    bool slow = false;
     uint32_t pending_frames = 0;
 };
 
-struct MediaStreamCounters {
+struct MediaStreamStats {
     bool enabled = false;
     uint64_t hls_segments_created = 0;
     uint32_t active_flv_clients = 0;
     uint32_t active_mjpeg_clients = 0;
-    uint32_t active_frame_subscriptions = 0;
+    uint32_t active_subscriptions = 0;
     uint32_t cached_frames = 0;
     uint32_t cached_bytes = 0;
-    uint32_t slow_subscriber_count = 0;
-    uint32_t main_slow_subscriber_count = 0;
-    uint32_t sub_slow_subscriber_count = 0;
+    uint32_t slow_subscriptions = 0;
+    uint32_t main_slow_subscriptions = 0;
+    uint32_t sub_slow_subscriptions = 0;
     int64_t main_last_frame_timestamp_us = 0;
     int64_t sub_last_frame_timestamp_us = 0;
     uint64_t main_codec_generation = 0;
@@ -231,10 +230,10 @@ public:
 void MediaFlvCachedVideoTagUnref(MediaFlvCachedVideoTag *tag);
 bool MediaFlvCachedVideoTagRefCopy(MediaFlvCachedVideoTag *target,
                                    const MediaFlvCachedVideoTag *source);
-void MediaFlvStartDataUnref(MediaFlvStartData *start_data);
-void FrameSubscriptionStartDataUnref(
-    FrameSubscriptionStartData *start_data);
-void SubscribedFrameUnref(SubscribedFrame *subscribed_frame);
+void MediaFlvStartUnref(MediaFlvStart *flv_start);
+void SubscriptionStartUnref(
+    SubscriptionStart *start_data);
+void SubscriptionFrameUnref(SubscriptionFrame *subscribed_frame);
 MediaSegmentRef MediaSegmentRefCopy(const MediaSegmentRef *segment);
 void MediaSegmentRefUnref(MediaSegmentRef *segment);
 
@@ -257,11 +256,11 @@ public:
     MediaHlsPlaylist GetHlsPlaylist(StreamId stream_id) const;
     MediaSegmentRef GetHlsSegmentRef(StreamId stream_id,
                                      uint64_t sequence) const;
-    MediaFlvStartData GetFlvStartData(StreamId stream_id) const;
+    MediaFlvStart GetFlvStart(StreamId stream_id) const;
     MediaStreamInfo GetStreamInfo(StreamId stream_id) const;
-    MediaStreamCounters GetStreamCounters() const;
-    bool RequestKeyFrame(StreamId stream_id,
-                         KeyFrameRequestType request_type);
+    MediaStreamStats GetStreamStats() const;
+    bool RequestKeyframe(StreamId stream_id,
+                         KeyframeRequestSource source);
 
     MediaFlvClientId AttachFlvClient(StreamId stream_id,
                                      uint64_t config_generation,
@@ -273,15 +272,15 @@ public:
     bool DetachMjpegClient(MediaMjpegClientId client_id);
 
     FrameSubscriptionId SubscribeFrames(
-        const FrameSubscriptionOptions &options);
+        const SubscriptionOptions &options);
     bool UnsubscribeFrames(FrameSubscriptionId subscription_id,
-                           FrameSubscriptionCloseReason reason);
-    FrameSubscriptionInfo GetFrameSubscriptionInfo(
+                           SubscriptionClose reason);
+    SubscriptionInfo GetSubscriptionInfo(
         FrameSubscriptionId subscription_id) const;
-    FrameSubscriptionStartData GetFrameSubscriptionStartData(
+    SubscriptionStart GetSubscriptionStart(
         FrameSubscriptionId subscription_id) const;
-    bool PopSubscribedFrame(FrameSubscriptionId subscription_id,
-                            SubscribedFrame *frame);
+    bool PopSubscriptionFrame(FrameSubscriptionId subscription_id,
+                              SubscriptionFrame *frame);
 
 private:
     class Impl;

@@ -15,12 +15,12 @@ public:
     bool IsCurrentThread() const override { return false; }
 };
 
-void OnAccept(void*, live_stream::ConnectionId, live_stream::NetAddress) {}
+void OnAccept(void *, live_stream::ConnectionId, live_stream::NetAddress) {}
 
-void OnUdp(void*,
+void OnUdp(void *,
            live_stream::UdpSocketId,
            live_stream::NetAddress,
-           const uint8_t*,
+           const uint8_t *,
            size_t) {}
 
 }  // namespace

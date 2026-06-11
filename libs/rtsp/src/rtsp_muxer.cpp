@@ -14,7 +14,7 @@ const char *RtpEncodingName(Codec codec) {
 
 rtp::Codec RtpCodecFromCodec(Codec codec) {
     return codec == Codec::kH265 ? rtp::Codec::kH265
-                                      : rtp::Codec::kH264;
+                                 : rtp::Codec::kH264;
 }
 
 }  // namespace

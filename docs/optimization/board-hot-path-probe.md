@@ -1,7 +1,7 @@
 # Board Hot Path Probe
 
 板端热路径优化先采集数据，再决定是否减少拷贝或调整队列上限。固定入口是
-`scripts/board_hot_path_probe.sh`，输出 CSV 和原始 HTTP diagnostics。
+`scripts/board_hot_path_probe.sh`，输出 CSV 和原始 HTTP info。
 
 ## Usage
 
@@ -23,7 +23,7 @@ scripts/board_hot_path_probe.sh \
 脚本默认采集：
 
 - `/proc/<pid>/status` 和 `/proc/stat`：RSS、VmHWM、进程 CPU、系统 CPU。
-- `GET /api/media/streams`：`cached_bytes`、`hls_bytes`、reader/client 数、
+- `GET /api/media/streams`：`cached_bytes`、`hls_bytes`、subscription/client 数、
   `last_reset_reason`。
 - `GET /api/media/sessions`：pending bytes、活跃 FLV/MJPEG/RTSP/WebRTC 数、
   RTSP/WebRTC drop 计数。
@@ -42,11 +42,11 @@ WebRTC 需要真实 SDP/ICE 客户端。脚本不内置伪客户端；需要时�
 `WEBRTC_CLIENT_CMD`，并指定 `--webrtc-clients N`。命令会拿到这些环境变量：
 `BASE_URL`、`STREAM`、`WHEP_URL`、`COOKIE_JAR`、`AUTH_HEADER`、`CLIENT_INDEX`。
 
-## Decision Gate
+## Check Gate
 
 采集 HLS、FLV、MJPEG、WebRTC 多客户端数据后再做代码改动：
 
 - `cached_bytes` 或 `hls_bytes` 随客户端数增长：先查 `media` cache 引用和 retain。
 - `sessions_pending_bytes` 或 CPU 持续升高：先查 `net` send queue 和慢客户端关闭。
 - `webrtc_dropped_frames` / `rtsp_dropped_frames` 增长：先查 fanout 和 RTP 发送路径。
-- RSS/VmHWM 不回落：先查 HTTP session、media reader/client detach 和缓存引用释放。
+- RSS/VmHWM 不回落：先查 HTTP session、media subscription/client detach 和缓存引用释放。

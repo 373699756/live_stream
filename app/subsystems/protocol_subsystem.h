@@ -4,13 +4,14 @@
 #include <memory>
 #include <string>
 
-#include "config/runtime_config.h"
+#include "config/app_config.h"
 #include "http.h"
 #include "infra/executor.h"
 #include "net.h"
 #include "net_stat.h"
 #include "onvif_server.h"
 #include "rtsp.h"
+#include "subsystems/protocol_refs.h"
 #include "webrtc.h"
 
 namespace live_stream {
@@ -31,7 +32,7 @@ class ProtocolSubsystem {
 public:
     static ProtocolSubsystem &Get();
 
-    bool Start(const AppRuntimeConfig &runtime_config,
+    bool Start(const AppConfig &app_config,
                CoreSubsystem &core_subsystem,
                const DeviceRefs &device_refs,
                const MediaRefs &media_refs);
@@ -46,15 +47,15 @@ private:
     ProtocolSubsystem(const ProtocolSubsystem &) = delete;
     ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
-    bool InstallRuntimeConfigAttachments();
-    void DetachRuntimeConfigAttachments();
-    ConfigResult ValidateRuntimeConfigUpdate(const std::string &scope,
-                                             const ConfigJson &value);
-    ConfigResult ApplyRuntimeConfigUpdate(const std::string &scope,
-                                          const ConfigJson &value);
-    bool BuildNextRuntimeConfig(const std::string &scope,
-                                const ConfigJson &value,
-                                AppRuntimeConfig *next_config) const;
+    bool InstallConfigUpdateAttachments();
+    void DetachConfigUpdateAttachments();
+    ConfigResult ValidateProtocolConfigUpdate(const std::string &scope,
+                                              const ConfigJson &value);
+    ConfigResult ApplyProtocolConfigUpdate(const std::string &scope,
+                                           const ConfigJson &value);
+    bool BuildNextAppConfig(const std::string &scope,
+                            const ConfigJson &value,
+                            AppConfig *next_config) const;
 
     std::unique_ptr<infra::Executor> net_callback_executor_;
     std::unique_ptr<INetEngine> net_engine_;
@@ -65,7 +66,7 @@ private:
     std::unique_ptr<INetStat> net_stat_;
     IConfig *config_ = nullptr;
     INetworkConfig *network_config_ = nullptr;
-    AppRuntimeConfig runtime_config_;
+    AppConfig app_config_;
     bool started_ = false;
 };
 

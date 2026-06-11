@@ -148,7 +148,7 @@ ImageStrategyControls ControlsForIsoTier(
 
 ImageStrategyControls SmoothImageStrategyControls(
     const ImageStrategyControls &target,
-    const ImageStrategyStatus &current) {
+    const ImageInfo &current) {
     ImageStrategyControls controls = target;
     if (!current.active) {
         return controls;
@@ -195,9 +195,9 @@ bool IsImageStrategyEnabled(const ConfigJson &image_config) {
 
 ConfigJson BuildImageStrategyConfig(
     const ConfigJson &image_config,
-    const ImageStrategyStatus &current_status,
+    const ImageInfo &current_info,
     const hisisdk::ExposureInfo &exposure,
-    ImageStrategyStatus *next_status) {
+    ImageInfo *next_info) {
     ConfigJson adjusted = image_config;
     if (!adjusted.is_object()) {
         return adjusted;
@@ -208,7 +208,7 @@ ConfigJson BuildImageStrategyConfig(
     const ImageStrategyControls target = ControlsForIsoTier(
         LoadImageStrategyControls(image_config), strategy_mode, tier);
     const ImageStrategyControls controls = ClampFinalControlsForMode(
-        SmoothImageStrategyControls(target, current_status), strategy_mode,
+        SmoothImageStrategyControls(target, current_info), strategy_mode,
         tier);
 
     adjusted["basic"]["saturation"] = controls.saturation;
@@ -217,23 +217,23 @@ ConfigJson BuildImageStrategyConfig(
     adjusted["enhancement"]["denoise_3d"] = controls.denoise_3d;
     adjusted["enhancement"]["gamma"] = controls.gamma;
 
-    if (next_status != nullptr) {
-        *next_status = current_status;
-        next_status->enabled = true;
-        next_status->active = true;
-        next_status->exposure_valid = true;
-        next_status->iso = exposure.iso;
-        next_status->exposure_time_us = exposure.exposure_time_us;
-        next_status->analog_gain = exposure.analog_gain;
-        next_status->digital_gain = exposure.digital_gain;
-        next_status->isp_digital_gain = exposure.isp_digital_gain;
-        next_status->mode = strategy_mode;
-        next_status->tier = IsoTierName(tier);
-        next_status->saturation = controls.saturation;
-        next_status->sharpness = controls.sharpness;
-        next_status->denoise_2d = controls.denoise_2d;
-        next_status->denoise_3d = controls.denoise_3d;
-        next_status->gamma = controls.gamma;
+    if (next_info != nullptr) {
+        *next_info = current_info;
+        next_info->enabled = true;
+        next_info->active = true;
+        next_info->exposure_valid = true;
+        next_info->iso = exposure.iso;
+        next_info->exposure_time_us = exposure.exposure_time_us;
+        next_info->analog_gain = exposure.analog_gain;
+        next_info->digital_gain = exposure.digital_gain;
+        next_info->isp_digital_gain = exposure.isp_digital_gain;
+        next_info->mode = strategy_mode;
+        next_info->tier = IsoTierName(tier);
+        next_info->saturation = controls.saturation;
+        next_info->sharpness = controls.sharpness;
+        next_info->denoise_2d = controls.denoise_2d;
+        next_info->denoise_3d = controls.denoise_3d;
+        next_info->gamma = controls.gamma;
     }
     return adjusted;
 }

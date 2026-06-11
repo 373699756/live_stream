@@ -98,7 +98,7 @@ bool IsFiniteConfidence(float value) {
     return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
 }
 
-const char *AiBackendName(AiBackend backend) {
+const char *AiBackendToString(AiBackend backend) {
     switch (backend) {
         case AiBackend::kHi3516Dv300Nnie:
             return "hisi3516dv300_nnie";

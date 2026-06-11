@@ -197,23 +197,23 @@ ConfigJson AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
     return root;
 }
 
-ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
+ConfigJson ImageInfoToJson(const ImageInfo &info) {
     ConfigJson root = ConfigJson::object();
-    root["enabled"] = status.enabled;
-    root["active"] = status.active;
-    root["exposure_valid"] = status.exposure_valid;
-    root["iso"] = status.iso;
-    root["exposure_time_us"] = status.exposure_time_us;
-    root["analog_gain"] = status.analog_gain;
-    root["digital_gain"] = status.digital_gain;
-    root["isp_digital_gain"] = status.isp_digital_gain;
-    root["mode"] = status.mode;
-    root["tier"] = status.tier;
-    root["saturation"] = status.saturation;
-    root["sharpness"] = status.sharpness;
-    root["denoise_2d"] = status.denoise_2d;
-    root["denoise_3d"] = status.denoise_3d;
-    root["gamma"] = status.gamma;
+    root["enabled"] = info.enabled;
+    root["active"] = info.active;
+    root["exposure_valid"] = info.exposure_valid;
+    root["iso"] = info.iso;
+    root["exposure_time_us"] = info.exposure_time_us;
+    root["analog_gain"] = info.analog_gain;
+    root["digital_gain"] = info.digital_gain;
+    root["isp_digital_gain"] = info.isp_digital_gain;
+    root["mode"] = info.mode;
+    root["tier"] = info.tier;
+    root["saturation"] = info.saturation;
+    root["sharpness"] = info.sharpness;
+    root["denoise_2d"] = info.denoise_2d;
+    root["denoise_3d"] = info.denoise_3d;
+    root["gamma"] = info.gamma;
     return root;
 }
 
@@ -223,8 +223,7 @@ class AiHttpHandler : public IHttpHandler {
 public:
     AiHttpHandler(HttpAccess *access, IConfig *config,
                   IAiView *ai, DeviceMedia *device)
-        : access_(access), config_(config),
-          ai_(ai), device_(device) {}
+        : access_(access), config_(config), ai_(ai), device_(device) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -275,8 +274,8 @@ private:
             return StatusResponse(501, "Not Implemented");
         }
         return JsonResponse(
-            200, ImageStrategyStatusToJson(
-                     device_->GetImageStrategyStatus()));
+            200, ImageInfoToJson(
+                     device_->GetImageInfo()));
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
@@ -358,8 +357,8 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeAiHandler(HttpAccess *access,
-                                         IConfig *config, IAiView *ai,
-                                         DeviceMedia *device) {
+                                            IConfig *config, IAiView *ai,
+                                            DeviceMedia *device) {
     return std::unique_ptr<IHttpHandler>(
         new AiHttpHandler(access, config, ai, device));
 }

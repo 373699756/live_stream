@@ -25,8 +25,8 @@ constexpr const char *kModuleName = "net";
 }  // namespace
 
 UdpSocket::UdpSocket(NetEngineImpl *engine, UdpSocketId id,
-                         const UdpBindOptions &options,
-                         const UdpCallbacks &callbacks)
+                     const UdpBindOptions &options,
+                     const UdpCallbacks &callbacks)
     : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
 
 UdpSocket::~UdpSocket() { Stop(); }
@@ -39,18 +39,18 @@ bool UdpSocket::Start(const std::shared_ptr<EventLoop> &loop) {
     sockaddr_in addr = ToSockAddr(options_.address);
     if (addr.sin_family != AF_INET) {
         Error(kModuleName, "UDP bind invalid address ip=%s port=%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port));
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port));
         return false;
     }
     UniqueFd fd(CreateSocket(AF_INET, SOCK_DGRAM, 0));
     if (!fd.valid()) {
         const int error = errno;
         Error(kModuleName,
-                        "UDP socket failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "UDP socket failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     if (options_.recv_buffer_bytes > 0) {
@@ -64,28 +64,28 @@ bool UdpSocket::Start(const std::shared_ptr<EventLoop> &loop) {
     if (!SetNonBlocking(fd.get())) {
         const int error = errno;
         Error(kModuleName,
-                        "UDP nonblock failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "UDP nonblock failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
         0) {
         const int error = errno;
         Error(kModuleName,
-                        "UDP bind failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "UDP bind failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     NetAddress local = GetSocketAddress(fd.get(), false);
     if (local.port == 0) {
         Error(kModuleName,
-                        "UDP local address unavailable ip=%s port=%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port));
+              "UDP local address unavailable ip=%s port=%u",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port));
         return false;
     }
     loop_ = loop;
@@ -94,25 +94,25 @@ bool UdpSocket::Start(const std::shared_ptr<EventLoop> &loop) {
     running_ = true;
     std::weak_ptr<UdpSocket> weak_self = shared_from_this();
     if (!loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
-        auto self = weak_self.lock();
-        if (self && (events & EPOLLIN) != 0) {
-            self->HandleRead();
-        }
-    })) {
+            auto self = weak_self.lock();
+            if (self && (events & EPOLLIN) != 0) {
+                self->HandleRead();
+            }
+        })) {
         Error(kModuleName,
-                        "UDP epoll add failed ip=%s port=%u local=%s:%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port),
-                        local.ip.c_str(), static_cast<unsigned>(local.port));
+              "UDP epoll add failed ip=%s port=%u local=%s:%u",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port),
+              local.ip.c_str(), static_cast<unsigned>(local.port));
         running_ = false;
         fd_.Reset();
         loop_.reset();
         return false;
     }
     Info(kModuleName, "UDP bound ip=%s port=%u local=%s:%u",
-                   options_.address.ip.c_str(),
-                   static_cast<unsigned>(options_.address.port),
-                   local.ip.c_str(), static_cast<unsigned>(local.port));
+         options_.address.ip.c_str(),
+         static_cast<unsigned>(options_.address.port),
+         local.ip.c_str(), static_cast<unsigned>(local.port));
     return true;
 }
 
@@ -144,7 +144,7 @@ bool UdpSocket::SendTo(NetAddress address, const uint8_t *data, size_t size) {
 }
 
 bool UdpSocket::SendToSlices(NetAddress address,
-                               const NetBufferSlices &slices) {
+                             const NetBufferSlices &slices) {
     if (slices.count > kMaxNetBufferSlices) {
         return false;
     }
@@ -207,7 +207,7 @@ bool UdpSocket::SendPreparedDatagram(
 }
 
 bool UdpSocket::SendToSlicesInLoop(NetAddress address,
-                                     const NetBufferSlices &slices) {
+                                   const NetBufferSlices &slices) {
     sockaddr_in addr = ToSockAddr(address);
     if (addr.sin_family != AF_INET) {
         return false;

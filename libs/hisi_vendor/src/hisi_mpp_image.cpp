@@ -456,7 +456,7 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
             attr.bEnable = HI_TRUE;
         } else {
             Error("hisi_vendor", "unsupported backlight mode %s",
-                            mode.c_str());
+                  mode.c_str());
             return false;
         }
     }

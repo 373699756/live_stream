@@ -25,10 +25,10 @@ constexpr uint8_t kTsStreamTypeH264 = 0x1b;
 constexpr uint8_t kTsStreamTypeH265 = 0x24;
 constexpr size_t kMaxTsMediaSlices = 192;
 
-using byte_writer::AppendU8;
 using byte_writer::AppendU16;
 using byte_writer::AppendU24;
 using byte_writer::AppendU32;
+using byte_writer::AppendU8;
 
 uint8_t TsStreamType(Codec codec) {
     return codec == Codec::kH265 ? kTsStreamTypeH265 : kTsStreamTypeH264;

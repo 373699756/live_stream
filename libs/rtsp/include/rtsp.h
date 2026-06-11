@@ -27,13 +27,13 @@ struct RtspListenAddress {
     uint16_t port = 0;
 };
 
-inline const char *RtspStreamPath(StreamId stream_id) {
+inline const char* RtspStreamPath(StreamId stream_id) {
     return stream_id == StreamId::kSub ? "/live/sub" : "/live/main";
 }
 
-inline std::string BuildRtspStreamUrl(const RtspListenAddress &address,
+inline std::string BuildRtspStreamUrl(const RtspListenAddress& address,
                                       StreamId stream_id,
-                                      const std::string &advertise_host) {
+                                      const std::string& advertise_host) {
     const std::string host =
         advertise_host.empty() ? address.ip : advertise_host;
     if (host.empty() || address.port == 0) {
@@ -72,19 +72,19 @@ struct RtspSessionStats {
     uint64_t dropped_frames = 0;
 };
 
-struct RtspSessionDiagnostics {
+struct RtspSessionInfo {
     uint64_t session_id = 0;
     StreamId stream_id = StreamId::kMain;
     RtspTransportMode transport = RtspTransportMode::kTcpInterleaved;
     std::string remote_address;
     std::string local_address;
-    uint64_t reader_id = 0;
-    bool reader_attached = false;
-    uint64_t reader_generation = 0;
-    uint32_t reader_pending_frames = 0;
-    bool reader_waiting_keyframe = false;
-    bool reader_slow = false;
-    std::string reader_close_reason;
+    uint64_t subscription_id = 0;
+    bool subscription_open = false;
+    uint64_t subscription_generation = 0;
+    uint32_t subscription_pending_frames = 0;
+    bool subscription_waiting_keyframe = false;
+    bool subscription_slow = false;
+    std::string subscription_close_reason;
     uint32_t pending_bytes = 0;
     uint64_t rtp_packets = 0;
     uint64_t rtp_bytes = 0;
@@ -124,8 +124,8 @@ public:
     virtual bool ApplyOptions(const RtspOptions& options) = 0;
     virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspStats GetStats() const = 0;
-    virtual std::vector<RtspSessionDiagnostics>
-    GetSessionDiagnostics() const = 0;
+    virtual std::vector<RtspSessionInfo>
+    ListSessionInfo() const = 0;
 };
 
 std::unique_ptr<IRtsp> CreateRtsp(

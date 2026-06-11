@@ -20,7 +20,7 @@ interface WebrtcPreviewConfig {
 
 interface WebrtcPreviewFallback {
     autoModeSelected: boolean;
-    flvPlaybackReady: boolean;
+    flvPreviewReady: boolean;
     isSessionConnected: () => boolean;
     onAutoModeFallback: () => void;
     restartPreview: (message: string) => void;
@@ -74,7 +74,7 @@ export function startWebrtcPreview({
     const fallbackFromWebrtcFailure = (message: string) => {
         controls.setConnected(false);
         peerState.closeSession();
-        if (fallback.autoModeSelected && fallback.flvPlaybackReady) {
+        if (fallback.autoModeSelected && fallback.flvPreviewReady) {
             fallback.onAutoModeFallback();
             fallback.restartPreview(`${message}，切换 HTTP-FLV`);
             fallback.setMode('flv');
@@ -109,7 +109,10 @@ export function startWebrtcPreview({
 
             // peer 创建成功后才开始计算 WebRTC 启动超时，避免把旧 peer 关闭耗时误判为拉流失败。
             const startupTimer = window.setTimeout(() => {
-                if (!controls.isCurrentSession() || fallback.isSessionConnected()) {
+                if (
+                    !controls.isCurrentSession() ||
+                    fallback.isSessionConnected()
+                ) {
                     return;
                 }
                 peerState.setStartupTimer(0);
@@ -143,12 +146,17 @@ export function startWebrtcPreview({
                     void sendWebrtcCandidate(
                         peer.peer_id,
                         event.candidate.toJSON(),
-                        { signal: controls.sessionSignal },
+                        {
+                            signal: controls.sessionSignal,
+                        },
                     );
                 }
             };
             pc.onconnectionstatechange = () => {
-                if (!controls.isCurrentSession() || peerState.peerRef.current !== pc) {
+                if (
+                    !controls.isCurrentSession() ||
+                    peerState.peerRef.current !== pc
+                ) {
                     return;
                 }
                 if (pc.connectionState === 'connected') {
@@ -168,7 +176,10 @@ export function startWebrtcPreview({
                 }
             };
             pc.oniceconnectionstatechange = () => {
-                if (!controls.isCurrentSession() || peerState.peerRef.current !== pc) {
+                if (
+                    !controls.isCurrentSession() ||
+                    peerState.peerRef.current !== pc
+                ) {
                     return;
                 }
                 if (
@@ -182,18 +193,28 @@ export function startWebrtcPreview({
 
             controls.setPreviewState('等待 WebRTC 视频流');
             const offer = await pc.createOffer();
-            if (!controls.isCurrentSession() || peerState.peerRef.current !== pc) {
+            if (
+                !controls.isCurrentSession() ||
+                peerState.peerRef.current !== pc
+            ) {
                 void closeWebrtcPeer(peer.peer_id);
                 return;
             }
             await pc.setLocalDescription(offer);
-            if (!controls.isCurrentSession() || peerState.peerRef.current !== pc) {
+            if (
+                !controls.isCurrentSession() ||
+                peerState.peerRef.current !== pc
+            ) {
                 void closeWebrtcPeer(peer.peer_id);
                 return;
             }
-            const answer = await sendWebrtcOffer(peer.peer_id, offer.sdp || '', {
-                signal: controls.sessionSignal,
-            });
+            const answer = await sendWebrtcOffer(
+                peer.peer_id,
+                offer.sdp || '',
+                {
+                    signal: controls.sessionSignal,
+                },
+            );
             if (
                 !answer.sdp ||
                 !controls.isCurrentSession() ||
@@ -206,7 +227,10 @@ export function startWebrtcPreview({
                 return;
             }
             await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
-            if (!controls.isCurrentSession() || peerState.peerRef.current !== pc) {
+            if (
+                !controls.isCurrentSession() ||
+                peerState.peerRef.current !== pc
+            ) {
                 void closeWebrtcPeer(peer.peer_id);
             }
         } catch (error: unknown) {

@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -60,7 +60,7 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
   `send_buffer_limit_bytes`、`send_stall_timeout_ms`、`write_timeout_ms`
   触发关闭。队列项数达到上限关闭原因为 `queue_full`，pending bytes 超过
   `send_buffer_limit_bytes` 关闭原因为 `pending_limit`。
-- `TcpCloseReason`：`on_close` 必须携带关闭原因；协议模块用它释放 media reader、
+- `TcpCloseReason`：`on_close` 必须携带关闭原因；协议模块用它释放 media subscription/client、
   记录慢客户端和区分 peer/local/timeout/error。协议模块需要主动标记解析失败或
   鉴权失败时，可以调用 `Close(connection_id, reason)`；普通本地关闭继续调用
   `Close(connection_id)`。
@@ -76,9 +76,9 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
 `TcpCloseReason` 枚举值冻结为：`normal`、`remote_close`、`parse_error`、
 `auth_failed`、`queue_full`、`pending_limit`、`send_stall`、`read_timeout`、
 `write_timeout`、`internal_error`。协议模块可以把这些原因映射为自己的业务
-diagnostics，但不能新增一套不可比较的 socket close reason。
+info，但不能新增一套不可比较的 socket close reason。
 
-`NetConnectionDiagnostics` 字段冻结为：
+`NetConnectionInfo` 字段冻结为：
 
 | 字段 | 语义 |
 | --- | --- |
@@ -91,8 +91,8 @@ diagnostics，但不能新增一套不可比较的 socket close reason。
 | `close_reason` | 关闭后保留的 `TcpCloseReason` 文本 |
 | `open` | 连接是否仍在 `net` 活跃连接表中 |
 
-`GetConnectionDiagnostics(connection_id)` 返回单连接诊断；连接关闭后 `net` 会保留最近
-128 条关闭诊断，`GetConnectionDiagnosticsSnapshot()` 同时返回当前活跃连接和最近关闭
+`GetConnectionInfo(connection_id)` 返回单连接诊断；连接关闭后 `net` 会保留最近
+128 条关闭诊断，`ListConnectionInfo()` 同时返回当前活跃连接和最近关闭
 连接，供 `/api/media/sessions` 聚合。字段语义仍归 `net`。
 
 ## 状态与资源模型
@@ -117,7 +117,7 @@ slice offset 并释放已完成队列项。`net` 仍不解析媒体语义，也�
 在 owner loop 上直接 `sendmsg()`，跨线程调用时先复制为单个 datagram 再投递。
 
 HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送队列。长连接
-只能通过 `INetEngine` 的 pending bytes、connection diagnostics 和 close callback
+只能通过 `INetEngine` 的 pending bytes、connection info 和 close callback
 观察 backpressure。
 协议模块可以保留业务层 parser/session 状态，但不能绕过 `net` 管 socket 写队列。
 

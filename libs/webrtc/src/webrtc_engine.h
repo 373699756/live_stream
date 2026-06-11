@@ -23,7 +23,7 @@ struct WebrtcEngineCallbacks {
     void (*OnPeerStateChanged)(void *user, const char *peer_id,
                                WebrtcPeerState state,
                                const char *last_error) = nullptr;
-    void (*OnPeerKeyFrameRequested)(void *user, const char *peer_id) = nullptr;
+    void (*OnPeerKeyframeRequest)(void *user, const char *peer_id) = nullptr;
 };
 
 struct WebrtcRtpSendParameters {
@@ -58,8 +58,8 @@ public:
     virtual bool GetRtpSendParameters(
         const std::string &peer_id,
         WebrtcRtpSendParameters *parameters) const = 0;
-    virtual bool FillPeerDiagnostics(const std::string &peer_id,
-                                     WebrtcPeerInfo *peer) const = 0;
+    virtual bool FillPeerInfo(const std::string &peer_id,
+                              WebrtcPeerInfo *peer) const = 0;
     virtual void FillStats(WebrtcStats *stats) const = 0;
 };
 

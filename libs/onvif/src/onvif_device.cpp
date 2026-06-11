@@ -74,7 +74,7 @@ std::string BuildSetSystemDateAndTimeBody(ITime *time,
     live_stream::RequestContext context;
     context.user_name = "onvif";
     if (!time->SetSystemTime(context, unix_time_ms,
-                                     TimeSyncSource::kOnvif)) {
+                             TimeSyncSource::kOnvif)) {
         if (status != nullptr) {
             *status = 500;
         }

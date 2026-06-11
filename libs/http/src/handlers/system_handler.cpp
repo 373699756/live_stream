@@ -60,8 +60,7 @@ public:
     SystemHttpHandler(HttpAccess *access,
                       ISystem *system,
                       const SystemStatusSources &status_sources)
-        : access_(access), system_(system),
-          status_sources_(status_sources) {}
+        : access_(access), system_(system), status_sources_(status_sources) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -140,39 +139,39 @@ private:
             modules.push_back(module);
         };
         add_module("logger",
-                    status_sources_.logger != nullptr &&
-                        status_sources_.logger->IsStarted());
+                   status_sources_.logger != nullptr &&
+                       status_sources_.logger->IsStarted());
         add_module("config",
-                    status_sources_.config != nullptr &&
-                        status_sources_.config->IsStarted());
+                   status_sources_.config != nullptr &&
+                       status_sources_.config->IsStarted());
         add_module("auth",
-                    status_sources_.auth != nullptr &&
-                        status_sources_.auth->IsStarted());
+                   status_sources_.auth != nullptr &&
+                       status_sources_.auth->IsStarted());
         add_module("system",
-                    system_ != nullptr &&
-                        system_->IsStarted());
+                   system_ != nullptr &&
+                       system_->IsStarted());
         add_module("time",
-                    status_sources_.time != nullptr &&
-                        status_sources_.time->IsStarted());
+                   status_sources_.time != nullptr &&
+                       status_sources_.time->IsStarted());
         add_module("network_config",
-                    status_sources_.network_config != nullptr &&
-                        status_sources_.network_config->IsStarted());
+                   status_sources_.network_config != nullptr &&
+                       status_sources_.network_config->IsStarted());
         add_module("alarm",
-                    status_sources_.alarm != nullptr &&
-                        status_sources_.alarm->IsStarted());
+                   status_sources_.alarm != nullptr &&
+                       status_sources_.alarm->IsStarted());
         add_module("upgrade",
-                    status_sources_.upgrade != nullptr &&
-                        status_sources_.upgrade->IsStarted());
+                   status_sources_.upgrade != nullptr &&
+                       status_sources_.upgrade->IsStarted());
         add_module("rtsp",
-                    status_sources_.rtsp != nullptr &&
-                        status_sources_.rtsp->LocalAddress().port != 0);
+                   status_sources_.rtsp != nullptr &&
+                       status_sources_.rtsp->LocalAddress().port != 0);
         add_module("onvif",
-                    status_sources_.onvif != nullptr &&
-                        status_sources_.onvif->IsStarted());
+                   status_sources_.onvif != nullptr &&
+                       status_sources_.onvif->IsStarted());
         add_module("http", true);
         add_module("device",
-                    status_sources_.device != nullptr &&
-                        status_sources_.device->IsStarted());
+                   status_sources_.device != nullptr &&
+                       status_sources_.device->IsStarted());
         if (IsAiConfigEnabled(status_sources_.config)) {
             add_module("ai", IsAiHealthy(status_sources_.ai));
         }
@@ -181,8 +180,8 @@ private:
             snapshot_info = status_sources_.device->GetSnapshotInfo();
         }
         add_module("snapshot",
-                    status_sources_.device != nullptr &&
-                        snapshot_info.enabled);
+                   status_sources_.device != nullptr &&
+                       snapshot_info.enabled);
         bool webrtc_running = false;
         if (status_sources_.webrtc != nullptr) {
             const WebrtcStats stats =
@@ -193,7 +192,7 @@ private:
         bool media_running = false;
         if (status_sources_.media_streams != nullptr) {
             media_running =
-                status_sources_.media_streams->GetStreamCounters().enabled;
+                status_sources_.media_streams->GetStreamStats().enabled;
         }
         add_module("media", media_running);
         root["modules"] = modules;
@@ -206,7 +205,7 @@ private:
         }
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
-                                         "system", &principal)) {
+                                        "system", &principal)) {
             return ForbiddenResponse(principal);
         }
         return JsonResponse(
@@ -220,7 +219,7 @@ private:
         }
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kReboot,
-                                         "system", &principal)) {
+                                        "system", &principal)) {
             return ForbiddenResponse(principal);
         }
         const SystemCapabilities capabilities =
@@ -240,8 +239,8 @@ private:
         }
         AuthPrincipal principal;
         if (!access_->RequirePermission(request,
-                                         AuthPermission::kFactoryReset,
-                                         "system", &principal)) {
+                                        AuthPermission::kFactoryReset,
+                                        "system", &principal)) {
             return ForbiddenResponse(principal);
         }
         const SystemCapabilities capabilities =

@@ -120,9 +120,9 @@ int main() {
     if (!service->Start() || !service->IsStarted()) {
         return 6;
     }
-    if (!service->RequestKeyFrame(
+    if (!service->RequestKeyframe(
             live_stream::StreamId::kMain,
-            live_stream::KeyFrameRequestType::kNewSubscriber)) {
+            live_stream::KeyframeRequestSource::kNewClient)) {
         return 7;
     }
     service->Stop();

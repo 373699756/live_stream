@@ -1,127 +1,127 @@
 :root {
-  font-family: Arial, "Microsoft YaHei", sans-serif;
-  color: #1f2937;
-  background: #eef1f5;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  --brand: #1f6feb;
-  --brand-dark: #174b91;
-  --topbar: #162334;
-  --sidebar: #f7f9fc;
-  --border: #d7dde7;
-  --panel: #ffffff;
-  --muted: #64748b;
-  --success: #1f9d55;
-  --warning: #b7791f;
-  --danger: #d14343;
+    font-family: Arial, 'Microsoft YaHei', sans-serif;
+    color: #1f2937;
+    background: #eef1f5;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    --brand: #1f6feb;
+    --brand-dark: #174b91;
+    --topbar: #162334;
+    --sidebar: #f7f9fc;
+    --border: #d7dde7;
+    --panel: #ffffff;
+    --muted: #64748b;
+    --success: #1f9d55;
+    --warning: #b7791f;
+    --danger: #d14343;
 }
 
 * {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
-  margin: 0;
+    min-height: 100%;
+    margin: 0;
 }
 
 body {
-  overflow: auto;
+    overflow: auto;
 }
 
 button,
 input,
 select {
-  font: inherit;
+    font: inherit;
 }
 
 button {
-  cursor: pointer;
+    cursor: pointer;
 }
 
 code {
-  font-family: "Consolas", "SFMono-Regular", monospace;
+    font-family: 'Consolas', 'SFMono-Regular', monospace;
 }
 
 .primary {
-  color: #fff;
-  background: var(--brand);
-  border: 1px solid var(--brand);
+    color: #fff;
+    background: var(--brand);
+    border: 1px solid var(--brand);
 }
 
 .primary:hover {
-  background: var(--brand-dark);
+    background: var(--brand-dark);
 }
 
 .wide {
-  width: 100%;
+    width: 100%;
 }
 
 .button-like,
 button {
-  min-height: 32px;
-  padding: 6px 14px;
-  border: 1px solid #bfc8d6;
-  border-radius: 4px;
-  color: #1f2937;
-  background: #fff;
-  text-decoration: none;
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 1px solid #bfc8d6;
+    border-radius: 4px;
+    color: #1f2937;
+    background: #fff;
+    text-decoration: none;
 }
 
 .button-like:hover,
 button:hover {
-  border-color: var(--brand);
+    border-color: var(--brand);
 }
 
 .divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 12px;
-  background: rgba(255, 255, 255, 0.28);
+    width: 1px;
+    height: 18px;
+    margin: 0 12px;
+    background: rgba(255, 255, 255, 0.28);
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
 }
 
 .status-dot.online {
-  background: var(--success);
+    background: var(--success);
 }
 
 .status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 3px;
-  font-size: 12px;
-  border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    border: 1px solid transparent;
 }
 
 .status-badge.running,
 .status-badge.online {
-  color: #0f6b3a;
-  background: #e9f8ef;
-  border-color: #b8e4ca;
+    color: #0f6b3a;
+    background: #e9f8ef;
+    border-color: #b8e4ca;
 }
 
 .status-badge.pending {
-  color: #875a12;
-  background: #fff7df;
-  border-color: #ead89a;
+    color: #875a12;
+    background: #fff7df;
+    border-color: #ead89a;
 }
 
 .status-badge.error,
 .status-badge.offline {
-  color: #9b1c1c;
-  background: #fdeaea;
-  border-color: #f1b6b6;
+    color: #9b1c1c;
+    background: #fdeaea;
+    border-color: #f1b6b6;
 }

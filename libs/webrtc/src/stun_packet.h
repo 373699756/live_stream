@@ -13,22 +13,22 @@ namespace live_stream {
 namespace webrtc_internal {
 
 enum class StunParseResult {
-  kOk = 0,
-  kNotStun,
-  kUnsupported,
-  kMalformed,
-  kBadUsername,
-  kBadMessageIntegrity,
-  kBadFingerprint,
+    kOk = 0,
+    kNotStun,
+    kUnsupported,
+    kMalformed,
+    kBadUsername,
+    kBadMessageIntegrity,
+    kBadFingerprint,
 };
 
 struct StunBindingRequest {
-  std::array<uint8_t, 12> transaction_id{};
-  std::string username;
-  uint32_t priority = 0;
-  bool has_message_integrity = false;
-  bool has_fingerprint = false;
-  bool use_candidate = false;
+    std::array<uint8_t, 12> transaction_id{};
+    std::string username;
+    uint32_t priority = 0;
+    bool has_message_integrity = false;
+    bool has_fingerprint = false;
+    bool use_candidate = false;
 };
 
 bool IsStunPacket(const uint8_t *data, size_t size);

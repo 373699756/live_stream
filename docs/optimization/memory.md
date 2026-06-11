@@ -38,7 +38,7 @@ client/subscription 计数分开维护。下游协议不能直接订阅 HiSilico
 4. `media` 归一化时间戳，解析 H.264/H.265 AnnexB NAL 视图，写入 GOP cache、
    FrameSubscription live queue、FLV cache、HLS segment 和 MJPEG latest frame。
 5. `media` 统一维护 corrected DTS/PTS、参数集、GOP、frame subscription、
-   HLS playlist/segment、FLV sequence header 和 runtime ready 状态。codec 切换、
+   HLS playlist/segment、FLV sequence header 和 ready 状态。codec 切换、
    stream stop、时间戳回退或大跳变都会重建这些缓存。
 6. `http_media`、`rtsp`、`webrtc` 只消费 `media` 暴露的 FrameSubscription、
    FLV tag view 或 HLS segment ref，并把带 owner 的 slice 交给 `http/net` 发送。
@@ -116,7 +116,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 ### WebRTC / RTP / SRTP
 
 - WebRTC 复用 RTP packetizer，但 payload type、SSRC、clock rate 来自 SDP/peer 运行态。
-- peer 未见关键帧时丢弃非关键帧，reader 溢出后也等待下一个关键帧恢复。
+- peer 未见关键帧时丢弃非关键帧，subscription 溢出后也等待下一个关键帧恢复。
 - RTP packet view 进入 `SrtpSession::ProtectRtp()` 后，会复制成连续 buffer，libsrtp
   原地加密并追加认证尾部，再通过 ICE selected pair 的 UDP socket 发送。
 - WebRTC 的额外拷贝是加密所需，不会长期保存原始 `EncodedFrame` 指针。

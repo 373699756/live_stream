@@ -22,8 +22,8 @@ class IHisiSdk;
 struct DeviceMediaOptions {
     MediaPipelineConfig default_config;
     int32_t snapshot_venc_channel = 3;
-    IConfig* config = nullptr;
-    hisisdk::IHisiSdk* sdk = nullptr;
+    IConfig *config = nullptr;
+    hisisdk::IHisiSdk *sdk = nullptr;
 };
 
 struct SnapshotConfig {
@@ -157,7 +157,7 @@ struct RegionSize {
 };
 
 struct RegionBitmap {
-    const uint8_t* data = nullptr;
+    const uint8_t *data = nullptr;
     uint32_t size = 0;
     uint32_t stride = 0;
     RegionSize dimensions;
@@ -187,7 +187,7 @@ struct OverlayInfo {
     uint32_t region_count = 0;
 };
 
-struct ImageStrategyStatus {
+struct ImageInfo {
     bool enabled = false;
     bool active = false;
     bool exposure_valid = false;
@@ -216,11 +216,11 @@ public:
     virtual bool IsStreamStarted(StreamId stream_id) const = 0;
     virtual Codec GetStreamCodec(StreamId stream_id) const = 0;
     virtual bool SetFrameSink(FrameSink *sink) = 0;
-    virtual bool RequestKeyFrame(StreamId stream_id,
-                                 KeyFrameRequestType reason) = 0;
+    virtual bool RequestKeyframe(StreamId stream_id,
+                                 KeyframeRequestSource source) = 0;
     virtual MediaCapabilities GetCapabilities() const = 0;
     virtual MediaChannels GetChannels() const = 0;
-    virtual ImageStrategyStatus GetImageStrategyStatus() const = 0;
+    virtual ImageInfo GetImageInfo() const = 0;
     virtual SnapshotFrame CaptureSnapshot(
         const SnapshotRequest &request) = 0;
     virtual SnapshotInfo GetSnapshotInfo() const = 0;
@@ -229,9 +229,9 @@ public:
 
 std::unique_ptr<DeviceMedia> CreateDeviceMedia();
 std::unique_ptr<DeviceMedia> CreateDeviceMedia(
-    const MediaPipelineConfig& config);
+    const MediaPipelineConfig &config);
 std::unique_ptr<DeviceMedia> CreateDeviceMedia(
-    const DeviceMediaOptions& options);
+    const DeviceMediaOptions &options);
 
 }  // namespace live_stream
 

@@ -64,7 +64,7 @@ HardwarePipeline::HardwarePipeline(MediaPipelineConfig config)
     : HardwarePipeline(std::move(config), &hisisdk::DefaultSdk()) {}
 
 HardwarePipeline::HardwarePipeline(MediaPipelineConfig config,
-                                         hisisdk::IHisiSdk* sdk)
+                                   hisisdk::IHisiSdk* sdk)
     : sdk_(sdk != nullptr ? sdk : &hisisdk::DefaultSdk()),
       config_(std::move(config)) {}
 
@@ -74,7 +74,7 @@ void HardwarePipeline::SetConfig(const MediaPipelineConfig& config) {
 }
 
 void HardwarePipeline::SetFrameCallback(EncodedFrameCallback callback,
-                                           void* user) {
+                                        void* user) {
     frame_callback_ = callback;
     frame_callback_user_ = user;
 }

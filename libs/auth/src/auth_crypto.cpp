@@ -169,9 +169,7 @@ std::string Pbkdf2Sha256Credential(const std::string& password,
         return std::string();
     }
     return "pbkdf2-sha256:" + std::to_string(iterations) + ":" + salt_hex +
-           ":" + infra::BytesToHex(
-                     reinterpret_cast<const uint8_t*>(derived.data()),
-                     derived.size());
+           ":" + infra::BytesToHex(reinterpret_cast<const uint8_t*>(derived.data()), derived.size());
 }
 
 bool ConstantTimeEquals(const std::string& left, const std::string& right) {

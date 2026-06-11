@@ -73,7 +73,7 @@ HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
     return response;
 }
 
-HttpResponse RequirePlaybackAuthResponse(
+HttpResponse RequireLiveStreamAuthResponse(
     HttpAccess *access, const HttpRequest &request,
     AuthPrincipal *principal) {
     HttpResponse response =

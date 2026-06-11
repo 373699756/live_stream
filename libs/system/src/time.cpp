@@ -73,7 +73,7 @@ bool LoadTimeConfig(const ConfigJson &value, TimeConfig *config) {
     if (!json_utils::ReadField(ntp, "enabled", &parsed.ntp.enabled) ||
         !json_utils::ReadStringArray(ntp, "servers", &parsed.ntp.servers) ||
         !json_utils::ReadField(ntp, "sync_interval_sec",
-                          &parsed.ntp.sync_interval_sec, 1, 0xffffffffU)) {
+                               &parsed.ntp.sync_interval_sec, 1, 0xffffffffU)) {
         return false;
     }
     NormalizeTimeConfig(&parsed);

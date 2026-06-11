@@ -50,7 +50,7 @@ struct PackagedFrameResult {
 };
 
 struct NormalizedFrameResult {
-    // timestamp_reset=true 时，上层需要同步重置 reader/GOP/HLS 等依赖时间连续性的缓存。
+    // timestamp_reset=true 时，上层需要同步重置 subscription/GOP/HLS 等依赖时间连续性的缓存。
     bool accepted = false;
     bool timestamp_reset = false;
 };
@@ -75,7 +75,7 @@ MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                   uint32_t hls_playlist_depth);
 MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
                                   uint64_t sequence);
-MediaFlvStartData BuildFlvStartData(const StreamContext &stream);
+MediaFlvStart BuildFlvStart(const StreamContext &stream);
 MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream);
 
 void ResetStream(StreamContext *stream, Codec codec,
@@ -83,7 +83,7 @@ void ResetStream(StreamContext *stream, Codec codec,
 void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason);
 NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
                                                EncodedFrame *frame);
-bool StoreMjpegFrame(StreamContext *stream, const EncodedFrame &frame);
+bool CacheMjpegFrame(StreamContext *stream, const EncodedFrame &frame);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         const EncodedFrame &frame,
                                         const ParsedFramePayload &payload,

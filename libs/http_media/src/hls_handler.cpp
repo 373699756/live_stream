@@ -27,11 +27,11 @@ const char *CodecName(Codec codec) {
     return "unknown";
 }
 
-bool RequestBrowserKeyFrame(MediaStreams *media_streams,
+bool RequestPreviewKeyframe(MediaStreams *media_streams,
                             StreamId stream_id) {
     return media_streams != nullptr &&
-           media_streams->RequestKeyFrame(stream_id,
-                                          KeyFrameRequestType::kNewSubscriber);
+           media_streams->RequestKeyframe(stream_id,
+                                          KeyframeRequestSource::kNewClient);
 }
 
 std::string SegmentQuerySuffix(const HttpRequest &request) {
@@ -126,26 +126,26 @@ HttpResponse HandlePlaylist(MediaStreams *media_streams,
                             const MediaStreamInfo &stream_info) {
     // playlist 请求是浏览器开始预览的信号，顺手请求关键帧可以缩短首个完整
     // HLS segment 生成时间；真正的 segment 数据仍由 MediaStreams 缓存提供。
-    bool keyframe_requested = RequestBrowserKeyFrame(media_streams, stream_id);
+    bool keyframe_requested = RequestPreviewKeyframe(media_streams, stream_id);
     MediaHlsPlaylist playlist = media_streams->GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
         Debug(kHttpMediaModuleName,
-                        "HLS warmup stream=%s object=%s codec=%s "
-                        "keyframe=%d segments=%u range=%llu-%llu "
-                        "missing=%llu evicted=%llu current_segment=%u",
-                        MediaStreamIdToJson(stream_id), object_name.c_str(),
-                        CodecName(stream_info.codec),
-                        keyframe_requested ? 1 : 0,
-                        stream_info.hls_segment_count,
-                        static_cast<unsigned long long>(
-                            stream_info.hls_first_segment_sequence),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_last_segment_sequence),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_missing_segment_count),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_evicted_segment_count),
-                        stream_info.hls_current_segment_size);
+              "HLS warmup stream=%s object=%s codec=%s "
+              "keyframe=%d segments=%u range=%llu-%llu "
+              "missing=%llu evicted=%llu current_segment=%u",
+              MediaStreamIdToJson(stream_id), object_name.c_str(),
+              CodecName(stream_info.codec),
+              keyframe_requested ? 1 : 0,
+              stream_info.hls_segment_count,
+              static_cast<unsigned long long>(
+                  stream_info.hls_first_segment_sequence),
+              static_cast<unsigned long long>(
+                  stream_info.hls_last_segment_sequence),
+              static_cast<unsigned long long>(
+                  stream_info.hls_missing_segment_count),
+              static_cast<unsigned long long>(
+                  stream_info.hls_evicted_segment_count),
+              stream_info.hls_current_segment_size);
         return BuildPlaylistResponse(playlist, request);
     }
     return BuildPlaylistResponse(playlist, request);
@@ -164,20 +164,20 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
     if (!segment.found || segment.body == nullptr ||
         segment.body->data == nullptr || segment.body->size == 0) {
         Error(kHttpMediaModuleName,
-                        "HLS reject stream=%s object=%s "
-                        "reason=segment_missing sequence=%llu range=%llu-%llu "
-                        "segments=%u missing=%llu evicted=%llu",
-                        MediaStreamIdToJson(stream_id), object_name.c_str(),
-                        static_cast<unsigned long long>(sequence),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_first_segment_sequence),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_last_segment_sequence),
-                        stream_info.hls_segment_count,
-                        static_cast<unsigned long long>(
-                            stream_info.hls_missing_segment_count),
-                        static_cast<unsigned long long>(
-                            stream_info.hls_evicted_segment_count));
+              "HLS reject stream=%s object=%s "
+              "reason=segment_missing sequence=%llu range=%llu-%llu "
+              "segments=%u missing=%llu evicted=%llu",
+              MediaStreamIdToJson(stream_id), object_name.c_str(),
+              static_cast<unsigned long long>(sequence),
+              static_cast<unsigned long long>(
+                  stream_info.hls_first_segment_sequence),
+              static_cast<unsigned long long>(
+                  stream_info.hls_last_segment_sequence),
+              stream_info.hls_segment_count,
+              static_cast<unsigned long long>(
+                  stream_info.hls_missing_segment_count),
+              static_cast<unsigned long long>(
+                  stream_info.hls_evicted_segment_count));
         MediaSegmentRefUnref(&segment);
         return HttpMediaTextResponse(404, "HLS segment not found");
     }
@@ -198,8 +198,7 @@ public:
     HlsHttpHandler(HttpAccess *access,
                    DeviceMedia *device,
                    MediaStreams *media_streams)
-        : access_(access), device_(device),
-          media_streams_(media_streams) {}
+        : access_(access), device_(device), media_streams_(media_streams) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -218,7 +217,7 @@ private:
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequirePlaybackAuthResponse(access_, request, &principal);
+            RequireLiveStreamAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
@@ -239,49 +238,49 @@ private:
             media_streams_->GetStreamInfo(stream_id);
         if (!stream_info.hls_supported) {
             Error(kHttpMediaModuleName,
-                            "HLS reject stream=%s object=%s reason=unsupported "
-                            "codec=%s running=%d hls_ready=%d segments=%u "
-                            "range=%llu-%llu missing=%llu evicted=%llu "
-                            "current_segment=%u",
-                            MediaStreamIdToJson(stream_id),
-                            object_name.c_str(),
-                            CodecName(stream_info.codec),
-                            stream_info.running ? 1 : 0,
-                            stream_info.hls_ready ? 1 : 0,
-                            stream_info.hls_segment_count,
-                            static_cast<unsigned long long>(
-                                stream_info.hls_first_segment_sequence),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_last_segment_sequence),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_missing_segment_count),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_evicted_segment_count),
-                            stream_info.hls_current_segment_size);
+                  "HLS reject stream=%s object=%s reason=unsupported "
+                  "codec=%s running=%d hls_ready=%d segments=%u "
+                  "range=%llu-%llu missing=%llu evicted=%llu "
+                  "current_segment=%u",
+                  MediaStreamIdToJson(stream_id),
+                  object_name.c_str(),
+                  CodecName(stream_info.codec),
+                  stream_info.running ? 1 : 0,
+                  stream_info.hls_ready ? 1 : 0,
+                  stream_info.hls_segment_count,
+                  static_cast<unsigned long long>(
+                      stream_info.hls_first_segment_sequence),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_last_segment_sequence),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_missing_segment_count),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_evicted_segment_count),
+                  stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(
                 409, "HLS requires H.264 or H.265 stream");
         }
         if (!stream_info.running) {
             Error(kHttpMediaModuleName,
-                            "HLS reject stream=%s object=%s reason=not_ready "
-                            "codec=%s running=%d hls_ready=%d "
-                            "segments=%u range=%llu-%llu missing=%llu "
-                            "evicted=%llu current_segment=%u",
-                            MediaStreamIdToJson(stream_id),
-                            object_name.c_str(),
-                            CodecName(stream_info.codec),
-                            stream_info.running ? 1 : 0,
-                            stream_info.hls_ready ? 1 : 0,
-                            stream_info.hls_segment_count,
-                            static_cast<unsigned long long>(
-                                stream_info.hls_first_segment_sequence),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_last_segment_sequence),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_missing_segment_count),
-                            static_cast<unsigned long long>(
-                                stream_info.hls_evicted_segment_count),
-                            stream_info.hls_current_segment_size);
+                  "HLS reject stream=%s object=%s reason=not_ready "
+                  "codec=%s running=%d hls_ready=%d "
+                  "segments=%u range=%llu-%llu missing=%llu "
+                  "evicted=%llu current_segment=%u",
+                  MediaStreamIdToJson(stream_id),
+                  object_name.c_str(),
+                  CodecName(stream_info.codec),
+                  stream_info.running ? 1 : 0,
+                  stream_info.hls_ready ? 1 : 0,
+                  stream_info.hls_segment_count,
+                  static_cast<unsigned long long>(
+                      stream_info.hls_first_segment_sequence),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_last_segment_sequence),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_missing_segment_count),
+                  static_cast<unsigned long long>(
+                      stream_info.hls_evicted_segment_count),
+                  stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(503, "HLS playlist not ready");
         }
 

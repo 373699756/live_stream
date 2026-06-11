@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -47,7 +47,7 @@ initialized 状态，不把 VB busy、stale resource 或二次清理失败伪装
 不得继续重建媒体管线。
 
 VENC 封装以 Hi3516 Encode 库为主要参考，保持 `StartVenc -> BindVpssVenc ->
-StartVencStream` 的上层调用契约，但模块内部按每路 VENC runtime 记录 channel、
+StartVencStream` 的上层调用契约，但模块内部按每路 VENC state 记录 channel、
 VPSS 绑定、接收状态和 codec。失败回滚和停止顺序必须遵循创建的反向路径：
 停止取流线程、停止接收、解绑 VPSS、销毁 VENC channel。
 VENC ROI 使用 `HI_MPI_VENC_SetRoiAttrEx`，创建 VENC channel 后应用所有 ROI slot；

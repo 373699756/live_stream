@@ -15,7 +15,7 @@ HTTP API、配置 scope、事件 payload、AI、升级、质量优化等内容�
 
 ## Naming Migration Baseline
 
-命名迁移以仓库根目录 `重构.md` 的“任务 1 命名迁移基线”为准。模块文档、public
+命名迁移以 `docs/refactor/README.md` 的命名规则为准。模块文档、public
 header、接口类、工厂函数、变量名和构建库名不得各自发明临时目标名。
 
 - 目录和静态库使用业务域名，不再默认使用 `_service` 后缀。
@@ -26,7 +26,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - 工厂函数统一为 `Create<Module>()`；变量和 dependency 字段使用目标模块名。
 - HTTP REST 路径、配置 JSON schema、Web DTO 可以按完全重构要求同步迁移。
 - 旧 `stream_hub_service`、`stream_codec`、`stream_mux`、`MetaRtc*`、`Yang*`、
-  `BackendName()` 和只转调旧接口的 wrapper 按 `重构.md` 的删除边界清理。
+  `BackendName()` 和只转调旧接口的 wrapper 按 `docs/refactor/README.md` 的删除边界清理。
 - ONVIF 规范里的 device/media service 概念可以保留 `Service`，这不是模块后缀。
 
 ## Module Documents

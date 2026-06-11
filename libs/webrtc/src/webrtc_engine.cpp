@@ -246,8 +246,7 @@ public:
             }
             WebrtcTransportDtlsResult result;
             if (!it->second->ProcessDtlsPacket(data, size, &result)) {
-                failure_error = result.error.empty() ? "dtls_failed" :
-                    result.error;
+                failure_error = result.error.empty() ? "dtls_failed" : result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 *outgoing_dtls = result.outgoing_dtls;
@@ -269,7 +268,7 @@ public:
     bool HandleSrtcpPacket(const std::string &peer_id, const uint8_t *data,
                            size_t size) override {
         WebrtcEngineCallbacks callbacks;
-        bool request_key_frame = false;
+        bool need_keyframe = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
@@ -277,14 +276,14 @@ public:
                 return false;
             }
             if (!it->second->HandleSrtcpPacket(data, size,
-                                               &request_key_frame)) {
+                                               &need_keyframe)) {
                 return false;
             }
             callbacks = callbacks_;
         }
-        if (request_key_frame &&
-            callbacks.OnPeerKeyFrameRequested != nullptr) {
-            callbacks.OnPeerKeyFrameRequested(callbacks.user, peer_id.c_str());
+        if (need_keyframe &&
+            callbacks.OnPeerKeyframeRequest != nullptr) {
+            callbacks.OnPeerKeyframeRequest(callbacks.user, peer_id.c_str());
         }
         return true;
     }
@@ -314,8 +313,8 @@ public:
         return it->second->GetRtpSendParameters(parameters);
     }
 
-    bool FillPeerDiagnostics(const std::string &peer_id,
-                             WebrtcPeerInfo *peer) const override {
+    bool FillPeerInfo(const std::string &peer_id,
+                      WebrtcPeerInfo *peer) const override {
         if (peer == nullptr) {
             return false;
         }
@@ -324,7 +323,7 @@ public:
         if (it == sessions_.end() || it->second == nullptr) {
             return false;
         }
-        it->second->FillPeerDiagnostics(peer);
+        it->second->FillPeerInfo(peer);
         return true;
     }
 
@@ -455,8 +454,8 @@ private:
             const bool sent = processed && session->SendDtlsResult(result);
             if (!processed || !sent) {
                 failure_error = result.error.empty()
-                    ? (processed ? "dtls_send_failed" : "dtls_failed")
-                    : result.error;
+                                    ? (processed ? "dtls_send_failed" : "dtls_failed")
+                                    : result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 connected_now = result.connected_now;
@@ -477,21 +476,21 @@ private:
                               size_t size) {
         WebrtcEngineCallbacks callbacks;
         std::string peer_id;
-        bool request_key_frame = false;
+        bool need_keyframe = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             WebrtcSession *session =
                 FindSessionBySocketLocked(socket_id, &peer_id);
             if (session == nullptr ||
                 !session->HandleSrtcpPacket(data, size,
-                                            &request_key_frame)) {
+                                            &need_keyframe)) {
                 return;
             }
             callbacks = callbacks_;
         }
-        if (request_key_frame &&
-            callbacks.OnPeerKeyFrameRequested != nullptr) {
-            callbacks.OnPeerKeyFrameRequested(callbacks.user, peer_id.c_str());
+        if (need_keyframe &&
+            callbacks.OnPeerKeyframeRequest != nullptr) {
+            callbacks.OnPeerKeyframeRequest(callbacks.user, peer_id.c_str());
         }
     }
 
@@ -512,8 +511,8 @@ private:
             const bool sent = handled && it->second->SendDtlsResult(result);
             if (!handled || !sent) {
                 failure_error = result.error.empty()
-                    ? (handled ? "dtls_send_failed" : "dtls_timeout")
-                    : result.error;
+                                    ? (handled ? "dtls_send_failed" : "dtls_timeout")
+                                    : result.error;
                 failed = FailSessionLocked(peer_id, &callbacks);
             } else {
                 connected_now = result.connected_now;

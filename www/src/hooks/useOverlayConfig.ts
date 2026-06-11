@@ -7,5 +7,9 @@ import { mockOverlayConfig } from '../api/mockOverlay';
 import { useConfigForm } from './useConfigForm';
 
 export function useOverlayConfig() {
-  return useConfigForm(getOverlayConfig, saveOverlayConfig, mockOverlayConfig);
+    return useConfigForm(
+        getOverlayConfig,
+        saveOverlayConfig,
+        mockOverlayConfig,
+    );
 }

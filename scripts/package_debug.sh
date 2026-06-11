@@ -43,9 +43,14 @@ copy_debug_inputs() {
   cp -rf "${repo_root}/www/dist/." "${debug_dir}/web/"
 }
 
+cleanup_lock() {
+  rmdir "${lock_dir}" 2>/dev/null || true
+}
+
 debug_dir=$(resolve_output_dir "${debug_dir}")
 mkdir -p "${debug_dir}"
 debug_dir=$(CDPATH= cd -- "${debug_dir}" && pwd -P)
+lock_dir="${debug_dir}.lock"
 
 case "${debug_dir}" in
   ""|"/")
@@ -54,6 +59,12 @@ case "${debug_dir}" in
     ;;
 esac
 reject_repo_root "${debug_dir}"
+
+while ! mkdir "${lock_dir}" 2>/dev/null; do
+  sleep 1
+done
+trap cleanup_lock EXIT
+trap 'cleanup_lock; exit 1' HUP INT TERM
 
 copy_debug_inputs
 

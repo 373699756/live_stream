@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_AUTH_SERVICE_SRC_AUTH_INTERNAL_H_
-#define LIVE_STREAM_AUTH_SERVICE_SRC_AUTH_INTERNAL_H_
+#ifndef LIVE_STREAM_AUTH_SRC_AUTH_INTERNAL_H_
+#define LIVE_STREAM_AUTH_SRC_AUTH_INTERNAL_H_
 
 #include "auth.h"
 
@@ -40,4 +40,4 @@ std::string MakeHexToken(uint64_t a, uint64_t b, uint64_t c, uint64_t d);
 }  // namespace auth_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_AUTH_SERVICE_SRC_AUTH_INTERNAL_H_
+#endif  // LIVE_STREAM_AUTH_SRC_AUTH_INTERNAL_H_

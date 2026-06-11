@@ -19,7 +19,7 @@ class NetEngineImpl;
 class UdpSocket : public std::enable_shared_from_this<UdpSocket> {
 public:
     UdpSocket(NetEngineImpl *engine, UdpSocketId id,
-                const UdpBindOptions &options, const UdpCallbacks &callbacks);
+              const UdpBindOptions &options, const UdpCallbacks &callbacks);
     ~UdpSocket();
 
     bool Start(const std::shared_ptr<EventLoop> &loop);

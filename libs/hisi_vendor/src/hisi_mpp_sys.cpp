@@ -85,8 +85,8 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     if (!ConfigureViVpssMode(config)) {
         Error("hisi_vendor", "ConfigureViVpssMode failed");
         if (!mpp_resource_recovery::ExitMppSystem(
-            true, mpp_resource_recovery::kMppExitRetryCount,
-            mpp_resource_recovery::MppExitBusyLog::kWarn)) {
+                true, mpp_resource_recovery::kMppExitRetryCount,
+                mpp_resource_recovery::MppExitBusyLog::kWarn)) {
             impl_->system_cleanup_failed_ = true;
         }
         return false;

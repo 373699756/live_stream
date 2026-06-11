@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -51,7 +51,7 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/media/capabilities` | `device` |
 | `/api/media/streams/{stream}` | `media` / `device` |
 | `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `device snapshot` |
-| `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` diagnostics |
+| `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` info |
 | `/api/status/image-strategy` | `device` |
 | `/api/webrtc/peers` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/offer` | `http_media` / `webrtc` |
@@ -101,22 +101,23 @@ Bearer` header 供非浏览器客户端使用。Web 不在 JavaScript 可读存�
 中携带 session token。
 
 `/api/media/sessions` 由 media handler 聚合 HTTP streaming、RTSP 和 WebRTC
-diagnostics。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
+info。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 `session_id`、`connection_id`、`client_id`、`stream`、`state`、`stream_state`、
 `client_ip`、`remote_address`、`local_address`、`pending_bytes`、
 `send_queue_length`、`last_write_at_ms` 和 `close_reason`；`stream_state=opening`
 表示 HTTP session 已经被流式请求接管但还没有绑定媒体 client id，`attached`
 表示已经绑定 FLV/MJPEG client，`closing` 表示 HTTP 层已经触发关闭但 TCP close
 回调尚未完成。`pending_bytes`、`send_queue_length` 和
-`last_write_at_ms` 来自 `net` connection diagnostics，用于定位慢客户端、发送队列
+`last_write_at_ms` 来自 `net` connection info，用于定位慢客户端、发送队列
 积压和媒体 attach 卡住的连接。HTTP-FLV/MJPEG 条目还会补充同一路 stream 的
 `media_running`、`media_track_ready`、`media_codec`、`media_codec_generation`、
 `media_http_flv_ready`、`media_mjpeg_ready`、`media_last_dts` 和
 `media_last_reset_reason`，用于在一个会话条目内同时定位连接背压和媒体源 ready
 状态。HLS playlist/segment 是短 HTTP 响应，不作为活跃 session 常驻展示。
-RTSP/WebRTC 会额外输出对应 `media` frame subscription 的 attached、pending frames、
-waiting keyframe、slow reader 和 close reason 字段，用于定位协议会话与 reader/ring
-分发之间的状态。
+RTSP/WebRTC 会额外输出对应 `media` frame subscription 的 `subscription_open`、
+`subscription_pending_frames`、`subscription_waiting_keyframe`、
+`subscription_slow` 和 `subscription_close_reason` 字段，用于定位协议会话与
+subscription/ring 分发之间的状态。
 
 `/api/system/time/status` 返回设备时间、时区、NTP 配置、`manual_sync_allowed`、
 `browser_sync_on_login`、最近同步来源和最近同步结果。`PUT /api/system/time/config`
@@ -143,8 +144,8 @@ HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、respo
 `body_slices` 用于 HLS segment 这类由 `media` 持有 payload 的一次性响应；
 它仍走普通 router 和 `SendResponse()`，不创建 HTTP streaming session。
 `HttpMediaWriter` 只暴露 begin stream、attach client、enqueue slices、close
-callback 和 streaming diagnostics。这样 `http_media` 不直接接触 socket 队列，却能
-通过 `IHttp::GetStreamingSessionDiagnostics()` 让 Web 看到 HTTP-FLV/MJPEG 的 opening
+callback 和 streaming info。这样 `http_media` 不直接接触 socket 队列，却能
+通过 `IHttp::ListStreamSessionInfo()` 让 Web 看到 HTTP-FLV/MJPEG 的 opening
 状态和发送积压。
 
 HTTP 自有资源只包括 listener、connection、request/response buffer、router、

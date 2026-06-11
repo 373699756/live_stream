@@ -17,26 +17,26 @@ struct PendingFlvClientWrite {
     bool starts_on_keyframe = false;
 };
 
-// 跟踪单个 media source 下的 HTTP-FLV live reader。外层服务负责加锁，
+// 跟踪单个 media source 下的 HTTP-FLV live client。外层服务负责加锁，
 // 本类所有方法都应在同一把 mutex 保护下调用。
 class FlvLiveRing {
 public:
-    MediaFlvClientId AttachReader(StreamId stream_id,
+    MediaFlvClientId AttachClient(StreamId stream_id,
                                   uint64_t config_generation,
                                   bool wait_for_keyframe,
                                   IMediaFlvSink *sink,
-                                  size_t max_readers);
-    bool DetachReader(MediaFlvClientId client_id);
+                                  size_t max_clients);
+    bool DetachClient(MediaFlvClientId client_id);
     void Clear();
-    size_t ReaderCount() const;
-    bool HasReader(StreamId stream_id) const;
+    size_t ClientCount() const;
+    bool HasClient(StreamId stream_id) const;
     std::vector<PendingFlvClientWrite> CollectWrites(
         StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
         bool has_sequence_header, bool keyframe);
     void ReleaseWrite(MediaFlvClientId client_id);
 
 private:
-    struct ReaderState {
+    struct ClientState {
         StreamId stream_id = StreamId::kMain;
         uint64_t config_generation = 0;
         bool wait_for_keyframe = false;
@@ -45,12 +45,12 @@ private:
         bool detached = false;
     };
 
-    static void ReleaseReaderSink(ReaderState *reader);
-    bool EraseDetachedReader(MediaFlvClientId client_id,
-                             ReaderState *reader);
+    static void ReleaseClientSink(ClientState *client);
+    bool EraseDetachedClient(MediaFlvClientId client_id,
+                             ClientState *client);
 
-    std::map<MediaFlvClientId, ReaderState> readers_;
-    MediaFlvClientId next_reader_id_ = 1;
+    std::map<MediaFlvClientId, ClientState> clients_;
+    MediaFlvClientId next_client_id_ = 1;
 };
 
 }  // namespace media_internal

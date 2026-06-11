@@ -313,7 +313,7 @@ bool ValidateMtdLayoutForManifest(const UpgradeManifest& manifest,
             }
             return false;
         }
-        mtd_info_user info {};
+        mtd_info_user info{};
         const bool ok =
             ValidateMtdDevice(command.partition_info, fd, &info, reason);
         close(fd);
@@ -392,11 +392,11 @@ bool WriteMtdImage(const UpgradeCommand& command,
         return false;
     }
 
-    mtd_info_user info {};
+    mtd_info_user info{};
     bool ok = ValidateMtdDevice(partition, fd, &info, reason);
     if (ok) {
         for (uint32_t offset = 0; offset < info.size; offset += info.erasesize) {
-            erase_info_user erase {};
+            erase_info_user erase{};
             erase.start = offset;
             erase.length = info.erasesize;
             if (ioctl(fd, MEMERASE, &erase) != 0) {

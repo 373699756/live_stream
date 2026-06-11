@@ -36,13 +36,13 @@ flowchart LR
 - HTTP-FLV 长连接输出。
 - MJPEG 输出。
 - WebRTC RESTful signaling 和可选 WHEP HTTP 入口的 DTO 转换和鉴权。
-- 媒体长连接的慢客户端断开、reader detach 和资源回落验收。
+- 媒体长连接的慢客户端断开、client detach 和资源回落验收。
 
 ## 依赖边界
 
 - 依赖 `http` 的路由、认证边界、`IHttpHandler` 和 `HttpMediaWriter`。
 - 依赖 `media` 的 HLS segment/playlist、HTTP-FLV start data/client、MJPEG client
-  和 reader/client count。
+  和 subscription/client count。
 - 间接依赖 `net` 的 session、send queue、buffer limit 和 close callback；socket 生命周期
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。

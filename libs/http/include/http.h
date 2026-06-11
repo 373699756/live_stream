@@ -125,7 +125,7 @@ struct HttpStats {
     uint32_t active_connections = 0;
 };
 
-struct HttpStreamingSessionDiagnostics {
+struct HttpStreamSessionInfo {
     uint64_t connection_id = 0;
     std::string protocol;
     std::string session_id;
@@ -163,8 +163,8 @@ public:
     virtual HttpResponse HandleRequest(const HttpRequest &request) = 0;
     virtual HttpListenAddress LocalAddress() const = 0;
     virtual HttpStats GetStats() const = 0;
-    virtual std::vector<HttpStreamingSessionDiagnostics>
-    GetStreamingSessionDiagnostics() const = 0;
+    virtual std::vector<HttpStreamSessionInfo>
+    ListStreamSessionInfo() const = 0;
 };
 
 std::unique_ptr<IHttp> CreateHttp(

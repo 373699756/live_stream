@@ -139,15 +139,15 @@ bool ParseUserConfig(const ConfigJson &value,
     }
     const ConfigJson &policy = value.at("password_policy");
     if (!json_utils::ReadField(policy, "min_length", &options.password_min_length, 0,
-                          std::numeric_limits<uint32_t>::max()) ||
+                               std::numeric_limits<uint32_t>::max()) ||
         !json_utils::ReadField(policy, "require_number",
-                          &options.password_require_number) ||
+                               &options.password_require_number) ||
         !json_utils::ReadField(policy, "require_symbol",
-                          &options.password_require_symbol) ||
+                               &options.password_require_symbol) ||
         !json_utils::ReadField(policy, "lockout_failures", &options.lockout_failures,
-                          0, std::numeric_limits<uint32_t>::max()) ||
+                               0, std::numeric_limits<uint32_t>::max()) ||
         !json_utils::ReadField(policy, "lockout_seconds", &options.lockout_seconds, 0,
-                          std::numeric_limits<uint32_t>::max())) {
+                               std::numeric_limits<uint32_t>::max())) {
         return false;
     }
     if (!value.contains("session") || !value.at("session").is_object()) {
@@ -155,11 +155,11 @@ bool ParseUserConfig(const ConfigJson &value,
     }
     const ConfigJson &session = value.at("session");
     if (!json_utils::ReadField(session, "token_ttl_seconds",
-                          &options.token_ttl_seconds, 1,
-                          std::numeric_limits<uint32_t>::max()) ||
+                               &options.token_ttl_seconds, 1,
+                               std::numeric_limits<uint32_t>::max()) ||
         !json_utils::ReadField(session, "max_sessions_per_user",
-                          &options.max_sessions_per_user, 1,
-                          std::numeric_limits<uint32_t>::max())) {
+                               &options.max_sessions_per_user, 1,
+                               std::numeric_limits<uint32_t>::max())) {
         return false;
     }
     if (!IsValidPolicy(options)) {
@@ -738,7 +738,7 @@ private:
     }
 
     AuthOptions options_;
-    IConfig* config_ = nullptr;
+    IConfig *config_ = nullptr;
     std::unique_ptr<IAuthUsers> auth_users_;
     std::unique_ptr<IPasswordVerifier> password_verifier_;
     IAuthTokenGenerator *token_generator_ = nullptr;
@@ -756,19 +756,19 @@ private:
 
 std::unique_ptr<IAuth>
 CreateAuth(const AuthOptions &options,
-                  std::unique_ptr<IAuthUsers> auth_users,
-                  std::unique_ptr<IPasswordVerifier> password_verifier) {
+           std::unique_ptr<IAuthUsers> auth_users,
+           std::unique_ptr<IPasswordVerifier> password_verifier) {
     return CreateAuth(options, AuthDependencies{},
-                             std::move(auth_users), std::move(password_verifier),
-                             nullptr);
+                      std::move(auth_users), std::move(password_verifier),
+                      nullptr);
 }
 
 std::unique_ptr<IAuth>
 CreateAuth(const AuthOptions &options,
-                  const AuthDependencies &dependencies,
-                  std::unique_ptr<IAuthUsers> auth_users,
-                  std::unique_ptr<IPasswordVerifier> password_verifier,
-                  IAuthTokenGenerator *token_generator) {
+           const AuthDependencies &dependencies,
+           std::unique_ptr<IAuthUsers> auth_users,
+           std::unique_ptr<IPasswordVerifier> password_verifier,
+           IAuthTokenGenerator *token_generator) {
     return std::unique_ptr<IAuth>(
         new AuthImpl(options, dependencies, std::move(auth_users),
                      std::move(password_verifier), token_generator));

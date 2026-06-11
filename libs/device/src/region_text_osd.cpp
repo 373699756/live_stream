@@ -28,8 +28,7 @@ bool SameChannel(const MppChannel &left, const MppChannel &right) {
 }
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
-    return alignment == 0 ? value : ((value + alignment - 1) / alignment) *
-                                      alignment;
+    return alignment == 0 ? value : ((value + alignment - 1) / alignment) * alignment;
 }
 
 uint16_t Argb1555(uint32_t rgb, bool opaque) {

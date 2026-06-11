@@ -155,7 +155,7 @@ struct NetStats {
     uint64_t slow_client_closes = 0;
 };
 
-struct NetConnectionDiagnostics {
+struct NetConnectionInfo {
     ConnectionId connection_id = 0;
     std::string owner_protocol;
     NetAddress remote_address;
@@ -239,14 +239,14 @@ public:
     virtual NetAddress UdpLocalAddress(UdpSocketId id) const = 0;
     virtual NetAddress UdpPeerAddress(UdpSocketId id) const = 0;
     virtual uint32_t PendingBytes(ConnectionId id) const = 0;
-    virtual NetConnectionDiagnostics GetConnectionDiagnostics(
+    virtual NetConnectionInfo GetConnectionInfo(
         ConnectionId id) const {
         (void)id;
-        return NetConnectionDiagnostics{};
+        return NetConnectionInfo{};
     }
-    virtual std::vector<NetConnectionDiagnostics>
-    GetConnectionDiagnosticsSnapshot() const {
-        return std::vector<NetConnectionDiagnostics>();
+    virtual std::vector<NetConnectionInfo>
+    ListConnectionInfo() const {
+        return std::vector<NetConnectionInfo>();
     }
     virtual NetStats GetStats() const = 0;
 };

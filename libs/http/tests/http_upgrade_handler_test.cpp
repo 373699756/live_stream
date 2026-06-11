@@ -185,16 +185,16 @@ public:
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor *DefaultExecutor() override {
+    live_stream::INetExecutor* DefaultExecutor() override {
         return &executor_;
     }
 
-    live_stream::INetExecutor *PickExecutor() override {
+    live_stream::INetExecutor* PickExecutor() override {
         return &executor_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor *,
+        live_stream::INetExecutor*,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         (void)options;
@@ -208,7 +208,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor *,
+        live_stream::INetExecutor*,
         const live_stream::UdpBindOptions& options,
         const live_stream::UdpCallbacks& callbacks) override {
         (void)options;

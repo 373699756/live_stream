@@ -24,13 +24,13 @@ enum class NetPressureSignal {
     kNone = 0,
     kTcpPendingBytes,
     kSendQueue,
-    kMediaSlowReader,
+    kMediaSlowSubscription,
     kWebrtcDroppedFrames,
 };
 
 enum class NetRecommendationType {
     kNone = 0,
-    kRequestKeyFrame,
+    kRequestKeyframe,
     kPreferSubStream,
     kCloseSlowClient,
 };
@@ -45,8 +45,8 @@ struct NetStatOptions {
     uint32_t recovery_sample_threshold = 5;
     uint32_t send_queue_watch = 32;
     uint32_t send_queue_constrained = 96;
-    uint32_t slow_readers_watch = 1;
-    uint32_t slow_readers_constrained = 2;
+    uint32_t slow_media_subscriptions_watch = 1;
+    uint32_t slow_media_subscriptions_constrained = 2;
     uint32_t webrtc_dropped_frames_watch = 1;
     uint32_t webrtc_dropped_frames_constrained = 8;
     uint32_t recommendation_cooldown_ms = 5000;
@@ -90,7 +90,7 @@ struct NetStatSnapshot {
     uint32_t recovering_streams = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
-    uint32_t slow_media_readers = 0;
+    uint32_t slow_media_subscriptions = 0;
     uint64_t samples = 0;
 };
 
@@ -116,7 +116,7 @@ struct NetPressureTarget {
 struct NetStreamPressure {
     StreamId stream_id = StreamId::kMain;
     NetPressureLevel level = NetPressureLevel::kNormal;
-    bool request_key_frame = false;
+    bool need_keyframe = false;
     bool prefer_sub_stream = false;
     bool close_slow_clients = false;
     bool can_restore_main_stream = false;
@@ -126,7 +126,7 @@ struct NetStreamPressure {
     uint32_t constrained_targets = 0;
     uint32_t peak_pending_bytes_ewma = 0;
     uint32_t peak_pressure_value_ewma = 0;
-    uint32_t slow_media_readers = 0;
+    uint32_t slow_media_subscriptions = 0;
     uint32_t webrtc_dropped_frames_delta = 0;
     int64_t updated_at_ms = 0;
     int64_t pressure_started_at_ms = 0;

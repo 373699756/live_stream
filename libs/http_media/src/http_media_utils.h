@@ -26,9 +26,9 @@ HttpResponse HttpMediaOkResponse();
 HttpResponse RequireHttpMediaAuthResponse(HttpAccess *access,
                                           const HttpRequest &request,
                                           AuthPrincipal *principal);
-HttpResponse RequirePlaybackAuthResponse(HttpAccess *access,
-                                         const HttpRequest &request,
-                                         AuthPrincipal *principal);
+HttpResponse RequireLiveStreamAuthResponse(HttpAccess *access,
+                                           const HttpRequest &request,
+                                           AuthPrincipal *principal);
 bool ParseOptionalJsonBody(const HttpRequest &request, ConfigJson *body);
 bool IsHttpMediaRestarting(DeviceMedia *device);
 std::string HttpMediaPathSuffix(const std::string &path,

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_HANDLER_UTILS_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_HANDLER_UTILS_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_HANDLER_UTILS_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_HANDLER_UTILS_H_
 
 #include "http_access.h"
 #include "http.h"
@@ -68,4 +68,4 @@ bool StreamIdFromJsonString(const std::string &value, StreamId *stream_id);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_HANDLER_UTILS_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_HANDLER_UTILS_H_

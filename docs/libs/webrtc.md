@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -58,20 +58,20 @@ PLI、FIR、NACK 和 TWCC；其中 `rtcp_keyframe_requests` 只统计会触发�
 PLI/FIR。模块不再暴露 `BackendName()` 或
 `backend_available`。
 
-`WebrtcPeerInfo` / peer diagnostics 字段冻结为：
+`WebrtcPeerInfo` / peer info 字段冻结为：
 
 | 字段 | 语义 |
 | --- | --- |
 | `peer_id` | peer 标识 |
 | `stream` | `main` 或 `sub` |
 | `state` | created、offer_received、connecting、connected、closing、closed、failed |
-| `reader_id` | 已连接 peer 绑定的 `FrameSubscriptionId`，未连接时为 0 |
-| `reader_attached` | subscription 当前是否仍挂在 `media_streams` |
-| `reader_generation` | subscription 所在 GOP/cache generation |
-| `reader_pending_frames` | subscription live queue 中待发送帧数 |
-| `reader_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
-| `reader_slow` | subscription live queue 是否发生过溢出 |
-| `reader_close_reason` | subscription 最近一次 reset/overflow 原因 |
+| `subscription_id` | 已连接 peer 绑定的 `FrameSubscriptionId`，未连接时为 0 |
+| `subscription_open` | subscription 当前是否仍挂在 `media_streams` |
+| `subscription_generation` | subscription 所在 GOP/cache generation |
+| `subscription_pending_frames` | subscription live queue 中待发送帧数 |
+| `subscription_waiting_keyframe` | 慢读者、reset 或 keyframe-first 后是否等待关键帧 |
+| `subscription_slow` | subscription live queue 是否发生过溢出 |
+| `subscription_close_reason` | subscription 最近一次 reset/overflow 原因 |
 | `ice_selected` | 是否已有 selected ICE pair |
 | `dtls_state` | DTLS 状态文本 |
 | `srtp_ready` | outbound/inbound SRTP context 是否可用 |
@@ -86,7 +86,7 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 `/api/media/sessions` 聚合当前 open peer 的这些字段；closed/failed peer 仍可通过
 `GetPeer(peer_id)` 保留诊断，但不会混入 active sessions，避免历史 peer 影响
 `webrtc_active_peers` 和会话列表一致性。`/api/media/streams/{stream}` 只展示
-protocol ready 汇总，不替代 peer 级 diagnostics。
+protocol ready 汇总，不替代 peer 级 info。
 
 10.5 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与 libsrtp；
 usrsctp/datachannel 首版不启用。`dtls_transport.*` 负责生成本地自签名证书、输出
@@ -133,7 +133,7 @@ offer 使用对应 payload 生成 `H265/90000` video-only sendonly answer。answ
 10.6 当前基线已经把 SRTP/RTCP 接入 `webrtc_transport`：RTP sender 交出的 RTP
 packet view 会先经 `srtp_session` 加密，再通过 selected ICE pair 发送；入站 SRTCP
 会解密并解析 compound RTCP 内的 PLI/FIR/NACK/TWCC feedback packet。PLI/FIR 会触发
-`media_streams.RequestKeyFrame()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
+`media_streams.RequestKeyframe()`；NACK 和 TWCC 进入 peer/stats 计数用于排障，
 RTP 重传缓存和拥塞控制后置。
 `webrtc_transport` 为每个 peer 复用 SRTP RTP 输出 buffer 和 SRTCP 输入解密 buffer；
 `srtp_session` 只 resize 调用方提供的 vector 并复制有效输入，不为每个 RTP packet
@@ -161,7 +161,7 @@ service release 会先关闭 callback guard 并等待 engine/timer 回调退出�
 native transport。`http_media` WebRTC handler 只做鉴权、JSON DTO 转换和 create peer、
 offer、candidate、close 调用，不持有 ICE/DTLS/SRTP 或 media subscription 状态。
 
-10.9 当前基线把 peer diagnostics 落到 public `WebrtcPeerInfo`：peer table 记录
+10.9 当前基线把 peer info 落到 public `WebrtcPeerInfo`：peer table 记录
 `created_at_ms`、`updated_at_ms` 和 `last_error`，session/transport 回填
 `ice_selected`、`dtls_state`、`srtp_ready`、`rtp_packets`、`rtp_bytes` 和 RTCP
 反馈计数。HTTP
@@ -178,9 +178,9 @@ unsubscribe subscription、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，
 
 关闭入口统一为 peer close path：SRTP 初始化失败、DTLS failed、setup timeout、
 HTTP DELETE、WHEP DELETE、ICE 异常和 service stop 都不得各自释放一半资源。
-`PLI`/`FIR` 必须调用 `media_streams.RequestKeyFrame()`；`NACK`/`TWCC` 只识别和记录，
+`PLI`/`FIR` 必须调用 `media_streams.RequestKeyframe()`；`NACK`/`TWCC` 只识别和记录，
 首版不实现重传或拥塞控制。
-`net_stat` 只通过 public stats/diagnostics 观察 WebRTC 网络压力，不注入
+`net_stat` 只通过 public stats/info 观察 WebRTC 网络压力，不注入
 WebRTC 模块，也不替代 PLI/FIR/NACK/TWCC 这类协议反馈。
 
 ## 非目标
@@ -192,8 +192,8 @@ WebRTC 模块，也不替代 PLI/FIR/NACK/TWCC 这类协议反馈。
 
 ## 风险与优化方向
 
-- WebRTC peer 生命周期必须和 media reader 生命周期绑定。
-- ICE/public IP 来自 runtime config；`"auto"` 由 app 通过 network 状态解析，
+- WebRTC peer 生命周期必须和 media subscription 生命周期绑定。
+- ICE/public IP 来自 app config；`"auto"` 由 app 通过 network 状态解析，
   不能由 Web 前端推导。
 - 失败时只影响 WebRTC 预览，不影响 HLS/FLV/MJPEG。
 - SDP/ICE/DTLS/SRTP 的失败路径必须返回明确状态并释放资源；不能依赖异常或 RTTI。

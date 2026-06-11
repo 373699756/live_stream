@@ -51,11 +51,11 @@ bool GopCache::AppendFlvTag(
     return true;
 }
 
-void GopCache::CopyTo(MediaFlvStartData *start_data) const {
-    if (start_data == nullptr || !complete_) {
+void GopCache::CopyTo(MediaFlvStart *flv_start) const {
+    if (flv_start == nullptr || !complete_) {
         return;
     }
-    start_data->cached_video_tags.reserve(size_);
+    flv_start->cached_video_tags.reserve(size_);
     for (size_t i = 0; i < size_; ++i) {
         const size_t index = (head_ + i) % frames_.size();
         if (frames_[index].slice_count == 0) {
@@ -63,7 +63,7 @@ void GopCache::CopyTo(MediaFlvStartData *start_data) const {
         }
         MediaFlvCachedVideoTag cached_tag;
         if (MediaFlvCachedVideoTagRefCopy(&cached_tag, &frames_[index])) {
-            start_data->cached_video_tags.push_back(cached_tag);
+            flv_start->cached_video_tags.push_back(cached_tag);
         }
     }
 }

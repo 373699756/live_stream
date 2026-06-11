@@ -54,10 +54,10 @@ public:
     NetAddress UdpLocalAddress(UdpSocketId id) const override;
     NetAddress UdpPeerAddress(UdpSocketId id) const override;
     uint32_t PendingBytes(ConnectionId id) const override;
-    NetConnectionDiagnostics GetConnectionDiagnostics(
+    NetConnectionInfo GetConnectionInfo(
         ConnectionId id) const override;
-    std::vector<NetConnectionDiagnostics>
-    GetConnectionDiagnosticsSnapshot() const override;
+    std::vector<NetConnectionInfo>
+    ListConnectionInfo() const override;
     NetStats GetStats() const override;
 
     bool AddAcceptedConnection(
@@ -66,7 +66,7 @@ public:
     void RemoveConnection(ConnectionId id);
     void OnConnectionClosed(ConnectionId id, const TcpCallbacks &callbacks,
                             TcpCloseReason reason,
-                            NetConnectionDiagnostics diagnostics);
+                            NetConnectionInfo info);
     void DispatchAccept(const TcpCallbacks &callbacks, ConnectionId id,
                         NetAddress peer);
     void DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
@@ -91,7 +91,7 @@ private:
     void StopInternal();
     std::shared_ptr<TcpSession> FindConnection(ConnectionId id) const;
     void RememberClosedConnectionLocked(
-        const NetConnectionDiagnostics &diagnostics);
+        const NetConnectionInfo &info);
 
     NetEngineOptions options_;
     mutable std::mutex mutex_;
@@ -107,7 +107,7 @@ private:
     std::unordered_map<ConnectionId, std::shared_ptr<TcpSession>> connections_;
     // 关闭诊断只保留最近一小段历史，用于 Web 排查慢客户端和超时原因；
     // 不把它当作 session 生命周期来源。
-    std::unordered_map<ConnectionId, NetConnectionDiagnostics>
+    std::unordered_map<ConnectionId, NetConnectionInfo>
         closed_connections_;
     std::deque<ConnectionId> closed_connection_order_;
     std::atomic<uint64_t> next_server_id_{1};

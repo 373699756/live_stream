@@ -79,40 +79,40 @@ bool IsUsableWebrtcPublicIp(const std::string &public_ip) {
 }
 
 std::string ResolveWebrtcPublicIp(
-    const AppRuntimeConfig &runtime_config,
-    const ProtocolRuntimeRefs &refs) {
-    if (!runtime_config.webrtc_enabled) {
-        return runtime_config.webrtc_public_ip;
+    const AppConfig &app_config,
+    const ProtocolStartupRefs &refs) {
+    if (!app_config.webrtc_enabled) {
+        return app_config.webrtc_public_ip;
     }
 
-    if (!IsAutoWebrtcPublicIp(runtime_config.webrtc_public_ip)) {
-        if (!IsUsableWebrtcPublicIp(runtime_config.webrtc_public_ip)) {
+    if (!IsAutoWebrtcPublicIp(app_config.webrtc_public_ip)) {
+        if (!IsUsableWebrtcPublicIp(app_config.webrtc_public_ip)) {
             Error("app", "WebRTC public_ip invalid ip=%s",
-                  runtime_config.webrtc_public_ip.c_str());
+                  app_config.webrtc_public_ip.c_str());
             return std::string();
         }
-        return runtime_config.webrtc_public_ip;
+        return app_config.webrtc_public_ip;
     }
 
     if (refs.device.network != nullptr) {
         const NetworkInterfaceStatus status =
             refs.device.network->GetInterfaceStatus(
-                runtime_config.network_ifname);
+                app_config.network_ifname);
         if (IsUsableWebrtcPublicIp(status.static_ipv4.address)) {
             Info("app", "WebRTC public_ip auto resolved ifname=%s ip=%s",
-                 runtime_config.network_ifname.c_str(),
+                 app_config.network_ifname.c_str(),
                  status.static_ipv4.address.c_str());
             return status.static_ipv4.address;
         }
         Warn("app", "WebRTC public_ip auto unavailable ifname=%s ip=%s",
-             runtime_config.network_ifname.c_str(),
+             app_config.network_ifname.c_str(),
              status.static_ipv4.address.c_str());
     }
 
-    if (IsUsableWebrtcPublicIp(runtime_config.advertise_host)) {
+    if (IsUsableWebrtcPublicIp(app_config.advertise_host)) {
         Info("app", "WebRTC public_ip fallback advertise_ip=%s",
-             runtime_config.advertise_host.c_str());
-        return runtime_config.advertise_host;
+             app_config.advertise_host.c_str());
+        return app_config.advertise_host;
     }
     return std::string();
 }
@@ -135,18 +135,18 @@ NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor) {
     return options;
 }
 
-RtspOptions BuildRtspOptions(const AppRuntimeConfig &runtime_config) {
+RtspOptions BuildRtspOptions(const AppConfig &app_config) {
     RtspOptions options;
-    options.listen_ip = runtime_config.listen_ip;
-    options.listen_port = runtime_config.rtsp_port;
-    options.max_sessions = runtime_config.rtsp_max_sessions;
-    options.enable_auth = runtime_config.rtsp_auth_required;
-    options.main_video_codec = runtime_config.rtsp_main_codec;
-    options.sub_video_codec = runtime_config.rtsp_sub_codec;
+    options.listen_ip = app_config.listen_ip;
+    options.listen_port = app_config.rtsp_port;
+    options.max_sessions = app_config.rtsp_max_sessions;
+    options.enable_auth = app_config.rtsp_auth_required;
+    options.main_video_codec = app_config.rtsp_main_codec;
+    options.sub_video_codec = app_config.rtsp_sub_codec;
     return options;
 }
 
-RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
+RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs) {
     RtspDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.net_executor = refs.rtsp_executor;
@@ -156,26 +156,26 @@ RtspDependencies BuildRtspDependencies(const ProtocolRuntimeRefs &refs) {
     return dependencies;
 }
 
-WebrtcOptions BuildWebrtcOptions(const AppRuntimeConfig &runtime_config,
-                                 const ProtocolRuntimeRefs &refs) {
+WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
+                                 const ProtocolStartupRefs &refs) {
     WebrtcOptions options;
-    options.enabled = runtime_config.webrtc_enabled;
-    options.local_port_base = runtime_config.webrtc_local_port_base;
-    options.max_peers = runtime_config.webrtc_max_peers;
-    options.prefer_tcp = runtime_config.webrtc_prefer_tcp;
-    options.public_ip = ResolveWebrtcPublicIp(runtime_config, refs);
+    options.enabled = app_config.webrtc_enabled;
+    options.local_port_base = app_config.webrtc_local_port_base;
+    options.max_peers = app_config.webrtc_max_peers;
+    options.prefer_tcp = app_config.webrtc_prefer_tcp;
+    options.public_ip = ResolveWebrtcPublicIp(app_config, refs);
     if (options.enabled && options.public_ip.empty()) {
         Error("app",
               "WebRTC disabled: public_ip is not resolvable ifname=%s",
-              runtime_config.network_ifname.c_str());
+              app_config.network_ifname.c_str());
         options.enabled = false;
     }
-    options.ice_servers = runtime_config.webrtc_ice_servers;
+    options.ice_servers = app_config.webrtc_ice_servers;
     return options;
 }
 
 WebrtcDependencies BuildWebrtcDependencies(
-    const ProtocolRuntimeRefs &refs) {
+    const ProtocolStartupRefs &refs) {
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.net_executor = refs.webrtc_executor;
@@ -184,23 +184,23 @@ WebrtcDependencies BuildWebrtcDependencies(
 }
 
 OnvifServerOptions BuildOnvifOptions(
-    const AppRuntimeConfig &runtime_config) {
+    const AppConfig &app_config) {
     OnvifServerOptions options;
-    options.listen_ip = runtime_config.listen_ip;
-    options.advertise_ip = runtime_config.advertise_host;
-    options.device_service_port = runtime_config.onvif_device_port;
-    options.discovery_port = runtime_config.onvif_discovery_port;
-    options.discovery_enabled = runtime_config.onvif_discovery_enabled;
-    options.enable_auth = runtime_config.onvif_auth_required;
-    options.manufacturer = runtime_config.onvif_manufacturer;
-    options.model = runtime_config.onvif_model;
-    options.firmware_version = runtime_config.onvif_firmware_version;
-    options.http_port = runtime_config.http_port;
+    options.listen_ip = app_config.listen_ip;
+    options.advertise_ip = app_config.advertise_host;
+    options.device_service_port = app_config.onvif_device_port;
+    options.discovery_port = app_config.onvif_discovery_port;
+    options.discovery_enabled = app_config.onvif_discovery_enabled;
+    options.enable_auth = app_config.onvif_auth_required;
+    options.manufacturer = app_config.onvif_manufacturer;
+    options.model = app_config.onvif_model;
+    options.firmware_version = app_config.onvif_firmware_version;
+    options.http_port = app_config.http_port;
     return options;
 }
 
 OnvifServerDependencies BuildOnvifDependencies(
-    const ProtocolRuntimeRefs &refs) {
+    const ProtocolStartupRefs &refs) {
     OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.net_executor = refs.onvif_executor;
@@ -213,11 +213,11 @@ OnvifServerDependencies BuildOnvifDependencies(
     return dependencies;
 }
 
-HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
+HttpOptions BuildHttpOptions(const AppConfig &app_config) {
     HttpOptions options;
-    options.listen_ip = runtime_config.listen_ip;
-    options.listen_port = runtime_config.http_port;
-    options.static_root = runtime_config.static_root;
+    options.listen_ip = app_config.listen_ip;
+    options.listen_port = app_config.http_port;
+    options.static_root = app_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
     options.stream_executor_worker_count = kHttpStreamWorkers;
@@ -232,7 +232,7 @@ HttpOptions BuildHttpOptions(const AppRuntimeConfig &runtime_config) {
 }
 
 HttpDependencies BuildHttpDependencies(
-    const ProtocolRuntimeRefs &refs) {
+    const ProtocolStartupRefs &refs) {
     HttpDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.net_executor = refs.http_executor;
@@ -260,7 +260,7 @@ NetStatOptions BuildNetStatOptions() {
 }
 
 NetStatDependencies BuildNetStatDependencies(
-    const ProtocolRuntimeRefs &refs) {
+    const ProtocolStartupRefs &refs) {
     NetStatDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
     dependencies.rtsp = refs.rtsp;

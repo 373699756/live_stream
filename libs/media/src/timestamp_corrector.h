@@ -36,7 +36,7 @@ public:
 
 private:
     // 直播预览遇到超过 3 秒的 DTS 跳变时，继续沿用上一帧间隔平滑输出，
-    // 同时把 reset 信号交给 MediaStreams 清理 GOP/HLS/reader 缓存。
+    // 同时把 reset 信号交给 MediaStreams 清理 GOP/HLS/subscription 缓存。
     static constexpr int64_t kMaxLiveTimestampJumpUs = 3 * 1000 * 1000;
 
     bool initialized_ = false;

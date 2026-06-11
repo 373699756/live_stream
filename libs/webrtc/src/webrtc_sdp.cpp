@@ -53,11 +53,11 @@ std::vector<std::string> SplitTokens(const std::string& text) {
     return tokens;
 }
 
-bool ParseIntToken(const std::string& token, int *value) {
+bool ParseIntToken(const std::string& token, int* value) {
     if (value == nullptr || token.empty()) {
         return false;
     }
-    char *end = nullptr;
+    char* end = nullptr;
     const long parsed = std::strtol(token.c_str(), &end, 10);
     if (end == token.c_str() || *end != '\0' || parsed < 0 ||
         parsed > 127) {
@@ -67,11 +67,11 @@ bool ParseIntToken(const std::string& token, int *value) {
     return true;
 }
 
-bool ParseUint32Token(const std::string& token, uint32_t *value) {
+bool ParseUint32Token(const std::string& token, uint32_t* value) {
     if (value == nullptr || token.empty()) {
         return false;
     }
-    char *end = nullptr;
+    char* end = nullptr;
     const unsigned long parsed = std::strtoul(token.c_str(), &end, 10);
     if (end == token.c_str() || *end != '\0' ||
         parsed > 0xffffffffUL) {
@@ -97,8 +97,8 @@ bool ContainsPayloadType(const std::vector<int>& payload_types,
 }
 
 bool ParseFingerprintValue(const std::string& value,
-                           std::string *fingerprint_hash,
-                           std::string *fingerprint) {
+                           std::string* fingerprint_hash,
+                           std::string* fingerprint) {
     if (fingerprint_hash == nullptr || fingerprint == nullptr) {
         return false;
     }
@@ -121,7 +121,7 @@ bool ParseFingerprintValue(const std::string& value,
 }
 
 bool ParseMediaPayloadTypes(const std::string& media_line,
-                            std::vector<int> *payload_types) {
+                            std::vector<int>* payload_types) {
     if (payload_types == nullptr) {
         return false;
     }
@@ -140,7 +140,7 @@ bool ParseMediaPayloadTypes(const std::string& media_line,
     return !payload_types->empty();
 }
 
-bool ParseCodecName(const std::string& name, Codec *codec) {
+bool ParseCodecName(const std::string& name, Codec* codec) {
     if (codec == nullptr) {
         return false;
     }
@@ -157,7 +157,7 @@ bool ParseCodecName(const std::string& name, Codec *codec) {
 }
 
 bool ParseRtpmapValue(const std::string& value,
-                      WebrtcSdpCodec *codec) {
+                      WebrtcSdpCodec* codec) {
     if (codec == nullptr) {
         return false;
     }
@@ -184,8 +184,8 @@ bool ParseRtpmapValue(const std::string& value,
     return true;
 }
 
-bool ParsePayloadAttributeValue(const std::string& value, int *payload_type,
-                                std::string *attribute) {
+bool ParsePayloadAttributeValue(const std::string& value, int* payload_type,
+                                std::string* attribute) {
     if (payload_type == nullptr || attribute == nullptr) {
         return false;
     }
@@ -201,8 +201,8 @@ bool ParsePayloadAttributeValue(const std::string& value, int *payload_type,
     return !attribute->empty();
 }
 
-bool ParseRtcpFeedbackValue(const std::string& value, int *payload_type,
-                            std::string *feedback) {
+bool ParseRtcpFeedbackValue(const std::string& value, int* payload_type,
+                            std::string* feedback) {
     if (payload_type == nullptr || feedback == nullptr) {
         return false;
     }
@@ -222,7 +222,7 @@ bool ParseRtcpFeedbackValue(const std::string& value, int *payload_type,
 }
 
 void AddUniqueFeedback(const std::string& feedback,
-                       WebrtcSdpCodec *codec) {
+                       WebrtcSdpCodec* codec) {
     if (codec == nullptr || feedback.empty()) {
         return;
     }
@@ -233,7 +233,7 @@ void AddUniqueFeedback(const std::string& feedback,
 }
 
 bool IsSupportedRtcpFeedback(const std::string& feedback,
-                             std::string *normalized_feedback) {
+                             std::string* normalized_feedback) {
     if (normalized_feedback == nullptr) {
         return false;
     }
@@ -246,7 +246,7 @@ bool IsSupportedRtcpFeedback(const std::string& feedback,
 }
 
 void AddSupportedFeedback(const std::string& feedback,
-                          WebrtcSdpCodec *codec) {
+                          WebrtcSdpCodec* codec) {
     std::string normalized_feedback;
     if (IsSupportedRtcpFeedback(feedback, &normalized_feedback)) {
         AddUniqueFeedback(normalized_feedback, codec);
@@ -277,11 +277,11 @@ std::string BuildLocalCodecFmtp(Codec codec,
 }
 
 bool SelectCodec(const std::vector<int>& payload_types,
-                      const std::map<int, WebrtcSdpCodec>& codecs,
-                      const std::map<int, std::string>& fmtps,
-                      const std::map<int, std::vector<std::string>>& feedback,
-                      Codec local_codec,
-                      WebrtcSdpCodec *selected_codec) {
+                 const std::map<int, WebrtcSdpCodec>& codecs,
+                 const std::map<int, std::string>& fmtps,
+                 const std::map<int, std::vector<std::string>>& feedback,
+                 Codec local_codec,
+                 WebrtcSdpCodec* selected_codec) {
     if (selected_codec == nullptr) {
         return false;
     }
@@ -343,7 +343,7 @@ std::string AnswerSetupRole(const std::string& offer_setup) {
     return std::string();
 }
 
-const char *CodecRtpmapName(Codec codec) {
+const char* CodecRtpmapName(Codec codec) {
     if (codec == Codec::kH264) {
         return "H264";
     }
@@ -416,7 +416,7 @@ uint32_t BuildWebrtcSsrc(const std::string& peer_id) {
 }
 
 bool ParseWebrtcOffer(const std::string& offer_sdp, Codec local_codec,
-                      WebrtcSdpOffer *offer) {
+                      WebrtcSdpOffer* offer) {
     if (offer == nullptr || offer_sdp.empty()) {
         return false;
     }
@@ -562,8 +562,8 @@ bool ParseWebrtcOffer(const std::string& offer_sdp, Codec local_codec,
         return false;
     }
     if (!SelectCodec(video_payload_types, video_codecs, video_fmtps,
-                          video_feedback, local_codec,
-                          &parsed_offer.video_codec)) {
+                     video_feedback, local_codec,
+                     &parsed_offer.video_codec)) {
         return false;
     }
 
@@ -606,7 +606,7 @@ std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
     const std::string fingerprint_hash =
         options.local_fingerprint_hash.empty() ? "sha-256"
                                                : options.local_fingerprint_hash;
-    const char *rtpmap_codec = CodecRtpmapName(options.local_codec);
+    const char* rtpmap_codec = CodecRtpmapName(options.local_codec);
     if (rtpmap_codec == nullptr) {
         return std::string();
     }
@@ -652,7 +652,7 @@ std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
 }
 
 bool ParseRemoteFingerprint(const std::string& sdp,
-                            DtlsFingerprint *fingerprint) {
+                            DtlsFingerprint* fingerprint) {
     if (fingerprint == nullptr || sdp.empty()) {
         return false;
     }

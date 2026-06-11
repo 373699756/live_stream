@@ -126,7 +126,7 @@ bool UpgradeRequestFromJson(const ConfigJson &value, UpgradeRequest *request) {
     if (!json_utils::ReadField(value, "package_path", &parsed.package_path) ||
         !json_utils::ReadField(value, "expected_version", &parsed.expected_version) ||
         !json_utils::ReadField(value, "allow_same_version",
-                          &parsed.allow_same_version) ||
+                               &parsed.allow_same_version) ||
         !json_utils::ReadField(value, "allow_downgrade", &parsed.allow_downgrade) ||
         !json_utils::ReadField(value, "auto_reboot", &parsed.auto_reboot)) {
         return false;
@@ -241,9 +241,9 @@ private:
         }
 
         access_->RecordOperation(request, principal,
-                                  OperationAction::kUpgrade, info.version,
-                                  OperationResult::kSuccess,
-                                  "package uploaded");
+                                 OperationAction::kUpgrade, info.version,
+                                 OperationResult::kSuccess,
+                                 "package uploaded");
         return JsonResponse(200, UpgradePackageInfoToJson(info));
     }
 
@@ -355,7 +355,7 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeUpgradeHandler(HttpAccess *access,
-                                             IUpgrade *upgrade) {
+                                                 IUpgrade *upgrade) {
     return std::unique_ptr<IHttpHandler>(
         new UpgradeHttpHandler(access, upgrade));
 }

@@ -70,7 +70,7 @@ CoreSubsystem& CoreSubsystem::Get() {
     return subsystem;
 }
 
-bool CoreSubsystem::Start(const RuntimePaths& paths) {
+bool CoreSubsystem::Start(const StartupPaths& paths) {
     if (started_) {
         return true;
     }
@@ -86,7 +86,7 @@ bool CoreSubsystem::Start(const RuntimePaths& paths) {
     logger_ = CreateLogger(logger_config);
     if (!logger_ || !logger_->Start()) {
         Error("app", "Start logger failed: path=%s",
-                        paths.operation_log_path);
+              paths.operation_log_path);
         Stop();
         return false;
     }
@@ -98,7 +98,7 @@ bool CoreSubsystem::Start(const RuntimePaths& paths) {
     config_ = CreateConfig(config_options);
     if (!config_ || !config_->Start()) {
         Error("app", "Start config failed: config=%s default=%s",
-                        paths.business_config_path, paths.default_config_path);
+              paths.business_config_path, paths.default_config_path);
         Stop();
         return false;
     }
@@ -132,7 +132,7 @@ bool CoreSubsystem::Start(const RuntimePaths& paths) {
     }
     if (!auth_ || !auth_->Start()) {
         Error("app", "Start auth failed: users=%s",
-                        paths.auth_users_path);
+              paths.auth_users_path);
         Stop();
         return false;
     }

@@ -7,7 +7,7 @@
 #include "config.h"
 #include "event.h"
 #include "logger.h"
-#include "runtime/runtime_paths.h"
+#include "application/startup_paths.h"
 
 namespace live_stream {
 
@@ -15,7 +15,7 @@ class CoreSubsystem {
 public:
     static CoreSubsystem& Get();
 
-    bool Start(const RuntimePaths& paths);
+    bool Start(const StartupPaths& paths);
     void Stop();
 
     ILogger* logger() const { return logger_.get(); }

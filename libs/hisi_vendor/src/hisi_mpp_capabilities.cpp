@@ -33,25 +33,25 @@ CodecCapability MjpegCapability() {
 
 NumericControlCapability Range(const char* name, int32_t min, int32_t max,
                                int32_t default_value,
-                               bool runtime_supported = true) {
+                               bool live_update_supported = true) {
     NumericControlCapability cap;
     cap.name = name;
     cap.min = min;
     cap.max = max;
     cap.default_value = default_value;
-    cap.runtime_supported = runtime_supported;
+    cap.live_update_supported = live_update_supported;
     return cap;
 }
 
 OptionControlCapability Options(const char* name,
                                 std::vector<std::string> values,
                                 const char* default_value,
-                                bool runtime_supported = true) {
+                                bool live_update_supported = true) {
     OptionControlCapability cap;
     cap.name = name;
     cap.values = std::move(values);
     cap.default_value = default_value;
-    cap.runtime_supported = runtime_supported;
+    cap.live_update_supported = live_update_supported;
     return cap;
 }
 
@@ -86,8 +86,7 @@ ImageCapabilities DefaultImageCapabilities() {
                  "1/250"},
                 "auto"));
     image.exposure_options.push_back(
-        Options("max_exposure_time", {"1/12", "1/25", "1/30", "1/50",
-                                      "1/100", "1/250"}, "1/30"));
+        Options("max_exposure_time", {"1/12", "1/25", "1/30", "1/50", "1/100", "1/250"}, "1/30"));
     image.exposure_options.push_back(
         Options("gain", {"auto", "low", "medium", "high"}, "auto"));
     image.exposure_options.push_back(
@@ -146,7 +145,7 @@ ImageCapabilities DefaultImageCapabilities() {
     return image;
 }
 
-// ─── Capabilities that can be refined at runtime ───────────────
+// ─── Capabilities that can be refined while streaming ───────────────
 VideoStreamCapabilities BuildMainStreamCaps() {
     VideoStreamCapabilities main;
     main.stream_id = StreamId::kMain;

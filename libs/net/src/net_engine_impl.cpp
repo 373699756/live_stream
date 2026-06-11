@@ -11,7 +11,7 @@ namespace live_stream {
 namespace net_internal {
 namespace {
 
-constexpr size_t kClosedConnectionDiagnosticsLimit = 128;
+constexpr size_t kClosedConnectionInfoLimit = 128;
 
 }  // namespace
 
@@ -360,49 +360,48 @@ uint32_t NetEngineImpl::PendingBytes(ConnectionId id) const {
     return connection ? connection->PendingBytes() : 0;
 }
 
-NetConnectionDiagnostics NetEngineImpl::GetConnectionDiagnostics(
+NetConnectionInfo NetEngineImpl::GetConnectionInfo(
     ConnectionId id) const {
     auto connection = FindConnection(id);
     if (connection) {
-        return connection->Diagnostics();
+        return connection->GetInfo();
     }
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = closed_connections_.find(id);
-    return it == closed_connections_.end() ? NetConnectionDiagnostics{}
-                                          : it->second;
+    return it == closed_connections_.end() ? NetConnectionInfo{}
+                                           : it->second;
 }
 
-std::vector<NetConnectionDiagnostics>
-NetEngineImpl::GetConnectionDiagnosticsSnapshot() const {
+std::vector<NetConnectionInfo>
+NetEngineImpl::ListConnectionInfo() const {
     std::vector<std::shared_ptr<TcpSession>> connections;
-    std::vector<NetConnectionDiagnostics> closed_diagnostics;
+    std::vector<NetConnectionInfo> closed_info;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         connections.reserve(connections_.size());
         for (const auto &entry : connections_) {
             connections.push_back(entry.second);
         }
-        closed_diagnostics.reserve(closed_connection_order_.size());
+        closed_info.reserve(closed_connection_order_.size());
         for (ConnectionId id : closed_connection_order_) {
             const auto it = closed_connections_.find(id);
             if (it != closed_connections_.end()) {
-                closed_diagnostics.push_back(it->second);
+                closed_info.push_back(it->second);
             }
         }
     }
 
-    // 活跃连接实时读取 session，已关闭连接只保留最近 N 条快照，供 Web 诊断
-    // 慢客户端/超时关闭原因，不让协议模块各自维护 socket 诊断表。
-    std::vector<NetConnectionDiagnostics> diagnostics;
-    diagnostics.reserve(connections.size() + closed_diagnostics.size());
+    // 活跃连接实时读取 session，已关闭连接只保留最近 N 条快照，供 Web 定位
+    // 慢客户端/超时关闭原因，不让协议模块各自维护 socket info 表。
+    std::vector<NetConnectionInfo> info;
+    info.reserve(connections.size() + closed_info.size());
     for (const auto &connection : connections) {
         if (connection) {
-            diagnostics.push_back(connection->Diagnostics());
+            info.push_back(connection->GetInfo());
         }
     }
-    diagnostics.insert(diagnostics.end(), closed_diagnostics.begin(),
-                       closed_diagnostics.end());
-    return diagnostics;
+    info.insert(info.end(), closed_info.begin(), closed_info.end());
+    return info;
 }
 
 NetStats NetEngineImpl::GetStats() const {
@@ -482,11 +481,11 @@ void NetEngineImpl::RemoveConnection(ConnectionId id) {
 void NetEngineImpl::OnConnectionClosed(ConnectionId id,
                                        const TcpCallbacks &callbacks,
                                        TcpCloseReason reason,
-                                       NetConnectionDiagnostics diagnostics) {
+                                       NetConnectionInfo info) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (connections_.find(id) != connections_.end()) {
-            RememberClosedConnectionLocked(diagnostics);
+            RememberClosedConnectionLocked(info);
         }
         connections_.erase(id);
     }
@@ -498,16 +497,16 @@ void NetEngineImpl::OnConnectionClosed(ConnectionId id,
 }
 
 void NetEngineImpl::RememberClosedConnectionLocked(
-    const NetConnectionDiagnostics &diagnostics) {
-    if (diagnostics.connection_id == 0) {
+    const NetConnectionInfo &info) {
+    if (info.connection_id == 0) {
         return;
     }
-    if (closed_connections_.find(diagnostics.connection_id) ==
+    if (closed_connections_.find(info.connection_id) ==
         closed_connections_.end()) {
-        closed_connection_order_.push_back(diagnostics.connection_id);
+        closed_connection_order_.push_back(info.connection_id);
     }
-    closed_connections_[diagnostics.connection_id] = diagnostics;
-    while (closed_connection_order_.size() > kClosedConnectionDiagnosticsLimit) {
+    closed_connections_[info.connection_id] = info;
+    while (closed_connection_order_.size() > kClosedConnectionInfoLimit) {
         const ConnectionId oldest = closed_connection_order_.front();
         closed_connection_order_.pop_front();
         closed_connections_.erase(oldest);

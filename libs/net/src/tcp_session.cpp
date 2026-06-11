@@ -20,7 +20,7 @@ namespace net_internal {
 namespace {
 
 constexpr uint32_t kReadBufferSize = 4096;
-constexpr uint32_t kDefaultManagerTickMs = 1000;
+constexpr uint32_t kMaxTimeoutCheckIntervalMs = 1000;
 
 void RefNetBufferOwner(const NetBufferOwner &owner) {
     if (owner.ptr != nullptr && owner.ref != nullptr) {
@@ -37,7 +37,7 @@ void UnrefNetBufferOwner(const NetBufferOwner &owner) {
 
 }  // namespace
 
-TcpSession::OutSlice::OutSlice(OutSlice&& other) noexcept
+TcpSession::OutSlice::OutSlice(OutSlice &&other) noexcept
     : data(other.data),
       size(other.size),
       offset(other.offset),
@@ -53,8 +53,8 @@ TcpSession::OutSlice::OutSlice(OutSlice&& other) noexcept
     other.owner = NetBufferOwner{};
 }
 
-TcpSession::OutSlice& TcpSession::OutSlice::operator=(
-    OutSlice&& other) noexcept {
+TcpSession::OutSlice &TcpSession::OutSlice::operator=(
+    OutSlice &&other) noexcept {
     if (this == &other) {
         return *this;
     }
@@ -104,14 +104,14 @@ bool TcpSession::Start() {
     }
     std::weak_ptr<TcpSession> weak_self = shared_from_this();
     if (!loop_->AddFd(fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
-        auto self = weak_self.lock();
-        if (self) {
-            self->HandleEvents(events);
-        }
-    })) {
+            auto self = weak_self.lock();
+            if (self) {
+                self->HandleEvents(events);
+            }
+        })) {
         return false;
     }
-    ArmManagerTimer();
+    ArmTimeoutTimer();
     return true;
 }
 
@@ -169,7 +169,7 @@ bool TcpSession::EnqueueOutBuffer(OutBuffer buffer) {
             return false;
         }
         // 队列项数和 pending bytes 是慢客户端的硬边界。命中后直接关闭连接，
-        // 让 HTTP-FLV/RTSP 等热路径释放 reader 或媒体 buffer 引用。
+        // 让 HTTP-FLV/RTSP 等热路径释放 media subscription/client 或 buffer 引用。
         if (send_queue_.size() >= options_.send_queue_capacity) {
             engine_->AddSendBusy();
             close_reason = TcpCloseReason::kQueueFull;
@@ -258,19 +258,19 @@ uint32_t TcpSession::PendingBytes() const {
     return pending_bytes_;
 }
 
-NetConnectionDiagnostics TcpSession::Diagnostics() const {
+NetConnectionInfo TcpSession::GetInfo() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    NetConnectionDiagnostics diagnostics;
-    diagnostics.connection_id = id_;
-    diagnostics.owner_protocol = options_.owner_protocol;
-    diagnostics.remote_address = peer_;
-    diagnostics.local_address = local_;
-    diagnostics.pending_bytes = pending_bytes_;
-    diagnostics.send_queue_length = static_cast<uint32_t>(send_queue_.size());
-    diagnostics.last_write_at_ms = last_write_progress_ms_;
-    diagnostics.close_reason = close_reason_;
-    diagnostics.open = !closed_;
-    return diagnostics;
+    NetConnectionInfo info;
+    info.connection_id = id_;
+    info.owner_protocol = options_.owner_protocol;
+    info.remote_address = peer_;
+    info.local_address = local_;
+    info.pending_bytes = pending_bytes_;
+    info.send_queue_length = static_cast<uint32_t>(send_queue_.size());
+    info.last_write_at_ms = last_write_progress_ms_;
+    info.close_reason = close_reason_;
+    info.open = !closed_;
+    return info;
 }
 
 void TcpSession::HandleEvents(uint32_t events) {
@@ -416,42 +416,42 @@ void TcpSession::DisableWrite() {
 }
 
 void TcpSession::CloseInLoop(TcpCloseReason reason) {
-    NetTimerId manager_timer_id = 0;
-    NetConnectionDiagnostics diagnostics;
+    NetTimerId timeout_timer_id = 0;
+    NetConnectionInfo info;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (closed_) {
             return;
         }
-        diagnostics.connection_id = id_;
-        diagnostics.owner_protocol = options_.owner_protocol;
-        diagnostics.remote_address = peer_;
-        diagnostics.local_address = local_;
-        diagnostics.pending_bytes = pending_bytes_;
-        diagnostics.send_queue_length =
+        info.connection_id = id_;
+        info.owner_protocol = options_.owner_protocol;
+        info.remote_address = peer_;
+        info.local_address = local_;
+        info.pending_bytes = pending_bytes_;
+        info.send_queue_length =
             static_cast<uint32_t>(send_queue_.size());
-        diagnostics.last_write_at_ms = last_write_progress_ms_;
-        diagnostics.close_reason = reason;
-        diagnostics.open = false;
+        info.last_write_at_ms = last_write_progress_ms_;
+        info.close_reason = reason;
+        info.open = false;
         closed_ = true;
         close_reason_ = reason;
-        manager_timer_id = manager_timer_id_;
-        manager_timer_id_ = 0;
+        timeout_timer_id = timeout_timer_id_;
+        timeout_timer_id_ = 0;
         send_queue_.clear();
         pending_bytes_ = 0;
     }
-    if (manager_timer_id != 0) {
-        loop_->CancelTimer(manager_timer_id);
+    if (timeout_timer_id != 0) {
+        loop_->CancelTimer(timeout_timer_id);
     }
     if (fd_.valid()) {
         loop_->RemoveFd(fd_.get());
     }
     fd_.Reset();
-    engine_->OnConnectionClosed(id_, callbacks_, reason, diagnostics);
+    engine_->OnConnectionClosed(id_, callbacks_, reason, info);
 }
 
-void TcpSession::ArmManagerTimer() {
-    const uint32_t tick_ms = ManagerTickMs();
+void TcpSession::ArmTimeoutTimer() {
+    const uint32_t tick_ms = TimeoutCheckIntervalMs();
     if (tick_ms == 0) {
         return;
     }
@@ -471,7 +471,7 @@ void TcpSession::ArmManagerTimer() {
         loop_->CancelTimer(timer_id);
         return;
     }
-    manager_timer_id_ = timer_id;
+    timeout_timer_id_ = timer_id;
 }
 
 void TcpSession::CheckTimeouts() {
@@ -484,7 +484,7 @@ void TcpSession::CheckTimeouts() {
         }
         const int64_t now_ms = infra::Time::MonotonicMillis();
         // read timeout 保护空闲控制连接；write timeout/send stall 保护媒体长连接
-        // 或 RTSP interleaved 慢客户端，关闭原因会进入 net diagnostics。
+        // 或 RTSP interleaved 慢客户端，关闭原因会进入 net connection info。
         if (IsReadTimedOutLocked(now_ms)) {
             reason = TcpCloseReason::kReadTimeout;
             should_close = true;
@@ -527,7 +527,7 @@ bool TcpSession::IsSendStalledLocked() const {
     return age_ms >= static_cast<int64_t>(options_.send_stall_timeout_ms);
 }
 
-uint32_t TcpSession::ManagerTickMs() const {
+uint32_t TcpSession::TimeoutCheckIntervalMs() const {
     uint32_t tick_ms = 0;
     if (options_.read_timeout_ms != 0) {
         tick_ms = options_.read_timeout_ms;
@@ -543,8 +543,8 @@ uint32_t TcpSession::ManagerTickMs() const {
     if (tick_ms == 0) {
         return 0;
     }
-    if (tick_ms > kDefaultManagerTickMs) {
-        return kDefaultManagerTickMs;
+    if (tick_ms > kMaxTimeoutCheckIntervalMs) {
+        return kMaxTimeoutCheckIntervalMs;
     }
     return tick_ms;
 }

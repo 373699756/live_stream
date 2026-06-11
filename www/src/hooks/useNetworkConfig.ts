@@ -9,5 +9,9 @@ import { mockNetworkConfig } from '../api/mockNetwork';
 import { useConfigForm } from './useConfigForm';
 
 export function useNetworkConfig() {
-  return useConfigForm(getNetworkConfig, saveNetworkConfig, mockNetworkConfig);
+    return useConfigForm(
+        getNetworkConfig,
+        saveNetworkConfig,
+        mockNetworkConfig,
+    );
 }

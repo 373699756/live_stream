@@ -382,7 +382,7 @@ public:
                 return false;
             }
             if (!upgrade_flash::ValidateMtdLayoutForManifest(parsed.manifest,
-                                                              &reason)) {
+                                                             &reason)) {
                 AppendUpgradeLog("prepare failed: " + reason);
                 WriteUpgradeStatus("failed", 100, false, info.version, reason);
                 return false;

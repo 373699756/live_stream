@@ -40,7 +40,7 @@ public:
 
     class FakeNetExecutor : public live_stream::INetExecutor {
     public:
-        explicit FakeNetExecutor(FakeNetEngine *engine) : engine_(engine) {}
+        explicit FakeNetExecutor(FakeNetEngine* engine) : engine_(engine) {}
 
         bool Post(infra::Task task) override {
             if (task) {
@@ -65,7 +65,7 @@ public:
         bool IsCurrentThread() const override { return true; }
 
     private:
-        FakeNetEngine *engine_ = nullptr;
+        FakeNetEngine* engine_ = nullptr;
     };
 
     FakeNetEngine() : executor_(this) {}
@@ -73,16 +73,16 @@ public:
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor *DefaultExecutor() override {
+    live_stream::INetExecutor* DefaultExecutor() override {
         return &executor_;
     }
 
-    live_stream::INetExecutor *PickExecutor() override {
+    live_stream::INetExecutor* PickExecutor() override {
         return &executor_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor *,
+        live_stream::INetExecutor*,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         listen_options = options;
@@ -97,7 +97,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor *,
+        live_stream::INetExecutor*,
         const live_stream::UdpBindOptions&,
         const live_stream::UdpCallbacks&) override {
         return 1;

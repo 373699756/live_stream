@@ -129,8 +129,9 @@ std::string DiscoveryHeader(const std::string &request) {
     if (!relates_to.empty()) {
         header += "<a:RelatesTo>" + XmlEscape(relates_to) + "</a:RelatesTo>";
     }
-    header += "<a:To>http://www.w3.org/2005/08/addressing/anonymous</a:To>"
-              "</s:Header>";
+    header +=
+        "<a:To>http://www.w3.org/2005/08/addressing/anonymous</a:To>"
+        "</s:Header>";
     return header;
 }
 

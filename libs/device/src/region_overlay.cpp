@@ -381,8 +381,8 @@ std::vector<MppChannel> RegionOverlay::OverlayTargets() const {
 }
 
 bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
-                                           const RegionConfig &config,
-                                           const TextBitmap &text_bitmap) {
+                                       const RegionConfig &config,
+                                       const TextBitmap &text_bitmap) {
     RegionRecord *region = FindByName(name);
     const RegionBitmap bitmap = BuildRegionBitmap(text_bitmap);
     if (region != nullptr) {
@@ -433,7 +433,7 @@ bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
 }
 
 bool RegionOverlay::UpsertDisplayRegion(const std::string &name,
-                                            const RegionConfig &config) {
+                                        const RegionConfig &config) {
     RegionRecord *region = FindByName(name);
     if (region != nullptr) {
         const bool ok = sdk->SetRegionDisplay(

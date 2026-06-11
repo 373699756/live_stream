@@ -1,64 +1,64 @@
 .upgrade-grid {
-  display: grid;
-  grid-template-columns: minmax(420px, 1.18fr) minmax(360px, 0.82fr);
-  gap: 16px;
-  align-items: start;
+    display: grid;
+    grid-template-columns: minmax(420px, 1.18fr) minmax(360px, 0.82fr);
+    gap: 16px;
+    align-items: start;
 }
 
 .upgrade-flow-column {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
+    display: grid;
+    gap: 12px;
+    min-width: 0;
 }
 
 .upgrade-section {
-  min-width: 0;
-  padding: 12px;
-  background: #fbfdff;
-  border: 1px solid #e2e7ef;
-  border-radius: 4px;
+    min-width: 0;
+    padding: 12px;
+    background: #fbfdff;
+    border: 1px solid #e2e7ef;
+    border-radius: 4px;
 }
 
 .upgrade-status-section {
-  position: sticky;
-  top: 12px;
+    position: sticky;
+    top: 12px;
 }
 
 .upgrade-state-banner {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #eef6ff;
-  border: 1px solid #cfe2ff;
-  border-radius: 4px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: #eef6ff;
+    border: 1px solid #cfe2ff;
+    border-radius: 4px;
 }
 
 .upgrade-state-banner div {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
 }
 
 .upgrade-state-banner span,
 .upgrade-file-summary span,
 .upgrade-action-notes span {
-  color: var(--muted);
-  font-size: 12px;
+    color: var(--muted);
+    font-size: 12px;
 }
 
 .upgrade-state-banner strong,
 .upgrade-file-summary strong {
-  min-width: 0;
-  color: #243044;
-  font-size: 13px;
-  overflow-wrap: anywhere;
+    min-width: 0;
+    color: #243044;
+    font-size: 13px;
+    overflow-wrap: anywhere;
 }
 
 .upgrade-state-banner.state-failed {
-  background: #fef2f2;
-  border-color: #fecaca;
+    background: #fef2f2;
+    border-color: #fecaca;
 }
 
 .upgrade-state-banner.state-canceled,
@@ -67,141 +67,141 @@
 .upgrade-state-banner.state-preparing,
 .upgrade-state-banner.state-writing,
 .upgrade-state-banner.state-committing {
-  background: #fff7df;
-  border-color: #ead89a;
+    background: #fff7df;
+    border-color: #ead89a;
 }
 
 .upgrade-progress {
-  margin-bottom: 14px;
-  padding: 12px;
-  background: #f8fbff;
-  border: 1px solid #dbe7f5;
-  border-radius: 4px;
+    margin-bottom: 14px;
+    padding: 12px;
+    background: #f8fbff;
+    border: 1px solid #dbe7f5;
+    border-radius: 4px;
 }
 
 .upgrade-progress-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
 }
 
 .progress-track {
-  height: 10px;
-  overflow: hidden;
-  background: #dbe4f0;
-  border-radius: 999px;
+    height: 10px;
+    overflow: hidden;
+    background: #dbe4f0;
+    border-radius: 999px;
 }
 
 .progress-fill {
-  height: 100%;
-  background: var(--brand);
-  border-radius: 999px;
+    height: 100%;
+    background: var(--brand);
+    border-radius: 999px;
 }
 
 .upgrade-meta {
-  min-width: 0;
-  padding: 12px;
-  background: #fbfdff;
-  border: 1px solid #e2e7ef;
-  border-radius: 4px;
+    min-width: 0;
+    padding: 12px;
+    background: #fbfdff;
+    border: 1px solid #e2e7ef;
+    border-radius: 4px;
 }
 
 .upgrade-status-grid,
 .upgrade-package-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
 }
 
 .upgrade-package-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .wide-status-cell {
-  grid-column: 1 / -1;
+    grid-column: 1 / -1;
 }
 
 .upgrade-status-grid div,
 .upgrade-package-grid div {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-  background: #fafbfe;
-  border: 1px solid #e2e7ef;
-  border-radius: 4px;
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    background: #fafbfe;
+    border: 1px solid #e2e7ef;
+    border-radius: 4px;
 }
 
 .upgrade-status-grid span,
 .upgrade-package-grid span {
-  color: var(--muted);
-  font-size: 12px;
+    color: var(--muted);
+    font-size: 12px;
 }
 
 .upgrade-status-grid strong,
 .upgrade-package-grid strong,
 .upgrade-package-grid code {
-  min-width: 0;
-  color: #243044;
-  font-size: 13px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
+    min-width: 0;
+    color: #243044;
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 
 .upgrade-package-grid code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .upgrade-file-summary {
-  display: grid;
-  gap: 4px;
-  margin-top: 12px;
-  padding: 9px 10px;
-  background: #fff;
-  border: 1px solid #e2e7ef;
-  border-radius: 4px;
+    display: grid;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 9px 10px;
+    background: #fff;
+    border: 1px solid #e2e7ef;
+    border-radius: 4px;
 }
 
 .upgrade-option-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 0;
+    display: grid;
+    gap: 10px;
+    margin-top: 0;
 }
 
 .upgrade-option-list label {
-  justify-content: flex-start;
+    justify-content: flex-start;
 }
 
 .upgrade-action-section .form-actions {
-  margin-top: 0;
+    margin-top: 0;
 }
 
 .upgrade-action-notes {
-  display: grid;
-  gap: 5px;
-  margin-top: 10px;
+    display: grid;
+    gap: 5px;
+    margin-top: 10px;
 }
 
 .form-actions .danger-action:not(:disabled) {
-  color: #991b1b;
-  background: #fff7f7;
-  border-color: #f1b6b6;
+    color: #991b1b;
+    background: #fff7f7;
+    border-color: #f1b6b6;
 }
 
 @media (max-width: 980px) {
-  .upgrade-grid {
-    grid-template-columns: 1fr;
-  }
+    .upgrade-grid {
+        grid-template-columns: 1fr;
+    }
 
-  .upgrade-status-section {
-    position: static;
-  }
+    .upgrade-status-section {
+        position: static;
+    }
 
-  .upgrade-status-grid,
-  .upgrade-package-grid,
-  .upgrade-state-banner {
-    grid-template-columns: 1fr;
-  }
+    .upgrade-status-grid,
+    .upgrade-package-grid,
+    .upgrade-state-banner {
+        grid-template-columns: 1fr;
+    }
 }

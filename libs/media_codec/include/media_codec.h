@@ -130,9 +130,9 @@ bool HasCompleteH264ParameterSets(const H264NalUnitList &units);
 
 bool HasCompleteH265ParameterSets(const H265NalUnitList &units);
 
-bool HasH264KeyFrame(const H264NalUnitList &units);
+bool HasH264Keyframe(const H264NalUnitList &units);
 
-bool HasH265KeyFrame(const H265NalUnitList &units);
+bool HasH265Keyframe(const H265NalUnitList &units);
 
 H264ParameterSets ExtractH264ParameterSets(const H264NalUnitList &units);
 

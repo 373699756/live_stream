@@ -215,7 +215,7 @@ HttpFlvSession::HttpFlvSession(HttpMediaWriter *writer,
     : writer_(writer), connection_id_(connection_id), stream_id_(stream_id) {}
 
 HttpFlvSessionStartStatus HttpFlvSession::Start(
-    const MediaFlvStartData &start_data, size_t *cached_flv_bytes) {
+    const MediaFlvStart &flv_start, size_t *cached_flv_bytes) {
     if (cached_flv_bytes != nullptr) {
         *cached_flv_bytes = 0;
     }
@@ -232,9 +232,9 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
     const std::string header_block = BuildHttpStreamHeaderBlock(200, headers);
 
     start_block_.clear();
-    start_block_.reserve(header_block.size() + start_data.file_header.size());
+    start_block_.reserve(header_block.size() + flv_start.file_header.size());
     start_block_.append(header_block);
-    start_block_.append(start_data.file_header);
+    start_block_.append(flv_start.file_header);
     if (!writer_->EnqueueStreamingChunk(
             connection_id_,
             reinterpret_cast<const uint8_t *>(start_block_.data()),
@@ -244,7 +244,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
 
     // sequence header 先于缓存 GOP 输出，保证浏览器解码器拿到 SPS/PPS/VPS 后
     // 再处理后续视频 tag。
-    sequence_header_ = start_data.sequence_header;
+    sequence_header_ = flv_start.sequence_header;
     if (!OnFlvChunk(reinterpret_cast<const uint8_t *>(sequence_header_.data()),
                     sequence_header_.size())) {
         return HttpFlvSessionStartStatus::kSequenceHeader;
@@ -252,7 +252,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
 
     size_t bytes = 0;
     for (const MediaFlvCachedVideoTag &cached_tag :
-         start_data.cached_video_tags) {
+         flv_start.cached_video_tags) {
         if (!OnCachedFlvVideoTag(cached_tag)) {
             return HttpFlvSessionStartStatus::kCachedGop;
         }
@@ -267,10 +267,10 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
          "gop_complete=%d",
          static_cast<unsigned long long>(connection_id_),
          MediaStreamIdToJson(stream_id_),
-         header_block.size(), start_data.file_header.size(),
-         start_data.sequence_header.size(),
-         start_data.cached_video_tags.size(), bytes,
-         start_data.cached_gop_complete ? 1 : 0);
+         header_block.size(), flv_start.file_header.size(),
+         flv_start.sequence_header.size(),
+         flv_start.cached_video_tags.size(), bytes,
+         flv_start.cached_gop_complete ? 1 : 0);
     return HttpFlvSessionStartStatus::kStarted;
 }
 

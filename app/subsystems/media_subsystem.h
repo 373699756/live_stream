@@ -14,7 +14,7 @@ struct DeviceRefs;
 
 struct MediaRefs {
     DeviceMedia* device = nullptr;
-    MediaStreams *media_streams = nullptr;
+    MediaStreams* media_streams = nullptr;
     Ai* ai = nullptr;
 };
 
@@ -24,7 +24,7 @@ public:
 
     // DeviceMedia owns snapshot and overlay resources. Stop keeps AI before
     // device so inference and alert capture stop before hardware teardown.
-    bool Start(CoreSubsystem &core_subsystem, const DeviceRefs &device_refs);
+    bool Start(CoreSubsystem& core_subsystem, const DeviceRefs& device_refs);
     void Stop();
     MediaRefs refs() const;
 

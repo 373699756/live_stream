@@ -77,292 +77,292 @@ constexpr uint32_t kCrc32Table[] = {
     0x2d02ef8dU};
 
 uint16_t Read16(const uint8_t *data) {
-  return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) |
-                               data[1]);
+    return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) |
+                                 data[1]);
 }
 
 uint32_t Read32(const uint8_t *data) {
-  return (static_cast<uint32_t>(data[0]) << 24) |
-         (static_cast<uint32_t>(data[1]) << 16) |
-         (static_cast<uint32_t>(data[2]) << 8) |
-         static_cast<uint32_t>(data[3]);
+    return (static_cast<uint32_t>(data[0]) << 24) |
+           (static_cast<uint32_t>(data[1]) << 16) |
+           (static_cast<uint32_t>(data[2]) << 8) |
+           static_cast<uint32_t>(data[3]);
 }
 
 void Write16(std::vector<uint8_t> *data, uint16_t value) {
-  data->push_back(static_cast<uint8_t>((value >> 8) & 0xffU));
-  data->push_back(static_cast<uint8_t>(value & 0xffU));
+    data->push_back(static_cast<uint8_t>((value >> 8) & 0xffU));
+    data->push_back(static_cast<uint8_t>(value & 0xffU));
 }
 
 void Write32(std::vector<uint8_t> *data, uint32_t value) {
-  data->push_back(static_cast<uint8_t>((value >> 24) & 0xffU));
-  data->push_back(static_cast<uint8_t>((value >> 16) & 0xffU));
-  data->push_back(static_cast<uint8_t>((value >> 8) & 0xffU));
-  data->push_back(static_cast<uint8_t>(value & 0xffU));
+    data->push_back(static_cast<uint8_t>((value >> 24) & 0xffU));
+    data->push_back(static_cast<uint8_t>((value >> 16) & 0xffU));
+    data->push_back(static_cast<uint8_t>((value >> 8) & 0xffU));
+    data->push_back(static_cast<uint8_t>(value & 0xffU));
 }
 
 void Set16(std::vector<uint8_t> *data, size_t offset, uint16_t value) {
-  (*data)[offset] = static_cast<uint8_t>((value >> 8) & 0xffU);
-  (*data)[offset + 1] = static_cast<uint8_t>(value & 0xffU);
+    (*data)[offset] = static_cast<uint8_t>((value >> 8) & 0xffU);
+    (*data)[offset + 1] = static_cast<uint8_t>(value & 0xffU);
 }
 
 size_t PaddedSize(size_t size) {
-  return (size + 3U) & ~static_cast<size_t>(3U);
+    return (size + 3U) & ~static_cast<size_t>(3U);
 }
 
 uint32_t Crc32(const uint8_t *data, size_t size) {
-  uint32_t crc = 0xffffffffU;
-  for (size_t i = 0; i < size; ++i) {
-    crc = kCrc32Table[(crc ^ data[i]) & 0xffU] ^ (crc >> 8);
-  }
-  return crc ^ 0xffffffffU;
+    uint32_t crc = 0xffffffffU;
+    for (size_t i = 0; i < size; ++i) {
+        crc = kCrc32Table[(crc ^ data[i]) & 0xffU] ^ (crc >> 8);
+    }
+    return crc ^ 0xffffffffU;
 }
 
 std::array<uint8_t, 20> HmacSha1(const std::string &key,
                                  const uint8_t *data, size_t size) {
-  std::array<uint8_t, 20> digest{};
-  unsigned int digest_size = 0;
-  (void)HMAC(EVP_sha1(), key.data(), static_cast<int>(key.size()), data, size,
-             digest.data(), &digest_size);
-  return digest;
+    std::array<uint8_t, 20> digest{};
+    unsigned int digest_size = 0;
+    (void)HMAC(EVP_sha1(), key.data(), static_cast<int>(key.size()), data, size,
+               digest.data(), &digest_size);
+    return digest;
 }
 
 bool CheckHeader(const uint8_t *data, size_t size) {
-  if (data == nullptr || size < kStunHeaderSize || (data[0] & 0xc0U) != 0) {
-    return false;
-  }
-  if (Read32(data + 4) != kMagicCookie) {
-    return false;
-  }
-  const uint16_t message_length = Read16(data + 2);
-  return (message_length % 4U) == 0 &&
-         static_cast<size_t>(message_length) + kStunHeaderSize == size;
+    if (data == nullptr || size < kStunHeaderSize || (data[0] & 0xc0U) != 0) {
+        return false;
+    }
+    if (Read32(data + 4) != kMagicCookie) {
+        return false;
+    }
+    const uint16_t message_length = Read16(data + 2);
+    return (message_length % 4U) == 0 &&
+           static_cast<size_t>(message_length) + kStunHeaderSize == size;
 }
 
 bool UsernameMatchesLocalUfrag(const std::string &username,
                                const std::string &local_ufrag) {
-  if (username.size() <= local_ufrag.size() ||
-      username[local_ufrag.size()] != ':') {
-    return false;
-  }
-  return username.compare(0, local_ufrag.size(), local_ufrag) == 0;
+    if (username.size() <= local_ufrag.size() ||
+        username[local_ufrag.size()] != ':') {
+        return false;
+    }
+    return username.compare(0, local_ufrag.size(), local_ufrag) == 0;
 }
 
 void AddAttribute(std::vector<uint8_t> *data, uint16_t type,
                   const uint8_t *value, size_t value_size) {
-  Write16(data, type);
-  Write16(data, static_cast<uint16_t>(value_size));
-  if (value_size > 0) {
-    data->insert(data->end(), value, value + value_size);
-  }
-  const size_t padding_size = PaddedSize(value_size) - value_size;
-  for (size_t i = 0; i < padding_size; ++i) {
-    data->push_back(0);
-  }
+    Write16(data, type);
+    Write16(data, static_cast<uint16_t>(value_size));
+    if (value_size > 0) {
+        data->insert(data->end(), value, value + value_size);
+    }
+    const size_t padding_size = PaddedSize(value_size) - value_size;
+    for (size_t i = 0; i < padding_size; ++i) {
+        data->push_back(0);
+    }
 }
 
 void AddXorMappedAddress(std::vector<uint8_t> *data, const NetAddress &peer) {
-  uint32_t parts[4] = {0, 0, 0, 0};
-  size_t part_index = 0;
-  size_t start = 0;
-  for (size_t i = 0; i <= peer.ip.size() && part_index < 4; ++i) {
-    if (i != peer.ip.size() && peer.ip[i] != '.') {
-      continue;
+    uint32_t parts[4] = {0, 0, 0, 0};
+    size_t part_index = 0;
+    size_t start = 0;
+    for (size_t i = 0; i <= peer.ip.size() && part_index < 4; ++i) {
+        if (i != peer.ip.size() && peer.ip[i] != '.') {
+            continue;
+        }
+        if (i == start) {
+            return;
+        }
+        uint32_t value = 0;
+        for (size_t j = start; j < i; ++j) {
+            if (peer.ip[j] < '0' || peer.ip[j] > '9') {
+                return;
+            }
+            value = value * 10U + static_cast<uint32_t>(peer.ip[j] - '0');
+            if (value > 255U) {
+                return;
+            }
+        }
+        parts[part_index++] = value;
+        start = i + 1;
     }
-    if (i == start) {
-      return;
-    }
-    uint32_t value = 0;
-    for (size_t j = start; j < i; ++j) {
-      if (peer.ip[j] < '0' || peer.ip[j] > '9') {
+    if (part_index != 4) {
         return;
-      }
-      value = value * 10U + static_cast<uint32_t>(peer.ip[j] - '0');
-      if (value > 255U) {
-        return;
-      }
     }
-    parts[part_index++] = value;
-    start = i + 1;
-  }
-  if (part_index != 4) {
-    return;
-  }
 
-  uint8_t value[8] = {};
-  value[1] = 0x01;
-  const uint16_t xport =
-      static_cast<uint16_t>(peer.port ^ static_cast<uint16_t>(kMagicCookie >> 16));
-  value[2] = static_cast<uint8_t>((xport >> 8) & 0xffU);
-  value[3] = static_cast<uint8_t>(xport & 0xffU);
-  const uint32_t address = (parts[0] << 24) | (parts[1] << 16) |
-                           (parts[2] << 8) | parts[3];
-  const uint32_t xaddress = address ^ kMagicCookie;
-  value[4] = static_cast<uint8_t>((xaddress >> 24) & 0xffU);
-  value[5] = static_cast<uint8_t>((xaddress >> 16) & 0xffU);
-  value[6] = static_cast<uint8_t>((xaddress >> 8) & 0xffU);
-  value[7] = static_cast<uint8_t>(xaddress & 0xffU);
-  AddAttribute(data, kAttrXorMappedAddress, value, sizeof(value));
+    uint8_t value[8] = {};
+    value[1] = 0x01;
+    const uint16_t xport =
+        static_cast<uint16_t>(peer.port ^ static_cast<uint16_t>(kMagicCookie >> 16));
+    value[2] = static_cast<uint8_t>((xport >> 8) & 0xffU);
+    value[3] = static_cast<uint8_t>(xport & 0xffU);
+    const uint32_t address = (parts[0] << 24) | (parts[1] << 16) |
+                             (parts[2] << 8) | parts[3];
+    const uint32_t xaddress = address ^ kMagicCookie;
+    value[4] = static_cast<uint8_t>((xaddress >> 24) & 0xffU);
+    value[5] = static_cast<uint8_t>((xaddress >> 16) & 0xffU);
+    value[6] = static_cast<uint8_t>((xaddress >> 8) & 0xffU);
+    value[7] = static_cast<uint8_t>(xaddress & 0xffU);
+    AddAttribute(data, kAttrXorMappedAddress, value, sizeof(value));
 }
 
 }  // namespace
 
 bool IsStunPacket(const uint8_t *data, size_t size) {
-  return CheckHeader(data, size);
+    return CheckHeader(data, size);
 }
 
 StunParseResult ParseStunBindingRequest(const uint8_t *data, size_t size,
                                         const std::string &local_ufrag,
                                         const std::string &local_password,
                                         StunBindingRequest *request) {
-  if (request == nullptr) {
-    return StunParseResult::kMalformed;
-  }
-  *request = StunBindingRequest();
-  if (!CheckHeader(data, size)) {
-    return StunParseResult::kNotStun;
-  }
-  if (Read16(data) != kBindingRequestType) {
-    return StunParseResult::kUnsupported;
-  }
+    if (request == nullptr) {
+        return StunParseResult::kMalformed;
+    }
+    *request = StunBindingRequest();
+    if (!CheckHeader(data, size)) {
+        return StunParseResult::kNotStun;
+    }
+    if (Read16(data) != kBindingRequestType) {
+        return StunParseResult::kUnsupported;
+    }
 
-  std::array<uint8_t, 20> message_integrity{};
-  size_t message_integrity_offset = 0;
-  bool has_message_integrity = false;
-  bool has_fingerprint = false;
-  uint32_t fingerprint = 0;
+    std::array<uint8_t, 20> message_integrity{};
+    size_t message_integrity_offset = 0;
+    bool has_message_integrity = false;
+    bool has_fingerprint = false;
+    uint32_t fingerprint = 0;
 
-  std::copy(data + 8, data + 8 + kTransactionIdSize,
-            request->transaction_id.begin());
-  size_t offset = kStunHeaderSize;
-  while (offset < size) {
-    if (offset + 4 > size) {
-      return StunParseResult::kMalformed;
-    }
-    const uint16_t type = Read16(data + offset);
-    const uint16_t attr_size = Read16(data + offset + 2);
-    const size_t value_offset = offset + 4;
-    const size_t next_offset = value_offset + PaddedSize(attr_size);
-    if (value_offset + attr_size > size || next_offset > size) {
-      return StunParseResult::kMalformed;
-    }
-    switch (type) {
-      case kAttrUsername:
-        request->username.assign(
-            reinterpret_cast<const char *>(data + value_offset), attr_size);
-        break;
-      case kAttrMessageIntegrity:
-        if (attr_size != message_integrity.size()) {
-          return StunParseResult::kMalformed;
+    std::copy(data + 8, data + 8 + kTransactionIdSize,
+              request->transaction_id.begin());
+    size_t offset = kStunHeaderSize;
+    while (offset < size) {
+        if (offset + 4 > size) {
+            return StunParseResult::kMalformed;
         }
-        std::copy(data + value_offset, data + value_offset + attr_size,
-                  message_integrity.begin());
-        has_message_integrity = true;
-        message_integrity_offset = offset;
-        break;
-      case kAttrFingerprint:
-        if (attr_size != 4) {
-          return StunParseResult::kMalformed;
+        const uint16_t type = Read16(data + offset);
+        const uint16_t attr_size = Read16(data + offset + 2);
+        const size_t value_offset = offset + 4;
+        const size_t next_offset = value_offset + PaddedSize(attr_size);
+        if (value_offset + attr_size > size || next_offset > size) {
+            return StunParseResult::kMalformed;
         }
-        has_fingerprint = true;
-        fingerprint = Read32(data + value_offset);
-        break;
-      case kAttrPriority:
-        if (attr_size == 4) {
-          request->priority = Read32(data + value_offset);
+        switch (type) {
+            case kAttrUsername:
+                request->username.assign(
+                    reinterpret_cast<const char *>(data + value_offset), attr_size);
+                break;
+            case kAttrMessageIntegrity:
+                if (attr_size != message_integrity.size()) {
+                    return StunParseResult::kMalformed;
+                }
+                std::copy(data + value_offset, data + value_offset + attr_size,
+                          message_integrity.begin());
+                has_message_integrity = true;
+                message_integrity_offset = offset;
+                break;
+            case kAttrFingerprint:
+                if (attr_size != 4) {
+                    return StunParseResult::kMalformed;
+                }
+                has_fingerprint = true;
+                fingerprint = Read32(data + value_offset);
+                break;
+            case kAttrPriority:
+                if (attr_size == 4) {
+                    request->priority = Read32(data + value_offset);
+                }
+                break;
+            case kAttrUseCandidate:
+                request->use_candidate = true;
+                break;
+            default:
+                break;
         }
-        break;
-      case kAttrUseCandidate:
-        request->use_candidate = true;
-        break;
-      default:
-        break;
+        offset = next_offset;
     }
-    offset = next_offset;
-  }
 
-  if (!UsernameMatchesLocalUfrag(request->username, local_ufrag)) {
-    return StunParseResult::kBadUsername;
-  }
-  if (!has_message_integrity) {
-    return StunParseResult::kBadMessageIntegrity;
-  }
-  std::vector<uint8_t> integrity_data(data, data + message_integrity_offset);
-  const uint16_t integrity_length =
-      static_cast<uint16_t>(message_integrity_offset + 24 - kStunHeaderSize);
-  Set16(&integrity_data, 2, integrity_length);
-  const std::array<uint8_t, 20> expected =
-      HmacSha1(local_password, integrity_data.data(), integrity_data.size());
-  if (expected != message_integrity) {
-    return StunParseResult::kBadMessageIntegrity;
-  }
-  if (has_fingerprint) {
-    if (size < 8) {
-      return StunParseResult::kMalformed;
+    if (!UsernameMatchesLocalUfrag(request->username, local_ufrag)) {
+        return StunParseResult::kBadUsername;
     }
-    const uint32_t expected_fingerprint =
-        Crc32(data, size - 8) ^ kFingerprintXor;
-    if (expected_fingerprint != fingerprint) {
-      return StunParseResult::kBadFingerprint;
+    if (!has_message_integrity) {
+        return StunParseResult::kBadMessageIntegrity;
     }
-  }
-  request->has_message_integrity = has_message_integrity;
-  request->has_fingerprint = has_fingerprint;
-  return StunParseResult::kOk;
+    std::vector<uint8_t> integrity_data(data, data + message_integrity_offset);
+    const uint16_t integrity_length =
+        static_cast<uint16_t>(message_integrity_offset + 24 - kStunHeaderSize);
+    Set16(&integrity_data, 2, integrity_length);
+    const std::array<uint8_t, 20> expected =
+        HmacSha1(local_password, integrity_data.data(), integrity_data.size());
+    if (expected != message_integrity) {
+        return StunParseResult::kBadMessageIntegrity;
+    }
+    if (has_fingerprint) {
+        if (size < 8) {
+            return StunParseResult::kMalformed;
+        }
+        const uint32_t expected_fingerprint =
+            Crc32(data, size - 8) ^ kFingerprintXor;
+        if (expected_fingerprint != fingerprint) {
+            return StunParseResult::kBadFingerprint;
+        }
+    }
+    request->has_message_integrity = has_message_integrity;
+    request->has_fingerprint = has_fingerprint;
+    return StunParseResult::kOk;
 }
 
 std::vector<uint8_t> BuildStunBindingSuccessResponse(
     const StunBindingRequest &request, const std::string &local_password,
     const NetAddress &peer) {
-  std::vector<uint8_t> response;
-  response.reserve(kStunHeaderSize + 40);
-  Write16(&response, kBindingSuccessResponseType);
-  Write16(&response, 0);
-  Write32(&response, kMagicCookie);
-  response.insert(response.end(), request.transaction_id.begin(),
-                  request.transaction_id.end());
+    std::vector<uint8_t> response;
+    response.reserve(kStunHeaderSize + 40);
+    Write16(&response, kBindingSuccessResponseType);
+    Write16(&response, 0);
+    Write32(&response, kMagicCookie);
+    response.insert(response.end(), request.transaction_id.begin(),
+                    request.transaction_id.end());
 
-  AddXorMappedAddress(&response, peer);
-  const uint16_t length_with_integrity =
-      static_cast<uint16_t>(response.size() - kStunHeaderSize + 24);
-  Set16(&response, 2, length_with_integrity);
-  const std::array<uint8_t, 20> integrity =
-      HmacSha1(local_password, response.data(), response.size());
-  AddAttribute(&response, kAttrMessageIntegrity, integrity.data(),
-               integrity.size());
+    AddXorMappedAddress(&response, peer);
+    const uint16_t length_with_integrity =
+        static_cast<uint16_t>(response.size() - kStunHeaderSize + 24);
+    Set16(&response, 2, length_with_integrity);
+    const std::array<uint8_t, 20> integrity =
+        HmacSha1(local_password, response.data(), response.size());
+    AddAttribute(&response, kAttrMessageIntegrity, integrity.data(),
+                 integrity.size());
 
-  const uint16_t final_length =
-      static_cast<uint16_t>(response.size() - kStunHeaderSize + 8);
-  Set16(&response, 2, final_length);
-  const uint32_t fingerprint = Crc32(response.data(), response.size()) ^
-                               kFingerprintXor;
-  uint8_t fingerprint_data[4] = {
-      static_cast<uint8_t>((fingerprint >> 24) & 0xffU),
-      static_cast<uint8_t>((fingerprint >> 16) & 0xffU),
-      static_cast<uint8_t>((fingerprint >> 8) & 0xffU),
-      static_cast<uint8_t>(fingerprint & 0xffU)};
-  AddAttribute(&response, kAttrFingerprint, fingerprint_data,
-               sizeof(fingerprint_data));
-  return response;
+    const uint16_t final_length =
+        static_cast<uint16_t>(response.size() - kStunHeaderSize + 8);
+    Set16(&response, 2, final_length);
+    const uint32_t fingerprint = Crc32(response.data(), response.size()) ^
+                                 kFingerprintXor;
+    uint8_t fingerprint_data[4] = {
+        static_cast<uint8_t>((fingerprint >> 24) & 0xffU),
+        static_cast<uint8_t>((fingerprint >> 16) & 0xffU),
+        static_cast<uint8_t>((fingerprint >> 8) & 0xffU),
+        static_cast<uint8_t>(fingerprint & 0xffU)};
+    AddAttribute(&response, kAttrFingerprint, fingerprint_data,
+                 sizeof(fingerprint_data));
+    return response;
 }
 
 const char *StunParseResultName(StunParseResult result) {
-  switch (result) {
-    case StunParseResult::kOk:
-      return "ok";
-    case StunParseResult::kNotStun:
-      return "not_stun";
-    case StunParseResult::kUnsupported:
-      return "unsupported";
-    case StunParseResult::kMalformed:
-      return "malformed";
-    case StunParseResult::kBadUsername:
-      return "bad_username";
-    case StunParseResult::kBadMessageIntegrity:
-      return "bad_message_integrity";
-    case StunParseResult::kBadFingerprint:
-      return "bad_fingerprint";
-  }
-  return "unknown";
+    switch (result) {
+        case StunParseResult::kOk:
+            return "ok";
+        case StunParseResult::kNotStun:
+            return "not_stun";
+        case StunParseResult::kUnsupported:
+            return "unsupported";
+        case StunParseResult::kMalformed:
+            return "malformed";
+        case StunParseResult::kBadUsername:
+            return "bad_username";
+        case StunParseResult::kBadMessageIntegrity:
+            return "bad_message_integrity";
+        case StunParseResult::kBadFingerprint:
+            return "bad_fingerprint";
+    }
+    return "unknown";
 }
 
 }  // namespace webrtc_internal

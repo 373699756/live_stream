@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STATIC_FILES_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STATIC_FILES_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_STATIC_FILES_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_STATIC_FILES_H_
 
 #include "http.h"
 
@@ -37,4 +37,4 @@ std::vector<StaticAssetStatus> CheckStaticAssets(
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_STATIC_FILES_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_STATIC_FILES_H_

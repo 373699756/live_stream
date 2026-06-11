@@ -174,8 +174,8 @@ HttpStreamingRequestResult HttpImpl::HandleStreamingHttpRequest(
         server_->IncrementTotalRequests();
     }
     Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
-                   static_cast<unsigned long long>(connection_id),
-                   request.path.c_str(), request.client_ip.c_str());
+         static_cast<unsigned long long>(connection_id),
+         request.path.c_str(), request.client_ip.c_str());
     return streaming_handler->HandleStreamingRequest(connection_id, request);
 }
 
@@ -186,12 +186,12 @@ HttpStats HttpImpl::GetStats() const {
     return server_->GetStats();
 }
 
-std::vector<HttpStreamingSessionDiagnostics>
-HttpImpl::GetStreamingSessionDiagnostics() const {
+std::vector<HttpStreamSessionInfo>
+HttpImpl::ListStreamSessionInfo() const {
     if (server_ == nullptr) {
-        return std::vector<HttpStreamingSessionDiagnostics>();
+        return std::vector<HttpStreamSessionInfo>();
     }
-    return server_->GetStreamingSessionDiagnostics();
+    return server_->ListStreamSessionInfo();
 }
 
 HttpListenAddress HttpImpl::LocalAddress() const {
@@ -375,9 +375,9 @@ AuthPrincipal HttpImpl::Authenticate(const HttpRequest &request) {
 }
 
 bool HttpImpl::RequirePermission(const HttpRequest &request,
-                                        AuthPermission permission,
-                                        const std::string &target,
-                                        AuthPrincipal *principal) {
+                                 AuthPermission permission,
+                                 const std::string &target,
+                                 AuthPrincipal *principal) {
     AuthPrincipal authenticated = Authenticate(request);
     if (authenticated.user_name.empty()) {
         return false;
@@ -435,10 +435,10 @@ HttpResponse HttpImpl::HandleStaticFile(const HttpRequest &request) {
     }
     if (result.status == StaticFileStatus::kForbidden) {
         Error(kHttpModuleName,
-                        "HTTP static reject status=%s request=%s relative=%s "
-                        "path=%s",
-                        StaticStatusText(result.status), request.path.c_str(),
-                        result.relative_path.c_str(), result.path.c_str());
+              "HTTP static reject status=%s request=%s relative=%s "
+              "path=%s",
+              StaticStatusText(result.status), request.path.c_str(),
+              result.relative_path.c_str(), result.path.c_str());
         return StatusResponse(403, "Forbidden");
     }
     return result.response;
@@ -446,7 +446,7 @@ HttpResponse HttpImpl::HandleStaticFile(const HttpRequest &request) {
 
 std::unique_ptr<IHttp>
 CreateHttp(const HttpOptions &options,
-                  const HttpDependencies &dependencies) {
+           const HttpDependencies &dependencies) {
     std::unique_ptr<HttpImpl> service(
         new HttpImpl(options, dependencies));
     return std::unique_ptr<IHttp>(service.release());

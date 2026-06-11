@@ -29,7 +29,7 @@ constexpr int64_t kTargetIdleExpireMs = 30000;
 enum class PressureMetric {
     kPendingBytes,
     kSendQueue,
-    kSlowReaders,
+    kSlowSubscriptions,
     kWebrtcDroppedFrames,
 };
 
@@ -59,8 +59,8 @@ NetPressureSignal SignalForMetric(PressureMetric metric) {
             return NetPressureSignal::kTcpPendingBytes;
         case PressureMetric::kSendQueue:
             return NetPressureSignal::kSendQueue;
-        case PressureMetric::kSlowReaders:
-            return NetPressureSignal::kMediaSlowReader;
+        case PressureMetric::kSlowSubscriptions:
+            return NetPressureSignal::kMediaSlowSubscription;
         case PressureMetric::kWebrtcDroppedFrames:
             return NetPressureSignal::kWebrtcDroppedFrames;
     }
@@ -235,9 +235,9 @@ private:
             recommendations == nullptr) {
             return;
         }
-        const std::vector<NetConnectionDiagnostics> connections =
-            net_engine_->GetConnectionDiagnosticsSnapshot();
-        for (const NetConnectionDiagnostics &connection : connections) {
+        const std::vector<NetConnectionInfo> connections =
+            net_engine_->ListConnectionInfo();
+        for (const NetConnectionInfo &connection : connections) {
             if (!connection.open) {
                 continue;
             }
@@ -255,22 +255,22 @@ private:
             if (state->level == NetPressureLevel::kConstrained) {
                 ++stats->constrained_connections;
                 AddRecommendationIfReady(recommendations,
-                                  state,
-                                  NetRecommendationType::kCloseSlowClient,
-                                  now_ms,
-                                  RecommendationReason(*state, true));
+                                         state,
+                                         NetRecommendationType::kCloseSlowClient,
+                                         now_ms,
+                                         RecommendationReason(*state, true));
             } else if (state->level == NetPressureLevel::kWatch) {
                 AddRecommendationIfReady(recommendations,
-                                  state,
-                                  NetRecommendationType::kPreferSubStream,
-                                  now_ms,
-                                  RecommendationReason(*state, false));
+                                         state,
+                                         NetRecommendationType::kPreferSubStream,
+                                         now_ms,
+                                         RecommendationReason(*state, false));
             }
         }
     }
 
     bool ShouldSkipNetConnection(
-        const NetConnectionDiagnostics &connection) const {
+        const NetConnectionInfo &connection) const {
         if (connection.owner_protocol.empty()) {
             return true;
         }
@@ -290,9 +290,9 @@ private:
         const RtspStats rtsp_stats = rtsp_->GetStats();
         stats->active_rtsp_sessions = rtsp_stats.active_sessions;
 
-        const std::vector<RtspSessionDiagnostics> sessions =
-            rtsp_->GetSessionDiagnostics();
-        for (const RtspSessionDiagnostics &session : sessions) {
+        const std::vector<RtspSessionInfo> sessions =
+            rtsp_->ListSessionInfo();
+        for (const RtspSessionInfo &session : sessions) {
             std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "rtsp",
@@ -309,16 +309,16 @@ private:
             stats->level = MaxLevel(stats->level, state->level);
             if (state->level == NetPressureLevel::kConstrained) {
                 AddRecommendationIfReady(recommendations,
-                                  state,
-                                  NetRecommendationType::kCloseSlowClient,
-                                  now_ms,
-                                  RecommendationReason(*state, true));
+                                         state,
+                                         NetRecommendationType::kCloseSlowClient,
+                                         now_ms,
+                                         RecommendationReason(*state, true));
             } else if (state->level == NetPressureLevel::kWatch) {
                 AddRecommendationIfReady(recommendations,
-                                  state,
-                                  NetRecommendationType::kPreferSubStream,
-                                  now_ms,
-                                  RecommendationReason(*state, false));
+                                         state,
+                                         NetRecommendationType::kPreferSubStream,
+                                         now_ms,
+                                         RecommendationReason(*state, false));
             }
         }
     }
@@ -350,10 +350,10 @@ private:
             if (state != nullptr) {
                 stats->level = MaxLevel(stats->level, state->level);
                 AddRecommendationIfReady(recommendations,
-                              state,
-                              NetRecommendationType::kRequestKeyFrame,
-                              now_ms,
-                              RecommendationReason(*state, false));
+                                         state,
+                                         NetRecommendationType::kRequestKeyframe,
+                                         now_ms,
+                                         RecommendationReason(*state, false));
             }
         } else {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -376,60 +376,59 @@ private:
             recommendations == nullptr) {
             return;
         }
-        const MediaStreamCounters media_counters =
-            media_streams_->GetStreamCounters();
-        stats->slow_media_readers = media_counters.slow_subscriber_count;
+        const MediaStreamStats media_stats =
+            media_streams_->GetStreamStats();
+        stats->slow_media_subscriptions = media_stats.slow_subscriptions;
         SampleMediaStream(now_ms, StreamId::kMain,
-                          media_counters.main_slow_subscriber_count, stats,
+                          media_stats.main_slow_subscriptions, stats,
                           recommendations);
         SampleMediaStream(now_ms, StreamId::kSub,
-                          media_counters.sub_slow_subscriber_count, stats,
+                          media_stats.sub_slow_subscriptions, stats,
                           recommendations);
     }
 
     void SampleMediaStream(
         int64_t now_ms,
         StreamId stream_id,
-        uint32_t slow_subscriber_count,
+        uint32_t slow_subscriptions,
         NetStatSnapshot *stats,
         std::vector<NetRecommendation> *recommendations) {
         if (stats == nullptr || recommendations == nullptr) {
             return;
         }
-        if (slow_subscriber_count > 0) {
+        if (slow_subscriptions > 0) {
             std::lock_guard<std::mutex> lock(mutex_);
             ObservedTargetState *state = UpdateTarget(
                 "media",
                 "media",
-                "subscribers",
+                "subscriptions",
                 stream_id,
-                PressureMetric::kSlowReaders,
-                slow_subscriber_count,
+                PressureMetric::kSlowSubscriptions,
+                slow_subscriptions,
                 0,
                 now_ms);
             if (state == nullptr) {
                 return;
             }
             stats->level = MaxLevel(stats->level, state->level);
-            AddRecommendationIfReady(recommendations,
-                          state,
-                          NetRecommendationType::kRequestKeyFrame,
-                          now_ms,
-                          RecommendationReason(*state, false));
+            AddRecommendationIfReady(recommendations, state,
+                                     NetRecommendationType::kRequestKeyframe,
+                                     now_ms,
+                                     RecommendationReason(*state, false));
             return;
         }
         std::lock_guard<std::mutex> lock(mutex_);
         MaybeUpdateClearedTarget("media",
                                  "media",
-                                 "subscribers",
+                                 "subscriptions",
                                  stream_id,
-                                 PressureMetric::kSlowReaders,
+                                 PressureMetric::kSlowSubscriptions,
                                  0,
                                  now_ms);
     }
 
     ObservedTargetState *UpdateConnectionTarget(
-        const NetConnectionDiagnostics &connection,
+        const NetConnectionInfo &connection,
         int64_t now_ms) {
         ObservedTargetState *pending_state = UpdateTarget(
             "net",
@@ -568,8 +567,8 @@ private:
                 return options_.pending_bytes_watch;
             case PressureMetric::kSendQueue:
                 return options_.send_queue_watch;
-            case PressureMetric::kSlowReaders:
-                return options_.slow_readers_watch;
+            case PressureMetric::kSlowSubscriptions:
+                return options_.slow_media_subscriptions_watch;
             case PressureMetric::kWebrtcDroppedFrames:
                 return options_.webrtc_dropped_frames_watch;
         }
@@ -582,8 +581,8 @@ private:
                 return options_.pending_bytes_constrained;
             case PressureMetric::kSendQueue:
                 return options_.send_queue_constrained;
-            case PressureMetric::kSlowReaders:
-                return options_.slow_readers_constrained;
+            case PressureMetric::kSlowSubscriptions:
+                return options_.slow_media_subscriptions_constrained;
             case PressureMetric::kWebrtcDroppedFrames:
                 return options_.webrtc_dropped_frames_constrained;
         }
@@ -599,9 +598,9 @@ private:
             case NetPressureSignal::kSendQueue:
                 return constrained ? "tcp_send_queue_high"
                                    : "tcp_send_queue_watch";
-            case NetPressureSignal::kMediaSlowReader:
-                return constrained ? "media_readers_constrained"
-                                   : "media_reader_slow";
+            case NetPressureSignal::kMediaSlowSubscription:
+                return constrained ? "media_subscriptions_constrained"
+                                   : "media_subscription_slow";
             case NetPressureSignal::kWebrtcDroppedFrames:
                 return constrained ? "webrtc_frames_dropped_high"
                                    : "webrtc_frame_dropped";
@@ -713,77 +712,139 @@ private:
         for (const auto &entry : target_states_) {
             const ObservedTargetState &target = entry.second;
             NetStreamPressure &stream_pressure =
-                next_pressures[StreamPressureKey(target.stream_id)];
-            if (stream_pressure.tracked_targets == 0) {
-                stream_pressure.stream_id = target.stream_id;
-                stream_pressure.updated_at_ms = now_ms;
-                stream_pressure.normal_since_ms = now_ms;
-            }
-            ++stream_pressure.tracked_targets;
-            stream_pressure.level =
-                MaxLevel(stream_pressure.level, target.level);
-            if (target.level == NetPressureLevel::kWatch) {
-                ++stream_pressure.watch_targets;
-            } else if (target.level == NetPressureLevel::kConstrained) {
-                ++stream_pressure.constrained_targets;
-            }
-            stream_pressure.peak_pending_bytes_ewma =
-                std::max(stream_pressure.peak_pending_bytes_ewma,
-                         target.pending_bytes_ewma);
-            stream_pressure.peak_pressure_value_ewma =
-                std::max(stream_pressure.peak_pressure_value_ewma,
-                         target.pressure_value_ewma);
-            if (target.pressure_signal ==
-                NetPressureSignal::kMediaSlowReader) {
-                stream_pressure.slow_media_readers += target.pressure_value;
-            } else if (target.pressure_signal ==
-                       NetPressureSignal::kWebrtcDroppedFrames) {
-                stream_pressure.webrtc_dropped_frames_delta +=
-                    target.pressure_value;
-            }
-            if (target.pressure_started_at_ms != 0 &&
-                (stream_pressure.pressure_started_at_ms == 0 ||
-                 target.pressure_started_at_ms <
-                     stream_pressure.pressure_started_at_ms)) {
-                stream_pressure.pressure_started_at_ms =
-                    target.pressure_started_at_ms;
-            }
-            if (target.normal_since_ms == 0 ||
-                target.consecutive_normal_samples <
-                    options_.recovery_sample_threshold) {
-                stream_pressure.normal_since_ms = 0;
-            } else if (stream_pressure.normal_since_ms != 0 &&
-                       target.normal_since_ms >
-                           stream_pressure.normal_since_ms) {
-                stream_pressure.normal_since_ms = target.normal_since_ms;
-            }
+                StreamPressureForTarget(&next_pressures, target, now_ms);
+            AccumulateStreamPressure(&stream_pressure, target);
         }
 
         for (auto &entry : next_pressures) {
-            NetStreamPressure &stream_pressure = entry.second;
-            stream_pressure.request_key_frame =
-                stream_pressure.slow_media_readers > 0 ||
-                stream_pressure.webrtc_dropped_frames_delta > 0 ||
-                stream_pressure.level != NetPressureLevel::kNormal;
-            stream_pressure.prefer_sub_stream =
-                stream_pressure.stream_id == StreamId::kMain &&
-                stream_pressure.level != NetPressureLevel::kNormal;
-            stream_pressure.close_slow_clients =
-                stream_pressure.constrained_targets > 0;
-            stream_pressure.can_restore_main_stream =
-                stream_pressure.stream_id == StreamId::kMain &&
-                stream_pressure.level == NetPressureLevel::kNormal &&
-                stream_pressure.tracked_targets > 0 &&
-                stream_pressure.normal_since_ms != 0;
-            stream_pressure.reason = StreamPressureReason(stream_pressure);
-            if (stats != nullptr) {
-                stats->level = MaxLevel(stats->level, stream_pressure.level);
-                if (stream_pressure.can_restore_main_stream) {
-                    ++stats->recovering_streams;
-                }
-            }
+            FinalizeStreamPressure(&entry.second, stats);
         }
         stream_pressures_ = std::move(next_pressures);
+    }
+
+    NetStreamPressure &StreamPressureForTarget(
+        std::map<std::string, NetStreamPressure> *pressures,
+        const ObservedTargetState &target,
+        int64_t now_ms) const {
+        NetStreamPressure &stream_pressure =
+            (*pressures)[StreamPressureKey(target.stream_id)];
+        if (stream_pressure.tracked_targets == 0) {
+            stream_pressure.stream_id = target.stream_id;
+            stream_pressure.updated_at_ms = now_ms;
+            stream_pressure.normal_since_ms = now_ms;
+        }
+        return stream_pressure;
+    }
+
+    void AccumulateStreamPressure(
+        NetStreamPressure *stream_pressure,
+        const ObservedTargetState &target) const {
+        ++stream_pressure->tracked_targets;
+        AccumulateStreamPressureLevel(stream_pressure, target);
+        AccumulateStreamPressurePeaks(stream_pressure, target);
+        AccumulateStreamPressureSignal(stream_pressure, target);
+        AccumulateStreamPressureTiming(stream_pressure, target);
+    }
+
+    void AccumulateStreamPressureLevel(
+        NetStreamPressure *stream_pressure,
+        const ObservedTargetState &target) const {
+        stream_pressure->level =
+            MaxLevel(stream_pressure->level, target.level);
+        if (target.level == NetPressureLevel::kWatch) {
+            ++stream_pressure->watch_targets;
+        } else if (target.level == NetPressureLevel::kConstrained) {
+            ++stream_pressure->constrained_targets;
+        }
+    }
+
+    void AccumulateStreamPressurePeaks(
+        NetStreamPressure *stream_pressure,
+        const ObservedTargetState &target) const {
+        stream_pressure->peak_pending_bytes_ewma =
+            std::max(stream_pressure->peak_pending_bytes_ewma,
+                     target.pending_bytes_ewma);
+        stream_pressure->peak_pressure_value_ewma =
+            std::max(stream_pressure->peak_pressure_value_ewma,
+                     target.pressure_value_ewma);
+    }
+
+    void AccumulateStreamPressureSignal(
+        NetStreamPressure *stream_pressure,
+        const ObservedTargetState &target) const {
+        if (target.pressure_signal ==
+            NetPressureSignal::kMediaSlowSubscription) {
+            stream_pressure->slow_media_subscriptions +=
+                target.pressure_value;
+        } else if (target.pressure_signal ==
+                   NetPressureSignal::kWebrtcDroppedFrames) {
+            stream_pressure->webrtc_dropped_frames_delta +=
+                target.pressure_value;
+        }
+    }
+
+    void AccumulateStreamPressureTiming(
+        NetStreamPressure *stream_pressure,
+        const ObservedTargetState &target) const {
+        if (IsEarlierPressureStart(*stream_pressure, target)) {
+            stream_pressure->pressure_started_at_ms =
+                target.pressure_started_at_ms;
+        }
+        if (!TargetCanRestoreStream(target)) {
+            stream_pressure->normal_since_ms = 0;
+        } else if (stream_pressure->normal_since_ms != 0 &&
+                   target.normal_since_ms >
+                       stream_pressure->normal_since_ms) {
+            stream_pressure->normal_since_ms = target.normal_since_ms;
+        }
+    }
+
+    bool IsEarlierPressureStart(
+        const NetStreamPressure &stream_pressure,
+        const ObservedTargetState &target) const {
+        return target.pressure_started_at_ms != 0 &&
+               (stream_pressure.pressure_started_at_ms == 0 ||
+                target.pressure_started_at_ms <
+                    stream_pressure.pressure_started_at_ms);
+    }
+
+    bool TargetCanRestoreStream(
+        const ObservedTargetState &target) const {
+        return target.normal_since_ms != 0 &&
+               target.consecutive_normal_samples >=
+                   options_.recovery_sample_threshold;
+    }
+
+    void FinalizeStreamPressure(NetStreamPressure *stream_pressure,
+                                NetStatSnapshot *stats) const {
+        stream_pressure->need_keyframe =
+            stream_pressure->slow_media_subscriptions > 0 ||
+            stream_pressure->webrtc_dropped_frames_delta > 0 ||
+            stream_pressure->level != NetPressureLevel::kNormal;
+        stream_pressure->prefer_sub_stream =
+            stream_pressure->stream_id == StreamId::kMain &&
+            stream_pressure->level != NetPressureLevel::kNormal;
+        stream_pressure->close_slow_clients =
+            stream_pressure->constrained_targets > 0;
+        stream_pressure->can_restore_main_stream =
+            stream_pressure->stream_id == StreamId::kMain &&
+            stream_pressure->level == NetPressureLevel::kNormal &&
+            stream_pressure->tracked_targets > 0 &&
+            stream_pressure->normal_since_ms != 0;
+        stream_pressure->reason = StreamPressureReason(*stream_pressure);
+        UpdateStatsFromStreamPressure(*stream_pressure, stats);
+    }
+
+    void UpdateStatsFromStreamPressure(
+        const NetStreamPressure &stream_pressure,
+        NetStatSnapshot *stats) const {
+        if (stats == nullptr) {
+            return;
+        }
+        stats->level = MaxLevel(stats->level, stream_pressure.level);
+        if (stream_pressure.can_restore_main_stream) {
+            ++stats->recovering_streams;
+        }
     }
 
     std::string StreamPressureReason(
@@ -797,8 +858,8 @@ private:
         if (stream_pressure.webrtc_dropped_frames_delta > 0) {
             return "stream_webrtc_drops";
         }
-        if (stream_pressure.slow_media_readers > 0) {
-            return "stream_slow_readers";
+        if (stream_pressure.slow_media_subscriptions > 0) {
+            return "stream_slow_subscriptions";
         }
         if (stream_pressure.can_restore_main_stream) {
             return "stream_recovered";

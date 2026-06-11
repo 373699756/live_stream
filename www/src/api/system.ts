@@ -5,7 +5,11 @@ import { requestJson, type ApiRequestOptions } from './client';
 import type { SystemStatus } from './types';
 
 export function getSystemStatus(
-  init?: ApiRequestOptions,
+    init?: ApiRequestOptions,
 ): Promise<SystemStatus> {
-  return requestJson<SystemStatus>('/api/system/status', mockSystemStatus, init);
+    return requestJson<SystemStatus>(
+        '/api/system/status',
+        mockSystemStatus,
+        init,
+    );
 }

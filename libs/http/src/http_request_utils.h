@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_REQUEST_UTILS_H_
-#define LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_REQUEST_UTILS_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_REQUEST_UTILS_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_REQUEST_UTILS_H_
 
 #include "http.h"
 
@@ -18,4 +18,4 @@ std::string QueryValue(const HttpRequest &request, const std::string &name);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SERVICE_SRC_HTTP_REQUEST_UTILS_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_REQUEST_UTILS_H_

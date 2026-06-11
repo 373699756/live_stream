@@ -95,7 +95,7 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeSnapshotHandler(HttpAccess *access,
-                                               DeviceMedia *device) {
+                                                  DeviceMedia *device) {
     return std::unique_ptr<IHttpHandler>(
         new SnapshotHttpHandler(access, device));
 }

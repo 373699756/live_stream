@@ -171,9 +171,9 @@ bool WebrtcSession::SendDtlsResult(
 }
 
 bool WebrtcSession::HandleSrtcpPacket(const uint8_t *data, size_t size,
-                                      bool *request_key_frame) {
+                                      bool *need_keyframe) {
     return transport_ != nullptr &&
-           transport_->HandleSrtcpPacket(data, size, request_key_frame);
+           transport_->HandleSrtcpPacket(data, size, need_keyframe);
 }
 
 bool WebrtcSession::SendRtpPacket(
@@ -193,24 +193,23 @@ bool WebrtcSession::GetRtpSendParameters(
     return true;
 }
 
-void WebrtcSession::FillPeerDiagnostics(WebrtcPeerInfo *peer) const {
+void WebrtcSession::FillPeerInfo(WebrtcPeerInfo *peer) const {
     if (peer == nullptr || transport_ == nullptr) {
         return;
     }
-    const WebrtcTransportDiagnostics diagnostics =
-        transport_->GetDiagnostics();
-    peer->ice_selected = diagnostics.ice_selected;
-    peer->dtls_state = diagnostics.dtls_state;
-    peer->srtp_ready = diagnostics.srtp_ready;
-    peer->rtp_packets = diagnostics.rtp_packets;
-    peer->rtp_bytes = diagnostics.rtp_bytes;
-    peer->rtcp_packets = diagnostics.rtcp_packets;
-    peer->rtcp_bytes = diagnostics.rtcp_bytes;
-    peer->rtcp_pli_count = diagnostics.rtcp_pli_count;
-    peer->rtcp_fir_count = diagnostics.rtcp_fir_count;
-    peer->rtcp_nack_count = diagnostics.rtcp_nack_count;
-    peer->rtcp_transport_cc_count = diagnostics.rtcp_transport_cc_count;
-    peer->rtcp_keyframe_requests = diagnostics.rtcp_keyframe_requests;
+    const WebrtcTransportInfo transport_info = transport_->GetInfo();
+    peer->ice_selected = transport_info.ice_selected;
+    peer->dtls_state = transport_info.dtls_state;
+    peer->srtp_ready = transport_info.srtp_ready;
+    peer->rtp_packets = transport_info.rtp_packets;
+    peer->rtp_bytes = transport_info.rtp_bytes;
+    peer->rtcp_packets = transport_info.rtcp_packets;
+    peer->rtcp_bytes = transport_info.rtcp_bytes;
+    peer->rtcp_pli_count = transport_info.rtcp_pli_count;
+    peer->rtcp_fir_count = transport_info.rtcp_fir_count;
+    peer->rtcp_nack_count = transport_info.rtcp_nack_count;
+    peer->rtcp_transport_cc_count = transport_info.rtcp_transport_cc_count;
+    peer->rtcp_keyframe_requests = transport_info.rtcp_keyframe_requests;
 }
 
 void WebrtcSession::FillStats(WebrtcStats *stats) const {

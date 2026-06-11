@@ -193,7 +193,7 @@ bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) {
         Error("hisi_vendor", "invalid region attach handle=%d",
-                        handle);
+              handle);
         return false;
     }
 
@@ -243,7 +243,7 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (handle < 0) {
         Error("hisi_vendor", "invalid region display handle=%d",
-                        handle);
+              handle);
         return false;
     }
 

@@ -12,9 +12,9 @@
 - 通过 `FrameSink::PushFrame()` 接收设备侧输出的编码帧。
 - 维护主/子码流的 GOP cache、HLS segment、FLV 起播缓存、MJPEG latest frame 和
   帧订阅 live queue。
-- 通过 `KeyFrameRequestCallback` 把协议侧新订阅、恢复等关键帧请求回调给设备层；
+- 通过 `RequestKeyframeFn` 把协议侧新订阅、恢复等关键帧请求回调给设备层；
   `media` 自身不直接依赖设备模块。
-- 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamCounters`、
+- 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamStats`、
   `FrameSubscription` 相关接口。
 - 帧订阅起播 GOP 和 live frame 直接返回带引用计数 payload 的 `EncodedFrame`；
   参数集、codec generation 和 90kHz clock rate 等播放元信息收敛在
@@ -32,7 +32,7 @@ codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG
 `MediaFrame` 和 `MediaTrack` 不再作为公共 API 存在。订阅方需要保存帧时只保留
 `EncodedFrame` 引用，发送完成后调用对应 unref 接口释放。
 
-`FrameSubscriptionStartData::track_ready` 表示订阅起播数据已具备协议输出条件，
+`SubscriptionStart::track_ready` 表示订阅起播数据已具备协议输出条件，
 不要用设备运行态替代该判断。
 
 `FramePayload`、NAL 解析结果和时间戳修正器只属于 `media` 内部实现，不进入 public

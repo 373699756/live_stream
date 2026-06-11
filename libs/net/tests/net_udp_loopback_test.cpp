@@ -33,7 +33,7 @@ int main() {
     if (!engine->Start()) {
         return 2;
     }
-    live_stream::INetExecutor *executor = engine->DefaultExecutor();
+    live_stream::INetExecutor* executor = engine->DefaultExecutor();
     if (executor == nullptr) {
         return 3;
     }

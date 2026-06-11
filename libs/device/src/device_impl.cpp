@@ -80,10 +80,10 @@ public:
     bool IsStreamStarted(StreamId stream_id) const override;
     Codec GetStreamCodec(StreamId stream_id) const override;
     bool SetFrameSink(FrameSink *sink) override;
-    bool RequestKeyFrame(StreamId stream_id, KeyFrameRequestType reason) override;
+    bool RequestKeyframe(StreamId stream_id, KeyframeRequestSource source) override;
     MediaCapabilities GetCapabilities() const override;
     MediaChannels GetChannels() const override;
-    ImageStrategyStatus GetImageStrategyStatus() const override;
+    ImageInfo GetImageInfo() const override;
     SnapshotFrame CaptureSnapshot(const SnapshotRequest &request) override;
     SnapshotInfo GetSnapshotInfo() const override;
     OverlayInfo GetOverlayInfo() const override;
@@ -108,7 +108,7 @@ private:
     bool ApplyImageConfigToPipeline(const ConfigJson &value);
     ConfigJson BuildImageStrategyConfigLocked(
         const hisisdk::ExposureInfo &exposure,
-        ImageStrategyStatus *next_status) const;
+        ImageInfo *next_info) const;
     void StartImageStrategyLocked();
     void StopImageStrategy();
     void ImageStrategyLoop();
@@ -126,7 +126,7 @@ private:
     LifecycleState state_ = LifecycleState::kCreated;
     FrameSink *frame_sink_ = nullptr;
     ConfigJson image_config_ = ConfigJson::object();
-    ImageStrategyStatus image_strategy_status_;
+    ImageInfo image_info_;
     std::unique_ptr<SnapshotCapture> snapshot_capture_;
     std::unique_ptr<RegionOverlay> region_overlay_;
     mutable std::mutex mutex_;
@@ -521,9 +521,9 @@ bool DeviceImpl::ApplyImageConfigToPipeline(
 
 ConfigJson DeviceImpl::BuildImageStrategyConfigLocked(
     const hisisdk::ExposureInfo &exposure,
-    ImageStrategyStatus *next_status) const {
-    return BuildImageStrategyConfig(image_config_, image_strategy_status_,
-                                    exposure, next_status);
+    ImageInfo *next_info) const {
+    return BuildImageStrategyConfig(image_config_, image_info_,
+                                    exposure, next_info);
 }
 
 void DeviceImpl::StartImageStrategyLocked() {
@@ -547,7 +547,7 @@ void DeviceImpl::StopImageStrategy() {
     std::lock_guard<std::mutex> guard(mutex_);
     image_strategy_running_ = false;
     image_strategy_stop_ = false;
-    image_strategy_status_.active = false;
+    image_info_.active = false;
 }
 
 void DeviceImpl::ImageStrategyLoop() {
@@ -568,9 +568,9 @@ void DeviceImpl::ImageStrategyLoop() {
             }
             const bool strategy_enabled =
                 IsImageStrategyEnabled(image_config_);
-            image_strategy_status_.enabled = strategy_enabled;
+            image_info_.enabled = strategy_enabled;
             if (state_ != LifecycleState::kStarted || !strategy_enabled) {
-                image_strategy_status_.active = false;
+                image_info_.active = false;
                 continue;
             }
         }
@@ -581,11 +581,11 @@ void DeviceImpl::ImageStrategyLoop() {
             if (image_strategy_stop_) {
                 return;
             }
-            image_strategy_status_.exposure_valid = false;
+            image_info_.exposure_valid = false;
             continue;
         }
 
-        ImageStrategyStatus next_status;
+        ImageInfo next_info;
         ConfigJson adjusted;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -595,7 +595,7 @@ void DeviceImpl::ImageStrategyLoop() {
                 continue;
             }
             adjusted = BuildImageStrategyConfigLocked(exposure,
-                                                      &next_status);
+                                                      &next_info);
         }
 
         bool applied = false;
@@ -614,7 +614,7 @@ void DeviceImpl::ImageStrategyLoop() {
         }
         if (applied) {
             std::lock_guard<std::mutex> guard(mutex_);
-            image_strategy_status_ = next_status;
+            image_info_ = next_info;
         }
     }
 }
@@ -879,9 +879,9 @@ bool DeviceImpl::SetFrameSink(FrameSink *sink) {
     return true;
 }
 
-bool DeviceImpl::RequestKeyFrame(StreamId stream_id,
-                                      KeyFrameRequestType reason) {
-    (void)reason;
+bool DeviceImpl::RequestKeyframe(StreamId stream_id,
+                                 KeyframeRequestSource source) {
+    (void)source;
     int32_t venc_channel = -1;
     hisisdk::IHisiSdk *sdk = nullptr;
     {
@@ -913,9 +913,9 @@ MediaChannels DeviceImpl::GetChannels() const {
     return active_channels_;
 }
 
-ImageStrategyStatus DeviceImpl::GetImageStrategyStatus() const {
+ImageInfo DeviceImpl::GetImageInfo() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return image_strategy_status_;
+    return image_info_;
 }
 
 SnapshotFrame DeviceImpl::CaptureSnapshot(

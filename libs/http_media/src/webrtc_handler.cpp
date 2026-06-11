@@ -61,13 +61,13 @@ ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
     root["codec"] = CodecToJsonString(peer.codec);
     root["state"] = WebrtcPeerStateName(peer.state);
     root["client_id"] = peer.client_id;
-    root["reader_id"] = peer.reader_id;
-    root["reader_attached"] = peer.reader_attached;
-    root["reader_generation"] = peer.reader_generation;
-    root["reader_pending_frames"] = peer.reader_pending_frames;
-    root["reader_waiting_keyframe"] = peer.reader_waiting_keyframe;
-    root["reader_slow"] = peer.reader_slow;
-    root["reader_close_reason"] = peer.reader_close_reason;
+    root["subscription_id"] = peer.subscription_id;
+    root["subscription_open"] = peer.subscription_open;
+    root["subscription_generation"] = peer.subscription_generation;
+    root["subscription_pending_frames"] = peer.subscription_pending_frames;
+    root["subscription_waiting_keyframe"] = peer.subscription_waiting_keyframe;
+    root["subscription_slow"] = peer.subscription_slow;
+    root["subscription_close_reason"] = peer.subscription_close_reason;
     root["ice_selected"] = peer.ice_selected;
     root["dtls_state"] = peer.dtls_state;
     root["srtp_ready"] = peer.srtp_ready;
@@ -245,18 +245,18 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
     }
     has_mline_index =
         json_utils::ReadField(body, "sdp_mline_index",
-                         &candidate.sdp_mline_index, 0,
-                         std::numeric_limits<int32_t>::max()) ||
+                              &candidate.sdp_mline_index, 0,
+                              std::numeric_limits<int32_t>::max()) ||
         json_utils::ReadField(body, "sdpMLineIndex",
-                         &candidate.sdp_mline_index, 0,
-                         std::numeric_limits<int32_t>::max());
+                              &candidate.sdp_mline_index, 0,
+                              std::numeric_limits<int32_t>::max());
     if (!has_mline_index) {
         return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
     if (!json_utils::ReadField(body, "username_fragment",
-                          &candidate.username_fragment)) {
+                               &candidate.username_fragment)) {
         (void)json_utils::ReadField(body, "usernameFragment",
-                               &candidate.username_fragment);
+                                    &candidate.username_fragment);
     }
 
     ConfigJson root = ConfigJson::object();
@@ -355,8 +355,7 @@ public:
     WebrtcHttpHandler(HttpAccess *access,
                       DeviceMedia *device,
                       IWebrtc *webrtc)
-        : access_(access), device_(device),
-          webrtc_(webrtc) {}
+        : access_(access), device_(device), webrtc_(webrtc) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -370,9 +369,9 @@ public:
         router->AddPrefixRoute(HttpMethod::kDelete, "/api/webrtc/peers/",
                                &WebrtcHttpHandler::HandleClosePeerRoute, this);
         router->AddPrefixRoute(HttpMethod::kPost, "/live/",
-                              &WebrtcHttpHandler::HandleWhepCreateRoute, this);
+                               &WebrtcHttpHandler::HandleWhepCreateRoute, this);
         router->AddPrefixRoute(HttpMethod::kDelete, "/live/",
-                              &WebrtcHttpHandler::HandleWhepDeleteRoute, this);
+                               &WebrtcHttpHandler::HandleWhepDeleteRoute, this);
     }
 
 private:
@@ -442,8 +441,8 @@ private:
     HttpResponse HandleWhepCreate(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequirePlaybackAuthResponse(access_, request,
-                                                 &principal);
+            RequireLiveStreamAuthResponse(access_, request,
+                                          &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
@@ -459,8 +458,8 @@ private:
     HttpResponse HandleWhepDelete(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
-            RequirePlaybackAuthResponse(access_, request,
-                                                 &principal);
+            RequireLiveStreamAuthResponse(access_, request,
+                                          &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }

@@ -11,9 +11,9 @@ namespace device_internal {
 bool IsImageStrategyEnabled(const ConfigJson &image_config);
 ConfigJson BuildImageStrategyConfig(
     const ConfigJson &image_config,
-    const ImageStrategyStatus &current_status,
+    const ImageInfo &current_info,
     const hisisdk::ExposureInfo &exposure,
-    ImageStrategyStatus *next_status);
+    ImageInfo *next_info);
 
 }  // namespace device_internal
 }  // namespace live_stream

@@ -114,7 +114,7 @@ bool HasCompleteH264ParameterSets(const H264NalUnitList &units) {
     return false;
 }
 
-bool HasH264KeyFrame(const H264NalUnitList &units) {
+bool HasH264Keyframe(const H264NalUnitList &units) {
     // H.264 只有 IDR NAL 才能作为协议输出的独立解码起点。
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return IsH264IdrNal(unit.type);

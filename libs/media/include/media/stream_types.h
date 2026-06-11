@@ -26,8 +26,8 @@ enum class FrameType {
     kJpeg,
 };
 
-enum class KeyFrameRequestType {
-    kNewSubscriber = 0,
+enum class KeyframeRequestSource {
+    kNewClient = 0,
     kPacketLoss,
     kRecovery,
 };

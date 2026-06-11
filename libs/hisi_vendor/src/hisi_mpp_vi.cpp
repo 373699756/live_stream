@@ -246,7 +246,7 @@ void* IspThread(void* arg) {
     const HI_S32 status = HI_MPI_ISP_Run(vi_pipe);
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_ISP_Run pipe %d failed: 0x%08x",
-                        vi_pipe, status);
+              vi_pipe, status);
     }
     return nullptr;
 }
@@ -266,7 +266,7 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         profile.sns_obj->pfnRegisterCallback == nullptr ||
         profile.sns_obj->pfnSetBusInfo == nullptr) {
         Error("hisi_vendor",
-                        "%s sensor callbacks are unavailable", profile.name);
+              "%s sensor callbacks are unavailable", profile.name);
         return false;
     }
 

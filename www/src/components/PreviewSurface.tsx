@@ -32,7 +32,11 @@ export function PreviewSurface({
         : 'video-placeholder';
 
     return (
-        <div className="video-surface" ref={surfaceRef} onDoubleClick={onToggleFullscreen}>
+        <div
+            className="video-surface"
+            ref={surfaceRef}
+            onDoubleClick={onToggleFullscreen}
+        >
             {!enabled ? (
                 <div className="video-placeholder">
                     <div className="lens-ring paused" />
@@ -48,14 +52,22 @@ export function PreviewSurface({
                     >
                         <video
                             ref={layer.videoRef}
-                            className={layer.mediaKind === 'video' ? 'video-element' : 'video-element hidden'}
+                            className={
+                                layer.mediaKind === 'video'
+                                    ? 'video-element'
+                                    : 'video-element hidden'
+                            }
                             autoPlay
                             muted
                             playsInline
                         />
                         <img
                             ref={layer.imageRef}
-                            className={layer.mediaKind === 'mjpeg' ? 'video-element' : 'video-element hidden'}
+                            className={
+                                layer.mediaKind === 'mjpeg'
+                                    ? 'video-element'
+                                    : 'video-element hidden'
+                            }
                             alt=""
                         />
                     </div>

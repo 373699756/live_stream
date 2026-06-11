@@ -21,7 +21,7 @@ bool WriteText(const std::string &path, const std::string &content) {
 
 std::unique_ptr<live_stream::IConfig>
 CreateStarted(const std::string &config_path,
-                     const std::string &default_config_path) {
+              const std::string &default_config_path) {
     live_stream::ConfigOptions options;
     options.config_path = config_path;
     options.default_config_path = default_config_path;
@@ -77,7 +77,7 @@ int main() {
         ++validate_count;
         int64_t bitrate = 0;
         if (!live_stream::json_utils::ReadField(config, "bitrate", &bitrate, 128,
-                                           8192)) {
+                                                8192)) {
             return live_stream::ConfigResult::Failure("bitrate", "unsupported value");
         }
         return live_stream::ConfigResult::Success();

@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import type { OverlayConfig, PrivacyMaskConfig, StreamName } from '../api/types';
+import type {
+    OverlayConfig,
+    PrivacyMaskConfig,
+    StreamName,
+} from '../api/types';
 import { resolutionValue } from '../api/resolution';
 import { mockOverlayConfig } from '../api/mockOverlay';
 import { FormField } from '../components/FormField';
@@ -10,7 +14,12 @@ import { useOverlayMaskEditor } from './OverlayMaskEditor';
 
 const parseResolution = (resolution: string) => {
     const [width, height] = resolution.split('x').map((value) => Number(value));
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+    ) {
         return { width: 1, height: 1 };
     }
     return { width, height };
@@ -56,8 +65,8 @@ function updateMask(
     slot: number,
     patch: Partial<PrivacyMaskConfig>,
 ): OverlayConfig {
-    const masks = normalizedMasks(config.privacy_masks?.[stream], stream).map((item, index) =>
-        index === slot ? { ...item, ...patch } : item,
+    const masks = normalizedMasks(config.privacy_masks?.[stream], stream).map(
+        (item, index) => (index === slot ? { ...item, ...patch } : item),
     );
     return {
         ...config,
@@ -71,33 +80,41 @@ function updateMask(
 export function OverlayConfigPage() {
     const [activeStream, setActiveStream] = useState<StreamName>('sub');
     const [activeSlot, setActiveSlot] = useState(0);
-    const { config, setConfig, save, reset, savedMsg, loading, saving, error } = useOverlayConfig();
+    const { config, setConfig, save, reset, savedMsg, loading, saving, error } =
+        useOverlayConfig();
     const {
         config: videoConfig,
         capabilities,
         statuses,
-        playbackUrls,
+        previewUrls,
         loading: videoLoading,
     } = useVideoConfig(activeStream);
 
-    const draftConfig = config ? normalizeOverlayConfig(config) : mockOverlayConfig;
+    const draftConfig = config
+        ? normalizeOverlayConfig(config)
+        : mockOverlayConfig;
     const streamConfig = videoConfig?.streams[activeStream];
     const capability = capabilities.streams[activeStream];
     const fallbackResolution = capability.resolutions[0]
         ? resolutionValue(capability.resolutions[0])
         : activeStream === 'main'
-            ? '1920x1080'
-            : '640x360';
-    const frame = parseResolution(streamConfig?.resolution || fallbackResolution);
+          ? '1920x1080'
+          : '640x360';
+    const frame = parseResolution(
+        streamConfig?.resolution || fallbackResolution,
+    );
     const activeMasks = draftConfig.privacy_masks[activeStream];
     const safeActiveSlot = clampSlot(activeSlot, activeMasks);
     const activeMask = activeMasks[safeActiveSlot] ?? defaultMask(activeStream);
     const previewStatuses = statuses.map((status) => ({
         ...status,
-        resolution: videoConfig?.streams[status.stream]?.resolution || status.resolution,
+        resolution:
+            videoConfig?.streams[status.stream]?.resolution ||
+            status.resolution,
         fps: videoConfig?.streams[status.stream]?.fps || status.fps,
         bitrate_kbps:
-            videoConfig?.streams[status.stream]?.bitrate_kbps || status.bitrate_kbps,
+            videoConfig?.streams[status.stream]?.bitrate_kbps ||
+            status.bitrate_kbps,
     }));
 
     const setMask = (slot: number, patch: Partial<PrivacyMaskConfig>) => {
@@ -125,7 +142,11 @@ export function OverlayConfigPage() {
         return <div className="panel">加载 Overlay 配置...</div>;
     }
     if (!config) {
-        return <div className="panel">Overlay 配置加载失败：{error || '无可用配置'}</div>;
+        return (
+            <div className="panel">
+                Overlay 配置加载失败：{error || '无可用配置'}
+            </div>
+        );
     }
 
     return (
@@ -246,7 +267,7 @@ export function OverlayConfigPage() {
                 <VideoPreview
                     stream={activeStream}
                     statuses={previewStatuses}
-                    playbackUrls={playbackUrls}
+                    previewUrls={previewUrls}
                     onStreamChange={setActiveStream}
                     surfaceOverlay={maskEditor.drawLayer}
                 />

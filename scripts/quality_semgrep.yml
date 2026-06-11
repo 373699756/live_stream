@@ -1,0 +1,50 @@
+rules:
+  - id: cpp-dangerous-format-buffer
+    languages: [c, cpp]
+    severity: ERROR
+    message: Avoid unbounded format writes; use bounded formatting with explicit buffer size.
+    pattern-either:
+      - pattern: sprintf(...)
+      - pattern: vsprintf(...)
+      - pattern: gets(...)
+
+  - id: cpp-dangerous-cstring-copy
+    languages: [c, cpp]
+    severity: ERROR
+    message: Avoid unbounded C string copy or append; validate the destination size first.
+    pattern-either:
+      - pattern: strcpy(...)
+      - pattern: strcat(...)
+
+  - id: cpp-raw-memory-copy-review
+    languages: [c, cpp]
+    severity: WARNING
+    message: memcpy in production code needs explicit size and lifetime review.
+    pattern: memcpy(...)
+
+  - id: cpp-detached-thread-review
+    languages: [c, cpp]
+    severity: WARNING
+    message: Detached threads need lifecycle, shutdown, and ownership review.
+    pattern-either:
+      - pattern: pthread_detach(...)
+      - pattern: $THREAD.detach()
+
+  - id: cpp-blocking-sleep-review
+    languages: [c, cpp]
+    severity: WARNING
+    message: Sleep in production code can hide timing or shutdown bugs; verify bounded behavior.
+    pattern-either:
+      - pattern: sleep(...)
+      - pattern: usleep(...)
+      - pattern: std::this_thread::sleep_for(...)
+
+  - id: cpp-manual-allocation-review
+    languages: [c, cpp]
+    severity: WARNING
+    message: Manual allocation needs ownership and failure-path review.
+    pattern-either:
+      - pattern: malloc(...)
+      - pattern: calloc(...)
+      - pattern: realloc(...)
+      - pattern: free(...)

@@ -48,7 +48,9 @@ function resultClass(result: OperationResult) {
 
 function operationTitle(record: OperationRecord) {
     const target = record.target || record.module;
-    return target ? `${actionText(record.action)}：${target}` : actionText(record.action);
+    return target
+        ? `${actionText(record.action)}：${target}`
+        : actionText(record.action);
 }
 
 function operationMeta(record: OperationRecord) {
@@ -56,15 +58,18 @@ function operationMeta(record: OperationRecord) {
         record.user_name || '未知用户',
         record.module || '未知模块',
         record.client_ip || '',
-    ].filter(Boolean).join(' / ');
+    ]
+        .filter(Boolean)
+        .join(' / ');
 }
 
 export function LogsPage() {
     const [records, setRecords] = useState<OperationRecord[]>([]);
     const sortedRecords = useMemo(
-        () => [...records].sort(
-            (left, right) => right.timestamp_ms - left.timestamp_ms,
-        ),
+        () =>
+            [...records].sort(
+                (left, right) => right.timestamp_ms - left.timestamp_ms,
+            ),
         [records],
     );
 
@@ -94,18 +99,27 @@ export function LogsPage() {
                 {sortedRecords.map((record) => (
                     <div
                         className="log-row"
-                        key={record.request_id || `${record.timestamp_ms}-${record.action}`}
+                        key={
+                            record.request_id ||
+                            `${record.timestamp_ms}-${record.action}`
+                        }
                     >
                         <span className="log-time">
                             {formatTimestamp(record.timestamp_ms)}
                         </span>
                         <strong className="log-content">
-                            <span className="log-action">{operationTitle(record)}</span>
+                            <span className="log-action">
+                                {operationTitle(record)}
+                            </span>
                             <small>{operationMeta(record)}</small>
                         </strong>
-                        <em className={`log-result ${resultClass(record.result)}`}>
+                        <em
+                            className={`log-result ${resultClass(record.result)}`}
+                        >
                             <span>{resultText(record.result)}</span>
-                            {record.reason ? <small>{record.reason}</small> : null}
+                            {record.reason ? (
+                                <small>{record.reason}</small>
+                            ) : null}
                         </em>
                     </div>
                 ))}

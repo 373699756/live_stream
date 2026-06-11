@@ -8,12 +8,12 @@
 namespace live_stream {
 namespace {
 
-bool RequestDeviceKeyFrame(StreamId stream_id,
-                           KeyFrameRequestType request_type,
+bool RequestDeviceKeyframe(StreamId stream_id,
+                           KeyframeRequestSource source,
                            void *user) {
     DeviceMedia *device = static_cast<DeviceMedia *>(user);
     return device != nullptr &&
-           device->RequestKeyFrame(stream_id, request_type);
+           device->RequestKeyframe(stream_id, source);
 }
 
 MediaStreamState StreamStateForDeviceStream(DeviceMedia *device,
@@ -64,8 +64,8 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
     }
 
     MediaStreamsOptions media_streams_options;
-    media_streams_options.key_frame_request = RequestDeviceKeyFrame;
-    media_streams_options.key_frame_request_user = device_.get();
+    media_streams_options.request_keyframe = RequestDeviceKeyframe;
+    media_streams_options.request_keyframe_user = device_.get();
     media_streams_.reset(new MediaStreams(media_streams_options));
     if (!media_streams_ || !media_streams_->Start() ||
         !device_->SetFrameSink(media_streams_.get())) {

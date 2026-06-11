@@ -7,5 +7,9 @@ import { mockSnapshotConfig } from '../api/mockSnapshot';
 import { useConfigForm } from './useConfigForm';
 
 export function useSnapshotConfig() {
-  return useConfigForm(getSnapshotConfig, saveSnapshotConfig, mockSnapshotConfig);
+    return useConfigForm(
+        getSnapshotConfig,
+        saveSnapshotConfig,
+        mockSnapshotConfig,
+    );
 }

@@ -2,7 +2,7 @@
 
 ## 命名迁移
 
-本模块命名迁移遵循仓库根目录 `重构.md` 的“任务 1 命名迁移基线”。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
 
 ## 模块定位
 
@@ -29,13 +29,13 @@ flowchart LR
 
 - 启动和停止视频 pipeline。
 - 维护 stream 是否启动、codec、capabilities、channels。
-- 对外提供 `AttachFrameSink`、`DetachFrameSink`、`RequestKeyFrame`。
+- 对外提供 `AttachFrameSink`、`DetachFrameSink`、`RequestKeyframe`。
 - 读取和应用 snapshot 配置，通过 `CaptureSnapshot()` 提供 JPEG 抓图。
 - 校验和应用 overlay 配置，管理 text OSD、隐私遮挡和 SDK region 生命周期。
 - 通过内部 `HardwarePipeline` 管理 MPP/VI/VPSS/VENC 生命周期；该私有类不是
   `media` 模块，也不参与协议分发。
 - 应用 video/image 配置，并通过 SDK 控制 ISP、VENC 和相关媒体资源。
-- 提供 `ImageStrategyStatus` 供 HTTP/Web 展示图像策略运行状态。
+- 提供 `ImageInfo` 供 HTTP/Web 展示图像策略运行状态。
 
 ## 接口归属
 
@@ -45,7 +45,7 @@ public API 在 `device.h`：
 - `DeviceMediaOptions`
 - `SnapshotRequest`、`SnapshotFrame`、`SnapshotInfo`
 - overlay/region DTO 和 `OverlayInfo`
-- `ImageStrategyStatus`
+- `ImageInfo`
 - `CreateDeviceMedia`
 
 HTTP `/api/config/video`、`/api/config/image`、`/api/config/snapshot` 和
@@ -99,7 +99,7 @@ validate/apply。
 不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。`device` 只缓存设备
 订阅所需的最近关键帧，用于新订阅方 keyframe-first 启动；GOP、HLS、FLV、MJPEG
 ready、时间戳修正和协议订阅缓存归 `media` 主链路。
-关键帧请求必须通过 `RequestKeyFrame` 进入媒体模块。
+关键帧请求必须通过 `RequestKeyframe` 进入媒体模块。
 
 `media/media_buffer.h` 提供基础 `MediaSlice`，只表达一段待发送数据和可选
 `VideoBuffer` owner。HTTP/FLV/MJPEG/HLS 等协议边界可以直接提交 slice，异步发送时

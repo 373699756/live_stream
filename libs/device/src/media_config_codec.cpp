@@ -428,7 +428,7 @@ ValidateNumericControls(const ConfigJson &section,
         int64_t value = 0;
         const std::string field = JoinField(section_name, control.name);
         if (!json_utils::ReadField(section, control.name.c_str(), &value, control.min,
-                              control.max)) {
+                                   control.max)) {
             return ConfigResult::Failure(field, "missing or unsupported value");
         }
     }

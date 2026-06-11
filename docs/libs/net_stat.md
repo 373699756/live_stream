@@ -3,13 +3,13 @@
 ## 模块定位
 
 `net_stat` 是网络质量采样与实时预览压力汇总模块。它从 `net`、
-`media`、RTSP 和 WebRTC 的公开 diagnostics 采样，计算网络压力和策略建议。
+`media`、RTSP 和 WebRTC 的公开 info 采样，计算网络压力和策略建议。
 它不反向注入 RTSP/WebRTC/HLS/FLV，也不直接修改码率、帧率或码流选择。
 
 ## 设计目标与非目标
 
 - 统一观察 TCP pending bytes、send queue、RTSP session、WebRTC peer 和
-  media reader slow 等事实。
+  media subscription slow 等事实。
 - 输出 `NetRecommendation` 和按流 `NetStreamPressure`，供 app
   或后续 media/device 决定是否执行。
 - v1 只观察和建议，不自动降码率、降帧率、切子码流。
@@ -20,8 +20,8 @@
 ```mermaid
 flowchart LR
   App[ProtocolSubsystem] --> NA[net_stat]
-  NA --> Net[net diagnostics]
-  NA --> RTSP[RTSP diagnostics]
+  NA --> Net[net info]
+  NA --> RTSP[RTSP info]
   NA --> WebRTC[WebRTC stats]
   NA --> Media[media stats]
   NA --> Rec[recommendations]
@@ -30,15 +30,15 @@ flowchart LR
 ## 核心职责
 
 - 周期采样网络和媒体公开状态。
-- 将 pending bytes、send queue、slow reader、WebRTC dropped frame 按各自阈值
+- 将 pending bytes、send queue、slow subscription、WebRTC dropped frame 按各自阈值
   归一化为 `normal/watch/constrained` pressure level。
 - 按 protocol、target 和 stream 保存目标状态，对 pending bytes 使用 EWMA 平滑。
 - 连续多次采样达到阈值后才输出建议，并使用 cooldown 避免重复抖动建议。
-- 给出 request key frame、prefer sub stream、close slow client、may restore main
+- 给出 request keyframe、prefer sub stream、close slow client、may restore main
   stream 等处理标记。
 - 按 stream 聚合多个 target 的 pressure，形成调用方可消费的稳定压力状态。
-- RTSP 优先使用 session diagnostics，`net` 层只兜底观察 HTTP/未被专用协议
-  diagnostics 覆盖的媒体连接；ONVIF 不参与媒体自适应。
+- RTSP 优先使用 session info，`net` 层只兜底观察 HTTP/未被专用协议
+  info 覆盖的媒体连接；ONVIF 不参与媒体自适应。
 
 ## 接口归属
 
@@ -52,7 +52,7 @@ public API 在 `net_stat.h`。协议模块不包含该头文件，不持有
 
 ## 状态与资源模型
 
-`net_stat` 使用自有轻量采样线程，避免把 diagnostics 聚合放进 `net` IO loop。
+`net_stat` 使用自有轻量采样线程，避免把 info 聚合放进 `net` IO loop。
 停止时必须唤醒并 join 采样线程。内部只缓存最近一次 stats 和 recommendations，
 以及有限的目标状态，不保存协议 session 所有权。目标长时间不再出现会自动过期。
 
@@ -67,8 +67,8 @@ public API 在 `net_stat.h`。协议模块不包含该头文件，不持有
 | `recovery_sample_threshold` | 5 | 连续 normal 样本数达到后才允许恢复判断 |
 | `send_queue_watch` | 32 | 发送队列长度进入 watch 的阈值 |
 | `send_queue_constrained` | 96 | 发送队列长度进入 constrained 的阈值 |
-| `slow_readers_watch` | 1 | 慢 media reader 进入 watch 的阈值 |
-| `slow_readers_constrained` | 2 | 慢 media reader 进入 constrained 的阈值 |
+| `slow_media_subscriptions_watch` | 1 | 慢 media subscription 进入 watch 的阈值 |
+| `slow_media_subscriptions_constrained` | 2 | 慢 media subscription 进入 constrained 的阈值 |
 | `webrtc_dropped_frames_watch` | 1 | 单采样周期 WebRTC 丢帧进入 watch 的阈值 |
 | `webrtc_dropped_frames_constrained` | 8 | 单采样周期 WebRTC 丢帧进入 constrained 的阈值 |
 | `recommendation_cooldown_ms` | 5000 | 同一目标重复建议冷却时间 |
@@ -79,5 +79,5 @@ public API 在 `net_stat.h`。协议模块不包含该头文件，不持有
 - v1 建议不自动执行，避免误伤实时预览主链路。
 - 后续如果要自动执行，只能通过 media/device 的显式执行接口接入。
 - WebRTC 的 PLI/FIR/NACK/TWCC 仍是协议反馈；`net_stat` 只观察其结果。
-- `media` 提供 main/sub slow reader 数，`net_stat` 按实际 stream 归档
+- `media` 提供 main/sub slow subscription 数，`net_stat` 按实际 stream 归档
   慢读压力，避免子码流慢读误触发主码流决策。

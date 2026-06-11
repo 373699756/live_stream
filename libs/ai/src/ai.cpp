@@ -1,13 +1,13 @@
 #include "ai.h"
 
-#include "ai_runtime.h"
+#include "ai_core.h"
 
 namespace live_stream {
 
 struct Ai::Impl final {
     explicit Impl(const AiOptions &options) : core(options) {}
 
-    AiRuntime core;
+    AiCore core;
 };
 
 Ai::Ai() : Ai(AiOptions{}) {}

@@ -346,7 +346,7 @@ bool WaitJpegStream(VENC_CHN jpeg_channel, uint32_t timeout_ms) {
     const int fd = HI_MPI_VENC_GetFd(jpeg_channel);
     if (fd < 0 || fd >= FD_SETSIZE) {
         Error("hisi_vendor",
-                        "CaptureJpeg: HI_MPI_VENC_GetFd failed: %d", fd);
+              "CaptureJpeg: HI_MPI_VENC_GetFd failed: %d", fd);
         return false;
     }
 
@@ -362,11 +362,11 @@ bool WaitJpegStream(VENC_CHN jpeg_channel, uint32_t timeout_ms) {
     if (select_ret <= 0 || !FD_ISSET(fd, &read_fds)) {
         if (select_ret < 0) {
             Error("hisi_vendor", "CaptureJpeg: select failed: %s",
-                            strerror(errno));
+                  strerror(errno));
         } else {
             Error("hisi_vendor",
-                            "CaptureJpeg: timed out after %u ms",
-                            timeout_ms);
+                  "CaptureJpeg: timed out after %u ms",
+                  timeout_ms);
         }
         return false;
     }
@@ -402,8 +402,8 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
         std::calloc(status.u32CurPacks, sizeof(VENC_PACK_S)));
     if (*packs == nullptr) {
         Error("hisi_vendor",
-                        "CaptureJpeg: calloc packs=%u failed",
-                        status.u32CurPacks);
+              "CaptureJpeg: calloc packs=%u failed",
+              status.u32CurPacks);
         return false;
     }
     *stream = VENC_STREAM_S{};

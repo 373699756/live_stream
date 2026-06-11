@@ -65,13 +65,13 @@ struct WebrtcPeerInfo {
     std::string session_id;
     std::string user_name;
     std::string client_ip;
-    uint64_t reader_id = 0;
-    bool reader_attached = false;
-    uint64_t reader_generation = 0;
-    uint32_t reader_pending_frames = 0;
-    bool reader_waiting_keyframe = false;
-    bool reader_slow = false;
-    std::string reader_close_reason;
+    uint64_t subscription_id = 0;
+    bool subscription_open = false;
+    uint64_t subscription_generation = 0;
+    uint32_t subscription_pending_frames = 0;
+    bool subscription_waiting_keyframe = false;
+    bool subscription_slow = false;
+    std::string subscription_close_reason;
     bool ice_selected = false;
     std::string dtls_state = "new";
     bool srtp_ready = false;
@@ -155,7 +155,7 @@ public:
 
 std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
-                    const WebrtcDependencies &dependencies);
+             const WebrtcDependencies &dependencies);
 
 class Webrtc {
 public:

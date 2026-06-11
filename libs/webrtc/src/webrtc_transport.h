@@ -42,7 +42,7 @@ struct WebrtcTransportDtlsResult {
     std::string error;
 };
 
-struct WebrtcTransportDiagnostics {
+struct WebrtcTransportInfo {
     bool ice_selected = false;
     std::string dtls_state;
     bool srtp_ready = false;
@@ -77,7 +77,7 @@ public:
     bool HandleDtlsTimeout(WebrtcTransportDtlsResult *result);
     bool SendDtlsResult(const WebrtcTransportDtlsResult &result);
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
-                           bool *request_key_frame);
+                           bool *need_keyframe);
     bool SendRtpPacket(const EncodedFrame &frame,
                        const rtp::RtpPacketView &packet);
 
@@ -86,7 +86,7 @@ public:
     bool srtp_ready() const;
     UdpSocketId socket_id() const;
     NetAddress local_address() const;
-    WebrtcTransportDiagnostics GetDiagnostics() const;
+    WebrtcTransportInfo GetInfo() const;
     void FillStats(WebrtcStats *stats) const;
 
     static bool IsIcePacket(const uint8_t *data, size_t size);

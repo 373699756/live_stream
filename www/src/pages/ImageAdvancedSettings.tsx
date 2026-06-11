@@ -1,605 +1,725 @@
 import type { ImageCapabilities, ImageConfig } from '../api/types';
 import { FormField } from '../components/FormField';
 import {
-  numericCapability,
-  optionCapability,
-  OptionField,
-  RangeField,
+    numericCapability,
+    optionCapability,
+    OptionField,
+    RangeField,
 } from './ImageConfigFields';
 
-type ImageRecordSection = 'exposure' | 'white_balance' | 'enhancement' | 'backlight';
+type ImageRecordSection =
+    | 'exposure'
+    | 'white_balance'
+    | 'enhancement'
+    | 'backlight';
 
 type LensCorrectionConfig = NonNullable<ImageConfig['lens_correction']>;
 type StabilizationConfig = NonNullable<ImageConfig['stabilization']>;
 
-function numberValue(record: Record<string, unknown>, key: string, fallback: number): number {
-  const value = record[key];
-  return typeof value === 'number' ? value : fallback;
+function numberValue(
+    record: Record<string, unknown>,
+    key: string,
+    fallback: number,
+): number {
+    const value = record[key];
+    return typeof value === 'number' ? value : fallback;
 }
 
-function stringValue(record: Record<string, unknown>, key: string, fallback: string): string {
-  const value = record[key];
-  return typeof value === 'string' ? value : fallback;
+function stringValue(
+    record: Record<string, unknown>,
+    key: string,
+    fallback: string,
+): string {
+    const value = record[key];
+    return typeof value === 'string' ? value : fallback;
 }
 
-function boolValue(record: Record<string, unknown>, key: string, fallback: boolean): boolean {
-  const value = record[key];
-  return typeof value === 'boolean' ? value : fallback;
+function boolValue(
+    record: Record<string, unknown>,
+    key: string,
+    fallback: boolean,
+): boolean {
+    const value = record[key];
+    return typeof value === 'boolean' ? value : fallback;
 }
 
 function supportsOptionValue(
-  controls: ImageCapabilities['exposure']['options'],
-  key: string,
-  value: string,
+    controls: ImageCapabilities['exposure']['options'],
+    key: string,
+    value: string,
 ): boolean {
-  const capability = controls[key];
-  return capability ? capability.values.includes(value) : true;
+    const capability = controls[key];
+    return capability ? capability.values.includes(value) : true;
 }
 
 interface ImageAdvancedSettingsProps {
-  capabilities: ImageCapabilities;
-  config: ImageConfig;
-  onColorModeChange: (mode: string) => void;
-  onOrientationChange: (orientation: ImageConfig['orientation']) => void;
-  onSectionChange: (
-    section: ImageRecordSection,
-    key: string,
-    value: unknown,
-  ) => void;
-  onLensCorrectionChange: (lensCorrection: LensCorrectionConfig) => void;
-  onStabilizationChange: (stabilization: StabilizationConfig) => void;
+    capabilities: ImageCapabilities;
+    config: ImageConfig;
+    onColorModeChange: (mode: string) => void;
+    onOrientationChange: (orientation: ImageConfig['orientation']) => void;
+    onSectionChange: (
+        section: ImageRecordSection,
+        key: string,
+        value: unknown,
+    ) => void;
+    onLensCorrectionChange: (lensCorrection: LensCorrectionConfig) => void;
+    onStabilizationChange: (stabilization: StabilizationConfig) => void;
 }
 
 export function ImageAdvancedSettings({
-  capabilities,
-  config,
-  onColorModeChange,
-  onOrientationChange,
-  onSectionChange,
-  onLensCorrectionChange,
-  onStabilizationChange,
+    capabilities,
+    config,
+    onColorModeChange,
+    onOrientationChange,
+    onSectionChange,
+    onLensCorrectionChange,
+    onStabilizationChange,
 }: ImageAdvancedSettingsProps) {
-  const showOrientationControls =
-    capabilities.orientation.mirror || capabilities.orientation.flip;
-  const lensCorrectionCapabilities = capabilities.lens_correction || {
-    supported: false,
-    min_width: 0,
-    min_height: 0,
-    options: {},
-    ranges: {},
-  };
-  const lensCorrection = config.lens_correction || {
-    enabled: false,
-    aspect: true,
-    x_ratio: 100,
-    y_ratio: 100,
-    xy_ratio: 100,
-    center_x_offset: 0,
-    center_y_offset: 0,
-    distortion_ratio: 0,
-  };
-  const updateLensCorrection = (
-    value: Partial<LensCorrectionConfig>,
-  ) => {
-    onLensCorrectionChange({ ...lensCorrection, ...value });
-  };
-  const stabilizationCapabilities = capabilities.stabilization || {
-    supported: false,
-    min_width: 0,
-    min_height: 0,
-    options: {},
-    ranges: {},
-  };
-  const stabilization = config.stabilization || {
-    enabled: false,
-    motion_level: 'normal',
-    crop_ratio: 80,
-    buffer_count: 6,
-    frame_rate: 30,
-    moving_subject_level: 0,
-    rolling_shutter_coef: 0,
-    horizontal_limit: 512,
-    vertical_limit: 512,
-  };
-  const updateStabilization = (
-    value: Partial<StabilizationConfig>,
-  ) => {
-    onStabilizationChange({ ...stabilization, ...value });
-  };
+    const showOrientationControls =
+        capabilities.orientation.mirror || capabilities.orientation.flip;
+    const lensCorrectionCapabilities = capabilities.lens_correction || {
+        supported: false,
+        min_width: 0,
+        min_height: 0,
+        options: {},
+        ranges: {},
+    };
+    const lensCorrection = config.lens_correction || {
+        enabled: false,
+        aspect: true,
+        x_ratio: 100,
+        y_ratio: 100,
+        xy_ratio: 100,
+        center_x_offset: 0,
+        center_y_offset: 0,
+        distortion_ratio: 0,
+    };
+    const updateLensCorrection = (value: Partial<LensCorrectionConfig>) => {
+        onLensCorrectionChange({ ...lensCorrection, ...value });
+    };
+    const stabilizationCapabilities = capabilities.stabilization || {
+        supported: false,
+        min_width: 0,
+        min_height: 0,
+        options: {},
+        ranges: {},
+    };
+    const stabilization = config.stabilization || {
+        enabled: false,
+        motion_level: 'normal',
+        crop_ratio: 80,
+        buffer_count: 6,
+        frame_rate: 30,
+        moving_subject_level: 0,
+        rolling_shutter_coef: 0,
+        horizontal_limit: 512,
+        vertical_limit: 512,
+    };
+    const updateStabilization = (value: Partial<StabilizationConfig>) => {
+        onStabilizationChange({ ...stabilization, ...value });
+    };
 
-  return (
-    <div className="image-advanced-list">
-      <details className="image-advanced-section">
-        <summary>曝光控制</summary>
-        <div className="form-grid image-settings-grid image-detail-grid">
-          <OptionField
-            label="曝光模式"
-            capability={optionCapability(capabilities.exposure.options, 'mode', [
-              'auto',
-              'manual',
-            ])}
-            value={stringValue(config.exposure, 'mode', 'auto')}
-            onChange={(value) => onSectionChange('exposure', 'mode', value)}
-          />
-          <OptionField
-            label="防闪烁"
-            capability={optionCapability(
-              capabilities.exposure.options,
-              'anti_flicker',
-              ['50hz', '60hz', 'off'],
+    return (
+        <div className="image-advanced-list">
+            <details className="image-advanced-section">
+                <summary>曝光控制</summary>
+                <div className="form-grid image-settings-grid image-detail-grid">
+                    <OptionField
+                        label="曝光模式"
+                        capability={optionCapability(
+                            capabilities.exposure.options,
+                            'mode',
+                            ['auto', 'manual'],
+                        )}
+                        value={stringValue(config.exposure, 'mode', 'auto')}
+                        onChange={(value) =>
+                            onSectionChange('exposure', 'mode', value)
+                        }
+                    />
+                    <OptionField
+                        label="防闪烁"
+                        capability={optionCapability(
+                            capabilities.exposure.options,
+                            'anti_flicker',
+                            ['50hz', '60hz', 'off'],
+                        )}
+                        value={stringValue(
+                            config.exposure,
+                            'anti_flicker',
+                            '50hz',
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('exposure', 'anti_flicker', value)
+                        }
+                    />
+                    <OptionField
+                        label="曝光时间"
+                        capability={optionCapability(
+                            capabilities.exposure.options,
+                            'exposure_time',
+                            ['auto', '1/25', '1/30', '1/50', '1/100', '1/250'],
+                        )}
+                        value={stringValue(
+                            config.exposure,
+                            'exposure_time',
+                            'auto',
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('exposure', 'exposure_time', value)
+                        }
+                    />
+                    <OptionField
+                        label="增益"
+                        capability={optionCapability(
+                            capabilities.exposure.options,
+                            'gain',
+                            ['auto', 'low', 'medium', 'high'],
+                        )}
+                        value={stringValue(config.exposure, 'gain', 'auto')}
+                        onChange={(value) =>
+                            onSectionChange('exposure', 'gain', value)
+                        }
+                    />
+                    <RangeField
+                        label="曝光补偿"
+                        capability={
+                            numericCapability(
+                                capabilities.exposure.ranges,
+                                'compensation',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 50,
+                            }
+                        }
+                        value={numberValue(config.exposure, 'compensation', 50)}
+                        onChange={(value) =>
+                            onSectionChange('exposure', 'compensation', value)
+                        }
+                    />
+                    {supportsOptionValue(
+                        capabilities.exposure.options,
+                        'slow_shutter',
+                        'true',
+                    ) && (
+                        <FormField label="慢快门">
+                            <input
+                                type="checkbox"
+                                checked={boolValue(
+                                    config.exposure,
+                                    'slow_shutter',
+                                    false,
+                                )}
+                                onChange={(e) =>
+                                    onSectionChange(
+                                        'exposure',
+                                        'slow_shutter',
+                                        e.target.checked,
+                                    )
+                                }
+                            />
+                        </FormField>
+                    )}
+                    {capabilities.exposure.options.max_exposure_time && (
+                        <OptionField
+                            label="最长曝光"
+                            capability={
+                                capabilities.exposure.options.max_exposure_time
+                            }
+                            value={stringValue(
+                                config.exposure,
+                                'max_exposure_time',
+                                '1/30',
+                            )}
+                            onChange={(value) =>
+                                onSectionChange(
+                                    'exposure',
+                                    'max_exposure_time',
+                                    value,
+                                )
+                            }
+                        />
+                    )}
+                </div>
+            </details>
+
+            <details className="image-advanced-section">
+                <summary>白平衡</summary>
+                <div className="form-grid image-settings-grid image-detail-grid">
+                    <OptionField
+                        label="白平衡模式"
+                        capability={optionCapability(
+                            capabilities.white_balance.options,
+                            'mode',
+                            ['auto', 'manual', 'indoor', 'outdoor'],
+                        )}
+                        value={stringValue(
+                            config.white_balance,
+                            'mode',
+                            'auto',
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('white_balance', 'mode', value)
+                        }
+                    />
+                    <RangeField
+                        label="红色增益"
+                        capability={
+                            numericCapability(
+                                capabilities.white_balance.ranges,
+                                'red_gain',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 50,
+                            }
+                        }
+                        value={numberValue(
+                            config.white_balance,
+                            'red_gain',
+                            50,
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('white_balance', 'red_gain', value)
+                        }
+                    />
+                    <RangeField
+                        label="蓝色增益"
+                        capability={
+                            numericCapability(
+                                capabilities.white_balance.ranges,
+                                'blue_gain',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 50,
+                            }
+                        }
+                        value={numberValue(
+                            config.white_balance,
+                            'blue_gain',
+                            45,
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('white_balance', 'blue_gain', value)
+                        }
+                    />
+                </div>
+            </details>
+
+            <details className="image-advanced-section">
+                <summary>图像增强</summary>
+                <div className="form-grid image-settings-grid image-detail-grid">
+                    <RangeField
+                        label="2D 降噪"
+                        capability={
+                            numericCapability(
+                                capabilities.enhancement.ranges,
+                                'denoise_2d',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 60,
+                            }
+                        }
+                        value={numberValue(
+                            config.enhancement,
+                            'denoise_2d',
+                            60,
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('enhancement', 'denoise_2d', value)
+                        }
+                    />
+                    <RangeField
+                        label="3D 降噪"
+                        capability={
+                            numericCapability(
+                                capabilities.enhancement.ranges,
+                                'denoise_3d',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 52,
+                            }
+                        }
+                        value={numberValue(
+                            config.enhancement,
+                            'denoise_3d',
+                            52,
+                        )}
+                        onChange={(value) =>
+                            onSectionChange('enhancement', 'denoise_3d', value)
+                        }
+                    />
+                    <RangeField
+                        label="Gamma"
+                        capability={
+                            numericCapability(
+                                capabilities.enhancement.ranges,
+                                'gamma',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 50,
+                            }
+                        }
+                        value={numberValue(config.enhancement, 'gamma', 50)}
+                        onChange={(value) =>
+                            onSectionChange('enhancement', 'gamma', value)
+                        }
+                    />
+                    {supportsOptionValue(
+                        capabilities.enhancement.options,
+                        'defog',
+                        'true',
+                    ) && (
+                        <FormField label="透雾">
+                            <input
+                                type="checkbox"
+                                checked={boolValue(
+                                    config.enhancement,
+                                    'defog',
+                                    false,
+                                )}
+                                onChange={(e) =>
+                                    onSectionChange(
+                                        'enhancement',
+                                        'defog',
+                                        e.target.checked,
+                                    )
+                                }
+                            />
+                        </FormField>
+                    )}
+                </div>
+            </details>
+
+            {lensCorrectionCapabilities.supported && (
+                <details className="image-advanced-section">
+                    <summary>镜头畸变校正</summary>
+                    <div className="form-grid image-settings-grid image-detail-grid">
+                        <FormField label="启用">
+                            <input
+                                type="checkbox"
+                                checked={lensCorrection.enabled}
+                                onChange={(e) =>
+                                    updateLensCorrection({
+                                        enabled: e.target.checked,
+                                    })
+                                }
+                            />
+                        </FormField>
+                        {lensCorrectionCapabilities.options.aspect && (
+                            <FormField label="保持比例">
+                                <input
+                                    type="checkbox"
+                                    checked={lensCorrection.aspect}
+                                    onChange={(e) =>
+                                        updateLensCorrection({
+                                            aspect: e.target.checked,
+                                        })
+                                    }
+                                />
+                            </FormField>
+                        )}
+                        <RangeField
+                            label="横向视角"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'x_ratio',
+                                ) || { min: 0, max: 100, default: 100 }
+                            }
+                            value={lensCorrection.x_ratio}
+                            onChange={(value) =>
+                                updateLensCorrection({ x_ratio: value })
+                            }
+                        />
+                        <RangeField
+                            label="纵向视角"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'y_ratio',
+                                ) || { min: 0, max: 100, default: 100 }
+                            }
+                            value={lensCorrection.y_ratio}
+                            onChange={(value) =>
+                                updateLensCorrection({ y_ratio: value })
+                            }
+                        />
+                        <RangeField
+                            label="整体视角"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'xy_ratio',
+                                ) || { min: 0, max: 100, default: 100 }
+                            }
+                            value={lensCorrection.xy_ratio}
+                            onChange={(value) =>
+                                updateLensCorrection({ xy_ratio: value })
+                            }
+                        />
+                        <RangeField
+                            label="中心X偏移"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'center_x_offset',
+                                ) || { min: -511, max: 511, default: 0 }
+                            }
+                            value={lensCorrection.center_x_offset}
+                            onChange={(value) =>
+                                updateLensCorrection({ center_x_offset: value })
+                            }
+                        />
+                        <RangeField
+                            label="中心Y偏移"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'center_y_offset',
+                                ) || { min: -511, max: 511, default: 0 }
+                            }
+                            value={lensCorrection.center_y_offset}
+                            onChange={(value) =>
+                                updateLensCorrection({ center_y_offset: value })
+                            }
+                        />
+                        <RangeField
+                            label="畸变强度"
+                            capability={
+                                numericCapability(
+                                    lensCorrectionCapabilities.ranges,
+                                    'distortion_ratio',
+                                ) || { min: -300, max: 500, default: 0 }
+                            }
+                            value={lensCorrection.distortion_ratio}
+                            onChange={(value) =>
+                                updateLensCorrection({
+                                    distortion_ratio: value,
+                                })
+                            }
+                        />
+                    </div>
+                </details>
             )}
-            value={stringValue(config.exposure, 'anti_flicker', '50hz')}
-            onChange={(value) =>
-              onSectionChange('exposure', 'anti_flicker', value)
-            }
-          />
-          <OptionField
-            label="曝光时间"
-            capability={optionCapability(
-              capabilities.exposure.options,
-              'exposure_time',
-              ['auto', '1/25', '1/30', '1/50', '1/100', '1/250'],
+
+            {stabilizationCapabilities.supported && (
+                <details className="image-advanced-section">
+                    <summary>电子防抖</summary>
+                    <div className="form-grid image-settings-grid image-detail-grid">
+                        <FormField label="启用">
+                            <input
+                                type="checkbox"
+                                checked={stabilization.enabled}
+                                onChange={(e) =>
+                                    updateStabilization({
+                                        enabled: e.target.checked,
+                                    })
+                                }
+                            />
+                        </FormField>
+                        <OptionField
+                            label="运动等级"
+                            capability={optionCapability(
+                                stabilizationCapabilities.options,
+                                'motion_level',
+                                ['low', 'normal', 'high'],
+                            )}
+                            value={stabilization.motion_level}
+                            onChange={(value) =>
+                                updateStabilization({ motion_level: value })
+                            }
+                        />
+                        <RangeField
+                            label="裁剪比例"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'crop_ratio',
+                                ) || { min: 50, max: 98, default: 80 }
+                            }
+                            value={stabilization.crop_ratio}
+                            onChange={(value) =>
+                                updateStabilization({ crop_ratio: value })
+                            }
+                        />
+                        <RangeField
+                            label="缓冲帧数"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'buffer_count',
+                                ) || { min: 5, max: 10, default: 6 }
+                            }
+                            value={stabilization.buffer_count}
+                            onChange={(value) =>
+                                updateStabilization({ buffer_count: value })
+                            }
+                        />
+                        <RangeField
+                            label="处理帧率"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'frame_rate',
+                                ) || { min: 1, max: 60, default: 30 }
+                            }
+                            value={stabilization.frame_rate}
+                            onChange={(value) =>
+                                updateStabilization({ frame_rate: value })
+                            }
+                        />
+                        <RangeField
+                            label="运动主体"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'moving_subject_level',
+                                ) || { min: 0, max: 6, default: 0 }
+                            }
+                            value={stabilization.moving_subject_level}
+                            onChange={(value) =>
+                                updateStabilization({
+                                    moving_subject_level: value,
+                                })
+                            }
+                        />
+                        <RangeField
+                            label="卷帘校正"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'rolling_shutter_coef',
+                                ) || { min: 0, max: 1000, default: 0 }
+                            }
+                            value={stabilization.rolling_shutter_coef}
+                            onChange={(value) =>
+                                updateStabilization({
+                                    rolling_shutter_coef: value,
+                                })
+                            }
+                        />
+                        <RangeField
+                            label="水平漂移"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'horizontal_limit',
+                                ) || { min: 0, max: 1000, default: 512 }
+                            }
+                            value={stabilization.horizontal_limit}
+                            onChange={(value) =>
+                                updateStabilization({ horizontal_limit: value })
+                            }
+                        />
+                        <RangeField
+                            label="垂直漂移"
+                            capability={
+                                numericCapability(
+                                    stabilizationCapabilities.ranges,
+                                    'vertical_limit',
+                                ) || { min: 0, max: 1000, default: 512 }
+                            }
+                            value={stabilization.vertical_limit}
+                            onChange={(value) =>
+                                updateStabilization({ vertical_limit: value })
+                            }
+                        />
+                    </div>
+                </details>
             )}
-            value={stringValue(config.exposure, 'exposure_time', 'auto')}
-            onChange={(value) =>
-              onSectionChange('exposure', 'exposure_time', value)
-            }
-          />
-          <OptionField
-            label="增益"
-            capability={optionCapability(capabilities.exposure.options, 'gain', [
-              'auto',
-              'low',
-              'medium',
-              'high',
-            ])}
-            value={stringValue(config.exposure, 'gain', 'auto')}
-            onChange={(value) => onSectionChange('exposure', 'gain', value)}
-          />
-          <RangeField
-            label="曝光补偿"
-            capability={
-              numericCapability(capabilities.exposure.ranges, 'compensation') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.exposure, 'compensation', 50)}
-            onChange={(value) =>
-              onSectionChange('exposure', 'compensation', value)
-            }
-          />
-          {supportsOptionValue(
-            capabilities.exposure.options,
-            'slow_shutter',
-            'true',
-          ) && (
-            <FormField label="慢快门">
-              <input
-                type="checkbox"
-                checked={boolValue(config.exposure, 'slow_shutter', false)}
-                onChange={(e) =>
-                  onSectionChange('exposure', 'slow_shutter', e.target.checked)
-                }
-              />
-            </FormField>
-          )}
-          {capabilities.exposure.options.max_exposure_time && (
-            <OptionField
-              label="最长曝光"
-              capability={capabilities.exposure.options.max_exposure_time}
-              value={stringValue(config.exposure, 'max_exposure_time', '1/30')}
-              onChange={(value) =>
-                onSectionChange('exposure', 'max_exposure_time', value)
-              }
-            />
-          )}
+
+            <details className="image-advanced-section">
+                <summary>背光与日夜</summary>
+                <div className="form-grid image-settings-grid image-detail-grid">
+                    <OptionField
+                        label="背光模式"
+                        capability={optionCapability(
+                            capabilities.backlight.options,
+                            'mode',
+                            ['off', 'drc'],
+                        )}
+                        value={stringValue(config.backlight, 'mode', 'off')}
+                        onChange={(value) =>
+                            onSectionChange('backlight', 'mode', value)
+                        }
+                    />
+                    <RangeField
+                        label="背光等级"
+                        capability={
+                            numericCapability(
+                                capabilities.backlight.ranges,
+                                'level',
+                            ) || {
+                                min: 0,
+                                max: 100,
+                                default: 50,
+                            }
+                        }
+                        value={numberValue(config.backlight, 'level', 50)}
+                        onChange={(value) =>
+                            onSectionChange('backlight', 'level', value)
+                        }
+                    />
+                    {capabilities.color_mode.mode &&
+                        capabilities.color_mode.mode.live_update_supported !==
+                            false && (
+                            <OptionField
+                                label="日夜模式"
+                                capability={optionCapability(
+                                    capabilities.color_mode,
+                                    'mode',
+                                    ['color', 'black_white', 'auto'],
+                                )}
+                                value={
+                                    config.color_mode.mode ||
+                                    capabilities.color_mode.mode.default
+                                }
+                                onChange={onColorModeChange}
+                            />
+                        )}
+                </div>
+            </details>
+
+            {showOrientationControls && (
+                <details className="image-advanced-section">
+                    <summary>方向</summary>
+                    <div className="form-grid image-settings-grid image-detail-grid">
+                        {capabilities.orientation.mirror && (
+                            <FormField label="镜像">
+                                <input
+                                    type="checkbox"
+                                    checked={config.orientation.mirror}
+                                    onChange={(e) =>
+                                        onOrientationChange({
+                                            ...config.orientation,
+                                            mirror: e.target.checked,
+                                        })
+                                    }
+                                />
+                            </FormField>
+                        )}
+                        {capabilities.orientation.flip && (
+                            <FormField label="翻转">
+                                <input
+                                    type="checkbox"
+                                    checked={config.orientation.flip}
+                                    onChange={(e) =>
+                                        onOrientationChange({
+                                            ...config.orientation,
+                                            flip: e.target.checked,
+                                        })
+                                    }
+                                />
+                            </FormField>
+                        )}
+                    </div>
+                </details>
+            )}
         </div>
-      </details>
-
-      <details className="image-advanced-section">
-        <summary>白平衡</summary>
-        <div className="form-grid image-settings-grid image-detail-grid">
-          <OptionField
-            label="白平衡模式"
-            capability={optionCapability(
-              capabilities.white_balance.options,
-              'mode',
-              ['auto', 'manual', 'indoor', 'outdoor'],
-            )}
-            value={stringValue(config.white_balance, 'mode', 'auto')}
-            onChange={(value) => onSectionChange('white_balance', 'mode', value)}
-          />
-          <RangeField
-            label="红色增益"
-            capability={
-              numericCapability(capabilities.white_balance.ranges, 'red_gain') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.white_balance, 'red_gain', 50)}
-            onChange={(value) =>
-              onSectionChange('white_balance', 'red_gain', value)
-            }
-          />
-          <RangeField
-            label="蓝色增益"
-            capability={
-              numericCapability(capabilities.white_balance.ranges, 'blue_gain') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.white_balance, 'blue_gain', 45)}
-            onChange={(value) =>
-              onSectionChange('white_balance', 'blue_gain', value)
-            }
-          />
-        </div>
-      </details>
-
-      <details className="image-advanced-section">
-        <summary>图像增强</summary>
-        <div className="form-grid image-settings-grid image-detail-grid">
-          <RangeField
-            label="2D 降噪"
-            capability={
-              numericCapability(capabilities.enhancement.ranges, 'denoise_2d') || {
-                min: 0,
-                max: 100,
-                default: 60,
-              }
-            }
-            value={numberValue(config.enhancement, 'denoise_2d', 60)}
-            onChange={(value) =>
-              onSectionChange('enhancement', 'denoise_2d', value)
-            }
-          />
-          <RangeField
-            label="3D 降噪"
-            capability={
-              numericCapability(capabilities.enhancement.ranges, 'denoise_3d') || {
-                min: 0,
-                max: 100,
-                default: 52,
-              }
-            }
-            value={numberValue(config.enhancement, 'denoise_3d', 52)}
-            onChange={(value) =>
-              onSectionChange('enhancement', 'denoise_3d', value)
-            }
-          />
-          <RangeField
-            label="Gamma"
-            capability={
-              numericCapability(capabilities.enhancement.ranges, 'gamma') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.enhancement, 'gamma', 50)}
-            onChange={(value) => onSectionChange('enhancement', 'gamma', value)}
-          />
-          {supportsOptionValue(
-            capabilities.enhancement.options,
-            'defog',
-            'true',
-          ) && (
-            <FormField label="透雾">
-              <input
-                type="checkbox"
-                checked={boolValue(config.enhancement, 'defog', false)}
-                onChange={(e) =>
-                  onSectionChange('enhancement', 'defog', e.target.checked)
-                }
-              />
-            </FormField>
-          )}
-        </div>
-      </details>
-
-      {lensCorrectionCapabilities.supported && (
-        <details className="image-advanced-section">
-          <summary>镜头畸变校正</summary>
-          <div className="form-grid image-settings-grid image-detail-grid">
-            <FormField label="启用">
-              <input
-                type="checkbox"
-                checked={lensCorrection.enabled}
-                onChange={(e) =>
-                  updateLensCorrection({ enabled: e.target.checked })
-                }
-              />
-            </FormField>
-            {lensCorrectionCapabilities.options.aspect && (
-              <FormField label="保持比例">
-                <input
-                  type="checkbox"
-                  checked={lensCorrection.aspect}
-                  onChange={(e) =>
-                    updateLensCorrection({ aspect: e.target.checked })
-                  }
-                />
-              </FormField>
-            )}
-            <RangeField
-              label="横向视角"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'x_ratio',
-                ) || { min: 0, max: 100, default: 100 }
-              }
-              value={lensCorrection.x_ratio}
-              onChange={(value) => updateLensCorrection({ x_ratio: value })}
-            />
-            <RangeField
-              label="纵向视角"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'y_ratio',
-                ) || { min: 0, max: 100, default: 100 }
-              }
-              value={lensCorrection.y_ratio}
-              onChange={(value) => updateLensCorrection({ y_ratio: value })}
-            />
-            <RangeField
-              label="整体视角"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'xy_ratio',
-                ) || { min: 0, max: 100, default: 100 }
-              }
-              value={lensCorrection.xy_ratio}
-              onChange={(value) => updateLensCorrection({ xy_ratio: value })}
-            />
-            <RangeField
-              label="中心X偏移"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'center_x_offset',
-                ) || { min: -511, max: 511, default: 0 }
-              }
-              value={lensCorrection.center_x_offset}
-              onChange={(value) =>
-                updateLensCorrection({ center_x_offset: value })
-              }
-            />
-            <RangeField
-              label="中心Y偏移"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'center_y_offset',
-                ) || { min: -511, max: 511, default: 0 }
-              }
-              value={lensCorrection.center_y_offset}
-              onChange={(value) =>
-                updateLensCorrection({ center_y_offset: value })
-              }
-            />
-            <RangeField
-              label="畸变强度"
-              capability={
-                numericCapability(
-                  lensCorrectionCapabilities.ranges,
-                  'distortion_ratio',
-                ) || { min: -300, max: 500, default: 0 }
-              }
-              value={lensCorrection.distortion_ratio}
-              onChange={(value) =>
-                updateLensCorrection({ distortion_ratio: value })
-              }
-            />
-          </div>
-        </details>
-      )}
-
-      {stabilizationCapabilities.supported && (
-        <details className="image-advanced-section">
-          <summary>电子防抖</summary>
-          <div className="form-grid image-settings-grid image-detail-grid">
-            <FormField label="启用">
-              <input
-                type="checkbox"
-                checked={stabilization.enabled}
-                onChange={(e) =>
-                  updateStabilization({ enabled: e.target.checked })
-                }
-              />
-            </FormField>
-            <OptionField
-              label="运动等级"
-              capability={
-                optionCapability(
-                  stabilizationCapabilities.options,
-                  'motion_level',
-                  ['low', 'normal', 'high'],
-                )
-              }
-              value={stabilization.motion_level}
-              onChange={(value) =>
-                updateStabilization({ motion_level: value })
-              }
-            />
-            <RangeField
-              label="裁剪比例"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'crop_ratio',
-                ) || { min: 50, max: 98, default: 80 }
-              }
-              value={stabilization.crop_ratio}
-              onChange={(value) =>
-                updateStabilization({ crop_ratio: value })
-              }
-            />
-            <RangeField
-              label="缓冲帧数"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'buffer_count',
-                ) || { min: 5, max: 10, default: 6 }
-              }
-              value={stabilization.buffer_count}
-              onChange={(value) =>
-                updateStabilization({ buffer_count: value })
-              }
-            />
-            <RangeField
-              label="处理帧率"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'frame_rate',
-                ) || { min: 1, max: 60, default: 30 }
-              }
-              value={stabilization.frame_rate}
-              onChange={(value) =>
-                updateStabilization({ frame_rate: value })
-              }
-            />
-            <RangeField
-              label="运动主体"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'moving_subject_level',
-                ) || { min: 0, max: 6, default: 0 }
-              }
-              value={stabilization.moving_subject_level}
-              onChange={(value) =>
-                updateStabilization({ moving_subject_level: value })
-              }
-            />
-            <RangeField
-              label="卷帘校正"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'rolling_shutter_coef',
-                ) || { min: 0, max: 1000, default: 0 }
-              }
-              value={stabilization.rolling_shutter_coef}
-              onChange={(value) =>
-                updateStabilization({ rolling_shutter_coef: value })
-              }
-            />
-            <RangeField
-              label="水平漂移"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'horizontal_limit',
-                ) || { min: 0, max: 1000, default: 512 }
-              }
-              value={stabilization.horizontal_limit}
-              onChange={(value) =>
-                updateStabilization({ horizontal_limit: value })
-              }
-            />
-            <RangeField
-              label="垂直漂移"
-              capability={
-                numericCapability(
-                  stabilizationCapabilities.ranges,
-                  'vertical_limit',
-                ) || { min: 0, max: 1000, default: 512 }
-              }
-              value={stabilization.vertical_limit}
-              onChange={(value) =>
-                updateStabilization({ vertical_limit: value })
-              }
-            />
-          </div>
-        </details>
-      )}
-
-      <details className="image-advanced-section">
-        <summary>背光与日夜</summary>
-        <div className="form-grid image-settings-grid image-detail-grid">
-          <OptionField
-            label="背光模式"
-            capability={optionCapability(capabilities.backlight.options, 'mode', [
-              'off',
-              'drc',
-            ])}
-            value={stringValue(config.backlight, 'mode', 'off')}
-            onChange={(value) => onSectionChange('backlight', 'mode', value)}
-          />
-          <RangeField
-            label="背光等级"
-            capability={
-              numericCapability(capabilities.backlight.ranges, 'level') || {
-                min: 0,
-                max: 100,
-                default: 50,
-              }
-            }
-            value={numberValue(config.backlight, 'level', 50)}
-            onChange={(value) => onSectionChange('backlight', 'level', value)}
-          />
-          {capabilities.color_mode.mode &&
-            capabilities.color_mode.mode.runtime_supported !== false && (
-              <OptionField
-                label="日夜模式"
-                capability={optionCapability(capabilities.color_mode, 'mode', [
-                  'color',
-                  'black_white',
-                  'auto',
-                ])}
-                value={config.color_mode.mode || capabilities.color_mode.mode.default}
-                onChange={onColorModeChange}
-              />
-            )}
-        </div>
-      </details>
-
-      {showOrientationControls && (
-        <details className="image-advanced-section">
-          <summary>方向</summary>
-          <div className="form-grid image-settings-grid image-detail-grid">
-            {capabilities.orientation.mirror && (
-              <FormField label="镜像">
-                <input
-                  type="checkbox"
-                  checked={config.orientation.mirror}
-                  onChange={(e) =>
-                    onOrientationChange({
-                      ...config.orientation,
-                      mirror: e.target.checked,
-                    })
-                  }
-                />
-              </FormField>
-            )}
-            {capabilities.orientation.flip && (
-              <FormField label="翻转">
-                <input
-                  type="checkbox"
-                  checked={config.orientation.flip}
-                  onChange={(e) =>
-                    onOrientationChange({
-                      ...config.orientation,
-                      flip: e.target.checked,
-                    })
-                  }
-                />
-              </FormField>
-            )}
-          </div>
-        </details>
-      )}
-    </div>
-  );
+    );
 }

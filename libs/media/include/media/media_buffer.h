@@ -35,9 +35,9 @@ struct FrameSlice {
 };
 
 struct MediaSlice {
-    const uint8_t *data = nullptr;
+    const uint8_t* data = nullptr;
     size_t size = 0;
-    FrameBuffer *owner = nullptr;
+    FrameBuffer* owner = nullptr;
 };
 
 struct MediaBufferPoolStats {
@@ -79,7 +79,7 @@ inline bool IsValidFrameSlice(const FrameSlice& slice) {
     return slice.size <= slice.buffer->size - slice.offset;
 }
 
-inline const uint8_t *FrameSliceData(const FrameSlice& slice) {
+inline const uint8_t* FrameSliceData(const FrameSlice& slice) {
     return IsValidFrameSlice(slice) ? slice.buffer->data + slice.offset
                                     : nullptr;
 }

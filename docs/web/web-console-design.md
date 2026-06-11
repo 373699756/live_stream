@@ -60,7 +60,7 @@ API 分组：
 
 - Auth：login、logout、change password、current user。
 - Config：video、image、overlay、network、snapshot、AI。
-- Media：stream runtime、playback URLs、session diagnostics。
+- Media：stream info、preview URLs、session info。
 - System/operations：system overview、module status、upgrade、operation logs。
 - WebRTC signaling：RESTful peer、offer、candidate、DELETE close。
 
@@ -68,8 +68,8 @@ DTO 规则：
 
 - `www/src/api/types.ts` 描述 Web 消费字段，不描述隐藏 SDK 内部结构。
 - 字段新增、删除或语义变更必须同步后端 handler、前端 API、`www/README.md`
-  和拥有模块设计文档。冻结 DTO 名称是 `MediaStreamRuntime`、
-  `MediaPlaybackUrls`、`MediaSessionInfo` 和 `WebrtcPeerInfo`。
+  和拥有模块设计文档。冻结 DTO 名称是 `MediaStreamInfo`、
+  `MediaPreviewUrls`、`MediaSessionInfo` 和 `WebrtcPeerInfo`。
 - 前端不补齐后端缺失状态；缺字段应走兼容默认值或显示不可用状态。
 
 所有 JSON API 使用 `{ ok, data, error, request_id }` envelope。前端 API client
@@ -82,7 +82,7 @@ WebRTC signaling 响应使用 native 状态模型。`POST /api/webrtc/peers`、
 `DELETE /api/webrtc/peers/{peer_id}` 都返回 envelope；peer/offer 响应在 `data`
 里返回 `peer_id` 和 `state`，offer 成功时返回 video-only sendonly SDP answer。
 SDP answer 可生成不代表 WebRTC 已可播放；播放状态必须等后端 runtime 和 peer
-diagnostics 确认。offer 失败时前端只展示后端 `error`，不伪造播放。
+info 确认。offer 失败时前端只展示后端 `error`，不伪造播放。
 
 认证状态由 `AuthContext` 管理。工厂密码路径只允许初始设置，后端返回
 `must_change_password` 时 Web 必须先完成改密再进入管理台。HTTP 错误处理应在
@@ -102,7 +102,7 @@ Web 实时预览负责选择 WebRTC、HLS、HTTP-FLV、MJPEG 或 snapshot 路径
 ```mermaid
 flowchart LR
   LiveView[LiveViewPage] --> Metadata[usePreviewMetadata]
-  LiveView --> Session[usePreviewPlaybackSession]
+  LiveView --> Session[usePreviewLiveSession]
   Session --> Player[usePreviewPlayer]
   Player --> WebRTC[WebRTC signaling]
   Player --> HLS[/live/{stream}/hls]
@@ -132,7 +132,7 @@ flowchart LR
 - `httpFlvSupported` / `httpFlvReady`
 - `mjpegSupported` / `mjpegReady`
 - `webrtcSupported` / `webrtcReady`
-- `readerCount` / `clientCount`
+- `subscriptionCount` / `clientCount`
 - `lastDts`
 - `lastKeyframeRequestMs` / `lastKeyframeSeenMs`
 - `lastFirstFrameMs` / `lastProtocolReadyMs`
@@ -172,7 +172,7 @@ AI 页面采用预览优先布局：左侧是实时预览、汇总状态、四�
 
 系统维护页使用页签分离“系统概览”“模块状态”和“固件升级”。系统概览只展示资源、
 设备型号和固件版本；模块状态独立展示后端模块的 running/pending/error，不和媒体
-reader、client 或协议 ready 合并。
+subscription、client 或协议 ready 合并。
 
 固件升级 UI 按流程展示：当前升级状态、选择升级包、上传并校验、升级选项、开始升级
 / 取消 / 确认重启、已校验包信息。上传校验和开始写入是两个独立动作；Web 不把上传

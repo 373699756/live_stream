@@ -1,7 +1,7 @@
 import { type ReactNode, useRef, useState } from 'react';
 import type {
-    MediaPlaybackUrls,
-    MediaStreamRuntime,
+    MediaPreviewUrls,
+    MediaStreamInfo,
     StreamName,
     WebrtcConfig,
 } from '../api/types';
@@ -13,8 +13,8 @@ import { previewDetailText, previewStreamSummary } from './previewDisplay';
 
 interface VideoPreviewProps {
     stream: StreamName;
-    statuses: MediaStreamRuntime[];
-    playbackUrls: MediaPlaybackUrls | null;
+    statuses: MediaStreamInfo[];
+    previewUrls: MediaPreviewUrls | null;
     onStreamChange: (stream: StreamName) => void;
     enabled?: boolean;
     onSnapshot?: (stream: StreamName) => void;
@@ -25,7 +25,7 @@ interface VideoPreviewProps {
 export function VideoPreview({
     stream,
     statuses,
-    playbackUrls,
+    previewUrls,
     onStreamChange,
     enabled = true,
     onSnapshot,
@@ -35,18 +35,18 @@ export function VideoPreview({
     const [mode, setMode] = useState<PreviewMode>('webrtc');
     const surfaceRef = useRef<HTMLDivElement | null>(null);
     const active = statuses.find((item) => item.stream === stream);
-    const activePlaybackUrls =
-        playbackUrls?.stream === stream ? playbackUrls : null;
+    const activePreviewUrls =
+        previewUrls?.stream === stream ? previewUrls : null;
     const {
         connected,
         decodedSize,
         displaySize,
-        flvPlaybackEnabled,
+        flvPreviewEnabled,
         flvSupported,
         hlsLaunchable,
         hlsSupported,
         mediaLayers,
-        mjpegPlaybackEnabled,
+        mjpegPreviewEnabled,
         mjpegSupported,
         previewState,
         retainedFrameVisible,
@@ -55,13 +55,13 @@ export function VideoPreview({
         switchMode,
         visibleLayer,
         webrtcEnabled,
-        webrtcPlaybackEnabled,
+        webrtcPreviewEnabled,
         webrtcSupported,
     } = usePreviewPlayer({
         active,
         enabled,
         mode,
-        playbackUrls: activePlaybackUrls,
+        previewUrls: activePreviewUrls,
         setMode,
         stream,
         webrtcConfig,
@@ -92,12 +92,12 @@ export function VideoPreview({
     return (
         <section className="preview-panel">
             <PreviewToolbar
-                flvPlaybackEnabled={flvPlaybackEnabled}
+                flvPreviewEnabled={flvPreviewEnabled}
                 flvSupported={flvSupported}
                 hlsLaunchable={hlsLaunchable}
                 hlsSupported={hlsSupported}
                 mainSummary={mainSummary}
-                mjpegPlaybackEnabled={mjpegPlaybackEnabled}
+                mjpegPreviewEnabled={mjpegPreviewEnabled}
                 mjpegSupported={mjpegSupported}
                 mode={mode}
                 onModeChange={switchMode}
@@ -108,7 +108,7 @@ export function VideoPreview({
                 streamRunning={streamRunning}
                 subSummary={subSummary}
                 webrtcEnabled={webrtcEnabled}
-                webrtcPlaybackEnabled={webrtcPlaybackEnabled}
+                webrtcPreviewEnabled={webrtcPreviewEnabled}
                 webrtcSupported={webrtcSupported}
             />
             <PreviewSurface

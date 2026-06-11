@@ -207,8 +207,8 @@ struct FakeUpgradePlatform : IUpgradePlatform {
 };
 
 live_stream::UpgradeOptions MakeOptions(FakeUpgradePlatform* platform,
-                                               FakeEvent* event,
-                                               FakeLogger* logger) {
+                                        FakeEvent* event,
+                                        FakeLogger* logger) {
     live_stream::UpgradeOptions options;
     options.platform = platform;
     options.event = event;
@@ -417,7 +417,7 @@ int TestDefaultPlatformIsRestricted() {
 
 int TestRejectsPathOutsideUploadDirectory() {
     const std::string package_path = "/tmp/upgrade_reject_" +
-        std::to_string(static_cast<long long>(getpid()));
+                                     std::to_string(static_cast<long long>(getpid()));
     std::ofstream output(package_path, std::ios::binary);
     output.put('x');
     output.close();
@@ -449,14 +449,14 @@ int TestRejectsPathOutsideUploadDirectory() {
 
 int TestRejectsSymlinkInsideUploadDirectory() {
     const std::string real_path = "/tmp/upgrade_real_" +
-        std::to_string(static_cast<long long>(getpid()));
+                                  std::to_string(static_cast<long long>(getpid()));
     {
         std::ofstream output(real_path, std::ios::binary);
         output.put('x');
     }
     const std::string symlink_path = "/tmp/live_stream/upgrade/uploads/" +
-        std::string("upgrade_symlink_") +
-        std::to_string(static_cast<long long>(getpid()));
+                                     std::string("upgrade_symlink_") +
+                                     std::to_string(static_cast<long long>(getpid()));
     static_cast<void>(mkdir("/tmp/live_stream", 0755));
     static_cast<void>(mkdir("/tmp/live_stream/upgrade", 0755));
     static_cast<void>(mkdir("/tmp/live_stream/upgrade/uploads", 0755));

@@ -163,7 +163,9 @@ export default function App() {
             userName={principal?.user_name}
         >
             <PageErrorBoundary page={page}>
-                <Suspense fallback={<div className="panel">正在加载页面...</div>}>
+                <Suspense
+                    fallback={<div className="panel">正在加载页面...</div>}
+                >
                     {renderPage(page)}
                 </Suspense>
             </PageErrorBoundary>

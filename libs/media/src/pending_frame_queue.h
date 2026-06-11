@@ -18,7 +18,7 @@ public:
     bool Full() const;
     bool PushBack(const EncodedFrame &frame);
     bool PopFront();
-    bool DropOldestNonKeyFrame();
+    bool DropOldestNonKeyframe();
     bool TakeFront(EncodedFrame *frame);
 
 private:

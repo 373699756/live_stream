@@ -1,5 +1,5 @@
 import type { StreamName } from '../api/types';
-import { useMediaRuntime } from './useMediaRuntime';
+import { useMediaStreamsInfo } from './useMediaStreamsInfo';
 
 const configTimeoutMs = 3000;
 const statusTimeoutMs = 1800;
@@ -8,13 +8,13 @@ const steadyRefreshIntervalMs = 12000;
 const fastRefreshCount = 4;
 
 export function useLiveView(selectedStream?: StreamName) {
-  return useMediaRuntime({
-    selectedStream,
-    statusTimeoutMs,
-    playbackUrlTimeoutMs: configTimeoutMs,
-    fastRefreshIntervalMs,
-    fastRefreshCount,
-    refreshIntervalMs: steadyRefreshIntervalMs,
-    subscribeEvents: true,
-  });
+    return useMediaStreamsInfo({
+        selectedStream,
+        statusTimeoutMs,
+        previewUrlTimeoutMs: configTimeoutMs,
+        fastRefreshIntervalMs,
+        fastRefreshCount,
+        refreshIntervalMs: steadyRefreshIntervalMs,
+        subscribeEvents: true,
+    });
 }

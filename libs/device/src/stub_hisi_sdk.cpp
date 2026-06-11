@@ -65,8 +65,7 @@ ImageCapabilities DefaultImage() {
                 {"auto", "1/12", "1/25", "1/30", "1/50", "1/100",
                  "1/250"},
                 "auto"),
-        Options("max_exposure_time", {"1/12", "1/25", "1/30", "1/50",
-                                      "1/100", "1/250"}, "1/30"),
+        Options("max_exposure_time", {"1/12", "1/25", "1/30", "1/50", "1/100", "1/250"}, "1/30"),
         Options("gain", {"auto", "low", "medium", "high"}, "auto"),
         Options("slow_shutter", {"false", "true"}, "false"),
     };
@@ -141,8 +140,7 @@ MediaCapabilities StubCapabilities() {
         MakeCodecCap(Codec::kH265, {"main"}),
         MakeCodecCap(Codec::kMjpeg, {}),
     };
-    main.resolutions = {{1920, 1080}, {1280, 720}, {704, 576}, {640, 360},
-                        {352, 288}};
+    main.resolutions = {{1920, 1080}, {1280, 720}, {704, 576}, {640, 360}, {352, 288}};
     main.frame_rate = {1, 30};
     main.bitrate = {512, 12288};
     main.rate_control_modes = {RateControlMode::kCbr, RateControlMode::kVbr,

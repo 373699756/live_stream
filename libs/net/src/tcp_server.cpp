@@ -38,33 +38,33 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
         options_.send_queue_capacity == 0 ||
         options_.send_buffer_limit_bytes == 0) {
         Error(kModuleName,
-                        "TCP listen invalid options ip=%s port=%u loop=%d "
-                        "backlog=%u max_conn=%u send_q=%u send_limit=%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port),
-                        loop ? 1 : 0,
-                        static_cast<unsigned>(options_.backlog),
-                        static_cast<unsigned>(options_.max_connections),
-                        static_cast<unsigned>(options_.send_queue_capacity),
-                        static_cast<unsigned>(
-                            options_.send_buffer_limit_bytes));
+              "TCP listen invalid options ip=%s port=%u loop=%d "
+              "backlog=%u max_conn=%u send_q=%u send_limit=%u",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port),
+              loop ? 1 : 0,
+              static_cast<unsigned>(options_.backlog),
+              static_cast<unsigned>(options_.max_connections),
+              static_cast<unsigned>(options_.send_queue_capacity),
+              static_cast<unsigned>(
+                  options_.send_buffer_limit_bytes));
         return false;
     }
     sockaddr_in addr = ToSockAddr(options_.address);
     if (addr.sin_family != AF_INET) {
         Error(kModuleName, "TCP listen invalid address ip=%s port=%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port));
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port));
         return false;
     }
     UniqueFd fd(CreateSocket(AF_INET, SOCK_STREAM, 0));
     if (!fd.valid()) {
         const int error = errno;
         Error(kModuleName,
-                        "TCP socket failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "TCP socket failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     int enabled = 1;
@@ -79,37 +79,37 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     if (!SetNonBlocking(fd.get())) {
         const int error = errno;
         Error(kModuleName,
-                        "TCP nonblock failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "TCP nonblock failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&addr), sizeof(addr)) !=
         0) {
         const int error = errno;
         Error(kModuleName,
-                        "TCP bind failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "TCP bind failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     if (listen(fd.get(), static_cast<int>(options_.backlog)) != 0) {
         const int error = errno;
         Error(kModuleName,
-                        "TCP listen failed ip=%s port=%u errno=%d (%s)",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port), error,
-                        ErrnoText(error));
+              "TCP listen failed ip=%s port=%u errno=%d (%s)",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port), error,
+              ErrnoText(error));
         return false;
     }
     NetAddress local = GetSocketAddress(fd.get(), false);
     if (local.port == 0) {
         Error(kModuleName,
-                        "TCP local address unavailable ip=%s port=%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port));
+              "TCP local address unavailable ip=%s port=%u",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port));
         return false;
     }
     loop_ = loop;
@@ -118,25 +118,25 @@ bool TcpServer::Start(const std::shared_ptr<EventLoop> &loop) {
     running_ = true;
     std::weak_ptr<TcpServer> weak_self = shared_from_this();
     if (!loop_->AddFd(listen_fd_.get(), EPOLLIN, [weak_self](uint32_t events) {
-        auto self = weak_self.lock();
-        if (self && (events & EPOLLIN) != 0) {
-            self->AcceptLoop();
-        }
-    })) {
+            auto self = weak_self.lock();
+            if (self && (events & EPOLLIN) != 0) {
+                self->AcceptLoop();
+            }
+        })) {
         Error(kModuleName,
-                        "TCP epoll add failed ip=%s port=%u local=%s:%u",
-                        options_.address.ip.c_str(),
-                        static_cast<unsigned>(options_.address.port),
-                        local.ip.c_str(), static_cast<unsigned>(local.port));
+              "TCP epoll add failed ip=%s port=%u local=%s:%u",
+              options_.address.ip.c_str(),
+              static_cast<unsigned>(options_.address.port),
+              local.ip.c_str(), static_cast<unsigned>(local.port));
         running_ = false;
         listen_fd_.Reset();
         loop_.reset();
         return false;
     }
     Info(kModuleName, "TCP listening ip=%s port=%u local=%s:%u",
-                   options_.address.ip.c_str(),
-                   static_cast<unsigned>(options_.address.port),
-                   local.ip.c_str(), static_cast<unsigned>(local.port));
+         options_.address.ip.c_str(),
+         static_cast<unsigned>(options_.address.port),
+         local.ip.c_str(), static_cast<unsigned>(local.port));
     return true;
 }
 

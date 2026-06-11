@@ -120,7 +120,7 @@ private:
         }
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
-                                         "operations", &principal)) {
+                                        "operations", &principal)) {
             return ForbiddenResponse(principal);
         }
         OperationLogQuery query;
@@ -142,7 +142,7 @@ private:
         }
         AuthPrincipal principal;
         if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
-                                         "operations", &principal)) {
+                                        "operations", &principal)) {
             return ForbiddenResponse(principal);
         }
         OperationLogQuery query;
@@ -171,7 +171,7 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeOperationsHandler(HttpAccess *access,
-                                                ILogger *logger) {
+                                                    ILogger *logger) {
     return std::unique_ptr<IHttpHandler>(
         new OperationsHttpHandler(access, logger));
 }

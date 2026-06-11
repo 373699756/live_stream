@@ -53,11 +53,11 @@ std::string ReplaceHostCandidateIp(const std::string& candidate,
                                    const std::string& public_ip);
 uint32_t BuildWebrtcSsrc(const std::string& peer_id);
 bool ParseWebrtcOffer(const std::string& offer_sdp, Codec local_codec,
-                      WebrtcSdpOffer *offer);
+                      WebrtcSdpOffer* offer);
 std::string BuildWebrtcAnswer(const WebrtcSdpOffer& offer,
                               const WebrtcSdpAnswerOptions& options);
 bool ParseRemoteFingerprint(const std::string& sdp,
-                            DtlsFingerprint *fingerprint);
+                            DtlsFingerprint* fingerprint);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream

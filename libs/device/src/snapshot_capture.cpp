@@ -101,7 +101,7 @@ SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
     return frame;
 }
 
-bool ParseSnapshotRuntimeConfig(const ConfigJson &value, bool *enabled,
+bool ParseSnapshotCaptureConfig(const ConfigJson &value, bool *enabled,
                                 uint32_t *jpeg_quality, uint32_t *timeout_ms) {
     if (!value.is_object() || enabled == nullptr || jpeg_quality == nullptr ||
         timeout_ms == nullptr) {
@@ -212,7 +212,7 @@ struct SnapshotCapture::Impl {
         bool next_enabled = true;
         uint32_t next_quality = 0;
         uint32_t next_timeout = 0;
-        return ParseSnapshotRuntimeConfig(value, &next_enabled, &next_quality,
+        return ParseSnapshotCaptureConfig(value, &next_enabled, &next_quality,
                                           &next_timeout);
     }
 
@@ -220,7 +220,7 @@ struct SnapshotCapture::Impl {
         bool next_enabled = true;
         uint32_t next_quality = 0;
         uint32_t next_timeout = 0;
-        ParseSnapshotRuntimeConfig(value, &next_enabled, &next_quality,
+        ParseSnapshotCaptureConfig(value, &next_enabled, &next_quality,
                                    &next_timeout);
         enabled = next_enabled;
         default_jpeg_quality = next_quality;

@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type {
-    MediaPlaybackUrls,
-    MediaStreamRuntime,
+    MediaPreviewUrls,
+    MediaStreamInfo,
     StreamName,
     WebrtcConfig,
 } from '../api/types';
 import {
-    buildPreviewModeState,
+    buildPreviewReadiness,
     previewModeLabels,
     type PreviewMode,
 } from './previewMode';
-import { usePreviewPlaybackSession } from './usePreviewPlaybackSession';
+import { usePreviewLiveSession } from './usePreviewLiveSession';
 
 export { previewModeLabels, type PreviewMode } from './previewMode';
 
 interface UsePreviewPlayerOptions {
-    active?: MediaStreamRuntime;
+    active?: MediaStreamInfo;
     enabled: boolean;
     mode: PreviewMode;
-    playbackUrls: MediaPlaybackUrls | null;
+    previewUrls: MediaPreviewUrls | null;
     setMode: (mode: PreviewMode) => void;
     stream: StreamName;
     webrtcConfig: WebrtcConfig | null;
@@ -28,7 +28,7 @@ export function usePreviewPlayer({
     active,
     enabled,
     mode,
-    playbackUrls,
+    previewUrls,
     setMode,
     stream,
     webrtcConfig,
@@ -39,11 +39,7 @@ export function usePreviewPlayer({
         // 自动降级后恢复自动选择，后续就绪状态变化仍可继续切到更优协议。
         modeSelectionRef.current = 'auto';
     }, []);
-    const modeState = buildPreviewModeState(
-        active,
-        mode,
-        playbackUrls,
-    );
+    const modeState = buildPreviewReadiness(active, mode, previewUrls);
     const {
         connected,
         decodedSize,
@@ -53,27 +49,30 @@ export function usePreviewPlayer({
         retainedFrameVisible,
         restartPreview,
         visibleLayer,
-    } = usePreviewPlaybackSession({
+    } = usePreviewLiveSession({
         enabled,
         mode,
         modeState,
         onAutoModeFallback,
         autoModeSelected,
-        playbackUrls,
+        previewUrls,
         setMode,
         stream,
         webrtcConfig,
     });
 
-    const switchMode = useCallback((nextMode: PreviewMode) => {
-        if (nextMode === mode) {
-            return;
-        }
-        // 用户手动点协议后尊重手动选择；只有所选协议不可用时才回到自动模式。
-        modeSelectionRef.current = 'manual';
-        restartPreview('正在切换预览链路');
-        setMode(nextMode);
-    }, [mode, restartPreview, setMode]);
+    const switchMode = useCallback(
+        (nextMode: PreviewMode) => {
+            if (nextMode === mode) {
+                return;
+            }
+            // 用户手动点协议后尊重手动选择；只有所选协议不可用时才回到自动模式。
+            modeSelectionRef.current = 'manual';
+            restartPreview('正在切换预览链路');
+            setMode(nextMode);
+        },
+        [mode, restartPreview, setMode],
+    );
 
     useEffect(() => {
         if (!enabled) {
@@ -110,12 +109,12 @@ export function usePreviewPlayer({
         connected,
         decodedSize,
         displaySize,
-        flvPlaybackEnabled: modeState.flvPlaybackReady,
+        flvPreviewEnabled: modeState.flvPreviewReady,
         flvSupported: modeState.flvSupported,
         hlsLaunchable: modeState.hlsLaunchable,
         hlsSupported: modeState.hlsSupported,
         mediaLayers,
-        mjpegPlaybackEnabled: modeState.mjpegPlaybackReady,
+        mjpegPreviewEnabled: modeState.mjpegPreviewReady,
         mjpegSupported: modeState.mjpegSupported,
         previewState,
         retainedFrameVisible,
@@ -124,7 +123,7 @@ export function usePreviewPlayer({
         switchMode,
         visibleLayer,
         webrtcEnabled: modeState.webrtcEnabled,
-        webrtcPlaybackEnabled: modeState.webrtcPlaybackReady,
+        webrtcPreviewEnabled: modeState.webrtcPreviewReady,
         webrtcSupported: modeState.webrtcSupported,
     };
 }

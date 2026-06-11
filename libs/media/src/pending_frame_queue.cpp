@@ -39,13 +39,13 @@ bool PendingFrameQueue::PopFront() {
     return true;
 }
 
-bool PendingFrameQueue::DropOldestNonKeyFrame() {
+bool PendingFrameQueue::DropOldestNonKeyframe() {
     for (size_t i = 0; i < size_; ++i) {
         const size_t index = (head_ + i) % frames_.size();
-        const bool key_frame =
+        const bool keyframe =
             frames_[index].frame_type == FrameType::kIdr ||
             frames_[index].frame_type == FrameType::kI;
-        if (!key_frame) {
+        if (!keyframe) {
             RemoveAt(i);
             return true;
         }

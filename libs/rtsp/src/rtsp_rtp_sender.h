@@ -15,27 +15,27 @@ namespace live_stream {
 class RtspRtpPacketSink;
 
 struct RtspRtpSenderContext {
-  INetEngine *net_engine = nullptr;
-  std::mutex *mutex = nullptr;
-  RtspStats *service_stats = nullptr;
+    INetEngine *net_engine = nullptr;
+    std::mutex *mutex = nullptr;
+    RtspStats *service_stats = nullptr;
 };
 
 class RtspRtpSender {
- public:
-  explicit RtspRtpSender(uint32_t rtp_mtu_bytes);
+public:
+    explicit RtspRtpSender(uint32_t rtp_mtu_bytes);
 
-  void SendFrame(const std::shared_ptr<RtspSession> &session,
-                 const EncodedFrame &frame,
-                 const RtspRtpSenderContext &context);
+    void SendFrame(const std::shared_ptr<RtspSession> &session,
+                   const EncodedFrame &frame,
+                   const RtspRtpSenderContext &context);
 
- private:
-  friend class RtspRtpPacketSink;
+private:
+    friend class RtspRtpPacketSink;
 
-  bool SendRtpPacketView(const std::shared_ptr<RtspSession> &session,
-                         const EncodedFrame &frame,
-                         const rtp::RtpPacketView &packet,
-                         const RtspRtpSenderContext &context);
-  rtp::RtpPacketizer packetizer_;
+    bool SendRtpPacketView(const std::shared_ptr<RtspSession> &session,
+                           const EncodedFrame &frame,
+                           const rtp::RtpPacketView &packet,
+                           const RtspRtpSenderContext &context);
+    rtp::RtpPacketizer packetizer_;
 };
 
 }  // namespace live_stream

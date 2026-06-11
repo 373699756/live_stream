@@ -102,12 +102,12 @@ bool HttpServer::Start() {
         std::lock_guard<std::mutex> guard(mutex_);
         if (started_) {
             Info(kHttpModuleName,
-                           "HTTP server start skipped: already started");
+                 "HTTP server start skipped: already started");
             return true;
         }
         if (net_engine_ == nullptr) {
             Error(kHttpModuleName,
-                            "HTTP server start failed: net engine null");
+                  "HTTP server start failed: net engine null");
             return false;
         }
         stream_executor = stream_executor_.get();
@@ -118,13 +118,13 @@ bool HttpServer::Start() {
     if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
                        options_.stream_executor_queue_capacity)) {
         Error(kHttpModuleName,
-                        "HTTP stream executor start failed");
+              "HTTP stream executor start failed");
         return false;
     }
     if (!StartExecutor(control_executor, options_.control_executor_worker_count,
                        options_.control_executor_queue_capacity)) {
         Error(kHttpModuleName,
-                        "HTTP control executor start failed");
+              "HTTP control executor start failed");
         StopExecutor(stream_executor);
         return false;
     }
@@ -215,8 +215,8 @@ void HttpServer::Stop() {
         control_executor = control_executor_.get();
     }
     Info(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
-                   static_cast<unsigned long long>(server_id),
-                   media_clients.size());
+         static_cast<unsigned long long>(server_id),
+         media_clients.size());
     NotifyStreamsClosed(media_clients);
     if (net_engine != nullptr) {
         for (NetTimerId timer_id : timer_ids) {
@@ -264,8 +264,8 @@ HttpStats HttpServer::GetStats() const {
     return stats_;
 }
 
-std::vector<HttpStreamingSessionDiagnostics>
-HttpServer::GetStreamingSessionDiagnostics() const {
+std::vector<HttpStreamSessionInfo>
+HttpServer::ListStreamSessionInfo() const {
     INetEngine *net_engine = nullptr;
     std::vector<HttpSessionStreamingInfo> sessions;
     {
@@ -283,17 +283,17 @@ HttpServer::GetStreamingSessionDiagnostics() const {
         }
     }
     if (net_engine == nullptr) {
-        return std::vector<HttpStreamingSessionDiagnostics>();
+        return std::vector<HttpStreamSessionInfo>();
     }
 
-    std::vector<HttpStreamingSessionDiagnostics> diagnostics;
-    diagnostics.reserve(sessions.size());
+    std::vector<HttpStreamSessionInfo> session_info;
+    session_info.reserve(sessions.size());
     for (const HttpSessionStreamingInfo &session : sessions) {
-        diagnostics.push_back(BuildStreamingDiagnostics(
+        session_info.push_back(BuildStreamSessionInfo(
             session,
-            net_engine->GetConnectionDiagnostics(session.connection_id)));
+            net_engine->GetConnectionInfo(session.connection_id)));
     }
-    return diagnostics;
+    return session_info;
 }
 
 void HttpServer::IncrementTotalRequests() {
@@ -524,8 +524,8 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
         ++stats_.active_connections;
     }
     Info(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
-                   static_cast<unsigned long long>(connection_id),
-                   peer_ip.c_str());
+         static_cast<unsigned long long>(connection_id),
+         peer_ip.c_str());
     ArmConnectionTimer(connection_id, options_.request_timeout_ms);
 }
 
@@ -552,13 +552,13 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     CancelNetTimer(net_executor, timer_id);
     NotifyStreamClosed(closed.media_client);
     Info(kHttpModuleName,
-                   "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
-                   "client=%llu",
-                   static_cast<unsigned long long>(connection_id),
-                   static_cast<int>(reason),
-                   closed.was_streaming ? 1 : 0,
-                   static_cast<int>(closed.media_client.type),
-                   static_cast<unsigned long long>(closed.media_client.id));
+         "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
+         "client=%llu",
+         static_cast<unsigned long long>(connection_id),
+         static_cast<int>(reason),
+         closed.was_streaming ? 1 : 0,
+         static_cast<int>(closed.media_client.type),
+         static_cast<unsigned long long>(closed.media_client.id));
 }
 
 void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
@@ -686,46 +686,44 @@ void HttpServer::LogRequests(
     const std::vector<HttpRequestLog> &request_logs) {
     for (const HttpRequestLog &log : request_logs) {
         Info(kHttpModuleName,
-                       "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
-                       static_cast<unsigned long long>(log.connection_id),
-                       log.client_ip.c_str(), HttpMethodName(log.method),
-                       log.path.c_str(), log.query_size, log.body_size);
+             "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
+             static_cast<unsigned long long>(log.connection_id),
+             log.client_ip.c_str(), HttpMethodName(log.method),
+             log.path.c_str(), log.query_size, log.body_size);
     }
 }
 
-HttpStreamingSessionDiagnostics HttpServer::BuildStreamingDiagnostics(
+HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
     const HttpSessionStreamingInfo &session,
-    const NetConnectionDiagnostics &connection) {
-    HttpStreamingSessionDiagnostics diagnostics;
-    diagnostics.connection_id = session.connection_id;
-    diagnostics.protocol = HttpMediaClientTypeName(session.media_type);
-    diagnostics.session_id = std::to_string(session.connection_id);
-    diagnostics.client_id = session.media_client.id == 0
-                                ? std::string()
-                                : std::to_string(session.media_client.id);
-    diagnostics.stream_state = HttpMediaStreamStateName(session.stream_state);
-    diagnostics.stream_id = session.stream_id;
-    diagnostics.client_ip = session.client_ip;
-    diagnostics.pending_bytes = connection.pending_bytes;
-    diagnostics.send_queue_length = connection.send_queue_length;
-    diagnostics.last_write_at_ms = connection.last_write_at_ms;
-    diagnostics.open = connection.connection_id == session.connection_id
-                           ? connection.open
-                           : session.streaming;
-    if (!diagnostics.open) {
-        diagnostics.close_reason = TcpCloseReasonName(connection.close_reason);
+    const NetConnectionInfo &connection) {
+    HttpStreamSessionInfo info;
+    info.connection_id = session.connection_id;
+    info.protocol = HttpMediaClientTypeName(session.media_type);
+    info.session_id = std::to_string(session.connection_id);
+    info.client_id = session.media_client.id == 0
+                         ? std::string()
+                         : std::to_string(session.media_client.id);
+    info.stream_state = HttpMediaStreamStateName(session.stream_state);
+    info.stream_id = session.stream_id;
+    info.client_ip = session.client_ip;
+    info.pending_bytes = connection.pending_bytes;
+    info.send_queue_length = connection.send_queue_length;
+    info.last_write_at_ms = connection.last_write_at_ms;
+    info.open = connection.connection_id == session.connection_id
+                    ? connection.open
+                    : session.streaming;
+    if (!info.open) {
+        info.close_reason = TcpCloseReasonName(connection.close_reason);
     }
     if (!connection.remote_address.ip.empty()) {
-        diagnostics.remote_address = connection.remote_address.ip + ":" +
-                                     std::to_string(
-                                         connection.remote_address.port);
+        info.remote_address = connection.remote_address.ip + ":" +
+                              std::to_string(connection.remote_address.port);
     }
     if (!connection.local_address.ip.empty()) {
-        diagnostics.local_address = connection.local_address.ip + ":" +
-                                    std::to_string(
-                                        connection.local_address.port);
+        info.local_address = connection.local_address.ip + ":" +
+                             std::to_string(connection.local_address.port);
     }
-    return diagnostics;
+    return info;
 }
 
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,

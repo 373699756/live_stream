@@ -188,8 +188,8 @@ bool WebrtcTransport::SendDtlsResult(
 }
 
 bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
-                                        bool *request_key_frame) {
-    if (request_key_frame == nullptr || !inbound_srtp_.ready() ||
+                                        bool *need_keyframe) {
+    if (need_keyframe == nullptr || !inbound_srtp_.ready() ||
         data == nullptr || size == 0) {
         return false;
     }
@@ -202,12 +202,12 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
     if (!SrtpSession::CountRtcpFeedback(plain_rtcp_packet_.data(),
                                         plain_rtcp_packet_.size(),
                                         &counters)) {
-        *request_key_frame = false;
+        *need_keyframe = false;
         return true;
     }
     RecordRtcpFeedback(counters);
-    *request_key_frame = counters.pli_count != 0 ||
-                         counters.fir_count != 0;
+    *need_keyframe = counters.pli_count != 0 ||
+                     counters.fir_count != 0;
     return true;
 }
 
@@ -251,22 +251,22 @@ NetAddress WebrtcTransport::local_address() const {
     return ice_ == nullptr ? NetAddress() : ice_->local_address();
 }
 
-WebrtcTransportDiagnostics WebrtcTransport::GetDiagnostics() const {
-    WebrtcTransportDiagnostics diagnostics;
-    diagnostics.ice_selected = ice_ != nullptr && ice_->connected();
-    diagnostics.dtls_state =
+WebrtcTransportInfo WebrtcTransport::GetInfo() const {
+    WebrtcTransportInfo info;
+    info.ice_selected = ice_ != nullptr && ice_->connected();
+    info.dtls_state =
         dtls_ == nullptr ? "closed" : DtlsStateName(dtls_->state());
-    diagnostics.srtp_ready = srtp_ready();
-    diagnostics.rtp_packets = protected_rtp_packets_;
-    diagnostics.rtp_bytes = protected_rtp_bytes_;
-    diagnostics.rtcp_packets = rtcp_packets_;
-    diagnostics.rtcp_bytes = rtcp_bytes_;
-    diagnostics.rtcp_pli_count = rtcp_pli_count_;
-    diagnostics.rtcp_fir_count = rtcp_fir_count_;
-    diagnostics.rtcp_nack_count = rtcp_nack_count_;
-    diagnostics.rtcp_transport_cc_count = rtcp_transport_cc_count_;
-    diagnostics.rtcp_keyframe_requests = rtcp_keyframe_requests_;
-    return diagnostics;
+    info.srtp_ready = srtp_ready();
+    info.rtp_packets = protected_rtp_packets_;
+    info.rtp_bytes = protected_rtp_bytes_;
+    info.rtcp_packets = rtcp_packets_;
+    info.rtcp_bytes = rtcp_bytes_;
+    info.rtcp_pli_count = rtcp_pli_count_;
+    info.rtcp_fir_count = rtcp_fir_count_;
+    info.rtcp_nack_count = rtcp_nack_count_;
+    info.rtcp_transport_cc_count = rtcp_transport_cc_count_;
+    info.rtcp_keyframe_requests = rtcp_keyframe_requests_;
+    return info;
 }
 
 void WebrtcTransport::FillStats(WebrtcStats *stats) const {
@@ -307,8 +307,7 @@ bool WebrtcTransport::StartIceTransport(
         return false;
     }
 
-    const uint32_t port_count = options.port_count == 0 ? 1U :
-        options.port_count;
+    const uint32_t port_count = options.port_count == 0 ? 1U : options.port_count;
     for (uint32_t i = 0; i < port_count; ++i) {
         const uint32_t offset =
             (options.next_port_offset + i) % port_count;

@@ -19,8 +19,7 @@ uint32_t AlignDown(uint32_t value, uint32_t alignment) {
 }
 
 uint32_t AlignUp(uint32_t value, uint32_t alignment) {
-    return alignment == 0 ? value : ((value + alignment - 1) / alignment) *
-                                      alignment;
+    return alignment == 0 ? value : ((value + alignment - 1) / alignment) * alignment;
 }
 
 int32_t AlignPointDown(int32_t value, uint32_t alignment) {

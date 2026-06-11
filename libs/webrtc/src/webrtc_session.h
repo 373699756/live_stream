@@ -53,12 +53,12 @@ public:
     bool HandleDtlsTimeout(WebrtcTransportDtlsResult *result);
     bool SendDtlsResult(const WebrtcTransportDtlsResult &result);
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
-                           bool *request_key_frame);
+                           bool *need_keyframe);
     bool SendRtpPacket(const EncodedFrame &frame,
                        const rtp::RtpPacketView &packet);
 
     bool GetRtpSendParameters(WebrtcRtpSendParameters *parameters) const;
-    void FillPeerDiagnostics(WebrtcPeerInfo *peer) const;
+    void FillPeerInfo(WebrtcPeerInfo *peer) const;
     void FillStats(WebrtcStats *stats) const;
     bool ice_connected() const;
 

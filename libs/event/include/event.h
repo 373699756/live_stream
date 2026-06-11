@@ -59,8 +59,8 @@ struct EventCounts {
 };
 
 // Handlers must be lightweight. If business work is needed, post it to the
-// subscriber service's own TaskQueue instead of blocking event-thread.
-using EventHandler = std::function<void(const Event&)>;
+// handler owner's TaskQueue instead of blocking event-thread.
+using EventHandler = std::function<void(const Event &)>;
 
 class IEvent {
 public:
@@ -72,7 +72,7 @@ public:
     virtual EventSubscriptionId Subscribe(
         const std::vector<EventType> &types, EventHandler handler) = 0;
     virtual bool Unsubscribe(EventSubscriptionId subscription_id) = 0;
-    virtual bool Publish(const Event& event) = 0;
+    virtual bool Publish(const Event &event) = 0;
     virtual EventCounts GetCounts() const = 0;
 };
 

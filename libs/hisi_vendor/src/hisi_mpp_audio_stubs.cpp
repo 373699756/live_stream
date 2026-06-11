@@ -16,5 +16,4 @@ HI_S32 __attribute__((weak)) HI_VOICE_DecodeFrame(...) { return HI_FAILURE; }
 HI_S32 __attribute__((weak)) HI_DNVQE_WriteFrame(...) { return HI_FAILURE; }
 
 HI_S32 __attribute__((weak)) HI_DNVQE_ReadFrame(...) { return HI_FAILURE; }
-
 }
