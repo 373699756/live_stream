@@ -239,13 +239,12 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handler_dependencies.time = dependencies.time;
     handler_dependencies.upgrade = dependencies.upgrade;
     handler_dependencies.system = dependencies.system;
-    handler_dependencies.device_media = dependencies.device_media;
+    handler_dependencies.device = dependencies.device;
     handler_dependencies.media_streams = dependencies.media_streams;
     handler_dependencies.alarm = dependencies.alarm;
     handler_dependencies.rtsp = dependencies.rtsp;
     handler_dependencies.webrtc = dependencies.webrtc;
     handler_dependencies.ai = dependencies.ai;
-    handler_dependencies.snapshot = dependencies.snapshot;
 
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kAuth, handler_dependencies));
@@ -270,9 +269,8 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     system_status_sources.upgrade = dependencies.upgrade;
     system_status_sources.rtsp = dependencies.rtsp;
     system_status_sources.onvif = dependencies.onvif;
-    system_status_sources.device_media = dependencies.device_media;
+    system_status_sources.device = dependencies.device;
     system_status_sources.ai = dependencies.ai;
-    system_status_sources.snapshot = dependencies.snapshot;
     system_status_sources.webrtc = dependencies.webrtc;
     system_status_sources.media_streams = dependencies.media_streams;
     handler_dependencies.system_status_sources = system_status_sources;
@@ -289,7 +287,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         HttpHandlerKind::kSnapshot, handler_dependencies));
     HttpMediaHandlerDependencies media_handler_dependencies;
     media_handler_dependencies.access = this;
-    media_handler_dependencies.device_media = dependencies.device_media;
+    media_handler_dependencies.device = dependencies.device;
     media_handler_dependencies.media_streams = dependencies.media_streams;
     media_handler_dependencies.webrtc = dependencies.webrtc;
     handlers_.push_back(CreateHttpHandler(
@@ -301,7 +299,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     StreamingHttpHandlerDependencies streaming_handler_dependencies;
     streaming_handler_dependencies.access = this;
     streaming_handler_dependencies.writer = server_.get();
-    streaming_handler_dependencies.device_media = dependencies.device_media;
+    streaming_handler_dependencies.device = dependencies.device;
     streaming_handler_dependencies.media_streams = dependencies.media_streams;
     streaming_handler_dependencies.event = dependencies.event;
     streaming_handler_ = CreateStreamingHttpHandler(

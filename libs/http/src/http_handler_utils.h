@@ -13,7 +13,7 @@ namespace live_stream {
 
 class IAiView;
 class IConfig;
-class IDeviceMedia;
+class DeviceMedia;
 
 constexpr const char *kHttpModuleName = "http";
 
@@ -56,7 +56,7 @@ bool RequirePermissionOrForbidden(HttpAccess *access,
                                   AuthPrincipal *principal);
 bool ParseJsonObject(const HttpRequest &request, ConfigJson *body);
 bool ParseOptionalJsonObject(const HttpRequest &request, ConfigJson *body);
-bool IsMediaRestarting(IDeviceMedia *device_media);
+bool IsMediaRestarting(DeviceMedia *device);
 std::string PathSuffix(const std::string &path, const std::string &prefix);
 std::string BuildStreamingHeaderBlock(
     int status_code, const std::map<std::string, std::string> &headers);

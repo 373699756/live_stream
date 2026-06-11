@@ -19,9 +19,8 @@ class ISystem;
 class ITime;
 class IUpgrade;
 class IWebrtc;
-class IDeviceMedia;
+class DeviceMedia;
 class IAiView;
-class ISnapshotView;
 class IEvent;
 
 struct HttpDependencies {
@@ -38,8 +37,7 @@ struct HttpDependencies {
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
     IAiView *ai = nullptr;
-    IDeviceMedia *device_media = nullptr;
-    ISnapshotView *snapshot = nullptr;
+    DeviceMedia *device = nullptr;
     IWebrtc *webrtc = nullptr;
     MediaStreams *media_streams = nullptr;
     IEvent *event = nullptr;

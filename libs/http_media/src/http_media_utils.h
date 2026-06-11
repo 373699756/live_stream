@@ -14,7 +14,7 @@ namespace live_stream {
 
 constexpr const char *kHttpMediaModuleName = "http_media";
 
-class IDeviceMedia;
+class DeviceMedia;
 
 HttpResponse HttpMediaJsonResponse(int status_code, const ConfigJson &value);
 HttpResponse HttpMediaStatusResponse(int status_code,
@@ -30,7 +30,7 @@ HttpResponse RequirePlaybackAuthResponse(HttpAccess *access,
                                          const HttpRequest &request,
                                          AuthPrincipal *principal);
 bool ParseOptionalJsonBody(const HttpRequest &request, ConfigJson *body);
-bool IsHttpMediaRestarting(IDeviceMedia *device_media);
+bool IsHttpMediaRestarting(DeviceMedia *device);
 std::string HttpMediaPathSuffix(const std::string &path,
                                 const std::string &prefix);
 std::string BuildHttpStreamHeaderBlock(

@@ -11,7 +11,7 @@ export const mockSystemStatus: SystemStatus = {
   modules: [
     { name: 'config', state: 'running' },
     { name: 'auth', state: 'running' },
-    { name: 'device_media', state: 'pending' },
+    { name: 'device', state: 'pending' },
     { name: 'http', state: 'running' },
     { name: 'webrtc', state: 'pending' },
   ],

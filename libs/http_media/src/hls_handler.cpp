@@ -3,7 +3,7 @@
 #include "http_media_utils.h"
 #include "http_router.h"
 
-#include "device_media.h"
+#include "device.h"
 #include "infra/log.h"
 
 #include <cstdio>
@@ -196,9 +196,9 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
 class HlsHttpHandler : public IHttpHandler {
 public:
     HlsHttpHandler(HttpAccess *access,
-                   IDeviceMedia *device_media,
+                   DeviceMedia *device,
                    MediaStreams *media_streams)
-        : access_(access), device_media_(device_media),
+        : access_(access), device_(device),
           media_streams_(media_streams) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
@@ -225,7 +225,7 @@ private:
         if (media_streams_ == nullptr) {
             return HttpMediaTextResponse(501, "Not Implemented");
         }
-        if (IsHttpMediaRestarting(device_media_)) {
+        if (IsHttpMediaRestarting(device_)) {
             return HttpMediaTextResponse(503, "Media pipeline restarting");
         }
 
@@ -297,15 +297,15 @@ private:
     }
 
     HttpAccess *access_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
+    HttpAccess *access, DeviceMedia *device,
     MediaStreams *media_streams) {
     return std::unique_ptr<IHttpHandler>(
-        new HlsHttpHandler(access, device_media, media_streams));
+        new HlsHttpHandler(access, device, media_streams));
 }
 
 }  // namespace live_stream

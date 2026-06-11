@@ -22,7 +22,7 @@ flowchart LR
   HTTP --> MediaHTTP[http_media]
   MediaHTTP --> MediaCore[media]
   MediaHTTP --> WebRTC[webrtc]
-  HTTP --> Snapshot[snapshot]
+  HTTP --> Snapshot[device snapshot]
   HTTP --> AI[ai IAiView]
   HTTP --> Device[system/time/network/alarm/upgrade]
   HTTP --> Protocol[rtsp/onvif]
@@ -46,11 +46,11 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | API 组 | 业务归属 |
 | --- | --- |
 | `/api/auth/*` | `auth` |
-| `/api/config/*` | `device`、`region`、`network_config`、`snapshot`、`ai` |
+| `/api/config/*` | `device`、`network_config`、`ai` |
 | `/api/media/streams` | `media` / `device` |
 | `/api/media/capabilities` | `device` |
 | `/api/media/streams/{stream}` | `media` / `device` |
-| `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `snapshot` |
+| `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `device snapshot` |
 | `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` diagnostics |
 | `/api/status/image-strategy` | `device` |
 | `/api/webrtc/peers` | `http_media` / `webrtc` |
@@ -89,7 +89,7 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `hls` | `/live/{stream}/hls/index.m3u8` | `http_media` |
 | `http_flv` | `/live/{stream}.live.flv` | `http_media` |
 | `mjpeg` | `/live/{stream}.mjpg` | `http_media` |
-| `snapshot` | `/snapshot/{stream}.jpg` | `snapshot` |
+| `snapshot` | `/snapshot/{stream}.jpg` | `device` |
 | `rtsp` | 后端按 Host、RTSP 端口、认证配置生成完整 URL | `rtsp` / `http` helper |
 | `webrtc_whep` | `/live/{stream}/whep`，可选 | `http_media` / `webrtc` |
 

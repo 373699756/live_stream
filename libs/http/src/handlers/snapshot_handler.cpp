@@ -3,8 +3,7 @@
 #include "http_handler_utils.h"
 
 #include "media/stream_types.h"
-#include "device_media.h"
-#include "snapshot.h"
+#include "device.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -33,10 +32,8 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
 class SnapshotHttpHandler : public IHttpHandler {
 public:
     SnapshotHttpHandler(HttpAccess *access,
-                        IDeviceMedia *device_media,
-                        ISnapshotView *snapshot)
-        : access_(access), device_media_(device_media),
-          snapshot_(snapshot) {}
+                        DeviceMedia *device)
+        : access_(access), device_(device) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -61,10 +58,10 @@ private:
         if (auth_response.status_code != 0) {
             return auth_response;
         }
-        if (snapshot_ == nullptr) {
+        if (device_ == nullptr) {
             return SnapshotTextResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(device_media_)) {
+        if (IsMediaRestarting(device_)) {
             return SnapshotTextResponse(503, "Media pipeline restarting");
         }
         const std::string prefix = "/snapshot/";
@@ -77,10 +74,10 @@ private:
         if (!StreamIdFromJsonString(name, &stream_id)) {
             return SnapshotTextResponse(400, "Invalid stream");
         }
-        CaptureRequest capture_request;
+        SnapshotRequest capture_request;
         capture_request.stream_id = stream_id;
         SnapshotFrame frame =
-            snapshot_->Capture(capture_request);
+            device_->CaptureSnapshot(capture_request);
         if (!frame.HasValidPayload() || !LooksLikeJpeg(frame)) {
             return SnapshotTextResponse(500, "Invalid snapshot frame");
         }
@@ -94,15 +91,13 @@ private:
     }
 
     HttpAccess *access_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
-    ISnapshotView *snapshot_ = nullptr;
+    DeviceMedia *device_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeSnapshotHandler(HttpAccess *access,
-                                               IDeviceMedia *device_media,
-                                               ISnapshotView *snapshot) {
+                                               DeviceMedia *device) {
     return std::unique_ptr<IHttpHandler>(
-        new SnapshotHttpHandler(access, device_media, snapshot));
+        new SnapshotHttpHandler(access, device));
 }
 
 }  // namespace live_stream

@@ -1,6 +1,6 @@
 #include "http_media_utils.h"
 
-#include "device_media.h"
+#include "device.h"
 
 namespace live_stream {
 
@@ -103,8 +103,8 @@ bool ParseOptionalJsonBody(const HttpRequest &request, ConfigJson *body) {
     return !body->is_discarded() && body->is_object();
 }
 
-bool IsHttpMediaRestarting(IDeviceMedia *device_media) {
-    return device_media != nullptr && device_media->IsRestarting();
+bool IsHttpMediaRestarting(DeviceMedia *device) {
+    return device != nullptr && device->IsRestarting();
 }
 
 std::string HttpMediaPathSuffix(const std::string &path,

@@ -4,7 +4,7 @@
 #include "auth.h"
 #include "config.h"
 #include "logger.h"
-#include "device_media.h"
+#include "device.h"
 #include "net.h"
 
 #include <cstring>
@@ -202,7 +202,7 @@ private:
   FakeNetExecutor executor_;
 };
 
-class FakeDeviceMedia : public live_stream::IDeviceMedia {
+class FakeDeviceMedia : public live_stream::DeviceMedia {
 public:
   bool Start() override { return true; }
   void Stop() override {}
@@ -295,7 +295,7 @@ int main() {
   http_dependencies.auth = &auth;
   http_dependencies.logger = &logger;
   http_dependencies.config = &config;
-  http_dependencies.device_media = &media;
+  http_dependencies.device = &media;
   std::unique_ptr<live_stream::IHttp> console =
       live_stream::CreateHttp(options, http_dependencies);
   if (!console || !console->Start()) {

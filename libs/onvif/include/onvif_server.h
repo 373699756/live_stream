@@ -16,7 +16,7 @@ namespace live_stream {
 
 class IAuth;
 class IEvent;
-class IDeviceMedia;
+class DeviceMedia;
 class IRtsp;
 class INetEngine;
 class INetExecutor;
@@ -55,7 +55,7 @@ struct OnvifServerDependencies {
     IEvent *event = nullptr;
     ISystem *system = nullptr;
     ITime *time = nullptr;
-    IDeviceMedia *device_media = nullptr;
+    DeviceMedia *device = nullptr;
     IRtsp *rtsp = nullptr;
 };
 

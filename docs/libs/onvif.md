@@ -19,7 +19,7 @@ flowchart LR
   ONVIF --> Auth[auth]
   ONVIF --> System[system]
   ONVIF --> Time[time]
-  ONVIF --> Media[device_media]
+  ONVIF --> Media[device]
   ONVIF --> RTSP[rtsp URL contract]
   ONVIF --> Event[event]
 ```

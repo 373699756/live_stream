@@ -4,11 +4,10 @@
 
 #include "alarm.h"
 #include "config.h"
-#include "device_media.h"
+#include "device.h"
 #include "network_config.h"
 #include "onvif_server.h"
 #include "rtsp.h"
-#include "snapshot.h"
 #include "system.h"
 #include "time_api.h"
 #include "upgrade.h"
@@ -171,15 +170,19 @@ private:
                     status_sources_.onvif != nullptr &&
                         status_sources_.onvif->IsStarted());
         add_module("http", true);
-        add_module("device_media",
-                    status_sources_.device_media != nullptr &&
-                        status_sources_.device_media->IsStarted());
+        add_module("device",
+                    status_sources_.device != nullptr &&
+                        status_sources_.device->IsStarted());
         if (IsAiConfigEnabled(status_sources_.config)) {
             add_module("ai", IsAiHealthy(status_sources_.ai));
         }
+        SnapshotInfo snapshot_info;
+        if (status_sources_.device != nullptr) {
+            snapshot_info = status_sources_.device->GetSnapshotInfo();
+        }
         add_module("snapshot",
-                    status_sources_.snapshot != nullptr &&
-                        status_sources_.snapshot->GetStats().enabled);
+                    status_sources_.device != nullptr &&
+                        snapshot_info.enabled);
         bool webrtc_running = false;
         if (status_sources_.webrtc != nullptr) {
             const WebrtcStats stats =

@@ -4,13 +4,12 @@
 #include "ai_engine.h"
 #include "alarm.h"
 #include "config.h"
-#include "device_media.h"
+#include "device.h"
 #include "infra/executor.h"
 #include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "perimeter_filter.h"
-#include "snapshot.h"
 
 #include <algorithm>
 #include <limits>
@@ -404,7 +403,7 @@ struct AiRuntime::State final {
         const AiModelConfig &run_config,
         const std::shared_ptr<AiTaskRuntime> &task_runtime,
         PendingAlertCapture *pending_alert) {
-        if (!HasAlertDetections(result) || options.snapshot == nullptr ||
+        if (!HasAlertDetections(result) || options.device == nullptr ||
             pending_alert == nullptr) {
             return false;
         }
@@ -441,10 +440,10 @@ struct AiRuntime::State final {
     }
 
     void SaveAlertCapture(const PendingAlertCapture &pending_alert) {
-        CaptureRequest request;
+        SnapshotRequest request;
         request.stream_id = pending_alert.config.stream_id;
         request.include_thumbnail = false;
-        SnapshotFrame frame = options.snapshot->Capture(request);
+        SnapshotFrame frame = options.device->CaptureSnapshot(request);
         if (!LooksLikeJpeg(frame)) {
             IncrementDroppedTasks(pending_alert.task_runtime);
             return;
@@ -531,8 +530,8 @@ struct AiRuntime::State final {
             if (!started || !config.enabled) {
                 return;
             }
-            if (options.device_media == nullptr || options.sdk == nullptr ||
-                !options.device_media->IsStarted()) {
+            if (options.device == nullptr || options.sdk == nullptr ||
+                !options.device->IsStarted()) {
                 Error("ai", "AI startup skipped: device media or sdk unavailable");
                 MarkAllEnabledTaskBackendsUnavailableLocked();
                 return;

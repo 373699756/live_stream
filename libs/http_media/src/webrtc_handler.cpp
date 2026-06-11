@@ -3,7 +3,7 @@
 #include "http_media_utils.h"
 #include "http_router.h"
 
-#include "device_media.h"
+#include "device.h"
 #include "json_utils.h"
 #include "webrtc.h"
 
@@ -353,9 +353,9 @@ HttpResponse BuildWhepDeleteResponse(IWebrtc *webrtc,
 class WebrtcHttpHandler : public IHttpHandler {
 public:
     WebrtcHttpHandler(HttpAccess *access,
-                      IDeviceMedia *device_media,
+                      DeviceMedia *device,
                       IWebrtc *webrtc)
-        : access_(access), device_media_(device_media),
+        : access_(access), device_(device),
           webrtc_(webrtc) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
@@ -425,7 +425,7 @@ private:
             return WebrtcErrorResponse(501, "protocol_unavailable",
                                        "Not Implemented");
         }
-        if (IsHttpMediaRestarting(device_media_)) {
+        if (IsHttpMediaRestarting(device_)) {
             return WebrtcErrorResponse(503, "resource_busy",
                                        "Media pipeline restarting");
         }
@@ -450,7 +450,7 @@ private:
         if (webrtc_ == nullptr) {
             return HttpMediaTextResponse(501, "Not Implemented");
         }
-        if (IsHttpMediaRestarting(device_media_)) {
+        if (IsHttpMediaRestarting(device_)) {
             return HttpMediaTextResponse(503, "Media pipeline restarting");
         }
         return BuildWhepCreateResponse(webrtc_, request, principal);
@@ -471,15 +471,15 @@ private:
     }
 
     HttpAccess *access_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
+    HttpAccess *access, DeviceMedia *device,
     IWebrtc *webrtc) {
     return std::unique_ptr<IHttpHandler>(
-        new WebrtcHttpHandler(access, device_media, webrtc));
+        new WebrtcHttpHandler(access, device, webrtc));
 }
 
 }  // namespace live_stream

@@ -14,8 +14,8 @@ AI 告警图片记录和告警联动。AI 是默认关闭的可选能力，不�
 ```mermaid
 flowchart LR
   Config[config ai scope] --> AI[ai]
-  AI --> Media[device_media]
-  AI --> Snapshot[snapshot]
+  AI --> Media[device]
+  AI --> Snapshot[device snapshot]
   AI --> SDK[hisi_vendor NNIE/IVE/VGS]
   AI --> Alarm[alarm ai_detection]
   AI --> Alerts[ai alert image store]
@@ -84,8 +84,8 @@ AI 运行状态包含总启用状态、每个任务的后端可用性、抓帧/�
 统计指标和告警图片索引。每个启用任务拥有独立推理后端和 executor；AI 抓帧入口共享
 串行化保护，避免多个任务同时阻塞 VPSS。配置关闭或热应用失败时必须释放推理后端和
 抓帧资源；`/api/ai/status` 只能反映 AI 自身状态，不能阻塞直播 ready。
-组合根停止时，`ai` 必须在 `snapshot` 和 `device_media` 之前停止，确保推理线程和
-抓帧调度不再访问即将释放的 snapshot view 或 MPP channel。
+组合根停止时，`ai` 必须在 `device` 之前停止，确保推理线程和告警抓拍不再访问
+即将释放的 device snapshot 或 MPP channel。
 
 ## 音视频专项边界
 

@@ -11,30 +11,30 @@ namespace {
 bool RequestDeviceKeyFrame(StreamId stream_id,
                            KeyFrameRequestType request_type,
                            void *user) {
-    IDeviceMedia *device_media = static_cast<IDeviceMedia *>(user);
-    return device_media != nullptr &&
-           device_media->RequestKeyFrame(stream_id, request_type);
+    DeviceMedia *device = static_cast<DeviceMedia *>(user);
+    return device != nullptr &&
+           device->RequestKeyFrame(stream_id, request_type);
 }
 
-MediaStreamState StreamStateForDeviceStream(IDeviceMedia *device_media,
+MediaStreamState StreamStateForDeviceStream(DeviceMedia *device,
                                             StreamId stream_id) {
-    if (device_media == nullptr ||
-        !device_media->IsStreamStarted(stream_id)) {
+    if (device == nullptr ||
+        !device->IsStreamStarted(stream_id)) {
         return MediaStreamState::kClosed;
     }
     return MediaStreamState::kRunning;
 }
 
-void SetInitialMediaStreamState(IDeviceMedia *device_media,
+void SetInitialMediaStreamState(DeviceMedia *device,
                                 MediaStreams *media_streams,
                                 StreamId stream_id) {
-    if (device_media == nullptr || media_streams == nullptr) {
+    if (device == nullptr || media_streams == nullptr) {
         return;
     }
     media_streams->SetStreamState(stream_id,
-                                  StreamStateForDeviceStream(device_media,
+                                  StreamStateForDeviceStream(device,
                                                              stream_id),
-                                  device_media->GetStreamCodec(stream_id));
+                                  device->GetStreamCodec(stream_id));
 }
 
 }  // namespace
@@ -53,56 +53,43 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
     IConfig *config = core_subsystem.config();
     hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
 
-    DeviceMediaOptions device_media_options;
-    device_media_options.config = config;
-    device_media_options.sdk = &sdk;
-    device_media_ = CreateDeviceMedia(device_media_options);
-    if (!device_media_) {
-        Error("app", "Create device_media failed");
+    DeviceMediaOptions device_options;
+    device_options.config = config;
+    device_options.sdk = &sdk;
+    device_ = CreateDeviceMedia(device_options);
+    if (!device_) {
+        Error("app", "Create device failed");
         Stop();
         return false;
     }
 
     MediaStreamsOptions media_streams_options;
     media_streams_options.key_frame_request = RequestDeviceKeyFrame;
-    media_streams_options.key_frame_request_user = device_media_.get();
+    media_streams_options.key_frame_request_user = device_.get();
     media_streams_.reset(new MediaStreams(media_streams_options));
     if (!media_streams_ || !media_streams_->Start() ||
-        !device_media_->SetFrameSink(media_streams_.get())) {
+        !device_->SetFrameSink(media_streams_.get())) {
         Error("app", "Start media streams failed");
         Stop();
         return false;
     }
 
-    if (!device_media_->Start()) {
-        Error("app", "Start device_media failed");
+    if (!device_->Start()) {
+        Error("app", "Start device failed");
         Stop();
         return false;
     }
 
-    SetInitialMediaStreamState(device_media_.get(), media_streams_.get(),
+    SetInitialMediaStreamState(device_.get(), media_streams_.get(),
                                StreamId::kMain);
-    SetInitialMediaStreamState(device_media_.get(), media_streams_.get(),
+    SetInitialMediaStreamState(device_.get(), media_streams_.get(),
                                StreamId::kSub);
-    const MediaChannels media_channels = device_media_->GetChannels();
-
-    SnapshotOptions snapshot_options;
-    snapshot_options.config = config;
-    snapshot_options.device_media = device_media_.get();
-    snapshot_options.media_channels = media_channels;
-    snapshot_options.sdk = &sdk;
-    snapshot_.reset(new Snapshot(snapshot_options));
-    if (!snapshot_ || !snapshot_->Start()) {
-        Error("app", "Start snapshot failed");
-        Stop();
-        return false;
-    }
+    const MediaChannels media_channels = device_->GetChannels();
 
     AiOptions ai_options;
     ai_options.config = config;
     ai_options.alarm = device_refs.alarm;
-    ai_options.device_media = device_media_.get();
-    ai_options.snapshot = snapshot_.get();
+    ai_options.device = device_.get();
     ai_options.media_channels = media_channels;
     ai_options.sdk = &sdk;
     ai_.reset(new Ai(ai_options));
@@ -113,37 +100,17 @@ bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
     }
     Info("app", "AI ready");
 
-    RegionOptions region_options;
-    region_options.config = config;
-    region_options.device_media = device_media_.get();
-    region_options.media_channels = media_channels;
-    region_options.sdk = &sdk;
-    region_.reset(new Region(region_options));
-    if (!region_ || !region_->Start()) {
-        Error("app", "Start region failed");
-        Stop();
-        return false;
-    }
-
     started_ = true;
     return true;
 }
 
 void MediaSubsystem::Stop() {
-    if (region_) {
-        region_->Stop();
-        region_.reset();
-    }
     if (ai_) {
         ai_->Stop();
         ai_.reset();
     }
-    if (snapshot_) {
-        snapshot_->Stop();
-        snapshot_.reset();
-    }
-    if (device_media_) {
-        (void)device_media_->SetFrameSink(nullptr);
+    if (device_) {
+        (void)device_->SetFrameSink(nullptr);
     }
     if (media_streams_) {
         media_streams_->SetStreamState(StreamId::kMain,
@@ -155,19 +122,18 @@ void MediaSubsystem::Stop() {
         media_streams_->Stop();
         media_streams_.reset();
     }
-    if (device_media_) {
-        device_media_->Stop();
-        device_media_.reset();
+    if (device_) {
+        device_->Stop();
+        device_.reset();
     }
     started_ = false;
 }
 
 MediaRefs MediaSubsystem::refs() const {
     MediaRefs refs;
-    refs.device_media = device_media_.get();
+    refs.device = device_.get();
     refs.media_streams = media_streams_.get();
     refs.ai = ai_.get();
-    refs.snapshot = snapshot_.get();
     return refs;
 }
 

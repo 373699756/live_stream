@@ -10,7 +10,7 @@
 
 namespace live_stream {
 
-class IDeviceMedia;
+class DeviceMedia;
 class IWebrtc;
 class IEvent;
 
@@ -30,7 +30,7 @@ enum class HttpMediaHandlerKind {
 
 struct HttpMediaHandlerDependencies {
     HttpAccess *access = nullptr;
-    IDeviceMedia *device_media = nullptr;
+    DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IWebrtc *webrtc = nullptr;
 };
@@ -42,7 +42,7 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
 struct StreamingHttpHandlerDependencies {
     HttpAccess *access = nullptr;
     HttpMediaWriter *writer = nullptr;
-    IDeviceMedia *device_media = nullptr;
+    DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IEvent *event = nullptr;
 };

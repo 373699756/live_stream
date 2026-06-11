@@ -2,7 +2,7 @@
 
 #include "auth.h"
 #include "event.h"
-#include "device_media.h"
+#include "device.h"
 #include "net.h"
 #include "system.h"
 #include "time_api.h"
@@ -273,7 +273,7 @@ public:
   int set_count = 0;
 };
 
-class FakeDeviceMedia : public live_stream::IDeviceMedia {
+class FakeDeviceMedia : public live_stream::DeviceMedia {
 public:
   bool Start() override { return true; }
   void Stop() override {}
@@ -385,7 +385,7 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     FakeEvent* event,
     FakeSystem* system,
     FakeTime* time,
-    FakeDeviceMedia* device_media,
+    FakeDeviceMedia* device,
     FakeAuth* auth = nullptr) {
   live_stream::OnvifServerOptions options;
   options.enable_auth = auth != nullptr;
@@ -396,7 +396,7 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
   deps.event = event;
   deps.system = system;
   deps.time = time;
-  deps.device_media = device_media;
+  deps.device = device;
   deps.auth = auth;
   std::unique_ptr<live_stream::OnvifServer> service =
       live_stream::CreateOnvifServer(options, deps);
@@ -444,13 +444,13 @@ int main() {
   FakeEvent event;
   FakeSystem system;
   FakeTime time;
-  FakeDeviceMedia device_media;
+  FakeDeviceMedia device;
   time.status.system_time_ms = 123456;
   time.status.timezone = "UTC";
 
   std::unique_ptr<live_stream::OnvifServer> service =
       CreateStarted(&net_engine, &event, &system,
-                           &time, &device_media);
+                           &time, &device);
   if (!service) {
     return 5;
   }
@@ -516,7 +516,7 @@ int main() {
   FakeEvent missing_time_event;
   std::unique_ptr<live_stream::OnvifServer> missing_time_server =
       CreateStarted(&missing_time_net, &missing_time_event,
-                           &system, nullptr, &device_media);
+                           &system, nullptr, &device);
   if (!missing_time_server) {
     return 14;
   }
@@ -533,7 +533,7 @@ int main() {
   FakeAuth auth;
   std::unique_ptr<live_stream::OnvifServer> auth_onvif =
       CreateStarted(&auth_net, &auth_event, &system,
-                           &time, &device_media, &auth);
+                           &time, &device, &auth);
   if (!auth_onvif) {
     return 16;
   }

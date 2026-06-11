@@ -34,16 +34,15 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
         case HttpHandlerKind::kMedia:
             return MakeMediaHandler(
                 dependencies.access, dependencies.config,
-                dependencies.device_media, dependencies.media_streams,
+                dependencies.device, dependencies.media_streams,
                 dependencies.rtsp, dependencies.webrtc, dependencies.http);
         case HttpHandlerKind::kAi:
             return MakeAiHandler(
                 dependencies.access, dependencies.config,
-                dependencies.ai, dependencies.device_media);
+                dependencies.ai, dependencies.device);
         case HttpHandlerKind::kSnapshot:
             return MakeSnapshotHandler(
-                dependencies.access, dependencies.device_media,
-                dependencies.snapshot);
+                dependencies.access, dependencies.device);
         case HttpHandlerKind::kEventStream:
             return MakeEventStreamHandler(dependencies.access);
     }

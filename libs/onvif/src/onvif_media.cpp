@@ -1,6 +1,6 @@
 #include "onvif_media.h"
 
-#include "device_media.h"
+#include "device.h"
 #include "onvif_soap.h"
 #include "rtsp.h"
 
@@ -12,9 +12,9 @@ std::string SnapshotPath(StreamId stream_id) {
     return std::string("/snapshot/") + StreamToken(stream_id) + ".jpg";
 }
 
-bool StreamAvailable(IDeviceMedia *device_media, StreamId stream_id) {
-    return device_media == nullptr ||
-           device_media->IsStreamStarted(stream_id);
+bool StreamAvailable(DeviceMedia *device, StreamId stream_id) {
+    return device == nullptr ||
+           device->IsStreamStarted(stream_id);
 }
 
 std::string BuildStreamUri(IRtsp *rtsp,
@@ -73,17 +73,17 @@ const std::string &SnapshotUriForId(const OnvifMediaUris &media_uris,
 }  // namespace
 
 OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
-                                   IDeviceMedia *device_media,
+                                   DeviceMedia *device,
                                    IRtsp *rtsp,
                                    const std::string &advertise_ip) {
     OnvifMediaUris media_uris;
     // 只有设备侧认为 stream 已启动时才发布 RTSP URI；snapshot URI 使用 HTTP
     // 固定契约生成，不代表 ONVIF 拥有 HTTP handler 状态。
-    if (StreamAvailable(device_media, StreamId::kMain)) {
+    if (StreamAvailable(device, StreamId::kMain)) {
         media_uris.stream_main =
             BuildStreamUri(rtsp, StreamId::kMain, advertise_ip);
     }
-    if (StreamAvailable(device_media, StreamId::kSub)) {
+    if (StreamAvailable(device, StreamId::kSub)) {
         media_uris.stream_sub =
             BuildStreamUri(rtsp, StreamId::kSub, advertise_ip);
     }

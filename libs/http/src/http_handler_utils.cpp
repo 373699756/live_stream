@@ -3,7 +3,7 @@
 #include "ai.h"
 #include "config.h"
 #include "json_utils.h"
-#include "device_media.h"
+#include "device.h"
 #include "http_protocol.h"
 
 namespace live_stream {
@@ -264,8 +264,8 @@ bool ParseOptionalJsonObject(const HttpRequest &request, ConfigJson *body) {
     return ParseJsonObject(request, body);
 }
 
-bool IsMediaRestarting(IDeviceMedia *device_media) {
-    return device_media != nullptr && device_media->IsRestarting();
+bool IsMediaRestarting(DeviceMedia *device) {
+    return device != nullptr && device->IsRestarting();
 }
 
 std::string PathSuffix(const std::string &path, const std::string &prefix) {

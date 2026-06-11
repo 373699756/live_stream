@@ -18,7 +18,7 @@ struct OnvifMediaUris {
 };
 
 OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
-                                   IDeviceMedia *device_media,
+                                   DeviceMedia *device,
                                    IRtsp *rtsp,
                                    const std::string &advertise_ip);
 bool ParseProfileToken(const std::string &body, StreamId *stream_id);

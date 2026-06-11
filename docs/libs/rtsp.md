@@ -101,7 +101,7 @@ HLS/FLV/MJPEG/WebRTC ready 状态。
 ## 非目标
 
 - 不拥有 HLS/FLV/MJPEG/WebRTC 浏览器预览状态。
-- 不直接访问 `device_media` 或 HiSilicon SDK。
+- 不直接访问 `device` 或 HiSilicon SDK。
 
 ## 风险与优化方向
 

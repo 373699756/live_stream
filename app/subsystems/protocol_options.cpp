@@ -208,7 +208,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system = refs.device.system;
     dependencies.time = refs.device.time;
-    dependencies.device_media = refs.media.device_media;
+    dependencies.device = refs.media.device;
     dependencies.rtsp = refs.rtsp;
     return dependencies;
 }
@@ -247,8 +247,7 @@ HttpDependencies BuildHttpDependencies(
     dependencies.rtsp = refs.rtsp;
     dependencies.onvif = refs.onvif;
     dependencies.ai = refs.media.ai;
-    dependencies.device_media = refs.media.device_media;
-    dependencies.snapshot = refs.media.snapshot;
+    dependencies.device = refs.media.device;
     dependencies.webrtc = refs.webrtc;
     dependencies.media_streams = refs.media.media_streams;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;

@@ -2,7 +2,7 @@
 
 ## Summary
 
-目标是把当前 `device_media`、`media_source`、`media_pipeline` 的混杂设计收敛成清晰的
+目标是把当前 `device`、`media_source`、`media_pipeline` 的混杂设计收敛成清晰的
 `media` + `device` 两个核心库。
 
 重构重点：
@@ -37,7 +37,7 @@
 合并来源：
 
 - `libs/media_source`
-- `libs/device_media/include/media`
+- `libs/device/include/media`
 - `libs/media_pipeline` 中与 GOP、HLS、FLV、MJPEG、帧订阅、媒体信息、计数相关的代码
 
 职责：
@@ -154,7 +154,7 @@ public:
 
 合并来源：
 
-- `libs/device_media` 中设备生命周期、配置、图像策略、VENC/VI/VPSS 控制相关代码
+- `libs/device` 中设备生命周期、配置、图像策略、VENC/VI/VPSS 控制相关代码
 - `libs/snapshot`
 - `libs/region`
 - `libs/media_pipeline` 中设备配置、启动顺序、关键帧请求、设备状态相关代码

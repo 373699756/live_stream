@@ -13,8 +13,7 @@ namespace live_stream {
 
 class IAlarm;
 class IConfig;
-class IDeviceMedia;
-class ISnapshotView;
+class DeviceMedia;
 
 namespace hisisdk {
 class IHisiSdk;
@@ -117,8 +116,7 @@ struct AiOptions {
     AiConfig default_config;
     IConfig* config = nullptr;
     IAlarm* alarm = nullptr;
-    IDeviceMedia* device_media = nullptr;
-    ISnapshotView* snapshot = nullptr;
+    DeviceMedia* device = nullptr;
     MediaChannels media_channels;
     hisisdk::IHisiSdk* sdk = nullptr;
     std::string alert_image_dir = "build/runtime/ai_alerts";

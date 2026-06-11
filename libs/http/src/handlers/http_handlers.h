@@ -19,9 +19,8 @@ class IUpgrade;
 class ISystem;
 class IRtsp;
 class OnvifServer;
-class IDeviceMedia;
+class DeviceMedia;
 class IAiView;
-class ISnapshotView;
 class IWebrtc;
 class IHttp;
 
@@ -35,9 +34,8 @@ struct SystemStatusSources {
     IUpgrade *upgrade = nullptr;
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
-    IDeviceMedia *device_media = nullptr;
+    DeviceMedia *device = nullptr;
     IAiView *ai = nullptr;
-    ISnapshotView *snapshot = nullptr;
     IWebrtc *webrtc = nullptr;
     MediaStreams *media_streams = nullptr;
 };
@@ -66,14 +64,13 @@ struct HttpHandlerDependencies {
     ITime *time = nullptr;
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
-    IDeviceMedia *device_media = nullptr;
+    DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IAlarm *alarm = nullptr;
     IRtsp *rtsp = nullptr;
     IWebrtc *webrtc = nullptr;
     IHttp *http = nullptr;
     IAiView *ai = nullptr;
-    ISnapshotView *snapshot = nullptr;
     SystemStatusSources system_status_sources;
 };
 
@@ -100,14 +97,13 @@ std::unique_ptr<IHttpHandler> MakeAlarmHandler(
     HttpAccess *access, IAlarm *alarm);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
     HttpAccess *access, IConfig *config,
-    IDeviceMedia *device_media, MediaStreams *media_streams,
+    DeviceMedia *device, MediaStreams *media_streams,
     IRtsp *rtsp, IWebrtc *webrtc, IHttp *http);
 std::unique_ptr<IHttpHandler> MakeAiHandler(
     HttpAccess *access, IConfig *config,
-    IAiView *ai, IDeviceMedia *device_media);
+    IAiView *ai, DeviceMedia *device);
 std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
-    HttpAccess *access, IDeviceMedia *device_media,
-    ISnapshotView *snapshot);
+    HttpAccess *access, DeviceMedia *device);
 std::unique_ptr<IHttpHandler> MakeEventStreamHandler(
     HttpAccess *access);
 

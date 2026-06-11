@@ -31,18 +31,18 @@ flowchart LR
 ## 接口归属
 
 public API 在 `libs/config/include/config.h`。配置字段正文归对应
-模块文档，例如 video/image 归 `device_media`，overlay 归 `region`，
-AI 归 `ai`，network 归 `network_config`，snapshot 归 `snapshot`。
+模块文档，例如 video/image、overlay 和 snapshot 归 `device`，AI 归 `ai`，
+network 归 `network_config`。
 
 配置 scope 归属：
 
 | scope | 语义归属 | 说明 |
 | --- | --- | --- |
-| `video` / `image` | `device_media` | 视频编码、ISP 图像策略和能力应用 |
-| `overlay` | `region` | OSD、隐私遮挡和坐标合法性 |
+| `video` / `image` | `device` | 视频编码、ISP 图像策略和能力应用 |
+| `overlay` | `device` | OSD、隐私遮挡和坐标合法性 |
 | `ai` | `ai` | AI 开关、后端、模型、阈值和告警联动 |
 | `network` | `network_config` | 网口、DHCP/static、DNS、端口展示 |
-| `snapshot` | `snapshot` | 抓图开关、JPEG 质量和超时 |
+| `snapshot` | `device` | 抓图开关、JPEG 质量和超时 |
 | `rtsp` / `webrtc` / `onvif` / `http` | 对应协议模块 | 协议开关、监听端口、认证和会话上限 |
 | `time` / `system` / `alarm` / `log` | 对应设备或基础模块 | 设备管理、告警和日志运行配置 |
 | `user` | `auth` + `CreateAuthUserStore` | 认证用户和密码策略存储 |

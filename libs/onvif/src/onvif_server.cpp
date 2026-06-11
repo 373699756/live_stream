@@ -31,7 +31,7 @@ public:
           event_(dependencies.event),
           system_(dependencies.system),
           time_(dependencies.time),
-          device_media_(dependencies.device_media),
+          device_(dependencies.device),
           rtsp_(dependencies.rtsp) {}
 
     ~Impl() {
@@ -334,7 +334,7 @@ private:
     }
 
     onvif::OnvifMediaUris BuildMediaUrisForRequest() const {
-        return onvif::BuildOnvifMediaUris(options_, device_media_, rtsp_,
+        return onvif::BuildOnvifMediaUris(options_, device_, rtsp_,
                                           AdvertiseIp());
     }
 
@@ -399,7 +399,7 @@ private:
     IEvent *event_ = nullptr;
     ISystem *system_ = nullptr;
     ITime *time_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     TcpServerId tcp_server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;

@@ -5,7 +5,7 @@
 #include "config.h"
 #include "http_protocol.h"
 #include "json_utils.h"
-#include "device_media.h"
+#include "device.h"
 #include "infra/log.h"
 #include "rtsp.h"
 #include "webrtc.h"
@@ -277,7 +277,7 @@ bool IsWebrtcSupported(Codec codec, IWebrtc *webrtc) {
 }
 
 ConfigJson StreamRuntimeToJson(StreamId stream_id,
-                               IDeviceMedia *device_media,
+                               DeviceMedia *device,
                                MediaStreams *media_streams,
                                IWebrtc *webrtc) {
     MediaStreamInfo stream_info;
@@ -291,17 +291,17 @@ ConfigJson StreamRuntimeToJson(StreamId stream_id,
     }
 
     const bool device_stream_running =
-        device_media != nullptr && device_media->IsStreamStarted(stream_id);
+        device != nullptr && device->IsStreamStarted(stream_id);
     const bool stream_running = stream_info.running || device_stream_running;
     const Codec codec =
         media_streams != nullptr ? stream_info.codec
-                                : (device_media != nullptr
-                                       ? device_media->GetStreamCodec(stream_id)
+                                : (device != nullptr
+                                       ? device->GetStreamCodec(stream_id)
                                        : Codec::kH264);
 
     ConfigJson root = ConfigJson::object();
     root["stream"] = StreamIdToJsonString(stream_id);
-    root["available"] = media_stream_available || device_media != nullptr;
+    root["available"] = media_stream_available || device != nullptr;
     root["running"] = stream_running;
     root["codec"] = CodecToJsonString(codec);
     root["codec_generation"] = stream_info.codec_generation;
@@ -554,14 +554,14 @@ class MediaHttpHandler : public IHttpHandler {
 public:
     MediaHttpHandler(HttpAccess *access,
                      IConfig *config,
-                     IDeviceMedia *device_media,
+                     DeviceMedia *device,
                      MediaStreams *media_streams,
                      IRtsp *rtsp,
                      IWebrtc *webrtc,
                      IHttp *http)
         : access_(access),
           config_(config),
-          device_media_(device_media),
+          device_(device),
           media_streams_(media_streams),
           rtsp_(rtsp),
           webrtc_(webrtc),
@@ -618,9 +618,9 @@ private:
         }
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
-        items.push_back(StreamRuntimeToJson(StreamId::kMain, device_media_,
+        items.push_back(StreamRuntimeToJson(StreamId::kMain, device_,
                                             media_streams_, webrtc_));
-        items.push_back(StreamRuntimeToJson(StreamId::kSub, device_media_,
+        items.push_back(StreamRuntimeToJson(StreamId::kSub, device_,
                                             media_streams_, webrtc_));
         root["items"] = items;
         return JsonResponse(200, root);
@@ -631,11 +631,11 @@ private:
         if (!RequireReadStatus(request, &principal)) {
             return ForbiddenResponse(principal);
         }
-        if (device_media_ == nullptr) {
+        if (device_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         return JsonResponse(
-            200, MediaCapabilitiesToJson(device_media_->GetCapabilities()));
+            200, MediaCapabilitiesToJson(device_->GetCapabilities()));
     }
 
     HttpResponse HandleStream(const HttpRequest &request) {
@@ -663,7 +663,7 @@ private:
                 200, PlaybackUrlsToJson(config_, rtsp_, request, stream_id));
         }
         return JsonResponse(
-            200, StreamRuntimeToJson(stream_id, device_media_,
+            200, StreamRuntimeToJson(stream_id, device_,
                                      media_streams_, webrtc_));
     }
 
@@ -737,7 +737,7 @@ private:
 
     HttpAccess *access_ = nullptr;
     IConfig *config_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
     IRtsp *rtsp_ = nullptr;
     IWebrtc *webrtc_ = nullptr;
@@ -746,13 +746,13 @@ private:
 
 std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
                                             IConfig *config,
-                                            IDeviceMedia *device_media,
+                                            DeviceMedia *device,
                                             MediaStreams *media_streams,
                                             IRtsp *rtsp,
                                             IWebrtc *webrtc,
                                             IHttp *http) {
     return std::unique_ptr<IHttpHandler>(
-        new MediaHttpHandler(access, config, device_media,
+        new MediaHttpHandler(access, config, device,
                              media_streams, rtsp, webrtc, http));
 }
 

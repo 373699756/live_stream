@@ -4,7 +4,7 @@
 
 #include "ai.h"
 #include "config.h"
-#include "device_media.h"
+#include "device.h"
 #include "json_utils.h"
 
 #include <cctype>
@@ -222,9 +222,9 @@ ConfigJson ImageStrategyStatusToJson(const ImageStrategyStatus &status) {
 class AiHttpHandler : public IHttpHandler {
 public:
     AiHttpHandler(HttpAccess *access, IConfig *config,
-                  IAiView *ai, IDeviceMedia *device_media)
+                  IAiView *ai, DeviceMedia *device)
         : access_(access), config_(config),
-          ai_(ai), device_media_(device_media) {}
+          ai_(ai), device_(device) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -271,12 +271,12 @@ private:
         if (auth_response.status_code != 0) {
             return auth_response;
         }
-        if (device_media_ == nullptr) {
+        if (device_ == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         return JsonResponse(
             200, ImageStrategyStatusToJson(
-                     device_media_->GetImageStrategyStatus()));
+                     device_->GetImageStrategyStatus()));
     }
 
     HttpResponse HandleStatus(const HttpRequest &request) {
@@ -354,14 +354,14 @@ private:
     HttpAccess *access_ = nullptr;
     IConfig *config_ = nullptr;
     IAiView *ai_ = nullptr;
-    IDeviceMedia *device_media_ = nullptr;
+    DeviceMedia *device_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeAiHandler(HttpAccess *access,
                                          IConfig *config, IAiView *ai,
-                                         IDeviceMedia *device_media) {
+                                         DeviceMedia *device) {
     return std::unique_ptr<IHttpHandler>(
-        new AiHttpHandler(access, config, ai, device_media));
+        new AiHttpHandler(access, config, ai, device));
 }
 
 }  // namespace live_stream

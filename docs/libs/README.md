@@ -49,8 +49,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 - `media.md`
 - `device.md`
-- `snapshot.md`
-- `region.md`
 - `ai.md`
 - `hisi_vendor.md`
 
