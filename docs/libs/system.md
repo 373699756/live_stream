@@ -65,15 +65,15 @@ HTTP `/api/system/*`、`/api/time/*`、`/api/upgrade/*` 路由归 `http`，
 Hi3516DV300 设备按 32M SPI NOR 固定分区运行，升级模块以内置分区表作为唯一写入
 目标，不从升级包读取 flash 地址。
 
-| 分区 | 地址范围 | 大小 | Linux 设备 | 挂载点 | 格式 | 在线升级 |
-| --- | --- | ---: | --- | --- | --- | --- |
-| `boot` | `0x00000000-0x00100000` | 1M | `/dev/mtd0` | 无 | raw | 禁止 |
-| `kernel` | `0x00100000-0x00500000` | 4M | `/dev/mtd1` | 无 | uImage | RAM helper |
-| `rootfs` | `0x00500000-0x01100000` | 12M | `/dev/mtd2` | `/` | jffs2 | 禁止 |
-| `bin` | `0x01100000-0x01b00000` | 10M | `/dev/mtd3` | `/opt/app` | squashfs | RAM helper |
-| `web` | `0x01b00000-0x01d00000` | 2M | `/dev/mtd4` | `/www` | squashfs | 支持 |
-| `config` | `0x01d00000-0x01e00000` | 1M | `/dev/mtd5` | `/config` | jffs2 | RAM helper |
-| `data` | `0x01e00000-0x02000000` | 2M | `/dev/mtd6` | `/data` | jffs2 | 禁止 |
+| 分区       | 地址范围                    | 大小  | Linux 设备    | 挂载点        | 格式       | 在线升级       |
+| -------- | ----------------------- | ---:| ----------- | ---------- | -------- | ---------- |
+| `boot`   | `0x00000000-0x00100000` | 1M  | `/dev/mtd0` | 无          | raw      | 禁止         |
+| `kernel` | `0x00100000-0x00500000` | 4M  | `/dev/mtd1` | 无          | uImage   | RAM helper |
+| `rootfs` | `0x00500000-0x01100000` | 12M | `/dev/mtd2` | `/`        | jffs2    | 禁止         |
+| `bin`    | `0x01100000-0x01b00000` | 10M | `/dev/mtd3` | `/opt/app` | squashfs | RAM helper |
+| `web`    | `0x01b00000-0x01d00000` | 2M  | `/dev/mtd4` | `/www`     | squashfs | 支持         |
+| `config` | `0x01d00000-0x01e00000` | 1M  | `/dev/mtd5` | `/config`  | jffs2    | RAM helper |
+| `data`   | `0x01e00000-0x02000000` | 2M  | `/dev/mtd6` | `/data`    | jffs2    | 禁止         |
 
 `mtdparts` 固定为：
 
@@ -104,11 +104,12 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
 完整计划如下：
 
 1. PC 侧准备首烧镜像。
+
    - `kernel`：准备 `uImage_hi3516dv300`，来自内核/SDK 构建产物。
    - `rootfs`：准备 `rootfs_hi3516dv300_64k.jffs2`，rootfs 内必须包含
      `scripts/rootfs/etc/init.d/S20mount_app` 和 `S80live_stream` 对应的启动逻辑。
-   - `bin` 和 `web`：执行 `bin-web` 发布，得到 `bin.squashfs` 和 `web.squashfs`。
-   - `config`：执行 `config-only` 发布，得到 `config.jffs2`。
+   - `bin`、`web` 和 `config`：执行默认 `all` 发布，得到 `bin.squashfs`、
+     `web.squashfs` 和 `config.jffs2`。
    - `data`：首烧时不需要镜像，U-Boot 下擦空即可。
 
    示例：
@@ -116,23 +117,19 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    ```sh
    UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
    UPGRADE_PUBLIC_KEY=configs/upgrade_public_key.pem \
-     make release RELEASE_DIR=release-first-bin-web \
-       RELEASE_VERSION=1.0.0 RELEASE_PROFILE=bin-web
-
-   UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
-   UPGRADE_PUBLIC_KEY=configs/upgrade_public_key.pem \
-     make release RELEASE_DIR=release-first-config \
-       RELEASE_VERSION=1.0.0 RELEASE_PROFILE=config-only
+     make release RELEASE_DIR=release-first \
+       RELEASE_VERSION=1.0.0
    ```
 
-   首烧用到的是 `release-first-bin-web/flash/bin.squashfs`、
-   `release-first-bin-web/flash/web.squashfs` 和
-   `release-first-config/flash/config.jffs2`。`release/flash/upgrade.zip` 只给
+   首烧用到的是 `release-first/flash/bin.squashfs`、
+   `release-first/flash/web.squashfs` 和
+   `release-first/flash/config.jffs2`。`release/flash/upgrade.zip` 只给
    Linux/Web 升级使用，不给 U-Boot 使用。`config.jffs2` 里的
    `upgrade_public_key.pem` 必须和后续发布包使用的私钥匹配，否则设备启动后 Web
    升级验签会失败。
 
 2. 把首烧镜像放到 TFTP 服务器目录。
+
    - `uImage_hi3516dv300`
    - `rootfs_hi3516dv300_64k.jffs2`
    - `bin.squashfs`
@@ -140,6 +137,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    - `config.jffs2`
 
 3. U-Boot 侧配置网络并确认能访问 TFTP 服务器。
+
    - TFTP 服务器固定为 `192.168.1.100`。
    - 设备 U-Boot IP 固定为 `192.168.1.68`。
    - 默认网关按当前调试网段写为 `192.168.1.1`，掩码为 `255.255.255.0`。
@@ -147,6 +145,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    - 如果当前 `boot` 能正常进入 U-Boot，不擦写 `boot`；`boot` 是这块板最后的恢复入口。
 
 4. U-Boot 侧逐分区烧写。
+
    - 烧 `kernel` 到 `0x00100000-0x00500000`。
    - 烧 `rootfs` 到 `0x00500000-0x01100000`。
    - 烧 `bin` 到 `0x01100000-0x01b00000`。
@@ -158,6 +157,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    不存在挂载动作。
 
 5. 写入启动参数并重启。
+
    - `bootargs` 必须包含完整 `mtdparts`。
    - `root=/dev/mtdblock2 rootfstype=jffs2 rw` 指向 `rootfs`。
    - `bootcmd` 从 `0x00100000` 读取 4M kernel 到 DDR，然后 `bootm`。
@@ -180,6 +180,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    是 `tmpfs` 或 `ramfs`。
 
 7. 确认业务和 Web 升级入口。
+
    - `live_stream` 从 `/opt/app/bin/live_stream` 启动。
    - 静态页面从 `/www` 提供。
    - 配置从 `/config` 读取。
@@ -187,6 +188,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    - `/config/upgrade_public_key.pem` 存在后，后续 Web 升级才能验签。
 
 8. 后续版本更新才使用 Web 升级。
+
    - Web 资源更新：发布 `web-only`，上传 `upgrade.zip`，主进程在线写 `web`。
    - 主程序和 Web 更新：发布 `bin-web`，上传 `upgrade.zip`，走 RAM helper 写
      `bin` 和 `web` 后重启。
@@ -194,6 +196,7 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
      后重启。
 
 9. 首烧或启动失败时回到 U-Boot 恢复。
+
    - 进不了 kernel：优先检查 `kernel` 烧写、`bootcmd` 和 kernel 偏移。
    - kernel 起了但挂不上 `/`：检查 `rootfs` 镜像、`root=/dev/mtdblock2` 和
      `mtdparts`。
@@ -239,38 +242,28 @@ ping ${serverip}
 ```sh
 # kernel -> 0x00100000, 4M
 mw.b 0x82000000 0xff 0x400000
-tftp 0x82000000 uImage_hi3516dv300
-sf probe 0
-sf erase 0x100000 0x400000
-sf write 0x82000000 0x100000 0x400000
+tftp 0x82000000 uImage_hi3516dv300_smp
+sf probe 0;sf erase 0x100000 0x400000;sf write 0x82000000 0x100000 0x400000
 
 # rootfs -> 0x00500000, 12M
 mw.b 0x82000000 0xff 0xc00000
 tftp 0x82000000 rootfs_hi3516dv300_64k.jffs2
-sf probe 0
-sf erase 0x500000 0xc00000
-sf write 0x82000000 0x500000 0xc00000
+sf probe 0;sf erase 0x500000 0xc00000;sf write 0x82000000 0x500000 0xc00000
 
 # bin -> 0x01100000, 10M
 mw.b 0x82000000 0xff 0xa00000
 tftp 0x82000000 bin.squashfs
-sf probe 0
-sf erase 0x1100000 0xa00000
-sf write 0x82000000 0x1100000 0xa00000
+sf probe 0;sf erase 0x1100000 0xa00000;sf write 0x82000000 0x1100000 0xa00000
 
 # web -> 0x01b00000, 2M
 mw.b 0x82000000 0xff 0x200000
 tftp 0x82000000 web.squashfs
-sf probe 0
-sf erase 0x1b00000 0x200000
-sf write 0x82000000 0x1b00000 0x200000
+sf probe 0;sf erase 0x1b00000 0x200000;sf write 0x82000000 0x1b00000 0x200000
 
 # config -> 0x01d00000, 1M
 mw.b 0x82000000 0xff 0x100000
 tftp 0x82000000 config.jffs2
-sf probe 0
-sf erase 0x1d00000 0x100000
-sf write 0x82000000 0x1d00000 0x100000
+sf probe 0;sf erase 0x1d00000 0x100000;sf write 0x82000000 0x1d00000 0x100000
 ```
 
 `boot` 分区只在工厂首烧或 U-Boot 损坏恢复时写，普通版本升级不要写：
@@ -420,6 +413,76 @@ export LIVE_STREAM_CONFIG_DIR=/config
 业务动态库和脚本；`web.squashfs` 承载 Web 静态资源；`config.jffs2` 承载运行配置、
 认证用户配置和 `/config/upgrade_public_key.pem`。
 
+### bin/web 挂载失败排查记录
+
+本次板端现象是首烧 `bin.squashfs`、`web.squashfs`、`config.jffs2` 后，进入 Linux
+执行 `/etc/init.d/S20mount_app`，`/opt/app` 和 `/www` 挂载失败：
+
+```sh
+mount: mounting /dev/mtdblock3 on /opt/app failed: No such device
+mount: mounting /dev/mtdblock4 on /www failed: No such device
+```
+
+排查时不能只按字面理解为 `/dev/mtdblock3` 或 `/dev/mtdblock4` 不存在。实际板端
+`/dev` 下已经有 `mtdblock0` 到 `mtdblock6`：
+
+```text
+mtdblock0
+mtdblock1
+mtdblock2
+mtdblock3
+mtdblock4
+mtdblock5
+mtdblock6
+```
+
+因此第一层结论是：MTD block 设备节点已经创建，问题不在 `/dev/mtdblock3/4` 节点
+缺失。下一步应检查内核是否支持目标文件系统类型：
+
+```sh
+cat /proc/filesystems
+mount -t squashfs -o ro /dev/mtdblock3 /opt/app
+dmesg | tail -80
+```
+
+本次 `/proc/filesystems` 输出包含 `jffs2`、`cramfs`、`yaffs`、`yaffs2`，但没有
+`squashfs`。在这种情况下，手动执行
+`mount -t squashfs -o ro /dev/mtdblock3 /opt/app` 返回 `No such device`，含义是
+内核找不到 `squashfs` 文件系统驱动，而不是 flash 分区设备不存在。`rootfs` 能以
+`jffs2` 挂载到 `/`，也进一步说明 MTD 基础链路和 `root=/dev/mtdblock2` 可用。
+
+如果后续某个内核已经包含 `squashfs`，但仍然挂载失败，再看 `dmesg` 中是否有
+`unsupported compression`、`xz` 或 decompressor 相关错误。当前发布脚本生成
+`bin.squashfs` 和 `web.squashfs` 时使用：
+
+```sh
+mksquashfs ... -noappend -comp xz
+```
+
+所以继续使用当前 squashfs 镜像时，kernel 至少要打开：
+
+```text
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+```
+
+不重编 kernel 的替代方案是把 `bin` 和 `web` 改成板端已支持的只读文件系统。当前
+内核支持 `cramfs`，而 `/opt/app` 和 `/www` 本身也按只读挂载，所以可以考虑
+`bin.cramfs`、`web.cramfs`。切换时必须同步修改：
+
+- `scripts/package_release.sh`：生成 `bin.cramfs`、`web.cramfs`，并检查 10M/2M
+  分区上限。
+- `scripts/rootfs/etc/init.d/S20mount_app`：`/opt/app`、`/www` 的挂载类型改为
+  `cramfs`。
+- `libs/system/src/upgrade_package.cpp`：分区文件系统类型、payload 文件名和镜像魔数
+  校验同步改为 cramfs。
+- `docs/libs/system.md`、发布测试和 U-Boot 烧写命令同步改名。
+
+`cramfs` 和 `squashfs` 都是只读压缩文件系统。`squashfs` 压缩率和元数据能力更好，
+适合长期方案；`cramfs` 更老更简单，但当前板端内核已经支持。若能重编并烧写 kernel，
+优先保留 squashfs；若短期不改 kernel，则改成 cramfs 是最快恢复 `/opt/app` 和
+`/www` 挂载的路径。
+
 ## 发布打包脚本
 
 发布入口是仓库根目录的 `make release`：
@@ -441,39 +504,53 @@ scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 - 参数 1 `release_dir`：输出目录，默认 `release`，不能是仓库根目录。
 - 参数 2 `version`：写入镜像内 `version` 文件和 `Install.Version`，只允许
   字母、数字、`.`、`_`、`+`、`-`。
-- 参数 3 `profile`：升级包类型，默认 `web-only`。
+- 参数 3 `profile`：升级包类型，默认 `all`。
 - `UPGRADE_SIGN_KEY`：必填，离线私钥路径，用于签名 `Install`。
 - `UPGRADE_PUBLIC_KEY`：可选，默认 `configs/upgrade_public_key.pem`，脚本用它
   立即验签，设备端也需要把同一公钥部署到 `/config/upgrade_public_key.pem`。
 - `MKSQUASHFS`、`MKFS_JFFS2`：可选，用于指定宿主机打镜像工具；不指定时优先使用
   `tools/pc/` 下的工具，再回退到 `PATH`。
+- `STRIP`：可选，用于指定交叉 `strip`；不指定时优先使用
+  `arm-himix200-linux-strip`。发布脚本只 strip `release/bin` 下的副本，不改
+  `build/bin` 原始调试产物。
 
 脚本支持的 profile：
 
-| profile | 产物 | `Install.Commands` | 是否要求重启 | 说明 |
-| --- | --- | --- | --- | --- |
-| `web-only` | `web.squashfs` | `web` | 否 | 主进程可在线卸载 `/www`、写 `/dev/mtd4`、重新挂载 |
-| `bin-web` | `bin.squashfs`、`web.squashfs` | `bin`、`web` | 是 | 涉及 `/opt/app`，必须走 RAM helper |
-| `config-only` | `config.jffs2` | `config` | 是 | 写 `/config` 后重启生效 |
-| `kernel-rootfs` / `full` | 无 | 无 | 无 | 当前脚本直接拒绝，原因是 rootfs 在线升级不安全 |
+| profile                  | 产物                            | `Install.Commands` | 是否要求重启 | 说明                                 |
+| ------------------------ | ----------------------------- | ------------------ | ------ | ---------------------------------- |
+| `all`                    | `bin.squashfs`、`web.squashfs`、`config.jffs2` | `bin`、`web`、`config` | 是      | 默认发布应用、Web 和配置分区镜像             |
+| `web-only`               | `web.squashfs`                | `web`              | 否      | 主进程可在线卸载 `/www`、写 `/dev/mtd4`、重新挂载 |
+| `bin-web`                | `bin.squashfs`、`web.squashfs` | `bin`、`web`        | 是      | 涉及 `/opt/app`，必须走 RAM helper       |
+| `config-only`            | `config.jffs2`                | `config`           | 是      | 写 `/config` 后重启生效                  |
+| `kernel-rootfs` / `full` | 无                             | 无                  | 无      | 当前脚本直接拒绝，原因是 rootfs 在线升级不安全        |
 
 打包过程按固定顺序执行：
 
 1. 清理并创建 `release/bin`、`release/configs`、`release/web`、`release/flash`。
 2. 复制 `build/bin/live_stream`、`build/bin/live_sysupgrade`、`configs/*.json`、
    可选公钥和 `www/dist`。
-3. 按 profile 生成镜像：
+3. 对 `release/bin/live_stream` 和 `release/bin/live_sysupgrade` 执行 strip。`build/bin`
+   中的文件可以带 `debug_info`，大小不能直接和 flash 分区比较。
+4. 按 profile 生成镜像：
    - `bin.squashfs`：从 `flash/bin_root` 生成，包含 `bin/live_stream`、
      `sbin/live_sysupgrade` 和 `version`。
    - `web.squashfs`：从 `flash/web_root` 生成，包含 Web 静态资源和 `version`。
    - `config.jffs2`：从 `flash/config_root` 生成，包含配置 JSON 和
      `upgrade_public_key.pem`。
-4. 对每个 payload 计算 sha256，写入 `flash/Install` 的 `Commands`。
-5. 用 `UPGRADE_SIGN_KEY` 对 `Install` 原文做 SHA256/RSA 签名，生成
+5. 生成镜像后立即检查分区上限：`bin.squashfs <= 10M`、`web.squashfs <= 2M`、
+   `config.jffs2 <= 1M`，超过上限发布失败。
+6. 对每个 payload 计算 sha256，写入 `flash/Install` 的 `Commands`。
+7. 用 `UPGRADE_SIGN_KEY` 对 `Install` 原文做 SHA256/RSA 签名，生成
    `flash/Install.sig`。
-6. 立刻用 `UPGRADE_PUBLIC_KEY` 验证 `Install.sig`，验不过则发布失败。
-7. 用 `zip -0` 生成 store-only 包 `flash/upgrade-<profile>.zip`，并复制一份为
+8. 立刻用 `UPGRADE_PUBLIC_KEY` 验证 `Install.sig`，验不过则发布失败。
+9. 用 `zip -0` 生成 store-only 包 `flash/upgrade-<profile>.zip`，并复制一份为
    `flash/upgrade.zip`。
+
+`bin` 分区写入的是压缩后的 `bin.squashfs`，不是把 `build/bin/live_stream` 和
+`build/bin/live_sysupgrade` 两个调试 ELF 原样写入 flash。以当前构建为例，原始
+`build/bin/live_stream` 约 8.9M，`build/bin/live_sysupgrade` 约 14M；release strip
+副本后约为 5.3M 和 2.8M，最终 `bin.squashfs` 约 2.6M，小于 10M 分区上限。以后
+如果依赖增加导致镜像超过 10M，`scripts/package_release.sh` 必须直接失败。
 
 最终给 Web 上传的是 `release/flash/upgrade.zip` 或
 `release/flash/upgrade-<profile>.zip`。升级 zip 里只放 `Install`、
@@ -553,14 +630,14 @@ flowchart TD
 
 HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 
-| API | 权限 | 作用 |
-| --- | --- | --- |
-| `POST /api/upgrade/upload?filename=<name>` | `kUpgrade` | 接收 zip body，保存并立即校验 |
-| `GET /api/upgrade/status` | `kReadStatus` | 返回内存中的升级状态 |
-| `POST /api/upgrade/validate` | `kUpgrade` | 对已上传包重新校验 |
-| `POST /api/upgrade/start` | `kUpgrade` | 启动异步升级任务 |
-| `POST /api/upgrade/cancel` | `kUpgrade` | 请求取消尚可取消的升级 |
-| `POST /api/upgrade/confirm-reboot` | `kUpgrade` | 用户确认重启 |
+| API                                        | 权限            | 作用                  |
+| ------------------------------------------ | ------------- | ------------------- |
+| `POST /api/upgrade/upload?filename=<name>` | `kUpgrade`    | 接收 zip body，保存并立即校验 |
+| `GET /api/upgrade/status`                  | `kReadStatus` | 返回内存中的升级状态          |
+| `POST /api/upgrade/validate`               | `kUpgrade`    | 对已上传包重新校验           |
+| `POST /api/upgrade/start`                  | `kUpgrade`    | 启动异步升级任务            |
+| `POST /api/upgrade/cancel`                 | `kUpgrade`    | 请求取消尚可取消的升级         |
+| `POST /api/upgrade/confirm-reboot`         | `kUpgrade`    | 用户确认重启              |
 
 上传入口只接受最大 32M 的 body。文件名只允许字母、数字、`.`、`-`、`_`，拒绝
 `/`、`\` 和 `..`，最终文件保存到
@@ -596,16 +673,16 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 `IUpgrade` 只管理状态机、权限后的审计、版本策略和异步执行，不直接碰 MTD。升级任务
 投递到单 worker executor，保证同一时间只有一个升级在跑。状态和进度映射如下：
 
-| 状态 | 进度 | 含义 |
-| --- | ---: | --- |
-| `validating` | 0 | 重新校验包、读取版本和目标信息 |
-| `preparing` | 10 | 创建 stage、确认 tmpfs/MTD 布局 |
-| `writing` | 20-89 | 解包和写 flash |
-| `committing` | 90 | 写入完成，提交状态 |
-| `waiting_reboot` | 100 | 需要用户或 helper 重启 |
-| `completed` | 100 | 已完成 |
-| `failed` | 100 | 失败，错误写入状态 |
-| `canceled` | 当前进度 | 用户取消 |
+| 状态               | 进度    | 含义                       |
+| ---------------- | -----:| ------------------------ |
+| `validating`     | 0     | 重新校验包、读取版本和目标信息          |
+| `preparing`      | 10    | 创建 stage、确认 tmpfs/MTD 布局 |
+| `writing`        | 20-89 | 解包和写 flash               |
+| `committing`     | 90    | 写入完成，提交状态                |
+| `waiting_reboot` | 100   | 需要用户或 helper 重启          |
+| `completed`      | 100   | 已完成                      |
+| `failed`         | 100   | 失败，错误写入状态                |
+| `canceled`       | 当前进度  | 用户取消                     |
 
 版本策略在写 flash 前执行：`expected_version` 不为空时必须匹配包版本；同版本必须显式
 `allow_same_version=true`；降级必须显式 `allow_downgrade=true`。取消只在
@@ -633,10 +710,13 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 
 1. `PrepareUpgrade` 确认 `/tmp/live_stream/upgrade` 的实际挂载类型是 `tmpfs` 或
    `ramfs`。
+
 2. 校验 `/proc/mtd` 和 `MEMGETINFO` 返回的分区名、大小、erase size 与内置分区表一致。
+
 3. 从当前系统的 `/opt/app/sbin/live_sysupgrade` 复制到
    `/tmp/live_stream/upgrade/live_sysupgrade`；源文件和目标文件都拒绝符号链接，目标用
    `O_EXCL|O_NOFOLLOW` 新建并 `chmod 0755`。
+
 4. `fork/exec` tmpfs 中的 helper：
 
    ```sh
@@ -683,6 +763,13 @@ close
 
 ## 发布与联调命令
 
+默认发布应用、Web 和配置分区：
+
+```sh
+UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+  make release RELEASE_VERSION=1.2.3
+```
+
 只发布 Web 静态资源：
 
 ```sh
@@ -720,7 +807,7 @@ scripts/tests/package_release_test.sh
 
 - `make release` 在缺少 `UPGRADE_SIGN_KEY`、缺少公钥、无打镜像工具、非法 version
   时失败。
-- `web-only`、`bin-web`、`config-only` 三类包的 `Install.Commands`、`Reboot`、
+- `all`、`web-only`、`bin-web`、`config-only` 四类包的 `Install.Commands`、`Reboot`、
   payload sha256 和 zip store-only 格式正确。
 - `kernel-rootfs` 和 `full` profile 必须被脚本拒绝。
 - `/proc/mtd` 分区名、大小和 erase size 与内置分区表一致。
