@@ -7,6 +7,7 @@ test_dir="${TMPDIR:-/tmp}/live_stream_package_release_test_$$"
 release_dir="${test_dir}/release"
 sign_key="${test_dir}/upgrade_private_key.pem"
 public_key="${test_dir}/upgrade_public_key.pem"
+auto_signing_dir="${test_dir}/auto_signing"
 fake_tools_dir="${test_dir}/tools"
 reject_log="${test_dir}/reject.log"
 build_bin_backup="${test_dir}/build_bin_backup"
@@ -92,11 +93,12 @@ assert_zip_entries() {
 
 assert_install_signature_ok() {
   zip_file="$1"
+  verify_public_key="${2:-${public_key}}"
   verify_dir="${test_dir}/verify"
   rm -rf "${verify_dir}"
   mkdir -p "${verify_dir}"
   unzip -q "${zip_file}" Install Install.sig -d "${verify_dir}"
-  openssl dgst -sha256 -verify "${public_key}" \
+  openssl dgst -sha256 -verify "${verify_public_key}" \
     -signature "${verify_dir}/Install.sig" "${verify_dir}/Install" >/dev/null
 }
 
@@ -112,6 +114,20 @@ stage_fake_build_inputs
 
 openssl genrsa -out "${sign_key}" 2048 >/dev/null 2>&1
 openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
+
+(
+  unset UPGRADE_SIGN_KEY
+  unset UPGRADE_PUBLIC_KEY
+  RELEASE_SIGNING_DIR="${auto_signing_dir}" \
+  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
+    "${release_script}" "${release_dir}" 9.9.0 web-only >/dev/null
+)
+assert_zip_entries "${release_dir}/flash/upgrade-web-only.zip" \
+  "Install Install.sig web.squashfs "
+assert_install_signature_ok "${release_dir}/flash/upgrade-web-only.zip" \
+  "${auto_signing_dir}/development_upgrade_public_key.pem"
+[ -f "${auto_signing_dir}/development_upgrade_private_key.pem" ] ||
+  fail "auto signing key was not generated"
 
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \

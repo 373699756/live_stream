@@ -6,8 +6,9 @@ release_dir="${1:-${repo_root}/release}"
 version="${2:-1.0.0}"
 profile="${3:-web-only}"
 tools_dir="${repo_root}/tools/pc"
+default_public_key="${repo_root}/configs/upgrade_public_key.pem"
 sign_key="${UPGRADE_SIGN_KEY:-}"
-public_key="${UPGRADE_PUBLIC_KEY:-${repo_root}/configs/upgrade_public_key.pem}"
+public_key="${UPGRADE_PUBLIC_KEY:-}"
 
 resolve_output_dir() {
   case "$1" in
@@ -25,6 +26,35 @@ require_cmd() {
     echo "missing tool: $1" >&2
     exit 1
   fi
+}
+
+prepare_development_signing_key() {
+  if [ -n "${public_key}" ]; then
+    echo "UPGRADE_PUBLIC_KEY requires a matching UPGRADE_SIGN_KEY" >&2
+    exit 1
+  fi
+
+  signing_dir=$(resolve_output_dir "${RELEASE_SIGNING_DIR:-build/release_signing}")
+  mkdir -p "${signing_dir}"
+
+  sign_key="${signing_dir}/development_upgrade_private_key.pem"
+  public_key="${signing_dir}/development_upgrade_public_key.pem"
+
+  if [ ! -f "${sign_key}" ]; then
+    old_umask=$(umask)
+    umask 077
+    openssl genrsa -out "${sign_key}" 2048 >/dev/null 2>&1
+    umask "${old_umask}"
+    echo "generated development upgrade signing key: ${sign_key}" >&2
+  else
+    echo "using development upgrade signing key: ${sign_key}" >&2
+  fi
+
+  openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
+  chmod 600 "${sign_key}" 2>/dev/null || true
+
+  echo "development upgrade public key: ${public_key}" >&2
+  echo "deploy it to /config/upgrade_public_key.pem before using this package on a board" >&2
 }
 
 resolve_host_tool() {
@@ -215,9 +245,14 @@ require_cmd openssl
 require_cmd sha256sum
 require_cmd awk
 
-if [ -z "${sign_key}" ] || [ ! -f "${sign_key}" ]; then
-  echo "set UPGRADE_SIGN_KEY=/path/to/private_key.pem to sign Install" >&2
+if [ -z "${sign_key}" ]; then
+  prepare_development_signing_key
+elif [ ! -f "${sign_key}" ]; then
+  echo "missing upgrade signing key: ${sign_key}" >&2
   exit 1
+fi
+if [ -z "${public_key}" ]; then
+  public_key="${default_public_key}"
 fi
 if [ ! -f "${public_key}" ]; then
   echo "missing upgrade public key: ${public_key}" >&2
