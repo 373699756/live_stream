@@ -1016,6 +1016,10 @@ export function AiAlertsPage() {
                                                         )
                                                     }
                                                 />
+                                                <span
+                                                    className="ai-event-toggle"
+                                                    aria-hidden="true"
+                                                />
                                                 <span>
                                                     <strong>
                                                         {taskLabel(taskName)}
