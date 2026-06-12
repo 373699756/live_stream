@@ -140,8 +140,10 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    - `config.jffs2`
 
 3. U-Boot 侧配置网络并确认能访问 TFTP 服务器。
-   - 配置 `ipaddr`、`serverip`、`gatewayip`、`netmask`。
-   - 用 `ping ${serverip}` 验证网络。
+   - TFTP 服务器固定为 `192.168.1.100`。
+   - 设备 U-Boot IP 固定为 `192.168.1.68`。
+   - 默认网关按当前调试网段写为 `192.168.1.1`，掩码为 `255.255.255.0`。
+   - 用 `ping 192.168.1.100` 验证网络。
    - 如果当前 `boot` 能正常进入 U-Boot，不擦写 `boot`；`boot` 是这块板最后的恢复入口。
 
 4. U-Boot 侧逐分区烧写。
@@ -211,11 +213,20 @@ Linux 还没有启动，所以没有 `/dev/mtdX`、`/dev/mtdblockX`，也没有 
 `/www`、`/config` 这些挂载点。U-Boot 只做三件事：从 TFTP 服务器把镜像下载到 DDR，
 按 SPI NOR 偏移擦除，再把 DDR 里的内容写到 flash 偏移。
 
-串口恢复前先配置网络，地址按现场环境替换：
+当前现场固定地址：
+
+```text
+TFTP server: 192.168.1.100
+Device IP:   192.168.1.68
+Gateway:     192.168.1.1
+Netmask:     255.255.255.0
+```
+
+串口恢复前先配置网络：
 
 ```sh
-setenv ipaddr 192.168.1.64
-setenv serverip 192.168.1.10
+setenv ipaddr 192.168.1.68
+setenv serverip 192.168.1.100
 setenv gatewayip 192.168.1.1
 setenv netmask 255.255.255.0
 ping ${serverip}
@@ -284,6 +295,72 @@ reset
 U-Boot 只能烧单个分区镜像，不能直接消费 `release/flash/upgrade.zip`。`upgrade.zip`
 是 Linux/Web 升级包，里面的签名校验、manifest 解析和 MTD 写入由 `system` 模块和
 `live_sysupgrade` 完成。
+
+### 只有 boot 时的完整首烧命令
+
+以下命令用于当前开发板“只有 `boot`，能进 U-Boot，但 Linux 还没烧进去”的场景。TFTP
+服务器 `192.168.1.100` 目录下必须已经放好：
+
+```text
+uImage_hi3516dv300
+rootfs_hi3516dv300_64k.jffs2
+bin.squashfs
+web.squashfs
+config.jffs2
+```
+
+可直接在 U-Boot 串口执行：
+
+```sh
+setenv ipaddr 192.168.1.68
+setenv serverip 192.168.1.100
+setenv gatewayip 192.168.1.1
+setenv netmask 255.255.255.0
+ping ${serverip}
+
+sf probe 0
+
+# kernel: 0x00100000-0x00500000, 4M
+mw.b 0x82000000 0xff 0x400000
+tftp 0x82000000 uImage_hi3516dv300
+sf erase 0x100000 0x400000
+sf write 0x82000000 0x100000 0x400000
+
+# rootfs: 0x00500000-0x01100000, 12M
+mw.b 0x82000000 0xff 0xc00000
+tftp 0x82000000 rootfs_hi3516dv300_64k.jffs2
+sf erase 0x500000 0xc00000
+sf write 0x82000000 0x500000 0xc00000
+
+# bin: 0x01100000-0x01b00000, 10M
+mw.b 0x82000000 0xff 0xa00000
+tftp 0x82000000 bin.squashfs
+sf erase 0x1100000 0xa00000
+sf write 0x82000000 0x1100000 0xa00000
+
+# web: 0x01b00000-0x01d00000, 2M
+mw.b 0x82000000 0xff 0x200000
+tftp 0x82000000 web.squashfs
+sf erase 0x1b00000 0x200000
+sf write 0x82000000 0x1b00000 0x200000
+
+# config: 0x01d00000-0x01e00000, 1M
+mw.b 0x82000000 0xff 0x100000
+tftp 0x82000000 config.jffs2
+sf erase 0x1d00000 0x100000
+sf write 0x82000000 0x1d00000 0x100000
+
+# data: 0x01e00000-0x02000000, 2M，首烧只擦空
+sf erase 0x1e00000 0x200000
+
+setenv bootargs 'mem=128M console=ttyAMA0,115200 coherent_pool=2M root=/dev/mtdblock2 rootfstype=jffs2 rw mtdparts=hi_sfc:1M(boot),4M(kernel),12M(rootfs),10M(bin),2M(web),1M(config),2M(data)'
+setenv bootcmd 'sf probe 0;sf read 0x82000000 0x100000 0x400000;bootm 0x82000000'
+saveenv
+reset
+```
+
+这组命令不擦写 `boot`。只有在 U-Boot 自身损坏或工厂首烧 U-Boot 时，才执行上一节的
+`boot` 分区烧写命令。
 
 ## Linux 分区挂载
 
