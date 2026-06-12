@@ -5,9 +5,10 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
 release_script="${repo_root}/scripts/package_release.sh"
 test_dir="${TMPDIR:-/tmp}/live_stream_package_release_test_$$"
 release_dir="${test_dir}/release"
-sign_key="${test_dir}/upgrade_private_key.pem"
-public_key="${test_dir}/upgrade_public_key.pem"
-auto_signing_dir="${test_dir}/auto_signing"
+key_dir="${repo_root}/build/package_release_test_signing"
+sign_key="${key_dir}/upgrade_private_key.pem"
+public_key="${key_dir}/upgrade_public_key.pem"
+auto_signing_dir="${key_dir}/auto"
 fake_tools_dir="${test_dir}/tools"
 reject_log="${test_dir}/reject.log"
 build_bin_backup="${test_dir}/build_bin_backup"
@@ -16,6 +17,7 @@ had_build_bin=false
 had_web_dist=false
 
 cleanup() {
+  rm -rf "${key_dir}"
   rm -rf "${repo_root}/build/bin" "${repo_root}/www/dist"
   if [ "${had_build_bin}" = true ]; then
     mkdir -p "${repo_root}/build"
@@ -107,7 +109,8 @@ require_cmd unzip
 require_cmd zipinfo
 
 rm -rf "${test_dir}"
-mkdir -p "${test_dir}" "${fake_tools_dir}"
+rm -rf "${key_dir}"
+mkdir -p "${test_dir}" "${fake_tools_dir}" "${key_dir}"
 make_fake_mksquashfs
 make_fake_mkfs_jffs2
 stage_fake_build_inputs
