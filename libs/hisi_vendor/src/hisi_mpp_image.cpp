@@ -668,8 +668,25 @@ bool IsDisStreamSizeSupported(const VideoStreamConfig& stream_config) {
            stream_config.size.height >= DIS_MIN_IMAGE_HEIGHT;
 }
 
-bool ApplyStabilization(const MediaPipelineConfig& config,
+bool ApplyDisAttr(VI_PIPE vi_pipe, VI_CHN vi_channel,
+                  const DIS_ATTR_S& dis_attr) {
+    const HI_S32 status =
+        HI_MPI_VI_SetChnDISAttr(vi_pipe, vi_channel, &dis_attr);
+    if (status != HI_SUCCESS) {
+        Error("hisi_vendor",
+              "HI_MPI_VI_SetChnDISAttr pipe=%d chn=%d failed: 0x%08x",
+              vi_pipe, vi_channel, status);
+        return false;
+    }
+    return true;
+}
+
+bool ApplyStabilization(MppHisiSdkImpl* impl,
+                        const MediaPipelineConfig& config,
                         const ConfigJson& image_config) {
+    if (impl == nullptr) {
+        return false;
+    }
     const ConfigJson* stabilization = nullptr;
     ConfigJson disabled_stabilization = ConfigJson::object();
     if (!FindSection(image_config, "stabilization", &stabilization)) {
@@ -747,6 +764,17 @@ bool ApplyStabilization(const MediaPipelineConfig& config,
 
     const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     const VI_CHN vi_channel = static_cast<VI_CHN>(config.vi_channel);
+    if (!enabled) {
+        if (!impl->dis_enabled_) {
+            return true;
+        }
+        if (!ApplyDisAttr(vi_pipe, vi_channel, dis_attr)) {
+            return false;
+        }
+        impl->dis_enabled_ = false;
+        return true;
+    }
+
     HI_S32 status =
         HI_MPI_VI_SetChnDISConfig(vi_pipe, vi_channel, &dis_config);
     if (status != HI_SUCCESS) {
@@ -755,13 +783,10 @@ bool ApplyStabilization(const MediaPipelineConfig& config,
               vi_pipe, vi_channel, status);
         return false;
     }
-    status = HI_MPI_VI_SetChnDISAttr(vi_pipe, vi_channel, &dis_attr);
-    if (status != HI_SUCCESS) {
-        Error("hisi_vendor",
-              "HI_MPI_VI_SetChnDISAttr pipe=%d chn=%d failed: 0x%08x",
-              vi_pipe, vi_channel, status);
+    if (!ApplyDisAttr(vi_pipe, vi_channel, dis_attr)) {
         return false;
     }
+    impl->dis_enabled_ = true;
     return true;
 }
 
@@ -822,7 +847,7 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     if (!ApplyLensCorrection(config, image_config)) {
         return false;
     }
-    if (!ApplyStabilization(config, image_config)) {
+    if (!ApplyStabilization(impl_, config, image_config)) {
         return false;
     }
     return true;

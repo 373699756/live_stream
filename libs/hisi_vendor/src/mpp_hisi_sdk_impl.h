@@ -35,6 +35,7 @@ struct MppHisiSdkImpl {
     bool mipi_started_ = false;
     bool isp_started_ = false;
     bool vpss_started_ = false;
+    bool dis_enabled_ = false;
     bool vi_bound_vpss_ = false;
     VencChannelState main_venc_;
     VencChannelState sub_venc_;

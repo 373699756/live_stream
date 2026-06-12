@@ -132,6 +132,7 @@ bool MppHisiSdk::DeinitSystem() {
 
     impl_->system_initialized_ = false;
     impl_->system_cleanup_failed_ = false;
+    impl_->dis_enabled_ = false;
     impl_->has_active_config_ = false;
     return true;
 }
