@@ -186,19 +186,6 @@ function emptyStats(): AiStats {
     };
 }
 
-function taskShortLabel(task: AiTaskName) {
-    switch (task) {
-        case 'object_detection':
-            return '目标';
-        case 'perimeter_detection':
-            return '周界';
-        case 'motion_classification':
-            return '移动';
-        case 'occlusion_detection':
-            return '遮挡';
-    }
-}
-
 function streamLabel(stream: StreamName) {
     return stream === 'main' ? '主码流' : '子码流';
 }
@@ -965,52 +952,6 @@ export function AiAlertsPage() {
                                 </strong>
                             </div>
                         </div>
-                        <div className="ai-task-strip">
-                            {orderedTaskStatuses.map((taskStatus, index) => (
-                                <div
-                                    className="ai-task-strip-item"
-                                    key={
-                                        taskStatus?.config.task ??
-                                        kTaskOrder[index]
-                                    }
-                                >
-                                    <div>
-                                        <strong>
-                                            {taskStatus
-                                                ? taskShortLabel(
-                                                      taskStatus.config.task,
-                                                  )
-                                                : taskShortLabel(
-                                                      kTaskOrder[index],
-                                                  )}
-                                        </strong>
-                                        <span>
-                                            {taskStatus
-                                                ? streamLabel(
-                                                      taskStatus.config.stream,
-                                                  )
-                                                : '--'}
-                                        </span>
-                                    </div>
-                                    <StatusBadge
-                                        state={taskBadgeState(taskStatus)}
-                                        label={taskStatusText(taskStatus)}
-                                    />
-                                    <small>
-                                        {numberText(
-                                            taskStatus?.stats.inference_count ??
-                                                0,
-                                        )}{' '}
-                                        次 /{' '}
-                                        {numberText(
-                                            taskStatus?.stats.active_results ??
-                                                0,
-                                        )}{' '}
-                                        个结果
-                                    </small>
-                                </div>
-                            ))}
-                        </div>
                     </section>
 
                     <section className="ai-event-workbench">
@@ -1093,6 +1034,32 @@ export function AiAlertsPage() {
                                                     taskStatus,
                                                 )}
                                             />
+                                            <div className="ai-event-switch-stats">
+                                                <span>
+                                                    {taskStatus
+                                                        ? streamLabel(
+                                                              taskStatus.config
+                                                                  .stream,
+                                                          )
+                                                        : '--'}
+                                                </span>
+                                                <span>
+                                                    {numberText(
+                                                        taskStatus?.stats
+                                                            .inference_count ??
+                                                            0,
+                                                    )}{' '}
+                                                    次
+                                                </span>
+                                                <span>
+                                                    {numberText(
+                                                        taskStatus?.stats
+                                                            .active_results ??
+                                                            0,
+                                                    )}{' '}
+                                                    个结果
+                                                </span>
+                                            </div>
                                             {taskName ===
                                             'perimeter_detection' ? (
                                                 <button

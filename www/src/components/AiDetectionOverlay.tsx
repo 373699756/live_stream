@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
     AiDetection,
     AiInferenceResult,
+    AiTaskName,
     AiTaskStatus,
     AiStatus,
     StreamName,
@@ -17,6 +18,14 @@ interface AiDetectionOverlayProps {
 interface SurfaceSize {
     width: number;
     height: number;
+}
+
+interface DisplayDetection extends AiDetection {
+    task: AiTaskName;
+}
+
+interface DisplayResult extends Omit<AiInferenceResult, 'detections'> {
+    detections: DisplayDetection[];
 }
 
 const kDetectionHoldMs = 2500;
@@ -79,7 +88,7 @@ function clampUnit(value: number) {
     return Math.min(1, Math.max(0, value));
 }
 
-function detectionStyle(detection: AiDetection) {
+function detectionStyle(detection: DisplayDetection) {
     const x = clampUnit(detection.x);
     const y = clampUnit(detection.y);
     const right = clampUnit(detection.x + detection.width);
@@ -94,6 +103,32 @@ function detectionStyle(detection: AiDetection) {
     };
 }
 
+function taskClassName(task: AiTaskName) {
+    switch (task) {
+        case 'object_detection':
+            return 'object';
+        case 'perimeter_detection':
+            return 'perimeter';
+        case 'motion_classification':
+            return 'motion';
+        case 'occlusion_detection':
+            return 'occlusion';
+    }
+}
+
+function taskShortLabel(task: AiTaskName) {
+    switch (task) {
+        case 'object_detection':
+            return '目标';
+        case 'perimeter_detection':
+            return '周界';
+        case 'motion_classification':
+            return '移动';
+        case 'occlusion_detection':
+            return '遮挡';
+    }
+}
+
 function taskHasUsableResult(task: AiTaskStatus, stream: StreamName) {
     return (
         task.config.enabled &&
@@ -105,18 +140,26 @@ function taskHasUsableResult(task: AiTaskStatus, stream: StreamName) {
     );
 }
 
-function resultForStream(status: AiStatus | null, stream: StreamName) {
+function resultForStream(
+    status: AiStatus | null,
+    stream: StreamName,
+): DisplayResult | null {
     if (!status?.enabled) {
         return null;
     }
-    const detections: AiDetection[] = [];
+    const detections: DisplayDetection[] = [];
     let latestSequence = 0;
     let latestPtsUs = 0;
     for (const task of status.tasks ?? []) {
         if (!taskHasUsableResult(task, stream)) {
             continue;
         }
-        detections.push(...task.last_result.detections);
+        detections.push(
+            ...task.last_result.detections.map((detection) => ({
+                ...detection,
+                task: task.config.task,
+            })),
+        );
         latestSequence = Math.max(latestSequence, task.last_result.sequence);
         latestPtsUs = Math.max(latestPtsUs, task.last_result.pts_us);
     }
@@ -145,7 +188,7 @@ export function AiDetectionOverlay({
     });
     const [heldResult, setHeldResult] = useState<{
         expiresAtMs: number;
-        result: AiInferenceResult;
+        result: DisplayResult;
     } | null>(null);
     const result = resultForStream(status, stream);
     const enabledTasks =
@@ -241,15 +284,20 @@ export function AiDetectionOverlay({
             <div className="ai-detection-layer" style={contentStyle}>
                 {detections.map((detection, index) => (
                     <div
-                        className={
+                        className={[
+                            'ai-detection-box',
+                            `ai-detection-box-${taskClassName(detection.task)}`,
                             detection.y <= 0.08
-                                ? 'ai-detection-box near-top'
-                                : 'ai-detection-box'
-                        }
+                                ? 'near-top'
+                                : '',
+                        ]
+                            .filter(Boolean)
+                            .join(' ')}
                         key={`${displayResult?.sequence || 0}-${index}`}
                         style={detectionStyle(detection)}
                     >
                         <span>
+                            {taskShortLabel(detection.task)} /{' '}
                             {detection.label || 'target'}{' '}
                             {percent(detection.confidence)}
                         </span>

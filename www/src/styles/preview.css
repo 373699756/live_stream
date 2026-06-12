@@ -305,10 +305,32 @@
     position: absolute;
     min-width: 32px;
     min-height: 24px;
-    border: 2px solid #22c55e;
+    --ai-detection-color: #22c55e;
+    --ai-detection-text: #04130b;
+    border: 2px solid var(--ai-detection-color);
     box-shadow:
         0 0 0 1px rgba(0, 0, 0, 0.72),
         inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.ai-detection-box-object {
+    --ai-detection-color: #22c55e;
+    --ai-detection-text: #04130b;
+}
+
+.ai-detection-box-perimeter {
+    --ai-detection-color: #38bdf8;
+    --ai-detection-text: #06151f;
+}
+
+.ai-detection-box-motion {
+    --ai-detection-color: #f59e0b;
+    --ai-detection-text: #1f1300;
+}
+
+.ai-detection-box-occlusion {
+    --ai-detection-color: #ef4444;
+    --ai-detection-text: #fff;
 }
 
 .ai-detection-box span {
@@ -317,8 +339,8 @@
     bottom: 100%;
     max-width: min(220px, 42vw);
     padding: 3px 6px;
-    color: #04130b;
-    background: #22c55e;
+    color: var(--ai-detection-text);
+    background: var(--ai-detection-color);
     font-size: 12px;
     font-weight: 700;
     line-height: 1.2;
