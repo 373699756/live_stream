@@ -94,6 +94,141 @@ saveenv
 `/`，没有 recovery 分区、initramfs 或 A/B 回滚能力，Linux 在线升级必须拒绝。
 `data` 保存运行日志、操作日志和升级状态，不纳入普通升级。
 
+## U-Boot TFTP 烧写
+
+U-Boot 串口/TFTP 是工厂烧录或系统损坏后的恢复路径，不是 Web 在线升级路径。这个阶段
+Linux 还没有启动，所以没有 `/dev/mtdX`、`/dev/mtdblockX`，也没有 `/opt/app`、
+`/www`、`/config` 这些挂载点。U-Boot 只做三件事：从 TFTP 服务器把镜像下载到 DDR，
+按 SPI NOR 偏移擦除，再把 DDR 里的内容写到 flash 偏移。
+
+串口恢复前先配置网络，地址按现场环境替换：
+
+```sh
+setenv ipaddr 192.168.1.64
+setenv serverip 192.168.1.10
+setenv gatewayip 192.168.1.1
+setenv netmask 255.255.255.0
+ping ${serverip}
+```
+
+烧写命令使用 `0x82000000` 作为 DDR 临时加载地址。先用 `mw.b` 把整段 buffer 填成
+`0xff`，再 `tftp` 下载镜像；如果镜像小于分区，剩余部分会以 NOR 擦除态 `0xff`
+补齐。`sf erase` 和 `sf write` 使用固定分区偏移和分区大小：
+
+```sh
+# kernel -> 0x00100000, 4M
+mw.b 0x82000000 0xff 0x400000
+tftp 0x82000000 uImage_hi3516dv300
+sf probe 0
+sf erase 0x100000 0x400000
+sf write 0x82000000 0x100000 0x400000
+
+# rootfs -> 0x00500000, 12M
+mw.b 0x82000000 0xff 0xc00000
+tftp 0x82000000 rootfs_hi3516dv300_64k.jffs2
+sf probe 0
+sf erase 0x500000 0xc00000
+sf write 0x82000000 0x500000 0xc00000
+
+# bin -> 0x01100000, 10M
+mw.b 0x82000000 0xff 0xa00000
+tftp 0x82000000 bin.squashfs
+sf probe 0
+sf erase 0x1100000 0xa00000
+sf write 0x82000000 0x1100000 0xa00000
+
+# web -> 0x01b00000, 2M
+mw.b 0x82000000 0xff 0x200000
+tftp 0x82000000 web.squashfs
+sf probe 0
+sf erase 0x1b00000 0x200000
+sf write 0x82000000 0x1b00000 0x200000
+
+# config -> 0x01d00000, 1M
+mw.b 0x82000000 0xff 0x100000
+tftp 0x82000000 config.jffs2
+sf probe 0
+sf erase 0x1d00000 0x100000
+sf write 0x82000000 0x1d00000 0x100000
+```
+
+`boot` 分区只在工厂首烧或 U-Boot 损坏恢复时写，普通版本升级不要写：
+
+```sh
+mw.b 0x82000000 0xff 0x100000
+tftp 0x82000000 u-boot-hi3516dv300.bin
+sf probe 0
+sf erase 0x0 0x100000
+sf write 0x82000000 0x0 0x100000
+```
+
+恢复完成后写入启动参数并重启：
+
+```sh
+setenv bootargs 'mem=128M console=ttyAMA0,115200 coherent_pool=2M root=/dev/mtdblock2 rootfstype=jffs2 rw mtdparts=hi_sfc:1M(boot),4M(kernel),12M(rootfs),10M(bin),2M(web),1M(config),2M(data)'
+setenv bootcmd 'sf probe 0;sf read 0x82000000 0x100000 0x400000;bootm 0x82000000'
+saveenv
+reset
+```
+
+U-Boot 只能烧单个分区镜像，不能直接消费 `release/flash/upgrade.zip`。`upgrade.zip`
+是 Linux/Web 升级包，里面的签名校验、manifest 解析和 MTD 写入由 `system` 模块和
+`live_sysupgrade` 完成。
+
+## Linux 分区挂载
+
+Linux 启动时，内核根据 `bootargs` 里的 `mtdparts` 创建分区设备：
+
+```text
+/dev/mtd0       boot      raw，不挂载
+/dev/mtd1       kernel    uImage，不挂载
+/dev/mtd2       rootfs    通过 root=/dev/mtdblock2 挂载为 /
+/dev/mtd3       bin       /dev/mtdblock3 -> /opt/app
+/dev/mtd4       web       /dev/mtdblock4 -> /www
+/dev/mtd5       config    /dev/mtdblock5 -> /config
+/dev/mtd6       data      /dev/mtdblock6 -> /data
+```
+
+`rootfs` 是内核启动过程挂载的根文件系统；其余分区由 rootfs 内的启动脚本挂载。当前
+仓库提供的脚本是 `scripts/rootfs/etc/init.d/S20mount_app`：
+
+```sh
+mkdir -p /tmp
+chmod 1777 /tmp
+
+if ! grep -q " /tmp tmpfs " /proc/mounts && \
+   ! grep -q " /tmp ramfs " /proc/mounts; then
+  mount -t tmpfs -o size=64m,mode=1777 tmpfs /tmp
+fi
+
+mkdir -p /opt/app /www /config /data /tmp/live_stream/upgrade
+mount -t squashfs -o ro /dev/mtdblock3 /opt/app
+mount -t squashfs -o ro /dev/mtdblock4 /www
+mount -t jffs2 -o rw /dev/mtdblock5 /config
+mount -t jffs2 -o rw /dev/mtdblock6 /data
+```
+
+实际脚本里用 `mount_if_needed` 包一层，已挂载时不重复挂载。`/tmp` 必须是 tmpfs 或
+ramfs，因为系统升级 helper 会从 `/opt/app/sbin/live_sysupgrade` 复制到
+`/tmp/live_stream/upgrade/live_sysupgrade` 后执行；如果 `/tmp/live_stream/upgrade`
+落在 flash 文件系统上，系统升级准备阶段会拒绝。
+
+挂载完成后，`scripts/rootfs/etc/init.d/S80live_stream` 设置运行环境并启动业务：
+
+```sh
+export LD_LIBRARY_PATH=/opt/app/lib:/usr/lib:/lib
+export PATH=/opt/app/bin:/opt/app/scripts:/bin:/sbin:/usr/bin:/usr/sbin
+export LIVE_STREAM_CONFIG_DIR=/config
+
+/opt/app/bin/live_stream \
+  --config-dir /config \
+  --static-root /www \
+  >> /data/operation.log 2>&1 &
+```
+
+因此分区和文件路径的关系是：程序从 `/opt/app` 运行，Web 静态资源从 `/www` 提供，
+配置从 `/config` 读取，日志和升级状态写 `/data`。
+
 `bin.squashfs` 承载 `/opt/app/bin/live_stream`、`/opt/app/sbin/live_sysupgrade`、
 业务动态库和脚本；`web.squashfs` 承载 Web 静态资源；`config.jffs2` 承载运行配置、
 认证用户配置和 `/config/upgrade_public_key.pem`。
