@@ -61,9 +61,7 @@ python3 scripts/quality_scan.py full --scope all --baseline scripts/quality_base
 从某次 findings 生成或刷新基线：
 
 ```sh
-python3 scripts/quality_scan.py baseline \
-  --from-findings reports/quality/quality_findings.json \
-  --output scripts/quality_baseline.json
+python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality/quality_findings.json --output scripts/quality_baseline.json
 ```
 
 刷新前必须确认 `--from-findings` 指向期望的扫描结果。全量基线应来自
@@ -75,19 +73,18 @@ python3 scripts/quality_scan.py baseline \
 每次扫描都会生成独立报告目录：
 
 ```text
-reports/quality/<时间戳>/
+scripts/reports/quality/<时间戳>/
 ```
 
 重点文件：
 
 ```text
-reports/quality/<时间戳>/summary.md          # 本次扫描摘要
-reports/quality/quality_report.md           # 最新人读报告，每次扫描覆盖
-reports/quality/<时间戳>/findings.json       # 本次机器可读 findings
-reports/quality/quality_findings.json       # 最新 findings，每次扫描覆盖
-reports/quality/<时间戳>/findings.sarif      # 本次 SARIF
-reports/quality/quality_findings.sarif      # 最新 SARIF，每次扫描覆盖
-reports/quality/<时间戳>/baseline-diff.json  # 使用 --baseline 时生成
+scripts/reports/quality/quality_report.md           # 最终需要修复问题报告，每次扫描覆盖
+scripts/reports/quality/<时间戳>/findings.json       # 本次机器可读 findings
+scripts/reports/quality/quality_findings.json       # 最新 findings，每次扫描覆盖
+scripts/reports/quality/<时间戳>/findings.sarif      # 本次 SARIF
+scripts/reports/quality/quality_findings.sarif      # 最新 SARIF，每次扫描覆盖
+scripts/reports/quality/<时间戳>/baseline-diff.json  # 使用 --baseline 时生成
 ```
 
 原始工具日志也在同一目录：
@@ -103,7 +100,7 @@ www-build.log
 www-typecheck.log
 ```
 
-日常先看 `summary.md`，再看 `quality_report.md`。只有需要追证据时才看各工具日志。
+日常只看 `quality_report.md`，只有需要追证据时才看各工具日志。
 
 ## Exit Code
 

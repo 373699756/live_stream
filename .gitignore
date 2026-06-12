@@ -3,7 +3,7 @@ out/
 debug/
 release/
 compile_commands.json
-reports/quality/
+scripts/reports/quality/
 3rdparty/build/
 3rdparty/install/
 3rdparty/metaRTC_src/.git.upstream/

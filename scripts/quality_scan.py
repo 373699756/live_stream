@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -162,9 +164,8 @@ class QualityScan:
         self.write_baseline_path = write_baseline_path
         self.fail_on_new = self.normalize_finding_level(fail_on_new)
         self.timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.report_root = self.root_dir / "reports" / "quality"
+        self.report_root = self.root_dir / "scripts" / "reports" / "quality"
         self.report_dir = self.report_root / self.timestamp
-        self.summary_file = self.report_dir / "summary.md"
         self.quality_report_file = self.report_root / "quality_report.md"
         self.findings_file = self.report_dir / "findings.json"
         self.latest_findings_file = self.report_root / "quality_findings.json"
@@ -1666,9 +1667,16 @@ class QualityScan:
             if rel_path == Path("scripts/quality_baseline.json"):
                 continue
             self.check_naming_file_name(rel_path, findings)
+            inside_quality_scan_naming_rule = False
             for line_number, line in enumerate(self.read_lines(rel_path), start=1):
-                if rel_path == Path("scripts/quality_scan.py") and "NAMING_" in line:
-                    continue
+                if rel_path == Path("scripts/quality_scan.py"):
+                    if line.startswith("NAMING_"):
+                        inside_quality_scan_naming_rule = line.rstrip().endswith("(")
+                        continue
+                    if inside_quality_scan_naming_rule:
+                        if line.strip() == ")":
+                            inside_quality_scan_naming_rule = False
+                        continue
                 if NAMING_DELETED_DOC_RE.search(line):
                     self.add_finding(
                         findings,
@@ -2297,6 +2305,7 @@ class QualityScan:
             "lizard": "lizard.log",
             "flawfinder": "flawfinder.log",
             "semgrep": "semgrep.log",
+            "quality baseline": "baseline-diff.json",
             "compile database": "bear.log",
             "scan-build": "scan-build.log",
             "clang-tidy": "clang-tidy.log",
@@ -2304,7 +2313,7 @@ class QualityScan:
         }
         if step.startswith("scan-build"):
             return "scan-build.log"
-        return mapping.get(step, "summary.md")
+        return mapping.get(step, "quality_report.md")
 
     def first_matches(
         self, log_file: str, pattern: re.Pattern[str], limit: int
@@ -2581,123 +2590,12 @@ class QualityScan:
         self.sarif_file.write_text(text, encoding="utf-8")
         self.latest_sarif_file.write_text(text, encoding="utf-8")
 
-    def write_summary(self) -> None:
-        with self.summary_file.open("w", encoding="utf-8") as handle:
-            handle.write("# Quality Scan Summary\n\n")
-            handle.write(f"- Mode: `{self.mode}`\n")
-            handle.write(f"- Scope: `{self.scope}`\n")
-            if self.scope == "changed":
-                handle.write(f"- Base ref: `{self.base_ref}`\n")
-            handle.write(f"- Report directory: `{self.report_dir}`\n")
-            handle.write(f"- Timestamp: `{self.timestamp}`\n")
-            handle.write(f"- Git commit: `{self.git_commit()}`\n\n")
-            handle.write("## Result\n\n")
-            if self.failed_steps:
-                handle.write("- Required steps: failed\n")
-                for step in self.failed_steps:
-                    handle.write(f"  - {step}\n")
-            else:
-                handle.write("- Required steps: passed\n")
-            if self.skipped_steps:
-                handle.write("- Skipped optional steps:\n")
-                for step in self.skipped_steps:
-                    handle.write(f"  - {step}\n")
-            if self.warning_steps:
-                handle.write("- Warning steps:\n")
-                for step in self.warning_steps:
-                    handle.write(f"  - {step}\n")
-            if self.baseline_checked:
-                handle.write("- Baseline gate:\n")
-                handle.write(f"  - Baseline: `{self.baseline_path}`\n")
-                handle.write(f"  - Fail on new: `{self.fail_on_new}`\n")
-                if self.baseline_error:
-                    handle.write(f"  - Error: {self.baseline_error}\n")
-                else:
-                    handle.write(f"  - Baseline findings: {self.baseline_total}\n")
-                    handle.write(
-                        f"  - New findings: {len(self.baseline_new_findings)}\n"
-                    )
-                    handle.write(
-                        "  - New blocking findings: "
-                        f"{len(self.baseline_blocking_findings)}\n"
-                    )
-            handle.write("\n## Logs\n\n")
-            for path in sorted(self.report_dir.iterdir()):
-                if path.is_file() and path.name != "summary.md":
-                    handle.write(f"- `{path.name}`\n")
-
     def write_quality_report(self) -> None:
-        counts = {
-            "cppcheck diagnostics": self.count_matches(
-                "cppcheck.log", CPPCHECK_DIAGNOSTIC_RE
-            ),
-            "cppcheck errors": self.count_matches("cppcheck.log", CPPCHECK_ERROR_RE),
-            "config JSON errors": self.count_matches(
-                "config-json-scan.log", BUILTIN_ERROR_RE
-            ),
-            "header contract errors": self.count_matches(
-                "header-contract-scan.log", BUILTIN_ERROR_RE
-            ),
-            "C++ contract errors": self.count_matches(
-                "cpp-contract-scan.log", BUILTIN_ERROR_RE
-            ),
-            "boundary errors": self.count_matches(
-                "boundary-scan.log", BUILTIN_ERROR_RE
-            ),
-            "module structure errors": self.count_matches(
-                "module-structure-scan.log", BUILTIN_ERROR_RE
-            ),
-            "naming errors": self.count_matches(
-                "naming-scan.log", BUILTIN_ERROR_RE
-            ),
-            "naming review hits": self.count_matches(
-                "naming-scan.log", BUILTIN_REVIEW_RE
-            ),
-            "frontend contract errors": self.count_matches(
-                "frontend-contract-scan.log", BUILTIN_ERROR_RE
-            ),
-            "secret material review hits": self.count_matches(
-                "secret-material-scan.log", BUILTIN_REVIEW_RE
-            ),
-            "product scope review hits": self.count_matches(
-                "product-scope-scan.log", BUILTIN_REVIEW_RE
-            ),
-            "hot path review hits": self.count_matches(
-                "hot-path-risk-scan.log", BUILTIN_REVIEW_RE
-            ),
-            "keyword risk hits": self.count_matches("keyword-scan.log", KEYWORD_RE),
-            "hot-path/logging hits": self.count_matches(
-                "hot-path-log-scan.log", HOT_PATH_RE
-            ),
-            "clang-format diagnostics": self.count_matches(
-                "clang-format.log", CLANG_FORMAT_DIAGNOSTIC_RE
-            ),
-            "lizard complexity findings": self.count_matches(
-                "lizard.log", LIZARD_DIAGNOSTIC_RE
-            ),
-            "flawfinder findings": self.count_matches(
-                "flawfinder.log", FLAWFINDER_DIAGNOSTIC_RE
-            ),
-            "semgrep findings": self.count_matches("semgrep.log", SEMGREP_DIAGNOSTIC_RE),
-            "TypeScript diagnostics": self.count_matches(
-                "www-typecheck.log", TS_DIAGNOSTIC_RE
-            ),
-            "clang-tidy diagnostics": self.count_matches(
-                "clang-tidy.log", CLANG_TIDY_DIAGNOSTIC_RE
-            ),
-            "include-what-you-use findings": self.count_matches(
-                "iwyu.log", IWYU_FINDING_RE
-            ),
-            "scan-build findings": self.count_matches(
-                "scan-build.log", SCAN_BUILD_DIAGNOSTIC_RE
-            ),
-        }
-
         with self.quality_report_file.open("w", encoding="utf-8") as handle:
-            handle.write("# Quality Report\n\n")
+            handle.write("# Quality Fix Report\n\n")
             handle.write(
                 f"本文档由 `scripts/quality_scan.py {self.mode}` 生成，"
-                "汇总代码质量、性能和设计候选问题。\n\n"
+                "只汇总当前需要修复的问题；原始日志保留在本次扫描目录中作为证据。\n\n"
             )
             handle.write(f"- Generated: `{self.timestamp}`\n")
             handle.write(f"- Scope: `{self.scope}`\n")
@@ -2710,222 +2608,80 @@ class QualityScan:
                 handle.write(f"- Baseline diff: `{self.baseline_diff_file}`\n")
             handle.write(f"- Git commit: `{self.git_commit()}`\n\n")
 
-            handle.write("## Counts\n\n")
-            for name, count in counts.items():
-                handle.write(f"- {name}: {count}\n")
-            handle.write("\n")
-
-            handle.write("## Must Check First\n\n")
+            handle.write("## 需要先修复的步骤\n\n")
             if not self.failed_steps:
-                handle.write("- No required step failed.\n")
+                handle.write("- 必跑步骤没有失败。\n")
             else:
                 for step in self.failed_steps:
                     handle.write(
-                        f"- Required step failed: `{step}`; "
-                        f"inspect `{self.step_log_file(step)}`.\n"
+                        f"- `{step}` 失败，先看 `{self.step_log_file(step)}`。\n"
                     )
             for step in self.warning_steps:
-                handle.write(
-                    f"- Warning step: `{step}`; inspect related log before trusting "
-                    "that tool result.\n"
-                )
+                handle.write(f"- `{step}` 有告警，确认对应工具结果是否可信。\n")
             for step in self.skipped_steps:
-                handle.write(f"- Skipped: `{step}`.\n")
+                handle.write(f"- `{step}` 未执行。\n")
             handle.write("\n")
 
             if self.baseline_checked:
-                handle.write("## Baseline Gate\n\n")
+                handle.write("## 基线门禁\n\n")
                 handle.write(f"- Baseline: `{self.baseline_path}`\n")
                 handle.write(f"- Fail on new: `{self.fail_on_new}`\n")
                 if self.baseline_error:
                     handle.write(f"- Error: {self.baseline_error}\n\n")
                 else:
-                    handle.write(f"- Baseline findings: {self.baseline_total}\n")
-                    handle.write(f"- Current findings: {len(self.findings)}\n")
                     handle.write(
-                        f"- New findings: {len(self.baseline_new_findings)}\n"
-                    )
-                    handle.write(
-                        "- New blocking findings: "
+                        "- 新增阻断问题: "
                         f"{len(self.baseline_blocking_findings)}\n\n"
                     )
-                    if self.baseline_new_findings:
-                        handle.write("```text\n")
-                        for finding in self.baseline_new_findings[:80]:
-                            handle.write(
-                                f"{finding['path']}:{finding['line']}: "
-                                f"{finding['level']}: {finding['tool']}/"
-                                f"{finding['rule_id']}: {finding['message']}\n"
-                            )
-                        handle.write("```\n\n")
+                    self.append_findings_table(
+                        handle,
+                        "新增阻断问题",
+                        self.baseline_blocking_findings,
+                        120,
+                    )
+            else:
+                blocking_findings = [
+                    finding
+                    for finding in self.findings
+                    if self.sarif_level(str(finding.get("level", "note")))
+                    in {"error", "warning"}
+                ]
+                self.append_findings_table(
+                    handle,
+                    "需要修复的问题",
+                    blocking_findings,
+                    120,
+                )
 
-            self.append_first_matches(
-                handle, "Must Fix: Cppcheck Errors", "cppcheck.log", CPPCHECK_ERROR_RE, 40
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Cppcheck Warnings",
-                "cppcheck.log",
-                CPPCHECK_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: C/C++ Format",
-                "clang-format.log",
-                CLANG_FORMAT_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Config JSON",
-                "config-json-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Header Contracts",
-                "header-contract-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: C++ Project Contracts",
-                "cpp-contract-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Module Boundaries",
-                "boundary-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Module Structure",
-                "module-structure-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Naming",
-                "naming-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: Frontend API Contracts",
-                "frontend-contract-scan.log",
-                BUILTIN_ERROR_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: C/C++ Complexity",
-                "lizard.log",
-                LIZARD_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Must Fix: C/C++ Security Scan",
-                "flawfinder.log",
-                FLAWFINDER_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Semgrep",
-                "semgrep.log",
-                SEMGREP_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle, "Must Fix: TypeScript", "www-typecheck.log", TS_DIAGNOSTIC_RE, 80
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Clang-Tidy Diagnostics",
-                "clang-tidy.log",
-                CLANG_TIDY_DIAGNOSTIC_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Include-What-You-Use",
-                "iwyu.log",
-                IWYU_FINDING_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle, "Review: Scan-Build", "scan-build.log", SCAN_BUILD_DIAGNOSTIC_RE, 40
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Secret Material",
-                "secret-material-scan.log",
-                BUILTIN_REVIEW_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Product Scope",
-                "product-scope-scan.log",
-                BUILTIN_REVIEW_RE,
-                80,
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Naming",
-                "naming-scan.log",
-                BUILTIN_REVIEW_RE,
-                120,
-            )
-            self.append_first_matches(
-                handle,
-                "Review: Hot Path Risk",
-                "hot-path-risk-scan.log",
-                BUILTIN_REVIEW_RE,
-                120,
-            )
-            self.append_top_files(
-                handle,
-                "Optimization Candidates: Files With Most Keyword Risk Hits",
-                "keyword-scan.log",
-                KEYWORD_RE,
-                20,
-            )
-            self.append_top_files(
-                handle,
-                "Optimization Candidates: Files With Most Hot-Path Or Logging Hits",
-                "hot-path-log-scan.log",
-                HOT_PATH_RE,
-                20,
-            )
             self.append_build_failure_tail(handle)
 
-            handle.write("## How To Use This Report\n\n")
-            handle.write("1. 先处理 `Must Check First` 中的失败步骤。\n")
-            handle.write("2. 再处理 `Must Fix`，这些比关键词命中更可靠。\n")
-            handle.write("3. `Review` 是设计/生命周期风险，逐项确认是否真实影响业务。\n")
-            handle.write("4. `Optimization Candidates` 只列热点候选文件，具体行号到原始日志里追。\n")
+    def append_findings_table(
+        self,
+        handle,
+        title: str,
+        findings: list[dict[str, object]],
+        limit: int,
+    ) -> None:
+        handle.write(f"## {title}\n\n")
+        if not findings:
+            handle.write("- 没有需要修复的问题。\n\n")
+            return
+        handle.write("| 位置 | 级别 | 工具 | 问题 |\n")
+        handle.write("| --- | --- | --- | --- |\n")
+        for finding in findings[:limit]:
+            path = str(finding.get("path", ""))
+            line = str(finding.get("line", "1"))
+            level = str(finding.get("level", "note"))
+            tool = str(finding.get("tool", "quality_scan"))
+            rule_id = str(finding.get("rule_id", "unknown"))
+            message = str(finding.get("message", "")).replace("|", "\\|")
             handle.write(
-                "5. quick 模式覆盖构建、契约、C/C++ 格式、cppcheck、"
-                "内建边界/配置扫描、复杂度/安全候选和前端构建/类型。\n"
+                f"| `{path}:{line}` | `{level}` | `{tool}/{rule_id}` | {message} |\n"
             )
-            handle.write(
-                "6. full 模式追加 bear、scan-build、clang-tidy 和 include-what-you-use。\n"
-            )
-            handle.write("7. `--scope changed` 只收窄内建文件扫描和格式检查；构建/契约仍保持全量。\n")
-            handle.write("8. `--baseline scripts/quality_baseline.json` 用于阻断新增问题。\n")
-            handle.write("9. `findings.json` 和 `findings.sarif` 可用于 CI 或 GitHub code scanning。\n")
-            handle.write("10. 原始工具日志只作证据，不作为主要阅读入口。\n")
+        remaining = len(findings) - limit
+        if remaining > 0:
+            handle.write(f"\n还有 {remaining} 条未展开，见 `{self.findings_file}`。\n")
+        handle.write("\n")
 
     def append_build_failure_tail(self, handle) -> None:
         handle.write("## Build Failure Tail\n\n")
@@ -3023,9 +2779,7 @@ class QualityScan:
         self.write_machine_readable_findings()
         self.write_sarif_findings()
         self.write_quality_report()
-        self.write_summary()
         self.log(f"report: {self.quality_report_file}")
-        self.log(f"summary: {self.summary_file}")
 
         return 1 if self.failed_steps else 0
 
@@ -3133,7 +2887,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--from-findings",
-        default="reports/quality/quality_findings.json",
+        default="scripts/reports/quality/quality_findings.json",
         help="findings JSON used by baseline mode",
     )
     parser.add_argument(

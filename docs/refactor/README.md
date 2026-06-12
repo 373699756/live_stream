@@ -405,7 +405,7 @@ Git 历史显示，本项目经历了四个阶段：
 - 每周从基线里清一批历史问题，优先处理格式噪音、cppcheck error、热路径 sleep/logging、
   flawfinder 真实风险和协议资源释放问题。
 - 首次生成或人工确认后刷新基线：
-  `python3 scripts/quality_scan.py baseline --from-findings reports/quality/quality_findings.json --output scripts/quality_baseline.json`
+  `python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality/quality_findings.json --output scripts/quality_baseline.json`
 - 刷新前必须确认 `--from-findings` 指向期望的扫描结果；全量基线应来自 `--scope all`
   的扫描结果，不能误用 changed 扫描结果覆盖。
 - 不要为绕过门禁刷新基线；只有确认问题属于历史债或已被单独记录时才更新。
