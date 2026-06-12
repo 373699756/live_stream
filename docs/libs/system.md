@@ -483,6 +483,90 @@ CONFIG_SQUASHFS_XZ=y
 优先保留 squashfs；若短期不改 kernel，则改成 cramfs 是最快恢复 `/opt/app` 和
 `/www` 挂载的路径。
 
+### kernel menuconfig 修复 squashfs
+
+如果决定保留 `bin.squashfs` 和 `web.squashfs`，kernel 必须把 squashfs 编进内核本体。
+本次在 `make menuconfig` 中看到的现象是：
+
+```text
+<M> SquashFS 4.0 - Squashed file system support
+[*] Include support for XZ compressed file systems
+```
+
+这里 `XZ` 虽然已经选中，但 `SquashFS 4.0` 是 `<M>`，表示只编译成
+`squashfs.ko` 模块。板端启动后 `/proc/filesystems` 没有 `squashfs`，说明模块没有被
+加载，`mount -t squashfs` 仍然会失败。正确做法是把 `SquashFS 4.0` 从 `<M>` 切成
+`<*>`：
+
+```text
+<*> SquashFS 4.0 - Squashed file system support
+[*] Include support for XZ compressed file systems
+```
+
+在菜单中的路径是：
+
+```text
+File systems  --->
+  Miscellaneous filesystems  --->
+    <*> SquashFS 4.0 - Squashed file system support
+        [*] Include support for XZ compressed file systems
+```
+
+保存后 `.config` 应展开为：
+
+```text
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+```
+
+不能是：
+
+```text
+CONFIG_SQUASHFS=m
+CONFIG_SQUASHFS_XZ=y
+```
+
+若要从板级 defconfig 修改并保存，以 `hi3516dv300_smp_defconfig` 为例：
+
+```sh
+make ARCH=arm CROSS_COMPILE=arm-himix200-linux- hi3516dv300_smp_defconfig
+make ARCH=arm CROSS_COMPILE=arm-himix200-linux- menuconfig
+make ARCH=arm CROSS_COMPILE=arm-himix200-linux- savedefconfig
+cp defconfig arch/arm/configs/hi3516dv300_smp_defconfig
+```
+
+`menuconfig` 默认读写的是内核源码根目录下的 `.config`。`KERNEL_CFG=...` 这类变量不一定
+会让内核 Kconfig 系统直接读写对应 defconfig；稳妥做法是先执行目标 defconfig，把它展开
+成 `.config`，菜单保存后再用 `savedefconfig` 生成最小 `defconfig`，最后覆盖回
+`arch/arm/configs/hi3516dv300_smp_defconfig`。
+
+`savedefconfig` 生成的 `defconfig` 比 `.config` 小是正常现象。`.config` 是所有默认值、
+依赖和用户选择展开后的完整配置；`defconfig` 只记录相对 Kconfig 默认值需要覆盖的板级
+差异。验证 defconfig 是否保存成功，不看文件大小，而是重新展开后检查 `.config`：
+
+```sh
+make ARCH=arm CROSS_COMPILE=arm-himix200-linux- hi3516dv300_smp_defconfig
+grep -E '^CONFIG_SQUASHFS|^CONFIG_SQUASHFS_XZ' .config
+```
+
+期望输出：
+
+```text
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+```
+
+重新编译并烧写 kernel 分区后，板端验证：
+
+```sh
+cat /proc/filesystems | grep squashfs
+mount -t squashfs -o ro /dev/mtdblock3 /opt/app
+mount -t squashfs -o ro /dev/mtdblock4 /www
+```
+
+`/proc/filesystems` 能看到 `squashfs`，并且 `/opt/app`、`/www` 能挂载，才说明本次修复
+真正生效。
+
 ## 发布打包脚本
 
 发布入口是仓库根目录的 `make release`：
