@@ -81,13 +81,84 @@ Hi3516DV300 设备按 32M SPI NOR 固定分区运行，升级模块以内置分�
 mtdparts=hi_sfc:1M(boot),4M(kernel),12M(rootfs),10M(bin),2M(web),1M(config),2M(data)
 ```
 
-`boot` 包含 U-Boot 和 env，普通 Web 升级永远不得擦写。`rootfs` 当前挂载为 `/`，
-没有 recovery 分区、initramfs 或 A/B 回滚能力，Linux 在线升级必须拒绝。`data`
-保存运行日志、操作日志和升级状态，不纳入普通升级。
+板端首次烧写或串口恢复时，U-Boot 启动参数按下列分区写入：
+
+```sh
+setenv bootargs 'mem=128M console=ttyAMA0,115200 coherent_pool=2M root=/dev/mtdblock2 rootfstype=jffs2 rw mtdparts=hi_sfc:1M(boot),4M(kernel),12M(rootfs),10M(bin),2M(web),1M(config),2M(data)'
+setenv bootcmd 'sf probe 0;sf read 0x82000000 0x100000 0x400000;bootm 0x82000000'
+saveenv
+```
+
+`root=/dev/mtdblock2` 对应 `rootfs`，`bin`、`web`、`config`、`data` 由启动脚本后续
+挂载。`boot` 包含 U-Boot 和 env，普通 Web 升级永远不得擦写。`rootfs` 当前挂载为
+`/`，没有 recovery 分区、initramfs 或 A/B 回滚能力，Linux 在线升级必须拒绝。
+`data` 保存运行日志、操作日志和升级状态，不纳入普通升级。
 
 `bin.squashfs` 承载 `/opt/app/bin/live_stream`、`/opt/app/sbin/live_sysupgrade`、
 业务动态库和脚本；`web.squashfs` 承载 Web 静态资源；`config.jffs2` 承载运行配置、
 认证用户配置和 `/config/upgrade_public_key.pem`。
+
+## 发布打包脚本
+
+发布入口是仓库根目录的 `make release`：
+
+```sh
+UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+  make release RELEASE_VERSION=1.2.3 RELEASE_PROFILE=web-only
+```
+
+`Makefile` 先构建模块、`build/bin/live_stream`、`build/bin/live_sysupgrade` 和
+`www/dist`，再执行：
+
+```sh
+scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
+```
+
+`scripts/package_release.sh` 的参数和环境变量：
+
+- 参数 1 `release_dir`：输出目录，默认 `release`，不能是仓库根目录。
+- 参数 2 `version`：写入镜像内 `version` 文件和 `Install.Version`，只允许
+  字母、数字、`.`、`_`、`+`、`-`。
+- 参数 3 `profile`：升级包类型，默认 `web-only`。
+- `UPGRADE_SIGN_KEY`：必填，离线私钥路径，用于签名 `Install`。
+- `UPGRADE_PUBLIC_KEY`：可选，默认 `configs/upgrade_public_key.pem`，脚本用它
+  立即验签，设备端也需要把同一公钥部署到 `/config/upgrade_public_key.pem`。
+- `MKSQUASHFS`、`MKFS_JFFS2`：可选，用于指定宿主机打镜像工具；不指定时优先使用
+  `tools/pc/` 下的工具，再回退到 `PATH`。
+
+脚本支持的 profile：
+
+| profile | 产物 | `Install.Commands` | 是否要求重启 | 说明 |
+| --- | --- | --- | --- | --- |
+| `web-only` | `web.squashfs` | `web` | 否 | 主进程可在线卸载 `/www`、写 `/dev/mtd4`、重新挂载 |
+| `bin-web` | `bin.squashfs`、`web.squashfs` | `bin`、`web` | 是 | 涉及 `/opt/app`，必须走 RAM helper |
+| `config-only` | `config.jffs2` | `config` | 是 | 写 `/config` 后重启生效 |
+| `kernel-rootfs` / `full` | 无 | 无 | 无 | 当前脚本直接拒绝，原因是 rootfs 在线升级不安全 |
+
+打包过程按固定顺序执行：
+
+1. 清理并创建 `release/bin`、`release/configs`、`release/web`、`release/flash`。
+2. 复制 `build/bin/live_stream`、`build/bin/live_sysupgrade`、`configs/*.json`、
+   可选公钥和 `www/dist`。
+3. 按 profile 生成镜像：
+   - `bin.squashfs`：从 `flash/bin_root` 生成，包含 `bin/live_stream`、
+     `sbin/live_sysupgrade` 和 `version`。
+   - `web.squashfs`：从 `flash/web_root` 生成，包含 Web 静态资源和 `version`。
+   - `config.jffs2`：从 `flash/config_root` 生成，包含配置 JSON 和
+     `upgrade_public_key.pem`。
+4. 对每个 payload 计算 sha256，写入 `flash/Install` 的 `Commands`。
+5. 用 `UPGRADE_SIGN_KEY` 对 `Install` 原文做 SHA256/RSA 签名，生成
+   `flash/Install.sig`。
+6. 立刻用 `UPGRADE_PUBLIC_KEY` 验证 `Install.sig`，验不过则发布失败。
+7. 用 `zip -0` 生成 store-only 包 `flash/upgrade-<profile>.zip`，并复制一份为
+   `flash/upgrade.zip`。
+
+最终给 Web 上传的是 `release/flash/upgrade.zip` 或
+`release/flash/upgrade-<profile>.zip`。升级 zip 里只放 `Install`、
+`Install.sig` 和 manifest 声明的镜像文件，不把要执行的 helper 当作 zip entry
+直接运行。`live_sysupgrade` 是受信任的板端程序：当前系统从
+`/opt/app/sbin/live_sysupgrade` 复制到 tmpfs 后执行；新包中的 `bin.squashfs`
+只为升级完成后的下一版系统携带新的 helper。
 
 ## 升级包格式
 
@@ -135,29 +206,140 @@ Install.sig
 - `bin` / `web`：squashfs `hsqs`。
 - `config`：jffs2 magic `0x8519`。
 
-## 升级运行流程
+## 端到端升级通路
 
-HTTP 上传入口保存到 `/tmp/live_stream/upgrade/uploads`。上传和 validate 阶段只校验包，
-不得擦写 flash。
+升级通路分为“离线发布”和“板端执行”两段。脚本只负责在 PC/CI 上生成带签名的
+`upgrade.zip`；板端不运行打包脚本，只消费 zip 包里的 `Install`、`Install.sig` 和镜像。
+
+```mermaid
+flowchart TD
+  MakeRelease[make release] --> PackageScript[scripts/package_release.sh]
+  PackageScript --> Zip[release/flash/upgrade.zip]
+  Zip --> Upload[POST /api/upgrade/upload]
+  Upload --> PackageParser[system upgrade_package]
+  PackageParser --> Start[POST /api/upgrade/start]
+  Start --> StateMachine[IUpgrade 状态机]
+  StateMachine --> Platform[app/platform/linux UpgradePlatform]
+  Platform -->|web-only| WebWrite[主进程写 /dev/mtd4]
+  Platform -->|bin/config/kernel| RamHelper[/tmp/live_stream/upgrade/live_sysupgrade]
+  RamHelper --> FlashWriter[upgrade_flash 写 MTD]
+  WebWrite --> Status[/data/upgrade_status.json]
+  FlashWriter --> Status
+  WebWrite --> Log[/data/upgrade.log]
+  FlashWriter --> Log
+```
+
+HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
+
+| API | 权限 | 作用 |
+| --- | --- | --- |
+| `POST /api/upgrade/upload?filename=<name>` | `kUpgrade` | 接收 zip body，保存并立即校验 |
+| `GET /api/upgrade/status` | `kReadStatus` | 返回内存中的升级状态 |
+| `POST /api/upgrade/validate` | `kUpgrade` | 对已上传包重新校验 |
+| `POST /api/upgrade/start` | `kUpgrade` | 启动异步升级任务 |
+| `POST /api/upgrade/cancel` | `kUpgrade` | 请求取消尚可取消的升级 |
+| `POST /api/upgrade/confirm-reboot` | `kUpgrade` | 用户确认重启 |
+
+上传入口只接受最大 32M 的 body。文件名只允许字母、数字、`.`、`-`、`_`，拒绝
+`/`、`\` 和 `..`，最终文件保存到
+`/tmp/live_stream/upgrade/uploads/<timestamp>-<name>`。写文件使用
+`O_EXCL|O_NOFOLLOW`，写完 `fsync`；校验失败会删除上传文件。后续
+`validate/start` 只接受该 upload 目录下的真实 regular file：`system` 会先
+`lstat` 拒绝符号链接，再 `realpath` 校验路径前缀、大小和文件类型。
+
+包校验由 `libs/system/src/upgrade_package.cpp` 完成，顺序是：
+
+1. 读取 zip local file header，只接受 store-only entry，拒绝压缩、data descriptor、
+   重复 entry、绝对路径、反斜杠路径和 `..` 路径。
+2. 找到 `Install` 和 `Install.sig`。
+3. 在解析 JSON 前，先用 `/config/upgrade_public_key.pem` 对 `Install` 原文做
+   SHA256/RSA 验签；公钥未部署或仍是占位内容时直接失败。
+4. 解析并校验 `Install`：目标板卡、flash 类型、包类型、动作、分区白名单、sha256
+   格式、文件路径和重复命令。
+5. 对每个 manifest 声明的 payload 校验存在、大小不超过目标分区、sha256 匹配。
+6. 拒绝所有未被 manifest 声明的 payload entry。
+
+`POST /api/upgrade/start` 的请求体来自 Web，字段为：
+
+```json
+{
+  "package_path": "/tmp/live_stream/upgrade/uploads/1710000000000-upgrade.zip",
+  "expected_version": "1.2.3",
+  "allow_same_version": false,
+  "allow_downgrade": false,
+  "auto_reboot": true
+}
+```
+
+`IUpgrade` 只管理状态机、权限后的审计、版本策略和异步执行，不直接碰 MTD。升级任务
+投递到单 worker executor，保证同一时间只有一个升级在跑。状态和进度映射如下：
+
+| 状态 | 进度 | 含义 |
+| --- | ---: | --- |
+| `validating` | 0 | 重新校验包、读取版本和目标信息 |
+| `preparing` | 10 | 创建 stage、确认 tmpfs/MTD 布局 |
+| `writing` | 20-89 | 解包和写 flash |
+| `committing` | 90 | 写入完成，提交状态 |
+| `waiting_reboot` | 100 | 需要用户或 helper 重启 |
+| `completed` | 100 | 已完成 |
+| `failed` | 100 | 失败，错误写入状态 |
+| `canceled` | 当前进度 | 用户取消 |
+
+版本策略在写 flash 前执行：`expected_version` 不为空时必须匹配包版本；同版本必须显式
+`allow_same_version=true`；降级必须显式 `allow_downgrade=true`。取消只在
+`validating`、`preparing`、`writing` 三个阶段接受；真正进入 MTD erase/write 后，
+取消只能阻止后续可中断步骤，不能把已经擦写的分区恢复回来。
+
+`app/platform/linux/upgrade_platform.cpp` 是板端实际执行层。它把升级分成两条路径：
+
+- `web-only`：包里只有 `web` 命令，主进程可以在线完成。
+- 系统升级：包含 `bin`、`config` 或 `kernel` 时，必须复制并启动 RAM helper。
 
 `web-only` 包由主进程在线处理：
 
-1. 解包到 `/data/upgrade/staged/<timestamp-version>`。
-2. 卸载 `/www`。
-3. 使用 MTD ioctl 写 `/dev/mtd4`。
-4. 重新挂载 `/www`。
+1. `PrepareUpgrade` 在 `/data/upgrade/staged/<timestamp-version>` 创建 staging 目录。
+2. `WriteUpgrade` 把 payload 解到 staging，解包进度映射到写入阶段前半段。
+3. `ApplyWebUpgrade` 卸载 `/www`。
+4. 调用 `upgrade_flash::WriteMtdImage` 写 `/dev/mtd4`。
+5. 写完后重新把 `/dev/mtdblock4` 以 squashfs 只读方式挂载到 `/www`。
+6. `CommitUpgrade` 写 `/data/upgrade_status.json` 和 `/data/upgrade.log`。
 
-非 `web-only` 包走 RAM helper：
+非 `web-only` 包走 RAM helper，原因是 `bin` 分区承载当前正在运行的
+`/opt/app/bin/live_stream` 和 `/opt/app/sbin/live_sysupgrade`，`config` 也可能被当前进程
+读取；擦写这些分区前必须让主业务进程退出，并且执行升级的程序不能继续从即将卸载或擦写的
+`/opt/app` 取指令。流程是：
 
-1. 准备阶段确认 `/tmp/live_stream/upgrade` 的实际挂载类型是 `tmpfs` 或 `ramfs`。
-2. 校验 `/proc/mtd` 和 `MEMGETINFO` 返回的分区名、大小、erase size。
-3. 从设备内置 `/opt/app/sbin/live_sysupgrade` 复制到
-   `/tmp/live_stream/upgrade/live_sysupgrade`。
-4. helper 复制必须拒绝符号链接，目标文件用 `O_EXCL|O_NOFOLLOW` 新建。
-5. fork/exec `/tmp` 中的 helper。
-6. helper 重新验签、重新校验 payload、重新校验 MTD 布局。
-7. helper 停止 `live_stream`，按分区卸载 `/opt/app`、`/www` 或 `/config`，写 flash，
-   `sync` 后重启。
+1. `PrepareUpgrade` 确认 `/tmp/live_stream/upgrade` 的实际挂载类型是 `tmpfs` 或
+   `ramfs`。
+2. 校验 `/proc/mtd` 和 `MEMGETINFO` 返回的分区名、大小、erase size 与内置分区表一致。
+3. 从当前系统的 `/opt/app/sbin/live_sysupgrade` 复制到
+   `/tmp/live_stream/upgrade/live_sysupgrade`；源文件和目标文件都拒绝符号链接，目标用
+   `O_EXCL|O_NOFOLLOW` 新建并 `chmod 0755`。
+4. `fork/exec` tmpfs 中的 helper：
+
+   ```sh
+   /tmp/live_stream/upgrade/live_sysupgrade \
+     --package /tmp/live_stream/upgrade/uploads/<file>.zip \
+     --stage /tmp/live_stream/upgrade/staged \
+     --reboot
+   ```
+
+5. 主进程把内存状态推进到 `waiting_reboot`；后续真实写入、日志和重启由 helper 接管。
+
+`app/tools/sysupgrade/live_sysupgrade.cpp` 启动后不信任主进程已经做过的校验，会重新执行
+完整校验：
+
+1. 重新解析参数和升级包，重新验签 `Install`，重新校验 payload。
+2. 再次拒绝 `rootfs` 在线升级。
+3. 确认 staging 目录位于 tmpfs/ramfs。
+4. 再次校验 MTD 布局。
+5. 解包到 `/tmp/live_stream/upgrade/staged`，把解包进度写到
+   `/data/upgrade_status.json`。
+6. 如果包内存在非 `web` 分区，执行 `/etc/init.d/S80live_stream stop`、
+   `killall live_stream`、`pkill live_stream` 停止主业务。
+7. 按 `Install.Commands` 顺序卸载对应挂载点并写 MTD。
+8. 写 `/data/upgrade.log`、`/data/upgrade_status.json`，`sync` 后按参数或 manifest
+   要求重启。
 
 MTD 写入流程固定为：
 
@@ -177,10 +359,48 @@ close
 `/data/upgrade_status.json`。当前 32M NOR 方案不是 A/B 升级；断电或写坏系统分区时，
 恢复手段是 UART/U-Boot/TFTP 或烧录器。
 
+## 发布与联调命令
+
+只发布 Web 静态资源：
+
+```sh
+UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+  make release RELEASE_VERSION=1.2.3 RELEASE_PROFILE=web-only
+```
+
+发布主程序和 Web：
+
+```sh
+UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+UPGRADE_PUBLIC_KEY=configs/upgrade_public_key.pem \
+  make release RELEASE_VERSION=1.2.3 RELEASE_PROFILE=bin-web
+```
+
+只发布配置分区：
+
+```sh
+UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+  make release RELEASE_VERSION=1.2.3-config RELEASE_PROFILE=config-only
+```
+
+脚本级回归入口是：
+
+```sh
+scripts/tests/package_release_test.sh
+```
+
+该测试关注打包脚本的 profile、签名、拒绝策略和 zip 结构；板端写 MTD 仍必须在目标板或
+等价 MTD 环境验证。
+
 ## 升级验证
 
 必须覆盖以下验证项：
 
+- `make release` 在缺少 `UPGRADE_SIGN_KEY`、缺少公钥、无打镜像工具、非法 version
+  时失败。
+- `web-only`、`bin-web`、`config-only` 三类包的 `Install.Commands`、`Reboot`、
+  payload sha256 和 zip store-only 格式正确。
+- `kernel-rootfs` 和 `full` profile 必须被脚本拒绝。
 - `/proc/mtd` 分区名、大小和 erase size 与内置分区表一致。
 - `/opt/app`、`/www`、`/config`、`/data` 挂载点存在，`/tmp/live_stream/upgrade`
   位于 RAM 文件系统。
@@ -207,3 +427,6 @@ close
 - 查询路径应保持轻量，避免频繁读取阻塞文件影响 Web 状态刷新。
 - 时间跳变会影响日志、认证过期和媒体时间戳展示，需要记录关键变更。
 - 写 flash 前必须校验签名、manifest、分区白名单和包完整性。
+- `rootfs` 在线升级、A/B 回滚、断电恢复和 U-Boot 自动回滚目前都不是本模块能力；
+  如果产品要求升级内核/rootfs 后可自动恢复，需要新增独立 recovery 设计，而不是放开
+  当前普通 Web 升级路径。
