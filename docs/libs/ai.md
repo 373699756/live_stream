@@ -34,9 +34,9 @@ flowchart LR
   配置或 Web 选项暴露。
 - 当前运行模型是多任务模型：Web 只暴露 `ai.tasks[]` 中
   `object_detection`、`perimeter_detection`、`motion_classification` 和
-  `occlusion_detection` 的独立开关和一个全局灵敏度；保存配置时由任务开关自动
-  派生 `ai.enabled` 这个内部运行闸门，并把隐藏的模型、码流、输入尺寸、
-  推理间隔和结果数收敛为一份共享运行配置。
+  `occlusion_detection` 的独立开关，并用下拉项暴露检测码流、全局灵敏度、
+  推理频率和结果上限；保存配置时由任务开关自动派生 `ai.enabled` 这个内部
+  运行闸门，并把模型、输入尺寸等隐藏运行参数收敛为一份共享运行配置。
 - `perimeter_detection` 复用目标检测模型，只把人员、车辆、自行车等目标在
   `perimeter_regions` 区域内的结果作为周界告警。
 - `motion_classification` 可使用 IVS_MD，不依赖 `.wk` 模型。

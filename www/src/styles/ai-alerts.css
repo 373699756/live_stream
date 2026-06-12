@@ -751,41 +751,36 @@
     font-size: 12px;
 }
 
-.ai-sensitivity-control {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
+.ai-event-option-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
 }
 
-.ai-sensitivity-control > span {
-    margin: 0;
+.ai-event-option-grid label {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.ai-event-option-grid span {
+    min-width: 0;
+    overflow: hidden;
     color: #526174;
     font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.ai-sensitivity-control > div {
-    display: inline-grid;
-    grid-template-columns: repeat(3, minmax(42px, 1fr));
-    gap: 1px;
-    padding: 2px;
-    background: #e2e8f0;
+.ai-event-option-grid select {
+    width: 100%;
+    height: 32px;
+    min-width: 0;
+    padding: 0 8px;
+    color: #202b3c;
+    background: #fff;
     border: 1px solid #cbd6e3;
     border-radius: 4px;
-}
-
-.ai-sensitivity-control button {
-    min-width: 42px;
-    height: 28px;
-    padding: 0 9px;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-}
-
-.ai-sensitivity-control button.active {
-    color: #fff;
-    background: var(--brand);
 }
 
 .ai-event-switch-list {
@@ -1105,6 +1100,10 @@
     .ai-event-switch-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .ai-event-option-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 620px) {
@@ -1120,10 +1119,13 @@
         display: grid;
     }
 
-    .ai-sensitivity-control,
     .ai-config-actions,
     .ai-perimeter-actions {
         justify-content: flex-start;
+    }
+
+    .ai-event-option-grid {
+        grid-template-columns: 1fr;
     }
 
     .ai-console-main .video-surface {

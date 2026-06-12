@@ -7,6 +7,7 @@ import {
     useState,
     type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { saveAiAlarmRule } from '../api/alarm';
 import { aiAlertImageUrl, saveAiConfig } from '../api/ai';
 import type {
     AiAlertRecord,
@@ -16,6 +17,7 @@ import type {
     AiStats,
     AiTaskName,
     AiTaskStatus,
+    AlarmRuleConfig,
     StreamName,
 } from '../api/types';
 import { AiDetectionOverlay } from '../components/AiDetectionOverlay';
@@ -25,6 +27,7 @@ import { useAiAlerts } from '../hooks/useAiAlerts';
 import { useLiveView } from '../hooks/useLiveView';
 import {
     latestAlarmTimeText,
+    nonNegativeInteger,
     normalizeAiRootConfigForSave,
 } from '../features/ai-alerts/aiAlertFormat';
 import { taskLabel } from '../features/ai-alerts/aiAlertTasks';
@@ -69,6 +72,32 @@ const kSensitivityOptions: Array<{
     { label: '高', threshold: 0.35, value: 'high' },
 ];
 
+const kStreamOptions: Array<{ label: string; value: StreamName }> = [
+    { label: '子码流', value: 'sub' },
+    { label: '主码流', value: 'main' },
+];
+
+const kInferenceIntervalOptions = [
+    { label: '高频 250 ms', value: 250 },
+    { label: '标准 500 ms', value: 500 },
+    { label: '低负载 1 s', value: 1000 },
+    { label: '巡检 2 s', value: 2000 },
+];
+
+const kMaxResultsOptions = [
+    { label: '少量 8 个', value: 8 },
+    { label: '标准 16 个', value: 16 },
+    { label: '更多 32 个', value: 32 },
+];
+
+const kAlarmDurationOptions = [
+    { label: '立即触发', value: 0 },
+    { label: '持续 0.5 s', value: 500 },
+    { label: '持续 1 s', value: 1000 },
+    { label: '持续 3 s', value: 3000 },
+    { label: '持续 5 s', value: 5000 },
+];
+
 const kMinimumRegionSize = 0.01;
 
 function defaultTaskConfig(task: AiTaskName): AiModelConfig {
@@ -101,6 +130,22 @@ function cloneTaskConfig(task: AiModelConfig): AiModelConfig {
 
 function positiveConfigInteger(value: number, fallback: number) {
     return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+}
+
+function optionValue(value: number) {
+    return String(Math.round(value));
+}
+
+function numericOptionsWithCurrent(
+    options: Array<{ label: string; value: number }>,
+    currentValue: number,
+    label: (value: number) => string,
+) {
+    const roundedValue = Math.round(currentValue);
+    if (options.some((option) => option.value === roundedValue)) {
+        return options;
+    }
+    return [...options, { label: label(roundedValue), value: roundedValue }];
 }
 
 function sharedHiddenTaskConfig(config: AiConfig) {
@@ -469,7 +514,9 @@ function SnapshotRail({ alerts }: { alerts: AiAlertRecord[] }) {
 export function AiAlertsPage() {
     const [stream, setStream] = useState<StreamName>('sub');
     const [draft, setDraft] = useState<AiConfig | null>(null);
+    const [alarmRule, setAlarmRule] = useState<AlarmRuleConfig | null>(null);
     const [dirty, setDirty] = useState(false);
+    const [alarmDirty, setAlarmDirty] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [editingPerimeter, setEditingPerimeter] = useState(false);
@@ -486,6 +533,7 @@ export function AiAlertsPage() {
     const { statuses, previewUrls } = useLiveView(previewStream);
     const {
         status,
+        alarmConfig,
         alarmStatus,
         lastAlarmEvent,
         alerts,
@@ -504,6 +552,22 @@ export function AiAlertsPage() {
             ? contentAreaForSurface(frame, surfaceSize)
             : null;
     const sensitivity = sensitivityForConfig(draft);
+    const sharedConfig = draft ? sharedHiddenTaskConfig(draft) : null;
+    const intervalOptions = numericOptionsWithCurrent(
+        kInferenceIntervalOptions,
+        sharedConfig?.inference_interval_ms ?? 500,
+        (value) => `${value} ms`,
+    );
+    const maxResultsOptions = numericOptionsWithCurrent(
+        kMaxResultsOptions,
+        sharedConfig?.max_results ?? 16,
+        (value) => `${value} 个`,
+    );
+    const alarmDurationOptions = numericOptionsWithCurrent(
+        kAlarmDurationOptions,
+        alarmRule?.min_duration_ms ?? 0,
+        (value) => `${value} ms`,
+    );
     const alertCounts = useMemo(() => alertCountsByTask(alerts), [alerts]);
     const perimeterRegions = perimeterTask?.perimeter_regions ?? [];
     const activeRegion =
@@ -522,6 +586,16 @@ export function AiAlertsPage() {
         setDraft(completeAiConfig(status.config));
         setSaveMessage('');
     }, [dirty, status]);
+
+    useEffect(() => {
+        if (!alarmConfig || alarmDirty) {
+            return;
+        }
+        setAlarmRule({
+            ...alarmConfig.ai_detection,
+            regions: [...alarmConfig.ai_detection.regions],
+        });
+    }, [alarmConfig, alarmDirty]);
 
     useEffect(() => {
         if (perimeterRegions.length === 0 && activeRegionIndex !== 0) {
@@ -579,15 +653,25 @@ export function AiAlertsPage() {
         );
     };
 
-    const updateSensitivity = (nextSensitivity: SensitivityLevel) => {
-        const threshold = thresholdForSensitivity(nextSensitivity);
+    const updateAllTasks = (patch: Partial<AiModelConfig>) => {
         updateDraftWith((current) => ({
             ...current,
             tasks: current.tasks.map((task) => ({
                 ...task,
-                confidence_threshold: threshold,
+                ...patch,
             })),
         }));
+    };
+
+    const updateAlarmRuleWith = (patch: Partial<AlarmRuleConfig>) => {
+        setAlarmRule((current) => (current ? { ...current, ...patch } : current));
+        setAlarmDirty(true);
+        setSaveMessage('');
+    };
+
+    const updateSensitivity = (nextSensitivity: SensitivityLevel) => {
+        const threshold = thresholdForSensitivity(nextSensitivity);
+        updateAllTasks({ confidence_threshold: threshold });
     };
 
     const selectRegion = (index: number) => {
@@ -778,6 +862,13 @@ export function AiAlertsPage() {
         }
         setDraft(completeAiConfig(status.config));
         setDirty(false);
+        if (alarmConfig) {
+            setAlarmRule({
+                ...alarmConfig.ai_detection,
+                regions: [...alarmConfig.ai_detection.regions],
+            });
+            setAlarmDirty(false);
+        }
         setSaveMessage('');
     };
 
@@ -790,11 +881,28 @@ export function AiAlertsPage() {
         const nextConfig = normalizeAiRootConfigForSave(
             withSharedHiddenDefaults(draft),
         );
-        void saveAiConfig(nextConfig)
+        const requests: Promise<void>[] = [saveAiConfig(nextConfig)];
+        const nextAlarmRule = alarmRule
+            ? {
+                  ...alarmRule,
+                  min_duration_ms: nonNegativeInteger(
+                      alarmRule.min_duration_ms,
+                      0,
+                  ),
+              }
+            : null;
+        if (alarmConfig && nextAlarmRule) {
+            requests.push(saveAiAlarmRule(alarmConfig, nextAlarmRule));
+        }
+        void Promise.all(requests)
             .then(refresh)
             .then(() => {
                 setDirty(false);
+                setAlarmDirty(false);
                 setDraft(completeAiConfig(nextConfig));
+                if (nextAlarmRule) {
+                    setAlarmRule(nextAlarmRule);
+                }
                 setSaveMessage('已保存并应用');
             })
             .catch((err: unknown) => {
@@ -958,33 +1066,126 @@ export function AiAlertsPage() {
                         <div className="ai-event-workbench-header">
                             <div>
                                 <h3>事件配置</h3>
-                                <span>开关事件，调整全局灵敏度</span>
+                                <span>开关事件，调整检测参数</span>
                             </div>
-                            <div
-                                className="ai-sensitivity-control"
-                                aria-label="AI 灵敏度"
-                            >
-                                <span>灵敏度</span>
-                                <div>
-                                    {kSensitivityOptions.map((option) => (
-                                        <button
-                                            type="button"
-                                            className={
-                                                sensitivity === option.value
-                                                    ? 'active'
-                                                    : ''
-                                            }
-                                            disabled={!draft}
+                        </div>
+
+                        <div className="ai-event-option-grid">
+                            <label>
+                                <span>检测码流</span>
+                                <select
+                                    disabled={!draft}
+                                    value={sharedConfig?.stream ?? 'sub'}
+                                    onChange={(event) =>
+                                        updateAllTasks({
+                                            stream: event.target.value as StreamName,
+                                        })
+                                    }
+                                >
+                                    {kStreamOptions.map((option) => (
+                                        <option
                                             key={option.value}
-                                            onClick={() =>
-                                                updateSensitivity(option.value)
-                                            }
+                                            value={option.value}
                                         >
                                             {option.label}
-                                        </button>
+                                        </option>
                                     ))}
-                                </div>
-                            </div>
+                                </select>
+                            </label>
+                            <label>
+                                <span>灵敏度</span>
+                                <select
+                                    disabled={!draft}
+                                    value={sensitivity}
+                                    onChange={(event) =>
+                                        updateSensitivity(
+                                            event.target.value as SensitivityLevel,
+                                        )
+                                    }
+                                >
+                                    {kSensitivityOptions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                <span>推理频率</span>
+                                <select
+                                    disabled={!draft}
+                                    value={optionValue(
+                                        sharedConfig?.inference_interval_ms ?? 500,
+                                    )}
+                                    onChange={(event) =>
+                                        updateAllTasks({
+                                            inference_interval_ms: Number(
+                                                event.target.value,
+                                            ),
+                                        })
+                                    }
+                                >
+                                    {intervalOptions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={optionValue(option.value)}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                <span>结果上限</span>
+                                <select
+                                    disabled={!draft}
+                                    value={optionValue(
+                                        sharedConfig?.max_results ?? 16,
+                                    )}
+                                    onChange={(event) =>
+                                        updateAllTasks({
+                                            max_results: Number(event.target.value),
+                                        })
+                                    }
+                                >
+                                    {maxResultsOptions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={optionValue(option.value)}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                <span>报警持续</span>
+                                <select
+                                    disabled={!alarmRule}
+                                    value={optionValue(
+                                        alarmRule?.min_duration_ms ?? 0,
+                                    )}
+                                    onChange={(event) =>
+                                        updateAlarmRuleWith({
+                                            min_duration_ms: Number(
+                                                event.target.value,
+                                            ),
+                                        })
+                                    }
+                                >
+                                    {alarmDurationOptions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={optionValue(option.value)}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
                         </div>
 
                         {!draft ? (
@@ -1157,7 +1358,9 @@ export function AiAlertsPage() {
                         ) : null}
 
                         <div className="ai-config-actions">
-                            {dirty ? <span>有未保存修改</span> : null}
+                            {dirty || alarmDirty ? (
+                                <span>有未保存修改</span>
+                            ) : null}
                             {saveMessage ? <span>{saveMessage}</span> : null}
                             <button
                                 type="button"
