@@ -434,9 +434,9 @@
     place-items: start;
     min-width: 12px;
     min-height: 12px;
-    color: #dff7ff;
-    border: 2px solid #38bdf8;
-    background: rgba(14, 165, 233, 0.16);
+    color: #ffe4e8;
+    border: 2px solid #fb7185;
+    background: rgba(251, 113, 133, 0.16);
     box-shadow:
         0 0 0 1px rgba(3, 7, 18, 0.78),
         inset 0 0 0 1px rgba(255, 255, 255, 0.18);
@@ -462,8 +462,8 @@
     min-height: 20px;
     display: grid;
     place-items: center;
-    color: #04130b;
-    background: #38bdf8;
+    color: #23050a;
+    background: #fb7185;
     font-size: 12px;
     font-weight: 700;
 }
@@ -1011,10 +1011,11 @@
 
 .ai-snapshot-card {
     min-width: 0;
+    height: 74px;
     display: grid;
-    grid-template-columns: 74px minmax(0, 1fr);
-    gap: 6px;
-    padding: 4px;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 7px;
+    padding: 0 7px 0 0;
     text-align: left;
     background: #0d1421;
     border: 1px solid #202d41;
@@ -1026,16 +1027,17 @@
 }
 
 .ai-snapshot-card img {
-    width: 74px;
-    aspect-ratio: 4 / 3;
+    width: 92px;
+    height: 100%;
     display: block;
-    object-fit: contain;
+    object-fit: cover;
     background: #101827;
-    border-radius: 3px;
+    border-radius: 3px 0 0 3px;
 }
 
 .ai-snapshot-card-body {
     min-width: 0;
+    height: 100%;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1px 5px;
@@ -1129,10 +1131,11 @@
     }
 
     .ai-snapshot-card {
-        grid-template-columns: 88px minmax(0, 1fr);
+        height: 80px;
+        grid-template-columns: 100px minmax(0, 1fr);
     }
 
     .ai-snapshot-card img {
-        width: 88px;
+        width: 100px;
     }
 }
