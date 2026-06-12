@@ -4,11 +4,14 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 release_dir="${1:-${repo_root}/release}"
 version="${2:-1.0.0}"
-profile="${3:-web-only}"
+profile="${3:-all}"
 tools_dir="${repo_root}/tools/pc"
 default_public_key="${repo_root}/configs/upgrade_public_key.pem"
 sign_key="${UPGRADE_SIGN_KEY:-}"
 public_key="${UPGRADE_PUBLIC_KEY:-}"
+bin_partition_size=10485760
+web_partition_size=2097152
+config_partition_size=1048576
 
 resolve_output_dir() {
   case "$1" in
@@ -87,8 +90,47 @@ resolve_host_tool() {
   exit 1
 }
 
+resolve_strip_tool() {
+  if [ -n "${STRIP:-}" ]; then
+    resolve_host_tool "${STRIP}" strip
+    return 0
+  fi
+  if command -v arm-himix200-linux-strip >/dev/null 2>&1; then
+    command -v arm-himix200-linux-strip
+    return 0
+  fi
+  return 1
+}
+
 sha256_file() {
   sha256sum "$1" | awk '{print $1}'
+}
+
+file_size_bytes() {
+  wc -c < "$1" | awk '{print $1}'
+}
+
+strip_release_binary() {
+  binary_path="$1"
+  if command -v file >/dev/null 2>&1 && ! file "${binary_path}" | grep -q 'ELF'; then
+    return 0
+  fi
+  if [ -z "${strip_bin}" ]; then
+    echo "warning: strip tool not found; ${binary_path} keeps debug symbols" >&2
+    return 0
+  fi
+  "${strip_bin}" "${binary_path}"
+}
+
+check_image_size() {
+  image_path="$1"
+  limit_bytes="$2"
+  partition="$3"
+  image_size=$(file_size_bytes "${image_path}")
+  if [ "${image_size}" -gt "${limit_bytes}" ]; then
+    echo "${partition} image too large: ${image_size} bytes > ${limit_bytes} bytes" >&2
+    exit 1
+  fi
 }
 
 append_install_command() {
@@ -121,10 +163,19 @@ copy_release_inputs() {
   cp -f "${repo_root}/build/bin/live_sysupgrade" "${release_dir}/bin/"
   cp -f "${repo_root}"/configs/*.json "${release_dir}/configs/"
   if [ -f "${repo_root}/configs/upgrade_public_key.pem" ]; then
-    cp -f "${repo_root}/configs/upgrade_public_key.pem" \
-      "${release_dir}/configs/"
+    cp -f "${repo_root}/configs/upgrade_public_key.pem" "${release_dir}/configs/"
   fi
   cp -rf "${repo_root}/www/dist/." "${release_dir}/web/"
+}
+
+strip_release_inputs() {
+  if [ -n "${STRIP:-}" ]; then
+    strip_bin=$(resolve_strip_tool)
+  else
+    strip_bin=$(resolve_strip_tool || true)
+  fi
+  strip_release_binary "${release_dir}/bin/live_stream"
+  strip_release_binary "${release_dir}/bin/live_sysupgrade"
 }
 
 build_bin_image() {
@@ -137,6 +188,7 @@ build_bin_image() {
   printf '%s\n' "${version}" > "${flash_dir}/bin_root/version"
   "${mksquashfs_bin}" "${flash_dir}/bin_root" "${flash_dir}/bin.squashfs" \
     -noappend -comp xz
+  check_image_size "${flash_dir}/bin.squashfs" "${bin_partition_size}" bin
 }
 
 build_web_image() {
@@ -145,6 +197,7 @@ build_web_image() {
   printf '%s\n' "${version}" > "${flash_dir}/web_root/version"
   "${mksquashfs_bin}" "${flash_dir}/web_root" "${flash_dir}/web.squashfs" \
     -noappend -comp xz
+  check_image_size "${flash_dir}/web.squashfs" "${web_partition_size}" web
 }
 
 build_config_image() {
@@ -154,6 +207,7 @@ build_config_image() {
   "${mkfs_jffs2_bin}" -r "${flash_dir}/config_root" \
     -o "${flash_dir}/config.jffs2" \
     -e 0x10000 --pad=0x100000 -n
+  check_image_size "${flash_dir}/config.jffs2" "${config_partition_size}" config
 }
 
 write_install_manifest() {
@@ -205,6 +259,12 @@ include_config=false
 requires_reboot=false
 
 case "${profile}" in
+  all)
+    include_bin=true
+    include_web=true
+    include_config=true
+    requires_reboot=true
+    ;;
   web-only)
     include_web=true
     ;;
@@ -222,7 +282,7 @@ case "${profile}" in
     exit 1
     ;;
   *)
-    echo "usage: $0 [release_dir] [version] [web-only|bin-web|config-only|kernel-rootfs|full]" >&2
+    echo "usage: $0 [release_dir] [version] [all|web-only|bin-web|config-only|kernel-rootfs|full]" >&2
     exit 1
     ;;
 esac
@@ -260,6 +320,7 @@ if [ ! -f "${public_key}" ]; then
 fi
 
 copy_release_inputs
+strip_release_inputs
 
 if [ "${include_bin}" = true ]; then
   build_bin_image
@@ -278,6 +339,11 @@ touch "${commands_file}"
 zip_entries="Install"
 
 case "${profile}" in
+  all)
+    append_install_command bin bin.squashfs "$(sha256_file "${flash_dir}/bin.squashfs")"
+    append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
+    append_install_command config config.jffs2 "$(sha256_file "${flash_dir}/config.jffs2")"
+    ;;
   web-only)
     append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
     ;;

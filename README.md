@@ -44,11 +44,13 @@ Release upgrade packages are generated separately:
 
 ```sh
 UPGRADE_SIGN_KEY=/path/to/private_key.pem \
-  make release RELEASE_VERSION=1.2.3 RELEASE_PROFILE=web-only
+  make release RELEASE_VERSION=1.2.3
 ```
 
 Release files are written under `release/`. The default release profile is
-`web-only`, so Web Console publishing can update only the web partition.
+`all`, so release publishing generates `bin.squashfs`, `web.squashfs`,
+`config.jffs2`, and the signed upgrade zip. Use `RELEASE_PROFILE=web-only`
+when publishing only Web Console assets.
 The packaging logic is split into `scripts/package_debug.sh` and
 `scripts/package_release.sh`.
 

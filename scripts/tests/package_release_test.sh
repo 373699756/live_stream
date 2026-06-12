@@ -123,14 +123,18 @@ openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
   unset UPGRADE_PUBLIC_KEY
   RELEASE_SIGNING_DIR="${auto_signing_dir}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
-    "${release_script}" "${release_dir}" 9.9.0 web-only >/dev/null
+  MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
+    "${release_script}" "${release_dir}" 9.9.0 >/dev/null
 )
-assert_zip_entries "${release_dir}/flash/upgrade-web-only.zip" \
-  "Install Install.sig web.squashfs "
-assert_install_signature_ok "${release_dir}/flash/upgrade-web-only.zip" \
+assert_zip_entries "${release_dir}/flash/upgrade-all.zip" \
+  "Install Install.sig bin.squashfs config.jffs2 web.squashfs "
+assert_install_signature_ok "${release_dir}/flash/upgrade-all.zip" \
   "${auto_signing_dir}/development_upgrade_public_key.pem"
 [ -f "${auto_signing_dir}/development_upgrade_private_key.pem" ] ||
   fail "auto signing key was not generated"
+cmp -s "${auto_signing_dir}/development_upgrade_public_key.pem" \
+  "${release_dir}/flash/config_root/upgrade_public_key.pem" ||
+  fail "default all package did not stage generated public key"
 
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
