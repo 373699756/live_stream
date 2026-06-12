@@ -94,6 +94,116 @@ saveenv
 `/`，没有 recovery 分区、initramfs 或 A/B 回滚能力，Linux 在线升级必须拒绝。
 `data` 保存运行日志、操作日志和升级状态，不纳入普通升级。
 
+## 只有 boot 的开发板首烧计划
+
+如果开发板 flash 里当前只有 `boot` 可用，也就是只能进入 U-Boot，Linux、Web 和
+`live_stream` 都还没起来，这时不能使用 Web 上传 `upgrade.zip`。正确流程是先走
+U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启动、分区能挂载、业务能
+运行后，再把后续版本更新切换到 Web 升级流程。
+
+完整计划如下：
+
+1. PC 侧准备首烧镜像。
+   - `kernel`：准备 `uImage_hi3516dv300`，来自内核/SDK 构建产物。
+   - `rootfs`：准备 `rootfs_hi3516dv300_64k.jffs2`，rootfs 内必须包含
+     `scripts/rootfs/etc/init.d/S20mount_app` 和 `S80live_stream` 对应的启动逻辑。
+   - `bin` 和 `web`：执行 `bin-web` 发布，得到 `bin.squashfs` 和 `web.squashfs`。
+   - `config`：执行 `config-only` 发布，得到 `config.jffs2`。
+   - `data`：首烧时不需要镜像，U-Boot 下擦空即可。
+
+   示例：
+
+   ```sh
+   UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+   UPGRADE_PUBLIC_KEY=configs/upgrade_public_key.pem \
+     make release RELEASE_DIR=release-first-bin-web \
+       RELEASE_VERSION=1.0.0 RELEASE_PROFILE=bin-web
+
+   UPGRADE_SIGN_KEY=/secure/upgrade_private_key.pem \
+   UPGRADE_PUBLIC_KEY=configs/upgrade_public_key.pem \
+     make release RELEASE_DIR=release-first-config \
+       RELEASE_VERSION=1.0.0 RELEASE_PROFILE=config-only
+   ```
+
+   首烧用到的是 `release-first-bin-web/flash/bin.squashfs`、
+   `release-first-bin-web/flash/web.squashfs` 和
+   `release-first-config/flash/config.jffs2`。`release/flash/upgrade.zip` 只给
+   Linux/Web 升级使用，不给 U-Boot 使用。`config.jffs2` 里的
+   `upgrade_public_key.pem` 必须和后续发布包使用的私钥匹配，否则设备启动后 Web
+   升级验签会失败。
+
+2. 把首烧镜像放到 TFTP 服务器目录。
+   - `uImage_hi3516dv300`
+   - `rootfs_hi3516dv300_64k.jffs2`
+   - `bin.squashfs`
+   - `web.squashfs`
+   - `config.jffs2`
+
+3. U-Boot 侧配置网络并确认能访问 TFTP 服务器。
+   - 配置 `ipaddr`、`serverip`、`gatewayip`、`netmask`。
+   - 用 `ping ${serverip}` 验证网络。
+   - 如果当前 `boot` 能正常进入 U-Boot，不擦写 `boot`；`boot` 是这块板最后的恢复入口。
+
+4. U-Boot 侧逐分区烧写。
+   - 烧 `kernel` 到 `0x00100000-0x00500000`。
+   - 烧 `rootfs` 到 `0x00500000-0x01100000`。
+   - 烧 `bin` 到 `0x01100000-0x01b00000`。
+   - 烧 `web` 到 `0x01b00000-0x01d00000`。
+   - 烧 `config` 到 `0x01d00000-0x01e00000`。
+   - 擦空 `data` 的 `0x01e00000-0x02000000`。
+
+   这些命令见下一节 “U-Boot TFTP 烧写”。U-Boot 阶段按 flash 偏移写原始分区镜像，
+   不存在挂载动作。
+
+5. 写入启动参数并重启。
+   - `bootargs` 必须包含完整 `mtdparts`。
+   - `root=/dev/mtdblock2 rootfstype=jffs2 rw` 指向 `rootfs`。
+   - `bootcmd` 从 `0x00100000` 读取 4M kernel 到 DDR，然后 `bootm`。
+   - `saveenv` 后 `reset`。
+
+6. 首次 Linux 启动后做分区和挂载检查。
+
+   ```sh
+   cat /proc/mtd
+   mount
+   grep ' /tmp ' /proc/mounts
+   ls -l /opt/app/bin/live_stream /opt/app/sbin/live_sysupgrade
+   ls -l /www/index.html
+   ls -l /config/upgrade_public_key.pem
+   ls -ld /data
+   ```
+
+   期望结果是 `/dev/mtdblock3` 挂到 `/opt/app`，`/dev/mtdblock4` 挂到 `/www`，
+   `/dev/mtdblock5` 挂到 `/config`，`/dev/mtdblock6` 挂到 `/data`，并且 `/tmp`
+   是 `tmpfs` 或 `ramfs`。
+
+7. 确认业务和 Web 升级入口。
+   - `live_stream` 从 `/opt/app/bin/live_stream` 启动。
+   - 静态页面从 `/www` 提供。
+   - 配置从 `/config` 读取。
+   - 日志写入 `/data/operation.log`。
+   - `/config/upgrade_public_key.pem` 存在后，后续 Web 升级才能验签。
+
+8. 后续版本更新才使用 Web 升级。
+   - Web 资源更新：发布 `web-only`，上传 `upgrade.zip`，主进程在线写 `web`。
+   - 主程序和 Web 更新：发布 `bin-web`，上传 `upgrade.zip`，走 RAM helper 写
+     `bin` 和 `web` 后重启。
+   - 配置更新：发布 `config-only`，上传 `upgrade.zip`，走 RAM helper 写 `config`
+     后重启。
+
+9. 首烧或启动失败时回到 U-Boot 恢复。
+   - 进不了 kernel：优先检查 `kernel` 烧写、`bootcmd` 和 kernel 偏移。
+   - kernel 起了但挂不上 `/`：检查 `rootfs` 镜像、`root=/dev/mtdblock2` 和
+     `mtdparts`。
+   - 应用不存在或起不来：检查 `bin.squashfs` 和 `/opt/app` 挂载。
+   - Web 页面不存在：检查 `web.squashfs` 和 `/www` 挂载。
+   - 后续 Web 升级验签失败：检查 `config.jffs2` 中的
+     `/config/upgrade_public_key.pem` 是否和发布私钥匹配。
+
+只有一个 `boot` 的开发板没有自动回滚能力，`boot` 就是最后恢复锚点。普通发布流程不写
+`boot`、不在线写 `rootfs`；需要升级 `boot` 或放开 `rootfs` 在线升级前，必须先设计
+独立 recovery、A/B 或外部烧录恢复策略。
+
 ## U-Boot TFTP 烧写
 
 U-Boot 串口/TFTP 是工厂烧录或系统损坏后的恢复路径，不是 Web 在线升级路径。这个阶段
