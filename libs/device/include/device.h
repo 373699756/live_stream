@@ -111,12 +111,12 @@ struct SnapshotFrame {
 
     FrameSlice PayloadSlice() const { return FrameSlice{buffer, offset, size}; }
 
-    bool HasValidPayload() const {
+    bool IsPayloadValid() const {
         return size != 0 && IsValidFrameSlice(PayloadSlice());
     }
 
     const uint8_t *PayloadData() const {
-        return HasValidPayload() ? FrameSliceData(PayloadSlice()) : nullptr;
+        return IsPayloadValid() ? FrameSliceData(PayloadSlice()) : nullptr;
     }
 };
 

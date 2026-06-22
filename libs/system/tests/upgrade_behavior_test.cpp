@@ -226,7 +226,7 @@ bool WaitForState(live_stream::IUpgrade* service,
     return service->GetStatus().state == state;
 }
 
-bool HasCall(const FakeUpgradePlatform& platform, const std::string& call) {
+bool ContainsCall(const FakeUpgradePlatform& platform, const std::string& call) {
     for (const std::string& entry : platform.calls) {
         if (entry == call) {
             return true;
@@ -260,9 +260,11 @@ int TestSuccessAndConfirmReboot() {
     if (!WaitForState(service.get(), UpgradeState::kWaitingReboot)) {
         return 3;
     }
-    if (!HasCall(platform, "validate") || !HasCall(platform, "prepare") ||
-        !HasCall(platform, "write") || !HasCall(platform, "commit") ||
-        HasCall(platform, "reboot")) {
+    if (!ContainsCall(platform, "validate") ||
+        !ContainsCall(platform, "prepare") ||
+        !ContainsCall(platform, "write") ||
+        !ContainsCall(platform, "commit") ||
+        ContainsCall(platform, "reboot")) {
         return 4;
     }
     if (service->GetStatus().progress_percent != 100 ||
@@ -278,7 +280,7 @@ int TestSuccessAndConfirmReboot() {
         return 7;
     }
     if (service->GetStatus().state != UpgradeState::kCompleted ||
-        !HasCall(platform, "reboot")) {
+        !ContainsCall(platform, "reboot")) {
         return 8;
     }
     std::remove(package_path.c_str());
@@ -425,7 +427,7 @@ int TestRejectsPathOutsideUploadDirectory() {
     if (service->StartUpgrade(MakeContext(), request)) {
         return 3;
     }
-    if (HasCall(platform, "validate")) {
+    if (ContainsCall(platform, "validate")) {
         return 4;
     }
     std::remove(package_path.c_str());
@@ -475,7 +477,7 @@ int TestRejectsSymlinkInsideUploadDirectory() {
         std::remove(real_path.c_str());
         return 4;
     }
-    if (HasCall(platform, "validate")) {
+    if (ContainsCall(platform, "validate")) {
         std::remove(symlink_path.c_str());
         std::remove(real_path.c_str());
         return 5;
@@ -508,7 +510,7 @@ int TestAutoRebootAndCommittedFailure() {
     if (!WaitForState(service.get(), UpgradeState::kCompleted)) {
         return 3;
     }
-    if (!HasCall(platform, "reboot") ||
+    if (!ContainsCall(platform, "reboot") ||
         service->GetStatus().progress_percent != 100) {
         return 4;
     }

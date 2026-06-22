@@ -115,7 +115,7 @@ bool ReadFully(int fd, uint8_t* data, std::size_t size) {
     return true;
 }
 
-bool ImageHasExpectedMagic(const UpgradeCommand& command,
+bool IsUpgradeImageMagicValid(const UpgradeCommand& command,
                            int image_fd,
                            std::string* reason) {
     uint8_t magic[4] = {0};
@@ -209,7 +209,7 @@ bool OpenAndValidateImage(const UpgradeCommand& command,
         }
         return false;
     }
-    if (!ImageHasExpectedMagic(command, fd, reason)) {
+    if (!IsUpgradeImageMagicValid(command, fd, reason)) {
         close(fd);
         return false;
     }

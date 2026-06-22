@@ -79,7 +79,7 @@ bool IsValidPolicy(const AuthOptions &options) {
            options.password_min_length <= auth_internal::kMaxPasswordLength;
 }
 
-bool HasDigit(const std::string &value) {
+bool ContainsDigit(const std::string &value) {
     for (char ch : value) {
         if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
             return true;
@@ -88,7 +88,7 @@ bool HasDigit(const std::string &value) {
     return false;
 }
 
-bool HasSymbol(const std::string &value) {
+bool ContainsSymbol(const std::string &value) {
     for (char ch : value) {
         if (std::isalnum(static_cast<unsigned char>(ch)) == 0) {
             return true;
@@ -104,10 +104,10 @@ bool IsValidNewPassword(const std::string &password,
         password.size() < options.password_min_length) {
         return false;
     }
-    if (options.password_require_number && !HasDigit(password)) {
+    if (options.password_require_number && !ContainsDigit(password)) {
         return false;
     }
-    if (options.password_require_symbol && !HasSymbol(password)) {
+    if (options.password_require_symbol && !ContainsSymbol(password)) {
         return false;
     }
     return true;
@@ -430,7 +430,7 @@ public:
         if (!IsValidNewPassword(request.new_password, options_snapshot)) {
             return false;
         }
-        if (!HasActiveSession(request.context)) {
+        if (!IsSessionActive(request.context)) {
             return false;
         }
 
@@ -484,7 +484,7 @@ public:
                         "must_change_password");
             return false;
         }
-        if (auth_internal::RoleHasPermission(principal.role, permission)) {
+        if (auth_internal::IsPermissionAllowed(principal.role, permission)) {
             return true;
         }
 
@@ -657,7 +657,7 @@ private:
         return false;
     }
 
-    bool HasActiveSession(const live_stream::RequestContext &context) {
+    bool IsSessionActive(const live_stream::RequestContext &context) {
         std::lock_guard<std::mutex> guard(mutex_);
         PruneExpiredSessionsLocked();
         for (const auto &item : sessions_) {

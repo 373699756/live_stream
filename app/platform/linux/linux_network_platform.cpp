@@ -197,7 +197,7 @@ bool StopDhcpPid(const std::string &ifname) {
     return ok;
 }
 
-bool HasDhcpPid(const std::string &ifname) {
+bool IsDhcpPidFilePresent(const std::string &ifname) {
     return infra::File::Exists(DhcpPidPath(ifname));
 }
 
@@ -257,7 +257,7 @@ public:
             if (iter != dhcp_enabled_.end()) {
                 status.dhcp = iter->second;
             } else {
-                status.dhcp = HasDhcpPid(ifname);
+                status.dhcp = IsDhcpPidFilePresent(ifname);
             }
         }
         return status;
@@ -333,7 +333,7 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             dhcp_enabled_[ifname] = false;
         }
-        return pid_stopped || released || !HasDhcpPid(ifname);
+        return pid_stopped || released || !IsDhcpPidFilePresent(ifname);
     }
 
     bool SetGateway(const std::string &ifname,

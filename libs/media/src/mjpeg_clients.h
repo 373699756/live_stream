@@ -25,7 +25,7 @@ public:
     bool Detach(MediaMjpegClientId client_id);
     void Clear();
     size_t Size() const;
-    bool HasClient(StreamId stream_id) const;
+    bool IsStreamClientAttached(StreamId stream_id) const;
     std::vector<PendingMjpegClientWrite> CollectWrites(StreamId stream_id);
     void ReleaseWrite(MediaMjpegClientId client_id);
 

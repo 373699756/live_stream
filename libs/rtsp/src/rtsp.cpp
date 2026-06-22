@@ -811,7 +811,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (session->state != RtspSessionState::kPlaying ||
-                !session->HasSubscription()) {
+                !session->IsSubscribed()) {
                 return;
             }
             subscription_id = session->subscription_id;
@@ -862,7 +862,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             should_send = session != nullptr &&
                           session->state == RtspSessionState::kPlaying &&
-                          session->HasSubscription() &&
+                          session->IsSubscribed() &&
                           frame.stream_id == session->stream_id &&
                           frame.codec == session->stream_info.codec;
         }

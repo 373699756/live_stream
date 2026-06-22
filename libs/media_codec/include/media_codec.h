@@ -122,17 +122,17 @@ bool ParseH264AnnexBNalUnits(const uint8_t *data, size_t size,
 bool ParseH265AnnexBNalUnits(const uint8_t *data, size_t size,
                              H265NalUnitList *units);
 
-bool HasH264ParameterSets(const H264NalUnitList &units);
+bool ContainsH264ParameterSets(const H264NalUnitList &units);
 
-bool HasH265ParameterSets(const H265NalUnitList &units);
+bool ContainsH265ParameterSets(const H265NalUnitList &units);
 
-bool HasCompleteH264ParameterSets(const H264NalUnitList &units);
+bool ContainsCompleteH264ParameterSets(const H264NalUnitList &units);
 
-bool HasCompleteH265ParameterSets(const H265NalUnitList &units);
+bool ContainsCompleteH265ParameterSets(const H265NalUnitList &units);
 
-bool HasH264Keyframe(const H264NalUnitList &units);
+bool ContainsH264Keyframe(const H264NalUnitList &units);
 
-bool HasH265Keyframe(const H265NalUnitList &units);
+bool ContainsH265Keyframe(const H265NalUnitList &units);
 
 H264ParameterSets ExtractH264ParameterSets(const H264NalUnitList &units);
 

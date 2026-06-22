@@ -41,7 +41,7 @@ inline FrameSlice EncodedFramePayloadSlice(const EncodedFrame *frame) {
     return frame == nullptr ? FrameSlice{} : frame->payload;
 }
 
-inline bool EncodedFrameHasPayload(const EncodedFrame *frame) {
+inline bool IsEncodedFramePayloadValid(const EncodedFrame *frame) {
     if (frame == nullptr || frame->payload.size == 0) {
         return false;
     }
@@ -49,7 +49,7 @@ inline bool EncodedFrameHasPayload(const EncodedFrame *frame) {
 }
 
 inline const uint8_t *EncodedFramePayloadData(const EncodedFrame *frame) {
-    return EncodedFrameHasPayload(frame)
+    return IsEncodedFramePayloadValid(frame)
                ? FrameSliceData(EncodedFramePayloadSlice(frame))
                : nullptr;
 }

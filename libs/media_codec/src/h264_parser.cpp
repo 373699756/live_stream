@@ -92,13 +92,13 @@ bool ParseH264AnnexBNalUnits(const uint8_t *data,
            !units->empty();
 }
 
-bool HasH264ParameterSets(const H264NalUnitList &units) {
+bool ContainsH264ParameterSets(const H264NalUnitList &units) {
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return IsH264ParameterSetNal(unit.type);
     });
 }
 
-bool HasCompleteH264ParameterSets(const H264NalUnitList &units) {
+bool ContainsCompleteH264ParameterSets(const H264NalUnitList &units) {
     bool has_sps = false;
     bool has_pps = false;
     for (const H264NalUnit &unit : units) {
@@ -114,7 +114,7 @@ bool HasCompleteH264ParameterSets(const H264NalUnitList &units) {
     return false;
 }
 
-bool HasH264Keyframe(const H264NalUnitList &units) {
+bool ContainsH264Keyframe(const H264NalUnitList &units) {
     // H.264 只有 IDR NAL 才能作为协议输出的独立解码起点。
     return AnyNalUnit(units, [](const H264NalUnit &unit) {
         return IsH264IdrNal(unit.type);

@@ -253,13 +253,13 @@ void AddSupportedFeedback(const std::string& feedback,
     }
 }
 
-bool HasPacketizationModeOne(const std::string& fmtp) {
+bool IsPacketizationModeOne(const std::string& fmtp) {
     return ToLowerAscii(fmtp).find("packetization-mode=1") !=
            std::string::npos;
 }
 
 std::string BuildLocalH264Fmtp(const std::string& offer_fmtp) {
-    if (!HasPacketizationModeOne(offer_fmtp)) {
+    if (!IsPacketizationModeOne(offer_fmtp)) {
         return std::string();
     }
     return "packetization-mode=1";

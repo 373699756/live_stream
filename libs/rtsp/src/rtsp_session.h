@@ -45,7 +45,7 @@ public:
                          uint64_t next_subscription_generation,
                          MediaStreamInfo next_stream_info);
     void ClearSubscription();
-    bool HasSubscription() const;
+    bool IsSubscribed() const;
     void SetStartFrames(std::vector<EncodedFrame> *frames);
     void SetPlayRtpTimestamp(uint32_t timestamp);
     void ClearStartFrames();

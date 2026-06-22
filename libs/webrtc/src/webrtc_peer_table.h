@@ -33,7 +33,7 @@ public:
     std::vector<std::string> MarkAllClosing();
     std::vector<std::string> OpenPeerIds() const;
     uint32_t ActivePeerCount() const;
-    bool HasConnectedPeer(StreamId stream_id) const;
+    bool IsStreamConnected(StreamId stream_id) const;
     std::vector<WebrtcPeerInfo> ConnectedPeers(StreamId stream_id) const;
     std::vector<WebrtcPeerInfo> OpenPeers() const;
     std::vector<WebrtcPeerInfo> Peers() const;

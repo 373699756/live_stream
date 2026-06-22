@@ -71,7 +71,7 @@ void GopCache::CopyTo(MediaFlvStart *flv_start) const {
 bool GopCache::CopyFlvTagView(
     const EncodedFrame &frame, const FlvVideoTagView &source,
     MediaFlvCachedVideoTag *target) const {
-    if (target == nullptr || !EncodedFrameHasPayload(&frame) ||
+    if (target == nullptr || !IsEncodedFramePayloadValid(&frame) ||
         source.slice_count == 0 ||
         source.slice_count > kMaxMediaFlvVideoTagSlices) {
         return false;

@@ -215,7 +215,7 @@ public:
     }
 
     bool PushFrame(const EncodedFrame &input_frame) {
-        if (!EncodedFrameHasPayload(&input_frame) ||
+        if (!IsEncodedFramePayloadValid(&input_frame) ||
             !IsStreamSupported(input_frame.stream_id)) {
             return false;
         }
@@ -257,7 +257,8 @@ public:
         source_state::ParsedFramePayload payload;
         source_state::ParseFramePayload(frame, &payload);
         QueueFrameForSubscriptions(payload);
-        PackageBrowserFrame(payload, source_state::HasParsedUnits(payload));
+        PackageBrowserFrame(payload,
+                            source_state::IsFramePayloadParsed(payload));
         source_state::ParsedFramePayloadUnref(&payload);
         EncodedFrameUnref(&frame);
         return true;
@@ -569,7 +570,8 @@ private:
             }
             const bool package_hls =
                 source_state::IsHlsCodecSupported(stream->codec);
-            const bool package_flv = flv_live_ring_.HasClient(frame.stream_id);
+            const bool package_flv =
+                flv_live_ring_.IsStreamClientAttached(frame.stream_id);
             const bool update_flv_cache =
                 source_state::IsFlvCodecSupported(stream->codec);
             if (!package_hls && !package_flv && !update_flv_cache) {
@@ -591,7 +593,7 @@ private:
             flv_tag_view = packaged_frame.flv_tag_view;
             has_flv_tag_view = packaged_frame.has_flv_tag_view;
             const bool has_sequence_header =
-                source_state::HasFlvSequenceHeader(*stream);
+                source_state::IsFlvSequenceHeaderReady(*stream);
             clients = flv_live_ring_.CollectWrites(
                 frame.stream_id, stream->config_generation,
                 has_flv_tag_view, has_sequence_header,
@@ -609,7 +611,8 @@ private:
 
     void PackageMjpegFrame(const source_state::ParsedFramePayload &payload) {
         const EncodedFrame &frame = payload.encoded_frame;
-        if (frame.codec != Codec::kMjpeg || !EncodedFrameHasPayload(&frame)) {
+        if (frame.codec != Codec::kMjpeg ||
+            !IsEncodedFramePayloadValid(&frame)) {
             return;
         }
 
@@ -625,7 +628,7 @@ private:
             if (!source_state::CacheMjpegFrame(stream, frame)) {
                 return;
             }
-            if (mjpeg_clients_.HasClient(frame.stream_id)) {
+            if (mjpeg_clients_.IsStreamClientAttached(frame.stream_id)) {
                 clients = mjpeg_clients_.CollectWrites(frame.stream_id);
             }
         }

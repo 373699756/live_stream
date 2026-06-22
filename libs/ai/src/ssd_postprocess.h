@@ -53,7 +53,7 @@ public:
                              const std::vector<int32_t> &values);
     bool AppendConfidenceLayer(uint32_t layer,
                                const std::vector<int32_t> &values);
-    bool HasCompleteFrame() const;
+    bool IsFrameComplete() const;
     std::vector<AiDetection> DecodeDetections(const AiModelConfig &config);
 
 private:

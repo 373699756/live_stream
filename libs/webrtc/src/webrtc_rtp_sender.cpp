@@ -81,7 +81,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     if (context.mutex == nullptr || context.service_stats == nullptr ||
         !context.engine || peer.peer_id.empty() ||
         frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
-        !EncodedFrameHasPayload(&frame)) {
+        !IsEncodedFramePayloadValid(&frame)) {
         return false;
     }
 

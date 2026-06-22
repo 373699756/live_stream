@@ -83,7 +83,7 @@ bool ParseOptionalPerimeterConfig(const ConfigJson &value,
                                  &perimeter->regions);
 }
 
-bool HasTask(const std::vector<AiModelConfig> &tasks, AiTask task) {
+bool ContainsTask(const std::vector<AiModelConfig> &tasks, AiTask task) {
     for (const AiModelConfig &item : tasks) {
         if (item.task == task) {
             return true;
@@ -184,7 +184,7 @@ bool IsValidAiConfig(const AiConfig &config) {
     seen_tasks.reserve(config.tasks.size());
     for (const AiModelConfig &task_config : config.tasks) {
         if (!IsValidAiTaskConfig(task_config) ||
-            HasTask(seen_tasks, task_config.task)) {
+            ContainsTask(seen_tasks, task_config.task)) {
             return false;
         }
         seen_tasks.push_back(task_config);
@@ -260,7 +260,7 @@ bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
         }
         AiModelConfig task_config;
         if (!ParseAiTaskConfig(item, fallback_task, &task_config) ||
-            HasTask(parsed_tasks, task_config.task)) {
+            ContainsTask(parsed_tasks, task_config.task)) {
             return false;
         }
         parsed_tasks.push_back(task_config);

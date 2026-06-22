@@ -202,7 +202,7 @@ int64_t FrameRing::LastFrameTimestamp(StreamId stream_id) const {
 
 void FrameRing::Write(const FramePayload &frame) {
     const EncodedFrame &encoded_frame = frame.encoded_frame;
-    if (!EncodedFrameHasPayload(&encoded_frame)) {
+    if (!IsEncodedFramePayloadValid(&encoded_frame)) {
         return;
     }
 

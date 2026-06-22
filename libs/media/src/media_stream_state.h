@@ -60,13 +60,13 @@ bool IsBrowserCodec(Codec codec);
 bool IsFlvCodecSupported(Codec codec);
 bool IsHlsCodecSupported(Codec codec);
 bool IsMjpegCodecSupported(Codec codec);
-bool HasFlvSequenceHeader(const StreamContext &stream);
+bool IsFlvSequenceHeaderReady(const StreamContext &stream);
 bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);
 bool IsMjpegStreamReady(const StreamContext &stream);
 
 void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload);
-bool HasParsedUnits(const ParsedFramePayload &payload);
+bool IsFramePayloadParsed(const ParsedFramePayload &payload);
 void ParsedFramePayloadUnref(ParsedFramePayload *payload);
 void ClearStreamContext(StreamContext *stream);
 

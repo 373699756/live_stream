@@ -78,7 +78,7 @@ private:
         capture_request.stream_id = stream_id;
         SnapshotFrame frame =
             device_->CaptureSnapshot(capture_request);
-        if (!frame.HasValidPayload() || !LooksLikeJpeg(frame)) {
+        if (!frame.IsPayloadValid() || !LooksLikeJpeg(frame)) {
             return SnapshotTextResponse(500, "Invalid snapshot frame");
         }
         const uint8_t *data = frame.PayloadData();

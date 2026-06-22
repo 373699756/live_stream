@@ -22,7 +22,7 @@ namespace {
 constexpr const char *kMjpegBoundary = "live_stream_frame";
 constexpr const char *kMjpegFrameTail = "\r\n";
 
-bool HasUsableFlvStart(const MediaFlvStart &flv_start) {
+bool IsFlvStartUsable(const MediaFlvStart &flv_start) {
     return flv_start.supported && !flv_start.file_header.empty() &&
            !flv_start.sequence_header.empty();
 }
@@ -347,7 +347,7 @@ private:
              flv_start.cached_gop_complete ? 1 : 0,
              static_cast<unsigned long long>(
                  flv_start.config_generation));
-        if (!HasUsableFlvStart(flv_start)) {
+        if (!IsFlvStartUsable(flv_start)) {
             const bool keyframe_requested =
                 RequestPreviewKeyframe(media_streams, stream_id);
             // FLV 起播数据不完整时不创建 client，只请求关键帧让 MediaStreams 尽快

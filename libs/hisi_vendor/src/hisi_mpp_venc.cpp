@@ -720,11 +720,11 @@ void VencStreamLoop(MediaPipelineConfig config,
     }
 }
 
-bool HasCreatedVenc(const VencChannelState& state) {
+bool IsVencCreated(const VencChannelState& state) {
     return state.created;
 }
 
-bool HasBoundVenc(const VencChannelState& state) {
+bool IsVencBound(const VencChannelState& state) {
     return state.bound_to_vpss;
 }
 
@@ -909,11 +909,11 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
              ? VencStateMatches(impl_->sub_venc_, config.sub_venc_channel,
                                 config.vpss_group, config.sub_vpss_channel,
                                 config.sub_stream)
-             : !HasCreatedVenc(impl_->sub_venc_));
+             : !IsVencCreated(impl_->sub_venc_));
     if (all_required_channels_created) {
         return true;
     }
-    if (HasCreatedVenc(impl_->main_venc_) || HasCreatedVenc(impl_->sub_venc_)) {
+    if (IsVencCreated(impl_->main_venc_) || IsVencCreated(impl_->sub_venc_)) {
         if (impl_->stream_running_.load() || impl_->stream_thread_.joinable()) {
             Error("hisi_vendor",
                   "reconfigure VENC while stream thread is running");
@@ -986,14 +986,14 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     const bool need_sub_stream = config.sub_stream.enabled;
     const bool all_required_channels_bound =
-        HasBoundVenc(impl_->main_venc_) &&
-        (need_sub_stream ? HasBoundVenc(impl_->sub_venc_)
-                         : !HasBoundVenc(impl_->sub_venc_));
+        IsVencBound(impl_->main_venc_) &&
+        (need_sub_stream ? IsVencBound(impl_->sub_venc_)
+                         : !IsVencBound(impl_->sub_venc_));
     if (all_required_channels_bound) {
         return true;
     }
-    if (!HasCreatedVenc(impl_->main_venc_) ||
-        (need_sub_stream && !HasCreatedVenc(impl_->sub_venc_))) {
+    if (!IsVencCreated(impl_->main_venc_) ||
+        (need_sub_stream && !IsVencCreated(impl_->sub_venc_))) {
         Error("hisi_vendor", "bind VPSS to VENC before VENC is created");
         return false;
     }

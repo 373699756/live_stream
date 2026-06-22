@@ -10,7 +10,7 @@ namespace live_stream {
 
 namespace {
 
-bool HasJsonContentType(const HttpResponse &response) {
+bool IsJsonContentType(const HttpResponse &response) {
     const auto iter = response.headers.find("Content-Type");
     if (iter == response.headers.end()) {
         return false;
@@ -89,7 +89,7 @@ HttpResponse OkResponse() {
 
 HttpResponse AddJsonEnvelope(const HttpRequest &request,
                              const HttpResponse &response) {
-    if (!StartsWith(request.path, "/api/") || !HasJsonContentType(response)) {
+    if (!StartsWith(request.path, "/api/") || !IsJsonContentType(response)) {
         return response;
     }
 

@@ -521,7 +521,7 @@ void HlsMaker::MarkRequested() const { requested_ = true; }
 
 bool HlsMaker::Requested() const { return requested_; }
 
-bool HlsMaker::HasSegments() const { return !segments_.empty(); }
+bool HlsMaker::IsPlaylistReady() const { return !segments_.empty(); }
 
 size_t HlsMaker::SegmentCount() const { return segments_.size(); }
 

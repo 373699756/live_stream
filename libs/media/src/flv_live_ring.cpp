@@ -45,7 +45,7 @@ void FlvLiveRing::Clear() {
 
 size_t FlvLiveRing::ClientCount() const { return clients_.size(); }
 
-bool FlvLiveRing::HasClient(StreamId stream_id) const {
+bool FlvLiveRing::IsStreamClientAttached(StreamId stream_id) const {
     for (const auto &item : clients_) {
         if (!item.second.detached && item.second.stream_id == stream_id &&
             item.second.sink != nullptr) {

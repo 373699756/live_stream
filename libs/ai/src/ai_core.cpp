@@ -59,7 +59,7 @@ hisisdk::Size YuvSizeForStream(const MediaChannels &channels,
     return hisisdk::Size{size.width, size.height};
 }
 
-bool HasAlertDetections(const AiInferenceResult &result) {
+bool IsAlertResultActive(const AiInferenceResult &result) {
     return result.success && !result.detections.empty();
 }
 
@@ -471,7 +471,7 @@ struct AiCore::State final {
             task_worker->last_result_time_ms =
                 infra::Time::MonotonicMillis();
             task_worker->stats.active_results =
-                HasAlertDetections(result)
+                IsAlertResultActive(result)
                     ? static_cast<uint32_t>(result.detections.size())
                     : 0;
         }
@@ -486,7 +486,7 @@ struct AiCore::State final {
         const AiModelConfig &run_config,
         const std::shared_ptr<AiTaskWorker> &task_worker,
         PendingAlertCapture *pending_alert) {
-        if (!HasAlertDetections(result) || options.device == nullptr ||
+        if (!IsAlertResultActive(result) || options.device == nullptr ||
             pending_alert == nullptr) {
             return false;
         }
@@ -914,7 +914,7 @@ struct AiCore::State final {
             task_worker->engine->Available();
         stats.alarm_linked = options.alarm != nullptr;
         stats.active_results =
-            stats.enabled && HasAlertDetections(task_worker->last_result)
+            stats.enabled && IsAlertResultActive(task_worker->last_result)
                 ? static_cast<uint32_t>(
                       task_worker->last_result.detections.size())
                 : 0;
@@ -1004,7 +1004,8 @@ struct AiCore::State final {
         AiTask latest_active_task = AiTask::kObjectDetection;
         for (const std::shared_ptr<AiTaskWorker> &task_worker :
              task_workers) {
-            if (!task_worker || !HasAlertDetections(task_worker->last_result)) {
+            if (!task_worker ||
+                !IsAlertResultActive(task_worker->last_result)) {
                 continue;
             }
             input.active = true;

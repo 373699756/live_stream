@@ -42,7 +42,7 @@ void MjpegClients::Clear() {
 
 size_t MjpegClients::Size() const { return mjpeg_clients_.size(); }
 
-bool MjpegClients::HasClient(StreamId stream_id) const {
+bool MjpegClients::IsStreamClientAttached(StreamId stream_id) const {
     for (const auto &item : mjpeg_clients_) {
         if (!item.second.detached && item.second.stream_id == stream_id &&
             item.second.sink != nullptr) {

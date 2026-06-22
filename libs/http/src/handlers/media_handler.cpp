@@ -241,7 +241,7 @@ ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
     return root;
 }
 
-bool HasReadyBrowserProtocol(const MediaStreamInfo &stream_info) {
+bool IsBrowserProtocolReady(const MediaStreamInfo &stream_info) {
     return stream_info.hls_ready || stream_info.flv_ready ||
            stream_info.mjpeg_ready;
 }
@@ -251,7 +251,7 @@ void RequestPreviewKeyframe(MediaStreams *media_streams,
                             const MediaStreamInfo &stream_info) {
     if (media_streams == nullptr || !stream_info.running ||
         !stream_info.browser_codec ||
-        HasReadyBrowserProtocol(stream_info)) {
+        IsBrowserProtocolReady(stream_info)) {
         return;
     }
     (void)media_streams->RequestKeyframe(stream_id,

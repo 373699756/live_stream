@@ -1452,7 +1452,7 @@ private:
             }
         }
 
-        return ssd_postprocess_.HasCompleteFrame();
+        return ssd_postprocess_.IsFrameComplete();
     }
 
     bool PrepareSsdPostprocess() {

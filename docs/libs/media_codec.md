@@ -34,7 +34,7 @@ public API 在 `media_codec.h`，归 `media_codec` 命名空间：
 
 - AnnexB NAL 遍历：`ForEachAnnexBNalUnit`、`IAnnexBNalUnitSink`。
 - H.264/H.265 NAL 列表：`H264NalUnitList`、`H265NalUnitList`。
-- parameter set 和 keyframe 判断：`Has*ParameterSets`、`Has*Keyframe`。
+- parameter set 和 keyframe 判断：`Contains*ParameterSets`、`Contains*Keyframe`。
 - parameter set 提取：`ExtractH264ParameterSets`、`ExtractH265ParameterSets`。
 - NAL type 常量和判断：`kH264NalType*`、`kH265NalType*`、
   `Is*ParameterSetNal`、`Is*IdrNal`。

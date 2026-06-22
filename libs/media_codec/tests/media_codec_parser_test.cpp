@@ -33,9 +33,10 @@ int main() {
         return 1;
     }
     if (units.count != 3 ||
-        !live_stream::media_codec::HasH264ParameterSets(units) ||
-        !live_stream::media_codec::HasCompleteH264ParameterSets(units) ||
-        !live_stream::media_codec::HasH264Keyframe(units)) {
+        !live_stream::media_codec::ContainsH264ParameterSets(units) ||
+        !live_stream::media_codec::ContainsCompleteH264ParameterSets(
+            units) ||
+        !live_stream::media_codec::ContainsH264Keyframe(units)) {
         return 2;
     }
 
@@ -94,9 +95,10 @@ int main() {
         return 6;
     }
     if (h265_units.count != 5 ||
-        !live_stream::media_codec::HasH265ParameterSets(h265_units) ||
-        !live_stream::media_codec::HasCompleteH265ParameterSets(h265_units) ||
-        !live_stream::media_codec::HasH265Keyframe(h265_units)) {
+        !live_stream::media_codec::ContainsH265ParameterSets(h265_units) ||
+        !live_stream::media_codec::ContainsCompleteH265ParameterSets(
+            h265_units) ||
+        !live_stream::media_codec::ContainsH265Keyframe(h265_units)) {
         return 7;
     }
 

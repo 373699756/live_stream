@@ -109,13 +109,13 @@ bool ParseH265AnnexBNalUnits(const uint8_t *data,
            !units->empty();
 }
 
-bool HasH265ParameterSets(const H265NalUnitList &units) {
+bool ContainsH265ParameterSets(const H265NalUnitList &units) {
     return AnyNalUnit(units, [](const H265NalUnit &unit) {
         return IsH265ParameterSetNal(unit.type);
     });
 }
 
-bool HasCompleteH265ParameterSets(const H265NalUnitList &units) {
+bool ContainsCompleteH265ParameterSets(const H265NalUnitList &units) {
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
@@ -134,7 +134,7 @@ bool HasCompleteH265ParameterSets(const H265NalUnitList &units) {
     return false;
 }
 
-bool HasH265Keyframe(const H265NalUnitList &units) {
+bool ContainsH265Keyframe(const H265NalUnitList &units) {
     return AnyNalUnit(units, [](const H265NalUnit &unit) {
         return IsH265IdrNal(unit.type);
     });

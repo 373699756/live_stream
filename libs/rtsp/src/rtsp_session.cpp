@@ -125,7 +125,7 @@ void RtspSession::ClearSubscription() {
     ClearStartFrames();
 }
 
-bool RtspSession::HasSubscription() const {
+bool RtspSession::IsSubscribed() const {
     return subscription_id != 0;
 }
 

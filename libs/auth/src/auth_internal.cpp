@@ -28,7 +28,7 @@ bool ParseRole(const std::string& role, AuthRole* parsed) {
     return false;
 }
 
-bool RoleHasPermission(AuthRole role, AuthPermission permission) {
+bool IsPermissionAllowed(AuthRole role, AuthPermission permission) {
     switch (role) {
         case AuthRole::kAdmin:
             return true;

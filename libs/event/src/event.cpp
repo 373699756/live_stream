@@ -50,7 +50,7 @@ bool IsEventSizeValid(const Event &event) {
            event.message.size() <= kMaxMessageLength;
 }
 
-bool HasEventType(const std::vector<EventType> &types, EventType type) {
+bool ContainsEventType(const std::vector<EventType> &types, EventType type) {
     for (EventType candidate : types) {
         if (candidate == type) {
             return true;
@@ -59,7 +59,7 @@ bool HasEventType(const std::vector<EventType> &types, EventType type) {
     return false;
 }
 
-bool AreEventTypesValid(const std::vector<EventType> &types) {
+bool IsEventTypesValid(const std::vector<EventType> &types) {
     if (types.empty()) {
         return false;
     }
@@ -215,6 +215,8 @@ private:
         }
     }
 
+    // Locked suffix means mutex_ is already held by the caller. This helper
+    // only rewrites ring-buffer state; it does not join workers or notify.
     void ClearQueueLocked() {
         for (uint32_t i = 0; i < size_; ++i) {
             const uint32_t index = (head_ + i) % options_.queue_capacity;
@@ -402,11 +404,13 @@ private:
         return EventStatus::kOk;
     }
 
-    bool HasWorkLocked() const {
-        return !tasks_.empty() || HasReadyTimerLocked();
+    // Locked suffix documents the mutex_ precondition for helpers used inside
+    // the condition-variable wait loop.
+    bool IsWorkReadyLocked() const {
+        return !tasks_.empty() || IsTimerReadyLocked();
     }
 
-    bool HasReadyTimerLocked() const {
+    bool IsTimerReadyLocked() const {
         if (timers_.empty()) {
             return false;
         }
@@ -419,6 +423,8 @@ private:
         return false;
     }
 
+    // Returns -1 when no timer exists; otherwise clamps elapsed deadlines to
+    // 1 ms so wait_for() never spins while still waking promptly.
     int64_t NextTimerDelayMsLocked() const {
         if (timers_.empty()) {
             return -1;
@@ -448,7 +454,7 @@ private:
             std::vector<std::pair<TimerId, Timer>> ready_timers;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
-                while (!stopping_ && !HasWorkLocked()) {
+                while (!stopping_ && !IsWorkReadyLocked()) {
                     const int64_t delay_ms = NextTimerDelayMsLocked();
                     if (delay_ms < 0) {
                         condition_.wait(lock);
@@ -546,7 +552,7 @@ public:
     Subscription SubscribeMany(Dispatcher *owner,
                                const std::vector<EventType> &types,
                                EventFn fn) {
-        if (!owner || !fn || !AreEventTypesValid(types)) {
+        if (!owner || !fn || !IsEventTypesValid(types)) {
             return Subscription();
         }
         std::lock_guard<std::mutex> lock(mutex_);
@@ -577,7 +583,8 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             for (const auto &entry : subscriptions_) {
-                if (HasEventType(entry.second.types, event_to_publish.type)) {
+                if (ContainsEventType(entry.second.types,
+                                      event_to_publish.type)) {
                     fns.push_back(entry.second.fn);
                 }
             }

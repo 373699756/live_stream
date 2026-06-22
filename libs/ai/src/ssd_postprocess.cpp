@@ -346,7 +346,7 @@ bool SsdPostprocess::AppendConfidenceLayer(
     return true;
 }
 
-bool SsdPostprocess::HasCompleteFrame() const {
+bool SsdPostprocess::IsFrameComplete() const {
     return priors_.size() == kSsdPriorCount &&
            loc_predictions_.size() == kSsdPriorCount * kSsdCoordinateCount &&
            conf_scores_.size() == kSsdPriorCount * kSsdClassCount;
@@ -354,7 +354,7 @@ bool SsdPostprocess::HasCompleteFrame() const {
 
 std::vector<AiDetection> SsdPostprocess::DecodeDetections(
     const AiModelConfig &config) {
-    if (!HasCompleteFrame()) {
+    if (!IsFrameComplete()) {
         return std::vector<AiDetection>();
     }
     if (!DecodeSsdBoxes(loc_predictions_, priors_, &boxes_)) {

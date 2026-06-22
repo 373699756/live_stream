@@ -38,7 +38,7 @@ public:
     void Reset();
     void MarkRequested() const;
     bool Requested() const;
-    bool HasSegments() const;
+    bool IsPlaylistReady() const;
     size_t SegmentCount() const;
     uint64_t FirstSegmentSequence() const;
     uint64_t LastSegmentSequence() const;

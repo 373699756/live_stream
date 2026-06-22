@@ -110,7 +110,7 @@ uint32_t WebrtcPeerTable::ActivePeerCount() const {
     return count;
 }
 
-bool WebrtcPeerTable::HasConnectedPeer(StreamId stream_id) const {
+bool WebrtcPeerTable::IsStreamConnected(StreamId stream_id) const {
     for (const auto &item : peers_) {
         if (item.second.stream_id == stream_id &&
             item.second.state == WebrtcPeerState::kConnected) {

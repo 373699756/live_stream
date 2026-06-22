@@ -39,9 +39,10 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
         ++stream->config_generation;
     }
 
-    *keyframe = *keyframe || media_codec::HasH264Keyframe(payload.h264_units);
+    *keyframe =
+        *keyframe || media_codec::ContainsH264Keyframe(payload.h264_units);
     const bool frame_has_parameter_sets =
-        media_codec::HasH264ParameterSets(payload.h264_units);
+        media_codec::ContainsH264ParameterSets(payload.h264_units);
     if (prepend_parameter_sets != nullptr) {
         // 当前帧是关键帧但不自带参数集时，HLS segment 需要前置缓存的 SPS/PPS，
         // 保证从 segment 边界接入的播放器也能解码。
@@ -68,9 +69,10 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
         ++stream->config_generation;
     }
 
-    *keyframe = *keyframe || media_codec::HasH265Keyframe(payload.h265_units);
+    *keyframe =
+        *keyframe || media_codec::ContainsH265Keyframe(payload.h265_units);
     const bool frame_has_parameter_sets =
-        media_codec::HasH265ParameterSets(payload.h265_units);
+        media_codec::ContainsH265ParameterSets(payload.h265_units);
     if (prepend_parameter_sets != nullptr) {
         // HEVC 关键帧前置参数集时必须一次带上 VPS/SPS/PPS。
         *prepend_parameter_sets = *keyframe && !frame_has_parameter_sets;
@@ -95,20 +97,20 @@ bool IsMjpegCodecSupported(Codec codec) {
     return codec == Codec::kMjpeg;
 }
 
-bool HasFlvSequenceHeader(const StreamContext &stream) {
+bool IsFlvSequenceHeaderReady(const StreamContext &stream) {
     return !stream.sequence_header_tag.empty();
 }
 
 bool IsFlvStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
            IsFlvCodecSupported(stream.codec) &&
-           HasFlvSequenceHeader(stream);
+           IsFlvSequenceHeaderReady(stream);
 }
 
 bool IsHlsStreamReady(const StreamContext &stream) {
     return IsBrowserStreamReady(stream.state, stream.codec) &&
            IsHlsCodecSupported(stream.codec) &&
-           stream.hls_maker.HasSegments();
+           stream.hls_maker.IsPlaylistReady();
 }
 
 bool IsMjpegStreamReady(const StreamContext &stream) {
@@ -147,7 +149,7 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
     }
 }
 
-bool HasParsedUnits(const ParsedFramePayload &payload) {
+bool IsFramePayloadParsed(const ParsedFramePayload &payload) {
     if (!payload.has_nal_units) {
         return false;
     }
@@ -239,7 +241,8 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
     // sequence header；MJPEG 则至少要有一帧最新 JPEG。
     info.track_ready =
         IsBrowserStreamReady(stream.state, stream.codec) &&
-        ((IsFlvCodecSupported(stream.codec) && HasFlvSequenceHeader(stream)) ||
+        ((IsFlvCodecSupported(stream.codec) &&
+          IsFlvSequenceHeaderReady(stream)) ||
          IsMjpegStreamReady(stream));
     info.hls_ready = IsHlsStreamReady(stream);
     info.flv_ready = IsFlvStreamReady(stream);
@@ -331,7 +334,7 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
 
 bool CacheMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
     if (stream == nullptr || frame.codec != Codec::kMjpeg ||
-        !EncodedFrameHasPayload(&frame)) {
+        !IsEncodedFramePayloadValid(&frame)) {
         return false;
     }
     EncodedFrame retained_frame;
@@ -355,7 +358,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
                                         uint32_t hls_playlist_depth) {
     PackagedFrameResult result;
     if (stream == nullptr || frame.codec != payload.encoded_frame.codec ||
-        !HasParsedUnits(payload)) {
+        !IsFramePayloadParsed(payload)) {
         return result;
     }
     if (stream->codec != frame.codec) {

@@ -59,7 +59,7 @@ bool RtpCodecFromCodec(Codec codec, rtp::Codec *rtp_codec) {
 bool BuildRtpInput(const EncodedFrame &frame, uint16_t *sequence,
                    uint32_t ssrc, rtp::RtpPacketizerInput *input) {
     if (input == nullptr || sequence == nullptr ||
-        !EncodedFrameHasPayload(&frame)) {
+        !IsEncodedFramePayloadValid(&frame)) {
         return false;
     }
     rtp::Codec rtp_codec = rtp::Codec::kH264;
