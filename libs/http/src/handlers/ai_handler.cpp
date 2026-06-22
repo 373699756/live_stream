@@ -75,6 +75,101 @@ ConfigJson AiConfigToJson(const AiConfig &config) {
     return root;
 }
 
+ConfigJson AiBackendsToJson(const std::vector<AiBackend> &backends) {
+    ConfigJson items = ConfigJson::array();
+    for (AiBackend backend : backends) {
+        items.push_back(AiBackendToJsonString(backend));
+    }
+    return items;
+}
+
+ConfigJson AiStreamsToJson(const std::vector<StreamId> &streams) {
+    ConfigJson items = ConfigJson::array();
+    for (StreamId stream : streams) {
+        items.push_back(StreamIdToJsonString(stream));
+    }
+    return items;
+}
+
+ConfigJson AiTaskCapabilityToJson(const AiTaskCapability &capability) {
+    ConfigJson root = ConfigJson::object();
+    root["task"] = AiTaskToJsonString(capability.task);
+    root["available"] = capability.available;
+    root["requires_model"] = capability.requires_model;
+    root["unavailable_reason"] = capability.unavailable_reason;
+    root["default_model_path"] = capability.default_model_path;
+    root["default_input_width"] = capability.default_input_width;
+    root["default_input_height"] = capability.default_input_height;
+    root["min_inference_interval_ms"] =
+        capability.min_inference_interval_ms;
+    root["max_inference_interval_ms"] =
+        capability.max_inference_interval_ms;
+    root["default_inference_interval_ms"] =
+        capability.default_inference_interval_ms;
+    root["min_results"] = capability.min_results;
+    root["max_results"] = capability.max_results;
+    root["default_max_results"] = capability.default_max_results;
+    root["min_confidence_threshold"] =
+        capability.min_confidence_threshold;
+    root["max_confidence_threshold"] =
+        capability.max_confidence_threshold;
+    root["default_confidence_threshold"] =
+        capability.default_confidence_threshold;
+    root["max_perimeter_regions"] = capability.max_perimeter_regions;
+    root["supported_backends"] =
+        AiBackendsToJson(capability.supported_backends);
+    root["supported_streams"] =
+        AiStreamsToJson(capability.supported_streams);
+    return root;
+}
+
+ConfigJson AiCapabilitiesToJson(const AiCapabilities &capabilities) {
+    ConfigJson root = ConfigJson::object();
+    root["available"] = capabilities.available;
+    root["model_runtime_available"] =
+        capabilities.model_runtime_available;
+    root["model_runtime_reason"] = capabilities.model_runtime_reason;
+    ConfigJson tasks = ConfigJson::array();
+    for (const AiTaskCapability &capability : capabilities.tasks) {
+        tasks.push_back(AiTaskCapabilityToJson(capability));
+    }
+    root["tasks"] = tasks;
+    return root;
+}
+
+AiTaskCapability UnavailableAiTaskCapability(AiTask task) {
+    AiTaskCapability capability;
+    capability.task = task;
+    capability.available = false;
+    capability.requires_model = task == AiTask::kObjectDetection ||
+                                task == AiTask::kPerimeterDetection;
+    capability.unavailable_reason = "ai_not_running";
+    capability.default_model_path =
+        capability.requires_model ? "models/inst_ssd_cycle.wk" : "";
+    capability.supported_backends.push_back(AiBackend::kHi3516Dv300Nnie);
+    capability.supported_streams.push_back(StreamId::kSub);
+    capability.supported_streams.push_back(StreamId::kMain);
+    capability.max_perimeter_regions =
+        task == AiTask::kPerimeterDetection ? 8 : 0;
+    return capability;
+}
+
+AiCapabilities UnavailableAiCapabilities() {
+    AiCapabilities capabilities;
+    capabilities.available = false;
+    capabilities.model_runtime_available = false;
+    capabilities.model_runtime_reason = "ai_not_running";
+    capabilities.tasks.push_back(
+        UnavailableAiTaskCapability(AiTask::kObjectDetection));
+    capabilities.tasks.push_back(
+        UnavailableAiTaskCapability(AiTask::kPerimeterDetection));
+    capabilities.tasks.push_back(
+        UnavailableAiTaskCapability(AiTask::kMotionClassification));
+    capabilities.tasks.push_back(
+        UnavailableAiTaskCapability(AiTask::kOcclusionDetection));
+    return capabilities;
+}
+
 ConfigJson AiStatsToJson(const AiStats &stats) {
     ConfigJson root = ConfigJson::object();
     root["enabled"] = stats.enabled;
@@ -130,6 +225,8 @@ ConfigJson DisabledAiStatusToJson(IConfig *config) {
     root["summary"] = AiStatsToJson(AiStats{});
     root["tasks"] = ConfigJson::array();
     root["last_result"] = AiResultToJson(AiInferenceResult{});
+    root["capabilities"] =
+        AiCapabilitiesToJson(UnavailableAiCapabilities());
     return root;
 }
 
@@ -235,6 +332,10 @@ public:
                               this);
         router->AddExactRoute(HttpMethod::kGet, "/api/ai/status",
                               &AiHttpHandler::HandleStatusRoute, this);
+        router->AddExactRoute(HttpMethod::kGet,
+                              "/api/ai/capabilities",
+                              &AiHttpHandler::HandleCapabilitiesRoute,
+                              this);
         router->AddExactRoute(HttpMethod::kGet, "/api/ai/alerts",
                               &AiHttpHandler::HandleAlertsRoute, this);
         router->AddPrefixRoute(HttpMethod::kGet, "/api/ai/alerts/",
@@ -250,6 +351,12 @@ private:
     static HttpResponse HandleAlertsRoute(void *user,
                                           const HttpRequest &request) {
         return static_cast<AiHttpHandler *>(user)->HandleAlerts(request);
+    }
+
+    static HttpResponse HandleCapabilitiesRoute(void *user,
+                                                const HttpRequest &request) {
+        return static_cast<AiHttpHandler *>(user)->HandleCapabilities(
+            request);
     }
 
     static HttpResponse HandleImageStrategyRoute(void *user,
@@ -278,6 +385,19 @@ private:
                      device_->GetImageInfo()));
     }
 
+    HttpResponse HandleCapabilities(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
+        }
+        return JsonResponse(
+            200, AiCapabilitiesToJson(
+                     ai_ != nullptr ? ai_->GetCapabilities()
+                                    : UnavailableAiCapabilities()));
+    }
+
     HttpResponse HandleStatus(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
@@ -298,6 +418,8 @@ private:
         root["summary"] = AiStatsToJson(ai_->GetStats());
         root["tasks"] = AiTaskStatusesToJson(ai_->GetTaskStatuses());
         root["last_result"] = AiResultToJson(ai_->GetLastResult());
+        root["capabilities"] =
+            AiCapabilitiesToJson(ai_->GetCapabilities());
         return JsonResponse(200, root);
     }
 

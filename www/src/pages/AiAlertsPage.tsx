@@ -11,6 +11,7 @@ import { saveAiAlarmRule } from '../api/alarm';
 import { aiAlertImageUrl, saveAiConfig } from '../api/ai';
 import type {
     AiAlertRecord,
+    AiCapabilities,
     AiConfig,
     AiModelConfig,
     AiPerimeterRegion,
@@ -152,10 +153,15 @@ function numericOptionsWithCurrent(
     return [...options, { label: label(roundedValue), value: roundedValue }];
 }
 
-function sharedHiddenTaskConfig(config: AiConfig) {
+function sharedHiddenTaskConfig(
+    config: AiConfig,
+    capabilities?: AiCapabilities | null,
+) {
     const fallback = defaultTaskConfig('object_detection');
     const source =
-        config.tasks.find((task) => isAiTaskAvailable(task.task)) ??
+        config.tasks.find((task) =>
+            isAiTaskAvailable(task.task, capabilities),
+        ) ??
         draftTaskByName(config, 'object_detection') ??
         fallback;
     return {
@@ -181,9 +187,14 @@ function sharedHiddenTaskConfig(config: AiConfig) {
     };
 }
 
-function withSharedHiddenDefaults(config: AiConfig): AiConfig {
-    const shared = sharedHiddenTaskConfig(config);
-    const threshold = thresholdForSensitivity(sensitivityForConfig(config));
+function withSharedHiddenDefaults(
+    config: AiConfig,
+    capabilities?: AiCapabilities | null,
+): AiConfig {
+    const shared = sharedHiddenTaskConfig(config, capabilities);
+    const threshold = thresholdForSensitivity(
+        sensitivityForConfig(config, capabilities),
+    );
     return {
         ...config,
         tasks: config.tasks.map((task) => {
@@ -202,7 +213,10 @@ function withSharedHiddenDefaults(config: AiConfig): AiConfig {
     };
 }
 
-function completeAiConfig(config: AiConfig): AiConfig {
+function completeAiConfig(
+    config: AiConfig,
+    capabilities?: AiCapabilities | null,
+): AiConfig {
     const tasks = kTaskOrder.map((taskName) =>
         cloneTaskConfig(
             config.tasks.find((task) => task.task === taskName) ??
@@ -212,10 +226,11 @@ function completeAiConfig(config: AiConfig): AiConfig {
     return withSharedHiddenDefaults({
         ...config,
         enabled: tasks.some(
-            (task) => task.enabled && isAiTaskAvailable(task.task),
+            (task) =>
+                task.enabled && isAiTaskAvailable(task.task, capabilities),
         ),
         tasks,
-    });
+    }, capabilities);
 }
 
 function emptyStats(): AiStats {
@@ -274,12 +289,15 @@ function updateTaskConfig(
     };
 }
 
-function taskStatusText(task: AiTaskStatus | undefined) {
+function taskStatusText(
+    task: AiTaskStatus | undefined,
+    capabilities?: AiCapabilities | null,
+) {
     if (!task) {
         return '未配置';
     }
-    if (!isAiTaskAvailable(task.config.task)) {
-        return taskUnavailableText(task.config.task);
+    if (!isAiTaskAvailable(task.config.task, capabilities)) {
+        return taskUnavailableText(task.config.task, capabilities);
     }
     if (!task.config.enabled) {
         return '关闭';
@@ -293,8 +311,11 @@ function taskStatusText(task: AiTaskStatus | undefined) {
     return '运行';
 }
 
-function taskBadgeState(task: AiTaskStatus | undefined) {
-    if (task && !isAiTaskAvailable(task.config.task)) {
+function taskBadgeState(
+    task: AiTaskStatus | undefined,
+    capabilities?: AiCapabilities | null,
+) {
+    if (task && !isAiTaskAvailable(task.config.task, capabilities)) {
         return 'pending' as const;
     }
     if (!task || !task.config.enabled || !task.stats.enabled) {
@@ -325,9 +346,14 @@ function thresholdForSensitivity(value: SensitivityLevel) {
     ).threshold;
 }
 
-function sensitivityForConfig(config: AiConfig | null): SensitivityLevel {
+function sensitivityForConfig(
+    config: AiConfig | null,
+    capabilities?: AiCapabilities | null,
+): SensitivityLevel {
     const sourceTask =
-        config?.tasks.find((task) => isAiTaskAvailable(task.task)) ??
+        config?.tasks.find((task) =>
+            isAiTaskAvailable(task.task, capabilities),
+        ) ??
         config?.tasks[0];
     return sensitivityFromThreshold(sourceTask?.confidence_threshold ?? 0.5);
 }
@@ -464,9 +490,15 @@ function videoAreaStyle(videoArea: SurfaceRect) {
     };
 }
 
-function SnapshotRail({ alerts }: { alerts: AiAlertRecord[] }) {
+function SnapshotRail({
+    alerts,
+    capabilities,
+}: {
+    alerts: AiAlertRecord[];
+    capabilities: AiCapabilities | null;
+}) {
     const latestAlerts = alerts
-        .filter((alert) => isAiTaskAvailable(alert.task))
+        .filter((alert) => isAiTaskAvailable(alert.task, capabilities))
         .slice()
         .sort((left, right) => right.timestamp_ms - left.timestamp_ms)
         .slice(0, 10);
@@ -553,6 +585,7 @@ export function AiAlertsPage() {
         error,
         refresh,
     } = useAiAlerts();
+    const aiCapabilities = status?.capabilities ?? null;
     const activeStatus = statuses.find((item) => item.stream === previewStream);
     const summary = status?.summary ?? emptyStats();
     const supportedTaskSummary = useMemo(() => {
@@ -562,7 +595,7 @@ export function AiAlertsPage() {
         const enabledTasks = status.tasks.filter(
             (task) =>
                 task.config.enabled &&
-                isAiTaskAvailable(task.config.task),
+                isAiTaskAvailable(task.config.task, status.capabilities),
         );
         return {
             backendLabel:
@@ -582,8 +615,10 @@ export function AiAlertsPage() {
         surfaceSize.width > 0 && surfaceSize.height > 0
             ? contentAreaForSurface(frame, surfaceSize)
             : null;
-    const sensitivity = sensitivityForConfig(draft);
-    const sharedConfig = draft ? sharedHiddenTaskConfig(draft) : null;
+    const sensitivity = sensitivityForConfig(draft, aiCapabilities);
+    const sharedConfig = draft
+        ? sharedHiddenTaskConfig(draft, aiCapabilities)
+        : null;
     const intervalOptions = numericOptionsWithCurrent(
         kInferenceIntervalOptions,
         sharedConfig?.inference_interval_ms ?? 500,
@@ -614,7 +649,7 @@ export function AiAlertsPage() {
         if (!status || dirty) {
             return;
         }
-        setDraft(completeAiConfig(status.config));
+        setDraft(completeAiConfig(status.config, status.capabilities));
         setSaveMessage('');
     }, [dirty, status]);
 
@@ -679,8 +714,13 @@ export function AiAlertsPage() {
     );
 
     const updateTaskEnabled = (taskName: AiTaskName, enabled: boolean) => {
-        if (!isAiTaskAvailable(taskName)) {
-            setSaveMessage(`${taskLabel(taskName)}${taskUnavailableText(taskName)}`);
+        if (!isAiTaskAvailable(taskName, aiCapabilities)) {
+            setSaveMessage(
+                `${taskLabel(taskName)}${taskUnavailableText(
+                    taskName,
+                    aiCapabilities,
+                )}`,
+            );
             return;
         }
         updateDraftWith((current) =>
@@ -715,7 +755,7 @@ export function AiAlertsPage() {
 
     const updatePerimeterRegions = useCallback(
         (updater: (regions: AiPerimeterRegion[]) => AiPerimeterRegion[]) => {
-            if (!isAiTaskAvailable('perimeter_detection')) {
+            if (!isAiTaskAvailable('perimeter_detection', aiCapabilities)) {
                 return;
             }
             updateDraftWith((current) => {
@@ -730,7 +770,7 @@ export function AiAlertsPage() {
                 });
             });
         },
-        [updateDraftWith],
+        [aiCapabilities, updateDraftWith],
     );
 
     const pointerToRegionPoint = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -846,7 +886,7 @@ export function AiAlertsPage() {
     };
 
     const addRegion = () => {
-        if (!isAiTaskAvailable('perimeter_detection')) {
+        if (!isAiTaskAvailable('perimeter_detection', aiCapabilities)) {
             return;
         }
         setEditingPerimeter(true);
@@ -891,7 +931,7 @@ export function AiAlertsPage() {
     };
 
     const togglePerimeterEdit = () => {
-        if (!isAiTaskAvailable('perimeter_detection')) {
+        if (!isAiTaskAvailable('perimeter_detection', aiCapabilities)) {
             return;
         }
         if (!editingPerimeter && perimeterTask) {
@@ -904,7 +944,7 @@ export function AiAlertsPage() {
         if (!status) {
             return;
         }
-        setDraft(completeAiConfig(status.config));
+        setDraft(completeAiConfig(status.config, status.capabilities));
         setDirty(false);
         if (alarmConfig) {
             setAlarmRule({
@@ -923,7 +963,8 @@ export function AiAlertsPage() {
         setSaving(true);
         setSaveMessage('');
         const nextConfig = normalizeAiRootConfigForSave(
-            withSharedHiddenDefaults(draft),
+            withSharedHiddenDefaults(draft, aiCapabilities),
+            aiCapabilities,
         );
         const requests: Promise<void>[] = [saveAiConfig(nextConfig)];
         const nextAlarmRule = alarmRule
@@ -943,7 +984,7 @@ export function AiAlertsPage() {
             .then(() => {
                 setDirty(false);
                 setAlarmDirty(false);
-                setDraft(completeAiConfig(nextConfig));
+                setDraft(completeAiConfig(nextConfig, aiCapabilities));
                 if (nextAlarmRule) {
                     setAlarmRule(nextAlarmRule);
                 }
@@ -1240,7 +1281,10 @@ export function AiAlertsPage() {
                                         orderedTaskStatuses[index];
                                     const enabled = Boolean(task?.enabled);
                                     const available =
-                                        isAiTaskAvailable(taskName);
+                                        isAiTaskAvailable(
+                                            taskName,
+                                            aiCapabilities,
+                                        );
                                     return (
                                         <article
                                             className="ai-event-switch-row"
@@ -1272,6 +1316,7 @@ export function AiAlertsPage() {
                                                             ? `${alertCounts[taskName]} 张抓图`
                                                             : taskUnavailableText(
                                                                   taskName,
+                                                                  aiCapabilities,
                                                               )}
                                                     </em>
                                                 </span>
@@ -1279,9 +1324,11 @@ export function AiAlertsPage() {
                                             <StatusBadge
                                                 state={taskBadgeState(
                                                     taskStatus,
+                                                    aiCapabilities,
                                                 )}
                                                 label={taskStatusText(
                                                     taskStatus,
+                                                    aiCapabilities,
                                                 )}
                                             />
                                             <div className="ai-event-switch-stats">
@@ -1427,7 +1474,10 @@ export function AiAlertsPage() {
                     </section>
                 </main>
 
-                <SnapshotRail alerts={alerts} />
+                <SnapshotRail
+                    alerts={alerts}
+                    capabilities={aiCapabilities}
+                />
             </div>
         </div>
     );

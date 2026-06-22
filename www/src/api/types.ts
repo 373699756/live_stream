@@ -418,6 +418,35 @@ export type AiTaskName =
     | 'motion_classification'
     | 'occlusion_detection';
 
+export interface AiTaskCapability {
+    task: AiTaskName;
+    available: boolean;
+    requires_model: boolean;
+    unavailable_reason: string;
+    default_model_path: string;
+    default_input_width: number;
+    default_input_height: number;
+    min_inference_interval_ms: number;
+    max_inference_interval_ms: number;
+    default_inference_interval_ms: number;
+    min_results: number;
+    max_results: number;
+    default_max_results: number;
+    min_confidence_threshold: number;
+    max_confidence_threshold: number;
+    default_confidence_threshold: number;
+    max_perimeter_regions: number;
+    supported_backends: AiBackendId[];
+    supported_streams: StreamName[];
+}
+
+export interface AiCapabilities {
+    available: boolean;
+    model_runtime_available: boolean;
+    model_runtime_reason: string;
+    tasks: AiTaskCapability[];
+}
+
 export interface AiPerimeterRegion {
     name: string;
     x: number;
@@ -491,6 +520,7 @@ export interface AiStatus {
     summary: AiStats;
     tasks: AiTaskStatus[];
     last_result: AiInferenceResult;
+    capabilities: AiCapabilities;
 }
 
 export interface AiAlertRecord {

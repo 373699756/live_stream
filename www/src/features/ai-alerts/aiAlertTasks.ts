@@ -1,9 +1,11 @@
 import type {
     AiAlertRecord,
     AiBackendId,
+    AiCapabilities,
     AiConfig,
     AiModelConfig,
     AiStatus,
+    AiTaskCapability,
     AiTaskName,
 } from '../../api/types';
 
@@ -46,41 +48,48 @@ export const kAiEventTabs: AiEventTab[] = [
     },
 ];
 
-interface AiTaskCapability {
-    available: boolean;
-    unavailableText: string;
+function capabilityForTask(
+    capabilities: AiCapabilities | null | undefined,
+    task: AiTaskName,
+): AiTaskCapability | undefined {
+    return capabilities?.tasks.find((item) => item.task === task);
 }
 
-export const kAiTaskCapabilities: Record<AiTaskName, AiTaskCapability> = {
-    object_detection: {
-        available: false,
-        unavailableText: '模型未内置',
-    },
-    perimeter_detection: {
-        available: false,
-        unavailableText: '模型未内置',
-    },
-    motion_classification: {
-        available: true,
-        unavailableText: '',
-    },
-    occlusion_detection: {
-        available: true,
-        unavailableText: '',
-    },
-};
-
-export function isAiTaskAvailable(task: AiTaskName) {
-    return kAiTaskCapabilities[task]?.available === true;
+export function isAiTaskAvailable(
+    task: AiTaskName,
+    capabilities?: AiCapabilities | null,
+) {
+    const capability = capabilityForTask(capabilities, task);
+    return capability ? capability.available : true;
 }
 
-export function taskUnavailableText(task: AiTaskName) {
-    return kAiTaskCapabilities[task]?.unavailableText || '能力未提供';
+export function taskUnavailableText(
+    task: AiTaskName,
+    capabilities?: AiCapabilities | null,
+) {
+    const reason = capabilityForTask(capabilities, task)?.unavailable_reason;
+    switch (reason) {
+        case 'hisi_ai_runtime_unavailable':
+        case 'hisi_nnie_ive_runtime_unavailable':
+            return 'AI 运行库不可用';
+        case 'ai_not_running':
+            return 'AI 后端未接入';
+        case '':
+        case undefined:
+            return '能力未提供';
+        default:
+            return reason;
+    }
 }
 
-export function applyAiTaskCapabilities(config: AiConfig): AiConfig {
+export function applyAiTaskCapabilities(
+    config: AiConfig,
+    capabilities?: AiCapabilities | null,
+): AiConfig {
     const tasks = config.tasks.map((task) =>
-        isAiTaskAvailable(task.task) ? task : { ...task, enabled: false },
+        isAiTaskAvailable(task.task, capabilities)
+            ? task
+            : { ...task, enabled: false },
     );
     return {
         ...config,
@@ -89,15 +98,18 @@ export function applyAiTaskCapabilities(config: AiConfig): AiConfig {
     };
 }
 
-export function isAiModelConfigRunnable(config: AiModelConfig | undefined) {
-    return Boolean(config && isAiTaskAvailable(config.task));
+export function isAiModelConfigRunnable(
+    config: AiModelConfig | undefined,
+    capabilities?: AiCapabilities | null,
+) {
+    return Boolean(config && isAiTaskAvailable(config.task, capabilities));
 }
 
 export function supportedEnabledTaskStatuses(status: AiStatus) {
     return status.tasks.filter(
         (taskStatus) =>
             taskStatus.config.enabled &&
-            isAiTaskAvailable(taskStatus.config.task),
+            isAiTaskAvailable(taskStatus.config.task, status.capabilities),
     );
 }
 
@@ -105,7 +117,7 @@ export function hasUnsupportedEnabledTasks(status: AiStatus) {
     return status.tasks.some(
         (taskStatus) =>
             taskStatus.config.enabled &&
-            !isAiTaskAvailable(taskStatus.config.task),
+            !isAiTaskAvailable(taskStatus.config.task, status.capabilities),
     );
 }
 
@@ -152,10 +164,20 @@ export function taskUsesModel(task: AiTaskName) {
     return task === 'object_detection' || task === 'perimeter_detection';
 }
 
-export function taskRequiresModelPath(task: AiTaskName, backend: AiBackendId) {
-    return isAiTaskAvailable(task) &&
-        backend === 'hisi3516dv300_nnie' &&
-        taskUsesModel(task);
+export function taskRequiresModelPath(
+    task: AiTaskName,
+    backend: AiBackendId,
+    capabilities?: AiCapabilities | null,
+) {
+    const capability = capabilityForTask(capabilities, task);
+    const backendSupported = capability
+        ? capability.supported_backends.includes(backend)
+        : backend === 'hisi3516dv300_nnie';
+    return (
+        isAiTaskAvailable(task, capabilities) &&
+        backendSupported &&
+        (capability ? capability.requires_model : taskUsesModel(task))
+    );
 }
 
 export function alertGroupsByTask(alerts: AiAlertRecord[]) {
@@ -179,8 +201,8 @@ export function alertsForTask(
 }
 
 export function tabStateLabel(status: AiStatus | null, task: AiTaskName) {
-    if (!isAiTaskAvailable(task)) {
-        return taskUnavailableText(task);
+    if (!isAiTaskAvailable(task, status?.capabilities)) {
+        return taskUnavailableText(task, status?.capabilities);
     }
     if (!status) {
         return '读取中';
@@ -203,7 +225,7 @@ export function emptyTextForTask(
     const taskStatus = status?.tasks.find(
         (item) => item.config.task === activeTask,
     );
-    if (!isAiTaskAvailable(activeTask)) {
+    if (!isAiTaskAvailable(activeTask, status?.capabilities)) {
         return `${taskLabel(activeTask)}当前未提供模型能力。`;
     }
     if (status && !taskStatus?.config.enabled) {

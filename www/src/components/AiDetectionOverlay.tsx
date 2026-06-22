@@ -130,10 +130,14 @@ function taskShortLabel(task: AiTaskName) {
     }
 }
 
-function taskHasUsableResult(task: AiTaskStatus, stream: StreamName) {
+function taskHasUsableResult(
+    task: AiTaskStatus,
+    stream: StreamName,
+    status: AiStatus | null,
+) {
     return (
         task.config.enabled &&
-        isAiTaskAvailable(task.config.task) &&
+        isAiTaskAvailable(task.config.task, status?.capabilities) &&
         task.stats.enabled &&
         task.stats.backend_available &&
         task.last_result.success &&
@@ -153,7 +157,7 @@ function resultForStream(
     let latestSequence = 0;
     let latestPtsUs = 0;
     for (const task of status.tasks ?? []) {
-        if (!taskHasUsableResult(task, stream)) {
+        if (!taskHasUsableResult(task, stream, status)) {
             continue;
         }
         detections.push(
@@ -195,7 +199,9 @@ export function AiDetectionOverlay({
     const result = resultForStream(status, stream);
     const enabledTasks =
         status?.tasks?.filter(
-            (task) => task.config.enabled && isAiTaskAvailable(task.config.task),
+            (task) =>
+                task.config.enabled &&
+                isAiTaskAvailable(task.config.task, status.capabilities),
         ) ?? [];
     const hasRunnableTask = enabledTasks.some(
         (task) => task.stats.backend_available,
@@ -276,7 +282,7 @@ export function AiDetectionOverlay({
     } else if (status?.enabled) {
         const otherStream = stream === 'main' ? 'sub' : 'main';
         const hasOtherStreamResult = (status.tasks ?? []).some((task) =>
-            taskHasUsableResult(task, otherStream),
+            taskHasUsableResult(task, otherStream, status),
         );
         statusText = hasOtherStreamResult
             ? `${streamLabel(otherStream)}有结果`

@@ -55,13 +55,17 @@ public API 在 `ai.h`：
 HTTP 路由由 `http` 实现，但业务语义归本模块：
 
 - `GET /api/ai/status`
+- `GET /api/ai/capabilities`
 - `GET /api/ai/alerts`
 - `GET /api/ai/alerts/{id}/image`
 - `PUT /api/config/ai`
 
 `GET /api/ai/status` 返回 `enabled`、完整 `config`、汇总 `summary` 和每个任务的
-`tasks[]` 状态；每个任务状态包含任务配置、统计和最近一次结果。`GET /api/ai/alerts`
-返回最新告警抓拍列表，Web Console 在 AI 页面右侧按卡片列表展示最近 10 张。
+`tasks[]` 状态，并内嵌 `capabilities`；每个任务状态包含任务配置、统计和最近一次结果。
+`GET /api/ai/capabilities` 返回同一份 AI 能力，用于 Web 展示任务选项、模型要求、
+支持后端、支持码流、参数范围和周界区域上限。Web 保存配置时必须按后端返回的任务
+`available` 能力裁剪不可用任务，不能再用前端本地硬编码决定 AI 能力。
+`GET /api/ai/alerts` 返回最新告警抓拍列表，Web Console 在 AI 页面右侧按卡片列表展示最近 10 张。
 周界抓拍卡片上的 `person`、`vehicle` 等标签来自目标检测模型类别，表示进入周界区域
 的目标类别，不表示周界事件被错误归类为目标检测任务。
 

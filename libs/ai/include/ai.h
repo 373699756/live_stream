@@ -62,6 +62,35 @@ struct AiConfig {
     std::vector<AiModelConfig> tasks;
 };
 
+struct AiTaskCapability {
+    AiTask task = AiTask::kObjectDetection;
+    bool available = false;
+    bool requires_model = false;
+    std::string unavailable_reason;
+    std::string default_model_path;
+    uint32_t default_input_width = 300;
+    uint32_t default_input_height = 300;
+    uint32_t min_inference_interval_ms = 250;
+    uint32_t max_inference_interval_ms = 2000;
+    uint32_t default_inference_interval_ms = 500;
+    uint32_t min_results = 1;
+    uint32_t max_results = 32;
+    uint32_t default_max_results = 16;
+    float min_confidence_threshold = 0.0f;
+    float max_confidence_threshold = 1.0f;
+    float default_confidence_threshold = 0.5f;
+    uint32_t max_perimeter_regions = 0;
+    std::vector<AiBackend> supported_backends;
+    std::vector<StreamId> supported_streams;
+};
+
+struct AiCapabilities {
+    bool available = false;
+    bool model_runtime_available = false;
+    std::string model_runtime_reason;
+    std::vector<AiTaskCapability> tasks;
+};
+
 struct AiDetection {
     std::string label;
     float confidence = 0.0f;
@@ -128,6 +157,7 @@ struct AiOptions {
 class IAiView {
 public:
     virtual ~IAiView() = default;
+    virtual AiCapabilities GetCapabilities() const = 0;
     virtual AiConfig GetConfig() const = 0;
     virtual AiStats GetStats() const = 0;
     virtual AiInferenceResult GetLastResult() const = 0;
@@ -145,6 +175,7 @@ public:
     bool Start();
     void Stop();
 
+    AiCapabilities GetCapabilities() const override;
     AiConfig GetConfig() const override;
     AiStats GetStats() const override;
     AiInferenceResult GetLastResult() const override;

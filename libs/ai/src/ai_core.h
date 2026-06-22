@@ -16,6 +16,7 @@ public:
 
     bool Start();
     void Stop();
+    AiCapabilities GetCapabilities() const;
     AiConfig GetConfig() const;
     AiStats GetStats() const;
     AiInferenceResult GetLastResult() const;

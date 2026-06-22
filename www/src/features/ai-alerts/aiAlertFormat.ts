@@ -4,6 +4,7 @@ import type {
     AiDetection,
     AiModelConfig,
     AlarmStatusResponse,
+    AiCapabilities,
     StreamName,
 } from '../../api/types';
 import type { MediaEvent } from '../../api/mediaEvents';
@@ -98,14 +99,21 @@ export function latestAlarmTimeText(
     return lastTriggerTime > 0 ? formatTimestamp(lastTriggerTime) : '--';
 }
 
-export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
+export function normalizeAiConfigForSave(
+    config: AiModelConfig,
+    capabilities?: AiCapabilities | null,
+): AiModelConfig {
     return {
         ...config,
         enabled: applyAiTaskCapabilities({
             enabled: config.enabled,
             tasks: [config],
-        }).tasks[0].enabled,
-        model_path: taskRequiresModelPath(config.task, config.backend)
+        }, capabilities).tasks[0].enabled,
+        model_path: taskRequiresModelPath(
+            config.task,
+            config.backend,
+            capabilities,
+        )
             ? config.model_path.trim()
             : '',
         input_width: positiveInteger(config.input_width, 300),
@@ -123,11 +131,16 @@ export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
     };
 }
 
-export function normalizeAiRootConfigForSave(config: AiConfig): AiConfig {
-    const tasks = config.tasks.map(normalizeAiConfigForSave);
+export function normalizeAiRootConfigForSave(
+    config: AiConfig,
+    capabilities?: AiCapabilities | null,
+): AiConfig {
+    const tasks = config.tasks.map((task) =>
+        normalizeAiConfigForSave(task, capabilities),
+    );
     return applyAiTaskCapabilities({
         ...config,
         enabled: tasks.some((task) => task.enabled),
         tasks,
-    });
+    }, capabilities);
 }

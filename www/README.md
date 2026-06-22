@@ -67,6 +67,7 @@ The UI calls these JSON API groups:
 - `POST /api/webrtc/peers/{peer_id}/candidates`
 - `DELETE /api/webrtc/peers/{peer_id}`
 - `GET /api/ai/status`
+- `GET /api/ai/capabilities`
 - `GET /api/ai/alerts`
 - `GET /api/ai/alerts/{id}/image`
 - `GET /api/alarm/status`
@@ -180,12 +181,14 @@ only when `roi_supported=true` and is valid for H.264/H.265 streams.
 AI is an optional device capability and is disabled by default. The current Web
 alarm surface is the AI alert image view backed by `/api/ai/alerts`; it is not
 recording, playback, or long-term storage.
-`/api/ai/status` exposes `enabled`, full `config`, aggregate `summary`, and
-per-task `tasks[]` entries with config, stats, and last result. The device can
-run the existing AI tasks in parallel. The Web UI exposes per-task switches plus
+`/api/ai/status` exposes `enabled`, full `config`, aggregate `summary`,
+per-task `tasks[]` entries with config, stats, last result, and backend-owned
+`capabilities`. `GET /api/ai/capabilities` exposes the same task option source
+for callers that need capabilities without runtime status. The device can run
+the existing AI tasks in parallel. The Web UI exposes per-task switches plus
 dropdowns for detection stream, global sensitivity, inference frequency, result
 limit, and AI alarm duration. It derives the backend `ai.enabled` runtime gate
-from whether any task is enabled.
+from whether any backend-supported task is enabled.
 The AI page is preview-first: it overlays current-stream detections from all
 enabled tasks, lets perimeter regions be drawn on top of the video, and shows
 the latest 10 alert snapshots as right-side cards.
@@ -201,10 +204,9 @@ Supported AI tasks are `object_detection`, `perimeter_detection`,
 `perimeter_detection` uses optional normalized `perimeter_regions`; an empty
 region list means the whole frame. Face detection is not exposed until a
 dedicated NNIE `.wk` model and matching postprocess are available.
-Release builds that do not ship `models/inst_ssd_cycle.wk` mark
-`object_detection` and `perimeter_detection` unavailable in the Web UI. Those
-controls are shown disabled and config saves force the unavailable tasks off,
-so the release package does not depend on that model asset.
+The Web UI shows task options from backend `capabilities`; unavailable tasks are
+disabled and config saves force them off. The frontend does not hard-code model
+availability or AI task support.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

@@ -157,10 +157,11 @@ RTSP、HLS、HTTP-FLV、MJPEG、snapshot 或 WHEP URL，也不消费旧
 `tasks[].last_result.detections` 合并叠加到视频内容区域。AI 未启用、后端不可用或
 结果来自其他码流时，只显示状态，不阻塞预览。
 AI 配置页暴露四类任务独立开关，以及检测码流、全局灵敏度、推理频率、结果上限和
-报警持续时间下拉项；不在普通界面展示模型路径或输入尺寸。提交时由前端按任务开关
-自动派生后端 `ai.enabled` 运行闸门，并将共享检测参数保存到各任务配置。周界
-`perimeter_regions` 通过实时视频上的矩形绘制编辑；周界命中和告警联动都由后端
-`ai` 模块判断。
+报警持续时间下拉项；任务可用性、模型要求、后端、码流和参数范围来自
+`/api/ai/status.capabilities` 或 `GET /api/ai/capabilities`，前端不本地硬编码
+AI 能力。提交时由前端按后端可用任务开关自动派生后端 `ai.enabled` 运行闸门，并将
+共享检测参数保存到各任务配置。周界 `perimeter_regions` 通过实时视频上的矩形绘制
+编辑；周界命中和告警联动都由后端 `ai` 模块判断。
 AI 页面采用预览优先布局：左侧是实时预览、汇总状态、四类任务开关和周界画框，
 右侧是 `/api/ai/alerts` 最新 10 张抓图卡片列表。系统报警触发状态来自
 `GET /api/alarm/status`，页面同时监听 `/api/events` 的 `alarm_on` 和 `alarm_off` 事件刷新

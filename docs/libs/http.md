@@ -53,6 +53,9 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `device snapshot` |
 | `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` info |
 | `/api/status/image-strategy` | `device` |
+| `/api/ai/status` | `ai` |
+| `/api/ai/capabilities` | `ai` |
+| `/api/ai/alerts*` | `ai` |
 | `/api/webrtc/peers` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/offer` | `http_media` / `webrtc` |
 | `/api/webrtc/peers/{peer_id}/candidates` | `http_media` / `webrtc` |
@@ -63,7 +66,6 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/alarm/status` | `alarm` |
 | `/api/upgrade/*` | `upgrade` |
 | `/api/operations*` | `logger` |
-| `/api/ai/*` | `ai` |
 
 所有 JSON API 统一响应 envelope：
 

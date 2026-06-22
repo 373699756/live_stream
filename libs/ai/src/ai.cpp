@@ -24,6 +24,10 @@ void Ai::Stop() {
     }
 }
 
+AiCapabilities Ai::GetCapabilities() const {
+    return impl_ != nullptr ? impl_->core.GetCapabilities() : AiCapabilities{};
+}
+
 AiConfig Ai::GetConfig() const {
     return impl_ != nullptr ? impl_->core.GetConfig() : AiConfig{};
 }

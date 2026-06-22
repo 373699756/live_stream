@@ -1,5 +1,6 @@
 import type {
     AiAlertList,
+    AiCapabilities,
     AiDetection,
     AiModelConfig,
     AiStats,
@@ -125,8 +126,45 @@ const objectConfig = taskConfig(
 const motionConfig = taskConfig('motion_classification', true);
 const occlusionConfig = taskConfig('occlusion_detection', true);
 
+export const mockAiCapabilities: AiCapabilities = {
+    available: true,
+    model_runtime_available: true,
+    model_runtime_reason: '',
+    tasks: [
+        'object_detection',
+        'perimeter_detection',
+        'motion_classification',
+        'occlusion_detection',
+    ].map((task) => ({
+        task: task as AiTaskName,
+        available: true,
+        requires_model:
+            task === 'object_detection' || task === 'perimeter_detection',
+        unavailable_reason: '',
+        default_model_path:
+            task === 'object_detection' || task === 'perimeter_detection'
+                ? 'models/inst_ssd_cycle.wk'
+                : '',
+        default_input_width: 300,
+        default_input_height: 300,
+        min_inference_interval_ms: 250,
+        max_inference_interval_ms: 2000,
+        default_inference_interval_ms: 500,
+        min_results: 1,
+        max_results: 32,
+        default_max_results: 16,
+        min_confidence_threshold: 0,
+        max_confidence_threshold: 1,
+        default_confidence_threshold: 0.5,
+        max_perimeter_regions: task === 'perimeter_detection' ? 8 : 0,
+        supported_backends: ['hisi3516dv300_nnie'],
+        supported_streams: ['sub', 'main'],
+    })),
+};
+
 export const mockAiStatus: AiStatus = {
     enabled: true,
+    capabilities: mockAiCapabilities,
     config: {
         enabled: true,
         tasks: [objectConfig, perimeterConfig, motionConfig, occlusionConfig],
