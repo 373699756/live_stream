@@ -18,7 +18,11 @@ import {
     backendBadgeState,
     backendLabel,
 } from './aiAlertBadges';
-import { taskLabel } from './aiAlertTasks';
+import {
+    isAiTaskAvailable,
+    taskLabel,
+    taskUnavailableText,
+} from './aiAlertTasks';
 
 interface AiStatusSummaryProps {
     status: AiStatus | null;
@@ -41,15 +45,14 @@ export function AiStatusSummary({
         );
     }
 
-    const primaryTask =
-        status.tasks.find(
-            (item) => item.config.task === 'perimeter_detection',
-        ) ?? status.tasks[0];
+    const availableTasks = status.tasks.filter((item) =>
+        isAiTaskAvailable(item.config.task),
+    );
+    const primaryTask = availableTasks[0] ?? status.tasks[0];
     const primaryConfig = primaryTask?.config ?? status.config.tasks[0];
-    const regionText =
-        (primaryConfig?.perimeter_regions.length ?? 0) > 0
-            ? `${primaryConfig?.perimeter_regions.length ?? 0} 个区域`
-            : '整幅画面';
+    const unsupportedTaskCount = status.config.tasks.filter(
+        (task) => !isAiTaskAvailable(task.task),
+    ).length;
     const alarmMessage =
         lastAlarmEvent?.message || alarmStatus?.status.message || '--';
     const alarmSource =
@@ -81,7 +84,7 @@ export function AiStatusSummary({
             <AiMetricsPanel stats={status.summary} />
             <div className="ai-status-detail-row">
                 <span>
-                    并行任务 <strong>{status.config.tasks.length}</strong>
+                    可用任务 <strong>{availableTasks.length}</strong>
                 </span>
                 <span>
                     事件源{' '}
@@ -106,7 +109,7 @@ export function AiStatusSummary({
                     </strong>
                 </span>
                 <span>
-                    周界 <strong>{regionText}</strong>
+                    未内置 <strong>{unsupportedTaskCount}</strong>
                 </span>
                 <span>
                     最近报警{' '}
@@ -118,6 +121,12 @@ export function AiStatusSummary({
                     报警源 <strong>{alarmSourceLabel(alarmSource)}</strong>
                 </span>
             </div>
+            {unsupportedTaskCount > 0 ? (
+                <div className="status-note warning-note ai-status-warning">
+                    目标检测和周界检测{taskUnavailableText('object_detection')}，
+                    相关配置不会启用。
+                </div>
+            ) : null}
             {status.summary.alarm_linked &&
             alarmConfig &&
             !alarmConfig.ai_detection.enabled ? (

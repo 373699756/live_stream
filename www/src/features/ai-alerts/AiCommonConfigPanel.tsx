@@ -16,7 +16,12 @@ import {
     normalizeAiRootConfigForSave,
 } from './aiAlertFormat';
 import { backendBadgeState } from './aiAlertBadges';
-import { taskLabel, taskRequiresModelPath } from './aiAlertTasks';
+import {
+    isAiTaskAvailable,
+    taskLabel,
+    taskRequiresModelPath,
+    taskUnavailableText,
+} from './aiAlertTasks';
 
 interface AiCommonConfigPanelProps {
     status: AiStatus | null;
@@ -53,7 +58,7 @@ export function AiCommonConfigPanel({
             rootConfig
                 ? {
                       ...(rootConfig.tasks.find(
-                          (task) => task.task === 'perimeter_detection',
+                          (task) => isAiTaskAvailable(task.task),
                       ) ?? rootConfig.tasks[0]),
                   }
                 : null,
@@ -90,14 +95,21 @@ export function AiCommonConfigPanel({
     const modelRequired =
         draft.enabled && taskRequiresModelPath(draft.task, draft.backend);
     const modelMissing = modelRequired && draft.model_path.trim() === '';
+    const taskAvailable = isAiTaskAvailable(draft.task);
     const updateDraft = (nextConfig: AiModelConfig) => {
-        setDraft(nextConfig);
+        const guardedConfig = {
+            ...nextConfig,
+            enabled: isAiTaskAvailable(nextConfig.task) && nextConfig.enabled,
+        };
+        setDraft(guardedConfig);
         setRootDraft((currentRoot) =>
             currentRoot
                 ? {
                       ...currentRoot,
                       tasks: currentRoot.tasks.map((task) =>
-                          task.task === nextConfig.task ? nextConfig : task,
+                          task.task === guardedConfig.task
+                              ? guardedConfig
+                              : task,
                       ),
                   }
                 : currentRoot,
@@ -177,7 +189,11 @@ export function AiCommonConfigPanel({
                 </div>
                 <StatusBadge
                     state={status ? backendBadgeState(status) : 'pending'}
-                    label={`当前任务: ${taskLabel(draft.task)}`}
+                    label={
+                        taskAvailable
+                            ? `当前任务: ${taskLabel(draft.task)}`
+                            : `${taskLabel(draft.task)}: ${taskUnavailableText(draft.task)}`
+                    }
                 />
             </div>
 
@@ -187,6 +203,7 @@ export function AiCommonConfigPanel({
                     <span className="form-control">
                         <input
                             checked={draft.enabled}
+                            disabled={!taskAvailable}
                             type="checkbox"
                             onChange={(event) =>
                                 updateDraft({
@@ -221,6 +238,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">码流</span>
                     <span className="form-control">
                         <select
+                            disabled={!taskAvailable}
                             value={draft.stream}
                             onChange={(event) =>
                                 updateDraft({
@@ -238,6 +256,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">阈值</span>
                     <span className="form-control">
                         <input
+                            disabled={!taskAvailable}
                             max={1}
                             min={0}
                             step={0.05}
@@ -258,6 +277,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">间隔 ms</span>
                     <span className="form-control">
                         <input
+                            disabled={!taskAvailable}
                             min={1}
                             step={100}
                             type="number"
@@ -301,6 +321,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">结果数</span>
                     <span className="form-control">
                         <input
+                            disabled={!taskAvailable}
                             min={1}
                             step={1}
                             type="number"
@@ -320,6 +341,7 @@ export function AiCommonConfigPanel({
                     <span className="form-control">
                         <input
                             aria-invalid={modelMissing}
+                            disabled={!taskAvailable}
                             value={draft.model_path}
                             onChange={(event) =>
                                 updateDraft({
@@ -334,6 +356,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">输入宽</span>
                     <span className="form-control">
                         <input
+                            disabled={!taskAvailable}
                             min={1}
                             step={1}
                             type="number"
@@ -351,6 +374,7 @@ export function AiCommonConfigPanel({
                     <span className="form-label">输入高</span>
                     <span className="form-control">
                         <input
+                            disabled={!taskAvailable}
                             min={1}
                             step={1}
                             type="number"
@@ -376,13 +400,16 @@ export function AiCommonConfigPanel({
                                 ...status.config,
                                 tasks: status.config.tasks.map((task) => ({
                                     ...task,
+                                    enabled:
+                                        isAiTaskAvailable(task.task) &&
+                                        task.enabled,
                                 })),
                             };
                             setRootDraft(rootConfig);
                             setDraft({
                                 ...(rootConfig.tasks.find(
                                     (task) =>
-                                        task.task === 'perimeter_detection',
+                                        isAiTaskAvailable(task.task),
                                 ) ?? rootConfig.tasks[0]),
                             });
                             setConfigDirty(false);
@@ -403,7 +430,7 @@ export function AiCommonConfigPanel({
                 <button
                     type="button"
                     className="primary"
-                    disabled={saving || modelMissing}
+                    disabled={saving || modelMissing || !taskAvailable}
                     onClick={saveEventConfig}
                 >
                     {saving ? '保存中' : '保存智能配置'}
@@ -414,6 +441,11 @@ export function AiCommonConfigPanel({
                 {saveMessage ? <span>{saveMessage}</span> : null}
                 {modelMissing ? (
                     <span className="form-error">模型路径不能为空</span>
+                ) : null}
+                {!taskAvailable ? (
+                    <span className="form-error">
+                        {taskUnavailableText(draft.task)}
+                    </span>
                 ) : null}
             </div>
         </section>

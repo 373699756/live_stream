@@ -1,6 +1,8 @@
 import type {
     AiAlertRecord,
     AiBackendId,
+    AiConfig,
+    AiModelConfig,
     AiStatus,
     AiTaskName,
 } from '../../api/types';
@@ -43,6 +45,69 @@ export const kAiEventTabs: AiEventTab[] = [
         emptyText: '当前没有目标检测抓拍记录。',
     },
 ];
+
+interface AiTaskCapability {
+    available: boolean;
+    unavailableText: string;
+}
+
+export const kAiTaskCapabilities: Record<AiTaskName, AiTaskCapability> = {
+    object_detection: {
+        available: false,
+        unavailableText: '模型未内置',
+    },
+    perimeter_detection: {
+        available: false,
+        unavailableText: '模型未内置',
+    },
+    motion_classification: {
+        available: true,
+        unavailableText: '',
+    },
+    occlusion_detection: {
+        available: true,
+        unavailableText: '',
+    },
+};
+
+export function isAiTaskAvailable(task: AiTaskName) {
+    return kAiTaskCapabilities[task]?.available === true;
+}
+
+export function taskUnavailableText(task: AiTaskName) {
+    return kAiTaskCapabilities[task]?.unavailableText || '能力未提供';
+}
+
+export function applyAiTaskCapabilities(config: AiConfig): AiConfig {
+    const tasks = config.tasks.map((task) =>
+        isAiTaskAvailable(task.task) ? task : { ...task, enabled: false },
+    );
+    return {
+        ...config,
+        enabled: tasks.some((task) => task.enabled),
+        tasks,
+    };
+}
+
+export function isAiModelConfigRunnable(config: AiModelConfig | undefined) {
+    return Boolean(config && isAiTaskAvailable(config.task));
+}
+
+export function supportedEnabledTaskStatuses(status: AiStatus) {
+    return status.tasks.filter(
+        (taskStatus) =>
+            taskStatus.config.enabled &&
+            isAiTaskAvailable(taskStatus.config.task),
+    );
+}
+
+export function hasUnsupportedEnabledTasks(status: AiStatus) {
+    return status.tasks.some(
+        (taskStatus) =>
+            taskStatus.config.enabled &&
+            !isAiTaskAvailable(taskStatus.config.task),
+    );
+}
 
 export function taskLabel(task: AiTaskName) {
     switch (task) {
@@ -88,7 +153,9 @@ export function taskUsesModel(task: AiTaskName) {
 }
 
 export function taskRequiresModelPath(task: AiTaskName, backend: AiBackendId) {
-    return backend === 'hisi3516dv300_nnie' && taskUsesModel(task);
+    return isAiTaskAvailable(task) &&
+        backend === 'hisi3516dv300_nnie' &&
+        taskUsesModel(task);
 }
 
 export function alertGroupsByTask(alerts: AiAlertRecord[]) {
@@ -112,6 +179,9 @@ export function alertsForTask(
 }
 
 export function tabStateLabel(status: AiStatus | null, task: AiTaskName) {
+    if (!isAiTaskAvailable(task)) {
+        return taskUnavailableText(task);
+    }
     if (!status) {
         return '读取中';
     }
@@ -133,6 +203,9 @@ export function emptyTextForTask(
     const taskStatus = status?.tasks.find(
         (item) => item.config.task === activeTask,
     );
+    if (!isAiTaskAvailable(activeTask)) {
+        return `${taskLabel(activeTask)}当前未提供模型能力。`;
+    }
     if (status && !taskStatus?.config.enabled) {
         return `${taskLabel(activeTask)} 未启用，开启后才会生成新的抓拍。`;
     }

@@ -201,6 +201,10 @@ Supported AI tasks are `object_detection`, `perimeter_detection`,
 `perimeter_detection` uses optional normalized `perimeter_regions`; an empty
 region list means the whole frame. Face detection is not exposed until a
 dedicated NNIE `.wk` model and matching postprocess are available.
+Release builds that do not ship `models/inst_ssd_cycle.wk` mark
+`object_detection` and `perimeter_detection` unavailable in the Web UI. Those
+controls are shown disabled and config saves force the unavailable tasks off,
+so the release package does not depend on that model asset.
 
 When the backend is not available, the frontend uses local mock data so layout
 and interaction work during UI development.

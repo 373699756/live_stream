@@ -8,6 +8,10 @@ import type {
 } from '../../api/types';
 import type { MediaEvent } from '../../api/mediaEvents';
 import { formatTimestamp } from '../../utils/format';
+import {
+    applyAiTaskCapabilities,
+    taskRequiresModelPath,
+} from './aiAlertTasks';
 
 export function clampPercent(value: number) {
     if (!Number.isFinite(value)) {
@@ -97,6 +101,13 @@ export function latestAlarmTimeText(
 export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
     return {
         ...config,
+        enabled: applyAiTaskCapabilities({
+            enabled: config.enabled,
+            tasks: [config],
+        }).tasks[0].enabled,
+        model_path: taskRequiresModelPath(config.task, config.backend)
+            ? config.model_path.trim()
+            : '',
         input_width: positiveInteger(config.input_width, 300),
         input_height: positiveInteger(config.input_height, 300),
         inference_interval_ms: positiveInteger(
@@ -105,15 +116,18 @@ export function normalizeAiConfigForSave(config: AiModelConfig): AiModelConfig {
         ),
         confidence_threshold: clampPercent(config.confidence_threshold),
         max_results: positiveInteger(config.max_results, 16),
-        perimeter_regions: config.perimeter_regions ?? [],
+        perimeter_regions:
+            config.task === 'perimeter_detection'
+                ? config.perimeter_regions ?? []
+                : [],
     };
 }
 
 export function normalizeAiRootConfigForSave(config: AiConfig): AiConfig {
     const tasks = config.tasks.map(normalizeAiConfigForSave);
-    return {
+    return applyAiTaskCapabilities({
         ...config,
         enabled: tasks.some((task) => task.enabled),
         tasks,
-    };
+    });
 }

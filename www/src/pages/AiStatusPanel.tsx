@@ -1,33 +1,29 @@
 import { useEffect, useState } from 'react';
 import { saveAiConfig } from '../api/ai';
-import type {
-    AiAlertRecord,
-    AiConfig,
-    AiModelConfig,
-    AiStatus,
-} from '../api/types';
+import type { AiConfig, AiModelConfig, AiStatus } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { AiMetricsPanel } from '../features/ai-alerts/AiMetricsPanel';
+import {
+    isAiTaskAvailable,
+    taskLabel,
+    taskUnavailableText,
+} from '../features/ai-alerts/aiAlertTasks';
+import { normalizeAiRootConfigForSave } from '../features/ai-alerts/aiAlertFormat';
 import { AiConfigForm } from './AiConfigForm';
-
-function taskLabel(task: AiAlertRecord['task']) {
-    switch (task) {
-        case 'perimeter_detection':
-            return '周界检测';
-        case 'motion_classification':
-            return '移动侦测';
-        case 'occlusion_detection':
-            return '遮挡检测';
-        case 'object_detection':
-            return '目标检测';
-    }
-}
 
 function backendLabel(status: AiStatus) {
     if (!status.enabled) {
         return '未启用';
     }
-    return status.summary.backend_available ? '后端可用' : '后端不可用';
+    const enabledTasks = status.tasks.filter(
+        (task) => task.config.enabled && isAiTaskAvailable(task.config.task),
+    );
+    if (enabledTasks.length === 0) {
+        return '任务未启用';
+    }
+    return enabledTasks.every((task) => task.stats.backend_available)
+        ? '后端可用'
+        : '后端不可用';
 }
 
 interface AiStatusPanelProps {
@@ -44,8 +40,14 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
         setDraft(
             status
                 ? {
-                      ...status.config,
-                      tasks: status.config.tasks.map((task) => ({ ...task })),
+                      enabled: status.config.tasks.some(
+                          (task) => task.enabled && isAiTaskAvailable(task.task),
+                      ),
+                      tasks: status.config.tasks.map((task) => ({
+                          ...task,
+                          enabled:
+                              isAiTaskAvailable(task.task) && task.enabled,
+                      })),
                   }
                 : null,
         );
@@ -57,25 +59,34 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
 
     const config = draft ?? status.config;
     const visibleTask =
-        config.tasks.find((task) => task.task === 'perimeter_detection') ??
+        config.tasks.find((task) => isAiTaskAvailable(task.task)) ??
         config.tasks[0];
+    const supportedEnabledTasks = status.tasks.filter(
+        (task) =>
+            task.config.enabled && isAiTaskAvailable(task.config.task),
+    );
     const badgeState =
-        status.enabled && status.summary.backend_available
-            ? 'running'
-            : status.enabled
-              ? 'error'
-              : 'pending';
+        supportedEnabledTasks.length === 0 || !status.enabled
+            ? 'pending'
+            : supportedEnabledTasks.every((task) => task.stats.backend_available)
+              ? 'running'
+              : 'error';
     const restoreConfig = () => {
+        const tasks = status.config.tasks.map((task) => ({
+            ...task,
+            enabled: isAiTaskAvailable(task.task) && task.enabled,
+        }));
         setDraft({
             ...status.config,
-            tasks: status.config.tasks.map((task) => ({ ...task })),
+            enabled: tasks.some((task) => task.enabled),
+            tasks,
         });
         setSaveMessage('');
     };
     const saveConfig = () => {
         setSaving(true);
         setSaveMessage('');
-        void saveAiConfig(config)
+        void saveAiConfig(normalizeAiRootConfigForSave(config))
             .then(onSaved)
             .then(() => {
                 setSaveMessage('已保存并应用');
@@ -95,6 +106,9 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
                         {visibleTask
                             ? `${visibleTask.backend} / ${taskLabel(visibleTask.task)}`
                             : '未配置任务'}
+                        {visibleTask && !isAiTaskAvailable(visibleTask.task)
+                            ? ` / ${taskUnavailableText(visibleTask.task)}`
+                            : ''}
                     </p>
                 </div>
                 <StatusBadge state={badgeState} label={backendLabel(status)} />
@@ -109,7 +123,14 @@ export function AiStatusPanel({ status, onSaved }: AiStatusPanelProps) {
                         setDraft({
                             ...config,
                             tasks: config.tasks.map((task) =>
-                                task.task === nextTask.task ? nextTask : task,
+                                task.task === nextTask.task
+                                    ? {
+                                          ...nextTask,
+                                          enabled:
+                                              isAiTaskAvailable(task.task) &&
+                                              nextTask.enabled,
+                                      }
+                                    : task,
                             ),
                         })
                     }

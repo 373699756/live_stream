@@ -17,6 +17,7 @@ import type {
 import { VideoPreview } from '../../components/VideoPreview';
 import { useVideoConfig } from '../../hooks/useVideoConfig';
 import { normalizeAiRootConfigForSave } from './aiAlertFormat';
+import { isAiTaskAvailable, taskUnavailableText } from './aiAlertTasks';
 
 interface AiPerimeterEditorProps {
     status: AiStatus | null;
@@ -225,6 +226,7 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
           ? '运行中'
           : '未运行';
     const perimeterConfig = perimeterTask(status);
+    const perimeterAvailable = isAiTaskAvailable('perimeter_detection');
 
     useEffect(() => {
         const nextPerimeterConfig = perimeterTask(status);
@@ -328,6 +330,9 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
     };
 
     const beginDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!perimeterAvailable) {
+            return;
+        }
         if (event.button !== 0) {
             return;
         }
@@ -398,6 +403,9 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
     };
 
     const clearRegions = () => {
+        if (!perimeterAvailable) {
+            return;
+        }
         markDraftDirty();
         setRegions([]);
         setActiveRegionIndex(0);
@@ -405,6 +413,9 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
     };
 
     const deleteRegion = (index: number) => {
+        if (!perimeterAvailable) {
+            return;
+        }
         markDraftDirty();
         const nextRegions = regions.filter(
             (_, itemIndex) => itemIndex !== index,
@@ -418,6 +429,10 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
 
     const saveRegions = () => {
         if (!status || !perimeterConfig) {
+            return;
+        }
+        if (!perimeterAvailable) {
+            setSaveMessage(taskUnavailableText('perimeter_detection'));
             return;
         }
         setSaving(true);
@@ -507,7 +522,9 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                     <p>
                         {perimeterConfig.enabled
                             ? perimeterConfig.model_path
-                            : '当前未启用周界任务'}
+                            : perimeterAvailable
+                              ? '当前未启用周界任务'
+                              : taskUnavailableText('perimeter_detection')}
                     </p>
                 </div>
                 <div className="ai-perimeter-source">
@@ -523,6 +540,9 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                         statuses={statuses}
                         previewUrls={previewUrls}
                         onStreamChange={(nextStream) => {
+                            if (!perimeterAvailable) {
+                                return;
+                            }
                             markDraftDirty();
                             setActiveStream(nextStream);
                             setSaveMessage('');
@@ -568,6 +588,7 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                             regions.map((region, index) => (
                                 <button
                                     type="button"
+                                    disabled={!perimeterAvailable}
                                     className={
                                         activeRegionIndex === index
                                             ? 'active'
@@ -595,6 +616,7 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                     <div className="ai-region-actions">
                         <button
                             type="button"
+                            disabled={!perimeterAvailable}
                             onClick={() => {
                                 markDraftDirty();
                                 setActiveRegionIndex(regions.length);
@@ -605,14 +627,14 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                         </button>
                         <button
                             type="button"
-                            disabled={regions.length === 0}
+                            disabled={!perimeterAvailable || regions.length === 0}
                             onClick={clearRegions}
                         >
                             清空
                         </button>
                         <button
                             type="button"
-                            disabled={!activeRegion}
+                            disabled={!perimeterAvailable || !activeRegion}
                             onClick={() => deleteRegion(activeRegionIndex)}
                         >
                             删除当前
@@ -620,7 +642,7 @@ export function AiPerimeterEditor({ status, onSaved }: AiPerimeterEditorProps) {
                         <button
                             type="button"
                             className="primary"
-                            disabled={saving}
+                            disabled={saving || !perimeterAvailable}
                             onClick={saveRegions}
                         >
                             {saving ? '设置中' : '保存'}

@@ -1,24 +1,29 @@
 import type { AiStatus, AlarmConfig } from '../../api/types';
+import { supportedEnabledTaskStatuses } from './aiAlertTasks';
 
 export function backendLabel(status: AiStatus) {
-    const hasEnabledTask = status.config.tasks.some((task) => task.enabled);
-    if (!hasEnabledTask) {
+    const enabledTasks = supportedEnabledTaskStatuses(status);
+    if (enabledTasks.length === 0) {
         return '任务未启用';
     }
     if (!status.summary.enabled) {
         return '未运行';
     }
-    return status.summary.backend_available ? '后端可用' : '后端不可用';
+    return enabledTasks.every((task) => task.stats.backend_available)
+        ? '后端可用'
+        : '后端不可用';
 }
 
 export function backendBadgeState(
     status: AiStatus,
 ): 'running' | 'pending' | 'error' {
-    const hasEnabledTask = status.config.tasks.some((task) => task.enabled);
-    if (!hasEnabledTask || !status.summary.enabled) {
+    const enabledTasks = supportedEnabledTaskStatuses(status);
+    if (enabledTasks.length === 0 || !status.summary.enabled) {
         return 'pending';
     }
-    return status.summary.backend_available ? 'running' : 'error';
+    return enabledTasks.every((task) => task.stats.backend_available)
+        ? 'running'
+        : 'error';
 }
 
 export function alarmBadgeLabel(

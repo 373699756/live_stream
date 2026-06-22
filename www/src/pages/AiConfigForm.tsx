@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AiModelConfig, AiPerimeterRegion } from '../api/types';
+import {
+    isAiTaskAvailable,
+    taskLabel,
+    taskUnavailableText,
+} from '../features/ai-alerts/aiAlertTasks';
+
+const kTaskOptions: AiModelConfig['task'][] = [
+    'object_detection',
+    'perimeter_detection',
+    'motion_classification',
+    'occlusion_detection',
+];
 
 interface AiConfigFormProps {
     config: AiModelConfig;
@@ -48,6 +60,7 @@ export function AiConfigForm({
         () => JSON.stringify(config.perimeter_regions ?? [], null, 2),
         [config.perimeter_regions],
     );
+    const taskAvailable = isAiTaskAvailable(config.task);
     useEffect(() => {
         if (syncedConfig.current !== config) {
             syncedConfig.current = config;
@@ -81,6 +94,7 @@ export function AiConfigForm({
                 <span className="form-control">
                     <input
                         checked={config.enabled}
+                        disabled={!taskAvailable}
                         type="checkbox"
                         onChange={(event) =>
                             onChange({
@@ -96,6 +110,7 @@ export function AiConfigForm({
                 <span className="form-control">
                     <select
                         value={config.backend}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
@@ -120,13 +135,25 @@ export function AiConfigForm({
                                 ...config,
                                 task: event.target
                                     .value as AiModelConfig['task'],
+                                enabled:
+                                    isAiTaskAvailable(
+                                        event.target
+                                            .value as AiModelConfig['task'],
+                                    ) && config.enabled,
                             })
                         }
                     >
-                        <option value="object_detection">目标检测</option>
-                        <option value="perimeter_detection">周界检测</option>
-                        <option value="motion_classification">移动侦测</option>
-                        <option value="occlusion_detection">遮挡检测</option>
+                        {kTaskOptions.map((task) => (
+                            <option
+                                disabled={!isAiTaskAvailable(task)}
+                                key={task}
+                                value={task}
+                            >
+                                {isAiTaskAvailable(task)
+                                    ? taskLabel(task)
+                                    : `${taskLabel(task)}（${taskUnavailableText(task)}）`}
+                            </option>
+                        ))}
                     </select>
                 </span>
             </label>
@@ -135,11 +162,11 @@ export function AiConfigForm({
                 <span className="form-control">
                     <select
                         value={config.stream}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
-                                stream: event.target
-                                    .value as AiModelConfig['stream'],
+                                stream: event.target.value as AiModelConfig['stream'],
                             })
                         }
                     >
@@ -153,6 +180,7 @@ export function AiConfigForm({
                 <span className="form-control">
                     <input
                         value={config.model_path}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
@@ -170,6 +198,7 @@ export function AiConfigForm({
                         step={100}
                         type="number"
                         value={config.inference_interval_ms}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
@@ -190,6 +219,7 @@ export function AiConfigForm({
                         step={0.05}
                         type="number"
                         value={config.confidence_threshold}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
@@ -209,6 +239,7 @@ export function AiConfigForm({
                         step={1}
                         type="number"
                         value={config.max_results}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             onChange({
                                 ...config,
@@ -224,12 +255,18 @@ export function AiConfigForm({
                     <textarea
                         rows={5}
                         value={regionJson}
+                        disabled={!taskAvailable}
                         onChange={(event) =>
                             applyRegionJson(event.target.value)
                         }
                     />
                     {regionError ? (
                         <span className="form-error">{regionError}</span>
+                    ) : null}
+                    {!taskAvailable ? (
+                        <span className="form-error">
+                            {taskUnavailableText(config.task)}
+                        </span>
                     ) : null}
                 </span>
             </label>

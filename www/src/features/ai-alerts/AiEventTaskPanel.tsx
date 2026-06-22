@@ -4,10 +4,12 @@ import type { AiStatus, AiTaskName } from '../../api/types';
 import { StatusBadge } from '../../components/StatusBadge';
 import { normalizeAiRootConfigForSave } from './aiAlertFormat';
 import {
+    isAiTaskAvailable,
     taskCaptureScope,
     taskDescription,
     taskLabel,
     taskRequiresModelPath,
+    taskUnavailableText,
 } from './aiAlertTasks';
 
 interface AiEventTaskPanelProps {
@@ -38,17 +40,22 @@ export function AiEventTaskPanel({
     const taskConfig =
         status.config.tasks.find((item) => item.task === activeTask) ??
         taskStatus?.config;
-    const taskEnabled = Boolean(taskConfig?.enabled);
+    const taskAvailable = isAiTaskAvailable(activeTask);
+    const taskEnabled = Boolean(taskConfig?.enabled && taskAvailable);
     const taskRunning = Boolean(taskStatus?.stats.enabled);
     const backendOk = Boolean(taskStatus?.stats.backend_available);
-    const taskState: 'running' | 'pending' | 'error' = !taskEnabled
+    const taskState: 'running' | 'pending' | 'error' = !taskAvailable
         ? 'pending'
-        : taskRunning
+        : !taskEnabled
+          ? 'pending'
+          : taskRunning
           ? backendOk
               ? 'running'
               : 'error'
           : 'pending';
-    const taskStateLabel = !taskEnabled
+    const taskStateLabel = !taskAvailable
+        ? taskUnavailableText(activeTask)
+        : !taskEnabled
         ? '未启用'
         : taskRunning
           ? backendOk
@@ -58,6 +65,10 @@ export function AiEventTaskPanel({
 
     const toggleTask = () => {
         if (!taskConfig) {
+            return;
+        }
+        if (!taskAvailable) {
+            setSaveMessage(taskUnavailableText(activeTask));
             return;
         }
         const nextEnabled = !taskEnabled;
@@ -102,7 +113,7 @@ export function AiEventTaskPanel({
                 <button
                     type="button"
                     className={taskEnabled ? '' : 'primary'}
-                    disabled={!taskConfig || saving}
+                    disabled={!taskConfig || saving || !taskAvailable}
                     onClick={toggleTask}
                 >
                     {saving ? '保存中' : taskEnabled ? '关闭任务' : '启用任务'}

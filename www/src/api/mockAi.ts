@@ -91,9 +91,20 @@ const emptyStats = (): AiStats => ({
     active_results: 0,
 });
 
+const disabledStats = (): AiStats => ({
+    ...emptyStats(),
+    enabled: false,
+    backend_available: false,
+    last_success_time_ms: 0,
+    received_frames: 0,
+    inference_count: 0,
+    inference_failed_count: 0,
+    active_results: 0,
+});
+
 const perimeterConfig = taskConfig(
     'perimeter_detection',
-    true,
+    false,
     'models/inst_ssd_cycle.wk',
     [
         {
@@ -108,7 +119,7 @@ const perimeterConfig = taskConfig(
 
 const objectConfig = taskConfig(
     'object_detection',
-    true,
+    false,
     'models/inst_ssd_cycle.wk',
 );
 const motionConfig = taskConfig('motion_classification', true);
@@ -122,14 +133,14 @@ export const mockAiStatus: AiStatus = {
     },
     summary: {
         ...emptyStats(),
-        active_results: 5,
-        received_frames: 10292,
-        inference_count: 3784,
+        active_results: 1,
+        received_frames: 5682,
+        inference_count: 1884,
     },
     tasks: [
         {
             config: objectConfig,
-            stats: { ...emptyStats(), active_results: 2 },
+            stats: disabledStats(),
             last_result: {
                 success: true,
                 stream: 'sub',
@@ -140,7 +151,7 @@ export const mockAiStatus: AiStatus = {
         },
         {
             config: perimeterConfig,
-            stats: { ...emptyStats(), active_results: 2 },
+            stats: disabledStats(),
             last_result: {
                 success: true,
                 stream: 'sub',

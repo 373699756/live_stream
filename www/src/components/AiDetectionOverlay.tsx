@@ -7,6 +7,7 @@ import type {
     AiStatus,
     StreamName,
 } from '../api/types';
+import { isAiTaskAvailable } from '../features/ai-alerts/aiAlertTasks';
 
 interface AiDetectionOverlayProps {
     frameResolution?: string;
@@ -132,6 +133,7 @@ function taskShortLabel(task: AiTaskName) {
 function taskHasUsableResult(task: AiTaskStatus, stream: StreamName) {
     return (
         task.config.enabled &&
+        isAiTaskAvailable(task.config.task) &&
         task.stats.enabled &&
         task.stats.backend_available &&
         task.last_result.success &&
@@ -192,7 +194,9 @@ export function AiDetectionOverlay({
     } | null>(null);
     const result = resultForStream(status, stream);
     const enabledTasks =
-        status?.tasks?.filter((task) => task.config.enabled) ?? [];
+        status?.tasks?.filter(
+            (task) => task.config.enabled && isAiTaskAvailable(task.config.task),
+        ) ?? [];
     const hasRunnableTask = enabledTasks.some(
         (task) => task.stats.backend_available,
     );

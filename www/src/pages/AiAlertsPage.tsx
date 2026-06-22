@@ -30,7 +30,11 @@ import {
     nonNegativeInteger,
     normalizeAiRootConfigForSave,
 } from '../features/ai-alerts/aiAlertFormat';
-import { taskLabel } from '../features/ai-alerts/aiAlertTasks';
+import {
+    isAiTaskAvailable,
+    taskLabel,
+    taskUnavailableText,
+} from '../features/ai-alerts/aiAlertTasks';
 import { formatTimestamp } from '../utils/format';
 import '../styles/ai-alerts.css';
 
@@ -151,8 +155,8 @@ function numericOptionsWithCurrent(
 function sharedHiddenTaskConfig(config: AiConfig) {
     const fallback = defaultTaskConfig('object_detection');
     const source =
+        config.tasks.find((task) => isAiTaskAvailable(task.task)) ??
         draftTaskByName(config, 'object_detection') ??
-        config.tasks[0] ??
         fallback;
     return {
         backend: source.backend,
@@ -207,7 +211,9 @@ function completeAiConfig(config: AiConfig): AiConfig {
     );
     return withSharedHiddenDefaults({
         ...config,
-        enabled: tasks.some((task) => task.enabled),
+        enabled: tasks.some(
+            (task) => task.enabled && isAiTaskAvailable(task.task),
+        ),
         tasks,
     });
 }
@@ -272,6 +278,9 @@ function taskStatusText(task: AiTaskStatus | undefined) {
     if (!task) {
         return '未配置';
     }
+    if (!isAiTaskAvailable(task.config.task)) {
+        return taskUnavailableText(task.config.task);
+    }
     if (!task.config.enabled) {
         return '关闭';
     }
@@ -285,6 +294,9 @@ function taskStatusText(task: AiTaskStatus | undefined) {
 }
 
 function taskBadgeState(task: AiTaskStatus | undefined) {
+    if (task && !isAiTaskAvailable(task.config.task)) {
+        return 'pending' as const;
+    }
     if (!task || !task.config.enabled || !task.stats.enabled) {
         return 'pending' as const;
     }
@@ -315,8 +327,7 @@ function thresholdForSensitivity(value: SensitivityLevel) {
 
 function sensitivityForConfig(config: AiConfig | null): SensitivityLevel {
     const sourceTask =
-        draftTaskByName(config, 'object_detection') ??
-        draftTaskByName(config, 'perimeter_detection') ??
+        config?.tasks.find((task) => isAiTaskAvailable(task.task)) ??
         config?.tasks[0];
     return sensitivityFromThreshold(sourceTask?.confidence_threshold ?? 0.5);
 }
@@ -455,6 +466,7 @@ function videoAreaStyle(videoArea: SurfaceRect) {
 
 function SnapshotRail({ alerts }: { alerts: AiAlertRecord[] }) {
     const latestAlerts = alerts
+        .filter((alert) => isAiTaskAvailable(alert.task))
         .slice()
         .sort((left, right) => right.timestamp_ms - left.timestamp_ms)
         .slice(0, 10);
@@ -543,6 +555,25 @@ export function AiAlertsPage() {
     } = useAiAlerts();
     const activeStatus = statuses.find((item) => item.stream === previewStream);
     const summary = status?.summary ?? emptyStats();
+    const supportedTaskSummary = useMemo(() => {
+        if (!status) {
+            return { backendLabel: '读取中', enabledCount: 0 };
+        }
+        const enabledTasks = status.tasks.filter(
+            (task) =>
+                task.config.enabled &&
+                isAiTaskAvailable(task.config.task),
+        );
+        return {
+            backendLabel:
+                !status.summary.enabled || enabledTasks.length === 0
+                    ? '未运行'
+                    : enabledTasks.every((task) => task.stats.backend_available)
+                      ? '可用'
+                      : '异常',
+            enabledCount: enabledTasks.length,
+        };
+    }, [status]);
     const frame = useMemo(
         () => parseResolution(activeStatus?.resolution),
         [activeStatus?.resolution],
@@ -648,6 +679,10 @@ export function AiAlertsPage() {
     );
 
     const updateTaskEnabled = (taskName: AiTaskName, enabled: boolean) => {
+        if (!isAiTaskAvailable(taskName)) {
+            setSaveMessage(`${taskLabel(taskName)}${taskUnavailableText(taskName)}`);
+            return;
+        }
         updateDraftWith((current) =>
             updateTaskConfig(current, taskName, { enabled }),
         );
@@ -680,6 +715,9 @@ export function AiAlertsPage() {
 
     const updatePerimeterRegions = useCallback(
         (updater: (regions: AiPerimeterRegion[]) => AiPerimeterRegion[]) => {
+            if (!isAiTaskAvailable('perimeter_detection')) {
+                return;
+            }
             updateDraftWith((current) => {
                 const task = draftTaskByName(current, 'perimeter_detection');
                 if (!task) {
@@ -808,6 +846,9 @@ export function AiAlertsPage() {
     };
 
     const addRegion = () => {
+        if (!isAiTaskAvailable('perimeter_detection')) {
+            return;
+        }
         setEditingPerimeter(true);
         setActiveRegionIndex(perimeterRegions.length);
         setSaveMessage('');
@@ -850,6 +891,9 @@ export function AiAlertsPage() {
     };
 
     const togglePerimeterEdit = () => {
+        if (!isAiTaskAvailable('perimeter_detection')) {
+            return;
+        }
         if (!editingPerimeter && perimeterTask) {
             setStream(perimeterTask.stream);
         }
@@ -1024,18 +1068,13 @@ export function AiAlertsPage() {
                             <div>
                                 <span>事件</span>
                                 <strong>
-                                    {draft?.tasks.filter((task) => task.enabled)
-                                        .length ?? 0}{' '}
+                                    {supportedTaskSummary.enabledCount}{' '}
                                     启用
                                 </strong>
                             </div>
                             <div>
                                 <span>后端</span>
-                                <strong>
-                                    {summary.backend_available
-                                        ? '可用'
-                                        : '异常'}
-                                </strong>
+                                <strong>{supportedTaskSummary.backendLabel}</strong>
                             </div>
                             <div>
                                 <span>有效结果</span>
@@ -1200,6 +1239,8 @@ export function AiAlertsPage() {
                                     const taskStatus =
                                         orderedTaskStatuses[index];
                                     const enabled = Boolean(task?.enabled);
+                                    const available =
+                                        isAiTaskAvailable(taskName);
                                     return (
                                         <article
                                             className="ai-event-switch-row"
@@ -1208,6 +1249,7 @@ export function AiAlertsPage() {
                                             <label className="ai-event-switch-main">
                                                 <input
                                                     checked={enabled}
+                                                    disabled={!available}
                                                     type="checkbox"
                                                     onChange={(event) =>
                                                         updateTaskEnabled(
@@ -1226,8 +1268,11 @@ export function AiAlertsPage() {
                                                         {taskLabel(taskName)}
                                                     </strong>
                                                     <em>
-                                                        {alertCounts[taskName]}{' '}
-                                                        张抓图
+                                                        {available
+                                                            ? `${alertCounts[taskName]} 张抓图`
+                                                            : taskUnavailableText(
+                                                                  taskName,
+                                                              )}
                                                     </em>
                                                 </span>
                                             </label>
@@ -1274,6 +1319,7 @@ export function AiAlertsPage() {
                                                             ? 'active'
                                                             : ''
                                                     }
+                                                    disabled={!available}
                                                     onClick={
                                                         togglePerimeterEdit
                                                     }
