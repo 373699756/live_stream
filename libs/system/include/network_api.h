@@ -1,7 +1,6 @@
 #ifndef LIVE_STREAM_SYSTEM_NETWORK_API_H_
 #define LIVE_STREAM_SYSTEM_NETWORK_API_H_
 
-#include "config_json.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -95,16 +94,7 @@ public:
 std::unique_ptr<INetwork> CreateNetwork(
     const NetOptions& options);
 
-ConfigJson NetStatusToApiJson(
-    const NetStatus& status);
-bool NetConfigFromApiJson(const std::string& ifname,
-                          const ConfigJson& value,
-                          NetConfig* config);
-
 const char* NetworkName();
-bool NetmaskToPrefixLength(const std::string& netmask,
-                           uint8_t* prefix_length);
-std::string PrefixLengthToNetmask(uint8_t prefix_length);
 
 }  // namespace live_stream
 

@@ -55,8 +55,8 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `system.h`、`time_api.h`、`network_api.h`、`upgrade.h` 和
-`upgrade_package.h`。HTTP `/api/system/*`、`/api/system/time/*`、
+public API 在 `system.h`、`time_api.h`、`network_api.h`、`network_format.h`、
+`upgrade.h` 和 `upgrade_package.h`。HTTP `/api/system/*`、`/api/system/time/*`、
 `/api/system/network/*`、`/api/upgrade/*` 路由归 `http`，页面展示归 Web。
 
 ## 状态与资源模型

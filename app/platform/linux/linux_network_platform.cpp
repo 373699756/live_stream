@@ -1,7 +1,7 @@
 #include "platform/linux/device_platforms.h"
 
 #include "infra/fs.h"
-#include "network_api.h"
+#include "network_format.h"
 #include "platform/linux/linux_platform_common.h"
 
 #include <arpa/inet.h>

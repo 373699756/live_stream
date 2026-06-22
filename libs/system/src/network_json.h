@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_SYSTEM_SRC_NETWORK_JSON_H_
 #define LIVE_STREAM_SYSTEM_SRC_NETWORK_JSON_H_
 
+#include "config_json.h"
 #include "network_api.h"
 
 #include <map>

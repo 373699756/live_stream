@@ -110,6 +110,8 @@ public:
         status_.ntp = options.default_ntp_config;
     }
 
+    ~TimeImpl() override { Release(); }
+
     bool Prepare() {
         TimeConfig loaded_config;
         loaded_config.timezone = status_.timezone;

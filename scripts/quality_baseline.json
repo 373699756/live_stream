@@ -3583,10 +3583,6 @@
     "cppcheck\tuseStlAlgorithm\tlibs/auth/src/auth.cpp\t643\tConsider using std::any_of algorithm instead of a raw loop.",
     "cppcheck\tuseStlAlgorithm\tlibs/auth/src/auth.cpp\t666\tConsider using std::count_if algorithm instead of a raw loop.",
     "cppcheck\tuseStlAlgorithm\tlibs/system/src/system.cpp\t251\tConsider using std::find_if algorithm instead of a raw loop.",
-    "cppcheck\tuseStlAlgorithm\tlibs/network_config/src/network_config.cpp\t349\tConsider using std::any_of algorithm instead of a raw loop.",
-    "cppcheck\tuseStlAlgorithm\tlibs/network_config/src/network_config_codec.cpp\t87\tConsider using std::any_of algorithm instead of a raw loop.",
-    "cppcheck\tuseStlAlgorithm\tlibs/network_config/src/network_config_codec.cpp\t186\tConsider using std::copy algorithm instead of a raw loop.",
-    "cppcheck\tuseStlAlgorithm\tlibs/network_config/src/network_config_codec.cpp\t288\tConsider using std::copy algorithm instead of a raw loop.",
     "cppcheck\tvirtualCallInConstructor\tlibs/hisi_vendor/include/hisi_vendor/mpp_hisi_sdk.h\t35\tVirtual function 'StopVencStream' is called from destructor '~MppHisiSdk()' at line 11. Dynamic binding is not used.",
     "cppcheck\tvirtualCallInConstructor\tlibs/hisi_vendor/include/hisi_vendor/mpp_hisi_sdk.h\t21\tVirtual function 'DeinitSystem' is called from destructor '~MppHisiSdk()' at line 13. Dynamic binding is not used.",
     "cppcheck\tuseStlAlgorithm\tlibs/webrtc/src/dtls_transport.cpp\t67\tConsider using std::transform algorithm instead of a raw loop.",
@@ -35596,42 +35592,6 @@
       "line": 251,
       "message": "Consider using std::find_if algorithm instead of a raw loop.",
       "column": 74
-    },
-    {
-      "tool": "cppcheck",
-      "rule_id": "useStlAlgorithm",
-      "level": "warning",
-      "path": "libs/network_config/src/network_config.cpp",
-      "line": 349,
-      "message": "Consider using std::any_of algorithm instead of a raw loop.",
-      "column": 80
-    },
-    {
-      "tool": "cppcheck",
-      "rule_id": "useStlAlgorithm",
-      "level": "warning",
-      "path": "libs/network_config/src/network_config_codec.cpp",
-      "line": 87,
-      "message": "Consider using std::any_of algorithm instead of a raw loop.",
-      "column": 35
-    },
-    {
-      "tool": "cppcheck",
-      "rule_id": "useStlAlgorithm",
-      "level": "warning",
-      "path": "libs/network_config/src/network_config_codec.cpp",
-      "line": 186,
-      "message": "Consider using std::copy algorithm instead of a raw loop.",
-      "column": 13
-    },
-    {
-      "tool": "cppcheck",
-      "rule_id": "useStlAlgorithm",
-      "level": "warning",
-      "path": "libs/network_config/src/network_config_codec.cpp",
-      "line": 288,
-      "message": "Consider using std::copy algorithm instead of a raw loop.",
-      "column": 13
     },
     {
       "tool": "cppcheck",

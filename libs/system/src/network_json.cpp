@@ -1,6 +1,7 @@
-#include "network_api.h"
+#include "network_json.h"
 
 #include "json_utils.h"
+#include "network_format.h"
 
 #include <cctype>
 #include <cstdint>
@@ -144,8 +145,8 @@ NetConfig DefaultConfig(const std::string &ifname) {
 //   "dns": [str, ...] }
 
 bool ConfigFromNetJson(const std::string &ifname,
-                                    const ConfigJson &value,
-                                    NetConfig *config) {
+                       const ConfigJson &value,
+                       NetConfig *config) {
     if (!value.is_object() || config == nullptr) {
         return false;
     }
@@ -225,10 +226,9 @@ ConfigJson NetworkJsonWithConfigs(
 
 }  // namespace network_internal
 
-// Public API codec functions
+// Public API JSON/format helpers.
 
-ConfigJson NetStatusToApiJson(
-    const NetStatus &status) {
+ConfigJson NetStatusToApiJson(const NetStatus &status) {
     ConfigJson root = ConfigJson::object();
     root["ifname"] = status.ifname;
     root["enabled"] = status.enabled;
@@ -251,8 +251,8 @@ ConfigJson NetStatusToApiJson(
 }
 
 bool NetConfigFromApiJson(const std::string &ifname,
-                                       const ConfigJson &value,
-                                       NetConfig *config) {
+                          const ConfigJson &value,
+                          NetConfig *config) {
     return network_internal::ConfigFromNetJson(ifname, value, config);
 }
 

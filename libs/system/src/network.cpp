@@ -89,6 +89,8 @@ public:
           platform_(options.platform != nullptr ? options.platform
                                                 : owned_platform_.get()) {}
 
+    ~NetworkImpl() override { Release(); }
+
     bool Prepare() {
         {
             std::lock_guard<std::mutex> lock(mutex_);
