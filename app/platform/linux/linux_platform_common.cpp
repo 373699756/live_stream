@@ -10,17 +10,22 @@
 
 namespace live_stream {
 namespace linux_platform {
+namespace {
+
+bool IsTextEdgeChar(char value) {
+    const unsigned char byte = static_cast<unsigned char>(value);
+    return byte <= static_cast<unsigned char>(' ');
+}
+
+}  // namespace
 
 std::string Trim(const std::string &value) {
     std::size_t begin = 0;
-    while (begin < value.size() &&
-           (value[begin] == ' ' || value[begin] == '\t' || value[begin] == '\r' ||
-            value[begin] == '\n')) {
+    while (begin < value.size() && IsTextEdgeChar(value[begin])) {
         ++begin;
     }
     std::size_t end = value.size();
-    while (end > begin && (value[end - 1] == ' ' || value[end - 1] == '\t' ||
-                           value[end - 1] == '\r' || value[end - 1] == '\n')) {
+    while (end > begin && IsTextEdgeChar(value[end - 1])) {
         --end;
     }
     return value.substr(begin, end - begin);
