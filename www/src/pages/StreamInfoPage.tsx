@@ -313,6 +313,16 @@ export function StreamInfoPage() {
                                         </dd>
                                     </div>
                                     <div>
+                                        <dt>码率</dt>
+                                        <dd>
+                                            {previewValueText(
+                                                streamInfo.bitrate_kbps,
+                                                '--',
+                                            )}{' '}
+                                            kbps
+                                        </dd>
+                                    </div>
+                                    <div>
                                         <dt>读者/客户端</dt>
                                         <dd>
                                             {streamInfo.subscription_count} /{' '}
@@ -328,7 +338,12 @@ export function StreamInfoPage() {
                                     </div>
                                     <div>
                                         <dt>最近 DTS</dt>
-                                        <dd>{streamInfo.last_dts || '--'}</dd>
+                                        <dd>
+                                            {previewValueText(
+                                                streamInfo.last_dts,
+                                                '--',
+                                            )}
+                                        </dd>
                                     </div>
                                 </dl>
                             </article>

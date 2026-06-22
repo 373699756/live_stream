@@ -276,7 +276,73 @@ bool IsWebrtcSupported(Codec codec, IWebrtc *webrtc) {
                              codec == Codec::kH265);
 }
 
+struct VideoStreamDisplayConfig {
+    std::string resolution;
+    uint32_t fps = 0;
+    uint32_t bitrate_kbps = 0;
+    bool has_resolution = false;
+    bool has_fps = false;
+    bool has_bitrate_kbps = false;
+};
+
+bool ReadVideoStreamDisplayConfig(IConfig *config,
+                                  StreamId stream_id,
+                                  VideoStreamDisplayConfig *display_config) {
+    if (config == nullptr || display_config == nullptr) {
+        return false;
+    }
+    const ConfigJson video = config->GetValue("video");
+    if (!video.is_object()) {
+        return false;
+    }
+    const auto streams = video.find("streams");
+    if (streams == video.end() || !streams->is_object()) {
+        return false;
+    }
+    const auto stream = streams->find(StreamIdToJsonString(stream_id));
+    if (stream == streams->end() || !stream->is_object()) {
+        return false;
+    }
+
+    std::string resolution;
+    if (json_utils::ReadField(*stream, "resolution", &resolution) &&
+        !resolution.empty()) {
+        display_config->resolution = resolution;
+        display_config->has_resolution = true;
+    }
+    uint32_t fps = 0;
+    if (json_utils::ReadField(*stream, "fps", &fps) && fps > 0) {
+        display_config->fps = fps;
+        display_config->has_fps = true;
+    }
+    uint32_t bitrate_kbps = 0;
+    if (json_utils::ReadField(*stream, "bitrate_kbps", &bitrate_kbps) &&
+        bitrate_kbps > 0) {
+        display_config->bitrate_kbps = bitrate_kbps;
+        display_config->has_bitrate_kbps = true;
+    }
+    return display_config->has_resolution || display_config->has_fps ||
+           display_config->has_bitrate_kbps;
+}
+
+void AddVideoStreamDisplayConfig(ConfigJson *root,
+                                 const VideoStreamDisplayConfig &config) {
+    if (root == nullptr) {
+        return;
+    }
+    if (config.has_resolution) {
+        (*root)["resolution"] = config.resolution;
+    }
+    if (config.has_fps) {
+        (*root)["fps"] = config.fps;
+    }
+    if (config.has_bitrate_kbps) {
+        (*root)["bitrate_kbps"] = config.bitrate_kbps;
+    }
+}
+
 ConfigJson MediaStreamInfoToJson(StreamId stream_id,
+                                 IConfig *config,
                                  DeviceMedia *device,
                                  MediaStreams *media_streams,
                                  IWebrtc *webrtc) {
@@ -329,6 +395,10 @@ ConfigJson MediaStreamInfoToJson(StreamId stream_id,
     root["last_first_frame_ms"] = 0;
     root["last_protocol_ready_ms"] = 0;
     root["last_reset_reason"] = stream_info.last_reset_reason;
+    VideoStreamDisplayConfig display_config;
+    if (ReadVideoStreamDisplayConfig(config, stream_id, &display_config)) {
+        AddVideoStreamDisplayConfig(&root, display_config);
+    }
     return root;
 }
 
@@ -618,9 +688,11 @@ private:
         }
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
-        items.push_back(MediaStreamInfoToJson(StreamId::kMain, device_,
+        items.push_back(MediaStreamInfoToJson(StreamId::kMain, config_,
+                                              device_,
                                               media_streams_, webrtc_));
-        items.push_back(MediaStreamInfoToJson(StreamId::kSub, device_,
+        items.push_back(MediaStreamInfoToJson(StreamId::kSub, config_,
+                                              device_,
                                               media_streams_, webrtc_));
         root["items"] = items;
         return JsonResponse(200, root);
@@ -663,7 +735,7 @@ private:
                 200, PreviewUrlsToJson(config_, rtsp_, request, stream_id));
         }
         return JsonResponse(
-            200, MediaStreamInfoToJson(stream_id, device_,
+            200, MediaStreamInfoToJson(stream_id, config_, device_,
                                        media_streams_, webrtc_));
     }
 

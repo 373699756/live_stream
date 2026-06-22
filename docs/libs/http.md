@@ -84,6 +84,11 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 `live/sub` 或模块内部枚举，但不得把 `vhost/app`、旧 `stream_*` 字段或设备 SDK
 细节暴露给 Web。
 
+`GET /api/media/streams` 和 `GET /api/media/streams/{stream}` 返回每路码流的
+运行态、协议 ready、subscription/client 和缓存诊断；其中 `resolution`、`fps`、
+`bitrate_kbps` 来自当前 `video.streams.<main/sub>` 配置，用于 Web 运行总览展示，
+不是媒体模块从编码帧反推的隐藏 SDK 状态。
+
 播放 URL 由 `GET /api/media/streams/{stream}/urls` 返回：
 
 | 字段 | URL 规则 | 归属 |

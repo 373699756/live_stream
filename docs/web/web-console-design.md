@@ -131,6 +131,7 @@ flowchart LR
 - `available`
 - `running`
 - `codec`
+- `resolution` / `fps` / `bitrateKbps`
 - `hlsSupported` / `hlsReady`
 - `httpFlvSupported` / `httpFlvReady`
 - `mjpegSupported` / `mjpegReady`
