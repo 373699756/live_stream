@@ -17,6 +17,9 @@ namespace event {
 template <typename>
 class Fn;
 
+// Move-only callback wrapper used by event queues. Small no-throw-movable
+// callables live inside the object; larger callables use heap memory so moving
+// queued tasks stays noexcept.
 template <>
 class Fn<void()> {
 public:
@@ -25,11 +28,11 @@ public:
 
     template <
         typename Callable,
-        typename Stored = typename std::decay<Callable>::type,
+        typename CallableType = typename std::decay<Callable>::type,
         typename = typename std::enable_if<
-            !std::is_same<Stored, Fn>::value>::type>
+            !std::is_same<CallableType, Fn>::value>::type>
     Fn(Callable &&callable) {
-        Init<Stored>(std::forward<Callable>(callable));
+        Init(std::forward<Callable>(callable));
     }
 
     Fn(Fn &&other) noexcept { MoveFrom(std::move(other)); }
@@ -51,13 +54,13 @@ public:
 
     void operator()() {
         if (invoke_ != nullptr) {
-            invoke_(Ptr());
+            invoke_(CallablePtr());
         }
     }
 
     void Reset() {
         if (destroy_ != nullptr) {
-            destroy_(Ptr());
+            destroy_(CallablePtr());
         }
         invoke_ = nullptr;
         move_ = nullptr;
@@ -70,45 +73,47 @@ public:
 private:
     static constexpr std::size_t kInlineSize = 64;
     static constexpr std::size_t kInlineAlign = alignof(std::max_align_t);
-    using Storage =
-        typename std::aligned_storage<kInlineSize, kInlineAlign>::type;
 
-    template <typename Stored, typename Callable>
-    void InitStorage(Callable &&callable, std::true_type) {
-        new (&storage_) Stored(std::forward<Callable>(callable));
-        destroy_ = [](void *ptr) { static_cast<Stored *>(ptr)->~Stored(); };
+    template <typename CallableType, typename CallableArg>
+    void InitCallable(CallableArg &&callable, std::true_type) {
+        new (InlinePtr()) CallableType(std::forward<CallableArg>(callable));
+        destroy_ = [](void *ptr) {
+            static_cast<CallableType *>(ptr)->~CallableType();
+        };
         inline_active_ = true;
     }
 
-    template <typename Stored, typename Callable>
-    void InitStorage(Callable &&callable, std::false_type) {
-        Stored *allocated =
-            new (std::nothrow) Stored(std::forward<Callable>(callable));
+    template <typename CallableType, typename CallableArg>
+    void InitCallable(CallableArg &&callable, std::false_type) {
+        CallableType *allocated =
+            new (std::nothrow) CallableType(
+                std::forward<CallableArg>(callable));
         if (allocated == nullptr) {
             invoke_ = nullptr;
             move_ = nullptr;
             destroy_ = nullptr;
             return;
         }
-        destroy_ = [](void *ptr) { delete static_cast<Stored *>(ptr); };
+        destroy_ = [](void *ptr) { delete static_cast<CallableType *>(ptr); };
         heap_ = allocated;
         heap_active_ = true;
     }
 
-    template <typename Stored>
-    void Init(Stored &&callable) {
-        using Saved = typename std::decay<Stored>::type;
-        invoke_ = [](void *ptr) { (*static_cast<Saved *>(ptr))(); };
+    template <typename CallableArg>
+    void Init(CallableArg &&callable) {
+        using CallableType = typename std::decay<CallableArg>::type;
+        invoke_ = [](void *ptr) { (*static_cast<CallableType *>(ptr))(); };
         move_ = [](void *src, void *dst) {
-            new (dst) Saved(std::move(*static_cast<Saved *>(src)));
+            new (dst) CallableType(
+                std::move(*static_cast<CallableType *>(src)));
         };
-        InitStorage<Saved>(
-            std::forward<Stored>(callable),
+        InitCallable<CallableType>(
+            std::forward<CallableArg>(callable),
             std::integral_constant<
                 bool,
-                sizeof(Saved) <= kInlineSize &&
-                    alignof(Saved) <= kInlineAlign &&
-                    std::is_nothrow_move_constructible<Saved>::value>());
+                sizeof(CallableType) <= kInlineSize &&
+                    alignof(CallableType) <= kInlineAlign &&
+                    std::is_nothrow_move_constructible<CallableType>::value>());
     }
 
     void MoveFrom(Fn &&other) {
@@ -121,7 +126,7 @@ private:
             other.heap_ = nullptr;
             other.heap_active_ = false;
         } else if (other.inline_active_) {
-            move_(other.Ptr(), &storage_);
+            move_(other.CallablePtr(), InlinePtr());
             inline_active_ = true;
             other.Reset();
         }
@@ -131,18 +136,15 @@ private:
         other.inline_active_ = false;
     }
 
-    void *Ptr() {
-        return heap_active_ ? heap_ : static_cast<void *>(&storage_);
+    void *InlinePtr() {
+        return static_cast<void *>(&inline_bytes_[0]);
     }
 
-    void *Ptr() const {
-        return heap_active_
-                   ? heap_
-                   : const_cast<void *>(
-                         static_cast<const void *>(&storage_));
+    void *CallablePtr() {
+        return heap_active_ ? heap_ : InlinePtr();
     }
 
-    Storage storage_;
+    alignas(kInlineAlign) unsigned char inline_bytes_[kInlineSize];
     void *heap_ = nullptr;
     void (*invoke_)(void *) = nullptr;
     void (*move_)(void *, void *) = nullptr;
@@ -151,6 +153,8 @@ private:
     bool heap_active_ = false;
 };
 
+// Task is the work unit accepted by Executor and Loop. Move-only tasks can
+// carry ownership without forcing std::function copies.
 using Task = Fn<void()>;
 using TimerId = uint64_t;
 using SubscriptionId = uint64_t;
@@ -169,6 +173,8 @@ enum class StopMode {
     kDiscard,
 };
 
+// Bounded worker pool for low-frequency background work. Post() returns
+// kQueueFull instead of blocking when callers exceed the configured capacity.
 struct ExecutorOptions {
     uint32_t worker_count = 0;
     uint32_t queue_capacity = 4096;
@@ -203,6 +209,8 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+// Single-thread execution domain for protocol and service callbacks. Posted
+// tasks and timer callbacks run serially on the loop thread.
 struct LoopOptions {
     std::string name;
     uint32_t queue_capacity = 4096;
@@ -291,6 +299,8 @@ using EventFn = std::function<void(const Event &)>;
 
 class Dispatcher;
 
+// RAII handle returned by Dispatcher subscriptions. Destroying or cancelling it
+// detaches the handler from future Publish() calls.
 class Subscription {
 public:
     Subscription() = default;
@@ -315,6 +325,8 @@ private:
     SubscriptionId id_ = 0;
 };
 
+// Synchronous in-process event fanout. Handlers run in the Publish() caller, so
+// slow work should be posted to the owning module's queue.
 class Dispatcher {
 public:
     Dispatcher();
@@ -340,6 +352,7 @@ struct ServiceOptions {
     LoopOptions loop;
 };
 
+// Owns the event loop plus dispatcher used for asynchronous event publishing.
 class Service {
 public:
     Service();
