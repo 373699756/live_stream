@@ -18,7 +18,7 @@ using live_stream::event::Service;
 using live_stream::event::StopMode;
 using live_stream::event::Subscription;
 
-int HeaderAndLifecycleTest() {
+int HeaderAndStartStopTest() {
     Service service;
     if (!service.Start()) {
         return 1;
@@ -43,7 +43,7 @@ int PublishSubscribeTest() {
     std::string target;
     int32_t value = 0;
 
-    Subscription subscription = dispatcher.SubscribeMany(
+    Subscription subscription = dispatcher.SubscribeTypes(
         std::vector<EventType>{EventType::kConfigChanged, EventType::kAlarmOn},
         [&](const Event &event) {
             std::lock_guard<std::mutex> lock(mutex);
@@ -213,13 +213,13 @@ int EventSizeLimitTest() {
 int ErrorPathTest() {
     Dispatcher dispatcher;
 
-    if (dispatcher.SubscribeMany(std::vector<EventType>(),
+    if (dispatcher.SubscribeTypes(std::vector<EventType>(),
                                  [](const Event &event) {
                                      (void)event;
                                  }).valid()) {
         return 50;
     }
-    if (dispatcher.SubscribeMany(
+    if (dispatcher.SubscribeTypes(
             std::vector<EventType>{static_cast<EventType>(999)},
             [](const Event &event) { (void)event; }).valid()) {
         return 51;
@@ -299,7 +299,7 @@ int AsyncPublishTest() {
 }  // namespace
 
 int main() {
-    int result = HeaderAndLifecycleTest();
+    int result = HeaderAndStartStopTest();
     if (result != 0) {
         return result;
     }

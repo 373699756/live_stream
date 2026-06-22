@@ -336,7 +336,8 @@ public:
     Dispatcher &operator=(const Dispatcher &) = delete;
 
     Subscription Subscribe(EventType type, EventFn fn);
-    Subscription SubscribeMany(const std::vector<EventType> &types,
+    // Subscribes one handler to any event whose type is listed in types.
+    Subscription SubscribeTypes(const std::vector<EventType> &types,
                                EventFn fn);
     bool Cancel(SubscriptionId id);
     EventStatus Publish(const Event &event);

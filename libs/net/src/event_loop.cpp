@@ -183,7 +183,7 @@ event::EventStatus EventLoop::RunAfter(uint32_t delay_ms, event::Task task,
     timer->task = std::move(task);
     timers_[id] = timer;
     *timer_id = id;
-    RearmTimerLocked();
+    SetTimerFdNextWakeupLocked();
     return event::EventStatus::kOk;
 }
 
@@ -206,7 +206,7 @@ event::EventStatus EventLoop::RunEvery(uint32_t interval_ms,
     timer->task = std::move(task);
     timers_[id] = timer;
     *timer_id = id;
-    RearmTimerLocked();
+    SetTimerFdNextWakeupLocked();
     return event::EventStatus::kOk;
 }
 
@@ -223,7 +223,7 @@ bool EventLoop::CancelTimer(event::TimerId id) {
         timers_.erase(it);
     }
     ++stats_.timer_cancelled;
-    RearmTimerLocked();
+    SetTimerFdNextWakeupLocked();
     return true;
 }
 
@@ -266,14 +266,15 @@ void EventLoop::DrainTimerFd() {
     }
 }
 
-void EventLoop::RearmTimerLocked() {
+void EventLoop::SetTimerFdNextWakeupLocked() {
     if (!timer_fd_.valid()) {
         return;
     }
     itimerspec spec{};
     if (!timers_.empty()) {
-        // timers_ 按 id 存储，不按 deadline 排序，因此重设 timerfd 前必须扫描
-        // 最近 deadline。timer 数量由协议连接和 session 数限制，线性扫描足够直接。
+        // timers_ is keyed by id, not deadline. Scan for the earliest deadline
+        // before programming timerfd; the timer count is bounded by protocol
+        // sessions, so the simple scan keeps the ownership model obvious.
         const int64_t now = infra::Time::MonotonicMillis();
         int64_t next_ms = timers_.begin()->second->deadline_ms;
         for (const auto &entry : timers_) {
@@ -344,7 +345,7 @@ void EventLoop::RunTimers() {
         }
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    RearmTimerLocked();
+    SetTimerFdNextWakeupLocked();
 }
 
 void EventLoop::RunTasks() {

@@ -23,7 +23,7 @@ flowchart LR
 
 ## 核心职责
 
-- 提供 `Dispatcher::Subscribe`、`SubscribeMany`、RAII `Subscription`、
+- 提供 `Dispatcher::Subscribe`、`SubscribeTypes`、RAII `Subscription`、
   `Publish` 和 `GetCounts`。
 - 提供 `Service` 组合 `Loop + Dispatcher`，用于异步发布事件。
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。

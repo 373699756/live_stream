@@ -182,19 +182,19 @@ int main() {
         return 17;
     }
 
-    live_stream::TimeOptions lifecycle_options;
-    lifecycle_options.default_timezone = "UTC";
-    lifecycle_options.default_ntp_config.enabled = false;
-    std::unique_ptr<live_stream::ITime> lifecycle_time =
-        live_stream::CreateTime(lifecycle_options);
-    if (!lifecycle_time || lifecycle_time->IsStarted()) {
+    live_stream::TimeOptions start_stop_options;
+    start_stop_options.default_timezone = "UTC";
+    start_stop_options.default_ntp_config.enabled = false;
+    std::unique_ptr<live_stream::ITime> start_stop_time =
+        live_stream::CreateTime(start_stop_options);
+    if (!start_stop_time || start_stop_time->IsStarted()) {
         return 2;
     }
-    if (!lifecycle_time->Start() || !lifecycle_time->IsStarted()) {
+    if (!start_stop_time->Start() || !start_stop_time->IsStarted()) {
         return 3;
     }
-    lifecycle_time->Stop();
-    if (lifecycle_time->SetSystemTime(live_stream::RequestContext(), 4000,
+    start_stop_time->Stop();
+    if (start_stop_time->SetSystemTime(live_stream::RequestContext(), 4000,
                                       live_stream::TimeSyncSource::kManual)) {
         return 4;
     }

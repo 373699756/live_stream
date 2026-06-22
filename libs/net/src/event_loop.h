@@ -58,7 +58,9 @@ private:
                         std::function<void(uint32_t)> handler);
     void CleanupLocked();
     void DrainTimerFd();
-    void RearmTimerLocked();
+    // Sets timer_fd_ to wake at the next pending timer deadline, or disarms it
+    // when no timers remain. Caller must hold mutex_.
+    void SetTimerFdNextWakeupLocked();
     void RunTimers();
     void RunTasks();
     bool ShouldStop() const;

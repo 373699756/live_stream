@@ -226,7 +226,7 @@ private:
             event::EventType::kAlarmOn,
             event::EventType::kAlarmOff,
         };
-        event::Subscription subscription = event_->SubscribeMany(
+        event::Subscription subscription = event_->SubscribeTypes(
             event_types,
             [writer = writer_, connection_id](const event::Event &event) {
                 if (writer == nullptr) {

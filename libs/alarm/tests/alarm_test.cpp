@@ -97,7 +97,7 @@ public:
 class FakeEvent : public live_stream::event::Dispatcher {
 public:
     FakeEvent()
-        : subscription_(SubscribeMany(
+        : subscription_(SubscribeTypes(
               std::vector<live_stream::event::EventType>{
                   live_stream::event::EventType::kAlarmOn,
                   live_stream::event::EventType::kAlarmOff},

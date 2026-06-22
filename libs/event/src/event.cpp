@@ -549,9 +549,9 @@ LoopStats Loop::GetStats() const { return impl_->GetStats(); }
 
 class Dispatcher::Impl {
 public:
-    Subscription SubscribeMany(Dispatcher *owner,
-                               const std::vector<EventType> &types,
-                               EventFn fn) {
+    Subscription SubscribeTypes(Dispatcher *owner,
+                                const std::vector<EventType> &types,
+                                EventFn fn) {
         if (!owner || !fn || !IsEventTypesValid(types)) {
             return Subscription();
         }
@@ -639,13 +639,13 @@ Dispatcher::Dispatcher() : impl_(new Impl()) {}
 Dispatcher::~Dispatcher() = default;
 
 Subscription Dispatcher::Subscribe(EventType type, EventFn fn) {
-    return impl_->SubscribeMany(this, std::vector<EventType>{type},
-                                std::move(fn));
+    return impl_->SubscribeTypes(this, std::vector<EventType>{type},
+                                 std::move(fn));
 }
 
-Subscription Dispatcher::SubscribeMany(const std::vector<EventType> &types,
-                                       EventFn fn) {
-    return impl_->SubscribeMany(this, types, std::move(fn));
+Subscription Dispatcher::SubscribeTypes(const std::vector<EventType> &types,
+                                        EventFn fn) {
+    return impl_->SubscribeTypes(this, types, std::move(fn));
 }
 
 bool Dispatcher::Cancel(SubscriptionId id) { return impl_->Cancel(id); }

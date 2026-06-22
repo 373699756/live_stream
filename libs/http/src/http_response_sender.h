@@ -10,8 +10,9 @@
 namespace live_stream {
 
 // Owns HTTP response serialization and TCP enqueue policy for one HTTP server.
-// HttpServer keeps connection/session lifecycle; this class keeps body slicing,
-// FrameBuffer lifetime bridging and slow-client close decisions in one place.
+// HttpServer keeps connection/session ownership and close flow; this class
+// keeps body slicing, FrameBuffer lifetime bridging and slow-client close
+// decisions in one place.
 class HttpResponseSender {
 public:
     // send_buffer_limit_bytes must be > 0. It sets the maximum outstanding

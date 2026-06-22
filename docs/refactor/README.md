@@ -435,7 +435,7 @@ review 时优先看这些问题：
 1. `docs(refactor): freeze architecture and naming contract`
 2. `refactor(names): remove legacy service and stream names`
 3. `refactor(media): split device capture from media streams`
-4. `refactor(net): add bounded send queue and close lifecycle`
+4. `refactor(net): add bounded send queue and close flow`
 5. `fix(rtsp): align setup play and udp peer behavior`
 6. `refactor(rtp): share video rtp packet output`
 7. `refactor(http-media): isolate streaming handlers`
