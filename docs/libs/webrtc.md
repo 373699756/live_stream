@@ -88,8 +88,10 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 `webrtc_active_peers` 和会话列表一致性。`/api/media/streams/{stream}` 只展示
 protocol ready 汇总，不替代 peer 级 info。
 
-10.5 当前基线已经移除 metaRTC/Yang include 和链接库，保留 OpenSSL 与 libsrtp；
-usrsctp/datachannel 首版不启用。`dtls_transport.*` 负责生成本地自签名证书、输出
+10.5 当前基线已经移除 metaRTC/Yang include 和链接库，第三方默认构建脚本只保留
+OpenSSL 与 libsrtp；usrsctp/datachannel 依赖已从第三方源码、安装产物和默认构建
+脚本中移除。
+`dtls_transport.*` 负责生成本地自签名证书、输出
 SHA-256 fingerprint、执行 DTLS server role 握手、校验 remote fingerprint，并通过
 `EXTRACTOR-dtls_srtp` 导出 AES_CM_128_HMAC_SHA1_80 的 SRTP master key/salt。
 native engine 在收到 offer 时为 peer 创建独立 UDP host candidate、ICE transport

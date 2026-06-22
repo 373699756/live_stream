@@ -7,14 +7,10 @@ BUILD_DIR="${ROOT_DIR}/build"
 INSTALL_DIR="${ROOT_DIR}/install"
 INSTALL_LIB_DIR="${INSTALL_DIR}/lib"
 INSTALL_INCLUDE_DIR="${INSTALL_DIR}/include"
-TOOLCHAIN_FILE="${SRC_DIR}/toolchains/arm-himix200-linux.cmake"
 
 OPENSSL_SRC_DIR="${SRC_DIR}/openssl-1.1.1w"
 OPENSSL_INSTALL_DIR="${OPENSSL_SRC_DIR}/install"
 LIBSRTP_SRC_DIR="${SRC_DIR}/libsrtp"
-USRSCTP_SRC_DIR="${SRC_DIR}/usrsctp"
-METARTC_SRC_DIR="${SRC_DIR}/metaRTC_src"
-METARTC_BIN_LIB_DIR="${METARTC_SRC_DIR}/bin/lib_debug"
 
 JOBS="${JOBS:-$(nproc)}"
 CROSS_PREFIX="${CROSS_PREFIX:-arm-himix200-linux-}"
@@ -105,8 +101,14 @@ detect_toolchain() {
 }
 
 ensure_dirs() {
-  mkdir -p "${BUILD_DIR}" "${INSTALL_LIB_DIR}" "${INSTALL_INCLUDE_DIR}" \
-    "${METARTC_BIN_LIB_DIR}"
+  mkdir -p "${BUILD_DIR}" "${INSTALL_LIB_DIR}" "${INSTALL_INCLUDE_DIR}"
+}
+
+clean_removed_deps() {
+  rm -rf "${BUILD_DIR}/usrsctp"
+  rm -f "${INSTALL_INCLUDE_DIR}/usrsctp.h" \
+    "${INSTALL_LIB_DIR}/libusrsctp.a" \
+    "${INSTALL_LIB_DIR}/pkgconfig/usrsctp.pc"
 }
 
 copy_file() {
@@ -132,8 +134,6 @@ build_openssl() {
 
   copy_file "${OPENSSL_INSTALL_DIR}/lib/libssl.a" "${INSTALL_LIB_DIR}"
   copy_file "${OPENSSL_INSTALL_DIR}/lib/libcrypto.a" "${INSTALL_LIB_DIR}"
-  copy_file "${OPENSSL_INSTALL_DIR}/lib/libssl.a" "${METARTC_BIN_LIB_DIR}"
-  copy_file "${OPENSSL_INSTALL_DIR}/lib/libcrypto.a" "${METARTC_BIN_LIB_DIR}"
 }
 
 build_libsrtp() {
@@ -162,78 +162,12 @@ build_libsrtp() {
   )
 }
 
-build_usrsctp() {
-  echo "[deps] build usrsctp"
-  rm -rf "${BUILD_DIR}/usrsctp"
-  cmake -S "${USRSCTP_SRC_DIR}" -B "${BUILD_DIR}/usrsctp" \
-    -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-    -DCMAKE_C_COMPILER="${CROSS_CC}" \
-    -DCMAKE_CXX_COMPILER="${CROSS_CXX}" \
-    -DCMAKE_AR="${CROSS_AR}" \
-    -DCMAKE_RANLIB="${CROSS_RANLIB}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    -Dsctp_build_shared_lib=OFF \
-    -Dsctp_build_programs=OFF \
-    -Dsctp_build_fuzzer=OFF \
-    -Dsctp_werror=OFF \
-    -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
-  cmake --build "${BUILD_DIR}/usrsctp" -j"${JOBS}"
-  cmake --install "${BUILD_DIR}/usrsctp"
-}
-
-build_metartc_library() {
-  local name="$1"
-  local source_dir="$2"
-  local build_dir="$3"
-  shift 3
-
-  echo "[deps] build ${name}"
-  rm -rf "${build_dir}"
-  cmake -S "${source_dir}" -B "${build_dir}" \
-    -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" \
-    -DCMAKE_C_COMPILER="${CROSS_CC}" \
-    -DCMAKE_CXX_COMPILER="${CROSS_CXX}" \
-    -DCMAKE_AR="${CROSS_AR}" \
-    -DCMAKE_RANLIB="${CROSS_RANLIB}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    "$@"
-  cmake --build "${build_dir}" -j"${JOBS}"
-}
-
-build_metartc() {
-  build_metartc_library "libyangutil8" \
-    "${METARTC_SRC_DIR}/libyangutil8" \
-    "${BUILD_DIR}/meta_libyangutil8" \
-    -DYANG_OPENSSL_ROOT="${OPENSSL_INSTALL_DIR}" \
-    -DYang_Moc=2
-
-  build_metartc_library "libmetartccore8" \
-    "${METARTC_SRC_DIR}/libmetartccore8" \
-    "${BUILD_DIR}/meta_libmetartccore8" \
-    -DYANG_OPENSSL_ROOT="${OPENSSL_INSTALL_DIR}"
-
-  build_metartc_library "libmetartc8" \
-    "${METARTC_SRC_DIR}/libmetartc8" \
-    "${BUILD_DIR}/meta_libmetartc8" \
-    -DNoCapture=ON -DNoPlayer=ON
-
-  copy_file "${BUILD_DIR}/meta_libyangutil8/libyangutil8.a" "${INSTALL_LIB_DIR}"
-  copy_file "${BUILD_DIR}/meta_libmetartccore8/libmetartccore8.a" "${INSTALL_LIB_DIR}"
-  copy_file "${BUILD_DIR}/meta_libmetartc8/libmetartc8.a" "${INSTALL_LIB_DIR}"
-  copy_file "${BUILD_DIR}/meta_libyangutil8/libyangutil8.a" "${METARTC_BIN_LIB_DIR}"
-  copy_file "${BUILD_DIR}/meta_libmetartccore8/libmetartccore8.a" "${METARTC_BIN_LIB_DIR}"
-  copy_file "${BUILD_DIR}/meta_libmetartc8/libmetartc8.a" "${METARTC_BIN_LIB_DIR}"
-}
-
 build_all() {
   ensure_dirs
+  clean_removed_deps
   detect_toolchain
   build_openssl
   build_libsrtp
-  build_usrsctp
-  build_metartc
 }
 
 case "${1:-all}" in
@@ -242,26 +176,18 @@ case "${1:-all}" in
     ;;
   openssl)
     ensure_dirs
+    clean_removed_deps
     detect_toolchain
     build_openssl
     ;;
   libsrtp)
     ensure_dirs
+    clean_removed_deps
     detect_toolchain
     build_libsrtp
     ;;
-  usrsctp)
-    ensure_dirs
-    detect_toolchain
-    build_usrsctp
-    ;;
-  metartc)
-    ensure_dirs
-    detect_toolchain
-    build_metartc
-    ;;
   *)
-    echo "usage: $0 [all|openssl|libsrtp|usrsctp|metartc]" >&2
+    echo "usage: $0 [all|openssl|libsrtp]" >&2
     exit 2
     ;;
 esac
