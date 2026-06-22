@@ -12,7 +12,7 @@ class IAuth;
 class IConfig;
 class ILogger;
 class IAlarm;
-class INetworkConfig;
+class INetwork;
 class OnvifServer;
 class IRtsp;
 class ISystem;
@@ -29,7 +29,7 @@ struct HttpDependencies {
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
-    INetworkConfig *network_config = nullptr;
+    INetwork *network = nullptr;
     ITime *time = nullptr;
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;

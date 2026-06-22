@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "alarm.h"
-#include "network_config.h"
+#include "network_api.h"
 #include "subsystems/device_platform_dependencies.h"
 #include "system.h"
 #include "time_api.h"
@@ -17,7 +17,7 @@ class CoreSubsystem;
 struct DeviceRefs {
     ISystem *system = nullptr;
     ITime *time = nullptr;
-    INetworkConfig *network = nullptr;
+    INetwork *network = nullptr;
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
 };
@@ -40,11 +40,11 @@ private:
 
     std::unique_ptr<ISystemPlatform> system_platform_;
     std::unique_ptr<ITimePlatform> time_platform_;
-    std::unique_ptr<INetworkPlatform> network_platform_;
+    std::unique_ptr<INetPlatform> network_platform_;
     std::unique_ptr<IUpgradePlatform> upgrade_platform_;
     std::unique_ptr<ISystem> system_;
     std::unique_ptr<ITime> time_;
-    std::unique_ptr<INetworkConfig> network_;
+    std::unique_ptr<INetwork> network_;
     std::unique_ptr<IAlarm> alarm_;
     std::unique_ptr<IUpgrade> upgrade_;
     bool started_ = false;

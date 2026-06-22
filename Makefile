@@ -44,8 +44,6 @@ CXXFLAGS += -Ilibs/config/include
 CXXFLAGS += -Ilibs/auth/include
 CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
-CXXFLAGS += -Ilibs/network_config/include
-CXXFLAGS += -Ilibs/network_config/src
 CXXFLAGS += -Ilibs/media/include
 CXXFLAGS += -Ilibs/media_codec/include
 CXXFLAGS += -Ilibs/rtp/include
@@ -74,7 +72,6 @@ MODULES := \
 	event \
 	auth \
 	system \
-	network_config \
 	ai \
 	hisi_vendor \
 	media \

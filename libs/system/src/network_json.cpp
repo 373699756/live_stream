@@ -1,4 +1,4 @@
-#include "network_config_codec.h"
+#include "network_api.h"
 
 #include "json_utils.h"
 
@@ -106,7 +106,7 @@ bool IsValidIfname(const std::string &ifname) {
     return true;
 }
 
-bool ValidateConfig(const NetworkInterfaceConfig &config,
+bool ValidateConfig(const NetConfig &config,
                     bool allow_loopback_config) {
     if (!IsValidIfname(config.ifname)) {
         return false;
@@ -130,8 +130,8 @@ bool ValidateConfig(const NetworkInterfaceConfig &config,
     return true;
 }
 
-NetworkInterfaceConfig DefaultConfig(const std::string &ifname) {
-    NetworkInterfaceConfig config;
+NetConfig DefaultConfig(const std::string &ifname) {
+    NetConfig config;
     config.ifname = ifname.empty() ? "eth0" : ifname;
     config.enabled = true;
     config.dhcp = true;
@@ -143,13 +143,13 @@ NetworkInterfaceConfig DefaultConfig(const std::string &ifname) {
 //   "static_ipv4": { "address": str, "netmask": str, "gateway": str },
 //   "dns": [str, ...] }
 
-bool ConfigFromNetworkInterfaceJson(const std::string &ifname,
+bool ConfigFromNetJson(const std::string &ifname,
                                     const ConfigJson &value,
-                                    NetworkInterfaceConfig *config) {
+                                    NetConfig *config) {
     if (!value.is_object() || config == nullptr) {
         return false;
     }
-    NetworkInterfaceConfig parsed;
+    NetConfig parsed;
     parsed.ifname = ifname;
     if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
         !json_utils::ReadField(value, "dhcp", &parsed.dhcp)) {
@@ -172,7 +172,7 @@ bool ConfigFromNetworkInterfaceJson(const std::string &ifname,
     return true;
 }
 
-ConfigJson NetworkInterfaceConfigToJson(const NetworkInterfaceConfig &config) {
+ConfigJson NetConfigToJson(const NetConfig &config) {
     ConfigJson value = ConfigJson::object();
     value["enabled"] = config.enabled;
     value["dhcp"] = config.dhcp;
@@ -191,7 +191,7 @@ ConfigJson NetworkInterfaceConfigToJson(const NetworkInterfaceConfig &config) {
 
 bool ConfigsFromNetworkJson(
     const ConfigJson &json,
-    std::map<std::string, NetworkInterfaceConfig> *configs) {
+    std::map<std::string, NetConfig> *configs) {
     if (configs == nullptr || !json.is_object()) {
         return false;
     }
@@ -201,8 +201,8 @@ bool ConfigsFromNetworkJson(
     }
     const ConfigJson &interfaces = json.at("interfaces");
     for (auto iter = interfaces.begin(); iter != interfaces.end(); ++iter) {
-        NetworkInterfaceConfig config;
-        if (!ConfigFromNetworkInterfaceJson(iter.key(), iter.value(), &config) ||
+        NetConfig config;
+        if (!ConfigFromNetJson(iter.key(), iter.value(), &config) ||
             !ValidateConfig(config, true)) {
             return false;
         }
@@ -213,19 +213,51 @@ bool ConfigsFromNetworkJson(
 
 ConfigJson NetworkJsonWithConfigs(
     const ConfigJson &current,
-    const std::map<std::string, NetworkInterfaceConfig> &configs) {
+    const std::map<std::string, NetConfig> &configs) {
     ConfigJson root = current.is_object() ? current : ConfigJson::object();
     ConfigJson interfaces = ConfigJson::object();
     for (const auto &entry : configs) {
-        interfaces[entry.first] = NetworkInterfaceConfigToJson(entry.second);
+        interfaces[entry.first] = NetConfigToJson(entry.second);
     }
     root["interfaces"] = interfaces;
     return root;
 }
 
-// Exposed for use in linux_network_platform.cpp when applying static address.
+}  // namespace network_internal
+
+// Public API codec functions
+
+ConfigJson NetStatusToApiJson(
+    const NetStatus &status) {
+    ConfigJson root = ConfigJson::object();
+    root["ifname"] = status.ifname;
+    root["enabled"] = status.enabled;
+    root["link_up"] = status.link_up;
+    root["dhcp"] = status.dhcp;
+    root["mac_address"] = status.mac_address;
+    root["last_ok"] = status.last_ok;
+    ConfigJson s = ConfigJson::object();
+    s["address"] = status.static_ipv4.address;
+    s["prefix_length"] = status.static_ipv4.prefix_length;
+    s["netmask"] = status.static_ipv4.netmask;
+    s["gateway"] = status.static_ipv4.gateway;
+    root["static_ipv4"] = s;
+    ConfigJson dns = ConfigJson::array();
+    for (const std::string &server : status.dns) {
+        dns.push_back(server);
+    }
+    root["dns"] = dns;
+    return root;
+}
+
+bool NetConfigFromApiJson(const std::string &ifname,
+                                       const ConfigJson &value,
+                                       NetConfig *config) {
+    return network_internal::ConfigFromNetJson(ifname, value, config);
+}
+
 bool NetmaskToPrefixLength(const std::string &netmask, uint8_t *prefix_length) {
-    if (prefix_length == nullptr || !IsValidNetmask(netmask)) {
+    if (prefix_length == nullptr || !network_internal::IsValidNetmask(netmask)) {
         return false;
     }
     uint32_t result = 0;
@@ -262,39 +294,6 @@ std::string PrefixLengthToNetmask(uint8_t prefix_length) {
            std::to_string((mask >> 16) & 0xff) + "." +
            std::to_string((mask >> 8) & 0xff) + "." +
            std::to_string(mask & 0xff);
-}
-
-}  // namespace network_internal
-
-// Public API codec functions
-
-ConfigJson NetworkInterfaceStatusToApiJson(
-    const NetworkInterfaceStatus &status) {
-    ConfigJson root = ConfigJson::object();
-    root["ifname"] = status.ifname;
-    root["enabled"] = status.enabled;
-    root["link_up"] = status.link_up;
-    root["dhcp"] = status.dhcp;
-    root["mac_address"] = status.mac_address;
-    root["last_ok"] = status.last_ok;
-    ConfigJson s = ConfigJson::object();
-    s["address"] = status.static_ipv4.address;
-    s["prefix_length"] = status.static_ipv4.prefix_length;
-    s["netmask"] = status.static_ipv4.netmask;
-    s["gateway"] = status.static_ipv4.gateway;
-    root["static_ipv4"] = s;
-    ConfigJson dns = ConfigJson::array();
-    for (const std::string &server : status.dns) {
-        dns.push_back(server);
-    }
-    root["dns"] = dns;
-    return root;
-}
-
-bool NetworkInterfaceConfigFromApiJson(const std::string &ifname,
-                                       const ConfigJson &value,
-                                       NetworkInterfaceConfig *config) {
-    return network_internal::ConfigFromNetworkInterfaceJson(ifname, value, config);
 }
 
 }  // namespace live_stream

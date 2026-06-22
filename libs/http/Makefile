@@ -12,7 +12,6 @@ MEDIA_STREAMS_LIB := $(BUILD_DIR)/lib/libmedia.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 HTTP_MEDIA_LIB := $(BUILD_DIR)/lib/libhttp_media.a
 SYSTEM_LIB := $(BUILD_DIR)/lib/libsystem.a
-NETWORK_LIB := $(BUILD_DIR)/lib/libnetwork_config.a
 ONVIF_LIB := $(BUILD_DIR)/lib/libonvif.a
 
 CXXFLAGS += -pthread
@@ -26,7 +25,6 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/network_config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/onvif/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system/include
@@ -38,11 +36,11 @@ WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
 EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
-	$(SYSTEM_LIB) $(NETWORK_LIB) \
+	$(SYSTEM_LIB) \
 	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
 EXTRA_TEST_LIBS := $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(HTTP_MEDIA_LIB) $(MEDIA_STREAMS_LIB) \
-	$(SYSTEM_LIB) $(NETWORK_LIB) $(ONVIF_LIB) \
+	$(SYSTEM_LIB) $(ONVIF_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
@@ -71,9 +69,6 @@ $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system all
-
-$(NETWORK_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../network_config all
 
 $(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB)
 	$(MAKE) -C ../onvif all

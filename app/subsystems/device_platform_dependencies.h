@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "network_config.h"
+#include "network_api.h"
 #include "system.h"
 #include "time_api.h"
 #include "upgrade.h"
@@ -14,7 +14,7 @@ namespace live_stream {
 struct DevicePlatformDependencies {
     std::unique_ptr<ISystemPlatform> system_platform;
     std::unique_ptr<ITimePlatform> time_platform;
-    std::unique_ptr<INetworkPlatform> network_platform;
+    std::unique_ptr<INetPlatform> network_platform;
     std::unique_ptr<IUpgradePlatform> upgrade_platform;
     std::string network_ifname;
 };

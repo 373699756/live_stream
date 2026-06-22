@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "network_config.h"
+#include "network_api.h"
 #include "system.h"
 #include "time_api.h"
 #include "upgrade.h"
@@ -13,7 +13,7 @@ namespace live_stream {
 
 std::unique_ptr<ISystemPlatform> CreateSystemPlatform();
 std::unique_ptr<ITimePlatform> CreateTimePlatform();
-std::unique_ptr<INetworkPlatform>
+std::unique_ptr<INetPlatform>
 CreateNetworkPlatform(const std::string &default_ifname);
 std::unique_ptr<IUpgradePlatform> CreateUpgradePlatform();
 

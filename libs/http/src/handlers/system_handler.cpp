@@ -5,7 +5,7 @@
 #include "alarm.h"
 #include "config.h"
 #include "device.h"
-#include "network_config.h"
+#include "network_api.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "system.h"
@@ -153,9 +153,9 @@ private:
         add_module("time",
                    status_sources_.time != nullptr &&
                        status_sources_.time->IsStarted());
-        add_module("network_config",
-                   status_sources_.network_config != nullptr &&
-                       status_sources_.network_config->IsStarted());
+        add_module("system.network",
+                   status_sources_.network != nullptr &&
+                       status_sources_.network->IsStarted());
         add_module("alarm",
                    status_sources_.alarm != nullptr &&
                        status_sources_.alarm->IsStarted());

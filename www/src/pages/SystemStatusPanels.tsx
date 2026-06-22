@@ -11,7 +11,7 @@ const moduleLabels: Record<string, string> = {
     auth: '认证服务',
     system: '系统服务',
     time: '时间同步',
-    network_config: '网络配置',
+    'system.network': '网络配置',
     alarm: '报警服务',
     upgrade: '升级服务',
     rtsp: 'RTSP 服务',
@@ -27,7 +27,7 @@ const moduleLabels: Record<string, string> = {
 const moduleGroups = [
     {
         title: '基础服务',
-        names: ['logger', 'config', 'auth', 'system', 'time', 'network_config'],
+        names: ['logger', 'config', 'auth', 'system', 'time', 'system.network'],
     },
     {
         title: '媒体与智能',

@@ -187,4 +187,4 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 - 临时大 buffer、跨线程队列积压、`NetBufferOwner` 持帧时间和慢 socket 写是优先排查点。
 - 配置运行态联动仍需补 `network` 事件订阅或多 attachment 机制，让
   `network.advertise_ip`、`network.default_ifname` 和 WebRTC auto public IP 变化能
-  驱动协议 URL/SDP 重新应用，而不抢占 `network_config` 的配置 apply 回调。
+  驱动协议 URL/SDP 重新应用，而不抢占 `system.network` 的配置 apply 回调。

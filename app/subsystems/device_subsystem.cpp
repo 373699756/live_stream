@@ -44,15 +44,15 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
     }
 
     network_platform_ = std::move(dependencies.network_platform);
-    NetworkConfigOptions network_options;
+    NetOptions network_options;
     network_options.config = core_subsystem.config();
     network_options.event = core_subsystem.event();
     network_options.logger = core_subsystem.logger();
     network_options.default_ifname = dependencies.network_ifname;
     network_options.platform = network_platform_.get();
-    network_ = CreateNetworkConfig(network_options);
+    network_ = CreateNetwork(network_options);
     if (!network_ || !network_->Start()) {
-        Error("app", "Start network_config failed: ifname=%s",
+        Error("app", "Start network failed: ifname=%s",
               network_options.default_ifname.c_str());
         Stop();
         return false;

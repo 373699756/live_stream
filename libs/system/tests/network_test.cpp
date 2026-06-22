@@ -1,4 +1,4 @@
-#include "network_config.h"
+#include "network_api.h"
 
 #include "config.h"
 #include "event.h"
@@ -11,14 +11,14 @@
 
 namespace {
 
-class FakeNetworkPlatform : public live_stream::INetworkPlatform {
+class FakeNetworkPlatform : public live_stream::INetPlatform {
 public:
     std::vector<std::string> ListInterfaces() override {
         ++list_count;
         return interfaces;
     }
 
-    live_stream::NetworkInterfaceStatus GetInterfaceStatus(
+    live_stream::NetStatus GetInterfaceStatus(
         const std::string& ifname) override {
         ++status_count;
         status.ifname = ifname;
@@ -34,7 +34,7 @@ public:
     }
 
     bool ApplyStaticAddress(
-        const live_stream::NetworkInterfaceConfig& config) override {
+        const live_stream::NetConfig& config) override {
         ++static_count;
         last_static_config = config;
         return static_ok;
@@ -68,16 +68,16 @@ public:
     }
 
     bool RollbackInterface(
-        const live_stream::NetworkInterfaceConfig& previous_config) override {
+        const live_stream::NetConfig& previous_config) override {
         ++rollback_count;
         last_rollback_config = previous_config;
         return rollback_ok;
     }
 
     std::vector<std::string> interfaces{"eth0"};
-    live_stream::NetworkInterfaceStatus status;
-    live_stream::NetworkInterfaceConfig last_static_config;
-    live_stream::NetworkInterfaceConfig last_rollback_config;
+    live_stream::NetStatus status;
+    live_stream::NetConfig last_static_config;
+    live_stream::NetConfig last_rollback_config;
     std::vector<std::string> last_dns_servers;
     std::string last_ifname;
     std::string last_gateway;
@@ -224,8 +224,8 @@ public:
     live_stream::OperationRecord last_record;
 };
 
-live_stream::NetworkInterfaceConfig DhcpConfig() {
-    live_stream::NetworkInterfaceConfig config;
+live_stream::NetConfig DhcpConfig() {
+    live_stream::NetConfig config;
     config.ifname = "eth0";
     config.enabled = true;
     config.dhcp = true;
@@ -233,8 +233,8 @@ live_stream::NetworkInterfaceConfig DhcpConfig() {
     return config;
 }
 
-live_stream::NetworkInterfaceConfig StaticConfig() {
-    live_stream::NetworkInterfaceConfig config;
+live_stream::NetConfig StaticConfig() {
+    live_stream::NetConfig config;
     config.ifname = "eth0";
     config.enabled = true;
     config.dhcp = false;
@@ -245,19 +245,19 @@ live_stream::NetworkInterfaceConfig StaticConfig() {
     return config;
 }
 
-std::unique_ptr<live_stream::INetworkConfig> CreateStarted(
+std::unique_ptr<live_stream::INetwork> CreateStarted(
     FakeNetworkPlatform* platform,
     FakeConfig* config,
     FakeEvent* event,
     FakeLogger* logger) {
-    live_stream::NetworkConfigOptions options;
+    live_stream::NetOptions options;
     options.platform = platform;
     options.config = config;
     options.event = event;
     options.logger = logger;
     options.default_ifname = "eth0";
-    std::unique_ptr<live_stream::INetworkConfig> service =
-        live_stream::CreateNetworkConfig(options);
+    std::unique_ptr<live_stream::INetwork> service =
+        live_stream::CreateNetwork(options);
     if (!service || !service->Start()) {
         return nullptr;
     }
@@ -267,14 +267,14 @@ std::unique_ptr<live_stream::INetworkConfig> CreateStarted(
 }  // namespace
 
 int main() {
-    if (std::strcmp(live_stream::NetworkConfig::Name(), "network_config") !=
+    if (std::strcmp(live_stream::NetworkName(), "system.network") !=
         0) {
         return 1;
     }
 
-    live_stream::NetworkConfigOptions empty_options;
-    std::unique_ptr<live_stream::INetworkConfig> default_network =
-        live_stream::CreateNetworkConfig(empty_options);
+    live_stream::NetOptions empty_options;
+    std::unique_ptr<live_stream::INetwork> default_network =
+        live_stream::CreateNetwork(empty_options);
     if (!default_network || !default_network->Start()) {
         return 2;
     }
@@ -296,7 +296,7 @@ int main() {
     FakeConfig config;
     FakeEvent event;
     FakeLogger logger;
-    std::unique_ptr<live_stream::INetworkConfig> service =
+    std::unique_ptr<live_stream::INetwork> service =
         CreateStarted(&platform, &config, &event,
                       &logger);
     if (!service || !config.attached) {
@@ -308,7 +308,7 @@ int main() {
         return 4;
     }
 
-    live_stream::NetworkInterfaceStatus status =
+    live_stream::NetStatus status =
         service->GetInterfaceStatus("eth0");
     if (!status.link_up ||
         status.static_ipv4.address != "192.168.1.10" ||
@@ -347,7 +347,7 @@ int main() {
         return 7;
     }
 
-    live_stream::NetworkInterfaceConfig invalid = StaticConfig();
+    live_stream::NetConfig invalid = StaticConfig();
     invalid.static_ipv4.address = "999.1.1.1";
     const int static_count_before_invalid = platform.static_count;
     if (service->ApplyInterfaceConfig(context, invalid) ||
@@ -357,7 +357,7 @@ int main() {
         return 8;
     }
 
-    live_stream::NetworkInterfaceConfig loopback = StaticConfig();
+    live_stream::NetConfig loopback = StaticConfig();
     loopback.ifname = "lo";
     if (service->ApplyInterfaceConfig(context, loopback) ||
         logger.last_record.result !=
@@ -403,13 +403,13 @@ int main() {
     }
 
     live_stream::ConfigJson status_json =
-        live_stream::NetworkInterfaceStatusToApiJson(status);
+        live_stream::NetStatusToApiJson(status);
     if (status_json["static_ipv4"]["address"] != "192.168.1.10") {
         return 15;
     }
 
-    live_stream::NetworkInterfaceConfig parsed;
-    if (!live_stream::NetworkInterfaceConfigFromApiJson(
+    live_stream::NetConfig parsed;
+    if (!live_stream::NetConfigFromApiJson(
             "eth0", status_json, &parsed) ||
         parsed.static_ipv4.address != "192.168.1.10") {
         return 16;

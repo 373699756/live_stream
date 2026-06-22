@@ -177,7 +177,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     config_ = core_subsystem.config();
-    network_config_ = device_refs.network;
+    network_ = device_refs.network;
     app_config_ = app_config;
     if (!InstallConfigUpdateAttachments()) {
         Error("app", "Install protocol config update attachments failed");

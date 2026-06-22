@@ -13,7 +13,7 @@ class IAuth;
 class IConfig;
 class ILogger;
 class IAlarm;
-class INetworkConfig;
+class INetwork;
 class ITime;
 class IUpgrade;
 class ISystem;
@@ -29,7 +29,7 @@ struct SystemStatusSources {
     IConfig *config = nullptr;
     IAuth *auth = nullptr;
     ITime *time = nullptr;
-    INetworkConfig *network_config = nullptr;
+    INetwork *network = nullptr;
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
     IRtsp *rtsp = nullptr;
@@ -60,7 +60,7 @@ struct HttpHandlerDependencies {
     IAuth *auth = nullptr;
     IConfig *config = nullptr;
     ILogger *logger = nullptr;
-    INetworkConfig *network_config = nullptr;
+    INetwork *network = nullptr;
     ITime *time = nullptr;
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
@@ -85,7 +85,7 @@ std::unique_ptr<IHttpHandler> MakeConfigHandler(
 std::unique_ptr<IHttpHandler> MakeOperationsHandler(
     HttpAccess *access, ILogger *logger);
 std::unique_ptr<IHttpHandler> MakeNetworkHandler(
-    HttpAccess *access, INetworkConfig *network_config);
+    HttpAccess *access, INetwork *network);
 std::unique_ptr<IHttpHandler> MakeTimeHandler(
     HttpAccess *access, ITime *time);
 std::unique_ptr<IHttpHandler> MakeUpgradeHandler(

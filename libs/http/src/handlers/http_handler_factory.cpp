@@ -17,7 +17,7 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
                                          dependencies.logger);
         case HttpHandlerKind::kNetwork:
             return MakeNetworkHandler(dependencies.access,
-                                      dependencies.network_config);
+                                      dependencies.network);
         case HttpHandlerKind::kTime:
             return MakeTimeHandler(dependencies.access,
                                    dependencies.time);

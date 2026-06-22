@@ -32,7 +32,7 @@ flowchart LR
 
 public API 在 `libs/config/include/config.h`。配置字段正文归对应
 模块文档，例如 video/image、overlay 和 snapshot 归 `device`，AI 归 `ai`，
-network 归 `network_config`。
+network 归 `system.network`。
 
 配置 scope 归属：
 
@@ -41,7 +41,7 @@ network 归 `network_config`。
 | `video` / `image` | `device` | 视频编码、ISP 图像策略和能力应用 |
 | `overlay` | `device` | OSD、隐私遮挡和坐标合法性 |
 | `ai` | `ai` | AI 开关、后端、模型、阈值和告警联动 |
-| `network` | `network_config` | 网口、DHCP/static、DNS、端口展示 |
+| `network` | `system.network` | 网口、DHCP/static、DNS、端口展示 |
 | `snapshot` | `device` | 抓图开关、JPEG 质量和超时 |
 | `rtsp` / `webrtc` / `onvif` / `http` | 对应协议模块 | 协议开关、监听端口、认证和会话上限 |
 | `time` / `system` / `alarm` / `log` | 对应设备或基础模块 | 设备管理、告警和日志运行配置 |
@@ -76,7 +76,7 @@ executor 或连接上限的字段在运行时直接拒绝保存并要求重启�
 
 - 配置字段含义必须向后兼容。
 - HTTP、Web DTO 和拥有模块配置应用必须同步，避免保存成功但运行态未应用。
-- `network` scope 当前只能由 `network_config` 挂载一个 attachment；协议层依赖
+- `network` scope 当前只能由 `system.network` 挂载一个 attachment；协议层依赖
   `network.advertise_ip` 或自动 WebRTC IP 的运行态联动，需要后续改成事件订阅或
-  多 attachment 机制，不能抢占 `network_config` 的平台应用回调。
+  多 attachment 机制，不能抢占 `system.network` 的平台应用回调。
 - 不要在 `config` 中加入设备 SDK 解析或前端 DTO 逻辑。

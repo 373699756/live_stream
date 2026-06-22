@@ -42,7 +42,7 @@ void ProtocolSubsystem::DetachConfigUpdateAttachments() {
     static_cast<void>(config_->DetachConfig("webrtc"));
     static_cast<void>(config_->DetachConfig("onvif"));
     config_ = nullptr;
-    network_config_ = nullptr;
+    network_ = nullptr;
 }
 
 bool ProtocolSubsystem::BuildNextAppConfig(
@@ -103,7 +103,7 @@ ConfigResult ProtocolSubsystem::ApplyProtocolConfigUpdate(
             return ConfigResult::Failure("", "webrtc unavailable");
         }
         ProtocolStartupRefs refs;
-        refs.device.network = network_config_;
+        refs.device.network = network_;
         refs.net_engine = net_engine_.get();
         refs.rtsp = rtsp_.get();
         refs.onvif = onvif_.get();

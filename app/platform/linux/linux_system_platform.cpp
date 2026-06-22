@@ -183,7 +183,7 @@ public:
         caps.features.push_back("heartbeat");
         caps.features.push_back("system_status");
         caps.features.push_back("time_sync");
-        caps.features.push_back("network_config");
+        caps.features.push_back("system.network");
         if (caps.supports_reboot) {
             caps.features.push_back("reboot");
         }

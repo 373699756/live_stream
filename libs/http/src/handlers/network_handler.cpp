@@ -2,7 +2,7 @@
 
 #include "http_handler_utils.h"
 
-#include "network_config.h"
+#include "network_api.h"
 
 #include <string>
 #include <vector>
@@ -25,8 +25,8 @@ bool RequireNetworkPermission(HttpAccess *access,
 class NetworkHttpHandler : public IHttpHandler {
 public:
     NetworkHttpHandler(HttpAccess *access,
-                       INetworkConfig *network_config)
-        : access_(access), network_config_(network_config) {}
+                       INetwork *network)
+        : access_(access), network_(network) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -68,8 +68,8 @@ private:
     }
 
     HttpResponse HandleInterfaces(const HttpRequest &request) {
-        INetworkConfig *network_config = network_config_;
-        if (network_config == nullptr) {
+        INetwork *network = network_;
+        if (network == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
@@ -81,18 +81,18 @@ private:
         ConfigJson root = ConfigJson::object();
         ConfigJson items = ConfigJson::array();
         const std::vector<std::string> ifnames =
-            network_config->GetInterfaces();
+            network->GetInterfaces();
         for (const std::string &ifname : ifnames) {
-            items.push_back(NetworkInterfaceStatusToApiJson(
-                network_config->GetInterfaceStatus(ifname)));
+            items.push_back(NetStatusToApiJson(
+                network->GetInterfaceStatus(ifname)));
         }
         root["items"] = items;
         return JsonResponse(200, root);
     }
 
     HttpResponse HandleInterface(const HttpRequest &request) {
-        INetworkConfig *network_config = network_config_;
-        if (network_config == nullptr) {
+        INetwork *network = network_;
+        if (network == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         const std::string ifname =
@@ -107,12 +107,12 @@ private:
                                           &principal)) {
                 return ForbiddenResponse(principal);
             }
-            const NetworkInterfaceStatus status =
-                network_config->GetInterfaceStatus(ifname);
+            const NetStatus status =
+                network->GetInterfaceStatus(ifname);
             if (status.ifname.empty()) {
                 return StatusResponse(404, "Not Found");
             }
-            return JsonResponse(200, NetworkInterfaceStatusToApiJson(status));
+            return JsonResponse(200, NetStatusToApiJson(status));
         }
 
         AuthPrincipal principal;
@@ -125,11 +125,11 @@ private:
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
-        NetworkInterfaceConfig config;
-        if (!NetworkInterfaceConfigFromApiJson(ifname, body, &config)) {
+        NetConfig config;
+        if (!NetConfigFromApiJson(ifname, body, &config)) {
             return StatusResponse(400, "Invalid network config");
         }
-        return network_config
+        return network
                        ->ApplyInterfaceConfig(access_->MakeContext(request, &principal),
                                               config)
                    ? OkResponse()
@@ -137,8 +137,8 @@ private:
     }
 
     HttpResponse HandleReload(const HttpRequest &request) {
-        INetworkConfig *network_config = network_config_;
-        if (network_config == nullptr) {
+        INetwork *network = network_;
+        if (network == nullptr) {
             return StatusResponse(501, "Not Implemented");
         }
         AuthPrincipal principal;
@@ -147,19 +147,19 @@ private:
                                       &principal)) {
             return ForbiddenResponse(principal);
         }
-        return network_config->ReloadStatus()
+        return network->ReloadStatus()
                    ? OkResponse()
                    : StatusResponse(503, "Could not reload network status");
     }
 
     HttpAccess *access_ = nullptr;
-    INetworkConfig *network_config_ = nullptr;
+    INetwork *network_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeNetworkHandler(HttpAccess *access,
-                                                 INetworkConfig *network_config) {
+                                                 INetwork *network) {
     return std::unique_ptr<IHttpHandler>(
-        new NetworkHttpHandler(access, network_config));
+        new NetworkHttpHandler(access, network));
 }
 
 }  // namespace live_stream

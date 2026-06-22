@@ -18,7 +18,7 @@ struct AppConfig {
     std::string onvif_manufacturer = "CBinary";
     std::string onvif_model = "live_stream_ipc";
     std::string onvif_firmware_version = "0.1.0";
-    // Primary network interface used by NetworkConfig and platform adapter.
+    // Primary network interface used by system.network and platform adapter.
     // Defaults to "eth0"; read from network.default_ifname in the config.
     std::string network_ifname = "eth0";
     uint16_t http_port = 80;

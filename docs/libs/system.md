@@ -6,10 +6,11 @@
 
 ## 模块定位
 
-`system` 是设备系统运维模块，物理拥有系统状态/动作、时间同步和升级三组能力。
-它继续通过独立 public interface 暴露 `ISystem`、`ITime`、`IUpgrade`，避免把三类
-业务揉成一个大接口。平台动作分别通过 `ISystemPlatform`、`ITimePlatform`、
-`IUpgradePlatform` 注入，Linux/板端实现仍由 `app/platform/linux` 提供。
+`system` 是设备系统运维模块，物理拥有系统状态/动作、时间同步、升级和网络配置四组
+能力。它继续通过独立 public interface 暴露 `ISystem`、`ITime`、`IUpgrade`、
+`INetwork`，避免把不同业务揉成一个大接口。平台动作分别通过 `ISystemPlatform`、
+`ITimePlatform`、`IUpgradePlatform`、`INetPlatform` 注入，Linux/板端实现仍由
+`app/platform/linux` 提供。
 
 ## 总体框架图
 
@@ -18,18 +19,23 @@ flowchart LR
   HTTP[http system handlers] --> System[system]
   HTTP --> Time[time handlers]
   HTTP --> Upgrade[upgrade handlers]
+  HTTP --> Network[network handlers]
   System --> Platform[ISystemPlatform]
   Time --> TimePlatform[ITimePlatform]
   Upgrade --> UpgradePlatform[IUpgradePlatform]
+  Network --> NetPlatform[INetPlatform]
   Platform --> Linux[/proc /sys reboot etc]
   TimePlatform --> Linux
   UpgradePlatform --> Linux
+  NetPlatform --> Iface[network interface]
   System --> Logger[logger]
   System --> Event[event]
   Time --> Logger
   Time --> Event
   Upgrade --> Logger
   Upgrade --> Event
+  Network --> Logger
+  Network --> Event
 ```
 
 ## 核心职责
@@ -38,6 +44,10 @@ flowchart LR
 - 处理 reboot、factory reset 等系统管理动作。
 - 输出操作日志和系统状态事件。
 - 加载和应用时间/NTP/浏览器登录校时配置，发布 `kTimeChanged`。
+- 读取和应用 `network` scope 下的网口、DHCP/static、DNS 配置。
+- 查询网卡地址、链路和运行状态，使用 `network.default_ifname`，默认 fallback 为
+  `eth0`。
+- 发布 `kNetworkChanged` 并记录网络配置操作日志，module 为 `system.network`。
 - 管理升级校验、准备、写入、等待重启、取消等状态，发布
   `kUpgradeProgressChanged`。
 - 拥有 `upgrade_package` 包格式、manifest 和解包校验逻辑；真正写 flash
@@ -45,9 +55,9 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `system.h`、`time_api.h`、`upgrade.h` 和 `upgrade_package.h`。
-HTTP `/api/system/*`、`/api/time/*`、`/api/upgrade/*` 路由归 `http`，
-页面展示归 Web。
+public API 在 `system.h`、`time_api.h`、`network_api.h`、`upgrade.h` 和
+`upgrade_package.h`。HTTP `/api/system/*`、`/api/system/time/*`、
+`/api/system/network/*`、`/api/upgrade/*` 路由归 `http`，页面展示归 Web。
 
 ## 状态与资源模型
 
@@ -56,6 +66,12 @@ HTTP `/api/system/*`、`/api/time/*`、`/api/upgrade/*` 路由归 `http`，
 
 时间配置仍使用 `time` scope。`browser_sync_on_login` 控制 Web 登录后是否用浏览器
 当前 Unix 毫秒时间同步设备时间，`manual_sync_allowed=false` 时浏览器校时也会被关闭。
+
+网络配置来自 `network` scope，运行状态来自 `INetPlatform` 查询。C++ public API 使用
+`NetConfig` 表示单个网口配置，`NetStatus` 表示单个网口状态；配置 JSON scope 仍叫
+`network`。配置应用可能修改 Linux 网卡、DNS 或路由状态；模块只报告平台结果，不缓存
+Web 推导状态。`system` 不拥有 HTTP/RTSP/ONVIF 的监听生命周期，也不由前端推导设备
+advertise host 或链路状态。
 
 升级包上传后先落入临时目录，校验完成前不得写 flash。升级状态必须足够支撑 Web 展示，
 取消只对尚未进入不可中断写入阶段的流程生效。普通在线升级不写 `boot` 分区。
@@ -911,7 +927,7 @@ scripts/tests/package_release_test.sh
 ## 非目标
 
 - 不直接写 MTD 或绕过 `IUpgradePlatform`。
-- 不拥有网络接口管理、DNS 配置或协议监听生命周期。
+- 不拥有 HTTP/RTSP/ONVIF 的监听生命周期。
 - 不在 Web 侧推导系统状态。
 
 ## 风险与优化方向
@@ -919,6 +935,8 @@ scripts/tests/package_release_test.sh
 - 系统动作必须做权限和审计。
 - 查询路径应保持轻量，避免频繁读取阻塞文件影响 Web 状态刷新。
 - 时间跳变会影响日志、认证过期和媒体时间戳展示，需要记录关键变更。
+- 应用网络配置可能导致当前 HTTP 连接断开，Web 需要以后端返回和重连策略处理。
+- 不要在前端或 HTTP handler 中绕过 `system.network` 直接解释 Linux 网卡状态。
 - 写 flash 前必须校验签名、manifest、分区白名单和包完整性。
 - `rootfs` 在线升级、A/B 回滚、断电恢复和 U-Boot 自动回滚目前都不是本模块能力；
   如果产品要求升级内核/rootfs 后可自动恢复，需要新增独立 recovery 设计，而不是放开

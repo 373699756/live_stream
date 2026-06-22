@@ -95,7 +95,7 @@ std::string ResolveWebrtcPublicIp(
     }
 
     if (refs.device.network != nullptr) {
-        const NetworkInterfaceStatus status =
+        const NetStatus status =
             refs.device.network->GetInterfaceStatus(
                 app_config.network_ifname);
         if (IsUsableWebrtcPublicIp(status.static_ipv4.address)) {
@@ -239,7 +239,7 @@ HttpDependencies BuildHttpDependencies(
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
     dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;
-    dependencies.network_config = refs.device.network;
+    dependencies.network = refs.device.network;
     dependencies.time = refs.device.time;
     dependencies.alarm = refs.device.alarm;
     dependencies.upgrade = refs.device.upgrade;

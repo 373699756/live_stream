@@ -41,7 +41,7 @@ public API 在 `event.h`。事件 payload 归 `event` 文档维护：
 | `kOnvifRequestReceived` | `onvif` | action/path | 请求摘要 | 保留为 0 |
 | `kSnapshotCreated` | `device` | stream | 输出摘要 | 字节数或 0 |
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |
-| `kNetworkChanged` | `network_config` | interface 或 port | 变更摘要 | 保留为 0 |
+| `kNetworkChanged` | `system.network` | interface 或 port | 变更摘要 | 保留为 0 |
 | `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
 | `kSystemStatusChanged` | `system` | status key | 状态摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |

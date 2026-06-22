@@ -17,7 +17,7 @@
 namespace live_stream {
 
 class CoreSubsystem;
-class INetworkConfig;
+class INetwork;
 struct DeviceRefs;
 struct MediaRefs;
 
@@ -65,7 +65,7 @@ private:
     std::unique_ptr<IHttp> http_;
     std::unique_ptr<INetStat> net_stat_;
     IConfig *config_ = nullptr;
-    INetworkConfig *network_config_ = nullptr;
+    INetwork *network_ = nullptr;
     AppConfig app_config_;
     bool started_ = false;
 };

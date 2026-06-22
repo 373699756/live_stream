@@ -56,7 +56,7 @@ export function NetworkConfigPage() {
                     <div>
                         <h2>网络设置</h2>
                         <p>
-                            配置主机名和服务端口，IP 配置由后端 network_config
+                            配置主机名和服务端口，IP 配置由后端 system.network
                             应用。
                         </p>
                     </div>

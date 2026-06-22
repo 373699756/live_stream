@@ -1,7 +1,7 @@
 #include "platform/linux/device_platforms.h"
 
 #include "infra/fs.h"
-#include "network_config_codec.h"
+#include "network_api.h"
 #include "platform/linux/linux_platform_common.h"
 
 #include <arpa/inet.h>
@@ -30,9 +30,6 @@ using linux_platform::RunAny;
 using linux_platform::Trim;
 
 constexpr const char *kResolvConfPath = "/etc/resolv.conf";
-
-using network_internal::NetmaskToPrefixLength;
-using network_internal::PrefixLengthToNetmask;
 
 std::string HexGatewayToIpv4(const std::string &hex_value) {
     if (hex_value.size() != 8) {
@@ -204,7 +201,7 @@ bool HasDhcpPid(const std::string &ifname) {
     return infra::File::Exists(DhcpPidPath(ifname));
 }
 
-class LinuxNetworkPlatform : public INetworkPlatform {
+class LinuxNetworkPlatform : public INetPlatform {
 public:
     explicit LinuxNetworkPlatform(std::string default_ifname)
         : default_ifname_(std::move(default_ifname)) {}
@@ -229,9 +226,9 @@ public:
         return ifnames;
     }
 
-    NetworkInterfaceStatus
+    NetStatus
     GetInterfaceStatus(const std::string &ifname) override {
-        NetworkInterfaceStatus status;
+        NetStatus status;
         status.ifname = ifname;
         status.dns = ReadDnsServers();
         status.mac_address =
@@ -282,7 +279,7 @@ public:
         return false;
     }
 
-    bool ApplyStaticAddress(const NetworkInterfaceConfig &config) override {
+    bool ApplyStaticAddress(const NetConfig &config) override {
         uint8_t prefix_length = 0;
         NetmaskToPrefixLength(config.static_ipv4.netmask, &prefix_length);
         const std::string cidr =
@@ -365,7 +362,7 @@ public:
         return WriteDnsServers(dns_servers);
     }
 
-    bool RollbackInterface(const NetworkInterfaceConfig &previous_config) override {
+    bool RollbackInterface(const NetConfig &previous_config) override {
         if (!SetInterfaceEnabled(previous_config.ifname, previous_config.enabled)) {
             return false;
         }
@@ -393,9 +390,9 @@ private:
 
 }  // namespace
 
-std::unique_ptr<INetworkPlatform>
+std::unique_ptr<INetPlatform>
 CreateNetworkPlatform(const std::string &default_ifname) {
-    return std::unique_ptr<INetworkPlatform>(
+    return std::unique_ptr<INetPlatform>(
         new LinuxNetworkPlatform(default_ifname));
 }
 

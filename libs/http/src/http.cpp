@@ -235,7 +235,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handler_dependencies.auth = dependencies.auth;
     handler_dependencies.config = dependencies.config;
     handler_dependencies.logger = dependencies.logger;
-    handler_dependencies.network_config = dependencies.network_config;
+    handler_dependencies.network = dependencies.network;
     handler_dependencies.time = dependencies.time;
     handler_dependencies.upgrade = dependencies.upgrade;
     handler_dependencies.system = dependencies.system;
@@ -264,7 +264,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     system_status_sources.config = dependencies.config;
     system_status_sources.auth = dependencies.auth;
     system_status_sources.time = dependencies.time;
-    system_status_sources.network_config = dependencies.network_config;
+    system_status_sources.network = dependencies.network;
     system_status_sources.alarm = dependencies.alarm;
     system_status_sources.upgrade = dependencies.upgrade;
     system_status_sources.rtsp = dependencies.rtsp;
