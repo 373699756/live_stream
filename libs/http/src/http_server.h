@@ -15,10 +15,6 @@
 #include <string>
 #include <vector>
 
-namespace infra {
-class Executor;
-}  // namespace infra
-
 namespace live_stream {
 
 class HttpRequestHandler {
@@ -83,7 +79,7 @@ private:
         const HttpSessionStreamingInfo &session,
         const NetConnectionInfo &connection);
 
-    infra::Executor *ExecutorForRequestLocked(
+    event::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
     void NotifyStreamClosed(const HttpMediaClientHandle &client);
     void NotifyStreamsClosed(
@@ -102,12 +98,12 @@ private:
     void CompleteKeepAliveRequest(ConnectionId connection_id);
     HttpSessionParseOptions MakeConnectionParseOptions() const;
     void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
-    static void CancelNetTimer(INetExecutor *executor, NetTimerId timer_id);
+    static void CancelNetTimer(event::Loop *loop, event::TimerId timer_id);
 
     HttpOptions options_;
     HttpResponseSender response_sender_;
     INetEngine *net_engine_ = nullptr;
-    INetExecutor *net_executor_ = nullptr;
+    event::Loop *net_loop_ = nullptr;
     // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。
     HttpRequestHandler *request_handler_ = nullptr;
     // close_callback_ 由 http_media 注册，必须在锁外调用，避免 HTTP 锁和媒体锁
@@ -116,8 +112,8 @@ private:
     mutable std::mutex mutex_;
     // stream_executor_ 处理 /live、SSE、WHEP 等可能长时间占用的请求；
     // control_executor_ 处理登录、配置、状态等短请求。
-    std::unique_ptr<infra::Executor> stream_executor_;
-    std::unique_ptr<infra::Executor> control_executor_;
+    std::unique_ptr<event::Executor> stream_executor_;
+    std::unique_ptr<event::Executor> control_executor_;
     TcpServerId tcp_server_id_ = 0;
     // sessions_ 是 HTTP 层唯一的连接状态表。进入 streaming 后仍保留 session，
     // 但只用于断连回收媒体 client，不再解析 HTTP 请求。

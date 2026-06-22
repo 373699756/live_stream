@@ -6,24 +6,25 @@
 namespace live_stream {
 namespace {
 
-const char *EventTypeName(EventType type) {
+const char *EventTypeName(event::EventType type) {
     switch (type) {
-        case EventType::kMediaStatusChanged:
+        case event::EventType::kMediaStatusChanged:
             return "media_status_changed";
-        case EventType::kStreamStarted:
+        case event::EventType::kStreamStarted:
             return "stream_started";
-        case EventType::kStreamStopped:
+        case event::EventType::kStreamStopped:
             return "stream_stopped";
-        case EventType::kAlarmOn:
+        case event::EventType::kAlarmOn:
             return "alarm_on";
-        case EventType::kAlarmOff:
+        case event::EventType::kAlarmOff:
             return "alarm_off";
         default:
             return "event";
     }
 }
 
-ConfigJson BuildEventJson(const Event &event, const char *event_type_name) {
+ConfigJson BuildEventJson(const event::Event &event,
+                          const char *event_type_name) {
     ConfigJson data = ConfigJson::object();
     data["type"] = event_type_name;
     data["source"] = event.source;
@@ -39,7 +40,7 @@ ConfigJson BuildEventJson(const Event &event, const char *event_type_name) {
 
 }  // namespace
 
-std::string BuildEventStreamMessage(const Event &event) {
+std::string BuildEventStreamMessage(const event::Event &event) {
     const char *event_type_name = EventTypeName(event.type);
     const ConfigJson data = BuildEventJson(event, event_type_name);
     const std::string data_text = data.dump();
@@ -57,12 +58,12 @@ std::string BuildEventStreamMessage(const Event &event) {
 }
 
 std::string BuildEventStreamHello() {
-    Event event;
-    event.type = EventType::kMediaStatusChanged;
-    event.source = "http";
-    event.target = "events";
-    event.message = "connected";
-    return BuildEventStreamMessage(event);
+    event::Event hello;
+    hello.type = event::EventType::kMediaStatusChanged;
+    hello.source = "http";
+    hello.target = "events";
+    hello.message = "connected";
+    return BuildEventStreamMessage(hello);
 }
 
 }  // namespace live_stream

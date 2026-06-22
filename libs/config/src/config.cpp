@@ -22,11 +22,26 @@ namespace {
 constexpr size_t kMaxConfigFileBytes = 512 * 1024;
 constexpr int kMaxConfigJsonDepth = 32;
 
-// 名称校验: 只允许顶层无点号/无下标的纯名称
-bool IsTopLevelName(const std::string &name) {
-    return !name.empty() && name.find('.') == std::string::npos &&
-           name.find('[') == std::string::npos &&
-           name.find(']') == std::string::npos;
+void SetIssue(ConfigIssue *issue, const std::string &field,
+              const std::string &reason) {
+    if (issue == nullptr) {
+        return;
+    }
+    issue->field = field;
+    issue->reason = reason;
+}
+
+ConfigStatus Reject(ConfigStatus status, const std::string &field,
+                    const std::string &reason, ConfigIssue *issue) {
+    SetIssue(issue, field, reason);
+    return status;
+}
+
+// Scope 只允许顶层无点号/无下标名称，避免配置中心绕过拥有模块解析嵌套字段。
+bool IsScopeName(const std::string &scope) {
+    return !scope.empty() && scope.find('.') == std::string::npos &&
+           scope.find('[') == std::string::npos &&
+           scope.find(']') == std::string::npos;
 }
 
 bool IsConfigJsonWithinDepthLimit(const ConfigJson &value, int depth) {
@@ -53,13 +68,6 @@ bool IsConfigJsonWithinDepthLimit(const ConfigJson &value, int depth) {
 
 bool IsConfigJsonWithinLimits(const ConfigJson &value) {
     return IsConfigJsonWithinDepthLimit(value, 1);
-}
-
-ConfigResult RunHandler(const ConfigHandler &handler, const ConfigJson &value) {
-    if (!handler) {
-        return ConfigResult::Success();
-    }
-    return handler(value);
 }
 
 void MergeMissingFields(ConfigJson *current, const ConfigJson &defaults) {
@@ -111,7 +119,7 @@ bool AtomicWriteJson(const std::string &path, const ConfigJson &root) {
 
 class ConfigImpl : public IConfig {
 public:
-    explicit ConfigImpl(const ConfigOptions &opts) : opts_(opts) {}
+    explicit ConfigImpl(const ConfigOptions &options) : options_(options) {}
 
     ~ConfigImpl() override { ReleaseInternal(); }
 
@@ -175,72 +183,81 @@ private:
         std::lock_guard<std::mutex> lock(mutex_);
         current_ = ConfigJson::object();
         defaults_ = ConfigJson::object();
-        attachments_.clear();
+        scopes_.clear();
         changed_ = false;
         initialized_ = false;
         started_ = false;
     }
 
 public:
-    bool SetValue(const std::string &name, const ConfigJson &value) override {
-        if (!IsTopLevelName(name)) {
-            return false;
+    ConfigStatus Set(const std::string &scope, const ConfigJson &now,
+                     ConfigIssue *issue) override {
+        if (!IsScopeName(scope)) {
+            return Reject(ConfigStatus::kInvalid, "", "invalid config scope",
+                          issue);
         }
-        if (!IsConfigJsonWithinLimits(value)) {
-            return false;
+        if (!IsConfigJsonWithinLimits(now)) {
+            return Reject(ConfigStatus::kInvalid, scope,
+                          "config value exceeds limits", issue);
         }
 
         std::lock_guard<std::mutex> write_lock(write_mutex_);
-        return SetValueLocked(name, value);
+        return SetLocked(scope, now, issue);
     }
 
-    ConfigJson GetValue(const std::string &name) override {
-        if (!IsTopLevelName(name) || !IsInitializedForRead())
+    ConfigJson Get(const std::string &scope) override {
+        if (!IsScopeName(scope) || !IsInitializedForRead())
             return ConfigJson();
 
         std::lock_guard<std::mutex> g(mutex_);
-        auto it = current_.find(name);
+        auto it = current_.find(scope);
         if (it == current_.end())
             return ConfigJson();
         return it.value();
     }
 
-    bool SetDefault(const std::string &name) override {
-        if (!IsTopLevelName(name)) {
-            return false;
+    ConfigStatus Reset(const std::string &scope,
+                       ConfigIssue *issue) override {
+        if (!IsScopeName(scope)) {
+            return Reject(ConfigStatus::kInvalid, "", "invalid config scope",
+                          issue);
         }
 
         ConfigJson default_value;
         {
             std::lock_guard<std::mutex> g(mutex_);
             if (!initialized_) {
-                return false;
+                return Reject(ConfigStatus::kNotStarted, scope,
+                              "config is not started", issue);
             }
-            const auto it = defaults_.find(name);
+            const auto it = defaults_.find(scope);
             if (it == defaults_.end()) {
-                return false;
+                return Reject(ConfigStatus::kNotFound, scope,
+                              "config scope not found", issue);
             }
             default_value = it.value();
         }
 
         std::lock_guard<std::mutex> write_lock(write_mutex_);
-        return SetValueLocked(name, default_value);
+        return SetLocked(scope, default_value, issue);
     }
 
-    ConfigJson GetDefault(const std::string &name) override {
-        if (!IsTopLevelName(name) || !IsInitializedForRead())
+    ConfigJson Default(const std::string &scope) override {
+        if (!IsScopeName(scope) || !IsInitializedForRead())
             return ConfigJson();
 
         std::lock_guard<std::mutex> g(mutex_);
-        auto it = defaults_.find(name);
+        auto it = defaults_.find(scope);
         if (it == defaults_.end())
             return ConfigJson();
         return it.value();
     }
 
-    bool RestoreDefaults() override {
-        if (!IsInitializedForRead())
-            return false;
+    ConfigStatus ResetAll(ConfigIssue *issue) override {
+        if (!IsInitializedForRead()) {
+            return Reject(ConfigStatus::kNotStarted, "",
+                          "config is not started", issue);
+        }
 
         std::vector<std::pair<std::string, ConfigJson>> entries;
         {
@@ -250,91 +267,110 @@ public:
             }
         }
         for (const auto &entry : entries) {
-            if (!SetDefault(entry.first))
-                return false;
+            const ConfigStatus status = Reset(entry.first, issue);
+            if (status != ConfigStatus::kOk) {
+                return status;
+            }
         }
-        return true;
+        return ConfigStatus::kOk;
     }
 
-    bool AttachConfig(const std::string &name,
-                      const ConfigAttachment &attachment) override {
-        if (!IsTopLevelName(name) || (!attachment.validate && !attachment.apply)) {
+    bool AddScope(const std::string &scope,
+                  const ConfigScope &config_scope) override {
+        if (!IsScopeName(scope) ||
+            (!config_scope.verify && !config_scope.apply)) {
             return false;
         }
         std::lock_guard<std::mutex> g(mutex_);
-        if (attachments_.find(name) != attachments_.end()) {
+        if (scopes_.find(scope) != scopes_.end()) {
             return false;
         }
-        attachments_[name] = attachment;
+        scopes_[scope] = config_scope;
         return true;
     }
 
-    bool DetachConfig(const std::string &name) override {
-        if (!IsTopLevelName(name)) {
+    bool RemoveScope(const std::string &scope) override {
+        if (!IsScopeName(scope)) {
             return false;
         }
         std::lock_guard<std::mutex> g(mutex_);
-        attachments_.erase(name);
+        scopes_.erase(scope);
         return true;
     }
 
 private:
-    bool SetValueLocked(const std::string &name, const ConfigJson &value) {
-        ConfigAttachment attachment;
-        bool has_attachment = false;
-        ConfigJson previous_value;
+    ConfigStatus SetLocked(const std::string &scope, const ConfigJson &now,
+                           ConfigIssue *issue) {
+        ConfigScope config_scope;
+        bool has_config_scope = false;
+        ConfigJson prev;
         bool previous_changed = false;
-        bool had_previous_value = false;
+        bool had_prev = false;
         {
             std::lock_guard<std::mutex> g(mutex_);
             if (!initialized_ || !started_) {
-                return false;
+                return Reject(ConfigStatus::kNotStarted, scope,
+                              "config is not started", issue);
             }
-            const auto it = current_.find(name);
-            if (it != current_.end() && it.value() == value) {
-                return true;
+            const auto current_it = current_.find(scope);
+            const auto default_it = defaults_.find(scope);
+            if (current_it == current_.end() && default_it == defaults_.end()) {
+                return Reject(ConfigStatus::kNotFound, scope,
+                              "config scope not found", issue);
             }
-            if (it != current_.end()) {
-                previous_value = it.value();
-                had_previous_value = true;
+            if (current_it != current_.end() && current_it.value() == now) {
+                return ConfigStatus::kOk;
+            }
+            if (current_it != current_.end()) {
+                prev = current_it.value();
+                had_prev = true;
+            } else if (default_it != defaults_.end()) {
+                prev = default_it.value();
             }
             previous_changed = changed_;
-            auto attachment_it = attachments_.find(name);
-            if (attachment_it != attachments_.end()) {
-                attachment = attachment_it->second;
-                has_attachment = true;
+            auto scope_it = scopes_.find(scope);
+            if (scope_it != scopes_.end()) {
+                config_scope = scope_it->second;
+                has_config_scope = true;
             }
         }
 
-        if (has_attachment) {
-            const ConfigResult validate_result =
-                RunHandler(attachment.validate, value);
-            if (!validate_result.ok) {
-                return false;
+        if (has_config_scope && config_scope.verify) {
+            const ConfigStatus status = config_scope.verify(now, issue);
+            if (status != ConfigStatus::kOk) {
+                return status;
             }
-            const ConfigResult apply_result = RunHandler(attachment.apply, value);
-            if (!apply_result.ok) {
-                return false;
+        }
+        if (has_config_scope && config_scope.apply) {
+            const ConfigStatus status = config_scope.apply(prev, now, issue);
+            if (status != ConfigStatus::kOk) {
+                return status;
             }
         }
 
         {
             std::lock_guard<std::mutex> g(mutex_);
-            current_[name] = value;
+            current_[scope] = now;
             changed_ = true;
         }
         if (SaveCurrentFile()) {
-            return true;
+            return ConfigStatus::kOk;
+        }
+
+        ConfigIssue rollback_issue;
+        if (has_config_scope && config_scope.apply) {
+            (void)config_scope.apply(now, prev, &rollback_issue);
         }
 
         std::lock_guard<std::mutex> g(mutex_);
-        if (had_previous_value) {
-            current_[name] = previous_value;
+        if (had_prev) {
+            current_[scope] = prev;
         } else {
-            current_.erase(name);
+            current_.erase(scope);
         }
         changed_ = previous_changed;
-        return false;
+        return Reject(ConfigStatus::kSaveFailed, scope,
+                      "save config file failed", issue);
     }
 
     bool SaveCurrentFile() {
@@ -348,7 +384,7 @@ private:
                 return true;
             snap = current_;
         }
-        const bool saved = AtomicWriteJson(opts_.config_path, snap);
+        const bool saved = AtomicWriteJson(options_.config_path, snap);
         if (saved) {
             std::lock_guard<std::mutex> g(mutex_);
             changed_ = false;
@@ -360,19 +396,19 @@ private:
         if (defaults_out == nullptr || current_out == nullptr) {
             return false;
         }
-        ConfigJson defaults = LoadJsonFile(opts_.default_config_path);
+        ConfigJson defaults = LoadJsonFile(options_.default_config_path);
         if (!defaults.is_object())
             return false;
 
         ConfigJson current;
-        if (opts_.config_path.empty() || !defaults.is_object()) {
+        if (options_.config_path.empty() || !defaults.is_object()) {
             return false;
-        } else if (infra::File::Exists(opts_.config_path)) {
-            current = LoadJsonFile(opts_.config_path);
-        } else if (!opts_.create_storage_if_missing) {
+        } else if (infra::File::Exists(options_.config_path)) {
+            current = LoadJsonFile(options_.config_path);
+        } else if (!options_.create_storage_if_missing) {
             return false;
         } else {
-            if (!AtomicWriteJson(opts_.config_path, defaults))
+            if (!AtomicWriteJson(options_.config_path, defaults))
                 return false;
             current = defaults;
         }
@@ -382,7 +418,7 @@ private:
 
         // Preserve user config and only fill fields added by defaults.
         MergeMissingFields(&current, defaults);
-        if (!AtomicWriteJson(opts_.config_path, current))
+        if (!AtomicWriteJson(options_.config_path, current))
             return false;
 
         *current_out = std::move(current);
@@ -403,9 +439,9 @@ private:
     ConfigJson current_ = ConfigJson::object();
     ConfigJson defaults_ = ConfigJson::object();
 
-    std::unordered_map<std::string, ConfigAttachment> attachments_;
+    std::unordered_map<std::string, ConfigScope> scopes_;
 
-    ConfigOptions opts_;
+    ConfigOptions options_;
     std::mutex write_mutex_;
     mutable std::mutex mutex_;
     bool changed_ = false;

@@ -35,9 +35,9 @@ EventLoop::EventLoop(uint32_t max_events, uint32_t task_capacity,
       task_capacity_(task_capacity == 0 ? 1 : task_capacity),
       affinity_cpu_(affinity_cpu) {}
 
-EventLoop::~EventLoop() { Stop(); }
+EventLoop::~EventLoop() { Stop(event::StopMode::kDiscard); }
 
-bool EventLoop::Start() {
+bool EventLoop::Start(const event::LoopOptions &) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) {
         return true;
@@ -71,7 +71,7 @@ bool EventLoop::Start() {
     return true;
 }
 
-void EventLoop::Stop() {
+void EventLoop::Stop(event::StopMode) {
     bool should_join = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -92,23 +92,29 @@ void EventLoop::Stop() {
     CleanupLocked();
 }
 
-bool EventLoop::Post(infra::Task task) {
+event::EventStatus EventLoop::Post(event::Task task) {
     if (!task) {
-        return false;
+        return event::EventStatus::kInvalid;
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_ || stopping_) {
-            return false;
+            ++stats_.rejected;
+            return event::EventStatus::kNotStarted;
         }
         // task_capacity_ 是 IO 线程的背压边界；队列满时上层必须感知失败，
         // 不能在网络层无限堆积控制任务或媒体发送任务。
         if (tasks_.size() >= task_capacity_) {
-            return false;
+            ++stats_.rejected;
+            return event::EventStatus::kQueueFull;
         }
         tasks_.push_back(std::move(task));
+        ++stats_.posted;
+        stats_.max_pending = std::max<uint32_t>(
+            stats_.max_pending, static_cast<uint32_t>(tasks_.size()));
     }
-    return wakeup_.Notify();
+    return wakeup_.Notify() ? event::EventStatus::kOk
+                            : event::EventStatus::kInvalid;
 }
 
 bool EventLoop::IsCurrentThread() const {
@@ -159,49 +165,52 @@ void EventLoop::RemoveFd(int fd) {
     handlers_.erase(fd);
 }
 
-NetTimerId EventLoop::RunAfter(NetTimerId id, uint32_t delay_ms,
-                               infra::Task task) {
-    if (id == 0 || !task) {
-        return 0;
+event::EventStatus EventLoop::RunAfter(uint32_t delay_ms, event::Task task,
+                                       event::TimerId *timer_id) {
+    if (timer_id == nullptr || !task) {
+        return event::EventStatus::kInvalid;
     }
+    *timer_id = 0;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || stopping_) {
-        return 0;
+        ++stats_.rejected;
+        return event::EventStatus::kNotStarted;
     }
-    if (timers_.find(id) != timers_.end()) {
-        return 0;
-    }
+    const event::TimerId id = next_timer_id_++;
     std::shared_ptr<Timer> timer(new Timer());
     timer->deadline_ms = infra::Time::MonotonicMillis() + delay_ms;
     timer->interval_ms = 0;
     timer->task = std::move(task);
     timers_[id] = timer;
+    *timer_id = id;
     RearmTimerLocked();
-    return id;
+    return event::EventStatus::kOk;
 }
 
-NetTimerId EventLoop::RunEvery(NetTimerId id, uint32_t interval_ms,
-                               infra::Task task) {
-    if (id == 0 || interval_ms == 0 || !task) {
-        return 0;
+event::EventStatus EventLoop::RunEvery(uint32_t interval_ms,
+                                       event::Task task,
+                                       event::TimerId *timer_id) {
+    if (timer_id == nullptr || interval_ms == 0 || !task) {
+        return event::EventStatus::kInvalid;
     }
+    *timer_id = 0;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || stopping_) {
-        return 0;
+        ++stats_.rejected;
+        return event::EventStatus::kNotStarted;
     }
-    if (timers_.find(id) != timers_.end()) {
-        return 0;
-    }
+    const event::TimerId id = next_timer_id_++;
     std::shared_ptr<Timer> timer(new Timer());
     timer->deadline_ms = infra::Time::MonotonicMillis() + interval_ms;
     timer->interval_ms = interval_ms;
     timer->task = std::move(task);
     timers_[id] = timer;
+    *timer_id = id;
     RearmTimerLocked();
-    return id;
+    return event::EventStatus::kOk;
 }
 
-bool EventLoop::CancelTimer(NetTimerId id) {
+bool EventLoop::CancelTimer(event::TimerId id) {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = timers_.find(id);
     if (it == timers_.end()) {
@@ -213,8 +222,18 @@ bool EventLoop::CancelTimer(NetTimerId id) {
     if (!it->second->executing) {
         timers_.erase(it);
     }
+    ++stats_.timer_cancelled;
     RearmTimerLocked();
     return true;
+}
+
+event::LoopStats EventLoop::GetStats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    event::LoopStats stats = stats_;
+    stats.pending = static_cast<uint32_t>(tasks_.size());
+    stats.active_timers = static_cast<uint32_t>(timers_.size());
+    stats.running = running_;
+    return stats;
 }
 
 bool EventLoop::AddRawFdLocked(int fd, uint32_t events,
@@ -273,7 +292,7 @@ void EventLoop::RearmTimerLocked() {
 }
 
 void EventLoop::RunTimers() {
-    std::vector<std::pair<NetTimerId, std::shared_ptr<Timer>>> ready;
+    std::vector<std::pair<event::TimerId, std::shared_ptr<Timer>>> ready;
     const int64_t now = infra::Time::MonotonicMillis();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -286,7 +305,7 @@ void EventLoop::RunTimers() {
     // 先拷贝 ready timer，再逐个执行。执行前重新校验 id 和 shared_ptr，
     // 可以挡住回调期间的取消、重建或 Stop() 清理。
     for (const auto &entry : ready) {
-        const NetTimerId id = entry.first;
+        const event::TimerId id = entry.first;
         const std::shared_ptr<Timer> timer = entry.second;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -305,6 +324,7 @@ void EventLoop::RunTimers() {
         timer->task();
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            ++stats_.timer_fired;
             timer->executing = false;
             auto it = timers_.find(id);
             if (it == timers_.end() || it->second != timer ||
@@ -328,17 +348,19 @@ void EventLoop::RunTimers() {
 }
 
 void EventLoop::RunTasks() {
-    std::deque<infra::Task> tasks;
+    std::deque<event::Task> tasks;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         tasks.swap(tasks_);
     }
     // 任务在锁外执行，避免协议回调里再次 Post()/CancelTimer() 时自锁。
     while (!tasks.empty()) {
-        infra::Task task = std::move(tasks.front());
+        event::Task task = std::move(tasks.front());
         tasks.pop_front();
         if (task) {
             task();
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++stats_.completed;
         }
     }
 }

@@ -19,7 +19,7 @@ IceTransport::IceTransport(std::string peer_id)
 
 IceTransport::~IceTransport() { Stop(); }
 
-bool IceTransport::Start(INetEngine *net_engine, INetExecutor *net_executor,
+bool IceTransport::Start(INetEngine *net_engine, event::Loop *net_loop,
                          const UdpCallbacks &callbacks,
                          const std::string &listen_ip, uint16_t port,
                          std::string local_ufrag,
@@ -27,14 +27,14 @@ bool IceTransport::Start(INetEngine *net_engine, INetExecutor *net_executor,
     if (socket_id_ != 0) {
         return true;
     }
-    if (net_engine == nullptr || net_executor == nullptr ||
+    if (net_engine == nullptr || net_loop == nullptr ||
         local_ufrag.empty() || local_password.empty()) {
         return false;
     }
     UdpBindOptions options;
     options.address.ip = listen_ip.empty() ? "0.0.0.0" : listen_ip;
     options.address.port = port;
-    UdpSocketId socket_id = net_engine->BindUdp(net_executor, options,
+    UdpSocketId socket_id = net_engine->BindUdp(net_loop, options,
                                                 callbacks);
     if (socket_id == 0) {
         return false;

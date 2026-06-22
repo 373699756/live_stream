@@ -48,19 +48,25 @@ void from_json(const ConfigJson &json, VideoConfig::Stream &stream);
 void to_json(ConfigJson &json, const VideoConfig &config);
 void from_json(const ConfigJson &json, VideoConfig &config);
 
-ConfigResult DecodeVideoConfig(const ConfigJson &value, VideoConfig *config);
-ConfigResult ValidateVideoConfig(const VideoConfig &config,
-                                 const MediaCapabilities &capabilities);
-ConfigResult BuildPipelineConfig(const VideoConfig &config,
+ConfigStatus DecodeVideoConfig(const ConfigJson &value,
+                               VideoConfig *config,
+                               ConfigIssue *issue);
+ConfigStatus VerifyVideoConfig(const VideoConfig &config,
+                               const MediaCapabilities &capabilities,
+                               ConfigIssue *issue);
+ConfigStatus BuildPipelineConfig(const VideoConfig &config,
                                  const MediaPipelineConfig &fallback,
-                                 MediaPipelineConfig *pipeline_config);
-ConfigResult ParseVideoConfig(const ConfigJson &value,
+                                 MediaPipelineConfig *pipeline_config,
+                                 ConfigIssue *issue);
+ConfigStatus ParseVideoConfig(const ConfigJson &value,
                               const MediaPipelineConfig &fallback,
                               const MediaCapabilities &capabilities,
-                              MediaPipelineConfig *parsed);
-ConfigResult ValidateImageConfig(const ConfigJson &value,
-                                 const ImageCapabilities &capabilities,
-                                 const MediaPipelineConfig &active_config);
+                              MediaPipelineConfig *parsed,
+                              ConfigIssue *issue);
+ConfigStatus VerifyImageConfig(const ConfigJson &value,
+                               const ImageCapabilities &capabilities,
+                               const MediaPipelineConfig &active_config,
+                               ConfigIssue *issue);
 
 }  // namespace media_internal
 }  // namespace live_stream

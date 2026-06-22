@@ -63,7 +63,7 @@ private:
             if (IsUnsupportedConfigScope(name)) {
                 return StatusResponse(404, "Not Found");
             }
-            ConfigJson value = config->GetValue(name);
+            ConfigJson value = config->Get(name);
             if (value.is_null()) {
                 return StatusResponse(404, "Not Found");
             }
@@ -94,9 +94,13 @@ private:
                 return StatusResponse(
                     400, "Config payload must be the top-level node");
             }
-            bool ok = config->SetValue(name, value);
+            ConfigIssue issue;
+            const ConfigStatus status = config->Set(name, value, &issue);
+            const bool ok = status == ConfigStatus::kOk;
             const std::string failure_reason =
-                ok ? std::string() : std::string(kSetConfigFailed);
+                ok ? std::string()
+                   : (issue.reason.empty() ? std::string(kSetConfigFailed)
+                                           : issue.reason);
             access_->RecordOperation(
                 request, principal, OperationAction::kModifyConfig, name,
                 ok ? OperationResult::kSuccess : OperationResult::kFailed,

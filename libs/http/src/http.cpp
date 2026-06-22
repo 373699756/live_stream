@@ -211,8 +211,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     logger_ = dependencies.logger;
     if (server_ != nullptr) {
         server_->SetCloseCallback([media_streams =
-                                       dependencies.media_streams,
-                                   event = dependencies.event](
+                                       dependencies.media_streams](
                                       const HttpMediaClientHandle &client) {
             if (client.type == HttpMediaClientType::kFlv &&
                 media_streams != nullptr && client.id != 0) {
@@ -223,8 +222,8 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
                 (void)media_streams->DetachMjpegClient(client.id);
             }
             if (client.type == HttpMediaClientType::kEventStream &&
-                event != nullptr && client.id != 0) {
-                (void)event->Unsubscribe(client.id);
+                client.event_subscription != nullptr) {
+                client.event_subscription->Cancel();
             }
         });
     }

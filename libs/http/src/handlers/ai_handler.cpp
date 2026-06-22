@@ -210,7 +210,7 @@ ConfigJson AiTaskStatusesToJson(const std::vector<AiTaskStatus> &statuses) {
 ConfigJson DisabledAiStatusToJson(IConfig *config) {
     ConfigJson root = ConfigJson::object();
     ConfigJson ai_config =
-        config != nullptr ? config->GetValue("ai") : ConfigJson::object();
+        config != nullptr ? config->Get("ai") : ConfigJson::object();
     bool enabled = false;
     if (ai_config.is_object()) {
         static_cast<void>(

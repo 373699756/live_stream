@@ -13,12 +13,14 @@ EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libmedia.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libmedia_codec.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/librtp.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libnet.a
+EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libevent.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libinfra.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libdevice.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/librtp.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia_codec.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libnet.a
+EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libevent.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libinfra.a
 include ../module_rules.mk
 
@@ -36,6 +38,9 @@ $(BUILD_DIR)/lib/librtp.a: $(BUILD_DIR)/lib/libmedia_codec.a
 
 $(BUILD_DIR)/lib/libnet.a:
 	$(MAKE) -C ../net all
+
+$(BUILD_DIR)/lib/libevent.a:
+	$(MAKE) -C ../event all
 
 $(BUILD_DIR)/lib/libinfra.a:
 	$(MAKE) -C ../infra all

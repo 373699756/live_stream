@@ -54,32 +54,21 @@ public:
     bool factory_reset_error = true;
 };
 
-class FakeEvent : public live_stream::IEvent {
+class FakeEvent : public live_stream::event::Dispatcher {
 public:
-    bool Start() override { return true; }
-    void Stop() override {}
-
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>&,
-        live_stream::EventHandler) override {
-        return 1;
-    }
-
-    bool Unsubscribe(live_stream::EventSubscriptionId) override {
-        return true;
-    }
-
-    bool Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
+    FakeEvent()
+        : subscription_(Subscribe(
+              live_stream::event::EventType::kSystemStatusChanged,
+              [this](const live_stream::event::Event& event) {
+                  ++publish_count;
+                  last_event = event;
+              })) {}
 
     int publish_count = 0;
-    live_stream::Event last_event;
+    live_stream::event::Event last_event;
+
+private:
+    live_stream::event::Subscription subscription_;
 };
 
 class FakeLogger : public live_stream::ILogger {
@@ -156,7 +145,7 @@ int main() {
     live_stream::SystemStatus status = service->GetSystemStatus();
     if (status.healthy ||
         event.last_event.type !=
-            live_stream::EventType::kSystemStatusChanged) {
+            live_stream::event::EventType::kSystemStatusChanged) {
         return 5;
     }
     const int publish_count_after_timeout = event.publish_count;

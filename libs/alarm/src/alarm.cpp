@@ -188,10 +188,10 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
     return true;
 }
 
-Event MakeAlarmEvent(EventType type, AlarmSource source,
+event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
                      const std::string &message, int32_t value,
                      uint8_t level) {
-    Event event;
+    event::Event event;
     event.type = type;
     event.source = "alarm";
     event.target = AlarmSourceToString(source);
@@ -239,26 +239,38 @@ public:
         }
 
         if (options_.config != nullptr && !IsConfigAttached()) {
-            ConfigAttachment attachment;
-            attachment.validate = [this](const ConfigJson &value) {
+            ConfigScope config_scope;
+            config_scope.verify = [this](const ConfigJson &now,
+                                         ConfigIssue *issue) {
                 std::lock_guard<std::mutex> guard(mutex_);
-                return VerifyConfigLocked(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "invalid alarm config");
+                if (VerifyConfigLocked(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "invalid alarm config";
+                }
+                return ConfigStatus::kVerifyFailed;
             };
-            attachment.apply = [this](const ConfigJson &value) {
-                std::vector<Event> events;
+            config_scope.apply = [this](const ConfigJson &prev,
+                                        const ConfigJson &now,
+                                        ConfigIssue *issue) {
+                (void)prev;
+                std::vector<event::Event> events;
                 {
                     std::lock_guard<std::mutex> guard(mutex_);
-                    if (!ApplyConfigLocked(value, &events)) {
-                        return ConfigResult::Failure(
-                            "", "apply alarm config failed");
+                    if (!ApplyConfigLocked(now, &events)) {
+                        if (issue != nullptr) {
+                            issue->field.clear();
+                            issue->reason = "apply alarm config failed";
+                        }
+                        return ConfigStatus::kApplyFailed;
                     }
                 }
                 PublishEvents(events);
-                return ConfigResult::Success();
+                return ConfigStatus::kOk;
             };
-            if (!options_.config->AttachConfig("alarm", attachment)) {
+            if (!options_.config->AddScope("alarm", config_scope)) {
                 return false;
             }
             std::lock_guard<std::mutex> lock(mutex_);
@@ -277,10 +289,10 @@ public:
 
         ConfigJson alarm_config;
         if (options_.config != nullptr) {
-            alarm_config = options_.config->GetValue("alarm");
+            alarm_config = options_.config->Get("alarm");
         }
 
-        std::vector<Event> events;
+        std::vector<event::Event> events;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!alarm_config.is_null() &&
@@ -335,7 +347,7 @@ public:
             next_rules[index] = rule;
         }
 
-        std::vector<Event> events;
+        std::vector<event::Event> events;
         bool service_not_started = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -370,7 +382,7 @@ public:
             return false;
         }
 
-        std::vector<Event> events;
+        std::vector<event::Event> events;
         bool service_not_started = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -404,7 +416,7 @@ public:
             return false;
         }
 
-        std::vector<Event> events;
+        std::vector<event::Event> events;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_) {
@@ -417,7 +429,7 @@ public:
     }
 
     bool ClearAlarm(const live_stream::RequestContext &context) override {
-        std::vector<Event> events;
+        std::vector<event::Event> events;
         bool service_not_started = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -454,7 +466,7 @@ private:
             config_attached_ = false;
         }
         if (should_detach && options_.config != nullptr) {
-            static_cast<void>(options_.config->DetachConfig("alarm"));
+            static_cast<void>(options_.config->RemoveScope("alarm"));
         }
     }
 
@@ -480,7 +492,7 @@ private:
     }
 
     bool ApplyConfigLocked(const ConfigJson &value,
-                           std::vector<Event> *events) {
+                           std::vector<event::Event> *events) {
         AlarmRule motion_rule;
         AlarmRule ai_rule;
         if (!ParseAlarmConfig(value, CurrentRuleLocked(AlarmSource::kMotion),
@@ -493,7 +505,7 @@ private:
         return true;
     }
 
-    void SetRuleLocked(const AlarmRule &rule, std::vector<Event> *events) {
+    void SetRuleLocked(const AlarmRule &rule, std::vector<event::Event> *events) {
         std::size_t index = 0;
         if (!AlarmSourceIndex(rule.source, &index)) {
             return;
@@ -512,7 +524,7 @@ private:
     }
 
     void ApplyAlarmInputLocked(std::size_t index, const AlarmInput &input,
-                               std::vector<Event> *events) {
+                               std::vector<event::Event> *events) {
         const AlarmRule &rule = rules_[index];
         AlarmSourceState &state = source_states_[index];
         SyncRuleStateLocked(index);
@@ -560,12 +572,12 @@ private:
         state.active_since_ms = system_now;
         state.last_alarm_time_ms = system_now;
         state.level = rule.level;
-        events->push_back(MakeAlarmEvent(EventType::kAlarmOn, state.source,
+        events->push_back(MakeAlarmEvent(event::EventType::kAlarmOn, state.source,
                                          state.message, input.value,
                                          state.level));
     }
 
-    void ClearSourceLocked(std::size_t index, std::vector<Event> *events) {
+    void ClearSourceLocked(std::size_t index, std::vector<event::Event> *events) {
         AlarmSourceState &state = source_states_[index];
         const bool was_active = state.active;
         const std::string previous_message = state.message;
@@ -579,7 +591,7 @@ private:
         SyncRuleStateLocked(index);
 
         if (was_active && events != nullptr) {
-            events->push_back(MakeAlarmEvent(EventType::kAlarmOff, state.source,
+            events->push_back(MakeAlarmEvent(event::EventType::kAlarmOff, state.source,
                                              previous_message, 0,
                                              previous_level));
         }
@@ -611,11 +623,11 @@ private:
         return status;
     }
 
-    void PublishEvents(const std::vector<Event> &events) {
+    void PublishEvents(const std::vector<event::Event> &events) {
         if (options_.event == nullptr) {
             return;
         }
-        for (const Event &event : events) {
+        for (const event::Event &event : events) {
             static_cast<void>(options_.event->Publish(event));
         }
     }

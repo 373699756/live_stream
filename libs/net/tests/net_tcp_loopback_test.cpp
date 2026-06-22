@@ -43,8 +43,8 @@ int main() {
     if (!engine->Start()) {
         return 2;
     }
-    live_stream::INetExecutor* executor = engine->DefaultExecutor();
-    if (executor == nullptr) {
+    live_stream::event::Loop* loop = engine->DefaultLoop();
+    if (loop == nullptr) {
         return 3;
     }
 
@@ -58,7 +58,7 @@ int main() {
     callbacks.on_accept = OnAccept;
     callbacks.on_read = OnRead;
     live_stream::TcpServerId server =
-        engine->ListenTcp(executor, listen, callbacks);
+        engine->ListenTcp(loop, listen, callbacks);
     if (server == 0) {
         return 4;
     }

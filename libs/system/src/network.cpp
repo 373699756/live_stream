@@ -109,18 +109,32 @@ public:
             return false;
         }
         if (options_.config != nullptr && !config_attached_) {
-            ConfigAttachment attachment;
-            attachment.validate = [this](const ConfigJson &value) {
-                return Verify(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "invalid network config");
+            ConfigScope config_scope;
+            config_scope.verify = [this](const ConfigJson &now,
+                                         ConfigIssue *issue) {
+                if (Verify(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "invalid network config";
+                }
+                return ConfigStatus::kVerifyFailed;
             };
-            attachment.apply = [this](const ConfigJson &value) {
-                return Apply(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "apply network config failed");
+            config_scope.apply = [this](const ConfigJson &prev,
+                                        const ConfigJson &now,
+                                        ConfigIssue *issue) {
+                (void)prev;
+                if (Apply(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "apply network config failed";
+                }
+                return ConfigStatus::kApplyFailed;
             };
-            if (!options_.config->AttachConfig(kConfigName, attachment)) {
+            if (!options_.config->AddScope(kConfigName, config_scope)) {
                 return false;
             }
             config_attached_ = true;
@@ -162,7 +176,7 @@ public:
             initialized_ = false;
         }
         if (detach && options_.config != nullptr) {
-            static_cast<void>(options_.config->DetachConfig(kConfigName));
+            static_cast<void>(options_.config->RemoveScope(kConfigName));
         }
     }
 
@@ -251,7 +265,7 @@ private:
             loaded_configs[config.ifname] = config;
             network_json = NetworkJsonWithConfigs(network_json, loaded_configs);
         } else {
-            ConfigJson json = options_.config->GetValue(kConfigName);
+            ConfigJson json = options_.config->Get(kConfigName);
             if (!json.is_object()) {
                 NetConfig config = DefaultConfig(options_.default_ifname);
                 loaded_configs[config.ifname] = config;
@@ -327,12 +341,13 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 suppress_config_apply_ = true;
             }
-            const bool ok = options_.config->SetValue(kConfigName, next_json);
+            const ConfigStatus status = options_.config->Set(kConfigName,
+                                                             next_json);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 suppress_config_apply_ = false;
             }
-            if (!ok) {
+            if (status != ConfigStatus::kOk) {
                 return false;
             }
         }
@@ -429,8 +444,8 @@ private:
         if (options_.event == nullptr) {
             return;
         }
-        Event event;
-        event.type = EventType::kNetworkChanged;
+        event::Event event;
+        event.type = event::EventType::kNetworkChanged;
         event.source = NetworkName();
         event.target = ifname;
         event.message = "interface_config_changed";

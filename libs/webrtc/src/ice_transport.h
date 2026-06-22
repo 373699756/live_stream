@@ -25,7 +25,7 @@ public:
     IceTransport(const IceTransport &) = delete;
     IceTransport &operator=(const IceTransport &) = delete;
 
-    bool Start(INetEngine *net_engine, INetExecutor *net_executor,
+    bool Start(INetEngine *net_engine, event::Loop *net_loop,
                const UdpCallbacks &callbacks, const std::string &listen_ip,
                uint16_t port,
                std::string local_ufrag, std::string local_password);

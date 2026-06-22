@@ -33,32 +33,43 @@ public:
 class FakeNetEngine : public live_stream::INetEngine {
 public:
     struct Timer {
-        live_stream::NetTimerId id = 0;
-        infra::Task task;
+        live_stream::event::TimerId id = 0;
+        live_stream::event::Task task;
         bool cancelled = false;
     };
 
-    class FakeNetExecutor : public live_stream::INetExecutor {
+    class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeNetExecutor(FakeNetEngine* engine) : engine_(engine) {}
+        explicit FakeLoop(FakeNetEngine* engine) : engine_(engine) {}
 
-        bool Post(infra::Task task) override {
+        live_stream::event::EventStatus Post(
+            live_stream::event::Task task) override {
             if (task) {
                 task();
             }
-            return true;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunAfter(uint32_t delay_ms,
-                                         infra::Task task) override {
-            return engine_->RunTimerAfter(delay_ms, std::move(task));
+        live_stream::event::EventStatus RunAfter(
+            uint32_t delay_ms,
+            live_stream::event::Task task,
+            live_stream::event::TimerId* timer_id) override {
+            return engine_->RunTimerAfter(delay_ms, std::move(task),
+                                          timer_id);
         }
 
-        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
-            return 0;
+        live_stream::event::EventStatus RunEvery(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 0;
+            return live_stream::event::EventStatus::kInvalid;
         }
 
-        bool CancelTimer(live_stream::NetTimerId id) override {
+        bool CancelTimer(live_stream::event::TimerId id) override {
             return engine_->CancelTimerById(id);
         }
 
@@ -68,21 +79,21 @@ public:
         FakeNetEngine* engine_ = nullptr;
     };
 
-    FakeNetEngine() : executor_(this) {}
+    FakeNetEngine() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor* DefaultExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* DefaultLoop() override {
+        return &loop_;
     }
 
-    live_stream::INetExecutor* PickExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* PickLoop() override {
+        return &loop_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         listen_options = options;
@@ -97,7 +108,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::UdpBindOptions&,
         const live_stream::UdpCallbacks&) override {
         return 1;
@@ -137,17 +148,23 @@ public:
         return true;
     }
 
-    live_stream::NetTimerId RunTimerAfter(uint32_t delay_ms,
-                                          infra::Task task) {
+    live_stream::event::EventStatus RunTimerAfter(
+        uint32_t delay_ms,
+        live_stream::event::Task task,
+        live_stream::event::TimerId* timer_id) {
+        if (timer_id == nullptr || !task) {
+            return live_stream::event::EventStatus::kInvalid;
+        }
         last_delay_ms = delay_ms;
         Timer timer;
         timer.id = next_timer_id++;
         timer.task = std::move(task);
         timers.push_back(std::move(timer));
-        return timers.back().id;
+        *timer_id = timers.back().id;
+        return live_stream::event::EventStatus::kOk;
     }
 
-    bool CancelTimerById(live_stream::NetTimerId id) {
+    bool CancelTimerById(live_stream::event::TimerId id) {
         ++cancel_count;
         cancelled_timer_ids.push_back(id);
         for (Timer& timer : timers) {
@@ -202,7 +219,7 @@ public:
                            data.size());
     }
 
-    bool RunTimer(live_stream::NetTimerId id) {
+    bool RunTimer(live_stream::event::TimerId id) {
         for (Timer& timer : timers) {
             if (timer.id == id && timer.task) {
                 timer.task();
@@ -216,21 +233,21 @@ public:
     live_stream::TcpServerId last_closed_server = 0;
     live_stream::ConnectionId last_closed_connection = 0;
     std::vector<Timer> timers;
-    std::vector<live_stream::NetTimerId> cancelled_timer_ids;
+    std::vector<live_stream::event::TimerId> cancelled_timer_ids;
     uint32_t last_delay_ms = 0;
     int close_tcp_count = 0;
     int close_count = 0;
     int cancel_count = 0;
 
 private:
-    FakeNetExecutor executor_;
+    FakeLoop loop_;
     live_stream::TcpCallbacks callbacks_;
-    live_stream::NetTimerId next_timer_id = 1;
+    live_stream::event::TimerId next_timer_id = 1;
 };
 
-bool ContainsTimerId(const std::vector<live_stream::NetTimerId>& values,
-                     live_stream::NetTimerId expected) {
-    for (live_stream::NetTimerId value : values) {
+bool ContainsTimerId(const std::vector<live_stream::event::TimerId>& values,
+                     live_stream::event::TimerId expected) {
+    for (live_stream::event::TimerId value : values) {
         if (value == expected) {
             return true;
         }
@@ -254,7 +271,7 @@ int main() {
 
     live_stream::HttpDependencies dependencies;
     dependencies.net_engine = &net_engine;
-    dependencies.net_executor = net_engine.DefaultExecutor();
+    dependencies.net_loop = net_engine.DefaultLoop();
     live_stream::HttpServer server(options, dependencies, &handler);
     if (!server.Start()) {
         return 1;

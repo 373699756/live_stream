@@ -63,22 +63,30 @@ public:
     bool Start() override { return true; }
     void Stop() override {}
     bool IsStarted() const override { return true; }
-    bool SetValue(const std::string&, const live_stream::ConfigJson&) override {
-        return true;
+    live_stream::ConfigStatus Set(const std::string&,
+                                  const live_stream::ConfigJson&,
+                                  live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
     }
-    live_stream::ConfigJson GetValue(const std::string&) override {
+    live_stream::ConfigJson Get(const std::string&) override {
         return live_stream::ConfigJson::object();
     }
-    bool SetDefault(const std::string&) override { return true; }
-    live_stream::ConfigJson GetDefault(const std::string&) override {
+    live_stream::ConfigStatus Reset(
+        const std::string&, live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
+    live_stream::ConfigJson Default(const std::string&) override {
         return live_stream::ConfigJson::object();
     }
-    bool RestoreDefaults() override { return true; }
-    bool AttachConfig(const std::string&,
-                      const live_stream::ConfigAttachment&) override {
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
+    bool AddScope(const std::string&,
+                  const live_stream::ConfigScope&) override {
         return true;
     }
-    bool DetachConfig(const std::string&) override { return true; }
+    bool RemoveScope(const std::string&) override { return true; }
 };
 
 int ConnectTo(const live_stream::HttpListenAddress& address) {
@@ -150,10 +158,6 @@ int main() {
 
     FakeAuth auth;
     FakeConfig config;
-    live_stream::HttpDependencies deps;
-    deps.net_engine = net_engine.get();
-    deps.net_executor = net_engine->DefaultExecutor();
-
     live_stream::HttpOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
@@ -165,7 +169,7 @@ int main() {
 
     live_stream::HttpDependencies http_dependencies;
     http_dependencies.net_engine = net_engine.get();
-    http_dependencies.net_executor = net_engine->DefaultExecutor();
+    http_dependencies.net_loop = net_engine->DefaultLoop();
     http_dependencies.auth = &auth;
     http_dependencies.config = &config;
     auto http = live_stream::CreateHttp(options, http_dependencies);

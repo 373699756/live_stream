@@ -1,17 +1,17 @@
 #include "webrtc.h"
 
-#include "fake_media_source.h"
+#include "fake_media_streams.h"
 
 #include <memory>
 
 int main() {
-    live_stream::test::FakeMediaFrameSource media_source;
+    live_stream::test::FakeMediaStreams media_streams;
 
     live_stream::WebrtcOptions disabled_options;
     disabled_options.enabled = false;
 
     live_stream::WebrtcDependencies dependencies;
-    dependencies.media_source = &media_source;
+    dependencies.media_streams = &media_streams;
 
     std::unique_ptr<live_stream::IWebrtc> disabled =
         live_stream::CreateWebrtc(disabled_options, dependencies);

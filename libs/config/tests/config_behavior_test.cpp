@@ -59,11 +59,11 @@ int main() {
         return 3;
     }
 
-    live_stream::ConfigJson value = service->GetValue("stream");
+    live_stream::ConfigJson value = service->Get("stream");
     if (!value.is_object() || value["bitrate"] != 2048 || value["fps"] != 25) {
         return 4;
     }
-    value = service->GetDefault("stream");
+    value = service->Default("stream");
     if (!value.is_object() || value["bitrate"] != 1024 || value["fps"] != 25) {
         return 5;
     }
@@ -71,28 +71,39 @@ int main() {
     int validate_count = 0;
     int apply_count = 0;
 
-    live_stream::ConfigAttachment attachment;
-    attachment.validate = [&validate_count](
-                              const live_stream::ConfigJson &config) {
+    live_stream::ConfigScope scope;
+    scope.verify = [&validate_count](const live_stream::ConfigJson &now,
+                                     live_stream::ConfigIssue *issue) {
         ++validate_count;
         int64_t bitrate = 0;
-        if (!live_stream::json_utils::ReadField(config, "bitrate", &bitrate, 128,
-                                                8192)) {
-            return live_stream::ConfigResult::Failure("bitrate", "unsupported value");
+        if (!live_stream::json_utils::ReadField(now, "bitrate", &bitrate,
+                                                128, 8192)) {
+            if (issue != nullptr) {
+                issue->field = "bitrate";
+                issue->reason = "unsupported value";
+            }
+            return live_stream::ConfigStatus::kVerifyFailed;
         }
-        return live_stream::ConfigResult::Success();
+        return live_stream::ConfigStatus::kOk;
     };
-    attachment.apply = [&apply_count](const live_stream::ConfigJson &config) {
+    scope.apply = [&apply_count](const live_stream::ConfigJson &prev,
+                                 const live_stream::ConfigJson &now,
+                                 live_stream::ConfigIssue *issue) {
+        (void)prev;
         ++apply_count;
-        return config["bitrate"] == 4096 || config["bitrate"] == 3072
-                   ? live_stream::ConfigResult::Success()
-                   : live_stream::ConfigResult::Failure("bitrate",
-                                                        "apply rejected");
+        if (now["bitrate"] == 4096 || now["bitrate"] == 3072) {
+            return live_stream::ConfigStatus::kOk;
+        }
+        if (issue != nullptr) {
+            issue->field = "bitrate";
+            issue->reason = "apply rejected";
+        }
+        return live_stream::ConfigStatus::kApplyFailed;
     };
-    if (!service->AttachConfig("stream", attachment)) {
+    if (!service->AddScope("stream", scope)) {
         return 6;
     }
-    if (service->AttachConfig("stream", attachment)) {
+    if (service->AddScope("stream", scope)) {
         return 7;
     }
 
@@ -101,12 +112,14 @@ int main() {
         {"fps", 30},
         {"codec", "h264"},
     };
-    if (!service->SetValue("stream", next_stream) || validate_count != 1 ||
-        apply_count != 1) {
+    live_stream::ConfigIssue issue;
+    if (service->Set("stream", next_stream, &issue) !=
+            live_stream::ConfigStatus::kOk ||
+        validate_count != 1 || apply_count != 1) {
         return 9;
     }
 
-    value = service->GetValue("stream");
+    value = service->Get("stream");
     if (!value.is_object() || value["bitrate"] != 4096 ||
         value["codec"] != "h264") {
         return 10;
@@ -116,10 +129,13 @@ int main() {
         {"bitrate", 1},
         {"fps", 30},
     };
-    if (service->SetValue("stream", invalid_stream)) {
+    issue = live_stream::ConfigIssue();
+    if (service->Set("stream", invalid_stream, &issue) !=
+            live_stream::ConfigStatus::kVerifyFailed ||
+        issue.field != "bitrate") {
         return 11;
     }
-    value = service->GetValue("stream");
+    value = service->Get("stream");
     if (!value.is_object() || value["bitrate"] != 4096 || apply_count != 1) {
         return 13;
     }
@@ -129,22 +145,24 @@ int main() {
         {"fps", 25},
         {"codec", "h265"},
     };
-    if (!service->SetValue("stream", another_stream) || validate_count != 2 ||
-        apply_count != 2) {
+    if (service->Set("stream", another_stream, &issue) !=
+            live_stream::ConfigStatus::kOk ||
+        validate_count != 2 || apply_count != 2) {
         return 15;
     }
 
-    if (!service->DetachConfig("stream")) {
+    if (!service->RemoveScope("stream")) {
         return 16;
     }
-    if (service->SetValue("missing", live_stream::ConfigJson::object())) {
+    if (service->Set("missing", live_stream::ConfigJson::object(), &issue) ==
+        live_stream::ConfigStatus::kOk) {
         return 17;
     }
 
-    if (!service->RestoreDefaults()) {
+    if (service->ResetAll(&issue) != live_stream::ConfigStatus::kOk) {
         return 19;
     }
-    value = service->GetValue("stream");
+    value = service->Get("stream");
     if (!value.is_object() || value["bitrate"] != 1024 || value["fps"] != 25) {
         return 20;
     }

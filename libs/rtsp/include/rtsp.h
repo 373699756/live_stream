@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_RTSP_RTSP_H_
 #define LIVE_STREAM_RTSP_RTSP_H_
 
+#include "event.h"
 #include "media/encoded_frame.h"
 #include "media/media_streams.h"
 #include "media/stream_types.h"
@@ -13,9 +14,7 @@
 namespace live_stream {
 
 class IAuth;
-class IEvent;
 class INetEngine;
-class INetExecutor;
 
 enum class RtspTransportMode {
     kTcpInterleaved = 0,
@@ -109,9 +108,9 @@ struct RtspStats {
 
 struct RtspDependencies {
     INetEngine* net_engine = nullptr;
-    INetExecutor* net_executor = nullptr;
+    event::Loop* net_loop = nullptr;
     IAuth* auth = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     MediaStreams* media_streams = nullptr;
 };
 

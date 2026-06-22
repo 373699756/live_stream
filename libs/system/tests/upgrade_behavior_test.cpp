@@ -38,33 +38,18 @@ std::string MakePackageFile(const char* name, std::size_t size) {
     return path;
 }
 
-struct FakeEvent : live_stream::IEvent {
-    bool Start() override { return true; }
-    void Stop() override {}
+struct FakeEvent : live_stream::event::Dispatcher {
+    FakeEvent()
+        : subscription(Subscribe(
+              live_stream::event::EventType::kUpgradeProgressChanged,
+              [this](const live_stream::event::Event& event) {
+                  events.push_back(event);
+              })) {}
 
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>& types,
-        live_stream::EventHandler handler) override {
-        (void)types;
-        (void)handler;
-        return 1;
-    }
+    std::vector<live_stream::event::Event> events;
 
-    bool Unsubscribe(
-        live_stream::EventSubscriptionId subscription_id) override {
-        (void)subscription_id;
-        return true;
-    }
-
-    bool Publish(const live_stream::Event& event) override {
-        events.push_back(event);
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
-
-    std::vector<live_stream::Event> events;
+private:
+    live_stream::event::Subscription subscription;
 };
 
 struct FakeLogger : live_stream::ILogger {

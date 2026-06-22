@@ -14,7 +14,6 @@
 namespace live_stream {
 
 class INetEngine;
-class INetExecutor;
 
 namespace webrtc_internal {
 
@@ -65,7 +64,7 @@ public:
 
 std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(
     INetEngine *net_engine,
-    INetExecutor *net_executor);
+    event::Loop *net_loop);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream

@@ -143,7 +143,7 @@ public:
     StreamingHttpHandler(HttpAccess *access, HttpMediaWriter *writer,
                          DeviceMedia *device,
                          MediaStreams *media_streams,
-                         IEvent *event)
+                         event::Dispatcher *event)
         : access_(access), writer_(writer), device_(device), media_streams_(media_streams), event_(event) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
@@ -191,7 +191,7 @@ private:
             return SendStreamingError(writer_, connection_id, auth_response);
         }
         // SSE 是无 Content-Length 的长连接，必须先把 HttpSession 切成 streaming；
-        // 之后断连时由 HTTP close callback 自动 Unsubscribe。
+        // 之后断连时由 HTTP close callback 自动取消订阅。
         if (!writer_->BeginStream(connection_id,
                                   HttpMediaClientType::kEventStream,
                                   StreamId::kMain)) {
@@ -219,16 +219,16 @@ private:
             return CloseStreamingConnection(writer_, connection_id);
         }
 
-        const std::vector<EventType> event_types = {
-            EventType::kMediaStatusChanged,
-            EventType::kStreamStarted,
-            EventType::kStreamStopped,
-            EventType::kAlarmOn,
-            EventType::kAlarmOff,
+        const std::vector<event::EventType> event_types = {
+            event::EventType::kMediaStatusChanged,
+            event::EventType::kStreamStarted,
+            event::EventType::kStreamStopped,
+            event::EventType::kAlarmOn,
+            event::EventType::kAlarmOff,
         };
-        const EventSubscriptionId subscription_id = event_->Subscribe(
+        event::Subscription subscription = event_->SubscribeMany(
             event_types,
-            [writer = writer_, connection_id](const Event &event) {
+            [writer = writer_, connection_id](const event::Event &event) {
                 if (writer == nullptr) {
                     return;
                 }
@@ -242,17 +242,20 @@ private:
                     writer->CloseConnection(connection_id);
                 }
             });
-        if (subscription_id == 0) {
+        if (!subscription.valid()) {
             return CloseStreamingConnection(writer_, connection_id);
         }
+        std::shared_ptr<event::Subscription> subscription_owner(
+            new event::Subscription(std::move(subscription)));
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kEventStream;
-        client.id = subscription_id;
+        client.id = 0;
+        client.event_subscription = subscription_owner;
         client.stream_id = StreamId::kMain;
-        // AttachStreamClient 把 event subscription id 交给 HTTP session，
+        // AttachStreamClient 把 event subscription 交给 HTTP session，
         // 连接异常关闭时才能从统一 close path 解除订阅。
         if (!writer_->AttachStreamClient(connection_id, client)) {
-            (void)event_->Unsubscribe(subscription_id);
+            subscription_owner->Cancel();
             return CloseStreamingConnection(writer_, connection_id);
         }
         return HttpStreamingRequestResult::kStreaming;
@@ -591,7 +594,7 @@ private:
     HttpMediaWriter *writer_ = nullptr;
     DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
-    IEvent *event_ = nullptr;
+    event::Dispatcher *event_ = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(

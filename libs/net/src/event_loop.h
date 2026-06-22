@@ -17,7 +17,7 @@
 namespace live_stream {
 namespace net_internal {
 
-class EventLoop {
+class EventLoop : public event::Loop {
 public:
     EventLoop(uint32_t max_events, uint32_t task_capacity,
               int affinity_cpu);
@@ -26,17 +26,19 @@ public:
     EventLoop(const EventLoop &) = delete;
     EventLoop &operator=(const EventLoop &) = delete;
 
-    bool Start();
-    void Stop();
-    bool Post(infra::Task task);
-    bool IsCurrentThread() const;
+    bool Start(const event::LoopOptions &options = event::LoopOptions()) override;
+    void Stop(event::StopMode mode) override;
+    event::EventStatus Post(event::Task task) override;
+    bool IsCurrentThread() const override;
     bool AddFd(int fd, uint32_t events, std::function<void(uint32_t)> handler);
     bool ModifyFd(int fd, uint32_t events);
     void RemoveFd(int fd);
-    NetTimerId RunAfter(NetTimerId id, uint32_t delay_ms, infra::Task task);
-    NetTimerId RunEvery(NetTimerId id, uint32_t interval_ms,
-                        infra::Task task);
-    bool CancelTimer(NetTimerId id);
+    event::EventStatus RunAfter(uint32_t delay_ms, event::Task task,
+                                event::TimerId *timer_id) override;
+    event::EventStatus RunEvery(uint32_t interval_ms, event::Task task,
+                                event::TimerId *timer_id) override;
+    bool CancelTimer(event::TimerId id) override;
+    event::LoopStats GetStats() const override;
 
 private:
     struct Handler {
@@ -47,7 +49,7 @@ private:
     struct Timer {
         int64_t deadline_ms = 0;
         uint32_t interval_ms = 0;
-        infra::Task task;
+        event::Task task;
         bool cancelled = false;
         bool executing = false;
     };
@@ -72,9 +74,11 @@ private:
     EventFd wakeup_;
     std::thread thread_;
     std::thread::id thread_id_;
-    std::deque<infra::Task> tasks_;
+    std::deque<event::Task> tasks_;
     std::unordered_map<int, Handler> handlers_;
-    std::map<NetTimerId, std::shared_ptr<Timer>> timers_;
+    std::map<event::TimerId, std::shared_ptr<Timer>> timers_;
+    event::LoopStats stats_;
+    event::TimerId next_timer_id_ = 1;
     bool running_ = false;
     bool stopping_ = false;
 };

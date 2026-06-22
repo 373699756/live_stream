@@ -1,6 +1,6 @@
 #include "webrtc.h"
 
-#include "fake_media_source.h"
+#include "fake_media_streams.h"
 #include "net.h"
 
 #include <cstddef>
@@ -11,49 +11,64 @@ namespace {
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
-    class FakeNetExecutor : public live_stream::INetExecutor {
+    class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeNetExecutor(FakeNetEngine *engine) : engine_(engine) {}
+        explicit FakeLoop(FakeNetEngine *engine) : engine_(engine) {}
 
-        bool Post(infra::Task task) override {
+        live_stream::event::EventStatus Post(
+            live_stream::event::Task task) override {
             if (task) {
                 task();
             }
-            return true;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunAfter(uint32_t, infra::Task) override {
-            return 1;
+        live_stream::event::EventStatus RunAfter(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId *timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
+        live_stream::event::EventStatus RunEvery(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId *timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
             ++engine_->periodic_timer_count;
-            return static_cast<live_stream::NetTimerId>(
+            *timer_id = static_cast<live_stream::event::TimerId>(
                 engine_->periodic_timer_count);
+            return live_stream::event::EventStatus::kOk;
         }
 
-        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool CancelTimer(live_stream::event::TimerId) override { return true; }
         bool IsCurrentThread() const override { return true; }
 
     private:
         FakeNetEngine *engine_ = nullptr;
     };
 
-    FakeNetEngine() : executor_(this) {}
+    FakeNetEngine() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor *DefaultExecutor() override {
-        return &executor_;
+    live_stream::event::Loop *DefaultLoop() override {
+        return &loop_;
     }
 
-    live_stream::INetExecutor *PickExecutor() override {
-        return &executor_;
+    live_stream::event::Loop *PickLoop() override {
+        return &loop_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor *,
+        live_stream::event::Loop *,
         const live_stream::TcpListenOptions &,
         const live_stream::TcpCallbacks &) override {
         return 1;
@@ -62,7 +77,7 @@ public:
     bool CloseTcp(live_stream::TcpServerId) override { return true; }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor *,
+        live_stream::event::Loop *,
         const live_stream::UdpBindOptions &options,
         const live_stream::UdpCallbacks &) override {
         last_udp_bind = options.address;
@@ -126,7 +141,7 @@ public:
     live_stream::NetAddress last_udp_bind;
 
 private:
-    FakeNetExecutor executor_;
+    FakeLoop loop_;
 };
 
 std::string ValidOfferSdp() {
@@ -152,7 +167,7 @@ std::string ValidOfferSdp() {
 }  // namespace
 
 int main() {
-    live_stream::test::FakeMediaFrameSource media_source;
+    live_stream::test::FakeMediaStreams media_streams;
     FakeNetEngine net_engine;
 
     live_stream::WebrtcOptions options;
@@ -160,9 +175,9 @@ int main() {
     options.public_ip = "127.0.0.1";
 
     live_stream::WebrtcDependencies dependencies;
-    dependencies.media_source = &media_source;
+    dependencies.media_streams = &media_streams;
     dependencies.net_engine = &net_engine;
-    dependencies.net_executor = net_engine.DefaultExecutor();
+    dependencies.net_loop = net_engine.DefaultLoop();
 
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);
@@ -176,9 +191,9 @@ int main() {
     live_stream::WebrtcCreatePeerRequest create_request;
     create_request.stream_id = live_stream::StreamId::kSub;
     live_stream::WebrtcPeerInfo peer = service->CreatePeer(create_request);
-    if (peer.peer_id.empty() || media_source.request_keyframes != 1 ||
-        media_source.last_keyframe_stream != live_stream::StreamId::kSub ||
-        media_source.last_keyframe_source !=
+    if (peer.peer_id.empty() || media_streams.request_keyframes != 1 ||
+        media_streams.last_keyframe_stream != live_stream::StreamId::kSub ||
+        media_streams.last_keyframe_source !=
             live_stream::KeyframeRequestSource::kNewClient) {
         return 3;
     }

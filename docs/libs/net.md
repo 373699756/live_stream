@@ -6,8 +6,9 @@
 
 ## 模块定位
 
-`net` 提供共享网络引擎、EventPoller 风格 event loop、TCP session、
-UDP socket、网络发送 buffer、timer 和 callback dispatch。它不拥有 HTTP、
+`net` 提供共享网络引擎、EventPoller 风格 IO loop、TCP session、
+UDP socket、网络发送 buffer 和 callback dispatch。public 任务/timer 契约使用
+`event::Loop` / `event::TimerId`，socket fd poller 仍由 `net` 内部实现。它不拥有 HTTP、
 RTSP、ONVIF 或 WebRTC 的业务语义。
 
 ## 总体框架图
@@ -15,13 +16,12 @@ RTSP、ONVIF 或 WebRTC 的业务语义。
 ```mermaid
 flowchart LR
   Protocol[ProtocolSubsystem] --> Net[INetEngine]
-  Net --> Loop[event_loop]
-  Loop --> Timer[timer]
-  Net --> NetExec[INetExecutor]
+  Net --> Loop[event::Loop]
+  Loop --> Timer[event timer]
   Net --> TCP[tcp_server / tcp_session]
   Net --> UDP[udp_socket]
   TCP --> Queue[send queue / pending bytes / close reason]
-  Net --> CallbackExec[infra::Executor callback mode]
+  Net --> CallbackLoop[event::Loop callback mode]
   HTTP[http] --> Net
   RTSP[rtsp] --> Net
   WebRTC[webrtc] --> Net
@@ -30,15 +30,15 @@ flowchart LR
 
 ## 核心职责
 
-- 管理 IO thread、`INetExecutor` 执行域和 callback dispatch。
+- 管理 IO thread、`event::Loop` 执行域和 callback dispatch。
 - 提供 TCP server/session、UDP socket 和 fd/eventfd 封装。
 - 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
   send stall 检测和 close reason。
-- 通过指定 `INetExecutor` 提供一次性/周期 IO timer；`CancelTimer()` 或
+- 通过指定 `event::Loop` 提供一次性/周期 IO timer；`CancelTimer()` 或
   `INetEngine::Stop()` 后 timer 不再回调。
 - 提供 UDP `SendTo()` 和 selected peer 模型，供 RTP、ICE/STUN、ONVIF
   discovery 这类 UDP 生命周期接入。
-- 将网络回调按 `CallbackMode` 直接在 IO loop 执行或投递到 callback executor；
+- 将网络回调按 `CallbackMode` 直接在 IO loop 执行或投递到 callback loop；
   协议模块不能自行跨过 `net` 操作 fd。
 
 ## 接口归属
@@ -48,12 +48,12 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
 
 冻结契约：
 
-- `INetExecutor`：代表一个 `net` IO loop 的执行域，提供 `Post()`、
+- `event::Loop`：代表一个 `net` IO loop 的执行域，提供 `Post()`、
   `RunAfter()`、`RunEvery()`、`CancelTimer()` 和 `IsCurrentThread()`。
-  executor 由 `INetEngine::DefaultExecutor()` 或 `PickExecutor()` 返回，只在
+  loop 由 `INetEngine::DefaultLoop()` 或 `PickLoop()` 返回，只在
   对应 `INetEngine` 生命周期内有效；`INetEngine::Stop()` 后不能再继续使用。
-- `TcpServer`：`ListenTcp(executor, ...)` 创建监听，`executor` 必须来自同一个
-  `INetEngine` 且非空；accept 和 accepted session 都绑定到该 executor 所属
+- `TcpServer`：`ListenTcp(loop, ...)` 创建监听，`loop` 必须来自同一个
+  `INetEngine` 且非空；accept 和 accepted session 都绑定到该 loop 所属
   IO loop。`CloseTcp()` 先停止 accept，再由上层按连接 id 关闭已有 session。
 - `TcpSession`：以 `ConnectionId` 表达 public session；发送统一走
   `Send()`/`SendSlices()`，慢客户端由 `send_queue_capacity`、
@@ -64,11 +64,11 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
   记录慢客户端和区分 peer/local/timeout/error。协议模块需要主动标记解析失败或
   鉴权失败时，可以调用 `Close(connection_id, reason)`；普通本地关闭继续调用
   `Close(connection_id)`。
-- `UdpSocket`：`BindUdp(executor, ...)`/`CloseUdp()` 管生命周期，`executor`
+- `UdpSocket`：`BindUdp(loop, ...)`/`CloseUdp()` 管生命周期，`loop`
   必须来自同一个 `INetEngine` 且非空；`SetUdpPeer()`、`SendToPeer()` 用于已选择
   peer 的 RTP 或 ICE/STUN，`SendTo()` 用于 ONVIF discovery 这类逐包目标地址。
-- `Timer`：`INetExecutor::RunAfter()` 是一次性 timer，`RunEvery()` 是周期
-  timer，timer 固定归属创建它的 executor；取消必须通过同一个 executor 的
+- `Timer`：`event::Loop::RunAfter()` 是一次性 timer，`RunEvery()` 是周期
+  timer，timer 固定归属创建它的 loop；取消必须通过同一个 loop 的
   `CancelTimer()`。timer id 由 `INetEngine` 全局分配，避免多 IO loop 下重复。
 - `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
   `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
@@ -97,10 +97,10 @@ info，但不能新增一套不可比较的 socket close reason。
 
 ## 状态与资源模型
 
-`INetEngine` 拥有 IO thread、executor、fd/eventfd、TCP/UDP socket 和 callback
-dispatch 队列。组合根为 HTTP、RTSP、ONVIF 和 WebRTC 分别通过 `PickExecutor()`
+`INetEngine` 拥有 IO thread、event loop、fd/eventfd、TCP/UDP socket 和 callback
+dispatch 队列。组合根为 HTTP、RTSP、ONVIF 和 WebRTC 分别通过 `PickLoop()`
 选择执行域；协议模块的监听、accepted session、UDP socket 和协议 timer 都绑定到
-注入的 executor。上层协议停止时必须先解除连接、session、timer 或 endpoint，再停止
+注入的 loop。上层协议停止时必须先解除连接、session、timer 或 endpoint，再停止
 网络引擎。
 板端默认按 Hi3516DV300 双核 Cortex-A7 配置 2 个 net IO thread；线程亲和性是
 `NetEngineOptions` 的可选实验项，默认关闭。只有板端实测确认某个协议或 IRQ 抖动
@@ -133,5 +133,5 @@ HTTP、RTSP、ONVIF 和 WebRTC 不再各自维护不可比较的 socket 发送�
 - 网络关闭必须先停止上层协议，再释放 INetEngine。
 - `send_buffer_limit_bytes` 需要按 HTTP-FLV/HLS/MJPEG、RTSP TCP interleaved 和
   WebRTC signaling 的峰值分别配置，避免慢客户端持有过多媒体 payload 引用。
-- `CallbackMode::kPostToExecutor` 会复制接收数据；热路径协议应优先缩短回调处理，
-  避免 executor 队列成为新的内存堆积点。
+- `CallbackMode::kPostToLoop` 会复制接收数据；热路径协议应优先缩短回调处理，
+  避免 callback loop 队列成为新的内存堆积点。

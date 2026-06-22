@@ -149,7 +149,7 @@ void RtspSession::ClearStartFrames() {
     start_frames.clear();
 }
 
-void RtspSession::SetDrainTimer(NetTimerId timer_id) {
+void RtspSession::SetDrainTimer(event::TimerId timer_id) {
     drain_timer_id = timer_id;
 }
 

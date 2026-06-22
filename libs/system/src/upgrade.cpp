@@ -2,7 +2,6 @@
 
 #include "event.h"
 #include "infra/clamp.h"
-#include "infra/executor.h"
 #include "infra/time.h"
 #include "logger.h"
 
@@ -109,7 +108,7 @@ public:
             platform_ = options_.platform;
         }
 
-        executor_.reset(new infra::Executor());
+        executor_.reset(new event::Executor());
 
         status_ = UpgradeStatus{};
         initialized_ = true;
@@ -127,7 +126,7 @@ public:
         if (started_) {
             return true;
         }
-        infra::ExecutorOptions executor_options;
+        event::ExecutorOptions executor_options;
         executor_options.worker_count = 1;
         executor_options.queue_capacity = options_.queue_capacity;
         if (!executor_->Start(executor_options)) {
@@ -152,14 +151,14 @@ public:
 
 private:
     void StopInternal() {
-        std::unique_ptr<infra::Executor> executor;
+        std::unique_ptr<event::Executor> executor;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             started_ = false;
             executor_.swap(executor);
         }
         if (executor) {
-            executor->Stop(infra::StopMode::kDiscard);
+            executor->Stop(event::StopMode::kDiscard);
             std::lock_guard<std::mutex> lock(mutex_);
             if (!executor_) {
                 executor_.swap(executor);
@@ -228,7 +227,7 @@ public:
             return false;
         }
 
-        infra::Executor* executor = nullptr;
+        event::Executor* executor = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_ || !executor_) {
@@ -254,10 +253,9 @@ public:
 
         UpgradeRequest checked_request = request;
         checked_request.package_path = checked_package_path;
-        if (!executor->Post(
-                [this, context, checked_request]() {
-                    ExecuteUpgrade(context, checked_request);
-                })) {
+        if (executor->Post([this, context, checked_request]() {
+                ExecuteUpgrade(context, checked_request);
+            }) != event::EventStatus::kOk) {
             SetFailed("failed to queue upgrade task", false);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         "failed to queue upgrade task");
@@ -601,13 +599,13 @@ private:
     }
 
     void PublishProgressChanged() {
-        IEvent* event_bus = options_.event;
+        event::Dispatcher* event_bus = options_.event;
         if (event_bus == nullptr) {
             return;
         }
         UpgradeStatus status = GetStatus();
-        Event progress_event;
-        progress_event.type = EventType::kUpgradeProgressChanged;
+        event::Event progress_event;
+        progress_event.type = event::EventType::kUpgradeProgressChanged;
         progress_event.source = kServiceName;
         progress_event.message = status.current_stage;
         progress_event.value = static_cast<int32_t>(status.progress_percent);
@@ -637,7 +635,7 @@ private:
     }
 
     UpgradeOptions options_;
-    std::unique_ptr<infra::Executor> executor_;
+    std::unique_ptr<event::Executor> executor_;
     std::unique_ptr<IUpgradePlatform> restricted_platform_;
     IUpgradePlatform* platform_ = nullptr;
     mutable std::mutex mutex_;

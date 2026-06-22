@@ -19,10 +19,10 @@ struct ProtocolStartupRefs {
     DeviceRefs device;
     MediaRefs media;
     INetEngine *net_engine = nullptr;
-    INetExecutor *rtsp_executor = nullptr;
-    INetExecutor *webrtc_executor = nullptr;
-    INetExecutor *onvif_executor = nullptr;
-    INetExecutor *http_executor = nullptr;
+    event::Loop *rtsp_loop = nullptr;
+    event::Loop *webrtc_loop = nullptr;
+    event::Loop *onvif_loop = nullptr;
+    event::Loop *http_loop = nullptr;
     IRtsp *rtsp = nullptr;
     OnvifServer *onvif = nullptr;
     IWebrtc *webrtc = nullptr;

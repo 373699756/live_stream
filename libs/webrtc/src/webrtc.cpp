@@ -68,7 +68,7 @@ public:
         : options_(std::move(options)),
           media_streams_(dependencies.media_streams),
           net_engine_(dependencies.net_engine),
-          net_executor_(dependencies.net_executor),
+          net_loop_(dependencies.net_loop),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         {
@@ -434,7 +434,7 @@ private:
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
-            webrtc_internal::CreateWebrtcEngine(net_engine_, net_executor_);
+            webrtc_internal::CreateWebrtcEngine(net_engine_, net_loop_);
         webrtc_internal::WebrtcEngineCallbacks callbacks;
         callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged = &WebrtcImpl::OnEnginePeerStateChanged;
@@ -639,14 +639,14 @@ private:
         uint64_t generation = 0;
         MediaStreamInfo track;
         std::vector<EncodedFrame> start_frames;
-        NetTimerId drain_timer_id = 0;
+        event::TimerId drain_timer_id = 0;
         bool draining = false;
         bool closing = false;
     };
 
     struct ClosingSubscription {
         FrameSubscriptionId subscription_id = 0;
-        NetTimerId drain_timer_id = 0;
+        event::TimerId drain_timer_id = 0;
         std::vector<EncodedFrame> start_frames;
     };
 
@@ -722,16 +722,17 @@ private:
     }
 
     void ArmPeerDrainTimer(const std::string &peer_id) {
-        if (net_executor_ == nullptr) {
+        if (net_loop_ == nullptr) {
             return;
         }
         std::shared_ptr<WebrtcCallbackGuard> callback_guard =
             callback_guard_;
-        const NetTimerId timer_id = net_executor_->RunEvery(
+        event::TimerId timer_id = 0;
+        const event::EventStatus timer_status = net_loop_->RunEvery(
             kWebrtcDrainIntervalMs, [callback_guard, peer_id]() {
                 WebrtcImpl::DispatchPeerDrain(callback_guard, peer_id);
-            });
-        if (timer_id == 0) {
+            }, &timer_id);
+        if (timer_status != event::EventStatus::kOk || timer_id == 0) {
             ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
             return;
         }
@@ -749,7 +750,7 @@ private:
             }
         }
         if (!keep_timer) {
-            (void)net_executor_->CancelTimer(timer_id);
+            (void)net_loop_->CancelTimer(timer_id);
         }
     }
 
@@ -967,9 +968,9 @@ private:
         if (closing_subscription == nullptr) {
             return;
         }
-        if (net_executor_ != nullptr &&
+        if (net_loop_ != nullptr &&
             closing_subscription->drain_timer_id != 0) {
-            (void)net_executor_->CancelTimer(
+            (void)net_loop_->CancelTimer(
                 closing_subscription->drain_timer_id);
         }
         if (media_streams_ != nullptr &&
@@ -995,7 +996,7 @@ private:
     WebrtcOptions options_;
     MediaStreams *media_streams_ = nullptr;
     INetEngine *net_engine_ = nullptr;
-    INetExecutor *net_executor_ = nullptr;
+    event::Loop *net_loop_ = nullptr;
     ServiceState state_ = ServiceState::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;

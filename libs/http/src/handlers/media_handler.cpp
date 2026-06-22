@@ -291,7 +291,7 @@ bool ReadVideoStreamDisplayConfig(IConfig *config,
     if (config == nullptr || display_config == nullptr) {
         return false;
     }
-    const ConfigJson video = config->GetValue("video");
+    const ConfigJson video = config->Get("video");
     if (!video.is_object()) {
         return false;
     }
@@ -421,7 +421,7 @@ std::string AdvertiseHostFromConfig(IConfig *config) {
     if (config == nullptr) {
         return std::string();
     }
-    ConfigJson network = config->GetValue("network");
+    ConfigJson network = config->Get("network");
     std::string advertise_host;
     if (network.is_object() &&
         json_utils::ReadField(network, "advertise_ip", &advertise_host)) {
@@ -434,13 +434,13 @@ uint16_t RtspPortFromConfig(IConfig *config, uint16_t fallback) {
     if (config == nullptr) {
         return fallback;
     }
-    ConfigJson rtsp = config->GetValue("rtsp");
+    ConfigJson rtsp = config->Get("rtsp");
     int64_t port = 0;
     if (rtsp.is_object() &&
         json_utils::ReadField(rtsp, "port", &port, 1, 65535)) {
         return static_cast<uint16_t>(port);
     }
-    ConfigJson network = config->GetValue("network");
+    ConfigJson network = config->Get("network");
     if (network.is_object() && network.contains("ports") &&
         network.at("ports").is_object() &&
         json_utils::ReadField(network.at("ports"), "rtsp", &port, 1, 65535)) {

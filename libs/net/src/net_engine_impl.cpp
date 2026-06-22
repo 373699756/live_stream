@@ -15,46 +15,6 @@ constexpr size_t kClosedConnectionInfoLimit = 128;
 
 }  // namespace
 
-class NetExecutor : public INetExecutor {
-public:
-    NetExecutor(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop)
-        : engine_(engine), loop_(std::move(loop)) {}
-
-    bool Post(infra::Task task) override {
-        return loop_ != nullptr && loop_->Post(std::move(task));
-    }
-
-    NetTimerId RunAfter(uint32_t delay_ms, infra::Task task) override {
-        if (engine_ == nullptr || loop_ == nullptr) {
-            return 0;
-        }
-        return loop_->RunAfter(engine_->AllocateTimerId(), delay_ms,
-                               std::move(task));
-    }
-
-    NetTimerId RunEvery(uint32_t interval_ms, infra::Task task) override {
-        if (engine_ == nullptr || loop_ == nullptr) {
-            return 0;
-        }
-        return loop_->RunEvery(engine_->AllocateTimerId(), interval_ms,
-                               std::move(task));
-    }
-
-    bool CancelTimer(NetTimerId id) override {
-        return loop_ != nullptr && loop_->CancelTimer(id);
-    }
-
-    bool IsCurrentThread() const override {
-        return loop_ != nullptr && loop_->IsCurrentThread();
-    }
-
-    std::shared_ptr<EventLoop> loop() const { return loop_; }
-
-private:
-    NetEngineImpl *engine_ = nullptr;
-    std::shared_ptr<EventLoop> loop_;
-};
-
 NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
     : options_(options) {}
 
@@ -64,8 +24,8 @@ bool NetEngineImpl::Start() {
     if (options_.io_threads == 0) {
         return false;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor &&
-        options_.callback_executor == nullptr) {
+    if (options_.callback_mode == CallbackMode::kPostToLoop &&
+        options_.callback_loop == nullptr) {
         return false;
     }
     {
@@ -83,13 +43,11 @@ bool NetEngineImpl::Start() {
                     options_.max_events_per_loop, options_.task_queue_capacity,
                     affinity_cpu);
                 loops_.push_back(loop);
-                executors_.push_back(
-                    std::make_shared<NetExecutor>(this, loop));
             }
         }
     }
     for (const auto &loop : loops_) {
-        if (!loop->Start()) {
+        if (!loop->Start(event::LoopOptions())) {
             Stop();
             return false;
         }
@@ -133,35 +91,35 @@ void NetEngineImpl::StopInternal() {
         (void)connection->Close(TcpCloseReason::kInternalError);
     }
     for (const auto &loop : loops_) {
-        loop->Stop();
+        loop->Stop(event::StopMode::kDiscard);
     }
     std::lock_guard<std::mutex> lock(mutex_);
     connections_.clear();
 }
 
-INetExecutor *NetEngineImpl::DefaultExecutor() {
+event::Loop *NetEngineImpl::DefaultLoop() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return executors_.empty() ? nullptr : executors_.front().get();
+    return loops_.empty() ? nullptr : loops_.front().get();
 }
 
-INetExecutor *NetEngineImpl::PickExecutor() {
+event::Loop *NetEngineImpl::PickLoop() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (executors_.empty()) {
+    if (loops_.empty()) {
         return nullptr;
     }
     const uint32_t index =
-        next_loop_.fetch_add(1) % static_cast<uint32_t>(executors_.size());
-    return executors_[index].get();
+        next_loop_.fetch_add(1) % static_cast<uint32_t>(loops_.size());
+    return loops_[index].get();
 }
 
-TcpServerId NetEngineImpl::ListenTcp(INetExecutor *executor,
+TcpServerId NetEngineImpl::ListenTcp(event::Loop *loop,
                                      const TcpListenOptions &options,
                                      const TcpCallbacks &callbacks) {
     if (callbacks.on_read == nullptr && callbacks.on_accept == nullptr) {
         return 0;
     }
-    std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
-    if (!owner_executor) {
+    std::shared_ptr<EventLoop> owner_loop = ResolveLoop(loop);
+    if (!owner_loop) {
         return 0;
     }
     const TcpServerId id = next_server_id_++;
@@ -172,7 +130,7 @@ TcpServerId NetEngineImpl::ListenTcp(INetExecutor *executor,
             return 0;
         }
         servers_[id] = server;
-        if (!server->Start(owner_executor->loop())) {
+        if (!server->Start(owner_loop)) {
             servers_.erase(id);
             return 0;
         }
@@ -180,11 +138,11 @@ TcpServerId NetEngineImpl::ListenTcp(INetExecutor *executor,
     return id;
 }
 
-UdpSocketId NetEngineImpl::BindUdp(INetExecutor *executor,
+UdpSocketId NetEngineImpl::BindUdp(event::Loop *loop,
                                    const UdpBindOptions &options,
                                    const UdpCallbacks &callbacks) {
-    std::shared_ptr<NetExecutor> owner_executor = ResolveExecutor(executor);
-    if (!owner_executor) {
+    std::shared_ptr<EventLoop> owner_loop = ResolveLoop(loop);
+    if (!owner_loop) {
         return 0;
     }
     const UdpSocketId id = next_udp_id_++;
@@ -195,7 +153,7 @@ UdpSocketId NetEngineImpl::BindUdp(INetExecutor *executor,
             return 0;
         }
         udp_sockets_[id] = socket;
-        if (!socket->Start(owner_executor->loop())) {
+        if (!socket->Start(owner_loop)) {
             udp_sockets_.erase(id);
             return 0;
         }
@@ -518,8 +476,8 @@ void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
     if (callbacks.on_accept == nullptr) {
         return;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
-        (void)options_.callback_executor->Post(
+    if (options_.callback_mode == CallbackMode::kPostToLoop) {
+        (void)options_.callback_loop->Post(
             [callbacks, id, peer = std::move(peer)]() mutable {
                 callbacks.on_accept(callbacks.user, id, peer);
             });
@@ -533,11 +491,11 @@ void NetEngineImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
     if (callbacks.on_read == nullptr) {
         return;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
-        // data 指向 IO 栈缓冲区，投递到 executor 前必须复制；直接回调模式只允许
+    if (options_.callback_mode == CallbackMode::kPostToLoop) {
+        // data 指向 IO 栈缓冲区，投递到 callback loop 前必须复制；直接回调模式只允许
         // 协议在当前调用栈内消费，不得保存该指针。
         std::vector<uint8_t> copy(data, data + size);
-        (void)options_.callback_executor->Post(
+        (void)options_.callback_loop->Post(
             [callbacks, id, copy = std::move(copy)]() mutable {
                 callbacks.on_read(callbacks.user, id, copy.data(), copy.size());
             });
@@ -552,8 +510,8 @@ void NetEngineImpl::DispatchClose(const TcpCallbacks &callbacks,
     if (callbacks.on_close == nullptr) {
         return;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
-        (void)options_.callback_executor->Post(
+    if (options_.callback_mode == CallbackMode::kPostToLoop) {
+        (void)options_.callback_loop->Post(
             [callbacks, id, reason]() {
                 callbacks.on_close(callbacks.user, id, reason);
             });
@@ -568,13 +526,13 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
     if (callbacks.on_read == nullptr) {
         return;
     }
-    if (options_.callback_mode == CallbackMode::kPostToExecutor) {
+    if (options_.callback_mode == CallbackMode::kPostToLoop) {
         // UDP 接收同样来自 IO 栈缓冲区；ONVIF discovery/RTSP RTCP 等上层
-        // 在 executor 中处理时只能看拷贝。
+        // 在 callback loop 中处理时只能看拷贝。
         std::vector<uint8_t> copy(data, data + size);
-        (void)options_.callback_executor->Post([callbacks, socket_id,
-                                                peer = std::move(peer),
-                                                copy = std::move(copy)]() mutable {
+        (void)options_.callback_loop->Post([callbacks, socket_id,
+                                             peer = std::move(peer),
+                                             copy = std::move(copy)]() mutable {
             callbacks.on_read(callbacks.user, socket_id, peer, copy.data(),
                               copy.size());
         });
@@ -583,17 +541,17 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
     callbacks.on_read(callbacks.user, socket_id, std::move(peer), data, size);
 }
 
-std::shared_ptr<NetExecutor> NetEngineImpl::ResolveExecutor(
-    INetExecutor *executor) const {
+std::shared_ptr<EventLoop> NetEngineImpl::ResolveLoop(
+    event::Loop *loop) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (executors_.empty()) {
+    if (loops_.empty()) {
         return nullptr;
     }
-    if (executor == nullptr) {
+    if (loop == nullptr) {
         return nullptr;
     }
-    for (const auto &candidate : executors_) {
-        if (candidate.get() == executor) {
+    for (const auto &candidate : loops_) {
+        if (candidate.get() == loop) {
             return candidate;
         }
     }

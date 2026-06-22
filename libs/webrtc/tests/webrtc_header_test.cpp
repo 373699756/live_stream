@@ -1,6 +1,6 @@
 #include "webrtc.h"
 
-#include "fake_media_source.h"
+#include "fake_media_streams.h"
 
 #include <cstring>
 #include <memory>
@@ -35,8 +35,8 @@ int main() {
     options.ice_servers.push_back(live_stream::WebrtcIceServer{
         "stun:stun.example.com:3478", "", ""});
 
-    live_stream::test::FakeMediaFrameSource media_source;
-    dependencies.media_source = &media_source;
+    live_stream::test::FakeMediaStreams media_streams;
+    dependencies.media_streams = &media_streams;
 
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);

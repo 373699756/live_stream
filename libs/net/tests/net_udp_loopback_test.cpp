@@ -33,8 +33,8 @@ int main() {
     if (!engine->Start()) {
         return 2;
     }
-    live_stream::INetExecutor* executor = engine->DefaultExecutor();
-    if (executor == nullptr) {
+    live_stream::event::Loop* loop = engine->DefaultLoop();
+    if (loop == nullptr) {
         return 3;
     }
     UdpState state;
@@ -45,7 +45,7 @@ int main() {
     callbacks.user = &state;
     callbacks.on_read = OnUdp;
     live_stream::UdpSocketId socket_id =
-        engine->BindUdp(executor, bind, callbacks);
+        engine->BindUdp(loop, bind, callbacks);
     if (socket_id == 0) {
         return 4;
     }

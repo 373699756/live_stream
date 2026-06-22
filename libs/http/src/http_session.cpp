@@ -163,7 +163,8 @@ RenewedHttpSessionTimeout HttpSession::RenewTimeout() {
     return timeout;
 }
 
-bool HttpSession::InstallTimeout(uint64_t generation, NetTimerId timer_id) {
+bool HttpSession::InstallTimeout(uint64_t generation,
+                                 event::TimerId timer_id) {
     if (timer_id == 0 || timeout_generation_ != generation) {
         return false;
     }
@@ -171,8 +172,8 @@ bool HttpSession::InstallTimeout(uint64_t generation, NetTimerId timer_id) {
     return true;
 }
 
-NetTimerId HttpSession::CancelTimeout() {
-    const NetTimerId timer_id = timer_id_;
+event::TimerId HttpSession::CancelTimeout() {
+    const event::TimerId timer_id = timer_id_;
     timer_id_ = 0;
     ++timeout_generation_;
     return timer_id;

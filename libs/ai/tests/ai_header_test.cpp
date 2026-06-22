@@ -13,65 +13,77 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
+    live_stream::ConfigStatus Set(const std::string& name,
+                                  const live_stream::ConfigJson& now,
+                                  live_stream::ConfigIssue* issue) override {
         if (name != "ai") {
-            return false;
+            return live_stream::ConfigStatus::kNotFound;
         }
-        if (attachment_.validate &&
-            !attachment_.validate(value).ok) {
-            return false;
+        if (scope_.verify) {
+            const live_stream::ConfigStatus status =
+                scope_.verify(now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        if (attachment_.apply &&
-            !attachment_.apply(value).ok) {
-            return false;
+        if (scope_.apply) {
+            const live_stream::ConfigStatus status =
+                scope_.apply(ai_config_, now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        ai_config_ = value;
-        return true;
+        ai_config_ = now;
+        return live_stream::ConfigStatus::kOk;
     }
 
-    live_stream::ConfigJson GetValue(const std::string& name) override {
-        if (name != "ai") {
-            return live_stream::ConfigJson();
-        }
-        return ai_config_;
-    }
-
-    bool SetDefault(const std::string& name) override {
-        return name == "ai";
-    }
-
-    live_stream::ConfigJson GetDefault(const std::string& name) override {
+    live_stream::ConfigJson Get(const std::string& name) override {
         if (name != "ai") {
             return live_stream::ConfigJson();
         }
         return ai_config_;
     }
 
-    bool RestoreDefaults() override { return true; }
+    live_stream::ConfigStatus Reset(
+        const std::string& name, live_stream::ConfigIssue*) override {
+        return name == "ai" ? live_stream::ConfigStatus::kOk
+                            : live_stream::ConfigStatus::kNotFound;
+    }
 
-    bool AttachConfig(const std::string& name,
-                      const live_stream::ConfigAttachment& attachment) override {
+    live_stream::ConfigJson Default(const std::string& name) override {
+        if (name != "ai") {
+            return live_stream::ConfigJson();
+        }
+        return ai_config_;
+    }
+
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
+
+    bool AddScope(const std::string& name,
+                  const live_stream::ConfigScope& scope) override {
         if (name != "ai" || attached_) {
             return false;
         }
-        attachment_ = attachment;
+        scope_ = scope;
         attached_ = true;
         return true;
     }
 
-    bool DetachConfig(const std::string& name) override {
+    bool RemoveScope(const std::string& name) override {
         if (name != "ai" || !attached_) {
             return false;
         }
         attached_ = false;
-        attachment_ = live_stream::ConfigAttachment();
+        scope_ = live_stream::ConfigScope();
         return true;
     }
 
 private:
     live_stream::ConfigJson ai_config_;
-    live_stream::ConfigAttachment attachment_;
+    live_stream::ConfigScope scope_;
     bool attached_ = false;
 };
 
@@ -143,7 +155,8 @@ int main() {
         return 3;
     }
 
-    if (!config.SetValue("ai", DisabledAiConfig())) {
+    if (config.Set("ai", DisabledAiConfig(), nullptr) !=
+        live_stream::ConfigStatus::kOk) {
         return 4;
     }
     live_stream::AiConfig ai_config = service.GetConfig();

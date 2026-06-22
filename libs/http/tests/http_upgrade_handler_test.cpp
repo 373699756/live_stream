@@ -158,43 +158,58 @@ public:
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
-    class FakeNetExecutor : public live_stream::INetExecutor {
+    class FakeLoop : public live_stream::event::Loop {
     public:
-        bool Post(infra::Task task) override {
+        live_stream::event::EventStatus Post(
+            live_stream::event::Task task) override {
             if (task) {
                 task();
             }
-            return true;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunAfter(uint32_t, infra::Task task) override {
+        live_stream::event::EventStatus RunAfter(
+            uint32_t,
+            live_stream::event::Task task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
             if (task) {
                 task();
             }
-            return 1;
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
-            return 1;
+        live_stream::event::EventStatus RunEvery(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool CancelTimer(live_stream::event::TimerId) override { return true; }
         bool IsCurrentThread() const override { return true; }
     };
 
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor* DefaultExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* DefaultLoop() override {
+        return &loop_;
     }
 
-    live_stream::INetExecutor* PickExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* PickLoop() override {
+        return &loop_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::TcpListenOptions& options,
         const live_stream::TcpCallbacks& callbacks) override {
         (void)options;
@@ -208,7 +223,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::UdpBindOptions& options,
         const live_stream::UdpCallbacks& callbacks) override {
         (void)options;
@@ -304,7 +319,7 @@ public:
     }
 
 private:
-    FakeNetExecutor executor_;
+    FakeLoop loop_;
 };
 
 live_stream::HttpRequest Request(live_stream::HttpMethod method,
@@ -337,8 +352,8 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
     live_stream::HttpOptions options;
     live_stream::HttpDependencies dependencies;
     dependencies.net_engine = net_engine;
-    dependencies.net_executor =
-        net_engine == nullptr ? nullptr : net_engine->DefaultExecutor();
+    dependencies.net_loop =
+        net_engine == nullptr ? nullptr : net_engine->DefaultLoop();
     dependencies.auth = auth;
     dependencies.logger = logger;
     dependencies.upgrade = upgrade;

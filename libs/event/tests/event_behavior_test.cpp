@@ -8,26 +8,33 @@
 
 namespace {
 
+using live_stream::event::Dispatcher;
+using live_stream::event::Event;
+using live_stream::event::EventCounts;
+using live_stream::event::EventStatus;
+using live_stream::event::EventType;
+using live_stream::event::Loop;
+using live_stream::event::Service;
+using live_stream::event::StopMode;
+using live_stream::event::Subscription;
+
 int HeaderAndLifecycleTest() {
-    std::unique_ptr<live_stream::IEvent> service =
-        live_stream::CreateEvent();
-    if (!service) {
+    Service service;
+    if (!service.Start()) {
         return 1;
     }
-    if (!service->Start()) {
-        return 4;
+    service.Stop();
+    service.Stop();
+
+    Dispatcher dispatcher;
+    if (dispatcher.GetCounts().subscriptions != 0) {
+        return 2;
     }
-    service->Stop();
-    service->Stop();
     return 0;
 }
 
 int PublishSubscribeTest() {
-    std::unique_ptr<live_stream::IEvent> service =
-        live_stream::CreateEvent();
-    if (!service->Start()) {
-        return 10;
-    }
+    Dispatcher dispatcher;
 
     std::mutex mutex;
     std::condition_variable condition;
@@ -36,185 +43,256 @@ int PublishSubscribeTest() {
     std::string target;
     int32_t value = 0;
 
-    const live_stream::EventSubscriptionId subscription =
-        service->Subscribe(
-            std::vector<live_stream::EventType>{
-                live_stream::EventType::kConfigChanged,
-                live_stream::EventType::kAlarmOn,
-            },
-            [&](const live_stream::Event& event) {
-                std::lock_guard<std::mutex> lock(mutex);
-                received = true;
-                message = event.message;
-                target = event.target;
-                value = event.value;
-                condition.notify_one();
-            });
-    if (subscription == 0) {
-        return 11;
+    Subscription subscription = dispatcher.SubscribeMany(
+        std::vector<EventType>{EventType::kConfigChanged, EventType::kAlarmOn},
+        [&](const Event &event) {
+            std::lock_guard<std::mutex> lock(mutex);
+            received = true;
+            message = event.message;
+            target = event.target;
+            value = event.value;
+            condition.notify_one();
+        });
+    if (!subscription.valid()) {
+        return 10;
     }
 
-    live_stream::Event ignored;
-    ignored.type = live_stream::EventType::kNetworkChanged;
+    Event ignored;
+    ignored.type = EventType::kNetworkChanged;
     ignored.message = "ignored";
-    if (!service->Publish(ignored)) {
-        return 12;
+    if (dispatcher.Publish(ignored) != EventStatus::kOk) {
+        return 11;
     }
 
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (condition.wait_for(lock, std::chrono::milliseconds(50),
                                [&]() { return received; })) {
-            return 13;
+            return 12;
         }
     }
 
-    live_stream::Event event;
-    event.type = live_stream::EventType::kConfigChanged;
+    Event event;
+    event.type = EventType::kConfigChanged;
     event.source = "unit_test";
     event.target = "video.main";
     event.message = "changed";
     event.value = 7;
-    if (!service->Publish(event)) {
-        return 14;
+    if (dispatcher.Publish(event) != EventStatus::kOk) {
+        return 13;
     }
 
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!condition.wait_for(lock, std::chrono::seconds(1),
                                 [&]() { return received; })) {
-            return 15;
+            return 14;
         }
         if (message != "changed") {
-            return 16;
+            return 15;
         }
         if (target != "video.main" || value != 7) {
-            return 23;
+            return 16;
         }
     }
 
-    received = false;
-    live_stream::Event alarm_event;
-    alarm_event.type = live_stream::EventType::kAlarmOn;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        received = false;
+    }
+
+    Event alarm_event;
+    alarm_event.type = EventType::kAlarmOn;
     alarm_event.source = "alarm";
     alarm_event.target = "motion";
     alarm_event.message = "motion";
-    if (!service->Publish(alarm_event)) {
-        return 24;
+    if (dispatcher.Publish(alarm_event) != EventStatus::kOk) {
+        return 17;
     }
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (!condition.wait_for(lock, std::chrono::seconds(1),
                                 [&]() { return received; })) {
-            return 26;
+            return 18;
         }
     }
 
-    received = false;
-    if (!service->Unsubscribe(subscription)) {
-        return 17;
+    subscription.Cancel();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        received = false;
     }
-    if (!service->Publish(event)) {
-        return 18;
+    if (dispatcher.Publish(event) != EventStatus::kOk) {
+        return 19;
     }
     {
         std::unique_lock<std::mutex> lock(mutex);
         if (condition.wait_for(lock, std::chrono::milliseconds(50),
                                [&]() { return received; })) {
-            return 19;
+            return 20;
         }
     }
 
-    const live_stream::EventCounts counts = service->GetCounts();
-    if (counts.published < 4 || counts.handled < 2 || counts.queued != 0) {
-        return 25;
+    const EventCounts counts = dispatcher.GetCounts();
+    if (counts.published < 4 || counts.handled != 2 ||
+        counts.rejected != 0 || counts.subscriptions != 0) {
+        return 21;
     }
-
-    service->Stop();
     return 0;
 }
 
-int SubscriptionLimitTest() {
-    std::unique_ptr<live_stream::IEvent> service =
-        live_stream::CreateEvent();
-    if (!service->Start()) {
-        return 29;
-    }
+int SubscriptionMoveTest() {
+    Dispatcher dispatcher;
+    int handled = 0;
 
-    for (int i = 0; i < 128; ++i) {
-        const live_stream::EventSubscriptionId subscription =
-            service->Subscribe(
-                std::vector<live_stream::EventType>{
-                    live_stream::EventType::kConfigChanged},
-                [](const live_stream::Event& event) { (void)event; });
-        if (subscription == 0) {
-            return 30;
-        }
+    Subscription first = dispatcher.Subscribe(
+        EventType::kConfigChanged,
+        [&](const Event &event) {
+            (void)event;
+            ++handled;
+        });
+    if (!first.valid()) {
+        return 30;
     }
-
-    const live_stream::EventSubscriptionId overflow =
-        service->Subscribe(
-            std::vector<live_stream::EventType>{
-                live_stream::EventType::kConfigChanged},
-            [](const live_stream::Event& event) { (void)event; });
-    if (overflow != 0) {
+    Subscription second = std::move(first);
+    if (first.valid() || !second.valid()) {
         return 31;
+    }
+
+    Event event;
+    event.type = EventType::kConfigChanged;
+    if (dispatcher.Publish(event) != EventStatus::kOk || handled != 1) {
+        return 32;
+    }
+
+    second = Subscription();
+    if (second.valid()) {
+        return 33;
+    }
+    if (dispatcher.Publish(event) != EventStatus::kOk || handled != 1) {
+        return 34;
     }
     return 0;
 }
 
 int EventSizeLimitTest() {
-    std::unique_ptr<live_stream::IEvent> service =
-        live_stream::CreateEvent();
-    if (!service->Start()) {
-        return 40;
-    }
+    Dispatcher dispatcher;
 
-    live_stream::Event event;
-    event.type = live_stream::EventType::kConfigChanged;
+    Event event;
+    event.type = EventType::kConfigChanged;
     event.source = std::string(65, 's');
-    if (service->Publish(event)) {
-        return 41;
+    if (dispatcher.Publish(event) != EventStatus::kInvalid) {
+        return 40;
     }
 
     event.source.clear();
     event.target = std::string(129, 't');
-    if (service->Publish(event)) {
-        return 42;
+    if (dispatcher.Publish(event) != EventStatus::kInvalid) {
+        return 41;
     }
 
     event.target.clear();
     event.message = std::string(257, 'm');
-    if (service->Publish(event)) {
+    if (dispatcher.Publish(event) != EventStatus::kInvalid) {
+        return 42;
+    }
+
+    event.message.clear();
+    event.type = static_cast<EventType>(999);
+    if (dispatcher.Publish(event) != EventStatus::kInvalid) {
         return 43;
+    }
+
+    const EventCounts counts = dispatcher.GetCounts();
+    if (counts.rejected != 4 || counts.published != 0) {
+        return 44;
     }
     return 0;
 }
 
 int ErrorPathTest() {
-    std::unique_ptr<live_stream::IEvent> service =
-        live_stream::CreateEvent();
+    Dispatcher dispatcher;
 
-    live_stream::Event event;
-    event.type = live_stream::EventType::kConfigChanged;
-    if (service->Publish(event)) {
-        return 20;
+    if (dispatcher.SubscribeMany(std::vector<EventType>(),
+                                 [](const Event &event) {
+                                     (void)event;
+                                 }).valid()) {
+        return 50;
     }
-    if (service->Subscribe(std::vector<live_stream::EventType>{
-                               live_stream::EventType::kConfigChanged},
-                           live_stream::EventHandler()) != 0) {
-        return 21;
+    if (dispatcher.SubscribeMany(
+            std::vector<EventType>{static_cast<EventType>(999)},
+            [](const Event &event) { (void)event; }).valid()) {
+        return 51;
     }
-    if (service->Subscribe(std::vector<live_stream::EventType>{
-                               live_stream::EventType::kConfigChanged},
-                           [](const live_stream::Event& received_event) {
-                               (void)received_event;
-                           }) != 0) {
-        return 24;
+    if (dispatcher.Subscribe(EventType::kConfigChanged,
+                             live_stream::event::EventFn()).valid()) {
+        return 52;
     }
-    if (service->Unsubscribe(100)) {
-        return 22;
+    if (dispatcher.Cancel(100)) {
+        return 53;
     }
+
+    Loop loop;
+    Event event;
+    event.type = EventType::kConfigChanged;
+    if (dispatcher.Post(nullptr, event) != EventStatus::kInvalid) {
+        return 54;
+    }
+    if (dispatcher.Post(&loop, event) != EventStatus::kNotStarted) {
+        return 55;
+    }
+    return 0;
+}
+
+int AsyncPublishTest() {
+    Service service;
+    if (!service.Start()) {
+        return 60;
+    }
+
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool received = false;
+    int64_t timestamp_ms = 0;
+    bool on_loop_thread = false;
+
+    Subscription subscription = service.dispatcher()->Subscribe(
+        EventType::kSystemStatusChanged,
+        [&](const Event &event) {
+            std::lock_guard<std::mutex> lock(mutex);
+            received = true;
+            timestamp_ms = event.timestamp_ms;
+            on_loop_thread = service.loop()->IsCurrentThread();
+            condition.notify_one();
+        });
+    if (!subscription.valid()) {
+        service.Stop();
+        return 61;
+    }
+
+    Event event;
+    event.type = EventType::kSystemStatusChanged;
+    event.source = "unit_test";
+    event.message = "async";
+    if (service.PublishAsync(event) != EventStatus::kOk) {
+        service.Stop();
+        return 62;
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!condition.wait_for(lock, std::chrono::seconds(1),
+                                [&]() { return received; })) {
+            service.Stop();
+            return 63;
+        }
+        if (timestamp_ms == 0 || !on_loop_thread) {
+            service.Stop();
+            return 64;
+        }
+    }
+
+    service.Stop(StopMode::kDrain);
     return 0;
 }
 
@@ -229,7 +307,7 @@ int main() {
     if (result != 0) {
         return result;
     }
-    result = SubscriptionLimitTest();
+    result = SubscriptionMoveTest();
     if (result != 0) {
         return result;
     }
@@ -237,5 +315,9 @@ int main() {
     if (result != 0) {
         return result;
     }
-    return ErrorPathTest();
+    result = ErrorPathTest();
+    if (result != 0) {
+        return result;
+    }
+    return AsyncPublishTest();
 }

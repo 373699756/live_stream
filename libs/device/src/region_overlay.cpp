@@ -217,21 +217,35 @@ bool RegionOverlay::Prepare() {
         return true;
     }
     if (options.config != nullptr && !config_attached) {
-        ConfigAttachment attachment;
-        attachment.validate = [this](const ConfigJson &value) {
+        ConfigScope config_scope;
+        config_scope.verify = [this](const ConfigJson &now,
+                                     ConfigIssue *issue) {
             std::lock_guard<std::mutex> guard(mutex);
             RefreshMediaChannels();
-            return VerifyConfig(value)
-                       ? ConfigResult::Success()
-                       : ConfigResult::Failure("", "invalid overlay config");
+            if (VerifyConfig(now)) {
+                return ConfigStatus::kOk;
+            }
+            if (issue != nullptr) {
+                issue->field.clear();
+                issue->reason = "invalid overlay config";
+            }
+            return ConfigStatus::kVerifyFailed;
         };
-        attachment.apply = [this](const ConfigJson &value) {
+        config_scope.apply = [this](const ConfigJson &prev,
+                                    const ConfigJson &now,
+                                    ConfigIssue *issue) {
+            (void)prev;
             std::lock_guard<std::mutex> guard(mutex);
-            return ApplyConfig(value)
-                       ? ConfigResult::Success()
-                       : ConfigResult::Failure("", "apply overlay config failed");
+            if (ApplyConfig(now)) {
+                return ConfigStatus::kOk;
+            }
+            if (issue != nullptr) {
+                issue->field.clear();
+                issue->reason = "apply overlay config failed";
+            }
+            return ConfigStatus::kApplyFailed;
         };
-        if (!options.config->AttachConfig("overlay", attachment)) {
+        if (!options.config->AddScope("overlay", config_scope)) {
             return false;
         }
         config_attached = true;
@@ -254,7 +268,7 @@ void RegionOverlay::Release() {
         }
     }
     if (detach && options.config != nullptr) {
-        static_cast<void>(options.config->DetachConfig("overlay"));
+        static_cast<void>(options.config->RemoveScope("overlay"));
     }
 }
 
@@ -534,7 +548,7 @@ bool RegionOverlay::Start() {
     }
     state = RegionOverlayState::kStarted;
     if (options.config != nullptr) {
-        ConfigJson overlay_config = options.config->GetValue("overlay");
+        ConfigJson overlay_config = options.config->Get("overlay");
         if (overlay_config.is_object()) {
             return ApplyConfig(overlay_config);
         }

@@ -13,7 +13,6 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <utility>
 
 namespace live_stream {
 
@@ -23,33 +22,33 @@ struct ConfigOptions {
     bool create_storage_if_missing = true;
 };
 
-struct ConfigError {
+enum class ConfigStatus {
+    kOk = 0,
+    kInvalid,
+    kNotStarted,
+    kNotFound,
+    kExists,
+    kVerifyFailed,
+    kApplyFailed,
+    kSaveFailed,
+};
+
+struct ConfigIssue {
     std::string field;
     std::string reason;
 
     bool empty() const { return field.empty() && reason.empty(); }
 };
 
-struct ConfigResult {
-    bool ok = true;
-    ConfigError error;
+using ConfigVerify =
+    std::function<ConfigStatus(const ConfigJson &now, ConfigIssue *issue)>;
+using ConfigApply = std::function<ConfigStatus(const ConfigJson &prev,
+                                               const ConfigJson &now,
+                                               ConfigIssue *issue)>;
 
-    static ConfigResult Success() { return ConfigResult(); }
-
-    static ConfigResult Failure(std::string field, std::string reason) {
-        ConfigResult result;
-        result.ok = false;
-        result.error.field = std::move(field);
-        result.error.reason = std::move(reason);
-        return result;
-    }
-};
-
-using ConfigHandler = std::function<ConfigResult(const ConfigJson &value)>;
-
-struct ConfigAttachment {
-    ConfigHandler validate;
-    ConfigHandler apply;
+struct ConfigScope {
+    ConfigVerify verify;
+    ConfigApply apply;
 };
 
 class IConfig {
@@ -59,14 +58,16 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
-    virtual bool SetValue(const std::string &name, const ConfigJson &value) = 0;
-    virtual ConfigJson GetValue(const std::string &name) = 0;
-    virtual bool SetDefault(const std::string &name) = 0;
-    virtual ConfigJson GetDefault(const std::string &name) = 0;
-    virtual bool RestoreDefaults() = 0;
-    virtual bool AttachConfig(const std::string &name,
-                              const ConfigAttachment &attachment) = 0;
-    virtual bool DetachConfig(const std::string &name) = 0;
+    virtual ConfigStatus Set(const std::string &scope, const ConfigJson &now,
+                             ConfigIssue *issue = nullptr) = 0;
+    virtual ConfigJson Get(const std::string &scope) = 0;
+    virtual ConfigStatus Reset(const std::string &scope,
+                               ConfigIssue *issue = nullptr) = 0;
+    virtual ConfigJson Default(const std::string &scope) = 0;
+    virtual ConfigStatus ResetAll(ConfigIssue *issue = nullptr) = 0;
+    virtual bool AddScope(const std::string &scope,
+                          const ConfigScope &config_scope) = 0;
+    virtual bool RemoveScope(const std::string &scope) = 0;
 };
 
 std::unique_ptr<IConfig>

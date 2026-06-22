@@ -10,24 +10,24 @@
 namespace live_stream {
 namespace {
 
-INetExecutor *RequireNetExecutor(INetEngine *net_engine,
-                                 const char *owner_protocol) {
+event::Loop *RequireNetLoop(INetEngine *net_engine,
+                            const char *owner_protocol) {
     const char *protocol =
         owner_protocol != nullptr ? owner_protocol : "unknown";
     if (net_engine == nullptr) {
-        Error("app", "Pick net executor failed protocol=%s", protocol);
+        Error("app", "Pick net loop failed protocol=%s", protocol);
         return nullptr;
     }
 
-    INetExecutor *executor = net_engine->PickExecutor();
-    if (executor != nullptr) {
-        return executor;
+    event::Loop *loop = net_engine->PickLoop();
+    if (loop != nullptr) {
+        return loop;
     }
-    executor = net_engine->DefaultExecutor();
-    if (executor == nullptr) {
-        Error("app", "Pick net executor failed protocol=%s", protocol);
+    loop = net_engine->DefaultLoop();
+    if (loop == nullptr) {
+        Error("app", "Pick net loop failed protocol=%s", protocol);
     }
-    return executor;
+    return loop;
 }
 
 }  // namespace
@@ -50,19 +50,19 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     refs.device = device_refs;
     refs.media = media_refs;
 
-    if (!net_callback_executor_) {
-        net_callback_executor_.reset(new infra::Executor());
+    if (!net_callback_loop_) {
+        net_callback_loop_.reset(new event::Loop());
     }
-    const infra::ExecutorOptions callback_executor_options =
+    const event::LoopOptions callback_loop_options =
         BuildNetCallbackOptions();
-    if (!net_callback_executor_->Start(callback_executor_options)) {
-        Error("app", "Start net callback executor failed");
+    if (!net_callback_loop_->Start(callback_loop_options)) {
+        Error("app", "Start net callback loop failed");
         Stop();
         return false;
     }
 
     const NetEngineOptions net_options =
-        BuildNetEngineOptions(net_callback_executor_.get());
+        BuildNetEngineOptions(net_callback_loop_.get());
     net_engine_ = CreateNetEngine(net_options);
     if (!net_engine_ || !net_engine_->Start()) {
         Error("app", "Start net engine failed");
@@ -70,14 +70,14 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         return false;
     }
     refs.net_engine = net_engine_.get();
-    refs.rtsp_executor = RequireNetExecutor(refs.net_engine, "rtsp");
-    refs.webrtc_executor = RequireNetExecutor(refs.net_engine, "webrtc");
-    refs.onvif_executor = RequireNetExecutor(refs.net_engine, "onvif");
-    refs.http_executor = RequireNetExecutor(refs.net_engine, "http");
-    if (refs.rtsp_executor == nullptr ||
-        refs.webrtc_executor == nullptr ||
-        refs.onvif_executor == nullptr ||
-        refs.http_executor == nullptr) {
+    refs.rtsp_loop = RequireNetLoop(refs.net_engine, "rtsp");
+    refs.webrtc_loop = RequireNetLoop(refs.net_engine, "webrtc");
+    refs.onvif_loop = RequireNetLoop(refs.net_engine, "onvif");
+    refs.http_loop = RequireNetLoop(refs.net_engine, "http");
+    if (refs.rtsp_loop == nullptr ||
+        refs.webrtc_loop == nullptr ||
+        refs.onvif_loop == nullptr ||
+        refs.http_loop == nullptr) {
         Stop();
         return false;
     }
@@ -179,7 +179,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     config_ = core_subsystem.config();
     network_ = device_refs.network;
     app_config_ = app_config;
-    if (!InstallConfigUpdateAttachments()) {
+    if (!InstallConfigUpdateScopes()) {
         Error("app", "Install protocol config update attachments failed");
         Stop();
         return false;
@@ -190,7 +190,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 }
 
 void ProtocolSubsystem::Stop() {
-    DetachConfigUpdateAttachments();
+    RemoveConfigUpdateScopes();
     if (net_stat_) {
         Info("app", "Stop net_stat begin");
         net_stat_->Stop();
@@ -222,10 +222,10 @@ void ProtocolSubsystem::Stop() {
         net_engine_.reset();
         Info("app", "Stop net engine done");
     }
-    if (net_callback_executor_) {
-        Info("app", "Stop net callback executor begin");
-        net_callback_executor_->Stop(infra::StopMode::kDiscard);
-        Info("app", "Stop net callback executor done");
+    if (net_callback_loop_) {
+        Info("app", "Stop net callback loop begin");
+        net_callback_loop_->Stop(event::StopMode::kDiscard);
+        Info("app", "Stop net callback loop done");
     }
     http_.reset();
     net_stat_.reset();

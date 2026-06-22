@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_HTTP_MEDIA_HTTP_MEDIA_WRITER_H_
 #define LIVE_STREAM_HTTP_MEDIA_HTTP_MEDIA_WRITER_H_
 
+#include "event.h"
 #include "http.h"
 #include "media/media_buffer.h"
 #include "media/stream_types.h"
@@ -9,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace live_stream {
@@ -57,6 +59,7 @@ enum class HttpStreamingRequestResult {
 struct HttpMediaClientHandle {
     HttpMediaClientType type = HttpMediaClientType::kNone;
     uint64_t id = 0;
+    std::shared_ptr<event::Subscription> event_subscription;
     StreamId stream_id = StreamId::kMain;
 };
 

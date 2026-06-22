@@ -6,22 +6,29 @@
 
 ## 模块定位
 
-`event` 是进程内轻量发布订阅服务。它承载状态变化和控制元信息，不承载
-媒体帧、二进制 payload、凭据或大 JSON。
+`event` 是进程内事件、任务和 timer 基础库。它承载轻量状态变化、控制元信息、
+普通异步任务和低频 timer，不承载媒体帧、二进制 payload、凭据或大 JSON。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
   Publishers[modules] --> Event[event]
-  Event --> Handlers[module handlers]
-  Event --> Queue[event thread/queue]
+  Event --> Dispatcher[Dispatcher]
+  Dispatcher --> Handlers[module handlers]
+  Service[Service] --> Loop[Loop]
+  Loop --> Timers[timers]
+  Executor[Executor] --> Tasks[task workers]
 ```
 
 ## 核心职责
 
-- 提供多事件类型 `Subscribe`、`Unsubscribe`、`Publish` 和 `GetCounts`。
-- 通过 event thread 异步调用 handler。
+- 提供 `Dispatcher::Subscribe`、`SubscribeMany`、RAII `Subscription`、
+  `Publish` 和 `GetCounts`。
+- 提供 `Service` 组合 `Loop + Dispatcher`，用于异步发布事件。
+- 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
+- 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
+  绑定任务/timer 生命周期。
 - 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`、
   `timestamp_ms`、`level`。
 
@@ -58,8 +65,10 @@ payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTT
 ## 状态与资源模型
 
 handler 必须轻量。需要耗时业务时，handler 应投递到自己的任务队列，不能阻塞
-event thread。
+发布线程或 event loop。
 
-`EventCounts` 使用通俗计数字段描述事件库负载：`published`、`handled`、
-`dropped`、`rejected`、`queued`。队列满时 `Publish` 返回 `false`，并递增
-`dropped` 和 `rejected`，优先保护实时路径。
+`Dispatcher::Publish()` 是同步调用，返回 `EventStatus`；需要跨线程异步事件时使用
+`Service::PublishAsync()` 或 `Dispatcher::Post(loop, event)`。`Loop` 和 `Executor`
+队列满时返回 `EventStatus::kQueueFull`，调用方必须按业务语义丢弃、重试或降级。
+
+`EventCounts` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。

@@ -6,7 +6,6 @@
 
 #include "config/app_config.h"
 #include "http.h"
-#include "infra/executor.h"
 #include "net.h"
 #include "net_stat.h"
 #include "onvif_server.h"
@@ -47,17 +46,20 @@ private:
     ProtocolSubsystem(const ProtocolSubsystem &) = delete;
     ProtocolSubsystem &operator=(const ProtocolSubsystem &) = delete;
 
-    bool InstallConfigUpdateAttachments();
-    void DetachConfigUpdateAttachments();
-    ConfigResult ValidateProtocolConfigUpdate(const std::string &scope,
-                                              const ConfigJson &value);
-    ConfigResult ApplyProtocolConfigUpdate(const std::string &scope,
-                                           const ConfigJson &value);
+    bool InstallConfigUpdateScopes();
+    void RemoveConfigUpdateScopes();
+    ConfigStatus VerifyProtocolConfigUpdate(const std::string &scope,
+                                            const ConfigJson &now,
+                                            ConfigIssue *issue);
+    ConfigStatus ApplyProtocolConfigUpdate(const std::string &scope,
+                                           const ConfigJson &prev,
+                                           const ConfigJson &now,
+                                           ConfigIssue *issue);
     bool BuildNextAppConfig(const std::string &scope,
                             const ConfigJson &value,
                             AppConfig *next_config) const;
 
-    std::unique_ptr<infra::Executor> net_callback_executor_;
+    std::unique_ptr<event::Loop> net_callback_loop_;
     std::unique_ptr<INetEngine> net_engine_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;

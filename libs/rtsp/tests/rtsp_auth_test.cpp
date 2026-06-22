@@ -1,7 +1,7 @@
 #include "rtsp.h"
 
 #include "auth.h"
-#include "fake_media_source.h"
+#include "fake_media_streams.h"
 #include "media/media_buffer.h"
 #include "net.h"
 
@@ -114,8 +114,9 @@ live_stream::EncodedFrame MakeFrame() {
     frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 300000;
-    frame.buffer = buffer;
-    frame.size = 3;
+    frame.payload.buffer = buffer;
+    frame.payload.offset = 0;
+    frame.payload.size = 3;
     return frame;
 }
 
@@ -128,16 +129,16 @@ int main() {
         return 1;
     }
     FakeAuth auth;
-    live_stream::test::FakeMediaFrameSource media_source;
+    live_stream::test::FakeMediaStreams media_streams;
     live_stream::RtspOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
     options.enable_auth = true;
     live_stream::RtspDependencies deps;
     deps.net_engine = net_engine.get();
-    deps.net_executor = net_engine->DefaultExecutor();
+    deps.net_loop = net_engine->DefaultLoop();
     deps.auth = &auth;
-    deps.media_source = &media_source;
+    deps.media_streams = &media_streams;
     auto rtsp = live_stream::CreateRtsp(options, deps);
     if (!rtsp || !rtsp->Start()) {
         return 2;
@@ -195,7 +196,7 @@ int main() {
         return 9;
     }
     close(unauthenticated_fd);
-    if (!media_source.DeliverFrame(MakeFrame())) {
+    if (!media_streams.DeliverFrame(MakeFrame())) {
         close(fd);
         return 10;
     }

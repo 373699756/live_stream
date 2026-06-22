@@ -47,11 +47,11 @@ int main() {
     frame.sequence = 9;
     frame.pts_us = 100;
     frame.dts_us = 90;
-    frame.buffer = FrameBufferRef(buffer);
-    frame.offset = 0;
-    frame.size = buffer->size;
+    frame.payload.buffer = FrameBufferRef(buffer);
+    frame.payload.offset = 0;
+    frame.payload.size = buffer->size;
 
-    if (buffer->ref_count != 2U || frame.size != 5U ||
+    if (buffer->ref_count != 2U || frame.payload.size != 5U ||
         frame.codec != Codec::kH265) {
         return 5;
     }

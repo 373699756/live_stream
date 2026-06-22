@@ -20,7 +20,7 @@ namespace device_internal {
 namespace {
 
 using media_internal::ParseVideoConfig;
-using media_internal::ValidateImageConfig;
+using media_internal::VerifyImageConfig;
 
 constexpr int kImageStrategyIntervalMs = 1000;
 
@@ -43,6 +43,26 @@ bool IsPrepared(LifecycleState state) {
     return state == LifecycleState::kInitialized ||
            state == LifecycleState::kStarted ||
            state == LifecycleState::kStopped;
+}
+
+ConfigStatus RejectConfigVerify(const std::string &field,
+                                const std::string &reason,
+                                ConfigIssue *issue) {
+    if (issue != nullptr) {
+        issue->field = field;
+        issue->reason = reason;
+    }
+    return ConfigStatus::kVerifyFailed;
+}
+
+ConfigStatus RejectConfigApply(const std::string &field,
+                               const std::string &reason,
+                               ConfigIssue *issue) {
+    if (issue != nullptr) {
+        issue->field = field;
+        issue->reason = reason;
+    }
+    return ConfigStatus::kApplyFailed;
 }
 
 class DeviceImpl : public DeviceMedia {
@@ -95,16 +115,23 @@ private:
     };
 
     bool Prepare();
-    bool AttachConfigs(AttachedConfigs *attached_now);
+    bool AddConfigScopes(AttachedConfigs *attached_now);
     void Release();
     static void OnPipelineFrame(const EncodedFrame &frame, void *user);
     void DispatchFrame(const EncodedFrame &frame);
-    ConfigResult CheckVideoConfig(const ConfigJson &value) const;
-    ConfigResult ApplyVideoConfig(const ConfigJson &value);
-    ConfigResult CheckImageConfig(const ConfigJson &value) const;
-    ConfigResult ApplyImageConfig(const ConfigJson &value);
-    ConfigResult CheckImageConfigForPipelineLocked(
-        const MediaPipelineConfig &pipeline_config) const;
+    ConfigStatus VerifyVideoConfig(const ConfigJson &now,
+                                   ConfigIssue *issue) const;
+    ConfigStatus ApplyVideoConfig(const ConfigJson &prev,
+                                  const ConfigJson &now,
+                                  ConfigIssue *issue);
+    ConfigStatus VerifyImageConfigScope(const ConfigJson &now,
+                                        ConfigIssue *issue) const;
+    ConfigStatus ApplyImageConfig(const ConfigJson &prev,
+                                  const ConfigJson &now,
+                                  ConfigIssue *issue);
+    ConfigStatus CheckImageConfigForPipelineLocked(
+        const MediaPipelineConfig &pipeline_config,
+        ConfigIssue *issue) const;
     bool ApplyImageConfigToPipeline(const ConfigJson &value);
     ConfigJson BuildImageStrategyConfigLocked(
         const hisisdk::ExposureInfo &exposure,
@@ -143,8 +170,8 @@ bool DeviceImpl::Prepare() {
     ConfigJson video_config;
     ConfigJson next_image_config;
     if (options_.config != nullptr) {
-        video_config = options_.config->GetValue("video");
-        next_image_config = options_.config->GetValue("image");
+        video_config = options_.config->Get("video");
+        next_image_config = options_.config->Get("image");
     }
 
     MediaPipelineConfig startup_config;
@@ -162,19 +189,20 @@ bool DeviceImpl::Prepare() {
     }
 
     if (video_config.is_object()) {
-        const ConfigResult result = ParseVideoConfig(
+        const ConfigStatus result = ParseVideoConfig(
             video_config, startup_config, capabilities_snapshot,
-            &startup_config);
-        if (!result.ok) {
+            &startup_config, nullptr);
+        if (result != ConfigStatus::kOk) {
             return false;
         }
     }
 
     const bool has_image_config = next_image_config.is_object();
     if (has_image_config) {
-        const ConfigResult result = ValidateImageConfig(
-            next_image_config, capabilities_snapshot.image, startup_config);
-        if (!result.ok) {
+        const ConfigStatus result = VerifyImageConfig(
+            next_image_config, capabilities_snapshot.image, startup_config,
+            nullptr);
+        if (result != ConfigStatus::kOk) {
             return false;
         }
     }
@@ -220,7 +248,7 @@ bool DeviceImpl::Prepare() {
     }
 
     AttachedConfigs attached_now;
-    if (!AttachConfigs(&attached_now)) {
+    if (!AddConfigScopes(&attached_now)) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
@@ -252,7 +280,7 @@ bool DeviceImpl::Prepare() {
     return true;
 }
 
-bool DeviceImpl::AttachConfigs(AttachedConfigs *attached_now) {
+bool DeviceImpl::AddConfigScopes(AttachedConfigs *attached_now) {
     if (attached_now == nullptr) {
         return false;
     }
@@ -270,32 +298,38 @@ bool DeviceImpl::AttachConfigs(AttachedConfigs *attached_now) {
     }
 
     if (need_video_attach) {
-        ConfigAttachment attachment;
-        attachment.validate = [this](const ConfigJson &value) {
+        ConfigScope config_scope;
+        config_scope.verify = [this](const ConfigJson &now,
+                                     ConfigIssue *issue) {
             std::lock_guard<std::mutex> guard(mutex_);
-            return CheckVideoConfig(value);
+            return VerifyVideoConfig(now, issue);
         };
-        attachment.apply = [this](const ConfigJson &value) {
-            return ApplyVideoConfig(value);
+        config_scope.apply = [this](const ConfigJson &prev,
+                                    const ConfigJson &now,
+                                    ConfigIssue *issue) {
+            return ApplyVideoConfig(prev, now, issue);
         };
-        if (!options_.config->AttachConfig("video", attachment)) {
+        if (!options_.config->AddScope("video", config_scope)) {
             return false;
         }
         attached_now->video = true;
     }
 
     if (need_image_attach) {
-        ConfigAttachment attachment;
-        attachment.validate = [this](const ConfigJson &value) {
+        ConfigScope config_scope;
+        config_scope.verify = [this](const ConfigJson &now,
+                                     ConfigIssue *issue) {
             std::lock_guard<std::mutex> guard(mutex_);
-            return CheckImageConfig(value);
+            return VerifyImageConfigScope(now, issue);
         };
-        attachment.apply = [this](const ConfigJson &value) {
-            return ApplyImageConfig(value);
+        config_scope.apply = [this](const ConfigJson &prev,
+                                    const ConfigJson &now,
+                                    ConfigIssue *issue) {
+            return ApplyImageConfig(prev, now, issue);
         };
-        if (!options_.config->AttachConfig("image", attachment)) {
+        if (!options_.config->AddScope("image", config_scope)) {
             if (attached_now->video) {
-                (void)options_.config->DetachConfig("video");
+                (void)options_.config->RemoveScope("video");
             }
             *attached_now = AttachedConfigs{};
             return false;
@@ -397,10 +431,10 @@ void DeviceImpl::Release() {
 
     if (options_.config != nullptr) {
         if (detach_video) {
-            (void)options_.config->DetachConfig("video");
+            (void)options_.config->RemoveScope("video");
         }
         if (detach_image) {
-            (void)options_.config->DetachConfig("image");
+            (void)options_.config->RemoveScope("image");
         }
     }
 }
@@ -425,60 +459,68 @@ void DeviceImpl::DispatchFrame(const EncodedFrame &frame) {
     }
 }
 
-ConfigResult DeviceImpl::CheckVideoConfig(
-    const ConfigJson &value) const {
+ConfigStatus DeviceImpl::VerifyVideoConfig(
+    const ConfigJson &now,
+    ConfigIssue *issue) const {
     MediaPipelineConfig parsed;
-    ConfigResult result =
-        ParseVideoConfig(value, active_config_, capabilities_, &parsed);
-    if (!result.ok) {
+    ConfigStatus result =
+        ParseVideoConfig(now, active_config_, capabilities_, &parsed, issue);
+    if (result != ConfigStatus::kOk) {
         return result;
     }
     if (!IsValidSnapshotVencChannel(parsed)) {
-        return ConfigResult::Failure("streams",
-                                     "snapshot VENC channel conflicts");
+        return RejectConfigVerify("streams",
+                                  "snapshot VENC channel conflicts", issue);
     }
-    return CheckImageConfigForPipelineLocked(parsed);
+    return CheckImageConfigForPipelineLocked(parsed, issue);
 }
 
-ConfigResult DeviceImpl::ApplyVideoConfig(const ConfigJson &value) {
+ConfigStatus DeviceImpl::ApplyVideoConfig(const ConfigJson &prev,
+                                          const ConfigJson &now,
+                                          ConfigIssue *issue) {
+    (void)prev;
     MediaPipelineConfig next_config;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (state_ == LifecycleState::kStopping) {
-            return ConfigResult::Failure("", "device media busy");
+            return RejectConfigApply("", "device media busy", issue);
         }
-        const ConfigResult result = ParseVideoConfig(
-            value, active_config_, capabilities_, &next_config);
-        if (!result.ok) {
+        const ConfigStatus result = ParseVideoConfig(
+            now, active_config_, capabilities_, &next_config, issue);
+        if (result != ConfigStatus::kOk) {
             return result;
         }
         if (!IsValidSnapshotVencChannel(next_config)) {
-            return ConfigResult::Failure(
-                "streams", "snapshot VENC channel conflicts");
+            return RejectConfigVerify(
+                "streams", "snapshot VENC channel conflicts", issue);
         }
-        const ConfigResult image_result =
-            CheckImageConfigForPipelineLocked(next_config);
-        if (!image_result.ok) {
+        const ConfigStatus image_result =
+            CheckImageConfigForPipelineLocked(next_config, issue);
+        if (image_result != ConfigStatus::kOk) {
             return image_result;
         }
     }
     if (!ApplyPipelineConfig(next_config)) {
-        return ConfigResult::Failure("streams.main", "apply failed");
+        return RejectConfigApply("streams.main", "apply failed", issue);
     }
-    return ConfigResult::Success();
+    return ConfigStatus::kOk;
 }
 
-ConfigResult DeviceImpl::CheckImageConfig(
-    const ConfigJson &value) const {
-    return ValidateImageConfig(value, capabilities_.image, active_config_);
+ConfigStatus DeviceImpl::VerifyImageConfigScope(
+    const ConfigJson &now,
+    ConfigIssue *issue) const {
+    return VerifyImageConfig(now, capabilities_.image, active_config_, issue);
 }
 
-ConfigResult DeviceImpl::ApplyImageConfig(const ConfigJson &value) {
+ConfigStatus DeviceImpl::ApplyImageConfig(const ConfigJson &prev,
+                                          const ConfigJson &now,
+                                          ConfigIssue *issue) {
+    (void)prev;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != LifecycleState::kStarted) {
-            image_config_ = value;
-            return ConfigResult::Success();
+            image_config_ = now;
+            return ConfigStatus::kOk;
         }
     }
 
@@ -486,29 +528,30 @@ ConfigResult DeviceImpl::ApplyImageConfig(const ConfigJson &value) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (state_ != LifecycleState::kStarted) {
-            image_config_ = value;
-            return ConfigResult::Success();
+            image_config_ = now;
+            return ConfigStatus::kOk;
         }
     }
-    if (!pipeline_.ApplyImageConfig(value)) {
-        return ConfigResult::Failure("image", "apply failed");
+    if (!pipeline_.ApplyImageConfig(now)) {
+        return RejectConfigApply("image", "apply failed", issue);
     }
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        image_config_ = value;
+        image_config_ = now;
     }
-    return ConfigResult::Success();
+    return ConfigStatus::kOk;
 }
 
-ConfigResult DeviceImpl::CheckImageConfigForPipelineLocked(
-    const MediaPipelineConfig &pipeline_config) const {
+ConfigStatus DeviceImpl::CheckImageConfigForPipelineLocked(
+    const MediaPipelineConfig &pipeline_config,
+    ConfigIssue *issue) const {
     if (!image_config_.is_object() || image_config_.empty()) {
-        return ConfigResult::Success();
+        return ConfigStatus::kOk;
     }
     // Image features such as VPSS LDC depend on stream dimensions, so video
     // config changes must be checked against the current image config.
-    return ValidateImageConfig(image_config_, capabilities_.image,
-                               pipeline_config);
+    return VerifyImageConfig(image_config_, capabilities_.image,
+                             pipeline_config, issue);
 }
 
 bool DeviceImpl::ApplyImageConfigToPipeline(

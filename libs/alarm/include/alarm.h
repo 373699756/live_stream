@@ -8,6 +8,7 @@
 #ifndef LIVE_STREAM_ALARM_ALARM_H_
 #define LIVE_STREAM_ALARM_ALARM_H_
 
+#include "event.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -18,7 +19,6 @@
 namespace live_stream {
 
 class IConfig;
-class IEvent;
 class ILogger;
 
 enum class AlarmSource {
@@ -69,7 +69,7 @@ struct AlarmStatus {
 
 struct AlarmOptions {
     IConfig* config = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     ILogger* logger = nullptr;
     std::vector<AlarmRule> default_rules;
 };

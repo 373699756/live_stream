@@ -192,26 +192,40 @@ public:
             return false;
         }
         if (config_ != nullptr) {
-            ConfigJson user_config = config_->GetValue("user");
+            ConfigJson user_config = config_->Get("user");
             if (user_config.is_object()) {
                 if (!ApplyConfigLocked(user_config)) {
                     return false;
                 }
             }
             if (!config_attached_) {
-                ConfigAttachment attachment;
-                attachment.validate = [this](const ConfigJson &value) {
-                    return VerifyConfig(value)
-                               ? ConfigResult::Success()
-                               : ConfigResult::Failure("", "invalid user config");
+                ConfigScope config_scope;
+                config_scope.verify = [this](const ConfigJson &now,
+                                             ConfigIssue *issue) {
+                    if (VerifyConfig(now)) {
+                        return ConfigStatus::kOk;
+                    }
+                    if (issue != nullptr) {
+                        issue->field.clear();
+                        issue->reason = "invalid user config";
+                    }
+                    return ConfigStatus::kVerifyFailed;
                 };
-                attachment.apply = [this](const ConfigJson &value) {
+                config_scope.apply = [this](const ConfigJson &prev,
+                                            const ConfigJson &now,
+                                            ConfigIssue *issue) {
+                    (void)prev;
                     std::lock_guard<std::mutex> apply_guard(mutex_);
-                    return ApplyConfigLocked(value)
-                               ? ConfigResult::Success()
-                               : ConfigResult::Failure("", "apply user config failed");
+                    if (ApplyConfigLocked(now)) {
+                        return ConfigStatus::kOk;
+                    }
+                    if (issue != nullptr) {
+                        issue->field.clear();
+                        issue->reason = "apply user config failed";
+                    }
+                    return ConfigStatus::kApplyFailed;
                 };
-                if (!config_->AttachConfig("user", attachment)) {
+                if (!config_->AddScope("user", config_scope)) {
                     return false;
                 }
                 config_attached_ = true;
@@ -241,11 +255,19 @@ public:
     }
 
     void Release() {
-        std::lock_guard<std::mutex> guard(mutex_);
-        sessions_.clear();
-        failures_.clear();
-        initialized_ = false;
-        started_ = false;
+        bool detach_config = false;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            detach_config = config_attached_;
+            config_attached_ = false;
+            sessions_.clear();
+            failures_.clear();
+            initialized_ = false;
+            started_ = false;
+        }
+        if (detach_config && config_ != nullptr) {
+            static_cast<void>(config_->RemoveScope("user"));
+        }
     }
 
     bool SetAuditSink(IAuthAuditSink *sink) override {

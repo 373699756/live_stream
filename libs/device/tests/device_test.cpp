@@ -25,58 +25,64 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
-        auto iter = attachments.find(name);
-        if (iter != attachments.end() && iter->second.validate) {
-            const live_stream::ConfigResult result =
-                iter->second.validate(value);
-            if (!result.ok) {
-                return false;
+    live_stream::ConfigStatus Set(const std::string& name,
+                                  const live_stream::ConfigJson& now,
+                                  live_stream::ConfigIssue* issue) override {
+        auto iter = scopes.find(name);
+        if (iter != scopes.end() && iter->second.verify) {
+            const live_stream::ConfigStatus status =
+                iter->second.verify(now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
             }
         }
-        if (iter != attachments.end() && iter->second.apply) {
-            const live_stream::ConfigResult result = iter->second.apply(value);
-            if (!result.ok) {
-                return false;
+        if (iter != scopes.end() && iter->second.apply) {
+            const live_stream::ConfigJson prev = Get(name);
+            const live_stream::ConfigStatus status =
+                iter->second.apply(prev, now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
             }
         }
-        values[name] = value;
-        return true;
+        values[name] = now;
+        return live_stream::ConfigStatus::kOk;
     }
 
-    live_stream::ConfigJson GetValue(const std::string& name) override {
+    live_stream::ConfigJson Get(const std::string& name) override {
         auto iter = values.find(name);
         return iter != values.end() ? iter->second
                                     : live_stream::ConfigJson::object();
     }
 
-    live_stream::ConfigJson GetDefault(const std::string& name) override {
+    live_stream::ConfigJson Default(const std::string& name) override {
         (void)name;
         return live_stream::ConfigJson::object();
     }
 
-    bool SetDefault(const std::string& name) override {
-        values[name] = GetDefault(name);
-        return true;
+    live_stream::ConfigStatus Reset(
+        const std::string& name, live_stream::ConfigIssue*) override {
+        values[name] = Default(name);
+        return live_stream::ConfigStatus::kOk;
     }
 
-    bool RestoreDefaults() override { return true; }
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
 
-    bool AttachConfig(
-        const std::string& name,
-        const live_stream::ConfigAttachment& attachment) override {
-        attachments[name] = attachment;
+    bool AddScope(const std::string& name,
+                  const live_stream::ConfigScope& scope) override {
+        scopes[name] = scope;
         ++attach_count;
         return true;
     }
 
-    bool DetachConfig(const std::string& name) override {
-        return attachments.erase(name) != 0;
+    bool RemoveScope(const std::string& name) override {
+        return scopes.erase(name) != 0;
     }
 
     std::map<std::string, live_stream::ConfigJson> values;
-    std::map<std::string, live_stream::ConfigAttachment> attachments;
+    std::map<std::string, live_stream::ConfigScope> scopes;
     int attach_count = 0;
 };
 
@@ -138,12 +144,13 @@ int main() {
         return 8;
     }
     if (config.attach_count != 2 ||
-        config.attachments.find("video") == config.attachments.end() ||
-        config.attachments.find("image") == config.attachments.end()) {
+        config.scopes.find("video") == config.scopes.end() ||
+        config.scopes.find("image") == config.scopes.end()) {
         return 9;
     }
     config.values["video"] = BuildVideoConfig(2048);
-    if (!config.SetValue("video", config.values["video"])) {
+    if (config.Set("video", config.values["video"], nullptr) !=
+        live_stream::ConfigStatus::kOk) {
         return 10;
     }
     configured->Stop();

@@ -17,7 +17,6 @@ namespace net_internal {
 class TcpSession;
 class TcpServer;
 class UdpSocket;
-class NetExecutor;
 
 class NetEngineImpl : public INetEngine {
 public:
@@ -26,13 +25,13 @@ public:
 
     bool Start() override;
     void Stop() override;
-    INetExecutor *DefaultExecutor() override;
-    INetExecutor *PickExecutor() override;
-    TcpServerId ListenTcp(INetExecutor *executor,
+    event::Loop *DefaultLoop() override;
+    event::Loop *PickLoop() override;
+    TcpServerId ListenTcp(event::Loop *loop,
                           const TcpListenOptions &options,
                           const TcpCallbacks &callbacks) override;
     bool CloseTcp(TcpServerId id) override;
-    UdpSocketId BindUdp(INetExecutor *executor,
+    UdpSocketId BindUdp(event::Loop *loop,
                         const UdpBindOptions &options,
                         const UdpCallbacks &callbacks) override;
     bool CloseUdp(UdpSocketId id) override;
@@ -75,9 +74,8 @@ public:
                        TcpCloseReason reason);
     void DispatchUdp(const UdpCallbacks &callbacks, UdpSocketId socket_id,
                      NetAddress peer, const uint8_t *data, size_t size);
-    std::shared_ptr<NetExecutor> ResolveExecutor(INetExecutor *executor) const;
+    std::shared_ptr<EventLoop> ResolveLoop(event::Loop *loop) const;
     ConnectionId AllocateConnectionId() { return next_connection_id_++; }
-    NetTimerId AllocateTimerId() { return next_timer_id_++; }
     void AddAccepted();
     void AddRejected();
     void AddRead(size_t size);
@@ -99,7 +97,6 @@ private:
     // executors_ 由调用方显式 pick；listener、accepted session、UDP endpoint
     // 和 timer 都绑定到指定执行域。
     std::vector<std::shared_ptr<EventLoop>> loops_;
-    std::vector<std::shared_ptr<NetExecutor>> executors_;
     // servers_/udp_sockets_/connections_ 是 net 的资源所有权表；协议模块只保存 id，
     // 不能保存内部对象指针。
     std::unordered_map<TcpServerId, std::shared_ptr<TcpServer>> servers_;
@@ -113,7 +110,6 @@ private:
     std::atomic<uint64_t> next_server_id_{1};
     std::atomic<uint64_t> next_udp_id_{1};
     std::atomic<uint64_t> next_connection_id_{1};
-    std::atomic<uint64_t> next_timer_id_{1};
     mutable std::atomic<uint32_t> next_loop_{0};
     std::atomic<bool> running_{false};
     mutable NetStats stats_;

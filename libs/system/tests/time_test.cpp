@@ -42,32 +42,21 @@ public:
     std::vector<std::string> last_servers;
 };
 
-class FakeEvent : public live_stream::IEvent {
+class FakeEvent : public live_stream::event::Dispatcher {
 public:
-    bool Start() override { return true; }
-    void Stop() override {}
-
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>&,
-        live_stream::EventHandler) override {
-        return 1;
-    }
-
-    bool Unsubscribe(live_stream::EventSubscriptionId) override {
-        return true;
-    }
-
-    bool Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
+    FakeEvent()
+        : subscription_(Subscribe(
+              live_stream::event::EventType::kTimeChanged,
+              [this](const live_stream::event::Event& event) {
+                  ++publish_count;
+                  last_event = event;
+              })) {}
 
     int publish_count = 0;
-    live_stream::Event last_event;
+    live_stream::event::Event last_event;
+
+private:
+    live_stream::event::Subscription subscription_;
 };
 
 class FakeLogger : public live_stream::ILogger {
@@ -103,48 +92,61 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
+    live_stream::ConfigStatus Set(const std::string& name,
+                                  const live_stream::ConfigJson& now,
+                                  live_stream::ConfigIssue* issue) override {
         if (!set_ok) {
-            return false;
+            return live_stream::ConfigStatus::kSaveFailed;
         }
-        if (name == attachment_name && attachment.apply) {
-            const live_stream::ConfigResult result = attachment.apply(value);
-            if (!result.ok) {
-                return false;
+        if (name == scope_name && scope.verify) {
+            const live_stream::ConfigStatus status = scope.verify(now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
+        }
+        if (name == scope_name && scope.apply) {
+            const live_stream::ConfigStatus status =
+                scope.apply(value_json, now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
             }
         }
         value_name = name;
-        value_json = value;
-        return set_ok;
+        value_json = now;
+        return live_stream::ConfigStatus::kOk;
     }
 
-    live_stream::ConfigJson GetValue(const std::string& name) override {
+    live_stream::ConfigJson Get(const std::string& name) override {
         return name == value_name ? value_json : live_stream::ConfigJson();
     }
 
-    bool SetDefault(const std::string&) override { return false; }
+    live_stream::ConfigStatus Reset(
+        const std::string&, live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kNotFound;
+    }
 
-    live_stream::ConfigJson GetDefault(const std::string&) override {
+    live_stream::ConfigJson Default(const std::string&) override {
         return live_stream::ConfigJson();
     }
 
-    bool RestoreDefaults() override { return false; }
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kNotFound;
+    }
 
-    bool AttachConfig(const std::string& name,
-                      const live_stream::ConfigAttachment& next_attachment)
-        override {
-        attachment_name = name;
-        attachment = next_attachment;
+    bool AddScope(const std::string& name,
+                  const live_stream::ConfigScope& next_scope) override {
+        scope_name = name;
+        scope = next_scope;
         return true;
     }
 
-    bool DetachConfig(const std::string&) override { return true; }
+    bool RemoveScope(const std::string&) override { return true; }
 
     std::string value_name;
-    std::string attachment_name;
+    std::string scope_name;
     live_stream::ConfigJson value_json;
-    live_stream::ConfigAttachment attachment;
+    live_stream::ConfigScope scope;
     bool set_ok = true;
 };
 
@@ -228,7 +230,7 @@ int main() {
     context.request_id = "req-1";
     context.user_name = "admin";
     if (!service->SetTimezone(context, "UTC") ||
-        event.last_event.type != live_stream::EventType::kTimeChanged ||
+        event.last_event.type != live_stream::event::EventType::kTimeChanged ||
         service->GetTimeStatus().timezone != "UTC") {
         return 9;
     }
@@ -309,7 +311,8 @@ int main() {
     live_stream::ConfigJson external_config = stored_config.value_json;
     external_config["manual_sync_allowed"] = false;
     external_config["browser_sync_on_login"] = true;
-    if (!stored_config.SetValue("time", external_config) ||
+    if (stored_config.Set("time", external_config, nullptr) !=
+            live_stream::ConfigStatus::kOk ||
         stored_service->GetTimeStatus().browser_sync_on_login) {
         return 26;
     }

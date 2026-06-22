@@ -190,7 +190,7 @@ bool UdpSocket::SendToSlices(NetAddress address,
                    static_cast<void>(self->SendPreparedDatagram(
                        std::move(address), datagram));
                }
-           });
+           }) == event::EventStatus::kOk;
 }
 
 bool UdpSocket::SendPreparedDatagram(

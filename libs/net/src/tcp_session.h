@@ -96,7 +96,7 @@ private:
     uint32_t pending_bytes_ = 0;
     // timeout timer 周期检查 read/write/stall timeout。CloseInLoop() 会先取消它，
     // 避免 session 已关闭后还有 timer 回调访问状态。
-    NetTimerId timeout_timer_id_ = 0;
+    event::TimerId timeout_timer_id_ = 0;
     int64_t last_read_ms_ = 0;
     int64_t last_write_progress_ms_ = 0;
     TcpCloseReason close_reason_ = TcpCloseReason::kNormal;

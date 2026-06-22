@@ -143,20 +143,34 @@ struct SnapshotCapture::Impl {
             return false;
         }
         if (options.config != nullptr && !config_attached) {
-            ConfigAttachment attachment;
-            attachment.validate = [this](const ConfigJson &value) {
+            ConfigScope config_scope;
+            config_scope.verify = [this](const ConfigJson &now,
+                                         ConfigIssue *issue) {
                 std::lock_guard<std::mutex> guard(mutex);
-                return VerifyConfig(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "invalid snapshot config");
+                if (VerifyConfig(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "invalid snapshot config";
+                }
+                return ConfigStatus::kVerifyFailed;
             };
-            attachment.apply = [this](const ConfigJson &value) {
+            config_scope.apply = [this](const ConfigJson &prev,
+                                        const ConfigJson &now,
+                                        ConfigIssue *issue) {
+                (void)prev;
                 std::lock_guard<std::mutex> guard(mutex);
-                return ApplyConfig(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "apply snapshot config failed");
+                if (ApplyConfig(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "apply snapshot config failed";
+                }
+                return ConfigStatus::kApplyFailed;
             };
-            if (!options.config->AttachConfig("snapshot", attachment)) {
+            if (!options.config->AddScope("snapshot", config_scope)) {
                 return false;
             }
             config_attached = true;
@@ -183,7 +197,7 @@ struct SnapshotCapture::Impl {
             }
         }
         if (detach && options.config != nullptr) {
-            static_cast<void>(options.config->DetachConfig("snapshot"));
+            static_cast<void>(options.config->RemoveScope("snapshot"));
         }
     }
 
@@ -279,7 +293,7 @@ bool SnapshotCapture::Start() {
     impl_->state = SnapshotCaptureState::kStarted;
     if (impl_->options.config != nullptr) {
         ConfigJson snapshot_config =
-            impl_->options.config->GetValue("snapshot");
+            impl_->options.config->Get("snapshot");
         if (snapshot_config.is_object()) {
             return impl_->ApplyConfig(snapshot_config);
         }

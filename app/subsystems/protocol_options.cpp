@@ -11,7 +11,6 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kNetIoThreadCount = 2;
-constexpr uint32_t kNetCallbackWorkerCount = 1;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpStreamWorkers = 4;
 constexpr uint32_t kHttpStreamQueueCapacity = 256;
@@ -119,19 +118,19 @@ std::string ResolveWebrtcPublicIp(
 
 }  // namespace
 
-infra::ExecutorOptions BuildNetCallbackOptions() {
-    infra::ExecutorOptions options;
-    options.worker_count = kNetCallbackWorkerCount;
+event::LoopOptions BuildNetCallbackOptions() {
+    event::LoopOptions options;
+    options.name = "net-callback";
     options.queue_capacity = kNetCallbackQueueCapacity;
     return options;
 }
 
-NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor) {
+NetEngineOptions BuildNetEngineOptions(event::Loop *callback_loop) {
     NetEngineOptions options;
     options.io_threads = kNetIoThreadCount;
     options.enable_thread_affinity = false;
-    options.callback_mode = CallbackMode::kPostToExecutor;
-    options.callback_executor = callback_executor;
+    options.callback_mode = CallbackMode::kPostToLoop;
+    options.callback_loop = callback_loop;
     return options;
 }
 
@@ -149,7 +148,7 @@ RtspOptions BuildRtspOptions(const AppConfig &app_config) {
 RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs) {
     RtspDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.rtsp_executor;
+    dependencies.net_loop = refs.rtsp_loop;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.media_streams = refs.media.media_streams;
@@ -178,7 +177,7 @@ WebrtcDependencies BuildWebrtcDependencies(
     const ProtocolStartupRefs &refs) {
     WebrtcDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.webrtc_executor;
+    dependencies.net_loop = refs.webrtc_loop;
     dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
@@ -203,7 +202,7 @@ OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolStartupRefs &refs) {
     OnvifServerDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.onvif_executor;
+    dependencies.net_loop = refs.onvif_loop;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     dependencies.system = refs.device.system;
@@ -235,7 +234,7 @@ HttpDependencies BuildHttpDependencies(
     const ProtocolStartupRefs &refs) {
     HttpDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.net_executor = refs.http_executor;
+    dependencies.net_loop = refs.http_loop;
     dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
     dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
     dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;

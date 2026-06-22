@@ -3,6 +3,7 @@ MODULE_NAME := http_media
 ROOT_DIR ?= ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
+EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
 AUTH_LIB := $(BUILD_DIR)/lib/libauth.a
 LOGGER_LIB := $(BUILD_DIR)/lib/liblogger.a
 NET_LIB := $(BUILD_DIR)/lib/libnet.a
@@ -22,13 +23,16 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/webrtc/include
 
-EXTRA_TEST_DEPS := $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
+EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(DEVICE_MEDIA_LIB) $(MEDIA_CODEC_LIB) $(MEDIA_STREAMS_LIB) $(WEBRTC_LIB)
-EXTRA_TEST_LIBS := $(AUTH_LIB) $(LOGGER_LIB) $(WEBRTC_LIB) $(MEDIA_STREAMS_LIB) \
+EXTRA_TEST_LIBS := $(EVENT_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(WEBRTC_LIB) $(MEDIA_STREAMS_LIB) \
 	$(DEVICE_MEDIA_LIB) $(MEDIA_CODEC_LIB) $(NET_LIB) $(INFRA_LIB)
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra all
+
+$(EVENT_LIB):
+	$(MAKE) -C ../event all
 
 $(AUTH_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../auth all

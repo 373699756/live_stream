@@ -49,7 +49,7 @@ public:
     void SetStartFrames(std::vector<EncodedFrame> *frames);
     void SetPlayRtpTimestamp(uint32_t timestamp);
     void ClearStartFrames();
-    void SetDrainTimer(NetTimerId timer_id);
+    void SetDrainTimer(event::TimerId timer_id);
     void ClearDrainTimer();
     void Close();
     void MarkCloseReason(TcpCloseReason reason);
@@ -85,7 +85,7 @@ public:
     uint64_t subscription_generation = 0;
     // start_frames 是 PLAY 时抓取的启动 GOP，只在第一次 drain 时发送并释放。
     std::vector<EncodedFrame> start_frames;
-    NetTimerId drain_timer_id = 0;
+    event::TimerId drain_timer_id = 0;
     // Basic auth 成功只缓存到本 RTSP session，不持有 auth token。
     bool authenticated = false;
     StreamId authenticated_stream_id = StreamId::kMain;

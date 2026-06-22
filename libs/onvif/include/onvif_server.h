@@ -8,6 +8,8 @@
 #ifndef LIVE_STREAM_ONVIF_ONVIF_SERVER_H_
 #define LIVE_STREAM_ONVIF_ONVIF_SERVER_H_
 
+#include "event.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -15,11 +17,9 @@
 namespace live_stream {
 
 class IAuth;
-class IEvent;
 class DeviceMedia;
 class IRtsp;
 class INetEngine;
-class INetExecutor;
 class ISystem;
 class ITime;
 
@@ -50,9 +50,9 @@ struct OnvifServerStats {
 
 struct OnvifServerDependencies {
     INetEngine *net_engine = nullptr;
-    INetExecutor *net_executor = nullptr;
+    event::Loop *net_loop = nullptr;
     IAuth *auth = nullptr;
-    IEvent *event = nullptr;
+    event::Dispatcher *event = nullptr;
     ISystem *system = nullptr;
     ITime *time = nullptr;
     DeviceMedia *device = nullptr;

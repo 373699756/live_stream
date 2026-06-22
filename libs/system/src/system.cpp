@@ -279,8 +279,8 @@ private:
         if (options_.event == nullptr) {
             return;
         }
-        Event event;
-        event.type = EventType::kSystemStatusChanged;
+        event::Event event;
+        event.type = event::EventType::kSystemStatusChanged;
         event.source = "system";
         event.message = message;
         static_cast<void>(options_.event->Publish(event));

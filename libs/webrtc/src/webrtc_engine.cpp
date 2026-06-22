@@ -108,9 +108,9 @@ void LeaveEngineCallback(uintptr_t engine_id) {
 
 class NativeWebrtcEngine : public IWebrtcEngine {
 public:
-    NativeWebrtcEngine(INetEngine *net_engine, INetExecutor *net_executor)
+    NativeWebrtcEngine(INetEngine *net_engine, event::Loop *net_loop)
         : net_engine_(net_engine),
-          net_executor_(net_executor),
+          net_loop_(net_loop),
           engine_id_(AllocateEngineId()) {
         RegisterEngine(engine_id_, this);
     }
@@ -121,7 +121,7 @@ public:
     }
 
     bool Available() const override {
-        return net_engine_ != nullptr && net_executor_ != nullptr;
+        return net_engine_ != nullptr && net_loop_ != nullptr;
     }
 
     bool Start(const WebrtcOptions &options,
@@ -181,7 +181,7 @@ public:
             context.options = options_;
             context.local_fingerprint = local_fingerprint_;
             context.net_engine = net_engine_;
-            context.net_executor = net_executor_;
+            context.net_loop = net_loop_;
             context.udp_callbacks.user = reinterpret_cast<void *>(engine_id_);
             context.udp_callbacks.on_read = &NativeWebrtcEngine::OnUdpPacket;
             context.next_port_offset = next_port_offset_;
@@ -333,7 +333,7 @@ public:
         }
         std::lock_guard<std::mutex> guard(mutex_);
         stats->ice_ready = stats->ice_ready ||
-                           (net_engine_ != nullptr && net_executor_ != nullptr);
+                           (net_engine_ != nullptr && net_loop_ != nullptr);
         stats->dtls_ready = stats->dtls_ready ||
                             !local_fingerprint_.value.empty();
         stats->srtp_ready = stats->srtp_ready || SrtpSession::Available();
@@ -578,7 +578,7 @@ private:
     }
 
     INetEngine *net_engine_ = nullptr;
-    INetExecutor *net_executor_ = nullptr;
+    event::Loop *net_loop_ = nullptr;
     uintptr_t engine_id_ = 0;
     mutable std::mutex mutex_;
     WebrtcEngineCallbacks callbacks_;
@@ -592,9 +592,9 @@ private:
 
 std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(
     INetEngine *net_engine,
-    INetExecutor *net_executor) {
+    event::Loop *net_loop) {
     return std::unique_ptr<IWebrtcEngine>(
-        new NativeWebrtcEngine(net_engine, net_executor));
+        new NativeWebrtcEngine(net_engine, net_loop));
 }
 
 }  // namespace webrtc_internal

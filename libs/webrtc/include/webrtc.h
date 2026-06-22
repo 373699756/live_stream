@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_WEBRTC_H_
 #define LIVE_STREAM_WEBRTC_WEBRTC_H_
 
+#include "event.h"
 #include "media/media_streams.h"
 #include "media/stream_types.h"
 
@@ -12,7 +13,6 @@
 namespace live_stream {
 
 class INetEngine;
-class INetExecutor;
 
 enum class WebrtcPeerState {
     kCreated = 0,
@@ -45,7 +45,7 @@ struct WebrtcOptions {
 struct WebrtcDependencies {
     MediaStreams *media_streams = nullptr;
     INetEngine *net_engine = nullptr;
-    INetExecutor *net_executor = nullptr;
+    event::Loop *net_loop = nullptr;
 };
 
 struct WebrtcCreatePeerRequest {

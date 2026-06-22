@@ -16,40 +16,55 @@ namespace {
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
-    class FakeNetExecutor : public live_stream::INetExecutor {
+    class FakeLoop : public live_stream::event::Loop {
     public:
-        bool Post(infra::Task task) override {
+        live_stream::event::EventStatus Post(
+            live_stream::event::Task task) override {
             if (task) {
                 task();
             }
-            return true;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunAfter(uint32_t, infra::Task) override {
-            return 1;
+        live_stream::event::EventStatus RunAfter(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
-            return 1;
+        live_stream::event::EventStatus RunEvery(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool CancelTimer(live_stream::event::TimerId) override { return true; }
         bool IsCurrentThread() const override { return true; }
     };
 
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor* DefaultExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* DefaultLoop() override {
+        return &loop_;
     }
 
-    live_stream::INetExecutor* PickExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* PickLoop() override {
+        return &loop_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::TcpListenOptions&,
         const live_stream::TcpCallbacks& callbacks) override {
         tcp_callbacks = callbacks;
@@ -63,7 +78,7 @@ public:
     }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::UdpBindOptions&,
         const live_stream::UdpCallbacks& callbacks) override {
         udp_callbacks = callbacks;
@@ -165,33 +180,24 @@ public:
     int close_after_send_count = 0;
 
 private:
-    FakeNetExecutor executor_;
+    FakeLoop loop_;
 };
 
-class FakeEvent : public live_stream::IEvent {
+class FakeEvent : public live_stream::event::Dispatcher {
 public:
-    bool Start() override { return true; }
-    void Stop() override {}
-
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>&,
-        live_stream::EventHandler) override {
-        return 1;
-    }
-
-    bool Unsubscribe(live_stream::EventSubscriptionId) override { return true; }
-
-    bool Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
+    FakeEvent()
+        : subscription_(Subscribe(
+              live_stream::event::EventType::kOnvifRequestReceived,
+              [this](const live_stream::event::Event& event) {
+                  ++publish_count;
+                  last_event = event;
+              })) {}
 
     int publish_count = 0;
-    live_stream::Event last_event;
+    live_stream::event::Event last_event;
+
+private:
+    live_stream::event::Subscription subscription_;
 };
 
 class FakeSystem : public live_stream::ISystem {
@@ -287,12 +293,7 @@ public:
         live_stream::StreamId) const override {
         return live_stream::Codec::kH264;
     }
-    live_stream::FrameAttachId AttachFrameSink(
-        const live_stream::FrameAttachOptions&,
-        live_stream::IFrameSink*) override {
-        return 0;
-    }
-    bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
+    bool SetFrameSink(live_stream::FrameSink*) override { return true; }
     bool RequestKeyframe(live_stream::StreamId,
                          live_stream::KeyframeRequestSource) override {
         return true;
@@ -316,6 +317,16 @@ public:
     }
     live_stream::ImageInfo GetImageInfo() const override {
         return live_stream::ImageInfo();
+    }
+    live_stream::SnapshotFrame CaptureSnapshot(
+        const live_stream::SnapshotRequest&) override {
+        return live_stream::SnapshotFrame();
+    }
+    live_stream::SnapshotInfo GetSnapshotInfo() const override {
+        return live_stream::SnapshotInfo();
+    }
+    live_stream::OverlayInfo GetOverlayInfo() const override {
+        return live_stream::OverlayInfo();
     }
 };
 
@@ -391,8 +402,8 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     options.enable_auth = auth != nullptr;
     live_stream::OnvifServerDependencies deps;
     deps.net_engine = net_engine;
-    deps.net_executor =
-        net_engine == nullptr ? nullptr : net_engine->DefaultExecutor();
+    deps.net_loop =
+        net_engine == nullptr ? nullptr : net_engine->DefaultLoop();
     deps.event = event;
     deps.system = system;
     deps.time = time;
@@ -421,7 +432,7 @@ int main() {
 
     FakeNetEngine cleanup_net;
     deps.net_engine = &cleanup_net;
-    deps.net_executor = cleanup_net.DefaultExecutor();
+    deps.net_loop = cleanup_net.DefaultLoop();
     cleanup_net.bind_udp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> cleanup_server =
         live_stream::CreateOnvifServer(options, deps);
@@ -431,7 +442,7 @@ int main() {
 
     FakeNetEngine start_fail_net;
     deps.net_engine = &start_fail_net;
-    deps.net_executor = start_fail_net.DefaultExecutor();
+    deps.net_loop = start_fail_net.DefaultLoop();
     start_fail_net.listen_tcp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> start_fail_server =
         live_stream::CreateOnvifServer(options, deps);

@@ -9,7 +9,7 @@ namespace live_stream {
 
 constexpr const char *kEventStreamPath = "/api/events";
 
-std::string BuildEventStreamMessage(const Event &event);
+std::string BuildEventStreamMessage(const event::Event &event);
 std::string BuildEventStreamHello();
 
 }  // namespace live_stream

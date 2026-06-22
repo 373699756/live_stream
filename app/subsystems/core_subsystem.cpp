@@ -108,7 +108,7 @@ bool CoreSubsystem::Start(const StartupPaths& paths) {
         return false;
     }
 
-    event_ = CreateEvent();
+    event_.reset(new event::Service());
     if (!event_ || !event_->Start()) {
         Error("app", "Start event failed");
         Stop();
@@ -148,7 +148,7 @@ void CoreSubsystem::Stop() {
     }
     auth_audit_sink_.reset();
     if (event_) {
-        event_->Stop();
+        event_->Stop(event::StopMode::kDiscard);
         event_.reset();
     }
     if (config_) {

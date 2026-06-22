@@ -35,8 +35,8 @@ const char *TcpCloseReasonName(TcpCloseReason reason) {
 
 std::unique_ptr<INetEngine> CreateNetEngine(const NetEngineOptions &options) {
     if (options.io_threads == 0 ||
-        (options.callback_mode == CallbackMode::kPostToExecutor &&
-         options.callback_executor == nullptr)) {
+        (options.callback_mode == CallbackMode::kPostToLoop &&
+         options.callback_loop == nullptr)) {
         return nullptr;
     }
     return std::unique_ptr<INetEngine>(new net_internal::NetEngineImpl(options));

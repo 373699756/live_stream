@@ -62,22 +62,30 @@ public:
     bool Start() override { return true; }
     void Stop() override {}
     bool IsStarted() const override { return true; }
-    bool SetValue(const std::string&, const live_stream::ConfigJson&) override {
-        return true;
+    live_stream::ConfigStatus Set(const std::string&,
+                                  const live_stream::ConfigJson&,
+                                  live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
     }
-    live_stream::ConfigJson GetValue(const std::string&) override {
+    live_stream::ConfigJson Get(const std::string&) override {
         return live_stream::ConfigJson::object();
     }
-    bool SetDefault(const std::string&) override { return true; }
-    live_stream::ConfigJson GetDefault(const std::string&) override {
+    live_stream::ConfigStatus Reset(
+        const std::string&, live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
+    live_stream::ConfigJson Default(const std::string&) override {
         return live_stream::ConfigJson::object();
     }
-    bool RestoreDefaults() override { return true; }
-    bool AttachConfig(const std::string&,
-                      const live_stream::ConfigAttachment&) override {
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
+    bool AddScope(const std::string&,
+                  const live_stream::ConfigScope&) override {
         return true;
     }
-    bool DetachConfig(const std::string&) override { return true; }
+    bool RemoveScope(const std::string&) override { return true; }
 };
 
 class FakeLogger : public live_stream::ILogger {
@@ -103,43 +111,58 @@ public:
 
 class FakeNetEngine : public live_stream::INetEngine {
 public:
-    class FakeNetExecutor : public live_stream::INetExecutor {
+    class FakeLoop : public live_stream::event::Loop {
     public:
-        bool Post(infra::Task task) override {
+        live_stream::event::EventStatus Post(
+            live_stream::event::Task task) override {
             if (task) {
                 task();
             }
-            return true;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunAfter(uint32_t, infra::Task task) override {
+        live_stream::event::EventStatus RunAfter(
+            uint32_t,
+            live_stream::event::Task task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
             if (task) {
                 task();
             }
-            return 1;
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        live_stream::NetTimerId RunEvery(uint32_t, infra::Task) override {
-            return 1;
+        live_stream::event::EventStatus RunEvery(
+            uint32_t,
+            live_stream::event::Task,
+            live_stream::event::TimerId* timer_id) override {
+            if (timer_id == nullptr) {
+                return live_stream::event::EventStatus::kInvalid;
+            }
+            *timer_id = 1;
+            return live_stream::event::EventStatus::kOk;
         }
 
-        bool CancelTimer(live_stream::NetTimerId) override { return true; }
+        bool CancelTimer(live_stream::event::TimerId) override { return true; }
         bool IsCurrentThread() const override { return true; }
     };
 
     bool Start() override { return true; }
     void Stop() override {}
 
-    live_stream::INetExecutor* DefaultExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* DefaultLoop() override {
+        return &loop_;
     }
 
-    live_stream::INetExecutor* PickExecutor() override {
-        return &executor_;
+    live_stream::event::Loop* PickLoop() override {
+        return &loop_;
     }
 
     live_stream::TcpServerId ListenTcp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::TcpListenOptions&,
         const live_stream::TcpCallbacks&) override {
         return 1;
@@ -148,7 +171,7 @@ public:
     bool CloseTcp(live_stream::TcpServerId) override { return true; }
 
     live_stream::UdpSocketId BindUdp(
-        live_stream::INetExecutor*,
+        live_stream::event::Loop*,
         const live_stream::UdpBindOptions&,
         const live_stream::UdpCallbacks&) override {
         return 1;
@@ -199,7 +222,7 @@ public:
     }
 
 private:
-    FakeNetExecutor executor_;
+    FakeLoop loop_;
 };
 
 class FakeDeviceMedia : public live_stream::DeviceMedia {
@@ -213,12 +236,7 @@ public:
         live_stream::StreamId) const override {
         return live_stream::Codec::kH264;
     }
-    live_stream::FrameAttachId AttachFrameSink(
-        const live_stream::FrameAttachOptions&,
-        live_stream::IFrameSink*) override {
-        return 0;
-    }
-    bool DetachFrameSink(live_stream::FrameAttachId) override { return true; }
+    bool SetFrameSink(live_stream::FrameSink*) override { return true; }
     bool RequestKeyframe(live_stream::StreamId,
                          live_stream::KeyframeRequestSource) override {
         return true;
@@ -248,6 +266,16 @@ public:
         info.tier = "day";
         info.saturation = 52;
         return info;
+    }
+    live_stream::SnapshotFrame CaptureSnapshot(
+        const live_stream::SnapshotRequest&) override {
+        return live_stream::SnapshotFrame();
+    }
+    live_stream::SnapshotInfo GetSnapshotInfo() const override {
+        return live_stream::SnapshotInfo();
+    }
+    live_stream::OverlayInfo GetOverlayInfo() const override {
+        return live_stream::OverlayInfo();
     }
 };
 
@@ -292,7 +320,7 @@ int main() {
 
     live_stream::HttpDependencies http_dependencies;
     http_dependencies.net_engine = &net_engine;
-    http_dependencies.net_executor = net_engine.DefaultExecutor();
+    http_dependencies.net_loop = net_engine.DefaultLoop();
     http_dependencies.auth = &auth;
     http_dependencies.logger = &logger;
     http_dependencies.config = &config;

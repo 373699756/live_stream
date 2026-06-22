@@ -158,7 +158,7 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
         }
         self->EnableWrite();
         self->HandleWrite();
-    });
+    }) == event::EventStatus::kOk;
 }
 
 bool TcpSession::EnqueueOutBuffer(OutBuffer buffer) {
@@ -207,7 +207,7 @@ bool TcpSession::Close(TcpCloseReason reason) {
         if (self) {
             self->CloseInLoop(reason);
         }
-    });
+    }) == event::EventStatus::kOk;
 }
 
 bool TcpSession::CloseAfterSend() {
@@ -250,7 +250,7 @@ bool TcpSession::CloseAfterSend() {
         } else {
             self->EnableWrite();
         }
-    });
+    }) == event::EventStatus::kOk;
 }
 
 uint32_t TcpSession::PendingBytes() const {
@@ -416,7 +416,7 @@ void TcpSession::DisableWrite() {
 }
 
 void TcpSession::CloseInLoop(TcpCloseReason reason) {
-    NetTimerId timeout_timer_id = 0;
+    event::TimerId timeout_timer_id = 0;
     NetConnectionInfo info;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -456,14 +456,15 @@ void TcpSession::ArmTimeoutTimer() {
         return;
     }
     std::weak_ptr<TcpSession> weak_self = shared_from_this();
-    const NetTimerId timer_id = loop_->RunEvery(
-        engine_->AllocateTimerId(), tick_ms, [weak_self]() {
+    event::TimerId timer_id = 0;
+    const event::EventStatus timer_status = loop_->RunEvery(
+        tick_ms, [weak_self]() {
             auto self = weak_self.lock();
             if (self) {
                 self->CheckTimeouts();
             }
-        });
-    if (timer_id == 0) {
+        }, &timer_id);
+    if (timer_status != event::EventStatus::kOk || timer_id == 0) {
         return;
     }
     std::lock_guard<std::mutex> lock(mutex_);

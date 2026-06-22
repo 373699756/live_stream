@@ -3,7 +3,9 @@ MODULE_NAME := webrtc
 ROOT_DIR := ../..
 BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
+EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
 CXXFLAGS += -pthread
+CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
@@ -18,17 +20,20 @@ RTP_LIB := $(BUILD_DIR)/lib/librtp.a
 WEBRTC_THIRDPARTY_LIBS := $(ROOT_DIR)/3rdparty/install/lib/libsrtp2.a \
 	$(ROOT_DIR)/3rdparty/install/lib/libssl.a \
 	$(ROOT_DIR)/3rdparty/install/lib/libcrypto.a
-EXTRA_TEST_DEPS := $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) \
+EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) \
 	$(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) $(RTP_LIB) \
 	$(WEBRTC_THIRDPARTY_LIBS)
 EXTRA_TEST_LIBS := $(MEDIA_STREAMS_LIB) $(RTP_LIB) \
 	$(MEDIA_CODEC_LIB) $(MEDIA_LIB) $(NET_LIB) \
-	$(INFRA_LIB) $(WEBRTC_THIRDPARTY_LIBS) -pthread -lm -ldl
+	$(EVENT_LIB) $(INFRA_LIB) $(WEBRTC_THIRDPARTY_LIBS) -pthread -lm -ldl
 
 $(INFRA_LIB):
 	$(MAKE) -C ../infra all
 
-$(NET_LIB): $(INFRA_LIB)
+$(EVENT_LIB):
+	$(MAKE) -C ../event all
+
+$(NET_LIB): $(INFRA_LIB) $(EVENT_LIB)
 	$(MAKE) -C ../net all
 
 $(MEDIA_LIB): $(INFRA_LIB)

@@ -67,7 +67,7 @@ struct RenewedHttpSessionTimeout {
     // generation 是超时 timer 的版本号。请求推进、响应完成或进入 streaming 时会
     // 增加版本，旧 timer 回调必须被忽略。
     uint64_t generation = 0;
-    NetTimerId replaced_timer_id = 0;
+    event::TimerId replaced_timer_id = 0;
 };
 
 class HttpSession {
@@ -91,8 +91,8 @@ public:
     bool AttachStreamClient(HttpMediaClientHandle client);
     bool MarkStreamClosing();
     RenewedHttpSessionTimeout RenewTimeout();
-    bool InstallTimeout(uint64_t generation, NetTimerId timer_id);
-    NetTimerId CancelTimeout();
+    bool InstallTimeout(uint64_t generation, event::TimerId timer_id);
+    event::TimerId CancelTimeout();
     bool ExpireTimeout(uint64_t generation);
     ClosedHttpSessionInfo Close();
     HttpMediaClientHandle TakeMediaClient();
@@ -109,7 +109,7 @@ private:
     // request_count_ 用于 max_requests_per_connection，达到上限后响应完即关闭。
     uint64_t request_count_ = 0;
     uint64_t timeout_generation_ = 0;
-    NetTimerId timer_id_ = 0;
+    event::TimerId timer_id_ = 0;
     // media_client_ 只在 streaming 状态有效，保存 FLV/MJPEG/SSE 的外部 client id，
     // TCP close 时交给 HttpServer 统一 detach/unsubscribe。
     HttpMediaClientHandle media_client_;

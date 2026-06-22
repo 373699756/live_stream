@@ -106,22 +106,39 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
+    live_stream::ConfigStatus Set(const std::string& name,
+                                  const live_stream::ConfigJson& now,
+                                  live_stream::ConfigIssue* issue) override {
+        (void)issue;
         ++set_count;
         last_name = name;
-        last_json = value.dump();
-        if (attachment.validate && !attachment.validate(value).ok) {
-            return false;
+        last_json = now.dump();
+        if (scope.verify) {
+            const live_stream::ConfigStatus status = scope.verify(now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        if (attachment.apply && !attachment.apply(value).ok) {
-            return false;
+        if (scope.apply) {
+            const live_stream::ConfigJson prev = stored_json.empty()
+                                                    ? live_stream::ConfigJson()
+                                                    : live_stream::ConfigJson::parse(
+                                                          stored_json, nullptr,
+                                                          false);
+            const live_stream::ConfigStatus status =
+                scope.apply(prev, now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        stored_json = value.dump();
-        return set_ok;
+        if (!set_ok) {
+            return live_stream::ConfigStatus::kSaveFailed;
+        }
+        stored_json = now.dump();
+        return live_stream::ConfigStatus::kOk;
     }
 
-    live_stream::ConfigJson GetValue(const std::string& name) override {
+    live_stream::ConfigJson Get(const std::string& name) override {
         ++get_count;
         last_name = name;
         if (stored_json.empty()) {
@@ -130,31 +147,36 @@ public:
         return live_stream::ConfigJson::parse(stored_json, nullptr, false);
     }
 
-    bool SetDefault(const std::string& name) override {
-        return name == "network";
+    live_stream::ConfigStatus Reset(
+        const std::string& name, live_stream::ConfigIssue*) override {
+        return name == "network" ? live_stream::ConfigStatus::kOk
+                                 : live_stream::ConfigStatus::kNotFound;
     }
 
-    live_stream::ConfigJson GetDefault(const std::string&) override {
+    live_stream::ConfigJson Default(const std::string&) override {
         return live_stream::ConfigJson();
     }
 
-    bool RestoreDefaults() override { return true; }
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
 
-    bool AttachConfig(const std::string& name,
-                      const live_stream::ConfigAttachment& next) override {
+    bool AddScope(const std::string& name,
+                  const live_stream::ConfigScope& next) override {
         if (name != "network" || attached) {
             return false;
         }
-        attachment = next;
+        scope = next;
         attached = true;
         return true;
     }
 
-    bool DetachConfig(const std::string& name) override {
+    bool RemoveScope(const std::string& name) override {
         if (name != "network" || !attached) {
             return false;
         }
-        attachment = live_stream::ConfigAttachment();
+        scope = live_stream::ConfigScope();
         attached = false;
         return true;
     }
@@ -162,39 +184,28 @@ public:
     std::string stored_json;
     std::string last_name;
     std::string last_json;
-    live_stream::ConfigAttachment attachment;
+    live_stream::ConfigScope scope;
     int set_count = 0;
     int get_count = 0;
     bool set_ok = true;
     bool attached = false;
 };
 
-class FakeEvent : public live_stream::IEvent {
+class FakeEvent : public live_stream::event::Dispatcher {
 public:
-    bool Start() override { return true; }
-    void Stop() override {}
-
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>&,
-        live_stream::EventHandler) override {
-        return 1;
-    }
-
-    bool Unsubscribe(live_stream::EventSubscriptionId) override {
-        return true;
-    }
-
-    bool Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
+    FakeEvent()
+        : subscription_(Subscribe(
+              live_stream::event::EventType::kNetworkChanged,
+              [this](const live_stream::event::Event& event) {
+                  ++publish_count;
+                  last_event = event;
+              })) {}
 
     int publish_count = 0;
-    live_stream::Event last_event;
+    live_stream::event::Event last_event;
+
+private:
+    live_stream::event::Subscription subscription_;
 };
 
 class FakeLogger : public live_stream::ILogger {
@@ -328,7 +339,8 @@ int main() {
         !platform.last_gateway.empty() || platform.dns_count != 2 ||
         config.set_count != 1 ||
         config.last_name != "network" ||
-        event.last_event.type != live_stream::EventType::kNetworkChanged ||
+        event.last_event.type !=
+            live_stream::event::EventType::kNetworkChanged ||
         logger.last_record.result !=
             live_stream::OperationResult::kSuccess ||
         logger.last_record.action !=

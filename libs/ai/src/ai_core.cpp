@@ -6,7 +6,6 @@
 #include "config.h"
 #include "device.h"
 #include "hisi_ai_platform.h"
-#include "infra/executor.h"
 #include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
@@ -197,7 +196,7 @@ struct AiTaskWorker final {
 
     AiModelConfig config;
     std::shared_ptr<AiInferenceEngine> engine;
-    std::unique_ptr<infra::Executor> executor;
+    std::unique_ptr<event::Executor> executor;
     AiInferenceResult last_result;
     AiStats stats;
     uint64_t inference_time_total_ms = 0;
@@ -214,14 +213,14 @@ struct PendingAlertCapture {
 };
 
 struct StoppedAiTask {
-    std::unique_ptr<infra::Executor> executor;
+    std::unique_ptr<event::Executor> executor;
     std::shared_ptr<AiInferenceEngine> engine;
 };
 
 struct AiTaskStartup {
     std::shared_ptr<AiTaskWorker> task_worker;
     std::shared_ptr<AiInferenceEngine> engine;
-    std::unique_ptr<infra::Executor> executor;
+    std::unique_ptr<event::Executor> executor;
 };
 
 struct AiCore::State final {
@@ -243,35 +242,51 @@ struct AiCore::State final {
                 return false;
             }
             if (options.config != nullptr && !config_attached) {
-                ConfigAttachment attachment;
-                attachment.validate = [this](const ConfigJson &value) {
+                ConfigScope config_scope;
+                config_scope.verify = [this](const ConfigJson &now,
+                                             ConfigIssue *issue) {
                     AiConfig current_config;
                     {
                         std::lock_guard<std::mutex> guard(mutex);
                         current_config = config;
                     }
                     AiConfig parsed;
-                    return ParseAiConfig(value, current_config, &parsed)
-                               ? ConfigResult::Success()
-                               : ConfigResult::Failure(
-                                     "", "invalid ai config");
+                    if (ParseAiConfig(now, current_config, &parsed)) {
+                        return ConfigStatus::kOk;
+                    }
+                    if (issue != nullptr) {
+                        issue->field.clear();
+                        issue->reason = "invalid ai config";
+                    }
+                    return ConfigStatus::kVerifyFailed;
                 };
-                attachment.apply = [this](const ConfigJson &value) {
+                config_scope.apply = [this](const ConfigJson &prev,
+                                            const ConfigJson &now,
+                                            ConfigIssue *issue) {
+                    (void)prev;
                     AiConfig current_config;
                     {
                         std::lock_guard<std::mutex> guard(mutex);
                         current_config = config;
                     }
                     AiConfig parsed;
-                    if (!ParseAiConfig(value, current_config, &parsed)) {
-                        return ConfigResult::Failure("", "invalid ai config");
+                    if (!ParseAiConfig(now, current_config, &parsed)) {
+                        if (issue != nullptr) {
+                            issue->field.clear();
+                            issue->reason = "invalid ai config";
+                        }
+                        return ConfigStatus::kVerifyFailed;
                     }
-                    return ApplyConfig(parsed)
-                               ? ConfigResult::Success()
-                               : ConfigResult::Failure(
-                                     "", "apply ai config failed");
+                    if (ApplyConfig(parsed)) {
+                        return ConfigStatus::kOk;
+                    }
+                    if (issue != nullptr) {
+                        issue->field.clear();
+                        issue->reason = "apply ai config failed";
+                    }
+                    return ConfigStatus::kApplyFailed;
                 };
-                if (!options.config->AttachConfig("ai", attachment)) {
+                if (!options.config->AddScope("ai", config_scope)) {
                     return false;
                 }
                 config_attached = true;
@@ -279,7 +294,7 @@ struct AiCore::State final {
         }
 
         if (options.config != nullptr) {
-            ConfigJson ai_config = options.config->GetValue("ai");
+            ConfigJson ai_config = options.config->Get("ai");
             if (ai_config.is_object()) {
                 AiConfig current_config;
                 {
@@ -328,7 +343,7 @@ struct AiCore::State final {
 
     void Stop() {
         std::vector<StoppedAiTask> stopped_tasks;
-        std::shared_ptr<infra::Executor> stopped_alert_executor;
+        std::shared_ptr<event::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started && task_workers.empty() && !alert_executor) {
@@ -352,7 +367,7 @@ struct AiCore::State final {
             config_attached = false;
         }
         if (detach_config && options.config != nullptr) {
-            static_cast<void>(options.config->DetachConfig("ai"));
+            static_cast<void>(options.config->RemoveScope("ai"));
         }
     }
 
@@ -492,7 +507,7 @@ struct AiCore::State final {
     }
 
     void PostAlertCapture(PendingAlertCapture pending_alert) {
-        std::shared_ptr<infra::Executor> executor_snapshot;
+        std::shared_ptr<event::Executor> executor_snapshot;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!started || !alert_executor) {
@@ -500,9 +515,9 @@ struct AiCore::State final {
             }
             executor_snapshot = alert_executor;
         }
-        if (!executor_snapshot->Post([this, pending_alert]() {
+        if (executor_snapshot->Post([this, pending_alert]() {
                 SaveAlertCapture(pending_alert);
-            })) {
+            }) != event::EventStatus::kOk) {
             IncrementDroppedTasks(pending_alert.task_worker);
         }
     }
@@ -564,7 +579,7 @@ struct AiCore::State final {
 
         bool service_started = false;
         std::vector<StoppedAiTask> stopped_tasks;
-        std::shared_ptr<infra::Executor> stopped_alert_executor;
+        std::shared_ptr<event::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
             service_started = started;
@@ -682,8 +697,8 @@ struct AiCore::State final {
              AiBackendToString(task_config.backend),
              static_cast<int>(task_config.task));
 
-        std::unique_ptr<infra::Executor> next_executor(new infra::Executor());
-        infra::ExecutorOptions executor_options;
+        std::unique_ptr<event::Executor> next_executor(new event::Executor());
+        event::ExecutorOptions executor_options;
         executor_options.worker_count = 1;
         executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
         if (!next_executor->Start(executor_options)) {
@@ -716,9 +731,9 @@ struct AiCore::State final {
         task_worker->stats.backend_available = startup->engine->Available();
         task_worker->running = true;
         startup->engine.reset();
-        if (!task_worker->executor->Post([this, task_worker]() {
+        if (task_worker->executor->Post([this, task_worker]() {
                 CaptureLoop(task_worker);
-            })) {
+            }) != event::EventStatus::kOk) {
             task_worker->running = false;
             task_worker->stats.backend_available = false;
             if (failed_task != nullptr) {
@@ -737,9 +752,9 @@ struct AiCore::State final {
         if (alert_executor) {
             return true;
         }
-        std::shared_ptr<infra::Executor> next_alert_executor(
-            new infra::Executor());
-        infra::ExecutorOptions alert_executor_options;
+        std::shared_ptr<event::Executor> next_alert_executor(
+            new event::Executor());
+        event::ExecutorOptions alert_executor_options;
         alert_executor_options.worker_count = 1;
         alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
         if (!next_alert_executor->Start(alert_executor_options)) {
@@ -845,7 +860,7 @@ struct AiCore::State final {
             return;
         }
         if (stopped->executor) {
-            stopped->executor->Stop(infra::StopMode::kDiscard);
+            stopped->executor->Stop(event::StopMode::kDiscard);
         }
         if (stopped->engine) {
             stopped->engine->Stop();
@@ -855,9 +870,9 @@ struct AiCore::State final {
     }
 
     static void StopAlertExecutor(
-        std::shared_ptr<infra::Executor> stopped_alert_executor) {
+        std::shared_ptr<event::Executor> stopped_alert_executor) {
         if (stopped_alert_executor) {
-            stopped_alert_executor->Stop(infra::StopMode::kDiscard);
+            stopped_alert_executor->Stop(event::StopMode::kDiscard);
         }
     }
 
@@ -866,7 +881,7 @@ struct AiCore::State final {
             return;
         }
         if (startup->executor) {
-            startup->executor->Stop(infra::StopMode::kDiscard);
+            startup->executor->Stop(event::StopMode::kDiscard);
         }
         if (startup->engine) {
             startup->engine->Stop();
@@ -1066,7 +1081,7 @@ struct AiCore::State final {
     AiOptions options;
     AiConfig config;
     std::vector<std::shared_ptr<AiTaskWorker>> task_workers;
-    std::shared_ptr<infra::Executor> alert_executor;
+    std::shared_ptr<event::Executor> alert_executor;
     std::vector<AiAlertRecord> alerts;
     uint64_t next_alert_id = 1;
     bool config_attached = false;

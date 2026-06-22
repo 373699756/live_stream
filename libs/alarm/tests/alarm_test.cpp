@@ -17,53 +17,68 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    bool SetValue(const std::string& name,
-                  const live_stream::ConfigJson& value) override {
+    live_stream::ConfigStatus Set(const std::string& name,
+                                  const live_stream::ConfigJson& now,
+                                  live_stream::ConfigIssue* issue) override {
         if (name != "alarm") {
-            return false;
+            return live_stream::ConfigStatus::kNotFound;
         }
-        if (attachment.validate && !attachment.validate(value).ok) {
-            return false;
+        if (scope.verify) {
+            const live_stream::ConfigStatus status = scope.verify(now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        if (attachment.apply && !attachment.apply(value).ok) {
-            return false;
+        if (scope.apply) {
+            const live_stream::ConfigStatus status =
+                scope.apply(alarm_config, now, issue);
+            if (status != live_stream::ConfigStatus::kOk) {
+                return status;
+            }
         }
-        alarm_config = value;
-        return true;
+        alarm_config = now;
+        return live_stream::ConfigStatus::kOk;
     }
 
-    live_stream::ConfigJson GetValue(const std::string& name) override {
+    live_stream::ConfigJson Get(const std::string& name) override {
         if (name != "alarm") {
             return live_stream::ConfigJson();
         }
         return alarm_config;
     }
 
-    bool SetDefault(const std::string& name) override { return name == "alarm"; }
+    live_stream::ConfigStatus Reset(
+        const std::string& name, live_stream::ConfigIssue*) override {
+        return name == "alarm" ? live_stream::ConfigStatus::kOk
+                               : live_stream::ConfigStatus::kNotFound;
+    }
 
-    live_stream::ConfigJson GetDefault(const std::string& name) override {
+    live_stream::ConfigJson Default(const std::string& name) override {
         if (name != "alarm") {
             return live_stream::ConfigJson();
         }
         return alarm_config;
     }
 
-    bool RestoreDefaults() override { return true; }
+    live_stream::ConfigStatus ResetAll(
+        live_stream::ConfigIssue*) override {
+        return live_stream::ConfigStatus::kOk;
+    }
 
-    bool AttachConfig(const std::string& name,
-                      const live_stream::ConfigAttachment& next) override {
+    bool AddScope(const std::string& name,
+                  const live_stream::ConfigScope& next) override {
         if (name != "alarm") {
             return false;
         }
-        attachment = next;
+        scope = next;
         return true;
     }
 
-    bool DetachConfig(const std::string& name) override {
+    bool RemoveScope(const std::string& name) override {
         if (name != "alarm") {
             return false;
         }
-        attachment = live_stream::ConfigAttachment();
+        scope = live_stream::ConfigScope();
         return true;
     }
 
@@ -76,30 +91,26 @@ public:
         {"actions", {{"snapshot", true}, {"record", false}, {"notify", true}}},
         {"schedule",
          {{"mode", "always"}, {"weekly", live_stream::ConfigJson::array()}}}};
-    live_stream::ConfigAttachment attachment;
+    live_stream::ConfigScope scope;
 };
 
-class FakeEvent : public live_stream::IEvent {
+class FakeEvent : public live_stream::event::Dispatcher {
 public:
-    bool Start() override { return true; }
-    void Stop() override {}
-    live_stream::EventSubscriptionId Subscribe(
-        const std::vector<live_stream::EventType>&,
-        live_stream::EventHandler) override {
-        return 1;
-    }
-    bool Unsubscribe(live_stream::EventSubscriptionId) override { return true; }
-    bool Publish(const live_stream::Event& event) override {
-        ++publish_count;
-        last_event = event;
-        return true;
-    }
-    live_stream::EventCounts GetCounts() const override {
-        return live_stream::EventCounts();
-    }
+    FakeEvent()
+        : subscription_(SubscribeMany(
+              std::vector<live_stream::event::EventType>{
+                  live_stream::event::EventType::kAlarmOn,
+                  live_stream::event::EventType::kAlarmOff},
+              [this](const live_stream::event::Event& event) {
+                  ++publish_count;
+                  last_event = event;
+              })) {}
 
     int publish_count = 0;
-    live_stream::Event last_event;
+    live_stream::event::Event last_event;
+
+private:
+    live_stream::event::Subscription subscription_;
 };
 
 class FakeLogger : public live_stream::ILogger {
@@ -156,7 +167,7 @@ int main() {
         return 4;
     }
     if (!service->InjectAlarmInput(input) || event.publish_count != 1 ||
-        event.last_event.type != live_stream::EventType::kAlarmOn ||
+        event.last_event.type != live_stream::event::EventType::kAlarmOn ||
         event.last_event.target != "motion" || event.last_event.level != 1) {
         return 5;
     }
@@ -171,7 +182,7 @@ int main() {
         return 7;
     }
     if (service->GetAlarmStatus().active || event.publish_count != 2 ||
-        event.last_event.type != live_stream::EventType::kAlarmOff) {
+        event.last_event.type != live_stream::event::EventType::kAlarmOff) {
         return 8;
     }
 
@@ -204,7 +215,8 @@ int main() {
 
     config.alarm_config["motion_detection"]["enabled"] = true;
     config.alarm_config["motion_detection"]["min_duration_ms"] = 0;
-    if (!config.SetValue("alarm", config.alarm_config)) {
+    if (config.Set("alarm", config.alarm_config, nullptr) !=
+        live_stream::ConfigStatus::kOk) {
         return 12;
     }
 

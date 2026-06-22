@@ -20,7 +20,9 @@ public:
 
     ILogger* logger() const { return logger_.get(); }
     IConfig* config() const { return config_.get(); }
-    IEvent* event() const { return event_.get(); }
+    event::Dispatcher *event() const {
+        return event_ != nullptr ? event_->dispatcher() : nullptr;
+    }
     IAuth* auth() const { return auth_.get(); }
 
 private:
@@ -32,7 +34,7 @@ private:
 
     std::unique_ptr<ILogger> logger_;
     std::unique_ptr<IConfig> config_;
-    std::unique_ptr<IEvent> event_;
+    std::unique_ptr<event::Service> event_;
     std::unique_ptr<IAuthAuditSink> auth_audit_sink_;
     std::unique_ptr<IAuth> auth_;
     bool started_ = false;

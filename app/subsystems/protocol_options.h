@@ -5,7 +5,6 @@
 #include "subsystems/protocol_refs.h"
 
 #include "http.h"
-#include "infra/executor.h"
 #include "net.h"
 #include "net_stat.h"
 #include "onvif_server.h"
@@ -14,8 +13,8 @@
 
 namespace live_stream {
 
-infra::ExecutorOptions BuildNetCallbackOptions();
-NetEngineOptions BuildNetEngineOptions(infra::Executor *callback_executor);
+event::LoopOptions BuildNetCallbackOptions();
+NetEngineOptions BuildNetEngineOptions(event::Loop *callback_loop);
 
 RtspOptions BuildRtspOptions(const AppConfig &app_config);
 RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs);

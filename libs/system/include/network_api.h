@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_SYSTEM_NETWORK_API_H_
 #define LIVE_STREAM_SYSTEM_NETWORK_API_H_
 
+#include "event.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -11,7 +12,6 @@
 namespace live_stream {
 
 class IConfig;
-class IEvent;
 class ILogger;
 
 struct NetIpv4Config {
@@ -68,7 +68,7 @@ public:
 
 struct NetOptions {
     IConfig* config = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     ILogger* logger = nullptr;
     INetPlatform* platform = nullptr;
     std::string default_ifname = "eth0";

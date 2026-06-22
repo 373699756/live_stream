@@ -224,13 +224,13 @@ bool LoadAppConfig(IConfig *config_store,
         return false;
     }
     ConfigJson root = ConfigJson::object();
-    root["video"] = config_store->GetValue("video");
-    root["network"] = config_store->GetValue("network");
-    root["http"] = config_store->GetValue("http");
-    root["rtsp"] = config_store->GetValue("rtsp");
-    root["snapshot"] = config_store->GetValue("snapshot");
-    root["webrtc"] = config_store->GetValue("webrtc");
-    root["onvif"] = config_store->GetValue("onvif");
+    root["video"] = config_store->Get("video");
+    root["network"] = config_store->Get("network");
+    root["http"] = config_store->Get("http");
+    root["rtsp"] = config_store->Get("rtsp");
+    root["snapshot"] = config_store->Get("snapshot");
+    root["webrtc"] = config_store->Get("webrtc");
+    root["onvif"] = config_store->Get("onvif");
     return LoadAppConfigFromRoot(root, app_config);
 }
 

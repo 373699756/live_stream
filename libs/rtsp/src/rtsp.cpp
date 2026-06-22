@@ -76,7 +76,7 @@ public:
     RtspImpl(RtspOptions options, RtspDependencies dependencies)
         : options_(std::move(options)),
           net_engine_(dependencies.net_engine),
-          net_executor_(dependencies.net_executor),
+          net_loop_(dependencies.net_loop),
           auth_(dependencies.auth),
           event_(dependencies.event),
           media_streams_(dependencies.media_streams),
@@ -95,7 +95,7 @@ public:
             return true;
         }
         if (net_engine_ == nullptr ||
-            net_executor_ == nullptr ||
+            net_loop_ == nullptr ||
             media_streams_ == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
             options_.max_request_bytes == 0) {
@@ -134,11 +134,11 @@ public:
         tcp_callbacks.on_accept = &RtspImpl::HandleAccept;
         tcp_callbacks.on_read = &RtspImpl::HandleRead;
         tcp_callbacks.on_close = &RtspImpl::HandleClose;
-        if (net_executor_ == nullptr) {
+        if (net_loop_ == nullptr) {
             return false;
         }
         TcpServerId server_result = net_engine_->ListenTcp(
-            net_executor_, tcp_config, tcp_callbacks);
+            net_loop_, tcp_config, tcp_callbacks);
         if (server_result == 0) {
             return false;
         }
@@ -386,7 +386,8 @@ private:
              static_cast<unsigned long long>(connection_id),
              session->peer.ip.c_str(),
              static_cast<unsigned>(session->peer.port));
-        PublishEvent(EventType::kRtspClientConnected, session->peer.ip);
+        PublishEvent(event::EventType::kRtspClientConnected,
+                     session->peer.ip);
     }
 
     void OnConnectionClosed(ConnectionId id, TcpCloseReason reason) {
@@ -411,7 +412,8 @@ private:
              static_cast<int>(reason),
              session->peer.ip.c_str(),
              static_cast<unsigned>(session->peer.port));
-        PublishEvent(EventType::kRtspClientDisconnected, session->peer.ip);
+        PublishEvent(event::EventType::kRtspClientDisconnected,
+                     session->peer.ip);
     }
 
     void OnUdpPacket(UdpSocketId socket_id,
@@ -623,12 +625,12 @@ private:
         udp_callbacks.user = this;
         udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
         const UdpSocketId rtp_result = net_engine_->BindUdp(
-            net_executor_, udp_config, udp_callbacks);
+            net_loop_, udp_config, udp_callbacks);
         if (rtp_result == 0) {
             return false;
         }
         const UdpSocketId rtcp_result = net_engine_->BindUdp(
-            net_executor_, udp_config, udp_callbacks);
+            net_loop_, udp_config, udp_callbacks);
         if (rtcp_result == 0) {
             (void)net_engine_->CloseUdp(rtp_result);
             return false;
@@ -757,15 +759,15 @@ private:
         return local_address_;
     }
 
-    void PublishEvent(EventType type, const std::string& target) {
+    void PublishEvent(event::EventType type, const std::string& target) {
         if (event_ == nullptr) {
             return;
         }
-        Event event;
-        event.type = type;
-        event.source = kServiceName;
-        event.target = target;
-        (void)event_->Publish(event);
+        event::Event rtsp_event;
+        rtsp_event.type = type;
+        rtsp_event.source = kServiceName;
+        rtsp_event.target = target;
+        (void)event_->Publish(rtsp_event);
     }
 
     void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
@@ -774,14 +776,15 @@ private:
         }
         // drain timer 运行在 net IO loop 上，周期性从 media_streams subscription 拉帧；
         // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
-        if (net_executor_ == nullptr) {
+        if (net_loop_ == nullptr) {
             return;
         }
-        const NetTimerId timer_id = net_executor_->RunEvery(
+        event::TimerId timer_id = 0;
+        const event::EventStatus timer_status = net_loop_->RunEvery(
             kRtspDrainIntervalMs, [this, session]() {
                 DrainSessionFrames(session);
-            });
-        if (timer_id == 0) {
+            }, &timer_id);
+        if (timer_status != event::EventStatus::kOk || timer_id == 0) {
             FrameSubscriptionId subscription_id = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -912,7 +915,7 @@ private:
             return;
         }
         FrameSubscriptionId subscription_id = 0;
-        NetTimerId drain_timer_id = 0;
+        event::TimerId drain_timer_id = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             subscription_id = session->subscription_id;
@@ -923,8 +926,8 @@ private:
         // 先取消 drain timer，再 unsubscribe subscription。timer 若已在执行，
         // EventLoop 的 cancelled 标记会阻止下一次触发；subscription_id 清零后
         // 本次执行也会快速退出。
-        if (net_executor_ != nullptr && drain_timer_id != 0) {
-            (void)net_executor_->CancelTimer(drain_timer_id);
+        if (net_loop_ != nullptr && drain_timer_id != 0) {
+            (void)net_loop_->CancelTimer(drain_timer_id);
         }
         if (media_streams_ != nullptr && subscription_id != 0) {
             (void)media_streams_->UnsubscribeFrames(subscription_id, reason);
@@ -941,9 +944,9 @@ private:
 
     RtspOptions options_;
     INetEngine* net_engine_ = nullptr;
-    INetExecutor* net_executor_ = nullptr;
+    event::Loop* net_loop_ = nullptr;
     IAuth* auth_ = nullptr;
-    IEvent* event_ = nullptr;
+    event::Dispatcher* event_ = nullptr;
     MediaStreams* media_streams_ = nullptr;
     RtspRtpSender rtp_sender_;
     RtspAuth rtsp_auth_;

@@ -8,6 +8,7 @@
 #ifndef LIVE_STREAM_SYSTEM_SYSTEM_H_
 #define LIVE_STREAM_SYSTEM_SYSTEM_H_
 
+#include "event.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -18,7 +19,6 @@
 namespace live_stream {
 
 class IConfig;
-class IEvent;
 class ILogger;
 
 struct DeviceInfo {
@@ -55,7 +55,7 @@ public:
 
 struct SystemOptions {
     IConfig* config = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     ILogger* logger = nullptr;
     ISystemPlatform* platform = nullptr;
     uint32_t heartbeat_timeout_ms = 5000;

@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_SYSTEM_UPGRADE_H_
 #define LIVE_STREAM_SYSTEM_UPGRADE_H_
 
+#include "event.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -11,7 +12,6 @@
 namespace live_stream {
 
 class IConfig;
-class IEvent;
 class ILogger;
 
 class Upgrade {
@@ -84,7 +84,7 @@ public:
 
 struct UpgradeOptions {
     IConfig* config = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     ILogger* logger = nullptr;
     IUpgradePlatform* platform = nullptr;
     uint64_t max_package_size_bytes = 32ULL * 1024ULL * 1024ULL;

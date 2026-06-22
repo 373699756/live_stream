@@ -131,7 +131,7 @@ public:
         }
 
         if (options_.config != nullptr) {
-            ConfigJson value = options_.config->GetValue(kConfigName);
+            ConfigJson value = options_.config->Get(kConfigName);
             if (value.is_object()) {
                 if (!LoadTimeConfig(value, &loaded_config)) {
                     return false;
@@ -158,18 +158,32 @@ public:
         browser_sync_on_login_ = loaded_config.browser_sync_on_login;
         time_config_json_ = loaded_json;
         if (options_.config != nullptr && !config_attached_) {
-            ConfigAttachment attachment;
-            attachment.validate = [this](const ConfigJson &value) {
-                return VerifyTimeConfig(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "invalid time config");
+            ConfigScope config_scope;
+            config_scope.verify = [this](const ConfigJson &now,
+                                         ConfigIssue *issue) {
+                if (VerifyTimeConfig(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "invalid time config";
+                }
+                return ConfigStatus::kVerifyFailed;
             };
-            attachment.apply = [this](const ConfigJson &value) {
-                return ApplyTimeConfig(value)
-                           ? ConfigResult::Success()
-                           : ConfigResult::Failure("", "apply time config failed");
+            config_scope.apply = [this](const ConfigJson &prev,
+                                        const ConfigJson &now,
+                                        ConfigIssue *issue) {
+                (void)prev;
+                if (ApplyTimeConfig(now)) {
+                    return ConfigStatus::kOk;
+                }
+                if (issue != nullptr) {
+                    issue->field.clear();
+                    issue->reason = "apply time config failed";
+                }
+                return ConfigStatus::kApplyFailed;
             };
-            if (!options_.config->AttachConfig(kConfigName, attachment)) {
+            if (!options_.config->AddScope(kConfigName, config_scope)) {
                 return false;
             }
             config_attached_ = true;
@@ -210,7 +224,7 @@ public:
             initialized_ = false;
         }
         if (detach && options_.config != nullptr) {
-            static_cast<void>(options_.config->DetachConfig(kConfigName));
+            static_cast<void>(options_.config->RemoveScope(kConfigName));
         }
     }
 
@@ -449,15 +463,16 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             suppress_config_apply_ = true;
         }
-        const bool ok = options_.config->SetValue(kConfigName, next_json);
+        const ConfigStatus status = options_.config->Set(kConfigName,
+                                                         next_json);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             suppress_config_apply_ = false;
-            if (ok) {
+            if (status == ConfigStatus::kOk) {
                 time_config_json_ = next_json;
             }
         }
-        return ok;
+        return status == ConfigStatus::kOk;
     }
 
     void UpdateSyncState(TimeSyncSource source, int64_t sync_time_ms, bool ok) {
@@ -474,8 +489,8 @@ private:
         if (options_.event == nullptr) {
             return;
         }
-        Event event;
-        event.type = EventType::kTimeChanged;
+        event::Event event;
+        event.type = event::EventType::kTimeChanged;
         event.source = "time";
         event.message = message;
         static_cast<void>(options_.event->Publish(event));

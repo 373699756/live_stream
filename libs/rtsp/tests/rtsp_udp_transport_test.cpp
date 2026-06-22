@@ -1,6 +1,6 @@
 #include "rtsp.h"
 
-#include "fake_media_source.h"
+#include "fake_media_streams.h"
 #include "media/media_buffer.h"
 #include "net.h"
 
@@ -91,8 +91,9 @@ live_stream::EncodedFrame MakeFrame() {
     frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 200000;
-    frame.buffer = buffer;
-    frame.size = 4;
+    frame.payload.buffer = buffer;
+    frame.payload.offset = 0;
+    frame.payload.size = 4;
     return frame;
 }
 
@@ -111,14 +112,14 @@ int main() {
         close(udp_fd);
         return 2;
     }
-    live_stream::test::FakeMediaFrameSource media_source;
+    live_stream::test::FakeMediaStreams media_streams;
     live_stream::RtspOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
     live_stream::RtspDependencies deps;
     deps.net_engine = net_engine.get();
-    deps.net_executor = net_engine->DefaultExecutor();
-    deps.media_source = &media_source;
+    deps.net_loop = net_engine->DefaultLoop();
+    deps.media_streams = &media_streams;
     auto rtsp = live_stream::CreateRtsp(options, deps);
     if (!rtsp || !rtsp->Start()) {
         close(udp_fd);
@@ -158,7 +159,7 @@ int main() {
         close(udp_fd);
         return 7;
     }
-    if (!media_source.DeliverFrame(MakeFrame())) {
+    if (!media_streams.DeliverFrame(MakeFrame())) {
         close(tcp_fd);
         close(udp_fd);
         return 8;

@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_NET_NET_H_
 #define LIVE_STREAM_NET_NET_H_
 
-#include "infra/executor.h"
+#include "event.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +20,6 @@ struct NetAddress {
 using ConnectionId = uint64_t;
 using TcpServerId = uint64_t;
 using UdpSocketId = uint64_t;
-using NetTimerId = uint64_t;
 
 constexpr size_t kMaxNetBufferSlices = 8;
 
@@ -75,7 +74,7 @@ struct NetBufferSlices {
 
 enum class CallbackMode {
     kInlineOnIo,
-    kPostToExecutor,
+    kPostToLoop,
 };
 
 enum class TcpCloseReason {
@@ -98,7 +97,7 @@ struct NetEngineOptions {
     bool enable_thread_affinity = false;
     uint32_t first_io_cpu = 0;
     CallbackMode callback_mode = CallbackMode::kInlineOnIo;
-    infra::Executor *callback_executor = nullptr;
+    event::Loop *callback_loop = nullptr;
 };
 
 struct TcpListenOptions {
@@ -169,17 +168,6 @@ struct NetConnectionInfo {
 
 const char *TcpCloseReasonName(TcpCloseReason reason);
 
-class INetExecutor {
-public:
-    virtual ~INetExecutor() = default;
-
-    virtual bool Post(infra::Task task) = 0;
-    virtual NetTimerId RunAfter(uint32_t delay_ms, infra::Task task) = 0;
-    virtual NetTimerId RunEvery(uint32_t interval_ms, infra::Task task) = 0;
-    virtual bool CancelTimer(NetTimerId id) = 0;
-    virtual bool IsCurrentThread() const = 0;
-};
-
 class INetEngine {
 public:
     virtual ~INetEngine() = default;
@@ -187,14 +175,14 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
 
-    virtual INetExecutor *DefaultExecutor() = 0;
-    virtual INetExecutor *PickExecutor() = 0;
+    virtual event::Loop *DefaultLoop() = 0;
+    virtual event::Loop *PickLoop() = 0;
 
-    virtual TcpServerId ListenTcp(INetExecutor *executor,
+    virtual TcpServerId ListenTcp(event::Loop *loop,
                                   const TcpListenOptions &options,
                                   const TcpCallbacks &callbacks) = 0;
     virtual bool CloseTcp(TcpServerId id) = 0;
-    virtual UdpSocketId BindUdp(INetExecutor *executor,
+    virtual UdpSocketId BindUdp(event::Loop *loop,
                                 const UdpBindOptions &options,
                                 const UdpCallbacks &callbacks) = 0;
     virtual bool CloseUdp(UdpSocketId id) = 0;

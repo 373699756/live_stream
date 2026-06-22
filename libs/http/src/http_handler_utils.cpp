@@ -296,7 +296,7 @@ bool IsAiConfigEnabled(IConfig *config) {
     if (config == nullptr) {
         return false;
     }
-    ConfigJson ai_config = config->GetValue("ai");
+    ConfigJson ai_config = config->Get("ai");
     bool enabled = false;
     return ai_config.is_object() &&
            json_utils::ReadField(ai_config, "enabled", &enabled) &&

@@ -1,13 +1,13 @@
 #ifndef LIVE_STREAM_HTTP_HTTP_DEPENDENCIES_H_
 #define LIVE_STREAM_HTTP_HTTP_DEPENDENCIES_H_
 
+#include "event.h"
 #include "http.h"
 #include "media/media_streams.h"
 
 namespace live_stream {
 
 class INetEngine;
-class INetExecutor;
 class IAuth;
 class IConfig;
 class ILogger;
@@ -21,11 +21,10 @@ class IUpgrade;
 class IWebrtc;
 class DeviceMedia;
 class IAiView;
-class IEvent;
 
 struct HttpDependencies {
     INetEngine *net_engine = nullptr;
-    INetExecutor *net_executor = nullptr;
+    event::Loop *net_loop = nullptr;
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
@@ -40,7 +39,7 @@ struct HttpDependencies {
     DeviceMedia *device = nullptr;
     IWebrtc *webrtc = nullptr;
     MediaStreams *media_streams = nullptr;
-    IEvent *event = nullptr;
+    event::Dispatcher *event = nullptr;
 };
 
 }  // namespace live_stream

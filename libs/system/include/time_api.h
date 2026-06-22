@@ -8,6 +8,7 @@
 #ifndef LIVE_STREAM_SYSTEM_TIME_API_H_
 #define LIVE_STREAM_SYSTEM_TIME_API_H_
 
+#include "event.h"
 #include "request_context.h"
 
 #include <cstdint>
@@ -18,7 +19,6 @@
 namespace live_stream {
 
 class IConfig;
-class IEvent;
 class ILogger;
 
 enum class TimeSyncSource {
@@ -64,7 +64,7 @@ public:
 
 struct TimeOptions {
     IConfig* config = nullptr;
-    IEvent* event = nullptr;
+    event::Dispatcher* event = nullptr;
     ILogger* logger = nullptr;
     ITimePlatform* platform = nullptr;
     std::string default_timezone = "UTC";
