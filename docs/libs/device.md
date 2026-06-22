@@ -96,10 +96,10 @@ validate/apply。
 ## 状态与资源模型
 
 `device` 是最接近硬件 pipeline 的状态拥有者。帧订阅是跨模块边界，订阅方
-不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。`device` 只缓存设备
-订阅所需的最近关键帧，用于新订阅方 keyframe-first 启动；GOP、HLS、FLV、MJPEG
-ready、时间戳修正和协议订阅缓存归 `media` 主链路。
-关键帧请求必须通过 `RequestKeyframe` 进入媒体模块。
+不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。`device` 只转发编码帧并
+提供关键帧请求入口；新订阅方 keyframe-first、GOP、HLS、FLV、MJPEG ready、
+时间戳修正和协议订阅缓存归 `media` 主链路。关键帧请求必须通过
+`RequestKeyframe` 进入媒体模块。
 
 `media/media_buffer.h` 提供基础 `MediaSlice`，只表达一段待发送数据和可选
 `VideoBuffer` owner。HTTP/FLV/MJPEG/HLS 等协议边界可以直接提交 slice，异步发送时

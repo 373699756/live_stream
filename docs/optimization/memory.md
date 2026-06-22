@@ -71,8 +71,8 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | 阶段 | Payload 深拷贝次数 | 说明 |
 | --- | ---: | --- |
 | VENC pack -> `VideoBuffer` | 1 | 必要拷贝。把 MPP pack 和回绕 slice 拼成连续 AnnexB payload，随后释放 VENC stream。 |
-| `device` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数。最近关键帧缓存是例外，会为新订阅方 keyframe-first 深拷贝一份关键帧。 |
-| `media` ingest / parse / cache | 0 | NAL parser、GOP cache 和 FrameSubscription live queue 引用同一份 payload；NAL list 只是指针视图，不按 subscription 或 GOP 复制 payload。 |
+| `device` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数，不持有 GOP 或最近关键帧缓存。 |
+| `media` ingest / parse / cache | 0 | NAL parser、GOP cache 和 FrameSubscription live queue 引用同一份 payload；NAL list 只是指针视图，不按 subscription 或 GOP 复制 payload。新订阅方 keyframe-first 从 `media` 缓存起播。 |
 | HLS 封装 | 1 | `HlsMaker` 把 PES/TS header、AnnexB 起始码和 NAL payload 写入独立 TS segment body。segment 扩容时可能复制已写 segment body，当前实现会预估并预留容量降低扩容概率。 |
 | HLS HTTP 发送 | 0 | TS segment 已在 `VideoBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
 | HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `VideoBuffer`。 |
