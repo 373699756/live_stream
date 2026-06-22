@@ -23,6 +23,9 @@ flowchart LR
 - 登录和认证：`LoginPage`、`ChangePasswordPage`、`AuthContext`。
 - 实时预览：`LiveViewPage`、`VideoPreview`、AI 叠框和播放 hooks。
 - 视频/图像/抓图/叠加：配置表单、能力字段、遮挡编辑器和状态面板。
+  视频参数页的 ROI 编码区域在右侧实时预览上拖拽添加或重画，表格保留像素坐标、
+  QP 和绝对/相对模式微调。ROI、隐私遮挡和 AI 周界区域共用
+  `VideoRegionDrawLayer` 处理预览内容区、指针坐标和矩形渲染。
 - 网络/系统/升级：网络配置、系统概览、独立模块状态、升级上传校验和进度。
 - 日志和 AI 告警：操作日志查询导出、AI 告警图片瀑布流。
 

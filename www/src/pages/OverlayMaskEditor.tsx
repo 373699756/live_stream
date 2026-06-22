@@ -1,21 +1,14 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { PrivacyMaskConfig, StreamName } from '../api/types';
 import { FormField } from '../components/FormField';
-
-interface DragState {
-    slot: number;
-    start_x: number;
-    start_y: number;
-}
+import {
+    clampUnit,
+    VideoRegionDrawLayer,
+    type VideoRegionDrag,
+    type VideoRegionPoint,
+    type VideoRegionRect,
+} from '../components/VideoRegionDrawLayer';
 
 interface FrameSize {
-    width: number;
-    height: number;
-}
-
-interface SurfaceRect {
-    left: number;
-    top: number;
     width: number;
     height: number;
 }
@@ -40,44 +33,38 @@ interface UseOverlayMaskEditorOptions {
 const streamLabel = (stream: StreamName) =>
     stream === 'main' ? '主码流' : '子码流';
 
-const clamp = (value: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, value));
-
-function scaleMaskToSurface(
+function maskToRect(
     mask: PrivacyMaskConfig,
     frame: FrameSize,
-    videoArea: SurfaceRect,
-) {
+): VideoRegionRect {
     return {
-        left: videoArea.left + (mask.x / frame.width) * videoArea.width,
-        top: videoArea.top + (mask.y / frame.height) * videoArea.height,
-        width: (mask.width / frame.width) * videoArea.width,
-        height: (mask.height / frame.height) * videoArea.height,
+        x: clampUnit(mask.x / frame.width),
+        y: clampUnit(mask.y / frame.height),
+        width: clampUnit(mask.width / frame.width),
+        height: clampUnit(mask.height / frame.height),
     };
 }
 
-function contentAreaForSurface(
+function maskPatchFromPoints(
     frame: FrameSize,
-    surface: { width: number; height: number },
-): SurfaceRect | null {
-    if (
-        frame.width <= 0 ||
-        frame.height <= 0 ||
-        surface.width <= 0 ||
-        surface.height <= 0
-    ) {
-        return null;
-    }
-    const frameRatio = frame.width / frame.height;
-    const surfaceRatio = surface.width / surface.height;
-    if (surfaceRatio > frameRatio) {
-        const height = surface.height;
-        const width = height * frameRatio;
-        return { left: (surface.width - width) / 2, top: 0, width, height };
-    }
-    const width = surface.width;
-    const height = width / frameRatio;
-    return { left: 0, top: (surface.height - height) / 2, width, height };
+    start: VideoRegionPoint,
+    end: VideoRegionPoint,
+) {
+    const startX = Math.round(start.x * frame.width);
+    const startY = Math.round(start.y * frame.height);
+    const endX = Math.round(end.x * frame.width);
+    const endY = Math.round(end.y * frame.height);
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const width = Math.max(1, Math.abs(endX - startX));
+    const height = Math.max(1, Math.abs(endY - startY));
+    return {
+        enabled: true,
+        x,
+        y,
+        width: Math.min(width, frame.width - x),
+        height: Math.min(height, frame.height - y),
+    };
 }
 
 export function useOverlayMaskEditor({
@@ -96,151 +83,43 @@ export function useOverlayMaskEditor({
     saving,
     error,
 }: UseOverlayMaskEditorOptions) {
-    const [drag, setDrag] = useState<DragState | null>(null);
-    const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
-    const drawRef = useRef<HTMLDivElement | null>(null);
-    const [drawElement, setDrawElement] = useState<HTMLDivElement | null>(null);
-    const setDrawLayerRef = useCallback((node: HTMLDivElement | null) => {
-        drawRef.current = node;
-        setDrawElement(node);
-    }, []);
-
-    useLayoutEffect(() => {
-        if (!drawElement) {
-            return undefined;
-        }
-        const updateSurfaceSize = () => {
-            const rect = drawElement.getBoundingClientRect();
-            setSurfaceSize({ width: rect.width, height: rect.height });
-        };
-        updateSurfaceSize();
-        if (typeof ResizeObserver === 'undefined') {
-            window.addEventListener('resize', updateSurfaceSize);
-            return () =>
-                window.removeEventListener('resize', updateSurfaceSize);
-        }
-        const observer = new ResizeObserver(updateSurfaceSize);
-        observer.observe(drawElement);
-        return () => observer.disconnect();
-    }, [drawElement]);
-
-    const videoArea =
-        surfaceSize.width > 0 && surfaceSize.height > 0
-            ? contentAreaForSurface(frame, surfaceSize)
-            : null;
-
-    const pointerToFrame = (event: React.PointerEvent<HTMLDivElement>) => {
-        const surface = drawRef.current?.getBoundingClientRect();
-        if (!surface) {
-            return { x: 0, y: 0 };
-        }
-        const contentArea = contentAreaForSurface(frame, {
-            width: surface.width,
-            height: surface.height,
-        });
-        if (!contentArea) {
-            return null;
-        }
-        const x = clamp(
-            event.clientX - surface.left - contentArea.left,
-            0,
-            contentArea.width,
-        );
-        const y = clamp(
-            event.clientY - surface.top - contentArea.top,
-            0,
-            contentArea.height,
-        );
-        return {
-            x: Math.round((x / contentArea.width) * frame.width),
-            y: Math.round((y / contentArea.height) * frame.height),
-        };
-    };
-
-    const beginDraw = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0) {
-            return;
-        }
-        const point = pointerToFrame(event);
-        if (!point) {
-            return;
-        }
-        setDrag({ slot: activeSlot, start_x: point.x, start_y: point.y });
+    const beginDraw = (point: VideoRegionPoint): VideoRegionDrag => {
         onMaskPatch(activeSlot, {
-            enabled: true,
-            x: point.x,
-            y: point.y,
-            width: 1,
-            height: 1,
+            ...maskPatchFromPoints(frame, point, point),
         });
-        event.currentTarget.setPointerCapture(event.pointerId);
+        return { regionIndex: activeSlot, start: point };
     };
 
-    const updateDraw = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!drag) {
-            return;
-        }
-        const point = pointerToFrame(event);
-        if (!point) {
-            return;
-        }
-        const x = Math.min(drag.start_x, point.x);
-        const y = Math.min(drag.start_y, point.y);
-        const width = Math.max(1, Math.abs(point.x - drag.start_x));
-        const height = Math.max(1, Math.abs(point.y - drag.start_y));
-        onMaskPatch(drag.slot, {
-            enabled: true,
-            x,
-            y,
-            width: Math.min(width, frame.width - x),
-            height: Math.min(height, frame.height - y),
-        });
-    };
-
-    const finishDraw = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (drag) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }
-        setDrag(null);
-    };
+    const updateDraw = (drag: VideoRegionDrag, point: VideoRegionPoint) =>
+        onMaskPatch(
+            drag.regionIndex,
+            maskPatchFromPoints(frame, drag.start, point),
+        );
 
     const drawLayer = (
-        <div
-            ref={setDrawLayerRef}
+        <VideoRegionDrawLayer
             className="mask-draw-layer"
-            onPointerDown={beginDraw}
-            onPointerMove={updateDraw}
-            onPointerUp={finishDraw}
-            onPointerCancel={finishDraw}
-        >
-            {activeMasks.map((mask, index) => {
-                if (!mask.enabled) {
-                    return null;
-                }
-                const rect = videoArea
-                    ? scaleMaskToSurface(mask, frame, videoArea)
-                    : { left: 0, top: 0, width: 0, height: 0 };
-                return (
-                    <div
-                        key={index}
-                        className={
-                            activeSlot === index
-                                ? 'mask-rect active'
-                                : 'mask-rect'
-                        }
-                        style={{
-                            left: rect.left,
-                            top: rect.top,
-                            width: rect.width,
-                            height: rect.height,
-                            backgroundColor: mask.color,
-                        }}
-                    >
-                        {index + 1}
-                    </div>
-                );
-            })}
-        </div>
+            drawing
+            frame={frame}
+            items={activeMasks
+                .map((mask, index) =>
+                    mask.enabled
+                        ? {
+                              className:
+                                  activeSlot === index
+                                      ? 'mask-rect active'
+                                      : 'mask-rect',
+                              content: index + 1,
+                              key: String(index),
+                              rect: maskToRect(mask, frame),
+                              style: { backgroundColor: mask.color },
+                          }
+                        : null,
+                )
+                .filter((item) => item !== null)}
+            onDrawStart={beginDraw}
+            onDrawMove={updateDraw}
+        />
     );
 
     const controls = (

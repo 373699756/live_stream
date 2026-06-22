@@ -290,6 +290,50 @@
     outline: 2px solid #38bdf8;
 }
 
+.roi-draw-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.roi-draw-layer.drawing {
+    cursor: crosshair;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.roi-region-rect {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    min-width: 14px;
+    min-height: 14px;
+    color: #022c22;
+    background: rgba(52, 211, 153, 0.18);
+    border: 2px solid #34d399;
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.68),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    font-size: 12px;
+    font-weight: 800;
+    pointer-events: none;
+}
+
+.roi-region-rect.active {
+    border-color: #fbbf24;
+    background: rgba(251, 191, 36, 0.2);
+    outline: 2px solid rgba(251, 191, 36, 0.75);
+    outline-offset: 1px;
+}
+
+.roi-region-rect.disabled {
+    color: #e5e7eb;
+    background: rgba(100, 116, 139, 0.16);
+    border-style: dashed;
+    border-color: #94a3b8;
+}
+
 .ai-preview-overlay {
     position: absolute;
     inset: 0;

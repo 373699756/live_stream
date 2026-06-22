@@ -405,6 +405,15 @@
     border-top: 1px solid #eef2f7;
 }
 
+.roi-region-row {
+    cursor: pointer;
+}
+
+.roi-region-row.active {
+    background: #fff8e1;
+    box-shadow: inset 3px 0 0 #f59e0b;
+}
+
 .roi-region-row input:not([type='checkbox']),
 .roi-region-row select {
     width: 100%;

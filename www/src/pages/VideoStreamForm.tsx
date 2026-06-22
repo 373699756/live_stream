@@ -41,36 +41,29 @@ function parseResolutionSize(resolution: string) {
     return { width: Number(match[1]), height: Number(match[2]) };
 }
 
-function defaultRoiRegion(index: number, resolution: string): VideoRoiRegion {
-    const size = parseResolutionSize(resolution);
-    const width = Math.max(16, Math.floor((size.width || 640) / 4));
-    const height = Math.max(16, Math.floor((size.height || 360) / 4));
-    return {
-        enabled: true,
-        x: Math.max(0, Math.floor(index * 16)),
-        y: Math.max(0, Math.floor(index * 16)),
-        width,
-        height,
-        qp: -6,
-        absolute_qp: false,
-    };
-}
-
 function clampNumber(value: number, min: number, max: number) {
     if (!Number.isFinite(value)) return min;
     return Math.min(Math.max(Math.round(value), min), max);
 }
 
 interface VideoStreamFormProps {
+    activeRoiRegionIndex: number;
     stream: VideoStreamConfig;
     capabilities: VideoStreamCapabilities;
+    roiDrawing: boolean;
     onChange: (stream: VideoStreamConfig) => void;
+    onRoiRegionSelect: (index: number) => void;
+    onStartRoiDraw: (index: number) => void;
 }
 
 export function VideoStreamForm({
+    activeRoiRegionIndex,
     stream,
     capabilities,
+    roiDrawing,
     onChange,
+    onRoiRegionSelect,
+    onStartRoiDraw,
 }: VideoStreamFormProps) {
     const patch = (value: Partial<VideoStreamConfig>) => {
         const next = { ...stream, ...value };
@@ -129,14 +122,9 @@ export function VideoStreamForm({
             },
         });
     };
-    const addRoiRegion = () => {
+    const startAddRoiRegion = () => {
         if (!roiSupported || roiRegions.length >= maxRoiRegions) return;
-        patchRoi({
-            regions: [
-                ...roiRegions,
-                defaultRoiRegion(roiRegions.length, stream.resolution),
-            ],
-        });
+        onStartRoiDraw(roiRegions.length);
     };
     const updateRoiRegion = (index: number, value: Partial<VideoRoiRegion>) => {
         const nextRegions = roiRegions.map((region, regionIndex) => {
@@ -165,7 +153,10 @@ export function VideoStreamForm({
                 (_, regionIndex) => regionIndex !== index,
             ),
         });
+        onRoiRegionSelect(Math.max(0, index - 1));
     };
+    const activeRegionAvailable =
+        activeRoiRegionIndex >= 0 && activeRoiRegionIndex < roiRegions.length;
 
     return (
         <div className="form-grid form-grid-single">
@@ -331,9 +322,24 @@ export function VideoStreamForm({
                             !roiSupported ||
                             roiRegions.length >= maxRoiRegions
                         }
-                        onClick={addRoiRegion}
+                        onClick={startAddRoiRegion}
                     >
-                        添加区域
+                        {roiDrawing && activeRoiRegionIndex >= roiRegions.length
+                            ? '在预览中拖拽'
+                            : '添加区域'}
+                    </button>
+                    <button
+                        type="button"
+                        disabled={
+                            !available ||
+                            !roiSupported ||
+                            !activeRegionAvailable
+                        }
+                        onClick={() => onStartRoiDraw(activeRoiRegionIndex)}
+                    >
+                        {roiDrawing && activeRegionAvailable
+                            ? '重新拖拽中'
+                            : '重画选中'}
                     </button>
                 </div>
                 {roiRegions.length > 0 && (
@@ -350,8 +356,13 @@ export function VideoStreamForm({
                         </div>
                         {roiRegions.map((region, index) => (
                             <div
-                                className="roi-region-row"
+                                className={
+                                    activeRoiRegionIndex === index
+                                        ? 'roi-region-row active'
+                                        : 'roi-region-row'
+                                }
                                 key={`${index}-${region.x}-${region.y}`}
+                                onClick={() => onRoiRegionSelect(index)}
                             >
                                 <input
                                     type="checkbox"
@@ -449,7 +460,10 @@ export function VideoStreamForm({
                                 <button
                                     type="button"
                                     disabled={!available}
-                                    onClick={() => removeRoiRegion(index)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeRoiRegion(index);
+                                    }}
                                 >
                                     删除
                                 </button>
@@ -459,7 +473,7 @@ export function VideoStreamForm({
                 )}
                 <div className="stream-advanced-hint">
                     {roiSupported
-                        ? '相对 QP 使用负值可提升区域清晰度；画面仍保持完整输出。'
+                        ? '添加或重画区域后在右侧预览拖拽；相对 QP 使用负值可提升区域清晰度。'
                         : 'ROI 仅对支持的 H.264/H.265 编码通道生效。'}
                 </div>
             </div>

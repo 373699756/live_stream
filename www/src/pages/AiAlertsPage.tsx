@@ -1,11 +1,8 @@
 import {
     useCallback,
     useEffect,
-    useLayoutEffect,
     useMemo,
-    useRef,
     useState,
-    type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { saveAiAlarmRule } from '../api/alarm';
 import { aiAlertImageUrl, saveAiConfig } from '../api/ai';
@@ -23,6 +20,12 @@ import type {
 } from '../api/types';
 import { AiDetectionOverlay } from '../components/AiDetectionOverlay';
 import { StatusBadge } from '../components/StatusBadge';
+import {
+    VideoRegionDrawLayer,
+    type VideoRegionDrag,
+    type VideoRegionPoint,
+    type VideoRegionRect,
+} from '../components/VideoRegionDrawLayer';
 import { VideoPreview } from '../components/VideoPreview';
 import { useAiAlerts } from '../hooks/useAiAlerts';
 import { useLiveView } from '../hooks/useLiveView';
@@ -41,21 +44,7 @@ import '../styles/ai-alerts.css';
 
 type SensitivityLevel = 'low' | 'medium' | 'high';
 
-interface DragState {
-    region_index: number;
-    start_x: number;
-    start_y: number;
-    region_name: string;
-}
-
 interface FrameSize {
-    width: number;
-    height: number;
-}
-
-interface SurfaceRect {
-    left: number;
-    top: number;
     width: number;
     height: number;
 }
@@ -397,30 +386,6 @@ function parseResolution(resolution: string | undefined): FrameSize {
     return { width, height };
 }
 
-function contentAreaForSurface(
-    frame: FrameSize,
-    surface: { width: number; height: number },
-): SurfaceRect | null {
-    if (
-        frame.width <= 0 ||
-        frame.height <= 0 ||
-        surface.width <= 0 ||
-        surface.height <= 0
-    ) {
-        return null;
-    }
-    const frameRatio = frame.width / frame.height;
-    const surfaceRatio = surface.width / surface.height;
-    if (surfaceRatio > frameRatio) {
-        const height = surface.height;
-        const width = height * frameRatio;
-        return { left: (surface.width - width) / 2, top: 0, width, height };
-    }
-    const width = surface.width;
-    const height = width / frameRatio;
-    return { left: 0, top: (surface.height - height) / 2, width, height };
-}
-
 function normalizeRegion(
     region: AiPerimeterRegion,
     index: number,
@@ -446,8 +411,8 @@ function normalizeRegion(
 
 function regionFromPoints(
     name: string,
-    start: { x: number; y: number },
-    end: { x: number; y: number },
+    start: VideoRegionPoint,
+    end: VideoRegionPoint,
 ): AiPerimeterRegion {
     const x = clampRegionStart(Math.min(start.x, end.x));
     const y = clampRegionStart(Math.min(start.y, end.y));
@@ -472,21 +437,12 @@ function replaceRegionAt(
     return nextRegions.map(normalizeRegion);
 }
 
-function regionRectStyle(region: AiPerimeterRegion, videoArea: SurfaceRect) {
+function regionToRect(region: AiPerimeterRegion): VideoRegionRect {
     return {
-        left: videoArea.left + region.x * videoArea.width,
-        top: videoArea.top + region.y * videoArea.height,
-        width: region.width * videoArea.width,
-        height: region.height * videoArea.height,
-    };
-}
-
-function videoAreaStyle(videoArea: SurfaceRect) {
-    return {
-        left: videoArea.left,
-        top: videoArea.top,
-        width: videoArea.width,
-        height: videoArea.height,
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
     };
 }
 
@@ -565,12 +521,6 @@ export function AiAlertsPage() {
     const [saveMessage, setSaveMessage] = useState('');
     const [editingPerimeter, setEditingPerimeter] = useState(false);
     const [activeRegionIndex, setActiveRegionIndex] = useState(0);
-    const [drag, setDrag] = useState<DragState | null>(null);
-    const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
-    const [drawLayer, setDrawLayer] = useState<HTMLDivElement | null>(null);
-    const drawRef = useRef<HTMLDivElement | null>(null);
-    const pendingDragPointRef = useRef<{ x: number; y: number } | null>(null);
-    const dragFrameRef = useRef(0);
     const perimeterTask = draftTaskByName(draft, 'perimeter_detection');
     const previewStream =
         editingPerimeter && perimeterTask ? perimeterTask.stream : stream;
@@ -611,10 +561,6 @@ export function AiAlertsPage() {
         () => parseResolution(activeStatus?.resolution),
         [activeStatus?.resolution],
     );
-    const videoArea =
-        surfaceSize.width > 0 && surfaceSize.height > 0
-            ? contentAreaForSurface(frame, surfaceSize)
-            : null;
     const sensitivity = sensitivityForConfig(draft, aiCapabilities);
     const sharedConfig = draft
         ? sharedHiddenTaskConfig(draft, aiCapabilities)
@@ -675,34 +621,6 @@ export function AiAlertsPage() {
             setActiveRegionIndex(perimeterRegions.length - 1);
         }
     }, [activeRegionIndex, perimeterRegions.length]);
-
-    useEffect(
-        () => () => {
-            if (dragFrameRef.current !== 0) {
-                window.cancelAnimationFrame(dragFrameRef.current);
-            }
-        },
-        [],
-    );
-
-    useLayoutEffect(() => {
-        if (!drawLayer) {
-            return undefined;
-        }
-        const updateSurfaceSize = () => {
-            const rect = drawLayer.getBoundingClientRect();
-            setSurfaceSize({ width: rect.width, height: rect.height });
-        };
-        updateSurfaceSize();
-        const observer = new ResizeObserver(updateSurfaceSize);
-        observer.observe(drawLayer);
-        return () => observer.disconnect();
-    }, [drawLayer]);
-
-    const setDrawLayerRef = useCallback((node: HTMLDivElement | null) => {
-        drawRef.current = node;
-        setDrawLayer(node);
-    }, []);
 
     const updateDraftWith = useCallback(
         (updater: (config: AiConfig) => AiConfig) => {
@@ -773,56 +691,9 @@ export function AiAlertsPage() {
         [aiCapabilities, updateDraftWith],
     );
 
-    const pointerToRegionPoint = (event: ReactPointerEvent<HTMLDivElement>) => {
-        const surface = drawRef.current?.getBoundingClientRect();
-        if (!surface) {
+    const beginDraw = (point: VideoRegionPoint): VideoRegionDrag | null => {
+        if (!editingPerimeter || !draft) {
             return null;
-        }
-        const contentArea = contentAreaForSurface(frame, {
-            width: surface.width,
-            height: surface.height,
-        });
-        if (!contentArea) {
-            return null;
-        }
-        const x = Math.min(
-            contentArea.width,
-            Math.max(0, event.clientX - surface.left - contentArea.left),
-        );
-        const y = Math.min(
-            contentArea.height,
-            Math.max(0, event.clientY - surface.top - contentArea.top),
-        );
-        return {
-            x: x / contentArea.width,
-            y: y / contentArea.height,
-        };
-    };
-
-    const applyDragPoint = useCallback(
-        (dragState: DragState, point: { x: number; y: number }) => {
-            updatePerimeterRegions((currentRegions) =>
-                replaceRegionAt(
-                    currentRegions,
-                    dragState.region_index,
-                    regionFromPoints(
-                        dragState.region_name,
-                        { x: dragState.start_x, y: dragState.start_y },
-                        point,
-                    ),
-                ),
-            );
-        },
-        [updatePerimeterRegions],
-    );
-
-    const beginDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
-        if (!editingPerimeter || event.button !== 0 || !draft) {
-            return;
-        }
-        const point = pointerToRegionPoint(event);
-        if (!point) {
-            return;
         }
         const regionIndex =
             activeRegionIndex >= perimeterRegions.length
@@ -830,12 +701,6 @@ export function AiAlertsPage() {
                 : activeRegionIndex;
         const regionName =
             perimeterRegions[regionIndex]?.name || `region-${regionIndex + 1}`;
-        setDrag({
-            region_index: regionIndex,
-            start_x: point.x,
-            start_y: point.y,
-            region_name: regionName,
-        });
         setActiveRegionIndex(regionIndex);
         setSaveMessage('');
         updatePerimeterRegions((currentRegions) =>
@@ -845,44 +710,20 @@ export function AiAlertsPage() {
                 regionFromPoints(regionName, point, point),
             ),
         );
-        event.currentTarget.setPointerCapture(event.pointerId);
+        return { regionIndex, start: point };
     };
 
-    const updateDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
-        if (!drag) {
-            return;
-        }
-        const point = pointerToRegionPoint(event);
-        if (!point) {
-            return;
-        }
-        pendingDragPointRef.current = point;
-        if (dragFrameRef.current !== 0) {
-            return;
-        }
-        dragFrameRef.current = window.requestAnimationFrame(() => {
-            dragFrameRef.current = 0;
-            const pendingPoint = pendingDragPointRef.current;
-            pendingDragPointRef.current = null;
-            if (pendingPoint) {
-                applyDragPoint(drag, pendingPoint);
-            }
-        });
-    };
-
-    const finishDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
-        if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }
-        if (drag && pendingDragPointRef.current) {
-            applyDragPoint(drag, pendingDragPointRef.current);
-            pendingDragPointRef.current = null;
-        }
-        if (dragFrameRef.current !== 0) {
-            window.cancelAnimationFrame(dragFrameRef.current);
-            dragFrameRef.current = 0;
-        }
-        setDrag(null);
+    const updateDraw = (drag: VideoRegionDrag, point: VideoRegionPoint) => {
+        const regionName =
+            perimeterRegions[drag.regionIndex]?.name ||
+            `region-${drag.regionIndex + 1}`;
+        updatePerimeterRegions((currentRegions) =>
+            replaceRegionAt(
+                currentRegions,
+                drag.regionIndex,
+                regionFromPoints(regionName, drag.start, point),
+            ),
+        );
     };
 
     const addRegion = () => {
@@ -997,67 +838,55 @@ export function AiAlertsPage() {
     };
 
     const perimeterOverlay = (
-        <div
-            ref={setDrawLayerRef}
-            className={
-                editingPerimeter
-                    ? 'ai-perimeter-draw-layer editing'
-                    : 'ai-perimeter-draw-layer'
-            }
-            onPointerDown={beginDraw}
-            onPointerMove={updateDraw}
-            onPointerUp={finishDraw}
-            onPointerCancel={finishDraw}
-        >
-            {videoArea && editingPerimeter ? (
-                <div
-                    className="ai-perimeter-video-area"
-                    style={videoAreaStyle(videoArea)}
-                />
-            ) : null}
-            {videoArea
-                ? perimeterRegions.map((region, index) => {
-                      const regionClassName = [
-                          'ai-perimeter-region',
-                          activeRegionIndex === index ? 'active' : '',
-                          editingPerimeter ? 'selectable' : '',
-                      ]
-                          .filter(Boolean)
-                          .join(' ');
-                      return (
-                          <div
-                              className={regionClassName}
-                              key={`${region.name}-${index}`}
-                              style={regionRectStyle(region, videoArea)}
-                          >
-                              <span
-                                  role={editingPerimeter ? 'button' : undefined}
-                                  tabIndex={editingPerimeter ? 0 : -1}
-                                  onKeyDown={(event) => {
-                                      if (
-                                          editingPerimeter &&
-                                          (event.key === 'Enter' ||
-                                              event.key === ' ')
-                                      ) {
-                                          event.preventDefault();
-                                          selectRegion(index);
-                                      }
-                                  }}
-                                  onPointerDown={(event) => {
-                                      if (!editingPerimeter) {
-                                          return;
-                                      }
-                                      event.stopPropagation();
-                                      selectRegion(index);
-                                  }}
-                              >
-                                  {index + 1}
-                              </span>
-                          </div>
-                      );
-                  })
-                : null}
-        </div>
+        <VideoRegionDrawLayer
+            className="ai-perimeter-draw-layer"
+            drawing={editingPerimeter}
+            drawingClassName="editing"
+            frame={frame}
+            items={perimeterRegions.map((region, index) => {
+                const regionClassName = [
+                    'ai-perimeter-region',
+                    activeRegionIndex === index ? 'active' : '',
+                    editingPerimeter ? 'selectable' : '',
+                ]
+                    .filter(Boolean)
+                    .join(' ');
+                return {
+                    className: regionClassName,
+                    key: `${region.name}-${index}`,
+                    rect: regionToRect(region),
+                    content: (
+                        <span
+                            role={editingPerimeter ? 'button' : undefined}
+                            tabIndex={editingPerimeter ? 0 : -1}
+                            onKeyDown={(event) => {
+                                if (
+                                    editingPerimeter &&
+                                    (event.key === 'Enter' ||
+                                        event.key === ' ')
+                                ) {
+                                    event.preventDefault();
+                                    selectRegion(index);
+                                }
+                            }}
+                            onPointerDown={(event) => {
+                                if (!editingPerimeter) {
+                                    return;
+                                }
+                                event.stopPropagation();
+                                selectRegion(index);
+                            }}
+                        >
+                            {index + 1}
+                        </span>
+                    ),
+                };
+            })}
+            showVideoArea={editingPerimeter}
+            videoAreaClassName="ai-perimeter-video-area"
+            onDrawStart={beginDraw}
+            onDrawMove={updateDraw}
+        />
     );
 
     return (
