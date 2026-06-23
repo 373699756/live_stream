@@ -5,8 +5,8 @@
  * Brief: Defines internal JSON Lines codec helpers for operation records.
  */
 
-#ifndef LIVE_STREAM_LOGGER_SRC_OPERATION_RECORD_CODEC_H_
-#define LIVE_STREAM_LOGGER_SRC_OPERATION_RECORD_CODEC_H_
+#ifndef LIVE_STREAM_INFRA_OPERATION_RECORD_CODEC_H_
+#define LIVE_STREAM_INFRA_OPERATION_RECORD_CODEC_H_
 
 #include "logger.h"
 
@@ -21,4 +21,4 @@ bool OperationResultFromString(const std::string& value, OperationResult* result
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_LOGGER_SRC_OPERATION_RECORD_CODEC_H_
+#endif  // LIVE_STREAM_INFRA_OPERATION_RECORD_CODEC_H_

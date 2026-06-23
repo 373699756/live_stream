@@ -1,13 +1,18 @@
 # logger
 
-## 命名迁移
+## 迁移状态
 
-本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+`logger` 独立库已并入 `infra`。本文件只保留历史迁移说明和操作审计契约索引；
+长期设计正文维护在 `infra.md`，HTTP 查询和导出路由归 `http.md`。
 
-## 模块定位
+public header 名称保持 `logger.h`，实际路径为 `libs/infra/include/logger.h`。
+public API 名称保持 `ILogger`、`LoggerConfig`、`OperationRecord`、`OperationLogQuery`、
+`OperationLogExportOptions` 和 `CreateLogger()`。
 
-`logger` 记录用户操作审计日志。它不负责普通进程日志；普通日志归
-`infra::Log`。
+## 历史模块定位
+
+独立 `logger` 模块曾记录用户操作审计日志。它不负责普通进程日志；普通日志归
+`infra::Log`。这些职责现在由 `infra` 库内的操作审计功能承担。
 
 ## 总体框架图
 
@@ -15,7 +20,7 @@
 flowchart LR
   Auth[auth audit sink] --> Logger[logger]
   HTTP[HTTP operation handlers] --> Logger
-  Logger --> OperationLog[file_operation_log]
+  Logger --> OperationLog[infra file_operation_log]
   OperationLog --> File[log/operation.log or /data/operation.log]
   Web[www LogsPage] --> HTTP[http operations API]
   HTTP --> Logger
@@ -30,8 +35,8 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `logger.h`。`OperationAction` 和 `OperationResult` 是操作
-审计枚举，不替代 `event` 的运行事件。
+public API 在 `libs/infra/include/logger.h`。`OperationAction` 和 `OperationResult`
+是操作审计枚举，不替代 `event` 的运行事件。
 
 ## 状态与资源模型
 

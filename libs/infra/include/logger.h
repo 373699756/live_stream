@@ -5,8 +5,8 @@
  * Brief: Defines the user operation audit public interface.
  */
 
-#ifndef LIVE_STREAM_LOGGER_LOGGER_H_
-#define LIVE_STREAM_LOGGER_LOGGER_H_
+#ifndef LIVE_STREAM_INFRA_LOGGER_H_
+#define LIVE_STREAM_INFRA_LOGGER_H_
 
 #include <cstdint>
 #include <memory>
@@ -94,4 +94,4 @@ const char* OperationResultToString(OperationResult result);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_LOGGER_LOGGER_H_
+#endif  // LIVE_STREAM_INFRA_LOGGER_H_

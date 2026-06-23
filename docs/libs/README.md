@@ -35,7 +35,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 - `infra.md`
 - `auth.md`
-- `logger.md`
 - `event.md`
 
 ### Device Modules
@@ -65,6 +64,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 - `alarm.md`
 - `config.md`
+- `logger.md`
 - `stream_hub_legacy.md`
 
 ## Unified Template

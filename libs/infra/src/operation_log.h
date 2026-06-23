@@ -5,8 +5,8 @@
  * Brief: Defines internal operation audit storage interfaces.
  */
 
-#ifndef LIVE_STREAM_LOGGER_OPERATION_LOG_H_
-#define LIVE_STREAM_LOGGER_OPERATION_LOG_H_
+#ifndef LIVE_STREAM_INFRA_OPERATION_LOG_H_
+#define LIVE_STREAM_INFRA_OPERATION_LOG_H_
 
 #include "logger.h"
 
@@ -49,4 +49,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_LOGGER_OPERATION_LOG_H_
+#endif  // LIVE_STREAM_INFRA_OPERATION_LOG_H_
