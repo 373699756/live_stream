@@ -55,8 +55,8 @@ client/subscription 计数分开维护。下游协议不能直接订阅 HiSilico
   `MediaFrame` payload 指针。因此 HLS 主动把 PES header、TS packet header 和
   NAL payload 写入独立 segment body。
 - FLV 和 RTP 是流式发送格式，可以把协议小头部和原始 NAL payload 分成 slices。
-  小头部可复制入 socket 队列，媒体 payload 通过 `MediaOutSlice.owner` /
-  `NetBufferOwner` 延长 `MediaBuffer` 生命周期。
+  小头部可复制入 socket 队列，媒体 payload 通过 `MediaOutSlice.buffer` /
+  `NetBufferSlice.buffer` 延长 `MediaBuffer` 生命周期。
 - WebRTC RTP 分包阶段仍使用 slice view；SRTP 加密阶段必须形成可原地加密并追加
   认证尾部的连续 UDP packet，所以会有每个 RTP packet 的加密前复制。
 - 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，媒体模块只持有
@@ -76,10 +76,10 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | HLS 封装 | 1 | `HlsMaker` 把 PES/TS header、AnnexB 起始码和 NAL payload 写入独立 TS segment body。segment 扩容时可能复制已写 segment body，当前实现会预估并预留容量降低扩容概率。 |
 | HLS HTTP 发送 | 0 | TS segment 已在 `MediaBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
 | HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `MediaBuffer`。 |
-| RTSP RTP packetize | 0 | `RtpPacketizer` 生成 RTP header/FU header slice，媒体 payload 仍指向原帧。TCP interleaved 用 owner 保活，UDP 在调用内发送。 |
+| RTSP RTP packetize | 0 | `RtpPacketizer` 生成 RTP header/FU header slice，媒体 payload 仍指向原帧。TCP interleaved 用 `MediaBufferRef` 保活，UDP 在调用内发送。 |
 | WebRTC RTP packetize | 0 | 与 RTSP 一样，RTP packet view 不复制媒体 payload。 |
 | WebRTC SRTP protect | 1/packet | libsrtp 需要连续可写 buffer；每个 RTP packet view 会复制成连续 buffer 后原地加密并追加认证尾部。 |
-| `net` TCP send queue | 0 或小块复制 | 有 owner 的媒体 slice 不复制；无 owner 的栈上 header、小字符串会复制到 inline/heap out buffer。 |
+| `net` TCP send queue | 0 或小块复制 | 带 `MediaBufferRef` 的媒体 slice 不复制；无 buffer 的栈上 header、小字符串会复制到 inline/heap out buffer。 |
 
 ## 协议封装与分包
 
@@ -184,7 +184,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 
 - 直播客户端数量增加会放大缓存和 socket backpressure。
 - H.265/H.264 parameter set 和 keyframe 缓存要随 codec 切换重建。
-- 临时大 buffer、跨线程队列积压、`NetBufferOwner` 持帧时间和慢 socket 写是优先排查点。
+- 临时大 buffer、跨线程队列积压、`MediaBufferRef` 持帧时间和慢 socket 写是优先排查点。
 - 配置运行态联动仍需补 `network` 事件订阅或多 attachment 机制，让
   `network.advertise_ip`、`network.default_ifname` 和 WebRTC auto public IP 变化能
   驱动协议 URL/SDP 重新应用，而不抢占 `system.network` 的配置 apply 回调。

@@ -146,7 +146,7 @@ HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、respo
 `HttpRequestSplitter` 只负责 HTTP message 边界，`HttpServer` 拥有 socket/session
 生命周期、keep-alive、timeout 和 streaming 状态迁移，`HttpResponseSender` 负责
 普通响应、HLS segment body slice、HTTP-FLV/MJPEG/SSE 流式 chunk 的 header/body
-组包、`MediaBuffer` owner 转 `NetBufferOwner`、发送队列背压和慢客户端关闭。
+组包、`MediaBufferRef` 入队保活、发送队列背压和慢客户端关闭。
 普通短响应可以使用 `HttpResponse.body` 或 `HttpResponse.body_slices`，其中
 `body_slices` 用于 HLS segment 这类由 `media` 持有 payload 的一次性响应；
 它仍走普通 router 和 `SendResponse()`，不创建 HTTP streaming session。

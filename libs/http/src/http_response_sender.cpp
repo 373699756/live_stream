@@ -10,27 +10,6 @@
 #include <utility>
 
 namespace live_stream {
-namespace {
-
-void RefMediaBufferOwner(const void *owner) {
-    (void)MediaBufferAddRef(
-        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
-}
-
-void UnrefMediaBufferOwner(const void *owner) {
-    MediaBufferRelease(
-        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
-}
-
-NetBufferOwner MediaBufferNetOwner(MediaBuffer *buffer) {
-    if (buffer == nullptr) {
-        return NetBufferOwner{};
-    }
-    return NetBufferOwner{buffer, RefMediaBufferOwner,
-                          UnrefMediaBufferOwner};
-}
-
-}  // namespace
 
 HttpResponseSender::HttpResponseSender(
     uint32_t send_buffer_limit_bytes)
@@ -79,7 +58,7 @@ bool HttpResponseSender::SendResponse(
             }
             body_slices[body_slice_count].data = slice.data;
             body_slices[body_slice_count].size = slice.size;
-            body_slices[body_slice_count].owner = slice.owner;
+            body_slices[body_slice_count].buffer = slice.buffer;
             body_size += slice.size;
             ++body_slice_count;
         }
@@ -130,8 +109,7 @@ bool HttpResponseSender::SendResponseSlices(
         reinterpret_cast<const uint8_t *>(header.data()), header.size());
     for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
         slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
-                               MediaBufferNetOwner(
-                                   body_slices[i].owner.RawOwner()));
+                               body_slices[i].buffer);
     }
 
     if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
@@ -189,8 +167,7 @@ bool HttpResponseSender::EnqueueStreamingSlices(
             continue;
         }
         if (!net_slices.Add(slices[i].data, slices[i].size,
-                            MediaBufferNetOwner(
-                                slices[i].owner.RawOwner()))) {
+                            slices[i].buffer)) {
             return false;
         }
         total_size += slices[i].size;

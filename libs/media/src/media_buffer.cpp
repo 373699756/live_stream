@@ -4,6 +4,16 @@
 #include <utility>
 
 namespace live_stream {
+
+struct MediaBuffer {
+    uint8_t* data = nullptr;
+    uint32_t capacity = 0;
+    uint32_t size = 0;
+    uint32_t ref_count = 0;
+    MediaBufferFreeCallback free_callback = nullptr;
+    void* user = nullptr;
+};
+
 namespace {
 
 MediaBuffer* CreateMediaBuffer(uint8_t* data, uint32_t capacity, uint32_t size,
@@ -26,9 +36,7 @@ MediaBuffer* CreateMediaBuffer(uint8_t* data, uint32_t capacity, uint32_t size,
     return buffer;
 }
 
-}  // namespace
-
-MediaBuffer* MediaBufferAddRef(MediaBuffer* buffer) {
+MediaBuffer* AddMediaBufferRef(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return nullptr;
     }
@@ -36,7 +44,7 @@ MediaBuffer* MediaBufferAddRef(MediaBuffer* buffer) {
     return buffer;
 }
 
-void MediaBufferRelease(MediaBuffer* buffer) {
+void ReleaseMediaBuffer(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return;
     }
@@ -51,8 +59,10 @@ void MediaBufferRelease(MediaBuffer* buffer) {
     std::free(buffer);
 }
 
+}  // namespace
+
 MediaBufferRef::MediaBufferRef(const MediaBufferRef& other)
-    : buffer_(MediaBufferAddRef(other.buffer_)),
+    : buffer_(AddMediaBufferRef(other.buffer_)),
       offset_(other.offset_),
       size_(other.size_) {}
 
@@ -60,8 +70,8 @@ MediaBufferRef& MediaBufferRef::operator=(const MediaBufferRef& other) {
     if (this == &other) {
         return *this;
     }
-    MediaBuffer* retained = MediaBufferAddRef(other.buffer_);
-    MediaBufferRelease(buffer_);
+    MediaBuffer* retained = AddMediaBufferRef(other.buffer_);
+    ReleaseMediaBuffer(buffer_);
     buffer_ = retained;
     offset_ = other.offset_;
     size_ = other.size_;
@@ -79,7 +89,7 @@ MediaBufferRef& MediaBufferRef::operator=(MediaBufferRef&& other) noexcept {
     if (this == &other) {
         return *this;
     }
-    MediaBufferRelease(buffer_);
+    ReleaseMediaBuffer(buffer_);
     buffer_ = other.buffer_;
     offset_ = other.offset_;
     size_ = other.size_;
@@ -90,26 +100,10 @@ MediaBufferRef& MediaBufferRef::operator=(MediaBufferRef&& other) noexcept {
 }
 
 MediaBufferRef::~MediaBufferRef() {
-    MediaBufferRelease(buffer_);
+    ReleaseMediaBuffer(buffer_);
 }
 
-MediaBufferRef MediaBufferRef::Allocate(uint32_t capacity) {
-    if (capacity == 0) {
-        return MediaBufferRef();
-    }
-    uint8_t* data = static_cast<uint8_t*>(std::malloc(capacity));
-    if (data == nullptr) {
-        return MediaBufferRef();
-    }
-    MediaBuffer* buffer = CreateMediaBuffer(data, capacity, 0, nullptr, nullptr);
-    if (buffer == nullptr) {
-        std::free(data);
-        return MediaBufferRef();
-    }
-    return MediaBufferRef(buffer);
-}
-
-MediaBufferRef MediaBufferRef::AdoptExternal(
+MediaBufferRef MediaBufferRef::WrapExternalMemory(
     uint8_t* data, uint32_t capacity, uint32_t size,
     MediaBufferFreeCallback free_callback, void* user) {
     MediaBuffer* buffer =
@@ -124,17 +118,10 @@ MediaBufferRef MediaBufferRef::Slice(uint32_t offset, uint32_t size) const {
     if (buffer_ == nullptr || offset > size_ || size > size_ - offset) {
         return MediaBufferRef();
     }
-    return MediaBufferRef(MediaBufferAddRef(buffer_), offset_ + offset, size);
+    return MediaBufferRef(AddMediaBufferRef(buffer_), offset_ + offset, size);
 }
 
 const uint8_t* MediaBufferRef::Data() const {
-    if (!Valid()) {
-        return nullptr;
-    }
-    return buffer_->data + offset_;
-}
-
-uint8_t* MediaBufferRef::MutableData() {
     if (!Valid()) {
         return nullptr;
     }
@@ -176,7 +163,7 @@ bool MediaBufferRef::Valid() const {
 }
 
 void MediaBufferRef::Reset() {
-    MediaBufferRelease(buffer_);
+    ReleaseMediaBuffer(buffer_);
     buffer_ = nullptr;
     offset_ = 0;
     size_ = 0;
@@ -188,5 +175,68 @@ MediaBufferRef::MediaBufferRef(MediaBuffer* buffer)
 MediaBufferRef::MediaBufferRef(MediaBuffer* buffer, uint32_t offset,
                                uint32_t size)
     : buffer_(buffer), offset_(offset), size_(size) {}
+
+MediaBufferRef::Builder MediaBufferRef::Builder::Allocate(uint32_t capacity) {
+    if (capacity == 0) {
+        return Builder();
+    }
+    uint8_t* data = static_cast<uint8_t*>(std::malloc(capacity));
+    if (data == nullptr) {
+        return Builder();
+    }
+    MediaBuffer* buffer = CreateMediaBuffer(data, capacity, 0, nullptr, nullptr);
+    if (buffer == nullptr) {
+        std::free(data);
+        return Builder();
+    }
+    return Builder(MediaBufferRef(buffer));
+}
+
+MediaBufferRef::Builder MediaBufferRef::Builder::WrapExternalMemory(
+    uint8_t* data, uint32_t capacity, uint32_t size,
+    MediaBufferFreeCallback free_callback, void* user) {
+    return Builder(MediaBufferRef::WrapExternalMemory(
+        data, capacity, size, free_callback, user));
+}
+
+uint8_t* MediaBufferRef::Builder::Data() {
+    if (!buffer_.Valid()) {
+        return nullptr;
+    }
+    return buffer_.buffer_->data + buffer_.offset_;
+}
+
+const uint8_t* MediaBufferRef::Builder::Data() const {
+    return buffer_.Data();
+}
+
+uint32_t MediaBufferRef::Builder::Size() const {
+    return buffer_.Size();
+}
+
+uint32_t MediaBufferRef::Builder::Capacity() const {
+    return buffer_.Capacity();
+}
+
+bool MediaBufferRef::Builder::Resize(uint32_t size) {
+    return buffer_.SetSize(size);
+}
+
+bool MediaBufferRef::Builder::Valid() const {
+    return buffer_.Valid();
+}
+
+MediaBufferRef MediaBufferRef::Builder::Finish() {
+    MediaBufferRef finished = std::move(buffer_);
+    buffer_.Reset();
+    return finished;
+}
+
+void MediaBufferRef::Builder::Reset() {
+    buffer_.Reset();
+}
+
+MediaBufferRef::Builder::Builder(MediaBufferRef buffer)
+    : buffer_(std::move(buffer)) {}
 
 }  // namespace live_stream

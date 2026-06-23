@@ -469,11 +469,11 @@ bool MeasureJpegPayload(const VENC_STREAM_S& stream,
 MediaBufferRef CopyJpegPayload(const VENC_STREAM_S& stream,
                                const VENC_STREAM_BUF_INFO_S& stream_buffer,
                                uint32_t payload_size) {
-    MediaBufferRef buffer = MediaBufferRef::Allocate(payload_size);
-    if (buffer.RawOwner() == nullptr) {
+    MediaBufferBuilder buffer = MediaBufferBuilder::Allocate(payload_size);
+    if (!buffer.Valid()) {
         return MediaBufferRef();
     }
-    uint8_t* buffer_data = buffer.MutableData();
+    uint8_t* buffer_data = buffer.Data();
     if (buffer_data == nullptr) {
         return MediaBufferRef();
     }
@@ -496,10 +496,10 @@ MediaBufferRef CopyJpegPayload(const VENC_STREAM_S& stream,
             offset += packet_data.second.size;
         }
     }
-    if (offset != payload_size || !buffer.SetSize(offset)) {
+    if (offset != payload_size || !buffer.Resize(offset)) {
         return MediaBufferRef();
     }
-    return buffer;
+    return buffer.Finish();
 }
 
 void ReleaseJpegStream(VENC_CHN jpeg_channel, VENC_STREAM_S* stream,
@@ -685,15 +685,15 @@ YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     mapped_frame->channel = channel;
     mapped_frame->frame_info = frame_info;
 
-    MediaBufferRef buffer = MediaBufferRef::AdoptExternal(
+    MediaBufferBuilder buffer = MediaBufferBuilder::WrapExternalMemory(
         static_cast<uint8_t*>(mapped), total_size, total_size,
         ReleaseVpssMappedFrame, mapped_frame);
-    if (buffer.RawOwner() == nullptr) {
+    if (!buffer.Valid()) {
         ReleaseVpssMappedFrame(static_cast<uint8_t*>(mapped), total_size,
                                mapped_frame);
         return result;
     }
-    result.buffer = buffer;
+    result.buffer = buffer.Finish();
     result.width = width;
     result.height = height;
     result.stride_y = stride_y;

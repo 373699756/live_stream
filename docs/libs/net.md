@@ -72,8 +72,9 @@ public API 在 `net.h`。`INetEngine` 是上层模块依赖的抽象接口，
 - `Timer`：`event::Loop::RunAfter()` 是一次性 timer，`RunEvery()` 是周期
   timer，timer 固定归属创建它的 loop；取消必须通过同一个 loop 的
   `CancelTimer()`。timer id 由 `INetEngine` 全局分配，避免多 IO loop 下重复。
-- `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。可通过
-  `NetBufferOwner` 延长媒体 payload 生命周期，但不能携带协议业务语义。
+- `Buffer`：`NetBufferSlices` 只表达网络发送/接收 buffer。需要跨线程或异步
+  TCP 发送保活媒体 payload 时，slice 可携带 `MediaBufferRef` 值对象；不能携带
+  协议业务语义。
 
 `TcpCloseReason` 枚举值冻结为：`normal`、`remote_close`、`parse_error`、
 `auth_failed`、`queue_full`、`pending_limit`、`send_stall`、`read_timeout`、
@@ -124,9 +125,9 @@ dispatch 队列。组合根为 HTTP、RTSP、ONVIF 和 WebRTC 分别通过 `Pick
 需要隔离时，才打开 `enable_thread_affinity` 并指定 `first_io_cpu`，避免在双核
 设备上把 net、media、SDK callback 和 kernel softirq 过早绑死导致反向排队。
 
-TCP session 内部持有有界发送队列。无 owner 的小 slice 会内联复制，大 slice 会
-复制到网络 buffer；带 `NetBufferOwner` 的 slice 只持有引用，由 owner 的
-ref/unref 回调保证跨线程和异步发送期间 payload 存活。
+TCP session 内部持有有界发送队列。无 buffer 的小 slice 会内联复制，大 slice 会
+复制到网络 buffer；带 `MediaBufferRef` 的 slice 只持有引用，由 RAII 保证跨线程和
+异步发送期间 payload 存活。
 写侧按队列项内的 slice 组 `sendmsg()` 聚合发送；部分写成功后按实际写入字节推进
 slice offset 并释放已完成队列项。`net` 仍不解析媒体语义，也不跨队列项重排发送顺序。
 `Send()`/`SendSlices()`、`Close()`、`CloseAfterSend()` 可以从非 owner loop 线程调用；

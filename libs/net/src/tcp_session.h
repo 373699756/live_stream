@@ -37,19 +37,18 @@ private:
     static constexpr size_t kInlineSliceBytes = 64;
 
     // OutSlice 是写队列里的最小发送单元。data 只允许指向三类稳定内存：
-    // inline_data、heap_data，或由 owner ref 住的外部媒体 buffer。
+    // inline_data、heap_data，或由 buffer 持有的媒体 payload。
     struct OutSlice {
         OutSlice() = default;
         OutSlice(OutSlice &&other) noexcept;
         OutSlice &operator=(OutSlice &&other) noexcept;
         OutSlice(const OutSlice &) = delete;
         OutSlice &operator=(const OutSlice &) = delete;
-        ~OutSlice();
 
         const uint8_t *data = nullptr;
         size_t size = 0;
         size_t offset = 0;
-        NetBufferOwner owner;
+        MediaBufferRef buffer;
         std::array<uint8_t, kInlineSliceBytes> inline_data{};
         std::unique_ptr<uint8_t[]> heap_data;
     };

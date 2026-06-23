@@ -28,7 +28,7 @@ uint32_t GopCache::FirstFlvTagSize() const {
 
 bool GopCache::AppendFlvTag(
     const MediaFrame &frame, bool keyframe,
-    const FlvVideoTagView &flv_tag_view) {
+    const FlvVideoTagBuild &flv_tag_view) {
     if (keyframe) {
         // 新关键帧代表新的可解码 GOP 起点，旧 GOP 立即丢弃。
         Clear();
@@ -66,21 +66,21 @@ void GopCache::CopyTo(MediaFlvStart *flv_start) const {
 }
 
 bool GopCache::CopyFlvTagView(
-    const MediaFrame &frame, const FlvVideoTagView &source,
+    const MediaFrame &frame, const FlvVideoTagBuild &source,
     MediaFlvCachedVideoTag *target) const {
     if (target == nullptr || !IsMediaFramePayloadValid(frame) ||
-        source.slice_count == 0 ||
-        source.slice_count > kMaxMediaFlvVideoTagSlices) {
+        source.view.slice_count == 0 ||
+        source.view.slice_count > kMaxMediaFlvVideoTagSlices) {
         return false;
     }
 
     MediaFlvCachedVideoTag cached_tag;
     cached_tag.frame = frame;
-    cached_tag.slice_count = source.slice_count;
+    cached_tag.slice_count = source.view.slice_count;
     cached_tag.total_size = source.total_size;
-    cached_tag.timestamp_ms = source.timestamp_ms;
-    for (size_t i = 0; i < source.slice_count; ++i) {
-        const FlvVideoTagSlice &source_slice = source.slices[i];
+    cached_tag.timestamp_ms = source.view.timestamp_ms;
+    for (size_t i = 0; i < source.view.slice_count; ++i) {
+        const MediaFlvVideoTagSlice &source_slice = source.view.slices[i];
         MediaFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
         if (source_slice.data == nullptr || source_slice.size == 0) {
             return false;

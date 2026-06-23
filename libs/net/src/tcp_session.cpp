@@ -22,26 +22,13 @@ namespace {
 constexpr uint32_t kReadBufferSize = 4096;
 constexpr uint32_t kMaxTimeoutCheckIntervalMs = 1000;
 
-void RefNetBufferOwner(const NetBufferOwner &owner) {
-    if (owner.ptr != nullptr && owner.ref != nullptr) {
-        // owner 可能是 MediaBuffer。这里统一走协议无关的 ref 回调。
-        owner.ref(owner.ptr);
-    }
-}
-
-void UnrefNetBufferOwner(const NetBufferOwner &owner) {
-    if (owner.ptr != nullptr && owner.unref != nullptr) {
-        owner.unref(owner.ptr);
-    }
-}
-
 }  // namespace
 
 TcpSession::OutSlice::OutSlice(OutSlice &&other) noexcept
     : data(other.data),
       size(other.size),
       offset(other.offset),
-      owner(other.owner),
+      buffer(std::move(other.buffer)),
       inline_data(other.inline_data),
       heap_data(std::move(other.heap_data)) {
     if (data == other.inline_data.data()) {
@@ -50,7 +37,6 @@ TcpSession::OutSlice::OutSlice(OutSlice &&other) noexcept
     other.data = nullptr;
     other.size = 0;
     other.offset = 0;
-    other.owner = NetBufferOwner{};
 }
 
 TcpSession::OutSlice &TcpSession::OutSlice::operator=(
@@ -58,11 +44,10 @@ TcpSession::OutSlice &TcpSession::OutSlice::operator=(
     if (this == &other) {
         return *this;
     }
-    UnrefNetBufferOwner(owner);
     data = other.data;
     size = other.size;
     offset = other.offset;
-    owner = other.owner;
+    buffer = std::move(other.buffer);
     inline_data = other.inline_data;
     heap_data = std::move(other.heap_data);
     if (data == other.inline_data.data()) {
@@ -71,12 +56,7 @@ TcpSession::OutSlice &TcpSession::OutSlice::operator=(
     other.data = nullptr;
     other.size = 0;
     other.offset = 0;
-    other.owner = NetBufferOwner{};
     return *this;
-}
-
-TcpSession::OutSlice::~OutSlice() {
-    UnrefNetBufferOwner(owner);
 }
 
 TcpSession::TcpSession(NetEngineImpl *engine,
@@ -131,8 +111,8 @@ bool TcpSession::SendSlices(const NetBufferSlices &slices) {
     if (total_size == 0) {
         return true;
     }
-    // 发送队列只能保存稳定内存：媒体 payload 用 NetBufferOwner 延长生命周期，
-    // 其他小块/无 owner 数据在入队前复制，避免调用方栈内存跨线程悬空。
+    // 发送队列只能保存稳定内存：媒体 payload 用 MediaBufferRef 延长生命周期，
+    // 其他小块/无 buffer 数据在入队前复制，避免调用方栈内存跨线程悬空。
     OutBuffer buffer;
     if (!BuildOutBuffer(slices, &buffer)) {
         return false;
@@ -568,11 +548,10 @@ bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
         }
         OutSlice &out = buffer->slices[buffer->slice_count];
         out.size = input.size;
-        out.owner = input.owner;
-        if (out.owner.ptr != nullptr) {
-            // owner 由上游媒体 buffer 提供。这里加引用后，异步发送期间
-            // payload 不需要复制；OutSlice 析构时会 unref。
-            RefNetBufferOwner(out.owner);
+        out.buffer = input.buffer;
+        if (out.buffer.Valid()) {
+            // buffer 由上游媒体 payload 提供。队列保存 MediaBufferRef 后，
+            // 异步发送期间不需要复制；OutSlice 析构时自动释放引用。
             out.data = input.data;
         } else if (input.size <= out.inline_data.size()) {
             std::memcpy(out.inline_data.data(), input.data, input.size);

@@ -2,6 +2,7 @@
 #define LIVE_STREAM_NET_NET_H_
 
 #include "event.h"
+#include "media/media_buffer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,23 +24,12 @@ using UdpSocketId = uint64_t;
 
 constexpr size_t kMaxNetBufferSlices = 8;
 
-using NetBufferOwnerRefFn = void (*)(const void *owner);
-using NetBufferOwnerUnrefFn = void (*)(const void *owner);
-
-struct NetBufferOwner {
-    // 非空 owner 表示 slice data 的生命周期由外部对象控制。net 入队时调用 ref，
-    // OutSlice 销毁时调用 unref，从而避免复制大媒体 payload。
-    const void *ptr = nullptr;
-    NetBufferOwnerRefFn ref = nullptr;
-    NetBufferOwnerUnrefFn unref = nullptr;
-};
-
 struct NetBufferSlice {
-    // owner 为空时 data 会在进入 TCP out buffer 时复制；owner 非空时 data
-    // 可直接指向外部媒体内存。
+    // buffer 为空时 data 会在进入 TCP out buffer 时复制；buffer 非空时 data
+    // 可直接指向对应的媒体内存，由发送队列保存 MediaBufferRef 保活。
     const uint8_t *data = nullptr;
     size_t size = 0;
-    NetBufferOwner owner;
+    MediaBufferRef buffer;
 };
 
 struct NetBufferSlices {
@@ -47,18 +37,16 @@ struct NetBufferSlices {
     size_t count = 0;
 
     bool Add(const uint8_t *data, size_t size,
-             NetBufferOwner owner = NetBufferOwner{}) {
+             MediaBufferRef buffer = MediaBufferRef()) {
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || count >= kMaxNetBufferSlices ||
-            (owner.ptr != nullptr &&
-             (owner.ref == nullptr || owner.unref == nullptr))) {
+        if (data == nullptr || count >= kMaxNetBufferSlices) {
             return false;
         }
         slices[count].data = data;
         slices[count].size = size;
-        slices[count].owner = owner;
+        slices[count].buffer = std::move(buffer);
         ++count;
         return true;
     }

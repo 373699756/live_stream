@@ -1,29 +1,8 @@
 #include "rtsp_transport.h"
 
 #include "byte_writer.h"
-#include "media/media_buffer.h"
 
 namespace live_stream {
-namespace {
-
-void RefMediaBufferOwner(const void *owner) {
-    (void)MediaBufferAddRef(
-        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
-}
-
-void UnrefMediaBufferOwner(const void *owner) {
-    MediaBufferRelease(
-        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
-}
-
-NetBufferOwner MediaBufferNetOwner(MediaBuffer *buffer) {
-    if (buffer == nullptr) {
-        return NetBufferOwner{};
-    }
-    return NetBufferOwner{buffer, RefMediaBufferOwner, UnrefMediaBufferOwner};
-}
-
-}  // namespace
 
 bool RtspTransport::SendRtpPacket(
     INetEngine *net_engine, const RtspTransportTarget &target,
@@ -33,10 +12,9 @@ bool RtspTransport::SendRtpPacket(
         return false;
     }
 
-    // TCP interleaved 异步排队，media payload 必须带 MediaBuffer owner；
-    // UDP sendmsg 调用返回后不保留 slice，所以不需要 owner。
-    const NetBufferOwner payload_owner =
-        MediaBufferNetOwner(frame.payload.RawOwner());
+    // TCP interleaved 异步排队，media payload 必须带 MediaBufferRef；
+    // UDP sendmsg 调用返回后不保留 slice，所以不需要保活引用。
+    const MediaBufferRef payload_buffer = frame.payload;
     NetBufferSlices slices;
     bool ok = true;
     uint8_t interleaved_header[4] = {
@@ -50,8 +28,8 @@ bool RtspTransport::SendRtpPacket(
         for (size_t i = 0; ok && i < packet.slice_count; ++i) {
             const rtp::RtpPacketSlice &slice = packet.slices[i];
             ok = slices.Add(slice.data, slice.size,
-                            slice.media_payload ? payload_owner
-                                                : NetBufferOwner{});
+                            slice.media_payload ? payload_buffer
+                                                : MediaBufferRef());
         }
         return ok && net_engine->SendSlices(target.connection_id, slices);
     }

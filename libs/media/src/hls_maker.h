@@ -65,10 +65,10 @@ private:
         uint64_t sequence = 0;
         int64_t start_pts_us = 0;
         int64_t last_pts_us = 0;
-        MediaBufferRef body;
+        MediaBufferBuilder body;
     };
 
-    static void UnrefSegmentState(SegmentState *segment);
+    static void ResetSegmentState(SegmentState *segment);
     static uint32_t ClampSegmentCapacity(size_t capacity);
     static bool EnsureSegmentCapacity(SegmentState *segment,
                                       size_t extra_bytes);

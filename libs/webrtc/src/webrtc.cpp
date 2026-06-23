@@ -789,7 +789,7 @@ private:
                                                       &subscription_frame)) {
                 break;
             }
-            SendPeerEncodedFrame(peer_id, subscription_frame.frame);
+            SendPeerMediaFrame(peer_id, subscription_frame.frame);
         }
 
         const SubscriptionInfo subscription_info =
@@ -848,11 +848,11 @@ private:
             if (!has_frame) {
                 return true;
             }
-            SendPeerEncodedFrame(peer_id, frame);
+            SendPeerMediaFrame(peer_id, frame);
         }
     }
 
-    void SendPeerEncodedFrame(const std::string &peer_id,
+    void SendPeerMediaFrame(const std::string &peer_id,
                               const MediaFrame &frame) {
         WebrtcPeerInfo peer;
         std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
@@ -980,7 +980,7 @@ private:
             (void)media_streams_->UnsubscribeFrames(
                 closing_subscription->subscription_id, reason);
         }
-        ClearEncodedFrames(&closing_subscription->start_frames);
+        ClearMediaFrames(&closing_subscription->start_frames);
         closing_subscription->subscription_id = 0;
         closing_subscription->drain_timer_id = 0;
     }
@@ -1015,7 +1015,7 @@ private:
         }
     }
 
-    static void ClearEncodedFrames(std::vector<MediaFrame> *frames) {
+    static void ClearMediaFrames(std::vector<MediaFrame> *frames) {
         if (frames == nullptr) {
             return;
         }

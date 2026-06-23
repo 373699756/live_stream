@@ -531,14 +531,14 @@ MediaBufferRef CopyVencPayload(const VencStreamContext& context,
     // 这是从 HiSilicon VENC 内部 stream buffer 到项目内存的唯一深拷贝点。
     // 复制完成后 MediaFrame 持有 MediaBuffer；随后即可 ReleaseStream，把
     // MPP 的 pack buffer 还给驱动，不影响上层继续发送该帧。
-    MediaBufferRef buffer = MediaBufferRef::Allocate(payload_size);
-    if (buffer.RawOwner() == nullptr) {
+    MediaBufferBuilder buffer = MediaBufferBuilder::Allocate(payload_size);
+    if (!buffer.Valid()) {
         Error("hisi_vendor",
               "alloc VENC payload chn=%d seq=%u size=%u failed",
               context.chn, stream.u32Seq, payload_size);
         return MediaBufferRef();
     }
-    uint8_t* buffer_data = buffer.MutableData();
+    uint8_t* buffer_data = buffer.Data();
     if (buffer_data == nullptr) {
         return MediaBufferRef();
     }
@@ -576,14 +576,14 @@ MediaBufferRef CopyVencPayload(const VencStreamContext& context,
             offset += packet_data.second.size;
         }
     }
-    if (offset != payload_size || !buffer.SetSize(offset)) {
+    if (offset != payload_size || !buffer.Resize(offset)) {
         Error("hisi_vendor",
               "copy VENC stream chn=%d seq=%u size=%u expect=%u "
               "failed",
               context.chn, stream.u32Seq, offset, payload_size);
         return MediaBufferRef();
     }
-    return buffer;
+    return buffer.Finish();
 }
 
 MediaFrame BuildMediaFrame(const VencStreamContext& context,
@@ -643,7 +643,7 @@ void HandleVencStream(VencStreamContext* context,
     const FrameType frame_type = FrameTypeFromStream(stream, context->codec);
     MediaBufferRef buffer =
         CopyVencPayload(*context, stream, stream_buffer, payload.size);
-    if (buffer.RawOwner() == nullptr) {
+    if (!buffer.Valid()) {
         ReleaseVencStream(*context, &stream, packs);
         return;
     }

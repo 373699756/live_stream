@@ -81,7 +81,7 @@ using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
 // 长连接 HTTP 媒体输出边界，例如 HTTP-FLV、MJPEG 和 SSE。
-// 调用方只描述 MediaOutSlice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
+// 调用方只描述 MediaOutSlice；真正是否复制、何时释放由 HTTP/net 层统一处理。
 class HttpMediaWriter {
 public:
     virtual ~HttpMediaWriter() = default;

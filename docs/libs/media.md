@@ -8,7 +8,7 @@
 
 ## 核心职责
 
-- 定义 `Codec`、`MediaBuffer`、`MediaBufferRef`、`MediaFrame` 和
+- 定义 `Codec`、`MediaBufferRef`、`MediaBufferBuilder`、`MediaFrame` 和
   `MediaOutSlice` 等通用媒体类型。
 - 通过 `FrameSink::PushFrame()` 接收设备侧输出的编码帧。
 - 维护主/子码流的 GOP cache、HLS segment、FLV 起播缓存、MJPEG latest frame 和
@@ -24,7 +24,7 @@
 ## 状态与资源模型
 
 `MediaStreams` 拥有码流缓存和订阅队列。输入帧使用 RAII `MediaBufferRef`
-保活，协议订阅和 FLV GOP cache 只增加底层 `MediaBuffer` 引用，不复制整帧
+保活，协议订阅和 FLV GOP cache 只增加底层 buffer 引用，不复制整帧
 payload；HLS segment 是独立转封装后的 TS buffer。
 
 codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG 和
@@ -33,6 +33,12 @@ codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG
 `MediaFrame` 是公共编码帧值对象，拷贝只增加 `MediaBuffer` 引用计数。
 订阅方、FLV cache、MJPEG latest frame 和 HLS segment ref 都不再暴露手动
 `Unref/RefCopy/Move` cleanup API。
+
+`MediaBufferRef` 对外只读，发布后的 payload 只能通过 `Data()`、`Size()` 和
+`Slice()` 读取。需要填充或扩容 payload 的代码使用 `MediaBufferBuilder`，完成后
+调用 `Finish()` 得到只读 `MediaBufferRef`。手动 `AddRef/Release` 和裸 owner 不进入
+public API；HTTP/RTSP 发送队列需要跨线程保活媒体 payload 时，直接把
+`MediaBufferRef` 值对象随 `NetBufferSlice` 入队。
 
 `SubscriptionStart::track_ready` 表示订阅起播数据已具备协议输出条件，
 不要用设备运行态替代该判断。

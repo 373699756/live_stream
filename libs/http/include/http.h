@@ -36,14 +36,14 @@ struct HttpRequest {
 struct HttpResponseBodySlice {
     HttpResponseBodySlice() = default;
     HttpResponseBodySlice(const uint8_t *slice_data, size_t slice_size,
-                          MediaBufferRef slice_owner)
+                          MediaBufferRef slice_buffer)
         : data(slice_data),
           size(slice_size),
-          owner(std::move(slice_owner)) {}
+          buffer(std::move(slice_buffer)) {}
 
     const uint8_t *data = nullptr;
     size_t size = 0;
-    MediaBufferRef owner;
+    MediaBufferRef buffer;
 };
 
 struct HttpResponse {

@@ -26,22 +26,6 @@ bool IsStreamSupported(StreamId stream_id) {
     return stream_id == StreamId::kMain || stream_id == StreamId::kSub;
 }
 
-MediaFlvVideoTagView ToMediaFlvVideoTagView(
-    const source_state::FlvVideoTagView &tag) {
-    MediaFlvVideoTagView output_tag;
-    if (tag.slice_count > kMaxMediaFlvVideoTagSlices) {
-        return output_tag;
-    }
-    output_tag.slice_count = tag.slice_count;
-    output_tag.timestamp_ms = tag.timestamp_ms;
-    for (size_t i = 0; i < tag.slice_count; ++i) {
-        output_tag.slices[i].data = tag.slices[i].data;
-        output_tag.slices[i].size = tag.slices[i].size;
-        output_tag.slices[i].media_payload = tag.slices[i].media_payload;
-    }
-    return output_tag;
-}
-
 SubscriptionClose CloseReasonForReset(
     MediaStreamResetReason reason) {
     switch (reason) {
@@ -459,7 +443,7 @@ private:
         const MediaFrame &frame = payload.frame;
         std::vector<source_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
-        source_state::FlvVideoTagView flv_tag_view;
+        source_state::FlvVideoTagBuild flv_tag_view;
         bool has_flv_tag_view = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -543,7 +527,7 @@ private:
     void WriteFlvClients(
         const std::vector<source_state::PendingFlvClientWrite> &clients,
         const std::string &sequence_header_tag,
-        const source_state::FlvVideoTagView &flv_tag_view,
+        const source_state::FlvVideoTagBuild &flv_tag_view,
         bool has_flv_tag_view,
         const MediaFrame &frame) {
         std::vector<MediaFlvClientId> detach_ids;
@@ -562,9 +546,7 @@ private:
                 ReleaseFlvClientWrite(client.client_id);
                 continue;
             }
-            const MediaFlvVideoTagView flv_video_tag =
-                ToMediaFlvVideoTagView(flv_tag_view);
-            if (!client.sink->OnFlvVideoTag(flv_video_tag, frame)) {
+            if (!client.sink->OnFlvVideoTag(flv_tag_view.view, frame)) {
                 detach_ids.push_back(client.client_id);
             }
             ReleaseFlvClientWrite(client.client_id);

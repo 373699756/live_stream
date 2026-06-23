@@ -14,7 +14,7 @@ namespace {
 
 void PushFlvGopCache(StreamContext *stream, const MediaFrame &frame,
                      bool keyframe,
-                     const FlvVideoTagView &flv_tag_view) {
+                     const FlvVideoTagBuild &flv_tag_view) {
     if (stream == nullptr || stream->sequence_header_tag.empty()) {
         return;
     }
@@ -332,7 +332,7 @@ bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame) {
         return false;
     }
     // MJPEG latest frame 只保存 MediaBuffer 引用；HTTP-MJPEG 发送时通过
-    // MediaOutSlice.owner 继续把同一块 payload 持有到网络发送完成。
+    // MediaOutSlice.buffer 继续把同一块 payload 持有到网络发送完成。
     stream->latest_mjpeg_frame = frame;
     stream->has_latest_mjpeg_frame = true;
     return true;

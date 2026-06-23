@@ -45,7 +45,7 @@ struct PackagedFrameResult {
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
-    FlvVideoTagView flv_tag_view;
+    FlvVideoTagBuild flv_tag_view;
     bool has_flv_tag_view = false;
 };
 

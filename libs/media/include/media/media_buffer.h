@@ -10,22 +10,13 @@ namespace live_stream {
 using MediaBufferFreeCallback = void (*)(uint8_t* data, uint32_t capacity,
                                          void* user);
 
-// MediaBuffer owns one encoded media payload allocation. Public code should
-// keep it alive through MediaBufferRef instead of manually ref/unrefing it.
-struct MediaBuffer {
-    uint8_t* data = nullptr;
-    uint32_t capacity = 0;
-    uint32_t size = 0;
-    uint32_t ref_count = 0;
-    MediaBufferFreeCallback free_callback = nullptr;
-    void* user = nullptr;
-};
-
-MediaBuffer* MediaBufferAddRef(MediaBuffer* buffer);
-void MediaBufferRelease(MediaBuffer* buffer);
+struct MediaBuffer;
+class MediaBufferRef;
 
 class MediaBufferRef {
 public:
+    class Builder;
+
     MediaBufferRef() = default;
     MediaBufferRef(const MediaBufferRef& other);
     MediaBufferRef& operator=(const MediaBufferRef& other);
@@ -33,39 +24,64 @@ public:
     MediaBufferRef& operator=(MediaBufferRef&& other) noexcept;
     ~MediaBufferRef();
 
-    static MediaBufferRef Allocate(uint32_t capacity);
-    static MediaBufferRef AdoptExternal(uint8_t* data, uint32_t capacity,
-                                        uint32_t size,
-                                        MediaBufferFreeCallback free_callback,
-                                        void* user);
-
     MediaBufferRef Slice(uint32_t offset, uint32_t size) const;
 
     const uint8_t* Data() const;
-    uint8_t* MutableData();
     uint32_t Size() const;
     uint32_t Capacity() const;
-    bool SetSize(uint32_t size);
     bool Valid() const;
     void Reset();
-
-    // RawOwner is only for low-level bridge code that must pass the lifetime
-    // owner to net's protocol-agnostic send queue.
-    MediaBuffer* RawOwner() const { return buffer_; }
 
 private:
     explicit MediaBufferRef(MediaBuffer* buffer);
     MediaBufferRef(MediaBuffer* buffer, uint32_t offset, uint32_t size);
+    static MediaBufferRef WrapExternalMemory(
+        uint8_t* data, uint32_t capacity, uint32_t size,
+        MediaBufferFreeCallback free_callback, void* user);
+    bool SetSize(uint32_t size);
 
     MediaBuffer* buffer_ = nullptr;
     uint32_t offset_ = 0;
     uint32_t size_ = 0;
 };
 
+class MediaBufferRef::Builder {
+public:
+    Builder() = default;
+    Builder(const Builder& other) = delete;
+    Builder& operator=(const Builder& other) = delete;
+    Builder(Builder&& other) noexcept = default;
+    Builder& operator=(Builder&& other) noexcept = default;
+    ~Builder() = default;
+
+    static Builder Allocate(uint32_t capacity);
+    // Wraps caller-owned writable memory while it is being filled. On failure,
+    // ownership remains with the caller.
+    static Builder WrapExternalMemory(
+        uint8_t* data, uint32_t capacity, uint32_t size,
+        MediaBufferFreeCallback free_callback, void* user);
+
+    uint8_t* Data();
+    const uint8_t* Data() const;
+    uint32_t Size() const;
+    uint32_t Capacity() const;
+    bool Resize(uint32_t size);
+    bool Valid() const;
+    MediaBufferRef Finish();
+    void Reset();
+
+private:
+    explicit Builder(MediaBufferRef buffer);
+
+    MediaBufferRef buffer_;
+};
+
+using MediaBufferBuilder = MediaBufferRef::Builder;
+
 struct MediaOutSlice {
     const uint8_t* data = nullptr;
     size_t size = 0;
-    MediaBufferRef owner;
+    MediaBufferRef buffer;
 };
 
 struct MediaBufferPoolStats {
@@ -81,7 +97,7 @@ class IMediaBufferPool {
 public:
     virtual ~IMediaBufferPool() = default;
 
-    virtual MediaBufferRef Acquire() = 0;
+    virtual MediaBufferBuilder Acquire() = 0;
     virtual MediaBufferPoolStats Stats() const = 0;
 };
 

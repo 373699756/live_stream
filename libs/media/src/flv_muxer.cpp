@@ -151,15 +151,15 @@ std::string BuildH265FlvSequenceHeaderTag(const std::string &vps,
                                     timestamp_ms, record);
 }
 
-bool BuildH264FlvVideoTagView(bool keyframe,
-                              int32_t composition_time_ms,
-                              uint32_t timestamp_ms,
-                              const media_codec::H264NalUnitList &units,
-                              FlvVideoTagView *tag) {
+bool BuildH264FlvVideoTag(bool keyframe,
+                          int32_t composition_time_ms,
+                          uint32_t timestamp_ms,
+                          const media_codec::H264NalUnitList &units,
+                          FlvVideoTagBuild *tag) {
     if (tag == nullptr) {
         return false;
     }
-    *tag = FlvVideoTagView{};
+    *tag = FlvVideoTagBuild{};
     const size_t payload_size = H264FlvVideoPayloadSize(units);
     if (payload_size == 0 || payload_size > kFlvMaxBodySize - 5U) {
         return false;
@@ -203,19 +203,19 @@ bool BuildH264FlvVideoTagView(bool keyframe,
     if (!tag->AddHeader(tag->previous_tag_size, 4)) {
         return false;
     }
-    tag->timestamp_ms = timestamp_ms;
+    tag->view.timestamp_ms = timestamp_ms;
     return true;
 }
 
-bool BuildH265FlvVideoTagView(bool keyframe,
-                              int32_t composition_time_ms,
-                              uint32_t timestamp_ms,
-                              const media_codec::H265NalUnitList &units,
-                              FlvVideoTagView *tag) {
+bool BuildH265FlvVideoTag(bool keyframe,
+                          int32_t composition_time_ms,
+                          uint32_t timestamp_ms,
+                          const media_codec::H265NalUnitList &units,
+                          FlvVideoTagBuild *tag) {
     if (tag == nullptr) {
         return false;
     }
-    *tag = FlvVideoTagView{};
+    *tag = FlvVideoTagBuild{};
     const size_t payload_size = H265FlvVideoPayloadSize(units);
     if (payload_size == 0 || payload_size > kFlvMaxBodySize - 8U) {
         return false;
@@ -264,7 +264,7 @@ bool BuildH265FlvVideoTagView(bool keyframe,
     if (!tag->AddHeader(tag->previous_tag_size, 4)) {
         return false;
     }
-    tag->timestamp_ms = timestamp_ms;
+    tag->view.timestamp_ms = timestamp_ms;
     return true;
 }
 
@@ -304,7 +304,7 @@ std::string FlvMuxer::BuildSequenceHeader(Codec codec,
 bool FlvMuxer::BuildVideoTagView(const MediaFrame &frame,
                                  const FramePayload &payload,
                                  bool keyframe,
-                                 FlvVideoTagView *tag_view) {
+                                 FlvVideoTagBuild *tag_view) {
     if (tag_view == nullptr || frame.codec != payload.frame.codec) {
         return false;
     }
@@ -312,12 +312,12 @@ bool FlvMuxer::BuildVideoTagView(const MediaFrame &frame,
     const uint32_t timestamp_ms = static_cast<uint32_t>(frame.dts_us / 1000);
     // FLV 时间戳以 DTS 为基准，CompositionTime 单独表达 PTS 偏移。
     if (frame.codec == Codec::kH264) {
-        return BuildH264FlvVideoTagView(
+        return BuildH264FlvVideoTag(
             keyframe, static_cast<int32_t>(composition_time_ms), timestamp_ms,
             payload.h264_units, tag_view);
     }
     if (frame.codec == Codec::kH265) {
-        return BuildH265FlvVideoTagView(
+        return BuildH265FlvVideoTag(
             keyframe, static_cast<int32_t>(composition_time_ms), timestamp_ms,
             payload.h265_units, tag_view);
     }

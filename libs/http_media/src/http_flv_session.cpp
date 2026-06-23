@@ -101,7 +101,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
     }
 
     // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 MediaBuffer，
-    // 由 MediaOutSlice.owner 保证异步发送期间 buffer 存活。
+    // 由 MediaOutSlice.buffer 保证异步发送期间 payload 存活。
     size_t index = 0;
     while (index < tag.slice_count) {
         MediaOutSlice slices[kMaxNetBufferSlices];
@@ -111,7 +111,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
             if (source.data == nullptr || source.size == 0) {
                 return false;
             }
-            if (source.media_payload && frame.payload.RawOwner() == nullptr) {
+            if (source.media_payload && !frame.payload.Valid()) {
                 return false;
             }
             slices[slice_count].data =
@@ -119,7 +119,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
                                                       : source.data;
             slices[slice_count].size = source.size;
             if (source.media_payload) {
-                slices[slice_count].owner = frame.payload;
+                slices[slice_count].buffer = frame.payload;
             }
             ++slice_count;
             ++index;
@@ -163,12 +163,12 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
             }
             slices[slice_count].size = source.size;
             if (source.media_payload) {
-                if (tag.frame.payload.RawOwner() == nullptr) {
+                if (!tag.frame.payload.Valid()) {
                     return false;
                 }
                 // cached GOP 的媒体 payload 仍在 tag.frame.payload 中；owner 让
                 // net send queue 在异步写 socket 期间持有该 MediaBuffer。
-                slices[slice_count].owner = tag.frame.payload;
+                slices[slice_count].buffer = tag.frame.payload;
             }
             ++slice_count;
             ++index;

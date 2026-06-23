@@ -221,14 +221,14 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
     auto pool = CreateMediaBufferPool(EstimateJpegBlockSize(config),
                                       kDefaultJpegPoolBlocks);
     if (!pool) return JpegFrame{};
-    auto buffer = pool->Acquire();
+    MediaBufferBuilder buffer = pool->Acquire();
     if (buffer.Capacity() < sizeof(kMinimalJpeg)) {
         return JpegFrame{};
     }
-    std::memcpy(buffer.MutableData(), kMinimalJpeg, sizeof(kMinimalJpeg));
-    buffer.SetSize(static_cast<uint32_t>(sizeof(kMinimalJpeg)));
+    std::memcpy(buffer.Data(), kMinimalJpeg, sizeof(kMinimalJpeg));
+    (void)buffer.Resize(static_cast<uint32_t>(sizeof(kMinimalJpeg)));
     JpegFrame frame;
-    frame.buffer = buffer;
+    frame.buffer = buffer.Finish();
     frame.width = config.size.width;
     frame.height = config.size.height;
     return frame;
@@ -358,16 +358,16 @@ YuvFrame StubHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
     const uint32_t y_size = size.width * size.height;
     const uint32_t uv_size = y_size / 2;
-    MediaBufferRef buffer = MediaBufferRef::Allocate(y_size + uv_size);
-    uint8_t* buffer_data = buffer.MutableData();
+    MediaBufferBuilder buffer = MediaBufferBuilder::Allocate(y_size + uv_size);
+    uint8_t* buffer_data = buffer.Data();
     if (buffer_data == nullptr) {
         return YuvFrame{};
     }
     std::memset(buffer_data, 0x10, y_size);
     std::memset(buffer_data + y_size, 0x80, uv_size);
-    buffer.SetSize(y_size + uv_size);
+    (void)buffer.Resize(y_size + uv_size);
     YuvFrame frame;
-    frame.buffer = buffer;
+    frame.buffer = buffer.Finish();
     frame.width = size.width;
     frame.height = size.height;
     frame.stride_y = size.width;

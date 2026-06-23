@@ -95,7 +95,7 @@ public:
         slices[1].data = payload;
         slices[1].size = payload_size;
         // JPEG payload 不复制进 HTTP 层；owner 保证异步发送期间 payload buffer 存活。
-        slices[1].owner = frame.payload;
+        slices[1].buffer = frame.payload;
         slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
         slices[2].size = 2;
         return writer_->EnqueueStreamingSlices(connection_id_, slices, 3);

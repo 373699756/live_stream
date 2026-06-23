@@ -507,7 +507,7 @@ HlsMaker::~HlsMaker() { Reset(); }
 
 void HlsMaker::Reset() {
     ClearSegments();
-    UnrefSegmentState(&current_segment_);
+    ResetSegmentState(&current_segment_);
     ts_muxer_state_ = TsMuxerState{};
     next_segment_capacity_ = 0;
     next_segment_sequence_ = 1;
@@ -621,14 +621,14 @@ bool HlsMaker::AppendFrame(const MediaFrame &frame,
     }
     if (!AppendFrameToSegment(payload, vps, sps, pps,
                               prepend_parameter_sets, frame)) {
-        UnrefSegmentState(&current_segment_);
+        ResetSegmentState(&current_segment_);
         return false;
     }
     current_segment_.last_pts_us = frame.pts_us;
     return true;
 }
 
-void HlsMaker::UnrefSegmentState(SegmentState *segment) {
+void HlsMaker::ResetSegmentState(SegmentState *segment) {
     if (segment == nullptr) {
         return;
     }
@@ -647,7 +647,7 @@ uint32_t HlsMaker::ClampSegmentCapacity(size_t capacity) {
 
 bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
                                      size_t extra_bytes) {
-    if (segment == nullptr || segment->body.RawOwner() == nullptr ||
+    if (segment == nullptr || !segment->body.Valid() ||
         segment->body.Size() > segment->body.Capacity()) {
         return false;
     }
@@ -665,17 +665,17 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
             new_capacity = kMaxHlsSegmentBytes;
         }
     }
-    MediaBufferRef new_body = MediaBufferRef::Allocate(new_capacity);
-    if (new_body.RawOwner() == nullptr) {
+    MediaBufferBuilder new_body = MediaBufferBuilder::Allocate(new_capacity);
+    if (!new_body.Valid()) {
         return false;
     }
     const uint8_t* old_data = segment->body.Data();
-    uint8_t* new_data = new_body.MutableData();
+    uint8_t* new_data = new_body.Data();
     if (old_data == nullptr || new_data == nullptr) {
         return false;
     }
     std::copy(old_data, old_data + segment->body.Size(), new_data);
-    if (!new_body.SetSize(segment->body.Size())) {
+    if (!new_body.Resize(segment->body.Size())) {
         return false;
     }
     segment->body = std::move(new_body);
@@ -684,10 +684,10 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
 
 TsSegmentBuffer HlsMaker::SegmentBuffer(SegmentState *segment) {
     TsSegmentBuffer buffer;
-    if (segment == nullptr || segment->body.RawOwner() == nullptr) {
+    if (segment == nullptr || !segment->body.Valid()) {
         return buffer;
     }
-    buffer.data = segment->body.MutableData();
+    buffer.data = segment->body.Data();
     buffer.capacity = segment->body.Capacity();
     buffer.size = segment->body.Size();
     return buffer;
@@ -696,9 +696,9 @@ TsSegmentBuffer HlsMaker::SegmentBuffer(SegmentState *segment) {
 bool HlsMaker::CommitSegmentBuffer(
     SegmentState *segment,
     const TsSegmentBuffer &buffer) {
-    return segment != nullptr && segment->body.RawOwner() != nullptr &&
+    return segment != nullptr && segment->body.Valid() &&
            buffer.size <= segment->body.Capacity() &&
-           segment->body.SetSize(static_cast<uint32_t>(buffer.size));
+           segment->body.Resize(static_cast<uint32_t>(buffer.size));
 }
 
 void HlsMaker::ClearSegments() {
@@ -718,7 +718,7 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
                                     const std::string &pps,
                                     bool prepend_parameter_sets,
                                     const MediaFrame &frame) {
-    if (current_segment_.body.RawOwner() == nullptr) {
+    if (!current_segment_.body.Valid()) {
         return false;
     }
     TsFrameSlices frame_slices;
@@ -749,7 +749,7 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         return true;
     }
     ts_muxer_state_ = original_state;
-    (void)current_segment_.body.SetSize(static_cast<uint32_t>(original_size));
+    (void)current_segment_.body.Resize(static_cast<uint32_t>(original_size));
     return false;
 }
 
@@ -761,7 +761,7 @@ int64_t HlsMaker::CurrentSegmentDurationUs() const {
 }
 
 void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
-    UnrefSegmentState(&current_segment_);
+    ResetSegmentState(&current_segment_);
     current_segment_ = SegmentState{};
     current_segment_.started = true;
     current_segment_.sequence = next_segment_sequence_++;
@@ -771,20 +771,20 @@ void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
         ClampSegmentCapacity(next_segment_capacity_);
     // segment body 是 HLS 自己的 MediaBuffer，生命周期随 playlist retain 管理；
     // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 MediaFrame。
-    current_segment_.body = MediaBufferRef::Allocate(segment_capacity);
-    if (current_segment_.body.RawOwner() == nullptr) {
-        UnrefSegmentState(&current_segment_);
+    current_segment_.body = MediaBufferBuilder::Allocate(segment_capacity);
+    if (!current_segment_.body.Valid()) {
+        ResetSegmentState(&current_segment_);
         return;
     }
     TsSegmentBuffer segment_body = SegmentBuffer(&current_segment_);
     if (!AppendTsSegmentHeader(codec, &ts_muxer_state_, &segment_body) ||
         !CommitSegmentBuffer(&current_segment_, segment_body)) {
-        UnrefSegmentState(&current_segment_);
+        ResetSegmentState(&current_segment_);
     }
 }
 
 void HlsMaker::RememberSegmentCapacity(const SegmentState &segment) {
-    if (segment.body.RawOwner() == nullptr) {
+    if (!segment.body.Valid()) {
         return;
     }
     size_t next_capacity = segment.body.Size();
@@ -808,7 +808,7 @@ void HlsMaker::PopOldestSegment() {
 
 void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
     if (!current_segment_.started ||
-        current_segment_.body.RawOwner() == nullptr ||
+        !current_segment_.body.Valid() ||
         current_segment_.body.Size() == 0) {
         return;
     }
@@ -816,9 +816,8 @@ void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
     segment.found = true;
     segment.sequence = current_segment_.sequence;
     segment.duration_us = CurrentSegmentDurationUs();
-    segment.body = current_segment_.body;
     RememberSegmentCapacity(current_segment_);
-    current_segment_.body.Reset();
+    segment.body = current_segment_.body.Finish();
     segments_.push_back(segment);
     while (segments_.size() > segment_cache_depth) {
         PopOldestSegment();
@@ -827,13 +826,13 @@ void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
 
 bool HlsMaker::FinalizeCurrentSegment(uint32_t segment_cache_depth) {
     if (!current_segment_.started ||
-        current_segment_.body.RawOwner() == nullptr ||
+        !current_segment_.body.Valid() ||
         current_segment_.body.Size() == 0) {
         return false;
     }
 
     PushFinalizedSegment(segment_cache_depth);
-    UnrefSegmentState(&current_segment_);
+    ResetSegmentState(&current_segment_);
     return true;
 }
 

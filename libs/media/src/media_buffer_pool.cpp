@@ -39,13 +39,13 @@ struct PoolBlockRef {
     uint32_t index = 0;
 };
 
-void PoolStateRef(PoolState* state) {
+void AddPoolStateRef(PoolState* state) {
     if (state != nullptr) {
         (void)__sync_add_and_fetch(&state->ref_count, 1);
     }
 }
 
-void PoolStateUnref(PoolState* state) {
+void ReleasePoolState(PoolState* state) {
     if (state == nullptr) {
         return;
     }
@@ -72,20 +72,20 @@ void FreePoolBlock(uint8_t* data, uint32_t capacity, void* user) {
         }
     }
     std::free(ref);
-    PoolStateUnref(state);
+    ReleasePoolState(state);
 }
 
 class MediaBufferPool final : public IMediaBufferPool {
 public:
     explicit MediaBufferPool(PoolState* state) : state_(state) {}
 
-    ~MediaBufferPool() override { PoolStateUnref(state_); }
+    ~MediaBufferPool() override { ReleasePoolState(state_); }
 
-    MediaBufferRef Acquire() override {
+    MediaBufferBuilder Acquire() override {
         std::lock_guard<std::mutex> lock(state_->mutex);
         if (state_->free_count == 0) {
             ++state_->no_memory_count;
-            return MediaBufferRef();
+            return MediaBufferBuilder();
         }
 
         --state_->free_count;
@@ -100,23 +100,23 @@ public:
         PoolBlockRef* ref =
             static_cast<PoolBlockRef*>(std::malloc(sizeof(PoolBlockRef)));
         if (ref == nullptr) {
-            UnrefIndexLocked(index);
+            ReleaseBlockIndexLocked(index);
             ++state_->no_memory_count;
-            return MediaBufferRef();
+            return MediaBufferBuilder();
         }
         ref->state = state_;
         ref->index = index;
-        PoolStateRef(state_);
+        AddPoolStateRef(state_);
         uint8_t* block = state_->data +
                          static_cast<std::size_t>(index) * state_->block_size;
-        MediaBufferRef buffer = MediaBufferRef::AdoptExternal(
+        MediaBufferBuilder buffer = MediaBufferBuilder::WrapExternalMemory(
             block, state_->block_size, 0, FreePoolBlock, ref);
-        if (!buffer.RawOwner()) {
+        if (!buffer.Valid()) {
             std::free(ref);
-            UnrefIndexLocked(index);
+            ReleaseBlockIndexLocked(index);
             ++state_->no_memory_count;
-            PoolStateUnref(state_);
-            return MediaBufferRef();
+            ReleasePoolState(state_);
+            return MediaBufferBuilder();
         }
         return buffer;
     }
@@ -134,7 +134,7 @@ public:
     }
 
 private:
-    void UnrefIndexLocked(uint32_t index) {
+    void ReleaseBlockIndexLocked(uint32_t index) {
         state_->in_use[index] = 0;
         state_->free_indices[state_->free_count] = index;
         ++state_->free_count;
@@ -168,7 +168,7 @@ std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_size,
         static_cast<uint32_t*>(std::malloc(sizeof(uint32_t) * block_count));
     if (state->data == nullptr || state->in_use == nullptr ||
         state->free_indices == nullptr) {
-        PoolStateUnref(state);
+        ReleasePoolState(state);
         return nullptr;
     }
     for (uint32_t i = 0; i < block_count; ++i) {
@@ -178,7 +178,7 @@ std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_size,
     std::unique_ptr<IMediaBufferPool> pool(
         new (std::nothrow) MediaBufferPool(state));
     if (!pool) {
-        PoolStateUnref(state);
+        ReleasePoolState(state);
         return nullptr;
     }
     return pool;

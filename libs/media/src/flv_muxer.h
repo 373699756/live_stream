@@ -2,6 +2,7 @@
 #define LIVE_STREAM_MEDIA_SRC_FLV_MUXER_H_
 
 #include "frame_payload.h"
+#include "media/media_streams.h"
 #include "media_codec.h"
 
 #include <cstddef>
@@ -15,19 +16,9 @@ namespace media_internal {
 constexpr size_t kMaxFlvVideoTagSlices =
     media_codec::kMaxNalUnitsPerFrame * 2 + 2;
 
-struct FlvVideoTagSlice {
-    // tag view 以 slice 方式描述 FLV tag：小 header 存在本对象内部，
-    // 大块视频 payload 直接引用 MediaFrame，发送端按 slice 顺序写出即可。
-    const uint8_t *data = nullptr;
-    size_t size = 0;
-    bool media_payload = false;
-};
-
-struct FlvVideoTagView {
-    FlvVideoTagSlice slices[kMaxFlvVideoTagSlices];
-    size_t slice_count = 0;
+struct FlvVideoTagBuild {
+    MediaFlvVideoTagView view;
     size_t total_size = 0;
-    uint32_t timestamp_ms = 0;
     uint8_t header[24] = {};
     uint8_t nal_lengths[kMaxFlvVideoTagSlices][4] = {};
     uint8_t previous_tag_size[4] = {};
@@ -45,15 +36,16 @@ private:
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || slice_count >= kMaxFlvVideoTagSlices ||
+        if (data == nullptr || view.slice_count >= kMaxFlvVideoTagSlices ||
             size > std::numeric_limits<size_t>::max() - total_size) {
             return false;
         }
-        slices[slice_count].data = data;
-        slices[slice_count].size = size;
-        slices[slice_count].media_payload = media_payload;
+        MediaFlvVideoTagSlice &slice = view.slices[view.slice_count];
+        slice.data = data;
+        slice.size = size;
+        slice.media_payload = media_payload;
         total_size += size;
-        ++slice_count;
+        ++view.slice_count;
         return true;
     }
 };
@@ -69,7 +61,7 @@ public:
     static bool BuildVideoTagView(const MediaFrame &frame,
                                   const FramePayload &payload,
                                   bool keyframe,
-                                  FlvVideoTagView *tag_view);
+                                  FlvVideoTagBuild *tag);
 };
 
 }  // namespace media_internal

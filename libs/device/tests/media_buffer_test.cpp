@@ -7,6 +7,7 @@
 using live_stream::Codec;
 using live_stream::CreateMediaBufferPool;
 using live_stream::MediaFrame;
+using live_stream::MediaBufferBuilder;
 using live_stream::MediaBufferRef;
 using live_stream::FrameType;
 using live_stream::IMediaBufferPool;
@@ -14,23 +15,24 @@ using live_stream::MediaBufferPoolStats;
 using live_stream::StreamId;
 
 int main() {
-    MediaBufferRef buffer = MediaBufferRef::Allocate(16);
-    if (buffer.RawOwner() == nullptr || buffer.Capacity() != 16U ||
-        buffer.Size() != 0U) {
+    MediaBufferBuilder builder = MediaBufferBuilder::Allocate(16);
+    if (!builder.Valid() || builder.Capacity() != 16U ||
+        builder.Size() != 0U) {
         return 1;
     }
 
     const char* payload = "frame";
-    std::memcpy(buffer.MutableData(), payload, std::strlen(payload));
-    if (!buffer.SetSize(static_cast<uint32_t>(std::strlen(payload)))) {
+    std::memcpy(builder.Data(), payload, std::strlen(payload));
+    if (!builder.Resize(static_cast<uint32_t>(std::strlen(payload)))) {
         return 2;
     }
+    if (builder.Resize(builder.Capacity() + 1U) || builder.Size() != 5U) {
+        return 4;
+    }
+    MediaBufferRef buffer = builder.Finish();
     if (buffer.Size() != 5U ||
         std::memcmp(buffer.Data(), payload, std::strlen(payload)) != 0) {
         return 3;
-    }
-    if (buffer.SetSize(buffer.Capacity() + 1U) || buffer.Size() != 5U) {
-        return 4;
     }
 
     MediaFrame frame;
@@ -53,11 +55,10 @@ int main() {
     if (!pool) {
         return 7;
     }
-    MediaBufferRef pooled_a = pool->Acquire();
-    MediaBufferRef pooled_b = pool->Acquire();
-    MediaBufferRef pooled_c = pool->Acquire();
-    if (pooled_a.RawOwner() == nullptr || pooled_b.RawOwner() == nullptr ||
-        pooled_c.RawOwner() != nullptr) {
+    MediaBufferBuilder pooled_a = pool->Acquire();
+    MediaBufferBuilder pooled_b = pool->Acquire();
+    MediaBufferBuilder pooled_c = pool->Acquire();
+    if (!pooled_a.Valid() || !pooled_b.Valid() || pooled_c.Valid()) {
         return 8;
     }
     MediaBufferPoolStats stats = pool->Stats();
@@ -79,7 +80,7 @@ int main() {
 
     pooled_a = pool->Acquire();
     pooled_b = pool->Acquire();
-    if (pooled_a.RawOwner() == nullptr || pooled_b.RawOwner() == nullptr) {
+    if (!pooled_a.Valid() || !pooled_b.Valid()) {
         return 12;
     }
     const uintptr_t first =
@@ -92,10 +93,10 @@ int main() {
     }
 
     std::unique_ptr<IMediaBufferPool> temp_pool = CreateMediaBufferPool(8, 1);
-    MediaBufferRef outstanding = temp_pool->Acquire();
+    MediaBufferBuilder outstanding = temp_pool->Acquire();
     temp_pool.reset();
 
-    if (MediaBufferRef::Allocate(0).RawOwner() != nullptr ||
+    if (MediaBufferBuilder::Allocate(0).Valid() ||
         CreateMediaBufferPool(0, 2)) {
         return 14;
     }

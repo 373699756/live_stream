@@ -22,14 +22,14 @@ public:
     size_t size() const { return size_; }
     uint32_t FirstFlvTagSize() const;
     bool AppendFlvTag(const MediaFrame &frame, bool keyframe,
-                      const FlvVideoTagView &flv_tag_view);
+                      const FlvVideoTagBuild &flv_tag_view);
     void CopyTo(MediaFlvStart *flv_start) const;
 
 private:
     // FLV GOP cache 从最近关键帧开始保存完整 GOP。HTTP-FLV 新客户端连接时
     // 先拿 sequence header，再从这里取得可解码起点。
     bool CopyFlvTagView(const MediaFrame &frame,
-                        const FlvVideoTagView &source,
+                        const FlvVideoTagBuild &source,
                         MediaFlvCachedVideoTag *target) const;
 
     std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames_;
