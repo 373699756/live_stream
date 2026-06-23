@@ -763,10 +763,16 @@ private:
         if (event_ == nullptr) {
             return;
         }
+        size_t active_sessions = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            active_sessions = session_table_.Size();
+        }
         event::Event rtsp_event;
         rtsp_event.type = type;
         rtsp_event.source = kServiceName;
         rtsp_event.target = target;
+        rtsp_event.value = static_cast<int32_t>(active_sessions);
         (void)event_->Publish(rtsp_event);
     }
 

@@ -44,8 +44,7 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 | `libs/media` | 通用媒体帧、GOP/起播缓存、订阅、HLS/FLV/MJPEG 缓存、统计 | 设备配置、socket、HTTP request 解析 |
 | `libs/media_codec` | H.264/H.265 AnnexB、AVCC/HVCC、SPS/PPS/VPS 工具 | RTP session、协议连接生命周期 |
 | `libs/rtp` | RTSP/WebRTC 共用 RTP packet view、时间戳、payload 切片 | RTSP session、WebRTC transport |
-| `libs/net` | EventLoop、Timer、TcpServer、TcpConnection、TcpClient、SocketUtil、send queue | HTTP、鉴权、媒体业务、配置逻辑 |
-| `libs/net_stat` | TCP/协议背压观测、慢客户端判断、恢复窗口、建议动作 | 直接关闭 socket、直接改媒体缓存 |
+| `libs/net` | EventLoop、Timer、TcpServer、TcpConnection、TcpClient、SocketUtil、send queue、TCP 背压观测 | HTTP、鉴权、媒体业务、配置逻辑 |
 | `libs/http` | 控制 API、请求解析、鉴权、短响应、统一错误 envelope | HLS/FLV/MJPEG 长连接输出 |
 | `libs/http_media` | HLS、HTTP-FLV、MJPEG、WebRTC signaling/WHEP | 控制 API、设备 SDK 配置、socket 队列管理 |
 | `libs/rtsp` | RTSP session、SDP、SETUP/PLAY、RTP over TCP/UDP、RTCP | HTTP API、设备配置、媒体帧缓存所有权 |
@@ -177,7 +176,7 @@ HiSilicon MPP -> device -> MediaStreams -> media cache/subscription
 8. 错误语义收敛为项目自己的 `NetErrorCode`，至少覆盖 eof、timeout、reset、
    refused、dns failed、local close 和 system error。
 
-`net_stat` 只做观测和建议，不直接拥有连接关闭权。
+`net_stat.h` 属于 `libs/net`，只做观测和建议，不直接拥有连接关闭权。
 
 ### 协议栈
 
@@ -454,7 +453,6 @@ review 时优先看这些问题：
 - `make -C libs/media`
 - `make -C libs/device`
 - `make -C libs/net`
-- `make -C libs/net_stat`
 - `make -C libs/http`
 - `make -C libs/http_media`
 - `make -C libs/rtsp`

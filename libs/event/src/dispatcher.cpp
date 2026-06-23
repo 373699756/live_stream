@@ -237,6 +237,7 @@ bool IsKnownEventType(EventType type) {
         case EventType::kSnapshotCreated:
         case EventType::kTimeChanged:
         case EventType::kNetworkChanged:
+        case EventType::kNetPressureChanged:
         case EventType::kAlarmOn:
         case EventType::kAlarmOff:
         case EventType::kSystemStatusChanged:

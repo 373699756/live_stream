@@ -60,6 +60,7 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 | `kSnapshotCreated` | `device` | stream | 输出摘要 | 字节数或 0 |
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |
 | `kNetworkChanged` | `system.network` | interface 或 port | 变更摘要 | 保留为 0 |
+| `kNetPressureChanged` | `net_stat` | `connections` | 压力等级摘要 | tracked target 数 |
 | `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
 | `kSystemStatusChanged` | `system` | status key | 状态摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |

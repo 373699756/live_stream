@@ -51,7 +51,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Protocol And Stream Modules
 
 - `net.md`
-- `net_stat.md`
 - `http.md`
 - `http_media.md`
 - `rtsp.md`
@@ -65,6 +64,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - `alarm.md`
 - `config.md`
 - `logger.md`
+- `net_stat.md`
 - `stream_hub_legacy.md`
 
 ## Unified Template

@@ -69,6 +69,7 @@ public:
           media_streams_(dependencies.media_streams),
           net_engine_(dependencies.net_engine),
           net_loop_(dependencies.net_loop),
+          event_(dependencies.event),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         {
@@ -483,8 +484,10 @@ private:
                                       WebrtcPeerState state,
                                       const std::string &last_error) {
         webrtc_internal::EnginePeerStateUpdate update;
+        WebrtcPeerInfo peer_before;
         {
             std::lock_guard<std::mutex> guard(mutex_);
+            peer_before = peer_table_.GetPeer(peer_id);
             update =
                 peer_table_.ApplyEngineState(peer_id, state, last_error);
         }
@@ -504,6 +507,7 @@ private:
         if (update.need_keyframe) {
             RequestKeyframe(update.stream_id, KeyframeRequestSource::kRecovery);
         }
+        PublishPeerEvent(peer_before, state, last_error);
     }
 
     void HandlePeerKeyframeRequest(const std::string &peer_id) {
@@ -568,10 +572,14 @@ private:
             (void)engine->ClosePeer(peer_id);
         }
 
-        std::lock_guard<std::mutex> guard(mutex_);
         const WebrtcPeerState final_state =
             failed ? WebrtcPeerState::kFailed : WebrtcPeerState::kClosed;
-        (void)peer_table_.ApplyEngineState(peer_id, final_state, last_error);
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            (void)peer_table_.ApplyEngineState(peer_id, final_state,
+                                               last_error);
+        }
+        PublishPeerEvent(peer, final_state, last_error);
         return true;
     }
 
@@ -983,6 +991,36 @@ private:
         closing_subscription->drain_timer_id = 0;
     }
 
+    void PublishPeerEvent(const WebrtcPeerInfo &peer,
+                          WebrtcPeerState next_state,
+                          const std::string &message) {
+        if (event_ == nullptr || peer.peer_id.empty()) {
+            return;
+        }
+        event::Event webrtc_event;
+        webrtc_event.source = Webrtc::Name();
+        webrtc_event.target = peer.peer_id;
+        webrtc_event.message = message;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            webrtc_event.value =
+                static_cast<int32_t>(peer_table_.ActivePeerCount());
+        }
+        if (next_state == WebrtcPeerState::kConnected &&
+            peer.state != WebrtcPeerState::kConnected) {
+            webrtc_event.type = event::EventType::kWebRtcClientConnected;
+            static_cast<void>(event_->Publish(webrtc_event));
+            return;
+        }
+        if ((next_state == WebrtcPeerState::kClosing ||
+             next_state == WebrtcPeerState::kClosed ||
+             next_state == WebrtcPeerState::kFailed) &&
+            peer.state == WebrtcPeerState::kConnected) {
+            webrtc_event.type = event::EventType::kWebRtcClientDisconnected;
+            static_cast<void>(event_->Publish(webrtc_event));
+        }
+    }
+
     static void ClearEncodedFrames(std::vector<EncodedFrame> *frames) {
         if (frames == nullptr) {
             return;
@@ -997,6 +1035,7 @@ private:
     MediaStreams *media_streams_ = nullptr;
     INetEngine *net_engine_ = nullptr;
     event::Loop *net_loop_ = nullptr;
+    event::Dispatcher *event_ = nullptr;
     ServiceState state_ = ServiceState::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;

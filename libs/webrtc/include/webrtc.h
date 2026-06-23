@@ -46,6 +46,7 @@ struct WebrtcDependencies {
     MediaStreams *media_streams = nullptr;
     INetEngine *net_engine = nullptr;
     event::Loop *net_loop = nullptr;
+    event::Dispatcher *event = nullptr;
 };
 
 struct WebrtcCreatePeerRequest {

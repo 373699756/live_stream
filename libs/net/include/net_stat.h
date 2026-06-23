@@ -1,7 +1,5 @@
-#ifndef LIVE_STREAM_NET_STAT_NET_STAT_H_
-#define LIVE_STREAM_NET_STAT_NET_STAT_H_
-
-#include "media/media_streams.h"
+#ifndef LIVE_STREAM_NET_NET_STAT_H_
+#define LIVE_STREAM_NET_NET_STAT_H_
 
 #include <cstdint>
 #include <memory>
@@ -10,9 +8,10 @@
 
 namespace live_stream {
 
-class IRtsp;
-class IWebrtc;
 class INetEngine;
+namespace event {
+class Dispatcher;
+}
 
 enum class NetPressureLevel {
     kNormal = 0,
@@ -24,14 +23,10 @@ enum class NetPressureSignal {
     kNone = 0,
     kTcpPendingBytes,
     kSendQueue,
-    kMediaSlowSubscription,
-    kWebrtcDroppedFrames,
 };
 
 enum class NetRecommendationType {
     kNone = 0,
-    kRequestKeyframe,
-    kPreferSubStream,
     kCloseSlowClient,
 };
 
@@ -45,19 +40,13 @@ struct NetStatOptions {
     uint32_t recovery_sample_threshold = 5;
     uint32_t send_queue_watch = 32;
     uint32_t send_queue_constrained = 96;
-    uint32_t slow_media_subscriptions_watch = 1;
-    uint32_t slow_media_subscriptions_constrained = 2;
-    uint32_t webrtc_dropped_frames_watch = 1;
-    uint32_t webrtc_dropped_frames_constrained = 8;
     uint32_t recommendation_cooldown_ms = 5000;
     uint32_t recommendation_history_limit = 64;
 };
 
 struct NetStatDependencies {
     INetEngine *net_engine = nullptr;
-    IRtsp *rtsp = nullptr;
-    IWebrtc *webrtc = nullptr;
-    MediaStreams *media_streams = nullptr;
+    event::Dispatcher *event = nullptr;
 };
 
 struct NetRecommendation {
@@ -65,7 +54,6 @@ struct NetRecommendation {
     NetPressureLevel level = NetPressureLevel::kNormal;
     std::string protocol;
     std::string target;
-    StreamId stream_id = StreamId::kMain;
     std::string reason;
     NetPressureSignal pressure_signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
@@ -86,11 +74,8 @@ struct NetStatSnapshot {
     uint32_t recovering_targets = 0;
     uint32_t constrained_connections = 0;
     uint32_t constrained_targets = 0;
-    uint32_t pressure_streams = 0;
-    uint32_t recovering_streams = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
-    uint32_t slow_media_subscriptions = 0;
     uint64_t samples = 0;
 };
 
@@ -98,7 +83,6 @@ struct NetPressureTarget {
     NetPressureLevel level = NetPressureLevel::kNormal;
     std::string protocol;
     std::string target;
-    StreamId stream_id = StreamId::kMain;
     NetPressureSignal pressure_signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
     uint32_t pressure_value_ewma = 0;
@@ -111,26 +95,6 @@ struct NetPressureTarget {
     int64_t normal_since_ms = 0;
     int64_t last_seen_ms = 0;
     int64_t last_recommendation_ms = 0;
-};
-
-struct NetStreamPressure {
-    StreamId stream_id = StreamId::kMain;
-    NetPressureLevel level = NetPressureLevel::kNormal;
-    bool need_keyframe = false;
-    bool prefer_sub_stream = false;
-    bool close_slow_clients = false;
-    bool can_restore_main_stream = false;
-    std::string reason;
-    uint32_t tracked_targets = 0;
-    uint32_t watch_targets = 0;
-    uint32_t constrained_targets = 0;
-    uint32_t peak_pending_bytes_ewma = 0;
-    uint32_t peak_pressure_value_ewma = 0;
-    uint32_t slow_media_subscriptions = 0;
-    uint32_t webrtc_dropped_frames_delta = 0;
-    int64_t updated_at_ms = 0;
-    int64_t pressure_started_at_ms = 0;
-    int64_t normal_since_ms = 0;
 };
 
 class INetStat {
@@ -146,8 +110,6 @@ public:
     GetRecommendationHistory() const = 0;
     virtual std::vector<NetPressureTarget>
     GetPressureTargets() const = 0;
-    virtual std::vector<NetStreamPressure>
-    GetStreamPressures() const = 0;
 };
 
 std::unique_ptr<INetStat> CreateNetStat(
@@ -161,4 +123,4 @@ public:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_STAT_NET_STAT_H_
+#endif  // LIVE_STREAM_NET_NET_STAT_H_

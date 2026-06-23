@@ -179,6 +179,7 @@ WebrtcDependencies BuildWebrtcDependencies(
     dependencies.net_engine = refs.net_engine;
     dependencies.net_loop = refs.webrtc_loop;
     dependencies.media_streams = refs.media.media_streams;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     return dependencies;
 }
 
@@ -262,9 +263,7 @@ NetStatDependencies BuildNetStatDependencies(
     const ProtocolStartupRefs &refs) {
     NetStatDependencies dependencies;
     dependencies.net_engine = refs.net_engine;
-    dependencies.rtsp = refs.rtsp;
-    dependencies.webrtc = refs.webrtc;
-    dependencies.media_streams = refs.media.media_streams;
+    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
     return dependencies;
 }
 

@@ -34,6 +34,8 @@ flowchart LR
 - 提供 TCP server/session、UDP socket 和 fd/eventfd 封装。
 - 统一 TCP send queue、pending bytes、发送 buffer 上限、读写 timeout、
   send stall 检测和 close reason。
+- 提供 `net_stat.h` 网络压力观测接口，基于 `INetEngine::ListConnectionInfo()`
+  采样 TCP pending bytes / send queue，并订阅 RTSP/WebRTC 轻量连接事件汇总活跃数。
 - 通过指定 `event::Loop` 提供一次性/周期 IO timer；`CancelTimer()` 或
   `INetEngine::Stop()` 后 timer 不再回调。
 - 提供 UDP `SendTo()` 和 selected peer 模型，供 RTP、ICE/STUN、ONVIF
@@ -94,6 +96,21 @@ info，但不能新增一套不可比较的 socket close reason。
 `GetConnectionInfo(connection_id)` 返回单连接诊断；连接关闭后 `net` 会保留最近
 128 条关闭诊断，`ListConnectionInfo()` 同时返回当前活跃连接和最近关闭
 连接，供 `/api/media/sessions` 聚合。字段语义仍归 `net`。
+
+`net_stat.h` 随 `net` 模块构建，不再是独立库。`NetStatDependencies` 只接收
+`INetEngine*` 和可选 `event::Dispatcher*`；它不直接依赖 `rtsp`、`webrtc` 或
+`media`。压力目标和关闭慢客户端建议只基于 `NetConnectionInfo` 中的 pending bytes 和 send queue；
+RTSP/WebRTC 活跃数来自 `kRtspClientConnected`、`kRtspClientDisconnected`、
+`kWebRtcClientConnected`、`kWebRtcClientDisconnected` 事件的轻量 payload。
+整体压力等级变化时，`net_stat` 发布 `kNetPressureChanged`，payload 使用：
+
+| 字段 | 语义 |
+| --- | --- |
+| `source` | `net_stat` |
+| `target` | `connections` |
+| `message` | `net_pressure_normal/watch/constrained` |
+| `value` | 当前 tracked target 数 |
+| `level` | `NetPressureLevel` 数值 |
 
 ## 状态与资源模型
 
