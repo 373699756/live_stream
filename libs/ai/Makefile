@@ -7,7 +7,6 @@ EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
 DEVICE_LIB := $(BUILD_DIR)/lib/libdevice.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libmedia.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
-CONFIG_LIB := $(BUILD_DIR)/lib/libconfig.a
 ALARM_LIB := $(BUILD_DIR)/lib/libalarm.a
 
 ENABLE_HISI_MPP ?= 0
@@ -24,15 +23,14 @@ endif
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/alarm/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
-EXTRA_TEST_DEPS := $(EVENT_LIB) $(CONFIG_LIB) $(ALARM_LIB) $(DEVICE_LIB) \
+EXTRA_TEST_DEPS := $(EVENT_LIB) $(ALARM_LIB) $(DEVICE_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) \
 	$(INFRA_LIB)
-EXTRA_TEST_LIBS := $(EVENT_LIB) $(CONFIG_LIB) $(ALARM_LIB) $(DEVICE_LIB) \
+EXTRA_TEST_LIBS := $(EVENT_LIB) $(ALARM_LIB) $(DEVICE_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) \
 	$(INFRA_LIB) -pthread
 
@@ -51,13 +49,10 @@ $(EVENT_LIB):
 $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../media_codec all
 
-$(CONFIG_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../config all
-
-$(ALARM_LIB): $(INFRA_LIB) $(CONFIG_LIB)
+$(ALARM_LIB): $(INFRA_LIB) $(EVENT_LIB)
 	$(MAKE) -C ../alarm all
 
-$(DEVICE_LIB): $(INFRA_LIB) $(MEDIA_CODEC_LIB) $(CONFIG_LIB) $(MEDIA_LIB)
+$(DEVICE_LIB): $(INFRA_LIB) $(EVENT_LIB) $(MEDIA_CODEC_LIB) $(MEDIA_LIB)
 	$(MAKE) -C ../device all
 
 $(MEDIA_LIB): $(INFRA_LIB) $(MEDIA_CODEC_LIB)

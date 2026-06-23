@@ -34,7 +34,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Core And Infrastructure
 
 - `infra.md`
-- `config.md`
 - `auth.md`
 - `logger.md`
 - `event.md`
@@ -65,6 +64,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 ### Historical Migration Notes
 
+- `config.md`
 - `stream_hub_legacy.md`
 
 ## Unified Template

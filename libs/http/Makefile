@@ -19,7 +19,6 @@ CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/alarm/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/config/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include

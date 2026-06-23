@@ -1,14 +1,18 @@
 # config
 
-## 命名迁移
+## 迁移状态
 
-本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+`config` 独立库已并入 `event`。本文件只保留历史迁移说明和配置契约索引；
+长期设计正文维护在 `event.md` 和拥有具体配置字段的模块文档中。
 
-## 模块定位
+public header 名称保持 `config.h`，实际路径为 `libs/event/include/config.h`。
+public API 名称保持 `IConfig`、`ConfigOptions`、`ConfigScope`、`CreateConfig()`。
 
-`config` 是全局配置中心，负责加载、保存、默认值、配置 scope 的
-verify/apply 回调，以及认证用户文件适配。业务配置语义由拥有模块定义，
-`config` 负责配置生命周期和原子应用边界。
+## 历史模块定位
+
+独立 `config` 模块曾负责加载、保存、默认值、配置 scope 的 verify/apply 回调。
+这些职责现在由 `event` 库内的配置中心承担。业务配置语义仍由拥有模块定义，
+配置中心只负责配置生命周期和原子应用边界。
 
 ## 总体框架图
 
@@ -31,7 +35,7 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `libs/config/include/config.h`。配置字段正文归对应
+public API 在 `libs/event/include/config.h`。配置字段正文归对应
 模块文档，例如 video/image、overlay 和 snapshot 归 `device`，AI 归 `ai`，
 network 归 `system.network`。
 

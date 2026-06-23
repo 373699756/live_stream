@@ -6,8 +6,8 @@
 
 ## 模块定位
 
-`event` 是进程内事件、任务和 timer 基础库。它承载轻量状态变化、控制元信息、
-普通异步任务和低频 timer，不承载媒体帧、二进制 payload、凭据或大 JSON。
+`event` 是进程内控制平面基础库。它承载轻量状态变化、控制元信息、普通异步任务、
+低频 timer 和全局配置中心，不承载媒体帧、二进制 payload、凭据或大 JSON。
 
 ## 总体框架图
 
@@ -19,6 +19,8 @@ flowchart LR
   Service[Service] --> Loop[Loop]
   Loop --> Timers[timers]
   Executor[Executor] --> Tasks[task workers]
+  ConfigFiles[configs/default_config.json + business_config.json] --> Config[IConfig]
+  Modules[ConfigScope callbacks] --> Config
 ```
 
 ## 核心职责
@@ -29,12 +31,16 @@ flowchart LR
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
 - 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
   绑定任务/timer 生命周期。
+- 提供 `IConfig` 配置中心，负责加载、保存、默认值、scope 原子替换和
+  `ConfigScope` verify/apply 调用顺序。
 - 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`、
   `timestamp_ms`、`level`。
 
 ## 接口归属
 
-public API 在 `event.h`。事件 payload 归 `event` 文档维护：
+public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任务执行入口是
+`executor.h`，loop/timer 入口是 `loop.h`，配置中心入口保留为 `config.h`。
+事件 payload 归 `event` 文档维护：
 
 | EventType | source | target | message | value |
 | --- | --- | --- | --- | ---: |
@@ -56,11 +62,17 @@ public API 在 `event.h`。事件 payload 归 `event` 文档维护：
 payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTTP body、大 JSON 和指针不能
 通过 event payload 传递；需要详细数据时，handler 应通过拥有模块的查询接口读取。
 
+`config.h` 的 public API 名称保持 `IConfig`、`ConfigOptions`、`ConfigScope`、
+`CreateConfig()`。配置字段正文归对应模块文档，例如 video/image、overlay 和 snapshot
+归 `device`，AI 归 `ai`，network 归 `system.network`。`event` 只保证 JSON 加载、
+默认值、scope 原子替换和 verify/apply 调用顺序。
+
 ## 非目标
 
 - 不作为跨模块 RPC、任务队列或可靠消息总线。
 - 不保证进程退出后的事件持久化。
 - 不承载高频媒体帧或大对象生命周期。
+- 不解析设备 SDK 配置语义，不拥有 HTTP/Web DTO 映射。
 
 ## 状态与资源模型
 
@@ -72,3 +84,7 @@ handler 必须轻量。需要耗时业务时，handler 应投递到自己的任�
 队列满时返回 `EventStatus::kQueueFull`，调用方必须按业务语义丢弃、重试或降级。
 
 `EventCounts` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。
+
+运行配置来自 `configs/default_config.json` 和 `configs/business_config.json`。
+`IConfig::Set` 成功必须代表 verify、apply 和保存都成功；保存失败会调用
+`apply(now, prev)` 回滚运行态，并恢复内存中的旧值。

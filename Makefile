@@ -40,7 +40,6 @@ CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
 CXXFLAGS += -Iapp
 CXXFLAGS += -Ilibs/infra/include
 CXXFLAGS += -Ilibs/logger/include
-CXXFLAGS += -Ilibs/config/include
 CXXFLAGS += -Ilibs/auth/include
 CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
@@ -68,7 +67,6 @@ MODULES := \
 	infra \
 	logger \
 	net \
-	config \
 	event \
 	auth \
 	system \
