@@ -1,47 +1,52 @@
 # Scripts README
 
-本文档说明工程脚本的常用入口。当前最重要的是质量扫描脚本
-`quality_scan.py`，用于构建、契约、静态分析、前端检查、热路径候选和质量基线门禁。
+本文档只说明仓库脚本入口和生成物边界。脚本按职责保留独立入口，不合成
+`tool.sh` 这类总控脚本。
 
-## Quality Scan
+## Packaging
 
-先进入工程根目录：
+`make debug` 调用：
 
 ```sh
-cd /home/cp/Public/hisi/live_stream
+scripts/package_debug.sh debug
 ```
 
-### 日常开发
+该脚本只生成可直接运行的调试目录，内容包括 `bin/`、`configs/`、`models/`、
+`web/` 和 `log/`。
 
-只看当前变更相关的扫描项：
+`make release` 调用：
+
+```sh
+scripts/package_release.sh release 1.2.3 all
+```
+
+该脚本负责正式升级包：拷贝 release 输入、剥离符号、生成 `bin.squashfs`、
+`web.squashfs`、`config.jffs2`、写入 `Install` manifest、签名并输出
+`upgrade-<profile>.zip`。支持的 profile 是 `all`、`web-only`、`bin-web` 和
+`config-only`。
+
+release 打包测试入口：
+
+```sh
+scripts/tests/package_release_test.sh
+```
+
+`package_debug.sh` 和 `package_release.sh` 不合并成一个脚本：debug 是运行目录
+staging，release 是升级镜像和签名流程，职责不同。
+
+## Quality
+
+日常开发只看当前变更：
 
 ```sh
 python3 scripts/quality_scan.py quick --scope changed
 ```
 
-合入前使用历史基线，只阻断新增问题：
+合入前用历史基线，只阻断新增问题：
 
 ```sh
 python3 scripts/quality_scan.py quick --scope changed --baseline scripts/quality_baseline.json
 ```
-
-### 格式化规则
-
-项目统一使用 4 个空格缩进，不使用 tab：
-
-- C/C++ 由根目录 `.clang-format` 控制，要求 `IndentWidth: 4`、`TabWidth: 4`、`UseTab: Never`。
-- Web 由 `www/.prettierrc.json` 控制，要求 `tabWidth: 4`、`useTabs: false`。
-
-Web 源码格式化使用：
-
-```sh
-cd www
-npm run format
-```
-
-质量扫描会生成 `format-config.log`，如果上述配置被改掉，扫描会直接失败。
-
-### 全工程扫描
 
 大节点或夜间跑全工程 quick 扫描：
 
@@ -56,53 +61,67 @@ include-what-you-use：
 python3 scripts/quality_scan.py full --scope all --baseline scripts/quality_baseline.json
 ```
 
-### 基线生成与刷新
-
-从某次 findings 生成或刷新基线：
+从某次 findings 刷新基线：
 
 ```sh
 python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality/quality_findings.json --output scripts/quality_baseline.json
 ```
 
-刷新前必须确认 `--from-findings` 指向期望的扫描结果。全量基线应来自
-`--scope all` 的扫描结果，不要误用 changed 扫描结果覆盖全量基线。不要为了绕过
-门禁刷新基线；只有确认问题属于历史债或已单独记录时才更新。
+刷新前必须确认 `--from-findings` 指向期望扫描结果。全量基线应来自
+`--scope all` 的扫描结果，不要用 changed 扫描结果覆盖全量基线。
 
-## Reports
+质量扫描相关文件：
 
-每次扫描都会生成独立报告目录：
+- `scripts/quality_scan.py`：质量扫描编排入口。
+- `scripts/quality_semgrep.yml`：semgrep 规则。
+- `scripts/quality_baseline.json`：历史问题基线。
+- `scripts/check_http_web_contract.py`：Web API 与后端 HTTP route 契约检查。
+- `scripts/check_cpp_style_contract.py`：C++ 缩进和风格配置契约检查。
 
-```text
-scripts/reports/quality/<时间戳>/
+两个 contract 脚本被 `make host-test` 和 `quality_scan.py` 直接调用，不并入
+`quality_scan.py`。
+
+## Board Probe
+
+板端热路径采集入口：
+
+```sh
+scripts/board_hot_path_probe.sh --base-url http://127.0.0.1:8080 --stream main --duration 120 --interval 2
 ```
 
-重点文件：
+它用于在板端运行 HLS/FLV/MJPEG/WebRTC 预览负载时采集 CPU、RSS、媒体会话、
+pending bytes、丢帧和接口响应。常见输出：
 
 ```text
-scripts/reports/quality/quality_report.md           # 最终需要修复问题报告，每次扫描覆盖
-scripts/reports/quality/<时间戳>/findings.json       # 本次机器可读 findings
-scripts/reports/quality/quality_findings.json       # 最新 findings，每次扫描覆盖
-scripts/reports/quality/<时间戳>/findings.sarif      # 本次 SARIF
-scripts/reports/quality/quality_findings.sarif      # 最新 SARIF，每次扫描覆盖
-scripts/reports/quality/<时间戳>/baseline-diff.json  # 使用 --baseline 时生成
+metrics.csv
+raw/*.json
+clients.log
+run.env
 ```
 
-原始工具日志也在同一目录：
+该脚本依赖目标板运行态和可选客户端命令，不属于 host 质量扫描，也不并入
+`quality_scan.py`。
 
-```text
-make.log
-clang-format.log
-cppcheck.log
-lizard.log
-flawfinder.log
-semgrep.log
-www-build.log
-www-typecheck.log
-```
+## Rootfs Templates
 
-日常只看 `quality_report.md`，只有需要追证据时才看各工具日志。
+`scripts/rootfs/etc/init.d/S20mount_app` 和
+`scripts/rootfs/etc/init.d/S80live_stream` 是 rootfs/init 模板，不是临时脚本。
+它们用于板端挂载 `/opt/app`、`/www`、`/config`、`/data` 并启动
+`live_stream`。
+
+## Generated Outputs
+
+以下内容是生成物，不应提交：
+
+- `scripts/reports/quality/`：质量扫描报告和原始工具日志。
+- `scripts/__pycache__/`、`*.pyc`：Python 字节码缓存。
+
+`scripts/reports/quality/quality_report.md` 是日常查看入口；需要追证据时再看同目录
+原始工具日志。
 
 ## Exit Code
+
+质量扫描退出码：
 
 ```text
 0 = 没有阻断项

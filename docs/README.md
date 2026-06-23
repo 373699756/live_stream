@@ -22,7 +22,7 @@
 - `libs/stream_hub_legacy.md`：历史迁移说明，不对应当前实际 `libs/` 模块。
 - `web/web-console-design.md`：IPC/NVR 管理台设计与 API 消费说明。
 - `optimization/memory.md`：热路径内存、拷贝、客户端 fanout 和质量扫描专项。
-- `optimization/board-hot-path-probe.md`：板端 HLS/FLV/MJPEG/WebRTC 多客户端热路径采集入口。
+- `../scripts/README.md`：质量扫描、打包、板端热路径采集和 rootfs 模板脚本入口。
 
 ## 阅读规则
 
