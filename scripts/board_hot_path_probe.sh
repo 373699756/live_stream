@@ -82,54 +82,67 @@ ParseArgs() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --base-url)
+                [[ $# -ge 2 ]] || Die "--base-url requires a value"
                 BASE_URL="$2"
                 shift 2
                 ;;
             --stream)
+                [[ $# -ge 2 ]] || Die "--stream requires a value"
                 STREAM="$2"
                 shift 2
                 ;;
             --duration)
+                [[ $# -ge 2 ]] || Die "--duration requires a value"
                 DURATION_SEC="$2"
                 shift 2
                 ;;
             --interval)
+                [[ $# -ge 2 ]] || Die "--interval requires a value"
                 INTERVAL_SEC="$2"
                 shift 2
                 ;;
             --hls-clients)
+                [[ $# -ge 2 ]] || Die "--hls-clients requires a value"
                 HLS_CLIENTS="$2"
                 shift 2
                 ;;
             --flv-clients)
+                [[ $# -ge 2 ]] || Die "--flv-clients requires a value"
                 FLV_CLIENTS="$2"
                 shift 2
                 ;;
             --mjpeg-clients)
+                [[ $# -ge 2 ]] || Die "--mjpeg-clients requires a value"
                 MJPEG_CLIENTS="$2"
                 shift 2
                 ;;
             --webrtc-clients)
+                [[ $# -ge 2 ]] || Die "--webrtc-clients requires a value"
                 WEBRTC_CLIENTS="$2"
                 shift 2
                 ;;
             --user)
+                [[ $# -ge 2 ]] || Die "--user requires a value"
                 USER_NAME="$2"
                 shift 2
                 ;;
             --password)
+                [[ $# -ge 2 ]] || Die "--password requires a value"
                 PASSWORD="$2"
                 shift 2
                 ;;
             --token)
+                [[ $# -ge 2 ]] || Die "--token requires a value"
                 TOKEN="$2"
                 shift 2
                 ;;
             --pid)
+                [[ $# -ge 2 ]] || Die "--pid requires a value"
                 PID="$2"
                 shift 2
                 ;;
             --output-dir)
+                [[ $# -ge 2 ]] || Die "--output-dir requires a value"
                 OUTPUT_DIR="$2"
                 shift 2
                 ;;
@@ -436,6 +449,14 @@ StopClients() {
             kill "${pid}" 2>/dev/null || true
         fi
     done
+    for pid in "${CLIENT_PIDS[@]:-}"; do
+        wait "${pid}" 2>/dev/null || true
+    done
+}
+
+Abort() {
+    StopClients
+    exit 1
 }
 
 WriteRunEnv() {
@@ -562,7 +583,8 @@ Main() {
     WriteRunEnv
 
     CLIENT_PIDS=()
-    trap StopClients EXIT INT TERM
+    trap StopClients EXIT
+    trap Abort INT TERM
 
     local i
     for ((i = 1; i <= HLS_CLIENTS; ++i)); do

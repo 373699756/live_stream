@@ -47,6 +47,11 @@ cleanup_lock() {
   rmdir "${lock_dir}" 2>/dev/null || true
 }
 
+abort_with_lock_cleanup() {
+  cleanup_lock
+  exit 1
+}
+
 debug_dir=$(resolve_output_dir "${debug_dir}")
 mkdir -p "${debug_dir}"
 debug_dir=$(CDPATH= cd -- "${debug_dir}" && pwd -P)
@@ -64,7 +69,7 @@ while ! mkdir "${lock_dir}" 2>/dev/null; do
   sleep 1
 done
 trap cleanup_lock EXIT
-trap 'cleanup_lock; exit 1' HUP INT TERM
+trap abort_with_lock_cleanup HUP INT TERM
 
 copy_debug_inputs
 
