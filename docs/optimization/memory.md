@@ -3,7 +3,7 @@
 ## 模块定位
 
 本专项只记录内存和拷贝优化方向。具体实现仍归拥有模块：
-`device`、`media`、`media_codec`、`rtp`、`net`、`http` 和 `webrtc`。
+`device`、`media`、`media_codec`、`net`、`http` 和 `webrtc`。
 
 ## 总体框架图
 
@@ -137,7 +137,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
   frame、FrameSubscription live queue 和 `EncodedFrame` 引用释放。
 - `media`：下游 client registry 和 frame subscription 数量上限。
 - `media`：HLS/FLV 封装输出减少临时大 buffer。
-- `rtp`：RTSP/WebRTC RTP packet view 避免复制 media payload。
+- `media_codec`：RTSP/WebRTC RTP packet view 避免复制 media payload。
 - `net`：慢客户端断连、TCP pending bytes、send queue 和 UDP endpoint 生命周期。
 - `http`：stream executor 队列和 HTTP 业务 session 释放。
 - `webrtc`：peer fanout 和 frame dispatch 内存峰值。

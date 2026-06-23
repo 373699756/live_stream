@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_RTP_RTP_H_
-#define LIVE_STREAM_RTP_RTP_H_
+#ifndef LIVE_STREAM_MEDIA_CODEC_RTP_H_
+#define LIVE_STREAM_MEDIA_CODEC_RTP_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -156,4 +156,4 @@ private:
 }  // namespace rtp
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_RTP_RTP_H_
+#endif  // LIVE_STREAM_MEDIA_CODEC_RTP_H_

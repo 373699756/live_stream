@@ -57,7 +57,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - `webrtc.md`
 - `onvif.md`
 - `media_codec.md`
-- `rtp.md`
 
 ### Historical Migration Notes
 
@@ -65,6 +64,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - `config.md`
 - `logger.md`
 - `net_stat.md`
+- `rtp.md`
 - `stream_hub_legacy.md`
 
 ## Unified Template

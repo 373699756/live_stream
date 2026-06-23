@@ -44,7 +44,6 @@ CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
 CXXFLAGS += -Ilibs/media/include
 CXXFLAGS += -Ilibs/media_codec/include
-CXXFLAGS += -Ilibs/rtp/include
 CXXFLAGS += -Ilibs/net/include
 CXXFLAGS += -Ilibs/ai/include
 CXXFLAGS += -Ilibs/device/include
@@ -70,7 +69,6 @@ MODULES := \
 	hisi_vendor \
 	media \
 	device \
-	rtp \
 	rtsp \
 	webrtc \
 	onvif \

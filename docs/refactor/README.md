@@ -42,8 +42,7 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 | `libs/device` | 设备媒体链路、图像、区域、抓图、硬件配置业务对象 | 协议输出、HTTP streaming、reader fanout |
 | `libs/hisi_vendor` | HiSilicon SDK 适配、MPP/IVE/VGS/NNIE 低层封装 | 业务状态、HTTP API、媒体订阅策略 |
 | `libs/media` | 通用媒体帧、GOP/起播缓存、订阅、HLS/FLV/MJPEG 缓存、统计 | 设备配置、socket、HTTP request 解析 |
-| `libs/media_codec` | H.264/H.265 AnnexB、AVCC/HVCC、SPS/PPS/VPS 工具 | RTP session、协议连接生命周期 |
-| `libs/rtp` | RTSP/WebRTC 共用 RTP packet view、时间戳、payload 切片 | RTSP session、WebRTC transport |
+| `libs/media_codec` | H.264/H.265 AnnexB、AVCC/HVCC、SPS/PPS/VPS 工具、RTSP/WebRTC 共用 RTP packet view、时间戳、payload 切片 | RTP session、协议连接生命周期、WebRTC transport |
 | `libs/net` | EventLoop、Timer、TcpServer、TcpConnection、TcpClient、SocketUtil、send queue、TCP 背压观测 | HTTP、鉴权、媒体业务、配置逻辑 |
 | `libs/http` | 控制 API、请求解析、鉴权、短响应、统一错误 envelope | HLS/FLV/MJPEG 长连接输出 |
 | `libs/http_media` | HLS、HTTP-FLV、MJPEG、WebRTC signaling/WHEP | 控制 API、设备 SDK 配置、socket 队列管理 |
@@ -182,7 +181,7 @@ HiSilicon MPP -> device -> MediaStreams -> media cache/subscription
 
 协议模块按职责拆开：
 
-- `rtp` 提供 H.264/H.265 RTP packet view、payload 切片和时间戳辅助。
+- `media_codec` 提供 H.264/H.265 RTP packet view、payload 切片和时间戳辅助。
 - `rtsp` 处理 RTSP 方法、SDP、RTP over TCP/UDP、UDP peer 学习、RTCP 统计。
 - `http` 处理控制 API、鉴权、短响应和统一错误 envelope。
 - `http_media` 处理 HLS、HTTP-FLV、MJPEG、WebRTC signaling/WHEP。
@@ -306,7 +305,7 @@ AI 拆分不要和媒体/协议主干大改混在同一提交里。
 
 - `media/device` 核心收敛。
 - `net` 背压和连接生命周期。
-- `media_codec/rtp` 工具层。
+- `media_codec` RTP 工具层。
 - `http_media`、`rtsp`、`webrtc` 在接口冻结后并行。
 - `http` 控制 API 和 `www` 在 schema 稳定后并行。
 - AI 后端拆分和 AI 前端页面拆分可单独排期。
@@ -436,7 +435,7 @@ review 时优先看这些问题：
 3. `refactor(media): split device capture from media streams`
 4. `refactor(net): add bounded send queue and close flow`
 5. `fix(rtsp): align setup play and udp peer behavior`
-6. `refactor(rtp): share video rtp packet output`
+6. `refactor(media-codec): share video rtp packet output`
 7. `refactor(http-media): isolate streaming handlers`
 8. `refactor(webrtc): split session transport and rtp sender`
 9. `refactor(http): normalize media api schema`
@@ -458,7 +457,6 @@ review 时优先看这些问题：
 - `make -C libs/rtsp`
 - `make -C libs/webrtc`
 - `make -C libs/media_codec`
-- `make -C libs/rtp`
 
 ### Web
 
