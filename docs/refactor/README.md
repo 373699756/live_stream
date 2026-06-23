@@ -378,7 +378,7 @@ Git 历史显示，本项目经历了四个阶段：
 
 - 目标模块和相邻接口模块已经按任务模板收口。
 - 构建通过，或失败原因明确且不是本任务新增。
-- `python3 scripts/quality_scan.py quick --scope changed` 已运行。
+- `python3 scripts/scan/quality_scan.py quick --scope changed` 已运行。
 - 涉及 API/config/Web 的改动已同步后端 handler/DTO、`www/src/api/types.ts`、mock、
   `www/README.md` 和拥有模块文档。
 - 涉及命名迁移时，生产代码没有新增旧 `*_service`、`stream_*`、`MetaRtc*`、`Yang*`
@@ -390,20 +390,20 @@ Git 历史显示，本项目经历了四个阶段：
 
 质量扫描分三层使用：
 
-- 开发前基线：`python3 scripts/quality_scan.py quick --scope changed`
+- 开发前基线：`python3 scripts/scan/quality_scan.py quick --scope changed`
 - 合入前门禁：
-  `python3 scripts/quality_scan.py quick --scope changed --baseline scripts/quality_baseline.json`
+  `python3 scripts/scan/quality_scan.py quick --scope changed --baseline scripts/scan/quality_baseline.json`
 - 大节点或夜间全量：
-  `python3 scripts/quality_scan.py quick --scope all --baseline scripts/quality_baseline.json`
+  `python3 scripts/scan/quality_scan.py quick --scope all --baseline scripts/scan/quality_baseline.json`
 
 基线策略：
 
-- 历史问题先进入 `scripts/quality_baseline.json`，避免老问题阻塞无关开发。
+- 历史问题先进入 `scripts/scan/quality_baseline.json`，避免老问题阻塞无关开发。
 - 新增 `error` 或 `warning` 默认阻断；新增 `note` 只进入报告。
 - 每周从基线里清一批历史问题，优先处理格式噪音、cppcheck error、热路径 sleep/logging、
   flawfinder 真实风险和协议资源释放问题。
 - 首次生成或人工确认后刷新基线：
-  `python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality/quality_findings.json --output scripts/quality_baseline.json`
+  `python3 scripts/scan/quality_scan.py baseline --from-findings scripts/scan/reports/quality/quality_findings.json --output scripts/scan/quality_baseline.json`
 - 刷新前必须确认 `--from-findings` 指向期望的扫描结果；全量基线应来自 `--scope all`
   的扫描结果，不能误用 changed 扫描结果覆盖。
 - 不要为绕过门禁刷新基线；只有确认问题属于历史债或已被单独记录时才更新。
@@ -468,8 +468,8 @@ review 时优先看这些问题：
 
 ### 质量扫描
 
-- `python3 scripts/quality_scan.py quick --scope changed --baseline scripts/quality_baseline.json`
-- `python3 scripts/quality_scan.py quick --scope all --baseline scripts/quality_baseline.json`
+- `python3 scripts/scan/quality_scan.py quick --scope changed --baseline scripts/scan/quality_baseline.json`
+- `python3 scripts/scan/quality_scan.py quick --scope all --baseline scripts/scan/quality_baseline.json`
 - 大节点使用 `full` 模式补 scan-build、clang-tidy、include-what-you-use。
 
 ### 协议和板端

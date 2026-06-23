@@ -39,32 +39,32 @@ staging，release 是升级镜像和签名流程，职责不同。
 日常开发只看当前变更：
 
 ```sh
-python3 scripts/quality_scan.py quick --scope changed
+python3 scripts/scan/quality_scan.py quick --scope changed
 ```
 
 合入前用历史基线，只阻断新增问题：
 
 ```sh
-python3 scripts/quality_scan.py quick --scope changed --baseline scripts/quality_baseline.json
+python3 scripts/scan/quality_scan.py quick --scope changed --baseline scripts/scan/quality_baseline.json
 ```
 
 大节点或夜间跑全工程 quick 扫描：
 
 ```sh
-python3 scripts/quality_scan.py quick --scope all --baseline scripts/quality_baseline.json
+python3 scripts/scan/quality_scan.py quick --scope all --baseline scripts/scan/quality_baseline.json
 ```
 
 需要更重的静态分析时使用 full 模式，额外执行 scan-build、clang-tidy 和
 include-what-you-use：
 
 ```sh
-python3 scripts/quality_scan.py full --scope all --baseline scripts/quality_baseline.json
+python3 scripts/scan/quality_scan.py full --scope all --baseline scripts/scan/quality_baseline.json
 ```
 
 从某次 findings 刷新基线：
 
 ```sh
-python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality/quality_findings.json --output scripts/quality_baseline.json
+python3 scripts/scan/quality_scan.py baseline --from-findings scripts/scan/reports/quality/quality_findings.json --output scripts/scan/quality_baseline.json
 ```
 
 刷新前必须确认 `--from-findings` 指向期望扫描结果。全量基线应来自
@@ -72,11 +72,11 @@ python3 scripts/quality_scan.py baseline --from-findings scripts/reports/quality
 
 质量扫描相关文件：
 
-- `scripts/quality_scan.py`：质量扫描编排入口。
-- `scripts/quality_semgrep.yml`：semgrep 规则。
-- `scripts/quality_baseline.json`：历史问题基线。
-- `scripts/check_http_web_contract.py`：Web API 与后端 HTTP route 契约检查。
-- `scripts/check_cpp_style_contract.py`：C++ 缩进和风格配置契约检查。
+- `scripts/scan/quality_scan.py`：质量扫描编排入口。
+- `scripts/scan/quality_semgrep.yml`：semgrep 规则。
+- `scripts/scan/quality_baseline.json`：历史问题基线。
+- `scripts/scan/check_http_web_contract.py`：Web API 与后端 HTTP route 契约检查。
+- `scripts/scan/check_cpp_style_contract.py`：C++ 缩进和风格配置契约检查。
 
 两个 contract 脚本被 `make host-test` 和 `quality_scan.py` 直接调用，不并入
 `quality_scan.py`。
@@ -113,10 +113,10 @@ run.env
 
 以下内容是生成物，不应提交：
 
-- `scripts/reports/quality/`：质量扫描报告和原始工具日志。
+- `scripts/scan/reports/quality/`：质量扫描报告和原始工具日志。
 - `scripts/__pycache__/`、`*.pyc`：Python 字节码缓存。
 
-`scripts/reports/quality/quality_report.md` 是日常查看入口；需要追证据时再看同目录
+`scripts/scan/reports/quality/quality_report.md` 是日常查看入口；需要追证据时再看同目录
 原始工具日志。
 
 ## Exit Code
@@ -128,5 +128,5 @@ run.env
 1 = 有失败步骤，或 baseline 发现新增阻断问题
 ```
 
-启用 `--baseline` 后，已进入 `scripts/quality_baseline.json` 的历史诊断不会单独阻断；
+启用 `--baseline` 后，已进入 `scripts/scan/quality_baseline.json` 的历史诊断不会单独阻断；
 新增 `warning` 或 `error` 默认阻断，新增 `note` 只进入报告。

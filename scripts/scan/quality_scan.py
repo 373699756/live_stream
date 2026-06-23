@@ -164,7 +164,7 @@ class QualityScan:
         self.write_baseline_path = write_baseline_path
         self.fail_on_new = self.normalize_finding_level(fail_on_new)
         self.timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.report_root = self.root_dir / "scripts" / "reports" / "quality"
+        self.report_root = self.root_dir / "scripts" / "scan" / "reports" / "quality"
         self.report_dir = self.report_root / self.timestamp
         self.quality_report_file = self.report_root / "quality_report.md"
         self.findings_file = self.report_dir / "findings.json"
@@ -1013,7 +1013,7 @@ class QualityScan:
             "semgrep.yml",
             "semgrep.yaml",
             ".semgrep/rules",
-            "scripts/quality_semgrep.yml",
+            "scripts/scan/quality_semgrep.yml",
         ):
             path = self.root_dir / rel_path
             if path.exists():
@@ -1664,12 +1664,12 @@ class QualityScan:
     def run_naming_scan(self) -> None:
         findings: list[str] = []
         for rel_path in self.naming_scan_paths(scoped=self.scope == "changed"):
-            if rel_path == Path("scripts/quality_baseline.json"):
+            if rel_path == Path("scripts/scan/quality_baseline.json"):
                 continue
             self.check_naming_file_name(rel_path, findings)
             inside_quality_scan_naming_rule = False
             for line_number, line in enumerate(self.read_lines(rel_path), start=1):
-                if rel_path == Path("scripts/quality_scan.py"):
+                if rel_path == Path("scripts/scan/quality_scan.py"):
                     if line.startswith("NAMING_"):
                         inside_quality_scan_naming_rule = line.rstrip().endswith("(")
                         continue
@@ -2575,7 +2575,7 @@ class QualityScan:
                     "tool": {
                         "driver": {
                             "name": "live_stream quality_scan.py",
-                            "informationUri": "scripts/quality_scan.py",
+                            "informationUri": "scripts/scan/quality_scan.py",
                             "rules": list(rules.values()),
                         }
                     },
@@ -2594,7 +2594,7 @@ class QualityScan:
         with self.quality_report_file.open("w", encoding="utf-8") as handle:
             handle.write("# Quality Fix Report\n\n")
             handle.write(
-                f"本文档由 `scripts/quality_scan.py {self.mode}` 生成，"
+                f"本文档由 `scripts/scan/quality_scan.py {self.mode}` 生成，"
                 "只汇总当前需要修复的问题；原始日志保留在本次扫描目录中作为证据。\n\n"
             )
             handle.write(f"- Generated: `{self.timestamp}`\n")
@@ -2721,12 +2721,12 @@ class QualityScan:
         self.run_command(
             "http/web contract",
             "http-web-contract.log",
-            [sys.executable, "scripts/check_http_web_contract.py"],
+            [sys.executable, "scripts/scan/check_http_web_contract.py"],
         )
         self.run_command(
             "cpp style contract",
             "cpp-style-contract.log",
-            [sys.executable, "scripts/check_cpp_style_contract.py"],
+            [sys.executable, "scripts/scan/check_cpp_style_contract.py"],
         )
         self.run_format_config_step()
         self.run_clang_format_step()
@@ -2887,12 +2887,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--from-findings",
-        default="scripts/reports/quality/quality_findings.json",
+        default="scripts/scan/reports/quality/quality_findings.json",
         help="findings JSON used by baseline mode",
     )
     parser.add_argument(
         "--output",
-        default="scripts/quality_baseline.json",
+        default="scripts/scan/quality_baseline.json",
         help="baseline output path used by baseline mode",
     )
     return parser.parse_args()
@@ -2900,7 +2900,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    root_dir = Path(__file__).resolve().parent.parent
+    root_dir = Path(__file__).resolve().parents[2]
     if args.mode == "baseline":
         source_path = resolve_cli_path(root_dir, args.from_findings)
         output_path = resolve_cli_path(root_dir, args.output)

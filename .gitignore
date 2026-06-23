@@ -5,7 +5,7 @@ release/
 compile_commands.json
 __pycache__/
 *.pyc
-scripts/reports/quality/
+scripts/scan/reports/quality/
 3rdparty/build/
 3rdparty/install/
 3rdparty/metaRTC_src/.git.upstream/

@@ -10,7 +10,7 @@ import sys
 from typing import Iterable
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 BACKEND_GLOBS = (
     "libs/http/src/**/*.cpp",
     "libs/http_media/src/**/*.cpp",

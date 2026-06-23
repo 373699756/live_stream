@@ -186,8 +186,8 @@ release: $(MODULES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAM
 test: host-test
 
 host-test:
-	python3 scripts/check_http_web_contract.py
-	python3 scripts/check_cpp_style_contract.py
+	python3 scripts/scan/check_http_web_contract.py
+	python3 scripts/scan/check_cpp_style_contract.py
 	cd www && npm run build
 
 board-test:
