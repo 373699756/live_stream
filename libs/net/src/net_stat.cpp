@@ -22,7 +22,7 @@ constexpr const char *kServiceName = "net_stat";
 constexpr size_t kMaxRecommendations = 16;
 constexpr uint32_t kEwmaNumerator = 3;
 constexpr uint32_t kEwmaDenominator = 4;
-constexpr int64_t kTargetIdleExpireMs = 30000;
+constexpr int64_t kPressureRecordExpireMs = 30000;
 
 enum class PressureMetric {
     kPendingBytes,
@@ -33,10 +33,10 @@ NetPressureLevel MaxLevel(NetPressureLevel left, NetPressureLevel right) {
     return static_cast<int>(left) >= static_cast<int>(right) ? left : right;
 }
 
-std::string TargetKey(const std::string &key_prefix,
-                      const std::string &protocol,
-                      const std::string &target) {
-    return key_prefix + ":" + protocol + ":" + target;
+std::string PressureKey(const std::string &key_prefix,
+                        const std::string &protocol,
+                        const std::string &remote_endpoint) {
+    return key_prefix + ":" + protocol + ":" + remote_endpoint;
 }
 
 NetPressureSignal SignalForMetric(PressureMetric metric) {
@@ -71,26 +71,26 @@ uint32_t EventActiveCount(const event::Event &event,
     return fallback_value;
 }
 
-struct ObservedTargetState {
+struct ConnectionPressureRecord {
     std::string key;
     std::string protocol;
-    std::string target;
-    NetPressureSignal pressure_signal = NetPressureSignal::kNone;
+    std::string remote_endpoint;
+    NetPressureSignal signal = NetPressureSignal::kNone;
     uint32_t pressure_value = 0;
-    uint32_t pressure_value_ewma = 0;
+    uint32_t smoothed_pressure_value = 0;
     uint32_t pending_bytes = 0;
-    uint32_t pending_bytes_ewma = 0;
-    uint32_t consecutive_watch_samples = 0;
-    uint32_t consecutive_constrained_samples = 0;
-    uint32_t consecutive_normal_samples = 0;
-    int64_t pressure_started_at_ms = 0;
+    uint32_t smoothed_pending_bytes = 0;
+    uint32_t consecutive_watch_checks = 0;
+    uint32_t consecutive_constrained_checks = 0;
+    uint32_t consecutive_normal_checks = 0;
+    int64_t pressure_since_ms = 0;
     int64_t normal_since_ms = 0;
-    int64_t last_seen_ms = 0;
+    int64_t last_checked_ms = 0;
     int64_t last_recommendation_ms = 0;
     NetPressureLevel level = NetPressureLevel::kNormal;
 };
 
-struct ProtocolActivity {
+struct ProtocolClientCount {
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
 };
@@ -116,7 +116,7 @@ public:
             started_ = true;
             return true;
         }
-        if (net_engine_ == nullptr || options_.sample_interval_ms == 0) {
+        if (net_engine_ == nullptr || options_.check_interval_ms == 0) {
             return false;
         }
         if (!SubscribeEvents()) {
@@ -127,10 +127,10 @@ public:
             stopping_ = false;
             stats_.enabled = true;
         }
-        sample_thread_ = std::thread(&NetStatImpl::SampleLoop, this);
+        check_thread_ = std::thread(&NetStatImpl::CheckLoop, this);
         started_ = true;
         Info(kServiceName, "started interval_ms=%u",
-             static_cast<unsigned>(options_.sample_interval_ms));
+             static_cast<unsigned>(options_.check_interval_ms));
         return true;
     }
 
@@ -152,14 +152,14 @@ public:
         return recommendation_history_;
     }
 
-    std::vector<NetPressureTarget> GetPressureTargets() const override {
+    std::vector<NetConnectionPressure> GetConnectionPressures() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<NetPressureTarget> pressure_targets;
-        pressure_targets.reserve(target_states_.size());
-        for (const auto &entry : target_states_) {
-            pressure_targets.push_back(ToPressureTarget(entry.second));
+        std::vector<NetConnectionPressure> connection_pressures;
+        connection_pressures.reserve(connection_pressures_.size());
+        for (const auto &entry : connection_pressures_) {
+            connection_pressures.push_back(ToConnectionPressure(entry.second));
         }
-        return pressure_targets;
+        return connection_pressures;
     }
 
 private:
@@ -189,8 +189,8 @@ private:
             stopping_ = true;
         }
         condition_.notify_all();
-        if (sample_thread_.joinable()) {
-            sample_thread_.join();
+        if (check_thread_.joinable()) {
+            check_thread_.join();
         }
         event_subscription_.Cancel();
         {
@@ -198,8 +198,8 @@ private:
             stats_ = NetStatSnapshot{};
             recommendations_.clear();
             recommendation_history_.clear();
-            target_states_.clear();
-            protocol_activity_ = ProtocolActivity{};
+            connection_pressures_.clear();
+            protocol_activity_ = ProtocolClientCount{};
             last_published_level_ = NetPressureLevel::kNormal;
             stopping_ = false;
         }
@@ -242,28 +242,28 @@ private:
         }
     }
 
-    void SampleLoop() {
+    void CheckLoop() {
         while (true) {
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 if (condition_.wait_for(
                         lock,
-                        std::chrono::milliseconds(options_.sample_interval_ms),
+                        std::chrono::milliseconds(options_.check_interval_ms),
                         [this]() { return stopping_; })) {
                     return;
                 }
             }
-            Sample();
+            Check();
         }
     }
 
-    void Sample() {
+    void Check() {
         NetStatSnapshot next_stats;
         std::vector<NetRecommendation> next_recommendations;
         const int64_t now_ms = infra::Time::MonotonicMillis();
         next_stats.enabled = options_.enabled;
 
-        SampleNet(now_ms, &next_stats, &next_recommendations);
+        CheckConnections(now_ms, &next_stats, &next_recommendations);
 
         bool publish_pressure_event = false;
         event::Event pressure_event;
@@ -273,9 +273,9 @@ private:
                 protocol_activity_.active_rtsp_sessions;
             next_stats.active_webrtc_peers =
                 protocol_activity_.active_webrtc_peers;
-            ExpireIdleTargets(now_ms);
-            FillTargetStats(&next_stats);
-            next_stats.samples = stats_.samples + 1;
+            ExpireIdlePressureRecords(now_ms);
+            FillPressureStats(&next_stats);
+            next_stats.check_count = stats_.check_count + 1;
             const NetPressureLevel previous_level = stats_.level;
             stats_ = next_stats;
             recommendations_ = next_recommendations;
@@ -289,9 +289,9 @@ private:
         }
     }
 
-    void SampleNet(int64_t now_ms,
-                   NetStatSnapshot *stats,
-                   std::vector<NetRecommendation> *recommendations) {
+    void CheckConnections(int64_t now_ms,
+                          NetStatSnapshot *stats,
+                          std::vector<NetRecommendation> *recommendations) {
         if (net_engine_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
@@ -302,13 +302,13 @@ private:
             if (!connection.open) {
                 continue;
             }
-            ++stats->sampled_connections;
+            ++stats->checked_connections;
             if (ShouldSkipNetConnection(connection)) {
                 continue;
             }
             std::lock_guard<std::mutex> lock(mutex_);
-            ObservedTargetState *state = UpdateConnectionTarget(connection,
-                                                                now_ms);
+            ConnectionPressureRecord *state =
+                UpdateConnectionPressure(connection, now_ms);
             if (state == nullptr) {
                 continue;
             }
@@ -331,27 +331,28 @@ private:
         return connection.owner_protocol == "onvif";
     }
 
-    ObservedTargetState *UpdateConnectionTarget(
+    ConnectionPressureRecord *UpdateConnectionPressure(
         const NetConnectionInfo &connection,
         int64_t now_ms) {
-        const std::string target = ConnectionTarget(connection);
-        ObservedTargetState *pending_state =
-            UpdateTarget("net", connection.owner_protocol, target,
-                         PressureMetric::kPendingBytes,
-                         connection.pending_bytes,
-                         connection.pending_bytes, now_ms);
+        const std::string remote_endpoint = ConnectionEndpoint(connection);
+        ConnectionPressureRecord *pending_state =
+            UpdatePressureRecord("net", connection.owner_protocol,
+                                 remote_endpoint,
+                                 PressureMetric::kPendingBytes,
+                                 connection.pending_bytes,
+                                 connection.pending_bytes, now_ms);
         if (connection.send_queue_length == 0) {
-            MaybeUpdateClearedTarget("net_queue",
-                                     connection.owner_protocol, target,
+            MaybeClearPressureRecord("net_queue",
+                                     connection.owner_protocol, remote_endpoint,
                                      PressureMetric::kSendQueue,
                                      connection.pending_bytes, now_ms);
             return pending_state;
         }
-        ObservedTargetState *queue_state =
-            UpdateTarget("net_queue", connection.owner_protocol, target,
-                         PressureMetric::kSendQueue,
-                         connection.send_queue_length,
-                         connection.pending_bytes, now_ms);
+        ConnectionPressureRecord *queue_state =
+            UpdatePressureRecord("net_queue", connection.owner_protocol,
+                                 remote_endpoint, PressureMetric::kSendQueue,
+                                 connection.send_queue_length,
+                                 connection.pending_bytes, now_ms);
         if (pending_state == nullptr) {
             return queue_state;
         }
@@ -363,7 +364,7 @@ private:
         return queue_state;
     }
 
-    std::string ConnectionTarget(const NetConnectionInfo &connection) const {
+    std::string ConnectionEndpoint(const NetConnectionInfo &connection) const {
         if (!connection.remote_address.ip.empty() &&
             connection.remote_address.port != 0) {
             return connection.remote_address.ip + ":" +
@@ -375,84 +376,87 @@ private:
         return std::to_string(connection.connection_id);
     }
 
-    ObservedTargetState *UpdateTarget(const std::string &key_prefix,
-                                      const std::string &protocol,
-                                      const std::string &target,
-                                      PressureMetric metric,
-                                      uint32_t pressure_value,
-                                      uint32_t pending_bytes,
-                                      int64_t now_ms) {
-        const std::string key = TargetKey(key_prefix, protocol, target);
-        ObservedTargetState &state = target_states_[key];
+    ConnectionPressureRecord *UpdatePressureRecord(
+        const std::string &key_prefix,
+        const std::string &protocol,
+        const std::string &remote_endpoint,
+        PressureMetric metric,
+        uint32_t pressure_value,
+        uint32_t pending_bytes,
+        int64_t now_ms) {
+        const std::string key = PressureKey(key_prefix, protocol,
+                                            remote_endpoint);
+        ConnectionPressureRecord &state = connection_pressures_[key];
         if (state.key.empty()) {
             state.key = key;
             state.protocol = protocol;
-            state.target = target;
-            state.pressure_signal = SignalForMetric(metric);
-            state.pressure_value_ewma = pressure_value;
-            state.pending_bytes_ewma = pending_bytes;
+            state.remote_endpoint = remote_endpoint;
+            state.signal = SignalForMetric(metric);
+            state.smoothed_pressure_value = pressure_value;
+            state.smoothed_pending_bytes = pending_bytes;
         } else {
-            state.pressure_signal = SignalForMetric(metric);
-            state.pressure_value_ewma =
-                SmoothValue(state.pressure_value_ewma, pressure_value);
-            state.pending_bytes_ewma =
-                SmoothValue(state.pending_bytes_ewma, pending_bytes);
+            state.signal = SignalForMetric(metric);
+            state.smoothed_pressure_value =
+                SmoothValue(state.smoothed_pressure_value, pressure_value);
+            state.smoothed_pending_bytes =
+                SmoothValue(state.smoothed_pending_bytes, pending_bytes);
         }
         state.pressure_value = pressure_value;
         state.pending_bytes = pending_bytes;
-        state.last_seen_ms = now_ms;
+        state.last_checked_ms = now_ms;
 
         const uint32_t watch_threshold = WatchThreshold(metric);
         const uint32_t constrained_threshold = ConstrainedThreshold(metric);
         const NetPressureLevel previous_level = state.level;
         if (constrained_threshold != 0 &&
-            state.pressure_value_ewma >= constrained_threshold) {
+            state.smoothed_pressure_value >= constrained_threshold) {
             state.level = NetPressureLevel::kConstrained;
-            ++state.consecutive_constrained_samples;
-            ++state.consecutive_watch_samples;
-            state.consecutive_normal_samples = 0;
+            ++state.consecutive_constrained_checks;
+            ++state.consecutive_watch_checks;
+            state.consecutive_normal_checks = 0;
             state.normal_since_ms = 0;
-            if (state.pressure_started_at_ms == 0) {
-                state.pressure_started_at_ms = now_ms;
+            if (state.pressure_since_ms == 0) {
+                state.pressure_since_ms = now_ms;
             }
         } else if (watch_threshold != 0 &&
-                   state.pressure_value_ewma >= watch_threshold) {
+                   state.smoothed_pressure_value >= watch_threshold) {
             state.level = NetPressureLevel::kWatch;
-            state.consecutive_constrained_samples = 0;
-            ++state.consecutive_watch_samples;
-            state.consecutive_normal_samples = 0;
+            state.consecutive_constrained_checks = 0;
+            ++state.consecutive_watch_checks;
+            state.consecutive_normal_checks = 0;
             state.normal_since_ms = 0;
-            if (state.pressure_started_at_ms == 0) {
-                state.pressure_started_at_ms = now_ms;
+            if (state.pressure_since_ms == 0) {
+                state.pressure_since_ms = now_ms;
             }
         } else {
             state.level = NetPressureLevel::kNormal;
-            state.consecutive_constrained_samples = 0;
-            state.consecutive_watch_samples = 0;
-            ++state.consecutive_normal_samples;
+            state.consecutive_constrained_checks = 0;
+            state.consecutive_watch_checks = 0;
+            ++state.consecutive_normal_checks;
             if (previous_level != NetPressureLevel::kNormal) {
                 state.normal_since_ms = now_ms;
             }
-            if (state.consecutive_normal_samples >=
-                options_.recovery_sample_threshold) {
-                state.pressure_started_at_ms = 0;
+            if (state.consecutive_normal_checks >=
+                options_.recovery_check_threshold) {
+                state.pressure_since_ms = 0;
             }
         }
         return &state;
     }
 
-    void MaybeUpdateClearedTarget(const std::string &key_prefix,
+    void MaybeClearPressureRecord(const std::string &key_prefix,
                                   const std::string &protocol,
-                                  const std::string &target,
+                                  const std::string &remote_endpoint,
                                   PressureMetric metric,
                                   uint32_t pending_bytes,
                                   int64_t now_ms) {
-        const std::string key = TargetKey(key_prefix, protocol, target);
-        if (target_states_.find(key) == target_states_.end()) {
+        const std::string key = PressureKey(key_prefix, protocol,
+                                            remote_endpoint);
+        if (connection_pressures_.find(key) == connection_pressures_.end()) {
             return;
         }
-        (void)UpdateTarget(key_prefix, protocol, target, metric, 0,
-                           pending_bytes, now_ms);
+        (void)UpdatePressureRecord(key_prefix, protocol, remote_endpoint,
+                                   metric, 0, pending_bytes, now_ms);
     }
 
     uint32_t SmoothValue(uint32_t previous, uint32_t value) const {
@@ -482,9 +486,9 @@ private:
         return 0;
     }
 
-    std::string RecommendationReason(const ObservedTargetState &state,
+    std::string RecommendationReason(const ConnectionPressureRecord &state,
                                      bool constrained) const {
-        switch (state.pressure_signal) {
+        switch (state.signal) {
             case NetPressureSignal::kTcpPendingBytes:
                 return constrained ? "tcp_pending_bytes_high"
                                    : "tcp_pending_bytes_watch";
@@ -499,7 +503,7 @@ private:
 
     void AddRecommendationIfReady(
         std::vector<NetRecommendation> *recommendations,
-        ObservedTargetState *state,
+        ConnectionPressureRecord *state,
         NetRecommendationType type,
         int64_t now_ms,
         const std::string &reason) const {
@@ -510,8 +514,8 @@ private:
         }
         const bool enough_constrained =
             state->level == NetPressureLevel::kConstrained &&
-            state->consecutive_constrained_samples >=
-                options_.constrained_sample_threshold;
+            state->consecutive_constrained_checks >=
+                options_.constrained_check_threshold;
         if (!enough_constrained) {
             return;
         }
@@ -524,17 +528,17 @@ private:
         recommendation.type = type;
         recommendation.level = state->level;
         recommendation.protocol = state->protocol;
-        recommendation.target = state->target;
+        recommendation.remote_endpoint = state->remote_endpoint;
         recommendation.reason = reason;
-        recommendation.pressure_signal = state->pressure_signal;
+        recommendation.signal = state->signal;
         recommendation.pressure_value = state->pressure_value;
-        recommendation.pressure_value_ewma = state->pressure_value_ewma;
+        recommendation.smoothed_pressure_value = state->smoothed_pressure_value;
         recommendation.pending_bytes = state->pending_bytes;
-        recommendation.pending_bytes_ewma = state->pending_bytes_ewma;
-        recommendation.consecutive_watch_samples =
-            state->consecutive_watch_samples;
-        recommendation.consecutive_constrained_samples =
-            state->consecutive_constrained_samples;
+        recommendation.smoothed_pending_bytes = state->smoothed_pending_bytes;
+        recommendation.consecutive_watch_checks =
+            state->consecutive_watch_checks;
+        recommendation.consecutive_constrained_checks =
+            state->consecutive_constrained_checks;
         recommendation.recommended_at_ms = now_ms;
         recommendations->push_back(recommendation);
         state->last_recommendation_ms = now_ms;
@@ -556,57 +560,58 @@ private:
         }
     }
 
-    void ExpireIdleTargets(int64_t now_ms) {
-        for (auto it = target_states_.begin(); it != target_states_.end();) {
-            if (now_ms - it->second.last_seen_ms > kTargetIdleExpireMs) {
-                it = target_states_.erase(it);
+    void ExpireIdlePressureRecords(int64_t now_ms) {
+        for (auto it = connection_pressures_.begin();
+             it != connection_pressures_.end();) {
+            if (now_ms - it->second.last_checked_ms > kPressureRecordExpireMs) {
+                it = connection_pressures_.erase(it);
             } else {
                 ++it;
             }
         }
     }
 
-    void FillTargetStats(NetStatSnapshot *stats) const {
+    void FillPressureStats(NetStatSnapshot *stats) const {
         if (stats == nullptr) {
             return;
         }
-        stats->tracked_targets =
-            static_cast<uint32_t>(target_states_.size());
-        for (const auto &entry : target_states_) {
+        stats->tracked_connection_pressures =
+            static_cast<uint32_t>(connection_pressures_.size());
+        for (const auto &entry : connection_pressures_) {
             if (entry.second.level == NetPressureLevel::kWatch) {
-                ++stats->watch_targets;
+                ++stats->watch_connection_pressures;
             } else if (entry.second.level ==
                        NetPressureLevel::kConstrained) {
-                ++stats->constrained_targets;
+                ++stats->constrained_connection_pressures;
             }
             if (entry.second.level == NetPressureLevel::kNormal &&
-                entry.second.consecutive_normal_samples > 0 &&
+                entry.second.consecutive_normal_checks > 0 &&
                 entry.second.normal_since_ms != 0) {
-                ++stats->recovering_targets;
+                ++stats->recovering_connection_pressures;
             }
         }
     }
 
-    NetPressureTarget ToPressureTarget(
-        const ObservedTargetState &source) const {
-        NetPressureTarget target;
-        target.level = source.level;
-        target.protocol = source.protocol;
-        target.target = source.target;
-        target.pressure_signal = source.pressure_signal;
-        target.pressure_value = source.pressure_value;
-        target.pressure_value_ewma = source.pressure_value_ewma;
-        target.pending_bytes = source.pending_bytes;
-        target.pending_bytes_ewma = source.pending_bytes_ewma;
-        target.consecutive_watch_samples = source.consecutive_watch_samples;
-        target.consecutive_constrained_samples =
-            source.consecutive_constrained_samples;
-        target.consecutive_normal_samples = source.consecutive_normal_samples;
-        target.pressure_started_at_ms = source.pressure_started_at_ms;
-        target.normal_since_ms = source.normal_since_ms;
-        target.last_seen_ms = source.last_seen_ms;
-        target.last_recommendation_ms = source.last_recommendation_ms;
-        return target;
+    NetConnectionPressure ToConnectionPressure(
+        const ConnectionPressureRecord &source) const {
+        NetConnectionPressure pressure;
+        pressure.level = source.level;
+        pressure.protocol = source.protocol;
+        pressure.remote_endpoint = source.remote_endpoint;
+        pressure.signal = source.signal;
+        pressure.pressure_value = source.pressure_value;
+        pressure.smoothed_pressure_value = source.smoothed_pressure_value;
+        pressure.pending_bytes = source.pending_bytes;
+        pressure.smoothed_pending_bytes = source.smoothed_pending_bytes;
+        pressure.consecutive_watch_checks = source.consecutive_watch_checks;
+        pressure.consecutive_constrained_checks =
+            source.consecutive_constrained_checks;
+        pressure.consecutive_normal_checks = source.consecutive_normal_checks;
+        pressure.pressure_since_ms = source.pressure_since_ms;
+        pressure.normal_since_ms = source.normal_since_ms;
+        pressure.last_checked_ms = source.last_checked_ms;
+        pressure.last_recommendation_ms = source.last_recommendation_ms;
+        return pressure;
     }
 
     bool BuildPressureChangeEvent(
@@ -622,7 +627,8 @@ private:
         pressure_event->source = kServiceName;
         pressure_event->target = "connections";
         pressure_event->message = PressureLevelReason(stats.level);
-        pressure_event->value = static_cast<int32_t>(stats.tracked_targets);
+        pressure_event->value =
+            static_cast<int32_t>(stats.tracked_connection_pressures);
         pressure_event->level = static_cast<uint8_t>(stats.level);
         last_published_level_ = stats.level;
         return true;
@@ -646,10 +652,10 @@ private:
     event::Subscription event_subscription_;
     bool started_ = false;
     bool stopping_ = false;
-    ProtocolActivity protocol_activity_;
+    ProtocolClientCount protocol_activity_;
     NetPressureLevel last_published_level_ = NetPressureLevel::kNormal;
-    std::map<std::string, ObservedTargetState> target_states_;
-    std::thread sample_thread_;
+    std::map<std::string, ConnectionPressureRecord> connection_pressures_;
+    std::thread check_thread_;
     std::condition_variable condition_;
     mutable std::mutex mutex_;
     NetStatSnapshot stats_;

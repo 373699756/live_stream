@@ -99,7 +99,7 @@ info，但不能新增一套不可比较的 socket close reason。
 
 `net_stat.h` 随 `net` 模块构建，不再是独立库。`NetStatDependencies` 只接收
 `INetEngine*` 和可选 `event::Dispatcher*`；它不直接依赖 `rtsp`、`webrtc` 或
-`media`。压力目标和关闭慢客户端建议只基于 `NetConnectionInfo` 中的 pending bytes 和 send queue；
+`media`。连接压力记录和关闭慢客户端建议只基于 `NetConnectionInfo` 中的 pending bytes 和 send queue；
 RTSP/WebRTC 活跃数来自 `kRtspClientConnected`、`kRtspClientDisconnected`、
 `kWebRtcClientConnected`、`kWebRtcClientDisconnected` 事件的轻量 payload。
 整体压力等级变化时，`net_stat` 发布 `kNetPressureChanged`，payload 使用：
@@ -109,7 +109,7 @@ RTSP/WebRTC 活跃数来自 `kRtspClientConnected`、`kRtspClientDisconnected`�
 | `source` | `net_stat` |
 | `target` | `connections` |
 | `message` | `net_pressure_normal/watch/constrained` |
-| `value` | 当前 tracked target 数 |
+| `value` | 当前跟踪的连接压力记录数 |
 | `level` | `NetPressureLevel` 数值 |
 
 ## 状态与资源模型
