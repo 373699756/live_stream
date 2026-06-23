@@ -11,7 +11,7 @@ namespace live_stream {
 
 // Owns HTTP response serialization and TCP enqueue policy for one HTTP server.
 // HttpServer keeps connection/session ownership and close flow; this class
-// keeps body slicing, FrameBuffer lifetime bridging and slow-client close
+// keeps body slicing, MediaBuffer lifetime bridging and slow-client close
 // decisions in one place.
 class HttpResponseSender {
 public:
@@ -26,7 +26,7 @@ public:
                       bool close_after_response) const;
     bool SendResponseSlices(INetEngine *net_engine, ConnectionId connection_id,
                             const HttpResponse &response,
-                            const MediaSlice *body_slices,
+                            const MediaOutSlice *body_slices,
                             size_t body_slice_count, size_t body_size,
                             bool close_after_response) const;
     bool EnqueueStreamingChunk(INetEngine *net_engine,
@@ -34,7 +34,7 @@ public:
                                const uint8_t *data, size_t size) const;
     bool EnqueueStreamingSlices(INetEngine *net_engine,
                                 ConnectionId connection_id,
-                                const MediaSlice *slices,
+                                const MediaOutSlice *slices,
                                 size_t slice_count) const;
     void CloseConnection(INetEngine *net_engine, ConnectionId connection_id,
                          TcpCloseReason reason) const;

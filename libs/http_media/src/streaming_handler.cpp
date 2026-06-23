@@ -8,7 +8,7 @@
 #include "device.h"
 #include "event.h"
 #include "infra/log.h"
-#include "media/encoded_frame.h"
+#include "media/media_frame.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -72,13 +72,13 @@ public:
     MjpegConnectionSink(HttpMediaWriter *writer, ConnectionId connection_id)
         : writer_(writer), connection_id_(connection_id) {}
 
-    bool OnMjpegFrame(const EncodedFrame &frame) override {
+    bool OnMjpegFrame(const MediaFrame &frame) override {
         if (writer_ == nullptr) {
             return false;
         }
-        const FrameSlice payload_slice = EncodedFramePayloadSlice(&frame);
-        const uint8_t *payload = FrameSliceData(payload_slice);
-        if (payload == nullptr || payload_slice.size == 0) {
+        const uint8_t *payload = frame.payload.Data();
+        const uint32_t payload_size = frame.payload.Size();
+        if (payload == nullptr || payload_size == 0) {
             return true;
         }
         std::string frame_header;
@@ -86,16 +86,16 @@ public:
         frame_header.append("--");
         frame_header.append(kMjpegBoundary);
         frame_header.append("\r\nContent-Type: image/jpeg\r\nContent-Length: ");
-        frame_header.append(std::to_string(payload_slice.size));
+        frame_header.append(std::to_string(payload_size));
         frame_header.append("\r\n\r\n");
 
-        MediaSlice slices[3];
+        MediaOutSlice slices[3];
         slices[0].data = reinterpret_cast<const uint8_t *>(frame_header.data());
         slices[0].size = frame_header.size();
         slices[1].data = payload;
-        slices[1].size = payload_slice.size;
+        slices[1].size = payload_size;
         // JPEG payload 不复制进 HTTP 层；owner 保证异步发送期间 payload buffer 存活。
-        slices[1].owner = frame.payload.buffer;
+        slices[1].owner = frame.payload;
         slices[2].data = reinterpret_cast<const uint8_t *>(kMjpegFrameTail);
         slices[2].size = 2;
         return writer_->EnqueueStreamingSlices(connection_id_, slices, 3);
@@ -369,7 +369,6 @@ private:
                   flv_start.cached_video_tags.size(),
                   flv_start.cached_gop_complete ? 1 : 0,
                   keyframe_requested ? 1 : 0);
-            MediaFlvStartUnref(&flv_start);
             return SendStreamingError(
                 writer_, connection_id,
                 HttpMediaTextResponse(503, "FLV stream not ready"));
@@ -391,10 +390,8 @@ private:
             if (writer_ != nullptr &&
                 HttpFlvSessionStartNeedsClose(start_status)) {
                 writer_->CloseConnection(connection_id);
-                MediaFlvStartUnref(&flv_start);
                 return HttpStreamingRequestResult::kClosed;
             }
-            MediaFlvStartUnref(&flv_start);
             return start_status == HttpFlvSessionStartStatus::kNoSession
                        ? HttpStreamingRequestResult::kFailed
                        : HttpStreamingRequestResult::kClosed;
@@ -416,7 +413,6 @@ private:
                   static_cast<unsigned long long>(connection_id),
                   MediaStreamIdToJson(stream_id));
             writer_->CloseConnection(connection_id);
-            MediaFlvStartUnref(&flv_start);
             return HttpStreamingRequestResult::kClosed;
         }
 
@@ -433,7 +429,6 @@ private:
                   "HTTP-FLV close conn=%llu stream=%s reason=closed",
                   static_cast<unsigned long long>(connection_id),
                   MediaStreamIdToJson(stream_id));
-            MediaFlvStartUnref(&flv_start);
             writer_->CloseConnection(connection_id);
             return HttpStreamingRequestResult::kClosed;
         }
@@ -450,7 +445,6 @@ private:
              keyframe_requested ? 1 : 0,
              flv_start.cached_video_tags.size(), cached_flv_bytes,
              flv_start.cached_gop_complete ? 1 : 0);
-        MediaFlvStartUnref(&flv_start);
         return HttpStreamingRequestResult::kStreaming;
     }
 

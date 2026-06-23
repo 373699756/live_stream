@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace live_stream {
 namespace media_internal {
@@ -210,7 +211,7 @@ bool TsPacketBytesForPesSize(size_t pes_size, size_t *ts_bytes) {
     return true;
 }
 
-struct MediaSliceList {
+struct TsSliceList {
     struct Slice {
         const uint8_t *data = nullptr;
         size_t size = 0;
@@ -244,12 +245,12 @@ struct MediaSliceList {
 
 struct TsFrameSlices {
     std::string pes_header;
-    MediaSliceList pes_slices;
+    TsSliceList pes_slices;
     uint64_t dts_90k = 0;
     size_t ts_bytes = 0;
 };
 
-size_t CopyPesBytes(const MediaSliceList &pes_slices,
+size_t CopyPesBytes(const TsSliceList &pes_slices,
                     size_t offset,
                     size_t size,
                     char *target) {
@@ -259,7 +260,7 @@ size_t CopyPesBytes(const MediaSliceList &pes_slices,
     size_t copied = 0;
     size_t slice_base = 0;
     for (size_t i = 0; i < pes_slices.count && copied < size; ++i) {
-        const MediaSliceList::Slice &slice = pes_slices.slices[i];
+        const TsSliceList::Slice &slice = pes_slices.slices[i];
         if (offset >= slice_base + slice.size) {
             slice_base += slice.size;
             continue;
@@ -276,7 +277,7 @@ size_t CopyPesBytes(const MediaSliceList &pes_slices,
     return copied;
 }
 
-bool AppendTsPayloadToBuffer(const MediaSliceList &pes_slices,
+bool AppendTsPayloadToBuffer(const TsSliceList &pes_slices,
                              uint64_t pcr_90k,
                              uint8_t *continuity_counter,
                              TsSegmentBuffer *out) {
@@ -357,7 +358,7 @@ bool AddH264AccessUnitSlices(const media_codec::H264NalUnitList &units,
                              const std::string &sps,
                              const std::string &pps,
                              bool prepend_parameter_sets,
-                             MediaSliceList *slices) {
+                             TsSliceList *slices) {
     static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
     static constexpr uint8_t kAud[] = {0x09, 0xf0};
     if (slices == nullptr) {
@@ -396,7 +397,7 @@ bool AddH265AccessUnitSlices(const media_codec::H265NalUnitList &units,
                              const std::string &sps,
                              const std::string &pps,
                              bool prepend_parameter_sets,
-                             MediaSliceList *slices) {
+                             TsSliceList *slices) {
     static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
     static constexpr uint8_t kAud[] = {0x46, 0x01, 0x50};
     if (slices == nullptr) {
@@ -444,7 +445,7 @@ bool AppendTsSegmentHeader(Codec codec,
     const std::string pat = BuildPatPacket(&state->pat_continuity);
     const std::string pmt = BuildPmtPacket(codec, &state->pmt_continuity);
     // HLS segment body 是新的 TS 连续内存，PAT/PMT/PES 都会复制/拼装进去；
-    // 它不直接引用原始 EncodedFrame payload。
+    // 它不直接引用原始 MediaFrame payload。
     return AppendTsString(segment_body, pat) &&
            AppendTsString(segment_body, pmt);
 }
@@ -542,7 +543,7 @@ uint64_t HlsMaker::EvictedSegmentCount() const {
 }
 
 uint32_t HlsMaker::CurrentSegmentSize() const {
-    return current_segment_.body != nullptr ? current_segment_.body->size : 0;
+    return current_segment_.body.Size();
 }
 
 MediaHlsPlaylist HlsMaker::BuildPlaylist(
@@ -578,14 +579,14 @@ MediaHlsPlaylist HlsMaker::BuildPlaylist(
 MediaSegmentRef HlsMaker::FindSegmentRef(uint64_t sequence) const {
     for (const MediaSegmentRef &segment : segments_) {
         if (segment.sequence == sequence) {
-            return MediaSegmentRefCopy(&segment);
+            return segment;
         }
     }
     ++missing_segment_count_;
     return MediaSegmentRef{};
 }
 
-bool HlsMaker::AppendFrame(const EncodedFrame &frame,
+bool HlsMaker::AppendFrame(const MediaFrame &frame,
                            const FramePayload &payload,
                            const std::string &vps,
                            const std::string &sps,
@@ -631,7 +632,6 @@ void HlsMaker::UnrefSegmentState(SegmentState *segment) {
     if (segment == nullptr) {
         return;
     }
-    FrameBufferUnref(segment->body);
     *segment = SegmentState{};
 }
 
@@ -647,15 +647,15 @@ uint32_t HlsMaker::ClampSegmentCapacity(size_t capacity) {
 
 bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
                                      size_t extra_bytes) {
-    if (segment == nullptr || segment->body == nullptr ||
-        segment->body->size > segment->body->capacity) {
+    if (segment == nullptr || segment->body.RawOwner() == nullptr ||
+        segment->body.Size() > segment->body.Capacity()) {
         return false;
     }
-    if (extra_bytes <= segment->body->capacity - segment->body->size) {
+    if (extra_bytes <= segment->body.Capacity() - segment->body.Size()) {
         return true;
     }
-    uint32_t new_capacity = segment->body->capacity;
-    while (extra_bytes > new_capacity - segment->body->size) {
+    uint32_t new_capacity = segment->body.Capacity();
+    while (extra_bytes > new_capacity - segment->body.Size()) {
         if (new_capacity >= kMaxHlsSegmentBytes) {
             return false;
         }
@@ -665,49 +665,47 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
             new_capacity = kMaxHlsSegmentBytes;
         }
     }
-    FrameBuffer *new_body = FrameBufferAlloc(new_capacity);
-    if (new_body == nullptr) {
+    MediaBufferRef new_body = MediaBufferRef::Allocate(new_capacity);
+    if (new_body.RawOwner() == nullptr) {
         return false;
     }
-    std::copy(segment->body->data, segment->body->data + segment->body->size,
-              new_body->data);
-    if (!FrameBufferSetSize(new_body, segment->body->size)) {
-        FrameBufferUnref(new_body);
+    const uint8_t* old_data = segment->body.Data();
+    uint8_t* new_data = new_body.MutableData();
+    if (old_data == nullptr || new_data == nullptr) {
         return false;
     }
-    FrameBufferUnref(segment->body);
-    segment->body = new_body;
+    std::copy(old_data, old_data + segment->body.Size(), new_data);
+    if (!new_body.SetSize(segment->body.Size())) {
+        return false;
+    }
+    segment->body = std::move(new_body);
     return true;
 }
 
 TsSegmentBuffer HlsMaker::SegmentBuffer(SegmentState *segment) {
     TsSegmentBuffer buffer;
-    if (segment == nullptr || segment->body == nullptr) {
+    if (segment == nullptr || segment->body.RawOwner() == nullptr) {
         return buffer;
     }
-    buffer.data = segment->body->data;
-    buffer.capacity = segment->body->capacity;
-    buffer.size = segment->body->size;
+    buffer.data = segment->body.MutableData();
+    buffer.capacity = segment->body.Capacity();
+    buffer.size = segment->body.Size();
     return buffer;
 }
 
 bool HlsMaker::CommitSegmentBuffer(
     SegmentState *segment,
     const TsSegmentBuffer &buffer) {
-    return segment != nullptr && segment->body != nullptr &&
-           buffer.size <= segment->body->capacity &&
-           FrameBufferSetSize(segment->body,
-                              static_cast<uint32_t>(buffer.size));
+    return segment != nullptr && segment->body.RawOwner() != nullptr &&
+           buffer.size <= segment->body.Capacity() &&
+           segment->body.SetSize(static_cast<uint32_t>(buffer.size));
 }
 
 void HlsMaker::ClearSegments() {
-    for (MediaSegmentRef &segment : segments_) {
-        MediaSegmentRefUnref(&segment);
-    }
     segments_.clear();
 }
 
-void HlsMaker::ObserveFrameTiming(const EncodedFrame &frame) {
+void HlsMaker::ObserveFrameTiming(const MediaFrame &frame) {
     if (last_pts_us_ > 0 && frame.pts_us > last_pts_us_) {
         last_frame_duration_us_ = frame.pts_us - last_pts_us_;
     }
@@ -719,8 +717,8 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
                                     const std::string &sps,
                                     const std::string &pps,
                                     bool prepend_parameter_sets,
-                                    const EncodedFrame &frame) {
-    if (current_segment_.body == nullptr) {
+                                    const MediaFrame &frame) {
+    if (current_segment_.body.RawOwner() == nullptr) {
         return false;
     }
     TsFrameSlices frame_slices;
@@ -751,8 +749,7 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
         return true;
     }
     ts_muxer_state_ = original_state;
-    (void)FrameBufferSetSize(current_segment_.body,
-                             static_cast<uint32_t>(original_size));
+    (void)current_segment_.body.SetSize(static_cast<uint32_t>(original_size));
     return false;
 }
 
@@ -772,10 +769,10 @@ void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
     current_segment_.last_pts_us = pts_us;
     const uint32_t segment_capacity =
         ClampSegmentCapacity(next_segment_capacity_);
-    // segment body 是 HLS 自己的 FrameBuffer，生命周期随 playlist retain 管理；
-    // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 EncodedFrame。
-    current_segment_.body = FrameBufferAlloc(segment_capacity);
-    if (current_segment_.body == nullptr) {
+    // segment body 是 HLS 自己的 MediaBuffer，生命周期随 playlist retain 管理；
+    // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 MediaFrame。
+    current_segment_.body = MediaBufferRef::Allocate(segment_capacity);
+    if (current_segment_.body.RawOwner() == nullptr) {
         UnrefSegmentState(&current_segment_);
         return;
     }
@@ -787,10 +784,10 @@ void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
 }
 
 void HlsMaker::RememberSegmentCapacity(const SegmentState &segment) {
-    if (segment.body == nullptr) {
+    if (segment.body.RawOwner() == nullptr) {
         return;
     }
-    size_t next_capacity = segment.body->size;
+    size_t next_capacity = segment.body.Size();
     const size_t slack =
         std::max(next_capacity / 8U, kHlsSegmentCapacitySlackBytes);
     if (next_capacity <= kMaxHlsSegmentBytes - slack) {
@@ -806,13 +803,13 @@ void HlsMaker::PopOldestSegment() {
         return;
     }
     ++evicted_segment_count_;
-    MediaSegmentRefUnref(&segments_.front());
     segments_.pop_front();
 }
 
 void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
-    if (!current_segment_.started || current_segment_.body == nullptr ||
-        current_segment_.body->size == 0) {
+    if (!current_segment_.started ||
+        current_segment_.body.RawOwner() == nullptr ||
+        current_segment_.body.Size() == 0) {
         return;
     }
     MediaSegmentRef segment;
@@ -821,7 +818,7 @@ void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
     segment.duration_us = CurrentSegmentDurationUs();
     segment.body = current_segment_.body;
     RememberSegmentCapacity(current_segment_);
-    current_segment_.body = nullptr;
+    current_segment_.body.Reset();
     segments_.push_back(segment);
     while (segments_.size() > segment_cache_depth) {
         PopOldestSegment();
@@ -829,8 +826,9 @@ void HlsMaker::PushFinalizedSegment(uint32_t segment_cache_depth) {
 }
 
 bool HlsMaker::FinalizeCurrentSegment(uint32_t segment_cache_depth) {
-    if (!current_segment_.started || current_segment_.body == nullptr ||
-        current_segment_.body->size == 0) {
+    if (!current_segment_.started ||
+        current_segment_.body.RawOwner() == nullptr ||
+        current_segment_.body.Size() == 0) {
         return false;
     }
 

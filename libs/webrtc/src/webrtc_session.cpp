@@ -177,7 +177,7 @@ bool WebrtcSession::HandleSrtcpPacket(const uint8_t *data, size_t size,
 }
 
 bool WebrtcSession::SendRtpPacket(
-    const EncodedFrame &frame, const rtp::RtpPacketView &packet) {
+    const MediaFrame &frame, const rtp::RtpPacketView &packet) {
     return transport_ != nullptr && transport_->SendRtpPacket(frame, packet);
 }
 

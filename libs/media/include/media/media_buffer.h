@@ -1,43 +1,71 @@
 #ifndef LIVE_STREAM_MEDIA_MEDIA_BUFFER_H_
 #define LIVE_STREAM_MEDIA_MEDIA_BUFFER_H_
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace live_stream {
 
-using FrameBufferFreeCallback = void (*)(uint8_t* data, uint32_t capacity,
+using MediaBufferFreeCallback = void (*)(uint8_t* data, uint32_t capacity,
                                          void* user);
 
-// FrameBuffer 是编码后媒体 payload 的唯一内存 owner。跨模块保存或异步发送
-// 只增加引用计数，不深拷贝 payload；最后一次 FrameBufferUnref() 才释放 malloc
-// 内存或归还 pool block。
-//
-// data 可以来自 FrameBufferAlloc() 的堆内存，也可以来自
-// FrameBufferCreateExternal() 包装的外部块。调用方只要把 data 指针保存到当前
-// 调用栈之外，就必须先 FrameBufferRef()，并在不再使用时 FrameBufferUnref()。
-struct FrameBuffer {
+// MediaBuffer owns one encoded media payload allocation. Public code should
+// keep it alive through MediaBufferRef instead of manually ref/unrefing it.
+struct MediaBuffer {
     uint8_t* data = nullptr;
     uint32_t capacity = 0;
     uint32_t size = 0;
     uint32_t ref_count = 0;
-    FrameBufferFreeCallback free_callback = nullptr;
+    MediaBufferFreeCallback free_callback = nullptr;
     void* user = nullptr;
 };
 
-struct FrameSlice {
-    // slice 不持有引用，只描述 FrameBuffer 中的一段有效 payload。调用方需要
-    // 另外持有 buffer 引用，才能把 slice 交给异步队列或协议 sender。
-    FrameBuffer* buffer = nullptr;
-    uint32_t offset = 0;
-    uint32_t size = 0;
+MediaBuffer* MediaBufferAddRef(MediaBuffer* buffer);
+void MediaBufferRelease(MediaBuffer* buffer);
+
+class MediaBufferRef {
+public:
+    MediaBufferRef() = default;
+    MediaBufferRef(const MediaBufferRef& other);
+    MediaBufferRef& operator=(const MediaBufferRef& other);
+    MediaBufferRef(MediaBufferRef&& other) noexcept;
+    MediaBufferRef& operator=(MediaBufferRef&& other) noexcept;
+    ~MediaBufferRef();
+
+    static MediaBufferRef Allocate(uint32_t capacity);
+    static MediaBufferRef AdoptExternal(uint8_t* data, uint32_t capacity,
+                                        uint32_t size,
+                                        MediaBufferFreeCallback free_callback,
+                                        void* user);
+
+    MediaBufferRef Slice(uint32_t offset, uint32_t size) const;
+
+    const uint8_t* Data() const;
+    uint8_t* MutableData();
+    uint32_t Size() const;
+    uint32_t Capacity() const;
+    bool SetSize(uint32_t size);
+    bool Valid() const;
+    void Reset();
+
+    // RawOwner is only for low-level bridge code that must pass the lifetime
+    // owner to net's protocol-agnostic send queue.
+    MediaBuffer* RawOwner() const { return buffer_; }
+
+private:
+    explicit MediaBufferRef(MediaBuffer* buffer);
+    MediaBufferRef(MediaBuffer* buffer, uint32_t offset, uint32_t size);
+
+    MediaBuffer* buffer_ = nullptr;
+    uint32_t offset_ = 0;
+    uint32_t size_ = 0;
 };
 
-struct MediaSlice {
+struct MediaOutSlice {
     const uint8_t* data = nullptr;
     size_t size = 0;
-    FrameBuffer* owner = nullptr;
+    MediaBufferRef owner;
 };
 
 struct MediaBufferPoolStats {
@@ -49,40 +77,16 @@ struct MediaBufferPoolStats {
     uint64_t no_memory_count = 0;
 };
 
-class IFrameBufferPool {
+class IMediaBufferPool {
 public:
-    virtual ~IFrameBufferPool() = default;
+    virtual ~IMediaBufferPool() = default;
 
-    virtual FrameBuffer* Acquire() = 0;
+    virtual MediaBufferRef Acquire() = 0;
     virtual MediaBufferPoolStats Stats() const = 0;
 };
 
-FrameBuffer* FrameBufferAlloc(uint32_t capacity);
-FrameBuffer* FrameBufferCreateExternal(uint8_t* data, uint32_t capacity,
-                                       uint32_t size,
-                                       FrameBufferFreeCallback free_callback,
-                                       void* user);
-FrameBuffer* FrameBufferRef(FrameBuffer* buffer);
-bool FrameBufferSetSize(FrameBuffer* buffer, uint32_t size);
-void FrameBufferUnref(FrameBuffer* buffer);
-
-std::unique_ptr<IFrameBufferPool> CreateFrameBufferPool(uint32_t block_size,
+std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_size,
                                                         uint32_t block_count);
-
-inline bool IsValidFrameSlice(const FrameSlice& slice) {
-    if (slice.buffer == nullptr) {
-        return false;
-    }
-    if (slice.offset > slice.buffer->size) {
-        return false;
-    }
-    return slice.size <= slice.buffer->size - slice.offset;
-}
-
-inline const uint8_t* FrameSliceData(const FrameSlice& slice) {
-    return IsValidFrameSlice(slice) ? slice.buffer->data + slice.offset
-                                    : nullptr;
-}
 
 }  // namespace live_stream
 

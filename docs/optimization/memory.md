@@ -30,11 +30,11 @@ client/subscription 计数分开维护。下游协议不能直接订阅 HiSilico
 1. `hisi_vendor` 通过 `HI_MPI_VENC_GetStream` 取到 VENC pack。pack 数据仍归 MPP
    stream buffer 管理，`HI_MPI_VENC_ReleaseStream` 后不能继续引用。
 2. `hisi_vendor` 把一个 VENC frame 的多个 pack、以及环形 buffer 回绕后的
-   first/second slice，按原始 AnnexB 顺序拼成项目自己的连续 `VideoBuffer`。
+   first/second slice，按原始 AnnexB 顺序拼成项目自己的连续 `MediaBuffer`。
    这是进入项目内存的必要 payload 深拷贝点。
-3. `device` 用 `EncodedFrame` 描述 `VideoBuffer + offset + size + codec +
-   pts/dts + frame_type`，通过 `FrameSink::PushFrame()` 分发给 `media`。后续保存帧只做
-   `EncodedFrameRefCopy()`，增加 `VideoBuffer` 引用计数，不复制整帧。
+3. `device` 用 `MediaFrame` 描述 `MediaBufferRef payload + codec + pts/dts +
+   frame_type`，通过 `FrameSink::PushFrame()` 分发给 `media`。后续保存帧只做
+   `MediaFrame` 值拷贝，增加底层 `MediaBuffer` 引用计数，不复制整帧。
 4. `media` 归一化时间戳，解析 H.264/H.265 AnnexB NAL 视图，写入 GOP cache、
    FrameSubscription live queue、FLV cache、HLS segment 和 MJPEG latest frame。
 5. `media` 统一维护 corrected DTS/PTS、参数集、GOP、frame subscription、
@@ -46,17 +46,17 @@ client/subscription 计数分开维护。下游协议不能直接订阅 HiSilico
 ## 设计考量
 
 - VENC pack 生命周期由 MPP 驱动控制，不能把 pack 指针直接传给异步协议层；
-  先复制到项目 `VideoBuffer` 后即可尽早 `ReleaseStream`，避免硬件码流 buffer
+  先复制到项目 `MediaBuffer` 后即可尽早 `ReleaseStream`，避免硬件码流 buffer
   被 Web 慢客户端反压拖住。
-- `VideoBuffer` 是编码 payload 的唯一 owner。GOP cache、subscription queue、
+- `MediaBuffer` 是编码 payload 的唯一 owner。GOP cache、subscription queue、
   HTTP-FLV cache、RTSP TCP queue 和 HTTP response queue 都通过引用计数保活，
   避免按协议数、客户端数或 GOP 数量重复复制大帧。
 - HLS 是独立 HTTP 对象和 MPEG-TS 转封装结果，segment 必须自包含，不能保存原始
-  `EncodedFrame` slice 指针。因此 HLS 主动把 PES header、TS packet header 和
+  `MediaFrame` payload 指针。因此 HLS 主动把 PES header、TS packet header 和
   NAL payload 写入独立 segment body。
 - FLV 和 RTP 是流式发送格式，可以把协议小头部和原始 NAL payload 分成 slices。
-  小头部可复制入 socket 队列，媒体 payload 通过 `MediaSlice.owner` /
-  `NetBufferOwner` 延长 `VideoBuffer` 生命周期。
+  小头部可复制入 socket 队列，媒体 payload 通过 `MediaOutSlice.owner` /
+  `NetBufferOwner` 延长 `MediaBuffer` 生命周期。
 - WebRTC RTP 分包阶段仍使用 slice view；SRTP 加密阶段必须形成可原地加密并追加
   认证尾部的连续 UDP packet，所以会有每个 RTP packet 的加密前复制。
 - 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，媒体模块只持有
@@ -70,12 +70,12 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 
 | 阶段 | Payload 深拷贝次数 | 说明 |
 | --- | ---: | --- |
-| VENC pack -> `VideoBuffer` | 1 | 必要拷贝。把 MPP pack 和回绕 slice 拼成连续 AnnexB payload，随后释放 VENC stream。 |
-| `device` 分发 | 0 | `EncodedFrameRefCopy()` 只增加 `VideoBuffer` 引用计数，不持有 GOP 或最近关键帧缓存。 |
+| VENC pack -> `MediaBuffer` | 1 | 必要拷贝。把 MPP pack 和回绕 slice 拼成连续 AnnexB payload，随后释放 VENC stream。 |
+| `device` 分发 | 0 | `MediaFrame` 值拷贝只增加底层 `MediaBuffer` 引用计数，不持有 GOP 或最近关键帧缓存。 |
 | `media` ingest / parse / cache | 0 | NAL parser、GOP cache 和 FrameSubscription live queue 引用同一份 payload；NAL list 只是指针视图，不按 subscription 或 GOP 复制 payload。新订阅方 keyframe-first 从 `media` 缓存起播。 |
 | HLS 封装 | 1 | `HlsMaker` 把 PES/TS header、AnnexB 起始码和 NAL payload 写入独立 TS segment body。segment 扩容时可能复制已写 segment body，当前实现会预估并预留容量降低扩容概率。 |
-| HLS HTTP 发送 | 0 | TS segment 已在 `VideoBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
-| HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `VideoBuffer`。 |
+| HLS HTTP 发送 | 0 | TS segment 已在 `MediaBuffer` 中，`SendResponseSlices()` 用 owner 让 net 队列保活。 |
+| HTTP-FLV live/cache | 0 | FLV tag header、NAL length 和 previous tag size 是小块；视频 NAL payload slice 指向原 `MediaBuffer`。 |
 | RTSP RTP packetize | 0 | `RtpPacketizer` 生成 RTP header/FU header slice，媒体 payload 仍指向原帧。TCP interleaved 用 owner 保活，UDP 在调用内发送。 |
 | WebRTC RTP packetize | 0 | 与 RTSP 一样，RTP packet view 不复制媒体 payload。 |
 | WebRTC SRTP protect | 1/packet | libsrtp 需要连续可写 buffer；每个 RTP packet view 会复制成连续 buffer 后原地加密并追加认证尾部。 |
@@ -119,7 +119,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 - peer 未见关键帧时丢弃非关键帧，subscription 溢出后也等待下一个关键帧恢复。
 - RTP packet view 进入 `SrtpSession::ProtectRtp()` 后，会复制成连续 buffer，libsrtp
   原地加密并追加认证尾部，再通过 ICE selected pair 的 UDP socket 发送。
-- WebRTC 的额外拷贝是加密所需，不会长期保存原始 `EncodedFrame` 指针。
+- WebRTC 的额外拷贝是加密所需，不会长期保存原始 `MediaFrame` 指针。
 
 ## 优化原则
 
@@ -134,7 +134,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 ## 当前重点
 
 - `media`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest
-  frame、FrameSubscription live queue 和 `EncodedFrame` 引用释放。
+  frame、FrameSubscription live queue 和 `MediaFrame` 引用释放。
 - `media`：下游 client registry 和 frame subscription 数量上限。
 - `media`：HLS/FLV 封装输出减少临时大 buffer。
 - `media_codec`：RTSP/WebRTC RTP packet view 避免复制 media payload。

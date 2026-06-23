@@ -48,7 +48,7 @@ public:
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;
     MediaSegmentRef FindSegmentRef(uint64_t sequence) const;
-    bool AppendFrame(const EncodedFrame &frame,
+    bool AppendFrame(const MediaFrame &frame,
                      const FramePayload &payload,
                      const std::string &vps,
                      const std::string &sps,
@@ -65,7 +65,7 @@ private:
         uint64_t sequence = 0;
         int64_t start_pts_us = 0;
         int64_t last_pts_us = 0;
-        FrameBuffer *body = nullptr;
+        MediaBufferRef body;
     };
 
     static void UnrefSegmentState(SegmentState *segment);
@@ -78,13 +78,13 @@ private:
         const TsSegmentBuffer &buffer);
 
     void ClearSegments();
-    void ObserveFrameTiming(const EncodedFrame &frame);
+    void ObserveFrameTiming(const MediaFrame &frame);
     bool AppendFrameToSegment(const FramePayload &payload,
                               const std::string &vps,
                               const std::string &sps,
                               const std::string &pps,
                               bool prepend_parameter_sets,
-                              const EncodedFrame &frame);
+                              const MediaFrame &frame);
     int64_t CurrentSegmentDurationUs() const;
     void StartSegment(Codec codec, int64_t pts_us);
     void RememberSegmentCapacity(const SegmentState &segment);

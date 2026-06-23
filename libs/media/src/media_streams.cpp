@@ -99,93 +99,6 @@ const char *SubscriptionCloseName(
     return "unknown";
 }
 
-void MediaFlvCachedVideoTagUnref(MediaFlvCachedVideoTag *tag) {
-    if (tag == nullptr) {
-        return;
-    }
-    EncodedFrameUnref(&tag->frame);
-    *tag = MediaFlvCachedVideoTag{};
-}
-
-bool MediaFlvCachedVideoTagRefCopy(MediaFlvCachedVideoTag *target,
-                                   const MediaFlvCachedVideoTag *source) {
-    if (target == nullptr || source == nullptr) {
-        return false;
-    }
-    if (target == source) {
-        return true;
-    }
-    EncodedFrame retained_frame;
-    if (!EncodedFrameRefCopy(&retained_frame, &source->frame)) {
-        return false;
-    }
-    MediaFlvCachedVideoTagUnref(target);
-    *target = *source;
-    target->frame = retained_frame;
-    return true;
-}
-
-void MediaFlvStartUnref(MediaFlvStart *flv_start) {
-    if (flv_start == nullptr) {
-        return;
-    }
-    for (MediaFlvCachedVideoTag &tag : flv_start->cached_video_tags) {
-        MediaFlvCachedVideoTagUnref(&tag);
-    }
-    flv_start->cached_video_tags.clear();
-    flv_start->file_header.clear();
-    flv_start->sequence_header.clear();
-    flv_start->supported = false;
-    flv_start->cached_gop_complete = false;
-    flv_start->config_generation = 0;
-}
-
-void SubscriptionStartUnref(
-    SubscriptionStart *start_data) {
-    if (start_data == nullptr) {
-        return;
-    }
-    for (EncodedFrame &frame : start_data->gop_frames) {
-        EncodedFrameUnref(&frame);
-    }
-    start_data->gop_frames.clear();
-    start_data->track_ready = false;
-    start_data->gop_complete = false;
-    start_data->generation = 0;
-    start_data->stream_info = MediaStreamInfo{};
-}
-
-void SubscriptionFrameUnref(SubscriptionFrame *subscribed_frame) {
-    if (subscribed_frame == nullptr) {
-        return;
-    }
-    EncodedFrameUnref(&subscribed_frame->frame);
-    subscribed_frame->subscription_id = 0;
-    subscribed_frame->generation = 0;
-    subscribed_frame->starts_on_keyframe = false;
-}
-
-MediaSegmentRef MediaSegmentRefCopy(const MediaSegmentRef *segment) {
-    MediaSegmentRef ref;
-    if (segment == nullptr || !segment->found || segment->body == nullptr) {
-        return ref;
-    }
-    ref = *segment;
-    ref.body = FrameBufferRef(segment->body);
-    if (ref.body == nullptr) {
-        return MediaSegmentRef{};
-    }
-    return ref;
-}
-
-void MediaSegmentRefUnref(MediaSegmentRef *segment) {
-    if (segment == nullptr) {
-        return;
-    }
-    FrameBufferUnref(segment->body);
-    *segment = MediaSegmentRef{};
-}
-
 class MediaStreams::Impl {
 public:
     explicit Impl(MediaStreamsOptions options) : options_(std::move(options)) {}
@@ -214,28 +127,23 @@ public:
         started_ = false;
     }
 
-    bool PushFrame(const EncodedFrame &input_frame) {
-        if (!IsEncodedFramePayloadValid(&input_frame) ||
+    bool PushFrame(const MediaFrame &input_frame) {
+        if (!IsMediaFramePayloadValid(input_frame) ||
             !IsStreamSupported(input_frame.stream_id)) {
             return false;
         }
 
-        EncodedFrame frame;
-        if (!EncodedFrameRefCopy(&frame, &input_frame)) {
-            return false;
-        }
+        MediaFrame frame = input_frame;
 
         bool normalized = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (!started_) {
-                EncodedFrameUnref(&frame);
                 return false;
             }
             source_state::StreamContext *stream =
                 FindMutableStream(frame.stream_id);
             if (stream == nullptr) {
-                EncodedFrameUnref(&frame);
                 return false;
             }
             EnsureRunningStreamLocked(stream, frame.stream_id, frame.codec);
@@ -250,7 +158,6 @@ public:
         }
 
         if (!normalized) {
-            EncodedFrameUnref(&frame);
             return false;
         }
 
@@ -259,8 +166,6 @@ public:
         QueueFrameForSubscriptions(payload);
         PackageBrowserFrame(payload,
                             source_state::IsFramePayloadParsed(payload));
-        source_state::ParsedFramePayloadUnref(&payload);
-        EncodedFrameUnref(&frame);
         return true;
     }
 
@@ -536,7 +441,7 @@ private:
         const source_state::ParsedFramePayload &payload) {
         std::lock_guard<std::mutex> guard(mutex_);
         source_state::StreamContext *stream =
-            FindMutableStream(payload.encoded_frame.stream_id);
+            FindMutableStream(payload.frame.stream_id);
         if (stream == nullptr ||
             stream->state != MediaStreamState::kRunning) {
             return;
@@ -551,7 +456,7 @@ private:
             return;
         }
 
-        const EncodedFrame &frame = payload.encoded_frame;
+        const MediaFrame &frame = payload.frame;
         std::vector<source_state::PendingFlvClientWrite> clients;
         std::string sequence_header_tag;
         source_state::FlvVideoTagView flv_tag_view;
@@ -610,9 +515,9 @@ private:
     }
 
     void PackageMjpegFrame(const source_state::ParsedFramePayload &payload) {
-        const EncodedFrame &frame = payload.encoded_frame;
+        const MediaFrame &frame = payload.frame;
         if (frame.codec != Codec::kMjpeg ||
-            !IsEncodedFramePayloadValid(&frame)) {
+            !IsMediaFramePayloadValid(frame)) {
             return;
         }
 
@@ -640,7 +545,7 @@ private:
         const std::string &sequence_header_tag,
         const source_state::FlvVideoTagView &flv_tag_view,
         bool has_flv_tag_view,
-        const EncodedFrame &frame) {
+        const MediaFrame &frame) {
         std::vector<MediaFlvClientId> detach_ids;
         for (const source_state::PendingFlvClientWrite &client : clients) {
             if (client.send_sequence_header &&
@@ -678,7 +583,7 @@ private:
 
     void WriteMjpegClients(
         const std::vector<source_clients::PendingMjpegClientWrite> &clients,
-        const EncodedFrame &frame) {
+        const MediaFrame &frame) {
         std::vector<MediaMjpegClientId> detach_ids;
         for (const source_clients::PendingMjpegClientWrite &client : clients) {
             if (client.sink == nullptr || !client.sink->OnMjpegFrame(frame)) {
@@ -763,7 +668,7 @@ bool MediaStreams::Start() { return impl_->Start(); }
 
 void MediaStreams::Stop() { impl_->Stop(); }
 
-bool MediaStreams::PushFrame(const EncodedFrame &frame) {
+bool MediaStreams::PushFrame(const MediaFrame &frame) {
     return impl_->PushFrame(frame);
 }
 

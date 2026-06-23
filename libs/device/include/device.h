@@ -46,77 +46,20 @@ struct SnapshotRequest {
 };
 
 struct SnapshotFrame {
-    FrameBuffer *buffer = nullptr;
-    uint32_t offset = 0;
-    uint32_t size = 0;
+    MediaBufferRef buffer;
     uint32_t width = 0;
     uint32_t height = 0;
     int64_t pts_us = 0;
 
-    SnapshotFrame() = default;
-
-    SnapshotFrame(const SnapshotFrame &other)
-        : buffer(FrameBufferRef(other.buffer)),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          pts_us(other.pts_us) {}
-
-    SnapshotFrame &operator=(const SnapshotFrame &other) {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBuffer *retained = FrameBufferRef(other.buffer);
-        FrameBufferUnref(buffer);
-        buffer = retained;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        pts_us = other.pts_us;
-        return *this;
-    }
-
-    SnapshotFrame(SnapshotFrame &&other) noexcept
-        : buffer(other.buffer),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          pts_us(other.pts_us) {
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-    }
-
-    SnapshotFrame &operator=(SnapshotFrame &&other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBufferUnref(buffer);
-        buffer = other.buffer;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        pts_us = other.pts_us;
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-        return *this;
-    }
-
-    ~SnapshotFrame() { FrameBufferUnref(buffer); }
-
-    FrameSlice PayloadSlice() const { return FrameSlice{buffer, offset, size}; }
+    MediaBufferRef Payload() const { return buffer; }
+    uint32_t Size() const { return buffer.Size(); }
 
     bool IsPayloadValid() const {
-        return size != 0 && IsValidFrameSlice(PayloadSlice());
+        return buffer.Valid() && buffer.Size() != 0;
     }
 
     const uint8_t *PayloadData() const {
-        return IsPayloadValid() ? FrameSliceData(PayloadSlice()) : nullptr;
+        return IsPayloadValid() ? buffer.Data() : nullptr;
     }
 };
 

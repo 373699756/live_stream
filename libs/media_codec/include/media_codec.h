@@ -26,7 +26,7 @@ constexpr uint8_t kH265NalTypeAud = 35;
 
 struct H264NalUnit {
     // 去掉 0x000001/0x00000001 起始码后的 H.264 NAL 视图。
-    // data 指向输入 EncodedFrame 的 payload；释放帧 owner 后不能继续保存该指针。
+    // data 指向输入 MediaFrame 的 payload；释放帧 owner 后不能继续保存该指针。
     const uint8_t *data = nullptr;
     size_t size = 0;
     uint8_t type = 0;

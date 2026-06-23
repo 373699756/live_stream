@@ -31,7 +31,7 @@ struct StreamContext {
     HlsMaker hls_maker;
     uint64_t config_generation = 0;
     uint64_t codec_generation = 0;
-    EncodedFrame latest_mjpeg_frame;
+    MediaFrame latest_mjpeg_frame;
     bool has_latest_mjpeg_frame = false;
     MediaStreamResetReason last_reset_reason = MediaStreamResetReason::kNone;
     TimestampCorrector timestamp_corrector;
@@ -65,9 +65,8 @@ bool IsFlvStreamReady(const StreamContext &stream);
 bool IsHlsStreamReady(const StreamContext &stream);
 bool IsMjpegStreamReady(const StreamContext &stream);
 
-void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload);
+void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload *payload);
 bool IsFramePayloadParsed(const ParsedFramePayload &payload);
-void ParsedFramePayloadUnref(ParsedFramePayload *payload);
 void ClearStreamContext(StreamContext *stream);
 
 MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
@@ -82,10 +81,10 @@ void ResetStream(StreamContext *stream, Codec codec,
                  MediaStreamResetReason reason);
 void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason);
 NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
-                                               EncodedFrame *frame);
-bool CacheMjpegFrame(StreamContext *stream, const EncodedFrame &frame);
+                                               MediaFrame *frame);
+bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame);
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
-                                        const EncodedFrame &frame,
+                                        const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
                                         bool package_flv,

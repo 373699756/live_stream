@@ -524,19 +524,23 @@ bool MeasureVencPayload(const VencStreamContext& context,
     return true;
 }
 
-FrameBuffer* CopyVencPayload(const VencStreamContext& context,
-                             const VENC_STREAM_S& stream,
-                             const VENC_STREAM_BUF_INFO_S& stream_buffer,
-                             uint32_t payload_size) {
+MediaBufferRef CopyVencPayload(const VencStreamContext& context,
+                               const VENC_STREAM_S& stream,
+                               const VENC_STREAM_BUF_INFO_S& stream_buffer,
+                               uint32_t payload_size) {
     // 这是从 HiSilicon VENC 内部 stream buffer 到项目内存的唯一深拷贝点。
-    // 复制完成后 EncodedFrame 持有 FrameBuffer；随后即可 ReleaseStream，把
+    // 复制完成后 MediaFrame 持有 MediaBuffer；随后即可 ReleaseStream，把
     // MPP 的 pack buffer 还给驱动，不影响上层继续发送该帧。
-    FrameBuffer* buffer = FrameBufferAlloc(payload_size);
-    if (buffer == nullptr) {
+    MediaBufferRef buffer = MediaBufferRef::Allocate(payload_size);
+    if (buffer.RawOwner() == nullptr) {
         Error("hisi_vendor",
               "alloc VENC payload chn=%d seq=%u size=%u failed",
               context.chn, stream.u32Seq, payload_size);
-        return nullptr;
+        return MediaBufferRef();
+    }
+    uint8_t* buffer_data = buffer.MutableData();
+    if (buffer_data == nullptr) {
+        return MediaBufferRef();
     }
 
     uint32_t offset = 0;
@@ -549,8 +553,7 @@ FrameBuffer* CopyVencPayload(const VencStreamContext& context,
                   "pack=%u len=%u offset=%u addr=%p",
                   context.chn, stream.u32Seq, i, pack.u32Len,
                   pack.u32Offset, static_cast<void*>(pack.pu8Addr));
-            FrameBufferUnref(buffer);
-            return nullptr;
+            return MediaBufferRef();
         }
         if (packet_data.size > payload_size - offset) {
             Error("hisi_vendor",
@@ -558,38 +561,36 @@ FrameBuffer* CopyVencPayload(const VencStreamContext& context,
                   "offset=%u len=%u size=%u",
                   context.chn, stream.u32Seq, offset,
                   packet_data.size, payload_size);
-            FrameBufferUnref(buffer);
-            return nullptr;
+            return MediaBufferRef();
         }
         if (packet_data.first.size > 0) {
             // first/second 都是 VENC ring buffer 中的只读片段，按 AnnexB 原顺序
-            // 拼进一个连续 FrameBuffer，便于后续 parser/packetizer 直接使用。
-            std::memcpy(buffer->data + offset, packet_data.first.data,
+            // 拼进一个连续 MediaBuffer，便于后续 parser/packetizer 直接使用。
+            std::memcpy(buffer_data + offset, packet_data.first.data,
                         packet_data.first.size);
             offset += packet_data.first.size;
         }
         if (packet_data.second.size > 0) {
-            std::memcpy(buffer->data + offset, packet_data.second.data,
+            std::memcpy(buffer_data + offset, packet_data.second.data,
                         packet_data.second.size);
             offset += packet_data.second.size;
         }
     }
-    if (offset != payload_size || !FrameBufferSetSize(buffer, offset)) {
+    if (offset != payload_size || !buffer.SetSize(offset)) {
         Error("hisi_vendor",
               "copy VENC stream chn=%d seq=%u size=%u expect=%u "
               "failed",
               context.chn, stream.u32Seq, offset, payload_size);
-        FrameBufferUnref(buffer);
-        return nullptr;
+        return MediaBufferRef();
     }
     return buffer;
 }
 
-EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
-                               const VENC_STREAM_S& stream,
-                               FrameType frame_type,
-                               FrameBuffer* buffer) {
-    EncodedFrame frame;
+MediaFrame BuildMediaFrame(const VencStreamContext& context,
+                           const VENC_STREAM_S& stream,
+                           FrameType frame_type,
+                           MediaBufferRef buffer) {
+    MediaFrame frame;
     frame.stream_id = context.stream_id;
     frame.codec = context.codec;
     frame.frame_type = frame_type;
@@ -597,9 +598,7 @@ EncodedFrame BuildEncodedFrame(const VencStreamContext& context,
     // PTS 取自 VENC pack；media 后续会修正为从流起点开始的单调相对时间。
     frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = frame.pts_us;
-    frame.payload.buffer = buffer;
-    frame.payload.offset = 0;
-    frame.payload.size = buffer != nullptr ? buffer->size : 0;
+    frame.payload = std::move(buffer);
     return frame;
 }
 
@@ -616,7 +615,7 @@ void ReleaseVencStream(const VencStreamContext& context,
 }
 
 void HandleVencStream(VencStreamContext* context,
-                      EncodedFrameCallback callback,
+                      MediaFrameCallback callback,
                       void* user) {
     if (context == nullptr) {
         return;
@@ -642,28 +641,26 @@ void HandleVencStream(VencStreamContext* context,
     }
 
     const FrameType frame_type = FrameTypeFromStream(stream, context->codec);
-    FrameBuffer* buffer =
+    MediaBufferRef buffer =
         CopyVencPayload(*context, stream, stream_buffer, payload.size);
-    if (buffer == nullptr) {
+    if (buffer.RawOwner() == nullptr) {
         ReleaseVencStream(*context, &stream, packs);
         return;
     }
-    EncodedFrame frame = BuildEncodedFrame(*context, stream, frame_type, buffer);
-    // frame 已经拥有项目 FrameBuffer。ReleaseVencStream 只释放 MPP stream 和
-    // 临时 pack 数组，不会释放 frame.payload.buffer。
+    MediaFrame frame =
+        BuildMediaFrame(*context, stream, frame_type, std::move(buffer));
+    // frame 已经拥有项目 MediaBuffer。ReleaseVencStream 只释放 MPP stream 和
+    // 临时 pack 数组，不会释放 frame.payload 持有的 MediaBuffer。
     ReleaseVencStream(*context, &stream, packs);
 
     if (callback != nullptr) {
-        // callback 是同步调用；返回后本函数会 unref 自己持有的 frame。
-        // 上层保存帧必须在回调内 EncodedFrameRefCopy()。
         callback(frame, user);
     }
-    EncodedFrameUnref(&frame);
 }
 
 // Match the HiSilicon sample flow: one capture thread selects all VENC fds.
 void VencStreamLoop(MediaPipelineConfig config,
-                    EncodedFrameCallback callback,
+                    MediaFrameCallback callback,
                     void* user,
                     std::atomic<bool>* running) {
     VencStreamContext streams[2];
@@ -1051,7 +1048,7 @@ void MppHisiSdk::UnbindVpssVenc(const MediaPipelineConfig& config) {
 // StartVencStream / StopVencStream
 // ====================================================================
 bool MppHisiSdk::StartVencStream(const MediaPipelineConfig& config,
-                                 EncodedFrameCallback callback,
+                                 MediaFrameCallback callback,
                                  void* user) {
     std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
     if (impl_->stream_running_.load() || impl_->stream_thread_.joinable()) {

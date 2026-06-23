@@ -80,7 +80,7 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
     std::memcpy(header, data, sizeof(header));
     WriteFlvTimestampMs(timestamp_ms, header);
 
-    MediaSlice slices[2];
+    MediaOutSlice slices[2];
     // data 指向 start/sequence 这类 session 内字符串或栈上 header，未带 owner；
     // HTTP/net 入队时会复制这些小块。
     slices[0].data = header;
@@ -93,25 +93,25 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
 bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
                               ConnectionId connection_id,
                               const MediaFlvVideoTagView &tag,
-                              const EncodedFrame &frame,
+                              const MediaFrame &frame,
                               const uint8_t *rebased_header) {
     if (writer == nullptr || tag.slice_count == 0 ||
         rebased_header == nullptr) {
         return writer != nullptr;
     }
 
-    // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 FrameBuffer，
-    // 由 MediaSlice.owner 保证异步发送期间 buffer 存活。
+    // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 MediaBuffer，
+    // 由 MediaOutSlice.owner 保证异步发送期间 buffer 存活。
     size_t index = 0;
     while (index < tag.slice_count) {
-        MediaSlice slices[kMaxNetBufferSlices];
+        MediaOutSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
             const MediaFlvVideoTagSlice &source = tag.slices[index];
             if (source.data == nullptr || source.size == 0) {
                 return false;
             }
-            if (source.media_payload && frame.payload.buffer == nullptr) {
+            if (source.media_payload && frame.payload.RawOwner() == nullptr) {
                 return false;
             }
             slices[slice_count].data =
@@ -119,7 +119,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
                                                       : source.data;
             slices[slice_count].size = source.size;
             if (source.media_payload) {
-                slices[slice_count].owner = frame.payload.buffer;
+                slices[slice_count].owner = frame.payload;
             }
             ++slice_count;
             ++index;
@@ -146,7 +146,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
     // 输出，只在第一个 header slice 上替换 rebased timestamp。
     size_t index = 0;
     while (index < tag.slice_count) {
-        MediaSlice slices[kMaxNetBufferSlices];
+        MediaOutSlice slices[kMaxNetBufferSlices];
         size_t slice_count = 0;
         while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
             const MediaFlvCachedVideoTagSlice &source = tag.slices[index];
@@ -163,12 +163,12 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
             }
             slices[slice_count].size = source.size;
             if (source.media_payload) {
-                if (tag.frame.payload.buffer == nullptr) {
+                if (tag.frame.payload.RawOwner() == nullptr) {
                     return false;
                 }
-                // cached GOP 的媒体 payload 仍在 tag.frame.payload.buffer 中；owner 让
-                // net send queue 在异步写 socket 期间持有该 FrameBuffer。
-                slices[slice_count].owner = tag.frame.payload.buffer;
+                // cached GOP 的媒体 payload 仍在 tag.frame.payload 中；owner 让
+                // net send queue 在异步写 socket 期间持有该 MediaBuffer。
+                slices[slice_count].owner = tag.frame.payload;
             }
             ++slice_count;
             ++index;
@@ -297,7 +297,7 @@ bool HttpFlvSession::OnFlvChunk(const uint8_t *data, size_t size) {
 }
 
 bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
-                                   const EncodedFrame &frame) {
+                                   const MediaFrame &frame) {
     if (writer_ == nullptr || tag.slice_count == 0) {
         return writer_ != nullptr;
     }
@@ -314,7 +314,7 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
     WriteFlvTimestampMs(rebased_ms, header);
 
     // header 是本函数栈内小数组，net 会复制；后续 media_payload slice
-    // 通过 frame.payload.buffer owner 零拷贝排入发送队列。
+    // 通过 frame.payload owner 零拷贝排入发送队列。
     return EnqueueFlvVideoTagSlices(writer_, connection_id_, tag, frame,
                                     header);
 }

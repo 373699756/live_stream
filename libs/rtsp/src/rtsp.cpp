@@ -719,7 +719,6 @@ private:
             // 避免空 subscription 长期占用 media_streams。
             media_streams_->UnsubscribeFrames(
                 subscription_id, SubscriptionClose::kUnsubscribed);
-            SubscriptionStartUnref(&start_data);
             return 455;
         }
         const uint32_t play_rtp_timestamp =
@@ -733,7 +732,6 @@ private:
             session->SetPlayRtpTimestamp(play_rtp_timestamp);
             session->SetStartFrames(&start_data.gop_frames);
         }
-        SubscriptionStartUnref(&start_data);
         return 200;
     }
 
@@ -829,15 +827,13 @@ private:
                 break;
             }
             // Pop 出来的 frame 带引用，发送路径只在本次调用内使用；
-            // SendMediaFrame 返回后必须 unref。
             SendMediaFrame(session, subscribed_frame.frame);
-            SubscriptionFrameUnref(&subscribed_frame);
         }
     }
 
     bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session) {
         while (true) {
-            EncodedFrame frame;
+            MediaFrame frame;
             bool has_frame = false;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -846,9 +842,9 @@ private:
                     return false;
                 }
                 if (!session->start_frames.empty()) {
-                    // Move 后 vector 中的原 frame 被置空，锁外发送可以缩短 RTSP mutex
+                    // Move 后锁外发送可以缩短 RTSP mutex
                     // 持有时间，避免发送慢客户端时阻塞其它控制请求。
-                    (void)EncodedFrameMove(&frame, &session->start_frames.front());
+                    frame = std::move(session->start_frames.front());
                     session->start_frames.erase(session->start_frames.begin());
                     has_frame = true;
                 }
@@ -857,12 +853,11 @@ private:
                 return true;
             }
             SendMediaFrame(session, frame);
-            EncodedFrameUnref(&frame);
         }
     }
 
     void SendMediaFrame(const std::shared_ptr<RtspSession>& session,
-                        const EncodedFrame& frame) {
+                        const MediaFrame& frame) {
         bool should_send = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);

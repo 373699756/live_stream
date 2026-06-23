@@ -92,9 +92,7 @@ hisisdk::SnapshotConfig BuildSdkSnapshotConfig(
 
 SnapshotFrame ToSnapshotFrame(const hisisdk::JpegFrame &hisi_frame) {
     SnapshotFrame frame;
-    frame.buffer = FrameBufferRef(hisi_frame.buffer);
-    frame.offset = hisi_frame.offset;
-    frame.size = hisi_frame.size;
+    frame.buffer = hisi_frame.buffer;
     frame.width = hisi_frame.width;
     frame.height = hisi_frame.height;
     frame.pts_us = hisi_frame.pts_us;
@@ -386,7 +384,7 @@ SnapshotFrame SnapshotCapture::Capture(const SnapshotRequest &request) {
 
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->FinishCaptureSession();
-    if (!hisi_frame.buffer || hisi_frame.size == 0) {
+    if (!hisi_frame.buffer.Valid() || hisi_frame.buffer.Size() == 0) {
         ++impl_->stats.capture_failed_count;
         return SnapshotFrame{};
     }

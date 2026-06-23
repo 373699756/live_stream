@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace live_stream {
@@ -35,49 +36,14 @@ struct HttpRequest {
 struct HttpResponseBodySlice {
     HttpResponseBodySlice() = default;
     HttpResponseBodySlice(const uint8_t *slice_data, size_t slice_size,
-                          FrameBuffer *slice_owner)
+                          MediaBufferRef slice_owner)
         : data(slice_data),
           size(slice_size),
-          owner(FrameBufferRef(slice_owner)) {}
-    HttpResponseBodySlice(const HttpResponseBodySlice &other)
-        : data(other.data),
-          size(other.size),
-          owner(FrameBufferRef(other.owner)) {}
-    HttpResponseBodySlice &operator=(const HttpResponseBodySlice &other) {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBuffer *retained = FrameBufferRef(other.owner);
-        FrameBufferUnref(owner);
-        data = other.data;
-        size = other.size;
-        owner = retained;
-        return *this;
-    }
-    HttpResponseBodySlice(HttpResponseBodySlice &&other) noexcept
-        : data(other.data), size(other.size), owner(other.owner) {
-        other.data = nullptr;
-        other.size = 0;
-        other.owner = nullptr;
-    }
-    HttpResponseBodySlice &operator=(HttpResponseBodySlice &&other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBufferUnref(owner);
-        data = other.data;
-        size = other.size;
-        owner = other.owner;
-        other.data = nullptr;
-        other.size = 0;
-        other.owner = nullptr;
-        return *this;
-    }
-    ~HttpResponseBodySlice() { FrameBufferUnref(owner); }
+          owner(std::move(slice_owner)) {}
 
     const uint8_t *data = nullptr;
     size_t size = 0;
-    FrameBuffer *owner = nullptr;
+    MediaBufferRef owner;
 };
 
 struct HttpResponse {

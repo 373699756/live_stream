@@ -93,7 +93,7 @@ const char *TaskAlarmName(AiTask task) {
 
 bool LooksLikeJpeg(const SnapshotFrame &frame) {
     const uint8_t *data = frame.PayloadData();
-    return data != nullptr && frame.size >= 2 && data[0] == 0xff &&
+    return data != nullptr && frame.Size() >= 2 && data[0] == 0xff &&
            data[1] == 0xd8;
 }
 
@@ -411,7 +411,7 @@ struct AiCore::State final {
                     run_config.inference_interval_ms);
             }
 
-            if (!frame.buffer || frame.size == 0) {
+            if (!frame.Valid()) {
                 MarkCaptureFailure(task_worker, run_config);
                 PublishAlarmInputForState(task_worker);
                 continue;
@@ -542,7 +542,7 @@ struct AiCore::State final {
             std::to_string(NextAlertId());
         const uint8_t *data = frame.PayloadData();
         std::string image;
-        image.assign(reinterpret_cast<const char *>(data), frame.size);
+        image.assign(reinterpret_cast<const char *>(data), frame.Size());
         if (!infra::File::WriteAll(AlertImagePath(options.alert_image_dir, id),
                                    image)) {
             IncrementDroppedTasks(pending_alert.task_worker);

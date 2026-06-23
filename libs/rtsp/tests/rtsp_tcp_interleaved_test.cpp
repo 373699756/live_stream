@@ -53,24 +53,23 @@ bool ReadUntil(int fd, const std::string& needle, std::string* out) {
     return false;
 }
 
-live_stream::EncodedFrame MakeFrame() {
-    live_stream::FrameBuffer* buffer = live_stream::FrameBufferAlloc(5);
-    uint8_t* data = buffer->data;
+live_stream::MediaFrame MakeFrame() {
+    live_stream::MediaBufferRef buffer =
+        live_stream::MediaBufferRef::Allocate(5);
+    uint8_t* data = buffer.MutableData();
     data[0] = 0x65;
     data[1] = 1;
     data[2] = 2;
     data[3] = 3;
     data[4] = 4;
-    (void)live_stream::FrameBufferSetSize(buffer, 5);
-    live_stream::EncodedFrame frame;
+    (void)buffer.SetSize(5);
+    live_stream::MediaFrame frame;
     frame.stream_id = live_stream::StreamId::kMain;
     frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 100000;
     frame.dts_us = 100000;
-    frame.payload.buffer = buffer;
-    frame.payload.offset = 0;
-    frame.payload.size = 5;
+    frame.payload = buffer;
     return frame;
 }
 

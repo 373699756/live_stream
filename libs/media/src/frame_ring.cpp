@@ -93,9 +93,9 @@ SubscriptionStart FrameRing::GetSubscriptionStart(
         if (cache->frames[i].sequence >= subscription.start_sequence) {
             continue;
         }
-        EncodedFrame frame;
-        // CopyFrameForSubscription 会 ref copy payload.encoded_frame；返回给 subscription 的
-        // start data 与内部 GOP cache 共享 FrameBuffer，不深拷贝帧内容。
+        MediaFrame frame;
+        // CopyFrameForSubscription 会 ref copy payload.frame；返回给 subscription 的
+        // start data 与内部 GOP cache 共享 MediaBuffer，不深拷贝帧内容。
         if (CopyFrameForSubscription(cache->frames[i].payload,
                                      cache->frames[i].duration_us, &frame)) {
             start_data.gop_frames.push_back(frame);
@@ -109,7 +109,7 @@ bool FrameRing::PopFrame(FrameSubscriptionId subscription_id,
     if (frame == nullptr) {
         return false;
     }
-    SubscriptionFrameUnref(frame);
+    *frame = SubscriptionFrame{};
     auto subscription_iter = subscriptions_.find(subscription_id);
     if (subscription_iter == subscriptions_.end()) {
         return false;
@@ -125,9 +125,8 @@ bool FrameRing::PopFrame(FrameSubscriptionId subscription_id,
     const bool copied =
         CopyFrameForSubscription(queued_frame.payload,
                                  queued_frame.duration_us, &frame->frame);
-    FramePayloadUnref(&queued_frame.payload);
     if (!copied) {
-        SubscriptionFrameUnref(frame);
+        *frame = SubscriptionFrame{};
         return false;
     }
     return true;
@@ -201,8 +200,8 @@ int64_t FrameRing::LastFrameTimestamp(StreamId stream_id) const {
 }
 
 void FrameRing::Write(const FramePayload &frame) {
-    const EncodedFrame &encoded_frame = frame.encoded_frame;
-    if (!IsEncodedFramePayloadValid(&encoded_frame)) {
+    const MediaFrame &encoded_frame = frame.frame;
+    if (!IsMediaFramePayloadValid(encoded_frame)) {
         return;
     }
 
@@ -276,11 +275,7 @@ void FrameRing::ClearCache(StreamCache *cache) {
         return;
     }
     for (CachedFrame &frame : cache->frames) {
-        FramePayloadUnref(&frame.payload);
-        frame.sequence = 0;
-        frame.keyframe = false;
-        frame.duration_us = 0;
-        frame.bytes = 0;
+        frame = CachedFrame{};
     }
     cache->size = 0;
     cache->bytes = 0;
@@ -294,11 +289,7 @@ void FrameRing::ClearLiveQueue(LiveQueue *queue) {
         return;
     }
     for (QueuedFrame &frame : queue->frames) {
-        FramePayloadUnref(&frame.payload);
-        frame.sequence = 0;
-        frame.keyframe = false;
-        frame.starts_on_keyframe = false;
-        frame.duration_us = 0;
+        frame = QueuedFrame{};
     }
     queue->head = 0;
     queue->size = 0;
@@ -319,12 +310,7 @@ bool FrameRing::PushLiveQueue(LiveQueue *queue, uint64_t sequence,
     }
     const size_t index = (queue->head + queue->size) % queue->frames.size();
     QueuedFrame &queued_frame = queue->frames[index];
-    FramePayloadUnref(&queued_frame.payload);
-    if (!FramePayloadRefCopy(&queued_frame.payload, &frame)) {
-        ClearLiveQueue(queue);
-        queue->overflow = true;
-        return false;
-    }
+    queued_frame.payload = frame;
     queued_frame.sequence = sequence;
     queued_frame.keyframe = keyframe;
     queued_frame.starts_on_keyframe = starts_on_keyframe;
@@ -342,9 +328,8 @@ bool FrameRing::PopLiveQueue(LiveQueue *queue, QueuedFrame *frame) {
     frame->keyframe = source.keyframe;
     frame->starts_on_keyframe = source.starts_on_keyframe;
     frame->duration_us = source.duration_us;
-    if (!FramePayloadMove(&frame->payload, &source.payload)) {
-        return false;
-    }
+    frame->payload = std::move(source.payload);
+    source.payload = FramePayload{};
     source.sequence = 0;
     source.keyframe = false;
     source.starts_on_keyframe = false;
@@ -360,10 +345,11 @@ bool FrameRing::PopLiveQueue(LiveQueue *queue, QueuedFrame *frame) {
 
 bool FrameRing::CopyFrameForSubscription(const FramePayload &payload,
                                          int64_t duration_us,
-                                         EncodedFrame *frame) {
-    if (!EncodedFrameRefCopy(frame, &payload.encoded_frame)) {
+                                         MediaFrame *frame) {
+    if (frame == nullptr) {
         return false;
     }
+    *frame = payload.frame;
     frame->duration_us = duration_us;
     return true;
 }
@@ -374,7 +360,7 @@ uint32_t FrameRing::CachedFrameBytes(const CachedFrame &frame) {
 
 int64_t FrameRing::EstimateFrameDuration(const StreamCache &cache,
                                          const FramePayload &frame) {
-    const int64_t dts_us = frame.encoded_frame.dts_us;
+    const int64_t dts_us = frame.frame.dts_us;
     int64_t duration_us = 0;
     if (cache.last_dts_us >= 0 && dts_us > cache.last_dts_us) {
         duration_us = dts_us - cache.last_dts_us;
@@ -407,18 +393,13 @@ bool FrameRing::AppendToCache(StreamCache *cache, uint64_t sequence,
     }
     CachedFrame &cached_frame = cache->frames[cache->size];
     cache->bytes -= CachedFrameBytes(cached_frame);
-    FramePayloadUnref(&cached_frame.payload);
-    // GOP cache 只增加 FramePayload/FrameBuffer 引用，缓存的是编码帧 owner；
+    // GOP cache 只增加 FramePayload/MediaBuffer 引用，缓存的是编码帧 owner；
     // 不按 GOP 再复制一份大 payload。
-    if (!FramePayloadRefCopy(&cached_frame.payload, &frame)) {
-        ClearCache(cache);
-        ++cache->generation;
-        return false;
-    }
+    cached_frame.payload = frame;
     cached_frame.sequence = sequence;
     cached_frame.keyframe = keyframe;
     cached_frame.duration_us = duration_us;
-    cached_frame.bytes = frame.encoded_frame.payload.size;
+    cached_frame.bytes = frame.frame.payload.Size();
     cache->bytes += cached_frame.bytes;
     ++cache->size;
     return true;

@@ -73,7 +73,7 @@ void HardwarePipeline::SetConfig(const MediaPipelineConfig& config) {
     BuildChannels();
 }
 
-void HardwarePipeline::SetFrameCallback(EncodedFrameCallback callback,
+void HardwarePipeline::SetFrameCallback(MediaFrameCallback callback,
                                         void* user) {
     frame_callback_ = callback;
     frame_callback_user_ = user;

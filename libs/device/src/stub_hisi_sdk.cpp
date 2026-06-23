@@ -218,20 +218,17 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
         0x14, 0x11, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xff, 0xda, 0x00, 0x08,
         0x01, 0x03, 0x01, 0x01, 0x3f, 0x00, 0x7f, 0xff, 0xd9};
-    auto pool = CreateFrameBufferPool(EstimateJpegBlockSize(config),
+    auto pool = CreateMediaBufferPool(EstimateJpegBlockSize(config),
                                       kDefaultJpegPoolBlocks);
     if (!pool) return JpegFrame{};
     auto buffer = pool->Acquire();
-    if (buffer == nullptr || buffer->capacity < sizeof(kMinimalJpeg)) {
-        FrameBufferUnref(buffer);
+    if (buffer.Capacity() < sizeof(kMinimalJpeg)) {
         return JpegFrame{};
     }
-    std::memcpy(buffer->data, kMinimalJpeg, sizeof(kMinimalJpeg));
-    FrameBufferSetSize(buffer, static_cast<uint32_t>(sizeof(kMinimalJpeg)));
+    std::memcpy(buffer.MutableData(), kMinimalJpeg, sizeof(kMinimalJpeg));
+    buffer.SetSize(static_cast<uint32_t>(sizeof(kMinimalJpeg)));
     JpegFrame frame;
     frame.buffer = buffer;
-    frame.offset = 0;
-    frame.size = buffer->size;
     frame.width = config.size.width;
     frame.height = config.size.height;
     return frame;
@@ -277,7 +274,7 @@ bool StubHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
 void StubHisiSdk::UnbindVpssVenc(const MediaPipelineConfig&) {}
 
 bool StubHisiSdk::StartVencStream(const MediaPipelineConfig& config,
-                                  EncodedFrameCallback, void*) {
+                                  MediaFrameCallback, void*) {
     return config.main_stream.bitrate_kbps > 0 &&
            (!config.sub_stream.enabled || config.sub_stream.bitrate_kbps > 0);
 }
@@ -361,17 +358,16 @@ YuvFrame StubHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
     }
     const uint32_t y_size = size.width * size.height;
     const uint32_t uv_size = y_size / 2;
-    FrameBuffer* buffer = FrameBufferAlloc(y_size + uv_size);
-    if (buffer == nullptr) {
+    MediaBufferRef buffer = MediaBufferRef::Allocate(y_size + uv_size);
+    uint8_t* buffer_data = buffer.MutableData();
+    if (buffer_data == nullptr) {
         return YuvFrame{};
     }
-    std::memset(buffer->data, 0x10, y_size);
-    std::memset(buffer->data + y_size, 0x80, uv_size);
-    FrameBufferSetSize(buffer, y_size + uv_size);
+    std::memset(buffer_data, 0x10, y_size);
+    std::memset(buffer_data + y_size, 0x80, uv_size);
+    buffer.SetSize(y_size + uv_size);
     YuvFrame frame;
     frame.buffer = buffer;
-    frame.offset = 0;
-    frame.size = buffer->size;
     frame.width = size.width;
     frame.height = size.height;
     frame.stride_y = size.width;

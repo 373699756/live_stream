@@ -6,36 +6,37 @@
 namespace live_stream {
 namespace {
 
-void RefFrameBufferOwner(const void *owner) {
-    (void)FrameBufferRef(
-        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
+void RefMediaBufferOwner(const void *owner) {
+    (void)MediaBufferAddRef(
+        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
 }
 
-void UnrefFrameBufferOwner(const void *owner) {
-    FrameBufferUnref(
-        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
+void UnrefMediaBufferOwner(const void *owner) {
+    MediaBufferRelease(
+        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
 }
 
-NetBufferOwner FrameBufferNetOwner(FrameBuffer *buffer) {
+NetBufferOwner MediaBufferNetOwner(MediaBuffer *buffer) {
     if (buffer == nullptr) {
         return NetBufferOwner{};
     }
-    return NetBufferOwner{buffer, RefFrameBufferOwner, UnrefFrameBufferOwner};
+    return NetBufferOwner{buffer, RefMediaBufferOwner, UnrefMediaBufferOwner};
 }
 
 }  // namespace
 
 bool RtspTransport::SendRtpPacket(
     INetEngine *net_engine, const RtspTransportTarget &target,
-    const EncodedFrame &frame, const rtp::RtpPacketView &packet) {
+    const MediaFrame &frame, const rtp::RtpPacketView &packet) {
     const size_t packet_size = packet.Size();
     if (net_engine == nullptr || packet_size == 0 || packet_size > 0xffff) {
         return false;
     }
 
-    // TCP interleaved 异步排队，media payload 必须带 FrameBuffer owner；
+    // TCP interleaved 异步排队，media payload 必须带 MediaBuffer owner；
     // UDP sendmsg 调用返回后不保留 slice，所以不需要 owner。
-    const NetBufferOwner payload_owner = FrameBufferNetOwner(frame.payload.buffer);
+    const NetBufferOwner payload_owner =
+        MediaBufferNetOwner(frame.payload.RawOwner());
     NetBufferSlices slices;
     bool ok = true;
     uint8_t interleaved_header[4] = {

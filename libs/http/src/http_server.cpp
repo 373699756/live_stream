@@ -375,7 +375,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
 }
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const MediaSlice *slices,
+                                        const MediaOutSlice *slices,
                                         size_t slice_count) {
     {
         std::lock_guard<std::mutex> guard(mutex_);

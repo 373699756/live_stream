@@ -192,7 +192,7 @@ bool BuildH264FlvVideoTagView(bool keyframe,
             return false;
         }
         // FLV/AVCC payload 使用 4 字节长度前缀，而不是 AnnexB 起始码。
-        // NAL 数据本身仍直接引用原始 EncodedFrame payload。
+        // NAL 数据本身仍直接引用原始 MediaFrame payload。
         if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
             !tag->AddPayload(unit.data, unit.size)) {
             return false;
@@ -253,7 +253,7 @@ bool BuildH265FlvVideoTagView(bool keyframe,
             return false;
         }
         // 这里生成的是 slice view，不深拷贝视频 payload；HTTP-FLV 发送端
-        // 必须在写完前保持 EncodedFrame 引用有效。
+        // 必须在写完前保持 MediaFrame 引用有效。
         if (!tag->AddHeader(tag->nal_lengths[nal_index], 4) ||
             !tag->AddPayload(unit.data, unit.size)) {
             return false;
@@ -301,11 +301,11 @@ std::string FlvMuxer::BuildSequenceHeader(Codec codec,
     return std::string();
 }
 
-bool FlvMuxer::BuildVideoTagView(const EncodedFrame &frame,
+bool FlvMuxer::BuildVideoTagView(const MediaFrame &frame,
                                  const FramePayload &payload,
                                  bool keyframe,
                                  FlvVideoTagView *tag_view) {
-    if (tag_view == nullptr || frame.codec != payload.encoded_frame.codec) {
+    if (tag_view == nullptr || frame.codec != payload.frame.codec) {
         return false;
     }
     const int64_t composition_time_ms = (frame.pts_us - frame.dts_us) / 1000;

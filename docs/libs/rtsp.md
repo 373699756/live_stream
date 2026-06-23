@@ -69,7 +69,7 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 RTP 分片统一使用 `rtp::RtpPacketizer`。发送层只负责把
 `RtpPacketView` 转成 TCP interleaved 或 UDP datagram。TCP interleaved 提交
 interleaved header slice 和 RTP packet view，media payload slice 异步发送时由
-`net` 的 `NetBufferOwner` 保留底层 `VideoBuffer` 引用；UDP 使用同步
+`net` 的 `NetBufferOwner` 保留底层 `MediaBuffer` 引用；UDP 使用同步
 `sendmsg` 发送 packet view，不保留无主 owner 引用。
 
 `RtspSessionInfo` 字段冻结为：

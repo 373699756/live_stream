@@ -212,9 +212,9 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
 }
 
 bool WebrtcTransport::SendRtpPacket(
-    const EncodedFrame &frame, const rtp::RtpPacketView &packet) {
+    const MediaFrame &frame, const rtp::RtpPacketView &packet) {
     if (ice_ == nullptr || !ice_->connected() || !outbound_srtp_.ready() ||
-        !IsEncodedFramePayloadValid(&frame) || packet.Size() == 0 ||
+        !IsMediaFramePayloadValid(frame) || packet.Size() == 0 ||
         packet.ssrc == 0 || packet.payload_type == 0) {
         return false;
     }

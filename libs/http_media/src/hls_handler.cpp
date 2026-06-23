@@ -161,8 +161,8 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
 
     MediaSegmentRef segment =
         media_streams->GetHlsSegmentRef(stream_id, sequence);
-    if (!segment.found || segment.body == nullptr ||
-        segment.body->data == nullptr || segment.body->size == 0) {
+    if (!segment.found || !segment.body.Valid() ||
+        segment.body.Size() == 0) {
         Error(kHttpMediaModuleName,
               "HLS reject stream=%s object=%s "
               "reason=segment_missing sequence=%llu range=%llu-%llu "
@@ -178,16 +178,14 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
                   stream_info.hls_missing_segment_count),
               static_cast<unsigned long long>(
                   stream_info.hls_evicted_segment_count));
-        MediaSegmentRefUnref(&segment);
         return HttpMediaTextResponse(404, "HLS segment not found");
     }
 
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "video/mp2t";
-    response.body_slices.emplace_back(segment.body->data, segment.body->size,
+    response.body_slices.emplace_back(segment.body.Data(), segment.body.Size(),
                                       segment.body);
-    MediaSegmentRefUnref(&segment);
     return response;
 }
 

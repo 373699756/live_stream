@@ -118,8 +118,8 @@ private:
     bool Prepare();
     bool AddConfigScopes(AttachedConfigs *attached_now);
     void Release();
-    static void OnPipelineFrame(const EncodedFrame &frame, void *user);
-    void DispatchFrame(const EncodedFrame &frame);
+    static void OnPipelineFrame(const MediaFrame &frame, void *user);
+    void DispatchFrame(const MediaFrame &frame);
     ConfigStatus VerifyVideoConfig(const ConfigJson &now,
                                    ConfigIssue *issue) const;
     ConfigStatus ApplyVideoConfig(const ConfigJson &prev,
@@ -440,13 +440,13 @@ void DeviceImpl::Release() {
     }
 }
 
-void DeviceImpl::OnPipelineFrame(const EncodedFrame &frame, void *user) {
+void DeviceImpl::OnPipelineFrame(const MediaFrame &frame, void *user) {
     if (user != nullptr) {
         static_cast<DeviceImpl *>(user)->DispatchFrame(frame);
     }
 }
 
-void DeviceImpl::DispatchFrame(const EncodedFrame &frame) {
+void DeviceImpl::DispatchFrame(const MediaFrame &frame) {
     FrameSink *frame_sink = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);

@@ -11,7 +11,7 @@ class WebrtcRtpPacketSink final : public rtp::IRtpPacketSink {
 public:
     WebrtcRtpPacketSink(WebrtcRtpSender *sender,
                         const WebrtcPeerInfo *peer,
-                        const EncodedFrame *frame,
+                        const MediaFrame *frame,
                         const WebrtcRtpSenderContext *context)
         : sender_(sender),
           peer_(peer),
@@ -30,14 +30,14 @@ public:
 private:
     WebrtcRtpSender *sender_ = nullptr;
     const WebrtcPeerInfo *peer_ = nullptr;
-    const EncodedFrame *frame_ = nullptr;
+    const MediaFrame *frame_ = nullptr;
     const WebrtcRtpSenderContext *context_ = nullptr;
     bool ok_ = true;
 };
 
 namespace {
 
-bool IsKeyframe(const EncodedFrame &frame) {
+bool IsKeyframe(const MediaFrame &frame) {
     return frame.frame_type == FrameType::kIdr ||
            frame.frame_type == FrameType::kI;
 }
@@ -76,12 +76,12 @@ void WebrtcRtpSender::Clear() {
 }
 
 bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
-                                const EncodedFrame &frame,
+                                const MediaFrame &frame,
                                 const WebrtcRtpSenderContext &context) {
     if (context.mutex == nullptr || context.service_stats == nullptr ||
         !context.engine || peer.peer_id.empty() ||
         frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
-        !IsEncodedFramePayloadValid(&frame)) {
+        !IsMediaFramePayloadValid(frame)) {
         return false;
     }
 
@@ -130,12 +130,11 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
 
     WebrtcRtpPacketSink sink(this, &peer, &frame, &context);
     rtp::RtpPacketizerInput input;
-    const auto payload = EncodedFramePayloadSlice(&frame);
     input.codec = RtpCodecFromCodec(frame.codec);
-    // WebRTC 发送使用 EncodedFrame 持有的 payload；RTP packetizer
+    // WebRTC 发送使用 MediaFrame 持有的 payload；RTP packetizer
     // 输出 packet view，不在分包阶段复制整帧。
-    input.payload = EncodedFramePayloadData(&frame);
-    input.payload_size = payload.size;
+    input.payload = MediaFramePayloadData(frame);
+    input.payload_size = frame.payload.Size();
     input.pts_us = frame.pts_us;
     input.sequence = &sequence;
     input.ssrc = parameters.ssrc;
@@ -166,7 +165,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
 
 bool WebrtcRtpSender::SendRtpPacketView(
     const WebrtcPeerInfo &peer,
-    const EncodedFrame &frame,
+    const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
     const WebrtcRtpSenderContext &context) {
     if (!context.engine || context.mutex == nullptr ||

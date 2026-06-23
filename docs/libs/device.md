@@ -101,8 +101,8 @@ validate/apply。
 时间戳修正和协议订阅缓存归 `media` 主链路。关键帧请求必须通过
 `RequestKeyframe` 进入媒体模块。
 
-`media/media_buffer.h` 提供基础 `MediaSlice`，只表达一段待发送数据和可选
-`VideoBuffer` owner。HTTP/FLV/MJPEG/HLS 等协议边界可以直接提交 slice，异步发送时
+`media/media_buffer.h` 提供基础 `MediaOutSlice`，只表达一段待发送数据和可选
+`MediaBuffer` owner。HTTP/FLV/MJPEG/HLS 等协议边界可以直接提交 slice，异步发送时
 由拥有 socket 队列的模块保留 owner 引用；`device` 不因此持有协议状态。
 
 抓图和 overlay 都是设备资源的内部子能力。组合根不再创建独立 snapshot 或 region

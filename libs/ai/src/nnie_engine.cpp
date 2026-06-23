@@ -303,7 +303,7 @@ public:
         AiInferenceResult result;
         result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
-        if (!started_ || !frame.buffer || frame.size == 0) {
+        if (!started_ || !frame.Valid()) {
             return result;
         }
 #if LIVE_STREAM_HAS_HISI_NNIE
@@ -784,18 +784,15 @@ private:
 
     bool ValidateYuvFrameRange(const hisisdk::YuvFrame &frame,
                                uint32_t *available_size) const {
-        if (available_size == nullptr || frame.buffer == nullptr ||
-            frame.buffer->data == nullptr ||
-            frame.offset > frame.buffer->size ||
-            frame.size > frame.buffer->size - frame.offset ||
+        if (available_size == nullptr || !frame.buffer.Valid() ||
+            frame.buffer.Data() == nullptr ||
             frame.width == 0 || frame.height == 0 ||
             (frame.width % 2U) != 0 || (frame.height % 2U) != 0 ||
             frame.stride_y < frame.width || frame.stride_uv < frame.width) {
             return false;
         }
 
-        *available_size =
-            std::min(frame.size, frame.buffer->size - frame.offset);
+        *available_size = frame.Size();
         const uint64_t y_size =
             static_cast<uint64_t>(frame.stride_y) * frame.height;
         const uint64_t uv_size =
@@ -831,7 +828,7 @@ private:
             return false;
         }
 
-        const uint8_t *frame_data = frame.buffer->data + frame.offset;
+        const uint8_t *frame_data = frame.buffer.Data();
         const uint32_t y_size = frame.stride_y * frame.height;
         if (!IsValidYvu420FrameRange(frame.stride_y, frame.stride_uv,
                                      config.input_width, config.input_height,
@@ -881,7 +878,7 @@ private:
             return true;
         }
 
-        const uint8_t *frame_data = frame.buffer->data + frame.offset;
+        const uint8_t *frame_data = frame.buffer.Data();
         const uint32_t y_size = frame.stride_y * frame.height;
         if (!IsValidYvu420FrameRange(frame.stride_y, frame.stride_uv,
                                      frame.width, frame.height,

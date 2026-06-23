@@ -73,63 +73,14 @@ struct SnapshotConfig {
 };
 
 struct JpegFrame {
-    FrameBuffer* buffer = nullptr;
-    uint32_t offset = 0;
-    uint32_t size = 0;
+    MediaBufferRef buffer;
     uint32_t width = 0;
     uint32_t height = 0;
     int64_t pts_us = 0;
 
-    JpegFrame() = default;
-    JpegFrame(const JpegFrame& other)
-        : buffer(FrameBufferRef(other.buffer)),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          pts_us(other.pts_us) {}
-    JpegFrame& operator=(const JpegFrame& other) {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBuffer* retained = FrameBufferRef(other.buffer);
-        FrameBufferUnref(buffer);
-        buffer = retained;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        pts_us = other.pts_us;
-        return *this;
-    }
-    JpegFrame(JpegFrame&& other) noexcept
-        : buffer(other.buffer),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          pts_us(other.pts_us) {
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-    }
-    JpegFrame& operator=(JpegFrame&& other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBufferUnref(buffer);
-        buffer = other.buffer;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        pts_us = other.pts_us;
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-        return *this;
-    }
-    ~JpegFrame() { FrameBufferUnref(buffer); }
+    bool Valid() const { return buffer.Valid() && buffer.Size() != 0; }
+    const uint8_t* Data() const { return buffer.Data(); }
+    uint32_t Size() const { return buffer.Size(); }
 };
 
 struct MppYuvFrameInfo {
@@ -164,9 +115,7 @@ struct MppYuvFrameInfo {
 };
 
 struct YuvFrame {
-    FrameBuffer* buffer = nullptr;
-    uint32_t offset = 0;
-    uint32_t size = 0;
+    MediaBufferRef buffer;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t stride_y = 0;
@@ -174,70 +123,9 @@ struct YuvFrame {
     int64_t pts_us = 0;
     MppYuvFrameInfo mpp_info;
 
-    YuvFrame() = default;
-    YuvFrame(const YuvFrame& other)
-        : buffer(FrameBufferRef(other.buffer)),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          stride_y(other.stride_y),
-          stride_uv(other.stride_uv),
-          pts_us(other.pts_us),
-          mpp_info(other.mpp_info) {}
-    YuvFrame& operator=(const YuvFrame& other) {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBuffer* retained = FrameBufferRef(other.buffer);
-        FrameBufferUnref(buffer);
-        buffer = retained;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        stride_y = other.stride_y;
-        stride_uv = other.stride_uv;
-        pts_us = other.pts_us;
-        mpp_info = other.mpp_info;
-        return *this;
-    }
-    YuvFrame(YuvFrame&& other) noexcept
-        : buffer(other.buffer),
-          offset(other.offset),
-          size(other.size),
-          width(other.width),
-          height(other.height),
-          stride_y(other.stride_y),
-          stride_uv(other.stride_uv),
-          pts_us(other.pts_us),
-          mpp_info(other.mpp_info) {
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-        other.mpp_info = MppYuvFrameInfo{};
-    }
-    YuvFrame& operator=(YuvFrame&& other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        FrameBufferUnref(buffer);
-        buffer = other.buffer;
-        offset = other.offset;
-        size = other.size;
-        width = other.width;
-        height = other.height;
-        stride_y = other.stride_y;
-        stride_uv = other.stride_uv;
-        pts_us = other.pts_us;
-        mpp_info = other.mpp_info;
-        other.buffer = nullptr;
-        other.offset = 0;
-        other.size = 0;
-        other.mpp_info = MppYuvFrameInfo{};
-        return *this;
-    }
-    ~YuvFrame() { FrameBufferUnref(buffer); }
+    bool Valid() const { return buffer.Valid() && buffer.Size() != 0; }
+    const uint8_t* Data() const { return buffer.Data(); }
+    uint32_t Size() const { return buffer.Size(); }
 };
 
 struct ExposureInfo {
@@ -270,7 +158,7 @@ public:
     virtual void UnbindVpssVenc(const MediaPipelineConfig& config) = 0;
     virtual bool StartVencStream(
         const MediaPipelineConfig& config,
-        EncodedFrameCallback callback,
+        MediaFrameCallback callback,
         void* user) = 0;
     virtual void StopVencStream(const MediaPipelineConfig& config) = 0;
     virtual bool RequestIdr(int32_t venc_channel) = 0;

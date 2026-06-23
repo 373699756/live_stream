@@ -104,7 +104,8 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 - 媒体公共类型使用 `Media*`，不用 `Live*`。
 - 保留 `FrameType`，不改成 `FrameKind`。
 - 当前产品没有音频，视频 codec 可用 `Codec` 表达，不强行保留 `VideoCodec`。
-- `VideoBuffer` 统一为 `FrameBuffer`，`BufferSlice` 统一为 `FrameSlice`。
+- 视频 payload 内存统一为 `MediaBuffer` + RAII `MediaBufferRef`，编码帧统一为
+  `MediaFrame`，协议输出拼片使用 `MediaOutSlice`。
 - 对外展示/查询用 `Info`，聚合运行数据用 `Stats`，不用 `Status`、`Counters` 混用。
 - 内部锁内变量和状态机可以使用 `State`，但不要进入新的 public API。
 - 帧订阅统一使用 `FrameSubscription`、`SubscribeFrames(...)`、`UnsubscribeFrames(...)`。
@@ -121,8 +122,8 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 
 - `AiBackendName()` 改为 `AiBackendToString()`。
 - Web 类型 `AiBackendName` 改为 `AiBackendId`。
-- `MediaFlvStartData`、`GetFlvStartData()`、`MediaFlvStartDataUnref()` 改为
-  `MediaFlvStart`、`GetFlvStart()`、`MediaFlvStartUnref()`。
+- `MediaFlvStartData`、`GetFlvStartData()` 改为 `MediaFlvStart`、`GetFlvStart()`；
+  FLV start、subscription start/frame 和 HLS segment ref 都改为 RAII 值对象。
 - FLV 起播上下文变量统一为 `flv_start`；`start_data` 只保留在 subscription 起播上下文。
 - 清理 header guard 中残留旧模块名，例如 `LIVE_STREAM_HTTP_SERVICE_*`、
   `LIVE_STREAM_AUTH_SERVICE_*`、`LIVE_STREAM_LOGGER_SERVICE_*` 和

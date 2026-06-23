@@ -25,7 +25,7 @@ public:
 
     const MediaPipelineConfig& config() const { return config_; }
     void SetConfig(const MediaPipelineConfig& config);
-    void SetFrameCallback(EncodedFrameCallback callback, void* user);
+    void SetFrameCallback(MediaFrameCallback callback, void* user);
 
     MediaCapabilities GetCapabilities() const;
     bool InitSystem();
@@ -44,7 +44,7 @@ private:
 
     hisisdk::IHisiSdk* sdk_;
     MediaPipelineConfig config_;
-    EncodedFrameCallback frame_callback_ = nullptr;
+    MediaFrameCallback frame_callback_ = nullptr;
     void* frame_callback_user_ = nullptr;
     MediaChannels channels_{};
     bool system_initialized_ = false;

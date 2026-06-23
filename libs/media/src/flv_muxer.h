@@ -17,7 +17,7 @@ constexpr size_t kMaxFlvVideoTagSlices =
 
 struct FlvVideoTagSlice {
     // tag view 以 slice 方式描述 FLV tag：小 header 存在本对象内部，
-    // 大块视频 payload 直接引用 EncodedFrame，发送端按 slice 顺序写出即可。
+    // 大块视频 payload 直接引用 MediaFrame，发送端按 slice 顺序写出即可。
     const uint8_t *data = nullptr;
     size_t size = 0;
     bool media_payload = false;
@@ -66,7 +66,7 @@ public:
                                            const std::string &sps,
                                            const std::string &pps,
                                            uint32_t timestamp_ms);
-    static bool BuildVideoTagView(const EncodedFrame &frame,
+    static bool BuildVideoTagView(const MediaFrame &frame,
                                   const FramePayload &payload,
                                   bool keyframe,
                                   FlvVideoTagView *tag_view);

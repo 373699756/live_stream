@@ -30,7 +30,7 @@ public:
     bool BindVpssVenc(const MediaPipelineConfig& config) override;
     void UnbindVpssVenc(const MediaPipelineConfig& config) override;
     bool StartVencStream(const MediaPipelineConfig& config,
-                         EncodedFrameCallback callback,
+                         MediaFrameCallback callback,
                          void* user) override;
     void StopVencStream(const MediaPipelineConfig& config) override;
     bool RequestIdr(int32_t venc_channel) override;

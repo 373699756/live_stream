@@ -31,7 +31,7 @@ public:
                                     size_t *cached_flv_bytes);
     bool OnFlvChunk(const uint8_t *data, size_t size) override;
     bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
-                       const EncodedFrame &frame) override;
+                       const MediaFrame &frame) override;
 
 private:
     bool OnCachedFlvVideoTag(const MediaFlvCachedVideoTag &tag);

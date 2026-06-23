@@ -52,7 +52,7 @@ RTP packetizer API 在 `rtp.h`，随 `media_codec` 模块构建，归
   `RtpPayloadTypeForCodec()` 提供 90kHz RTP timestamp 与默认 video payload type
   辅助。
 - `RtpPacketizerInput` 只接收 codec、AnnexB payload、PTS、payload type、
-  sequence 和 SSRC，不依赖 `EncodedFrame`、RTSP session 或 WebRTC peer。
+  sequence 和 SSRC，不依赖 `MediaFrame`、RTSP session 或 WebRTC peer。
 
 实现文件按职责拆分：
 
@@ -66,7 +66,7 @@ RTP packetizer API 在 `rtp.h`，随 `media_codec` 模块构建，归
 
 NAL list 是栈上固定容量结构，最多记录 `kMaxNalUnitsPerFrame` 个单帧 NAL。`overflow`
 只表示输入超过可记录数量，上层必须把它当作解析风险处理。模块只接收 AnnexB
-payload 指针和长度，不依赖 `EncodedFrame` 或基础媒体类型，不复制 payload 所有权，
+payload 指针和长度，不依赖 `MediaFrame` 或基础媒体类型，不复制 payload 所有权，
 也不缓存 codec 状态。参数集提取函数会把 SPS/PPS/VPS 拷贝到调用方提供的
 `std::string`，用于 sequence header 或 SDP 等低频 metadata 输出。
 

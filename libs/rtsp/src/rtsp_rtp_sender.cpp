@@ -10,7 +10,7 @@ class RtspRtpPacketSink final : public rtp::IRtpPacketSink {
 public:
     RtspRtpPacketSink(RtspRtpSender *sender,
                       std::shared_ptr<RtspSession> session,
-                      const EncodedFrame *frame,
+                      const MediaFrame *frame,
                       const RtspRtpSenderContext *context)
         : sender_(sender),
           session_(std::move(session)),
@@ -29,14 +29,14 @@ public:
 private:
     RtspRtpSender *sender_ = nullptr;
     std::shared_ptr<RtspSession> session_;
-    const EncodedFrame *frame_ = nullptr;
+    const MediaFrame *frame_ = nullptr;
     const RtspRtpSenderContext *context_ = nullptr;
     bool ok_ = true;
 };
 
 namespace {
 
-bool IsKeyframe(const EncodedFrame &frame) {
+bool IsKeyframe(const MediaFrame &frame) {
     return frame.frame_type == FrameType::kIdr ||
            frame.frame_type == FrameType::kI;
 }
@@ -56,20 +56,19 @@ bool RtpCodecFromCodec(Codec codec, rtp::Codec *rtp_codec) {
     return false;
 }
 
-bool BuildRtpInput(const EncodedFrame &frame, uint16_t *sequence,
+bool BuildRtpInput(const MediaFrame &frame, uint16_t *sequence,
                    uint32_t ssrc, rtp::RtpPacketizerInput *input) {
     if (input == nullptr || sequence == nullptr ||
-        !IsEncodedFramePayloadValid(&frame)) {
+        !IsMediaFramePayloadValid(frame)) {
         return false;
     }
     rtp::Codec rtp_codec = rtp::Codec::kH264;
     if (!RtpCodecFromCodec(frame.codec, &rtp_codec)) {
         return false;
     }
-    const auto payload = EncodedFramePayloadSlice(&frame);
     input->codec = rtp_codec;
-    input->payload = EncodedFramePayloadData(&frame);
-    input->payload_size = payload.size;
+    input->payload = MediaFramePayloadData(frame);
+    input->payload_size = frame.payload.Size();
     input->pts_us = frame.pts_us;
     input->sequence = sequence;
     input->ssrc = ssrc;
@@ -83,7 +82,7 @@ RtspRtpSender::RtspRtpSender(uint32_t rtp_mtu_bytes)
     : packetizer_(rtp_mtu_bytes) {}
 
 void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
-                              const EncodedFrame &frame,
+                              const MediaFrame &frame,
                               const RtspRtpSenderContext &context) {
     if (session == nullptr || context.mutex == nullptr ||
         context.service_stats == nullptr) {
@@ -130,7 +129,7 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
 
 bool RtspRtpSender::SendRtpPacketView(
     const std::shared_ptr<RtspSession> &session,
-    const EncodedFrame &frame,
+    const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
     const RtspRtpSenderContext &context) {
     if (session == nullptr || context.mutex == nullptr ||

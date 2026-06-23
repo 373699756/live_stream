@@ -62,7 +62,7 @@ public:
     bool EnqueueStreamingChunk(ConnectionId connection_id, const uint8_t *data,
                                size_t size) override;
     bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                const MediaSlice *slices,
+                                const MediaOutSlice *slices,
                                 size_t slice_count) override;
     void SetCloseCallback(HttpMediaCloseCallback callback) override;
     void CloseConnection(ConnectionId connection_id) override;

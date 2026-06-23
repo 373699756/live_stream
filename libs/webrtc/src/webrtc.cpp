@@ -646,7 +646,7 @@ private:
         FrameSubscriptionId subscription_id = 0;
         uint64_t generation = 0;
         MediaStreamInfo track;
-        std::vector<EncodedFrame> start_frames;
+        std::vector<MediaFrame> start_frames;
         event::TimerId drain_timer_id = 0;
         bool draining = false;
         bool closing = false;
@@ -655,7 +655,7 @@ private:
     struct ClosingSubscription {
         FrameSubscriptionId subscription_id = 0;
         event::TimerId drain_timer_id = 0;
-        std::vector<EncodedFrame> start_frames;
+        std::vector<MediaFrame> start_frames;
     };
 
     bool OpenPeerSubscription(const std::string &peer_id) {
@@ -691,7 +691,6 @@ private:
             start_data.stream_info.codec != peer.codec) {
             (void)media_streams_->UnsubscribeFrames(
                 subscription_id, SubscriptionClose::kUnsubscribed);
-            SubscriptionStartUnref(&start_data);
             return false;
         }
 
@@ -700,7 +699,6 @@ private:
         subscription.generation = start_data.generation;
         subscription.track = start_data.stream_info;
         subscription.start_frames.swap(start_data.gop_frames);
-        SubscriptionStartUnref(&start_data);
 
         bool subscription_opened = false;
         {
@@ -718,7 +716,6 @@ private:
         }
 
         if (!subscription_opened) {
-            ClearEncodedFrames(&subscription.start_frames);
             (void)media_streams_->UnsubscribeFrames(
                 subscription_id, SubscriptionClose::kUnsubscribed);
             return false;
@@ -793,7 +790,6 @@ private:
                 break;
             }
             SendPeerEncodedFrame(peer_id, subscription_frame.frame);
-            SubscriptionFrameUnref(&subscription_frame);
         }
 
         const SubscriptionInfo subscription_info =
@@ -832,7 +828,7 @@ private:
 
     bool FlushPeerStartFrames(const std::string &peer_id) {
         while (true) {
-            EncodedFrame frame;
+            MediaFrame frame;
             bool has_frame = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -843,8 +839,7 @@ private:
                     return false;
                 }
                 if (!iter->second.start_frames.empty()) {
-                    (void)EncodedFrameMove(
-                        &frame, &iter->second.start_frames.front());
+                    frame = std::move(iter->second.start_frames.front());
                     iter->second.start_frames.erase(
                         iter->second.start_frames.begin());
                     has_frame = true;
@@ -854,12 +849,11 @@ private:
                 return true;
             }
             SendPeerEncodedFrame(peer_id, frame);
-            EncodedFrameUnref(&frame);
         }
     }
 
     void SendPeerEncodedFrame(const std::string &peer_id,
-                              const EncodedFrame &frame) {
+                              const MediaFrame &frame) {
         WebrtcPeerInfo peer;
         std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
         {
@@ -1021,12 +1015,9 @@ private:
         }
     }
 
-    static void ClearEncodedFrames(std::vector<EncodedFrame> *frames) {
+    static void ClearEncodedFrames(std::vector<MediaFrame> *frames) {
         if (frames == nullptr) {
             return;
-        }
-        for (EncodedFrame &frame : *frames) {
-            EncodedFrameUnref(&frame);
         }
         frames->clear();
     }

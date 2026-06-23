@@ -46,7 +46,7 @@ struct MppHisiSdkImpl {
     std::recursive_mutex control_mutex_;
     std::mutex snapshot_mutex_;
 
-    EncodedFrameCallback frame_callback_ = nullptr;
+    MediaFrameCallback frame_callback_ = nullptr;
     void* frame_callback_user_ = nullptr;
 };
 

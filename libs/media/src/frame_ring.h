@@ -108,7 +108,7 @@ private:
     static bool PopLiveQueue(LiveQueue *queue, QueuedFrame *frame);
     static bool CopyFrameForSubscription(const FramePayload &payload,
                                          int64_t duration_us,
-                                         EncodedFrame *frame);
+                                         MediaFrame *frame);
     static uint32_t CachedFrameBytes(const CachedFrame &frame);
     static int64_t EstimateFrameDuration(const StreamCache &cache,
                                          const FramePayload &frame);

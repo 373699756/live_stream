@@ -75,17 +75,17 @@ void FreePoolBlock(uint8_t* data, uint32_t capacity, void* user) {
     PoolStateUnref(state);
 }
 
-class FrameBufferPool final : public IFrameBufferPool {
+class MediaBufferPool final : public IMediaBufferPool {
 public:
-    explicit FrameBufferPool(PoolState* state) : state_(state) {}
+    explicit MediaBufferPool(PoolState* state) : state_(state) {}
 
-    ~FrameBufferPool() override { PoolStateUnref(state_); }
+    ~MediaBufferPool() override { PoolStateUnref(state_); }
 
-    FrameBuffer* Acquire() override {
+    MediaBufferRef Acquire() override {
         std::lock_guard<std::mutex> lock(state_->mutex);
         if (state_->free_count == 0) {
             ++state_->no_memory_count;
-            return nullptr;
+            return MediaBufferRef();
         }
 
         --state_->free_count;
@@ -102,21 +102,21 @@ public:
         if (ref == nullptr) {
             UnrefIndexLocked(index);
             ++state_->no_memory_count;
-            return nullptr;
+            return MediaBufferRef();
         }
         ref->state = state_;
         ref->index = index;
         PoolStateRef(state_);
         uint8_t* block = state_->data +
                          static_cast<std::size_t>(index) * state_->block_size;
-        FrameBuffer* buffer = FrameBufferCreateExternal(
+        MediaBufferRef buffer = MediaBufferRef::AdoptExternal(
             block, state_->block_size, 0, FreePoolBlock, ref);
-        if (buffer == nullptr) {
+        if (!buffer.RawOwner()) {
             std::free(ref);
             UnrefIndexLocked(index);
             ++state_->no_memory_count;
             PoolStateUnref(state_);
-            return nullptr;
+            return MediaBufferRef();
         }
         return buffer;
     }
@@ -145,7 +145,7 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IFrameBufferPool> CreateFrameBufferPool(uint32_t block_size,
+std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_size,
                                                         uint32_t block_count) {
     if (block_size == 0 || block_count == 0) {
         return nullptr;
@@ -175,8 +175,8 @@ std::unique_ptr<IFrameBufferPool> CreateFrameBufferPool(uint32_t block_size,
         state->in_use[i] = 0;
         state->free_indices[i] = block_count - 1U - i;
     }
-    std::unique_ptr<IFrameBufferPool> pool(
-        new (std::nothrow) FrameBufferPool(state));
+    std::unique_ptr<IMediaBufferPool> pool(
+        new (std::nothrow) MediaBufferPool(state));
     if (!pool) {
         PoolStateUnref(state);
         return nullptr;

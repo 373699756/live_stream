@@ -24,7 +24,7 @@ constexpr uint32_t kMaxTimeoutCheckIntervalMs = 1000;
 
 void RefNetBufferOwner(const NetBufferOwner &owner) {
     if (owner.ptr != nullptr && owner.ref != nullptr) {
-        // owner 可能是 FrameBuffer。这里统一走协议无关的 ref 回调。
+        // owner 可能是 MediaBuffer。这里统一走协议无关的 ref 回调。
         owner.ref(owner.ptr);
     }
 }

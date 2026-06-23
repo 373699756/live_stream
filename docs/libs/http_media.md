@@ -47,9 +47,9 @@ flowchart LR
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。
 
-媒体正文输出统一使用 slice/owner 模型表达 header、payload 和可选 `VideoBuffer`
+媒体正文输出统一使用 slice/owner 模型表达 header、payload 和可选 `MediaBuffer`
 owner。HLS segment 通过 `HttpResponse.body_slices` 作为普通短响应返回；HTTP-FLV
-cached GOP 和 MJPEG frame 通过 `HttpMediaWriter` 提交流式 `MediaSlice`。跨线程或异步
+cached GOP 和 MJPEG frame 通过 `HttpMediaWriter` 提交流式 `MediaOutSlice`。跨线程或异步
 TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner 引用保持。
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，

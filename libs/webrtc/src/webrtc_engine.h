@@ -52,7 +52,7 @@ public:
     virtual bool HandleSrtcpPacket(const std::string &peer_id,
                                    const uint8_t *data, size_t size) = 0;
     virtual bool SendRtpPacket(const WebrtcPeerInfo &peer,
-                               const EncodedFrame &frame,
+                               const MediaFrame &frame,
                                const rtp::RtpPacketView &packet) = 0;
     virtual bool GetRtpSendParameters(
         const std::string &peer_id,

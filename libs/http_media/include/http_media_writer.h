@@ -81,7 +81,7 @@ using HttpMediaCloseCallback =
     std::function<void(const HttpMediaClientHandle &)>;
 
 // 长连接 HTTP 媒体输出边界，例如 HTTP-FLV、MJPEG 和 SSE。
-// 调用方只描述 MediaSlice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
+// 调用方只描述 MediaOutSlice 和 owner；真正是否复制、何时释放由 HTTP/net 层统一处理。
 class HttpMediaWriter {
 public:
     virtual ~HttpMediaWriter() = default;
@@ -106,7 +106,7 @@ public:
     // 带 owner 的 slice 可以在本调用返回后继续有效，writer 会保留 owner 到
     // 网络发送完成；无 owner 的 slice 必须是可立即复制进 TCP 输出队列的小协议字节。
     virtual bool EnqueueStreamingSlices(ConnectionId connection_id,
-                                        const MediaSlice *slices,
+                                        const MediaOutSlice *slices,
                                         size_t slice_count) = 0;
     // close callback 由 HTTP close path 触发，用于 detach FLV/MJPEG 或 unsubscribe SSE。
     virtual void SetCloseCallback(HttpMediaCloseCallback callback) = 0;

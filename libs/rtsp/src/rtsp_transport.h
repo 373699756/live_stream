@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_RTSP_SRC_RTSP_TRANSPORT_H_
 #define LIVE_STREAM_RTSP_SRC_RTSP_TRANSPORT_H_
 
-#include "media/encoded_frame.h"
+#include "media/media_frame.h"
 #include "net.h"
 #include "rtsp.h"
 #include "rtp.h"
@@ -23,7 +23,7 @@ class RtspTransport {
 public:
     static bool SendRtpPacket(INetEngine *net_engine,
                               const RtspTransportTarget &target,
-                              const EncodedFrame &frame,
+                              const MediaFrame &frame,
                               const rtp::RtpPacketView &packet);
 };
 

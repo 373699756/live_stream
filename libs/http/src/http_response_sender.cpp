@@ -12,22 +12,22 @@
 namespace live_stream {
 namespace {
 
-void RefFrameBufferOwner(const void *owner) {
-    (void)FrameBufferRef(
-        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
+void RefMediaBufferOwner(const void *owner) {
+    (void)MediaBufferAddRef(
+        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
 }
 
-void UnrefFrameBufferOwner(const void *owner) {
-    FrameBufferUnref(
-        const_cast<FrameBuffer *>(static_cast<const FrameBuffer *>(owner)));
+void UnrefMediaBufferOwner(const void *owner) {
+    MediaBufferRelease(
+        const_cast<MediaBuffer *>(static_cast<const MediaBuffer *>(owner)));
 }
 
-NetBufferOwner FrameBufferNetOwner(FrameBuffer *buffer) {
+NetBufferOwner MediaBufferNetOwner(MediaBuffer *buffer) {
     if (buffer == nullptr) {
         return NetBufferOwner{};
     }
-    return NetBufferOwner{buffer, RefFrameBufferOwner,
-                          UnrefFrameBufferOwner};
+    return NetBufferOwner{buffer, RefMediaBufferOwner,
+                          UnrefMediaBufferOwner};
 }
 
 }  // namespace
@@ -60,7 +60,7 @@ bool HttpResponseSender::SendResponse(
             return false;
         }
 
-        std::array<MediaSlice, kMaxNetBufferSlices - 1> body_slices{};
+        std::array<MediaOutSlice, kMaxNetBufferSlices - 1> body_slices{};
         size_t body_slice_count = 0;
         size_t body_size = 0;
         for (const HttpResponseBodySlice &slice : response.body_slices) {
@@ -88,8 +88,8 @@ bool HttpResponseSender::SendResponse(
                                   body_size, close_after_response);
     }
 
-    MediaSlice body_slice;
-    const MediaSlice *body_slices = nullptr;
+    MediaOutSlice body_slice;
+    const MediaOutSlice *body_slices = nullptr;
     size_t body_slice_count = 0;
     if (!response.body.empty()) {
         body_slice.data =
@@ -105,7 +105,7 @@ bool HttpResponseSender::SendResponse(
 
 bool HttpResponseSender::SendResponseSlices(
     INetEngine *net_engine, ConnectionId connection_id,
-    const HttpResponse &response, const MediaSlice *body_slices,
+    const HttpResponse &response, const MediaOutSlice *body_slices,
     size_t body_slice_count, size_t body_size,
     bool close_after_response) const {
     if (net_engine == nullptr) {
@@ -130,7 +130,8 @@ bool HttpResponseSender::SendResponseSlices(
         reinterpret_cast<const uint8_t *>(header.data()), header.size());
     for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
         slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
-                               FrameBufferNetOwner(body_slices[i].owner));
+                               MediaBufferNetOwner(
+                                   body_slices[i].owner.RawOwner()));
     }
 
     if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
@@ -174,7 +175,7 @@ bool HttpResponseSender::EnqueueStreamingChunk(
 
 bool HttpResponseSender::EnqueueStreamingSlices(
     INetEngine *net_engine, ConnectionId connection_id,
-    const MediaSlice *slices, size_t slice_count) const {
+    const MediaOutSlice *slices, size_t slice_count) const {
     NetBufferSlices net_slices;
     size_t total_size = 0;
     if (slice_count == 0) {
@@ -188,7 +189,8 @@ bool HttpResponseSender::EnqueueStreamingSlices(
             continue;
         }
         if (!net_slices.Add(slices[i].data, slices[i].size,
-                            FrameBufferNetOwner(slices[i].owner))) {
+                            MediaBufferNetOwner(
+                                slices[i].owner.RawOwner()))) {
             return false;
         }
         total_size += slices[i].size;

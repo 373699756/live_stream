@@ -10,7 +10,7 @@ namespace {
 
 class TestFrameSink : public live_stream::FrameSink {
 public:
-    bool PushFrame(const live_stream::EncodedFrame& frame) override {
+    bool PushFrame(const live_stream::MediaFrame& frame) override {
         (void)frame;
         ++frames;
         return true;

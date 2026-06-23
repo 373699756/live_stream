@@ -25,7 +25,7 @@ public:
                           StreamId stream_id,
                           const AiModelConfig &config) override {
         AiInferenceResult result;
-        result.success = started_ && frame.buffer && frame.size > 0;
+        result.success = started_ && frame.Valid();
         result.stream_id = stream_id;
         result.pts_us = frame.pts_us;
         if (!result.success) {

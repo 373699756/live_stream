@@ -54,7 +54,7 @@ public:
     bool SendDtlsResult(const WebrtcTransportDtlsResult &result);
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
                            bool *need_keyframe);
-    bool SendRtpPacket(const EncodedFrame &frame,
+    bool SendRtpPacket(const MediaFrame &frame,
                        const rtp::RtpPacketView &packet);
 
     bool GetRtpSendParameters(WebrtcRtpSendParameters *parameters) const;

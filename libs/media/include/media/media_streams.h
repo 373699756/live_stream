@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_MEDIA_STREAMS_H_
 #define LIVE_STREAM_MEDIA_MEDIA_STREAMS_H_
 
-#include "media/encoded_frame.h"
+#include "media/media_frame.h"
 #include "media/frame_sink.h"
 
 #include <cstddef>
@@ -33,7 +33,7 @@ struct MediaStreamsOptions {
 
 struct MediaFlvVideoTagSlice {
     // media_payload=false 表示 data 指向 tag 内部小 header；
-    // media_payload=true 表示 data 指向 EncodedFrame payload，调用方需保持帧引用。
+    // media_payload=true 表示 data 指向 MediaFrame payload，调用方需保持帧引用。
     const uint8_t *data = nullptr;
     size_t size = 0;
     bool media_payload = false;
@@ -47,7 +47,7 @@ struct MediaFlvVideoTagView {
 
 struct MediaFlvCachedVideoTagSlice {
     // GOP cache 只复制小 header。真正的视频 payload 仍通过 frame 持有
-    // FrameBuffer 引用，避免为每个新 FLV client 深拷贝整帧。
+    // MediaBuffer 引用，避免为每个新 FLV client 深拷贝整帧。
     const uint8_t *media_data = nullptr;
     uint8_t header_data[kMaxMediaFlvHeaderSliceBytes] = {};
     size_t size = 0;
@@ -55,7 +55,7 @@ struct MediaFlvCachedVideoTagSlice {
 };
 
 struct MediaFlvCachedVideoTag {
-    EncodedFrame frame;
+    MediaFrame frame;
     MediaFlvCachedVideoTagSlice slices[kMaxMediaFlvVideoTagSlices];
     size_t slice_count = 0;
     size_t total_size = 0;
@@ -103,18 +103,16 @@ struct MediaHlsPlaylist {
 };
 
 struct MediaSegmentRef {
-    // body 是带引用计数的 TS segment body。HTTP handler 发送完成后必须
-    // 调用 MediaSegmentRefUnref 释放引用。
     bool found = false;
     uint64_t sequence = 0;
     int64_t duration_us = 0;
-    FrameBuffer *body = nullptr;
+    MediaBufferRef body;
 };
 
 struct MediaFlvStart {
     // 新 HTTP-FLV client 先发送 file_header/sequence_header，再从
     // cached_video_tags 的关键帧 GOP 起点继续发送 live tag。
-    // cached_video_tags 持有对应 EncodedFrame 引用，媒体 payload 不会因
+    // cached_video_tags 持有对应 MediaFrame 引用，媒体 payload 不会因
     // GetFlvStart 返回对象离开 MediaStreams 锁而失效。
     bool supported = false;
     bool cached_gop_complete = false;
@@ -160,23 +158,21 @@ struct MediaStreamInfo {
 struct SubscriptionStart {
     // subscription 创建后先读取 start data：如果 track_ready/gop_complete=true，
     // 调用方可先发送 gop_frames，再进入 PopSubscriptionFrame 的 live queue。
-    // gop_frames 里的 EncodedFrame 只 ref 底层 FrameBuffer，不按 subscription 深拷贝 GOP。
+    // gop_frames 里的 MediaFrame 只 ref 底层 MediaBuffer，不按 subscription 深拷贝 GOP。
     bool track_ready = false;
     bool gop_complete = false;
     uint64_t generation = 0;
     MediaStreamInfo stream_info;
-    std::vector<EncodedFrame> gop_frames;
+    std::vector<MediaFrame> gop_frames;
 };
 
 struct SubscriptionFrame {
     // starts_on_keyframe 表示该 live frame 是等待关键帧后的第一个可解码点，
     // WebRTC/RTSP 可据此刷新协议侧状态。
-    // frame 持有自己的 FrameBuffer 引用，调用方发送结束后必须
-    // SubscriptionFrameUnref()。
     FrameSubscriptionId subscription_id = 0;
     uint64_t generation = 0;
     bool starts_on_keyframe = false;
-    EncodedFrame frame;
+    MediaFrame frame;
 };
 
 struct SubscriptionInfo {
@@ -217,25 +213,15 @@ public:
 
     virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
     virtual bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
-                               const EncodedFrame &frame) = 0;
+                               const MediaFrame &frame) = 0;
 };
 
 class IMediaMjpegSink {
 public:
     virtual ~IMediaMjpegSink() = default;
 
-    virtual bool OnMjpegFrame(const EncodedFrame &frame) = 0;
+    virtual bool OnMjpegFrame(const MediaFrame &frame) = 0;
 };
-
-void MediaFlvCachedVideoTagUnref(MediaFlvCachedVideoTag *tag);
-bool MediaFlvCachedVideoTagRefCopy(MediaFlvCachedVideoTag *target,
-                                   const MediaFlvCachedVideoTag *source);
-void MediaFlvStartUnref(MediaFlvStart *flv_start);
-void SubscriptionStartUnref(
-    SubscriptionStart *start_data);
-void SubscriptionFrameUnref(SubscriptionFrame *subscribed_frame);
-MediaSegmentRef MediaSegmentRefCopy(const MediaSegmentRef *segment);
-void MediaSegmentRefUnref(MediaSegmentRef *segment);
 
 class MediaStreams : public FrameSink {
 public:
@@ -244,7 +230,7 @@ public:
 
     bool Start();
     void Stop();
-    bool PushFrame(const EncodedFrame &frame) override;
+    bool PushFrame(const MediaFrame &frame) override;
     void SetStreamState(StreamId stream_id, MediaStreamState state,
                         Codec codec);
 

@@ -129,9 +129,9 @@ bool RtspSession::IsSubscribed() const {
     return subscription_id != 0;
 }
 
-void RtspSession::SetStartFrames(std::vector<EncodedFrame> *frames) {
+void RtspSession::SetStartFrames(std::vector<MediaFrame> *frames) {
     // Start frames 是 PLAY 时 media_streams 返回的启动 GOP，只在首轮 drain 中发送，
-    // 发送后立即 unref，不在 RTSP session 中长期缓存。
+    // 发送后立即移出，不在 RTSP session 中长期缓存。
     ClearStartFrames();
     if (frames != nullptr) {
         start_frames.swap(*frames);
@@ -143,9 +143,6 @@ void RtspSession::SetPlayRtpTimestamp(uint32_t timestamp) {
 }
 
 void RtspSession::ClearStartFrames() {
-    for (EncodedFrame &frame : start_frames) {
-        EncodedFrameUnref(&frame);
-    }
     start_frames.clear();
 }
 

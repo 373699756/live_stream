@@ -102,21 +102,20 @@ bool SendAndRead(int fd,
     return false;
 }
 
-live_stream::EncodedFrame MakeFrame() {
-    live_stream::FrameBuffer* buffer = live_stream::FrameBufferAlloc(3);
-    uint8_t* data = buffer->data;
+live_stream::MediaFrame MakeFrame() {
+    live_stream::MediaBufferRef buffer =
+        live_stream::MediaBufferRef::Allocate(3);
+    uint8_t* data = buffer.MutableData();
     data[0] = 0x65;
     data[1] = 1;
     data[2] = 2;
-    (void)live_stream::FrameBufferSetSize(buffer, 3);
-    live_stream::EncodedFrame frame;
+    (void)buffer.SetSize(3);
+    live_stream::MediaFrame frame;
     frame.stream_id = live_stream::StreamId::kMain;
     frame.codec = live_stream::Codec::kH264;
     frame.frame_type = live_stream::FrameType::kIdr;
     frame.pts_us = 300000;
-    frame.payload.buffer = buffer;
-    frame.payload.offset = 0;
-    frame.payload.size = 3;
+    frame.payload = buffer;
     return frame;
 }
 

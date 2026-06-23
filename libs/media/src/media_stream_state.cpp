@@ -12,7 +12,7 @@ bool IsBrowserCodec(Codec codec) {
 
 namespace {
 
-void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
+void PushFlvGopCache(StreamContext *stream, const MediaFrame &frame,
                      bool keyframe,
                      const FlvVideoTagView &flv_tag_view) {
     if (stream == nullptr || stream->sequence_header_tag.empty()) {
@@ -21,7 +21,7 @@ void PushFlvGopCache(StreamContext *stream, const EncodedFrame &frame,
     (void)stream->flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
 }
 
-void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
+void BuildH264Outputs(StreamContext *stream, const MediaFrame &frame,
                       const ParsedFramePayload &payload, bool *keyframe,
                       bool *prepend_parameter_sets) {
     // H.264 参数集既决定 FLV sequence header，也决定 WebRTC/RTSP track 是否 ready。
@@ -51,7 +51,7 @@ void BuildH264Outputs(StreamContext *stream, const EncodedFrame &frame,
 }
 
 void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
-                      const EncodedFrame &frame, bool *keyframe,
+                      const MediaFrame &frame, bool *keyframe,
                       bool *prepend_parameter_sets) {
     // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才生成 enhanced FLV
     // sequence header，并允许浏览器协议链路进入 ready。
@@ -119,18 +119,16 @@ bool IsMjpegStreamReady(const StreamContext &stream) {
            stream.has_latest_mjpeg_frame;
 }
 
-void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
+void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload *payload) {
     if (payload == nullptr) {
         return;
     }
-    FramePayloadUnref(payload);
-    if (!EncodedFrameRefCopy(&payload->encoded_frame, &frame)) {
-        return;
-    }
-    // FramePayload 持有原始 EncodedFrame 引用，NAL list 只是指向该 payload 的视图；
+    *payload = ParsedFramePayload{};
+    payload->frame = frame;
+    // FramePayload 持有原始 MediaFrame 引用，NAL list 只是指向该 payload 的视图；
     // 不在解析阶段复制整帧视频数据。
     payload->has_nal_units = true;
-    const uint8_t *data = EncodedFramePayloadData(&frame);
+    const uint8_t *data = MediaFramePayloadData(frame);
     if (data == nullptr) {
         payload->has_nal_units = false;
         return;
@@ -138,11 +136,11 @@ void ParseFramePayload(const EncodedFrame &frame, ParsedFramePayload *payload) {
 
     if (frame.codec == Codec::kH264) {
         payload->has_nal_units =
-            media_codec::ParseH264AnnexBNalUnits(data, frame.payload.size,
+            media_codec::ParseH264AnnexBNalUnits(data, frame.payload.Size(),
                                                  &payload->h264_units);
     } else if (frame.codec == Codec::kH265) {
         payload->has_nal_units =
-            media_codec::ParseH265AnnexBNalUnits(data, frame.payload.size,
+            media_codec::ParseH265AnnexBNalUnits(data, frame.payload.Size(),
                                                  &payload->h265_units);
     } else {
         payload->has_nal_units = false;
@@ -153,17 +151,13 @@ bool IsFramePayloadParsed(const ParsedFramePayload &payload) {
     if (!payload.has_nal_units) {
         return false;
     }
-    if (payload.encoded_frame.codec == Codec::kH264) {
+    if (payload.frame.codec == Codec::kH264) {
         return !payload.h264_units.empty();
     }
-    if (payload.encoded_frame.codec == Codec::kH265) {
+    if (payload.frame.codec == Codec::kH265) {
         return !payload.h265_units.empty();
     }
     return false;
-}
-
-void ParsedFramePayloadUnref(ParsedFramePayload *payload) {
-    FramePayloadUnref(payload);
 }
 
 void ClearStreamContext(StreamContext *stream) {
@@ -172,7 +166,7 @@ void ClearStreamContext(StreamContext *stream) {
     }
     stream->flv_gop_cache.Clear();
     stream->hls_maker.Reset();
-    EncodedFrameUnref(&stream->latest_mjpeg_frame);
+    stream->latest_mjpeg_frame = MediaFrame{};
     stream->codec = Codec::kH264;
     stream->state = MediaStreamState::kClosed;
     stream->vps.clear();
@@ -274,7 +268,7 @@ void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason) {
     }
     stream->flv_gop_cache.Clear();
     stream->hls_maker.Reset();
-    EncodedFrameUnref(&stream->latest_mjpeg_frame);
+    stream->latest_mjpeg_frame = MediaFrame{};
     stream->has_latest_mjpeg_frame = false;
     stream->vps.clear();
     stream->sps.clear();
@@ -300,7 +294,7 @@ void ResetStream(StreamContext *stream, Codec codec,
 }
 
 NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
-                                               EncodedFrame *frame) {
+                                               MediaFrame *frame) {
     NormalizedFrameResult result;
     if (stream == nullptr || frame == nullptr) {
         return result;
@@ -332,32 +326,27 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
     return result;
 }
 
-bool CacheMjpegFrame(StreamContext *stream, const EncodedFrame &frame) {
+bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame) {
     if (stream == nullptr || frame.codec != Codec::kMjpeg ||
-        !IsEncodedFramePayloadValid(&frame)) {
+        !IsMediaFramePayloadValid(frame)) {
         return false;
     }
-    EncodedFrame retained_frame;
-    // MJPEG latest frame 只保存 FrameBuffer 引用；HTTP-MJPEG 发送时通过
-    // HttpMediaSlice.owner 继续把同一块 payload 持有到网络发送完成。
-    if (!EncodedFrameRefCopy(&retained_frame, &frame)) {
-        return false;
-    }
-    EncodedFrameUnref(&stream->latest_mjpeg_frame);
-    stream->latest_mjpeg_frame = retained_frame;
+    // MJPEG latest frame 只保存 MediaBuffer 引用；HTTP-MJPEG 发送时通过
+    // MediaOutSlice.owner 继续把同一块 payload 持有到网络发送完成。
+    stream->latest_mjpeg_frame = frame;
     stream->has_latest_mjpeg_frame = true;
     return true;
 }
 
 PackagedFrameResult AppendFrameToStream(StreamContext *stream,
-                                        const EncodedFrame &frame,
+                                        const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
                                         bool package_flv,
                                         uint32_t hls_segment_duration_ms,
                                         uint32_t hls_playlist_depth) {
     PackagedFrameResult result;
-    if (stream == nullptr || frame.codec != payload.encoded_frame.codec ||
+    if (stream == nullptr || frame.codec != payload.frame.codec ||
         !IsFramePayloadParsed(payload)) {
         return result;
     }
@@ -389,7 +378,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
     if (package_hls) {
         bool hls_segment_created = false;
         // HLS 是转封装输出，会把输入 NAL 复制成独立 TS segment body。
-        // FLV/WebRTC/RTSP 路径仍使用原 EncodedFrame 引用或 slice view。
+        // FLV/WebRTC/RTSP 路径仍使用原 MediaFrame 引用或 slice view。
         if (stream->hls_maker.AppendFrame(
                 frame, payload, stream->vps, stream->sps, stream->pps,
                 keyframe, prepend_parameter_sets, hls_segment_duration_ms,
@@ -400,7 +389,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
 
     if (package_flv && IsFlvCodecSupported(frame.codec)) {
         // FLV tag view 只生成小 header 和 length prefix；媒体 NAL payload
-        // 仍指向 payload.encoded_frame 的 FrameBuffer。
+        // 仍指向 payload.frame 的 MediaBuffer。
         result.has_flv_tag_view = FlvMuxer::BuildVideoTagView(
             frame, payload, keyframe, &result.flv_tag_view);
         if (result.has_flv_tag_view) {

@@ -2,7 +2,7 @@
 #define LIVE_STREAM_RTSP_RTSP_H_
 
 #include "event.h"
-#include "media/encoded_frame.h"
+#include "media/media_frame.h"
 #include "media/media_streams.h"
 #include "media/stream_types.h"
 
