@@ -7,8 +7,9 @@
 
 #include "operation_log.h"
 
+#include "config_json.h"
 #include "infra/fs.h"
-#include "operation_record_codec.h"
+#include "json_utils.h"
 
 #include <algorithm>
 
@@ -36,6 +37,108 @@ bool MatchesQuery(const OperationRecord& record, const OperationLogQuery& query)
     return true;
 }
 
+bool OperationActionFromString(const std::string& value,
+                               OperationAction* action) {
+    if (action == nullptr) {
+        return false;
+    }
+    if (value == "Login") {
+        *action = OperationAction::kLogin;
+    } else if (value == "Logout") {
+        *action = OperationAction::kLogout;
+    } else if (value == "AuthFailed") {
+        *action = OperationAction::kAuthFailed;
+    } else if (value == "TokenExpired") {
+        *action = OperationAction::kTokenExpired;
+    } else if (value == "ModifyConfig") {
+        *action = OperationAction::kModifyConfig;
+    } else if (value == "Reboot") {
+        *action = OperationAction::kReboot;
+    } else if (value == "FactoryReset") {
+        *action = OperationAction::kFactoryReset;
+    } else if (value == "Upgrade") {
+        *action = OperationAction::kUpgrade;
+    } else if (value == "TimeSync") {
+        *action = OperationAction::kTimeSync;
+    } else if (value == "NetworkChange") {
+        *action = OperationAction::kNetworkChange;
+    } else if (value == "UserManage") {
+        *action = OperationAction::kUserManage;
+    } else if (value == "PermissionDenied") {
+        *action = OperationAction::kPermissionDenied;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool OperationResultFromString(const std::string& value,
+                               OperationResult* result) {
+    if (result == nullptr) {
+        return false;
+    }
+    if (value == "Success") {
+        *result = OperationResult::kSuccess;
+    } else if (value == "Failed") {
+        *result = OperationResult::kFailed;
+    } else if (value == "Rejected") {
+        *result = OperationResult::kRejected;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+std::string EncodeOperationRecord(const OperationRecord& record) {
+    ConfigJson root;
+    root["timestamp_ms"] = record.timestamp_ms;
+    root["request_id"] = record.request_id;
+    root["user_name"] = record.user_name;
+    root["session_id"] = record.session_id;
+    root["client_ip"] = record.client_ip;
+    root["module"] = record.module;
+    root["action"] = OperationActionToString(record.action);
+    root["target"] = record.target;
+    root["result"] = OperationResultToString(record.result);
+    root["reason"] = record.reason;
+    return root.dump() + "\n";
+}
+
+bool DecodeOperationRecord(const std::string& line, OperationRecord* record) {
+    if (record == nullptr) {
+        return false;
+    }
+
+    ConfigJson root = ConfigJson::parse(line, nullptr, false);
+    if (root.is_discarded() || !root.is_object()) {
+        return false;
+    }
+
+    OperationRecord decoded;
+    std::string action;
+    std::string result;
+    if (!json_utils::ReadField(root, "timestamp_ms", &decoded.timestamp_ms) ||
+        !json_utils::ReadField(root, "request_id", &decoded.request_id) ||
+        !json_utils::ReadField(root, "user_name", &decoded.user_name) ||
+        !json_utils::ReadField(root, "session_id", &decoded.session_id) ||
+        !json_utils::ReadField(root, "client_ip", &decoded.client_ip) ||
+        !json_utils::ReadField(root, "module", &decoded.module) ||
+        !json_utils::ReadField(root, "action", &action) ||
+        !json_utils::ReadField(root, "target", &decoded.target) ||
+        !json_utils::ReadField(root, "result", &result) ||
+        !json_utils::ReadField(root, "reason", &decoded.reason)) {
+        return false;
+    }
+
+    if (!OperationActionFromString(action, &decoded.action) ||
+        !OperationResultFromString(result, &decoded.result)) {
+        return false;
+    }
+
+    *record = decoded;
+    return true;
+}
+
 std::vector<std::string> SplitLines(const std::string& content) {
     std::vector<std::string> lines;
     size_t start = 0;
@@ -53,6 +156,48 @@ std::vector<std::string> SplitLines(const std::string& content) {
 }
 
 }  // namespace
+
+const char* OperationActionToString(OperationAction action) {
+    switch (action) {
+        case OperationAction::kLogin:
+            return "Login";
+        case OperationAction::kLogout:
+            return "Logout";
+        case OperationAction::kAuthFailed:
+            return "AuthFailed";
+        case OperationAction::kTokenExpired:
+            return "TokenExpired";
+        case OperationAction::kModifyConfig:
+            return "ModifyConfig";
+        case OperationAction::kReboot:
+            return "Reboot";
+        case OperationAction::kFactoryReset:
+            return "FactoryReset";
+        case OperationAction::kUpgrade:
+            return "Upgrade";
+        case OperationAction::kTimeSync:
+            return "TimeSync";
+        case OperationAction::kNetworkChange:
+            return "NetworkChange";
+        case OperationAction::kUserManage:
+            return "UserManage";
+        case OperationAction::kPermissionDenied:
+            return "PermissionDenied";
+    }
+    return "Unknown";
+}
+
+const char* OperationResultToString(OperationResult result) {
+    switch (result) {
+        case OperationResult::kSuccess:
+            return "Success";
+        case OperationResult::kFailed:
+            return "Failed";
+        case OperationResult::kRejected:
+            return "Rejected";
+    }
+    return "Unknown";
+}
 
 FileOperationLog::FileOperationLog(const LoggerConfig& config)
     : config_(config) {}
