@@ -54,7 +54,6 @@ CXXFLAGS += -Ilibs/hisi_vendor/include
 CXXFLAGS += -Ilibs/rtsp/include
 CXXFLAGS += -Ilibs/webrtc/include
 CXXFLAGS += -Ilibs/onvif/include
-CXXFLAGS += -Ilibs/alarm/include
 CXXFLAGS += -Ilibs/http/include
 CXXFLAGS += -Ilibs/http_media/include
 CXXFLAGS += -I$(THIRDPARTY_INSTALL)/include
@@ -79,7 +78,6 @@ MODULES := \
 	rtsp \
 	webrtc \
 	onvif \
-	alarm \
 	http_media \
 	http \
 	media_codec

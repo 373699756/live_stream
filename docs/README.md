@@ -29,7 +29,7 @@
 - 日常 bugfix：读 `AGENTS.md`、本文件、`refactor/README.md` 的开发工作流和相关模块文档。
 - 跨模块重构：读 `refactor/README.md`、相关 `libs/<module>.md` 和相邻接口模块文档。
 - HTTP/API/config/event 改动：读拥有模块文档，以及 `libs/http.md`、`libs/http_media.md`、
-  `libs/config.md`、`libs/event.md` 和 Web 文档。
+  `libs/event.md` 和 Web 文档；`libs/config.md`、`libs/alarm.md` 只用于追溯迁移历史。
 - AI 改动：读 `libs/ai.md`、`libs/device.md`、`libs/hisi_vendor.md` 和 Web 文档。
 - 质量扫描或热路径优化：读 `refactor/README.md` 的质量门禁和 `optimization/memory.md`。
 

@@ -1,13 +1,18 @@
 # alarm
 
-## 命名迁移
+## 迁移状态
 
-本模块命名迁移遵循`docs/refactor/README.md` 的命名规则。后续目录、静态库、public header、接口类、Options/Dependencies/Stats、工厂函数和变量名只按该基线迁移；本文件中的旧 `_service`、`stream_*`、`MetaRtc*` 或 `Yang*` 名称仅表示迁移前名称、历史说明或明确允许保留的协议概念。HTTP REST 路径、配置 schema、Web DTO 和 ONVIF 返回路径可以随完全重构同步迁移；变更必须在同一任务内更新调用方、配置样例和文档，不保留旧兼容适配。
+`alarm` 独立库已并入 `event`。本文件只保留历史迁移说明和告警契约索引；
+长期设计正文维护在 `event.md`，AI 图片归 `ai.md`，HTTP 路由归 `http.md`。
 
-## 模块定位
+public header 名称保持 `alarm.h`，实际路径为 `libs/event/include/alarm.h`。
+public API 名称保持 `IAlarm`、`AlarmOptions`、`AlarmRule`、`AlarmStatus`、
+`CreateAlarm()`。
 
-`alarm` 负责视频产品范围内的告警规则、告警输入、当前告警状态和告警事件。
-它不拥有录像、存储回放或音频告警能力。
+## 历史模块定位
+
+独立 `alarm` 模块曾负责视频产品范围内的告警规则、告警输入、当前告警状态和告警事件。
+这些职责现在由 `event` 库内的 alarm 功能承担。它不拥有录像、存储回放或音频告警能力。
 
 ## 总体框架图
 
@@ -15,8 +20,8 @@
 flowchart LR
   AI[ai] --> Input[InjectAlarmInput ai_detection]
   HTTP[http alarm/config handlers] --> Alarm[alarm]
-  Alarm --> Config[config]
-  Alarm --> Event[event]
+  Alarm --> Config[event config]
+  Alarm --> Event[event dispatcher]
   Alarm --> Logger[logger]
   Event --> Web[Web status/API clients]
 ```
@@ -30,7 +35,8 @@ flowchart LR
 
 ## 接口归属
 
-public API 在 `alarm.h`。AI 告警图片归 `ai`，告警规则和触发状态归 `alarm`。
+public API 在 `libs/event/include/alarm.h`。AI 告警图片归 `ai`，告警规则和触发状态
+归 `event` 内的 alarm 功能。
 
 HTTP 路由由 `http` 实现，但业务语义归本模块：
 

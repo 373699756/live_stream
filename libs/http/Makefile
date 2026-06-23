@@ -5,7 +5,6 @@ BUILD_DIR ?= $(ROOT_DIR)/build
 INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
 AUTH_LIB := $(BUILD_DIR)/lib/libauth.a
-ALARM_LIB := $(BUILD_DIR)/lib/libalarm.a
 LOGGER_LIB := $(BUILD_DIR)/lib/liblogger.a
 NET_LIB := $(BUILD_DIR)/lib/libnet.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice.a
@@ -17,7 +16,6 @@ ONVIF_LIB := $(BUILD_DIR)/lib/libonvif.a
 
 CXXFLAGS += -pthread
 CXXFLAGS += -I$(ROOT_DIR)/libs/ai/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/alarm/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/auth/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/logger/include
@@ -34,11 +32,11 @@ CXXFLAGS += -Isrc
 
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
-EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) \
+EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) \
 	$(MEDIA_LIB) $(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
 	$(SYSTEM_LIB) \
 	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
-EXTRA_TEST_LIBS := $(EVENT_LIB) $(AUTH_LIB) $(ALARM_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
+EXTRA_TEST_LIBS := $(EVENT_LIB) $(AUTH_LIB) $(LOGGER_LIB) $(NET_LIB) $(WEBRTC_LIB) \
 	$(HTTP_MEDIA_LIB) $(MEDIA_STREAMS_LIB) \
 	$(SYSTEM_LIB) $(ONVIF_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
@@ -51,9 +49,6 @@ $(EVENT_LIB):
 
 $(AUTH_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../auth all
-
-$(ALARM_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../alarm all
 
 $(LOGGER_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../logger all

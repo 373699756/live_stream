@@ -41,7 +41,6 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Device Modules
 
 - `system.md`
-- `alarm.md`
 
 ### Media Modules
 
@@ -64,6 +63,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 
 ### Historical Migration Notes
 
+- `alarm.md`
 - `config.md`
 - `stream_hub_legacy.md`
 

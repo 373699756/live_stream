@@ -7,7 +7,7 @@
 ## 模块定位
 
 `event` 是进程内控制平面基础库。它承载轻量状态变化、控制元信息、普通异步任务、
-低频 timer 和全局配置中心，不承载媒体帧、二进制 payload、凭据或大 JSON。
+低频 timer、全局配置中心和轻量告警状态，不承载媒体帧、二进制 payload、凭据或大 JSON。
 
 ## 总体框架图
 
@@ -21,6 +21,9 @@ flowchart LR
   Executor[Executor] --> Tasks[task workers]
   ConfigFiles[configs/default_config.json + business_config.json] --> Config[IConfig]
   Modules[ConfigScope callbacks] --> Config
+  AI[ai] --> Alarm[IAlarm]
+  HTTP[http alarm handlers] --> Alarm
+  Alarm --> Dispatcher
 ```
 
 ## 核心职责
@@ -33,14 +36,16 @@ flowchart LR
   绑定任务/timer 生命周期。
 - 提供 `IConfig` 配置中心，负责加载、保存、默认值、scope 原子替换和
   `ConfigScope` verify/apply 调用顺序。
+- 提供 `IAlarm` 轻量告警状态中心，负责告警规则、输入、当前状态、
+  `kAlarmOn` / `kAlarmOff` 发布和操作日志记录。
 - 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`、
   `timestamp_ms`、`level`。
 
 ## 接口归属
 
 public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任务执行入口是
-`executor.h`，loop/timer 入口是 `loop.h`，配置中心入口保留为 `config.h`。
-事件 payload 归 `event` 文档维护：
+`executor.h`，loop/timer 入口是 `loop.h`，配置中心入口保留为 `config.h`，
+告警入口保留为 `alarm.h`。事件 payload 归 `event` 文档维护：
 
 | EventType | source | target | message | value |
 | --- | --- | --- | --- | ---: |
@@ -67,12 +72,17 @@ payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTT
 归 `device`，AI 归 `ai`，network 归 `system.network`。`event` 只保证 JSON 加载、
 默认值、scope 原子替换和 verify/apply 调用顺序。
 
+`alarm.h` 的 public API 名称保持 `IAlarm`、`AlarmOptions`、`AlarmRule`、
+`AlarmStatus`、`CreateAlarm()`。AI 告警图片归 `ai`，告警规则和触发状态归 `event`
+内的 alarm 功能。HTTP 路由由 `http` 实现，业务状态来自 `IAlarm`。
+
 ## 非目标
 
 - 不作为跨模块 RPC、任务队列或可靠消息总线。
 - 不保证进程退出后的事件持久化。
 - 不承载高频媒体帧或大对象生命周期。
 - 不解析设备 SDK 配置语义，不拥有 HTTP/Web DTO 映射。
+- 不实现录像、回放、云推送或长期告警归档。
 
 ## 状态与资源模型
 
@@ -88,3 +98,7 @@ handler 必须轻量。需要耗时业务时，handler 应投递到自己的任�
 运行配置来自 `configs/default_config.json` 和 `configs/business_config.json`。
 `IConfig::Set` 成功必须代表 verify、apply 和保存都成功；保存失败会调用
 `apply(now, prev)` 回滚运行态，并恢复内存中的旧值。
+
+告警状态是轻量内存状态，不是录像索引或长期存储。AI 启用时只注入
+`AlarmSource::kAiDetection`，不启用录像、回放或长期保存。AI 告警规则未启用时，
+AI 仍可保存抓拍图片，但不会发布 `kAlarmOn` 系统告警事件。
