@@ -162,9 +162,9 @@ void FrameRing::ClearStream(StreamId stream_id,
     }
 }
 
-size_t FrameRing::SubscriptionCount() const { return subscriptions_.size(); }
+size_t FrameRing::SubscriptionSize() const { return subscriptions_.size(); }
 
-uint32_t FrameRing::SlowSubscriptionCount() const {
+uint32_t FrameRing::SlowSubscriptionSize() const {
     uint32_t count = 0;
     for (const auto &item : subscriptions_) {
         if (item.second.live_queue.overflow) {
@@ -174,7 +174,7 @@ uint32_t FrameRing::SlowSubscriptionCount() const {
     return count;
 }
 
-uint32_t FrameRing::SlowSubscriptionCount(StreamId stream_id) const {
+uint32_t FrameRing::SlowSubscriptionSize(StreamId stream_id) const {
     uint32_t count = 0;
     for (const auto &item : subscriptions_) {
         if (item.second.stream_id == stream_id &&
@@ -185,7 +185,7 @@ uint32_t FrameRing::SlowSubscriptionCount(StreamId stream_id) const {
     return count;
 }
 
-uint32_t FrameRing::CachedFrameCount() const {
+uint32_t FrameRing::CachedFrameSize() const {
     return static_cast<uint32_t>(main_cache_.size + sub_cache_.size);
 }
 

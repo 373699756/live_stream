@@ -130,7 +130,7 @@ struct SubscriptionOptions {
 struct MediaStreamInfo {
     bool running = false;
     bool track_ready = false;
-    bool browser_codec = false;
+    bool preview_codec = false;
     bool hls_ready = false;
     bool flv_ready = false;
     bool mjpeg_ready = false;

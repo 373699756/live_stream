@@ -27,6 +27,13 @@
 保活，协议订阅和 FLV GOP cache 只增加底层 buffer 引用，不复制整帧
 payload；HLS segment 是独立转封装后的 TS buffer。
 
+`MediaStreams` 只做协调：`MediaStreamTracks` 持有主/子码流的 codec、参数集、
+HLS/FLV/MJPEG 缓存和 reset 规则；`FrameRing` 持有协议帧订阅和 live queue；
+`PreviewClients` 持有 HTTP-FLV/MJPEG preview client、sink 生命周期和
+pending write 计数。集合当前基数接口使用 `Size()`，不要使用 `Count()`。不要再把
+`MediaStreams` 按 start/input/output 这类函数主题
+拆文件；只有真实拥有状态、资源或生命周期规则的对象才单独成文件。
+
 codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG 和
 订阅 live queue，后续从新的关键帧重新建立可播放状态。
 

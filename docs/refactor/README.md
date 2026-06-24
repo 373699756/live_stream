@@ -96,6 +96,11 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 不新增 `Runtime`、`Manager`、`Store`、`Topology` 这类看起来大但边界不清的名字；
 历史已有名字在重构触及时改成具体业务名。
 
+当前集合基数用 `Size()`，不用 `Count()`，例如 `FrameRing::SubscriptionSize()`、
+`PreviewClients::FlvSize()`。累计次数、协议字段、HTTP/JSON wire field、低层
+`ref_count`/`slice_count` 这类已有契约不要机械改成 `Size`；需要重命名时用具体事实，
+例如 `MissingSegments()`、`EvictedSegments()` 或对应 `Stats` 字段。
+
 ### 必须遵守
 
 - 模块目录和库名不使用不必要的 `_service` 后缀。
@@ -110,6 +115,16 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 - 内部锁内变量和状态机可以使用 `State`，但不要进入新的 public API。
 - 帧订阅统一使用 `FrameSubscription`、`SubscribeFrames(...)`、`UnsubscribeFrames(...)`。
 - 删除旧 `stream_*`、`MetaRtc*`、`Yang*` 和只转调旧接口的临时命名。
+
+### 拆分规则
+
+- 拆文件必须按真实职责和所有权：配置/校验、运行态、协议处理、缓存/队列、硬件
+  启停、client/sink 生命周期等拥有独立状态或资源边界的代码可以单独成文件。
+- 不按函数主题拆分同一个类，例如 `xxx_start.cpp`、`xxx_input.cpp`、`xxx_output.cpp`
+  只承载一个 `Impl` 的成员函数时属于假重构；应保留在同一实现文件，或先抽出真正
+  拥有状态/资源的对象。
+- 新对象必须能说明它收拢状态、隔离生命周期、减少重复或明确跨模块契约；否则不要
+  为了减小单文件行数新增类。
 
 ### 已明确保留
 

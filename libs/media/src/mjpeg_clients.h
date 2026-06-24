@@ -8,16 +8,16 @@
 #include <vector>
 
 namespace live_stream {
-namespace media_streams_internal {
+namespace media_internal {
 
 struct PendingMjpegClientWrite {
     MediaMjpegClientId client_id = 0;
     IMediaMjpegSink *sink = nullptr;
 };
 
-// Tracks MJPEG browser clients with explicit sink ownership. The service owns
-// the lock; writes increment pending_writes so detach cannot delete the sink
-// during a callback.
+// Tracks MJPEG preview clients with explicit sink ownership. PreviewClients
+// owns the lock; writes increment pending_writes so detach cannot delete the
+// sink during a callback.
 class MjpegClients {
 public:
     MediaMjpegClientId Attach(StreamId stream_id, IMediaMjpegSink *sink,
@@ -45,7 +45,7 @@ private:
     MediaMjpegClientId next_mjpeg_client_id_ = 0x8000000000000001ULL;
 };
 
-}  // namespace media_streams_internal
+}  // namespace media_internal
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_MEDIA_SRC_MJPEG_CLIENTS_H_

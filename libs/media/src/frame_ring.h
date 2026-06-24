@@ -32,10 +32,10 @@ public:
                   SubscriptionFrame *frame);
     void Clear();
     void ClearStream(StreamId stream_id, SubscriptionClose reason);
-    size_t SubscriptionCount() const;
-    uint32_t SlowSubscriptionCount() const;
-    uint32_t SlowSubscriptionCount(StreamId stream_id) const;
-    uint32_t CachedFrameCount() const;
+    size_t SubscriptionSize() const;
+    uint32_t SlowSubscriptionSize() const;
+    uint32_t SlowSubscriptionSize(StreamId stream_id) const;
+    uint32_t CachedFrameSize() const;
     uint32_t CachedBytes() const;
     int64_t LastFrameTimestamp(StreamId stream_id) const;
     void Write(const FramePayload &frame);

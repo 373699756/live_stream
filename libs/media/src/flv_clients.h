@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_
-#define LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_FLV_CLIENTS_H_
+#define LIVE_STREAM_MEDIA_SRC_FLV_CLIENTS_H_
 
 #include "media/media_streams.h"
 
@@ -17,9 +17,9 @@ struct PendingFlvClientWrite {
     bool starts_on_keyframe = false;
 };
 
-// 跟踪单个 media source 下的 HTTP-FLV live client。外层服务负责加锁，
-// 本类所有方法都应在同一把 mutex 保护下调用。
-class FlvLiveRing {
+// Tracks HTTP-FLV preview clients. PreviewClients owns the lock and calls all
+// methods on this class under that lock.
+class FlvClients {
 public:
     MediaFlvClientId AttachClient(StreamId stream_id,
                                   uint64_t config_generation,
@@ -28,7 +28,7 @@ public:
                                   size_t max_clients);
     bool DetachClient(MediaFlvClientId client_id);
     void Clear();
-    size_t ClientCount() const;
+    size_t Size() const;
     bool IsStreamClientAttached(StreamId stream_id) const;
     std::vector<PendingFlvClientWrite> CollectWrites(
         StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
@@ -56,4 +56,4 @@ private:
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SRC_FLV_LIVE_RING_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_FLV_CLIENTS_H_

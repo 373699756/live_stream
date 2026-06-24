@@ -18,9 +18,9 @@
 namespace live_stream {
 namespace media_internal {
 
-// 单路码流的浏览器播放状态。服务层只负责加锁和分发，HLS/FLV 的
+// 单路码流的实时预览输出状态。服务层只负责加锁和分发，HLS/FLV 的
 // 参数集、分片缓存和打包游标都集中维护在这里。
-struct StreamContext {
+struct StreamTrack {
     Codec codec = Codec::kH264;
     MediaStreamState state = MediaStreamState::kClosed;
     std::string vps;
@@ -55,35 +55,35 @@ struct NormalizedFrameResult {
     bool timestamp_reset = false;
 };
 
-bool IsBrowserStreamReady(MediaStreamState state, Codec codec);
-bool IsBrowserCodec(Codec codec);
+bool IsPreviewStreamReady(MediaStreamState state, Codec codec);
+bool IsPreviewCodec(Codec codec);
 bool IsFlvCodecSupported(Codec codec);
 bool IsHlsCodecSupported(Codec codec);
 bool IsMjpegCodecSupported(Codec codec);
-bool IsFlvSequenceHeaderReady(const StreamContext &stream);
-bool IsFlvStreamReady(const StreamContext &stream);
-bool IsHlsStreamReady(const StreamContext &stream);
-bool IsMjpegStreamReady(const StreamContext &stream);
+bool IsFlvSequenceHeaderReady(const StreamTrack &stream);
+bool IsFlvStreamReady(const StreamTrack &stream);
+bool IsHlsStreamReady(const StreamTrack &stream);
+bool IsMjpegStreamReady(const StreamTrack &stream);
 
 void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload *payload);
 bool IsFramePayloadParsed(const ParsedFramePayload &payload);
-void ClearStreamContext(StreamContext *stream);
+void ClearStreamTrack(StreamTrack *stream);
 
-MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
+MediaHlsPlaylist BuildHlsPlaylist(const StreamTrack &stream,
                                   uint32_t hls_segment_duration_ms,
                                   uint32_t hls_playlist_depth);
-MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
+MediaSegmentRef FindHlsSegmentRef(const StreamTrack &stream,
                                   uint64_t sequence);
-MediaFlvStart BuildFlvStart(const StreamContext &stream);
-MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream);
+MediaFlvStart BuildFlvStart(const StreamTrack &stream);
+MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream);
 
-void ResetStream(StreamContext *stream, Codec codec,
+void ResetStream(StreamTrack *stream, Codec codec,
                  MediaStreamResetReason reason);
-void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason);
-NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
+void ResetStreamCaches(StreamTrack *stream, MediaStreamResetReason reason);
+NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack *stream,
                                                MediaFrame *frame);
-bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame);
-PackagedFrameResult AppendFrameToStream(StreamContext *stream,
+bool CacheMjpegFrame(StreamTrack *stream, const MediaFrame &frame);
+PackagedFrameResult AppendFrameToStream(StreamTrack *stream,
                                         const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,

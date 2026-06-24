@@ -1,11 +1,11 @@
-#include "flv_live_ring.h"
+#include "flv_clients.h"
 
 #include <utility>
 
 namespace live_stream {
 namespace media_internal {
 
-MediaFlvClientId FlvLiveRing::AttachClient(
+MediaFlvClientId FlvClients::AttachClient(
     StreamId stream_id, uint64_t config_generation, bool wait_for_keyframe,
     IMediaFlvSink *sink, size_t max_clients) {
     if (sink == nullptr || clients_.size() >= max_clients) {
@@ -21,7 +21,7 @@ MediaFlvClientId FlvLiveRing::AttachClient(
     return client_id;
 }
 
-bool FlvLiveRing::DetachClient(MediaFlvClientId client_id) {
+bool FlvClients::DetachClient(MediaFlvClientId client_id) {
     auto iter = clients_.find(client_id);
     if (iter == clients_.end()) {
         return false;
@@ -31,7 +31,7 @@ bool FlvLiveRing::DetachClient(MediaFlvClientId client_id) {
     return true;
 }
 
-void FlvLiveRing::Clear() {
+void FlvClients::Clear() {
     for (auto iter = clients_.begin(); iter != clients_.end();) {
         iter->second.detached = true;
         if (iter->second.pending_writes == 0) {
@@ -43,9 +43,9 @@ void FlvLiveRing::Clear() {
     }
 }
 
-size_t FlvLiveRing::ClientCount() const { return clients_.size(); }
+size_t FlvClients::Size() const { return clients_.size(); }
 
-bool FlvLiveRing::IsStreamClientAttached(StreamId stream_id) const {
+bool FlvClients::IsStreamClientAttached(StreamId stream_id) const {
     for (const auto &item : clients_) {
         if (!item.second.detached && item.second.stream_id == stream_id &&
             item.second.sink != nullptr) {
@@ -55,7 +55,7 @@ bool FlvLiveRing::IsStreamClientAttached(StreamId stream_id) const {
     return false;
 }
 
-std::vector<PendingFlvClientWrite> FlvLiveRing::CollectWrites(
+std::vector<PendingFlvClientWrite> FlvClients::CollectWrites(
     StreamId stream_id, uint64_t config_generation, bool has_flv_tag,
     bool has_sequence_header, bool keyframe) {
     std::vector<PendingFlvClientWrite> writes;
@@ -93,7 +93,7 @@ std::vector<PendingFlvClientWrite> FlvLiveRing::CollectWrites(
     return writes;
 }
 
-void FlvLiveRing::ReleaseWrite(MediaFlvClientId client_id) {
+void FlvClients::ReleaseWrite(MediaFlvClientId client_id) {
     auto iter = clients_.find(client_id);
     if (iter == clients_.end()) {
         return;
@@ -104,7 +104,7 @@ void FlvLiveRing::ReleaseWrite(MediaFlvClientId client_id) {
     (void)EraseDetachedClient(client_id, &iter->second);
 }
 
-void FlvLiveRing::ReleaseClientSink(ClientState *client) {
+void FlvClients::ReleaseClientSink(ClientState *client) {
     if (client == nullptr || client->sink == nullptr) {
         return;
     }
@@ -112,7 +112,7 @@ void FlvLiveRing::ReleaseClientSink(ClientState *client) {
     client->sink = nullptr;
 }
 
-bool FlvLiveRing::EraseDetachedClient(MediaFlvClientId client_id,
+bool FlvClients::EraseDetachedClient(MediaFlvClientId client_id,
                                       ClientState *client) {
     if (client == nullptr || !client->detached ||
         client->pending_writes != 0) {

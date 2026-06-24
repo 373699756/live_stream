@@ -39,11 +39,11 @@ public:
     void MarkRequested() const;
     bool Requested() const;
     bool IsPlaylistReady() const;
-    size_t SegmentCount() const;
+    size_t SegmentSize() const;
     uint64_t FirstSegmentSequence() const;
     uint64_t LastSegmentSequence() const;
-    uint64_t MissingSegmentCount() const;
-    uint64_t EvictedSegmentCount() const;
+    uint64_t MissingSegments() const;
+    uint64_t EvictedSegments() const;
     uint32_t CurrentSegmentSize() const;
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;

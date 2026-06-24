@@ -3,7 +3,7 @@
 #include <utility>
 
 namespace live_stream {
-namespace media_streams_internal {
+namespace media_internal {
 
 MediaMjpegClientId MjpegClients::Attach(
     StreamId stream_id, IMediaMjpegSink *sink, size_t max_clients) {
@@ -97,5 +97,5 @@ bool MjpegClients::EraseDetachedClient(MediaMjpegClientId client_id,
     return mjpeg_clients_.erase(client_id) != 0;
 }
 
-}  // namespace media_streams_internal
+}  // namespace media_internal
 }  // namespace live_stream

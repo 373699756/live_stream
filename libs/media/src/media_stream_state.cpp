@@ -5,14 +5,14 @@
 
 namespace live_stream {
 namespace media_internal {
-bool IsBrowserCodec(Codec codec) {
+bool IsPreviewCodec(Codec codec) {
     return codec == Codec::kH264 || codec == Codec::kH265 ||
            codec == Codec::kMjpeg;
 }
 
 namespace {
 
-void PushFlvGopCache(StreamContext *stream, const MediaFrame &frame,
+void PushFlvGopCache(StreamTrack *stream, const MediaFrame &frame,
                      bool keyframe,
                      const FlvVideoTagBuild &flv_tag_view) {
     if (stream == nullptr || stream->sequence_header_tag.empty()) {
@@ -21,7 +21,7 @@ void PushFlvGopCache(StreamContext *stream, const MediaFrame &frame,
     (void)stream->flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
 }
 
-void BuildH264Outputs(StreamContext *stream, const MediaFrame &frame,
+void BuildH264Outputs(StreamTrack *stream, const MediaFrame &frame,
                       const ParsedFramePayload &payload, bool *keyframe,
                       bool *prepend_parameter_sets) {
     // H.264 参数集既决定 FLV sequence header，也决定 WebRTC/RTSP track 是否 ready。
@@ -50,11 +50,11 @@ void BuildH264Outputs(StreamContext *stream, const MediaFrame &frame,
     }
 }
 
-void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
+void BuildH265Outputs(StreamTrack *stream, const ParsedFramePayload &payload,
                       const MediaFrame &frame, bool *keyframe,
                       bool *prepend_parameter_sets) {
     // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才生成 enhanced FLV
-    // sequence header，并允许浏览器协议链路进入 ready。
+    // sequence header，并允许预览协议链路进入 ready。
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
@@ -81,8 +81,8 @@ void BuildH265Outputs(StreamContext *stream, const ParsedFramePayload &payload,
 
 }  // namespace
 
-bool IsBrowserStreamReady(MediaStreamState state, Codec codec) {
-    return state == MediaStreamState::kRunning && IsBrowserCodec(codec);
+bool IsPreviewStreamReady(MediaStreamState state, Codec codec) {
+    return state == MediaStreamState::kRunning && IsPreviewCodec(codec);
 }
 
 bool IsFlvCodecSupported(Codec codec) {
@@ -97,24 +97,24 @@ bool IsMjpegCodecSupported(Codec codec) {
     return codec == Codec::kMjpeg;
 }
 
-bool IsFlvSequenceHeaderReady(const StreamContext &stream) {
+bool IsFlvSequenceHeaderReady(const StreamTrack &stream) {
     return !stream.sequence_header_tag.empty();
 }
 
-bool IsFlvStreamReady(const StreamContext &stream) {
-    return IsBrowserStreamReady(stream.state, stream.codec) &&
+bool IsFlvStreamReady(const StreamTrack &stream) {
+    return IsPreviewStreamReady(stream.state, stream.codec) &&
            IsFlvCodecSupported(stream.codec) &&
            IsFlvSequenceHeaderReady(stream);
 }
 
-bool IsHlsStreamReady(const StreamContext &stream) {
-    return IsBrowserStreamReady(stream.state, stream.codec) &&
+bool IsHlsStreamReady(const StreamTrack &stream) {
+    return IsPreviewStreamReady(stream.state, stream.codec) &&
            IsHlsCodecSupported(stream.codec) &&
            stream.hls_maker.IsPlaylistReady();
 }
 
-bool IsMjpegStreamReady(const StreamContext &stream) {
-    return IsBrowserStreamReady(stream.state, stream.codec) &&
+bool IsMjpegStreamReady(const StreamTrack &stream) {
+    return IsPreviewStreamReady(stream.state, stream.codec) &&
            IsMjpegCodecSupported(stream.codec) &&
            stream.has_latest_mjpeg_frame;
 }
@@ -160,7 +160,7 @@ bool IsFramePayloadParsed(const ParsedFramePayload &payload) {
     return false;
 }
 
-void ClearStreamContext(StreamContext *stream) {
+void ClearStreamTrack(StreamTrack *stream) {
     if (stream == nullptr) {
         return;
     }
@@ -180,7 +180,7 @@ void ClearStreamContext(StreamContext *stream) {
     stream->timestamp_corrector.Reset();
 }
 
-MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
+MediaHlsPlaylist BuildHlsPlaylist(const StreamTrack &stream,
                                   uint32_t hls_segment_duration_ms,
                                   uint32_t hls_playlist_depth) {
     MediaHlsPlaylist playlist;
@@ -192,18 +192,18 @@ MediaHlsPlaylist BuildHlsPlaylist(const StreamContext &stream,
                                           hls_playlist_depth);
 }
 
-MediaSegmentRef FindHlsSegmentRef(const StreamContext &stream,
+MediaSegmentRef FindHlsSegmentRef(const StreamTrack &stream,
                                   uint64_t sequence) {
-    if (!IsBrowserStreamReady(stream.state, stream.codec)) {
+    if (!IsPreviewStreamReady(stream.state, stream.codec)) {
         return MediaSegmentRef{};
     }
 
     return stream.hls_maker.FindSegmentRef(sequence);
 }
 
-MediaFlvStart BuildFlvStart(const StreamContext &stream) {
+MediaFlvStart BuildFlvStart(const StreamTrack &stream) {
     MediaFlvStart flv_start;
-    if (!IsBrowserStreamReady(stream.state, stream.codec) ||
+    if (!IsPreviewStreamReady(stream.state, stream.codec) ||
         !IsFlvCodecSupported(stream.codec)) {
         return flv_start;
     }
@@ -223,18 +223,18 @@ MediaFlvStart BuildFlvStart(const StreamContext &stream) {
     return flv_start;
 }
 
-MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
+MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream) {
     MediaStreamInfo info;
     info.running = stream.state == MediaStreamState::kRunning;
     info.hls_supported = IsHlsCodecSupported(stream.codec);
     info.flv_supported = IsFlvCodecSupported(stream.codec);
     info.mjpeg_supported = IsMjpegCodecSupported(stream.codec);
-    info.browser_codec =
+    info.preview_codec =
         info.hls_supported || info.flv_supported || info.mjpeg_supported;
     // track_ready 面向 RTSP/WebRTC/HTTP-FLV 等协议输出。H.264/H.265 必须已有
     // sequence header；MJPEG 则至少要有一帧最新 JPEG。
     info.track_ready =
-        IsBrowserStreamReady(stream.state, stream.codec) &&
+        IsPreviewStreamReady(stream.state, stream.codec) &&
         ((IsFlvCodecSupported(stream.codec) &&
           IsFlvSequenceHeaderReady(stream)) ||
          IsMjpegStreamReady(stream));
@@ -248,11 +248,11 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
     info.sps = stream.sps;
     info.pps = stream.pps;
     info.hls_segment_count =
-        static_cast<uint32_t>(stream.hls_maker.SegmentCount());
+        static_cast<uint32_t>(stream.hls_maker.SegmentSize());
     info.hls_first_segment_sequence = stream.hls_maker.FirstSegmentSequence();
     info.hls_last_segment_sequence = stream.hls_maker.LastSegmentSequence();
-    info.hls_missing_segment_count = stream.hls_maker.MissingSegmentCount();
-    info.hls_evicted_segment_count = stream.hls_maker.EvictedSegmentCount();
+    info.hls_missing_segment_count = stream.hls_maker.MissingSegments();
+    info.hls_evicted_segment_count = stream.hls_maker.EvictedSegments();
     info.flv_sequence_header_size =
         static_cast<uint32_t>(stream.sequence_header_tag.size());
     info.flv_last_keyframe_size = stream.flv_gop_cache.FirstFlvTagSize();
@@ -262,7 +262,7 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamContext &stream) {
     return info;
 }
 
-void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason) {
+void ResetStreamCaches(StreamTrack *stream, MediaStreamResetReason reason) {
     if (stream == nullptr) {
         return;
     }
@@ -281,7 +281,7 @@ void ResetStreamCaches(StreamContext *stream, MediaStreamResetReason reason) {
     stream->last_reset_reason = reason;
 }
 
-void ResetStream(StreamContext *stream, Codec codec,
+void ResetStream(StreamTrack *stream, Codec codec,
                  MediaStreamResetReason reason) {
     if (stream == nullptr) {
         return;
@@ -293,7 +293,7 @@ void ResetStream(StreamContext *stream, Codec codec,
     stream->state = state;
 }
 
-NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
+NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack *stream,
                                                MediaFrame *frame) {
     NormalizedFrameResult result;
     if (stream == nullptr || frame == nullptr) {
@@ -326,7 +326,7 @@ NormalizedFrameResult NormalizeFrameTimestamps(StreamContext *stream,
     return result;
 }
 
-bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame) {
+bool CacheMjpegFrame(StreamTrack *stream, const MediaFrame &frame) {
     if (stream == nullptr || frame.codec != Codec::kMjpeg ||
         !IsMediaFramePayloadValid(frame)) {
         return false;
@@ -338,7 +338,7 @@ bool CacheMjpegFrame(StreamContext *stream, const MediaFrame &frame) {
     return true;
 }
 
-PackagedFrameResult AppendFrameToStream(StreamContext *stream,
+PackagedFrameResult AppendFrameToStream(StreamTrack *stream,
                                         const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
@@ -355,7 +355,7 @@ PackagedFrameResult AppendFrameToStream(StreamContext *stream,
         // 都失效，不能只改 codec 字段继续复用旧缓存。
         ResetStream(stream, frame.codec, MediaStreamResetReason::kCodecChanged);
     }
-    if (!IsBrowserStreamReady(stream->state, stream->codec)) {
+    if (!IsPreviewStreamReady(stream->state, stream->codec)) {
         return result;
     }
 

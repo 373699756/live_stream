@@ -11,6 +11,10 @@
 - 保留已有且职责明确的 `Impl` / `impl_` PIMPL 命名，不改成 `State` / `state_`。
 - 不把 `Result` 作为通用返回对象名；只有已经有明确业务语义的历史类型才单独评估。
 - `Status`、`Info`、`Stats` 按语义分工，不做机械替换。
+- 当前集合基数用 `Size()`，不用 `Count()`；累计次数、协议字段、HTTP/JSON wire field
+  和低层 `ref_count`、`slice_count` 这类契约不机械改成 `Size`。
+- 拆文件必须按真实状态、资源或生命周期所有权；不要把同一个类的成员函数按
+  start/input/output 等主题散到多个文件。
 
 ## `Bus` / `Engine` / `Core` / `Impl`
 

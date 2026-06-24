@@ -524,7 +524,7 @@ bool HlsMaker::Requested() const { return requested_; }
 
 bool HlsMaker::IsPlaylistReady() const { return !segments_.empty(); }
 
-size_t HlsMaker::SegmentCount() const { return segments_.size(); }
+size_t HlsMaker::SegmentSize() const { return segments_.size(); }
 
 uint64_t HlsMaker::FirstSegmentSequence() const {
     return segments_.empty() ? 0 : segments_.front().sequence;
@@ -534,11 +534,11 @@ uint64_t HlsMaker::LastSegmentSequence() const {
     return segments_.empty() ? 0 : segments_.back().sequence;
 }
 
-uint64_t HlsMaker::MissingSegmentCount() const {
+uint64_t HlsMaker::MissingSegments() const {
     return missing_segment_count_;
 }
 
-uint64_t HlsMaker::EvictedSegmentCount() const {
+uint64_t HlsMaker::EvictedSegments() const {
     return evicted_segment_count_;
 }
 
