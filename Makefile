@@ -81,7 +81,7 @@ APP_SRCS := \
 	app/application/main.cpp \
 	app/application/application.cpp \
 	app/application/startup_paths.cpp \
-	app/subsystems/core_subsystem.cpp \
+	app/subsystems/foundation_subsystem.cpp \
 	app/subsystems/device_subsystem.cpp \
 	app/subsystems/media_subsystem.cpp \
 	app/subsystems/protocol_options.cpp \

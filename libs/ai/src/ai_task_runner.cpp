@@ -1,7 +1,7 @@
-#include "ai_core.h"
+#include "ai_task_runner.h"
 
 #include "ai_config.h"
-#include "ai_engine.h"
+#include "ai_backend_runner.h"
 #include "alarm.h"
 #include "config.h"
 #include "device.h"
@@ -40,9 +40,9 @@ constexpr float kMaxAiConfidence = 1.0f;
 constexpr float kDefaultAiConfidence = 0.5f;
 constexpr const char *kDefaultAiModelPath = "models/inst_ssd_cycle.wk";
 
+using ai_internal::AiBackendRunner;
 using ai_internal::AiBackendToString;
-using ai_internal::AiInferenceEngine;
-using ai_internal::CreateAiEngine;
+using ai_internal::CreateAiBackendRunner;
 using ai_internal::FilterPerimeterDetections;
 using ai_internal::IsValidAiConfig;
 using ai_internal::ParseAiConfig;
@@ -195,7 +195,7 @@ struct AiTaskWorker final {
         : config(task_config) {}
 
     AiModelConfig config;
-    std::shared_ptr<AiInferenceEngine> engine;
+    std::shared_ptr<AiBackendRunner> backend_runner;
     std::unique_ptr<event::Executor> executor;
     AiInferenceResult last_result;
     AiStats stats;
@@ -214,16 +214,16 @@ struct PendingAlertCapture {
 
 struct StoppedAiTask {
     std::unique_ptr<event::Executor> executor;
-    std::shared_ptr<AiInferenceEngine> engine;
+    std::shared_ptr<AiBackendRunner> backend_runner;
 };
 
 struct AiTaskStartup {
     std::shared_ptr<AiTaskWorker> task_worker;
-    std::shared_ptr<AiInferenceEngine> engine;
+    std::shared_ptr<AiBackendRunner> backend_runner;
     std::unique_ptr<event::Executor> executor;
 };
 
-struct AiCore::State final {
+struct AiTaskRunner::State final {
     explicit State(const AiOptions &service_options)
         : options(service_options), config(service_options.default_config) {
         if (options.max_alert_records == 0) {
@@ -429,22 +429,22 @@ struct AiCore::State final {
                       const std::shared_ptr<AiTaskWorker> &task_worker,
                       const AiModelConfig &run_config,
                       PendingAlertCapture *pending_alert) {
-        std::shared_ptr<AiInferenceEngine> run_engine;
+        std::shared_ptr<AiBackendRunner> run_backend_runner;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!CanTaskRunLocked(task_worker) || !task_worker->engine) {
+            if (!CanTaskRunLocked(task_worker) || !task_worker->backend_runner) {
                 ++task_worker->stats.inference_failed_count;
                 task_worker->stats.last_failure_time_ms =
                     infra::Time::SystemTimeMillis();
                 return false;
             }
             ++task_worker->stats.received_frames;
-            run_engine = task_worker->engine;
+            run_backend_runner = task_worker->backend_runner;
         }
 
         const int64_t inference_start_ms = infra::Time::MonotonicMillis();
         AiInferenceResult result =
-            run_engine->Run(frame, run_config.stream_id, run_config);
+            run_backend_runner->Run(frame, run_config.stream_id, run_config);
         const int64_t inference_time_ms =
             infra::Time::MonotonicMillis() - inference_start_ms;
         if (run_config.task == AiTask::kPerimeterDetection) {
@@ -673,9 +673,9 @@ struct AiCore::State final {
              static_cast<unsigned int>(task_config.inference_interval_ms),
              static_cast<double>(task_config.confidence_threshold),
              static_cast<unsigned int>(task_config.max_results));
-        std::shared_ptr<AiInferenceEngine> next_engine =
-            CreateAiEngine(task_config.backend);
-        if (!next_engine) {
+        std::shared_ptr<AiBackendRunner> next_backend_runner =
+            CreateAiBackendRunner(task_config.backend);
+        if (!next_backend_runner) {
             Error("ai", "Create AI backend failed: backend=%s task=%d",
                   AiBackendToString(task_config.backend),
                   static_cast<int>(task_config.task));
@@ -684,13 +684,13 @@ struct AiCore::State final {
         Info("ai", "AI backend created: backend=%s task=%d available=%d",
              AiBackendToString(task_config.backend),
              static_cast<int>(task_config.task),
-             next_engine->Available() ? 1 : 0);
-        if (!next_engine->Available() || !next_engine->Start(task_config)) {
+             next_backend_runner->Available() ? 1 : 0);
+        if (!next_backend_runner->Available() || !next_backend_runner->Start(task_config)) {
             Error("ai", "Start AI backend failed: backend=%s task=%d model=%s",
                   AiBackendToString(task_config.backend),
                   static_cast<int>(task_config.task),
                   task_config.model_path.c_str());
-            next_engine->Stop();
+            next_backend_runner->Stop();
             return false;
         }
         Info("ai", "AI backend start done: backend=%s task=%d",
@@ -702,19 +702,19 @@ struct AiCore::State final {
         executor_options.worker_count = 1;
         executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
         if (!next_executor->Start(executor_options)) {
-            next_engine->Stop();
+            next_backend_runner->Stop();
             return false;
         }
 
         startup->task_worker = task_worker;
-        startup->engine = next_engine;
+        startup->backend_runner = next_backend_runner;
         startup->executor = std::move(next_executor);
         return true;
     }
 
     bool CommitAiTaskStartup(AiTaskStartup *startup,
                              StoppedAiTask *failed_task) {
-        if (startup == nullptr || !startup->task_worker || !startup->engine ||
+        if (startup == nullptr || !startup->task_worker || !startup->backend_runner ||
             !startup->executor) {
             return false;
         }
@@ -725,12 +725,12 @@ struct AiCore::State final {
             return false;
         }
 
-        task_worker->engine = startup->engine;
+        task_worker->backend_runner = startup->backend_runner;
         task_worker->executor = std::move(startup->executor);
         task_worker->stats.enabled = true;
-        task_worker->stats.backend_available = startup->engine->Available();
+        task_worker->stats.backend_available = startup->backend_runner->Available();
         task_worker->running = true;
-        startup->engine.reset();
+        startup->backend_runner.reset();
         if (task_worker->executor->Post([this, task_worker]() {
                 CaptureLoop(task_worker);
             }) != event::EventStatus::kOk) {
@@ -738,10 +738,10 @@ struct AiCore::State final {
             task_worker->stats.backend_available = false;
             if (failed_task != nullptr) {
                 failed_task->executor = std::move(task_worker->executor);
-                failed_task->engine = std::move(task_worker->engine);
+                failed_task->backend_runner = std::move(task_worker->backend_runner);
             } else {
                 task_worker->executor.reset();
-                task_worker->engine.reset();
+                task_worker->backend_runner.reset();
             }
             return false;
         }
@@ -837,8 +837,8 @@ struct AiCore::State final {
             task_worker->stats.backend_available = false;
             StoppedAiTask stopped;
             stopped.executor = std::move(task_worker->executor);
-            stopped.engine = std::move(task_worker->engine);
-            if (stopped.executor || stopped.engine) {
+            stopped.backend_runner = std::move(task_worker->backend_runner);
+            if (stopped.executor || stopped.backend_runner) {
                 stopped_tasks->push_back(std::move(stopped));
             }
         }
@@ -862,11 +862,11 @@ struct AiCore::State final {
         if (stopped->executor) {
             stopped->executor->Stop(event::StopMode::kDiscard);
         }
-        if (stopped->engine) {
-            stopped->engine->Stop();
+        if (stopped->backend_runner) {
+            stopped->backend_runner->Stop();
         }
         stopped->executor.reset();
-        stopped->engine.reset();
+        stopped->backend_runner.reset();
     }
 
     static void StopAlertExecutor(
@@ -883,11 +883,11 @@ struct AiCore::State final {
         if (startup->executor) {
             startup->executor->Stop(event::StopMode::kDiscard);
         }
-        if (startup->engine) {
-            startup->engine->Stop();
+        if (startup->backend_runner) {
+            startup->backend_runner->Stop();
         }
         startup->executor.reset();
-        startup->engine.reset();
+        startup->backend_runner.reset();
     }
 
     void RebuildTaskWorkersLocked() {
@@ -910,8 +910,8 @@ struct AiCore::State final {
         AiStats stats = task_worker->stats;
         stats.enabled = config.enabled && task_worker->config.enabled;
         stats.backend_available =
-            stats.enabled && task_worker->running && task_worker->engine &&
-            task_worker->engine->Available();
+            stats.enabled && task_worker->running && task_worker->backend_runner &&
+            task_worker->backend_runner->Available();
         stats.alarm_linked = options.alarm != nullptr;
         stats.active_results =
             stats.enabled && IsAlertResultActive(task_worker->last_result)
@@ -1091,27 +1091,27 @@ struct AiCore::State final {
     std::mutex capture_mutex;
 };
 
-AiCore::AiCore(const AiOptions &options) : state_(new State(options)) {}
+AiTaskRunner::AiTaskRunner(const AiOptions &options) : state_(new State(options)) {}
 
-AiCore::~AiCore() {
+AiTaskRunner::~AiTaskRunner() {
     if (state_) {
         state_->Release();
     }
 }
 
-bool AiCore::Start() { return state_ != nullptr && state_->Start(); }
+bool AiTaskRunner::Start() { return state_ != nullptr && state_->Start(); }
 
-void AiCore::Stop() {
+void AiTaskRunner::Stop() {
     if (state_) {
         state_->Stop();
     }
 }
 
-AiCapabilities AiCore::GetCapabilities() const {
+AiCapabilities AiTaskRunner::GetCapabilities() const {
     return BuildAiCapabilities();
 }
 
-AiConfig AiCore::GetConfig() const {
+AiConfig AiTaskRunner::GetConfig() const {
     if (!state_) {
         return AiConfig{};
     }
@@ -1119,7 +1119,7 @@ AiConfig AiCore::GetConfig() const {
     return state_->config;
 }
 
-AiStats AiCore::GetStats() const {
+AiStats AiTaskRunner::GetStats() const {
     if (!state_) {
         return AiStats{};
     }
@@ -1127,7 +1127,7 @@ AiStats AiCore::GetStats() const {
     return state_->SummaryStatsLocked();
 }
 
-AiInferenceResult AiCore::GetLastResult() const {
+AiInferenceResult AiTaskRunner::GetLastResult() const {
     if (!state_) {
         return AiInferenceResult{};
     }
@@ -1147,19 +1147,19 @@ AiInferenceResult AiCore::GetLastResult() const {
     return latest_result;
 }
 
-std::vector<AiTaskStatus> AiCore::GetTaskStatuses() const {
+std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
     if (!state_) {
-        return std::vector<AiTaskStatus>();
+        return std::vector<AiTaskInfo>();
     }
     std::lock_guard<std::mutex> lock(state_->mutex);
-    std::vector<AiTaskStatus> statuses;
+    std::vector<AiTaskInfo> statuses;
     statuses.reserve(state_->task_workers.size());
     for (const std::shared_ptr<AiTaskWorker> &task_worker :
          state_->task_workers) {
         if (!task_worker) {
             continue;
         }
-        AiTaskStatus status;
+        AiTaskInfo status;
         status.config = task_worker->config;
         status.stats = state_->TaskStatsLocked(task_worker);
         status.last_result = task_worker->last_result;
@@ -1168,7 +1168,7 @@ std::vector<AiTaskStatus> AiCore::GetTaskStatuses() const {
     return statuses;
 }
 
-std::vector<AiAlertRecord> AiCore::ListAlerts() const {
+std::vector<AiAlertRecord> AiTaskRunner::ListAlerts() const {
     if (!state_) {
         return std::vector<AiAlertRecord>();
     }
@@ -1178,7 +1178,7 @@ std::vector<AiAlertRecord> AiCore::ListAlerts() const {
     return alerts;
 }
 
-std::string AiCore::ReadAlertImage(const std::string &id) const {
+std::string AiTaskRunner::ReadAlertImage(const std::string &id) const {
     if (!state_ || id.empty()) {
         return std::string();
     }

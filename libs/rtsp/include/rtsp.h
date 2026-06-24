@@ -14,7 +14,7 @@
 namespace live_stream {
 
 class IAuth;
-class INetEngine;
+class INetIo;
 
 enum class RtspTransportMode {
     kTcpInterleaved = 0,
@@ -107,7 +107,7 @@ struct RtspStats {
 };
 
 struct RtspDependencies {
-    INetEngine* net_engine = nullptr;
+    INetIo* net_io = nullptr;
     event::Loop* net_loop = nullptr;
     IAuth* auth = nullptr;
     event::Dispatcher* event = nullptr;

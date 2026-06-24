@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getSystemStatus } from '../api/system';
-import type { SystemStatus } from '../api/types';
+import { getSystemInfo } from '../api/system';
+import type { SystemInfo } from '../api/types';
 
 const pollIntervalMs = 2000;
 const statusTimeoutMs = 1800;
@@ -9,8 +9,8 @@ function errorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
 
-export function useSystemStatus() {
-    const [status, setStatus] = useState<SystemStatus | null>(null);
+export function useSystemInfo() {
+    const [status, setStatus] = useState<SystemInfo | null>(null);
     const [refreshError, setRefreshError] = useState('');
 
     useEffect(() => {
@@ -19,7 +19,7 @@ export function useSystemStatus() {
         const load = async () => {
             const startedAt = Date.now();
             try {
-                const nextStatus = await getSystemStatus({
+                const nextStatus = await getSystemInfo({
                     timeoutMs: statusTimeoutMs,
                 });
                 if (mounted) {

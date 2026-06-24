@@ -11,7 +11,7 @@
 namespace live_stream {
 namespace webrtc_internal {
 
-struct EnginePeerStateUpdate {
+struct PeerHostStateUpdate {
     bool found = false;
     bool need_keyframe = false;
     StreamId stream_id = StreamId::kMain;
@@ -47,7 +47,7 @@ public:
     bool MarkClosing(const std::string &peer_id,
                      const std::string &last_error);
 
-    EnginePeerStateUpdate ApplyEngineState(const std::string &peer_id,
+    PeerHostStateUpdate ApplyPeerHostState(const std::string &peer_id,
                                            WebrtcPeerState state,
                                            const std::string &last_error);
     bool GetOpenPeerStream(const std::string &peer_id, StreamId *stream_id) const;

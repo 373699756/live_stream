@@ -12,7 +12,7 @@ import {
     validateSession,
 } from '../api/auth';
 import { onAuthInvalid, onMustChangePassword } from '../api/authSession';
-import { getTimeStatus, syncBrowserTime } from '../api/time';
+import { getTimeInfo, syncBrowserTime } from '../api/time';
 import type { AuthPrincipal } from '../api/types';
 
 interface AuthContextValue {
@@ -34,7 +34,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function syncBrowserTimeAfterAuth() {
-    void getTimeStatus()
+    void getTimeInfo()
         .then((status) => {
             if (status.browser_sync_on_login && status.manual_sync_allowed) {
                 return syncBrowserTime();

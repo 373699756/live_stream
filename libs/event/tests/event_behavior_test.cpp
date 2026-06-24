@@ -10,16 +10,16 @@ namespace {
 
 using live_stream::event::Dispatcher;
 using live_stream::event::Event;
-using live_stream::event::EventCounts;
+using live_stream::event::EventStats;
 using live_stream::event::EventStatus;
 using live_stream::event::EventType;
 using live_stream::event::Loop;
-using live_stream::event::Service;
+using live_stream::event::Bus;
 using live_stream::event::StopMode;
 using live_stream::event::Subscription;
 
 int HeaderAndStartStopTest() {
-    Service service;
+    Bus service;
     if (!service.Start()) {
         return 1;
     }
@@ -27,7 +27,7 @@ int HeaderAndStartStopTest() {
     service.Stop();
 
     Dispatcher dispatcher;
-    if (dispatcher.GetCounts().subscriptions != 0) {
+    if (dispatcher.GetStats().subscriptions != 0) {
         return 2;
     }
     return 0;
@@ -133,7 +133,7 @@ int PublishSubscribeTest() {
         }
     }
 
-    const EventCounts counts = dispatcher.GetCounts();
+    const EventStats counts = dispatcher.GetStats();
     if (counts.published < 4 || counts.handled != 2 ||
         counts.rejected != 0 || counts.subscriptions != 0) {
         return 21;
@@ -203,7 +203,7 @@ int EventSizeLimitTest() {
         return 43;
     }
 
-    const EventCounts counts = dispatcher.GetCounts();
+    const EventStats counts = dispatcher.GetStats();
     if (counts.rejected != 4 || counts.published != 0) {
         return 44;
     }
@@ -245,7 +245,7 @@ int ErrorPathTest() {
 }
 
 int AsyncPublishTest() {
-    Service service;
+    Bus service;
     if (!service.Start()) {
         return 60;
     }
@@ -257,7 +257,7 @@ int AsyncPublishTest() {
     bool on_loop_thread = false;
 
     Subscription subscription = service.dispatcher()->Subscribe(
-        EventType::kSystemStatusChanged,
+        EventType::kSystemInfoChanged,
         [&](const Event &event) {
             std::lock_guard<std::mutex> lock(mutex);
             received = true;
@@ -271,7 +271,7 @@ int AsyncPublishTest() {
     }
 
     Event event;
-    event.type = EventType::kSystemStatusChanged;
+    event.type = EventType::kSystemInfoChanged;
     event.source = "unit_test";
     event.message = "async";
     if (service.PublishAsync(event) != EventStatus::kOk) {

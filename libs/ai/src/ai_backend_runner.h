@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_AI_SRC_AI_ENGINE_H_
-#define LIVE_STREAM_AI_SRC_AI_ENGINE_H_
+#ifndef LIVE_STREAM_AI_SRC_AI_BACKEND_RUNNER_H_
+#define LIVE_STREAM_AI_SRC_AI_BACKEND_RUNNER_H_
 
 #include "ai.h"
 #include "hisisdk/hisi_sdk.h"
@@ -9,9 +9,9 @@
 namespace live_stream {
 namespace ai_internal {
 
-class AiInferenceEngine {
+class AiBackendRunner {
 public:
-    virtual ~AiInferenceEngine() = default;
+    virtual ~AiBackendRunner() = default;
 
     virtual const char *Name() const = 0;
     virtual bool Available() const = 0;
@@ -22,9 +22,9 @@ public:
                                   const AiModelConfig &config) = 0;
 };
 
-std::shared_ptr<AiInferenceEngine> CreateAiEngine(AiBackend backend);
+std::shared_ptr<AiBackendRunner> CreateAiBackendRunner(AiBackend backend);
 
 }  // namespace ai_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_AI_SRC_AI_ENGINE_H_
+#endif  // LIVE_STREAM_AI_SRC_AI_BACKEND_RUNNER_H_

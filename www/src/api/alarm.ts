@@ -1,11 +1,11 @@
 import { requestJson, putJson, type ApiRequestOptions } from './client';
-import { mockAlarmConfig, mockAlarmStatus } from './mockAlarm';
+import { mockAlarmConfig, mockAlarmInfo } from './mockAlarm';
 import type {
     AlarmConfig,
-    AlarmStatusInfo,
+    AlarmInfo,
     AlarmSourceName,
     AlarmSourceState,
-    AlarmStatusResponse,
+    AlarmInfoResponse,
     AlarmRuleConfig,
 } from './types';
 
@@ -17,14 +17,14 @@ export function getAlarmConfig(init?: ApiRequestOptions): Promise<AlarmConfig> {
     ).then(normalizeAlarmConfig);
 }
 
-export function getAlarmStatus(
+export function getAlarmInfo(
     init?: ApiRequestOptions,
-): Promise<AlarmStatusResponse> {
-    return requestJson<AlarmStatusResponse>(
+): Promise<AlarmInfoResponse> {
+    return requestJson<AlarmInfoResponse>(
         '/api/alarm/status',
-        mockAlarmStatus,
+        mockAlarmInfo,
         init,
-    ).then(normalizeAlarmStatusResponse);
+    ).then(normalizeAlarmInfoResponse);
 }
 
 export function saveAlarmConfig(value: AlarmConfig): Promise<void> {
@@ -66,18 +66,18 @@ function normalizeAlarmConfig(config: AlarmConfig): AlarmConfig {
     };
 }
 
-function normalizeAlarmStatusResponse(
-    response: AlarmStatusResponse,
-): AlarmStatusResponse {
+function normalizeAlarmInfoResponse(
+    response: AlarmInfoResponse,
+): AlarmInfoResponse {
     return {
         available: response.available === true,
-        status: normalizeAlarmStatusInfo(response.status),
+        status: normalizeAlarmInfo(response.status),
     };
 }
 
-function normalizeAlarmStatusInfo(
-    status: AlarmStatusInfo | undefined,
-): AlarmStatusInfo {
+function normalizeAlarmInfo(
+    status: AlarmInfo | undefined,
+): AlarmInfo {
     return {
         active: status?.active === true,
         source: normalizeAlarmSource(status?.source),

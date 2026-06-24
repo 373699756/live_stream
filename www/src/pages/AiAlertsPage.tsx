@@ -14,7 +14,7 @@ import type {
     AiPerimeterRegion,
     AiStats,
     AiTaskName,
-    AiTaskStatus,
+    AiTaskInfo,
     AlarmRuleConfig,
     StreamName,
 } from '../api/types';
@@ -257,7 +257,7 @@ function maxConfidence(alert: AiAlertRecord) {
     return `${Math.round(alert.confidence_max * 100)}%`;
 }
 
-function taskByName(tasks: AiTaskStatus[], name: AiTaskName) {
+function taskByName(tasks: AiTaskInfo[], name: AiTaskName) {
     return tasks.find((task) => task.config.task === name);
 }
 
@@ -279,7 +279,7 @@ function updateTaskConfig(
 }
 
 function taskStatusText(
-    task: AiTaskStatus | undefined,
+    task: AiTaskInfo | undefined,
     capabilities?: AiCapabilities | null,
 ) {
     if (!task) {
@@ -301,7 +301,7 @@ function taskStatusText(
 }
 
 function taskBadgeState(
-    task: AiTaskStatus | undefined,
+    task: AiTaskInfo | undefined,
     capabilities?: AiCapabilities | null,
 ) {
     if (task && !isAiTaskAvailable(task.config.task, capabilities)) {
@@ -528,7 +528,7 @@ export function AiAlertsPage() {
     const {
         status,
         alarmConfig,
-        alarmStatus,
+        alarmInfo,
         lastAlarmEvent,
         alerts,
         loading,
@@ -963,7 +963,7 @@ export function AiAlertsPage() {
                                 <span>最近报警</span>
                                 <strong>
                                     {latestAlarmTimeText(
-                                        alarmStatus,
+                                        alarmInfo,
                                         lastAlarmEvent,
                                     )}
                                 </strong>

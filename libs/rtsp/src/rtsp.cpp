@@ -75,7 +75,7 @@ class RtspImpl : public IRtsp,
 public:
     RtspImpl(RtspOptions options, RtspDependencies dependencies)
         : options_(std::move(options)),
-          net_engine_(dependencies.net_engine),
+          net_io_(dependencies.net_io),
           net_loop_(dependencies.net_loop),
           auth_(dependencies.auth),
           event_(dependencies.event),
@@ -94,7 +94,7 @@ public:
             state_ == ServiceState::kStopped) {
             return true;
         }
-        if (net_engine_ == nullptr ||
+        if (net_io_ == nullptr ||
             net_loop_ == nullptr ||
             media_streams_ == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
@@ -137,14 +137,14 @@ public:
         if (net_loop_ == nullptr) {
             return false;
         }
-        TcpServerId server_result = net_engine_->ListenTcp(
+        TcpServerId server_result = net_io_->ListenTcp(
             net_loop_, tcp_config, tcp_callbacks);
         if (server_result == 0) {
             return false;
         }
         server_id_ = server_result;
 
-        NetAddress local_result = net_engine_->TcpLocalAddress(server_id_);
+        NetAddress local_result = net_io_->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
                           local_result.port != 0 ? local_result.port
                                                  : options_.listen_port};
@@ -175,8 +175,8 @@ private:
     void StopInternal() {
         std::vector<std::shared_ptr<RtspSession>> sessions;
         std::vector<ConnectionId> connection_ids;
-        if (server_id_ != 0 && net_engine_ != nullptr) {
-            (void)net_engine_->CloseTcp(server_id_);
+        if (server_id_ != 0 && net_io_ != nullptr) {
+            (void)net_io_->CloseTcp(server_id_);
             server_id_ = 0;
         }
         {
@@ -190,9 +190,9 @@ private:
             CloseSessionResources(
                 session, SubscriptionClose::kStreamStopped);
         }
-        if (net_engine_ != nullptr) {
+        if (net_io_ != nullptr) {
             for (ConnectionId connection_id : connection_ids) {
-                (void)net_engine_->Close(connection_id);
+                (void)net_io_->Close(connection_id);
             }
         }
         {
@@ -281,9 +281,9 @@ public:
                 item.last_rtcp_ms = session->stats.last_rtcp_ms;
                 item.close_reason = TcpCloseReasonName(session->close_reason);
             }
-            if (net_engine_ != nullptr) {
+            if (net_io_ != nullptr) {
                 const NetConnectionInfo connection_info =
-                    net_engine_->GetConnectionInfo(
+                    net_io_->GetConnectionInfo(
                         session->connection_id);
                 const bool has_connection_info =
                     connection_info.connection_id == session->connection_id;
@@ -379,7 +379,7 @@ private:
             }
         }
         if (!accepted) {
-            (void)net_engine_->Close(connection_id);
+            (void)net_io_->Close(connection_id);
             return;
         }
         Info("rtsp", "RTSP client connected conn=%llu peer=%s:%u",
@@ -461,7 +461,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session = session_table_.Find(connection_id);
             if (!session) {
-                (void)net_engine_->Close(connection_id);
+                (void)net_io_->Close(connection_id);
                 return;
             }
             if (!session->AppendBytes(data, size)) {
@@ -473,7 +473,7 @@ private:
         if (split.status == RtspSplitterStatus::kPayloadTooLarge) {
             AddParseFailure();
             // request 超过上限时不尝试返回部分响应，直接断开控制连接。
-            (void)net_engine_->Close(connection_id);
+            (void)net_io_->Close(connection_id);
             return;
         }
 
@@ -487,7 +487,7 @@ private:
                 // 解析失败仍带一个兜底 CSeq，方便部分客户端把错误归到当前请求；
                 // 响应排队后关闭，避免继续处理错乱的控制连接。
                 SendResponse(connection_id, 400, "1", {}, "");
-                (void)net_engine_->CloseAfterSend(connection_id);
+                (void)net_io_->CloseAfterSend(connection_id);
                 return;
             }
             request_handler_.HandleRequest(session, request);
@@ -616,7 +616,7 @@ private:
                                NetAddress* server_rtcp) {
         if (rtp_socket_id == nullptr || rtcp_socket_id == nullptr ||
             server_rtp == nullptr || server_rtcp == nullptr ||
-            net_engine_ == nullptr) {
+            net_io_ == nullptr) {
             return false;
         }
         UdpBindOptions udp_config;
@@ -624,22 +624,22 @@ private:
         UdpCallbacks udp_callbacks;
         udp_callbacks.user = this;
         udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
-        const UdpSocketId rtp_result = net_engine_->BindUdp(
+        const UdpSocketId rtp_result = net_io_->BindUdp(
             net_loop_, udp_config, udp_callbacks);
         if (rtp_result == 0) {
             return false;
         }
-        const UdpSocketId rtcp_result = net_engine_->BindUdp(
+        const UdpSocketId rtcp_result = net_io_->BindUdp(
             net_loop_, udp_config, udp_callbacks);
         if (rtcp_result == 0) {
-            (void)net_engine_->CloseUdp(rtp_result);
+            (void)net_io_->CloseUdp(rtp_result);
             return false;
         }
-        *server_rtp = net_engine_->UdpLocalAddress(rtp_result);
-        *server_rtcp = net_engine_->UdpLocalAddress(rtcp_result);
+        *server_rtp = net_io_->UdpLocalAddress(rtp_result);
+        *server_rtcp = net_io_->UdpLocalAddress(rtcp_result);
         if (server_rtp->port == 0 || server_rtcp->port == 0) {
-            (void)net_engine_->CloseUdp(rtp_result);
-            (void)net_engine_->CloseUdp(rtcp_result);
+            (void)net_io_->CloseUdp(rtp_result);
+            (void)net_io_->CloseUdp(rtcp_result);
             return false;
         }
         *rtp_socket_id = rtp_result;
@@ -652,7 +652,7 @@ private:
         const std::map<std::string, std::string>& headers,
         const std::string& body) override {
         const std::string response = BuildRtspResponse(status, cseq, headers, body);
-        (void)net_engine_->Send(
+        (void)net_io_->Send(
             connection_id, reinterpret_cast<const uint8_t*>(response.data()),
             response.size());
     }
@@ -748,8 +748,8 @@ private:
         }
         CloseSessionResources(session,
                               SubscriptionClose::kUnsubscribed);
-        if (net_engine_ != nullptr) {
-            (void)net_engine_->CloseAfterSend(connection_id);
+        if (net_io_ != nullptr) {
+            (void)net_io_->CloseAfterSend(connection_id);
         }
     }
 
@@ -775,7 +775,7 @@ private:
     }
 
     void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
-        if (session == nullptr || net_engine_ == nullptr) {
+        if (session == nullptr || net_io_ == nullptr) {
             return;
         }
         // drain timer 运行在 net IO loop 上，周期性从 media_streams subscription 拉帧；
@@ -787,7 +787,8 @@ private:
         const event::EventStatus timer_status = net_loop_->RunEvery(
             kRtspDrainIntervalMs, [this, session]() {
                 DrainSessionFrames(session);
-            }, &timer_id);
+            },
+            &timer_id);
         if (timer_status != event::EventStatus::kOk || timer_id == 0) {
             FrameSubscriptionId subscription_id = 0;
             {
@@ -900,12 +901,12 @@ private:
         }
         // socket id 清零后再关闭 net endpoint，避免关闭回调里再次找到同一 session
         // 并重复关闭相同 UDP socket。
-        if (net_engine_ != nullptr) {
+        if (net_io_ != nullptr) {
             if (rtp_socket_id != 0) {
-                (void)net_engine_->CloseUdp(rtp_socket_id);
+                (void)net_io_->CloseUdp(rtp_socket_id);
             }
             if (rtcp_socket_id != 0) {
-                (void)net_engine_->CloseUdp(rtcp_socket_id);
+                (void)net_io_->CloseUdp(rtcp_socket_id);
             }
         }
     }
@@ -937,14 +938,14 @@ private:
 
     RtspRtpSenderContext RtpSenderContext() {
         RtspRtpSenderContext context;
-        context.net_engine = net_engine_;
+        context.net_io = net_io_;
         context.mutex = &mutex_;
         context.service_stats = &stats_;
         return context;
     }
 
     RtspOptions options_;
-    INetEngine* net_engine_ = nullptr;
+    INetIo* net_io_ = nullptr;
     event::Loop* net_loop_ = nullptr;
     IAuth* auth_ = nullptr;
     event::Dispatcher* event_ = nullptr;

@@ -3,7 +3,7 @@ import type {
     AiConfig,
     AiDetection,
     AiModelConfig,
-    AlarmStatusResponse,
+    AlarmInfoResponse,
     AiCapabilities,
     StreamName,
 } from '../../api/types';
@@ -89,13 +89,13 @@ export function latestTimeText(alerts: AiAlertRecord[]) {
 }
 
 export function latestAlarmTimeText(
-    alarmStatus: AlarmStatusResponse | null,
+    alarmInfo: AlarmInfoResponse | null,
     lastAlarmEvent: MediaEvent | null,
 ) {
     if (lastAlarmEvent?.timestamp_ms) {
         return formatTimestamp(lastAlarmEvent.timestamp_ms);
     }
-    const lastTriggerTime = alarmStatus?.status.last_trigger_time_ms ?? 0;
+    const lastTriggerTime = alarmInfo?.status.last_trigger_time_ms ?? 0;
     return lastTriggerTime > 0 ? formatTimestamp(lastTriggerTime) : '--';
 }
 

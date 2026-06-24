@@ -2,7 +2,7 @@
 
 #include "http_dependencies.h"
 #include "infra/log.h"
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 #include "subsystems/media_subsystem.h"
 #include "subsystems/protocol_options.h"
@@ -10,20 +10,20 @@
 namespace live_stream {
 namespace {
 
-event::Loop *RequireNetLoop(INetEngine *net_engine,
+event::Loop *RequireNetLoop(INetIo *net_io,
                             const char *owner_protocol) {
     const char *protocol =
         owner_protocol != nullptr ? owner_protocol : "unknown";
-    if (net_engine == nullptr) {
+    if (net_io == nullptr) {
         Error("app", "Pick net loop failed protocol=%s", protocol);
         return nullptr;
     }
 
-    event::Loop *loop = net_engine->PickLoop();
+    event::Loop *loop = net_io->PickLoop();
     if (loop != nullptr) {
         return loop;
     }
-    loop = net_engine->DefaultLoop();
+    loop = net_io->DefaultLoop();
     if (loop == nullptr) {
         Error("app", "Pick net loop failed protocol=%s", protocol);
     }
@@ -38,7 +38,7 @@ ProtocolSubsystem &ProtocolSubsystem::Get() {
 }
 
 bool ProtocolSubsystem::Start(const AppConfig &app_config,
-                              CoreSubsystem &core_subsystem,
+                              FoundationSubsystem &foundation_subsystem,
                               const DeviceRefs &device_refs,
                               const MediaRefs &media_refs) {
     if (started_) {
@@ -46,7 +46,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     ProtocolStartupRefs refs;
-    refs.core = &core_subsystem;
+    refs.foundation = &foundation_subsystem;
     refs.device = device_refs;
     refs.media = media_refs;
 
@@ -61,19 +61,19 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         return false;
     }
 
-    const NetEngineOptions net_options =
-        BuildNetEngineOptions(net_callback_loop_.get());
-    net_engine_ = CreateNetEngine(net_options);
-    if (!net_engine_ || !net_engine_->Start()) {
-        Error("app", "Start net engine failed");
+    const NetIoOptions net_options =
+        BuildNetIoOptions(net_callback_loop_.get());
+    net_io_ = CreateNetIo(net_options);
+    if (!net_io_ || !net_io_->Start()) {
+        Error("app", "Start net io failed");
         Stop();
         return false;
     }
-    refs.net_engine = net_engine_.get();
-    refs.rtsp_loop = RequireNetLoop(refs.net_engine, "rtsp");
-    refs.webrtc_loop = RequireNetLoop(refs.net_engine, "webrtc");
-    refs.onvif_loop = RequireNetLoop(refs.net_engine, "onvif");
-    refs.http_loop = RequireNetLoop(refs.net_engine, "http");
+    refs.net_io = net_io_.get();
+    refs.rtsp_loop = RequireNetLoop(refs.net_io, "rtsp");
+    refs.webrtc_loop = RequireNetLoop(refs.net_io, "webrtc");
+    refs.onvif_loop = RequireNetLoop(refs.net_io, "onvif");
+    refs.http_loop = RequireNetLoop(refs.net_io, "http");
     if (refs.rtsp_loop == nullptr ||
         refs.webrtc_loop == nullptr ||
         refs.onvif_loop == nullptr ||
@@ -176,7 +176,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         return false;
     }
 
-    config_ = core_subsystem.config();
+    config_ = foundation_subsystem.config();
     network_ = device_refs.network;
     app_config_ = app_config;
     if (!InstallConfigUpdateScopes()) {
@@ -216,11 +216,11 @@ void ProtocolSubsystem::Stop() {
         rtsp_->Stop();
         Info("app", "Stop rtsp done");
     }
-    if (net_engine_) {
-        Info("app", "Stop net engine begin");
-        net_engine_->Stop();
-        net_engine_.reset();
-        Info("app", "Stop net engine done");
+    if (net_io_) {
+        Info("app", "Stop net io begin");
+        net_io_->Stop();
+        net_io_.reset();
+        Info("app", "Stop net io done");
     }
     if (net_callback_loop_) {
         Info("app", "Stop net callback loop begin");

@@ -9,7 +9,7 @@
 
 namespace live_stream {
 
-class CoreSubsystem;
+class FoundationSubsystem;
 struct DeviceRefs;
 
 struct MediaRefs {
@@ -24,7 +24,7 @@ public:
 
     // DeviceMedia owns snapshot and overlay resources. Stop keeps AI before
     // device so inference and alert capture stop before hardware teardown.
-    bool Start(CoreSubsystem& core_subsystem, const DeviceRefs& device_refs);
+    bool Start(FoundationSubsystem& foundation_subsystem, const DeviceRefs& device_refs);
     void Stop();
     MediaRefs refs() const;
 

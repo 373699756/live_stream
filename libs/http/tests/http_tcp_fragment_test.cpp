@@ -142,11 +142,11 @@ bool Contains(const std::string& haystack, const std::string& needle) {
 }  // namespace
 
 int main() {
-    auto net_engine = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!net_engine) {
+    auto net_io = live_stream::CreateNetIo(live_stream::NetIoOptions{});
+    if (!net_io) {
         return 1;
     }
-    if (!net_engine->Start()) {
+    if (!net_io->Start()) {
         return 1;
     }
 
@@ -157,8 +157,8 @@ int main() {
     options.listen_port = 0;
 
     live_stream::HttpDependencies http_dependencies;
-    http_dependencies.net_engine = net_engine.get();
-    http_dependencies.net_loop = net_engine->DefaultLoop();
+    http_dependencies.net_io = net_io.get();
+    http_dependencies.net_loop = net_io->DefaultLoop();
     http_dependencies.auth = &auth;
     http_dependencies.config = &config;
     auto http = live_stream::CreateHttp(options, http_dependencies);
@@ -191,7 +191,7 @@ int main() {
     const std::string response = ReadUntilClose(fd);
     close(fd);
     http->Stop();
-    net_engine->Stop();
+    net_io->Stop();
 
     if (!Contains(response, "HTTP/1.1 200 OK") ||
         !Contains(response, "live_stream_token=admin-token") ||

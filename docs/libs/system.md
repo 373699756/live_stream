@@ -68,7 +68,7 @@ public API 在 `system.h`、`time_api.h`、`network_api.h`、`network_format.h`�
 当前 Unix 毫秒时间同步设备时间，`manual_sync_allowed=false` 时浏览器校时也会被关闭。
 
 网络配置来自 `network` scope，运行状态来自 `INetPlatform` 查询。C++ public API 使用
-`NetConfig` 表示单个网口配置，`NetStatus` 表示单个网口状态；配置 JSON scope 仍叫
+`NetConfig` 表示单个网口配置，`NetInterfaceInfo` 表示单个网口状态；配置 JSON scope 仍叫
 `network`。配置应用可能修改 Linux 网卡、DNS 或路由状态；模块只报告平台结果，不缓存
 Web 推导状态。`system` 不拥有 HTTP/RTSP/ONVIF 的监听生命周期，也不由前端推导设备
 advertise host 或链路状态。
@@ -722,8 +722,8 @@ flowchart TD
   Platform -->|web-only| WebWrite[主进程写 /dev/mtd4]
   Platform -->|bin/config/kernel| RamHelper[/tmp/live_stream/upgrade/live_sysupgrade]
   RamHelper --> FlashWriter[upgrade_flash 写 MTD]
-  WebWrite --> Status[/data/upgrade_status.json]
-  FlashWriter --> Status
+  WebWrite --> UpgradeInfoFile[/data/upgrade_status.json]
+  FlashWriter --> UpgradeInfoFile
   WebWrite --> Log[/data/upgrade.log]
   FlashWriter --> Log
 ```

@@ -16,14 +16,14 @@ HttpResponseSender::HttpResponseSender(
     : send_buffer_limit_bytes_(send_buffer_limit_bytes) {}
 
 bool HttpResponseSender::SendResponse(
-    INetEngine *net_engine, ConnectionId connection_id,
+    INetIo *net_io, ConnectionId connection_id,
     const HttpResponse &response, bool close_after_response) const {
     if (!response.body.empty() && !response.body_slices.empty()) {
         Error(kHttpModuleName,
               "HTTP response reject conn=%llu reason=mixed_body status=%d",
               static_cast<unsigned long long>(connection_id),
               response.status_code);
-        CloseConnection(net_engine, connection_id,
+        CloseConnection(net_io, connection_id,
                         TcpCloseReason::kInternalError);
         return false;
     }
@@ -34,7 +34,7 @@ bool HttpResponseSender::SendResponse(
                   "status=%d slices=%zu",
                   static_cast<unsigned long long>(connection_id),
                   response.status_code, response.body_slices.size());
-            CloseConnection(net_engine, connection_id,
+            CloseConnection(net_io, connection_id,
                             TcpCloseReason::kInternalError);
             return false;
         }
@@ -52,7 +52,7 @@ bool HttpResponseSender::SendResponse(
                       "status=%d",
                       static_cast<unsigned long long>(connection_id),
                       response.status_code);
-                CloseConnection(net_engine, connection_id,
+                CloseConnection(net_io, connection_id,
                                 TcpCloseReason::kInternalError);
                 return false;
             }
@@ -62,7 +62,7 @@ bool HttpResponseSender::SendResponse(
             body_size += slice.size;
             ++body_slice_count;
         }
-        return SendResponseSlices(net_engine, connection_id, response,
+        return SendResponseSlices(net_io, connection_id, response,
                                   body_slices.data(), body_slice_count,
                                   body_size, close_after_response);
     }
@@ -77,17 +77,17 @@ bool HttpResponseSender::SendResponse(
         body_slices = &body_slice;
         body_slice_count = 1;
     }
-    return SendResponseSlices(net_engine, connection_id, response, body_slices,
+    return SendResponseSlices(net_io, connection_id, response, body_slices,
                               body_slice_count, response.body.size(),
                               close_after_response);
 }
 
 bool HttpResponseSender::SendResponseSlices(
-    INetEngine *net_engine, ConnectionId connection_id,
+    INetIo *net_io, ConnectionId connection_id,
     const HttpResponse &response, const MediaOutSlice *body_slices,
     size_t body_slice_count, size_t body_size,
     bool close_after_response) const {
-    if (net_engine == nullptr) {
+    if (net_io == nullptr) {
         return false;
     }
     if (body_slice_count > kMaxNetBufferSlices - 1 ||
@@ -112,7 +112,7 @@ bool HttpResponseSender::SendResponseSlices(
                                body_slices[i].buffer);
     }
 
-    if (!slices_ok || !net_engine->SendSlices(connection_id, slices)) {
+    if (!slices_ok || !net_io->SendSlices(connection_id, slices)) {
         if (response.status_code >= 500) {
             Error(kHttpModuleName,
                   "HTTP response send failed conn=%llu status=%d "
@@ -128,18 +128,18 @@ bool HttpResponseSender::SendResponseSlices(
                   response.status_code, body_size, header.size(),
                   close_after_response ? 1 : 0);
         }
-        CloseConnection(net_engine, connection_id,
+        CloseConnection(net_io, connection_id,
                         TcpCloseReason::kInternalError);
         return false;
     }
     if (close_after_response) {
-        (void)net_engine->CloseAfterSend(connection_id);
+        (void)net_io->CloseAfterSend(connection_id);
     }
     return true;
 }
 
 bool HttpResponseSender::EnqueueStreamingChunk(
-    INetEngine *net_engine, ConnectionId connection_id, const uint8_t *data,
+    INetIo *net_io, ConnectionId connection_id, const uint8_t *data,
     size_t size) const {
     NetBufferSlices slices;
     if (data == nullptr || size == 0) {
@@ -148,11 +148,11 @@ bool HttpResponseSender::EnqueueStreamingChunk(
     if (!slices.Add(data, size)) {
         return false;
     }
-    return SendStreamingNetSlices(net_engine, connection_id, slices, size);
+    return SendStreamingNetSlices(net_io, connection_id, slices, size);
 }
 
 bool HttpResponseSender::EnqueueStreamingSlices(
-    INetEngine *net_engine, ConnectionId connection_id,
+    INetIo *net_io, ConnectionId connection_id,
     const MediaOutSlice *slices, size_t slice_count) const {
     NetBufferSlices net_slices;
     size_t total_size = 0;
@@ -175,28 +175,28 @@ bool HttpResponseSender::EnqueueStreamingSlices(
     if (total_size == 0) {
         return true;
     }
-    return SendStreamingNetSlices(net_engine, connection_id, net_slices,
+    return SendStreamingNetSlices(net_io, connection_id, net_slices,
                                   total_size);
 }
 
 void HttpResponseSender::CloseConnection(
-    INetEngine *net_engine, ConnectionId connection_id,
+    INetIo *net_io, ConnectionId connection_id,
     TcpCloseReason reason) const {
-    if (net_engine != nullptr) {
-        (void)net_engine->Close(connection_id, reason);
+    if (net_io != nullptr) {
+        (void)net_io->Close(connection_id, reason);
     }
 }
 
 bool HttpResponseSender::SendStreamingNetSlices(
-    INetEngine *net_engine, ConnectionId connection_id,
+    INetIo *net_io, ConnectionId connection_id,
     const NetBufferSlices &slices, size_t size) const {
-    if (net_engine == nullptr) {
+    if (net_io == nullptr) {
         Error(kHttpModuleName,
               "HTTP stream enqueue reject conn=%llu reason=no_net size=%zu",
               static_cast<unsigned long long>(connection_id), size);
         return false;
     }
-    const uint32_t pending_bytes = net_engine->PendingBytes(connection_id);
+    const uint32_t pending_bytes = net_io->PendingBytes(connection_id);
     if (pending_bytes >= send_buffer_limit_bytes_ ||
         size > static_cast<size_t>(send_buffer_limit_bytes_ -
                                    pending_bytes)) {
@@ -205,16 +205,16 @@ bool HttpResponseSender::SendStreamingNetSlices(
               "pending=%u limit=%zu next=%zu",
               static_cast<unsigned long long>(connection_id), pending_bytes,
               static_cast<size_t>(send_buffer_limit_bytes_), size);
-        CloseConnection(net_engine, connection_id,
+        CloseConnection(net_io, connection_id,
                         TcpCloseReason::kPendingLimit);
         return false;
     }
-    if (!net_engine->SendSlices(connection_id, slices)) {
+    if (!net_io->SendSlices(connection_id, slices)) {
         Error(kHttpModuleName,
               "HTTP stream send failed conn=%llu size=%zu pending=%u",
               static_cast<unsigned long long>(connection_id), size,
               pending_bytes);
-        CloseConnection(net_engine, connection_id,
+        CloseConnection(net_io, connection_id,
                         TcpCloseReason::kInternalError);
         return false;
     }

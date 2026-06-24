@@ -228,11 +228,11 @@ public:
         }
     }
 
-    TimeStatus GetTimeStatus() override {
+    TimeInfo GetTimeInfo() override {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_) {
-                return TimeStatus{};
+                return TimeInfo{};
             }
         }
 
@@ -240,9 +240,9 @@ public:
 
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_) {
-            return TimeStatus{};
+            return TimeInfo{};
         }
-        TimeStatus status = status_;
+        TimeInfo status = status_;
         status.system_time_ms = now_ms;
         return status;
     }
@@ -516,7 +516,7 @@ private:
     }
 
     TimeOptions options_;
-    TimeStatus status_;
+    TimeInfo status_;
     ConfigJson time_config_json_ = ConfigJson::object();
     mutable std::mutex mutex_;
     bool manual_sync_allowed_ = true;

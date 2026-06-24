@@ -110,7 +110,7 @@ public:
 
         executor_.reset(new event::Executor());
 
-        status_ = UpgradeStatus{};
+        status_ = UpgradeInfo{};
         initialized_ = true;
         return true;
     }
@@ -172,13 +172,13 @@ private:
         executor_.reset();
         restricted_platform_.reset();
         platform_ = nullptr;
-        status_ = UpgradeStatus{};
+        status_ = UpgradeInfo{};
         cancel_requested_ = false;
         initialized_ = false;
     }
 
 public:
-    UpgradeStatus GetStatus() override {
+    UpgradeInfo GetUpgradeInfo() override {
         std::lock_guard<std::mutex> lock(mutex_);
         return status_;
     }
@@ -241,7 +241,7 @@ public:
                 return false;
             }
             cancel_requested_ = false;
-            status_ = UpgradeStatus{};
+            status_ = UpgradeInfo{};
             status_.state = UpgradeState::kValidating;
             status_.progress_percent = 0;
             status_.current_stage = UpgradeStateToString(UpgradeState::kValidating);
@@ -603,7 +603,7 @@ private:
         if (event_bus == nullptr) {
             return;
         }
-        UpgradeStatus status = GetStatus();
+        UpgradeInfo status = GetUpgradeInfo();
         event::Event progress_event;
         progress_event.type = event::EventType::kUpgradeProgressChanged;
         progress_event.source = kServiceName;
@@ -639,7 +639,7 @@ private:
     std::unique_ptr<IUpgradePlatform> restricted_platform_;
     IUpgradePlatform* platform_ = nullptr;
     mutable std::mutex mutex_;
-    UpgradeStatus status_;
+    UpgradeInfo status_;
     bool initialized_ = false;
     bool started_ = false;
     bool cancel_requested_ = false;

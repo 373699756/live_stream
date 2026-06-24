@@ -27,7 +27,7 @@ struct DeviceInfo {
     std::string firmware_version;
 };
 
-struct SystemStatus {
+struct SystemInfo {
     uint32_t cpu_usage_percent = 0;
     uint32_t memory_usage_percent = 0;
     int32_t temperature_celsius = 0;
@@ -47,7 +47,7 @@ public:
     virtual ~ISystemPlatform() = default;
 
     virtual DeviceInfo GetDeviceInfo() = 0;
-    virtual SystemStatus GetSystemStatus() = 0;
+    virtual SystemInfo GetSystemInfo() = 0;
     virtual SystemCapabilities GetCapabilities() = 0;
     virtual bool Reboot() = 0;
     virtual bool FactoryReset() = 0;
@@ -69,7 +69,7 @@ public:
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
     virtual DeviceInfo GetDeviceInfo() = 0;
-    virtual SystemStatus GetSystemStatus() = 0;
+    virtual SystemInfo GetSystemInfo() = 0;
     virtual SystemCapabilities GetCapabilities() = 0;
     virtual bool Reboot(const live_stream::RequestContext& context) = 0;
     virtual bool FactoryReset(const live_stream::RequestContext& context) = 0;

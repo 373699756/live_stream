@@ -1,6 +1,6 @@
 #include "tcp_server.h"
 
-#include "net_engine_impl.h"
+#include "net_io_impl.h"
 #include "socket_util.h"
 #include "tcp_session.h"
 
@@ -22,10 +22,10 @@ constexpr const char *kModuleName = "net";
 
 }  // namespace
 
-TcpServer::TcpServer(NetEngineImpl *engine, TcpServerId id,
+TcpServer::TcpServer(NetIoImpl *net_io, TcpServerId id,
                      const TcpListenOptions &options,
                      const TcpCallbacks &callbacks)
-    : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
+    : net_io_(net_io), id_(id), options_(options), callbacks_(callbacks) {}
 
 TcpServer::~TcpServer() { Stop(); }
 
@@ -198,7 +198,7 @@ void TcpServer::AcceptLoop() {
         }
         NetAddress local = GetSocketAddress(fd, false);
         if (local.port == 0) {
-            engine_->AddRejected();
+            net_io_->AddRejected();
             continue;
         }
         std::shared_ptr<EventLoop> session_loop;
@@ -207,27 +207,27 @@ void TcpServer::AcceptLoop() {
             session_loop = loop_;
         }
         if (!session_loop) {
-            engine_->AddRejected();
+            net_io_->AddRejected();
             continue;
         }
-        const ConnectionId id = engine_->AllocateConnectionId();
+        const ConnectionId id = net_io_->AllocateConnectionId();
         auto connection = std::make_shared<TcpSession>(
-            engine_, session_loop, accepted.Release(), id, options_,
+            net_io_, session_loop, accepted.Release(), id, options_,
             callbacks_, local, FromSockAddr(peer_addr));
-        if (!engine_->AddAcceptedConnection(connection,
+        if (!net_io_->AddAcceptedConnection(connection,
                                             options_.max_connections)) {
-            engine_->AddRejected();
+            net_io_->AddRejected();
             continue;
         }
         if (!connection->Start()) {
-            engine_->RemoveConnection(id);
-            engine_->AddRejected();
+            net_io_->RemoveConnection(id);
+            net_io_->AddRejected();
             continue;
         }
         // fd 加入 IO loop 前先注册到连接表，后续 read/close 回调到达时，
         // 协议层已经能通过 connection id 查询诊断。
-        engine_->AddAccepted();
-        engine_->DispatchAccept(callbacks_, id, connection->peer());
+        net_io_->AddAccepted();
+        net_io_->DispatchAccept(callbacks_, id, connection->peer());
     }
 }
 

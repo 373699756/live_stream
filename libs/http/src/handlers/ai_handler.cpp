@@ -191,7 +191,7 @@ ConfigJson AiStatsToJson(const AiStats &stats) {
 
 ConfigJson AiResultToJson(const AiInferenceResult &result);
 
-ConfigJson AiTaskStatusToJson(const AiTaskStatus &status) {
+ConfigJson AiTaskInfoToJson(const AiTaskInfo &status) {
     ConfigJson root = ConfigJson::object();
     root["config"] = AiTaskConfigToJson(status.config);
     root["stats"] = AiStatsToJson(status.stats);
@@ -199,10 +199,10 @@ ConfigJson AiTaskStatusToJson(const AiTaskStatus &status) {
     return root;
 }
 
-ConfigJson AiTaskStatusesToJson(const std::vector<AiTaskStatus> &statuses) {
+ConfigJson AiTaskInfoListToJson(const std::vector<AiTaskInfo> &statuses) {
     ConfigJson items = ConfigJson::array();
-    for (const AiTaskStatus &status : statuses) {
-        items.push_back(AiTaskStatusToJson(status));
+    for (const AiTaskInfo &status : statuses) {
+        items.push_back(AiTaskInfoToJson(status));
     }
     return items;
 }
@@ -416,7 +416,7 @@ private:
         root["enabled"] = config.enabled;
         root["config"] = AiConfigToJson(config);
         root["summary"] = AiStatsToJson(ai_->GetStats());
-        root["tasks"] = AiTaskStatusesToJson(ai_->GetTaskStatuses());
+        root["tasks"] = AiTaskInfoListToJson(ai_->GetTaskInfoList());
         root["last_result"] = AiResultToJson(ai_->GetLastResult());
         root["capabilities"] =
             AiCapabilitiesToJson(ai_->GetCapabilities());

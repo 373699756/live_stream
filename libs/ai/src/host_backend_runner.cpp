@@ -1,4 +1,4 @@
-#include "host_engine.h"
+#include "host_backend_runner.h"
 
 #include "ai_config.h"
 
@@ -6,7 +6,7 @@ namespace live_stream {
 namespace ai_internal {
 namespace {
 
-class HostStubAiEngine final : public AiInferenceEngine {
+class HostStubAiBackendRunner final : public AiBackendRunner {
 public:
     const char *Name() const override { return "host_stub"; }
     bool Available() const override { return true; }
@@ -88,8 +88,8 @@ private:
 
 }  // namespace
 
-std::shared_ptr<AiInferenceEngine> CreateHostEngine() {
-    return std::shared_ptr<AiInferenceEngine>(new HostStubAiEngine());
+std::shared_ptr<AiBackendRunner> CreateHostBackendRunner() {
+    return std::shared_ptr<AiBackendRunner>(new HostStubAiBackendRunner());
 }
 
 }  // namespace ai_internal

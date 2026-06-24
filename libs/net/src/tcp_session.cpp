@@ -1,7 +1,7 @@
 #include "tcp_session.h"
 
 #include "infra/time.h"
-#include "net_engine_impl.h"
+#include "net_io_impl.h"
 
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -59,12 +59,12 @@ TcpSession::OutSlice &TcpSession::OutSlice::operator=(
     return *this;
 }
 
-TcpSession::TcpSession(NetEngineImpl *engine,
+TcpSession::TcpSession(NetIoImpl *net_io,
                        std::shared_ptr<EventLoop> loop, int fd,
                        ConnectionId id, const TcpListenOptions &options,
                        TcpCallbacks callbacks, NetAddress local,
                        NetAddress peer)
-    : engine_(engine),
+    : net_io_(net_io),
       loop_(std::move(loop)),
       fd_(fd),
       id_(id),
@@ -151,12 +151,12 @@ bool TcpSession::EnqueueOutBuffer(OutBuffer buffer) {
         // 队列项数和 pending bytes 是慢客户端的硬边界。命中后直接关闭连接，
         // 让 HTTP-FLV/RTSP 等热路径释放 media subscription/client 或 buffer 引用。
         if (send_queue_.size() >= options_.send_queue_capacity) {
-            engine_->AddSendBusy();
+            net_io_->AddSendBusy();
             close_reason = TcpCloseReason::kQueueFull;
         } else if (pending_bytes_ >= options_.send_buffer_limit_bytes ||
                    buffer.size >
                        options_.send_buffer_limit_bytes - pending_bytes_) {
-            engine_->AddSendBusy();
+            net_io_->AddSendBusy();
             close_reason = TcpCloseReason::kPendingLimit;
         }
         if (close_reason == TcpCloseReason::kNormal) {
@@ -169,7 +169,7 @@ bool TcpSession::EnqueueOutBuffer(OutBuffer buffer) {
         }
     }
     if (close_reason != TcpCloseReason::kNormal) {
-        engine_->AddSlowClose();
+        net_io_->AddSlowClose();
         (void)Close(close_reason);
         return false;
     }
@@ -275,8 +275,8 @@ void TcpSession::HandleRead() {
                 std::lock_guard<std::mutex> lock(mutex_);
                 last_read_ms_ = infra::Time::MonotonicMillis();
             }
-            engine_->AddRead(static_cast<size_t>(n));
-            engine_->DispatchRead(callbacks_, id_, buffer, static_cast<size_t>(n));
+            net_io_->AddRead(static_cast<size_t>(n));
+            net_io_->DispatchRead(callbacks_, id_, buffer, static_cast<size_t>(n));
             continue;
         }
         if (n == 0) {
@@ -358,7 +358,7 @@ void TcpSession::HandleWrite() {
             }
         }
         if (n > 0) {
-            engine_->AddWrite(static_cast<size_t>(n));
+            net_io_->AddWrite(static_cast<size_t>(n));
             continue;
         }
         if (n < 0 && errno == EINTR) {
@@ -427,7 +427,7 @@ void TcpSession::CloseInLoop(TcpCloseReason reason) {
         loop_->RemoveFd(fd_.get());
     }
     fd_.Reset();
-    engine_->OnConnectionClosed(id_, callbacks_, reason, info);
+    net_io_->OnConnectionClosed(id_, callbacks_, reason, info);
 }
 
 void TcpSession::ArmTimeoutTimer() {
@@ -443,7 +443,8 @@ void TcpSession::ArmTimeoutTimer() {
             if (self) {
                 self->CheckTimeouts();
             }
-        }, &timer_id);
+        },
+        &timer_id);
     if (timer_status != event::EventStatus::kOk || timer_id == 0) {
         return;
     }
@@ -482,7 +483,7 @@ void TcpSession::CheckTimeouts() {
     }
     if (reason == TcpCloseReason::kSendStall ||
         reason == TcpCloseReason::kWriteTimeout) {
-        engine_->AddSlowClose();
+        net_io_->AddSlowClose();
     }
     CloseInLoop(reason);
 }

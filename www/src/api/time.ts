@@ -1,6 +1,6 @@
 // Time configuration and browser-assisted sync API.
 
-import { mockTimeStatus } from './mockTime';
+import { mockTimeInfo } from './mockTime';
 import {
     postJson,
     putJson,
@@ -11,17 +11,17 @@ import type {
     BrowserSyncConfig,
     NtpConfig,
     TimeConfig,
-    TimeStatus,
+    TimeInfo,
 } from './types';
 
 const timeSyncTimeoutMs = 5000;
 
-function normalizeTimeStatus(status: TimeStatus): TimeStatus {
+function normalizeTimeInfo(status: TimeInfo): TimeInfo {
     return {
-        ...mockTimeStatus,
+        ...mockTimeInfo,
         ...status,
         ntp: {
-            ...mockTimeStatus.ntp,
+            ...mockTimeInfo.ntp,
             ...(status.ntp ?? {}),
             servers: Array.isArray(status.ntp?.servers)
                 ? status.ntp.servers
@@ -38,12 +38,12 @@ function normalizeTimeStatus(status: TimeStatus): TimeStatus {
     };
 }
 
-export function getTimeStatus(init?: ApiRequestOptions): Promise<TimeStatus> {
-    return requestJson<TimeStatus>(
+export function getTimeInfo(init?: ApiRequestOptions): Promise<TimeInfo> {
+    return requestJson<TimeInfo>(
         '/api/system/time/status',
-        mockTimeStatus,
+        mockTimeInfo,
         init,
-    ).then(normalizeTimeStatus);
+    ).then(normalizeTimeInfo);
 }
 
 export function saveTimezone(

@@ -5,7 +5,7 @@
 #include <atomic>
 
 int main() {
-    auto engine = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
+    auto engine = live_stream::CreateNetIo(live_stream::NetIoOptions{});
     if (!engine) {
         return 1;
     }

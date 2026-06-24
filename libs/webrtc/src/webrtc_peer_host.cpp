@@ -1,4 +1,4 @@
-#include "webrtc_engine.h"
+#include "webrtc_peer_host.h"
 
 #include "dtls_transport.h"
 #include "srtp_session.h"
@@ -20,112 +20,112 @@ namespace live_stream {
 namespace webrtc_internal {
 namespace {
 
-class NativeWebrtcEngine;
+class NativeWebrtcPeerHost;
 
 bool IsSupportedCodec(Codec codec) {
     return codec == Codec::kH264 || codec == Codec::kH265;
 }
 
-std::atomic<uintptr_t> &NextEngineId() {
-    static std::atomic<uintptr_t> next_engine_id{1};
-    return next_engine_id;
+std::atomic<uintptr_t> &NextPeerHostId() {
+    static std::atomic<uintptr_t> next_peer_host_id{1};
+    return next_peer_host_id;
 }
 
-std::mutex &EngineTableMutex() {
+std::mutex &PeerHostTableMutex() {
     static std::mutex mutex;
     return mutex;
 }
 
-std::map<uintptr_t, NativeWebrtcEngine *> &EngineTable() {
-    static std::map<uintptr_t, NativeWebrtcEngine *> table;
+std::map<uintptr_t, NativeWebrtcPeerHost *> &PeerHostTable() {
+    static std::map<uintptr_t, NativeWebrtcPeerHost *> table;
     return table;
 }
 
-std::map<uintptr_t, uint32_t> &EngineActiveCallbacks() {
+std::map<uintptr_t, uint32_t> &PeerHostActiveCallbacks() {
     static std::map<uintptr_t, uint32_t> active_callbacks;
     return active_callbacks;
 }
 
-std::map<uintptr_t, bool> &EngineClosingFlags() {
+std::map<uintptr_t, bool> &PeerHostClosingFlags() {
     static std::map<uintptr_t, bool> closing_flags;
     return closing_flags;
 }
 
-std::condition_variable &EngineTableCondition() {
+std::condition_variable &PeerHostTableCondition() {
     static std::condition_variable condition;
     return condition;
 }
 
-uintptr_t AllocateEngineId() {
-    return NextEngineId().fetch_add(1);
+uintptr_t AllocatePeerHostId() {
+    return NextPeerHostId().fetch_add(1);
 }
 
-void RegisterEngine(uintptr_t engine_id, NativeWebrtcEngine *engine) {
-    if (engine_id == 0 || engine == nullptr) {
+void RegisterPeerHost(uintptr_t peer_host_id, NativeWebrtcPeerHost *peer_host) {
+    if (peer_host_id == 0 || peer_host == nullptr) {
         return;
     }
-    std::lock_guard<std::mutex> guard(EngineTableMutex());
-    EngineTable()[engine_id] = engine;
-    EngineActiveCallbacks()[engine_id] = 0;
-    EngineClosingFlags()[engine_id] = false;
+    std::lock_guard<std::mutex> guard(PeerHostTableMutex());
+    PeerHostTable()[peer_host_id] = peer_host;
+    PeerHostActiveCallbacks()[peer_host_id] = 0;
+    PeerHostClosingFlags()[peer_host_id] = false;
 }
 
-void UnregisterEngine(uintptr_t engine_id) {
-    std::unique_lock<std::mutex> guard(EngineTableMutex());
-    EngineClosingFlags()[engine_id] = true;
-    EngineTableCondition().wait(guard, [engine_id]() {
-        const auto iter = EngineActiveCallbacks().find(engine_id);
-        return iter == EngineActiveCallbacks().end() || iter->second == 0;
+void UnregisterPeerHost(uintptr_t peer_host_id) {
+    std::unique_lock<std::mutex> guard(PeerHostTableMutex());
+    PeerHostClosingFlags()[peer_host_id] = true;
+    PeerHostTableCondition().wait(guard, [peer_host_id]() {
+        const auto iter = PeerHostActiveCallbacks().find(peer_host_id);
+        return iter == PeerHostActiveCallbacks().end() || iter->second == 0;
     });
-    EngineTable().erase(engine_id);
-    EngineActiveCallbacks().erase(engine_id);
-    EngineClosingFlags().erase(engine_id);
+    PeerHostTable().erase(peer_host_id);
+    PeerHostActiveCallbacks().erase(peer_host_id);
+    PeerHostClosingFlags().erase(peer_host_id);
 }
 
-NativeWebrtcEngine *EnterEngineCallback(uintptr_t engine_id) {
-    std::lock_guard<std::mutex> guard(EngineTableMutex());
-    const auto engine_iter = EngineTable().find(engine_id);
-    const auto closing_iter = EngineClosingFlags().find(engine_id);
-    if (engine_iter == EngineTable().end() ||
-        closing_iter == EngineClosingFlags().end() || closing_iter->second) {
+NativeWebrtcPeerHost *EnterPeerHostCallback(uintptr_t peer_host_id) {
+    std::lock_guard<std::mutex> guard(PeerHostTableMutex());
+    const auto peer_host_iter = PeerHostTable().find(peer_host_id);
+    const auto closing_iter = PeerHostClosingFlags().find(peer_host_id);
+    if (peer_host_iter == PeerHostTable().end() ||
+        closing_iter == PeerHostClosingFlags().end() || closing_iter->second) {
         return nullptr;
     }
-    ++EngineActiveCallbacks()[engine_id];
-    return engine_iter->second;
+    ++PeerHostActiveCallbacks()[peer_host_id];
+    return peer_host_iter->second;
 }
 
-void LeaveEngineCallback(uintptr_t engine_id) {
-    std::lock_guard<std::mutex> guard(EngineTableMutex());
-    auto iter = EngineActiveCallbacks().find(engine_id);
-    if (iter == EngineActiveCallbacks().end() || iter->second == 0) {
+void LeavePeerHostCallback(uintptr_t peer_host_id) {
+    std::lock_guard<std::mutex> guard(PeerHostTableMutex());
+    auto iter = PeerHostActiveCallbacks().find(peer_host_id);
+    if (iter == PeerHostActiveCallbacks().end() || iter->second == 0) {
         return;
     }
     --iter->second;
     if (iter->second == 0) {
-        EngineTableCondition().notify_all();
+        PeerHostTableCondition().notify_all();
     }
 }
 
-class NativeWebrtcEngine : public IWebrtcEngine {
+class NativeWebrtcPeerHost : public IWebrtcPeerHost {
 public:
-    NativeWebrtcEngine(INetEngine *net_engine, event::Loop *net_loop)
-        : net_engine_(net_engine),
+    NativeWebrtcPeerHost(INetIo *net_io, event::Loop *net_loop)
+        : net_io_(net_io),
           net_loop_(net_loop),
-          engine_id_(AllocateEngineId()) {
-        RegisterEngine(engine_id_, this);
+          peer_host_id_(AllocatePeerHostId()) {
+        RegisterPeerHost(peer_host_id_, this);
     }
 
-    ~NativeWebrtcEngine() override {
-        UnregisterEngine(engine_id_);
+    ~NativeWebrtcPeerHost() override {
+        UnregisterPeerHost(peer_host_id_);
         StopInternal();
     }
 
     bool Available() const override {
-        return net_engine_ != nullptr && net_loop_ != nullptr;
+        return net_io_ != nullptr && net_loop_ != nullptr;
     }
 
     bool Start(const WebrtcOptions &options,
-               const WebrtcEngineCallbacks &callbacks) override {
+               const WebrtcPeerHostCallbacks &callbacks) override {
         std::lock_guard<std::mutex> guard(mutex_);
         DtlsFingerprint local_fingerprint;
         if (!DtlsTransport::LocalCertificateFingerprint(&local_fingerprint)) {
@@ -167,7 +167,7 @@ public:
 
     std::string HandleOffer(const WebrtcPeerInfo &peer,
                             const std::string &offer_sdp) override {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         std::string answer;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -180,14 +180,14 @@ public:
             WebrtcSessionOfferContext context;
             context.options = options_;
             context.local_fingerprint = local_fingerprint_;
-            context.net_engine = net_engine_;
+            context.net_io = net_io_;
             context.net_loop = net_loop_;
-            context.udp_callbacks.user = reinterpret_cast<void *>(engine_id_);
-            context.udp_callbacks.on_read = &NativeWebrtcEngine::OnUdpPacket;
+            context.udp_callbacks.user = reinterpret_cast<void *>(peer_host_id_);
+            context.udp_callbacks.on_read = &NativeWebrtcPeerHost::OnUdpPacket;
             context.next_port_offset = next_port_offset_;
-            context.timer_user = reinterpret_cast<void *>(engine_id_);
+            context.timer_user = reinterpret_cast<void *>(peer_host_id_);
             context.on_dtls_timeout =
-                &NativeWebrtcEngine::OnTransportDtlsTimeout;
+                &NativeWebrtcPeerHost::OnTransportDtlsTimeout;
 
             WebrtcSessionOfferResult result;
             if (!it->second->HandleOffer(offer_sdp, context, &result)) {
@@ -211,7 +211,7 @@ public:
     }
 
     bool ClosePeer(const std::string &peer_id) override {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
@@ -234,7 +234,7 @@ public:
         if (outgoing_dtls == nullptr) {
             return false;
         }
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         bool connected_now = false;
         bool failed = false;
         std::string failure_error;
@@ -267,7 +267,7 @@ public:
 
     bool HandleSrtcpPacket(const std::string &peer_id, const uint8_t *data,
                            size_t size) override {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         bool need_keyframe = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -333,7 +333,7 @@ public:
         }
         std::lock_guard<std::mutex> guard(mutex_);
         stats->ice_ready = stats->ice_ready ||
-                           (net_engine_ != nullptr && net_loop_ != nullptr);
+                           (net_io_ != nullptr && net_loop_ != nullptr);
         stats->dtls_ready = stats->dtls_ready ||
                             !local_fingerprint_.value.empty();
         stats->srtp_ready = stats->srtp_ready || SrtpSession::Available();
@@ -357,8 +357,8 @@ private:
         if (user == nullptr) {
             return;
         }
-        const uintptr_t engine_id = reinterpret_cast<uintptr_t>(user);
-        DispatchUdpPacket(engine_id, socket_id, std::move(peer), data, size);
+        const uintptr_t peer_host_id = reinterpret_cast<uintptr_t>(user);
+        DispatchUdpPacket(peer_host_id, socket_id, std::move(peer), data, size);
     }
 
     static void OnTransportDtlsTimeout(void *user,
@@ -366,29 +366,29 @@ private:
         if (user == nullptr) {
             return;
         }
-        const uintptr_t engine_id = reinterpret_cast<uintptr_t>(user);
-        DispatchDtlsTimeout(engine_id, peer_id);
+        const uintptr_t peer_host_id = reinterpret_cast<uintptr_t>(user);
+        DispatchDtlsTimeout(peer_host_id, peer_id);
     }
 
-    static void DispatchUdpPacket(uintptr_t engine_id, UdpSocketId socket_id,
+    static void DispatchUdpPacket(uintptr_t peer_host_id, UdpSocketId socket_id,
                                   NetAddress peer, const uint8_t *data,
                                   size_t size) {
-        NativeWebrtcEngine *engine = EnterEngineCallback(engine_id);
-        if (engine == nullptr) {
+        NativeWebrtcPeerHost *peer_host = EnterPeerHostCallback(peer_host_id);
+        if (peer_host == nullptr) {
             return;
         }
-        engine->HandleUdpPacket(socket_id, std::move(peer), data, size);
-        LeaveEngineCallback(engine_id);
+        peer_host->HandleUdpPacket(socket_id, std::move(peer), data, size);
+        LeavePeerHostCallback(peer_host_id);
     }
 
-    static void DispatchDtlsTimeout(uintptr_t engine_id,
+    static void DispatchDtlsTimeout(uintptr_t peer_host_id,
                                     const std::string &peer_id) {
-        NativeWebrtcEngine *engine = EnterEngineCallback(engine_id);
-        if (engine == nullptr) {
+        NativeWebrtcPeerHost *peer_host = EnterPeerHostCallback(peer_host_id);
+        if (peer_host == nullptr) {
             return;
         }
-        engine->HandleDtlsTimeout(peer_id);
-        LeaveEngineCallback(engine_id);
+        peer_host->HandleDtlsTimeout(peer_id);
+        LeavePeerHostCallback(peer_host_id);
     }
 
     void HandleUdpPacket(UdpSocketId socket_id, NetAddress peer,
@@ -411,7 +411,7 @@ private:
 
     void HandleIcePacket(UdpSocketId socket_id, NetAddress peer,
                          const uint8_t *data, size_t size) {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         std::string peer_id;
         bool connected_now = false;
         {
@@ -436,7 +436,7 @@ private:
 
     void HandleDtlsUdpPacket(UdpSocketId socket_id, const uint8_t *data,
                              size_t size) {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         std::string peer_id;
         bool connected_now = false;
         bool failed = false;
@@ -474,7 +474,7 @@ private:
 
     void HandleSrtcpUdpPacket(UdpSocketId socket_id, const uint8_t *data,
                               size_t size) {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         std::string peer_id;
         bool need_keyframe = false;
         {
@@ -495,7 +495,7 @@ private:
     }
 
     void HandleDtlsTimeout(const std::string &peer_id) {
-        WebrtcEngineCallbacks callbacks;
+        WebrtcPeerHostCallbacks callbacks;
         bool connected_now = false;
         bool failed = false;
         std::string failure_error;
@@ -544,7 +544,7 @@ private:
     }
 
     bool FailSessionLocked(const std::string &peer_id,
-                           WebrtcEngineCallbacks *callbacks) {
+                           WebrtcPeerHostCallbacks *callbacks) {
         auto it = sessions_.find(peer_id);
         if (it == sessions_.end()) {
             return false;
@@ -567,7 +567,7 @@ private:
         }
     }
 
-    static void NotifyPeerState(const WebrtcEngineCallbacks &callbacks,
+    static void NotifyPeerState(const WebrtcPeerHostCallbacks &callbacks,
                                 const std::string &peer_id,
                                 WebrtcPeerState state,
                                 const std::string &last_error = std::string()) {
@@ -577,11 +577,11 @@ private:
         }
     }
 
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
-    uintptr_t engine_id_ = 0;
+    uintptr_t peer_host_id_ = 0;
     mutable std::mutex mutex_;
-    WebrtcEngineCallbacks callbacks_;
+    WebrtcPeerHostCallbacks callbacks_;
     WebrtcOptions options_;
     DtlsFingerprint local_fingerprint_;
     std::map<std::string, std::unique_ptr<WebrtcSession>> sessions_;
@@ -590,11 +590,11 @@ private:
 
 }  // namespace
 
-std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(
-    INetEngine *net_engine,
+std::unique_ptr<IWebrtcPeerHost> CreateWebrtcPeerHost(
+    INetIo *net_io,
     event::Loop *net_loop) {
-    return std::unique_ptr<IWebrtcEngine>(
-        new NativeWebrtcEngine(net_engine, net_loop));
+    return std::unique_ptr<IWebrtcPeerHost>(
+        new NativeWebrtcPeerHost(net_io, net_loop));
 }
 
 }  // namespace webrtc_internal

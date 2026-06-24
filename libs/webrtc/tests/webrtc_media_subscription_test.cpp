@@ -9,11 +9,11 @@
 
 namespace {
 
-class FakeNetEngine : public live_stream::INetEngine {
+class FakeNetIo : public live_stream::INetIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeLoop(FakeNetEngine *engine) : engine_(engine) {}
+        explicit FakeLoop(FakeNetIo *engine) : engine_(engine) {}
 
         live_stream::event::EventStatus Post(
             live_stream::event::Task task) override {
@@ -51,10 +51,10 @@ public:
         bool IsCurrentThread() const override { return true; }
 
     private:
-        FakeNetEngine *engine_ = nullptr;
+        FakeNetIo *engine_ = nullptr;
     };
 
-    FakeNetEngine() : loop_(this) {}
+    FakeNetIo() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
@@ -168,7 +168,7 @@ std::string ValidOfferSdp() {
 
 int main() {
     live_stream::test::FakeMediaStreams media_streams;
-    FakeNetEngine net_engine;
+    FakeNetIo net_io;
 
     live_stream::WebrtcOptions options;
     options.local_port_base = 16000;
@@ -176,8 +176,8 @@ int main() {
 
     live_stream::WebrtcDependencies dependencies;
     dependencies.media_streams = &media_streams;
-    dependencies.net_engine = &net_engine;
-    dependencies.net_loop = net_engine.DefaultLoop();
+    dependencies.net_io = &net_io;
+    dependencies.net_loop = net_io.DefaultLoop();
 
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);
@@ -208,8 +208,8 @@ int main() {
     offer.peer_id = peer.peer_id;
     offer.sdp = ValidOfferSdp();
     live_stream::WebrtcAnswer answer = service->HandleOffer(offer);
-    if (answer.sdp.empty() || net_engine.bind_udp_count != 1 ||
-        net_engine.last_udp_bind.port != 16000) {
+    if (answer.sdp.empty() || net_io.bind_udp_count != 1 ||
+        net_io.last_udp_bind.port != 16000) {
         return 5;
     }
 
@@ -231,7 +231,7 @@ int main() {
     }
 
     service->Stop();
-    if (net_engine.close_udp_count == 0) {
+    if (net_io.close_udp_count == 0) {
         return 9;
     }
     return 0;

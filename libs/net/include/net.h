@@ -78,7 +78,7 @@ enum class TcpCloseReason {
     kInternalError,
 };
 
-struct NetEngineOptions {
+struct NetIoOptions {
     uint32_t io_threads = 1;
     uint32_t max_events_per_loop = 64;
     uint32_t task_queue_capacity = 4096;
@@ -156,9 +156,9 @@ struct NetConnectionInfo {
 
 const char *TcpCloseReasonName(TcpCloseReason reason);
 
-class INetEngine {
+class INetIo {
 public:
-    virtual ~INetEngine() = default;
+    virtual ~INetIo() = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
@@ -227,7 +227,7 @@ public:
     virtual NetStats GetStats() const = 0;
 };
 
-std::unique_ptr<INetEngine> CreateNetEngine(const NetEngineOptions &options);
+std::unique_ptr<INetIo> CreateNetIo(const NetIoOptions &options);
 
 }  // namespace live_stream
 

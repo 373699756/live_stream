@@ -9,7 +9,7 @@
 
 namespace live_stream {
 
-ConfigJson NetStatusToApiJson(const NetStatus& status);
+ConfigJson NetInterfaceInfoToApiJson(const NetInterfaceInfo& status);
 bool NetConfigFromApiJson(const std::string& ifname,
                           const ConfigJson& value,
                           NetConfig* config);

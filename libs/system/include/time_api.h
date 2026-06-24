@@ -41,7 +41,7 @@ struct TimeConfig {
     bool browser_sync_on_login = true;
 };
 
-struct TimeStatus {
+struct TimeInfo {
     int64_t system_time_ms = 0;
     std::string timezone = "UTC";
     NtpConfig ntp;
@@ -78,7 +78,7 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
-    virtual TimeStatus GetTimeStatus() = 0;
+    virtual TimeInfo GetTimeInfo() = 0;
     virtual bool SetTimezone(const live_stream::RequestContext& context,
                              const std::string& timezone) = 0;
     virtual bool SetSystemTime(const live_stream::RequestContext& context,

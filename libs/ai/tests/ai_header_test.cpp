@@ -181,8 +181,8 @@ int main() {
     if (!degraded_stats.enabled || degraded_stats.backend_available) {
         return 8;
     }
-    std::vector<live_stream::AiTaskStatus> degraded_tasks =
-        degraded_service.GetTaskStatuses();
+    std::vector<live_stream::AiTaskInfo> degraded_tasks =
+        degraded_service.GetTaskInfoList();
     if (degraded_tasks.size() != 1 ||
         !degraded_tasks[0].stats.enabled ||
         degraded_tasks[0].stats.backend_available) {

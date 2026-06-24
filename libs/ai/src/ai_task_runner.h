@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_AI_SRC_AI_CORE_H_
-#define LIVE_STREAM_AI_SRC_AI_CORE_H_
+#ifndef LIVE_STREAM_AI_SRC_AI_TASK_RUNNER_H_
+#define LIVE_STREAM_AI_SRC_AI_TASK_RUNNER_H_
 
 #include "ai.h"
 
@@ -9,10 +9,10 @@
 
 namespace live_stream {
 
-class AiCore final {
+class AiTaskRunner final {
 public:
-    explicit AiCore(const AiOptions &options);
-    ~AiCore();
+    explicit AiTaskRunner(const AiOptions &options);
+    ~AiTaskRunner();
 
     bool Start();
     void Stop();
@@ -20,7 +20,7 @@ public:
     AiConfig GetConfig() const;
     AiStats GetStats() const;
     AiInferenceResult GetLastResult() const;
-    std::vector<AiTaskStatus> GetTaskStatuses() const;
+    std::vector<AiTaskInfo> GetTaskInfoList() const;
     std::vector<AiAlertRecord> ListAlerts() const;
     std::string ReadAlertImage(const std::string &id) const;
 
@@ -31,4 +31,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_AI_SRC_AI_CORE_H_
+#endif  // LIVE_STREAM_AI_SRC_AI_TASK_RUNNER_H_

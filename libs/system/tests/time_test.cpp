@@ -220,7 +220,7 @@ int main() {
         return 7;
     }
 
-    live_stream::TimeStatus status = service->GetTimeStatus();
+    live_stream::TimeInfo status = service->GetTimeInfo();
     if (status.timezone != "Asia/Shanghai" ||
         status.system_time_ms != platform.now_ms) {
         return 8;
@@ -231,7 +231,7 @@ int main() {
     context.user_name = "admin";
     if (!service->SetTimezone(context, "UTC") ||
         event.last_event.type != live_stream::event::EventType::kTimeChanged ||
-        service->GetTimeStatus().timezone != "UTC") {
+        service->GetTimeInfo().timezone != "UTC") {
         return 9;
     }
 
@@ -246,14 +246,14 @@ int main() {
     if (!service->SetSystemTime(context, 3500,
                                 live_stream::TimeSyncSource::kBrowser) ||
         platform.now_ms != 3500 ||
-        service->GetTimeStatus().last_sync_source !=
+        service->GetTimeInfo().last_sync_source !=
             live_stream::TimeSyncSource::kBrowser) {
         return 18;
     }
 
     if (!service->UpdateBrowserSyncConfig(context, true, false) ||
-        !service->GetTimeStatus().manual_sync_allowed ||
-        service->GetTimeStatus().browser_sync_on_login) {
+        !service->GetTimeInfo().manual_sync_allowed ||
+        service->GetTimeInfo().browser_sync_on_login) {
         return 19;
     }
 
@@ -280,9 +280,9 @@ int main() {
     config.manual_sync_allowed = false;
     config.browser_sync_on_login = true;
     if (!service->UpdateTimeConfig(context, config) ||
-        service->GetTimeStatus().timezone != "Asia/Tokyo" ||
-        service->GetTimeStatus().manual_sync_allowed ||
-        service->GetTimeStatus().browser_sync_on_login) {
+        service->GetTimeInfo().timezone != "Asia/Tokyo" ||
+        service->GetTimeInfo().manual_sync_allowed ||
+        service->GetTimeInfo().browser_sync_on_login) {
         return 23;
     }
 
@@ -313,7 +313,7 @@ int main() {
     external_config["browser_sync_on_login"] = true;
     if (stored_config.Set("time", external_config, nullptr) !=
             live_stream::ConfigStatus::kOk ||
-        stored_service->GetTimeStatus().browser_sync_on_login) {
+        stored_service->GetTimeInfo().browser_sync_on_login) {
         return 26;
     }
     if (!stored_service->UpdateBrowserSyncConfig(context, false, true) ||
@@ -360,12 +360,12 @@ int main() {
     }
 
     const int64_t last_good_sync_time =
-        service->GetTimeStatus().last_sync_time_ms;
+        service->GetTimeInfo().last_sync_time_ms;
     platform.set_ok = false;
     if (service->SetSystemTime(context, 5000,
                                live_stream::TimeSyncSource::kManual) ||
-        service->GetTimeStatus().last_sync_ok ||
-        service->GetTimeStatus().last_sync_time_ms != last_good_sync_time ||
+        service->GetTimeInfo().last_sync_ok ||
+        service->GetTimeInfo().last_sync_time_ms != last_good_sync_time ||
         logger.last_record.result !=
             live_stream::OperationResult::kFailed) {
         return 15;
@@ -374,7 +374,7 @@ int main() {
     service->Stop();
     if (service->SetTimezone(context, "Asia/Tokyo") ||
         !service->Start() ||
-        service->GetTimeStatus().timezone != "UTC") {
+        service->GetTimeInfo().timezone != "UTC") {
         return 16;
     }
 

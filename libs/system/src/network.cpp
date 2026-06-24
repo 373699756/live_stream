@@ -40,9 +40,9 @@ public:
         return {default_ifname_};
     }
 
-    NetStatus
-    GetInterfaceStatus(const std::string &ifname) override {
-        NetStatus status;
+    NetInterfaceInfo
+    GetInterfaceInfo(const std::string &ifname) override {
+        NetInterfaceInfo status;
         status.ifname = ifname;
         status.enabled = true;
         status.dhcp = true;
@@ -187,15 +187,15 @@ public:
         return platform_->ListInterfaces();
     }
 
-    NetStatus
-    GetInterfaceStatus(const std::string &ifname) override {
+    NetInterfaceInfo
+    GetInterfaceInfo(const std::string &ifname) override {
         if (!IsValidIfname(ifname)) {
-            return NetStatus{};
+            return NetInterfaceInfo{};
         }
         if (!IsStarted()) {
-            return NetStatus{};
+            return NetInterfaceInfo{};
         }
-        NetStatus status = platform_->GetInterfaceStatus(ifname);
+        NetInterfaceInfo status = platform_->GetInterfaceInfo(ifname);
         std::lock_guard<std::mutex> lock(mutex_);
         const auto iter = status_errors_.find(ifname);
         if (iter != status_errors_.end()) {
@@ -244,13 +244,13 @@ public:
         return true;
     }
 
-    bool ReloadStatus() override {
+    bool ReloadInterfaceInfo() override {
         if (!IsStarted()) {
             return false;
         }
         std::vector<std::string> interfaces = platform_->ListInterfaces();
         for (const std::string &ifname : interfaces) {
-            NetStatus status = platform_->GetInterfaceStatus(ifname);
+            NetInterfaceInfo status = platform_->GetInterfaceInfo(ifname);
             SetLastError(ifname, status.last_ok);
         }
         return true;
@@ -333,7 +333,7 @@ private:
             next_configs = configs_;
             next_configs[config.ifname] = config;
             next_json = network_json_.is_object() ? network_json_
-                                                         : ConfigJson::object();
+                                                  : ConfigJson::object();
         }
         next_json = NetworkJsonWithConfigs(next_json, next_configs);
         if (options_.config != nullptr) {

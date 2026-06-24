@@ -20,8 +20,8 @@ public:
         return info;
     }
 
-    live_stream::SystemStatus GetSystemStatus() override {
-        live_stream::SystemStatus status;
+    live_stream::SystemInfo GetSystemInfo() override {
+        live_stream::SystemInfo status;
         status.cpu_usage_percent = 10;
         status.memory_usage_percent = 20;
         status.temperature_celsius = 40;
@@ -58,7 +58,7 @@ class FakeEvent : public live_stream::event::Dispatcher {
 public:
     FakeEvent()
         : subscription_(Subscribe(
-              live_stream::event::EventType::kSystemStatusChanged,
+              live_stream::event::EventType::kSystemInfoChanged,
               [this](const live_stream::event::Event& event) {
                   ++publish_count;
                   last_event = event;
@@ -142,21 +142,21 @@ int main() {
         return 4;
     }
     infra::Time::SleepMillis(2);
-    live_stream::SystemStatus status = service->GetSystemStatus();
+    live_stream::SystemInfo status = service->GetSystemInfo();
     if (status.healthy ||
         event.last_event.type !=
-            live_stream::event::EventType::kSystemStatusChanged) {
+            live_stream::event::EventType::kSystemInfoChanged) {
         return 5;
     }
     const int publish_count_after_timeout = event.publish_count;
-    status = service->GetSystemStatus();
+    status = service->GetSystemInfo();
     if (event.publish_count != publish_count_after_timeout) {
         return 9;
     }
     if (!service->ReportHeartbeat("media")) {
         return 10;
     }
-    status = service->GetSystemStatus();
+    status = service->GetSystemInfo();
     if (!status.healthy ||
         event.publish_count != publish_count_after_timeout + 1) {
         return 11;

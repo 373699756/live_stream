@@ -148,11 +148,11 @@ size_t Count(const std::string& value, const std::string& needle) {
 }  // namespace
 
 int main() {
-    auto net_engine = live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!net_engine) {
+    auto net_io = live_stream::CreateNetIo(live_stream::NetIoOptions{});
+    if (!net_io) {
         return 1;
     }
-    if (!net_engine->Start()) {
+    if (!net_io->Start()) {
         return 1;
     }
 
@@ -168,8 +168,8 @@ int main() {
     options.control_executor_worker_count = 1;
 
     live_stream::HttpDependencies http_dependencies;
-    http_dependencies.net_engine = net_engine.get();
-    http_dependencies.net_loop = net_engine->DefaultLoop();
+    http_dependencies.net_io = net_io.get();
+    http_dependencies.net_loop = net_io->DefaultLoop();
     http_dependencies.auth = &auth;
     http_dependencies.config = &config;
     auto http = live_stream::CreateHttp(options, http_dependencies);
@@ -205,7 +205,7 @@ int main() {
     const std::string response = ReadUntilClose(fd);
     close(fd);
     http->Stop();
-    net_engine->Stop();
+    net_io->Stop();
 
     if (Count(response, "HTTP/1.1 200 OK") != 2 ||
         Count(response, "live_stream_token=admin-token") != 2 ||

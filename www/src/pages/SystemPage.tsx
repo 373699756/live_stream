@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useSystemStatus } from '../hooks/useSystemStatus';
+import { useSystemInfo } from '../hooks/useSystemInfo';
 import { useTimeConfig } from '../hooks/useTimeConfig';
 import { useUpgrade } from '../hooks/useUpgrade';
 import {
     DeviceInfoPanel,
     ModuleStatusPanel,
-    SystemStatusPanel,
-} from './SystemStatusPanels';
+    SystemInfoPanel,
+} from './SystemInfoPanels';
 import { TimeConfigPanel } from './TimeConfigPanel';
 import { UpgradePanel } from './UpgradePanel';
 
@@ -25,9 +25,9 @@ const systemMaintenanceTabs: Array<{
 export function SystemPage() {
     const [activeTab, setActiveTab] =
         useState<SystemMaintenanceTab>('overview');
-    const { status, refreshError: systemRefreshError } = useSystemStatus();
+    const { status, refreshError: systemRefreshError } = useSystemInfo();
     const {
-        upgradeStatus,
+        upgradeInfo,
         packageInfo,
         selectedFile,
         allowSameVersion,
@@ -72,7 +72,7 @@ export function SystemPage() {
             {activeTab === 'overview' ? (
                 status ? (
                     <div className="page-grid system-overview-grid">
-                        <SystemStatusPanel status={status} />
+                        <SystemInfoPanel status={status} />
                         <DeviceInfoPanel status={status} />
                     </div>
                 ) : (
@@ -99,7 +99,7 @@ export function SystemPage() {
             {activeTab === 'time' ? <TimeMaintenancePanel /> : null}
 
             {activeTab === 'upgrade' ? (
-                upgradeStatus ? (
+                upgradeInfo ? (
                     <UpgradePanel
                         actionError={actionError}
                         allowDowngrade={allowDowngrade}
@@ -117,7 +117,7 @@ export function SystemPage() {
                         setAllowSameVersion={setAllowSameVersion}
                         setAutoReboot={setAutoReboot}
                         startUpgrade={startUpgrade}
-                        upgradeStatus={upgradeStatus}
+                        upgradeInfo={upgradeInfo}
                         uploadPackage={uploadPackage}
                     />
                 ) : (

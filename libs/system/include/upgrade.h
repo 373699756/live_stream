@@ -41,7 +41,7 @@ struct UpgradePackageInfo {
     bool requires_reboot = true;
 };
 
-struct UpgradeStatus {
+struct UpgradeInfo {
     UpgradeState state = UpgradeState::kIdle;
     uint32_t progress_percent = 0;
     std::string current_stage = "idle";
@@ -99,7 +99,7 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
-    virtual UpgradeStatus GetStatus() = 0;
+    virtual UpgradeInfo GetUpgradeInfo() = 0;
     virtual UpgradePackageInfo ValidatePackage(
         const std::string& package_path) = 0;
     virtual bool StartUpgrade(const live_stream::RequestContext& context,

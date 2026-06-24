@@ -102,7 +102,7 @@ private:
 
     HttpOptions options_;
     HttpResponseSender response_sender_;
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。
     HttpRequestHandler *request_handler_ = nullptr;

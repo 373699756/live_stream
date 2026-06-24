@@ -1,4 +1,4 @@
-import { mockUpgradeStatus } from './mockUpgrade';
+import { mockUpgradeInfo } from './mockUpgrade';
 import {
     postJson,
     requestJson,
@@ -8,15 +8,15 @@ import {
 import type {
     UpgradePackageInfo,
     UpgradeRequest,
-    UpgradeStatus,
+    UpgradeInfo,
 } from './types';
 
-export function getUpgradeStatus(
+export function getUpgradeInfo(
     init?: ApiRequestOptions,
-): Promise<UpgradeStatus> {
-    return requestJson<UpgradeStatus>(
+): Promise<UpgradeInfo> {
+    return requestJson<UpgradeInfo>(
         '/api/upgrade/status',
-        mockUpgradeStatus,
+        mockUpgradeInfo,
         init,
     );
 }
@@ -44,12 +44,12 @@ export async function uploadUpgradePackage(
     });
 }
 
-export function startUpgrade(value: UpgradeRequest): Promise<UpgradeStatus> {
-    return postJson<UpgradeRequest, UpgradeStatus>(
+export function startUpgrade(value: UpgradeRequest): Promise<UpgradeInfo> {
+    return postJson<UpgradeRequest, UpgradeInfo>(
         '/api/upgrade/start',
         value,
         {
-            ...mockUpgradeStatus,
+            ...mockUpgradeInfo,
             state: 'validating',
             current_stage: 'validating',
             target_version: value.expected_version,
@@ -58,12 +58,12 @@ export function startUpgrade(value: UpgradeRequest): Promise<UpgradeStatus> {
     );
 }
 
-export function cancelUpgrade(): Promise<UpgradeStatus> {
-    return postJson<Record<string, never>, UpgradeStatus>(
+export function cancelUpgrade(): Promise<UpgradeInfo> {
+    return postJson<Record<string, never>, UpgradeInfo>(
         '/api/upgrade/cancel',
         {},
         {
-            ...mockUpgradeStatus,
+            ...mockUpgradeInfo,
             state: 'canceled',
             current_stage: 'canceled',
             error_message: 'canceled',
@@ -72,12 +72,12 @@ export function cancelUpgrade(): Promise<UpgradeStatus> {
     );
 }
 
-export function confirmUpgradeReboot(): Promise<UpgradeStatus> {
-    return postJson<Record<string, never>, UpgradeStatus>(
+export function confirmUpgradeReboot(): Promise<UpgradeInfo> {
+    return postJson<Record<string, never>, UpgradeInfo>(
         '/api/upgrade/confirm-reboot',
         {},
         {
-            ...mockUpgradeStatus,
+            ...mockUpgradeInfo,
             state: 'completed',
             current_stage: 'completed',
             progress_percent: 100,

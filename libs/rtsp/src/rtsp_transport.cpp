@@ -5,10 +5,10 @@
 namespace live_stream {
 
 bool RtspTransport::SendRtpPacket(
-    INetEngine *net_engine, const RtspTransportTarget &target,
+    INetIo *net_io, const RtspTransportTarget &target,
     const MediaFrame &frame, const rtp::RtpPacketView &packet) {
     const size_t packet_size = packet.Size();
-    if (net_engine == nullptr || packet_size == 0 || packet_size > 0xffff) {
+    if (net_io == nullptr || packet_size == 0 || packet_size > 0xffff) {
         return false;
     }
 
@@ -31,7 +31,7 @@ bool RtspTransport::SendRtpPacket(
                             slice.media_payload ? payload_buffer
                                                 : MediaBufferRef());
         }
-        return ok && net_engine->SendSlices(target.connection_id, slices);
+        return ok && net_io->SendSlices(target.connection_id, slices);
     }
 
     if (target.mode == RtspTransportMode::kUdp && target.udp_socket_id != 0) {
@@ -41,8 +41,8 @@ bool RtspTransport::SendRtpPacket(
             const rtp::RtpPacketSlice &slice = packet.slices[i];
             ok = slices.Add(slice.data, slice.size);
         }
-        return ok && net_engine->SendToSlices(target.udp_socket_id,
-                                              target.udp_peer, slices);
+        return ok && net_io->SendToSlices(target.udp_socket_id,
+                                          target.udp_peer, slices);
     }
 
     return false;

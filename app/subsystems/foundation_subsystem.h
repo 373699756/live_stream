@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_APP_SUBSYSTEMS_CORE_SUBSYSTEM_H_
-#define LIVE_STREAM_APP_SUBSYSTEMS_CORE_SUBSYSTEM_H_
+#ifndef LIVE_STREAM_APP_SUBSYSTEMS_FOUNDATION_SUBSYSTEM_H_
+#define LIVE_STREAM_APP_SUBSYSTEMS_FOUNDATION_SUBSYSTEM_H_
 
 #include <memory>
 
@@ -11,30 +11,30 @@
 
 namespace live_stream {
 
-class CoreSubsystem {
+class FoundationSubsystem {
 public:
-    static CoreSubsystem& Get();
+    static FoundationSubsystem& Get();
 
     bool Start(const StartupPaths& paths);
     void Stop();
 
     ILogger* logger() const { return logger_.get(); }
     IConfig* config() const { return config_.get(); }
-    event::Dispatcher *event() const {
+    event::Dispatcher* event() const {
         return event_ != nullptr ? event_->dispatcher() : nullptr;
     }
     IAuth* auth() const { return auth_.get(); }
 
 private:
-    CoreSubsystem() = default;
-    ~CoreSubsystem() = default;
+    FoundationSubsystem() = default;
+    ~FoundationSubsystem() = default;
 
-    CoreSubsystem(const CoreSubsystem&) = delete;
-    CoreSubsystem& operator=(const CoreSubsystem&) = delete;
+    FoundationSubsystem(const FoundationSubsystem&) = delete;
+    FoundationSubsystem& operator=(const FoundationSubsystem&) = delete;
 
     std::unique_ptr<ILogger> logger_;
     std::unique_ptr<IConfig> config_;
-    std::unique_ptr<event::Service> event_;
+    std::unique_ptr<event::Bus> event_;
     std::unique_ptr<IAuthAuditSink> auth_audit_sink_;
     std::unique_ptr<IAuth> auth_;
     bool started_ = false;
@@ -42,4 +42,4 @@ private:
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_APP_SUBSYSTEMS_CORE_SUBSYSTEM_H_
+#endif  // LIVE_STREAM_APP_SUBSYSTEMS_FOUNDATION_SUBSYSTEM_H_

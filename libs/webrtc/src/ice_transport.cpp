@@ -19,7 +19,7 @@ IceTransport::IceTransport(std::string peer_id)
 
 IceTransport::~IceTransport() { Stop(); }
 
-bool IceTransport::Start(INetEngine *net_engine, event::Loop *net_loop,
+bool IceTransport::Start(INetIo *net_io, event::Loop *net_loop,
                          const UdpCallbacks &callbacks,
                          const std::string &listen_ip, uint16_t port,
                          std::string local_ufrag,
@@ -27,21 +27,21 @@ bool IceTransport::Start(INetEngine *net_engine, event::Loop *net_loop,
     if (socket_id_ != 0) {
         return true;
     }
-    if (net_engine == nullptr || net_loop == nullptr ||
+    if (net_io == nullptr || net_loop == nullptr ||
         local_ufrag.empty() || local_password.empty()) {
         return false;
     }
     UdpBindOptions options;
     options.address.ip = listen_ip.empty() ? "0.0.0.0" : listen_ip;
     options.address.port = port;
-    UdpSocketId socket_id = net_engine->BindUdp(net_loop, options,
-                                                callbacks);
+    UdpSocketId socket_id = net_io->BindUdp(net_loop, options,
+                                            callbacks);
     if (socket_id == 0) {
         return false;
     }
-    net_engine_ = net_engine;
+    net_io_ = net_io;
     socket_id_ = socket_id;
-    local_address_ = net_engine_->UdpLocalAddress(socket_id_);
+    local_address_ = net_io_->UdpLocalAddress(socket_id_);
     local_ufrag_ = std::move(local_ufrag);
     local_password_ = std::move(local_password);
     if (local_address_.port == 0) {
@@ -51,10 +51,10 @@ bool IceTransport::Start(INetEngine *net_engine, event::Loop *net_loop,
 }
 
 void IceTransport::Stop() {
-    if (net_engine_ != nullptr && socket_id_ != 0) {
-        (void)net_engine_->CloseUdp(socket_id_);
+    if (net_io_ != nullptr && socket_id_ != 0) {
+        (void)net_io_->CloseUdp(socket_id_);
     }
-    net_engine_ = nullptr;
+    net_io_ = nullptr;
     socket_id_ = 0;
     local_address_ = NetAddress();
     local_ufrag_.clear();
@@ -67,7 +67,7 @@ bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
     if (connected_now != nullptr) {
         *connected_now = false;
     }
-    if (net_engine_ == nullptr || socket_id_ == 0 || data == nullptr ||
+    if (net_io_ == nullptr || socket_id_ == 0 || data == nullptr ||
         size == 0) {
         return false;
     }
@@ -88,7 +88,7 @@ bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
     std::vector<uint8_t> response =
         BuildStunBindingSuccessResponse(request, local_password_, peer);
     if (response.empty() ||
-        !net_engine_->SendTo(socket_id_, peer, response.data(), response.size())) {
+        !net_io_->SendTo(socket_id_, peer, response.data(), response.size())) {
         return false;
     }
 
@@ -97,7 +97,7 @@ bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
     selected_pair_.remote = std::move(peer);
     selected_pair_.priority = request.priority;
     selected_pair_.nominated = request.use_candidate;
-    (void)net_engine_->SetUdpPeer(socket_id_, selected_pair_.remote);
+    (void)net_io_->SetUdpPeer(socket_id_, selected_pair_.remote);
     if (!was_connected && connected_now != nullptr) {
         *connected_now = true;
     }
@@ -105,10 +105,10 @@ bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
 }
 
 bool IceTransport::SendToSelected(const uint8_t *data, size_t size) {
-    if (net_engine_ == nullptr || socket_id_ == 0 || !connected()) {
+    if (net_io_ == nullptr || socket_id_ == 0 || !connected()) {
         return false;
     }
-    return net_engine_->SendToPeer(socket_id_, data, size);
+    return net_io_->SendToPeer(socket_id_, data, size);
 }
 
 bool IceTransport::selected_pair(IceSelectedPair *pair) const {

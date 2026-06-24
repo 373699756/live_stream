@@ -8,7 +8,6 @@ __pycache__/
 scripts/scan/reports/quality/
 3rdparty/build/
 3rdparty/install/
-3rdparty/metaRTC_src/.git.upstream/
 configs/upgrade_private_key.pem
 configs/*private*key*.pem
 *.private.pem

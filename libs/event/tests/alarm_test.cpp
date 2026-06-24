@@ -172,7 +172,7 @@ int main() {
         return 5;
     }
 
-    live_stream::AlarmStatus status = service->GetAlarmStatus();
+    live_stream::AlarmInfo status = service->GetAlarmInfo();
     if (!status.active || status.source != live_stream::AlarmSource::kMotion ||
         status.sources.size() != 5U) {
         return 6;
@@ -181,7 +181,7 @@ int main() {
     if (!service->ClearAlarm(context)) {
         return 7;
     }
-    if (service->GetAlarmStatus().active || event.publish_count != 2 ||
+    if (service->GetAlarmInfo().active || event.publish_count != 2 ||
         event.last_event.type != live_stream::event::EventType::kAlarmOff) {
         return 8;
     }
@@ -225,7 +225,7 @@ int main() {
         config_event.publish_count != 1) {
         return 13;
     }
-    if (configured->GetAlarmStatus().message != "configured-motion") {
+    if (configured->GetAlarmInfo().message != "configured-motion") {
         return 14;
     }
 

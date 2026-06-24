@@ -1,4 +1,4 @@
-#include "net_engine_impl.h"
+#include "net_io_impl.h"
 
 #include "tcp_session.h"
 #include "tcp_server.h"
@@ -15,12 +15,12 @@ constexpr size_t kClosedConnectionInfoLimit = 128;
 
 }  // namespace
 
-NetEngineImpl::NetEngineImpl(const NetEngineOptions &options)
+NetIoImpl::NetIoImpl(const NetIoOptions &options)
     : options_(options) {}
 
-NetEngineImpl::~NetEngineImpl() { StopInternal(); }
+NetIoImpl::~NetIoImpl() { StopInternal(); }
 
-bool NetEngineImpl::Start() {
+bool NetIoImpl::Start() {
     if (options_.io_threads == 0) {
         return false;
     }
@@ -56,11 +56,11 @@ bool NetEngineImpl::Start() {
     return true;
 }
 
-void NetEngineImpl::Stop() {
+void NetIoImpl::Stop() {
     StopInternal();
 }
 
-void NetEngineImpl::StopInternal() {
+void NetIoImpl::StopInternal() {
     std::vector<std::shared_ptr<TcpServer>> servers;
     std::vector<std::shared_ptr<UdpSocket>> udp_sockets;
     std::vector<std::shared_ptr<TcpSession>> connections;
@@ -97,12 +97,12 @@ void NetEngineImpl::StopInternal() {
     connections_.clear();
 }
 
-event::Loop *NetEngineImpl::DefaultLoop() {
+event::Loop *NetIoImpl::DefaultLoop() {
     std::lock_guard<std::mutex> lock(mutex_);
     return loops_.empty() ? nullptr : loops_.front().get();
 }
 
-event::Loop *NetEngineImpl::PickLoop() {
+event::Loop *NetIoImpl::PickLoop() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (loops_.empty()) {
         return nullptr;
@@ -112,9 +112,9 @@ event::Loop *NetEngineImpl::PickLoop() {
     return loops_[index].get();
 }
 
-TcpServerId NetEngineImpl::ListenTcp(event::Loop *loop,
-                                     const TcpListenOptions &options,
-                                     const TcpCallbacks &callbacks) {
+TcpServerId NetIoImpl::ListenTcp(event::Loop *loop,
+                                 const TcpListenOptions &options,
+                                 const TcpCallbacks &callbacks) {
     if (callbacks.on_read == nullptr && callbacks.on_accept == nullptr) {
         return 0;
     }
@@ -138,9 +138,9 @@ TcpServerId NetEngineImpl::ListenTcp(event::Loop *loop,
     return id;
 }
 
-UdpSocketId NetEngineImpl::BindUdp(event::Loop *loop,
-                                   const UdpBindOptions &options,
-                                   const UdpCallbacks &callbacks) {
+UdpSocketId NetIoImpl::BindUdp(event::Loop *loop,
+                               const UdpBindOptions &options,
+                               const UdpCallbacks &callbacks) {
     std::shared_ptr<EventLoop> owner_loop = ResolveLoop(loop);
     if (!owner_loop) {
         return 0;
@@ -161,7 +161,7 @@ UdpSocketId NetEngineImpl::BindUdp(event::Loop *loop,
     return id;
 }
 
-bool NetEngineImpl::CloseTcp(TcpServerId id) {
+bool NetIoImpl::CloseTcp(TcpServerId id) {
     std::shared_ptr<TcpServer> server;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -176,7 +176,7 @@ bool NetEngineImpl::CloseTcp(TcpServerId id) {
     return true;
 }
 
-bool NetEngineImpl::CloseUdp(UdpSocketId id) {
+bool NetIoImpl::CloseUdp(UdpSocketId id) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -191,34 +191,34 @@ bool NetEngineImpl::CloseUdp(UdpSocketId id) {
     return true;
 }
 
-bool NetEngineImpl::Send(ConnectionId id, const uint8_t *data, size_t size) {
+bool NetIoImpl::Send(ConnectionId id, const uint8_t *data, size_t size) {
     auto connection = FindConnection(id);
     return connection ? connection->Send(data, size) : false;
 }
 
-bool NetEngineImpl::SendSlices(ConnectionId id,
-                               const NetBufferSlices &slices) {
+bool NetIoImpl::SendSlices(ConnectionId id,
+                           const NetBufferSlices &slices) {
     auto connection = FindConnection(id);
     return connection ? connection->SendSlices(slices) : false;
 }
 
-bool NetEngineImpl::Close(ConnectionId id) {
+bool NetIoImpl::Close(ConnectionId id) {
     auto connection = FindConnection(id);
     return connection ? connection->Close(TcpCloseReason::kNormal) : false;
 }
 
-bool NetEngineImpl::Close(ConnectionId id, TcpCloseReason reason) {
+bool NetIoImpl::Close(ConnectionId id, TcpCloseReason reason) {
     auto connection = FindConnection(id);
     return connection ? connection->Close(reason) : false;
 }
 
-bool NetEngineImpl::CloseAfterSend(ConnectionId id) {
+bool NetIoImpl::CloseAfterSend(ConnectionId id) {
     auto connection = FindConnection(id);
     return connection ? connection->CloseAfterSend() : false;
 }
 
-bool NetEngineImpl::SendTo(UdpSocketId id, NetAddress address,
-                           const uint8_t *data, size_t size) {
+bool NetIoImpl::SendTo(UdpSocketId id, NetAddress address,
+                       const uint8_t *data, size_t size) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -231,8 +231,8 @@ bool NetEngineImpl::SendTo(UdpSocketId id, NetAddress address,
     return socket->SendTo(std::move(address), data, size);
 }
 
-bool NetEngineImpl::SendToSlices(UdpSocketId id, NetAddress address,
-                                 const NetBufferSlices &slices) {
+bool NetIoImpl::SendToSlices(UdpSocketId id, NetAddress address,
+                             const NetBufferSlices &slices) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -245,7 +245,7 @@ bool NetEngineImpl::SendToSlices(UdpSocketId id, NetAddress address,
     return socket->SendToSlices(std::move(address), slices);
 }
 
-bool NetEngineImpl::SetUdpPeer(UdpSocketId id, NetAddress peer) {
+bool NetIoImpl::SetUdpPeer(UdpSocketId id, NetAddress peer) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -258,8 +258,8 @@ bool NetEngineImpl::SetUdpPeer(UdpSocketId id, NetAddress peer) {
     return socket->SetPeer(std::move(peer));
 }
 
-bool NetEngineImpl::SendToPeer(UdpSocketId id, const uint8_t *data,
-                               size_t size) {
+bool NetIoImpl::SendToPeer(UdpSocketId id, const uint8_t *data,
+                           size_t size) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -272,8 +272,8 @@ bool NetEngineImpl::SendToPeer(UdpSocketId id, const uint8_t *data,
     return socket->SendToPeer(data, size);
 }
 
-bool NetEngineImpl::SendToPeerSlices(UdpSocketId id,
-                                     const NetBufferSlices &slices) {
+bool NetIoImpl::SendToPeerSlices(UdpSocketId id,
+                                 const NetBufferSlices &slices) {
     std::shared_ptr<UdpSocket> socket;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -286,7 +286,7 @@ bool NetEngineImpl::SendToPeerSlices(UdpSocketId id,
     return socket->SendToPeerSlices(slices);
 }
 
-NetAddress NetEngineImpl::TcpLocalAddress(TcpServerId id) const {
+NetAddress NetIoImpl::TcpLocalAddress(TcpServerId id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = servers_.find(id);
     if (it == servers_.end()) {
@@ -295,7 +295,7 @@ NetAddress NetEngineImpl::TcpLocalAddress(TcpServerId id) const {
     return it->second->LocalAddress();
 }
 
-NetAddress NetEngineImpl::UdpLocalAddress(UdpSocketId id) const {
+NetAddress NetIoImpl::UdpLocalAddress(UdpSocketId id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = udp_sockets_.find(id);
     if (it == udp_sockets_.end()) {
@@ -304,7 +304,7 @@ NetAddress NetEngineImpl::UdpLocalAddress(UdpSocketId id) const {
     return it->second->LocalAddress();
 }
 
-NetAddress NetEngineImpl::UdpPeerAddress(UdpSocketId id) const {
+NetAddress NetIoImpl::UdpPeerAddress(UdpSocketId id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = udp_sockets_.find(id);
     if (it == udp_sockets_.end()) {
@@ -313,12 +313,12 @@ NetAddress NetEngineImpl::UdpPeerAddress(UdpSocketId id) const {
     return it->second->PeerAddress();
 }
 
-uint32_t NetEngineImpl::PendingBytes(ConnectionId id) const {
+uint32_t NetIoImpl::PendingBytes(ConnectionId id) const {
     auto connection = FindConnection(id);
     return connection ? connection->PendingBytes() : 0;
 }
 
-NetConnectionInfo NetEngineImpl::GetConnectionInfo(
+NetConnectionInfo NetIoImpl::GetConnectionInfo(
     ConnectionId id) const {
     auto connection = FindConnection(id);
     if (connection) {
@@ -331,7 +331,7 @@ NetConnectionInfo NetEngineImpl::GetConnectionInfo(
 }
 
 std::vector<NetConnectionInfo>
-NetEngineImpl::ListConnectionInfo() const {
+NetIoImpl::ListConnectionInfo() const {
     std::vector<std::shared_ptr<TcpSession>> connections;
     std::vector<NetConnectionInfo> closed_info;
     {
@@ -362,7 +362,7 @@ NetEngineImpl::ListConnectionInfo() const {
     return info;
 }
 
-NetStats NetEngineImpl::GetStats() const {
+NetStats NetIoImpl::GetStats() const {
     NetStats stats;
     uint32_t active_connections = 0;
     {
@@ -377,47 +377,47 @@ NetStats NetEngineImpl::GetStats() const {
     return stats;
 }
 
-void NetEngineImpl::AddAccepted() {
+void NetIoImpl::AddAccepted() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.accepted_connections;
 }
 
-void NetEngineImpl::AddRejected() {
+void NetIoImpl::AddRejected() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.rejected_connections;
 }
 
-void NetEngineImpl::AddRead(size_t size) {
+void NetIoImpl::AddRead(size_t size) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     stats_.read_bytes += size;
 }
 
-void NetEngineImpl::AddWrite(size_t size) {
+void NetIoImpl::AddWrite(size_t size) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     stats_.written_bytes += size;
 }
 
-void NetEngineImpl::AddSendBusy() {
+void NetIoImpl::AddSendBusy() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.send_busy_count;
 }
 
-void NetEngineImpl::AddSlowClose() {
+void NetIoImpl::AddSlowClose() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.slow_client_closes;
 }
 
-void NetEngineImpl::AddUdpRx() {
+void NetIoImpl::AddUdpRx() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.received_datagrams;
 }
 
-void NetEngineImpl::AddUdpTx() {
+void NetIoImpl::AddUdpTx() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.sent_datagrams;
 }
 
-bool NetEngineImpl::AddAcceptedConnection(
+bool NetIoImpl::AddAcceptedConnection(
     const std::shared_ptr<TcpSession> &connection,
     uint32_t max_connections) {
     if (connection == nullptr) {
@@ -431,15 +431,15 @@ bool NetEngineImpl::AddAcceptedConnection(
     return true;
 }
 
-void NetEngineImpl::RemoveConnection(ConnectionId id) {
+void NetIoImpl::RemoveConnection(ConnectionId id) {
     std::lock_guard<std::mutex> lock(mutex_);
     connections_.erase(id);
 }
 
-void NetEngineImpl::OnConnectionClosed(ConnectionId id,
-                                       const TcpCallbacks &callbacks,
-                                       TcpCloseReason reason,
-                                       NetConnectionInfo info) {
+void NetIoImpl::OnConnectionClosed(ConnectionId id,
+                                   const TcpCallbacks &callbacks,
+                                   TcpCloseReason reason,
+                                   NetConnectionInfo info) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (connections_.find(id) != connections_.end()) {
@@ -454,7 +454,7 @@ void NetEngineImpl::OnConnectionClosed(ConnectionId id,
     DispatchClose(callbacks, id, reason);
 }
 
-void NetEngineImpl::RememberClosedConnectionLocked(
+void NetIoImpl::RememberClosedConnectionLocked(
     const NetConnectionInfo &info) {
     if (info.connection_id == 0) {
         return;
@@ -471,8 +471,8 @@ void NetEngineImpl::RememberClosedConnectionLocked(
     }
 }
 
-void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
-                                   ConnectionId id, NetAddress peer) {
+void NetIoImpl::DispatchAccept(const TcpCallbacks &callbacks,
+                               ConnectionId id, NetAddress peer) {
     if (callbacks.on_accept == nullptr) {
         return;
     }
@@ -486,8 +486,8 @@ void NetEngineImpl::DispatchAccept(const TcpCallbacks &callbacks,
     callbacks.on_accept(callbacks.user, id, std::move(peer));
 }
 
-void NetEngineImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
-                                 const uint8_t *data, size_t size) {
+void NetIoImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
+                             const uint8_t *data, size_t size) {
     if (callbacks.on_read == nullptr) {
         return;
     }
@@ -504,9 +504,9 @@ void NetEngineImpl::DispatchRead(const TcpCallbacks &callbacks, ConnectionId id,
     callbacks.on_read(callbacks.user, id, data, size);
 }
 
-void NetEngineImpl::DispatchClose(const TcpCallbacks &callbacks,
-                                  ConnectionId id,
-                                  TcpCloseReason reason) {
+void NetIoImpl::DispatchClose(const TcpCallbacks &callbacks,
+                              ConnectionId id,
+                              TcpCloseReason reason) {
     if (callbacks.on_close == nullptr) {
         return;
     }
@@ -520,9 +520,9 @@ void NetEngineImpl::DispatchClose(const TcpCallbacks &callbacks,
     callbacks.on_close(callbacks.user, id, reason);
 }
 
-void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
-                                UdpSocketId socket_id, NetAddress peer,
-                                const uint8_t *data, size_t size) {
+void NetIoImpl::DispatchUdp(const UdpCallbacks &callbacks,
+                            UdpSocketId socket_id, NetAddress peer,
+                            const uint8_t *data, size_t size) {
     if (callbacks.on_read == nullptr) {
         return;
     }
@@ -531,8 +531,8 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
         // 在 callback loop 中处理时只能看拷贝。
         std::vector<uint8_t> copy(data, data + size);
         (void)options_.callback_loop->Post([callbacks, socket_id,
-                                             peer = std::move(peer),
-                                             copy = std::move(copy)]() mutable {
+                                            peer = std::move(peer),
+                                            copy = std::move(copy)]() mutable {
             callbacks.on_read(callbacks.user, socket_id, peer, copy.data(),
                               copy.size());
         });
@@ -541,7 +541,7 @@ void NetEngineImpl::DispatchUdp(const UdpCallbacks &callbacks,
     callbacks.on_read(callbacks.user, socket_id, std::move(peer), data, size);
 }
 
-std::shared_ptr<EventLoop> NetEngineImpl::ResolveLoop(
+std::shared_ptr<EventLoop> NetIoImpl::ResolveLoop(
     event::Loop *loop) const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (loops_.empty()) {
@@ -559,7 +559,7 @@ std::shared_ptr<EventLoop> NetEngineImpl::ResolveLoop(
 }
 
 std::shared_ptr<TcpSession>
-NetEngineImpl::FindConnection(ConnectionId id) const {
+NetIoImpl::FindConnection(ConnectionId id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = connections_.find(id);
     return it == connections_.end() ? nullptr : it->second;

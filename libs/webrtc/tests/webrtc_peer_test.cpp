@@ -28,7 +28,7 @@ int main() {
 
     live_stream::WebrtcOptions options;
     options.max_peers = 1;
-    dependencies.net_engine = nullptr;
+    dependencies.net_io = nullptr;
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);
     if (!service || !service->Start()) {

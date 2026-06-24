@@ -144,7 +144,7 @@ pending frames, waiting keyframe, slow reader, and reader close reason.
 HLS playlist/segment requests are short HTTP responses and are diagnosed
 through stream readiness and HTTP error logs rather than persistent sessions.
 `WebrtcPeerInfo` mirrors backend peer state, stream, ICE
-selected flag, DTLS/SRTP readiness, RTP counters, RTCP feedback counters, last
+selected flag, DTLS/SRTP readiness, RTP feedback_stats, RTCP feedback feedback_stats, last
 error, and created/updated timestamps.
 
 WebRTC signaling uses RESTful peer paths. A successful offer response includes

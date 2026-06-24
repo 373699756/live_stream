@@ -1,15 +1,15 @@
-// System status API
+// System info API
 
-import { mockSystemStatus } from './mockSystem';
+import { mockSystemInfo } from './mockSystem';
 import { requestJson, type ApiRequestOptions } from './client';
-import type { SystemStatus } from './types';
+import type { SystemInfo } from './types';
 
-export function getSystemStatus(
+export function getSystemInfo(
     init?: ApiRequestOptions,
-): Promise<SystemStatus> {
-    return requestJson<SystemStatus>(
+): Promise<SystemInfo> {
+    return requestJson<SystemInfo>(
         '/api/system/status',
-        mockSystemStatus,
+        mockSystemInfo,
         init,
     );
 }

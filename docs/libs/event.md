@@ -16,7 +16,7 @@ flowchart LR
   Publishers[modules] --> Event[event]
   Event --> Dispatcher[Dispatcher]
   Dispatcher --> Handlers[module handlers]
-  Service[Service] --> Loop[Loop]
+  Bus[Bus] --> Loop[Loop]
   Loop --> Timers[timers]
   Executor[Executor] --> Tasks[task workers]
   ConfigFiles[configs/default_config.json + business_config.json] --> Config[IConfig]
@@ -30,7 +30,7 @@ flowchart LR
 
 - 提供 `Dispatcher::Subscribe`、`SubscribeTypes`、RAII `Subscription`、
   `Publish` 和 `GetCounts`。
-- 提供 `Service` 组合 `Loop + Dispatcher`，用于异步发布事件。
+- 提供 `Bus` 组合 `Loop + Dispatcher`，用于异步发布事件。
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
 - 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
   绑定任务/timer 生命周期。
@@ -62,7 +62,7 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 | `kNetworkChanged` | `system.network` | interface 或 port | 变更摘要 | 保留为 0 |
 | `kNetPressureChanged` | `net_stat` | `connections` | 压力等级摘要 | tracked target 数 |
 | `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
-| `kSystemStatusChanged` | `system` | status key | 状态摘要 | 状态码或 0 |
+| `kSystemInfoChanged` | `system` | info key | 信息摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |
 
 payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTTP body、大 JSON 和指针不能
@@ -74,7 +74,7 @@ payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTT
 默认值、scope 原子替换和 verify/apply 调用顺序。
 
 `alarm.h` 的 public API 名称保持 `IAlarm`、`AlarmOptions`、`AlarmRule`、
-`AlarmStatus`、`CreateAlarm()`。AI 告警图片归 `ai`，告警规则和触发状态归 `event`
+`AlarmInfo`、`CreateAlarm()`。AI 告警图片归 `ai`，告警规则和触发状态归 `event`
 内的 alarm 功能。HTTP 路由由 `http` 实现，业务状态来自 `IAlarm`。
 
 ## 非目标
@@ -91,10 +91,10 @@ handler 必须轻量。需要耗时业务时，handler 应投递到自己的任�
 发布线程或 event loop。
 
 `Dispatcher::Publish()` 是同步调用，返回 `EventStatus`；需要跨线程异步事件时使用
-`Service::PublishAsync()` 或 `Dispatcher::Post(loop, event)`。`Loop` 和 `Executor`
+`Bus::PublishAsync()` 或 `Dispatcher::Post(loop, event)`。`Loop` 和 `Executor`
 队列满时返回 `EventStatus::kQueueFull`，调用方必须按业务语义丢弃、重试或降级。
 
-`EventCounts` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。
+`EventStats` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。
 
 运行配置来自 `configs/default_config.json` 和 `configs/business_config.json`。
 `IConfig::Set` 成功必须代表 verify、apply 和保存都成功；保存失败会调用

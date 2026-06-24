@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { TimeStatus, TimeSyncSource } from '../api/types';
+import type { TimeInfo, TimeSyncSource } from '../api/types';
 
 interface TimeConfigPanelProps {
     browserSyncOnLogin: boolean;
@@ -17,7 +17,7 @@ interface TimeConfigPanelProps {
     setNtpIntervalSec: (value: number) => void;
     setNtpServersText: (value: string) => void;
     setTimezone: (value: string) => void;
-    status: TimeStatus;
+    status: TimeInfo;
     syncBrowserNow: () => void;
     syncNtp: () => void;
     timezone: string;

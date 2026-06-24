@@ -30,7 +30,7 @@ constexpr const char* kSystemUpgradeStagePath = "/tmp/live_stream/upgrade/staged
 constexpr const char* kInstalledHelperPath = "/opt/app/sbin/live_sysupgrade";
 constexpr const char* kTmpHelperPath = "/tmp/live_stream/upgrade/live_sysupgrade";
 constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
-constexpr const char* kUpgradeStatusPath = "/data/upgrade_status.json";
+constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 
 std::string FirmwareVersionString() {
     std::string version = ReadFirstText({
@@ -124,11 +124,11 @@ void AppendUpgradeLog(const std::string& message) {
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
 }
 
-void WriteUpgradeStatus(const std::string& state,
-                        uint32_t progress,
-                        bool ok,
-                        const std::string& version,
-                        const std::string& error_message) {
+void WriteUpgradeInfo(const std::string& state,
+                      uint32_t progress,
+                      bool ok,
+                      const std::string& version,
+                      const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
     ConfigJson root = ConfigJson::object();
     root["state"] = state;
@@ -136,7 +136,7 @@ void WriteUpgradeStatus(const std::string& state,
     root["ok"] = ok;
     root["version"] = version;
     root["error_message"] = error_message;
-    const std::string tmp_path = std::string(kUpgradeStatusPath) + ".tmp";
+    const std::string tmp_path = std::string(kUpgradeInfoPath) + ".tmp";
     const int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
         return;
@@ -157,7 +157,7 @@ void WriteUpgradeStatus(const std::string& state,
         write_ok = false;
     }
     close(fd);
-    if (!write_ok || rename(tmp_path.c_str(), kUpgradeStatusPath) != 0) {
+    if (!write_ok || rename(tmp_path.c_str(), kUpgradeInfoPath) != 0) {
         static_cast<void>(infra::File::Remove(tmp_path));
         return;
     }
@@ -362,7 +362,7 @@ public:
         std::string reason;
         if (!ParseUpgradePackage(info.package_path, &parsed, &reason)) {
             AppendUpgradeLog("prepare failed: " + reason);
-            WriteUpgradeStatus("failed", 100, false, info.version, reason);
+            WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
         }
         if (!infra::Path::MakeDirs(kUpgradeRootPath) ||
@@ -378,13 +378,13 @@ public:
             if (!upgrade_flash::IsPathOnTmpfs("/tmp/live_stream/upgrade")) {
                 reason = "/tmp/live_stream/upgrade is not tmpfs";
                 AppendUpgradeLog("prepare failed: " + reason);
-                WriteUpgradeStatus("failed", 100, false, info.version, reason);
+                WriteUpgradeInfo("failed", 100, false, info.version, reason);
                 return false;
             }
             if (!upgrade_flash::ValidateMtdLayoutForManifest(parsed.manifest,
                                                              &reason)) {
                 AppendUpgradeLog("prepare failed: " + reason);
-                WriteUpgradeStatus("failed", 100, false, info.version, reason);
+                WriteUpgradeInfo("failed", 100, false, info.version, reason);
                 return false;
             }
             return true;
@@ -408,12 +408,12 @@ public:
             if (!StartSystemUpgradeHelper(cached_package_, kTmpHelperPath,
                                           &reason)) {
                 AppendUpgradeLog("start helper failed: " + reason);
-                WriteUpgradeStatus("failed", 100, false,
-                                   cached_package_.manifest.version, reason);
+                WriteUpgradeInfo("failed", 100, false,
+                                 cached_package_.manifest.version, reason);
                 return false;
             }
-            WriteUpgradeStatus("writing", 80, true,
-                               cached_package_.manifest.version, "");
+            WriteUpgradeInfo("writing", 80, true,
+                             cached_package_.manifest.version, "");
             if (progress_callback) {
                 progress_callback(100);
             }
@@ -448,8 +448,8 @@ public:
             &reason);
         if (!write_ok) {
             AppendUpgradeLog("write failed: " + reason);
-            WriteUpgradeStatus("failed", 100, false,
-                               cached_package_.manifest.version, reason);
+            WriteUpgradeInfo("failed", 100, false,
+                             cached_package_.manifest.version, reason);
         }
         return write_ok;
     }
@@ -459,13 +459,13 @@ public:
             return false;
         }
         if (system_upgrade_) {
-            WriteUpgradeStatus("waiting_reboot", 100, true, info.version, "");
+            WriteUpgradeInfo("waiting_reboot", 100, true, info.version, "");
             AppendUpgradeLog("system upgrade delegated to RAM helper: " +
                              info.version);
             return true;
         }
-        WriteUpgradeStatus(info.requires_reboot ? "waiting_reboot" : "completed",
-                           100, true, info.version, "");
+        WriteUpgradeInfo(info.requires_reboot ? "waiting_reboot" : "completed",
+                         100, true, info.version, "");
         AppendUpgradeLog("web upgrade completed: " + info.version);
         return true;
     }

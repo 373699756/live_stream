@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_NET_SRC_NET_ENGINE_IMPL_H_
-#define LIVE_STREAM_NET_SRC_NET_ENGINE_IMPL_H_
+#ifndef LIVE_STREAM_NET_SRC_NET_IO_IMPL_H_
+#define LIVE_STREAM_NET_SRC_NET_IO_IMPL_H_
 
 #include "event_loop.h"
 #include "net.h"
@@ -18,10 +18,10 @@ class TcpSession;
 class TcpServer;
 class UdpSocket;
 
-class NetEngineImpl : public INetEngine {
+class NetIoImpl : public INetIo {
 public:
-    explicit NetEngineImpl(const NetEngineOptions &options);
-    ~NetEngineImpl() override;
+    explicit NetIoImpl(const NetIoOptions &options);
+    ~NetIoImpl() override;
 
     bool Start() override;
     void Stop() override;
@@ -91,7 +91,7 @@ private:
     void RememberClosedConnectionLocked(
         const NetConnectionInfo &info);
 
-    NetEngineOptions options_;
+    NetIoOptions options_;
     mutable std::mutex mutex_;
     mutable std::mutex stats_mutex_;
     // executors_ 由调用方显式 pick；listener、accepted session、UDP endpoint
@@ -118,4 +118,4 @@ private:
 }  // namespace net_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_NET_SRC_NET_ENGINE_IMPL_H_
+#endif  // LIVE_STREAM_NET_SRC_NET_IO_IMPL_H_

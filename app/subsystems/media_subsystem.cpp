@@ -2,7 +2,7 @@
 
 #include "infra/log.h"
 #include "hisi_vendor/mpp_hisi_sdk.h"
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 
 namespace live_stream {
@@ -44,13 +44,13 @@ MediaSubsystem &MediaSubsystem::Get() {
     return subsystem;
 }
 
-bool MediaSubsystem::Start(CoreSubsystem &core_subsystem,
+bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
                            const DeviceRefs &device_refs) {
     if (started_) {
         return true;
     }
 
-    IConfig *config = core_subsystem.config();
+    IConfig *config = foundation_subsystem.config();
     hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
 
     DeviceMediaOptions device_options;

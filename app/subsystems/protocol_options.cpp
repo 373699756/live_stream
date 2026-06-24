@@ -2,7 +2,7 @@
 
 #include "http_dependencies.h"
 #include "infra/log.h"
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 
 #include <cctype>
 #include <string>
@@ -94,8 +94,8 @@ std::string ResolveWebrtcPublicIp(
     }
 
     if (refs.device.network != nullptr) {
-        const NetStatus status =
-            refs.device.network->GetInterfaceStatus(
+        const NetInterfaceInfo status =
+            refs.device.network->GetInterfaceInfo(
                 app_config.network_ifname);
         if (IsUsableWebrtcPublicIp(status.static_ipv4.address)) {
             Info("app", "WebRTC public_ip auto resolved ifname=%s ip=%s",
@@ -125,8 +125,8 @@ event::LoopOptions BuildNetCallbackOptions() {
     return options;
 }
 
-NetEngineOptions BuildNetEngineOptions(event::Loop *callback_loop) {
-    NetEngineOptions options;
+NetIoOptions BuildNetIoOptions(event::Loop *callback_loop) {
+    NetIoOptions options;
     options.io_threads = kNetIoThreadCount;
     options.enable_thread_affinity = false;
     options.callback_mode = CallbackMode::kPostToLoop;
@@ -147,10 +147,10 @@ RtspOptions BuildRtspOptions(const AppConfig &app_config) {
 
 RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs) {
     RtspDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
+    dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.rtsp_loop;
-    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
+    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
     dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
@@ -176,10 +176,10 @@ WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
 WebrtcDependencies BuildWebrtcDependencies(
     const ProtocolStartupRefs &refs) {
     WebrtcDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
+    dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.webrtc_loop;
     dependencies.media_streams = refs.media.media_streams;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
     return dependencies;
 }
 
@@ -202,10 +202,10 @@ OnvifServerOptions BuildOnvifOptions(
 OnvifServerDependencies BuildOnvifDependencies(
     const ProtocolStartupRefs &refs) {
     OnvifServerDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
+    dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.onvif_loop;
-    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
+    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
     dependencies.system = refs.device.system;
     dependencies.time = refs.device.time;
     dependencies.device = refs.media.device;
@@ -234,11 +234,11 @@ HttpOptions BuildHttpOptions(const AppConfig &app_config) {
 HttpDependencies BuildHttpDependencies(
     const ProtocolStartupRefs &refs) {
     HttpDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
+    dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.http_loop;
-    dependencies.auth = refs.core != nullptr ? refs.core->auth() : nullptr;
-    dependencies.logger = refs.core != nullptr ? refs.core->logger() : nullptr;
-    dependencies.config = refs.core != nullptr ? refs.core->config() : nullptr;
+    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
+    dependencies.logger = refs.foundation != nullptr ? refs.foundation->logger() : nullptr;
+    dependencies.config = refs.foundation != nullptr ? refs.foundation->config() : nullptr;
     dependencies.network = refs.device.network;
     dependencies.time = refs.device.time;
     dependencies.alarm = refs.device.alarm;
@@ -250,7 +250,7 @@ HttpDependencies BuildHttpDependencies(
     dependencies.device = refs.media.device;
     dependencies.webrtc = refs.webrtc;
     dependencies.media_streams = refs.media.media_streams;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
     return dependencies;
 }
 
@@ -262,8 +262,8 @@ NetStatOptions BuildNetStatOptions() {
 NetStatDependencies BuildNetStatDependencies(
     const ProtocolStartupRefs &refs) {
     NetStatDependencies dependencies;
-    dependencies.net_engine = refs.net_engine;
-    dependencies.event = refs.core != nullptr ? refs.core->event() : nullptr;
+    dependencies.net_io = refs.net_io;
+    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
     return dependencies;
 }
 

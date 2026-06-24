@@ -13,9 +13,9 @@ void OnUdp(void *,
 }  // namespace
 
 int main() {
-    live_stream::NetEngineOptions options;
+    live_stream::NetIoOptions options;
     options.io_threads = 2;
-    auto engine = live_stream::CreateNetEngine(options);
+    auto engine = live_stream::CreateNetIo(options);
     if (!engine) {
         return 1;
     }

@@ -19,7 +19,7 @@ namespace live_stream {
 class IAuth;
 class DeviceMedia;
 class IRtsp;
-class INetEngine;
+class INetIo;
 class ISystem;
 class ITime;
 
@@ -49,7 +49,7 @@ struct OnvifServerStats {
 };
 
 struct OnvifServerDependencies {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     IAuth *auth = nullptr;
     event::Dispatcher *event = nullptr;

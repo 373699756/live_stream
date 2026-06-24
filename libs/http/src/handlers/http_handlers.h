@@ -24,7 +24,7 @@ class IAiView;
 class IWebrtc;
 class IHttp;
 
-struct SystemStatusSources {
+struct SystemOverviewSources {
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
     IAuth *auth = nullptr;
@@ -71,7 +71,7 @@ struct HttpHandlerDependencies {
     IWebrtc *webrtc = nullptr;
     IHttp *http = nullptr;
     IAiView *ai = nullptr;
-    SystemStatusSources system_status_sources;
+    SystemOverviewSources system_overview_sources;
 };
 
 std::unique_ptr<IHttpHandler> CreateHttpHandler(
@@ -92,7 +92,7 @@ std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
     HttpAccess *access, IUpgrade *upgrade);
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
     HttpAccess *access, ISystem *system,
-    const SystemStatusSources &status_sources);
+    const SystemOverviewSources &overview_sources);
 std::unique_ptr<IHttpHandler> MakeAlarmHandler(
     HttpAccess *access, IAlarm *alarm);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(

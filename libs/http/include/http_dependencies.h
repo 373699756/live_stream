@@ -7,7 +7,7 @@
 
 namespace live_stream {
 
-class INetEngine;
+class INetIo;
 class IAuth;
 class IConfig;
 class ILogger;
@@ -23,7 +23,7 @@ class DeviceMedia;
 class IAiView;
 
 struct HttpDependencies {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;

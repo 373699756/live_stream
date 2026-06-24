@@ -83,8 +83,8 @@ private:
         const std::vector<std::string> ifnames =
             network->GetInterfaces();
         for (const std::string &ifname : ifnames) {
-            items.push_back(NetStatusToApiJson(
-                network->GetInterfaceStatus(ifname)));
+            items.push_back(NetInterfaceInfoToApiJson(
+                network->GetInterfaceInfo(ifname)));
         }
         root["items"] = items;
         return JsonResponse(200, root);
@@ -107,12 +107,12 @@ private:
                                           &principal)) {
                 return ForbiddenResponse(principal);
             }
-            const NetStatus status =
-                network->GetInterfaceStatus(ifname);
+            const NetInterfaceInfo status =
+                network->GetInterfaceInfo(ifname);
             if (status.ifname.empty()) {
                 return StatusResponse(404, "Not Found");
             }
-            return JsonResponse(200, NetStatusToApiJson(status));
+            return JsonResponse(200, NetInterfaceInfoToApiJson(status));
         }
 
         AuthPrincipal principal;
@@ -147,7 +147,7 @@ private:
                                       &principal)) {
             return ForbiddenResponse(principal);
         }
-        return network->ReloadStatus()
+        return network->ReloadInterfaceInfo()
                    ? OkResponse()
                    : StatusResponse(503, "Could not reload network status");
     }

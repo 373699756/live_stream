@@ -3,7 +3,7 @@
 #include "infra/log.h"
 #include "net.h"
 #include "webrtc_callback_guard.h"
-#include "webrtc_engine.h"
+#include "webrtc_peer_host.h"
 #include "webrtc_peer_table.h"
 #include "webrtc_rtp_sender.h"
 #include "webrtc_sdp.h"
@@ -67,7 +67,7 @@ public:
                WebrtcDependencies dependencies)
         : options_(std::move(options)),
           media_streams_(dependencies.media_streams),
-          net_engine_(dependencies.net_engine),
+          net_io_(dependencies.net_io),
           net_loop_(dependencies.net_loop),
           event_(dependencies.event),
           callback_guard_(new WebrtcCallbackGuard()),
@@ -108,7 +108,7 @@ public:
     void Stop() override {
         std::vector<std::string> peer_ids;
         std::vector<ClosingSubscription> closing_subscriptions;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::unique_lock<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted) {
@@ -121,14 +121,14 @@ public:
                 return NoPeerSubscriptionDrainingLocked();
             });
             closing_subscriptions = TakeAllPeerSubscriptionsLocked();
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
         ReleasePeerSubscriptions(&closing_subscriptions,
                                  SubscriptionClose::kStreamStopped);
-        if (engine) {
+        if (peer_host) {
             for (const std::string &peer_id : peer_ids) {
-                (void)engine->ClosePeer(peer_id);
+                (void)peer_host->ClosePeer(peer_id);
             }
         }
 
@@ -141,7 +141,7 @@ public:
             return false;
         }
 
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (options.session_timeout_ms != options_.session_timeout_ms ||
@@ -150,10 +150,10 @@ public:
                 options.local_port_base != options_.local_port_base) {
                 return false;
             }
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
-        if (engine && !engine->ApplyOptions(options)) {
+        if (peer_host && !peer_host->ApplyOptions(options)) {
             return false;
         }
 
@@ -176,7 +176,7 @@ public:
     WebrtcPeerInfo CreatePeer(const WebrtcCreatePeerRequest &request) override {
         CloseStaleSetupPeers(TakeStalePeerIds());
         WebrtcPeerInfo peer;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         std::vector<std::string> replaced_peer_ids;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -186,8 +186,8 @@ public:
             if (!options_.enabled) {
                 return CreatePeerError("webrtc_disabled");
             }
-            if (!engine_ || !engine_->Available()) {
-                return CreatePeerError("engine_unavailable");
+            if (!peer_host_ || !peer_host_->Available()) {
+                return CreatePeerError("peer_host_unavailable");
             }
             if (!IsValidStream(request.stream_id)) {
                 return CreatePeerError("invalid_stream");
@@ -207,23 +207,23 @@ public:
                 return CreatePeerError("peer_limit_reached");
             }
             peer = peer_table_.CreatePeer(request, codec);
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
         for (const std::string &peer_id : replaced_peer_ids) {
             ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
-            if (engine) {
-                (void)engine->ClosePeer(peer_id);
+            if (peer_host) {
+                (void)peer_host->ClosePeer(peer_id);
             }
         }
 
-        if (!engine || !engine->CreatePeer(peer)) {
+        if (!peer_host || !peer_host->CreatePeer(peer)) {
             std::lock_guard<std::mutex> guard(mutex_);
             (void)peer_table_.RemovePeer(peer.peer_id);
-            return CreatePeerError("engine_create_failed");
+            return CreatePeerError("peer_host_create_failed");
         }
 
-        bool close_engine_peer = false;
+        bool close_peer_host = false;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             const WebrtcPeerInfo current_peer = peer_table_.GetPeer(peer.peer_id);
@@ -232,13 +232,13 @@ public:
                 current_peer.state == WebrtcPeerState::kClosing ||
                 current_peer.state == WebrtcPeerState::kClosed ||
                 current_peer.state == WebrtcPeerState::kFailed) {
-                close_engine_peer = true;
+                close_peer_host = true;
             } else {
                 ++stats_.total_peers;
             }
         }
-        if (close_engine_peer) {
-            (void)engine->ClosePeer(peer.peer_id);
+        if (close_peer_host) {
+            (void)peer_host->ClosePeer(peer.peer_id);
             std::lock_guard<std::mutex> guard(mutex_);
             (void)peer_table_.RemovePeer(peer.peer_id);
             return CreatePeerError("peer_create_interrupted");
@@ -251,7 +251,7 @@ public:
         WebrtcAnswer result;
         result.peer_id = request.peer_id;
         WebrtcPeerInfo peer;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         std::vector<WebrtcIceCandidate> pending_candidates;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -266,15 +266,15 @@ public:
                 result.error = "peer_not_found";
                 return result;
             }
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
-        if (!engine) {
+        if (!peer_host) {
             result.state = WebrtcPeerState::kFailed;
-            result.error = "engine_unavailable";
+            result.error = "peer_host_unavailable";
             return result;
         }
-        const std::string answer = engine->HandleOffer(peer, request.sdp);
+        const std::string answer = peer_host->HandleOffer(peer, request.sdp);
 
         if (answer.empty()) {
             (void)ClosePeerByService(request.peer_id, "sdp_not_ready",
@@ -292,13 +292,13 @@ public:
             }
         }
         if (peer.peer_id.empty()) {
-            (void)engine->ClosePeer(request.peer_id);
+            (void)peer_host->ClosePeer(request.peer_id);
             result.state = WebrtcPeerState::kFailed;
             result.error = "peer_not_found";
             return result;
         }
         for (const WebrtcIceCandidate &candidate : pending_candidates) {
-            (void)engine->AddIceCandidate(candidate);
+            (void)peer_host->AddIceCandidate(candidate);
         }
         result.sdp = answer;
         result.state = peer.state;
@@ -307,7 +307,7 @@ public:
 
     bool AddIceCandidate(const WebrtcIceCandidate &candidate) override {
         bool queued = false;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (state_ != ServiceState::kStarted || candidate.peer_id.empty() ||
@@ -321,10 +321,10 @@ public:
                 ++stats_.remote_candidates;
                 return true;
             }
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
-        if (!engine || !engine->AddIceCandidate(candidate)) {
+        if (!peer_host || !peer_host->AddIceCandidate(candidate)) {
             return false;
         }
 
@@ -344,15 +344,15 @@ public:
 
     std::vector<WebrtcPeerInfo> GetPeers() const override {
         std::vector<WebrtcPeerInfo> peers;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             peers = peer_table_.OpenPeers();
-            engine = engine_;
+            peer_host = peer_host_;
         }
         for (WebrtcPeerInfo &peer : peers) {
-            if (engine) {
-                (void)engine->FillPeerInfo(peer.peer_id, &peer);
+            if (peer_host) {
+                (void)peer_host->FillPeerInfo(peer.peer_id, &peer);
             }
             FillPeerSubscriptionInfo(&peer);
         }
@@ -360,7 +360,7 @@ public:
     }
 
     WebrtcStats GetStats() const override {
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         WebrtcStats result;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -372,11 +372,11 @@ public:
             result.ice_server_count =
                 static_cast<uint32_t>(options_.ice_servers.size());
             result.public_ip = options_.public_ip;
-            engine = engine_;
+            peer_host = peer_host_;
         }
-        result.signaling_ready = engine && engine->Available();
-        if (engine) {
-            engine->FillStats(&result);
+        result.signaling_ready = peer_host && peer_host->Available();
+        if (peer_host) {
+            peer_host->FillStats(&result);
         }
         return result;
     }
@@ -394,9 +394,9 @@ private:
         LeaveWebrtcCallback(guard);
     }
 
-    static void OnEnginePeerStateChanged(void *user, const char *peer_id,
-                                         WebrtcPeerState state,
-                                         const char *last_error) {
+    static void OnPeerHostPeerStateChanged(void *user, const char *peer_id,
+                                           WebrtcPeerState state,
+                                           const char *last_error) {
         if (user == nullptr || peer_id == nullptr) {
             return;
         }
@@ -406,12 +406,12 @@ private:
         if (service == nullptr) {
             return;
         }
-        service->HandleEnginePeerStateChanged(
+        service->HandlePeerHostPeerStateChanged(
             peer_id, state, last_error == nullptr ? "" : last_error);
         LeaveWebrtcCallback(guard);
     }
 
-    static void OnEngineKeyframeRequest(void *user, const char *peer_id) {
+    static void OnPeerHostKeyframeRequest(void *user, const char *peer_id) {
         if (user == nullptr || peer_id == nullptr) {
             return;
         }
@@ -434,18 +434,19 @@ private:
             state_ == ServiceState::kStarted || state_ == ServiceState::kStopped) {
             return true;
         }
-        std::unique_ptr<webrtc_internal::IWebrtcEngine> engine =
-            webrtc_internal::CreateWebrtcEngine(net_engine_, net_loop_);
-        webrtc_internal::WebrtcEngineCallbacks callbacks;
+        std::unique_ptr<webrtc_internal::IWebrtcPeerHost> peer_host =
+            webrtc_internal::CreateWebrtcPeerHost(net_io_, net_loop_);
+        webrtc_internal::WebrtcPeerHostCallbacks callbacks;
         callbacks.user = callback_guard_.get();
-        callbacks.OnPeerStateChanged = &WebrtcImpl::OnEnginePeerStateChanged;
+        callbacks.OnPeerStateChanged =
+            &WebrtcImpl::OnPeerHostPeerStateChanged;
         callbacks.OnPeerKeyframeRequest =
-            &WebrtcImpl::OnEngineKeyframeRequest;
-        if (!engine || !engine->Start(options_, callbacks)) {
+            &WebrtcImpl::OnPeerHostKeyframeRequest;
+        if (!peer_host || !peer_host->Start(options_, callbacks)) {
             return false;
         }
-        engine_ = std::shared_ptr<webrtc_internal::IWebrtcEngine>(
-            std::move(engine));
+        peer_host_ = std::shared_ptr<webrtc_internal::IWebrtcPeerHost>(
+            std::move(peer_host));
         state_ = ServiceState::kInitialized;
         return true;
     }
@@ -453,7 +454,7 @@ private:
     void Release() {
         CloseServiceCallbacks();
         WaitServiceCallbacks();
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         std::vector<ClosingSubscription> closing_subscriptions;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -463,12 +464,12 @@ private:
             state_ = ServiceState::kDeinitialized;
             closing_subscriptions = TakeAllPeerSubscriptionsLocked();
             peer_table_.Clear();
-            engine = std::move(engine_);
+            peer_host = std::move(peer_host_);
         }
         ReleasePeerSubscriptions(&closing_subscriptions,
                                  SubscriptionClose::kStreamStopped);
-        if (engine) {
-            engine->Stop();
+        if (peer_host) {
+            peer_host->Stop();
         }
     }
 
@@ -480,16 +481,16 @@ private:
         WaitWebrtcCallbacks(callback_guard_.get());
     }
 
-    void HandleEnginePeerStateChanged(const std::string &peer_id,
-                                      WebrtcPeerState state,
-                                      const std::string &last_error) {
-        webrtc_internal::EnginePeerStateUpdate update;
+    void HandlePeerHostPeerStateChanged(const std::string &peer_id,
+                                        WebrtcPeerState state,
+                                        const std::string &last_error) {
+        webrtc_internal::PeerHostStateUpdate update;
         WebrtcPeerInfo peer_before;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             peer_before = peer_table_.GetPeer(peer_id);
             update =
-                peer_table_.ApplyEngineState(peer_id, state, last_error);
+                peer_table_.ApplyPeerHostState(peer_id, state, last_error);
         }
 
         if (state == WebrtcPeerState::kConnected) {
@@ -535,15 +536,15 @@ private:
         }
     }
 
-    std::shared_ptr<webrtc_internal::IWebrtcEngine> EngineSnapshot() const {
+    std::shared_ptr<webrtc_internal::IWebrtcPeerHost> PeerHostSnapshot() const {
         std::lock_guard<std::mutex> guard(mutex_);
-        return engine_;
+        return peer_host_;
     }
 
     bool ClosePeerByService(const std::string &peer_id,
                             const std::string &last_error,
                             bool failed) {
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         WebrtcPeerInfo peer;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -554,10 +555,10 @@ private:
             if (peer.peer_id.empty()) {
                 return false;
             }
-            engine = engine_;
+            peer_host = peer_host_;
         }
-        if (engine) {
-            (void)engine->FillPeerInfo(peer_id, &peer);
+        if (peer_host) {
+            (void)peer_host->FillPeerInfo(peer_id, &peer);
         }
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -568,31 +569,31 @@ private:
         }
 
         ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
-        if (engine) {
-            (void)engine->ClosePeer(peer_id);
+        if (peer_host) {
+            (void)peer_host->ClosePeer(peer_id);
         }
 
         const WebrtcPeerState final_state =
             failed ? WebrtcPeerState::kFailed : WebrtcPeerState::kClosed;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            (void)peer_table_.ApplyEngineState(peer_id, final_state,
-                                               last_error);
+            (void)peer_table_.ApplyPeerHostState(peer_id, final_state,
+                                                 last_error);
         }
         PublishPeerEvent(peer, final_state, last_error);
         return true;
     }
 
     WebrtcPeerInfo BuildPeerInfo(const std::string &peer_id) const {
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         WebrtcPeerInfo peer;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             peer = peer_table_.GetPeer(peer_id);
-            engine = engine_;
+            peer_host = peer_host_;
         }
-        if (!peer.peer_id.empty() && engine) {
-            (void)engine->FillPeerInfo(peer_id, &peer);
+        if (!peer.peer_id.empty() && peer_host) {
+            (void)peer_host->FillPeerInfo(peer_id, &peer);
         }
         FillPeerSubscriptionInfo(&peer);
         return peer;
@@ -736,7 +737,8 @@ private:
         const event::EventStatus timer_status = net_loop_->RunEvery(
             kWebrtcDrainIntervalMs, [callback_guard, peer_id]() {
                 WebrtcImpl::DispatchPeerDrain(callback_guard, peer_id);
-            }, &timer_id);
+            },
+            &timer_id);
         if (timer_status != event::EventStatus::kOk || timer_id == 0) {
             ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
             return;
@@ -853,12 +855,12 @@ private:
     }
 
     void SendPeerMediaFrame(const std::string &peer_id,
-                              const MediaFrame &frame) {
+                            const MediaFrame &frame) {
         WebrtcPeerInfo peer;
-        std::shared_ptr<webrtc_internal::IWebrtcEngine> engine;
+        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted || engine_ == nullptr ||
+            if (state_ != ServiceState::kStarted || peer_host_ == nullptr ||
                 peer_subscriptions_.find(peer_id) == peer_subscriptions_.end()) {
                 ++stats_.dropped_frames;
                 return;
@@ -875,11 +877,11 @@ private:
                 ++stats_.dropped_frames;
                 return;
             }
-            engine = engine_;
+            peer_host = peer_host_;
         }
 
         webrtc_internal::WebrtcRtpSenderContext context;
-        context.engine = engine;
+        context.peer_host = peer_host;
         context.mutex = &mutex_;
         context.service_stats = &stats_;
         (void)rtp_sender_.SendFrame(peer, frame, context);
@@ -1024,11 +1026,11 @@ private:
 
     WebrtcOptions options_;
     MediaStreams *media_streams_ = nullptr;
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     event::Dispatcher *event_ = nullptr;
     ServiceState state_ = ServiceState::kCreated;
-    std::shared_ptr<webrtc_internal::IWebrtcEngine> engine_;
+    std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;
     mutable std::mutex mutex_;
     std::condition_variable subscription_condition_;

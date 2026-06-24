@@ -8,7 +8,7 @@
 
 namespace live_stream {
 
-class INetEngine;
+class INetIo;
 namespace event {
 class Dispatcher;
 }
@@ -44,7 +44,7 @@ struct NetStatOptions {
 };
 
 struct NetStatDependencies {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Dispatcher *event = nullptr;
 };
 

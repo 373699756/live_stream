@@ -6,7 +6,7 @@
 长期设计正文维护在 `event.md`，AI 图片归 `ai.md`，HTTP 路由归 `http.md`。
 
 public header 名称保持 `alarm.h`，实际路径为 `libs/event/include/alarm.h`。
-public API 名称保持 `IAlarm`、`AlarmOptions`、`AlarmRule`、`AlarmStatus`、
+public API 名称保持 `IAlarm`、`AlarmOptions`、`AlarmRule`、`AlarmInfo`、
 `CreateAlarm()`。
 
 ## 历史模块定位
@@ -28,7 +28,7 @@ flowchart LR
 
 ## 核心职责
 
-- 维护 `AlarmRule` 和 `AlarmStatus`。
+- 维护 `AlarmRule` 和 `AlarmInfo`。
 - 接收 motion、AI detection、IO、tamper、network 等告警输入。
 - 按规则发布 `kAlarmOn` 和 `kAlarmOff`。
 - 记录规则修改和清除操作。

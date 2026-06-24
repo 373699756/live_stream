@@ -1,6 +1,6 @@
 #include "net.h"
 
-#include "net_engine_impl.h"
+#include "net_io_impl.h"
 
 #include <memory>
 #include <utility>
@@ -33,13 +33,13 @@ const char *TcpCloseReasonName(TcpCloseReason reason) {
     return "internal_error";
 }
 
-std::unique_ptr<INetEngine> CreateNetEngine(const NetEngineOptions &options) {
+std::unique_ptr<INetIo> CreateNetIo(const NetIoOptions &options) {
     if (options.io_threads == 0 ||
         (options.callback_mode == CallbackMode::kPostToLoop &&
          options.callback_loop == nullptr)) {
         return nullptr;
     }
-    return std::unique_ptr<INetEngine>(new net_internal::NetEngineImpl(options));
+    return std::unique_ptr<INetIo>(new net_internal::NetIoImpl(options));
 }
 
 }  // namespace live_stream

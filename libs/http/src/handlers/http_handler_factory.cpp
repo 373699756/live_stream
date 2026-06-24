@@ -27,7 +27,7 @@ std::unique_ptr<IHttpHandler> CreateHttpHandler(
         case HttpHandlerKind::kSystem:
             return MakeSystemHandler(
                 dependencies.access, dependencies.system,
-                dependencies.system_status_sources);
+                dependencies.system_overview_sources);
         case HttpHandlerKind::kAlarm:
             return MakeAlarmHandler(dependencies.access,
                                     dependencies.alarm);

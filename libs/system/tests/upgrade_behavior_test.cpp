@@ -218,12 +218,12 @@ bool WaitForState(live_stream::IUpgrade* service,
     const int64_t begin = infra::Time::MonotonicMillis();
     while (infra::Time::MonotonicMillis() - begin <
            static_cast<int64_t>(timeout_ms)) {
-        if (service->GetStatus().state == state) {
+        if (service->GetUpgradeInfo().state == state) {
             return true;
         }
         infra::Time::SleepMillis(10);
     }
-    return service->GetStatus().state == state;
+    return service->GetUpgradeInfo().state == state;
 }
 
 bool ContainsCall(const FakeUpgradePlatform& platform, const std::string& call) {
@@ -267,8 +267,8 @@ int TestSuccessAndConfirmReboot() {
         ContainsCall(platform, "reboot")) {
         return 4;
     }
-    if (service->GetStatus().progress_percent != 100 ||
-        service->GetStatus().target_version != "2.0.0") {
+    if (service->GetUpgradeInfo().progress_percent != 100 ||
+        service->GetUpgradeInfo().target_version != "2.0.0") {
         return 5;
     }
     if (event.events.empty() || logger.records.empty() ||
@@ -279,7 +279,7 @@ int TestSuccessAndConfirmReboot() {
     if (!service->ConfirmReboot(MakeContext())) {
         return 7;
     }
-    if (service->GetStatus().state != UpgradeState::kCompleted ||
+    if (service->GetUpgradeInfo().state != UpgradeState::kCompleted ||
         !ContainsCall(platform, "reboot")) {
         return 8;
     }
@@ -320,7 +320,7 @@ int TestBusyAndCancel() {
         return 6;
     }
     if (!platform.cancel_called ||
-        service->GetStatus().current_stage != "canceled") {
+        service->GetUpgradeInfo().current_stage != "canceled") {
         return 7;
     }
     std::remove(package_path.c_str());
@@ -349,7 +349,7 @@ int TestPolicyAndFailureCleanup() {
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 3;
     }
-    if (service->GetStatus().error_message != "same version is not allowed" ||
+    if (service->GetUpgradeInfo().error_message != "same version is not allowed" ||
         logger.records.empty() ||
         logger.records.back().result != live_stream::OperationResult::kRejected) {
         return 4;
@@ -364,7 +364,7 @@ int TestPolicyAndFailureCleanup() {
         return 6;
     }
     if (!platform.cleanup_called ||
-        service->GetStatus().error_message != "prepare upgrade failed") {
+        service->GetUpgradeInfo().error_message != "prepare upgrade failed") {
         return 7;
     }
 
@@ -395,7 +395,7 @@ int TestDefaultPlatformIsRestricted() {
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 4;
     }
-    if (service->GetStatus().error_message != "package validation failed") {
+    if (service->GetUpgradeInfo().error_message != "package validation failed") {
         return 5;
     }
     std::remove(package_path.c_str());
@@ -511,7 +511,7 @@ int TestAutoRebootAndCommittedFailure() {
         return 3;
     }
     if (!ContainsCall(platform, "reboot") ||
-        service->GetStatus().progress_percent != 100) {
+        service->GetUpgradeInfo().progress_percent != 100) {
         return 4;
     }
 
@@ -523,7 +523,7 @@ int TestAutoRebootAndCommittedFailure() {
     if (!WaitForState(service.get(), UpgradeState::kFailed)) {
         return 6;
     }
-    if (service->GetStatus().error_message.find(
+    if (service->GetUpgradeInfo().error_message.find(
             "committed upgrade may require manual recovery") ==
         std::string::npos) {
         return 7;

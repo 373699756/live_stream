@@ -33,9 +33,9 @@ std::string BuildDeviceInformationBody(const OnvifServerOptions &options,
 }
 
 std::string BuildSystemDateAndTimeBody(ITime *time) {
-    TimeStatus status;
+    TimeInfo status;
     if (time != nullptr) {
-        status = time->GetTimeStatus();
+        status = time->GetTimeInfo();
     }
     return "<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime>"
            "<tds:TimeZone><tt:TZ>" +

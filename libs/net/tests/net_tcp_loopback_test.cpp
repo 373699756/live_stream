@@ -11,7 +11,7 @@
 namespace {
 
 struct TcpState {
-    live_stream::INetEngine* engine = nullptr;
+    live_stream::INetIo* engine = nullptr;
     live_stream::ConnectionId connection_id = 0;
     bool received = false;
 };
@@ -35,8 +35,8 @@ void OnRead(void* user,
 }  // namespace
 
 int main() {
-    live_stream::NetEngineOptions engine_options;
-    auto engine = live_stream::CreateNetEngine(engine_options);
+    live_stream::NetIoOptions engine_options;
+    auto engine = live_stream::CreateNetIo(engine_options);
     if (!engine) {
         return 1;
     }

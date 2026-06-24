@@ -63,7 +63,7 @@ bool TimeConfigFromJson(const ConfigJson &value, TimeConfig *config) {
     return true;
 }
 
-ConfigJson TimeStatusToJson(const TimeStatus &status) {
+ConfigJson TimeInfoToJson(const TimeInfo &status) {
     ConfigJson root = ConfigJson::object();
     root["system_time_ms"] = status.system_time_ms;
     root["timezone"] = status.timezone;
@@ -168,7 +168,7 @@ private:
             return ForbiddenResponse(principal);
         }
         return JsonResponse(200,
-                            TimeStatusToJson(time->GetTimeStatus()));
+                            TimeInfoToJson(time->GetTimeInfo()));
     }
 
     HttpResponse HandleConfig(const HttpRequest &request) {

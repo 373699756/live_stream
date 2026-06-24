@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getAlarmConfig, getAlarmStatus } from '../api/alarm';
+import { getAlarmConfig, getAlarmInfo } from '../api/alarm';
 import { getAiAlerts, getAiStatus } from '../api/ai';
 import { openMediaEvents, type MediaEvent } from '../api/mediaEvents';
 import type {
     AiAlertRecord,
     AiStatus,
     AlarmConfig,
-    AlarmStatusResponse,
+    AlarmInfoResponse,
 } from '../api/types';
 
 const kRealtimePollMs = 3000;
@@ -32,7 +32,7 @@ function normalizeAlerts(alerts: AiAlertRecord[]): AiAlertRecord[] {
 interface AiAlertsState {
     status: AiStatus | null;
     alarmConfig: AlarmConfig | null;
-    alarmStatus: AlarmStatusResponse | null;
+    alarmInfo: AlarmInfoResponse | null;
     lastAlarmEvent: MediaEvent | null;
     alerts: AiAlertRecord[];
     loading: boolean;
@@ -43,7 +43,7 @@ interface AiAlertsState {
 export function useAiAlerts(): AiAlertsState {
     const [status, setStatus] = useState<AiStatus | null>(null);
     const [alarmConfig, setAlarmConfig] = useState<AlarmConfig | null>(null);
-    const [alarmStatus, setAlarmStatus] = useState<AlarmStatusResponse | null>(
+    const [alarmInfo, setAlarmInfo] = useState<AlarmInfoResponse | null>(
         null,
     );
     const [lastAlarmEvent, setLastAlarmEvent] = useState<MediaEvent | null>(
@@ -82,12 +82,12 @@ export function useAiAlerts(): AiAlertsState {
         setLoading(true);
         setError('');
         try {
-            const [nextStatus, nextAlerts, nextAlarmConfig, nextAlarmStatus] =
+            const [nextStatus, nextAlerts, nextAlarmConfig, nextAlarmInfo] =
                 await Promise.all([
                     getAiStatus({ signal: controller.signal }),
                     getAiAlerts({ signal: controller.signal }),
                     getAlarmConfig({ signal: controller.signal }),
-                    getAlarmStatus({ signal: controller.signal }),
+                    getAlarmInfo({ signal: controller.signal }),
                 ]);
             if (
                 controller.signal.aborted ||
@@ -98,7 +98,7 @@ export function useAiAlerts(): AiAlertsState {
             setStatus(nextStatus);
             applyAlerts(nextAlerts.items, false);
             setAlarmConfig(nextAlarmConfig);
-            setAlarmStatus(nextAlarmStatus);
+            setAlarmInfo(nextAlarmInfo);
         } catch (err) {
             if (
                 controller.signal.aborted ||
@@ -124,7 +124,7 @@ export function useAiAlerts(): AiAlertsState {
         let alertRetryTimers: number[] = [];
         let pollTimer: number | undefined;
         let aiStatusController: AbortController | null = null;
-        let alarmStatusController: AbortController | null = null;
+        let alarmInfoController: AbortController | null = null;
         let alertListController: AbortController | null = null;
         const clearAlertRetryTimers = () => {
             alertRetryTimers.forEach((timer) => window.clearTimeout(timer));
@@ -139,11 +139,11 @@ export function useAiAlerts(): AiAlertsState {
                     // The manual refresh path reports persistent status failures.
                 });
         };
-        const refreshAlarmStatus = () => {
-            alarmStatusController?.abort();
-            alarmStatusController = new AbortController();
-            void getAlarmStatus({ signal: alarmStatusController.signal })
-                .then(setAlarmStatus)
+        const refreshAlarmInfo = () => {
+            alarmInfoController?.abort();
+            alarmInfoController = new AbortController();
+            void getAlarmInfo({ signal: alarmInfoController.signal })
+                .then(setAlarmInfo)
                 .catch(() => {
                     // The manual refresh path reports persistent alarm failures.
                 });
@@ -162,7 +162,7 @@ export function useAiAlerts(): AiAlertsState {
                 return;
             }
             refreshAiStatus();
-            refreshAlarmStatus();
+            refreshAlarmInfo();
             refreshAlertList();
         };
         const scheduleAlertRetries = () => {
@@ -179,7 +179,7 @@ export function useAiAlerts(): AiAlertsState {
                 return;
             }
             setLastAlarmEvent(event);
-            refreshAlarmStatus();
+            refreshAlarmInfo();
             if (event.type === 'alarm_on') {
                 scheduleAlertRetries();
             }
@@ -205,7 +205,7 @@ export function useAiAlerts(): AiAlertsState {
                 handleVisibilityChange,
             );
             aiStatusController?.abort();
-            alarmStatusController?.abort();
+            alarmInfoController?.abort();
             alertListController?.abort();
             eventSource?.close();
         };
@@ -214,7 +214,7 @@ export function useAiAlerts(): AiAlertsState {
     return {
         status,
         alarmConfig,
-        alarmStatus,
+        alarmInfo,
         lastAlarmEvent,
         alerts,
         loading,

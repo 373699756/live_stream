@@ -25,7 +25,7 @@ public:
     IceTransport(const IceTransport &) = delete;
     IceTransport &operator=(const IceTransport &) = delete;
 
-    bool Start(INetEngine *net_engine, event::Loop *net_loop,
+    bool Start(INetIo *net_io, event::Loop *net_loop,
                const UdpCallbacks &callbacks, const std::string &listen_ip,
                uint16_t port,
                std::string local_ufrag, std::string local_password);
@@ -45,7 +45,7 @@ public:
 
 private:
     std::string peer_id_;
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     UdpSocketId socket_id_ = 0;
     NetAddress local_address_;
     std::string local_ufrag_;

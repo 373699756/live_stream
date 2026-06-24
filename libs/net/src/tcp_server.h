@@ -11,11 +11,11 @@
 namespace live_stream {
 namespace net_internal {
 
-class NetEngineImpl;
+class NetIoImpl;
 
 class TcpServer : public std::enable_shared_from_this<TcpServer> {
 public:
-    TcpServer(NetEngineImpl *engine, TcpServerId id,
+    TcpServer(NetIoImpl *net_io, TcpServerId id,
               const TcpListenOptions &options, const TcpCallbacks &callbacks);
     ~TcpServer();
 
@@ -26,7 +26,7 @@ public:
 private:
     void AcceptLoop();
 
-    NetEngineImpl *engine_ = nullptr;
+    NetIoImpl *net_io_ = nullptr;
     TcpServerId id_ = 0;
     TcpListenOptions options_;
     TcpCallbacks callbacks_;

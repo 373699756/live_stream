@@ -101,7 +101,7 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::UpgradeStatus GetStatus() override { return status; }
+    live_stream::UpgradeInfo GetUpgradeInfo() override { return status; }
 
     live_stream::UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
@@ -142,7 +142,7 @@ public:
         return confirm_reboot_ok;
     }
 
-    live_stream::UpgradeStatus status;
+    live_stream::UpgradeInfo status;
     live_stream::RequestContext last_context;
     live_stream::UpgradeRequest last_request;
     std::string last_validate_path;
@@ -156,7 +156,7 @@ public:
     bool confirm_reboot_ok = true;
 };
 
-class FakeNetEngine : public live_stream::INetEngine {
+class FakeNetIo : public live_stream::INetIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -345,15 +345,15 @@ bool Contains(const std::string& haystack, const std::string& needle) {
 }
 
 std::unique_ptr<live_stream::IHttp> MakeHttp(
-    FakeNetEngine* net_engine,
+    FakeNetIo* net_io,
     FakeAuth* auth,
     FakeLogger* logger,
     FakeUpgrade* upgrade) {
     live_stream::HttpOptions options;
     live_stream::HttpDependencies dependencies;
-    dependencies.net_engine = net_engine;
+    dependencies.net_io = net_io;
     dependencies.net_loop =
-        net_engine == nullptr ? nullptr : net_engine->DefaultLoop();
+        net_io == nullptr ? nullptr : net_io->DefaultLoop();
     dependencies.auth = auth;
     dependencies.logger = logger;
     dependencies.upgrade = upgrade;
@@ -361,12 +361,12 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
 }
 
 int TestUpgradeUploadAndStart() {
-    FakeNetEngine net_engine;
+    FakeNetIo net_io;
     FakeAuth auth;
     FakeLogger logger;
     FakeUpgrade upgrade;
     std::unique_ptr<live_stream::IHttp> http =
-        MakeHttp(&net_engine, &auth, &logger, &upgrade);
+        MakeHttp(&net_io, &auth, &logger, &upgrade);
     if (!http || !http->Start()) {
         return 1;
     }
@@ -415,8 +415,8 @@ int TestUpgradeUploadAndStart() {
     return 0;
 }
 
-int TestUpgradeStatusValidateCancelAndReboot() {
-    FakeNetEngine net_engine;
+int TestUpgradeInfoValidateCancelAndReboot() {
+    FakeNetIo net_io;
     FakeAuth auth;
     FakeLogger logger;
     FakeUpgrade upgrade;
@@ -425,7 +425,7 @@ int TestUpgradeStatusValidateCancelAndReboot() {
     upgrade.status.current_stage = "waiting_reboot";
     upgrade.status.target_version = "2.0.0";
     std::unique_ptr<live_stream::IHttp> http =
-        MakeHttp(&net_engine, &auth, &logger, &upgrade);
+        MakeHttp(&net_io, &auth, &logger, &upgrade);
     if (!http || !http->Start()) {
         return 1;
     }
@@ -479,7 +479,7 @@ int main() {
     if (TestUpgradeUploadAndStart() != 0) {
         return 1;
     }
-    if (TestUpgradeStatusValidateCancelAndReboot() != 0) {
+    if (TestUpgradeInfoValidateCancelAndReboot() != 0) {
         return 2;
     }
     return 0;

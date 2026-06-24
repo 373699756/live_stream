@@ -132,7 +132,7 @@ ConfigStatus ProtocolSubsystem::ApplyProtocolConfigUpdate(
         }
         ProtocolStartupRefs refs;
         refs.device.network = network_;
-        refs.net_engine = net_engine_.get();
+        refs.net_io = net_io_.get();
         refs.rtsp = rtsp_.get();
         refs.onvif = onvif_.get();
         refs.webrtc = webrtc_.get();

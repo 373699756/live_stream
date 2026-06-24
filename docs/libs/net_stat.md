@@ -5,4 +5,4 @@
 
 当前职责和事件契约归 `docs/libs/net.md` 维护。历史上直接采样 `rtsp`、`webrtc`
 和 `media` public stats/info 的设计已经删除；迁移后 `net_stat` 只依赖
-`INetEngine` 和可选 `event::Dispatcher`，协议活跃数通过轻量事件进入统计。
+`INetIo` 和可选 `event::Dispatcher`，协议活跃数通过轻量事件进入统计。

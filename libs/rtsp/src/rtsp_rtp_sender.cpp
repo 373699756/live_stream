@@ -154,7 +154,7 @@ bool RtspRtpSender::SendRtpPacketView(
         return false;
     }
     const bool sent = RtspTransport::SendRtpPacket(
-        context.net_engine, target, frame, packet);
+        context.net_io, target, frame, packet);
     if (!sent) {
         // 发送失败通常表示 TCP 队列满、连接关闭或 UDP socket 不可用。这里按慢客户端
         // 处理并关闭控制连接，让 CloseSessionResources 释放 subscription/UDP socket。
@@ -167,8 +167,8 @@ bool RtspRtpSender::SendRtpPacketView(
             std::lock_guard<std::mutex> lock(*context.mutex);
             ++context.service_stats->slow_client_closes;
         }
-        if (context.net_engine != nullptr) {
-            (void)context.net_engine->Close(target.connection_id);
+        if (context.net_io != nullptr) {
+            (void)context.net_io->Close(target.connection_id);
         }
         return false;
     }
@@ -179,8 +179,8 @@ bool RtspRtpSender::SendRtpPacketView(
         ++session->stats.sent_rtp_packets;
         session->stats.sent_rtp_bytes += packet_size;
         session->stats.pending_bytes =
-            context.net_engine != nullptr
-                ? context.net_engine->PendingBytes(target.connection_id)
+            context.net_io != nullptr
+                ? context.net_io->PendingBytes(target.connection_id)
                 : 0;
         ++context.service_stats->sent_rtp_packets;
         context.service_stats->sent_rtp_bytes += packet_size;

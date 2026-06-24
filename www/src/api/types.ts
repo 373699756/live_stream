@@ -508,7 +508,7 @@ export interface AiInferenceResult {
     detections: AiDetection[];
 }
 
-export interface AiTaskStatus {
+export interface AiTaskInfo {
     config: AiModelConfig;
     stats: AiStats;
     last_result: AiInferenceResult;
@@ -518,7 +518,7 @@ export interface AiStatus {
     enabled: boolean;
     config: AiConfig;
     summary: AiStats;
-    tasks: AiTaskStatus[];
+    tasks: AiTaskInfo[];
     last_result: AiInferenceResult;
     capabilities: AiCapabilities;
 }
@@ -589,7 +589,7 @@ export interface AlarmSourceState {
     message: string;
 }
 
-export interface AlarmStatusInfo {
+export interface AlarmInfo {
     active: boolean;
     source: AlarmSourceName;
     active_since_ms: number;
@@ -599,9 +599,9 @@ export interface AlarmStatusInfo {
     sources: AlarmSourceState[];
 }
 
-export interface AlarmStatusResponse {
+export interface AlarmInfoResponse {
     available: boolean;
-    status: AlarmStatusInfo;
+    status: AlarmInfo;
 }
 
 export type UpgradeState =
@@ -625,7 +625,7 @@ export interface UpgradePackageInfo {
     requires_reboot: boolean;
 }
 
-export interface UpgradeStatus {
+export interface UpgradeInfo {
     state: UpgradeState;
     progress_percent: number;
     current_stage: string;
@@ -644,7 +644,7 @@ export interface UpgradeRequest {
     auto_reboot: boolean;
 }
 
-export interface SystemStatus {
+export interface SystemInfo {
     deviceName: string;
     model: string;
     firmware: string;
@@ -663,7 +663,7 @@ export interface NtpConfig {
     sync_interval_sec: number;
 }
 
-export interface TimeStatus {
+export interface TimeInfo {
     system_time_ms: number;
     timezone: string;
     ntp: NtpConfig;

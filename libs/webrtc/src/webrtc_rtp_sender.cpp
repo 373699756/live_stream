@@ -1,6 +1,6 @@
 #include "webrtc_rtp_sender.h"
 
-#include "webrtc_engine.h"
+#include "webrtc_peer_host.h"
 
 #include <cstdint>
 
@@ -79,7 +79,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
                                 const MediaFrame &frame,
                                 const WebrtcRtpSenderContext &context) {
     if (context.mutex == nullptr || context.service_stats == nullptr ||
-        !context.engine || peer.peer_id.empty() ||
+        !context.peer_host || peer.peer_id.empty() ||
         frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
         !IsMediaFramePayloadValid(frame)) {
         return false;
@@ -88,7 +88,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     const bool frame_is_keyframe = IsKeyframe(frame);
     uint16_t sequence = 0;
     WebrtcRtpSendParameters parameters;
-    if (!context.engine->GetRtpSendParameters(peer.peer_id, &parameters) ||
+    if (!context.peer_host->GetRtpSendParameters(peer.peer_id, &parameters) ||
         parameters.codec != frame.codec || parameters.payload_type == 0 ||
         parameters.clock_rate != rtp::kRtpClockRate ||
         parameters.ssrc == 0) {
@@ -168,14 +168,14 @@ bool WebrtcRtpSender::SendRtpPacketView(
     const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
     const WebrtcRtpSenderContext &context) {
-    if (!context.engine || context.mutex == nullptr ||
+    if (!context.peer_host || context.mutex == nullptr ||
         context.service_stats == nullptr || packet.Size() == 0) {
         return false;
     }
 
-    // packet view 中的媒体 slice 只在当前调用栈有效。engine/transport 会在
+    // packet view 中的媒体 slice 只在当前调用栈有效。peer_host/transport 会在
     // SRTP protect 阶段复制成加密后的连续 UDP packet。
-    const bool sent = context.engine->SendRtpPacket(peer, frame, packet);
+    const bool sent = context.peer_host->SendRtpPacket(peer, frame, packet);
     {
         std::lock_guard<std::mutex> guard(*context.mutex);
         if (sent) {

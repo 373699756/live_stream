@@ -1,4 +1,4 @@
-// Core HTTP fetch utilities. Business API functions live in domain-specific
+// Shared HTTP fetch utilities. Business API functions live in domain-specific
 // modules (video.ts, image.ts, network.ts, system.ts, stream.ts).
 
 import { dispatchAuthInvalid, dispatchMustChangePassword } from './authSession';

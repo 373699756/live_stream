@@ -226,9 +226,9 @@ public:
         return ifnames;
     }
 
-    NetStatus
-    GetInterfaceStatus(const std::string &ifname) override {
-        NetStatus status;
+    NetInterfaceInfo
+    GetInterfaceInfo(const std::string &ifname) override {
+        NetInterfaceInfo status;
         status.ifname = ifname;
         status.dns = ReadDnsServers();
         status.mac_address =

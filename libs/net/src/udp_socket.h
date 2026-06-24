@@ -14,11 +14,11 @@
 namespace live_stream {
 namespace net_internal {
 
-class NetEngineImpl;
+class NetIoImpl;
 
 class UdpSocket : public std::enable_shared_from_this<UdpSocket> {
 public:
-    UdpSocket(NetEngineImpl *engine, UdpSocketId id,
+    UdpSocket(NetIoImpl *net_io, UdpSocketId id,
               const UdpBindOptions &options, const UdpCallbacks &callbacks);
     ~UdpSocket();
 
@@ -39,7 +39,7 @@ private:
                                   &datagram);
     bool SendToSlicesInLoop(NetAddress address, const NetBufferSlices &slices);
 
-    NetEngineImpl *engine_ = nullptr;
+    NetIoImpl *net_io_ = nullptr;
     UdpSocketId id_ = 0;
     UdpBindOptions options_;
     UdpCallbacks callbacks_;

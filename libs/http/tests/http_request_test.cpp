@@ -109,7 +109,7 @@ public:
     std::vector<live_stream::OperationRecord> records;
 };
 
-class FakeNetEngine : public live_stream::INetEngine {
+class FakeNetIo : public live_stream::INetIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -304,11 +304,11 @@ int main() {
     FakeConfig config;
     FakeLogger logger;
     FakeDeviceMedia media;
-    FakeNetEngine net_engine;
+    FakeNetIo net_io;
 
     live_stream::HttpOptions options;
     live_stream::HttpDependencies deps;
-    deps.net_engine = nullptr;
+    deps.net_io = nullptr;
 
     std::unique_ptr<live_stream::IHttp> base =
         live_stream::CreateHttp(options, deps);
@@ -319,8 +319,8 @@ int main() {
     }
 
     live_stream::HttpDependencies http_dependencies;
-    http_dependencies.net_engine = &net_engine;
-    http_dependencies.net_loop = net_engine.DefaultLoop();
+    http_dependencies.net_io = &net_io;
+    http_dependencies.net_loop = net_io.DefaultLoop();
     http_dependencies.auth = &auth;
     http_dependencies.logger = &logger;
     http_dependencies.config = &config;

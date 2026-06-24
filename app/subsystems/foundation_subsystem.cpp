@@ -1,4 +1,4 @@
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 
 #include "infra/log.h"
 
@@ -65,19 +65,19 @@ private:
 
 }  // namespace
 
-CoreSubsystem& CoreSubsystem::Get() {
-    static CoreSubsystem subsystem;
+FoundationSubsystem& FoundationSubsystem::Get() {
+    static FoundationSubsystem subsystem;
     return subsystem;
 }
 
-bool CoreSubsystem::Start(const StartupPaths& paths) {
+bool FoundationSubsystem::Start(const StartupPaths& paths) {
     if (started_) {
         return true;
     }
     if (paths.business_config_path == nullptr ||
         paths.default_config_path == nullptr ||
         paths.auth_users_path == nullptr || paths.operation_log_path == nullptr) {
-        Error("app", "Core subsystem paths are incomplete");
+        Error("app", "Foundation subsystem paths are incomplete");
         return false;
     }
 
@@ -108,7 +108,7 @@ bool CoreSubsystem::Start(const StartupPaths& paths) {
         return false;
     }
 
-    event_.reset(new event::Service());
+    event_.reset(new event::Bus());
     if (!event_ || !event_->Start()) {
         Error("app", "Start event failed");
         Stop();
@@ -141,7 +141,7 @@ bool CoreSubsystem::Start(const StartupPaths& paths) {
     return true;
 }
 
-void CoreSubsystem::Stop() {
+void FoundationSubsystem::Stop() {
     if (auth_) {
         auth_->Stop();
         auth_.reset();

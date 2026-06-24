@@ -15,7 +15,7 @@
 
 namespace live_stream {
 
-class CoreSubsystem;
+class FoundationSubsystem;
 class INetwork;
 struct DeviceRefs;
 struct MediaRefs;
@@ -32,12 +32,12 @@ public:
     static ProtocolSubsystem &Get();
 
     bool Start(const AppConfig &app_config,
-               CoreSubsystem &core_subsystem,
+               FoundationSubsystem &foundation_subsystem,
                const DeviceRefs &device_refs,
                const MediaRefs &media_refs);
     void Stop();
     ProtocolRefs refs() const;
-    INetEngine *net_engine() const { return net_engine_.get(); }
+    INetIo *net_io() const { return net_io_.get(); }
 
 private:
     ProtocolSubsystem() = default;
@@ -60,7 +60,7 @@ private:
                             AppConfig *next_config) const;
 
     std::unique_ptr<event::Loop> net_callback_loop_;
-    std::unique_ptr<INetEngine> net_engine_;
+    std::unique_ptr<INetIo> net_io_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;
     std::unique_ptr<OnvifServer> onvif_;

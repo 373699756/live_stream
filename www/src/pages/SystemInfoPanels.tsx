@@ -1,8 +1,8 @@
-import type { SystemStatus } from '../api/types';
+import type { SystemInfo } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 
-interface SystemStatusPanelsProps {
-    status: SystemStatus;
+interface SystemInfoPanelsProps {
+    status: SystemInfo;
 }
 
 const moduleLabels: Record<string, string> = {
@@ -43,7 +43,7 @@ function moduleLabel(name: string) {
     return moduleLabels[name] || name;
 }
 
-export function SystemStatusPanel({ status }: SystemStatusPanelsProps) {
+export function SystemInfoPanel({ status }: SystemInfoPanelsProps) {
     return (
         <section className="panel">
             <h2>系统状态</h2>
@@ -69,7 +69,7 @@ export function SystemStatusPanel({ status }: SystemStatusPanelsProps) {
     );
 }
 
-export function DeviceInfoPanel({ status }: SystemStatusPanelsProps) {
+export function DeviceInfoPanel({ status }: SystemInfoPanelsProps) {
     return (
         <section className="panel">
             <h2>设备信息</h2>
@@ -91,7 +91,7 @@ export function DeviceInfoPanel({ status }: SystemStatusPanelsProps) {
     );
 }
 
-export function ModuleStatusPanel({ status }: SystemStatusPanelsProps) {
+export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
     const runningCount = status.modules.filter(
         (module) => module.state === 'running',
     ).length;
@@ -145,7 +145,7 @@ export function ModuleStatusPanel({ status }: SystemStatusPanelsProps) {
                         .filter(
                             (
                                 module,
-                            ): module is SystemStatus['modules'][number] =>
+                            ): module is SystemInfo['modules'][number] =>
                                 Boolean(module),
                         );
                     if (modules.length === 0) {

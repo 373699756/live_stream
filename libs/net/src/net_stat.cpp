@@ -101,7 +101,7 @@ class NetStatImpl final : public INetStat {
 public:
     NetStatImpl(NetStatOptions options, NetStatDependencies dependencies)
         : options_(std::move(options)),
-          net_engine_(dependencies.net_engine),
+          net_io_(dependencies.net_io),
           event_(dependencies.event) {}
 
     ~NetStatImpl() override { StopInternal(); }
@@ -116,7 +116,7 @@ public:
             started_ = true;
             return true;
         }
-        if (net_engine_ == nullptr || options_.check_interval_ms == 0) {
+        if (net_io_ == nullptr || options_.check_interval_ms == 0) {
             return false;
         }
         if (!SubscribeEvents()) {
@@ -292,12 +292,12 @@ private:
     void CheckConnections(int64_t now_ms,
                           NetStatSnapshot *stats,
                           std::vector<NetRecommendation> *recommendations) {
-        if (net_engine_ == nullptr || stats == nullptr ||
+        if (net_io_ == nullptr || stats == nullptr ||
             recommendations == nullptr) {
             return;
         }
         const std::vector<NetConnectionInfo> connections =
-            net_engine_->ListConnectionInfo();
+            net_io_->ListConnectionInfo();
         for (const NetConnectionInfo &connection : connections) {
             if (!connection.open) {
                 continue;
@@ -647,7 +647,7 @@ private:
     }
 
     NetStatOptions options_;
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     event::Dispatcher *event_ = nullptr;
     event::Subscription event_subscription_;
     bool started_ = false;

@@ -252,10 +252,10 @@ bool WebrtcPeerTable::MarkClosing(const std::string &peer_id,
     return true;
 }
 
-EnginePeerStateUpdate WebrtcPeerTable::ApplyEngineState(
+PeerHostStateUpdate WebrtcPeerTable::ApplyPeerHostState(
     const std::string &peer_id, WebrtcPeerState state,
     const std::string &last_error) {
-    EnginePeerStateUpdate update;
+    PeerHostStateUpdate update;
     auto iter = peers_.find(peer_id);
     if (iter == peers_.end()) {
         return update;

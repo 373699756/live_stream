@@ -1,7 +1,7 @@
 #include "subsystems/device_subsystem.h"
 
 #include "infra/log.h"
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 
 namespace live_stream {
 
@@ -10,7 +10,7 @@ DeviceSubsystem &DeviceSubsystem::Get() {
     return subsystem;
 }
 
-bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
+bool DeviceSubsystem::Start(FoundationSubsystem &foundation_subsystem,
                             DevicePlatformDependencies dependencies) {
     if (started_) {
         return true;
@@ -18,9 +18,9 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
 
     system_platform_ = std::move(dependencies.system_platform);
     SystemOptions system_options;
-    system_options.config = core_subsystem.config();
-    system_options.event = core_subsystem.event();
-    system_options.logger = core_subsystem.logger();
+    system_options.config = foundation_subsystem.config();
+    system_options.event = foundation_subsystem.event();
+    system_options.logger = foundation_subsystem.logger();
     system_options.platform = system_platform_.get();
     system_ = CreateSystem(system_options);
     if (!system_ || !system_->Start()) {
@@ -31,9 +31,9 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
 
     time_platform_ = std::move(dependencies.time_platform);
     TimeOptions time_options;
-    time_options.config = core_subsystem.config();
-    time_options.event = core_subsystem.event();
-    time_options.logger = core_subsystem.logger();
+    time_options.config = foundation_subsystem.config();
+    time_options.event = foundation_subsystem.event();
+    time_options.logger = foundation_subsystem.logger();
     time_options.platform = time_platform_.get();
     time_options.default_ntp_config.enabled = false;
     time_ = CreateTime(time_options);
@@ -45,9 +45,9 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
 
     network_platform_ = std::move(dependencies.network_platform);
     NetOptions network_options;
-    network_options.config = core_subsystem.config();
-    network_options.event = core_subsystem.event();
-    network_options.logger = core_subsystem.logger();
+    network_options.config = foundation_subsystem.config();
+    network_options.event = foundation_subsystem.event();
+    network_options.logger = foundation_subsystem.logger();
     network_options.default_ifname = dependencies.network_ifname;
     network_options.platform = network_platform_.get();
     network_ = CreateNetwork(network_options);
@@ -59,9 +59,9 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
     }
 
     AlarmOptions alarm_options;
-    alarm_options.config = core_subsystem.config();
-    alarm_options.event = core_subsystem.event();
-    alarm_options.logger = core_subsystem.logger();
+    alarm_options.config = foundation_subsystem.config();
+    alarm_options.event = foundation_subsystem.event();
+    alarm_options.logger = foundation_subsystem.logger();
     alarm_ = CreateAlarm(alarm_options);
     if (!alarm_ || !alarm_->Start()) {
         Error("app", "Start alarm failed");
@@ -70,9 +70,9 @@ bool DeviceSubsystem::Start(CoreSubsystem &core_subsystem,
     }
 
     UpgradeOptions upgrade_options;
-    upgrade_options.config = core_subsystem.config();
-    upgrade_options.event = core_subsystem.event();
-    upgrade_options.logger = core_subsystem.logger();
+    upgrade_options.config = foundation_subsystem.config();
+    upgrade_options.event = foundation_subsystem.event();
+    upgrade_options.logger = foundation_subsystem.logger();
     upgrade_platform_ = std::move(dependencies.upgrade_platform);
     upgrade_options.platform = upgrade_platform_.get();
     upgrade_ = CreateUpgrade(upgrade_options);

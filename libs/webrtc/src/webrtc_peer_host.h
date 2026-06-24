@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_
-#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_
+#ifndef LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_HOST_H_
+#define LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_HOST_H_
 
 #include "webrtc.h"
 
@@ -13,11 +13,11 @@
 
 namespace live_stream {
 
-class INetEngine;
+class INetIo;
 
 namespace webrtc_internal {
 
-struct WebrtcEngineCallbacks {
+struct WebrtcPeerHostCallbacks {
     void *user = nullptr;
     void (*OnPeerStateChanged)(void *user, const char *peer_id,
                                WebrtcPeerState state,
@@ -32,13 +32,13 @@ struct WebrtcRtpSendParameters {
     uint32_t ssrc = 0;
 };
 
-class IWebrtcEngine {
+class IWebrtcPeerHost {
 public:
-    virtual ~IWebrtcEngine() = default;
+    virtual ~IWebrtcPeerHost() = default;
 
     virtual bool Available() const = 0;
     virtual bool Start(const WebrtcOptions &options,
-                       const WebrtcEngineCallbacks &callbacks) = 0;
+                       const WebrtcPeerHostCallbacks &callbacks) = 0;
     virtual void Stop() = 0;
     virtual bool ApplyOptions(const WebrtcOptions &options) = 0;
     virtual bool CreatePeer(const WebrtcPeerInfo &peer) = 0;
@@ -62,11 +62,11 @@ public:
     virtual void FillStats(WebrtcStats *stats) const = 0;
 };
 
-std::unique_ptr<IWebrtcEngine> CreateWebrtcEngine(
-    INetEngine *net_engine,
+std::unique_ptr<IWebrtcPeerHost> CreateWebrtcPeerHost(
+    INetIo *net_io,
     event::Loop *net_loop);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_ENGINE_H_
+#endif  // LIVE_STREAM_WEBRTC_SRC_WEBRTC_PEER_HOST_H_

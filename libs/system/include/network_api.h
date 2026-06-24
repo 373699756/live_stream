@@ -28,7 +28,7 @@ struct NetConfig {
     std::vector<std::string> dns;
 };
 
-struct NetStatus {
+struct NetInterfaceInfo {
     std::string ifname;
     bool enabled = true;
     bool link_up = false;
@@ -49,7 +49,7 @@ public:
     virtual ~INetPlatform() = default;
 
     virtual std::vector<std::string> ListInterfaces() = 0;
-    virtual NetStatus GetInterfaceStatus(
+    virtual NetInterfaceInfo GetInterfaceInfo(
         const std::string& ifname) = 0;
     virtual bool SetInterfaceEnabled(const std::string& ifname,
                                      bool enabled) = 0;
@@ -83,12 +83,12 @@ public:
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
     virtual std::vector<std::string> GetInterfaces() = 0;
-    virtual NetStatus GetInterfaceStatus(
+    virtual NetInterfaceInfo GetInterfaceInfo(
         const std::string& ifname) = 0;
     virtual bool ApplyInterfaceConfig(
         const live_stream::RequestContext& context,
         const NetConfig& config) = 0;
-    virtual bool ReloadStatus() = 0;
+    virtual bool ReloadInterfaceInfo() = 0;
 };
 
 std::unique_ptr<INetwork> CreateNetwork(

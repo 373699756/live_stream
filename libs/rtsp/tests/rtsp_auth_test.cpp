@@ -122,9 +122,9 @@ live_stream::MediaFrame MakeFrame() {
 }  // namespace
 
 int main() {
-    std::unique_ptr<live_stream::INetEngine> net_engine =
-        live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!net_engine || !net_engine->Start()) {
+    std::unique_ptr<live_stream::INetIo> net_io =
+        live_stream::CreateNetIo(live_stream::NetIoOptions{});
+    if (!net_io || !net_io->Start()) {
         return 1;
     }
     FakeAuth auth;
@@ -134,8 +134,8 @@ int main() {
     options.listen_port = 0;
     options.enable_auth = true;
     live_stream::RtspDependencies deps;
-    deps.net_engine = net_engine.get();
-    deps.net_loop = net_engine->DefaultLoop();
+    deps.net_io = net_io.get();
+    deps.net_loop = net_io->DefaultLoop();
     deps.auth = &auth;
     deps.media_streams = &media_streams;
     auto rtsp = live_stream::CreateRtsp(options, deps);
@@ -212,6 +212,6 @@ int main() {
 
     close(fd);
     rtsp->Stop();
-    net_engine->Stop();
+    net_io->Stop();
     return 0;
 }

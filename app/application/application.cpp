@@ -12,7 +12,7 @@
 
 #include "infra/log.h"
 #include "platform/linux/platform_factory.h"
-#include "subsystems/core_subsystem.h"
+#include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 #include "subsystems/media_subsystem.h"
 #include "subsystems/protocol_subsystem.h"
@@ -94,19 +94,19 @@ bool Application::Start(const StartupPaths &paths,
         return true;
     }
 
-    CoreSubsystem &core_subsystem = CoreSubsystem::Get();
+    FoundationSubsystem &foundation_subsystem = FoundationSubsystem::Get();
     DeviceSubsystem &device_subsystem = DeviceSubsystem::Get();
     MediaSubsystem &media_subsystem = MediaSubsystem::Get();
     ProtocolSubsystem &protocol_subsystem = ProtocolSubsystem::Get();
 
-    if (!core_subsystem.Start(paths)) {
-        Error("app", "Start core subsystem failed");
+    if (!foundation_subsystem.Start(paths)) {
+        Error("app", "Start foundation subsystem failed");
         Stop();
         return false;
     }
 
     AppConfig app_config;
-    if (!LoadAppConfig(core_subsystem.config(), &app_config)) {
+    if (!LoadAppConfig(foundation_subsystem.config(), &app_config)) {
         Error("app", "Load app config failed");
         Stop();
         return false;
@@ -125,19 +125,19 @@ bool Application::Start(const StartupPaths &paths,
          app_config_.static_root.c_str());
 
     if (!device_subsystem.Start(
-            core_subsystem,
+            foundation_subsystem,
             CreateLinuxDevicePlatformDependencies(
                 app_config_.network_ifname))) {
         Error("app", "Start device subsystem failed");
         Stop();
         return false;
     }
-    if (!media_subsystem.Start(core_subsystem, device_subsystem.refs())) {
+    if (!media_subsystem.Start(foundation_subsystem, device_subsystem.refs())) {
         Error("app", "Start media subsystem failed");
         Stop();
         return false;
     }
-    if (!protocol_subsystem.Start(app_config_, core_subsystem,
+    if (!protocol_subsystem.Start(app_config_, foundation_subsystem,
                                   device_subsystem.refs(),
                                   media_subsystem.refs())) {
         Error("app", "Start protocol subsystem failed");
@@ -159,9 +159,9 @@ void Application::Stop() {
     Info("app", "Stop device subsystem begin");
     DeviceSubsystem::Get().Stop();
     Info("app", "Stop device subsystem done");
-    Info("app", "Stop core subsystem begin");
-    CoreSubsystem::Get().Stop();
-    Info("app", "Stop core subsystem done");
+    Info("app", "Stop foundation subsystem begin");
+    FoundationSubsystem::Get().Stop();
+    Info("app", "Stop foundation subsystem done");
     started_ = false;
 }
 

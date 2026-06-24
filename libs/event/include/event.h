@@ -33,7 +33,7 @@ enum class EventType {
     kNetPressureChanged,
     kAlarmOn,
     kAlarmOff,
-    kSystemStatusChanged,
+    kSystemInfoChanged,
     kUpgradeProgressChanged,
 };
 
@@ -49,7 +49,7 @@ struct Event {
     uint8_t level = 0;
 };
 
-struct EventCounts {
+struct EventStats {
     uint64_t published = 0;
     uint64_t handled = 0;
     uint64_t rejected = 0;
@@ -103,27 +103,27 @@ public:
     bool Cancel(SubscriptionId id);
     EventStatus Publish(const Event &event);
     EventStatus Post(Loop *loop, const Event &event);
-    EventCounts GetCounts() const;
+    EventStats GetStats() const;
 
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-struct ServiceOptions {
+struct BusOptions {
     LoopOptions loop;
 };
 
 // Owns the event loop plus dispatcher used for asynchronous event publishing.
-class Service {
+class Bus {
 public:
-    Service();
-    ~Service();
+    Bus();
+    ~Bus();
 
-    Service(const Service &) = delete;
-    Service &operator=(const Service &) = delete;
+    Bus(const Bus &) = delete;
+    Bus &operator=(const Bus &) = delete;
 
-    bool Start(const ServiceOptions &options = ServiceOptions());
+    bool Start(const BusOptions &options = BusOptions());
     void Stop(StopMode mode = StopMode::kDiscard);
     Loop *loop() { return &loop_; }
     Dispatcher *dispatcher() { return &dispatcher_; }

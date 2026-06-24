@@ -164,8 +164,8 @@ public:
         return info;
     }
 
-    SystemStatus GetSystemStatus() override {
-        SystemStatus status;
+    SystemInfo GetSystemInfo() override {
+        SystemInfo status;
         status.cpu_usage_percent = ReadCpuUsagePercent();
         status.memory_usage_percent = ReadMemoryUsagePercent();
         status.temperature_celsius = ReadTemperatureCelsius();

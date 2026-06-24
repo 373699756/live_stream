@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-    getTimeStatus,
+    getTimeInfo,
     saveTimeConfig,
     syncBrowserTime,
     syncNtpNow,
 } from '../api/time';
-import type { NtpConfig, TimeStatus } from '../api/types';
+import type { NtpConfig, TimeInfo } from '../api/types';
 
 const statusTimeoutMs = 1800;
 
@@ -25,7 +25,7 @@ function parseServers(text: string) {
 }
 
 export function useTimeConfig() {
-    const [status, setStatus] = useState<TimeStatus | null>(null);
+    const [status, setStatus] = useState<TimeInfo | null>(null);
     const [timezone, setTimezone] = useState('UTC');
     const [ntpEnabled, setNtpEnabled] = useState(false);
     const [ntpServersText, setNtpServersText] = useState('');
@@ -37,7 +37,7 @@ export function useTimeConfig() {
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
 
-    const applyStatus = useCallback((nextStatus: TimeStatus) => {
+    const applyStatus = useCallback((nextStatus: TimeInfo) => {
         setStatus(nextStatus);
         setTimezone(nextStatus.timezone);
         setNtpEnabled(nextStatus.ntp.enabled);
@@ -48,7 +48,7 @@ export function useTimeConfig() {
     }, []);
 
     const refresh = useCallback(async () => {
-        const nextStatus = await getTimeStatus({ timeoutMs: statusTimeoutMs });
+        const nextStatus = await getTimeInfo({ timeoutMs: statusTimeoutMs });
         applyStatus(nextStatus);
         setError('');
     }, [applyStatus]);
@@ -56,7 +56,7 @@ export function useTimeConfig() {
     useEffect(() => {
         let mounted = true;
         setLoading(true);
-        void getTimeStatus({ timeoutMs: statusTimeoutMs })
+        void getTimeInfo({ timeoutMs: statusTimeoutMs })
             .then((nextStatus) => {
                 if (!mounted) {
                     return;

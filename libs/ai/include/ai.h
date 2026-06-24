@@ -125,7 +125,7 @@ struct AiStats {
     uint32_t active_results = 0;
 };
 
-struct AiTaskStatus {
+struct AiTaskInfo {
     AiModelConfig config;
     AiStats stats;
     AiInferenceResult last_result;
@@ -161,7 +161,7 @@ public:
     virtual AiConfig GetConfig() const = 0;
     virtual AiStats GetStats() const = 0;
     virtual AiInferenceResult GetLastResult() const = 0;
-    virtual std::vector<AiTaskStatus> GetTaskStatuses() const = 0;
+    virtual std::vector<AiTaskInfo> GetTaskInfoList() const = 0;
     virtual std::vector<AiAlertRecord> ListAlerts() const = 0;
     virtual std::string ReadAlertImage(const std::string& id) const = 0;
 };
@@ -179,7 +179,7 @@ public:
     AiConfig GetConfig() const override;
     AiStats GetStats() const override;
     AiInferenceResult GetLastResult() const override;
-    std::vector<AiTaskStatus> GetTaskStatuses() const override;
+    std::vector<AiTaskInfo> GetTaskInfoList() const override;
     std::vector<AiAlertRecord> ListAlerts() const override;
     std::string ReadAlertImage(const std::string& id) const override;
 

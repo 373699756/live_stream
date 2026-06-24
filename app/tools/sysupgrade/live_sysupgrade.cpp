@@ -21,7 +21,7 @@ namespace {
 using linux_platform::RunCommand;
 
 constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
-constexpr const char* kUpgradeStatusPath = "/data/upgrade_status.json";
+constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 constexpr const char* kDefaultStagePath = "/tmp/live_stream/upgrade/staged";
 
 struct HelperOptions {
@@ -37,11 +37,11 @@ void AppendUpgradeLog(const std::string& message) {
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
 }
 
-void WriteUpgradeStatus(const std::string& state,
-                        uint32_t progress,
-                        bool ok,
-                        const std::string& version,
-                        const std::string& error_message) {
+void WriteUpgradeInfo(const std::string& state,
+                      uint32_t progress,
+                      bool ok,
+                      const std::string& version,
+                      const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
     ConfigJson root = ConfigJson::object();
     root["state"] = state;
@@ -49,7 +49,7 @@ void WriteUpgradeStatus(const std::string& state,
     root["ok"] = ok;
     root["version"] = version;
     root["error_message"] = error_message;
-    const std::string tmp_path = std::string(kUpgradeStatusPath) + ".tmp";
+    const std::string tmp_path = std::string(kUpgradeInfoPath) + ".tmp";
     const int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
         return;
@@ -70,7 +70,7 @@ void WriteUpgradeStatus(const std::string& state,
         write_ok = false;
     }
     close(fd);
-    if (!write_ok || rename(tmp_path.c_str(), kUpgradeStatusPath) != 0) {
+    if (!write_ok || rename(tmp_path.c_str(), kUpgradeInfoPath) != 0) {
         static_cast<void>(infra::File::Remove(tmp_path));
         return;
     }
@@ -168,8 +168,8 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
         package.package_path, package.manifest, stage_dir,
         [&package](uint32_t progress) {
             const uint32_t bounded = infra::Clamp<uint32_t>(progress, 0U, 100U);
-            WriteUpgradeStatus("writing", bounded / 4, true,
-                               package.manifest.version, "");
+            WriteUpgradeInfo("writing", bounded / 4, true,
+                             package.manifest.version, "");
         },
         reason);
     if (!extract_ok) {
@@ -193,8 +193,8 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
         }
         const uint32_t progress = 25U + static_cast<uint32_t>(
                                             ((i + 1) * 70ULL) / package.manifest.commands.size());
-        WriteUpgradeStatus("writing", infra::Clamp<uint32_t>(progress, 25U, 95U),
-                           true, package.manifest.version, "");
+        WriteUpgradeInfo("writing", infra::Clamp<uint32_t>(progress, 25U, 95U),
+                         true, package.manifest.version, "");
     }
     return true;
 }
@@ -210,23 +210,23 @@ int Run(int argc, char** argv) {
     std::string reason;
     if (!ParseUpgradePackage(options.package_path, &package, &reason)) {
         AppendUpgradeLog("helper validate failed: " + reason);
-        WriteUpgradeStatus("failed", 100, false, "", reason);
+        WriteUpgradeInfo("failed", 100, false, "", reason);
         return 1;
     }
 
     AppendUpgradeLog("helper started: " + package.manifest.version);
-    WriteUpgradeStatus("preparing", 5, true, package.manifest.version, "");
+    WriteUpgradeInfo("preparing", 5, true, package.manifest.version, "");
 
     if (!ApplyPackage(package, options.stage_dir, &reason)) {
         AppendUpgradeLog("helper failed: " + reason);
-        WriteUpgradeStatus("failed", 100, false, package.manifest.version,
-                           reason);
+        WriteUpgradeInfo("failed", 100, false, package.manifest.version,
+                         reason);
         sync();
         return 1;
     }
 
     AppendUpgradeLog("helper completed: " + package.manifest.version);
-    WriteUpgradeStatus("waiting_reboot", 100, true, package.manifest.version, "");
+    WriteUpgradeInfo("waiting_reboot", 100, true, package.manifest.version, "");
     sync();
     if (options.reboot || package.requires_reboot) {
         reboot(RB_AUTOBOOT);

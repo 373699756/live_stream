@@ -30,7 +30,7 @@ public:
     }
 };
 
-class FakeNetEngine : public live_stream::INetEngine {
+class FakeNetIo : public live_stream::INetIo {
 public:
     struct Timer {
         live_stream::event::TimerId id = 0;
@@ -40,7 +40,7 @@ public:
 
     class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeLoop(FakeNetEngine* engine) : engine_(engine) {}
+        explicit FakeLoop(FakeNetIo* engine) : engine_(engine) {}
 
         live_stream::event::EventStatus Post(
             live_stream::event::Task task) override {
@@ -76,10 +76,10 @@ public:
         bool IsCurrentThread() const override { return true; }
 
     private:
-        FakeNetEngine* engine_ = nullptr;
+        FakeNetIo* engine_ = nullptr;
     };
 
-    FakeNetEngine() : loop_(this) {}
+    FakeNetIo() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
@@ -258,7 +258,7 @@ bool ContainsTimerId(const std::vector<live_stream::event::TimerId>& values,
 }  // namespace
 
 int main() {
-    FakeNetEngine net_engine;
+    FakeNetIo net_io;
     FakeRequestHandler handler;
     live_stream::HttpOptions options;
     options.listen_ip = "127.0.0.1";
@@ -270,40 +270,40 @@ int main() {
     options.control_executor_worker_count = 1;
 
     live_stream::HttpDependencies dependencies;
-    dependencies.net_engine = &net_engine;
-    dependencies.net_loop = net_engine.DefaultLoop();
+    dependencies.net_io = &net_io;
+    dependencies.net_loop = net_io.DefaultLoop();
     live_stream::HttpServer server(options, dependencies, &handler);
     if (!server.Start()) {
         return 1;
     }
 
-    net_engine.FireAccept(100);
-    if (net_engine.timers.size() != 1 ||
-        net_engine.timers[0].id != 1 ||
-        net_engine.last_delay_ms != options.request_timeout_ms) {
+    net_io.FireAccept(100);
+    if (net_io.timers.size() != 1 ||
+        net_io.timers[0].id != 1 ||
+        net_io.last_delay_ms != options.request_timeout_ms) {
         return 2;
     }
 
-    net_engine.FireRead(100, "GET /api/");
-    if (net_engine.timers.size() != 2 ||
-        !ContainsTimerId(net_engine.cancelled_timer_ids, 1)) {
+    net_io.FireRead(100, "GET /api/");
+    if (net_io.timers.size() != 2 ||
+        !ContainsTimerId(net_io.cancelled_timer_ids, 1)) {
         return 3;
     }
 
     server.Stop();
-    if (net_engine.close_tcp_count != 1 ||
-        net_engine.last_closed_server != 7 ||
-        net_engine.close_count != 1 ||
-        net_engine.last_closed_connection != 100 ||
-        !ContainsTimerId(net_engine.cancelled_timer_ids, 2)) {
+    if (net_io.close_tcp_count != 1 ||
+        net_io.last_closed_server != 7 ||
+        net_io.close_count != 1 ||
+        net_io.last_closed_connection != 100 ||
+        !ContainsTimerId(net_io.cancelled_timer_ids, 2)) {
         return 4;
     }
 
-    const int close_count_after_stop = net_engine.close_count;
-    if (!net_engine.RunTimer(2)) {
+    const int close_count_after_stop = net_io.close_count;
+    if (!net_io.RunTimer(2)) {
         return 5;
     }
-    if (net_engine.close_count != close_count_after_stop) {
+    if (net_io.close_count != close_count_after_stop) {
         return 6;
     }
     return 0;

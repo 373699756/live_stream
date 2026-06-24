@@ -14,11 +14,11 @@
 namespace live_stream {
 namespace net_internal {
 
-class NetEngineImpl;
+class NetIoImpl;
 
 class TcpSession : public std::enable_shared_from_this<TcpSession> {
 public:
-    TcpSession(NetEngineImpl *engine, std::shared_ptr<EventLoop> loop, int fd,
+    TcpSession(NetIoImpl *net_io, std::shared_ptr<EventLoop> loop, int fd,
                ConnectionId id, const TcpListenOptions &options,
                TcpCallbacks callbacks, NetAddress local, NetAddress peer);
     ~TcpSession();
@@ -78,7 +78,7 @@ private:
     bool IsSendStalledLocked() const;
     uint32_t TimeoutCheckIntervalMs() const;
 
-    NetEngineImpl *engine_ = nullptr;
+    NetIoImpl *net_io_ = nullptr;
     std::shared_ptr<EventLoop> loop_;
     UniqueFd fd_;
     ConnectionId id_ = 0;

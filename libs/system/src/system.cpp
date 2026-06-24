@@ -96,8 +96,8 @@ public:
         return info;
     }
 
-    SystemStatus GetSystemStatus() override {
-        SystemStatus status;
+    SystemInfo GetSystemInfo() override {
+        SystemInfo status;
         status.cpu_usage_percent = 0;
         status.memory_usage_percent = ReadMemoryUsagePercent();
         status.temperature_celsius = ReadTemperatureCelsius();
@@ -178,11 +178,11 @@ public:
         return platform_->GetDeviceInfo();
     }
 
-    SystemStatus GetSystemStatus() override {
+    SystemInfo GetSystemInfo() override {
         if (!IsStarted()) {
-            return SystemStatus{};
+            return SystemInfo{};
         }
-        SystemStatus status = platform_->GetSystemStatus();
+        SystemInfo status = platform_->GetSystemInfo();
         ApplyHeartbeatHealth(&status);
         return status;
     }
@@ -201,7 +201,7 @@ public:
         const bool ok = platform_->Reboot();
         RecordAudit(context, OperationAction::kReboot, ok, "system");
         if (ok) {
-            PublishSystemStatusChanged("reboot");
+            PublishSystemInfoChanged("reboot");
         }
         return ok;
     }
@@ -213,7 +213,7 @@ public:
         const bool ok = platform_->FactoryReset();
         RecordAudit(context, OperationAction::kFactoryReset, ok, "system");
         if (ok) {
-            PublishSystemStatusChanged("factory_reset");
+            PublishSystemInfoChanged("factory_reset");
         }
         return ok;
     }
@@ -237,7 +237,7 @@ public:
     }
 
 private:
-    void ApplyHeartbeatHealth(SystemStatus* status) {
+    void ApplyHeartbeatHealth(SystemInfo* status) {
         if (status == nullptr) {
             return;
         }
@@ -271,16 +271,16 @@ private:
             status->health_reason = "heartbeat timeout: " + failed_component;
         }
         if (!event_message.empty()) {
-            PublishSystemStatusChanged(event_message);
+            PublishSystemInfoChanged(event_message);
         }
     }
 
-    void PublishSystemStatusChanged(const std::string& message) {
+    void PublishSystemInfoChanged(const std::string& message) {
         if (options_.event == nullptr) {
             return;
         }
         event::Event event;
-        event.type = event::EventType::kSystemStatusChanged;
+        event.type = event::EventType::kSystemInfoChanged;
         event.source = "system";
         event.message = message;
         static_cast<void>(options_.event->Publish(event));

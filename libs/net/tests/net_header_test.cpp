@@ -1,7 +1,7 @@
 #include "net.h"
 
 int main() {
-    live_stream::NetEngineOptions engine_options;
+    live_stream::NetIoOptions engine_options;
     live_stream::TcpListenOptions tcp_options;
     live_stream::UdpBindOptions udp_options;
     live_stream::TcpCallbacks tcp_callbacks;

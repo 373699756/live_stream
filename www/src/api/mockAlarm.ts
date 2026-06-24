@@ -1,4 +1,4 @@
-import type { AlarmConfig, AlarmStatusResponse } from './types';
+import type { AlarmConfig, AlarmInfoResponse } from './types';
 
 export const mockAlarmConfig: AlarmConfig = {
     motion_detection: {
@@ -29,7 +29,7 @@ export const mockAlarmConfig: AlarmConfig = {
     },
 };
 
-export const mockAlarmStatus: AlarmStatusResponse = {
+export const mockAlarmInfo: AlarmInfoResponse = {
     available: true,
     status: {
         active: false,

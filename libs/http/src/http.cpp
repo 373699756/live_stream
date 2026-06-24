@@ -126,7 +126,7 @@ HttpResponse HttpImpl::HandleHttpRequest(const HttpRequest &request) {
         if (!initialized_) {
             return AddJsonEnvelope(
                 request_with_id,
-                StatusResponse(500, "Service not initialized"));
+                StatusResponse(500, "Bus not initialized"));
         }
     }
     if (server_ != nullptr) {
@@ -258,21 +258,21 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kUpgrade, handler_dependencies));
 
-    SystemStatusSources system_status_sources;
-    system_status_sources.logger = dependencies.logger;
-    system_status_sources.config = dependencies.config;
-    system_status_sources.auth = dependencies.auth;
-    system_status_sources.time = dependencies.time;
-    system_status_sources.network = dependencies.network;
-    system_status_sources.alarm = dependencies.alarm;
-    system_status_sources.upgrade = dependencies.upgrade;
-    system_status_sources.rtsp = dependencies.rtsp;
-    system_status_sources.onvif = dependencies.onvif;
-    system_status_sources.device = dependencies.device;
-    system_status_sources.ai = dependencies.ai;
-    system_status_sources.webrtc = dependencies.webrtc;
-    system_status_sources.media_streams = dependencies.media_streams;
-    handler_dependencies.system_status_sources = system_status_sources;
+    SystemOverviewSources system_overview_sources;
+    system_overview_sources.logger = dependencies.logger;
+    system_overview_sources.config = dependencies.config;
+    system_overview_sources.auth = dependencies.auth;
+    system_overview_sources.time = dependencies.time;
+    system_overview_sources.network = dependencies.network;
+    system_overview_sources.alarm = dependencies.alarm;
+    system_overview_sources.upgrade = dependencies.upgrade;
+    system_overview_sources.rtsp = dependencies.rtsp;
+    system_overview_sources.onvif = dependencies.onvif;
+    system_overview_sources.device = dependencies.device;
+    system_overview_sources.ai = dependencies.ai;
+    system_overview_sources.webrtc = dependencies.webrtc;
+    system_overview_sources.media_streams = dependencies.media_streams;
+    handler_dependencies.system_overview_sources = system_overview_sources;
     handlers_.push_back(CreateHttpHandler(
         HttpHandlerKind::kSystem, handler_dependencies));
     handlers_.push_back(CreateHttpHandler(

@@ -1,4 +1,4 @@
-import type { UpgradePackageInfo, UpgradeStatus } from '../api/types';
+import type { UpgradePackageInfo, UpgradeInfo } from '../api/types';
 import { formatBytes, formatTimestamp } from '../utils/format';
 
 interface UpgradePanelProps {
@@ -18,11 +18,11 @@ interface UpgradePanelProps {
     setAllowSameVersion: (value: boolean) => void;
     setAutoReboot: (value: boolean) => void;
     startUpgrade: () => Promise<void>;
-    upgradeStatus: UpgradeStatus;
+    upgradeInfo: UpgradeInfo;
     uploadPackage: () => Promise<void>;
 }
 
-function canCancel(status: UpgradeStatus) {
+function canCancel(status: UpgradeInfo) {
     return (
         status.state === 'validating' ||
         status.state === 'preparing' ||
@@ -30,11 +30,11 @@ function canCancel(status: UpgradeStatus) {
     );
 }
 
-function canConfirmReboot(status: UpgradeStatus) {
+function canConfirmReboot(status: UpgradeInfo) {
     return status.state === 'waiting_reboot';
 }
 
-function canStartUpgrade(status: UpgradeStatus) {
+function canStartUpgrade(status: UpgradeInfo) {
     return (
         status.state === 'idle' ||
         status.state === 'completed' ||
@@ -43,11 +43,11 @@ function canStartUpgrade(status: UpgradeStatus) {
     );
 }
 
-function hasActiveUpgrade(status: UpgradeStatus) {
+function hasActiveUpgrade(status: UpgradeInfo) {
     return !canStartUpgrade(status);
 }
 
-const upgradeStateLabels: Record<UpgradeStatus['state'], string> = {
+const upgradeStateLabels: Record<UpgradeInfo['state'], string> = {
     idle: '空闲',
     validating: '校验中',
     preparing: '准备写入',
@@ -59,7 +59,7 @@ const upgradeStateLabels: Record<UpgradeStatus['state'], string> = {
     canceled: '已取消',
 };
 
-function upgradeStageText(status: UpgradeStatus) {
+function upgradeStageText(status: UpgradeInfo) {
     if (status.current_stage) {
         return status.current_stage;
     }
@@ -68,7 +68,7 @@ function upgradeStageText(status: UpgradeStatus) {
 
 function startHint(
     packageInfo: UpgradePackageInfo | null,
-    status: UpgradeStatus,
+    status: UpgradeInfo,
 ) {
     if (!packageInfo) {
         return '上传并校验通过后才可开始写入。';
@@ -79,7 +79,7 @@ function startHint(
     return '开始升级后会进入准备写入、写入和提交阶段。';
 }
 
-function cancelHint(status: UpgradeStatus) {
+function cancelHint(status: UpgradeInfo) {
     if (status.state === 'writing') {
         return '写入阶段可提交取消请求，是否中断由后端按平台能力处理。';
     }
@@ -109,10 +109,10 @@ export function UpgradePanel({
     setAllowSameVersion,
     setAutoReboot,
     startUpgrade,
-    upgradeStatus,
+    upgradeInfo,
     uploadPackage,
 }: UpgradePanelProps) {
-    const activeUpgrade = hasActiveUpgrade(upgradeStatus);
+    const activeUpgrade = hasActiveUpgrade(upgradeInfo);
     const packageInputsDisabled = busy || activeUpgrade;
 
     return (
@@ -218,7 +218,7 @@ export function UpgradePanel({
                                 disabled={
                                     !packageInfo ||
                                     busy ||
-                                    !canStartUpgrade(upgradeStatus)
+                                    !canStartUpgrade(upgradeInfo)
                                 }
                                 onClick={() => {
                                     void startUpgrade();
@@ -229,7 +229,7 @@ export function UpgradePanel({
                             <button
                                 type="button"
                                 className="danger-action"
-                                disabled={busy || !canCancel(upgradeStatus)}
+                                disabled={busy || !canCancel(upgradeInfo)}
                                 onClick={() => {
                                     void cancelUpgrade();
                                 }}
@@ -239,7 +239,7 @@ export function UpgradePanel({
                             <button
                                 type="button"
                                 disabled={
-                                    busy || !canConfirmReboot(upgradeStatus)
+                                    busy || !canConfirmReboot(upgradeInfo)
                                 }
                                 onClick={() => {
                                     void confirmReboot();
@@ -250,8 +250,8 @@ export function UpgradePanel({
                         </div>
 
                         <div className="upgrade-action-notes">
-                            <span>{startHint(packageInfo, upgradeStatus)}</span>
-                            <span>{cancelHint(upgradeStatus)}</span>
+                            <span>{startHint(packageInfo, upgradeInfo)}</span>
+                            <span>{cancelHint(upgradeInfo)}</span>
                         </div>
 
                         {message ? (
@@ -329,30 +329,30 @@ export function UpgradePanel({
                 <div className="upgrade-section upgrade-status-section">
                     <div className="panel-title">当前升级状态</div>
                     <div
-                        className={`upgrade-state-banner state-${upgradeStatus.state}`}
+                        className={`upgrade-state-banner state-${upgradeInfo.state}`}
                     >
                         <div>
                             <span>当前状态</span>
                             <strong>
-                                {upgradeStateLabels[upgradeStatus.state]}
+                                {upgradeStateLabels[upgradeInfo.state]}
                             </strong>
                         </div>
                         <div>
                             <span>当前阶段</span>
-                            <strong>{upgradeStageText(upgradeStatus)}</strong>
+                            <strong>{upgradeStageText(upgradeInfo)}</strong>
                         </div>
                     </div>
 
                     <div className="upgrade-progress">
                         <div className="upgrade-progress-header">
                             <strong>进度</strong>
-                            <span>{upgradeStatus.progress_percent}%</span>
+                            <span>{upgradeInfo.progress_percent}%</span>
                         </div>
                         <div className="progress-track">
                             <div
                                 className="progress-fill"
                                 style={{
-                                    width: `${upgradeStatus.progress_percent}%`,
+                                    width: `${upgradeInfo.progress_percent}%`,
                                 }}
                             />
                         </div>
@@ -362,29 +362,29 @@ export function UpgradePanel({
                         <div>
                             <span>目标版本</span>
                             <strong>
-                                {upgradeStatus.target_version || '-'}
+                                {upgradeInfo.target_version || '-'}
                             </strong>
                         </div>
                         <div>
                             <span>状态码</span>
-                            <strong>{upgradeStatus.state}</strong>
+                            <strong>{upgradeInfo.state}</strong>
                         </div>
                         <div>
                             <span>开始时间</span>
                             <strong>
-                                {formatTimestamp(upgradeStatus.started_at_ms)}
+                                {formatTimestamp(upgradeInfo.started_at_ms)}
                             </strong>
                         </div>
                         <div>
                             <span>结束时间</span>
                             <strong>
-                                {formatTimestamp(upgradeStatus.finished_at_ms)}
+                                {formatTimestamp(upgradeInfo.finished_at_ms)}
                             </strong>
                         </div>
                         <div className="wide-status-cell">
                             <span>错误</span>
                             <strong>
-                                {upgradeStatus.error_message || '-'}
+                                {upgradeInfo.error_message || '-'}
                             </strong>
                         </div>
                     </div>

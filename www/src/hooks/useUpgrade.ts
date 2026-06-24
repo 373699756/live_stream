@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import {
-    getUpgradeStatus,
+    getUpgradeInfo,
     uploadUpgradePackage,
     startUpgrade as apiStartUpgrade,
     cancelUpgrade as apiCancelUpgrade,
@@ -15,7 +15,7 @@ import {
 import type {
     UpgradePackageInfo,
     UpgradeRequest,
-    UpgradeStatus,
+    UpgradeInfo,
 } from '../api/types';
 
 const pollIntervalMs = 2000;
@@ -26,7 +26,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function useUpgrade() {
-    const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(
+    const [upgradeInfo, setUpgradeInfo] = useState<UpgradeInfo | null>(
         null,
     );
     const [packageInfo, setPackageInfo] = useState<UpgradePackageInfo | null>(
@@ -47,11 +47,11 @@ export function useUpgrade() {
         const load = async () => {
             const startedAt = Date.now();
             try {
-                const nextUpgradeStatus = await getUpgradeStatus({
+                const nextUpgradeInfo = await getUpgradeInfo({
                     timeoutMs: statusTimeoutMs,
                 });
                 if (mounted) {
-                    setUpgradeStatus(nextUpgradeStatus);
+                    setUpgradeInfo(nextUpgradeInfo);
                     setRefreshError('');
                 }
             } catch (err: unknown) {
@@ -112,7 +112,7 @@ export function useUpgrade() {
         };
         try {
             const next = await apiStartUpgrade(request);
-            setUpgradeStatus(next);
+            setUpgradeInfo(next);
             setMessage('升级任务已提交');
         } catch (err) {
             setActionError(errorMessage(err, '启动升级失败'));
@@ -127,7 +127,7 @@ export function useUpgrade() {
         setMessage('');
         try {
             const next = await apiCancelUpgrade();
-            setUpgradeStatus(next);
+            setUpgradeInfo(next);
             setMessage('升级任务已取消');
         } catch (err) {
             setActionError(errorMessage(err, '取消升级失败'));
@@ -142,7 +142,7 @@ export function useUpgrade() {
         setMessage('');
         try {
             const next = await apiConfirmUpgradeReboot();
-            setUpgradeStatus(next);
+            setUpgradeInfo(next);
             setMessage('已下发重启应用升级');
         } catch (err) {
             setActionError(errorMessage(err, '确认重启失败'));
@@ -152,7 +152,7 @@ export function useUpgrade() {
     };
 
     return {
-        upgradeStatus,
+        upgradeInfo,
         packageInfo,
         selectedFile,
         allowSameVersion,

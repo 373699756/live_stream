@@ -105,7 +105,7 @@ ConfigJson UpgradePackageInfoToJson(const UpgradePackageInfo &info) {
     return root;
 }
 
-ConfigJson UpgradeStatusToJson(const UpgradeStatus &status) {
+ConfigJson UpgradeInfoToJson(const UpgradeInfo &status) {
     ConfigJson root = ConfigJson::object();
     root["state"] = UpgradeStateToString(status.state);
     root["progress_percent"] = status.progress_percent;
@@ -259,7 +259,7 @@ private:
             return ForbiddenResponse(principal);
         }
         return JsonResponse(200,
-                            UpgradeStatusToJson(upgrade->GetStatus()));
+                            UpgradeInfoToJson(upgrade->GetUpgradeInfo()));
     }
 
     HttpResponse HandleValidate(const HttpRequest &request) {
@@ -311,7 +311,7 @@ private:
             return StatusResponse(409, "Could not start upgrade");
         }
         return JsonResponse(200,
-                            UpgradeStatusToJson(upgrade->GetStatus()));
+                            UpgradeInfoToJson(upgrade->GetUpgradeInfo()));
     }
 
     HttpResponse HandleCancel(const HttpRequest &request) {
@@ -329,7 +329,7 @@ private:
             return StatusResponse(409, "Could not cancel upgrade");
         }
         return JsonResponse(200,
-                            UpgradeStatusToJson(upgrade->GetStatus()));
+                            UpgradeInfoToJson(upgrade->GetUpgradeInfo()));
     }
 
     HttpResponse HandleConfirmReboot(const HttpRequest &request) {
@@ -347,7 +347,7 @@ private:
             return StatusResponse(409, "Could not confirm reboot");
         }
         return JsonResponse(200,
-                            UpgradeStatusToJson(upgrade->GetStatus()));
+                            UpgradeInfoToJson(upgrade->GetUpgradeInfo()));
     }
 
     HttpAccess *access_ = nullptr;

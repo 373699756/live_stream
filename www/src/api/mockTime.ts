@@ -1,6 +1,6 @@
-import type { TimeStatus } from './types';
+import type { TimeInfo } from './types';
 
-export const mockTimeStatus: TimeStatus = {
+export const mockTimeInfo: TimeInfo = {
     system_time_ms: Date.now() - 32000,
     timezone: 'Asia/Shanghai',
     ntp: {

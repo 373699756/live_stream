@@ -12,7 +12,7 @@
 
 namespace live_stream {
 
-class INetEngine;
+class INetIo;
 
 enum class WebrtcPeerState {
     kCreated = 0,
@@ -44,7 +44,7 @@ struct WebrtcOptions {
 
 struct WebrtcDependencies {
     MediaStreams *media_streams = nullptr;
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     event::Dispatcher *event = nullptr;
 };

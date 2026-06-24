@@ -1,6 +1,6 @@
 #include "udp_socket.h"
 
-#include "net_engine_impl.h"
+#include "net_io_impl.h"
 #include "socket_util.h"
 
 #include "infra/log.h"
@@ -24,10 +24,10 @@ constexpr const char *kModuleName = "net";
 
 }  // namespace
 
-UdpSocket::UdpSocket(NetEngineImpl *engine, UdpSocketId id,
+UdpSocket::UdpSocket(NetIoImpl *net_io, UdpSocketId id,
                      const UdpBindOptions &options,
                      const UdpCallbacks &callbacks)
-    : engine_(engine), id_(id), options_(options), callbacks_(callbacks) {}
+    : net_io_(net_io), id_(id), options_(options), callbacks_(callbacks) {}
 
 UdpSocket::~UdpSocket() { Stop(); }
 
@@ -254,7 +254,7 @@ bool UdpSocket::SendToSlicesInLoop(NetAddress address,
               ErrnoText(error));
         return false;
     }
-    engine_->AddUdpTx();
+    net_io_->AddUdpTx();
     return true;
 }
 
@@ -320,10 +320,10 @@ void UdpSocket::HandleRead() {
         const ssize_t n = recvfrom(fd, buffer, sizeof(buffer), 0,
                                    reinterpret_cast<sockaddr *>(&peer), &peer_len);
         if (n > 0) {
-            engine_->AddUdpRx();
+            net_io_->AddUdpRx();
             // buffer 是栈内存。DispatchUdp() 在 executor 模式下会复制；直接回调模式
             // 要求上层当场消费，不得保存指针。
-            engine_->DispatchUdp(callbacks_, id_, FromSockAddr(peer), buffer,
+            net_io_->DispatchUdp(callbacks_, id_, FromSockAddr(peer), buffer,
                                  static_cast<size_t>(n));
             continue;
         }

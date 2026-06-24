@@ -25,7 +25,7 @@ public:
     Impl(const OnvifServerOptions &options,
          const OnvifServerDependencies &dependencies)
         : options_(options),
-          net_engine_(dependencies.net_engine),
+          net_io_(dependencies.net_io),
           net_loop_(dependencies.net_loop),
           auth_(dependencies.auth),
           event_(dependencies.event),
@@ -48,7 +48,7 @@ public:
         }
 
         // ONVIF 有两个入口：TCP device service 处理 SOAP，UDP discovery 只处理
-        // Probe。二者共享 net engine，但协议状态不跨入口保存。
+        // Probe。二者共享 net io，但协议状态不跨入口保存。
         TcpListenOptions tcp_options;
         tcp_options.address.ip = options_.listen_ip;
         tcp_options.address.port = options_.device_service_port;
@@ -60,7 +60,7 @@ public:
             return false;
         }
         const TcpServerId tcp_server_id =
-            net_engine_->ListenTcp(net_loop_, tcp_options, tcp_callbacks);
+            net_io_->ListenTcp(net_loop_, tcp_options, tcp_callbacks);
         if (tcp_server_id == 0) {
             return false;
         }
@@ -74,8 +74,8 @@ public:
             udp_callbacks.user = this;
             udp_callbacks.on_read = &OnvifServer::Impl::HandleUdpRead;
             const UdpSocketId udp_socket_id =
-                net_engine_->BindUdp(net_loop_, udp_options,
-                                     udp_callbacks);
+                net_io_->BindUdp(net_loop_, udp_options,
+                                 udp_callbacks);
             if (udp_socket_id == 0) {
                 CleanupSocketsLocked();
                 return false;
@@ -125,7 +125,7 @@ private:
         if (prepared_) {
             return true;
         }
-        if (net_engine_ == nullptr ||
+        if (net_io_ == nullptr ||
             net_loop_ == nullptr ||
             options_.device_service_port == 0 ||
             options_.discovery_port == 0 ||
@@ -196,8 +196,8 @@ private:
         }
         const std::string response = onvif::BuildDiscoveryProbeMatches(
             options_, system_, AdvertiseIp(), request);
-        if (udp_socket_id_ != 0 && net_engine_ != nullptr) {
-            static_cast<void>(net_engine_->SendTo(
+        if (udp_socket_id_ != 0 && net_io_ != nullptr) {
+            static_cast<void>(net_io_->SendTo(
                 udp_socket_id_, address,
                 reinterpret_cast<const uint8_t *>(response.data()),
                 response.size()));
@@ -258,11 +258,11 @@ private:
         // 无论成功还是 SOAP fault，都用 HTTP 响应承载，并在发送完成后关闭连接。
         const std::string response =
             onvif::BuildOnvifHttpResponse(status, reason, body, extra_headers);
-        static_cast<void>(net_engine_->Send(
+        static_cast<void>(net_io_->Send(
             connection_id, reinterpret_cast<const uint8_t *>(response.data()),
             response.size()));
         static_cast<void>(
-            net_engine_->CloseAfterSend(connection_id));
+            net_io_->CloseAfterSend(connection_id));
     }
 
     std::string HandleSoapAction(onvif::OnvifAction action,
@@ -382,18 +382,18 @@ private:
     }
 
     void CleanupSocketsLocked() {
-        if (udp_socket_id_ != 0 && net_engine_ != nullptr) {
-            static_cast<void>(net_engine_->CloseUdp(udp_socket_id_));
+        if (udp_socket_id_ != 0 && net_io_ != nullptr) {
+            static_cast<void>(net_io_->CloseUdp(udp_socket_id_));
             udp_socket_id_ = 0;
         }
-        if (tcp_server_id_ != 0 && net_engine_ != nullptr) {
-            static_cast<void>(net_engine_->CloseTcp(tcp_server_id_));
+        if (tcp_server_id_ != 0 && net_io_ != nullptr) {
+            static_cast<void>(net_io_->CloseTcp(tcp_server_id_));
             tcp_server_id_ = 0;
         }
     }
 
     OnvifServerOptions options_;
-    INetEngine *net_engine_ = nullptr;
+    INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     IAuth *auth_ = nullptr;
     event::Dispatcher *event_ = nullptr;

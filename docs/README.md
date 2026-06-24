@@ -17,6 +17,7 @@
 ## 文档入口
 
 - `refactor/README.md`：重构计划总入口，也是后续工程重构和编码基准。
+- `refactor/name.md`：命名收敛规则和当前通用泛名清理执行计划。
 - `libs/README.md`：模块设计索引和统一模板。
 - `libs/<module>.md`：每个实际 `libs/` 模块的长期设计文档。
 - `libs/stream_hub_legacy.md`：历史迁移说明，不对应当前实际 `libs/` 模块。

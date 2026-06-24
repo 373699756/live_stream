@@ -1,6 +1,6 @@
-import type { SystemStatus } from './types';
+import type { SystemInfo } from './types';
 
-export const mockSystemStatus: SystemStatus = {
+export const mockSystemInfo: SystemInfo = {
     deviceName: 'IPC Camera',
     model: 'live_stream_ipc',
     firmware: '0.1.0',

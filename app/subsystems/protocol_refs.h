@@ -12,13 +12,13 @@
 
 namespace live_stream {
 
-class CoreSubsystem;
+class FoundationSubsystem;
 
 struct ProtocolStartupRefs {
-    CoreSubsystem *core = nullptr;
+    FoundationSubsystem *foundation = nullptr;
     DeviceRefs device;
     MediaRefs media;
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *rtsp_loop = nullptr;
     event::Loop *webrtc_loop = nullptr;
     event::Loop *onvif_loop = nullptr;

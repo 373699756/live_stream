@@ -59,8 +59,8 @@ class SystemHttpHandler : public IHttpHandler {
 public:
     SystemHttpHandler(HttpAccess *access,
                       ISystem *system,
-                      const SystemStatusSources &status_sources)
-        : access_(access), system_(system), status_sources_(status_sources) {}
+                      const SystemOverviewSources &overview_sources)
+        : access_(access), system_(system), overview_sources_(overview_sources) {}
 
     void RegisterRoutes(IHttpRouter *router) override {
         if (router == nullptr) {
@@ -113,10 +113,10 @@ private:
 
         ConfigJson root = ConfigJson::object();
         DeviceInfo device_info;
-        SystemStatus system_status;
+        SystemInfo system_info;
         if (system_ != nullptr) {
             device_info = system_->GetDeviceInfo();
-            system_status = system_->GetSystemStatus();
+            system_info = system_->GetSystemInfo();
         }
         root["deviceName"] = device_info.serial_number.empty()
                                  ? std::string("live-stream-ipc")
@@ -127,10 +127,10 @@ private:
         root["firmware"] = device_info.firmware_version.empty()
                                ? std::string("0.1.0")
                                : device_info.firmware_version;
-        root["uptime"] = UptimeToString(system_status.uptime_ms);
-        root["cpu"] = system_status.cpu_usage_percent;
-        root["memory"] = system_status.memory_usage_percent;
-        root["temperature"] = system_status.temperature_celsius;
+        root["uptime"] = UptimeToString(system_info.uptime_ms);
+        root["cpu"] = system_info.cpu_usage_percent;
+        root["memory"] = system_info.memory_usage_percent;
+        root["temperature"] = system_info.temperature_celsius;
         ConfigJson modules = ConfigJson::array();
         auto add_module = [&modules](const char *name, bool running) {
             ConfigJson module = ConfigJson::object();
@@ -139,60 +139,60 @@ private:
             modules.push_back(module);
         };
         add_module("logger",
-                   status_sources_.logger != nullptr &&
-                       status_sources_.logger->IsStarted());
+                   overview_sources_.logger != nullptr &&
+                       overview_sources_.logger->IsStarted());
         add_module("config",
-                   status_sources_.config != nullptr &&
-                       status_sources_.config->IsStarted());
+                   overview_sources_.config != nullptr &&
+                       overview_sources_.config->IsStarted());
         add_module("auth",
-                   status_sources_.auth != nullptr &&
-                       status_sources_.auth->IsStarted());
+                   overview_sources_.auth != nullptr &&
+                       overview_sources_.auth->IsStarted());
         add_module("system",
                    system_ != nullptr &&
                        system_->IsStarted());
         add_module("time",
-                   status_sources_.time != nullptr &&
-                       status_sources_.time->IsStarted());
+                   overview_sources_.time != nullptr &&
+                       overview_sources_.time->IsStarted());
         add_module("system.network",
-                   status_sources_.network != nullptr &&
-                       status_sources_.network->IsStarted());
+                   overview_sources_.network != nullptr &&
+                       overview_sources_.network->IsStarted());
         add_module("alarm",
-                   status_sources_.alarm != nullptr &&
-                       status_sources_.alarm->IsStarted());
+                   overview_sources_.alarm != nullptr &&
+                       overview_sources_.alarm->IsStarted());
         add_module("upgrade",
-                   status_sources_.upgrade != nullptr &&
-                       status_sources_.upgrade->IsStarted());
+                   overview_sources_.upgrade != nullptr &&
+                       overview_sources_.upgrade->IsStarted());
         add_module("rtsp",
-                   status_sources_.rtsp != nullptr &&
-                       status_sources_.rtsp->LocalAddress().port != 0);
+                   overview_sources_.rtsp != nullptr &&
+                       overview_sources_.rtsp->LocalAddress().port != 0);
         add_module("onvif",
-                   status_sources_.onvif != nullptr &&
-                       status_sources_.onvif->IsStarted());
+                   overview_sources_.onvif != nullptr &&
+                       overview_sources_.onvif->IsStarted());
         add_module("http", true);
         add_module("device",
-                   status_sources_.device != nullptr &&
-                       status_sources_.device->IsStarted());
-        if (IsAiConfigEnabled(status_sources_.config)) {
-            add_module("ai", IsAiHealthy(status_sources_.ai));
+                   overview_sources_.device != nullptr &&
+                       overview_sources_.device->IsStarted());
+        if (IsAiConfigEnabled(overview_sources_.config)) {
+            add_module("ai", IsAiHealthy(overview_sources_.ai));
         }
         SnapshotInfo snapshot_info;
-        if (status_sources_.device != nullptr) {
-            snapshot_info = status_sources_.device->GetSnapshotInfo();
+        if (overview_sources_.device != nullptr) {
+            snapshot_info = overview_sources_.device->GetSnapshotInfo();
         }
         add_module("snapshot",
-                   status_sources_.device != nullptr &&
+                   overview_sources_.device != nullptr &&
                        snapshot_info.enabled);
         bool webrtc_running = false;
-        if (status_sources_.webrtc != nullptr) {
+        if (overview_sources_.webrtc != nullptr) {
             const WebrtcStats stats =
-                status_sources_.webrtc->GetStats();
+                overview_sources_.webrtc->GetStats();
             webrtc_running = stats.enabled && stats.signaling_ready;
         }
         add_module("webrtc", webrtc_running);
         bool media_running = false;
-        if (status_sources_.media_streams != nullptr) {
+        if (overview_sources_.media_streams != nullptr) {
             media_running =
-                status_sources_.media_streams->GetStreamStats().enabled;
+                overview_sources_.media_streams->GetStreamStats().enabled;
         }
         add_module("media", media_running);
         root["modules"] = modules;
@@ -256,14 +256,14 @@ private:
 
     HttpAccess *access_ = nullptr;
     ISystem *system_ = nullptr;
-    SystemStatusSources status_sources_;
+    SystemOverviewSources overview_sources_;
 };
 
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
     HttpAccess *access, ISystem *system,
-    const SystemStatusSources &status_sources) {
+    const SystemOverviewSources &overview_sources) {
     return std::unique_ptr<IHttpHandler>(
-        new SystemHttpHandler(access, system, status_sources));
+        new SystemHttpHandler(access, system, overview_sources));
 }
 
 }  // namespace live_stream

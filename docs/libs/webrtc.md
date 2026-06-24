@@ -154,7 +154,7 @@ service stop 或失败时会取消 drain timer、unsubscribe subscription 并释
 
 10.8 当前基线收口 peer/session 生命周期：`WebrtcImpl` 统一编排 peer id、
 stream id、pending ICE candidate、subscription、drain timer、setup timeout 和 close；
-`webrtc_engine` 只做 session 注册、UDP/timer 回调分发、状态回调和 service-facing
+`webrtc_peer_host` 只做 session 注册、UDP/timer 回调分发、状态回调和 service-facing
 接口适配；`webrtc_session` 拥有 offer/answer、SDP 参数和 RTP 发送参数；
 `webrtc_transport` 持有 ICE/DTLS/SRTP、UDP endpoint、DTLS timer 和 selected pair。
 关闭 peer 时先阻止 subscription 继续 drain，等待正在运行的 drain 回调退出，再取消 timer、

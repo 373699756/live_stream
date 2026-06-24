@@ -4,7 +4,7 @@
 #include "dtls_transport.h"
 #include "net.h"
 #include "webrtc.h"
-#include "webrtc_engine.h"
+#include "webrtc_peer_host.h"
 #include "webrtc_sdp.h"
 #include "webrtc_transport.h"
 
@@ -18,7 +18,7 @@ namespace webrtc_internal {
 struct WebrtcSessionOfferContext {
     WebrtcOptions options;
     DtlsFingerprint local_fingerprint;
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     UdpCallbacks udp_callbacks;
     uint32_t next_port_offset = 0;

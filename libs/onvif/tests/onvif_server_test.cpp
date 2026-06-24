@@ -14,7 +14,7 @@
 
 namespace {
 
-class FakeNetEngine : public live_stream::INetEngine {
+class FakeNetIo : public live_stream::INetIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -208,8 +208,8 @@ public:
 
     live_stream::DeviceInfo GetDeviceInfo() override { return info; }
 
-    live_stream::SystemStatus GetSystemStatus() override {
-        return live_stream::SystemStatus();
+    live_stream::SystemInfo GetSystemInfo() override {
+        return live_stream::SystemInfo();
     }
 
     live_stream::SystemCapabilities GetCapabilities() override {
@@ -233,7 +233,7 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::TimeStatus GetTimeStatus() override { return status; }
+    live_stream::TimeInfo GetTimeInfo() override { return status; }
 
     bool SetTimezone(const live_stream::RequestContext&,
                      const std::string&) override {
@@ -271,7 +271,7 @@ public:
         return true;
     }
 
-    live_stream::TimeStatus status;
+    live_stream::TimeInfo status;
     live_stream::RequestContext last_context;
     live_stream::TimeSyncSource last_source = live_stream::TimeSyncSource::kManual;
     bool set_status = true;
@@ -392,7 +392,7 @@ std::string SoapPost(const std::string& body,
 }
 
 std::unique_ptr<live_stream::OnvifServer> CreateStarted(
-    FakeNetEngine* net_engine,
+    FakeNetIo* net_io,
     FakeEvent* event,
     FakeSystem* system,
     FakeTime* time,
@@ -401,9 +401,9 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     live_stream::OnvifServerOptions options;
     options.enable_auth = auth != nullptr;
     live_stream::OnvifServerDependencies deps;
-    deps.net_engine = net_engine;
+    deps.net_io = net_io;
     deps.net_loop =
-        net_engine == nullptr ? nullptr : net_engine->DefaultLoop();
+        net_io == nullptr ? nullptr : net_io->DefaultLoop();
     deps.event = event;
     deps.system = system;
     deps.time = time;
@@ -430,8 +430,8 @@ int main() {
         return 2;
     }
 
-    FakeNetEngine cleanup_net;
-    deps.net_engine = &cleanup_net;
+    FakeNetIo cleanup_net;
+    deps.net_io = &cleanup_net;
     deps.net_loop = cleanup_net.DefaultLoop();
     cleanup_net.bind_udp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> cleanup_server =
@@ -440,8 +440,8 @@ int main() {
         return 3;
     }
 
-    FakeNetEngine start_fail_net;
-    deps.net_engine = &start_fail_net;
+    FakeNetIo start_fail_net;
+    deps.net_io = &start_fail_net;
     deps.net_loop = start_fail_net.DefaultLoop();
     start_fail_net.listen_tcp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> start_fail_server =
@@ -451,7 +451,7 @@ int main() {
         return 4;
     }
 
-    FakeNetEngine net_engine;
+    FakeNetIo net_io;
     FakeEvent event;
     FakeSystem system;
     FakeTime time;
@@ -460,24 +460,24 @@ int main() {
     time.status.timezone = "UTC";
 
     std::unique_ptr<live_stream::OnvifServer> service =
-        CreateStarted(&net_engine, &event, &system,
+        CreateStarted(&net_io, &event, &system,
                       &time, &device);
     if (!service) {
         return 5;
     }
 
-    net_engine.DeliverTcp(SoapPost("<GetDeviceInformation/>"));
-    if (net_engine.last_tcp_send.find("serial-1") == std::string::npos ||
+    net_io.DeliverTcp(SoapPost("<GetDeviceInformation/>"));
+    if (net_io.last_tcp_send.find("serial-1") == std::string::npos ||
         event.last_event.message != "GetDeviceInformation") {
         return 6;
     }
 
-    net_engine.DeliverTcp(SoapPost("<GetSystemDateAndTime/>"));
-    if (net_engine.last_tcp_send.find("123456") == std::string::npos) {
+    net_io.DeliverTcp(SoapPost("<GetSystemDateAndTime/>"));
+    if (net_io.last_tcp_send.find("123456") == std::string::npos) {
         return 7;
     }
 
-    net_engine.DeliverTcp(SoapPost(
+    net_io.DeliverTcp(SoapPost(
         "<SetSystemDateAndTime><tt:UnixTimeMs>2222</tt:UnixTimeMs>"
         "</SetSystemDateAndTime>"));
     if (time.last_set_time_ms != 2222 ||
@@ -485,45 +485,45 @@ int main() {
         return 8;
     }
 
-    net_engine.DeliverTcp(SoapPost(
+    net_io.DeliverTcp(SoapPost(
         "<GetStreamUri><ProfileToken>profile_sub</ProfileToken>"
         "</GetStreamUri>"));
-    if (net_engine.last_tcp_send.find("rtsp://") == std::string::npos ||
-        net_engine.last_tcp_send.find("profile_sub") == std::string::npos ||
+    if (net_io.last_tcp_send.find("rtsp://") == std::string::npos ||
+        net_io.last_tcp_send.find("profile_sub") == std::string::npos ||
         service->GetStats().stream_uri_requests != 1) {
         return 9;
     }
 
-    net_engine.DeliverTcp(SoapPost(
+    net_io.DeliverTcp(SoapPost(
         "<GetSnapshotUri><ProfileToken>bad</ProfileToken></GetSnapshotUri>"));
-    if (net_engine.last_tcp_send.find("400 Bad Request") == std::string::npos ||
+    if (net_io.last_tcp_send.find("400 Bad Request") == std::string::npos ||
         service->GetStats().parse_failures == 0) {
         return 10;
     }
 
-    net_engine.DeliverUdp("<Probe/>");
-    if (net_engine.last_udp_send.find("ProbeMatches") == std::string::npos ||
-        net_engine.last_udp_send.find("EndpointReference") ==
+    net_io.DeliverUdp("<Probe/>");
+    if (net_io.last_udp_send.find("ProbeMatches") == std::string::npos ||
+        net_io.last_udp_send.find("EndpointReference") ==
             std::string::npos ||
-        net_engine.last_udp_send.find("NetworkVideoTransmitter") ==
+        net_io.last_udp_send.find("NetworkVideoTransmitter") ==
             std::string::npos ||
-        net_engine.last_udp_send.find("XAddrs") == std::string::npos ||
+        net_io.last_udp_send.find("XAddrs") == std::string::npos ||
         service->GetStats().discovery_requests != 1) {
         return 11;
     }
 
-    net_engine.DeliverUdp("<Hello/>");
+    net_io.DeliverUdp("<Hello/>");
     if (service->GetStats().parse_failures < 2) {
         return 12;
     }
 
     service->Stop();
-    if (net_engine.close_tcp_count != 1 || net_engine.close_udp_count != 1 ||
+    if (net_io.close_tcp_count != 1 || net_io.close_udp_count != 1 ||
         service->IsStarted()) {
         return 13;
     }
 
-    FakeNetEngine missing_time_net;
+    FakeNetIo missing_time_net;
     FakeEvent missing_time_event;
     std::unique_ptr<live_stream::OnvifServer> missing_time_server =
         CreateStarted(&missing_time_net, &missing_time_event,
@@ -539,7 +539,7 @@ int main() {
         return 15;
     }
 
-    FakeNetEngine auth_net;
+    FakeNetIo auth_net;
     FakeEvent auth_event;
     FakeAuth auth;
     std::unique_ptr<live_stream::OnvifServer> auth_onvif =

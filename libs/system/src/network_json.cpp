@@ -228,7 +228,7 @@ ConfigJson NetworkJsonWithConfigs(
 
 // Public API JSON/format helpers.
 
-ConfigJson NetStatusToApiJson(const NetStatus &status) {
+ConfigJson NetInterfaceInfoToApiJson(const NetInterfaceInfo &status) {
     ConfigJson root = ConfigJson::object();
     root["ifname"] = status.ifname;
     root["enabled"] = status.enabled;

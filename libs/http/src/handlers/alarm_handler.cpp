@@ -25,7 +25,7 @@ ConfigJson AlarmSourceStateToJson(const AlarmSourceState &state) {
     return root;
 }
 
-ConfigJson AlarmStatusToJson(const AlarmStatus &status) {
+ConfigJson AlarmInfoToJson(const AlarmInfo &status) {
     ConfigJson root = ConfigJson::object();
     root["active"] = status.active;
     root["source"] = AlarmSourceToJsonString(status.source);
@@ -75,7 +75,7 @@ private:
 
         ConfigJson root = ConfigJson::object();
         root["available"] = alarm_->IsStarted();
-        root["status"] = AlarmStatusToJson(alarm_->GetAlarmStatus());
+        root["status"] = AlarmInfoToJson(alarm_->GetAlarmInfo());
         return JsonResponse(200, root);
     }
 

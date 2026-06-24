@@ -3,7 +3,7 @@ import type {
     AiDetection,
     AiInferenceResult,
     AiTaskName,
-    AiTaskStatus,
+    AiTaskInfo,
     AiStatus,
     StreamName,
 } from '../api/types';
@@ -131,7 +131,7 @@ function taskShortLabel(task: AiTaskName) {
 }
 
 function taskHasUsableResult(
-    task: AiTaskStatus,
+    task: AiTaskInfo,
     stream: StreamName,
     status: AiStatus | null,
 ) {

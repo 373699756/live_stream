@@ -294,11 +294,11 @@ bool SrtpSession::ParseRtcpFeedback(const uint8_t *data, size_t size,
 }
 
 bool SrtpSession::CountRtcpFeedback(const uint8_t *data, size_t size,
-                                    RtcpFeedbackCounters *counters) {
-    if (counters == nullptr) {
+                                    RtcpFeedbackStats *feedback_stats) {
+    if (feedback_stats == nullptr) {
         return false;
     }
-    *counters = RtcpFeedbackCounters();
+    *feedback_stats = RtcpFeedbackStats();
     if (data == nullptr || size < kRtcpCommonHeaderSize) {
         return false;
     }
@@ -322,16 +322,16 @@ bool SrtpSession::CountRtcpFeedback(const uint8_t *data, size_t size,
             packet_size >= kRtcpFeedbackHeaderSize) {
             if (packet_type == kRtcpPacketTypePayloadFeedback &&
                 fmt == kRtcpFeedbackFormatPli) {
-                ++counters->pli_count;
+                ++feedback_stats->pli_count;
             } else if (packet_type == kRtcpPacketTypePayloadFeedback &&
                        fmt == kRtcpFeedbackFormatFir) {
-                ++counters->fir_count;
+                ++feedback_stats->fir_count;
             } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
                        fmt == kRtcpFeedbackFormatNack) {
-                ++counters->nack_count;
+                ++feedback_stats->nack_count;
             } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
                        fmt == kRtcpFeedbackFormatTransportCc) {
-                ++counters->transport_cc_count;
+                ++feedback_stats->transport_cc_count;
             }
         }
         offset += packet_size;

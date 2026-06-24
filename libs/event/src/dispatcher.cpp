@@ -115,9 +115,9 @@ public:
         });
     }
 
-    EventCounts GetCounts() const {
+    EventStats GetStats() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        EventCounts counts = counts_;
+        EventStats counts = counts_;
         counts.subscriptions = static_cast<uint32_t>(subscriptions_.size());
         return counts;
     }
@@ -135,7 +135,7 @@ private:
 
     mutable std::mutex mutex_;
     std::unordered_map<SubscriptionId, Entry> subscriptions_;
-    EventCounts counts_;
+    EventStats counts_;
     SubscriptionId next_subscription_id_ = 1;
 };
 
@@ -162,7 +162,7 @@ EventStatus Dispatcher::Post(Loop *loop, const Event &event) {
     return impl_->Post(this, loop, event);
 }
 
-EventCounts Dispatcher::GetCounts() const { return impl_->GetCounts(); }
+EventStats Dispatcher::GetStats() const { return impl_->GetStats(); }
 
 Subscription::~Subscription() { Cancel(); }
 
@@ -193,10 +193,10 @@ void Subscription::Cancel() {
     }
 }
 
-Service::Service() = default;
-Service::~Service() { Stop(StopMode::kDiscard); }
+Bus::Bus() = default;
+Bus::~Bus() { Stop(StopMode::kDiscard); }
 
-bool Service::Start(const ServiceOptions &options) {
+bool Bus::Start(const BusOptions &options) {
     if (started_) {
         return true;
     }
@@ -207,16 +207,16 @@ bool Service::Start(const ServiceOptions &options) {
     return true;
 }
 
-void Service::Stop(StopMode mode) {
+void Bus::Stop(StopMode mode) {
     loop_.Stop(mode);
     started_ = false;
 }
 
-EventStatus Service::Publish(const Event &event) {
+EventStatus Bus::Publish(const Event &event) {
     return dispatcher_.Publish(event);
 }
 
-EventStatus Service::PublishAsync(const Event &event) {
+EventStatus Bus::PublishAsync(const Event &event) {
     return dispatcher_.Post(&loop_, event);
 }
 
@@ -240,7 +240,7 @@ bool IsKnownEventType(EventType type) {
         case EventType::kNetPressureChanged:
         case EventType::kAlarmOn:
         case EventType::kAlarmOff:
-        case EventType::kSystemStatusChanged:
+        case EventType::kSystemInfoChanged:
         case EventType::kUpgradeProgressChanged:
             return true;
     }

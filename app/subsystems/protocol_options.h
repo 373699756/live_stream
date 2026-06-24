@@ -14,7 +14,7 @@
 namespace live_stream {
 
 event::LoopOptions BuildNetCallbackOptions();
-NetEngineOptions BuildNetEngineOptions(event::Loop *callback_loop);
+NetIoOptions BuildNetIoOptions(event::Loop *callback_loop);
 
 RtspOptions BuildRtspOptions(const AppConfig &app_config);
 RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs);

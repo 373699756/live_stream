@@ -1,6 +1,6 @@
-import type { UpgradeStatus } from './types';
+import type { UpgradeInfo } from './types';
 
-export const mockUpgradeStatus: UpgradeStatus = {
+export const mockUpgradeInfo: UpgradeInfo = {
     state: 'idle',
     progress_percent: 0,
     current_stage: 'idle',

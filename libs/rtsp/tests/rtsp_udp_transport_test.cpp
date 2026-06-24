@@ -105,9 +105,9 @@ int main() {
         return 1;
     }
 
-    std::unique_ptr<live_stream::INetEngine> net_engine =
-        live_stream::CreateNetEngine(live_stream::NetEngineOptions{});
-    if (!net_engine || !net_engine->Start()) {
+    std::unique_ptr<live_stream::INetIo> net_io =
+        live_stream::CreateNetIo(live_stream::NetIoOptions{});
+    if (!net_io || !net_io->Start()) {
         close(udp_fd);
         return 2;
     }
@@ -116,8 +116,8 @@ int main() {
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
     live_stream::RtspDependencies deps;
-    deps.net_engine = net_engine.get();
-    deps.net_loop = net_engine->DefaultLoop();
+    deps.net_io = net_io.get();
+    deps.net_loop = net_io->DefaultLoop();
     deps.media_streams = &media_streams;
     auto rtsp = live_stream::CreateRtsp(options, deps);
     if (!rtsp || !rtsp->Start()) {
@@ -181,6 +181,6 @@ int main() {
     close(tcp_fd);
     close(udp_fd);
     rtsp->Stop();
-    net_engine->Stop();
+    net_io->Stop();
     return 0;
 }

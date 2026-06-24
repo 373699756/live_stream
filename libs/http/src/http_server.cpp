@@ -51,7 +51,7 @@ HttpServer::HttpServer(const HttpOptions &options,
                        HttpRequestHandler *request_handler)
     : options_(options),
       response_sender_(options.send_buffer_limit_bytes),
-      net_engine_(dependencies.net_engine),
+      net_io_(dependencies.net_io),
       net_loop_(dependencies.net_loop),
       request_handler_(request_handler) {}
 
@@ -65,7 +65,7 @@ bool HttpServer::Prepare() {
     if (initialized_) {
         return true;
     }
-    if (net_engine_ == nullptr || request_handler_ == nullptr) {
+    if (net_io_ == nullptr || request_handler_ == nullptr) {
         return false;
     }
     if (net_loop_ == nullptr) {
@@ -104,9 +104,9 @@ bool HttpServer::Start() {
                  "HTTP server start skipped: already started");
             return true;
         }
-        if (net_engine_ == nullptr) {
+        if (net_io_ == nullptr) {
             Error(kHttpModuleName,
-                  "HTTP server start failed: net engine null");
+                  "HTTP server start failed: net io null");
             return false;
         }
         stream_executor = stream_executor_.get();
@@ -142,8 +142,8 @@ bool HttpServer::Start() {
     callbacks.on_accept = &HttpServer::HandleAccept;
     callbacks.on_read = &HttpServer::HandleRead;
     callbacks.on_close = &HttpServer::HandleClose;
-    TcpServerId server = net_engine_->ListenTcp(net_loop_, server_config,
-                                                callbacks);
+    TcpServerId server = net_io_->ListenTcp(net_loop_, server_config,
+                                            callbacks);
     if (server == 0) {
         Error(kHttpModuleName, "HTTP listen tcp failed");
         StopExecutor(control_executor);
@@ -175,7 +175,7 @@ bool HttpServer::Start() {
 
 void HttpServer::Stop() {
     TcpServerId server_id = 0;
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     event::Executor *stream_executor = nullptr;
     event::Executor *control_executor = nullptr;
@@ -190,7 +190,7 @@ void HttpServer::Stop() {
         started_ = false;
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
-        net_engine = net_engine_;
+        net_io = net_io_;
         net_loop = net_loop_;
         // Stop() 先摘出 session 状态，再在锁外通知媒体模块 detach client。
         // close callback 可能回到 media/event，不能拿着 HTTP 锁跨模块调用。
@@ -218,19 +218,19 @@ void HttpServer::Stop() {
          static_cast<unsigned long long>(server_id),
          media_clients.size());
     NotifyStreamsClosed(media_clients);
-    if (net_engine != nullptr) {
+    if (net_io != nullptr) {
         for (event::TimerId timer_id : timer_ids) {
             CancelNetTimer(net_loop, timer_id);
         }
     }
-    if (net_engine != nullptr && server_id != 0) {
-        (void)net_engine->CloseTcp(server_id);
+    if (net_io != nullptr && server_id != 0) {
+        (void)net_io->CloseTcp(server_id);
     }
-    if (net_engine != nullptr) {
+    if (net_io != nullptr) {
         // 主动关闭所有连接可以触发 net close path，但 sessions_ 已经在上面摘除，
         // 所以 OnClose() 不会重复 detach media client。
         for (ConnectionId connection_id : connection_ids) {
-            (void)net_engine->Close(connection_id);
+            (void)net_io->Close(connection_id);
         }
     }
     StopExecutor(control_executor);
@@ -249,10 +249,10 @@ void HttpServer::Release() {
 
 HttpListenAddress HttpServer::LocalAddress() const {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (net_engine_ == nullptr || tcp_server_id_ == 0) {
+    if (net_io_ == nullptr || tcp_server_id_ == 0) {
         return HttpListenAddress{};
     }
-    NetAddress address = net_engine_->TcpLocalAddress(tcp_server_id_);
+    NetAddress address = net_io_->TcpLocalAddress(tcp_server_id_);
     HttpListenAddress result;
     result.ip = address.ip;
     result.port = address.port;
@@ -266,11 +266,11 @@ HttpStats HttpServer::GetStats() const {
 
 std::vector<HttpStreamSessionInfo>
 HttpServer::ListStreamSessionInfo() const {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     std::vector<HttpSessionStreamingInfo> sessions;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        net_engine = net_engine_;
+        net_io = net_io_;
         sessions.reserve(sessions_.size());
         for (const auto &item : sessions_) {
             if (item.second != nullptr && item.second->is_streaming()) {
@@ -282,7 +282,7 @@ HttpServer::ListStreamSessionInfo() const {
             }
         }
     }
-    if (net_engine == nullptr) {
+    if (net_io == nullptr) {
         return std::vector<HttpStreamSessionInfo>();
     }
 
@@ -291,7 +291,7 @@ HttpServer::ListStreamSessionInfo() const {
     for (const HttpSessionStreamingInfo &session : sessions) {
         session_info.push_back(BuildStreamSessionInfo(
             session,
-            net_engine->GetConnectionInfo(session.connection_id)));
+            net_io->GetConnectionInfo(session.connection_id)));
     }
     return session_info;
 }
@@ -325,7 +325,7 @@ void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
     const bool sent = response_sender_.SendResponse(
-        net_engine_, connection_id, response, close_after_response);
+        net_io_, connection_id, response, close_after_response);
     if (sent && !close_after_response) {
         CompleteKeepAliveRequest(connection_id);
     }
@@ -367,7 +367,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
         }
     }
     const bool enqueued = response_sender_.EnqueueStreamingChunk(
-        net_engine_, connection_id, data, size);
+        net_io_, connection_id, data, size);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
     }
@@ -389,7 +389,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         }
     }
     const bool enqueued = response_sender_.EnqueueStreamingSlices(
-        net_engine_, connection_id, slices, slice_count);
+        net_io_, connection_id, slices, slice_count);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
     }
@@ -407,17 +407,17 @@ void HttpServer::CloseConnection(ConnectionId connection_id) {
 
 void HttpServer::CloseConnectionWithReason(ConnectionId connection_id,
                                            TcpCloseReason reason) {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter != sessions_.end() && iter->second != nullptr) {
             (void)iter->second->MarkStreamClosing();
         }
-        net_engine = net_engine_;
+        net_io = net_io_;
     }
-    if (net_engine != nullptr) {
-        response_sender_.CloseConnection(net_engine, connection_id, reason);
+    if (net_io != nullptr) {
+        response_sender_.CloseConnection(net_io, connection_id, reason);
     }
 }
 
@@ -728,7 +728,7 @@ HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
 
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
-    INetEngine *net_engine = nullptr;
+    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     RenewedHttpSessionTimeout timeout;
     {
@@ -738,10 +738,10 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
             return;
         }
         timeout = iter->second->RenewTimeout();
-        net_engine = net_engine_;
+        net_io = net_io_;
         net_loop = net_loop_;
     }
-    if (net_engine == nullptr || net_loop == nullptr) {
+    if (net_io == nullptr || net_loop == nullptr) {
         return;
     }
     // timeout_generation_ 用来淘汰旧 timer：请求推进或进入 streaming 后，
@@ -749,9 +749,8 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     CancelNetTimer(net_loop, timeout.replaced_timer_id);
     event::TimerId timer_id = 0;
     const event::EventStatus timer_status = net_loop->RunAfter(
-        delay_ms, [this, connection_id,
-                   generation = timeout.generation]() {
-            INetEngine *engine = nullptr;
+        delay_ms, [this, connection_id, generation = timeout.generation]() {
+            INetIo *engine = nullptr;
             bool should_close = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -759,12 +758,13 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                 should_close =
                     iter != sessions_.end() && iter->second != nullptr &&
                     iter->second->ExpireTimeout(generation);
-                engine = net_engine_;
+                engine = net_io_;
             }
             if (should_close && engine != nullptr) {
                 (void)engine->Close(connection_id);
             }
-        }, &timer_id);
+        },
+        &timer_id);
     if (timer_status != event::EventStatus::kOk || timer_id == 0) {
         return;
     }

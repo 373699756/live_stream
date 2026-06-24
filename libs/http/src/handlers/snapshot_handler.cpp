@@ -23,7 +23,7 @@ HttpResponse SnapshotTextResponse(int status_code, const std::string &reason) {
 
 bool LooksLikeJpeg(const SnapshotFrame &frame) {
     const uint8_t *data = frame.PayloadData();
-    return data != nullptr && frame.size >= 2 && data[0] == 0xff &&
+    return data != nullptr && frame.Size() >= 2 && data[0] == 0xff &&
            data[1] == 0xd8;
 }
 
@@ -86,7 +86,8 @@ private:
         response.status_code = 200;
         response.headers["Content-Type"] = "image/jpeg";
         response.headers["Cache-Control"] = "no-cache";
-        response.body.assign(reinterpret_cast<const char *>(data), frame.size);
+        response.body.assign(reinterpret_cast<const char *>(data),
+                             frame.Size());
         return response;
     }
 

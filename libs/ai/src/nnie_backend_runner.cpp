@@ -1,4 +1,4 @@
-#include "nnie_engine.h"
+#include "nnie_backend_runner.h"
 
 #include "ai_config.h"
 #include "hisi_ai_platform.h"
@@ -245,7 +245,7 @@ uint8_t ClampToByte(int value) {
 
 #endif
 
-class Hi3516Dv300NnieEngine final : public AiInferenceEngine {
+class Hi3516Dv300NnieBackendRunner final : public AiBackendRunner {
 public:
     const char *Name() const override { return "hisi3516dv300_nnie"; }
     bool Available() const override { return LIVE_STREAM_HAS_HISI_NNIE != 0; }
@@ -1512,8 +1512,8 @@ private:
 
 }  // namespace
 
-std::shared_ptr<AiInferenceEngine> CreateNnieEngine() {
-    return std::shared_ptr<AiInferenceEngine>(new Hi3516Dv300NnieEngine());
+std::shared_ptr<AiBackendRunner> CreateNnieBackendRunner() {
+    return std::shared_ptr<AiBackendRunner>(new Hi3516Dv300NnieBackendRunner());
 }
 
 }  // namespace ai_internal

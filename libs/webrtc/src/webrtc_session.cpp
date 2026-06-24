@@ -79,7 +79,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     const std::string local_ice_pwd = BuildLocalIcePassword(peer_.peer_id);
 
     WebrtcTransportStartOptions transport_options;
-    transport_options.net_engine = context.net_engine;
+    transport_options.net_io = context.net_io;
     transport_options.net_loop = context.net_loop;
     transport_options.udp_callbacks = context.udp_callbacks;
     transport_options.peer_id = peer_.peer_id;

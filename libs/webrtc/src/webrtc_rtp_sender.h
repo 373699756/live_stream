@@ -13,11 +13,11 @@
 namespace live_stream {
 namespace webrtc_internal {
 
-class IWebrtcEngine;
+class IWebrtcPeerHost;
 class WebrtcRtpPacketSink;
 
 struct WebrtcRtpSenderContext {
-    std::shared_ptr<IWebrtcEngine> engine;
+    std::shared_ptr<IWebrtcPeerHost> peer_host;
     std::mutex *mutex = nullptr;
     WebrtcStats *service_stats = nullptr;
 };

@@ -12,7 +12,7 @@
 
 namespace live_stream {
 
-class CoreSubsystem;
+class FoundationSubsystem;
 
 struct DeviceRefs {
     ISystem *system = nullptr;
@@ -26,7 +26,7 @@ class DeviceSubsystem {
 public:
     static DeviceSubsystem &Get();
 
-    bool Start(CoreSubsystem &core_subsystem,
+    bool Start(FoundationSubsystem &foundation_subsystem,
                DevicePlatformDependencies dependencies);
     void Stop();
     DeviceRefs refs() const;

@@ -18,7 +18,7 @@ public:
         return interfaces;
     }
 
-    live_stream::NetStatus GetInterfaceStatus(
+    live_stream::NetInterfaceInfo GetInterfaceInfo(
         const std::string& ifname) override {
         ++status_count;
         status.ifname = ifname;
@@ -75,7 +75,7 @@ public:
     }
 
     std::vector<std::string> interfaces{"eth0"};
-    live_stream::NetStatus status;
+    live_stream::NetInterfaceInfo status;
     live_stream::NetConfig last_static_config;
     live_stream::NetConfig last_rollback_config;
     std::vector<std::string> last_dns_servers;
@@ -319,8 +319,8 @@ int main() {
         return 4;
     }
 
-    live_stream::NetStatus status =
-        service->GetInterfaceStatus("eth0");
+    live_stream::NetInterfaceInfo status =
+        service->GetInterfaceInfo("eth0");
     if (!status.link_up ||
         status.static_ipv4.address != "192.168.1.10" ||
         status.mac_address != "00:11:22:33:44:55") {
@@ -400,22 +400,22 @@ int main() {
     }
     config.set_ok = true;
 
-    status = service->GetInterfaceStatus("eth0");
+    status = service->GetInterfaceInfo("eth0");
     if (status.last_ok) {
         return 12;
     }
 
     platform.status.last_ok = false;
-    if (!service->ReloadStatus()) {
+    if (!service->ReloadInterfaceInfo()) {
         return 13;
     }
-    status = service->GetInterfaceStatus("eth0");
+    status = service->GetInterfaceInfo("eth0");
     if (status.last_ok) {
         return 14;
     }
 
     live_stream::ConfigJson status_json =
-        live_stream::NetStatusToApiJson(status);
+        live_stream::NetInterfaceInfoToApiJson(status);
     if (status_json["static_ipv4"]["address"] != "192.168.1.10") {
         return 15;
     }

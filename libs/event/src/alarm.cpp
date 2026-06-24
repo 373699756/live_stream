@@ -189,8 +189,8 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
 }
 
 event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
-                     const std::string &message, int32_t value,
-                     uint8_t level) {
+                            const std::string &message, int32_t value,
+                            uint8_t level) {
     event::Event event;
     event.type = type;
     event.source = "alarm";
@@ -317,10 +317,10 @@ public:
 
     void Release() { ReleaseInternal(); }
 
-    AlarmStatus GetAlarmStatus() override {
+    AlarmInfo GetAlarmInfo() override {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!initialized_) {
-            return AlarmStatus();
+            return AlarmInfo();
         }
         return BuildStatusLocked();
     }
@@ -597,8 +597,8 @@ private:
         }
     }
 
-    AlarmStatus BuildStatusLocked() const {
-        AlarmStatus status;
+    AlarmInfo BuildStatusLocked() const {
+        AlarmInfo status;
         status.sources.reserve(kAlarmSourceCount);
 
         bool found_active_source = false;
