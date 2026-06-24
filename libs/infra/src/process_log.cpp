@@ -4,24 +4,32 @@
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <unistd.h>
 
 namespace infra {
 namespace {
 
 constexpr size_t kMaxFormattedLogSize = 2048;
 constexpr size_t kMaxAsyncQueueSize = 1024;
+constexpr const char* kConsoleColorReset = "\033[0m";
+
+struct LogLine {
+    LogLevel level = LogLevel::kInfo;
+    std::string line;
+};
 
 std::mutex g_log_mutex;
 std::condition_variable g_log_condition;
 LogConfig g_config;
 bool g_initialized = false;
 bool g_stopping = false;
-std::deque<std::string> g_async_lines;
+std::deque<LogLine> g_async_lines;
 std::thread g_worker;
 std::FILE* g_file = nullptr;
 
@@ -42,6 +50,25 @@ const char* LevelToString(LogLevel level) {
     }
 
     return "UNKNOWN";
+}
+
+const char* ConsoleColorForLevel(LogLevel level) {
+    switch (level) {
+        case LogLevel::kTrace:
+            return "\033[90m";
+        case LogLevel::kDebug:
+            return "\033[36m";
+        case LogLevel::kInfo:
+            return "\033[32m";
+        case LogLevel::kWarn:
+            return "\033[33m";
+        case LogLevel::kError:
+            return "\033[31m";
+        case LogLevel::kFatal:
+            return "\033[1;31m";
+    }
+
+    return "";
 }
 
 bool ShouldWrite(LogLevel level) {
@@ -72,6 +99,10 @@ std::string BuildLine(LogLevel level,
     }
     result += "\n";
     return result;
+}
+
+bool ShouldColorConsoleLocked() {
+    return g_config.console_color && isatty(STDERR_FILENO) != 0;
 }
 
 uint64_t CurrentLogFileSize() {
@@ -129,10 +160,19 @@ void RotateFileIfNeededLocked() {
     OpenFileLocked();
 }
 
-void WriteLineLocked(const std::string& line) {
+void WriteLineLocked(LogLevel level, const std::string& line) {
     if (g_config.console_output) {
-        std::fwrite(line.data(), 1, line.size(), stderr);
-        std::fflush(stderr);
+        if (ShouldColorConsoleLocked()) {
+            const char* color = ConsoleColorForLevel(level);
+            std::fwrite(color, 1, std::strlen(color), stderr);
+            std::fwrite(line.data(), 1, line.size(), stderr);
+            std::fwrite(kConsoleColorReset, 1, std::strlen(kConsoleColorReset),
+                        stderr);
+            std::fflush(stderr);
+        } else {
+            std::fwrite(line.data(), 1, line.size(), stderr);
+            std::fflush(stderr);
+        }
     }
 
     if (!g_config.file_path.empty()) {
@@ -147,6 +187,7 @@ void WriteLineLocked(const std::string& line) {
 
 void WorkerMain() {
     while (true) {
+        LogLevel level = LogLevel::kInfo;
         std::string line;
         {
             std::unique_lock<std::mutex> lock(g_log_mutex);
@@ -156,9 +197,10 @@ void WorkerMain() {
             if (g_stopping && g_async_lines.empty()) {
                 break;
             }
-            line = std::move(g_async_lines.front());
+            line = std::move(g_async_lines.front().line);
+            level = g_async_lines.front().level;
             g_async_lines.pop_front();
-            WriteLineLocked(line);
+            WriteLineLocked(level, line);
         }
     }
 }
@@ -206,9 +248,9 @@ void Log::Shutdown() {
 
     std::lock_guard<std::mutex> lock(g_log_mutex);
     while (!g_async_lines.empty()) {
-        const std::string line = std::move(g_async_lines.front());
+        LogLine log_line = std::move(g_async_lines.front());
         g_async_lines.pop_front();
-        WriteLineLocked(line);
+        WriteLineLocked(log_line.level, log_line.line);
     }
     CloseFileLocked();
     g_initialized = false;
@@ -251,12 +293,12 @@ void Log::Write(LogLevel level,
             }
             g_async_lines.pop_front();
         }
-        g_async_lines.push_back(log_line);
+        g_async_lines.push_back(LogLine{level, log_line});
         g_log_condition.notify_one();
         return;
     }
 
-    WriteLineLocked(log_line);
+    WriteLineLocked(level, log_line);
 }
 
 }  // namespace infra

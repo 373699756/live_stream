@@ -28,6 +28,7 @@ struct LogConfig {
     uint32_t max_file_size_kb = 0;
     uint32_t max_file_count = 0;
     bool console_output = true;
+    bool console_color = true;
     bool async_write = false;
 };
 

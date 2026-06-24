@@ -25,6 +25,7 @@ flowchart LR
 ## 核心职责
 
 - 提供常规进程日志入口。
+- 运行日志控制台输出可按等级使用 ANSI 颜色，文件输出保持纯文本。
 - 提供用户操作审计日志入口，接收 `OperationRecord`，支持查询、导出和轮转。
 - 提供文件读写、路径和时间工具。
 - 提供异步 executor，用于网络 callback 和 HTTP stream/control 任务。

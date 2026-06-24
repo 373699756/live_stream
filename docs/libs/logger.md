@@ -20,8 +20,8 @@ public API 名称保持 `ILogger`、`LoggerConfig`、`OperationRecord`、`Operat
 flowchart LR
   Auth[auth audit sink] --> Logger[logger]
   HTTP[HTTP operation handlers] --> Logger
-  Logger --> OperationLog[infra file_operation_log]
-  OperationLog --> File[log/operation.log or /data/operation.log]
+  Logger --> OperationLogFile[infra OperationLogFile]
+  OperationLogFile --> File[log/operation.log or /data/operation.log]
   Web[www LogsPage] --> HTTP[http operations API]
   HTTP --> Logger
 ```

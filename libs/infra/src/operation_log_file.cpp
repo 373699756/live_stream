@@ -1,11 +1,11 @@
 /*
  * Copyright (c) 2026 CBinary
  * Author: CBinary
- * File: file_operation_log.cpp
+ * File: operation_log_file.cpp
  * Brief: Implements the JSON Lines file backend for operation audit records.
  */
 
-#include "operation_log.h"
+#include "operation_log_file.h"
 
 #include "config_json.h"
 #include "infra/fs.h"
@@ -199,10 +199,10 @@ const char* OperationResultToString(OperationResult result) {
     return "Unknown";
 }
 
-FileOperationLog::FileOperationLog(const LoggerConfig& config)
+OperationLogFile::OperationLogFile(const LoggerConfig& config)
     : config_(config) {}
 
-bool FileOperationLog::Open() {
+bool OperationLogFile::Open() {
     if (config_.operation_log_path.empty()) {
         return false;
     }
@@ -223,12 +223,12 @@ bool FileOperationLog::Open() {
     return true;
 }
 
-void FileOperationLog::Close() {
+void OperationLogFile::Close() {
     std::lock_guard<std::mutex> lock(mutex_);
     opened_ = false;
 }
 
-bool FileOperationLog::Append(const OperationRecord& record) {
+bool OperationLogFile::Append(const OperationRecord& record) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!opened_) {
         return false;
@@ -242,7 +242,7 @@ bool FileOperationLog::Append(const OperationRecord& record) {
                                EncodeOperationRecord(record));
 }
 
-std::vector<OperationRecord> FileOperationLog::Query(
+std::vector<OperationRecord> OperationLogFile::Query(
     const OperationLogQuery& query) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!opened_) {
@@ -281,7 +281,7 @@ std::vector<OperationRecord> FileOperationLog::Query(
     return records;
 }
 
-bool FileOperationLog::Export(
+bool OperationLogFile::Export(
     const OperationLogExportOptions& options) {
     if (options.output_path.empty()) {
         return false;
@@ -300,7 +300,7 @@ bool FileOperationLog::Export(
     return infra::File::WriteAll(options.output_path, output);
 }
 
-std::vector<std::string> FileOperationLog::LogPathsNewestFirst() const {
+std::vector<std::string> OperationLogFile::LogPathsNewestFirst() const {
     std::vector<std::string> paths;
     paths.push_back(config_.operation_log_path);
     for (uint32_t i = 1; i <= config_.max_rotate_files; ++i) {
@@ -309,7 +309,7 @@ std::vector<std::string> FileOperationLog::LogPathsNewestFirst() const {
     return paths;
 }
 
-bool FileOperationLog::RotateIfNeededLocked() {
+bool OperationLogFile::RotateIfNeededLocked() {
     uint64_t size = infra::File::Size(config_.operation_log_path);
     if (size == 0 && !infra::File::Exists(config_.operation_log_path)) {
         return true;
