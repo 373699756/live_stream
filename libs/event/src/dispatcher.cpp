@@ -61,7 +61,7 @@ public:
         }
         std::lock_guard<std::mutex> lock(mutex_);
         if (subscriptions_.size() >= kDefaultMaxSubscriptions) {
-            ++counts_.rejected;
+            ++stats_.rejected;
             return Subscription();
         }
         const SubscriptionId id = next_subscription_id_++;
@@ -92,13 +92,13 @@ public:
                     fns.push_back(entry.second.fn);
                 }
             }
-            ++counts_.published;
+            ++stats_.published;
         }
         for (const EventFn &fn : fns) {
             if (fn) {
                 fn(event_to_publish);
                 std::lock_guard<std::mutex> lock(mutex_);
-                ++counts_.handled;
+                ++stats_.handled;
             }
         }
         return EventStatus::kOk;
@@ -117,9 +117,9 @@ public:
 
     EventStats GetStats() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        EventStats counts = counts_;
-        counts.subscriptions = static_cast<uint32_t>(subscriptions_.size());
-        return counts;
+        EventStats stats = stats_;
+        stats.subscriptions = static_cast<uint32_t>(subscriptions_.size());
+        return stats;
     }
 
 private:
@@ -130,12 +130,12 @@ private:
 
     void IncrementRejected() {
         std::lock_guard<std::mutex> lock(mutex_);
-        ++counts_.rejected;
+        ++stats_.rejected;
     }
 
     mutable std::mutex mutex_;
     std::unordered_map<SubscriptionId, Entry> subscriptions_;
-    EventStats counts_;
+    EventStats stats_;
     SubscriptionId next_subscription_id_ = 1;
 };
 

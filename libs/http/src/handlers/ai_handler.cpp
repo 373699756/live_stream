@@ -179,8 +179,8 @@ ConfigJson AiStatsToJson(const AiStats &stats) {
     root["last_failure_time_ms"] = stats.last_failure_time_ms;
     root["received_frames"] = stats.received_frames;
     root["skipped_frames"] = stats.skipped_frames;
-    root["inference_count"] = stats.inference_count;
-    root["inference_failed_count"] = stats.inference_failed_count;
+    root["inferences"] = stats.inferences;
+    root["failed_inferences"] = stats.failed_inferences;
     root["dropped_tasks"] = stats.dropped_tasks;
     root["last_inference_time_ms"] = stats.last_inference_time_ms;
     root["max_inference_time_ms"] = stats.max_inference_time_ms;
@@ -274,7 +274,7 @@ ConfigJson AiAlertToJson(const AiAlertRecord &alert) {
     root["stream"] = StreamIdToJsonString(alert.stream_id);
     root["task"] = AiTaskToJsonString(alert.task);
     root["image_url"] = "/api/ai/alerts/" + alert.id + "/image";
-    root["detection_count"] = alert.detection_count;
+    root["detection_size"] = alert.detection_size;
     root["confidence_max"] = alert.max_confidence;
     ConfigJson detections = ConfigJson::array();
     for (const AiDetection &detection : alert.detections) {

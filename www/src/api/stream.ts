@@ -58,7 +58,7 @@ const emptyMediaSessions: MediaSessionsResponse = {
     webrtc_dtls_ready: false,
     webrtc_enabled: false,
     webrtc_ice_ready: false,
-    webrtc_ice_server_count: 0,
+    webrtc_ice_server_size: 0,
     webrtc_local_port_base: 0,
     webrtc_max_peers: 0,
     webrtc_public_ip: '',

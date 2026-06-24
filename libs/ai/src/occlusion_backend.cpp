@@ -12,8 +12,8 @@ namespace {
 constexpr uint32_t kIveImageAlign = 16;
 constexpr uint32_t kGridWidth = 8;
 constexpr uint32_t kGridHeight = 8;
-constexpr uint32_t kGridCount = kGridWidth * kGridHeight;
-constexpr uint32_t kHitThreshold = kGridCount / 2U;
+constexpr uint32_t kGridSize = kGridWidth * kGridHeight;
+constexpr uint32_t kHitThreshold = kGridSize / 2U;
 constexpr int32_t kLineMean0 = 80;
 constexpr int32_t kLineSigma0 = 0;
 constexpr int32_t kLineMean1 = 80;
@@ -74,12 +74,12 @@ AiInferenceResult OcclusionBackend::Run(const hisisdk::YuvFrame &frame,
 
     result.success = true;
     result.sequence = ++sequence_;
-    const uint32_t hit_count = CountHits();
-    if (hit_count > kHitThreshold) {
+    const uint32_t hit_size = HitSize();
+    if (hit_size > kHitThreshold) {
         AiDetection detection;
         detection.label = "occlusion";
         detection.confidence =
-            static_cast<float>(hit_count) / static_cast<float>(kGridCount);
+            static_cast<float>(hit_size) / static_cast<float>(kGridSize);
         detection.x = 0.0f;
         detection.y = 0.0f;
         detection.width = 1.0f;
@@ -213,7 +213,7 @@ bool OcclusionBackend::CanUseFrame(const hisisdk::YuvFrame &frame) const {
            info.compress_mode == static_cast<int32_t>(COMPRESS_MODE_NONE);
 }
 
-uint32_t OcclusionBackend::CountHits() const {
+uint32_t OcclusionBackend::HitSize() const {
     if (integ_image_.vir_addr == nullptr || integ_image_.width < kGridWidth ||
         integ_image_.height < kGridHeight) {
         return 0;
@@ -224,7 +224,7 @@ uint32_t OcclusionBackend::CountHits() const {
         return 0;
     }
 
-    uint32_t hit_count = 0;
+    uint32_t hit_size = 0;
     const HI_U64 *integral =
         static_cast<const HI_U64 *>(integ_image_.vir_addr);
     for (uint32_t grid_y = 0; grid_y < kGridHeight; ++grid_y) {
@@ -234,11 +234,11 @@ uint32_t OcclusionBackend::CountHits() const {
             if (ReadBlockStats(integral, block_width, block_height, grid_x,
                                grid_y, &mean, &sigma) &&
                 IsOcclusionBlock(mean, sigma)) {
-                ++hit_count;
+                ++hit_size;
             }
         }
     }
-    return hit_count;
+    return hit_size;
 }
 
 bool OcclusionBackend::ReadBlockStats(const HI_U64 *integral,

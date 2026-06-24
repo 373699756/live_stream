@@ -49,7 +49,7 @@ bool IsValidMediaPipelineConfig(const MediaPipelineConfig& config) {
            config.vpss_group >= 0 && config.vpss_channel >= 0 &&
            config.venc_channel >= 0 && IsValidSubStreamChannels(config) &&
            IsValidSnapshotChannels(config) &&
-           config.vb_block_count > 0 && IsValidStreamConfig(config.main_stream) &&
+           config.vb_blocks > 0 && IsValidStreamConfig(config.main_stream) &&
            config.main_stream.stream_id == StreamId::kMain &&
            IsValidStreamConfig(config.sub_stream) &&
            config.sub_stream.stream_id == StreamId::kSub;

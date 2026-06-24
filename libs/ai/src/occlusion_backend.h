@@ -41,7 +41,7 @@ private:
     bool CopyFrameLuma(const hisisdk::YuvFrame &frame,
                        OcclusionImage *image) const;
     bool CanUseFrame(const hisisdk::YuvFrame &frame) const;
-    uint32_t CountHits() const;
+    uint32_t HitSize() const;
     bool ReadBlockStats(const HI_U64 *integral,
                         uint32_t block_width,
                         uint32_t block_height,

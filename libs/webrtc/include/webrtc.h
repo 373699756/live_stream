@@ -35,7 +35,7 @@ struct WebrtcOptions {
     uint32_t max_peers = 2;
     uint32_t session_timeout_ms = 30000;
     uint32_t send_queue_capacity = 128;
-    uint32_t send_worker_count = 1;
+    uint32_t send_worker_size = 1;
     uint16_t local_port_base = 16000;
     bool prefer_tcp = false;
     std::string public_ip;
@@ -80,10 +80,10 @@ struct WebrtcPeerInfo {
     uint64_t rtp_bytes = 0;
     uint64_t rtcp_packets = 0;
     uint64_t rtcp_bytes = 0;
-    uint64_t rtcp_pli_count = 0;
-    uint64_t rtcp_fir_count = 0;
-    uint64_t rtcp_nack_count = 0;
-    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_pli_packets = 0;
+    uint64_t rtcp_fir_packets = 0;
+    uint64_t rtcp_nack_packets = 0;
+    uint64_t rtcp_transport_cc_packets = 0;
     uint64_t rtcp_keyframe_requests = 0;
     std::string last_error;
     int64_t created_at_ms = 0;
@@ -119,7 +119,7 @@ struct WebrtcStats {
     uint16_t local_port_base = 0;
     uint32_t active_peers = 0;
     uint32_t max_peers = 0;
-    uint32_t ice_server_count = 0;
+    uint32_t ice_server_size = 0;
     uint64_t total_peers = 0;
     uint64_t offers = 0;
     uint64_t remote_candidates = 0;
@@ -130,10 +130,10 @@ struct WebrtcStats {
     uint64_t dropped_rtp_packets = 0;
     uint64_t rtcp_packets = 0;
     uint64_t rtcp_bytes = 0;
-    uint64_t rtcp_pli_count = 0;
-    uint64_t rtcp_fir_count = 0;
-    uint64_t rtcp_nack_count = 0;
-    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_pli_packets = 0;
+    uint64_t rtcp_fir_packets = 0;
+    uint64_t rtcp_nack_packets = 0;
+    uint64_t rtcp_transport_cc_packets = 0;
     uint64_t rtcp_keyframe_requests = 0;
     std::string public_ip;
 };

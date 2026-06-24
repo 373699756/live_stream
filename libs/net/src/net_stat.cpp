@@ -49,22 +49,22 @@ NetPressureSignal SignalForMetric(PressureMetric metric) {
     return NetPressureSignal::kNone;
 }
 
-uint32_t IncrementedCounter(uint32_t value) {
+uint32_t IncrementedMetric(uint32_t value) {
     if (value == UINT32_MAX) {
         return value;
     }
     return value + 1;
 }
 
-uint32_t DecrementedCounter(uint32_t value) {
+uint32_t DecrementedMetric(uint32_t value) {
     if (value == 0) {
         return 0;
     }
     return value - 1;
 }
 
-uint32_t EventActiveCount(const event::Event &event,
-                          uint32_t fallback_value) {
+uint32_t EventActiveSize(const event::Event &event,
+                         uint32_t fallback_value) {
     if (event.value >= 0) {
         return static_cast<uint32_t>(event.value);
     }
@@ -90,7 +90,7 @@ struct ConnectionPressureRecord {
     NetPressureLevel level = NetPressureLevel::kNormal;
 };
 
-struct ProtocolClientCount {
+struct ProtocolClientActivity {
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
 };
@@ -199,7 +199,7 @@ private:
             recommendations_.clear();
             recommendation_history_.clear();
             connection_pressures_.clear();
-            protocol_activity_ = ProtocolClientCount{};
+            protocol_activity_ = ProtocolClientActivity{};
             last_published_level_ = NetPressureLevel::kNormal;
             stopping_ = false;
         }
@@ -211,30 +211,30 @@ private:
         switch (event.type) {
             case event::EventType::kRtspClientConnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveCount(
+                    EventActiveSize(
                         event,
-                        IncrementedCounter(
+                        IncrementedMetric(
                             protocol_activity_.active_rtsp_sessions));
                 break;
             case event::EventType::kRtspClientDisconnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveCount(
+                    EventActiveSize(
                         event,
-                        DecrementedCounter(
+                        DecrementedMetric(
                             protocol_activity_.active_rtsp_sessions));
                 break;
             case event::EventType::kWebRtcClientConnected:
                 protocol_activity_.active_webrtc_peers =
-                    EventActiveCount(
+                    EventActiveSize(
                         event,
-                        IncrementedCounter(
+                        IncrementedMetric(
                             protocol_activity_.active_webrtc_peers));
                 break;
             case event::EventType::kWebRtcClientDisconnected:
                 protocol_activity_.active_webrtc_peers =
-                    EventActiveCount(
+                    EventActiveSize(
                         event,
-                        DecrementedCounter(
+                        DecrementedMetric(
                             protocol_activity_.active_webrtc_peers));
                 break;
             default:
@@ -275,7 +275,7 @@ private:
                 protocol_activity_.active_webrtc_peers;
             ExpireIdlePressureRecords(now_ms);
             FillPressureStats(&next_stats);
-            next_stats.check_count = stats_.check_count + 1;
+            next_stats.checks = stats_.checks + 1;
             const NetPressureLevel previous_level = stats_.level;
             stats_ = next_stats;
             recommendations_ = next_recommendations;
@@ -652,7 +652,7 @@ private:
     event::Subscription event_subscription_;
     bool started_ = false;
     bool stopping_ = false;
-    ProtocolClientCount protocol_activity_;
+    ProtocolClientActivity protocol_activity_;
     NetPressureLevel last_published_level_ = NetPressureLevel::kNormal;
     std::map<std::string, ConnectionPressureRecord> connection_pressures_;
     std::thread check_thread_;

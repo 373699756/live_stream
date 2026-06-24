@@ -27,7 +27,7 @@ public:
     bool SendResponseSlices(INetIo *net_io, ConnectionId connection_id,
                             const HttpResponse &response,
                             const MediaOutSlice *body_slices,
-                            size_t body_slice_count, size_t body_size,
+                            size_t body_slice_size, size_t body_size,
                             bool close_after_response) const;
     bool EnqueueStreamingChunk(INetIo *net_io,
                                ConnectionId connection_id,
@@ -35,7 +35,7 @@ public:
     bool EnqueueStreamingSlices(INetIo *net_io,
                                 ConnectionId connection_id,
                                 const MediaOutSlice *slices,
-                                size_t slice_count) const;
+                                size_t slice_size) const;
     void CloseConnection(INetIo *net_io, ConnectionId connection_id,
                          TcpCloseReason reason) const;
 

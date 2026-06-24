@@ -32,8 +32,8 @@ constexpr int32_t kLdcDistortionMin = -300;
 constexpr int32_t kLdcDistortionMax = 500;
 constexpr int32_t kDisCropRatioMin = 50;
 constexpr int32_t kDisCropRatioMax = 98;
-constexpr int32_t kDisBufferCountMin = 5;
-constexpr int32_t kDisBufferCountMax = 10;
+constexpr int32_t kDisBufferSizeMin = 5;
+constexpr int32_t kDisBufferSizeMax = 10;
 constexpr int32_t kDisFrameRateMin = 1;
 constexpr int32_t kDisFrameRateMax = 60;
 constexpr int32_t kDisMovingSubjectLevelMin = 0;
@@ -721,8 +721,8 @@ bool ApplyStabilization(MppHisiSdkImpl* impl,
     dis_config.bScale = HI_TRUE;
 
     int32_t value = 0;
-    if (json_utils::ReadField(*stabilization, "buffer_count", &value,
-                              kDisBufferCountMin, kDisBufferCountMax)) {
+    if (json_utils::ReadField(*stabilization, "buffer_frames", &value,
+                              kDisBufferSizeMin, kDisBufferSizeMax)) {
         dis_config.u32BufNum = static_cast<HI_U32>(value);
     }
     if (json_utils::ReadField(*stabilization, "crop_ratio", &value,

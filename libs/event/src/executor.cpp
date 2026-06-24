@@ -14,7 +14,7 @@ namespace {
 
 constexpr uint32_t kDefaultQueueCapacity = 4096;
 
-uint32_t AutoWorkerCount() {
+uint32_t AutoWorkerSize() {
     const uint32_t hardware = std::thread::hardware_concurrency();
     if (hardware == 0) {
         return 2;
@@ -37,12 +37,12 @@ public:
         }
 
         options_ = options;
-        if (options_.worker_count == 0) {
-            options_.worker_count = AutoWorkerCount();
+        if (options_.worker_size == 0) {
+            options_.worker_size = AutoWorkerSize();
         }
         options_.queue_capacity =
             NormalizeQueueCapacity(options_.queue_capacity);
-        if (options_.worker_count == 0) {
+        if (options_.worker_size == 0) {
             return false;
         }
 
@@ -52,13 +52,13 @@ public:
         head_ = 0;
         tail_ = 0;
         size_ = 0;
-        running_count_ = 0;
+        running_size_ = 0;
         stats_ = ExecutorStats{};
         tasks_.clear();
         tasks_.resize(options_.queue_capacity);
         workers_.clear();
-        workers_.reserve(options_.worker_count);
-        for (uint32_t i = 0; i < options_.worker_count; ++i) {
+        workers_.reserve(options_.worker_size);
+        for (uint32_t i = 0; i < options_.worker_size; ++i) {
             workers_.push_back(std::thread(&Impl::WorkerLoop, this));
         }
         return true;
@@ -89,7 +89,7 @@ public:
 
         std::lock_guard<std::mutex> lock(mutex_);
         ClearQueueLocked();
-        running_count_ = 0;
+        running_size_ = 0;
     }
 
     EventStatus Post(Task task) {
@@ -122,8 +122,8 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         ExecutorStats stats = stats_;
         stats.pending = static_cast<uint32_t>(size_);
-        stats.running = running_count_;
-        stats.worker_count = options_.worker_count;
+        stats.running = running_size_;
+        stats.worker_size = options_.worker_size;
         return stats;
     }
 
@@ -144,7 +144,7 @@ private:
                 tasks_[head_].Reset();
                 head_ = (head_ + 1) % options_.queue_capacity;
                 --size_;
-                ++running_count_;
+                ++running_size_;
                 ++stats_.wakeups;
             }
 
@@ -154,7 +154,7 @@ private:
 
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                --running_count_;
+                --running_size_;
                 ++stats_.completed;
                 if (stopping_ && size_ == 0) {
                     condition_.notify_all();
@@ -182,7 +182,7 @@ private:
     uint32_t head_ = 0;
     uint32_t tail_ = 0;
     uint32_t size_ = 0;
-    uint32_t running_count_ = 0;
+    uint32_t running_size_ = 0;
     bool running_ = false;
     bool stopping_ = false;
     bool discard_ = false;

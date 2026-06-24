@@ -9,7 +9,7 @@ struct MediaBuffer {
     uint8_t* data = nullptr;
     uint32_t capacity = 0;
     uint32_t size = 0;
-    uint32_t ref_count = 0;
+    uint32_t refs = 0;
     MediaBufferFreeCallback free_callback = nullptr;
     void* user = nullptr;
 };
@@ -30,7 +30,7 @@ MediaBuffer* CreateMediaBuffer(uint8_t* data, uint32_t capacity, uint32_t size,
     buffer->data = data;
     buffer->capacity = capacity;
     buffer->size = size;
-    buffer->ref_count = 1;
+    buffer->refs = 1;
     buffer->free_callback = free_callback;
     buffer->user = user;
     return buffer;
@@ -40,7 +40,7 @@ MediaBuffer* AddMediaBufferRef(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return nullptr;
     }
-    (void)__sync_add_and_fetch(&buffer->ref_count, 1);
+    (void)__sync_add_and_fetch(&buffer->refs, 1);
     return buffer;
 }
 
@@ -48,7 +48,7 @@ void ReleaseMediaBuffer(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return;
     }
-    if (__sync_sub_and_fetch(&buffer->ref_count, 1) != 0) {
+    if (__sync_sub_and_fetch(&buffer->refs, 1) != 0) {
         return;
     }
     if (buffer->free_callback != nullptr) {

@@ -84,7 +84,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     transport_options.udp_callbacks = context.udp_callbacks;
     transport_options.peer_id = peer_.peer_id;
     transport_options.local_port_base = context.options.local_port_base;
-    transport_options.port_count =
+    transport_options.port_size =
         context.options.max_peers == 0 ? 1U : context.options.max_peers;
     transport_options.next_port_offset = context.next_port_offset;
     transport_options.local_ice_ufrag = local_ice_ufrag;
@@ -205,10 +205,10 @@ void WebrtcSession::FillPeerInfo(WebrtcPeerInfo *peer) const {
     peer->rtp_bytes = transport_info.rtp_bytes;
     peer->rtcp_packets = transport_info.rtcp_packets;
     peer->rtcp_bytes = transport_info.rtcp_bytes;
-    peer->rtcp_pli_count = transport_info.rtcp_pli_count;
-    peer->rtcp_fir_count = transport_info.rtcp_fir_count;
-    peer->rtcp_nack_count = transport_info.rtcp_nack_count;
-    peer->rtcp_transport_cc_count = transport_info.rtcp_transport_cc_count;
+    peer->rtcp_pli_packets = transport_info.rtcp_pli_packets;
+    peer->rtcp_fir_packets = transport_info.rtcp_fir_packets;
+    peer->rtcp_nack_packets = transport_info.rtcp_nack_packets;
+    peer->rtcp_transport_cc_packets = transport_info.rtcp_transport_cc_packets;
     peer->rtcp_keyframe_requests = transport_info.rtcp_keyframe_requests;
 }
 

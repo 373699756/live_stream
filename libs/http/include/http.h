@@ -70,9 +70,9 @@ struct HttpOptions {
     uint32_t send_queue_capacity = 64;
     uint32_t send_buffer_limit_bytes = 8 * 1024 * 1024;
     uint32_t stream_executor_queue_capacity = 128;
-    uint32_t stream_executor_worker_count = 2;
+    uint32_t stream_executor_worker_size = 2;
     uint32_t control_executor_queue_capacity = 16;
-    uint32_t control_executor_worker_count = 1;
+    uint32_t control_executor_worker_size = 1;
     uint32_t request_timeout_ms = 10000;
     uint32_t connection_idle_timeout_ms = 10000;
     uint32_t max_requests_per_connection = 1;

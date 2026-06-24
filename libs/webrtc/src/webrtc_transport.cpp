@@ -105,10 +105,10 @@ void WebrtcTransport::Close() {
     protected_rtp_bytes_ = 0;
     rtcp_packets_ = 0;
     rtcp_bytes_ = 0;
-    rtcp_pli_count_ = 0;
-    rtcp_fir_count_ = 0;
-    rtcp_nack_count_ = 0;
-    rtcp_transport_cc_count_ = 0;
+    rtcp_pli_packets_ = 0;
+    rtcp_fir_packets_ = 0;
+    rtcp_nack_packets_ = 0;
+    rtcp_transport_cc_packets_ = 0;
     rtcp_keyframe_requests_ = 0;
     protected_rtp_packet_.clear();
     plain_rtcp_packet_.clear();
@@ -199,15 +199,15 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
     ++rtcp_packets_;
     rtcp_bytes_ += plain_rtcp_packet_.size();
     RtcpFeedbackStats feedback_stats;
-    if (!SrtpSession::CountRtcpFeedback(plain_rtcp_packet_.data(),
-                                        plain_rtcp_packet_.size(),
-                                        &feedback_stats)) {
+    if (!SrtpSession::ReadRtcpFeedbackStats(plain_rtcp_packet_.data(),
+                                            plain_rtcp_packet_.size(),
+                                            &feedback_stats)) {
         *need_keyframe = false;
         return true;
     }
     RecordRtcpFeedback(feedback_stats);
-    *need_keyframe = feedback_stats.pli_count != 0 ||
-                     feedback_stats.fir_count != 0;
+    *need_keyframe = feedback_stats.pli_packets != 0 ||
+                     feedback_stats.fir_packets != 0;
     return true;
 }
 
@@ -261,10 +261,10 @@ WebrtcTransportInfo WebrtcTransport::GetInfo() const {
     info.rtp_bytes = protected_rtp_bytes_;
     info.rtcp_packets = rtcp_packets_;
     info.rtcp_bytes = rtcp_bytes_;
-    info.rtcp_pli_count = rtcp_pli_count_;
-    info.rtcp_fir_count = rtcp_fir_count_;
-    info.rtcp_nack_count = rtcp_nack_count_;
-    info.rtcp_transport_cc_count = rtcp_transport_cc_count_;
+    info.rtcp_pli_packets = rtcp_pli_packets_;
+    info.rtcp_fir_packets = rtcp_fir_packets_;
+    info.rtcp_nack_packets = rtcp_nack_packets_;
+    info.rtcp_transport_cc_packets = rtcp_transport_cc_packets_;
     info.rtcp_keyframe_requests = rtcp_keyframe_requests_;
     return info;
 }
@@ -278,10 +278,10 @@ void WebrtcTransport::FillStats(WebrtcStats *stats) const {
     }
     stats->rtcp_packets += rtcp_packets_;
     stats->rtcp_bytes += rtcp_bytes_;
-    stats->rtcp_pli_count += rtcp_pli_count_;
-    stats->rtcp_fir_count += rtcp_fir_count_;
-    stats->rtcp_nack_count += rtcp_nack_count_;
-    stats->rtcp_transport_cc_count += rtcp_transport_cc_count_;
+    stats->rtcp_pli_packets += rtcp_pli_packets_;
+    stats->rtcp_fir_packets += rtcp_fir_packets_;
+    stats->rtcp_nack_packets += rtcp_nack_packets_;
+    stats->rtcp_transport_cc_packets += rtcp_transport_cc_packets_;
     stats->rtcp_keyframe_requests += rtcp_keyframe_requests_;
 }
 
@@ -307,10 +307,10 @@ bool WebrtcTransport::StartIceTransport(
         return false;
     }
 
-    const uint32_t port_count = options.port_count == 0 ? 1U : options.port_count;
-    for (uint32_t i = 0; i < port_count; ++i) {
+    const uint32_t port_size = options.port_size == 0 ? 1U : options.port_size;
+    for (uint32_t i = 0; i < port_size; ++i) {
         const uint32_t offset =
-            (options.next_port_offset + i) % port_count;
+            (options.next_port_offset + i) % port_size;
         const uint16_t port = PortWithOffset(options.local_port_base, offset);
         if (port == 0) {
             continue;
@@ -328,7 +328,7 @@ bool WebrtcTransport::StartIceTransport(
             candidate->Stop();
             continue;
         }
-        *next_port_offset = (offset + 1) % port_count;
+        *next_port_offset = (offset + 1) % port_size;
         *ice = std::move(candidate);
         return true;
     }
@@ -424,11 +424,11 @@ void WebrtcTransport::CancelDtlsTimer() {
 
 void WebrtcTransport::RecordRtcpFeedback(
     const RtcpFeedbackStats &feedback_stats) {
-    rtcp_pli_count_ += feedback_stats.pli_count;
-    rtcp_fir_count_ += feedback_stats.fir_count;
-    rtcp_nack_count_ += feedback_stats.nack_count;
-    rtcp_transport_cc_count_ += feedback_stats.transport_cc_count;
-    rtcp_keyframe_requests_ += feedback_stats.pli_count + feedback_stats.fir_count;
+    rtcp_pli_packets_ += feedback_stats.pli_packets;
+    rtcp_fir_packets_ += feedback_stats.fir_packets;
+    rtcp_nack_packets_ += feedback_stats.nack_packets;
+    rtcp_transport_cc_packets_ += feedback_stats.transport_cc_packets;
+    rtcp_keyframe_requests_ += feedback_stats.pli_packets + feedback_stats.fir_packets;
 }
 
 }  // namespace webrtc_internal

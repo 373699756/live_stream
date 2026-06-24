@@ -18,7 +18,7 @@ namespace hisisdk {
 namespace {
 
 constexpr uint32_t kDefaultJpegQuality = 50;
-constexpr uint32_t kJpegMaxStreamCount = 200;
+constexpr uint32_t kJpegMaxStreamSize = 200;
 constexpr uint32_t kJpegIpQpDelta = 2;
 
 struct VpssMappedFrame {
@@ -287,7 +287,7 @@ bool CreateJpegChannel(const SnapshotConfig& config,
     context->has_channel = true;
 
     VENC_CHN_PARAM_S channel_param{};
-    channel_param.u32MaxStrmCnt = kJpegMaxStreamCount;
+    channel_param.u32MaxStrmCnt = kJpegMaxStreamSize;
     channel_param.u32PollWakeUpFrmCnt = 1;
     channel_param.stFrameRate.s32SrcFrmRate = 1;
     channel_param.stFrameRate.s32DstFrmRate = 1;
@@ -423,7 +423,7 @@ bool GetJpegStream(VENC_CHN jpeg_channel, const VENC_CHN_STATUS_S& status,
         stream->u32PackCount > status.u32CurPacks) {
         Error(
             "hisi_vendor",
-            "CaptureJpeg: invalid pack count seq=%u packs=%u allocated=%u",
+            "CaptureJpeg: invalid pack size seq=%u packs=%u allocated=%u",
             stream->u32Seq, stream->u32PackCount, status.u32CurPacks);
         (void)HI_MPI_VENC_ReleaseStream(jpeg_channel, stream);
         std::free(*packs);
@@ -569,7 +569,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     if (config.jpeg_venc_channel < 0 || config.snap_vpss_group < 0 ||
         config.snap_vpss_channel < 0 || config.size.width == 0 ||
         config.size.height == 0 || config.timeout_ms == 0 ||
-        config.frame_count == 0 || config.repeat_send_times == 0) {
+        config.capture_frames == 0 || config.repeat_send_times == 0) {
         return result;
     }
     if ((impl_->main_venc_.created &&

@@ -64,7 +64,7 @@ struct SnapshotConfig {
     int32_t snap_vpss_channel = 0;
     int32_t jpeg_venc_channel = 3;
     Size size;
-    uint32_t frame_count = 1;
+    uint32_t capture_frames = 1;
     uint32_t repeat_send_times = 1;
     uint32_t timeout_ms = 3000;
     uint32_t jpeg_quality = 90;

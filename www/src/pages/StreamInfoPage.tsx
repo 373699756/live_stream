@@ -17,7 +17,7 @@ const streamLabels: Record<StreamName, string> = {
 const streamInfoTimeoutMs = 3000;
 
 interface ProtocolRow {
-    activeCount: number;
+    activeSize: number;
     label: string;
     protocol: string;
     ready: string;
@@ -69,7 +69,7 @@ function protocolReady(streamInfo: MediaStreamInfo, protocol: string) {
     return streamInfo.running ? 'available' : 'not running';
 }
 
-function sessionCount(
+function sessionSize(
     sessions: MediaSessionInfo[],
     stream: StreamName,
     protocol?: string,
@@ -81,7 +81,7 @@ function sessionCount(
     ).length;
 }
 
-function summaryCount(
+function summarySize(
     sessionSummary: Omit<MediaSessionsResponse, 'items'>,
     protocol: string,
 ) {
@@ -118,7 +118,7 @@ function protocolRows(
         { label: 'Snapshot', url: urls?.snapshot || '', protocol: 'snapshot' },
     ].map((row) => ({
         ...row,
-        activeCount: sessionCount(sessions, streamInfo.stream, row.protocol),
+        activeSize: sessionSize(sessions, streamInfo.stream, row.protocol),
         ready: protocolReady(
             streamInfo,
             row.label === 'WebRTC WHEP' ? 'WebRTC' : row.label,
@@ -325,8 +325,8 @@ export function StreamInfoPage() {
                                     <div>
                                         <dt>读者/客户端</dt>
                                         <dd>
-                                            {streamInfo.subscription_count} /{' '}
-                                            {streamInfo.client_count}
+                                            {streamInfo.subscription_size} /{' '}
+                                            {streamInfo.client_size}
                                         </dd>
                                     </div>
                                     <div>
@@ -396,7 +396,7 @@ export function StreamInfoPage() {
                                                 {row.url || 'unavailable'}
                                             </code>
                                             <em>{row.ready}</em>
-                                            <strong>{row.activeCount}</strong>
+                                            <strong>{row.activeSize}</strong>
                                         </div>
                                     ))}
                                 </div>
@@ -438,7 +438,7 @@ export function StreamInfoPage() {
                     <div>
                         <span>ICE Servers</span>
                         <strong>
-                            {sessionSummary.webrtc_ice_server_count ?? 0}
+                            {sessionSummary.webrtc_ice_server_size ?? 0}
                         </strong>
                     </div>
                     <div>
@@ -488,7 +488,7 @@ export function StreamInfoPage() {
                 </div>
                 <div className="stream-session-groups">
                     {sessionGroups.map((group) => {
-                        const summaryActive = summaryCount(
+                        const summaryActive = summarySize(
                             sessionSummary,
                             group.protocol,
                         );

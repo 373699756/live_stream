@@ -399,7 +399,7 @@ void NetIoImpl::AddWrite(size_t size) {
 
 void NetIoImpl::AddSendBusy() {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    ++stats_.send_busy_count;
+    ++stats_.send_busy_events;
 }
 
 void NetIoImpl::AddSlowClose() {

@@ -75,10 +75,10 @@ ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
     root["rtp_bytes"] = peer.rtp_bytes;
     root["rtcp_packets"] = peer.rtcp_packets;
     root["rtcp_bytes"] = peer.rtcp_bytes;
-    root["rtcp_pli_count"] = peer.rtcp_pli_count;
-    root["rtcp_fir_count"] = peer.rtcp_fir_count;
-    root["rtcp_nack_count"] = peer.rtcp_nack_count;
-    root["rtcp_transport_cc_count"] = peer.rtcp_transport_cc_count;
+    root["rtcp_pli_packets"] = peer.rtcp_pli_packets;
+    root["rtcp_fir_packets"] = peer.rtcp_fir_packets;
+    root["rtcp_nack_packets"] = peer.rtcp_nack_packets;
+    root["rtcp_transport_cc_packets"] = peer.rtcp_transport_cc_packets;
     root["rtcp_keyframe_requests"] = peer.rtcp_keyframe_requests;
     root["last_error"] = peer.last_error;
     root["created_at_ms"] = peer.created_at_ms;

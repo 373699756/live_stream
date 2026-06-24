@@ -116,8 +116,8 @@ struct AiStats {
     int64_t last_failure_time_ms = 0;
     uint64_t received_frames = 0;
     uint64_t skipped_frames = 0;
-    uint64_t inference_count = 0;
-    uint64_t inference_failed_count = 0;
+    uint64_t inferences = 0;
+    uint64_t failed_inferences = 0;
     uint64_t dropped_tasks = 0;
     uint32_t last_inference_time_ms = 0;
     uint32_t max_inference_time_ms = 0;
@@ -136,7 +136,7 @@ struct AiAlertRecord {
     int64_t timestamp_ms = 0;
     StreamId stream_id = StreamId::kMain;
     AiTask task = AiTask::kObjectDetection;
-    uint32_t detection_count = 0;
+    uint32_t detection_size = 0;
     float max_confidence = 0.0f;
     std::vector<AiDetection> detections;
 };

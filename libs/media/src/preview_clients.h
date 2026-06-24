@@ -14,7 +14,7 @@ namespace live_stream {
 namespace media_internal {
 
 // Owns live preview clients for HTTP-FLV and MJPEG. Sink callbacks run without
-// the MediaStreams lock; pending-write counters keep detached sinks alive until
+// the MediaStreams lock; pending-write stats keep detached sinks alive until
 // the callback returns.
 class PreviewClients {
 public:

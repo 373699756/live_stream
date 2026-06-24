@@ -21,7 +21,7 @@ interface UseMediaStreamsInfoOptions {
     includeSessions?: boolean;
     refreshIntervalMs?: number;
     fastRefreshIntervalMs?: number;
-    fastRefreshCount?: number;
+    fastRefreshLimit?: number;
     subscribeEvents?: boolean;
     refreshPreviewUrlsOnInterval?: boolean;
     statusTimeoutMs?: number;
@@ -41,7 +41,7 @@ const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
     webrtc_dtls_ready: false,
     webrtc_enabled: false,
     webrtc_ice_ready: false,
-    webrtc_ice_server_count: 0,
+    webrtc_ice_server_size: 0,
     webrtc_local_port_base: 0,
     webrtc_max_peers: 0,
     webrtc_public_ip: '',
@@ -64,7 +64,7 @@ export function useMediaStreamsInfo({
     includeSessions = false,
     refreshIntervalMs = 0,
     fastRefreshIntervalMs = 0,
-    fastRefreshCount = 0,
+    fastRefreshLimit = 0,
     subscribeEvents = false,
     refreshPreviewUrlsOnInterval = false,
     statusTimeoutMs = defaultStatusTimeoutMs,
@@ -326,11 +326,11 @@ export function useMediaStreamsInfo({
         let fastRefreshes = 0;
         refreshStreamsInfo();
         const fastTimer =
-            fastRefreshIntervalMs > 0 && fastRefreshCount > 0
+            fastRefreshIntervalMs > 0 && fastRefreshLimit > 0
                 ? window.setInterval(() => {
                       fastRefreshes += 1;
                       refreshStreamsInfo();
-                      if (fastRefreshes >= fastRefreshCount) {
+                      if (fastRefreshes >= fastRefreshLimit) {
                           window.clearInterval(fastTimer);
                       }
                   }, fastRefreshIntervalMs)
@@ -376,7 +376,7 @@ export function useMediaStreamsInfo({
     }, [
         abortSessionRequest,
         abortStatusRequest,
-        fastRefreshCount,
+        fastRefreshLimit,
         fastRefreshIntervalMs,
         refreshIntervalMs,
         refreshIntervalStreamsInfo,

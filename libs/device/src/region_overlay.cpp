@@ -407,7 +407,7 @@ bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
         if (ok) {
             region->config = config;
             region->has_bitmap = true;
-            ++stats.bitmap_update_count;
+            ++stats.bitmap_updates;
             return true;
         }
         DestroyRegionByPrefix(name);
@@ -442,7 +442,7 @@ bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
     record.attached = true;
     record.has_bitmap = true;
     regions.push_back(std::move(record));
-    ++stats.bitmap_update_count;
+    ++stats.bitmap_updates;
     return true;
 }
 
@@ -499,21 +499,21 @@ bool RegionOverlay::ApplyConfig(const ConfigJson &value) {
     if (!ParseTextOverlayConfig(value, &parsed) ||
         !ParsePrivacyMasksConfig(value, ActiveChannels(),
                                  &parsed.privacy_masks)) {
-        ++stats.config_apply_failed_count;
+        ++stats.config_apply_failures;
         return false;
     }
     active_config = parsed;
     if (state != RegionOverlayState::kStarted || !media_bound) {
-        ++stats.config_apply_count;
+        ++stats.config_applies;
         return true;
     }
     if (!ApplyTextOverlay(parsed) ||
         !ApplyPrivacyMasks(parsed.privacy_masks)) {
-        ++stats.config_apply_failed_count;
+        ++stats.config_apply_failures;
         return false;
     }
-    ++stats.config_apply_count;
-    stats.region_count = static_cast<uint32_t>(regions.size());
+    ++stats.config_applies;
+    stats.region_size = static_cast<uint32_t>(regions.size());
     return true;
 }
 
@@ -581,7 +581,7 @@ bool RegionOverlay::BindMedia(const MediaChannels &channels) {
 OverlayInfo RegionOverlay::GetInfo() const {
     std::lock_guard<std::mutex> lock(mutex);
     OverlayInfo stats = this->stats;
-    stats.region_count = static_cast<uint32_t>(regions.size());
+    stats.region_size = static_cast<uint32_t>(regions.size());
     return stats;
 }
 

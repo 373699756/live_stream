@@ -32,13 +32,13 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
     const HttpSessionParseOptions &options,
     std::vector<HttpRequestLog> *request_logs) {
     HttpSessionParseResult result;
-    size_t parsed_count = 0;
+    size_t parsed_size = 0;
     HttpRequestSplitOptions split_options;
     split_options.max_header_bytes = options.max_request_header_bytes;
     split_options.max_body_bytes = options.max_request_body_bytes;
 
     while (!closing_ &&
-           parsed_count < static_cast<size_t>(options.max_pipelined_requests)) {
+           parsed_size < static_cast<size_t>(options.max_pipelined_requests)) {
         if (splitter_.BufferedBytes() == 0) {
             result.has_pending = !pending_requests_.empty();
             return result;
@@ -60,12 +60,12 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
 
         // 支持有限 HTTP pipeline：先把已完整请求排队，执行层一次只取一个，
         // 避免同一连接上的多个控制请求并发修改共享业务状态。
-        ++request_count_;
+        ++requests_;
         PendingHttpRequest pending;
         pending.request = std::move(split.request);
         pending.close_after_response =
             !options.enable_keep_alive || !split.keep_alive ||
-            request_count_ >= options.max_requests_per_connection;
+            requests_ >= options.max_requests_per_connection;
         pending_requests_.push_back(std::move(pending));
 
         const PendingHttpRequest &queued = pending_requests_.back();
@@ -80,7 +80,7 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
             request_logs->push_back(std::move(log));
         }
 
-        ++parsed_count;
+        ++parsed_size;
         if (pending_requests_.back().close_after_response) {
             closing_ = true;
             splitter_.Clear();

@@ -112,7 +112,7 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
                 &units)) {
             return false;
         }
-        for (size_t i = 0; i < units.count; ++i) {
+        for (size_t i = 0; i < units.unit_size; ++i) {
             const media_codec::H265NalUnit &unit = units.units[i];
             if (unit.size >
                 static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
@@ -120,7 +120,7 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
             }
             if (!PacketizeNal(normalized_input, unit.data,
                               static_cast<uint32_t>(unit.size),
-                              i + 1 == units.count, sink)) {
+                              i + 1 == units.unit_size, sink)) {
                 return false;
             }
         }
@@ -134,7 +134,7 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
                 &units)) {
             return false;
         }
-        for (size_t i = 0; i < units.count; ++i) {
+        for (size_t i = 0; i < units.unit_size; ++i) {
             const media_codec::H264NalUnit &unit = units.units[i];
             if (unit.size >
                 static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
@@ -142,7 +142,7 @@ bool RtpPacketizer::Packetize(const RtpPacketizerInput &input,
             }
             if (!PacketizeNal(normalized_input, unit.data,
                               static_cast<uint32_t>(unit.size),
-                              i + 1 == units.count, sink)) {
+                              i + 1 == units.unit_size, sink)) {
                 return false;
             }
         }

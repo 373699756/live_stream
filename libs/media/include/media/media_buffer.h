@@ -85,12 +85,12 @@ struct MediaOutSlice {
 };
 
 struct MediaBufferPoolStats {
-    uint32_t block_size = 0;
-    uint32_t block_count = 0;
-    uint32_t free_count = 0;
-    uint32_t in_use_count = 0;
-    uint32_t high_water_count = 0;
-    uint64_t no_memory_count = 0;
+    uint32_t block_bytes = 0;
+    uint32_t pool_size = 0;
+    uint32_t free_size = 0;
+    uint32_t in_use_size = 0;
+    uint32_t high_water_size = 0;
+    uint64_t allocation_failures = 0;
 };
 
 class IMediaBufferPool {
@@ -101,8 +101,8 @@ public:
     virtual MediaBufferPoolStats Stats() const = 0;
 };
 
-std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_size,
-                                                        uint32_t block_count);
+std::unique_ptr<IMediaBufferPool> CreateMediaBufferPool(uint32_t block_bytes,
+                                                        uint32_t pool_size);
 
 }  // namespace live_stream
 

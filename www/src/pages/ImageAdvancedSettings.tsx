@@ -108,7 +108,7 @@ export function ImageAdvancedSettings({
         enabled: false,
         motion_level: 'normal',
         crop_ratio: 80,
-        buffer_count: 6,
+        buffer_frames: 6,
         frame_rate: 30,
         moving_subject_level: 0,
         rolling_shutter_coef: 0,
@@ -552,12 +552,12 @@ export function ImageAdvancedSettings({
                             capability={
                                 numericCapability(
                                     stabilizationCapabilities.ranges,
-                                    'buffer_count',
+                                    'buffer_frames',
                                 ) || { min: 5, max: 10, default: 6 }
                             }
-                            value={stabilization.buffer_count}
+                            value={stabilization.buffer_frames}
                             onChange={(value) =>
-                                updateStabilization({ buffer_count: value })
+                                updateStabilization({ buffer_frames: value })
                             }
                         />
                         <RangeField

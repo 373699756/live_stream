@@ -51,11 +51,11 @@ void ExtractH264ParameterSetsFromUnits(const H264NalUnitList &units,
 }  // namespace
 
 bool H264NalUnitList::Add(const H264NalUnit &unit) {
-    if (count >= kMaxNalUnitsPerFrame) {
+    if (unit_size >= kMaxNalUnitsPerFrame) {
         overflow = true;
         return false;
     }
-    units[count++] = unit;
+    units[unit_size++] = unit;
     return true;
 }
 

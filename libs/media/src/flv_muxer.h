@@ -36,16 +36,16 @@ private:
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || view.slice_count >= kMaxFlvVideoTagSlices ||
+        if (data == nullptr || view.slice_size >= kMaxFlvVideoTagSlices ||
             size > std::numeric_limits<size_t>::max() - total_size) {
             return false;
         }
-        MediaFlvVideoTagSlice &slice = view.slices[view.slice_count];
+        MediaFlvVideoTagSlice &slice = view.slices[view.slice_size];
         slice.data = data;
         slice.size = size;
         slice.media_payload = media_payload;
         total_size += size;
-        ++view.slice_count;
+        ++view.slice_size;
         return true;
     }
 };

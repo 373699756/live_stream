@@ -115,7 +115,7 @@ ImageCapabilities DefaultImage() {
     };
     img.stabilization_ranges = {
         Range("crop_ratio", 50, 98, 80),
-        Range("buffer_count", 5, 10, 6),
+        Range("buffer_frames", 5, 10, 6),
         Range("frame_rate", 1, 60, 30),
         Range("moving_subject_level", 0, 6, 0),
         Range("rolling_shutter_coef", 0, 1000, 0),
@@ -242,7 +242,7 @@ JpegFrame MakeHostJpeg(const SnapshotConfig& config) {
 MediaCapabilities StubHisiSdk::GetCapabilities() { return StubCapabilities(); }
 
 bool StubHisiSdk::InitSystem(const MediaPipelineConfig& config) {
-    return config.vb_block_count > 0;
+    return config.vb_blocks > 0;
 }
 bool StubHisiSdk::DeinitSystem() { return true; }
 

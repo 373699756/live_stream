@@ -168,7 +168,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
             },
             ranges: {
                 crop_ratio: { min: 50, max: 98, default: 80 },
-                buffer_count: { min: 5, max: 10, default: 6 },
+                buffer_frames: { min: 5, max: 10, default: 6 },
                 frame_rate: { min: 1, max: 60, default: 30 },
                 moving_subject_level: { min: 0, max: 6, default: 0 },
                 rolling_shutter_coef: { min: 0, max: 1000, default: 0 },

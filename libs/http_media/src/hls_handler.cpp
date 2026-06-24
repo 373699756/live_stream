@@ -136,15 +136,15 @@ HttpResponse HandlePlaylist(MediaStreams *media_streams,
               MediaStreamIdToJson(stream_id), object_name.c_str(),
               CodecName(stream_info.codec),
               keyframe_requested ? 1 : 0,
-              stream_info.hls_segment_count,
+              stream_info.hls_segment_size,
               static_cast<unsigned long long>(
                   stream_info.hls_first_segment_sequence),
               static_cast<unsigned long long>(
                   stream_info.hls_last_segment_sequence),
               static_cast<unsigned long long>(
-                  stream_info.hls_missing_segment_count),
+                  stream_info.hls_missing_segments),
               static_cast<unsigned long long>(
-                  stream_info.hls_evicted_segment_count),
+                  stream_info.hls_evicted_segments),
               stream_info.hls_current_segment_size);
         return BuildPlaylistResponse(playlist, request);
     }
@@ -173,11 +173,11 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
                   stream_info.hls_first_segment_sequence),
               static_cast<unsigned long long>(
                   stream_info.hls_last_segment_sequence),
-              stream_info.hls_segment_count,
+              stream_info.hls_segment_size,
               static_cast<unsigned long long>(
-                  stream_info.hls_missing_segment_count),
+                  stream_info.hls_missing_segments),
               static_cast<unsigned long long>(
-                  stream_info.hls_evicted_segment_count));
+                  stream_info.hls_evicted_segments));
         return HttpMediaTextResponse(404, "HLS segment not found");
     }
 
@@ -245,15 +245,15 @@ private:
                   CodecName(stream_info.codec),
                   stream_info.running ? 1 : 0,
                   stream_info.hls_ready ? 1 : 0,
-                  stream_info.hls_segment_count,
+                  stream_info.hls_segment_size,
                   static_cast<unsigned long long>(
                       stream_info.hls_first_segment_sequence),
                   static_cast<unsigned long long>(
                       stream_info.hls_last_segment_sequence),
                   static_cast<unsigned long long>(
-                      stream_info.hls_missing_segment_count),
+                      stream_info.hls_missing_segments),
                   static_cast<unsigned long long>(
-                      stream_info.hls_evicted_segment_count),
+                      stream_info.hls_evicted_segments),
                   stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(
                 409, "HLS requires H.264 or H.265 stream");
@@ -269,15 +269,15 @@ private:
                   CodecName(stream_info.codec),
                   stream_info.running ? 1 : 0,
                   stream_info.hls_ready ? 1 : 0,
-                  stream_info.hls_segment_count,
+                  stream_info.hls_segment_size,
                   static_cast<unsigned long long>(
                       stream_info.hls_first_segment_sequence),
                   static_cast<unsigned long long>(
                       stream_info.hls_last_segment_sequence),
                   static_cast<unsigned long long>(
-                      stream_info.hls_missing_segment_count),
+                      stream_info.hls_missing_segments),
                   static_cast<unsigned long long>(
-                      stream_info.hls_evicted_segment_count),
+                      stream_info.hls_evicted_segments),
                   stream_info.hls_current_segment_size);
             return HttpMediaTextResponse(503, "HLS playlist not ready");
         }

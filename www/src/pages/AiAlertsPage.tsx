@@ -231,8 +231,8 @@ function emptyStats(): AiStats {
         last_failure_time_ms: 0,
         received_frames: 0,
         skipped_frames: 0,
-        inference_count: 0,
-        inference_failed_count: 0,
+        inferences: 0,
+        failed_inferences: 0,
         dropped_tasks: 0,
         last_inference_time_ms: 0,
         max_inference_time_ms: 0,
@@ -347,17 +347,17 @@ function sensitivityForConfig(
     return sensitivityFromThreshold(sourceTask?.confidence_threshold ?? 0.5);
 }
 
-function alertCountsByTask(alerts: AiAlertRecord[]) {
-    const counts: Record<AiTaskName, number> = {
+function alertSizesByTask(alerts: AiAlertRecord[]) {
+    const sizes: Record<AiTaskName, number> = {
         object_detection: 0,
         perimeter_detection: 0,
         motion_classification: 0,
         occlusion_detection: 0,
     };
     alerts.forEach((alert) => {
-        counts[alert.task] += 1;
+        sizes[alert.task] += 1;
     });
-    return counts;
+    return sizes;
 }
 
 function clampUnit(value: number) {
@@ -499,7 +499,7 @@ function SnapshotRail({
                                         {formatTimestamp(alert.timestamp_ms)}
                                     </em>
                                     <span>{streamLabel(alert.stream)}</span>
-                                    <span>{alert.detection_count} 个目标</span>
+                                    <span>{alert.detection_size} 个目标</span>
                                     <span>{maxConfidence(alert)}</span>
                                 </span>
                             </button>
@@ -540,7 +540,7 @@ export function AiAlertsPage() {
     const summary = status?.summary ?? emptyStats();
     const supportedTaskSummary = useMemo(() => {
         if (!status) {
-            return { backendLabel: '读取中', enabledCount: 0 };
+            return { backendLabel: '读取中', enabledSize: 0 };
         }
         const enabledTasks = status.tasks.filter(
             (task) =>
@@ -554,7 +554,7 @@ export function AiAlertsPage() {
                     : enabledTasks.every((task) => task.stats.backend_available)
                       ? '可用'
                       : '异常',
-            enabledCount: enabledTasks.length,
+            enabledSize: enabledTasks.length,
         };
     }, [status]);
     const frame = useMemo(
@@ -580,7 +580,7 @@ export function AiAlertsPage() {
         alarmRule?.min_duration_ms ?? 0,
         (value) => `${value} ms`,
     );
-    const alertCounts = useMemo(() => alertCountsByTask(alerts), [alerts]);
+    const alertSizes = useMemo(() => alertSizesByTask(alerts), [alerts]);
     const perimeterRegions = perimeterTask?.perimeter_regions ?? [];
     const activeRegion =
         activeRegionIndex >= 0 && activeRegionIndex < perimeterRegions.length
@@ -938,7 +938,7 @@ export function AiAlertsPage() {
                             <div>
                                 <span>事件</span>
                                 <strong>
-                                    {supportedTaskSummary.enabledCount}{' '}
+                                    {supportedTaskSummary.enabledSize}{' '}
                                     启用
                                 </strong>
                             </div>
@@ -1142,7 +1142,7 @@ export function AiAlertsPage() {
                                                     </strong>
                                                     <em>
                                                         {available
-                                                            ? `${alertCounts[taskName]} 张抓图`
+                                                            ? `${alertSizes[taskName]} 张抓图`
                                                             : taskUnavailableText(
                                                                   taskName,
                                                                   aiCapabilities,
@@ -1172,7 +1172,7 @@ export function AiAlertsPage() {
                                                 <span>
                                                     {numberText(
                                                         taskStatus?.stats
-                                                            .inference_count ??
+                                                            .inferences ??
                                                             0,
                                                     )}{' '}
                                                     次

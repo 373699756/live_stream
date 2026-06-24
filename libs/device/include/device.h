@@ -32,7 +32,7 @@ struct SnapshotConfig {
     int32_t snap_vpss_channel = 0;
     int32_t jpeg_venc_channel = 3;
     VideoSize size;
-    uint32_t frame_count = 1;
+    uint32_t capture_frames = 1;
     uint32_t repeat_send_times = 1;
     bool load_ccm = true;
     bool zero_shutter_lag = false;
@@ -64,10 +64,10 @@ struct SnapshotFrame {
 };
 
 struct SnapshotInfo {
-    uint64_t config_apply_count = 0;
-    uint64_t config_apply_failed_count = 0;
-    uint64_t capture_count = 0;
-    uint64_t capture_failed_count = 0;
+    uint64_t config_applies = 0;
+    uint64_t config_apply_failures = 0;
+    uint64_t captures = 0;
+    uint64_t capture_failures = 0;
     uint32_t jpeg_quality = 90;
     uint32_t timeout_ms = 3000;
     bool enabled = true;
@@ -124,10 +124,10 @@ struct RegionId {
 };
 
 struct OverlayInfo {
-    uint64_t config_apply_count = 0;
-    uint64_t config_apply_failed_count = 0;
-    uint64_t bitmap_update_count = 0;
-    uint32_t region_count = 0;
+    uint64_t config_applies = 0;
+    uint64_t config_apply_failures = 0;
+    uint64_t bitmap_updates = 0;
+    uint32_t region_size = 0;
 };
 
 struct ImageInfo {

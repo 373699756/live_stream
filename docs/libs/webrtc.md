@@ -77,8 +77,8 @@ PLI/FIR。模块不再暴露 `BackendName()` 或
 | `srtp_ready` | outbound/inbound SRTP context 是否可用 |
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP/SRTP 统计 |
 | `rtcp_packets` / `rtcp_bytes` | 已收到并解密的 SRTCP/RTCP 统计 |
-| `rtcp_pli_count` / `rtcp_fir_count` | 浏览器关键帧请求计数 |
-| `rtcp_nack_count` / `rtcp_transport_cc_count` | 浏览器丢包反馈和 TWCC 反馈计数 |
+| `rtcp_pli_packets` / `rtcp_fir_packets` | 浏览器关键帧请求计数 |
+| `rtcp_nack_packets` / `rtcp_transport_cc_packets` | 浏览器丢包反馈和 TWCC 反馈计数 |
 | `rtcp_keyframe_requests` | 已识别为关键帧请求的 RTCP 反馈总数 |
 | `last_error` | 最近一次明确失败原因 |
 | `created_at_ms` / `updated_at_ms` | peer 生命周期时间戳 |

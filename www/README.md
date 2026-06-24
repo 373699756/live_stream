@@ -127,7 +127,7 @@ Frontend media DTO names are frozen as:
 
 `MediaStreamRuntime` includes stream availability, running state, codec,
 configured resolution, fps, bitrate, protocol support/ready fields,
-reader/client counts, cached bytes, last DTS, keyframe/first-frame/protocol-ready
+reader/client size, cached bytes, last DTS, keyframe/first-frame/protocol-ready
 timestamps, and last reset reason.
 `MediaPlaybackUrls` contains only backend-generated URLs. Live preview listens
 to `/api/events` for media status changes and keeps slow polling only as a

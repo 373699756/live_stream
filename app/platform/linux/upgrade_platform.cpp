@@ -95,9 +95,9 @@ int CompareNumericStrings(const std::string& lhs, const std::string& rhs) {
 int CompareVersionStrings(const std::string& lhs, const std::string& rhs) {
     const std::vector<std::string> lhs_parts = SplitVersion(lhs);
     const std::vector<std::string> rhs_parts = SplitVersion(rhs);
-    const std::size_t part_count =
+    const std::size_t part_size =
         lhs_parts.size() > rhs_parts.size() ? lhs_parts.size() : rhs_parts.size();
-    for (std::size_t i = 0; i < part_count; ++i) {
+    for (std::size_t i = 0; i < part_size; ++i) {
         const std::string lhs_part = i < lhs_parts.size() ? lhs_parts[i] : "0";
         const std::string rhs_part = i < rhs_parts.size() ? rhs_parts[i] : "0";
         if (lhs_part == rhs_part) {

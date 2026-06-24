@@ -57,7 +57,7 @@ struct MediaPipelineConfig {
     int32_t sub_vpss_channel = 1;
     int32_t venc_channel = 0;
     int32_t sub_venc_channel = 1;
-    uint32_t vb_block_count = 10;
+    uint32_t vb_blocks = 10;
     VideoStreamConfig main_stream;
     VideoStreamConfig sub_stream{StreamId::kSub,
                                  true,

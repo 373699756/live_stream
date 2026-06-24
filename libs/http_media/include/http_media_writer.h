@@ -107,7 +107,7 @@ public:
     // 网络发送完成；无 owner 的 slice 必须是可立即复制进 TCP 输出队列的小协议字节。
     virtual bool EnqueueStreamingSlices(ConnectionId connection_id,
                                         const MediaOutSlice *slices,
-                                        size_t slice_count) = 0;
+                                        size_t slice_size) = 0;
     // close callback 由 HTTP close path 触发，用于 detach FLV/MJPEG 或 unsubscribe SSE。
     virtual void SetCloseCallback(HttpMediaCloseCallback callback) = 0;
     // 主动关闭 TCP 连接，通常用于媒体 attach/发送失败后的清理。

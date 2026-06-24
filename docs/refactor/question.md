@@ -686,10 +686,10 @@ FrameRing::StreamCache::frames：固定 kMaxCachedGopFrames = 128
 6.1 MediaBuffer 用 __sync_add_and_fetch 而不是 std::atomic
 cpp
 // libs/media/src/media_buffer.cpp:35
-(void)__sync_add_and_fetch(&buffer->ref_count, 1);
+(void)__sync_add_and_fetch(&buffer->refs, 1);
 __sync_* 是 GCC 旧式原子操作，C++17 应该用 std::atomic<uint32_t>。但 MediaBuffer 是 POD struct，所以用了 __sync_* 绕过类型系统。
 
-正确做法：把 ref_count 改成 mutable std::atomic<uint32_t>，或者用 intrusive_ptr 模板。
+正确做法：把 refs 改成 mutable std::atomic<uint32_t>，或者用 intrusive_ptr 模板。
 
 6.2 MediaBuffer 用 malloc/free 而不是 new/delete
 cpp
@@ -702,15 +702,15 @@ C++ 项目里混用 malloc/free 和 new/delete，且没有 RAII 包装。如果 
 6.3 PoolState 又是手动 ref 计数
 cpp
 // libs/media/src/media_buffer_pool.cpp:33
-uint32_t ref_count = 1;
+uint32_t refs = 1;
 
 void PoolStateRef(PoolState* state) {
-    (void)__sync_add_and_fetch(&state->ref_count, 1);
+    (void)__sync_add_and_fetch(&state->refs, 1);
 }
 
 void PoolStateUnref(PoolState* state) {
     if (state == nullptr) return;
-    if (__sync_sub_and_fetch(&state->ref_count, 1) != 0) return;
+    if (__sync_sub_and_fetch(&state->refs, 1) != 0) return;
     delete state;
 }
 又是 __sync_* + 手动管理。整个项目的 MediaBuffer、PoolState、EncodedFrame 都是这种模式，三套独立的引用计数系统并存。
@@ -720,7 +720,7 @@ cpp
 // libs/media/src/flv_muxer.h:27-33
 struct FlvVideoTagView {
     FlvVideoTagSlice slices[kMaxFlvVideoTagSlices];  // kMaxFlvVideoTagSlices = 130
-    size_t slice_count = 0;
+    size_t slice_size = 0;
     size_t total_size = 0;
     uint32_t timestamp_ms = 0;
     uint8_t header[24] = {};

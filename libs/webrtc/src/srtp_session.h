@@ -41,10 +41,10 @@ struct RtcpFeedback {
 };
 
 struct RtcpFeedbackStats {
-    uint64_t pli_count = 0;
-    uint64_t fir_count = 0;
-    uint64_t nack_count = 0;
-    uint64_t transport_cc_count = 0;
+    uint64_t pli_packets = 0;
+    uint64_t fir_packets = 0;
+    uint64_t nack_packets = 0;
+    uint64_t transport_cc_packets = 0;
 };
 
 class SrtpSession {
@@ -71,8 +71,8 @@ public:
     static bool Available();
     static bool ParseRtcpFeedback(const uint8_t *data, size_t size,
                                   RtcpFeedback *feedback);
-    static bool CountRtcpFeedback(const uint8_t *data, size_t size,
-                                  RtcpFeedbackStats *feedback_stats);
+    static bool ReadRtcpFeedbackStats(const uint8_t *data, size_t size,
+                                      RtcpFeedbackStats *feedback_stats);
     static bool IsRtcpKeyframeRequest(RtcpFeedbackType type);
 
     bool ready() const { return session_ != nullptr; }

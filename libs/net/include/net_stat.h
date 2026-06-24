@@ -75,7 +75,7 @@ struct NetStatSnapshot {
     uint32_t constrained_connection_pressures = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t active_webrtc_peers = 0;
-    uint64_t check_count = 0;
+    uint64_t checks = 0;
 };
 
 struct NetConnectionPressure {

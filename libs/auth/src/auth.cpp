@@ -38,9 +38,9 @@ std::string BytesToHex(const uint8_t *data, uint32_t size) {
     return hex;
 }
 
-std::string SystemRandomHex(uint32_t byte_count) {
+std::string SystemRandomHex(uint32_t byte_size) {
     uint8_t bytes[kTokenBytes] = {0};
-    if (byte_count == 0 || byte_count > kTokenBytes) {
+    if (byte_size == 0 || byte_size > kTokenBytes) {
         return std::string();
     }
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
@@ -48,9 +48,9 @@ std::string SystemRandomHex(uint32_t byte_count) {
         return std::string();
     }
     uint32_t offset = 0;
-    while (offset < byte_count) {
+    while (offset < byte_size) {
         const ssize_t n = read(fd, bytes + offset,
-                               static_cast<std::size_t>(byte_count - offset));
+                               static_cast<std::size_t>(byte_size - offset));
         if (n <= 0) {
             close(fd);
             return std::string();
@@ -58,7 +58,7 @@ std::string SystemRandomHex(uint32_t byte_count) {
         offset += static_cast<uint32_t>(n);
     }
     close(fd);
-    return BytesToHex(bytes, byte_count);
+    return BytesToHex(bytes, byte_size);
 }
 
 std::string SystemRandomToken() {
@@ -518,7 +518,7 @@ private:
         options_ = parsed;
         PruneExpiredSessionsLocked();
         EnforcePerUserSessionLimitLocked();
-        ++stats_.config_apply_count;
+        ++stats_.config_applies;
         return true;
     }
 
@@ -554,7 +554,7 @@ private:
             failure.locked_until_ms =
                 now + static_cast<int64_t>(options_.lockout_seconds) * 1000;
             failure.failures = 0;
-            ++stats_.lockout_count;
+            ++stats_.lockouts;
         }
     }
 
@@ -681,14 +681,14 @@ private:
         }
     }
 
-    uint32_t CountUserSessionsLocked(const std::string &user_name) const {
-        uint32_t count = 0;
+    uint32_t UserSessionSizeLocked(const std::string &user_name) const {
+        uint32_t session_size = 0;
         for (const auto &item : sessions_) {
             if (item.second.principal.user_name == user_name) {
-                ++count;
+                ++session_size;
             }
         }
-        return count;
+        return session_size;
     }
 
     bool RemoveOldestUserSessionLocked(const std::string &user_name) {
@@ -711,7 +711,7 @@ private:
     }
 
     void EnforceUserSessionLimitLocked(const std::string &user_name) {
-        while (CountUserSessionsLocked(user_name) >=
+        while (UserSessionSizeLocked(user_name) >=
                options_.max_sessions_per_user) {
             if (!RemoveOldestUserSessionLocked(user_name)) {
                 return;
@@ -725,7 +725,7 @@ private:
             seen[item.second.principal.user_name] = true;
         }
         for (const auto &user : seen) {
-            while (CountUserSessionsLocked(user.first) >
+            while (UserSessionSizeLocked(user.first) >
                    options_.max_sessions_per_user) {
                 if (!RemoveOldestUserSessionLocked(user.first)) {
                     break;

@@ -45,8 +45,8 @@ private:
     bool CopyFrameLuma(const hisisdk::YuvFrame &frame, MotionImage *image) const;
     bool CanUseFrame(const hisisdk::YuvFrame &frame) const;
     std::vector<AiDetection> DecodeBlob(const AiModelConfig &config);
-    uint32_t CountRegions(const IVE_CCBLOB_S &blob,
-                          HI_U16 area_threshold) const;
+    uint32_t RegionSize(const IVE_CCBLOB_S &blob,
+                        HI_U16 area_threshold) const;
     bool IsValidRegion(const IVE_REGION_S &region) const;
 
     std::array<MotionImage, 2> images_;

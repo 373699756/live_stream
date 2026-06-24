@@ -305,41 +305,41 @@ void TcpSession::HandleWrite() {
             // send_queue_ 保存分片视图和每片偏移，短写时只推进 offset，
             // 下一次 EPOLLOUT 从同一片继续，pending_bytes_ 始终反映未写字节。
             OutBuffer &current = send_queue_.front();
-            while (current.current_slice < current.slice_count &&
+            while (current.current_slice < current.slice_size &&
                    current.slices[current.current_slice].offset >=
                        current.slices[current.current_slice].size) {
                 ++current.current_slice;
             }
-            if (current.current_slice >= current.slice_count) {
+            if (current.current_slice >= current.slice_size) {
                 send_queue_.pop_front();
                 continue;
             }
             iovec iov[kMaxNetBufferSlices];
-            size_t iov_count = 0;
+            size_t iov_size = 0;
             for (size_t i = current.current_slice;
-                 i < current.slice_count && iov_count < kMaxNetBufferSlices;
+                 i < current.slice_size && iov_size < kMaxNetBufferSlices;
                  ++i) {
                 OutSlice &slice = current.slices[i];
                 if (slice.offset >= slice.size) {
                     continue;
                 }
-                iov[iov_count].iov_base =
+                iov[iov_size].iov_base =
                     const_cast<uint8_t *>(slice.data + slice.offset);
-                iov[iov_count].iov_len = slice.size - slice.offset;
-                ++iov_count;
+                iov[iov_size].iov_len = slice.size - slice.offset;
+                ++iov_size;
             }
-            if (iov_count == 0) {
+            if (iov_size == 0) {
                 send_queue_.pop_front();
                 continue;
             }
             msghdr message{};
             message.msg_iov = iov;
-            message.msg_iovlen = iov_count;
+            message.msg_iovlen = iov_size;
             n = sendmsg(fd_.get(), &message, MSG_NOSIGNAL);
             if (n > 0) {
                 size_t consumed = static_cast<size_t>(n);
                 while (consumed > 0 &&
-                       current.current_slice < current.slice_count) {
+                       current.current_slice < current.slice_size) {
                     OutSlice &slice = current.slices[current.current_slice];
                     const size_t remain = slice.size - slice.offset;
                     const size_t slice_written = std::min(consumed, remain);
@@ -352,7 +352,7 @@ void TcpSession::HandleWrite() {
                 }
                 pending_bytes_ -= static_cast<uint32_t>(n);
                 last_write_progress_ms_ = infra::Time::MonotonicMillis();
-                if (current.current_slice >= current.slice_count) {
+                if (current.current_slice >= current.slice_size) {
                     send_queue_.pop_front();
                 }
             }
@@ -533,21 +533,21 @@ uint32_t TcpSession::TimeoutCheckIntervalMs() const {
 
 bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
                                 OutBuffer *buffer) const {
-    if (buffer == nullptr || slices.count > kMaxNetBufferSlices) {
+    if (buffer == nullptr || slices.slice_size > kMaxNetBufferSlices) {
         return false;
     }
     *buffer = OutBuffer{};
     size_t total_size = 0;
-    for (size_t i = 0; i < slices.count; ++i) {
+    for (size_t i = 0; i < slices.slice_size; ++i) {
         const NetBufferSlice &input = slices.slices[i];
         if (input.size == 0) {
             continue;
         }
-        if (input.data == nullptr || buffer->slice_count >= kMaxNetBufferSlices ||
+        if (input.data == nullptr || buffer->slice_size >= kMaxNetBufferSlices ||
             input.size > std::numeric_limits<uint32_t>::max() - total_size) {
             return false;
         }
-        OutSlice &out = buffer->slices[buffer->slice_count];
+        OutSlice &out = buffer->slices[buffer->slice_size];
         out.size = input.size;
         out.buffer = input.buffer;
         if (out.buffer.Valid()) {
@@ -566,9 +566,9 @@ bool TcpSession::BuildOutBuffer(const NetBufferSlices &slices,
             out.data = out.heap_data.get();
         }
         total_size += input.size;
-        ++buffer->slice_count;
+        ++buffer->slice_size;
     }
-    if (buffer->slice_count == 0 ||
+    if (buffer->slice_size == 0 ||
         total_size > std::numeric_limits<uint32_t>::max()) {
         return false;
     }

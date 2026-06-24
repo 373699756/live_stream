@@ -529,7 +529,7 @@ private:
     bool ValidateLoadedModel() const {
         if (model_.u32NetSegNum == 0 ||
             model_.u32NetSegNum > SVP_NNIE_MAX_NET_SEG_NUM) {
-            Error("ai", "Invalid NNIE segment count: count=%u",
+            Error("ai", "Invalid NNIE segment size: size=%u",
                   static_cast<unsigned int>(model_.u32NetSegNum));
             return false;
         }
@@ -572,7 +572,7 @@ private:
     bool ValidateForwardConfig() const {
         if (model_.u32NetSegNum != 1) {
             Error("ai",
-                  "Unsupported NNIE forward segment count: count=%u",
+                  "Unsupported NNIE forward segment size: size=%u",
                   static_cast<unsigned int>(model_.u32NetSegNum));
             return false;
         }
@@ -624,14 +624,14 @@ private:
         }
         const SVP_NNIE_SEG_S &seg = model_.astSeg[0];
         const SVP_SRC_BLOB_S &src = seg_data_[0].src[0];
-        if (seg.u16SrcNum != 1 || seg.u16DstNum != kSsdReportNodeCount ||
+        if (seg.u16SrcNum != 1 || seg.u16DstNum != kSsdReportNodeSize ||
             src.enType != SVP_BLOB_TYPE_U8 ||
             src.unShape.stWhc.u32Chn != 3 ||
             src.unShape.stWhc.u32Width != kSsdInputWidth ||
             src.unShape.stWhc.u32Height != kSsdInputHeight) {
             return false;
         }
-        for (uint32_t i = 0; i < kSsdReportNodeCount; ++i) {
+        for (uint32_t i = 0; i < kSsdReportNodeSize; ++i) {
             if (seg_data_[0].dst[i].enType != SVP_BLOB_TYPE_S32) {
                 return false;
             }
@@ -1303,10 +1303,10 @@ private:
 
     bool EnsureU8C3SampleMap(const hisisdk::YuvFrame &frame,
                              uint32_t dst_width, uint32_t dst_height) {
-        const uint64_t sample_count =
+        const uint64_t sample_size =
             static_cast<uint64_t>(dst_width) * dst_height;
-        if (sample_count == 0 ||
-            sample_count > static_cast<uint64_t>(0xffffffffU)) {
+        if (sample_size == 0 ||
+            sample_size > static_cast<uint64_t>(0xffffffffU)) {
             return false;
         }
         if (sample_frame_width_ == frame.width &&
@@ -1315,12 +1315,12 @@ private:
             sample_stride_uv_ == frame.stride_uv &&
             sample_dst_width_ == dst_width &&
             sample_dst_height_ == dst_height &&
-            u8c3_sample_points_.size() == static_cast<size_t>(sample_count)) {
+            u8c3_sample_points_.size() == static_cast<size_t>(sample_size)) {
             return true;
         }
 
         std::vector<U8C3SamplePoint> sample_points;
-        sample_points.resize(static_cast<size_t>(sample_count));
+        sample_points.resize(static_cast<size_t>(sample_size));
         for (uint32_t y = 0; y < dst_height; ++y) {
             const uint32_t src_y_row =
                 static_cast<uint64_t>(y) * frame.height / dst_height;
@@ -1431,7 +1431,7 @@ private:
     bool CollectSsdOutputs() {
         ssd_postprocess_.BeginFrame();
 
-        for (uint32_t layer = 0; layer < kSsdLayerCount; ++layer) {
+        for (uint32_t layer = 0; layer < kSsdLayerSize; ++layer) {
             ssd_layer_values_.clear();
             if (!AppendS32BlobValues(seg_data_[0].dst[layer * 2U],
                                      &ssd_layer_values_) ||

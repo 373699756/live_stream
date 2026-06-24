@@ -41,26 +41,26 @@ struct H265NalUnit {
 
 struct H264NalUnitList {
     H264NalUnit units[kMaxNalUnitsPerFrame];
-    size_t count = 0;
+    size_t unit_size = 0;
     // overflow 表示单帧 NAL 数超过热路径固定数组容量。调用方应把它当作
     // 解析风险处理，不能静默丢弃尾部 NAL。
     bool overflow = false;
 
     const H264NalUnit *begin() const { return units; }
-    const H264NalUnit *end() const { return units + count; }
-    bool empty() const { return count == 0; }
+    const H264NalUnit *end() const { return units + unit_size; }
+    bool empty() const { return unit_size == 0; }
     bool Add(const H264NalUnit &unit);
 };
 
 struct H265NalUnitList {
     H265NalUnit units[kMaxNalUnitsPerFrame];
-    size_t count = 0;
+    size_t unit_size = 0;
     // overflow 的处理原则同 H264NalUnitList：容量不够时整帧解析失败。
     bool overflow = false;
 
     const H265NalUnit *begin() const { return units; }
-    const H265NalUnit *end() const { return units + count; }
-    bool empty() const { return count == 0; }
+    const H265NalUnit *end() const { return units + unit_size; }
+    bool empty() const { return unit_size == 0; }
     bool Add(const H265NalUnit &unit);
 };
 

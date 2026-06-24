@@ -127,7 +127,7 @@ public:
             return true;
         }
         event::ExecutorOptions executor_options;
-        executor_options.worker_count = 1;
+        executor_options.worker_size = 1;
         executor_options.queue_capacity = options_.queue_capacity;
         if (!executor_->Start(executor_options)) {
             return false;

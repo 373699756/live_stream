@@ -140,7 +140,7 @@
     white-space: nowrap;
 }
 
-.ai-event-tab-count {
+.ai-event-tab-size {
     flex: 0 0 auto;
     min-width: 28px;
     padding: 2px 7px;
@@ -152,19 +152,19 @@
     text-align: center;
 }
 
-.ai-event-tab.active .ai-event-tab-count {
+.ai-event-tab.active .ai-event-tab-size {
     color: #fff;
     border-color: var(--brand);
     background: var(--brand);
 }
 
-.ai-event-tab.running .ai-event-tab-count {
+.ai-event-tab.running .ai-event-tab-size {
     color: #15803d;
     border-color: #86efac;
     background: #fff;
 }
 
-.ai-event-tab.active.running .ai-event-tab-count {
+.ai-event-tab.active.running .ai-event-tab-size {
     color: #fff;
     border-color: #16a34a;
     background: #16a34a;

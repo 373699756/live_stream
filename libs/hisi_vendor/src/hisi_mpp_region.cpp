@@ -7,10 +7,10 @@ namespace hisisdk {
 
 namespace {
 
-constexpr uint32_t kOverlayLayerCount = 8;
-constexpr uint32_t kOverlayExLayerCount = 16;
-constexpr uint32_t kCoverLayerCount = 8;
-constexpr uint32_t kMosaicLayerCount = 4;
+constexpr uint32_t kOverlayLayerSize = 8;
+constexpr uint32_t kOverlayExLayerSize = 16;
+constexpr uint32_t kCoverLayerSize = 8;
+constexpr uint32_t kMosaicLayerSize = 4;
 
 // ─── Pixel format conversion ───────────────────────────────────
 PIXEL_FORMAT_E ToHiPixelFormat(PixelFormat format) {
@@ -68,11 +68,11 @@ MPP_CHN_S ToHiChannel(const MppChannel& channel) {
     return hi_ch;
 }
 
-uint32_t RegionLayer(int32_t handle, uint32_t layer_count) {
-    if (handle < 0 || layer_count == 0) {
+uint32_t RegionLayer(int32_t handle, uint32_t layer_size) {
+    if (handle < 0 || layer_size == 0) {
         return 0;
     }
-    return static_cast<uint32_t>(handle) % layer_count;
+    return static_cast<uint32_t>(handle) % layer_size;
 }
 
 // ─── Fill channel display attribute ────────────────────────────
@@ -90,7 +90,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
             attr->unChnAttr.stOverlayChn.u32FgAlpha = config.foreground_alpha;
             attr->unChnAttr.stOverlayChn.u32BgAlpha = config.background_alpha;
             attr->unChnAttr.stOverlayChn.u32Layer =
-                RegionLayer(handle, kOverlayLayerCount);
+                RegionLayer(handle, kOverlayLayerSize);
             attr->unChnAttr.stOverlayChn.stQpInfo.bQpDisable = HI_TRUE;
             attr->unChnAttr.stOverlayChn.stInvertColor.bInvColEn = HI_FALSE;
             attr->unChnAttr.stOverlayChn.enAttachDest = ATTACH_JPEG_MAIN;
@@ -101,7 +101,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
             attr->unChnAttr.stOverlayExChn.u32FgAlpha = config.foreground_alpha;
             attr->unChnAttr.stOverlayExChn.u32BgAlpha = config.background_alpha;
             attr->unChnAttr.stOverlayExChn.u32Layer =
-                RegionLayer(handle, kOverlayExLayerCount);
+                RegionLayer(handle, kOverlayExLayerSize);
             break;
         case RegionType::kCover:
             attr->unChnAttr.stCoverChn.enCoverType = AREA_RECT;
@@ -111,7 +111,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
             attr->unChnAttr.stCoverChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stCoverChn.u32Color = config.background_color;
             attr->unChnAttr.stCoverChn.u32Layer =
-                RegionLayer(handle, kCoverLayerCount);
+                RegionLayer(handle, kCoverLayerSize);
             attr->unChnAttr.stCoverChn.enCoordinate = RGN_ABS_COOR;
             break;
         case RegionType::kCoverEx:
@@ -122,7 +122,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
             attr->unChnAttr.stCoverExChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stCoverExChn.u32Color = config.background_color;
             attr->unChnAttr.stCoverExChn.u32Layer =
-                RegionLayer(handle, kCoverLayerCount);
+                RegionLayer(handle, kCoverLayerSize);
             break;
         case RegionType::kMosaic:
             attr->unChnAttr.stMosaicChn.stRect.s32X = config.position.x;
@@ -131,7 +131,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
             attr->unChnAttr.stMosaicChn.stRect.u32Height = config.size.height;
             attr->unChnAttr.stMosaicChn.enBlkSize = MOSAIC_BLK_SIZE_16;
             attr->unChnAttr.stMosaicChn.u32Layer =
-                RegionLayer(handle, kMosaicLayerCount);
+                RegionLayer(handle, kMosaicLayerSize);
             break;
     }
 }

@@ -13,7 +13,7 @@ namespace live_stream {
 namespace media_internal {
 
 struct TsMuxerState {
-    // PAT、PMT 和 video PID 各自维护 continuity counter；TS packet 丢包或
+    // PAT、PMT 和 video PID 各自维护 continuity value；TS packet 丢包或
     // 重排诊断会依赖这些 4 bit 计数。
     uint8_t pat_continuity = 0;
     uint8_t pmt_continuity = 0;
@@ -97,8 +97,8 @@ private:
     TsMuxerState ts_muxer_state_;
     uint32_t next_segment_capacity_ = 0;
     uint64_t next_segment_sequence_ = 1;
-    mutable uint64_t missing_segment_count_ = 0;
-    uint64_t evicted_segment_count_ = 0;
+    mutable uint64_t missing_segments_ = 0;
+    uint64_t evicted_segments_ = 0;
     int64_t last_pts_us_ = -1;
     int64_t last_frame_duration_us_ = 33333;
     mutable bool requested_ = false;

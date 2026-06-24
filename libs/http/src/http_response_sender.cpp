@@ -40,7 +40,7 @@ bool HttpResponseSender::SendResponse(
         }
 
         std::array<MediaOutSlice, kMaxNetBufferSlices - 1> body_slices{};
-        size_t body_slice_count = 0;
+        size_t body_slice_size = 0;
         size_t body_size = 0;
         for (const HttpResponseBodySlice &slice : response.body_slices) {
             if (slice.size == 0) {
@@ -56,42 +56,42 @@ bool HttpResponseSender::SendResponse(
                                 TcpCloseReason::kInternalError);
                 return false;
             }
-            body_slices[body_slice_count].data = slice.data;
-            body_slices[body_slice_count].size = slice.size;
-            body_slices[body_slice_count].buffer = slice.buffer;
+            body_slices[body_slice_size].data = slice.data;
+            body_slices[body_slice_size].size = slice.size;
+            body_slices[body_slice_size].buffer = slice.buffer;
             body_size += slice.size;
-            ++body_slice_count;
+            ++body_slice_size;
         }
         return SendResponseSlices(net_io, connection_id, response,
-                                  body_slices.data(), body_slice_count,
+                                  body_slices.data(), body_slice_size,
                                   body_size, close_after_response);
     }
 
     MediaOutSlice body_slice;
     const MediaOutSlice *body_slices = nullptr;
-    size_t body_slice_count = 0;
+    size_t body_slice_size = 0;
     if (!response.body.empty()) {
         body_slice.data =
             reinterpret_cast<const uint8_t *>(response.body.data());
         body_slice.size = response.body.size();
         body_slices = &body_slice;
-        body_slice_count = 1;
+        body_slice_size = 1;
     }
     return SendResponseSlices(net_io, connection_id, response, body_slices,
-                              body_slice_count, response.body.size(),
+                              body_slice_size, response.body.size(),
                               close_after_response);
 }
 
 bool HttpResponseSender::SendResponseSlices(
     INetIo *net_io, ConnectionId connection_id,
     const HttpResponse &response, const MediaOutSlice *body_slices,
-    size_t body_slice_count, size_t body_size,
+    size_t body_slice_size, size_t body_size,
     bool close_after_response) const {
     if (net_io == nullptr) {
         return false;
     }
-    if (body_slice_count > kMaxNetBufferSlices - 1 ||
-        (body_slice_count != 0 && body_slices == nullptr)) {
+    if (body_slice_size > kMaxNetBufferSlices - 1 ||
+        (body_slice_size != 0 && body_slices == nullptr)) {
         return false;
     }
 
@@ -107,7 +107,7 @@ bool HttpResponseSender::SendResponseSlices(
     NetBufferSlices slices;
     bool slices_ok = slices.Add(
         reinterpret_cast<const uint8_t *>(header.data()), header.size());
-    for (size_t i = 0; slices_ok && i < body_slice_count; ++i) {
+    for (size_t i = 0; slices_ok && i < body_slice_size; ++i) {
         slices_ok = slices.Add(body_slices[i].data, body_slices[i].size,
                                body_slices[i].buffer);
     }
@@ -153,16 +153,16 @@ bool HttpResponseSender::EnqueueStreamingChunk(
 
 bool HttpResponseSender::EnqueueStreamingSlices(
     INetIo *net_io, ConnectionId connection_id,
-    const MediaOutSlice *slices, size_t slice_count) const {
+    const MediaOutSlice *slices, size_t slice_size) const {
     NetBufferSlices net_slices;
     size_t total_size = 0;
-    if (slice_count == 0) {
+    if (slice_size == 0) {
         return true;
     }
-    if (slices == nullptr || slice_count > kMaxNetBufferSlices) {
+    if (slices == nullptr || slice_size > kMaxNetBufferSlices) {
         return false;
     }
-    for (size_t i = 0; i < slice_count; ++i) {
+    for (size_t i = 0; i < slice_size; ++i) {
         if (slices[i].size == 0) {
             continue;
         }

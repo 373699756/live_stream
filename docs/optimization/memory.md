@@ -149,11 +149,11 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | 指标 | 观察点 | 归属模块 |
 | --- | --- | --- |
 | 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http` |
-| HLS segment 数量和 body 总量 | playlist depth + retain count 是否有界 | `media` |
+| HLS segment 数量和 body 总量 | playlist depth + retain size 是否有界 | `media` |
 | FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media` |
 | 活跃 FLV/MJPEG/frame subscription 数 | 是否受 `MediaStreamsOptions` 限制 | `media` |
 | TCP active connections / pending bytes | 慢 socket 是否堆积到 `send_buffer_limit_bytes` 后断开 | `net` |
-| TCP slow close count / close reason | 队列满、send stall、读写 timeout 是否可区分 | `net` |
+| TCP slow closes / close reason | 队列满、send stall、读写 timeout 是否可区分 | `net` |
 | WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc` |
 
 当前资源上限以 `MediaStreamsOptions`、`HttpOptions` 和 WebRTC options

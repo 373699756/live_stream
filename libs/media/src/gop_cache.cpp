@@ -9,8 +9,8 @@ namespace media_internal {
 GopCache::~GopCache() { Clear(); }
 
 void GopCache::Clear() {
-    const size_t cached_count = std::min(size_, frames_.size());
-    for (size_t i = 0; i < cached_count; ++i) {
+    const size_t cached_size = std::min(size_, frames_.size());
+    for (size_t i = 0; i < cached_size; ++i) {
         const size_t index = (head_ + i) % frames_.size();
         frames_[index] = MediaFlvCachedVideoTag{};
     }
@@ -58,7 +58,7 @@ void GopCache::CopyTo(MediaFlvStart *flv_start) const {
     flv_start->cached_video_tags.reserve(size_);
     for (size_t i = 0; i < size_; ++i) {
         const size_t index = (head_ + i) % frames_.size();
-        if (frames_[index].slice_count == 0) {
+        if (frames_[index].slice_size == 0) {
             continue;
         }
         flv_start->cached_video_tags.push_back(frames_[index]);
@@ -69,17 +69,17 @@ bool GopCache::CopyFlvTagView(
     const MediaFrame &frame, const FlvVideoTagBuild &source,
     MediaFlvCachedVideoTag *target) const {
     if (target == nullptr || !IsMediaFramePayloadValid(frame) ||
-        source.view.slice_count == 0 ||
-        source.view.slice_count > kMaxMediaFlvVideoTagSlices) {
+        source.view.slice_size == 0 ||
+        source.view.slice_size > kMaxMediaFlvVideoTagSlices) {
         return false;
     }
 
     MediaFlvCachedVideoTag cached_tag;
     cached_tag.frame = frame;
-    cached_tag.slice_count = source.view.slice_count;
+    cached_tag.slice_size = source.view.slice_size;
     cached_tag.total_size = source.total_size;
     cached_tag.timestamp_ms = source.view.timestamp_ms;
-    for (size_t i = 0; i < source.view.slice_count; ++i) {
+    for (size_t i = 0; i < source.view.slice_size; ++i) {
         const MediaFlvVideoTagSlice &source_slice = source.view.slices[i];
         MediaFlvCachedVideoTagSlice &target_slice = cached_tag.slices[i];
         if (source_slice.data == nullptr || source_slice.size == 0) {

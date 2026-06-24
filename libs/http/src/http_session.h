@@ -106,8 +106,8 @@ private:
     std::string client_ip_;
     HttpRequestSplitter splitter_;
     std::deque<PendingHttpRequest> pending_requests_;
-    // request_count_ 用于 max_requests_per_connection，达到上限后响应完即关闭。
-    uint64_t request_count_ = 0;
+    // requests_ 用于 max_requests_per_connection，达到上限后响应完即关闭。
+    uint64_t requests_ = 0;
     uint64_t timeout_generation_ = 0;
     event::TimerId timer_id_ = 0;
     // media_client_ 只在 streaming 状态有效，保存 FLV/MJPEG/SSE 的外部 client id，

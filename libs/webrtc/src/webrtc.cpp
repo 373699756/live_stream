@@ -33,7 +33,7 @@ enum class ServiceState {
 
 bool IsValidOptions(const WebrtcOptions &options) {
     if (options.max_peers == 0 || options.session_timeout_ms == 0 ||
-        options.send_queue_capacity == 0 || options.send_worker_count == 0 ||
+        options.send_queue_capacity == 0 || options.send_worker_size == 0 ||
         options.local_port_base == 0) {
         return false;
     }
@@ -146,7 +146,7 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             if (options.session_timeout_ms != options_.session_timeout_ms ||
                 options.send_queue_capacity != options_.send_queue_capacity ||
-                options.send_worker_count != options_.send_worker_count ||
+                options.send_worker_size != options_.send_worker_size ||
                 options.local_port_base != options_.local_port_base) {
                 return false;
             }
@@ -203,7 +203,7 @@ public:
             }
             replaced_peer_ids = peer_table_.TakePeerIdsForClient(
                 request.session_id, request.client_id);
-            if (peer_table_.ActivePeerCount() >= options_.max_peers) {
+            if (peer_table_.ActivePeerSize() >= options_.max_peers) {
                 return CreatePeerError("peer_limit_reached");
             }
             peer = peer_table_.CreatePeer(request, codec);
@@ -366,10 +366,10 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             result = stats_;
             result.enabled = options_.enabled;
-            result.active_peers = peer_table_.ActivePeerCount();
+            result.active_peers = peer_table_.ActivePeerSize();
             result.local_port_base = options_.local_port_base;
             result.max_peers = options_.max_peers;
-            result.ice_server_count =
+            result.ice_server_size =
                 static_cast<uint32_t>(options_.ice_servers.size());
             result.public_ip = options_.public_ip;
             peer_host = peer_host_;
@@ -1000,7 +1000,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             webrtc_event.value =
-                static_cast<int32_t>(peer_table_.ActivePeerCount());
+                static_cast<int32_t>(peer_table_.ActivePeerSize());
         }
         if (next_state == WebrtcPeerState::kConnected &&
             peer.state != WebrtcPeerState::kConnected) {

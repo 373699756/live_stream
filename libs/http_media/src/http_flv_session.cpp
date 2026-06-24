@@ -95,7 +95,7 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
                               const MediaFlvVideoTagView &tag,
                               const MediaFrame &frame,
                               const uint8_t *rebased_header) {
-    if (writer == nullptr || tag.slice_count == 0 ||
+    if (writer == nullptr || tag.slice_size == 0 ||
         rebased_header == nullptr) {
         return writer != nullptr;
     }
@@ -103,10 +103,10 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
     // 只替换 FLV tag header 中的时间戳；媒体 payload 分片仍指向原 MediaBuffer，
     // 由 MediaOutSlice.buffer 保证异步发送期间 payload 存活。
     size_t index = 0;
-    while (index < tag.slice_count) {
+    while (index < tag.slice_size) {
         MediaOutSlice slices[kMaxNetBufferSlices];
-        size_t slice_count = 0;
-        while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
+        size_t slice_size = 0;
+        while (index < tag.slice_size && slice_size < kMaxNetBufferSlices) {
             const MediaFlvVideoTagSlice &source = tag.slices[index];
             if (source.data == nullptr || source.size == 0) {
                 return false;
@@ -114,19 +114,19 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
             if (source.media_payload && !frame.payload.Valid()) {
                 return false;
             }
-            slices[slice_count].data =
+            slices[slice_size].data =
                 index == kFlvVideoTagHeaderSliceIndex ? rebased_header
                                                       : source.data;
-            slices[slice_count].size = source.size;
+            slices[slice_size].size = source.size;
             if (source.media_payload) {
-                slices[slice_count].buffer = frame.payload;
+                slices[slice_size].buffer = frame.payload;
             }
-            ++slice_count;
+            ++slice_size;
             ++index;
         }
-        if (slice_count == 0 ||
+        if (slice_size == 0 ||
             !writer->EnqueueStreamingSlices(connection_id, slices,
-                                            slice_count)) {
+                                            slice_size)) {
             return false;
         }
     }
@@ -137,7 +137,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
                                     ConnectionId connection_id,
                                     const MediaFlvCachedVideoTag &tag,
                                     const uint8_t *rebased_header) {
-    if (writer == nullptr || tag.slice_count == 0 ||
+    if (writer == nullptr || tag.slice_size == 0 ||
         rebased_header == nullptr) {
         return writer != nullptr;
     }
@@ -145,37 +145,37 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
     // cached GOP 的 header 和媒体 payload 可能已经拆成不同内存块；这里保持原分片
     // 输出，只在第一个 header slice 上替换 rebased timestamp。
     size_t index = 0;
-    while (index < tag.slice_count) {
+    while (index < tag.slice_size) {
         MediaOutSlice slices[kMaxNetBufferSlices];
-        size_t slice_count = 0;
-        while (index < tag.slice_count && slice_count < kMaxNetBufferSlices) {
+        size_t slice_size = 0;
+        while (index < tag.slice_size && slice_size < kMaxNetBufferSlices) {
             const MediaFlvCachedVideoTagSlice &source = tag.slices[index];
             if (source.size == 0) {
                 return false;
             }
-            slices[slice_count].data =
+            slices[slice_size].data =
                 index == kFlvVideoTagHeaderSliceIndex
                     ? rebased_header
                     : (source.media_payload ? source.media_data
                                             : source.header_data);
-            if (slices[slice_count].data == nullptr) {
+            if (slices[slice_size].data == nullptr) {
                 return false;
             }
-            slices[slice_count].size = source.size;
+            slices[slice_size].size = source.size;
             if (source.media_payload) {
                 if (!tag.frame.payload.Valid()) {
                     return false;
                 }
                 // cached GOP 的媒体 payload 仍在 tag.frame.payload 中；owner 让
                 // net send queue 在异步写 socket 期间持有该 MediaBuffer。
-                slices[slice_count].buffer = tag.frame.payload;
+                slices[slice_size].buffer = tag.frame.payload;
             }
-            ++slice_count;
+            ++slice_size;
             ++index;
         }
-        if (slice_count == 0 ||
+        if (slice_size == 0 ||
             !writer->EnqueueStreamingSlices(connection_id, slices,
-                                            slice_count)) {
+                                            slice_size)) {
             return false;
         }
     }
@@ -298,7 +298,7 @@ bool HttpFlvSession::OnFlvChunk(const uint8_t *data, size_t size) {
 
 bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                                    const MediaFrame &frame) {
-    if (writer_ == nullptr || tag.slice_count == 0) {
+    if (writer_ == nullptr || tag.slice_size == 0) {
         return writer_ != nullptr;
     }
     const uint32_t rebased_ms = RebaseTimestamp(tag.timestamp_ms, true);
@@ -321,7 +321,7 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
 
 bool HttpFlvSession::OnCachedFlvVideoTag(
     const MediaFlvCachedVideoTag &tag) {
-    if (writer_ == nullptr || tag.slice_count == 0) {
+    if (writer_ == nullptr || tag.slice_size == 0) {
         return writer_ != nullptr;
     }
     const uint32_t rebased_ms = RebaseTimestamp(tag.timestamp_ms, true);

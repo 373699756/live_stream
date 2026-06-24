@@ -32,8 +32,8 @@ interface AiMetricsPanelProps {
 
 export function AiMetricsPanel({ stats }: AiMetricsPanelProps) {
     const summaryItems = [
-        { label: '推理', value: metricValue(stats.inference_count) },
-        { label: '失败', value: metricValue(stats.inference_failed_count) },
+        { label: '推理', value: metricValue(stats.inferences) },
+        { label: '失败', value: metricValue(stats.failed_inferences) },
         { label: '有效', value: metricValue(stats.active_results) },
         { label: '丢弃', value: metricValue(stats.dropped_tasks) },
     ];

@@ -27,13 +27,13 @@ const char *HttpMethodName(HttpMethod method) {
     return "UNKNOWN";
 }
 
-bool StartExecutor(event::Executor *executor, uint32_t worker_count,
+bool StartExecutor(event::Executor *executor, uint32_t worker_size,
                    uint32_t queue_capacity) {
-    if (executor == nullptr || worker_count == 0 || queue_capacity == 0) {
+    if (executor == nullptr || worker_size == 0 || queue_capacity == 0) {
         return false;
     }
     event::ExecutorOptions options;
-    options.worker_count = worker_count;
+    options.worker_size = worker_size;
     options.queue_capacity = queue_capacity;
     return executor->Start(options);
 }
@@ -78,9 +78,9 @@ bool HttpServer::Prepare() {
         options_.send_buffer_limit_bytes == 0 ||
         options_.max_requests_per_connection == 0 ||
         options_.max_pipelined_requests == 0 ||
-        options_.stream_executor_worker_count == 0 ||
+        options_.stream_executor_worker_size == 0 ||
         options_.stream_executor_queue_capacity == 0 ||
-        options_.control_executor_worker_count == 0 ||
+        options_.control_executor_worker_size == 0 ||
         options_.control_executor_queue_capacity == 0) {
         return false;
     }
@@ -114,13 +114,13 @@ bool HttpServer::Start() {
     }
     // 媒体长连接和控制 API 分开执行：/live、SSE、WHEP 可能长时间写 socket，
     // 不能占住修改配置、登录等控制请求的 worker。
-    if (!StartExecutor(stream_executor, options_.stream_executor_worker_count,
+    if (!StartExecutor(stream_executor, options_.stream_executor_worker_size,
                        options_.stream_executor_queue_capacity)) {
         Error(kHttpModuleName,
               "HTTP stream executor start failed");
         return false;
     }
-    if (!StartExecutor(control_executor, options_.control_executor_worker_count,
+    if (!StartExecutor(control_executor, options_.control_executor_worker_size,
                        options_.control_executor_queue_capacity)) {
         Error(kHttpModuleName,
               "HTTP control executor start failed");
@@ -376,7 +376,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
 
 bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
                                         const MediaOutSlice *slices,
-                                        size_t slice_count) {
+                                        size_t slice_size) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
@@ -389,7 +389,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         }
     }
     const bool enqueued = response_sender_.EnqueueStreamingSlices(
-        net_io_, connection_id, slices, slice_count);
+        net_io_, connection_id, slices, slice_size);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
     }

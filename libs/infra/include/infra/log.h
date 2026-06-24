@@ -26,7 +26,7 @@ struct LogConfig {
     LogLevel min_level = LogLevel::kInfo;
     std::string file_path;
     uint32_t max_file_size_kb = 0;
-    uint32_t max_file_count = 0;
+    uint32_t max_files = 0;
     bool console_output = true;
     bool console_color = true;
     bool async_write = false;

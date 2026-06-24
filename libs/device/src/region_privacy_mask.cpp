@@ -119,11 +119,11 @@ bool ParsePrivacyMaskArray(const ConfigJson &privacy_masks,
     if (stream_name == nullptr || masks == nullptr ||
         !privacy_masks.contains(stream_name) ||
         !privacy_masks.at(stream_name).is_array() ||
-        privacy_masks.at(stream_name).size() != PrivacyMasks::kSlotCount) {
+        privacy_masks.at(stream_name).size() != PrivacyMasks::kSlotSize) {
         return false;
     }
     const ConfigJson &items = privacy_masks.at(stream_name);
-    for (uint32_t index = 0; index < PrivacyMasks::kSlotCount; ++index) {
+    for (uint32_t index = 0; index < PrivacyMasks::kSlotSize; ++index) {
         if (!ParsePrivacyMask(items.at(index), frame_size, &masks[index])) {
             return false;
         }
@@ -147,7 +147,7 @@ bool ApplyMaskSet(RegionOverlay *service, const char *stream_name,
     if (!IsValidChannel(target)) {
         return true;
     }
-    for (uint32_t slot = 0; slot < PrivacyMasks::kSlotCount; ++slot) {
+    for (uint32_t slot = 0; slot < PrivacyMasks::kSlotSize; ++slot) {
         const std::string name = PrivacyMaskName(stream_name, slot);
         const PrivacyMask &mask = masks[slot];
         if (!mask.enabled) {

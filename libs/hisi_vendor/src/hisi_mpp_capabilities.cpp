@@ -126,7 +126,7 @@ ImageCapabilities DefaultImageCapabilities() {
     image.stabilization_options.push_back(
         Options("motion_level", {"low", "normal", "high"}, "normal"));
     image.stabilization_ranges.push_back(Range("crop_ratio", 50, 98, 80));
-    image.stabilization_ranges.push_back(Range("buffer_count", 5, 10, 6));
+    image.stabilization_ranges.push_back(Range("buffer_frames", 5, 10, 6));
     image.stabilization_ranges.push_back(Range("frame_rate", 1, 60, 30));
     image.stabilization_ranges.push_back(
         Range("moving_subject_level", 0, 6, 0));

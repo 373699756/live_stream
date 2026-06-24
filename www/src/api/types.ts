@@ -160,7 +160,7 @@ export interface ImageConfig {
         enabled: boolean;
         motion_level: string;
         crop_ratio: number;
-        buffer_count: number;
+        buffer_frames: number;
         frame_rate: number;
         moving_subject_level: number;
         rolling_shutter_coef: number;
@@ -273,8 +273,8 @@ export interface MediaStreamInfo {
     mjpeg_ready: boolean;
     webrtc_supported: boolean;
     webrtc_ready: boolean;
-    subscription_count: number;
-    client_count: number;
+    subscription_size: number;
+    client_size: number;
     cached_frames: number;
     cached_bytes: number;
     hls_bytes: number;
@@ -331,10 +331,10 @@ export interface MediaSessionInfo {
     rtp_bytes?: number;
     rtcp_packets?: number;
     rtcp_bytes?: number;
-    rtcp_pli_count?: number;
-    rtcp_fir_count?: number;
-    rtcp_nack_count?: number;
-    rtcp_transport_cc_count?: number;
+    rtcp_pli_packets?: number;
+    rtcp_fir_packets?: number;
+    rtcp_nack_packets?: number;
+    rtcp_transport_cc_packets?: number;
     rtcp_keyframe_requests?: number;
     last_rtcp_ms?: number;
     last_error?: string;
@@ -363,7 +363,7 @@ export interface MediaSessionsResponse {
     webrtc_dtls_ready?: boolean;
     webrtc_enabled?: boolean;
     webrtc_ice_ready?: boolean;
-    webrtc_ice_server_count?: number;
+    webrtc_ice_server_size?: number;
     webrtc_local_port_base?: number;
     webrtc_max_peers?: number;
     webrtc_public_ip?: string;
@@ -395,10 +395,10 @@ export interface WebrtcPeerInfo {
     rtp_bytes: number;
     rtcp_packets: number;
     rtcp_bytes: number;
-    rtcp_pli_count: number;
-    rtcp_fir_count: number;
-    rtcp_nack_count: number;
-    rtcp_transport_cc_count: number;
+    rtcp_pli_packets: number;
+    rtcp_fir_packets: number;
+    rtcp_nack_packets: number;
+    rtcp_transport_cc_packets: number;
     rtcp_keyframe_requests: number;
     last_error: string;
     created_at_ms: number;
@@ -491,8 +491,8 @@ export interface AiStats {
     last_failure_time_ms: number;
     received_frames: number;
     skipped_frames: number;
-    inference_count: number;
-    inference_failed_count: number;
+    inferences: number;
+    failed_inferences: number;
     dropped_tasks: number;
     last_inference_time_ms: number;
     max_inference_time_ms: number;
@@ -529,7 +529,7 @@ export interface AiAlertRecord {
     stream: StreamName;
     task: AiTaskName;
     image_url: string;
-    detection_count: number;
+    detection_size: number;
     confidence_max: number;
     detections: AiDetection[];
 }

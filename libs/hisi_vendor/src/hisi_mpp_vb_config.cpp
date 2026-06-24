@@ -31,7 +31,7 @@ VB_CONFIG_S BuildFrameBufferConfig(const MediaPipelineConfig& config) {
 
     vb_conf.astCommPool[0].u64BlkSize =
         Yuv420BlockSize(sensor_input_size);
-    vb_conf.astCommPool[0].u32BlkCnt = config.vb_block_count;
+    vb_conf.astCommPool[0].u32BlkCnt = config.vb_blocks;
     vb_conf.astCommPool[0].enRemapMode = VB_REMAP_MODE_CACHED;
 
     vb_conf.astCommPool[1].u64BlkSize =
@@ -58,7 +58,7 @@ void MarkCleanupFailure(bool* cleanup_failed) {
 
 bool CleanupConfiguredFrameBuffer(bool* cleanup_failed) {
     if (mpp_resource_recovery::ExitMppSystem(
-            true, mpp_resource_recovery::kMppExitRetryCount,
+            true, mpp_resource_recovery::kMppExitRetryLimit,
             mpp_resource_recovery::MppExitBusyLog::kWarn)) {
         return true;
     }
@@ -119,7 +119,7 @@ bool ConfigureFrameBuffer(const MediaPipelineConfig& config,
              "HISI VB is busy before configuration, trying recovery");
         mpp_resource_recovery::ForceCleanupPipelineResources(config, false);
         if (!mpp_resource_recovery::ExitMppSystem(
-                true, mpp_resource_recovery::kMppExitRetryCount,
+                true, mpp_resource_recovery::kMppExitRetryLimit,
                 mpp_resource_recovery::MppExitBusyLog::kInfo)) {
             Error("hisi_vendor",
                   "HISI MPP resource recovery failed before VB_SetConfig");

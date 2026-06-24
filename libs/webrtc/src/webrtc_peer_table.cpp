@@ -100,14 +100,14 @@ std::vector<std::string> WebrtcPeerTable::OpenPeerIds() const {
     return peer_ids;
 }
 
-uint32_t WebrtcPeerTable::ActivePeerCount() const {
-    uint32_t count = 0;
+uint32_t WebrtcPeerTable::ActivePeerSize() const {
+    uint32_t active_size = 0;
     for (const auto &item : peers_) {
         if (IsOpenPeerState(item.second.state)) {
-            ++count;
+            ++active_size;
         }
     }
-    return count;
+    return active_size;
 }
 
 bool WebrtcPeerTable::IsStreamConnected(StreamId stream_id) const {
@@ -231,10 +231,10 @@ bool WebrtcPeerTable::UpdatePeerInfo(const WebrtcPeerInfo &peer) {
     iter->second.rtp_bytes = peer.rtp_bytes;
     iter->second.rtcp_packets = peer.rtcp_packets;
     iter->second.rtcp_bytes = peer.rtcp_bytes;
-    iter->second.rtcp_pli_count = peer.rtcp_pli_count;
-    iter->second.rtcp_fir_count = peer.rtcp_fir_count;
-    iter->second.rtcp_nack_count = peer.rtcp_nack_count;
-    iter->second.rtcp_transport_cc_count = peer.rtcp_transport_cc_count;
+    iter->second.rtcp_pli_packets = peer.rtcp_pli_packets;
+    iter->second.rtcp_fir_packets = peer.rtcp_fir_packets;
+    iter->second.rtcp_nack_packets = peer.rtcp_nack_packets;
+    iter->second.rtcp_transport_cc_packets = peer.rtcp_transport_cc_packets;
     iter->second.rtcp_keyframe_requests = peer.rtcp_keyframe_requests;
     iter->second.updated_at_ms = NowMs();
     return true;

@@ -285,7 +285,7 @@ std::vector<AiDetection> MotionBackend::DecodeBlob(
     HI_U16 area_threshold = 0;
     if (blob->u8RegionNum > config.max_results) {
         area_threshold = blob->u16CurAreaThr;
-        while (CountRegions(*blob, area_threshold) > config.max_results) {
+        while (RegionSize(*blob, area_threshold) > config.max_results) {
             if (area_threshold >
                 std::numeric_limits<HI_U16>::max() -
                     kMotionAreaThresholdStep) {
@@ -334,15 +334,15 @@ std::vector<AiDetection> MotionBackend::DecodeBlob(
     return detections;
 }
 
-uint32_t MotionBackend::CountRegions(const IVE_CCBLOB_S &blob,
-                                     HI_U16 area_threshold) const {
-    uint32_t count = 0;
+uint32_t MotionBackend::RegionSize(const IVE_CCBLOB_S &blob,
+                                   HI_U16 area_threshold) const {
+    uint32_t region_size = 0;
     for (uint32_t i = 0; i < IVE_MAX_REGION_NUM; ++i) {
         if (blob.astRegion[i].u32Area > area_threshold) {
-            ++count;
+            ++region_size;
         }
     }
-    return count;
+    return region_size;
 }
 
 bool MotionBackend::IsValidRegion(const IVE_REGION_S &region) const {

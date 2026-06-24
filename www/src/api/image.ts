@@ -24,7 +24,7 @@ function normalizeImageConfig(config: ImageConfig): ImageConfig {
             enabled: config.stabilization?.enabled ?? false,
             motion_level: config.stabilization?.motion_level ?? 'normal',
             crop_ratio: config.stabilization?.crop_ratio ?? 80,
-            buffer_count: config.stabilization?.buffer_count ?? 6,
+            buffer_frames: config.stabilization?.buffer_frames ?? 6,
             frame_rate: config.stabilization?.frame_rate ?? 30,
             moving_subject_level:
                 config.stabilization?.moving_subject_level ?? 0,

@@ -87,7 +87,7 @@ export function TimeConfigPanel({
         () => ntpServerRows(ntpServersText),
         [ntpServersText],
     );
-    const activeNtpServerCount = ntpServers.filter(
+    const activeNtpServerSize = ntpServers.filter(
         (server) => server.trim().length > 0,
     ).length;
 
@@ -251,7 +251,7 @@ export function TimeConfigPanel({
                 <div className="time-panel-heading">
                     <div>
                         <h2>NTP 设置</h2>
-                        <span>{activeNtpServerCount} 个服务器地址</span>
+                        <span>{activeNtpServerSize} 个服务器地址</span>
                     </div>
                     <button
                         type="button"

@@ -96,10 +96,12 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 不新增 `Runtime`、`Manager`、`Store`、`Topology` 这类看起来大但边界不清的名字；
 历史已有名字在重构触及时改成具体业务名。
 
-当前集合基数用 `Size()`，不用 `Count()`，例如 `FrameRing::SubscriptionSize()`、
-`PreviewClients::FlvSize()`。累计次数、协议字段、HTTP/JSON wire field、低层
-`ref_count`/`slice_count` 这类已有契约不要机械改成 `Size`；需要重命名时用具体事实，
-例如 `MissingSegments()`、`EvictedSegments()` 或对应 `Stats` 字段。
+当前集合基数用 `Size()` / `_size`，不用 `Count()` / `_count`，例如
+`FrameRing::SubscriptionSize()`、`PreviewClients::FlvSize()`、
+`subscription_size`。累计次数、协议反馈和低层引用不要机械改成 `Size`；需要重命名时
+用具体事实，例如 `MissingSegments()`、`EvictedSegments()`、`rtcp_pli_packets`、
+`refs`。HTTP JSON 字段进入命名收敛范围时必须同步后端、前端、mock 和文档，不保留
+旧字段别名。
 
 ### 必须遵守
 
@@ -223,7 +225,7 @@ HiSilicon MPP -> device -> MediaStreams -> media cache/subscription
 - 控制 API 归 `http`。
 - 媒体输出 API 归 `http_media`。
 - API response 使用统一 envelope、错误码和参数校验。
-- `/api/media/streams` 展示 stream info、codec ready、subscription/client count、缓存统计。
+- `/api/media/streams` 展示 stream info、codec ready、subscription/client size、缓存统计。
 - `/api/media/sessions` 聚合 RTSP、WebRTC、HTTP-FLV、HLS、MJPEG session/subscription 状态。
 - 后端 URL helper 负责生成 RTSP/HLS/FLV/MJPEG/WebRTC URL，Web 不拼协议细节。
 - HLS playlist/segment 是短响应，不作为常驻 session 展示。
@@ -506,7 +508,7 @@ review 时优先看这些问题：
 
 - 单路多客户端 HLS/FLV/RTSP/WebRTC 同时拉流。
 - 慢客户端发送队列触顶后主动断开。
-- 频繁连接/断开后 RSS、fd 数、reader/client count、帧缓存数量回落。
+- 频繁连接/断开后 RSS、fd 数、reader/client size、帧缓存数量回落。
 - 长时间播放 PTS/DTS 单调、无花屏、无 segment 空洞。
 - 旧名扫描确认生产代码不恢复 `_service`、`stream_*`、`MetaRtc/metaRTC/Yang`。
 - 链接日志确认不再链接 metaRTC/Yang 相关库。

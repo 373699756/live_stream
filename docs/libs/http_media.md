@@ -42,7 +42,7 @@ flowchart LR
 
 - 依赖 `http` 的路由、认证边界、`IHttpHandler` 和 `HttpMediaWriter`。
 - 依赖 `media` 的 HLS segment/playlist、HTTP-FLV start data/client、MJPEG client
-  和 subscription/client count。
+  和 subscription/client size。
 - 间接依赖 `net` 的 session、send queue、buffer limit 和 close callback；socket 生命周期
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。

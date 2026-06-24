@@ -7,7 +7,7 @@ namespace live_stream {
 namespace hisisdk {
 namespace mpp_resource_recovery {
 
-constexpr int kMppExitRetryCount = 20;
+constexpr int kMppExitRetryLimit = 20;
 
 enum class MppExitBusyLog {
     kSilent = 0,
@@ -15,7 +15,7 @@ enum class MppExitBusyLog {
     kWarn,
 };
 
-bool ExitMppSystem(bool log_errors, int retry_count,
+bool ExitMppSystem(bool log_errors, int retry_limit,
                    MppExitBusyLog busy_log);
 void ForceCleanupPipelineResources(const MediaPipelineConfig& config,
                                    bool warn);

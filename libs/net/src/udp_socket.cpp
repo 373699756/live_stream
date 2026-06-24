@@ -145,7 +145,7 @@ bool UdpSocket::SendTo(NetAddress address, const uint8_t *data, size_t size) {
 
 bool UdpSocket::SendToSlices(NetAddress address,
                              const NetBufferSlices &slices) {
-    if (slices.count > kMaxNetBufferSlices) {
+    if (slices.slice_size > kMaxNetBufferSlices) {
         return false;
     }
     std::shared_ptr<EventLoop> loop;
@@ -157,7 +157,7 @@ bool UdpSocket::SendToSlices(NetAddress address,
         return SendToSlicesInLoop(std::move(address), slices);
     }
     size_t total_size = 0;
-    for (size_t i = 0; i < slices.count; ++i) {
+    for (size_t i = 0; i < slices.slice_size; ++i) {
         const NetBufferSlice &slice = slices.slices[i];
         if (slice.size == 0) {
             continue;
@@ -173,7 +173,7 @@ bool UdpSocket::SendToSlices(NetAddress address,
     auto datagram = std::make_shared<std::vector<uint8_t>>();
     datagram->resize(total_size);
     size_t offset = 0;
-    for (size_t i = 0; i < slices.count; ++i) {
+    for (size_t i = 0; i < slices.slice_size; ++i) {
         const NetBufferSlice &slice = slices.slices[i];
         if (slice.size == 0) {
             continue;
@@ -223,8 +223,8 @@ bool UdpSocket::SendToSlicesInLoop(NetAddress address,
     // UDP 不维护发送队列，直接用 sendmsg 聚合分片。调用返回后网络层不再持有
     // slice 指针，适合 RTP datagram 和 WS-Discovery 这类逐包发送。
     iovec iov[kMaxNetBufferSlices];
-    size_t iov_count = 0;
-    for (size_t i = 0; i < slices.count; ++i) {
+    size_t iov_size = 0;
+    for (size_t i = 0; i < slices.slice_size; ++i) {
         const NetBufferSlice &slice = slices.slices[i];
         if (slice.size == 0) {
             continue;
@@ -232,18 +232,18 @@ bool UdpSocket::SendToSlicesInLoop(NetAddress address,
         if (slice.data == nullptr) {
             return false;
         }
-        iov[iov_count].iov_base = const_cast<uint8_t *>(slice.data);
-        iov[iov_count].iov_len = slice.size;
-        ++iov_count;
+        iov[iov_size].iov_base = const_cast<uint8_t *>(slice.data);
+        iov[iov_size].iov_len = slice.size;
+        ++iov_size;
     }
-    if (iov_count == 0) {
+    if (iov_size == 0) {
         return true;
     }
     msghdr message{};
     message.msg_name = &addr;
     message.msg_namelen = sizeof(addr);
     message.msg_iov = iov;
-    message.msg_iovlen = iov_count;
+    message.msg_iovlen = iov_size;
     const ssize_t ret = sendmsg(fd, &message, 0);
     if (ret < 0) {
         const int error = errno;

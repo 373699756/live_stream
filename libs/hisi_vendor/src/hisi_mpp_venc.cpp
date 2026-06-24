@@ -193,7 +193,7 @@ bool ApplyVencRoiConfig(int32_t venc_channel,
         return false;
     }
     if (stream_config.roi.regions.size() > kMaxVencRoiRegions) {
-        Error("hisi_vendor", "VENC ROI regions exceed limit chn=%d count=%zu",
+        Error("hisi_vendor", "VENC ROI regions exceed limit chn=%d size=%zu",
               venc_channel, stream_config.roi.regions.size());
         return false;
     }
@@ -470,7 +470,7 @@ bool GetVencStream(const VencStreamContext& context,
     if (stream->u32PackCount > status.u32CurPacks) {
         Error(
             "hisi_vendor",
-            "invalid VENC pack count chn=%d seq=%u packs=%u allocated=%u",
+            "invalid VENC pack size chn=%d seq=%u packs=%u allocated=%u",
             context.chn, stream->u32Seq, stream->u32PackCount,
             status.u32CurPacks);
         (void)HI_MPI_VENC_ReleaseStream(context.venc, stream);
@@ -664,28 +664,28 @@ void VencStreamLoop(MediaPipelineConfig config,
                     void* user,
                     std::atomic<bool>* running) {
     VencStreamContext streams[2];
-    uint32_t stream_count = 0;
+    uint32_t stream_size = 0;
     if (!InitVencStreamContext(config.venc_channel, StreamId::kMain,
                                config.main_stream.codec,
-                               &streams[stream_count])) {
+                               &streams[stream_size])) {
         return;
     }
-    ++stream_count;
+    ++stream_size;
 
     if (config.sub_stream.enabled) {
         if (!InitVencStreamContext(config.sub_venc_channel, StreamId::kSub,
                                    config.sub_stream.codec,
-                                   &streams[stream_count])) {
+                                   &streams[stream_size])) {
             return;
         }
-        ++stream_count;
+        ++stream_size;
     }
 
     while (running->load()) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
         int max_fd = -1;
-        for (uint32_t i = 0; i < stream_count; ++i) {
+        for (uint32_t i = 0; i < stream_size; ++i) {
             FD_SET(streams[i].fd, &read_fds);
             if (streams[i].fd > max_fd) {
                 max_fd = streams[i].fd;
@@ -709,7 +709,7 @@ void VencStreamLoop(MediaPipelineConfig config,
             continue;
         }
 
-        for (uint32_t i = 0; i < stream_count; ++i) {
+        for (uint32_t i = 0; i < stream_size; ++i) {
             if (FD_ISSET(streams[i].fd, &read_fds)) {
                 HandleVencStream(&streams[i], callback, user);
             }

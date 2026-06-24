@@ -110,7 +110,7 @@ bool CopyRtpPacket(const rtp::RtpPacketView &packet,
     // 为加密必需的拷贝，不会长期保存原始 MediaFrame 指针。
     buffer->resize(packet_size + SRTP_MAX_TRAILER_LEN);
     size_t offset = 0;
-    for (size_t i = 0; i < packet.slice_count; ++i) {
+    for (size_t i = 0; i < packet.slice_size; ++i) {
         const rtp::RtpPacketSlice &slice = packet.slices[i];
         if (slice.data == nullptr || slice.size == 0 ||
             offset > packet_size || slice.size > packet_size - offset) {
@@ -293,8 +293,8 @@ bool SrtpSession::ParseRtcpFeedback(const uint8_t *data, size_t size,
     return false;
 }
 
-bool SrtpSession::CountRtcpFeedback(const uint8_t *data, size_t size,
-                                    RtcpFeedbackStats *feedback_stats) {
+bool SrtpSession::ReadRtcpFeedbackStats(const uint8_t *data, size_t size,
+                                        RtcpFeedbackStats *feedback_stats) {
     if (feedback_stats == nullptr) {
         return false;
     }
@@ -322,16 +322,16 @@ bool SrtpSession::CountRtcpFeedback(const uint8_t *data, size_t size,
             packet_size >= kRtcpFeedbackHeaderSize) {
             if (packet_type == kRtcpPacketTypePayloadFeedback &&
                 fmt == kRtcpFeedbackFormatPli) {
-                ++feedback_stats->pli_count;
+                ++feedback_stats->pli_packets;
             } else if (packet_type == kRtcpPacketTypePayloadFeedback &&
                        fmt == kRtcpFeedbackFormatFir) {
-                ++feedback_stats->fir_count;
+                ++feedback_stats->fir_packets;
             } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
                        fmt == kRtcpFeedbackFormatNack) {
-                ++feedback_stats->nack_count;
+                ++feedback_stats->nack_packets;
             } else if (packet_type == kRtcpPacketTypeRtpFeedback &&
                        fmt == kRtcpFeedbackFormatTransportCc) {
-                ++feedback_stats->transport_cc_count;
+                ++feedback_stats->transport_cc_packets;
             }
         }
         offset += packet_size;

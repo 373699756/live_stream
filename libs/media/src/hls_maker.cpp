@@ -203,11 +203,11 @@ bool TsPacketBytesForPesSize(size_t pes_size, size_t *ts_bytes) {
     if (pes_size > std::numeric_limits<size_t>::max() - 175U) {
         return false;
     }
-    const size_t packet_count = (pes_size + 175U) / 176U;
-    if (packet_count > std::numeric_limits<size_t>::max() / kTsPacketSize) {
+    const size_t ts_packets = (pes_size + 175U) / 176U;
+    if (ts_packets > std::numeric_limits<size_t>::max() / kTsPacketSize) {
         return false;
     }
-    *ts_bytes = packet_count * kTsPacketSize;
+    *ts_bytes = ts_packets * kTsPacketSize;
     return true;
 }
 
@@ -218,21 +218,21 @@ struct TsSliceList {
     };
 
     Slice slices[kMaxTsMediaSlices];
-    size_t count = 0;
+    size_t slice_size = 0;
     size_t total_size = 0;
 
     bool Add(const uint8_t *data, size_t size) {
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || count >= kMaxTsMediaSlices ||
+        if (data == nullptr || slice_size >= kMaxTsMediaSlices ||
             size > std::numeric_limits<size_t>::max() - total_size) {
             return false;
         }
-        slices[count].data = data;
-        slices[count].size = size;
+        slices[slice_size].data = data;
+        slices[slice_size].size = size;
         total_size += size;
-        ++count;
+        ++slice_size;
         return true;
     }
 
@@ -259,7 +259,7 @@ size_t CopyPesBytes(const TsSliceList &pes_slices,
     }
     size_t copied = 0;
     size_t slice_base = 0;
-    for (size_t i = 0; i < pes_slices.count && copied < size; ++i) {
+    for (size_t i = 0; i < pes_slices.slice_size && copied < size; ++i) {
         const TsSliceList::Slice &slice = pes_slices.slices[i];
         if (offset >= slice_base + slice.size) {
             slice_base += slice.size;
@@ -511,8 +511,8 @@ void HlsMaker::Reset() {
     ts_muxer_state_ = TsMuxerState{};
     next_segment_capacity_ = 0;
     next_segment_sequence_ = 1;
-    missing_segment_count_ = 0;
-    evicted_segment_count_ = 0;
+    missing_segments_ = 0;
+    evicted_segments_ = 0;
     last_pts_us_ = -1;
     last_frame_duration_us_ = 33333;
     requested_ = false;
@@ -535,11 +535,11 @@ uint64_t HlsMaker::LastSegmentSequence() const {
 }
 
 uint64_t HlsMaker::MissingSegments() const {
-    return missing_segment_count_;
+    return missing_segments_;
 }
 
 uint64_t HlsMaker::EvictedSegments() const {
-    return evicted_segment_count_;
+    return evicted_segments_;
 }
 
 uint32_t HlsMaker::CurrentSegmentSize() const {
@@ -582,7 +582,7 @@ MediaSegmentRef HlsMaker::FindSegmentRef(uint64_t sequence) const {
             return segment;
         }
     }
-    ++missing_segment_count_;
+    ++missing_segments_;
     return MediaSegmentRef{};
 }
 
@@ -669,8 +669,8 @@ bool HlsMaker::EnsureSegmentCapacity(SegmentState *segment,
     if (!new_body.Valid()) {
         return false;
     }
-    const uint8_t* old_data = segment->body.Data();
-    uint8_t* new_data = new_body.Data();
+    const uint8_t *old_data = segment->body.Data();
+    uint8_t *new_data = new_body.Data();
     if (old_data == nullptr || new_data == nullptr) {
         return false;
     }
@@ -802,7 +802,7 @@ void HlsMaker::PopOldestSegment() {
     if (segments_.empty()) {
         return;
     }
-    ++evicted_segment_count_;
+    ++evicted_segments_;
     segments_.pop_front();
 }
 

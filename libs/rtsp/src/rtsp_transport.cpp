@@ -25,7 +25,7 @@ bool RtspTransport::SendRtpPacket(
         byte_writer::WriteU16(interleaved_header + 2,
                               static_cast<uint16_t>(packet_size));
         ok = slices.Add(interleaved_header, sizeof(interleaved_header));
-        for (size_t i = 0; ok && i < packet.slice_count; ++i) {
+        for (size_t i = 0; ok && i < packet.slice_size; ++i) {
             const rtp::RtpPacketSlice &slice = packet.slices[i];
             ok = slices.Add(slice.data, slice.size,
                             slice.media_payload ? payload_buffer
@@ -37,7 +37,7 @@ bool RtspTransport::SendRtpPacket(
     if (target.mode == RtspTransportMode::kUdp && target.udp_socket_id != 0) {
         // UDP RTP 是完整 datagram，超过 MTU 的分片已经由 RtpPacketizer 完成；
         // 这里只把 RTP header/payload slices 聚合给 sendmsg。
-        for (size_t i = 0; ok && i < packet.slice_count; ++i) {
+        for (size_t i = 0; ok && i < packet.slice_size; ++i) {
             const rtp::RtpPacketSlice &slice = packet.slices[i];
             ok = slices.Add(slice.data, slice.size);
         }

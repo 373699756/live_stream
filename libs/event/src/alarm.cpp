@@ -16,12 +16,12 @@
 namespace live_stream {
 namespace {
 
-constexpr std::size_t kAlarmSourceCount = 5;
+constexpr std::size_t kAlarmSourceSize = 5;
 constexpr std::size_t kMaxAlarmMessageLength = 128;
 constexpr uint32_t kMaxAlarmDurationMs = 60U * 60U * 1000U;
 constexpr uint8_t kMaxAlarmLevel = 5;
 
-const std::array<AlarmSource, kAlarmSourceCount> kAlarmSources = {
+const std::array<AlarmSource, kAlarmSourceSize> kAlarmSources = {
     {AlarmSource::kMotion, AlarmSource::kAiDetection, AlarmSource::kIoInput,
      AlarmSource::kTamper, AlarmSource::kNetwork}};
 
@@ -205,7 +205,7 @@ event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
 class AlarmImpl : public IAlarm {
 public:
     explicit AlarmImpl(const AlarmOptions &options) : options_(options) {
-        for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+        for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
             rules_[i] = MakeDefaultRule(kAlarmSources[i]);
             source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
         }
@@ -327,14 +327,14 @@ public:
 
     bool UpdateRules(const live_stream::RequestContext &context,
                      const std::vector<AlarmRule> &rules) override {
-        if (rules.size() > kAlarmSourceCount) {
+        if (rules.size() > kAlarmSourceSize) {
             RecordAudit(context, OperationResult::kRejected, "alarm",
                         "too_many_rules");
             return false;
         }
 
-        std::array<AlarmRule, kAlarmSourceCount> next_rules;
-        for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+        std::array<AlarmRule, kAlarmSourceSize> next_rules;
+        for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
             next_rules[i] = MakeDefaultRule(kAlarmSources[i]);
         }
         for (const AlarmRule &rule : rules) {
@@ -355,7 +355,7 @@ public:
                 service_not_started = true;
             } else {
                 rules_ = next_rules;
-                for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+                for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
                     SyncRuleStateLocked(i);
                     if (!rules_[i].enabled) {
                         ClearSourceLocked(i, &events);
@@ -436,7 +436,7 @@ public:
             if (!initialized_ || !started_) {
                 service_not_started = true;
             } else {
-                for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+                for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
                     ClearSourceLocked(i, &events);
                 }
             }
@@ -456,7 +456,7 @@ private:
         bool should_detach = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            for (std::size_t i = 0; i < kAlarmSourceCount; ++i) {
+            for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
                 source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
                 SyncRuleStateLocked(i);
             }
@@ -599,7 +599,7 @@ private:
 
     AlarmInfo BuildStatusLocked() const {
         AlarmInfo status;
-        status.sources.reserve(kAlarmSourceCount);
+        status.sources.reserve(kAlarmSourceSize);
 
         bool found_active_source = false;
         int64_t newest_alarm_time_ms = 0;
@@ -652,8 +652,8 @@ private:
     }
 
     AlarmOptions options_;
-    std::array<AlarmRule, kAlarmSourceCount> rules_;
-    std::array<AlarmSourceState, kAlarmSourceCount> source_states_;
+    std::array<AlarmRule, kAlarmSourceSize> rules_;
+    std::array<AlarmSourceState, kAlarmSourceSize> source_states_;
     mutable std::mutex mutex_;
     bool invalid_default_rule_ = false;
     bool config_attached_ = false;

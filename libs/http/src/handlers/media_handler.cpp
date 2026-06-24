@@ -383,8 +383,8 @@ ConfigJson MediaStreamInfoToJson(StreamId stream_id,
     root["webrtc_ready"] =
         stream_running && stream_info.track_ready && webrtc_supported &&
         IsWebrtcReady(webrtc);
-    root["subscription_count"] = stats.active_subscriptions;
-    root["client_count"] =
+    root["subscription_size"] = stats.active_subscriptions;
+    root["client_size"] =
         stats.active_flv_clients + stats.active_mjpeg_clients;
     root["cached_frames"] = stats.cached_frames;
     root["cached_bytes"] = stats.cached_bytes;
@@ -557,10 +557,10 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     root["rtp_bytes"] = peer.rtp_bytes;
     root["rtcp_packets"] = peer.rtcp_packets;
     root["rtcp_bytes"] = peer.rtcp_bytes;
-    root["rtcp_pli_count"] = peer.rtcp_pli_count;
-    root["rtcp_fir_count"] = peer.rtcp_fir_count;
-    root["rtcp_nack_count"] = peer.rtcp_nack_count;
-    root["rtcp_transport_cc_count"] = peer.rtcp_transport_cc_count;
+    root["rtcp_pli_packets"] = peer.rtcp_pli_packets;
+    root["rtcp_fir_packets"] = peer.rtcp_fir_packets;
+    root["rtcp_nack_packets"] = peer.rtcp_nack_packets;
+    root["rtcp_transport_cc_packets"] = peer.rtcp_transport_cc_packets;
     root["rtcp_keyframe_requests"] = peer.rtcp_keyframe_requests;
     root["last_error"] = peer.last_error;
     root["created_at_ms"] = peer.created_at_ms;
@@ -775,7 +775,7 @@ private:
             root["webrtc_public_ip"] = webrtc_stats.public_ip;
             root["webrtc_local_port_base"] = webrtc_stats.local_port_base;
             root["webrtc_max_peers"] = webrtc_stats.max_peers;
-            root["webrtc_ice_server_count"] = webrtc_stats.ice_server_count;
+            root["webrtc_ice_server_size"] = webrtc_stats.ice_server_size;
             root["webrtc_selected_ice_pairs"] =
                 webrtc_stats.selected_ice_pairs;
             const std::vector<WebrtcPeerInfo> peers = webrtc_->GetPeers();
@@ -792,7 +792,7 @@ private:
             root["webrtc_public_ip"] = "";
             root["webrtc_local_port_base"] = 0;
             root["webrtc_max_peers"] = 0;
-            root["webrtc_ice_server_count"] = 0;
+            root["webrtc_ice_server_size"] = 0;
             root["webrtc_selected_ice_pairs"] = 0;
         }
         MediaStreamStats media_stats;

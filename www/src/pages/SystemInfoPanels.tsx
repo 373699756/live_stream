@@ -92,13 +92,13 @@ export function DeviceInfoPanel({ status }: SystemInfoPanelsProps) {
 }
 
 export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
-    const runningCount = status.modules.filter(
+    const runningSize = status.modules.filter(
         (module) => module.state === 'running',
     ).length;
-    const pendingCount = status.modules.filter(
+    const pendingSize = status.modules.filter(
         (module) => module.state === 'pending',
     ).length;
-    const errorCount = status.modules.filter(
+    const errorSize = status.modules.filter(
         (module) => module.state === 'error',
     ).length;
     const groupedNames = new Set(moduleGroups.flatMap((group) => group.names));
@@ -122,15 +122,15 @@ export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
                 </div>
                 <div>
                     <span>运行中</span>
-                    <strong>{runningCount}</strong>
+                    <strong>{runningSize}</strong>
                 </div>
                 <div>
                     <span>待接入</span>
-                    <strong>{pendingCount}</strong>
+                    <strong>{pendingSize}</strong>
                 </div>
                 <div>
                     <span>异常</span>
-                    <strong>{errorCount}</strong>
+                    <strong>{errorSize}</strong>
                 </div>
             </div>
 

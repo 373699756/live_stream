@@ -10,7 +10,7 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kNetIoThreadCount = 2;
+constexpr uint32_t kNetIoThreadSize = 2;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpStreamWorkers = 4;
 constexpr uint32_t kHttpStreamQueueCapacity = 256;
@@ -39,10 +39,10 @@ bool ParseIpv4Octets(const std::string &ip, int octets[4]) {
     if (octets == nullptr || ip.empty()) {
         return false;
     }
-    int parsed_count = 0;
+    int parsed_size = 0;
     std::size_t start = 0;
     while (start < ip.size()) {
-        if (parsed_count >= 4) {
+        if (parsed_size >= 4) {
             return false;
         }
         std::size_t end = ip.find('.', start);
@@ -62,11 +62,11 @@ bool ParseIpv4Octets(const std::string &ip, int octets[4]) {
         if (octet > 255) {
             return false;
         }
-        octets[parsed_count] = octet;
-        ++parsed_count;
+        octets[parsed_size] = octet;
+        ++parsed_size;
         start = end + 1;
     }
-    return parsed_count == 4 && ip[ip.size() - 1] != '.';
+    return parsed_size == 4 && ip[ip.size() - 1] != '.';
 }
 
 bool IsUsableWebrtcPublicIp(const std::string &public_ip) {
@@ -127,7 +127,7 @@ event::LoopOptions BuildNetCallbackOptions() {
 
 NetIoOptions BuildNetIoOptions(event::Loop *callback_loop) {
     NetIoOptions options;
-    options.io_threads = kNetIoThreadCount;
+    options.io_threads = kNetIoThreadSize;
     options.enable_thread_affinity = false;
     options.callback_mode = CallbackMode::kPostToLoop;
     options.callback_loop = callback_loop;
@@ -220,9 +220,9 @@ HttpOptions BuildHttpOptions(const AppConfig &app_config) {
     options.static_root = app_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
-    options.stream_executor_worker_count = kHttpStreamWorkers;
+    options.stream_executor_worker_size = kHttpStreamWorkers;
     options.stream_executor_queue_capacity = kHttpStreamQueueCapacity;
-    options.control_executor_worker_count = kHttpControlWorkers;
+    options.control_executor_worker_size = kHttpControlWorkers;
     options.control_executor_queue_capacity = kHttpControlQueueCapacity;
     options.max_requests_per_connection = kHttpMaxRequestsPerConnection;
     options.max_request_body_bytes = kHttpMaxRequestBodyBytes;

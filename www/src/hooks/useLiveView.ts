@@ -5,7 +5,7 @@ const configTimeoutMs = 3000;
 const statusTimeoutMs = 1800;
 const fastRefreshIntervalMs = 2000;
 const steadyRefreshIntervalMs = 12000;
-const fastRefreshCount = 4;
+const fastRefreshLimit = 4;
 
 export function useLiveView(selectedStream?: StreamName) {
     return useMediaStreamsInfo({
@@ -13,7 +13,7 @@ export function useLiveView(selectedStream?: StreamName) {
         statusTimeoutMs,
         previewUrlTimeoutMs: configTimeoutMs,
         fastRefreshIntervalMs,
-        fastRefreshCount,
+        fastRefreshLimit,
         refreshIntervalMs: steadyRefreshIntervalMs,
         subscribeEvents: true,
     });

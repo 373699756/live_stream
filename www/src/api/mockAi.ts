@@ -83,8 +83,8 @@ const emptyStats = (): AiStats => ({
     last_failure_time_ms: 0,
     received_frames: 2841,
     skipped_frames: 3,
-    inference_count: 942,
-    inference_failed_count: 1,
+    inferences: 942,
+    failed_inferences: 1,
     dropped_tasks: 0,
     last_inference_time_ms: 34,
     max_inference_time_ms: 71,
@@ -98,8 +98,8 @@ const disabledStats = (): AiStats => ({
     backend_available: false,
     last_success_time_ms: 0,
     received_frames: 0,
-    inference_count: 0,
-    inference_failed_count: 0,
+    inferences: 0,
+    failed_inferences: 0,
     active_results: 0,
 });
 
@@ -173,7 +173,7 @@ export const mockAiStatus: AiStatus = {
         ...emptyStats(),
         active_results: 1,
         received_frames: 5682,
-        inference_count: 1884,
+        inferences: 1884,
     },
     tasks: [
         {
@@ -264,7 +264,7 @@ export const mockAiAlerts: AiAlertList = {
             stream: 'sub',
             task,
             image_url: '/snapshot/sub.jpg',
-            detection_count: detections.length,
+            detection_size: detections.length,
             confidence_max: detections.reduce(
                 (max, detection) => Math.max(max, detection.confidence),
                 0,

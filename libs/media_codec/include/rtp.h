@@ -36,7 +36,7 @@ struct RtpPacketView {
     // packet view 只在 OnRtpPacket 回调期间有效。media_payload=true 的 slice
     // 指向输入 payload，异步发送方必须自己持有底层媒体 buffer。
     RtpPacketSlice slices[kMaxRtpPacketSlices];
-    size_t slice_count = 0;
+    size_t slice_size = 0;
     bool marker = false;
     uint8_t payload_type = 0;
     uint16_t sequence = 0;
@@ -74,7 +74,7 @@ struct RtpPacketView {
 
     size_t Size() const {
         size_t total = 0;
-        for (size_t i = 0; i < slice_count; ++i) {
+        for (size_t i = 0; i < slice_size; ++i) {
             total += slices[i].size;
         }
         return total;
@@ -85,13 +85,13 @@ private:
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || slice_count >= kMaxRtpPacketSlices) {
+        if (data == nullptr || slice_size >= kMaxRtpPacketSlices) {
             return false;
         }
-        slices[slice_count].data = data;
-        slices[slice_count].size = size;
-        slices[slice_count].media_payload = media_payload;
-        ++slice_count;
+        slices[slice_size].data = data;
+        slices[slice_size].size = size;
+        slices[slice_size].media_payload = media_payload;
+        ++slice_size;
         return true;
     }
 };

@@ -57,7 +57,7 @@ private:
     // enqueue_ms 用于 send stall 检测，size 计入 pending_bytes_。
     struct OutBuffer {
         std::array<OutSlice, kMaxNetBufferSlices> slices{};
-        size_t slice_count = 0;
+        size_t slice_size = 0;
         size_t current_slice = 0;
         uint32_t size = 0;
         int64_t enqueue_ms = 0;

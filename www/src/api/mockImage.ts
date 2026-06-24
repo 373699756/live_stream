@@ -36,7 +36,7 @@ export const mockImageConfig: ImageConfig = {
         enabled: false,
         motion_level: 'normal',
         crop_ratio: 80,
-        buffer_count: 6,
+        buffer_frames: 6,
         frame_rate: 30,
         moving_subject_level: 0,
         rolling_shutter_coef: 0,

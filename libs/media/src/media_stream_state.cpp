@@ -247,12 +247,12 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream) {
     info.vps = stream.vps;
     info.sps = stream.sps;
     info.pps = stream.pps;
-    info.hls_segment_count =
+    info.hls_segment_size =
         static_cast<uint32_t>(stream.hls_maker.SegmentSize());
     info.hls_first_segment_sequence = stream.hls_maker.FirstSegmentSequence();
     info.hls_last_segment_sequence = stream.hls_maker.LastSegmentSequence();
-    info.hls_missing_segment_count = stream.hls_maker.MissingSegments();
-    info.hls_evicted_segment_count = stream.hls_maker.EvictedSegments();
+    info.hls_missing_segments = stream.hls_maker.MissingSegments();
+    info.hls_evicted_segments = stream.hls_maker.EvictedSegments();
     info.flv_sequence_header_size =
         static_cast<uint32_t>(stream.sequence_header_tag.size());
     info.flv_last_keyframe_size = stream.flv_gop_cache.FirstFlvTagSize();

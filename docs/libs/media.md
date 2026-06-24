@@ -30,7 +30,7 @@ payload；HLS segment 是独立转封装后的 TS buffer。
 `MediaStreams` 只做协调：`MediaStreamTracks` 持有主/子码流的 codec、参数集、
 HLS/FLV/MJPEG 缓存和 reset 规则；`FrameRing` 持有协议帧订阅和 live queue；
 `PreviewClients` 持有 HTTP-FLV/MJPEG preview client、sink 生命周期和
-pending write 计数。集合当前基数接口使用 `Size()`，不要使用 `Count()`。不要再把
+pending write 数量。集合当前基数接口使用 `Size()`，不要使用 `Count()`。不要再把
 `MediaStreams` 按 start/input/output 这类函数主题
 拆文件；只有真实拥有状态、资源或生命周期规则的对象才单独成文件。
 

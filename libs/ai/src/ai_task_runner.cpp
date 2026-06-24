@@ -330,14 +330,14 @@ struct AiTaskRunner::State final {
         StartConfiguredTaskWorkers();
 
         AiStats summary = SnapshotSummaryStats();
-        std::size_t configured_task_count = 0;
+        std::size_t configured_task_size = 0;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            configured_task_count = task_workers.size();
+            configured_task_size = task_workers.size();
         }
         Info("ai", "AI started: enabled=%d tasks=%u",
              summary.enabled ? 1 : 0,
-             static_cast<unsigned int>(configured_task_count));
+             static_cast<unsigned int>(configured_task_size));
         return true;
     }
 
@@ -433,7 +433,7 @@ struct AiTaskRunner::State final {
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!CanTaskRunLocked(task_worker) || !task_worker->backend_runner) {
-                ++task_worker->stats.inference_failed_count;
+                ++task_worker->stats.failed_inferences;
                 task_worker->stats.last_failure_time_ms =
                     infra::Time::SystemTimeMillis();
                 return false;
@@ -457,13 +457,13 @@ struct AiTaskRunner::State final {
                 return false;
             }
             if (result.success) {
-                ++task_worker->stats.inference_count;
+                ++task_worker->stats.inferences;
                 task_worker->stats.last_success_time_ms =
                     infra::Time::SystemTimeMillis();
                 UpdateInferenceTimeStatsLocked(task_worker,
                                                inference_time_ms);
             } else {
-                ++task_worker->stats.inference_failed_count;
+                ++task_worker->stats.failed_inferences;
                 task_worker->stats.last_failure_time_ms =
                     infra::Time::SystemTimeMillis();
             }
@@ -554,7 +554,7 @@ struct AiTaskRunner::State final {
         alert.timestamp_ms = pending_alert.timestamp_ms;
         alert.stream_id = pending_alert.result.stream_id;
         alert.task = pending_alert.config.task;
-        alert.detection_count =
+        alert.detection_size =
             static_cast<uint32_t>(pending_alert.result.detections.size());
         alert.max_confidence = MaxConfidence(pending_alert.result.detections);
         alert.detections = pending_alert.result.detections;
@@ -566,16 +566,16 @@ struct AiTaskRunner::State final {
             return false;
         }
 
-        uint32_t enabled_task_count = 0;
+        uint32_t enabled_task_size = 0;
         for (const AiModelConfig &task_config : next_config.tasks) {
             if (task_config.enabled) {
-                ++enabled_task_count;
+                ++enabled_task_size;
             }
         }
         Info("ai", "AI config apply begin: enabled=%d tasks=%u enabled=%u",
              next_config.enabled ? 1 : 0,
              static_cast<unsigned int>(next_config.tasks.size()),
-             static_cast<unsigned int>(enabled_task_count));
+             static_cast<unsigned int>(enabled_task_size));
 
         bool service_started = false;
         std::vector<StoppedAiTask> stopped_tasks;
@@ -636,7 +636,7 @@ struct AiTaskRunner::State final {
             }
         }
 
-        Info("ai", "AI enabled task startup count=%u",
+        Info("ai", "AI enabled task startup size=%u",
              static_cast<unsigned int>(enabled_task_workers.size()));
         for (const std::shared_ptr<AiTaskWorker> &task_worker :
              enabled_task_workers) {
@@ -699,7 +699,7 @@ struct AiTaskRunner::State final {
 
         std::unique_ptr<event::Executor> next_executor(new event::Executor());
         event::ExecutorOptions executor_options;
-        executor_options.worker_count = 1;
+        executor_options.worker_size = 1;
         executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
         if (!next_executor->Start(executor_options)) {
             next_backend_runner->Stop();
@@ -755,7 +755,7 @@ struct AiTaskRunner::State final {
         std::shared_ptr<event::Executor> next_alert_executor(
             new event::Executor());
         event::ExecutorOptions alert_executor_options;
-        alert_executor_options.worker_count = 1;
+        alert_executor_options.worker_size = 1;
         alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
         if (!next_alert_executor->Start(alert_executor_options)) {
             return false;
@@ -814,7 +814,7 @@ struct AiTaskRunner::State final {
             return;
         }
         ++task_worker->stats.skipped_frames;
-        ++task_worker->stats.inference_failed_count;
+        ++task_worker->stats.failed_inferences;
         task_worker->stats.last_failure_time_ms =
             infra::Time::SystemTimeMillis();
         task_worker->last_result = AiInferenceResult{};
@@ -945,9 +945,9 @@ struct AiTaskRunner::State final {
                          task_stats.last_failure_time_ms);
             summary.received_frames += task_stats.received_frames;
             summary.skipped_frames += task_stats.skipped_frames;
-            summary.inference_count += task_stats.inference_count;
-            summary.inference_failed_count +=
-                task_stats.inference_failed_count;
+            summary.inferences += task_stats.inferences;
+            summary.failed_inferences +=
+                task_stats.failed_inferences;
             summary.dropped_tasks += task_stats.dropped_tasks;
             summary.last_inference_time_ms =
                 std::max(summary.last_inference_time_ms,
@@ -964,9 +964,9 @@ struct AiTaskRunner::State final {
         summary.backend_available =
             !config.enabled || !any_enabled_task ||
             all_enabled_backends_available;
-        if (summary.inference_count != 0) {
+        if (summary.inferences != 0) {
             summary.average_inference_time_ms = static_cast<uint32_t>(
-                total_inference_time_ms / summary.inference_count);
+                total_inference_time_ms / summary.inferences);
         }
         return summary;
     }
@@ -989,11 +989,11 @@ struct AiTaskRunner::State final {
             std::max(task_worker->stats.max_inference_time_ms,
                      clamped_time_ms);
         task_worker->inference_time_total_ms += clamped_time_ms;
-        if (task_worker->stats.inference_count != 0) {
+        if (task_worker->stats.inferences != 0) {
             task_worker->stats.average_inference_time_ms =
                 static_cast<uint32_t>(
                     task_worker->inference_time_total_ms /
-                    task_worker->stats.inference_count);
+                    task_worker->stats.inferences);
         }
     }
 

@@ -146,7 +146,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (options.session_timeout_ms != options_.session_timeout_ms ||
             options.send_queue_capacity != options_.send_queue_capacity ||
-            options.send_worker_count != options_.send_worker_count ||
+            options.send_worker_size != options_.send_worker_size ||
             options.local_port_base != options_.local_port_base) {
             return false;
         }

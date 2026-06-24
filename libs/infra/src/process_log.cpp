@@ -144,13 +144,13 @@ void RotateFileIfNeededLocked() {
     }
 
     CloseFileLocked();
-    if (g_config.max_file_count == 0) {
+    if (g_config.max_files == 0) {
         std::remove(g_config.file_path.c_str());
         OpenFileLocked();
         return;
     }
 
-    for (uint32_t i = g_config.max_file_count; i > 1; --i) {
+    for (uint32_t i = g_config.max_files; i > 1; --i) {
         const std::string from = g_config.file_path + "." + std::to_string(i - 1);
         const std::string to = g_config.file_path + "." + std::to_string(i);
         std::rename(from.c_str(), to.c_str());

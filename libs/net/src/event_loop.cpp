@@ -273,7 +273,7 @@ void EventLoop::SetTimerFdNextWakeupLocked() {
     itimerspec spec{};
     if (!timers_.empty()) {
         // timers_ is keyed by id, not deadline. Scan for the earliest deadline
-        // before programming timerfd; the timer count is bounded by protocol
+        // before programming timerfd; the timer wakeups are bounded by protocol
         // sessions, so the simple scan keeps the ownership model obvious.
         const int64_t now = infra::Time::MonotonicMillis();
         int64_t next_ms = timers_.begin()->second->deadline_ms;
@@ -387,15 +387,15 @@ void EventLoop::Run() {
     }
     std::vector<epoll_event> events(max_events_);
     while (!ShouldStop()) {
-        const int count = epoll_wait(epoll_fd_.get(), events.data(),
-                                     static_cast<int>(events.size()), -1);
-        if (count < 0) {
+        const int event_size = epoll_wait(epoll_fd_.get(), events.data(),
+                                          static_cast<int>(events.size()), -1);
+        if (event_size < 0) {
             if (errno == EINTR) {
                 continue;
             }
             break;
         }
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < event_size; ++i) {
             const int fd = events[static_cast<size_t>(i)].data.fd;
             auto handler = FindHandler(fd);
             if (handler) {

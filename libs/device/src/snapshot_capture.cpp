@@ -24,7 +24,7 @@ enum class SnapshotCaptureState {
 bool IsValidConfig(const SnapshotConfig &config) {
     return config.snap_pipe >= 0 && config.snap_vpss_group >= 0 &&
            config.snap_vpss_channel >= 0 && config.jpeg_venc_channel >= 0 &&
-           config.frame_count > 0 && config.repeat_send_times > 0;
+           config.capture_frames > 0 && config.repeat_send_times > 0;
 }
 
 bool IsValidRequest(const SnapshotRequest &request) {
@@ -81,7 +81,7 @@ hisisdk::SnapshotConfig BuildSdkSnapshotConfig(
     sdk_config.snap_vpss_channel = config.snap_vpss_channel;
     sdk_config.jpeg_venc_channel = config.jpeg_venc_channel;
     sdk_config.size = hisisdk::Size{config.size.width, config.size.height};
-    sdk_config.frame_count = config.frame_count;
+    sdk_config.capture_frames = config.capture_frames;
     sdk_config.repeat_send_times = config.repeat_send_times;
     sdk_config.timeout_ms = request.timeout_ms;
     sdk_config.jpeg_quality = request.jpeg_quality;
@@ -237,7 +237,7 @@ struct SnapshotCapture::Impl {
         enabled = next_enabled;
         default_jpeg_quality = next_quality;
         default_timeout_ms = next_timeout;
-        ++stats.config_apply_count;
+        ++stats.config_applies;
         return true;
     }
 };
@@ -348,11 +348,11 @@ SnapshotFrame SnapshotCapture::Capture(const SnapshotRequest &request) {
 
         channels = impl_->media_channels;
         if (!IsValidMedia(channels)) {
-            ++impl_->stats.capture_failed_count;
+            ++impl_->stats.capture_failures;
             return SnapshotFrame{};
         }
         if (!IsSnapshotVencChannelAvailable(impl_->config, channels)) {
-            ++impl_->stats.capture_failed_count;
+            ++impl_->stats.capture_failures;
             return SnapshotFrame{};
         }
 
@@ -366,7 +366,7 @@ SnapshotFrame SnapshotCapture::Capture(const SnapshotRequest &request) {
         }
         if (!impl_->PrepareCaptureSession()) {
             impl_->FinishCaptureSession();
-            ++impl_->stats.capture_failed_count;
+            ++impl_->stats.capture_failures;
             return SnapshotFrame{};
         }
         capture_config = BuildCaptureConfig(
@@ -374,7 +374,7 @@ SnapshotFrame SnapshotCapture::Capture(const SnapshotRequest &request) {
         if (capture_config.size.width == 0 ||
             capture_config.size.height == 0) {
             impl_->FinishCaptureSession();
-            ++impl_->stats.capture_failed_count;
+            ++impl_->stats.capture_failures;
             return SnapshotFrame{};
         }
     }
@@ -385,10 +385,10 @@ SnapshotFrame SnapshotCapture::Capture(const SnapshotRequest &request) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->FinishCaptureSession();
     if (!hisi_frame.buffer.Valid() || hisi_frame.buffer.Size() == 0) {
-        ++impl_->stats.capture_failed_count;
+        ++impl_->stats.capture_failures;
         return SnapshotFrame{};
     }
-    ++impl_->stats.capture_count;
+    ++impl_->stats.captures;
     return ToSnapshotFrame(hisi_frame);
 }
 

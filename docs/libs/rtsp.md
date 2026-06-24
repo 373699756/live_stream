@@ -105,7 +105,7 @@ HLS/FLV/MJPEG/WebRTC ready 状态。
 
 ## 风险与优化方向
 
-- RTSP 客户端断开必须及时 detach subscription，`MediaStreams` 的 subscription count 应回落。
+- RTSP 客户端断开必须及时 detach subscription，`MediaStreams` 的 subscription size 应回落。
 - subscription 溢出时会由 `MediaStreams` 标记 slow subscription 并等待下一个关键帧；
   RTSP 只维护协议统计和连接状态，不触发降码率、降帧率、切子码流等自适应策略。
 - 关键帧请求由 `SubscribeFrames(keyframe_first=true)` 触发媒体链路，

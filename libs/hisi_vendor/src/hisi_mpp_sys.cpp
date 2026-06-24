@@ -85,7 +85,7 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     if (!ConfigureViVpssMode(config)) {
         Error("hisi_vendor", "ConfigureViVpssMode failed");
         if (!mpp_resource_recovery::ExitMppSystem(
-                true, mpp_resource_recovery::kMppExitRetryCount,
+                true, mpp_resource_recovery::kMppExitRetryLimit,
                 mpp_resource_recovery::MppExitBusyLog::kWarn)) {
             impl_->system_cleanup_failed_ = true;
         }
@@ -115,12 +115,12 @@ bool MppHisiSdk::DeinitSystem() {
     StopVi(config);
 
     bool cleanup_ok = mpp_resource_recovery::ExitMppSystem(
-        true, mpp_resource_recovery::kMppExitRetryCount,
+        true, mpp_resource_recovery::kMppExitRetryLimit,
         mpp_resource_recovery::MppExitBusyLog::kWarn);
     if (!cleanup_ok) {
         mpp_resource_recovery::ForceCleanupPipelineResources(config, true);
         cleanup_ok = mpp_resource_recovery::ExitMppSystem(
-            true, mpp_resource_recovery::kMppExitRetryCount,
+            true, mpp_resource_recovery::kMppExitRetryLimit,
             mpp_resource_recovery::MppExitBusyLog::kWarn);
     }
     if (!cleanup_ok) {

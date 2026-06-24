@@ -342,7 +342,7 @@ bool RegionOverlay::UpdateTimestampLocked() {
         }
         region.has_bitmap = true;
         region.config.size = bitmap.size;
-        ++stats.bitmap_update_count;
+        ++stats.bitmap_updates;
     }
     if (need_rebuild) {
         return ApplyTextOverlay(active_config);

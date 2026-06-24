@@ -168,9 +168,9 @@ struct AuthStats {
     uint64_t login_failed = 0;
     uint64_t token_validation_failed = 0;
     uint64_t expired_sessions = 0;
-    uint64_t lockout_count = 0;
-    uint64_t config_apply_count = 0;
-    uint64_t config_apply_failed_count = 0;
+    uint64_t lockouts = 0;
+    uint64_t config_applies = 0;
+    uint64_t config_apply_failures = 0;
     uint32_t active_sessions = 0;
 };
 

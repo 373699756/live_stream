@@ -48,18 +48,18 @@ bool IsValidVencChannel(int32_t channel) {
     return channel >= 0 && channel < VENC_MAX_CHN_NUM;
 }
 
-void AddCleanupVencChannel(int32_t channel, int32_t* channels, int* count) {
+void AddCleanupVencChannel(int32_t channel, int32_t* channels, int* size) {
     if (!IsValidVencChannel(channel) || channels == nullptr ||
-        count == nullptr || *count >= kMaxCleanupVencChannels) {
+        size == nullptr || *size >= kMaxCleanupVencChannels) {
         return;
     }
-    for (int i = 0; i < *count; ++i) {
+    for (int i = 0; i < *size; ++i) {
         if (channels[i] == channel) {
             return;
         }
     }
-    channels[*count] = channel;
-    ++(*count);
+    channels[*size] = channel;
+    ++(*size);
 }
 
 void UnbindVpssVencDirect(int32_t vpss_group, int32_t vpss_channel,
@@ -112,15 +112,15 @@ void DestroyVencDirect(int32_t channel) {
 
 }  // namespace
 
-bool ExitMppSystem(bool log_errors, int retry_count,
+bool ExitMppSystem(bool log_errors, int retry_limit,
                    MppExitBusyLog busy_log) {
     HI_S32 status = HI_SUCCESS;
-    for (int attempt = 0; attempt <= retry_count; ++attempt) {
+    for (int attempt = 0; attempt <= retry_limit; ++attempt) {
         status = ExitMppSystemOnce(log_errors);
         if (IsVbExitDone(status)) {
             return true;
         }
-        if (status != HI_ERR_VB_BUSY || attempt == retry_count) {
+        if (status != HI_ERR_VB_BUSY || attempt == retry_limit) {
             break;
         }
         usleep(kMppExitRetryDelayUs);
@@ -128,12 +128,12 @@ bool ExitMppSystem(bool log_errors, int retry_count,
     if (log_errors && status == HI_ERR_VB_BUSY) {
         if (busy_log == MppExitBusyLog::kWarn) {
             Warn("hisi_vendor",
-                 "HI_MPI_VB_Exit still busy after %d retries", retry_count);
+                 "HI_MPI_VB_Exit still busy after %d retries", retry_limit);
         } else if (busy_log == MppExitBusyLog::kInfo) {
             Info("hisi_vendor",
                  "HI_MPI_VB_Exit still busy after %d retries; "
                  "continuing recovery",
-                 retry_count);
+                 retry_limit);
         }
     }
     return false;
@@ -162,14 +162,14 @@ void ForceCleanupPipelineResources(const MediaPipelineConfig& config,
     }
 
     int32_t venc_channels[kMaxCleanupVencChannels] = {};
-    int venc_channel_count = 0;
+    int venc_channel_size = 0;
     AddCleanupVencChannel(config.venc_channel, venc_channels,
-                          &venc_channel_count);
+                          &venc_channel_size);
     AddCleanupVencChannel(config.sub_venc_channel, venc_channels,
-                          &venc_channel_count);
+                          &venc_channel_size);
     AddCleanupVencChannel(jpeg_venc_channel, venc_channels,
-                          &venc_channel_count);
-    for (int i = 0; i < venc_channel_count; ++i) {
+                          &venc_channel_size);
+    for (int i = 0; i < venc_channel_size; ++i) {
         DestroyVencDirect(venc_channels[i]);
     }
 

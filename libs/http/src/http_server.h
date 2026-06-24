@@ -63,7 +63,7 @@ public:
                                size_t size) override;
     bool EnqueueStreamingSlices(ConnectionId connection_id,
                                 const MediaOutSlice *slices,
-                                size_t slice_count) override;
+                                size_t slice_size) override;
     void SetCloseCallback(HttpMediaCloseCallback callback) override;
     void CloseConnection(ConnectionId connection_id) override;
 

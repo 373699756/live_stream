@@ -26,7 +26,7 @@ struct WebrtcTransportStartOptions {
     UdpCallbacks udp_callbacks;
     std::string peer_id;
     uint16_t local_port_base = 0;
-    uint32_t port_count = 1;
+    uint32_t port_size = 1;
     uint32_t next_port_offset = 0;
     std::string local_ice_ufrag;
     std::string local_ice_password;
@@ -50,10 +50,10 @@ struct WebrtcTransportInfo {
     uint64_t rtp_bytes = 0;
     uint64_t rtcp_packets = 0;
     uint64_t rtcp_bytes = 0;
-    uint64_t rtcp_pli_count = 0;
-    uint64_t rtcp_fir_count = 0;
-    uint64_t rtcp_nack_count = 0;
-    uint64_t rtcp_transport_cc_count = 0;
+    uint64_t rtcp_pli_packets = 0;
+    uint64_t rtcp_fir_packets = 0;
+    uint64_t rtcp_nack_packets = 0;
+    uint64_t rtcp_transport_cc_packets = 0;
     uint64_t rtcp_keyframe_requests = 0;
 };
 
@@ -120,10 +120,10 @@ private:
     uint64_t protected_rtp_bytes_ = 0;
     uint64_t rtcp_packets_ = 0;
     uint64_t rtcp_bytes_ = 0;
-    uint64_t rtcp_pli_count_ = 0;
-    uint64_t rtcp_fir_count_ = 0;
-    uint64_t rtcp_nack_count_ = 0;
-    uint64_t rtcp_transport_cc_count_ = 0;
+    uint64_t rtcp_pli_packets_ = 0;
+    uint64_t rtcp_fir_packets_ = 0;
+    uint64_t rtcp_nack_packets_ = 0;
+    uint64_t rtcp_transport_cc_packets_ = 0;
     uint64_t rtcp_keyframe_requests_ = 0;
     bool ice_connected_ = false;
     bool dtls_connected_ = false;

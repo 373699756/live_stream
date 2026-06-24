@@ -23,7 +23,7 @@ using RequestKeyframeFn = bool (*)(StreamId stream_id,
 struct MediaStreamsOptions {
     uint32_t hls_segment_duration_ms = 2000;
     uint32_t hls_playlist_depth = 3;
-    uint32_t hls_segment_retain_count = 6;
+    uint32_t hls_segment_retain_size = 6;
     uint32_t max_flv_clients = 8;
     uint32_t max_mjpeg_clients = 8;
     uint32_t max_frame_subscriptions = 8;
@@ -41,7 +41,7 @@ struct MediaFlvVideoTagSlice {
 
 struct MediaFlvVideoTagView {
     MediaFlvVideoTagSlice slices[kMaxMediaFlvVideoTagSlices];
-    size_t slice_count = 0;
+    size_t slice_size = 0;
     uint32_t timestamp_ms = 0;
 };
 
@@ -57,7 +57,7 @@ struct MediaFlvCachedVideoTagSlice {
 struct MediaFlvCachedVideoTag {
     MediaFrame frame;
     MediaFlvCachedVideoTagSlice slices[kMaxMediaFlvVideoTagSlices];
-    size_t slice_count = 0;
+    size_t slice_size = 0;
     size_t total_size = 0;
     uint32_t timestamp_ms = 0;
 };
@@ -140,11 +140,11 @@ struct MediaStreamInfo {
     std::string vps;
     std::string sps;
     std::string pps;
-    uint32_t hls_segment_count = 0;
+    uint32_t hls_segment_size = 0;
     uint64_t hls_first_segment_sequence = 0;
     uint64_t hls_last_segment_sequence = 0;
-    uint64_t hls_missing_segment_count = 0;
-    uint64_t hls_evicted_segment_count = 0;
+    uint64_t hls_missing_segments = 0;
+    uint64_t hls_evicted_segments = 0;
     uint32_t flv_sequence_header_size = 0;
     uint32_t flv_last_keyframe_size = 0;
     uint32_t hls_current_segment_size = 0;

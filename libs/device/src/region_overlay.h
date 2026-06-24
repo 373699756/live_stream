@@ -44,9 +44,9 @@ struct PrivacyMask {
 };
 
 struct PrivacyMasks {
-    static constexpr uint32_t kSlotCount = 4;
-    PrivacyMask main[kSlotCount];
-    PrivacyMask sub[kSlotCount];
+    static constexpr uint32_t kSlotSize = 4;
+    PrivacyMask main[kSlotSize];
+    PrivacyMask sub[kSlotSize];
 };
 
 struct ParsedOverlayConfig {

@@ -16,7 +16,7 @@ namespace event {
 template <typename>
 class Fn;
 
-// Move-only callback wrapper used by event queues. Small no-throw-movable
+// Move-only callback wrapper used by event queues. Small non-throwing movable
 // callables live inside the object; larger callables use heap memory so moving
 // queued tasks stays noexcept.
 template <>
@@ -101,6 +101,10 @@ private:
     template <typename CallableArg>
     void Init(CallableArg &&callable) {
         using CallableType = typename std::decay<CallableArg>::type;
+        constexpr bool kFitsInline =
+            sizeof(CallableType) <= kInlineSize &&
+            alignof(CallableType) <= kInlineAlign &&
+            std::is_nothrow_move_constructible<CallableType>::value;
         invoke_ = [](void *ptr) { (*static_cast<CallableType *>(ptr))(); };
         move_ = [](void *src, void *dst) {
             new (dst) CallableType(
@@ -108,11 +112,7 @@ private:
         };
         InitCallable<CallableType>(
             std::forward<CallableArg>(callable),
-            std::integral_constant<
-                bool,
-                sizeof(CallableType) <= kInlineSize &&
-                    alignof(CallableType) <= kInlineAlign &&
-                    std::is_nothrow_move_constructible<CallableType>::value>());
+            std::integral_constant<bool, kFitsInline>());
     }
 
     void MoveFrom(Fn &&other) {
@@ -155,7 +155,7 @@ private:
 using Task = Fn<void()>;
 
 struct ExecutorOptions {
-    uint32_t worker_count = 0;
+    uint32_t worker_size = 0;
     uint32_t queue_capacity = 4096;
 };
 
@@ -167,7 +167,7 @@ struct ExecutorStats {
     uint32_t pending = 0;
     uint32_t running = 0;
     uint32_t max_pending = 0;
-    uint32_t worker_count = 0;
+    uint32_t worker_size = 0;
 };
 
 class Executor {

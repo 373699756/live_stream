@@ -34,26 +34,26 @@ struct NetBufferSlice {
 
 struct NetBufferSlices {
     NetBufferSlice slices[kMaxNetBufferSlices];
-    size_t count = 0;
+    size_t slice_size = 0;
 
     bool Add(const uint8_t *data, size_t size,
              MediaBufferRef buffer = MediaBufferRef()) {
         if (size == 0) {
             return true;
         }
-        if (data == nullptr || count >= kMaxNetBufferSlices) {
+        if (data == nullptr || slice_size >= kMaxNetBufferSlices) {
             return false;
         }
-        slices[count].data = data;
-        slices[count].size = size;
-        slices[count].buffer = std::move(buffer);
-        ++count;
+        slices[slice_size].data = data;
+        slices[slice_size].size = size;
+        slices[slice_size].buffer = std::move(buffer);
+        ++slice_size;
         return true;
     }
 
     size_t TotalSize() const {
         size_t total = 0;
-        for (size_t i = 0; i < count; ++i) {
+        for (size_t i = 0; i < slice_size; ++i) {
             total += slices[i].size;
         }
         return total;
@@ -138,7 +138,7 @@ struct NetStats {
     uint64_t written_bytes = 0;
     uint64_t sent_datagrams = 0;
     uint64_t received_datagrams = 0;
-    uint64_t send_busy_count = 0;
+    uint64_t send_busy_events = 0;
     uint64_t slow_client_closes = 0;
 };
 
@@ -177,7 +177,7 @@ public:
 
     virtual bool Send(ConnectionId id, const uint8_t *data, size_t size) = 0;
     virtual bool SendSlices(ConnectionId id, const NetBufferSlices &slices) {
-        for (size_t i = 0; i < slices.count; ++i) {
+        for (size_t i = 0; i < slices.slice_size; ++i) {
             if (!Send(id, slices.slices[i].data, slices.slices[i].size)) {
                 return false;
             }
@@ -194,7 +194,7 @@ public:
                         size_t size) = 0;
     virtual bool SendToSlices(UdpSocketId id, NetAddress address,
                               const NetBufferSlices &slices) {
-        if (slices.count != 1) {
+        if (slices.slice_size != 1) {
             return false;
         }
         return SendTo(id, std::move(address), slices.slices[0].data,
@@ -205,7 +205,7 @@ public:
                             size_t size) = 0;
     virtual bool SendToPeerSlices(UdpSocketId id,
                                   const NetBufferSlices &slices) {
-        if (slices.count != 1) {
+        if (slices.slice_size != 1) {
             return false;
         }
         return SendToPeer(id, slices.slices[0].data, slices.slices[0].size);

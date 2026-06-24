@@ -14,7 +14,7 @@ MediaStreams::Impl::~Impl() { Stop(); }
 
 uint32_t MediaStreams::Impl::HlsSegmentCacheDepth(
     const MediaStreamsOptions &options) {
-    return options.hls_playlist_depth + options.hls_segment_retain_count;
+    return options.hls_playlist_depth + options.hls_segment_retain_size;
 }
 
 bool MediaStreams::Impl::IsStreamSupported(StreamId stream_id) {
@@ -126,7 +126,7 @@ bool MediaStreams::Impl::Start() {
          "Media streams started hls_segment_ms=%u hls_playlist=%u "
          "hls_retain=%u max_flv=%u max_mjpeg=%u max_subscriptions=%u",
          options_.hls_segment_duration_ms, options_.hls_playlist_depth,
-         options_.hls_segment_retain_count, options_.max_flv_clients,
+         options_.hls_segment_retain_size, options_.max_flv_clients,
          options_.max_mjpeg_clients, options_.max_frame_subscriptions);
     return true;
 }
@@ -561,14 +561,14 @@ bool MediaStreams::Impl::ValidateOptions() const {
               "Start media streams failed: hls_playlist_depth=0");
         return false;
     }
-    if (options_.hls_segment_retain_count >
+    if (options_.hls_segment_retain_size >
         std::numeric_limits<uint32_t>::max() -
             options_.hls_playlist_depth) {
         Error(kLogModuleName,
               "Start media streams failed: hls cache depth overflow "
               "playlist=%u retain=%u",
               options_.hls_playlist_depth,
-              options_.hls_segment_retain_count);
+              options_.hls_segment_retain_size);
         return false;
     }
     if (options_.max_flv_clients == 0) {
