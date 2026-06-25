@@ -11,9 +11,9 @@ import type {
     UpgradeInfo,
 } from './types';
 
-const minUploadTimeoutMs = 120000;
-const maxUploadTimeoutMs = 300000;
-const uploadBytesPerMs = 128;
+const minUploadTimeoutMs = 180000;
+const maxUploadTimeoutMs = 15 * 60 * 1000;
+const uploadBytesPerMs = 64;
 
 function uploadTimeoutMs(file: File): number {
     return Math.min(

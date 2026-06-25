@@ -54,9 +54,14 @@ make_fake_mkfs_jffs2() {
   cat > "${fake_tools_dir}/mkfs.jffs2" <<'EOF'
 #!/bin/sh
 set -eu
+input_root=""
 image_file=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -r)
+      shift
+      input_root="$1"
+      ;;
     -o)
       shift
       image_file="$1"
@@ -64,7 +69,9 @@ while [ "$#" -gt 0 ]; do
   esac
   shift || true
 done
+[ -n "${input_root}" ] || exit 2
 [ -n "${image_file}" ] || exit 2
+[ -f "${input_root}/upgrade_public_key.pem" ] || exit 3
 printf '\205\031test-jffs2-image\n' > "${image_file}"
 EOF
   chmod +x "${fake_tools_dir}/mkfs.jffs2"
@@ -104,6 +111,17 @@ assert_install_signature_ok() {
     -signature "${verify_dir}/Install.sig" "${verify_dir}/Install" >/dev/null
 }
 
+assert_clean_release_output() {
+  output_dir="$1"
+  [ ! -d "${output_dir}/bin" ] || fail "release/bin should be cleaned"
+  [ ! -d "${output_dir}/configs" ] || fail "release/configs should be cleaned"
+  [ ! -d "${output_dir}/web" ] || fail "release/web should be cleaned"
+  [ ! -d "${output_dir}/log" ] || fail "release/log should be cleaned"
+  [ ! -d "${output_dir}/flash" ] || fail "release/flash should be cleaned"
+  [ ! -d "${output_dir}/.package_work" ] || fail "release work dir should be cleaned"
+  [ -f "${output_dir}/upgrade.zip" ] || fail "default upgrade package missing"
+}
+
 require_cmd openssl
 require_cmd sha256sum
 require_cmd unzip
@@ -127,20 +145,21 @@ openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
   MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
     "${release_script}" "${release_dir}" 9.9.0 >/dev/null
 )
-assert_zip_entries "${release_dir}/flash/upgrade-all.zip" \
+assert_zip_entries "${release_dir}/upgrade-all.zip" \
   "Install Install.sig bin.squashfs config.jffs2 web.squashfs "
-assert_install_signature_ok "${release_dir}/flash/upgrade-all.zip" \
+assert_install_signature_ok "${release_dir}/upgrade-all.zip" \
   "${default_signing_dir}/default_upgrade_public_key.pem"
 [ -f "${default_signing_dir}/default_upgrade_private_key.pem" ] ||
   fail "default signing key was not generated"
-cmp -s "${default_signing_dir}/default_upgrade_public_key.pem" \
-  "${release_dir}/flash/config_root/upgrade_public_key.pem" ||
-  fail "default all package did not stage generated public key"
+assert_clean_release_output "${release_dir}"
+[ -f "${release_dir}/bin.squashfs" ] || fail "bin image missing"
+[ -f "${release_dir}/web.squashfs" ] || fail "web image missing"
+[ -f "${release_dir}/config.jffs2" ] || fail "config image missing"
 default_private_sha=$(sha256sum \
   "${default_signing_dir}/default_upgrade_private_key.pem" | awk '{print $1}')
 default_public_sha=$(sha256sum \
   "${default_signing_dir}/default_upgrade_public_key.pem" | awk '{print $1}')
-if unzip -l "${release_dir}/flash/upgrade-all.zip" |
+if unzip -l "${release_dir}/upgrade-all.zip" |
     grep -q 'live_sysupgrade'; then
   fail "package must not carry live_sysupgrade as executable entry"
 fi
@@ -174,16 +193,20 @@ openssl rsa -in "${test_dir}/mismatch_private_key.pem" -pubout \
 [ "${default_private_sha}" != "$(sha256sum \
   "${default_signing_dir}/default_upgrade_private_key.pem" | awk '{print $1}')" ] ||
   fail "default private key was not regenerated for mismatched public key"
-assert_install_signature_ok "${release_dir}/flash/upgrade-all.zip" \
+assert_install_signature_ok "${release_dir}/upgrade-all.zip" \
   "${default_signing_dir}/default_upgrade_public_key.pem"
 
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
   "${release_script}" "${release_dir}" 9.9.1 web >/dev/null
-assert_zip_entries "${release_dir}/flash/upgrade-web.zip" \
+assert_zip_entries "${release_dir}/upgrade-web.zip" \
   "Install Install.sig web.squashfs "
-assert_install_signature_ok "${release_dir}/flash/upgrade-web.zip"
-if unzip -p "${release_dir}/flash/upgrade-web.zip" Install |
+assert_install_signature_ok "${release_dir}/upgrade-web.zip"
+assert_clean_release_output "${release_dir}"
+[ -f "${release_dir}/bin.squashfs" ] || fail "web package removed bin image"
+[ -f "${release_dir}/web.squashfs" ] || fail "web image missing"
+[ -f "${release_dir}/config.jffs2" ] || fail "web package removed config image"
+if unzip -p "${release_dir}/upgrade-web.zip" Install |
     grep -q '"Partition": "rootfs"'; then
   fail "web package declared rootfs"
 fi
@@ -191,11 +214,12 @@ fi
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
   "${release_script}" "${release_dir}" 9.9.3 config >/dev/null
-assert_zip_entries "${release_dir}/flash/upgrade-config.zip" \
+assert_zip_entries "${release_dir}/upgrade-config.zip" \
   "Install Install.sig config.jffs2 "
-cmp -s "${public_key}" \
-  "${release_dir}/flash/config_root/upgrade_public_key.pem" ||
-  fail "config package did not stage public key"
+assert_clean_release_output "${release_dir}"
+[ -f "${release_dir}/bin.squashfs" ] || fail "config package removed bin image"
+[ -f "${release_dir}/web.squashfs" ] || fail "config package removed web image"
+[ -f "${release_dir}/config.jffs2" ] || fail "config image missing"
 
 if UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
     "${release_script}" "${release_dir}" 9.9.4 bin-web \

@@ -160,7 +160,14 @@ export function managedRequestSignal(
 }
 
 function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'AbortError';
+    return (
+        error instanceof DOMException &&
+        (error.name === 'AbortError' || error.name === 'TimeoutError')
+    );
+}
+
+function isTimeoutError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'TimeoutError';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -318,6 +325,12 @@ async function sendRequest<TResponse>({
             });
         } catch (error) {
             if (isAbortError(error)) {
+                if (isTimeoutError(error)) {
+                    throw new ApiClientError({
+                        code: 'request_timeout',
+                        message: '请求超时',
+                    });
+                }
                 throw error;
             }
             if (

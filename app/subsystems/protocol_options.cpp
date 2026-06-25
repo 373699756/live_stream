@@ -18,7 +18,7 @@ constexpr uint32_t kHttpControlWorkers = 1;
 constexpr uint32_t kHttpControlQueueCapacity = 16;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
 constexpr uint32_t kHttpMaxRequestBodyBytes = 32U * 1024U * 1024U;
-constexpr uint32_t kHttpRequestTimeoutMs = 60000;
+constexpr uint32_t kHttpRequestTimeoutMs = 10U * 60U * 1000U;
 constexpr uint32_t kHttpConnectionIdleTimeoutMs = 60000;
 constexpr const char *kWebrtcPublicIpAuto = "auto";
 

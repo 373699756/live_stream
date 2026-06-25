@@ -74,7 +74,7 @@ prepare_default_signing_key() {
     exit 1
   fi
 
-  signing_dir=$(resolve_output_dir "${RELEASE_SIGNING_DIR:-build/release_signing}")
+  signing_dir=$(resolve_output_dir "${RELEASE_SIGNING_DIR:-scripts/release_signing}")
   mkdir -p "${signing_dir}"
 
   sign_key="${signing_dir}/default_upgrade_private_key.pem"
@@ -186,9 +186,9 @@ EOF
 
 copy_release_inputs() {
   rm -rf "${release_dir}/bin" "${release_dir}/configs" \
-    "${release_dir}/web" "${flash_dir}"
+    "${release_dir}/web" "${release_dir}/flash" "${work_dir}"
   mkdir -p "${release_dir}/bin" "${release_dir}/configs" \
-    "${release_dir}/log" "${release_dir}/web" "${flash_dir}"
+    "${release_dir}/log" "${release_dir}/web" "${manifest_dir}"
 
   cp -f "${repo_root}/build/bin/live_stream" "${release_dir}/bin/"
   cp -f "${repo_root}/build/bin/live_sysupgrade" "${release_dir}/bin/"
@@ -210,39 +210,39 @@ strip_release_inputs() {
 }
 
 build_bin_image() {
-  mkdir -p "${flash_dir}/bin_root/bin" \
-    "${flash_dir}/bin_root/sbin" \
-    "${flash_dir}/bin_root/lib" \
-    "${flash_dir}/bin_root/scripts"
-  cp -f "${release_dir}/bin/live_stream" "${flash_dir}/bin_root/bin/"
-  cp -f "${release_dir}/bin/live_sysupgrade" "${flash_dir}/bin_root/sbin/"
-  printf '%s\n' "${version}" > "${flash_dir}/bin_root/version"
-  "${mksquashfs_bin}" "${flash_dir}/bin_root" "${flash_dir}/bin.squashfs" \
+  mkdir -p "${work_dir}/bin_root/bin" \
+    "${work_dir}/bin_root/sbin" \
+    "${work_dir}/bin_root/lib" \
+    "${work_dir}/bin_root/scripts"
+  cp -f "${release_dir}/bin/live_stream" "${work_dir}/bin_root/bin/"
+  cp -f "${release_dir}/bin/live_sysupgrade" "${work_dir}/bin_root/sbin/"
+  printf '%s\n' "${version}" > "${work_dir}/bin_root/version"
+  "${mksquashfs_bin}" "${work_dir}/bin_root" "${release_dir}/bin.squashfs" \
     -noappend -comp xz
-  check_image_size "${flash_dir}/bin.squashfs" "${bin_partition_size}" bin
+  check_image_size "${release_dir}/bin.squashfs" "${bin_partition_size}" bin
 }
 
 build_web_image() {
-  mkdir -p "${flash_dir}/web_root"
-  cp -rf "${release_dir}/web/." "${flash_dir}/web_root/"
-  printf '%s\n' "${version}" > "${flash_dir}/web_root/version"
-  "${mksquashfs_bin}" "${flash_dir}/web_root" "${flash_dir}/web.squashfs" \
+  mkdir -p "${work_dir}/web_root"
+  cp -rf "${release_dir}/web/." "${work_dir}/web_root/"
+  printf '%s\n' "${version}" > "${work_dir}/web_root/version"
+  "${mksquashfs_bin}" "${work_dir}/web_root" "${release_dir}/web.squashfs" \
     -noappend -comp xz
-  check_image_size "${flash_dir}/web.squashfs" "${web_partition_size}" web
+  check_image_size "${release_dir}/web.squashfs" "${web_partition_size}" web
 }
 
 build_config_image() {
-  mkdir -p "${flash_dir}/config_root"
-  cp -rf "${release_dir}/configs/." "${flash_dir}/config_root/"
-  cp -f "${public_key}" "${flash_dir}/config_root/upgrade_public_key.pem"
-  "${mkfs_jffs2_bin}" -r "${flash_dir}/config_root" \
-    -o "${flash_dir}/config.jffs2" \
+  mkdir -p "${work_dir}/config_root"
+  cp -rf "${release_dir}/configs/." "${work_dir}/config_root/"
+  cp -f "${public_key}" "${work_dir}/config_root/upgrade_public_key.pem"
+  "${mkfs_jffs2_bin}" -r "${work_dir}/config_root" \
+    -o "${release_dir}/config.jffs2" \
     -e 0x10000 --pad=0x100000 -n
-  check_image_size "${flash_dir}/config.jffs2" "${config_partition_size}" config
+  check_image_size "${release_dir}/config.jffs2" "${config_partition_size}" config
 }
 
 write_install_manifest() {
-  cat > "${flash_dir}/Install" <<EOF
+  cat > "${manifest_dir}/Install" <<EOF
 {
   "Version": "${version}",
   "Board": "Hi3516DV300",
@@ -258,20 +258,32 @@ EOF
 
 sign_install_manifest() {
   openssl dgst -sha256 -sign "${sign_key}" \
-    -out "${flash_dir}/Install.sig" "${flash_dir}/Install"
+    -out "${manifest_dir}/Install.sig" "${manifest_dir}/Install"
   openssl dgst -sha256 -verify "${public_key}" \
-    -signature "${flash_dir}/Install.sig" "${flash_dir}/Install" >/dev/null
+    -signature "${manifest_dir}/Install.sig" "${manifest_dir}/Install" >/dev/null
 }
 
 write_upgrade_zip() {
-  (cd "${flash_dir}" && zip -0 -q -FS "upgrade-${profile}.zip" ${zip_entries})
-  cp -f "${flash_dir}/upgrade-${profile}.zip" "${flash_dir}/upgrade.zip"
+  cp -f "${manifest_dir}/Install" "${release_dir}/Install"
+  cp -f "${manifest_dir}/Install.sig" "${release_dir}/Install.sig"
+  (cd "${release_dir}" && zip -0 -q -FS "upgrade-${profile}.zip" ${zip_entries})
+  cp -f "${release_dir}/upgrade-${profile}.zip" "${release_dir}/upgrade.zip"
+  rm -f "${release_dir}/Install" "${release_dir}/Install.sig"
+}
+
+cleanup_release_intermediates() {
+  rm -rf "${release_dir}/bin" "${release_dir}/configs" \
+    "${release_dir}/log" "${release_dir}/web" "${work_dir}" \
+    "${release_dir}/flash"
+  rm -f "${release_dir}/Install" "${release_dir}/Install.sig" \
+    "${release_dir}/Install.commands"
 }
 
 release_dir=$(resolve_output_dir "${release_dir}")
 mkdir -p "${release_dir}"
 release_dir=$(CDPATH= cd -- "${release_dir}" && pwd -P)
-flash_dir="${release_dir}/flash"
+work_dir="${release_dir}/.package_work"
+manifest_dir="${work_dir}/manifest"
 
 case "${release_dir}" in
   ""|"/")
@@ -355,22 +367,22 @@ if [ "${include_config}" = true ]; then
 fi
 
 command_count=0
-commands_file="${flash_dir}/Install.commands"
+commands_file="${manifest_dir}/Install.commands"
 rm -f "${commands_file}"
 touch "${commands_file}"
 zip_entries="Install"
 
 case "${profile}" in
   all)
-    append_install_command bin bin.squashfs "$(sha256_file "${flash_dir}/bin.squashfs")"
-    append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
-    append_install_command config config.jffs2 "$(sha256_file "${flash_dir}/config.jffs2")"
+    append_install_command bin bin.squashfs "$(sha256_file "${release_dir}/bin.squashfs")"
+    append_install_command web web.squashfs "$(sha256_file "${release_dir}/web.squashfs")"
+    append_install_command config config.jffs2 "$(sha256_file "${release_dir}/config.jffs2")"
     ;;
   web)
-    append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
+    append_install_command web web.squashfs "$(sha256_file "${release_dir}/web.squashfs")"
     ;;
   config)
-    append_install_command config config.jffs2 "$(sha256_file "${flash_dir}/config.jffs2")"
+    append_install_command config config.jffs2 "$(sha256_file "${release_dir}/config.jffs2")"
     ;;
 esac
 
@@ -378,9 +390,9 @@ write_install_manifest
 sign_install_manifest
 zip_entries="${zip_entries} Install.sig"
 write_upgrade_zip
-rm -f "${commands_file}"
+cleanup_release_intermediates
 
-echo "Upgrade package: ${flash_dir}/upgrade-${profile}.zip"
-echo "Default package: ${flash_dir}/upgrade.zip"
+echo "Upgrade package: ${release_dir}/upgrade-${profile}.zip"
+echo "Default package: ${release_dir}/upgrade.zip"
 echo "Profile: ${profile}"
 echo "Release output: ${release_dir}"

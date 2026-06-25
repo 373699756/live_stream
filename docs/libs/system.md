@@ -140,9 +140,9 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
        RELEASE_VERSION=1.0.0
    ```
 
-   首烧用到的是 `release-first/flash/bin.squashfs`、
-   `release-first/flash/web.squashfs` 和
-   `release-first/flash/config.jffs2`。`release/flash/upgrade.zip` 只给
+   首烧用到的是 `release-first/bin.squashfs`、
+   `release-first/web.squashfs` 和
+   `release-first/config.jffs2`。`release/upgrade.zip` 只给
    Linux/Web 升级使用，不给 U-Boot 使用。`config.jffs2` 里的
    `upgrade_public_key.pem` 必须和后续发布包使用的私钥匹配，否则设备启动后 Web
    升级验签会失败。
@@ -303,7 +303,7 @@ saveenv
 reset
 ```
 
-U-Boot 只能烧单个分区镜像，不能直接消费 `release/flash/upgrade.zip`。`upgrade.zip`
+U-Boot 只能烧单个分区镜像，不能直接消费 `release/upgrade.zip`。`upgrade.zip`
 是 Linux/Web 升级包，里面的签名校验、manifest 解析和 MTD 写入由 `system` 模块和
 `live_sysupgrade` 完成。
 
@@ -631,25 +631,30 @@ scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
 打包过程按固定顺序执行：
 
-1. 清理并创建 `release/bin`、`release/configs`、`release/web`、`release/flash`。
+1. 清理并创建 `release/bin`、`release/configs`、`release/web` 和
+   `release/.package_work` 作为打包工作目录。
 2. 复制 `build/bin/live_stream`、`build/bin/live_sysupgrade`、`configs/*.json`、
    可选公钥和 `www/dist`。
 3. 对 `release/bin/live_stream` 和 `release/bin/live_sysupgrade` 执行 strip。`build/bin`
    中的文件可以带 `debug_info`，大小不能直接和 flash 分区比较。
 4. 按 profile 生成镜像：
-   - `bin.squashfs`：从 `flash/bin_root` 生成，包含 `bin/live_stream`、
+   - `bin.squashfs`：从临时 `bin_root` 生成，包含 `bin/live_stream`、
      `sbin/live_sysupgrade` 和 `version`。
-   - `web.squashfs`：从 `flash/web_root` 生成，包含 Web 静态资源和 `version`。
-   - `config.jffs2`：从 `flash/config_root` 生成，包含配置 JSON 和
+   - `web.squashfs`：从临时 `web_root` 生成，包含 Web 静态资源和 `version`。
+   - `config.jffs2`：从临时 `config_root` 生成，包含配置 JSON 和
      `upgrade_public_key.pem`。
 5. 生成镜像后立即检查分区上限：`bin.squashfs <= 10M`、`web.squashfs <= 2M`、
    `config.jffs2 <= 1M`，超过上限发布失败。
-6. 对每个 payload 计算 sha256，写入 `flash/Install` 的 `Commands`。
+6. 对每个 payload 计算 sha256，写入临时 `Install` 的 `Commands`。
 7. 用 `UPGRADE_SIGN_KEY` 对 `Install` 原文做 SHA256/RSA 签名，生成
-   `flash/Install.sig`。
+   临时 `Install.sig`。
 8. 立刻用 `UPGRADE_PUBLIC_KEY` 验证 `Install.sig`，验不过则发布失败。
-9. 用 `zip -0` 生成 store-only 包 `flash/upgrade-<profile>.zip`，并复制一份为
-   `flash/upgrade.zip`。
+9. 用 `zip -0` 生成 store-only 包 `upgrade-<profile>.zip`，并复制一份为
+   `upgrade.zip`。
+10. 分区镜像和升级 zip 生成在 `release/` 根目录，清理 `release/bin`、
+    `release/configs`、`release/web`、`release/log`、`release/.package_work` 和
+    旧的 `release/flash`，最终只保留 `bin.squashfs`、`web.squashfs`、
+    `config.jffs2` 和升级 zip 中实际生成的文件。
 
 `bin` 分区写入的是压缩后的 `bin.squashfs`，不是把 `build/bin/live_stream` 和
 `build/bin/live_sysupgrade` 两个调试 ELF 原样写入 flash。以当前构建为例，原始
@@ -657,8 +662,8 @@ scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 副本后约为 5.3M 和 2.8M，最终 `bin.squashfs` 约 2.6M，小于 10M 分区上限。以后
 如果依赖增加导致镜像超过 10M，`scripts/package_release.sh` 必须直接失败。
 
-Web 管理台可上传 `all`、`web` 或 `config` profile 生成的 `release/flash/upgrade.zip`
-或 `release/flash/upgrade-<profile>.zip`。升级 zip 里只放 `Install`、`Install.sig`
+Web 管理台可上传 `all`、`web` 或 `config` profile 生成的 `release/upgrade.zip`
+或 `release/upgrade-<profile>.zip`。升级 zip 里只放 `Install`、`Install.sig`
 和 manifest 声明的镜像文件。`live_sysupgrade` 随 `bin.squashfs` 发布到
 `/opt/app/sbin/live_sysupgrade`；当包内包含非 `web` 分区时，主进程会把 helper 复制到
 `/tmp/live_stream/upgrade/live_sysupgrade` 后执行，避免从即将擦写的 `/opt/app` 取指令。
@@ -717,7 +722,7 @@ Install.sig
 ```mermaid
 flowchart TD
   MakeRelease[make release] --> PackageScript[scripts/package_release.sh]
-  PackageScript --> Zip[release/flash/upgrade.zip]
+  PackageScript --> Zip[release/upgrade.zip]
   Zip --> Upload[POST /api/upgrade/upload]
   Upload --> PackageParser[system upgrade_package]
   PackageParser --> Start[POST /api/upgrade/start]

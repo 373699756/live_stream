@@ -4,7 +4,7 @@
  * - Handles file upload, start, cancel, confirm-reboot actions
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     getUpgradeInfo,
     uploadUpgradePackage,
@@ -19,7 +19,7 @@ import type {
 } from '../api/types';
 
 const pollIntervalMs = 2000;
-const statusTimeoutMs = 1800;
+const statusTimeoutMs = 5000;
 
 function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
@@ -40,11 +40,21 @@ export function useUpgrade() {
     const [msg, setMsg] = useState('');
     const [actionError, setActionError] = useState('');
     const [refreshError, setRefreshError] = useState('');
+    const busyRef = useRef(false);
+
+    const setBusyState = (value: boolean) => {
+        busyRef.current = value;
+        setBusy(value);
+    };
 
     useEffect(() => {
         let mounted = true;
         let timer = 0;
         const load = async () => {
+            if (busyRef.current) {
+                timer = window.setTimeout(load, pollIntervalMs);
+                return;
+            }
             const startedAt = Date.now();
             try {
                 const nextUpgradeInfo = await getUpgradeInfo({
@@ -55,7 +65,7 @@ export function useUpgrade() {
                     setRefreshError('');
                 }
             } catch (err: unknown) {
-                if (mounted) {
+                if (mounted && !busyRef.current) {
                     setRefreshError(errorMsg(err, '升级状态刷新失败'));
                 }
             } finally {
@@ -84,8 +94,9 @@ export function useUpgrade() {
 
     const uploadPackage = async () => {
         if (!selectedFile) return;
-        setBusy(true);
+        setBusyState(true);
         setActionError('');
+        setRefreshError('');
         setMsg('');
         try {
             const uploaded = await uploadUpgradePackage(selectedFile);
@@ -94,14 +105,15 @@ export function useUpgrade() {
         } catch (err) {
             setActionError(errorMsg(err, '上传失败'));
         } finally {
-            setBusy(false);
+            setBusyState(false);
         }
     };
 
     const startUpgrade = async () => {
         if (!packageInfo) return;
-        setBusy(true);
+        setBusyState(true);
         setActionError('');
+        setRefreshError('');
         setMsg('');
         const request: UpgradeRequest = {
             package_path: packageInfo.package_path,
@@ -117,13 +129,14 @@ export function useUpgrade() {
         } catch (err) {
             setActionError(errorMsg(err, '启动升级失败'));
         } finally {
-            setBusy(false);
+            setBusyState(false);
         }
     };
 
     const cancelUpgrade = async () => {
-        setBusy(true);
+        setBusyState(true);
         setActionError('');
+        setRefreshError('');
         setMsg('');
         try {
             const next = await apiCancelUpgrade();
@@ -132,13 +145,14 @@ export function useUpgrade() {
         } catch (err) {
             setActionError(errorMsg(err, '取消升级失败'));
         } finally {
-            setBusy(false);
+            setBusyState(false);
         }
     };
 
     const confirmReboot = async () => {
-        setBusy(true);
+        setBusyState(true);
         setActionError('');
+        setRefreshError('');
         setMsg('');
         try {
             const next = await apiConfirmUpgradeReboot();
@@ -147,7 +161,7 @@ export function useUpgrade() {
         } catch (err) {
             setActionError(errorMsg(err, '确认重启失败'));
         } finally {
-            setBusy(false);
+            setBusyState(false);
         }
     };
 
