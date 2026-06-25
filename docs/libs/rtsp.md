@@ -58,7 +58,7 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 
 - `GetSubscriptionStart` 返回的当前 GOP 只作为启动待发送帧临时持有，
   发送后立即释放，不在 RTSP 内部维护私有 GOP cache。
-- live frame 通过 `PopSubscriptionFrame` 拉取，RTSP 不再注册全局
+- live frame 通过 `PullFrame` 拉取，RTSP 不再注册全局
   `AttachFrameSink` fanout。
 - TCP interleaved 与控制连接绑定；UDP SETUP 为该 session 创建 RTP 和 RTCP
   socket。RTCP receiver report 当前只记录收包数量、字节数和最后接收时间，用于诊断；

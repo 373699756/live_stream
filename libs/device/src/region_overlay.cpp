@@ -198,14 +198,10 @@ std::string RegionTargetSuffix(const MppChannel &channel) {
     return std::string(text);
 }
 
-RegionOverlay::RegionOverlay()
-    : RegionOverlay(RegionOverlayOptions{}) {}
-
 RegionOverlay::RegionOverlay(
     const RegionOverlayOptions &service_options)
     : options(service_options),
-      sdk(service_options.sdk != nullptr ? service_options.sdk
-                                         : &hisisdk::DefaultSdk()) {}
+      hisi_region(service_options.region) {}
 
 RegionOverlay::~RegionOverlay() { Release(); }
 
@@ -218,32 +214,32 @@ bool RegionOverlay::Prepare() {
     }
     if (options.config != nullptr && !config_attached) {
         ConfigScope config_scope;
-        config_scope.verify = [this](const ConfigJson &now,
-                                     ConfigIssue *issue) {
+        config_scope.verify = [this](const Json &now,
+                                     ConfigError *error) {
             std::lock_guard<std::mutex> guard(mutex);
             RefreshMediaChannels();
             if (VerifyConfig(now)) {
-                return ConfigStatus::kOk;
+                return ConfigCode::kOk;
             }
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "invalid overlay config";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "invalid overlay config";
             }
-            return ConfigStatus::kVerifyFailed;
+            return ConfigCode::kVerify;
         };
-        config_scope.apply = [this](const ConfigJson &prev,
-                                    const ConfigJson &now,
-                                    ConfigIssue *issue) {
+        config_scope.apply = [this](const Json &prev,
+                                    const Json &now,
+                                    ConfigError *error) {
             (void)prev;
             std::lock_guard<std::mutex> guard(mutex);
             if (ApplyConfig(now)) {
-                return ConfigStatus::kOk;
+                return ConfigCode::kOk;
             }
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "apply overlay config failed";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "apply overlay config failed";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         };
         if (!options.config->AddScope("overlay", config_scope)) {
             return false;
@@ -325,8 +321,8 @@ int32_t RegionOverlay::AllocateHandle(RegionType type) const {
 void RegionOverlay::DetachAll() {
     for (auto &region : regions) {
         if (region.attached) {
-            (void)sdk->DetachRegion(region.mpp_handle,
-                                    BuildSdkRegionConfig(region.config));
+            (void)hisi_region->DetachRegion(
+                region.mpp_handle, BuildSdkRegionConfig(region.config));
         }
         region.attached = false;
     }
@@ -336,7 +332,7 @@ void RegionOverlay::DestroyAll() {
     DetachAll();
     for (const auto &region : regions) {
         if (region.created) {
-            sdk->DestroyRegion(region.mpp_handle);
+            hisi_region->DestroyRegion(region.mpp_handle);
         }
     }
     regions.clear();
@@ -349,11 +345,11 @@ void RegionOverlay::DestroyRegionByPrefix(const std::string &prefix) {
             continue;
         }
         if (iter->attached) {
-            (void)sdk->DetachRegion(iter->mpp_handle,
-                                    BuildSdkRegionConfig(iter->config));
+            (void)hisi_region->DetachRegion(
+                iter->mpp_handle, BuildSdkRegionConfig(iter->config));
         }
         if (iter->created) {
-            sdk->DestroyRegion(iter->mpp_handle);
+            hisi_region->DestroyRegion(iter->mpp_handle);
         }
         iter = regions.erase(iter);
     }
@@ -401,9 +397,10 @@ bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
     const RegionBitmap bitmap = BuildRegionBitmap(text_bitmap);
     if (region != nullptr) {
         const bool ok =
-            sdk->SetRegionDisplay(region->mpp_handle,
-                                  BuildSdkRegionConfig(config)) &&
-            sdk->SetRegionBitmap(region->mpp_handle, BuildSdkBitmap(bitmap));
+            hisi_region->SetRegionDisplay(region->mpp_handle,
+                                          BuildSdkRegionConfig(config)) &&
+            hisi_region->SetRegionBitmap(region->mpp_handle,
+                                         BuildSdkBitmap(bitmap));
         if (ok) {
             region->config = config;
             region->has_bitmap = true;
@@ -420,16 +417,16 @@ bool RegionOverlay::UpsertBitmapRegion(const std::string &name,
     if (handle < 0) {
         return false;
     }
-    if (!sdk->CreateRegion(handle, BuildSdkRegionConfig(config))) {
+    if (!hisi_region->CreateRegion(handle, BuildSdkRegionConfig(config))) {
         return false;
     }
-    if (!sdk->AttachRegion(handle, BuildSdkRegionConfig(config))) {
-        sdk->DestroyRegion(handle);
+    if (!hisi_region->AttachRegion(handle, BuildSdkRegionConfig(config))) {
+        hisi_region->DestroyRegion(handle);
         return false;
     }
-    if (!sdk->SetRegionBitmap(handle, BuildSdkBitmap(bitmap))) {
-        (void)sdk->DetachRegion(handle, BuildSdkRegionConfig(config));
-        sdk->DestroyRegion(handle);
+    if (!hisi_region->SetRegionBitmap(handle, BuildSdkBitmap(bitmap))) {
+        (void)hisi_region->DetachRegion(handle, BuildSdkRegionConfig(config));
+        hisi_region->DestroyRegion(handle);
         return false;
     }
 
@@ -450,7 +447,7 @@ bool RegionOverlay::UpsertDisplayRegion(const std::string &name,
                                         const RegionConfig &config) {
     RegionRecord *region = FindByName(name);
     if (region != nullptr) {
-        const bool ok = sdk->SetRegionDisplay(
+        const bool ok = hisi_region->SetRegionDisplay(
             region->mpp_handle, BuildSdkRegionConfig(config));
         if (ok) {
             region->config = config;
@@ -466,11 +463,11 @@ bool RegionOverlay::UpsertDisplayRegion(const std::string &name,
     if (handle < 0) {
         return false;
     }
-    if (!sdk->CreateRegion(handle, BuildSdkRegionConfig(config))) {
+    if (!hisi_region->CreateRegion(handle, BuildSdkRegionConfig(config))) {
         return false;
     }
-    if (!sdk->AttachRegion(handle, BuildSdkRegionConfig(config))) {
-        sdk->DestroyRegion(handle);
+    if (!hisi_region->AttachRegion(handle, BuildSdkRegionConfig(config))) {
+        hisi_region->DestroyRegion(handle);
         return false;
     }
 
@@ -486,14 +483,14 @@ bool RegionOverlay::UpsertDisplayRegion(const std::string &name,
     return true;
 }
 
-bool RegionOverlay::VerifyConfig(const ConfigJson &value) const {
+bool RegionOverlay::VerifyConfig(const Json &value) const {
     ParsedOverlayConfig parsed;
     return ParseTextOverlayConfig(value, &parsed) &&
            ParsePrivacyMasksConfig(value, ActiveChannels(),
                                    &parsed.privacy_masks);
 }
 
-bool RegionOverlay::ApplyConfig(const ConfigJson &value) {
+bool RegionOverlay::ApplyConfig(const Json &value) {
     RefreshMediaChannels();
     ParsedOverlayConfig parsed;
     if (!ParseTextOverlayConfig(value, &parsed) ||
@@ -548,7 +545,7 @@ bool RegionOverlay::Start() {
     }
     state = RegionOverlayState::kStarted;
     if (options.config != nullptr) {
-        ConfigJson overlay_config = options.config->Get("overlay");
+        Json overlay_config = options.config->Get("overlay");
         if (overlay_config.is_object()) {
             return ApplyConfig(overlay_config);
         }

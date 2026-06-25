@@ -16,24 +16,24 @@ import type {
 
 const timeSyncTimeoutMs = 5000;
 
-function normalizeTimeInfo(status: TimeInfo): TimeInfo {
+function normalizeTimeInfo(timeInfo: TimeInfo): TimeInfo {
     return {
         ...mockTimeInfo,
-        ...status,
+        ...timeInfo,
         ntp: {
             ...mockTimeInfo.ntp,
-            ...(status.ntp ?? {}),
-            servers: Array.isArray(status.ntp?.servers)
-                ? status.ntp.servers
+            ...(timeInfo.ntp ?? {}),
+            servers: Array.isArray(timeInfo.ntp?.servers)
+                ? timeInfo.ntp.servers
                 : [],
         },
         manual_sync_allowed:
-            typeof status.manual_sync_allowed === 'boolean'
-                ? status.manual_sync_allowed
+            typeof timeInfo.manual_sync_allowed === 'boolean'
+                ? timeInfo.manual_sync_allowed
                 : true,
         browser_sync_on_login:
-            typeof status.browser_sync_on_login === 'boolean'
-                ? status.browser_sync_on_login
+            typeof timeInfo.browser_sync_on_login === 'boolean'
+                ? timeInfo.browser_sync_on_login
                 : true,
     };
 }

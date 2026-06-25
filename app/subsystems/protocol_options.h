@@ -13,27 +13,34 @@
 
 namespace live_stream {
 
+class FoundationSubsystem;
+
 event::LoopOptions BuildNetCallbackOptions();
 NetIoOptions BuildNetIoOptions(event::Loop *callback_loop);
 
 RtspOptions BuildRtspOptions(const AppConfig &app_config);
-RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs);
+RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs,
+                                       FoundationSubsystem &foundation);
 
 WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
                                  const ProtocolStartupRefs &refs);
-WebrtcDependencies BuildWebrtcDependencies(const ProtocolStartupRefs &refs);
+WebrtcDependencies BuildWebrtcDependencies(const ProtocolStartupRefs &refs,
+                                           FoundationSubsystem &foundation);
 
 OnvifServerOptions BuildOnvifOptions(
     const AppConfig &app_config);
 OnvifServerDependencies BuildOnvifDependencies(
-    const ProtocolStartupRefs &refs);
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation);
 
 HttpOptions BuildHttpOptions(const AppConfig &app_config);
-HttpDependencies BuildHttpDependencies(const ProtocolStartupRefs &refs);
+HttpDependencies BuildHttpDependencies(const ProtocolStartupRefs &refs,
+                                       FoundationSubsystem &foundation);
 
 NetStatOptions BuildNetStatOptions();
 NetStatDependencies BuildNetStatDependencies(
-    const ProtocolStartupRefs &refs);
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation);
 
 }  // namespace live_stream
 

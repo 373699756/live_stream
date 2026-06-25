@@ -17,14 +17,50 @@ class INetwork;
 class ITime;
 class IUpgrade;
 class ISystem;
-class IRtsp;
-class OnvifServer;
+class IRtspSessionReader;
+class IOnvifStatusReader;
 class DeviceMedia;
-class IAiView;
+class IAiReader;
 class IWebrtc;
+class IWebrtcStatusReader;
 class IHttp;
 
-struct SystemOverviewSources {
+struct AuthHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IAuth *auth = nullptr;
+};
+
+struct ConfigHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IConfig *config = nullptr;
+};
+
+struct OperationsHandlerDependencies {
+    HttpAccess *access = nullptr;
+    ILogger *logger = nullptr;
+};
+
+struct NetworkHandlerDependencies {
+    HttpAccess *access = nullptr;
+    INetwork *network = nullptr;
+};
+
+struct TimeHandlerDependencies {
+    HttpAccess *access = nullptr;
+    ITime *time = nullptr;
+};
+
+struct UpgradeHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IUpgrade *upgrade = nullptr;
+};
+
+struct AlarmHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IAlarm *alarm = nullptr;
+};
+
+struct SystemOverviewInputs {
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
     IAuth *auth = nullptr;
@@ -32,12 +68,40 @@ struct SystemOverviewSources {
     INetwork *network = nullptr;
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
-    IRtsp *rtsp = nullptr;
-    OnvifServer *onvif = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IOnvifStatusReader *onvif_status_reader = nullptr;
     DeviceMedia *device = nullptr;
-    IAiView *ai = nullptr;
-    IWebrtc *webrtc = nullptr;
+    IAiReader *ai = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader = nullptr;
     MediaStreams *media_streams = nullptr;
+};
+
+struct SystemHandlerDependencies {
+    HttpAccess *access = nullptr;
+    ISystem *system = nullptr;
+    SystemOverviewInputs overview;
+};
+
+struct MediaHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IConfig *config = nullptr;
+    DeviceMedia *device = nullptr;
+    MediaStreams *media_streams = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IHttp *http = nullptr;
+};
+
+struct AiHandlerDependencies {
+    HttpAccess *access = nullptr;
+    IConfig *config = nullptr;
+    IAiReader *ai = nullptr;
+    DeviceMedia *device = nullptr;
+};
+
+struct SnapshotHandlerDependencies {
+    HttpAccess *access = nullptr;
+    DeviceMedia *device = nullptr;
 };
 
 enum class HttpHandlerKind {
@@ -52,60 +116,25 @@ enum class HttpHandlerKind {
     kMedia,
     kAi,
     kSnapshot,
-    kEventStream,
 };
 
 struct HttpHandlerDependencies {
-    HttpAccess *access = nullptr;
-    IAuth *auth = nullptr;
-    IConfig *config = nullptr;
-    ILogger *logger = nullptr;
-    INetwork *network = nullptr;
-    ITime *time = nullptr;
-    IUpgrade *upgrade = nullptr;
-    ISystem *system = nullptr;
-    DeviceMedia *device = nullptr;
-    MediaStreams *media_streams = nullptr;
-    IAlarm *alarm = nullptr;
-    IRtsp *rtsp = nullptr;
-    IWebrtc *webrtc = nullptr;
-    IHttp *http = nullptr;
-    IAiView *ai = nullptr;
-    SystemOverviewSources system_overview_sources;
+    AuthHandlerDependencies auth;
+    ConfigHandlerDependencies config;
+    OperationsHandlerDependencies operations;
+    NetworkHandlerDependencies network;
+    TimeHandlerDependencies time;
+    UpgradeHandlerDependencies upgrade;
+    SystemHandlerDependencies system;
+    AlarmHandlerDependencies alarm;
+    MediaHandlerDependencies media;
+    AiHandlerDependencies ai;
+    SnapshotHandlerDependencies snapshot;
 };
 
 std::unique_ptr<IHttpHandler> CreateHttpHandler(
     HttpHandlerKind kind,
     const HttpHandlerDependencies &dependencies);
-
-std::unique_ptr<IHttpHandler> MakeAuthHandler(
-    HttpAccess *access, IAuth *auth);
-std::unique_ptr<IHttpHandler> MakeConfigHandler(
-    HttpAccess *access, IConfig *config);
-std::unique_ptr<IHttpHandler> MakeOperationsHandler(
-    HttpAccess *access, ILogger *logger);
-std::unique_ptr<IHttpHandler> MakeNetworkHandler(
-    HttpAccess *access, INetwork *network);
-std::unique_ptr<IHttpHandler> MakeTimeHandler(
-    HttpAccess *access, ITime *time);
-std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
-    HttpAccess *access, IUpgrade *upgrade);
-std::unique_ptr<IHttpHandler> MakeSystemHandler(
-    HttpAccess *access, ISystem *system,
-    const SystemOverviewSources &overview_sources);
-std::unique_ptr<IHttpHandler> MakeAlarmHandler(
-    HttpAccess *access, IAlarm *alarm);
-std::unique_ptr<IHttpHandler> MakeMediaHandler(
-    HttpAccess *access, IConfig *config,
-    DeviceMedia *device, MediaStreams *media_streams,
-    IRtsp *rtsp, IWebrtc *webrtc, IHttp *http);
-std::unique_ptr<IHttpHandler> MakeAiHandler(
-    HttpAccess *access, IConfig *config,
-    IAiView *ai, DeviceMedia *device);
-std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
-    HttpAccess *access, DeviceMedia *device);
-std::unique_ptr<IHttpHandler> MakeEventStreamHandler(
-    HttpAccess *access);
 
 }  // namespace live_stream
 

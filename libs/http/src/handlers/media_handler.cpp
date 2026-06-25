@@ -1,10 +1,13 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_path.h"
+#include "http_response.h"
+#include "http_stream_id_json.h"
 
 #include "config.h"
 #include "http_protocol.h"
-#include "json_utils.h"
+#include "json_reader.h"
 #include "device.h"
 #include "infra/log.h"
 #include "rtsp.h"
@@ -43,8 +46,8 @@ const char *RateControlToJsonString(RateControlMode mode) {
     return "cbr";
 }
 
-ConfigJson NumericControlToJson(const NumericControlCapability &capability) {
-    ConfigJson root = ConfigJson::object();
+Json NumericControlToJson(const NumericControlCapability &capability) {
+    Json root = Json::object();
     root["min"] = capability.min;
     root["max"] = capability.max;
     root["default"] = capability.default_value;
@@ -52,9 +55,9 @@ ConfigJson NumericControlToJson(const NumericControlCapability &capability) {
     return root;
 }
 
-ConfigJson OptionControlToJson(const OptionControlCapability &capability) {
-    ConfigJson root = ConfigJson::object();
-    ConfigJson values = ConfigJson::array();
+Json OptionControlToJson(const OptionControlCapability &capability) {
+    Json root = Json::object();
+    Json values = Json::array();
     for (const std::string &value : capability.values) {
         values.push_back(value);
     }
@@ -64,56 +67,56 @@ ConfigJson OptionControlToJson(const OptionControlCapability &capability) {
     return root;
 }
 
-ConfigJson NumericControlsToJson(
+Json NumericControlsToJson(
     const std::vector<NumericControlCapability> &capabilities) {
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     for (const NumericControlCapability &capability : capabilities) {
         root[capability.name] = NumericControlToJson(capability);
     }
     return root;
 }
 
-ConfigJson OptionControlsToJson(
+Json OptionControlsToJson(
     const std::vector<OptionControlCapability> &capabilities) {
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     for (const OptionControlCapability &capability : capabilities) {
         root[capability.name] = OptionControlToJson(capability);
     }
     return root;
 }
 
-ConfigJson VideoStreamCapabilitiesToJson(
+Json VideoStreamCapabilitiesToJson(
     StreamId stream_id, const VideoStreamCapabilities *capabilities) {
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["stream"] = StreamIdToJsonString(stream_id);
     root["available"] = capabilities != nullptr;
-    root["codecs"] = ConfigJson::array();
-    root["resolutions"] = ConfigJson::array();
-    root["rate_control"] = ConfigJson::array();
+    root["codecs"] = Json::array();
+    root["resolutions"] = Json::array();
+    root["rate_control"] = Json::array();
     root["smart_codec"] = false;
     root["roi_supported"] = false;
     root["max_roi_regions"] = 0;
     if (capabilities == nullptr) {
-        ConfigJson fps = ConfigJson::object();
+        Json fps = Json::object();
         fps["min"] = 0;
         fps["max"] = 0;
         root["fps"] = fps;
-        ConfigJson bitrate = ConfigJson::object();
+        Json bitrate = Json::object();
         bitrate["min"] = 0;
         bitrate["max"] = 0;
         root["bitrate_kbps"] = bitrate;
-        ConfigJson gop = ConfigJson::object();
+        Json gop = Json::object();
         gop["min"] = 0;
         gop["max"] = 0;
         root["gop"] = gop;
         return root;
     }
 
-    ConfigJson codecs = ConfigJson::array();
+    Json codecs = Json::array();
     for (const CodecCapability &codec : capabilities->codecs) {
-        ConfigJson item = ConfigJson::object();
+        Json item = Json::object();
         item["codec"] = CodecToJsonString(codec.codec);
-        ConfigJson profiles = ConfigJson::array();
+        Json profiles = Json::array();
         for (const std::string &profile : codec.profiles) {
             profiles.push_back(profile);
         }
@@ -122,32 +125,32 @@ ConfigJson VideoStreamCapabilitiesToJson(
     }
     root["codecs"] = codecs;
 
-    ConfigJson resolutions = ConfigJson::array();
+    Json resolutions = Json::array();
     for (const VideoResolution &resolution : capabilities->resolutions) {
-        ConfigJson item = ConfigJson::object();
+        Json item = Json::object();
         item["width"] = resolution.width;
         item["height"] = resolution.height;
         resolutions.push_back(item);
     }
     root["resolutions"] = resolutions;
 
-    ConfigJson fps = ConfigJson::object();
+    Json fps = Json::object();
     fps["min"] = capabilities->frame_rate.min_fps;
     fps["max"] = capabilities->frame_rate.max_fps;
     root["fps"] = fps;
 
-    ConfigJson bitrate = ConfigJson::object();
+    Json bitrate = Json::object();
     bitrate["min"] = capabilities->bitrate.min_kbps;
     bitrate["max"] = capabilities->bitrate.max_kbps;
     root["bitrate_kbps"] = bitrate;
 
-    ConfigJson rate_control = ConfigJson::array();
+    Json rate_control = Json::array();
     for (RateControlMode mode : capabilities->rate_control_modes) {
         rate_control.push_back(RateControlToJsonString(mode));
     }
     root["rate_control"] = rate_control;
 
-    ConfigJson gop = ConfigJson::object();
+    Json gop = Json::object();
     gop["min"] = capabilities->gop.min;
     gop["max"] = capabilities->gop.max;
     root["gop"] = gop;
@@ -167,31 +170,31 @@ const VideoStreamCapabilities *FindStreamCapabilities(
     return nullptr;
 }
 
-ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
-    ConfigJson root = ConfigJson::object();
+Json ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
+    Json root = Json::object();
     root["basic"] = NumericControlsToJson(capabilities.basic);
 
-    ConfigJson exposure = ConfigJson::object();
+    Json exposure = Json::object();
     exposure["options"] =
         OptionControlsToJson(capabilities.exposure_options);
     exposure["ranges"] = NumericControlsToJson(capabilities.exposure_ranges);
     root["exposure"] = exposure;
 
-    ConfigJson white_balance = ConfigJson::object();
+    Json white_balance = Json::object();
     white_balance["options"] =
         OptionControlsToJson(capabilities.white_balance_options);
     white_balance["ranges"] =
         NumericControlsToJson(capabilities.white_balance_ranges);
     root["white_balance"] = white_balance;
 
-    ConfigJson enhancement = ConfigJson::object();
+    Json enhancement = Json::object();
     enhancement["options"] =
         OptionControlsToJson(capabilities.enhancement_options);
     enhancement["ranges"] =
         NumericControlsToJson(capabilities.enhancement_ranges);
     root["enhancement"] = enhancement;
 
-    ConfigJson backlight = ConfigJson::object();
+    Json backlight = Json::object();
     backlight["options"] =
         OptionControlsToJson(capabilities.backlight_options);
     backlight["ranges"] = NumericControlsToJson(capabilities.backlight_ranges);
@@ -200,7 +203,7 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
     root["color_mode"] =
         OptionControlsToJson(capabilities.color_mode_options);
 
-    ConfigJson lens_correction = ConfigJson::object();
+    Json lens_correction = Json::object();
     lens_correction["supported"] = capabilities.lens_correction_supported;
     lens_correction["min_width"] = capabilities.lens_correction_min_width;
     lens_correction["min_height"] = capabilities.lens_correction_min_height;
@@ -210,7 +213,7 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
         NumericControlsToJson(capabilities.lens_correction_ranges);
     root["lens_correction"] = lens_correction;
 
-    ConfigJson stabilization = ConfigJson::object();
+    Json stabilization = Json::object();
     stabilization["supported"] = capabilities.stabilization_supported;
     stabilization["min_width"] = capabilities.stabilization_min_width;
     stabilization["min_height"] = capabilities.stabilization_min_height;
@@ -220,16 +223,16 @@ ConfigJson ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
         NumericControlsToJson(capabilities.stabilization_ranges);
     root["stabilization"] = stabilization;
 
-    ConfigJson orientation = ConfigJson::object();
+    Json orientation = Json::object();
     orientation["mirror"] = capabilities.mirror_supported;
     orientation["flip"] = capabilities.flip_supported;
     root["orientation"] = orientation;
     return root;
 }
 
-ConfigJson MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
-    ConfigJson root = ConfigJson::object();
-    ConfigJson streams = ConfigJson::object();
+Json MediaCapabilitiesToJson(const MediaCapabilities &capabilities) {
+    Json root = Json::object();
+    Json streams = Json::object();
     streams["main"] = VideoStreamCapabilitiesToJson(
         StreamId::kMain,
         FindStreamCapabilities(capabilities, StreamId::kMain));
@@ -258,20 +261,21 @@ void RequestPreviewKeyframe(MediaStreams *media_streams,
                                          KeyframeRequestSource::kRecovery);
 }
 
-bool IsWebrtcReady(IWebrtc *webrtc) {
-    if (webrtc == nullptr) {
+bool IsWebrtcReady(IWebrtcStatusReader *webrtc_status_reader) {
+    if (webrtc_status_reader == nullptr) {
         return false;
     }
-    const WebrtcStats stats = webrtc->GetStats();
+    const WebrtcStats stats = webrtc_status_reader->GetStats();
     return stats.enabled && stats.signaling_ready && stats.ice_ready &&
            stats.dtls_ready && stats.srtp_ready;
 }
 
-bool IsWebrtcSupported(Codec codec, IWebrtc *webrtc) {
-    if (webrtc == nullptr) {
+bool IsWebrtcSupported(Codec codec,
+                       IWebrtcStatusReader *webrtc_status_reader) {
+    if (webrtc_status_reader == nullptr) {
         return false;
     }
-    const WebrtcStats stats = webrtc->GetStats();
+    const WebrtcStats stats = webrtc_status_reader->GetStats();
     return stats.enabled && (codec == Codec::kH264 ||
                              codec == Codec::kH265);
 }
@@ -291,7 +295,7 @@ bool ReadVideoStreamDisplayConfig(IConfig *config,
     if (config == nullptr || display_config == nullptr) {
         return false;
     }
-    const ConfigJson video = config->Get("video");
+    const Json video = config->Get("video");
     if (!video.is_object()) {
         return false;
     }
@@ -305,18 +309,18 @@ bool ReadVideoStreamDisplayConfig(IConfig *config,
     }
 
     std::string resolution;
-    if (json_utils::ReadField(*stream, "resolution", &resolution) &&
+    if (json_reader::ReadField(*stream, "resolution", &resolution) &&
         !resolution.empty()) {
         display_config->resolution = resolution;
         display_config->has_resolution = true;
     }
     uint32_t fps = 0;
-    if (json_utils::ReadField(*stream, "fps", &fps) && fps > 0) {
+    if (json_reader::ReadField(*stream, "fps", &fps) && fps > 0) {
         display_config->fps = fps;
         display_config->has_fps = true;
     }
     uint32_t bitrate_kbps = 0;
-    if (json_utils::ReadField(*stream, "bitrate_kbps", &bitrate_kbps) &&
+    if (json_reader::ReadField(*stream, "bitrate_kbps", &bitrate_kbps) &&
         bitrate_kbps > 0) {
         display_config->bitrate_kbps = bitrate_kbps;
         display_config->has_bitrate_kbps = true;
@@ -325,7 +329,7 @@ bool ReadVideoStreamDisplayConfig(IConfig *config,
            display_config->has_bitrate_kbps;
 }
 
-void AddVideoStreamDisplayConfig(ConfigJson *root,
+void AddVideoStreamDisplayConfig(Json *root,
                                  const VideoStreamDisplayConfig &config) {
     if (root == nullptr) {
         return;
@@ -341,11 +345,11 @@ void AddVideoStreamDisplayConfig(ConfigJson *root,
     }
 }
 
-ConfigJson MediaStreamInfoToJson(StreamId stream_id,
+Json MediaStreamInfoToJson(StreamId stream_id,
                                  IConfig *config,
                                  DeviceMedia *device,
                                  MediaStreams *media_streams,
-                                 IWebrtc *webrtc) {
+                                 IWebrtcStatusReader *webrtc_status_reader) {
     MediaStreamInfo stream_info;
     MediaStreamStats stats;
     bool media_stream_available = false;
@@ -365,7 +369,7 @@ ConfigJson MediaStreamInfoToJson(StreamId stream_id,
                                         ? device->GetStreamCodec(stream_id)
                                         : Codec::kH264);
 
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["stream"] = StreamIdToJsonString(stream_id);
     root["available"] = media_stream_available || device != nullptr;
     root["running"] = stream_running;
@@ -378,13 +382,14 @@ ConfigJson MediaStreamInfoToJson(StreamId stream_id,
     root["http_flv_ready"] = stream_info.flv_ready;
     root["mjpeg_supported"] = stream_info.mjpeg_supported;
     root["mjpeg_ready"] = stream_info.mjpeg_ready;
-    const bool webrtc_supported = IsWebrtcSupported(codec, webrtc);
+    const bool webrtc_supported =
+        IsWebrtcSupported(codec, webrtc_status_reader);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
         stream_running && stream_info.track_ready && webrtc_supported &&
-        IsWebrtcReady(webrtc);
-    root["subscription_size"] = stats.active_subscriptions;
-    root["client_size"] =
+        IsWebrtcReady(webrtc_status_reader);
+    root["active_subscriptions"] = stats.active_subscriptions;
+    root["preview_clients"] =
         stats.active_flv_clients + stats.active_mjpeg_clients;
     root["cached_frames"] = stats.cached_frames;
     root["cached_bytes"] = stats.cached_bytes;
@@ -421,10 +426,10 @@ std::string AdvertiseHostFromConfig(IConfig *config) {
     if (config == nullptr) {
         return std::string();
     }
-    ConfigJson network = config->Get("network");
+    Json network = config->Get("network");
     std::string advertise_host;
     if (network.is_object() &&
-        json_utils::ReadField(network, "advertise_ip", &advertise_host)) {
+        json_reader::ReadField(network, "advertise_ip", &advertise_host)) {
         return advertise_host;
     }
     return std::string();
@@ -434,27 +439,27 @@ uint16_t RtspPortFromConfig(IConfig *config, uint16_t fallback) {
     if (config == nullptr) {
         return fallback;
     }
-    ConfigJson rtsp = config->Get("rtsp");
+    Json rtsp = config->Get("rtsp");
     int64_t port = 0;
     if (rtsp.is_object() &&
-        json_utils::ReadField(rtsp, "port", &port, 1, 65535)) {
+        json_reader::ReadField(rtsp, "port", &port, 1, 65535)) {
         return static_cast<uint16_t>(port);
     }
-    ConfigJson network = config->Get("network");
+    Json network = config->Get("network");
     if (network.is_object() && network.contains("ports") &&
         network.at("ports").is_object() &&
-        json_utils::ReadField(network.at("ports"), "rtsp", &port, 1, 65535)) {
+        json_reader::ReadField(network.at("ports"), "rtsp", &port, 1, 65535)) {
         return static_cast<uint16_t>(port);
     }
     return fallback;
 }
 
-std::string BuildRtspUrl(IConfig *config, IRtsp *rtsp,
+std::string BuildRtspUrl(IConfig *config, IRtspSessionReader *rtsp_reader,
                          const HttpRequest &request, StreamId stream_id) {
-    if (rtsp == nullptr) {
+    if (rtsp_reader == nullptr) {
         return std::string();
     }
-    RtspListenAddress address = rtsp->LocalAddress();
+    RtspListenAddress address = rtsp_reader->LocalAddress();
     address.port = RtspPortFromConfig(config, address.port);
     if (address.port == 0) {
         return std::string();
@@ -469,17 +474,17 @@ std::string BuildRtspUrl(IConfig *config, IRtsp *rtsp,
     return BuildRtspStreamUrl(address, stream_id, host);
 }
 
-ConfigJson PreviewUrlsToJson(IConfig *config, IRtsp *rtsp,
+Json PreviewUrlsToJson(IConfig *config, IRtspSessionReader *rtsp_reader,
                              const HttpRequest &request,
                              StreamId stream_id) {
     const std::string stream = StreamIdToJsonString(stream_id);
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["stream"] = stream;
     root["hls"] = "/live/" + stream + "/hls/index.m3u8";
     root["http_flv"] = "/live/" + stream + ".live.flv";
     root["mjpeg"] = "/live/" + stream + ".mjpg";
     root["snapshot"] = "/snapshot/" + stream + ".jpg";
-    root["rtsp"] = BuildRtspUrl(config, rtsp, request, stream_id);
+    root["rtsp"] = BuildRtspUrl(config, rtsp_reader, request, stream_id);
     root["webrtc_whep"] = "/live/" + stream + "/whep";
     return root;
 }
@@ -489,8 +494,8 @@ const char *RtspTransportToJsonString(RtspTransportMode transport) {
                                                 : "tcp_interleaved";
 }
 
-ConfigJson RtspSessionToJson(const RtspSessionInfo &session) {
-    ConfigJson root = ConfigJson::object();
+Json RtspSessionToJson(const RtspSessionInfo &session) {
+    Json root = Json::object();
     root["protocol"] = "rtsp";
     root["session_id"] = std::to_string(session.session_id);
     root["stream"] = StreamIdToJsonString(session.stream_id);
@@ -534,8 +539,8 @@ const char *WebrtcPeerStateToJsonString(WebrtcPeerState state) {
     return "unknown";
 }
 
-ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
-    ConfigJson root = ConfigJson::object();
+Json WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
+    Json root = Json::object();
     root["protocol"] = "webrtc";
     root["session_id"] = peer.peer_id;
     root["peer_id"] = peer.peer_id;
@@ -568,7 +573,7 @@ ConfigJson WebrtcSessionToJson(const WebrtcPeerInfo &peer) {
     return root;
 }
 
-void AddHttpStreamingMediaStatus(ConfigJson *root,
+void AddHttpStreamingMediaStatus(Json *root,
                                  MediaStreams *media_streams,
                                  StreamId stream_id) {
     if (root == nullptr || media_streams == nullptr) {
@@ -586,10 +591,10 @@ void AddHttpStreamingMediaStatus(ConfigJson *root,
     (*root)["media_last_reset_reason"] = stream_info.last_reset_reason;
 }
 
-ConfigJson HttpStreamingSessionToJson(
+Json HttpStreamingSessionToJson(
     const HttpStreamSessionInfo &session,
     MediaStreams *media_streams) {
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["protocol"] = session.protocol;
     root["session_id"] = session.session_id;
     root["connection_id"] = session.connection_id;
@@ -618,93 +623,79 @@ bool IsMediaStreamingSession(const HttpStreamSessionInfo &session) {
     return session.protocol == "http_flv" || session.protocol == "mjpeg";
 }
 
+void AddWebrtcStatsToJson(Json *root, const WebrtcStats &stats) {
+    if (root == nullptr) {
+        return;
+    }
+    (*root)["webrtc_active_peers"] = stats.active_peers;
+    (*root)["webrtc_enabled"] = stats.enabled;
+    (*root)["webrtc_signaling_ready"] = stats.signaling_ready;
+    (*root)["webrtc_ice_ready"] = stats.ice_ready;
+    (*root)["webrtc_dtls_ready"] = stats.dtls_ready;
+    (*root)["webrtc_srtp_ready"] = stats.srtp_ready;
+    (*root)["webrtc_public_ip"] = stats.public_ip;
+    (*root)["webrtc_local_port_base"] = stats.local_port_base;
+    (*root)["webrtc_max_peers"] = stats.max_peers;
+    (*root)["webrtc_ice_servers"] = stats.ice_servers;
+    (*root)["webrtc_selected_ice_pairs"] = stats.selected_ice_pairs;
+}
+
 }  // namespace
 
 class MediaHttpHandler : public IHttpHandler {
 public:
-    MediaHttpHandler(HttpAccess *access,
-                     IConfig *config,
-                     DeviceMedia *device,
-                     MediaStreams *media_streams,
-                     IRtsp *rtsp,
-                     IWebrtc *webrtc,
-                     IHttp *http)
-        : access_(access),
-          config_(config),
-          device_(device),
-          media_streams_(media_streams),
-          rtsp_(rtsp),
-          webrtc_(webrtc),
-          http_(http) {}
+    explicit MediaHttpHandler(const MediaHandlerDependencies &dependencies)
+        : access_(dependencies.access),
+          config_(dependencies.config),
+          device_(dependencies.device),
+          media_streams_(dependencies.media_streams),
+          rtsp_session_reader_(dependencies.rtsp_session_reader),
+          webrtc_status_reader_(dependencies.webrtc_status_reader),
+          http_(dependencies.http) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddExactRoute(HttpMethod::kGet, "/api/media/streams",
+                             this, &MediaHttpHandler::HandleStreams);
+        if (device_ != nullptr) {
+            router.AddExactRoute(HttpMethod::kGet, "/api/media/capabilities",
+                                 this, &MediaHttpHandler::HandleCapabilities);
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/media/streams",
-                              &MediaHttpHandler::HandleStreamsRoute, this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/media/capabilities",
-                              &MediaHttpHandler::HandleCapabilitiesRoute,
-                              this);
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/media/streams/",
-                               &MediaHttpHandler::HandleStreamRoute, this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/media/sessions",
-                              &MediaHttpHandler::HandleSessionsRoute, this);
+        router.AddPrefixRoute(HttpMethod::kGet, "/api/media/streams/",
+                              this, &MediaHttpHandler::HandleStream);
+        router.AddExactRoute(HttpMethod::kGet, "/api/media/sessions",
+                             this, &MediaHttpHandler::HandleSessions);
     }
 
 private:
-    static HttpResponse HandleStreamsRoute(void *user,
-                                           const HttpRequest &request) {
-        return static_cast<MediaHttpHandler *>(user)->HandleStreams(request);
-    }
-
-    static HttpResponse HandleStreamRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<MediaHttpHandler *>(user)->HandleStream(request);
-    }
-
-    static HttpResponse HandleCapabilitiesRoute(void *user,
-                                                const HttpRequest &request) {
-        return static_cast<MediaHttpHandler *>(user)->HandleCapabilities(
-            request);
-    }
-
-    static HttpResponse HandleSessionsRoute(void *user,
-                                            const HttpRequest &request) {
-        return static_cast<MediaHttpHandler *>(user)->HandleSessions(request);
-    }
-
-    bool RequireReadStatus(const HttpRequest &request,
-                           AuthPrincipal *principal) {
-        return access_ != nullptr &&
-               access_->RequirePermission(request, AuthPermission::kReadStatus,
-                                          "media", principal);
-    }
-
     HttpResponse HandleStreams(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireReadStatus(request, &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "media",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson root = ConfigJson::object();
-        ConfigJson items = ConfigJson::array();
+        Json root = Json::object();
+        Json items = Json::array();
         items.push_back(MediaStreamInfoToJson(StreamId::kMain, config_,
                                               device_,
-                                              media_streams_, webrtc_));
+                                              media_streams_,
+                                              webrtc_status_reader_));
         items.push_back(MediaStreamInfoToJson(StreamId::kSub, config_,
                                               device_,
-                                              media_streams_, webrtc_));
+                                              media_streams_,
+                                              webrtc_status_reader_));
         root["items"] = items;
         return JsonResponse(200, root);
     }
 
     HttpResponse HandleCapabilities(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireReadStatus(request, &principal)) {
-            return ForbiddenResponse(principal);
-        }
-        if (device_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "media",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         return JsonResponse(
             200, MediaCapabilitiesToJson(device_->GetCapabilities()));
@@ -712,8 +703,11 @@ private:
 
     HttpResponse HandleStream(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireReadStatus(request, &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "media",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         const std::string suffix =
             PathSuffix(request.path, "/api/media/streams/");
@@ -732,23 +726,28 @@ private:
         }
         if (urls) {
             return JsonResponse(
-                200, PreviewUrlsToJson(config_, rtsp_, request, stream_id));
+                200, PreviewUrlsToJson(config_, rtsp_session_reader_,
+                                       request, stream_id));
         }
         return JsonResponse(
             200, MediaStreamInfoToJson(stream_id, config_, device_,
-                                       media_streams_, webrtc_));
+                                       media_streams_,
+                                       webrtc_status_reader_));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireReadStatus(request, &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "media",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson root = ConfigJson::object();
-        ConfigJson items = ConfigJson::array();
-        if (rtsp_ != nullptr) {
+        Json root = Json::object();
+        Json items = Json::array();
+        if (rtsp_session_reader_ != nullptr) {
             const std::vector<RtspSessionInfo> sessions =
-                rtsp_->ListSessionInfo();
+                rtsp_session_reader_->ListSessionInfo();
             for (const RtspSessionInfo &session : sessions) {
                 items.push_back(RtspSessionToJson(session));
             }
@@ -764,37 +763,15 @@ private:
             }
         }
         WebrtcStats webrtc_stats;
-        if (webrtc_ != nullptr) {
-            webrtc_stats = webrtc_->GetStats();
-            root["webrtc_active_peers"] = webrtc_stats.active_peers;
-            root["webrtc_enabled"] = webrtc_stats.enabled;
-            root["webrtc_signaling_ready"] = webrtc_stats.signaling_ready;
-            root["webrtc_ice_ready"] = webrtc_stats.ice_ready;
-            root["webrtc_dtls_ready"] = webrtc_stats.dtls_ready;
-            root["webrtc_srtp_ready"] = webrtc_stats.srtp_ready;
-            root["webrtc_public_ip"] = webrtc_stats.public_ip;
-            root["webrtc_local_port_base"] = webrtc_stats.local_port_base;
-            root["webrtc_max_peers"] = webrtc_stats.max_peers;
-            root["webrtc_ice_server_size"] = webrtc_stats.ice_server_size;
-            root["webrtc_selected_ice_pairs"] =
-                webrtc_stats.selected_ice_pairs;
-            const std::vector<WebrtcPeerInfo> peers = webrtc_->GetPeers();
+        if (webrtc_status_reader_ != nullptr) {
+            webrtc_stats = webrtc_status_reader_->GetStats();
+            const std::vector<WebrtcPeerInfo> peers =
+                webrtc_status_reader_->GetPeers();
             for (const WebrtcPeerInfo &peer : peers) {
                 items.push_back(WebrtcSessionToJson(peer));
             }
-        } else {
-            root["webrtc_active_peers"] = 0;
-            root["webrtc_enabled"] = false;
-            root["webrtc_signaling_ready"] = false;
-            root["webrtc_ice_ready"] = false;
-            root["webrtc_dtls_ready"] = false;
-            root["webrtc_srtp_ready"] = false;
-            root["webrtc_public_ip"] = "";
-            root["webrtc_local_port_base"] = 0;
-            root["webrtc_max_peers"] = 0;
-            root["webrtc_ice_server_size"] = 0;
-            root["webrtc_selected_ice_pairs"] = 0;
         }
+        AddWebrtcStatsToJson(&root, webrtc_stats);
         MediaStreamStats media_stats;
         if (media_streams_ != nullptr) {
             media_stats = media_streams_->GetStreamStats();
@@ -802,7 +779,9 @@ private:
         root["http_flv_active_clients"] = media_stats.active_flv_clients;
         root["mjpeg_active_clients"] = media_stats.active_mjpeg_clients;
         root["rtsp_active_sessions"] =
-            rtsp_ == nullptr ? 0 : rtsp_->GetStats().active_sessions;
+            rtsp_session_reader_ == nullptr
+                ? 0
+                : rtsp_session_reader_->GetStats().active_sessions;
         root["items"] = items;
         return JsonResponse(200, root);
     }
@@ -811,21 +790,15 @@ private:
     IConfig *config_ = nullptr;
     DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
-    IRtsp *rtsp_ = nullptr;
-    IWebrtc *webrtc_ = nullptr;
+    IRtspSessionReader *rtsp_session_reader_ = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader_ = nullptr;
     IHttp *http_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeMediaHandler(HttpAccess *access,
-                                               IConfig *config,
-                                               DeviceMedia *device,
-                                               MediaStreams *media_streams,
-                                               IRtsp *rtsp,
-                                               IWebrtc *webrtc,
-                                               IHttp *http) {
+std::unique_ptr<IHttpHandler> MakeMediaHandler(
+    const MediaHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new MediaHttpHandler(access, config, device,
-                             media_streams, rtsp, webrtc, http));
+        new MediaHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

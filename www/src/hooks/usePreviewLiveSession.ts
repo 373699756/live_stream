@@ -150,7 +150,7 @@ export function usePreviewLiveSession({
     );
 
     const restartPreview = useCallback(
-        (message: string) => {
+        (msg: string) => {
             sessionRef.current += 1;
             setConnected(false);
             // 重启目标链路时先保留旧画面作为过渡，同时让状态浮层继续显示新目标状态。
@@ -158,7 +158,7 @@ export function usePreviewLiveSession({
                 Boolean(activeSessionRef.current?.promoted) ||
                     hasVisibleRetiredSession(),
             );
-            setPreviewState(message);
+            setPreviewState(msg);
         },
         [hasVisibleRetiredSession],
     );

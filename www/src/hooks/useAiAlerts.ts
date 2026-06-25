@@ -10,7 +10,7 @@ import type {
 } from '../api/types';
 
 const kRealtimePollMs = 3000;
-const kMaxStoredAlerts = 80;
+const kMaxAlertHistoryItems = 80;
 const kAlertRetryDelaysMs = [300, 1000, 2500];
 
 function normalizeAlerts(alerts: AiAlertRecord[]): AiAlertRecord[] {
@@ -26,11 +26,11 @@ function normalizeAlerts(alerts: AiAlertRecord[]): AiAlertRecord[] {
                 ? right.id.localeCompare(left.id)
                 : right.timestamp_ms - left.timestamp_ms,
         )
-        .slice(0, kMaxStoredAlerts);
+        .slice(0, kMaxAlertHistoryItems);
 }
 
 interface AiAlertsState {
-    status: AiStatus | null;
+    aiStatus: AiStatus | null;
     alarmConfig: AlarmConfig | null;
     alarmInfo: AlarmInfoResponse | null;
     lastAlarmEvent: MediaEvent | null;
@@ -41,7 +41,7 @@ interface AiAlertsState {
 }
 
 export function useAiAlerts(): AiAlertsState {
-    const [status, setStatus] = useState<AiStatus | null>(null);
+    const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
     const [alarmConfig, setAlarmConfig] = useState<AlarmConfig | null>(null);
     const [alarmInfo, setAlarmInfo] = useState<AlarmInfoResponse | null>(
         null,
@@ -82,7 +82,7 @@ export function useAiAlerts(): AiAlertsState {
         setLoading(true);
         setError('');
         try {
-            const [nextStatus, nextAlerts, nextAlarmConfig, nextAlarmInfo] =
+            const [nextAiStatus, nextAlerts, nextAlarmConfig, nextAlarmInfo] =
                 await Promise.all([
                     getAiStatus({ signal: controller.signal }),
                     getAiAlerts({ signal: controller.signal }),
@@ -95,7 +95,7 @@ export function useAiAlerts(): AiAlertsState {
             ) {
                 return;
             }
-            setStatus(nextStatus);
+            setAiStatus(nextAiStatus);
             applyAlerts(nextAlerts.items, false);
             setAlarmConfig(nextAlarmConfig);
             setAlarmInfo(nextAlarmInfo);
@@ -134,9 +134,9 @@ export function useAiAlerts(): AiAlertsState {
             aiStatusController?.abort();
             aiStatusController = new AbortController();
             void getAiStatus({ signal: aiStatusController.signal })
-                .then(setStatus)
+                .then(setAiStatus)
                 .catch(() => {
-                    // The manual refresh path reports persistent status failures.
+                    // The manual refresh path reports persistent AI status failures.
                 });
         };
         const refreshAlarmInfo = () => {
@@ -212,7 +212,7 @@ export function useAiAlerts(): AiAlertsState {
     }, [applyAlerts]);
 
     return {
-        status,
+        aiStatus,
         alarmConfig,
         alarmInfo,
         lastAlarmEvent,

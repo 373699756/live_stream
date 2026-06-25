@@ -1,12 +1,14 @@
 #include "ai_task_runner.h"
 
-#include "ai_config.h"
+#include "ai_alert_images.h"
 #include "ai_backend_runner.h"
+#include "ai_config.h"
+#include "ai_defaults.h"
+#include "ai_frame_capture.h"
 #include "alarm.h"
 #include "config.h"
 #include "device.h"
 #include "hisi_ai_platform.h"
-#include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "perimeter_filter.h"
@@ -23,58 +25,23 @@ namespace live_stream {
 namespace {
 
 constexpr uint32_t kDefaultExecutorQueueCapacity = 8;
-constexpr uint32_t kAlertExecutorQueueCapacity = 8;
 constexpr uint32_t kCaptureStopPollMs = 50;
 constexpr int64_t kMinAlertIntervalMs = 1000;
-constexpr uint32_t kMaxPerimeterRegions = 8;
-constexpr uint32_t kDefaultAiInputWidth = 300;
-constexpr uint32_t kDefaultAiInputHeight = 300;
-constexpr uint32_t kMinInferenceIntervalMs = 250;
-constexpr uint32_t kMaxInferenceIntervalMs = 2000;
-constexpr uint32_t kDefaultInferenceIntervalMs = 500;
-constexpr uint32_t kMinAiResults = 1;
-constexpr uint32_t kMaxAiResults = 32;
-constexpr uint32_t kDefaultAiResults = 16;
-constexpr float kMinAiConfidence = 0.0f;
-constexpr float kMaxAiConfidence = 1.0f;
-constexpr float kDefaultAiConfidence = 0.5f;
-constexpr const char *kDefaultAiModelPath = "models/inst_ssd_cycle.wk";
 
 using ai_internal::AiBackendRunner;
 using ai_internal::AiBackendToString;
+using ai_internal::AiAlertCapture;
+using ai_internal::AiAlertImages;
+using ai_internal::AiFrameCapture;
+using ai_internal::BuildAiCapabilities;
 using ai_internal::CreateAiBackendRunner;
+using ai_internal::DefaultAiConfig;
 using ai_internal::FilterPerimeterDetections;
 using ai_internal::IsValidAiConfig;
 using ai_internal::ParseAiConfig;
 
-MppChannel VpssChannelForStream(const MediaChannels &channels,
-                                StreamId stream_id) {
-    return stream_id == StreamId::kSub ? channels.sub_vpss : channels.vpss;
-}
-
-hisisdk::Size YuvSizeForStream(const MediaChannels &channels,
-                               StreamId stream_id) {
-    const VideoSize size = stream_id == StreamId::kSub ? channels.sub_size
-                                                       : channels.main_size;
-    return hisisdk::Size{size.width, size.height};
-}
-
 bool IsAlertResultActive(const AiInferenceResult &result) {
     return result.success && !result.detections.empty();
-}
-
-float MaxConfidence(const std::vector<AiDetection> &detections) {
-    float max_confidence = 0.0f;
-    for (const AiDetection &detection : detections) {
-        if (detection.confidence > max_confidence) {
-            max_confidence = detection.confidence;
-        }
-    }
-    return max_confidence;
-}
-
-std::string AlertImagePath(const std::string &dir, const std::string &id) {
-    return infra::Path::Join(dir, id + ".jpg");
 }
 
 const char *TaskAlarmName(AiTask task) {
@@ -91,40 +58,6 @@ const char *TaskAlarmName(AiTask task) {
     return "ai";
 }
 
-bool LooksLikeJpeg(const SnapshotFrame &frame) {
-    const uint8_t *data = frame.PayloadData();
-    return data != nullptr && frame.Size() >= 2 && data[0] == 0xff &&
-           data[1] == 0xd8;
-}
-
-AiModelConfig DefaultTaskConfig(AiTask task) {
-    AiModelConfig config;
-    config.enabled = false;
-    config.backend = AiBackend::kHi3516Dv300Nnie;
-    config.task = task;
-    config.stream_id = StreamId::kSub;
-    config.input_width = kDefaultAiInputWidth;
-    config.input_height = kDefaultAiInputHeight;
-    config.inference_interval_ms = kDefaultInferenceIntervalMs;
-    config.max_results = kDefaultAiResults;
-    config.confidence_threshold = kDefaultAiConfidence;
-    if (task == AiTask::kObjectDetection ||
-        task == AiTask::kPerimeterDetection) {
-        config.model_path = kDefaultAiModelPath;
-    }
-    return config;
-}
-
-AiConfig DefaultAiConfig() {
-    AiConfig config;
-    config.enabled = false;
-    config.tasks.push_back(DefaultTaskConfig(AiTask::kObjectDetection));
-    config.tasks.push_back(DefaultTaskConfig(AiTask::kPerimeterDetection));
-    config.tasks.push_back(DefaultTaskConfig(AiTask::kMotionClassification));
-    config.tasks.push_back(DefaultTaskConfig(AiTask::kOcclusionDetection));
-    return config;
-}
-
 uint32_t ClampInferenceTime(int64_t inference_time_ms) {
     if (inference_time_ms <= 0) {
         return 0;
@@ -134,58 +67,42 @@ uint32_t ClampInferenceTime(int64_t inference_time_ms) {
         static_cast<int64_t>(std::numeric_limits<uint32_t>::max())));
 }
 
-bool AiTaskRequiresModel(AiTask task) {
-    return task == AiTask::kObjectDetection ||
-           task == AiTask::kPerimeterDetection;
+bool HasTaskConfig(const std::vector<AiModelConfig> &tasks, AiTask task) {
+    for (const AiModelConfig &task_config : tasks) {
+        if (task_config.task == task) {
+            return true;
+        }
+    }
+    return false;
 }
 
-AiTaskCapability BuildTaskCapability(AiTask task, bool runtime_available) {
-    AiTaskCapability capability;
-    capability.task = task;
-    capability.available = runtime_available;
-    capability.requires_model = AiTaskRequiresModel(task);
-    capability.default_model_path =
-        capability.requires_model ? kDefaultAiModelPath : "";
-    capability.default_input_width = kDefaultAiInputWidth;
-    capability.default_input_height = kDefaultAiInputHeight;
-    capability.min_inference_interval_ms = kMinInferenceIntervalMs;
-    capability.max_inference_interval_ms = kMaxInferenceIntervalMs;
-    capability.default_inference_interval_ms = kDefaultInferenceIntervalMs;
-    capability.min_results = kMinAiResults;
-    capability.max_results = kMaxAiResults;
-    capability.default_max_results = kDefaultAiResults;
-    capability.min_confidence_threshold = kMinAiConfidence;
-    capability.max_confidence_threshold = kMaxAiConfidence;
-    capability.default_confidence_threshold = kDefaultAiConfidence;
-    capability.max_perimeter_regions =
-        task == AiTask::kPerimeterDetection ? kMaxPerimeterRegions : 0;
-    capability.supported_backends.push_back(AiBackend::kHi3516Dv300Nnie);
-    capability.supported_streams.push_back(StreamId::kSub);
-    capability.supported_streams.push_back(StreamId::kMain);
-    if (!capability.available) {
-        capability.unavailable_reason =
-            "hisi_ai_runtime_unavailable";
+bool SamePerimeterConfig(const AiPerimeterConfig &lhs,
+                         const AiPerimeterConfig &rhs) {
+    if (lhs.regions.size() != rhs.regions.size()) {
+        return false;
     }
-    return capability;
+    for (std::size_t i = 0; i < lhs.regions.size(); ++i) {
+        const AiPerimeterRegion &left = lhs.regions[i];
+        const AiPerimeterRegion &right = rhs.regions[i];
+        if (left.name != right.name || left.x != right.x ||
+            left.y != right.y || left.width != right.width ||
+            left.height != right.height) {
+            return false;
+        }
+    }
+    return true;
 }
 
-AiCapabilities BuildAiCapabilities() {
-    AiCapabilities capabilities;
-    capabilities.model_runtime_available = LIVE_STREAM_HAS_HISI_NNIE != 0;
-    capabilities.available = capabilities.model_runtime_available;
-    if (!capabilities.model_runtime_available) {
-        capabilities.model_runtime_reason =
-            "hisi_nnie_ive_runtime_unavailable";
-    }
-    capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kObjectDetection, capabilities.model_runtime_available));
-    capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kPerimeterDetection, capabilities.model_runtime_available));
-    capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kMotionClassification, capabilities.model_runtime_available));
-    capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kOcclusionDetection, capabilities.model_runtime_available));
-    return capabilities;
+bool SameTaskConfig(const AiModelConfig &lhs, const AiModelConfig &rhs) {
+    return lhs.enabled == rhs.enabled && lhs.backend == rhs.backend &&
+           lhs.task == rhs.task && lhs.stream_id == rhs.stream_id &&
+           lhs.model_path == rhs.model_path &&
+           lhs.input_width == rhs.input_width &&
+           lhs.input_height == rhs.input_height &&
+           lhs.inference_interval_ms == rhs.inference_interval_ms &&
+           lhs.max_results == rhs.max_results &&
+           lhs.confidence_threshold == rhs.confidence_threshold &&
+           SamePerimeterConfig(lhs.perimeter, rhs.perimeter);
 }
 
 }  // namespace
@@ -205,13 +122,6 @@ struct AiTaskWorker final {
     bool running = false;
 };
 
-struct PendingAlertCapture {
-    AiInferenceResult result;
-    AiModelConfig config;
-    std::shared_ptr<AiTaskWorker> task_worker;
-    int64_t timestamp_ms = 0;
-};
-
 struct StoppedAiTask {
     std::unique_ptr<event::Executor> executor;
     std::shared_ptr<AiBackendRunner> backend_runner;
@@ -225,7 +135,12 @@ struct AiTaskStartup {
 
 struct AiTaskRunner::State final {
     explicit State(const AiOptions &service_options)
-        : options(service_options), config(service_options.default_config) {
+        : options(service_options),
+          config(service_options.default_config),
+          frame_capture(service_options.snapshot,
+                        service_options.media_channels),
+          alert_images(service_options.alert_image_dir,
+                       service_options.max_alert_records) {
         if (options.max_alert_records == 0) {
             options.max_alert_records = 100;
         }
@@ -243,8 +158,8 @@ struct AiTaskRunner::State final {
             }
             if (options.config != nullptr && !config_attached) {
                 ConfigScope config_scope;
-                config_scope.verify = [this](const ConfigJson &now,
-                                             ConfigIssue *issue) {
+                config_scope.verify = [this](const Json &now,
+                                             ConfigError *error) {
                     AiConfig current_config;
                     {
                         std::lock_guard<std::mutex> guard(mutex);
@@ -252,17 +167,17 @@ struct AiTaskRunner::State final {
                     }
                     AiConfig parsed;
                     if (ParseAiConfig(now, current_config, &parsed)) {
-                        return ConfigStatus::kOk;
+                        return ConfigCode::kOk;
                     }
-                    if (issue != nullptr) {
-                        issue->field.clear();
-                        issue->reason = "invalid ai config";
+                    if (error != nullptr) {
+                        error->field.clear();
+                        error->message = "invalid ai config";
                     }
-                    return ConfigStatus::kVerifyFailed;
+                    return ConfigCode::kVerify;
                 };
-                config_scope.apply = [this](const ConfigJson &prev,
-                                            const ConfigJson &now,
-                                            ConfigIssue *issue) {
+                config_scope.apply = [this](const Json &prev,
+                                            const Json &now,
+                                            ConfigError *error) {
                     (void)prev;
                     AiConfig current_config;
                     {
@@ -271,20 +186,20 @@ struct AiTaskRunner::State final {
                     }
                     AiConfig parsed;
                     if (!ParseAiConfig(now, current_config, &parsed)) {
-                        if (issue != nullptr) {
-                            issue->field.clear();
-                            issue->reason = "invalid ai config";
+                        if (error != nullptr) {
+                            error->field.clear();
+                            error->message = "invalid ai config";
                         }
-                        return ConfigStatus::kVerifyFailed;
+                        return ConfigCode::kVerify;
                     }
                     if (ApplyConfig(parsed)) {
-                        return ConfigStatus::kOk;
+                        return ConfigCode::kOk;
                     }
-                    if (issue != nullptr) {
-                        issue->field.clear();
-                        issue->reason = "apply ai config failed";
+                    if (error != nullptr) {
+                        error->field.clear();
+                        error->message = "apply ai config failed";
                     }
-                    return ConfigStatus::kApplyFailed;
+                    return ConfigCode::kApply;
                 };
                 if (!options.config->AddScope("ai", config_scope)) {
                     return false;
@@ -294,7 +209,7 @@ struct AiTaskRunner::State final {
         }
 
         if (options.config != nullptr) {
-            ConfigJson ai_config = options.config->Get("ai");
+            Json ai_config = options.config->Get("ai");
             if (ai_config.is_object()) {
                 AiConfig current_config;
                 {
@@ -343,18 +258,16 @@ struct AiTaskRunner::State final {
 
     void Stop() {
         std::vector<StoppedAiTask> stopped_tasks;
-        std::shared_ptr<event::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started && task_workers.empty() && !alert_executor) {
+            if (!started && task_workers.empty()) {
                 return;
             }
             started = false;
-            StopTaskWorkersLocked(&stopped_tasks);
-            stopped_alert_executor = std::move(alert_executor);
+            StopTaskWorkersLocked(stopped_tasks);
         }
-        StopStoppedAiTasks(&stopped_tasks);
-        StopAlertExecutor(stopped_alert_executor);
+        StopStoppedAiTasks(stopped_tasks);
+        alert_images.Stop();
         ClearAlarmInput();
     }
 
@@ -396,20 +309,12 @@ struct AiTaskRunner::State final {
 
             hisisdk::YuvFrame frame;
             {
-                std::lock_guard<std::mutex> capture_lock(capture_mutex);
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    if (!CanTaskRunLocked(task_worker)) {
-                        return;
-                    }
+                std::lock_guard<std::mutex> lock(mutex);
+                if (!CanTaskRunLocked(task_worker)) {
+                    return;
                 }
-                frame = options.sdk->CaptureYuvFrame(
-                    VpssChannelForStream(options.media_channels,
-                                         run_config.stream_id),
-                    YuvSizeForStream(options.media_channels,
-                                     run_config.stream_id),
-                    run_config.inference_interval_ms);
             }
+            frame = frame_capture.Capture(run_config);
 
             if (!frame.Valid()) {
                 MarkCaptureFailure(task_worker, run_config);
@@ -417,9 +322,9 @@ struct AiTaskRunner::State final {
                 continue;
             }
 
-            PendingAlertCapture pending_alert;
+            AiAlertCapture pending_alert;
             if (RunInference(frame, task_worker, run_config,
-                             &pending_alert)) {
+                             pending_alert)) {
                 PostAlertCapture(pending_alert);
             }
         }
@@ -428,7 +333,7 @@ struct AiTaskRunner::State final {
     bool RunInference(const hisisdk::YuvFrame &frame,
                       const std::shared_ptr<AiTaskWorker> &task_worker,
                       const AiModelConfig &run_config,
-                      PendingAlertCapture *pending_alert) {
+                      AiAlertCapture &pending_alert) {
         std::shared_ptr<AiBackendRunner> run_backend_runner;
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -485,9 +390,8 @@ struct AiTaskRunner::State final {
         const AiInferenceResult &result,
         const AiModelConfig &run_config,
         const std::shared_ptr<AiTaskWorker> &task_worker,
-        PendingAlertCapture *pending_alert) {
-        if (!IsAlertResultActive(result) || options.device == nullptr ||
-            pending_alert == nullptr) {
+        AiAlertCapture &pending_alert) {
+        if (!IsAlertResultActive(result) || options.device == nullptr) {
             return false;
         }
         const int64_t now_ms = infra::Time::SystemTimeMillis();
@@ -499,66 +403,26 @@ struct AiTaskRunner::State final {
             }
             task_worker->last_alert_ms = now_ms;
         }
-        pending_alert->result = result;
-        pending_alert->config = run_config;
-        pending_alert->task_worker = task_worker;
-        pending_alert->timestamp_ms = now_ms;
+        pending_alert.result = result;
+        pending_alert.config = run_config;
+        pending_alert.timestamp_ms = now_ms;
+        pending_alert.on_drop = [this, task_worker]() {
+            IncrementDroppedTasks(task_worker);
+        };
         return true;
     }
 
-    void PostAlertCapture(PendingAlertCapture pending_alert) {
-        std::shared_ptr<event::Executor> executor_snapshot;
+    void PostAlertCapture(const AiAlertCapture &pending_alert) {
+        bool service_started = false;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (!started || !alert_executor) {
-                return;
-            }
-            executor_snapshot = alert_executor;
+            service_started = started;
         }
-        if (executor_snapshot->Post([this, pending_alert]() {
-                SaveAlertCapture(pending_alert);
-            }) != event::EventStatus::kOk) {
-            IncrementDroppedTasks(pending_alert.task_worker);
-        }
-    }
-
-    void SaveAlertCapture(const PendingAlertCapture &pending_alert) {
-        SnapshotRequest request;
-        request.stream_id = pending_alert.config.stream_id;
-        request.include_thumbnail = false;
-        SnapshotFrame frame = options.device->CaptureSnapshot(request);
-        if (!LooksLikeJpeg(frame)) {
-            IncrementDroppedTasks(pending_alert.task_worker);
+        if (!service_started) {
             return;
         }
-
-        if (!infra::Path::MakeDirs(options.alert_image_dir)) {
-            IncrementDroppedTasks(pending_alert.task_worker);
-            return;
-        }
-
-        const std::string id =
-            std::to_string(pending_alert.timestamp_ms) + "-" +
-            std::to_string(NextAlertId());
-        const uint8_t *data = frame.PayloadData();
-        std::string image;
-        image.assign(reinterpret_cast<const char *>(data), frame.Size());
-        if (!infra::File::WriteAll(AlertImagePath(options.alert_image_dir, id),
-                                   image)) {
-            IncrementDroppedTasks(pending_alert.task_worker);
-            return;
-        }
-
-        AiAlertRecord alert;
-        alert.id = id;
-        alert.timestamp_ms = pending_alert.timestamp_ms;
-        alert.stream_id = pending_alert.result.stream_id;
-        alert.task = pending_alert.config.task;
-        alert.detection_size =
-            static_cast<uint32_t>(pending_alert.result.detections.size());
-        alert.max_confidence = MaxConfidence(pending_alert.result.detections);
-        alert.detections = pending_alert.result.detections;
-        AddAlert(alert);
+        static_cast<void>(alert_images.PostCapture(options.device,
+                                                   pending_alert));
     }
 
     bool ApplyConfig(const AiConfig &next_config) {
@@ -578,18 +442,20 @@ struct AiTaskRunner::State final {
              static_cast<unsigned int>(enabled_task_size));
 
         bool service_started = false;
+        bool service_enabled = false;
         std::vector<StoppedAiTask> stopped_tasks;
-        std::shared_ptr<event::Executor> stopped_alert_executor;
         {
             std::lock_guard<std::mutex> lock(mutex);
             service_started = started;
-            StopTaskWorkersLocked(&stopped_tasks);
-            stopped_alert_executor = std::move(alert_executor);
+            service_enabled = next_config.enabled;
+            ApplyTaskConfigDiffLocked(next_config, stopped_tasks);
             config = next_config;
-            RebuildTaskWorkersLocked();
         }
-        StopStoppedAiTasks(&stopped_tasks);
-        StopAlertExecutor(stopped_alert_executor);
+        const bool task_workers_stopped = !stopped_tasks.empty();
+        if (!service_enabled || task_workers_stopped) {
+            alert_images.Stop();
+        }
+        StopStoppedAiTasks(stopped_tasks);
 
         if (!service_started) {
             return true;
@@ -613,13 +479,13 @@ struct AiTaskRunner::State final {
             if (!started || !config.enabled) {
                 return;
             }
-            if (options.device == nullptr || options.sdk == nullptr ||
+            if (options.device == nullptr || !frame_capture.Available() ||
                 !options.device->IsStarted()) {
                 Error("ai", "AI startup skipped: device media or sdk unavailable");
                 MarkAllEnabledTaskBackendsUnavailableLocked();
                 return;
             }
-            if (!EnsureAlertExecutorLocked()) {
+            if (!alert_images.Start()) {
                 Error("ai", "AI startup skipped: alert executor unavailable");
                 MarkAllEnabledTaskBackendsUnavailableLocked();
                 return;
@@ -631,6 +497,9 @@ struct AiTaskRunner::State final {
                     continue;
                 }
                 task_worker->stats.enabled = true;
+                if (task_worker->running) {
+                    continue;
+                }
                 task_worker->stats.backend_available = false;
                 enabled_task_workers.push_back(task_worker);
             }
@@ -641,23 +510,23 @@ struct AiTaskRunner::State final {
         for (const std::shared_ptr<AiTaskWorker> &task_worker :
              enabled_task_workers) {
             AiTaskStartup startup;
-            if (!BuildAiTaskStartup(task_worker, &startup)) {
+            if (!BuildAiTaskStartup(task_worker, startup)) {
                 MarkTaskBackendUnavailable(task_worker);
                 continue;
             }
 
             StoppedAiTask failed_task;
-            if (!CommitAiTaskStartup(&startup, &failed_task)) {
-                StopAiTaskStartup(&startup);
-                StopStoppedAiTask(&failed_task);
+            if (!CommitAiTaskStartup(startup, failed_task)) {
+                StopAiTaskStartup(startup);
+                StopStoppedAiTask(failed_task);
             }
         }
     }
 
     bool BuildAiTaskStartup(
         const std::shared_ptr<AiTaskWorker> &task_worker,
-        AiTaskStartup *startup) {
-        if (!task_worker || startup == nullptr) {
+        AiTaskStartup &startup) {
+        if (!task_worker) {
             return false;
         }
         const AiModelConfig &task_config = task_worker->config;
@@ -699,68 +568,49 @@ struct AiTaskRunner::State final {
 
         std::unique_ptr<event::Executor> next_executor(new event::Executor());
         event::ExecutorOptions executor_options;
-        executor_options.worker_size = 1;
+        executor_options.workers = 1;
         executor_options.queue_capacity = kDefaultExecutorQueueCapacity;
         if (!next_executor->Start(executor_options)) {
             next_backend_runner->Stop();
             return false;
         }
 
-        startup->task_worker = task_worker;
-        startup->backend_runner = next_backend_runner;
-        startup->executor = std::move(next_executor);
+        startup.task_worker = task_worker;
+        startup.backend_runner = next_backend_runner;
+        startup.executor = std::move(next_executor);
         return true;
     }
 
-    bool CommitAiTaskStartup(AiTaskStartup *startup,
-                             StoppedAiTask *failed_task) {
-        if (startup == nullptr || !startup->task_worker || !startup->backend_runner ||
-            !startup->executor) {
+    bool CommitAiTaskStartup(AiTaskStartup &startup,
+                             StoppedAiTask &failed_task) {
+        if (!startup.task_worker || !startup.backend_runner ||
+            !startup.executor) {
             return false;
         }
 
         std::lock_guard<std::mutex> lock(mutex);
-        std::shared_ptr<AiTaskWorker> task_worker = startup->task_worker;
+        std::shared_ptr<AiTaskWorker> task_worker = startup.task_worker;
         if (!CanStartTaskWorkerLocked(task_worker)) {
             return false;
         }
 
-        task_worker->backend_runner = startup->backend_runner;
-        task_worker->executor = std::move(startup->executor);
+        task_worker->backend_runner = startup.backend_runner;
+        task_worker->executor = std::move(startup.executor);
         task_worker->stats.enabled = true;
-        task_worker->stats.backend_available = startup->backend_runner->Available();
+        task_worker->stats.backend_available =
+            startup.backend_runner->Available();
         task_worker->running = true;
-        startup->backend_runner.reset();
+        startup.backend_runner.reset();
         if (task_worker->executor->Post([this, task_worker]() {
                 CaptureLoop(task_worker);
             }) != event::EventStatus::kOk) {
             task_worker->running = false;
             task_worker->stats.backend_available = false;
-            if (failed_task != nullptr) {
-                failed_task->executor = std::move(task_worker->executor);
-                failed_task->backend_runner = std::move(task_worker->backend_runner);
-            } else {
-                task_worker->executor.reset();
-                task_worker->backend_runner.reset();
-            }
+            failed_task.executor = std::move(task_worker->executor);
+            failed_task.backend_runner =
+                std::move(task_worker->backend_runner);
             return false;
         }
-        return true;
-    }
-
-    bool EnsureAlertExecutorLocked() {
-        if (alert_executor) {
-            return true;
-        }
-        std::shared_ptr<event::Executor> next_alert_executor(
-            new event::Executor());
-        event::ExecutorOptions alert_executor_options;
-        alert_executor_options.worker_size = 1;
-        alert_executor_options.queue_capacity = kAlertExecutorQueueCapacity;
-        if (!next_alert_executor->Start(alert_executor_options)) {
-            return false;
-        }
-        alert_executor = next_alert_executor;
         return true;
     }
 
@@ -823,71 +673,57 @@ struct AiTaskRunner::State final {
         task_worker->stats.active_results = 0;
     }
 
-    void StopTaskWorkersLocked(
-        std::vector<StoppedAiTask> *stopped_tasks) {
-        if (stopped_tasks == nullptr) {
-            return;
-        }
+    void StopTaskWorkersLocked(std::vector<StoppedAiTask> &stopped_tasks) {
         for (const std::shared_ptr<AiTaskWorker> &task_worker :
              task_workers) {
-            if (!task_worker) {
-                continue;
-            }
-            task_worker->running = false;
-            task_worker->stats.backend_available = false;
-            StoppedAiTask stopped;
-            stopped.executor = std::move(task_worker->executor);
-            stopped.backend_runner = std::move(task_worker->backend_runner);
-            if (stopped.executor || stopped.backend_runner) {
-                stopped_tasks->push_back(std::move(stopped));
-            }
+            StopTaskWorkerLocked(task_worker, stopped_tasks);
+        }
+    }
+
+    void StopTaskWorkerLocked(
+        const std::shared_ptr<AiTaskWorker> &task_worker,
+        std::vector<StoppedAiTask> &stopped_tasks) {
+        if (!task_worker) {
+            return;
+        }
+        task_worker->running = false;
+        task_worker->stats.backend_available = false;
+        StoppedAiTask stopped;
+        stopped.executor = std::move(task_worker->executor);
+        stopped.backend_runner = std::move(task_worker->backend_runner);
+        if (stopped.executor || stopped.backend_runner) {
+            stopped_tasks.push_back(std::move(stopped));
         }
     }
 
     static void StopStoppedAiTasks(
-        std::vector<StoppedAiTask> *stopped_tasks) {
-        if (stopped_tasks == nullptr) {
-            return;
+        std::vector<StoppedAiTask> &stopped_tasks) {
+        for (StoppedAiTask &stopped : stopped_tasks) {
+            StopStoppedAiTask(stopped);
         }
-        for (StoppedAiTask &stopped : *stopped_tasks) {
-            StopStoppedAiTask(&stopped);
-        }
-        stopped_tasks->clear();
+        stopped_tasks.clear();
     }
 
-    static void StopStoppedAiTask(StoppedAiTask *stopped) {
-        if (stopped == nullptr) {
-            return;
+    static void StopStoppedAiTask(StoppedAiTask &stopped) {
+        if (stopped.executor) {
+            stopped.executor->Stop(event::StopMode::kDiscard);
         }
-        if (stopped->executor) {
-            stopped->executor->Stop(event::StopMode::kDiscard);
+        if (stopped.backend_runner) {
+            stopped.backend_runner->Stop();
         }
-        if (stopped->backend_runner) {
-            stopped->backend_runner->Stop();
-        }
-        stopped->executor.reset();
-        stopped->backend_runner.reset();
+        stopped.executor.reset();
+        stopped.backend_runner.reset();
     }
 
-    static void StopAlertExecutor(
-        std::shared_ptr<event::Executor> stopped_alert_executor) {
-        if (stopped_alert_executor) {
-            stopped_alert_executor->Stop(event::StopMode::kDiscard);
+    static void StopAiTaskStartup(AiTaskStartup &startup) {
+        if (startup.executor) {
+            startup.executor->Stop(event::StopMode::kDiscard);
         }
-    }
-
-    static void StopAiTaskStartup(AiTaskStartup *startup) {
-        if (startup == nullptr) {
-            return;
+        if (startup.backend_runner) {
+            startup.backend_runner->Stop();
         }
-        if (startup->executor) {
-            startup->executor->Stop(event::StopMode::kDiscard);
-        }
-        if (startup->backend_runner) {
-            startup->backend_runner->Stop();
-        }
-        startup->executor.reset();
-        startup->backend_runner.reset();
+        startup.executor.reset();
+        startup.backend_runner.reset();
     }
 
     void RebuildTaskWorkersLocked() {
@@ -900,6 +736,66 @@ struct AiTaskRunner::State final {
             task_worker->stats.alarm_linked = options.alarm != nullptr;
             task_workers.push_back(task_worker);
         }
+    }
+
+    void ApplyTaskConfigDiffLocked(
+        const AiConfig &next_config,
+        std::vector<StoppedAiTask> &stopped_tasks) {
+        if (!next_config.enabled) {
+            StopTaskWorkersLocked(stopped_tasks);
+            task_workers.clear();
+            task_workers.reserve(next_config.tasks.size());
+            for (const AiModelConfig &task_config : next_config.tasks) {
+                std::shared_ptr<AiTaskWorker> task_worker(
+                    new AiTaskWorker(task_config));
+                task_worker->stats.enabled = false;
+                task_worker->stats.alarm_linked = options.alarm != nullptr;
+                task_workers.push_back(task_worker);
+            }
+            return;
+        }
+
+        std::vector<std::shared_ptr<AiTaskWorker>> next_workers;
+        next_workers.reserve(next_config.tasks.size());
+        for (const AiModelConfig &task_config : next_config.tasks) {
+            std::shared_ptr<AiTaskWorker> task_worker =
+                FindTaskWorkerLocked(task_config.task);
+            if (task_worker && SameTaskConfig(task_worker->config,
+                                             task_config)) {
+                task_worker->stats.enabled = task_config.enabled;
+                task_worker->stats.alarm_linked = options.alarm != nullptr;
+                next_workers.push_back(task_worker);
+                continue;
+            }
+            if (task_worker) {
+                StopTaskWorkerLocked(task_worker, stopped_tasks);
+            }
+            std::shared_ptr<AiTaskWorker> next_task_worker(
+                new AiTaskWorker(task_config));
+            next_task_worker->stats.enabled = task_config.enabled;
+            next_task_worker->stats.alarm_linked = options.alarm != nullptr;
+            next_workers.push_back(next_task_worker);
+        }
+
+        for (const std::shared_ptr<AiTaskWorker> &task_worker :
+             task_workers) {
+            if (!task_worker || HasTaskConfig(next_config.tasks,
+                                              task_worker->config.task)) {
+                continue;
+            }
+            StopTaskWorkerLocked(task_worker, stopped_tasks);
+        }
+        task_workers = next_workers;
+    }
+
+    std::shared_ptr<AiTaskWorker> FindTaskWorkerLocked(AiTask task) const {
+        for (const std::shared_ptr<AiTaskWorker> &task_worker :
+             task_workers) {
+            if (task_worker && task_worker->config.task == task) {
+                return task_worker;
+            }
+        }
+        return std::shared_ptr<AiTaskWorker>();
     }
 
     AiStats TaskStatsLocked(
@@ -1058,53 +954,26 @@ struct AiTaskRunner::State final {
         }
     }
 
-    void AddAlert(const AiAlertRecord &alert) {
-        std::vector<std::string> expired_image_paths;
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            alerts.push_back(alert);
-            while (alerts.size() > options.max_alert_records) {
-                expired_image_paths.push_back(AlertImagePath(
-                    options.alert_image_dir, alerts.front().id));
-                alerts.erase(alerts.begin());
-            }
-        }
-        for (const std::string &path : expired_image_paths) {
-            static_cast<void>(infra::File::Remove(path));
-        }
-    }
-
-    uint64_t NextAlertId() {
-        std::lock_guard<std::mutex> lock(mutex);
-        return next_alert_id++;
-    }
-
     AiOptions options;
     AiConfig config;
     std::vector<std::shared_ptr<AiTaskWorker>> task_workers;
-    std::shared_ptr<event::Executor> alert_executor;
-    std::vector<AiAlertRecord> alerts;
-    uint64_t next_alert_id = 1;
+    AiFrameCapture frame_capture;
+    AiAlertImages alert_images;
     bool config_attached = false;
     bool started = false;
     mutable std::mutex mutex;
-    std::mutex capture_mutex;
 };
 
 AiTaskRunner::AiTaskRunner(const AiOptions &options) : state_(new State(options)) {}
 
 AiTaskRunner::~AiTaskRunner() {
-    if (state_) {
-        state_->Release();
-    }
+    state_->Release();
 }
 
-bool AiTaskRunner::Start() { return state_ != nullptr && state_->Start(); }
+bool AiTaskRunner::Start() { return state_->Start(); }
 
 void AiTaskRunner::Stop() {
-    if (state_) {
-        state_->Stop();
-    }
+    state_->Stop();
 }
 
 AiCapabilities AiTaskRunner::GetCapabilities() const {
@@ -1112,25 +981,16 @@ AiCapabilities AiTaskRunner::GetCapabilities() const {
 }
 
 AiConfig AiTaskRunner::GetConfig() const {
-    if (!state_) {
-        return AiConfig{};
-    }
     std::lock_guard<std::mutex> lock(state_->mutex);
     return state_->config;
 }
 
 AiStats AiTaskRunner::GetStats() const {
-    if (!state_) {
-        return AiStats{};
-    }
     std::lock_guard<std::mutex> lock(state_->mutex);
     return state_->SummaryStatsLocked();
 }
 
 AiInferenceResult AiTaskRunner::GetLastResult() const {
-    if (!state_) {
-        return AiInferenceResult{};
-    }
     std::lock_guard<std::mutex> lock(state_->mutex);
     AiInferenceResult latest_result;
     int64_t latest_result_time_ms = 0;
@@ -1148,9 +1008,6 @@ AiInferenceResult AiTaskRunner::GetLastResult() const {
 }
 
 std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
-    if (!state_) {
-        return std::vector<AiTaskInfo>();
-    }
     std::lock_guard<std::mutex> lock(state_->mutex);
     std::vector<AiTaskInfo> statuses;
     statuses.reserve(state_->task_workers.size());
@@ -1159,40 +1016,21 @@ std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
         if (!task_worker) {
             continue;
         }
-        AiTaskInfo status;
-        status.config = task_worker->config;
-        status.stats = state_->TaskStatsLocked(task_worker);
-        status.last_result = task_worker->last_result;
-        statuses.push_back(status);
+        AiTaskInfo task_info;
+        task_info.config = task_worker->config;
+        task_info.stats = state_->TaskStatsLocked(task_worker);
+        task_info.last_result = task_worker->last_result;
+        statuses.push_back(task_info);
     }
     return statuses;
 }
 
 std::vector<AiAlertRecord> AiTaskRunner::ListAlerts() const {
-    if (!state_) {
-        return std::vector<AiAlertRecord>();
-    }
-    std::lock_guard<std::mutex> lock(state_->mutex);
-    std::vector<AiAlertRecord> alerts = state_->alerts;
-    std::reverse(alerts.begin(), alerts.end());
-    return alerts;
+    return state_->alert_images.List();
 }
 
 std::string AiTaskRunner::ReadAlertImage(const std::string &id) const {
-    if (!state_ || id.empty()) {
-        return std::string();
-    }
-    {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        const auto iter = std::find_if(
-            state_->alerts.begin(), state_->alerts.end(),
-            [&id](const AiAlertRecord &alert) { return alert.id == id; });
-        if (iter == state_->alerts.end()) {
-            return std::string();
-        }
-    }
-    return infra::File::ReadAll(AlertImagePath(state_->options.alert_image_dir,
-                                               id));
+    return state_->alert_images.ReadImage(id);
 }
 
 }  // namespace live_stream

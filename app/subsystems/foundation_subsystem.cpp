@@ -5,10 +5,6 @@
 namespace live_stream {
 namespace {
 
-bool InstallProductScopeConfigGuards(IConfig* config) {
-    return config != nullptr;
-}
-
 OperationAction MapAuthAction(AuthAuditAction action) {
     switch (action) {
         case AuthAuditAction::kLogin:
@@ -39,13 +35,9 @@ OperationResult MapAuthResult(AuthAuditResult result) {
 
 class AuthAuditToLoggerSink : public IAuthAuditSink {
 public:
-    explicit AuthAuditToLoggerSink(ILogger* logger) : logger_(logger) {}
+    explicit AuthAuditToLoggerSink(ILogger& logger) : logger_(logger) {}
 
     bool RecordAuthOperation(const AuthAuditRecord& record) override {
-        if (logger_ == nullptr) {
-            return false;
-        }
-
         OperationRecord operation;
         operation.request_id = record.context.request_id;
         operation.user_name = record.user_name;
@@ -56,11 +48,11 @@ public:
         operation.target = record.target;
         operation.result = MapAuthResult(record.result);
         operation.reason = record.reason;
-        return logger_->RecordOperation(operation);
+        return logger_.RecordOperation(operation);
     }
 
 private:
-    ILogger* logger_ = nullptr;
+    ILogger& logger_;
 };
 
 }  // namespace
@@ -102,12 +94,6 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         Stop();
         return false;
     }
-    if (!InstallProductScopeConfigGuards(config_.get())) {
-        Error("app", "Install product scope config guards failed");
-        Stop();
-        return false;
-    }
-
     event_.reset(new event::Bus());
     if (!event_ || !event_->Start()) {
         Error("app", "Start event failed");
@@ -126,11 +112,15 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
     auth_ = CreateAuth(auth_options, auth_dependencies,
                        CreateAuthUsers(auth_users_options),
                        CreatePasswordVerifier(PasswordVerifierKind::kPbkdf2));
-    auth_audit_sink_.reset(new AuthAuditToLoggerSink(logger_.get()));
-    if (auth_ != nullptr) {
-        (void)auth_->SetAuditSink(auth_audit_sink_.get());
+    if (!auth_) {
+        Error("app", "Create auth failed: users=%s",
+              paths.auth_users_path);
+        Stop();
+        return false;
     }
-    if (!auth_ || !auth_->Start()) {
+    auth_audit_sink_.reset(new AuthAuditToLoggerSink(*logger_));
+    (void)auth_->SetAuditSink(auth_audit_sink_.get());
+    if (!auth_->Start()) {
         Error("app", "Start auth failed: users=%s",
               paths.auth_users_path);
         Stop();

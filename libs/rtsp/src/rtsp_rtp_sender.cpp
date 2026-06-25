@@ -2,35 +2,32 @@
 
 #include "rtsp_transport.h"
 
-#include <utility>
-
 namespace live_stream {
 
 class RtspRtpPacketSink final : public rtp::IRtpPacketSink {
 public:
-    RtspRtpPacketSink(RtspRtpSender *sender,
-                      std::shared_ptr<RtspSession> session,
-                      const MediaFrame *frame,
-                      const RtspRtpSenderContext *context)
+    RtspRtpPacketSink(RtspRtpSender &sender,
+                      RtspSession &session,
+                      const MediaFrame &frame,
+                      const RtspRtpSenderContext &context)
         : sender_(sender),
-          session_(std::move(session)),
+          session_(session),
           frame_(frame),
           context_(context) {}
 
     bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
-        if (sender_ == nullptr || frame_ == nullptr || context_ == nullptr ||
-            !ok_) {
+        if (!ok_) {
             return false;
         }
-        ok_ = sender_->SendRtpPacketView(session_, *frame_, packet, *context_);
+        ok_ = sender_.SendRtpPacketView(session_, frame_, packet, context_);
         return ok_;
     }
 
 private:
-    RtspRtpSender *sender_ = nullptr;
-    std::shared_ptr<RtspSession> session_;
-    const MediaFrame *frame_ = nullptr;
-    const RtspRtpSenderContext *context_ = nullptr;
+    RtspRtpSender &sender_;
+    RtspSession &session_;
+    const MediaFrame &frame_;
+    const RtspRtpSenderContext &context_;
     bool ok_ = true;
 };
 
@@ -41,39 +38,35 @@ bool IsKeyframe(const MediaFrame &frame) {
            frame.frame_type == FrameType::kI;
 }
 
-bool RtpCodecFromCodec(Codec codec, rtp::Codec *rtp_codec) {
-    if (rtp_codec == nullptr) {
-        return false;
-    }
+bool RtpCodecFromCodec(Codec codec, rtp::Codec &rtp_codec) {
     if (codec == Codec::kH264) {
-        *rtp_codec = rtp::Codec::kH264;
+        rtp_codec = rtp::Codec::kH264;
         return true;
     }
     if (codec == Codec::kH265) {
-        *rtp_codec = rtp::Codec::kH265;
+        rtp_codec = rtp::Codec::kH265;
         return true;
     }
     return false;
 }
 
-bool BuildRtpInput(const MediaFrame &frame, uint16_t *sequence,
-                   uint32_t ssrc, rtp::RtpPacketizerInput *input) {
-    if (input == nullptr || sequence == nullptr ||
-        !IsMediaFramePayloadValid(frame)) {
+bool BuildRtpInput(const MediaFrame &frame, uint16_t &sequence,
+                   uint32_t ssrc, rtp::RtpPacketizerInput &input) {
+    if (!IsMediaFramePayloadValid(frame)) {
         return false;
     }
     rtp::Codec rtp_codec = rtp::Codec::kH264;
-    if (!RtpCodecFromCodec(frame.codec, &rtp_codec)) {
+    if (!RtpCodecFromCodec(frame.codec, rtp_codec)) {
         return false;
     }
-    input->codec = rtp_codec;
-    input->payload = MediaFramePayloadData(frame);
-    input->payload_size = frame.payload.Size();
-    input->pts_us = frame.pts_us;
-    input->sequence = sequence;
-    input->ssrc = ssrc;
-    input->payload_type = rtp::RtpPayloadTypeForCodec(input->codec);
-    return input->payload != nullptr && input->payload_size > 0;
+    input.codec = rtp_codec;
+    input.payload = MediaFramePayloadData(frame);
+    input.payload_size = frame.payload.Size();
+    input.pts_us = frame.pts_us;
+    input.sequence = &sequence;
+    input.ssrc = ssrc;
+    input.payload_type = rtp::RtpPayloadTypeForCodec(input.codec);
+    return input.payload != nullptr && input.payload_size > 0;
 }
 
 }  // namespace
@@ -81,26 +74,20 @@ bool BuildRtpInput(const MediaFrame &frame, uint16_t *sequence,
 RtspRtpSender::RtspRtpSender(uint32_t rtp_mtu_bytes)
     : packetizer_(rtp_mtu_bytes) {}
 
-void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
-                              const MediaFrame &frame,
+void RtspRtpSender::SendFrame(RtspSession &session, const MediaFrame &frame,
                               const RtspRtpSenderContext &context) {
-    if (session == nullptr || context.mutex == nullptr ||
-        context.service_stats == nullptr) {
-        return;
-    }
-
     // 每个 RTSP session 必须从关键帧开始；如果 subscription 溢出后重新等待关键帧，
     // 非关键帧直接丢弃，避免客户端解码参考帧缺失。
     bool should_drop = false;
     {
-        std::lock_guard<std::mutex> lock(*context.mutex);
-        if (!session->keyframe_seen) {
+        std::lock_guard<std::mutex> lock(context.mutex);
+        if (!session.keyframe_seen) {
             if (!IsKeyframe(frame)) {
-                ++session->stats.dropped_frames;
-                ++context.service_stats->dropped_frames;
+                ++session.stats.dropped_frames;
+                ++context.service_stats.dropped_frames;
                 should_drop = true;
             } else {
-                session->keyframe_seen = true;
+                session.keyframe_seen = true;
             }
         }
     }
@@ -110,43 +97,38 @@ void RtspRtpSender::SendFrame(const std::shared_ptr<RtspSession> &session,
 
     uint16_t sequence = 0;
     {
-        std::lock_guard<std::mutex> lock(*context.mutex);
-        sequence = session->rtp_sequence;
+        std::lock_guard<std::mutex> lock(context.mutex);
+        sequence = session.rtp_sequence;
     }
 
     // Packetize 会按 MTU 拆出一个或多个 RTP packet，并通过 sink 立即发送；
     // sequence 在锁外推进，发送结束后再写回 session，减少锁持有时间。
-    RtspRtpPacketSink sink(this, session, &frame, &context);
+    RtspRtpPacketSink sink(*this, session, frame, context);
     rtp::RtpPacketizerInput input;
-    if (BuildRtpInput(frame, &sequence, session->ssrc, &input)) {
+    if (BuildRtpInput(frame, sequence, session.ssrc, input)) {
         (void)packetizer_.Packetize(input, &sink);
     }
     {
-        std::lock_guard<std::mutex> lock(*context.mutex);
-        session->rtp_sequence = sequence;
+        std::lock_guard<std::mutex> lock(context.mutex);
+        session.rtp_sequence = sequence;
     }
 }
 
 bool RtspRtpSender::SendRtpPacketView(
-    const std::shared_ptr<RtspSession> &session,
+    RtspSession &session,
     const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
     const RtspRtpSenderContext &context) {
-    if (session == nullptr || context.mutex == nullptr ||
-        context.service_stats == nullptr) {
-        return false;
-    }
-
-    RtspTransportTarget target;
+    RtspRtpRoute route;
     {
-        std::lock_guard<std::mutex> lock(*context.mutex);
+        std::lock_guard<std::mutex> lock(context.mutex);
         // 发送前复制 transport 快照，避免持锁调用 net。SETUP/TEARDOWN 同时发生时，
         // 发送失败会走统一关闭路径。
-        target.mode = session->transport;
-        target.connection_id = session->connection_id;
-        target.udp_socket_id = session->rtp_socket_id;
-        target.udp_peer = session->udp_rtp_peer;
-        target.interleaved_rtp_channel = session->interleaved_rtp_channel;
+        route.mode = session.transport;
+        route.connection_id = session.connection_id;
+        route.udp_socket_id = session.rtp_socket_id;
+        route.udp_peer = session.udp_rtp_peer;
+        route.interleaved_rtp_channel = session.interleaved_rtp_channel;
     }
 
     const size_t packet_size = packet.Size();
@@ -154,36 +136,32 @@ bool RtspRtpSender::SendRtpPacketView(
         return false;
     }
     const bool sent = RtspTransport::SendRtpPacket(
-        context.net_io, target, frame, packet);
+        context.net_io, route, frame, packet);
     if (!sent) {
         // 发送失败通常表示 TCP 队列满、连接关闭或 UDP socket 不可用。这里按慢客户端
         // 处理并关闭控制连接，让 CloseSessionResources 释放 subscription/UDP socket。
         {
-            std::lock_guard<std::mutex> lock(*context.mutex);
-            ++session->stats.dropped_frames;
-            ++context.service_stats->dropped_frames;
+            std::lock_guard<std::mutex> lock(context.mutex);
+            ++session.stats.dropped_frames;
+            ++context.service_stats.dropped_frames;
         }
         {
-            std::lock_guard<std::mutex> lock(*context.mutex);
-            ++context.service_stats->slow_client_closes;
+            std::lock_guard<std::mutex> lock(context.mutex);
+            ++context.service_stats.slow_client_closes;
         }
-        if (context.net_io != nullptr) {
-            (void)context.net_io->Close(target.connection_id);
-        }
+        (void)context.net_io.Close(route.connection_id);
         return false;
     }
 
     {
-        std::lock_guard<std::mutex> lock(*context.mutex);
+        std::lock_guard<std::mutex> lock(context.mutex);
         // pending_bytes 只对 TCP interleaved 有意义；UDP 下 net 返回 0 或当前诊断值。
-        ++session->stats.sent_rtp_packets;
-        session->stats.sent_rtp_bytes += packet_size;
-        session->stats.pending_bytes =
-            context.net_io != nullptr
-                ? context.net_io->PendingBytes(target.connection_id)
-                : 0;
-        ++context.service_stats->sent_rtp_packets;
-        context.service_stats->sent_rtp_bytes += packet_size;
+        ++session.stats.sent_rtp_packets;
+        session.stats.sent_rtp_bytes += packet_size;
+        session.stats.pending_bytes =
+            context.net_io.PendingBytes(route.connection_id);
+        ++context.service_stats.sent_rtp_packets;
+        context.service_stats.sent_rtp_bytes += packet_size;
     }
     return true;
 }

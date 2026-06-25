@@ -4,11 +4,11 @@
 #include <memory>
 
 #include "alarm.h"
-#include "network_api.h"
+#include "system/network.h"
 #include "subsystems/device_platform_dependencies.h"
 #include "system.h"
-#include "time_api.h"
-#include "upgrade.h"
+#include "system/time.h"
+#include "system/upgrade.h"
 
 namespace live_stream {
 

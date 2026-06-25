@@ -3,36 +3,55 @@
 
 #include "http.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace live_stream {
 
-using HttpRouteCallback = HttpResponse (*)(void *user,
-                                           const HttpRequest &request);
+using HttpRouteCallback = std::function<HttpResponse(const HttpRequest &)>;
 
 class IHttpRouter {
 public:
     virtual ~IHttpRouter() = default;
 
     virtual void AddExactRoute(HttpMethod method, const char *path,
-                               HttpRouteCallback callback, void *user) = 0;
+                               HttpRouteCallback callback) = 0;
     virtual void AddPrefixRoute(HttpMethod method, const char *path,
-                                HttpRouteCallback callback, void *user) = 0;
+                                HttpRouteCallback callback) = 0;
+
+    template <typename Handler>
+    void AddExactRoute(HttpMethod method, const char *path, Handler *handler,
+                       HttpResponse (Handler::*callback)(
+                           const HttpRequest &request)) {
+        AddExactRoute(method, path,
+                      [handler, callback](const HttpRequest &request) {
+                          return (handler->*callback)(request);
+                      });
+    }
+
+    template <typename Handler>
+    void AddPrefixRoute(HttpMethod method, const char *path, Handler *handler,
+                        HttpResponse (Handler::*callback)(
+                            const HttpRequest &request)) {
+        AddPrefixRoute(method, path,
+                       [handler, callback](const HttpRequest &request) {
+                           return (handler->*callback)(request);
+                       });
+    }
 };
 
 struct HttpRouteMatch {
     bool found = false;
-    HttpRouteCallback callback = nullptr;
-    void *user = nullptr;
+    HttpRouteCallback callback;
 };
 
 class HttpRouter : public IHttpRouter {
 public:
     void AddExactRoute(HttpMethod method, const char *path,
-                       HttpRouteCallback callback, void *user) override;
+                       HttpRouteCallback callback) override;
     void AddPrefixRoute(HttpMethod method, const char *path,
-                        HttpRouteCallback callback, void *user) override;
+                        HttpRouteCallback callback) override;
     HttpRouteMatch Match(const HttpRequest &request) const;
     void Clear();
 
@@ -46,12 +65,11 @@ private:
         HttpMethod method = HttpMethod::kGet;
         std::string path;
         MatchType match_type = MatchType::kExact;
-        HttpRouteCallback callback = nullptr;
-        void *user = nullptr;
+        HttpRouteCallback callback;
     };
 
     void AddRoute(HttpMethod method, const char *path, MatchType match_type,
-                  HttpRouteCallback callback, void *user);
+                  HttpRouteCallback callback);
 
     std::vector<Route> routes_;
 };

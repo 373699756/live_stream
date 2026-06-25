@@ -32,13 +32,13 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
     const HttpSessionParseOptions &options,
     std::vector<HttpRequestLog> *request_logs) {
     HttpSessionParseResult result;
-    size_t parsed_size = 0;
+    size_t parsed_requests = 0;
     HttpRequestSplitOptions split_options;
     split_options.max_header_bytes = options.max_request_header_bytes;
     split_options.max_body_bytes = options.max_request_body_bytes;
 
     while (!closing_ &&
-           parsed_size < static_cast<size_t>(options.max_pipelined_requests)) {
+           parsed_requests < static_cast<size_t>(options.max_pipelined_requests)) {
         if (splitter_.BufferedBytes() == 0) {
             result.has_pending = !pending_requests_.empty();
             return result;
@@ -80,7 +80,7 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
             request_logs->push_back(std::move(log));
         }
 
-        ++parsed_size;
+        ++parsed_requests;
         if (pending_requests_.back().close_after_response) {
             closing_ = true;
             splitter_.Clear();

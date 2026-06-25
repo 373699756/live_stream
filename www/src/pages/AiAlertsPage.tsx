@@ -35,6 +35,7 @@ import {
     normalizeAiRootConfigForSave,
 } from '../features/ai-alerts/aiAlertFormat';
 import {
+    capabilityForTask,
     isAiTaskAvailable,
     taskLabel,
     taskUnavailableText,
@@ -94,21 +95,27 @@ const kAlarmDurationOptions = [
 
 const kMinimumRegionSize = 0.01;
 
-function defaultTaskConfig(task: AiTaskName): AiModelConfig {
+function defaultTaskConfig(
+    task: AiTaskName,
+    capabilities?: AiCapabilities | null,
+): AiModelConfig {
+    const capability = capabilityForTask(capabilities, task);
+    const requiresModel =
+        capability?.requires_model ??
+        (task === 'object_detection' || task === 'perimeter_detection');
     return {
         enabled: false,
-        backend: 'hisi3516dv300_nnie',
+        backend: capability?.supported_backends[0] ?? 'hisi3516dv300_nnie',
         task,
-        stream: 'sub',
-        model_path:
-            task === 'object_detection' || task === 'perimeter_detection'
-                ? 'models/inst_ssd_cycle.wk'
-                : '',
-        input_width: 300,
-        input_height: 300,
-        inference_interval_ms: 500,
-        confidence_threshold: 0.5,
-        max_results: 16,
+        stream: capability?.supported_streams[0] ?? 'sub',
+        model_path: requiresModel ? (capability?.default_model_path ?? '') : '',
+        input_width: capability?.default_input_width ?? 300,
+        input_height: capability?.default_input_height ?? 300,
+        inference_interval_ms:
+            capability?.default_inference_interval_ms ?? 500,
+        confidence_threshold:
+            capability?.default_confidence_threshold ?? 0.5,
+        max_results: capability?.default_max_results ?? 16,
         perimeter_regions: [],
     };
 }
@@ -146,7 +153,7 @@ function sharedHiddenTaskConfig(
     config: AiConfig,
     capabilities?: AiCapabilities | null,
 ) {
-    const fallback = defaultTaskConfig('object_detection');
+    const fallback = defaultTaskConfig('object_detection', capabilities);
     const source =
         config.tasks.find((task) =>
             isAiTaskAvailable(task.task, capabilities),
@@ -187,7 +194,7 @@ function withSharedHiddenDefaults(
     return {
         ...config,
         tasks: config.tasks.map((task) => {
-            const fallback = defaultTaskConfig(task.task);
+            const fallback = defaultTaskConfig(task.task, capabilities);
             return {
                 ...fallback,
                 ...task,
@@ -209,7 +216,7 @@ function completeAiConfig(
     const tasks = kTaskOrder.map((taskName) =>
         cloneTaskConfig(
             config.tasks.find((task) => task.task === taskName) ??
-                defaultTaskConfig(taskName),
+                defaultTaskConfig(taskName, capabilities),
         ),
     );
     return withSharedHiddenDefaults({
@@ -499,7 +506,7 @@ function SnapshotRail({
                                         {formatTimestamp(alert.timestamp_ms)}
                                     </em>
                                     <span>{streamLabel(alert.stream)}</span>
-                                    <span>{alert.detection_size} 个目标</span>
+                                    <span>{alert.detected_targets} 个目标</span>
                                     <span>{maxConfidence(alert)}</span>
                                 </span>
                             </button>
@@ -518,7 +525,7 @@ export function AiAlertsPage() {
     const [dirty, setDirty] = useState(false);
     const [alarmDirty, setAlarmDirty] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [saveMessage, setSaveMessage] = useState('');
+    const [saveMsg, setSaveMsg] = useState('');
     const [editingPerimeter, setEditingPerimeter] = useState(false);
     const [activeRegionIndex, setActiveRegionIndex] = useState(0);
     const perimeterTask = draftTaskByName(draft, 'perimeter_detection');
@@ -526,7 +533,7 @@ export function AiAlertsPage() {
         editingPerimeter && perimeterTask ? perimeterTask.stream : stream;
     const { statuses, previewUrls } = useLiveView(previewStream);
     const {
-        status,
+        aiStatus,
         alarmConfig,
         alarmInfo,
         lastAlarmEvent,
@@ -535,28 +542,28 @@ export function AiAlertsPage() {
         error,
         refresh,
     } = useAiAlerts();
-    const aiCapabilities = status?.capabilities ?? null;
+    const aiCapabilities = aiStatus?.capabilities ?? null;
     const activeStatus = statuses.find((item) => item.stream === previewStream);
-    const summary = status?.summary ?? emptyStats();
+    const summary = aiStatus?.summary ?? emptyStats();
     const supportedTaskSummary = useMemo(() => {
-        if (!status) {
-            return { backendLabel: '读取中', enabledSize: 0 };
+        if (!aiStatus) {
+            return { backendLabel: '读取中', enabledTaskTotal: 0 };
         }
-        const enabledTasks = status.tasks.filter(
+        const enabledTasks = aiStatus.tasks.filter(
             (task) =>
                 task.config.enabled &&
-                isAiTaskAvailable(task.config.task, status.capabilities),
+                isAiTaskAvailable(task.config.task, aiStatus.capabilities),
         );
         return {
             backendLabel:
-                !status.summary.enabled || enabledTasks.length === 0
+                !aiStatus.summary.enabled || enabledTasks.length === 0
                     ? '未运行'
                     : enabledTasks.every((task) => task.stats.backend_available)
                       ? '可用'
                       : '异常',
-            enabledSize: enabledTasks.length,
+            enabledTaskTotal: enabledTasks.length,
         };
-    }, [status]);
+    }, [aiStatus]);
     const frame = useMemo(
         () => parseResolution(activeStatus?.resolution),
         [activeStatus?.resolution],
@@ -587,17 +594,17 @@ export function AiAlertsPage() {
             ? perimeterRegions[activeRegionIndex]
             : null;
     const orderedTaskStatuses = useMemo(
-        () => kTaskOrder.map((task) => taskByName(status?.tasks ?? [], task)),
-        [status],
+        () => kTaskOrder.map((task) => taskByName(aiStatus?.tasks ?? [], task)),
+        [aiStatus],
     );
 
     useEffect(() => {
-        if (!status || dirty) {
+        if (!aiStatus || dirty) {
             return;
         }
-        setDraft(completeAiConfig(status.config, status.capabilities));
-        setSaveMessage('');
-    }, [dirty, status]);
+        setDraft(completeAiConfig(aiStatus.config, aiStatus.capabilities));
+        setSaveMsg('');
+    }, [dirty, aiStatus]);
 
     useEffect(() => {
         if (!alarmConfig || alarmDirty) {
@@ -626,14 +633,14 @@ export function AiAlertsPage() {
         (updater: (config: AiConfig) => AiConfig) => {
             setDraft((current) => (current ? updater(current) : current));
             setDirty(true);
-            setSaveMessage('');
+            setSaveMsg('');
         },
         [],
     );
 
     const updateTaskEnabled = (taskName: AiTaskName, enabled: boolean) => {
         if (!isAiTaskAvailable(taskName, aiCapabilities)) {
-            setSaveMessage(
+            setSaveMsg(
                 `${taskLabel(taskName)}${taskUnavailableText(
                     taskName,
                     aiCapabilities,
@@ -659,7 +666,7 @@ export function AiAlertsPage() {
     const updateAlarmRuleWith = (patch: Partial<AlarmRuleConfig>) => {
         setAlarmRule((current) => (current ? { ...current, ...patch } : current));
         setAlarmDirty(true);
-        setSaveMessage('');
+        setSaveMsg('');
     };
 
     const updateSensitivity = (nextSensitivity: SensitivityLevel) => {
@@ -702,7 +709,7 @@ export function AiAlertsPage() {
         const regionName =
             perimeterRegions[regionIndex]?.name || `region-${regionIndex + 1}`;
         setActiveRegionIndex(regionIndex);
-        setSaveMessage('');
+        setSaveMsg('');
         updatePerimeterRegions((currentRegions) =>
             replaceRegionAt(
                 currentRegions,
@@ -732,7 +739,7 @@ export function AiAlertsPage() {
         }
         setEditingPerimeter(true);
         setActiveRegionIndex(perimeterRegions.length);
-        setSaveMessage('');
+        setSaveMsg('');
     };
 
     const clearRegions = () => {
@@ -782,10 +789,10 @@ export function AiAlertsPage() {
     };
 
     const restoreDraft = () => {
-        if (!status) {
+        if (!aiStatus) {
             return;
         }
-        setDraft(completeAiConfig(status.config, status.capabilities));
+        setDraft(completeAiConfig(aiStatus.config, aiStatus.capabilities));
         setDirty(false);
         if (alarmConfig) {
             setAlarmRule({
@@ -794,7 +801,7 @@ export function AiAlertsPage() {
             });
             setAlarmDirty(false);
         }
-        setSaveMessage('');
+        setSaveMsg('');
     };
 
     const saveDraft = () => {
@@ -802,7 +809,7 @@ export function AiAlertsPage() {
             return;
         }
         setSaving(true);
-        setSaveMessage('');
+        setSaveMsg('');
         const nextConfig = normalizeAiRootConfigForSave(
             withSharedHiddenDefaults(draft, aiCapabilities),
             aiCapabilities,
@@ -829,10 +836,10 @@ export function AiAlertsPage() {
                 if (nextAlarmRule) {
                     setAlarmRule(nextAlarmRule);
                 }
-                setSaveMessage('已保存并应用');
+                setSaveMsg('已保存并应用');
             })
             .catch((err: unknown) => {
-                setSaveMessage(err instanceof Error ? err.message : '保存失败');
+                setSaveMsg(err instanceof Error ? err.message : '保存失败');
             })
             .finally(() => setSaving(false));
     };
@@ -909,7 +916,7 @@ export function AiAlertsPage() {
             </div>
 
             {error ? (
-                <div className="status-note error-note">{error}</div>
+                <div className="aiStatus-note error-note">{error}</div>
             ) : null}
 
             <div className="ai-console-layout">
@@ -924,7 +931,7 @@ export function AiAlertsPage() {
                             <>
                                 <AiDetectionOverlay
                                     frameResolution={activeStatus?.resolution}
-                                    status={status}
+                                    status={aiStatus}
                                     stream={previewStream}
                                     error={error}
                                 />
@@ -933,12 +940,12 @@ export function AiAlertsPage() {
                         }
                     />
 
-                    <section className="ai-status-compact">
-                        <div className="ai-status-kpis">
+                    <section className="ai-aiStatus-compact">
+                        <div className="ai-aiStatus-kpis">
                             <div>
                                 <span>事件</span>
                                 <strong>
-                                    {supportedTaskSummary.enabledSize}{' '}
+                                    {supportedTaskSummary.enabledTaskTotal}{' '}
                                     启用
                                 </strong>
                             </div>
@@ -1283,7 +1290,7 @@ export function AiAlertsPage() {
                             {dirty || alarmDirty ? (
                                 <span>有未保存修改</span>
                             ) : null}
-                            {saveMessage ? <span>{saveMessage}</span> : null}
+                            {saveMsg ? <span>{saveMsg}</span> : null}
                             <button
                                 type="button"
                                 disabled={!draft || saving}

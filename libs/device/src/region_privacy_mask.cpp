@@ -1,7 +1,7 @@
 #include "region_overlay.h"
 
 #include "infra/log.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -94,36 +94,36 @@ bool IsMaskWithinFrame(const PrivacyMask &mask,
     return right <= frame_size.width && bottom <= frame_size.height;
 }
 
-bool ParsePrivacyMask(const ConfigJson &value, const VideoSize &frame_size,
+bool ParsePrivacyMask(const Json &value, const VideoSize &frame_size,
                       PrivacyMask *mask) {
     if (mask == nullptr || !value.is_object()) {
         return false;
     }
     std::string color_text;
-    if (!json_utils::ReadField(value, "enabled", &mask->enabled) ||
-        !json_utils::ReadField(value, "x", &mask->position.x) ||
-        !json_utils::ReadField(value, "y", &mask->position.y) ||
-        !json_utils::ReadField(value, "width", &mask->size.width) ||
-        !json_utils::ReadField(value, "height", &mask->size.height) ||
-        !json_utils::ReadField(value, "color", &color_text) ||
+    if (!json_reader::ReadField(value, "enabled", &mask->enabled) ||
+        !json_reader::ReadField(value, "x", &mask->position.x) ||
+        !json_reader::ReadField(value, "y", &mask->position.y) ||
+        !json_reader::ReadField(value, "width", &mask->size.width) ||
+        !json_reader::ReadField(value, "height", &mask->size.height) ||
+        !json_reader::ReadField(value, "color", &color_text) ||
         !ParseHexColor(color_text, &mask->color)) {
         return false;
     }
     return IsMaskWithinFrame(*mask, frame_size);
 }
 
-bool ParsePrivacyMaskArray(const ConfigJson &privacy_masks,
+bool ParsePrivacyMaskArray(const Json &privacy_masks,
                            const char *stream_name,
                            const VideoSize &frame_size,
                            PrivacyMask *masks) {
     if (stream_name == nullptr || masks == nullptr ||
         !privacy_masks.contains(stream_name) ||
         !privacy_masks.at(stream_name).is_array() ||
-        privacy_masks.at(stream_name).size() != PrivacyMasks::kSlotSize) {
+        privacy_masks.at(stream_name).size() != PrivacyMasks::kPrivacyMaskSlots) {
         return false;
     }
-    const ConfigJson &items = privacy_masks.at(stream_name);
-    for (uint32_t index = 0; index < PrivacyMasks::kSlotSize; ++index) {
+    const Json &items = privacy_masks.at(stream_name);
+    for (uint32_t index = 0; index < PrivacyMasks::kPrivacyMaskSlots; ++index) {
         if (!ParsePrivacyMask(items.at(index), frame_size, &masks[index])) {
             return false;
         }
@@ -147,7 +147,7 @@ bool ApplyMaskSet(RegionOverlay *service, const char *stream_name,
     if (!IsValidChannel(target)) {
         return true;
     }
-    for (uint32_t slot = 0; slot < PrivacyMasks::kSlotSize; ++slot) {
+    for (uint32_t slot = 0; slot < PrivacyMasks::kPrivacyMaskSlots; ++slot) {
         const std::string name = PrivacyMaskName(stream_name, slot);
         const PrivacyMask &mask = masks[slot];
         if (!mask.enabled) {
@@ -179,7 +179,7 @@ bool ApplyMaskSet(RegionOverlay *service, const char *stream_name,
 
 }  // namespace
 
-bool ParsePrivacyMasksConfig(const ConfigJson &value,
+bool ParsePrivacyMasksConfig(const Json &value,
                              const MediaChannels &channels,
                              PrivacyMasks *masks) {
     if (masks == nullptr || !value.is_object() ||
@@ -187,7 +187,7 @@ bool ParsePrivacyMasksConfig(const ConfigJson &value,
         !value.at("privacy_masks").is_object()) {
         return false;
     }
-    const ConfigJson &privacy_masks = value.at("privacy_masks");
+    const Json &privacy_masks = value.at("privacy_masks");
     return ParsePrivacyMaskArray(privacy_masks, "main", channels.main_size,
                                  masks->main) &&
            ParsePrivacyMaskArray(privacy_masks, "sub", channels.sub_size,

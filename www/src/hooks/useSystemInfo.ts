@@ -3,14 +3,14 @@ import { getSystemInfo } from '../api/system';
 import type { SystemInfo } from '../api/types';
 
 const pollIntervalMs = 2000;
-const statusTimeoutMs = 1800;
+const systemInfoTimeoutMs = 1800;
 
-function errorMessage(error: unknown, fallback: string) {
+function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
 
 export function useSystemInfo() {
-    const [status, setStatus] = useState<SystemInfo | null>(null);
+    const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
     const [refreshError, setRefreshError] = useState('');
 
     useEffect(() => {
@@ -19,16 +19,16 @@ export function useSystemInfo() {
         const load = async () => {
             const startedAt = Date.now();
             try {
-                const nextStatus = await getSystemInfo({
-                    timeoutMs: statusTimeoutMs,
+                const nextSystemInfo = await getSystemInfo({
+                    timeoutMs: systemInfoTimeoutMs,
                 });
                 if (mounted) {
-                    setStatus(nextStatus);
+                    setSystemInfo(nextSystemInfo);
                     setRefreshError('');
                 }
             } catch (err: unknown) {
                 if (mounted) {
-                    setRefreshError(errorMessage(err, '系统状态刷新失败'));
+                    setRefreshError(errorMsg(err, '系统状态刷新失败'));
                 }
             } finally {
                 if (mounted) {
@@ -48,7 +48,7 @@ export function useSystemInfo() {
     }, []);
 
     return {
-        status,
+        systemInfo,
         refreshError,
     };
 }

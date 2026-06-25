@@ -155,7 +155,7 @@ private:
 using Task = Fn<void()>;
 
 struct ExecutorOptions {
-    uint32_t worker_size = 0;
+    uint32_t workers = 0;
     uint32_t queue_capacity = 4096;
 };
 
@@ -167,7 +167,7 @@ struct ExecutorStats {
     uint32_t pending = 0;
     uint32_t running = 0;
     uint32_t max_pending = 0;
-    uint32_t worker_size = 0;
+    uint32_t workers = 0;
 };
 
 class Executor {

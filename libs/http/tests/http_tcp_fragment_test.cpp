@@ -63,24 +63,24 @@ public:
     bool Start() override { return true; }
     void Stop() override {}
     bool IsStarted() const override { return true; }
-    live_stream::ConfigStatus Set(const std::string&,
-                                  const live_stream::ConfigJson&,
-                                  live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode Set(const std::string&,
+                                  const live_stream::Json&,
+                                  live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
-    live_stream::ConfigJson Get(const std::string&) override {
-        return live_stream::ConfigJson::object();
+    live_stream::Json Get(const std::string&) override {
+        return live_stream::Json::object();
     }
-    live_stream::ConfigStatus Reset(
-        const std::string&, live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode Reset(
+        const std::string&, live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
-    live_stream::ConfigJson Default(const std::string&) override {
-        return live_stream::ConfigJson::object();
+    live_stream::Json Default(const std::string&) override {
+        return live_stream::Json::object();
     }
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
     bool AddScope(const std::string&,
                   const live_stream::ConfigScope&) override {

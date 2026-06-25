@@ -11,6 +11,17 @@ import type {
     UpgradeInfo,
 } from './types';
 
+const minUploadTimeoutMs = 120000;
+const maxUploadTimeoutMs = 300000;
+const uploadBytesPerMs = 128;
+
+function uploadTimeoutMs(file: File): number {
+    return Math.min(
+        maxUploadTimeoutMs,
+        Math.max(minUploadTimeoutMs, Math.ceil(file.size / uploadBytesPerMs)),
+    );
+}
+
 export function getUpgradeInfo(
     init?: ApiRequestOptions,
 ): Promise<UpgradeInfo> {
@@ -40,6 +51,7 @@ export async function uploadUpgradePackage(
     return uploadBinary<UpgradePackageInfo>({
         body: file,
         fallback: mockUpgradePackage(file),
+        init: { timeoutMs: uploadTimeoutMs(file) },
         path: `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
     });
 }

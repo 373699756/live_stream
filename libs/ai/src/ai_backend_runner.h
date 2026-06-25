@@ -2,7 +2,7 @@
 #define LIVE_STREAM_AI_SRC_AI_BACKEND_RUNNER_H_
 
 #include "ai.h"
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_vendor/sdk.h"
 
 #include <memory>
 

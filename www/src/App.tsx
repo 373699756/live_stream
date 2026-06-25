@@ -58,33 +58,33 @@ interface PageErrorBoundaryProps {
 }
 
 interface PageErrorBoundaryState {
-    message: string;
+    msg: string;
 }
 
 class PageErrorBoundary extends Component<
     PageErrorBoundaryProps,
     PageErrorBoundaryState
 > {
-    state: PageErrorBoundaryState = { message: '' };
+    state: PageErrorBoundaryState = { msg: '' };
 
     static getDerivedStateFromError(error: unknown): PageErrorBoundaryState {
         return {
-            message: error instanceof Error ? error.message : '页面加载失败',
+            msg: error instanceof Error ? error.message : '页面加载失败',
         };
     }
 
     componentDidUpdate(previousProps: PageErrorBoundaryProps) {
-        if (previousProps.page !== this.props.page && this.state.message) {
-            this.setState({ message: '' });
+        if (previousProps.page !== this.props.page && this.state.msg) {
+            this.setState({ msg: '' });
         }
     }
 
     render() {
-        if (this.state.message) {
+        if (this.state.msg) {
             return (
                 <div className="panel">
                     <div className="status-note error-note">
-                        页面加载失败：{this.state.message}
+                        页面加载失败：{this.state.msg}
                     </div>
                 </div>
             );

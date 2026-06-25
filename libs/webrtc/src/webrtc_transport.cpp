@@ -49,10 +49,9 @@ WebrtcTransport::~WebrtcTransport() {
 }
 
 bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
-                            uint32_t *next_port_offset,
-                            NetAddress *local_candidate) {
-    if (next_port_offset == nullptr || local_candidate == nullptr ||
-        options.net_io == nullptr || options.net_loop == nullptr ||
+                            uint32_t &next_port_offset,
+                            NetAddress &local_candidate) {
+    if (options.net_io == nullptr || options.net_loop == nullptr ||
         options.peer_id.empty() || options.local_ice_ufrag.empty() ||
         options.local_ice_password.empty()) {
         return false;
@@ -67,7 +66,7 @@ bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
 
     std::unique_ptr<IceTransport> ice;
     uint32_t updated_port_offset = options.next_port_offset;
-    if (!StartIceTransport(options, &updated_port_offset, &ice)) {
+    if (!StartIceTransport(options, updated_port_offset, ice)) {
         dtls->Close();
         return false;
     }
@@ -79,8 +78,8 @@ bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
     on_dtls_timeout_ = options.on_dtls_timeout;
     ice_ = std::move(ice);
     dtls_ = std::move(dtls);
-    *next_port_offset = updated_port_offset;
-    *local_candidate = ice_->local_address();
+    next_port_offset = updated_port_offset;
+    local_candidate = ice_->local_address();
     return true;
 }
 
@@ -117,68 +116,58 @@ void WebrtcTransport::Close() {
 }
 
 bool WebrtcTransport::HandleIcePacket(NetAddress peer, const uint8_t *data,
-                                      size_t size, bool *connected_now) {
-    if (connected_now != nullptr) {
-        *connected_now = false;
-    }
+                                      size_t size, bool &connected_now) {
+    connected_now = false;
     if (ice_ == nullptr) {
         return false;
     }
     bool selected_now = false;
-    if (!ice_->HandleUdpPacket(std::move(peer), data, size, &selected_now)) {
+    if (!ice_->HandleUdpPacket(std::move(peer), data, size, selected_now)) {
         return false;
     }
     if (selected_now) {
         ice_connected_ = true;
-        if (connected_now != nullptr) {
-            *connected_now = true;
-        }
+        connected_now = true;
     }
     return true;
 }
 
 bool WebrtcTransport::ProcessDtlsPacket(
-    const uint8_t *data, size_t size, WebrtcTransportDtlsResult *result) {
-    if (result == nullptr) {
-        return false;
-    }
-    *result = WebrtcTransportDtlsResult();
+    const uint8_t *data, size_t size, WebrtcDtlsOutput &result) {
+    result = WebrtcDtlsOutput();
     if (dtls_ == nullptr || data == nullptr || size == 0) {
-        result->failed = true;
+        result.failed = true;
         return false;
     }
 
-    DtlsProcessResult dtls_result;
+    DtlsProcessOutput dtls_result;
     if (!dtls_->ProcessPacket(data, size, &dtls_result)) {
-        result->failed = true;
-        result->error = dtls_result.error;
+        result.failed = true;
+        result.error = dtls_result.error;
         return false;
     }
     return ApplyDtlsResult(dtls_result, result);
 }
 
 bool WebrtcTransport::HandleDtlsTimeout(
-    WebrtcTransportDtlsResult *result) {
-    if (result == nullptr) {
-        return false;
-    }
-    *result = WebrtcTransportDtlsResult();
+    WebrtcDtlsOutput &result) {
+    result = WebrtcDtlsOutput();
     if (dtls_ == nullptr) {
         return false;
     }
     dtls_timer_id_ = 0;
 
-    DtlsProcessResult dtls_result;
+    DtlsProcessOutput dtls_result;
     if (!dtls_->HandleTimeout(&dtls_result)) {
-        result->failed = true;
-        result->error = dtls_result.error;
+        result.failed = true;
+        result.error = dtls_result.error;
         return false;
     }
     return ApplyDtlsResult(dtls_result, result);
 }
 
 bool WebrtcTransport::SendDtlsResult(
-    const WebrtcTransportDtlsResult &result) {
+    const WebrtcDtlsOutput &result) {
     if (result.outgoing_dtls.empty()) {
         return true;
     }
@@ -188,9 +177,9 @@ bool WebrtcTransport::SendDtlsResult(
 }
 
 bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
-                                        bool *need_keyframe) {
-    if (need_keyframe == nullptr || !inbound_srtp_.ready() ||
-        data == nullptr || size == 0) {
+                                        bool &need_keyframe) {
+    need_keyframe = false;
+    if (!inbound_srtp_.ready() || data == nullptr || size == 0) {
         return false;
     }
     if (!inbound_srtp_.UnprotectRtcp(data, size, &plain_rtcp_packet_)) {
@@ -202,12 +191,11 @@ bool WebrtcTransport::HandleSrtcpPacket(const uint8_t *data, size_t size,
     if (!SrtpSession::ReadRtcpFeedbackStats(plain_rtcp_packet_.data(),
                                             plain_rtcp_packet_.size(),
                                             &feedback_stats)) {
-        *need_keyframe = false;
         return true;
     }
     RecordRtcpFeedback(feedback_stats);
-    *need_keyframe = feedback_stats.pli_packets != 0 ||
-                     feedback_stats.fir_packets != 0;
+    need_keyframe = feedback_stats.pli_packets != 0 ||
+                    feedback_stats.fir_packets != 0;
     return true;
 }
 
@@ -269,20 +257,17 @@ WebrtcTransportInfo WebrtcTransport::GetInfo() const {
     return info;
 }
 
-void WebrtcTransport::FillStats(WebrtcStats *stats) const {
-    if (stats == nullptr) {
-        return;
-    }
+void WebrtcTransport::FillStats(WebrtcStats &stats) const {
     if (ice_ != nullptr && ice_->connected()) {
-        ++stats->selected_ice_pairs;
+        ++stats.selected_ice_pairs;
     }
-    stats->rtcp_packets += rtcp_packets_;
-    stats->rtcp_bytes += rtcp_bytes_;
-    stats->rtcp_pli_packets += rtcp_pli_packets_;
-    stats->rtcp_fir_packets += rtcp_fir_packets_;
-    stats->rtcp_nack_packets += rtcp_nack_packets_;
-    stats->rtcp_transport_cc_packets += rtcp_transport_cc_packets_;
-    stats->rtcp_keyframe_requests += rtcp_keyframe_requests_;
+    stats.rtcp_packets += rtcp_packets_;
+    stats.rtcp_bytes += rtcp_bytes_;
+    stats.rtcp_pli_packets += rtcp_pli_packets_;
+    stats.rtcp_fir_packets += rtcp_fir_packets_;
+    stats.rtcp_nack_packets += rtcp_nack_packets_;
+    stats.rtcp_transport_cc_packets += rtcp_transport_cc_packets_;
+    stats.rtcp_keyframe_requests += rtcp_keyframe_requests_;
 }
 
 bool WebrtcTransport::IsIcePacket(const uint8_t *data, size_t size) {
@@ -300,17 +285,16 @@ bool WebrtcTransport::IsRtcpPacket(const uint8_t *data, size_t size) {
 
 bool WebrtcTransport::StartIceTransport(
     const WebrtcTransportStartOptions &options,
-    uint32_t *next_port_offset,
-    std::unique_ptr<IceTransport> *ice) {
-    if (next_port_offset == nullptr || ice == nullptr ||
-        options.net_io == nullptr || options.net_loop == nullptr) {
+    uint32_t &next_port_offset,
+    std::unique_ptr<IceTransport> &ice) {
+    if (options.net_io == nullptr || options.net_loop == nullptr) {
         return false;
     }
 
-    const uint32_t port_size = options.port_size == 0 ? 1U : options.port_size;
-    for (uint32_t i = 0; i < port_size; ++i) {
+    const uint32_t port_span = options.port_span == 0 ? 1U : options.port_span;
+    for (uint32_t i = 0; i < port_span; ++i) {
         const uint32_t offset =
-            (options.next_port_offset + i) % port_size;
+            (options.next_port_offset + i) % port_span;
         const uint16_t port = PortWithOffset(options.local_port_base, offset);
         if (port == 0) {
             continue;
@@ -328,38 +312,35 @@ bool WebrtcTransport::StartIceTransport(
             candidate->Stop();
             continue;
         }
-        *next_port_offset = (offset + 1) % port_size;
-        *ice = std::move(candidate);
+        next_port_offset = (offset + 1) % port_span;
+        ice = std::move(candidate);
         return true;
     }
     return false;
 }
 
 bool WebrtcTransport::ApplyDtlsResult(
-    const DtlsProcessResult &dtls_result,
-    WebrtcTransportDtlsResult *result) {
-    if (result == nullptr) {
-        return false;
-    }
-    result->outgoing_dtls = dtls_result.outgoing_dtls;
+    const DtlsProcessOutput &dtls_result,
+    WebrtcDtlsOutput &result) {
+    result.outgoing_dtls = dtls_result.outgoing_dtls;
     if (dtls_result.state == DtlsState::kConnected && !dtls_connected_) {
         if (!StartSrtp(dtls_result.srtp_keys)) {
-            result->failed = true;
-            result->error = "srtp_start_failed";
+            result.failed = true;
+            result.error = "srtp_start_failed";
             return false;
         }
         dtls_connected_ = true;
         CancelDtlsTimer();
-        result->connected_now = true;
+        result.connected_now = true;
     } else if (dtls_result.state == DtlsState::kConnecting) {
         if (!ArmDtlsTimer()) {
-            result->failed = true;
-            result->error = "dtls_timer_failed";
+            result.failed = true;
+            result.error = "dtls_timer_failed";
             return false;
         }
     } else if (dtls_result.state == DtlsState::kFailed) {
-        result->failed = true;
-        result->error = dtls_result.error;
+        result.failed = true;
+        result.error = dtls_result.error;
         return false;
     }
     return true;

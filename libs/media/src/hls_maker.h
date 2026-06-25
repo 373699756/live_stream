@@ -12,6 +12,12 @@
 namespace live_stream {
 namespace media_internal {
 
+struct HlsMakerOptions {
+    uint32_t max_segments = 9;
+    uint32_t max_segment_bytes = 4 * 1024 * 1024;
+    uint32_t max_cached_bytes = 32 * 1024 * 1024;
+};
+
 struct TsMuxerState {
     // PAT、PMT 和 video PID 各自维护 continuity value；TS packet 丢包或
     // 重排诊断会依赖这些 4 bit 计数。
@@ -35,6 +41,7 @@ public:
     HlsMaker &operator=(const HlsMaker &) = delete;
     ~HlsMaker();
 
+    void Configure(const HlsMakerOptions &options);
     void Reset();
     void MarkRequested() const;
     bool Requested() const;
@@ -45,6 +52,8 @@ public:
     uint64_t MissingSegments() const;
     uint64_t EvictedSegments() const;
     uint32_t CurrentSegmentSize() const;
+    uint32_t CachedBytes() const;
+    uint64_t DropSize() const;
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;
     MediaSegmentRef FindSegmentRef(uint64_t sequence) const;
@@ -56,8 +65,7 @@ public:
                      bool keyframe,
                      bool prepend_parameter_sets,
                      uint32_t hls_segment_duration_ms,
-                     uint32_t hls_segment_cache_depth,
-                     bool *segment_created);
+                     bool &segment_created);
 
 private:
     struct SegmentState {
@@ -68,15 +76,15 @@ private:
         MediaBufferBuilder body;
     };
 
-    static void ResetSegmentState(SegmentState *segment);
-    static uint32_t ClampSegmentCapacity(size_t capacity);
-    static bool EnsureSegmentCapacity(SegmentState *segment,
-                                      size_t extra_bytes);
-    static TsSegmentBuffer SegmentBuffer(SegmentState *segment);
+    static void ResetSegmentState(SegmentState &segment);
+    static TsSegmentBuffer SegmentBuffer(SegmentState &segment);
     static bool CommitSegmentBuffer(
-        SegmentState *segment,
+        SegmentState &segment,
         const TsSegmentBuffer &buffer);
 
+    uint32_t ClampSegmentCapacity(size_t capacity) const;
+    bool EnsureSegmentCapacity(SegmentState &segment,
+                               size_t extra_bytes) const;
     void ClearSegments();
     void ObserveFrameTiming(const MediaFrame &frame);
     bool AppendFrameToSegment(const FramePayload &payload,
@@ -89,9 +97,10 @@ private:
     void StartSegment(Codec codec, int64_t pts_us);
     void RememberSegmentCapacity(const SegmentState &segment);
     void PopOldestSegment();
-    void PushFinalizedSegment(uint32_t segment_cache_depth);
-    bool FinalizeCurrentSegment(uint32_t segment_cache_depth);
+    bool PushFinalizedSegment();
+    bool FinalizeCurrentSegment();
 
+    HlsMakerOptions options_;
     std::deque<MediaSegmentRef> segments_;
     SegmentState current_segment_;
     TsMuxerState ts_muxer_state_;
@@ -99,6 +108,8 @@ private:
     uint64_t next_segment_sequence_ = 1;
     mutable uint64_t missing_segments_ = 0;
     uint64_t evicted_segments_ = 0;
+    uint32_t cached_bytes_ = 0;
+    uint64_t drop_size_ = 0;
     int64_t last_pts_us_ = -1;
     int64_t last_frame_duration_us_ = 33333;
     mutable bool requested_ = false;

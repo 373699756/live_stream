@@ -100,14 +100,14 @@ std::vector<std::string> WebrtcPeerTable::OpenPeerIds() const {
     return peer_ids;
 }
 
-uint32_t WebrtcPeerTable::ActivePeerSize() const {
-    uint32_t active_size = 0;
+uint32_t WebrtcPeerTable::ActivePeers() const {
+    uint32_t active_peers = 0;
     for (const auto &item : peers_) {
         if (IsOpenPeerState(item.second.state)) {
-            ++active_size;
+            ++active_peers;
         }
     }
-    return active_size;
+    return active_peers;
 }
 
 bool WebrtcPeerTable::IsStreamConnected(StreamId stream_id) const {
@@ -153,29 +153,23 @@ std::vector<WebrtcPeerInfo> WebrtcPeerTable::Peers() const {
 }
 
 bool WebrtcPeerTable::BeginOffer(const std::string &peer_id,
-                                 WebrtcPeerInfo *peer) {
-    if (peer == nullptr) {
-        return false;
-    }
+                                 WebrtcPeerInfo &peer) {
     auto iter = peers_.find(peer_id);
     if (iter == peers_.end() || !IsOpenPeerState(iter->second.state)) {
         return false;
     }
     iter->second.state = WebrtcPeerState::kOfferReceived;
     Touch(peer_id);
-    *peer = iter->second;
+    peer = iter->second;
     return true;
 }
 
 bool WebrtcPeerTable::CompleteOffer(
-    const std::string &peer_id, WebrtcPeerInfo *peer,
-    std::vector<WebrtcIceCandidate> *pending_candidates) {
-    if (peer == nullptr || pending_candidates == nullptr) {
-        return false;
-    }
+    const std::string &peer_id, WebrtcPeerInfo &peer,
+    std::vector<WebrtcIceCandidate> &pending_candidates) {
     auto iter = peers_.find(peer_id);
     if (iter == peers_.end()) {
-        *peer = WebrtcPeerInfo();
+        peer = WebrtcPeerInfo();
         return false;
     }
     if (iter->second.state != WebrtcPeerState::kConnected) {
@@ -183,20 +177,17 @@ bool WebrtcPeerTable::CompleteOffer(
     }
     auto candidate_iter = pending_candidates_.find(peer_id);
     if (candidate_iter != pending_candidates_.end()) {
-        pending_candidates->swap(candidate_iter->second);
+        pending_candidates.swap(candidate_iter->second);
         pending_candidates_.erase(candidate_iter);
     }
     Touch(peer_id);
-    *peer = iter->second;
+    peer = iter->second;
     return true;
 }
 
 bool WebrtcPeerTable::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
-                                          bool *queued) {
-    if (queued == nullptr) {
-        return false;
-    }
-    *queued = false;
+                                          bool &queued) {
+    queued = false;
     auto iter = peers_.find(candidate.peer_id);
     if (iter == peers_.end() || !IsOpenPeerState(iter->second.state)) {
         return false;
@@ -205,7 +196,7 @@ bool WebrtcPeerTable::AddOrQueueCandidate(const WebrtcIceCandidate &candidate,
         iter->second.state == WebrtcPeerState::kOfferReceived) {
         pending_candidates_[candidate.peer_id].push_back(candidate);
         Touch(candidate.peer_id);
-        *queued = true;
+        queued = true;
     }
     return true;
 }
@@ -306,15 +297,12 @@ PeerHostStateUpdate WebrtcPeerTable::ApplyPeerHostState(
 }
 
 bool WebrtcPeerTable::GetOpenPeerStream(const std::string &peer_id,
-                                        StreamId *stream_id) const {
-    if (stream_id == nullptr) {
-        return false;
-    }
+                                        StreamId &stream_id) const {
     const auto iter = peers_.find(peer_id);
     if (iter == peers_.end() || !IsOpenPeerState(iter->second.state)) {
         return false;
     }
-    *stream_id = iter->second.stream_id;
+    stream_id = iter->second.stream_id;
     return true;
 }
 

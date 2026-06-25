@@ -34,6 +34,8 @@ flowchart LR
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
 - 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
   绑定任务/timer 生命周期。
+- 提供 `MultiReaderQueue` 这种无 payload 语义的基础容器，供拥有模块实现
+  “一次写入、多读者按各自位置读取”的内存结构。
 - 提供 `IConfig` 配置中心，负责加载、保存、默认值、scope 原子替换和
   `ConfigScope` verify/apply 调用顺序。
 - 提供 `IAlarm` 轻量告警状态中心，负责告警规则、输入、当前状态、
@@ -44,8 +46,9 @@ flowchart LR
 ## 接口归属
 
 public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任务执行入口是
-`executor.h`，loop/timer 入口是 `loop.h`，配置中心入口保留为 `config.h`，
-告警入口保留为 `alarm.h`。事件 payload 归 `event` 文档维护：
+`executor.h`，loop/timer 入口是 `loop.h`，多读者缓存入口是
+`multi_reader_queue.h`，配置中心入口保留为 `config.h`，告警入口保留为
+`alarm.h`。事件 payload 归 `event` 文档维护：
 
 | EventType | source | target | message | value |
 | --- | --- | --- | --- | ---: |
@@ -67,6 +70,10 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 
 payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTTP body、大 JSON 和指针不能
 通过 event payload 传递；需要详细数据时，handler 应通过拥有模块的查询接口读取。
+
+`MultiReaderQueue<T, kCapacity>` 只提供固定容量、frame/bytes 双上限、
+sequence 读取和覆盖旧数据的基础能力。它不加锁、不调用 handler、不知道 `EventType`，
+也不拥有 `T` 的业务语义；调用方必须在自己的锁和生命周期规则下使用。
 
 `config.h` 的 public API 名称保持 `IConfig`、`ConfigOptions`、`ConfigScope`、
 `CreateConfig()`。配置字段正文归对应模块文档，例如 video/image、overlay 和 snapshot

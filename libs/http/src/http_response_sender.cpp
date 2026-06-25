@@ -1,6 +1,6 @@
 #include "http_response_sender.h"
 
-#include "http_handler_utils.h"
+#include "http_module.h"
 #include "http_protocol.h"
 #include "infra/log.h"
 

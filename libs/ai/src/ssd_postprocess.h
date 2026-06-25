@@ -10,17 +10,17 @@
 namespace live_stream {
 namespace ai_internal {
 
-constexpr uint32_t kSsdLayerSize = 6;
-constexpr uint32_t kSsdReportNodeSize = 12;
-constexpr uint32_t kSsdClassSize = 21;
+constexpr uint32_t kSsdLayers = 6;
+constexpr uint32_t kSsdReportNodes = 12;
+constexpr uint32_t kSsdClasses = 21;
 constexpr uint32_t kSsdInputWidth = 300;
 constexpr uint32_t kSsdInputHeight = 300;
-constexpr uint32_t kSsdPriorSize = 8732;
-constexpr uint32_t kSsdCoordinateSize = 4;
+constexpr uint32_t kSsdPriors = 8732;
+constexpr uint32_t kSsdBoxCoordinates = 4;
 
-constexpr std::array<uint32_t, kSsdLayerSize> kSsdSoftmaxInputChannel = {
+constexpr std::array<uint32_t, kSsdLayers> kSsdSoftmaxInputChannel = {
     {121296, 45486, 12600, 3150, 756, 84}};
-constexpr std::array<uint32_t, kSsdLayerSize> kSsdDetectInputChannel = {
+constexpr std::array<uint32_t, kSsdLayers> kSsdDetectInputChannel = {
     {23104, 8664, 2400, 600, 144, 16}};
 
 struct SsdPrior {
@@ -28,7 +28,7 @@ struct SsdPrior {
     float y_min = 0.0f;
     float x_max = 0.0f;
     float y_max = 0.0f;
-    std::array<float, kSsdCoordinateSize> variance{};
+    std::array<float, kSsdBoxCoordinates> variance{};
 };
 
 struct SsdDecodedBox {

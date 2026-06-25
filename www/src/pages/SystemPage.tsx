@@ -25,7 +25,7 @@ const systemMaintenanceTabs: Array<{
 export function SystemPage() {
     const [activeTab, setActiveTab] =
         useState<SystemMaintenanceTab>('overview');
-    const { status, refreshError: systemRefreshError } = useSystemInfo();
+    const { systemInfo, refreshError: systemRefreshError } = useSystemInfo();
     const {
         upgradeInfo,
         packageInfo,
@@ -37,7 +37,7 @@ export function SystemPage() {
         autoReboot,
         setAutoReboot,
         busy,
-        message,
+        msg,
         actionError,
         refreshError: upgradeRefreshError,
         selectFile,
@@ -70,10 +70,10 @@ export function SystemPage() {
             </div>
 
             {activeTab === 'overview' ? (
-                status ? (
+                systemInfo ? (
                     <div className="page-grid system-overview-grid">
-                        <SystemInfoPanel status={status} />
-                        <DeviceInfoPanel status={status} />
+                        <SystemInfoPanel systemInfo={systemInfo} />
+                        <DeviceInfoPanel systemInfo={systemInfo} />
                     </div>
                 ) : (
                     <div className="panel">
@@ -85,8 +85,8 @@ export function SystemPage() {
             ) : null}
 
             {activeTab === 'modules' ? (
-                status ? (
-                    <ModuleStatusPanel status={status} />
+                systemInfo ? (
+                    <ModuleStatusPanel systemInfo={systemInfo} />
                 ) : (
                     <div className="panel">
                         {systemRefreshError
@@ -108,7 +108,7 @@ export function SystemPage() {
                         busy={busy}
                         cancelUpgrade={cancelUpgrade}
                         confirmReboot={confirmReboot}
-                        message={message}
+                        msg={msg}
                         packageInfo={packageInfo}
                         refreshError={upgradeRefreshError}
                         selectedFile={selectedFile}
@@ -135,7 +135,7 @@ export function SystemPage() {
 function TimeMaintenancePanel() {
     const timeConfig = useTimeConfig();
 
-    if (!timeConfig.status) {
+    if (!timeConfig.timeInfo) {
         return (
             <div className="panel">
                 {timeConfig.error
@@ -151,7 +151,7 @@ function TimeMaintenancePanel() {
             busy={timeConfig.busy}
             error={timeConfig.error}
             manualSyncAllowed={timeConfig.manualSyncAllowed}
-            message={timeConfig.message}
+            msg={timeConfig.msg}
             ntpEnabled={timeConfig.ntpEnabled}
             ntpIntervalSec={timeConfig.ntpIntervalSec}
             ntpServersText={timeConfig.ntpServersText}
@@ -162,7 +162,7 @@ function TimeMaintenancePanel() {
             setNtpIntervalSec={timeConfig.setNtpIntervalSec}
             setNtpServersText={timeConfig.setNtpServersText}
             setTimezone={timeConfig.setTimezone}
-            status={timeConfig.status}
+            timeInfo={timeConfig.timeInfo}
             syncBrowserNow={timeConfig.syncBrowserNow}
             syncNtp={timeConfig.syncNtp}
             timezone={timeConfig.timezone}

@@ -84,7 +84,7 @@ std::string BuildLine(LogLevel level,
                       const char* module,
                       const char* file,
                       int line,
-                      const char* message) {
+                      const char* msg) {
     char prefix[512];
     std::snprintf(prefix, sizeof(prefix), "[%lld][%s][%s][%s:%d] ",
                   static_cast<long long>(NowMillis()),
@@ -94,8 +94,8 @@ std::string BuildLine(LogLevel level,
                   line);
 
     std::string result(prefix);
-    if (message != nullptr) {
-        result += message;
+    if (msg != nullptr) {
+        result += msg;
     }
     result += "\n";
     return result;
@@ -275,15 +275,15 @@ void Log::Write(LogLevel level,
         }
     }
 
-    char message[kMaxFormattedLogSize] = {};
+    char msg[kMaxFormattedLogSize] = {};
     if (fmt != nullptr && fmt[0] != '\0') {
         va_list args;
         va_start(args, fmt);
-        std::vsnprintf(message, sizeof(message), fmt, args);  // NOLINT(clang-analyzer-valist.Uninitialized)
+        std::vsnprintf(msg, sizeof(msg), fmt, args);  // NOLINT(clang-analyzer-valist.Uninitialized)
         va_end(args);
     }
     const std::string log_line =
-        BuildLine(level, module, file, line, message);
+        BuildLine(level, module, file, line, msg);
 
     std::lock_guard<std::mutex> lock(g_log_mutex);
     if (g_config.async_write && g_worker.joinable()) {

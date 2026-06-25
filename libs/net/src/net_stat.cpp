@@ -63,7 +63,7 @@ uint32_t DecrementedMetric(uint32_t value) {
     return value - 1;
 }
 
-uint32_t EventActiveSize(const event::Event &event,
+uint32_t EventActiveValue(const event::Event &event,
                          uint32_t fallback_value) {
     if (event.value >= 0) {
         return static_cast<uint32_t>(event.value);
@@ -211,28 +211,28 @@ private:
         switch (event.type) {
             case event::EventType::kRtspClientConnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveSize(
+                    EventActiveValue(
                         event,
                         IncrementedMetric(
                             protocol_activity_.active_rtsp_sessions));
                 break;
             case event::EventType::kRtspClientDisconnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveSize(
+                    EventActiveValue(
                         event,
                         DecrementedMetric(
                             protocol_activity_.active_rtsp_sessions));
                 break;
             case event::EventType::kWebRtcClientConnected:
                 protocol_activity_.active_webrtc_peers =
-                    EventActiveSize(
+                    EventActiveValue(
                         event,
                         IncrementedMetric(
                             protocol_activity_.active_webrtc_peers));
                 break;
             case event::EventType::kWebRtcClientDisconnected:
                 protocol_activity_.active_webrtc_peers =
-                    EventActiveSize(
+                    EventActiveValue(
                         event,
                         DecrementedMetric(
                             protocol_activity_.active_webrtc_peers));
@@ -263,7 +263,7 @@ private:
         const int64_t now_ms = infra::Time::MonotonicMillis();
         next_stats.enabled = options_.enabled;
 
-        CheckConnections(now_ms, &next_stats, &next_recommendations);
+        CheckConnections(now_ms, next_stats, next_recommendations);
 
         bool publish_pressure_event = false;
         event::Event pressure_event;
@@ -274,7 +274,7 @@ private:
             next_stats.active_webrtc_peers =
                 protocol_activity_.active_webrtc_peers;
             ExpireIdlePressureRecords(now_ms);
-            FillPressureStats(&next_stats);
+            FillPressureStats(next_stats);
             next_stats.checks = stats_.checks + 1;
             const NetPressureLevel previous_level = stats_.level;
             stats_ = next_stats;
@@ -282,7 +282,7 @@ private:
             AppendRecommendationHistory(next_recommendations);
             publish_pressure_event =
                 BuildPressureChangeEvent(previous_level, stats_,
-                                         &pressure_event);
+                                         pressure_event);
         }
         if (publish_pressure_event && event_ != nullptr) {
             static_cast<void>(event_->Publish(pressure_event));
@@ -290,10 +290,9 @@ private:
     }
 
     void CheckConnections(int64_t now_ms,
-                          NetStatSnapshot *stats,
-                          std::vector<NetRecommendation> *recommendations) {
-        if (net_io_ == nullptr || stats == nullptr ||
-            recommendations == nullptr) {
+                          NetStatSnapshot &stats,
+                          std::vector<NetRecommendation> &recommendations) {
+        if (net_io_ == nullptr) {
             return;
         }
         const std::vector<NetConnectionInfo> connections =
@@ -302,23 +301,20 @@ private:
             if (!connection.open) {
                 continue;
             }
-            ++stats->checked_connections;
+            ++stats.checked_connections;
             if (ShouldSkipNetConnection(connection)) {
                 continue;
             }
             std::lock_guard<std::mutex> lock(mutex_);
-            ConnectionPressureRecord *state =
+            ConnectionPressureRecord &state =
                 UpdateConnectionPressure(connection, now_ms);
-            if (state == nullptr) {
-                continue;
-            }
-            stats->level = MaxLevel(stats->level, state->level);
-            if (state->level == NetPressureLevel::kConstrained) {
-                ++stats->constrained_connections;
+            stats.level = MaxLevel(stats.level, state.level);
+            if (state.level == NetPressureLevel::kConstrained) {
+                ++stats.constrained_connections;
                 AddRecommendationIfReady(
                     recommendations, state,
                     NetRecommendationType::kCloseSlowClient, now_ms,
-                    RecommendationReason(*state, true));
+                    RecommendationReason(state, true));
             }
         }
     }
@@ -331,11 +327,11 @@ private:
         return connection.owner_protocol == "onvif";
     }
 
-    ConnectionPressureRecord *UpdateConnectionPressure(
+    ConnectionPressureRecord &UpdateConnectionPressure(
         const NetConnectionInfo &connection,
         int64_t now_ms) {
         const std::string remote_endpoint = ConnectionEndpoint(connection);
-        ConnectionPressureRecord *pending_state =
+        ConnectionPressureRecord &pending_state =
             UpdatePressureRecord("net", connection.owner_protocol,
                                  remote_endpoint,
                                  PressureMetric::kPendingBytes,
@@ -348,17 +344,13 @@ private:
                                      connection.pending_bytes, now_ms);
             return pending_state;
         }
-        ConnectionPressureRecord *queue_state =
+        ConnectionPressureRecord &queue_state =
             UpdatePressureRecord("net_queue", connection.owner_protocol,
                                  remote_endpoint, PressureMetric::kSendQueue,
                                  connection.send_queue_length,
                                  connection.pending_bytes, now_ms);
-        if (pending_state == nullptr) {
-            return queue_state;
-        }
-        if (queue_state == nullptr ||
-            static_cast<int>(pending_state->level) >=
-                static_cast<int>(queue_state->level)) {
+        if (static_cast<int>(pending_state.level) >=
+            static_cast<int>(queue_state.level)) {
             return pending_state;
         }
         return queue_state;
@@ -376,7 +368,7 @@ private:
         return std::to_string(connection.connection_id);
     }
 
-    ConnectionPressureRecord *UpdatePressureRecord(
+    ConnectionPressureRecord &UpdatePressureRecord(
         const std::string &key_prefix,
         const std::string &protocol,
         const std::string &remote_endpoint,
@@ -441,7 +433,7 @@ private:
                 state.pressure_since_ms = 0;
             }
         }
-        return &state;
+        return state;
     }
 
     void MaybeClearPressureRecord(const std::string &key_prefix,
@@ -455,8 +447,8 @@ private:
         if (connection_pressures_.find(key) == connection_pressures_.end()) {
             return;
         }
-        (void)UpdatePressureRecord(key_prefix, protocol, remote_endpoint,
-                                   metric, 0, pending_bytes, now_ms);
+        UpdatePressureRecord(key_prefix, protocol, remote_endpoint,
+                             metric, 0, pending_bytes, now_ms);
     }
 
     uint32_t SmoothValue(uint32_t previous, uint32_t value) const {
@@ -502,46 +494,44 @@ private:
     }
 
     void AddRecommendationIfReady(
-        std::vector<NetRecommendation> *recommendations,
-        ConnectionPressureRecord *state,
+        std::vector<NetRecommendation> &recommendations,
+        ConnectionPressureRecord &state,
         NetRecommendationType type,
         int64_t now_ms,
         const std::string &reason) const {
-        if (recommendations == nullptr ||
-            recommendations->size() >= kMaxRecommendations ||
-            state == nullptr) {
+        if (recommendations.size() >= kMaxRecommendations) {
             return;
         }
         const bool enough_constrained =
-            state->level == NetPressureLevel::kConstrained &&
-            state->consecutive_constrained_checks >=
+            state.level == NetPressureLevel::kConstrained &&
+            state.consecutive_constrained_checks >=
                 options_.constrained_check_threshold;
         if (!enough_constrained) {
             return;
         }
-        if (state->last_recommendation_ms != 0 &&
-            now_ms - state->last_recommendation_ms <
+        if (state.last_recommendation_ms != 0 &&
+            now_ms - state.last_recommendation_ms <
                 static_cast<int64_t>(options_.recommendation_cooldown_ms)) {
             return;
         }
         NetRecommendation recommendation;
         recommendation.type = type;
-        recommendation.level = state->level;
-        recommendation.protocol = state->protocol;
-        recommendation.remote_endpoint = state->remote_endpoint;
+        recommendation.level = state.level;
+        recommendation.protocol = state.protocol;
+        recommendation.remote_endpoint = state.remote_endpoint;
         recommendation.reason = reason;
-        recommendation.signal = state->signal;
-        recommendation.pressure_value = state->pressure_value;
-        recommendation.smoothed_pressure_value = state->smoothed_pressure_value;
-        recommendation.pending_bytes = state->pending_bytes;
-        recommendation.smoothed_pending_bytes = state->smoothed_pending_bytes;
+        recommendation.signal = state.signal;
+        recommendation.pressure_value = state.pressure_value;
+        recommendation.smoothed_pressure_value = state.smoothed_pressure_value;
+        recommendation.pending_bytes = state.pending_bytes;
+        recommendation.smoothed_pending_bytes = state.smoothed_pending_bytes;
         recommendation.consecutive_watch_checks =
-            state->consecutive_watch_checks;
+            state.consecutive_watch_checks;
         recommendation.consecutive_constrained_checks =
-            state->consecutive_constrained_checks;
+            state.consecutive_constrained_checks;
         recommendation.recommended_at_ms = now_ms;
-        recommendations->push_back(recommendation);
-        state->last_recommendation_ms = now_ms;
+        recommendations.push_back(recommendation);
+        state.last_recommendation_ms = now_ms;
     }
 
     void AppendRecommendationHistory(
@@ -571,23 +561,20 @@ private:
         }
     }
 
-    void FillPressureStats(NetStatSnapshot *stats) const {
-        if (stats == nullptr) {
-            return;
-        }
-        stats->tracked_connection_pressures =
+    void FillPressureStats(NetStatSnapshot &stats) const {
+        stats.tracked_connection_pressures =
             static_cast<uint32_t>(connection_pressures_.size());
         for (const auto &entry : connection_pressures_) {
             if (entry.second.level == NetPressureLevel::kWatch) {
-                ++stats->watch_connection_pressures;
+                ++stats.watch_connection_pressures;
             } else if (entry.second.level ==
                        NetPressureLevel::kConstrained) {
-                ++stats->constrained_connection_pressures;
+                ++stats.constrained_connection_pressures;
             }
             if (entry.second.level == NetPressureLevel::kNormal &&
                 entry.second.consecutive_normal_checks > 0 &&
                 entry.second.normal_since_ms != 0) {
-                ++stats->recovering_connection_pressures;
+                ++stats.recovering_connection_pressures;
             }
         }
     }
@@ -617,19 +604,18 @@ private:
     bool BuildPressureChangeEvent(
         NetPressureLevel previous_level,
         const NetStatSnapshot &stats,
-        event::Event *pressure_event) {
+        event::Event &pressure_event) {
         if (event_ == nullptr || previous_level == stats.level ||
-            last_published_level_ == stats.level ||
-            pressure_event == nullptr) {
+            last_published_level_ == stats.level) {
             return false;
         }
-        pressure_event->type = event::EventType::kNetPressureChanged;
-        pressure_event->source = kServiceName;
-        pressure_event->target = "connections";
-        pressure_event->message = PressureLevelReason(stats.level);
-        pressure_event->value =
+        pressure_event.type = event::EventType::kNetPressureChanged;
+        pressure_event.source = kServiceName;
+        pressure_event.target = "connections";
+        pressure_event.message = PressureLevelReason(stats.level);
+        pressure_event.value =
             static_cast<int32_t>(stats.tracked_connection_pressures);
-        pressure_event->level = static_cast<uint8_t>(stats.level);
+        pressure_event.level = static_cast<uint8_t>(stats.level);
         last_published_level_ = stats.level;
         return true;
     }

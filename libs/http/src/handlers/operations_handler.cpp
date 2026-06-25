@@ -1,6 +1,7 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_response.h"
 
 #include <string>
 #include <utility>
@@ -9,8 +10,8 @@
 namespace live_stream {
 namespace {
 
-ConfigJson OperationRecordToJson(const OperationRecord &record) {
-    ConfigJson root = ConfigJson::object();
+Json OperationRecordToJson(const OperationRecord &record) {
+    Json root = Json::object();
     root["timestamp_ms"] = record.timestamp_ms;
     root["request_id"] = record.request_id;
     root["user_name"] = record.user_name;
@@ -61,24 +62,21 @@ void AppendCsvRow(const OperationRecord &record, std::string *body) {
         return;
     }
     *body += std::to_string(record.timestamp_ms);
-    *body += ",";
-    *body += CsvField(record.request_id);
-    *body += ",";
-    *body += CsvField(record.user_name);
-    *body += ",";
-    *body += CsvField(record.session_id);
-    *body += ",";
-    *body += CsvField(record.client_ip);
-    *body += ",";
-    *body += CsvField(record.module);
-    *body += ",";
-    *body += CsvField(OperationActionToString(record.action));
-    *body += ",";
-    *body += CsvField(record.target);
-    *body += ",";
-    *body += CsvField(OperationResultToString(record.result));
-    *body += ",";
-    *body += CsvField(record.reason);
+    const std::string fields[] = {
+        record.request_id,
+        record.user_name,
+        record.session_id,
+        record.client_ip,
+        record.module,
+        OperationActionToString(record.action),
+        record.target,
+        OperationResultToString(record.result),
+        record.reason,
+    };
+    for (const std::string &field : fields) {
+        *body += ",";
+        *body += CsvField(field);
+    }
     *body += "\n";
 }
 
@@ -86,49 +84,35 @@ void AppendCsvRow(const OperationRecord &record, std::string *body) {
 
 class OperationsHttpHandler : public IHttpHandler {
 public:
-    OperationsHttpHandler(HttpAccess *access,
-                          ILogger *logger)
-        : access_(access), logger_(logger) {}
+    explicit OperationsHttpHandler(
+        const OperationsHandlerDependencies &dependencies)
+        : access_(dependencies.access), logger_(dependencies.logger) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
+    void RegisterRoutes(IHttpRouter &router) override {
+        if (logger_ == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/operations/export",
-                              &OperationsHttpHandler::HandleExportRoute, this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/operations",
-                              &OperationsHttpHandler::HandleOperationsRoute,
-                              this);
+        router.AddExactRoute(HttpMethod::kGet, "/api/operations/export",
+                             this, &OperationsHttpHandler::HandleExport);
+        router.AddExactRoute(HttpMethod::kGet, "/api/operations",
+                             this, &OperationsHttpHandler::HandleOperations);
     }
 
 private:
-    static HttpResponse HandleOperationsRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<OperationsHttpHandler *>(user)->HandleOperations(
-            request);
-    }
-
-    static HttpResponse HandleExportRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<OperationsHttpHandler *>(user)->HandleExport(
-            request);
-    }
-
     HttpResponse HandleOperations(const HttpRequest &request) {
-        if (logger_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
-                                        "operations", &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kManageUsers, "operations",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         OperationLogQuery query;
         query.limit = 100;
         std::vector<OperationRecord> records =
             logger_->QueryOperations(query);
-        ConfigJson root = ConfigJson::object();
-        ConfigJson items = ConfigJson::array();
+        Json root = Json::object();
+        Json items = Json::array();
         for (const OperationRecord &record : records) {
             items.push_back(OperationRecordToJson(record));
         }
@@ -137,13 +121,12 @@ private:
     }
 
     HttpResponse HandleExport(const HttpRequest &request) {
-        if (logger_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!access_->RequirePermission(request, AuthPermission::kManageUsers,
-                                        "operations", &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kManageUsers, "operations",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         OperationLogQuery query;
         query.limit = 1000;
@@ -170,10 +153,10 @@ private:
     ILogger *logger_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeOperationsHandler(HttpAccess *access,
-                                                    ILogger *logger) {
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(
+    const OperationsHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new OperationsHttpHandler(access, logger));
+        new OperationsHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

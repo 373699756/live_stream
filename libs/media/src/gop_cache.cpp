@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
 namespace live_stream {
 namespace media_internal {
@@ -16,7 +17,13 @@ void GopCache::Clear() {
     }
     head_ = 0;
     size_ = 0;
+    bytes_ = 0;
     complete_ = false;
+}
+
+void GopCache::Configure(const GopCacheOptions &options) {
+    options_ = options;
+    drop_size_ = 0;
 }
 
 uint32_t GopCache::FirstFlvTagSize() const {
@@ -38,38 +45,46 @@ bool GopCache::AppendFlvTag(
         // 尚未看到关键帧时不缓存 P/B 帧；新客户端不能从这里起播。
         return true;
     }
-    if (size_ >= frames_.size()) {
+    const size_t max_flv_cached_tags =
+        std::min<size_t>(options_.max_flv_cached_tags, frames_.size());
+    const uint32_t tag_bytes = static_cast<uint32_t>(
+        std::min<size_t>(flv_tag_view.total_size,
+                         std::numeric_limits<uint32_t>::max()));
+    if (max_flv_cached_tags == 0 || size_ >= max_flv_cached_tags ||
+        flv_tag_view.total_size > options_.max_flv_cached_bytes ||
+        bytes_ > options_.max_flv_cached_bytes - tag_bytes) {
+        ++drop_size_;
         Clear();
         return false;
     }
     const size_t index = (head_ + size_) % frames_.size();
-    if (!CopyFlvTagView(frame, flv_tag_view, &frames_[index])) {
+    if (!CopyFlvTagView(frame, flv_tag_view, frames_[index])) {
         Clear();
         return false;
     }
+    bytes_ += tag_bytes;
     ++size_;
     return true;
 }
 
-void GopCache::CopyTo(MediaFlvStart *flv_start) const {
-    if (flv_start == nullptr || !complete_) {
+void GopCache::CopyTo(MediaFlvStart &flv_start) const {
+    if (!complete_) {
         return;
     }
-    flv_start->cached_video_tags.reserve(size_);
+    flv_start.cached_video_tags.reserve(size_);
     for (size_t i = 0; i < size_; ++i) {
         const size_t index = (head_ + i) % frames_.size();
         if (frames_[index].slice_size == 0) {
             continue;
         }
-        flv_start->cached_video_tags.push_back(frames_[index]);
+        flv_start.cached_video_tags.push_back(frames_[index]);
     }
 }
 
 bool GopCache::CopyFlvTagView(
     const MediaFrame &frame, const FlvVideoTagBuild &source,
-    MediaFlvCachedVideoTag *target) const {
-    if (target == nullptr || !IsMediaFramePayloadValid(frame) ||
-        source.view.slice_size == 0 ||
+    MediaFlvCachedVideoTag &target) const {
+    if (!IsMediaFramePayloadValid(frame) || source.view.slice_size == 0 ||
         source.view.slice_size > kMaxMediaFlvVideoTagSlices) {
         return false;
     }
@@ -114,7 +129,7 @@ bool GopCache::CopyFlvTagView(
         }
     }
 
-    *target = cached_tag;
+    target = cached_tag;
     return true;
 }
 

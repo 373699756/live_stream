@@ -1,24 +1,21 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
-#include "http_request_utils.h"
+#include "http_auth_session.h"
+#include "http_json_body.h"
+#include "http_response.h"
 
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <string>
 
 namespace live_stream {
 namespace {
 
-std::string AuthRoleToJsonString(AuthRole role) {
-    return AuthRoleToString(role);
-}
-
-ConfigJson PrincipalToJson(const AuthPrincipal &principal) {
-    ConfigJson root = ConfigJson::object();
+Json PrincipalToJson(const AuthPrincipal &principal) {
+    Json root = Json::object();
     root["user_name"] = principal.user_name;
     root["session_id"] = principal.session_id;
-    root["role"] = AuthRoleToJsonString(principal.role);
+    root["role"] = AuthRoleToString(principal.role);
     root["must_change_password"] = principal.must_change_password;
     return root;
 }
@@ -27,55 +24,31 @@ ConfigJson PrincipalToJson(const AuthPrincipal &principal) {
 
 class AuthHttpHandler : public IHttpHandler {
 public:
-    AuthHttpHandler(HttpAccess *access, IAuth *auth)
-        : access_(access), auth_(auth) {}
+    explicit AuthHttpHandler(const AuthHandlerDependencies &dependencies)
+        : access_(dependencies.access), auth_(dependencies.auth) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
-        }
-        router->AddExactRoute(HttpMethod::kPost, "/api/auth/login",
-                              &AuthHttpHandler::HandleLoginRoute, this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/auth/logout",
-                              &AuthHttpHandler::HandleLogoutRoute, this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/auth/change-password",
-                              &AuthHttpHandler::HandleChangePasswordRoute,
-                              this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/auth/me",
-                              &AuthHttpHandler::HandleMeRoute, this);
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddExactRoute(HttpMethod::kPost, "/api/auth/login", this,
+                             &AuthHttpHandler::HandleLogin);
+        router.AddExactRoute(HttpMethod::kPost, "/api/auth/logout", this,
+                             &AuthHttpHandler::HandleLogout);
+        router.AddExactRoute(HttpMethod::kPost, "/api/auth/change-password",
+                             this, &AuthHttpHandler::HandleChangePassword);
+        router.AddExactRoute(HttpMethod::kGet, "/api/auth/me", this,
+                             &AuthHttpHandler::HandleMe);
     }
 
 private:
-    static HttpResponse HandleLoginRoute(void *user,
-                                         const HttpRequest &request) {
-        return static_cast<AuthHttpHandler *>(user)->HandleLogin(request);
-    }
-
-    static HttpResponse HandleLogoutRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<AuthHttpHandler *>(user)->HandleLogout(request);
-    }
-
-    static HttpResponse HandleChangePasswordRoute(void *user,
-                                                  const HttpRequest &request) {
-        return static_cast<AuthHttpHandler *>(user)->HandleChangePassword(
-            request);
-    }
-
-    static HttpResponse HandleMeRoute(void *user, const HttpRequest &request) {
-        return static_cast<AuthHttpHandler *>(user)->HandleMe(request);
-    }
-
     HttpResponse HandleLogin(const HttpRequest &request) {
-        ConfigJson parsed;
+        Json parsed;
         if (!ParseJsonObject(request, &parsed)) {
             access_->IncrementParseFailures();
             return StatusResponse(400, "Invalid JSON");
         }
         std::string user_name;
         std::string password;
-        if (!json_utils::ReadField(parsed, "user_name", &user_name) ||
-            !json_utils::ReadField(parsed, "password", &password)) {
+        if (!json_reader::ReadField(parsed, "user_name", &user_name) ||
+            !json_reader::ReadField(parsed, "password", &password)) {
             return StatusResponse(400, "Invalid login request");
         }
 
@@ -89,7 +62,7 @@ private:
             return StatusResponse(401, "Unauthorized");
         }
 
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         root["must_change_password"] = login.must_change_password;
         root["principal"] = PrincipalToJson(login.principal);
         HttpResponse response = JsonResponse(200, root);
@@ -118,15 +91,15 @@ private:
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
-        ConfigJson parsed;
+        Json parsed;
         if (!ParseJsonObject(request, &parsed)) {
             access_->IncrementParseFailures();
             return StatusResponse(400, "Invalid JSON");
         }
         std::string old_password;
         std::string new_password;
-        if (!json_utils::ReadField(parsed, "old_password", &old_password) ||
-            !json_utils::ReadField(parsed, "new_password", &new_password)) {
+        if (!json_reader::ReadField(parsed, "old_password", &old_password) ||
+            !json_reader::ReadField(parsed, "new_password", &new_password)) {
             return StatusResponse(400, "Invalid change-password request");
         }
 
@@ -146,7 +119,7 @@ private:
         if (principal.user_name.empty()) {
             return StatusResponse(401, "Unauthorized");
         }
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         root["principal"] = PrincipalToJson(principal);
         root["must_change_password"] = principal.must_change_password;
         return JsonResponse(200, root);
@@ -157,9 +130,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeAuthHandler(
-    HttpAccess *access, IAuth *auth) {
+    const AuthHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new AuthHttpHandler(access, auth));
+        new AuthHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

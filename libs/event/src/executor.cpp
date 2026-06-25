@@ -37,12 +37,12 @@ public:
         }
 
         options_ = options;
-        if (options_.worker_size == 0) {
-            options_.worker_size = AutoWorkerSize();
+        if (options_.workers == 0) {
+            options_.workers = AutoWorkerSize();
         }
         options_.queue_capacity =
             NormalizeQueueCapacity(options_.queue_capacity);
-        if (options_.worker_size == 0) {
+        if (options_.workers == 0) {
             return false;
         }
 
@@ -57,8 +57,8 @@ public:
         tasks_.clear();
         tasks_.resize(options_.queue_capacity);
         workers_.clear();
-        workers_.reserve(options_.worker_size);
-        for (uint32_t i = 0; i < options_.worker_size; ++i) {
+        workers_.reserve(options_.workers);
+        for (uint32_t i = 0; i < options_.workers; ++i) {
             workers_.push_back(std::thread(&Impl::WorkerLoop, this));
         }
         return true;
@@ -123,7 +123,7 @@ public:
         ExecutorStats stats = stats_;
         stats.pending = static_cast<uint32_t>(size_);
         stats.running = running_size_;
-        stats.worker_size = options_.worker_size;
+        stats.workers = options_.workers;
         return stats;
     }
 

@@ -388,8 +388,9 @@ hisi_vendor media_codec stream_mux	厂商/工具
 
 1.2 media 与 device 职责重叠
 libs/media/ 有 MediaStreams、FrameRing、FlvMuxer、HlsMaker、GopCache
-libs/device/ 有 DeviceMedia、HardwarePipeline、SnapshotCapture、RegionOverlay、MediaChannels
-device 内部包了 HardwarePipeline，而 media 才是真正做流管理的。两者关系像"设备封装"和"流分发"，但命名上完全看不出来。
+libs/device/ 有 DeviceMedia、MediaPipeline、Snapshot、RegionOverlay、MediaChannels
+device 内部包了 MediaPipeline，负责硬件媒体链路启动停止；media 模块才是真正做流分发。
+两者关系是"设备链路"和"流分发"，命名应保持 `MediaPipeline` / `MediaStreams` 这种边界。
 
 1.3 infra 目录里的 logger.h vs log.h 容易混淆
 infra/log.h —— 运行日志（Trace/Debug/Info/Warn/Error/Fatal 宏）
@@ -399,7 +400,7 @@ logger 这个名字看起来像 log 的别名或加强版，但实际是完全�
 1.4 类名风格不一致
 模块	类名风格	例子
 media	PascalCase + 内部 media_internal	MediaStreams、FlvMuxer
-device	PascalCase + 内部 device_internal	DeviceMedia、HardwarePipeline
+device	PascalCase + 内部 device_internal	DeviceMedia、MediaPipeline
 ai	PascalCase 但顶层类只有 Ai、AiCore	Ai、AiCore、AiInferenceEngine
 net	PascalCase + 内部 net_internal	NetEngineImpl、TcpSession
 http	PascalCase + HttpImpl	HttpImpl、HttpServer、HttpSession
@@ -503,24 +504,33 @@ libs/media/src/media_streams.cpp 772 行，包含：
 MediaStreams::Impl 主类（流状态、FLV、HLS、MJPEG、订阅、统计、关键帧）
 违反 AGENTS.md 第 118-121 行自己规定的"按功能职责拆分文件"。
 
-3.2 头文件命名不统一
+3.2 头文件命名不统一（已处理）
 风格	例子
 <module>.h	ai.h、auth.h、device.h、http.h、system.h
 <module>_xxx.h	http_dependencies.h、http_access.h、http_router.h、network_api.h、time_api.h、upgrade_package.h
 <subsystem>.h	core_subsystem.h、device_subsystem.h、media_subsystem.h、protocol_subsystem.h
 infra/<x>.h	infra/log.h、infra/fs.h、infra/time.h
 http_dependencies.h 与 http.h 同级，但 network_api.h 与 system.h 同级——前者用前缀，后者用后缀。
+2026-06-24 已收敛为：模块入口继续用 `system.h`；system 子接口进入 `system/`
+子目录，使用短业务名 `system/network.h`、`system/time.h`、`system/upgrade.h`、
+`system/package.h` 和 `system/network_json.h`，不保留旧文件名 alias。
 
-3.3 app/modules/ 和 app/tools/ 是空目录
+3.3 app/modules/ 和 app/tools/ 是空目录（已核对）
 code
 app/modules/   ← 空
 app/tools/     ← 空
 按 AGENTS.md "不删除空目录"原则可以保留，但要标注用途，否则像未完成的工作。
+2026-06-24 核对后 `app/tools/` 不是空目录，已有 `sysupgrade` 命令行工具；
+`app/modules/` 已新增 `README.md` 标注为预留应用内模块目录。
 
-3.4 hisi_vendor 在 libs/device/include/hisisdk/ 和 libs/hisi_vendor/include/hisi_vendor/ 都有相关头文件
-libs/device/include/hisisdk/hisi_sdk.h —— IHisiSdk 接口定义
+3.4 hisi_vendor 在 libs/device/include/hisisdk/ 和 libs/hisi_vendor/include/hisi_vendor/ 都有相关头文件（已处理）
+libs/device/include/hisisdk/hisi_sdk.h —— HiSilicon SDK 窄接口定义
 libs/hisi_vendor/include/hisi_vendor/mpp_hisi_sdk.h —— MppHisiSdk 实现
 接口定义在 device/include/hisisdk/，实现在 hisi_vendor/include/hisi_vendor/，命名空间都是 live_stream::hisisdk。接口和实现分在两个模块，没有"接口拥有者"概念。
+2026-06-24 已收敛为 `hisi_vendor` 拥有 SDK 契约和生产实现入口：
+`hisi_vendor/sdk.h`、`hisi_vendor/media_pipeline.h`、`hisi_vendor/mpp_types.h`、
+`hisi_vendor/media_capabilities.h`、`hisi_vendor/mpp_sdk.h`。`device` 只消费
+vendor 窄接口，host SDK 留在 `device/src` 内部。
 
 3.5 根目录有 重构AI.md 这种中文文件名
 code
@@ -637,7 +647,7 @@ device_impl.cpp:28-36	kCreated → kInitialized → kStarted → kStopping → k
 ai_core.cpp	没有显式状态机
 media_streams.cpp:197	只有 started_ 一个 bool
 http.cpp	只有 initialized_ + started_ 两个 bool
-snapshot_capture.cpp:16-22	又是 5 态
+snapshot.cpp:16-22	又是 5 态
 5 种不同的状态机定义，没有统一基类。应该有 IService 接口定义统一生命周期：
 
 cpp
@@ -665,7 +675,7 @@ MediaStreamStats、NetStats、RtspServiceStats、WebrtcStats、SystemStatus、Me
 每个都不同结构，HTTP 接口各自手写 JSON 序列化。没有统一的 Metric 接口，无法做聚合查询。
 
 5.4 配置系统没有 Schema 校验
-libs/config/（基于 event.h 推断）有 IConfig::Get(name)、IConfig::Set(name, value, issue)，但配置 schema 散落在各模块的 VerifyXxxConfig 函数里：
+libs/config/（基于 event.h 推断）有 IConfig::Get(name)、IConfig::Set(name, value, error)，但配置 schema 散落在各模块的 VerifyXxxConfig 函数里：
 
 device_impl.cpp::VerifyVideoConfig
 device_impl.cpp::VerifyImageConfigScope
@@ -756,7 +766,7 @@ struct StreamContext {
 
 6.7 JpegFrame/YuvFrame/SnapshotFrame 三个 struct 几乎相同
 cpp
-// libs/device/include/hisisdk/hisi_sdk.h:75-133
+// libs/hisi_vendor/include/hisi_vendor/sdk.h:75-133
 struct JpegFrame {
     MediaBuffer* buffer = nullptr;
     uint32_t offset = 0;
@@ -806,18 +816,24 @@ struct YuvExtra { uint32_t stride_y, stride_uv; MppYuvFrameInfo mpp_info; };
 
 using JpegFrame = FrameBase<JpegExtra>;
 using YuvFrame = FrameBase<YuvExtra>;
-6.8 MppHisiSdkImpl 用 pthread_t 和 std::thread 混用
+6.8 MppHisiSdkImpl 用 pthread_t 和 std::thread 混用（已处理）
 cpp
 // libs/hisi_vendor/src/mpp_hisi_sdk_impl.h:42-44
 pthread_t isp_thread_ = 0;
 std::thread stream_thread_;
 pthread_t 是 C 接口，std::thread 是 C++ 接口。同一项目同一类内混用两个线程库，风格不统一。
+2026-06-24 已改为 `std::thread isp_thread_`，VI 停止流程保持
+`HI_MPI_ISP_Exit -> join -> unregister callbacks`，验证命令：
+`make -C libs/hisi_vendor`。
 
-6.9 MppHisiSdkImpl 用 std::recursive_mutex 而其他模块用 std::mutex
+6.9 MppHisiSdkImpl 用 std::recursive_mutex 而其他模块用 std::mutex（已处理）
 cpp
 // libs/hisi_vendor/src/mpp_hisi_sdk_impl.h:46
 std::recursive_mutex control_mutex_;
 recursive_mutex 通常是设计缺陷的信号——说明调用链可能在持锁时再次调用自己。其他模块都用 std::mutex，只有 MppHisiSdk 用 recursive，说明它的调用结构没理清。
+2026-06-24 已改为 `std::mutex control_mutex_`。`DeinitSystem()`、
+`StopVenc()`、`UnbindVpssVenc()` 不再调用带锁 public 方法，而是复用具体资源停止
+函数，验证命令：`make -C libs/hisi_vendor`。
 
 6.10 全局单例泛滥
 cpp
@@ -839,12 +855,12 @@ static ProtocolSubsystem &Get();
 // app/subsystems/device_subsystem.h:类似
 static DeviceSubsystem &Get();
 
-// libs/hisi_vendor/include/hisi_vendor/mpp_hisi_sdk.h:65
-IHisiSdk& MppSdk();
+// libs/hisi_vendor/include/hisi_vendor/mpp_sdk.h
+HisiSdk MppSdk();
 
-// libs/device/src/stub_hisi_sdk.h
-IHisiSdk& DefaultSdk();
-至少 7 个全局单例。AGENTS.md 第 95 行明确说"业务 service、net、media、auth 不做全局单例或 ServiceLocator"——但 Application::Get() 和 XxxSubsystem::Get() 就是全局单例。
+// libs/device/src/host_hisi_sdk.cpp
+HisiSdk HostHisiSdk();
+至少 7 个全局/静态实例入口。AGENTS.md 第 95 行明确说"业务 service、net、media、auth 不做全局单例或 ServiceLocator"——但 Application::Get() 和 XxxSubsystem::Get() 就是全局单例。
 
 6.11 EncodedFrameCallback 用裸函数指针 + void* user
 cpp
@@ -941,21 +957,15 @@ EncodedFrameCallback 这个 typedef 还在用（frame_sink.h:26）
 MediaFrame 实际就是编码后的帧（H.264/H.265 NAL）
 名字 MediaFrame 不如 EncodedFrame 准确——"Media" 比 "Encoded" 含义更模糊。
 
-9.2 IHisiSdk 接口方法过多（违反 ISP）
+9.2 HiSilicon SDK 旧大接口方法过多（违反 ISP，已拆成窄接口）
 cpp
-// libs/device/include/hisisdk/hisi_sdk.h:252-300
-class IHisiSdk {
-    virtual MediaCapabilities GetCapabilities() = 0;
-    virtual bool InitSystem(...) = 0;
-    virtual bool DeinitSystem() = 0;
-    virtual bool StartVi(...) = 0;
-    virtual void StopVi(...) = 0;
-    virtual bool StartVpss(...) = 0;
-    virtual void StopVpss(...) = 0;
-    virtual bool BindViVpss(...) = 0;
-    virtual void UnbindViVpss(...) = 0;
-    virtual bool StartVenc(...) = 0;
-    virtual void StopVenc(...) = 0;
+// libs/hisi_vendor/include/hisi_vendor/sdk.h
+class IHisiSystem { ... };
+class IHisiMediaPipeline { ... };
+class IHisiVencStream { ... };
+class IHisiRegion { ... };
+class IHisiSnapshot { ... };
+class IHisiImage { ... };
     virtual bool BindVpssVenc(...) = 0;
     virtual void UnbindVpssVenc(...) = 0;
     virtual bool StartVencStream(...) = 0;
@@ -1098,7 +1108,7 @@ void Application::Stop() {
 按严重程度分级：
 
 级别	问题数	典型问题
-P0 严重	8	手动 ref 计数爆炸、MediaStreams 单类承担 11 职责、HttpDependencies 上帝 struct、IHisiSdk 26 方法违反 ISP、全局单例违反 AGENTS、模块反向依赖、热路径堆分配、一把大锁串行化
+P0 严重	8	手动 ref 计数爆炸、MediaStreams 单类承担 11 职责、HttpDependencies 上帝 struct、HiSilicon SDK 旧大接口违反 ISP、全局单例违反 AGENTS、模块反向依赖、热路径堆分配、一把大锁串行化
 P1 重要	12	命名维度混乱、logger vs log 混淆、状态机 5 套不统一、缺 ResourceBudget、缺统一 Metric、__sync_* 代替 atomic、malloc/free 代替 new/delete、FlvVideoTagView 栈上 2KB、volatile 不保证可见性、_exit 不 flush、中英文注释混用、HTTP handler 13 处重复 thunk
 P2 改进	15	namespace 别名噪音、过度防御性 nullptr 检查、单文件 772 行、6 个相同 lock_guard 方法、bool 失败无上下文、JpegFrame/YuvFrame/SnapshotFrame 95% 重复、pthread_t 与 std::thread 混用、recursive_mutex 设计缺陷、std::map 应改 unordered_map、closed_connections 无上限、FlvVideoTagView 内嵌大数组、EncodedFrameCallback 裸函数指针、HTTP handler 13 个工厂函数、版权头不统一、g_stop_requested 用 volatile
 P3 风格	10+	internal namespace 命名不一致、类名后缀 6 种混用、头文件命名前缀/后缀混用、app/modules/ app/tools/ 空目录、根目录中文文件名、using 6 个声明、空 .codex 文件等
@@ -1110,7 +1120,7 @@ P3 风格	10+	internal namespace 命名不一致、类名后缀 6 种混用、�
 手动引用计数 是 C 风格，不是 C++ RAII
 上帝类/上帝 struct 让单个类/struct 承担过多职责
 5 套状态机 + 7 个全局单例 没有统一框架
-接口违反 ISP (IHisiSdk 26 方法)
+接口违反 ISP（HiSilicon SDK 旧大接口方法过多）
 模块反向依赖 (http 依赖 rtsp/webrtc/onvif)
 热路径堆分配 + 一把大锁 性能差
 命名维度混乱 让代码看起来"想到什么加什么"

@@ -2,7 +2,11 @@
 
 #include "event_stream.h"
 #include "http_flv_session.h"
-#include "http_media_utils.h"
+#include "http_media_auth.h"
+#include "http_media_module.h"
+#include "http_media_path.h"
+#include "http_media_response.h"
+#include "http_media_stream_id_json.h"
 #include "http_router.h"
 
 #include "device.h"
@@ -41,11 +45,10 @@ const char *CodecName(Codec codec) {
     return "unknown";
 }
 
-bool RequestPreviewKeyframe(MediaStreams *media_streams,
+bool RequestPreviewKeyframe(MediaStreams &media_streams,
                             StreamId stream_id) {
-    return media_streams != nullptr &&
-           media_streams->RequestKeyframe(stream_id,
-                                          KeyframeRequestSource::kNewClient);
+    return media_streams.RequestKeyframe(stream_id,
+                                         KeyframeRequestSource::kNewClient);
 }
 
 HttpStreamingRequestResult SendStreamingError(
@@ -106,34 +109,28 @@ private:
     ConnectionId connection_id_ = 0;
 };
 
-bool ParseFlvStreamName(const HttpRequest &request, StreamId *stream_id,
-                        std::string *stream_name) {
-    if (stream_id == nullptr || stream_name == nullptr) {
-        return false;
-    }
-    *stream_name = HttpMediaPathSuffix(request.path, "/live/");
+bool ParseFlvStreamName(const HttpRequest &request, StreamId &stream_id,
+                        std::string &stream_name) {
+    stream_name = HttpMediaPathSuffix(request.path, "/live/");
     constexpr const char *kSuffix = ".live.flv";
     constexpr size_t kSuffixSize = 9;
-    if (stream_name->size() <= kSuffixSize ||
-        stream_name->substr(stream_name->size() - kSuffixSize) != kSuffix) {
+    if (stream_name.size() <= kSuffixSize ||
+        stream_name.substr(stream_name.size() - kSuffixSize) != kSuffix) {
         return false;
     }
-    stream_name->resize(stream_name->size() - kSuffixSize);
-    return MediaStreamIdFromJson(*stream_name, stream_id);
+    stream_name.resize(stream_name.size() - kSuffixSize);
+    return MediaStreamIdFromJson(stream_name, &stream_id);
 }
 
-bool ParseMjpegStreamName(const HttpRequest &request, StreamId *stream_id,
-                          std::string *stream_name) {
-    if (stream_id == nullptr || stream_name == nullptr) {
+bool ParseMjpegStreamName(const HttpRequest &request, StreamId &stream_id,
+                          std::string &stream_name) {
+    stream_name = HttpMediaPathSuffix(request.path, "/live/");
+    if (stream_name.size() <= 5 ||
+        stream_name.substr(stream_name.size() - 5) != ".mjpg") {
         return false;
     }
-    *stream_name = HttpMediaPathSuffix(request.path, "/live/");
-    if (stream_name->size() <= 5 ||
-        stream_name->substr(stream_name->size() - 5) != ".mjpg") {
-        return false;
-    }
-    stream_name->resize(stream_name->size() - 5);
-    return MediaStreamIdFromJson(*stream_name, stream_id);
+    stream_name.resize(stream_name.size() - 5);
+    return MediaStreamIdFromJson(stream_name, &stream_id);
 }
 
 }  // namespace
@@ -157,8 +154,8 @@ public:
         }
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
-        return ParseFlvStreamName(request, &stream_id, &stream_name) ||
-               ParseMjpegStreamName(request, &stream_id, &stream_name);
+        return ParseFlvStreamName(request, stream_id, stream_name) ||
+               ParseMjpegStreamName(request, stream_id, stream_name);
     }
 
     HttpStreamingRequestResult HandleStreamingRequest(
@@ -170,7 +167,7 @@ public:
         }
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
-        if (ParseMjpegStreamName(request, &stream_id, &stream_name)) {
+        if (ParseMjpegStreamName(request, stream_id, stream_name)) {
             return HandleMjpegRequest(connection_id, request);
         }
         return HandleFlvRequest(connection_id, request);
@@ -204,7 +201,7 @@ private:
         headers["Pragma"] = "no-cache";
         headers["X-Accel-Buffering"] = "no";
         const std::string header_block =
-            BuildHttpStreamHeaderBlock(200, headers);
+            BuildHttpMediaStreamHeader(200, headers);
         if (!writer_->EnqueueStreamingChunk(
                 connection_id,
                 reinterpret_cast<const uint8_t *>(header_block.data()),
@@ -233,13 +230,13 @@ private:
                 if (writer == nullptr) {
                     return;
                 }
-                const std::string message = BuildEventStreamMessage(event);
+                const std::string msg = BuildEventStreamMessage(event);
                 // SSE 推送失败说明 TCP 队列关闭或客户端过慢，直接关连接，
                 // 后续 HTTP close callback 会取消订阅。
                 if (!writer->EnqueueStreamingChunk(
                         connection_id,
-                        reinterpret_cast<const uint8_t *>(message.data()),
-                        message.size())) {
+                        reinterpret_cast<const uint8_t *>(msg.data()),
+                        msg.size())) {
                     writer->CloseConnection(connection_id);
                 }
             });
@@ -272,7 +269,7 @@ private:
                 writer_, connection_id,
                 HttpMediaTextResponse(501, "Not Implemented"));
         }
-        if (IsHttpMediaRestarting(device_)) {
+        if (device_ != nullptr && device_->IsRestarting()) {
             Error(kHttpMediaModuleName,
                   "HTTP-FLV reject conn=%llu reason=media_restarting",
                   static_cast<unsigned long long>(connection_id));
@@ -292,7 +289,7 @@ private:
 
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
-        if (!ParseFlvStreamName(request, &stream_id, &stream_name)) {
+        if (!ParseFlvStreamName(request, stream_id, stream_name)) {
             Error(kHttpMediaModuleName,
                   "HTTP-FLV reject conn=%llu reason=path path=%s",
                   static_cast<unsigned long long>(connection_id),
@@ -350,7 +347,7 @@ private:
                  flv_start.config_generation));
         if (!IsFlvStartUsable(flv_start)) {
             const bool keyframe_requested =
-                RequestPreviewKeyframe(media_streams, stream_id);
+                RequestPreviewKeyframe(*media_streams, stream_id);
             // FLV 起播数据不完整时不创建 client，只请求关键帧让 MediaStreams 尽快
             // 生成新的 sequence header/GOP，客户端需要重新发起请求。
             Error(kHttpMediaModuleName,
@@ -378,7 +375,7 @@ private:
             new HttpFlvSession(writer_, connection_id, stream_id);
         size_t cached_flv_bytes = 0;
         const HttpFlvSessionStartStatus start_status =
-            stream->Start(flv_start, &cached_flv_bytes);
+            stream->Start(flv_start, cached_flv_bytes);
         if (start_status != HttpFlvSessionStartStatus::kStarted) {
             // Start() 失败时 stream 尚未 attach 到 MediaStreams，调用方仍拥有对象。
             delete stream;
@@ -433,7 +430,7 @@ private:
             return HttpStreamingRequestResult::kClosed;
         }
         const bool keyframe_requested =
-            RequestPreviewKeyframe(media_streams, stream_id);
+            RequestPreviewKeyframe(*media_streams, stream_id);
         Info(kHttpMediaModuleName,
              "HTTP-FLV attached conn=%llu stream=%s client=%llu "
              "wait_keyframe=%d request_keyframe=%d cached_flv=%zu "
@@ -458,7 +455,7 @@ private:
                 writer_, connection_id,
                 HttpMediaTextResponse(501, "Not Implemented"));
         }
-        if (IsHttpMediaRestarting(device_)) {
+        if (device_ != nullptr && device_->IsRestarting()) {
             Error(kHttpMediaModuleName,
                   "HTTP-MJPEG reject conn=%llu reason=media_restarting",
                   static_cast<unsigned long long>(connection_id));
@@ -478,7 +475,7 @@ private:
 
         StreamId stream_id = StreamId::kMain;
         std::string stream_name;
-        if (!ParseMjpegStreamName(request, &stream_id, &stream_name)) {
+        if (!ParseMjpegStreamName(request, stream_id, stream_name)) {
             Error(kHttpMediaModuleName,
                   "HTTP-MJPEG reject conn=%llu reason=path path=%s",
                   static_cast<unsigned long long>(connection_id),
@@ -537,7 +534,8 @@ private:
             kMjpegBoundary;
         headers["Cache-Control"] = "no-cache";
         headers["Pragma"] = "no-cache";
-        const std::string header_block = BuildHttpStreamHeaderBlock(200, headers);
+        const std::string header_block =
+            BuildHttpMediaStreamHeader(200, headers);
         if (!writer_->EnqueueStreamingChunk(
                 connection_id,
                 reinterpret_cast<const uint8_t *>(header_block.data()),

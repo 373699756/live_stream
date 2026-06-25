@@ -5,6 +5,7 @@ BUILD_DIR ?= $(ROOT_DIR)/build
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
 
 EXTRA_TEST_DEPS := $(MEDIA_CODEC_LIB)
 EXTRA_TEST_LIBS := $(MEDIA_CODEC_LIB)

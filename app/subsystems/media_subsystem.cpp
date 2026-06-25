@@ -1,7 +1,7 @@
 #include "subsystems/media_subsystem.h"
 
 #include "infra/log.h"
-#include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_vendor/mpp_sdk.h"
 #include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 
@@ -16,25 +16,21 @@ bool RequestDeviceKeyframe(StreamId stream_id,
            device->RequestKeyframe(stream_id, source);
 }
 
-MediaStreamState StreamStateForDeviceStream(DeviceMedia *device,
+MediaStreamState StreamStateForDeviceStream(DeviceMedia &device,
                                             StreamId stream_id) {
-    if (device == nullptr ||
-        !device->IsStreamStarted(stream_id)) {
+    if (!device.IsStreamStarted(stream_id)) {
         return MediaStreamState::kClosed;
     }
     return MediaStreamState::kRunning;
 }
 
-void SetInitialMediaStreamState(DeviceMedia *device,
-                                MediaStreams *media_streams,
+void SetInitialMediaStreamState(DeviceMedia &device,
+                                MediaStreams &media_streams,
                                 StreamId stream_id) {
-    if (device == nullptr || media_streams == nullptr) {
-        return;
-    }
-    media_streams->SetStreamState(stream_id,
-                                  StreamStateForDeviceStream(device,
-                                                             stream_id),
-                                  device->GetStreamCodec(stream_id));
+    media_streams.SetStreamState(stream_id,
+                                 StreamStateForDeviceStream(device,
+                                                            stream_id),
+                                 device.GetStreamCodec(stream_id));
 }
 
 }  // namespace
@@ -51,11 +47,11 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
     }
 
     IConfig *config = foundation_subsystem.config();
-    hisisdk::IHisiSdk &sdk = hisisdk::MppSdk();
+    const hisisdk::HisiSdk sdk = hisisdk::MppSdk();
 
     DeviceMediaOptions device_options;
     device_options.config = config;
-    device_options.sdk = &sdk;
+    device_options.sdk = sdk;
     device_ = CreateDeviceMedia(device_options);
     if (!device_) {
         Error("app", "Create device failed");
@@ -80,9 +76,9 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
         return false;
     }
 
-    SetInitialMediaStreamState(device_.get(), media_streams_.get(),
+    SetInitialMediaStreamState(*device_, *media_streams_,
                                StreamId::kMain);
-    SetInitialMediaStreamState(device_.get(), media_streams_.get(),
+    SetInitialMediaStreamState(*device_, *media_streams_,
                                StreamId::kSub);
     const MediaChannels media_channels = device_->GetChannels();
 
@@ -91,7 +87,7 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
     ai_options.alarm = device_refs.alarm;
     ai_options.device = device_.get();
     ai_options.media_channels = media_channels;
-    ai_options.sdk = &sdk;
+    ai_options.snapshot = sdk.snapshot;
     ai_.reset(new Ai(ai_options));
     if (!ai_ || !ai_->Start()) {
         Error("app", "Start ai failed");

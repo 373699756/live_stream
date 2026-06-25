@@ -13,7 +13,7 @@
 #include "auth_internal.h"
 #include "config.h"
 #include "infra/time.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 namespace live_stream {
 namespace {
@@ -122,7 +122,7 @@ std::string GeneratePasswordCredential(const std::string &password) {
         password, salt_hex, auth_internal::kPasswordPbkdf2Iterations);
 }
 
-bool ParseUserConfig(const ConfigJson &value,
+bool ParseUserConfig(const Json &value,
                      const AuthOptions &fallback,
                      AuthOptions *parsed) {
     if (parsed == nullptr) {
@@ -137,27 +137,27 @@ bool ParseUserConfig(const ConfigJson &value,
         !value.at("password_policy").is_object()) {
         return false;
     }
-    const ConfigJson &policy = value.at("password_policy");
-    if (!json_utils::ReadField(policy, "min_length", &options.password_min_length, 0,
+    const Json &policy = value.at("password_policy");
+    if (!json_reader::ReadField(policy, "min_length", &options.password_min_length, 0,
                                std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::ReadField(policy, "require_number",
+        !json_reader::ReadField(policy, "require_number",
                                &options.password_require_number) ||
-        !json_utils::ReadField(policy, "require_symbol",
+        !json_reader::ReadField(policy, "require_symbol",
                                &options.password_require_symbol) ||
-        !json_utils::ReadField(policy, "lockout_failures", &options.lockout_failures,
+        !json_reader::ReadField(policy, "lockout_failures", &options.lockout_failures,
                                0, std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::ReadField(policy, "lockout_seconds", &options.lockout_seconds, 0,
+        !json_reader::ReadField(policy, "lockout_seconds", &options.lockout_seconds, 0,
                                std::numeric_limits<uint32_t>::max())) {
         return false;
     }
     if (!value.contains("session") || !value.at("session").is_object()) {
         return false;
     }
-    const ConfigJson &session = value.at("session");
-    if (!json_utils::ReadField(session, "token_ttl_seconds",
+    const Json &session = value.at("session");
+    if (!json_reader::ReadField(session, "token_ttl_seconds",
                                &options.token_ttl_seconds, 1,
                                std::numeric_limits<uint32_t>::max()) ||
-        !json_utils::ReadField(session, "max_sessions_per_user",
+        !json_reader::ReadField(session, "max_sessions_per_user",
                                &options.max_sessions_per_user, 1,
                                std::numeric_limits<uint32_t>::max())) {
         return false;
@@ -192,7 +192,7 @@ public:
             return false;
         }
         if (config_ != nullptr) {
-            ConfigJson user_config = config_->Get("user");
+            Json user_config = config_->Get("user");
             if (user_config.is_object()) {
                 if (!ApplyConfigLocked(user_config)) {
                     return false;
@@ -200,30 +200,30 @@ public:
             }
             if (!config_attached_) {
                 ConfigScope config_scope;
-                config_scope.verify = [this](const ConfigJson &now,
-                                             ConfigIssue *issue) {
+                config_scope.verify = [this](const Json &now,
+                                             ConfigError *error) {
                     if (VerifyConfig(now)) {
-                        return ConfigStatus::kOk;
+                        return ConfigCode::kOk;
                     }
-                    if (issue != nullptr) {
-                        issue->field.clear();
-                        issue->reason = "invalid user config";
+                    if (error != nullptr) {
+                        error->field.clear();
+                        error->message = "invalid user config";
                     }
-                    return ConfigStatus::kVerifyFailed;
+                    return ConfigCode::kVerify;
                 };
-                config_scope.apply = [this](const ConfigJson &prev,
-                                            const ConfigJson &now,
-                                            ConfigIssue *issue) {
+                config_scope.apply = [this](const Json &prev,
+                                            const Json &now,
+                                            ConfigError *error) {
                     (void)prev;
                     std::lock_guard<std::mutex> apply_guard(mutex_);
                     if (ApplyConfigLocked(now)) {
-                        return ConfigStatus::kOk;
+                        return ConfigCode::kOk;
                     }
-                    if (issue != nullptr) {
-                        issue->field.clear();
-                        issue->reason = "apply user config failed";
+                    if (error != nullptr) {
+                        error->field.clear();
+                        error->message = "apply user config failed";
                     }
-                    return ConfigStatus::kApplyFailed;
+                    return ConfigCode::kApply;
                 };
                 if (!config_->AddScope("user", config_scope)) {
                     return false;
@@ -506,13 +506,13 @@ public:
     }
 
 private:
-    bool VerifyConfig(const ConfigJson &value) const {
+    bool VerifyConfig(const Json &value) const {
         std::lock_guard<std::mutex> guard(mutex_);
         AuthOptions parsed;
         return ParseUserConfig(value, options_, &parsed);
     }
 
-    bool ApplyConfigLocked(const ConfigJson &value) {
+    bool ApplyConfigLocked(const Json &value) {
         AuthOptions parsed;
         ParseUserConfig(value, options_, &parsed);
         options_ = parsed;

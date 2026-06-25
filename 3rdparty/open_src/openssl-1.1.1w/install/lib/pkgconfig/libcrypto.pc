@@ -1,4 +1,4 @@
-prefix=/home/cp/Public/hisi/live_stream/3rdparty/open_src/openssl-1.1.1w/install
+prefix=/home/c/linux/hisi/live_stream/3rdparty/open_src/openssl-1.1.1w/install
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include

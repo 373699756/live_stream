@@ -10,6 +10,11 @@
 namespace live_stream {
 namespace media_internal {
 
+struct GopCacheOptions {
+    uint32_t max_flv_cached_tags = 128;
+    uint32_t max_flv_cached_bytes = 4 * 1024 * 1024;
+};
+
 class GopCache {
 public:
     GopCache() = default;
@@ -18,23 +23,29 @@ public:
     ~GopCache();
 
     void Clear();
+    void Configure(const GopCacheOptions &options);
     bool complete() const { return complete_; }
     size_t size() const { return size_; }
+    uint32_t bytes() const { return bytes_; }
+    uint64_t drop_size() const { return drop_size_; }
     uint32_t FirstFlvTagSize() const;
     bool AppendFlvTag(const MediaFrame &frame, bool keyframe,
                       const FlvVideoTagBuild &flv_tag_view);
-    void CopyTo(MediaFlvStart *flv_start) const;
+    void CopyTo(MediaFlvStart &flv_start) const;
 
 private:
     // FLV GOP cache 从最近关键帧开始保存完整 GOP。HTTP-FLV 新客户端连接时
     // 先拿 sequence header，再从这里取得可解码起点。
     bool CopyFlvTagView(const MediaFrame &frame,
                         const FlvVideoTagBuild &source,
-                        MediaFlvCachedVideoTag *target) const;
+                        MediaFlvCachedVideoTag &target) const;
 
     std::array<MediaFlvCachedVideoTag, kMaxMediaFlvCachedVideoTags> frames_;
+    GopCacheOptions options_;
     size_t head_ = 0;
     size_t size_ = 0;
+    uint32_t bytes_ = 0;
+    uint64_t drop_size_ = 0;
     bool complete_ = false;
 };
 

@@ -25,49 +25,49 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::ConfigStatus Set(const std::string& name,
-                                  const live_stream::ConfigJson& now,
-                                  live_stream::ConfigIssue* issue) override {
+    live_stream::ConfigCode Set(const std::string& name,
+                                  const live_stream::Json& now,
+                                  live_stream::ConfigError* error) override {
         auto iter = scopes.find(name);
         if (iter != scopes.end() && iter->second.verify) {
-            const live_stream::ConfigStatus status =
-                iter->second.verify(now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                iter->second.verify(now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (iter != scopes.end() && iter->second.apply) {
-            const live_stream::ConfigJson prev = Get(name);
-            const live_stream::ConfigStatus status =
-                iter->second.apply(prev, now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::Json prev = Get(name);
+            const live_stream::ConfigCode code =
+                iter->second.apply(prev, now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         values[name] = now;
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigJson Get(const std::string& name) override {
+    live_stream::Json Get(const std::string& name) override {
         auto iter = values.find(name);
         return iter != values.end() ? iter->second
-                                    : live_stream::ConfigJson::object();
+                                    : live_stream::Json::object();
     }
 
-    live_stream::ConfigJson Default(const std::string& name) override {
+    live_stream::Json Default(const std::string& name) override {
         (void)name;
-        return live_stream::ConfigJson::object();
+        return live_stream::Json::object();
     }
 
-    live_stream::ConfigStatus Reset(
-        const std::string& name, live_stream::ConfigIssue*) override {
+    live_stream::ConfigCode Reset(
+        const std::string& name, live_stream::ConfigError*) override {
         values[name] = Default(name);
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
 
     bool AddScope(const std::string& name,
@@ -81,12 +81,12 @@ public:
         return scopes.erase(name) != 0;
     }
 
-    std::map<std::string, live_stream::ConfigJson> values;
+    std::map<std::string, live_stream::Json> values;
     std::map<std::string, live_stream::ConfigScope> scopes;
     int attach_count = 0;
 };
 
-live_stream::ConfigJson BuildVideoConfig(uint32_t bitrate_kbps) {
+live_stream::Json BuildVideoConfig(uint32_t bitrate_kbps) {
     return {{"streams",
              {{"main",
                {{"codec", "h265"},
@@ -150,7 +150,7 @@ int main() {
     }
     config.values["video"] = BuildVideoConfig(2048);
     if (config.Set("video", config.values["video"], nullptr) !=
-        live_stream::ConfigStatus::kOk) {
+        live_stream::ConfigCode::kOk) {
         return 10;
     }
     configured->Stop();

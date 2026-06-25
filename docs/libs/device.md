@@ -18,7 +18,7 @@ flowchart LR
   Config[config video/image scopes] --> Media[device]
   SnapshotConfig[config snapshot scope] --> Media
   OverlayConfig[config overlay scope] --> Media
-  Media --> SDK[hisi_vendor/IHisiSdk]
+  Media --> SDK[hisi_vendor narrow SDK interfaces]
   SDK --> MPP[VI/VPSS/VENC/ISP]
   Media --> Frames[FrameAttach/IFrameSink]
   Frames --> MediaCore[media]
@@ -32,7 +32,7 @@ flowchart LR
 - 对外提供 `AttachFrameSink`、`DetachFrameSink`、`RequestKeyframe`。
 - 读取和应用 snapshot 配置，通过 `CaptureSnapshot()` 提供 JPEG 抓图。
 - 校验和应用 overlay 配置，管理 text OSD、隐私遮挡和 SDK region 生命周期。
-- 通过内部 `HardwarePipeline` 管理 MPP/VI/VPSS/VENC 生命周期；该私有类不是
+- 通过内部 `MediaPipeline` 管理 MPP/VI/VPSS/VENC 生命周期；该私有类不是
   `media` 模块，也不参与协议分发。
 - 应用 video/image 配置，并通过 SDK 控制 ISP、VENC 和相关媒体资源。
 - 提供 `ImageInfo` 供 HTTP/Web 展示图像策略运行状态。
@@ -95,6 +95,11 @@ validate/apply。
 
 ## 状态与资源模型
 
+HiSilicon SDK 契约归 `hisi_vendor`，`device` 只消费 `hisi_vendor/sdk.h`、
+`hisi_vendor/media_pipeline.h`、`hisi_vendor/mpp_types.h` 和
+`hisi_vendor/media_capabilities.h`。host SDK 仅作为 `device/src` 内部实现存在，
+不进入 public SDK 契约。
+
 `device` 是最接近硬件 pipeline 的状态拥有者。帧订阅是跨模块边界，订阅方
 不能持有 SDK 内部资源，也不能在帧路径打普通诊断日志。`device` 只转发编码帧并
 提供关键帧请求入口；新订阅方 keyframe-first、GOP、HLS、FLV、MJPEG ready、
@@ -114,7 +119,7 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 ## 音视频专项边界
 
 产品只支持视频。旧配置文件中的音频字段只做升级兼容忽略；不启动音频采集、编码、
-传输或 UI/API。HiSilicon 静态库中的音频符号由 `hisi_vendor` 失败 stub 闭合。
+传输或 UI/API。HiSilicon 静态库中的音频符号由 `hisi_vendor` 失败符号闭合。
 
 ## 风险与优化方向
 

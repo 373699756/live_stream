@@ -96,12 +96,13 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 不新增 `Runtime`、`Manager`、`Store`、`Topology` 这类看起来大但边界不清的名字；
 历史已有名字在重构触及时改成具体业务名。
 
-当前集合基数用 `Size()` / `_size`，不用 `Count()` / `_count`，例如
-`FrameRing::SubscriptionSize()`、`PreviewClients::FlvSize()`、
-`subscription_size`。累计次数、协议反馈和低层引用不要机械改成 `Size`；需要重命名时
-用具体事实，例如 `MissingSegments()`、`EvictedSegments()`、`rtcp_pli_packets`、
-`refs`。HTTP JSON 字段进入命名收敛范围时必须同步后端、前端、mock 和文档，不保留
-旧字段别名。
+当前集合基数接口用 `Size()` / `_size`，不用 `Count()` / `_count`，例如
+`FrameRing::SubscriptionSize()`、`PreviewClients::FlvSize()`。HTTP/Web DTO 优先用
+业务事实名表达数量，例如 `active_subscriptions`、`preview_clients`、
+`detected_targets`，避免用 `*_size` 表示非字节尺寸。累计次数、协议反馈和低层引用
+不要机械改成 `Size`；需要重命名时用具体事实，例如 `MissingSegments()`、
+`EvictedSegments()`、`rtcp_pli_packets`、`refs`。HTTP JSON 字段进入命名收敛范围时
+必须同步后端、前端、mock 和文档，不保留旧字段别名。
 
 ### 必须遵守
 
@@ -114,6 +115,9 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 - 视频 payload 内存统一为 `MediaBuffer` + RAII `MediaBufferRef`，编码帧统一为
   `MediaFrame`，协议输出拼片使用 `MediaOutSlice`。
 - 对外展示/查询用 `Info`，聚合运行数据用 `Stats`，不用 `Status`、`Counters` 混用。
+- 跨模块只读查询接口用 `Reader`，例如 `IRtspSessionReader`、
+  `IWebrtcStatusReader`、`IAiReader`；`View` 只用于明确的数据视图或切片对象，
+  例如 `RtpPacketView`，不要用在协议状态、会话诊断或业务查询接口上。
 - 内部锁内变量和状态机可以使用 `State`，但不要进入新的 public API。
 - 帧订阅统一使用 `FrameSubscription`、`SubscribeFrames(...)`、`UnsubscribeFrames(...)`。
 - 删除旧 `stream_*`、`MetaRtc*`、`Yang*` 和只转调旧接口的临时命名。
@@ -152,12 +156,15 @@ ZLToolKit 只作为结构、协议行为和资源模型参照。
 - HTTP/RTSP 实时媒体内部流程使用 `PreviewUrlsToJson()`、
   `RequireLiveStreamAuthResponse()`、`StartRtspMediaStream()` 和
   `ArmRtspMediaStream()`。
-
-### 延后命名清单
-
-- `http_handler_utils.*`、`http_request_utils.*`、`http_media_utils.*` 按 response、auth、
-  request body、path/stream 语义拆分或重命名。该项会牵动大量 handler include，
-  后续应单独执行并同步质量基线。
+- HTTP 控制面旧 `http_handler_utils.*`、`http_request_utils.*` 已按
+  `http_response`、`http_auth_gate`、`http_json_body`、`http_path`、
+  `http_request_*`、`http_stream_id_json` 等职责拆分。
+- HTTP 媒体旧 `http_media_utils.*` 已按 `http_media_response`、
+  `http_media_auth`、`http_media_json_body`、`http_media_path`、
+  `http_media_stream_id_json` 等职责拆分；长连接响应 header 构造归入
+  `http_media_response`。
+- HiSilicon MPP 旧 `hisi_mpp_utils.h` 已按 SDK 头聚合 `hisi_mpp_sdk.h`
+  和 VENC/JPEG packet 视图 `venc_packet_view.h` 拆分。
 
 ## 关键设计
 

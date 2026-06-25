@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_SYSTEM_SRC_NETWORK_JSON_H_
 #define LIVE_STREAM_SYSTEM_SRC_NETWORK_JSON_H_
 
-#include "config_json.h"
-#include "network_api.h"
+#include "json.h"
+#include "system/network.h"
 
 #include <map>
 #include <string>
@@ -15,14 +15,14 @@ bool ValidateConfig(const NetConfig &config,
                     bool allow_loopback_config);
 NetConfig DefaultConfig(const std::string &ifname);
 bool ConfigFromNetJson(const std::string &ifname,
-                       const ConfigJson &value,
+                       const Json &value,
                        NetConfig *config);
-ConfigJson NetConfigToJson(const NetConfig &config);
+Json NetConfigToJson(const NetConfig &config);
 bool ConfigsFromNetworkJson(
-    const ConfigJson &json,
+    const Json &json,
     std::map<std::string, NetConfig> *configs);
-ConfigJson NetworkJsonWithConfigs(
-    const ConfigJson &current,
+Json NetworkJsonWithConfigs(
+    const Json &current,
     const std::map<std::string, NetConfig> &configs);
 
 }  // namespace network_internal

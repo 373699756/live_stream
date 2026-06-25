@@ -1,7 +1,7 @@
 #include "network_json.h"
 
-#include "json_utils.h"
-#include "network_format.h"
+#include "json_reader.h"
+#include "system/network_json.h"
 
 #include <cctype>
 #include <cstdint>
@@ -145,44 +145,44 @@ NetConfig DefaultConfig(const std::string &ifname) {
 //   "dns": [str, ...] }
 
 bool ConfigFromNetJson(const std::string &ifname,
-                       const ConfigJson &value,
+                       const Json &value,
                        NetConfig *config) {
     if (!value.is_object() || config == nullptr) {
         return false;
     }
     NetConfig parsed;
     parsed.ifname = ifname;
-    if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
-        !json_utils::ReadField(value, "dhcp", &parsed.dhcp)) {
+    if (!json_reader::ReadField(value, "enabled", &parsed.enabled) ||
+        !json_reader::ReadField(value, "dhcp", &parsed.dhcp)) {
         return false;
     }
     if (!value.contains("static_ipv4") ||
         !value.at("static_ipv4").is_object()) {
         return false;
     }
-    const ConfigJson &static_ipv4 = value.at("static_ipv4");
-    if (!json_utils::ReadField(static_ipv4, "address", &parsed.static_ipv4.address) ||
-        !json_utils::ReadField(static_ipv4, "netmask", &parsed.static_ipv4.netmask) ||
-        !json_utils::ReadField(static_ipv4, "gateway", &parsed.static_ipv4.gateway)) {
+    const Json &static_ipv4 = value.at("static_ipv4");
+    if (!json_reader::ReadField(static_ipv4, "address", &parsed.static_ipv4.address) ||
+        !json_reader::ReadField(static_ipv4, "netmask", &parsed.static_ipv4.netmask) ||
+        !json_reader::ReadField(static_ipv4, "gateway", &parsed.static_ipv4.gateway)) {
         return false;
     }
-    if (!json_utils::ReadStringArray(value, "dns", &parsed.dns)) {
+    if (!json_reader::ReadStringArray(value, "dns", &parsed.dns)) {
         return false;
     }
     *config = parsed;
     return true;
 }
 
-ConfigJson NetConfigToJson(const NetConfig &config) {
-    ConfigJson value = ConfigJson::object();
+Json NetConfigToJson(const NetConfig &config) {
+    Json value = Json::object();
     value["enabled"] = config.enabled;
     value["dhcp"] = config.dhcp;
-    ConfigJson s = ConfigJson::object();
+    Json s = Json::object();
     s["address"] = config.static_ipv4.address;
     s["netmask"] = config.static_ipv4.netmask;
     s["gateway"] = config.static_ipv4.gateway;
     value["static_ipv4"] = s;
-    ConfigJson dns = ConfigJson::array();
+    Json dns = Json::array();
     for (const std::string &server : config.dns) {
         dns.push_back(server);
     }
@@ -191,7 +191,7 @@ ConfigJson NetConfigToJson(const NetConfig &config) {
 }
 
 bool ConfigsFromNetworkJson(
-    const ConfigJson &json,
+    const Json &json,
     std::map<std::string, NetConfig> *configs) {
     if (configs == nullptr || !json.is_object()) {
         return false;
@@ -200,7 +200,7 @@ bool ConfigsFromNetworkJson(
     if (!json.contains("interfaces") || !json.at("interfaces").is_object()) {
         return false;
     }
-    const ConfigJson &interfaces = json.at("interfaces");
+    const Json &interfaces = json.at("interfaces");
     for (auto iter = interfaces.begin(); iter != interfaces.end(); ++iter) {
         NetConfig config;
         if (!ConfigFromNetJson(iter.key(), iter.value(), &config) ||
@@ -212,11 +212,11 @@ bool ConfigsFromNetworkJson(
     return true;
 }
 
-ConfigJson NetworkJsonWithConfigs(
-    const ConfigJson &current,
+Json NetworkJsonWithConfigs(
+    const Json &current,
     const std::map<std::string, NetConfig> &configs) {
-    ConfigJson root = current.is_object() ? current : ConfigJson::object();
-    ConfigJson interfaces = ConfigJson::object();
+    Json root = current.is_object() ? current : Json::object();
+    Json interfaces = Json::object();
     for (const auto &entry : configs) {
         interfaces[entry.first] = NetConfigToJson(entry.second);
     }
@@ -228,22 +228,22 @@ ConfigJson NetworkJsonWithConfigs(
 
 // Public API JSON/format helpers.
 
-ConfigJson NetInterfaceInfoToApiJson(const NetInterfaceInfo &status) {
-    ConfigJson root = ConfigJson::object();
-    root["ifname"] = status.ifname;
-    root["enabled"] = status.enabled;
-    root["link_up"] = status.link_up;
-    root["dhcp"] = status.dhcp;
-    root["mac_address"] = status.mac_address;
-    root["last_ok"] = status.last_ok;
-    ConfigJson s = ConfigJson::object();
-    s["address"] = status.static_ipv4.address;
-    s["prefix_length"] = status.static_ipv4.prefix_length;
-    s["netmask"] = status.static_ipv4.netmask;
-    s["gateway"] = status.static_ipv4.gateway;
+Json NetInterfaceInfoToApiJson(const NetInterfaceInfo &interface_info) {
+    Json root = Json::object();
+    root["ifname"] = interface_info.ifname;
+    root["enabled"] = interface_info.enabled;
+    root["link_up"] = interface_info.link_up;
+    root["dhcp"] = interface_info.dhcp;
+    root["mac_address"] = interface_info.mac_address;
+    root["last_ok"] = interface_info.last_ok;
+    Json s = Json::object();
+    s["address"] = interface_info.static_ipv4.address;
+    s["prefix_length"] = interface_info.static_ipv4.prefix_length;
+    s["netmask"] = interface_info.static_ipv4.netmask;
+    s["gateway"] = interface_info.static_ipv4.gateway;
     root["static_ipv4"] = s;
-    ConfigJson dns = ConfigJson::array();
-    for (const std::string &server : status.dns) {
+    Json dns = Json::array();
+    for (const std::string &server : interface_info.dns) {
         dns.push_back(server);
     }
     root["dns"] = dns;
@@ -251,7 +251,7 @@ ConfigJson NetInterfaceInfoToApiJson(const NetInterfaceInfo &status) {
 }
 
 bool NetConfigFromApiJson(const std::string &ifname,
-                          const ConfigJson &value,
+                          const Json &value,
                           NetConfig *config) {
     return network_internal::ConfigFromNetJson(ifname, value, config);
 }

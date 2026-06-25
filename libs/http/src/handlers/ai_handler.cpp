@@ -1,11 +1,15 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_ai_status.h"
+#include "http_auth_gate.h"
+#include "http_path.h"
+#include "http_response.h"
+#include "http_stream_id_json.h"
 
 #include "ai.h"
 #include "config.h"
 #include "device.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <cctype>
 #include <string>
@@ -18,8 +22,6 @@ const char *AiBackendToJsonString(AiBackend backend) {
     switch (backend) {
         case AiBackend::kHi3516Dv300Nnie:
             return "hisi3516dv300_nnie";
-        case AiBackend::kHostStub:
-            return "host_stub";
     }
     return "unknown";
 }
@@ -38,8 +40,8 @@ const char *AiTaskToJsonString(AiTask task) {
     return "unknown";
 }
 
-ConfigJson AiTaskConfigToJson(const AiModelConfig &config) {
-    ConfigJson root = ConfigJson::object();
+Json AiTaskConfigToJson(const AiModelConfig &config) {
+    Json root = Json::object();
     root["enabled"] = config.enabled;
     root["backend"] = AiBackendToJsonString(config.backend);
     root["task"] = AiTaskToJsonString(config.task);
@@ -50,9 +52,9 @@ ConfigJson AiTaskConfigToJson(const AiModelConfig &config) {
     root["inference_interval_ms"] = config.inference_interval_ms;
     root["confidence_threshold"] = config.confidence_threshold;
     root["max_results"] = config.max_results;
-    ConfigJson regions = ConfigJson::array();
+    Json regions = Json::array();
     for (const AiPerimeterRegion &region : config.perimeter.regions) {
-        ConfigJson item = ConfigJson::object();
+        Json item = Json::object();
         item["name"] = region.name;
         item["x"] = region.x;
         item["y"] = region.y;
@@ -64,10 +66,10 @@ ConfigJson AiTaskConfigToJson(const AiModelConfig &config) {
     return root;
 }
 
-ConfigJson AiConfigToJson(const AiConfig &config) {
-    ConfigJson root = ConfigJson::object();
+Json AiConfigToJson(const AiConfig &config) {
+    Json root = Json::object();
     root["enabled"] = config.enabled;
-    ConfigJson tasks = ConfigJson::array();
+    Json tasks = Json::array();
     for (const AiModelConfig &task_config : config.tasks) {
         tasks.push_back(AiTaskConfigToJson(task_config));
     }
@@ -75,24 +77,24 @@ ConfigJson AiConfigToJson(const AiConfig &config) {
     return root;
 }
 
-ConfigJson AiBackendsToJson(const std::vector<AiBackend> &backends) {
-    ConfigJson items = ConfigJson::array();
+Json AiBackendsToJson(const std::vector<AiBackend> &backends) {
+    Json items = Json::array();
     for (AiBackend backend : backends) {
         items.push_back(AiBackendToJsonString(backend));
     }
     return items;
 }
 
-ConfigJson AiStreamsToJson(const std::vector<StreamId> &streams) {
-    ConfigJson items = ConfigJson::array();
+Json AiStreamsToJson(const std::vector<StreamId> &streams) {
+    Json items = Json::array();
     for (StreamId stream : streams) {
         items.push_back(StreamIdToJsonString(stream));
     }
     return items;
 }
 
-ConfigJson AiTaskCapabilityToJson(const AiTaskCapability &capability) {
-    ConfigJson root = ConfigJson::object();
+Json AiTaskCapabilityToJson(const AiTaskCapability &capability) {
+    Json root = Json::object();
     root["task"] = AiTaskToJsonString(capability.task);
     root["available"] = capability.available;
     root["requires_model"] = capability.requires_model;
@@ -123,13 +125,13 @@ ConfigJson AiTaskCapabilityToJson(const AiTaskCapability &capability) {
     return root;
 }
 
-ConfigJson AiCapabilitiesToJson(const AiCapabilities &capabilities) {
-    ConfigJson root = ConfigJson::object();
+Json AiCapabilitiesToJson(const AiCapabilities &capabilities) {
+    Json root = Json::object();
     root["available"] = capabilities.available;
     root["model_runtime_available"] =
         capabilities.model_runtime_available;
     root["model_runtime_reason"] = capabilities.model_runtime_reason;
-    ConfigJson tasks = ConfigJson::array();
+    Json tasks = Json::array();
     for (const AiTaskCapability &capability : capabilities.tasks) {
         tasks.push_back(AiTaskCapabilityToJson(capability));
     }
@@ -170,8 +172,8 @@ AiCapabilities UnavailableAiCapabilities() {
     return capabilities;
 }
 
-ConfigJson AiStatsToJson(const AiStats &stats) {
-    ConfigJson root = ConfigJson::object();
+Json AiStatsToJson(const AiStats &stats) {
+    Json root = Json::object();
     root["enabled"] = stats.enabled;
     root["backend_available"] = stats.backend_available;
     root["alarm_linked"] = stats.alarm_linked;
@@ -189,49 +191,49 @@ ConfigJson AiStatsToJson(const AiStats &stats) {
     return root;
 }
 
-ConfigJson AiResultToJson(const AiInferenceResult &result);
+Json AiResultToJson(const AiInferenceResult &result);
 
-ConfigJson AiTaskInfoToJson(const AiTaskInfo &status) {
-    ConfigJson root = ConfigJson::object();
-    root["config"] = AiTaskConfigToJson(status.config);
-    root["stats"] = AiStatsToJson(status.stats);
-    root["last_result"] = AiResultToJson(status.last_result);
+Json AiTaskInfoToJson(const AiTaskInfo &task_info) {
+    Json root = Json::object();
+    root["config"] = AiTaskConfigToJson(task_info.config);
+    root["stats"] = AiStatsToJson(task_info.stats);
+    root["last_result"] = AiResultToJson(task_info.last_result);
     return root;
 }
 
-ConfigJson AiTaskInfoListToJson(const std::vector<AiTaskInfo> &statuses) {
-    ConfigJson items = ConfigJson::array();
-    for (const AiTaskInfo &status : statuses) {
-        items.push_back(AiTaskInfoToJson(status));
+Json AiTaskInfoListToJson(const std::vector<AiTaskInfo> &task_infos) {
+    Json items = Json::array();
+    for (const AiTaskInfo &task_info : task_infos) {
+        items.push_back(AiTaskInfoToJson(task_info));
     }
     return items;
 }
 
-ConfigJson DisabledAiStatusToJson(IConfig *config) {
-    ConfigJson root = ConfigJson::object();
-    ConfigJson ai_config =
-        config != nullptr ? config->Get("ai") : ConfigJson::object();
+Json DisabledAiStatusToJson(IConfig *config) {
+    Json root = Json::object();
+    Json ai_config =
+        config != nullptr ? config->Get("ai") : Json::object();
     bool enabled = false;
     if (ai_config.is_object()) {
         static_cast<void>(
-            json_utils::ReadField(ai_config, "enabled", &enabled));
+            json_reader::ReadField(ai_config, "enabled", &enabled));
     } else {
-        ai_config = ConfigJson::object();
+        ai_config = Json::object();
         ai_config["enabled"] = false;
-        ai_config["tasks"] = ConfigJson::array();
+        ai_config["tasks"] = Json::array();
     }
     root["enabled"] = enabled;
     root["config"] = ai_config;
     root["summary"] = AiStatsToJson(AiStats{});
-    root["tasks"] = ConfigJson::array();
+    root["tasks"] = Json::array();
     root["last_result"] = AiResultToJson(AiInferenceResult{});
     root["capabilities"] =
         AiCapabilitiesToJson(UnavailableAiCapabilities());
     return root;
 }
 
-ConfigJson AiDetectionToJson(const AiDetection &detection) {
-    ConfigJson root = ConfigJson::object();
+Json AiDetectionToJson(const AiDetection &detection) {
+    Json root = Json::object();
     root["label"] = detection.label;
     root["confidence"] = detection.confidence;
     root["x"] = detection.x;
@@ -241,13 +243,13 @@ ConfigJson AiDetectionToJson(const AiDetection &detection) {
     return root;
 }
 
-ConfigJson AiResultToJson(const AiInferenceResult &result) {
-    ConfigJson root = ConfigJson::object();
+Json AiResultToJson(const AiInferenceResult &result) {
+    Json root = Json::object();
     root["success"] = result.success;
     root["stream"] = StreamIdToJsonString(result.stream_id);
     root["sequence"] = result.sequence;
     root["pts_us"] = result.pts_us;
-    ConfigJson detections = ConfigJson::array();
+    Json detections = Json::array();
     for (const AiDetection &detection : result.detections) {
         detections.push_back(AiDetectionToJson(detection));
     }
@@ -267,16 +269,16 @@ bool IsValidAlertId(const std::string &id) {
     return true;
 }
 
-ConfigJson AiAlertToJson(const AiAlertRecord &alert) {
-    ConfigJson root = ConfigJson::object();
+Json AiAlertToJson(const AiAlertRecord &alert) {
+    Json root = Json::object();
     root["id"] = alert.id;
     root["timestamp_ms"] = alert.timestamp_ms;
     root["stream"] = StreamIdToJsonString(alert.stream_id);
     root["task"] = AiTaskToJsonString(alert.task);
     root["image_url"] = "/api/ai/alerts/" + alert.id + "/image";
-    root["detection_size"] = alert.detection_size;
+    root["detected_targets"] = alert.detected_targets;
     root["confidence_max"] = alert.max_confidence;
-    ConfigJson detections = ConfigJson::array();
+    Json detections = Json::array();
     for (const AiDetection &detection : alert.detections) {
         detections.push_back(AiDetectionToJson(detection));
     }
@@ -284,9 +286,9 @@ ConfigJson AiAlertToJson(const AiAlertRecord &alert) {
     return root;
 }
 
-ConfigJson AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
-    ConfigJson root = ConfigJson::object();
-    ConfigJson items = ConfigJson::array();
+Json AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
+    Json root = Json::object();
+    Json items = Json::array();
     for (const AiAlertRecord &alert : alerts) {
         items.push_back(AiAlertToJson(alert));
     }
@@ -294,8 +296,8 @@ ConfigJson AiAlertListToJson(const std::vector<AiAlertRecord> &alerts) {
     return root;
 }
 
-ConfigJson ImageInfoToJson(const ImageInfo &info) {
-    ConfigJson root = ConfigJson::object();
+Json ImageInfoToJson(const ImageInfo &info) {
+    Json root = Json::object();
     root["enabled"] = info.enabled;
     root["active"] = info.active;
     root["exposure_valid"] = info.exposure_valid;
@@ -318,58 +320,28 @@ ConfigJson ImageInfoToJson(const ImageInfo &info) {
 
 class AiHttpHandler : public IHttpHandler {
 public:
-    AiHttpHandler(HttpAccess *access, IConfig *config,
-                  IAiView *ai, DeviceMedia *device)
-        : access_(access), config_(config), ai_(ai), device_(device) {}
+    explicit AiHttpHandler(const AiHandlerDependencies &dependencies)
+        : access_(dependencies.access),
+          config_(dependencies.config),
+          ai_(dependencies.ai),
+          device_(dependencies.device) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
-        }
-        router->AddExactRoute(HttpMethod::kGet,
-                              "/api/status/image-strategy",
-                              &AiHttpHandler::HandleImageStrategyRoute,
-                              this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/ai/status",
-                              &AiHttpHandler::HandleStatusRoute, this);
-        router->AddExactRoute(HttpMethod::kGet,
-                              "/api/ai/capabilities",
-                              &AiHttpHandler::HandleCapabilitiesRoute,
-                              this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/ai/alerts",
-                              &AiHttpHandler::HandleAlertsRoute, this);
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/ai/alerts/",
-                               &AiHttpHandler::HandleAlertImageRoute, this);
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddExactRoute(HttpMethod::kGet,
+                             "/api/status/image-strategy", this,
+                             &AiHttpHandler::HandleImageStrategy);
+        router.AddExactRoute(HttpMethod::kGet, "/api/ai/status",
+                             this, &AiHttpHandler::HandleInfo);
+        router.AddExactRoute(HttpMethod::kGet,
+                             "/api/ai/capabilities", this,
+                             &AiHttpHandler::HandleCapabilities);
+        router.AddExactRoute(HttpMethod::kGet, "/api/ai/alerts",
+                             this, &AiHttpHandler::HandleAlerts);
+        router.AddPrefixRoute(HttpMethod::kGet, "/api/ai/alerts/",
+                              this, &AiHttpHandler::HandleAlertImage);
     }
 
 private:
-    static HttpResponse HandleStatusRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<AiHttpHandler *>(user)->HandleStatus(request);
-    }
-
-    static HttpResponse HandleAlertsRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<AiHttpHandler *>(user)->HandleAlerts(request);
-    }
-
-    static HttpResponse HandleCapabilitiesRoute(void *user,
-                                                const HttpRequest &request) {
-        return static_cast<AiHttpHandler *>(user)->HandleCapabilities(
-            request);
-    }
-
-    static HttpResponse HandleImageStrategyRoute(void *user,
-                                                 const HttpRequest &request) {
-        return static_cast<AiHttpHandler *>(user)->HandleImageStrategy(
-            request);
-    }
-
-    static HttpResponse HandleAlertImageRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<AiHttpHandler *>(user)->HandleAlertImage(request);
-    }
-
     HttpResponse HandleImageStrategy(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
@@ -398,7 +370,7 @@ private:
                                     : UnavailableAiCapabilities()));
     }
 
-    HttpResponse HandleStatus(const HttpRequest &request) {
+    HttpResponse HandleInfo(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
             RequireAuthResponse(access_, request, &principal);
@@ -412,7 +384,7 @@ private:
             return StatusResponse(503, "AI not running");
         }
         const AiConfig config = ai_->GetConfig();
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         root["enabled"] = config.enabled;
         root["config"] = AiConfigToJson(config);
         root["summary"] = AiStatsToJson(ai_->GetStats());
@@ -474,15 +446,14 @@ private:
 
     HttpAccess *access_ = nullptr;
     IConfig *config_ = nullptr;
-    IAiView *ai_ = nullptr;
+    IAiReader *ai_ = nullptr;
     DeviceMedia *device_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeAiHandler(HttpAccess *access,
-                                            IConfig *config, IAiView *ai,
-                                            DeviceMedia *device) {
+std::unique_ptr<IHttpHandler> MakeAiHandler(
+    const AiHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new AiHttpHandler(access, config, ai, device));
+        new AiHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

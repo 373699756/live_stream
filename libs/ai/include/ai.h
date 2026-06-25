@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "media/mpp_types.h"
+#include "hisi_vendor/mpp_types.h"
 #include "media/stream_types.h"
 
 namespace live_stream {
@@ -16,7 +16,7 @@ class IConfig;
 class DeviceMedia;
 
 namespace hisisdk {
-class IHisiSdk;
+class IHisiSnapshot;
 }  // namespace hisisdk
 
 enum class AiTask {
@@ -28,7 +28,6 @@ enum class AiTask {
 
 enum class AiBackend {
     kHi3516Dv300Nnie = 0,
-    kHostStub,
 };
 
 struct AiPerimeterRegion {
@@ -136,7 +135,7 @@ struct AiAlertRecord {
     int64_t timestamp_ms = 0;
     StreamId stream_id = StreamId::kMain;
     AiTask task = AiTask::kObjectDetection;
-    uint32_t detection_size = 0;
+    uint32_t detected_targets = 0;
     float max_confidence = 0.0f;
     std::vector<AiDetection> detections;
 };
@@ -147,16 +146,16 @@ struct AiOptions {
     IAlarm* alarm = nullptr;
     DeviceMedia* device = nullptr;
     MediaChannels media_channels;
-    hisisdk::IHisiSdk* sdk = nullptr;
+    hisisdk::IHisiSnapshot* snapshot = nullptr;
     std::string alert_image_dir = "build/ai_alerts";
     uint32_t max_alert_records = 100;
 };
 
-// IAiView is the narrow interface used by http and other cross-module callers.
-// Ai implements it.
-class IAiView {
+// IAiReader is the narrow read-only interface used by http and other
+// cross-module callers. Ai implements it.
+class IAiReader {
 public:
-    virtual ~IAiView() = default;
+    virtual ~IAiReader() = default;
     virtual AiCapabilities GetCapabilities() const = 0;
     virtual AiConfig GetConfig() const = 0;
     virtual AiStats GetStats() const = 0;
@@ -166,7 +165,7 @@ public:
     virtual std::string ReadAlertImage(const std::string& id) const = 0;
 };
 
-class Ai : public IAiView {
+class Ai : public IAiReader {
 public:
     Ai();
     explicit Ai(const AiOptions& options);

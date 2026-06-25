@@ -204,7 +204,7 @@ RawParseResult ParseRawRequest(const std::string& raw,
         char* end = nullptr;
         const unsigned long parsed =
             std::strtoul(content_length_text.c_str(), &end, 10);
-        if (end == nullptr || *end != '\0') {
+        if (*end != '\0') {
             RawParseResult result;
             result.status = RawParseStatus::kBadRequest;
             return result;

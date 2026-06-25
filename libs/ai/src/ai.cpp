@@ -16,43 +16,38 @@ Ai::Ai(const AiOptions &options) : impl_(new Impl(options)) {}
 
 Ai::~Ai() = default;
 
-bool Ai::Start() { return impl_ != nullptr && impl_->task_runner.Start(); }
+bool Ai::Start() { return impl_->task_runner.Start(); }
 
 void Ai::Stop() {
-    if (impl_) {
-        impl_->task_runner.Stop();
-    }
+    impl_->task_runner.Stop();
 }
 
 AiCapabilities Ai::GetCapabilities() const {
-    return impl_ != nullptr ? impl_->task_runner.GetCapabilities() : AiCapabilities{};
+    return impl_->task_runner.GetCapabilities();
 }
 
 AiConfig Ai::GetConfig() const {
-    return impl_ != nullptr ? impl_->task_runner.GetConfig() : AiConfig{};
+    return impl_->task_runner.GetConfig();
 }
 
 AiStats Ai::GetStats() const {
-    return impl_ != nullptr ? impl_->task_runner.GetStats() : AiStats{};
+    return impl_->task_runner.GetStats();
 }
 
 AiInferenceResult Ai::GetLastResult() const {
-    return impl_ != nullptr ? impl_->task_runner.GetLastResult()
-                            : AiInferenceResult{};
+    return impl_->task_runner.GetLastResult();
 }
 
 std::vector<AiTaskInfo> Ai::GetTaskInfoList() const {
-    return impl_ != nullptr ? impl_->task_runner.GetTaskInfoList()
-                            : std::vector<AiTaskInfo>();
+    return impl_->task_runner.GetTaskInfoList();
 }
 
 std::vector<AiAlertRecord> Ai::ListAlerts() const {
-    return impl_ != nullptr ? impl_->task_runner.ListAlerts()
-                            : std::vector<AiAlertRecord>();
+    return impl_->task_runner.ListAlerts();
 }
 
 std::string Ai::ReadAlertImage(const std::string &id) const {
-    return impl_ != nullptr ? impl_->task_runner.ReadAlertImage(id) : std::string();
+    return impl_->task_runner.ReadAlertImage(id);
 }
 
 const char *Ai::StaticName() { return "ai"; }

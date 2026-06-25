@@ -9,7 +9,7 @@ export function NetworkConfigPage() {
         config: webrtcConfig,
         error: webrtcError,
         loading: webrtcLoading,
-        message: webrtcMessage,
+        msg: webrtcMsg,
         save: saveWebrtc,
         saving: webrtcSaving,
         setConfig: setWebrtcConfig,
@@ -214,8 +214,8 @@ export function NetworkConfigPage() {
                         {webrtcSaving ? '保存中' : '保存 WebRTC'}
                     </button>
                 </div>
-                {webrtcMessage && (
-                    <div className="save-hint">{webrtcMessage}</div>
+                {webrtcMsg && (
+                    <div className="save-hint">{webrtcMsg}</div>
                 )}
                 {webrtcError && (
                     <div className="status-note error-note">{webrtcError}</div>

@@ -1,7 +1,7 @@
 #include "platform/linux/device_platforms.h"
 
 #include "infra/fs.h"
-#include "network_format.h"
+#include "system/network_json.h"
 #include "platform/linux/linux_platform_common.h"
 
 #include <arpa/inet.h>
@@ -37,7 +37,7 @@ std::string HexGatewayToIpv4(const std::string &hex_value) {
     }
     char *end = nullptr;
     const unsigned long raw = std::strtoul(hex_value.c_str(), &end, 16);
-    if (end == nullptr || *end != '\0') {
+    if (*end != '\0') {
         return std::string();
     }
     return std::to_string(raw & 0xffUL) + "." +
@@ -187,7 +187,7 @@ bool StopDhcpPid(const std::string &ifname) {
     }
     char *end = nullptr;
     const long pid_value = std::strtol(pid_text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0' || pid_value <= 0) {
+    if (*end != '\0' || pid_value <= 0) {
         return false;
     }
     const bool ok = kill(static_cast<pid_t>(pid_value), SIGTERM) == 0;
@@ -228,39 +228,41 @@ public:
 
     NetInterfaceInfo
     GetInterfaceInfo(const std::string &ifname) override {
-        NetInterfaceInfo status;
-        status.ifname = ifname;
-        status.dns = ReadDnsServers();
-        status.mac_address =
+        NetInterfaceInfo interface_info;
+        interface_info.ifname = ifname;
+        interface_info.dns = ReadDnsServers();
+        interface_info.mac_address =
             Trim(infra::File::ReadAll("/sys/class/net/" + ifname + "/address"));
-        status.last_ok = infra::Path::Exists("/sys/class/net/" + ifname);
+        interface_info.last_ok =
+            infra::Path::Exists("/sys/class/net/" + ifname);
 
         short flags = 0;
         if (ReadIfFlags(ifname, &flags)) {
-            status.enabled = (flags & IFF_UP) != 0;
-            status.link_up = (flags & IFF_RUNNING) != 0;
+            interface_info.enabled = (flags & IFF_UP) != 0;
+            interface_info.link_up = (flags & IFF_RUNNING) != 0;
         }
         std::string ipv4_address;
         if (ReadIpv4Address(ifname, SIOCGIFADDR, &ipv4_address)) {
-            status.static_ipv4.address = ipv4_address;
+            interface_info.static_ipv4.address = ipv4_address;
         }
         uint8_t prefix_length = 0;
         if (ReadPrefixLength(ifname, &prefix_length)) {
-            status.static_ipv4.prefix_length = prefix_length;
-            status.static_ipv4.netmask = PrefixLengthToNetmask(prefix_length);
+            interface_info.static_ipv4.prefix_length = prefix_length;
+            interface_info.static_ipv4.netmask =
+                PrefixLengthToNetmask(prefix_length);
         }
-        status.static_ipv4.gateway = ReadDefaultGateway(ifname);
+        interface_info.static_ipv4.gateway = ReadDefaultGateway(ifname);
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
             const auto iter = dhcp_enabled_.find(ifname);
             if (iter != dhcp_enabled_.end()) {
-                status.dhcp = iter->second;
+                interface_info.dhcp = iter->second;
             } else {
-                status.dhcp = IsDhcpPidFilePresent(ifname);
+                interface_info.dhcp = IsDhcpPidFilePresent(ifname);
             }
         }
-        return status;
+        return interface_info;
     }
 
     bool SetInterfaceEnabled(const std::string &ifname, bool enabled) override {

@@ -332,10 +332,10 @@ void TcpSession::HandleWrite() {
                 send_queue_.pop_front();
                 continue;
             }
-            msghdr message{};
-            message.msg_iov = iov;
-            message.msg_iovlen = iov_size;
-            n = sendmsg(fd_.get(), &message, MSG_NOSIGNAL);
+            msghdr msg{};
+            msg.msg_iov = iov;
+            msg.msg_iovlen = iov_size;
+            n = sendmsg(fd_.get(), &msg, MSG_NOSIGNAL);
             if (n > 0) {
                 size_t consumed = static_cast<size_t>(n);
                 while (consumed > 0 &&

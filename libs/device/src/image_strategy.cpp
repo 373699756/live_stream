@@ -1,7 +1,7 @@
 #include "image_strategy.h"
 
 #include "infra/clamp.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <cstdint>
 #include <string>
@@ -58,21 +58,21 @@ int32_t ClampDenoise3dForLowNoise(int32_t value, int tier) {
 }
 
 ImageStrategyControls LoadImageStrategyControls(
-    const ConfigJson &image_config) {
+    const Json &image_config) {
     ImageStrategyControls controls;
-    const ConfigJson &basic = image_config.at("basic");
-    const ConfigJson &enhancement = image_config.at("enhancement");
-    (void)json_utils::ReadField(basic, "saturation", &controls.saturation,
+    const Json &basic = image_config.at("basic");
+    const Json &enhancement = image_config.at("enhancement");
+    (void)json_reader::ReadField(basic, "saturation", &controls.saturation,
                                 kControlMin, kControlMax);
-    (void)json_utils::ReadField(basic, "sharpness", &controls.sharpness,
+    (void)json_reader::ReadField(basic, "sharpness", &controls.sharpness,
                                 kControlMin, kControlMax);
-    (void)json_utils::ReadField(enhancement, "denoise_2d",
+    (void)json_reader::ReadField(enhancement, "denoise_2d",
                                 &controls.denoise_2d, kControlMin,
                                 kControlMax);
-    (void)json_utils::ReadField(enhancement, "denoise_3d",
+    (void)json_reader::ReadField(enhancement, "denoise_3d",
                                 &controls.denoise_3d, kControlMin,
                                 kControlMax);
-    (void)json_utils::ReadField(enhancement, "gamma", &controls.gamma,
+    (void)json_reader::ReadField(enhancement, "gamma", &controls.gamma,
                                 kControlMin, kControlMax);
     return controls;
 }
@@ -175,7 +175,7 @@ ImageStrategyControls ClampFinalControlsForMode(
     return clamped;
 }
 
-std::string ImageStrategyMode(const ConfigJson &image_config) {
+std::string ImageStrategyMode(const Json &image_config) {
     const auto strategy = image_config.find("strategy");
     if (strategy == image_config.end() || !strategy->is_object()) {
         return "low_noise";
@@ -185,7 +185,7 @@ std::string ImageStrategyMode(const ConfigJson &image_config) {
 
 }  // namespace
 
-bool IsImageStrategyEnabled(const ConfigJson &image_config) {
+bool IsImageStrategyEnabled(const Json &image_config) {
     const auto strategy = image_config.find("strategy");
     if (strategy == image_config.end() || !strategy->is_object()) {
         return true;
@@ -193,12 +193,12 @@ bool IsImageStrategyEnabled(const ConfigJson &image_config) {
     return strategy->value("enabled", true);
 }
 
-ConfigJson BuildImageStrategyConfig(
-    const ConfigJson &image_config,
+Json BuildImageStrategyConfig(
+    const Json &image_config,
     const ImageInfo &current_info,
     const hisisdk::ExposureInfo &exposure,
-    ImageInfo *next_info) {
-    ConfigJson adjusted = image_config;
+    ImageInfo &next_info) {
+    Json adjusted = image_config;
     if (!adjusted.is_object()) {
         return adjusted;
     }
@@ -217,24 +217,22 @@ ConfigJson BuildImageStrategyConfig(
     adjusted["enhancement"]["denoise_3d"] = controls.denoise_3d;
     adjusted["enhancement"]["gamma"] = controls.gamma;
 
-    if (next_info != nullptr) {
-        *next_info = current_info;
-        next_info->enabled = true;
-        next_info->active = true;
-        next_info->exposure_valid = true;
-        next_info->iso = exposure.iso;
-        next_info->exposure_time_us = exposure.exposure_time_us;
-        next_info->analog_gain = exposure.analog_gain;
-        next_info->digital_gain = exposure.digital_gain;
-        next_info->isp_digital_gain = exposure.isp_digital_gain;
-        next_info->mode = strategy_mode;
-        next_info->tier = IsoTierName(tier);
-        next_info->saturation = controls.saturation;
-        next_info->sharpness = controls.sharpness;
-        next_info->denoise_2d = controls.denoise_2d;
-        next_info->denoise_3d = controls.denoise_3d;
-        next_info->gamma = controls.gamma;
-    }
+    next_info = current_info;
+    next_info.enabled = true;
+    next_info.active = true;
+    next_info.exposure_valid = true;
+    next_info.iso = exposure.iso;
+    next_info.exposure_time_us = exposure.exposure_time_us;
+    next_info.analog_gain = exposure.analog_gain;
+    next_info.digital_gain = exposure.digital_gain;
+    next_info.isp_digital_gain = exposure.isp_digital_gain;
+    next_info.mode = strategy_mode;
+    next_info.tier = IsoTierName(tier);
+    next_info.saturation = controls.saturation;
+    next_info.sharpness = controls.sharpness;
+    next_info.denoise_2d = controls.denoise_2d;
+    next_info.denoise_3d = controls.denoise_3d;
+    next_info.gamma = controls.gamma;
     return adjusted;
 }
 

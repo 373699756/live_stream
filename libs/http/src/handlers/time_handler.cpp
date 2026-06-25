@@ -1,9 +1,11 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_json_body.h"
+#include "http_response.h"
 
-#include "json_utils.h"
-#include "time_api.h"
+#include "json_reader.h"
+#include "system/time.h"
 
 #include <cstdint>
 #include <limits>
@@ -12,10 +14,10 @@
 namespace live_stream {
 namespace {
 
-ConfigJson NtpConfigToJson(const NtpConfig &config) {
-    ConfigJson root = ConfigJson::object();
+Json NtpConfigToJson(const NtpConfig &config) {
+    Json root = Json::object();
     root["enabled"] = config.enabled;
-    ConfigJson servers = ConfigJson::array();
+    Json servers = Json::array();
     for (const std::string &server : config.servers) {
         servers.push_back(server);
     }
@@ -24,14 +26,14 @@ ConfigJson NtpConfigToJson(const NtpConfig &config) {
     return root;
 }
 
-bool NtpConfigFromJson(const ConfigJson &value, NtpConfig *config) {
+bool NtpConfigFromJson(const Json &value, NtpConfig *config) {
     if (config == nullptr || !value.is_object()) {
         return false;
     }
     NtpConfig parsed;
-    if (!json_utils::ReadField(value, "enabled", &parsed.enabled) ||
-        !json_utils::ReadStringArray(value, "servers", &parsed.servers) ||
-        !json_utils::ReadField(value, "sync_interval_sec", &parsed.sync_interval_sec,
+    if (!json_reader::ReadField(value, "enabled", &parsed.enabled) ||
+        !json_reader::ReadStringArray(value, "servers", &parsed.servers) ||
+        !json_reader::ReadField(value, "sync_interval_sec", &parsed.sync_interval_sec,
                                1, 0xffffffffU)) {
         return false;
     }
@@ -39,23 +41,23 @@ bool NtpConfigFromJson(const ConfigJson &value, NtpConfig *config) {
     return true;
 }
 
-bool TimeConfigFromJson(const ConfigJson &value, TimeConfig *config) {
+bool TimeConfigFromJson(const Json &value, TimeConfig *config) {
     if (config == nullptr || !value.is_object()) {
         return false;
     }
     TimeConfig parsed;
-    if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
+    if (!json_reader::ReadField(value, "timezone", &parsed.timezone) ||
         !value.contains("ntp") || !value.at("ntp").is_object() ||
         !NtpConfigFromJson(value.at("ntp"), &parsed.ntp)) {
         return false;
     }
     if (value.contains("manual_sync_allowed") &&
-        !json_utils::ReadField(value, "manual_sync_allowed",
+        !json_reader::ReadField(value, "manual_sync_allowed",
                                &parsed.manual_sync_allowed)) {
         return false;
     }
     if (value.contains("browser_sync_on_login") &&
-        !json_utils::ReadField(value, "browser_sync_on_login",
+        !json_reader::ReadField(value, "browser_sync_on_login",
                                &parsed.browser_sync_on_login)) {
         return false;
     }
@@ -63,126 +65,73 @@ bool TimeConfigFromJson(const ConfigJson &value, TimeConfig *config) {
     return true;
 }
 
-ConfigJson TimeInfoToJson(const TimeInfo &status) {
-    ConfigJson root = ConfigJson::object();
-    root["system_time_ms"] = status.system_time_ms;
-    root["timezone"] = status.timezone;
-    root["ntp"] = NtpConfigToJson(status.ntp);
-    root["manual_sync_allowed"] = status.manual_sync_allowed;
-    root["browser_sync_on_login"] = status.browser_sync_on_login;
-    root["last_sync_source"] = TimeSyncSourceToString(status.last_sync_source);
-    root["last_sync_time_ms"] = status.last_sync_time_ms;
-    root["last_sync_ok"] = status.last_sync_ok;
+Json TimeInfoToJson(const TimeInfo &time_info) {
+    Json root = Json::object();
+    root["system_time_ms"] = time_info.system_time_ms;
+    root["timezone"] = time_info.timezone;
+    root["ntp"] = NtpConfigToJson(time_info.ntp);
+    root["manual_sync_allowed"] = time_info.manual_sync_allowed;
+    root["browser_sync_on_login"] = time_info.browser_sync_on_login;
+    root["last_sync_source"] =
+        TimeSyncSourceToString(time_info.last_sync_source);
+    root["last_sync_time_ms"] = time_info.last_sync_time_ms;
+    root["last_sync_ok"] = time_info.last_sync_ok;
     return root;
-}
-
-bool RequireTimePermission(HttpAccess *access,
-                           const HttpRequest &request,
-                           AuthPermission permission,
-                           AuthPrincipal *principal) {
-    return RequirePermissionOrForbidden(access, request, permission, "time",
-                                        principal);
 }
 
 }  // namespace
 
 class TimeHttpHandler : public IHttpHandler {
 public:
-    TimeHttpHandler(HttpAccess *access, ITime *time)
-        : access_(access), time_(time) {}
+    explicit TimeHttpHandler(const TimeHandlerDependencies &dependencies)
+        : access_(dependencies.access), time_(dependencies.time) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
+    void RegisterRoutes(IHttpRouter &router) override {
+        if (time_ == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/system/time/status",
-                              &TimeHttpHandler::HandleStatusRoute, this);
-        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/config",
-                              &TimeHttpHandler::HandleConfigRoute, this);
-        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/timezone",
-                              &TimeHttpHandler::HandleTimezoneRoute, this);
-        router->AddExactRoute(HttpMethod::kPut, "/api/system/time/ntp",
-                              &TimeHttpHandler::HandleNtpRoute, this);
-        router->AddExactRoute(HttpMethod::kPost,
-                              "/api/system/time/system-time",
-                              &TimeHttpHandler::HandleSystemTimeRoute, this);
-        router->AddExactRoute(HttpMethod::kPost,
-                              "/api/system/time/browser-time",
-                              &TimeHttpHandler::HandleBrowserTimeRoute, this);
-        router->AddExactRoute(HttpMethod::kPut,
-                              "/api/system/time/browser-sync",
-                              &TimeHttpHandler::HandleBrowserSyncRoute, this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/system/time/sync",
-                              &TimeHttpHandler::HandleSyncRoute, this);
+        router.AddExactRoute(HttpMethod::kGet, "/api/system/time/status",
+                             this, &TimeHttpHandler::HandleInfo);
+        router.AddExactRoute(HttpMethod::kPut, "/api/system/time/config",
+                             this, &TimeHttpHandler::HandleConfig);
+        router.AddExactRoute(HttpMethod::kPut, "/api/system/time/timezone",
+                             this, &TimeHttpHandler::HandleTimezone);
+        router.AddExactRoute(HttpMethod::kPut, "/api/system/time/ntp",
+                             this, &TimeHttpHandler::HandleNtp);
+        router.AddExactRoute(HttpMethod::kPost,
+                             "/api/system/time/system-time", this,
+                             &TimeHttpHandler::HandleSystemTime);
+        router.AddExactRoute(HttpMethod::kPost,
+                             "/api/system/time/browser-time", this,
+                             &TimeHttpHandler::HandleBrowserTime);
+        router.AddExactRoute(HttpMethod::kPut,
+                             "/api/system/time/browser-sync", this,
+                             &TimeHttpHandler::HandleBrowserSync);
+        router.AddExactRoute(HttpMethod::kPost, "/api/system/time/sync",
+                             this, &TimeHttpHandler::HandleSync);
     }
 
 private:
-    static HttpResponse HandleStatusRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleStatus(request);
-    }
-
-    static HttpResponse HandleTimezoneRoute(void *user,
-                                            const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleTimezone(request);
-    }
-
-    static HttpResponse HandleConfigRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleConfig(request);
-    }
-
-    static HttpResponse HandleNtpRoute(void *user,
-                                       const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleNtp(request);
-    }
-
-    static HttpResponse HandleSystemTimeRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleSystemTime(request);
-    }
-
-    static HttpResponse HandleSyncRoute(void *user,
-                                        const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleSync(request);
-    }
-
-    static HttpResponse HandleBrowserTimeRoute(void *user,
-                                               const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleBrowserTime(request);
-    }
-
-    static HttpResponse HandleBrowserSyncRoute(void *user,
-                                               const HttpRequest &request) {
-        return static_cast<TimeHttpHandler *>(user)->HandleBrowserSync(request);
-    }
-
-    HttpResponse HandleStatus(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
+    HttpResponse HandleInfo(const HttpRequest &request) {
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kReadStatus, &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        return JsonResponse(200,
-                            TimeInfoToJson(time->GetTimeInfo()));
+        return JsonResponse(200, TimeInfoToJson(time_->GetTimeInfo()));
     }
 
     HttpResponse HandleConfig(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
@@ -190,51 +139,43 @@ private:
         if (!TimeConfigFromJson(body, &config)) {
             return StatusResponse(400, "Invalid time config");
         }
-        return time
-                       ->UpdateTimeConfig(access_->MakeContext(request,
-                                                               &principal),
-                                          config)
+        return time_->UpdateTimeConfig(
+                   access_->MakeContext(request, &principal), config)
                    ? OkResponse()
                    : StatusResponse(400, "Could not update time config");
     }
 
     HttpResponse HandleTimezone(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
         std::string timezone;
-        if (!json_utils::ReadField(body, "timezone", &timezone)) {
+        if (!json_reader::ReadField(body, "timezone", &timezone)) {
             return StatusResponse(400, "Invalid time request");
         }
-        return time
-                       ->SetTimezone(access_->MakeContext(request, &principal), timezone)
+        return time_->SetTimezone(
+                   access_->MakeContext(request, &principal), timezone)
                    ? OkResponse()
                    : StatusResponse(400, "Could not set timezone");
     }
 
     HttpResponse HandleNtp(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
@@ -242,112 +183,97 @@ private:
         if (!NtpConfigFromJson(body, &config)) {
             return StatusResponse(400, "Invalid NTP config");
         }
-        return time
-                       ->UpdateNtpConfig(access_->MakeContext(request, &principal),
-                                         config)
+        return time_->UpdateNtpConfig(
+                   access_->MakeContext(request, &principal), config)
                    ? OkResponse()
                    : StatusResponse(400, "Could not update NTP config");
     }
 
     HttpResponse HandleSystemTime(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
         int64_t system_time_ms = 0;
-        if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
+        if (!json_reader::ReadField(body, "system_time_ms", &system_time_ms, 1,
                                    std::numeric_limits<int64_t>::max())) {
             return StatusResponse(400, "Invalid time request");
         }
-        return time
-                       ->SetSystemTime(access_->MakeContext(request, &principal),
-                                       system_time_ms, TimeSyncSource::kManual)
+        return time_->SetSystemTime(
+                   access_->MakeContext(request, &principal),
+                   system_time_ms, TimeSyncSource::kManual)
                    ? OkResponse()
                    : StatusResponse(503, "Could not set system time");
     }
 
     HttpResponse HandleBrowserTime(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
         int64_t system_time_ms = 0;
-        if (!json_utils::ReadField(body, "system_time_ms", &system_time_ms, 1,
+        if (!json_reader::ReadField(body, "system_time_ms", &system_time_ms, 1,
                                    std::numeric_limits<int64_t>::max())) {
             return StatusResponse(400, "Invalid time request");
         }
-        return time
-                       ->SetSystemTime(access_->MakeContext(request, &principal),
-                                       system_time_ms, TimeSyncSource::kBrowser)
+        return time_->SetSystemTime(
+                   access_->MakeContext(request, &principal),
+                   system_time_ms, TimeSyncSource::kBrowser)
                    ? OkResponse()
                    : StatusResponse(503, "Could not sync browser time");
     }
 
     HttpResponse HandleBrowserSync(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        ConfigJson body;
+        Json body;
         if (!ParseJsonObject(request, &body)) {
             return StatusResponse(400, "Invalid JSON");
         }
         bool manual_sync_allowed = true;
         bool browser_sync_on_login = true;
-        if (!json_utils::ReadField(body, "manual_sync_allowed",
+        if (!json_reader::ReadField(body, "manual_sync_allowed",
                                    &manual_sync_allowed) ||
-            !json_utils::ReadField(body, "browser_sync_on_login",
+            !json_reader::ReadField(body, "browser_sync_on_login",
                                    &browser_sync_on_login)) {
             return StatusResponse(400, "Invalid browser sync config");
         }
-        return time
-                       ->UpdateBrowserSyncConfig(
-                           access_->MakeContext(request, &principal),
-                           manual_sync_allowed, browser_sync_on_login)
+        return time_->UpdateBrowserSyncConfig(
+                   access_->MakeContext(request, &principal),
+                   manual_sync_allowed, browser_sync_on_login)
                    ? OkResponse()
                    : StatusResponse(400, "Could not update browser sync config");
     }
 
     HttpResponse HandleSync(const HttpRequest &request) {
-        ITime *time = time_;
-        if (time == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!RequireTimePermission(access_, request,
-                                   AuthPermission::kModifyConfig,
-                                   &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kModifyConfig, "time",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
-        return time
-                       ->SyncNow(access_->MakeContext(request, &principal),
-                                 TimeSyncSource::kNtp)
+        return time_->SyncNow(access_->MakeContext(request, &principal),
+                              TimeSyncSource::kNtp)
                    ? OkResponse()
                    : StatusResponse(503, "Could not sync time");
     }
@@ -357,9 +283,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeTimeHandler(
-    HttpAccess *access, ITime *time) {
+    const TimeHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new TimeHttpHandler(access, time));
+        new TimeHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

@@ -1,4 +1,4 @@
-#include "network_api.h"
+#include "system/network.h"
 
 #include "config.h"
 #include "event.h"
@@ -42,12 +42,12 @@ public:
 
     NetInterfaceInfo
     GetInterfaceInfo(const std::string &ifname) override {
-        NetInterfaceInfo status;
-        status.ifname = ifname;
-        status.enabled = true;
-        status.dhcp = true;
-        status.last_ok = false;
-        return status;
+        NetInterfaceInfo interface_info;
+        interface_info.ifname = ifname;
+        interface_info.enabled = true;
+        interface_info.dhcp = true;
+        interface_info.last_ok = false;
+        return interface_info;
     }
 
     bool ApplyStaticAddress(const NetConfig &) override {
@@ -97,7 +97,7 @@ public:
             if (initialized_) {
                 return true;
             }
-            if (platform_ == nullptr || options_.default_ifname.empty()) {
+            if (options_.default_ifname.empty()) {
                 return false;
             }
             configs_.clear();
@@ -110,29 +110,29 @@ public:
         }
         if (options_.config != nullptr && !config_attached_) {
             ConfigScope config_scope;
-            config_scope.verify = [this](const ConfigJson &now,
-                                         ConfigIssue *issue) {
+            config_scope.verify = [this](const Json &now,
+                                         ConfigError *error) {
                 if (Verify(now)) {
-                    return ConfigStatus::kOk;
+                    return ConfigCode::kOk;
                 }
-                if (issue != nullptr) {
-                    issue->field.clear();
-                    issue->reason = "invalid network config";
+                if (error != nullptr) {
+                    error->field.clear();
+                    error->message = "invalid network config";
                 }
-                return ConfigStatus::kVerifyFailed;
+                return ConfigCode::kVerify;
             };
-            config_scope.apply = [this](const ConfigJson &prev,
-                                        const ConfigJson &now,
-                                        ConfigIssue *issue) {
+            config_scope.apply = [this](const Json &prev,
+                                        const Json &now,
+                                        ConfigError *error) {
                 (void)prev;
                 if (Apply(now)) {
-                    return ConfigStatus::kOk;
+                    return ConfigCode::kOk;
                 }
-                if (issue != nullptr) {
-                    issue->field.clear();
-                    issue->reason = "apply network config failed";
+                if (error != nullptr) {
+                    error->field.clear();
+                    error->message = "apply network config failed";
                 }
-                return ConfigStatus::kApplyFailed;
+                return ConfigCode::kApply;
             };
             if (!options_.config->AddScope(kConfigName, config_scope)) {
                 return false;
@@ -195,13 +195,13 @@ public:
         if (!IsStarted()) {
             return NetInterfaceInfo{};
         }
-        NetInterfaceInfo status = platform_->GetInterfaceInfo(ifname);
+        NetInterfaceInfo interface_info = platform_->GetInterfaceInfo(ifname);
         std::lock_guard<std::mutex> lock(mutex_);
         const auto iter = status_errors_.find(ifname);
         if (iter != status_errors_.end()) {
-            status.last_ok = iter->second;
+            interface_info.last_ok = iter->second;
         }
-        return status;
+        return interface_info;
     }
 
     bool ApplyInterfaceConfig(const live_stream::RequestContext &context,
@@ -250,22 +250,23 @@ public:
         }
         std::vector<std::string> interfaces = platform_->ListInterfaces();
         for (const std::string &ifname : interfaces) {
-            NetInterfaceInfo status = platform_->GetInterfaceInfo(ifname);
-            SetLastError(ifname, status.last_ok);
+            NetInterfaceInfo interface_info =
+                platform_->GetInterfaceInfo(ifname);
+            SetLastError(ifname, interface_info.last_ok);
         }
         return true;
     }
 
 private:
     bool LoadConfigs() {
-        ConfigJson network_json = ConfigJson::object();
+        Json network_json = Json::object();
         std::map<std::string, NetConfig> loaded_configs;
         if (options_.config == nullptr) {
             NetConfig config = DefaultConfig(options_.default_ifname);
             loaded_configs[config.ifname] = config;
             network_json = NetworkJsonWithConfigs(network_json, loaded_configs);
         } else {
-            ConfigJson json = options_.config->Get(kConfigName);
+            Json json = options_.config->Get(kConfigName);
             if (!json.is_object()) {
                 NetConfig config = DefaultConfig(options_.default_ifname);
                 loaded_configs[config.ifname] = config;
@@ -327,13 +328,13 @@ private:
 
     bool PersistConfig(const NetConfig &config) {
         std::map<std::string, NetConfig> next_configs;
-        ConfigJson next_json;
+        Json next_json;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             next_configs = configs_;
             next_configs[config.ifname] = config;
             next_json = network_json_.is_object() ? network_json_
-                                                  : ConfigJson::object();
+                                                  : Json::object();
         }
         next_json = NetworkJsonWithConfigs(next_json, next_configs);
         if (options_.config != nullptr) {
@@ -341,13 +342,13 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 suppress_config_apply_ = true;
             }
-            const ConfigStatus status = options_.config->Set(kConfigName,
+            const ConfigCode code = options_.config->Set(kConfigName,
                                                              next_json);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 suppress_config_apply_ = false;
             }
-            if (status != ConfigStatus::kOk) {
+            if (code != ConfigCode::kOk) {
                 return false;
             }
         }
@@ -357,7 +358,7 @@ private:
         return true;
     }
 
-    bool Verify(const ConfigJson &json) {
+    bool Verify(const Json &json) {
         std::map<std::string, NetConfig> parsed;
         if (!ConfigsFromNetworkJson(json, &parsed)) {
             return false;
@@ -370,7 +371,7 @@ private:
         return true;
     }
 
-    bool Apply(const ConfigJson &json) {
+    bool Apply(const Json &json) {
         std::map<std::string, NetConfig> parsed;
         if (!ConfigsFromNetworkJson(json, &parsed)) {
             return false;
@@ -485,7 +486,7 @@ private:
     INetPlatform *platform_ = nullptr;
     std::map<std::string, NetConfig> configs_;
     std::map<std::string, bool> status_errors_;
-    ConfigJson network_json_ = ConfigJson::object();
+    Json network_json_ = Json::object();
     mutable std::mutex mutex_;
     bool config_attached_ = false;
     bool suppress_config_apply_ = false;

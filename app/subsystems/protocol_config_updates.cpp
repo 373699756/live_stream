@@ -14,14 +14,14 @@ bool ProtocolSubsystem::InstallConfigUpdateScopes() {
     const char *scopes[] = {"http", "rtsp", "webrtc", "onvif"};
     for (const char *scope : scopes) {
         ConfigScope config_scope;
-        config_scope.verify = [this, scope](const ConfigJson &now,
-                                            ConfigIssue *issue) {
-            return VerifyProtocolConfigUpdate(scope, now, issue);
+        config_scope.verify = [this, scope](const Json &now,
+                                            ConfigError *error) {
+            return VerifyProtocolConfigUpdate(scope, now, error);
         };
-        config_scope.apply = [this, scope](const ConfigJson &prev,
-                                           const ConfigJson &now,
-                                           ConfigIssue *issue) {
-            return ApplyProtocolConfigUpdate(scope, prev, now, issue);
+        config_scope.apply = [this, scope](const Json &prev,
+                                           const Json &now,
+                                           ConfigError *error) {
+            return ApplyProtocolConfigUpdate(scope, prev, now, error);
         };
         if (!config_->AddScope(scope, config_scope)) {
             for (const char *attached_scope : scopes) {
@@ -50,12 +50,12 @@ void ProtocolSubsystem::RemoveConfigUpdateScopes() {
 
 bool ProtocolSubsystem::BuildNextAppConfig(
     const std::string &scope,
-    const ConfigJson &value,
-    AppConfig *next_config) const {
-    if (config_ == nullptr || next_config == nullptr) {
+    const Json &value,
+    AppConfig &next_config) const {
+    if (config_ == nullptr) {
         return false;
     }
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     const char *scopes[] = {"video", "network", "http", "rtsp",
                             "snapshot", "webrtc", "onvif"};
     for (const char *item : scopes) {
@@ -65,70 +65,70 @@ bool ProtocolSubsystem::BuildNextAppConfig(
             root[item] = config_->Get(item);
         }
     }
-    return LoadAppConfigFromRoot(root, next_config);
+    return LoadAppConfigFromRoot(root, &next_config);
 }
 
-ConfigStatus ProtocolSubsystem::VerifyProtocolConfigUpdate(
+ConfigCode ProtocolSubsystem::VerifyProtocolConfigUpdate(
     const std::string &scope,
-    const ConfigJson &now,
-    ConfigIssue *issue) {
+    const Json &now,
+    ConfigError *error) {
     AppConfig next_config;
-    if (!BuildNextAppConfig(scope, now, &next_config)) {
-        if (issue != nullptr) {
-            issue->field.clear();
-            issue->reason = "invalid app config";
+    if (!BuildNextAppConfig(scope, now, next_config)) {
+        if (error != nullptr) {
+            error->field.clear();
+            error->message = "invalid app config";
         }
-        return ConfigStatus::kVerifyFailed;
+        return ConfigCode::kVerify;
     }
     return VerifyProtocolConfigUpdateScope(app_config_, next_config, scope,
-                                           issue);
+                                           error);
 }
 
-ConfigStatus ProtocolSubsystem::ApplyProtocolConfigUpdate(
+ConfigCode ProtocolSubsystem::ApplyProtocolConfigUpdate(
     const std::string &scope,
-    const ConfigJson &prev,
-    const ConfigJson &now,
-    ConfigIssue *issue) {
+    const Json &prev,
+    const Json &now,
+    ConfigError *error) {
     (void)prev;
     AppConfig next_config;
-    if (!BuildNextAppConfig(scope, now, &next_config)) {
-        if (issue != nullptr) {
-            issue->field.clear();
-            issue->reason = "invalid app config";
+    if (!BuildNextAppConfig(scope, now, next_config)) {
+        if (error != nullptr) {
+            error->field.clear();
+            error->message = "invalid app config";
         }
-        return ConfigStatus::kApplyFailed;
+        return ConfigCode::kApply;
     }
-    const ConfigStatus verify_status =
-        VerifyProtocolConfigUpdateScope(app_config_, next_config, scope, issue);
-    if (verify_status != ConfigStatus::kOk) {
-        return verify_status;
+    const ConfigCode verify_code =
+        VerifyProtocolConfigUpdateScope(app_config_, next_config, scope, error);
+    if (verify_code != ConfigCode::kOk) {
+        return verify_code;
     }
 
     if (scope == "rtsp" &&
         IsRtspConfigChanged(app_config_, next_config)) {
         if (rtsp_ == nullptr) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "rtsp unavailable";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "rtsp unavailable";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
         if (!rtsp_->ApplyOptions(BuildRtspOptions(next_config))) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "apply rtsp config failed";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "apply rtsp config failed";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
     }
     if (scope == "webrtc" &&
         IsWebrtcConfigChanged(app_config_, next_config)) {
         if (webrtc_ == nullptr) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "webrtc unavailable";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "webrtc unavailable";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
         ProtocolStartupRefs refs;
         refs.device.network = network_;
@@ -138,32 +138,32 @@ ConfigStatus ProtocolSubsystem::ApplyProtocolConfigUpdate(
         refs.webrtc = webrtc_.get();
         const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
         if (!webrtc_->ApplyOptions(options)) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "apply webrtc config failed";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "apply webrtc config failed";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
     }
     if (scope == "onvif" &&
         IsOnvifConfigChanged(app_config_, next_config)) {
         if (onvif_ == nullptr) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "onvif unavailable";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "onvif unavailable";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
         if (!onvif_->ApplyOptions(BuildOnvifOptions(next_config))) {
-            if (issue != nullptr) {
-                issue->field.clear();
-                issue->reason = "apply onvif config failed";
+            if (error != nullptr) {
+                error->field.clear();
+                error->message = "apply onvif config failed";
             }
-            return ConfigStatus::kApplyFailed;
+            return ConfigCode::kApply;
         }
     }
     app_config_ = next_config;
-    return ConfigStatus::kOk;
+    return ConfigCode::kOk;
 }
 
 }  // namespace live_stream

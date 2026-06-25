@@ -35,7 +35,7 @@ struct WebrtcOptions {
     uint32_t max_peers = 2;
     uint32_t session_timeout_ms = 30000;
     uint32_t send_queue_capacity = 128;
-    uint32_t send_worker_size = 1;
+    uint32_t send_workers = 1;
     uint16_t local_port_base = 16000;
     bool prefer_tcp = false;
     std::string public_ip;
@@ -119,7 +119,7 @@ struct WebrtcStats {
     uint16_t local_port_base = 0;
     uint32_t active_peers = 0;
     uint32_t max_peers = 0;
-    uint32_t ice_server_size = 0;
+    uint32_t ice_servers = 0;
     uint64_t total_peers = 0;
     uint64_t offers = 0;
     uint64_t remote_candidates = 0;
@@ -138,9 +138,17 @@ struct WebrtcStats {
     std::string public_ip;
 };
 
-class IWebrtc {
+class IWebrtcStatusReader {
 public:
-    virtual ~IWebrtc() = default;
+    virtual ~IWebrtcStatusReader() = default;
+
+    virtual std::vector<WebrtcPeerInfo> GetPeers() const = 0;
+    virtual WebrtcStats GetStats() const = 0;
+};
+
+class IWebrtc : public IWebrtcStatusReader {
+public:
+    ~IWebrtc() override = default;
 
     virtual bool Start() = 0;
     virtual void Stop() = 0;
@@ -150,8 +158,6 @@ public:
     virtual bool AddIceCandidate(const WebrtcIceCandidate &candidate) = 0;
     virtual bool ClosePeer(const std::string &peer_id) = 0;
     virtual WebrtcPeerInfo GetPeer(const std::string &peer_id) const = 0;
-    virtual std::vector<WebrtcPeerInfo> GetPeers() const = 0;
-    virtual WebrtcStats GetStats() const = 0;
 };
 
 std::unique_ptr<IWebrtc>

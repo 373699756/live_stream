@@ -124,7 +124,8 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 ## 优化原则
 
 - 帧路径避免普通日志、重复分配和不必要 string 拼接。
-- HLS/FLV 缓存使用有界数量，客户端数量使用 options 限制。
+- HLS/FLV/GOP/shared live frame 使用 `MediaCacheLimits` 控制运行期数量和
+  字节上限，客户端数量继续使用 `MediaStreamsOptions` 的 client/subscription 上限。
 - 优先传递 slice/view 或引用计数 buffer，只有跨生命周期边界时才复制。
 - 时间戳修正、GOP cache、segment cache 归 `media`，不要散落在协议层。
 - TCP send queue、pending bytes、写 buffer 上限、写 timeout 和慢客户端关闭归
@@ -134,7 +135,7 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 ## 当前重点
 
 - `media`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest
-  frame、FrameSubscription live queue 和 `MediaFrame` 引用释放。
+  frame、shared live frame 和 `MediaFrame` 引用释放。
 - `media`：下游 client registry 和 frame subscription 数量上限。
 - `media`：HLS/FLV 封装输出减少临时大 buffer。
 - `media_codec`：RTSP/WebRTC RTP packet view 避免复制 media payload。
@@ -149,17 +150,25 @@ header、FLV timestamp rebase 等小块复制单独说明。内核协议栈从�
 | 指标 | 观察点 | 归属模块 |
 | --- | --- | --- |
 | 进程 RSS / VmHWM | 单客户端、满客户端、慢客户端断连后 | `app` / `http` |
-| HLS segment 数量和 body 总量 | playlist depth + retain size 是否有界 | `media` |
-| FLV cached tag / GOP 数量 | 新客户端起播缓存是否随 GOP 上限收敛 | `media` |
+| HLS segment 数量和 body 总量 | `max_hls_segments`、`max_hls_segment_bytes`、`max_hls_cached_bytes` 是否生效 | `media` |
+| FLV cached tag / GOP 数量 | `max_flv_cached_tags`、`max_flv_cached_bytes` 是否让新客户端起播缓存收敛 | `media` |
+| Shared live frame cache | `max_shared_frames`、`max_shared_bytes` 触顶后慢客户端是否等待关键帧恢复 | `media` |
 | 活跃 FLV/MJPEG/frame subscription 数 | 是否受 `MediaStreamsOptions` 限制 | `media` |
 | TCP active connections / pending bytes | 慢 socket 是否堆积到 `send_buffer_limit_bytes` 后断开 | `net` |
 | TCP slow closes / close reason | 队列满、send stall、读写 timeout 是否可区分 | `net` |
 | WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc` |
 
-当前资源上限以 `MediaStreamsOptions`、`HttpOptions` 和 WebRTC options
-为准；socket 写侧统一落到 `TcpListenOptions` 的 `send_queue_capacity`、
-`send_buffer_limit_bytes`、`send_stall_timeout_ms`、`read_timeout_ms` 和
-`write_timeout_ms`。新增缓存或队列时必须先定义上限，再补拥有模块文档。
+当前资源上限以 `MediaStreamsOptions::cache_limits`、`MediaStreamsOptions` 的
+client/subscription 上限、`HttpOptions` 和 WebRTC options 为准；socket 写侧统一落到
+`TcpListenOptions` 的 `send_queue_capacity`、`send_buffer_limit_bytes`、
+`send_stall_timeout_ms`、`read_timeout_ms` 和 `write_timeout_ms`。新增缓存或队列时必须
+先定义上限，再补拥有模块文档。
+
+`MediaStreamStats::cached_bytes` 汇总 media 内 GOP、HLS segment 和 FLV GOP cache 的
+当前字节近似值；`main_hls_cached_bytes`、`sub_hls_cached_bytes`、
+`main_flv_cached_bytes`、`sub_flv_cached_bytes` 和 client frame/cache drop 计数用于
+定位触顶来源。HTTP/Web 控制面可以继续读取旧 `cached_bytes` 字段，细分字段先作为 C++
+统计契约保留。
 
 ## 验收口径
 

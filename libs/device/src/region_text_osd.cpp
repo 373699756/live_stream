@@ -1,6 +1,6 @@
 #include "region_overlay.h"
 
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <algorithm>
 #include <chrono>
@@ -211,7 +211,7 @@ std::string FormatTimestamp(const std::string &format) {
 
 }  // namespace
 
-bool ParseTextOverlayConfig(const ConfigJson &value,
+bool ParseTextOverlayConfig(const Json &value,
                             ParsedOverlayConfig *config) {
     if (config == nullptr || !value.is_object()) {
         return false;
@@ -219,37 +219,37 @@ bool ParseTextOverlayConfig(const ConfigJson &value,
     std::string color_text;
     int32_t x = 0;
     int32_t y = 0;
-    if (!json_utils::ReadField(value, "enabled", &config->enabled) ||
+    if (!json_reader::ReadField(value, "enabled", &config->enabled) ||
         !value.contains("items") || !value.at("items").is_object() ||
-        !json_utils::ReadField(value, "font_size", &config->font_size,
+        !json_reader::ReadField(value, "font_size", &config->font_size,
                                kMinFontSize, kMaxFontSize) ||
-        !json_utils::ReadField(value, "font_color", &color_text) ||
+        !json_reader::ReadField(value, "font_color", &color_text) ||
         !ParseHexColor(color_text, &config->font_color) ||
-        !json_utils::ReadField(value, "background", &config->background)) {
+        !json_reader::ReadField(value, "background", &config->background)) {
         return false;
     }
-    const ConfigJson &items = value.at("items");
+    const Json &items = value.at("items");
     if (!items.contains("timestamp") || !items.at("timestamp").is_object() ||
         !items.contains("device_name") ||
         !items.at("device_name").is_object()) {
         return false;
     }
-    const ConfigJson &timestamp = items.at("timestamp");
-    const ConfigJson &device_name = items.at("device_name");
-    if (!json_utils::ReadField(timestamp, "enabled",
+    const Json &timestamp = items.at("timestamp");
+    const Json &device_name = items.at("device_name");
+    if (!json_reader::ReadField(timestamp, "enabled",
                                &config->timestamp_enabled) ||
-        !json_utils::ReadField(timestamp, "format",
+        !json_reader::ReadField(timestamp, "format",
                                &config->timestamp_format) ||
-        !json_utils::ReadField(timestamp, "x", &x) ||
-        !json_utils::ReadField(timestamp, "y", &y)) {
+        !json_reader::ReadField(timestamp, "x", &x) ||
+        !json_reader::ReadField(timestamp, "y", &y)) {
         return false;
     }
     config->timestamp_position = RegionPoint{x, y};
-    if (!json_utils::ReadField(device_name, "enabled",
+    if (!json_reader::ReadField(device_name, "enabled",
                                &config->device_name_enabled) ||
-        !json_utils::ReadField(device_name, "text", &config->device_name) ||
-        !json_utils::ReadField(device_name, "x", &x) ||
-        !json_utils::ReadField(device_name, "y", &y)) {
+        !json_reader::ReadField(device_name, "text", &config->device_name) ||
+        !json_reader::ReadField(device_name, "x", &x) ||
+        !json_reader::ReadField(device_name, "y", &y)) {
         return false;
     }
     config->device_name_position = RegionPoint{x, y};
@@ -335,8 +335,8 @@ bool RegionOverlay::UpdateTimestampLocked() {
                                              active_config.font_color,
                                              active_config.background);
         const RegionBitmap region_bitmap = BuildRegionBitmap(bitmap);
-        if (!sdk->SetRegionBitmap(region.mpp_handle,
-                                  BuildSdkBitmap(region_bitmap))) {
+        if (!hisi_region->SetRegionBitmap(region.mpp_handle,
+                                          BuildSdkBitmap(region_bitmap))) {
             need_rebuild = true;
             break;
         }

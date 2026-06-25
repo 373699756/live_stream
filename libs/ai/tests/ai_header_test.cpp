@@ -13,53 +13,53 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::ConfigStatus Set(const std::string& name,
-                                  const live_stream::ConfigJson& now,
-                                  live_stream::ConfigIssue* issue) override {
+    live_stream::ConfigCode Set(const std::string& name,
+                                  const live_stream::Json& now,
+                                  live_stream::ConfigError* error) override {
         if (name != "ai") {
-            return live_stream::ConfigStatus::kNotFound;
+            return live_stream::ConfigCode::kMissing;
         }
         if (scope_.verify) {
-            const live_stream::ConfigStatus status =
-                scope_.verify(now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                scope_.verify(now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (scope_.apply) {
-            const live_stream::ConfigStatus status =
-                scope_.apply(ai_config_, now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                scope_.apply(ai_config_, now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         ai_config_ = now;
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigJson Get(const std::string& name) override {
+    live_stream::Json Get(const std::string& name) override {
         if (name != "ai") {
-            return live_stream::ConfigJson();
+            return live_stream::Json();
         }
         return ai_config_;
     }
 
-    live_stream::ConfigStatus Reset(
-        const std::string& name, live_stream::ConfigIssue*) override {
-        return name == "ai" ? live_stream::ConfigStatus::kOk
-                            : live_stream::ConfigStatus::kNotFound;
+    live_stream::ConfigCode Reset(
+        const std::string& name, live_stream::ConfigError*) override {
+        return name == "ai" ? live_stream::ConfigCode::kOk
+                            : live_stream::ConfigCode::kMissing;
     }
 
-    live_stream::ConfigJson Default(const std::string& name) override {
+    live_stream::Json Default(const std::string& name) override {
         if (name != "ai") {
-            return live_stream::ConfigJson();
+            return live_stream::Json();
         }
         return ai_config_;
     }
 
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
 
     bool AddScope(const std::string& name,
@@ -82,17 +82,17 @@ public:
     }
 
 private:
-    live_stream::ConfigJson ai_config_;
+    live_stream::Json ai_config_;
     live_stream::ConfigScope scope_;
     bool attached_ = false;
 };
 
-live_stream::ConfigJson DisabledAiConfig() {
-    return live_stream::ConfigJson{
+live_stream::Json DisabledAiConfig() {
+    return live_stream::Json{
         {"enabled", false},
         {"tasks",
-         live_stream::ConfigJson::array(
-             {live_stream::ConfigJson{
+         live_stream::Json::array(
+             {live_stream::Json{
                  {"enabled", false},
                  {"backend", "hisi3516dv300_nnie"},
                  {"task", "object_detection"},
@@ -103,19 +103,28 @@ live_stream::ConfigJson DisabledAiConfig() {
                  {"inference_interval_ms", 200},
                  {"max_results", 16},
                  {"confidence_threshold", 0.5},
-                 {"perimeter_regions", live_stream::ConfigJson::array()},
+                 {"perimeter_regions", live_stream::Json::array()},
              }})},
     };
 }
 
-live_stream::AiConfig EnabledHostStubConfig() {
+live_stream::Json HostStubAiConfig() {
+    live_stream::Json config = DisabledAiConfig();
+    config["enabled"] = true;
+    config["tasks"][0]["enabled"] = true;
+    config["tasks"][0]["backend"] = "host_stub";
+    return config;
+}
+
+live_stream::AiConfig EnabledNnieConfig() {
     live_stream::AiConfig config;
     config.enabled = true;
     live_stream::AiModelConfig task;
     task.enabled = true;
-    task.backend = live_stream::AiBackend::kHostStub;
+    task.backend = live_stream::AiBackend::kHi3516Dv300Nnie;
     task.task = live_stream::AiTask::kObjectDetection;
     task.stream_id = live_stream::StreamId::kMain;
+    task.model_path = "models/inst_ssd_cycle.wk";
     task.input_width = 416;
     task.input_height = 416;
     task.inference_interval_ms = 200;
@@ -138,7 +147,7 @@ int main() {
     options.default_config.enabled = false;
     live_stream::AiModelConfig default_task;
     default_task.enabled = false;
-    default_task.backend = live_stream::AiBackend::kHostStub;
+    default_task.backend = live_stream::AiBackend::kHi3516Dv300Nnie;
     default_task.task = live_stream::AiTask::kObjectDetection;
     default_task.stream_id = live_stream::StreamId::kMain;
     default_task.input_width = 416;
@@ -156,8 +165,12 @@ int main() {
     }
 
     if (config.Set("ai", DisabledAiConfig(), nullptr) !=
-        live_stream::ConfigStatus::kOk) {
+        live_stream::ConfigCode::kOk) {
         return 4;
+    }
+    if (config.Set("ai", HostStubAiConfig(), nullptr) ==
+        live_stream::ConfigCode::kOk) {
+        return 10;
     }
     live_stream::AiConfig ai_config = service.GetConfig();
     if (ai_config.tasks.empty() ||
@@ -172,7 +185,7 @@ int main() {
     }
 
     live_stream::AiOptions degraded_options;
-    degraded_options.default_config = EnabledHostStubConfig();
+    degraded_options.default_config = EnabledNnieConfig();
     live_stream::Ai degraded_service(degraded_options);
     if (!degraded_service.Start()) {
         return 7;

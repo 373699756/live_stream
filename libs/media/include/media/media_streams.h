@@ -20,6 +20,18 @@ using RequestKeyframeFn = bool (*)(StreamId stream_id,
                                    KeyframeRequestSource source,
                                    void *user);
 
+struct MediaCacheLimits {
+    uint32_t max_subscription_gop_frames = 128;
+    uint32_t max_subscription_gop_bytes = 4 * 1024 * 1024;
+    uint32_t max_shared_frames = 32;
+    uint32_t max_shared_bytes = 2 * 1024 * 1024;
+    uint32_t max_flv_cached_tags = 128;
+    uint32_t max_flv_cached_bytes = 4 * 1024 * 1024;
+    uint32_t max_hls_segments = 9;
+    uint32_t max_hls_segment_bytes = 4 * 1024 * 1024;
+    uint32_t max_hls_cached_bytes = 32 * 1024 * 1024;
+};
+
 struct MediaStreamsOptions {
     uint32_t hls_segment_duration_ms = 2000;
     uint32_t hls_playlist_depth = 3;
@@ -27,6 +39,7 @@ struct MediaStreamsOptions {
     uint32_t max_flv_clients = 8;
     uint32_t max_mjpeg_clients = 8;
     uint32_t max_frame_subscriptions = 8;
+    MediaCacheLimits cache_limits;
     RequestKeyframeFn request_keyframe = nullptr;
     void *request_keyframe_user = nullptr;
 };
@@ -157,7 +170,7 @@ struct MediaStreamInfo {
 
 struct SubscriptionStart {
     // subscription 创建后先读取 start data：如果 track_ready/gop_complete=true，
-    // 调用方可先发送 gop_frames，再进入 PopSubscriptionFrame 的 live queue。
+    // 调用方可先发送 gop_frames，再通过 PullFrame 拉取共享缓存里的 live frame。
     // gop_frames 里的 MediaFrame 只 ref 底层 MediaBuffer，不按 subscription 深拷贝 GOP。
     bool track_ready = false;
     bool gop_complete = false;
@@ -181,9 +194,9 @@ struct SubscriptionInfo {
     uint64_t generation = 0;
     SubscriptionClose close_reason =
         SubscriptionClose::kNone;
-    bool waiting_for_keyframe = false;
-    // slow 表示该 subscription 的 live queue 溢出过，MediaStreams 会丢弃
-    // 旧队列并等待下一个关键帧，避免客户端从不可解码的中间帧恢复。
+    bool wait_keyframe = false;
+    // slow 表示该 subscription 已经落后到共享帧缓存覆盖边界之外，
+    // MediaStreams 会等待下一个关键帧，避免客户端从不可解码的中间帧恢复。
     bool slow = false;
     uint32_t pending_frames = 0;
 };
@@ -196,6 +209,16 @@ struct MediaStreamStats {
     uint32_t active_subscriptions = 0;
     uint32_t cached_frames = 0;
     uint32_t cached_bytes = 0;
+    uint32_t main_cached_bytes = 0;
+    uint32_t sub_cached_bytes = 0;
+    uint32_t main_hls_cached_bytes = 0;
+    uint32_t sub_hls_cached_bytes = 0;
+    uint32_t main_flv_cached_bytes = 0;
+    uint32_t sub_flv_cached_bytes = 0;
+    uint64_t main_cache_drops = 0;
+    uint64_t sub_cache_drops = 0;
+    uint64_t main_client_frame_drops = 0;
+    uint64_t sub_client_frame_drops = 0;
     uint32_t slow_subscriptions = 0;
     uint32_t main_slow_subscriptions = 0;
     uint32_t sub_slow_subscriptions = 0;
@@ -265,8 +288,8 @@ public:
         FrameSubscriptionId subscription_id) const;
     SubscriptionStart GetSubscriptionStart(
         FrameSubscriptionId subscription_id) const;
-    bool PopSubscriptionFrame(FrameSubscriptionId subscription_id,
-                              SubscriptionFrame *frame);
+    bool PullFrame(FrameSubscriptionId subscription_id,
+                   SubscriptionFrame *frame);
 
 private:
     class Impl;

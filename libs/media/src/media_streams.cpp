@@ -147,9 +147,9 @@ SubscriptionStart MediaStreams::GetSubscriptionStart(
     return impl_->GetSubscriptionStart(subscription_id);
 }
 
-bool MediaStreams::PopSubscriptionFrame(FrameSubscriptionId subscription_id,
-                                        SubscriptionFrame *frame) {
-    return impl_->PopSubscriptionFrame(subscription_id, frame);
+bool MediaStreams::PullFrame(FrameSubscriptionId subscription_id,
+                             SubscriptionFrame *frame) {
+    return impl_->PullFrame(subscription_id, frame);
 }
 
 }  // namespace live_stream

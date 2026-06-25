@@ -39,9 +39,9 @@ struct AppConfig {
     std::vector<WebrtcIceServer> webrtc_ice_servers;
 };
 
-bool LoadAppConfig(IConfig *config_store,
+bool LoadAppConfig(IConfig *config_source,
                    AppConfig *app_config);
-bool LoadAppConfigFromRoot(const ConfigJson &root,
+bool LoadAppConfigFromRoot(const Json &root,
                            AppConfig *app_config);
 
 }  // namespace live_stream

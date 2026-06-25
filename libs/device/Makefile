@@ -9,6 +9,7 @@ MEDIA_CORE_LIB := $(LIB_DIR)/libmedia.a
 MEDIA_CODEC_LIB := $(LIB_DIR)/libmedia_codec.a
 
 CXXFLAGS += -I$(ROOT_DIR)/libs/event/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/hisi_vendor/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 

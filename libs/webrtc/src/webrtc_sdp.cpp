@@ -1,6 +1,6 @@
 #include "webrtc_sdp.h"
 
-#include "config_json.h"
+#include "json.h"
 #include "dtls_transport.h"
 
 #include <algorithm>
@@ -364,7 +364,7 @@ bool IsValidIceServerUrl(const std::string& url) {
 }
 
 std::string BuildCandidateJson(const WebrtcIceCandidate& candidate) {
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["candidate"] = candidate.candidate;
     root["sdpMid"] = candidate.sdp_mid;
     root["sdpMLineIndex"] = candidate.sdp_mline_index;

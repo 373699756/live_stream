@@ -1,6 +1,8 @@
 #include "media/media_buffer.h"
 
+#include <atomic>
 #include <cstdlib>
+#include <new>
 #include <utility>
 
 namespace live_stream {
@@ -9,7 +11,7 @@ struct MediaBuffer {
     uint8_t* data = nullptr;
     uint32_t capacity = 0;
     uint32_t size = 0;
-    uint32_t refs = 0;
+    std::atomic<uint32_t> refs{0};
     MediaBufferFreeCallback free_callback = nullptr;
     void* user = nullptr;
 };
@@ -22,15 +24,14 @@ MediaBuffer* CreateMediaBuffer(uint8_t* data, uint32_t capacity, uint32_t size,
     if (data == nullptr || capacity == 0 || size > capacity) {
         return nullptr;
     }
-    MediaBuffer* buffer =
-        static_cast<MediaBuffer*>(std::malloc(sizeof(MediaBuffer)));
+    MediaBuffer* buffer = new (std::nothrow) MediaBuffer();
     if (buffer == nullptr) {
         return nullptr;
     }
     buffer->data = data;
     buffer->capacity = capacity;
     buffer->size = size;
-    buffer->refs = 1;
+    buffer->refs.store(1, std::memory_order_relaxed);
     buffer->free_callback = free_callback;
     buffer->user = user;
     return buffer;
@@ -40,7 +41,7 @@ MediaBuffer* AddMediaBufferRef(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return nullptr;
     }
-    (void)__sync_add_and_fetch(&buffer->refs, 1);
+    (void)buffer->refs.fetch_add(1, std::memory_order_relaxed);
     return buffer;
 }
 
@@ -48,7 +49,7 @@ void ReleaseMediaBuffer(MediaBuffer* buffer) {
     if (buffer == nullptr) {
         return;
     }
-    if (__sync_sub_and_fetch(&buffer->refs, 1) != 0) {
+    if (buffer->refs.fetch_sub(1, std::memory_order_acq_rel) != 1) {
         return;
     }
     if (buffer->free_callback != nullptr) {
@@ -56,7 +57,7 @@ void ReleaseMediaBuffer(MediaBuffer* buffer) {
     } else {
         std::free(buffer->data);
     }
-    std::free(buffer);
+    delete buffer;
 }
 
 }  // namespace

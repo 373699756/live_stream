@@ -31,7 +31,7 @@ export class ApiClientError extends Error {
 
     constructor({
         code,
-        message,
+        message: msg,
         requestId = '',
         status = 0,
     }: {
@@ -40,7 +40,7 @@ export class ApiClientError extends Error {
         requestId?: string;
         status?: number;
     }) {
-        super(message);
+        super(msg);
         this.name = 'ApiClientError';
         this.code = code;
         this.requestId = requestId;
@@ -185,22 +185,22 @@ function errorFromEnvelope(
             typeof error.code === 'string' && error.code
                 ? error.code
                 : 'request_failed';
-        const message =
+        const msg =
             typeof error.message === 'string' && error.message
                 ? error.message
                 : code;
         return new ApiClientError({
             code,
-            message,
+            message: msg,
             requestId: body.request_id || '',
             status,
         });
     }
-    const message =
+    const msg =
         typeof error === 'string' && error ? error : 'request_failed';
     return new ApiClientError({
-        code: message,
-        message,
+        code: msg,
+        message: msg,
         requestId: body.request_id || '',
         status,
     });

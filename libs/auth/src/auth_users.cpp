@@ -6,9 +6,9 @@
 #include <vector>
 
 #include "auth_internal.h"
-#include "config_json.h"
+#include "json.h"
 #include "infra/fs.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 namespace live_stream {
 namespace {
@@ -132,7 +132,7 @@ private:
             load_ok_ = false;
             return false;
         }
-        ConfigJson document = ConfigJson::parse(content, nullptr, false);
+        Json document = Json::parse(content, nullptr, false);
         if (document.is_discarded()) {
             load_ok_ = false;
             return false;
@@ -141,15 +141,15 @@ private:
         return load_ok_;
     }
 
-    bool Parse(const ConfigJson &document) {
+    bool Parse(const Json &document) {
         if (!document.is_object() || !document.contains("users") ||
             !document.at("users").is_array() || document.at("users").empty()) {
             return false;
         }
-        const ConfigJson &users = document.at("users");
+        const Json &users = document.at("users");
 
         std::map<std::string, AuthUserRecord> parsed_users;
-        for (const ConfigJson &user_json : users) {
+        for (const Json &user_json : users) {
             if (!user_json.is_object()) {
                 return false;
             }
@@ -159,12 +159,12 @@ private:
             }
             AuthUserRecord user;
             std::string role;
-            if (!json_utils::ReadField(user_json, "user_name",
+            if (!json_reader::ReadField(user_json, "user_name",
                                        &user.user_name) ||
-                !json_utils::ReadField(user_json, "role", &role) ||
-                !json_utils::ReadField(user_json, "password_credential",
+                !json_reader::ReadField(user_json, "role", &role) ||
+                !json_reader::ReadField(user_json, "password_credential",
                                        &user.password_credential) ||
-                !json_utils::ReadField(user_json, "enabled", &user.enabled) ||
+                !json_reader::ReadField(user_json, "enabled", &user.enabled) ||
                 !auth_internal::ParseRole(role, &user.role) ||
                 auth_internal::IsEmptyOrTooLong(
                     user.user_name, auth_internal::kMaxUserNameLength) ||
@@ -172,7 +172,7 @@ private:
                 return false;
             }
             if (user_json.contains("must_change_password") &&
-                !json_utils::ReadField(user_json, "must_change_password",
+                !json_reader::ReadField(user_json, "must_change_password",
                                        &user.must_change_password)) {
                 return false;
             }
@@ -186,14 +186,14 @@ private:
     }
 
     bool Save(const std::map<std::string, AuthUserRecord> &users) const {
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         root["version"] = 1;
         root["credential_format"] =
             "pbkdf2-sha256:<iterations>:<salt_hex>:<hash_hex>";
-        root["users"] = ConfigJson::array();
+        root["users"] = Json::array();
         for (const auto &item : users) {
             const AuthUserRecord &user = item.second;
-            ConfigJson user_json = ConfigJson::object();
+            Json user_json = Json::object();
             user_json["user_name"] = user.user_name;
             user_json["role"] = RoleToConfigString(user.role);
             user_json["enabled"] = user.enabled;

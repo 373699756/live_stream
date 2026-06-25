@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -84,7 +85,7 @@ public:
     FrameSubscriptionId subscription_id = 0;
     uint64_t subscription_generation = 0;
     // start_frames 是 PLAY 时抓取的启动 GOP，只在第一次 drain 时发送并释放。
-    std::vector<MediaFrame> start_frames;
+    std::deque<MediaFrame> start_frames;
     event::TimerId drain_timer_id = 0;
     // Basic auth 成功只缓存到本 RTSP session，不持有 auth token。
     bool authenticated = false;

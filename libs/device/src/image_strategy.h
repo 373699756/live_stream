@@ -3,17 +3,17 @@
 
 #include "config.h"
 #include "device.h"
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_vendor/sdk.h"
 
 namespace live_stream {
 namespace device_internal {
 
-bool IsImageStrategyEnabled(const ConfigJson &image_config);
-ConfigJson BuildImageStrategyConfig(
-    const ConfigJson &image_config,
+bool IsImageStrategyEnabled(const Json &image_config);
+Json BuildImageStrategyConfig(
+    const Json &image_config,
     const ImageInfo &current_info,
     const hisisdk::ExposureInfo &exposure,
-    ImageInfo *next_info);
+    ImageInfo &next_info);
 
 }  // namespace device_internal
 }  // namespace live_stream

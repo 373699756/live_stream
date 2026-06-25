@@ -7,17 +7,19 @@
 ## 模块定位
 
 `hisi_vendor` 是 HiSilicon MPP/VENC/ISP/REGION/SNAPSHOT/NNIE/IVE/VGS SDK 边界。
-它把海思 MPI/API 结构和调用封装在项目内，向上提供 `hisisdk::IHisiSdk`。
+它拥有 HiSilicon SDK 契约头和生产实现入口，把海思 MPI/API 结构和调用封装在项目内，
+向上提供 `hisisdk::HisiSdk` 窄接口集合。
 
 ## 总体框架图
 
 ```mermaid
 flowchart LR
-  Media[device] --> SDK[IHisiSdk]
-  AI[ai] --> SDK
+  Media[device] --> SDK[HisiSdk narrow interfaces]
+  AI[ai] --> Snapshot[IHisiSnapshot]
+  Snapshot --> SDK
   SDK --> MPP[HiSilicon MPP/ISP/VENC/REGION]
   SDK --> SVP[NNIE/IVE/VGS/IVS]
-  SDK --> AudioStub[audio failure stubs]
+  SDK --> AudioSymbols[audio failure symbols]
 ```
 
 ## 核心职责
@@ -25,16 +27,19 @@ flowchart LR
 - 封装 MPP system、VI、VPSS、VENC、ISP、snapshot 和 region 调用。
 - 提供媒体 capabilities 和 HiSilicon-specific channel 信息。
 - 提供 AI 所需的 NNIE/IVE/VGS/IVS 能力边界。
-- 用失败 stub 闭合海思 `libmpi.a` 内部音频符号，不启用音频能力。
+- 用失败实现闭合海思 `libmpi.a` 内部音频符号，不启用音频能力。
 
 ## 接口归属
 
-public SDK interface 位于 `hisi_vendor` include 和 `mpp_hisi_sdk_impl` 相关实现。
-上层模块不直接包含海思 MPI 业务结构；需要新增硬件能力时先扩展 `IHisiSdk`。
+public SDK interface 位于 `hisi_vendor/sdk.h`、`hisi_vendor/media_pipeline.h`、
+`hisi_vendor/mpp_types.h` 和 `hisi_vendor/media_capabilities.h`。生产 MPP 实现入口为
+`hisi_vendor/mpp_sdk.h`，实现状态留在 `mpp_hisi_sdk_impl` 相关内部文件。
+上层模块不直接包含海思 MPI 业务结构；需要新增硬件能力时先扩展对应窄接口，
+例如 system、media pipeline、venc stream、region、snapshot 或 image。
 
 ## 状态与资源模型
 
-硬件资源生命周期必须由调用方通过 `IHisiSdk` 明确 create/start/stop/destroy。
+硬件资源生命周期必须由调用方通过对应窄接口明确 create/start/stop/destroy。
 `hisi_vendor` 可以保存 SDK 适配所需的句柄和能力缓存，但不能替业务模块决定配置策略、
 Web DTO 或运行状态展示。
 VPSS group 启动时启用视频降噪，参数保持和海思示例工程一致：
@@ -45,6 +50,17 @@ overshoot，避免把低照噪声锐化成点状颗粒。
 MPP system 清理失败必须 fail fast：`DeinitSystem()` 返回 `false` 时，内部保持
 initialized 状态，不把 VB busy、stale resource 或二次清理失败伪装成已清理；调用方
 不得继续重建媒体管线。
+
+`MppHisiSdkImpl::control_mutex_` 是普通 `std::mutex`，串行化 MPP system、VI、VPSS、
+VENC、region 和 image 这类结构性操作。public 接口只加锁一次，内部停止流程通过
+`StopViInput`、`StopVpssGroup`、`UnbindViVpssPipe`、`StopVencStreamThread`、
+`UnbindVpssVencChannels` 和 `DestroyVencChannels` 复用资源动作，不能在持锁时再次
+调用 public SDK 方法。抓图请求先持有 `snapshot_mutex_`，再进入 `control_mutex_`；
+不要在控制锁内反向等待抓图锁。VENC 取流线程不获取控制锁。
+
+ISP 运行线程使用 `std::thread`，由 VI 启停边界拥有。启动顺序保持 sensor/AE/AWB
+注册、ISP mem/pub attr/init、再启动线程执行 `HI_MPI_ISP_Run`；停止顺序保持
+`HI_MPI_ISP_Exit`、join 线程、注销 AWB/AE/sensor callback。
 
 VENC 封装以 Hi3516 Encode 库为主要参考，保持 `StartVenc -> BindVpssVenc ->
 StartVencStream` 的上层调用契约，但模块内部按每路 VENC state 记录 channel、
@@ -77,4 +93,4 @@ channel，再按 `GetStream/ReleaseStream` 成对读取编码结果。抓图控�
 
 - SDK 调用失败必须返回明确错误，不应在上层造成半启动资源。
 - 硬件资源 create/destroy 顺序必须和 MPP 要求一致。
-- 音频相关 stub 只能失败返回，不能形成隐式音频支持。
+- 音频相关失败符号只能失败返回，不能形成隐式音频支持。

@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_HISI_VENDOR_SRC_VENC_CONFIG_H_
 #define LIVE_STREAM_HISI_VENDOR_SRC_VENC_CONFIG_H_
 
-#include "hisi_vendor/mpp_hisi_sdk.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_vendor/mpp_sdk.h"
+#include "hisi_mpp_sdk.h"
 
 namespace live_stream {
 namespace hisisdk {

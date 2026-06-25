@@ -26,7 +26,7 @@ export function useWebrtcConfig() {
     const [config, setConfig] = useState<WebrtcConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState('');
+    const [msg, setMsg] = useState('');
     const [error, setError] = useState('');
 
     const reload = () =>
@@ -83,12 +83,12 @@ export function useWebrtcConfig() {
             });
             const normalized = normalizeWebrtcConfig(configToSave);
             setConfig(normalized);
-            setMessage('WebRTC 配置已保存');
+            setMsg('WebRTC 配置已保存');
         } catch (err: unknown) {
             const text =
                 err instanceof Error ? err.message : '保存 WebRTC 配置失败';
             setError(text);
-            setMessage(`保存失败：${text}`);
+            setMsg(`保存失败：${text}`);
         } finally {
             setSaving(false);
         }
@@ -98,7 +98,7 @@ export function useWebrtcConfig() {
         config,
         error,
         loading,
-        message,
+        msg,
         reload,
         save,
         saving,

@@ -19,15 +19,16 @@ flowchart LR
   AI --> SDK[hisi_vendor NNIE/IVE/VGS]
   AI --> Alarm[alarm ai_detection]
   AI --> Alerts[ai alert images]
-  HTTP[http /api/ai] --> AIView[IAiView]
-  AIView --> AI
+  HTTP[http /api/ai] --> AIReader[IAiReader]
+  AIReader --> AI
   Web[AI pages/live overlay] --> HTTP
 ```
 
 ## 核心职责
 
 - `ai.enabled=false` 时只挂配置和状态接口，不创建推理后端和抓帧线程。
-- 配置热应用：关闭会停止推理链路，开启或修改后端/任务/模型/阈值会重建链路。
+- 配置热应用：关闭会停止推理链路；开启或修改任务配置时按任务差异重建对应
+  worker，未变化任务继续运行。
 - 默认使用子码流，默认推理间隔 500ms。
 - 设备构建支持 NNIE `.wk` 模型加载、VGS resize、IVE CSC、NNIE forward/query。
 - 生产配置只接受 `hisi3516dv300_nnie` 后端；host stub 只用于测试/mock，不作为设备
@@ -48,7 +49,7 @@ flowchart LR
 public API 在 `ai.h`：
 
 - `Ai`
-- `IAiView`
+- `IAiReader`
 - `AiOptions`
 - AI 配置、检测结果、统计和告警记录结构。
 
@@ -86,8 +87,9 @@ AI 告警图片默认保存到运行目录下的 `ai_alerts` 存储，保留最�
 
 AI 运行状态包含总启用状态、每个任务的后端可用性、抓帧/推理线程、最近一次推理结果、
 统计指标和告警图片索引。每个启用任务拥有独立推理后端和 executor；AI 抓帧入口共享
-串行化保护，避免多个任务同时阻塞 VPSS。配置关闭或热应用失败时必须释放推理后端和
-抓帧资源；`/api/ai/status` 只能反映 AI 自身状态，不能阻塞直播 ready。
+串行化保护，避免多个任务同时阻塞 VPSS。告警图片写入、记录裁剪和图片读取由独立
+告警图片对象拥有。配置关闭或热应用失败时必须释放推理后端和抓帧资源；
+`/api/ai/status` 只能反映 AI 自身状态，不能阻塞直播 ready。
 组合根停止时，`ai` 必须在 `device` 之前停止，确保推理线程和告警抓拍不再访问
 即将释放的 device snapshot 或 MPP channel。
 

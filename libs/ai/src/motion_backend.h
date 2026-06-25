@@ -3,7 +3,7 @@
 
 #include "ai.h"
 #include "hisi_ai_platform.h"
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_vendor/sdk.h"
 
 #include <array>
 #include <vector>

@@ -1,19 +1,16 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_response.h"
 
 #include "alarm.h"
 
 namespace live_stream {
 namespace {
 
-const char *AlarmSourceToJsonString(AlarmSource source) {
-    return AlarmSourceToString(source);
-}
-
-ConfigJson AlarmSourceStateToJson(const AlarmSourceState &state) {
-    ConfigJson root = ConfigJson::object();
-    root["source"] = AlarmSourceToJsonString(state.source);
+Json AlarmSourceStateToJson(const AlarmSourceState &state) {
+    Json root = Json::object();
+    root["source"] = AlarmSourceToString(state.source);
     root["enabled"] = state.enabled;
     root["waiting"] = state.waiting;
     root["active"] = state.active;
@@ -25,16 +22,16 @@ ConfigJson AlarmSourceStateToJson(const AlarmSourceState &state) {
     return root;
 }
 
-ConfigJson AlarmInfoToJson(const AlarmInfo &status) {
-    ConfigJson root = ConfigJson::object();
-    root["active"] = status.active;
-    root["source"] = AlarmSourceToJsonString(status.source);
-    root["active_since_ms"] = status.active_since_ms;
-    root["last_trigger_time_ms"] = status.last_trigger_time_ms;
-    root["level"] = status.level;
-    root["message"] = status.message;
-    ConfigJson sources = ConfigJson::array();
-    for (const AlarmSourceState &source : status.sources) {
+Json AlarmInfoToJson(const AlarmInfo &alarm_info) {
+    Json root = Json::object();
+    root["active"] = alarm_info.active;
+    root["source"] = AlarmSourceToString(alarm_info.source);
+    root["active_since_ms"] = alarm_info.active_since_ms;
+    root["last_trigger_time_ms"] = alarm_info.last_trigger_time_ms;
+    root["level"] = alarm_info.level;
+    root["message"] = alarm_info.message;
+    Json sources = Json::array();
+    for (const AlarmSourceState &source : alarm_info.sources) {
         sources.push_back(AlarmSourceStateToJson(source));
     }
     root["sources"] = sources;
@@ -45,35 +42,26 @@ ConfigJson AlarmInfoToJson(const AlarmInfo &status) {
 
 class AlarmHttpHandler : public IHttpHandler {
 public:
-    AlarmHttpHandler(HttpAccess *access, IAlarm *alarm)
-        : access_(access), alarm_(alarm) {}
+    explicit AlarmHttpHandler(const AlarmHandlerDependencies &dependencies)
+        : access_(dependencies.access), alarm_(dependencies.alarm) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
+    void RegisterRoutes(IHttpRouter &router) override {
+        if (alarm_ == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/alarm/status",
-                              &AlarmHttpHandler::HandleStatusRoute, this);
+        router.AddExactRoute(HttpMethod::kGet, "/api/alarm/status", this,
+                             &AlarmHttpHandler::HandleInfo);
     }
 
 private:
-    static HttpResponse HandleStatusRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<AlarmHttpHandler *>(user)->HandleStatus(request);
-    }
-
-    HttpResponse HandleStatus(const HttpRequest &request) {
+    HttpResponse HandleInfo(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
             RequireAuthResponse(access_, request, &principal);
         if (auth_response.status_code != 0) {
             return auth_response;
         }
-        if (alarm_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
-
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         root["available"] = alarm_->IsStarted();
         root["status"] = AlarmInfoToJson(alarm_->GetAlarmInfo());
         return JsonResponse(200, root);
@@ -83,10 +71,10 @@ private:
     IAlarm *alarm_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeAlarmHandler(HttpAccess *access,
-                                               IAlarm *alarm) {
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(
+    const AlarmHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new AlarmHttpHandler(access, alarm));
+        new AlarmHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

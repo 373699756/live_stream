@@ -1,9 +1,9 @@
-#include "time_api.h"
+#include "system/time.h"
 
 #include "config.h"
 #include "event.h"
 #include "infra/time.h"
-#include "json_utils.h"
+#include "json_reader.h"
 #include "logger.h"
 
 #include <mutex>
@@ -50,29 +50,29 @@ bool IsTimeConfigValid(const TimeConfig &config) {
            IsNtpConfigValid(config.ntp);
 }
 
-bool LoadTimeConfig(const ConfigJson &value, TimeConfig *config) {
+bool LoadTimeConfig(const Json &value, TimeConfig *config) {
     if (config == nullptr || !value.is_object()) {
         return false;
     }
     TimeConfig parsed;
-    if (!json_utils::ReadField(value, "timezone", &parsed.timezone) ||
+    if (!json_reader::ReadField(value, "timezone", &parsed.timezone) ||
         !value.contains("ntp") || !value.at("ntp").is_object()) {
         return false;
     }
     if (value.contains("manual_sync_allowed") &&
-        !json_utils::ReadField(value, "manual_sync_allowed",
+        !json_reader::ReadField(value, "manual_sync_allowed",
                                &parsed.manual_sync_allowed)) {
         return false;
     }
     if (value.contains("browser_sync_on_login") &&
-        !json_utils::ReadField(value, "browser_sync_on_login",
+        !json_reader::ReadField(value, "browser_sync_on_login",
                                &parsed.browser_sync_on_login)) {
         return false;
     }
-    const ConfigJson &ntp = value.at("ntp");
-    if (!json_utils::ReadField(ntp, "enabled", &parsed.ntp.enabled) ||
-        !json_utils::ReadStringArray(ntp, "servers", &parsed.ntp.servers) ||
-        !json_utils::ReadField(ntp, "sync_interval_sec",
+    const Json &ntp = value.at("ntp");
+    if (!json_reader::ReadField(ntp, "enabled", &parsed.ntp.enabled) ||
+        !json_reader::ReadStringArray(ntp, "servers", &parsed.ntp.servers) ||
+        !json_reader::ReadField(ntp, "sync_interval_sec",
                                &parsed.ntp.sync_interval_sec, 1, 0xffffffffU)) {
         return false;
     }
@@ -84,15 +84,15 @@ bool LoadTimeConfig(const ConfigJson &value, TimeConfig *config) {
     return true;
 }
 
-ConfigJson BuildTimeConfig(const ConfigJson &current,
+Json BuildTimeConfig(const Json &current,
                            const TimeConfig &config) {
-    ConfigJson root = current.is_object() ? current : ConfigJson::object();
+    Json root = current.is_object() ? current : Json::object();
     root["timezone"] = config.timezone;
     root["manual_sync_allowed"] = config.manual_sync_allowed;
     root["browser_sync_on_login"] = config.browser_sync_on_login;
-    ConfigJson ntp = ConfigJson::object();
+    Json ntp = Json::object();
     ntp["enabled"] = config.ntp.enabled;
-    ConfigJson servers = ConfigJson::array();
+    Json servers = Json::array();
     for (const std::string &server : config.ntp.servers) {
         servers.push_back(server);
     }
@@ -106,32 +106,32 @@ class TimeImpl : public ITime {
 public:
     explicit TimeImpl(const TimeOptions &options)
         : options_(options) {
-        status_.timezone = options.default_timezone;
-        status_.ntp = options.default_ntp_config;
+        time_info_.timezone = options.default_timezone;
+        time_info_.ntp = options.default_ntp_config;
     }
 
     ~TimeImpl() override { Release(); }
 
     bool Prepare() {
         TimeConfig loaded_config;
-        loaded_config.timezone = status_.timezone;
-        loaded_config.ntp = status_.ntp;
+        loaded_config.timezone = time_info_.timezone;
+        loaded_config.ntp = time_info_.ntp;
         loaded_config.manual_sync_allowed = manual_sync_allowed_;
         loaded_config.browser_sync_on_login = browser_sync_on_login_;
-        ConfigJson loaded_json = ConfigJson::object();
+        Json loaded_json = Json::object();
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (initialized_) {
                 return true;
             }
-            if (!IsTimezoneValid(status_.timezone) ||
-                !IsNtpConfigValid(status_.ntp)) {
+            if (!IsTimezoneValid(time_info_.timezone) ||
+                !IsNtpConfigValid(time_info_.ntp)) {
                 return false;
             }
         }
 
         if (options_.config != nullptr) {
-            ConfigJson value = options_.config->Get(kConfigName);
+            Json value = options_.config->Get(kConfigName);
             if (value.is_object()) {
                 if (!LoadTimeConfig(value, &loaded_config)) {
                     return false;
@@ -150,45 +150,45 @@ public:
         if (initialized_) {
             return true;
         }
-        status_.timezone = loaded_config.timezone;
-        status_.ntp = loaded_config.ntp;
-        status_.manual_sync_allowed = loaded_config.manual_sync_allowed;
-        status_.browser_sync_on_login = loaded_config.browser_sync_on_login;
+        time_info_.timezone = loaded_config.timezone;
+        time_info_.ntp = loaded_config.ntp;
+        time_info_.manual_sync_allowed = loaded_config.manual_sync_allowed;
+        time_info_.browser_sync_on_login = loaded_config.browser_sync_on_login;
         manual_sync_allowed_ = loaded_config.manual_sync_allowed;
         browser_sync_on_login_ = loaded_config.browser_sync_on_login;
         time_config_json_ = loaded_json;
         if (options_.config != nullptr && !config_attached_) {
             ConfigScope config_scope;
-            config_scope.verify = [this](const ConfigJson &now,
-                                         ConfigIssue *issue) {
+            config_scope.verify = [this](const Json &now,
+                                         ConfigError *error) {
                 if (VerifyTimeConfig(now)) {
-                    return ConfigStatus::kOk;
+                    return ConfigCode::kOk;
                 }
-                if (issue != nullptr) {
-                    issue->field.clear();
-                    issue->reason = "invalid time config";
+                if (error != nullptr) {
+                    error->field.clear();
+                    error->message = "invalid time config";
                 }
-                return ConfigStatus::kVerifyFailed;
+                return ConfigCode::kVerify;
             };
-            config_scope.apply = [this](const ConfigJson &prev,
-                                        const ConfigJson &now,
-                                        ConfigIssue *issue) {
+            config_scope.apply = [this](const Json &prev,
+                                        const Json &now,
+                                        ConfigError *error) {
                 (void)prev;
                 if (ApplyTimeConfig(now)) {
-                    return ConfigStatus::kOk;
+                    return ConfigCode::kOk;
                 }
-                if (issue != nullptr) {
-                    issue->field.clear();
-                    issue->reason = "apply time config failed";
+                if (error != nullptr) {
+                    error->field.clear();
+                    error->message = "apply time config failed";
                 }
-                return ConfigStatus::kApplyFailed;
+                return ConfigCode::kApply;
             };
             if (!options_.config->AddScope(kConfigName, config_scope)) {
                 return false;
             }
             config_attached_ = true;
         }
-        status_.system_time_ms = now_ms;
+        time_info_.system_time_ms = now_ms;
         initialized_ = true;
         return true;
     }
@@ -217,7 +217,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             detach = config_attached_;
-            time_config_json_ = ConfigJson::object();
+            time_config_json_ = Json::object();
             suppress_config_apply_ = false;
             config_attached_ = false;
             started_ = false;
@@ -242,9 +242,9 @@ public:
         if (!initialized_) {
             return TimeInfo{};
         }
-        TimeInfo status = status_;
-        status.system_time_ms = now_ms;
-        return status;
+        TimeInfo time_info = time_info_;
+        time_info.system_time_ms = now_ms;
+        return time_info;
     }
 
     bool SetTimezone(const live_stream::RequestContext &context,
@@ -322,7 +322,7 @@ public:
         NtpConfig config;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            config = status_.ntp;
+            config = time_info_.ntp;
         }
         if (!config.enabled || !IsNtpConfigValid(config)) {
             return false;
@@ -383,12 +383,12 @@ private:
         return infra::Time::SystemTimeMillis();
     }
 
-    bool VerifyTimeConfig(const ConfigJson &value) const {
+    bool VerifyTimeConfig(const Json &value) const {
         TimeConfig config;
         return LoadTimeConfig(value, &config);
     }
 
-    bool ApplyTimeConfig(const ConfigJson &value) {
+    bool ApplyTimeConfig(const Json &value) {
         TimeConfig config;
         if (!LoadTimeConfig(value, &config)) {
             return false;
@@ -416,7 +416,7 @@ private:
         if (!IsTimeConfigValid(normalized_config)) {
             return false;
         }
-        ConfigJson current_json = ConfigJson::object();
+        Json current_json = Json::object();
         {
             std::lock_guard<std::mutex> lock(mutex_);
             current_json = time_config_json_;
@@ -437,62 +437,62 @@ private:
 
     TimeConfig CurrentConfigLocked() const {
         TimeConfig config;
-        config.timezone = status_.timezone;
-        config.ntp = status_.ntp;
+        config.timezone = time_info_.timezone;
+        config.ntp = time_info_.ntp;
         config.manual_sync_allowed = manual_sync_allowed_;
         config.browser_sync_on_login = browser_sync_on_login_;
         return config;
     }
 
     void ApplyLoadedConfigLocked(const TimeConfig &config) {
-        status_.timezone = config.timezone;
-        status_.ntp = config.ntp;
-        status_.manual_sync_allowed = config.manual_sync_allowed;
-        status_.browser_sync_on_login = config.browser_sync_on_login;
+        time_info_.timezone = config.timezone;
+        time_info_.ntp = config.ntp;
+        time_info_.manual_sync_allowed = config.manual_sync_allowed;
+        time_info_.browser_sync_on_login = config.browser_sync_on_login;
         manual_sync_allowed_ = config.manual_sync_allowed;
         browser_sync_on_login_ = config.browser_sync_on_login;
     }
 
-    bool PersistConfig(const ConfigJson &current_json,
+    bool PersistConfig(const Json &current_json,
                        const TimeConfig &config) {
         if (options_.config == nullptr) {
             return true;
         }
-        const ConfigJson next_json = BuildTimeConfig(current_json, config);
+        const Json next_json = BuildTimeConfig(current_json, config);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             suppress_config_apply_ = true;
         }
-        const ConfigStatus status = options_.config->Set(kConfigName,
+        const ConfigCode code = options_.config->Set(kConfigName,
                                                          next_json);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             suppress_config_apply_ = false;
-            if (status == ConfigStatus::kOk) {
+            if (code == ConfigCode::kOk) {
                 time_config_json_ = next_json;
             }
         }
-        return status == ConfigStatus::kOk;
+        return code == ConfigCode::kOk;
     }
 
     void UpdateSyncState(TimeSyncSource source, int64_t sync_time_ms, bool ok) {
         std::lock_guard<std::mutex> lock(mutex_);
-        status_.last_sync_source = source;
-        status_.last_sync_time_ms = ok ? sync_time_ms : status_.last_sync_time_ms;
-        status_.last_sync_ok = ok;
+        time_info_.last_sync_source = source;
+        time_info_.last_sync_time_ms = ok ? sync_time_ms : time_info_.last_sync_time_ms;
+        time_info_.last_sync_ok = ok;
         if (ok) {
-            status_.system_time_ms = sync_time_ms;
+            time_info_.system_time_ms = sync_time_ms;
         }
     }
 
-    void PublishTimeChanged(const std::string &message) {
+    void PublishTimeChanged(const std::string &msg) {
         if (options_.event == nullptr) {
             return;
         }
         event::Event event;
         event.type = event::EventType::kTimeChanged;
         event.source = "time";
-        event.message = message;
+        event.message = msg;
         static_cast<void>(options_.event->Publish(event));
     }
 
@@ -516,8 +516,8 @@ private:
     }
 
     TimeOptions options_;
-    TimeInfo status_;
-    ConfigJson time_config_json_ = ConfigJson::object();
+    TimeInfo time_info_;
+    Json time_config_json_ = Json::object();
     mutable std::mutex mutex_;
     bool manual_sync_allowed_ = true;
     bool browser_sync_on_login_ = true;

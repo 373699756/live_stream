@@ -1,6 +1,9 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_json_body.h"
+#include "http_path.h"
+#include "http_response.h"
 
 #include "config.h"
 
@@ -12,7 +15,72 @@ namespace {
 const char *kSetConfigFailed = "set config failed";
 const char *kUnsupportedConfigScopeAudio = "audio";
 
-bool IsWrappedConfigPayload(const std::string &name, const ConfigJson &value) {
+int HttpStatusForConfigCode(ConfigCode code) {
+    switch (code) {
+        case ConfigCode::kOk:
+            return 200;
+        case ConfigCode::kInvalid:
+        case ConfigCode::kVerify:
+            return 400;
+        case ConfigCode::kMissing:
+            return 404;
+        case ConfigCode::kExists:
+            return 409;
+        case ConfigCode::kStopped:
+        case ConfigCode::kApply:
+            return 503;
+        case ConfigCode::kSave:
+            return 500;
+    }
+    return 500;
+}
+
+const char *HttpErrorCodeForConfigCode(ConfigCode code) {
+    switch (code) {
+        case ConfigCode::kOk:
+            return "internal_error";
+        case ConfigCode::kInvalid:
+        case ConfigCode::kMissing:
+        case ConfigCode::kVerify:
+            return "invalid_argument";
+        case ConfigCode::kExists:
+            return "resource_busy";
+        case ConfigCode::kStopped:
+        case ConfigCode::kApply:
+            return "protocol_unavailable";
+        case ConfigCode::kSave:
+            return "internal_error";
+    }
+    return "internal_error";
+}
+
+std::string RequestIdForConfigResponse(const HttpRequest &request) {
+    return request.request_id.empty() ? std::string("http-0")
+                                      : request.request_id;
+}
+
+HttpResponse ConfigErrorResponse(const HttpRequest &request, ConfigCode code,
+                                 const ConfigError &config_error) {
+    Json root = Json::object();
+    Json error = Json::object();
+    error["code"] = HttpErrorCodeForConfigCode(code);
+    error["message"] = config_error.message.empty()
+                           ? std::string(kSetConfigFailed)
+                           : config_error.message;
+    if (!config_error.scope.empty()) {
+        error["scope"] = config_error.scope;
+    }
+    if (!config_error.field.empty()) {
+        error["field"] = config_error.field;
+    }
+    root["ok"] = false;
+    root["data"] = nullptr;
+    root["error"] = error;
+    root["request_id"] = RequestIdForConfigResponse(request);
+    return JsonResponse(HttpStatusForConfigCode(code), root);
+}
+
+bool IsWrappedConfigPayload(const std::string &name, const Json &value) {
     return value.is_object() && value.size() == 1 && value.contains(name) &&
            value.at(name).is_object();
 }
@@ -25,30 +93,21 @@ bool IsUnsupportedConfigScope(const std::string &name) {
 
 class ConfigHttpHandler : public IHttpHandler {
 public:
-    ConfigHttpHandler(HttpAccess *access, IConfig *config)
-        : access_(access), config_(config) {}
+    explicit ConfigHttpHandler(const ConfigHandlerDependencies &dependencies)
+        : access_(dependencies.access), config_(dependencies.config) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
+    void RegisterRoutes(IHttpRouter &router) override {
+        if (config_ == nullptr) {
             return;
         }
-        router->AddPrefixRoute(HttpMethod::kGet, "/api/config/",
-                               &ConfigHttpHandler::HandleConfigRoute, this);
-        router->AddPrefixRoute(HttpMethod::kPut, "/api/config/",
-                               &ConfigHttpHandler::HandleConfigRoute, this);
+        router.AddPrefixRoute(HttpMethod::kGet, "/api/config/", this,
+                              &ConfigHttpHandler::HandleConfig);
+        router.AddPrefixRoute(HttpMethod::kPut, "/api/config/", this,
+                              &ConfigHttpHandler::HandleConfig);
     }
 
 private:
-    static HttpResponse HandleConfigRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<ConfigHttpHandler *>(user)->HandleConfig(request);
-    }
-
     HttpResponse HandleConfig(const HttpRequest &request) {
-        IConfig *config = config_;
-        if (config == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         const std::string name = PathSuffix(request.path, "/api/config/");
         if (name.empty()) {
             return StatusResponse(400, "Missing config name");
@@ -63,7 +122,7 @@ private:
             if (IsUnsupportedConfigScope(name)) {
                 return StatusResponse(404, "Not Found");
             }
-            ConfigJson value = config->Get(name);
+            Json value = config_->Get(name);
             if (value.is_null()) {
                 return StatusResponse(404, "Not Found");
             }
@@ -75,15 +134,16 @@ private:
         }
         if (request.method == HttpMethod::kPut) {
             AuthPrincipal principal;
-            if (!RequirePermissionOrForbidden(access_, request,
-                                              AuthPermission::kModifyConfig,
-                                              name, &principal)) {
-                return ForbiddenResponse(principal);
+            HttpResponse auth_response = RequirePermissionResponse(
+                access_, request, AuthPermission::kModifyConfig, name,
+                &principal);
+            if (auth_response.status_code != 0) {
+                return auth_response;
             }
             if (IsUnsupportedConfigScope(name)) {
                 return StatusResponse(404, "Not Found");
             }
-            ConfigJson value;
+            Json value;
             if (!ParseJsonObject(request, &value)) {
                 return StatusResponse(400, "Invalid JSON");
             }
@@ -94,19 +154,20 @@ private:
                 return StatusResponse(
                     400, "Config payload must be the top-level node");
             }
-            ConfigIssue issue;
-            const ConfigStatus status = config->Set(name, value, &issue);
-            const bool ok = status == ConfigStatus::kOk;
+            ConfigError config_error;
+            const ConfigCode code = config_->Set(name, value, &config_error);
+            const bool ok = code == ConfigCode::kOk;
             const std::string failure_reason =
                 ok ? std::string()
-                   : (issue.reason.empty() ? std::string(kSetConfigFailed)
-                                           : issue.reason);
+                   : (config_error.message.empty()
+                          ? std::string(kSetConfigFailed)
+                          : config_error.message);
             access_->RecordOperation(
                 request, principal, OperationAction::kModifyConfig, name,
                 ok ? OperationResult::kSuccess : OperationResult::kFailed,
                 failure_reason);
             if (!ok) {
-                return StatusResponse(400, failure_reason);
+                return ConfigErrorResponse(request, code, config_error);
             }
             return OkResponse();
         }
@@ -117,10 +178,10 @@ private:
     IConfig *config_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeConfigHandler(HttpAccess *access,
-                                                IConfig *config) {
+std::unique_ptr<IHttpHandler> MakeConfigHandler(
+    const ConfigHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new ConfigHttpHandler(access, config));
+        new ConfigHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

@@ -1,6 +1,10 @@
 #include "http_media.h"
 
-#include "http_media_utils.h"
+#include "http_media_auth.h"
+#include "http_media_module.h"
+#include "http_media_path.h"
+#include "http_media_response.h"
+#include "http_media_stream_id_json.h"
 #include "http_router.h"
 
 #include "device.h"
@@ -27,11 +31,10 @@ const char *CodecName(Codec codec) {
     return "unknown";
 }
 
-bool RequestPreviewKeyframe(MediaStreams *media_streams,
+bool RequestPreviewKeyframe(MediaStreams &media_streams,
                             StreamId stream_id) {
-    return media_streams != nullptr &&
-           media_streams->RequestKeyframe(stream_id,
-                                          KeyframeRequestSource::kNewClient);
+    return media_streams.RequestKeyframe(stream_id,
+                                         KeyframeRequestSource::kNewClient);
 }
 
 std::string SegmentQuerySuffix(const HttpRequest &request) {
@@ -75,11 +78,8 @@ HttpResponse BuildPlaylistResponse(const MediaHlsPlaylist &playlist,
     return response;
 }
 
-bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
-                  std::string *object_name) {
-    if (stream_id == nullptr || object_name == nullptr) {
-        return false;
-    }
+bool ParseHlsPath(const HttpRequest &request, StreamId &stream_id,
+                  std::string &object_name) {
     const std::string remaining = HttpMediaPathSuffix(request.path, "/live/");
     const size_t slash = remaining.find('/');
     if (slash == std::string::npos || slash == 0 ||
@@ -87,14 +87,14 @@ bool ParseHlsPath(const HttpRequest &request, StreamId *stream_id,
         return false;
     }
     const std::string stream_name = remaining.substr(0, slash);
-    if (!MediaStreamIdFromJson(stream_name, stream_id)) {
+    if (!MediaStreamIdFromJson(stream_name, &stream_id)) {
         return false;
     }
     const std::string hls_path = remaining.substr(slash + 1);
     if (!HttpMediaStartsWith(hls_path, "hls/") || hls_path.size() <= 4) {
         return false;
     }
-    *object_name = hls_path.substr(4);
+    object_name = hls_path.substr(4);
     return true;
 }
 
@@ -104,8 +104,8 @@ bool IsHlsSegmentObjectName(const std::string &object_name) {
 }
 
 bool ParseHlsSegmentSequence(const std::string &object_name,
-                             uint64_t *sequence) {
-    if (sequence == nullptr || !IsHlsSegmentObjectName(object_name)) {
+                             uint64_t &sequence) {
+    if (!IsHlsSegmentObjectName(object_name)) {
         return false;
     }
     const std::string sequence_text =
@@ -113,21 +113,21 @@ bool ParseHlsSegmentSequence(const std::string &object_name,
     char *end = nullptr;
     const unsigned long long parsed =
         std::strtoull(sequence_text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
+    if (*end != '\0') {
         return false;
     }
-    *sequence = static_cast<uint64_t>(parsed);
+    sequence = static_cast<uint64_t>(parsed);
     return true;
 }
 
-HttpResponse HandlePlaylist(MediaStreams *media_streams,
+HttpResponse HandlePlaylist(MediaStreams &media_streams,
                             const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
                             const MediaStreamInfo &stream_info) {
     // playlist 请求是浏览器开始预览的信号，顺手请求关键帧可以缩短首个完整
     // HLS segment 生成时间；真正的 segment 数据仍由 MediaStreams 缓存提供。
     bool keyframe_requested = RequestPreviewKeyframe(media_streams, stream_id);
-    MediaHlsPlaylist playlist = media_streams->GetHlsPlaylist(stream_id);
+    MediaHlsPlaylist playlist = media_streams.GetHlsPlaylist(stream_id);
     if (playlist.entries.empty()) {
         Debug(kHttpMediaModuleName,
               "HLS warmup stream=%s object=%s codec=%s "
@@ -151,16 +151,16 @@ HttpResponse HandlePlaylist(MediaStreams *media_streams,
     return BuildPlaylistResponse(playlist, request);
 }
 
-HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
+HttpResponse HandleSegment(MediaStreams &media_streams, StreamId stream_id,
                            const std::string &object_name,
                            const MediaStreamInfo &stream_info) {
     uint64_t sequence = 0;
-    if (!ParseHlsSegmentSequence(object_name, &sequence)) {
+    if (!ParseHlsSegmentSequence(object_name, sequence)) {
         return HttpMediaTextResponse(400, "Invalid HLS segment");
     }
 
     MediaSegmentRef segment =
-        media_streams->GetHlsSegmentRef(stream_id, sequence);
+        media_streams.GetHlsSegmentRef(stream_id, sequence);
     if (!segment.found || !segment.body.Valid() ||
         segment.body.Size() == 0) {
         Error(kHttpMediaModuleName,
@@ -193,25 +193,18 @@ HttpResponse HandleSegment(MediaStreams *media_streams, StreamId stream_id,
 
 class HlsHttpHandler : public IHttpHandler {
 public:
-    HlsHttpHandler(HttpAccess *access,
-                   DeviceMedia *device,
-                   MediaStreams *media_streams)
-        : access_(access), device_(device), media_streams_(media_streams) {}
+    explicit HlsHttpHandler(
+        const HttpMediaHandlerDependencies &dependencies)
+        : access_(dependencies.access),
+          device_(dependencies.device),
+          media_streams_(dependencies.media_streams) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
-        }
-        router->AddPrefixRoute(HttpMethod::kGet, "/live/",
-                               &HlsHttpHandler::HandleHlsRoute, this);
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddPrefixRoute(HttpMethod::kGet, "/live/",
+                              this, &HlsHttpHandler::HandleHls);
     }
 
 private:
-    static HttpResponse HandleHlsRoute(void *user,
-                                       const HttpRequest &request) {
-        return static_cast<HlsHttpHandler *>(user)->HandleHls(request);
-    }
-
     HttpResponse HandleHls(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
@@ -222,13 +215,13 @@ private:
         if (media_streams_ == nullptr) {
             return HttpMediaTextResponse(501, "Not Implemented");
         }
-        if (IsHttpMediaRestarting(device_)) {
+        if (device_ != nullptr && device_->IsRestarting()) {
             return HttpMediaTextResponse(503, "Media pipeline restarting");
         }
 
         StreamId stream_id = StreamId::kMain;
         std::string object_name;
-        if (!ParseHlsPath(request, &stream_id, &object_name)) {
+        if (!ParseHlsPath(request, stream_id, object_name)) {
             return HttpMediaTextResponse(404, "Not Found");
         }
 
@@ -283,11 +276,11 @@ private:
         }
 
         if (object_name == "index.m3u8") {
-            return HandlePlaylist(media_streams_, request, stream_id,
+            return HandlePlaylist(*media_streams_, request, stream_id,
                                   object_name, stream_info);
         }
         if (IsHlsSegmentObjectName(object_name)) {
-            return HandleSegment(media_streams_, stream_id, object_name,
+            return HandleSegment(*media_streams_, stream_id, object_name,
                                  stream_info);
         }
         return HttpMediaTextResponse(404, "Not Found");
@@ -299,10 +292,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
-    HttpAccess *access, DeviceMedia *device,
-    MediaStreams *media_streams) {
+    const HttpMediaHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new HlsHttpHandler(access, device, media_streams));
+        new HlsHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

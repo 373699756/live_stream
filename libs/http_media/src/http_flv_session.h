@@ -28,7 +28,7 @@ public:
                    StreamId stream_id);
 
     HttpFlvSessionStartStatus Start(const MediaFlvStart &flv_start,
-                                    size_t *cached_flv_bytes);
+                                    size_t &cached_flv_bytes);
     bool OnFlvChunk(const uint8_t *data, size_t size) override;
     bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                        const MediaFrame &frame) override;

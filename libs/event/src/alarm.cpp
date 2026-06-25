@@ -10,18 +10,18 @@
 #include "config.h"
 #include "event.h"
 #include "infra/time.h"
-#include "json_utils.h"
+#include "json_reader.h"
 #include "logger.h"
 
 namespace live_stream {
 namespace {
 
-constexpr std::size_t kAlarmSourceSize = 5;
+constexpr std::size_t kAlarmSourcesTotal = 5;
 constexpr std::size_t kMaxAlarmMessageLength = 128;
 constexpr uint32_t kMaxAlarmDurationMs = 60U * 60U * 1000U;
 constexpr uint8_t kMaxAlarmLevel = 5;
 
-const std::array<AlarmSource, kAlarmSourceSize> kAlarmSources = {
+const std::array<AlarmSource, kAlarmSourcesTotal> kAlarmSources = {
     {AlarmSource::kMotion, AlarmSource::kAiDetection, AlarmSource::kIoInput,
      AlarmSource::kTamper, AlarmSource::kNetwork}};
 
@@ -70,57 +70,57 @@ bool IsRuleValid(const AlarmRule &rule) {
            rule.level <= kMaxAlarmLevel;
 }
 
-bool ReadOptionalBool(const ConfigJson &object, const char *key, bool *value) {
+bool ReadOptionalBool(const Json &object, const char *key, bool *value) {
     if (!object.contains(key)) {
         return true;
     }
-    return json_utils::ReadField(object, key, value);
+    return json_reader::ReadField(object, key, value);
 }
 
-bool ReadOptionalUint32(const ConfigJson &object, const char *key,
+bool ReadOptionalUint32(const Json &object, const char *key,
                         uint32_t min_value, uint32_t max_value,
                         uint32_t *value) {
     if (!object.contains(key)) {
         return true;
     }
-    return json_utils::ReadField(object, key, value, min_value, max_value);
+    return json_reader::ReadField(object, key, value, min_value, max_value);
 }
 
-bool ReadOptionalLevel(const ConfigJson &object, const char *key,
+bool ReadOptionalLevel(const Json &object, const char *key,
                        uint8_t *value) {
     if (!object.contains(key)) {
         return true;
     }
     uint32_t parsed = 0;
-    if (!json_utils::ReadField(object, key, &parsed, 0, kMaxAlarmLevel)) {
+    if (!json_reader::ReadField(object, key, &parsed, 0, kMaxAlarmLevel)) {
         return false;
     }
     *value = static_cast<uint8_t>(parsed);
     return true;
 }
 
-bool VerifyActionsConfig(const ConfigJson &value) {
+bool VerifyActionsConfig(const Json &value) {
     if (!value.is_object()) {
         return false;
     }
     bool ignored = false;
-    return json_utils::ReadField(value, "snapshot", &ignored) &&
-           json_utils::ReadField(value, "notify", &ignored);
+    return json_reader::ReadField(value, "snapshot", &ignored) &&
+           json_reader::ReadField(value, "notify", &ignored);
 }
 
-bool VerifyScheduleConfig(const ConfigJson &value) {
+bool VerifyScheduleConfig(const Json &value) {
     if (!value.is_object()) {
         return false;
     }
     std::string mode;
-    if (!json_utils::ReadField(value, "mode", &mode) || mode != "always" ||
+    if (!json_reader::ReadField(value, "mode", &mode) || mode != "always" ||
         !value.contains("weekly") || !value.at("weekly").is_array()) {
         return false;
     }
     return true;
 }
 
-bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
+bool ParseAlarmRuleConfig(const Json &value, const std::string &name,
                           AlarmSource source, const AlarmRule &fallback,
                           bool required, AlarmRule *rule) {
     if (rule == nullptr || !value.is_object()) {
@@ -139,12 +139,12 @@ bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
     }
     AlarmRule parsed = fallback;
     parsed.source = source;
-    const ConfigJson &rule_config = value.at(name);
+    const Json &rule_config = value.at(name);
     uint32_t sensitivity = 0;
-    if (!json_utils::ReadField(rule_config, "enabled", &parsed.enabled) ||
-        !json_utils::ReadField(rule_config, "sensitivity", &sensitivity, 0,
+    if (!json_reader::ReadField(rule_config, "enabled", &parsed.enabled) ||
+        !json_reader::ReadField(rule_config, "sensitivity", &sensitivity, 0,
                                100) ||
-        !json_utils::ReadField(rule_config, "min_duration_ms",
+        !json_reader::ReadField(rule_config, "min_duration_ms",
                                &parsed.min_duration_ms, 0,
                                kMaxAlarmDurationMs) ||
         !ReadOptionalUint32(rule_config, "repeat_interval_ms", 0,
@@ -163,7 +163,7 @@ bool ParseAlarmRuleConfig(const ConfigJson &value, const std::string &name,
     return true;
 }
 
-bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
+bool ParseAlarmConfig(const Json &value, const AlarmRule &motion_fallback,
                       const AlarmRule &ai_fallback, AlarmRule *motion_rule,
                       AlarmRule *ai_rule) {
     if (motion_rule == nullptr || ai_rule == nullptr || !value.is_object()) {
@@ -189,13 +189,13 @@ bool ParseAlarmConfig(const ConfigJson &value, const AlarmRule &motion_fallback,
 }
 
 event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
-                            const std::string &message, int32_t value,
+                            const std::string &msg, int32_t value,
                             uint8_t level) {
     event::Event event;
     event.type = type;
     event.source = "alarm";
     event.target = AlarmSourceToString(source);
-    event.message = message;
+    event.message = msg;
     event.value = value;
     event.timestamp_ms = infra::Time::SystemTimeMillis();
     event.level = level;
@@ -205,7 +205,7 @@ event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
 class AlarmImpl : public IAlarm {
 public:
     explicit AlarmImpl(const AlarmOptions &options) : options_(options) {
-        for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
+        for (std::size_t i = 0; i < kAlarmSourcesTotal; ++i) {
             rules_[i] = MakeDefaultRule(kAlarmSources[i]);
             source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
         }
@@ -240,35 +240,35 @@ public:
 
         if (options_.config != nullptr && !IsConfigAttached()) {
             ConfigScope config_scope;
-            config_scope.verify = [this](const ConfigJson &now,
-                                         ConfigIssue *issue) {
+            config_scope.verify = [this](const Json &now,
+                                         ConfigError *error) {
                 std::lock_guard<std::mutex> guard(mutex_);
                 if (VerifyConfigLocked(now)) {
-                    return ConfigStatus::kOk;
+                    return ConfigCode::kOk;
                 }
-                if (issue != nullptr) {
-                    issue->field.clear();
-                    issue->reason = "invalid alarm config";
+                if (error != nullptr) {
+                    error->field.clear();
+                    error->message = "invalid alarm config";
                 }
-                return ConfigStatus::kVerifyFailed;
+                return ConfigCode::kVerify;
             };
-            config_scope.apply = [this](const ConfigJson &prev,
-                                        const ConfigJson &now,
-                                        ConfigIssue *issue) {
+            config_scope.apply = [this](const Json &prev,
+                                        const Json &now,
+                                        ConfigError *error) {
                 (void)prev;
                 std::vector<event::Event> events;
                 {
                     std::lock_guard<std::mutex> guard(mutex_);
                     if (!ApplyConfigLocked(now, &events)) {
-                        if (issue != nullptr) {
-                            issue->field.clear();
-                            issue->reason = "apply alarm config failed";
+                        if (error != nullptr) {
+                            error->field.clear();
+                            error->message = "apply alarm config failed";
                         }
-                        return ConfigStatus::kApplyFailed;
+                        return ConfigCode::kApply;
                     }
                 }
                 PublishEvents(events);
-                return ConfigStatus::kOk;
+                return ConfigCode::kOk;
             };
             if (!options_.config->AddScope("alarm", config_scope)) {
                 return false;
@@ -287,7 +287,7 @@ public:
             return false;
         }
 
-        ConfigJson alarm_config;
+        Json alarm_config;
         if (options_.config != nullptr) {
             alarm_config = options_.config->Get("alarm");
         }
@@ -322,19 +322,19 @@ public:
         if (!initialized_) {
             return AlarmInfo();
         }
-        return BuildStatusLocked();
+        return BuildAlarmInfoLocked();
     }
 
     bool UpdateRules(const live_stream::RequestContext &context,
                      const std::vector<AlarmRule> &rules) override {
-        if (rules.size() > kAlarmSourceSize) {
+        if (rules.size() > kAlarmSourcesTotal) {
             RecordAudit(context, OperationResult::kRejected, "alarm",
                         "too_many_rules");
             return false;
         }
 
-        std::array<AlarmRule, kAlarmSourceSize> next_rules;
-        for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
+        std::array<AlarmRule, kAlarmSourcesTotal> next_rules;
+        for (std::size_t i = 0; i < kAlarmSourcesTotal; ++i) {
             next_rules[i] = MakeDefaultRule(kAlarmSources[i]);
         }
         for (const AlarmRule &rule : rules) {
@@ -355,7 +355,7 @@ public:
                 service_not_started = true;
             } else {
                 rules_ = next_rules;
-                for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
+                for (std::size_t i = 0; i < kAlarmSourcesTotal; ++i) {
                     SyncRuleStateLocked(i);
                     if (!rules_[i].enabled) {
                         ClearSourceLocked(i, &events);
@@ -436,7 +436,7 @@ public:
             if (!initialized_ || !started_) {
                 service_not_started = true;
             } else {
-                for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
+                for (std::size_t i = 0; i < kAlarmSourcesTotal; ++i) {
                     ClearSourceLocked(i, &events);
                 }
             }
@@ -456,7 +456,7 @@ private:
         bool should_detach = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            for (std::size_t i = 0; i < kAlarmSourceSize; ++i) {
+            for (std::size_t i = 0; i < kAlarmSourcesTotal; ++i) {
                 source_states_[i] = MakeDefaultSourceState(kAlarmSources[i]);
                 SyncRuleStateLocked(i);
             }
@@ -483,7 +483,7 @@ private:
         return rules_[index];
     }
 
-    bool VerifyConfigLocked(const ConfigJson &value) const {
+    bool VerifyConfigLocked(const Json &value) const {
         AlarmRule motion_rule;
         AlarmRule ai_rule;
         return ParseAlarmConfig(value, CurrentRuleLocked(AlarmSource::kMotion),
@@ -491,7 +491,7 @@ private:
                                 &motion_rule, &ai_rule);
     }
 
-    bool ApplyConfigLocked(const ConfigJson &value,
+    bool ApplyConfigLocked(const Json &value,
                            std::vector<event::Event> *events) {
         AlarmRule motion_rule;
         AlarmRule ai_rule;
@@ -580,7 +580,7 @@ private:
     void ClearSourceLocked(std::size_t index, std::vector<event::Event> *events) {
         AlarmSourceState &state = source_states_[index];
         const bool was_active = state.active;
-        const std::string previous_message = state.message;
+        const std::string previous_msg = state.message;
         const uint8_t previous_level = state.level;
 
         state.waiting = false;
@@ -592,19 +592,19 @@ private:
 
         if (was_active && events != nullptr) {
             events->push_back(MakeAlarmEvent(event::EventType::kAlarmOff, state.source,
-                                             previous_message, 0,
+                                             previous_msg, 0,
                                              previous_level));
         }
     }
 
-    AlarmInfo BuildStatusLocked() const {
-        AlarmInfo status;
-        status.sources.reserve(kAlarmSourceSize);
+    AlarmInfo BuildAlarmInfoLocked() const {
+        AlarmInfo alarm_info;
+        alarm_info.sources.reserve(kAlarmSourcesTotal);
 
         bool found_active_source = false;
         int64_t newest_alarm_time_ms = 0;
         for (const AlarmSourceState &state : source_states_) {
-            status.sources.push_back(state);
+            alarm_info.sources.push_back(state);
             if (!state.active) {
                 continue;
             }
@@ -612,15 +612,15 @@ private:
                 state.last_alarm_time_ms >= newest_alarm_time_ms) {
                 found_active_source = true;
                 newest_alarm_time_ms = state.last_alarm_time_ms;
-                status.active = true;
-                status.source = state.source;
-                status.active_since_ms = state.active_since_ms;
-                status.last_trigger_time_ms = state.last_alarm_time_ms;
-                status.level = state.level;
-                status.message = state.message;
+                alarm_info.active = true;
+                alarm_info.source = state.source;
+                alarm_info.active_since_ms = state.active_since_ms;
+                alarm_info.last_trigger_time_ms = state.last_alarm_time_ms;
+                alarm_info.level = state.level;
+                alarm_info.message = state.message;
             }
         }
-        return status;
+        return alarm_info;
     }
 
     void PublishEvents(const std::vector<event::Event> &events) {
@@ -652,8 +652,8 @@ private:
     }
 
     AlarmOptions options_;
-    std::array<AlarmRule, kAlarmSourceSize> rules_;
-    std::array<AlarmSourceState, kAlarmSourceSize> source_states_;
+    std::array<AlarmRule, kAlarmSourcesTotal> rules_;
+    std::array<AlarmSourceState, kAlarmSourcesTotal> source_states_;
     mutable std::mutex mutex_;
     bool invalid_default_rule_ = false;
     bool config_attached_ = false;

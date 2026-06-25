@@ -2,26 +2,26 @@
 #define LIVE_STREAM_DEVICE_SRC_MEDIA_CONFIG_CODEC_H_
 
 #include "config.h"
-#include "config_json.h"
-#include "media/media_capabilities.h"
-#include "media/pipeline_config.h"
+#include "json.h"
+#include "hisi_vendor/media_capabilities.h"
+#include "hisi_vendor/media_pipeline.h"
 
 #include <cstdint>
 
 namespace live_stream {
 
-void to_json(ConfigJson &json, const VideoSize &size);
-void from_json(const ConfigJson &json, VideoSize &size);
-void to_json(ConfigJson &json, const Codec &codec);
-void from_json(const ConfigJson &json, Codec &codec);
-void to_json(ConfigJson &json, const RateControlMode &mode);
-void from_json(const ConfigJson &json, RateControlMode &mode);
-void to_json(ConfigJson &json, const GopMode &mode);
-void from_json(const ConfigJson &json, GopMode &mode);
-void to_json(ConfigJson &json, const VideoRoiRegion &region);
-void from_json(const ConfigJson &json, VideoRoiRegion &region);
-void to_json(ConfigJson &json, const VideoRoiConfig &roi);
-void from_json(const ConfigJson &json, VideoRoiConfig &roi);
+void to_json(Json &json, const VideoSize &size);
+void from_json(const Json &json, VideoSize &size);
+void to_json(Json &json, const Codec &codec);
+void from_json(const Json &json, Codec &codec);
+void to_json(Json &json, const RateControlMode &mode);
+void from_json(const Json &json, RateControlMode &mode);
+void to_json(Json &json, const GopMode &mode);
+void from_json(const Json &json, GopMode &mode);
+void to_json(Json &json, const VideoRoiRegion &region);
+void from_json(const Json &json, VideoRoiRegion &region);
+void to_json(Json &json, const VideoRoiConfig &roi);
+void from_json(const Json &json, VideoRoiConfig &roi);
 
 namespace media_internal {
 
@@ -43,30 +43,30 @@ struct VideoConfig {
     Stream sub;
 };
 
-void to_json(ConfigJson &json, const VideoConfig::Stream &stream);
-void from_json(const ConfigJson &json, VideoConfig::Stream &stream);
-void to_json(ConfigJson &json, const VideoConfig &config);
-void from_json(const ConfigJson &json, VideoConfig &config);
+void to_json(Json &json, const VideoConfig::Stream &stream);
+void from_json(const Json &json, VideoConfig::Stream &stream);
+void to_json(Json &json, const VideoConfig &config);
+void from_json(const Json &json, VideoConfig &config);
 
-ConfigStatus DecodeVideoConfig(const ConfigJson &value,
+ConfigCode DecodeVideoConfig(const Json &value,
                                VideoConfig *config,
-                               ConfigIssue *issue);
-ConfigStatus VerifyVideoConfig(const VideoConfig &config,
+                               ConfigError *error);
+ConfigCode VerifyVideoConfig(const VideoConfig &config,
                                const MediaCapabilities &capabilities,
-                               ConfigIssue *issue);
-ConfigStatus BuildPipelineConfig(const VideoConfig &config,
+                               ConfigError *error);
+ConfigCode BuildPipelineConfig(const VideoConfig &config,
                                  const MediaPipelineConfig &fallback,
                                  MediaPipelineConfig *pipeline_config,
-                                 ConfigIssue *issue);
-ConfigStatus ParseVideoConfig(const ConfigJson &value,
+                                 ConfigError *error);
+ConfigCode ParseVideoConfig(const Json &value,
                               const MediaPipelineConfig &fallback,
                               const MediaCapabilities &capabilities,
                               MediaPipelineConfig *parsed,
-                              ConfigIssue *issue);
-ConfigStatus VerifyImageConfig(const ConfigJson &value,
+                              ConfigError *error);
+ConfigCode VerifyImageConfig(const Json &value,
                                const ImageCapabilities &capabilities,
                                const MediaPipelineConfig &active_config,
-                               ConfigIssue *issue);
+                               ConfigError *error);
 
 }  // namespace media_internal
 }  // namespace live_stream

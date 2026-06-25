@@ -8,6 +8,7 @@
 #include "webrtc_rtp_sender.h"
 #include "webrtc_sdp.h"
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -33,7 +34,7 @@ enum class ServiceState {
 
 bool IsValidOptions(const WebrtcOptions &options) {
     if (options.max_peers == 0 || options.session_timeout_ms == 0 ||
-        options.send_queue_capacity == 0 || options.send_worker_size == 0 ||
+        options.send_queue_capacity == 0 || options.send_workers == 0 ||
         options.local_port_base == 0) {
         return false;
     }
@@ -98,9 +99,6 @@ public:
             state_ = ServiceState::kStarted;
             return true;
         }
-        if (media_streams_ == nullptr) {
-            return false;
-        }
         state_ = ServiceState::kStarted;
         return true;
     }
@@ -124,7 +122,7 @@ public:
             peer_host = peer_host_;
         }
 
-        ReleasePeerSubscriptions(&closing_subscriptions,
+        ReleasePeerSubscriptions(closing_subscriptions,
                                  SubscriptionClose::kStreamStopped);
         if (peer_host) {
             for (const std::string &peer_id : peer_ids) {
@@ -146,7 +144,7 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             if (options.session_timeout_ms != options_.session_timeout_ms ||
                 options.send_queue_capacity != options_.send_queue_capacity ||
-                options.send_worker_size != options_.send_worker_size ||
+                options.send_workers != options_.send_workers ||
                 options.local_port_base != options_.local_port_base) {
                 return false;
             }
@@ -203,7 +201,7 @@ public:
             }
             replaced_peer_ids = peer_table_.TakePeerIdsForClient(
                 request.session_id, request.client_id);
-            if (peer_table_.ActivePeerSize() >= options_.max_peers) {
+            if (peer_table_.ActivePeers() >= options_.max_peers) {
                 return CreatePeerError("peer_limit_reached");
             }
             peer = peer_table_.CreatePeer(request, codec);
@@ -212,12 +210,10 @@ public:
 
         for (const std::string &peer_id : replaced_peer_ids) {
             ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
-            if (peer_host) {
-                (void)peer_host->ClosePeer(peer_id);
-            }
+            (void)peer_host->ClosePeer(peer_id);
         }
 
-        if (!peer_host || !peer_host->CreatePeer(peer)) {
+        if (!peer_host->CreatePeer(peer)) {
             std::lock_guard<std::mutex> guard(mutex_);
             (void)peer_table_.RemovePeer(peer.peer_id);
             return CreatePeerError("peer_host_create_failed");
@@ -261,7 +257,7 @@ public:
                 result.error = "invalid_offer";
                 return result;
             }
-            if (!peer_table_.BeginOffer(request.peer_id, &peer)) {
+            if (!peer_table_.BeginOffer(request.peer_id, peer)) {
                 result.state = WebrtcPeerState::kFailed;
                 result.error = "peer_not_found";
                 return result;
@@ -269,11 +265,6 @@ public:
             peer_host = peer_host_;
         }
 
-        if (!peer_host) {
-            result.state = WebrtcPeerState::kFailed;
-            result.error = "peer_host_unavailable";
-            return result;
-        }
         const std::string answer = peer_host->HandleOffer(peer, request.sdp);
 
         if (answer.empty()) {
@@ -286,8 +277,8 @@ public:
 
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (peer_table_.CompleteOffer(request.peer_id, &peer,
-                                          &pending_candidates)) {
+            if (peer_table_.CompleteOffer(request.peer_id, peer,
+                                          pending_candidates)) {
                 ++stats_.offers;
             }
         }
@@ -314,7 +305,7 @@ public:
                 candidate.candidate.empty() || candidate.sdp_mline_index < 0) {
                 return false;
             }
-            if (!peer_table_.AddOrQueueCandidate(candidate, &queued)) {
+            if (!peer_table_.AddOrQueueCandidate(candidate, queued)) {
                 return false;
             }
             if (queued) {
@@ -324,7 +315,7 @@ public:
             peer_host = peer_host_;
         }
 
-        if (!peer_host || !peer_host->AddIceCandidate(candidate)) {
+        if (!peer_host->AddIceCandidate(candidate)) {
             return false;
         }
 
@@ -352,9 +343,9 @@ public:
         }
         for (WebrtcPeerInfo &peer : peers) {
             if (peer_host) {
-                (void)peer_host->FillPeerInfo(peer.peer_id, &peer);
+                (void)peer_host->FillPeerInfo(peer.peer_id, peer);
             }
-            FillPeerSubscriptionInfo(&peer);
+            FillPeerSubscriptionInfo(peer);
         }
         return peers;
     }
@@ -366,17 +357,17 @@ public:
             std::lock_guard<std::mutex> guard(mutex_);
             result = stats_;
             result.enabled = options_.enabled;
-            result.active_peers = peer_table_.ActivePeerSize();
+            result.active_peers = peer_table_.ActivePeers();
             result.local_port_base = options_.local_port_base;
             result.max_peers = options_.max_peers;
-            result.ice_server_size =
+            result.ice_servers =
                 static_cast<uint32_t>(options_.ice_servers.size());
             result.public_ip = options_.public_ip;
             peer_host = peer_host_;
         }
         result.signaling_ready = peer_host && peer_host->Available();
         if (peer_host) {
-            peer_host->FillStats(&result);
+            peer_host->FillStats(result);
         }
         return result;
     }
@@ -430,6 +421,10 @@ private:
         if (!IsValidOptions(options_)) {
             return false;
         }
+        if (net_io_ == nullptr || net_loop_ == nullptr ||
+            media_streams_ == nullptr) {
+            return false;
+        }
         if (state_ == ServiceState::kInitialized ||
             state_ == ServiceState::kStarted || state_ == ServiceState::kStopped) {
             return true;
@@ -466,7 +461,7 @@ private:
             peer_table_.Clear();
             peer_host = std::move(peer_host_);
         }
-        ReleasePeerSubscriptions(&closing_subscriptions,
+        ReleasePeerSubscriptions(closing_subscriptions,
                                  SubscriptionClose::kStreamStopped);
         if (peer_host) {
             peer_host->Stop();
@@ -515,7 +510,7 @@ private:
         StreamId stream_id = StreamId::kMain;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (!peer_table_.GetOpenPeerStream(peer_id, &stream_id)) {
+            if (!peer_table_.GetOpenPeerStream(peer_id, stream_id)) {
                 return;
             }
         }
@@ -558,7 +553,7 @@ private:
             peer_host = peer_host_;
         }
         if (peer_host) {
-            (void)peer_host->FillPeerInfo(peer_id, &peer);
+            (void)peer_host->FillPeerInfo(peer_id, peer);
         }
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -593,53 +588,48 @@ private:
             peer_host = peer_host_;
         }
         if (!peer.peer_id.empty() && peer_host) {
-            (void)peer_host->FillPeerInfo(peer_id, &peer);
+            (void)peer_host->FillPeerInfo(peer_id, peer);
         }
-        FillPeerSubscriptionInfo(&peer);
+        FillPeerSubscriptionInfo(peer);
         return peer;
     }
 
-    void FillPeerSubscriptionInfo(WebrtcPeerInfo *peer) const {
-        if (peer == nullptr || peer->peer_id.empty() ||
-            media_streams_ == nullptr) {
+    void FillPeerSubscriptionInfo(WebrtcPeerInfo &peer) const {
+        if (peer.peer_id.empty()) {
             return;
         }
         FrameSubscriptionId subscription_id = 0;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            const auto iter = peer_subscriptions_.find(peer->peer_id);
+            const auto iter = peer_subscriptions_.find(peer.peer_id);
             if (iter != peer_subscriptions_.end()) {
                 subscription_id = iter->second.subscription_id;
             }
         }
-        peer->subscription_id = subscription_id;
+        peer.subscription_id = subscription_id;
         if (subscription_id == 0) {
             return;
         }
         const SubscriptionInfo subscription_info =
             media_streams_->GetSubscriptionInfo(subscription_id);
-        peer->subscription_open = subscription_info.open;
+        peer.subscription_open = subscription_info.open;
         if (!subscription_info.open) {
             return;
         }
-        peer->subscription_generation = subscription_info.generation;
-        peer->subscription_pending_frames = subscription_info.pending_frames;
-        peer->subscription_waiting_keyframe =
-            subscription_info.waiting_for_keyframe;
-        peer->subscription_slow = subscription_info.slow;
-        peer->subscription_close_reason =
+        peer.subscription_generation = subscription_info.generation;
+        peer.subscription_pending_frames = subscription_info.pending_frames;
+        peer.subscription_waiting_keyframe =
+            subscription_info.wait_keyframe;
+        peer.subscription_slow = subscription_info.slow;
+        peer.subscription_close_reason =
             SubscriptionCloseName(subscription_info.close_reason);
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
-        return media_streams_ != nullptr &&
-               media_streams_->IsStreamAvailable(stream_id);
+        return media_streams_->IsStreamAvailable(stream_id);
     }
 
     void RequestKeyframe(StreamId stream_id, KeyframeRequestSource source) {
-        if (media_streams_ == nullptr) {
-            return;
-        }
         (void)media_streams_->RequestKeyframe(stream_id, source);
     }
 
@@ -647,7 +637,7 @@ private:
         FrameSubscriptionId subscription_id = 0;
         uint64_t generation = 0;
         MediaStreamInfo track;
-        std::vector<MediaFrame> start_frames;
+        std::deque<MediaFrame> start_frames;
         event::TimerId drain_timer_id = 0;
         bool draining = false;
         bool closing = false;
@@ -656,14 +646,10 @@ private:
     struct ClosingSubscription {
         FrameSubscriptionId subscription_id = 0;
         event::TimerId drain_timer_id = 0;
-        std::vector<MediaFrame> start_frames;
+        std::deque<MediaFrame> start_frames;
     };
 
     bool OpenPeerSubscription(const std::string &peer_id) {
-        if (media_streams_ == nullptr) {
-            return false;
-        }
-
         WebrtcPeerInfo peer;
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -699,7 +685,9 @@ private:
         subscription.subscription_id = subscription_id;
         subscription.generation = start_data.generation;
         subscription.track = start_data.stream_info;
-        subscription.start_frames.swap(start_data.gop_frames);
+        for (MediaFrame &frame : start_data.gop_frames) {
+            subscription.start_frames.push_back(std::move(frame));
+        }
 
         bool subscription_opened = false;
         {
@@ -728,9 +716,6 @@ private:
     }
 
     void ArmPeerDrainTimer(const std::string &peer_id) {
-        if (net_loop_ == nullptr) {
-            return;
-        }
         std::shared_ptr<WebrtcCallbackGuard> callback_guard =
             callback_guard_;
         event::TimerId timer_id = 0;
@@ -787,8 +772,8 @@ private:
 
         for (uint32_t i = 0; i < kWebrtcMaxFramesPerDrain; ++i) {
             SubscriptionFrame subscription_frame;
-            if (!media_streams_->PopSubscriptionFrame(subscription_id,
-                                                      &subscription_frame)) {
+            if (!media_streams_->PullFrame(subscription_id,
+                                           &subscription_frame)) {
                 break;
             }
             SendPeerMediaFrame(peer_id, subscription_frame.frame);
@@ -842,8 +827,7 @@ private:
                 }
                 if (!iter->second.start_frames.empty()) {
                     frame = std::move(iter->second.start_frames.front());
-                    iter->second.start_frames.erase(
-                        iter->second.start_frames.begin());
+                    iter->second.start_frames.pop_front();
                     has_frame = true;
                 }
             }
@@ -860,13 +844,9 @@ private:
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted || peer_host_ == nullptr ||
-                peer_subscriptions_.find(peer_id) == peer_subscriptions_.end()) {
-                ++stats_.dropped_frames;
-                return;
-            }
             const auto subscription_iter = peer_subscriptions_.find(peer_id);
-            if (subscription_iter == peer_subscriptions_.end() ||
+            if (state_ != ServiceState::kStarted || peer_host_ == nullptr ||
+                subscription_iter == peer_subscriptions_.end() ||
                 subscription_iter->second.closing) {
                 ++stats_.dropped_frames;
                 return;
@@ -880,10 +860,8 @@ private:
             peer_host = peer_host_;
         }
 
-        webrtc_internal::WebrtcRtpSenderContext context;
-        context.peer_host = peer_host;
-        context.mutex = &mutex_;
-        context.service_stats = &stats_;
+        webrtc_internal::WebrtcRtpSenderContext context{
+            *peer_host, mutex_, stats_};
         (void)rtp_sender_.SendFrame(peer, frame, context);
     }
 
@@ -951,56 +929,48 @@ private:
                                SubscriptionClose reason) {
         ClosingSubscription closing_subscription =
             TakePeerSubscription(peer_id);
-        ReleasePeerSubscription(&closing_subscription, reason);
+        ReleasePeerSubscription(closing_subscription, reason);
     }
 
     void ReleasePeerSubscriptions(
-        std::vector<ClosingSubscription> *closing_subscriptions,
+        std::vector<ClosingSubscription> &closing_subscriptions,
         SubscriptionClose reason) {
-        if (closing_subscriptions == nullptr) {
-            return;
-        }
         for (ClosingSubscription &closing_subscription :
-             *closing_subscriptions) {
-            ReleasePeerSubscription(&closing_subscription, reason);
+             closing_subscriptions) {
+            ReleasePeerSubscription(closing_subscription, reason);
         }
-        closing_subscriptions->clear();
+        closing_subscriptions.clear();
     }
 
-    void ReleasePeerSubscription(ClosingSubscription *closing_subscription,
+    void ReleasePeerSubscription(ClosingSubscription &closing_subscription,
                                  SubscriptionClose reason) {
-        if (closing_subscription == nullptr) {
-            return;
-        }
-        if (net_loop_ != nullptr &&
-            closing_subscription->drain_timer_id != 0) {
+        if (closing_subscription.drain_timer_id != 0) {
             (void)net_loop_->CancelTimer(
-                closing_subscription->drain_timer_id);
+                closing_subscription.drain_timer_id);
         }
-        if (media_streams_ != nullptr &&
-            closing_subscription->subscription_id != 0) {
+        if (closing_subscription.subscription_id != 0) {
             (void)media_streams_->UnsubscribeFrames(
-                closing_subscription->subscription_id, reason);
+                closing_subscription.subscription_id, reason);
         }
-        ClearMediaFrames(&closing_subscription->start_frames);
-        closing_subscription->subscription_id = 0;
-        closing_subscription->drain_timer_id = 0;
+        ClearMediaFrames(closing_subscription.start_frames);
+        closing_subscription.subscription_id = 0;
+        closing_subscription.drain_timer_id = 0;
     }
 
     void PublishPeerEvent(const WebrtcPeerInfo &peer,
                           WebrtcPeerState next_state,
-                          const std::string &message) {
+                          const std::string &msg) {
         if (event_ == nullptr || peer.peer_id.empty()) {
             return;
         }
         event::Event webrtc_event;
         webrtc_event.source = Webrtc::Name();
         webrtc_event.target = peer.peer_id;
-        webrtc_event.message = message;
+        webrtc_event.message = msg;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             webrtc_event.value =
-                static_cast<int32_t>(peer_table_.ActivePeerSize());
+                static_cast<int32_t>(peer_table_.ActivePeers());
         }
         if (next_state == WebrtcPeerState::kConnected &&
             peer.state != WebrtcPeerState::kConnected) {
@@ -1017,11 +987,8 @@ private:
         }
     }
 
-    static void ClearMediaFrames(std::vector<MediaFrame> *frames) {
-        if (frames == nullptr) {
-            return;
-        }
-        frames->clear();
+    static void ClearMediaFrames(std::deque<MediaFrame> &frames) {
+        frames.clear();
     }
 
     WebrtcOptions options_;

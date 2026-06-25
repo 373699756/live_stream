@@ -2,8 +2,9 @@
 
 #include <unistd.h>
 
-#include "hisi_mpp_utils.h"
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_mpp_sdk.h"
+#include "hisi_vendor/sdk.h"
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {

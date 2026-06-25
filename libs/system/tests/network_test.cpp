@@ -1,4 +1,4 @@
-#include "network_format.h"
+#include "system/network_json.h"
 
 #include "config.h"
 #include "event.h"
@@ -22,7 +22,7 @@ public:
         const std::string& ifname) override {
         ++status_count;
         status.ifname = ifname;
-        return status;
+        return code;
     }
 
     bool SetInterfaceEnabled(const std::string& ifname,
@@ -106,60 +106,60 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::ConfigStatus Set(const std::string& name,
-                                  const live_stream::ConfigJson& now,
-                                  live_stream::ConfigIssue* issue) override {
-        (void)issue;
+    live_stream::ConfigCode Set(const std::string& name,
+                                  const live_stream::Json& now,
+                                  live_stream::ConfigError* error) override {
+        (void)error;
         ++set_count;
         last_name = name;
         last_json = now.dump();
         if (scope.verify) {
-            const live_stream::ConfigStatus status = scope.verify(now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code = scope.verify(now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (scope.apply) {
-            const live_stream::ConfigJson prev = stored_json.empty()
-                                                    ? live_stream::ConfigJson()
-                                                    : live_stream::ConfigJson::parse(
+            const live_stream::Json prev = stored_json.empty()
+                                                    ? live_stream::Json()
+                                                    : live_stream::Json::parse(
                                                           stored_json, nullptr,
                                                           false);
-            const live_stream::ConfigStatus status =
-                scope.apply(prev, now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                scope.apply(prev, now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (!set_ok) {
-            return live_stream::ConfigStatus::kSaveFailed;
+            return live_stream::ConfigCode::kSave;
         }
         stored_json = now.dump();
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigJson Get(const std::string& name) override {
+    live_stream::Json Get(const std::string& name) override {
         ++get_count;
         last_name = name;
         if (stored_json.empty()) {
-            return live_stream::ConfigJson();
+            return live_stream::Json();
         }
-        return live_stream::ConfigJson::parse(stored_json, nullptr, false);
+        return live_stream::Json::parse(stored_json, nullptr, false);
     }
 
-    live_stream::ConfigStatus Reset(
-        const std::string& name, live_stream::ConfigIssue*) override {
-        return name == "network" ? live_stream::ConfigStatus::kOk
-                                 : live_stream::ConfigStatus::kNotFound;
+    live_stream::ConfigCode Reset(
+        const std::string& name, live_stream::ConfigError*) override {
+        return name == "network" ? live_stream::ConfigCode::kOk
+                                 : live_stream::ConfigCode::kMissing;
     }
 
-    live_stream::ConfigJson Default(const std::string&) override {
-        return live_stream::ConfigJson();
+    live_stream::Json Default(const std::string&) override {
+        return live_stream::Json();
     }
 
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
 
     bool AddScope(const std::string& name,
@@ -414,7 +414,7 @@ int main() {
         return 14;
     }
 
-    live_stream::ConfigJson status_json =
+    live_stream::Json status_json =
         live_stream::NetInterfaceInfoToApiJson(status);
     if (status_json["static_ipv4"]["address"] != "192.168.1.10") {
         return 15;

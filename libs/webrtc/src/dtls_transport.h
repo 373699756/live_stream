@@ -42,7 +42,7 @@ struct DtlsSrtpKeys {
     std::vector<uint8_t> remote_master_key;
 };
 
-struct DtlsProcessResult {
+struct DtlsProcessOutput {
     DtlsState state = DtlsState::kNew;
     std::vector<uint8_t> outgoing_dtls;
     std::vector<uint8_t> application_data;
@@ -68,21 +68,21 @@ public:
 
     bool StartServer(const DtlsFingerprint &remote_fingerprint);
     bool ProcessPacket(const uint8_t *data, size_t size,
-                       DtlsProcessResult *result);
+                       DtlsProcessOutput *result);
     bool GetHandshakeTimeoutMs(uint32_t *timeout_ms);
-    bool HandleTimeout(DtlsProcessResult *result);
+    bool HandleTimeout(DtlsProcessOutput *result);
     void Close();
 
     DtlsState state() const { return state_; }
 
 private:
     bool CreateSsl();
-    bool FinishHandshake(DtlsProcessResult *result);
+    bool FinishHandshake(DtlsProcessOutput *result);
     bool CheckRemoteFingerprint();
-    bool ExportSrtpKeys(DtlsProcessResult *result);
-    bool SendPendingOutgoing(DtlsProcessResult *result);
-    bool HandleSslResult(int ssl_result, DtlsProcessResult *result);
-    bool Fail(const std::string &error, DtlsProcessResult *result);
+    bool ExportSrtpKeys(DtlsProcessOutput *result);
+    bool SendPendingOutgoing(DtlsProcessOutput *result);
+    bool HandleSslResult(int ssl_result, DtlsProcessOutput *result);
+    bool Fail(const std::string &error, DtlsProcessOutput *result);
     void ReleaseSsl();
 
     DtlsState state_ = DtlsState::kNew;

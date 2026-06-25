@@ -264,7 +264,7 @@ export const mockAiAlerts: AiAlertList = {
             stream: 'sub',
             task,
             image_url: '/snapshot/sub.jpg',
-            detection_size: detections.length,
+            detected_targets: detections.length,
             confidence_max: detections.reduce(
                 (max, detection) => Math.max(max, detection.confidence),
                 0,

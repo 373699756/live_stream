@@ -1,8 +1,10 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_vendor/mpp_sdk.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
+#include "venc_packet_view.h"
 
 #include "infra/clamp.h"
+#include "infra/log.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -557,7 +559,7 @@ JpegFrame ReadJpegResult(VENC_CHN jpeg_channel, uint32_t width,
 
 JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
     std::lock_guard<std::mutex> snapshot_lock(impl_->snapshot_mutex_);
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     JpegFrame result{};
     result.width = config.size.width;
     result.height = config.size.height;
@@ -604,7 +606,7 @@ JpegFrame MppHisiSdk::CaptureJpeg(const SnapshotConfig& config) {
 YuvFrame MppHisiSdk::CaptureYuvFrame(const MppChannel& vpss_channel,
                                      Size size,
                                      uint32_t timeout_ms) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     YuvFrame result;
     result.width = size.width;
     result.height = size.height;

@@ -1,15 +1,17 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_vendor/mpp_sdk.h"
 #include "hisi_mpp_sensor.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
+
+#include "infra/log.h"
 
 #include <fcntl.h>
 #include <cstdint>
-#include <pthread.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <cstring>
+#include <thread>
 
 namespace live_stream {
 namespace hisisdk {
@@ -240,23 +242,16 @@ void StopMipi() {
                     &mipi_dev);
 }
 
-void* IspThread(void* arg) {
-    const VI_PIPE vi_pipe = static_cast<VI_PIPE>(
-        reinterpret_cast<intptr_t>(arg));
+void RunIsp(VI_PIPE vi_pipe) {
     const HI_S32 status = HI_MPI_ISP_Run(vi_pipe);
     if (status != HI_SUCCESS) {
         Error("hisi_vendor", "HI_MPI_ISP_Run pipe %d failed: 0x%08x",
               vi_pipe, status);
     }
-    return nullptr;
 }
 
 bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
-              pthread_t* isp_thread) {
-    if (isp_thread == nullptr) {
-        return false;
-    }
-
+              std::thread& isp_thread) {
     ALG_LIB_S ae_lib{};
     ALG_LIB_S awb_lib{};
     FillAlgLib(HI_AE_LIB_NAME, vi_pipe, &ae_lib);
@@ -340,10 +335,8 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         return false;
     }
 
-    const int thread_status = pthread_create(
-        isp_thread, nullptr, IspThread,
-        reinterpret_cast<void*>(static_cast<intptr_t>(vi_pipe)));
-    if (!CheckSysCall("pthread_create(ISP)", thread_status)) {
+    if (isp_thread.joinable()) {
+        Error("hisi_vendor", "ISP thread is already running pipe=%d", vi_pipe);
         (void)HI_MPI_ISP_Exit(vi_pipe);
         (void)HI_MPI_AWB_UnRegister(vi_pipe, &awb_lib);
         (void)HI_MPI_AE_UnRegister(vi_pipe, &ae_lib);
@@ -351,14 +344,15 @@ bool StartIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
         return false;
     }
 
+    isp_thread = std::thread(RunIsp, vi_pipe);
     return true;
 }
 
 void StopIsp(VI_PIPE vi_pipe, const SensorProfile& profile,
-             pthread_t isp_thread) {
+             std::thread& isp_thread) {
     (void)HI_MPI_ISP_Exit(vi_pipe);
-    if (isp_thread != 0) {
-        (void)pthread_join(isp_thread, nullptr);
+    if (isp_thread.joinable()) {
+        isp_thread.join();
     }
 
     ALG_LIB_S ae_lib{};
@@ -409,7 +403,7 @@ void CleanupStartedVi(VI_DEV vi_dev, VI_PIPE vi_pipe, VI_CHN vi_chn,
 }  // namespace
 
 bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (impl_->vi_started_) return true;
     const SensorProfile& sensor_profile = SelectedSensorProfile();
 
@@ -509,7 +503,7 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     chn_enabled = true;
 
     if (!impl_->isp_started_) {
-        if (!StartIsp(vi_pipe, sensor_profile, &impl_->isp_thread_)) {
+        if (!StartIsp(vi_pipe, sensor_profile, impl_->isp_thread_)) {
             CleanupStartedVi(vi_dev, vi_pipe, vi_chn, chn_enabled, pipe_created,
                              dev_enabled, impl_->mipi_started_);
             impl_->mipi_started_ = false;
@@ -522,27 +516,32 @@ bool MppHisiSdk::StartVi(const MediaPipelineConfig& config) {
     return true;
 }
 
-void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (!impl_->vi_started_) return;
+void StopViInput(MppHisiSdkImpl& impl, const MediaPipelineConfig& config) {
+    if (!impl.vi_started_) {
+        return;
+    }
     const SensorProfile& sensor_profile = SelectedSensorProfile();
 
     VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     VI_CHN vi_chn = static_cast<VI_CHN>(config.vi_channel);
-    if (impl_->isp_started_) {
-        StopIsp(vi_pipe, sensor_profile, impl_->isp_thread_);
-        impl_->isp_thread_ = 0;
-        impl_->isp_started_ = false;
+    if (impl.isp_started_) {
+        StopIsp(vi_pipe, sensor_profile, impl.isp_thread_);
+        impl.isp_started_ = false;
     }
     HI_MPI_VI_DisableChn(vi_pipe, vi_chn);
     StopPipe(vi_pipe);
     HI_MPI_VI_DisableDev(static_cast<VI_DEV>(config.sensor_id));
-    if (impl_->mipi_started_) {
+    if (impl.mipi_started_) {
         StopMipi();
-        impl_->mipi_started_ = false;
+        impl.mipi_started_ = false;
     }
 
-    impl_->vi_started_ = false;
+    impl.vi_started_ = false;
+}
+
+void MppHisiSdk::StopVi(const MediaPipelineConfig& config) {
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
+    StopViInput(*impl_, config);
 }
 
 }  // namespace hisisdk

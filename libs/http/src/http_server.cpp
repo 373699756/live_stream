@@ -1,7 +1,8 @@
 #include "http_server.h"
 
-#include "http_handler_utils.h"
+#include "http_module.h"
 #include "http_protocol.h"
+#include "http_response.h"
 #include "http_static_files.h"
 #include "infra/log.h"
 
@@ -27,15 +28,15 @@ const char *HttpMethodName(HttpMethod method) {
     return "UNKNOWN";
 }
 
-bool StartExecutor(event::Executor *executor, uint32_t worker_size,
+bool StartExecutor(event::Executor &executor, uint32_t workers,
                    uint32_t queue_capacity) {
-    if (executor == nullptr || worker_size == 0 || queue_capacity == 0) {
+    if (workers == 0 || queue_capacity == 0) {
         return false;
     }
     event::ExecutorOptions options;
-    options.worker_size = worker_size;
+    options.workers = workers;
     options.queue_capacity = queue_capacity;
-    return executor->Start(options);
+    return executor.Start(options);
 }
 
 void StopExecutor(event::Executor *executor) {
@@ -78,9 +79,9 @@ bool HttpServer::Prepare() {
         options_.send_buffer_limit_bytes == 0 ||
         options_.max_requests_per_connection == 0 ||
         options_.max_pipelined_requests == 0 ||
-        options_.stream_executor_worker_size == 0 ||
+        options_.stream_executor_workers == 0 ||
         options_.stream_executor_queue_capacity == 0 ||
-        options_.control_executor_worker_size == 0 ||
+        options_.control_executor_workers == 0 ||
         options_.control_executor_queue_capacity == 0) {
         return false;
     }
@@ -104,23 +105,18 @@ bool HttpServer::Start() {
                  "HTTP server start skipped: already started");
             return true;
         }
-        if (net_io_ == nullptr) {
-            Error(kHttpModuleName,
-                  "HTTP server start failed: net io null");
-            return false;
-        }
         stream_executor = stream_executor_.get();
         control_executor = control_executor_.get();
     }
     // 媒体长连接和控制 API 分开执行：/live、SSE、WHEP 可能长时间写 socket，
     // 不能占住修改配置、登录等控制请求的 worker。
-    if (!StartExecutor(stream_executor, options_.stream_executor_worker_size,
+    if (!StartExecutor(*stream_executor, options_.stream_executor_workers,
                        options_.stream_executor_queue_capacity)) {
         Error(kHttpModuleName,
               "HTTP stream executor start failed");
         return false;
     }
-    if (!StartExecutor(control_executor, options_.control_executor_worker_size,
+    if (!StartExecutor(*control_executor, options_.control_executor_workers,
                        options_.control_executor_queue_capacity)) {
         Error(kHttpModuleName,
               "HTTP control executor start failed");
@@ -196,17 +192,14 @@ void HttpServer::Stop() {
         // close callback 可能回到 media/event，不能拿着 HTTP 锁跨模块调用。
         for (const auto &item : sessions_) {
             connection_ids.push_back(item.first);
-            if (item.second != nullptr) {
-                const event::TimerId timer_id =
-                    item.second->CancelTimeout();
-                if (timer_id != 0) {
-                    timer_ids.push_back(timer_id);
-                }
-                const HttpMediaClientHandle media_client =
-                    item.second->TakeMediaClient();
-                if (media_client.id != 0) {
-                    media_clients.push_back(media_client);
-                }
+            const event::TimerId timer_id = item.second->CancelTimeout();
+            if (timer_id != 0) {
+                timer_ids.push_back(timer_id);
+            }
+            const HttpMediaClientHandle media_client =
+                item.second->TakeMediaClient();
+            if (media_client.id != 0) {
+                media_clients.push_back(media_client);
             }
         }
         sessions_.clear();
@@ -218,20 +211,16 @@ void HttpServer::Stop() {
          static_cast<unsigned long long>(server_id),
          media_clients.size());
     NotifyStreamsClosed(media_clients);
-    if (net_io != nullptr) {
-        for (event::TimerId timer_id : timer_ids) {
-            CancelNetTimer(net_loop, timer_id);
-        }
+    for (event::TimerId timer_id : timer_ids) {
+        CancelNetTimer(net_loop, timer_id);
     }
-    if (net_io != nullptr && server_id != 0) {
+    if (server_id != 0) {
         (void)net_io->CloseTcp(server_id);
     }
-    if (net_io != nullptr) {
-        // 主动关闭所有连接可以触发 net close path，但 sessions_ 已经在上面摘除，
-        // 所以 OnClose() 不会重复 detach media client。
-        for (ConnectionId connection_id : connection_ids) {
-            (void)net_io->Close(connection_id);
-        }
+    // 主动关闭所有连接可以触发 net close path，但 sessions_ 已经在上面摘除，
+    // 所以 OnClose() 不会重复 detach media client。
+    for (ConnectionId connection_id : connection_ids) {
+        (void)net_io->Close(connection_id);
     }
     StopExecutor(control_executor);
     StopExecutor(stream_executor);
@@ -249,7 +238,7 @@ void HttpServer::Release() {
 
 HttpListenAddress HttpServer::LocalAddress() const {
     std::lock_guard<std::mutex> guard(mutex_);
-    if (net_io_ == nullptr || tcp_server_id_ == 0) {
+    if (tcp_server_id_ == 0) {
         return HttpListenAddress{};
     }
     NetAddress address = net_io_->TcpLocalAddress(tcp_server_id_);
@@ -273,7 +262,7 @@ HttpServer::ListStreamSessionInfo() const {
         net_io = net_io_;
         sessions.reserve(sessions_.size());
         for (const auto &item : sessions_) {
-            if (item.second != nullptr && item.second->is_streaming()) {
+            if (item.second->is_streaming()) {
                 const HttpSessionStreamingInfo info =
                     item.second->StreamingInfo();
                 if (info.media_type != HttpMediaClientType::kNone) {
@@ -282,10 +271,6 @@ HttpServer::ListStreamSessionInfo() const {
             }
         }
     }
-    if (net_io == nullptr) {
-        return std::vector<HttpStreamSessionInfo>();
-    }
-
     std::vector<HttpStreamSessionInfo> session_info;
     session_info.reserve(sessions.size());
     for (const HttpSessionStreamingInfo &session : sessions) {
@@ -338,7 +323,7 @@ bool HttpServer::BeginStream(ConnectionId connection_id,
     auto iter = sessions_.find(connection_id);
     // BeginStream 是普通 HTTP request 到媒体长连接的单向状态迁移；
     // 失败通常说明连接已经被关闭或已进入 streaming。
-    return iter != sessions_.end() && iter->second != nullptr &&
+    return iter != sessions_.end() &&
            iter->second->BeginStream(type, stream_id);
 }
 
@@ -346,7 +331,7 @@ bool HttpServer::AttachStreamClient(ConnectionId connection_id,
                                     HttpMediaClientHandle client) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto iter = sessions_.find(connection_id);
-    return iter != sessions_.end() && iter->second != nullptr &&
+    return iter != sessions_.end() &&
            iter->second->AttachStreamClient(client);
 }
 
@@ -358,8 +343,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
-            !iter->second->is_streaming()) {
+        if (iter == sessions_.end() || !iter->second->is_streaming()) {
             Error(kHttpModuleName,
                   "HTTP stream enqueue reject conn=%llu reason=closed",
                   static_cast<unsigned long long>(connection_id));
@@ -380,8 +364,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
-            !iter->second->is_streaming()) {
+        if (iter == sessions_.end() || !iter->second->is_streaming()) {
             Error(kHttpModuleName,
                   "HTTP stream enqueue reject conn=%llu reason=closed",
                   static_cast<unsigned long long>(connection_id));
@@ -411,14 +394,12 @@ void HttpServer::CloseConnectionWithReason(ConnectionId connection_id,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter != sessions_.end() && iter->second != nullptr) {
+        if (iter != sessions_.end()) {
             (void)iter->second->MarkStreamClosing();
         }
         net_io = net_io_;
     }
-    if (net_io != nullptr) {
-        response_sender_.CloseConnection(net_io, connection_id, reason);
-    }
+    response_sender_.CloseConnection(net_io, connection_id, reason);
 }
 
 void HttpServer::HandleAccept(void *user, ConnectionId id, NetAddress peer) {
@@ -446,8 +427,7 @@ void HttpServer::HandleClose(void *user, ConnectionId id,
 
 event::Executor *HttpServer::ExecutorForRequestLocked(
     const HttpRequest &request) const {
-    if (request_handler_ != nullptr &&
-        request_handler_->ShouldUseStreamExecutor(request)) {
+    if (request_handler_->ShouldUseStreamExecutor(request)) {
         return stream_executor_.get();
     }
     return control_executor_.get();
@@ -474,8 +454,7 @@ void HttpServer::NotifyStreamsClosed(
 bool HttpServer::MarkStreamingClosing(ConnectionId connection_id) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto iter = sessions_.find(connection_id);
-    return iter != sessions_.end() && iter->second != nullptr &&
-           iter->second->MarkStreamClosing();
+    return iter != sessions_.end() && iter->second->MarkStreamClosing();
 }
 
 bool HttpServer::HandleStreamingRequestResult(
@@ -536,7 +515,7 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr) {
+        if (iter == sessions_.end()) {
             return;
         }
         timer_id = iter->second->CancelTimeout();
@@ -571,7 +550,7 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
+        if (iter == sessions_.end() ||
             !iter->second->AppendRequestBytes(data, size)) {
             return;
         }
@@ -597,7 +576,7 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr ||
+        if (iter == sessions_.end() ||
             !iter->second->TakeNextRequest(&pending)) {
             return;
         }
@@ -606,22 +585,11 @@ void HttpServer::TryPostNextRequest(ConnectionId connection_id) {
     if (executor == nullptr ||
         executor->Post([this, connection_id,
                         pending = std::move(pending)]() mutable {
-            if (request_handler_ != nullptr) {
-                const HttpStreamingRequestResult stream_result =
-                    request_handler_->HandleStreamingHttpRequest(
-                        connection_id, pending.request);
-                if (HandleStreamingRequestResult(
-                        connection_id, pending.request, stream_result)) {
-                    return;
-                }
-            }
-            if (request_handler_ == nullptr) {
-                SendResponse(
-                    connection_id,
-                    AddJsonEnvelope(
-                        pending.request,
-                        StatusResponse(503, "Service Unavailable")),
-                    true);
+            const HttpStreamingRequestResult stream_result =
+                request_handler_->HandleStreamingHttpRequest(
+                    connection_id, pending.request);
+            if (HandleStreamingRequestResult(
+                    connection_id, pending.request, stream_result)) {
                 return;
             }
             HttpResponse handled =
@@ -642,7 +610,7 @@ void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr) {
+        if (iter == sessions_.end()) {
             return;
         }
         parsed = iter->second->CompleteKeepAliveRequest(
@@ -728,21 +696,16 @@ HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
 
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
-    INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     RenewedHttpSessionTimeout timeout;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        if (iter == sessions_.end() || iter->second == nullptr) {
+        if (iter == sessions_.end()) {
             return;
         }
         timeout = iter->second->RenewTimeout();
-        net_io = net_io_;
         net_loop = net_loop_;
-    }
-    if (net_io == nullptr || net_loop == nullptr) {
-        return;
     }
     // timeout_generation_ 用来淘汰旧 timer：请求推进或进入 streaming 后，
     // 旧 timer 即使晚到也不会误关新状态下的连接。
@@ -750,18 +713,18 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     event::TimerId timer_id = 0;
     const event::EventStatus timer_status = net_loop->RunAfter(
         delay_ms, [this, connection_id, generation = timeout.generation]() {
-            INetIo *engine = nullptr;
+            INetIo *net_io = nullptr;
             bool should_close = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
                 auto iter = sessions_.find(connection_id);
                 should_close =
-                    iter != sessions_.end() && iter->second != nullptr &&
+                    iter != sessions_.end() &&
                     iter->second->ExpireTimeout(generation);
-                engine = net_io_;
+                net_io = net_io_;
             }
-            if (should_close && engine != nullptr) {
-                (void)engine->Close(connection_id);
+            if (should_close) {
+                (void)net_io->Close(connection_id);
             }
         },
         &timer_id);
@@ -772,7 +735,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
-        stored = iter != sessions_.end() && iter->second != nullptr &&
+        stored = iter != sessions_.end() &&
                  iter->second->InstallTimeout(timeout.generation, timer_id);
     }
     if (!stored) {

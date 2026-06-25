@@ -22,8 +22,11 @@ scripts/package_release.sh release 1.2.3 all
 
 该脚本负责正式升级包：拷贝 release 输入、剥离符号、生成 `bin.squashfs`、
 `web.squashfs`、`config.jffs2`、写入 `Install` manifest、签名并输出
-`upgrade-<profile>.zip`。支持的 profile 是 `all`、`web-only`、`bin-web` 和
-`config-only`。
+`upgrade-<profile>.zip`。支持的 profile 是 `all`、`web` 和 `config`，默认
+profile 是 `all`。默认未提供 `UPGRADE_SIGN_KEY` 时会在
+`build/release_signing/` 下生成并复用默认签名密钥对；后续打包会先验证默认
+公私钥是否配对，配对则继续复用，不配对或缺失才重新生成。正式发布可通过
+`UPGRADE_SIGN_KEY` 和 `UPGRADE_PUBLIC_KEY` 指定厂商签名密钥。
 
 release 打包测试入口：
 

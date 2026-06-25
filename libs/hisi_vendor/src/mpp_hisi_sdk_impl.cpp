@@ -16,9 +16,9 @@ MppHisiSdk::~MppHisiSdk() {
     }
 }
 
-IHisiSdk& MppSdk() {
+HisiSdk MppSdk() {
     static MppHisiSdk sdk;
-    return sdk;
+    return HisiSdk{&sdk, &sdk, &sdk, &sdk, &sdk, &sdk};
 }
 
 }  // namespace hisisdk

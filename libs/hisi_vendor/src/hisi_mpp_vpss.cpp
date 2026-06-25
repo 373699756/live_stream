@@ -1,7 +1,9 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_vendor/mpp_sdk.h"
 #include "hisi_mpp_sensor.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
+
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {
@@ -44,7 +46,7 @@ void CleanupVpssGroup(VPSS_GRP vpss_grp, VPSS_CHN main_chn,
 }  // namespace
 
 bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (impl_->vpss_started_) return true;
     const internal::SensorProfile& sensor_profile =
         internal::SelectedSensorProfile();
@@ -134,9 +136,10 @@ bool MppHisiSdk::StartVpss(const MediaPipelineConfig& config) {
     return true;
 }
 
-void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (!impl_->vpss_started_) return;
+void StopVpssGroup(MppHisiSdkImpl& impl, const MediaPipelineConfig& config) {
+    if (!impl.vpss_started_) {
+        return;
+    }
 
     VPSS_GRP vpss_grp = static_cast<VPSS_GRP>(config.vpss_group);
 
@@ -149,12 +152,17 @@ void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
     HI_MPI_VPSS_StopGrp(vpss_grp);
     HI_MPI_VPSS_DestroyGrp(vpss_grp);
 
-    impl_->vpss_started_ = false;
+    impl.vpss_started_ = false;
+}
+
+void MppHisiSdk::StopVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
+    StopVpssGroup(*impl_, config);
 }
 
 // ─── Bind VI → VPSS ──────────────────────────────────────────
 bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (impl_->vi_bound_vpss_) return true;
 
     MPP_CHN_S src{};
@@ -179,9 +187,11 @@ bool MppHisiSdk::BindViVpss(const MediaPipelineConfig& config) {
     return true;
 }
 
-void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
-    if (!impl_->vi_bound_vpss_) return;
+void UnbindViVpssPipe(MppHisiSdkImpl& impl,
+                      const MediaPipelineConfig& config) {
+    if (!impl.vi_bound_vpss_) {
+        return;
+    }
 
     MPP_CHN_S src{};
     src.enModId = HI_ID_VI;
@@ -195,7 +205,12 @@ void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
 
     HI_MPI_SYS_UnBind(&src, &dst);
 
-    impl_->vi_bound_vpss_ = false;
+    impl.vi_bound_vpss_ = false;
+}
+
+void MppHisiSdk::UnbindViVpss(const MediaPipelineConfig& config) {
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
+    UnbindViVpssPipe(*impl_, config);
 }
 
 }  // namespace hisisdk

@@ -6,14 +6,14 @@ namespace live_stream {
 
 bool RtspSessionTable::Add(ConnectionId connection_id, NetAddress peer,
                            uint32_t max_sessions,
-                           std::shared_ptr<RtspSession> *session) {
-    if (session == nullptr || sessions_.size() >= max_sessions) {
+                           std::shared_ptr<RtspSession> &session) {
+    if (sessions_.size() >= max_sessions) {
         return false;
     }
     std::shared_ptr<RtspSession> next(
         new RtspSession(connection_id, std::move(peer), next_session_id_++));
     sessions_[connection_id] = next;
-    *session = next;
+    session = next;
     return true;
 }
 
@@ -33,8 +33,8 @@ std::shared_ptr<RtspSession> RtspSessionTable::FindByUdpSocket(
     }
     for (const auto &entry : sessions_) {
         const std::shared_ptr<RtspSession> &session = entry.second;
-        if (session && (session->rtp_socket_id == socket_id ||
-                        session->rtcp_socket_id == socket_id)) {
+        if (session->rtp_socket_id == socket_id ||
+            session->rtcp_socket_id == socket_id) {
             return session;
         }
     }
@@ -63,9 +63,7 @@ std::vector<ConnectionId> RtspSessionTable::ConnectionIds() const {
 std::vector<std::shared_ptr<RtspSession>> RtspSessionTable::Sessions() const {
     std::vector<std::shared_ptr<RtspSession>> sessions;
     for (const auto &entry : sessions_) {
-        if (entry.second) {
-            sessions.push_back(entry.second);
-        }
+        sessions.push_back(entry.second);
     }
     return sessions;
 }

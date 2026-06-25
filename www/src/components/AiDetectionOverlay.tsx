@@ -219,7 +219,7 @@ export function AiDetectionOverlay({
               : null;
     const detections =
         aiReady && displayResult?.success ? displayResult.detections : [];
-    const resultSize =
+    const freshDetectionTotal =
         aiReady && result?.success ? result.detections.length : 0;
     const frame = parseResolution(frameResolution);
     const contentStyle = contentAreaStyle(frame, surfaceSize);
@@ -278,7 +278,7 @@ export function AiDetectionOverlay({
     } else if (detections.length > 0) {
         statusText = `${detections.length} 个目标`;
     } else if (aiReady && result?.success) {
-        statusText = `${resultSize} 个目标`;
+        statusText = `${freshDetectionTotal} 个目标`;
     } else if (status?.enabled) {
         const otherStream = stream === 'main' ? 'sub' : 'main';
         const hasOtherStreamResult = (status.tasks ?? []).some((task) =>

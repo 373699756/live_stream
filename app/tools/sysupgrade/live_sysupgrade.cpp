@@ -1,10 +1,10 @@
-#include "config_json.h"
+#include "json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/time.h"
 #include "platform/linux/linux_platform_common.h"
 #include "tools/sysupgrade/upgrade_flash.h"
-#include "upgrade_package.h"
+#include "system/package.h"
 
 #include <cstdint>
 #include <fcntl.h>
@@ -30,10 +30,10 @@ struct HelperOptions {
     bool reboot = false;
 };
 
-void AppendUpgradeLog(const std::string& message) {
+void AppendUpgradeLog(const std::string& msg) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
     const std::string line =
-        std::to_string(infra::Time::SystemTimeMillis()) + " " + message + "\n";
+        std::to_string(infra::Time::SystemTimeMillis()) + " " + msg + "\n";
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
 }
 
@@ -43,7 +43,7 @@ void WriteUpgradeInfo(const std::string& state,
                       const std::string& version,
                       const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["state"] = state;
     root["progress_percent"] = progress;
     root["ok"] = ok;

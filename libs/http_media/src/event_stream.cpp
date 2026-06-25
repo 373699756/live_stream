@@ -1,6 +1,6 @@
 #include "event_stream.h"
 
-#include "config_json.h"
+#include "json.h"
 #include "infra/time.h"
 
 namespace live_stream {
@@ -25,9 +25,9 @@ const char *EventTypeName(event::EventType type) {
     }
 }
 
-ConfigJson BuildEventJson(const event::Event &event,
+Json BuildEventJson(const event::Event &event,
                           const char *event_type_name) {
-    ConfigJson data = ConfigJson::object();
+    Json data = Json::object();
     data["type"] = event_type_name;
     data["source"] = event.source;
     data["target"] = event.target;
@@ -44,19 +44,19 @@ ConfigJson BuildEventJson(const event::Event &event,
 
 std::string BuildEventStreamMessage(const event::Event &event) {
     const char *event_type_name = EventTypeName(event.type);
-    const ConfigJson data = BuildEventJson(event, event_type_name);
+    const Json data = BuildEventJson(event, event_type_name);
     const std::string data_text = data.dump();
 
-    // SSE 每条消息用 event/data 双行格式；payload 交给 ConfigJson 序列化，
+    // SSE 每条消息用 event/data 双行格式；payload 交给 Json 序列化，
     // 避免手写 JSON 转义漏掉引号、换行或反斜杠。
-    std::string message;
-    message.reserve(data_text.size() + 32);
-    message += "event: ";
-    message += event_type_name;
-    message += "\ndata: ";
-    message += data_text;
-    message += "\n\n";
-    return message;
+    std::string msg;
+    msg.reserve(data_text.size() + 32);
+    msg += "event: ";
+    msg += event_type_name;
+    msg += "\ndata: ";
+    msg += data_text;
+    msg += "\n\n";
+    return msg;
 }
 
 std::string BuildEventStreamHello() {

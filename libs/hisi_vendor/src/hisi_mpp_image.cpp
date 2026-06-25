@@ -1,9 +1,10 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_vendor/mpp_sdk.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
 
 #include "infra/clamp.h"
-#include "json_utils.h"
+#include "infra/log.h"
+#include "json_reader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -69,8 +70,8 @@ uint16_t WhiteBalanceGainFromControl(int32_t value) {
                            kWbGainMax);
 }
 
-bool FindSection(const ConfigJson& image_config, const char* section_name,
-                 const ConfigJson** section) {
+bool FindSection(const Json& image_config, const char* section_name,
+                 const Json** section) {
     if (section == nullptr || section_name == nullptr ||
         !image_config.contains(section_name) ||
         !image_config.at(section_name).is_object()) {
@@ -111,9 +112,9 @@ bool ParseExposureTimeUs(const std::string& value, uint32_t* exposure_us) {
     return false;
 }
 
-void ApplyAntiFlicker(const ConfigJson& exposure, ISP_EXPOSURE_ATTR_S* attr) {
+void ApplyAntiFlicker(const Json& exposure, ISP_EXPOSURE_ATTR_S* attr) {
     std::string anti_flicker;
-    if (!json_utils::ReadField(exposure, "anti_flicker", &anti_flicker)) {
+    if (!json_reader::ReadField(exposure, "anti_flicker", &anti_flicker)) {
         return;
     }
     if (anti_flicker == "off") {
@@ -127,7 +128,7 @@ void ApplyAntiFlicker(const ConfigJson& exposure, ISP_EXPOSURE_ATTR_S* attr) {
     }
 }
 
-bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
+bool ApplyExposure(VI_PIPE vi_pipe, const Json& exposure) {
     ISP_EXPOSURE_ATTR_S attr{};
     HI_S32 status = HI_MPI_ISP_GetExposureAttr(vi_pipe, &attr);
     if (status != HI_SUCCESS) {
@@ -138,19 +139,19 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     }
 
     std::string mode;
-    if (json_utils::ReadField(exposure, "mode", &mode)) {
+    if (json_reader::ReadField(exposure, "mode", &mode)) {
         attr.enOpType = mode == "manual" ? OP_TYPE_MANUAL : OP_TYPE_AUTO;
     }
 
     int32_t compensation = 0;
-    if (json_utils::ReadField(exposure, "compensation", &compensation, 0,
+    if (json_reader::ReadField(exposure, "compensation", &compensation, 0,
                               kConfigMax)) {
         attr.stAuto.u8Compensation =
             ScaleControlU8(compensation, 0x00, 0xff);
     }
 
     bool slow_shutter = false;
-    if (json_utils::ReadField(exposure, "slow_shutter", &slow_shutter)) {
+    if (json_reader::ReadField(exposure, "slow_shutter", &slow_shutter)) {
         attr.stAuto.enAEMode =
             slow_shutter ? AE_MODE_SLOW_SHUTTER : AE_MODE_FIX_FRAME_RATE;
     }
@@ -158,7 +159,7 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     ApplyAntiFlicker(exposure, &attr);
 
     std::string exposure_time;
-    if (json_utils::ReadField(exposure, "exposure_time", &exposure_time)) {
+    if (json_reader::ReadField(exposure, "exposure_time", &exposure_time)) {
         uint32_t exposure_us = 0;
         if (ParseExposureTimeUs(exposure_time, &exposure_us)) {
             attr.stManual.enExpTimeOpType = OP_TYPE_MANUAL;
@@ -169,7 +170,7 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     }
 
     std::string max_exposure_time;
-    if (json_utils::ReadField(exposure, "max_exposure_time",
+    if (json_reader::ReadField(exposure, "max_exposure_time",
                               &max_exposure_time)) {
         uint32_t max_exposure_us = 0;
         if (ParseExposureTimeUs(max_exposure_time, &max_exposure_us)) {
@@ -179,7 +180,7 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     }
 
     std::string gain;
-    if (json_utils::ReadField(exposure, "gain", &gain)) {
+    if (json_reader::ReadField(exposure, "gain", &gain)) {
         if (gain == "auto") {
             attr.stManual.enAGainOpType = OP_TYPE_AUTO;
             attr.stManual.enDGainOpType = OP_TYPE_AUTO;
@@ -208,18 +209,18 @@ bool ApplyExposure(VI_PIPE vi_pipe, const ConfigJson& exposure) {
     return true;
 }
 
-bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
+bool ApplyCsc(VI_PIPE vi_pipe, const Json& basic) {
     int32_t brightness = 0;
     int32_t contrast = 0;
     int32_t saturation = 0;
     int32_t hue = 0;
-    const bool has_brightness = json_utils::ReadField(
+    const bool has_brightness = json_reader::ReadField(
         basic, "brightness", &brightness, 0, kConfigMax);
-    const bool has_contrast = json_utils::ReadField(
+    const bool has_contrast = json_reader::ReadField(
         basic, "contrast", &contrast, 0, kConfigMax);
-    const bool has_saturation = json_utils::ReadField(
+    const bool has_saturation = json_reader::ReadField(
         basic, "saturation", &saturation, 0, kConfigMax);
-    const bool has_hue = json_utils::ReadField(
+    const bool has_hue = json_reader::ReadField(
         basic, "hue", &hue, 0, kConfigMax);
     if (!has_brightness && !has_contrast && !has_saturation && !has_hue) {
         return true;
@@ -255,9 +256,9 @@ bool ApplyCsc(VI_PIPE vi_pipe, const ConfigJson& basic) {
     return true;
 }
 
-bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
+bool ApplySharpen(VI_PIPE vi_pipe, const Json& basic) {
     int32_t sharpness = 0;
-    if (!json_utils::ReadField(basic, "sharpness", &sharpness, 0,
+    if (!json_reader::ReadField(basic, "sharpness", &sharpness, 0,
                                kConfigMax)) {
         return true;
     }
@@ -291,7 +292,7 @@ bool ApplySharpen(VI_PIPE vi_pipe, const ConfigJson& basic) {
     return true;
 }
 
-bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
+bool ApplyWhiteBalance(VI_PIPE vi_pipe, const Json& white_balance) {
     ISP_WB_ATTR_S attr{};
     HI_S32 status = HI_MPI_ISP_GetWBAttr(vi_pipe, &attr);
     if (status != HI_SUCCESS) {
@@ -302,17 +303,17 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     }
 
     std::string mode;
-    if (json_utils::ReadField(white_balance, "mode", &mode)) {
+    if (json_reader::ReadField(white_balance, "mode", &mode)) {
         attr.enOpType = mode == "manual" ? OP_TYPE_MANUAL : OP_TYPE_AUTO;
     }
 
     int32_t red_gain = 0;
     int32_t blue_gain = 0;
-    if (json_utils::ReadField(white_balance, "red_gain", &red_gain, 0,
+    if (json_reader::ReadField(white_balance, "red_gain", &red_gain, 0,
                               kConfigMax)) {
         attr.stManual.u16Rgain = WhiteBalanceGainFromControl(red_gain);
     }
-    if (json_utils::ReadField(white_balance, "blue_gain", &blue_gain, 0,
+    if (json_reader::ReadField(white_balance, "blue_gain", &blue_gain, 0,
                               kConfigMax)) {
         attr.stManual.u16Bgain = WhiteBalanceGainFromControl(blue_gain);
     }
@@ -329,12 +330,12 @@ bool ApplyWhiteBalance(VI_PIPE vi_pipe, const ConfigJson& white_balance) {
     return true;
 }
 
-bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
+bool ApplyNoiseReduction(VI_PIPE vi_pipe, const Json& enhancement) {
     int32_t denoise_2d = 0;
     int32_t denoise_3d = 0;
-    const bool has_2d = json_utils::ReadField(
+    const bool has_2d = json_reader::ReadField(
         enhancement, "denoise_2d", &denoise_2d, 0, kConfigMax);
-    const bool has_3d = json_utils::ReadField(
+    const bool has_3d = json_reader::ReadField(
         enhancement, "denoise_3d", &denoise_3d, 0, kConfigMax);
     if (!has_2d && !has_3d) {
         return true;
@@ -371,9 +372,9 @@ bool ApplyNoiseReduction(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     return true;
 }
 
-bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
+bool ApplyGamma(VI_PIPE vi_pipe, const Json& enhancement) {
     int32_t gamma = 0;
-    if (!json_utils::ReadField(enhancement, "gamma", &gamma, 0,
+    if (!json_reader::ReadField(enhancement, "gamma", &gamma, 0,
                                kConfigMax)) {
         return true;
     }
@@ -406,9 +407,9 @@ bool ApplyGamma(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     return true;
 }
 
-bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
+bool ApplyDehaze(VI_PIPE vi_pipe, const Json& enhancement) {
     bool defog = false;
-    if (!json_utils::ReadField(enhancement, "defog", &defog)) {
+    if (!json_reader::ReadField(enhancement, "defog", &defog)) {
         return true;
     }
     ISP_DEHAZE_ATTR_S attr{};
@@ -432,11 +433,11 @@ bool ApplyDehaze(VI_PIPE vi_pipe, const ConfigJson& enhancement) {
     return true;
 }
 
-bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
+bool ApplyBacklight(VI_PIPE vi_pipe, const Json& backlight) {
     std::string mode;
     int32_t level = 0;
-    const bool has_mode = json_utils::ReadField(backlight, "mode", &mode);
-    const bool has_level = json_utils::ReadField(backlight, "level", &level,
+    const bool has_mode = json_reader::ReadField(backlight, "mode", &mode);
+    const bool has_level = json_reader::ReadField(backlight, "level", &level,
                                                  0, kConfigMax);
     if (!has_mode && !has_level) {
         return true;
@@ -477,11 +478,11 @@ bool ApplyBacklight(VI_PIPE vi_pipe, const ConfigJson& backlight) {
 }
 
 bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
-                      const ConfigJson& orientation) {
+                      const Json& orientation) {
     bool mirror = false;
     bool flip = false;
-    const bool has_mirror = json_utils::ReadField(orientation, "mirror", &mirror);
-    const bool has_flip = json_utils::ReadField(orientation, "flip", &flip);
+    const bool has_mirror = json_reader::ReadField(orientation, "mirror", &mirror);
+    const bool has_flip = json_reader::ReadField(orientation, "flip", &flip);
     if (!has_mirror && !has_flip) {
         return true;
     }
@@ -509,13 +510,13 @@ bool ApplyOrientation(VI_PIPE vi_pipe, VI_CHN vi_channel,
     return true;
 }
 
-bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
-    const ConfigJson* color_mode = nullptr;
+bool ApplyColorMode(VI_PIPE vi_pipe, const Json& image_config) {
+    const Json* color_mode = nullptr;
     if (!FindSection(image_config, "color_mode", &color_mode)) {
         return true;
     }
     std::string mode;
-    if (!json_utils::ReadField(*color_mode, "mode", &mode)) {
+    if (!json_reader::ReadField(*color_mode, "mode", &mode)) {
         return true;
     }
     ISP_CSC_ATTR_S attr{};
@@ -530,10 +531,10 @@ bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
     if (mode == "black_white") {
         attr.u8Satu = 0;
     } else if (mode == "color") {
-        const ConfigJson* basic = nullptr;
+        const Json* basic = nullptr;
         int32_t saturation = kConfigNeutral;
         if (FindSection(image_config, "basic", &basic)) {
-            (void)json_utils::ReadField(*basic, "saturation", &saturation, 0,
+            (void)json_reader::ReadField(*basic, "saturation", &saturation, 0,
                                         kConfigMax);
         }
         attr.u8Satu = ScaleControlU8(saturation, 0, 100);
@@ -551,9 +552,9 @@ bool ApplyColorMode(VI_PIPE vi_pipe, const ConfigJson& image_config) {
 }
 
 bool ApplyVpssChannelLdc(VPSS_GRP vpss_group, VPSS_CHN vpss_channel,
-                         const ConfigJson& lens_correction) {
+                         const Json& lens_correction) {
     bool enabled = false;
-    if (!json_utils::ReadField(lens_correction, "enabled", &enabled)) {
+    if (!json_reader::ReadField(lens_correction, "enabled", &enabled)) {
         return false;
     }
 
@@ -565,31 +566,31 @@ bool ApplyVpssChannelLdc(VPSS_GRP vpss_group, VPSS_CHN vpss_channel,
     attr.stAttr.s32XYRatio = kLdcRatioMax;
 
     bool aspect = true;
-    if (json_utils::ReadField(lens_correction, "aspect", &aspect)) {
+    if (json_reader::ReadField(lens_correction, "aspect", &aspect)) {
         attr.stAttr.bAspect = aspect ? HI_TRUE : HI_FALSE;
     }
     int32_t value = 0;
-    if (json_utils::ReadField(lens_correction, "x_ratio", &value,
+    if (json_reader::ReadField(lens_correction, "x_ratio", &value,
                               kLdcRatioMin, kLdcRatioMax)) {
         attr.stAttr.s32XRatio = value;
     }
-    if (json_utils::ReadField(lens_correction, "y_ratio", &value,
+    if (json_reader::ReadField(lens_correction, "y_ratio", &value,
                               kLdcRatioMin, kLdcRatioMax)) {
         attr.stAttr.s32YRatio = value;
     }
-    if (json_utils::ReadField(lens_correction, "xy_ratio", &value,
+    if (json_reader::ReadField(lens_correction, "xy_ratio", &value,
                               kLdcRatioMin, kLdcRatioMax)) {
         attr.stAttr.s32XYRatio = value;
     }
-    if (json_utils::ReadField(lens_correction, "center_x_offset", &value,
+    if (json_reader::ReadField(lens_correction, "center_x_offset", &value,
                               kLdcCenterOffsetMin, kLdcCenterOffsetMax)) {
         attr.stAttr.s32CenterXOffset = value;
     }
-    if (json_utils::ReadField(lens_correction, "center_y_offset", &value,
+    if (json_reader::ReadField(lens_correction, "center_y_offset", &value,
                               kLdcCenterOffsetMin, kLdcCenterOffsetMax)) {
         attr.stAttr.s32CenterYOffset = value;
     }
-    if (json_utils::ReadField(lens_correction, "distortion_ratio", &value,
+    if (json_reader::ReadField(lens_correction, "distortion_ratio", &value,
                               kLdcDistortionMin, kLdcDistortionMax)) {
         attr.stAttr.s32DistortionRatio = value;
     }
@@ -611,15 +612,15 @@ bool IsLdcStreamSizeSupported(const VideoStreamConfig& stream_config) {
 }
 
 bool ApplyLensCorrection(const MediaPipelineConfig& config,
-                         const ConfigJson& image_config) {
-    const ConfigJson* lens_correction = nullptr;
-    ConfigJson disabled_lens_correction = ConfigJson::object();
+                         const Json& image_config) {
+    const Json* lens_correction = nullptr;
+    Json disabled_lens_correction = Json::object();
     if (!FindSection(image_config, "lens_correction", &lens_correction)) {
         disabled_lens_correction["enabled"] = false;
         lens_correction = &disabled_lens_correction;
     }
     bool enabled = false;
-    if (!json_utils::ReadField(*lens_correction, "enabled", &enabled)) {
+    if (!json_reader::ReadField(*lens_correction, "enabled", &enabled)) {
         return false;
     }
     if (enabled && !IsLdcStreamSizeSupported(config.main_stream)) {
@@ -648,9 +649,9 @@ bool ApplyLensCorrection(const MediaPipelineConfig& config,
     return true;
 }
 
-DIS_MOTION_LEVEL_E ParseDisMotionLevel(const ConfigJson& stabilization) {
+DIS_MOTION_LEVEL_E ParseDisMotionLevel(const Json& stabilization) {
     std::string motion_level;
-    if (!json_utils::ReadField(stabilization, "motion_level",
+    if (!json_reader::ReadField(stabilization, "motion_level",
                                &motion_level)) {
         return DIS_MOTION_LEVEL_NORMAL;
     }
@@ -681,20 +682,17 @@ bool ApplyDisAttr(VI_PIPE vi_pipe, VI_CHN vi_channel,
     return true;
 }
 
-bool ApplyStabilization(MppHisiSdkImpl* impl,
+bool ApplyStabilization(MppHisiSdkImpl& impl,
                         const MediaPipelineConfig& config,
-                        const ConfigJson& image_config) {
-    if (impl == nullptr) {
-        return false;
-    }
-    const ConfigJson* stabilization = nullptr;
-    ConfigJson disabled_stabilization = ConfigJson::object();
+                        const Json& image_config) {
+    const Json* stabilization = nullptr;
+    Json disabled_stabilization = Json::object();
     if (!FindSection(image_config, "stabilization", &stabilization)) {
         disabled_stabilization["enabled"] = false;
         stabilization = &disabled_stabilization;
     }
     bool enabled = false;
-    if (!json_utils::ReadField(*stabilization, "enabled", &enabled)) {
+    if (!json_reader::ReadField(*stabilization, "enabled", &enabled)) {
         return false;
     }
     if (enabled && !IsDisStreamSizeSupported(config.main_stream)) {
@@ -721,15 +719,15 @@ bool ApplyStabilization(MppHisiSdkImpl* impl,
     dis_config.bScale = HI_TRUE;
 
     int32_t value = 0;
-    if (json_utils::ReadField(*stabilization, "buffer_frames", &value,
+    if (json_reader::ReadField(*stabilization, "buffer_frames", &value,
                               kDisBufferSizeMin, kDisBufferSizeMax)) {
         dis_config.u32BufNum = static_cast<HI_U32>(value);
     }
-    if (json_utils::ReadField(*stabilization, "crop_ratio", &value,
+    if (json_reader::ReadField(*stabilization, "crop_ratio", &value,
                               kDisCropRatioMin, kDisCropRatioMax)) {
         dis_config.u32CropRatio = static_cast<HI_U32>(value);
     }
-    if (json_utils::ReadField(*stabilization, "frame_rate", &value,
+    if (json_reader::ReadField(*stabilization, "frame_rate", &value,
                               kDisFrameRateMin, kDisFrameRateMax)) {
         dis_config.u32FrameRate = static_cast<HI_U32>(value);
     }
@@ -743,21 +741,21 @@ bool ApplyStabilization(MppHisiSdkImpl* impl,
     dis_attr.u32VerticalLimit = 512;
     dis_attr.bStillCrop = HI_FALSE;
 
-    if (json_utils::ReadField(*stabilization, "moving_subject_level", &value,
+    if (json_reader::ReadField(*stabilization, "moving_subject_level", &value,
                               kDisMovingSubjectLevelMin,
                               kDisMovingSubjectLevelMax)) {
         dis_attr.u32MovingSubjectLevel = static_cast<HI_U32>(value);
     }
-    if (json_utils::ReadField(*stabilization, "rolling_shutter_coef", &value,
+    if (json_reader::ReadField(*stabilization, "rolling_shutter_coef", &value,
                               kDisRollingShutterCoefMin,
                               kDisRollingShutterCoefMax)) {
         dis_attr.s32RollingShutterCoef = value;
     }
-    if (json_utils::ReadField(*stabilization, "horizontal_limit", &value,
+    if (json_reader::ReadField(*stabilization, "horizontal_limit", &value,
                               kDisDriftLimitMin, kDisDriftLimitMax)) {
         dis_attr.u32HorizontalLimit = static_cast<HI_U32>(value);
     }
-    if (json_utils::ReadField(*stabilization, "vertical_limit", &value,
+    if (json_reader::ReadField(*stabilization, "vertical_limit", &value,
                               kDisDriftLimitMin, kDisDriftLimitMax)) {
         dis_attr.u32VerticalLimit = static_cast<HI_U32>(value);
     }
@@ -765,13 +763,13 @@ bool ApplyStabilization(MppHisiSdkImpl* impl,
     const VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     const VI_CHN vi_channel = static_cast<VI_CHN>(config.vi_channel);
     if (!enabled) {
-        if (!impl->dis_enabled_) {
+        if (!impl.dis_enabled_) {
             return true;
         }
         if (!ApplyDisAttr(vi_pipe, vi_channel, dis_attr)) {
             return false;
         }
-        impl->dis_enabled_ = false;
+        impl.dis_enabled_ = false;
         return true;
     }
 
@@ -786,15 +784,15 @@ bool ApplyStabilization(MppHisiSdkImpl* impl,
     if (!ApplyDisAttr(vi_pipe, vi_channel, dis_attr)) {
         return false;
     }
-    impl->dis_enabled_ = true;
+    impl.dis_enabled_ = true;
     return true;
 }
 
 }  // namespace
 
 bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
-                                  const ConfigJson& image_config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+                                  const Json& image_config) {
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (!image_config.is_object()) {
         return false;
     }
@@ -802,26 +800,26 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     VI_PIPE vi_pipe = static_cast<VI_PIPE>(config.video_pipe);
     VI_CHN vi_channel = static_cast<VI_CHN>(config.vi_channel);
 
-    const ConfigJson* basic = nullptr;
+    const Json* basic = nullptr;
     if (FindSection(image_config, "basic", &basic) &&
         (!ApplyCsc(vi_pipe, *basic) ||
          !ApplySharpen(vi_pipe, *basic))) {
         return false;
     }
 
-    const ConfigJson* exposure = nullptr;
+    const Json* exposure = nullptr;
     if (FindSection(image_config, "exposure", &exposure) &&
         !ApplyExposure(vi_pipe, *exposure)) {
         return false;
     }
 
-    const ConfigJson* white_balance = nullptr;
+    const Json* white_balance = nullptr;
     if (FindSection(image_config, "white_balance", &white_balance) &&
         !ApplyWhiteBalance(vi_pipe, *white_balance)) {
         return false;
     }
 
-    const ConfigJson* enhancement = nullptr;
+    const Json* enhancement = nullptr;
     if (FindSection(image_config, "enhancement", &enhancement) &&
         (!ApplyNoiseReduction(vi_pipe, *enhancement) ||
          !ApplyGamma(vi_pipe, *enhancement) ||
@@ -829,13 +827,13 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
         return false;
     }
 
-    const ConfigJson* backlight = nullptr;
+    const Json* backlight = nullptr;
     if (FindSection(image_config, "backlight", &backlight) &&
         !ApplyBacklight(vi_pipe, *backlight)) {
         return false;
     }
 
-    const ConfigJson* orientation = nullptr;
+    const Json* orientation = nullptr;
     if (FindSection(image_config, "orientation", &orientation) &&
         !ApplyOrientation(vi_pipe, vi_channel, *orientation)) {
         return false;
@@ -847,7 +845,7 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
     if (!ApplyLensCorrection(config, image_config)) {
         return false;
     }
-    if (!ApplyStabilization(impl_, config, image_config)) {
+    if (!ApplyStabilization(*impl_, config, image_config)) {
         return false;
     }
     return true;
@@ -855,7 +853,7 @@ bool MppHisiSdk::ApplyImageConfig(const MediaPipelineConfig& config,
 
 ExposureInfo MppHisiSdk::QueryExposureInfo(
     const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     ExposureInfo info;
     if (!impl_->isp_started_) {
         return info;

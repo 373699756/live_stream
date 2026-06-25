@@ -1,6 +1,7 @@
 #include "venc_config.h"
 
 #include "infra/clamp.h"
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {

@@ -14,7 +14,7 @@ namespace live_stream {
 class RtspSessionTable {
 public:
     bool Add(ConnectionId connection_id, NetAddress peer, uint32_t max_sessions,
-             std::shared_ptr<RtspSession> *session);
+             std::shared_ptr<RtspSession> &session);
     std::shared_ptr<RtspSession> Find(ConnectionId connection_id) const;
     std::shared_ptr<RtspSession> FindByUdpSocket(UdpSocketId socket_id) const;
     std::shared_ptr<RtspSession> Remove(ConnectionId connection_id);

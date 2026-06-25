@@ -1,10 +1,14 @@
 #include "http_media.h"
 
-#include "http_media_utils.h"
+#include "http_media_auth.h"
+#include "http_media_json_body.h"
+#include "http_media_path.h"
+#include "http_media_response.h"
+#include "http_media_stream_id_json.h"
 #include "http_router.h"
 
 #include "device.h"
-#include "json_utils.h"
+#include "json_reader.h"
 #include "webrtc.h"
 
 #include <cstdint>
@@ -17,7 +21,7 @@ namespace {
 using WebrtcRouteHandler =
     HttpResponse (*)(IWebrtc *webrtc,
                      const HttpRequest &request,
-                     const ConfigJson &body,
+                     const Json &body,
                      const AuthPrincipal &principal);
 
 const char *WebrtcPeerStateName(WebrtcPeerState state) {
@@ -54,8 +58,8 @@ const char *CodecToJsonString(Codec codec) {
     return "unknown";
 }
 
-ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
-    ConfigJson root = ConfigJson::object();
+Json WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
+    Json root = Json::object();
     root["peer_id"] = peer.peer_id;
     root["stream"] = MediaStreamIdToJson(peer.stream_id);
     root["codec"] = CodecToJsonString(peer.codec);
@@ -87,11 +91,11 @@ ConfigJson WebrtcPeerInfoToJson(const WebrtcPeerInfo &peer) {
 }
 
 HttpResponse WebrtcErrorResponse(int status_code, const std::string &code,
-                                 const std::string &message) {
-    ConfigJson root = ConfigJson::object();
-    ConfigJson error = ConfigJson::object();
+                                 const std::string &msg) {
+    Json root = Json::object();
+    Json error = Json::object();
     error["code"] = code;
-    error["message"] = message;
+    error["message"] = msg;
     root["error"] = error;
     return HttpMediaJsonResponse(status_code, root);
 }
@@ -175,16 +179,16 @@ bool ParseWhepPath(const HttpRequest &request, StreamId *stream_id,
     return !peer_id->empty();
 }
 
-HttpResponse HandleCreatePeer(IWebrtc *webrtc,
-                              const HttpRequest &request,
-                              const ConfigJson &body,
-                              const AuthPrincipal &principal) {
+HttpResponse BuildCreatePeerResponse(IWebrtc *webrtc,
+                                     const HttpRequest &request,
+                                     const Json &body,
+                                     const AuthPrincipal &principal) {
     WebrtcCreatePeerRequest create_request;
     std::string stream;
     StreamId stream_id = StreamId::kMain;
-    if (!json_utils::ReadField(body, "stream", &stream) ||
+    if (!json_reader::ReadField(body, "stream", &stream) ||
         !MediaStreamIdFromJson(stream, &stream_id) ||
-        !json_utils::ReadField(body, "client_id", &create_request.client_id)) {
+        !json_reader::ReadField(body, "client_id", &create_request.client_id)) {
         return WebrtcErrorResponse(400, "stream_not_found",
                                    "Stream not found");
     }
@@ -201,13 +205,13 @@ HttpResponse HandleCreatePeer(IWebrtc *webrtc,
     return HttpMediaJsonResponse(200, WebrtcPeerInfoToJson(peer));
 }
 
-HttpResponse HandleOffer(IWebrtc *webrtc,
-                         const HttpRequest &request, const ConfigJson &body,
-                         const AuthPrincipal &principal) {
+HttpResponse BuildOfferResponse(IWebrtc *webrtc,
+                                const HttpRequest &request, const Json &body,
+                                const AuthPrincipal &principal) {
     (void)principal;
     WebrtcOfferRequest offer;
     if (!ParsePeerSubPath(request, "/offer", &offer.peer_id) ||
-        !json_utils::ReadField(body, "sdp", &offer.sdp)) {
+        !json_reader::ReadField(body, "sdp", &offer.sdp)) {
         return HttpMediaStatusResponse(400, "Missing offer fields");
     }
 
@@ -222,44 +226,44 @@ HttpResponse HandleOffer(IWebrtc *webrtc,
             answer.error.empty() ? "WebRTC answer unavailable" : answer.error);
     }
 
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["peer_id"] = answer.peer_id;
     root["sdp"] = answer.sdp;
     root["state"] = WebrtcPeerStateName(answer.state);
     return HttpMediaJsonResponse(200, root);
 }
 
-HttpResponse HandleCandidate(IWebrtc *webrtc,
-                             const HttpRequest &request,
-                             const ConfigJson &body,
-                             const AuthPrincipal &principal) {
+HttpResponse BuildCandidateResponse(IWebrtc *webrtc,
+                                    const HttpRequest &request,
+                                    const Json &body,
+                                    const AuthPrincipal &principal) {
     (void)principal;
     WebrtcIceCandidate candidate;
     bool has_mline_index = false;
     if (!ParsePeerSubPath(request, "/candidates", &candidate.peer_id) ||
-        !json_utils::ReadField(body, "candidate", &candidate.candidate)) {
+        !json_reader::ReadField(body, "candidate", &candidate.candidate)) {
         return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
-    if (!json_utils::ReadField(body, "sdp_mid", &candidate.sdp_mid)) {
-        (void)json_utils::ReadField(body, "sdpMid", &candidate.sdp_mid);
+    if (!json_reader::ReadField(body, "sdp_mid", &candidate.sdp_mid)) {
+        (void)json_reader::ReadField(body, "sdpMid", &candidate.sdp_mid);
     }
     has_mline_index =
-        json_utils::ReadField(body, "sdp_mline_index",
+        json_reader::ReadField(body, "sdp_mline_index",
                               &candidate.sdp_mline_index, 0,
                               std::numeric_limits<int32_t>::max()) ||
-        json_utils::ReadField(body, "sdpMLineIndex",
+        json_reader::ReadField(body, "sdpMLineIndex",
                               &candidate.sdp_mline_index, 0,
                               std::numeric_limits<int32_t>::max());
     if (!has_mline_index) {
         return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
-    if (!json_utils::ReadField(body, "username_fragment",
+    if (!json_reader::ReadField(body, "username_fragment",
                                &candidate.username_fragment)) {
-        (void)json_utils::ReadField(body, "usernameFragment",
+        (void)json_reader::ReadField(body, "usernameFragment",
                                     &candidate.username_fragment);
     }
 
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["peer_id"] = candidate.peer_id;
     if (webrtc->AddIceCandidate(candidate)) {
         return HttpMediaJsonResponse(200, root);
@@ -268,17 +272,17 @@ HttpResponse HandleCandidate(IWebrtc *webrtc,
                                "WebRTC peer not found");
 }
 
-HttpResponse HandleClosePeer(IWebrtc *webrtc,
-                             const HttpRequest &request,
-                             const ConfigJson &body,
-                             const AuthPrincipal &principal) {
+HttpResponse BuildClosePeerResponse(IWebrtc *webrtc,
+                                    const HttpRequest &request,
+                                    const Json &body,
+                                    const AuthPrincipal &principal) {
     (void)body;
     (void)principal;
     std::string peer_id;
     if (!ParsePeerPath(request, &peer_id)) {
         return HttpMediaStatusResponse(400, "Missing peer_id");
     }
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["peer_id"] = peer_id;
     if (webrtc->ClosePeer(peer_id)) {
         root["state"] = WebrtcPeerStateName(WebrtcPeerState::kClosed);
@@ -352,64 +356,44 @@ HttpResponse BuildWhepDeleteResponse(IWebrtc *webrtc,
 
 class WebrtcHttpHandler : public IHttpHandler {
 public:
-    WebrtcHttpHandler(HttpAccess *access,
-                      DeviceMedia *device,
-                      IWebrtc *webrtc)
-        : access_(access), device_(device), webrtc_(webrtc) {}
+    explicit WebrtcHttpHandler(
+        const HttpMediaHandlerDependencies &dependencies)
+        : access_(dependencies.access),
+          device_(dependencies.device),
+          webrtc_(dependencies.webrtc) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
+    void RegisterRoutes(IHttpRouter &router) override {
+        if (webrtc_ != nullptr) {
+            router.AddExactRoute(HttpMethod::kPost, "/api/webrtc/peers",
+                                 this, &WebrtcHttpHandler::HandleCreatePeer);
+            router.AddPrefixRoute(HttpMethod::kPost, "/api/webrtc/peers/",
+                                  this, &WebrtcHttpHandler::HandlePeerPost);
+            router.AddPrefixRoute(HttpMethod::kDelete, "/api/webrtc/peers/",
+                                  this, &WebrtcHttpHandler::HandleClosePeer);
         }
-        router->AddExactRoute(HttpMethod::kPost, "/api/webrtc/peers",
-                              &WebrtcHttpHandler::HandleCreatePeerRoute,
-                              this);
-        router->AddPrefixRoute(HttpMethod::kPost, "/api/webrtc/peers/",
-                               &WebrtcHttpHandler::HandlePeerPostRoute, this);
-        router->AddPrefixRoute(HttpMethod::kDelete, "/api/webrtc/peers/",
-                               &WebrtcHttpHandler::HandleClosePeerRoute, this);
-        router->AddPrefixRoute(HttpMethod::kPost, "/live/",
-                               &WebrtcHttpHandler::HandleWhepCreateRoute, this);
-        router->AddPrefixRoute(HttpMethod::kDelete, "/live/",
-                               &WebrtcHttpHandler::HandleWhepDeleteRoute, this);
+        router.AddPrefixRoute(HttpMethod::kPost, "/live/",
+                              this, &WebrtcHttpHandler::HandleWhepCreate);
+        router.AddPrefixRoute(HttpMethod::kDelete, "/live/",
+                              this, &WebrtcHttpHandler::HandleWhepDelete);
     }
 
 private:
-    static HttpResponse HandleCreatePeerRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
-            request, &HandleCreatePeer);
+    HttpResponse HandleCreatePeer(const HttpRequest &request) {
+        return HandleWebrtc(request, &BuildCreatePeerResponse);
     }
 
-    static HttpResponse HandlePeerPostRoute(void *user,
-                                            const HttpRequest &request) {
+    HttpResponse HandlePeerPost(const HttpRequest &request) {
         if (ParsePeerSubPath(request, "/offer", nullptr)) {
-            return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
-                request, &HandleOffer);
+            return HandleWebrtc(request, &BuildOfferResponse);
         }
         if (ParsePeerSubPath(request, "/candidates", nullptr)) {
-            return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
-                request, &HandleCandidate);
+            return HandleWebrtc(request, &BuildCandidateResponse);
         }
         return WebrtcErrorResponse(404, "invalid_argument", "Not Found");
     }
 
-    static HttpResponse HandleClosePeerRoute(void *user,
-                                             const HttpRequest &request) {
-        return static_cast<WebrtcHttpHandler *>(user)->HandleWebrtc(
-            request, &HandleClosePeer);
-    }
-
-    static HttpResponse HandleWhepCreateRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<WebrtcHttpHandler *>(user)->HandleWhepCreate(
-            request);
-    }
-
-    static HttpResponse HandleWhepDeleteRoute(void *user,
-                                              const HttpRequest &request) {
-        return static_cast<WebrtcHttpHandler *>(user)->HandleWhepDelete(
-            request);
+    HttpResponse HandleClosePeer(const HttpRequest &request) {
+        return HandleWebrtc(request, &BuildClosePeerResponse);
     }
 
     HttpResponse HandleWebrtc(const HttpRequest &request,
@@ -420,17 +404,13 @@ private:
         if (auth_response.status_code != 0) {
             return auth_response;
         }
-        if (webrtc_ == nullptr) {
-            return WebrtcErrorResponse(501, "protocol_unavailable",
-                                       "Not Implemented");
-        }
-        if (IsHttpMediaRestarting(device_)) {
+        if (device_ != nullptr && device_->IsRestarting()) {
             return WebrtcErrorResponse(503, "resource_busy",
                                        "Media pipeline restarting");
         }
 
-        ConfigJson body;
-        if (!ParseOptionalJsonBody(request, &body)) {
+        Json body;
+        if (!ParseOptionalHttpMediaJsonBody(request, &body)) {
             return WebrtcErrorResponse(400, "invalid_argument",
                                        "Invalid JSON");
         }
@@ -449,7 +429,7 @@ private:
         if (webrtc_ == nullptr) {
             return HttpMediaTextResponse(501, "Not Implemented");
         }
-        if (IsHttpMediaRestarting(device_)) {
+        if (device_ != nullptr && device_->IsRestarting()) {
             return HttpMediaTextResponse(503, "Media pipeline restarting");
         }
         return BuildWhepCreateResponse(webrtc_, request, principal);
@@ -475,10 +455,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
-    HttpAccess *access, DeviceMedia *device,
-    IWebrtc *webrtc) {
+    const HttpMediaHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new WebrtcHttpHandler(access, device, webrtc));
+        new WebrtcHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

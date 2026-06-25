@@ -36,9 +36,9 @@ std::string BuildSnapshotUri(const OnvifServerOptions &options,
            std::to_string(options.http_port) + SnapshotPath(stream_id);
 }
 
-std::string UnavailableUriFault(uint32_t *status, std::string *reason) {
-    if (status != nullptr) {
-        *status = 500;
+std::string UnavailableUriFault(uint32_t *status_code, std::string *reason) {
+    if (status_code != nullptr) {
+        *status_code = 500;
     }
     if (reason != nullptr) {
         *reason = "Internal Server Status";
@@ -129,9 +129,10 @@ std::string BuildProfilesBody(const OnvifMediaUris &media_uris) {
     return body;
 }
 
-std::string BuildProfileFaultBody(uint32_t *status, std::string *reason) {
-    if (status != nullptr) {
-        *status = 400;
+std::string BuildProfileFaultBody(uint32_t *status_code,
+                                  std::string *reason) {
+    if (status_code != nullptr) {
+        *status_code = 400;
     }
     if (reason != nullptr) {
         *reason = "Bad Request";
@@ -141,12 +142,12 @@ std::string BuildProfileFaultBody(uint32_t *status, std::string *reason) {
 
 OnvifBody BuildStreamUriBody(const OnvifMediaUris &media_uris,
                              StreamId stream_id,
-                             uint32_t *status,
+                             uint32_t *status_code,
                              std::string *reason) {
     const std::string &uri = StreamUriForId(media_uris, stream_id);
     if (uri.empty()) {
         // stream 不可用时返回 SOAP fault，而不是拼空 URI，避免 NVR 缓存坏地址。
-        return OnvifBody{UnavailableUriFault(status, reason), false};
+        return OnvifBody{UnavailableUriFault(status_code, reason), false};
     }
     return OnvifBody{
         "<trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>" +
@@ -159,13 +160,13 @@ OnvifBody BuildStreamUriBody(const OnvifMediaUris &media_uris,
 
 OnvifBody BuildSnapshotUriBody(const OnvifMediaUris &media_uris,
                                StreamId stream_id,
-                               uint32_t *status,
+                               uint32_t *status_code,
                                std::string *reason) {
     const std::string &uri = SnapshotUriForId(media_uris, stream_id);
     if (uri.empty()) {
         // snapshot URI 目前按 HTTP 固定路径生成，理论上不应为空；保留 fault 分支
         // 让调用方能用统一错误处理。
-        return OnvifBody{UnavailableUriFault(status, reason), false};
+        return OnvifBody{UnavailableUriFault(status_code, reason), false};
     }
     return OnvifBody{
         "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>" +

@@ -8,7 +8,7 @@
 #ifndef LIVE_STREAM_CONFIG_CONFIG_H_
 #define LIVE_STREAM_CONFIG_CONFIG_H_
 
-#include "config_json.h"
+#include "json.h"
 
 #include <functional>
 #include <memory>
@@ -22,29 +22,32 @@ struct ConfigOptions {
     bool create_storage_if_missing = true;
 };
 
-enum class ConfigStatus {
+enum class ConfigCode {
     kOk = 0,
     kInvalid,
-    kNotStarted,
-    kNotFound,
+    kStopped,
+    kMissing,
     kExists,
-    kVerifyFailed,
-    kApplyFailed,
-    kSaveFailed,
+    kVerify,
+    kApply,
+    kSave,
 };
 
-struct ConfigIssue {
+struct ConfigError {
+    std::string scope;
     std::string field;
-    std::string reason;
+    std::string message;
 
-    bool empty() const { return field.empty() && reason.empty(); }
+    bool empty() const {
+        return scope.empty() && field.empty() && message.empty();
+    }
 };
 
 using ConfigVerify =
-    std::function<ConfigStatus(const ConfigJson &now, ConfigIssue *issue)>;
-using ConfigApply = std::function<ConfigStatus(const ConfigJson &prev,
-                                               const ConfigJson &now,
-                                               ConfigIssue *issue)>;
+    std::function<ConfigCode(const Json &now, ConfigError *error)>;
+using ConfigApply = std::function<ConfigCode(const Json &prev,
+                                             const Json &now,
+                                             ConfigError *error)>;
 
 struct ConfigScope {
     ConfigVerify verify;
@@ -58,13 +61,13 @@ public:
     virtual bool Start() = 0;
     virtual void Stop() = 0;
     virtual bool IsStarted() const = 0;
-    virtual ConfigStatus Set(const std::string &scope, const ConfigJson &now,
-                             ConfigIssue *issue = nullptr) = 0;
-    virtual ConfigJson Get(const std::string &scope) = 0;
-    virtual ConfigStatus Reset(const std::string &scope,
-                               ConfigIssue *issue = nullptr) = 0;
-    virtual ConfigJson Default(const std::string &scope) = 0;
-    virtual ConfigStatus ResetAll(ConfigIssue *issue = nullptr) = 0;
+    virtual ConfigCode Set(const std::string &scope, const Json &now,
+                           ConfigError *error = nullptr) = 0;
+    virtual Json Get(const std::string &scope) = 0;
+    virtual ConfigCode Reset(const std::string &scope,
+                             ConfigError *error = nullptr) = 0;
+    virtual Json Default(const std::string &scope) = 0;
+    virtual ConfigCode ResetAll(ConfigError *error = nullptr) = 0;
     virtual bool AddScope(const std::string &scope,
                           const ConfigScope &config_scope) = 0;
     virtual bool RemoveScope(const std::string &scope) = 0;

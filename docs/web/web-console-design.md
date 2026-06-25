@@ -136,7 +136,7 @@ flowchart LR
 - `httpFlvSupported` / `httpFlvReady`
 - `mjpegSupported` / `mjpegReady`
 - `webrtcSupported` / `webrtcReady`
-- `subscription_size` / `client_size`
+- `active_subscriptions` / `preview_clients`
 - `lastDts`
 - `lastKeyframeRequestMs` / `lastKeyframeSeenMs`
 - `lastFirstFrameMs` / `lastProtocolReadyMs`

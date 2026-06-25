@@ -12,10 +12,7 @@
 
 namespace live_stream {
 
-class FoundationSubsystem;
-
 struct ProtocolStartupRefs {
-    FoundationSubsystem *foundation = nullptr;
     DeviceRefs device;
     MediaRefs media;
     INetIo *net_io = nullptr;

@@ -26,7 +26,7 @@ struct WebrtcSessionOfferContext {
     WebrtcTransportTimerFn on_dtls_timeout = nullptr;
 };
 
-struct WebrtcSessionOfferResult {
+struct WebrtcOfferAnswer {
     std::string answer_sdp;
     uint32_t next_port_offset = 0;
 };
@@ -41,25 +41,25 @@ public:
 
     bool HandleOffer(const std::string &offer_sdp,
                      const WebrtcSessionOfferContext &context,
-                     WebrtcSessionOfferResult *result);
+                     WebrtcOfferAnswer &result);
     bool AddIceCandidate(const WebrtcIceCandidate &candidate);
     void Close();
 
     bool MatchesSocket(UdpSocketId socket_id) const;
     bool HandleIcePacket(NetAddress peer, const uint8_t *data, size_t size,
-                         bool *connected_now);
+                         bool &connected_now);
     bool ProcessDtlsPacket(const uint8_t *data, size_t size,
-                           WebrtcTransportDtlsResult *result);
-    bool HandleDtlsTimeout(WebrtcTransportDtlsResult *result);
-    bool SendDtlsResult(const WebrtcTransportDtlsResult &result);
+                           WebrtcDtlsOutput &result);
+    bool HandleDtlsTimeout(WebrtcDtlsOutput &result);
+    bool SendDtlsResult(const WebrtcDtlsOutput &result);
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
-                           bool *need_keyframe);
+                           bool &need_keyframe);
     bool SendRtpPacket(const MediaFrame &frame,
                        const rtp::RtpPacketView &packet);
 
-    bool GetRtpSendParameters(WebrtcRtpSendParameters *parameters) const;
-    void FillPeerInfo(WebrtcPeerInfo *peer) const;
-    void FillStats(WebrtcStats *stats) const;
+    bool GetRtpSendParameters(WebrtcRtpSendParameters &parameters) const;
+    void FillPeerInfo(WebrtcPeerInfo &peer) const;
+    void FillStats(WebrtcStats &stats) const;
     bool ice_connected() const;
 
     const WebrtcPeerInfo &peer() const { return peer_; }

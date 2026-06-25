@@ -23,7 +23,7 @@ flowchart LR
   MediaHTTP --> MediaCore[media]
   MediaHTTP --> WebRTC[webrtc]
   HTTP --> Snapshot[device snapshot]
-  HTTP --> AI[ai IAiView]
+  HTTP --> AI[ai IAiReader]
   HTTP --> Device[system/time/network/alarm/upgrade]
   HTTP --> Protocol[rtsp/onvif]
   HTTP --> Static[www dist]

@@ -385,7 +385,7 @@ bool DtlsTransport::StartServer(const DtlsFingerprint &remote_fingerprint) {
     }
     SSL_set_accept_state(AsSsl(ssl_));
     const int handshake_result = SSL_do_handshake(AsSsl(ssl_));
-    DtlsProcessResult ignored;
+    DtlsProcessOutput ignored;
     if (!SendPendingOutgoing(&ignored) ||
         (!IsHandshakeWantIo(AsSsl(ssl_), handshake_result) &&
          handshake_result != 1)) {
@@ -400,11 +400,11 @@ bool DtlsTransport::StartServer(const DtlsFingerprint &remote_fingerprint) {
 }
 
 bool DtlsTransport::ProcessPacket(const uint8_t *data, size_t size,
-                                  DtlsProcessResult *result) {
+                                  DtlsProcessOutput *result) {
     if (result == nullptr) {
         return false;
     }
-    *result = DtlsProcessResult();
+    *result = DtlsProcessOutput();
     result->state = state_;
     if (state_ != DtlsState::kConnecting && state_ != DtlsState::kConnected) {
         result->error = "dtls_not_running";
@@ -464,11 +464,11 @@ bool DtlsTransport::GetHandshakeTimeoutMs(uint32_t *timeout_ms) {
     return true;
 }
 
-bool DtlsTransport::HandleTimeout(DtlsProcessResult *result) {
+bool DtlsTransport::HandleTimeout(DtlsProcessOutput *result) {
     if (result == nullptr) {
         return false;
     }
-    *result = DtlsProcessResult();
+    *result = DtlsProcessOutput();
     result->state = state_;
     if (ssl_ == nullptr || state_ != DtlsState::kConnecting) {
         result->error = "dtls_not_running";
@@ -530,7 +530,7 @@ bool DtlsTransport::CreateSsl() {
     return true;
 }
 
-bool DtlsTransport::FinishHandshake(DtlsProcessResult *result) {
+bool DtlsTransport::FinishHandshake(DtlsProcessOutput *result) {
     if (!CheckRemoteFingerprint()) {
         return Fail("dtls_fingerprint_mismatch", result);
     }
@@ -558,7 +558,7 @@ bool DtlsTransport::CheckRemoteFingerprint() {
     return built && actual.value == remote_fingerprint_.value;
 }
 
-bool DtlsTransport::ExportSrtpKeys(DtlsProcessResult *result) {
+bool DtlsTransport::ExportSrtpKeys(DtlsProcessOutput *result) {
     if (result == nullptr || ssl_ == nullptr) {
         return false;
     }
@@ -595,7 +595,7 @@ bool DtlsTransport::ExportSrtpKeys(DtlsProcessResult *result) {
     return true;
 }
 
-bool DtlsTransport::SendPendingOutgoing(DtlsProcessResult *result) {
+bool DtlsTransport::SendPendingOutgoing(DtlsProcessOutput *result) {
     if (result == nullptr || write_bio_ == nullptr) {
         return false;
     }
@@ -613,7 +613,7 @@ bool DtlsTransport::SendPendingOutgoing(DtlsProcessResult *result) {
 }
 
 bool DtlsTransport::HandleSslResult(int ssl_result,
-                                    DtlsProcessResult *result) {
+                                    DtlsProcessOutput *result) {
     if (result == nullptr || ssl_ == nullptr) {
         return false;
     }
@@ -644,7 +644,7 @@ bool DtlsTransport::HandleSslResult(int ssl_result,
     return Fail("dtls_handshake_failed", result);
 }
 
-bool DtlsTransport::Fail(const std::string &error, DtlsProcessResult *result) {
+bool DtlsTransport::Fail(const std::string &error, DtlsProcessOutput *result) {
     ReleaseSsl();
     state_ = DtlsState::kFailed;
     if (result != nullptr) {

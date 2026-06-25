@@ -6,7 +6,7 @@ interface TimeConfigPanelProps {
     busy: boolean;
     error: string;
     manualSyncAllowed: boolean;
-    message: string;
+    msg: string;
     ntpEnabled: boolean;
     ntpIntervalSec: number;
     ntpServersText: string;
@@ -17,7 +17,7 @@ interface TimeConfigPanelProps {
     setNtpIntervalSec: (value: number) => void;
     setNtpServersText: (value: string) => void;
     setTimezone: (value: string) => void;
-    status: TimeInfo;
+    timeInfo: TimeInfo;
     syncBrowserNow: () => void;
     syncNtp: () => void;
     timezone: string;
@@ -66,7 +66,7 @@ export function TimeConfigPanel({
     busy,
     error,
     manualSyncAllowed,
-    message,
+    msg,
     ntpEnabled,
     ntpIntervalSec,
     ntpServersText,
@@ -77,7 +77,7 @@ export function TimeConfigPanel({
     setNtpIntervalSec,
     setNtpServersText,
     setTimezone,
-    status,
+    timeInfo,
     syncBrowserNow,
     syncNtp,
     timezone,
@@ -87,7 +87,7 @@ export function TimeConfigPanel({
         () => ntpServerRows(ntpServersText),
         [ntpServersText],
     );
-    const activeNtpServerSize = ntpServers.filter(
+    const activeNtpServerTotal = ntpServers.filter(
         (server) => server.trim().length > 0,
     ).length;
 
@@ -162,14 +162,14 @@ export function TimeConfigPanel({
                 {error ? (
                     <div className="status-note error-note">{error}</div>
                 ) : null}
-                {message ? (
-                    <div className="status-note success-note">{message}</div>
+                {msg ? (
+                    <div className="status-note success-note">{msg}</div>
                 ) : null}
 
                 <div className="time-status-row">
                     <div>
                         <span>设备时间</span>
-                        <strong>{formatTime(status.system_time_ms)}</strong>
+                        <strong>{formatTime(timeInfo.system_time_ms)}</strong>
                     </div>
                     <div>
                         <span>浏览器时间</span>
@@ -178,13 +178,13 @@ export function TimeConfigPanel({
                     <div>
                         <span>最近同步</span>
                         <strong>
-                            {sourceLabel(status.last_sync_source)} /{' '}
-                            {status.last_sync_ok ? '成功' : '失败'}
+                            {sourceLabel(timeInfo.last_sync_source)} /{' '}
+                            {timeInfo.last_sync_ok ? '成功' : '失败'}
                         </strong>
                     </div>
                     <div>
                         <span>同步时间</span>
-                        <strong>{formatTime(status.last_sync_time_ms)}</strong>
+                        <strong>{formatTime(timeInfo.last_sync_time_ms)}</strong>
                     </div>
                 </div>
             </section>
@@ -251,7 +251,7 @@ export function TimeConfigPanel({
                 <div className="time-panel-heading">
                     <div>
                         <h2>NTP 设置</h2>
-                        <span>{activeNtpServerSize} 个服务器地址</span>
+                        <span>{activeNtpServerTotal} 个服务器地址</span>
                     </div>
                     <button
                         type="button"

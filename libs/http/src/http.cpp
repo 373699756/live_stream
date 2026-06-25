@@ -1,8 +1,12 @@
 #include "http_impl.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_session.h"
 #include "http_media.h"
-#include "http_request_utils.h"
+#include "http_module.h"
+#include "http_path.h"
+#include "http_protocol.h"
+#include "http_request_id.h"
+#include "http_response.h"
 #include "http_static_files.h"
 #include "event.h"
 #include "infra/log.h"
@@ -48,7 +52,7 @@ bool HttpImpl::Prepare() {
     if (initialized_) {
         return true;
     }
-    if (server_ == nullptr || !server_->Prepare()) {
+    if (!server_->Prepare()) {
         return false;
     }
     initialized_ = true;
@@ -60,7 +64,7 @@ bool HttpImpl::Start() {
         Error(kHttpModuleName, "HTTP start prepare failed");
         return false;
     }
-    if (server_ == nullptr || !server_->Start()) {
+    if (!server_->Start()) {
         Error(kHttpModuleName, "HTTP server start failed");
         return false;
     }
@@ -72,9 +76,7 @@ void HttpImpl::Stop() {
 }
 
 void HttpImpl::StopInternal() {
-    if (server_ != nullptr) {
-        server_->Stop();
-    }
+    server_->Stop();
 }
 
 void HttpImpl::Release() {
@@ -84,9 +86,7 @@ void HttpImpl::Release() {
 void HttpImpl::ReleaseInternal() {
     StopInternal();
     std::lock_guard<std::mutex> guard(mutex_);
-    if (server_ != nullptr) {
-        server_->Release();
-    }
+    server_->Release();
     streaming_handler_.reset();
     handlers_.clear();
     router_.Clear();
@@ -129,9 +129,7 @@ HttpResponse HttpImpl::HandleHttpRequest(const HttpRequest &request) {
                 StatusResponse(500, "Bus not initialized"));
         }
     }
-    if (server_ != nullptr) {
-        server_->IncrementTotalRequests();
-    }
+    server_->IncrementTotalRequests();
 
     if (request_with_id.path.empty() || request_with_id.path[0] != '/') {
         IncrementParseFailures();
@@ -140,10 +138,10 @@ HttpResponse HttpImpl::HandleHttpRequest(const HttpRequest &request) {
     }
 
     const HttpRouteMatch route = router_.Match(request_with_id);
-    if (route.found && route.callback != nullptr) {
+    if (route.found && route.callback) {
         return AddJsonEnvelope(
             request_with_id,
-            route.callback(route.user, request_with_id));
+            route.callback(request_with_id));
     }
     if (StartsWith(request_with_id.path, "/api/")) {
         return AddJsonEnvelope(request_with_id,
@@ -170,9 +168,7 @@ HttpStreamingRequestResult HttpImpl::HandleStreamingHttpRequest(
         !streaming_handler->CanHandleStreamingRequest(request)) {
         return HttpStreamingRequestResult::kNotHandled;
     }
-    if (server_ != nullptr) {
-        server_->IncrementTotalRequests();
-    }
+    server_->IncrementTotalRequests();
     Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
          static_cast<unsigned long long>(connection_id),
          request.path.c_str(), request.client_ip.c_str());
@@ -180,24 +176,15 @@ HttpStreamingRequestResult HttpImpl::HandleStreamingHttpRequest(
 }
 
 HttpStats HttpImpl::GetStats() const {
-    if (server_ == nullptr) {
-        return HttpStats{};
-    }
     return server_->GetStats();
 }
 
 std::vector<HttpStreamSessionInfo>
 HttpImpl::ListStreamSessionInfo() const {
-    if (server_ == nullptr) {
-        return std::vector<HttpStreamSessionInfo>();
-    }
     return server_->ListStreamSessionInfo();
 }
 
 HttpListenAddress HttpImpl::LocalAddress() const {
-    if (server_ == nullptr) {
-        return HttpListenAddress{};
-    }
     return server_->LocalAddress();
 }
 
@@ -209,92 +196,84 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_.reset();
     auth_ = dependencies.auth;
     logger_ = dependencies.logger;
-    if (server_ != nullptr) {
-        server_->SetCloseCallback([media_streams =
-                                       dependencies.media_streams](
-                                      const HttpMediaClientHandle &client) {
-            if (client.type == HttpMediaClientType::kFlv &&
-                media_streams != nullptr && client.id != 0) {
-                (void)media_streams->DetachFlvClient(client.id);
-            }
-            if (client.type == HttpMediaClientType::kMjpeg &&
-                media_streams != nullptr && client.id != 0) {
-                (void)media_streams->DetachMjpegClient(client.id);
-            }
-            if (client.type == HttpMediaClientType::kEventStream &&
-                client.event_subscription != nullptr) {
-                client.event_subscription->Cancel();
-            }
-        });
-    }
+    server_->SetCloseCallback([media_streams =
+                                   dependencies.media_streams](
+                                  const HttpMediaClientHandle &client) {
+        if (client.type == HttpMediaClientType::kFlv &&
+            media_streams != nullptr && client.id != 0) {
+            (void)media_streams->DetachFlvClient(client.id);
+        }
+        if (client.type == HttpMediaClientType::kMjpeg &&
+            media_streams != nullptr && client.id != 0) {
+            (void)media_streams->DetachMjpegClient(client.id);
+        }
+        if (client.type == HttpMediaClientType::kEventStream &&
+            client.event_subscription != nullptr) {
+            client.event_subscription->Cancel();
+        }
+    });
 
     HttpHandlerDependencies handler_dependencies;
-    handler_dependencies.access = this;
-    handler_dependencies.http = this;
-    handler_dependencies.auth = dependencies.auth;
-    handler_dependencies.config = dependencies.config;
-    handler_dependencies.logger = dependencies.logger;
-    handler_dependencies.network = dependencies.network;
-    handler_dependencies.time = dependencies.time;
-    handler_dependencies.upgrade = dependencies.upgrade;
-    handler_dependencies.system = dependencies.system;
-    handler_dependencies.device = dependencies.device;
-    handler_dependencies.media_streams = dependencies.media_streams;
-    handler_dependencies.alarm = dependencies.alarm;
-    handler_dependencies.rtsp = dependencies.rtsp;
-    handler_dependencies.webrtc = dependencies.webrtc;
-    handler_dependencies.ai = dependencies.ai;
+    handler_dependencies.auth = {this, dependencies.auth};
+    handler_dependencies.config = {this, dependencies.config};
+    handler_dependencies.operations = {this, dependencies.logger};
+    handler_dependencies.network = {this, dependencies.network};
+    handler_dependencies.time = {this, dependencies.time};
+    handler_dependencies.upgrade = {this, dependencies.upgrade};
+    handler_dependencies.system = {
+        this,
+        dependencies.system,
+        {
+            dependencies.logger,
+            dependencies.config,
+            dependencies.auth,
+            dependencies.time,
+            dependencies.network,
+            dependencies.alarm,
+            dependencies.upgrade,
+            dependencies.rtsp_session_reader,
+            dependencies.onvif_status_reader,
+            dependencies.device,
+            dependencies.ai,
+            dependencies.webrtc_status_reader,
+            dependencies.media_streams,
+        },
+    };
+    handler_dependencies.alarm = {this, dependencies.alarm};
+    handler_dependencies.media = {this,
+                                  dependencies.config,
+                                  dependencies.device,
+                                  dependencies.media_streams,
+                                  dependencies.rtsp_session_reader,
+                                  dependencies.webrtc_status_reader,
+                                  this};
+    handler_dependencies.ai = {this, dependencies.config, dependencies.ai,
+                               dependencies.device};
+    handler_dependencies.snapshot = {this, dependencies.device};
 
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kAuth, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kConfig, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kOperations, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kNetwork, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kTime, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kUpgrade, handler_dependencies));
-
-    SystemOverviewSources system_overview_sources;
-    system_overview_sources.logger = dependencies.logger;
-    system_overview_sources.config = dependencies.config;
-    system_overview_sources.auth = dependencies.auth;
-    system_overview_sources.time = dependencies.time;
-    system_overview_sources.network = dependencies.network;
-    system_overview_sources.alarm = dependencies.alarm;
-    system_overview_sources.upgrade = dependencies.upgrade;
-    system_overview_sources.rtsp = dependencies.rtsp;
-    system_overview_sources.onvif = dependencies.onvif;
-    system_overview_sources.device = dependencies.device;
-    system_overview_sources.ai = dependencies.ai;
-    system_overview_sources.webrtc = dependencies.webrtc;
-    system_overview_sources.media_streams = dependencies.media_streams;
-    handler_dependencies.system_overview_sources = system_overview_sources;
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kSystem, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kAlarm, handler_dependencies));
-
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kMedia, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kAi, handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kSnapshot, handler_dependencies));
+    const HttpHandlerKind handlers[] = {
+        HttpHandlerKind::kAuth,    HttpHandlerKind::kConfig,
+        HttpHandlerKind::kOperations, HttpHandlerKind::kNetwork,
+        HttpHandlerKind::kTime,    HttpHandlerKind::kUpgrade,
+        HttpHandlerKind::kSystem,  HttpHandlerKind::kAlarm,
+        HttpHandlerKind::kMedia,   HttpHandlerKind::kAi,
+        HttpHandlerKind::kSnapshot,
+    };
+    for (HttpHandlerKind kind : handlers) {
+        handlers_.push_back(CreateHttpHandler(kind, handler_dependencies));
+    }
     HttpMediaHandlerDependencies media_handler_dependencies;
     media_handler_dependencies.access = this;
     media_handler_dependencies.device = dependencies.device;
     media_handler_dependencies.media_streams = dependencies.media_streams;
     media_handler_dependencies.webrtc = dependencies.webrtc;
-    handlers_.push_back(CreateHttpHandler(
-        HttpMediaHandlerKind::kHls, media_handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpMediaHandlerKind::kWebrtc, media_handler_dependencies));
-    handlers_.push_back(CreateHttpHandler(
-        HttpHandlerKind::kEventStream, handler_dependencies));
+    const HttpMediaHandlerKind media_handlers[] = {
+        HttpMediaHandlerKind::kHls,
+        HttpMediaHandlerKind::kWebrtc,
+    };
+    for (HttpMediaHandlerKind kind : media_handlers) {
+        handlers_.push_back(CreateHttpHandler(kind, media_handler_dependencies));
+    }
     StreamingHttpHandlerDependencies streaming_handler_dependencies;
     streaming_handler_dependencies.access = this;
     streaming_handler_dependencies.writer = server_.get();
@@ -306,33 +285,25 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
 
     for (const std::unique_ptr<IHttpHandler> &handler : handlers_) {
         if (handler != nullptr) {
-            handler->RegisterRoutes(&router_);
+            handler->RegisterRoutes(router_);
         }
     }
 }
 
 void HttpImpl::IncrementParseFailures() {
-    if (server_ != nullptr) {
-        server_->IncrementParseFailures();
-    }
+    server_->IncrementParseFailures();
 }
 
 void HttpImpl::IncrementNotFound() {
-    if (server_ != nullptr) {
-        server_->IncrementNotFound();
-    }
+    server_->IncrementNotFound();
 }
 
 void HttpImpl::IncrementAuthFailures() {
-    if (server_ != nullptr) {
-        server_->IncrementAuthFailures();
-    }
+    server_->IncrementAuthFailures();
 }
 
 void HttpImpl::IncrementPermissionDenied() {
-    if (server_ != nullptr) {
-        server_->IncrementPermissionDenied();
-    }
+    server_->IncrementPermissionDenied();
 }
 
 live_stream::RequestContext HttpImpl::MakeContext(
@@ -342,7 +313,7 @@ live_stream::RequestContext HttpImpl::MakeContext(
         request.request_id.empty() ? MakeRequestId(NextRequestId())
                                    : request.request_id;
     context.client_ip = request.client_ip;
-    context.user_agent = RequestUserAgent(request);
+    context.user_agent = GetHeader(request, "User-Agent");
     if (principal != nullptr) {
         context.user_name = principal->user_name;
         context.session_id = principal->session_id;
@@ -356,7 +327,7 @@ uint64_t HttpImpl::NextRequestId() {
 }
 
 AuthPrincipal HttpImpl::Authenticate(const HttpRequest &request) {
-    const std::string token = ExtractBearerToken(request);
+    const std::string token = ExtractAuthToken(request);
     if (token.empty()) {
         IncrementAuthFailures();
         return AuthPrincipal{};

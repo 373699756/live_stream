@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_SENSOR_H_
 #define LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_SENSOR_H_
 
-#include "hisi_mpp_utils.h"
+#include "hisi_mpp_sdk.h"
 
 #include <cstdint>
 

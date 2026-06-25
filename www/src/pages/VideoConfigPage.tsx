@@ -319,13 +319,13 @@ export function VideoConfigPage() {
                 2500,
             );
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : '保存失败';
+            const msg = err instanceof Error ? err.message : '保存失败';
             try {
                 await reloadConfig();
                 await refreshStatuses();
-                setSaved(`保存失败，已恢复当前生效配置：${message}`);
+                setSaved(`保存失败，已恢复当前生效配置：${msg}`);
             } catch {
-                setSaved(`保存失败：${message}`);
+                setSaved(`保存失败：${msg}`);
             }
         } finally {
             setSaving(false);

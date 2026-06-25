@@ -13,7 +13,7 @@ std::string BuildDeviceInformationBody(const OnvifServerOptions &options,
 std::string BuildSystemDateAndTimeBody(ITime *time);
 std::string BuildSetSystemDateAndTimeBody(ITime *time,
                                           const std::string &request,
-                                          uint32_t *status,
+                                          uint32_t *status_code,
                                           std::string *reason);
 
 }  // namespace onvif

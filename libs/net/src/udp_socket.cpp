@@ -239,12 +239,12 @@ bool UdpSocket::SendToSlicesInLoop(NetAddress address,
     if (iov_size == 0) {
         return true;
     }
-    msghdr message{};
-    message.msg_name = &addr;
-    message.msg_namelen = sizeof(addr);
-    message.msg_iov = iov;
-    message.msg_iovlen = iov_size;
-    const ssize_t ret = sendmsg(fd, &message, 0);
+    msghdr msg{};
+    msg.msg_name = &addr;
+    msg.msg_namelen = sizeof(addr);
+    msg.msg_iov = iov;
+    msg.msg_iovlen = iov_size;
+    const ssize_t ret = sendmsg(fd, &msg, 0);
     if (ret < 0) {
         const int error = errno;
         Error(kModuleName,

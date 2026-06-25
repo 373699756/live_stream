@@ -37,6 +37,11 @@ struct StreamTrack {
     TimestampCorrector timestamp_corrector;
 };
 
+struct StreamTrackCacheOptions {
+    GopCacheOptions flv_gop_cache;
+    HlsMakerOptions hls_maker;
+};
+
 using ParsedFramePayload = FramePayload;
 
 struct PackagedFrameResult {
@@ -45,7 +50,6 @@ struct PackagedFrameResult {
     bool accepted = false;
     bool keyframe = false;
     bool hls_segment_created = false;
-    FlvVideoTagBuild flv_tag_view;
     bool has_flv_tag_view = false;
 };
 
@@ -65,9 +69,11 @@ bool IsFlvStreamReady(const StreamTrack &stream);
 bool IsHlsStreamReady(const StreamTrack &stream);
 bool IsMjpegStreamReady(const StreamTrack &stream);
 
-void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload *payload);
+void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload &payload);
 bool IsFramePayloadParsed(const ParsedFramePayload &payload);
-void ClearStreamTrack(StreamTrack *stream);
+void ClearStreamTrack(StreamTrack &stream);
+void ConfigureStreamTrack(StreamTrack &stream,
+                          const StreamTrackCacheOptions &options);
 
 MediaHlsPlaylist BuildHlsPlaylist(const StreamTrack &stream,
                                   uint32_t hls_segment_duration_ms,
@@ -77,19 +83,19 @@ MediaSegmentRef FindHlsSegmentRef(const StreamTrack &stream,
 MediaFlvStart BuildFlvStart(const StreamTrack &stream);
 MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream);
 
-void ResetStream(StreamTrack *stream, Codec codec,
+void ResetStream(StreamTrack &stream, Codec codec,
                  MediaStreamResetReason reason);
-void ResetStreamCaches(StreamTrack *stream, MediaStreamResetReason reason);
-NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack *stream,
-                                               MediaFrame *frame);
-bool CacheMjpegFrame(StreamTrack *stream, const MediaFrame &frame);
-PackagedFrameResult AppendFrameToStream(StreamTrack *stream,
+void ResetStreamCaches(StreamTrack &stream, MediaStreamResetReason reason);
+NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack &stream,
+                                               MediaFrame &frame);
+bool CacheMjpegFrame(StreamTrack &stream, const MediaFrame &frame);
+PackagedFrameResult AppendFrameToStream(StreamTrack &stream,
                                         const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
                                         bool package_flv,
                                         uint32_t hls_segment_duration_ms,
-                                        uint32_t hls_playlist_depth);
+                                        FlvVideoTagBuild &flv_tag_view);
 
 }  // namespace media_internal
 }  // namespace live_stream

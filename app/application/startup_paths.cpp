@@ -68,6 +68,9 @@ StartupOptions ResolveStartupOptions(int argc, char **argv) {
     options.paths = BuildStartupPaths(config_dir);
 
     const char *static_root = ParseValueArg(argc, argv, "--static-root");
+    if (static_root == nullptr) {
+        static_root = std::getenv("LIVE_STREAM_STATIC_ROOT");
+    }
     if (static_root != nullptr) {
         options.static_root_override = static_root;
     }

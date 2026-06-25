@@ -41,7 +41,7 @@ const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
     webrtc_dtls_ready: false,
     webrtc_enabled: false,
     webrtc_ice_ready: false,
-    webrtc_ice_server_size: 0,
+    webrtc_ice_servers: 0,
     webrtc_local_port_base: 0,
     webrtc_max_peers: 0,
     webrtc_public_ip: '',
@@ -98,11 +98,11 @@ export function useMediaStreamsInfo({
     const previewUrlRequestIdRef = useRef(0);
 
     const setMediaStreamsInfoError = useCallback(
-        (key: MediaStreamsInfoErrorKey, message: string) => {
+        (key: MediaStreamsInfoErrorKey, msg: string) => {
             setErrors((current) => {
                 const next = { ...current };
-                if (message) {
-                    next[key] = message;
+                if (msg) {
+                    next[key] = msg;
                 } else {
                     delete next[key];
                 }

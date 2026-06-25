@@ -1,10 +1,11 @@
-#include "upgrade.h"
+#include "system/upgrade.h"
 
 #include "event.h"
 #include "infra/clamp.h"
 #include "infra/time.h"
 #include "logger.h"
 
+#include <cstdio>
 #include <limits.h>
 #include <mutex>
 #include <sys/stat.h>
@@ -24,8 +25,7 @@ bool IsTerminalState(UpgradeState state) {
 
 bool IsCancelableState(UpgradeState state) {
     return state == UpgradeState::kValidating ||
-           state == UpgradeState::kPreparing ||
-           state == UpgradeState::kWriting;
+           state == UpgradeState::kPreparing;
 }
 
 OperationResult ToOperationResult(bool ok) {
@@ -80,6 +80,10 @@ public:
     bool CleanupFailedUpgrade() override {
         return true;
     }
+
+    std::string LastError() override {
+        return "upgrade platform unavailable";
+    }
 };
 
 class UpgradeImpl : public IUpgrade {
@@ -110,7 +114,7 @@ public:
 
         executor_.reset(new event::Executor());
 
-        status_ = UpgradeInfo{};
+        upgrade_info_ = UpgradeInfo{};
         initialized_ = true;
         return true;
     }
@@ -127,7 +131,7 @@ public:
             return true;
         }
         event::ExecutorOptions executor_options;
-        executor_options.worker_size = 1;
+        executor_options.workers = 1;
         executor_options.queue_capacity = options_.queue_capacity;
         if (!executor_->Start(executor_options)) {
             return false;
@@ -172,7 +176,8 @@ private:
         executor_.reset();
         restricted_platform_.reset();
         platform_ = nullptr;
-        status_ = UpgradeInfo{};
+        upgrade_info_ = UpgradeInfo{};
+        current_package_path_.clear();
         cancel_requested_ = false;
         initialized_ = false;
     }
@@ -180,7 +185,7 @@ private:
 public:
     UpgradeInfo GetUpgradeInfo() override {
         std::lock_guard<std::mutex> lock(mutex_);
-        return status_;
+        return upgrade_info_;
     }
 
     UpgradePackageInfo ValidatePackage(
@@ -194,7 +199,7 @@ public:
         IUpgradePlatform* platform = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!initialized_ || platform_ == nullptr) {
+            if (!initialized_) {
                 return UpgradePackageInfo();
             }
             platform = platform_;
@@ -211,7 +216,7 @@ public:
                             OperationResult::kRejected, "service not started");
                 return false;
             }
-            if (!IsTerminalState(status_.state)) {
+            if (!IsTerminalState(upgrade_info_.state)) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
                 return false;
@@ -235,18 +240,19 @@ public:
                             OperationResult::kRejected, "service not started");
                 return false;
             }
-            if (!IsTerminalState(status_.state)) {
+            if (!IsTerminalState(upgrade_info_.state)) {
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
                 return false;
             }
             cancel_requested_ = false;
-            status_ = UpgradeInfo{};
-            status_.state = UpgradeState::kValidating;
-            status_.progress_percent = 0;
-            status_.current_stage = UpgradeStateToString(UpgradeState::kValidating);
-            status_.ok = true;
-            status_.started_at_ms = infra::Time::SystemTimeMillis();
+            upgrade_info_ = UpgradeInfo{};
+            current_package_path_ = checked_package_path;
+            upgrade_info_.state = UpgradeState::kValidating;
+            upgrade_info_.progress_percent = 0;
+            upgrade_info_.current_stage = UpgradeStateToString(UpgradeState::kValidating);
+            upgrade_info_.ok = true;
+            upgrade_info_.started_at_ms = infra::Time::SystemTimeMillis();
             executor = executor_.get();
         }
         PublishProgressChanged();
@@ -269,29 +275,43 @@ public:
         std::string target;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!initialized_ || !started_ || platform_ == nullptr) {
+            if (!initialized_ || !started_) {
                 RecordAudit(context, "upgrade", OperationResult::kRejected,
                             "service not started");
                 return false;
             }
-            if (!IsCancelableState(status_.state)) {
-                RecordAudit(context, status_.target_version,
+            if (!IsCancelableState(upgrade_info_.state)) {
+                RecordAudit(context, upgrade_info_.target_version,
                             OperationResult::kRejected, "upgrade not cancelable");
                 return false;
             }
             cancel_requested_ = true;
-            target = status_.target_version;
-            status_.state = UpgradeState::kCanceled;
-            status_.current_stage = UpgradeStateToString(UpgradeState::kCanceled);
-            status_.ok = true;
-            status_.error_message = "canceled";
-            status_.finished_at_ms = infra::Time::SystemTimeMillis();
+            target = upgrade_info_.target_version;
             platform = platform_;
         }
         const bool cancel_ok = platform->CancelUpgrade();
+        if (!cancel_ok) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                cancel_requested_ = false;
+            }
+            PublishProgressChanged();
+            const std::string msg = PlatformErrorMsg(platform, "cancel failed");
+            RecordAudit(context, target, OperationResult::kFailed, msg);
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            upgrade_info_.state = UpgradeState::kCanceled;
+            upgrade_info_.current_stage = UpgradeStateToString(UpgradeState::kCanceled);
+            upgrade_info_.ok = true;
+            upgrade_info_.error_message = "canceled";
+            upgrade_info_.finished_at_ms = infra::Time::SystemTimeMillis();
+        }
+        CleanupCurrentPackageFile();
         PublishProgressChanged();
-        RecordAudit(context, target, ToOperationResult(cancel_ok), "canceled");
-        return cancel_ok;
+        RecordAudit(context, target, OperationResult::kSuccess, "canceled");
+        return true;
     }
 
     bool ConfirmReboot(const live_stream::RequestContext& context) override {
@@ -299,18 +319,18 @@ public:
         std::string target;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (!initialized_ || !started_ || platform_ == nullptr) {
+            if (!initialized_ || !started_) {
                 RecordAudit(context, "upgrade", OperationResult::kRejected,
                             "service not started");
                 return false;
             }
-            if (status_.state != UpgradeState::kWaitingReboot) {
-                RecordAudit(context, status_.target_version,
+            if (upgrade_info_.state != UpgradeState::kWaitingReboot) {
+                RecordAudit(context, upgrade_info_.target_version,
                             OperationResult::kRejected, "reboot not pending");
                 return false;
             }
             platform = platform_;
-            target = status_.target_version;
+            target = upgrade_info_.target_version;
         }
 
         const bool reboot_ok = platform->RebootToApply();
@@ -415,20 +435,30 @@ private:
         UpgradePackageInfo info =
             platform->ValidatePackage(request.package_path);
         if (info.version.empty()) {
-            SetFailed("package validation failed", false);
+            if (IsCancelRequested()) {
+                return;
+            }
+            const std::string msg =
+                PlatformErrorMsg(platform, "package validation failed");
+            CleanupCurrentPackageFile();
+            SetFailed(msg, false);
             RecordAudit(context, request.package_path, OperationResult::kFailed,
-                        "package validation failed");
+                        msg);
             return;
         }
         if (info.package_path.empty()) {
             info.package_path = request.package_path;
         }
 
-        std::string policy_reason;
-        if (!ValidateVersionPolicy(platform, info, request, &policy_reason)) {
-            SetFailed(policy_reason, false);
+        std::string policy_msg;
+        if (!ValidateVersionPolicy(platform, info, request, &policy_msg)) {
+            if (IsCancelRequested()) {
+                return;
+            }
+            CleanupCurrentPackageFile();
+            SetFailed(policy_msg, false);
             RecordAudit(context, info.version, OperationResult::kRejected,
-                        policy_reason);
+                        policy_msg);
             return;
         }
 
@@ -438,10 +468,16 @@ private:
         UpdateTargetVersion(info.version);
         UpdateStatus(UpgradeState::kPreparing, 10, true, "");
         if (!platform->PrepareUpgrade(info)) {
+            if (IsCancelRequested()) {
+                return;
+            }
+            const std::string msg =
+                PlatformErrorMsg(platform, "prepare upgrade failed");
             static_cast<void>(platform->CleanupFailedUpgrade());
-            SetFailed("prepare upgrade failed", false);
+            CleanupCurrentPackageFile();
+            SetFailed(msg, false);
             RecordAudit(context, info.version, OperationResult::kFailed,
-                        "prepare upgrade failed");
+                        msg);
             return;
         }
 
@@ -458,10 +494,13 @@ private:
             });
         if (!write_ok) {
             if (!IsCancelRequested()) {
+                const std::string msg =
+                    PlatformErrorMsg(platform, "write upgrade failed");
                 static_cast<void>(platform->CleanupFailedUpgrade());
-                SetFailed("write upgrade failed", false);
+                CleanupCurrentPackageFile();
+                SetFailed(msg, false);
                 RecordAudit(context, info.version, OperationResult::kFailed,
-                            "write upgrade failed");
+                            msg);
             }
             return;
         }
@@ -471,18 +510,24 @@ private:
         }
         UpdateStatus(UpgradeState::kCommitting, 90, true, "");
         if (!platform->CommitUpgrade(info)) {
-            SetFailed("commit upgrade failed", true);
+            const std::string msg =
+                PlatformErrorMsg(platform, "commit upgrade failed");
+            CleanupCurrentPackageFile();
+            SetFailed(msg, true);
             RecordAudit(context, info.version, OperationResult::kFailed,
-                        "commit upgrade failed");
+                        msg);
             return;
         }
+        CleanupCurrentPackageFile();
 
         if (info.requires_reboot) {
             if (request.auto_reboot) {
                 if (!platform->RebootToApply()) {
-                    SetFailed("reboot failed", true);
+                    const std::string msg =
+                        PlatformErrorMsg(platform, "reboot failed");
+                    SetFailed(msg, true);
                     RecordAudit(context, info.version, OperationResult::kFailed,
-                                "reboot failed");
+                                msg);
                     return;
                 }
                 UpdateStatus(UpgradeState::kCompleted, 100, true, "");
@@ -503,39 +548,65 @@ private:
     bool ValidateVersionPolicy(IUpgradePlatform* platform,
                                const UpgradePackageInfo& info,
                                const UpgradeRequest& request,
-                               std::string* reason) {
+                               std::string* msg) {
         if (!request.expected_version.empty() &&
             request.expected_version != info.version) {
-            if (reason != nullptr) {
-                *reason = "unexpected package version";
+            if (msg != nullptr) {
+                *msg = "unexpected package version";
             }
             return false;
         }
 
         const std::string current_version = platform->GetCurrentVersion();
         if (current_version.empty()) {
-            if (reason != nullptr) {
-                *reason = "current version unavailable";
+            if (msg != nullptr) {
+                *msg = "current version unavailable";
             }
             return false;
         }
         const int compare = platform->CompareVersion(info.version, current_version);
         if (compare == 0 && !request.allow_same_version) {
-            if (reason != nullptr) {
-                *reason = "same version is not allowed";
+            if (msg != nullptr) {
+                *msg = "same version is not allowed";
             }
             return false;
         }
         if (compare < 0 && !request.allow_downgrade) {
-            if (reason != nullptr) {
-                *reason = "downgrade is not allowed";
+            if (msg != nullptr) {
+                *msg = "downgrade is not allowed";
             }
             return false;
         }
-        if (reason != nullptr) {
-            reason->clear();
+        if (msg != nullptr) {
+            msg->clear();
         }
         return true;
+    }
+
+    std::string PlatformErrorMsg(IUpgradePlatform* platform,
+                                 const std::string& fallback) {
+        if (platform == nullptr) {
+            return fallback;
+        }
+        const std::string msg = platform->LastError();
+        return msg.empty() ? fallback : msg;
+    }
+
+    void CleanupPackageFile(const std::string& package_path) {
+        if (package_path.empty()) {
+            return;
+        }
+        static_cast<void>(std::remove(package_path.c_str()));
+    }
+
+    void CleanupCurrentPackageFile() {
+        std::string package_path;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            package_path = current_package_path_;
+            current_package_path_.clear();
+        }
+        CleanupPackageFile(package_path);
     }
 
     bool IsCancelRequested() {
@@ -545,20 +616,20 @@ private:
 
     void UpdateTargetVersion(const std::string& version) {
         std::lock_guard<std::mutex> lock(mutex_);
-        status_.target_version = version;
+        upgrade_info_.target_version = version;
     }
 
     void UpdateWritingProgress(uint32_t progress_percent) {
         bool changed = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (status_.state != UpgradeState::kWriting || cancel_requested_) {
+            if (upgrade_info_.state != UpgradeState::kWriting || cancel_requested_) {
                 return;
             }
             progress_percent =
                 infra::Clamp<uint32_t>(progress_percent, 0U, 89U);
-            if (progress_percent > status_.progress_percent) {
-                status_.progress_percent = progress_percent;
+            if (progress_percent > upgrade_info_.progress_percent) {
+                upgrade_info_.progress_percent = progress_percent;
                 changed = true;
             }
         }
@@ -573,23 +644,23 @@ private:
                       const std::string& error_message) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            status_.state = state;
-            status_.progress_percent =
+            upgrade_info_.state = state;
+            upgrade_info_.progress_percent =
                 infra::Clamp<uint32_t>(progress_percent, 0U, 100U);
-            status_.current_stage = UpgradeStateToString(state);
-            status_.ok = ok;
-            status_.error_message = error_message;
+            upgrade_info_.current_stage = UpgradeStateToString(state);
+            upgrade_info_.ok = ok;
+            upgrade_info_.error_message = error_message;
             if (state == UpgradeState::kCompleted || state == UpgradeState::kFailed ||
                 state == UpgradeState::kCanceled) {
-                status_.finished_at_ms = infra::Time::SystemTimeMillis();
+                upgrade_info_.finished_at_ms = infra::Time::SystemTimeMillis();
             }
         }
         PublishProgressChanged();
     }
 
-    void SetFailed(const std::string& message,
+    void SetFailed(const std::string& msg,
                    bool committed) {
-        std::string full_message = message;
+        std::string full_message = msg;
         if (committed && !full_message.empty()) {
             full_message += "; committed upgrade may require manual recovery";
         } else if (committed) {
@@ -603,12 +674,13 @@ private:
         if (event_bus == nullptr) {
             return;
         }
-        UpgradeInfo status = GetUpgradeInfo();
+        UpgradeInfo upgrade_info = GetUpgradeInfo();
         event::Event progress_event;
         progress_event.type = event::EventType::kUpgradeProgressChanged;
         progress_event.source = kServiceName;
-        progress_event.message = status.current_stage;
-        progress_event.value = static_cast<int32_t>(status.progress_percent);
+        progress_event.message = upgrade_info.current_stage;
+        progress_event.value =
+            static_cast<int32_t>(upgrade_info.progress_percent);
         static_cast<void>(event_bus->Publish(progress_event));
     }
 
@@ -639,7 +711,8 @@ private:
     std::unique_ptr<IUpgradePlatform> restricted_platform_;
     IUpgradePlatform* platform_ = nullptr;
     mutable std::mutex mutex_;
-    UpgradeInfo status_;
+    UpgradeInfo upgrade_info_;
+    std::string current_package_path_;
     bool initialized_ = false;
     bool started_ = false;
     bool cancel_requested_ = false;

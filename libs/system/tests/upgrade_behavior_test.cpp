@@ -1,4 +1,4 @@
-#include "upgrade.h"
+#include "system/upgrade.h"
 
 #include "event.h"
 #include "infra/time.h"
@@ -160,6 +160,10 @@ struct FakeUpgradePlatform : IUpgradePlatform {
         return cleanup_ok;
     }
 
+    std::string LastError() override {
+        return last_error;
+    }
+
     bool WaitWritingStarted() {
         std::unique_lock<std::mutex> lock(mutex);
         return condition.wait_for(lock, std::chrono::milliseconds(1000),
@@ -181,6 +185,7 @@ struct FakeUpgradePlatform : IUpgradePlatform {
     bool cancel_ok = true;
     bool reboot_ok = true;
     bool cleanup_ok = true;
+    std::string last_error;
     bool block_in_write = false;
     bool writing_started = false;
     bool release_write = false;

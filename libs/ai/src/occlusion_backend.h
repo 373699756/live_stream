@@ -3,7 +3,7 @@
 
 #include "ai.h"
 #include "hisi_ai_platform.h"
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_vendor/sdk.h"
 
 namespace live_stream {
 namespace ai_internal {
@@ -41,7 +41,7 @@ private:
     bool CopyFrameLuma(const hisisdk::YuvFrame &frame,
                        OcclusionImage *image) const;
     bool CanUseFrame(const hisisdk::YuvFrame &frame) const;
-    uint32_t HitSize() const;
+    uint32_t OccludedBlockTotal() const;
     bool ReadBlockStats(const HI_U64 *integral,
                         uint32_t block_width,
                         uint32_t block_height,

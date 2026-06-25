@@ -8,7 +8,7 @@
 namespace live_stream {
 namespace device_internal {
 
-std::unique_ptr<DeviceMedia> CreateDeviceMediaCore(
+std::unique_ptr<DeviceMedia> CreateDeviceMediaImpl(
     const DeviceMediaOptions &options);
 
 }  // namespace device_internal

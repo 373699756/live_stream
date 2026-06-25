@@ -2,7 +2,7 @@ import type { SystemInfo } from '../api/types';
 import { StatusBadge } from '../components/StatusBadge';
 
 interface SystemInfoPanelsProps {
-    status: SystemInfo;
+    systemInfo: SystemInfo;
 }
 
 const moduleLabels: Record<string, string> = {
@@ -43,66 +43,66 @@ function moduleLabel(name: string) {
     return moduleLabels[name] || name;
 }
 
-export function SystemInfoPanel({ status }: SystemInfoPanelsProps) {
+export function SystemInfoPanel({ systemInfo }: SystemInfoPanelsProps) {
     return (
         <section className="panel">
             <h2>系统状态</h2>
             <div className="metric-grid">
                 <div>
                     <span>CPU</span>
-                    <strong>{status.cpu}%</strong>
+                    <strong>{systemInfo.cpu}%</strong>
                 </div>
                 <div>
                     <span>内存</span>
-                    <strong>{status.memory}%</strong>
+                    <strong>{systemInfo.memory}%</strong>
                 </div>
                 <div>
                     <span>温度</span>
-                    <strong>{status.temperature} C</strong>
+                    <strong>{systemInfo.temperature} C</strong>
                 </div>
                 <div>
                     <span>运行时间</span>
-                    <strong>{status.uptime}</strong>
+                    <strong>{systemInfo.uptime}</strong>
                 </div>
             </div>
         </section>
     );
 }
 
-export function DeviceInfoPanel({ status }: SystemInfoPanelsProps) {
+export function DeviceInfoPanel({ systemInfo }: SystemInfoPanelsProps) {
     return (
         <section className="panel">
             <h2>设备信息</h2>
             <div className="info-table">
                 <div>
                     <span>设备名</span>
-                    <strong>{status.deviceName}</strong>
+                    <strong>{systemInfo.deviceName}</strong>
                 </div>
                 <div>
                     <span>型号</span>
-                    <strong>{status.model}</strong>
+                    <strong>{systemInfo.model}</strong>
                 </div>
                 <div>
                     <span>固件版本</span>
-                    <strong>{status.firmware}</strong>
+                    <strong>{systemInfo.firmware}</strong>
                 </div>
             </div>
         </section>
     );
 }
 
-export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
-    const runningSize = status.modules.filter(
+export function ModuleStatusPanel({ systemInfo }: SystemInfoPanelsProps) {
+    const runningModuleTotal = systemInfo.modules.filter(
         (module) => module.state === 'running',
     ).length;
-    const pendingSize = status.modules.filter(
+    const pendingModuleTotal = systemInfo.modules.filter(
         (module) => module.state === 'pending',
     ).length;
-    const errorSize = status.modules.filter(
+    const errorModuleTotal = systemInfo.modules.filter(
         (module) => module.state === 'error',
     ).length;
     const groupedNames = new Set(moduleGroups.flatMap((group) => group.names));
-    const extraModules = status.modules.filter(
+    const extraModules = systemInfo.modules.filter(
         (module) => !groupedNames.has(module.name),
     );
 
@@ -118,19 +118,19 @@ export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
             <div className="module-summary-row">
                 <div>
                     <span>总模块</span>
-                    <strong>{status.modules.length}</strong>
+                    <strong>{systemInfo.modules.length}</strong>
                 </div>
                 <div>
                     <span>运行中</span>
-                    <strong>{runningSize}</strong>
+                    <strong>{runningModuleTotal}</strong>
                 </div>
                 <div>
                     <span>待接入</span>
-                    <strong>{pendingSize}</strong>
+                    <strong>{pendingModuleTotal}</strong>
                 </div>
                 <div>
                     <span>异常</span>
-                    <strong>{errorSize}</strong>
+                    <strong>{errorModuleTotal}</strong>
                 </div>
             </div>
 
@@ -138,7 +138,7 @@ export function ModuleStatusPanel({ status }: SystemInfoPanelsProps) {
                 {moduleGroups.map((group) => {
                     const modules = group.names
                         .map((name) =>
-                            status.modules.find(
+                            systemInfo.modules.find(
                                 (module) => module.name === name,
                             ),
                         )

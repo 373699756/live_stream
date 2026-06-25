@@ -13,14 +13,15 @@ class IConfig;
 class ILogger;
 class IAlarm;
 class INetwork;
-class OnvifServer;
-class IRtsp;
+class IOnvifStatusReader;
+class IRtspSessionReader;
 class ISystem;
 class ITime;
 class IUpgrade;
 class IWebrtc;
+class IWebrtcStatusReader;
 class DeviceMedia;
-class IAiView;
+class IAiReader;
 
 struct HttpDependencies {
     INetIo *net_io = nullptr;
@@ -33,11 +34,12 @@ struct HttpDependencies {
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
-    IRtsp *rtsp = nullptr;
-    OnvifServer *onvif = nullptr;
-    IAiView *ai = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IAiReader *ai = nullptr;
     DeviceMedia *device = nullptr;
     IWebrtc *webrtc = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader = nullptr;
     MediaStreams *media_streams = nullptr;
     event::Dispatcher *event = nullptr;
 };

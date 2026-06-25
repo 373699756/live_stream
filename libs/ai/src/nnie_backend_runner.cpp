@@ -624,14 +624,14 @@ private:
         }
         const SVP_NNIE_SEG_S &seg = model_.astSeg[0];
         const SVP_SRC_BLOB_S &src = seg_data_[0].src[0];
-        if (seg.u16SrcNum != 1 || seg.u16DstNum != kSsdReportNodeSize ||
+        if (seg.u16SrcNum != 1 || seg.u16DstNum != kSsdReportNodes ||
             src.enType != SVP_BLOB_TYPE_U8 ||
             src.unShape.stWhc.u32Chn != 3 ||
             src.unShape.stWhc.u32Width != kSsdInputWidth ||
             src.unShape.stWhc.u32Height != kSsdInputHeight) {
             return false;
         }
-        for (uint32_t i = 0; i < kSsdReportNodeSize; ++i) {
+        for (uint32_t i = 0; i < kSsdReportNodes; ++i) {
             if (seg_data_[0].dst[i].enType != SVP_BLOB_TYPE_S32) {
                 return false;
             }
@@ -1394,8 +1394,8 @@ private:
         return true;
     }
 
-    bool AppendS32BlobValues(const SVP_DST_BLOB_S &blob,
-                             std::vector<int32_t> *values) const {
+    bool CopyS32BlobValues(const SVP_DST_BLOB_S &blob,
+                           std::vector<int32_t> *values) const {
         if (values == nullptr || blob.enType != SVP_BLOB_TYPE_S32 ||
             blob.u64VirAddr == 0 ||
             blob.u32Stride < blob.unShape.stWhc.u32Width * sizeof(int32_t)) {
@@ -1407,6 +1407,17 @@ private:
             return false;
         }
         const uint32_t stride_words = blob.u32Stride / sizeof(int32_t);
+        const uint64_t total_values =
+            static_cast<uint64_t>(blob.u32Num) *
+            blob.unShape.stWhc.u32Chn *
+            blob.unShape.stWhc.u32Height *
+            blob.unShape.stWhc.u32Width;
+        if (total_values > static_cast<uint64_t>(kMaxHiU32)) {
+            return false;
+        }
+        values->clear();
+        values->resize(static_cast<std::size_t>(total_values));
+        int32_t *output = values->data();
         for (uint32_t n = 0; n < blob.u32Num; ++n) {
             const uint32_t batch_offset =
                 n * blob.unShape.stWhc.u32Chn *
@@ -1418,10 +1429,11 @@ private:
                         batch_offset +
                         (chn * blob.unShape.stWhc.u32Height + row) *
                             stride_words;
-                    for (uint32_t col = 0; col < blob.unShape.stWhc.u32Width;
-                         ++col) {
-                        values->push_back(data[row_offset + col]);
-                    }
+                    const std::size_t row_bytes =
+                        static_cast<std::size_t>(blob.unShape.stWhc.u32Width) *
+                        sizeof(int32_t);
+                    std::memcpy(output, data + row_offset, row_bytes);
+                    output += blob.unShape.stWhc.u32Width;
                 }
             }
         }
@@ -1431,18 +1443,16 @@ private:
     bool CollectSsdOutputs() {
         ssd_postprocess_.BeginFrame();
 
-        for (uint32_t layer = 0; layer < kSsdLayerSize; ++layer) {
-            ssd_layer_values_.clear();
-            if (!AppendS32BlobValues(seg_data_[0].dst[layer * 2U],
-                                     &ssd_layer_values_) ||
+        for (uint32_t layer = 0; layer < kSsdLayers; ++layer) {
+            if (!CopyS32BlobValues(seg_data_[0].dst[layer * 2U],
+                                   &ssd_layer_values_) ||
                 !ssd_postprocess_.AppendLocationLayer(layer,
                                                       ssd_layer_values_)) {
                 return false;
             }
 
-            ssd_layer_values_.clear();
-            if (!AppendS32BlobValues(seg_data_[0].dst[layer * 2U + 1U],
-                                     &ssd_layer_values_) ||
+            if (!CopyS32BlobValues(seg_data_[0].dst[layer * 2U + 1U],
+                                   &ssd_layer_values_) ||
                 !ssd_postprocess_.AppendConfidenceLayer(layer,
                                                         ssd_layer_values_)) {
                 return false;

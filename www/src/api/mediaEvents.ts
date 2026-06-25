@@ -12,17 +12,17 @@ export function openMediaEvents(
     onEvent: (event: MediaEvent) => void,
 ): EventSource {
     const source = new EventSource('/api/events');
-    const handleMessage = (message: MessageEvent<string>) => {
+    const handleMsg = (msg: MessageEvent<string>) => {
         try {
-            onEvent(JSON.parse(message.data) as MediaEvent);
+            onEvent(JSON.parse(msg.data) as MediaEvent);
         } catch {
             // Ignore malformed event frames; periodic status refresh remains active.
         }
     };
 
-    source.addEventListener('media_status_changed', handleMessage);
-    source.addEventListener('alarm_on', handleMessage);
-    source.addEventListener('alarm_off', handleMessage);
-    source.onmessage = handleMessage;
+    source.addEventListener('media_status_changed', handleMsg);
+    source.addEventListener('alarm_on', handleMsg);
+    source.addEventListener('alarm_off', handleMsg);
+    source.onmessage = handleMsg;
     return source;
 }

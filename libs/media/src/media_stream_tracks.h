@@ -17,23 +17,24 @@ struct StreamResetNotice {
 // timestamp, HLS, FLV, and MJPEG state in the same generation.
 class MediaStreamTracks {
 public:
+    void Configure(const StreamTrackCacheOptions &options);
     void Clear();
 
     const StreamTrack *Find(StreamId stream_id) const;
-    StreamTrack *FindMutable(StreamId stream_id);
+    StreamTrack &Mutable(StreamId stream_id);
 
-    bool EnsureRunning(StreamId stream_id, Codec codec,
-                       StreamResetNotice *notice);
+    void EnsureRunning(StreamId stream_id, Codec codec,
+                       StreamResetNotice &notice);
     void SetState(StreamId stream_id, MediaStreamState state, Codec codec,
-                  StreamResetNotice *notice);
+                  StreamResetNotice &notice);
     void Reset(StreamId stream_id, Codec codec, MediaStreamResetReason reason,
-               StreamResetNotice *notice);
+               StreamResetNotice &notice);
 
     const StreamTrack &main_stream() const { return main_stream_; }
     const StreamTrack &sub_stream() const { return sub_stream_; }
 
 private:
-    static void FillResetNotice(StreamResetNotice *notice, StreamId stream_id,
+    static void FillResetNotice(StreamResetNotice &notice, StreamId stream_id,
                                 Codec codec, MediaStreamResetReason reason);
 
     StreamTrack main_stream_;

@@ -8,7 +8,7 @@ release_dir="${test_dir}/release"
 key_dir="${repo_root}/build/package_release_test_signing"
 sign_key="${key_dir}/upgrade_private_key.pem"
 public_key="${key_dir}/upgrade_public_key.pem"
-auto_signing_dir="${key_dir}/auto"
+default_signing_dir="${key_dir}/default"
 fake_tools_dir="${test_dir}/tools"
 reject_log="${test_dir}/reject.log"
 build_bin_backup="${test_dir}/build_bin_backup"
@@ -105,6 +105,7 @@ assert_install_signature_ok() {
 }
 
 require_cmd openssl
+require_cmd sha256sum
 require_cmd unzip
 require_cmd zipinfo
 
@@ -121,7 +122,7 @@ openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
 (
   unset UPGRADE_SIGN_KEY
   unset UPGRADE_PUBLIC_KEY
-  RELEASE_SIGNING_DIR="${auto_signing_dir}" \
+  RELEASE_SIGNING_DIR="${default_signing_dir}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
   MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
     "${release_script}" "${release_dir}" 9.9.0 >/dev/null
@@ -129,57 +130,87 @@ openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
 assert_zip_entries "${release_dir}/flash/upgrade-all.zip" \
   "Install Install.sig bin.squashfs config.jffs2 web.squashfs "
 assert_install_signature_ok "${release_dir}/flash/upgrade-all.zip" \
-  "${auto_signing_dir}/development_upgrade_public_key.pem"
-[ -f "${auto_signing_dir}/development_upgrade_private_key.pem" ] ||
-  fail "auto signing key was not generated"
-cmp -s "${auto_signing_dir}/development_upgrade_public_key.pem" \
+  "${default_signing_dir}/default_upgrade_public_key.pem"
+[ -f "${default_signing_dir}/default_upgrade_private_key.pem" ] ||
+  fail "default signing key was not generated"
+cmp -s "${default_signing_dir}/default_upgrade_public_key.pem" \
   "${release_dir}/flash/config_root/upgrade_public_key.pem" ||
   fail "default all package did not stage generated public key"
-
-UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
-  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
-  "${release_script}" "${release_dir}" 9.9.1 web-only >/dev/null
-assert_zip_entries "${release_dir}/flash/upgrade-web-only.zip" \
-  "Install Install.sig web.squashfs "
-assert_install_signature_ok "${release_dir}/flash/upgrade-web-only.zip"
-if unzip -p "${release_dir}/flash/upgrade-web-only.zip" Install |
-    grep -q '"Partition": "rootfs"'; then
-  fail "web-only package declared rootfs"
-fi
-
-UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
-  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
-  "${release_script}" "${release_dir}" 9.9.2 bin-web >/dev/null
-assert_zip_entries "${release_dir}/flash/upgrade-bin-web.zip" \
-  "Install Install.sig bin.squashfs web.squashfs "
-if unzip -l "${release_dir}/flash/upgrade-bin-web.zip" |
+default_private_sha=$(sha256sum \
+  "${default_signing_dir}/default_upgrade_private_key.pem" | awk '{print $1}')
+default_public_sha=$(sha256sum \
+  "${default_signing_dir}/default_upgrade_public_key.pem" | awk '{print $1}')
+if unzip -l "${release_dir}/flash/upgrade-all.zip" |
     grep -q 'live_sysupgrade'; then
   fail "package must not carry live_sysupgrade as executable entry"
 fi
 
+(
+  unset UPGRADE_SIGN_KEY
+  unset UPGRADE_PUBLIC_KEY
+  RELEASE_SIGNING_DIR="${default_signing_dir}" \
+  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
+  MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
+    "${release_script}" "${release_dir}" 9.9.0 >/dev/null
+)
+[ "${default_private_sha}" = "$(sha256sum \
+  "${default_signing_dir}/default_upgrade_private_key.pem" | awk '{print $1}')" ] ||
+  fail "default private key was regenerated despite matching public key"
+[ "${default_public_sha}" = "$(sha256sum \
+  "${default_signing_dir}/default_upgrade_public_key.pem" | awk '{print $1}')" ] ||
+  fail "default public key was regenerated despite matching private key"
+
+openssl genrsa -out "${test_dir}/mismatch_private_key.pem" 2048 >/dev/null 2>&1
+openssl rsa -in "${test_dir}/mismatch_private_key.pem" -pubout \
+  -out "${default_signing_dir}/default_upgrade_public_key.pem" >/dev/null 2>&1
+(
+  unset UPGRADE_SIGN_KEY
+  unset UPGRADE_PUBLIC_KEY
+  RELEASE_SIGNING_DIR="${default_signing_dir}" \
+  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
+  MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
+    "${release_script}" "${release_dir}" 9.9.0 >/dev/null
+)
+[ "${default_private_sha}" != "$(sha256sum \
+  "${default_signing_dir}/default_upgrade_private_key.pem" | awk '{print $1}')" ] ||
+  fail "default private key was not regenerated for mismatched public key"
+assert_install_signature_ok "${release_dir}/flash/upgrade-all.zip" \
+  "${default_signing_dir}/default_upgrade_public_key.pem"
+
+UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
+  MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
+  "${release_script}" "${release_dir}" 9.9.1 web >/dev/null
+assert_zip_entries "${release_dir}/flash/upgrade-web.zip" \
+  "Install Install.sig web.squashfs "
+assert_install_signature_ok "${release_dir}/flash/upgrade-web.zip"
+if unzip -p "${release_dir}/flash/upgrade-web.zip" Install |
+    grep -q '"Partition": "rootfs"'; then
+  fail "web package declared rootfs"
+fi
+
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKFS_JFFS2="${fake_tools_dir}/mkfs.jffs2" \
-  "${release_script}" "${release_dir}" 9.9.3 config-only >/dev/null
-assert_zip_entries "${release_dir}/flash/upgrade-config-only.zip" \
+  "${release_script}" "${release_dir}" 9.9.3 config >/dev/null
+assert_zip_entries "${release_dir}/flash/upgrade-config.zip" \
   "Install Install.sig config.jffs2 "
 cmp -s "${public_key}" \
   "${release_dir}/flash/config_root/upgrade_public_key.pem" ||
-  fail "config-only package did not stage public key"
+  fail "config package did not stage public key"
 
 if UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
-    "${release_script}" "${release_dir}" 9.9.4 kernel-rootfs \
+    "${release_script}" "${release_dir}" 9.9.4 bin-web \
+    >"${reject_log}" 2>&1; then
+  fail "bin-web profile should be rejected"
+fi
+grep -q 'all|web|config' "${reject_log}" ||
+  fail "bin-web rejection message missing"
+
+if UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
+    "${release_script}" "${release_dir}" 9.9.5 kernel-rootfs \
     >"${reject_log}" 2>&1; then
   fail "kernel-rootfs profile should be rejected"
 fi
-grep -q 'rootfs online upgrade is unsafe' "${reject_log}" ||
-  fail "kernel-rootfs rejection reason missing"
-
-if UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
-    "${release_script}" "${release_dir}" 9.9.5 full \
-    >"${reject_log}" 2>&1; then
-  fail "full profile should be rejected"
-fi
-grep -q 'rootfs online upgrade is unsafe' "${reject_log}" ||
-  fail "full rejection reason missing"
+grep -q 'all|web|config' "${reject_log}" ||
+  fail "kernel-rootfs rejection message missing"
 
 echo "package_release_test: ok"

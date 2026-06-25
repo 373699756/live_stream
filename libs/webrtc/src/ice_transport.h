@@ -32,7 +32,7 @@ public:
     void Stop();
 
     bool HandleUdpPacket(NetAddress peer, const uint8_t *data, size_t size,
-                         bool *connected_now);
+                         bool &connected_now);
     bool SendToSelected(const uint8_t *data, size_t size);
 
     bool started() const { return socket_id_ != 0; }

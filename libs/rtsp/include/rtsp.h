@@ -114,17 +114,23 @@ struct RtspDependencies {
     MediaStreams* media_streams = nullptr;
 };
 
-class IRtsp {
+class IRtspSessionReader {
 public:
-    virtual ~IRtsp() = default;
+    virtual ~IRtspSessionReader() = default;
 
-    virtual bool Start() = 0;
-    virtual void Stop() = 0;
-    virtual bool ApplyOptions(const RtspOptions& options) = 0;
     virtual RtspListenAddress LocalAddress() const = 0;
     virtual RtspStats GetStats() const = 0;
     virtual std::vector<RtspSessionInfo>
     ListSessionInfo() const = 0;
+};
+
+class IRtsp : public IRtspSessionReader {
+public:
+    ~IRtsp() override = default;
+
+    virtual bool Start() = 0;
+    virtual void Stop() = 0;
+    virtual bool ApplyOptions(const RtspOptions& options) = 0;
 };
 
 std::unique_ptr<IRtsp> CreateRtsp(

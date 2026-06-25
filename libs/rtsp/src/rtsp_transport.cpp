@@ -5,10 +5,10 @@
 namespace live_stream {
 
 bool RtspTransport::SendRtpPacket(
-    INetIo *net_io, const RtspTransportTarget &target,
+    INetIo &net_io, const RtspRtpRoute &route,
     const MediaFrame &frame, const rtp::RtpPacketView &packet) {
     const size_t packet_size = packet.Size();
-    if (net_io == nullptr || packet_size == 0 || packet_size > 0xffff) {
+    if (packet_size == 0 || packet_size > 0xffff) {
         return false;
     }
 
@@ -18,8 +18,8 @@ bool RtspTransport::SendRtpPacket(
     NetBufferSlices slices;
     bool ok = true;
     uint8_t interleaved_header[4] = {
-        '$', target.interleaved_rtp_channel, 0, 0};
-    if (target.mode == RtspTransportMode::kTcpInterleaved) {
+        '$', route.interleaved_rtp_channel, 0, 0};
+    if (route.mode == RtspTransportMode::kTcpInterleaved) {
         // RTSP TCP interleaved 帧格式为 '$' + channel + 16bit length + RTP packet。
         // RTP packet 本身保持分片，交给 net 一次性排队，减少热路径复制。
         byte_writer::WriteU16(interleaved_header + 2,
@@ -31,18 +31,18 @@ bool RtspTransport::SendRtpPacket(
                             slice.media_payload ? payload_buffer
                                                 : MediaBufferRef());
         }
-        return ok && net_io->SendSlices(target.connection_id, slices);
+        return ok && net_io.SendSlices(route.connection_id, slices);
     }
 
-    if (target.mode == RtspTransportMode::kUdp && target.udp_socket_id != 0) {
+    if (route.mode == RtspTransportMode::kUdp && route.udp_socket_id != 0) {
         // UDP RTP 是完整 datagram，超过 MTU 的分片已经由 RtpPacketizer 完成；
         // 这里只把 RTP header/payload slices 聚合给 sendmsg。
         for (size_t i = 0; ok && i < packet.slice_size; ++i) {
             const rtp::RtpPacketSlice &slice = packet.slices[i];
             ok = slices.Add(slice.data, slice.size);
         }
-        return ok && net_io->SendToSlices(target.udp_socket_id,
-                                          target.udp_peer, slices);
+        return ok && net_io.SendToSlices(route.udp_socket_id,
+                                         route.udp_peer, slices);
     }
 
     return false;

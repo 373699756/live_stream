@@ -200,6 +200,8 @@ the Web UI also listens to `/api/events` for `alarm_triggered`.
 The default device AI model path is `models/inst_ssd_cycle.wk` with 300x300
 input, sub-stream inference, and a 500 ms interval. Deploy optional model assets
 under `/mnt/live_stream/models/` when AI is enabled.
+The production backend id exposed to Web callers is `hisi3516dv300_nnie`;
+host-side stubs are not config or UI options.
 Supported AI tasks are `object_detection`, `perimeter_detection`,
 `motion_classification`, and `occlusion_detection`.
 `perimeter_detection` uses optional normalized `perimeter_regions`; an empty

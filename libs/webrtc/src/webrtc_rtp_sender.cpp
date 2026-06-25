@@ -9,29 +9,28 @@ namespace webrtc_internal {
 
 class WebrtcRtpPacketSink final : public rtp::IRtpPacketSink {
 public:
-    WebrtcRtpPacketSink(WebrtcRtpSender *sender,
-                        const WebrtcPeerInfo *peer,
-                        const MediaFrame *frame,
-                        const WebrtcRtpSenderContext *context)
+    WebrtcRtpPacketSink(WebrtcRtpSender &sender,
+                        const WebrtcPeerInfo &peer,
+                        const MediaFrame &frame,
+                        const WebrtcRtpSenderContext &context)
         : sender_(sender),
           peer_(peer),
           frame_(frame),
           context_(context) {}
 
     bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
-        if (sender_ == nullptr || peer_ == nullptr || frame_ == nullptr ||
-            context_ == nullptr || !ok_) {
+        if (!ok_) {
             return false;
         }
-        ok_ = sender_->SendRtpPacketView(*peer_, *frame_, packet, *context_);
+        ok_ = sender_.SendRtpPacketView(peer_, frame_, packet, context_);
         return ok_;
     }
 
 private:
-    WebrtcRtpSender *sender_ = nullptr;
-    const WebrtcPeerInfo *peer_ = nullptr;
-    const MediaFrame *frame_ = nullptr;
-    const WebrtcRtpSenderContext *context_ = nullptr;
+    WebrtcRtpSender &sender_;
+    const WebrtcPeerInfo &peer_;
+    const MediaFrame &frame_;
+    const WebrtcRtpSenderContext &context_;
     bool ok_ = true;
 };
 
@@ -78,9 +77,8 @@ void WebrtcRtpSender::Clear() {
 bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
                                 const MediaFrame &frame,
                                 const WebrtcRtpSenderContext &context) {
-    if (context.mutex == nullptr || context.service_stats == nullptr ||
-        !context.peer_host || peer.peer_id.empty() ||
-        frame.stream_id != peer.stream_id || frame.codec != peer.codec ||
+    if (peer.peer_id.empty() || frame.stream_id != peer.stream_id ||
+        frame.codec != peer.codec ||
         !IsMediaFramePayloadValid(frame)) {
         return false;
     }
@@ -88,26 +86,26 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     const bool frame_is_keyframe = IsKeyframe(frame);
     uint16_t sequence = 0;
     WebrtcRtpSendParameters parameters;
-    if (!context.peer_host->GetRtpSendParameters(peer.peer_id, &parameters) ||
+    if (!context.peer_host.GetRtpSendParameters(peer.peer_id, parameters) ||
         parameters.codec != frame.codec || parameters.payload_type == 0 ||
         parameters.clock_rate != rtp::kRtpClockRate ||
         parameters.ssrc == 0) {
-        std::lock_guard<std::mutex> guard(*context.mutex);
-        ++context.service_stats->dropped_frames;
+        std::lock_guard<std::mutex> guard(context.mutex);
+        ++context.service_stats.dropped_frames;
         return false;
     }
     const uint32_t rtp_timestamp =
         rtp::RtpTimestampFromPtsUs(frame.pts_us, parameters.clock_rate);
 
     {
-        std::lock_guard<std::mutex> guard(*context.mutex);
+        std::lock_guard<std::mutex> guard(context.mutex);
         auto iter = peers_.find(peer.peer_id);
         if (iter == peers_.end()) {
             return false;
         }
         PeerRtpState &state = iter->second;
         if (state.codec != frame.codec) {
-            ++context.service_stats->dropped_frames;
+            ++context.service_stats.dropped_frames;
             return false;
         }
         state.ssrc = parameters.ssrc;
@@ -116,19 +114,19 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         if (state.has_last_rtp_timestamp &&
             rtp::IsRtpTimestampBackwards(rtp_timestamp,
                                          state.last_rtp_timestamp)) {
-            ++context.service_stats->dropped_frames;
+            ++context.service_stats.dropped_frames;
             return false;
         }
         if (!state.keyframe_seen) {
             if (!frame_is_keyframe) {
-                ++context.service_stats->dropped_frames;
+                ++context.service_stats.dropped_frames;
                 return false;
             }
         }
         sequence = state.sequence;
     }
 
-    WebrtcRtpPacketSink sink(this, &peer, &frame, &context);
+    WebrtcRtpPacketSink sink(*this, peer, frame, context);
     rtp::RtpPacketizerInput input;
     input.codec = RtpCodecFromCodec(frame.codec);
     // WebRTC 发送使用 MediaFrame 持有的 payload；RTP packetizer
@@ -142,7 +140,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     const bool packetized = packetizer_.Packetize(input, &sink);
 
     {
-        std::lock_guard<std::mutex> guard(*context.mutex);
+        std::lock_guard<std::mutex> guard(context.mutex);
         auto iter = peers_.find(peer.peer_id);
         if (iter != peers_.end()) {
             iter->second.sequence = sequence;
@@ -155,9 +153,9 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
             }
         }
         if (!packetized) {
-            ++context.service_stats->dropped_frames;
+            ++context.service_stats.dropped_frames;
         } else {
-            ++context.service_stats->sent_frames;
+            ++context.service_stats.sent_frames;
         }
     }
     return packetized;
@@ -168,20 +166,19 @@ bool WebrtcRtpSender::SendRtpPacketView(
     const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
     const WebrtcRtpSenderContext &context) {
-    if (!context.peer_host || context.mutex == nullptr ||
-        context.service_stats == nullptr || packet.Size() == 0) {
+    if (packet.Size() == 0) {
         return false;
     }
 
     // packet view 中的媒体 slice 只在当前调用栈有效。peer_host/transport 会在
     // SRTP protect 阶段复制成加密后的连续 UDP packet。
-    const bool sent = context.peer_host->SendRtpPacket(peer, frame, packet);
+    const bool sent = context.peer_host.SendRtpPacket(peer, frame, packet);
     {
-        std::lock_guard<std::mutex> guard(*context.mutex);
+        std::lock_guard<std::mutex> guard(context.mutex);
         if (sent) {
-            ++context.service_stats->sent_rtp_packets;
+            ++context.service_stats.sent_rtp_packets;
         } else {
-            ++context.service_stats->dropped_rtp_packets;
+            ++context.service_stats.dropped_rtp_packets;
         }
     }
     return sent;

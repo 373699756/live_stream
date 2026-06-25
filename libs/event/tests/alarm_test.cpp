@@ -17,52 +17,52 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::ConfigStatus Set(const std::string& name,
-                                  const live_stream::ConfigJson& now,
-                                  live_stream::ConfigIssue* issue) override {
+    live_stream::ConfigCode Set(const std::string& name,
+                                  const live_stream::Json& now,
+                                  live_stream::ConfigError* error) override {
         if (name != "alarm") {
-            return live_stream::ConfigStatus::kNotFound;
+            return live_stream::ConfigCode::kMissing;
         }
         if (scope.verify) {
-            const live_stream::ConfigStatus status = scope.verify(now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code = scope.verify(now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (scope.apply) {
-            const live_stream::ConfigStatus status =
-                scope.apply(alarm_config, now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                scope.apply(alarm_config, now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         alarm_config = now;
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigJson Get(const std::string& name) override {
+    live_stream::Json Get(const std::string& name) override {
         if (name != "alarm") {
-            return live_stream::ConfigJson();
+            return live_stream::Json();
         }
         return alarm_config;
     }
 
-    live_stream::ConfigStatus Reset(
-        const std::string& name, live_stream::ConfigIssue*) override {
-        return name == "alarm" ? live_stream::ConfigStatus::kOk
-                               : live_stream::ConfigStatus::kNotFound;
+    live_stream::ConfigCode Reset(
+        const std::string& name, live_stream::ConfigError*) override {
+        return name == "alarm" ? live_stream::ConfigCode::kOk
+                               : live_stream::ConfigCode::kMissing;
     }
 
-    live_stream::ConfigJson Default(const std::string& name) override {
+    live_stream::Json Default(const std::string& name) override {
         if (name != "alarm") {
-            return live_stream::ConfigJson();
+            return live_stream::Json();
         }
         return alarm_config;
     }
 
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kOk;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kOk;
     }
 
     bool AddScope(const std::string& name,
@@ -82,15 +82,15 @@ public:
         return true;
     }
 
-    live_stream::ConfigJson alarm_config = {
+    live_stream::Json alarm_config = {
         {"motion_detection",
          {{"enabled", false},
           {"sensitivity", 50},
           {"min_duration_ms", 100},
-          {"regions", live_stream::ConfigJson::array()}}},
+          {"regions", live_stream::Json::array()}}},
         {"actions", {{"snapshot", true}, {"record", false}, {"notify", true}}},
         {"schedule",
-         {{"mode", "always"}, {"weekly", live_stream::ConfigJson::array()}}}};
+         {{"mode", "always"}, {"weekly", live_stream::Json::array()}}}};
     live_stream::ConfigScope scope;
 };
 
@@ -216,7 +216,7 @@ int main() {
     config.alarm_config["motion_detection"]["enabled"] = true;
     config.alarm_config["motion_detection"]["min_duration_ms"] = 0;
     if (config.Set("alarm", config.alarm_config, nullptr) !=
-        live_stream::ConfigStatus::kOk) {
+        live_stream::ConfigCode::kOk) {
         return 12;
     }
 

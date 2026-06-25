@@ -18,6 +18,20 @@
 - 拆文件必须按真实状态、资源或生命周期所有权；不要把同一个类的成员函数按
   start/input/output 等主题散到多个文件。
 
+## 头文件命名
+
+- 模块入口 public header 使用模块名，例如 `http.h`、`system.h`、`device.h`。
+- 模块内 public 子接口优先使用子目录表达归属、短文件名表达业务，例如
+  `system/network.h`、`system/time.h`、`system/upgrade.h`、`system/package.h`。
+- 同模块子接口不再混用 `_api`、`_format`、`upgrade_package` 这类后缀；JSON DTO
+  转换头用明确业务名，例如 `system/network_json.h`。
+- `hisi_vendor` 拥有 HiSilicon SDK 契约和生产实现入口：
+  `hisi_vendor/sdk.h`、`hisi_vendor/media_pipeline.h`、`hisi_vendor/mpp_types.h`、
+  `hisi_vendor/media_capabilities.h`、`hisi_vendor/mpp_sdk.h`。
+- `device` 只消费 `hisi_vendor` 的窄接口，不再在 `device/include/` 下拥有
+  `hisisdk/` 或 `media/` SDK 契约头。
+- 不新增旧文件名 alias/wrapper；改名必须同步所有 include、文档和构建路径。
+
 ## `Bus` / `Engine` / `Core` / `Impl`
 
 | 旧词 | 新规则 |
@@ -68,7 +82,7 @@
 
 | 词 | 使用规则 |
 | --- | --- |
-| `Status` | 保留给执行状态、解析状态、错误码或状态机枚举，例如 `ConfigStatus`、`EventStatus`、`RawParseStatus`。 |
+| `Status` | 保留给执行状态、解析状态或状态机枚举，例如 `EventStatus`、`RawParseStatus`。配置写入错误码统一使用 `ConfigCode`。 |
 | `Info` | 用于对外查询快照、当前配置视图或展示型对象，例如 `SystemInfo`、`TimeInfo`、`AlarmInfo`。 |
 | `Stats` | 用于聚合运行统计、计数和指标，例如 `WebrtcStats`、`EventStats`、`RtcpFeedbackStats`。 |
 | `Counters` | 不作为 public 或 internal 类型名继续扩散；已有计数聚合改成 `Stats`。 |

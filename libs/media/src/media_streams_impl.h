@@ -3,7 +3,7 @@
 
 #include "media/media_streams.h"
 
-#include "frame_ring.h"
+#include "frame_clients.h"
 #include "media_stream_tracks.h"
 #include "preview_clients.h"
 
@@ -62,8 +62,8 @@ public:
         FrameSubscriptionId subscription_id) const;
     SubscriptionStart GetSubscriptionStart(
         FrameSubscriptionId subscription_id) const;
-    bool PopSubscriptionFrame(FrameSubscriptionId subscription_id,
-                              SubscriptionFrame *frame);
+    bool PullFrame(FrameSubscriptionId subscription_id,
+                   SubscriptionFrame *frame);
 
 private:
     template <typename Value, typename Reader>
@@ -80,6 +80,10 @@ private:
 
     static uint32_t HlsSegmentCacheDepth(
         const MediaStreamsOptions &options);
+    static media_internal::FrameClientsOptions BuildFrameClientsOptions(
+        const MediaCacheLimits &limits);
+    static media_internal::StreamTrackCacheOptions BuildStreamCacheOptions(
+        const MediaStreamsOptions &options);
     static bool IsStreamSupported(StreamId stream_id);
     static const char *StreamIdName(StreamId stream_id);
     static const char *CodecName(Codec codec);
@@ -91,21 +95,23 @@ private:
         MediaStreamResetReason reason);
 
     bool ValidateOptions() const;
+    bool ValidateCacheLimits() const;
     bool IsRunningLocked() const;
+    void ConfigureMediaCachesLocked();
     void ResetMediaStateLocked();
     void ApplyResetNoticeLocked(
         const media_internal::StreamResetNotice &notice);
-    void EnsureRunningStreamLocked(media_internal::StreamTrack *stream,
+    void EnsureRunningStreamLocked(media_internal::StreamTrack &stream,
                                    StreamId stream_id,
                                    Codec codec);
-    bool AcceptFrame(MediaFrame *frame);
+    bool AcceptFrameAndQueue(
+        MediaFrame &frame,
+        media_internal::ParsedFramePayload &payload);
     bool NormalizeFrameTimestampLocked(
-        media_internal::StreamTrack *stream,
-        MediaFrame *frame);
+        media_internal::StreamTrack &stream,
+        MediaFrame &frame);
     media_internal::ParsedFramePayload ParseFramePayloadView(
         const MediaFrame &frame) const;
-    void QueueFrameForSubscriptions(
-        const media_internal::ParsedFramePayload &payload);
     void PackagePreviewFrame(
         const media_internal::ParsedFramePayload &payload,
         bool has_payload);
@@ -114,7 +120,7 @@ private:
 
     const media_internal::StreamTrack *FindStream(
         StreamId stream_id) const;
-    media_internal::StreamTrack *FindMutableStream(StreamId stream_id);
+    media_internal::StreamTrack &MutableStreamTrackFor(StreamId stream_id);
     void SetStreamStateLocked(StreamId stream_id, MediaStreamState state,
                               Codec codec);
 
@@ -122,7 +128,7 @@ private:
     mutable std::shared_mutex mutex_;
     MediaStreamsRunState run_state_ = MediaStreamsRunState::kStopped;
     media_internal::MediaStreamTracks streams_;
-    media_internal::FrameRing frame_ring_;
+    media_internal::FrameClients frame_clients_;
     media_internal::PreviewClients preview_clients_;
     MediaStreamStats stats_;
 };

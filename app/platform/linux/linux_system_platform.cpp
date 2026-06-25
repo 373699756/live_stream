@@ -165,13 +165,13 @@ public:
     }
 
     SystemInfo GetSystemInfo() override {
-        SystemInfo status;
-        status.cpu_usage_percent = ReadCpuUsagePercent();
-        status.memory_usage_percent = ReadMemoryUsagePercent();
-        status.temperature_celsius = ReadTemperatureCelsius();
-        status.uptime_ms = ReadUptimeMs();
-        status.healthy = true;
-        return status;
+        SystemInfo system_info;
+        system_info.cpu_usage_percent = ReadCpuUsagePercent();
+        system_info.memory_usage_percent = ReadMemoryUsagePercent();
+        system_info.temperature_celsius = ReadTemperatureCelsius();
+        system_info.uptime_ms = ReadUptimeMs();
+        system_info.healthy = true;
+        return system_info;
     }
 
     SystemCapabilities GetCapabilities() override {

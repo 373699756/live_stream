@@ -5,7 +5,7 @@
 #include "infra/fs.h"
 #include "logger.h"
 #include "net.h"
-#include "upgrade.h"
+#include "system/upgrade.h"
 
 #include <cstring>
 #include <memory>

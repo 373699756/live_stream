@@ -23,7 +23,7 @@ interface WebrtcPreviewFallback {
     flvPreviewReady: boolean;
     isSessionConnected: () => boolean;
     onAutoModeFallback: () => void;
-    restartPreview: (message: string) => void;
+    restartPreview: (msg: string) => void;
     setMode: (mode: PreviewMode) => void;
 }
 
@@ -71,16 +71,16 @@ export function startWebrtcPreview({
         controls.setPreviewState('WebRTC 暂未就绪');
         return;
     }
-    const fallbackFromWebrtcFailure = (message: string) => {
+    const fallbackFromWebrtcFailure = (msg: string) => {
         controls.setConnected(false);
         peerState.closeSession();
         if (fallback.autoModeSelected && fallback.flvPreviewReady) {
             fallback.onAutoModeFallback();
-            fallback.restartPreview(`${message}，切换 HTTP-FLV`);
+            fallback.restartPreview(`${msg}，切换 HTTP-FLV`);
             fallback.setMode('flv');
             return;
         }
-        controls.setPreviewState(message);
+        controls.setPreviewState(msg);
     };
 
     controls.setPreviewState('正在创建 WebRTC peer');

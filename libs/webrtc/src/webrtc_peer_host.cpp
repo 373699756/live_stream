@@ -60,12 +60,12 @@ uintptr_t AllocatePeerHostId() {
     return NextPeerHostId().fetch_add(1);
 }
 
-void RegisterPeerHost(uintptr_t peer_host_id, NativeWebrtcPeerHost *peer_host) {
-    if (peer_host_id == 0 || peer_host == nullptr) {
+void RegisterPeerHost(uintptr_t peer_host_id, NativeWebrtcPeerHost &peer_host) {
+    if (peer_host_id == 0) {
         return;
     }
     std::lock_guard<std::mutex> guard(PeerHostTableMutex());
-    PeerHostTable()[peer_host_id] = peer_host;
+    PeerHostTable()[peer_host_id] = &peer_host;
     PeerHostActiveCallbacks()[peer_host_id] = 0;
     PeerHostClosingFlags()[peer_host_id] = false;
 }
@@ -112,7 +112,7 @@ public:
         : net_io_(net_io),
           net_loop_(net_loop),
           peer_host_id_(AllocatePeerHostId()) {
-        RegisterPeerHost(peer_host_id_, this);
+        RegisterPeerHost(peer_host_id_, *this);
     }
 
     ~NativeWebrtcPeerHost() override {
@@ -146,7 +146,7 @@ public:
         std::lock_guard<std::mutex> guard(mutex_);
         if (options.session_timeout_ms != options_.session_timeout_ms ||
             options.send_queue_capacity != options_.send_queue_capacity ||
-            options.send_worker_size != options_.send_worker_size ||
+            options.send_workers != options_.send_workers ||
             options.local_port_base != options_.local_port_base) {
             return false;
         }
@@ -172,8 +172,7 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer.peer_id);
-            if (it == sessions_.end() || it->second == nullptr ||
-                offer_sdp.empty()) {
+            if (it == sessions_.end() || offer_sdp.empty()) {
                 return std::string();
             }
 
@@ -189,12 +188,13 @@ public:
             context.on_dtls_timeout =
                 &NativeWebrtcPeerHost::OnTransportDtlsTimeout;
 
-            WebrtcSessionOfferResult result;
-            if (!it->second->HandleOffer(offer_sdp, context, &result)) {
+            WebrtcOfferAnswer offer_answer;
+            if (!it->second->HandleOffer(offer_sdp, context,
+                                         offer_answer)) {
                 return std::string();
             }
-            next_port_offset_ = result.next_port_offset;
-            answer = result.answer_sdp;
+            next_port_offset_ = offer_answer.next_port_offset;
+            answer = offer_answer.answer_sdp;
             callbacks = callbacks_;
         }
         NotifyPeerState(callbacks, peer.peer_id, WebrtcPeerState::kConnecting);
@@ -204,7 +204,7 @@ public:
     bool AddIceCandidate(const WebrtcIceCandidate &candidate) override {
         std::lock_guard<std::mutex> guard(mutex_);
         auto it = sessions_.find(candidate.peer_id);
-        if (it == sessions_.end() || it->second == nullptr) {
+        if (it == sessions_.end()) {
             return false;
         }
         return it->second->AddIceCandidate(candidate);
@@ -218,9 +218,7 @@ public:
             if (it == sessions_.end()) {
                 return false;
             }
-            if (it->second != nullptr) {
-                it->second->Close();
-            }
+            it->second->Close();
             sessions_.erase(it);
             callbacks = callbacks_;
         }
@@ -230,10 +228,7 @@ public:
 
     bool HandleDtlsPacket(const std::string &peer_id, const uint8_t *data,
                           size_t size,
-                          std::vector<uint8_t> *outgoing_dtls) override {
-        if (outgoing_dtls == nullptr) {
-            return false;
-        }
+                          std::vector<uint8_t> &outgoing_dtls) override {
         WebrtcPeerHostCallbacks callbacks;
         bool connected_now = false;
         bool failed = false;
@@ -241,16 +236,18 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
-            if (it == sessions_.end() || it->second == nullptr) {
+            if (it == sessions_.end()) {
                 return false;
             }
-            WebrtcTransportDtlsResult result;
-            if (!it->second->ProcessDtlsPacket(data, size, &result)) {
-                failure_error = result.error.empty() ? "dtls_failed" : result.error;
-                failed = FailSessionLocked(peer_id, &callbacks);
+            WebrtcDtlsOutput dtls_output;
+            if (!it->second->ProcessDtlsPacket(data, size, dtls_output)) {
+                failure_error = dtls_output.error.empty()
+                                    ? "dtls_failed"
+                                    : dtls_output.error;
+                failed = FailSessionLocked(peer_id, callbacks);
             } else {
-                *outgoing_dtls = result.outgoing_dtls;
-                connected_now = result.connected_now;
+                outgoing_dtls = dtls_output.outgoing_dtls;
+                connected_now = dtls_output.connected_now;
                 callbacks = callbacks_;
             }
         }
@@ -272,11 +269,11 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
-            if (it == sessions_.end() || it->second == nullptr) {
+            if (it == sessions_.end()) {
                 return false;
             }
             if (!it->second->HandleSrtcpPacket(data, size,
-                                               &need_keyframe)) {
+                                               need_keyframe)) {
                 return false;
             }
             callbacks = callbacks_;
@@ -293,7 +290,7 @@ public:
                        const rtp::RtpPacketView &packet) override {
         std::lock_guard<std::mutex> guard(mutex_);
         auto it = sessions_.find(peer.peer_id);
-        if (it == sessions_.end() || it->second == nullptr) {
+        if (it == sessions_.end()) {
             return false;
         }
         return it->second->SendRtpPacket(frame, packet);
@@ -301,46 +298,35 @@ public:
 
     bool GetRtpSendParameters(
         const std::string &peer_id,
-        WebrtcRtpSendParameters *parameters) const override {
-        if (parameters == nullptr) {
-            return false;
-        }
+        WebrtcRtpSendParameters &parameters) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const auto it = sessions_.find(peer_id);
-        if (it == sessions_.end() || it->second == nullptr) {
+        if (it == sessions_.end()) {
             return false;
         }
         return it->second->GetRtpSendParameters(parameters);
     }
 
     bool FillPeerInfo(const std::string &peer_id,
-                      WebrtcPeerInfo *peer) const override {
-        if (peer == nullptr) {
-            return false;
-        }
+                      WebrtcPeerInfo &peer) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         const auto it = sessions_.find(peer_id);
-        if (it == sessions_.end() || it->second == nullptr) {
+        if (it == sessions_.end()) {
             return false;
         }
         it->second->FillPeerInfo(peer);
         return true;
     }
 
-    void FillStats(WebrtcStats *stats) const override {
-        if (stats == nullptr) {
-            return;
-        }
+    void FillStats(WebrtcStats &stats) const override {
         std::lock_guard<std::mutex> guard(mutex_);
-        stats->ice_ready = stats->ice_ready ||
-                           (net_io_ != nullptr && net_loop_ != nullptr);
-        stats->dtls_ready = stats->dtls_ready ||
-                            !local_fingerprint_.value.empty();
-        stats->srtp_ready = stats->srtp_ready || SrtpSession::Available();
+        stats.ice_ready = stats.ice_ready ||
+                          (net_io_ != nullptr && net_loop_ != nullptr);
+        stats.dtls_ready = stats.dtls_ready ||
+                           !local_fingerprint_.value.empty();
+        stats.srtp_ready = stats.srtp_ready || SrtpSession::Available();
         for (const auto &item : sessions_) {
-            if (item.second != nullptr) {
-                item.second->FillStats(stats);
-            }
+            item.second->FillStats(stats);
         }
     }
 
@@ -417,12 +403,12 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             WebrtcSession *session =
-                FindSessionBySocketLocked(socket_id, &peer_id);
+                FindSessionBySocketLocked(socket_id, peer_id);
             if (session == nullptr) {
                 return;
             }
             if (!session->HandleIcePacket(std::move(peer), data, size,
-                                          &connected_now)) {
+                                          connected_now)) {
                 return;
             }
             if (connected_now) {
@@ -444,21 +430,22 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             WebrtcSession *session =
-                FindSessionBySocketLocked(socket_id, &peer_id);
+                FindSessionBySocketLocked(socket_id, peer_id);
             if (session == nullptr || !session->ice_connected()) {
                 return;
             }
-            WebrtcTransportDtlsResult result;
+            WebrtcDtlsOutput dtls_output;
             const bool processed =
-                session->ProcessDtlsPacket(data, size, &result);
-            const bool sent = processed && session->SendDtlsResult(result);
+                session->ProcessDtlsPacket(data, size, dtls_output);
+            const bool sent =
+                processed && session->SendDtlsResult(dtls_output);
             if (!processed || !sent) {
-                failure_error = result.error.empty()
+                failure_error = dtls_output.error.empty()
                                     ? (processed ? "dtls_send_failed" : "dtls_failed")
-                                    : result.error;
-                failed = FailSessionLocked(peer_id, &callbacks);
+                                    : dtls_output.error;
+                failed = FailSessionLocked(peer_id, callbacks);
             } else {
-                connected_now = result.connected_now;
+                connected_now = dtls_output.connected_now;
                 callbacks = callbacks_;
             }
         }
@@ -480,10 +467,10 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             WebrtcSession *session =
-                FindSessionBySocketLocked(socket_id, &peer_id);
+                FindSessionBySocketLocked(socket_id, peer_id);
             if (session == nullptr ||
                 !session->HandleSrtcpPacket(data, size,
-                                            &need_keyframe)) {
+                                            need_keyframe)) {
                 return;
             }
             callbacks = callbacks_;
@@ -502,20 +489,20 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto it = sessions_.find(peer_id);
-            if (it == sessions_.end() || it->second == nullptr) {
+            if (it == sessions_.end()) {
                 return;
             }
-            WebrtcTransportDtlsResult result;
+            WebrtcDtlsOutput dtls_output;
             const bool handled =
-                it->second->HandleDtlsTimeout(&result);
-            const bool sent = handled && it->second->SendDtlsResult(result);
+                it->second->HandleDtlsTimeout(dtls_output);
+            const bool sent = handled && it->second->SendDtlsResult(dtls_output);
             if (!handled || !sent) {
-                failure_error = result.error.empty()
+                failure_error = dtls_output.error.empty()
                                     ? (handled ? "dtls_send_failed" : "dtls_timeout")
-                                    : result.error;
-                failed = FailSessionLocked(peer_id, &callbacks);
+                                    : dtls_output.error;
+                failed = FailSessionLocked(peer_id, callbacks);
             } else {
-                connected_now = result.connected_now;
+                connected_now = dtls_output.connected_now;
                 callbacks = callbacks_;
             }
         }
@@ -530,13 +517,10 @@ private:
     }
 
     WebrtcSession *FindSessionBySocketLocked(UdpSocketId socket_id,
-                                             std::string *peer_id) {
+                                             std::string &peer_id) {
         for (auto &item : sessions_) {
-            if (item.second != nullptr &&
-                item.second->MatchesSocket(socket_id)) {
-                if (peer_id != nullptr) {
-                    *peer_id = item.first;
-                }
+            if (item.second->MatchesSocket(socket_id)) {
+                peer_id = item.first;
                 return item.second.get();
             }
         }
@@ -544,26 +528,20 @@ private:
     }
 
     bool FailSessionLocked(const std::string &peer_id,
-                           WebrtcPeerHostCallbacks *callbacks) {
+                           WebrtcPeerHostCallbacks &callbacks) {
         auto it = sessions_.find(peer_id);
         if (it == sessions_.end()) {
             return false;
         }
-        if (it->second != nullptr) {
-            it->second->Close();
-        }
+        it->second->Close();
         sessions_.erase(it);
-        if (callbacks != nullptr) {
-            *callbacks = callbacks_;
-        }
+        callbacks = callbacks_;
         return true;
     }
 
     void CloseAllSessionsLocked() {
         for (auto &item : sessions_) {
-            if (item.second != nullptr) {
-                item.second->Close();
-            }
+            item.second->Close();
         }
     }
 

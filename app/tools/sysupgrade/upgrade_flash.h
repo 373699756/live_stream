@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_APP_TOOLS_SYSUPGRADE_UPGRADE_FLASH_H_
 #define LIVE_STREAM_APP_TOOLS_SYSUPGRADE_UPGRADE_FLASH_H_
 
-#include "upgrade_package.h"
+#include "system/package.h"
 
 #include <string>
 

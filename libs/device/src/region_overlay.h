@@ -3,8 +3,8 @@
 
 #include "config.h"
 #include "device.h"
-#include "hisisdk/hisi_sdk.h"
-#include "media/mpp_types.h"
+#include "hisi_vendor/sdk.h"
+#include "hisi_vendor/mpp_types.h"
 
 #include <condition_variable>
 #include <cstdint>
@@ -19,7 +19,7 @@ namespace device_internal {
 struct RegionOverlayOptions {
     IConfig *config = nullptr;
     MediaChannels media_channels;
-    hisisdk::IHisiSdk *sdk = nullptr;
+    hisisdk::IHisiRegion *region = nullptr;
 };
 
 enum class RegionOverlayState {
@@ -44,9 +44,9 @@ struct PrivacyMask {
 };
 
 struct PrivacyMasks {
-    static constexpr uint32_t kSlotSize = 4;
-    PrivacyMask main[kSlotSize];
-    PrivacyMask sub[kSlotSize];
+    static constexpr uint32_t kPrivacyMaskSlots = 4;
+    PrivacyMask main[kPrivacyMaskSlots];
+    PrivacyMask sub[kPrivacyMaskSlots];
 };
 
 struct ParsedOverlayConfig {
@@ -76,15 +76,14 @@ RegionBitmap BuildRegionBitmap(const TextBitmap &text_bitmap);
 hisisdk::RegionConfig BuildSdkRegionConfig(const RegionConfig &config);
 hisisdk::Bitmap BuildSdkBitmap(const RegionBitmap &bitmap);
 std::string RegionTargetSuffix(const MppChannel &channel);
-bool ParseTextOverlayConfig(const ConfigJson &value,
+bool ParseTextOverlayConfig(const Json &value,
                             ParsedOverlayConfig *config);
-bool ParsePrivacyMasksConfig(const ConfigJson &value,
+bool ParsePrivacyMasksConfig(const Json &value,
                              const MediaChannels &channels,
                              PrivacyMasks *masks);
 
 class RegionOverlay {
 public:
-    RegionOverlay();
     explicit RegionOverlay(const RegionOverlayOptions &options);
     ~RegionOverlay();
 
@@ -94,8 +93,8 @@ public:
     void Release();
     bool BindMedia(const MediaChannels &channels);
     OverlayInfo GetInfo() const;
-    bool VerifyConfig(const ConfigJson &value) const;
-    bool ApplyConfig(const ConfigJson &value);
+    bool VerifyConfig(const Json &value) const;
+    bool ApplyConfig(const Json &value);
     bool ApplyTextOverlay(const ParsedOverlayConfig &config);
     bool UpdateTimestampLocked();
     bool ApplyPrivacyMasks(const PrivacyMasks &masks);
@@ -129,7 +128,7 @@ public:
     void StopRefreshThread();
 
     RegionOverlayOptions options;
-    hisisdk::IHisiSdk *sdk = nullptr;
+    hisisdk::IHisiRegion *hisi_region = nullptr;
     RegionOverlayState state = RegionOverlayState::kCreated;
     bool media_bound = false;
     MediaChannels media_channels;

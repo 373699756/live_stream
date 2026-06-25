@@ -6,12 +6,12 @@
 namespace live_stream {
 namespace {
 
-ConfigStatus RejectProtocolConfigChange(const char *field, ConfigIssue *issue) {
-    if (issue != nullptr) {
-        issue->field = field == nullptr ? "" : field;
-        issue->reason = "restart required";
+ConfigCode RejectProtocolConfigChange(const char *field, ConfigError *error) {
+    if (error != nullptr) {
+        error->field = field == nullptr ? "" : field;
+        error->message = "restart required";
     }
-    return ConfigStatus::kVerifyFailed;
+    return ConfigCode::kVerify;
 }
 
 bool SameIceServers(const std::vector<WebrtcIceServer> &left,
@@ -31,57 +31,57 @@ bool SameIceServers(const std::vector<WebrtcIceServer> &left,
 
 }  // namespace
 
-ConfigStatus VerifyProtocolConfigUpdateScope(
+ConfigCode VerifyProtocolConfigUpdateScope(
     const AppConfig &current_config,
     const AppConfig &next_config,
     const std::string &scope,
-    ConfigIssue *issue) {
+    ConfigError *error) {
     if (scope == "http") {
         if (next_config.http_port != current_config.http_port) {
-            return RejectProtocolConfigChange("port", issue);
+            return RejectProtocolConfigChange("port", error);
         }
         if (next_config.static_root != current_config.static_root) {
-            return RejectProtocolConfigChange("static_root", issue);
+            return RejectProtocolConfigChange("static_root", error);
         }
-        return ConfigStatus::kOk;
+        return ConfigCode::kOk;
     }
     if (scope == "rtsp") {
         if (next_config.rtsp_port != current_config.rtsp_port) {
-            return RejectProtocolConfigChange("port", issue);
+            return RejectProtocolConfigChange("port", error);
         }
         if (next_config.rtsp_max_sessions !=
             current_config.rtsp_max_sessions) {
-            return RejectProtocolConfigChange("max_sessions", issue);
+            return RejectProtocolConfigChange("max_sessions", error);
         }
-        return ConfigStatus::kOk;
+        return ConfigCode::kOk;
     }
     if (scope == "webrtc") {
         if (next_config.webrtc_local_port_base !=
             current_config.webrtc_local_port_base) {
-            return RejectProtocolConfigChange("local_port_base", issue);
+            return RejectProtocolConfigChange("local_port_base", error);
         }
-        return ConfigStatus::kOk;
+        return ConfigCode::kOk;
     }
     if (scope == "onvif") {
         if (next_config.onvif_device_port !=
             current_config.onvif_device_port) {
-            return RejectProtocolConfigChange("device_service_port", issue);
+            return RejectProtocolConfigChange("device_service_port", error);
         }
         if (next_config.onvif_discovery_port !=
             current_config.onvif_discovery_port) {
-            return RejectProtocolConfigChange("discovery_port", issue);
+            return RejectProtocolConfigChange("discovery_port", error);
         }
         if (next_config.onvif_discovery_enabled !=
             current_config.onvif_discovery_enabled) {
-            return RejectProtocolConfigChange("discovery_enabled", issue);
+            return RejectProtocolConfigChange("discovery_enabled", error);
         }
-        return ConfigStatus::kOk;
+        return ConfigCode::kOk;
     }
-    if (issue != nullptr) {
-        issue->field.clear();
-        issue->reason = "unsupported protocol config update scope";
+    if (error != nullptr) {
+        error->field.clear();
+        error->message = "unsupported protocol config update scope";
     }
-    return ConfigStatus::kVerifyFailed;
+    return ConfigCode::kVerify;
 }
 
 bool IsRtspConfigChanged(const AppConfig &current_config,

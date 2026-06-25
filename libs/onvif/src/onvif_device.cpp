@@ -3,7 +3,7 @@
 #include "onvif_soap.h"
 #include "onvif_types.h"
 #include "system.h"
-#include "time_api.h"
+#include "system/time.h"
 
 namespace live_stream {
 namespace onvif {
@@ -33,26 +33,26 @@ std::string BuildDeviceInformationBody(const OnvifServerOptions &options,
 }
 
 std::string BuildSystemDateAndTimeBody(ITime *time) {
-    TimeInfo status;
+    TimeInfo time_info;
     if (time != nullptr) {
-        status = time->GetTimeInfo();
+        time_info = time->GetTimeInfo();
     }
     return "<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime>"
            "<tds:TimeZone><tt:TZ>" +
-           XmlEscape(status.timezone) +
+           XmlEscape(time_info.timezone) +
            "</tt:TZ></tds:TimeZone><tds:UTCDateTime><tt:UnixTimeMs>" +
-           std::to_string(status.system_time_ms) +
+           std::to_string(time_info.system_time_ms) +
            "</tt:UnixTimeMs></tds:UTCDateTime></tds:SystemDateAndTime>"
            "</tds:GetSystemDateAndTimeResponse>";
 }
 
 std::string BuildSetSystemDateAndTimeBody(ITime *time,
                                           const std::string &request,
-                                          uint32_t *status,
+                                          uint32_t *status_code,
                                           std::string *reason) {
     if (time == nullptr) {
-        if (status != nullptr) {
-            *status = 500;
+        if (status_code != nullptr) {
+            *status_code = 500;
         }
         if (reason != nullptr) {
             *reason = "Internal Server Status";
@@ -61,8 +61,8 @@ std::string BuildSetSystemDateAndTimeBody(ITime *time,
     }
     int64_t unix_time_ms = 0;
     if (!ParseOnvifUnixTimeMs(request, &unix_time_ms)) {
-        if (status != nullptr) {
-            *status = 400;
+        if (status_code != nullptr) {
+            *status_code = 400;
         }
         if (reason != nullptr) {
             *reason = "Bad Request";
@@ -75,8 +75,8 @@ std::string BuildSetSystemDateAndTimeBody(ITime *time,
     context.user_name = "onvif";
     if (!time->SetSystemTime(context, unix_time_ms,
                              TimeSyncSource::kOnvif)) {
-        if (status != nullptr) {
-            *status = 500;
+        if (status_code != nullptr) {
+            *status_code = 500;
         }
         if (reason != nullptr) {
             *reason = "Internal Server Status";

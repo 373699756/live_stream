@@ -1,8 +1,10 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_vendor/mpp_sdk.h"
 #include "hisi_mpp_resource_recovery.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_mpp_sdk.h"
 #include "hisi_mpp_vb_config.h"
 #include "mpp_hisi_sdk_impl.h"
+
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {
@@ -44,7 +46,7 @@ bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
 // InitSystem / DeinitSystem
 // ====================================================================
 bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     impl_->active_config_ = config;
     impl_->has_active_config_ = true;
 
@@ -100,19 +102,19 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
 }
 
 bool MppHisiSdk::DeinitSystem() {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (!impl_->system_initialized_ && !impl_->system_cleanup_failed_) {
         return true;
     }
 
     const MediaPipelineConfig& config = impl_->active_config_;
 
-    StopVencStream(config);
-    UnbindVpssVenc(config);
-    StopVenc(config);
-    UnbindViVpss(config);
-    StopVpss(config);
-    StopVi(config);
+    StopVencStreamThread(*impl_);
+    UnbindVpssVencChannels(*impl_);
+    DestroyVencChannels(*impl_);
+    UnbindViVpssPipe(*impl_, config);
+    StopVpssGroup(*impl_, config);
+    StopViInput(*impl_, config);
 
     bool cleanup_ok = mpp_resource_recovery::ExitMppSystem(
         true, mpp_resource_recovery::kMppExitRetryLimit,

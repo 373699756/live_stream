@@ -23,14 +23,15 @@ OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
                                    const std::string &advertise_ip);
 bool ParseProfileToken(const std::string &body, StreamId *stream_id);
 std::string BuildProfilesBody(const OnvifMediaUris &media_uris);
-std::string BuildProfileFaultBody(uint32_t *status, std::string *reason);
+std::string BuildProfileFaultBody(uint32_t *status_code,
+                                  std::string *reason);
 OnvifBody BuildStreamUriBody(const OnvifMediaUris &media_uris,
                              StreamId stream_id,
-                             uint32_t *status,
+                             uint32_t *status_code,
                              std::string *reason);
 OnvifBody BuildSnapshotUriBody(const OnvifMediaUris &media_uris,
                                StreamId stream_id,
-                               uint32_t *status,
+                               uint32_t *status_code,
                                std::string *reason);
 
 }  // namespace onvif

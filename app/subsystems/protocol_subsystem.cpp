@@ -46,7 +46,6 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     ProtocolStartupRefs refs;
-    refs.foundation = &foundation_subsystem;
     refs.device = device_refs;
     refs.media = media_refs;
 
@@ -83,7 +82,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const RtspOptions rtsp_options = BuildRtspOptions(app_config);
-    const RtspDependencies rtsp_dependencies = BuildRtspDependencies(refs);
+    const RtspDependencies rtsp_dependencies =
+        BuildRtspDependencies(refs, foundation_subsystem);
     rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
     if (!rtsp_ || !rtsp_->Start()) {
         Error("app",
@@ -107,7 +107,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     const WebrtcOptions webrtc_options =
         BuildWebrtcOptions(app_config, refs);
     const WebrtcDependencies webrtc_dependencies =
-        BuildWebrtcDependencies(refs);
+        BuildWebrtcDependencies(refs, foundation_subsystem);
     webrtc_ = CreateWebrtc(webrtc_options, webrtc_dependencies);
     if (!webrtc_ || !webrtc_->Start()) {
         Error(
@@ -127,7 +127,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 
     const OnvifServerOptions onvif_options = BuildOnvifOptions(app_config);
     const OnvifServerDependencies onvif_dependencies =
-        BuildOnvifDependencies(refs);
+        BuildOnvifDependencies(refs, foundation_subsystem);
     onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
     if (!onvif_ || !onvif_->Start()) {
         Error("app",
@@ -148,7 +148,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const HttpOptions http_options = BuildHttpOptions(app_config);
-    const HttpDependencies http_dependencies = BuildHttpDependencies(refs);
+    const HttpDependencies http_dependencies =
+        BuildHttpDependencies(refs, foundation_subsystem);
     http_ = CreateHttp(http_options, http_dependencies);
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
@@ -167,7 +168,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     const NetStatOptions net_stat_options =
         BuildNetStatOptions();
     const NetStatDependencies net_stat_dependencies =
-        BuildNetStatDependencies(refs);
+        BuildNetStatDependencies(refs, foundation_subsystem);
     net_stat_ =
         CreateNetStat(net_stat_options, net_stat_dependencies);
     if (!net_stat_ || !net_stat_->Start()) {

@@ -48,7 +48,7 @@ export const kAiEventTabs: AiEventTab[] = [
     },
 ];
 
-function capabilityForTask(
+export function capabilityForTask(
     capabilities: AiCapabilities | null | undefined,
     task: AiTaskName,
 ): AiTaskCapability | undefined {

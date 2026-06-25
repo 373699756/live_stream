@@ -1,5 +1,5 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_vendor/mpp_sdk.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
 
 #include <string>

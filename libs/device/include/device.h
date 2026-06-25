@@ -1,11 +1,12 @@
 #ifndef LIVE_STREAM_DEVICE_DEVICE_H_
 #define LIVE_STREAM_DEVICE_DEVICE_H_
 
+#include "hisi_vendor/sdk.h"
 #include "media/frame_sink.h"
 #include "media/media_buffer.h"
-#include "media/media_capabilities.h"
-#include "media/mpp_types.h"
-#include "media/pipeline_config.h"
+#include "hisi_vendor/media_capabilities.h"
+#include "hisi_vendor/mpp_types.h"
+#include "hisi_vendor/media_pipeline.h"
 
 #include <cstdint>
 #include <memory>
@@ -15,15 +16,11 @@ namespace live_stream {
 
 class IConfig;
 
-namespace hisisdk {
-class IHisiSdk;
-}  // namespace hisisdk
-
 struct DeviceMediaOptions {
     MediaPipelineConfig default_config;
     int32_t snapshot_venc_channel = 3;
     IConfig *config = nullptr;
-    hisisdk::IHisiSdk *sdk = nullptr;
+    hisisdk::HisiSdk sdk;
 };
 
 struct SnapshotConfig {

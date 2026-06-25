@@ -21,7 +21,7 @@ import type {
 const pollIntervalMs = 2000;
 const statusTimeoutMs = 1800;
 
-function errorMessage(error: unknown, fallback: string) {
+function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
 
@@ -37,7 +37,7 @@ export function useUpgrade() {
     const [allowDowngrade, setAllowDowngrade] = useState(false);
     const [autoReboot, setAutoReboot] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [message, setMessage] = useState('');
+    const [msg, setMsg] = useState('');
     const [actionError, setActionError] = useState('');
     const [refreshError, setRefreshError] = useState('');
 
@@ -56,7 +56,7 @@ export function useUpgrade() {
                 }
             } catch (err: unknown) {
                 if (mounted) {
-                    setRefreshError(errorMessage(err, '升级状态刷新失败'));
+                    setRefreshError(errorMsg(err, '升级状态刷新失败'));
                 }
             } finally {
                 if (mounted) {
@@ -79,20 +79,20 @@ export function useUpgrade() {
         setSelectedFile(file);
         setPackageInfo(null);
         setActionError('');
-        setMessage('');
+        setMsg('');
     };
 
     const uploadPackage = async () => {
         if (!selectedFile) return;
         setBusy(true);
         setActionError('');
-        setMessage('');
+        setMsg('');
         try {
             const uploaded = await uploadUpgradePackage(selectedFile);
             setPackageInfo(uploaded);
-            setMessage(`已上传 ${selectedFile.name}`);
+            setMsg(`已上传 ${selectedFile.name}`);
         } catch (err) {
-            setActionError(errorMessage(err, '上传失败'));
+            setActionError(errorMsg(err, '上传失败'));
         } finally {
             setBusy(false);
         }
@@ -102,7 +102,7 @@ export function useUpgrade() {
         if (!packageInfo) return;
         setBusy(true);
         setActionError('');
-        setMessage('');
+        setMsg('');
         const request: UpgradeRequest = {
             package_path: packageInfo.package_path,
             expected_version: packageInfo.version,
@@ -113,9 +113,9 @@ export function useUpgrade() {
         try {
             const next = await apiStartUpgrade(request);
             setUpgradeInfo(next);
-            setMessage('升级任务已提交');
+            setMsg('升级任务已提交');
         } catch (err) {
-            setActionError(errorMessage(err, '启动升级失败'));
+            setActionError(errorMsg(err, '启动升级失败'));
         } finally {
             setBusy(false);
         }
@@ -124,13 +124,13 @@ export function useUpgrade() {
     const cancelUpgrade = async () => {
         setBusy(true);
         setActionError('');
-        setMessage('');
+        setMsg('');
         try {
             const next = await apiCancelUpgrade();
             setUpgradeInfo(next);
-            setMessage('升级任务已取消');
+            setMsg('升级任务已取消');
         } catch (err) {
-            setActionError(errorMessage(err, '取消升级失败'));
+            setActionError(errorMsg(err, '取消升级失败'));
         } finally {
             setBusy(false);
         }
@@ -139,13 +139,13 @@ export function useUpgrade() {
     const confirmReboot = async () => {
         setBusy(true);
         setActionError('');
-        setMessage('');
+        setMsg('');
         try {
             const next = await apiConfirmUpgradeReboot();
             setUpgradeInfo(next);
-            setMessage('已下发重启应用升级');
+            setMsg('已下发重启应用升级');
         } catch (err) {
-            setActionError(errorMessage(err, '确认重启失败'));
+            setActionError(errorMsg(err, '确认重启失败'));
         } finally {
             setBusy(false);
         }
@@ -162,7 +162,7 @@ export function useUpgrade() {
         autoReboot,
         setAutoReboot,
         busy,
-        message,
+        msg,
         actionError,
         refreshError,
         selectFile,

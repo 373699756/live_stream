@@ -11,7 +11,7 @@
 
 namespace live_stream {
 
-struct RtspTransportTarget {
+struct RtspRtpRoute {
     RtspTransportMode mode = RtspTransportMode::kTcpInterleaved;
     ConnectionId connection_id = 0;
     UdpSocketId udp_socket_id = 0;
@@ -21,8 +21,8 @@ struct RtspTransportTarget {
 
 class RtspTransport {
 public:
-    static bool SendRtpPacket(INetIo *net_io,
-                              const RtspTransportTarget &target,
+    static bool SendRtpPacket(INetIo &net_io,
+                              const RtspRtpRoute &route,
                               const MediaFrame &frame,
                               const rtp::RtpPacketView &packet);
 };

@@ -13,30 +13,30 @@ constexpr uint32_t kSsdKeepTopK = 200;
 constexpr int32_t kSsdQuantBase = 4096;
 constexpr float kSsdNmsThreshold = 0.3f;
 
-constexpr std::array<uint32_t, kSsdLayerSize> kSsdPriorBoxWidth = {
+constexpr std::array<uint32_t, kSsdLayers> kSsdPriorBoxWidth = {
     {38, 19, 10, 5, 3, 1}};
-constexpr std::array<uint32_t, kSsdLayerSize> kSsdPriorBoxHeight = {
+constexpr std::array<uint32_t, kSsdLayers> kSsdPriorBoxHeight = {
     {38, 19, 10, 5, 3, 1}};
-constexpr std::array<float, kSsdLayerSize> kSsdPriorMinSize = {
+constexpr std::array<float, kSsdLayers> kSsdPriorMinSide = {
     {30.0f, 60.0f, 111.0f, 162.0f, 213.0f, 264.0f}};
-constexpr std::array<float, kSsdLayerSize> kSsdPriorMaxSize = {
+constexpr std::array<float, kSsdLayers> kSsdPriorMaxSide = {
     {60.0f, 111.0f, 162.0f, 213.0f, 264.0f, 315.0f}};
-constexpr std::array<uint32_t, kSsdLayerSize> kSsdAspectRatioSize = {
+constexpr std::array<uint32_t, kSsdLayers> kSsdAspectRatiosPerLayer = {
     {1, 2, 2, 2, 1, 1}};
-constexpr std::array<std::array<float, 2>, kSsdLayerSize>
+constexpr std::array<std::array<float, 2>, kSsdLayers>
     kSsdAspectRatios = {{{{2.0f, 0.0f}},
                          {{2.0f, 3.0f}},
                          {{2.0f, 3.0f}},
                          {{2.0f, 3.0f}},
                          {{2.0f, 0.0f}},
                          {{2.0f, 0.0f}}}};
-constexpr std::array<float, kSsdLayerSize> kSsdPriorStepWidth = {
+constexpr std::array<float, kSsdLayers> kSsdPriorStepWidth = {
     {8.0f, 16.0f, 32.0f, 64.0f, 100.0f, 300.0f}};
-constexpr std::array<float, kSsdLayerSize> kSsdPriorStepHeight = {
+constexpr std::array<float, kSsdLayers> kSsdPriorStepHeight = {
     {8.0f, 16.0f, 32.0f, 64.0f, 100.0f, 300.0f}};
-constexpr std::array<int32_t, kSsdCoordinateSize> kSsdPriorVariance = {
+constexpr std::array<int32_t, kSsdBoxCoordinates> kSsdPriorVariance = {
     {409, 409, 819, 819}};
-constexpr std::array<const char *, kSsdClassSize> kSsdVocLabels = {
+constexpr std::array<const char *, kSsdClasses> kSsdVocLabels = {
     {"background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus",
      "car", "cat", "chair", "cow", "diningtable", "dog", "horse",
      "motorbike", "person", "pottedplant", "sheep", "sofa", "train",
@@ -103,13 +103,13 @@ bool SoftmaxQuantized(const int32_t *src, int32_t *dst) {
         return false;
     }
     int32_t max_value = src[0];
-    for (uint32_t i = 1; i < kSsdClassSize; ++i) {
+    for (uint32_t i = 1; i < kSsdClasses; ++i) {
         max_value = std::max(max_value, src[i]);
     }
 
-    std::array<float, kSsdClassSize> exp_values{};
+    std::array<float, kSsdClasses> exp_values{};
     float sum = 0.0f;
-    for (uint32_t i = 0; i < kSsdClassSize; ++i) {
+    for (uint32_t i = 0; i < kSsdClasses; ++i) {
         exp_values[i] =
             std::exp(static_cast<float>(src[i] - max_value) /
                      static_cast<float>(kSsdQuantBase));
@@ -118,7 +118,7 @@ bool SoftmaxQuantized(const int32_t *src, int32_t *dst) {
     if (sum <= 0.0f || !std::isfinite(sum)) {
         return false;
     }
-    for (uint32_t i = 0; i < kSsdClassSize; ++i) {
+    for (uint32_t i = 0; i < kSsdClasses; ++i) {
         dst[i] = static_cast<int32_t>(
             exp_values[i] / sum * static_cast<float>(kSsdQuantBase));
     }
@@ -127,12 +127,12 @@ bool SoftmaxQuantized(const int32_t *src, int32_t *dst) {
 
 std::vector<SsdPrior> GenerateSsdPriors() {
     std::vector<SsdPrior> priors;
-    priors.reserve(kSsdPriorSize);
-    for (uint32_t layer = 0; layer < kSsdLayerSize; ++layer) {
+    priors.reserve(kSsdPriors);
+    for (uint32_t layer = 0; layer < kSsdLayers; ++layer) {
         std::array<float, 6> aspect_ratios{};
         uint32_t aspect_size = 0;
         aspect_ratios[aspect_size++] = 1.0f;
-        for (uint32_t i = 0; i < kSsdAspectRatioSize[layer]; ++i) {
+        for (uint32_t i = 0; i < kSsdAspectRatiosPerLayer[layer]; ++i) {
             const float ratio = kSsdAspectRatios[layer][i];
             if (ratio <= 0.0f || aspect_size + 2 > aspect_ratios.size()) {
                 return std::vector<SsdPrior>();
@@ -147,35 +147,35 @@ std::vector<SsdPrior> GenerateSsdPriors() {
                     (static_cast<float>(x) + 0.5f) * kSsdPriorStepWidth[layer];
                 const float center_y =
                     (static_cast<float>(y) + 0.5f) * kSsdPriorStepHeight[layer];
-                const float min_size = kSsdPriorMinSize[layer];
+                const float min_side = kSsdPriorMinSide[layer];
 
                 SsdPrior min_prior;
                 min_prior.x_min = static_cast<float>(
-                    static_cast<int32_t>(center_x - min_size * 0.5f));
+                    static_cast<int32_t>(center_x - min_side * 0.5f));
                 min_prior.y_min = static_cast<float>(
-                    static_cast<int32_t>(center_y - min_size * 0.5f));
+                    static_cast<int32_t>(center_y - min_side * 0.5f));
                 min_prior.x_max = static_cast<float>(
-                    static_cast<int32_t>(center_x + min_size * 0.5f));
+                    static_cast<int32_t>(center_x + min_side * 0.5f));
                 min_prior.y_max = static_cast<float>(
-                    static_cast<int32_t>(center_y + min_size * 0.5f));
-                for (uint32_t i = 0; i < kSsdCoordinateSize; ++i) {
+                    static_cast<int32_t>(center_y + min_side * 0.5f));
+                for (uint32_t i = 0; i < kSsdBoxCoordinates; ++i) {
                     min_prior.variance[i] =
                         QuantizedConfidence(kSsdPriorVariance[i]);
                 }
                 priors.push_back(min_prior);
 
-                const float max_size =
-                    std::sqrt(min_size * kSsdPriorMaxSize[layer]);
+                const float max_side =
+                    std::sqrt(min_side * kSsdPriorMaxSide[layer]);
                 SsdPrior max_prior;
                 max_prior.x_min = static_cast<float>(
-                    static_cast<int32_t>(center_x - max_size * 0.5f));
+                    static_cast<int32_t>(center_x - max_side * 0.5f));
                 max_prior.y_min = static_cast<float>(
-                    static_cast<int32_t>(center_y - max_size * 0.5f));
+                    static_cast<int32_t>(center_y - max_side * 0.5f));
                 max_prior.x_max = static_cast<float>(
-                    static_cast<int32_t>(center_x + max_size * 0.5f));
+                    static_cast<int32_t>(center_x + max_side * 0.5f));
                 max_prior.y_max = static_cast<float>(
-                    static_cast<int32_t>(center_y + max_size * 0.5f));
-                for (uint32_t i = 0; i < kSsdCoordinateSize; ++i) {
+                    static_cast<int32_t>(center_y + max_side * 0.5f));
+                for (uint32_t i = 0; i < kSsdBoxCoordinates; ++i) {
                     max_prior.variance[i] =
                         QuantizedConfidence(kSsdPriorVariance[i]);
                 }
@@ -183,8 +183,8 @@ std::vector<SsdPrior> GenerateSsdPriors() {
 
                 for (uint32_t i = 1; i < aspect_size; ++i) {
                     const float ratio_sqrt = std::sqrt(aspect_ratios[i]);
-                    const float box_width = min_size * ratio_sqrt;
-                    const float box_height = min_size / ratio_sqrt;
+                    const float box_width = min_side * ratio_sqrt;
+                    const float box_height = min_side / ratio_sqrt;
                     SsdPrior ratio_prior;
                     ratio_prior.x_min = static_cast<float>(
                         static_cast<int32_t>(center_x - box_width * 0.5f));
@@ -194,7 +194,7 @@ std::vector<SsdPrior> GenerateSsdPriors() {
                         static_cast<int32_t>(center_x + box_width * 0.5f));
                     ratio_prior.y_max = static_cast<float>(
                         static_cast<int32_t>(center_y + box_height * 0.5f));
-                    for (uint32_t j = 0; j < kSsdCoordinateSize; ++j) {
+                    for (uint32_t j = 0; j < kSsdBoxCoordinates; ++j) {
                         ratio_prior.variance[j] =
                             QuantizedConfidence(kSsdPriorVariance[j]);
                     }
@@ -203,7 +203,7 @@ std::vector<SsdPrior> GenerateSsdPriors() {
             }
         }
     }
-    if (priors.size() != kSsdPriorSize) {
+    if (priors.size() != kSsdPriors) {
         return std::vector<SsdPrior>();
     }
     return priors;
@@ -212,19 +212,19 @@ std::vector<SsdPrior> GenerateSsdPriors() {
 bool DecodeSsdBoxes(const std::vector<int32_t> &loc_predictions,
                     const std::vector<SsdPrior> &priors,
                     std::vector<SsdDecodedBox> *boxes) {
-    if (boxes == nullptr || priors.size() != kSsdPriorSize ||
-        loc_predictions.size() != kSsdPriorSize * kSsdCoordinateSize) {
+    if (boxes == nullptr || priors.size() != kSsdPriors ||
+        loc_predictions.size() != kSsdPriors * kSsdBoxCoordinates) {
         return false;
     }
     boxes->clear();
-    boxes->reserve(kSsdPriorSize);
-    for (uint32_t i = 0; i < kSsdPriorSize; ++i) {
+    boxes->reserve(kSsdPriors);
+    for (uint32_t i = 0; i < kSsdPriors; ++i) {
         const SsdPrior &prior = priors[i];
         const float prior_width = prior.x_max - prior.x_min;
         const float prior_height = prior.y_max - prior.y_min;
         const float prior_center_x = (prior.x_max + prior.x_min) * 0.5f;
         const float prior_center_y = (prior.y_max + prior.y_min) * 0.5f;
-        const uint32_t loc_offset = i * kSsdCoordinateSize;
+        const uint32_t loc_offset = i * kSsdBoxCoordinates;
         const float loc_x = QuantizedConfidence(loc_predictions[loc_offset]);
         const float loc_y = QuantizedConfidence(loc_predictions[loc_offset + 1]);
         const float loc_w = QuantizedConfidence(loc_predictions[loc_offset + 2]);
@@ -286,15 +286,15 @@ void AppendNmsProposals(std::vector<SsdProposal> *proposals,
 bool SsdPostprocess::Prepare() {
     Clear();
     priors_ = GenerateSsdPriors();
-    if (priors_.size() != kSsdPriorSize) {
+    if (priors_.size() != kSsdPriors) {
         Clear();
         return false;
     }
-    loc_predictions_.reserve(kSsdPriorSize * kSsdCoordinateSize);
-    conf_scores_.reserve(kSsdPriorSize * kSsdClassSize);
-    boxes_.reserve(kSsdPriorSize);
-    class_proposals_.reserve(kSsdPriorSize);
-    proposals_after_nms_.reserve((kSsdClassSize - 1U) * kSsdTopK);
+    loc_predictions_.reserve(kSsdPriors * kSsdBoxCoordinates);
+    conf_scores_.reserve(kSsdPriors * kSsdClasses);
+    boxes_.reserve(kSsdPriors);
+    class_proposals_.reserve(kSsdPriors);
+    proposals_after_nms_.reserve((kSsdClasses - 1U) * kSsdTopK);
     nms_suppressed_.reserve(kSsdTopK);
     return true;
 }
@@ -320,7 +320,7 @@ void SsdPostprocess::BeginFrame() {
 
 bool SsdPostprocess::AppendLocationLayer(
     uint32_t layer, const std::vector<int32_t> &values) {
-    if (layer >= kSsdLayerSize ||
+    if (layer >= kSsdLayers ||
         values.size() != kSsdDetectInputChannel[layer]) {
         return false;
     }
@@ -331,14 +331,14 @@ bool SsdPostprocess::AppendLocationLayer(
 
 bool SsdPostprocess::AppendConfidenceLayer(
     uint32_t layer, const std::vector<int32_t> &values) {
-    if (layer >= kSsdLayerSize ||
+    if (layer >= kSsdLayers ||
         values.size() != kSsdSoftmaxInputChannel[layer] ||
-        values.size() % kSsdClassSize != 0) {
+        values.size() % kSsdClasses != 0) {
         return false;
     }
-    for (size_t offset = 0; offset < values.size(); offset += kSsdClassSize) {
+    for (size_t offset = 0; offset < values.size(); offset += kSsdClasses) {
         const size_t score_offset = conf_scores_.size();
-        conf_scores_.resize(score_offset + kSsdClassSize);
+        conf_scores_.resize(score_offset + kSsdClasses);
         if (!SoftmaxQuantized(&values[offset], &conf_scores_[score_offset])) {
             return false;
         }
@@ -347,9 +347,9 @@ bool SsdPostprocess::AppendConfidenceLayer(
 }
 
 bool SsdPostprocess::IsFrameComplete() const {
-    return priors_.size() == kSsdPriorSize &&
-           loc_predictions_.size() == kSsdPriorSize * kSsdCoordinateSize &&
-           conf_scores_.size() == kSsdPriorSize * kSsdClassSize;
+    return priors_.size() == kSsdPriors &&
+           loc_predictions_.size() == kSsdPriors * kSsdBoxCoordinates &&
+           conf_scores_.size() == kSsdPriors * kSsdClasses;
 }
 
 std::vector<AiDetection> SsdPostprocess::DecodeDetections(
@@ -364,11 +364,11 @@ std::vector<AiDetection> SsdPostprocess::DecodeDetections(
     const int32_t score_threshold =
         QuantizeConfidence(config.confidence_threshold);
     proposals_after_nms_.clear();
-    for (uint32_t class_id = 1; class_id < kSsdClassSize; ++class_id) {
+    for (uint32_t class_id = 1; class_id < kSsdClasses; ++class_id) {
         class_proposals_.clear();
-        for (uint32_t i = 0; i < kSsdPriorSize; ++i) {
+        for (uint32_t i = 0; i < kSsdPriors; ++i) {
             const int32_t score =
-                conf_scores_[i * kSsdClassSize + class_id];
+                conf_scores_[i * kSsdClasses + class_id];
             if (score < score_threshold || !IsValidSsdBox(boxes_[i])) {
                 continue;
             }

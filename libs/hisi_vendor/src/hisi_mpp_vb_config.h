@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_VB_CONFIG_H_
 #define LIVE_STREAM_HISI_VENDOR_SRC_HISI_MPP_VB_CONFIG_H_
 
-#include "media/pipeline_config.h"
+#include "hisi_vendor/media_pipeline.h"
 
 namespace live_stream {
 namespace hisisdk {

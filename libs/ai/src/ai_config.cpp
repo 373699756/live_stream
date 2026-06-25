@@ -1,6 +1,6 @@
 #include "ai_config.h"
 
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <cmath>
 #include <string>
@@ -14,7 +14,7 @@ constexpr std::size_t kMaxPerimeterRegions = 8;
 constexpr std::size_t kMaxPerimeterRegionNameLength = 32;
 constexpr std::size_t kMaxAiTasks = 4;
 
-bool ReadOptionalStringField(const ConfigJson &object, const char *key,
+bool ReadOptionalStringField(const Json &object, const char *key,
                              std::string *value) {
     if (value == nullptr || key == nullptr) {
         return false;
@@ -30,17 +30,17 @@ bool ReadOptionalStringField(const ConfigJson &object, const char *key,
     return value->size() <= kMaxPerimeterRegionNameLength;
 }
 
-bool ParsePerimeterRegion(const ConfigJson &value,
+bool ParsePerimeterRegion(const Json &value,
                           AiPerimeterRegion *region) {
     if (region == nullptr || !value.is_object()) {
         return false;
     }
     AiPerimeterRegion parsed;
     if (!ReadOptionalStringField(value, "name", &parsed.name) ||
-        !json_utils::ReadField(value, "x", &parsed.x, 0.0f, 1.0f) ||
-        !json_utils::ReadField(value, "y", &parsed.y, 0.0f, 1.0f) ||
-        !json_utils::ReadField(value, "width", &parsed.width, 0.0f, 1.0f) ||
-        !json_utils::ReadField(value, "height", &parsed.height, 0.0f,
+        !json_reader::ReadField(value, "x", &parsed.x, 0.0f, 1.0f) ||
+        !json_reader::ReadField(value, "y", &parsed.y, 0.0f, 1.0f) ||
+        !json_reader::ReadField(value, "width", &parsed.width, 0.0f, 1.0f) ||
+        !json_reader::ReadField(value, "height", &parsed.height, 0.0f,
                                1.0f)) {
         return false;
     }
@@ -52,7 +52,7 @@ bool ParsePerimeterRegion(const ConfigJson &value,
     return true;
 }
 
-bool ParsePerimeterRegions(const ConfigJson &value,
+bool ParsePerimeterRegions(const Json &value,
                            std::vector<AiPerimeterRegion> *regions) {
     if (regions == nullptr || !value.is_array() ||
         value.size() > kMaxPerimeterRegions) {
@@ -60,7 +60,7 @@ bool ParsePerimeterRegions(const ConfigJson &value,
     }
     std::vector<AiPerimeterRegion> parsed_regions;
     parsed_regions.reserve(value.size());
-    for (const ConfigJson &item : value) {
+    for (const Json &item : value) {
         AiPerimeterRegion region;
         if (!ParsePerimeterRegion(item, &region)) {
             return false;
@@ -71,7 +71,7 @@ bool ParsePerimeterRegions(const ConfigJson &value,
     return true;
 }
 
-bool ParseOptionalPerimeterConfig(const ConfigJson &value,
+bool ParseOptionalPerimeterConfig(const Json &value,
                                   AiPerimeterConfig *perimeter) {
     if (perimeter == nullptr) {
         return false;
@@ -102,8 +102,6 @@ const char *AiBackendToString(AiBackend backend) {
     switch (backend) {
         case AiBackend::kHi3516Dv300Nnie:
             return "hisi3516dv300_nnie";
-        case AiBackend::kHostStub:
-            return "host_stub";
     }
     return "hisi3516dv300_nnie";
 }
@@ -192,7 +190,7 @@ bool IsValidAiConfig(const AiConfig &config) {
     return true;
 }
 
-bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
+bool ParseAiTaskConfig(const Json &value, const AiModelConfig &fallback,
                        AiModelConfig *parsed) {
     if (parsed == nullptr || !value.is_object()) {
         return false;
@@ -201,23 +199,23 @@ bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
     std::string backend;
     std::string task;
     std::string stream;
-    if (!json_utils::ReadField(value, "enabled", &config.enabled) ||
-        !json_utils::ReadField(value, "backend", &backend) ||
+    if (!json_reader::ReadField(value, "enabled", &config.enabled) ||
+        !json_reader::ReadField(value, "backend", &backend) ||
         !ParseBackend(backend, &config.backend) ||
-        !json_utils::ReadField(value, "task", &task) ||
+        !json_reader::ReadField(value, "task", &task) ||
         !ParseTask(task, &config.task) ||
-        !json_utils::ReadField(value, "stream", &stream) ||
+        !json_reader::ReadField(value, "stream", &stream) ||
         !ParseStream(stream, &config.stream_id) ||
-        !json_utils::ReadField(value, "model_path", &config.model_path) ||
-        !json_utils::ReadField(value, "input_width", &config.input_width, 1,
+        !json_reader::ReadField(value, "model_path", &config.model_path) ||
+        !json_reader::ReadField(value, "input_width", &config.input_width, 1,
                                0xffffffffU) ||
-        !json_utils::ReadField(value, "input_height", &config.input_height, 1,
+        !json_reader::ReadField(value, "input_height", &config.input_height, 1,
                                0xffffffffU) ||
-        !json_utils::ReadField(value, "inference_interval_ms",
+        !json_reader::ReadField(value, "inference_interval_ms",
                                &config.inference_interval_ms, 1, 0xffffffffU) ||
-        !json_utils::ReadField(value, "max_results", &config.max_results, 1,
+        !json_reader::ReadField(value, "max_results", &config.max_results, 1,
                                0xffffffffU) ||
-        !json_utils::ReadField(value, "confidence_threshold",
+        !json_reader::ReadField(value, "confidence_threshold",
                                &config.confidence_threshold, 0.0f, 1.0f) ||
         !ParseOptionalPerimeterConfig(value, &config.perimeter)) {
         return false;
@@ -229,7 +227,7 @@ bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
     return true;
 }
 
-bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
+bool ParseAiConfig(const Json &value, const AiConfig &fallback,
                    AiConfig *parsed) {
     if (parsed == nullptr || !value.is_object() || !value.contains("tasks") ||
         !value.at("tasks").is_array() ||
@@ -237,13 +235,13 @@ bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
         return false;
     }
     AiConfig config = fallback;
-    if (!json_utils::ReadField(value, "enabled", &config.enabled)) {
+    if (!json_reader::ReadField(value, "enabled", &config.enabled)) {
         return false;
     }
 
     std::vector<AiModelConfig> parsed_tasks;
     parsed_tasks.reserve(value.at("tasks").size());
-    for (const ConfigJson &item : value.at("tasks")) {
+    for (const Json &item : value.at("tasks")) {
         AiModelConfig fallback_task;
         if (item.is_object() && item.contains("task") &&
             item.at("task").is_string()) {

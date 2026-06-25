@@ -7,9 +7,9 @@ import {
 } from '../api/time';
 import type { NtpConfig, TimeInfo } from '../api/types';
 
-const statusTimeoutMs = 1800;
+const timeInfoTimeoutMs = 1800;
 
-function errorMessage(error: unknown, fallback: string) {
+function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error && error.message ? error.message : fallback;
 }
 
@@ -25,7 +25,7 @@ function parseServers(text: string) {
 }
 
 export function useTimeConfig() {
-    const [status, setStatus] = useState<TimeInfo | null>(null);
+    const [timeInfo, setTimeInfo] = useState<TimeInfo | null>(null);
     const [timezone, setTimezone] = useState('UTC');
     const [ntpEnabled, setNtpEnabled] = useState(false);
     const [ntpServersText, setNtpServersText] = useState('');
@@ -34,39 +34,41 @@ export function useTimeConfig() {
     const [browserSyncOnLogin, setBrowserSyncOnLogin] = useState(true);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
-    const [message, setMessage] = useState('');
+    const [msg, setMsg] = useState('');
     const [error, setError] = useState('');
 
-    const applyStatus = useCallback((nextStatus: TimeInfo) => {
-        setStatus(nextStatus);
-        setTimezone(nextStatus.timezone);
-        setNtpEnabled(nextStatus.ntp.enabled);
-        setNtpServersText(normalizeServersText(nextStatus.ntp.servers));
-        setNtpIntervalSec(nextStatus.ntp.sync_interval_sec);
-        setManualSyncAllowed(nextStatus.manual_sync_allowed);
-        setBrowserSyncOnLogin(nextStatus.browser_sync_on_login);
+    const applyTimeInfo = useCallback((nextTimeInfo: TimeInfo) => {
+        setTimeInfo(nextTimeInfo);
+        setTimezone(nextTimeInfo.timezone);
+        setNtpEnabled(nextTimeInfo.ntp.enabled);
+        setNtpServersText(normalizeServersText(nextTimeInfo.ntp.servers));
+        setNtpIntervalSec(nextTimeInfo.ntp.sync_interval_sec);
+        setManualSyncAllowed(nextTimeInfo.manual_sync_allowed);
+        setBrowserSyncOnLogin(nextTimeInfo.browser_sync_on_login);
     }, []);
 
     const refresh = useCallback(async () => {
-        const nextStatus = await getTimeInfo({ timeoutMs: statusTimeoutMs });
-        applyStatus(nextStatus);
+        const nextTimeInfo = await getTimeInfo({
+            timeoutMs: timeInfoTimeoutMs,
+        });
+        applyTimeInfo(nextTimeInfo);
         setError('');
-    }, [applyStatus]);
+    }, [applyTimeInfo]);
 
     useEffect(() => {
         let mounted = true;
         setLoading(true);
-        void getTimeInfo({ timeoutMs: statusTimeoutMs })
-            .then((nextStatus) => {
+        void getTimeInfo({ timeoutMs: timeInfoTimeoutMs })
+            .then((nextTimeInfo) => {
                 if (!mounted) {
                     return;
                 }
-                applyStatus(nextStatus);
+                applyTimeInfo(nextTimeInfo);
                 setError('');
             })
             .catch((nextError: unknown) => {
                 if (mounted) {
-                    setError(errorMessage(nextError, '时间状态加载失败'));
+                    setError(errorMsg(nextError, '时间状态加载失败'));
                 }
             })
             .finally(() => {
@@ -77,7 +79,7 @@ export function useTimeConfig() {
         return () => {
             mounted = false;
         };
-    }, [applyStatus]);
+    }, [applyTimeInfo]);
 
     const saveConfig = useCallback(async () => {
         const ntp: NtpConfig = {
@@ -91,7 +93,7 @@ export function useTimeConfig() {
         setBrowserSyncOnLogin(nextBrowserSyncOnLogin);
         setBusy(true);
         setError('');
-        setMessage('');
+        setMsg('');
         try {
             await saveTimeConfig({
                 timezone: timezone.trim() || 'UTC',
@@ -100,9 +102,9 @@ export function useTimeConfig() {
                 browser_sync_on_login: nextBrowserSyncOnLogin,
             });
             await refresh();
-            setMessage('时间配置已保存');
+            setMsg('时间配置已保存');
         } catch (nextError: unknown) {
-            setError(errorMessage(nextError, '保存时间配置失败'));
+            setError(errorMsg(nextError, '保存时间配置失败'));
         } finally {
             setBusy(false);
         }
@@ -119,13 +121,13 @@ export function useTimeConfig() {
     const syncBrowserNow = useCallback(async () => {
         setBusy(true);
         setError('');
-        setMessage('');
+        setMsg('');
         try {
             await syncBrowserTime();
             await refresh();
-            setMessage('已用浏览器时间同步设备');
+            setMsg('已用浏览器时间同步设备');
         } catch (nextError: unknown) {
-            setError(errorMessage(nextError, '浏览器时间同步失败'));
+            setError(errorMsg(nextError, '浏览器时间同步失败'));
         } finally {
             setBusy(false);
         }
@@ -134,20 +136,20 @@ export function useTimeConfig() {
     const syncNtp = useCallback(async () => {
         setBusy(true);
         setError('');
-        setMessage('');
+        setMsg('');
         try {
             await syncNtpNow({ timeoutMs: 8000 });
             await refresh();
-            setMessage('已触发 NTP 同步');
+            setMsg('已触发 NTP 同步');
         } catch (nextError: unknown) {
-            setError(errorMessage(nextError, 'NTP 同步失败'));
+            setError(errorMsg(nextError, 'NTP 同步失败'));
         } finally {
             setBusy(false);
         }
     }, [refresh]);
 
     return {
-        status,
+        timeInfo,
         timezone,
         setTimezone,
         ntpEnabled,
@@ -162,7 +164,7 @@ export function useTimeConfig() {
         setBrowserSyncOnLogin,
         loading,
         busy,
-        message,
+        msg,
         error,
         saveConfig,
         syncBrowserNow,

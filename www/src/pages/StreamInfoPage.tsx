@@ -325,8 +325,8 @@ export function StreamInfoPage() {
                                     <div>
                                         <dt>读者/客户端</dt>
                                         <dd>
-                                            {streamInfo.subscription_size} /{' '}
-                                            {streamInfo.client_size}
+                                            {streamInfo.active_subscriptions} /{' '}
+                                            {streamInfo.preview_clients}
                                         </dd>
                                     </div>
                                     <div>
@@ -438,7 +438,7 @@ export function StreamInfoPage() {
                     <div>
                         <span>ICE Servers</span>
                         <strong>
-                            {sessionSummary.webrtc_ice_server_size ?? 0}
+                            {sessionSummary.webrtc_ice_servers ?? 0}
                         </strong>
                     </div>
                     <div>

@@ -1,5 +1,6 @@
 #include "media/media_buffer.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdlib>
 #include <limits>
@@ -30,7 +31,7 @@ struct PoolState {
     uint32_t* free_indices = nullptr;
     uint32_t high_water_size = 0;
     uint64_t allocation_failures = 0;
-    uint32_t refs = 1;
+    std::atomic<uint32_t> refs{1};
     std::mutex mutex;
 };
 
@@ -41,7 +42,7 @@ struct PoolBlockRef {
 
 void AddPoolStateRef(PoolState* state) {
     if (state != nullptr) {
-        (void)__sync_add_and_fetch(&state->refs, 1);
+        (void)state->refs.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -49,7 +50,7 @@ void ReleasePoolState(PoolState* state) {
     if (state == nullptr) {
         return;
     }
-    if (__sync_sub_and_fetch(&state->refs, 1) == 0) {
+    if (state->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) {
         delete state;
     }
 }

@@ -26,7 +26,7 @@ struct WebrtcTransportStartOptions {
     UdpCallbacks udp_callbacks;
     std::string peer_id;
     uint16_t local_port_base = 0;
-    uint32_t port_size = 1;
+    uint32_t port_span = 1;
     uint32_t next_port_offset = 0;
     std::string local_ice_ufrag;
     std::string local_ice_password;
@@ -35,7 +35,7 @@ struct WebrtcTransportStartOptions {
     WebrtcTransportTimerFn on_dtls_timeout = nullptr;
 };
 
-struct WebrtcTransportDtlsResult {
+struct WebrtcDtlsOutput {
     std::vector<uint8_t> outgoing_dtls;
     bool connected_now = false;
     bool failed = false;
@@ -66,18 +66,18 @@ public:
     WebrtcTransport &operator=(const WebrtcTransport &) = delete;
 
     bool Start(const WebrtcTransportStartOptions &options,
-               uint32_t *next_port_offset,
-               NetAddress *local_candidate);
+               uint32_t &next_port_offset,
+               NetAddress &local_candidate);
     void Close();
 
     bool HandleIcePacket(NetAddress peer, const uint8_t *data, size_t size,
-                         bool *connected_now);
+                         bool &connected_now);
     bool ProcessDtlsPacket(const uint8_t *data, size_t size,
-                           WebrtcTransportDtlsResult *result);
-    bool HandleDtlsTimeout(WebrtcTransportDtlsResult *result);
-    bool SendDtlsResult(const WebrtcTransportDtlsResult &result);
+                           WebrtcDtlsOutput &result);
+    bool HandleDtlsTimeout(WebrtcDtlsOutput &result);
+    bool SendDtlsResult(const WebrtcDtlsOutput &result);
     bool HandleSrtcpPacket(const uint8_t *data, size_t size,
-                           bool *need_keyframe);
+                           bool &need_keyframe);
     bool SendRtpPacket(const MediaFrame &frame,
                        const rtp::RtpPacketView &packet);
 
@@ -87,7 +87,7 @@ public:
     UdpSocketId socket_id() const;
     NetAddress local_address() const;
     WebrtcTransportInfo GetInfo() const;
-    void FillStats(WebrtcStats *stats) const;
+    void FillStats(WebrtcStats &stats) const;
 
     static bool IsIcePacket(const uint8_t *data, size_t size);
     static bool IsDtlsPacket(const uint8_t *data, size_t size);
@@ -95,10 +95,10 @@ public:
 
 private:
     bool StartIceTransport(const WebrtcTransportStartOptions &options,
-                           uint32_t *next_port_offset,
-                           std::unique_ptr<IceTransport> *ice);
-    bool ApplyDtlsResult(const DtlsProcessResult &dtls_result,
-                         WebrtcTransportDtlsResult *result);
+                           uint32_t &next_port_offset,
+                           std::unique_ptr<IceTransport> &ice);
+    bool ApplyDtlsResult(const DtlsProcessOutput &dtls_result,
+                         WebrtcDtlsOutput &result);
     bool StartSrtp(const DtlsSrtpKeys &keys);
     bool ArmDtlsTimer();
     void CancelDtlsTimer();

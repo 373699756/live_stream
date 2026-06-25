@@ -1,4 +1,4 @@
-#include "time_api.h"
+#include "system/time.h"
 
 #include "config.h"
 #include "event.h"
@@ -92,46 +92,46 @@ public:
     void Stop() override {}
     bool IsStarted() const override { return true; }
 
-    live_stream::ConfigStatus Set(const std::string& name,
-                                  const live_stream::ConfigJson& now,
-                                  live_stream::ConfigIssue* issue) override {
+    live_stream::ConfigCode Set(const std::string& name,
+                                  const live_stream::Json& now,
+                                  live_stream::ConfigError* error) override {
         if (!set_ok) {
-            return live_stream::ConfigStatus::kSaveFailed;
+            return live_stream::ConfigCode::kSave;
         }
         if (name == scope_name && scope.verify) {
-            const live_stream::ConfigStatus status = scope.verify(now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code = scope.verify(now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         if (name == scope_name && scope.apply) {
-            const live_stream::ConfigStatus status =
-                scope.apply(value_json, now, issue);
-            if (status != live_stream::ConfigStatus::kOk) {
-                return status;
+            const live_stream::ConfigCode code =
+                scope.apply(value_json, now, error);
+            if (code != live_stream::ConfigCode::kOk) {
+                return code;
             }
         }
         value_name = name;
         value_json = now;
-        return live_stream::ConfigStatus::kOk;
+        return live_stream::ConfigCode::kOk;
     }
 
-    live_stream::ConfigJson Get(const std::string& name) override {
-        return name == value_name ? value_json : live_stream::ConfigJson();
+    live_stream::Json Get(const std::string& name) override {
+        return name == value_name ? value_json : live_stream::Json();
     }
 
-    live_stream::ConfigStatus Reset(
-        const std::string&, live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kNotFound;
+    live_stream::ConfigCode Reset(
+        const std::string&, live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kMissing;
     }
 
-    live_stream::ConfigJson Default(const std::string&) override {
-        return live_stream::ConfigJson();
+    live_stream::Json Default(const std::string&) override {
+        return live_stream::Json();
     }
 
-    live_stream::ConfigStatus ResetAll(
-        live_stream::ConfigIssue*) override {
-        return live_stream::ConfigStatus::kNotFound;
+    live_stream::ConfigCode ResetAll(
+        live_stream::ConfigError*) override {
+        return live_stream::ConfigCode::kMissing;
     }
 
     bool AddScope(const std::string& name,
@@ -145,7 +145,7 @@ public:
 
     std::string value_name;
     std::string scope_name;
-    live_stream::ConfigJson value_json;
+    live_stream::Json value_json;
     live_stream::ConfigScope scope;
     bool set_ok = true;
 };
@@ -308,11 +308,11 @@ int main() {
         stored_config.value_json["browser_sync_on_login"].get<bool>()) {
         return 25;
     }
-    live_stream::ConfigJson external_config = stored_config.value_json;
+    live_stream::Json external_config = stored_config.value_json;
     external_config["manual_sync_allowed"] = false;
     external_config["browser_sync_on_login"] = true;
     if (stored_config.Set("time", external_config, nullptr) !=
-            live_stream::ConfigStatus::kOk ||
+            live_stream::ConfigCode::kOk ||
         stored_service->GetTimeInfo().browser_sync_on_login) {
         return 26;
     }

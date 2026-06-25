@@ -10,9 +10,9 @@ namespace ai_internal {
 const char *AiBackendToString(AiBackend backend);
 bool IsValidAiTaskConfig(const AiModelConfig &config);
 bool IsValidAiConfig(const AiConfig &config);
-bool ParseAiTaskConfig(const ConfigJson &value, const AiModelConfig &fallback,
+bool ParseAiTaskConfig(const Json &value, const AiModelConfig &fallback,
                        AiModelConfig *parsed);
-bool ParseAiConfig(const ConfigJson &value, const AiConfig &fallback,
+bool ParseAiConfig(const Json &value, const AiConfig &fallback,
                    AiConfig *parsed);
 
 }  // namespace ai_internal

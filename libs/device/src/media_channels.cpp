@@ -1,6 +1,6 @@
 #include "media_channels.h"
 
-#include "hisisdk/hisi_sdk.h"
+#include "hisi_vendor/sdk.h"
 
 namespace live_stream {
 namespace device_internal {

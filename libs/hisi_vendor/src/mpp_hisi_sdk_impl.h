@@ -1,11 +1,10 @@
 #ifndef LIVE_STREAM_HISI_VENDOR_SRC_MPP_HISI_SDK_IMPL_H_
 #define LIVE_STREAM_HISI_VENDOR_SRC_MPP_HISI_SDK_IMPL_H_
 
-#include "hisi_vendor/mpp_hisi_sdk.h"
+#include "hisi_vendor/mpp_sdk.h"
 
 #include <atomic>
 #include <mutex>
-#include <pthread.h>
 #include <thread>
 
 namespace live_stream {
@@ -39,16 +38,26 @@ struct MppHisiSdkImpl {
     bool vi_bound_vpss_ = false;
     VencChannelState main_venc_;
     VencChannelState sub_venc_;
-    pthread_t isp_thread_ = 0;
+    std::thread isp_thread_;
 
     std::thread stream_thread_;
     std::atomic<bool> stream_running_{false};
-    std::recursive_mutex control_mutex_;
+    std::mutex control_mutex_;
     std::mutex snapshot_mutex_;
 
     MediaFrameCallback frame_callback_ = nullptr;
     void* frame_callback_user_ = nullptr;
 };
+
+// These stop helpers are called with control_mutex_ already held. They avoid
+// public method re-entry so control_mutex_ can stay a plain mutex.
+void StopViInput(MppHisiSdkImpl& impl, const MediaPipelineConfig& config);
+void StopVpssGroup(MppHisiSdkImpl& impl, const MediaPipelineConfig& config);
+void UnbindViVpssPipe(MppHisiSdkImpl& impl,
+                      const MediaPipelineConfig& config);
+void DestroyVencChannels(MppHisiSdkImpl& impl);
+void UnbindVpssVencChannels(MppHisiSdkImpl& impl);
+void StopVencStreamThread(MppHisiSdkImpl& impl);
 
 }  // namespace hisisdk
 }  // namespace live_stream

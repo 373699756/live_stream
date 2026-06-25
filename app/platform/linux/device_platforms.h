@@ -4,10 +4,10 @@
 #include <memory>
 #include <string>
 
-#include "network_api.h"
+#include "system/network.h"
 #include "system.h"
-#include "time_api.h"
-#include "upgrade.h"
+#include "system/time.h"
+#include "system/upgrade.h"
 
 namespace live_stream {
 

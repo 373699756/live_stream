@@ -2,7 +2,9 @@
 
 #include "hisi_mpp_resource_recovery.h"
 #include "hisi_mpp_sensor.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_mpp_sdk.h"
+
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {

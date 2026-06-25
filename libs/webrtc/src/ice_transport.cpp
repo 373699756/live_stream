@@ -63,10 +63,8 @@ void IceTransport::Stop() {
 }
 
 bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
-                                   size_t size, bool *connected_now) {
-    if (connected_now != nullptr) {
-        *connected_now = false;
-    }
+                                   size_t size, bool &connected_now) {
+    connected_now = false;
     if (net_io_ == nullptr || socket_id_ == 0 || data == nullptr ||
         size == 0) {
         return false;
@@ -98,8 +96,8 @@ bool IceTransport::HandleUdpPacket(NetAddress peer, const uint8_t *data,
     selected_pair_.priority = request.priority;
     selected_pair_.nominated = request.use_candidate;
     (void)net_io_->SetUdpPeer(socket_id_, selected_pair_.remote);
-    if (!was_connected && connected_now != nullptr) {
-        *connected_now = true;
+    if (!was_connected) {
+        connected_now = true;
     }
     return true;
 }

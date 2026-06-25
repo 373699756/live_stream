@@ -19,14 +19,13 @@ public:
     // RtspRequestHandler 只解析 RTSP 方法并维护协议状态码。
     virtual bool IsRtspStreamAvailable(StreamId stream_id) const = 0;
     virtual MediaStreamInfo RtspStreamInfoForStream(StreamId stream_id) const = 0;
-    virtual bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession> &session,
+    virtual bool AuthorizeRtspRequest(RtspSession &session,
                                       const rtsp_internal::RtspRequest &request,
                                       StreamId stream_id) = 0;
-    virtual bool SetupRtspTransport(const std::shared_ptr<RtspSession> &session,
+    virtual bool SetupRtspTransport(RtspSession &session,
                                     const rtsp_internal::RtspRequest &request,
                                     StreamId stream_id) = 0;
-    virtual int StartRtspMediaStream(
-        const std::shared_ptr<RtspSession> &session) = 0;
+    virtual int StartRtspMediaStream(RtspSession &session) = 0;
     virtual void ArmRtspMediaStream(
         const std::shared_ptr<RtspSession> &session) = 0;
     virtual void CloseRtspConnectionAfterSend(ConnectionId connection_id) = 0;
@@ -39,7 +38,7 @@ public:
 
 class RtspRequestHandler {
 public:
-    explicit RtspRequestHandler(IRtspRequestHandlerDelegate *delegate);
+    explicit RtspRequestHandler(IRtspRequestHandlerDelegate &delegate);
 
     void HandleRequest(const std::shared_ptr<RtspSession> &session,
                        const rtsp_internal::RtspRequest &request);
@@ -50,15 +49,15 @@ private:
                       const rtsp_internal::RtspRequest &request,
                       const std::map<std::string, std::string> &headers,
                       const std::string &body);
-    void HandleDescribe(const std::shared_ptr<RtspSession> &session,
+    void HandleDescribe(RtspSession &session,
                         const rtsp_internal::RtspRequest &request,
                         StreamId stream_id);
     void HandlePlay(const std::shared_ptr<RtspSession> &session,
                     const rtsp_internal::RtspRequest &request);
-    void HandleTeardown(const std::shared_ptr<RtspSession> &session,
+    void HandleTeardown(RtspSession &session,
                         const rtsp_internal::RtspRequest &request);
 
-    IRtspRequestHandlerDelegate *delegate_ = nullptr;
+    IRtspRequestHandlerDelegate &delegate_;
 };
 
 }  // namespace live_stream

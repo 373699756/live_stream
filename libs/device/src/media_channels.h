@@ -1,8 +1,8 @@
 #ifndef LIVE_STREAM_DEVICE_SRC_MEDIA_CHANNELS_H_
 #define LIVE_STREAM_DEVICE_SRC_MEDIA_CHANNELS_H_
 
-#include "media/mpp_types.h"
-#include "media/pipeline_config.h"
+#include "hisi_vendor/mpp_types.h"
+#include "hisi_vendor/media_pipeline.h"
 
 #include <cstdint>
 

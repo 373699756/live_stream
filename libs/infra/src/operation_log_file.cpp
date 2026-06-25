@@ -7,9 +7,9 @@
 
 #include "operation_log_file.h"
 
-#include "config_json.h"
+#include "json.h"
 #include "infra/fs.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <algorithm>
 
@@ -90,7 +90,7 @@ bool OperationResultFromString(const std::string& value,
 }
 
 std::string EncodeOperationRecord(const OperationRecord& record) {
-    ConfigJson root;
+    Json root;
     root["timestamp_ms"] = record.timestamp_ms;
     root["request_id"] = record.request_id;
     root["user_name"] = record.user_name;
@@ -109,7 +109,7 @@ bool DecodeOperationRecord(const std::string& line, OperationRecord* record) {
         return false;
     }
 
-    ConfigJson root = ConfigJson::parse(line, nullptr, false);
+    Json root = Json::parse(line, nullptr, false);
     if (root.is_discarded() || !root.is_object()) {
         return false;
     }
@@ -117,16 +117,16 @@ bool DecodeOperationRecord(const std::string& line, OperationRecord* record) {
     OperationRecord decoded;
     std::string action;
     std::string result;
-    if (!json_utils::ReadField(root, "timestamp_ms", &decoded.timestamp_ms) ||
-        !json_utils::ReadField(root, "request_id", &decoded.request_id) ||
-        !json_utils::ReadField(root, "user_name", &decoded.user_name) ||
-        !json_utils::ReadField(root, "session_id", &decoded.session_id) ||
-        !json_utils::ReadField(root, "client_ip", &decoded.client_ip) ||
-        !json_utils::ReadField(root, "module", &decoded.module) ||
-        !json_utils::ReadField(root, "action", &action) ||
-        !json_utils::ReadField(root, "target", &decoded.target) ||
-        !json_utils::ReadField(root, "result", &result) ||
-        !json_utils::ReadField(root, "reason", &decoded.reason)) {
+    if (!json_reader::ReadField(root, "timestamp_ms", &decoded.timestamp_ms) ||
+        !json_reader::ReadField(root, "request_id", &decoded.request_id) ||
+        !json_reader::ReadField(root, "user_name", &decoded.user_name) ||
+        !json_reader::ReadField(root, "session_id", &decoded.session_id) ||
+        !json_reader::ReadField(root, "client_ip", &decoded.client_ip) ||
+        !json_reader::ReadField(root, "module", &decoded.module) ||
+        !json_reader::ReadField(root, "action", &action) ||
+        !json_reader::ReadField(root, "target", &decoded.target) ||
+        !json_reader::ReadField(root, "result", &result) ||
+        !json_reader::ReadField(root, "reason", &decoded.reason)) {
         return false;
     }
 

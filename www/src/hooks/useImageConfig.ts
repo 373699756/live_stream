@@ -83,9 +83,9 @@ export function useImageConfig(selectedStream?: StreamName) {
             setConfig(nextConfig);
             setSavedMsg('已提交保存');
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : '保存失败';
-            setSavedMsg(`保存失败：${message}`);
-            setError(message);
+            const msg = err instanceof Error ? err.message : '保存失败';
+            setSavedMsg(`保存失败：${msg}`);
+            setError(msg);
         } finally {
             setSaving(false);
         }

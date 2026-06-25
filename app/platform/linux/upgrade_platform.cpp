@@ -1,14 +1,16 @@
 #include "platform/linux/device_platforms.h"
 
-#include "config_json.h"
+#include "json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "platform/linux/linux_platform_common.h"
 #include "tools/sysupgrade/upgrade_flash.h"
-#include "upgrade_package.h"
+#include "system/package.h"
 
+#include <cerrno>
 #include <cctype>
 #include <cstdint>
+#include <dirent.h>
 #include <fcntl.h>
 #include <string>
 #include <sys/reboot.h>
@@ -26,9 +28,6 @@ using linux_platform::ReadSystemTimeMs;
 constexpr const char* kUpgradeRootPath = "/data/upgrade";
 constexpr const char* kUpgradeUploadPath = "/tmp/live_stream/upgrade/uploads";
 constexpr const char* kUpgradeStagePath = "/data/upgrade/staged";
-constexpr const char* kSystemUpgradeStagePath = "/tmp/live_stream/upgrade/staged";
-constexpr const char* kInstalledHelperPath = "/opt/app/sbin/live_sysupgrade";
-constexpr const char* kTmpHelperPath = "/tmp/live_stream/upgrade/live_sysupgrade";
 constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
 constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 
@@ -117,10 +116,10 @@ int CompareVersionStrings(const std::string& lhs, const std::string& rhs) {
     return 0;
 }
 
-void AppendUpgradeLog(const std::string& message) {
+void AppendUpgradeLog(const std::string& msg) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
     const std::string line =
-        std::to_string(ReadSystemTimeMs()) + " " + message + "\n";
+        std::to_string(ReadSystemTimeMs()) + " " + msg + "\n";
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
 }
 
@@ -130,7 +129,7 @@ void WriteUpgradeInfo(const std::string& state,
                       const std::string& version,
                       const std::string& error_message) {
     static_cast<void>(infra::Path::MakeDirs("/data"));
-    ConfigJson root = ConfigJson::object();
+    Json root = Json::object();
     root["state"] = state;
     root["progress_percent"] = progress;
     root["ok"] = ok;
@@ -166,6 +165,46 @@ void WriteUpgradeInfo(const std::string& state,
         static_cast<void>(fsync(dir_fd));
         close(dir_fd);
     }
+}
+
+bool RemovePathTree(const std::string& path) {
+    struct stat path_stat;
+    if (path.empty() || lstat(path.c_str(), &path_stat) != 0) {
+        return false;
+    }
+    if (!S_ISDIR(path_stat.st_mode)) {
+        return unlink(path.c_str()) == 0;
+    }
+
+    DIR* dir = opendir(path.c_str());
+    if (dir == nullptr) {
+        return false;
+    }
+    bool ok = true;
+    while (true) {
+        errno = 0;
+        struct dirent* entry = readdir(dir);
+        if (entry == nullptr) {
+            if (errno != 0) {
+                ok = false;
+            }
+            break;
+        }
+        const std::string name = entry->d_name;
+        if (name == "." || name == "..") {
+            continue;
+        }
+        if (!RemovePathTree(infra::Path::Join(path, name))) {
+            ok = false;
+        }
+    }
+    if (closedir(dir) != 0) {
+        ok = false;
+    }
+    if (rmdir(path.c_str()) != 0) {
+        ok = false;
+    }
+    return ok;
 }
 
 bool ApplyWebUpgrade(const UpgradeManifest& manifest,
@@ -204,135 +243,21 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
     return true;
 }
 
-bool CopyFile(const std::string& from_path,
-              const std::string& to_path,
-              std::string* reason) {
-    const int from_fd = open(from_path.c_str(), O_RDONLY | O_NOFOLLOW);
-    if (from_fd < 0) {
-        if (reason != nullptr) {
-            *reason = "open helper failed";
-        }
-        return false;
-    }
-    struct stat from_stat;
-    if (fstat(from_fd, &from_stat) != 0 || !S_ISREG(from_stat.st_mode)) {
-        close(from_fd);
-        if (reason != nullptr) {
-            *reason = "helper is not a regular file";
-        }
-        return false;
-    }
-    if (!infra::Path::MakeDirs(infra::Path::DirName(to_path))) {
-        close(from_fd);
-        if (reason != nullptr) {
-            *reason = "create helper directory failed";
-        }
-        return false;
-    }
-    static_cast<void>(infra::File::Remove(to_path));
-    const int to_fd = open(to_path.c_str(),
-                           O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0755);
-    if (to_fd < 0) {
-        close(from_fd);
-        if (reason != nullptr) {
-            *reason = "create helper copy failed";
-        }
-        return false;
-    }
-    uint8_t buffer[64 * 1024];
-    bool ok = true;
-    while (ok) {
-        const ssize_t read_size = read(from_fd, buffer, sizeof(buffer));
-        if (read_size < 0) {
-            ok = false;
-            break;
-        }
-        if (read_size == 0) {
-            break;
-        }
-        ssize_t offset = 0;
-        while (offset < read_size) {
-            const ssize_t write_size =
-                write(to_fd, buffer + offset,
-                      static_cast<std::size_t>(read_size - offset));
-            if (write_size <= 0) {
-                ok = false;
-                break;
-            }
-            offset += write_size;
-        }
-    }
-    if (ok && fsync(to_fd) != 0) {
-        ok = false;
-    }
-    if (ok && fchmod(to_fd, 0755) != 0) {
-        ok = false;
-    }
-    close(to_fd);
-    close(from_fd);
-    if (!ok) {
-        if (reason != nullptr) {
-            *reason = "copy helper failed";
-        }
-        return false;
-    }
-    return true;
-}
-
-bool StartSystemUpgradeHelper(const ParsedUpgradePackage& package,
-                              const std::string& helper_path,
-                              std::string* reason) {
-    if (!upgrade_flash::IsPathOnTmpfs("/tmp/live_stream/upgrade")) {
-        if (reason != nullptr) {
-            *reason = "/tmp/live_stream/upgrade is not tmpfs";
-        }
-        return false;
-    }
-    if (!upgrade_flash::ValidateMtdLayoutForManifest(package.manifest, reason)) {
-        return false;
-    }
-    if (!infra::Path::MakeDirs(kSystemUpgradeStagePath)) {
-        if (reason != nullptr) {
-            *reason = "create tmp stage directory failed";
-        }
-        return false;
-    }
-    if (!CopyFile(kInstalledHelperPath, helper_path, reason)) {
-        return false;
-    }
-    if (chmod(helper_path.c_str(), 0755) != 0) {
-        if (reason != nullptr) {
-            *reason = "chmod helper failed";
-        }
-        return false;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        if (reason != nullptr) {
-            *reason = "fork helper failed";
-        }
-        return false;
-    }
-    if (pid == 0) {
-        setsid();
-        execl(helper_path.c_str(), helper_path.c_str(), "--package",
-              package.package_path.c_str(), "--stage", kSystemUpgradeStagePath,
-              "--reboot", nullptr);
-        _exit(127);
-    }
-    AppendUpgradeLog("system upgrade helper started: " +
-                     std::to_string(static_cast<int64_t>(pid)));
-    return true;
-}
-
 class UpgradePlatform : public IUpgradePlatform {
 public:
     UpgradePackageInfo ValidatePackage(const std::string& package_path) override {
+        last_error_.clear();
         ParsedUpgradePackage parsed;
         std::string reason;
         if (!ParseUpgradePackage(package_path, &parsed, &reason)) {
+            last_error_ = reason;
             AppendUpgradeLog("validate failed: " + reason);
+            return UpgradePackageInfo();
+        }
+        if (!UpgradePackageIsWebOnly(parsed.manifest)) {
+            last_error_ = "Web upgrade only accepts web partition packages";
+            AppendUpgradeLog(
+                "validate failed: Web upgrade only accepts web partition packages");
             return UpgradePackageInfo();
         }
         cached_package_ = parsed;
@@ -355,12 +280,22 @@ public:
     }
 
     bool PrepareUpgrade(const UpgradePackageInfo& info) override {
+        last_error_.clear();
         if (info.package_path.empty()) {
+            last_error_ = "package path is empty";
             return false;
         }
         ParsedUpgradePackage parsed;
         std::string reason;
         if (!ParseUpgradePackage(info.package_path, &parsed, &reason)) {
+            last_error_ = reason;
+            AppendUpgradeLog("prepare failed: " + reason);
+            WriteUpgradeInfo("failed", 100, false, info.version, reason);
+            return false;
+        }
+        if (!UpgradePackageIsWebOnly(parsed.manifest)) {
+            reason = "Web upgrade only accepts web partition packages";
+            last_error_ = reason;
             AppendUpgradeLog("prepare failed: " + reason);
             WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
@@ -368,58 +303,34 @@ public:
         if (!infra::Path::MakeDirs(kUpgradeRootPath) ||
             !infra::Path::MakeDirs(kUpgradeStagePath) ||
             !infra::Path::MakeDirs(kUpgradeUploadPath)) {
+            last_error_ = "create upgrade directory failed";
             return false;
         }
         cancel_requested_ = false;
         cached_package_ = parsed;
-        system_upgrade_ = !UpgradePackageIsWebOnly(parsed.manifest);
-        if (system_upgrade_) {
-            stage_dir_.clear();
-            if (!upgrade_flash::IsPathOnTmpfs("/tmp/live_stream/upgrade")) {
-                reason = "/tmp/live_stream/upgrade is not tmpfs";
-                AppendUpgradeLog("prepare failed: " + reason);
-                WriteUpgradeInfo("failed", 100, false, info.version, reason);
-                return false;
-            }
-            if (!upgrade_flash::ValidateMtdLayoutForManifest(parsed.manifest,
-                                                             &reason)) {
-                AppendUpgradeLog("prepare failed: " + reason);
-                WriteUpgradeInfo("failed", 100, false, info.version, reason);
-                return false;
-            }
-            return true;
-        }
         stage_dir_ = infra::Path::Join(
             kUpgradeStagePath,
             std::to_string(ReadSystemTimeMs()) + "-" + parsed.manifest.version);
-        return infra::Path::MakeDirs(stage_dir_);
+        if (!infra::Path::MakeDirs(stage_dir_)) {
+            last_error_ = "create stage directory failed";
+            return false;
+        }
+        return true;
     }
 
     bool WriteUpgrade(const std::string& package_path,
                       UpgradeProgressCallback progress_callback) override {
+        last_error_.clear();
         if (package_path.empty()) {
+            last_error_ = "package path is empty";
             return false;
         }
         if (cancel_requested_) {
+            last_error_ = "upgrade canceled";
             return false;
         }
-        if (system_upgrade_) {
-            std::string reason;
-            if (!StartSystemUpgradeHelper(cached_package_, kTmpHelperPath,
-                                          &reason)) {
-                AppendUpgradeLog("start helper failed: " + reason);
-                WriteUpgradeInfo("failed", 100, false,
-                                 cached_package_.manifest.version, reason);
-                return false;
-            }
-            WriteUpgradeInfo("writing", 80, true,
-                             cached_package_.manifest.version, "");
-            if (progress_callback) {
-                progress_callback(100);
-            }
-            return true;
-        }
         if (stage_dir_.empty()) {
+            last_error_ = "stage directory is empty";
             return false;
         }
         std::string reason;
@@ -432,10 +343,12 @@ public:
             },
             &reason);
         if (!extract_ok) {
+            last_error_ = reason;
             AppendUpgradeLog("extract failed: " + reason);
             return false;
         }
         if (cancel_requested_) {
+            last_error_ = "upgrade canceled";
             return false;
         }
         const bool write_ok = ApplyWebUpgrade(
@@ -447,6 +360,7 @@ public:
             },
             &reason);
         if (!write_ok) {
+            last_error_ = reason;
             AppendUpgradeLog("write failed: " + reason);
             WriteUpgradeInfo("failed", 100, false,
                              cached_package_.manifest.version, reason);
@@ -455,45 +369,61 @@ public:
     }
 
     bool CommitUpgrade(const UpgradePackageInfo& info) override {
+        last_error_.clear();
         if (info.version.empty()) {
+            last_error_ = "upgrade version is empty";
             return false;
-        }
-        if (system_upgrade_) {
-            WriteUpgradeInfo("waiting_reboot", 100, true, info.version, "");
-            AppendUpgradeLog("system upgrade delegated to RAM helper: " +
-                             info.version);
-            return true;
         }
         WriteUpgradeInfo(info.requires_reboot ? "waiting_reboot" : "completed",
                          100, true, info.version, "");
         AppendUpgradeLog("web upgrade completed: " + info.version);
+        CleanupStageDir();
         return true;
     }
 
     bool CancelUpgrade() override {
+        last_error_.clear();
         cancel_requested_ = true;
         return true;
     }
 
     bool RebootToApply() override {
-        if (system_upgrade_) {
-            AppendUpgradeLog("reboot is delegated to RAM helper");
-            return true;
-        }
+        last_error_.clear();
         sync();
-        return reboot(RB_AUTOBOOT) == 0;
+        if (reboot(RB_AUTOBOOT) != 0) {
+            last_error_ = "reboot failed";
+            return false;
+        }
+        return true;
     }
 
     bool CleanupFailedUpgrade() override {
         AppendUpgradeLog("upgrade cleanup after failure");
+        CleanupStageDir();
         return true;
     }
 
+    std::string LastError() override {
+        return last_error_;
+    }
+
 private:
+    void CleanupStageDir() {
+        if (stage_dir_.empty()) {
+            return;
+        }
+        const std::string stage_prefix = std::string(kUpgradeStagePath) + "/";
+        if (stage_dir_.compare(0, stage_prefix.size(), stage_prefix) != 0) {
+            return;
+        }
+        static_cast<void>(RemovePathTree(stage_dir_));
+        stage_dir_.clear();
+    }
+
     bool cancel_requested_ = false;
-    bool system_upgrade_ = false;
     ParsedUpgradePackage cached_package_;
     std::string stage_dir_;
+    std::string last_error_;
 };
 
 }  // namespace

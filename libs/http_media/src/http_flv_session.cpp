@@ -1,6 +1,8 @@
 #include "http_flv_session.h"
 
-#include "http_media_utils.h"
+#include "http_media_module.h"
+#include "http_media_response.h"
+#include "http_media_stream_id_json.h"
 
 #include "infra/log.h"
 #include "net.h"
@@ -43,14 +45,13 @@ void WriteFlvTimestampMs(uint32_t timestamp_ms, uint8_t *data) {
 }
 
 bool IsCompleteFlvVideoTag(const uint8_t *data, size_t size,
-                           uint32_t *body_size) {
-    if (data == nullptr || body_size == nullptr ||
-        size < kFlvTagHeaderSize + kFlvPreviousTagSize ||
+                           uint32_t &body_size) {
+    if (data == nullptr || size < kFlvTagHeaderSize + kFlvPreviousTagSize ||
         data[0] != kFlvTagTypeVideo) {
         return false;
     }
-    *body_size = ReadU24(data + 1);
-    return size >= kFlvTagHeaderSize + *body_size + kFlvPreviousTagSize;
+    body_size = ReadU24(data + 1);
+    return size >= kFlvTagHeaderSize + body_size + kFlvPreviousTagSize;
 }
 
 uint8_t ReadFlvVideoPacketType(const uint8_t *data, size_t size) {
@@ -215,10 +216,8 @@ HttpFlvSession::HttpFlvSession(HttpMediaWriter *writer,
     : writer_(writer), connection_id_(connection_id), stream_id_(stream_id) {}
 
 HttpFlvSessionStartStatus HttpFlvSession::Start(
-    const MediaFlvStart &flv_start, size_t *cached_flv_bytes) {
-    if (cached_flv_bytes != nullptr) {
-        *cached_flv_bytes = 0;
-    }
+    const MediaFlvStart &flv_start, size_t &cached_flv_bytes) {
+    cached_flv_bytes = 0;
     if (writer_ == nullptr ||
         !writer_->BeginStream(connection_id_, HttpMediaClientType::kFlv,
                               stream_id_)) {
@@ -229,7 +228,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
     headers["Content-Type"] = "video/x-flv";
     headers["Cache-Control"] = "no-cache";
     headers["Pragma"] = "no-cache";
-    const std::string header_block = BuildHttpStreamHeaderBlock(200, headers);
+    const std::string header_block = BuildHttpMediaStreamHeader(200, headers);
 
     start_block_.clear();
     start_block_.reserve(header_block.size() + flv_start.file_header.size());
@@ -258,9 +257,7 @@ HttpFlvSessionStartStatus HttpFlvSession::Start(
         }
         bytes += cached_tag.total_size;
     }
-    if (cached_flv_bytes != nullptr) {
-        *cached_flv_bytes = bytes;
-    }
+    cached_flv_bytes = bytes;
     Info(kHttpMediaModuleName,
          "HTTP-FLV start conn=%llu stream=%s header=%zu file=%zu "
          "sequence=%zu cached_flv=%zu cached_bytes=%zu "
@@ -280,7 +277,7 @@ bool HttpFlvSession::OnFlvChunk(const uint8_t *data, size_t size) {
     }
 
     uint32_t body_size = 0;
-    if (!IsCompleteFlvVideoTag(data, size, &body_size)) {
+    if (!IsCompleteFlvVideoTag(data, size, body_size)) {
         // file header、metadata 或非完整视频 tag 不做时间戳重写，直接按原始块发送。
         return writer_->EnqueueStreamingChunk(connection_id_, data, size);
     }

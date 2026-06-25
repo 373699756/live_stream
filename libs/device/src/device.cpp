@@ -17,7 +17,7 @@ std::unique_ptr<DeviceMedia> CreateDeviceMedia(
 
 std::unique_ptr<DeviceMedia> CreateDeviceMedia(
     const DeviceMediaOptions &options) {
-    return device_internal::CreateDeviceMediaCore(options);
+    return device_internal::CreateDeviceMediaImpl(options);
 }
 
 }  // namespace live_stream

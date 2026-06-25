@@ -10,7 +10,7 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kNetIoThreadSize = 2;
+constexpr uint32_t kNetIoThreads = 2;
 constexpr uint32_t kNetCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpStreamWorkers = 4;
 constexpr uint32_t kHttpStreamQueueCapacity = 256;
@@ -35,14 +35,14 @@ bool IsAutoWebrtcPublicIp(const std::string &public_ip) {
            ToLowerAscii(public_ip) == kWebrtcPublicIpAuto;
 }
 
-bool ParseIpv4Octets(const std::string &ip, int octets[4]) {
-    if (octets == nullptr || ip.empty()) {
+bool ParseIpv4Octets(const std::string &ip, int (&octets)[4]) {
+    if (ip.empty()) {
         return false;
     }
-    int parsed_size = 0;
+    int parsed_octets = 0;
     std::size_t start = 0;
     while (start < ip.size()) {
-        if (parsed_size >= 4) {
+        if (parsed_octets >= 4) {
             return false;
         }
         std::size_t end = ip.find('.', start);
@@ -62,11 +62,11 @@ bool ParseIpv4Octets(const std::string &ip, int octets[4]) {
         if (octet > 255) {
             return false;
         }
-        octets[parsed_size] = octet;
-        ++parsed_size;
+        octets[parsed_octets] = octet;
+        ++parsed_octets;
         start = end + 1;
     }
-    return parsed_size == 4 && ip[ip.size() - 1] != '.';
+    return parsed_octets == 4 && ip[ip.size() - 1] != '.';
 }
 
 bool IsUsableWebrtcPublicIp(const std::string &public_ip) {
@@ -94,18 +94,18 @@ std::string ResolveWebrtcPublicIp(
     }
 
     if (refs.device.network != nullptr) {
-        const NetInterfaceInfo status =
+        const NetInterfaceInfo interface_info =
             refs.device.network->GetInterfaceInfo(
                 app_config.network_ifname);
-        if (IsUsableWebrtcPublicIp(status.static_ipv4.address)) {
+        if (IsUsableWebrtcPublicIp(interface_info.static_ipv4.address)) {
             Info("app", "WebRTC public_ip auto resolved ifname=%s ip=%s",
                  app_config.network_ifname.c_str(),
-                 status.static_ipv4.address.c_str());
-            return status.static_ipv4.address;
+                 interface_info.static_ipv4.address.c_str());
+            return interface_info.static_ipv4.address;
         }
         Warn("app", "WebRTC public_ip auto unavailable ifname=%s ip=%s",
              app_config.network_ifname.c_str(),
-             status.static_ipv4.address.c_str());
+             interface_info.static_ipv4.address.c_str());
     }
 
     if (IsUsableWebrtcPublicIp(app_config.advertise_host)) {
@@ -127,7 +127,7 @@ event::LoopOptions BuildNetCallbackOptions() {
 
 NetIoOptions BuildNetIoOptions(event::Loop *callback_loop) {
     NetIoOptions options;
-    options.io_threads = kNetIoThreadSize;
+    options.io_threads = kNetIoThreads;
     options.enable_thread_affinity = false;
     options.callback_mode = CallbackMode::kPostToLoop;
     options.callback_loop = callback_loop;
@@ -145,12 +145,13 @@ RtspOptions BuildRtspOptions(const AppConfig &app_config) {
     return options;
 }
 
-RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs) {
+RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs,
+                                       FoundationSubsystem &foundation) {
     RtspDependencies dependencies;
     dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.rtsp_loop;
-    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
-    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
+    dependencies.auth = foundation.auth();
+    dependencies.event = foundation.event();
     dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
@@ -174,12 +175,13 @@ WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
 }
 
 WebrtcDependencies BuildWebrtcDependencies(
-    const ProtocolStartupRefs &refs) {
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation) {
     WebrtcDependencies dependencies;
     dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.webrtc_loop;
     dependencies.media_streams = refs.media.media_streams;
-    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
+    dependencies.event = foundation.event();
     return dependencies;
 }
 
@@ -200,12 +202,13 @@ OnvifServerOptions BuildOnvifOptions(
 }
 
 OnvifServerDependencies BuildOnvifDependencies(
-    const ProtocolStartupRefs &refs) {
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation) {
     OnvifServerDependencies dependencies;
     dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.onvif_loop;
-    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
-    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
+    dependencies.auth = foundation.auth();
+    dependencies.event = foundation.event();
     dependencies.system = refs.device.system;
     dependencies.time = refs.device.time;
     dependencies.device = refs.media.device;
@@ -220,9 +223,9 @@ HttpOptions BuildHttpOptions(const AppConfig &app_config) {
     options.static_root = app_config.static_root;
     options.enable_static_files = true;
     options.enable_keep_alive = true;
-    options.stream_executor_worker_size = kHttpStreamWorkers;
+    options.stream_executor_workers = kHttpStreamWorkers;
     options.stream_executor_queue_capacity = kHttpStreamQueueCapacity;
-    options.control_executor_worker_size = kHttpControlWorkers;
+    options.control_executor_workers = kHttpControlWorkers;
     options.control_executor_queue_capacity = kHttpControlQueueCapacity;
     options.max_requests_per_connection = kHttpMaxRequestsPerConnection;
     options.max_request_body_bytes = kHttpMaxRequestBodyBytes;
@@ -232,25 +235,27 @@ HttpOptions BuildHttpOptions(const AppConfig &app_config) {
 }
 
 HttpDependencies BuildHttpDependencies(
-    const ProtocolStartupRefs &refs) {
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation) {
     HttpDependencies dependencies;
     dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.http_loop;
-    dependencies.auth = refs.foundation != nullptr ? refs.foundation->auth() : nullptr;
-    dependencies.logger = refs.foundation != nullptr ? refs.foundation->logger() : nullptr;
-    dependencies.config = refs.foundation != nullptr ? refs.foundation->config() : nullptr;
+    dependencies.auth = foundation.auth();
+    dependencies.logger = foundation.logger();
+    dependencies.config = foundation.config();
     dependencies.network = refs.device.network;
     dependencies.time = refs.device.time;
     dependencies.alarm = refs.device.alarm;
     dependencies.upgrade = refs.device.upgrade;
     dependencies.system = refs.device.system;
-    dependencies.rtsp = refs.rtsp;
-    dependencies.onvif = refs.onvif;
+    dependencies.rtsp_session_reader = refs.rtsp;
+    dependencies.onvif_status_reader = refs.onvif;
     dependencies.ai = refs.media.ai;
     dependencies.device = refs.media.device;
     dependencies.webrtc = refs.webrtc;
+    dependencies.webrtc_status_reader = refs.webrtc;
     dependencies.media_streams = refs.media.media_streams;
-    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
+    dependencies.event = foundation.event();
     return dependencies;
 }
 
@@ -260,10 +265,11 @@ NetStatOptions BuildNetStatOptions() {
 }
 
 NetStatDependencies BuildNetStatDependencies(
-    const ProtocolStartupRefs &refs) {
+    const ProtocolStartupRefs &refs,
+    FoundationSubsystem &foundation) {
     NetStatDependencies dependencies;
     dependencies.net_io = refs.net_io;
-    dependencies.event = refs.foundation != nullptr ? refs.foundation->event() : nullptr;
+    dependencies.event = foundation.event();
     return dependencies;
 }
 

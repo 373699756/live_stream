@@ -273,8 +273,8 @@ export interface MediaStreamInfo {
     mjpeg_ready: boolean;
     webrtc_supported: boolean;
     webrtc_ready: boolean;
-    subscription_size: number;
-    client_size: number;
+    active_subscriptions: number;
+    preview_clients: number;
     cached_frames: number;
     cached_bytes: number;
     hls_bytes: number;
@@ -363,7 +363,7 @@ export interface MediaSessionsResponse {
     webrtc_dtls_ready?: boolean;
     webrtc_enabled?: boolean;
     webrtc_ice_ready?: boolean;
-    webrtc_ice_server_size?: number;
+    webrtc_ice_servers?: number;
     webrtc_local_port_base?: number;
     webrtc_max_peers?: number;
     webrtc_public_ip?: string;
@@ -411,7 +411,7 @@ export interface WebrtcOfferAnswer {
     state: WebrtcPeerState;
 }
 
-export type AiBackendId = 'hisi3516dv300_nnie' | 'host_stub';
+export type AiBackendId = 'hisi3516dv300_nnie';
 export type AiTaskName =
     | 'object_detection'
     | 'perimeter_detection'
@@ -529,7 +529,7 @@ export interface AiAlertRecord {
     stream: StreamName;
     task: AiTaskName;
     image_url: string;
-    detection_size: number;
+    detected_targets: number;
     confidence_max: number;
     detections: AiDetection[];
 }

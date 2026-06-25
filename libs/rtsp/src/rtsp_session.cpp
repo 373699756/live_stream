@@ -134,7 +134,10 @@ void RtspSession::SetStartFrames(std::vector<MediaFrame> *frames) {
     // 发送后立即移出，不在 RTSP session 中长期缓存。
     ClearStartFrames();
     if (frames != nullptr) {
-        start_frames.swap(*frames);
+        for (MediaFrame &frame : *frames) {
+            start_frames.push_back(std::move(frame));
+        }
+        frames->clear();
     }
 }
 

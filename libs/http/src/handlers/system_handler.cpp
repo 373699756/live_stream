@@ -1,16 +1,18 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_ai_status.h"
+#include "http_auth_gate.h"
+#include "http_response.h"
 
 #include "alarm.h"
 #include "config.h"
 #include "device.h"
-#include "network_api.h"
+#include "system/network.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "system.h"
-#include "time_api.h"
-#include "upgrade.h"
+#include "system/time.h"
+#include "system/upgrade.h"
 #include "webrtc.h"
 
 #include <cstdint>
@@ -41,11 +43,11 @@ std::string UptimeToString(int64_t uptime_ms) {
     return std::to_string(seconds) + "s";
 }
 
-ConfigJson SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
-    ConfigJson root = ConfigJson::object();
+Json SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
+    Json root = Json::object();
     root["supports_reboot"] = capabilities.supports_reboot;
     root["supports_factory_reset"] = capabilities.supports_factory_reset;
-    ConfigJson features = ConfigJson::array();
+    Json features = Json::array();
     for (const std::string &feature : capabilities.features) {
         features.push_back(feature);
     }
@@ -57,61 +59,36 @@ ConfigJson SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
 
 class SystemHttpHandler : public IHttpHandler {
 public:
-    SystemHttpHandler(HttpAccess *access,
-                      ISystem *system,
-                      const SystemOverviewSources &overview_sources)
-        : access_(access), system_(system), overview_sources_(overview_sources) {}
+    explicit SystemHttpHandler(const SystemHandlerDependencies &dependencies)
+        : access_(dependencies.access),
+          system_(dependencies.system),
+          overview_(dependencies.overview) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddExactRoute(HttpMethod::kGet, "/api/system/status",
+                             this, &SystemHttpHandler::HandleOverview);
+        if (system_ == nullptr) {
             return;
         }
-        router->AddExactRoute(HttpMethod::kGet, "/api/system/status",
-                              &SystemHttpHandler::HandleStatusRoute, this);
-        router->AddExactRoute(HttpMethod::kGet, "/api/system/capabilities",
-                              &SystemHttpHandler::HandleCapabilitiesRoute,
-                              this);
-        router->AddExactRoute(HttpMethod::kPost, "/api/system/reboot",
-                              &SystemHttpHandler::HandleRebootRoute, this);
-        router->AddExactRoute(HttpMethod::kPost,
-                              "/api/system/factory-reset",
-                              &SystemHttpHandler::HandleFactoryResetRoute,
-                              this);
+        router.AddExactRoute(HttpMethod::kGet, "/api/system/capabilities",
+                             this, &SystemHttpHandler::HandleCapabilities);
+        router.AddExactRoute(HttpMethod::kPost, "/api/system/reboot",
+                             this, &SystemHttpHandler::HandleReboot);
+        router.AddExactRoute(HttpMethod::kPost,
+                             "/api/system/factory-reset", this,
+                             &SystemHttpHandler::HandleFactoryReset);
     }
 
 private:
-    static HttpResponse HandleStatusRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<SystemHttpHandler *>(user)->HandleStatus(request);
-    }
-
-    static HttpResponse HandleCapabilitiesRoute(void *user,
-                                                const HttpRequest &request) {
-        return static_cast<SystemHttpHandler *>(user)->HandleCapabilities(
-            request);
-    }
-
-    static HttpResponse HandleRebootRoute(void *user,
-                                          const HttpRequest &request) {
-        return static_cast<SystemHttpHandler *>(user)->HandleReboot(request);
-    }
-
-    static HttpResponse HandleFactoryResetRoute(void *user,
-                                                const HttpRequest &request) {
-        return static_cast<SystemHttpHandler *>(user)->HandleFactoryReset(
-            request);
-    }
-
-    HttpResponse HandleStatus(const HttpRequest &request) {
-        AuthPrincipal principal = access_->Authenticate(request);
-        if (principal.user_name.empty()) {
-            return StatusResponse(401, "Unauthorized");
-        }
-        if (principal.must_change_password) {
-            return ForbiddenResponse(principal);
+    HttpResponse HandleOverview(const HttpRequest &request) {
+        AuthPrincipal principal;
+        HttpResponse auth_response =
+            RequireAuthResponse(access_, request, &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
 
-        ConfigJson root = ConfigJson::object();
+        Json root = Json::object();
         DeviceInfo device_info;
         SystemInfo system_info;
         if (system_ != nullptr) {
@@ -131,68 +108,68 @@ private:
         root["cpu"] = system_info.cpu_usage_percent;
         root["memory"] = system_info.memory_usage_percent;
         root["temperature"] = system_info.temperature_celsius;
-        ConfigJson modules = ConfigJson::array();
+        Json modules = Json::array();
         auto add_module = [&modules](const char *name, bool running) {
-            ConfigJson module = ConfigJson::object();
+            Json module = Json::object();
             module["name"] = name;
             module["state"] = running ? "running" : "pending";
             modules.push_back(module);
         };
         add_module("logger",
-                   overview_sources_.logger != nullptr &&
-                       overview_sources_.logger->IsStarted());
+                   overview_.logger != nullptr &&
+                       overview_.logger->IsStarted());
         add_module("config",
-                   overview_sources_.config != nullptr &&
-                       overview_sources_.config->IsStarted());
+                   overview_.config != nullptr &&
+                       overview_.config->IsStarted());
         add_module("auth",
-                   overview_sources_.auth != nullptr &&
-                       overview_sources_.auth->IsStarted());
+                   overview_.auth != nullptr &&
+                       overview_.auth->IsStarted());
         add_module("system",
                    system_ != nullptr &&
                        system_->IsStarted());
         add_module("time",
-                   overview_sources_.time != nullptr &&
-                       overview_sources_.time->IsStarted());
+                   overview_.time != nullptr &&
+                       overview_.time->IsStarted());
         add_module("system.network",
-                   overview_sources_.network != nullptr &&
-                       overview_sources_.network->IsStarted());
+                   overview_.network != nullptr &&
+                       overview_.network->IsStarted());
         add_module("alarm",
-                   overview_sources_.alarm != nullptr &&
-                       overview_sources_.alarm->IsStarted());
+                   overview_.alarm != nullptr &&
+                       overview_.alarm->IsStarted());
         add_module("upgrade",
-                   overview_sources_.upgrade != nullptr &&
-                       overview_sources_.upgrade->IsStarted());
+                   overview_.upgrade != nullptr &&
+                       overview_.upgrade->IsStarted());
         add_module("rtsp",
-                   overview_sources_.rtsp != nullptr &&
-                       overview_sources_.rtsp->LocalAddress().port != 0);
+                   overview_.rtsp_session_reader != nullptr &&
+                       overview_.rtsp_session_reader->LocalAddress().port != 0);
         add_module("onvif",
-                   overview_sources_.onvif != nullptr &&
-                       overview_sources_.onvif->IsStarted());
+                   overview_.onvif_status_reader != nullptr &&
+                       overview_.onvif_status_reader->IsStarted());
         add_module("http", true);
         add_module("device",
-                   overview_sources_.device != nullptr &&
-                       overview_sources_.device->IsStarted());
-        if (IsAiConfigEnabled(overview_sources_.config)) {
-            add_module("ai", IsAiHealthy(overview_sources_.ai));
+                   overview_.device != nullptr &&
+                       overview_.device->IsStarted());
+        if (IsAiConfigEnabled(overview_.config)) {
+            add_module("ai", IsAiHealthy(overview_.ai));
         }
         SnapshotInfo snapshot_info;
-        if (overview_sources_.device != nullptr) {
-            snapshot_info = overview_sources_.device->GetSnapshotInfo();
+        if (overview_.device != nullptr) {
+            snapshot_info = overview_.device->GetSnapshotInfo();
         }
         add_module("snapshot",
-                   overview_sources_.device != nullptr &&
+                   overview_.device != nullptr &&
                        snapshot_info.enabled);
         bool webrtc_running = false;
-        if (overview_sources_.webrtc != nullptr) {
+        if (overview_.webrtc_status_reader != nullptr) {
             const WebrtcStats stats =
-                overview_sources_.webrtc->GetStats();
+                overview_.webrtc_status_reader->GetStats();
             webrtc_running = stats.enabled && stats.signaling_ready;
         }
         add_module("webrtc", webrtc_running);
         bool media_running = false;
-        if (overview_sources_.media_streams != nullptr) {
+        if (overview_.media_streams != nullptr) {
             media_running =
-                overview_sources_.media_streams->GetStreamStats().enabled;
+                overview_.media_streams->GetStreamStats().enabled;
         }
         add_module("media", media_running);
         root["modules"] = modules;
@@ -200,13 +177,12 @@ private:
     }
 
     HttpResponse HandleCapabilities(const HttpRequest &request) {
-        if (system_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!access_->RequirePermission(request, AuthPermission::kReadStatus,
-                                        "system", &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReadStatus, "system",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         return JsonResponse(
             200, SystemCapabilitiesToJson(
@@ -214,13 +190,11 @@ private:
     }
 
     HttpResponse HandleReboot(const HttpRequest &request) {
-        if (system_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!access_->RequirePermission(request, AuthPermission::kReboot,
-                                        "system", &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kReboot, "system", &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         const SystemCapabilities capabilities =
             system_->GetCapabilities();
@@ -234,14 +208,12 @@ private:
     }
 
     HttpResponse HandleFactoryReset(const HttpRequest &request) {
-        if (system_ == nullptr) {
-            return StatusResponse(501, "Not Implemented");
-        }
         AuthPrincipal principal;
-        if (!access_->RequirePermission(request,
-                                        AuthPermission::kFactoryReset,
-                                        "system", &principal)) {
-            return ForbiddenResponse(principal);
+        HttpResponse auth_response = RequirePermissionResponse(
+            access_, request, AuthPermission::kFactoryReset, "system",
+            &principal);
+        if (auth_response.status_code != 0) {
+            return auth_response;
         }
         const SystemCapabilities capabilities =
             system_->GetCapabilities();
@@ -256,14 +228,13 @@ private:
 
     HttpAccess *access_ = nullptr;
     ISystem *system_ = nullptr;
-    SystemOverviewSources overview_sources_;
+    SystemOverviewInputs overview_;
 };
 
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
-    HttpAccess *access, ISystem *system,
-    const SystemOverviewSources &overview_sources) {
+    const SystemHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new SystemHttpHandler(access, system, overview_sources));
+        new SystemHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

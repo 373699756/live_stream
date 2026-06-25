@@ -129,7 +129,7 @@ export function startHlsPreview({
         isSessionConnected: () => boolean;
         nextReadyMode: PreviewMode | null;
         onAutoModeFallback: () => void;
-        restartPreview: (message: string) => void;
+    restartPreview: (msg: string) => void;
         setMode: (mode: PreviewMode) => void;
     };
     controls: PreviewSessionControls;
@@ -150,10 +150,10 @@ export function startHlsPreview({
         return 0;
     }
     const hlsSessionUrl = streamSessionUrl(hlsUrl, sessionId);
-    const fallbackFromHlsFailure = (message: string) => {
+    const fallbackFromHlsFailure = (msg: string) => {
         controls.setConnected(false);
         if (!autoFallback.autoModeSelected) {
-            controls.setPreviewState(message);
+            controls.setPreviewState(msg);
             return;
         }
         const fallbackMode =
@@ -165,12 +165,12 @@ export function startHlsPreview({
                     ? 'mjpeg'
                     : null;
         if (!fallbackMode) {
-            controls.setPreviewState(message);
+            controls.setPreviewState(msg);
             return;
         }
         autoFallback.onAutoModeFallback();
         autoFallback.restartPreview(
-            `${message}，切换 ${previewModeLabels[fallbackMode]}`,
+            `${msg}，切换 ${previewModeLabels[fallbackMode]}`,
         );
         autoFallback.setMode(fallbackMode);
     };

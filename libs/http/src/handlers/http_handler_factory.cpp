@@ -2,49 +2,55 @@
 
 namespace live_stream {
 
+std::unique_ptr<IHttpHandler> MakeAuthHandler(
+    const AuthHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeConfigHandler(
+    const ConfigHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(
+    const OperationsHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeNetworkHandler(
+    const NetworkHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeTimeHandler(
+    const TimeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
+    const UpgradeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSystemHandler(
+    const SystemHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(
+    const AlarmHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeMediaHandler(
+    const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAiHandler(
+    const AiHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
+    const SnapshotHandlerDependencies &dependencies);
+
 std::unique_ptr<IHttpHandler> CreateHttpHandler(
     HttpHandlerKind kind,
     const HttpHandlerDependencies &dependencies) {
     switch (kind) {
         case HttpHandlerKind::kAuth:
-            return MakeAuthHandler(dependencies.access,
-                                   dependencies.auth);
+            return MakeAuthHandler(dependencies.auth);
         case HttpHandlerKind::kConfig:
-            return MakeConfigHandler(dependencies.access,
-                                     dependencies.config);
+            return MakeConfigHandler(dependencies.config);
         case HttpHandlerKind::kOperations:
-            return MakeOperationsHandler(dependencies.access,
-                                         dependencies.logger);
+            return MakeOperationsHandler(dependencies.operations);
         case HttpHandlerKind::kNetwork:
-            return MakeNetworkHandler(dependencies.access,
-                                      dependencies.network);
+            return MakeNetworkHandler(dependencies.network);
         case HttpHandlerKind::kTime:
-            return MakeTimeHandler(dependencies.access,
-                                   dependencies.time);
+            return MakeTimeHandler(dependencies.time);
         case HttpHandlerKind::kUpgrade:
-            return MakeUpgradeHandler(dependencies.access,
-                                      dependencies.upgrade);
+            return MakeUpgradeHandler(dependencies.upgrade);
         case HttpHandlerKind::kSystem:
-            return MakeSystemHandler(
-                dependencies.access, dependencies.system,
-                dependencies.system_overview_sources);
+            return MakeSystemHandler(dependencies.system);
         case HttpHandlerKind::kAlarm:
-            return MakeAlarmHandler(dependencies.access,
-                                    dependencies.alarm);
+            return MakeAlarmHandler(dependencies.alarm);
         case HttpHandlerKind::kMedia:
-            return MakeMediaHandler(
-                dependencies.access, dependencies.config,
-                dependencies.device, dependencies.media_streams,
-                dependencies.rtsp, dependencies.webrtc, dependencies.http);
+            return MakeMediaHandler(dependencies.media);
         case HttpHandlerKind::kAi:
-            return MakeAiHandler(
-                dependencies.access, dependencies.config,
-                dependencies.ai, dependencies.device);
+            return MakeAiHandler(dependencies.ai);
         case HttpHandlerKind::kSnapshot:
-            return MakeSnapshotHandler(
-                dependencies.access, dependencies.device);
-        case HttpHandlerKind::kEventStream:
-            return MakeEventStreamHandler(dependencies.access);
+            return MakeSnapshotHandler(dependencies.snapshot);
     }
     return nullptr;
 }

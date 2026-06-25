@@ -155,7 +155,7 @@ $(OBJ_DIR)/sysupgrade_%.o: app/%.cpp Makefile
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(@:.o=.d) -MT $@ -c $< -o $@
 
-$(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULES)
+$(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULE_LIBS) $(THIRDPARTY_LIBS) | $(MODULES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  -Wl,--start-group \
@@ -165,7 +165,7 @@ $(BIN_DIR)/live_stream: $(APP_OBJS) $(MODULES)
 	  -Wl,--end-group \
 	  $(LDFLAGS) $(LDLIBS)
 
-$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libsystem.a $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
+$(BIN_DIR)/live_sysupgrade: $(SYSUPGRADE_OBJS) $(LIB_DIR)/libsystem.a $(LIB_DIR)/libinfra.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a | system infra
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ \
 	  $(SYSUPGRADE_OBJS) \
@@ -177,10 +177,10 @@ $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-debug: $(MODULES) $(BIN_DIR)/live_stream $(WEB_STAMP)
+debug: $(BIN_DIR)/live_stream $(WEB_STAMP)
 	scripts/package_debug.sh $(DEBUG_DIR)
 
-release: $(MODULES) $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
+release: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
 test: host-test

@@ -15,23 +15,22 @@ namespace live_stream {
 class RtspRtpPacketSink;
 
 struct RtspRtpSenderContext {
-    INetIo *net_io = nullptr;
-    std::mutex *mutex = nullptr;
-    RtspStats *service_stats = nullptr;
+    INetIo &net_io;
+    std::mutex &mutex;
+    RtspStats &service_stats;
 };
 
 class RtspRtpSender {
 public:
     explicit RtspRtpSender(uint32_t rtp_mtu_bytes);
 
-    void SendFrame(const std::shared_ptr<RtspSession> &session,
-                   const MediaFrame &frame,
+    void SendFrame(RtspSession &session, const MediaFrame &frame,
                    const RtspRtpSenderContext &context);
 
 private:
     friend class RtspRtpPacketSink;
 
-    bool SendRtpPacketView(const std::shared_ptr<RtspSession> &session,
+    bool SendRtpPacketView(RtspSession &session,
                            const MediaFrame &frame,
                            const rtp::RtpPacketView &packet,
                            const RtspRtpSenderContext &context);

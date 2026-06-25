@@ -24,10 +24,9 @@ public:
 
 class RtspAuth {
 public:
-    RtspAuth(IAuth *auth, IRtspAuthResponder *responder);
+    RtspAuth(IAuth *auth, IRtspAuthResponder &responder);
 
-    bool Authorize(const std::shared_ptr<RtspSession> &session,
-                   const RtspRequest &request,
+    bool Authorize(RtspSession &session, const RtspRequest &request,
                    StreamId stream_id);
     void Clear();
 
@@ -35,7 +34,7 @@ private:
     void SendChallenge(ConnectionId connection_id, const std::string &cseq);
 
     IAuth *auth_ = nullptr;
-    IRtspAuthResponder *responder_ = nullptr;
+    IRtspAuthResponder &responder_;
 };
 
 }  // namespace rtsp_internal

@@ -12,71 +12,65 @@ bool IsPreviewCodec(Codec codec) {
 
 namespace {
 
-void PushFlvGopCache(StreamTrack *stream, const MediaFrame &frame,
+void PushFlvGopCache(StreamTrack &stream, const MediaFrame &frame,
                      bool keyframe,
                      const FlvVideoTagBuild &flv_tag_view) {
-    if (stream == nullptr || stream->sequence_header_tag.empty()) {
+    if (stream.sequence_header_tag.empty()) {
         return;
     }
-    (void)stream->flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
+    (void)stream.flv_gop_cache.AppendFlvTag(frame, keyframe, flv_tag_view);
 }
 
-void BuildH264Outputs(StreamTrack *stream, const MediaFrame &frame,
-                      const ParsedFramePayload &payload, bool *keyframe,
-                      bool *prepend_parameter_sets) {
+void BuildH264Outputs(StreamTrack &stream, const MediaFrame &frame,
+                      const ParsedFramePayload &payload, bool &keyframe,
+                      bool &prepend_parameter_sets) {
     // H.264 参数集既决定 FLV sequence header，也决定 WebRTC/RTSP track 是否 ready。
     // 参数集可能在 IDR 前重复出现，因此帧内携带 SPS/PPS 时重建输出配置。
     bool has_sps = false;
     bool has_pps = false;
-    media_codec::ExtractH264ParameterSets(payload.h264_units, &stream->sps,
-                                          &stream->pps, &has_sps, &has_pps);
-    if (!stream->sps.empty() && !stream->pps.empty() && (has_sps || has_pps)) {
-        stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
-            Codec::kH264, std::string(), stream->sps, stream->pps,
+    media_codec::ExtractH264ParameterSets(payload.h264_units, &stream.sps,
+                                          &stream.pps, &has_sps, &has_pps);
+    if (!stream.sps.empty() && !stream.pps.empty() && (has_sps || has_pps)) {
+        stream.sequence_header_tag = FlvMuxer::BuildSequenceHeader(
+            Codec::kH264, std::string(), stream.sps, stream.pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
         // config_generation 只描述 FLV/codec 配置更新，不等同于 subscription 的
         // codec_generation；FLV client 用它判断是否需要重发 sequence header。
-        ++stream->config_generation;
+        ++stream.config_generation;
     }
 
-    *keyframe =
-        *keyframe || media_codec::ContainsH264Keyframe(payload.h264_units);
+    keyframe = keyframe || media_codec::ContainsH264Keyframe(payload.h264_units);
     const bool frame_has_parameter_sets =
         media_codec::ContainsH264ParameterSets(payload.h264_units);
-    if (prepend_parameter_sets != nullptr) {
-        // 当前帧是关键帧但不自带参数集时，HLS segment 需要前置缓存的 SPS/PPS，
-        // 保证从 segment 边界接入的播放器也能解码。
-        *prepend_parameter_sets = *keyframe && !frame_has_parameter_sets;
-    }
+    // 当前帧是关键帧但不自带参数集时，HLS segment 需要前置缓存的 SPS/PPS，
+    // 保证从 segment 边界接入的播放器也能解码。
+    prepend_parameter_sets = keyframe && !frame_has_parameter_sets;
 }
 
-void BuildH265Outputs(StreamTrack *stream, const ParsedFramePayload &payload,
-                      const MediaFrame &frame, bool *keyframe,
-                      bool *prepend_parameter_sets) {
+void BuildH265Outputs(StreamTrack &stream, const ParsedFramePayload &payload,
+                      const MediaFrame &frame, bool &keyframe,
+                      bool &prepend_parameter_sets) {
     // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才生成 enhanced FLV
     // sequence header，并允许预览协议链路进入 ready。
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
-    media_codec::ExtractH265ParameterSets(payload.h265_units, &stream->vps,
-                                          &stream->sps, &stream->pps, &has_vps,
+    media_codec::ExtractH265ParameterSets(payload.h265_units, &stream.vps,
+                                          &stream.sps, &stream.pps, &has_vps,
                                           &has_sps, &has_pps);
-    if (!stream->vps.empty() && !stream->sps.empty() && !stream->pps.empty() &&
+    if (!stream.vps.empty() && !stream.sps.empty() && !stream.pps.empty() &&
         (has_vps || has_sps || has_pps)) {
-        stream->sequence_header_tag = FlvMuxer::BuildSequenceHeader(
-            Codec::kH265, stream->vps, stream->sps, stream->pps,
+        stream.sequence_header_tag = FlvMuxer::BuildSequenceHeader(
+            Codec::kH265, stream.vps, stream.sps, stream.pps,
             static_cast<uint32_t>(frame.dts_us / 1000));
-        ++stream->config_generation;
+        ++stream.config_generation;
     }
 
-    *keyframe =
-        *keyframe || media_codec::ContainsH265Keyframe(payload.h265_units);
+    keyframe = keyframe || media_codec::ContainsH265Keyframe(payload.h265_units);
     const bool frame_has_parameter_sets =
         media_codec::ContainsH265ParameterSets(payload.h265_units);
-    if (prepend_parameter_sets != nullptr) {
-        // HEVC 关键帧前置参数集时必须一次带上 VPS/SPS/PPS。
-        *prepend_parameter_sets = *keyframe && !frame_has_parameter_sets;
-    }
+    // HEVC 关键帧前置参数集时必须一次带上 VPS/SPS/PPS。
+    prepend_parameter_sets = keyframe && !frame_has_parameter_sets;
 }
 
 }  // namespace
@@ -119,31 +113,28 @@ bool IsMjpegStreamReady(const StreamTrack &stream) {
            stream.has_latest_mjpeg_frame;
 }
 
-void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload *payload) {
-    if (payload == nullptr) {
-        return;
-    }
-    *payload = ParsedFramePayload{};
-    payload->frame = frame;
+void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload &payload) {
+    payload = ParsedFramePayload{};
+    payload.frame = frame;
     // FramePayload 持有原始 MediaFrame 引用，NAL list 只是指向该 payload 的视图；
     // 不在解析阶段复制整帧视频数据。
-    payload->has_nal_units = true;
+    payload.has_nal_units = true;
     const uint8_t *data = MediaFramePayloadData(frame);
     if (data == nullptr) {
-        payload->has_nal_units = false;
+        payload.has_nal_units = false;
         return;
     }
 
     if (frame.codec == Codec::kH264) {
-        payload->has_nal_units =
+        payload.has_nal_units =
             media_codec::ParseH264AnnexBNalUnits(data, frame.payload.Size(),
-                                                 &payload->h264_units);
+                                                 &payload.h264_units);
     } else if (frame.codec == Codec::kH265) {
-        payload->has_nal_units =
+        payload.has_nal_units =
             media_codec::ParseH265AnnexBNalUnits(data, frame.payload.Size(),
-                                                 &payload->h265_units);
+                                                 &payload.h265_units);
     } else {
-        payload->has_nal_units = false;
+        payload.has_nal_units = false;
     }
 }
 
@@ -160,24 +151,27 @@ bool IsFramePayloadParsed(const ParsedFramePayload &payload) {
     return false;
 }
 
-void ClearStreamTrack(StreamTrack *stream) {
-    if (stream == nullptr) {
-        return;
-    }
-    stream->flv_gop_cache.Clear();
-    stream->hls_maker.Reset();
-    stream->latest_mjpeg_frame = MediaFrame{};
-    stream->codec = Codec::kH264;
-    stream->state = MediaStreamState::kClosed;
-    stream->vps.clear();
-    stream->sps.clear();
-    stream->pps.clear();
-    stream->sequence_header_tag.clear();
-    stream->config_generation = 0;
-    stream->codec_generation = 0;
-    stream->has_latest_mjpeg_frame = false;
-    stream->last_reset_reason = MediaStreamResetReason::kStreamStopped;
-    stream->timestamp_corrector.Reset();
+void ClearStreamTrack(StreamTrack &stream) {
+    stream.flv_gop_cache.Clear();
+    stream.hls_maker.Reset();
+    stream.latest_mjpeg_frame = MediaFrame{};
+    stream.codec = Codec::kH264;
+    stream.state = MediaStreamState::kClosed;
+    stream.vps.clear();
+    stream.sps.clear();
+    stream.pps.clear();
+    stream.sequence_header_tag.clear();
+    stream.config_generation = 0;
+    stream.codec_generation = 0;
+    stream.has_latest_mjpeg_frame = false;
+    stream.last_reset_reason = MediaStreamResetReason::kStreamStopped;
+    stream.timestamp_corrector.Reset();
+}
+
+void ConfigureStreamTrack(StreamTrack &stream,
+                          const StreamTrackCacheOptions &options) {
+    stream.flv_gop_cache.Configure(options.flv_gop_cache);
+    stream.hls_maker.Configure(options.hls_maker);
 }
 
 MediaHlsPlaylist BuildHlsPlaylist(const StreamTrack &stream,
@@ -218,7 +212,7 @@ MediaFlvStart BuildFlvStart(const StreamTrack &stream) {
         flv_start.config_generation = stream.config_generation;
         return flv_start;
     }
-    stream.flv_gop_cache.CopyTo(&flv_start);
+    stream.flv_gop_cache.CopyTo(flv_start);
     flv_start.config_generation = stream.config_generation;
     return flv_start;
 }
@@ -262,127 +256,115 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream) {
     return info;
 }
 
-void ResetStreamCaches(StreamTrack *stream, MediaStreamResetReason reason) {
-    if (stream == nullptr) {
-        return;
-    }
-    stream->flv_gop_cache.Clear();
-    stream->hls_maker.Reset();
-    stream->latest_mjpeg_frame = MediaFrame{};
-    stream->has_latest_mjpeg_frame = false;
-    stream->vps.clear();
-    stream->sps.clear();
-    stream->pps.clear();
-    stream->sequence_header_tag.clear();
-    stream->config_generation = 0;
+void ResetStreamCaches(StreamTrack &stream, MediaStreamResetReason reason) {
+    stream.flv_gop_cache.Clear();
+    stream.hls_maker.Reset();
+    stream.latest_mjpeg_frame = MediaFrame{};
+    stream.has_latest_mjpeg_frame = false;
+    stream.vps.clear();
+    stream.sps.clear();
+    stream.pps.clear();
+    stream.sequence_header_tag.clear();
+    stream.config_generation = 0;
     // codec_generation 表示所有依赖 codec/时间连续性的缓存都进入新代际。
     // subscription 用它判断旧 GOP/start data 是否仍可用。
-    ++stream->codec_generation;
-    stream->last_reset_reason = reason;
+    ++stream.codec_generation;
+    stream.last_reset_reason = reason;
 }
 
-void ResetStream(StreamTrack *stream, Codec codec,
+void ResetStream(StreamTrack &stream, Codec codec,
                  MediaStreamResetReason reason) {
-    if (stream == nullptr) {
-        return;
-    }
-    const MediaStreamState state = stream->state;
+    const MediaStreamState state = stream.state;
     ResetStreamCaches(stream, reason);
-    stream->timestamp_corrector.Reset();
-    stream->codec = codec;
-    stream->state = state;
+    stream.timestamp_corrector.Reset();
+    stream.codec = codec;
+    stream.state = state;
 }
 
-NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack *stream,
-                                               MediaFrame *frame) {
+NormalizedFrameResult NormalizeFrameTimestamps(StreamTrack &stream,
+                                               MediaFrame &frame) {
     NormalizedFrameResult result;
-    if (stream == nullptr || frame == nullptr) {
-        return result;
+    if (frame.dts_us <= 0) {
+        frame.dts_us = frame.pts_us;
     }
-
-    if (frame->dts_us <= 0) {
-        frame->dts_us = frame->pts_us;
+    if (frame.pts_us <= 0) {
+        frame.pts_us = frame.dts_us;
     }
-    if (frame->pts_us <= 0) {
-        frame->pts_us = frame->dts_us;
-    }
-    if (frame->dts_us < 0 || frame->pts_us < 0) {
-        frame->dts_us = 0;
-        frame->pts_us = 0;
+    if (frame.dts_us < 0 || frame.pts_us < 0) {
+        frame.dts_us = 0;
+        frame.pts_us = 0;
     }
 
     const TimestampCorrectionResult corrected =
-        stream->timestamp_corrector.CorrectWithReset(frame->dts_us,
-                                                     frame->pts_us);
+        stream.timestamp_corrector.CorrectWithReset(frame.dts_us,
+                                                    frame.pts_us);
     if (corrected.reset != TimestampCorrectionReset::kNone) {
         // 时间戳回退或大跳变会破坏 HLS segment 时长、GOP cache 和 subscription
         // 起播点，必须统一清理后从后续关键帧恢复。
         ResetStreamCaches(stream, MediaStreamResetReason::kTimestampReset);
         result.timestamp_reset = true;
     }
-    frame->dts_us = corrected.timestamp.dts_us;
-    frame->pts_us = corrected.timestamp.pts_us;
+    frame.dts_us = corrected.timestamp.dts_us;
+    frame.pts_us = corrected.timestamp.pts_us;
     result.accepted = true;
     return result;
 }
 
-bool CacheMjpegFrame(StreamTrack *stream, const MediaFrame &frame) {
-    if (stream == nullptr || frame.codec != Codec::kMjpeg ||
-        !IsMediaFramePayloadValid(frame)) {
+bool CacheMjpegFrame(StreamTrack &stream, const MediaFrame &frame) {
+    if (frame.codec != Codec::kMjpeg || !IsMediaFramePayloadValid(frame)) {
         return false;
     }
     // MJPEG latest frame 只保存 MediaBuffer 引用；HTTP-MJPEG 发送时通过
     // MediaOutSlice.buffer 继续把同一块 payload 持有到网络发送完成。
-    stream->latest_mjpeg_frame = frame;
-    stream->has_latest_mjpeg_frame = true;
+    stream.latest_mjpeg_frame = frame;
+    stream.has_latest_mjpeg_frame = true;
     return true;
 }
 
-PackagedFrameResult AppendFrameToStream(StreamTrack *stream,
+PackagedFrameResult AppendFrameToStream(StreamTrack &stream,
                                         const MediaFrame &frame,
                                         const ParsedFramePayload &payload,
                                         bool package_hls,
                                         bool package_flv,
                                         uint32_t hls_segment_duration_ms,
-                                        uint32_t hls_playlist_depth) {
+                                        FlvVideoTagBuild &flv_tag_view) {
     PackagedFrameResult result;
-    if (stream == nullptr || frame.codec != payload.frame.codec ||
-        !IsFramePayloadParsed(payload)) {
+    if (frame.codec != payload.frame.codec || !IsFramePayloadParsed(payload)) {
         return result;
     }
-    if (stream->codec != frame.codec) {
+    if (stream.codec != frame.codec) {
         // codec 切换会让旧参数集、sequence header、HLS 当前 segment 和 GOP
         // 都失效，不能只改 codec 字段继续复用旧缓存。
         ResetStream(stream, frame.codec, MediaStreamResetReason::kCodecChanged);
     }
-    if (!IsPreviewStreamReady(stream->state, stream->codec)) {
+    if (!IsPreviewStreamReady(stream.state, stream.codec)) {
         return result;
     }
 
     bool keyframe = frame.frame_type == FrameType::kIdr ||
                     frame.frame_type == FrameType::kI;
     bool prepend_parameter_sets = false;
-    const uint64_t config_generation_before = stream->config_generation;
+    const uint64_t config_generation_before = stream.config_generation;
     if (frame.codec == Codec::kH265) {
-        BuildH265Outputs(stream, payload, frame, &keyframe,
-                         &prepend_parameter_sets);
+        BuildH265Outputs(stream, payload, frame, keyframe,
+                         prepend_parameter_sets);
     } else {
-        BuildH264Outputs(stream, frame, payload, &keyframe,
-                         &prepend_parameter_sets);
+        BuildH264Outputs(stream, frame, payload, keyframe,
+                         prepend_parameter_sets);
     }
-    if (stream->config_generation != config_generation_before) {
+    if (stream.config_generation != config_generation_before) {
         // sequence header 更新后，旧 FLV GOP 对应旧配置，必须清空等待新关键帧。
-        stream->flv_gop_cache.Clear();
+        stream.flv_gop_cache.Clear();
     }
 
     if (package_hls) {
         bool hls_segment_created = false;
         // HLS 是转封装输出，会把输入 NAL 复制成独立 TS segment body。
         // FLV/WebRTC/RTSP 路径仍使用原 MediaFrame 引用或 slice view。
-        if (stream->hls_maker.AppendFrame(
-                frame, payload, stream->vps, stream->sps, stream->pps,
+        if (stream.hls_maker.AppendFrame(
+                frame, payload, stream.vps, stream.sps, stream.pps,
                 keyframe, prepend_parameter_sets, hls_segment_duration_ms,
-                hls_playlist_depth, &hls_segment_created)) {
+                hls_segment_created)) {
             result.hls_segment_created = hls_segment_created;
         }
     }
@@ -390,10 +372,11 @@ PackagedFrameResult AppendFrameToStream(StreamTrack *stream,
     if (package_flv && IsFlvCodecSupported(frame.codec)) {
         // FLV tag view 只生成小 header 和 length prefix；媒体 NAL payload
         // 仍指向 payload.frame 的 MediaBuffer。
-        result.has_flv_tag_view = FlvMuxer::BuildVideoTagView(
-            frame, payload, keyframe, &result.flv_tag_view);
+        result.has_flv_tag_view =
+            FlvMuxer::BuildVideoTagView(frame, payload, keyframe,
+                                        &flv_tag_view);
         if (result.has_flv_tag_view) {
-            PushFlvGopCache(stream, frame, keyframe, result.flv_tag_view);
+            PushFlvGopCache(stream, frame, keyframe, flv_tag_view);
         }
     }
 

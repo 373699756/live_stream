@@ -1,6 +1,7 @@
 #include "handlers/http_handlers.h"
 
-#include "http_handler_utils.h"
+#include "http_auth_gate.h"
+#include "http_stream_id_json.h"
 
 #include "media/stream_types.h"
 #include "device.h"
@@ -31,26 +32,16 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
 
 class SnapshotHttpHandler : public IHttpHandler {
 public:
-    SnapshotHttpHandler(HttpAccess *access,
-                        DeviceMedia *device)
-        : access_(access), device_(device) {}
+    explicit SnapshotHttpHandler(
+        const SnapshotHandlerDependencies &dependencies)
+        : access_(dependencies.access), device_(dependencies.device) {}
 
-    void RegisterRoutes(IHttpRouter *router) override {
-        if (router == nullptr) {
-            return;
-        }
-        router->AddPrefixRoute(HttpMethod::kGet, "/snapshot/",
-                               &SnapshotHttpHandler::HandleSnapshotRoute,
-                               this);
+    void RegisterRoutes(IHttpRouter &router) override {
+        router.AddPrefixRoute(HttpMethod::kGet, "/snapshot/",
+                              this, &SnapshotHttpHandler::HandleSnapshot);
     }
 
 private:
-    static HttpResponse HandleSnapshotRoute(void *user,
-                                            const HttpRequest &request) {
-        return static_cast<SnapshotHttpHandler *>(user)->HandleSnapshot(
-            request);
-    }
-
     HttpResponse HandleSnapshot(const HttpRequest &request) {
         AuthPrincipal principal;
         HttpResponse auth_response =
@@ -61,7 +52,7 @@ private:
         if (device_ == nullptr) {
             return SnapshotTextResponse(501, "Not Implemented");
         }
-        if (IsMediaRestarting(device_)) {
+        if (device_->IsRestarting()) {
             return SnapshotTextResponse(503, "Media pipeline restarting");
         }
         const std::string prefix = "/snapshot/";
@@ -95,10 +86,10 @@ private:
     DeviceMedia *device_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeSnapshotHandler(HttpAccess *access,
-                                                  DeviceMedia *device) {
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
+    const SnapshotHandlerDependencies &dependencies) {
     return std::unique_ptr<IHttpHandler>(
-        new SnapshotHttpHandler(access, device));
+        new SnapshotHttpHandler(dependencies));
 }
 
 }  // namespace live_stream

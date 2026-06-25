@@ -48,7 +48,7 @@ public:
     virtual bool ClosePeer(const std::string &peer_id) = 0;
     virtual bool HandleDtlsPacket(const std::string &peer_id,
                                   const uint8_t *data, size_t size,
-                                  std::vector<uint8_t> *outgoing_dtls) = 0;
+                                  std::vector<uint8_t> &outgoing_dtls) = 0;
     virtual bool HandleSrtcpPacket(const std::string &peer_id,
                                    const uint8_t *data, size_t size) = 0;
     virtual bool SendRtpPacket(const WebrtcPeerInfo &peer,
@@ -56,10 +56,10 @@ public:
                                const rtp::RtpPacketView &packet) = 0;
     virtual bool GetRtpSendParameters(
         const std::string &peer_id,
-        WebrtcRtpSendParameters *parameters) const = 0;
+        WebrtcRtpSendParameters &parameters) const = 0;
     virtual bool FillPeerInfo(const std::string &peer_id,
-                              WebrtcPeerInfo *peer) const = 0;
-    virtual void FillStats(WebrtcStats *stats) const = 0;
+                              WebrtcPeerInfo &peer) const = 0;
+    virtual void FillStats(WebrtcStats &stats) const = 0;
 };
 
 std::unique_ptr<IWebrtcPeerHost> CreateWebrtcPeerHost(

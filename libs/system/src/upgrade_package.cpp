@@ -1,13 +1,17 @@
-#include "upgrade_package.h"
+#include "system/package.h"
 
-#include "config_json.h"
+#include "json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/hash.h"
-#include "json_utils.h"
+#include "json_reader.h"
 
 #include <cctype>
+#include <cstdio>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 
@@ -49,16 +53,78 @@ struct ZipEntry {
     uint32_t size = 0;
 };
 
-uint16_t ReadLe16(const std::string& data, std::size_t offset) {
+struct MappedUpgradePackage {
+    MappedUpgradePackage() = default;
+    ~MappedUpgradePackage() { Close(); }
+
+    MappedUpgradePackage(const MappedUpgradePackage&) = delete;
+    MappedUpgradePackage& operator=(const MappedUpgradePackage&) = delete;
+
+    bool Open(const std::string& package_path, std::string* reason) {
+        Close();
+        const uint64_t package_size = infra::File::Size(package_path);
+        if (package_size == 0 || package_size > kMaxUpgradePackageSize) {
+            if (reason != nullptr) {
+                *reason = "package size is not allowed";
+            }
+            return false;
+        }
+        if (package_size > static_cast<uint64_t>(SIZE_MAX)) {
+            if (reason != nullptr) {
+                *reason = "package size is not supported";
+            }
+            return false;
+        }
+
+        fd = open(package_path.c_str(), O_RDONLY);
+        if (fd < 0) {
+            if (reason != nullptr) {
+                *reason = "package is unreadable";
+            }
+            return false;
+        }
+        size = static_cast<std::size_t>(package_size);
+        void* mapped = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (mapped == MAP_FAILED) {
+            Close();
+            if (reason != nullptr) {
+                *reason = "package map failed";
+            }
+            return false;
+        }
+        data = static_cast<const uint8_t*>(mapped);
+        return true;
+    }
+
+    void Close() {
+        if (data != nullptr) {
+            munmap(const_cast<uint8_t*>(data), size);
+            data = nullptr;
+        }
+        size = 0;
+        entries.clear();
+        if (fd >= 0) {
+            close(fd);
+            fd = -1;
+        }
+    }
+
+    int fd = -1;
+    const uint8_t* data = nullptr;
+    std::size_t size = 0;
+    std::vector<ZipEntry> entries;
+};
+
+uint16_t ReadLe16(const uint8_t* data, std::size_t offset) {
     const uint8_t* bytes =
-        reinterpret_cast<const uint8_t*>(data.data() + offset);
+        data + offset;
     return static_cast<uint16_t>(bytes[0]) |
            static_cast<uint16_t>(bytes[1] << 8);
 }
 
-uint32_t ReadLe32(const std::string& data, std::size_t offset) {
+uint32_t ReadLe32(const uint8_t* data, std::size_t offset) {
     const uint8_t* bytes =
-        reinterpret_cast<const uint8_t*>(data.data() + offset);
+        data + offset;
     return static_cast<uint32_t>(bytes[0]) |
            (static_cast<uint32_t>(bytes[1]) << 8) |
            (static_cast<uint32_t>(bytes[2]) << 16) |
@@ -71,40 +137,28 @@ bool IsSafeZipPath(const std::string& path) {
            path.find("..") == std::string::npos;
 }
 
-bool ReadStoreOnlyZipEntries(const std::string& package_path,
-                             std::string* zip_data,
-                             std::vector<ZipEntry>* entries,
+bool OpenStoreOnlyZipPackage(const std::string& package_path,
+                             MappedUpgradePackage* package,
                              std::string* reason) {
-    if (zip_data == nullptr || entries == nullptr) {
+    if (package == nullptr) {
         return false;
     }
-    const uint64_t package_size = infra::File::Size(package_path);
-    if (package_size == 0 || package_size > kMaxUpgradePackageSize) {
-        if (reason != nullptr) {
-            *reason = "package size is not allowed";
-        }
-        return false;
-    }
-    *zip_data = infra::File::ReadAll(package_path);
-    if (zip_data->empty()) {
-        if (reason != nullptr) {
-            *reason = "package is empty or unreadable";
-        }
+    if (!package->Open(package_path, reason)) {
         return false;
     }
 
     std::size_t offset = 0;
-    while (offset + 30 <= zip_data->size()) {
-        const uint32_t signature = ReadLe32(*zip_data, offset);
+    while (offset + 30 <= package->size) {
+        const uint32_t signature = ReadLe32(package->data, offset);
         if (signature != kZipLocalFileHeader) {
             break;
         }
-        const uint16_t flags = ReadLe16(*zip_data, offset + 6);
-        const uint16_t method = ReadLe16(*zip_data, offset + 8);
-        const uint32_t compressed_size = ReadLe32(*zip_data, offset + 18);
-        const uint32_t uncompressed_size = ReadLe32(*zip_data, offset + 22);
-        const uint16_t name_size = ReadLe16(*zip_data, offset + 26);
-        const uint16_t extra_size = ReadLe16(*zip_data, offset + 28);
+        const uint16_t flags = ReadLe16(package->data, offset + 6);
+        const uint16_t method = ReadLe16(package->data, offset + 8);
+        const uint32_t compressed_size = ReadLe32(package->data, offset + 18);
+        const uint32_t uncompressed_size = ReadLe32(package->data, offset + 22);
+        const uint16_t name_size = ReadLe16(package->data, offset + 26);
+        const uint16_t extra_size = ReadLe16(package->data, offset + 28);
         const std::size_t name_offset = offset + 30;
         const std::size_t data_offset =
             name_offset + name_size + extra_size;
@@ -112,22 +166,23 @@ bool ReadStoreOnlyZipEntries(const std::string& package_path,
             data_offset + static_cast<std::size_t>(compressed_size);
         if ((flags & 0x0008U) != 0 || method != kZipMethodStored ||
             compressed_size != uncompressed_size ||
-            name_size == 0 || data_offset > zip_data->size() ||
-            next_offset > zip_data->size()) {
+            name_size == 0 || data_offset > package->size ||
+            next_offset > package->size) {
             if (reason != nullptr) {
                 *reason = "upgrade.zip must use stored entries";
             }
             return false;
         }
-        const std::string name =
-            zip_data->substr(name_offset, static_cast<std::size_t>(name_size));
+        const std::string name(
+            reinterpret_cast<const char*>(package->data + name_offset),
+            static_cast<std::size_t>(name_size));
         if (!IsSafeZipPath(name)) {
             if (reason != nullptr) {
                 *reason = "unsafe zip entry path";
             }
             return false;
         }
-        for (const ZipEntry& existing : *entries) {
+        for (const ZipEntry& existing : package->entries) {
             if (existing.name == name) {
                 if (reason != nullptr) {
                     *reason = "duplicate zip entry path";
@@ -139,10 +194,10 @@ bool ReadStoreOnlyZipEntries(const std::string& package_path,
         entry.name = name;
         entry.data_offset = static_cast<uint32_t>(data_offset);
         entry.size = compressed_size;
-        entries->push_back(entry);
+        package->entries.push_back(entry);
         offset = next_offset;
     }
-    if (entries->empty()) {
+    if (package->entries.empty()) {
         if (reason != nullptr) {
             *reason = "upgrade.zip has no readable entries";
         }
@@ -165,14 +220,46 @@ bool IsManifestOrSignatureEntry(const ZipEntry& entry) {
     return entry.name == kManifestName || entry.name == kManifestSignatureName;
 }
 
-std::string ReadZipEntryData(const std::string& zip_data,
+std::string ReadZipEntryData(const MappedUpgradePackage& package,
                              const ZipEntry& entry) {
-    if (entry.data_offset > zip_data.size() ||
+    if (package.data == nullptr || entry.data_offset > package.size ||
         static_cast<std::size_t>(entry.data_offset) + entry.size >
-            zip_data.size()) {
+            package.size) {
         return std::string();
     }
-    return zip_data.substr(entry.data_offset, entry.size);
+    return std::string(
+        reinterpret_cast<const char*>(package.data + entry.data_offset),
+        entry.size);
+}
+
+std::string ZipEntrySha256Hex(const MappedUpgradePackage& package,
+                              const ZipEntry& entry) {
+    if (package.data == nullptr || entry.data_offset > package.size ||
+        static_cast<std::size_t>(entry.data_offset) + entry.size >
+            package.size) {
+        return std::string();
+    }
+    infra::Sha256 sha;
+    sha.Update(package.data + entry.data_offset, entry.size);
+    return sha.FinishHex();
+}
+
+bool WriteZipEntryData(const MappedUpgradePackage& package,
+                       const ZipEntry& entry,
+                       const std::string& output_path) {
+    if (package.data == nullptr || entry.data_offset > package.size ||
+        static_cast<std::size_t>(entry.data_offset) + entry.size >
+            package.size) {
+        return false;
+    }
+    std::FILE* output = std::fopen(output_path.c_str(), "wb");
+    if (output == nullptr) {
+        return false;
+    }
+    const std::size_t written = std::fwrite(
+        package.data + entry.data_offset, 1, entry.size, output);
+    const bool closed = std::fclose(output) == 0;
+    return written == entry.size && closed;
 }
 
 bool FileMtimeMs(const std::string& path, int64_t* mtime_ms) {
@@ -266,7 +353,7 @@ bool ReadManifest(const std::string& install_text,
     if (manifest == nullptr) {
         return false;
     }
-    ConfigJson root = ConfigJson::parse(install_text, nullptr, false);
+    Json root = Json::parse(install_text, nullptr, false);
     if (root.is_discarded() || !root.is_object()) {
         if (reason != nullptr) {
             *reason = "Install is not valid JSON";
@@ -275,11 +362,11 @@ bool ReadManifest(const std::string& install_text,
     }
 
     UpgradeManifest parsed;
-    if (!json_utils::ReadField(root, "Version", &parsed.version) ||
-        !json_utils::ReadField(root, "Board", &parsed.board) ||
-        !json_utils::ReadField(root, "Flash", &parsed.flash) ||
-        !json_utils::ReadField(root, "PackageType", &parsed.package_type) ||
-        !json_utils::ReadField(root, "Reboot", &parsed.reboot) ||
+    if (!json_reader::ReadField(root, "Version", &parsed.version) ||
+        !json_reader::ReadField(root, "Board", &parsed.board) ||
+        !json_reader::ReadField(root, "Flash", &parsed.flash) ||
+        !json_reader::ReadField(root, "PackageType", &parsed.package_type) ||
+        !json_reader::ReadField(root, "Reboot", &parsed.reboot) ||
         !root.contains("Commands") || !root.at("Commands").is_array()) {
         if (reason != nullptr) {
             *reason = "Install fields are incomplete";
@@ -295,7 +382,7 @@ bool ReadManifest(const std::string& install_text,
         return false;
     }
 
-    for (const ConfigJson& item : root.at("Commands")) {
+    for (const Json& item : root.at("Commands")) {
         if (!item.is_object()) {
             if (reason != nullptr) {
                 *reason = "Install command is invalid";
@@ -304,10 +391,10 @@ bool ReadManifest(const std::string& install_text,
         }
         std::string action;
         UpgradeCommand command;
-        if (!json_utils::ReadField(item, "Action", &action) ||
-            !json_utils::ReadField(item, "Partition", &command.partition) ||
-            !json_utils::ReadField(item, "File", &command.file) ||
-            !json_utils::ReadField(item, "Sha256", &command.sha256)) {
+        if (!json_reader::ReadField(item, "Action", &action) ||
+            !json_reader::ReadField(item, "Partition", &command.partition) ||
+            !json_reader::ReadField(item, "File", &command.file) ||
+            !json_reader::ReadField(item, "Sha256", &command.sha256)) {
             if (reason != nullptr) {
                 *reason = "Install command fields are incomplete";
             }
@@ -351,15 +438,14 @@ bool ReadManifest(const std::string& install_text,
     return true;
 }
 
-bool ValidateCommandFiles(const std::string& zip_data,
-                          const std::vector<ZipEntry>& entries,
+bool ValidateCommandFiles(const MappedUpgradePackage& package,
                           UpgradeManifest* manifest,
                           std::string* reason) {
     if (manifest == nullptr) {
         return false;
     }
     for (UpgradeCommand& command : manifest->commands) {
-        const ZipEntry* entry = FindZipEntry(entries, command.file);
+        const ZipEntry* entry = FindZipEntry(package.entries, command.file);
         if (entry == nullptr) {
             if (reason != nullptr) {
                 *reason = "upgrade image file is missing";
@@ -373,8 +459,7 @@ bool ValidateCommandFiles(const std::string& zip_data,
             }
             return false;
         }
-        const std::string data = ReadZipEntryData(zip_data, *entry);
-        if (infra::Sha256Hex(data) != command.sha256) {
+        if (ZipEntrySha256Hex(package, *entry) != command.sha256) {
             if (reason != nullptr) {
                 *reason = "upgrade image sha256 mismatch";
             }
@@ -382,7 +467,7 @@ bool ValidateCommandFiles(const std::string& zip_data,
         }
         command.size_bytes = entry->size;
     }
-    for (const ZipEntry& entry : entries) {
+    for (const ZipEntry& entry : package.entries) {
         if (IsManifestOrSignatureEntry(entry)) {
             continue;
         }
@@ -403,14 +488,13 @@ bool ValidateCommandFiles(const std::string& zip_data,
     return true;
 }
 
-bool ReadVerifiedManifest(const std::string& zip_data,
-                          const std::vector<ZipEntry>& entries,
+bool ReadVerifiedManifest(const MappedUpgradePackage& package,
                           UpgradeManifest* manifest,
                           std::string* reason) {
     if (manifest == nullptr) {
         return false;
     }
-    const ZipEntry* install_entry = FindZipEntry(entries, kManifestName);
+    const ZipEntry* install_entry = FindZipEntry(package.entries, kManifestName);
     if (install_entry == nullptr) {
         if (reason != nullptr) {
             *reason = "Install is missing";
@@ -418,24 +502,54 @@ bool ReadVerifiedManifest(const std::string& zip_data,
         return false;
     }
     const ZipEntry* signature_entry =
-        FindZipEntry(entries, kManifestSignatureName);
+        FindZipEntry(package.entries, kManifestSignatureName);
     if (signature_entry == nullptr) {
         if (reason != nullptr) {
             *reason = "Install signature is missing";
         }
         return false;
     }
-    const std::string install_text = ReadZipEntryData(zip_data, *install_entry);
+    const std::string install_text = ReadZipEntryData(package, *install_entry);
     if (!VerifyInstallSignature(
-            install_text, ReadZipEntryData(zip_data, *signature_entry),
+            install_text, ReadZipEntryData(package, *signature_entry),
             reason)) {
         return false;
     }
     if (!ReadManifest(install_text, manifest, reason) ||
-        !ValidateCommandFiles(zip_data, entries, manifest, reason)) {
+        !ValidateCommandFiles(package, manifest, reason)) {
         return false;
     }
     return true;
+}
+
+bool ReadSignedManifest(const MappedUpgradePackage& package,
+                        UpgradeManifest* manifest,
+                        std::string* reason) {
+    if (manifest == nullptr) {
+        return false;
+    }
+    const ZipEntry* install_entry = FindZipEntry(package.entries, kManifestName);
+    if (install_entry == nullptr) {
+        if (reason != nullptr) {
+            *reason = "Install is missing";
+        }
+        return false;
+    }
+    const ZipEntry* signature_entry =
+        FindZipEntry(package.entries, kManifestSignatureName);
+    if (signature_entry == nullptr) {
+        if (reason != nullptr) {
+            *reason = "Install signature is missing";
+        }
+        return false;
+    }
+    const std::string install_text = ReadZipEntryData(package, *install_entry);
+    if (!VerifyInstallSignature(
+            install_text, ReadZipEntryData(package, *signature_entry),
+            reason)) {
+        return false;
+    }
+    return ReadManifest(install_text, manifest, reason);
 }
 
 bool ManifestMatches(const UpgradeManifest& expected,
@@ -479,13 +593,12 @@ bool ParseUpgradePackage(const std::string& package_path,
         }
         return false;
     }
-    std::string zip_data;
-    std::vector<ZipEntry> entries;
-    if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
+    MappedUpgradePackage zip_package;
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
         return false;
     }
     UpgradeManifest manifest;
-    if (!ReadVerifiedManifest(zip_data, entries, &manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &manifest, reason)) {
         return false;
     }
 
@@ -504,17 +617,38 @@ bool ParseUpgradePackage(const std::string& package_path,
     return true;
 }
 
+bool ReadUpgradePackageManifest(const std::string& package_path,
+                                UpgradeManifest* manifest,
+                                std::string* reason) {
+    if (manifest == nullptr || !infra::File::Exists(package_path)) {
+        if (reason != nullptr) {
+            *reason = "package not found";
+        }
+        return false;
+    }
+    MappedUpgradePackage zip_package;
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
+        return false;
+    }
+    if (!ReadSignedManifest(zip_package, manifest, reason)) {
+        return false;
+    }
+    if (reason != nullptr) {
+        reason->clear();
+    }
+    return true;
+}
+
 bool ExtractUpgradeFile(const std::string& package_path,
                         const std::string& file_name,
                         const std::string& output_path,
                         std::string* reason) {
-    std::string zip_data;
-    std::vector<ZipEntry> entries;
-    if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
+    MappedUpgradePackage zip_package;
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
         return false;
     }
     UpgradeManifest manifest;
-    if (!ReadVerifiedManifest(zip_data, entries, &manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &manifest, reason)) {
         return false;
     }
     bool declared = false;
@@ -530,7 +664,7 @@ bool ExtractUpgradeFile(const std::string& package_path,
         }
         return false;
     }
-    const ZipEntry* entry = FindZipEntry(entries, file_name);
+    const ZipEntry* entry = FindZipEntry(zip_package.entries, file_name);
     if (entry == nullptr) {
         if (reason != nullptr) {
             *reason = "upgrade image file is missing";
@@ -538,7 +672,7 @@ bool ExtractUpgradeFile(const std::string& package_path,
         return false;
     }
     if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
-        !infra::File::WriteAll(output_path, ReadZipEntryData(zip_data, *entry))) {
+        !WriteZipEntryData(zip_package, *entry, output_path)) {
         if (reason != nullptr) {
             *reason = "failed to extract upgrade image";
         }
@@ -559,13 +693,12 @@ bool ExtractUpgradeFiles(const std::string& package_path,
         }
         return false;
     }
-    std::string zip_data;
-    std::vector<ZipEntry> entries;
-    if (!ReadStoreOnlyZipEntries(package_path, &zip_data, &entries, reason)) {
+    MappedUpgradePackage zip_package;
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
         return false;
     }
     UpgradeManifest verified_manifest;
-    if (!ReadVerifiedManifest(zip_data, entries, &verified_manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &verified_manifest, reason)) {
         return false;
     }
     if (!ManifestMatches(manifest, verified_manifest)) {
@@ -578,7 +711,7 @@ bool ExtractUpgradeFiles(const std::string& package_path,
         const UpgradeCommand& command = verified_manifest.commands[i];
         const std::string output_path =
             infra::Path::Join(output_dir, command.file);
-        const ZipEntry* entry = FindZipEntry(entries, command.file);
+        const ZipEntry* entry = FindZipEntry(zip_package.entries, command.file);
         if (entry == nullptr) {
             if (reason != nullptr) {
                 *reason = "upgrade image file is missing";
@@ -586,8 +719,7 @@ bool ExtractUpgradeFiles(const std::string& package_path,
             return false;
         }
         if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
-            !infra::File::WriteAll(output_path,
-                                   ReadZipEntryData(zip_data, *entry))) {
+            !WriteZipEntryData(zip_package, *entry, output_path)) {
             if (reason != nullptr) {
                 *reason = "failed to extract upgrade image";
             }

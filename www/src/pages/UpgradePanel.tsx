@@ -9,7 +9,7 @@ interface UpgradePanelProps {
     busy: boolean;
     cancelUpgrade: () => Promise<void>;
     confirmReboot: () => Promise<void>;
-    message: string;
+    msg: string;
     packageInfo: UpgradePackageInfo | null;
     refreshError: string;
     selectedFile: File | null;
@@ -25,8 +25,7 @@ interface UpgradePanelProps {
 function canCancel(status: UpgradeInfo) {
     return (
         status.state === 'validating' ||
-        status.state === 'preparing' ||
-        status.state === 'writing'
+        status.state === 'preparing'
     );
 }
 
@@ -81,7 +80,7 @@ function startHint(
 
 function cancelHint(status: UpgradeInfo) {
     if (status.state === 'writing') {
-        return '写入阶段可提交取消请求，是否中断由后端按平台能力处理。';
+        return '写入阶段正在擦写 Flash，不可取消，请勿断电。';
     }
     if (canCancel(status)) {
         return '当前阶段可提交取消请求。';
@@ -89,7 +88,7 @@ function cancelHint(status: UpgradeInfo) {
     if (status.state === 'committing' || status.state === 'waiting_reboot') {
         return '提交和等待重启阶段不可取消。';
     }
-    return '仅校验、准备和写入阶段可取消。';
+    return '仅校验和准备阶段可取消。';
 }
 
 export function UpgradePanel({
@@ -100,7 +99,7 @@ export function UpgradePanel({
     busy,
     cancelUpgrade,
     confirmReboot,
-    message,
+    msg,
     packageInfo,
     refreshError,
     selectedFile,
@@ -120,7 +119,7 @@ export function UpgradePanel({
             <div className="page-heading">
                 <div>
                     <h2>固件升级</h2>
-                    <p>先上传并校验升级包，校验通过后再开始写入设备。</p>
+                    <p>Web 入口只允许升级 Web Console 分区；写入阶段请勿断电。</p>
                 </div>
             </div>
 
@@ -254,9 +253,9 @@ export function UpgradePanel({
                             <span>{cancelHint(upgradeInfo)}</span>
                         </div>
 
-                        {message ? (
+                        {msg ? (
                             <div className="status-note success-note">
-                                {message}
+                                {msg}
                             </div>
                         ) : null}
                         {actionError ? (

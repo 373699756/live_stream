@@ -81,8 +81,8 @@ public:
           event_(dependencies.event),
           media_streams_(dependencies.media_streams),
           rtp_sender_(options_.rtp_mtu_bytes),
-          rtsp_auth_(auth_, this),
-          request_handler_(this) {}
+          rtsp_auth_(auth_, *this),
+          request_handler_(*this) {}
 
     ~RtspImpl() override {
         ReleaseInternal();
@@ -134,9 +134,6 @@ public:
         tcp_callbacks.on_accept = &RtspImpl::HandleAccept;
         tcp_callbacks.on_read = &RtspImpl::HandleRead;
         tcp_callbacks.on_close = &RtspImpl::HandleClose;
-        if (net_loop_ == nullptr) {
-            return false;
-        }
         TcpServerId server_result = net_io_->ListenTcp(
             net_loop_, tcp_config, tcp_callbacks);
         if (server_result == 0) {
@@ -175,7 +172,7 @@ private:
     void StopInternal() {
         std::vector<std::shared_ptr<RtspSession>> sessions;
         std::vector<ConnectionId> connection_ids;
-        if (server_id_ != 0 && net_io_ != nullptr) {
+        if (server_id_ != 0) {
             (void)net_io_->CloseTcp(server_id_);
             server_id_ = 0;
         }
@@ -187,13 +184,10 @@ private:
         // 停服务时先停 listener，再关闭每个 session 的 subscription/timer/UDP socket，
         // 最后关闭 TCP 控制连接，防止 media_streams 继续给已关闭 transport 推帧。
         for (const auto& session : sessions) {
-            CloseSessionResources(
-                session, SubscriptionClose::kStreamStopped);
+            CloseSessionResources(*session, SubscriptionClose::kStreamStopped);
         }
-        if (net_io_ != nullptr) {
-            for (ConnectionId connection_id : connection_ids) {
-                (void)net_io_->Close(connection_id);
-            }
+        for (ConnectionId connection_id : connection_ids) {
+            (void)net_io_->Close(connection_id);
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -262,9 +256,6 @@ public:
         std::vector<RtspSessionInfo> session_info;
         session_info.reserve(sessions.size());
         for (const std::shared_ptr<RtspSession>& session : sessions) {
-            if (session == nullptr) {
-                continue;
-            }
             RtspSessionInfo item;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -281,27 +272,24 @@ public:
                 item.last_rtcp_ms = session->stats.last_rtcp_ms;
                 item.close_reason = TcpCloseReasonName(session->close_reason);
             }
-            if (net_io_ != nullptr) {
-                const NetConnectionInfo connection_info =
-                    net_io_->GetConnectionInfo(
-                        session->connection_id);
-                const bool has_connection_info =
-                    connection_info.connection_id == session->connection_id;
-                if (has_connection_info &&
-                    !connection_info.local_address.ip.empty() &&
-                    connection_info.local_address.port != 0) {
-                    item.local_address =
-                        AddressText(connection_info.local_address);
-                }
-                if (has_connection_info && item.pending_bytes == 0) {
-                    item.pending_bytes = connection_info.pending_bytes;
-                }
-                if (has_connection_info) {
-                    item.close_reason =
-                        TcpCloseReasonName(connection_info.close_reason);
-                }
+            const NetConnectionInfo connection_info =
+                net_io_->GetConnectionInfo(session->connection_id);
+            const bool has_connection_info =
+                connection_info.connection_id == session->connection_id;
+            if (has_connection_info &&
+                !connection_info.local_address.ip.empty() &&
+                connection_info.local_address.port != 0) {
+                item.local_address =
+                    AddressText(connection_info.local_address);
             }
-            if (media_streams_ != nullptr && item.subscription_id != 0) {
+            if (has_connection_info && item.pending_bytes == 0) {
+                item.pending_bytes = connection_info.pending_bytes;
+            }
+            if (has_connection_info) {
+                item.close_reason =
+                    TcpCloseReasonName(connection_info.close_reason);
+            }
+            if (item.subscription_id != 0) {
                 const SubscriptionInfo subscription_info =
                     media_streams_->GetSubscriptionInfo(
                         item.subscription_id);
@@ -312,7 +300,7 @@ public:
                     item.subscription_pending_frames =
                         subscription_info.pending_frames;
                     item.subscription_waiting_keyframe =
-                        subscription_info.waiting_for_keyframe;
+                        subscription_info.wait_keyframe;
                     item.subscription_slow = subscription_info.slow;
                     item.subscription_close_reason =
                         SubscriptionCloseName(
@@ -373,7 +361,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (session_table_.Add(connection_id, std::move(peer),
-                                   options_.max_sessions, &session)) {
+                                   options_.max_sessions, session)) {
                 ++stats_.total_sessions;
                 accepted = true;
             }
@@ -403,8 +391,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session->MarkCloseReason(reason);
         }
-        CloseSessionResources(session,
-                              SubscriptionClose::kUnsubscribed);
+        CloseSessionResources(*session, SubscriptionClose::kUnsubscribed);
         Info("rtsp",
              "RTSP client disconnected conn=%llu reason=%d "
              "peer=%s:%u",
@@ -437,9 +424,6 @@ private:
                 session->RecordRtcpPacket(size,
                                           infra::Time::MonotonicMillis());
             }
-        }
-        if (session == nullptr) {
-            return;
         }
         if (learned_rtp_peer || learned_rtcp_peer) {
             Info("rtsp",
@@ -479,7 +463,7 @@ private:
 
         // splitter 同时能切 RTSP request 和 TCP interleaved frame；当前只记录
         // RTCP 反馈用于诊断，不根据 receiver report 做码率控制。
-        RecordInterleavedRtcpPackets(session, split.interleaved_packets);
+        RecordInterleavedRtcpPackets(*session, split.interleaved_packets);
         for (const std::string& raw : split.requests) {
             RtspRequest request;
             if (!ParseRtspRequest(raw, &request)) {
@@ -495,36 +479,34 @@ private:
     }
 
     void RecordInterleavedRtcpPackets(
-        const std::shared_ptr<RtspSession>& session,
+        RtspSession& session,
         const std::vector<RtspInterleavedPacket>& packets) {
-        if (session == nullptr || packets.empty()) {
+        if (packets.empty()) {
             return;
         }
         const int64_t now_ms = infra::Time::MonotonicMillis();
         std::lock_guard<std::mutex> lock(mutex_);
-        const uint8_t rtcp_channel = session->interleaved_rtp_channel + 1;
+        const uint8_t rtcp_channel = session.interleaved_rtp_channel + 1;
         for (const RtspInterleavedPacket& packet : packets) {
-            if (session->transport == RtspTransportMode::kTcpInterleaved &&
+            if (session.transport == RtspTransportMode::kTcpInterleaved &&
                 packet.channel == rtcp_channel) {
-                session->RecordRtcpPacket(packet.payload.size(), now_ms);
+                session.RecordRtcpPacket(packet.payload.size(), now_ms);
             }
         }
     }
 
     bool IsRtspStreamAvailable(StreamId stream_id) const override {
-        return media_streams_ != nullptr &&
-               media_streams_->IsStreamAvailable(stream_id);
+        return media_streams_->IsStreamAvailable(stream_id);
     }
 
     MediaStreamInfo RtspStreamInfoForStream(StreamId stream_id) const override {
-        if (media_streams_ == nullptr ||
-            !media_streams_->IsStreamAvailable(stream_id)) {
+        if (!media_streams_->IsStreamAvailable(stream_id)) {
             return MediaStreamInfo{};
         }
         return media_streams_->GetStreamInfo(stream_id);
     }
 
-    bool AuthorizeRtspRequest(const std::shared_ptr<RtspSession>& session,
+    bool AuthorizeRtspRequest(RtspSession& session,
                               const RtspRequest& request,
                               StreamId stream_id) override {
         if (!options_.enable_auth) {
@@ -533,13 +515,13 @@ private:
         return rtsp_auth_.Authorize(session, request, stream_id);
     }
 
-    bool SetupRtspTransport(const std::shared_ptr<RtspSession>& session,
+    bool SetupRtspTransport(RtspSession& session,
                             const RtspRequest& request,
                             StreamId stream_id) override {
         const std::string transport = HeaderValue(request, "Transport");
         if (transport.empty()) {
             Error("rtsp", "RTSP setup missing Transport");
-            SendResponse(session->connection_id, 461, CSeq(request), {}, "");
+            SendResponse(session.connection_id, 461, CSeq(request), {}, "");
             return false;
         }
         std::string response_transport;
@@ -547,12 +529,11 @@ private:
             ContainsNoCase(transport, "interleaved")) {
             // 重新 SETUP 会切换 transport，必须先清掉旧 subscription 和 UDP socket，
             // 否则旧 transport 仍可能收到 drain timer 推送。
-            CloseSessionResources(session,
-                                  SubscriptionClose::kUnsubscribed);
-            session->SetupTcp(stream_id, 0);
+            CloseSessionResources(session, SubscriptionClose::kUnsubscribed);
+            session.SetupTcp(stream_id, 0);
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=" +
-                Hex32(session->ssrc);
+                Hex32(session.ssrc);
             AddTcpInterleavedSession();
         } else if (ContainsNoCase(transport, "RTP/AVP")) {
             const int client_port = ParseClientRtpPort(transport);
@@ -561,64 +542,58 @@ private:
                     "rtsp",
                     "RTSP setup unsupported UDP transport=%s",
                     transport.c_str());
-                SendResponse(session->connection_id, 461, CSeq(request), {}, "");
+                SendResponse(session.connection_id, 461, CSeq(request), {}, "");
                 return false;
             }
             // UDP 每个 session 独立绑定本地 RTP/RTCP 端口，响应里的 server_port
             // 必须来自实际 bind 结果，不能用配置端口推导。
-            CloseSessionResources(session,
-                                  SubscriptionClose::kUnsubscribed);
+            CloseSessionResources(session, SubscriptionClose::kUnsubscribed);
             UdpSocketId rtp_socket_id = 0;
             UdpSocketId rtcp_socket_id = 0;
             NetAddress server_rtp;
             NetAddress server_rtcp;
-            if (!BindSessionUdpSockets(&rtp_socket_id, &rtcp_socket_id,
-                                       &server_rtp, &server_rtcp)) {
+            if (!BindSessionUdpSockets(rtp_socket_id, rtcp_socket_id,
+                                       server_rtp, server_rtcp)) {
                 Error("rtsp", "RTSP setup UDP bind failed");
-                SendResponse(session->connection_id, 461, CSeq(request), {}, "");
+                SendResponse(session.connection_id, 461, CSeq(request), {}, "");
                 return false;
             }
-            session->SetupUdp(stream_id, rtp_socket_id, rtcp_socket_id,
-                              static_cast<uint16_t>(client_port));
+            session.SetupUdp(stream_id, rtp_socket_id, rtcp_socket_id,
+                             static_cast<uint16_t>(client_port));
             response_transport = "RTP/AVP/UDP;unicast;client_port=" +
                                  std::to_string(client_port) + "-" +
                                  std::to_string(client_port + 1) +
                                  ";server_port=" +
                                  std::to_string(server_rtp.port) + "-" +
                                  std::to_string(server_rtcp.port) +
-                                 ";ssrc=" + Hex32(session->ssrc);
+                                 ";ssrc=" + Hex32(session.ssrc);
             AddUdpSession();
         } else {
             Error("rtsp",
                   "RTSP setup unsupported transport=%s",
                   transport.c_str());
-            SendResponse(session->connection_id, 461, CSeq(request), {}, "");
+            SendResponse(session.connection_id, 461, CSeq(request), {}, "");
             return false;
         }
         Info("rtsp",
              "RTSP setup conn=%llu stream=%s transport=%s",
              static_cast<unsigned long long>(
-                 session->connection_id),
+                 session.connection_id),
              StreamPath(stream_id),
-             session->transport == RtspTransportMode::kTcpInterleaved
+             session.transport == RtspTransportMode::kTcpInterleaved
                  ? "tcp"
                  : "udp");
-        SendResponse(session->connection_id, 200, CSeq(request),
+        SendResponse(session.connection_id, 200, CSeq(request),
                      {{"Transport", response_transport},
-                      {"Session", std::to_string(session->session_id)}},
+                      {"Session", std::to_string(session.session_id)}},
                      "");
         return true;
     }
 
-    bool BindSessionUdpSockets(UdpSocketId* rtp_socket_id,
-                               UdpSocketId* rtcp_socket_id,
-                               NetAddress* server_rtp,
-                               NetAddress* server_rtcp) {
-        if (rtp_socket_id == nullptr || rtcp_socket_id == nullptr ||
-            server_rtp == nullptr || server_rtcp == nullptr ||
-            net_io_ == nullptr) {
-            return false;
-        }
+    bool BindSessionUdpSockets(UdpSocketId &rtp_socket_id,
+                               UdpSocketId &rtcp_socket_id,
+                               NetAddress &server_rtp,
+                               NetAddress &server_rtcp) {
         UdpBindOptions udp_config;
         udp_config.address = {options_.listen_ip, 0};
         UdpCallbacks udp_callbacks;
@@ -635,15 +610,15 @@ private:
             (void)net_io_->CloseUdp(rtp_result);
             return false;
         }
-        *server_rtp = net_io_->UdpLocalAddress(rtp_result);
-        *server_rtcp = net_io_->UdpLocalAddress(rtcp_result);
-        if (server_rtp->port == 0 || server_rtcp->port == 0) {
+        server_rtp = net_io_->UdpLocalAddress(rtp_result);
+        server_rtcp = net_io_->UdpLocalAddress(rtcp_result);
+        if (server_rtp.port == 0 || server_rtcp.port == 0) {
             (void)net_io_->CloseUdp(rtp_result);
             (void)net_io_->CloseUdp(rtcp_result);
             return false;
         }
-        *rtp_socket_id = rtp_result;
-        *rtcp_socket_id = rtcp_result;
+        rtp_socket_id = rtp_result;
+        rtcp_socket_id = rtcp_result;
         return true;
     }
 
@@ -692,20 +667,15 @@ private:
         ++stats_.udp_sessions;
     }
 
-    int StartRtspMediaStream(
-        const std::shared_ptr<RtspSession>& session) override {
-        if (session == nullptr || media_streams_ == nullptr) {
-            return 500;
-        }
-        if (!media_streams_->IsStreamAvailable(session->stream_id)) {
+    int StartRtspMediaStream(RtspSession& session) override {
+        if (!media_streams_->IsStreamAvailable(session.stream_id)) {
             return 404;
         }
-        CloseSubscription(session,
-                          SubscriptionClose::kUnsubscribed);
+        CloseSubscription(session, SubscriptionClose::kUnsubscribed);
         // PLAY 才创建长期 subscription，keyframe_first 让媒体链路优先给关键帧，
         // 并把当前 GOP 作为 start frames 返回给本 session。
         SubscriptionOptions subscription_options;
-        subscription_options.stream_id = session->stream_id;
+        subscription_options.stream_id = session.stream_id;
         subscription_options.keyframe_first = true;
         const FrameSubscriptionId subscription_id =
             media_streams_->SubscribeFrames(subscription_options);
@@ -725,12 +695,12 @@ private:
             FirstStartFrameRtpTimestamp(start_data);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            session->StartPlaying();
-            session->SetSubscription(subscription_id,
-                                     start_data.generation,
-                                     start_data.stream_info);
-            session->SetPlayRtpTimestamp(play_rtp_timestamp);
-            session->SetStartFrames(&start_data.gop_frames);
+            session.StartPlaying();
+            session.SetSubscription(subscription_id,
+                                    start_data.generation,
+                                    start_data.stream_info);
+            session.SetPlayRtpTimestamp(play_rtp_timestamp);
+            session.SetStartFrames(&start_data.gop_frames);
         }
         return 200;
     }
@@ -746,11 +716,10 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session = session_table_.Find(connection_id);
         }
-        CloseSessionResources(session,
-                              SubscriptionClose::kUnsubscribed);
-        if (net_io_ != nullptr) {
-            (void)net_io_->CloseAfterSend(connection_id);
+        if (session != nullptr) {
+            CloseSessionResources(*session, SubscriptionClose::kUnsubscribed);
         }
+        (void)net_io_->CloseAfterSend(connection_id);
     }
 
     RtspListenAddress RtspLocalAddress() const override {
@@ -775,14 +744,8 @@ private:
     }
 
     void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
-        if (session == nullptr || net_io_ == nullptr) {
-            return;
-        }
         // drain timer 运行在 net IO loop 上，周期性从 media_streams subscription 拉帧；
         // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
-        if (net_loop_ == nullptr) {
-            return;
-        }
         event::TimerId timer_id = 0;
         const event::EventStatus timer_status = net_loop_->RunEvery(
             kRtspDrainIntervalMs, [this, session]() {
@@ -806,9 +769,6 @@ private:
     }
 
     void DrainSessionFrames(const std::shared_ptr<RtspSession>& session) {
-        if (session == nullptr || media_streams_ == nullptr) {
-            return;
-        }
         if (!FlushSessionStartFrames(session)) {
             return;
         }
@@ -823,11 +783,11 @@ private:
         }
         for (uint32_t i = 0; i < kRtspMaxFramesPerDrain; ++i) {
             SubscriptionFrame subscribed_frame;
-            if (!media_streams_->PopSubscriptionFrame(subscription_id,
-                                                      &subscribed_frame)) {
+            if (!media_streams_->PullFrame(subscription_id,
+                                           &subscribed_frame)) {
                 break;
             }
-            // Pop 出来的 frame 带引用，发送路径只在本次调用内使用；
+            // Pull 出来的 frame 带引用，发送路径只在本次调用内使用。
             SendMediaFrame(session, subscribed_frame.frame);
         }
     }
@@ -838,15 +798,14 @@ private:
             bool has_frame = false;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                if (session == nullptr ||
-                    session->state != RtspSessionState::kPlaying) {
+                if (session->state != RtspSessionState::kPlaying) {
                     return false;
                 }
                 if (!session->start_frames.empty()) {
                     // Move 后锁外发送可以缩短 RTSP mutex
                     // 持有时间，避免发送慢客户端时阻塞其它控制请求。
                     frame = std::move(session->start_frames.front());
-                    session->start_frames.erase(session->start_frames.begin());
+                    session->start_frames.pop_front();
                     has_frame = true;
                 }
             }
@@ -862,8 +821,7 @@ private:
         bool should_send = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            should_send = session != nullptr &&
-                          session->state == RtspSessionState::kPlaying &&
+            should_send = session->state == RtspSessionState::kPlaying &&
                           session->IsSubscribed() &&
                           frame.stream_id == session->stream_id &&
                           frame.codec == session->stream_info.codec;
@@ -871,77 +829,59 @@ private:
         if (should_send) {
             // SendFrame 内部会再次读取 transport 和统计字段；这里先过滤 stream/codec，
             // 防止旧 subscription 或错误码流的数据进入当前 session。
-            rtp_sender_.SendFrame(session, frame,
+            rtp_sender_.SendFrame(*session, frame,
                                   RtpSenderContext());
         }
     }
 
-    void CloseSessionResources(
-        const std::shared_ptr<RtspSession>& session,
-        SubscriptionClose reason) {
-        if (session == nullptr) {
-            return;
-        }
+    void CloseSessionResources(RtspSession& session, SubscriptionClose reason) {
         CloseSubscription(session, reason);
         CloseSessionUdp(session);
     }
 
-    void CloseSessionUdp(const std::shared_ptr<RtspSession>& session) {
-        if (session == nullptr) {
-            return;
-        }
+    void CloseSessionUdp(RtspSession& session) {
         UdpSocketId rtp_socket_id = 0;
         UdpSocketId rtcp_socket_id = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            rtp_socket_id = session->rtp_socket_id;
-            rtcp_socket_id = session->rtcp_socket_id;
-            session->rtp_socket_id = 0;
-            session->rtcp_socket_id = 0;
+            rtp_socket_id = session.rtp_socket_id;
+            rtcp_socket_id = session.rtcp_socket_id;
+            session.rtp_socket_id = 0;
+            session.rtcp_socket_id = 0;
         }
         // socket id 清零后再关闭 net endpoint，避免关闭回调里再次找到同一 session
         // 并重复关闭相同 UDP socket。
-        if (net_io_ != nullptr) {
-            if (rtp_socket_id != 0) {
-                (void)net_io_->CloseUdp(rtp_socket_id);
-            }
-            if (rtcp_socket_id != 0) {
-                (void)net_io_->CloseUdp(rtcp_socket_id);
-            }
+        if (rtp_socket_id != 0) {
+            (void)net_io_->CloseUdp(rtp_socket_id);
+        }
+        if (rtcp_socket_id != 0) {
+            (void)net_io_->CloseUdp(rtcp_socket_id);
         }
     }
 
-    void CloseSubscription(const std::shared_ptr<RtspSession>& session,
-                           SubscriptionClose reason) {
-        if (session == nullptr) {
-            return;
-        }
+    void CloseSubscription(RtspSession& session, SubscriptionClose reason) {
         FrameSubscriptionId subscription_id = 0;
         event::TimerId drain_timer_id = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            subscription_id = session->subscription_id;
-            drain_timer_id = session->drain_timer_id;
-            session->ClearSubscription();
-            session->ClearDrainTimer();
+            subscription_id = session.subscription_id;
+            drain_timer_id = session.drain_timer_id;
+            session.ClearSubscription();
+            session.ClearDrainTimer();
         }
         // 先取消 drain timer，再 unsubscribe subscription。timer 若已在执行，
         // EventLoop 的 cancelled 标记会阻止下一次触发；subscription_id 清零后
         // 本次执行也会快速退出。
-        if (net_loop_ != nullptr && drain_timer_id != 0) {
+        if (drain_timer_id != 0) {
             (void)net_loop_->CancelTimer(drain_timer_id);
         }
-        if (media_streams_ != nullptr && subscription_id != 0) {
+        if (subscription_id != 0) {
             (void)media_streams_->UnsubscribeFrames(subscription_id, reason);
         }
     }
 
     RtspRtpSenderContext RtpSenderContext() {
-        RtspRtpSenderContext context;
-        context.net_io = net_io_;
-        context.mutex = &mutex_;
-        context.service_stats = &stats_;
-        return context;
+        return RtspRtpSenderContext{*net_io_, mutex_, stats_};
     }
 
     RtspOptions options_;

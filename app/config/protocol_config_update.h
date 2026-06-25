@@ -5,11 +5,11 @@
 
 namespace live_stream {
 
-ConfigStatus VerifyProtocolConfigUpdateScope(
+ConfigCode VerifyProtocolConfigUpdateScope(
     const AppConfig &current_config,
     const AppConfig &next_config,
     const std::string &scope,
-    ConfigIssue *issue);
+    ConfigError *error);
 
 bool IsRtspConfigChanged(const AppConfig &current_config,
                          const AppConfig &next_config);

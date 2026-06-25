@@ -1,6 +1,8 @@
-#include "hisi_vendor/mpp_hisi_sdk.h"
-#include "hisi_mpp_utils.h"
+#include "hisi_vendor/mpp_sdk.h"
+#include "hisi_mpp_sdk.h"
 #include "mpp_hisi_sdk_impl.h"
+
+#include "infra/log.h"
 
 namespace live_stream {
 namespace hisisdk {
@@ -142,7 +144,7 @@ void FillChannelAttr(int32_t handle, const RegionConfig& config,
 // CreateRegion
 // ====================================================================
 bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0 || config.size.width == 0 || config.size.height == 0) {
         Error(
             "hisi_vendor",
@@ -190,7 +192,7 @@ bool MppHisiSdk::CreateRegion(int32_t handle, const RegionConfig& config) {
 // AttachRegion
 // ====================================================================
 bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0) {
         Error("hisi_vendor", "invalid region attach handle=%d",
               handle);
@@ -219,7 +221,7 @@ bool MppHisiSdk::AttachRegion(int32_t handle, const RegionConfig& config) {
 // DetachRegion
 // ====================================================================
 bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0) return false;
 
     MPP_CHN_S channel = ToHiChannel(config.target);
@@ -240,7 +242,7 @@ bool MppHisiSdk::DetachRegion(int32_t handle, const RegionConfig& config) {
 // SetRegionDisplay
 // ====================================================================
 bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0) {
         Error("hisi_vendor", "invalid region display handle=%d",
               handle);
@@ -271,7 +273,7 @@ bool MppHisiSdk::SetRegionDisplay(int32_t handle, const RegionConfig& config) {
 // SetRegionBitmap
 // ====================================================================
 bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0 || bitmap.data == nullptr || bitmap.size == 0) {
         Error(
             "hisi_vendor",
@@ -304,7 +306,7 @@ bool MppHisiSdk::SetRegionBitmap(int32_t handle, const Bitmap& bitmap) {
 // DestroyRegion
 // ====================================================================
 void MppHisiSdk::DestroyRegion(int32_t handle) {
-    std::lock_guard<std::recursive_mutex> lock(impl_->control_mutex_);
+    std::lock_guard<std::mutex> lock(impl_->control_mutex_);
     if (handle < 0) return;
 
     (void)HI_MPI_RGN_Destroy(handle);

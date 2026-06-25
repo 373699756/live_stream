@@ -97,13 +97,13 @@ public:
     }
 
     SystemInfo GetSystemInfo() override {
-        SystemInfo status;
-        status.cpu_usage_percent = 0;
-        status.memory_usage_percent = ReadMemoryUsagePercent();
-        status.temperature_celsius = ReadTemperatureCelsius();
-        status.uptime_ms = ReadUptimeMs();
-        status.healthy = true;
-        return status;
+        SystemInfo system_info;
+        system_info.cpu_usage_percent = 0;
+        system_info.memory_usage_percent = ReadMemoryUsagePercent();
+        system_info.temperature_celsius = ReadTemperatureCelsius();
+        system_info.uptime_ms = ReadUptimeMs();
+        system_info.healthy = true;
+        return system_info;
     }
 
     SystemCapabilities GetCapabilities() override {
@@ -136,7 +136,7 @@ public:
         if (initialized_) {
             return true;
         }
-        if (platform_ == nullptr || options_.heartbeat_timeout_ms == 0) {
+        if (options_.heartbeat_timeout_ms == 0) {
             return false;
         }
         initialized_ = true;
@@ -182,9 +182,9 @@ public:
         if (!IsStarted()) {
             return SystemInfo{};
         }
-        SystemInfo status = platform_->GetSystemInfo();
-        ApplyHeartbeatHealth(&status);
-        return status;
+        SystemInfo system_info = platform_->GetSystemInfo();
+        ApplyHeartbeatHealth(system_info);
+        return system_info;
     }
 
     SystemCapabilities GetCapabilities() override {
@@ -237,10 +237,7 @@ public:
     }
 
 private:
-    void ApplyHeartbeatHealth(SystemInfo* status) {
-        if (status == nullptr) {
-            return;
-        }
+    void ApplyHeartbeatHealth(SystemInfo& system_info) {
         std::string failed_component;
         std::string event_message;
         {
@@ -267,22 +264,23 @@ private:
             }
         }
         if (!failed_component.empty()) {
-            status->healthy = false;
-            status->health_reason = "heartbeat timeout: " + failed_component;
+            system_info.healthy = false;
+            system_info.health_reason =
+                "heartbeat timeout: " + failed_component;
         }
         if (!event_message.empty()) {
             PublishSystemInfoChanged(event_message);
         }
     }
 
-    void PublishSystemInfoChanged(const std::string& message) {
+    void PublishSystemInfoChanged(const std::string& msg) {
         if (options_.event == nullptr) {
             return;
         }
         event::Event event;
         event.type = event::EventType::kSystemInfoChanged;
         event.source = "system";
-        event.message = message;
+        event.message = msg;
         static_cast<void>(options_.event->Publish(event));
     }
 

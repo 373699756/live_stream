@@ -6,7 +6,6 @@
 #include "webrtc.h"
 
 #include <map>
-#include <memory>
 #include <mutex>
 #include <string>
 
@@ -17,9 +16,9 @@ class IWebrtcPeerHost;
 class WebrtcRtpPacketSink;
 
 struct WebrtcRtpSenderContext {
-    std::shared_ptr<IWebrtcPeerHost> peer_host;
-    std::mutex *mutex = nullptr;
-    WebrtcStats *service_stats = nullptr;
+    IWebrtcPeerHost &peer_host;
+    std::mutex &mutex;
+    WebrtcStats &service_stats;
 };
 
 class WebrtcRtpSender {

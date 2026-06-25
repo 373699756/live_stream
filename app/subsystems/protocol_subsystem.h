@@ -48,16 +48,16 @@ private:
 
     bool InstallConfigUpdateScopes();
     void RemoveConfigUpdateScopes();
-    ConfigStatus VerifyProtocolConfigUpdate(const std::string &scope,
-                                            const ConfigJson &now,
-                                            ConfigIssue *issue);
-    ConfigStatus ApplyProtocolConfigUpdate(const std::string &scope,
-                                           const ConfigJson &prev,
-                                           const ConfigJson &now,
-                                           ConfigIssue *issue);
+    ConfigCode VerifyProtocolConfigUpdate(const std::string &scope,
+                                            const Json &now,
+                                            ConfigError *error);
+    ConfigCode ApplyProtocolConfigUpdate(const std::string &scope,
+                                           const Json &prev,
+                                           const Json &now,
+                                           ConfigError *error);
     bool BuildNextAppConfig(const std::string &scope,
-                            const ConfigJson &value,
-                            AppConfig *next_config) const;
+                            const Json &value,
+                            AppConfig &next_config) const;
 
     std::unique_ptr<event::Loop> net_callback_loop_;
     std::unique_ptr<INetIo> net_io_;

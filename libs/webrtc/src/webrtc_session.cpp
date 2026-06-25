@@ -60,9 +60,9 @@ WebrtcSession::~WebrtcSession() {
 
 bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
                                 const WebrtcSessionOfferContext &context,
-                                WebrtcSessionOfferResult *result) {
-    if (result == nullptr || peer_.peer_id.empty() ||
-        !IsSupportedCodec(peer_.codec) || offer_sdp.empty()) {
+                                WebrtcOfferAnswer &result) {
+    if (peer_.peer_id.empty() || !IsSupportedCodec(peer_.codec) ||
+        offer_sdp.empty()) {
         return false;
     }
 
@@ -84,7 +84,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     transport_options.udp_callbacks = context.udp_callbacks;
     transport_options.peer_id = peer_.peer_id;
     transport_options.local_port_base = context.options.local_port_base;
-    transport_options.port_size =
+    transport_options.port_span =
         context.options.max_peers == 0 ? 1U : context.options.max_peers;
     transport_options.next_port_offset = context.next_port_offset;
     transport_options.local_ice_ufrag = local_ice_ufrag;
@@ -96,8 +96,8 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     std::unique_ptr<WebrtcTransport> transport(new WebrtcTransport());
     NetAddress local_candidate;
     uint32_t next_port_offset = context.next_port_offset;
-    if (!transport->Start(transport_options, &next_port_offset,
-                          &local_candidate)) {
+    if (!transport->Start(transport_options, next_port_offset,
+                          local_candidate)) {
         return false;
     }
 
@@ -121,8 +121,8 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     rtp_clock_rate_ = parsed_offer.video_codec.clock_rate;
     rtp_ssrc_ = answer_options.local_ssrc;
 
-    result->answer_sdp = answer;
-    result->next_port_offset = next_port_offset;
+    result.answer_sdp = answer;
+    result.next_port_offset = next_port_offset;
     return true;
 }
 
@@ -148,30 +148,30 @@ bool WebrtcSession::MatchesSocket(UdpSocketId socket_id) const {
 }
 
 bool WebrtcSession::HandleIcePacket(NetAddress peer, const uint8_t *data,
-                                    size_t size, bool *connected_now) {
+                                    size_t size, bool &connected_now) {
     return transport_ != nullptr &&
            transport_->HandleIcePacket(std::move(peer), data, size,
                                        connected_now);
 }
 
 bool WebrtcSession::ProcessDtlsPacket(
-    const uint8_t *data, size_t size, WebrtcTransportDtlsResult *result) {
+    const uint8_t *data, size_t size, WebrtcDtlsOutput &result) {
     return transport_ != nullptr &&
            transport_->ProcessDtlsPacket(data, size, result);
 }
 
 bool WebrtcSession::HandleDtlsTimeout(
-    WebrtcTransportDtlsResult *result) {
+    WebrtcDtlsOutput &result) {
     return transport_ != nullptr && transport_->HandleDtlsTimeout(result);
 }
 
 bool WebrtcSession::SendDtlsResult(
-    const WebrtcTransportDtlsResult &result) {
+    const WebrtcDtlsOutput &result) {
     return transport_ != nullptr && transport_->SendDtlsResult(result);
 }
 
 bool WebrtcSession::HandleSrtcpPacket(const uint8_t *data, size_t size,
-                                      bool *need_keyframe) {
+                                      bool &need_keyframe) {
     return transport_ != nullptr &&
            transport_->HandleSrtcpPacket(data, size, need_keyframe);
 }
@@ -182,37 +182,37 @@ bool WebrtcSession::SendRtpPacket(
 }
 
 bool WebrtcSession::GetRtpSendParameters(
-    WebrtcRtpSendParameters *parameters) const {
-    if (parameters == nullptr || rtp_payload_type_ == 0 || rtp_ssrc_ == 0) {
+    WebrtcRtpSendParameters &parameters) const {
+    if (rtp_payload_type_ == 0 || rtp_ssrc_ == 0) {
         return false;
     }
-    parameters->codec = peer_.codec;
-    parameters->payload_type = rtp_payload_type_;
-    parameters->clock_rate = rtp_clock_rate_;
-    parameters->ssrc = rtp_ssrc_;
+    parameters.codec = peer_.codec;
+    parameters.payload_type = rtp_payload_type_;
+    parameters.clock_rate = rtp_clock_rate_;
+    parameters.ssrc = rtp_ssrc_;
     return true;
 }
 
-void WebrtcSession::FillPeerInfo(WebrtcPeerInfo *peer) const {
-    if (peer == nullptr || transport_ == nullptr) {
+void WebrtcSession::FillPeerInfo(WebrtcPeerInfo &peer) const {
+    if (transport_ == nullptr) {
         return;
     }
     const WebrtcTransportInfo transport_info = transport_->GetInfo();
-    peer->ice_selected = transport_info.ice_selected;
-    peer->dtls_state = transport_info.dtls_state;
-    peer->srtp_ready = transport_info.srtp_ready;
-    peer->rtp_packets = transport_info.rtp_packets;
-    peer->rtp_bytes = transport_info.rtp_bytes;
-    peer->rtcp_packets = transport_info.rtcp_packets;
-    peer->rtcp_bytes = transport_info.rtcp_bytes;
-    peer->rtcp_pli_packets = transport_info.rtcp_pli_packets;
-    peer->rtcp_fir_packets = transport_info.rtcp_fir_packets;
-    peer->rtcp_nack_packets = transport_info.rtcp_nack_packets;
-    peer->rtcp_transport_cc_packets = transport_info.rtcp_transport_cc_packets;
-    peer->rtcp_keyframe_requests = transport_info.rtcp_keyframe_requests;
+    peer.ice_selected = transport_info.ice_selected;
+    peer.dtls_state = transport_info.dtls_state;
+    peer.srtp_ready = transport_info.srtp_ready;
+    peer.rtp_packets = transport_info.rtp_packets;
+    peer.rtp_bytes = transport_info.rtp_bytes;
+    peer.rtcp_packets = transport_info.rtcp_packets;
+    peer.rtcp_bytes = transport_info.rtcp_bytes;
+    peer.rtcp_pli_packets = transport_info.rtcp_pli_packets;
+    peer.rtcp_fir_packets = transport_info.rtcp_fir_packets;
+    peer.rtcp_nack_packets = transport_info.rtcp_nack_packets;
+    peer.rtcp_transport_cc_packets = transport_info.rtcp_transport_cc_packets;
+    peer.rtcp_keyframe_requests = transport_info.rtcp_keyframe_requests;
 }
 
-void WebrtcSession::FillStats(WebrtcStats *stats) const {
+void WebrtcSession::FillStats(WebrtcStats &stats) const {
     if (transport_ != nullptr) {
         transport_->FillStats(stats);
     }

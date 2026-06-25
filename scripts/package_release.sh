@@ -31,7 +31,44 @@ require_cmd() {
   fi
 }
 
-prepare_development_signing_key() {
+signing_key_pair_ok() {
+  private_key="$1"
+  verify_key="$2"
+  probe_dir="${release_dir}/.signing_probe"
+  probe_data="${probe_dir}/data"
+  probe_sig="${probe_dir}/data.sig"
+
+  if [ ! -f "${private_key}" ] || [ ! -f "${verify_key}" ]; then
+    return 1
+  fi
+  rm -rf "${probe_dir}"
+  mkdir -p "${probe_dir}"
+  printf 'live_stream upgrade signing probe\n' > "${probe_data}"
+  if ! openssl dgst -sha256 -sign "${private_key}" \
+      -out "${probe_sig}" "${probe_data}" >/dev/null 2>&1; then
+    rm -rf "${probe_dir}"
+    return 1
+  fi
+  if ! openssl dgst -sha256 -verify "${verify_key}" \
+      -signature "${probe_sig}" "${probe_data}" >/dev/null 2>&1; then
+    rm -rf "${probe_dir}"
+    return 1
+  fi
+  rm -rf "${probe_dir}"
+  return 0
+}
+
+generate_default_signing_key_pair() {
+  old_umask=$(umask)
+  umask 077
+  rm -f "${sign_key}" "${public_key}"
+  openssl genrsa -out "${sign_key}" 2048 >/dev/null 2>&1
+  umask "${old_umask}"
+  openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
+  chmod 600 "${sign_key}" 2>/dev/null || true
+}
+
+prepare_default_signing_key() {
   if [ -n "${public_key}" ]; then
     echo "UPGRADE_PUBLIC_KEY requires a matching UPGRADE_SIGN_KEY" >&2
     exit 1
@@ -40,23 +77,17 @@ prepare_development_signing_key() {
   signing_dir=$(resolve_output_dir "${RELEASE_SIGNING_DIR:-build/release_signing}")
   mkdir -p "${signing_dir}"
 
-  sign_key="${signing_dir}/development_upgrade_private_key.pem"
-  public_key="${signing_dir}/development_upgrade_public_key.pem"
+  sign_key="${signing_dir}/default_upgrade_private_key.pem"
+  public_key="${signing_dir}/default_upgrade_public_key.pem"
 
-  if [ ! -f "${sign_key}" ]; then
-    old_umask=$(umask)
-    umask 077
-    openssl genrsa -out "${sign_key}" 2048 >/dev/null 2>&1
-    umask "${old_umask}"
-    echo "generated development upgrade signing key: ${sign_key}" >&2
+  if signing_key_pair_ok "${sign_key}" "${public_key}"; then
+    echo "using default upgrade signing key: ${sign_key}" >&2
   else
-    echo "using development upgrade signing key: ${sign_key}" >&2
+    generate_default_signing_key_pair
+    echo "generated default upgrade signing key: ${sign_key}" >&2
   fi
 
-  openssl rsa -in "${sign_key}" -pubout -out "${public_key}" >/dev/null 2>&1
-  chmod 600 "${sign_key}" 2>/dev/null || true
-
-  echo "development upgrade public key: ${public_key}" >&2
+  echo "default upgrade public key: ${public_key}" >&2
   echo "deploy it to /config/upgrade_public_key.pem before using this package on a board" >&2
 }
 
@@ -265,24 +296,15 @@ case "${profile}" in
     include_config=true
     requires_reboot=true
     ;;
-  web-only)
+  web)
     include_web=true
     ;;
-  bin-web)
-    include_bin=true
-    include_web=true
-    requires_reboot=true
-    ;;
-  config-only)
+  config)
     include_config=true
     requires_reboot=true
     ;;
-  kernel-rootfs|full)
-    echo "${profile} profile is disabled: rootfs online upgrade is unsafe" >&2
-    exit 1
-    ;;
   *)
-    echo "usage: $0 [release_dir] [version] [all|web-only|bin-web|config-only|kernel-rootfs|full]" >&2
+    echo "usage: $0 [release_dir] [version] [all|web|config]" >&2
     exit 1
     ;;
 esac
@@ -306,7 +328,7 @@ require_cmd sha256sum
 require_cmd awk
 
 if [ -z "${sign_key}" ]; then
-  prepare_development_signing_key
+  prepare_default_signing_key
 elif [ ! -f "${sign_key}" ]; then
   echo "missing upgrade signing key: ${sign_key}" >&2
   exit 1
@@ -344,14 +366,10 @@ case "${profile}" in
     append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
     append_install_command config config.jffs2 "$(sha256_file "${flash_dir}/config.jffs2")"
     ;;
-  web-only)
+  web)
     append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
     ;;
-  bin-web)
-    append_install_command bin bin.squashfs "$(sha256_file "${flash_dir}/bin.squashfs")"
-    append_install_command web web.squashfs "$(sha256_file "${flash_dir}/web.squashfs")"
-    ;;
-  config-only)
+  config)
     append_install_command config config.jffs2 "$(sha256_file "${flash_dir}/config.jffs2")"
     ;;
 esac
