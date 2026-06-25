@@ -194,17 +194,30 @@ public:
         std::string checked_package_path;
         if (!ValidateLocalPackage(package_path, &checked_package_path,
                                   &reason)) {
+            SetLastError(reason);
             return UpgradePackageInfo();
         }
         IUpgradePlatform* platform = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_) {
+                last_error_ = "service not initialized";
                 return UpgradePackageInfo();
             }
             platform = platform_;
         }
-        return platform->ValidatePackage(checked_package_path);
+        UpgradePackageInfo info = platform->ValidatePackage(checked_package_path);
+        if (info.version.empty()) {
+            SetLastError(PlatformErrorMsg(platform, "package validation failed"));
+        } else {
+            SetLastError("");
+        }
+        return info;
+    }
+
+    std::string LastError() override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_error_;
     }
 
     bool StartUpgrade(const live_stream::RequestContext& context,
@@ -609,6 +622,11 @@ private:
         CleanupPackageFile(package_path);
     }
 
+    void SetLastError(const std::string& msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_error_ = msg;
+    }
+
     bool IsCancelRequested() {
         std::lock_guard<std::mutex> lock(mutex_);
         return cancel_requested_;
@@ -713,6 +731,7 @@ private:
     mutable std::mutex mutex_;
     UpgradeInfo upgrade_info_;
     std::string current_package_path_;
+    std::string last_error_;
     bool initialized_ = false;
     bool started_ = false;
     bool cancel_requested_ = false;

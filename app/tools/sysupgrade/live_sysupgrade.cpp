@@ -20,9 +20,11 @@ namespace {
 
 using linux_platform::RunCommand;
 
-constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
+constexpr const char* kUpgradeLogPath = "/data/log/upgrade.log";
 constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 constexpr const char* kDefaultStagePath = "/tmp/live_stream/upgrade/staged";
+constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
+constexpr uint32_t kUpgradeLogRotateFiles = 1;
 
 struct HelperOptions {
     std::string package_path;
@@ -31,7 +33,14 @@ struct HelperOptions {
 };
 
 void AppendUpgradeLog(const std::string& msg) {
-    static_cast<void>(infra::Path::MakeDirs("/data"));
+    static_cast<void>(infra::Path::MakeDirs("/data/log"));
+    if (infra::File::Size(kUpgradeLogPath) >= kUpgradeLogMaxBytes) {
+        const std::string rotated_path =
+            std::string(kUpgradeLogPath) + "." +
+            std::to_string(kUpgradeLogRotateFiles);
+        static_cast<void>(infra::File::Remove(rotated_path));
+        static_cast<void>(infra::File::Rename(kUpgradeLogPath, rotated_path));
+    }
     const std::string line =
         std::to_string(infra::Time::SystemTimeMillis()) + " " + msg + "\n";
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));

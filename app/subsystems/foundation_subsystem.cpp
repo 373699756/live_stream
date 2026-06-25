@@ -2,8 +2,18 @@
 
 #include "infra/log.h"
 
+#include <cstdint>
+#include <string>
+
 namespace live_stream {
 namespace {
+
+constexpr uint64_t kProductionOperationLogMaxBytes = 128U * 1024U;
+constexpr uint32_t kProductionOperationLogRotateFiles = 2;
+
+bool IsProductionDataPath(const char* path) {
+    return path != nullptr && std::string(path).find("/data/") == 0;
+}
 
 OperationAction MapAuthAction(AuthAuditAction action) {
     switch (action) {
@@ -75,6 +85,10 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
 
     LoggerConfig logger_config;
     logger_config.operation_log_path = paths.operation_log_path;
+    if (IsProductionDataPath(paths.operation_log_path)) {
+        logger_config.max_file_size_bytes = kProductionOperationLogMaxBytes;
+        logger_config.max_rotate_files = kProductionOperationLogRotateFiles;
+    }
     logger_ = CreateLogger(logger_config);
     if (!logger_ || !logger_->Start()) {
         Error("app", "Start logger failed: path=%s",

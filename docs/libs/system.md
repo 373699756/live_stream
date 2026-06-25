@@ -73,11 +73,11 @@ public API 在 `system.h`、`system/time.h`、`system/network.h`、
 Web 推导状态。`system` 不拥有 HTTP/RTSP/ONVIF 的监听生命周期，也不由前端推导设备
 advertise host 或链路状态。
 
-升级包上传后先落入临时目录，校验完成前不得写 flash。Web 升级 API 只接受仅包含
-`web` 分区的升级包；包含 `kernel`、`bin`、`config` 或其它系统分区的包必须拒绝，
-不能从 Web 管理台触发在线系统升级。升级状态必须足够支撑 Web 展示，取消只对尚未进入
-不可中断写入阶段的流程生效；进入 flash 擦写后不可取消。普通在线升级不写 `boot`
-分区。
+升级包上传后先落入临时目录，校验完成前不得写 flash。仅包含 `web` 分区的包由主进程
+在线写 `/www`；包含 `bin`、`config` 或其它系统分区的包必须复制
+`/opt/app/sbin/live_sysupgrade` 到 tmpfs 后交给 helper 执行，主进程不得直接擦写当前
+运行分区。升级状态必须足够支撑 Web 展示，取消只对尚未进入不可中断写入阶段的流程生效；
+进入 flash 擦写后不可取消。普通在线升级不写 `boot` 和 `rootfs` 分区。
 
 ## 升级分区
 
@@ -87,11 +87,11 @@ Hi3516DV300 设备按 32M SPI NOR 固定分区运行，升级模块以内置分�
 | 分区       | 地址范围                    | 大小  | Linux 设备    | 挂载点        | 格式       | 在线升级       |
 | -------- | ----------------------- | ---:| ----------- | ---------- | -------- | ---------- |
 | `boot`   | `0x00000000-0x00100000` | 1M  | `/dev/mtd0` | 无          | raw      | 禁止         |
-| `kernel` | `0x00100000-0x00500000` | 4M  | `/dev/mtd1` | 无          | uImage   | Web 禁止 |
+| `kernel` | `0x00100000-0x00500000` | 4M  | `/dev/mtd1` | 无          | uImage   | helper |
 | `rootfs` | `0x00500000-0x01100000` | 12M | `/dev/mtd2` | `/`        | jffs2    | 禁止         |
-| `bin`    | `0x01100000-0x01b00000` | 10M | `/dev/mtd3` | `/opt/app` | squashfs | Web 禁止 |
+| `bin`    | `0x01100000-0x01b00000` | 10M | `/dev/mtd3` | `/opt/app` | squashfs | helper |
 | `web`    | `0x01b00000-0x01d00000` | 2M  | `/dev/mtd4` | `/www`     | squashfs | 支持         |
-| `config` | `0x01d00000-0x01e00000` | 1M  | `/dev/mtd5` | `/config`  | jffs2    | Web 禁止 |
+| `config` | `0x01d00000-0x01e00000` | 1M  | `/dev/mtd5` | `/config`  | jffs2    | helper |
 | `data`   | `0x01e00000-0x02000000` | 2M  | `/dev/mtd6` | `/data`    | jffs2    | 禁止         |
 
 `mtdparts` 固定为：
@@ -203,14 +203,15 @@ U-Boot/TFTP 把整套 Linux 运行环境烧到固定分区，确认 Linux 能启
    - `live_stream` 从 `/opt/app/bin/live_stream` 启动。
    - 静态页面从 `/www` 提供。
    - 配置从 `/config` 读取。
-   - 日志写入 `/data/operation.log`。
+   - 进程输出写入 `/data/log/live_stream.log`，操作审计写入
+     `/data/log/operation_audit.log`。
    - `/config/upgrade_public_key.pem` 存在后，后续 Web 升级才能验签。
 
-8. 后续 Web 管理台只用于 Web 资源更新。
+8. 后续版本更新可使用 Web 管理台上传发布包。
 
    - Web 资源更新：发布 `web`，上传 `upgrade.zip`，主进程在线写 `web`。
-   - 应用、配置和整机镜像更新：发布 `all` 或 `config` 后，只能走受控维护或
-     U-Boot/TFTP 路径，不能从 Web 管理台触发。
+   - 应用、配置和整机镜像更新：发布 `all` 或 `config`，上传 `upgrade.zip`，
+     主进程把系统分区升级交给 tmpfs 中的 `live_sysupgrade` 后等待重启。
 
 9. 首烧或启动失败时回到 U-Boot 恢复。
 
@@ -415,12 +416,19 @@ export LD_LIBRARY_PATH=/opt/app/lib:/usr/lib:/lib
 export PATH=/opt/app/bin:/opt/app/scripts:/bin:/sbin:/usr/bin:/usr/sbin
 export LIVE_STREAM_CONFIG_DIR=/config
 export LIVE_STREAM_STATIC_ROOT=/www
+export LIVE_STREAM_LOG_PATH=/data/log/live_stream.log
 
-/opt/app/bin/live_stream >> /data/operation.log 2>&1 &
+mkdir -p /data/log
+/opt/app/bin/live_stream >/dev/null 2>&1 &
 ```
 
 因此分区和文件路径的关系是：程序从 `/opt/app` 运行，Web 静态资源从 `/www` 提供，
-配置从 `/config` 读取，日志和升级状态写 `/data`。
+配置从 `/config` 读取，进程输出写 `/data/log/live_stream.log`，操作审计写
+`/data/log/operation_audit.log`，升级状态写 `/data`。
+`/data/log/live_stream.log` 上限为 128K 加 1 个轮转文件，
+`/data/log/operation_audit.log` 上限为 128K 加 2 个轮转文件，
+`/data/log/upgrade.log` 上限为 64K 加 1 个轮转文件；升级包上传和 staging
+必须放在 `/tmp/live_stream/upgrade`，不能占用 2M 的 `/data` 分区。
 
 `bin.squashfs` 承载 `/opt/app/bin/live_stream`、`/opt/app/sbin/live_sysupgrade`、
 业务动态库和脚本；`web.squashfs` 承载 Web 静态资源；`config.jffs2` 承载运行配置、
@@ -617,9 +625,9 @@ scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 
 | profile | 产物                                           | `Install.Commands`     | 是否要求重启 | 说明 |
 | ------- | ---------------------------------------------- | ---------------------- | ---------- | ---- |
-| `all`   | `bin.squashfs`、`web.squashfs`、`config.jffs2` | `bin`、`web`、`config` | 是         | 默认发布应用、Web 和配置分区镜像；不能由 Web 管理台在线写入 |
-| `web`   | `web.squashfs`                                 | `web`                  | 否         | Web 管理台唯一接受的在线升级包 |
-| `config` | `config.jffs2`                                | `config`               | 是         | 配置分区镜像；不能由 Web 管理台在线写入 |
+| `all`   | `bin.squashfs`、`web.squashfs`、`config.jffs2` | `bin`、`web`、`config` | 是         | 默认发布应用、Web 和配置分区镜像；Web 上传后由 tmpfs helper 写入 |
+| `web`   | `web.squashfs`                                 | `web`                  | 否         | 主进程可在线写入的 Web 资源包 |
+| `config` | `config.jffs2`                                | `config`               | 是         | 配置分区镜像；Web 上传后由 tmpfs helper 写入 |
 
 打包过程按固定顺序执行：
 
@@ -649,10 +657,11 @@ scripts/package_release.sh $(RELEASE_DIR) $(RELEASE_VERSION) $(RELEASE_PROFILE)
 副本后约为 5.3M 和 2.8M，最终 `bin.squashfs` 约 2.6M，小于 10M 分区上限。以后
 如果依赖增加导致镜像超过 10M，`scripts/package_release.sh` 必须直接失败。
 
-Web 管理台只能上传 `web` profile 生成的 `release/flash/upgrade.zip` 或
-`release/flash/upgrade-web.zip`。升级 zip 里只放 `Install`、`Install.sig` 和
-manifest 声明的镜像文件。`live_sysupgrade` 随 `bin.squashfs` 发布到
-`/opt/app/sbin/live_sysupgrade`，用于受控维护场景，不由 Web 管理台在线调用。
+Web 管理台可上传 `all`、`web` 或 `config` profile 生成的 `release/flash/upgrade.zip`
+或 `release/flash/upgrade-<profile>.zip`。升级 zip 里只放 `Install`、`Install.sig`
+和 manifest 声明的镜像文件。`live_sysupgrade` 随 `bin.squashfs` 发布到
+`/opt/app/sbin/live_sysupgrade`；当包内包含非 `web` 分区时，主进程会把 helper 复制到
+`/tmp/live_stream/upgrade/live_sysupgrade` 后执行，避免从即将擦写的 `/opt/app` 取指令。
 
 ## 升级包格式
 
@@ -715,11 +724,11 @@ flowchart TD
   Start --> StateMachine[IUpgrade 状态机]
   StateMachine --> Platform[app/platform/linux UpgradePlatform]
   Platform -->|web| WebWrite[主进程写 /dev/mtd4]
-  Platform -->|non-web| Reject[拒绝 Web 在线升级]
+  Platform -->|non-web| Helper[tmpfs live_sysupgrade]
   WebWrite --> UpgradeInfoFile[/data/upgrade_status.json]
-  WebWrite --> Log[/data/upgrade.log]
-  Reject --> UpgradeInfoFile
-  Reject --> Log
+  WebWrite --> Log[/data/log/upgrade.log]
+  Helper --> UpgradeInfoFile
+  Helper --> Log
 ```
 
 HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
@@ -782,24 +791,32 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 `allow_same_version=true`；降级必须显式 `allow_downgrade=true`。取消只在
 `validating`、`preparing` 阶段接受；真正进入 MTD erase/write 后不可取消。
 
-`app/platform/linux/upgrade_platform.cpp` 是板端实际执行层。Web 管理台入口只接受
-`web` profile 生成的包：
+`app/platform/linux/upgrade_platform.cpp` 是板端实际执行层。Web 管理台入口接受
+`all`、`web` 和 `config` profile 生成的包，并按分区类型分流：
 
 - `web`：包里只有 `web` 命令，主进程可以在线完成。
-- `all`、`config` 或其它包含非 `web` 分区的包：Web 管理台必须拒绝。
+- `all`、`config` 或其它包含非 `web` 分区的包：主进程只负责校验、准备 tmpfs helper
+  并提交任务，实际停止业务、卸载分区、写 MTD 和重启由 `live_sysupgrade` 执行。
 
 `web` 包由主进程在线处理：
 
-1. `PrepareUpgrade` 在 `/data/upgrade/staged/<timestamp-version>` 创建 staging 目录。
+1. `PrepareUpgrade` 在 `/tmp/live_stream/upgrade/staged/<timestamp-version>` 创建
+   staging 目录，并确认它位于 tmpfs/ramfs。
 2. `WriteUpgrade` 把 payload 解到 staging，解包进度映射到写入阶段前半段。
 3. `ApplyWebUpgrade` 卸载 `/www`。
 4. 调用 `upgrade_flash::WriteMtdImage` 写 `/dev/mtd4`。
 5. 写完后重新把 `/dev/mtdblock4` 以 squashfs 只读方式挂载到 `/www`。
-6. `CommitUpgrade` 写 `/data/upgrade_status.json` 和 `/data/upgrade.log`。
+6. `CommitUpgrade` 写 `/data/upgrade_status.json` 和 `/data/log/upgrade.log`。
 
-`all` 和 `config` 包仍可作为发布产物或工厂/维护镜像，但不能通过 Web 管理台在线写入。
-原因是 `bin` 分区承载当前正在运行的 `/opt/app/bin/live_stream`，`config` 也可能被当前
-进程读取；擦写这些分区前必须有独立 recovery、U-Boot/TFTP 或受控维护流程兜底。
+系统包走 helper 的流程：
+
+1. `PrepareUpgrade` 确认 `/tmp/live_stream/upgrade` 和 staging 目录位于 tmpfs/ramfs。
+2. 从 `/opt/app/sbin/live_sysupgrade` 复制到
+   `/tmp/live_stream/upgrade/live_sysupgrade`，拒绝符号链接，目标设为 `0755`。
+3. `WriteUpgrade` fork/exec tmpfs 中的 helper，并传入上传包路径和 staging 目录。
+4. 主进程状态进入 `waiting_reboot`；helper 重新校验包、解包、停止业务、卸载分区、
+   写 MTD、写 `/data/upgrade_status.json` 和 `/data/log/upgrade.log`，最后按
+   manifest 重启。
 
 MTD 写入流程固定为：
 
@@ -815,7 +832,7 @@ readback sha256
 close
 ```
 
-写入阶段失败必须停止后续分区。失败原因写 `/data/upgrade.log`，升级状态写
+写入阶段失败必须停止后续分区。失败原因写 `/data/log/upgrade.log`，升级状态写
 `/data/upgrade_status.json`。当前 32M NOR 方案不是 A/B 升级；断电或写坏系统分区时，
 恢复手段是 UART/U-Boot/TFTP 或烧录器。
 
@@ -872,7 +889,7 @@ scripts/tests/package_release_test.sh
 - 未声明文件、sha256 错误、文件超过分区、镜像魔数错误必须拒绝。
 - `/proc/mtd` 或 `MEMGETINFO` 布局不匹配必须拒绝。
 - helper 源路径或目标路径遇到符号链接必须拒绝。
-- 升级 `config` 后 `/data/upgrade.log` 和 `/data/upgrade_status.json` 不丢失。
+- 升级 `config` 后 `/data/log/upgrade.log` 和 `/data/upgrade_status.json` 不丢失。
 
 ## 非目标
 

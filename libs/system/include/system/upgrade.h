@@ -103,6 +103,7 @@ public:
     virtual UpgradeInfo GetUpgradeInfo() = 0;
     virtual UpgradePackageInfo ValidatePackage(
         const std::string& package_path) = 0;
+    virtual std::string LastError() = 0;
     virtual bool StartUpgrade(const live_stream::RequestContext& context,
                               const UpgradeRequest& request) = 0;
     virtual bool CancelUpgrade(

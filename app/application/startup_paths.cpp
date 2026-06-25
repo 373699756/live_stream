@@ -12,7 +12,8 @@ constexpr const char *kDefaultConfigPath = "configs/default_config.json";
 constexpr const char *kDefaultAuthUsersPath = "configs/auth_users.json";
 constexpr const char *kDefaultOperationLogPath = "log/operation.log";
 constexpr const char *kProductionConfigDir = "/config";
-constexpr const char *kProductionOperationLogPath = "/data/operation.log";
+constexpr const char *kProductionOperationLogPath =
+    "/data/log/operation_audit.log";
 
 const char *ParseValueArg(int argc, char **argv, const char *name) {
     for (int i = 1; i + 1 < argc; ++i) {

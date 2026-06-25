@@ -14,20 +14,6 @@
 namespace live_stream {
 namespace {
 
-const char *HttpMethodName(HttpMethod method) {
-    switch (method) {
-        case HttpMethod::kGet:
-            return "GET";
-        case HttpMethod::kPost:
-            return "POST";
-        case HttpMethod::kPut:
-            return "PUT";
-        case HttpMethod::kDelete:
-            return "DELETE";
-    }
-    return "UNKNOWN";
-}
-
 bool StartExecutor(event::Executor &executor, uint32_t workers,
                    uint32_t queue_capacity) {
     if (workers == 0 || queue_capacity == 0) {
@@ -495,20 +481,17 @@ bool HttpServer::HandleStreamingRequestResult(
 }
 
 void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
-    std::string peer_ip = peer.ip;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         sessions_[connection_id].reset(
             new HttpSession(connection_id, std::move(peer.ip)));
         ++stats_.active_connections;
     }
-    Info(kHttpModuleName, "HTTP accept conn=%llu peer=%s",
-         static_cast<unsigned long long>(connection_id),
-         peer_ip.c_str());
     ArmConnectionTimer(connection_id, options_.request_timeout_ms);
 }
 
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
+    (void)reason;
     ClosedHttpSessionInfo closed;
     event::Loop *net_loop = nullptr;
     event::TimerId timer_id = 0;
@@ -530,14 +513,6 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     // 都必须在这里通知 http_media 解除 FLV/MJPEG/SSE 订阅。
     CancelNetTimer(net_loop, timer_id);
     NotifyStreamClosed(closed.media_client);
-    Info(kHttpModuleName,
-         "HTTP close conn=%llu reason=%d streaming=%d media_type=%d "
-         "client=%llu",
-         static_cast<unsigned long long>(connection_id),
-         static_cast<int>(reason),
-         closed.was_streaming ? 1 : 0,
-         static_cast<int>(closed.media_client.type),
-         static_cast<unsigned long long>(closed.media_client.id));
 }
 
 void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
@@ -557,8 +532,6 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
         parsed = iter->second->ParsePendingRequests(
             MakeConnectionParseOptions(), &request_logs);
     }
-    LogRequests(request_logs);
-
     if (!parsed.success) {
         IncrementParseFailures();
         // HTTP parser 失败后只发送短错误响应并关闭，不把半包继续留在 session。
@@ -616,7 +589,6 @@ void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
         parsed = iter->second->CompleteKeepAliveRequest(
             MakeConnectionParseOptions(), &request_logs);
     }
-    LogRequests(request_logs);
     if (!parsed.success) {
         IncrementParseFailures();
         // keep-alive 后续管线请求解析失败，同样结束该 TCP 连接，避免请求边界错乱。
@@ -648,17 +620,6 @@ HttpResponse HttpServer::ParseFailureResponse(
         return StatusResponse(413, "Payload Too Large");
     }
     return StatusResponse(400, "Bad Request");
-}
-
-void HttpServer::LogRequests(
-    const std::vector<HttpRequestLog> &request_logs) {
-    for (const HttpRequestLog &log : request_logs) {
-        Info(kHttpModuleName,
-             "HTTP request conn=%llu peer=%s %s %s query=%zu body=%zu",
-             static_cast<unsigned long long>(log.connection_id),
-             log.client_ip.c_str(), HttpMethodName(log.method),
-             log.path.c_str(), log.query_size, log.body_size);
-    }
 }
 
 HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(

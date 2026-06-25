@@ -9,7 +9,6 @@
 #include "infra/fs.h"
 #include "infra/time.h"
 #include "json_reader.h"
-#include "system/package.h"
 #include "system/upgrade.h"
 
 #include <cctype>
@@ -113,42 +112,6 @@ Json UpgradeInfoToJson(const UpgradeInfo &upgrade_info) {
     return root;
 }
 
-HttpResponse RejectUploadedPackage(const HttpRequest &request,
-                                   HttpAccess *access,
-                                   const AuthPrincipal &principal,
-                                   const std::string &upload_path,
-                                   const std::string &msg) {
-    static_cast<void>(infra::File::Remove(upload_path));
-    if (access != nullptr) {
-        access->RecordOperation(
-            request, principal, OperationAction::kUpgrade, "upgrade",
-            OperationResult::kRejected, msg);
-    }
-    return StatusResponse(400, msg);
-}
-
-bool ValidateWebUploadManifest(const std::string &upload_path,
-                               std::string *msg) {
-    UpgradeManifest manifest;
-    std::string reason;
-    if (!ReadUpgradePackageManifest(upload_path, &manifest, &reason)) {
-        if (msg != nullptr) {
-            *msg = reason.empty() ? "Could not validate package" : reason;
-        }
-        return false;
-    }
-    if (!UpgradePackageIsWebOnly(manifest)) {
-        if (msg != nullptr) {
-            *msg = "Web upgrade only accepts web partition packages";
-        }
-        return false;
-    }
-    if (msg != nullptr) {
-        msg->clear();
-    }
-    return true;
-}
-
 bool UpgradeRequestFromJson(const Json &value, UpgradeRequest *request) {
     if (request == nullptr || !value.is_object()) {
         return false;
@@ -164,6 +127,14 @@ bool UpgradeRequestFromJson(const Json &value, UpgradeRequest *request) {
     }
     *request = parsed;
     return true;
+}
+
+std::string UpgradeValidationError(IUpgrade *upgrade) {
+    if (upgrade == nullptr) {
+        return "Could not validate package";
+    }
+    const std::string msg = upgrade->LastError();
+    return msg.empty() ? "Could not validate package" : msg;
 }
 
 }  // namespace
@@ -227,18 +198,15 @@ private:
             return StatusResponse(500, "Could not save upload");
         }
 
-        std::string manifest_msg;
-        if (!ValidateWebUploadManifest(upload_path, &manifest_msg)) {
-            return RejectUploadedPackage(request, access_, principal,
-                                         upload_path, manifest_msg);
-        }
-
         const UpgradePackageInfo info =
             upgrade_->ValidatePackage(upload_path);
         if (info.version.empty()) {
-            return RejectUploadedPackage(request, access_, principal,
-                                         upload_path,
-                                         "Could not validate package");
+            static_cast<void>(infra::File::Remove(upload_path));
+            const std::string msg = UpgradeValidationError(upgrade_);
+            access_->RecordOperation(
+                request, principal, OperationAction::kUpgrade, "upgrade",
+                OperationResult::kRejected, msg);
+            return StatusResponse(400, msg);
         }
 
         access_->RecordOperation(request, principal,
@@ -276,13 +244,9 @@ private:
         if (!json_reader::ReadField(body, "package_path", &package_path)) {
             return StatusResponse(400, "Invalid upgrade request");
         }
-        std::string manifest_msg;
-        if (!ValidateWebUploadManifest(package_path, &manifest_msg)) {
-            return StatusResponse(400, manifest_msg);
-        }
         const UpgradePackageInfo info = upgrade_->ValidatePackage(package_path);
         if (info.version.empty()) {
-            return StatusResponse(400, "Could not validate package");
+            return StatusResponse(400, UpgradeValidationError(upgrade_));
         }
         return JsonResponse(200, UpgradePackageInfoToJson(info));
     }

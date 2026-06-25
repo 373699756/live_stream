@@ -74,7 +74,6 @@ private:
     static void HandleClose(void *user, ConnectionId id,
                             TcpCloseReason reason);
     static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
-    static void LogRequests(const std::vector<HttpRequestLog> &request_logs);
     static HttpStreamSessionInfo BuildStreamSessionInfo(
         const HttpSessionStreamingInfo &session,
         const NetConnectionInfo &connection);

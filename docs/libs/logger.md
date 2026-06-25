@@ -21,7 +21,7 @@ flowchart LR
   Auth[auth audit sink] --> Logger[logger]
   HTTP[HTTP operation handlers] --> Logger
   Logger --> OperationLogFile[infra OperationLogFile]
-  OperationLogFile --> File[log/operation.log or /data/operation.log]
+  OperationLogFile --> File[log/operation.log or /data/log/operation_audit.log]
   Web[www LogsPage] --> HTTP[http operations API]
   HTTP --> Logger
 ```

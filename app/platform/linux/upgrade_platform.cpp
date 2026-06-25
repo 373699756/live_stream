@@ -25,11 +25,20 @@ namespace {
 using linux_platform::ReadFirstText;
 using linux_platform::ReadSystemTimeMs;
 
-constexpr const char* kUpgradeRootPath = "/data/upgrade";
+constexpr const char* kUpgradeRootPath = "/tmp/live_stream/upgrade";
 constexpr const char* kUpgradeUploadPath = "/tmp/live_stream/upgrade/uploads";
-constexpr const char* kUpgradeStagePath = "/data/upgrade/staged";
-constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
+constexpr const char* kUpgradeStagePath = "/tmp/live_stream/upgrade/staged";
+constexpr const char* kUpgradeLogPath = "/data/log/upgrade.log";
 constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
+constexpr const char* kSystemUpgradeRuntimePath = "/tmp/live_stream/upgrade";
+constexpr const char* kSystemUpgradeStagePath =
+    "/tmp/live_stream/upgrade/staged";
+constexpr const char* kSystemUpgradeHelperSourcePath =
+    "/opt/app/sbin/live_sysupgrade";
+constexpr const char* kSystemUpgradeHelperPath =
+    "/tmp/live_stream/upgrade/live_sysupgrade";
+constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
+constexpr uint32_t kUpgradeLogRotateFiles = 1;
 
 std::string FirmwareVersionString() {
     std::string version = ReadFirstText({
@@ -117,7 +126,14 @@ int CompareVersionStrings(const std::string& lhs, const std::string& rhs) {
 }
 
 void AppendUpgradeLog(const std::string& msg) {
-    static_cast<void>(infra::Path::MakeDirs("/data"));
+    static_cast<void>(infra::Path::MakeDirs("/data/log"));
+    if (infra::File::Size(kUpgradeLogPath) >= kUpgradeLogMaxBytes) {
+        const std::string rotated_path =
+            std::string(kUpgradeLogPath) + "." +
+            std::to_string(kUpgradeLogRotateFiles);
+        static_cast<void>(infra::File::Remove(rotated_path));
+        static_cast<void>(infra::File::Rename(kUpgradeLogPath, rotated_path));
+    }
     const std::string line =
         std::to_string(ReadSystemTimeMs()) + " " + msg + "\n";
     static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
@@ -243,21 +259,157 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
     return true;
 }
 
+bool PackageNeedsSystemUpgradeHelper(const UpgradeManifest& manifest) {
+    for (const UpgradeCommand& command : manifest.commands) {
+        if (command.partition != "web") {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CopyFileNoSymlink(const std::string& source_path,
+                       const std::string& output_path,
+                       mode_t mode,
+                       std::string* reason) {
+    struct stat source_stat;
+    if (lstat(source_path.c_str(), &source_stat) != 0 ||
+        S_ISLNK(source_stat.st_mode) || !S_ISREG(source_stat.st_mode)) {
+        if (reason != nullptr) {
+            *reason = "system upgrade helper is not a regular file";
+        }
+        return false;
+    }
+
+    const int source_fd = open(source_path.c_str(), O_RDONLY | O_NOFOLLOW);
+    if (source_fd < 0) {
+        if (reason != nullptr) {
+            *reason = "open system upgrade helper failed";
+        }
+        return false;
+    }
+
+    const int output_fd = open(output_path.c_str(),
+                               O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
+                               mode);
+    if (output_fd < 0) {
+        close(source_fd);
+        if (reason != nullptr) {
+            *reason = "create tmpfs system upgrade helper failed";
+        }
+        return false;
+    }
+
+    bool ok = true;
+    uint8_t buffer[64 * 1024];
+    while (true) {
+        const ssize_t read_size = read(source_fd, buffer, sizeof(buffer));
+        if (read_size == 0) {
+            break;
+        }
+        if (read_size < 0) {
+            ok = false;
+            break;
+        }
+        ssize_t written = 0;
+        while (written < read_size) {
+            const ssize_t write_size =
+                write(output_fd, buffer + written,
+                      static_cast<std::size_t>(read_size - written));
+            if (write_size <= 0) {
+                ok = false;
+                break;
+            }
+            written += write_size;
+        }
+        if (!ok) {
+            break;
+        }
+    }
+
+    if (ok && fchmod(output_fd, mode) != 0) {
+        ok = false;
+    }
+    if (ok && fsync(output_fd) != 0) {
+        ok = false;
+    }
+    close(output_fd);
+    close(source_fd);
+    if (!ok) {
+        static_cast<void>(infra::File::Remove(output_path));
+        if (reason != nullptr) {
+            *reason = "copy system upgrade helper failed";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool PrepareSystemUpgradeHelper(std::string* reason) {
+    if (!infra::Path::MakeDirs(kSystemUpgradeRuntimePath) ||
+        !infra::Path::MakeDirs(kSystemUpgradeStagePath)) {
+        if (reason != nullptr) {
+            *reason = "create tmpfs upgrade directory failed";
+        }
+        return false;
+    }
+    if (!upgrade_flash::IsPathOnTmpfs(kSystemUpgradeRuntimePath) ||
+        !upgrade_flash::IsPathOnTmpfs(kSystemUpgradeStagePath)) {
+        if (reason != nullptr) {
+            *reason = "system upgrade directory is not tmpfs";
+        }
+        return false;
+    }
+    return CopyFileNoSymlink(kSystemUpgradeHelperSourcePath,
+                             kSystemUpgradeHelperPath, 0755, reason);
+}
+
+bool StartSystemUpgradeHelper(const std::string& package_path,
+                              bool reboot,
+                              std::string* reason) {
+    if (!PrepareSystemUpgradeHelper(reason)) {
+        return false;
+    }
+    const pid_t pid = fork();
+    if (pid < 0) {
+        if (reason != nullptr) {
+            *reason = "fork system upgrade helper failed";
+        }
+        return false;
+    }
+    if (pid == 0) {
+        if (reboot) {
+            execl(kSystemUpgradeHelperPath, kSystemUpgradeHelperPath,
+                  "--package", package_path.c_str(), "--stage",
+                  kSystemUpgradeStagePath, "--reboot",
+                  static_cast<char*>(nullptr));
+        } else {
+            execl(kSystemUpgradeHelperPath, kSystemUpgradeHelperPath,
+                  "--package", package_path.c_str(), "--stage",
+                  kSystemUpgradeStagePath, static_cast<char*>(nullptr));
+        }
+        _exit(127);
+    }
+    AppendUpgradeLog("system upgrade helper started");
+    return true;
+}
+
 class UpgradePlatform : public IUpgradePlatform {
 public:
     UpgradePackageInfo ValidatePackage(const std::string& package_path) override {
         last_error_.clear();
-        ParsedUpgradePackage parsed;
+        UpgradeManifest manifest;
         std::string reason;
-        if (!ParseUpgradePackage(package_path, &parsed, &reason)) {
+        if (!ReadUpgradePackageManifest(package_path, &manifest, &reason)) {
             last_error_ = reason;
             AppendUpgradeLog("validate failed: " + reason);
             return UpgradePackageInfo();
         }
-        if (!UpgradePackageIsWebOnly(parsed.manifest)) {
-            last_error_ = "Web upgrade only accepts web partition packages";
-            AppendUpgradeLog(
-                "validate failed: Web upgrade only accepts web partition packages");
+
+        ParsedUpgradePackage parsed;
+        if (!ParseUpgradePackage(package_path, &parsed, &reason)) {
+            last_error_ = reason;
+            AppendUpgradeLog("validate failed: " + reason);
             return UpgradePackageInfo();
         }
         cached_package_ = parsed;
@@ -293,17 +445,23 @@ public:
             WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
         }
-        if (!UpgradePackageIsWebOnly(parsed.manifest)) {
-            reason = "Web upgrade only accepts web partition packages";
-            last_error_ = reason;
-            AppendUpgradeLog("prepare failed: " + reason);
-            WriteUpgradeInfo("failed", 100, false, info.version, reason);
-            return false;
-        }
         if (!infra::Path::MakeDirs(kUpgradeRootPath) ||
             !infra::Path::MakeDirs(kUpgradeStagePath) ||
             !infra::Path::MakeDirs(kUpgradeUploadPath)) {
             last_error_ = "create upgrade directory failed";
+            return false;
+        }
+        if (!upgrade_flash::IsPathOnTmpfs(kUpgradeRootPath) ||
+            !upgrade_flash::IsPathOnTmpfs(kUpgradeStagePath) ||
+            !upgrade_flash::IsPathOnTmpfs(kUpgradeUploadPath)) {
+            last_error_ = "upgrade workspace must be tmpfs";
+            return false;
+        }
+        if (PackageNeedsSystemUpgradeHelper(parsed.manifest) &&
+            !PrepareSystemUpgradeHelper(&reason)) {
+            last_error_ = reason;
+            AppendUpgradeLog("prepare failed: " + reason);
+            WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
         }
         cancel_requested_ = false;
@@ -334,6 +492,22 @@ public:
             return false;
         }
         std::string reason;
+        if (PackageNeedsSystemUpgradeHelper(cached_package_.manifest)) {
+            if (!StartSystemUpgradeHelper(package_path,
+                                          cached_package_.requires_reboot,
+                                          &reason)) {
+                last_error_ = reason;
+                AppendUpgradeLog("helper start failed: " + reason);
+                WriteUpgradeInfo("failed", 100, false,
+                                 cached_package_.manifest.version, reason);
+                return false;
+            }
+            if (progress_callback) {
+                progress_callback(100);
+            }
+            return true;
+        }
+
         const bool extract_ok = ExtractUpgradeFiles(
             package_path, cached_package_.manifest, stage_dir_,
             [progress_callback](uint32_t progress) {
@@ -376,7 +550,10 @@ public:
         }
         WriteUpgradeInfo(info.requires_reboot ? "waiting_reboot" : "completed",
                          100, true, info.version, "");
-        AppendUpgradeLog("web upgrade completed: " + info.version);
+        AppendUpgradeLog(UpgradePackageIsWebOnly(cached_package_.manifest)
+                             ? "web upgrade completed: " + info.version
+                             : "system upgrade handed to helper: " +
+                                   info.version);
         CleanupStageDir();
         return true;
     }

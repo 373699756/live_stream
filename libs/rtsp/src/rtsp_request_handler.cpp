@@ -36,12 +36,6 @@ void RtspRequestHandler::HandleRequest(
         return;
     }
     RtspSession &rtsp_session = *session;
-    Info(kRtspRequestHandlerModule,
-         "RTSP request conn=%llu peer=%s:%u method=%s uri=%s",
-         static_cast<unsigned long long>(rtsp_session.connection_id),
-         rtsp_session.peer.ip.c_str(),
-         static_cast<unsigned>(rtsp_session.peer.port),
-         request.method.c_str(), request.uri.c_str());
 
     if (request.method == "OPTIONS") {
         SendResponse(rtsp_session.connection_id, 200, request,

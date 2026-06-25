@@ -169,9 +169,6 @@ HttpStreamingRequestResult HttpImpl::HandleStreamingHttpRequest(
         return HttpStreamingRequestResult::kNotHandled;
     }
     server_->IncrementTotalRequests();
-    Info(kHttpModuleName, "HTTP stream request conn=%llu path=%s peer=%s",
-         static_cast<unsigned long long>(connection_id),
-         request.path.c_str(), request.client_ip.c_str());
     return streaming_handler->HandleStreamingRequest(connection_id, request);
 }
 

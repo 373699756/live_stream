@@ -120,6 +120,10 @@ public:
         return info;
     }
 
+    std::string LastError() override {
+        return validate_ok ? std::string() : "package validation failed";
+    }
+
     bool StartUpgrade(const live_stream::RequestContext& context,
                       const live_stream::UpgradeRequest& request) override {
         ++start_calls;
