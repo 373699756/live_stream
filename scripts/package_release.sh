@@ -141,30 +141,6 @@ file_size_bytes() {
   wc -c < "$1" | awk '{print $1}'
 }
 
-squashfs_image_ok() {
-  image_path="$1"
-  [ -s "${image_path}" ] || return 1
-  image_magic=$(dd if="${image_path}" bs=4 count=1 2>/dev/null)
-  [ "${image_magic}" = "hsqs" ]
-}
-
-build_squashfs_image() {
-  input_root="$1"
-  image_path="$2"
-  partition="$3"
-
-  if "${mksquashfs_bin}" "${input_root}" "${image_path}" \
-      -noappend -comp xz -processors 1; then
-    return 0
-  fi
-  if squashfs_image_ok "${image_path}"; then
-    echo "warning: mksquashfs failed after writing valid ${partition} image; continuing" >&2
-    return 0
-  fi
-  echo "failed to build ${partition} squashfs image: ${image_path}" >&2
-  exit 1
-}
-
 strip_release_binary() {
   binary_path="$1"
   if command -v file >/dev/null 2>&1 && ! file "${binary_path}" | grep -q 'ELF'; then
@@ -241,7 +217,8 @@ build_bin_image() {
   cp -f "${release_dir}/bin/live_stream" "${work_dir}/bin_root/bin/"
   cp -f "${release_dir}/bin/live_sysupgrade" "${work_dir}/bin_root/sbin/"
   printf '%s\n' "${version}" > "${work_dir}/bin_root/version"
-  build_squashfs_image "${work_dir}/bin_root" "${release_dir}/bin.squashfs" bin
+  "${mksquashfs_bin}" "${work_dir}/bin_root" "${release_dir}/bin.squashfs" \
+    -noappend
   check_image_size "${release_dir}/bin.squashfs" "${bin_partition_size}" bin
 }
 
@@ -249,7 +226,8 @@ build_web_image() {
   mkdir -p "${work_dir}/web_root"
   cp -rf "${release_dir}/web/." "${work_dir}/web_root/"
   printf '%s\n' "${version}" > "${work_dir}/web_root/version"
-  build_squashfs_image "${work_dir}/web_root" "${release_dir}/web.squashfs" web
+  "${mksquashfs_bin}" "${work_dir}/web_root" "${release_dir}/web.squashfs" \
+    -noappend
   check_image_size "${release_dir}/web.squashfs" "${web_partition_size}" web
 }
 
