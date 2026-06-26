@@ -48,6 +48,9 @@ set -eu
 image_file="$2"
 printf '%s\n' "$*" >> "${MKSQUASHFS_LOG}"
 printf 'hsqs-test-image\n' > "${image_file}"
+if [ "${MKSQUASHFS_FAIL_AFTER_WRITE:-}" = true ]; then
+  exit 139
+fi
 EOF
   chmod +x "${fake_tools_dir}/mksquashfs"
 }
@@ -209,6 +212,7 @@ assert_install_signature_ok "${release_dir}/upgrade-all.zip" \
 
 UPGRADE_SIGN_KEY="${sign_key}" UPGRADE_PUBLIC_KEY="${public_key}" \
   MKSQUASHFS="${fake_tools_dir}/mksquashfs" \
+  MKSQUASHFS_FAIL_AFTER_WRITE=true \
   "${release_script}" "${release_dir}" 9.9.1 web >/dev/null
 assert_zip_entries "${release_dir}/upgrade-web.zip" \
   "Install Install.sig web.squashfs "
