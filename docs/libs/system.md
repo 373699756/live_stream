@@ -477,7 +477,7 @@ dmesg | tail -80
 `bin.squashfs` 和 `web.squashfs` 时使用：
 
 ```sh
-mksquashfs ... -noappend -comp xz
+mksquashfs ... -noappend -comp xz -processors 1
 ```
 
 所以继续使用当前 squashfs 镜像时，kernel 至少要打开：

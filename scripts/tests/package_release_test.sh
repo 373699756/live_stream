@@ -11,6 +11,7 @@ public_key="${key_dir}/upgrade_public_key.pem"
 default_signing_dir="${key_dir}/default"
 fake_tools_dir="${test_dir}/tools"
 reject_log="${test_dir}/reject.log"
+mksquashfs_log="${test_dir}/mksquashfs.log"
 build_bin_backup="${test_dir}/build_bin_backup"
 web_dist_backup="${test_dir}/web_dist_backup"
 had_build_bin=false
@@ -45,6 +46,7 @@ make_fake_mksquashfs() {
 #!/bin/sh
 set -eu
 image_file="$2"
+printf '%s\n' "$*" >> "${MKSQUASHFS_LOG}"
 printf 'hsqs-test-image\n' > "${image_file}"
 EOF
   chmod +x "${fake_tools_dir}/mksquashfs"
@@ -122,6 +124,13 @@ assert_clean_release_output() {
   [ -f "${output_dir}/upgrade.zip" ] || fail "default upgrade package missing"
 }
 
+assert_mksquashfs_single_processor() {
+  expected_calls="$1"
+  actual_calls=$(grep -c -- '-processors 1' "${mksquashfs_log}")
+  [ "${actual_calls}" -eq "${expected_calls}" ] ||
+    fail "mksquashfs should use -processors 1 ${expected_calls} times, got ${actual_calls}"
+}
+
 require_cmd openssl
 require_cmd sha256sum
 require_cmd unzip
@@ -130,6 +139,7 @@ require_cmd zipinfo
 rm -rf "${test_dir}"
 rm -rf "${key_dir}"
 mkdir -p "${test_dir}" "${fake_tools_dir}" "${key_dir}"
+export MKSQUASHFS_LOG="${mksquashfs_log}"
 make_fake_mksquashfs
 make_fake_mkfs_jffs2
 stage_fake_build_inputs
@@ -152,6 +162,7 @@ assert_install_signature_ok "${release_dir}/upgrade-all.zip" \
 [ -f "${default_signing_dir}/default_upgrade_private_key.pem" ] ||
   fail "default signing key was not generated"
 assert_clean_release_output "${release_dir}"
+assert_mksquashfs_single_processor 2
 [ -f "${release_dir}/bin.squashfs" ] || fail "bin image missing"
 [ -f "${release_dir}/web.squashfs" ] || fail "web image missing"
 [ -f "${release_dir}/config.jffs2" ] || fail "config image missing"
