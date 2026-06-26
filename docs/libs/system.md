@@ -473,18 +473,18 @@ dmesg | tail -80
 `jffs2` 挂载到 `/`，也进一步说明 MTD 基础链路和 `root=/dev/mtdblock2` 可用。
 
 如果后续某个内核已经包含 `squashfs`，但仍然挂载失败，再看 `dmesg` 中是否有
-`unsupported compression`、`gzip` 或 decompressor 相关错误。当前发布脚本生成
+`unsupported compression`、`xz` 或 decompressor 相关错误。当前发布脚本生成
 `bin.squashfs` 和 `web.squashfs` 时使用：
 
 ```sh
-mksquashfs ... -noappend
+mksquashfs ... -noappend -comp xz
 ```
 
 所以继续使用当前 squashfs 镜像时，kernel 至少要打开：
 
 ```text
 CONFIG_SQUASHFS=y
-CONFIG_SQUASHFS_ZLIB=y
+CONFIG_SQUASHFS_XZ=y
 ```
 
 不重编 kernel 的替代方案是把 `bin` 和 `web` 改成板端已支持的只读文件系统。当前
@@ -511,17 +511,17 @@ CONFIG_SQUASHFS_ZLIB=y
 
 ```text
 <M> SquashFS 4.0 - Squashed file system support
-[*] Include support for ZLIB compressed file systems
+[*] Include support for XZ compressed file systems
 ```
 
-这里 `ZLIB` 虽然已经选中，但 `SquashFS 4.0` 是 `<M>`，表示只编译成
+这里 `XZ` 虽然已经选中，但 `SquashFS 4.0` 是 `<M>`，表示只编译成
 `squashfs.ko` 模块。板端启动后 `/proc/filesystems` 没有 `squashfs`，说明模块没有被
 加载，`mount -t squashfs` 仍然会失败。正确做法是把 `SquashFS 4.0` 从 `<M>` 切成
 `<*>`：
 
 ```text
 <*> SquashFS 4.0 - Squashed file system support
-[*] Include support for ZLIB compressed file systems
+[*] Include support for XZ compressed file systems
 ```
 
 在菜单中的路径是：
@@ -530,21 +530,21 @@ CONFIG_SQUASHFS_ZLIB=y
 File systems  --->
   Miscellaneous filesystems  --->
     <*> SquashFS 4.0 - Squashed file system support
-        [*] Include support for ZLIB compressed file systems
+        [*] Include support for XZ compressed file systems
 ```
 
 保存后 `.config` 应展开为：
 
 ```text
 CONFIG_SQUASHFS=y
-CONFIG_SQUASHFS_ZLIB=y
+CONFIG_SQUASHFS_XZ=y
 ```
 
 不能是：
 
 ```text
 CONFIG_SQUASHFS=m
-CONFIG_SQUASHFS_ZLIB=y
+CONFIG_SQUASHFS_XZ=y
 ```
 
 若要从板级 defconfig 修改并保存，以 `hi3516dv300_smp_defconfig` 为例：
@@ -567,14 +567,14 @@ cp defconfig arch/arm/configs/hi3516dv300_smp_defconfig
 
 ```sh
 make ARCH=arm CROSS_COMPILE=arm-himix200-linux- hi3516dv300_smp_defconfig
-grep -E '^CONFIG_SQUASHFS|^CONFIG_SQUASHFS_ZLIB' .config
+grep -E '^CONFIG_SQUASHFS|^CONFIG_SQUASHFS_XZ' .config
 ```
 
 期望输出：
 
 ```text
 CONFIG_SQUASHFS=y
-CONFIG_SQUASHFS_ZLIB=y
+CONFIG_SQUASHFS_XZ=y
 ```
 
 重新编译并烧写 kernel 分区后，板端验证：

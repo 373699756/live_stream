@@ -45,13 +45,6 @@ make_fake_mksquashfs() {
 #!/bin/sh
 set -eu
 image_file="$2"
-for arg in "$@"; do
-  case "${arg}" in
-    -comp|-processors)
-      exit 64
-      ;;
-  esac
-done
 printf 'hsqs-test-image\n' > "${image_file}"
 EOF
   chmod +x "${fake_tools_dir}/mksquashfs"

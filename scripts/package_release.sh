@@ -218,7 +218,7 @@ build_bin_image() {
   cp -f "${release_dir}/bin/live_sysupgrade" "${work_dir}/bin_root/sbin/"
   printf '%s\n' "${version}" > "${work_dir}/bin_root/version"
   "${mksquashfs_bin}" "${work_dir}/bin_root" "${release_dir}/bin.squashfs" \
-    -noappend
+    -noappend -comp xz
   check_image_size "${release_dir}/bin.squashfs" "${bin_partition_size}" bin
 }
 
@@ -227,7 +227,7 @@ build_web_image() {
   cp -rf "${release_dir}/web/." "${work_dir}/web_root/"
   printf '%s\n' "${version}" > "${work_dir}/web_root/version"
   "${mksquashfs_bin}" "${work_dir}/web_root" "${release_dir}/web.squashfs" \
-    -noappend
+    -noappend -comp xz
   check_image_size "${release_dir}/web.squashfs" "${web_partition_size}" web
 }
 
