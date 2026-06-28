@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_TRACKS_H_
 #define LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_TRACKS_H_
 
-#include "media_stream_state.h"
+#include "media_stream_track.h"
 
 namespace live_stream {
 namespace media_internal {

@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_STATE_H_
-#define LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_STATE_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_TRACK_H_
+#define LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_TRACK_H_
 
 #include "media/media_streams.h"
 
@@ -100,4 +100,4 @@ PackagedFrameResult AppendFrameToStream(StreamTrack &stream,
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_STATE_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_MEDIA_STREAM_TRACK_H_
