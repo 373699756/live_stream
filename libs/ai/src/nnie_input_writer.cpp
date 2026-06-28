@@ -167,24 +167,24 @@ struct NnieInputWriter::Impl {
 
     bool Write(const hisisdk::YuvFrame &frame,
                const AiModelConfig &config,
-               SVP_SRC_BLOB_S *input_blob) {
-        input_blob_ = input_blob;
-        if (input_blob_ == nullptr) {
+               SVP_SRC_BLOB_S *input_tensor) {
+        input_tensor_ = input_tensor;
+        if (input_tensor_ == nullptr) {
             return false;
         }
-        SVP_SRC_BLOB_S &src = *input_blob_;
+        SVP_SRC_BLOB_S &src = *input_tensor_;
         if (src.enType == SVP_BLOB_TYPE_YVU420SP) {
-            return FillYvu420spInputBlob(frame, config);
+            return WriteYvu420spTensor(frame, config);
         }
         if (src.enType == SVP_BLOB_TYPE_U8) {
-            return FillU8C3InputBlob(frame);
+            return WriteU8C3Tensor(frame);
         }
         return false;
     }
 
-    bool FillYvu420spInputBlob(const hisisdk::YuvFrame &frame,
-                               const AiModelConfig &config) {
-        SVP_SRC_BLOB_S &src = *input_blob_;
+    bool WriteYvu420spTensor(const hisisdk::YuvFrame &frame,
+                             const AiModelConfig &config) {
+        SVP_SRC_BLOB_S &src = *input_tensor_;
         uint32_t available_size = 0;
         if (src.enType != SVP_BLOB_TYPE_YVU420SP ||
             src.unShape.stWhc.u32Width != config.input_width ||
@@ -227,8 +227,8 @@ struct NnieInputWriter::Impl {
         return ret == HI_SUCCESS;
     }
 
-    bool FillU8C3InputBlob(const hisisdk::YuvFrame &frame) {
-        SVP_SRC_BLOB_S &dst_blob = *input_blob_;
+    bool WriteU8C3Tensor(const hisisdk::YuvFrame &frame) {
+        SVP_SRC_BLOB_S &dst_blob = *input_tensor_;
         uint32_t available_size = 0;
         if (dst_blob.enType != SVP_BLOB_TYPE_U8 ||
             dst_blob.unShape.stWhc.u32Chn != 3 ||
@@ -241,7 +241,7 @@ struct NnieInputWriter::Impl {
             dst_blob.u32Stride < dst_width) {
             return false;
         }
-        if (TryFillU8C3InputBlobWithVgs(frame, dst_width, dst_height)) {
+        if (TryWriteU8C3TensorWithVgs(frame, dst_width, dst_height)) {
             return true;
         }
 
@@ -300,9 +300,9 @@ struct NnieInputWriter::Impl {
                                         flush_size) == HI_SUCCESS;
     }
 
-    bool TryFillU8C3InputBlobWithVgs(const hisisdk::YuvFrame &frame,
-                                     uint32_t dst_width,
-                                     uint32_t dst_height) {
+    bool TryWriteU8C3TensorWithVgs(const hisisdk::YuvFrame &frame,
+                                   uint32_t dst_width,
+                                   uint32_t dst_height) {
         if (!CanUseVgsScale(frame, dst_width, dst_height) ||
             !EnsureScaledYvuFrame(dst_width, dst_height) ||
             !ScaleFrameWithVgs(frame, &scaled_yvu_frame_)) {
@@ -316,11 +316,11 @@ struct NnieInputWriter::Impl {
                                      scaled_size)) {
             return false;
         }
-        if (TryFillU8C3InputBlobWithIveCsc(frame, scaled_yvu_frame_)) {
+        if (TryWriteU8C3TensorWithIveCsc(frame, scaled_yvu_frame_)) {
             return true;
         }
 
-        SVP_SRC_BLOB_S &dst_blob = *input_blob_;
+        SVP_SRC_BLOB_S &dst_blob = *input_tensor_;
         uint8_t *dst =
             static_cast<uint8_t *>(VirAddrToPointer(dst_blob.u64VirAddr));
         if (dst == nullptr) {
@@ -366,7 +366,7 @@ struct NnieInputWriter::Impl {
                                         flush_size) == HI_SUCCESS;
     }
 
-    bool TryFillU8C3InputBlobWithIveCsc(
+    bool TryWriteU8C3TensorWithIveCsc(
         const hisisdk::YuvFrame &frame, const ScaledYvuFrame &scaled_frame) {
         const VIDEO_FRAME_S &scaled = scaled_frame.frame_info.stVFrame;
         if (scaled.u32Width < kIveCscMinWidth ||
@@ -387,7 +387,7 @@ struct NnieInputWriter::Impl {
         if (!QueryIveTask(handle)) {
             return false;
         }
-        return CopyIveRgbPlanarToBgrBlob(ive_rgb_frame_.image);
+        return CopyIveRgbToBgrTensor(ive_rgb_frame_.image);
     }
 
     bool EnsureIveRgbFrame(uint32_t width, uint32_t height) {
@@ -461,8 +461,8 @@ struct NnieInputWriter::Impl {
         return IVE_CSC_MODE_PIC_BT709_YUV2RGB;
     }
 
-    bool CopyIveRgbPlanarToBgrBlob(const IVE_IMAGE_S &rgb) {
-        SVP_SRC_BLOB_S &dst_blob = *input_blob_;
+    bool CopyIveRgbToBgrTensor(const IVE_IMAGE_S &rgb) {
+        SVP_SRC_BLOB_S &dst_blob = *input_tensor_;
         const uint32_t width = dst_blob.unShape.stWhc.u32Width;
         const uint32_t height = dst_blob.unShape.stWhc.u32Height;
         if (rgb.enType != IVE_IMAGE_TYPE_U8C3_PLANAR ||
@@ -724,8 +724,7 @@ struct NnieInputWriter::Impl {
         sample_dst_height_ = 0;
     }
 
-
-    SVP_SRC_BLOB_S *input_blob_ = nullptr;
+    SVP_SRC_BLOB_S *input_tensor_ = nullptr;
     ScaledYvuFrame scaled_yvu_frame_;
     IveRgbFrame ive_rgb_frame_;
     std::vector<U8C3SamplePoint> u8c3_sample_points_;
@@ -748,16 +747,16 @@ NnieInputWriter::~NnieInputWriter() {
 #if LIVE_STREAM_HAS_HISI_NNIE
 bool NnieInputWriter::Write(const hisisdk::YuvFrame &frame,
                             const AiModelConfig &config,
-                            SVP_SRC_BLOB_S *input_blob) {
-    return impl_->Write(frame, config, input_blob);
+                            SVP_SRC_BLOB_S *input_tensor) {
+    return impl_->Write(frame, config, input_tensor);
 }
 #else
 bool NnieInputWriter::Write(const hisisdk::YuvFrame &frame,
                             const AiModelConfig &config,
-                            void *input_blob) {
+                            void *input_tensor) {
     (void)frame;
     (void)config;
-    (void)input_blob;
+    (void)input_tensor;
     return false;
 }
 #endif

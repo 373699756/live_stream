@@ -18,11 +18,11 @@ public:
 #if LIVE_STREAM_HAS_HISI_NNIE
     bool Write(const hisisdk::YuvFrame &frame,
                const AiModelConfig &config,
-               SVP_SRC_BLOB_S *input_blob);
+               SVP_SRC_BLOB_S *input_tensor);
 #else
     bool Write(const hisisdk::YuvFrame &frame,
                const AiModelConfig &config,
-               void *input_blob);
+               void *input_tensor);
 #endif
     void Release();
 
