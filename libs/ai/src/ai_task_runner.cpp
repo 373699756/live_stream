@@ -3,6 +3,7 @@
 #include "ai_alert_images.h"
 #include "ai_backend_runner.h"
 #include "ai_config.h"
+#include "ai_config_binding.h"
 #include "ai_defaults.h"
 #include "ai_frame_capture.h"
 #include "ai_task_workers.h"
@@ -29,6 +30,7 @@ using ai_internal::AiBackendRunner;
 using ai_internal::AiBackendToString;
 using ai_internal::AiAlertCapture;
 using ai_internal::AiAlertImages;
+using ai_internal::AiConfigBinding;
 using ai_internal::AiFrameCapture;
 using ai_internal::AiTaskWorker;
 using ai_internal::AiTaskWorkers;
@@ -54,6 +56,7 @@ struct AiTaskRunner::State final {
     explicit State(const AiOptions &service_options)
         : options(service_options),
           config(service_options.default_config),
+          config_binding(service_options.config),
           frame_capture(service_options.snapshot,
                         service_options.media_channels),
           alert_images(service_options.alert_image_dir,
@@ -73,74 +76,31 @@ struct AiTaskRunner::State final {
             if (!IsValidAiConfig(config)) {
                 return false;
             }
-            if (options.config != nullptr && !config_attached) {
-                ConfigScope config_scope;
-                config_scope.verify = [this](const Json &now,
-                                             ConfigError *error) {
-                    AiConfig current_config;
-                    {
+            if (!config_binding.Attach(
+                    [this]() {
                         std::lock_guard<std::mutex> guard(mutex);
-                        current_config = config;
-                    }
-                    AiConfig parsed;
-                    if (ParseAiConfig(now, current_config, &parsed)) {
-                        return ConfigCode::kOk;
-                    }
-                    if (error != nullptr) {
-                        error->field.clear();
-                        error->message = "invalid ai config";
-                    }
-                    return ConfigCode::kVerify;
-                };
-                config_scope.apply = [this](const Json &prev,
-                                            const Json &now,
-                                            ConfigError *error) {
-                    (void)prev;
-                    AiConfig current_config;
-                    {
-                        std::lock_guard<std::mutex> guard(mutex);
-                        current_config = config;
-                    }
-                    AiConfig parsed;
-                    if (!ParseAiConfig(now, current_config, &parsed)) {
-                        if (error != nullptr) {
-                            error->field.clear();
-                            error->message = "invalid ai config";
-                        }
-                        return ConfigCode::kVerify;
-                    }
-                    if (ApplyConfig(parsed)) {
-                        return ConfigCode::kOk;
-                    }
-                    if (error != nullptr) {
-                        error->field.clear();
-                        error->message = "apply ai config failed";
-                    }
-                    return ConfigCode::kApply;
-                };
-                if (!options.config->AddScope("ai", config_scope)) {
-                    return false;
-                }
-                config_attached = true;
+                        return config;
+                    },
+                    [this](const AiConfig &next_config) {
+                        return ApplyConfig(next_config);
+                    })) {
+                return false;
             }
         }
 
-        if (options.config != nullptr) {
-            Json ai_config = options.config->Get("ai");
-            if (ai_config.is_object()) {
-                AiConfig current_config;
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    current_config = config;
-                }
-                AiConfig parsed;
-                if (!ParseAiConfig(ai_config, current_config, &parsed)) {
-                    return false;
-                }
-                std::lock_guard<std::mutex> lock(mutex);
-                config = parsed;
-                task_workers.Rebuild(config, options.alarm != nullptr);
-            }
+        AiConfig current_config;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            current_config = config;
+        }
+        AiConfig loaded_config;
+        if (!config_binding.LoadInitial(current_config, &loaded_config)) {
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            config = loaded_config;
+            task_workers.Rebuild(config, options.alarm != nullptr);
         }
         return true;
     }
@@ -190,15 +150,7 @@ struct AiTaskRunner::State final {
 
     void Release() {
         Stop();
-        bool detach_config = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            detach_config = config_attached;
-            config_attached = false;
-        }
-        if (detach_config && options.config != nullptr) {
-            static_cast<void>(options.config->RemoveScope("ai"));
-        }
+        config_binding.Detach();
     }
 
     void CaptureLoop(std::shared_ptr<AiTaskWorker> task_worker) {
@@ -678,10 +630,10 @@ struct AiTaskRunner::State final {
 
     AiOptions options;
     AiConfig config;
+    AiConfigBinding config_binding;
     AiTaskWorkers task_workers;
     AiFrameCapture frame_capture;
     AiAlertImages alert_images;
-    bool config_attached = false;
     bool started = false;
     mutable std::mutex mutex;
 };
