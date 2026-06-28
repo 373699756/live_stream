@@ -24,7 +24,7 @@ namespace {
 constexpr const char* kServiceName = "rtsp";
 constexpr uint32_t kRtspDrainIntervalMs = 10;
 constexpr uint32_t kRtspMaxFramesPerDrain = 8;
-enum class RtspServicePhase {
+enum class RtspPhase {
     kCreated = 0,
     kInitialized,
     kStarted,
@@ -89,9 +89,9 @@ public:
     }
 
     bool Prepare() {
-        if (phase_ == RtspServicePhase::kInitialized ||
-            phase_ == RtspServicePhase::kStarted ||
-            phase_ == RtspServicePhase::kStopped) {
+        if (phase_ == RtspPhase::kInitialized ||
+            phase_ == RtspPhase::kStarted ||
+            phase_ == RtspPhase::kStopped) {
             return true;
         }
         if (net_io_ == nullptr ||
@@ -101,22 +101,22 @@ public:
             options_.max_request_bytes == 0) {
             return false;
         }
-        phase_ = RtspServicePhase::kInitialized;
+        phase_ = RtspPhase::kInitialized;
         return true;
     }
 
     bool Start() override {
-        if (phase_ == RtspServicePhase::kStarted) {
+        if (phase_ == RtspPhase::kStarted) {
             return true;
         }
-        if (phase_ == RtspServicePhase::kCreated ||
-            phase_ == RtspServicePhase::kDeinitialized) {
+        if (phase_ == RtspPhase::kCreated ||
+            phase_ == RtspPhase::kDeinitialized) {
             if (!Prepare()) {
                 return false;
             }
         }
-        if (phase_ != RtspServicePhase::kInitialized &&
-            phase_ != RtspServicePhase::kStopped) {
+        if (phase_ != RtspPhase::kInitialized &&
+            phase_ != RtspPhase::kStopped) {
             return false;
         }
 
@@ -145,7 +145,7 @@ public:
         local_address_ = {options_.listen_ip,
                           local_result.port != 0 ? local_result.port
                                                  : options_.listen_port};
-        phase_ = RtspServicePhase::kStarted;
+        phase_ = RtspPhase::kStarted;
         return true;
     }
 
@@ -194,9 +194,9 @@ private:
             session_table_.Clear();
         }
         rtsp_auth_.Clear();
-        if (phase_ == RtspServicePhase::kStarted ||
-            phase_ == RtspServicePhase::kInitialized) {
-            phase_ = RtspServicePhase::kStopped;
+        if (phase_ == RtspPhase::kStarted ||
+            phase_ == RtspPhase::kInitialized) {
+            phase_ = RtspPhase::kStopped;
         }
     }
 
@@ -218,8 +218,8 @@ private:
 
     void ReleaseInternal() {
         StopInternal();
-        if (phase_ != RtspServicePhase::kCreated) {
-            phase_ = RtspServicePhase::kDeinitialized;
+        if (phase_ != RtspPhase::kCreated) {
+            phase_ = RtspPhase::kDeinitialized;
         }
     }
 
@@ -230,7 +230,7 @@ public:
 
     RtspListenAddress LocalAddress() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (phase_ != RtspServicePhase::kStarted) {
+        if (phase_ != RtspPhase::kStarted) {
             return RtspListenAddress{};
         }
         return local_address_;
@@ -894,7 +894,7 @@ private:
     RtspAuth rtsp_auth_;
     RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;
-    RtspServicePhase phase_ = RtspServicePhase::kCreated;
+    RtspPhase phase_ = RtspPhase::kCreated;
     TcpServerId server_id_ = 0;
     RtspListenAddress local_address_;
     RtspSessionTable session_table_;

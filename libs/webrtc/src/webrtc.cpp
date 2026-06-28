@@ -24,7 +24,7 @@ constexpr uint32_t kWebrtcDrainIntervalMs = 10;
 constexpr uint32_t kWebrtcMaxFramesPerDrain = 8;
 constexpr uint32_t kWebrtcRtpMtuBytes = 1200;
 
-enum class ServiceState {
+enum class WebrtcPhase {
     kCreated = 0,
     kInitialized,
     kStarted,
@@ -86,20 +86,20 @@ public:
             return false;
         }
         std::lock_guard<std::mutex> guard(mutex_);
-        if (state_ == ServiceState::kStarted) {
+        if (phase_ == WebrtcPhase::kStarted) {
             return true;
         }
-        if (state_ == ServiceState::kStopped) {
-            state_ = ServiceState::kInitialized;
+        if (phase_ == WebrtcPhase::kStopped) {
+            phase_ = WebrtcPhase::kInitialized;
         }
-        if (state_ != ServiceState::kInitialized) {
+        if (phase_ != WebrtcPhase::kInitialized) {
             return false;
         }
         if (!options_.enabled) {
-            state_ = ServiceState::kStarted;
+            phase_ = WebrtcPhase::kStarted;
             return true;
         }
-        state_ = ServiceState::kStarted;
+        phase_ = WebrtcPhase::kStarted;
         return true;
     }
 
@@ -109,10 +109,10 @@ public:
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::unique_lock<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted) {
+            if (phase_ != WebrtcPhase::kStarted) {
                 return;
             }
-            state_ = ServiceState::kStopped;
+            phase_ = WebrtcPhase::kStopped;
             peer_ids = peer_table_.MarkAllClosing();
             MarkSubscriptionsClosingLocked();
             subscription_condition_.wait(guard, [this]() {
@@ -178,7 +178,7 @@ public:
         std::vector<std::string> replaced_peer_ids;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted) {
+            if (phase_ != WebrtcPhase::kStarted) {
                 return CreatePeerError("service_not_started");
             }
             if (!options_.enabled) {
@@ -223,7 +223,7 @@ public:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             const WebrtcPeerInfo current_peer = peer_table_.GetPeer(peer.peer_id);
-            if (state_ != ServiceState::kStarted ||
+            if (phase_ != WebrtcPhase::kStarted ||
                 current_peer.peer_id.empty() ||
                 current_peer.state == WebrtcPeerState::kClosing ||
                 current_peer.state == WebrtcPeerState::kClosed ||
@@ -251,7 +251,7 @@ public:
         std::vector<WebrtcIceCandidate> pending_candidates;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted || request.peer_id.empty() ||
+            if (phase_ != WebrtcPhase::kStarted || request.peer_id.empty() ||
                 request.sdp.empty()) {
                 result.state = WebrtcPeerState::kFailed;
                 result.error = "invalid_offer";
@@ -301,7 +301,7 @@ public:
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ != ServiceState::kStarted || candidate.peer_id.empty() ||
+            if (phase_ != WebrtcPhase::kStarted || candidate.peer_id.empty() ||
                 candidate.candidate.empty() || candidate.sdp_mline_index < 0) {
                 return false;
             }
@@ -425,8 +425,9 @@ private:
             media_streams_ == nullptr) {
             return false;
         }
-        if (state_ == ServiceState::kInitialized ||
-            state_ == ServiceState::kStarted || state_ == ServiceState::kStopped) {
+        if (phase_ == WebrtcPhase::kInitialized ||
+            phase_ == WebrtcPhase::kStarted ||
+            phase_ == WebrtcPhase::kStopped) {
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcPeerHost> peer_host =
@@ -442,7 +443,7 @@ private:
         }
         peer_host_ = std::shared_ptr<webrtc_internal::IWebrtcPeerHost>(
             std::move(peer_host));
-        state_ = ServiceState::kInitialized;
+        phase_ = WebrtcPhase::kInitialized;
         return true;
     }
 
@@ -453,10 +454,10 @@ private:
         std::vector<ClosingSubscription> closing_subscriptions;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (state_ == ServiceState::kCreated) {
+            if (phase_ == WebrtcPhase::kCreated) {
                 return;
             }
-            state_ = ServiceState::kDeinitialized;
+            phase_ = WebrtcPhase::kDeinitialized;
             closing_subscriptions = TakeClosingSubscriptionsLocked();
             peer_table_.Clear();
             peer_host = std::move(peer_host_);
@@ -519,7 +520,7 @@ private:
 
     std::vector<std::string> TakeStalePeerIds() {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (state_ != ServiceState::kStarted) {
+        if (phase_ != WebrtcPhase::kStarted) {
             return std::vector<std::string>();
         }
         return peer_table_.FindStaleSetupPeerIds(kPeerSetupTimeoutMs);
@@ -654,7 +655,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             peer = peer_table_.GetPeer(peer_id);
-            if (state_ != ServiceState::kStarted || peer.peer_id.empty() ||
+            if (phase_ != WebrtcPhase::kStarted || peer.peer_id.empty() ||
                 peer.state != WebrtcPeerState::kConnected) {
                 return false;
             }
@@ -693,7 +694,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             const WebrtcPeerInfo current_peer = peer_table_.GetPeer(peer_id);
-            if (state_ == ServiceState::kStarted &&
+            if (phase_ == WebrtcPhase::kStarted &&
                 current_peer.state == WebrtcPeerState::kConnected &&
                 current_peer.stream_id == peer.stream_id &&
                 current_peer.codec == peer.codec &&
@@ -733,7 +734,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto iter = peer_subscriptions_.find(peer_id);
-            if (state_ == ServiceState::kStarted &&
+            if (phase_ == WebrtcPhase::kStarted &&
                 iter != peer_subscriptions_.end() &&
                 !iter->second.closing &&
                 iter->second.drain_timer_id == 0) {
@@ -759,7 +760,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             auto iter = peer_subscriptions_.find(peer_id);
-            if (state_ == ServiceState::kStarted &&
+            if (phase_ == WebrtcPhase::kStarted &&
                 iter != peer_subscriptions_.end() &&
                 !iter->second.closing) {
                 subscription_id = iter->second.subscription_id;
@@ -791,7 +792,7 @@ private:
     bool BeginPeerDrain(const std::string &peer_id) {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = peer_subscriptions_.find(peer_id);
-        if (state_ != ServiceState::kStarted ||
+        if (phase_ != WebrtcPhase::kStarted ||
             iter == peer_subscriptions_.end() || iter->second.draining ||
             iter->second.closing) {
             return false;
@@ -820,7 +821,7 @@ private:
             {
                 std::lock_guard<std::mutex> guard(mutex_);
                 auto iter = peer_subscriptions_.find(peer_id);
-                if (state_ != ServiceState::kStarted ||
+                if (phase_ != WebrtcPhase::kStarted ||
                     iter == peer_subscriptions_.end() ||
                     iter->second.closing) {
                     return false;
@@ -845,7 +846,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(mutex_);
             const auto subscription_iter = peer_subscriptions_.find(peer_id);
-            if (state_ != ServiceState::kStarted || peer_host_ == nullptr ||
+            if (phase_ != WebrtcPhase::kStarted || peer_host_ == nullptr ||
                 subscription_iter == peer_subscriptions_.end() ||
                 subscription_iter->second.closing) {
                 ++stats_.dropped_frames;
@@ -996,7 +997,7 @@ private:
     INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     event::Dispatcher *event_ = nullptr;
-    ServiceState state_ = ServiceState::kCreated;
+    WebrtcPhase phase_ = WebrtcPhase::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;
     mutable std::mutex mutex_;
