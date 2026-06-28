@@ -85,9 +85,9 @@ APP_SRCS := \
 	app/subsystems/device_subsystem.cpp \
 	app/subsystems/media_subsystem.cpp \
 	app/subsystems/protocol_options.cpp \
-	app/subsystems/protocol_config_updates.cpp \
+	app/subsystems/protocol_config_changes.cpp \
 	app/subsystems/protocol_subsystem.cpp \
-	app/config/protocol_config_update.cpp \
+	app/config/protocol_config_change.cpp \
 	app/config/app_config.cpp \
 	app/platform/linux/linux_network_platform.cpp \
 	app/platform/linux/linux_platform_common.cpp \
