@@ -14,7 +14,7 @@
 
 namespace live_stream {
 
-enum class MediaStreamsRunState {
+enum class MediaStreamsPhase {
     kStopped = 0,
     kRunning,
     kStopping,
@@ -88,35 +88,35 @@ private:
     static const char *StreamIdName(StreamId stream_id);
     static const char *CodecName(Codec codec);
     static const char *MediaStreamStateName(MediaStreamState state);
-    static const char *RunStateName(MediaStreamsRunState state);
+    static const char *PhaseName(MediaStreamsPhase state);
     static const char *KeyframeRequestSourceName(
         KeyframeRequestSource source);
-    static SubscriptionClose CloseReasonForReset(
+    static SubscriptionClose CloseReasonFromReset(
         MediaStreamResetReason reason);
 
     bool ValidateOptions() const;
     bool ValidateCacheLimits() const;
     bool IsRunningLocked() const;
     void ConfigureMediaCachesLocked();
-    void ResetMediaStateLocked();
+    void ResetStreamsLocked();
     void ApplyResetNoticeLocked(
         const media_internal::StreamResetNotice &notice);
     void EnsureRunningStreamLocked(media_internal::StreamTrack &stream,
                                    StreamId stream_id,
                                    Codec codec);
-    bool AcceptFrameAndQueue(
+    bool AcceptFrame(
         MediaFrame &frame,
-        media_internal::ParsedFramePayload &payload);
+        media_internal::ParsedFramePayload &parsed_payload);
     bool NormalizeFrameTimestampLocked(
         media_internal::StreamTrack &stream,
         MediaFrame &frame);
     media_internal::ParsedFramePayload ParseFramePayloadView(
         const MediaFrame &frame) const;
-    void PackagePreviewFrame(
-        const media_internal::ParsedFramePayload &payload,
+    void CachePreviewFrame(
+        const media_internal::ParsedFramePayload &parsed_payload,
         bool has_payload);
     void PackageMjpegFrame(
-        const media_internal::ParsedFramePayload &payload);
+        const media_internal::ParsedFramePayload &parsed_payload);
 
     const media_internal::StreamTrack *FindStream(
         StreamId stream_id) const;
@@ -126,7 +126,7 @@ private:
 
     MediaStreamsOptions options_;
     mutable std::shared_mutex mutex_;
-    MediaStreamsRunState run_state_ = MediaStreamsRunState::kStopped;
+    MediaStreamsPhase phase_ = MediaStreamsPhase::kStopped;
     media_internal::MediaStreamTracks streams_;
     media_internal::FrameClients frame_clients_;
     media_internal::PreviewClients preview_clients_;
