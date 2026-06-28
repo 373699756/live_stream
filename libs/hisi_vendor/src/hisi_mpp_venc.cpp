@@ -1,5 +1,6 @@
 #include "hisi_vendor/mpp_sdk.h"
 #include "hisi_mpp_sdk.h"
+#include "hisi_mpp_venc_attrs.h"
 #include "mpp_hisi_sdk_impl.h"
 #include "venc_config.h"
 #include "venc_packet_view.h"
@@ -21,22 +22,15 @@
 namespace live_stream {
 namespace hisisdk {
 using venc_internal::CodecName;
-using venc_internal::GopAttrFromConfig;
 using venc_internal::GopModeName;
 using venc_internal::IsIdrCodec;
-using venc_internal::PayloadFromCodec;
-using venc_internal::RcModeFromConfig;
 using venc_internal::RcModeName;
-using venc_internal::StatTimeFromConfig;
 using venc_internal::TuneRcParam;
 using venc_internal::ValidateVencStreamConfig;
+using venc_internal::VencChannelAttrs;
 
 namespace {
 
-constexpr uint32_t kDefaultFixQpI = 25;
-constexpr uint32_t kDefaultFixQpP = 30;
-constexpr uint32_t kDefaultFixQpB = 32;
-constexpr uint32_t kDefaultMjpegQfactor = 95;
 constexpr uint32_t kMaxVencRoiRegions = 8;
 
 void UpdateFrameTypeFromH264(H264E_NALU_TYPE_E type, FrameType& frame_type) {
@@ -253,103 +247,17 @@ void UnbindVpssFromVenc(int32_t vpss_group, int32_t vpss_channel,
     (void)HI_MPI_SYS_UnBind(&src, &dst);
 }
 
-// ─── Configure a single VENC channel ───────────────────────────
 bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
     if (!ValidateVencStreamConfig(chn, stream)) {
         return false;
     }
 
-    VENC_CHN venc = static_cast<VENC_CHN>(chn);
-
-    VENC_CHN_ATTR_S attr{};
-    attr.stVencAttr.enType = PayloadFromCodec(stream.codec);
-    attr.stVencAttr.u32MaxPicWidth = stream.size.width;
-    attr.stVencAttr.u32MaxPicHeight = stream.size.height;
-    attr.stVencAttr.u32PicWidth = stream.size.width;
-    attr.stVencAttr.u32PicHeight = stream.size.height;
-    attr.stVencAttr.u32BufSize = stream.size.width * stream.size.height * 2;
-    attr.stVencAttr.bByFrame = HI_TRUE;
-    attr.stVencAttr.u32Profile = 0;  // default profile
-    attr.stGopAttr = GopAttrFromConfig(stream.gop_mode, stream.gop);
-    const uint32_t stat_time = StatTimeFromConfig(attr.stGopAttr, stream.gop);
-
-    // RC parameters
-    attr.stRcAttr.enRcMode = RcModeFromConfig(stream.codec, stream.rc_mode);
-    if (stream.codec == Codec::kH264) {
-        attr.stVencAttr.stAttrH264e.bRcnRefShareBuf = HI_FALSE;
-        if (stream.rc_mode == RateControlMode::kCbr) {
-            attr.stRcAttr.stH264Cbr.u32BitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stH264Cbr.u32Gop = stream.gop;
-            attr.stRcAttr.stH264Cbr.u32StatTime = stat_time;
-            attr.stRcAttr.stH264Cbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH264Cbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else if (stream.rc_mode == RateControlMode::kVbr) {
-            attr.stRcAttr.stH264Vbr.u32MaxBitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stH264Vbr.u32Gop = stream.gop;
-            attr.stRcAttr.stH264Vbr.u32StatTime = stat_time;
-            attr.stRcAttr.stH264Vbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH264Vbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else {
-            attr.stRcAttr.stH264FixQp.u32Gop = stream.gop;
-            attr.stRcAttr.stH264FixQp.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH264FixQp.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-            attr.stRcAttr.stH264FixQp.u32IQp = kDefaultFixQpI;
-            attr.stRcAttr.stH264FixQp.u32PQp = kDefaultFixQpP;
-            attr.stRcAttr.stH264FixQp.u32BQp = kDefaultFixQpB;
-        }
-    } else if (stream.codec == Codec::kH265) {
-        attr.stVencAttr.stAttrH265e.bRcnRefShareBuf = HI_FALSE;
-        if (stream.rc_mode == RateControlMode::kCbr) {
-            attr.stRcAttr.stH265Cbr.u32BitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stH265Cbr.u32Gop = stream.gop;
-            attr.stRcAttr.stH265Cbr.u32StatTime = stat_time;
-            attr.stRcAttr.stH265Cbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH265Cbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else if (stream.rc_mode == RateControlMode::kVbr) {
-            attr.stRcAttr.stH265Vbr.u32MaxBitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stH265Vbr.u32Gop = stream.gop;
-            attr.stRcAttr.stH265Vbr.u32StatTime = stat_time;
-            attr.stRcAttr.stH265Vbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH265Vbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else {
-            attr.stRcAttr.stH265FixQp.u32Gop = stream.gop;
-            attr.stRcAttr.stH265FixQp.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stH265FixQp.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-            attr.stRcAttr.stH265FixQp.u32IQp = kDefaultFixQpI;
-            attr.stRcAttr.stH265FixQp.u32PQp = kDefaultFixQpP;
-            attr.stRcAttr.stH265FixQp.u32BQp = kDefaultFixQpB;
-        }
-    } else if (stream.codec == Codec::kMjpeg) {
-        if (stream.rc_mode == RateControlMode::kCbr) {
-            attr.stRcAttr.stMjpegCbr.u32BitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stMjpegCbr.u32StatTime = stat_time;
-            attr.stRcAttr.stMjpegCbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stMjpegCbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else if (stream.rc_mode == RateControlMode::kVbr) {
-            attr.stRcAttr.stMjpegVbr.u32MaxBitRate = stream.bitrate_kbps;
-            attr.stRcAttr.stMjpegVbr.u32StatTime = stat_time;
-            attr.stRcAttr.stMjpegVbr.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stMjpegVbr.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-        } else {
-            attr.stRcAttr.stMjpegFixQp.u32SrcFrameRate = stream.frame_rate.source_fps;
-            attr.stRcAttr.stMjpegFixQp.fr32DstFrameRate =
-                static_cast<HI_FR32>(stream.frame_rate.target_fps);
-            attr.stRcAttr.stMjpegFixQp.u32Qfactor = kDefaultMjpegQfactor;
-        }
+    VencChannelAttrs attrs;
+    if (!attrs.Build(stream)) {
+        return false;
     }
-
-    if (stream.codec == Codec::kMjpeg) {
-        attr.stGopAttr.enGopMode = VENC_GOPMODE_NORMALP;
-        attr.stGopAttr.stNormalP.s32IPQpDelta = 0;
-    }
+    const VENC_CHN venc = static_cast<VENC_CHN>(chn);
+    const VENC_CHN_ATTR_S& attr = attrs.value();
 
     Info(
         "hisi_vendor",
@@ -358,7 +266,8 @@ bool ConfigureVencChannel(int32_t chn, const VideoStreamConfig& stream) {
         chn, CodecName(stream.codec), RcModeName(stream.rc_mode),
         GopModeName(stream.gop_mode), stream.size.width, stream.size.height,
         stream.frame_rate.source_fps, stream.frame_rate.target_fps,
-        stream.bitrate_kbps, stream.gop, stat_time, attr.stVencAttr.u32BufSize);
+        stream.bitrate_kbps, stream.gop, attrs.stat_time(),
+        attr.stVencAttr.u32BufSize);
     const HI_S32 create_status = HI_MPI_VENC_CreateChn(venc, &attr);
     if (create_status != HI_SUCCESS) {
         Error("hisi_vendor",
