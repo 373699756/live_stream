@@ -34,7 +34,7 @@ void StopExecutor(event::Executor *executor) {
 }  // namespace
 
 HttpServer::HttpServer(const HttpOptions &options,
-                       const HttpDependencies &dependencies,
+                       const HttpServerDependencies &dependencies,
                        HttpRequestHandler *request_handler)
     : options_(options),
       response_sender_(options.send_buffer_limit_bytes),

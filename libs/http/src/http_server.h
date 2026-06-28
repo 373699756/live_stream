@@ -3,7 +3,6 @@
 
 #include "http.h"
 #include "http_response_sender.h"
-#include "http_dependencies.h"
 #include "http_media_writer.h"
 #include "http_session.h"
 
@@ -17,6 +16,12 @@
 
 namespace live_stream {
 
+class INetIo;
+namespace event {
+class Loop;
+class Executor;
+}  // namespace event
+
 class HttpRequestHandler {
 public:
     virtual ~HttpRequestHandler() = default;
@@ -29,10 +34,15 @@ public:
 
 // HTTP server 内核只负责连接和 HTTP/1.1 生命周期。业务路由在 HttpImpl，
 // HLS/FLV/MJPEG/SSE 等长连接通过 HttpMediaWriter 回调进来。
+struct HttpServerDependencies {
+    INetIo *net_io = nullptr;
+    event::Loop *net_loop = nullptr;
+};
+
 class HttpServer : public HttpMediaWriter {
 public:
     HttpServer(const HttpOptions &options,
-               const HttpDependencies &dependencies,
+               const HttpServerDependencies &dependencies,
                HttpRequestHandler *request_handler);
     ~HttpServer() override;
 

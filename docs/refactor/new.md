@@ -53,6 +53,8 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
   `CreateHttpHandler(kind, deps)` 分发；`HttpImpl` 按业务入口直接构造每个 handler。
 - HTTP router 和 handler 仍是静态 thunk + `void* user`。
 - `HttpDependencies`、`SystemOverviewSources` 仍是宽依赖包。
+- `HttpServerDependencies` 已收敛到 `net_io/net_loop`，但 `HttpDependencies`
+  仍作为组合根注入包存在于 `HttpImpl` 构造边界。
 - `FlvVideoTagBuild` / `MediaFlvVideoTagView` 仍含较大固定数组，需要减少栈上复制。
 - 进程日志 `infra::Log` 仍用全局宏和文件内静态状态；这是 process log 的独立设计债，
   不是审计 logger 问题。

@@ -39,7 +39,10 @@ HttpImpl::HttpImpl(
     const HttpOptions &options,
     const HttpDependencies &dependencies)
     : options_(options),
-      server_(new HttpServer(options, dependencies, this)) {
+      server_(new HttpServer(
+          options,
+          HttpServerDependencies{dependencies.net_io, dependencies.net_loop},
+          this)) {
     InitializeHandlers(dependencies);
 }
 
