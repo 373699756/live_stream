@@ -1,6 +1,6 @@
 #include "ai_task_runner.h"
 
-#include "ai_alert_images.h"
+#include "ai_alert_output.h"
 #include "ai_backend_runner.h"
 #include "ai_config.h"
 #include "ai_config_binding.h"
@@ -30,7 +30,7 @@ constexpr int64_t kMinAlertIntervalMs = 1000;
 
 using ai_internal::AiBackendRunner;
 using ai_internal::AiAlertCapture;
-using ai_internal::AiAlertImages;
+using ai_internal::AiAlertOutput;
 using ai_internal::AiConfigBinding;
 using ai_internal::AiFrameCapture;
 using ai_internal::AiTaskStartup;
@@ -56,15 +56,14 @@ struct AiTaskRunner::State final {
           config_binding(service_options.config),
           frame_capture(service_options.snapshot,
                         service_options.media_channels),
-          alert_images(service_options.alert_image_dir,
+          alert_output(service_options.alarm,
+                       service_options.device,
+                       service_options.alert_image_dir,
                        service_options.max_alert_records) {
-        if (options.max_alert_records == 0) {
-            options.max_alert_records = 100;
-        }
         if (!IsValidAiConfig(config)) {
             config = DefaultAiConfig();
         }
-        task_workers.Rebuild(config, options.alarm != nullptr);
+        task_workers.Rebuild(config, alert_output.Linked());
     }
 
     bool Prepare() {
@@ -97,7 +96,7 @@ struct AiTaskRunner::State final {
         {
             std::lock_guard<std::mutex> lock(mutex);
             config = loaded_config;
-            task_workers.Rebuild(config, options.alarm != nullptr);
+            task_workers.Rebuild(config, alert_output.Linked());
         }
         return true;
     }
@@ -113,7 +112,7 @@ struct AiTaskRunner::State final {
                 return true;
             }
             started = true;
-            task_workers.Rebuild(config, options.alarm != nullptr);
+            task_workers.Rebuild(config, alert_output.Linked());
         }
 
         StartConfiguredTaskWorkers();
@@ -141,8 +140,8 @@ struct AiTaskRunner::State final {
             task_workers.StopAll(&stopped_tasks);
         }
         StopStoppedAiTasks(&stopped_tasks);
-        alert_images.Stop();
-        ClearAlarmInput();
+        alert_output.StopImages();
+        alert_output.ClearAlarmInput();
     }
 
     void Release() {
@@ -257,7 +256,8 @@ struct AiTaskRunner::State final {
         const AiModelConfig &run_config,
         const std::shared_ptr<AiTaskWorker> &task_worker,
         AiAlertCapture &pending_alert) {
-        if (!IsAiAlertResultActive(result) || options.device == nullptr) {
+        if (!IsAiAlertResultActive(result) ||
+            !alert_output.CanCaptureImages()) {
             return false;
         }
         const int64_t now_ms = infra::Time::SystemTimeMillis();
@@ -287,8 +287,7 @@ struct AiTaskRunner::State final {
         if (!service_started) {
             return;
         }
-        static_cast<void>(alert_images.PostCapture(options.device,
-                                                   pending_alert));
+        static_cast<void>(alert_output.PostCapture(pending_alert));
     }
 
     bool ApplyConfig(const AiConfig &next_config) {
@@ -315,13 +314,13 @@ struct AiTaskRunner::State final {
             service_started = started;
             service_enabled = next_config.enabled;
             task_workers.ApplyConfigDiff(next_config,
-                                         options.alarm != nullptr,
+                                         alert_output.Linked(),
                                          &stopped_tasks);
             config = next_config;
         }
         const bool task_workers_stopped = !stopped_tasks.empty();
         if (!service_enabled || task_workers_stopped) {
-            alert_images.Stop();
+            alert_output.StopImages();
         }
         StopStoppedAiTasks(&stopped_tasks);
 
@@ -335,7 +334,7 @@ struct AiTaskRunner::State final {
              next_config.enabled ? 1 : 0,
              static_cast<unsigned int>(next_config.tasks.size()));
         if (!next_config.enabled) {
-            ClearAlarmInput();
+            alert_output.ClearAlarmInput();
         }
         return true;
     }
@@ -351,17 +350,17 @@ struct AiTaskRunner::State final {
                 !options.device->IsStarted()) {
                 Error("ai", "AI startup skipped: device media or sdk unavailable");
                 task_workers.MarkAllEnabledBackendsUnavailable(
-                    options.alarm != nullptr);
+                    alert_output.Linked());
                 return;
             }
-            if (!alert_images.Start()) {
+            if (!alert_output.StartImages()) {
                 Error("ai", "AI startup skipped: alert executor unavailable");
                 task_workers.MarkAllEnabledBackendsUnavailable(
-                    options.alarm != nullptr);
+                    alert_output.Linked());
                 return;
             }
             enabled_task_workers = task_workers.EnabledToStart(
-                config, options.alarm != nullptr);
+                config, alert_output.Linked());
         }
 
         Info("ai", "AI enabled task startup size=%u",
@@ -470,11 +469,11 @@ struct AiTaskRunner::State final {
     AiStats TaskStatsLocked(
         const std::shared_ptr<AiTaskWorker> &task_worker) const {
         return task_workers.TaskStats(config, task_worker,
-                                      options.alarm != nullptr);
+                                      alert_output.Linked());
     }
 
     AiStats SummaryStatsLocked() const {
-        return task_workers.SummaryStats(config, options.alarm != nullptr);
+        return task_workers.SummaryStats(config, alert_output.Linked());
     }
 
     AiStats SnapshotSummaryStats() const {
@@ -509,27 +508,14 @@ struct AiTaskRunner::State final {
 
     void PublishAlarmInputForState(
         const std::shared_ptr<AiTaskWorker> &task_worker) {
-        if (options.alarm == nullptr) {
-            return;
-        }
         AlarmInput input;
         {
             std::lock_guard<std::mutex> lock(mutex);
             input = AlarmInputLocked();
         }
-        if (!options.alarm->InjectAlarmInput(input)) {
+        if (!alert_output.PublishAlarmInput(input)) {
             IncrementDroppedTasks(task_worker);
         }
-    }
-
-    void ClearAlarmInput() {
-        if (options.alarm == nullptr) {
-            return;
-        }
-        AlarmInput input;
-        input.source = AlarmSource::kAiDetection;
-        input.active = false;
-        static_cast<void>(options.alarm->InjectAlarmInput(input));
     }
 
     void IncrementDroppedTasks(
@@ -545,7 +531,7 @@ struct AiTaskRunner::State final {
     AiConfigBinding config_binding;
     AiTaskWorkers task_workers;
     AiFrameCapture frame_capture;
-    AiAlertImages alert_images;
+    AiAlertOutput alert_output;
     bool started = false;
     mutable std::mutex mutex;
 };
@@ -600,11 +586,11 @@ std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
 }
 
 std::vector<AiAlertRecord> AiTaskRunner::ListAlerts() const {
-    return state_->alert_images.List();
+    return state_->alert_output.ListImages();
 }
 
 std::string AiTaskRunner::ReadAlertImage(const std::string &id) const {
-    return state_->alert_images.ReadImage(id);
+    return state_->alert_output.ReadImage(id);
 }
 
 }  // namespace live_stream
