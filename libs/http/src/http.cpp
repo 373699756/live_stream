@@ -196,9 +196,15 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_.reset();
     auth_ = dependencies.auth;
     logger_ = dependencies.logger;
-    server_->SetCloseCallback([media_streams =
-                                   dependencies.media_streams](
-                                  const HttpMediaClientHandle &client) {
+    ConfigureCloseCallback(dependencies.media_streams);
+    InitializeControlHandlers(dependencies);
+    InitializeMediaHandlers(dependencies);
+    InitializeStreamingHandler(dependencies);
+    RegisterRoutes();
+}
+
+void HttpImpl::ConfigureCloseCallback(MediaStreams *media_streams) {
+    server_->SetCloseCallback([media_streams](const HttpMediaClientHandle &client) {
         if (client.type == HttpMediaClientType::kFlv &&
             media_streams != nullptr && client.id != 0) {
             (void)media_streams->DetachFlvClient(client.id);
@@ -212,7 +218,10 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
             client.event_subscription->Cancel();
         }
     });
+}
 
+void HttpImpl::InitializeControlHandlers(
+    const HttpDependencies &dependencies) {
     const AuthHandlerDependencies auth_handler_dependencies = {
         this, dependencies.auth};
     const ConfigHandlerDependencies config_handler_dependencies = {
@@ -246,14 +255,6 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     };
     const AlarmHandlerDependencies alarm_handler_dependencies = {
         this, dependencies.alarm};
-    const MediaHandlerDependencies media_handler_dependencies = {
-        this,
-        dependencies.config,
-        dependencies.device,
-        dependencies.media_streams,
-        dependencies.rtsp_session_reader,
-        dependencies.webrtc_status_reader,
-        this};
     const AiHandlerDependencies ai_handler_dependencies = {
         this, dependencies.config, dependencies.ai, dependencies.device};
     const SnapshotHandlerDependencies snapshot_handler_dependencies = {
@@ -267,9 +268,22 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     handlers_.push_back(MakeUpgradeHandler(upgrade_handler_dependencies));
     handlers_.push_back(MakeSystemHandler(system_handler_dependencies));
     handlers_.push_back(MakeAlarmHandler(alarm_handler_dependencies));
-    handlers_.push_back(MakeMediaHandler(media_handler_dependencies));
     handlers_.push_back(MakeAiHandler(ai_handler_dependencies));
     handlers_.push_back(MakeSnapshotHandler(snapshot_handler_dependencies));
+}
+
+void HttpImpl::InitializeMediaHandlers(
+    const HttpDependencies &dependencies) {
+    const MediaHandlerDependencies media_handler_dependencies = {
+        this,
+        dependencies.config,
+        dependencies.device,
+        dependencies.media_streams,
+        dependencies.rtsp_session_reader,
+        dependencies.webrtc_status_reader,
+        this};
+    handlers_.push_back(MakeMediaHandler(media_handler_dependencies));
+
     HttpMediaHandlerDependencies http_media_handler_dependencies;
     http_media_handler_dependencies.access = this;
     http_media_handler_dependencies.device = dependencies.device;
@@ -283,6 +297,10 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         handlers_.push_back(
             CreateHttpHandler(kind, http_media_handler_dependencies));
     }
+}
+
+void HttpImpl::InitializeStreamingHandler(
+    const HttpDependencies &dependencies) {
     StreamingHttpHandlerDependencies streaming_handler_dependencies;
     streaming_handler_dependencies.access = this;
     streaming_handler_dependencies.writer = server_.get();
@@ -291,7 +309,9 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_dependencies.event = dependencies.event;
     streaming_handler_ = CreateStreamingHttpHandler(
         streaming_handler_dependencies);
+}
 
+void HttpImpl::RegisterRoutes() {
     for (const std::unique_ptr<IHttpHandler> &handler : handlers_) {
         if (handler != nullptr) {
             handler->RegisterRoutes(router_);

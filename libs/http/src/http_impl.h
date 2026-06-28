@@ -61,6 +61,11 @@ private:
     void IncrementPermissionDenied() override;
 
     void InitializeHandlers(const HttpDependencies &dependencies);
+    void ConfigureCloseCallback(MediaStreams *media_streams);
+    void InitializeControlHandlers(const HttpDependencies &dependencies);
+    void InitializeMediaHandlers(const HttpDependencies &dependencies);
+    void InitializeStreamingHandler(const HttpDependencies &dependencies);
+    void RegisterRoutes();
     void StopInternal();
     void ReleaseInternal();
     void IncrementNotFound();
