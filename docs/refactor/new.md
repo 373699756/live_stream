@@ -55,6 +55,9 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 - `HttpDependencies`、`SystemOverviewSources` 仍是宽依赖包。
 - `HttpServerDependencies` 已收敛到 `net_io/net_loop`，但 `HttpDependencies`
   仍作为组合根注入包存在于 `HttpImpl` 构造边界。
+- `HttpImpl::InitializeHandlers()` 已拆成 close callback、control handlers、
+  media handlers、streaming handler 和 route registration 五个步骤，但
+  `HttpDependencies` 本身仍未切成更窄的公开角色包。
 - `FlvVideoTagBuild` / `MediaFlvVideoTagView` 仍含较大固定数组，需要减少栈上复制。
 - 进程日志 `infra::Log` 仍用全局宏和文件内静态状态；这是 process log 的独立设计债，
   不是审计 logger 问题。
