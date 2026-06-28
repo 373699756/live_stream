@@ -34,9 +34,9 @@ constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 constexpr const char* kSystemUpgradeRuntimePath = "/tmp/live_stream/upgrade";
 constexpr const char* kSystemUpgradeStagePath =
     "/tmp/live_stream/upgrade/staged";
-constexpr const char* kSystemUpgradeHelperSourcePath =
+constexpr const char* kSysupgradeToolSourcePath =
     "/opt/app/sbin/live_sysupgrade";
-constexpr const char* kSystemUpgradeHelperPath =
+constexpr const char* kSysupgradeToolPath =
     "/tmp/live_stream/upgrade/live_sysupgrade";
 constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
 constexpr uint32_t kUpgradeLogRotateFiles = 1;
@@ -280,7 +280,7 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
     return true;
 }
 
-bool PackageNeedsSystemUpgradeHelper(const UpgradeManifest& manifest) {
+bool PackageNeedsSysupgradeTool(const UpgradeManifest& manifest) {
     for (const UpgradeCommand& command : manifest.commands) {
         if (command.partition != "web") {
             return true;
@@ -311,7 +311,7 @@ bool CopyFileNoSymlink(const std::string& source_path,
     if (lstat(source_path.c_str(), &source_stat) != 0 ||
         S_ISLNK(source_stat.st_mode) || !S_ISREG(source_stat.st_mode)) {
         if (reason != nullptr) {
-            *reason = "system upgrade helper is not a regular file";
+            *reason = "sysupgrade tool is not a regular file";
         }
         return false;
     }
@@ -319,7 +319,7 @@ bool CopyFileNoSymlink(const std::string& source_path,
     const int source_fd = open(source_path.c_str(), O_RDONLY | O_NOFOLLOW);
     if (source_fd < 0) {
         if (reason != nullptr) {
-            *reason = "open system upgrade helper failed";
+            *reason = "open sysupgrade tool failed";
         }
         return false;
     }
@@ -330,7 +330,7 @@ bool CopyFileNoSymlink(const std::string& source_path,
     if (output_fd < 0) {
         close(source_fd);
         if (reason != nullptr) {
-            *reason = "create tmpfs system upgrade helper failed";
+            *reason = "create tmpfs sysupgrade tool failed";
         }
         return false;
     }
@@ -373,14 +373,14 @@ bool CopyFileNoSymlink(const std::string& source_path,
     if (!ok) {
         static_cast<void>(infra::File::Remove(output_path));
         if (reason != nullptr) {
-            *reason = "copy system upgrade helper failed";
+            *reason = "copy sysupgrade tool failed";
         }
         return false;
     }
     return true;
 }
 
-bool PrepareSystemUpgradeHelper(std::string* reason) {
+bool PrepareSysupgradeTool(std::string* reason) {
     if (!infra::Path::MakeDirs(kSystemUpgradeRuntimePath) ||
         !infra::Path::MakeDirs(kSystemUpgradeStagePath)) {
         if (reason != nullptr) {
@@ -395,37 +395,37 @@ bool PrepareSystemUpgradeHelper(std::string* reason) {
         }
         return false;
     }
-    return CopyFileNoSymlink(kSystemUpgradeHelperSourcePath,
-                             kSystemUpgradeHelperPath, 0755, reason);
+    return CopyFileNoSymlink(kSysupgradeToolSourcePath, kSysupgradeToolPath,
+                             0755, reason);
 }
 
-bool StartSystemUpgradeHelper(const std::string& package_path,
-                              bool reboot,
-                              std::string* reason) {
-    if (!PrepareSystemUpgradeHelper(reason)) {
+bool StartSysupgradeTool(const std::string& package_path,
+                         bool reboot,
+                         std::string* reason) {
+    if (!PrepareSysupgradeTool(reason)) {
         return false;
     }
     const pid_t pid = fork();
     if (pid < 0) {
         if (reason != nullptr) {
-            *reason = "fork system upgrade helper failed";
+            *reason = "fork sysupgrade tool failed";
         }
         return false;
     }
     if (pid == 0) {
         if (reboot) {
-            execl(kSystemUpgradeHelperPath, kSystemUpgradeHelperPath,
+            execl(kSysupgradeToolPath, kSysupgradeToolPath,
                   "--package", package_path.c_str(), "--stage",
                   kSystemUpgradeStagePath, "--reboot",
                   static_cast<char*>(nullptr));
         } else {
-            execl(kSystemUpgradeHelperPath, kSystemUpgradeHelperPath,
+            execl(kSysupgradeToolPath, kSysupgradeToolPath,
                   "--package", package_path.c_str(), "--stage",
                   kSystemUpgradeStagePath, static_cast<char*>(nullptr));
         }
         _exit(127);
     }
-    AppendUpgradeLog("system upgrade helper started");
+    AppendUpgradeLog("sysupgrade tool started");
     return true;
 }
 
@@ -500,8 +500,8 @@ public:
             AppendUpgradeLog("prepare failed: msg=upgrade workspace must be tmpfs");
             return false;
         }
-        if (PackageNeedsSystemUpgradeHelper(parsed.manifest) &&
-            !PrepareSystemUpgradeHelper(&reason)) {
+        if (PackageNeedsSysupgradeTool(parsed.manifest) &&
+            !PrepareSysupgradeTool(&reason)) {
             last_error_ = reason;
             AppendUpgradeLog("prepare failed: msg=" + reason);
             WriteUpgradeInfo("failed", 100, false, info.version, reason);
@@ -539,17 +539,17 @@ public:
             return false;
         }
         std::string reason;
-        if (PackageNeedsSystemUpgradeHelper(cached_package_.manifest)) {
-            AppendUpgradeLog("helper handoff begin: package=" + package_path +
-                             " reboot=" +
-                             (cached_package_.requires_reboot ? "true" : "false") +
-                             " " +
-                             UpgradeManifestSummary(cached_package_.manifest));
-            if (!StartSystemUpgradeHelper(package_path,
-                                          cached_package_.requires_reboot,
-                                          &reason)) {
+        if (PackageNeedsSysupgradeTool(cached_package_.manifest)) {
+            AppendUpgradeLog(
+                "sysupgrade tool handoff begin: package=" + package_path +
+                " reboot=" +
+                (cached_package_.requires_reboot ? "true" : "false") + " " +
+                UpgradeManifestSummary(cached_package_.manifest));
+            if (!StartSysupgradeTool(package_path,
+                                     cached_package_.requires_reboot,
+                                     &reason)) {
                 last_error_ = reason;
-                AppendUpgradeLog("helper start failed: msg=" + reason);
+                AppendUpgradeLog("sysupgrade tool start failed: msg=" + reason);
                 WriteUpgradeInfo("failed", 100, false,
                                  cached_package_.manifest.version, reason);
                 return false;
@@ -608,7 +608,7 @@ public:
                          100, true, info.version, "");
         AppendUpgradeLog(UpgradePackageIsWebOnly(cached_package_.manifest)
                              ? "web upgrade completed: " + info.version
-                             : "system upgrade handed to helper: " +
+                             : "system upgrade handed to sysupgrade tool: " +
                                    info.version);
         CleanupStageDir();
         return true;

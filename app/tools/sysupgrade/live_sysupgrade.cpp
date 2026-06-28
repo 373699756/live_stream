@@ -26,7 +26,7 @@ constexpr const char* kDefaultStagePath = "/tmp/live_stream/upgrade/staged";
 constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
 constexpr uint32_t kUpgradeLogRotateFiles = 1;
 
-struct HelperOptions {
+struct SysupgradeOptions {
     std::string package_path;
     std::string stage_dir = kDefaultStagePath;
     bool reboot = false;
@@ -96,11 +96,11 @@ void Usage() {
         "[--reboot]");
 }
 
-bool ParseArgs(int argc, char** argv, HelperOptions* options) {
+bool ParseArgs(int argc, char** argv, SysupgradeOptions* options) {
     if (options == nullptr) {
         return false;
     }
-    HelperOptions parsed;
+    SysupgradeOptions parsed;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--package" && i + 1 < argc) {
@@ -208,7 +208,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
 }
 
 int Run(int argc, char** argv) {
-    HelperOptions options;
+    SysupgradeOptions options;
     if (!ParseArgs(argc, argv, &options)) {
         Usage();
         return 2;
@@ -217,23 +217,23 @@ int Run(int argc, char** argv) {
     ParsedUpgradePackage package;
     std::string reason;
     if (!ParseUpgradePackage(options.package_path, &package, &reason)) {
-        AppendUpgradeLog("helper validate failed: msg=" + reason);
+        AppendUpgradeLog("sysupgrade validate failed: msg=" + reason);
         WriteUpgradeInfo("failed", 100, false, "", reason);
         return 1;
     }
 
-    AppendUpgradeLog("helper started: " + package.manifest.version);
+    AppendUpgradeLog("sysupgrade started: " + package.manifest.version);
     WriteUpgradeInfo("preparing", 5, true, package.manifest.version, "");
 
     if (!ApplyPackage(package, options.stage_dir, &reason)) {
-        AppendUpgradeLog("helper failed: msg=" + reason);
+        AppendUpgradeLog("sysupgrade failed: msg=" + reason);
         WriteUpgradeInfo("failed", 100, false, package.manifest.version,
                          reason);
         sync();
         return 1;
     }
 
-    AppendUpgradeLog("helper completed: " + package.manifest.version);
+    AppendUpgradeLog("sysupgrade completed: " + package.manifest.version);
     WriteUpgradeInfo("waiting_reboot", 100, true, package.manifest.version, "");
     sync();
     if (options.reboot || package.requires_reboot) {
