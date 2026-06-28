@@ -448,8 +448,8 @@ private:
     }
 
     void Release() {
-        CloseServiceCallbacks();
-        WaitServiceCallbacks();
+        CloseCallbacks();
+        WaitCallbacks();
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         std::vector<ClosingSubscription> closing_subscriptions;
         {
@@ -469,11 +469,11 @@ private:
         }
     }
 
-    void CloseServiceCallbacks() {
+    void CloseCallbacks() {
         CloseWebrtcCallbacks(callback_guard_.get());
     }
 
-    void WaitServiceCallbacks() {
+    void WaitCallbacks() {
         WaitWebrtcCallbacks(callback_guard_.get());
     }
 

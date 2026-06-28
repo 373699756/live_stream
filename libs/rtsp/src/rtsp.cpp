@@ -21,7 +21,7 @@
 namespace live_stream {
 namespace {
 
-constexpr const char* kServiceName = "rtsp";
+constexpr const char* kProtocolName = "rtsp";
 constexpr uint32_t kRtspDrainIntervalMs = 10;
 constexpr uint32_t kRtspMaxFramesPerDrain = 8;
 enum class RtspPhase {
@@ -122,7 +122,7 @@ public:
 
         TcpListenOptions tcp_config;
         tcp_config.address = {options_.listen_ip, options_.listen_port};
-        tcp_config.owner_protocol = kServiceName;
+        tcp_config.owner_protocol = kProtocolName;
         tcp_config.max_connections = options_.max_sessions;
         tcp_config.send_queue_capacity = options_.send_queue_capacity;
         tcp_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
@@ -225,7 +225,7 @@ private:
 
 public:
     const char* Name() const {
-        return kServiceName;
+        return kProtocolName;
     }
 
     RtspListenAddress LocalAddress() const override {
@@ -737,7 +737,7 @@ private:
         }
         event::Event rtsp_event;
         rtsp_event.type = type;
-        rtsp_event.source = kServiceName;
+        rtsp_event.source = kProtocolName;
         rtsp_event.target = target;
         rtsp_event.value = static_cast<int32_t>(active_sessions);
         (void)event_->Publish(rtsp_event);
@@ -909,7 +909,7 @@ std::unique_ptr<IRtsp> CreateRtsp(
 }
 
 const char* Rtsp::Name() {
-    return kServiceName;
+    return kProtocolName;
 }
 
 }  // namespace live_stream

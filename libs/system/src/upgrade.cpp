@@ -15,7 +15,7 @@
 namespace live_stream {
 namespace {
 
-const char* kServiceName = "upgrade";
+const char* kModuleName = "upgrade";
 constexpr const char* kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
 
 bool IsTerminalState(UpgradeState state) {
@@ -701,7 +701,7 @@ private:
         UpgradeInfo upgrade_info = GetUpgradeInfo();
         event::Event progress_event;
         progress_event.type = event::EventType::kUpgradeProgressChanged;
-        progress_event.source = kServiceName;
+        progress_event.source = kModuleName;
         progress_event.message = upgrade_info.current_stage;
         progress_event.value =
             static_cast<int32_t>(upgrade_info.progress_percent);
@@ -722,7 +722,7 @@ private:
         record.user_name = context.user_name;
         record.session_id = context.session_id;
         record.client_ip = context.client_ip;
-        record.module = kServiceName;
+        record.module = kModuleName;
         record.action = OperationAction::kUpgrade;
         record.target = target;
         record.result = result;
@@ -746,7 +746,7 @@ private:
 }  // namespace
 
 const char* Upgrade::Name() {
-    return kServiceName;
+    return kModuleName;
 }
 
 const char* UpgradeStateToString(UpgradeState state) {
