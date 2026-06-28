@@ -23,7 +23,7 @@ struct VencChannelInfo {
     int fd = -1;
 };
 
-// Full definition of MppHisiSdk state shared across implementation files.
+// Full definition of MppHisiSdk runtime info shared across implementation files.
 struct MppHisiSdkImpl {
     MediaPipelineConfig active_config_;
     bool has_active_config_ = false;
