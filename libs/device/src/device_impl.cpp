@@ -9,6 +9,7 @@
 #include "media_channels.h"
 #include "media_config_codec.h"
 #include "media_pipeline.h"
+#include "pipeline_update.h"
 #include "sdk_defaults.h"
 
 #include <mutex>
@@ -52,6 +53,7 @@ public:
         capabilities_ = pipeline_.GetCapabilities();
         pipeline_.SetFrameCallback(&DeviceImpl::OnPipelineFrame, this);
         features_.reset(new DeviceFeatures(options_, active_channels_));
+        pipeline_update_.reset(new PipelineUpdate(pipeline_, *features_));
         image_tuner_.reset(new ImageTuner(
             [this]() { return pipeline_.QueryExposureInfo(); },
             [this](const Json &image_config) {
@@ -96,7 +98,6 @@ private:
     ConfigCode CheckImageForPipelineLocked(
         const MediaPipelineConfig &pipeline_config,
         ConfigError *error) const;
-    bool ApplyImageToPipeline(const Json &value);
     bool ApplyPipelineConfig(const MediaPipelineConfig &config);
 
     DeviceMediaOptions options_;
@@ -107,6 +108,7 @@ private:
     DevicePhase phase_ = DevicePhase::kCreated;
     FrameSink *frame_sink_ = nullptr;
     std::unique_ptr<DeviceFeatures> features_;
+    std::unique_ptr<PipelineUpdate> pipeline_update_;
     std::unique_ptr<ImageTuner> image_tuner_;
     ConfigScopes config_scopes_;
     mutable std::mutex mutex_;
@@ -408,14 +410,6 @@ ConfigCode DeviceImpl::CheckImageForPipelineLocked(
                              pipeline_config, error);
 }
 
-bool DeviceImpl::ApplyImageToPipeline(
-    const Json &value) {
-    if (!value.is_object() || value.empty()) {
-        return true;
-    }
-    return pipeline_.ApplyImageConfig(value);
-}
-
 bool DeviceImpl::ApplyPipelineConfig(
     const MediaPipelineConfig &config) {
     bool is_started = false;
@@ -442,83 +436,19 @@ bool DeviceImpl::ApplyPipelineConfig(
         features_->Stop();
     }
 
-    bool applied = false;
-    bool restored = false;
+    PipelineUpdateResult update_result;
     {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
-        if (is_started) {
-            pipeline_.Stop();
-        }
-        bool deinit_ok = true;
-        if (has_system) {
-            deinit_ok = pipeline_.DeinitSystem();
-        }
-
-        if (!deinit_ok) {
-            applied = false;
-        } else {
-            pipeline_.SetConfig(config);
-            const MediaChannels next_channels = BuildChannelsForConfig(config);
-
-            applied = true;
-            if (has_system && !pipeline_.InitSystem()) {
-                applied = false;
-            } else if (!features_->Bind(next_channels)) {
-                applied = false;
-            } else if (is_started && !pipeline_.Start()) {
-                applied = false;
-            } else if (is_started &&
-                       !ApplyImageToPipeline(prev_image_config)) {
-                applied = false;
-            } else if (is_started && !features_->Start()) {
-                applied = false;
-            }
-        }
-
-        if (!applied && deinit_ok &&
-            (is_started || has_system)) {
-            features_->Stop();
-            pipeline_.Stop();
-            if (has_system) {
-                (void)pipeline_.DeinitSystem();
-            }
-            pipeline_.SetConfig(prev_config);
-            const MediaChannels prev_channels =
-                BuildChannelsForConfig(prev_config);
-            bool restore_ok = true;
-            if (has_system && !pipeline_.InitSystem()) {
-                restore_ok = false;
-            }
-            if (restore_ok && !features_->Bind(prev_channels)) {
-                restore_ok = false;
-            }
-            if (restore_ok && is_started && !pipeline_.Start()) {
-                restore_ok = false;
-            }
-            if (restore_ok && is_started &&
-                !ApplyImageToPipeline(prev_image_config)) {
-                restore_ok = false;
-            }
-            if (restore_ok && is_started && !features_->Start()) {
-                restore_ok = false;
-            }
-            if (!restore_ok) {
-                features_->Stop();
-                pipeline_.Stop();
-                if (has_system) {
-                    (void)pipeline_.DeinitSystem();
-                }
-                Error("device",
-                      "restore media pipeline after config failure failed");
-            } else {
-                Error("device",
-                      "media config apply failed, restored previous pipeline");
-            }
-            restored = restore_ok;
-        }
+        PipelineUpdateRequest request;
+        request.next_config = config;
+        request.prev_config = prev_config;
+        request.prev_image_config = prev_image_config;
+        request.is_started = is_started;
+        request.has_system = has_system;
+        update_result = pipeline_update_->Apply(request);
     }
 
-    if (applied) {
+    if (update_result.applied) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
             active_config_ = config;
@@ -535,7 +465,7 @@ bool DeviceImpl::ApplyPipelineConfig(
 
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (restored) {
+        if (update_result.restored) {
             active_config_ = prev_config;
             active_channels_ = BuildChannelsForConfig(active_config_);
             system_initialized_ = has_system;
@@ -604,7 +534,8 @@ bool DeviceImpl::Start() {
             rollback_started_pipeline();
             return mark_start_failed();
         }
-        if (!ApplyImageToPipeline(prev_image_config)) {
+        if (prev_image_config.is_object() && !prev_image_config.empty() &&
+            !pipeline_.ApplyImageConfig(prev_image_config)) {
             rollback_started_pipeline();
             return mark_start_failed();
         }
