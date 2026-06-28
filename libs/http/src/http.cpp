@@ -206,10 +206,10 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         dependencies.upgrade,
         dependencies.system,
         dependencies.rtsp_session_reader,
-        dependencies.onvif_status_reader,
+        dependencies.onvif_reader,
         dependencies.ai,
         dependencies.device,
-        dependencies.webrtc_status_reader,
+        dependencies.webrtc_reader,
         dependencies.media_streams,
     };
     const HttpMediaDependencies media_dependencies = {
@@ -217,7 +217,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         dependencies.device,
         dependencies.media_streams,
         dependencies.rtsp_session_reader,
-        dependencies.webrtc_status_reader,
+        dependencies.webrtc_reader,
         dependencies.webrtc,
     };
     const HttpStreamingDependencies streaming_dependencies = {
@@ -272,10 +272,10 @@ void HttpImpl::InitializeControlHandlers(
           dependencies.alarm,
           dependencies.upgrade,
           dependencies.rtsp_session_reader,
-          dependencies.onvif_status_reader,
+          dependencies.onvif_reader,
           dependencies.device,
           dependencies.ai,
-          dependencies.webrtc_status_reader,
+          dependencies.webrtc_reader,
           dependencies.media_streams}}));
     handlers_.push_back(MakeAlarmHandler({this, dependencies.alarm}));
     handlers_.push_back(
@@ -291,7 +291,7 @@ void HttpImpl::InitializeMediaHandlers(
         MakeMediaHandler({this, dependencies.config, dependencies.device,
                           dependencies.media_streams,
                           dependencies.rtsp_session_reader,
-                          dependencies.webrtc_status_reader, this}));
+                          dependencies.webrtc_reader, this}));
     const HttpMediaHandlerDependencies http_media_handler_dependencies = {
         this, dependencies.device, dependencies.media_streams,
         dependencies.webrtc};

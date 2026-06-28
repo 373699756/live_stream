@@ -18,11 +18,11 @@ class ITime;
 class IUpgrade;
 class ISystem;
 class IRtspSessionReader;
-class IOnvifStatusReader;
+class IOnvifReader;
 class DeviceMedia;
 class IAiReader;
 class IWebrtc;
-class IWebrtcStatusReader;
+class IWebrtcReader;
 class IHttp;
 
 struct AuthHandlerDependencies {
@@ -69,10 +69,10 @@ struct SystemOverviewSources {
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IOnvifReader *onvif_reader = nullptr;
     DeviceMedia *device = nullptr;
     IAiReader *ai = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     MediaStreams *media_streams = nullptr;
 };
 
@@ -88,7 +88,7 @@ struct MediaHandlerDependencies {
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     IHttp *http = nullptr;
 };
 

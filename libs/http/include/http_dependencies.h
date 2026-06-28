@@ -13,13 +13,13 @@ class IConfig;
 class ILogger;
 class IAlarm;
 class INetwork;
-class IOnvifStatusReader;
+class IOnvifReader;
 class IRtspSessionReader;
 class ISystem;
 class ITime;
 class IUpgrade;
 class IWebrtc;
-class IWebrtcStatusReader;
+class IWebrtcReader;
 class DeviceMedia;
 class IAiReader;
 
@@ -35,11 +35,11 @@ struct HttpDependencies {
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IOnvifReader *onvif_reader = nullptr;
     IAiReader *ai = nullptr;
     DeviceMedia *device = nullptr;
     IWebrtc *webrtc = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     MediaStreams *media_streams = nullptr;
     event::Dispatcher *event = nullptr;
 };
@@ -54,10 +54,10 @@ struct HttpControlDependencies {
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IOnvifReader *onvif_reader = nullptr;
     IAiReader *ai = nullptr;
     DeviceMedia *device = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     MediaStreams *media_streams = nullptr;
 };
 
@@ -66,7 +66,7 @@ struct HttpMediaDependencies {
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     IWebrtc *webrtc = nullptr;
 };
 

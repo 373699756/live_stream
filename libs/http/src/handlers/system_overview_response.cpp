@@ -97,8 +97,8 @@ Json BuildSystemOverviewJson(ISystem *system,
               sources.rtsp_session_reader != nullptr &&
                   sources.rtsp_session_reader->LocalAddress().port != 0);
     AddModule(&modules, "onvif",
-              sources.onvif_status_reader != nullptr &&
-                  sources.onvif_status_reader->IsStarted());
+              sources.onvif_reader != nullptr &&
+                  sources.onvif_reader->IsStarted());
     AddModule(&modules, "http", true);
     AddModule(&modules, "device",
               sources.device != nullptr && sources.device->IsStarted());
@@ -112,8 +112,8 @@ Json BuildSystemOverviewJson(ISystem *system,
     AddModule(&modules, "snapshot",
               sources.device != nullptr && snapshot_info.enabled);
     bool webrtc_running = false;
-    if (sources.webrtc_status_reader != nullptr) {
-        const WebrtcStats stats = sources.webrtc_status_reader->GetStats();
+    if (sources.webrtc_reader != nullptr) {
+        const WebrtcStats stats = sources.webrtc_reader->GetStats();
         webrtc_running = stats.enabled && stats.signaling_ready;
     }
     AddModule(&modules, "webrtc", webrtc_running);
