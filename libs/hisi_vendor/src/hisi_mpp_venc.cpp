@@ -23,18 +23,18 @@ using venc_internal::VencStreamCapture;
 // ====================================================================
 bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::mutex> lock(impl_->control_mutex_);
-    const bool need_sub_stream = config.sub_stream.enabled;
-    const bool all_required_channels_created =
+    const bool sub_stream_enabled = config.sub_stream.enabled;
+    const bool venc_channels_ready =
         VencChannelControl::Matches(impl_->main_venc_, config.venc_channel,
                                     config.vpss_group, config.vpss_channel,
                                     config.main_stream) &&
-        (need_sub_stream
+        (sub_stream_enabled
              ? VencChannelControl::Matches(
                    impl_->sub_venc_, config.sub_venc_channel,
                    config.vpss_group, config.sub_vpss_channel,
                    config.sub_stream)
              : !VencChannelControl::IsCreated(impl_->sub_venc_));
-    if (all_required_channels_created) {
+    if (venc_channels_ready) {
         return true;
     }
     if (VencChannelControl::IsCreated(impl_->main_venc_) ||
@@ -70,7 +70,7 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
         return false;
     }
 
-    if (need_sub_stream) {
+    if (sub_stream_enabled) {
         VencChannelControl::Init(impl_->sub_venc_, StreamId::kSub,
                                  config.sub_venc_channel, config.vpss_group,
                                  config.sub_vpss_channel,
@@ -131,17 +131,17 @@ void MppHisiSdk::StopVenc(const MediaPipelineConfig& config) {
 // ====================================================================
 bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     std::lock_guard<std::mutex> lock(impl_->control_mutex_);
-    const bool need_sub_stream = config.sub_stream.enabled;
-    const bool all_required_channels_bound =
+    const bool sub_stream_enabled = config.sub_stream.enabled;
+    const bool venc_channels_bound =
         VencChannelControl::IsBoundToVpss(impl_->main_venc_) &&
-        (need_sub_stream
+        (sub_stream_enabled
              ? VencChannelControl::IsBoundToVpss(impl_->sub_venc_)
              : !VencChannelControl::IsBoundToVpss(impl_->sub_venc_));
-    if (all_required_channels_bound) {
+    if (venc_channels_bound) {
         return true;
     }
     if (!VencChannelControl::IsCreated(impl_->main_venc_) ||
-        (need_sub_stream &&
+        (sub_stream_enabled &&
          !VencChannelControl::IsCreated(impl_->sub_venc_))) {
         Error("hisi_vendor", "bind VPSS to VENC before VENC is created");
         return false;
@@ -161,7 +161,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
         return false;
     }
 
-    if (need_sub_stream) {
+    if (sub_stream_enabled) {
         if (!VencChannelControl::BindToVpss(impl_->sub_venc_)) {
             VencChannelControl::UnbindFromVpss(impl_->main_venc_);
             Error("hisi_vendor",
@@ -180,7 +180,7 @@ bool MppHisiSdk::BindVpssVenc(const MediaPipelineConfig& config) {
     }
 
     (void)VencChannelControl::RequestIdr(impl_->main_venc_);
-    if (need_sub_stream) {
+    if (sub_stream_enabled) {
         (void)VencChannelControl::RequestIdr(impl_->sub_venc_);
     }
 
