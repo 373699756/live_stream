@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_HTTP_SRC_HTTP_AI_STATUS_H_
-#define LIVE_STREAM_HTTP_SRC_HTTP_AI_STATUS_H_
+#ifndef LIVE_STREAM_HTTP_SRC_HTTP_AI_HEALTH_H_
+#define LIVE_STREAM_HTTP_SRC_HTTP_AI_HEALTH_H_
 
 namespace live_stream {
 
@@ -11,4 +11,4 @@ bool IsAiHealthy(const IAiReader *ai);
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_HTTP_SRC_HTTP_AI_STATUS_H_
+#endif  // LIVE_STREAM_HTTP_SRC_HTTP_AI_HEALTH_H_

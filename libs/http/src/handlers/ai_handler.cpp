@@ -1,6 +1,6 @@
 #include "handlers/http_handlers.h"
 
-#include "http_ai_status.h"
+#include "http_ai_health.h"
 #include "http_auth_gate.h"
 #include "http_path.h"
 #include "http_response.h"

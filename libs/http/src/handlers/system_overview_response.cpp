@@ -1,6 +1,6 @@
 #include "handlers/system_overview_response.h"
 
-#include "http_ai_status.h"
+#include "http_ai_health.h"
 
 #include "alarm.h"
 #include "auth.h"
