@@ -33,150 +33,6 @@ const char *StaticStatusText(StaticFileStatus status) {
     return "unknown";
 }
 
-AuthHandlerDependencies BuildAuthHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.auth};
-}
-
-ConfigHandlerDependencies BuildConfigHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.config};
-}
-
-OperationsHandlerDependencies BuildOperationsHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.logger};
-}
-
-NetworkHandlerDependencies BuildNetworkHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.network};
-}
-
-TimeHandlerDependencies BuildTimeHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.time};
-}
-
-UpgradeHandlerDependencies BuildUpgradeHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.upgrade};
-}
-
-SystemOverviewSources BuildSystemOverviewSources(
-    const HttpControlDependencies &dependencies) {
-    SystemOverviewSources sources;
-    sources.logger = dependencies.logger;
-    sources.config = dependencies.config;
-    sources.auth = dependencies.auth;
-    sources.time = dependencies.time;
-    sources.network = dependencies.network;
-    sources.alarm = dependencies.alarm;
-    sources.upgrade = dependencies.upgrade;
-    sources.rtsp_session_reader = dependencies.rtsp_session_reader;
-    sources.onvif_status_reader = dependencies.onvif_status_reader;
-    sources.device = dependencies.device;
-    sources.ai = dependencies.ai;
-    sources.webrtc_status_reader = dependencies.webrtc_status_reader;
-    sources.media_streams = dependencies.media_streams;
-    return sources;
-}
-
-SystemHandlerDependencies BuildSystemHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.system, BuildSystemOverviewSources(dependencies)};
-}
-
-AlarmHandlerDependencies BuildAlarmHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.alarm};
-}
-
-MediaHandlerDependencies BuildMediaHandlerDependencies(
-    HttpAccess *access, IHttp *http,
-    const HttpMediaDependencies &dependencies) {
-    return {access,
-            dependencies.config,
-            dependencies.device,
-            dependencies.media_streams,
-            dependencies.rtsp_session_reader,
-            dependencies.webrtc_status_reader,
-            http};
-}
-
-AiHandlerDependencies BuildAiHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.config, dependencies.ai, dependencies.device};
-}
-
-SnapshotHandlerDependencies BuildSnapshotHandlerDependencies(
-    HttpAccess *access, const HttpControlDependencies &dependencies) {
-    return {access, dependencies.device};
-}
-
-HttpControlDependencies BuildHttpControlDependencies(
-    const HttpDependencies &dependencies) {
-    HttpControlDependencies result;
-    result.auth = dependencies.auth;
-    result.logger = dependencies.logger;
-    result.config = dependencies.config;
-    result.network = dependencies.network;
-    result.time = dependencies.time;
-    result.alarm = dependencies.alarm;
-    result.upgrade = dependencies.upgrade;
-    result.system = dependencies.system;
-    result.rtsp_session_reader = dependencies.rtsp_session_reader;
-    result.onvif_status_reader = dependencies.onvif_status_reader;
-    result.ai = dependencies.ai;
-    result.device = dependencies.device;
-    result.webrtc_status_reader = dependencies.webrtc_status_reader;
-    result.media_streams = dependencies.media_streams;
-    return result;
-}
-
-HttpMediaDependencies BuildHttpMediaDependencies(
-    const HttpDependencies &dependencies) {
-    HttpMediaDependencies result;
-    result.config = dependencies.config;
-    result.device = dependencies.device;
-    result.media_streams = dependencies.media_streams;
-    result.rtsp_session_reader = dependencies.rtsp_session_reader;
-    result.webrtc_status_reader = dependencies.webrtc_status_reader;
-    result.webrtc = dependencies.webrtc;
-    return result;
-}
-
-HttpStreamingDependencies BuildHttpStreamingDependencies(
-    const HttpDependencies &dependencies) {
-    HttpStreamingDependencies result;
-    result.device = dependencies.device;
-    result.media_streams = dependencies.media_streams;
-    result.event = dependencies.event;
-    return result;
-}
-
-HttpMediaHandlerDependencies BuildHttpMediaHandlerDependencies(
-    HttpAccess *access, const HttpMediaDependencies &dependencies) {
-    HttpMediaHandlerDependencies result;
-    result.access = access;
-    result.device = dependencies.device;
-    result.media_streams = dependencies.media_streams;
-    result.webrtc = dependencies.webrtc;
-    return result;
-}
-
-StreamingHttpHandlerDependencies BuildStreamingHttpHandlerDependencies(
-    HttpAccess *access, HttpMediaWriter *writer,
-    const HttpStreamingDependencies &dependencies) {
-    StreamingHttpHandlerDependencies result;
-    result.access = access;
-    result.writer = writer;
-    result.device = dependencies.device;
-    result.media_streams = dependencies.media_streams;
-    result.event = dependencies.event;
-    return result;
-}
-
 }  // namespace
 
 HttpImpl::HttpImpl(
@@ -340,12 +196,35 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_.reset();
     auth_ = dependencies.auth;
     logger_ = dependencies.logger;
-    const HttpControlDependencies control_dependencies =
-        BuildHttpControlDependencies(dependencies);
-    const HttpMediaDependencies media_dependencies =
-        BuildHttpMediaDependencies(dependencies);
-    const HttpStreamingDependencies streaming_dependencies =
-        BuildHttpStreamingDependencies(dependencies);
+    const HttpControlDependencies control_dependencies = {
+        dependencies.auth,
+        dependencies.logger,
+        dependencies.config,
+        dependencies.network,
+        dependencies.time,
+        dependencies.alarm,
+        dependencies.upgrade,
+        dependencies.system,
+        dependencies.rtsp_session_reader,
+        dependencies.onvif_status_reader,
+        dependencies.ai,
+        dependencies.device,
+        dependencies.webrtc_status_reader,
+        dependencies.media_streams,
+    };
+    const HttpMediaDependencies media_dependencies = {
+        dependencies.config,
+        dependencies.device,
+        dependencies.media_streams,
+        dependencies.rtsp_session_reader,
+        dependencies.webrtc_status_reader,
+        dependencies.webrtc,
+    };
+    const HttpStreamingDependencies streaming_dependencies = {
+        dependencies.device,
+        dependencies.media_streams,
+        dependencies.event,
+    };
     ConfigureCloseCallback(control_dependencies.media_streams);
     InitializeControlHandlers(control_dependencies);
     InitializeMediaHandlers(media_dependencies);
@@ -373,35 +252,49 @@ void HttpImpl::ConfigureCloseCallback(MediaStreams *media_streams) {
 void HttpImpl::InitializeControlHandlers(
     const HttpControlDependencies &dependencies) {
     handlers_.push_back(
-        MakeAuthHandler(BuildAuthHandlerDependencies(this, dependencies)));
+        MakeAuthHandler({this, dependencies.auth}));
     handlers_.push_back(
-        MakeConfigHandler(BuildConfigHandlerDependencies(this, dependencies)));
-    handlers_.push_back(MakeOperationsHandler(
-        BuildOperationsHandlerDependencies(this, dependencies)));
-    handlers_.push_back(MakeNetworkHandler(
-        BuildNetworkHandlerDependencies(this, dependencies)));
+        MakeConfigHandler({this, dependencies.config}));
     handlers_.push_back(
-        MakeTimeHandler(BuildTimeHandlerDependencies(this, dependencies)));
-    handlers_.push_back(MakeUpgradeHandler(
-        BuildUpgradeHandlerDependencies(this, dependencies)));
+        MakeOperationsHandler({this, dependencies.logger}));
     handlers_.push_back(
-        MakeSystemHandler(BuildSystemHandlerDependencies(this, dependencies)));
+        MakeNetworkHandler({this, dependencies.network}));
+    handlers_.push_back(MakeTimeHandler({this, dependencies.time}));
+    handlers_.push_back(MakeUpgradeHandler({this, dependencies.upgrade}));
+    handlers_.push_back(MakeSystemHandler(
+        {this,
+         dependencies.system,
+         {dependencies.logger,
+          dependencies.config,
+          dependencies.auth,
+          dependencies.time,
+          dependencies.network,
+          dependencies.alarm,
+          dependencies.upgrade,
+          dependencies.rtsp_session_reader,
+          dependencies.onvif_status_reader,
+          dependencies.device,
+          dependencies.ai,
+          dependencies.webrtc_status_reader,
+          dependencies.media_streams}}));
+    handlers_.push_back(MakeAlarmHandler({this, dependencies.alarm}));
     handlers_.push_back(
-        MakeAlarmHandler(BuildAlarmHandlerDependencies(this, dependencies)));
+        MakeAiHandler({this, dependencies.config, dependencies.ai,
+                       dependencies.device}));
     handlers_.push_back(
-        MakeAiHandler(BuildAiHandlerDependencies(this, dependencies)));
-    handlers_.push_back(MakeSnapshotHandler(
-        BuildSnapshotHandlerDependencies(this, dependencies)));
+        MakeSnapshotHandler({this, dependencies.device}));
 }
 
 void HttpImpl::InitializeMediaHandlers(
     const HttpMediaDependencies &dependencies) {
     handlers_.push_back(
-        MakeMediaHandler(
-            BuildMediaHandlerDependencies(this, this, dependencies)));
-
-    const HttpMediaHandlerDependencies http_media_handler_dependencies =
-        BuildHttpMediaHandlerDependencies(this, dependencies);
+        MakeMediaHandler({this, dependencies.config, dependencies.device,
+                          dependencies.media_streams,
+                          dependencies.rtsp_session_reader,
+                          dependencies.webrtc_status_reader, this}));
+    const HttpMediaHandlerDependencies http_media_handler_dependencies = {
+        this, dependencies.device, dependencies.media_streams,
+        dependencies.webrtc};
     const HttpMediaHandlerKind media_handlers[] = {
         HttpMediaHandlerKind::kHls,
         HttpMediaHandlerKind::kWebrtc,
@@ -415,8 +308,8 @@ void HttpImpl::InitializeMediaHandlers(
 void HttpImpl::InitializeStreamingHandler(
     const HttpStreamingDependencies &dependencies) {
     streaming_handler_ = CreateStreamingHttpHandler(
-        BuildStreamingHttpHandlerDependencies(this, server_.get(),
-                                              dependencies));
+        {this, server_.get(), dependencies.device, dependencies.media_streams,
+         dependencies.event});
 }
 
 void HttpImpl::RegisterRoutes() {
