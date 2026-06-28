@@ -6,6 +6,7 @@
 #include "http_response.h"
 
 #include "http_protocol.h"
+#include "infra/log.h"
 #include "infra/fs.h"
 #include "infra/time.h"
 #include "json_reader.h"
@@ -21,6 +22,11 @@ namespace {
 
 constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
 constexpr std::size_t kMaxUpgradeUploadBytes = 32U * 1024U * 1024U;
+constexpr const char *kLogModule = "upgrade";
+
+int64_t ElapsedMs(int64_t started_ms) {
+    return infra::Time::MonotonicMillis() - started_ms;
+}
 
 bool IsSafeUploadNameChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '.' ||
@@ -175,6 +181,7 @@ public:
 
 private:
     HttpResponse HandleUpload(const HttpRequest &request) {
+        const int64_t request_started_ms = infra::Time::MonotonicMillis();
         AuthPrincipal principal;
         HttpResponse auth_response = RequirePermissionResponse(
             access_, request, AuthPermission::kUpgrade, "upgrade",
@@ -188,6 +195,8 @@ private:
         if (request.body.size() > kMaxUpgradeUploadBytes) {
             return StatusResponse(413, "Package too large");
         }
+        Info(kLogModule, "Upgrade upload received bytes=%zu",
+             request.body.size());
         std::string file_name = QueryValue(request, "filename");
         if (file_name.empty()) {
             file_name =
@@ -195,28 +204,46 @@ private:
         }
         const std::string upload_path = UpgradeUploadPath(file_name);
         if (upload_path.empty()) {
+            Warn(kLogModule, "Upgrade upload rejected msg=invalid_filename");
             access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kRejected, "invalid upload filename");
             return StatusResponse(400, "Invalid upload filename");
         }
+        const int64_t write_started_ms = infra::Time::MonotonicMillis();
         if (!WriteUploadFile(upload_path, request.body)) {
+            Warn(kLogModule, "Upgrade upload save failed elapsed_ms=%lld",
+                 static_cast<long long>(ElapsedMs(write_started_ms)));
             access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kFailed, "upload write failed");
             return StatusResponse(500, "Could not save upload");
         }
+        Info(kLogModule, "Upgrade upload saved path=%s elapsed_ms=%lld",
+             upload_path.c_str(),
+             static_cast<long long>(ElapsedMs(write_started_ms)));
 
+        const int64_t validate_started_ms = infra::Time::MonotonicMillis();
         const UpgradePackageInfo info =
             upgrade_->ValidatePackage(upload_path);
         if (info.version.empty()) {
             static_cast<void>(infra::File::Remove(upload_path));
             const std::string msg = UpgradeValidationError(upgrade_);
+            Warn(kLogModule,
+                 "Upgrade upload package validate failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(validate_started_ms)),
+                 msg.c_str());
             access_->RecordOperation(
                 request, principal, OperationAction::kUpgrade, "upgrade",
                 OperationResult::kRejected, msg);
             return StatusResponse(400, msg);
         }
+        Info(kLogModule,
+             "Upgrade upload package validated version=%s elapsed_ms=%lld "
+             "total_ms=%lld",
+             info.version.c_str(),
+             static_cast<long long>(ElapsedMs(validate_started_ms)),
+             static_cast<long long>(ElapsedMs(request_started_ms)));
 
         access_->RecordOperation(request, principal,
                                  OperationAction::kUpgrade, info.version,
@@ -253,14 +280,27 @@ private:
         if (!json_reader::ReadField(body, "package_path", &package_path)) {
             return StatusResponse(400, "Invalid upgrade request");
         }
+        const int64_t validate_started_ms = infra::Time::MonotonicMillis();
+        Info(kLogModule, "Upgrade package validate requested path=%s",
+             package_path.c_str());
         const UpgradePackageInfo info = upgrade_->ValidatePackage(package_path);
         if (info.version.empty()) {
-            return StatusResponse(400, UpgradeValidationError(upgrade_));
+            const std::string msg = UpgradeValidationError(upgrade_);
+            Warn(kLogModule,
+                 "Upgrade package validate failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(validate_started_ms)),
+                 msg.c_str());
+            return StatusResponse(400, msg);
         }
+        Info(kLogModule,
+             "Upgrade package validate completed version=%s elapsed_ms=%lld",
+             info.version.c_str(),
+             static_cast<long long>(ElapsedMs(validate_started_ms)));
         return JsonResponse(200, UpgradePackageInfoToJson(info));
     }
 
     HttpResponse HandleStart(const HttpRequest &request) {
+        const int64_t start_started_ms = infra::Time::MonotonicMillis();
         AuthPrincipal principal;
         HttpResponse auth_response = RequirePermissionResponse(
             access_, request, AuthPermission::kUpgrade, "upgrade",
@@ -276,12 +316,20 @@ private:
         if (!UpgradeRequestFromJson(body, &upgrade_request)) {
             return StatusResponse(400, "Invalid upgrade request");
         }
+        Info(kLogModule, "Upgrade start requested package=%s expected=%s",
+             upgrade_request.package_path.c_str(),
+             upgrade_request.expected_version.c_str());
         if (!upgrade_->StartUpgrade(access_->MakeContext(request, &principal),
                                     upgrade_request)) {
-            return StatusResponse(409, UpgradeActionError(
-                                           upgrade_,
-                                           "Could not start upgrade"));
+            const std::string msg =
+                UpgradeActionError(upgrade_, "Could not start upgrade");
+            Warn(kLogModule, "Upgrade start rejected elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(start_started_ms)),
+                 msg.c_str());
+            return StatusResponse(409, msg);
         }
+        Info(kLogModule, "Upgrade start accepted elapsed_ms=%lld",
+             static_cast<long long>(ElapsedMs(start_started_ms)));
         return JsonResponse(200,
                             UpgradeInfoToJson(upgrade_->GetUpgradeInfo()));
     }

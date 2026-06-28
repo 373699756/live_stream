@@ -284,8 +284,8 @@ def check_envelope_contract() -> list[str]:
     errors: list[str] = []
     http_cpp = (ROOT / "libs" / "http" / "src" / "http.cpp").read_text(
         encoding="utf-8")
-    utils_cpp = (
-        ROOT / "libs" / "http" / "src" / "http_handler_utils.cpp"
+    response_cpp = (
+        ROOT / "libs" / "http" / "src" / "http_response.cpp"
     ).read_text(encoding="utf-8")
     client_ts = (ROOT / "www" / "src" / "api" / "client.ts").read_text(
         encoding="utf-8")
@@ -295,7 +295,7 @@ def check_envelope_contract() -> list[str]:
     if "AddJsonEnvelope" not in http_cpp:
         errors.append("backend request dispatcher does not call AddJsonEnvelope")
     for field in ('"ok"', '"data"', '"error"', '"request_id"'):
-        if field not in utils_cpp:
+        if field not in response_cpp:
             errors.append(f"backend JSON envelope is missing {field}")
     if "unwrapEnvelope" not in client_ts or "hasEnvelopeShape" not in client_ts:
         errors.append("frontend API client does not unwrap JSON envelopes")

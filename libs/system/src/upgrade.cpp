@@ -2,6 +2,7 @@
 
 #include "event.h"
 #include "infra/clamp.h"
+#include "infra/log.h"
 #include "infra/time.h"
 #include "logger.h"
 
@@ -30,6 +31,10 @@ bool IsCancelableState(UpgradeState state) {
 
 OperationResult ToOperationResult(bool ok) {
     return ok ? OperationResult::kSuccess : OperationResult::kFailed;
+}
+
+int64_t ElapsedMs(int64_t started_ms) {
+    return infra::Time::MonotonicMillis() - started_ms;
 }
 
 class RestrictedUpgradePlatform : public IUpgradePlatform {
@@ -206,10 +211,23 @@ public:
             }
             platform = platform_;
         }
+        const int64_t validate_started_ms = infra::Time::MonotonicMillis();
+        Info(kModuleName, "Upgrade package validation started path=%s",
+             checked_package_path.c_str());
         UpgradePackageInfo info = platform->ValidatePackage(checked_package_path);
         if (info.version.empty()) {
-            SetLastError(PlatformErrorMsg(platform, "package validation failed"));
+            const std::string msg =
+                PlatformErrorMsg(platform, "package validation failed");
+            Warn(kModuleName,
+                 "Upgrade package validation failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(validate_started_ms)),
+                 msg.c_str());
+            SetLastError(msg);
         } else {
+            Info(kModuleName,
+                 "Upgrade package validation completed version=%s elapsed_ms=%lld",
+                 info.version.c_str(),
+                 static_cast<long long>(ElapsedMs(validate_started_ms)));
             SetLastError("");
         }
         return info;
@@ -445,12 +463,16 @@ private:
             platform = platform_;
         }
         if (platform == nullptr) {
+            Error(kModuleName, "Upgrade task failed msg=platform_missing");
             SetFailed("platform missing", false);
             RecordAudit(context, request.package_path, OperationResult::kFailed,
                         "platform missing");
             return;
         }
 
+        const int64_t validate_started_ms = infra::Time::MonotonicMillis();
+        Info(kModuleName, "Upgrade task validate started package=%s",
+             request.package_path.c_str());
         UpgradePackageInfo info =
             platform->ValidatePackage(request.package_path);
         if (info.version.empty()) {
@@ -459,12 +481,20 @@ private:
             }
             const std::string msg =
                 PlatformErrorMsg(platform, "package validation failed");
+            Warn(kModuleName,
+                 "Upgrade task validate failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(validate_started_ms)),
+                 msg.c_str());
             CleanupCurrentPackageFile();
             SetFailed(msg, false);
             RecordAudit(context, request.package_path, OperationResult::kFailed,
                         msg);
             return;
         }
+        Info(kModuleName,
+             "Upgrade task validate completed version=%s elapsed_ms=%lld",
+             info.version.c_str(),
+             static_cast<long long>(ElapsedMs(validate_started_ms)));
         if (info.package_path.empty()) {
             info.package_path = request.package_path;
         }
@@ -474,6 +504,8 @@ private:
             if (IsCancelRequested()) {
                 return;
             }
+            Warn(kModuleName, "Upgrade task policy rejected version=%s msg=%s",
+                 info.version.c_str(), policy_msg.c_str());
             CleanupCurrentPackageFile();
             SetFailed(policy_msg, false);
             RecordAudit(context, info.version, OperationResult::kRejected,
@@ -486,12 +518,19 @@ private:
         }
         UpdateTargetVersion(info.version);
         UpdateStatus(UpgradeState::kPreparing, 10, true, "");
+        const int64_t prepare_started_ms = infra::Time::MonotonicMillis();
+        Info(kModuleName, "Upgrade task prepare started version=%s",
+             info.version.c_str());
         if (!platform->PrepareUpgrade(info)) {
             if (IsCancelRequested()) {
                 return;
             }
             const std::string msg =
                 PlatformErrorMsg(platform, "prepare upgrade failed");
+            Warn(kModuleName,
+                 "Upgrade task prepare failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(prepare_started_ms)),
+                 msg.c_str());
             static_cast<void>(platform->CleanupFailedUpgrade());
             CleanupCurrentPackageFile();
             SetFailed(msg, false);
@@ -499,11 +538,16 @@ private:
                         msg);
             return;
         }
+        Info(kModuleName, "Upgrade task prepare completed elapsed_ms=%lld",
+             static_cast<long long>(ElapsedMs(prepare_started_ms)));
 
         if (IsCancelRequested()) {
             return;
         }
         UpdateStatus(UpgradeState::kWriting, 20, true, "");
+        const int64_t write_started_ms = infra::Time::MonotonicMillis();
+        Info(kModuleName, "Upgrade task write started version=%s",
+             info.version.c_str());
         const bool write_ok = platform->WriteUpgrade(
             request.package_path, [this](uint32_t progress_percent) {
                 const uint32_t bounded =
@@ -515,6 +559,10 @@ private:
             if (!IsCancelRequested()) {
                 const std::string msg =
                     PlatformErrorMsg(platform, "write upgrade failed");
+                Warn(kModuleName,
+                     "Upgrade task write failed elapsed_ms=%lld msg=%s",
+                     static_cast<long long>(ElapsedMs(write_started_ms)),
+                     msg.c_str());
                 static_cast<void>(platform->CleanupFailedUpgrade());
                 CleanupCurrentPackageFile();
                 SetFailed(msg, false);
@@ -523,44 +571,70 @@ private:
             }
             return;
         }
+        Info(kModuleName, "Upgrade task write completed elapsed_ms=%lld",
+             static_cast<long long>(ElapsedMs(write_started_ms)));
 
         if (IsCancelRequested()) {
             return;
         }
         UpdateStatus(UpgradeState::kCommitting, 90, true, "");
+        const int64_t commit_started_ms = infra::Time::MonotonicMillis();
+        Info(kModuleName, "Upgrade task commit started version=%s",
+             info.version.c_str());
         if (!platform->CommitUpgrade(info)) {
             const std::string msg =
                 PlatformErrorMsg(platform, "commit upgrade failed");
+            Warn(kModuleName,
+                 "Upgrade task commit failed elapsed_ms=%lld msg=%s",
+                 static_cast<long long>(ElapsedMs(commit_started_ms)),
+                 msg.c_str());
             CleanupCurrentPackageFile();
             SetFailed(msg, true);
             RecordAudit(context, info.version, OperationResult::kFailed,
                         msg);
             return;
         }
+        Info(kModuleName, "Upgrade task commit completed elapsed_ms=%lld",
+             static_cast<long long>(ElapsedMs(commit_started_ms)));
         CleanupCurrentPackageFile();
 
         if (info.requires_reboot) {
             if (request.auto_reboot) {
+                const int64_t reboot_started_ms =
+                    infra::Time::MonotonicMillis();
+                Info(kModuleName, "Upgrade task reboot started version=%s",
+                     info.version.c_str());
                 if (!platform->RebootToApply()) {
                     const std::string msg =
                         PlatformErrorMsg(platform, "reboot failed");
+                    Warn(kModuleName,
+                         "Upgrade task reboot failed elapsed_ms=%lld msg=%s",
+                         static_cast<long long>(ElapsedMs(reboot_started_ms)),
+                         msg.c_str());
                     SetFailed(msg, true);
                     RecordAudit(context, info.version, OperationResult::kFailed,
                                 msg);
                     return;
                 }
+                Info(kModuleName,
+                     "Upgrade task reboot completed elapsed_ms=%lld",
+                     static_cast<long long>(ElapsedMs(reboot_started_ms)));
                 UpdateStatus(UpgradeState::kCompleted, 100, true, "");
                 RecordAudit(context, info.version, OperationResult::kSuccess,
                             "completed");
                 return;
             }
             UpdateStatus(UpgradeState::kWaitingReboot, 100, true, "");
+            Info(kModuleName, "Upgrade task waiting_reboot version=%s",
+                 info.version.c_str());
             RecordAudit(context, info.version, OperationResult::kSuccess,
                         "waiting reboot");
             return;
         }
 
         UpdateStatus(UpgradeState::kCompleted, 100, true, "");
+        Info(kModuleName, "Upgrade task completed version=%s",
+             info.version.c_str());
         RecordAudit(context, info.version, OperationResult::kSuccess, "completed");
     }
 
