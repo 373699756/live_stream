@@ -6,6 +6,17 @@
 #include "subsystems/protocol_options.h"
 
 namespace live_stream {
+namespace {
+
+ConfigCode RejectConfigApply(ConfigError *error, const char *message) {
+    if (error != nullptr) {
+        error->field.clear();
+        error->message = message == nullptr ? "" : message;
+    }
+    return ConfigCode::kApply;
+}
+
+}  // namespace
 
 bool ProtocolSubsystem::InstallConfigUpdateScopes() {
     if (config_ == nullptr) {
@@ -104,65 +115,61 @@ ConfigCode ProtocolSubsystem::ApplyProtocolConfigChange(
         return verify_code;
     }
 
-    if (scope == "rtsp" &&
-        IsRtspConfigChanged(app_config_, next_config)) {
-        if (rtsp_ == nullptr) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "rtsp unavailable";
-            }
-            return ConfigCode::kApply;
-        }
-        if (!rtsp_->ApplyOptions(BuildRtspOptions(next_config))) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "apply rtsp config failed";
-            }
-            return ConfigCode::kApply;
-        }
+    ConfigCode apply_code = ConfigCode::kOk;
+    if (scope == "rtsp" && IsRtspConfigChanged(app_config_, next_config)) {
+        apply_code = ApplyRtspConfigChange(next_config, error);
     }
     if (scope == "webrtc" &&
         IsWebrtcConfigChanged(app_config_, next_config)) {
-        if (webrtc_ == nullptr) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "webrtc unavailable";
-            }
-            return ConfigCode::kApply;
-        }
-        ProtocolStartupRefs refs;
-        refs.device.network = network_;
-        refs.net_io = net_io_.get();
-        refs.rtsp = rtsp_.get();
-        refs.onvif = onvif_.get();
-        refs.webrtc = webrtc_.get();
-        const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
-        if (!webrtc_->ApplyOptions(options)) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "apply webrtc config failed";
-            }
-            return ConfigCode::kApply;
-        }
+        apply_code = ApplyWebrtcConfigChange(next_config, error);
     }
-    if (scope == "onvif" &&
-        IsOnvifConfigChanged(app_config_, next_config)) {
-        if (onvif_ == nullptr) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "onvif unavailable";
-            }
-            return ConfigCode::kApply;
-        }
-        if (!onvif_->ApplyOptions(BuildOnvifOptions(next_config))) {
-            if (error != nullptr) {
-                error->field.clear();
-                error->message = "apply onvif config failed";
-            }
-            return ConfigCode::kApply;
-        }
+    if (scope == "onvif" && IsOnvifConfigChanged(app_config_, next_config)) {
+        apply_code = ApplyOnvifConfigChange(next_config, error);
+    }
+    if (apply_code != ConfigCode::kOk) {
+        return apply_code;
     }
     app_config_ = next_config;
+    return ConfigCode::kOk;
+}
+
+ConfigCode ProtocolSubsystem::ApplyRtspConfigChange(
+    const AppConfig &next_config, ConfigError *error) {
+    if (rtsp_ == nullptr) {
+        return RejectConfigApply(error, "rtsp unavailable");
+    }
+    if (!rtsp_->ApplyOptions(BuildRtspOptions(next_config))) {
+        return RejectConfigApply(error, "apply rtsp config failed");
+    }
+    return ConfigCode::kOk;
+}
+
+ConfigCode ProtocolSubsystem::ApplyWebrtcConfigChange(
+    const AppConfig &next_config, ConfigError *error) {
+    if (webrtc_ == nullptr) {
+        return RejectConfigApply(error, "webrtc unavailable");
+    }
+    ProtocolStartupRefs refs;
+    refs.device.network = network_;
+    refs.net_io = net_io_.get();
+    refs.rtsp = rtsp_.get();
+    refs.onvif = onvif_.get();
+    refs.webrtc = webrtc_.get();
+    const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
+    if (!webrtc_->ApplyOptions(options)) {
+        return RejectConfigApply(error, "apply webrtc config failed");
+    }
+    return ConfigCode::kOk;
+}
+
+ConfigCode ProtocolSubsystem::ApplyOnvifConfigChange(
+    const AppConfig &next_config, ConfigError *error) {
+    if (onvif_ == nullptr) {
+        return RejectConfigApply(error, "onvif unavailable");
+    }
+    if (!onvif_->ApplyOptions(BuildOnvifOptions(next_config))) {
+        return RejectConfigApply(error, "apply onvif config failed");
+    }
     return ConfigCode::kOk;
 }
 
