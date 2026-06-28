@@ -218,7 +218,7 @@ int Run(int argc, char** argv) {
     ParsedUpgradePackage package;
     std::string reason;
     if (!ParseUpgradePackage(options.package_path, &package, &reason)) {
-        AppendUpgradeLog("helper validate failed: " + reason);
+        AppendUpgradeLog("helper validate failed: msg=" + reason);
         WriteUpgradeInfo("failed", 100, false, "", reason);
         return 1;
     }
@@ -227,7 +227,7 @@ int Run(int argc, char** argv) {
     WriteUpgradeInfo("preparing", 5, true, package.manifest.version, "");
 
     if (!ApplyPackage(package, options.stage_dir, &reason)) {
-        AppendUpgradeLog("helper failed: " + reason);
+        AppendUpgradeLog("helper failed: msg=" + reason);
         WriteUpgradeInfo("failed", 100, false, package.manifest.version,
                          reason);
         sync();
