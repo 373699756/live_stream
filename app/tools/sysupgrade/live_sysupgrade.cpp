@@ -120,12 +120,11 @@ bool ParseArgs(int argc, char** argv, HelperOptions* options) {
     return true;
 }
 
-bool StopAppServices() {
+void StopLiveStreamApp() {
     static_cast<void>(RunCommand({"/etc/init.d/S80live_stream", "stop"}));
     static_cast<void>(RunCommand({"killall", "live_stream"}));
     static_cast<void>(RunCommand({"pkill", "live_stream"}));
     infra::Time::SleepMillis(300);
-    return true;
 }
 
 bool UnmountForCommand(const UpgradeCommand& command, std::string* reason) {
@@ -187,7 +186,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
 
     if (PackageNeedsStoppedApp(package.manifest)) {
         AppendUpgradeLog("stop application before system upgrade");
-        StopAppServices();
+        StopLiveStreamApp();
     }
 
     for (std::size_t i = 0; i < package.manifest.commands.size(); ++i) {
