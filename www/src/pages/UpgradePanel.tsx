@@ -1,6 +1,6 @@
 import type { UpgradePackageInfo, UpgradeInfo } from '../api/types';
 import type { UpgradeActionErrorSeverity } from '../hooks/useUpgrade';
-import { formatBytes, formatTimestamp } from '../utils/format';
+import { formatBytes, formatTimestamp } from '../utils/displayText';
 
 interface UpgradePanelProps {
     actionError: string;

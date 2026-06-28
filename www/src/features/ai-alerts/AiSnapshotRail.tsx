@@ -1,6 +1,6 @@
 import { aiAlertImageUrl } from '../../api/ai';
 import type { AiAlertRecord, AiCapabilities } from '../../api/types';
-import { formatTimestamp } from '../../utils/format';
+import { formatTimestamp } from '../../utils/displayText';
 import { isAiTaskAvailable, taskLabel } from './aiAlertTasks';
 import { maxConfidence, streamLabel } from './aiConfigDraft';
 
