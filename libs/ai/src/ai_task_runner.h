@@ -25,8 +25,8 @@ public:
     std::string ReadAlertImage(const std::string &id) const;
 
 private:
-    struct State;
-    std::unique_ptr<State> state_;
+    struct TaskRunnerInfo;
+    std::unique_ptr<TaskRunnerInfo> info_;
 };
 
 }  // namespace live_stream

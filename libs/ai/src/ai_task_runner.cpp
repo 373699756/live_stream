@@ -49,8 +49,8 @@ using ai_internal::StopStoppedAiTasks;
 
 }  // namespace
 
-struct AiTaskRunner::State final {
-    explicit State(const AiOptions &service_options)
+struct AiTaskRunner::TaskRunnerInfo final {
+    explicit TaskRunnerInfo(const AiOptions &service_options)
         : options(service_options),
           config(service_options.default_config),
           config_binding(service_options.config),
@@ -183,7 +183,7 @@ struct AiTaskRunner::State final {
 
             if (!frame.Valid()) {
                 MarkCaptureFailure(task_worker, run_config);
-                PublishAlarmInputForState(task_worker);
+                PublishAlarmInputForTask(task_worker);
                 continue;
             }
 
@@ -246,7 +246,7 @@ struct AiTaskRunner::State final {
                     : 0;
         }
 
-        PublishAlarmInputForState(task_worker);
+        PublishAlarmInputForTask(task_worker);
         return PrepareAlertCapture(result, run_config, task_worker,
                                    pending_alert);
     }
@@ -329,7 +329,7 @@ struct AiTaskRunner::State final {
         }
 
         StartConfiguredTaskWorkers();
-        PublishAlarmInputForState(nullptr);
+        PublishAlarmInputForTask(nullptr);
         Info("ai", "AI config applied: enabled=%d tasks=%u",
              next_config.enabled ? 1 : 0,
              static_cast<unsigned int>(next_config.tasks.size()));
@@ -506,7 +506,7 @@ struct AiTaskRunner::State final {
         return task_workers.BuildAlarmInput();
     }
 
-    void PublishAlarmInputForState(
+    void PublishAlarmInputForTask(
         const std::shared_ptr<AiTaskWorker> &task_worker) {
         AlarmInput input;
         {
@@ -536,16 +536,17 @@ struct AiTaskRunner::State final {
     mutable std::mutex mutex;
 };
 
-AiTaskRunner::AiTaskRunner(const AiOptions &options) : state_(new State(options)) {}
+AiTaskRunner::AiTaskRunner(const AiOptions &options)
+    : info_(new TaskRunnerInfo(options)) {}
 
 AiTaskRunner::~AiTaskRunner() {
-    state_->Release();
+    info_->Release();
 }
 
-bool AiTaskRunner::Start() { return state_->Start(); }
+bool AiTaskRunner::Start() { return info_->Start(); }
 
 void AiTaskRunner::Stop() {
-    state_->Stop();
+    info_->Stop();
 }
 
 AiCapabilities AiTaskRunner::GetCapabilities() const {
@@ -553,32 +554,32 @@ AiCapabilities AiTaskRunner::GetCapabilities() const {
 }
 
 AiConfig AiTaskRunner::GetConfig() const {
-    std::lock_guard<std::mutex> lock(state_->mutex);
-    return state_->config;
+    std::lock_guard<std::mutex> lock(info_->mutex);
+    return info_->config;
 }
 
 AiStats AiTaskRunner::GetStats() const {
-    std::lock_guard<std::mutex> lock(state_->mutex);
-    return state_->SummaryStatsLocked();
+    std::lock_guard<std::mutex> lock(info_->mutex);
+    return info_->SummaryStatsLocked();
 }
 
 AiInferenceResult AiTaskRunner::GetLastResult() const {
-    std::lock_guard<std::mutex> lock(state_->mutex);
-    return state_->task_workers.LatestResult();
+    std::lock_guard<std::mutex> lock(info_->mutex);
+    return info_->task_workers.LatestResult();
 }
 
 std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
-    std::lock_guard<std::mutex> lock(state_->mutex);
+    std::lock_guard<std::mutex> lock(info_->mutex);
     std::vector<AiTaskInfo> statuses;
-    statuses.reserve(state_->task_workers.Items().size());
+    statuses.reserve(info_->task_workers.Items().size());
     for (const std::shared_ptr<AiTaskWorker> &task_worker :
-         state_->task_workers.Items()) {
+         info_->task_workers.Items()) {
         if (!task_worker) {
             continue;
         }
         AiTaskInfo task_info;
         task_info.config = task_worker->config;
-        task_info.stats = state_->TaskStatsLocked(task_worker);
+        task_info.stats = info_->TaskStatsLocked(task_worker);
         task_info.last_result = task_worker->last_result;
         statuses.push_back(task_info);
     }
@@ -586,11 +587,11 @@ std::vector<AiTaskInfo> AiTaskRunner::GetTaskInfoList() const {
 }
 
 std::vector<AiAlertRecord> AiTaskRunner::ListAlerts() const {
-    return state_->alert_output.ListImages();
+    return info_->alert_output.ListImages();
 }
 
 std::string AiTaskRunner::ReadAlertImage(const std::string &id) const {
-    return state_->alert_output.ReadImage(id);
+    return info_->alert_output.ReadImage(id);
 }
 
 }  // namespace live_stream
