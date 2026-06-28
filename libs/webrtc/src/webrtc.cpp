@@ -114,11 +114,11 @@ public:
             }
             state_ = ServiceState::kStopped;
             peer_ids = peer_table_.MarkAllClosing();
-            MarkAllPeerSubscriptionsClosingLocked();
+            MarkSubscriptionsClosingLocked();
             subscription_condition_.wait(guard, [this]() {
-                return NoPeerSubscriptionDrainingLocked();
+                return NoDrainingSubscriptionsLocked();
             });
-            closing_subscriptions = TakeAllPeerSubscriptionsLocked();
+            closing_subscriptions = TakeClosingSubscriptionsLocked();
             peer_host = peer_host_;
         }
 
@@ -457,7 +457,7 @@ private:
                 return;
             }
             state_ = ServiceState::kDeinitialized;
-            closing_subscriptions = TakeAllPeerSubscriptionsLocked();
+            closing_subscriptions = TakeClosingSubscriptionsLocked();
             peer_table_.Clear();
             peer_host = std::move(peer_host_);
         }
@@ -895,13 +895,13 @@ private:
         return closing_subscription;
     }
 
-    void MarkAllPeerSubscriptionsClosingLocked() {
+    void MarkSubscriptionsClosingLocked() {
         for (auto &item : peer_subscriptions_) {
             item.second.closing = true;
         }
     }
 
-    bool NoPeerSubscriptionDrainingLocked() const {
+    bool NoDrainingSubscriptionsLocked() const {
         for (const auto &item : peer_subscriptions_) {
             if (item.second.draining) {
                 return false;
@@ -910,7 +910,7 @@ private:
         return true;
     }
 
-    std::vector<ClosingSubscription> TakeAllPeerSubscriptionsLocked() {
+    std::vector<ClosingSubscription> TakeClosingSubscriptionsLocked() {
         std::vector<ClosingSubscription> closing_subscriptions;
         for (auto &item : peer_subscriptions_) {
             ClosingSubscription closing_subscription;
