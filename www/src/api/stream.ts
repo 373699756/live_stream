@@ -17,16 +17,18 @@ import {
 } from './mockStream';
 import type {
     MediaPreviewUrls,
-    MediaSessionsResponse,
-    MediaStreamsResponse,
     MediaSessionInfo,
+    MediaStreamsResponse,
     MediaStreamInfo,
-    RtspConfig,
-    StreamName,
+    MediaSessionsResponse,
+} from './types/media/stream';
+import type { StreamName } from './types/core';
+import type {
     WebrtcConfig,
     WebrtcOfferAnswer,
     WebrtcPeerInfo,
-} from './types';
+} from './types/media/webrtc';
+import type { RtspConfig } from './types/media/configuration';
 
 interface WebrtcCreatePeerRequest {
     client_id: string;

@@ -7,7 +7,7 @@ import type {
     MediaCapabilities,
     VideoConfig,
     VideoStreamConfig,
-} from './types';
+} from './types/media/configuration';
 
 function normalizeStreamConfig(stream: VideoStreamConfig): VideoStreamConfig {
     const compatibleStream = stream as Partial<VideoStreamConfig>;

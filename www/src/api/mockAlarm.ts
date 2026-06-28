@@ -1,4 +1,4 @@
-import type { AlarmConfig, AlarmInfoResponse } from './types';
+import type { AlarmConfig, AlarmInfoResponse } from './types/alarm';
 
 export const mockAlarmConfig: AlarmConfig = {
     motion_detection: {

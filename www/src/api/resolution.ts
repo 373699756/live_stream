@@ -2,7 +2,7 @@ import type {
     VideoResolutionCapability,
     VideoStreamCapabilities,
     VideoStreamConfig,
-} from './types';
+} from './types/media/configuration';
 
 export function codecSupportsSmartP(
     codec: VideoStreamConfig['codec'],

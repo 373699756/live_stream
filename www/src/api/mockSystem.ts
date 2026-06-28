@@ -1,4 +1,4 @@
-import type { SystemInfo } from './types';
+import type { SystemInfo } from './types/system';
 
 export const mockSystemInfo: SystemInfo = {
     deviceName: 'IPC Camera',

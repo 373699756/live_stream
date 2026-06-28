@@ -1,6 +1,6 @@
 import { mockOverlayConfig } from './mockOverlay';
 import { requestJson, putJson } from './client';
-import type { OverlayConfig } from './types';
+import type { OverlayConfig } from './types/media/configuration';
 
 export function getOverlayConfig(): Promise<OverlayConfig> {
     return requestJson<OverlayConfig>('/api/config/overlay', mockOverlayConfig);

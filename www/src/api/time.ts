@@ -12,7 +12,7 @@ import type {
     NtpConfig,
     TimeConfig,
     TimeInfo,
-} from './types';
+} from './types/time';
 
 const timeSyncTimeoutMs = 5000;
 

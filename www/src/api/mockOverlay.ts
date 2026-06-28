@@ -1,4 +1,4 @@
-import type { OverlayConfig } from './types';
+import type { OverlayConfig } from './types/media/configuration';
 
 const emptyMainMask = () => ({
     enabled: false,

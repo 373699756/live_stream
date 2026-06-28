@@ -1,6 +1,6 @@
 import { mockSnapshotConfig } from './mockSnapshot';
 import { authQuery, requestJson, putJson } from './client';
-import type { SnapshotConfig } from './types';
+import type { SnapshotConfig } from './types/media/configuration';
 
 export function getSnapshotConfig(): Promise<SnapshotConfig> {
     return requestJson<SnapshotConfig>(

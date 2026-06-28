@@ -6,7 +6,7 @@ import {
     useMockFallback,
 } from './client';
 import { clearBrowserAuthState, dispatchAuthInvalid } from './authSession';
-import type { AuthPrincipal, AuthState } from './types';
+import type { AuthPrincipal, AuthState } from './types/auth';
 
 const credentialTimeoutMs = 60000;
 

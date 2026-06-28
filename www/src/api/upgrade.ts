@@ -5,7 +5,11 @@ import {
     uploadBinary,
     type ApiRequestOptions,
 } from './client';
-import type { UpgradePackageInfo, UpgradeRequest, UpgradeInfo } from './types';
+import type {
+    UpgradePackageInfo,
+    UpgradeRequest,
+    UpgradeInfo,
+} from './types/upgrade';
 
 const minUploadTimeoutMs = 300000;
 const maxUploadTimeoutMs = 600000;

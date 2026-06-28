@@ -1,4 +1,4 @@
-import type { NetworkConfig } from './types';
+import type { NetworkConfig } from './types/media/configuration';
 
 export const mockNetworkConfig: NetworkConfig = {
     hostname: 'live-stream-ipc',
