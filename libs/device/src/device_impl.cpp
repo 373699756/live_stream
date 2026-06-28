@@ -1,6 +1,7 @@
 #include "device_impl.h"
 
 #include "config.h"
+#include "config_scopes.h"
 #include "device_features.h"
 #include "device_phase.h"
 #include "image_strategy.h"
@@ -75,13 +76,8 @@ public:
     OverlayInfo GetOverlayInfo() const override;
 
 private:
-    struct AttachedConfigs {
-        bool video = false;
-        bool image = false;
-    };
-
     bool Prepare();
-    bool AddConfigScopes(AttachedConfigs &attached_now);
+    bool AttachConfigScopes(AttachedConfigs &attached_now);
     void Release();
     static void OnPipelineFrame(const MediaFrame &frame, void *user);
     void PushFrameToSink(const MediaFrame &frame);
@@ -117,10 +113,9 @@ private:
     Json image_config_ = Json::object();
     ImageInfo image_info_;
     std::unique_ptr<DeviceFeatures> features_;
+    ConfigScopes config_scopes_;
     mutable std::mutex mutex_;
     std::mutex pipeline_op_mutex_;
-    bool video_config_attached_ = false;
-    bool image_config_attached_ = false;
     bool system_initialized_ = false;
     std::thread image_tuner_thread_;
     bool image_tuner_running_ = false;
@@ -209,7 +204,7 @@ bool DeviceImpl::Prepare() {
     }
 
     AttachedConfigs attached_now;
-    if (!AddConfigScopes(attached_now)) {
+    if (!AttachConfigScopes(attached_now)) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
@@ -230,79 +225,40 @@ bool DeviceImpl::Prepare() {
         if (has_image_config) {
             image_config_ = next_image_config;
         }
-        if (attached_now.video) {
-            video_config_attached_ = true;
-        }
-        if (attached_now.image) {
-            image_config_attached_ = true;
-        }
         phase_ = DevicePhase::kInitialized;
     }
     return true;
 }
 
-bool DeviceImpl::AddConfigScopes(AttachedConfigs &attached_now) {
-    attached_now = AttachedConfigs{};
-    if (options_.config == nullptr) {
-        return true;
-    }
+bool DeviceImpl::AttachConfigScopes(AttachedConfigs &attached_now) {
+    ConfigScope video_scope;
+    video_scope.verify = [this](const Json &now, ConfigError *error) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return VerifyVideoConfig(now, error);
+    };
+    video_scope.apply = [this](const Json &prev, const Json &now,
+                               ConfigError *error) {
+        return ApplyVideoConfig(prev, now, error);
+    };
 
-    bool need_video_scope = false;
-    bool need_image_scope = false;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        need_video_scope = !video_config_attached_;
-        need_image_scope = !image_config_attached_;
-    }
+    ConfigScope image_scope;
+    image_scope.verify = [this](const Json &now, ConfigError *error) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return VerifyImageConfigScope(now, error);
+    };
+    image_scope.apply = [this](const Json &prev, const Json &now,
+                               ConfigError *error) {
+        return ApplyImageConfig(prev, now, error);
+    };
 
-    if (need_video_scope) {
-        ConfigScope config_scope;
-        config_scope.verify = [this](const Json &now,
-                                     ConfigError *error) {
-            std::lock_guard<std::mutex> guard(mutex_);
-            return VerifyVideoConfig(now, error);
-        };
-        config_scope.apply = [this](const Json &prev,
-                                    const Json &now,
-                                    ConfigError *error) {
-            return ApplyVideoConfig(prev, now, error);
-        };
-        if (!options_.config->AddScope("video", config_scope)) {
-            return false;
-        }
-        attached_now.video = true;
-    }
-
-    if (need_image_scope) {
-        ConfigScope config_scope;
-        config_scope.verify = [this](const Json &now,
-                                     ConfigError *error) {
-            std::lock_guard<std::mutex> guard(mutex_);
-            return VerifyImageConfigScope(now, error);
-        };
-        config_scope.apply = [this](const Json &prev,
-                                    const Json &now,
-                                    ConfigError *error) {
-            return ApplyImageConfig(prev, now, error);
-        };
-        if (!options_.config->AddScope("image", config_scope)) {
-            if (attached_now.video) {
-                (void)options_.config->RemoveScope("video");
-            }
-            attached_now = AttachedConfigs{};
-            return false;
-        }
-        attached_now.image = true;
-    }
-    return true;
+    return config_scopes_.Attach(options_.config, video_scope, image_scope,
+                                 attached_now);
 }
 
 void DeviceImpl::Release() {
     StopImageTuner();
     features_->Stop();
     features_->Release();
-    bool detach_video = false;
-    bool detach_image = false;
     bool stop_pipeline = false;
     bool deinit_pipeline = false;
     {
@@ -319,10 +275,6 @@ void DeviceImpl::Release() {
                 deinit_pipeline = true;
                 phase_ = DevicePhase::kStopping;
             }
-            detach_video = video_config_attached_;
-            detach_image = image_config_attached_;
-            video_config_attached_ = false;
-            image_config_attached_ = false;
         }
         if (stop_pipeline) {
             pipeline_.Stop();
@@ -345,14 +297,7 @@ void DeviceImpl::Release() {
         }
     }
 
-    if (options_.config != nullptr) {
-        if (detach_video) {
-            (void)options_.config->RemoveScope("video");
-        }
-        if (detach_image) {
-            (void)options_.config->RemoveScope("image");
-        }
-    }
+    config_scopes_.Detach(options_.config);
 }
 
 void DeviceImpl::OnPipelineFrame(const MediaFrame &frame, void *user) {
