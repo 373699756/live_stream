@@ -1,15 +1,14 @@
 #include "device_impl.h"
 
 #include "config.h"
+#include "device_features.h"
 #include "device_phase.h"
 #include "image_strategy.h"
 #include "infra/log.h"
 #include "media_channels.h"
 #include "media_config_codec.h"
 #include "media_pipeline.h"
-#include "region_overlay.h"
 #include "sdk_defaults.h"
-#include "snapshot.h"
 
 #include <chrono>
 #include <mutex>
@@ -55,21 +54,7 @@ public:
         active_channels_ = BuildChannelsForConfig(active_config_);
         capabilities_ = pipeline_.GetCapabilities();
         pipeline_.SetFrameCallback(&DeviceImpl::OnPipelineFrame, this);
-
-        SnapshotConfig snapshot_config;
-        snapshot_config.jpeg_venc_channel = device_options.snapshot_venc_channel;
-        SnapshotOptions snapshot_options;
-        snapshot_options.default_config = snapshot_config;
-        snapshot_options.config = device_options.config;
-        snapshot_options.media_channels = active_channels_;
-        snapshot_options.snapshot = options_.sdk.snapshot;
-        snapshot_.reset(new Snapshot(snapshot_options));
-
-        RegionOverlayOptions overlay_options;
-        overlay_options.config = device_options.config;
-        overlay_options.media_channels = active_channels_;
-        overlay_options.region = options_.sdk.region;
-        region_overlay_.reset(new RegionOverlay(overlay_options));
+        features_.reset(new DeviceFeatures(options_, active_channels_));
     }
 
     ~DeviceImpl() override { Release(); }
@@ -121,10 +106,6 @@ private:
     void StopImageTuner();
     void RunImageTuner();
     bool ApplyPipelineConfig(const MediaPipelineConfig &config);
-    bool BindDeviceFeatures(const MediaChannels &channels);
-    bool StartDeviceFeatures();
-    void StopDeviceFeatures();
-    void ReleaseDeviceFeatures();
 
     DeviceMediaOptions options_;
     MediaPipeline pipeline_;
@@ -135,8 +116,7 @@ private:
     FrameSink *frame_sink_ = nullptr;
     Json image_config_ = Json::object();
     ImageInfo image_info_;
-    std::unique_ptr<Snapshot> snapshot_;
-    std::unique_ptr<RegionOverlay> region_overlay_;
+    std::unique_ptr<DeviceFeatures> features_;
     mutable std::mutex mutex_;
     std::mutex pipeline_op_mutex_;
     bool video_config_attached_ = false;
@@ -215,7 +195,7 @@ bool DeviceImpl::Prepare() {
     }
 
     const MediaChannels start_channels = BuildChannelsForConfig(start_config);
-    if (!BindDeviceFeatures(start_channels)) {
+    if (!features_->Bind(start_channels)) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
@@ -317,41 +297,10 @@ bool DeviceImpl::AddConfigScopes(AttachedConfigs &attached_now) {
     return true;
 }
 
-bool DeviceImpl::BindDeviceFeatures(const MediaChannels &channels) {
-    if (!snapshot_->BindMedia(channels)) {
-        return false;
-    }
-    if (!region_overlay_->BindMedia(channels)) {
-        return false;
-    }
-    return true;
-}
-
-bool DeviceImpl::StartDeviceFeatures() {
-    if (!snapshot_->Start()) {
-        return false;
-    }
-    if (!region_overlay_->Start()) {
-        snapshot_->Stop();
-        return false;
-    }
-    return true;
-}
-
-void DeviceImpl::StopDeviceFeatures() {
-    region_overlay_->Stop();
-    snapshot_->Stop();
-}
-
-void DeviceImpl::ReleaseDeviceFeatures() {
-    region_overlay_->Release();
-    snapshot_->Release();
-}
-
 void DeviceImpl::Release() {
     StopImageTuner();
-    StopDeviceFeatures();
-    ReleaseDeviceFeatures();
+    features_->Stop();
+    features_->Release();
     bool detach_video = false;
     bool detach_image = false;
     bool stop_pipeline = false;
@@ -652,7 +601,7 @@ bool DeviceImpl::ApplyPipelineConfig(
 
     if (is_started) {
         StopImageTuner();
-        StopDeviceFeatures();
+        features_->Stop();
     }
 
     bool applied = false;
@@ -676,21 +625,21 @@ bool DeviceImpl::ApplyPipelineConfig(
             applied = true;
             if (has_system && !pipeline_.InitSystem()) {
                 applied = false;
-            } else if (!BindDeviceFeatures(next_channels)) {
+            } else if (!features_->Bind(next_channels)) {
                 applied = false;
             } else if (is_started && !pipeline_.Start()) {
                 applied = false;
             } else if (is_started &&
                        !ApplyImageToPipeline(prev_image_config)) {
                 applied = false;
-            } else if (is_started && !StartDeviceFeatures()) {
+            } else if (is_started && !features_->Start()) {
                 applied = false;
             }
         }
 
         if (!applied && deinit_ok &&
             (is_started || has_system)) {
-            StopDeviceFeatures();
+            features_->Stop();
             pipeline_.Stop();
             if (has_system) {
                 (void)pipeline_.DeinitSystem();
@@ -702,7 +651,7 @@ bool DeviceImpl::ApplyPipelineConfig(
             if (has_system && !pipeline_.InitSystem()) {
                 restore_ok = false;
             }
-            if (restore_ok && !BindDeviceFeatures(prev_channels)) {
+            if (restore_ok && !features_->Bind(prev_channels)) {
                 restore_ok = false;
             }
             if (restore_ok && is_started && !pipeline_.Start()) {
@@ -712,11 +661,11 @@ bool DeviceImpl::ApplyPipelineConfig(
                 !ApplyImageToPipeline(prev_image_config)) {
                 restore_ok = false;
             }
-            if (restore_ok && is_started && !StartDeviceFeatures()) {
+            if (restore_ok && is_started && !features_->Start()) {
                 restore_ok = false;
             }
             if (!restore_ok) {
-                StopDeviceFeatures();
+                features_->Stop();
                 pipeline_.Stop();
                 if (has_system) {
                     (void)pipeline_.DeinitSystem();
@@ -809,7 +758,7 @@ bool DeviceImpl::Start() {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
 
         auto rollback_started_pipeline = [this]() {
-            StopDeviceFeatures();
+            features_->Stop();
             pipeline_.Stop();
         };
 
@@ -821,7 +770,7 @@ bool DeviceImpl::Start() {
             rollback_started_pipeline();
             return mark_start_failed();
         }
-        if (!StartDeviceFeatures()) {
+        if (!features_->Start()) {
             rollback_started_pipeline();
             return mark_start_failed();
         }
@@ -836,7 +785,7 @@ bool DeviceImpl::Start() {
 
 void DeviceImpl::Stop() {
     StopImageTuner();
-    StopDeviceFeatures();
+    features_->Stop();
     bool should_stop = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -939,15 +888,15 @@ SnapshotFrame DeviceImpl::CaptureSnapshot(
             return SnapshotFrame{};
         }
     }
-    return snapshot_->Capture(request);
+    return features_->CaptureSnapshot(request);
 }
 
 SnapshotInfo DeviceImpl::GetSnapshotInfo() const {
-    return snapshot_->GetInfo();
+    return features_->GetSnapshotInfo();
 }
 
 OverlayInfo DeviceImpl::GetOverlayInfo() const {
-    return region_overlay_->GetInfo();
+    return features_->GetOverlayInfo();
 }
 
 }  // namespace
