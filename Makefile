@@ -90,8 +90,10 @@ APP_SRCS := \
 	app/config/protocol_config_change.cpp \
 	app/config/app_config.cpp \
 	app/platform/linux/linux_network_platform.cpp \
-	app/platform/linux/linux_platform_common.cpp \
+	app/platform/linux/linux_clock.cpp \
+	app/platform/linux/linux_process.cpp \
 	app/platform/linux/linux_system_platform.cpp \
+	app/platform/linux/linux_text.cpp \
 	app/platform/linux/linux_time_platform.cpp \
 	app/platform/linux/platform_factory.cpp \
 	app/platform/linux/upgrade_platform.cpp \
@@ -100,7 +102,8 @@ APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
 APP_DEPS := $(APP_OBJS:.o=.d)
 SYSUPGRADE_SRCS := \
 	app/tools/sysupgrade/live_sysupgrade.cpp \
-	app/platform/linux/linux_platform_common.cpp \
+	app/platform/linux/linux_process.cpp \
+	app/platform/linux/linux_text.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
 SYSUPGRADE_DEPS := $(SYSUPGRADE_OBJS:.o=.d)

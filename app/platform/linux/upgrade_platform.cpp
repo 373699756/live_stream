@@ -3,7 +3,8 @@
 #include "json.h"
 #include "infra/clamp.h"
 #include "infra/fs.h"
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_clock.h"
+#include "platform/linux/linux_text.h"
 #include "tools/sysupgrade/upgrade_flash.h"
 #include "system/package.h"
 

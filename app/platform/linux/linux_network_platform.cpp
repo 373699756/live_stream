@@ -1,8 +1,9 @@
 #include "platform/linux/device_platforms.h"
 
 #include "infra/fs.h"
+#include "platform/linux/linux_process.h"
+#include "platform/linux/linux_text.h"
 #include "system/network_json.h"
-#include "platform/linux/linux_platform_common.h"
 
 #include <arpa/inet.h>
 #include <csignal>

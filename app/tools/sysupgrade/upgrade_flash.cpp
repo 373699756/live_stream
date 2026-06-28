@@ -2,7 +2,7 @@
 
 #include "infra/fs.h"
 #include "infra/hash.h"
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_text.h"
 
 #include <cstdint>
 #include <fcntl.h>

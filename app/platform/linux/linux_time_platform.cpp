@@ -1,6 +1,7 @@
 #include "platform/linux/device_platforms.h"
 
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_clock.h"
+#include "platform/linux/linux_process.h"
 
 #include <string>
 #include <vector>

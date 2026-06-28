@@ -1,7 +1,8 @@
 #include "platform/linux/device_platforms.h"
 
 #include "infra/fs.h"
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_process.h"
+#include "platform/linux/linux_text.h"
 
 #include <cstdint>
 #include <mutex>

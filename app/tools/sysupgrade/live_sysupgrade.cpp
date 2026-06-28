@@ -2,7 +2,7 @@
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/time.h"
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_process.h"
 #include "tools/sysupgrade/upgrade_flash.h"
 #include "system/package.h"
 
