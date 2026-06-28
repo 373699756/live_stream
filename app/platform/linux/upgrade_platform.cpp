@@ -439,14 +439,14 @@ public:
         std::string reason;
         if (!ReadUpgradePackageManifest(package_path, &manifest, &reason)) {
             last_error_ = reason;
-            AppendUpgradeLog("validate failed: " + reason);
+            AppendUpgradeLog("validate failed: msg=" + reason);
             return UpgradePackageInfo();
         }
 
         ParsedUpgradePackage parsed;
         if (!ParseUpgradePackage(package_path, &parsed, &reason)) {
             last_error_ = reason;
-            AppendUpgradeLog("validate failed: " + reason);
+            AppendUpgradeLog("validate failed: msg=" + reason);
             return UpgradePackageInfo();
         }
         cached_package_ = parsed;
@@ -481,7 +481,7 @@ public:
         std::string reason;
         if (!ParseUpgradePackage(info.package_path, &parsed, &reason)) {
             last_error_ = reason;
-            AppendUpgradeLog("prepare failed: " + reason);
+            AppendUpgradeLog("prepare failed: msg=" + reason);
             WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
         }
@@ -489,20 +489,20 @@ public:
             !infra::Path::MakeDirs(kUpgradeStagePath) ||
             !infra::Path::MakeDirs(kUpgradeUploadPath)) {
             last_error_ = "create upgrade directory failed";
-            AppendUpgradeLog("prepare failed: create upgrade directory failed");
+            AppendUpgradeLog("prepare failed: msg=create upgrade directory failed");
             return false;
         }
         if (!upgrade_flash::IsPathOnTmpfs(kUpgradeRootPath) ||
             !upgrade_flash::IsPathOnTmpfs(kUpgradeStagePath) ||
             !upgrade_flash::IsPathOnTmpfs(kUpgradeUploadPath)) {
             last_error_ = "upgrade workspace must be tmpfs";
-            AppendUpgradeLog("prepare failed: upgrade workspace must be tmpfs");
+            AppendUpgradeLog("prepare failed: msg=upgrade workspace must be tmpfs");
             return false;
         }
         if (PackageNeedsSystemUpgradeHelper(parsed.manifest) &&
             !PrepareSystemUpgradeHelper(&reason)) {
             last_error_ = reason;
-            AppendUpgradeLog("prepare failed: " + reason);
+            AppendUpgradeLog("prepare failed: msg=" + reason);
             WriteUpgradeInfo("failed", 100, false, info.version, reason);
             return false;
         }
@@ -513,7 +513,7 @@ public:
             std::to_string(ReadSystemTimeMs()) + "-" + parsed.manifest.version);
         if (!infra::Path::MakeDirs(stage_dir_)) {
             last_error_ = "create stage directory failed";
-            AppendUpgradeLog("prepare failed: create stage directory failed: " +
+            AppendUpgradeLog("prepare failed: msg=create stage directory failed stage=" +
                              stage_dir_);
             return false;
         }
@@ -548,7 +548,7 @@ public:
                                           cached_package_.requires_reboot,
                                           &reason)) {
                 last_error_ = reason;
-                AppendUpgradeLog("helper start failed: " + reason);
+                AppendUpgradeLog("helper start failed: msg=" + reason);
                 WriteUpgradeInfo("failed", 100, false,
                                  cached_package_.manifest.version, reason);
                 return false;
@@ -590,7 +590,7 @@ public:
             &reason);
         if (!write_ok) {
             last_error_ = reason;
-            AppendUpgradeLog("write failed: " + reason);
+            AppendUpgradeLog("write failed: msg=" + reason);
             WriteUpgradeInfo("failed", 100, false,
                              cached_package_.manifest.version, reason);
         }
