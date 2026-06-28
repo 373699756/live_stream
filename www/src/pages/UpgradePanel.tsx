@@ -1,8 +1,10 @@
 import type { UpgradePackageInfo, UpgradeInfo } from '../api/types';
+import type { UpgradeActionErrorSeverity } from '../hooks/useUpgrade';
 import { formatBytes, formatTimestamp } from '../utils/format';
 
 interface UpgradePanelProps {
     actionError: string;
+    actionErrorSeverity: UpgradeActionErrorSeverity;
     allowDowngrade: boolean;
     allowSameVersion: boolean;
     autoReboot: boolean;
@@ -23,10 +25,7 @@ interface UpgradePanelProps {
 }
 
 function canCancel(status: UpgradeInfo) {
-    return (
-        status.state === 'validating' ||
-        status.state === 'preparing'
-    );
+    return status.state === 'validating' || status.state === 'preparing';
 }
 
 function canConfirmReboot(status: UpgradeInfo) {
@@ -91,8 +90,27 @@ function cancelHint(status: UpgradeInfo) {
     return '仅校验和准备阶段可取消。';
 }
 
+function stageRiskNote(status: UpgradeInfo) {
+    if (status.state === 'failed') {
+        return (
+            status.error_message || '升级失败，请查看 /data/log/upgrade.log。'
+        );
+    }
+    if (status.state === 'writing') {
+        return '正在擦写 Flash，请保持供电和网络稳定，不要刷新页面或断电。';
+    }
+    if (status.state === 'committing' || status.state === 'waiting_reboot') {
+        return '升级已进入提交阶段，不可取消；如页面异常，先查看当前状态和升级日志。';
+    }
+    if (status.state === 'validating' || status.state === 'preparing') {
+        return '正在校验或准备升级包，发现包格式、签名或版本策略问题会在这里提示。';
+    }
+    return '';
+}
+
 export function UpgradePanel({
     actionError,
+    actionErrorSeverity,
     allowDowngrade,
     allowSameVersion,
     autoReboot,
@@ -113,13 +131,16 @@ export function UpgradePanel({
 }: UpgradePanelProps) {
     const activeUpgrade = hasActiveUpgrade(upgradeInfo);
     const packageInputsDisabled = busy || activeUpgrade;
+    const riskNote = stageRiskNote(upgradeInfo);
 
     return (
         <section className="panel wide-panel upgrade-panel">
             <div className="page-heading">
                 <div>
                     <h2>固件升级</h2>
-                    <p>Web 入口只允许升级 Web Console 分区；写入阶段请勿断电。</p>
+                    <p>
+                        Web 入口只允许升级 Web Console 分区；写入阶段请勿断电。
+                    </p>
                 </div>
             </div>
 
@@ -165,6 +186,18 @@ export function UpgradePanel({
                                       : '未选择升级包'}
                             </strong>
                         </div>
+
+                        {selectedFile && !packageInfo && !activeUpgrade ? (
+                            <div className="status-note warning-note">
+                                已选择本地文件，尚未完成上传校验；此阶段不会写入
+                                Flash。
+                            </div>
+                        ) : null}
+                        {packageInfo ? (
+                            <div className="status-note warning-note">
+                                升级包已通过校验；开始升级后才会进入写入流程。
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="upgrade-section">
@@ -259,7 +292,13 @@ export function UpgradePanel({
                             </div>
                         ) : null}
                         {actionError ? (
-                            <div className="status-note error-note">
+                            <div
+                                className={`status-note ${
+                                    actionErrorSeverity === 'warning'
+                                        ? 'warning-note'
+                                        : 'error-note'
+                                }`}
+                            >
                                 {actionError}
                             </div>
                         ) : null}
@@ -342,6 +381,18 @@ export function UpgradePanel({
                         </div>
                     </div>
 
+                    {riskNote ? (
+                        <div
+                            className={`status-note upgrade-risk-note ${
+                                upgradeInfo.state === 'failed'
+                                    ? 'error-note'
+                                    : 'warning-note'
+                            }`}
+                        >
+                            {riskNote}
+                        </div>
+                    ) : null}
+
                     <div className="upgrade-progress">
                         <div className="upgrade-progress-header">
                             <strong>进度</strong>
@@ -360,9 +411,7 @@ export function UpgradePanel({
                     <div className="upgrade-status-grid">
                         <div>
                             <span>目标版本</span>
-                            <strong>
-                                {upgradeInfo.target_version || '-'}
-                            </strong>
+                            <strong>{upgradeInfo.target_version || '-'}</strong>
                         </div>
                         <div>
                             <span>状态码</span>
@@ -382,9 +431,7 @@ export function UpgradePanel({
                         </div>
                         <div className="wide-status-cell">
                             <span>错误</span>
-                            <strong>
-                                {upgradeInfo.error_message || '-'}
-                            </strong>
+                            <strong>{upgradeInfo.error_message || '-'}</strong>
                         </div>
                     </div>
                 </div>

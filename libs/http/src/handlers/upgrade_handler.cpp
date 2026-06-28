@@ -120,7 +120,7 @@ bool UpgradeRequestFromJson(const Json &value, UpgradeRequest *request) {
     if (!json_reader::ReadField(value, "package_path", &parsed.package_path) ||
         !json_reader::ReadField(value, "expected_version", &parsed.expected_version) ||
         !json_reader::ReadField(value, "allow_same_version",
-                               &parsed.allow_same_version) ||
+                                &parsed.allow_same_version) ||
         !json_reader::ReadField(value, "allow_downgrade", &parsed.allow_downgrade) ||
         !json_reader::ReadField(value, "auto_reboot", &parsed.auto_reboot)) {
         return false;
@@ -135,6 +135,15 @@ std::string UpgradeValidationError(IUpgrade *upgrade) {
     }
     const std::string msg = upgrade->LastError();
     return msg.empty() ? "Could not validate package" : msg;
+}
+
+std::string UpgradeActionError(IUpgrade *upgrade,
+                               const std::string &fallback) {
+    if (upgrade == nullptr) {
+        return fallback;
+    }
+    const std::string msg = upgrade->LastError();
+    return msg.empty() ? fallback : msg;
 }
 
 }  // namespace
@@ -269,7 +278,9 @@ private:
         }
         if (!upgrade_->StartUpgrade(access_->MakeContext(request, &principal),
                                     upgrade_request)) {
-            return StatusResponse(409, "Could not start upgrade");
+            return StatusResponse(409, UpgradeActionError(
+                                           upgrade_,
+                                           "Could not start upgrade"));
         }
         return JsonResponse(200,
                             UpgradeInfoToJson(upgrade_->GetUpgradeInfo()));

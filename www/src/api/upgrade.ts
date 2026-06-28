@@ -5,14 +5,10 @@ import {
     uploadBinary,
     type ApiRequestOptions,
 } from './client';
-import type {
-    UpgradePackageInfo,
-    UpgradeRequest,
-    UpgradeInfo,
-} from './types';
+import type { UpgradePackageInfo, UpgradeRequest, UpgradeInfo } from './types';
 
-const minUploadTimeoutMs = 120000;
-const maxUploadTimeoutMs = 300000;
+const minUploadTimeoutMs = 300000;
+const maxUploadTimeoutMs = 600000;
 const uploadBytesPerMs = 128;
 
 function uploadTimeoutMs(file: File): number {
@@ -22,9 +18,7 @@ function uploadTimeoutMs(file: File): number {
     );
 }
 
-export function getUpgradeInfo(
-    init?: ApiRequestOptions,
-): Promise<UpgradeInfo> {
+export function getUpgradeInfo(init?: ApiRequestOptions): Promise<UpgradeInfo> {
     return requestJson<UpgradeInfo>(
         '/api/upgrade/status',
         mockUpgradeInfo,
@@ -57,17 +51,13 @@ export async function uploadUpgradePackage(
 }
 
 export function startUpgrade(value: UpgradeRequest): Promise<UpgradeInfo> {
-    return postJson<UpgradeRequest, UpgradeInfo>(
-        '/api/upgrade/start',
-        value,
-        {
-            ...mockUpgradeInfo,
-            state: 'validating',
-            current_stage: 'validating',
-            target_version: value.expected_version,
-            started_at_ms: Date.now(),
-        },
-    );
+    return postJson<UpgradeRequest, UpgradeInfo>('/api/upgrade/start', value, {
+        ...mockUpgradeInfo,
+        state: 'validating',
+        current_stage: 'validating',
+        target_version: value.expected_version,
+        started_at_ms: Date.now(),
+    });
 }
 
 export function cancelUpgrade(): Promise<UpgradeInfo> {

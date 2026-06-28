@@ -238,18 +238,38 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
     for (std::size_t i = 0; i < manifest.commands.size(); ++i) {
         const UpgradeCommand& command = manifest.commands[i];
         const std::string image_path = infra::Path::Join(stage_dir, command.file);
+        AppendUpgradeLog("web write begin: partition=" + command.partition +
+                         " file=" + command.file +
+                         " image=" + image_path +
+                         " size=" + std::to_string(command.size_bytes) +
+                         " mtd=" + command.partition_info.mtd_path +
+                         " mount=" + command.partition_info.mount_point);
         if (!upgrade_flash::UnmountIfMounted(command.partition_info.mount_point,
                                              reason)) {
+            AppendUpgradeLog("web unmount failed: mount=" +
+                             command.partition_info.mount_point +
+                             " msg=" +
+                             (reason == nullptr ? std::string() : *reason));
             return false;
         }
         if (!upgrade_flash::WriteMtdImage(command, image_path, reason)) {
             static_cast<void>(upgrade_flash::Remount(command.partition_info,
                                                      nullptr));
+            AppendUpgradeLog("web mtd write failed: partition=" +
+                             command.partition + " mtd=" +
+                             command.partition_info.mtd_path + " msg=" +
+                             (reason == nullptr ? std::string() : *reason));
             return false;
         }
         if (!upgrade_flash::Remount(command.partition_info, reason)) {
+            AppendUpgradeLog("web remount failed: mount=" +
+                             command.partition_info.mount_point +
+                             " msg=" +
+                             (reason == nullptr ? std::string() : *reason));
             return false;
         }
+        AppendUpgradeLog("web write done: partition=" + command.partition +
+                         " file=" + command.file);
         if (progress_callback) {
             const uint32_t progress = static_cast<uint32_t>(
                 ((i + 1) * 100ULL) / manifest.commands.size());
@@ -266,6 +286,20 @@ bool PackageNeedsSystemUpgradeHelper(const UpgradeManifest& manifest) {
         }
     }
     return false;
+}
+
+std::string UpgradeManifestSummary(const UpgradeManifest& manifest) {
+    std::string summary = "version=" + manifest.version +
+                          " board=" + manifest.board +
+                          " flash=" + manifest.flash +
+                          " reboot=" + (manifest.reboot ? "true" : "false") +
+                          " commands=" +
+                          std::to_string(manifest.commands.size());
+    for (const UpgradeCommand& command : manifest.commands) {
+        summary += " [" + command.partition + ":" + command.file +
+                   " size=" + std::to_string(command.size_bytes) + "]";
+    }
+    return summary;
 }
 
 bool CopyFileNoSymlink(const std::string& source_path,
@@ -398,6 +432,9 @@ class UpgradePlatform : public IUpgradePlatform {
 public:
     UpgradePackageInfo ValidatePackage(const std::string& package_path) override {
         last_error_.clear();
+        AppendUpgradeLog("validate begin: package=" + package_path +
+                         " size=" +
+                         std::to_string(infra::File::Size(package_path)));
         UpgradeManifest manifest;
         std::string reason;
         if (!ReadUpgradePackageManifest(package_path, &manifest, &reason)) {
@@ -413,6 +450,9 @@ public:
             return UpgradePackageInfo();
         }
         cached_package_ = parsed;
+        AppendUpgradeLog("validate ok: package=" + package_path +
+                         " digest=" + parsed.sha256 + " " +
+                         UpgradeManifestSummary(parsed.manifest));
         UpgradePackageInfo info;
         info.package_path = parsed.package_path;
         info.version = parsed.manifest.version;
@@ -449,12 +489,14 @@ public:
             !infra::Path::MakeDirs(kUpgradeStagePath) ||
             !infra::Path::MakeDirs(kUpgradeUploadPath)) {
             last_error_ = "create upgrade directory failed";
+            AppendUpgradeLog("prepare failed: create upgrade directory failed");
             return false;
         }
         if (!upgrade_flash::IsPathOnTmpfs(kUpgradeRootPath) ||
             !upgrade_flash::IsPathOnTmpfs(kUpgradeStagePath) ||
             !upgrade_flash::IsPathOnTmpfs(kUpgradeUploadPath)) {
             last_error_ = "upgrade workspace must be tmpfs";
+            AppendUpgradeLog("prepare failed: upgrade workspace must be tmpfs");
             return false;
         }
         if (PackageNeedsSystemUpgradeHelper(parsed.manifest) &&
@@ -471,8 +513,12 @@ public:
             std::to_string(ReadSystemTimeMs()) + "-" + parsed.manifest.version);
         if (!infra::Path::MakeDirs(stage_dir_)) {
             last_error_ = "create stage directory failed";
+            AppendUpgradeLog("prepare failed: create stage directory failed: " +
+                             stage_dir_);
             return false;
         }
+        AppendUpgradeLog("prepare ok: stage=" + stage_dir_ + " " +
+                         UpgradeManifestSummary(cached_package_.manifest));
         return true;
     }
 
@@ -493,6 +539,11 @@ public:
         }
         std::string reason;
         if (PackageNeedsSystemUpgradeHelper(cached_package_.manifest)) {
+            AppendUpgradeLog("helper handoff begin: package=" + package_path +
+                             " reboot=" +
+                             (cached_package_.requires_reboot ? "true" : "false") +
+                             " " +
+                             UpgradeManifestSummary(cached_package_.manifest));
             if (!StartSystemUpgradeHelper(package_path,
                                           cached_package_.requires_reboot,
                                           &reason)) {
@@ -518,9 +569,13 @@ public:
             &reason);
         if (!extract_ok) {
             last_error_ = reason;
-            AppendUpgradeLog("extract failed: " + reason);
+            AppendUpgradeLog("extract failed: stage=" + stage_dir_ +
+                             " msg=" + reason + " " +
+                             UpgradeManifestSummary(cached_package_.manifest));
             return false;
         }
+        AppendUpgradeLog("extract ok: stage=" + stage_dir_ + " " +
+                         UpgradeManifestSummary(cached_package_.manifest));
         if (cancel_requested_) {
             last_error_ = "upgrade canceled";
             return false;

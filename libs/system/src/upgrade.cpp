@@ -225,11 +225,13 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_ || !executor_) {
+                last_error_ = "service not started";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
                 return false;
             }
             if (!IsTerminalState(upgrade_info_.state)) {
+                last_error_ = "upgrade busy";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
                 return false;
@@ -240,6 +242,7 @@ public:
         std::string checked_package_path;
         if (!ValidateLocalPackage(request.package_path, &checked_package_path,
                                   &reason)) {
+            SetLastError(reason);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         reason);
             return false;
@@ -249,11 +252,13 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_ || !executor_) {
+                last_error_ = "service not started";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
                 return false;
             }
             if (!IsTerminalState(upgrade_info_.state)) {
+                last_error_ = "upgrade busy";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
                 return false;
@@ -275,6 +280,7 @@ public:
         if (executor->Post([this, context, checked_request]() {
                 ExecuteUpgrade(context, checked_request);
             }) != event::EventStatus::kOk) {
+            SetLastError("failed to queue upgrade task");
             SetFailed("failed to queue upgrade task", false);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         "failed to queue upgrade task");
