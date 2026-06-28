@@ -22,22 +22,22 @@ namespace {
 using media_internal::ParseVideoConfig;
 using media_internal::VerifyImageConfig;
 
-ConfigCode RejectConfigVerify(const std::string &field,
-                                const std::string &reason,
-                                ConfigError *error) {
+ConfigCode MakeVerifyError(const std::string &field,
+                           const std::string &msg,
+                           ConfigError *error) {
     if (error != nullptr) {
         error->field = field;
-        error->message = reason;
+        error->message = msg;
     }
     return ConfigCode::kVerify;
 }
 
-ConfigCode RejectConfigApply(const std::string &field,
-                               const std::string &reason,
-                               ConfigError *error) {
+ConfigCode MakeApplyError(const std::string &field,
+                          const std::string &msg,
+                          ConfigError *error) {
     if (error != nullptr) {
         error->field = field;
-        error->message = reason;
+        error->message = msg;
     }
     return ConfigCode::kApply;
 }
@@ -86,15 +86,15 @@ private:
     static void OnPipelineFrame(const MediaFrame &frame, void *user);
     void PushFrameToSink(const MediaFrame &frame);
     ConfigCode VerifyVideoConfig(const Json &now,
-                                   ConfigError *error) const;
+                                 ConfigError *error) const;
     ConfigCode ApplyVideoConfig(const Json &prev,
-                                  const Json &now,
-                                  ConfigError *error);
+                                const Json &now,
+                                ConfigError *error);
     ConfigCode VerifyImageConfigScope(const Json &now,
-                                        ConfigError *error) const;
+                                      ConfigError *error) const;
     ConfigCode ApplyImageConfig(const Json &prev,
-                                  const Json &now,
-                                  ConfigError *error);
+                                const Json &now,
+                                ConfigError *error);
     ConfigCode CheckImageForPipelineLocked(
         const MediaPipelineConfig &pipeline_config,
         ConfigError *error) const;
@@ -324,21 +324,21 @@ ConfigCode DeviceImpl::VerifyVideoConfig(
         return result;
     }
     if (!IsValidSnapshotVencChannel(parsed)) {
-        return RejectConfigVerify("streams",
-                                  "snapshot VENC channel conflicts", error);
+        return MakeVerifyError("streams",
+                               "snapshot VENC channel conflicts", error);
     }
     return CheckImageForPipelineLocked(parsed, error);
 }
 
 ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
-                                          const Json &now,
-                                          ConfigError *error) {
+                                        const Json &now,
+                                        ConfigError *error) {
     (void)prev;
     MediaPipelineConfig next_config;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         if (phase_ == DevicePhase::kStopping) {
-            return RejectConfigApply("", "device media busy", error);
+            return MakeApplyError("", "device media busy", error);
         }
         const ConfigCode result = ParseVideoConfig(
             now, active_config_, capabilities_, &next_config, error);
@@ -346,7 +346,7 @@ ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
             return result;
         }
         if (!IsValidSnapshotVencChannel(next_config)) {
-            return RejectConfigVerify(
+            return MakeVerifyError(
                 "streams", "snapshot VENC channel conflicts", error);
         }
         const ConfigCode image_result =
@@ -356,7 +356,7 @@ ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
         }
     }
     if (!ApplyPipelineConfig(next_config)) {
-        return RejectConfigApply("streams.main", "apply failed", error);
+        return MakeApplyError("streams.main", "apply failed", error);
     }
     return ConfigCode::kOk;
 }
@@ -368,8 +368,8 @@ ConfigCode DeviceImpl::VerifyImageConfigScope(
 }
 
 ConfigCode DeviceImpl::ApplyImageConfig(const Json &prev,
-                                          const Json &now,
-                                          ConfigError *error) {
+                                        const Json &now,
+                                        ConfigError *error) {
     (void)prev;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -388,7 +388,7 @@ ConfigCode DeviceImpl::ApplyImageConfig(const Json &prev,
         }
     }
     if (!pipeline_.ApplyImageConfig(now)) {
-        return RejectConfigApply("image", "apply failed", error);
+        return MakeApplyError("image", "apply failed", error);
     }
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -455,7 +455,7 @@ bool DeviceImpl::ApplyPipelineConfig(
             active_channels_ = BuildChannelsForConfig(active_config_);
             system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
-                                        : prev_phase;
+                                : prev_phase;
             if (is_started) {
                 image_tuner_->Start();
             }
@@ -470,7 +470,7 @@ bool DeviceImpl::ApplyPipelineConfig(
             active_channels_ = BuildChannelsForConfig(active_config_);
             system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
-                                        : prev_phase;
+                                : prev_phase;
             if (is_started) {
                 image_tuner_->Start();
             }

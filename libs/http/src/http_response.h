@@ -23,7 +23,7 @@ enum class HttpErrorCode {
 HttpResponse JsonResponse(int status_code, const Json &value);
 HttpResponse ErrorResponse(int status_code, HttpErrorCode code,
                            const std::string &msg);
-HttpResponse StatusResponse(int status_code, const std::string &reason);
+HttpResponse StatusResponse(int status_code, const std::string &msg);
 HttpResponse ForbiddenResponse(const AuthPrincipal &principal);
 HttpResponse OkResponse();
 HttpResponse AddJsonEnvelope(const HttpRequest &request,

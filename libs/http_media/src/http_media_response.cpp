@@ -12,7 +12,7 @@ HttpResponse HttpMediaJsonResponse(int status_code,
 }
 
 HttpResponse HttpMediaStatusResponse(int status_code,
-                                     const std::string &reason) {
+                                     const std::string &msg) {
     Json root = Json::object();
     Json error = Json::object();
     if (status_code == 401) {
@@ -28,17 +28,16 @@ HttpResponse HttpMediaStatusResponse(int status_code,
     } else {
         error["code"] = "internal_error";
     }
-    error["message"] = reason;
+    error["message"] = msg;
     root["error"] = error;
     return HttpMediaJsonResponse(status_code, root);
 }
 
-HttpResponse HttpMediaTextResponse(int status_code,
-                                   const std::string &reason) {
+HttpResponse HttpMediaTextResponse(int status_code, const std::string &msg) {
     HttpResponse response;
     response.status_code = status_code;
     response.headers["Content-Type"] = "text/plain";
-    response.body = reason;
+    response.body = msg;
     return response;
 }
 

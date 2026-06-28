@@ -18,12 +18,12 @@ import type {
     UpgradeInfo,
 } from '../api/types';
 
-const pollIntervalMs = 2000;
-const statusTimeoutMs = 1800;
+const UPGRADE_STATUS_POLL_INTERVAL_MS = 2000;
+const UPGRADE_STATUS_REQUEST_TIMEOUT_MS = 1800;
 
 export type UpgradeActionErrorSeverity = 'warning' | 'danger';
 
-function errorMsg(error: unknown, fallback: string) {
+function errorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
 
@@ -42,20 +42,23 @@ export function useUpgrade() {
     const [actionErrorSeverity, setActionErrorSeverity] =
         useState<UpgradeActionErrorSeverity>('warning');
     const [refreshError, setRefreshError] = useState('');
-    const statusPollingPaused = useRef(false);
+    const isStatusPollingPaused = useRef(false);
 
     useEffect(() => {
         let mounted = true;
         let timer = 0;
         const load = async () => {
-            if (statusPollingPaused.current) {
-                timer = window.setTimeout(load, pollIntervalMs);
+            if (isStatusPollingPaused.current) {
+                timer = window.setTimeout(
+                    load,
+                    UPGRADE_STATUS_POLL_INTERVAL_MS,
+                );
                 return;
             }
             const startedAt = Date.now();
             try {
                 const nextUpgradeInfo = await getUpgradeInfo({
-                    timeoutMs: statusTimeoutMs,
+                    timeoutMs: UPGRADE_STATUS_REQUEST_TIMEOUT_MS,
                 });
                 if (mounted) {
                     setUpgradeInfo(nextUpgradeInfo);
@@ -63,14 +66,17 @@ export function useUpgrade() {
                 }
             } catch (err: unknown) {
                 if (mounted) {
-                    setRefreshError(errorMsg(err, '升级状态刷新失败'));
+                    setRefreshError(errorMessage(err, '升级状态刷新失败'));
                 }
             } finally {
                 if (mounted) {
                     const elapsedMs = Date.now() - startedAt;
                     timer = window.setTimeout(
                         load,
-                        Math.max(0, pollIntervalMs - elapsedMs),
+                        Math.max(
+                            0,
+                            UPGRADE_STATUS_POLL_INTERVAL_MS - elapsedMs,
+                        ),
                     );
                 }
             }
@@ -92,7 +98,7 @@ export function useUpgrade() {
 
     const uploadPackage = async () => {
         if (!selectedFile) return;
-        statusPollingPaused.current = true;
+        isStatusPollingPaused.current = true;
         setBusy(true);
         setActionError('');
         setMsg('');
@@ -102,16 +108,16 @@ export function useUpgrade() {
             setMsg(`已上传 ${selectedFile.name}`);
         } catch (err) {
             setActionErrorSeverity('warning');
-            setActionError(errorMsg(err, '上传失败'));
+            setActionError(errorMessage(err, '上传失败'));
         } finally {
-            statusPollingPaused.current = false;
+            isStatusPollingPaused.current = false;
             setBusy(false);
         }
     };
 
     const startUpgrade = async () => {
         if (!packageInfo) return;
-        statusPollingPaused.current = true;
+        isStatusPollingPaused.current = true;
         setBusy(true);
         setActionError('');
         setMsg('');
@@ -128,15 +134,15 @@ export function useUpgrade() {
             setMsg('升级任务已提交');
         } catch (err) {
             setActionErrorSeverity('danger');
-            setActionError(errorMsg(err, '启动升级失败'));
+            setActionError(errorMessage(err, '启动升级失败'));
         } finally {
-            statusPollingPaused.current = false;
+            isStatusPollingPaused.current = false;
             setBusy(false);
         }
     };
 
     const cancelUpgrade = async () => {
-        statusPollingPaused.current = true;
+        isStatusPollingPaused.current = true;
         setBusy(true);
         setActionError('');
         setMsg('');
@@ -146,15 +152,15 @@ export function useUpgrade() {
             setMsg('升级任务已取消');
         } catch (err) {
             setActionErrorSeverity('danger');
-            setActionError(errorMsg(err, '取消升级失败'));
+            setActionError(errorMessage(err, '取消升级失败'));
         } finally {
-            statusPollingPaused.current = false;
+            isStatusPollingPaused.current = false;
             setBusy(false);
         }
     };
 
     const confirmReboot = async () => {
-        statusPollingPaused.current = true;
+        isStatusPollingPaused.current = true;
         setBusy(true);
         setActionError('');
         setMsg('');
@@ -164,9 +170,9 @@ export function useUpgrade() {
             setMsg('已下发重启应用升级');
         } catch (err) {
             setActionErrorSeverity('danger');
-            setActionError(errorMsg(err, '确认重启失败'));
+            setActionError(errorMessage(err, '确认重启失败'));
         } finally {
-            statusPollingPaused.current = false;
+            isStatusPollingPaused.current = false;
             setBusy(false);
         }
     };

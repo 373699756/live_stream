@@ -115,9 +115,9 @@ HttpResponse ErrorResponse(int status_code, HttpErrorCode code,
     return JsonResponse(status_code, root);
 }
 
-HttpResponse StatusResponse(int status_code, const std::string &reason) {
+HttpResponse StatusResponse(int status_code, const std::string &msg) {
     return ErrorResponse(status_code, HttpErrorCodeForStatus(status_code),
-                         reason);
+                         msg);
 }
 
 HttpResponse ForbiddenResponse(const AuthPrincipal &principal) {

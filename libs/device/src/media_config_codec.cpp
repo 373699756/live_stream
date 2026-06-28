@@ -258,12 +258,12 @@ constexpr uint32_t kMaxVideoRoiRegions = 8;
 constexpr int32_t kMinVideoRoiQp = -51;
 constexpr int32_t kMaxVideoRoiQp = 51;
 
-ConfigCode RejectConfig(const std::string &field,
-                          const std::string &reason,
-                          ConfigError *error) {
+ConfigCode MakeConfigError(const std::string &field,
+                           const std::string &msg,
+                           ConfigError *error) {
     if (error != nullptr) {
         error->field = field;
-        error->message = reason;
+        error->message = msg;
     }
     return ConfigCode::kVerify;
 }
@@ -362,15 +362,15 @@ bool ValidateVideoStreamJson(const Json &stream) {
             int32_t qp = 0;
             bool absolute_qp = false;
             if (!json_reader::ReadField(region, "enabled",
-                                       &region_enabled) ||
+                                        &region_enabled) ||
                 !json_reader::ReadField(region, "x", &x) ||
                 !json_reader::ReadField(region, "y", &y) ||
                 !json_reader::ReadField(region, "width", &width) ||
                 !json_reader::ReadField(region, "height", &height) ||
                 !json_reader::ReadField(region, "qp", &qp,
-                                       kMinVideoRoiQp, kMaxVideoRoiQp) ||
+                                        kMinVideoRoiQp, kMaxVideoRoiQp) ||
                 !json_reader::ReadField(region, "absolute_qp",
-                                       &absolute_qp)) {
+                                        &absolute_qp)) {
                 return false;
             }
         }
@@ -439,8 +439,8 @@ ValidateNumericControls(const Json &section,
         int64_t value = 0;
         const std::string field = JoinField(section_name, control.name);
         if (!json_reader::ReadField(section, control.name.c_str(), &value, control.min,
-                                   control.max)) {
-            return RejectConfig(field, "missing or unsupported value", error);
+                                    control.max)) {
+            return MakeConfigError(field, "missing or unsupported value", error);
         }
     }
     return ConfigCode::kOk;
@@ -456,16 +456,16 @@ ValidateOptionControls(const Json &section,
         std::string value;
         if (json_reader::ReadField(section, control.name.c_str(), &value)) {
             if (!ContainsString(control.values, value)) {
-                return RejectConfig(field, "unsupported value", error);
+                return MakeConfigError(field, "unsupported value", error);
             }
             continue;
         }
         bool enabled = false;
         if (!json_reader::ReadField(section, control.name.c_str(), &enabled)) {
-            return RejectConfig(field, "missing or invalid value", error);
+            return MakeConfigError(field, "missing or invalid value", error);
         }
         if (!ContainsString(control.values, enabled ? "true" : "false")) {
-            return RejectConfig(field, "unsupported value", error);
+            return MakeConfigError(field, "unsupported value", error);
         }
     }
     return ConfigCode::kOk;
@@ -480,34 +480,34 @@ ConfigCode ValidateLensCorrectionConfig(
         return ConfigCode::kOk;
     }
     if (!value.at("lens_correction").is_object()) {
-        return RejectConfig("lens_correction",
-                                     "missing or invalid value", error);
+        return MakeConfigError("lens_correction",
+                               "missing or invalid value", error);
     }
     const Json &lens_correction = value.at("lens_correction");
     bool enabled = false;
     if (!json_reader::ReadField(lens_correction, "enabled", &enabled)) {
-        return RejectConfig("lens_correction.enabled",
-                                     "missing or invalid value", error);
+        return MakeConfigError("lens_correction.enabled",
+                               "missing or invalid value", error);
     }
     if (enabled && !capabilities.lens_correction_supported) {
-        return RejectConfig("lens_correction.enabled",
-                                     "unsupported value", error);
+        return MakeConfigError("lens_correction.enabled",
+                               "unsupported value", error);
     }
     if (enabled) {
         if (active_config.main_stream.size.width <
                 capabilities.lens_correction_min_width ||
             active_config.main_stream.size.height <
                 capabilities.lens_correction_min_height) {
-            return RejectConfig("lens_correction.enabled",
-                                         "main stream size unsupported", error);
+            return MakeConfigError("lens_correction.enabled",
+                                   "main stream size unsupported", error);
         }
         if (active_config.sub_stream.enabled &&
             (active_config.sub_stream.size.width <
                  capabilities.lens_correction_min_width ||
              active_config.sub_stream.size.height <
                  capabilities.lens_correction_min_height)) {
-            return RejectConfig("lens_correction.enabled",
-                                         "sub stream size unsupported", error);
+            return MakeConfigError("lens_correction.enabled",
+                                   "sub stream size unsupported", error);
         }
     }
     const ConfigCode range_result = ValidateNumericControls(
@@ -534,34 +534,34 @@ ConfigCode ValidateStabilizationConfig(
         return ConfigCode::kOk;
     }
     if (!value.at("stabilization").is_object()) {
-        return RejectConfig("stabilization",
-                                     "missing or invalid value", error);
+        return MakeConfigError("stabilization",
+                               "missing or invalid value", error);
     }
     const Json &stabilization = value.at("stabilization");
     bool enabled = false;
     if (!json_reader::ReadField(stabilization, "enabled", &enabled)) {
-        return RejectConfig("stabilization.enabled",
-                                     "missing or invalid value", error);
+        return MakeConfigError("stabilization.enabled",
+                               "missing or invalid value", error);
     }
     if (enabled && !capabilities.stabilization_supported) {
-        return RejectConfig("stabilization.enabled",
-                                     "unsupported value", error);
+        return MakeConfigError("stabilization.enabled",
+                               "unsupported value", error);
     }
     if (enabled) {
         if (active_config.main_stream.size.width <
                 capabilities.stabilization_min_width ||
             active_config.main_stream.size.height <
                 capabilities.stabilization_min_height) {
-            return RejectConfig("stabilization.enabled",
-                                         "main stream size unsupported", error);
+            return MakeConfigError("stabilization.enabled",
+                                   "main stream size unsupported", error);
         }
         if (active_config.sub_stream.enabled &&
             (active_config.sub_stream.size.width <
                  capabilities.stabilization_min_width ||
              active_config.sub_stream.size.height <
                  capabilities.stabilization_min_height)) {
-            return RejectConfig("stabilization.enabled",
-                                         "sub stream size unsupported", error);
+            return MakeConfigError("stabilization.enabled",
+                                   "sub stream size unsupported", error);
         }
     }
     const ConfigCode range_result = ValidateNumericControls(
@@ -587,64 +587,64 @@ ConfigCode ValidateVideoStreamConfig(
     const CodecCapability *codec_capability =
         FindCodecCapability(stream_capabilities, stream.codec);
     if (codec_capability == nullptr) {
-        return RejectConfig(JoinField(stream_prefix, "codec"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "codec"),
+                               "unsupported value", error);
     }
     if (!ContainsResolution(stream_capabilities, stream.resolution)) {
-        return RejectConfig(JoinField(stream_prefix, "resolution"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "resolution"),
+                               "unsupported value", error);
     }
     if (stream.fps < stream_capabilities.frame_rate.min_fps ||
         stream.fps > stream_capabilities.frame_rate.max_fps) {
-        return RejectConfig(JoinField(stream_prefix, "fps"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "fps"),
+                               "unsupported value", error);
     }
     if (stream.bitrate_kbps < stream_capabilities.bitrate.min_kbps ||
         stream.bitrate_kbps > stream_capabilities.bitrate.max_kbps) {
-        return RejectConfig(JoinField(stream_prefix, "bitrate_kbps"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "bitrate_kbps"),
+                               "unsupported value", error);
     }
     if (!ContainsRateControl(stream_capabilities, stream.rate_control)) {
-        return RejectConfig(JoinField(stream_prefix, "rate_control"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "rate_control"),
+                               "unsupported value", error);
     }
     if (stream.gop < stream_capabilities.gop.min ||
         stream.gop > stream_capabilities.gop.max) {
-        return RejectConfig(JoinField(stream_prefix, "gop"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "gop"),
+                               "unsupported value", error);
     }
     if (stream.smart_codec && !stream_capabilities.smart_codec_supported) {
-        return RejectConfig(JoinField(stream_prefix, "smart_codec"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "smart_codec"),
+                               "unsupported value", error);
     }
     if (stream.gop_mode == GopMode::kSmartP &&
         !stream_capabilities.smart_codec_supported) {
-        return RejectConfig(JoinField(stream_prefix, "gop_mode"),
-                                     "unsupported value", error);
+        return MakeConfigError(JoinField(stream_prefix, "gop_mode"),
+                               "unsupported value", error);
     }
     if ((stream.smart_codec || stream.gop_mode == GopMode::kSmartP) &&
         stream.codec != Codec::kH264 && stream.codec != Codec::kH265) {
-        return RejectConfig(JoinField(stream_prefix, "smart_codec"),
-                                     "unsupported codec", error);
+        return MakeConfigError(JoinField(stream_prefix, "smart_codec"),
+                               "unsupported codec", error);
     }
     if (stream.roi.enabled || !stream.roi.regions.empty()) {
         if (!stream_capabilities.roi_supported ||
             stream_capabilities.max_roi_regions == 0) {
-            return RejectConfig(JoinField(stream_prefix, "roi"),
-                                         "unsupported value", error);
+            return MakeConfigError(JoinField(stream_prefix, "roi"),
+                                   "unsupported value", error);
         }
         if (stream.codec != Codec::kH264 &&
             stream.codec != Codec::kH265) {
-            return RejectConfig(JoinField(stream_prefix, "roi"),
-                                         "unsupported codec", error);
+            return MakeConfigError(JoinField(stream_prefix, "roi"),
+                                   "unsupported codec", error);
         }
         const uint32_t max_roi_regions =
             stream_capabilities.max_roi_regions < kMaxVideoRoiRegions
                 ? stream_capabilities.max_roi_regions
                 : kMaxVideoRoiRegions;
         if (stream.roi.regions.size() > max_roi_regions) {
-            return RejectConfig(JoinField(stream_prefix, "roi"),
-                                         "too many regions", error);
+            return MakeConfigError(JoinField(stream_prefix, "roi"),
+                                   "too many regions", error);
         }
         for (size_t i = 0; i < stream.roi.regions.size(); ++i) {
             const VideoRoiRegion &region = stream.roi.regions[i];
@@ -653,19 +653,19 @@ ConfigCode ValidateVideoStreamConfig(
                                     "regions"),
                           std::to_string(i));
             if (region.width == 0 || region.height == 0) {
-                return RejectConfig(region_prefix,
-                                             "invalid region size", error);
+                return MakeConfigError(region_prefix,
+                                       "invalid region size", error);
             }
             if (region.x >= stream.resolution.width ||
                 region.y >= stream.resolution.height ||
                 region.width > stream.resolution.width - region.x ||
                 region.height > stream.resolution.height - region.y) {
-                return RejectConfig(region_prefix,
-                                             "region outside stream frame", error);
+                return MakeConfigError(region_prefix,
+                                       "region outside stream frame", error);
             }
             if (region.qp < kMinVideoRoiQp || region.qp > kMaxVideoRoiQp) {
-                return RejectConfig(JoinField(region_prefix, "qp"),
-                                             "unsupported value", error);
+                return MakeConfigError(JoinField(region_prefix, "qp"),
+                                       "unsupported value", error);
             }
         }
     }
@@ -739,34 +739,34 @@ void from_json(const Json &json, VideoConfig &config) {
 }
 
 ConfigCode DecodeVideoConfig(const Json &value,
-                               VideoConfig *config,
-                               ConfigError *error) {
+                             VideoConfig *config,
+                             ConfigError *error) {
     if (config == nullptr) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
     if (!value.is_object()) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
 
     if (!value.contains("streams") || !value.at("streams").is_object()) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
     const Json &streams = value.at("streams");
 
     if (!streams.contains("main") || !streams.at("main").is_object()) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
     const Json &main_stream = streams.at("main");
     if (!ValidateVideoStreamJson(main_stream)) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
 
     if (!streams.contains("sub") || !streams.at("sub").is_object()) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
     const Json &sub_stream = streams.at("sub");
     if (!ValidateVideoStreamJson(sub_stream)) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
 
     value.get_to(*config);
@@ -774,14 +774,14 @@ ConfigCode DecodeVideoConfig(const Json &value,
 }
 
 ConfigCode VerifyVideoConfig(const VideoConfig &config,
-                               const MediaCapabilities &capabilities,
-                               ConfigError *error) {
+                             const MediaCapabilities &capabilities,
+                             ConfigError *error) {
     if (capabilities.streams.empty()) {
-        return RejectConfig("", "media capabilities unavailable", error);
+        return MakeConfigError("", "media capabilities unavailable", error);
     }
     if (!config.main.enabled) {
-        return RejectConfig("streams.main.enabled",
-                                     "main stream must stay enabled", error);
+        return MakeConfigError("streams.main.enabled",
+                               "main stream must stay enabled", error);
     }
 
     const struct {
@@ -798,7 +798,7 @@ ConfigCode VerifyVideoConfig(const VideoConfig &config,
         const VideoStreamCapabilities *stream_capabilities =
             FindStreamCapabilities(capabilities, stream_spec.stream_id);
         if (stream_capabilities == nullptr) {
-            return RejectConfig(stream_prefix, "missing capabilities", error);
+            return MakeConfigError(stream_prefix, "missing capabilities", error);
         }
 
         const ConfigCode result = ValidateVideoStreamConfig(
@@ -811,11 +811,11 @@ ConfigCode VerifyVideoConfig(const VideoConfig &config,
 }
 
 ConfigCode BuildPipelineConfig(const VideoConfig &config,
-                                 const MediaPipelineConfig &fallback,
-                                 MediaPipelineConfig *pipeline_config,
-                                 ConfigError *error) {
+                               const MediaPipelineConfig &fallback,
+                               MediaPipelineConfig *pipeline_config,
+                               ConfigError *error) {
     if (pipeline_config == nullptr) {
-        return RejectConfig("", "invalid video config", error);
+        return MakeConfigError("", "invalid video config", error);
     }
     MediaPipelineConfig next_config = fallback;
     ApplyStreamConfig(StreamId::kMain, config.main, &next_config.main_stream);
@@ -825,11 +825,11 @@ ConfigCode BuildPipelineConfig(const VideoConfig &config,
 }
 
 ConfigCode VerifyImageConfig(const Json &value,
-                               const ImageCapabilities &capabilities,
-                               const MediaPipelineConfig &active_config,
-                               ConfigError *error) {
+                             const ImageCapabilities &capabilities,
+                             const MediaPipelineConfig &active_config,
+                             ConfigError *error) {
     if (!value.is_object()) {
-        return RejectConfig("", "invalid image config", error);
+        return MakeConfigError("", "invalid image config", error);
     }
     const struct {
         const char *name;
@@ -851,7 +851,7 @@ ConfigCode VerifyImageConfig(const Json &value,
     for (const auto &section_spec : sections) {
         if (!value.contains(section_spec.name) ||
             !value.at(section_spec.name).is_object()) {
-            return RejectConfig("", "invalid image config", error);
+            return MakeConfigError("", "invalid image config", error);
         }
         const Json &section = value.at(section_spec.name);
         if (section_spec.ranges != nullptr) {
@@ -872,31 +872,31 @@ ConfigCode VerifyImageConfig(const Json &value,
 
     if (!value.contains("orientation") ||
         !value.at("orientation").is_object()) {
-        return RejectConfig("", "invalid image config", error);
+        return MakeConfigError("", "invalid image config", error);
     }
     const Json &orientation = value.at("orientation");
     bool mirror = false;
     if (!json_reader::ReadField(orientation, "mirror", &mirror)) {
-        return RejectConfig("orientation.mirror",
-                                     "missing or invalid value", error);
+        return MakeConfigError("orientation.mirror",
+                               "missing or invalid value", error);
     }
     if (mirror && !capabilities.mirror_supported) {
-        return RejectConfig("orientation.mirror", "unsupported value", error);
+        return MakeConfigError("orientation.mirror", "unsupported value", error);
     }
     bool flip = false;
     if (!json_reader::ReadField(orientation, "flip", &flip)) {
-        return RejectConfig("orientation.flip",
-                                     "missing or invalid value", error);
+        return MakeConfigError("orientation.flip",
+                               "missing or invalid value", error);
     }
     if (flip && !capabilities.flip_supported) {
-        return RejectConfig("orientation.flip", "unsupported value", error);
+        return MakeConfigError("orientation.flip", "unsupported value", error);
     }
 
     if (value.contains("strategy") && value.at("strategy").is_object()) {
         const Json &strategy = value.at("strategy");
         const std::string mode = strategy.value("mode", "low_noise");
         if (mode != "balanced" && mode != "low_noise" && mode != "detail") {
-            return RejectConfig("strategy.mode", "unsupported value", error);
+            return MakeConfigError("strategy.mode", "unsupported value", error);
         }
     }
     ConfigCode result =
@@ -909,10 +909,10 @@ ConfigCode VerifyImageConfig(const Json &value,
 }
 
 ConfigCode ParseVideoConfig(const Json &value,
-                              const MediaPipelineConfig &fallback,
-                              const MediaCapabilities &capabilities,
-                              MediaPipelineConfig *parsed,
-                              ConfigError *error) {
+                            const MediaPipelineConfig &fallback,
+                            const MediaCapabilities &capabilities,
+                            MediaPipelineConfig *parsed,
+                            ConfigError *error) {
     VideoConfig config;
     ConfigCode result = DecodeVideoConfig(value, &config, error);
     if (result != ConfigCode::kOk) {
@@ -927,8 +927,8 @@ ConfigCode ParseVideoConfig(const Json &value,
         return result;
     }
     if (!IsValidMediaPipelineConfig(*parsed)) {
-        return RejectConfig("streams.main",
-                                     "invalid media pipeline config", error);
+        return MakeConfigError("streams.main",
+                               "invalid media pipeline config", error);
     }
     return ConfigCode::kOk;
 }
