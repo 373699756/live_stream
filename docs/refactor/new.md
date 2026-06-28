@@ -49,10 +49,10 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
   FLV、MJPEG、订阅。
 - 局部资源上限已有，但缺统一 `MediaResourceBudget`，GOP bytes、live queue bytes、
   HLS segment bytes 不够显式。
-- HTTP 已有 `CreateHttpHandler(kind, deps)`，但 `MakeXxxHandler()` 仍公开，形成两套
-  handler 创建 API。
+- HTTP 控制面 handler 已删除 `HttpHandlerDependencies` 聚合包和
+  `CreateHttpHandler(kind, deps)` 分发；`HttpImpl` 按业务入口直接构造每个 handler。
 - HTTP router 和 handler 仍是静态 thunk + `void* user`。
-- `HttpDependencies`、`HttpHandlerDependencies`、`SystemOverviewSources` 仍是宽依赖包。
+- `HttpDependencies`、`SystemOverviewSources` 仍是宽依赖包。
 - `FlvVideoTagBuild` / `MediaFlvVideoTagView` 仍含较大固定数组，需要减少栈上复制。
 - 进程日志 `infra::Log` 仍用全局宏和文件内静态状态；这是 process log 的独立设计债，
   不是审计 logger 问题。
@@ -106,11 +106,10 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### P2：HTTP handler 与依赖边界
 
-- 删除外部暴露的 `MakeXxxHandler()`，仅保留 `CreateHttpHandler(kind, deps)`。
-- 将 `HttpHandlerDependencies` 拆成按 handler 领域的窄依赖包，避免所有 handler 看到
-  全系统依赖。
-- 将 `SystemOverviewSources` 改为明确的 overview 聚合输入，减少和 `HttpDependencies`
-  重复。
+- 继续拆 `HttpDependencies`，按控制 handler、媒体 handler、streaming handler 三组在
+  `HttpImpl` 构造期解包，避免 public 组合根 DTO 长期向实现层扩散。
+- 将 `SystemOverviewSources` 收敛为 system status 专用只读视图，减少和
+  `HttpDependencies` 重复。
 - 在 `IHttpRouter` 增加成员函数注册模板，替换 handler 内静态 thunk + `void* user`。
 - HTTP 对 RTSP/WebRTC/ONVIF 的直接依赖先收敛为只读诊断/会话视图接口，不改 HTTP JSON
   字段。

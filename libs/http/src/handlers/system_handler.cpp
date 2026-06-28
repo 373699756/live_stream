@@ -228,7 +228,7 @@ private:
 
     HttpAccess *access_ = nullptr;
     ISystem *system_ = nullptr;
-    SystemOverviewInputs overview_;
+    SystemOverviewSources overview_;
 };
 
 std::unique_ptr<IHttpHandler> MakeSystemHandler(

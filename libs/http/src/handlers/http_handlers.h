@@ -60,7 +60,7 @@ struct AlarmHandlerDependencies {
     IAlarm *alarm = nullptr;
 };
 
-struct SystemOverviewInputs {
+struct SystemOverviewSources {
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
     IAuth *auth = nullptr;
@@ -79,7 +79,7 @@ struct SystemOverviewInputs {
 struct SystemHandlerDependencies {
     HttpAccess *access = nullptr;
     ISystem *system = nullptr;
-    SystemOverviewInputs overview;
+    SystemOverviewSources overview;
 };
 
 struct MediaHandlerDependencies {
@@ -104,37 +104,28 @@ struct SnapshotHandlerDependencies {
     DeviceMedia *device = nullptr;
 };
 
-enum class HttpHandlerKind {
-    kAuth = 0,
-    kConfig,
-    kOperations,
-    kNetwork,
-    kTime,
-    kUpgrade,
-    kSystem,
-    kAlarm,
-    kMedia,
-    kAi,
-    kSnapshot,
-};
-
-struct HttpHandlerDependencies {
-    AuthHandlerDependencies auth;
-    ConfigHandlerDependencies config;
-    OperationsHandlerDependencies operations;
-    NetworkHandlerDependencies network;
-    TimeHandlerDependencies time;
-    UpgradeHandlerDependencies upgrade;
-    SystemHandlerDependencies system;
-    AlarmHandlerDependencies alarm;
-    MediaHandlerDependencies media;
-    AiHandlerDependencies ai;
-    SnapshotHandlerDependencies snapshot;
-};
-
-std::unique_ptr<IHttpHandler> CreateHttpHandler(
-    HttpHandlerKind kind,
-    const HttpHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAuthHandler(
+    const AuthHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeConfigHandler(
+    const ConfigHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(
+    const OperationsHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeNetworkHandler(
+    const NetworkHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeTimeHandler(
+    const TimeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
+    const UpgradeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSystemHandler(
+    const SystemHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(
+    const AlarmHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeMediaHandler(
+    const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAiHandler(
+    const AiHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
+    const SnapshotHandlerDependencies &dependencies);
 
 }  // namespace live_stream
 
