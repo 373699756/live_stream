@@ -47,8 +47,8 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
   已使用 `std::atomic`；`media_buffer_pool.cpp` 不再直接持有 pool block 数组。
 - `MediaStreams` 已拆真实状态对象，但仍是一把 `shared_mutex` 协调主/子码流、HLS、
   FLV、MJPEG、订阅。
-- 局部资源上限已有，但缺统一 `MediaResourceBudget`，GOP bytes、live queue bytes、
-  HLS segment bytes 不够显式。
+- 局部资源上限已有，`MediaCacheLimits` 已承载 GOP 和 live queue 上限，HLS
+  segment bytes 等剩余上限还需要继续补齐。
 - HTTP 控制面 handler 已删除 `HttpHandlerDependencies` 聚合包和
   `CreateHttpHandler(kind, deps)` 分发；`HttpImpl` 按业务入口直接构造每个 handler。
 - HTTP router 和 handler 仍是静态 thunk + `void* user`。
@@ -127,7 +127,7 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### P3：media 资源预算和并发边界
 
-- 新增 `MediaResourceBudget` 到 `MediaStreamsOptions`，覆盖 GOP frame/bytes、
+- 继续补齐 `MediaCacheLimits`，覆盖 GOP frame/bytes、
   subscription queue frame/bytes、HLS segment count/bytes、FLV cached tag 上限。
 - `FrameRing`、`GopCache`、`HlsMaker` 从硬编码常量迁到预算参数。
 - 先做预算和统计，不立即引入 `FrameStage` pipeline。

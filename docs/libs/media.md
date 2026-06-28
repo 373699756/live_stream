@@ -31,7 +31,7 @@ payload；HLS segment 是独立转封装后的 TS buffer。
 subscription 起播 GOP frame/bytes、共享 live frame/bytes、
 HTTP-FLV cached tag/bytes、HLS segment 数量、单 segment bytes 和 HLS cached bytes。
 这些上限只约束 `media` 内部缓存，不包含 FLV/MJPEG client 数、frame subscription
-数、socket send queue 或 WebRTC peer 数。内部 `FrameClients`、`GopCache` 和
+数、socket send queue 或 WebRTC peer 数。内部 `FrameSubscribers`、`GopCache` 和
 `HlsMaker` 仍使用固定数组或明确 owner 的 buffer 作为硬边界，运行期上限只控制可用窗口
 和累计字节，避免热路径按帧分配策略对象。
 
@@ -41,13 +41,13 @@ live frame、HLS segment 和 FLV GOP cache 的总量近似值；`main_*`、`sub_
 等待下一个关键帧恢复，避免从 P/B 帧继续输出。
 
 `MediaStreams` 只做协调：`MediaStreamTracks` 持有主/子码流的 codec、参数集、
-HLS/FLV/MJPEG 缓存和 reset 规则；`FrameClients` 持有协议帧订阅和共享 live frame；
+HLS/FLV/MJPEG 缓存和 reset 规则；`FrameSubscribers` 持有协议帧订阅和共享 live frame；
 `PreviewClients` 持有 HTTP-FLV/MJPEG preview client、sink 生命周期和
 pending write 数量。集合当前基数接口使用 `Size()`，不要使用 `Count()`。不要再把
 `MediaStreams` 按 start/input/output 这类函数主题
 拆文件；只有真实拥有状态、资源或生命周期规则的对象才单独成文件。
 
-`FrameClients` 内的共享 live frame 使用 `event::MultiReaderQueue` 作为固定容量
+`FrameSubscribers` 内的共享 live frame 使用 `event::MultiReaderQueue` 作为固定容量
 多读者缓存：生产者每帧只写一次，RTSP/WebRTC 客户端只保存自己的读取位置。慢客户端
 读到已覆盖边界时只标记该客户端 `wait_keyframe`，不会清空其它客户端状态。
 
