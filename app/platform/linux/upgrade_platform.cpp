@@ -227,11 +227,11 @@ bool RemovePathTree(const std::string& path) {
 bool ApplyWebUpgrade(const UpgradeManifest& manifest,
                      const std::string& stage_dir,
                      UpgradeProgressCallback progress_callback,
-                     std::string* reason) {
+                     std::string* msg) {
     for (const UpgradeCommand& command : manifest.commands) {
         if (command.partition != "web") {
-            if (reason != nullptr) {
-                *reason = "only web upgrade is supported online";
+            if (msg != nullptr) {
+                *msg = "only web upgrade is supported online";
             }
             return false;
         }
@@ -246,27 +246,27 @@ bool ApplyWebUpgrade(const UpgradeManifest& manifest,
                          " mtd=" + command.partition_info.mtd_path +
                          " mount=" + command.partition_info.mount_point);
         if (!upgrade_flash::UnmountIfMounted(command.partition_info.mount_point,
-                                             reason)) {
+                                             msg)) {
             AppendUpgradeLog("web unmount failed: mount=" +
                              command.partition_info.mount_point +
                              " msg=" +
-                             (reason == nullptr ? std::string() : *reason));
+                             (msg == nullptr ? std::string() : *msg));
             return false;
         }
-        if (!upgrade_flash::WriteMtdImage(command, image_path, reason)) {
+        if (!upgrade_flash::WriteMtdImage(command, image_path, msg)) {
             static_cast<void>(upgrade_flash::Remount(command.partition_info,
                                                      nullptr));
             AppendUpgradeLog("web mtd write failed: partition=" +
                              command.partition + " mtd=" +
                              command.partition_info.mtd_path + " msg=" +
-                             (reason == nullptr ? std::string() : *reason));
+                             (msg == nullptr ? std::string() : *msg));
             return false;
         }
-        if (!upgrade_flash::Remount(command.partition_info, reason)) {
+        if (!upgrade_flash::Remount(command.partition_info, msg)) {
             AppendUpgradeLog("web remount failed: mount=" +
                              command.partition_info.mount_point +
                              " msg=" +
-                             (reason == nullptr ? std::string() : *reason));
+                             (msg == nullptr ? std::string() : *msg));
             return false;
         }
         AppendUpgradeLog("web write done: partition=" + command.partition +
@@ -306,20 +306,20 @@ std::string UpgradeManifestSummary(const UpgradeManifest& manifest) {
 bool CopyFileNoSymlink(const std::string& source_path,
                        const std::string& output_path,
                        mode_t mode,
-                       std::string* reason) {
+                       std::string* msg) {
     struct stat source_stat;
     if (lstat(source_path.c_str(), &source_stat) != 0 ||
         S_ISLNK(source_stat.st_mode) || !S_ISREG(source_stat.st_mode)) {
-        if (reason != nullptr) {
-            *reason = "sysupgrade tool is not a regular file";
+        if (msg != nullptr) {
+            *msg = "sysupgrade tool is not a regular file";
         }
         return false;
     }
 
     const int source_fd = open(source_path.c_str(), O_RDONLY | O_NOFOLLOW);
     if (source_fd < 0) {
-        if (reason != nullptr) {
-            *reason = "open sysupgrade tool failed";
+        if (msg != nullptr) {
+            *msg = "open sysupgrade tool failed";
         }
         return false;
     }
@@ -329,8 +329,8 @@ bool CopyFileNoSymlink(const std::string& source_path,
                                mode);
     if (output_fd < 0) {
         close(source_fd);
-        if (reason != nullptr) {
-            *reason = "create tmpfs sysupgrade tool failed";
+        if (msg != nullptr) {
+            *msg = "create tmpfs sysupgrade tool failed";
         }
         return false;
     }
@@ -372,43 +372,43 @@ bool CopyFileNoSymlink(const std::string& source_path,
     close(source_fd);
     if (!ok) {
         static_cast<void>(infra::File::Remove(output_path));
-        if (reason != nullptr) {
-            *reason = "copy sysupgrade tool failed";
+        if (msg != nullptr) {
+            *msg = "copy sysupgrade tool failed";
         }
         return false;
     }
     return true;
 }
 
-bool PrepareSysupgradeTool(std::string* reason) {
+bool PrepareSysupgradeTool(std::string* msg) {
     if (!infra::Path::MakeDirs(kSystemUpgradeRuntimePath) ||
         !infra::Path::MakeDirs(kSystemUpgradeStagePath)) {
-        if (reason != nullptr) {
-            *reason = "create tmpfs upgrade directory failed";
+        if (msg != nullptr) {
+            *msg = "create tmpfs upgrade directory failed";
         }
         return false;
     }
     if (!upgrade_flash::IsPathOnTmpfs(kSystemUpgradeRuntimePath) ||
         !upgrade_flash::IsPathOnTmpfs(kSystemUpgradeStagePath)) {
-        if (reason != nullptr) {
-            *reason = "system upgrade directory is not tmpfs";
+        if (msg != nullptr) {
+            *msg = "system upgrade directory is not tmpfs";
         }
         return false;
     }
     return CopyFileNoSymlink(kSysupgradeToolSourcePath, kSysupgradeToolPath,
-                             0755, reason);
+                             0755, msg);
 }
 
 bool StartSysupgradeTool(const std::string& package_path,
                          bool reboot,
-                         std::string* reason) {
-    if (!PrepareSysupgradeTool(reason)) {
+                         std::string* msg) {
+    if (!PrepareSysupgradeTool(msg)) {
         return false;
     }
     const pid_t pid = fork();
     if (pid < 0) {
-        if (reason != nullptr) {
-            *reason = "fork sysupgrade tool failed";
+        if (msg != nullptr) {
+            *msg = "fork sysupgrade tool failed";
         }
         return false;
     }
@@ -437,17 +437,17 @@ public:
                          " size=" +
                          std::to_string(infra::File::Size(package_path)));
         UpgradeManifest manifest;
-        std::string reason;
-        if (!ReadUpgradePackageManifest(package_path, &manifest, &reason)) {
-            last_error_ = reason;
-            AppendUpgradeLog("validate failed: msg=" + reason);
+        std::string msg;
+        if (!ReadUpgradePackageManifest(package_path, &manifest, &msg)) {
+            last_error_ = msg;
+            AppendUpgradeLog("validate failed: msg=" + msg);
             return UpgradePackageInfo();
         }
 
         ParsedUpgradePackage parsed;
-        if (!ParseUpgradePackage(package_path, &parsed, &reason)) {
-            last_error_ = reason;
-            AppendUpgradeLog("validate failed: msg=" + reason);
+        if (!ParseUpgradePackage(package_path, &parsed, &msg)) {
+            last_error_ = msg;
+            AppendUpgradeLog("validate failed: msg=" + msg);
             return UpgradePackageInfo();
         }
         cached_package_ = parsed;
@@ -479,11 +479,11 @@ public:
             return false;
         }
         ParsedUpgradePackage parsed;
-        std::string reason;
-        if (!ParseUpgradePackage(info.package_path, &parsed, &reason)) {
-            last_error_ = reason;
-            AppendUpgradeLog("prepare failed: msg=" + reason);
-            WriteUpgradeInfo("failed", 100, false, info.version, reason);
+        std::string msg;
+        if (!ParseUpgradePackage(info.package_path, &parsed, &msg)) {
+            last_error_ = msg;
+            AppendUpgradeLog("prepare failed: msg=" + msg);
+            WriteUpgradeInfo("failed", 100, false, info.version, msg);
             return false;
         }
         if (!infra::Path::MakeDirs(kUpgradeRootPath) ||
@@ -501,10 +501,10 @@ public:
             return false;
         }
         if (PackageNeedsSysupgradeTool(parsed.manifest) &&
-            !PrepareSysupgradeTool(&reason)) {
-            last_error_ = reason;
-            AppendUpgradeLog("prepare failed: msg=" + reason);
-            WriteUpgradeInfo("failed", 100, false, info.version, reason);
+            !PrepareSysupgradeTool(&msg)) {
+            last_error_ = msg;
+            AppendUpgradeLog("prepare failed: msg=" + msg);
+            WriteUpgradeInfo("failed", 100, false, info.version, msg);
             return false;
         }
         cancel_requested_ = false;
@@ -538,7 +538,7 @@ public:
             last_error_ = "stage directory is empty";
             return false;
         }
-        std::string reason;
+        std::string msg;
         if (PackageNeedsSysupgradeTool(cached_package_.manifest)) {
             AppendUpgradeLog(
                 "sysupgrade tool handoff begin: package=" + package_path +
@@ -547,11 +547,11 @@ public:
                 UpgradeManifestSummary(cached_package_.manifest));
             if (!StartSysupgradeTool(package_path,
                                      cached_package_.requires_reboot,
-                                     &reason)) {
-                last_error_ = reason;
-                AppendUpgradeLog("sysupgrade tool start failed: msg=" + reason);
+                                     &msg)) {
+                last_error_ = msg;
+                AppendUpgradeLog("sysupgrade tool start failed: msg=" + msg);
                 WriteUpgradeInfo("failed", 100, false,
-                                 cached_package_.manifest.version, reason);
+                                 cached_package_.manifest.version, msg);
                 return false;
             }
             if (progress_callback) {
@@ -567,11 +567,11 @@ public:
                     progress_callback(progress / 2);
                 }
             },
-            &reason);
+            &msg);
         if (!extract_ok) {
-            last_error_ = reason;
+            last_error_ = msg;
             AppendUpgradeLog("extract failed: stage=" + stage_dir_ +
-                             " msg=" + reason + " " +
+                             " msg=" + msg + " " +
                              UpgradeManifestSummary(cached_package_.manifest));
             return false;
         }
@@ -588,12 +588,12 @@ public:
                     progress_callback(50U + progress / 2);
                 }
             },
-            &reason);
+            &msg);
         if (!write_ok) {
-            last_error_ = reason;
-            AppendUpgradeLog("write failed: msg=" + reason);
+            last_error_ = msg;
+            AppendUpgradeLog("write failed: msg=" + msg);
             WriteUpgradeInfo("failed", 100, false,
-                             cached_package_.manifest.version, reason);
+                             cached_package_.manifest.version, msg);
         }
         return write_ok;
     }

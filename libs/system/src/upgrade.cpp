@@ -190,11 +190,11 @@ public:
 
     UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
-        std::string reason;
+        std::string msg;
         std::string checked_package_path;
         if (!ValidateLocalPackage(package_path, &checked_package_path,
-                                  &reason)) {
-            SetLastError(reason);
+                                  &msg)) {
+            SetLastError(msg);
             return UpgradePackageInfo();
         }
         IUpgradePlatform* platform = nullptr;
@@ -238,13 +238,13 @@ public:
             }
         }
 
-        std::string reason;
+        std::string msg;
         std::string checked_package_path;
         if (!ValidateLocalPackage(request.package_path, &checked_package_path,
-                                  &reason)) {
-            SetLastError(reason);
+                                  &msg)) {
+            SetLastError(msg);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
-                        reason);
+                        msg);
             return false;
         }
 
@@ -366,30 +366,30 @@ public:
 private:
     bool ValidateLocalPackage(const std::string& package_path,
                               std::string* checked_package_path,
-                              std::string* reason) {
+                              std::string* msg) {
         if (checked_package_path == nullptr) {
             return false;
         }
         checked_package_path->clear();
         if (package_path.empty() ||
             package_path.size() > options_.max_package_path_length) {
-            if (reason != nullptr) {
-                *reason = "invalid package path";
+            if (msg != nullptr) {
+                *msg = "invalid package path";
             }
             return false;
         }
         struct stat link_stat;
         if (lstat(package_path.c_str(), &link_stat) != 0 ||
             S_ISLNK(link_stat.st_mode)) {
-            if (reason != nullptr) {
-                *reason = "package path is not allowed";
+            if (msg != nullptr) {
+                *msg = "package path is not allowed";
             }
             return false;
         }
         char resolved_path[PATH_MAX] = {0};
         if (realpath(package_path.c_str(), resolved_path) == nullptr) {
-            if (reason != nullptr) {
-                *reason = "package path is not allowed";
+            if (msg != nullptr) {
+                *msg = "package path is not allowed";
             }
             return false;
         }
@@ -398,41 +398,41 @@ private:
             std::string(kUpgradeUploadDir) + "/";
         if (resolved_package_path.compare(0, upload_prefix.size(),
                                           upload_prefix) != 0) {
-            if (reason != nullptr) {
-                *reason = "package path is outside upload directory";
+            if (msg != nullptr) {
+                *msg = "package path is outside upload directory";
             }
             return false;
         }
 
         struct stat file_stat;
         if (stat(resolved_package_path.c_str(), &file_stat) != 0) {
-            if (reason != nullptr) {
-                *reason = "package not found";
+            if (msg != nullptr) {
+                *msg = "package not found";
             }
             return false;
         }
         if (!S_ISREG(file_stat.st_mode)) {
-            if (reason != nullptr) {
-                *reason = "package path is not a regular file";
+            if (msg != nullptr) {
+                *msg = "package path is not a regular file";
             }
             return false;
         }
         if (file_stat.st_size <= 0) {
-            if (reason != nullptr) {
-                *reason = "package is empty";
+            if (msg != nullptr) {
+                *msg = "package is empty";
             }
             return false;
         }
         if (static_cast<uint64_t>(file_stat.st_size) >
             options_.max_package_size_bytes) {
-            if (reason != nullptr) {
-                *reason = "package too large";
+            if (msg != nullptr) {
+                *msg = "package too large";
             }
             return false;
         }
         *checked_package_path = resolved_package_path;
-        if (reason != nullptr) {
-            reason->clear();
+        if (msg != nullptr) {
+            msg->clear();
         }
         return true;
     }
@@ -711,7 +711,7 @@ private:
     void RecordAudit(const live_stream::RequestContext& context,
                      const std::string& target,
                      OperationResult result,
-                     const std::string& reason) {
+                     const std::string& msg) {
         ILogger* logger = options_.logger;
         if (logger == nullptr) {
             return;
@@ -726,7 +726,7 @@ private:
         record.action = OperationAction::kUpgrade;
         record.target = target;
         record.result = result;
-        record.reason = reason;
+        record.reason = msg;
         static_cast<void>(logger->RecordOperation(record));
     }
 
