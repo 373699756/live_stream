@@ -48,10 +48,10 @@ private:
 
     bool InstallConfigUpdateScopes();
     void RemoveConfigUpdateScopes();
-    ConfigCode VerifyProtocolConfigUpdate(const std::string &scope,
+    ConfigCode VerifyProtocolConfigChange(const std::string &scope,
                                             const Json &now,
                                             ConfigError *error);
-    ConfigCode ApplyProtocolConfigUpdate(const std::string &scope,
+    ConfigCode ApplyProtocolConfigChange(const std::string &scope,
                                            const Json &prev,
                                            const Json &now,
                                            ConfigError *error);

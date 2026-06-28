@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "config/protocol_config_update.h"
+#include "config/protocol_config_change.h"
 #include "subsystems/protocol_options.h"
 
 namespace live_stream {
@@ -16,12 +16,12 @@ bool ProtocolSubsystem::InstallConfigUpdateScopes() {
         ConfigScope config_scope;
         config_scope.verify = [this, scope](const Json &now,
                                             ConfigError *error) {
-            return VerifyProtocolConfigUpdate(scope, now, error);
+            return VerifyProtocolConfigChange(scope, now, error);
         };
         config_scope.apply = [this, scope](const Json &prev,
                                            const Json &now,
                                            ConfigError *error) {
-            return ApplyProtocolConfigUpdate(scope, prev, now, error);
+            return ApplyProtocolConfigChange(scope, prev, now, error);
         };
         if (!config_->AddScope(scope, config_scope)) {
             for (const char *attached_scope : scopes) {
@@ -68,7 +68,7 @@ bool ProtocolSubsystem::BuildNextAppConfig(
     return LoadAppConfigFromRoot(root, &next_config);
 }
 
-ConfigCode ProtocolSubsystem::VerifyProtocolConfigUpdate(
+ConfigCode ProtocolSubsystem::VerifyProtocolConfigChange(
     const std::string &scope,
     const Json &now,
     ConfigError *error) {
@@ -80,11 +80,11 @@ ConfigCode ProtocolSubsystem::VerifyProtocolConfigUpdate(
         }
         return ConfigCode::kVerify;
     }
-    return VerifyProtocolConfigUpdateScope(app_config_, next_config, scope,
+    return VerifyProtocolConfigChangeScope(app_config_, next_config, scope,
                                            error);
 }
 
-ConfigCode ProtocolSubsystem::ApplyProtocolConfigUpdate(
+ConfigCode ProtocolSubsystem::ApplyProtocolConfigChange(
     const std::string &scope,
     const Json &prev,
     const Json &now,
@@ -99,7 +99,7 @@ ConfigCode ProtocolSubsystem::ApplyProtocolConfigUpdate(
         return ConfigCode::kApply;
     }
     const ConfigCode verify_code =
-        VerifyProtocolConfigUpdateScope(app_config_, next_config, scope, error);
+        VerifyProtocolConfigChangeScope(app_config_, next_config, scope, error);
     if (verify_code != ConfigCode::kOk) {
         return verify_code;
     }

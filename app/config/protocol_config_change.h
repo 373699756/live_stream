@@ -1,11 +1,11 @@
-#ifndef LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_UPDATE_H_
-#define LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_UPDATE_H_
+#ifndef LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_CHANGE_H_
+#define LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_CHANGE_H_
 
 #include "config/app_config.h"
 
 namespace live_stream {
 
-ConfigCode VerifyProtocolConfigUpdateScope(
+ConfigCode VerifyProtocolConfigChangeScope(
     const AppConfig &current_config,
     const AppConfig &next_config,
     const std::string &scope,
@@ -20,4 +20,4 @@ bool IsOnvifConfigChanged(const AppConfig &current_config,
 
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_UPDATE_H_
+#endif  // LIVE_STREAM_APP_CONFIG_PROTOCOL_CONFIG_CHANGE_H_

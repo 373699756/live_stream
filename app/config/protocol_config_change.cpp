@@ -1,4 +1,4 @@
-#include "config/protocol_config_update.h"
+#include "config/protocol_config_change.h"
 
 #include <cstddef>
 #include <vector>
@@ -31,7 +31,7 @@ bool SameIceServers(const std::vector<WebrtcIceServer> &left,
 
 }  // namespace
 
-ConfigCode VerifyProtocolConfigUpdateScope(
+ConfigCode VerifyProtocolConfigChangeScope(
     const AppConfig &current_config,
     const AppConfig &next_config,
     const std::string &scope,
@@ -79,7 +79,7 @@ ConfigCode VerifyProtocolConfigUpdateScope(
     }
     if (error != nullptr) {
         error->field.clear();
-        error->message = "unsupported protocol config update scope";
+        error->message = "unsupported protocol config change scope";
     }
     return ConfigCode::kVerify;
 }
