@@ -10,7 +10,7 @@
 namespace live_stream {
 namespace hisisdk {
 
-struct VencChannelState {
+struct VencChannelInfo {
     StreamId stream_id = StreamId::kMain;
     int32_t venc_channel = -1;
     int32_t vpss_group = -1;
@@ -36,8 +36,8 @@ struct MppHisiSdkImpl {
     bool vpss_started_ = false;
     bool dis_enabled_ = false;
     bool vi_bound_vpss_ = false;
-    VencChannelState main_venc_;
-    VencChannelState sub_venc_;
+    VencChannelInfo main_venc_;
+    VencChannelInfo sub_venc_;
     std::thread isp_thread_;
 
     std::thread stream_thread_;
