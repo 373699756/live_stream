@@ -16,7 +16,7 @@ public:
     bool Attach(IConfig* config,
                 const ConfigScope& video_scope,
                 const ConfigScope& image_scope,
-                AttachedConfigs& attached_now);
+                AttachedConfigs& attached_configs);
     void Detach(IConfig* config);
 
 private:

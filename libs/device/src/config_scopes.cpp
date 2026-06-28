@@ -6,8 +6,8 @@ namespace device_internal {
 bool ConfigScopes::Attach(IConfig* config,
                           const ConfigScope& video_scope,
                           const ConfigScope& image_scope,
-                          AttachedConfigs& attached_now) {
-    attached_now = AttachedConfigs{};
+                          AttachedConfigs& attached_configs) {
+    attached_configs = AttachedConfigs{};
     if (config == nullptr) {
         return true;
     }
@@ -17,20 +17,20 @@ bool ConfigScopes::Attach(IConfig* config,
             return false;
         }
         video_attached_ = true;
-        attached_now.video = true;
+        attached_configs.video = true;
     }
 
     if (!image_attached_) {
         if (!config->AddScope("image", image_scope)) {
-            if (attached_now.video) {
+            if (attached_configs.video) {
                 (void)config->RemoveScope("video");
                 video_attached_ = false;
             }
-            attached_now = AttachedConfigs{};
+            attached_configs = AttachedConfigs{};
             return false;
         }
         image_attached_ = true;
-        attached_now.image = true;
+        attached_configs.image = true;
     }
     return true;
 }

@@ -81,7 +81,7 @@ public:
 
 private:
     bool Prepare();
-    bool AttachConfigScopes(AttachedConfigs &attached_now);
+    bool AttachConfigScopes(AttachedConfigs &attached_configs);
     void Release();
     static void OnPipelineFrame(const MediaFrame &frame, void *user);
     void PushFrameToSink(const MediaFrame &frame);
@@ -197,8 +197,8 @@ bool DeviceImpl::Prepare() {
         return false;
     }
 
-    AttachedConfigs attached_now;
-    if (!AttachConfigScopes(attached_now)) {
+    AttachedConfigs attached_configs;
+    if (!AttachConfigScopes(attached_configs)) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
@@ -224,7 +224,7 @@ bool DeviceImpl::Prepare() {
     return true;
 }
 
-bool DeviceImpl::AttachConfigScopes(AttachedConfigs &attached_now) {
+bool DeviceImpl::AttachConfigScopes(AttachedConfigs &attached_configs) {
     ConfigScope video_scope;
     video_scope.verify = [this](const Json &now, ConfigError *error) {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -246,7 +246,7 @@ bool DeviceImpl::AttachConfigScopes(AttachedConfigs &attached_now) {
     };
 
     return config_scopes_.Attach(options_.config, video_scope, image_scope,
-                                 attached_now);
+                                 attached_configs);
 }
 
 void DeviceImpl::Release() {
