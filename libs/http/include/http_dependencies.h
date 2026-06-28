@@ -44,6 +44,38 @@ struct HttpDependencies {
     event::Dispatcher *event = nullptr;
 };
 
+struct HttpControlDependencies {
+    IAuth *auth = nullptr;
+    ILogger *logger = nullptr;
+    IConfig *config = nullptr;
+    INetwork *network = nullptr;
+    ITime *time = nullptr;
+    IAlarm *alarm = nullptr;
+    IUpgrade *upgrade = nullptr;
+    ISystem *system = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IAiReader *ai = nullptr;
+    DeviceMedia *device = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    MediaStreams *media_streams = nullptr;
+};
+
+struct HttpMediaDependencies {
+    IConfig *config = nullptr;
+    DeviceMedia *device = nullptr;
+    MediaStreams *media_streams = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtc *webrtc = nullptr;
+};
+
+struct HttpStreamingDependencies {
+    DeviceMedia *device = nullptr;
+    MediaStreams *media_streams = nullptr;
+    event::Dispatcher *event = nullptr;
+};
+
 }  // namespace live_stream
 
 #endif  // LIVE_STREAM_HTTP_HTTP_DEPENDENCIES_H_

@@ -53,6 +53,8 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
   `CreateHttpHandler(kind, deps)` 分发；`HttpImpl` 按业务入口直接构造每个 handler。
 - HTTP router 和 handler 仍是静态 thunk + `void* user`。
 - `HttpDependencies`、`SystemOverviewSources` 仍是宽依赖包。
+- `HttpControlDependencies`、`HttpMediaDependencies`、`HttpStreamingDependencies`
+  已从 `HttpDependencies` 解包出来，但 `HttpDependencies` 仍作为组合根注入包存在。
 - `HttpServerDependencies` 已收敛到 `net_io/net_loop`，但 `HttpDependencies`
   仍作为组合根注入包存在于 `HttpImpl` 构造边界。
 - `HttpImpl::InitializeHandlers()` 已拆成 close callback、control handlers、

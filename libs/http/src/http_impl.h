@@ -62,9 +62,11 @@ private:
 
     void InitializeHandlers(const HttpDependencies &dependencies);
     void ConfigureCloseCallback(MediaStreams *media_streams);
-    void InitializeControlHandlers(const HttpDependencies &dependencies);
-    void InitializeMediaHandlers(const HttpDependencies &dependencies);
-    void InitializeStreamingHandler(const HttpDependencies &dependencies);
+    void InitializeControlHandlers(
+        const HttpControlDependencies &dependencies);
+    void InitializeMediaHandlers(const HttpMediaDependencies &dependencies);
+    void InitializeStreamingHandler(
+        const HttpStreamingDependencies &dependencies);
     void RegisterRoutes();
     void StopInternal();
     void ReleaseInternal();
