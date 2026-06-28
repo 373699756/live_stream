@@ -1,5 +1,7 @@
 #include "nnie_object_backend.h"
 
+#include "nnie_model_session.h"
+
 #include "ai_config.h"
 #include "hisi_ai_platform.h"
 #include "infra/fs.h"
@@ -176,14 +178,6 @@ bool ComputeBlobSize(const SVP_NNIE_NODE_S &node, HI_U32 total_step,
     return true;
 }
 
-bool IsSupportedCnnNode(const SVP_NNIE_NODE_S &node) {
-    if (node.enType == SVP_BLOB_TYPE_SEQ_S32) {
-        return false;
-    }
-    return node.unShape.stWhc.u32Width != 0 &&
-           node.unShape.stWhc.u32Height != 0 &&
-           node.unShape.stWhc.u32Chn != 0;
-}
 
 bool CheckedFrameRange(uint32_t stride, uint32_t width, uint32_t height,
                        uint32_t available_size) {
@@ -243,175 +237,7 @@ uint8_t ClampToByte(int value) {
 
 #endif
 
-class NnieModelSession {
-public:
-    ~NnieModelSession() { Unload(); }
 
-    bool Load(const AiModelConfig &config) {
-#if LIVE_STREAM_HAS_HISI_NNIE
-        Unload();
-        const std::string &model_path = config.model_path;
-        const uint64_t model_file_size = infra::File::Size(model_path);
-        Info("ai", "NNIE model read begin: task=%d path=%s file_size=%llu",
-             static_cast<int>(config.task), model_path.c_str(),
-             static_cast<unsigned long long>(model_file_size));
-        if (model_file_size == 0 || model_file_size > kMaxHiU32) {
-            Error("ai", "Invalid NNIE model size: path=%s size=%llu",
-                  model_path.c_str(),
-                  static_cast<unsigned long long>(model_file_size));
-            return false;
-        }
-
-        std::FILE *model_file = std::fopen(model_path.c_str(), "rb");
-        if (model_file == nullptr) {
-            Error("ai", "Open NNIE model failed: path=%s",
-                  model_path.c_str());
-            return false;
-        }
-
-        HI_U64 model_phy_addr = 0;
-        HI_VOID *model_vir_addr = nullptr;
-        const HI_U32 model_size = static_cast<HI_U32>(model_file_size);
-        Info("ai", "NNIE model MMZ alloc begin: size=%u",
-             static_cast<unsigned int>(model_size));
-        HI_S32 ret = HI_MPI_SYS_MmzAlloc(&model_phy_addr, &model_vir_addr,
-                                         "LIVE_AI_NNIE_MODEL", nullptr,
-                                         model_size);
-        if (ret != HI_SUCCESS || model_phy_addr == 0 ||
-            model_vir_addr == nullptr) {
-            Error("ai", "Allocate NNIE model MMZ failed: ret=%#x",
-                  static_cast<unsigned int>(ret));
-            std::fclose(model_file);
-            return false;
-        }
-
-        Info("ai", "NNIE model MMZ alloc done: phy=0x%llx vir=%p",
-             static_cast<unsigned long long>(model_phy_addr), model_vir_addr);
-        Info("ai", "NNIE model file read begin: size=%u",
-             static_cast<unsigned int>(model_size));
-        const size_t read_size =
-            std::fread(model_vir_addr, 1, model_size, model_file);
-        const int close_status = std::fclose(model_file);
-        if (read_size != static_cast<size_t>(model_size) ||
-            close_status != 0) {
-            Error("ai", "Read NNIE model failed: path=%s read=%u size=%u",
-                  model_path.c_str(), static_cast<unsigned int>(read_size),
-                  static_cast<unsigned int>(model_size));
-            HI_MPI_SYS_MmzFree(model_phy_addr, model_vir_addr);
-            return false;
-        }
-        Info("ai", "NNIE model file read done: size=%u",
-             static_cast<unsigned int>(model_size));
-        model_buf_.u32Size = model_size;
-        model_buf_.u64PhyAddr = model_phy_addr;
-        model_buf_.u64VirAddr =
-            static_cast<HI_U64>(reinterpret_cast<HI_UL>(model_vir_addr));
-        std::memset(&model_, 0, sizeof(model_));
-
-        Info("ai", "HI_MPI_SVP_NNIE_LoadModel begin: size=%u",
-             static_cast<unsigned int>(model_size));
-        ret = HI_MPI_SVP_NNIE_LoadModel(&model_buf_, &model_);
-        if (ret != HI_SUCCESS) {
-            Error("ai", "Load NNIE model failed: ret=%#x",
-                  static_cast<unsigned int>(ret));
-            HI_MPI_SYS_MmzFree(model_buf_.u64PhyAddr, model_vir_addr);
-            std::memset(&model_buf_, 0, sizeof(model_buf_));
-            std::memset(&model_, 0, sizeof(model_));
-            return false;
-        }
-        Info("ai", "HI_MPI_SVP_NNIE_LoadModel done: segs=%u tmp=%u",
-             static_cast<unsigned int>(model_.u32NetSegNum),
-             static_cast<unsigned int>(model_.u32TmpBufSize));
-
-        loaded_ = true;
-        if (!ValidateModel()) {
-            Unload();
-            return false;
-        }
-        return true;
-#else
-        (void)config;
-        return false;
-#endif
-    }
-
-    void Unload() {
-#if LIVE_STREAM_HAS_HISI_NNIE
-        if (loaded_) {
-            const HI_S32 ret = HI_MPI_SVP_NNIE_UnloadModel(&model_);
-            if (ret != HI_SUCCESS) {
-                Error("ai", "Unload NNIE model failed: ret=%#x",
-                      static_cast<unsigned int>(ret));
-            }
-            loaded_ = false;
-        }
-
-        if (model_buf_.u64PhyAddr != 0 && model_buf_.u64VirAddr != 0) {
-            HI_MPI_SYS_MmzFree(
-                model_buf_.u64PhyAddr,
-                reinterpret_cast<HI_VOID *>(
-                    static_cast<HI_UL>(model_buf_.u64VirAddr)));
-        }
-        std::memset(&model_buf_, 0, sizeof(model_buf_));
-        std::memset(&model_, 0, sizeof(model_));
-#endif
-    }
-
-    bool Loaded() const { return loaded_; }
-
-#if LIVE_STREAM_HAS_HISI_NNIE
-    const SVP_NNIE_MODEL_S &Model() const { return model_; }
-    SVP_NNIE_MODEL_S *MutableModel() { return &model_; }
-#endif
-
-private:
-#if LIVE_STREAM_HAS_HISI_NNIE
-    bool ValidateModel() const {
-        if (model_.u32NetSegNum == 0 ||
-            model_.u32NetSegNum > SVP_NNIE_MAX_NET_SEG_NUM) {
-            Error("ai", "Invalid NNIE segment size: size=%u",
-                  static_cast<unsigned int>(model_.u32NetSegNum));
-            return false;
-        }
-        for (HI_U32 i = 0; i < model_.u32NetSegNum; ++i) {
-            const SVP_NNIE_SEG_S &seg = model_.astSeg[i];
-            if (seg.u16SrcNum == 0 || seg.u16SrcNum > SVP_NNIE_MAX_INPUT_NUM ||
-                seg.u16DstNum > SVP_NNIE_MAX_OUTPUT_NUM ||
-                seg.enNetType != SVP_NNIE_NET_TYPE_CNN) {
-                Error(
-                    "ai",
-                    "Unsupported NNIE segment: index=%u type=%d src=%u dst=%u",
-                    static_cast<unsigned int>(i),
-                    static_cast<int>(seg.enNetType),
-                    static_cast<unsigned int>(seg.u16SrcNum),
-                    static_cast<unsigned int>(seg.u16DstNum));
-                return false;
-            }
-            for (HI_U32 j = 0; j < seg.u16SrcNum; ++j) {
-                if (!IsSupportedCnnNode(seg.astSrcNode[j])) {
-                    Error("ai",
-                          "Unsupported NNIE src node: seg=%u node=%u",
-                          static_cast<unsigned int>(i),
-                          static_cast<unsigned int>(j));
-                    return false;
-                }
-            }
-            for (HI_U32 j = 0; j < seg.u16DstNum; ++j) {
-                if (!IsSupportedCnnNode(seg.astDstNode[j])) {
-                    Error("ai",
-                          "Unsupported NNIE dst node: seg=%u node=%u",
-                          static_cast<unsigned int>(i),
-                          static_cast<unsigned int>(j));
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-#endif
-    bool loaded_ = false;
-};
 
 }  // namespace
 
