@@ -3,7 +3,7 @@
 
 #include "media/media_streams.h"
 
-#include "frame_clients.h"
+#include "frame_subscribers.h"
 #include "media_stream_tracks.h"
 #include "preview_clients.h"
 
@@ -80,7 +80,7 @@ private:
 
     static uint32_t HlsSegmentCacheDepth(
         const MediaStreamsOptions &options);
-    static media_internal::FrameClientsOptions BuildFrameClientsOptions(
+    static media_internal::FrameSubscribersOptions BuildFrameSubscribersOptions(
         const MediaCacheLimits &limits);
     static media_internal::StreamTrackCacheOptions BuildStreamCacheOptions(
         const MediaStreamsOptions &options);
@@ -128,7 +128,7 @@ private:
     mutable std::shared_mutex mutex_;
     MediaStreamsPhase phase_ = MediaStreamsPhase::kStopped;
     media_internal::MediaStreamTracks streams_;
-    media_internal::FrameClients frame_clients_;
+    media_internal::FrameSubscribers frame_subscribers_;
     media_internal::PreviewClients preview_clients_;
     MediaStreamStats stats_;
 };

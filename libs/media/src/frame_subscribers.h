@@ -1,5 +1,5 @@
-#ifndef LIVE_STREAM_MEDIA_SRC_FRAME_CLIENTS_H_
-#define LIVE_STREAM_MEDIA_SRC_FRAME_CLIENTS_H_
+#ifndef LIVE_STREAM_MEDIA_SRC_FRAME_SUBSCRIBERS_H_
+#define LIVE_STREAM_MEDIA_SRC_FRAME_SUBSCRIBERS_H_
 
 #include "frame_payload.h"
 #include "media/media_streams.h"
@@ -14,23 +14,23 @@
 namespace live_stream {
 namespace media_internal {
 
-struct FrameClientsOptions {
+struct FrameSubscribersOptions {
     uint32_t max_gop_frames = 128;
     uint32_t max_gop_bytes = 4 * 1024 * 1024;
     uint32_t max_shared_frames = 32;
     uint32_t max_shared_bytes = 2 * 1024 * 1024;
 };
 
-class FrameClients {
+class FrameSubscribers {
 public:
-    FrameClients() = default;
-    FrameClients(const FrameClients &) = delete;
-    FrameClients &operator=(const FrameClients &) = delete;
-    ~FrameClients();
+    FrameSubscribers() = default;
+    FrameSubscribers(const FrameSubscribers &) = delete;
+    FrameSubscribers &operator=(const FrameSubscribers &) = delete;
+    ~FrameSubscribers();
 
     FrameSubscriptionId SubscribeFrames(
         const SubscriptionOptions &options, size_t max_subscriptions);
-    void Configure(const FrameClientsOptions &options);
+    void Configure(const FrameSubscribersOptions &options);
     bool UnsubscribeFrames(FrameSubscriptionId subscription_id,
                            SubscriptionClose reason);
     SubscriptionInfo GetSubscriptionInfo(
@@ -42,16 +42,16 @@ public:
                    SubscriptionFrame *frame);
     void Clear();
     void ClearStream(StreamId stream_id, SubscriptionClose reason);
-    size_t ClientSize() const;
-    uint32_t SlowClientSize() const;
-    uint32_t SlowClientSize(StreamId stream_id) const;
+    size_t SubscriberSize() const;
+    uint32_t SlowSubscriberSize() const;
+    uint32_t SlowSubscriberSize(StreamId stream_id) const;
     uint32_t CachedFrameSize() const;
     uint32_t CachedBytes() const;
     uint32_t CachedBytes(StreamId stream_id) const;
     uint32_t SharedBytes(StreamId stream_id) const;
     int64_t LastFrameTimestamp(StreamId stream_id) const;
     uint64_t CacheDropSize(StreamId stream_id) const;
-    uint64_t ClientDropSize(StreamId stream_id) const;
+    uint64_t SubscriberDropSize(StreamId stream_id) const;
     void Write(const FramePayload &frame);
 
 private:
@@ -81,19 +81,19 @@ private:
     using SharedFrames = event::MultiReaderQueue<CachedFrame,
                                                  kMaxSharedFrames>;
 
-    struct ClientFramePosition {
+    struct SubscriberFramePosition {
         uint64_t next_sequence = 1;
         uint64_t stream_reset_version = 0;
     };
 
-    struct ClientState {
+    struct FrameSubscriber {
         StreamId stream_id = StreamId::kMain;
         bool keyframe_first = true;
         bool wait_keyframe = true;
         bool slow = false;
         uint64_t start_sequence = 0;
         uint64_t start_gop_version = 0;
-        ClientFramePosition frame_position;
+        SubscriberFramePosition frame_position;
         SubscriptionClose close_reason =
             SubscriptionClose::kNone;
     };
@@ -125,18 +125,19 @@ private:
     bool PushSharedFrame(SharedFrames &frames, bool keyframe,
                          int64_t duration_us, uint64_t &sequence,
                          const FramePayload &frame);
-    bool PullSharedFrame(ClientState &client, const SharedFrames &frames,
-                         CachedFrame &frame);
-    uint32_t PendingFrameSize(const ClientState &client,
+    bool PullSharedFrame(FrameSubscriber &subscriber,
+                         const SharedFrames &frames, CachedFrame &frame);
+    uint32_t PendingFrameSize(const FrameSubscriber &subscriber,
                               const SharedFrames &frames) const;
-    void MarkClientSlow(ClientState &client, const SharedFrames &frames);
-    void ResetClientForStream(ClientState &client,
-                              const StreamCache &cache,
-                              const SharedFrames &frames,
-                              SubscriptionClose reason);
+    void MarkSubscriberSlow(FrameSubscriber &subscriber,
+                            const SharedFrames &frames);
+    void ResetSubscriberForStream(FrameSubscriber &subscriber,
+                                  const StreamCache &cache,
+                                  const SharedFrames &frames,
+                                  SubscriptionClose reason);
 
-    FrameClientsOptions options_;
-    std::map<FrameSubscriptionId, ClientState> clients_;
+    FrameSubscribersOptions options_;
+    std::map<FrameSubscriptionId, FrameSubscriber> subscribers_;
     FrameSubscriptionId next_subscription_id_ = 1;
     StreamCache main_cache_;
     StreamCache sub_cache_;
@@ -144,11 +145,11 @@ private:
     SharedFrames sub_shared_frames_;
     uint64_t main_cache_drops_ = 0;
     uint64_t sub_cache_drops_ = 0;
-    uint64_t main_client_drops_ = 0;
-    uint64_t sub_client_drops_ = 0;
+    uint64_t main_subscriber_drops_ = 0;
+    uint64_t sub_subscriber_drops_ = 0;
 };
 
 }  // namespace media_internal
 }  // namespace live_stream
 
-#endif  // LIVE_STREAM_MEDIA_SRC_FRAME_CLIENTS_H_
+#endif  // LIVE_STREAM_MEDIA_SRC_FRAME_SUBSCRIBERS_H_

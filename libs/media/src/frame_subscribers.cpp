@@ -1,4 +1,4 @@
-#include "frame_clients.h"
+#include "frame_subscribers.h"
 
 #include <algorithm>
 #include <utility>
@@ -6,9 +6,9 @@
 namespace live_stream {
 namespace media_internal {
 
-FrameClients::~FrameClients() { Clear(); }
+FrameSubscribers::~FrameSubscribers() { Clear(); }
 
-void FrameClients::Configure(const FrameClientsOptions &options) {
+void FrameSubscribers::Configure(const FrameSubscribersOptions &options) {
     options_ = options;
     main_shared_frames_.Configure(options_.max_shared_frames,
                                   options_.max_shared_bytes);
@@ -16,79 +16,80 @@ void FrameClients::Configure(const FrameClientsOptions &options) {
                                  options_.max_shared_bytes);
 }
 
-void FrameClients::ResetStats() {
+void FrameSubscribers::ResetStats() {
     main_cache_drops_ = 0;
     sub_cache_drops_ = 0;
-    main_client_drops_ = 0;
-    sub_client_drops_ = 0;
+    main_subscriber_drops_ = 0;
+    sub_subscriber_drops_ = 0;
 }
 
-FrameSubscriptionId FrameClients::SubscribeFrames(
+FrameSubscriptionId FrameSubscribers::SubscribeFrames(
     const SubscriptionOptions &options, size_t max_subscriptions) {
-    if (clients_.size() >= max_subscriptions) {
+    if (subscribers_.size() >= max_subscriptions) {
         return 0;
     }
     const StreamCache &cache = CacheFor(options.stream_id);
     const SharedFrames &frames = SharedFramesFor(options.stream_id);
 
     const FrameSubscriptionId subscription_id = next_subscription_id_++;
-    ClientState client;
-    client.stream_id = options.stream_id;
-    client.keyframe_first = options.keyframe_first;
-    client.wait_keyframe = options.keyframe_first && !cache.complete;
-    client.start_sequence = frames.NextSequence();
-    client.start_gop_version = cache.gop_version;
-    client.frame_position.next_sequence = frames.NextSequence();
-    client.frame_position.stream_reset_version = cache.stream_reset_version;
-    client.slow = false;
-    clients_[subscription_id] = std::move(client);
+    FrameSubscriber subscriber;
+    subscriber.stream_id = options.stream_id;
+    subscriber.keyframe_first = options.keyframe_first;
+    subscriber.wait_keyframe = options.keyframe_first && !cache.complete;
+    subscriber.start_sequence = frames.NextSequence();
+    subscriber.start_gop_version = cache.gop_version;
+    subscriber.frame_position.next_sequence = frames.NextSequence();
+    subscriber.frame_position.stream_reset_version =
+        cache.stream_reset_version;
+    subscriber.slow = false;
+    subscribers_[subscription_id] = std::move(subscriber);
     return subscription_id;
 }
 
-bool FrameClients::UnsubscribeFrames(FrameSubscriptionId subscription_id,
-                                     SubscriptionClose reason) {
-    auto iter = clients_.find(subscription_id);
-    if (iter == clients_.end()) {
+bool FrameSubscribers::UnsubscribeFrames(FrameSubscriptionId subscription_id,
+                                         SubscriptionClose reason) {
+    auto iter = subscribers_.find(subscription_id);
+    if (iter == subscribers_.end()) {
         return false;
     }
     iter->second.close_reason = reason;
-    clients_.erase(iter);
+    subscribers_.erase(iter);
     return true;
 }
 
-SubscriptionInfo FrameClients::GetSubscriptionInfo(
+SubscriptionInfo FrameSubscribers::GetSubscriptionInfo(
     FrameSubscriptionId subscription_id) const {
     SubscriptionInfo info;
-    const auto client_iter = clients_.find(subscription_id);
-    if (client_iter == clients_.end()) {
+    const auto subscriber_iter = subscribers_.find(subscription_id);
+    if (subscriber_iter == subscribers_.end()) {
         return info;
     }
-    const ClientState &client = client_iter->second;
-    const SharedFrames &frames = SharedFramesFor(client.stream_id);
+    const FrameSubscriber &subscriber = subscriber_iter->second;
+    const SharedFrames &frames = SharedFramesFor(subscriber.stream_id);
     info.open = true;
-    info.stream_id = client.stream_id;
-    info.generation = client.frame_position.stream_reset_version;
-    info.close_reason = client.close_reason;
-    info.wait_keyframe = client.wait_keyframe;
-    info.slow = client.slow;
-    info.pending_frames = PendingFrameSize(client, frames);
+    info.stream_id = subscriber.stream_id;
+    info.generation = subscriber.frame_position.stream_reset_version;
+    info.close_reason = subscriber.close_reason;
+    info.wait_keyframe = subscriber.wait_keyframe;
+    info.slow = subscriber.slow;
+    info.pending_frames = PendingFrameSize(subscriber, frames);
     return info;
 }
 
-SubscriptionStart FrameClients::GetSubscriptionStart(
+SubscriptionStart FrameSubscribers::GetSubscriptionStart(
     FrameSubscriptionId subscription_id,
     const MediaStreamInfo &stream_info) const {
     SubscriptionStart start_data;
-    const auto client_iter = clients_.find(subscription_id);
-    if (client_iter == clients_.end()) {
+    const auto subscriber_iter = subscribers_.find(subscription_id);
+    if (subscriber_iter == subscribers_.end()) {
         return start_data;
     }
-    const ClientState &client = client_iter->second;
-    const StreamCache &cache = CacheFor(client.stream_id);
+    const FrameSubscriber &subscriber = subscriber_iter->second;
+    const StreamCache &cache = CacheFor(subscriber.stream_id);
     start_data.track_ready = stream_info.track_ready;
     start_data.gop_complete =
-        cache.complete && client.start_gop_version == cache.gop_version;
-    start_data.generation = client.frame_position.stream_reset_version;
+        cache.complete && subscriber.start_gop_version == cache.gop_version;
+    start_data.generation = subscriber.frame_position.stream_reset_version;
     start_data.stream_info = stream_info;
     if (!start_data.gop_complete) {
         return start_data;
@@ -96,7 +97,7 @@ SubscriptionStart FrameClients::GetSubscriptionStart(
 
     start_data.gop_frames.reserve(cache.size);
     for (size_t i = 0; i < cache.size; ++i) {
-        if (cache.frames[i].sequence >= client.start_sequence) {
+        if (cache.frames[i].sequence >= subscriber.start_sequence) {
             continue;
         }
         MediaFrame frame;
@@ -107,36 +108,36 @@ SubscriptionStart FrameClients::GetSubscriptionStart(
     return start_data;
 }
 
-bool FrameClients::PullFrame(FrameSubscriptionId subscription_id,
-                             SubscriptionFrame *frame) {
+bool FrameSubscribers::PullFrame(FrameSubscriptionId subscription_id,
+                                 SubscriptionFrame *frame) {
     if (frame == nullptr) {
         return false;
     }
     *frame = SubscriptionFrame{};
-    auto client_iter = clients_.find(subscription_id);
-    if (client_iter == clients_.end()) {
+    auto subscriber_iter = subscribers_.find(subscription_id);
+    if (subscriber_iter == subscribers_.end()) {
         return false;
     }
-    ClientState &client = client_iter->second;
-    const SharedFrames &frames = SharedFramesFor(client.stream_id);
+    FrameSubscriber &subscriber = subscriber_iter->second;
+    const SharedFrames &frames = SharedFramesFor(subscriber.stream_id);
 
     CachedFrame cached_frame;
-    if (!PullSharedFrame(client, frames, cached_frame)) {
+    if (!PullSharedFrame(subscriber, frames, cached_frame)) {
         return false;
     }
     frame->subscription_id = subscription_id;
-    frame->generation = client.frame_position.stream_reset_version;
+    frame->generation = subscriber.frame_position.stream_reset_version;
     frame->starts_on_keyframe = cached_frame.starts_on_keyframe;
     CopyFrameForSubscription(cached_frame.payload,
                              cached_frame.duration_us, frame->frame);
     return true;
 }
 
-void FrameClients::Clear() {
-    for (auto &item : clients_) {
+void FrameSubscribers::Clear() {
+    for (auto &item : subscribers_) {
         item.second.close_reason = SubscriptionClose::kStreamStopped;
     }
-    clients_.clear();
+    subscribers_.clear();
     ClearCache(main_cache_);
     ClearCache(sub_cache_);
     main_shared_frames_.Clear();
@@ -145,26 +146,26 @@ void FrameClients::Clear() {
     next_subscription_id_ = 1;
 }
 
-void FrameClients::ClearStream(StreamId stream_id,
-                               SubscriptionClose reason) {
+void FrameSubscribers::ClearStream(StreamId stream_id,
+                                   SubscriptionClose reason) {
     StreamCache &cache = CacheFor(stream_id);
     SharedFrames &frames = SharedFramesFor(stream_id);
     ClearCache(cache);
     ++cache.stream_reset_version;
     frames.Clear();
-    for (auto &item : clients_) {
-        ClientState &client = item.second;
-        if (client.stream_id == stream_id) {
-            ResetClientForStream(client, cache, frames, reason);
+    for (auto &item : subscribers_) {
+        FrameSubscriber &subscriber = item.second;
+        if (subscriber.stream_id == stream_id) {
+            ResetSubscriberForStream(subscriber, cache, frames, reason);
         }
     }
 }
 
-size_t FrameClients::ClientSize() const { return clients_.size(); }
+size_t FrameSubscribers::SubscriberSize() const { return subscribers_.size(); }
 
-uint32_t FrameClients::SlowClientSize() const {
+uint32_t FrameSubscribers::SlowSubscriberSize() const {
     uint32_t slow_size = 0;
-    for (const auto &item : clients_) {
+    for (const auto &item : subscribers_) {
         if (item.second.slow) {
             ++slow_size;
         }
@@ -172,9 +173,9 @@ uint32_t FrameClients::SlowClientSize() const {
     return slow_size;
 }
 
-uint32_t FrameClients::SlowClientSize(StreamId stream_id) const {
+uint32_t FrameSubscribers::SlowSubscriberSize(StreamId stream_id) const {
     uint32_t slow_size = 0;
-    for (const auto &item : clients_) {
+    for (const auto &item : subscribers_) {
         if (item.second.stream_id == stream_id && item.second.slow) {
             ++slow_size;
         }
@@ -182,18 +183,18 @@ uint32_t FrameClients::SlowClientSize(StreamId stream_id) const {
     return slow_size;
 }
 
-uint32_t FrameClients::CachedFrameSize() const {
+uint32_t FrameSubscribers::CachedFrameSize() const {
     return static_cast<uint32_t>(main_cache_.size + sub_cache_.size +
                                  main_shared_frames_.Size() +
                                  sub_shared_frames_.Size());
 }
 
-uint32_t FrameClients::CachedBytes() const {
+uint32_t FrameSubscribers::CachedBytes() const {
     return main_cache_.bytes + sub_cache_.bytes + main_shared_frames_.Bytes() +
            sub_shared_frames_.Bytes();
 }
 
-uint32_t FrameClients::CachedBytes(StreamId stream_id) const {
+uint32_t FrameSubscribers::CachedBytes(StreamId stream_id) const {
     const StreamCache *cache =
         FindCache(stream_id, &main_cache_, &sub_cache_);
     const SharedFrames *frames =
@@ -205,20 +206,20 @@ uint32_t FrameClients::CachedBytes(StreamId stream_id) const {
     return cache->bytes + frames->Bytes();
 }
 
-uint32_t FrameClients::SharedBytes(StreamId stream_id) const {
+uint32_t FrameSubscribers::SharedBytes(StreamId stream_id) const {
     const SharedFrames *frames =
         FindSharedFrames(stream_id, &main_shared_frames_,
                          &sub_shared_frames_);
     return frames == nullptr ? 0 : frames->Bytes();
 }
 
-int64_t FrameClients::LastFrameTimestamp(StreamId stream_id) const {
+int64_t FrameSubscribers::LastFrameTimestamp(StreamId stream_id) const {
     const StreamCache *cache =
         FindCache(stream_id, &main_cache_, &sub_cache_);
     return cache == nullptr ? 0 : cache->last_frame_timestamp_us;
 }
 
-uint64_t FrameClients::CacheDropSize(StreamId stream_id) const {
+uint64_t FrameSubscribers::CacheDropSize(StreamId stream_id) const {
     if (stream_id == StreamId::kMain) {
         return main_cache_drops_;
     }
@@ -228,17 +229,17 @@ uint64_t FrameClients::CacheDropSize(StreamId stream_id) const {
     return 0;
 }
 
-uint64_t FrameClients::ClientDropSize(StreamId stream_id) const {
+uint64_t FrameSubscribers::SubscriberDropSize(StreamId stream_id) const {
     if (stream_id == StreamId::kMain) {
-        return main_client_drops_;
+        return main_subscriber_drops_;
     }
     if (stream_id == StreamId::kSub) {
-        return sub_client_drops_;
+        return sub_subscriber_drops_;
     }
     return 0;
 }
 
-void FrameClients::Write(const FramePayload &frame) {
+void FrameSubscribers::Write(const FramePayload &frame) {
     const MediaFrame &encoded_frame = frame.frame;
     if (!IsMediaFramePayloadValid(encoded_frame)) {
         return;
@@ -257,7 +258,7 @@ void FrameClients::Write(const FramePayload &frame) {
     cache.last_frame_timestamp_us = encoded_frame.dts_us;
 }
 
-const FrameClients::StreamCache *FrameClients::FindCache(
+const FrameSubscribers::StreamCache *FrameSubscribers::FindCache(
     StreamId stream_id, const StreamCache *main_cache,
     const StreamCache *sub_cache) {
     if (stream_id == StreamId::kMain) {
@@ -269,7 +270,7 @@ const FrameClients::StreamCache *FrameClients::FindCache(
     return nullptr;
 }
 
-const FrameClients::SharedFrames *FrameClients::FindSharedFrames(
+const FrameSubscribers::SharedFrames *FrameSubscribers::FindSharedFrames(
     StreamId stream_id, const SharedFrames *main_frames,
     const SharedFrames *sub_frames) {
     if (stream_id == StreamId::kMain) {
@@ -281,37 +282,37 @@ const FrameClients::SharedFrames *FrameClients::FindSharedFrames(
     return nullptr;
 }
 
-FrameClients::StreamCache &FrameClients::CacheFor(StreamId stream_id) {
+FrameSubscribers::StreamCache &FrameSubscribers::CacheFor(StreamId stream_id) {
     return stream_id == StreamId::kMain ? main_cache_ : sub_cache_;
 }
 
-FrameClients::SharedFrames &FrameClients::SharedFramesFor(
+FrameSubscribers::SharedFrames &FrameSubscribers::SharedFramesFor(
     StreamId stream_id) {
     return stream_id == StreamId::kMain ? main_shared_frames_
                                         : sub_shared_frames_;
 }
 
-const FrameClients::StreamCache &FrameClients::CacheFor(
+const FrameSubscribers::StreamCache &FrameSubscribers::CacheFor(
     StreamId stream_id) const {
     return stream_id == StreamId::kMain ? main_cache_ : sub_cache_;
 }
 
-const FrameClients::SharedFrames &FrameClients::SharedFramesFor(
+const FrameSubscribers::SharedFrames &FrameSubscribers::SharedFramesFor(
     StreamId stream_id) const {
     return stream_id == StreamId::kMain ? main_shared_frames_
                                         : sub_shared_frames_;
 }
 
-uint32_t FrameClients::FrameBytes(const FramePayload &frame) {
+uint32_t FrameSubscribers::FrameBytes(const FramePayload &frame) {
     return frame.frame.payload.Size();
 }
 
-uint32_t FrameClients::CachedFrameBytes(const CachedFrame &frame) {
+uint32_t FrameSubscribers::CachedFrameBytes(const CachedFrame &frame) {
     return frame.bytes;
 }
 
-int64_t FrameClients::EstimateFrameDuration(const StreamCache &cache,
-                                            const FramePayload &frame) {
+int64_t FrameSubscribers::EstimateFrameDuration(const StreamCache &cache,
+                                                const FramePayload &frame) {
     const int64_t dts_us = frame.frame.dts_us;
     int64_t duration_us = 0;
     if (cache.last_dts_us >= 0 && dts_us > cache.last_dts_us) {
@@ -320,14 +321,14 @@ int64_t FrameClients::EstimateFrameDuration(const StreamCache &cache,
     return duration_us;
 }
 
-void FrameClients::CopyFrameForSubscription(const FramePayload &payload,
-                                            int64_t duration_us,
-                                            MediaFrame &frame) {
+void FrameSubscribers::CopyFrameForSubscription(const FramePayload &payload,
+                                                int64_t duration_us,
+                                                MediaFrame &frame) {
     frame = payload.frame;
     frame.duration_us = duration_us;
 }
 
-void FrameClients::ClearCache(StreamCache &cache) {
+void FrameSubscribers::ClearCache(StreamCache &cache) {
     for (CachedFrame &frame : cache.frames) {
         frame = CachedFrame{};
     }
@@ -338,9 +339,9 @@ void FrameClients::ClearCache(StreamCache &cache) {
     cache.last_dts_us = -1;
 }
 
-bool FrameClients::AppendToCache(StreamCache &cache, uint64_t sequence,
-                                 bool keyframe, int64_t duration_us,
-                                 const FramePayload &frame) {
+bool FrameSubscribers::AppendToCache(StreamCache &cache, uint64_t sequence,
+                                     bool keyframe, int64_t duration_us,
+                                     const FramePayload &frame) {
     if (keyframe) {
         ClearCache(cache);
         cache.complete = true;
@@ -373,7 +374,7 @@ bool FrameClients::AppendToCache(StreamCache &cache, uint64_t sequence,
     return true;
 }
 
-void FrameClients::DropCache(StreamCache &cache) {
+void FrameSubscribers::DropCache(StreamCache &cache) {
     if (&cache == &main_cache_) {
         ++main_cache_drops_;
     } else if (&cache == &sub_cache_) {
@@ -383,9 +384,10 @@ void FrameClients::DropCache(StreamCache &cache) {
     ++cache.gop_version;
 }
 
-bool FrameClients::PushSharedFrame(SharedFrames &frames, bool keyframe,
-                                   int64_t duration_us, uint64_t &sequence,
-                                   const FramePayload &frame) {
+bool FrameSubscribers::PushSharedFrame(SharedFrames &frames, bool keyframe,
+                                       int64_t duration_us,
+                                       uint64_t &sequence,
+                                       const FramePayload &frame) {
     CachedFrame cached_frame;
     cached_frame.payload = frame;
     cached_frame.sequence = frames.NextSequence();
@@ -398,20 +400,20 @@ bool FrameClients::PushSharedFrame(SharedFrames &frames, bool keyframe,
     return pushed;
 }
 
-bool FrameClients::PullSharedFrame(ClientState &client,
-                                   const SharedFrames &frames,
-                                   CachedFrame &frame) {
-    if (client.frame_position.next_sequence < frames.FirstSequence()) {
-        MarkClientSlow(client, frames);
+bool FrameSubscribers::PullSharedFrame(FrameSubscriber &subscriber,
+                                       const SharedFrames &frames,
+                                       CachedFrame &frame) {
+    if (subscriber.frame_position.next_sequence < frames.FirstSequence()) {
+        MarkSubscriberSlow(subscriber, frames);
     }
     if (frames.Size() == 0) {
         return false;
     }
-    if (client.frame_position.next_sequence >= frames.NextSequence()) {
+    if (subscriber.frame_position.next_sequence >= frames.NextSequence()) {
         return false;
     }
 
-    uint64_t sequence = client.frame_position.next_sequence;
+    uint64_t sequence = subscriber.frame_position.next_sequence;
     while (sequence < frames.NextSequence()) {
         if (sequence < frames.FirstSequence()) {
             sequence = frames.FirstSequence();
@@ -420,30 +422,32 @@ bool FrameClients::PullSharedFrame(ClientState &client,
         if (!frames.Read(sequence, &source)) {
             return false;
         }
-        if (client.wait_keyframe && !source.keyframe) {
+        if (subscriber.wait_keyframe && !source.keyframe) {
             ++sequence;
-            client.frame_position.next_sequence = sequence;
+            subscriber.frame_position.next_sequence = sequence;
             continue;
         }
 
         frame = source;
-        frame.starts_on_keyframe = client.wait_keyframe && source.keyframe;
-        client.wait_keyframe = false;
-        client.slow = false;
-        client.close_reason = SubscriptionClose::kNone;
-        client.frame_position.next_sequence = sequence + 1;
+        frame.starts_on_keyframe =
+            subscriber.wait_keyframe && source.keyframe;
+        subscriber.wait_keyframe = false;
+        subscriber.slow = false;
+        subscriber.close_reason = SubscriptionClose::kNone;
+        subscriber.frame_position.next_sequence = sequence + 1;
         return true;
     }
     return false;
 }
 
-uint32_t FrameClients::PendingFrameSize(
-    const ClientState &client, const SharedFrames &frames) const {
-    if (client.frame_position.next_sequence >= frames.NextSequence()) {
+uint32_t FrameSubscribers::PendingFrameSize(
+    const FrameSubscriber &subscriber, const SharedFrames &frames) const {
+    if (subscriber.frame_position.next_sequence >= frames.NextSequence()) {
         return 0;
     }
     const uint64_t first_available =
-        std::max(client.frame_position.next_sequence, frames.FirstSequence());
+        std::max(subscriber.frame_position.next_sequence,
+                 frames.FirstSequence());
     const uint64_t pending = frames.NextSequence() - first_available;
     if (pending > static_cast<uint64_t>(frames.Size())) {
         return frames.Size();
@@ -451,31 +455,31 @@ uint32_t FrameClients::PendingFrameSize(
     return static_cast<uint32_t>(pending);
 }
 
-void FrameClients::MarkClientSlow(ClientState &client,
-                                  const SharedFrames &frames) {
-    if (!client.slow) {
-        if (client.stream_id == StreamId::kMain) {
-            ++main_client_drops_;
-        } else if (client.stream_id == StreamId::kSub) {
-            ++sub_client_drops_;
+void FrameSubscribers::MarkSubscriberSlow(FrameSubscriber &subscriber,
+                                          const SharedFrames &frames) {
+    if (!subscriber.slow) {
+        if (subscriber.stream_id == StreamId::kMain) {
+            ++main_subscriber_drops_;
+        } else if (subscriber.stream_id == StreamId::kSub) {
+            ++sub_subscriber_drops_;
         }
     }
-    client.slow = true;
-    client.wait_keyframe = true;
-    client.close_reason = SubscriptionClose::kCacheOverflow;
-    client.frame_position.next_sequence = frames.FirstSequence();
+    subscriber.slow = true;
+    subscriber.wait_keyframe = true;
+    subscriber.close_reason = SubscriptionClose::kCacheOverflow;
+    subscriber.frame_position.next_sequence = frames.FirstSequence();
 }
 
-void FrameClients::ResetClientForStream(ClientState &client,
-                                        const StreamCache &cache,
-                                        const SharedFrames &frames,
-                                        SubscriptionClose reason) {
-    client.wait_keyframe = true;
-    client.slow = false;
-    client.frame_position.next_sequence = frames.NextSequence();
-    client.frame_position.stream_reset_version =
+void FrameSubscribers::ResetSubscriberForStream(FrameSubscriber &subscriber,
+                                                const StreamCache &cache,
+                                                const SharedFrames &frames,
+                                                SubscriptionClose reason) {
+    subscriber.wait_keyframe = true;
+    subscriber.slow = false;
+    subscriber.frame_position.next_sequence = frames.NextSequence();
+    subscriber.frame_position.stream_reset_version =
         cache.stream_reset_version;
-    client.close_reason = reason;
+    subscriber.close_reason = reason;
 }
 
 }  // namespace media_internal
