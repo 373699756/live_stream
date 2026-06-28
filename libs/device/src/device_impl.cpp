@@ -9,7 +9,7 @@
 #include "media_channels.h"
 #include "media_config_codec.h"
 #include "media_pipeline.h"
-#include "pipeline_update.h"
+#include "pipeline_change.h"
 #include "sdk_defaults.h"
 
 #include <mutex>
@@ -53,7 +53,7 @@ public:
         capabilities_ = pipeline_.GetCapabilities();
         pipeline_.SetFrameCallback(&DeviceImpl::OnPipelineFrame, this);
         features_.reset(new DeviceFeatures(options_, active_channels_));
-        pipeline_update_.reset(new PipelineUpdate(pipeline_, *features_));
+        pipeline_change_.reset(new PipelineChange(pipeline_, *features_));
         image_tuner_.reset(new ImageTuner(
             [this]() { return pipeline_.QueryExposureInfo(); },
             [this](const Json &image_config) {
@@ -108,7 +108,7 @@ private:
     DevicePhase phase_ = DevicePhase::kCreated;
     FrameSink *frame_sink_ = nullptr;
     std::unique_ptr<DeviceFeatures> features_;
-    std::unique_ptr<PipelineUpdate> pipeline_update_;
+    std::unique_ptr<PipelineChange> pipeline_change_;
     std::unique_ptr<ImageTuner> image_tuner_;
     ConfigScopes config_scopes_;
     mutable std::mutex mutex_;
@@ -413,8 +413,8 @@ ConfigCode DeviceImpl::CheckImageForPipelineLocked(
 bool DeviceImpl::ApplyPipelineConfig(
     const MediaPipelineConfig &config) {
     bool is_started = false;
-    bool has_system = false;
-    DevicePhase prev_run_state = DevicePhase::kCreated;
+    bool system_initialized = false;
+    DevicePhase prev_phase = DevicePhase::kCreated;
     MediaPipelineConfig prev_config;
     Json prev_image_config;
     {
@@ -423,9 +423,9 @@ bool DeviceImpl::ApplyPipelineConfig(
             phase_ == DevicePhase::kFailed) {
             return false;
         }
-        prev_run_state = phase_;
+        prev_phase = phase_;
         is_started = phase_ == DevicePhase::kStarted;
-        has_system = system_initialized_;
+        system_initialized = system_initialized_;
         prev_config = active_config_;
         prev_image_config = image_tuner_->GetConfig();
         phase_ = DevicePhase::kStopping;
@@ -436,26 +436,26 @@ bool DeviceImpl::ApplyPipelineConfig(
         features_->Stop();
     }
 
-    PipelineUpdateResult update_result;
+    PipelineChangeInfo change_info;
     {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
-        PipelineUpdateRequest request;
-        request.next_config = config;
-        request.prev_config = prev_config;
-        request.prev_image_config = prev_image_config;
-        request.is_started = is_started;
-        request.has_system = has_system;
-        update_result = pipeline_update_->Apply(request);
+        PipelineChangePlan plan;
+        plan.next_config = config;
+        plan.prev_config = prev_config;
+        plan.prev_image_config = prev_image_config;
+        plan.is_started = is_started;
+        plan.system_initialized = system_initialized;
+        change_info = pipeline_change_->Apply(plan);
     }
 
-    if (update_result.applied) {
+    if (change_info.applied) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
             active_config_ = config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = has_system;
+            system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
-                                        : prev_run_state;
+                                        : prev_phase;
             if (is_started) {
                 image_tuner_->Start();
             }
@@ -465,17 +465,17 @@ bool DeviceImpl::ApplyPipelineConfig(
 
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (update_result.restored) {
+        if (change_info.restored) {
             active_config_ = prev_config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = has_system;
+            system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
-                                        : prev_run_state;
+                                        : prev_phase;
             if (is_started) {
                 image_tuner_->Start();
             }
         } else {
-            if (has_system) {
+            if (system_initialized) {
                 system_initialized_ = true;
                 phase_ = DevicePhase::kFailed;
             } else if (is_started) {
@@ -483,7 +483,7 @@ bool DeviceImpl::ApplyPipelineConfig(
                 phase_ = DevicePhase::kStopped;
             } else {
                 system_initialized_ = false;
-                phase_ = prev_run_state;
+                phase_ = prev_phase;
             }
         }
     }

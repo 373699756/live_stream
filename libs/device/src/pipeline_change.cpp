@@ -1,4 +1,4 @@
-#include "pipeline_update.h"
+#include "pipeline_change.h"
 
 #include "device_features.h"
 #include "infra/log.h"
@@ -7,28 +7,28 @@
 namespace live_stream {
 namespace device_internal {
 
-PipelineUpdate::PipelineUpdate(MediaPipeline& pipeline,
+PipelineChange::PipelineChange(MediaPipeline& pipeline,
                                DeviceFeatures& features)
     : pipeline_(pipeline), features_(features) {}
 
-PipelineUpdateResult PipelineUpdate::Apply(
-    const PipelineUpdateRequest& request) {
-    PipelineUpdateResult result;
-    if (request.is_started) {
+PipelineChangeInfo PipelineChange::Apply(
+    const PipelineChangePlan& plan) {
+    PipelineChangeInfo result;
+    if (plan.is_started) {
         pipeline_.Stop();
     }
 
     bool deinit_ok = true;
-    if (request.has_system) {
+    if (plan.system_initialized) {
         deinit_ok = pipeline_.DeinitSystem();
     }
     if (deinit_ok) {
-        result.applied = ApplyNext(request);
+        result.applied = ApplyNextConfig(plan);
     }
 
     if (!result.applied && deinit_ok &&
-        (request.is_started || request.has_system)) {
-        result.restored = RestorePrev(request);
+        (plan.is_started || plan.system_initialized)) {
+        result.restored = RestorePrevConfig(plan);
         if (!result.restored) {
             Error("device",
                   "restore media pipeline after config failure failed");
@@ -40,68 +40,68 @@ PipelineUpdateResult PipelineUpdate::Apply(
     return result;
 }
 
-bool PipelineUpdate::ApplyNext(const PipelineUpdateRequest& request) {
-    pipeline_.SetConfig(request.next_config);
+bool PipelineChange::ApplyNextConfig(const PipelineChangePlan& plan) {
+    pipeline_.SetConfig(plan.next_config);
     const MediaChannels next_channels =
-        BuildChannelsForConfig(request.next_config);
+        BuildChannelsForConfig(plan.next_config);
 
-    if (request.has_system && !pipeline_.InitSystem()) {
+    if (plan.system_initialized && !pipeline_.InitSystem()) {
         return false;
     }
     if (!features_.Bind(next_channels)) {
         return false;
     }
-    if (request.is_started && !pipeline_.Start()) {
+    if (plan.is_started && !pipeline_.Start()) {
         return false;
     }
-    if (request.is_started && !ApplyImage(request.prev_image_config)) {
+    if (plan.is_started && !ApplyImageConfig(plan.prev_image_config)) {
         return false;
     }
-    if (request.is_started && !features_.Start()) {
+    if (plan.is_started && !features_.Start()) {
         return false;
     }
     return true;
 }
 
-bool PipelineUpdate::RestorePrev(const PipelineUpdateRequest& request) {
+bool PipelineChange::RestorePrevConfig(const PipelineChangePlan& plan) {
     features_.Stop();
     pipeline_.Stop();
-    if (request.has_system) {
+    if (plan.system_initialized) {
         (void)pipeline_.DeinitSystem();
     }
 
-    pipeline_.SetConfig(request.prev_config);
+    pipeline_.SetConfig(plan.prev_config);
     const MediaChannels prev_channels =
-        BuildChannelsForConfig(request.prev_config);
+        BuildChannelsForConfig(plan.prev_config);
 
     bool restored = true;
-    if (request.has_system && !pipeline_.InitSystem()) {
+    if (plan.system_initialized && !pipeline_.InitSystem()) {
         restored = false;
     }
     if (restored && !features_.Bind(prev_channels)) {
         restored = false;
     }
-    if (restored && request.is_started && !pipeline_.Start()) {
+    if (restored && plan.is_started && !pipeline_.Start()) {
         restored = false;
     }
-    if (restored && request.is_started &&
-        !ApplyImage(request.prev_image_config)) {
+    if (restored && plan.is_started &&
+        !ApplyImageConfig(plan.prev_image_config)) {
         restored = false;
     }
-    if (restored && request.is_started && !features_.Start()) {
+    if (restored && plan.is_started && !features_.Start()) {
         restored = false;
     }
     if (!restored) {
         features_.Stop();
         pipeline_.Stop();
-        if (request.has_system) {
+        if (plan.system_initialized) {
             (void)pipeline_.DeinitSystem();
         }
     }
     return restored;
 }
 
-bool PipelineUpdate::ApplyImage(const Json& image_config) {
+bool PipelineChange::ApplyImageConfig(const Json& image_config) {
     if (!image_config.is_object() || image_config.empty()) {
         return true;
     }

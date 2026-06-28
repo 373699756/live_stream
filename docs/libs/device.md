@@ -118,7 +118,7 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 
 `DeviceImpl` 只作为 `DeviceMedia` 的具体门面和编排层。内部职责按资源边界拆分：
 `DeviceFeatures` 拥有抓图和 overlay 资源，`ConfigScopes` 管理 video/image 配置 scope
-注册，`ImageTuner` 拥有自动图像调节线程和 `ImageInfo`，`PipelineUpdate` 负责视频
+注册，`ImageTuner` 拥有自动图像调节线程和 `ImageInfo`，`PipelineChange` 负责视频
 配置热应用、MPP 重建和失败恢复。设备运行阶段使用 `DevicePhase`，不在门面类中继续
 堆叠 snapshot、overlay、配置注册、图像调节和 pipeline 回滚状态。
 
