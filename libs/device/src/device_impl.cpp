@@ -1,13 +1,14 @@
 #include "device_impl.h"
 
 #include "config.h"
-#include "host_hisi_sdk.h"
+#include "device_phase.h"
 #include "image_strategy.h"
 #include "infra/log.h"
 #include "media_channels.h"
 #include "media_config_codec.h"
 #include "media_pipeline.h"
 #include "region_overlay.h"
+#include "sdk_defaults.h"
 #include "snapshot.h"
 
 #include <chrono>
@@ -23,56 +24,6 @@ using media_internal::ParseVideoConfig;
 using media_internal::VerifyImageConfig;
 
 constexpr int kImageStrategyIntervalMs = 1000;
-
-hisisdk::HisiSdk CompleteSdk(hisisdk::HisiSdk sdk) {
-    const hisisdk::HisiSdk host_sdk = device_internal::HostHisiSdk();
-    if (sdk.system == nullptr) {
-        sdk.system = host_sdk.system;
-    }
-    if (sdk.media_pipeline == nullptr) {
-        sdk.media_pipeline = host_sdk.media_pipeline;
-    }
-    if (sdk.venc_stream == nullptr) {
-        sdk.venc_stream = host_sdk.venc_stream;
-    }
-    if (sdk.region == nullptr) {
-        sdk.region = host_sdk.region;
-    }
-    if (sdk.snapshot == nullptr) {
-        sdk.snapshot = host_sdk.snapshot;
-    }
-    if (sdk.image == nullptr) {
-        sdk.image = host_sdk.image;
-    }
-    return sdk;
-}
-
-DeviceMediaOptions CompleteDeviceOptions(DeviceMediaOptions options) {
-    options.sdk = CompleteSdk(options.sdk);
-    return options;
-}
-
-// Device media pipeline run state guarded by DeviceImpl::mutex_.
-enum class DeviceRunState {
-    kCreated = 0,
-    kInitialized,
-    kStarted,
-    kStopping,
-    kStopped,
-    kDeinitialized,
-    kFailed,
-};
-
-bool CanPrepare(DeviceRunState state) {
-    return state == DeviceRunState::kCreated ||
-           state == DeviceRunState::kDeinitialized;
-}
-
-bool IsPrepared(DeviceRunState state) {
-    return state == DeviceRunState::kInitialized ||
-           state == DeviceRunState::kStarted ||
-           state == DeviceRunState::kStopped;
-}
 
 ConfigCode RejectConfigVerify(const std::string &field,
                                 const std::string &reason,
@@ -97,7 +48,7 @@ ConfigCode RejectConfigApply(const std::string &field,
 class DeviceImpl : public DeviceMedia {
 public:
     explicit DeviceImpl(const DeviceMediaOptions &device_options)
-        : options_(CompleteDeviceOptions(device_options)),
+        : options_(FillDeviceDefaults(device_options)),
           pipeline_(device_options.default_config,
                     options_.sdk) {
         active_config_ = pipeline_.config();
@@ -148,7 +99,7 @@ private:
     bool AddConfigScopes(AttachedConfigs &attached_now);
     void Release();
     static void OnPipelineFrame(const MediaFrame &frame, void *user);
-    void DispatchFrame(const MediaFrame &frame);
+    void PushFrameToSink(const MediaFrame &frame);
     ConfigCode VerifyVideoConfig(const Json &now,
                                    ConfigError *error) const;
     ConfigCode ApplyVideoConfig(const Json &prev,
@@ -159,16 +110,16 @@ private:
     ConfigCode ApplyImageConfig(const Json &prev,
                                   const Json &now,
                                   ConfigError *error);
-    ConfigCode CheckImageConfigForPipelineLocked(
+    ConfigCode CheckImageForPipelineLocked(
         const MediaPipelineConfig &pipeline_config,
         ConfigError *error) const;
-    bool ApplyImageConfigToPipeline(const Json &value);
-    Json BuildImageStrategyConfigLocked(
+    bool ApplyImageToPipeline(const Json &value);
+    Json BuildAutoImageConfigLocked(
         const hisisdk::ExposureInfo &exposure,
         ImageInfo &next_info) const;
-    void StartImageStrategyLocked();
-    void StopImageStrategy();
-    void ImageStrategyLoop();
+    void StartImageTunerLocked();
+    void StopImageTuner();
+    void RunImageTuner();
     bool ApplyPipelineConfig(const MediaPipelineConfig &config);
     bool BindDeviceFeatures(const MediaChannels &channels);
     bool StartDeviceFeatures();
@@ -180,7 +131,7 @@ private:
     MediaPipelineConfig active_config_;
     MediaChannels active_channels_;
     MediaCapabilities capabilities_;
-    DeviceRunState run_state_ = DeviceRunState::kCreated;
+    DevicePhase phase_ = DevicePhase::kCreated;
     FrameSink *frame_sink_ = nullptr;
     Json image_config_ = Json::object();
     ImageInfo image_info_;
@@ -191,9 +142,9 @@ private:
     bool video_config_attached_ = false;
     bool image_config_attached_ = false;
     bool system_initialized_ = false;
-    std::thread image_strategy_thread_;
-    bool image_strategy_running_ = false;
-    bool image_strategy_stop_ = false;
+    std::thread image_tuner_thread_;
+    bool image_tuner_running_ = false;
+    bool stop_image_tuner_ = false;
 };
 
 bool DeviceImpl::Prepare() {
@@ -204,24 +155,24 @@ bool DeviceImpl::Prepare() {
         next_image_config = options_.config->Get("image");
     }
 
-    MediaPipelineConfig startup_config;
-    MediaCapabilities capabilities_snapshot;
+    MediaPipelineConfig start_config;
+    MediaCapabilities capabilities;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (IsPrepared(run_state_)) {
+        if (IsPrepared(phase_)) {
             return true;
         }
-        if (!CanPrepare(run_state_)) {
+        if (!CanPrepare(phase_)) {
             return false;
         }
-        startup_config = active_config_;
-        capabilities_snapshot = capabilities_;
+        start_config = active_config_;
+        capabilities = capabilities_;
     }
 
     if (video_config.is_object()) {
         const ConfigCode result = ParseVideoConfig(
-            video_config, startup_config, capabilities_snapshot,
-            &startup_config, nullptr);
+            video_config, start_config, capabilities,
+            &start_config, nullptr);
         if (result != ConfigCode::kOk) {
             return false;
         }
@@ -230,7 +181,7 @@ bool DeviceImpl::Prepare() {
     const bool has_image_config = next_image_config.is_object();
     if (has_image_config) {
         const ConfigCode result = VerifyImageConfig(
-            next_image_config, capabilities_snapshot.image, startup_config,
+            next_image_config, capabilities.image, start_config,
             nullptr);
         if (result != ConfigCode::kOk) {
             return false;
@@ -240,38 +191,38 @@ bool DeviceImpl::Prepare() {
     std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (IsPrepared(run_state_)) {
+        if (IsPrepared(phase_)) {
             return true;
         }
-        if (!CanPrepare(run_state_)) {
+        if (!CanPrepare(phase_)) {
             return false;
         }
-        run_state_ = DeviceRunState::kStopping;
+        phase_ = DevicePhase::kStopping;
     }
 
-    pipeline_.SetConfig(startup_config);
+    pipeline_.SetConfig(start_config);
     if (!pipeline_.InitSystem()) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
-            run_state_ = DeviceRunState::kDeinitialized;
+            phase_ = DevicePhase::kDeinitialized;
             system_initialized_ = false;
         } else {
-            run_state_ = DeviceRunState::kFailed;
+            phase_ = DevicePhase::kFailed;
             system_initialized_ = true;
         }
         return false;
     }
 
-    const MediaChannels startup_channels = BuildChannelsForConfig(startup_config);
-    if (!BindDeviceFeatures(startup_channels)) {
+    const MediaChannels start_channels = BuildChannelsForConfig(start_config);
+    if (!BindDeviceFeatures(start_channels)) {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
-            run_state_ = DeviceRunState::kDeinitialized;
+            phase_ = DevicePhase::kDeinitialized;
             system_initialized_ = false;
         } else {
-            run_state_ = DeviceRunState::kFailed;
+            phase_ = DevicePhase::kFailed;
             system_initialized_ = true;
         }
         return false;
@@ -282,10 +233,10 @@ bool DeviceImpl::Prepare() {
         const bool deinit_ok = pipeline_.DeinitSystem();
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
-            run_state_ = DeviceRunState::kDeinitialized;
+            phase_ = DevicePhase::kDeinitialized;
             system_initialized_ = false;
         } else {
-            run_state_ = DeviceRunState::kFailed;
+            phase_ = DevicePhase::kFailed;
             system_initialized_ = true;
         }
         return false;
@@ -293,8 +244,8 @@ bool DeviceImpl::Prepare() {
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        active_config_ = startup_config;
-        active_channels_ = startup_channels;
+        active_config_ = start_config;
+        active_channels_ = start_channels;
         system_initialized_ = true;
         if (has_image_config) {
             image_config_ = next_image_config;
@@ -305,7 +256,7 @@ bool DeviceImpl::Prepare() {
         if (attached_now.image) {
             image_config_attached_ = true;
         }
-        run_state_ = DeviceRunState::kInitialized;
+        phase_ = DevicePhase::kInitialized;
     }
     return true;
 }
@@ -316,15 +267,15 @@ bool DeviceImpl::AddConfigScopes(AttachedConfigs &attached_now) {
         return true;
     }
 
-    bool need_video_attach = false;
-    bool need_image_attach = false;
+    bool need_video_scope = false;
+    bool need_image_scope = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        need_video_attach = !video_config_attached_;
-        need_image_attach = !image_config_attached_;
+        need_video_scope = !video_config_attached_;
+        need_image_scope = !image_config_attached_;
     }
 
-    if (need_video_attach) {
+    if (need_video_scope) {
         ConfigScope config_scope;
         config_scope.verify = [this](const Json &now,
                                      ConfigError *error) {
@@ -342,7 +293,7 @@ bool DeviceImpl::AddConfigScopes(AttachedConfigs &attached_now) {
         attached_now.video = true;
     }
 
-    if (need_image_attach) {
+    if (need_image_scope) {
         ConfigScope config_scope;
         config_scope.verify = [this](const Json &now,
                                      ConfigError *error) {
@@ -398,7 +349,7 @@ void DeviceImpl::ReleaseDeviceFeatures() {
 }
 
 void DeviceImpl::Release() {
-    StopImageStrategy();
+    StopImageTuner();
     StopDeviceFeatures();
     ReleaseDeviceFeatures();
     bool detach_video = false;
@@ -409,15 +360,15 @@ void DeviceImpl::Release() {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (run_state_ == DeviceRunState::kStarted) {
-                run_state_ = DeviceRunState::kStopping;
+            if (phase_ == DevicePhase::kStarted) {
+                phase_ = DevicePhase::kStopping;
                 stop_pipeline = true;
-                run_state_ = DeviceRunState::kStopped;
+                phase_ = DevicePhase::kStopped;
             }
-            if (run_state_ != DeviceRunState::kDeinitialized &&
-                run_state_ != DeviceRunState::kCreated) {
+            if (phase_ != DevicePhase::kDeinitialized &&
+                phase_ != DevicePhase::kCreated) {
                 deinit_pipeline = true;
-                run_state_ = DeviceRunState::kStopping;
+                phase_ = DevicePhase::kStopping;
             }
             detach_video = video_config_attached_;
             detach_image = image_config_attached_;
@@ -431,15 +382,15 @@ void DeviceImpl::Release() {
             const bool deinit_ok = pipeline_.DeinitSystem();
             std::lock_guard<std::mutex> lock(mutex_);
             if (deinit_ok) {
-                run_state_ = DeviceRunState::kDeinitialized;
+                phase_ = DevicePhase::kDeinitialized;
                 system_initialized_ = false;
             } else {
-                run_state_ = DeviceRunState::kFailed;
+                phase_ = DevicePhase::kFailed;
                 system_initialized_ = true;
             }
         } else {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (run_state_ != DeviceRunState::kFailed) {
+            if (phase_ != DevicePhase::kFailed) {
                 system_initialized_ = false;
             }
         }
@@ -457,15 +408,15 @@ void DeviceImpl::Release() {
 
 void DeviceImpl::OnPipelineFrame(const MediaFrame &frame, void *user) {
     if (user != nullptr) {
-        static_cast<DeviceImpl *>(user)->DispatchFrame(frame);
+        static_cast<DeviceImpl *>(user)->PushFrameToSink(frame);
     }
 }
 
-void DeviceImpl::DispatchFrame(const MediaFrame &frame) {
+void DeviceImpl::PushFrameToSink(const MediaFrame &frame) {
     FrameSink *frame_sink = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (run_state_ != DeviceRunState::kStarted) {
+        if (phase_ != DevicePhase::kStarted) {
             return;
         }
         frame_sink = frame_sink_;
@@ -488,7 +439,7 @@ ConfigCode DeviceImpl::VerifyVideoConfig(
         return RejectConfigVerify("streams",
                                   "snapshot VENC channel conflicts", error);
     }
-    return CheckImageConfigForPipelineLocked(parsed, error);
+    return CheckImageForPipelineLocked(parsed, error);
 }
 
 ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
@@ -498,7 +449,7 @@ ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
     MediaPipelineConfig next_config;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (run_state_ == DeviceRunState::kStopping) {
+        if (phase_ == DevicePhase::kStopping) {
             return RejectConfigApply("", "device media busy", error);
         }
         const ConfigCode result = ParseVideoConfig(
@@ -511,7 +462,7 @@ ConfigCode DeviceImpl::ApplyVideoConfig(const Json &prev,
                 "streams", "snapshot VENC channel conflicts", error);
         }
         const ConfigCode image_result =
-            CheckImageConfigForPipelineLocked(next_config, error);
+            CheckImageForPipelineLocked(next_config, error);
         if (image_result != ConfigCode::kOk) {
             return image_result;
         }
@@ -534,7 +485,7 @@ ConfigCode DeviceImpl::ApplyImageConfig(const Json &prev,
     (void)prev;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (run_state_ != DeviceRunState::kStarted) {
+        if (phase_ != DevicePhase::kStarted) {
             image_config_ = now;
             return ConfigCode::kOk;
         }
@@ -543,7 +494,7 @@ ConfigCode DeviceImpl::ApplyImageConfig(const Json &prev,
     std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (run_state_ != DeviceRunState::kStarted) {
+        if (phase_ != DevicePhase::kStarted) {
             image_config_ = now;
             return ConfigCode::kOk;
         }
@@ -558,7 +509,7 @@ ConfigCode DeviceImpl::ApplyImageConfig(const Json &prev,
     return ConfigCode::kOk;
 }
 
-ConfigCode DeviceImpl::CheckImageConfigForPipelineLocked(
+ConfigCode DeviceImpl::CheckImageForPipelineLocked(
     const MediaPipelineConfig &pipeline_config,
     ConfigError *error) const {
     if (!image_config_.is_object() || image_config_.empty()) {
@@ -570,7 +521,7 @@ ConfigCode DeviceImpl::CheckImageConfigForPipelineLocked(
                              pipeline_config, error);
 }
 
-bool DeviceImpl::ApplyImageConfigToPipeline(
+bool DeviceImpl::ApplyImageToPipeline(
     const Json &value) {
     if (!value.is_object() || value.empty()) {
         return true;
@@ -578,42 +529,42 @@ bool DeviceImpl::ApplyImageConfigToPipeline(
     return pipeline_.ApplyImageConfig(value);
 }
 
-Json DeviceImpl::BuildImageStrategyConfigLocked(
+Json DeviceImpl::BuildAutoImageConfigLocked(
     const hisisdk::ExposureInfo &exposure,
     ImageInfo &next_info) const {
     return BuildImageStrategyConfig(image_config_, image_info_,
                                     exposure, next_info);
 }
 
-void DeviceImpl::StartImageStrategyLocked() {
-    if (image_strategy_running_) {
+void DeviceImpl::StartImageTunerLocked() {
+    if (image_tuner_running_) {
         return;
     }
-    image_strategy_stop_ = false;
-    image_strategy_running_ = true;
-    image_strategy_thread_ =
-        std::thread(&DeviceImpl::ImageStrategyLoop, this);
+    stop_image_tuner_ = false;
+    image_tuner_running_ = true;
+    image_tuner_thread_ =
+        std::thread(&DeviceImpl::RunImageTuner, this);
 }
 
-void DeviceImpl::StopImageStrategy() {
+void DeviceImpl::StopImageTuner() {
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        image_strategy_stop_ = true;
+        stop_image_tuner_ = true;
     }
-    if (image_strategy_thread_.joinable()) {
-        image_strategy_thread_.join();
+    if (image_tuner_thread_.joinable()) {
+        image_tuner_thread_.join();
     }
     std::lock_guard<std::mutex> guard(mutex_);
-    image_strategy_running_ = false;
-    image_strategy_stop_ = false;
+    image_tuner_running_ = false;
+    stop_image_tuner_ = false;
     image_info_.active = false;
 }
 
-void DeviceImpl::ImageStrategyLoop() {
+void DeviceImpl::RunImageTuner() {
     while (true) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (image_strategy_stop_) {
+            if (stop_image_tuner_) {
                 return;
             }
         }
@@ -622,13 +573,13 @@ void DeviceImpl::ImageStrategyLoop() {
 
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (image_strategy_stop_) {
+            if (stop_image_tuner_) {
                 return;
             }
             const bool strategy_enabled =
                 IsImageStrategyEnabled(image_config_);
             image_info_.enabled = strategy_enabled;
-            if (run_state_ != DeviceRunState::kStarted || !strategy_enabled) {
+            if (phase_ != DevicePhase::kStarted || !strategy_enabled) {
                 image_info_.active = false;
                 continue;
             }
@@ -637,7 +588,7 @@ void DeviceImpl::ImageStrategyLoop() {
         const hisisdk::ExposureInfo exposure = pipeline_.QueryExposureInfo();
         if (!exposure.valid) {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (image_strategy_stop_) {
+            if (stop_image_tuner_) {
                 return;
             }
             image_info_.exposure_valid = false;
@@ -648,12 +599,12 @@ void DeviceImpl::ImageStrategyLoop() {
         Json adjusted;
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            if (image_strategy_stop_ ||
-                run_state_ != DeviceRunState::kStarted ||
+            if (stop_image_tuner_ ||
+                phase_ != DevicePhase::kStarted ||
                 !IsImageStrategyEnabled(image_config_)) {
                 continue;
             }
-            adjusted = BuildImageStrategyConfigLocked(exposure,
+            adjusted = BuildAutoImageConfigLocked(exposure,
                                                       next_info);
         }
 
@@ -663,8 +614,8 @@ void DeviceImpl::ImageStrategyLoop() {
             bool can_apply = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
-                can_apply = !image_strategy_stop_ &&
-                            run_state_ == DeviceRunState::kStarted &&
+                can_apply = !stop_image_tuner_ &&
+                            phase_ == DevicePhase::kStarted &&
                             IsImageStrategyEnabled(image_config_);
             }
             if (can_apply) {
@@ -680,94 +631,94 @@ void DeviceImpl::ImageStrategyLoop() {
 
 bool DeviceImpl::ApplyPipelineConfig(
     const MediaPipelineConfig &config) {
-    bool restart_stream = false;
-    bool rebuild_system = false;
-    DeviceRunState prev_run_state = DeviceRunState::kCreated;
+    bool is_started = false;
+    bool has_system = false;
+    DevicePhase prev_run_state = DevicePhase::kCreated;
     MediaPipelineConfig prev_config;
     Json prev_image_config;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (run_state_ == DeviceRunState::kStopping ||
-            run_state_ == DeviceRunState::kFailed) {
+        if (phase_ == DevicePhase::kStopping ||
+            phase_ == DevicePhase::kFailed) {
             return false;
         }
-        prev_run_state = run_state_;
-        restart_stream = run_state_ == DeviceRunState::kStarted;
-        rebuild_system = system_initialized_;
+        prev_run_state = phase_;
+        is_started = phase_ == DevicePhase::kStarted;
+        has_system = system_initialized_;
         prev_config = active_config_;
         prev_image_config = image_config_;
-        run_state_ = DeviceRunState::kStopping;
+        phase_ = DevicePhase::kStopping;
     }
 
-    if (restart_stream) {
-        StopImageStrategy();
+    if (is_started) {
+        StopImageTuner();
         StopDeviceFeatures();
     }
 
-    bool device_config_applied = false;
-    bool restored_prev_pipeline = false;
+    bool applied = false;
+    bool restored = false;
     {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
-        if (restart_stream) {
+        if (is_started) {
             pipeline_.Stop();
         }
         bool deinit_ok = true;
-        if (rebuild_system) {
+        if (has_system) {
             deinit_ok = pipeline_.DeinitSystem();
         }
 
         if (!deinit_ok) {
-            device_config_applied = false;
+            applied = false;
         } else {
             pipeline_.SetConfig(config);
             const MediaChannels next_channels = BuildChannelsForConfig(config);
 
-            device_config_applied = true;
-            if (rebuild_system && !pipeline_.InitSystem()) {
-                device_config_applied = false;
+            applied = true;
+            if (has_system && !pipeline_.InitSystem()) {
+                applied = false;
             } else if (!BindDeviceFeatures(next_channels)) {
-                device_config_applied = false;
-            } else if (restart_stream && !pipeline_.Start()) {
-                device_config_applied = false;
-            } else if (restart_stream &&
-                       !ApplyImageConfigToPipeline(prev_image_config)) {
-                device_config_applied = false;
-            } else if (restart_stream && !StartDeviceFeatures()) {
-                device_config_applied = false;
+                applied = false;
+            } else if (is_started && !pipeline_.Start()) {
+                applied = false;
+            } else if (is_started &&
+                       !ApplyImageToPipeline(prev_image_config)) {
+                applied = false;
+            } else if (is_started && !StartDeviceFeatures()) {
+                applied = false;
             }
         }
 
-        if (!device_config_applied && deinit_ok &&
-            (restart_stream || rebuild_system)) {
+        if (!applied && deinit_ok &&
+            (is_started || has_system)) {
             StopDeviceFeatures();
             pipeline_.Stop();
-            if (rebuild_system) {
+            if (has_system) {
                 (void)pipeline_.DeinitSystem();
             }
             pipeline_.SetConfig(prev_config);
             const MediaChannels prev_channels =
                 BuildChannelsForConfig(prev_config);
-            bool restored = true;
-            if (rebuild_system && !pipeline_.InitSystem()) {
-                restored = false;
+            bool restore_ok = true;
+            if (has_system && !pipeline_.InitSystem()) {
+                restore_ok = false;
             }
-            if (restored && !BindDeviceFeatures(prev_channels)) {
-                restored = false;
+            if (restore_ok && !BindDeviceFeatures(prev_channels)) {
+                restore_ok = false;
             }
-            if (restored && restart_stream && !pipeline_.Start()) {
-                restored = false;
+            if (restore_ok && is_started && !pipeline_.Start()) {
+                restore_ok = false;
             }
-            if (restored && restart_stream &&
-                !ApplyImageConfigToPipeline(prev_image_config)) {
-                restored = false;
+            if (restore_ok && is_started &&
+                !ApplyImageToPipeline(prev_image_config)) {
+                restore_ok = false;
             }
-            if (restored && restart_stream && !StartDeviceFeatures()) {
-                restored = false;
+            if (restore_ok && is_started && !StartDeviceFeatures()) {
+                restore_ok = false;
             }
-            if (!restored) {
+            if (!restore_ok) {
                 StopDeviceFeatures();
                 pipeline_.Stop();
-                if (rebuild_system) {
+                if (has_system) {
                     (void)pipeline_.DeinitSystem();
                 }
                 Error("device",
@@ -776,20 +727,20 @@ bool DeviceImpl::ApplyPipelineConfig(
                 Error("device",
                       "media config apply failed, restored previous pipeline");
             }
-            restored_prev_pipeline = restored;
+            restored = restore_ok;
         }
     }
 
-    if (device_config_applied) {
+    if (applied) {
         {
             std::lock_guard<std::mutex> guard(mutex_);
             active_config_ = config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = rebuild_system;
-            run_state_ = restart_stream ? DeviceRunState::kStarted
+            system_initialized_ = has_system;
+            phase_ = is_started ? DevicePhase::kStarted
                                         : prev_run_state;
-            if (restart_stream) {
-                StartImageStrategyLocked();
+            if (is_started) {
+                StartImageTunerLocked();
             }
         }
         return true;
@@ -797,25 +748,25 @@ bool DeviceImpl::ApplyPipelineConfig(
 
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        if (restored_prev_pipeline) {
+        if (restored) {
             active_config_ = prev_config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = rebuild_system;
-            run_state_ = restart_stream ? DeviceRunState::kStarted
+            system_initialized_ = has_system;
+            phase_ = is_started ? DevicePhase::kStarted
                                         : prev_run_state;
-            if (restart_stream) {
-                StartImageStrategyLocked();
+            if (is_started) {
+                StartImageTunerLocked();
             }
         } else {
-            if (rebuild_system) {
+            if (has_system) {
                 system_initialized_ = true;
-                run_state_ = DeviceRunState::kFailed;
-            } else if (restart_stream) {
+                phase_ = DevicePhase::kFailed;
+            } else if (is_started) {
                 system_initialized_ = false;
-                run_state_ = DeviceRunState::kStopped;
+                phase_ = DevicePhase::kStopped;
             } else {
                 system_initialized_ = false;
-                run_state_ = prev_run_state;
+                phase_ = prev_run_state;
             }
         }
     }
@@ -823,34 +774,34 @@ bool DeviceImpl::ApplyPipelineConfig(
 }
 
 bool DeviceImpl::Start() {
-    bool need_init = false;
+    bool need_prepare = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        need_init = CanPrepare(run_state_);
+        need_prepare = CanPrepare(phase_);
     }
-    if (need_init && !Prepare()) {
+    if (need_prepare && !Prepare()) {
         return false;
     }
 
     Json prev_image_config;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (run_state_ == DeviceRunState::kStarted) {
+        if (phase_ == DevicePhase::kStarted) {
             return true;
         }
-        if (run_state_ == DeviceRunState::kStopped) {
-            run_state_ = DeviceRunState::kInitialized;
+        if (phase_ == DevicePhase::kStopped) {
+            phase_ = DevicePhase::kInitialized;
         }
-        if (run_state_ != DeviceRunState::kInitialized) {
+        if (phase_ != DevicePhase::kInitialized) {
             return false;
         }
-        run_state_ = DeviceRunState::kStopping;
+        phase_ = DevicePhase::kStopping;
         prev_image_config = image_config_;
     }
 
     auto mark_start_failed = [this]() {
         std::lock_guard<std::mutex> lock(mutex_);
-        run_state_ = DeviceRunState::kInitialized;
+        phase_ = DevicePhase::kInitialized;
         return false;
     };
 
@@ -866,7 +817,7 @@ bool DeviceImpl::Start() {
             rollback_started_pipeline();
             return mark_start_failed();
         }
-        if (!ApplyImageConfigToPipeline(prev_image_config)) {
+        if (!ApplyImageToPipeline(prev_image_config)) {
             rollback_started_pipeline();
             return mark_start_failed();
         }
@@ -877,26 +828,26 @@ bool DeviceImpl::Start() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        run_state_ = DeviceRunState::kStarted;
-        StartImageStrategyLocked();
+        phase_ = DevicePhase::kStarted;
+        StartImageTunerLocked();
     }
     return true;
 }
 
 void DeviceImpl::Stop() {
-    StopImageStrategy();
+    StopImageTuner();
     StopDeviceFeatures();
     bool should_stop = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (run_state_ != DeviceRunState::kStarted) {
-            if (run_state_ == DeviceRunState::kStopping) {
-                run_state_ = DeviceRunState::kStopped;
+        if (phase_ != DevicePhase::kStarted) {
+            if (phase_ == DevicePhase::kStopping) {
+                phase_ = DevicePhase::kStopped;
             }
             return;
         }
 
-        run_state_ = DeviceRunState::kStopping;
+        phase_ = DevicePhase::kStopping;
         should_stop = true;
     }
 
@@ -905,24 +856,24 @@ void DeviceImpl::Stop() {
         pipeline_.Stop();
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    run_state_ = DeviceRunState::kStopped;
+    phase_ = DevicePhase::kStopped;
 }
 
 bool DeviceImpl::IsStarted() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return run_state_ == DeviceRunState::kStarted;
+    return phase_ == DevicePhase::kStarted;
 }
 
 bool DeviceImpl::IsRestarting() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return run_state_ == DeviceRunState::kStopping;
+    return phase_ == DevicePhase::kStopping;
 }
 
 bool DeviceImpl::IsStreamStarted(StreamId stream_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
     const VideoStreamConfig *stream =
         FindConfiguredStream(active_config_, stream_id);
-    return run_state_ == DeviceRunState::kStarted && stream != nullptr &&
+    return phase_ == DevicePhase::kStarted && stream != nullptr &&
            stream->enabled;
 }
 
@@ -952,7 +903,7 @@ bool DeviceImpl::RequestKeyframe(StreamId stream_id,
         const MediaPipelineConfig config = active_config_;
         const VideoStreamConfig *stream =
             FindConfiguredStream(config, stream_id);
-        if (run_state_ != DeviceRunState::kStarted || stream == nullptr ||
+        if (phase_ != DevicePhase::kStarted || stream == nullptr ||
             !stream->enabled) {
             return false;
         }
@@ -969,7 +920,7 @@ MediaCapabilities DeviceImpl::GetCapabilities() const {
 
 MediaChannels DeviceImpl::GetChannels() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!system_initialized_ || run_state_ == DeviceRunState::kFailed) {
+    if (!system_initialized_ || phase_ == DevicePhase::kFailed) {
         return MediaChannels{};
     }
     return active_channels_;
@@ -984,7 +935,7 @@ SnapshotFrame DeviceImpl::CaptureSnapshot(
     const SnapshotRequest &request) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (run_state_ != DeviceRunState::kStarted) {
+        if (phase_ != DevicePhase::kStarted) {
             return SnapshotFrame{};
         }
     }
