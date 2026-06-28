@@ -43,8 +43,8 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### 部分处理，还要继续
 
-- RAII 已进入 public API，但 `MediaBuffer`、`PoolState` 内部仍用 `__sync_*`、
-  `malloc/free`。
+- RAII 已进入 public API，`MediaBuffer` 和 `MediaBufferPoolBlocks` 内部引用计数
+  已使用 `std::atomic`；`media_buffer_pool.cpp` 不再直接持有 pool block 数组。
 - `MediaStreams` 已拆真实状态对象，但仍是一把 `shared_mutex` 协调主/子码流、HLS、
   FLV、MJPEG、订阅。
 - 局部资源上限已有，但缺统一 `MediaResourceBudget`，GOP bytes、live queue bytes、
