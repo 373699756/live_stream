@@ -1,4 +1,4 @@
-import type { UpgradeInfo } from './types';
+import type { UpgradeInfo } from './types/upgrade';
 
 export const mockUpgradeInfo: UpgradeInfo = {
     state: 'idle',

@@ -12,9 +12,8 @@ namespace live_stream {
 
 HttpResponse HttpMediaJsonResponse(int status_code, const Json &value);
 HttpResponse HttpMediaStatusResponse(int status_code,
-                                     const std::string &reason);
-HttpResponse HttpMediaTextResponse(int status_code,
-                                   const std::string &reason);
+                                     const std::string &msg);
+HttpResponse HttpMediaTextResponse(int status_code, const std::string &msg);
 HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal);
 HttpResponse HttpMediaOkResponse();
 std::string BuildHttpMediaStreamHeader(

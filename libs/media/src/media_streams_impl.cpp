@@ -30,9 +30,10 @@ uint32_t MediaStreams::Impl::HlsSegmentCacheDepth(
     return options.hls_playlist_depth + options.hls_segment_retain_size;
 }
 
-media_internal::FrameClientsOptions MediaStreams::Impl::BuildFrameClientsOptions(
+media_internal::FrameSubscribersOptions
+MediaStreams::Impl::BuildFrameSubscribersOptions(
     const MediaCacheLimits &limits) {
-    media_internal::FrameClientsOptions options;
+    media_internal::FrameSubscribersOptions options;
     options.max_gop_frames = limits.max_subscription_gop_frames;
     options.max_gop_bytes = limits.max_subscription_gop_bytes;
     options.max_shared_frames = limits.max_shared_frames;
@@ -103,14 +104,14 @@ const char *MediaStreams::Impl::MediaStreamStateName(
     return "unknown";
 }
 
-const char *MediaStreams::Impl::RunStateName(
-    MediaStreamsRunState state) {
+const char *MediaStreams::Impl::PhaseName(
+    MediaStreamsPhase state) {
     switch (state) {
-        case MediaStreamsRunState::kStopped:
+        case MediaStreamsPhase::kStopped:
             return "stopped";
-        case MediaStreamsRunState::kRunning:
+        case MediaStreamsPhase::kRunning:
             return "running";
-        case MediaStreamsRunState::kStopping:
+        case MediaStreamsPhase::kStopping:
             return "stopping";
     }
     return "unknown";
@@ -129,7 +130,7 @@ const char *MediaStreams::Impl::KeyframeRequestSourceName(
     return "unknown";
 }
 
-SubscriptionClose MediaStreams::Impl::CloseReasonForReset(
+SubscriptionClose MediaStreams::Impl::CloseReasonFromReset(
     MediaStreamResetReason reason) {
     switch (reason) {
         case MediaStreamResetReason::kCodecChanged:
@@ -149,12 +150,12 @@ SubscriptionClose MediaStreams::Impl::CloseReasonForReset(
 
 bool MediaStreams::Impl::Start() {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    if (run_state_ == MediaStreamsRunState::kRunning) {
+    if (phase_ == MediaStreamsPhase::kRunning) {
         return true;
     }
-    if (run_state_ == MediaStreamsRunState::kStopping) {
+    if (phase_ == MediaStreamsPhase::kStopping) {
         Warn(kLogModuleName, "Start media streams rejected: state=%s",
-             RunStateName(run_state_));
+             PhaseName(phase_));
         return false;
     }
     if (!ValidateOptions()) {
@@ -162,8 +163,8 @@ bool MediaStreams::Impl::Start() {
     }
 
     ConfigureMediaCachesLocked();
-    ResetMediaStateLocked();
-    run_state_ = MediaStreamsRunState::kRunning;
+    ResetStreamsLocked();
+    phase_ = MediaStreamsPhase::kRunning;
     Info(kLogModuleName,
          "Media streams started hls_segment_ms=%u hls_playlist=%u "
          "hls_retain=%u max_flv=%u max_mjpeg=%u max_subscriptions=%u "
@@ -187,12 +188,12 @@ bool MediaStreams::Impl::Start() {
 
 void MediaStreams::Impl::Stop() {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    if (run_state_ == MediaStreamsRunState::kStopped) {
+    if (phase_ == MediaStreamsPhase::kStopped) {
         return;
     }
-    run_state_ = MediaStreamsRunState::kStopping;
-    ResetMediaStateLocked();
-    run_state_ = MediaStreamsRunState::kStopped;
+    phase_ = MediaStreamsPhase::kStopping;
+    ResetStreamsLocked();
+    phase_ = MediaStreamsPhase::kStopped;
     Info(kLogModuleName, "Media streams stopped");
 }
 
@@ -213,13 +214,13 @@ bool MediaStreams::Impl::PushFrame(const MediaFrame &input_frame) {
     }
 
     MediaFrame frame = input_frame;
-    media_internal::ParsedFramePayload payload;
-    if (!AcceptFrameAndQueue(frame, payload)) {
+    media_internal::ParsedFramePayload parsed_payload;
+    if (!AcceptFrame(frame, parsed_payload)) {
         return false;
     }
 
-    PackagePreviewFrame(payload,
-                        media_internal::IsFramePayloadParsed(payload));
+    CachePreviewFrame(parsed_payload,
+                        media_internal::IsFramePayloadParsed(parsed_payload));
     return true;
 }
 
@@ -237,7 +238,7 @@ void MediaStreams::Impl::SetStreamState(StreamId stream_id,
         Warn(kLogModuleName,
              "Set media stream state rejected: stream=%s state=%s reason=%s",
              StreamIdName(stream_id), MediaStreamStateName(state),
-             RunStateName(run_state_));
+             PhaseName(phase_));
         return;
     }
     SetStreamStateLocked(stream_id, state, codec);
@@ -330,10 +331,10 @@ MediaStreamStats MediaStreams::Impl::GetStreamStats() const {
     stats.active_mjpeg_clients =
         static_cast<uint32_t>(preview_clients_.MjpegSize());
     stats.active_subscriptions =
-        static_cast<uint32_t>(frame_clients_.ClientSize());
-    stats.cached_frames = frame_clients_.CachedFrameSize();
-    stats.main_cached_bytes = frame_clients_.CachedBytes(StreamId::kMain);
-    stats.sub_cached_bytes = frame_clients_.CachedBytes(StreamId::kSub);
+        static_cast<uint32_t>(frame_subscribers_.SubscriberSize());
+    stats.cached_frames = frame_subscribers_.CachedFrameSize();
+    stats.main_cached_bytes = frame_subscribers_.CachedBytes(StreamId::kMain);
+    stats.sub_cached_bytes = frame_subscribers_.CachedBytes(StreamId::kSub);
     stats.main_hls_cached_bytes =
         streams_.main_stream().hls_maker.CachedBytes();
     stats.sub_hls_cached_bytes =
@@ -354,26 +355,26 @@ MediaStreamStats MediaStreams::Impl::GetStreamStats() const {
     stats.cached_bytes =
         AddCachedBytes(stats.cached_bytes, stats.sub_flv_cached_bytes);
     stats.main_cache_drops =
-        frame_clients_.CacheDropSize(StreamId::kMain) +
+        frame_subscribers_.CacheDropSize(StreamId::kMain) +
         streams_.main_stream().hls_maker.DropSize() +
         streams_.main_stream().flv_gop_cache.drop_size();
     stats.sub_cache_drops =
-        frame_clients_.CacheDropSize(StreamId::kSub) +
+        frame_subscribers_.CacheDropSize(StreamId::kSub) +
         streams_.sub_stream().hls_maker.DropSize() +
         streams_.sub_stream().flv_gop_cache.drop_size();
     stats.main_client_frame_drops =
-        frame_clients_.ClientDropSize(StreamId::kMain);
+        frame_subscribers_.SubscriberDropSize(StreamId::kMain);
     stats.sub_client_frame_drops =
-        frame_clients_.ClientDropSize(StreamId::kSub);
-    stats.slow_subscriptions = frame_clients_.SlowClientSize();
+        frame_subscribers_.SubscriberDropSize(StreamId::kSub);
+    stats.slow_subscriptions = frame_subscribers_.SlowSubscriberSize();
     stats.main_slow_subscriptions =
-        frame_clients_.SlowClientSize(StreamId::kMain);
+        frame_subscribers_.SlowSubscriberSize(StreamId::kMain);
     stats.sub_slow_subscriptions =
-        frame_clients_.SlowClientSize(StreamId::kSub);
+        frame_subscribers_.SlowSubscriberSize(StreamId::kSub);
     stats.main_last_frame_timestamp_us =
-        frame_clients_.LastFrameTimestamp(StreamId::kMain);
+        frame_subscribers_.LastFrameTimestamp(StreamId::kMain);
     stats.sub_last_frame_timestamp_us =
-        frame_clients_.LastFrameTimestamp(StreamId::kSub);
+        frame_subscribers_.LastFrameTimestamp(StreamId::kSub);
     stats.main_codec_generation = streams_.main_stream().codec_generation;
     stats.sub_codec_generation = streams_.sub_stream().codec_generation;
     stats.main_last_reset_reason =
@@ -400,7 +401,7 @@ bool MediaStreams::Impl::RequestKeyframe(StreamId stream_id,
             Warn(kLogModuleName,
                  "Request keyframe rejected: stream=%s source=%s reason=%s",
                  StreamIdName(stream_id), KeyframeRequestSourceName(source),
-                 RunStateName(run_state_));
+                 PhaseName(phase_));
             return false;
         }
         if (options_.request_keyframe == nullptr) {
@@ -442,7 +443,7 @@ MediaFlvClientId MediaStreams::Impl::AttachFlvClient(
         if (!IsRunningLocked()) {
             Warn(kLogModuleName,
                  "Attach FLV client rejected: stream=%s reason=%s",
-                 StreamIdName(stream_id), RunStateName(run_state_));
+                 StreamIdName(stream_id), PhaseName(phase_));
             return 0;
         }
         if (!IsStreamSupported(stream_id)) {
@@ -503,7 +504,7 @@ MediaMjpegClientId MediaStreams::Impl::AttachMjpegClient(
     if (!IsRunningLocked()) {
         Warn(kLogModuleName,
              "Attach MJPEG client rejected: stream=%s reason=%s",
-             StreamIdName(stream_id), RunStateName(run_state_));
+             StreamIdName(stream_id), PhaseName(phase_));
         return 0;
     }
     if (!IsStreamSupported(stream_id)) {
@@ -561,20 +562,20 @@ FrameSubscriptionId MediaStreams::Impl::SubscribeFrames(
         if (!IsRunningLocked()) {
             Warn(kLogModuleName,
                  "Subscribe frames rejected: stream=%s reason=%s",
-                 StreamIdName(options.stream_id), RunStateName(run_state_));
+                 StreamIdName(options.stream_id), PhaseName(phase_));
             return 0;
         }
-        if (frame_clients_.ClientSize() >=
+        if (frame_subscribers_.SubscriberSize() >=
             options_.max_frame_subscriptions) {
             Warn(kLogModuleName,
                  "Subscribe frames rejected: stream=%s reason=capacity "
                  "subscriptions=%zu limit=%u",
                  StreamIdName(options.stream_id),
-                 frame_clients_.ClientSize(),
+                 frame_subscribers_.SubscriberSize(),
                  options_.max_frame_subscriptions);
             return 0;
         }
-        subscription_id = frame_clients_.SubscribeFrames(
+        subscription_id = frame_subscribers_.SubscribeFrames(
             options, options_.max_frame_subscriptions);
         if (subscription_id == 0) {
             Warn(kLogModuleName,
@@ -594,20 +595,20 @@ bool MediaStreams::Impl::UnsubscribeFrames(
     FrameSubscriptionId subscription_id,
     SubscriptionClose reason) {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    return frame_clients_.UnsubscribeFrames(subscription_id, reason);
+    return frame_subscribers_.UnsubscribeFrames(subscription_id, reason);
 }
 
 SubscriptionInfo MediaStreams::Impl::GetSubscriptionInfo(
     FrameSubscriptionId subscription_id) const {
     std::shared_lock<std::shared_mutex> guard(mutex_);
-    return frame_clients_.GetSubscriptionInfo(subscription_id);
+    return frame_subscribers_.GetSubscriptionInfo(subscription_id);
 }
 
 SubscriptionStart MediaStreams::Impl::GetSubscriptionStart(
     FrameSubscriptionId subscription_id) const {
     std::shared_lock<std::shared_mutex> guard(mutex_);
     const SubscriptionInfo subscription_info =
-        frame_clients_.GetSubscriptionInfo(subscription_id);
+        frame_subscribers_.GetSubscriptionInfo(subscription_id);
     if (!subscription_info.open) {
         return SubscriptionStart{};
     }
@@ -615,14 +616,14 @@ SubscriptionStart MediaStreams::Impl::GetSubscriptionStart(
         FindStream(subscription_info.stream_id);
     const MediaStreamInfo stream_info =
         media_internal::BuildMediaStreamInfo(*stream);
-    return frame_clients_.GetSubscriptionStart(subscription_id, stream_info);
+    return frame_subscribers_.GetSubscriptionStart(subscription_id, stream_info);
 }
 
 bool MediaStreams::Impl::PullFrame(
     FrameSubscriptionId subscription_id,
     SubscriptionFrame *frame) {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    return frame_clients_.PullFrame(subscription_id, frame);
+    return frame_subscribers_.PullFrame(subscription_id, frame);
 }
 
 bool MediaStreams::Impl::ValidateOptions() const {
@@ -726,16 +727,17 @@ bool MediaStreams::Impl::ValidateCacheLimits() const {
 }
 
 bool MediaStreams::Impl::IsRunningLocked() const {
-    return run_state_ == MediaStreamsRunState::kRunning;
+    return phase_ == MediaStreamsPhase::kRunning;
 }
 
 void MediaStreams::Impl::ConfigureMediaCachesLocked() {
-    frame_clients_.Configure(BuildFrameClientsOptions(options_.cache_limits));
+    frame_subscribers_.Configure(
+        BuildFrameSubscribersOptions(options_.cache_limits));
     streams_.Configure(BuildStreamCacheOptions(options_));
 }
 
-void MediaStreams::Impl::ResetMediaStateLocked() {
-    frame_clients_.Clear();
+void MediaStreams::Impl::ResetStreamsLocked() {
+    frame_subscribers_.Clear();
     preview_clients_.Clear();
     streams_.Clear();
     stats_ = MediaStreamStats{};
@@ -746,8 +748,8 @@ void MediaStreams::Impl::ApplyResetNoticeLocked(
     if (!notice.reset) {
         return;
     }
-    frame_clients_.ClearStream(notice.stream_id,
-                            CloseReasonForReset(notice.reason));
+    frame_subscribers_.ClearStream(notice.stream_id,
+                                   CloseReasonFromReset(notice.reason));
     Info(kLogModuleName, "Media stream reset stream=%s codec=%s reason=%s",
          StreamIdName(notice.stream_id), CodecName(notice.codec),
          MediaStreamResetReasonName(notice.reason));
@@ -757,12 +759,12 @@ void MediaStreams::Impl::EnsureRunningStreamLocked(
     media_internal::StreamTrack &stream,
     StreamId stream_id,
     Codec codec) {
-    const MediaStreamState state_before = stream.state;
+    const MediaStreamState prev_stream_state = stream.state;
     const Codec codec_before = stream.codec;
     media_internal::StreamResetNotice notice;
     streams_.EnsureRunning(stream_id, codec, notice);
     ApplyResetNoticeLocked(notice);
-    if (state_before != MediaStreamState::kRunning) {
+    if (prev_stream_state != MediaStreamState::kRunning) {
         Info(kLogModuleName, "Media stream started stream=%s codec=%s",
              StreamIdName(stream_id), CodecName(codec));
         return;
@@ -773,15 +775,15 @@ void MediaStreams::Impl::EnsureRunningStreamLocked(
     }
 }
 
-bool MediaStreams::Impl::AcceptFrameAndQueue(
+bool MediaStreams::Impl::AcceptFrame(
     MediaFrame &frame,
-    media_internal::ParsedFramePayload &payload) {
+    media_internal::ParsedFramePayload &parsed_payload) {
     std::unique_lock<std::shared_mutex> guard(mutex_);
     if (!IsRunningLocked()) {
         Warn(kLogModuleName,
              "Drop media frame: stream=%s codec=%s reason=%s",
              StreamIdName(frame.stream_id), CodecName(frame.codec),
-             RunStateName(run_state_));
+             PhaseName(phase_));
         return false;
     }
     media_internal::StreamTrack &stream = MutableStreamTrackFor(frame.stream_id);
@@ -789,9 +791,9 @@ bool MediaStreams::Impl::AcceptFrameAndQueue(
     if (!NormalizeFrameTimestampLocked(stream, frame)) {
         return false;
     }
-    payload = ParseFramePayloadView(frame);
+    parsed_payload = ParseFramePayloadView(frame);
     if (stream.state == MediaStreamState::kRunning) {
-        frame_clients_.Write(payload);
+        frame_subscribers_.Write(parsed_payload);
     }
     return true;
 }
@@ -799,11 +801,11 @@ bool MediaStreams::Impl::AcceptFrameAndQueue(
 bool MediaStreams::Impl::NormalizeFrameTimestampLocked(
     media_internal::StreamTrack &stream,
     MediaFrame &frame) {
-    const media_internal::NormalizedFrameResult result =
+    const media_internal::NormalizedFrameResult normalized_frame =
         media_internal::NormalizeFrameTimestamps(stream, frame);
-    if (result.timestamp_reset) {
-        frame_clients_.ClearStream(frame.stream_id,
-                                SubscriptionClose::kTimestampReset);
+    if (normalized_frame.timestamp_reset) {
+        frame_subscribers_.ClearStream(frame.stream_id,
+                                       SubscriptionClose::kTimestampReset);
         Warn(kLogModuleName,
              "Media stream timestamp reset stream=%s codec=%s pts_us=%lld "
              "dts_us=%lld",
@@ -811,31 +813,31 @@ bool MediaStreams::Impl::NormalizeFrameTimestampLocked(
              static_cast<long long>(frame.pts_us),
              static_cast<long long>(frame.dts_us));
     }
-    if (!result.accepted) {
+    if (!normalized_frame.accepted) {
         Warn(kLogModuleName,
              "Drop media frame: stream=%s codec=%s reason=timestamp_rejected",
              StreamIdName(frame.stream_id), CodecName(frame.codec));
     }
-    return result.accepted;
+    return normalized_frame.accepted;
 }
 
 media_internal::ParsedFramePayload
 MediaStreams::Impl::ParseFramePayloadView(
     const MediaFrame &frame) const {
-    media_internal::ParsedFramePayload payload;
-    media_internal::ParseFramePayload(frame, payload);
-    return payload;
+    media_internal::ParsedFramePayload parsed_payload;
+    media_internal::ParseFramePayload(frame, parsed_payload);
+    return parsed_payload;
 }
 
-void MediaStreams::Impl::PackagePreviewFrame(
-    const media_internal::ParsedFramePayload &payload,
+void MediaStreams::Impl::CachePreviewFrame(
+    const media_internal::ParsedFramePayload &parsed_payload,
     bool has_payload) {
     if (!has_payload) {
-        PackageMjpegFrame(payload);
+        PackageMjpegFrame(parsed_payload);
         return;
     }
 
-    const MediaFrame &frame = payload.frame;
+    const MediaFrame &frame = parsed_payload.frame;
     std::string sequence_header_tag;
     media_internal::FlvVideoTagBuild flv_tag_view;
     bool has_flv_tag_view = false;
@@ -865,7 +867,7 @@ void MediaStreams::Impl::PackagePreviewFrame(
 
         media_internal::PackagedFrameResult packaged_frame =
             media_internal::AppendFrameToStream(
-                stream, frame, payload, package_hls,
+                stream, frame, parsed_payload, package_hls,
                 package_flv || update_flv_cache,
                 options_.hls_segment_duration_ms, flv_tag_view);
         if (!packaged_frame.accepted) {
@@ -885,8 +887,8 @@ void MediaStreams::Impl::PackagePreviewFrame(
 }
 
 void MediaStreams::Impl::PackageMjpegFrame(
-    const media_internal::ParsedFramePayload &payload) {
-    const MediaFrame &frame = payload.frame;
+    const media_internal::ParsedFramePayload &parsed_payload) {
+    const MediaFrame &frame = parsed_payload.frame;
     if (frame.codec != Codec::kMjpeg ||
         !IsMediaFramePayloadValid(frame)) {
         return;
@@ -925,11 +927,11 @@ void MediaStreams::Impl::SetStreamStateLocked(StreamId stream_id,
                                               MediaStreamState state,
                                               Codec codec) {
     media_internal::StreamTrack &stream = MutableStreamTrackFor(stream_id);
-    const MediaStreamState state_before = stream.state;
+    const MediaStreamState prev_stream_state = stream.state;
     media_internal::StreamResetNotice notice;
     streams_.SetState(stream_id, state, codec, notice);
     ApplyResetNoticeLocked(notice);
-    if (state_before != state) {
+    if (prev_stream_state != state) {
         Info(kLogModuleName, "Media stream state changed stream=%s state=%s",
              StreamIdName(stream_id), MediaStreamStateName(state));
     }

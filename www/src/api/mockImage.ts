@@ -1,4 +1,4 @@
-import type { ImageConfig, ImageInfo } from './types';
+import type { ImageConfig, ImageInfo } from './types/media/configuration';
 
 export const mockImageConfig: ImageConfig = {
     basic: {

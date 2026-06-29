@@ -14,11 +14,11 @@ namespace live_stream {
 
 namespace {
 
-HttpResponse SnapshotTextResponse(int status_code, const std::string &reason) {
+HttpResponse SnapshotTextResponse(int status_code, const std::string &msg) {
     HttpResponse response;
     response.status_code = status_code;
     response.headers["Content-Type"] = "text/plain";
-    response.body = reason;
+    response.body = msg;
     return response;
 }
 

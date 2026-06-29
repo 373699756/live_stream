@@ -101,20 +101,21 @@ HttpResponse WebrtcErrorResponse(int status_code, const std::string &code,
 }
 
 HttpResponse WebrtcCreatePeerErrorResponse(const std::string &last_error) {
-    const std::string reason =
+    const std::string peer_error =
         last_error.empty() ? "peer_create_failed" : last_error;
-    if (reason == "invalid_stream") {
+    if (peer_error == "invalid_stream") {
         return WebrtcErrorResponse(400, "stream_not_found",
                                    "WebRTC stream not found");
     }
-    if (reason == "stream_unavailable" || reason == "unsupported_codec") {
-        return WebrtcErrorResponse(409, "resource_busy", reason);
+    if (peer_error == "stream_unavailable" ||
+        peer_error == "unsupported_codec") {
+        return WebrtcErrorResponse(409, "resource_busy", peer_error);
     }
-    if (reason == "peer_limit_reached") {
+    if (peer_error == "peer_limit_reached") {
         return WebrtcErrorResponse(409, "resource_busy",
                                    "WebRTC peer limit reached");
     }
-    return WebrtcErrorResponse(503, "protocol_unavailable", reason);
+    return WebrtcErrorResponse(503, "protocol_unavailable", peer_error);
 }
 
 bool ParsePeerSubPath(const HttpRequest &request, const std::string &suffix,
@@ -249,18 +250,18 @@ HttpResponse BuildCandidateResponse(IWebrtc *webrtc,
     }
     has_mline_index =
         json_reader::ReadField(body, "sdp_mline_index",
-                              &candidate.sdp_mline_index, 0,
-                              std::numeric_limits<int32_t>::max()) ||
+                               &candidate.sdp_mline_index, 0,
+                               std::numeric_limits<int32_t>::max()) ||
         json_reader::ReadField(body, "sdpMLineIndex",
-                              &candidate.sdp_mline_index, 0,
-                              std::numeric_limits<int32_t>::max());
+                               &candidate.sdp_mline_index, 0,
+                               std::numeric_limits<int32_t>::max());
     if (!has_mline_index) {
         return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
     if (!json_reader::ReadField(body, "username_fragment",
-                               &candidate.username_fragment)) {
+                                &candidate.username_fragment)) {
         (void)json_reader::ReadField(body, "usernameFragment",
-                                    &candidate.username_fragment);
+                                     &candidate.username_fragment);
     }
 
     Json root = Json::object();

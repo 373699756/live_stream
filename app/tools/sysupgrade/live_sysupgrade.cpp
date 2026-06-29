@@ -2,7 +2,7 @@
 #include "infra/clamp.h"
 #include "infra/fs.h"
 #include "infra/time.h"
-#include "platform/linux/linux_platform_common.h"
+#include "platform/linux/linux_process.h"
 #include "tools/sysupgrade/upgrade_flash.h"
 #include "system/package.h"
 
@@ -26,7 +26,7 @@ constexpr const char* kDefaultStagePath = "/tmp/live_stream/upgrade/staged";
 constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
 constexpr uint32_t kUpgradeLogRotateFiles = 1;
 
-struct HelperOptions {
+struct SysupgradeOptions {
     std::string package_path;
     std::string stage_dir = kDefaultStagePath;
     bool reboot = false;
@@ -96,11 +96,11 @@ void Usage() {
         "[--reboot]");
 }
 
-bool ParseArgs(int argc, char** argv, HelperOptions* options) {
+bool ParseArgs(int argc, char** argv, SysupgradeOptions* options) {
     if (options == nullptr) {
         return false;
     }
-    HelperOptions parsed;
+    SysupgradeOptions parsed;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--package" && i + 1 < argc) {
@@ -120,19 +120,18 @@ bool ParseArgs(int argc, char** argv, HelperOptions* options) {
     return true;
 }
 
-bool StopAppServices() {
+void StopLiveStreamApp() {
     static_cast<void>(RunCommand({"/etc/init.d/S80live_stream", "stop"}));
     static_cast<void>(RunCommand({"killall", "live_stream"}));
     static_cast<void>(RunCommand({"pkill", "live_stream"}));
     infra::Time::SleepMillis(300);
-    return true;
 }
 
-bool UnmountForCommand(const UpgradeCommand& command, std::string* reason) {
+bool UnmountForCommand(const UpgradeCommand& command, std::string* msg) {
     if (command.partition == "web" || command.partition == "bin" ||
         command.partition == "config") {
         return upgrade_flash::UnmountIfMounted(
-            command.partition_info.mount_point, reason);
+            command.partition_info.mount_point, msg);
     }
     return true;
 }
@@ -148,27 +147,27 @@ bool PackageNeedsStoppedApp(const UpgradeManifest& manifest) {
 
 bool ApplyPackage(const ParsedUpgradePackage& package,
                   const std::string& stage_dir,
-                  std::string* reason) {
+                  std::string* msg) {
     for (const UpgradeCommand& command : package.manifest.commands) {
         if (command.partition == "rootfs") {
-            if (reason != nullptr) {
-                *reason = "rootfs online upgrade is disabled";
+            if (msg != nullptr) {
+                *msg = "rootfs online upgrade is disabled";
             }
             return false;
         }
     }
     if (!upgrade_flash::IsPathOnTmpfs(stage_dir)) {
-        if (reason != nullptr) {
-            *reason = "stage directory is not tmpfs";
+        if (msg != nullptr) {
+            *msg = "stage directory is not tmpfs";
         }
         return false;
     }
-    if (!upgrade_flash::ValidateMtdLayoutForManifest(package.manifest, reason)) {
+    if (!upgrade_flash::ValidateMtdLayoutForManifest(package.manifest, msg)) {
         return false;
     }
     if (!infra::Path::MakeDirs(stage_dir)) {
-        if (reason != nullptr) {
-            *reason = "create stage directory failed";
+        if (msg != nullptr) {
+            *msg = "create stage directory failed";
         }
         return false;
     }
@@ -180,24 +179,24 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
             WriteUpgradeInfo("writing", bounded / 4, true,
                              package.manifest.version, "");
         },
-        reason);
+        msg);
     if (!extract_ok) {
         return false;
     }
 
     if (PackageNeedsStoppedApp(package.manifest)) {
         AppendUpgradeLog("stop application before system upgrade");
-        StopAppServices();
+        StopLiveStreamApp();
     }
 
     for (std::size_t i = 0; i < package.manifest.commands.size(); ++i) {
         const UpgradeCommand& command = package.manifest.commands[i];
         AppendUpgradeLog("burn partition: " + command.partition);
-        if (!UnmountForCommand(command, reason)) {
+        if (!UnmountForCommand(command, msg)) {
             return false;
         }
         const std::string image_path = infra::Path::Join(stage_dir, command.file);
-        if (!upgrade_flash::WriteMtdImage(command, image_path, reason)) {
+        if (!upgrade_flash::WriteMtdImage(command, image_path, msg)) {
             return false;
         }
         const uint32_t progress = 25U + static_cast<uint32_t>(
@@ -209,32 +208,32 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
 }
 
 int Run(int argc, char** argv) {
-    HelperOptions options;
+    SysupgradeOptions options;
     if (!ParseArgs(argc, argv, &options)) {
         Usage();
         return 2;
     }
 
     ParsedUpgradePackage package;
-    std::string reason;
-    if (!ParseUpgradePackage(options.package_path, &package, &reason)) {
-        AppendUpgradeLog("helper validate failed: " + reason);
-        WriteUpgradeInfo("failed", 100, false, "", reason);
+    std::string msg;
+    if (!ParseUpgradePackage(options.package_path, &package, &msg)) {
+        AppendUpgradeLog("sysupgrade validate failed: msg=" + msg);
+        WriteUpgradeInfo("failed", 100, false, "", msg);
         return 1;
     }
 
-    AppendUpgradeLog("helper started: " + package.manifest.version);
+    AppendUpgradeLog("sysupgrade started: " + package.manifest.version);
     WriteUpgradeInfo("preparing", 5, true, package.manifest.version, "");
 
-    if (!ApplyPackage(package, options.stage_dir, &reason)) {
-        AppendUpgradeLog("helper failed: " + reason);
+    if (!ApplyPackage(package, options.stage_dir, &msg)) {
+        AppendUpgradeLog("sysupgrade failed: msg=" + msg);
         WriteUpgradeInfo("failed", 100, false, package.manifest.version,
-                         reason);
+                         msg);
         sync();
         return 1;
     }
 
-    AppendUpgradeLog("helper completed: " + package.manifest.version);
+    AppendUpgradeLog("sysupgrade completed: " + package.manifest.version);
     WriteUpgradeInfo("waiting_reboot", 100, true, package.manifest.version, "");
     sync();
     if (options.reboot || package.requires_reboot) {

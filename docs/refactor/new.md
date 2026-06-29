@@ -43,16 +43,23 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### 部分处理，还要继续
 
-- RAII 已进入 public API，但 `MediaBuffer`、`PoolState` 内部仍用 `__sync_*`、
-  `malloc/free`。
+- RAII 已进入 public API，`MediaBuffer` 和 `MediaBufferPoolBlocks` 内部引用计数
+  已使用 `std::atomic`；`media_buffer_pool.cpp` 不再直接持有 pool block 数组。
 - `MediaStreams` 已拆真实状态对象，但仍是一把 `shared_mutex` 协调主/子码流、HLS、
   FLV、MJPEG、订阅。
-- 局部资源上限已有，但缺统一 `MediaResourceBudget`，GOP bytes、live queue bytes、
-  HLS segment bytes 不够显式。
-- HTTP 已有 `CreateHttpHandler(kind, deps)`，但 `MakeXxxHandler()` 仍公开，形成两套
-  handler 创建 API。
+- 局部资源上限已有，`MediaCacheLimits` 已承载 GOP 和 live queue 上限，HLS
+  segment bytes 等剩余上限还需要继续补齐。
+- HTTP 控制面 handler 已删除 `HttpHandlerDependencies` 聚合包和
+  `CreateHttpHandler(kind, deps)` 分发；`HttpImpl` 按业务入口直接构造每个 handler。
 - HTTP router 和 handler 仍是静态 thunk + `void* user`。
-- `HttpDependencies`、`HttpHandlerDependencies`、`SystemOverviewSources` 仍是宽依赖包。
+- `HttpDependencies`、`SystemOverviewSources` 仍是宽依赖包。
+- `HttpControlDependencies`、`HttpMediaDependencies`、`HttpStreamingDependencies`
+  已从 `HttpDependencies` 解包出来，但 `HttpDependencies` 仍作为组合根注入包存在。
+- `HttpServerDependencies` 已收敛到 `net_io/net_loop`，但 `HttpDependencies`
+  仍作为组合根注入包存在于 `HttpImpl` 构造边界。
+- `HttpImpl::InitializeHandlers()` 已拆成 close callback、control handlers、
+  media handlers、streaming handler 和 route registration 五个步骤，但
+  `HttpDependencies` 本身仍未切成更窄的公开角色包。
 - `FlvVideoTagBuild` / `MediaFlvVideoTagView` 仍含较大固定数组，需要减少栈上复制。
 - 进程日志 `infra::Log` 仍用全局宏和文件内静态状态；这是 process log 的独立设计债，
   不是审计 logger 问题。
@@ -106,11 +113,10 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### P2：HTTP handler 与依赖边界
 
-- 删除外部暴露的 `MakeXxxHandler()`，仅保留 `CreateHttpHandler(kind, deps)`。
-- 将 `HttpHandlerDependencies` 拆成按 handler 领域的窄依赖包，避免所有 handler 看到
-  全系统依赖。
-- 将 `SystemOverviewSources` 改为明确的 overview 聚合输入，减少和 `HttpDependencies`
-  重复。
+- 继续拆 `HttpDependencies`，按控制 handler、媒体 handler、streaming handler 三组在
+  `HttpImpl` 构造期解包，避免 public 组合根 DTO 长期向实现层扩散。
+- 将 `SystemOverviewSources` 收敛为 system status 专用只读视图，减少和
+  `HttpDependencies` 重复。
 - 在 `IHttpRouter` 增加成员函数注册模板，替换 handler 内静态 thunk + `void* user`。
 - HTTP 对 RTSP/WebRTC/ONVIF 的直接依赖先收敛为只读诊断/会话视图接口，不改 HTTP JSON
   字段。
@@ -121,7 +127,7 @@ app 生命周期、配置 metrics、风格文档分阶段推进。
 
 ### P3：media 资源预算和并发边界
 
-- 新增 `MediaResourceBudget` 到 `MediaStreamsOptions`，覆盖 GOP frame/bytes、
+- 继续补齐 `MediaCacheLimits`，覆盖 GOP frame/bytes、
   subscription queue frame/bytes、HLS segment count/bytes、FLV cached tag 上限。
 - `FrameRing`、`GopCache`、`HlsMaker` 从硬编码常量迁到预算参数。
 - 先做预算和统计，不立即引入 `FrameStage` pipeline。

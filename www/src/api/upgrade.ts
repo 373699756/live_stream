@@ -9,22 +9,24 @@ import type {
     UpgradePackageInfo,
     UpgradeRequest,
     UpgradeInfo,
-} from './types';
+} from './types/upgrade';
 
-const minUploadTimeoutMs = 180000;
-const maxUploadTimeoutMs = 15 * 60 * 1000;
-const uploadBytesPerMs = 64;
+const MIN_UPLOAD_TIMEOUT_MS = 180000;
+const MAX_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+const UPLOAD_BYTES_PER_MS = 64;
+const UPGRADE_REQUEST_TIMEOUT_MS = 300000;
 
-function uploadTimeoutMs(file: File): number {
+function getUploadTimeoutMs(file: File): number {
     return Math.min(
-        maxUploadTimeoutMs,
-        Math.max(minUploadTimeoutMs, Math.ceil(file.size / uploadBytesPerMs)),
+        MAX_UPLOAD_TIMEOUT_MS,
+        Math.max(
+            MIN_UPLOAD_TIMEOUT_MS,
+            Math.ceil(file.size / UPLOAD_BYTES_PER_MS),
+        ),
     );
 }
 
-export function getUpgradeInfo(
-    init?: ApiRequestOptions,
-): Promise<UpgradeInfo> {
+export function getUpgradeInfo(init?: ApiRequestOptions): Promise<UpgradeInfo> {
     return requestJson<UpgradeInfo>(
         '/api/upgrade/status',
         mockUpgradeInfo,
@@ -51,7 +53,7 @@ export async function uploadUpgradePackage(
     return uploadBinary<UpgradePackageInfo>({
         body: file,
         fallback: mockUpgradePackage(file),
-        init: { timeoutMs: uploadTimeoutMs(file) },
+        init: { timeoutMs: getUploadTimeoutMs(file) },
         path: `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
     });
 }
@@ -67,6 +69,7 @@ export function startUpgrade(value: UpgradeRequest): Promise<UpgradeInfo> {
             target_version: value.expected_version,
             started_at_ms: Date.now(),
         },
+        { timeoutMs: UPGRADE_REQUEST_TIMEOUT_MS },
     );
 }
 

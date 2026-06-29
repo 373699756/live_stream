@@ -261,21 +261,21 @@ void RequestPreviewKeyframe(MediaStreams *media_streams,
                                          KeyframeRequestSource::kRecovery);
 }
 
-bool IsWebrtcReady(IWebrtcStatusReader *webrtc_status_reader) {
-    if (webrtc_status_reader == nullptr) {
+bool IsWebrtcReady(IWebrtcReader *webrtc_reader) {
+    if (webrtc_reader == nullptr) {
         return false;
     }
-    const WebrtcStats stats = webrtc_status_reader->GetStats();
+    const WebrtcStats stats = webrtc_reader->GetStats();
     return stats.enabled && stats.signaling_ready && stats.ice_ready &&
            stats.dtls_ready && stats.srtp_ready;
 }
 
 bool IsWebrtcSupported(Codec codec,
-                       IWebrtcStatusReader *webrtc_status_reader) {
-    if (webrtc_status_reader == nullptr) {
+                       IWebrtcReader *webrtc_reader) {
+    if (webrtc_reader == nullptr) {
         return false;
     }
-    const WebrtcStats stats = webrtc_status_reader->GetStats();
+    const WebrtcStats stats = webrtc_reader->GetStats();
     return stats.enabled && (codec == Codec::kH264 ||
                              codec == Codec::kH265);
 }
@@ -349,7 +349,7 @@ Json MediaStreamInfoToJson(StreamId stream_id,
                                  IConfig *config,
                                  DeviceMedia *device,
                                  MediaStreams *media_streams,
-                                 IWebrtcStatusReader *webrtc_status_reader) {
+                                 IWebrtcReader *webrtc_reader) {
     MediaStreamInfo stream_info;
     MediaStreamStats stats;
     bool media_stream_available = false;
@@ -383,11 +383,11 @@ Json MediaStreamInfoToJson(StreamId stream_id,
     root["mjpeg_supported"] = stream_info.mjpeg_supported;
     root["mjpeg_ready"] = stream_info.mjpeg_ready;
     const bool webrtc_supported =
-        IsWebrtcSupported(codec, webrtc_status_reader);
+        IsWebrtcSupported(codec, webrtc_reader);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
         stream_running && stream_info.track_ready && webrtc_supported &&
-        IsWebrtcReady(webrtc_status_reader);
+        IsWebrtcReady(webrtc_reader);
     root["active_subscriptions"] = stats.active_subscriptions;
     root["preview_clients"] =
         stats.active_flv_clients + stats.active_mjpeg_clients;
@@ -650,7 +650,7 @@ public:
           device_(dependencies.device),
           media_streams_(dependencies.media_streams),
           rtsp_session_reader_(dependencies.rtsp_session_reader),
-          webrtc_status_reader_(dependencies.webrtc_status_reader),
+          webrtc_reader_(dependencies.webrtc_reader),
           http_(dependencies.http) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
@@ -680,11 +680,11 @@ private:
         items.push_back(MediaStreamInfoToJson(StreamId::kMain, config_,
                                               device_,
                                               media_streams_,
-                                              webrtc_status_reader_));
+                                              webrtc_reader_));
         items.push_back(MediaStreamInfoToJson(StreamId::kSub, config_,
                                               device_,
                                               media_streams_,
-                                              webrtc_status_reader_));
+                                              webrtc_reader_));
         root["items"] = items;
         return JsonResponse(200, root);
     }
@@ -732,7 +732,7 @@ private:
         return JsonResponse(
             200, MediaStreamInfoToJson(stream_id, config_, device_,
                                        media_streams_,
-                                       webrtc_status_reader_));
+                                       webrtc_reader_));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {
@@ -763,10 +763,10 @@ private:
             }
         }
         WebrtcStats webrtc_stats;
-        if (webrtc_status_reader_ != nullptr) {
-            webrtc_stats = webrtc_status_reader_->GetStats();
+        if (webrtc_reader_ != nullptr) {
+            webrtc_stats = webrtc_reader_->GetStats();
             const std::vector<WebrtcPeerInfo> peers =
-                webrtc_status_reader_->GetPeers();
+                webrtc_reader_->GetPeers();
             for (const WebrtcPeerInfo &peer : peers) {
                 items.push_back(WebrtcSessionToJson(peer));
             }
@@ -791,7 +791,7 @@ private:
     DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
     IRtspSessionReader *rtsp_session_reader_ = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader_ = nullptr;
+    IWebrtcReader *webrtc_reader_ = nullptr;
     IHttp *http_ = nullptr;
 };
 

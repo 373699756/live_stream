@@ -1,4 +1,4 @@
-import type { MediaCapabilities, VideoConfig } from './types';
+import type { MediaCapabilities, VideoConfig } from './types/media/configuration';
 
 export const mockVideoConfig: VideoConfig = {
     streams: {

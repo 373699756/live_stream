@@ -184,6 +184,10 @@
     margin-top: 10px;
 }
 
+.upgrade-risk-note {
+    margin-bottom: 12px;
+}
+
 .form-actions .danger-action:not(:disabled) {
     color: #991b1b;
     background: #fff7f7;

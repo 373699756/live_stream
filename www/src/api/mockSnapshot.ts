@@ -1,4 +1,4 @@
-import type { SnapshotConfig } from './types';
+import type { SnapshotConfig } from './types/media/configuration';
 
 export const mockSnapshotConfig: SnapshotConfig = {
     enabled: true,

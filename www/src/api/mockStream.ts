@@ -2,11 +2,10 @@ import type {
     MediaPreviewUrls,
     MediaSessionInfo,
     MediaStreamInfo,
-    RtspConfig,
-    StreamName,
-    WebrtcConfig,
-    WebrtcPeerInfo,
-} from './types';
+} from './types/media/stream';
+import type { StreamName } from './types/core';
+import type { RtspConfig } from './types/media/configuration';
+import type { WebrtcConfig, WebrtcPeerInfo } from './types/media/webrtc';
 
 export const mockRtspConfig: RtspConfig = {
     enabled: true,

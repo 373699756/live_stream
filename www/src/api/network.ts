@@ -2,7 +2,7 @@
 
 import { mockNetworkConfig } from './mockNetwork';
 import { requestJson, putJson } from './client';
-import type { NetworkConfig } from './types';
+import type { NetworkConfig } from './types/media/configuration';
 
 export function getNetworkConfig(): Promise<NetworkConfig> {
     return requestJson<NetworkConfig>('/api/config/network', mockNetworkConfig);

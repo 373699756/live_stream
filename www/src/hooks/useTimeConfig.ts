@@ -7,7 +7,8 @@ import {
 } from '../api/time';
 import type { NtpConfig, TimeInfo } from '../api/types';
 
-const timeInfoTimeoutMs = 1800;
+const TIME_INFO_REQUEST_TIMEOUT_MS = 1800;
+const NTP_SYNC_REQUEST_TIMEOUT_MS = 8000;
 
 function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error && error.message ? error.message : fallback;
@@ -49,7 +50,7 @@ export function useTimeConfig() {
 
     const refresh = useCallback(async () => {
         const nextTimeInfo = await getTimeInfo({
-            timeoutMs: timeInfoTimeoutMs,
+            timeoutMs: TIME_INFO_REQUEST_TIMEOUT_MS,
         });
         applyTimeInfo(nextTimeInfo);
         setError('');
@@ -58,7 +59,7 @@ export function useTimeConfig() {
     useEffect(() => {
         let mounted = true;
         setLoading(true);
-        void getTimeInfo({ timeoutMs: timeInfoTimeoutMs })
+        void getTimeInfo({ timeoutMs: TIME_INFO_REQUEST_TIMEOUT_MS })
             .then((nextTimeInfo) => {
                 if (!mounted) {
                     return;
@@ -138,7 +139,7 @@ export function useTimeConfig() {
         setError('');
         setMsg('');
         try {
-            await syncNtpNow({ timeoutMs: 8000 });
+            await syncNtpNow({ timeoutMs: NTP_SYNC_REQUEST_TIMEOUT_MS });
             await refresh();
             setMsg('已触发 NTP 同步');
         } catch (nextError: unknown) {

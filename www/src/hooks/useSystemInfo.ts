@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { getSystemInfo } from '../api/system';
 import type { SystemInfo } from '../api/types';
 
-const pollIntervalMs = 2000;
-const systemInfoTimeoutMs = 1800;
+const SYSTEM_INFO_REFRESH_INTERVAL_MS = 2000;
+const SYSTEM_INFO_REQUEST_TIMEOUT_MS = 1800;
 
 function errorMsg(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
@@ -20,7 +20,7 @@ export function useSystemInfo() {
             const startedAt = Date.now();
             try {
                 const nextSystemInfo = await getSystemInfo({
-                    timeoutMs: systemInfoTimeoutMs,
+                    timeoutMs: SYSTEM_INFO_REQUEST_TIMEOUT_MS,
                 });
                 if (mounted) {
                     setSystemInfo(nextSystemInfo);
@@ -35,7 +35,10 @@ export function useSystemInfo() {
                     const elapsedMs = Date.now() - startedAt;
                     timer = window.setTimeout(
                         load,
-                        Math.max(0, pollIntervalMs - elapsedMs),
+                        Math.max(
+                            0,
+                            SYSTEM_INFO_REFRESH_INTERVAL_MS - elapsedMs,
+                        ),
                     );
                 }
             }

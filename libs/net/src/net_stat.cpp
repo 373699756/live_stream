@@ -18,7 +18,7 @@
 namespace live_stream {
 namespace {
 
-constexpr const char *kServiceName = "net_stat";
+constexpr const char *kModuleName = "net_stat";
 constexpr size_t kMaxRecommendations = 16;
 constexpr uint32_t kEwmaNumerator = 3;
 constexpr uint32_t kEwmaDenominator = 4;
@@ -129,7 +129,7 @@ public:
         }
         check_thread_ = std::thread(&NetStatImpl::CheckLoop, this);
         started_ = true;
-        Info(kServiceName, "started interval_ms=%u",
+        Info(kModuleName, "started interval_ms=%u",
              static_cast<unsigned>(options_.check_interval_ms));
         return true;
     }
@@ -610,7 +610,7 @@ private:
             return false;
         }
         pressure_event.type = event::EventType::kNetPressureChanged;
-        pressure_event.source = kServiceName;
+        pressure_event.source = kModuleName;
         pressure_event.target = "connections";
         pressure_event.message = PressureLevelReason(stats.level);
         pressure_event.value =
@@ -656,6 +656,6 @@ std::unique_ptr<INetStat> CreateNetStat(
         new NetStatImpl(options, dependencies));
 }
 
-const char *NetStat::Name() { return kServiceName; }
+const char *NetStat::Name() { return kModuleName; }
 
 }  // namespace live_stream

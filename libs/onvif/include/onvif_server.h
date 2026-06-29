@@ -59,15 +59,15 @@ struct OnvifServerDependencies {
     IRtsp *rtsp = nullptr;
 };
 
-class IOnvifStatusReader {
+class IOnvifReader {
 public:
-    virtual ~IOnvifStatusReader() = default;
+    virtual ~IOnvifReader() = default;
 
     virtual bool IsStarted() const = 0;
     virtual OnvifServerStats GetStats() const = 0;
 };
 
-class OnvifServer : public IOnvifStatusReader {
+class OnvifServer : public IOnvifReader {
 public:
     OnvifServer(const OnvifServerOptions &options,
                 const OnvifServerDependencies &dependencies);

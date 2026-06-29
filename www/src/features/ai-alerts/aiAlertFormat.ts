@@ -8,7 +8,7 @@ import type {
     StreamName,
 } from '../../api/types';
 import type { MediaEvent } from '../../api/mediaEvents';
-import { formatTimestamp } from '../../utils/format';
+import { formatTimestamp } from '../../utils/displayText';
 import {
     applyAiTaskCapabilities,
     taskRequiresModelPath,

@@ -48,13 +48,19 @@ private:
 
     bool InstallConfigUpdateScopes();
     void RemoveConfigUpdateScopes();
-    ConfigCode VerifyProtocolConfigUpdate(const std::string &scope,
+    ConfigCode VerifyProtocolConfigChange(const std::string &scope,
                                             const Json &now,
                                             ConfigError *error);
-    ConfigCode ApplyProtocolConfigUpdate(const std::string &scope,
+    ConfigCode ApplyProtocolConfigChange(const std::string &scope,
                                            const Json &prev,
                                            const Json &now,
                                            ConfigError *error);
+    ConfigCode ApplyRtspConfigChange(const AppConfig &next_config,
+                                     ConfigError *error);
+    ConfigCode ApplyWebrtcConfigChange(const AppConfig &next_config,
+                                       ConfigError *error);
+    ConfigCode ApplyOnvifConfigChange(const AppConfig &next_config,
+                                      ConfigError *error);
     bool BuildNextAppConfig(const std::string &scope,
                             const Json &value,
                             AppConfig &next_config) const;

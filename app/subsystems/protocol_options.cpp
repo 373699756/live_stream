@@ -249,11 +249,11 @@ HttpDependencies BuildHttpDependencies(
     dependencies.upgrade = refs.device.upgrade;
     dependencies.system = refs.device.system;
     dependencies.rtsp_session_reader = refs.rtsp;
-    dependencies.onvif_status_reader = refs.onvif;
+    dependencies.onvif_reader = refs.onvif;
     dependencies.ai = refs.media.ai;
     dependencies.device = refs.media.device;
     dependencies.webrtc = refs.webrtc;
-    dependencies.webrtc_status_reader = refs.webrtc;
+    dependencies.webrtc_reader = refs.webrtc;
     dependencies.media_streams = refs.media.media_streams;
     dependencies.event = foundation.event();
     return dependencies;

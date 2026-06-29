@@ -116,6 +116,12 @@ HiSilicon SDK 契约归 `hisi_vendor`，`device` 只消费 `hisi_vendor/sdk.h`�
 MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主链路；overlay 热应用
 失败必须清理半创建 region，避免遮挡残留。
 
+`DeviceImpl` 只作为 `DeviceMedia` 的具体门面和编排层。内部职责按资源边界拆分：
+`DeviceFeatures` 拥有抓图和 overlay 资源，`ConfigScopes` 管理 video/image 配置 scope
+注册，`ImageTuner` 拥有自动图像调节线程和 `ImageInfo`，`PipelineChange` 负责视频
+配置热应用、MPP 重建和失败恢复。设备运行阶段使用 `DevicePhase`，不在门面类中继续
+堆叠 snapshot、overlay、配置注册、图像调节和 pipeline 回滚状态。
+
 ## 音视频专项边界
 
 产品只支持视频。旧配置文件中的音频字段只做升级兼容忽略；不启动音频采集、编码、

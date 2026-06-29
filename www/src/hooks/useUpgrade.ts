@@ -18,17 +18,17 @@ import type {
     UpgradeInfo,
 } from '../api/types';
 
-const pollIntervalMs = 2000;
-const statusTimeoutMs = 5000;
+const UPGRADE_STATUS_POLL_INTERVAL_MS = 2000;
+const UPGRADE_STATUS_REQUEST_TIMEOUT_MS = 5000;
 
-function errorMsg(error: unknown, fallback: string) {
+export type UpgradeActionErrorSeverity = 'warning' | 'danger';
+
+function errorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
 
 export function useUpgrade() {
-    const [upgradeInfo, setUpgradeInfo] = useState<UpgradeInfo | null>(
-        null,
-    );
+    const [upgradeInfo, setUpgradeInfo] = useState<UpgradeInfo | null>(null);
     const [packageInfo, setPackageInfo] = useState<UpgradePackageInfo | null>(
         null,
     );
@@ -39,11 +39,13 @@ export function useUpgrade() {
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState('');
     const [actionError, setActionError] = useState('');
+    const [actionErrorSeverity, setActionErrorSeverity] =
+        useState<UpgradeActionErrorSeverity>('warning');
     const [refreshError, setRefreshError] = useState('');
-    const busyRef = useRef(false);
+    const isStatusPollingPaused = useRef(false);
 
-    const setBusyState = (value: boolean) => {
-        busyRef.current = value;
+    const setUpgradeActionBusy = (value: boolean) => {
+        isStatusPollingPaused.current = value;
         setBusy(value);
     };
 
@@ -51,29 +53,35 @@ export function useUpgrade() {
         let mounted = true;
         let timer = 0;
         const load = async () => {
-            if (busyRef.current) {
-                timer = window.setTimeout(load, pollIntervalMs);
+            if (isStatusPollingPaused.current) {
+                timer = window.setTimeout(
+                    load,
+                    UPGRADE_STATUS_POLL_INTERVAL_MS,
+                );
                 return;
             }
             const startedAt = Date.now();
             try {
                 const nextUpgradeInfo = await getUpgradeInfo({
-                    timeoutMs: statusTimeoutMs,
+                    timeoutMs: UPGRADE_STATUS_REQUEST_TIMEOUT_MS,
                 });
                 if (mounted) {
                     setUpgradeInfo(nextUpgradeInfo);
                     setRefreshError('');
                 }
             } catch (err: unknown) {
-                if (mounted && !busyRef.current) {
-                    setRefreshError(errorMsg(err, '升级状态刷新失败'));
+                if (mounted && !isStatusPollingPaused.current) {
+                    setRefreshError(errorMessage(err, '升级状态刷新失败'));
                 }
             } finally {
                 if (mounted) {
                     const elapsedMs = Date.now() - startedAt;
                     timer = window.setTimeout(
                         load,
-                        Math.max(0, pollIntervalMs - elapsedMs),
+                        Math.max(
+                            0,
+                            UPGRADE_STATUS_POLL_INTERVAL_MS - elapsedMs,
+                        ),
                     );
                 }
             }
@@ -89,12 +97,13 @@ export function useUpgrade() {
         setSelectedFile(file);
         setPackageInfo(null);
         setActionError('');
+        setActionErrorSeverity('warning');
         setMsg('');
     };
 
     const uploadPackage = async () => {
         if (!selectedFile) return;
-        setBusyState(true);
+        setUpgradeActionBusy(true);
         setActionError('');
         setRefreshError('');
         setMsg('');
@@ -103,15 +112,16 @@ export function useUpgrade() {
             setPackageInfo(uploaded);
             setMsg(`已上传 ${selectedFile.name}`);
         } catch (err) {
-            setActionError(errorMsg(err, '上传失败'));
+            setActionErrorSeverity('warning');
+            setActionError(errorMessage(err, '上传失败'));
         } finally {
-            setBusyState(false);
+            setUpgradeActionBusy(false);
         }
     };
 
     const startUpgrade = async () => {
         if (!packageInfo) return;
-        setBusyState(true);
+        setUpgradeActionBusy(true);
         setActionError('');
         setRefreshError('');
         setMsg('');
@@ -127,14 +137,15 @@ export function useUpgrade() {
             setUpgradeInfo(next);
             setMsg('升级任务已提交');
         } catch (err) {
-            setActionError(errorMsg(err, '启动升级失败'));
+            setActionErrorSeverity('danger');
+            setActionError(errorMessage(err, '启动升级失败'));
         } finally {
-            setBusyState(false);
+            setUpgradeActionBusy(false);
         }
     };
 
     const cancelUpgrade = async () => {
-        setBusyState(true);
+        setUpgradeActionBusy(true);
         setActionError('');
         setRefreshError('');
         setMsg('');
@@ -143,14 +154,15 @@ export function useUpgrade() {
             setUpgradeInfo(next);
             setMsg('升级任务已取消');
         } catch (err) {
-            setActionError(errorMsg(err, '取消升级失败'));
+            setActionErrorSeverity('danger');
+            setActionError(errorMessage(err, '取消升级失败'));
         } finally {
-            setBusyState(false);
+            setUpgradeActionBusy(false);
         }
     };
 
     const confirmReboot = async () => {
-        setBusyState(true);
+        setUpgradeActionBusy(true);
         setActionError('');
         setRefreshError('');
         setMsg('');
@@ -159,9 +171,10 @@ export function useUpgrade() {
             setUpgradeInfo(next);
             setMsg('已下发重启应用升级');
         } catch (err) {
-            setActionError(errorMsg(err, '确认重启失败'));
+            setActionErrorSeverity('danger');
+            setActionError(errorMessage(err, '确认重启失败'));
         } finally {
-            setBusyState(false);
+            setUpgradeActionBusy(false);
         }
     };
 
@@ -178,6 +191,7 @@ export function useUpgrade() {
         busy,
         msg,
         actionError,
+        actionErrorSeverity,
         refreshError,
         selectFile,
         uploadPackage,

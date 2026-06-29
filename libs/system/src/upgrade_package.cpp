@@ -60,26 +60,26 @@ struct MappedUpgradePackage {
     MappedUpgradePackage(const MappedUpgradePackage&) = delete;
     MappedUpgradePackage& operator=(const MappedUpgradePackage&) = delete;
 
-    bool Open(const std::string& package_path, std::string* reason) {
+    bool Open(const std::string& package_path, std::string* msg) {
         Close();
         const uint64_t package_size = infra::File::Size(package_path);
         if (package_size == 0 || package_size > kMaxUpgradePackageSize) {
-            if (reason != nullptr) {
-                *reason = "package size is not allowed";
+            if (msg != nullptr) {
+                *msg = "package size is not allowed";
             }
             return false;
         }
         if (package_size > static_cast<uint64_t>(SIZE_MAX)) {
-            if (reason != nullptr) {
-                *reason = "package size is not supported";
+            if (msg != nullptr) {
+                *msg = "package size is not supported";
             }
             return false;
         }
 
         fd = open(package_path.c_str(), O_RDONLY);
         if (fd < 0) {
-            if (reason != nullptr) {
-                *reason = "package is unreadable";
+            if (msg != nullptr) {
+                *msg = "package is unreadable";
             }
             return false;
         }
@@ -87,8 +87,8 @@ struct MappedUpgradePackage {
         void* mapped = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
         if (mapped == MAP_FAILED) {
             Close();
-            if (reason != nullptr) {
-                *reason = "package map failed";
+            if (msg != nullptr) {
+                *msg = "package map failed";
             }
             return false;
         }
@@ -139,11 +139,11 @@ bool IsSafeZipPath(const std::string& path) {
 
 bool OpenStoreOnlyZipPackage(const std::string& package_path,
                              MappedUpgradePackage* package,
-                             std::string* reason) {
+                             std::string* msg) {
     if (package == nullptr) {
         return false;
     }
-    if (!package->Open(package_path, reason)) {
+    if (!package->Open(package_path, msg)) {
         return false;
     }
 
@@ -168,8 +168,8 @@ bool OpenStoreOnlyZipPackage(const std::string& package_path,
             compressed_size != uncompressed_size ||
             name_size == 0 || data_offset > package->size ||
             next_offset > package->size) {
-            if (reason != nullptr) {
-                *reason = "upgrade.zip must use stored entries";
+            if (msg != nullptr) {
+                *msg = "upgrade.zip must use stored entries";
             }
             return false;
         }
@@ -177,15 +177,15 @@ bool OpenStoreOnlyZipPackage(const std::string& package_path,
             reinterpret_cast<const char*>(package->data + name_offset),
             static_cast<std::size_t>(name_size));
         if (!IsSafeZipPath(name)) {
-            if (reason != nullptr) {
-                *reason = "unsafe zip entry path";
+            if (msg != nullptr) {
+                *msg = "unsafe zip entry path";
             }
             return false;
         }
         for (const ZipEntry& existing : package->entries) {
             if (existing.name == name) {
-                if (reason != nullptr) {
-                    *reason = "duplicate zip entry path";
+                if (msg != nullptr) {
+                    *msg = "duplicate zip entry path";
                 }
                 return false;
             }
@@ -198,8 +198,8 @@ bool OpenStoreOnlyZipPackage(const std::string& package_path,
         offset = next_offset;
     }
     if (package->entries.empty()) {
-        if (reason != nullptr) {
-            *reason = "upgrade.zip has no readable entries";
+        if (msg != nullptr) {
+            *msg = "upgrade.zip has no readable entries";
         }
         return false;
     }
@@ -293,17 +293,17 @@ std::string LoadUpgradePublicKeyPem() {
 
 bool VerifyInstallSignature(const std::string& install_text,
                             const std::string& signature,
-                            std::string* reason) {
+                            std::string* msg) {
     if (signature.empty()) {
-        if (reason != nullptr) {
-            *reason = "Install signature is missing";
+        if (msg != nullptr) {
+            *msg = "Install signature is missing";
         }
         return false;
     }
     const std::string public_key_pem = LoadUpgradePublicKeyPem();
     if (public_key_pem.empty()) {
-        if (reason != nullptr) {
-            *reason = "upgrade public key is not configured";
+        if (msg != nullptr) {
+            *msg = "upgrade public key is not configured";
         }
         return false;
     }
@@ -311,8 +311,8 @@ bool VerifyInstallSignature(const std::string& install_text,
     BIO* key_bio = BIO_new_mem_buf(public_key_pem.data(),
                                    static_cast<int>(public_key_pem.size()));
     if (key_bio == nullptr) {
-        if (reason != nullptr) {
-            *reason = "upgrade public key load failed";
+        if (msg != nullptr) {
+            *msg = "upgrade public key load failed";
         }
         return false;
     }
@@ -320,8 +320,8 @@ bool VerifyInstallSignature(const std::string& install_text,
                                                nullptr);
     BIO_free(key_bio);
     if (public_key == nullptr) {
-        if (reason != nullptr) {
-            *reason = "upgrade public key is invalid";
+        if (msg != nullptr) {
+            *msg = "upgrade public key is invalid";
         }
         return false;
     }
@@ -341,22 +341,22 @@ bool VerifyInstallSignature(const std::string& install_text,
     }
     EVP_MD_CTX_free(verify_context);
     EVP_PKEY_free(public_key);
-    if (!ok && reason != nullptr) {
-        *reason = "Install signature verification failed";
+    if (!ok && msg != nullptr) {
+        *msg = "Install signature verification failed";
     }
     return ok;
 }
 
 bool ReadManifest(const std::string& install_text,
                   UpgradeManifest* manifest,
-                  std::string* reason) {
+                  std::string* msg) {
     if (manifest == nullptr) {
         return false;
     }
     Json root = Json::parse(install_text, nullptr, false);
     if (root.is_discarded() || !root.is_object()) {
-        if (reason != nullptr) {
-            *reason = "Install is not valid JSON";
+        if (msg != nullptr) {
+            *msg = "Install is not valid JSON";
         }
         return false;
     }
@@ -368,24 +368,24 @@ bool ReadManifest(const std::string& install_text,
         !json_reader::ReadField(root, "PackageType", &parsed.package_type) ||
         !json_reader::ReadField(root, "Reboot", &parsed.reboot) ||
         !root.contains("Commands") || !root.at("Commands").is_array()) {
-        if (reason != nullptr) {
-            *reason = "Install fields are incomplete";
+        if (msg != nullptr) {
+            *msg = "Install fields are incomplete";
         }
         return false;
     }
     if (parsed.version.empty() || parsed.board != kExpectedBoard ||
         parsed.flash != kExpectedFlash ||
         parsed.package_type != kExpectedPackageType) {
-        if (reason != nullptr) {
-            *reason = "Install target does not match this device";
+        if (msg != nullptr) {
+            *msg = "Install target does not match this device";
         }
         return false;
     }
 
     for (const Json& item : root.at("Commands")) {
         if (!item.is_object()) {
-            if (reason != nullptr) {
-                *reason = "Install command is invalid";
+            if (msg != nullptr) {
+                *msg = "Install command is invalid";
             }
             return false;
         }
@@ -395,8 +395,8 @@ bool ReadManifest(const std::string& install_text,
             !json_reader::ReadField(item, "Partition", &command.partition) ||
             !json_reader::ReadField(item, "File", &command.file) ||
             !json_reader::ReadField(item, "Sha256", &command.sha256)) {
-            if (reason != nullptr) {
-                *reason = "Install command fields are incomplete";
+            if (msg != nullptr) {
+                *msg = "Install command fields are incomplete";
             }
             return false;
         }
@@ -405,22 +405,22 @@ bool ReadManifest(const std::string& install_text,
         if (action != "burn" || partition == nullptr ||
             !infra::IsSha256HexString(command.sha256) ||
             !IsSafeZipPath(command.file)) {
-            if (reason != nullptr) {
-                *reason = "Install command is not allowed";
+            if (msg != nullptr) {
+                *msg = "Install command is not allowed";
             }
             return false;
         }
         if (command.partition == "rootfs") {
-            if (reason != nullptr) {
-                *reason = "rootfs online upgrade is disabled";
+            if (msg != nullptr) {
+                *msg = "rootfs online upgrade is disabled";
             }
             return false;
         }
         for (const UpgradeCommand& existing : parsed.commands) {
             if (existing.partition == command.partition ||
                 existing.file == command.file) {
-                if (reason != nullptr) {
-                    *reason = "Install command is duplicated";
+                if (msg != nullptr) {
+                    *msg = "Install command is duplicated";
                 }
                 return false;
             }
@@ -429,8 +429,8 @@ bool ReadManifest(const std::string& install_text,
         parsed.commands.push_back(command);
     }
     if (parsed.commands.empty()) {
-        if (reason != nullptr) {
-            *reason = "Install has no commands";
+        if (msg != nullptr) {
+            *msg = "Install has no commands";
         }
         return false;
     }
@@ -440,28 +440,28 @@ bool ReadManifest(const std::string& install_text,
 
 bool ValidateCommandFiles(const MappedUpgradePackage& package,
                           UpgradeManifest* manifest,
-                          std::string* reason) {
+                          std::string* msg) {
     if (manifest == nullptr) {
         return false;
     }
     for (UpgradeCommand& command : manifest->commands) {
         const ZipEntry* entry = FindZipEntry(package.entries, command.file);
         if (entry == nullptr) {
-            if (reason != nullptr) {
-                *reason = "upgrade image file is missing";
+            if (msg != nullptr) {
+                *msg = "upgrade image file is missing";
             }
             return false;
         }
         if (entry->size == 0 ||
             entry->size > command.partition_info.size_bytes) {
-            if (reason != nullptr) {
-                *reason = "upgrade image size exceeds partition";
+            if (msg != nullptr) {
+                *msg = "upgrade image size exceeds partition";
             }
             return false;
         }
         if (ZipEntrySha256Hex(package, *entry) != command.sha256) {
-            if (reason != nullptr) {
-                *reason = "upgrade image sha256 mismatch";
+            if (msg != nullptr) {
+                *msg = "upgrade image sha256 mismatch";
             }
             return false;
         }
@@ -479,8 +479,8 @@ bool ValidateCommandFiles(const MappedUpgradePackage& package,
             }
         }
         if (!declared) {
-            if (reason != nullptr) {
-                *reason = "upgrade package contains undeclared file";
+            if (msg != nullptr) {
+                *msg = "upgrade package contains undeclared file";
             }
             return false;
         }
@@ -490,33 +490,33 @@ bool ValidateCommandFiles(const MappedUpgradePackage& package,
 
 bool ReadVerifiedManifest(const MappedUpgradePackage& package,
                           UpgradeManifest* manifest,
-                          std::string* reason) {
+                          std::string* msg) {
     if (manifest == nullptr) {
         return false;
     }
     const ZipEntry* install_entry = FindZipEntry(package.entries, kManifestName);
     if (install_entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "Install is missing";
+        if (msg != nullptr) {
+            *msg = "Install is missing";
         }
         return false;
     }
     const ZipEntry* signature_entry =
         FindZipEntry(package.entries, kManifestSignatureName);
     if (signature_entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "Install signature is missing";
+        if (msg != nullptr) {
+            *msg = "Install signature is missing";
         }
         return false;
     }
     const std::string install_text = ReadZipEntryData(package, *install_entry);
     if (!VerifyInstallSignature(
             install_text, ReadZipEntryData(package, *signature_entry),
-            reason)) {
+            msg)) {
         return false;
     }
-    if (!ReadManifest(install_text, manifest, reason) ||
-        !ValidateCommandFiles(package, manifest, reason)) {
+    if (!ReadManifest(install_text, manifest, msg) ||
+        !ValidateCommandFiles(package, manifest, msg)) {
         return false;
     }
     return true;
@@ -524,32 +524,32 @@ bool ReadVerifiedManifest(const MappedUpgradePackage& package,
 
 bool ReadSignedManifest(const MappedUpgradePackage& package,
                         UpgradeManifest* manifest,
-                        std::string* reason) {
+                        std::string* msg) {
     if (manifest == nullptr) {
         return false;
     }
     const ZipEntry* install_entry = FindZipEntry(package.entries, kManifestName);
     if (install_entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "Install is missing";
+        if (msg != nullptr) {
+            *msg = "Install is missing";
         }
         return false;
     }
     const ZipEntry* signature_entry =
         FindZipEntry(package.entries, kManifestSignatureName);
     if (signature_entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "Install signature is missing";
+        if (msg != nullptr) {
+            *msg = "Install signature is missing";
         }
         return false;
     }
     const std::string install_text = ReadZipEntryData(package, *install_entry);
     if (!VerifyInstallSignature(
             install_text, ReadZipEntryData(package, *signature_entry),
-            reason)) {
+            msg)) {
         return false;
     }
-    return ReadManifest(install_text, manifest, reason);
+    return ReadManifest(install_text, manifest, msg);
 }
 
 bool ManifestMatches(const UpgradeManifest& expected,
@@ -586,19 +586,19 @@ const UpgradePartition* FindUpgradePartition(const std::string& partition) {
 
 bool ParseUpgradePackage(const std::string& package_path,
                          ParsedUpgradePackage* package,
-                         std::string* reason) {
+                         std::string* msg) {
     if (package == nullptr || !infra::File::Exists(package_path)) {
-        if (reason != nullptr) {
-            *reason = "package not found";
+        if (msg != nullptr) {
+            *msg = "package not found";
         }
         return false;
     }
     MappedUpgradePackage zip_package;
-    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, msg)) {
         return false;
     }
     UpgradeManifest manifest;
-    if (!ReadVerifiedManifest(zip_package, &manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &manifest, msg)) {
         return false;
     }
 
@@ -611,30 +611,30 @@ bool ParseUpgradePackage(const std::string& package_path,
     parsed.requires_reboot =
         manifest.reboot || !UpgradePackageIsWebOnly(manifest);
     *package = parsed;
-    if (reason != nullptr) {
-        reason->clear();
+    if (msg != nullptr) {
+        msg->clear();
     }
     return true;
 }
 
 bool ReadUpgradePackageManifest(const std::string& package_path,
                                 UpgradeManifest* manifest,
-                                std::string* reason) {
+                                std::string* msg) {
     if (manifest == nullptr || !infra::File::Exists(package_path)) {
-        if (reason != nullptr) {
-            *reason = "package not found";
+        if (msg != nullptr) {
+            *msg = "package not found";
         }
         return false;
     }
     MappedUpgradePackage zip_package;
-    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, msg)) {
         return false;
     }
-    if (!ReadSignedManifest(zip_package, manifest, reason)) {
+    if (!ReadSignedManifest(zip_package, manifest, msg)) {
         return false;
     }
-    if (reason != nullptr) {
-        reason->clear();
+    if (msg != nullptr) {
+        msg->clear();
     }
     return true;
 }
@@ -642,13 +642,13 @@ bool ReadUpgradePackageManifest(const std::string& package_path,
 bool ExtractUpgradeFile(const std::string& package_path,
                         const std::string& file_name,
                         const std::string& output_path,
-                        std::string* reason) {
+                        std::string* msg) {
     MappedUpgradePackage zip_package;
-    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, msg)) {
         return false;
     }
     UpgradeManifest manifest;
-    if (!ReadVerifiedManifest(zip_package, &manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &manifest, msg)) {
         return false;
     }
     bool declared = false;
@@ -659,22 +659,22 @@ bool ExtractUpgradeFile(const std::string& package_path,
         }
     }
     if (!declared) {
-        if (reason != nullptr) {
-            *reason = "upgrade image file is not declared";
+        if (msg != nullptr) {
+            *msg = "upgrade image file is not declared";
         }
         return false;
     }
     const ZipEntry* entry = FindZipEntry(zip_package.entries, file_name);
     if (entry == nullptr) {
-        if (reason != nullptr) {
-            *reason = "upgrade image file is missing";
+        if (msg != nullptr) {
+            *msg = "upgrade image file is missing";
         }
         return false;
     }
     if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
         !WriteZipEntryData(zip_package, *entry, output_path)) {
-        if (reason != nullptr) {
-            *reason = "failed to extract upgrade image";
+        if (msg != nullptr) {
+            *msg = "failed to extract upgrade image";
         }
         return false;
     }
@@ -685,25 +685,25 @@ bool ExtractUpgradeFiles(const std::string& package_path,
                          const UpgradeManifest& manifest,
                          const std::string& output_dir,
                          UpgradePackageProgress progress_callback,
-                         std::string* reason) {
+                         std::string* msg) {
     if (manifest.commands.empty() || output_dir.empty() ||
         !infra::Path::MakeDirs(output_dir)) {
-        if (reason != nullptr) {
-            *reason = "invalid extract target";
+        if (msg != nullptr) {
+            *msg = "invalid extract target";
         }
         return false;
     }
     MappedUpgradePackage zip_package;
-    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, reason)) {
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, msg)) {
         return false;
     }
     UpgradeManifest verified_manifest;
-    if (!ReadVerifiedManifest(zip_package, &verified_manifest, reason)) {
+    if (!ReadVerifiedManifest(zip_package, &verified_manifest, msg)) {
         return false;
     }
     if (!ManifestMatches(manifest, verified_manifest)) {
-        if (reason != nullptr) {
-            *reason = "upgrade manifest changed before extract";
+        if (msg != nullptr) {
+            *msg = "upgrade manifest changed before extract";
         }
         return false;
     }
@@ -713,21 +713,21 @@ bool ExtractUpgradeFiles(const std::string& package_path,
             infra::Path::Join(output_dir, command.file);
         const ZipEntry* entry = FindZipEntry(zip_package.entries, command.file);
         if (entry == nullptr) {
-            if (reason != nullptr) {
-                *reason = "upgrade image file is missing";
+            if (msg != nullptr) {
+                *msg = "upgrade image file is missing";
             }
             return false;
         }
         if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
             !WriteZipEntryData(zip_package, *entry, output_path)) {
-            if (reason != nullptr) {
-                *reason = "failed to extract upgrade image";
+            if (msg != nullptr) {
+                *msg = "failed to extract upgrade image";
             }
             return false;
         }
         if (infra::Sha256FileHex(output_path) != command.sha256) {
-            if (reason != nullptr) {
-                *reason = "extracted upgrade image sha256 mismatch";
+            if (msg != nullptr) {
+                *msg = "extracted upgrade image sha256 mismatch";
             }
             return false;
         }
@@ -737,8 +737,8 @@ bool ExtractUpgradeFiles(const std::string& package_path,
             progress_callback(infra::Clamp<uint32_t>(progress, 0U, 100U));
         }
     }
-    if (reason != nullptr) {
-        reason->clear();
+    if (msg != nullptr) {
+        msg->clear();
     }
     return true;
 }

@@ -10,13 +10,13 @@ namespace upgrade_flash {
 
 bool IsPathOnTmpfs(const std::string& path);
 bool ValidateMtdLayoutForManifest(const UpgradeManifest& manifest,
-                                  std::string* reason);
+                                  std::string* msg);
 bool IsMounted(const std::string& mount_point);
-bool UnmountIfMounted(const std::string& mount_point, std::string* reason);
-bool Remount(const UpgradePartition& partition, std::string* reason);
+bool UnmountIfMounted(const std::string& mount_point, std::string* msg);
+bool Remount(const UpgradePartition& partition, std::string* msg);
 bool WriteMtdImage(const UpgradeCommand& command,
                    const std::string& image_path,
-                   std::string* reason);
+                   std::string* msg);
 
 }  // namespace upgrade_flash
 }  // namespace live_stream

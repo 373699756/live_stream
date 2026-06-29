@@ -1,4 +1,4 @@
-import type { TimeInfo } from './types';
+import type { TimeInfo } from './types/time';
 
 export const mockTimeInfo: TimeInfo = {
     system_time_ms: Date.now() - 32000,

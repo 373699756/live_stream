@@ -5,7 +5,7 @@ import type {
     OperationRecord,
     OperationResult,
 } from '../api/types';
-import { formatTimestamp } from '../utils/format';
+import { formatTimestamp } from '../utils/displayText';
 
 const actionLabels: Record<OperationAction, string> = {
     Login: '登录',

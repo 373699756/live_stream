@@ -39,6 +39,7 @@ export function SystemPage() {
         busy,
         msg,
         actionError,
+        actionErrorSeverity,
         refreshError: upgradeRefreshError,
         selectFile,
         uploadPackage,
@@ -102,6 +103,7 @@ export function SystemPage() {
                 upgradeInfo ? (
                     <UpgradePanel
                         actionError={actionError}
+                        actionErrorSeverity={actionErrorSeverity}
                         allowDowngrade={allowDowngrade}
                         allowSameVersion={allowSameVersion}
                         autoReboot={autoReboot}

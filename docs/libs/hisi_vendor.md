@@ -63,9 +63,11 @@ ISP 运行线程使用 `std::thread`，由 VI 启停边界拥有。启动顺序�
 `HI_MPI_ISP_Exit`、join 线程、注销 AWB/AE/sensor callback。
 
 VENC 封装以 Hi3516 Encode 库为主要参考，保持 `StartVenc -> BindVpssVenc ->
-StartVencStream` 的上层调用契约，但模块内部按每路 VENC state 记录 channel、
-VPSS 绑定、接收状态和 codec。失败回滚和停止顺序必须遵循创建的反向路径：
-停止取流线程、停止接收、解绑 VPSS、销毁 VENC channel。
+StartVencStream` 的上层调用契约。模块内部用 `VencChannelInfo` 记录每路 channel、
+VPSS 绑定、接收状态和 codec；VENC 属性构建、通道资源控制、取流采集分别收敛在
+`hisi_mpp_venc_attrs.*`、`hisi_mpp_venc_channel.*`、`hisi_mpp_venc_capture.*`。
+失败回滚和停止顺序必须遵循创建的反向路径：停止取流线程、停止接收、解绑 VPSS、
+销毁 VENC channel。
 VENC ROI 使用 `HI_MPI_VENC_SetRoiAttrEx`，创建 VENC channel 后应用所有 ROI slot；
 未使用的 slot 必须显式关闭，避免旧区域残留。上层只传项目内 `VideoRoiConfig`，
 不直接暴露海思 `VENC_ROI_ATTR_EX_S`。

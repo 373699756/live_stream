@@ -6,7 +6,7 @@ import type {
     AiStats,
     AiStatus,
     AiTaskName,
-} from './types';
+} from './types/ai';
 
 const now = Date.now();
 

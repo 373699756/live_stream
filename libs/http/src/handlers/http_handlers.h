@@ -18,11 +18,11 @@ class ITime;
 class IUpgrade;
 class ISystem;
 class IRtspSessionReader;
-class IOnvifStatusReader;
+class IOnvifReader;
 class DeviceMedia;
 class IAiReader;
 class IWebrtc;
-class IWebrtcStatusReader;
+class IWebrtcReader;
 class IHttp;
 
 struct AuthHandlerDependencies {
@@ -60,7 +60,7 @@ struct AlarmHandlerDependencies {
     IAlarm *alarm = nullptr;
 };
 
-struct SystemOverviewInputs {
+struct SystemOverviewSources {
     ILogger *logger = nullptr;
     IConfig *config = nullptr;
     IAuth *auth = nullptr;
@@ -69,17 +69,17 @@ struct SystemOverviewInputs {
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifStatusReader *onvif_status_reader = nullptr;
+    IOnvifReader *onvif_reader = nullptr;
     DeviceMedia *device = nullptr;
     IAiReader *ai = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     MediaStreams *media_streams = nullptr;
 };
 
 struct SystemHandlerDependencies {
     HttpAccess *access = nullptr;
     ISystem *system = nullptr;
-    SystemOverviewInputs overview;
+    SystemOverviewSources overview;
 };
 
 struct MediaHandlerDependencies {
@@ -88,7 +88,7 @@ struct MediaHandlerDependencies {
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
-    IWebrtcStatusReader *webrtc_status_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
     IHttp *http = nullptr;
 };
 
@@ -104,37 +104,28 @@ struct SnapshotHandlerDependencies {
     DeviceMedia *device = nullptr;
 };
 
-enum class HttpHandlerKind {
-    kAuth = 0,
-    kConfig,
-    kOperations,
-    kNetwork,
-    kTime,
-    kUpgrade,
-    kSystem,
-    kAlarm,
-    kMedia,
-    kAi,
-    kSnapshot,
-};
-
-struct HttpHandlerDependencies {
-    AuthHandlerDependencies auth;
-    ConfigHandlerDependencies config;
-    OperationsHandlerDependencies operations;
-    NetworkHandlerDependencies network;
-    TimeHandlerDependencies time;
-    UpgradeHandlerDependencies upgrade;
-    SystemHandlerDependencies system;
-    AlarmHandlerDependencies alarm;
-    MediaHandlerDependencies media;
-    AiHandlerDependencies ai;
-    SnapshotHandlerDependencies snapshot;
-};
-
-std::unique_ptr<IHttpHandler> CreateHttpHandler(
-    HttpHandlerKind kind,
-    const HttpHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAuthHandler(
+    const AuthHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeConfigHandler(
+    const ConfigHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(
+    const OperationsHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeNetworkHandler(
+    const NetworkHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeTimeHandler(
+    const TimeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
+    const UpgradeHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSystemHandler(
+    const SystemHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(
+    const AlarmHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeMediaHandler(
+    const MediaHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeAiHandler(
+    const AiHandlerDependencies &dependencies);
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
+    const SnapshotHandlerDependencies &dependencies);
 
 }  // namespace live_stream
 

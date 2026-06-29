@@ -7,7 +7,7 @@ import type {
     AlarmSourceState,
     AlarmInfoResponse,
     AlarmRuleConfig,
-} from './types';
+} from './types/alarm';
 
 export function getAlarmConfig(init?: ApiRequestOptions): Promise<AlarmConfig> {
     return requestJson<AlarmConfig>(

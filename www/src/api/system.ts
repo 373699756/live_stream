@@ -2,7 +2,7 @@
 
 import { mockSystemInfo } from './mockSystem';
 import { requestJson, type ApiRequestOptions } from './client';
-import type { SystemInfo } from './types';
+import type { SystemInfo } from './types/system';
 
 export function getSystemInfo(
     init?: ApiRequestOptions,

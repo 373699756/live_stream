@@ -7,7 +7,7 @@ import type {
     AiStatus,
     AiTaskCapability,
     AiTaskName,
-} from './types';
+} from './types/ai';
 
 export function getAiStatus(init?: ApiRequestOptions): Promise<AiStatus> {
     return requestJson<AiStatus>('/api/ai/status', mockAiStatus, init).then(

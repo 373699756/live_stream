@@ -51,19 +51,19 @@ using UpgradePackageProgress = std::function<void(uint32_t progress_percent)>;
 const UpgradePartition* FindUpgradePartition(const std::string& partition);
 bool ParseUpgradePackage(const std::string& package_path,
                          ParsedUpgradePackage* package,
-                         std::string* reason);
+                         std::string* msg);
 bool ReadUpgradePackageManifest(const std::string& package_path,
                                 UpgradeManifest* manifest,
-                                std::string* reason);
+                                std::string* msg);
 bool ExtractUpgradeFile(const std::string& package_path,
                         const std::string& file_name,
                         const std::string& output_path,
-                        std::string* reason);
+                        std::string* msg);
 bool ExtractUpgradeFiles(const std::string& package_path,
                          const UpgradeManifest& manifest,
                          const std::string& output_dir,
                          UpgradePackageProgress progress_callback,
-                         std::string* reason);
+                         std::string* msg);
 bool UpgradePackageIsWebOnly(const UpgradeManifest& manifest);
 
 }  // namespace live_stream

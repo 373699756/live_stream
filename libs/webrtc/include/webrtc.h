@@ -138,15 +138,15 @@ struct WebrtcStats {
     std::string public_ip;
 };
 
-class IWebrtcStatusReader {
+class IWebrtcReader {
 public:
-    virtual ~IWebrtcStatusReader() = default;
+    virtual ~IWebrtcReader() = default;
 
     virtual std::vector<WebrtcPeerInfo> GetPeers() const = 0;
     virtual WebrtcStats GetStats() const = 0;
 };
 
-class IWebrtc : public IWebrtcStatusReader {
+class IWebrtc : public IWebrtcReader {
 public:
     ~IWebrtc() override = default;
 

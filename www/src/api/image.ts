@@ -2,7 +2,7 @@
 
 import { mockImageConfig, mockImageInfo } from './mockImage';
 import { requestJson, putJson, type ApiRequestOptions } from './client';
-import type { ImageConfig, ImageInfo } from './types';
+import type { ImageConfig, ImageInfo } from './types/media/configuration';
 
 function normalizeImageConfig(config: ImageConfig): ImageConfig {
     const next: ImageConfig = {

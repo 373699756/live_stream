@@ -21,10 +21,10 @@
 namespace live_stream {
 namespace {
 
-constexpr const char* kServiceName = "rtsp";
+constexpr const char* kProtocolName = "rtsp";
 constexpr uint32_t kRtspDrainIntervalMs = 10;
 constexpr uint32_t kRtspMaxFramesPerDrain = 8;
-enum class ServiceState {
+enum class RtspPhase {
     kCreated = 0,
     kInitialized,
     kStarted,
@@ -89,9 +89,9 @@ public:
     }
 
     bool Prepare() {
-        if (state_ == ServiceState::kInitialized ||
-            state_ == ServiceState::kStarted ||
-            state_ == ServiceState::kStopped) {
+        if (phase_ == RtspPhase::kInitialized ||
+            phase_ == RtspPhase::kStarted ||
+            phase_ == RtspPhase::kStopped) {
             return true;
         }
         if (net_io_ == nullptr ||
@@ -101,28 +101,28 @@ public:
             options_.max_request_bytes == 0) {
             return false;
         }
-        state_ = ServiceState::kInitialized;
+        phase_ = RtspPhase::kInitialized;
         return true;
     }
 
     bool Start() override {
-        if (state_ == ServiceState::kStarted) {
+        if (phase_ == RtspPhase::kStarted) {
             return true;
         }
-        if (state_ == ServiceState::kCreated ||
-            state_ == ServiceState::kDeinitialized) {
+        if (phase_ == RtspPhase::kCreated ||
+            phase_ == RtspPhase::kDeinitialized) {
             if (!Prepare()) {
                 return false;
             }
         }
-        if (state_ != ServiceState::kInitialized &&
-            state_ != ServiceState::kStopped) {
+        if (phase_ != RtspPhase::kInitialized &&
+            phase_ != RtspPhase::kStopped) {
             return false;
         }
 
         TcpListenOptions tcp_config;
         tcp_config.address = {options_.listen_ip, options_.listen_port};
-        tcp_config.owner_protocol = kServiceName;
+        tcp_config.owner_protocol = kProtocolName;
         tcp_config.max_connections = options_.max_sessions;
         tcp_config.send_queue_capacity = options_.send_queue_capacity;
         tcp_config.send_buffer_limit_bytes = options_.send_buffer_limit_bytes;
@@ -145,7 +145,7 @@ public:
         local_address_ = {options_.listen_ip,
                           local_result.port != 0 ? local_result.port
                                                  : options_.listen_port};
-        state_ = ServiceState::kStarted;
+        phase_ = RtspPhase::kStarted;
         return true;
     }
 
@@ -194,9 +194,9 @@ private:
             session_table_.Clear();
         }
         rtsp_auth_.Clear();
-        if (state_ == ServiceState::kStarted ||
-            state_ == ServiceState::kInitialized) {
-            state_ = ServiceState::kStopped;
+        if (phase_ == RtspPhase::kStarted ||
+            phase_ == RtspPhase::kInitialized) {
+            phase_ = RtspPhase::kStopped;
         }
     }
 
@@ -218,19 +218,19 @@ private:
 
     void ReleaseInternal() {
         StopInternal();
-        if (state_ != ServiceState::kCreated) {
-            state_ = ServiceState::kDeinitialized;
+        if (phase_ != RtspPhase::kCreated) {
+            phase_ = RtspPhase::kDeinitialized;
         }
     }
 
 public:
     const char* Name() const {
-        return kServiceName;
+        return kProtocolName;
     }
 
     RtspListenAddress LocalAddress() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (state_ != ServiceState::kStarted) {
+        if (phase_ != RtspPhase::kStarted) {
             return RtspListenAddress{};
         }
         return local_address_;
@@ -737,7 +737,7 @@ private:
         }
         event::Event rtsp_event;
         rtsp_event.type = type;
-        rtsp_event.source = kServiceName;
+        rtsp_event.source = kProtocolName;
         rtsp_event.target = target;
         rtsp_event.value = static_cast<int32_t>(active_sessions);
         (void)event_->Publish(rtsp_event);
@@ -894,7 +894,7 @@ private:
     RtspAuth rtsp_auth_;
     RtspRequestHandler request_handler_;
     mutable std::mutex mutex_;
-    ServiceState state_ = ServiceState::kCreated;
+    RtspPhase phase_ = RtspPhase::kCreated;
     TcpServerId server_id_ = 0;
     RtspListenAddress local_address_;
     RtspSessionTable session_table_;
@@ -909,7 +909,7 @@ std::unique_ptr<IRtsp> CreateRtsp(
 }
 
 const char* Rtsp::Name() {
-    return kServiceName;
+    return kProtocolName;
 }
 
 }  // namespace live_stream
