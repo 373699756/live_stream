@@ -117,6 +117,7 @@ export function useOverlayMaskEditor({
                         : null,
                 )
                 .filter((item) => item !== null)}
+            showGrid
             onDrawStart={beginDraw}
             onDrawMove={updateDraw}
         />

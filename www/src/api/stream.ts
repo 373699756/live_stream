@@ -42,13 +42,13 @@ interface WebrtcOfferRequest {
 const webrtcPeerCloseTimeoutMs = 3000;
 
 let pendingWebrtcPeerClose: Promise<void> = Promise.resolve();
-const webrtcClientIds: Partial<Record<StreamName, string>> = {};
+let webrtcClientId = '';
 
-function nextWebrtcClientId(stream: StreamName): string {
-    if (!webrtcClientIds[stream]) {
-        webrtcClientIds[stream] = `web-${stream}-${Date.now().toString(36)}`;
+function nextWebrtcClientId(): string {
+    if (!webrtcClientId) {
+        webrtcClientId = `web-preview-${Date.now().toString(36)}`;
     }
-    return webrtcClientIds[stream];
+    return webrtcClientId;
 }
 
 const emptyMediaSessions: MediaSessionsResponse = {
@@ -170,7 +170,7 @@ export async function createWebrtcPeer(
     await pendingWebrtcPeerClose;
     return postJson<WebrtcCreatePeerRequest, WebrtcPeerInfo>(
         '/api/webrtc/peers',
-        { stream, client_id: nextWebrtcClientId(stream) },
+        { stream, client_id: nextWebrtcClientId() },
         mockWebrtcPeer(stream),
         init,
     );
@@ -198,12 +198,20 @@ export async function sendWebrtcCandidate(
     candidate: RTCIceCandidateInit,
     init?: ApiRequestOptions,
 ) {
+    const candidateValue = candidate.candidate || '';
+    if (
+        !candidateValue ||
+        candidate.sdpMLineIndex === null ||
+        candidate.sdpMLineIndex === undefined
+    ) {
+        return;
+    }
     await postJson(
         `/api/webrtc/peers/${encodeURIComponent(peerId)}/candidates`,
         {
-            candidate: candidate.candidate || '',
+            candidate: candidateValue,
             sdp_mid: candidate.sdpMid || '0',
-            sdp_mline_index: candidate.sdpMLineIndex || 0,
+            sdp_mline_index: candidate.sdpMLineIndex,
             username_fragment: candidate.usernameFragment || '',
         },
         { peer_id: peerId },

@@ -1,9 +1,17 @@
+import { useRef } from 'react';
+
 import type { UpgradePackageInfo, UpgradeInfo } from '../api/types';
-import type { UpgradeActionErrorSeverity } from '../hooks/useUpgrade';
+import type {
+    UpgradeActionErrorScope,
+    UpgradeActionErrorSeverity,
+    UpgradeActionMessageTone,
+} from '../hooks/useUpgrade';
 import { formatBytes, formatTimestamp } from '../utils/displayText';
+import { buildUpgradeDisplayInfo } from './upgradeDisplay';
 
 interface UpgradePackagePanelProps {
     actionError: string;
+    actionErrorScope: UpgradeActionErrorScope;
     actionErrorSeverity: UpgradeActionErrorSeverity;
     allowDowngrade: boolean;
     allowSameVersion: boolean;
@@ -12,6 +20,7 @@ interface UpgradePackagePanelProps {
     cancelUpgrade: () => Promise<void>;
     confirmReboot: () => Promise<void>;
     msg: string;
+    msgTone: UpgradeActionMessageTone;
     packageInfo: UpgradePackageInfo | null;
     refreshError: string;
     selectedFile: File | null;
@@ -21,7 +30,7 @@ interface UpgradePackagePanelProps {
     setAutoReboot: (value: boolean) => void;
     startUpgrade: () => Promise<void>;
     upgradeInfo: UpgradeInfo;
-    uploadPackage: () => Promise<void>;
+    uploadPackage: (file?: File) => Promise<void>;
 }
 
 function canCancel(status: UpgradeInfo) {
@@ -33,32 +42,32 @@ function canConfirmReboot(status: UpgradeInfo) {
 }
 
 function canStartUpgrade(status: UpgradeInfo) {
-    return (
-        status.state === 'idle' ||
-        status.state === 'completed' ||
-        status.state === 'failed' ||
-        status.state === 'canceled'
-    );
+    return !buildUpgradeDisplayInfo(status).isActive;
 }
 
 function hasActiveUpgrade(status: UpgradeInfo) {
-    return !canStartUpgrade(status);
+    return buildUpgradeDisplayInfo(status).isActive;
 }
 
 function startHint(
     packageInfo: UpgradePackageInfo | null,
     status: UpgradeInfo,
 ) {
+    const display = buildUpgradeDisplayInfo(status);
     if (!packageInfo) {
         return '上传并校验通过后才可开始写入。';
     }
-    if (!canStartUpgrade(status)) {
+    if (display.isActive) {
         return '当前升级流程未结束，不能重复开始。';
     }
     return '开始升级后会进入准备写入、写入和提交阶段。';
 }
 
 function cancelHint(status: UpgradeInfo) {
+    const display = buildUpgradeDisplayInfo(status);
+    if (display.state === 'rebooting') {
+        return '设备正在重启恢复，不能提交新动作。';
+    }
     if (status.state === 'writing') {
         return '写入阶段正在擦写 Flash，不可取消，请勿断电。';
     }
@@ -73,6 +82,9 @@ function cancelHint(status: UpgradeInfo) {
 
 function PackageUploadSection({
     activeUpgrade,
+    actionError,
+    actionErrorSeverity,
+    actionErrorScope,
     packageInfo,
     packageInputsDisabled,
     selectedFile,
@@ -82,6 +94,19 @@ function PackageUploadSection({
     activeUpgrade: boolean;
     packageInputsDisabled: boolean;
 }) {
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const selectedFileLabel = selectedFile
+        ? `${selectedFile.name} / ${formatBytes(selectedFile.size)}`
+        : '未选择升级包';
+    const uploadedPath = packageInfo?.package_path || '';
+    const pickerLabel = packageInputsDisabled
+        ? activeUpgrade
+            ? '升级进行中'
+            : '正在上传校验...'
+        : packageInfo
+          ? '重新选择升级包'
+          : '选择并校验升级包';
+
     return (
         <div className="upgrade-section">
             <div className="panel-title">1. 选择升级包</div>
@@ -89,47 +114,76 @@ function PackageUploadSection({
                 <span className="form-label">升级包</span>
                 <div className="form-control file-upload-control">
                     <input
+                        ref={fileInputRef}
+                        className="upgrade-file-input"
                         type="file"
                         accept=".bin,.img,.tar,.tgz,.zip"
                         disabled={packageInputsDisabled}
                         onChange={(event) => {
-                            selectFile(event.target.files?.[0] ?? null);
+                            const file = event.target.files?.[0] ?? null;
+                            event.target.value = '';
+                            selectFile(file);
+                            if (file) {
+                                void uploadPackage(file);
+                            }
                         }}
                     />
                     <button
                         type="button"
-                        className="primary"
-                        disabled={!selectedFile || packageInputsDisabled}
-                        onClick={() => {
-                            void uploadPackage();
-                        }}
+                        className="upgrade-file-picker primary"
+                        disabled={packageInputsDisabled}
+                        onClick={() => fileInputRef.current?.click()}
                     >
-                        上传并校验
+                        {pickerLabel}
                     </button>
+                    <span className="upgrade-file-picker-name">
+                        {activeUpgrade
+                            ? '升级流程运行中，不能更换升级包'
+                            : selectedFileLabel}
+                    </span>
                 </div>
             </div>
 
             <div className="upgrade-file-summary">
-                <span>已选择</span>
-                <strong>
-                    {activeUpgrade
-                        ? '升级流程运行中，不能更换升级包'
-                        : selectedFile
-                          ? `${selectedFile.name} / ${formatBytes(selectedFile.size)}`
-                          : '未选择升级包'}
-                </strong>
+                <div>
+                    <span>本地文件</span>
+                    <strong>
+                        {activeUpgrade
+                            ? '升级流程运行中，不能更换升级包'
+                            : selectedFileLabel}
+                    </strong>
+                </div>
+                <div>
+                    <span>上传路径</span>
+                    <code>{uploadedPath || '上传校验后显示设备临时路径'}</code>
+                </div>
             </div>
 
-            {selectedFile && !packageInfo && !activeUpgrade ? (
+            {selectedFile &&
+            !packageInfo &&
+            packageInputsDisabled &&
+            !activeUpgrade ? (
                 <div className="status-note warning-note">
-                    已选择本地文件，尚未完成上传校验；此阶段不会写入 Flash。
+                    正在上传并校验；此阶段只写入临时内存目录，不会擦写 Flash。
+                </div>
+            ) : null}
+            {actionError && actionErrorScope === 'upload' ? (
+                <div
+                    className={`status-note ${
+                        actionErrorSeverity === 'warning'
+                            ? 'warning-note'
+                            : 'error-note'
+                    }`}
+                >
+                    {actionError}
                 </div>
             ) : null}
             {packageInfo ? (
-                <div className="status-note warning-note">
+                <div className="status-note success-note">
                     升级包已通过校验；开始升级后才会进入写入流程。
                 </div>
             ) : null}
+            <PackageInfoSection packageInfo={packageInfo} />
         </div>
     );
 }
@@ -138,12 +192,12 @@ function UpgradeOptionsSection({
     allowDowngrade,
     allowSameVersion,
     autoReboot,
-    packageInputsDisabled,
+    optionInputsDisabled,
     setAllowDowngrade,
     setAllowSameVersion,
     setAutoReboot,
 }: UpgradePackagePanelProps & {
-    packageInputsDisabled: boolean;
+    optionInputsDisabled: boolean;
 }) {
     return (
         <div className="upgrade-section">
@@ -153,7 +207,7 @@ function UpgradeOptionsSection({
                     <input
                         type="checkbox"
                         checked={allowSameVersion}
-                        disabled={packageInputsDisabled}
+                        disabled={optionInputsDisabled}
                         onChange={(event) =>
                             setAllowSameVersion(event.target.checked)
                         }
@@ -164,7 +218,7 @@ function UpgradeOptionsSection({
                     <input
                         type="checkbox"
                         checked={allowDowngrade}
-                        disabled={packageInputsDisabled}
+                        disabled={optionInputsDisabled}
                         onChange={(event) =>
                             setAllowDowngrade(event.target.checked)
                         }
@@ -175,7 +229,7 @@ function UpgradeOptionsSection({
                     <input
                         type="checkbox"
                         checked={autoReboot}
-                        disabled={packageInputsDisabled}
+                        disabled={optionInputsDisabled}
                         onChange={(event) => setAutoReboot(event.target.checked)}
                     />
                     完成后自动重启
@@ -187,13 +241,14 @@ function UpgradeOptionsSection({
 
 function UpgradeActionsSection({
     actionError,
+    actionErrorScope,
     actionErrorSeverity,
     busy,
     cancelUpgrade,
     confirmReboot,
     msg,
+    msgTone,
     packageInfo,
-    refreshError,
     startUpgrade,
     upgradeInfo,
 }: UpgradePackagePanelProps) {
@@ -203,7 +258,9 @@ function UpgradeActionsSection({
             <div className="form-actions form-actions-left">
                 <button
                     type="button"
-                    className="primary"
+                    className={
+                        canStartUpgrade(upgradeInfo) ? 'primary' : undefined
+                    }
                     disabled={!packageInfo || busy || !canStartUpgrade(upgradeInfo)}
                     onClick={() => {
                         void startUpgrade();
@@ -223,6 +280,9 @@ function UpgradeActionsSection({
                 </button>
                 <button
                     type="button"
+                    className={
+                        canConfirmReboot(upgradeInfo) ? 'primary' : undefined
+                    }
                     disabled={busy || !canConfirmReboot(upgradeInfo)}
                     onClick={() => {
                         void confirmReboot();
@@ -237,8 +297,16 @@ function UpgradeActionsSection({
                 <span>{cancelHint(upgradeInfo)}</span>
             </div>
 
-            {msg ? <div className="status-note success-note">{msg}</div> : null}
-            {actionError ? (
+            {msg ? (
+                <div
+                    className={`status-note ${
+                        msgTone === 'info' ? 'info-note' : 'success-note'
+                    }`}
+                >
+                    {msg}
+                </div>
+            ) : null}
+            {actionError && actionErrorScope === 'action' ? (
                 <div
                     className={`status-note ${
                         actionErrorSeverity === 'warning'
@@ -249,60 +317,36 @@ function UpgradeActionsSection({
                     {actionError}
                 </div>
             ) : null}
-            {refreshError ? (
-                <div className="status-note warning-note">{refreshError}</div>
-            ) : null}
         </div>
     );
 }
 
 function PackageInfoSection({
     packageInfo,
-}: UpgradePackagePanelProps) {
+}: {
+    packageInfo: UpgradePackageInfo | null;
+}) {
+    if (!packageInfo) {
+        return null;
+    }
     return (
-        <div className="upgrade-meta">
+        <div className="upgrade-package-compact">
             <div className="panel-title">已校验包信息</div>
-            <div className="upgrade-package-grid">
-                <div>
-                    <span>包路径</span>
-                    <strong>{packageInfo?.package_path || '-'}</strong>
-                </div>
-                <div>
-                    <span>版本</span>
-                    <strong>{packageInfo?.version || '-'}</strong>
-                </div>
-                <div>
-                    <span>大小</span>
-                    <strong>
-                        {packageInfo ? formatBytes(packageInfo.size_bytes) : '-'}
-                    </strong>
-                </div>
-                <div>
-                    <span>摘要</span>
-                    <code>{packageInfo?.digest || '-'}</code>
-                </div>
-                <div>
-                    <span>目标型号</span>
-                    <strong>{packageInfo?.target_model || '-'}</strong>
-                </div>
-                <div>
-                    <span>构建时间</span>
-                    <strong>
-                        {packageInfo
-                            ? formatTimestamp(packageInfo.build_time_ms)
-                            : '-'}
-                    </strong>
-                </div>
-                <div>
-                    <span>需要重启</span>
-                    <strong>
-                        {packageInfo
-                            ? packageInfo.requires_reboot
-                                ? '是'
-                                : '否'
-                            : '-'}
-                    </strong>
-                </div>
+            <div className="upgrade-package-line">
+                <span>版本</span>
+                <strong>{packageInfo.version || '-'}</strong>
+                <span>大小</span>
+                <strong>{formatBytes(packageInfo.size_bytes)}</strong>
+                <span>型号</span>
+                <strong>{packageInfo.target_model || '-'}</strong>
+                <span>重启</span>
+                <strong>{packageInfo.requires_reboot ? '是' : '否'}</strong>
+            </div>
+            <div className="upgrade-package-line">
+                <span>构建</span>
+                <strong>{formatTimestamp(packageInfo.build_time_ms)}</strong>
+                <span>摘要</span>
+                <code>{packageInfo.digest || '-'}</code>
             </div>
         </div>
     );
@@ -311,6 +355,7 @@ function PackageInfoSection({
 export function UpgradePackagePanel(props: UpgradePackagePanelProps) {
     const activeUpgrade = hasActiveUpgrade(props.upgradeInfo);
     const packageInputsDisabled = props.busy || activeUpgrade;
+    const optionInputsDisabled = activeUpgrade;
 
     return (
         <div className="upgrade-flow-column">
@@ -321,10 +366,9 @@ export function UpgradePackagePanel(props: UpgradePackagePanelProps) {
             />
             <UpgradeOptionsSection
                 {...props}
-                packageInputsDisabled={packageInputsDisabled}
+                optionInputsDisabled={optionInputsDisabled}
             />
             <UpgradeActionsSection {...props} />
-            <PackageInfoSection {...props} />
         </div>
     );
 }

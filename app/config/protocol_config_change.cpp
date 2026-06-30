@@ -112,8 +112,6 @@ bool IsOnvifConfigChanged(const AppConfig &current_config,
            current_config.onvif_manufacturer !=
                next_config.onvif_manufacturer ||
            current_config.onvif_model != next_config.onvif_model ||
-           current_config.onvif_firmware_version !=
-               next_config.onvif_firmware_version ||
            current_config.http_port != next_config.http_port;
 }
 

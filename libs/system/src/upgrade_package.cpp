@@ -8,6 +8,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <algorithm>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -28,6 +29,7 @@ constexpr const char* kManifestSignatureName = "Install.sig";
 constexpr const char* kUpgradePublicKeyPath = "/config/upgrade_public_key.pem";
 constexpr uint32_t kSpiNorEraseSize = 0x00010000U;
 constexpr uint64_t kMaxUpgradePackageSize = 32ULL * 1024ULL * 1024ULL;
+constexpr std::size_t kZipWriteChunkBytes = 64U * 1024U;
 
 const UpgradePartition kPartitions[] = {
     {"kernel", "/dev/mtd1", "", "", "", "", 0x00400000U, kSpiNorEraseSize,
@@ -244,9 +246,12 @@ std::string ZipEntrySha256Hex(const MappedUpgradePackage& package,
     return sha.FinishHex();
 }
 
+using ZipWriteProgress = std::function<void(uint64_t written_bytes)>;
+
 bool WriteZipEntryData(const MappedUpgradePackage& package,
                        const ZipEntry& entry,
-                       const std::string& output_path) {
+                       const std::string& output_path,
+                       ZipWriteProgress progress_callback) {
     if (package.data == nullptr || entry.data_offset > package.size ||
         static_cast<std::size_t>(entry.data_offset) + entry.size >
             package.size) {
@@ -256,8 +261,22 @@ bool WriteZipEntryData(const MappedUpgradePackage& package,
     if (output == nullptr) {
         return false;
     }
-    const std::size_t written = std::fwrite(
-        package.data + entry.data_offset, 1, entry.size, output);
+    uint64_t written = 0;
+    while (written < entry.size) {
+        const std::size_t remaining =
+            static_cast<std::size_t>(entry.size - written);
+        const std::size_t chunk_size =
+            std::min(remaining, kZipWriteChunkBytes);
+        const std::size_t chunk_written = std::fwrite(
+            package.data + entry.data_offset + written, 1, chunk_size, output);
+        written += static_cast<uint64_t>(chunk_written);
+        if (progress_callback) {
+            progress_callback(written);
+        }
+        if (chunk_written != chunk_size) {
+            break;
+        }
+    }
     const bool closed = std::fclose(output) == 0;
     return written == entry.size && closed;
 }
@@ -381,6 +400,22 @@ bool ReadManifest(const std::string& install_text,
         }
         return false;
     }
+    const bool has_sysupgrade_tool =
+        json_reader::ReadField(root, "SysupgradeTool",
+                               &parsed.sysupgrade_tool);
+    const bool has_sysupgrade_tool_sha =
+        json_reader::ReadField(root, "SysupgradeToolSha256",
+                               &parsed.sysupgrade_tool_sha256);
+    if (has_sysupgrade_tool || has_sysupgrade_tool_sha) {
+        if (!has_sysupgrade_tool || !has_sysupgrade_tool_sha ||
+            !IsSafeZipPath(parsed.sysupgrade_tool) ||
+            !infra::IsSha256HexString(parsed.sysupgrade_tool_sha256)) {
+            if (msg != nullptr) {
+                *msg = "Install sysupgrade tool fields are invalid";
+            }
+            return false;
+        }
+    }
 
     for (const Json& item : root.at("Commands")) {
         if (!item.is_object()) {
@@ -467,8 +502,35 @@ bool ValidateCommandFiles(const MappedUpgradePackage& package,
         }
         command.size_bytes = entry->size;
     }
+    if (!manifest->sysupgrade_tool.empty()) {
+        const ZipEntry* entry =
+            FindZipEntry(package.entries, manifest->sysupgrade_tool);
+        if (entry == nullptr) {
+            if (msg != nullptr) {
+                *msg = "sysupgrade tool file is missing";
+            }
+            return false;
+        }
+        if (entry->size == 0) {
+            if (msg != nullptr) {
+                *msg = "sysupgrade tool file is empty";
+            }
+            return false;
+        }
+        if (ZipEntrySha256Hex(package, *entry) !=
+            manifest->sysupgrade_tool_sha256) {
+            if (msg != nullptr) {
+                *msg = "sysupgrade tool sha256 mismatch";
+            }
+            return false;
+        }
+    }
     for (const ZipEntry& entry : package.entries) {
         if (IsManifestOrSignatureEntry(entry)) {
+            continue;
+        }
+        if (!manifest->sysupgrade_tool.empty() &&
+            entry.name == manifest->sysupgrade_tool) {
             continue;
         }
         bool declared = false;
@@ -557,6 +619,8 @@ bool ManifestMatches(const UpgradeManifest& expected,
     if (expected.version != actual.version || expected.board != actual.board ||
         expected.flash != actual.flash ||
         expected.package_type != actual.package_type ||
+        expected.sysupgrade_tool != actual.sysupgrade_tool ||
+        expected.sysupgrade_tool_sha256 != actual.sysupgrade_tool_sha256 ||
         expected.reboot != actual.reboot ||
         expected.commands.size() != actual.commands.size()) {
         return false;
@@ -672,9 +736,54 @@ bool ExtractUpgradeFile(const std::string& package_path,
         return false;
     }
     if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
-        !WriteZipEntryData(zip_package, *entry, output_path)) {
+        !WriteZipEntryData(zip_package, *entry, output_path,
+                           ZipWriteProgress())) {
         if (msg != nullptr) {
             *msg = "failed to extract upgrade image";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool ExtractUpgradeSupportFile(const std::string& package_path,
+                               const std::string& file_name,
+                               const std::string& output_path,
+                               std::string* msg) {
+    MappedUpgradePackage zip_package;
+    if (!OpenStoreOnlyZipPackage(package_path, &zip_package, msg)) {
+        return false;
+    }
+    UpgradeManifest manifest;
+    if (!ReadVerifiedManifest(zip_package, &manifest, msg)) {
+        return false;
+    }
+    if (manifest.sysupgrade_tool.empty() ||
+        manifest.sysupgrade_tool != file_name) {
+        if (msg != nullptr) {
+            *msg = "support file is not declared";
+        }
+        return false;
+    }
+    const ZipEntry* entry = FindZipEntry(zip_package.entries, file_name);
+    if (entry == nullptr) {
+        if (msg != nullptr) {
+            *msg = "support file is missing";
+        }
+        return false;
+    }
+    if (ZipEntrySha256Hex(zip_package, *entry) !=
+        manifest.sysupgrade_tool_sha256) {
+        if (msg != nullptr) {
+            *msg = "support file sha256 mismatch";
+        }
+        return false;
+    }
+    if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
+        !WriteZipEntryData(zip_package, *entry, output_path,
+                           ZipWriteProgress())) {
+        if (msg != nullptr) {
+            *msg = "failed to extract support file";
         }
         return false;
     }
@@ -707,6 +816,11 @@ bool ExtractUpgradeFiles(const std::string& package_path,
         }
         return false;
     }
+    uint64_t total_extract_bytes = 0;
+    for (const UpgradeCommand& command : verified_manifest.commands) {
+        total_extract_bytes += command.size_bytes;
+    }
+    uint64_t completed_extract_bytes = 0;
     for (std::size_t i = 0; i < verified_manifest.commands.size(); ++i) {
         const UpgradeCommand& command = verified_manifest.commands[i];
         const std::string output_path =
@@ -719,23 +833,35 @@ bool ExtractUpgradeFiles(const std::string& package_path,
             return false;
         }
         if (!infra::Path::MakeDirs(infra::Path::DirName(output_path)) ||
-            !WriteZipEntryData(zip_package, *entry, output_path)) {
+            !WriteZipEntryData(
+                zip_package, *entry, output_path,
+                [&completed_extract_bytes, total_extract_bytes,
+                 progress_callback](uint64_t entry_written_bytes) {
+                    if (!progress_callback || total_extract_bytes == 0) {
+                        return;
+                    }
+                    const uint64_t extracted =
+                        completed_extract_bytes + entry_written_bytes;
+                    const uint32_t progress = static_cast<uint32_t>(
+                        (extracted * 100ULL) / total_extract_bytes);
+                    progress_callback(
+                        infra::Clamp<uint32_t>(progress, 0U, 100U));
+                })) {
             if (msg != nullptr) {
                 *msg = "failed to extract upgrade image";
             }
             return false;
         }
+        completed_extract_bytes += command.size_bytes;
         if (infra::Sha256FileHex(output_path) != command.sha256) {
             if (msg != nullptr) {
                 *msg = "extracted upgrade image sha256 mismatch";
             }
             return false;
         }
-        if (progress_callback) {
-            const uint32_t progress = static_cast<uint32_t>(
-                ((i + 1) * 100ULL) / verified_manifest.commands.size());
-            progress_callback(infra::Clamp<uint32_t>(progress, 0U, 100U));
-        }
+    }
+    if (progress_callback) {
+        progress_callback(100);
     }
     if (msg != nullptr) {
         msg->clear();

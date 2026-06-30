@@ -33,6 +33,8 @@ struct UpgradeManifest {
     std::string board;
     std::string flash;
     std::string package_type;
+    std::string sysupgrade_tool;
+    std::string sysupgrade_tool_sha256;
     bool reboot = true;
     std::vector<UpgradeCommand> commands;
 };
@@ -59,6 +61,10 @@ bool ExtractUpgradeFile(const std::string& package_path,
                         const std::string& file_name,
                         const std::string& output_path,
                         std::string* msg);
+bool ExtractUpgradeSupportFile(const std::string& package_path,
+                               const std::string& file_name,
+                               const std::string& output_path,
+                               std::string* msg);
 bool ExtractUpgradeFiles(const std::string& package_path,
                          const UpgradeManifest& manifest,
                          const std::string& output_dir,

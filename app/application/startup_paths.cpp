@@ -7,9 +7,9 @@ namespace live_stream {
 namespace {
 
 constexpr const char *kDefaultBusinessConfigPath =
-    "configs/business_config.json";
-constexpr const char *kDefaultConfigPath = "configs/default_config.json";
-constexpr const char *kDefaultAuthUsersPath = "configs/auth_users.json";
+    "/config/business_config.json";
+constexpr const char *kDefaultConfigPath = "/config/default_config.json";
+constexpr const char *kDefaultAuthUsersPath = "/config/auth_users.json";
 constexpr const char *kDefaultOperationLogPath = "log/operation.log";
 constexpr const char *kProductionConfigDir = "/config";
 constexpr const char *kProductionOperationLogPath =

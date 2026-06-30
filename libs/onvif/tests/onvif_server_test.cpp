@@ -224,7 +224,7 @@ public:
 
     bool ReportHeartbeat(const std::string&) override { return true; }
 
-    live_stream::DeviceInfo info{"model-x", "serial-1", "fw-1"};
+    live_stream::DeviceInfo info{"model-x", "serial-1", "fw-1", "0.1.0"};
 };
 
 class FakeTime : public live_stream::ITime {

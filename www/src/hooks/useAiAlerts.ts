@@ -9,7 +9,7 @@ import type {
     AlarmInfoResponse,
 } from '../api/types';
 
-const kRealtimePollMs = 3000;
+const kRealtimePollMs = 1000;
 const kMaxAlertHistoryItems = 80;
 const kAlertRetryDelaysMs = [300, 1000, 2500];
 

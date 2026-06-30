@@ -11,8 +11,10 @@
 scripts/package_debug.sh debug
 ```
 
-该脚本只生成可直接运行的调试目录，内容包括 `bin/`、`configs/`、`models/`、
-`web/` 和 `log/`。
+该脚本只生成可直接运行的调试目录，内容包括 `bin/`、`models/`、`web/` 和
+`log/`。调试目录不复制配置文件；程序默认读取 release 一致的 `/config/*.json`，
+本地运行如需使用仓库配置，应显式传 `--config-dir configs` 或设置
+`LIVE_STREAM_CONFIG_DIR=configs`。
 
 `make release` 调用：
 

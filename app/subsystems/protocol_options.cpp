@@ -17,7 +17,7 @@ constexpr uint32_t kHttpStreamQueueCapacity = 256;
 constexpr uint32_t kHttpControlWorkers = 1;
 constexpr uint32_t kHttpControlQueueCapacity = 16;
 constexpr uint32_t kHttpMaxRequestsPerConnection = 32;
-constexpr uint32_t kHttpMaxRequestBodyBytes = 32U * 1024U * 1024U;
+constexpr uint32_t kHttpMaxRequestBodyBytes = 16U * 1024U * 1024U;
 constexpr uint32_t kHttpRequestTimeoutMs = 10U * 60U * 1000U;
 constexpr uint32_t kHttpConnectionIdleTimeoutMs = 60000;
 constexpr const char *kWebrtcPublicIpAuto = "auto";
@@ -196,7 +196,7 @@ OnvifServerOptions BuildOnvifOptions(
     options.enable_auth = app_config.onvif_auth_required;
     options.manufacturer = app_config.onvif_manufacturer;
     options.model = app_config.onvif_model;
-    options.firmware_version = app_config.onvif_firmware_version;
+    options.firmware_version = LIVE_STREAM_RELEASE_VERSION;
     options.http_port = app_config.http_port;
     return options;
 }

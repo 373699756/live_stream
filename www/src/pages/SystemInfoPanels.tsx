@@ -86,6 +86,10 @@ export function DeviceInfoPanel({ systemInfo }: SystemInfoPanelsProps) {
                     <span>固件版本</span>
                     <strong>{systemInfo.firmware}</strong>
                 </div>
+                <div>
+                    <span>软件版本</span>
+                    <strong>{systemInfo.software}</strong>
+                </div>
             </div>
         </section>
     );

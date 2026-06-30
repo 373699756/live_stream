@@ -7,19 +7,21 @@
 #include <mutex>
 
 namespace live_stream {
+class DeviceMedia;
+
 namespace ai_internal {
 
 class AiFrameCapture final {
 public:
     AiFrameCapture(hisisdk::IHisiSnapshot *snapshot,
-                   const MediaChannels &media_channels);
+                   DeviceMedia *device);
 
     bool Available() const;
     hisisdk::YuvFrame Capture(const AiModelConfig &config);
 
 private:
     hisisdk::IHisiSnapshot *snapshot_ = nullptr;
-    MediaChannels media_channels_;
+    DeviceMedia *device_ = nullptr;
     std::mutex mutex_;
 };
 

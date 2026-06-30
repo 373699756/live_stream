@@ -182,8 +182,7 @@
     "auth_required": true,
     "advertise_ip": "192.168.1.68",
     "manufacturer": "CBinary",
-    "model": "live_stream_ipc",
-    "firmware_version": "0.1.0"
+    "model": "live_stream_ipc"
   },
   "snapshot": {
     "enabled": true,
@@ -239,7 +238,7 @@
       },
       "device_name": {
         "enabled": true,
-        "text": "IPC Camera",
+        "text": "Binary",
         "x": 16,
         "y": 48
       }
@@ -299,7 +298,7 @@
     }
   },
   "system": {
-    "device_name": "IPC Camera",
+    "device_name": "Binary",
     "location": "",
     "language": "zh-CN",
     "auto_reboot": {

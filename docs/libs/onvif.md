@@ -39,7 +39,9 @@ public API 在 `onvif_server.h`。ONVIF advertise host、manufacturer、model、
 firmware version 等运行参数由 app 加载后传入。
 
 `OnvifServer::ApplyOptions()` 支持运行态更新 `advertise_ip`、认证开关、厂商/型号/
-固件版本和 HTTP 端口，用于后续 discovery、device/media SOAP 响应。
+固件版本和 HTTP 端口，用于后续 discovery、device/media SOAP 响应。  
+其中 `firmware_version` 的运行来源统一由编译时 `RELEASE_VERSION`
+（`LIVE_STREAM_RELEASE_VERSION`）决定，`onvif.firmware_version` 仍保留于配置兼容，不作为运行时输入。
 `device_service_port`、`discovery_port`、`discovery_enabled`、`service_path` 和
 request size 上限涉及 TCP/UDP listener 或 parser 边界，运行时修改会被 app 的
 config attachment 拒绝，必须重启后生效。

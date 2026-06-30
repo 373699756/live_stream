@@ -4,6 +4,7 @@ import {
     sendWebrtcCandidate,
     sendWebrtcOffer,
 } from '../api/stream';
+import { ApiClientError } from '../api/client';
 import type { StreamName, WebrtcConfig } from '../api/types';
 import type { PreviewMode } from './previewMode';
 import {
@@ -42,6 +43,63 @@ interface StartWebrtcPreviewOptions {
     peerState: WebrtcPreviewPeerState;
     stream: StreamName;
     webrtc: WebrtcPreviewConfig;
+}
+
+const webrtcStartupTimeoutMs = 6000;
+const localIceCandidateWaitMs = 1500;
+
+function sdpHasCandidate(sdp: string | undefined): boolean {
+    return Boolean(sdp && sdp.includes('\na=candidate:'));
+}
+
+function waitForLocalIceCandidate(
+    pc: RTCPeerConnection,
+    signal: AbortSignal,
+): Promise<void> {
+    if (
+        sdpHasCandidate(pc.localDescription?.sdp) ||
+        pc.iceGatheringState === 'complete'
+    ) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        let finished = false;
+        let timer = 0;
+        const finish = () => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            window.clearTimeout(timer);
+            pc.removeEventListener('icecandidate', onIceCandidate);
+            pc.removeEventListener(
+                'icegatheringstatechange',
+                onIceGatheringStateChange,
+            );
+            signal.removeEventListener('abort', finish);
+            resolve();
+        };
+        const onIceCandidate = (event: RTCPeerConnectionIceEvent) => {
+            if (event.candidate || pc.iceGatheringState === 'complete') {
+                finish();
+            }
+        };
+        const onIceGatheringStateChange = () => {
+            if (
+                sdpHasCandidate(pc.localDescription?.sdp) ||
+                pc.iceGatheringState === 'complete'
+            ) {
+                finish();
+            }
+        };
+        timer = window.setTimeout(finish, localIceCandidateWaitMs);
+        pc.addEventListener('icecandidate', onIceCandidate);
+        pc.addEventListener(
+            'icegatheringstatechange',
+            onIceGatheringStateChange,
+        );
+        signal.addEventListener('abort', finish, { once: true });
+    });
 }
 
 function rtcIceServers(
@@ -116,8 +174,8 @@ export function startWebrtcPreview({
                     return;
                 }
                 peerState.setStartupTimer(0);
-                fallbackFromWebrtcFailure('WebRTC 连接超时');
-            }, 2200);
+                fallbackFromWebrtcFailure('WebRTC 已创建但未收到视频流');
+            }, webrtcStartupTimeoutMs);
             peerState.setStartupTimer(startupTimer);
 
             pc.addTransceiver('video', { direction: 'recvonly' });
@@ -143,13 +201,22 @@ export function startWebrtcPreview({
                     peerState.peerRef.current === pc &&
                     event.candidate
                 ) {
-                    void sendWebrtcCandidate(
-                        peer.peer_id,
-                        event.candidate.toJSON(),
-                        {
-                            signal: controls.sessionSignal,
-                        },
-                    );
+                    const candidate = event.candidate.toJSON();
+                    if (!candidate.candidate) {
+                        return;
+                    }
+                    void sendWebrtcCandidate(peer.peer_id, candidate, {
+                        signal: controls.sessionSignal,
+                    }).catch((error: unknown) => {
+                        if (!isAbortError(error)) {
+                            console.warn('[preview] webrtc candidate failed', {
+                                error:
+                                    error instanceof Error
+                                        ? error.message
+                                        : String(error),
+                            });
+                        }
+                    });
                 }
             };
             pc.onconnectionstatechange = () => {
@@ -201,6 +268,8 @@ export function startWebrtcPreview({
                 return;
             }
             await pc.setLocalDescription(offer);
+            controls.setPreviewState('正在收集 WebRTC ICE 候选');
+            await waitForLocalIceCandidate(pc, controls.sessionSignal);
             if (
                 !controls.isCurrentSession() ||
                 peerState.peerRef.current !== pc
@@ -208,9 +277,15 @@ export function startWebrtcPreview({
                 void closeWebrtcPeer(peer.peer_id);
                 return;
             }
+            const offerSdp = pc.localDescription?.sdp || offer.sdp || '';
+            if (!offerSdp) {
+                void closeWebrtcPeer(peer.peer_id);
+                fallbackFromWebrtcFailure('WebRTC 本地 SDP 无效');
+                return;
+            }
             const answer = await sendWebrtcOffer(
                 peer.peer_id,
-                offer.sdp || '',
+                offerSdp,
                 {
                     signal: controls.sessionSignal,
                 },
@@ -238,6 +313,12 @@ export function startWebrtcPreview({
                 return;
             }
             if (controls.isCurrentSession()) {
+                if (error instanceof ApiClientError && error.status === 400) {
+                    fallbackFromWebrtcFailure(
+                        `WebRTC 信令请求无效：${error.message} (${error.code})`,
+                    );
+                    return;
+                }
                 fallbackFromWebrtcFailure(
                     error instanceof Error ? error.message : 'WebRTC 连接失败',
                 );

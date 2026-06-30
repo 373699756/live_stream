@@ -1,4 +1,5 @@
 #include "platform/linux/device_platforms.h"
+#include "platform/linux/hisi_version.h"
 
 #include "infra/fs.h"
 #include "platform/linux/linux_process.h"
@@ -149,18 +150,16 @@ public:
         if (info.serial_number.empty()) {
             info.serial_number = ReadCpuInfoValue("Serial");
         }
-        info.firmware_version = ReadFirstText({
-            "/etc/firmware_version",
-            "/etc/version",
-        });
+        info.firmware_version = ReadHisiFirmwareVersion();
+        if (info.firmware_version.empty()) {
+            info.firmware_version = "HISISDK V0.0.1";
+        }
+        info.software_version = LIVE_STREAM_RELEASE_VERSION;
         if (info.model.empty()) {
             info.model = "live_stream_ipc";
         }
         if (info.serial_number.empty()) {
             info.serial_number = "unknown";
-        }
-        if (info.firmware_version.empty()) {
-            info.firmware_version = "0.1.0";
         }
         return info;
     }

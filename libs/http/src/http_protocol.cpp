@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <utility>
 
 namespace live_stream {
 
@@ -139,7 +140,9 @@ RawParseResult ParseRawRequest(const std::string& raw,
         return result;
     }
     const std::string header_block = raw.substr(0, header_end);
-    const std::string body = raw.substr(header_end + 4);
+    const size_t body_offset = header_end + 4;
+    const size_t received_body_size =
+        raw.size() > body_offset ? raw.size() - body_offset : 0;
     const size_t first_line_end = header_block.find("\r\n");
     const std::string request_line =
         first_line_end == std::string::npos
@@ -215,20 +218,20 @@ RawParseResult ParseRawRequest(const std::string& raw,
             result.status = RawParseStatus::kPayloadTooLarge;
             return result;
         }
-        if (body.size() < expected_body_size) {
+        if (received_body_size < expected_body_size) {
             RawParseResult result;
             result.status = RawParseStatus::kIncomplete;
             return result;
         }
-        request.body = body.substr(0, expected_body_size);
-    } else if (body.size() > max_body_bytes) {
+        request.body.assign(raw.data() + body_offset, expected_body_size);
+    } else if (received_body_size > max_body_bytes) {
         RawParseResult result;
         result.status = RawParseStatus::kPayloadTooLarge;
         return result;
     }
     RawParseResult result;
     result.status = RawParseStatus::kComplete;
-    result.request = request;
+    result.request = std::move(request);
     result.consumed_bytes = header_end + 4 + request.body.size();
     const std::string connection = ToLower(Trim(GetHeader(request, "Connection")));
     result.keep_alive = version == "HTTP/1.1"

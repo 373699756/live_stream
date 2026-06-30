@@ -23,6 +23,7 @@ export function VideoConfigPage() {
         refreshStatuses,
         loading,
         error,
+        clearError,
     } = useVideoConfig(active);
     const { config: webrtcConfig } = useWebrtcConfig();
     const [saved, setSaved] = useState<string>('');
@@ -39,6 +40,8 @@ export function VideoConfigPage() {
     }, []);
 
     const updateStream = (name: StreamName, stream: VideoStreamConfig) => {
+        clearError();
+        setSaved('');
         setConfig((current) =>
             current
                 ? {
@@ -67,6 +70,8 @@ export function VideoConfigPage() {
     }
 
     const changeActiveStream = (stream: StreamName) => {
+        clearError();
+        setSaved('');
         setActive(stream);
         roiEditor.cancelDraw();
     };
@@ -79,6 +84,7 @@ export function VideoConfigPage() {
         bitrate_kbps: config.streams[status.stream].bitrate_kbps,
     }));
     const resetDefault = () => {
+        clearError();
         setConfig(cloneDefaultConfig(mockVideoConfig));
         roiEditor.reset();
         setSaved('已恢复默认值，保存后生效');
@@ -97,6 +103,8 @@ export function VideoConfigPage() {
             isStreamSupported(config.streams.sub, capabilities.streams.sub));
     const saveConfig = async () => {
         roiEditor.cancelDraw();
+        clearError();
+        setSaved('');
         setSaving(true);
         setPreviewEnabled(false);
         window.clearTimeout(refreshTimerRef.current);
@@ -198,6 +206,7 @@ export function VideoConfigPage() {
                         drawing={roiEditor.drawing}
                         frame={roiEditor.frame}
                         items={roiEditor.regionItems}
+                        showGrid={roiEditor.drawing}
                         onDrawStart={roiEditor.handleDrawStart}
                         onDrawMove={roiEditor.handleDrawMove}
                         onDrawEnd={roiEditor.handleDrawEnd}

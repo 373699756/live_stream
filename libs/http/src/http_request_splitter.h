@@ -32,6 +32,8 @@ public:
     bool Append(const uint8_t *data, uint32_t size);
     void Clear();
     size_t BufferedBytes() const;
+    bool ShouldSendContinue(uint32_t max_header_bytes,
+                            uint32_t max_body_bytes) const;
 
     HttpRequestSplitResult SplitNext(const HttpRequestSplitOptions &options,
                                      const std::string &client_ip);

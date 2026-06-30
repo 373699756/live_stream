@@ -116,9 +116,17 @@ function mergeSignals(
         };
     }
     const controller = new AbortController();
-    const abort = () => controller.abort();
+    const abort = () => {
+        const abortedSignal = requestSignal.aborted
+            ? requestSignal
+            : timeoutSignal;
+        controller.abort(abortedSignal.reason);
+    };
     if (requestSignal.aborted || timeoutSignal.aborted) {
-        controller.abort();
+        const abortedSignal = requestSignal.aborted
+            ? requestSignal
+            : timeoutSignal;
+        controller.abort(abortedSignal.reason);
         return { signal: controller.signal, cleanup: () => {} };
     }
     requestSignal.addEventListener('abort', abort, { once: true });
@@ -138,7 +146,13 @@ function timeoutSignal(timeoutMs = defaultTimeoutMs): ManagedRequestSignal {
         return { signal: abortSignal.timeout(timeoutMs), cleanup: () => {} };
     }
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    const timer = window.setTimeout(
+        () =>
+            controller.abort(
+                new DOMException('请求超时', 'TimeoutError'),
+            ),
+        timeoutMs,
+    );
     return {
         signal: controller.signal,
         cleanup: () => window.clearTimeout(timer),
@@ -166,8 +180,50 @@ function isAbortError(error: unknown): boolean {
     );
 }
 
-function isTimeoutError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'TimeoutError';
+function isTimeoutReason(reason: unknown): boolean {
+    return reason instanceof DOMException && reason.name === 'TimeoutError';
+}
+
+function isTimeoutError(error: unknown, signal: AbortSignal): boolean {
+    if (isTimeoutReason(error) || isTimeoutReason(signal.reason)) {
+        return true;
+    }
+    return (
+        error instanceof Error &&
+        typeof error.message === 'string' &&
+        error.message.toLowerCase().includes('signal timed out')
+    );
+}
+
+function isRequestCanceled(signal: AbortSignal): boolean {
+    return signal.aborted && !isTimeoutReason(signal.reason);
+}
+
+function logUpgradeFetchFailure({
+    error,
+    elapsedMs,
+    method,
+    path,
+    timeoutMs,
+}: {
+    error: unknown;
+    elapsedMs: number;
+    method: string;
+    path: string;
+    timeoutMs?: number;
+}) {
+    if (!path.startsWith('/api/upgrade')) {
+        return;
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn('[upgrade]', {
+        event: 'fetch_failed',
+        method,
+        path,
+        timeout_ms: timeoutMs ?? defaultTimeoutMs,
+        elapsed_ms: elapsedMs,
+        error: msg,
+    });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -313,6 +369,7 @@ async function sendRequest<TResponse>({
     responseType,
 }: SendRequestOptions<TResponse>): Promise<TResponse> {
     let response: Response;
+    const startedAt = Date.now();
     const request = managedRequestSignal(init);
     try {
         try {
@@ -324,13 +381,32 @@ async function sendRequest<TResponse>({
                 signal: request.signal,
             });
         } catch (error) {
+            const elapsedMs = Date.now() - startedAt;
+            if (isRequestCanceled(request.signal)) {
+                throw error;
+            }
             if (isAbortError(error)) {
-                if (isTimeoutError(error)) {
-                    throw new ApiClientError({
+                if (isTimeoutError(error, request.signal)) {
+                    const timeoutError = new ApiClientError({
                         code: 'request_timeout',
                         message: '请求超时',
                     });
+                    logUpgradeFetchFailure({
+                        error: timeoutError,
+                        elapsedMs,
+                        method,
+                        path,
+                        timeoutMs: init?.timeoutMs,
+                    });
+                    throw timeoutError;
                 }
+                logUpgradeFetchFailure({
+                    error,
+                    elapsedMs,
+                    method,
+                    path,
+                    timeoutMs: init?.timeoutMs,
+                });
                 throw error;
             }
             if (
@@ -342,6 +418,13 @@ async function sendRequest<TResponse>({
                 }
                 return undefined as TResponse;
             }
+            logUpgradeFetchFailure({
+                error,
+                elapsedMs,
+                method,
+                path,
+                timeoutMs: init?.timeoutMs,
+            });
             throw error;
         }
         if (!response.ok) {

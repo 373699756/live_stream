@@ -150,19 +150,12 @@ bool Application::Start(const StartupPaths &paths,
 }
 
 void Application::Stop() {
-    Info("app", "Stop protocol subsystem begin");
     ProtocolSubsystem::Get().Stop();
-    Info("app", "Stop protocol subsystem done");
-    Info("app", "Stop media subsystem begin");
     MediaSubsystem::Get().Stop();
-    Info("app", "Stop media subsystem done");
-    Info("app", "Stop device subsystem begin");
     DeviceSubsystem::Get().Stop();
-    Info("app", "Stop device subsystem done");
-    Info("app", "Stop foundation subsystem begin");
     FoundationSubsystem::Get().Stop();
-    Info("app", "Stop foundation subsystem done");
     started_ = false;
+    Info("app", "Application stopped");
 }
 
 void Application::RunUntilSignal() {

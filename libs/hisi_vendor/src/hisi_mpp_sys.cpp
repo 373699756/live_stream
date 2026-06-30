@@ -66,10 +66,7 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
               version_status);
         return false;
     }
-    Info("hisi_vendor", "HISI MPP version: %s", version.aVersion);
-
     bool resource_recovery_failed = false;
-    Info("hisi_vendor", "ConfigureFrameBuffer begin");
     if (!mpp_vb_config::ConfigureFrameBuffer(
             config, &resource_recovery_failed)) {
         if (resource_recovery_failed) {
@@ -81,9 +78,7 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
         }
         return false;
     }
-    Info("hisi_vendor", "ConfigureFrameBuffer done");
 
-    Info("hisi_vendor", "ConfigureViVpssMode begin");
     if (!ConfigureViVpssMode(config)) {
         Error("hisi_vendor", "ConfigureViVpssMode failed");
         if (!mpp_resource_recovery::ExitMppSystem(
@@ -93,11 +88,12 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
         }
         return false;
     }
-    Info("hisi_vendor", "ConfigureViVpssMode done");
 
     impl_->system_initialized_ = true;
     impl_->system_cleanup_failed_ = false;
-    Info("hisi_vendor", "HISI MPP system init done");
+    Info("hisi_vendor",
+         "HISI MPP system initialized version=%s video_pipe=%d snap_pipe=%d",
+         version.aVersion, config.video_pipe, config.snap_pipe);
     return true;
 }
 

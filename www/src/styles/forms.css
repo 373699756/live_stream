@@ -475,8 +475,24 @@
     align-items: center;
 }
 
-.file-upload-control input[type='file'] {
-    max-width: 100%;
+.file-upload-control .upgrade-file-input {
+    display: none;
+}
+
+.upgrade-file-picker {
+    flex: 0 0 auto;
+    min-width: 142px;
+    font-weight: 600;
+}
+
+.upgrade-file-picker-name {
+    min-width: 0;
+    flex: 1 1 180px;
+    overflow: hidden;
+    color: #526174;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .inline-checks {
@@ -508,6 +524,12 @@
     border-color: #b7e4c7;
 }
 
+.info-note {
+    color: #1d4f7a;
+    background: #eef7ff;
+    border-color: #bfdbfe;
+}
+
 .error-note {
     color: #991b1b;
     background: #fef2f2;
@@ -518,6 +540,12 @@
     color: #875a12;
     background: #fff7df;
     border-color: #ead89a;
+}
+
+.neutral-note {
+    color: #475569;
+    background: #f8fafc;
+    border-color: #d8e1ef;
 }
 
 .save-hint {

@@ -15,6 +15,10 @@
 namespace live_stream {
 namespace {
 
+#ifndef LIVE_STREAM_RELEASE_VERSION
+#define LIVE_STREAM_RELEASE_VERSION "0.1.0"
+#endif
+
 constexpr std::size_t kMaxComponentNameLength = 64;
 constexpr std::size_t kMaxHeartbeatComponents = 32;
 
@@ -92,7 +96,8 @@ public:
         DeviceInfo info;
         info.model = "live_stream_ipc";
         info.serial_number = "unknown";
-        info.firmware_version = "0.1.0";
+        info.firmware_version = LIVE_STREAM_RELEASE_VERSION;
+        info.software_version = LIVE_STREAM_RELEASE_VERSION;
         return info;
     }
 

@@ -79,6 +79,7 @@ public:
     bool is_streaming() const;
 
     bool AppendRequestBytes(const uint8_t *data, uint32_t size);
+    bool TakeContinueExpectation(const HttpSessionParseOptions &options);
     HttpSessionParseResult ParsePendingRequests(
         const HttpSessionParseOptions &options,
         std::vector<HttpRequestLog> *request_logs);
@@ -122,6 +123,7 @@ private:
     // 也可能是已经切到 streaming。
     bool closing_ = false;
     bool streaming_ = false;
+    bool continue_sent_ = false;
 };
 
 }  // namespace live_stream

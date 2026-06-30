@@ -1,9 +1,10 @@
 import type { SystemInfo } from './types/system';
 
 export const mockSystemInfo: SystemInfo = {
-    deviceName: 'IPC Camera',
+    deviceName: 'Binary',
     model: 'live_stream_ipc',
-    firmware: '0.1.0',
+    firmware: '1.0.2',
+    software: '1.0.2',
     uptime: '3d 06:18:42',
     cpu: 34,
     memory: 51,

@@ -74,8 +74,12 @@ HTTP 路由由 `http` 实现，但业务语义归本模块：
 
 默认模型路径为 `models/inst_ssd_cycle.wk`，开发参考和模型资源保存在
 `3rdparty/hisi_svp`。`object_detection` 和 `perimeter_detection` 使用现有 VOC SSD
-12 输出节点后处理。当前设备配置不暴露人脸检测任务；人脸需要专用 `.wk` 模型和
-匹配后处理后再单独接入。设备构建默认链接 `libnnie.a`、`libmd.a` 和 `libive.a`。
+12 输出节点后处理，只有运行目录实际部署默认 `.wk` 时才在 capabilities 中标记可用。
+release 包当前不发布 `.wk` 模型，因此默认只承诺不依赖模型文件的
+`motion_classification` 和 `occlusion_detection` 能力；debug 运行目录可复制
+`models/*.wk` 后启用目标/周界模型任务。当前设备配置不暴露人脸检测任务；人脸需要
+专用 `.wk` 模型和匹配后处理后再单独接入。设备构建默认链接 `libnnie.a`、`libmd.a`
+和 `libive.a`。
 
 `perimeter_regions` 是可选归一化矩形数组，字段为 `name`、`x`、`y`、`width`、
 `height`。空数组表示整幅画面都是周界区域。
@@ -90,6 +94,8 @@ AI 运行状态包含总启用状态、每个任务的后端可用性、抓帧/�
 串行化保护，避免多个任务同时阻塞 VPSS。告警图片写入、记录裁剪和图片读取由独立
 告警图片对象拥有。配置关闭或热应用失败时必须释放推理后端和抓帧资源；
 `/api/ai/status` 只能反映 AI 自身状态，不能阻塞直播 ready。
+AI 每次抓帧必须从 `DeviceMedia` 查询当前 MPP channel 和分辨率；设备未 started 或
+正在视频参数热重建时跳过本轮抓帧，不能缓存启动时 channel 后绕过 device 生命周期。
 组合根停止时，`ai` 必须在 `device` 之前停止，确保推理线程和告警抓拍不再访问
 即将释放的 device snapshot 或 MPP channel。
 

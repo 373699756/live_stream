@@ -72,6 +72,8 @@ export function taskUnavailableText(
         case 'hisi_ai_runtime_unavailable':
         case 'hisi_nnie_ive_runtime_unavailable':
             return 'AI 运行库不可用';
+        case 'ai_model_not_deployed':
+            return 'AI 模型未部署';
         case 'ai_not_running':
             return 'AI 后端未接入';
         case '':
@@ -226,7 +228,10 @@ export function emptyTextForTask(
         (item) => item.config.task === activeTask,
     );
     if (!isAiTaskAvailable(activeTask, status?.capabilities)) {
-        return `${taskLabel(activeTask)}当前未提供模型能力。`;
+        return `${taskLabel(activeTask)}${taskUnavailableText(
+            activeTask,
+            status?.capabilities,
+        )}。`;
     }
     if (status && !taskStatus?.config.enabled) {
         return `${taskLabel(activeTask)} 未启用，开启后才会生成新的抓拍。`;

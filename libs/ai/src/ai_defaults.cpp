@@ -1,5 +1,6 @@
 #include "ai_defaults.h"
 
+#include "ai_model_paths.h"
 #include "hisi_ai_platform.h"
 
 namespace live_stream {
@@ -25,11 +26,18 @@ bool AiTaskRequiresModel(AiTask task) {
            task == AiTask::kPerimeterDetection;
 }
 
-AiTaskCapability BuildTaskCapability(AiTask task, bool runtime_available) {
+bool DefaultAiModelAvailable() {
+    return AiModelFileExists(kDefaultAiModelPath);
+}
+
+AiTaskCapability BuildTaskCapability(AiTask task, bool runtime_available,
+                                     bool default_model_available) {
     AiTaskCapability capability;
     capability.task = task;
-    capability.available = runtime_available;
     capability.requires_model = AiTaskRequiresModel(task);
+    capability.available =
+        runtime_available &&
+        (!capability.requires_model || default_model_available);
     capability.default_model_path =
         capability.requires_model ? kDefaultAiModelPath : "";
     capability.default_input_width = kDefaultAiInputWidth;
@@ -49,8 +57,9 @@ AiTaskCapability BuildTaskCapability(AiTask task, bool runtime_available) {
     capability.supported_streams.push_back(StreamId::kSub);
     capability.supported_streams.push_back(StreamId::kMain);
     if (!capability.available) {
-        capability.unavailable_reason =
-            "hisi_ai_runtime_unavailable";
+        capability.unavailable_reason = !runtime_available
+                                            ? "hisi_ai_runtime_unavailable"
+                                            : "ai_model_not_deployed";
     }
     return capability;
 }
@@ -86,20 +95,29 @@ AiConfig DefaultAiConfig() {
 
 AiCapabilities BuildAiCapabilities() {
     AiCapabilities capabilities;
-    capabilities.model_runtime_available = LIVE_STREAM_HAS_HISI_NNIE != 0;
-    capabilities.available = capabilities.model_runtime_available;
-    if (!capabilities.model_runtime_available) {
+    const bool runtime_available = LIVE_STREAM_HAS_HISI_NNIE != 0;
+    const bool default_model_available =
+        runtime_available && DefaultAiModelAvailable();
+    capabilities.model_runtime_available = default_model_available;
+    capabilities.available = runtime_available;
+    if (!runtime_available) {
         capabilities.model_runtime_reason =
             "hisi_nnie_ive_runtime_unavailable";
+    } else if (!default_model_available) {
+        capabilities.model_runtime_reason = "ai_model_not_deployed";
     }
     capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kObjectDetection, capabilities.model_runtime_available));
+        AiTask::kObjectDetection, runtime_available,
+        default_model_available));
     capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kPerimeterDetection, capabilities.model_runtime_available));
+        AiTask::kPerimeterDetection, runtime_available,
+        default_model_available));
     capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kMotionClassification, capabilities.model_runtime_available));
+        AiTask::kMotionClassification, runtime_available,
+        default_model_available));
     capabilities.tasks.push_back(BuildTaskCapability(
-        AiTask::kOcclusionDetection, capabilities.model_runtime_available));
+        AiTask::kOcclusionDetection, runtime_available,
+        default_model_available));
     return capabilities;
 }
 

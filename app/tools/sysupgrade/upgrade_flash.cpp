@@ -5,13 +5,17 @@
 #include "platform/linux/linux_text.h"
 
 #include <cstdint>
+#include <cerrno>
+#include <cstring>
 #include <fcntl.h>
+#include <linux/magic.h>
 #include <mtd/mtd-abi.h>
 #include <sstream>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 namespace live_stream {
@@ -52,7 +56,8 @@ bool ParseProcMtdLine(const std::string& line, ProcMtdEntry* entry) {
     return true;
 }
 
-bool ReadProcMtd(const std::string& partition, ProcMtdEntry* entry) {
+bool ReadProcMtdByDeviceName(const std::string& device_name,
+                             ProcMtdEntry* entry) {
     if (entry == nullptr) {
         return false;
     }
@@ -61,7 +66,7 @@ bool ReadProcMtd(const std::string& partition, ProcMtdEntry* entry) {
     while (std::getline(stream, line)) {
         ProcMtdEntry parsed;
         if (ParseProcMtdLine(Trim(line), &parsed) &&
-            parsed.name == partition) {
+            parsed.device_name == device_name) {
             *entry = parsed;
             return true;
         }
@@ -69,31 +74,231 @@ bool ReadProcMtd(const std::string& partition, ProcMtdEntry* entry) {
     return false;
 }
 
+bool ReadProcMtdByPartitionName(const std::string& partition_name,
+                                ProcMtdEntry* entry) {
+    if (entry == nullptr) {
+        return false;
+    }
+    std::istringstream stream(infra::File::ReadAll("/proc/mtd"));
+    std::string line;
+    while (std::getline(stream, line)) {
+        ProcMtdEntry parsed;
+        if (ParseProcMtdLine(Trim(line), &parsed) &&
+            parsed.name == partition_name) {
+            *entry = parsed;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string MtdDeviceNameFromPath(const std::string& mtd_path) {
+    constexpr const char* kMtdPathPrefix = "/dev/";
+    if (mtd_path.compare(0, std::string(kMtdPathPrefix).size(),
+                         kMtdPathPrefix) != 0) {
+        return std::string();
+    }
+    const std::string device_name =
+        mtd_path.substr(std::string(kMtdPathPrefix).size());
+    constexpr const char* kMtdDirPrefix = "mtd/";
+    if (device_name.compare(0, std::string(kMtdDirPrefix).size(),
+                            kMtdDirPrefix) == 0) {
+        return "mtd" + device_name.substr(std::string(kMtdDirPrefix).size());
+    }
+    return device_name;
+}
+
+std::string MtdDeviceNumber(const std::string& device_name) {
+    constexpr const char* kMtdPrefix = "mtd";
+    if (device_name.compare(0, std::string(kMtdPrefix).size(),
+                            kMtdPrefix) != 0) {
+        return std::string();
+    }
+    return device_name.substr(std::string(kMtdPrefix).size());
+}
+
+std::string Hex32(uint32_t value) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << value;
+    return stream.str();
+}
+
+std::string ErrnoText(int error_number) {
+    return std::string(strerror(error_number)) + " errno=" +
+           std::to_string(error_number);
+}
+
+std::string ExpectedMtdText(const UpgradePartition& partition) {
+    return "partition=" + partition.name + " mtd=" + partition.mtd_path +
+           " size=" + Hex32(partition.size_bytes) +
+           " erase=" + Hex32(partition.erase_size_bytes);
+}
+
+std::string ActualMtdText(const ProcMtdEntry& proc_entry,
+                          const mtd_info_user& info) {
+    return "proc=" + proc_entry.device_name + " name=" + proc_entry.name +
+           " proc_size=" + Hex32(proc_entry.size_bytes) +
+           " proc_erase=" + Hex32(proc_entry.erase_size) +
+           " ioctl_size=" + Hex32(info.size) +
+           " ioctl_erase=" + Hex32(info.erasesize);
+}
+
+std::string ProcMtdText(const ProcMtdEntry& proc_entry) {
+    return "proc=" + proc_entry.device_name + " name=" + proc_entry.name +
+           " proc_size=" + Hex32(proc_entry.size_bytes) +
+           " proc_erase=" + Hex32(proc_entry.erase_size);
+}
+
+std::string ActualMtdText(const mtd_info_user& info) {
+    return "proc=unavailable ioctl_size=" + Hex32(info.size) +
+           " ioctl_erase=" + Hex32(info.erasesize);
+}
+
+bool BuildMtdPathCandidates(const UpgradePartition& partition,
+                            std::vector<std::string>* candidates,
+                            std::string* msg) {
+    if (candidates == nullptr) {
+        return false;
+    }
+    candidates->clear();
+    if (!partition.mtd_path.empty()) {
+        candidates->push_back(partition.mtd_path);
+    }
+
+    ProcMtdEntry proc_entry;
+    if (!ReadProcMtdByPartitionName(partition.name, &proc_entry)) {
+        if (msg != nullptr) {
+            *msg = "MTD partition not found in /proc/mtd: expected " +
+                   ExpectedMtdText(partition);
+        }
+        return !candidates->empty();
+    }
+
+    const std::string proc_path = "/dev/" + proc_entry.device_name;
+    bool has_proc_path = false;
+    for (const std::string& item : *candidates) {
+        if (item == proc_path) {
+            has_proc_path = true;
+            break;
+        }
+    }
+    if (!has_proc_path) {
+        candidates->push_back(proc_path);
+    }
+
+    const std::string device_number = MtdDeviceNumber(proc_entry.device_name);
+    if (!device_number.empty()) {
+        const std::string mtd_dir_path = "/dev/mtd/" + device_number;
+        bool has_mtd_dir_path = false;
+        for (const std::string& item : *candidates) {
+            if (item == mtd_dir_path) {
+                has_mtd_dir_path = true;
+                break;
+            }
+        }
+        if (!has_mtd_dir_path) {
+            candidates->push_back(mtd_dir_path);
+        }
+    }
+    if (msg != nullptr) {
+        msg->clear();
+    }
+    return true;
+}
+
+int OpenMtdDevice(const UpgradePartition& partition,
+                  int flags,
+                  std::string* opened_path,
+                  std::string* msg) {
+    std::vector<std::string> candidates;
+    std::string candidate_msg;
+    if (!BuildMtdPathCandidates(partition, &candidates, &candidate_msg) ||
+        candidates.empty()) {
+        if (msg != nullptr) {
+            *msg = candidate_msg.empty()
+                       ? "MTD partition device is not configured"
+                       : candidate_msg;
+        }
+        return -1;
+    }
+
+    std::string failures;
+    for (const std::string& path : candidates) {
+        const int fd = open(path.c_str(), flags);
+        if (fd >= 0) {
+            if (opened_path != nullptr) {
+                *opened_path = path;
+            }
+            if (msg != nullptr) {
+                msg->clear();
+            }
+            return fd;
+        }
+        if (!failures.empty()) {
+            failures += "; ";
+        }
+        failures += path + " " + ErrnoText(errno);
+    }
+
+    if (msg != nullptr) {
+        *msg = "open MTD failed: expected " + ExpectedMtdText(partition) +
+               " attempts=[" + failures + "]";
+    }
+    return -1;
+}
+
 bool ValidateMtdDevice(const UpgradePartition& partition,
+                       const std::string& opened_path,
                        int fd,
                        mtd_info_user* info,
                        std::string* msg) {
     if (info == nullptr || ioctl(fd, MEMGETINFO, info) != 0) {
         if (msg != nullptr) {
-            *msg = "MEMGETINFO failed";
+            *msg = "MEMGETINFO failed: path=" + opened_path + " " +
+                   ErrnoText(errno);
         }
         return false;
     }
     if (info->type != MTD_NORFLASH || info->erasesize == 0) {
         if (msg != nullptr) {
-            *msg = "MTD device is not writable NOR flash";
+            *msg = "MTD device is not writable NOR flash: path=" +
+                   opened_path + " type=" + std::to_string(info->type) +
+                   " erase=" + Hex32(info->erasesize);
         }
         return false;
     }
     ProcMtdEntry proc_entry;
-    if (!ReadProcMtd(partition.name, &proc_entry) ||
-        "/dev/" + proc_entry.device_name != partition.mtd_path ||
-        proc_entry.size_bytes != partition.size_bytes ||
-        proc_entry.erase_size != partition.erase_size_bytes ||
-        info->size != partition.size_bytes ||
-        info->erasesize != partition.erase_size_bytes) {
+    const std::string expected_device_name =
+        MtdDeviceNameFromPath(opened_path);
+    const bool proc_mtd_available =
+        !expected_device_name.empty() &&
+        ReadProcMtdByDeviceName(expected_device_name, &proc_entry);
+    const bool ioctl_layout_ok =
+        info->size == partition.size_bytes &&
+        info->erasesize == partition.erase_size_bytes;
+    const bool proc_layout_ok =
+        !proc_mtd_available ||
+        (proc_entry.name == partition.name &&
+         proc_entry.size_bytes == partition.size_bytes &&
+         proc_entry.erase_size == partition.erase_size_bytes);
+    if (!ioctl_layout_ok || !proc_layout_ok) {
         if (msg != nullptr) {
-            *msg = "MTD partition layout mismatch";
+            *msg = "MTD partition layout mismatch: expected " +
+                   ExpectedMtdText(partition) + " opened=" + opened_path +
+                   " actual " +
+                   (proc_mtd_available ? ActualMtdText(proc_entry, *info)
+                                       : ActualMtdText(*info));
+        }
+        return false;
+    }
+    ProcMtdEntry named_entry;
+    if (proc_mtd_available &&
+        ReadProcMtdByPartitionName(partition.name, &named_entry) &&
+        named_entry.device_name != proc_entry.device_name) {
+        if (msg != nullptr) {
+            *msg = "MTD partition name points to different device: expected " +
+                   ExpectedMtdText(partition) + " opened=" + opened_path +
+                   " named " + ProcMtdText(named_entry);
         }
         return false;
     }
@@ -217,7 +422,20 @@ bool OpenAndValidateImage(const UpgradeCommand& command,
     return true;
 }
 
-bool WriteAllBytes(int fd, int image_fd, uint64_t* written) {
+void ReportMtdProgress(const MtdProgressCallback& progress_callback,
+                       uint32_t progress_percent,
+                       const std::string& stage) {
+    if (progress_callback) {
+        progress_callback(progress_percent > 100U ? 100U : progress_percent,
+                          stage);
+    }
+}
+
+bool WriteAllBytes(int fd,
+                   int image_fd,
+                   uint64_t total_size,
+                   const MtdProgressCallback& progress_callback,
+                   uint64_t* written) {
     if (written == nullptr) {
         return false;
     }
@@ -227,6 +445,7 @@ bool WriteAllBytes(int fd, int image_fd, uint64_t* written) {
     uint8_t buffer[64 * 1024];
     *written = 0;
     bool ok = true;
+    uint32_t last_progress = 0;
     while (ok) {
         const ssize_t read_size = read(image_fd, buffer, sizeof(buffer));
         if (read_size < 0) {
@@ -247,18 +466,33 @@ bool WriteAllBytes(int fd, int image_fd, uint64_t* written) {
             }
             offset += static_cast<std::size_t>(write_size);
             *written += static_cast<uint64_t>(write_size);
+            if (total_size > 0) {
+                const uint32_t progress = 25U + static_cast<uint32_t>(
+                                                    (*written * 55ULL) /
+                                                    total_size);
+                if (progress != last_progress) {
+                    last_progress = progress;
+                    ReportMtdProgress(progress_callback, progress,
+                                      "writing mtd image");
+                }
+            }
         }
     }
     return ok;
 }
 
-bool ReadBackSha256(int fd, uint64_t size, std::string* sha256) {
+bool ReadBackSha256(int fd,
+                    uint64_t size,
+                    const MtdProgressCallback& progress_callback,
+                    std::string* sha256) {
     if (sha256 == nullptr || lseek(fd, 0, SEEK_SET) < 0) {
         return false;
     }
     infra::Sha256 sha;
     uint8_t buffer[64 * 1024];
     uint64_t remaining = size;
+    uint64_t verified = 0;
+    uint32_t last_progress = 80U;
     while (remaining > 0) {
         const std::size_t chunk =
             remaining < sizeof(buffer) ? static_cast<std::size_t>(remaining)
@@ -269,6 +503,16 @@ bool ReadBackSha256(int fd, uint64_t size, std::string* sha256) {
         }
         sha.Update(buffer, static_cast<std::size_t>(read_size));
         remaining -= static_cast<uint64_t>(read_size);
+        verified += static_cast<uint64_t>(read_size);
+        if (size > 0) {
+            const uint32_t progress =
+                80U + static_cast<uint32_t>((verified * 20ULL) / size);
+            if (progress != last_progress) {
+                last_progress = progress;
+                ReportMtdProgress(progress_callback, progress,
+                                  "verifying mtd readback");
+            }
+        }
     }
     *sha256 = sha.FinishHex();
     return true;
@@ -280,42 +524,27 @@ bool IsPathOnTmpfs(const std::string& path) {
     if (path.empty()) {
         return false;
     }
-    std::istringstream stream(infra::File::ReadAll("/proc/mounts"));
-    std::string dev;
-    std::string dir;
-    std::string type;
-    std::string rest;
-    std::string best_type;
-    std::size_t best_len = 0;
-    while (stream >> dev >> dir >> type) {
-        std::getline(stream, rest);
-        const bool exact_match = path == dir;
-        const bool child_match =
-            dir != "/" && path.size() > dir.size() &&
-            path.compare(0, dir.size(), dir) == 0 &&
-            path[dir.size()] == '/';
-        const bool root_match = dir == "/";
-        if ((exact_match || child_match || root_match) && dir.size() >= best_len) {
-            best_type = type;
-            best_len = dir.size();
-        }
+    struct statfs fs_info;
+    if (statfs(path.c_str(), &fs_info) != 0) {
+        return false;
     }
-    return best_type == "tmpfs" || best_type == "ramfs";
+    const unsigned long fs_type = static_cast<unsigned long>(fs_info.f_type);
+    return fs_type == static_cast<unsigned long>(TMPFS_MAGIC) ||
+           fs_type == static_cast<unsigned long>(RAMFS_MAGIC);
 }
 
 bool ValidateMtdLayoutForManifest(const UpgradeManifest& manifest,
                                   std::string* msg) {
     for (const UpgradeCommand& command : manifest.commands) {
-        const int fd = open(command.partition_info.mtd_path.c_str(), O_RDONLY);
+        std::string opened_path;
+        const int fd = OpenMtdDevice(command.partition_info, O_RDONLY,
+                                     &opened_path, msg);
         if (fd < 0) {
-            if (msg != nullptr) {
-                *msg = "open MTD failed";
-            }
             return false;
         }
         mtd_info_user info{};
-        const bool ok =
-            ValidateMtdDevice(command.partition_info, fd, &info, msg);
+        const bool ok = ValidateMtdDevice(command.partition_info, opened_path,
+                                          fd, &info, msg);
         close(fd);
         if (!ok) {
             return false;
@@ -378,46 +607,67 @@ bool Remount(const UpgradePartition& partition, std::string* msg) {
 bool WriteMtdImage(const UpgradeCommand& command,
                    const std::string& image_path,
                    std::string* msg) {
+    return WriteMtdImage(command, image_path, MtdProgressCallback(), msg);
+}
+
+bool WriteMtdImage(const UpgradeCommand& command,
+                   const std::string& image_path,
+                   MtdProgressCallback progress_callback,
+                   std::string* msg) {
     const UpgradePartition& partition = command.partition_info;
     int image_fd = -1;
     if (!OpenAndValidateImage(command, image_path, &image_fd, msg)) {
         return false;
     }
-    const int fd = open(partition.mtd_path.c_str(), O_RDWR);
+    ReportMtdProgress(progress_callback, 0, "validating mtd image");
+    std::string opened_path;
+    const int fd = OpenMtdDevice(partition, O_RDWR, &opened_path, msg);
     if (fd < 0) {
         close(image_fd);
-        if (msg != nullptr) {
-            *msg = "open MTD failed";
-        }
         return false;
     }
 
     mtd_info_user info{};
-    bool ok = ValidateMtdDevice(partition, fd, &info, msg);
+    bool ok = ValidateMtdDevice(partition, opened_path, fd, &info, msg);
     if (ok) {
+        uint32_t erase_index = 0;
+        const uint32_t erase_total =
+            info.erasesize == 0 ? 0 : info.size / info.erasesize;
         for (uint32_t offset = 0; offset < info.size; offset += info.erasesize) {
             erase_info_user erase{};
             erase.start = offset;
             erase.length = info.erasesize;
             if (ioctl(fd, MEMERASE, &erase) != 0) {
                 if (msg != nullptr) {
-                    *msg = "MEMERASE failed";
+                    *msg = "MEMERASE failed: path=" + opened_path +
+                           " offset=" + Hex32(offset) + " length=" +
+                           Hex32(info.erasesize) + " " + ErrnoText(errno);
                 }
                 ok = false;
                 break;
+            }
+            ++erase_index;
+            if (erase_total > 0) {
+                const uint32_t progress =
+                    static_cast<uint32_t>((erase_index * 25ULL) / erase_total);
+                ReportMtdProgress(progress_callback, progress,
+                                  "erasing mtd partition");
             }
         }
     }
     uint64_t written = 0;
     if (ok && lseek(fd, 0, SEEK_SET) < 0) {
         if (msg != nullptr) {
-            *msg = "seek MTD failed";
+            *msg = "seek MTD failed: path=" + opened_path + " " +
+                   ErrnoText(errno);
         }
         ok = false;
     }
-    if (ok && !WriteAllBytes(fd, image_fd, &written)) {
+    if (ok && !WriteAllBytes(fd, image_fd, command.size_bytes,
+                             progress_callback, &written)) {
         if (msg != nullptr) {
-            *msg = "write MTD failed";
+            *msg = "write MTD failed: path=" + opened_path + " " +
+                   ErrnoText(errno);
         }
         ok = false;
     }
@@ -427,19 +677,17 @@ bool WriteMtdImage(const UpgradeCommand& command,
         }
         ok = false;
     }
-    if (ok && fsync(fd) != 0) {
-        if (msg != nullptr) {
-            *msg = "fsync MTD failed";
-        }
-        ok = false;
-    }
     std::string readback_sha256;
-    if (ok && (!ReadBackSha256(fd, written, &readback_sha256) ||
+    if (ok && (!ReadBackSha256(fd, written, progress_callback,
+                               &readback_sha256) ||
                readback_sha256 != command.sha256)) {
         if (msg != nullptr) {
             *msg = "MTD readback sha256 mismatch";
         }
         ok = false;
+    }
+    if (ok) {
+        ReportMtdProgress(progress_callback, 100, "mtd image written");
     }
     close(fd);
     close(image_fd);

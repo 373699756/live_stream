@@ -245,6 +245,11 @@ HttpResponse BuildCandidateResponse(IWebrtc *webrtc,
         !json_reader::ReadField(body, "candidate", &candidate.candidate)) {
         return HttpMediaStatusResponse(400, "Missing candidate fields");
     }
+    Json root = Json::object();
+    root["peer_id"] = candidate.peer_id;
+    if (candidate.candidate.empty()) {
+        return HttpMediaJsonResponse(200, root);
+    }
     if (!json_reader::ReadField(body, "sdp_mid", &candidate.sdp_mid)) {
         (void)json_reader::ReadField(body, "sdpMid", &candidate.sdp_mid);
     }
@@ -264,8 +269,6 @@ HttpResponse BuildCandidateResponse(IWebrtc *webrtc,
                                      &candidate.username_fragment);
     }
 
-    Json root = Json::object();
-    root["peer_id"] = candidate.peer_id;
     if (webrtc->AddIceCandidate(candidate)) {
         return HttpMediaJsonResponse(200, root);
     }

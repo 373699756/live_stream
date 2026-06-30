@@ -11,9 +11,10 @@ import type {
     UpgradeInfo,
 } from './types/upgrade';
 
-const MIN_UPLOAD_TIMEOUT_MS = 180000;
+const MIN_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
-const UPLOAD_BYTES_PER_MS = 64;
+const UPLOAD_BYTES_PER_MS = 16;
+export const MAX_UPGRADE_UPLOAD_BYTES = 16 * 1024 * 1024;
 const UPGRADE_REQUEST_TIMEOUT_MS = 300000;
 
 function getUploadTimeoutMs(file: File): number {
@@ -49,16 +50,20 @@ function mockUpgradePackage(file: File): UpgradePackageInfo {
 
 export async function uploadUpgradePackage(
     file: File,
+    init?: ApiRequestOptions,
 ): Promise<UpgradePackageInfo> {
     return uploadBinary<UpgradePackageInfo>({
         body: file,
         fallback: mockUpgradePackage(file),
-        init: { timeoutMs: getUploadTimeoutMs(file) },
+        init: { ...init, timeoutMs: getUploadTimeoutMs(file) },
         path: `/api/upgrade/upload?filename=${encodeURIComponent(file.name)}`,
     });
 }
 
-export function startUpgrade(value: UpgradeRequest): Promise<UpgradeInfo> {
+export function startUpgrade(
+    value: UpgradeRequest,
+    init?: ApiRequestOptions,
+): Promise<UpgradeInfo> {
     return postJson<UpgradeRequest, UpgradeInfo>(
         '/api/upgrade/start',
         value,
@@ -69,11 +74,14 @@ export function startUpgrade(value: UpgradeRequest): Promise<UpgradeInfo> {
             target_version: value.expected_version,
             started_at_ms: Date.now(),
         },
-        { timeoutMs: UPGRADE_REQUEST_TIMEOUT_MS },
+        {
+            ...init,
+            timeoutMs: init?.timeoutMs ?? UPGRADE_REQUEST_TIMEOUT_MS,
+        },
     );
 }
 
-export function cancelUpgrade(): Promise<UpgradeInfo> {
+export function cancelUpgrade(init?: ApiRequestOptions): Promise<UpgradeInfo> {
     return postJson<Record<string, never>, UpgradeInfo>(
         '/api/upgrade/cancel',
         {},
@@ -84,10 +92,13 @@ export function cancelUpgrade(): Promise<UpgradeInfo> {
             error_message: 'canceled',
             finished_at_ms: Date.now(),
         },
+        init,
     );
 }
 
-export function confirmUpgradeReboot(): Promise<UpgradeInfo> {
+export function confirmUpgradeReboot(
+    init?: ApiRequestOptions,
+): Promise<UpgradeInfo> {
     return postJson<Record<string, never>, UpgradeInfo>(
         '/api/upgrade/confirm-reboot',
         {},
@@ -98,5 +109,6 @@ export function confirmUpgradeReboot(): Promise<UpgradeInfo> {
             progress_percent: 100,
             finished_at_ms: Date.now(),
         },
+        init,
     );
 }

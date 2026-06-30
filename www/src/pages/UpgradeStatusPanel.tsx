@@ -1,84 +1,87 @@
 import type { UpgradeInfo } from '../api/types';
 import { formatTimestamp } from '../utils/displayText';
+import {
+    buildUpgradeDisplayInfo,
+    formatUpgradeStageDetail,
+    type UpgradeNoteTone,
+} from './upgradeDisplay';
 
 interface UpgradeStatusPanelProps {
     upgradeInfo: UpgradeInfo;
+    refreshError: string;
 }
 
-const upgradeStateLabels: Record<UpgradeInfo['state'], string> = {
-    idle: '空闲',
-    validating: '校验中',
-    preparing: '准备写入',
-    writing: '写入中',
-    committing: '提交中',
-    waiting_reboot: '等待重启',
-    completed: '已完成',
-    failed: '失败',
-    canceled: '已取消',
-};
-
-function upgradeStageText(status: UpgradeInfo) {
-    if (status.current_stage) {
-        return status.current_stage;
+function noteClassName(tone: UpgradeNoteTone) {
+    if (tone === 'success') {
+        return 'success-note';
     }
-    return upgradeStateLabels[status.state];
+    if (tone === 'error') {
+        return 'error-note';
+    }
+    if (tone === 'warning') {
+        return 'warning-note';
+    }
+    if (tone === 'info') {
+        return 'info-note';
+    }
+    return 'neutral-note';
 }
 
-function stageRiskNote(status: UpgradeInfo) {
+function statusDetailLabel(status: UpgradeInfo) {
     if (status.state === 'failed') {
-        return (
-            status.error_message || '升级失败，请查看 /data/log/upgrade.log。'
-        );
+        return '错误';
     }
-    if (status.state === 'writing') {
-        return '正在擦写 Flash，请保持供电和网络稳定，不要刷新页面或断电。';
+    if (status.state === 'canceled') {
+        return '结果';
     }
-    if (status.state === 'committing' || status.state === 'waiting_reboot') {
-        return '升级已进入提交阶段，不可取消；如页面异常，先查看当前状态和升级日志。';
-    }
-    if (status.state === 'validating' || status.state === 'preparing') {
-        return '正在校验或准备升级包，发现包格式、签名或版本策略问题会在这里提示。';
-    }
-    return '';
+    return '阶段详情';
 }
 
-export function UpgradeStatusPanel({ upgradeInfo }: UpgradeStatusPanelProps) {
-    const riskNote = stageRiskNote(upgradeInfo);
+export function UpgradeStatusPanel({
+    refreshError,
+    upgradeInfo,
+}: UpgradeStatusPanelProps) {
+    const display = buildUpgradeDisplayInfo(upgradeInfo);
+    const statusDetail = upgradeInfo.error_message ||
+        formatUpgradeStageDetail(upgradeInfo);
 
     return (
         <div className="upgrade-section upgrade-status-section">
             <div className="panel-title">当前升级状态</div>
-            <div className={`upgrade-state-banner state-${upgradeInfo.state}`}>
+            <div className={`upgrade-state-banner state-${display.state}`}>
                 <div>
                     <span>当前状态</span>
-                    <strong>{upgradeStateLabels[upgradeInfo.state]}</strong>
+                    <strong>{display.stateLabel}</strong>
                 </div>
                 <div>
                     <span>当前阶段</span>
-                    <strong>{upgradeStageText(upgradeInfo)}</strong>
+                    <strong>{display.stageLabel}</strong>
                 </div>
             </div>
 
-            {riskNote ? (
+            {display.note ? (
                 <div
-                    className={`status-note upgrade-risk-note ${
-                        upgradeInfo.state === 'failed'
-                            ? 'error-note'
-                            : 'warning-note'
-                    }`}
+                    className={`status-note upgrade-risk-note ${noteClassName(
+                        display.tone,
+                    )}`}
                 >
-                    {riskNote}
+                    {display.note}
+                </div>
+            ) : null}
+            {refreshError ? (
+                <div className="status-note upgrade-risk-note info-note">
+                    {refreshError}
                 </div>
             ) : null}
 
-            <div className="upgrade-progress">
+            <div className={`upgrade-progress state-${display.state}`}>
                 <div className="upgrade-progress-header">
                     <strong>进度</strong>
                     <span>{upgradeInfo.progress_percent}%</span>
                 </div>
                 <div className="progress-track">
                     <div
-                        className="progress-fill"
+                        className={`progress-fill tone-${display.progressTone}`}
                         style={{ width: `${upgradeInfo.progress_percent}%` }}
                     />
                 </div>
@@ -104,8 +107,8 @@ export function UpgradeStatusPanel({ upgradeInfo }: UpgradeStatusPanelProps) {
                     </strong>
                 </div>
                 <div className="wide-status-cell">
-                    <span>错误</span>
-                    <strong>{upgradeInfo.error_message || '-'}</strong>
+                    <span>{statusDetailLabel(upgradeInfo)}</span>
+                    <strong>{statusDetail}</strong>
                 </div>
             </div>
         </div>

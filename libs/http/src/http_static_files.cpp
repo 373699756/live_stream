@@ -3,8 +3,6 @@
 #include "http_protocol.h"
 #include "infra/fs.h"
 
-#include <map>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -46,46 +44,23 @@ bool IsUnsafeStaticPath(const std::string &path) {
 
 void AddStaticCacheHeaders(const std::string &relative,
                            HttpResponse *response) {
+    (void)relative;
     if (!response) {
         return;
     }
-    if (relative == "index.html") {
-        response->headers["Cache-Control"] =
-            "no-cache, no-store, must-revalidate";
-        response->headers["Pragma"] = "no-cache";
-        response->headers["Expires"] = "0";
-        return;
-    }
-    if (relative.rfind("assets/", 0) == 0 ||
-        relative.rfind("vendor/", 0) == 0) {
-        response->headers["Cache-Control"] =
-            "public, max-age=31536000, immutable";
-    }
+    response->headers["Cache-Control"] =
+        "no-cache, no-store, must-revalidate";
+    response->headers["Pragma"] = "no-cache";
+    response->headers["Expires"] = "0";
 }
 
 bool ReadCachedStaticFile(const std::string &path, std::string *content) {
     if (content == nullptr) {
         return false;
     }
-    static std::mutex cache_mutex;
-    static std::map<std::string, std::string> cache;
-    {
-        std::lock_guard<std::mutex> guard(cache_mutex);
-        const auto iter = cache.find(path);
-        if (iter != cache.end()) {
-            *content = iter->second;
-            return true;
-        }
-    }
-
-    std::string file_content = infra::File::ReadAll(path);
-    if (file_content.empty()) {
+    *content = infra::File::ReadAll(path);
+    if (content->empty()) {
         return false;
-    }
-    {
-        std::lock_guard<std::mutex> guard(cache_mutex);
-        const auto inserted = cache.emplace(path, file_content);
-        *content = inserted.first->second;
     }
     return true;
 }

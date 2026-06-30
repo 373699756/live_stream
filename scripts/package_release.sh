@@ -218,7 +218,7 @@ build_bin_image() {
   cp -f "${release_dir}/bin/live_sysupgrade" "${work_dir}/bin_root/sbin/"
   printf '%s\n' "${version}" > "${work_dir}/bin_root/version"
   "${mksquashfs_bin}" "${work_dir}/bin_root" "${release_dir}/bin.squashfs" \
-    -noappend -comp xz
+    -noappend -comp xz -no-xattrs
   check_image_size "${release_dir}/bin.squashfs" "${bin_partition_size}" bin
 }
 
@@ -227,7 +227,7 @@ build_web_image() {
   cp -rf "${release_dir}/web/." "${work_dir}/web_root/"
   printf '%s\n' "${version}" > "${work_dir}/web_root/version"
   "${mksquashfs_bin}" "${work_dir}/web_root" "${release_dir}/web.squashfs" \
-    -noappend -comp xz
+    -noappend -comp xz -no-xattrs
   check_image_size "${release_dir}/web.squashfs" "${web_partition_size}" web
 }
 
@@ -242,13 +242,19 @@ build_config_image() {
 }
 
 write_install_manifest() {
+  sysupgrade_tool_fields=""
+  if [ "${include_sysupgrade_tool}" = true ]; then
+    sysupgrade_tool_fields="  \"SysupgradeTool\": \"live_sysupgrade\",
+  \"SysupgradeToolSha256\": \"$(sha256_file "${release_dir}/live_sysupgrade")\",
+"
+  fi
   cat > "${manifest_dir}/Install" <<EOF
 {
   "Version": "${version}",
   "Board": "Hi3516DV300",
   "Flash": "spi-nor-32m",
   "PackageType": "normal",
-  "Reboot": ${requires_reboot},
+${sysupgrade_tool_fields}  "Reboot": ${requires_reboot},
   "Commands": [
 $(cat "${commands_file}")
   ]
@@ -276,7 +282,7 @@ cleanup_release_intermediates() {
     "${release_dir}/log" "${release_dir}/web" "${work_dir}" \
     "${release_dir}/flash"
   rm -f "${release_dir}/Install" "${release_dir}/Install.sig" \
-    "${release_dir}/Install.commands"
+    "${release_dir}/Install.commands" "${release_dir}/live_sysupgrade"
 }
 
 release_dir=$(resolve_output_dir "${release_dir}")
@@ -299,6 +305,7 @@ fi
 include_bin=false
 include_web=false
 include_config=false
+include_sysupgrade_tool=false
 requires_reboot=false
 
 case "${profile}" in
@@ -306,6 +313,7 @@ case "${profile}" in
     include_bin=true
     include_web=true
     include_config=true
+    include_sysupgrade_tool=true
     requires_reboot=true
     ;;
   web)
@@ -313,6 +321,7 @@ case "${profile}" in
     ;;
   config)
     include_config=true
+    include_sysupgrade_tool=true
     requires_reboot=true
     ;;
   *)
@@ -355,6 +364,9 @@ fi
 
 copy_release_inputs
 strip_release_inputs
+if [ "${include_sysupgrade_tool}" = true ]; then
+  cp -f "${release_dir}/bin/live_sysupgrade" "${release_dir}/live_sysupgrade"
+fi
 
 if [ "${include_bin}" = true ]; then
   build_bin_image
@@ -371,6 +383,9 @@ commands_file="${manifest_dir}/Install.commands"
 rm -f "${commands_file}"
 touch "${commands_file}"
 zip_entries="Install"
+if [ "${include_sysupgrade_tool}" = true ]; then
+  zip_entries="${zip_entries} live_sysupgrade"
+fi
 
 case "${profile}" in
   all)

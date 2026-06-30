@@ -17,6 +17,7 @@ public:
         info.model = "ipc";
         info.serial_number = "sn-1";
         info.firmware_version = "0.1.0";
+        info.software_version = "0.1.0";
         return info;
     }
 

@@ -130,15 +130,6 @@ export function usePreviewLiveSession({
         releaseRetiredSessions();
     }, [releaseRetiredSessions, releaseSession]);
 
-    const releaseRetainedSessionsBeforeWebrtc = useCallback(() => {
-        if (retiringSessionsRef.current.length === 0) {
-            return;
-        }
-        // 后端默认只允许一个 WebRTC 对端，切回 WebRTC 前必须先释放保留层旧连接。
-        releaseRetiredSessions();
-        setRetainedFrameVisible(false);
-    }, [releaseRetiredSessions]);
-
     const hasVisibleRetiredSession = useCallback(
         () =>
             retiringSessionsRef.current.some(
@@ -214,14 +205,21 @@ export function usePreviewLiveSession({
             video,
         };
         const previousSession = activeSessionRef.current;
+        const switchingToWebrtc = mode === 'webrtc';
         if (previousSession) {
-            if (previousSession.promoted) {
+            if (switchingToWebrtc) {
+                // WebRTC 建链不能和保留层 HTTP 拉流并行；切回 WebRTC 前先释放旧协议资源。
+                releaseSession(previousSession);
+            } else if (previousSession.promoted) {
                 // 已显示的旧会话可能仍在承载画面，等新目标会话出帧后再释放。
                 retiringSessionsRef.current.push(previousSession);
             } else {
                 // 未出帧的旧目标没有可保留价值，直接释放，避免后台请求继续跑。
                 releaseSession(previousSession);
             }
+        }
+        if (switchingToWebrtc) {
+            releaseRetiredSessions();
         }
         activeSessionRef.current = session;
         clearPreviewVideo(video);
@@ -237,7 +235,10 @@ export function usePreviewLiveSession({
         setConnected(false);
         // 启动新目标时连接状态必须归零；旧画面只通过保留帧标记表示。
         setRetainedFrameVisible(
-            Boolean(previousSession?.promoted) || hasVisibleRetiredSession(),
+            switchingToWebrtc
+                ? false
+                : Boolean(previousSession?.promoted) ||
+                      hasVisibleRetiredSession(),
         );
         setDecodedSize('');
         setDisplaySize('');
@@ -378,7 +379,6 @@ export function usePreviewLiveSession({
 
         if (mode === 'webrtc') {
             // WebRTC 的对端连接生命周期由当前层会话承载，切流时统一关闭。
-            releaseRetainedSessionsBeforeWebrtc();
             startWebrtcPreview({
                 controls,
                 fallback: {
@@ -487,7 +487,6 @@ export function usePreviewLiveSession({
         onAutoModeFallback,
         previewUrls,
         releaseAllSessions,
-        releaseRetainedSessionsBeforeWebrtc,
         releaseRetiredSessions,
         releaseSession,
         restartPreview,

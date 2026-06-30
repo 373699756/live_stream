@@ -100,5 +100,8 @@ WebRTC JSON DTO 冻结为：
 | candidate request | `candidate`、`sdp_mid`、`sdp_mline_index`、`username_fragment` |
 | close response | `peer_id`、`state` |
 
+WebRTC candidate 请求中，空 `candidate` 表示浏览器端候选收集结束，后端返回成功但不写入
+WebRTC 核心状态机；非空 `candidate` 必须带有效 `sdp_mline_index`，否则返回 400。
+
 WHEP 成功时返回 `201 Created`、`Content-Type: application/sdp` 和 `Location`；
 `Location` 指向对应 DELETE URL。WHEP 失败不返回 JSON envelope。

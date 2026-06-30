@@ -71,6 +71,7 @@ export function AiPerimeterOverlay({
                     ),
                 };
             })}
+            showGrid={editing}
             showVideoArea={editing}
             videoAreaClassName="ai-perimeter-video-area"
             onDrawStart={onDrawStart}

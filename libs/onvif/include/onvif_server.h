@@ -16,6 +16,10 @@
 
 namespace live_stream {
 
+#ifndef LIVE_STREAM_RELEASE_VERSION
+#define LIVE_STREAM_RELEASE_VERSION "0.1.0"
+#endif
+
 class IAuth;
 class DeviceMedia;
 class IRtsp;
@@ -33,7 +37,7 @@ struct OnvifServerOptions {
     bool enable_auth = false;
     std::string manufacturer = "CBinary";
     std::string model = "live_stream_ipc";
-    std::string firmware_version = "0.1.0";
+    std::string firmware_version = LIVE_STREAM_RELEASE_VERSION;
     std::string service_path = "/onvif/device_service";
     uint16_t http_port = 80;
     uint32_t max_request_bytes = 16 * 1024;

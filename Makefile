@@ -10,7 +10,8 @@ THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
 THIRDPARTY_INSTALL := $(THIRDPARTY_DIR)/install
 DEBUG_DIR ?= debug
 RELEASE_DIR ?= release
-RELEASE_VERSION ?= 1.0.0
+RELEASE_VERSION ?= 1.6.8
+export RELEASE_VERSION
 RELEASE_PROFILE ?= all
 
 # Include HiSilicon toolchain (sets CROSS_COMPILE, CXX, CPU_FLAGS,
@@ -34,6 +35,7 @@ CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-date-time
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
+CXXFLAGS += -DLIVE_STREAM_RELEASE_VERSION=\"$(RELEASE_VERSION)\"
 CXXFLAGS += $(CPU_FLAGS)
 CXXFLAGS += $(HISI_DEFINES)
 CXXFLAGS += -DLIVE_STREAM_ENABLE_HISI_MPP
@@ -93,6 +95,7 @@ APP_SRCS := \
 	app/platform/linux/linux_clock.cpp \
 	app/platform/linux/linux_process.cpp \
 	app/platform/linux/linux_system_platform.cpp \
+	app/platform/linux/hisi_version.cpp \
 	app/platform/linux/linux_text.cpp \
 	app/platform/linux/linux_time_platform.cpp \
 	app/platform/linux/platform_factory.cpp \
@@ -120,7 +123,8 @@ WEB_STAMP := www/dist/.live_stream_build_stamp
 define ADD_MODULE_LIBRARY
 MODULE_LIBS += $(LIB_DIR)/lib$(1).a
 $(LIB_DIR)/lib$(1).a:
-	$(MAKE) -C libs/$(1) ROOT_DIR=$(ROOT_DIR)
+	$(MAKE) -C libs/$(1) ROOT_DIR=$(ROOT_DIR) \
+	  ENABLE_HISI_MPP=1
 endef
 
 include $(addprefix libs/,$(addsuffix /module.mk,$(MODULES)))
@@ -180,7 +184,7 @@ $(WEB_STAMP): $(WEB_INPUTS)
 	cd www && npm run build
 	@touch $@
 
-debug: $(BIN_DIR)/live_stream $(WEB_STAMP)
+debug: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)
 	scripts/package_debug.sh $(DEBUG_DIR)
 
 release: $(BIN_DIR)/live_stream $(BIN_DIR)/live_sysupgrade $(WEB_STAMP)

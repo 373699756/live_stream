@@ -15,9 +15,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    cssCodeSplit: false,
     sourcemap: false,
     rollupOptions: {
       output: {
+        inlineDynamicImports: true,
         entryFileNames: 'assets/index.js',
         chunkFileNames: 'assets/[name].js',
         assetFileNames: (assetInfo) => {

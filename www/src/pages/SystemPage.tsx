@@ -38,7 +38,9 @@ export function SystemPage() {
         setAutoReboot,
         busy,
         msg,
+        msgTone,
         actionError,
+        actionErrorScope,
         actionErrorSeverity,
         refreshError: upgradeRefreshError,
         selectFile,
@@ -103,6 +105,7 @@ export function SystemPage() {
                 upgradeInfo ? (
                     <UpgradePanel
                         actionError={actionError}
+                        actionErrorScope={actionErrorScope}
                         actionErrorSeverity={actionErrorSeverity}
                         allowDowngrade={allowDowngrade}
                         allowSameVersion={allowSameVersion}
@@ -111,6 +114,7 @@ export function SystemPage() {
                         cancelUpgrade={cancelUpgrade}
                         confirmReboot={confirmReboot}
                         msg={msg}
+                        msgTone={msgTone}
                         packageInfo={packageInfo}
                         refreshError={upgradeRefreshError}
                         selectedFile={selectedFile}

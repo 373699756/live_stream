@@ -193,40 +193,26 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 void ProtocolSubsystem::Stop() {
     RemoveConfigUpdateScopes();
     if (net_stat_) {
-        Info("app", "Stop net_stat begin");
         net_stat_->Stop();
-        Info("app", "Stop net_stat done");
     }
     if (http_) {
-        Info("app", "Stop http begin");
         http_->Stop();
-        Info("app", "Stop http done");
     }
     if (onvif_) {
-        Info("app", "Stop onvif begin");
         onvif_->Stop();
-        Info("app", "Stop onvif done");
     }
     if (webrtc_) {
-        Info("app", "Stop webrtc begin");
         webrtc_->Stop();
-        Info("app", "Stop webrtc done");
     }
     if (rtsp_) {
-        Info("app", "Stop rtsp begin");
         rtsp_->Stop();
-        Info("app", "Stop rtsp done");
     }
     if (net_io_) {
-        Info("app", "Stop net io begin");
         net_io_->Stop();
         net_io_.reset();
-        Info("app", "Stop net io done");
     }
     if (net_callback_loop_) {
-        Info("app", "Stop net callback loop begin");
         net_callback_loop_->Stop(event::StopMode::kDiscard);
-        Info("app", "Stop net callback loop done");
     }
     http_.reset();
     net_stat_.reset();

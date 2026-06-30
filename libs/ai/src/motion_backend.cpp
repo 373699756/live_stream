@@ -27,8 +27,10 @@ bool MotionBackend::Start(const AiModelConfig &config) {
     }
 #if LIVE_STREAM_HAS_HISI_NNIE
     started_ = false;
-    if (HI_IVS_MD_Init() != HI_SUCCESS) {
-        Error("ai", "Init IVS motion detection failed");
+    const HI_S32 ret = HI_IVS_MD_Init();
+    if (ret != HI_SUCCESS) {
+        Error("ai", "Init IVS motion detection failed: ret=%#x",
+              static_cast<unsigned int>(ret));
         return false;
     }
     initialized_ = true;

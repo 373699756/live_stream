@@ -14,6 +14,8 @@
 namespace live_stream {
 namespace {
 
+constexpr const char kHttpContinueResponse[] = "HTTP/1.1 100 Continue\r\n\r\n";
+
 bool StartExecutor(event::Executor &executor, uint32_t workers,
                    uint32_t queue_capacity) {
     if (workers == 0 || queue_capacity == 0) {
@@ -193,7 +195,7 @@ void HttpServer::Stop() {
         stream_executor = stream_executor_.get();
         control_executor = control_executor_.get();
     }
-    Info(kHttpModuleName, "HTTP stop begin server=%llu streams=%zu",
+    Info(kHttpModuleName, "HTTP stopping server=%llu streams=%zu",
          static_cast<unsigned long long>(server_id),
          media_clients.size());
     NotifyStreamsClosed(media_clients);
@@ -522,6 +524,7 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
     }
     HttpSessionParseResult parsed;
     std::vector<HttpRequestLog> request_logs;
+    bool send_continue = false;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
@@ -529,8 +532,17 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
             !iter->second->AppendRequestBytes(data, size)) {
             return;
         }
+        const HttpSessionParseOptions parse_options =
+            MakeConnectionParseOptions();
+        send_continue = iter->second->TakeContinueExpectation(parse_options);
         parsed = iter->second->ParsePendingRequests(
-            MakeConnectionParseOptions(), &request_logs);
+            parse_options, &request_logs);
+    }
+    if (send_continue && net_io_ != nullptr) {
+        (void)net_io_->Send(
+            connection_id,
+            reinterpret_cast<const uint8_t *>(kHttpContinueResponse),
+            sizeof(kHttpContinueResponse) - 1);
     }
     if (!parsed.success) {
         IncrementParseFailures();

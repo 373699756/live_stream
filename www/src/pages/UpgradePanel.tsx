@@ -1,10 +1,15 @@
 import type { UpgradePackageInfo, UpgradeInfo } from '../api/types';
-import type { UpgradeActionErrorSeverity } from '../hooks/useUpgrade';
+import type {
+    UpgradeActionErrorScope,
+    UpgradeActionErrorSeverity,
+    UpgradeActionMessageTone,
+} from '../hooks/useUpgrade';
 import { UpgradePackagePanel } from './UpgradePackagePanel';
 import { UpgradeStatusPanel } from './UpgradeStatusPanel';
 
 interface UpgradePanelProps {
     actionError: string;
+    actionErrorScope: UpgradeActionErrorScope;
     actionErrorSeverity: UpgradeActionErrorSeverity;
     allowDowngrade: boolean;
     allowSameVersion: boolean;
@@ -13,6 +18,7 @@ interface UpgradePanelProps {
     cancelUpgrade: () => Promise<void>;
     confirmReboot: () => Promise<void>;
     msg: string;
+    msgTone: UpgradeActionMessageTone;
     packageInfo: UpgradePackageInfo | null;
     refreshError: string;
     selectedFile: File | null;
@@ -22,7 +28,7 @@ interface UpgradePanelProps {
     setAutoReboot: (value: boolean) => void;
     startUpgrade: () => Promise<void>;
     upgradeInfo: UpgradeInfo;
-    uploadPackage: () => Promise<void>;
+    uploadPackage: (file?: File) => Promise<void>;
 }
 
 export function UpgradePanel(props: UpgradePanelProps) {
@@ -39,7 +45,10 @@ export function UpgradePanel(props: UpgradePanelProps) {
 
             <div className="upgrade-grid">
                 <UpgradePackagePanel {...props} />
-                <UpgradeStatusPanel upgradeInfo={props.upgradeInfo} />
+                <UpgradeStatusPanel
+                    refreshError={props.refreshError}
+                    upgradeInfo={props.upgradeInfo}
+                />
             </div>
         </section>
     );

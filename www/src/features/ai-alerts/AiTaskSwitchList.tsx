@@ -109,7 +109,7 @@ export function AiTaskSwitchList({
                             <button
                                 type="button"
                                 className={editingPerimeter ? 'active' : ''}
-                                disabled={!available}
+                                disabled={!available || !enabled}
                                 onClick={togglePerimeterEdit}
                             >
                                 {editingPerimeter ? '完成画框' : '编辑区域'}

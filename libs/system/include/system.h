@@ -25,6 +25,7 @@ struct DeviceInfo {
     std::string model;
     std::string serial_number;
     std::string firmware_version;
+    std::string software_version;
 };
 
 struct SystemInfo {

@@ -73,7 +73,7 @@ export function PreviewSurface({
                     </div>
                 ))
             )}
-            {!connected && (
+            {enabled && !connected && (
                 <div className={placeholderClass}>
                     <div className="lens-ring" />
                     <strong>{previewState}</strong>

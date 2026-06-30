@@ -1,7 +1,9 @@
 #include "system/upgrade.h"
 
 #include "event.h"
+#include "json.h"
 #include "infra/clamp.h"
+#include "infra/fs.h"
 #include "infra/log.h"
 #include "infra/time.h"
 #include "logger.h"
@@ -18,6 +20,7 @@ namespace {
 
 const char* kModuleName = "upgrade";
 constexpr const char* kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
+constexpr const char* kPersistedUpgradeInfoPath = "/data/upgrade_status.json";
 
 bool IsTerminalState(UpgradeState state) {
     return state == UpgradeState::kIdle || state == UpgradeState::kCompleted ||
@@ -35,6 +38,67 @@ OperationResult ToOperationResult(bool ok) {
 
 int64_t ElapsedMs(int64_t started_ms) {
     return infra::Time::MonotonicMillis() - started_ms;
+}
+
+UpgradeState UpgradeStateFromPersistedString(const std::string& state) {
+    if (state == "validating") {
+        return UpgradeState::kValidating;
+    }
+    if (state == "preparing") {
+        return UpgradeState::kPreparing;
+    }
+    if (state == "writing") {
+        return UpgradeState::kWriting;
+    }
+    if (state == "committing") {
+        return UpgradeState::kCommitting;
+    }
+    if (state == "waiting_reboot") {
+        return UpgradeState::kWaitingReboot;
+    }
+    if (state == "completed") {
+        return UpgradeState::kCompleted;
+    }
+    if (state == "failed") {
+        return UpgradeState::kFailed;
+    }
+    if (state == "canceled") {
+        return UpgradeState::kCanceled;
+    }
+    return UpgradeState::kIdle;
+}
+
+UpgradeInfo LoadPersistedUpgradeInfo() {
+    UpgradeInfo info;
+    const std::string content =
+        infra::File::ReadAll(kPersistedUpgradeInfoPath);
+    if (content.empty()) {
+        return info;
+    }
+    Json root = Json::parse(content, nullptr, false);
+    if (!root.is_object()) {
+        return info;
+    }
+    const std::string state =
+        root.value("state", std::string("idle"));
+    if (state == "completed") {
+        static_cast<void>(infra::File::Remove(kPersistedUpgradeInfoPath));
+        info.state = UpgradeState::kIdle;
+        info.current_stage = UpgradeStateToString(info.state);
+        info.ok = true;
+        return info;
+    }
+    info.state = UpgradeStateFromPersistedString(state);
+    info.progress_percent =
+        infra::Clamp<uint32_t>(root.value("progress_percent", 0U), 0U, 100U);
+    info.current_stage = root.value("current_stage", state);
+    info.target_version = root.value("version", std::string());
+    info.ok = root.value("ok", true);
+    info.error_message = root.value("error_message", std::string());
+    if (info.state == UpgradeState::kIdle) {
+        info.current_stage = UpgradeStateToString(info.state);
+    }
+    return info;
 }
 
 class RestrictedUpgradePlatform : public IUpgradePlatform {
@@ -66,6 +130,10 @@ public:
         UpgradeProgressCallback progress_callback) override {
         (void)package_path;
         (void)progress_callback;
+        return false;
+    }
+
+    bool IsExternalFlashWriterActive() const override {
         return false;
     }
 
@@ -119,7 +187,7 @@ public:
 
         executor_.reset(new event::Executor());
 
-        upgrade_info_ = UpgradeInfo{};
+        upgrade_info_ = LoadPersistedUpgradeInfo();
         initialized_ = true;
         return true;
     }
@@ -184,22 +252,67 @@ private:
         upgrade_info_ = UpgradeInfo{};
         current_package_path_.clear();
         cancel_requested_ = false;
+        external_flash_writer_active_ = false;
         initialized_ = false;
     }
 
 public:
     UpgradeInfo GetUpgradeInfo() override {
+        bool should_load_persisted_info = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            should_load_persisted_info = external_flash_writer_active_;
+        }
+        if (should_load_persisted_info) {
+            const UpgradeInfo persisted_info = LoadPersistedUpgradeInfo();
+            if (persisted_info.state != UpgradeState::kIdle) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (external_flash_writer_active_) {
+                    const bool same_version =
+                        upgrade_info_.target_version.empty() ||
+                        persisted_info.target_version.empty() ||
+                        upgrade_info_.target_version ==
+                            persisted_info.target_version;
+                    if (same_version) {
+                        upgrade_info_.state = persisted_info.state;
+                        upgrade_info_.progress_percent =
+                            persisted_info.progress_percent;
+                        upgrade_info_.current_stage =
+                            persisted_info.current_stage;
+                        upgrade_info_.target_version =
+                            persisted_info.target_version;
+                        upgrade_info_.ok = persisted_info.ok;
+                        upgrade_info_.error_message =
+                            persisted_info.error_message;
+                        if (IsTerminalState(persisted_info.state)) {
+                            upgrade_info_.finished_at_ms =
+                                infra::Time::SystemTimeMillis();
+                            external_flash_writer_active_ = false;
+                            current_package_path_.clear();
+                        }
+                    }
+                }
+            }
+        }
         std::lock_guard<std::mutex> lock(mutex_);
         return upgrade_info_;
     }
 
     UpgradePackageInfo ValidatePackage(
         const std::string& package_path) override {
+        const int64_t started_at_ms = infra::Time::SystemTimeMillis();
+        Info("upgrade", "service validate requested path=%s",
+             package_path.c_str());
         std::string msg;
         std::string checked_package_path;
         if (!ValidateLocalPackage(package_path, &checked_package_path,
                                   &msg)) {
             SetLastError(msg);
+            Warn("upgrade",
+                 "service validate rejected path=%s reason=%s elapsed_ms=%lld",
+                 package_path.c_str(), msg.c_str(),
+                 static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                        started_at_ms));
             return UpgradePackageInfo();
         }
         IUpgradePlatform* platform = nullptr;
@@ -207,6 +320,11 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_) {
                 last_error_ = "service not initialized";
+                Warn("upgrade",
+                     "service validate rejected path=%s reason=%s elapsed_ms=%lld",
+                     package_path.c_str(), last_error_.c_str(),
+                     static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                            started_at_ms));
                 return UpgradePackageInfo();
             }
             platform = platform_;
@@ -223,12 +341,28 @@ public:
                  static_cast<long long>(ElapsedMs(validate_started_ms)),
                  msg.c_str());
             SetLastError(msg);
+            Warn("upgrade",
+                 "service validate failed path=%s checked_path=%s error=%s "
+                 "elapsed_ms=%lld",
+                 package_path.c_str(), checked_package_path.c_str(),
+                 msg.c_str(),
+                 static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                        started_at_ms));
         } else {
             Info(kModuleName,
                  "Upgrade package validation completed version=%s elapsed_ms=%lld",
                  info.version.c_str(),
                  static_cast<long long>(ElapsedMs(validate_started_ms)));
             SetLastError("");
+            Info("upgrade",
+                 "service validate ok path=%s checked_path=%s version=%s "
+                 "size=%llu reboot=%d elapsed_ms=%lld",
+                 package_path.c_str(), checked_package_path.c_str(),
+                 info.version.c_str(),
+                 static_cast<unsigned long long>(info.size_bytes),
+                 info.requires_reboot ? 1 : 0,
+                 static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                        started_at_ms));
         }
         return info;
     }
@@ -240,18 +374,40 @@ public:
 
     bool StartUpgrade(const live_stream::RequestContext& context,
                       const UpgradeRequest& request) override {
+        const int64_t started_at_ms = infra::Time::SystemTimeMillis();
+        Info("upgrade",
+             "service start request request_id=%s user=%s path=%s "
+             "expected_version=%s same=%d downgrade=%d auto_reboot=%d",
+             context.request_id.c_str(), context.user_name.c_str(),
+             request.package_path.c_str(), request.expected_version.c_str(),
+             request.allow_same_version ? 1 : 0,
+             request.allow_downgrade ? 1 : 0,
+             request.auto_reboot ? 1 : 0);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!initialized_ || !started_ || !executor_) {
                 last_error_ = "service not started";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
+                Warn("upgrade",
+                     "service start rejected request_id=%s reason=service_not_started "
+                     "elapsed_ms=%lld",
+                     context.request_id.c_str(),
+                     static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                            started_at_ms));
                 return false;
             }
             if (!IsTerminalState(upgrade_info_.state)) {
                 last_error_ = "upgrade busy";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
+                Warn("upgrade",
+                     "service start rejected request_id=%s reason=busy state=%s "
+                     "elapsed_ms=%lld",
+                     context.request_id.c_str(),
+                     UpgradeStateToString(upgrade_info_.state),
+                     static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                            started_at_ms));
                 return false;
             }
         }
@@ -263,6 +419,13 @@ public:
             SetLastError(msg);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         msg);
+            Warn("upgrade",
+                 "service start rejected request_id=%s path=%s reason=%s "
+                 "elapsed_ms=%lld",
+                 context.request_id.c_str(), request.package_path.c_str(),
+                 msg.c_str(),
+                 static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                        started_at_ms));
             return false;
         }
 
@@ -273,15 +436,29 @@ public:
                 last_error_ = "service not started";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "service not started");
+                Warn("upgrade",
+                     "service start rejected request_id=%s reason=service_not_started "
+                     "elapsed_ms=%lld",
+                     context.request_id.c_str(),
+                     static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                            started_at_ms));
                 return false;
             }
             if (!IsTerminalState(upgrade_info_.state)) {
                 last_error_ = "upgrade busy";
                 RecordAudit(context, request.package_path,
                             OperationResult::kRejected, "upgrade busy");
+                Warn("upgrade",
+                     "service start rejected request_id=%s reason=busy state=%s "
+                     "elapsed_ms=%lld",
+                     context.request_id.c_str(),
+                     UpgradeStateToString(upgrade_info_.state),
+                     static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                            started_at_ms));
                 return false;
             }
             cancel_requested_ = false;
+            external_flash_writer_active_ = false;
             upgrade_info_ = UpgradeInfo{};
             current_package_path_ = checked_package_path;
             upgrade_info_.state = UpgradeState::kValidating;
@@ -302,8 +479,19 @@ public:
             SetFailed("failed to queue upgrade task", false);
             RecordAudit(context, request.package_path, OperationResult::kRejected,
                         "failed to queue upgrade task");
+            Warn("upgrade",
+                 "service start queue failed request_id=%s path=%s "
+                 "elapsed_ms=%lld",
+                 context.request_id.c_str(), checked_package_path.c_str(),
+                 static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                        started_at_ms));
             return false;
         }
+        Info("upgrade",
+             "service start queued request_id=%s path=%s elapsed_ms=%lld",
+             context.request_id.c_str(), checked_package_path.c_str(),
+             static_cast<long long>(infra::Time::SystemTimeMillis() -
+                                    started_at_ms));
         return true;
     }
 
@@ -548,6 +736,7 @@ private:
         const int64_t write_started_ms = infra::Time::MonotonicMillis();
         Info(kModuleName, "Upgrade task write started version=%s",
              info.version.c_str());
+        platform->SetAutoRebootPolicy(request.auto_reboot);
         const bool write_ok = platform->WriteUpgrade(
             request.package_path, [this](uint32_t progress_percent) {
                 const uint32_t bounded =
@@ -573,6 +762,17 @@ private:
         }
         Info(kModuleName, "Upgrade task write completed elapsed_ms=%lld",
              static_cast<long long>(ElapsedMs(write_started_ms)));
+
+        if (platform->IsExternalFlashWriterActive()) {
+            MarkExternalFlashWriterActive(
+                "sysupgrade helper is writing flash; main service will stop");
+            Info(kModuleName,
+                 "Upgrade task handed to external flash writer version=%s",
+                 info.version.c_str());
+            RecordAudit(context, info.version, OperationResult::kSuccess,
+                        "sysupgrade helper handoff");
+            return;
+        }
 
         if (IsCancelRequested()) {
             return;
@@ -736,6 +936,29 @@ private:
         }
     }
 
+    void SetCurrentStage(const std::string& current_stage) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            upgrade_info_.current_stage = current_stage;
+        }
+        PublishProgressChanged();
+    }
+
+    void MarkExternalFlashWriterActive(const std::string& current_stage) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            external_flash_writer_active_ = true;
+            upgrade_info_.state = UpgradeState::kWriting;
+            if (upgrade_info_.progress_percent < 20U) {
+                upgrade_info_.progress_percent = 20U;
+            }
+            upgrade_info_.current_stage = current_stage;
+            upgrade_info_.ok = true;
+            upgrade_info_.error_message.clear();
+        }
+        PublishProgressChanged();
+    }
+
     void UpdateStatus(UpgradeState state,
                       uint32_t progress_percent,
                       bool ok,
@@ -764,7 +987,12 @@ private:
         } else if (committed) {
             full_message = "committed upgrade may require manual recovery";
         }
-        UpdateStatus(UpgradeState::kFailed, 100, false, full_message);
+        uint32_t failed_progress = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            failed_progress = upgrade_info_.progress_percent;
+        }
+        UpdateStatus(UpgradeState::kFailed, failed_progress, false, full_message);
     }
 
     void PublishProgressChanged() {
@@ -815,6 +1043,7 @@ private:
     bool initialized_ = false;
     bool started_ = false;
     bool cancel_requested_ = false;
+    bool external_flash_writer_active_ = false;
 };
 
 }  // namespace

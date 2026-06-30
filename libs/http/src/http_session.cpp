@@ -28,6 +28,19 @@ bool HttpSession::AppendRequestBytes(const uint8_t *data, uint32_t size) {
     return splitter_.Append(data, size);
 }
 
+bool HttpSession::TakeContinueExpectation(
+    const HttpSessionParseOptions &options) {
+    if (continue_sent_) {
+        return false;
+    }
+    if (!splitter_.ShouldSendContinue(options.max_request_header_bytes,
+                                      options.max_request_body_bytes)) {
+        return false;
+    }
+    continue_sent_ = true;
+    return true;
+}
+
 HttpSessionParseResult HttpSession::ParsePendingRequests(
     const HttpSessionParseOptions &options,
     std::vector<HttpRequestLog> *request_logs) {
@@ -67,6 +80,7 @@ HttpSessionParseResult HttpSession::ParsePendingRequests(
             !options.enable_keep_alive || !split.keep_alive ||
             requests_ >= options.max_requests_per_connection;
         pending_requests_.push_back(std::move(pending));
+        continue_sent_ = false;
 
         const PendingHttpRequest &queued = pending_requests_.back();
         if (request_logs != nullptr) {

@@ -206,10 +206,6 @@ bool ApplyOnvifConfig(const Json &onvif, AppConfig &config) {
     if (!json_reader::ReadField(onvif, "model", &config.onvif_model)) {
         return false;
     }
-    if (!json_reader::ReadField(onvif, "firmware_version",
-                               &config.onvif_firmware_version)) {
-        return false;
-    }
     return true;
 }
 

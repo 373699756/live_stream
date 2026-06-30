@@ -79,6 +79,13 @@ advertise host 或链路状态。
 运行分区。升级状态必须足够支撑 Web 展示，取消只对尚未进入不可中断写入阶段的流程生效；
 进入 flash 擦写后不可取消。普通在线升级不写 `boot` 和 `rootfs` 分区。
 
+系统分区升级由 `live_sysupgrade` 接管后，helper 在停止 `live_stream` 前启动临时状态
+HTTP 服务，并在主进程释放端口后接管 `/api/upgrade/status` 和
+`/api/upgrade/confirm-reboot`。flash 写入进度以内存状态实时返回，`/data/upgrade_status.json`
+只在准备、分区边界、失败、等待重启和完成等关键状态落盘，避免高频写 JFFS2。
+自动重启前落盘状态必须是 `completed`，阶段文本不得继续保留 `rebooting`，防止重启后
+Web 把历史状态误展示为仍在重启。
+
 ## 升级分区
 
 Hi3516DV300 设备按 32M SPI NOR 固定分区运行，升级模块以内置分区表作为唯一写入
@@ -427,7 +434,7 @@ mkdir -p /data/log
 `/data/log/operation_audit.log`，升级状态写 `/data`。
 `/data/log/live_stream.log` 上限为 128K 加 1 个轮转文件，
 `/data/log/operation_audit.log` 上限为 128K 加 2 个轮转文件，
-`/data/log/upgrade.log` 上限为 64K 加 1 个轮转文件；升级包上传和 staging
+`/data/upgrade.log` 上限为 64K 加 1 个轮转文件；升级包上传和 staging
 必须放在 `/tmp/live_stream/upgrade`，不能占用 2M 的 `/data` 分区。
 
 `bin.squashfs` 承载 `/opt/app/bin/live_stream`、`/opt/app/sbin/live_sysupgrade`、
@@ -731,7 +738,7 @@ flowchart TD
   Platform -->|web| WebWrite[主进程写 /dev/mtd4]
   Platform -->|non-web| Helper[tmpfs live_sysupgrade]
   WebWrite --> UpgradeInfoFile[/data/upgrade_status.json]
-  WebWrite --> Log[/data/log/upgrade.log]
+  WebWrite --> Log[/data/upgrade.log]
   Helper --> UpgradeInfoFile
   Helper --> Log
 ```
@@ -789,12 +796,14 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 | `committing`     | 90    | 写入完成，提交状态                |
 | `waiting_reboot` | 100   | 需要用户或 helper 重启          |
 | `completed`      | 100   | 已完成                      |
-| `failed`         | 100   | 失败，错误写入状态                |
+| `failed`         | 当前进度  | 失败，保留失败发生时的进度            |
 | `canceled`       | 当前进度  | 用户取消                     |
 
 版本策略在写 flash 前执行：`expected_version` 不为空时必须匹配包版本；同版本必须显式
 `allow_same_version=true`；降级必须显式 `allow_downgrade=true`。取消只在
 `validating`、`preparing` 阶段接受；真正进入 MTD erase/write 后不可取消。
+自动重启场景下，重启命令返回成功只表示重启已触发，不表示 Web 服务已经恢复；Web
+展示层应把 `completed` 且阶段详情仍包含 reboot/restart 的状态视为重启恢复窗口。
 
 `app/platform/linux/upgrade_platform.cpp` 是板端实际执行层。Web 管理台入口接受
 `all`、`web` 和 `config` profile 生成的包，并按分区类型分流：
@@ -811,7 +820,7 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 3. `ApplyWebUpgrade` 卸载 `/www`。
 4. 调用 `upgrade_flash::WriteMtdImage` 写 `/dev/mtd4`。
 5. 写完后重新把 `/dev/mtdblock4` 以 squashfs 只读方式挂载到 `/www`。
-6. `CommitUpgrade` 写 `/data/upgrade_status.json` 和 `/data/log/upgrade.log`。
+6. `CommitUpgrade` 写 `/data/upgrade_status.json` 和 `/data/upgrade.log`。
 
 系统包走 helper 的流程：
 
@@ -819,9 +828,11 @@ HTTP 入口由 `libs/http/src/handlers/upgrade_handler.cpp` 提供：
 2. 从 `/opt/app/sbin/live_sysupgrade` 复制到
    `/tmp/live_stream/upgrade/live_sysupgrade`，拒绝符号链接，目标设为 `0755`。
 3. `WriteUpgrade` fork/exec tmpfs 中的 helper，并传入上传包路径和 staging 目录。
-4. 主进程状态进入 `waiting_reboot`；helper 重新校验包、解包、停止业务、卸载分区、
-   写 MTD、写 `/data/upgrade_status.json` 和 `/data/log/upgrade.log`，最后按
-   manifest 重启。
+4. 主进程状态停在 `writing` 并标记 helper 接管；helper 重新校验包、解包、停止业务、卸载分区、
+   写 MTD、写 `/data/upgrade_status.json` 和 `/data/upgrade.log`，最后按
+   manifest 重启。helper 写入阶段按分区内 `erase`、`write`、`readback verify`
+   更新进度文件；主进程仍可访问时会从该文件同步 Web 状态。主进程被停止或设备重启期间，
+   浏览器无法实时拉取，只能显示最后一次同步进度并等待服务恢复。
 
 MTD 写入流程固定为：
 
@@ -837,7 +848,10 @@ readback sha256
 close
 ```
 
-写入阶段失败必须停止后续分区。失败原因写 `/data/log/upgrade.log`，升级状态写
+MTD 写入进度按单分区内部阶段上报：擦除约占 0-25%，写镜像约占 25-80%，回读校验约占
+80-100%。多个分区时，helper 再把单分区进度映射到整体写入区间。
+
+写入阶段失败必须停止后续分区。失败原因写 `/data/upgrade.log`，升级状态写
 `/data/upgrade_status.json`。当前 32M NOR 方案不是 A/B 升级；断电或写坏系统分区时，
 恢复手段是 UART/U-Boot/TFTP 或烧录器。
 
@@ -894,7 +908,7 @@ scripts/tests/package_release_test.sh
 - 未声明文件、sha256 错误、文件超过分区、镜像魔数错误必须拒绝。
 - `/proc/mtd` 或 `MEMGETINFO` 布局不匹配必须拒绝。
 - helper 源路径或目标路径遇到符号链接必须拒绝。
-- 升级 `config` 后 `/data/log/upgrade.log` 和 `/data/upgrade_status.json` 不丢失。
+- 升级 `config` 后 `/data/upgrade.log` 和 `/data/upgrade_status.json` 不丢失。
 
 ## 非目标
 

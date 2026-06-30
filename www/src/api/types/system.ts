@@ -2,6 +2,7 @@ export interface SystemInfo {
     deviceName: string;
     model: string;
     firmware: string;
+    software: string;
     uptime: string;
     cpu: number;
     memory: number;

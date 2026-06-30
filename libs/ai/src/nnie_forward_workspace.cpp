@@ -1,6 +1,7 @@
 #include "nnie_forward_workspace.h"
 
 #include "infra/log.h"
+#include "ssd_postprocess.h"
 
 #include <cstring>
 
@@ -140,8 +141,6 @@ bool NnieForwardWorkspace::Prepare(SVP_NNIE_MODEL_S *model) {
     if (model == nullptr) {
         return false;
     }
-    Info("ai", "NNIE workspace prepare begin: segs=%u",
-         static_cast<unsigned int>(model->u32NetSegNum));
     if (!FillForwardInfo(*model)) {
         return false;
     }
@@ -162,9 +161,6 @@ bool NnieForwardWorkspace::Prepare(SVP_NNIE_MODEL_S *model) {
         }
     }
     impl_->tmp_buf_size = model->u32TmpBufSize;
-    Info("ai", "NNIE task buffers ready: total_task=%u tmp=%u",
-         static_cast<unsigned int>(total_task_size),
-         static_cast<unsigned int>(impl_->tmp_buf_size));
     if (!AddHiU32(total_task_size, &total_workspace_size) ||
         !AddHiU32(impl_->tmp_buf_size, &total_workspace_size) ||
         !AddBlobSizes(*model, &total_workspace_size)) {
@@ -173,8 +169,6 @@ bool NnieForwardWorkspace::Prepare(SVP_NNIE_MODEL_S *model) {
 
     HI_U64 workspace_phy_addr = 0;
     HI_VOID *workspace_vir_addr = nullptr;
-    Info("ai", "NNIE workspace MMZ alloc begin: size=%u",
-         static_cast<unsigned int>(total_workspace_size));
     ret = HI_MPI_SYS_MmzAlloc_Cached(&workspace_phy_addr,
                                      &workspace_vir_addr,
                                      "LIVE_AI_NNIE_TASK", nullptr,
@@ -185,16 +179,7 @@ bool NnieForwardWorkspace::Prepare(SVP_NNIE_MODEL_S *model) {
               static_cast<unsigned int>(ret));
         return false;
     }
-    Info("ai", "NNIE workspace MMZ alloc done: phy=0x%llx vir=%p",
-         static_cast<unsigned long long>(workspace_phy_addr),
-         workspace_vir_addr);
-    Info("ai", "NNIE workspace memset begin: size=%u",
-         static_cast<unsigned int>(total_workspace_size));
     std::memset(workspace_vir_addr, 0, total_workspace_size);
-    Info("ai", "NNIE workspace memset done: size=%u",
-         static_cast<unsigned int>(total_workspace_size));
-    Info("ai", "NNIE workspace flush begin: size=%u",
-         static_cast<unsigned int>(total_workspace_size));
     ret = HI_MPI_SYS_MmzFlushCache(workspace_phy_addr, workspace_vir_addr,
                                    total_workspace_size);
     if (ret != HI_SUCCESS) {
@@ -203,14 +188,17 @@ bool NnieForwardWorkspace::Prepare(SVP_NNIE_MODEL_S *model) {
         HI_MPI_SYS_MmzFree(workspace_phy_addr, workspace_vir_addr);
         return false;
     }
-    Info("ai", "NNIE workspace flush done: size=%u",
-         static_cast<unsigned int>(total_workspace_size));
 
     impl_->workspace_buf.u32Size = total_workspace_size;
     impl_->workspace_buf.u64PhyAddr = workspace_phy_addr;
     impl_->workspace_buf.u64VirAddr =
         static_cast<HI_U64>(reinterpret_cast<HI_UL>(workspace_vir_addr));
     FillWorkspaceAddresses(*model, total_task_size, impl_->tmp_buf_size);
+    Info("ai", "NNIE workspace prepared segs=%u total=%u task=%u tmp=%u",
+         static_cast<unsigned int>(model->u32NetSegNum),
+         static_cast<unsigned int>(total_workspace_size),
+         static_cast<unsigned int>(total_task_size),
+         static_cast<unsigned int>(impl_->tmp_buf_size));
     return true;
 }
 
@@ -253,7 +241,7 @@ bool NnieForwardWorkspace::ValidateInputConfig(
 }
 
 bool NnieForwardWorkspace::IsSsdModel(const SVP_NNIE_MODEL_S &model) const {
-    if (model->u32NetSegNum != 1) {
+    if (model.u32NetSegNum != 1) {
         return false;
     }
     const SVP_NNIE_SEG_S &seg = model.astSeg[0];
@@ -276,7 +264,7 @@ bool NnieForwardWorkspace::IsSsdModel(const SVP_NNIE_MODEL_S &model) const {
 bool NnieForwardWorkspace::FillForwardInfo(const SVP_NNIE_MODEL_S &model) {
     std::memset(impl_->seg_data, 0, sizeof(impl_->seg_data));
     std::memset(impl_->forward_ctrl, 0, sizeof(impl_->forward_ctrl));
-    for (HI_U32 i = 0; i < model->u32NetSegNum; ++i) {
+    for (HI_U32 i = 0; i < model.u32NetSegNum; ++i) {
         const SVP_NNIE_SEG_S &seg = model.astSeg[i];
         impl_->forward_ctrl[i].enNnieId = SVP_NNIE_ID_0;
         impl_->forward_ctrl[i].u32SrcNum = seg.u16SrcNum;
@@ -314,7 +302,7 @@ bool NnieForwardWorkspace::AddBlobSizes(
         return false;
     }
     std::memset(impl_->blob_sizes, 0, sizeof(impl_->blob_sizes));
-    for (HI_U32 i = 0; i < model->u32NetSegNum; ++i) {
+    for (HI_U32 i = 0; i < model.u32NetSegNum; ++i) {
         const SVP_NNIE_SEG_S &seg = model.astSeg[i];
         if (i == 0) {
             for (HI_U32 j = 0; j < seg.u16SrcNum; ++j) {
@@ -356,7 +344,7 @@ void NnieForwardWorkspace::FillWorkspaceAddresses(
         impl_->workspace_buf.u64VirAddr + total_task_size;
 
     HI_U32 task_offset = 0;
-    for (HI_U32 i = 0; i < model->u32NetSegNum; ++i) {
+    for (HI_U32 i = 0; i < model.u32NetSegNum; ++i) {
         impl_->forward_ctrl[i].stTmpBuf = impl_->tmp_buf;
         impl_->forward_ctrl[i].stTskBuf.u32Size = impl_->task_buf_sizes[i];
         impl_->forward_ctrl[i].stTskBuf.u64PhyAddr =
@@ -370,7 +358,7 @@ void NnieForwardWorkspace::FillWorkspaceAddresses(
         impl_->workspace_buf.u64PhyAddr + total_task_size + tmp_buf_size;
     HI_U64 current_vir_addr =
         impl_->workspace_buf.u64VirAddr + total_task_size + tmp_buf_size;
-    for (HI_U32 i = 0; i < model->u32NetSegNum; ++i) {
+    for (HI_U32 i = 0; i < model.u32NetSegNum; ++i) {
         const SVP_NNIE_SEG_S &seg = model.astSeg[i];
         if (i == 0) {
             for (HI_U32 j = 0; j < seg.u16SrcNum; ++j) {

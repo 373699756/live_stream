@@ -135,6 +135,10 @@ struct FakeUpgradePlatform : IUpgradePlatform {
         return write_ok;
     }
 
+    bool IsExternalFlashWriterActive() const override {
+        return false;
+    }
+
     bool CommitUpgrade(const UpgradePackageInfo& package_info) override {
         (void)package_info;
         calls.push_back("commit");

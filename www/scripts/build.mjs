@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,8 +41,21 @@ function removeLegacyEntries(directory) {
   }
 }
 
+function appendEntryVersion() {
+  const indexPath = path.join(distDir, 'index.html');
+  if (!existsSync(indexPath)) {
+    return;
+  }
+  const version = Date.now().toString();
+  const html = readFileSync(indexPath, 'utf8')
+    .replace('/assets/index.js"', `/assets/index.js?v=${version}"`)
+    .replace('/assets/index.css"', `/assets/index.css?v=${version}"`);
+  writeFileSync(indexPath, html);
+}
+
 removeLegacyEntries(distAssetsDir);
 removeLegacyEntries(publicAssetsDir);
 
 run(localBin('tsc'), ['--noEmit']);
 run(localBin('vite'), ['build']);
+appendEntryVersion();

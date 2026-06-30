@@ -49,11 +49,16 @@
 }
 
 .upgrade-state-banner strong,
-.upgrade-file-summary strong {
+.upgrade-file-summary strong,
+.upgrade-file-summary code {
     min-width: 0;
     color: #243044;
     font-size: 13px;
     overflow-wrap: anywhere;
+}
+
+.upgrade-file-summary code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .upgrade-state-banner.state-failed {
@@ -61,14 +66,29 @@
     border-color: #fecaca;
 }
 
-.upgrade-state-banner.state-canceled,
-.upgrade-state-banner.state-waiting_reboot,
-.upgrade-state-banner.state-validating,
-.upgrade-state-banner.state-preparing,
 .upgrade-state-banner.state-writing,
-.upgrade-state-banner.state-committing {
+.upgrade-state-banner.state-committing,
+.upgrade-state-banner.state-waiting_reboot {
     background: #fff7df;
     border-color: #ead89a;
+}
+
+.upgrade-state-banner.state-checking,
+.upgrade-state-banner.state-preparing,
+.upgrade-state-banner.state-rebooting {
+    background: #eef7ff;
+    border-color: #bfdbfe;
+}
+
+.upgrade-state-banner.state-completed {
+    background: #ecfdf3;
+    border-color: #86efac;
+}
+
+.upgrade-state-banner.state-idle,
+.upgrade-state-banner.state-canceled {
+    background: #f8fafc;
+    border-color: #d8e1ef;
 }
 
 .upgrade-progress {
@@ -98,6 +118,26 @@
     height: 100%;
     background: var(--brand);
     border-radius: 999px;
+}
+
+.progress-fill.tone-success {
+    background: #16a34a;
+}
+
+.progress-fill.tone-warning {
+    background: #d97706;
+}
+
+.progress-fill.tone-error {
+    background: #dc2626;
+}
+
+.progress-fill.tone-info {
+    background: #2563eb;
+}
+
+.progress-fill.tone-neutral {
+    background: #64748b;
 }
 
 .upgrade-meta {
@@ -154,13 +194,68 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.upgrade-file-summary {
+.upgrade-package-compact {
     display: grid;
-    gap: 4px;
-    margin-top: 12px;
-    padding: 9px 10px;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8fbff;
+    border: 1px solid #dbe7f5;
+    border-radius: 4px;
+}
+
+.upgrade-package-line {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 0.7fr);
+    align-items: center;
+    gap: 6px 8px;
+    padding: 7px 8px;
     background: #fff;
     border: 1px solid #e2e7ef;
+    border-radius: 4px;
+}
+
+.upgrade-package-line span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.upgrade-package-line strong,
+.upgrade-package-line code {
+    min-width: 0;
+    color: #243044;
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.upgrade-package-line code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.upgrade-file-summary {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+    margin-top: 12px;
+    padding: 12px;
+    background: #eef6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+}
+
+.upgrade-file-summary div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.upgrade-file-summary strong,
+.upgrade-file-summary code {
+    padding: 7px 8px;
+    background: #fff;
+    border: 1px solid #dbe7f5;
     border-radius: 4px;
 }
 
@@ -205,6 +300,8 @@
 
     .upgrade-status-grid,
     .upgrade-package-grid,
+    .upgrade-package-line,
+    .upgrade-file-summary,
     .upgrade-state-banner {
         grid-template-columns: 1fr;
     }

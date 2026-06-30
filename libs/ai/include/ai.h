@@ -145,7 +145,6 @@ struct AiOptions {
     IConfig* config = nullptr;
     IAlarm* alarm = nullptr;
     DeviceMedia* device = nullptr;
-    MediaChannels media_channels;
     hisisdk::IHisiSnapshot* snapshot = nullptr;
     std::string alert_image_dir = "build/ai_alerts";
     uint32_t max_alert_records = 100;

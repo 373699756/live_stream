@@ -22,6 +22,12 @@
 namespace live_stream {
 namespace {
 
+#ifndef LIVE_STREAM_RELEASE_VERSION
+#define LIVE_STREAM_RELEASE_VERSION "0.1.0"
+#endif
+
+constexpr const char* kDeviceName = "Binary";
+
 std::string UptimeToString(int64_t uptime_ms) {
     if (uptime_ms <= 0) {
         return "0s";
@@ -62,15 +68,16 @@ Json BuildSystemOverviewJson(ISystem *system,
         device_info = system->GetDeviceInfo();
         system_info = system->GetSystemInfo();
     }
-    root["deviceName"] = device_info.serial_number.empty()
-                             ? std::string("live-stream-ipc")
-                             : device_info.serial_number;
+    root["deviceName"] = kDeviceName;
     root["model"] = device_info.model.empty()
                         ? std::string("live_stream_ipc")
                         : device_info.model;
     root["firmware"] = device_info.firmware_version.empty()
-                           ? std::string("0.1.0")
+                           ? std::string(LIVE_STREAM_RELEASE_VERSION)
                            : device_info.firmware_version;
+    root["software"] = device_info.software_version.empty()
+                          ? std::string(LIVE_STREAM_RELEASE_VERSION)
+                          : device_info.software_version;
     root["uptime"] = UptimeToString(system_info.uptime_ms);
     root["cpu"] = system_info.cpu_usage_percent;
     root["memory"] = system_info.memory_usage_percent;

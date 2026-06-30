@@ -433,12 +433,14 @@ bool DeviceImpl::ApplyPipelineConfig(
 
     if (is_started) {
         image_tuner_->Stop();
-        features_->Stop();
     }
 
     PipelineChangeInfo change_info;
     {
         std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
+        if (is_started) {
+            features_->Stop();
+        }
         PipelineChangePlan plan;
         plan.next_config = config;
         plan.prev_config = prev_config;
@@ -638,7 +640,7 @@ MediaCapabilities DeviceImpl::GetCapabilities() const {
 
 MediaChannels DeviceImpl::GetChannels() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!system_initialized_ || phase_ == DevicePhase::kFailed) {
+    if (!system_initialized_ || phase_ != DevicePhase::kStarted) {
         return MediaChannels{};
     }
     return active_channels_;
@@ -651,6 +653,13 @@ ImageInfo DeviceImpl::GetImageInfo() const {
 
 SnapshotFrame DeviceImpl::CaptureSnapshot(
     const SnapshotRequest &request) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (phase_ != DevicePhase::kStarted) {
+            return SnapshotFrame{};
+        }
+    }
+    std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (phase_ != DevicePhase::kStarted) {

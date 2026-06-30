@@ -52,7 +52,9 @@ interface VideoRegionDrawLayerProps {
     drawing?: boolean;
     disabled?: boolean;
     items: VideoRegionItem[];
+    gridClassName?: string;
     videoAreaClassName?: string;
+    showGrid?: boolean;
     showVideoArea?: boolean;
     onDrawStart?: (point: VideoRegionPoint) => VideoRegionDrag | null;
     onDrawMove?: (
@@ -123,7 +125,9 @@ export function VideoRegionDrawLayer({
     drawing = false,
     disabled = false,
     items,
+    gridClassName = 'video-region-grid',
     videoAreaClassName,
+    showGrid = false,
     showVideoArea = false,
     onDrawStart,
     onDrawMove,
@@ -247,6 +251,12 @@ export function VideoRegionDrawLayer({
             {videoArea && showVideoArea && videoAreaClassName ? (
                 <div
                     className={videoAreaClassName}
+                    style={videoAreaToSurfaceStyle(videoArea)}
+                />
+            ) : null}
+            {videoArea && showGrid ? (
+                <div
+                    className={gridClassName}
                     style={videoAreaToSurfaceStyle(videoArea)}
                 />
             ) : null}

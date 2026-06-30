@@ -11,13 +11,20 @@
 
 namespace live_stream {
 
+#ifndef LIVE_STREAM_RELEASE_VERSION
+#define LIVE_STREAM_RELEASE_VERSION "0.1.0"
+#endif
+
 struct AppConfig {
     std::string listen_ip = "0.0.0.0";
     std::string advertise_host = "127.0.0.1";
     std::string static_root = "web";
     std::string onvif_manufacturer = "CBinary";
     std::string onvif_model = "live_stream_ipc";
-    std::string onvif_firmware_version = "0.1.0";
+    // Legacy compatibility field. Runtime firmware version is always sourced
+    // from LIVE_STREAM_RELEASE_VERSION; this value is kept only for config
+    // compatibility and is not used at runtime.
+    std::string onvif_firmware_version = LIVE_STREAM_RELEASE_VERSION;
     // Primary network interface used by system.network and platform adapter.
     // Defaults to "eth0"; read from network.default_ifname in the config.
     std::string network_ifname = "eth0";

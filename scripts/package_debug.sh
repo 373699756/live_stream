@@ -25,16 +25,13 @@ reject_repo_root() {
 
 copy_debug_inputs() {
   rm -rf "${debug_dir}/bin" "${debug_dir}/configs" \
-    "${debug_dir}/models" "${debug_dir}/web"
-  mkdir -p "${debug_dir}/bin" "${debug_dir}/configs" \
-    "${debug_dir}/log" "${debug_dir}/models" "${debug_dir}/web"
+    "${debug_dir}/models" "${debug_dir}/sbin" "${debug_dir}/web"
+  mkdir -p "${debug_dir}/bin" \
+    "${debug_dir}/log" "${debug_dir}/models" "${debug_dir}/sbin" \
+    "${debug_dir}/web"
 
   cp -f "${repo_root}/build/bin/live_stream" "${debug_dir}/bin/"
-  cp -f "${repo_root}"/configs/*.json "${debug_dir}/configs/"
-  if [ -f "${repo_root}/configs/upgrade_public_key.pem" ]; then
-    cp -f "${repo_root}/configs/upgrade_public_key.pem" \
-      "${debug_dir}/configs/"
-  fi
+  cp -f "${repo_root}/build/bin/live_sysupgrade" "${debug_dir}/sbin/"
   for model_file in "${models_src}"/*/*.wk; do
     if [ -f "${model_file}" ]; then
       cp -f "${model_file}" "${debug_dir}/models/"

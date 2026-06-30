@@ -16,18 +16,6 @@ bool AiTaskStartup::Prepare(
         return false;
     }
     const AiModelConfig &task_config = task_worker->config;
-    Info("ai",
-         "AI backend start begin: backend=%s task=%d model=%s stream=%d "
-         "input=%ux%u interval=%u threshold=%.3f max=%u",
-         AiBackendToString(task_config.backend),
-         static_cast<int>(task_config.task),
-         task_config.model_path.c_str(),
-         static_cast<int>(task_config.stream_id),
-         static_cast<unsigned int>(task_config.input_width),
-         static_cast<unsigned int>(task_config.input_height),
-         static_cast<unsigned int>(task_config.inference_interval_ms),
-         static_cast<double>(task_config.confidence_threshold),
-         static_cast<unsigned int>(task_config.max_results));
 
     std::shared_ptr<AiBackendRunner> next_backend_runner =
         CreateAiBackendRunner(task_config.backend);
@@ -37,12 +25,16 @@ bool AiTaskStartup::Prepare(
               static_cast<int>(task_config.task));
         return false;
     }
-    Info("ai", "AI backend created: backend=%s task=%d available=%d",
-         AiBackendToString(task_config.backend),
-         static_cast<int>(task_config.task),
-         next_backend_runner->Available() ? 1 : 0);
-    if (!next_backend_runner->Available() ||
-        !next_backend_runner->Start(task_config)) {
+    if (!next_backend_runner->Available()) {
+        Error("ai",
+              "AI backend unavailable: backend=%s task=%d model=%s",
+              AiBackendToString(task_config.backend),
+              static_cast<int>(task_config.task),
+              task_config.model_path.c_str());
+        next_backend_runner->Stop();
+        return false;
+    }
+    if (!next_backend_runner->Start(task_config)) {
         Error("ai", "Start AI backend failed: backend=%s task=%d model=%s",
               AiBackendToString(task_config.backend),
               static_cast<int>(task_config.task),
@@ -50,9 +42,6 @@ bool AiTaskStartup::Prepare(
         next_backend_runner->Stop();
         return false;
     }
-    Info("ai", "AI backend start done: backend=%s task=%d",
-         AiBackendToString(task_config.backend),
-         static_cast<int>(task_config.task));
 
     std::unique_ptr<event::Executor> next_executor(new event::Executor());
     event::ExecutorOptions executor_options;
@@ -66,6 +55,18 @@ bool AiTaskStartup::Prepare(
     task_worker_ = task_worker;
     backend_runner_ = next_backend_runner;
     executor_ = std::move(next_executor);
+    Info("ai",
+         "AI backend started backend=%s task=%d model=%s stream=%d "
+         "input=%ux%u interval=%u threshold=%.3f max=%u",
+         AiBackendToString(task_config.backend),
+         static_cast<int>(task_config.task),
+         task_config.model_path.c_str(),
+         static_cast<int>(task_config.stream_id),
+         static_cast<unsigned int>(task_config.input_width),
+         static_cast<unsigned int>(task_config.input_height),
+         static_cast<unsigned int>(task_config.inference_interval_ms),
+         static_cast<double>(task_config.confidence_threshold),
+         static_cast<unsigned int>(task_config.max_results));
     return true;
 }
 

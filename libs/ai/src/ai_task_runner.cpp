@@ -54,8 +54,7 @@ struct AiTaskRunner::TaskRunnerInfo final {
         : options(service_options),
           config(service_options.default_config),
           config_binding(service_options.config),
-          frame_capture(service_options.snapshot,
-                        service_options.media_channels),
+          frame_capture(service_options.snapshot, service_options.device),
           alert_output(service_options.alarm,
                        service_options.device,
                        service_options.alert_image_dir,
@@ -179,6 +178,11 @@ struct AiTaskRunner::TaskRunnerInfo final {
                     return;
                 }
             }
+            if (options.device == nullptr || !options.device->IsStarted() ||
+                options.device->IsRestarting()) {
+                infra::Time::SleepMillis(kCaptureStopPollMs);
+                continue;
+            }
             frame = frame_capture.Capture(run_config);
 
             if (!frame.Valid()) {
@@ -301,11 +305,6 @@ struct AiTaskRunner::TaskRunnerInfo final {
                 ++enabled_task_size;
             }
         }
-        Info("ai", "AI config apply begin: enabled=%d tasks=%u enabled=%u",
-             next_config.enabled ? 1 : 0,
-             static_cast<unsigned int>(next_config.tasks.size()),
-             static_cast<unsigned int>(enabled_task_size));
-
         bool service_started = false;
         bool service_enabled = false;
         std::vector<StoppedAiTask> stopped_tasks;
@@ -330,9 +329,10 @@ struct AiTaskRunner::TaskRunnerInfo final {
 
         StartConfiguredTaskWorkers();
         PublishAlarmInputForTask(nullptr);
-        Info("ai", "AI config applied: enabled=%d tasks=%u",
+        Info("ai", "AI config applied: enabled=%d tasks=%u enabled=%u",
              next_config.enabled ? 1 : 0,
-             static_cast<unsigned int>(next_config.tasks.size()));
+             static_cast<unsigned int>(next_config.tasks.size()),
+             static_cast<unsigned int>(enabled_task_size));
         if (!next_config.enabled) {
             alert_output.ClearAlarmInput();
         }

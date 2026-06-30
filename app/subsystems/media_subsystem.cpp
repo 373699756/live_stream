@@ -80,13 +80,11 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
                                StreamId::kMain);
     SetInitialMediaStreamState(*device_, *media_streams_,
                                StreamId::kSub);
-    const MediaChannels media_channels = device_->GetChannels();
 
     AiOptions ai_options;
     ai_options.config = config;
     ai_options.alarm = device_refs.alarm;
     ai_options.device = device_.get();
-    ai_options.media_channels = media_channels;
     ai_options.snapshot = sdk.snapshot;
     ai_.reset(new Ai(ai_options));
     if (!ai_ || !ai_->Start()) {

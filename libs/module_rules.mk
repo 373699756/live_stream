@@ -4,6 +4,7 @@ BUILD_DIR ?= $(ROOT_DIR)/build
 LIB_DIR := $(BUILD_DIR)/lib
 OBJ_DIR := $(BUILD_DIR)/obj/$(MODULE_NAME)
 TEST_DIR := $(BUILD_DIR)/tests
+RELEASE_VERSION ?= 1.0.5
 
 CROSS_COMPILE ?= arm-himix200-linux-
 ifeq ($(origin CXX),default)
@@ -17,6 +18,7 @@ CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Werror
 CXXFLAGS += -fno-exceptions
 CXXFLAGS += -fno-rtti
+CXXFLAGS += -DLIVE_STREAM_RELEASE_VERSION=\"$(RELEASE_VERSION)\"
 CXXFLAGS += -Iinclude
 CXXFLAGS += -I$(ROOT_DIR)/libs/infra/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/install/include

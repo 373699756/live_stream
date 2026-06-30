@@ -6,6 +6,8 @@ import {
 } from 'react';
 import type {
     AiPerimeterRegion,
+    AiStatus,
+    AiTaskInfo,
     StreamName,
 } from '../api/types';
 import type {
@@ -38,8 +40,48 @@ import { AiSnapshotRail } from '../features/ai-alerts/AiSnapshotRail';
 import { useAiAlertConfigForm } from '../features/ai-alerts/useAiAlertConfigForm';
 import '../styles/ai-alerts.css';
 
+function taskHasDetections(task: AiTaskInfo) {
+    return (
+        task.config.enabled &&
+        task.stats.enabled &&
+        task.stats.backend_available &&
+        task.last_result.success &&
+        task.last_result.detections.length > 0
+    );
+}
+
+function preferredAiPreviewStream(status: AiStatus | null): StreamName | null {
+    if (!status?.enabled) {
+        return null;
+    }
+    let bestTask: AiTaskInfo | null = null;
+    for (const task of status.tasks ?? []) {
+        if (!taskHasDetections(task)) {
+            continue;
+        }
+        if (
+            bestTask === null ||
+            task.last_result.sequence > bestTask.last_result.sequence ||
+            task.last_result.pts_us > bestTask.last_result.pts_us
+        ) {
+            bestTask = task;
+        }
+    }
+    if (bestTask) {
+        return bestTask.last_result.stream;
+    }
+    const enabledTask = (status.tasks ?? []).find(
+        (task) =>
+            task.config.enabled &&
+            task.stats.enabled &&
+            task.stats.backend_available,
+    );
+    return enabledTask?.config.stream ?? null;
+}
+
 export function AiAlertsPage() {
     const [stream, setStream] = useState<StreamName>('sub');
+    const [userSelectedStream, setUserSelectedStream] = useState(false);
     const [editingPerimeter, setEditingPerimeter] = useState(false);
     const [activeRegionIndex, setActiveRegionIndex] = useState(0);
     const {
@@ -103,12 +145,17 @@ export function AiAlertsPage() {
             enabledTaskTotal: enabledTasks.length,
         };
     }, [aiStatus]);
+    const aiPreviewStream = useMemo(
+        () => preferredAiPreviewStream(aiStatus),
+        [aiStatus],
+    );
 
     const frame = useMemo(
         () => parseResolution(activeStatus?.resolution),
         [activeStatus?.resolution],
     );
     const alertSizes = useMemo(() => alertSizesByTask(alerts), [alerts]);
+    const perimeterEnabled = Boolean(perimeterTask?.enabled);
     const perimeterRegions = perimeterTask?.perimeter_regions ?? [];
     const activeRegion =
         activeRegionIndex >= 0 && activeRegionIndex < perimeterRegions.length
@@ -118,6 +165,24 @@ export function AiAlertsPage() {
         () => kTaskOrder.map((task) => taskByName(aiStatus?.tasks ?? [], task)),
         [aiStatus],
     );
+
+    useEffect(() => {
+        if (!perimeterEnabled && editingPerimeter) {
+            setEditingPerimeter(false);
+        }
+    }, [editingPerimeter, perimeterEnabled]);
+
+    useEffect(() => {
+        if (
+            editingPerimeter ||
+            userSelectedStream ||
+            !aiPreviewStream ||
+            aiPreviewStream === stream
+        ) {
+            return;
+        }
+        setStream(aiPreviewStream);
+    }, [aiPreviewStream, editingPerimeter, stream, userSelectedStream]);
 
     useEffect(() => {
         if (perimeterRegions.length === 0 && activeRegionIndex !== 0) {
@@ -157,7 +222,7 @@ export function AiAlertsPage() {
     );
 
     const beginDraw = (point: VideoRegionPoint): VideoRegionDrag | null => {
-        if (!editingPerimeter || !draft) {
+        if (!editingPerimeter || !perimeterEnabled || !draft) {
             return null;
         }
         const regionIndex =
@@ -192,7 +257,10 @@ export function AiAlertsPage() {
     };
 
     const addRegion = () => {
-        if (!isAiTaskAvailable('perimeter_detection', aiCapabilities)) {
+        if (
+            !perimeterEnabled ||
+            !isAiTaskAvailable('perimeter_detection', aiCapabilities)
+        ) {
             return;
         }
         setEditingPerimeter(true);
@@ -233,14 +301,19 @@ export function AiAlertsPage() {
         if (editingPerimeter) {
             return;
         }
+        setUserSelectedStream(true);
         setStream(nextStream);
     };
 
     const togglePerimeterEdit = () => {
-        if (!isAiTaskAvailable('perimeter_detection', aiCapabilities)) {
+        if (
+            !perimeterEnabled ||
+            !isAiTaskAvailable('perimeter_detection', aiCapabilities)
+        ) {
             return;
         }
         if (!editingPerimeter && perimeterTask) {
+            setUserSelectedStream(false);
             setStream(perimeterTask.stream);
         }
         setEditingPerimeter((current) => !current);
@@ -249,9 +322,9 @@ export function AiAlertsPage() {
     const perimeterOverlay = (
         <AiPerimeterOverlay
             activeRegionIndex={activeRegionIndex}
-            editing={editingPerimeter}
+            editing={editingPerimeter && perimeterEnabled}
             frame={frame}
-            regions={perimeterRegions}
+            regions={perimeterEnabled ? perimeterRegions : []}
             onDrawStart={beginDraw}
             onDrawMove={updateDraw}
             onSelectRegion={selectRegion}

@@ -76,6 +76,8 @@ public:
     virtual bool WriteUpgrade(
         const std::string& package_path,
         UpgradeProgressCallback progress_callback) = 0;
+    virtual void SetAutoRebootPolicy(bool /*auto_reboot*/) {}
+    virtual bool IsExternalFlashWriterActive() const = 0;
     virtual bool CommitUpgrade(const UpgradePackageInfo& info) = 0;
     virtual bool CancelUpgrade() = 0;
     virtual bool RebootToApply() = 0;
