@@ -98,9 +98,10 @@ info，但不能新增一套不可比较的 socket close reason。
 128 条关闭诊断，`ListConnectionInfo()` 同时返回当前活跃连接和最近关闭
 连接，供 `/api/media/sessions` 聚合。字段语义仍归 `net`。
 
-`net_stat.h` 随 `net` 模块构建，不再是独立库。`NetStatDependencies` 只接收
-`INetIo*` 和可选 `event::Dispatcher*`；它不直接依赖 `rtsp`、`webrtc` 或
-`media`。连接压力记录和关闭慢客户端建议只基于 `NetConnectionInfo` 中的 pending bytes 和 send queue；
+`net_stat.h` 随 `net` 模块构建，不再是独立库。`CreateNetStat()` 只接收
+`NetStatOptions`；运行时从 `Runtime` 读取 `INetIo*` 和可选
+`event::Dispatcher*`。它不直接依赖 `rtsp`、`webrtc` 或 `media`。
+连接压力记录和关闭慢客户端建议只基于 `NetConnectionInfo` 中的 pending bytes 和 send queue；
 RTSP/WebRTC 活跃数来自 `kRtspClientConnected`、`kRtspClientDisconnected`、
 `kWebRtcClientConnected`、`kWebRtcClientDisconnected` 事件的轻量 payload。
 整体压力等级变化时，`net_stat` 发布 `kNetPressureChanged`，payload 使用：

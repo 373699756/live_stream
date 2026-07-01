@@ -264,13 +264,4 @@ NetStatOptions BuildNetStatOptions() {
     return options;
 }
 
-NetStatDependencies BuildNetStatDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation) {
-    NetStatDependencies dependencies;
-    dependencies.net_io = refs.net_io;
-    dependencies.event = foundation.event();
-    return dependencies;
-}
-
 }  // namespace live_stream

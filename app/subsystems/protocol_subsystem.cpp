@@ -194,10 +194,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 
     const NetStatOptions net_stat_options =
         BuildNetStatOptions();
-    const NetStatDependencies net_stat_dependencies =
-        BuildNetStatDependencies(refs, foundation_subsystem);
     net_stat_ =
-        CreateNetStat(net_stat_options, net_stat_dependencies);
+        CreateNetStat(net_stat_options);
     if (!net_stat_ || !net_stat_->Start()) {
         Error("app", "Start net_stat failed");
         Stop();

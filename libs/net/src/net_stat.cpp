@@ -4,6 +4,7 @@
 #include "infra/log.h"
 #include "infra/time.h"
 #include "net.h"
+#include "runtime.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -99,10 +100,10 @@ struct ProtocolClientActivity {
 
 class NetStatImpl final : public INetStat {
 public:
-    NetStatImpl(NetStatOptions options, NetStatDependencies dependencies)
+    explicit NetStatImpl(NetStatOptions options)
         : options_(std::move(options)),
-          net_io_(dependencies.net_io),
-          event_(dependencies.event) {}
+          net_io_(Runtime::NetIo()),
+          event_(Runtime::Event()) {}
 
     ~NetStatImpl() override { StopInternal(); }
 
@@ -649,11 +650,8 @@ private:
     std::vector<NetRecommendation> recommendation_history_;
 };
 
-std::unique_ptr<INetStat> CreateNetStat(
-    const NetStatOptions &options,
-    const NetStatDependencies &dependencies) {
-    return std::unique_ptr<INetStat>(
-        new NetStatImpl(options, dependencies));
+std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options) {
+    return std::unique_ptr<INetStat>(new NetStatImpl(options));
 }
 
 const char *NetStat::Name() { return kModuleName; }

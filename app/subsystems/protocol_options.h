@@ -38,9 +38,6 @@ HttpDependencies BuildHttpDependencies(const ProtocolStartupRefs &refs,
                                        FoundationSubsystem &foundation);
 
 NetStatOptions BuildNetStatOptions();
-NetStatDependencies BuildNetStatDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation);
 
 }  // namespace live_stream
 

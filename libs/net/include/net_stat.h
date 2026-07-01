@@ -8,11 +8,6 @@
 
 namespace live_stream {
 
-class INetIo;
-namespace event {
-class Dispatcher;
-}
-
 enum class NetPressureLevel {
     kNormal = 0,
     kWatch,
@@ -41,11 +36,6 @@ struct NetStatOptions {
     uint32_t send_queue_constrained = 96;
     uint32_t recommendation_cooldown_ms = 5000;
     uint32_t recommendation_history_limit = 64;
-};
-
-struct NetStatDependencies {
-    INetIo *net_io = nullptr;
-    event::Dispatcher *event = nullptr;
 };
 
 struct NetRecommendation {
@@ -111,9 +101,7 @@ public:
     GetConnectionPressures() const = 0;
 };
 
-std::unique_ptr<INetStat> CreateNetStat(
-    const NetStatOptions &options,
-    const NetStatDependencies &dependencies);
+std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options);
 
 class NetStat {
 public:
