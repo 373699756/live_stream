@@ -20,6 +20,12 @@ namespace {
 
 constexpr const char *kOnvifServerName = "onvif";
 
+struct OnvifRequestSnapshot {
+    OnvifServerOptions options;
+    UdpSocketId discovery_socket_id = 0;
+    bool started = false;
+};
+
 }  // namespace
 
 class OnvifServer::Impl {
@@ -44,7 +50,7 @@ public:
     }
 
     bool Start() {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
         if (!PrepareLocked()) {
             return false;
         }
@@ -79,7 +85,12 @@ public:
                 socket_io_->BindUdp(net_loop_, udp_options,
                                  udp_callbacks);
             if (udp_socket_id == 0) {
-                CleanupSocketsLocked();
+                UdpSocketId close_udp_socket_id = 0;
+                TcpServerId close_tcp_server_id = 0;
+                TakeSocketsLocked(&close_udp_socket_id,
+                                  &close_tcp_server_id);
+                lock.unlock();
+                CloseSockets(close_udp_socket_id, close_tcp_server_id);
                 return false;
             }
             udp_socket_id_ = udp_socket_id;
@@ -90,10 +101,15 @@ public:
     }
 
     void Stop() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        CleanupSocketsLocked();
-        started_ = false;
-        prepared_ = false;
+        UdpSocketId udp_socket_id = 0;
+        TcpServerId tcp_server_id = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            TakeSocketsLocked(&udp_socket_id, &tcp_server_id);
+            started_ = false;
+            prepared_ = false;
+        }
+        CloseSockets(udp_socket_id, tcp_server_id);
     }
 
     bool ApplyOptions(const OnvifServerOptions &options) {
@@ -181,7 +197,9 @@ private:
     void HandleUdpMessage(const SocketAddress &address,
                           const uint8_t *data,
                           uint32_t size) {
-        if (data == nullptr || size == 0 || size > options_.max_request_bytes) {
+        const OnvifRequestSnapshot snapshot = SnapshotForRequest();
+        if (!snapshot.started || data == nullptr || size == 0 ||
+            size > snapshot.options.max_request_bytes) {
             IncrementParseFailures();
             return;
         }
@@ -197,10 +215,11 @@ private:
             ++stats_.discovery_requests;
         }
         const std::string response = onvif::BuildDiscoveryProbeMatches(
-            options_, system_, AdvertiseIp(), request);
-        if (udp_socket_id_ != 0) {
+            snapshot.options, system_, AdvertiseIp(snapshot.options),
+            request);
+        if (snapshot.discovery_socket_id != 0) {
             static_cast<void>(socket_io_->SendTo(
-                udp_socket_id_, address,
+                snapshot.discovery_socket_id, address,
                 reinterpret_cast<const uint8_t *>(response.data()),
                 response.size()));
         }
@@ -209,7 +228,9 @@ private:
     void HandleTcpMessage(ConnectionId connection_id,
                           const uint8_t *data,
                           uint32_t size) {
-        if (data == nullptr || size == 0 || size > options_.max_request_bytes) {
+        const OnvifRequestSnapshot snapshot = SnapshotForRequest();
+        if (!snapshot.started || data == nullptr || size == 0 ||
+            size > snapshot.options.max_request_bytes) {
             IncrementParseFailures();
             return;
         }
@@ -224,7 +245,8 @@ private:
         uint32_t status_code = 200;
         std::string reason = "OK";
 
-        if (parsed.method != "POST" || parsed.path != options_.service_path) {
+        if (parsed.method != "POST" ||
+            parsed.path != snapshot.options.service_path) {
             IncrementParseFailures();
             status_code = 400;
             reason = "Bad Request";
@@ -239,7 +261,7 @@ private:
                 body = onvif::BuildSoapFaultEnvelope(
                     "unsupported onvif action");
             } else if (!onvif::AuthorizeOnvifAction(
-                           auth_, options_.enable_auth,
+                           auth_, snapshot.options.enable_auth,
                            parsed.headers, action)) {
                 IncrementAuthFailures();
                 status_code = 401;
@@ -247,8 +269,8 @@ private:
                 extra_headers = "WWW-Authenticate: Basic realm=\"onvif\"\r\n";
                 body = onvif::BuildSoapFaultEnvelope("unauthorized");
             } else {
-                body = HandleSoapAction(action, parsed.body, &status_code,
-                                        &reason);
+                body = HandleSoapAction(action, parsed.body, snapshot.options,
+                                        &status_code, &reason);
             }
         }
 
@@ -271,6 +293,7 @@ private:
 
     std::string HandleSoapAction(onvif::OnvifAction action,
                                  const std::string &request,
+                                 const OnvifServerOptions &options,
                                  uint32_t *status_code,
                                  std::string *reason) {
         // action 分发只做协议 DTO 转换；设备信息、时间、媒体 URL 分别从拥有模块读取。
@@ -278,7 +301,7 @@ private:
             case onvif::OnvifAction::kGetDeviceInformation:
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildDeviceInformationBody(
-                        options_, system_));
+                        options, system_));
             case onvif::OnvifAction::kGetSystemDateAndTime:
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildSystemDateAndTimeBody(
@@ -289,7 +312,7 @@ private:
                         time_, request, status_code, reason));
             case onvif::OnvifAction::kGetProfiles: {
                 const onvif::OnvifMediaUris media_uris =
-                    BuildMediaUrisForRequest();
+                    BuildMediaUrisForRequest(options);
                 return onvif::BuildSoapEnvelope(
                     onvif::BuildProfilesBody(media_uris));
             }
@@ -301,7 +324,7 @@ private:
                         onvif::BuildProfileFaultBody(status_code, reason));
                 }
                 const onvif::OnvifMediaUris media_uris =
-                    BuildMediaUrisForRequest();
+                    BuildMediaUrisForRequest(options);
                 const onvif::OnvifBody result = onvif::BuildStreamUriBody(
                     media_uris, stream_id, status_code, reason);
                 if (result.success) {
@@ -317,7 +340,7 @@ private:
                         onvif::BuildProfileFaultBody(status_code, reason));
                 }
                 const onvif::OnvifMediaUris media_uris =
-                    BuildMediaUrisForRequest();
+                    BuildMediaUrisForRequest(options);
                 const onvif::OnvifBody result = onvif::BuildSnapshotUriBody(
                     media_uris, stream_id, status_code, reason);
                 if (result.success) {
@@ -337,19 +360,20 @@ private:
         return onvif::BuildSoapFaultEnvelope("unsupported onvif action");
     }
 
-    onvif::OnvifMediaUris BuildMediaUrisForRequest() const {
-        return onvif::BuildOnvifMediaUris(options_, device_, rtsp_,
-                                          AdvertiseIp());
+    onvif::OnvifMediaUris BuildMediaUrisForRequest(
+        const OnvifServerOptions &options) const {
+        return onvif::BuildOnvifMediaUris(options, device_, rtsp_,
+                                          AdvertiseIp(options));
     }
 
-    std::string AdvertiseIp() const {
-        if (!options_.advertise_ip.empty()) {
-            return options_.advertise_ip;
+    std::string AdvertiseIp(const OnvifServerOptions &options) const {
+        if (!options.advertise_ip.empty()) {
+            return options.advertise_ip;
         }
         // listen_ip 为 0.0.0.0 时不能作为 XAddr 主机名，只能回退到本地默认值；
         // 正式部署应由 app 配置 advertise_ip。
-        if (!options_.listen_ip.empty() && options_.listen_ip != "0.0.0.0") {
-            return options_.listen_ip;
+        if (!options.listen_ip.empty() && options.listen_ip != "0.0.0.0") {
+            return options.listen_ip;
         }
         return "127.0.0.1";
     }
@@ -385,15 +409,35 @@ private:
         ++stats_.snapshot_uri_requests;
     }
 
-    void CleanupSocketsLocked() {
-        if (udp_socket_id_ != 0) {
-            static_cast<void>(socket_io_->CloseUdp(udp_socket_id_));
-            udp_socket_id_ = 0;
+    OnvifRequestSnapshot SnapshotForRequest() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        OnvifRequestSnapshot snapshot;
+        snapshot.options = options_;
+        snapshot.discovery_socket_id = udp_socket_id_;
+        snapshot.started = started_;
+        return snapshot;
+    }
+
+    void CloseSockets(UdpSocketId udp_socket_id,
+                      TcpServerId tcp_server_id) {
+        if (udp_socket_id != 0) {
+            static_cast<void>(socket_io_->CloseUdp(udp_socket_id));
         }
-        if (tcp_server_id_ != 0) {
-            static_cast<void>(socket_io_->CloseTcp(tcp_server_id_));
-            tcp_server_id_ = 0;
+        if (tcp_server_id != 0) {
+            static_cast<void>(socket_io_->CloseTcp(tcp_server_id));
         }
+    }
+
+    void TakeSocketsLocked(UdpSocketId *udp_socket_id,
+                           TcpServerId *tcp_server_id) {
+        if (udp_socket_id != nullptr) {
+            *udp_socket_id = udp_socket_id_;
+        }
+        if (tcp_server_id != nullptr) {
+            *tcp_server_id = tcp_server_id_;
+        }
+        udp_socket_id_ = 0;
+        tcp_server_id_ = 0;
     }
 
     OnvifServerOptions options_;

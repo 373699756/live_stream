@@ -62,6 +62,9 @@ public API 兼容入口。
 ONVIF 运行状态包含 discovery socket、HTTP/SOAP request context 和认证校验上下文。
 设备信息、时间和媒体能力从相邻服务获取；RTSP URL 从 `rtsp` public 契约获取；
 snapshot URL 由 ONVIF 使用 HTTP 端口和固定 `/snapshot/{stream}.jpg` 契约生成。
+TCP/UDP 回调处理请求前必须先快照当前 `OnvifServerOptions` 和 socket id；后续 SOAP
+分发只读快照，避免运行态 `ApplyOptions()` 或 `Stop()` 与回调线程并发读写配置字段。
+服务停止时先在锁内摘除 socket id 和 started 状态，再在锁外关闭 socket_io endpoint。
 
 ## 非目标
 
