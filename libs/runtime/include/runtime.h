@@ -9,7 +9,7 @@ class ILogger;
 class INetIo;
 
 namespace event {
-class Dispatcher;
+class EventCenter;
 }  // namespace event
 
 class Runtime {
@@ -17,13 +17,13 @@ public:
     static bool InstallLogger(ILogger *logger);
     static bool InstallConfig(IConfig *config);
     static bool InstallAuth(IAuth *auth);
-    static bool InstallEvent(event::Dispatcher *event);
+    static bool InstallEventCenter(event::EventCenter *event_center);
     static bool InstallNetIo(INetIo *net_io);
 
     static ILogger *Logger();
     static IConfig *Config();
     static IAuth *Auth();
-    static event::Dispatcher *Event();
+    static event::EventCenter *EventCenter();
     static INetIo *NetIo();
 
     static void ClearNetIo(INetIo *net_io);

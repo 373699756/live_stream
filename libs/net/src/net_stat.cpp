@@ -103,7 +103,7 @@ public:
     explicit NetStatImpl(NetStatOptions options)
         : options_(std::move(options)),
           net_io_(Runtime::NetIo()),
-          event_(Runtime::Event()) {}
+          event_(Runtime::EventCenter()) {}
 
     ~NetStatImpl() override { StopInternal(); }
 
@@ -174,11 +174,22 @@ private:
             event::EventType::kWebRtcClientConnected,
             event::EventType::kWebRtcClientDisconnected,
         };
-        event_subscription_ = event_->SubscribeTypes(
-            event_types, [this](const event::Event &event) {
-                HandleEvent(event);
-            });
-        return event_subscription_.valid();
+        event_tokens_.reserve(event_types.size());
+        for (event::EventType event_type : event_types) {
+            event::EventToken token = event_->Subscribe(
+                event_type, this, [this](const event::Event &event) {
+                    HandleEvent(event);
+                });
+            if (!token.valid()) {
+                for (event::EventToken &registered_token : event_tokens_) {
+                    registered_token.Cancel();
+                }
+                event_tokens_.clear();
+                return false;
+            }
+            event_tokens_.push_back(std::move(token));
+        }
+        return true;
     }
 
     void StopInternal() {
@@ -193,7 +204,10 @@ private:
         if (check_thread_.joinable()) {
             check_thread_.join();
         }
-        event_subscription_.Cancel();
+        for (event::EventToken &event_token : event_tokens_) {
+            event_token.Cancel();
+        }
+        event_tokens_.clear();
         {
             std::lock_guard<std::mutex> lock(mutex_);
             stats_ = NetStatSnapshot{};
@@ -613,7 +627,7 @@ private:
         pressure_event.type = event::EventType::kNetPressureChanged;
         pressure_event.source = kModuleName;
         pressure_event.target = "connections";
-        pressure_event.message = PressureLevelReason(stats.level);
+        pressure_event.msg = PressureLevelReason(stats.level);
         pressure_event.value =
             static_cast<int32_t>(stats.tracked_connection_pressures);
         pressure_event.level = static_cast<uint8_t>(stats.level);
@@ -635,8 +649,8 @@ private:
 
     NetStatOptions options_;
     INetIo *net_io_ = nullptr;
-    event::Dispatcher *event_ = nullptr;
-    event::Subscription event_subscription_;
+    event::EventCenter *event_ = nullptr;
+    std::vector<event::EventToken> event_tokens_;
     bool started_ = false;
     bool stopping_ = false;
     ProtocolClientActivity protocol_activity_;

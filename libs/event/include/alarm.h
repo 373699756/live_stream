@@ -69,7 +69,7 @@ struct AlarmInfo {
 
 struct AlarmOptions {
     IConfig* config = nullptr;
-    event::Dispatcher* event = nullptr;
+    event::EventCenter* event = nullptr;
     ILogger* logger = nullptr;
     std::vector<AlarmRule> default_rules;
 };

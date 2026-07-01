@@ -43,7 +43,7 @@ struct StreamingHttpHandlerRefs {
     HttpMediaWriter *writer = nullptr;
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
-    event::Dispatcher *event = nullptr;
+    event::EventCenter *event = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(

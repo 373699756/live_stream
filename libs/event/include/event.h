@@ -7,12 +7,11 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace live_stream {
 namespace event {
 
-using SubscriptionId = uint64_t;
+using EventTokenId = uint64_t;
 
 enum class EventType {
     kConfigChanged,
@@ -43,7 +42,7 @@ struct Event {
     EventType type = EventType::kConfigChanged;
     std::string source;
     std::string target;
-    std::string message;
+    std::string msg;
     int32_t value = 0;
     int64_t timestamp_ms = 0;
     uint8_t level = 0;
@@ -56,51 +55,51 @@ struct EventStats {
     uint32_t subscriptions = 0;
 };
 
-using EventFn = std::function<void(const Event &)>;
+using EventHandler = std::function<void(const Event &)>;
 
-class Dispatcher;
+class EventCenter;
 
-// RAII handle returned by Dispatcher subscriptions. Destroying or cancelling it
+// RAII handle returned by EventCenter subscriptions. Destroying or cancelling it
 // detaches the handler from future Publish() calls.
-class Subscription {
+class EventToken {
 public:
-    Subscription() = default;
-    ~Subscription();
+    EventToken() = default;
+    ~EventToken();
 
-    Subscription(Subscription &&other) noexcept;
-    Subscription &operator=(Subscription &&other) noexcept;
+    EventToken(EventToken &&other) noexcept;
+    EventToken &operator=(EventToken &&other) noexcept;
 
-    Subscription(const Subscription &) = delete;
-    Subscription &operator=(const Subscription &) = delete;
+    EventToken(const EventToken &) = delete;
+    EventToken &operator=(const EventToken &) = delete;
 
-    bool valid() const { return dispatcher_ != nullptr && id_ != 0; }
+    bool valid() const { return center_ != nullptr && id_ != 0; }
     void Cancel();
 
 private:
-    friend class Dispatcher;
+    friend class EventCenter;
 
-    Subscription(Dispatcher *dispatcher, SubscriptionId id)
-        : dispatcher_(dispatcher), id_(id) {}
+    EventToken(EventCenter *center, EventTokenId id)
+        : center_(center), id_(id) {}
 
-    Dispatcher *dispatcher_ = nullptr;
-    SubscriptionId id_ = 0;
+    EventCenter *center_ = nullptr;
+    EventTokenId id_ = 0;
 };
 
 // Synchronous in-process event fanout. Handlers run in the Publish() caller, so
-// slow work should be posted to the owning module's queue.
-class Dispatcher {
+// slow work should be posted to the owning module's queue. Listeners are stored
+// by EventType, so Publish() only snapshots the matching bucket.
+class EventCenter {
 public:
-    Dispatcher();
-    ~Dispatcher();
+    EventCenter();
+    ~EventCenter();
 
-    Dispatcher(const Dispatcher &) = delete;
-    Dispatcher &operator=(const Dispatcher &) = delete;
+    EventCenter(const EventCenter &) = delete;
+    EventCenter &operator=(const EventCenter &) = delete;
 
-    Subscription Subscribe(EventType type, EventFn fn);
-    // Subscribes one handler to any event whose type is listed in types.
-    Subscription SubscribeTypes(const std::vector<EventType> &types,
-                                EventFn fn);
-    bool Cancel(SubscriptionId id);
+    EventToken Subscribe(EventType type, void *tag, EventHandler handler);
+    bool Unsubscribe(EventType type, void *tag);
+    void UnsubscribeTag(void *tag);
+    bool Cancel(EventTokenId id);
     EventStatus Publish(const Event &event);
     EventStatus Post(Loop *loop, const Event &event);
     EventStats GetStats() const;
@@ -114,25 +113,25 @@ struct BusOptions {
     LoopOptions loop;
 };
 
-// Owns the event loop plus dispatcher used for asynchronous event publishing.
-class Bus {
+// Owns the event loop plus event center used for asynchronous publishing.
+class EventBus {
 public:
-    Bus();
-    ~Bus();
+    EventBus();
+    ~EventBus();
 
-    Bus(const Bus &) = delete;
-    Bus &operator=(const Bus &) = delete;
+    EventBus(const EventBus &) = delete;
+    EventBus &operator=(const EventBus &) = delete;
 
     bool Start(const BusOptions &options = BusOptions());
     void Stop(StopMode mode = StopMode::kDiscard);
     Loop *loop() { return &loop_; }
-    Dispatcher *dispatcher() { return &dispatcher_; }
+    EventCenter *center() { return &center_; }
     EventStatus Publish(const Event &event);
     EventStatus PublishAsync(const Event &event);
 
 private:
     Loop loop_;
-    Dispatcher dispatcher_;
+    EventCenter center_;
     bool started_ = false;
 };
 

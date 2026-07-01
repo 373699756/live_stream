@@ -68,7 +68,7 @@ public:
 
 struct NetOptions {
     IConfig* config = nullptr;
-    event::Dispatcher* event = nullptr;
+    event::EventCenter* event = nullptr;
     ILogger* logger = nullptr;
     INetPlatform* platform = nullptr;
     std::string default_ifname = "eth0";

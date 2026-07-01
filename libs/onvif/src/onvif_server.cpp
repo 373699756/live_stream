@@ -33,7 +33,7 @@ public:
           net_io_(Runtime::NetIo()),
           net_loop_(net_loop),
           auth_(Runtime::Auth()),
-          event_(Runtime::Event()),
+          event_(Runtime::EventCenter()),
           system_(system),
           time_(time),
           device_(device),
@@ -361,7 +361,7 @@ private:
         event::Event request_event;
         request_event.type = event::EventType::kOnvifRequestReceived;
         request_event.source = kOnvifServerName;
-        request_event.message = onvif::ActionName(action);
+        request_event.msg = onvif::ActionName(action);
         static_cast<void>(event_->Publish(request_event));
     }
 
@@ -400,7 +400,7 @@ private:
     INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     IAuth *auth_ = nullptr;
-    event::Dispatcher *event_ = nullptr;
+    event::EventCenter *event_ = nullptr;
     ISystem *system_ = nullptr;
     ITime *time_ = nullptr;
     DeviceMedia *device_ = nullptr;

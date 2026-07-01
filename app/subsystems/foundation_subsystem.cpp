@@ -114,7 +114,7 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         Stop();
         return false;
     }
-    event_.reset(new event::Bus());
+    event_.reset(new event::EventBus());
     if (!event_ || !event_->Start()) {
         Error("app", "Start event failed");
         Stop();
@@ -145,7 +145,7 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         return false;
     }
     if (!Runtime::InstallLogger(logger_.get()) ||
-        !Runtime::InstallEvent(event_->dispatcher()) ||
+        !Runtime::InstallEventCenter(event_->center()) ||
         !Runtime::InstallAuth(auth_.get())) {
         Error("app", "Install runtime foundation services failed");
         Stop();

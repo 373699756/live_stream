@@ -449,7 +449,7 @@ private:
         event.type = event::EventType::kNetworkChanged;
         event.source = NetworkName();
         event.target = ifname;
-        event.message = "interface_config_changed";
+        event.msg = "interface_config_changed";
         static_cast<void>(options_.event->Publish(event));
     }
 

@@ -20,7 +20,7 @@ class Executor;
 namespace live_stream {
 
 namespace event {
-class Dispatcher;
+class EventCenter;
 }  // namespace event
 
 class IRtspSessionReader;
@@ -51,7 +51,7 @@ struct HttpMediaRefs {
 struct HttpStreamingRefs {
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
-    event::Dispatcher *event = nullptr;
+    event::EventCenter *event = nullptr;
 };
 
 class HttpImpl : public IHttp,

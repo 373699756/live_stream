@@ -14,23 +14,23 @@
 ```mermaid
 flowchart LR
   Publishers[modules] --> Event[event]
-  Event --> Dispatcher[Dispatcher]
-  Dispatcher --> Handlers[module handlers]
-  Bus[Bus] --> Loop[Loop]
+  Event --> EventCenter[EventCenter]
+  EventCenter --> Handlers[module handlers]
+  EventBus[EventBus] --> Loop[Loop]
   Loop --> Timers[timers]
   Executor[Executor] --> Tasks[task workers]
   ConfigFiles[configs/default_config.json + business_config.json] --> Config[IConfig]
   Modules[ConfigScope callbacks] --> Config
   AI[ai] --> Alarm[IAlarm]
   HTTP[http alarm handlers] --> Alarm
-  Alarm --> Dispatcher
+  Alarm --> EventCenter
 ```
 
 ## 核心职责
 
-- 提供 `Dispatcher::Subscribe`、`SubscribeTypes`、RAII `Subscription`、
-  `Publish` 和 `GetStats`。
-- 提供 `Bus` 组合 `Loop + Dispatcher`，用于异步发布事件。
+- 提供 `EventCenter::Subscribe`、`UnsubscribeTag`、RAII `EventToken`、
+  `Publish`、`Post` 和 `GetStats`。
+- 提供 `EventBus` 组合 `Loop + EventCenter`，用于异步发布事件。
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
 - 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
   绑定任务/timer 生命周期。
@@ -40,7 +40,7 @@ flowchart LR
   `ConfigScope` verify/apply 调用顺序。
 - 提供 `IAlarm` 轻量告警状态中心，负责告警规则、输入、当前状态、
   `kAlarmOn` / `kAlarmOff` 发布和操作日志记录。
-- 统一事件类型和轻量 payload 字段：`source`、`target`、`message`、`value`、
+- 统一事件类型和轻量 payload 字段：`source`、`target`、`msg`、`value`、
   `timestamp_ms`、`level`。
 
 ## 接口归属
@@ -50,7 +50,7 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 `multi_reader_queue.h`，配置中心入口保留为 `config.h`，告警入口保留为
 `alarm.h`。事件 payload 归 `event` 文档维护：
 
-| EventType | source | target | message | value |
+| EventType | source | target | msg | value |
 | --- | --- | --- | --- | ---: |
 | `kConfigChanged` | 发布模块 | 配置 scope | 可读变更说明 | 保留为 0 |
 | `kMediaPipelineStarted` / `kMediaPipelineStopped` | `device` | stream 或 pipeline | 状态说明 | 保留为 0 |
@@ -70,6 +70,15 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 
 payload 只承载轻量元数据。媒体帧、图片、升级包、凭据、HTTP body、大 JSON 和指针不能
 通过 event payload 传递；需要详细数据时，handler 应通过拥有模块的查询接口读取。
+
+`EventCenter` 按 `EventType` 分桶保存 listener。`Publish()` 只快照目标类型的 handler，
+不会扫描所有订阅；handler 在发布线程同步执行，耗时工作必须转投拥有模块队列。
+`tag` 用于模块 stop 或连接 close 时批量取消同一拥有者的订阅，常规连接级订阅仍优先
+持有 `EventToken` 做 RAII 取消。
+
+HTTP SSE 入口 `/api/events` 是订阅推送，不是轮询。后端按 SSE `event:` 名称推送，
+JSON payload 字段使用 `msg`；前端 `EventSource` 监听已发布的事件名并在收到推送后刷新
+对应视图。
 
 `MultiReaderQueue<T, kCapacity>` 只提供固定容量、frame/bytes 双上限、
 sequence 读取和覆盖旧数据的基础能力。它不加锁、不调用 handler、不知道 `EventType`，
@@ -97,8 +106,8 @@ sequence 读取和覆盖旧数据的基础能力。它不加锁、不调用 hand
 handler 必须轻量。需要耗时业务时，handler 应投递到自己的任务队列，不能阻塞
 发布线程或 event loop。
 
-`Dispatcher::Publish()` 是同步调用，返回 `EventStatus`；需要跨线程异步事件时使用
-`Bus::PublishAsync()` 或 `Dispatcher::Post(loop, event)`。`Loop` 和 `Executor`
+`EventCenter::Publish()` 是同步调用，返回 `EventStatus`；需要跨线程异步事件时使用
+`EventBus::PublishAsync()` 或 `EventCenter::Post(loop, event)`。`Loop` 和 `Executor`
 队列满时返回 `EventStatus::kQueueFull`，调用方必须按业务语义丢弃、重试或降级。
 
 `EventStats` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。

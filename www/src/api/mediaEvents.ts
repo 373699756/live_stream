@@ -2,7 +2,7 @@ export interface MediaEvent {
     type: string;
     source: string;
     target: string;
-    message: string;
+    msg: string;
     value: number;
     timestamp_ms: number;
     level: number;
@@ -21,6 +21,9 @@ export function openMediaEvents(
     };
 
     source.addEventListener('media_status_changed', handleMsg);
+    source.addEventListener('stream_started', handleMsg);
+    source.addEventListener('stream_stopped', handleMsg);
+    source.addEventListener('net_pressure_changed', handleMsg);
     source.addEventListener('alarm_on', handleMsg);
     source.addEventListener('alarm_off', handleMsg);
     source.onmessage = handleMsg;

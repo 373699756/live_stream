@@ -996,18 +996,18 @@ private:
     }
 
     void PublishProgressChanged() {
-        event::Dispatcher* event_bus = options_.event;
-        if (event_bus == nullptr) {
+        event::EventCenter* event_center = options_.event;
+        if (event_center == nullptr) {
             return;
         }
         UpgradeInfo upgrade_info = GetUpgradeInfo();
         event::Event progress_event;
         progress_event.type = event::EventType::kUpgradeProgressChanged;
         progress_event.source = kModuleName;
-        progress_event.message = upgrade_info.current_stage;
+        progress_event.msg = upgrade_info.current_stage;
         progress_event.value =
             static_cast<int32_t>(upgrade_info.progress_percent);
-        static_cast<void>(event_bus->Publish(progress_event));
+        static_cast<void>(event_center->Publish(progress_event));
     }
 
     void RecordAudit(const live_stream::RequestContext& context,

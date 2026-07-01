@@ -347,10 +347,10 @@ export function useMediaStreamsInfo({
             eventSource = openMediaEvents((event) => {
                 const readyChanged =
                     event.target.endsWith('.ready') &&
-                    event.message === 'changed';
+                    event.msg === 'changed';
                 const firstFrame =
                     event.target.endsWith('.frame') &&
-                    event.message === 'first';
+                    event.msg === 'first';
                 if (
                     event.type === 'media_status_changed' &&
                     (readyChanged || firstFrame)

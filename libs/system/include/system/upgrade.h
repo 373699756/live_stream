@@ -87,7 +87,7 @@ public:
 
 struct UpgradeOptions {
     IConfig* config = nullptr;
-    event::Dispatcher* event = nullptr;
+    event::EventCenter* event = nullptr;
     ILogger* logger = nullptr;
     IUpgradePlatform* platform = nullptr;
     uint64_t max_package_size_bytes = 32ULL * 1024ULL * 1024ULL;

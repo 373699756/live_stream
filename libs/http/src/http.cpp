@@ -238,7 +238,7 @@ void HttpImpl::InitializeHandlers(INetwork *network,
     const HttpStreamingRefs streaming_refs = {
         device,
         media_streams,
-        Runtime::Event(),
+        Runtime::EventCenter(),
     };
     ConfigureCloseCallback(media_streams);
     InitializeControlHandlers(control_refs);
@@ -258,8 +258,8 @@ void HttpImpl::ConfigureCloseCallback(MediaStreams *media_streams) {
             (void)media_streams->DetachMjpegClient(client.id);
         }
         if (client.type == HttpMediaClientType::kEventStream &&
-            client.event_subscription != nullptr) {
-            client.event_subscription->Cancel();
+            client.event_stream_subscription != nullptr) {
+            client.event_stream_subscription->Cancel();
         }
     });
 }

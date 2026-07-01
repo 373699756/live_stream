@@ -140,7 +140,7 @@ public:
     StreamingHttpHandler(HttpAccess *access, HttpMediaWriter *writer,
                          DeviceMedia *device,
                          MediaStreams *media_streams,
-                         event::Dispatcher *event)
+                         event::EventCenter *event)
         : access_(access), writer_(writer), device_(device), media_streams_(media_streams), event_(event) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
@@ -224,33 +224,38 @@ private:
             event::EventType::kAlarmOn,
             event::EventType::kAlarmOff,
         };
-        event::Subscription subscription = event_->SubscribeTypes(
-            event_types,
-            [writer = writer_, connection_id](const event::Event &event) {
-                if (writer == nullptr) {
-                    return;
-                }
-                const std::string msg = BuildEventStreamMessage(event);
-                // SSE 推送失败说明 TCP 队列关闭或客户端过慢，直接关连接，
-                // 后续 HTTP close callback 会取消订阅。
-                if (!writer->EnqueueStreamingChunk(
-                        connection_id,
-                        reinterpret_cast<const uint8_t *>(msg.data()),
-                        msg.size())) {
-                    writer->CloseConnection(connection_id);
-                }
-            });
-        if (!subscription.valid()) {
-            return CloseStreamingConnection(writer_, connection_id);
+        std::shared_ptr<HttpMediaEventStreamSubscription> subscription_owner(
+            new HttpMediaEventStreamSubscription());
+        subscription_owner->tokens.reserve(event_types.size());
+        for (event::EventType event_type : event_types) {
+            event::EventToken token = event_->Subscribe(
+                event_type, subscription_owner.get(),
+                [writer = writer_, connection_id](const event::Event &event) {
+                    if (writer == nullptr) {
+                        return;
+                    }
+                    const std::string msg = BuildEventStreamMessage(event);
+                    // SSE 推送失败说明 TCP 队列关闭或客户端过慢，直接关连接，
+                    // 后续 HTTP close callback 会取消订阅。
+                    if (!writer->EnqueueStreamingChunk(
+                            connection_id,
+                            reinterpret_cast<const uint8_t *>(msg.data()),
+                            msg.size())) {
+                        writer->CloseConnection(connection_id);
+                    }
+                });
+            if (!token.valid()) {
+                subscription_owner->Cancel();
+                return CloseStreamingConnection(writer_, connection_id);
+            }
+            subscription_owner->tokens.push_back(std::move(token));
         }
-        std::shared_ptr<event::Subscription> subscription_owner(
-            new event::Subscription(std::move(subscription)));
         HttpMediaClientHandle client;
         client.type = HttpMediaClientType::kEventStream;
         client.id = 0;
-        client.event_subscription = subscription_owner;
+        client.event_stream_subscription = subscription_owner;
         client.stream_id = StreamId::kMain;
-        // AttachStreamClient 把 event subscription 交给 HTTP session，
+        // AttachStreamClient 把 SSE subscription 交给 HTTP session，
         // 连接异常关闭时才能从统一 close path 解除订阅。
         if (!writer_->AttachStreamClient(connection_id, client)) {
             subscription_owner->Cancel();
@@ -587,7 +592,7 @@ private:
     HttpMediaWriter *writer_ = nullptr;
     DeviceMedia *device_ = nullptr;
     MediaStreams *media_streams_ = nullptr;
-    event::Dispatcher *event_ = nullptr;
+    event::EventCenter *event_ = nullptr;
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(

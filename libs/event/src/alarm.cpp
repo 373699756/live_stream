@@ -195,7 +195,7 @@ event::Event MakeAlarmEvent(event::EventType type, AlarmSource source,
     event.type = type;
     event.source = "alarm";
     event.target = AlarmSourceToString(source);
-    event.message = msg;
+    event.msg = msg;
     event.value = value;
     event.timestamp_ms = infra::Time::SystemTimeMillis();
     event.level = level;

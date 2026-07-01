@@ -9,7 +9,7 @@ std::mutex g_runtime_mutex;
 ILogger *g_logger = nullptr;
 IConfig *g_config = nullptr;
 IAuth *g_auth = nullptr;
-event::Dispatcher *g_event = nullptr;
+event::EventCenter *g_event_center = nullptr;
 INetIo *g_net_io = nullptr;
 
 template <typename T>
@@ -39,8 +39,8 @@ bool Runtime::InstallAuth(IAuth *auth) {
     return InstallPointer(auth, &g_auth);
 }
 
-bool Runtime::InstallEvent(event::Dispatcher *event) {
-    return InstallPointer(event, &g_event);
+bool Runtime::InstallEventCenter(event::EventCenter *event_center) {
+    return InstallPointer(event_center, &g_event_center);
 }
 
 bool Runtime::InstallNetIo(INetIo *net_io) {
@@ -62,9 +62,9 @@ IAuth *Runtime::Auth() {
     return g_auth;
 }
 
-event::Dispatcher *Runtime::Event() {
+event::EventCenter *Runtime::EventCenter() {
     std::lock_guard<std::mutex> guard(g_runtime_mutex);
-    return g_event;
+    return g_event_center;
 }
 
 INetIo *Runtime::NetIo() {
@@ -82,7 +82,7 @@ void Runtime::ClearNetIo(INetIo *net_io) {
 void Runtime::Clear() {
     std::lock_guard<std::mutex> guard(g_runtime_mutex);
     g_net_io = nullptr;
-    g_event = nullptr;
+    g_event_center = nullptr;
     g_auth = nullptr;
     g_config = nullptr;
     g_logger = nullptr;

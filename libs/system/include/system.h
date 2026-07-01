@@ -56,7 +56,7 @@ public:
 
 struct SystemOptions {
     IConfig* config = nullptr;
-    event::Dispatcher* event = nullptr;
+    event::EventCenter* event = nullptr;
     ILogger* logger = nullptr;
     ISystemPlatform* platform = nullptr;
     uint32_t heartbeat_timeout_ms = 5000;

@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 
@@ -56,10 +57,21 @@ enum class HttpStreamingRequestResult {
     kFailed,
 };
 
+struct HttpMediaEventStreamSubscription {
+    void Cancel() {
+        for (event::EventToken &event_token : tokens) {
+            event_token.Cancel();
+        }
+        tokens.clear();
+    }
+
+    std::vector<event::EventToken> tokens;
+};
+
 struct HttpMediaClientHandle {
     HttpMediaClientType type = HttpMediaClientType::kNone;
     uint64_t id = 0;
-    std::shared_ptr<event::Subscription> event_subscription;
+    std::shared_ptr<HttpMediaEventStreamSubscription> event_stream_subscription;
     StreamId stream_id = StreamId::kMain;
 };
 

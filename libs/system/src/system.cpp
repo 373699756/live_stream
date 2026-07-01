@@ -285,7 +285,7 @@ private:
         event::Event event;
         event.type = event::EventType::kSystemInfoChanged;
         event.source = "system";
-        event.message = msg;
+        event.msg = msg;
         static_cast<void>(options_.event->Publish(event));
     }
 

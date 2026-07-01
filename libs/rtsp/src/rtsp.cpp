@@ -81,7 +81,7 @@ public:
           net_io_(Runtime::NetIo()),
           net_loop_(net_loop),
           auth_(Runtime::Auth()),
-          event_(Runtime::Event()),
+          event_(Runtime::EventCenter()),
           media_streams_(MediaSourceRegistry::Streams()),
           rtp_sender_(options_.rtp_mtu_bytes),
           rtsp_auth_(auth_, *this),
@@ -891,7 +891,7 @@ private:
     INetIo* net_io_ = nullptr;
     event::Loop* net_loop_ = nullptr;
     IAuth* auth_ = nullptr;
-    event::Dispatcher* event_ = nullptr;
+    event::EventCenter* event_ = nullptr;
     MediaStreams* media_streams_ = nullptr;
     RtspRtpSender rtp_sender_;
     RtspAuth rtsp_auth_;

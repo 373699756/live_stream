@@ -9,7 +9,7 @@ non-owning 指针。
 ## 核心职责
 
 - `Runtime` 保存基础服务入口：`ILogger`、`IConfig`、`IAuth`、
-  `event::Dispatcher` 和 `INetIo`。
+  `event::EventCenter` 和 `INetIo`。
 - `ServiceRegistry` 保存协议只读视图：RTSP、WebRTC、ONVIF 和 HTTP streaming
   session reader。
 - 提供显式 `Install/Register` 和 `Clear/Unregister`，由 app 启停流程按生命周期调用。

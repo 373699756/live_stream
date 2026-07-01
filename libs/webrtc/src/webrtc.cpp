@@ -73,7 +73,7 @@ public:
           media_streams_(MediaSourceRegistry::Streams()),
           net_io_(Runtime::NetIo()),
           net_loop_(net_loop),
-          event_(Runtime::Event()),
+          event_(Runtime::EventCenter()),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         {
@@ -970,7 +970,7 @@ private:
         event::Event webrtc_event;
         webrtc_event.source = Webrtc::Name();
         webrtc_event.target = peer.peer_id;
-        webrtc_event.message = msg;
+        webrtc_event.msg = msg;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             webrtc_event.value =
@@ -999,7 +999,7 @@ private:
     MediaStreams *media_streams_ = nullptr;
     INetIo *net_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
-    event::Dispatcher *event_ = nullptr;
+    event::EventCenter *event_ = nullptr;
     WebrtcPhase phase_ = WebrtcPhase::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;

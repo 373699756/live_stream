@@ -64,7 +64,7 @@ public:
 
 struct TimeOptions {
     IConfig* config = nullptr;
-    event::Dispatcher* event = nullptr;
+    event::EventCenter* event = nullptr;
     ILogger* logger = nullptr;
     ITimePlatform* platform = nullptr;
     std::string default_timezone = "UTC";

@@ -31,7 +31,7 @@ Json BuildEventJson(const event::Event &event,
     data["type"] = event_type_name;
     data["source"] = event.source;
     data["target"] = event.target;
-    data["message"] = event.message;
+    data["msg"] = event.msg;
     data["value"] = event.value;
     data["timestamp_ms"] = event.timestamp_ms != 0
                                ? event.timestamp_ms
@@ -64,7 +64,7 @@ std::string BuildEventStreamHello() {
     hello.type = event::EventType::kMediaStatusChanged;
     hello.source = "http";
     hello.target = "events";
-    hello.message = "connected";
+    hello.msg = "connected";
     return BuildEventStreamMessage(hello);
 }
 
