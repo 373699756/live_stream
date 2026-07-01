@@ -271,7 +271,7 @@ int main() {
 
     live_stream::HttpServerRefs refs;
     refs.socket_io = &socket_io;
-    refs.net_loop = socket_io.DefaultLoop();
+    refs.socket_loop = socket_io.DefaultLoop();
     live_stream::HttpServer server(options, refs, &handler);
     if (!server.Start()) {
         return 1;
