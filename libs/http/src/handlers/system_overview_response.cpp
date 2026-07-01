@@ -7,9 +7,12 @@
 #include "config.h"
 #include "device.h"
 #include "logger.h"
+#include "media/media_source_registry.h"
 #include "media/media_streams.h"
 #include "onvif_server.h"
+#include "runtime.h"
 #include "rtsp.h"
+#include "service_registry.h"
 #include "system.h"
 #include "system/network.h"
 #include "system/time.h"
@@ -60,10 +63,22 @@ void AddModule(Json *modules, const char *name, bool running) {
 }  // namespace
 
 Json BuildSystemOverviewJson(ISystem *system,
-                             const SystemOverviewSources &sources) {
+                             ITime *time,
+                             INetwork *network,
+                             IAlarm *alarm,
+                             IUpgrade *upgrade,
+                             IAiReader *ai,
+                             DeviceMedia *device) {
     Json root = Json::object();
     DeviceInfo device_info;
     SystemInfo system_info;
+    ILogger *logger = Runtime::Logger();
+    IConfig *config = Runtime::Config();
+    IAuth *auth = Runtime::Auth();
+    IRtspSessionReader *rtsp_session_reader = ServiceRegistry::Rtsp();
+    IOnvifReader *onvif_reader = ServiceRegistry::Onvif();
+    IWebrtcReader *webrtc_reader = ServiceRegistry::Webrtc();
+    MediaStreams *media_streams = MediaSourceRegistry::Streams();
     if (system != nullptr) {
         device_info = system->GetDeviceInfo();
         system_info = system->GetSystemInfo();
@@ -84,49 +99,41 @@ Json BuildSystemOverviewJson(ISystem *system,
     root["temperature"] = system_info.temperature_celsius;
 
     Json modules = Json::array();
-    AddModule(&modules, "logger",
-              sources.logger != nullptr && sources.logger->IsStarted());
-    AddModule(&modules, "config",
-              sources.config != nullptr && sources.config->IsStarted());
-    AddModule(&modules, "auth",
-              sources.auth != nullptr && sources.auth->IsStarted());
+    AddModule(&modules, "logger", logger != nullptr && logger->IsStarted());
+    AddModule(&modules, "config", config != nullptr && config->IsStarted());
+    AddModule(&modules, "auth", auth != nullptr && auth->IsStarted());
     AddModule(&modules, "system",
               system != nullptr && system->IsStarted());
-    AddModule(&modules, "time",
-              sources.time != nullptr && sources.time->IsStarted());
+    AddModule(&modules, "time", time != nullptr && time->IsStarted());
     AddModule(&modules, "system.network",
-              sources.network != nullptr && sources.network->IsStarted());
-    AddModule(&modules, "alarm",
-              sources.alarm != nullptr && sources.alarm->IsStarted());
+              network != nullptr && network->IsStarted());
+    AddModule(&modules, "alarm", alarm != nullptr && alarm->IsStarted());
     AddModule(&modules, "upgrade",
-              sources.upgrade != nullptr && sources.upgrade->IsStarted());
+              upgrade != nullptr && upgrade->IsStarted());
     AddModule(&modules, "rtsp",
-              sources.rtsp_session_reader != nullptr &&
-                  sources.rtsp_session_reader->LocalAddress().port != 0);
+              rtsp_session_reader != nullptr &&
+                  rtsp_session_reader->LocalAddress().port != 0);
     AddModule(&modules, "onvif",
-              sources.onvif_reader != nullptr &&
-                  sources.onvif_reader->IsStarted());
+              onvif_reader != nullptr && onvif_reader->IsStarted());
     AddModule(&modules, "http", true);
-    AddModule(&modules, "device",
-              sources.device != nullptr && sources.device->IsStarted());
-    if (IsAiConfigEnabled(sources.config)) {
-        AddModule(&modules, "ai", IsAiHealthy(sources.ai));
+    AddModule(&modules, "device", device != nullptr && device->IsStarted());
+    if (IsAiConfigEnabled(config)) {
+        AddModule(&modules, "ai", IsAiHealthy(ai));
     }
     SnapshotInfo snapshot_info;
-    if (sources.device != nullptr) {
-        snapshot_info = sources.device->GetSnapshotInfo();
+    if (device != nullptr) {
+        snapshot_info = device->GetSnapshotInfo();
     }
-    AddModule(&modules, "snapshot",
-              sources.device != nullptr && snapshot_info.enabled);
+    AddModule(&modules, "snapshot", device != nullptr && snapshot_info.enabled);
     bool webrtc_running = false;
-    if (sources.webrtc_reader != nullptr) {
-        const WebrtcStats stats = sources.webrtc_reader->GetStats();
+    if (webrtc_reader != nullptr) {
+        const WebrtcStats stats = webrtc_reader->GetStats();
         webrtc_running = stats.enabled && stats.signaling_ready;
     }
     AddModule(&modules, "webrtc", webrtc_running);
     bool media_running = false;
-    if (sources.media_streams != nullptr) {
-        media_running = sources.media_streams->GetStreamStats().enabled;
+    if (media_streams != nullptr) {
+        media_running = media_streams->GetStreamStats().enabled;
     }
     AddModule(&modules, "media", media_running);
     root["modules"] = modules;

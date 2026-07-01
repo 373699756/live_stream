@@ -30,7 +30,12 @@ public:
     explicit SystemHttpHandler(const SystemHandlerRefs &refs)
         : access_(refs.access),
           system_(refs.system),
-          overview_(refs.overview) {}
+          time_(refs.time),
+          network_(refs.network),
+          alarm_(refs.alarm),
+          upgrade_(refs.upgrade),
+          ai_(refs.ai),
+          device_(refs.device) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddExactRoute(HttpMethod::kGet, "/api/system/status",
@@ -56,8 +61,10 @@ private:
             return auth_response;
         }
 
-        return JsonResponse(200,
-                            BuildSystemOverviewJson(system_, overview_));
+        return JsonResponse(
+            200,
+            BuildSystemOverviewJson(system_, time_, network_, alarm_,
+                                    upgrade_, ai_, device_));
     }
 
     HttpResponse HandleCapabilities(const HttpRequest &request) {
@@ -112,7 +119,12 @@ private:
 
     HttpAccess *access_ = nullptr;
     ISystem *system_ = nullptr;
-    SystemOverviewSources overview_;
+    ITime *time_ = nullptr;
+    INetwork *network_ = nullptr;
+    IAlarm *alarm_ = nullptr;
+    IUpgrade *upgrade_ = nullptr;
+    IAiReader *ai_ = nullptr;
+    DeviceMedia *device_ = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeSystemHandler(

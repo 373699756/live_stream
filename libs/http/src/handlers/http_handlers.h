@@ -18,7 +18,6 @@ class ITime;
 class IUpgrade;
 class ISystem;
 class IRtspSessionReader;
-class IOnvifReader;
 class DeviceMedia;
 class IAiReader;
 class IWebrtc;
@@ -60,26 +59,15 @@ struct AlarmHandlerRefs {
     IAlarm *alarm = nullptr;
 };
 
-struct SystemOverviewSources {
-    ILogger *logger = nullptr;
-    IConfig *config = nullptr;
-    IAuth *auth = nullptr;
+struct SystemHandlerRefs {
+    HttpAccess *access = nullptr;
+    ISystem *system = nullptr;
     ITime *time = nullptr;
     INetwork *network = nullptr;
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
-    IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifReader *onvif_reader = nullptr;
-    DeviceMedia *device = nullptr;
     IAiReader *ai = nullptr;
-    IWebrtcReader *webrtc_reader = nullptr;
-    MediaStreams *media_streams = nullptr;
-};
-
-struct SystemHandlerRefs {
-    HttpAccess *access = nullptr;
-    ISystem *system = nullptr;
-    SystemOverviewSources overview;
+    DeviceMedia *device = nullptr;
 };
 
 struct MediaHandlerRefs {

@@ -224,12 +224,8 @@ void HttpImpl::InitializeHandlers(INetwork *network,
         alarm,
         upgrade,
         system,
-        ServiceRegistry::Rtsp(),
-        ServiceRegistry::Onvif(),
         ai,
         device,
-        ServiceRegistry::Webrtc(),
-        media_streams,
     };
     const HttpMediaRefs media_refs = {
         Runtime::Config(),
@@ -244,7 +240,7 @@ void HttpImpl::InitializeHandlers(INetwork *network,
         media_streams,
         Runtime::Event(),
     };
-    ConfigureCloseCallback(control_refs.media_streams);
+    ConfigureCloseCallback(media_streams);
     InitializeControlHandlers(control_refs);
     InitializeMediaHandlers(media_refs);
     InitializeStreamingHandler(streaming_refs);
@@ -281,21 +277,8 @@ void HttpImpl::InitializeControlHandlers(
     handlers_.push_back(MakeTimeHandler({this, refs.time}));
     handlers_.push_back(MakeUpgradeHandler({this, refs.upgrade}));
     handlers_.push_back(MakeSystemHandler(
-        {this,
-         refs.system,
-         {refs.logger,
-          refs.config,
-          refs.auth,
-          refs.time,
-          refs.network,
-          refs.alarm,
-          refs.upgrade,
-          refs.rtsp_session_reader,
-          refs.onvif_reader,
-          refs.device,
-          refs.ai,
-          refs.webrtc_reader,
-          refs.media_streams}}));
+        {this, refs.system, refs.time, refs.network, refs.alarm,
+         refs.upgrade, refs.ai, refs.device}));
     handlers_.push_back(MakeAlarmHandler({this, refs.alarm}));
     handlers_.push_back(
         MakeAiHandler({this, refs.config, refs.ai, refs.device}));

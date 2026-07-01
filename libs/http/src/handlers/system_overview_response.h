@@ -1,13 +1,25 @@
 #ifndef LIVE_STREAM_HTTP_SRC_HANDLERS_SYSTEM_OVERVIEW_RESPONSE_H_
 #define LIVE_STREAM_HTTP_SRC_HANDLERS_SYSTEM_OVERVIEW_RESPONSE_H_
 
-#include "handlers/http_handlers.h"
 #include "json.h"
 
 namespace live_stream {
 
+class IAlarm;
+class IAiReader;
+class INetwork;
+class ISystem;
+class ITime;
+class IUpgrade;
+class DeviceMedia;
+
 Json BuildSystemOverviewJson(ISystem *system,
-                             const SystemOverviewSources &sources);
+                             ITime *time,
+                             INetwork *network,
+                             IAlarm *alarm,
+                             IUpgrade *upgrade,
+                             IAiReader *ai,
+                             DeviceMedia *device);
 
 }  // namespace live_stream
 

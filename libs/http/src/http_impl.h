@@ -23,6 +23,9 @@ namespace event {
 class Dispatcher;
 }  // namespace event
 
+class IRtspSessionReader;
+class IWebrtcReader;
+
 struct HttpControlRefs {
     IAuth *auth = nullptr;
     ILogger *logger = nullptr;
@@ -32,12 +35,8 @@ struct HttpControlRefs {
     IAlarm *alarm = nullptr;
     IUpgrade *upgrade = nullptr;
     ISystem *system = nullptr;
-    IRtspSessionReader *rtsp_session_reader = nullptr;
-    IOnvifReader *onvif_reader = nullptr;
     IAiReader *ai = nullptr;
     DeviceMedia *device = nullptr;
-    IWebrtcReader *webrtc_reader = nullptr;
-    MediaStreams *media_streams = nullptr;
 };
 
 struct HttpMediaRefs {
