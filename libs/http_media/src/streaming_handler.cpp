@@ -220,7 +220,7 @@ private:
             event::EventType::kMediaStatusChanged,
             event::EventType::kStreamStarted,
             event::EventType::kStreamStopped,
-            event::EventType::kNetPressureChanged,
+            event::EventType::kNetQueueChanged,
             event::EventType::kAlarmOn,
             event::EventType::kAlarmOff,
         };

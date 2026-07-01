@@ -108,9 +108,9 @@ void LeavePeerHostCallback(uintptr_t peer_host_id) {
 
 class NativeWebrtcPeerHost : public IWebrtcPeerHost {
 public:
-    NativeWebrtcPeerHost(INetIo *net_io, event::Loop *net_loop)
-        : net_io_(net_io),
-          net_loop_(net_loop),
+    NativeWebrtcPeerHost(ISocketIo *socket_io, event::Loop *socket_loop)
+        : socket_io_(socket_io),
+          net_loop_(socket_loop),
           peer_host_id_(AllocatePeerHostId()) {
         RegisterPeerHost(peer_host_id_, *this);
     }
@@ -121,7 +121,7 @@ public:
     }
 
     bool Available() const override {
-        return net_io_ != nullptr && net_loop_ != nullptr;
+        return socket_io_ != nullptr && net_loop_ != nullptr;
     }
 
     bool Start(const WebrtcOptions &options,
@@ -179,8 +179,8 @@ public:
             WebrtcSessionOfferContext context;
             context.options = options_;
             context.local_fingerprint = local_fingerprint_;
-            context.net_io = net_io_;
-            context.net_loop = net_loop_;
+            context.socket_io = socket_io_;
+            context.socket_loop = net_loop_;
             context.udp_callbacks.user = reinterpret_cast<void *>(peer_host_id_);
             context.udp_callbacks.on_read = &NativeWebrtcPeerHost::OnUdpPacket;
             context.next_port_offset = next_port_offset_;
@@ -321,7 +321,7 @@ public:
     void FillStats(WebrtcStats &stats) const override {
         std::lock_guard<std::mutex> guard(mutex_);
         stats.ice_ready = stats.ice_ready ||
-                          (net_io_ != nullptr && net_loop_ != nullptr);
+                          (socket_io_ != nullptr && net_loop_ != nullptr);
         stats.dtls_ready = stats.dtls_ready ||
                            !local_fingerprint_.value.empty();
         stats.srtp_ready = stats.srtp_ready || SrtpSession::Available();
@@ -338,7 +338,7 @@ private:
     }
 
     static void OnUdpPacket(void *user, UdpSocketId socket_id,
-                            NetAddress peer, const uint8_t *data,
+                            SocketAddress peer, const uint8_t *data,
                             size_t size) {
         if (user == nullptr) {
             return;
@@ -357,7 +357,7 @@ private:
     }
 
     static void DispatchUdpPacket(uintptr_t peer_host_id, UdpSocketId socket_id,
-                                  NetAddress peer, const uint8_t *data,
+                                  SocketAddress peer, const uint8_t *data,
                                   size_t size) {
         NativeWebrtcPeerHost *peer_host = EnterPeerHostCallback(peer_host_id);
         if (peer_host == nullptr) {
@@ -377,7 +377,7 @@ private:
         LeavePeerHostCallback(peer_host_id);
     }
 
-    void HandleUdpPacket(UdpSocketId socket_id, NetAddress peer,
+    void HandleUdpPacket(UdpSocketId socket_id, SocketAddress peer,
                          const uint8_t *data, size_t size) {
         if (data == nullptr || size == 0) {
             return;
@@ -395,7 +395,7 @@ private:
         }
     }
 
-    void HandleIcePacket(UdpSocketId socket_id, NetAddress peer,
+    void HandleIcePacket(UdpSocketId socket_id, SocketAddress peer,
                          const uint8_t *data, size_t size) {
         WebrtcPeerHostCallbacks callbacks;
         std::string peer_id;
@@ -555,7 +555,7 @@ private:
         }
     }
 
-    INetIo *net_io_ = nullptr;
+    ISocketIo *socket_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     uintptr_t peer_host_id_ = 0;
     mutable std::mutex mutex_;
@@ -569,10 +569,10 @@ private:
 }  // namespace
 
 std::unique_ptr<IWebrtcPeerHost> CreateWebrtcPeerHost(
-    INetIo *net_io,
-    event::Loop *net_loop) {
+    ISocketIo *socket_io,
+    event::Loop *socket_loop) {
     return std::unique_ptr<IWebrtcPeerHost>(
-        new NativeWebrtcPeerHost(net_io, net_loop));
+        new NativeWebrtcPeerHost(socket_io, socket_loop));
 }
 
 }  // namespace webrtc_internal

@@ -5,7 +5,7 @@
 #include "subsystems/protocol_refs.h"
 
 #include "http.h"
-#include "net.h"
+#include "socket_io.h"
 #include "net_stat.h"
 #include "onvif_server.h"
 #include "rtsp.h"
@@ -15,8 +15,8 @@ namespace live_stream {
 
 class FoundationSubsystem;
 
-event::LoopOptions BuildNetCallbackOptions();
-NetIoOptions BuildNetIoOptions(event::Loop *callback_loop);
+event::LoopOptions BuildSocketCallbackOptions();
+SocketIoOptions BuildSocketIoOptions(event::Loop *callback_loop);
 
 RtspOptions BuildRtspOptions(const AppConfig &app_config);
 

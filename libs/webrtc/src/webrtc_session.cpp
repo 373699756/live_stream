@@ -33,7 +33,7 @@ WebrtcSdpAnswerOptions BuildAnswerOptions(
     const DtlsFingerprint &local_fingerprint,
     const std::string &local_ice_ufrag,
     const std::string &local_ice_pwd,
-    const NetAddress &local_candidate) {
+    const SocketAddress &local_candidate) {
     WebrtcSdpAnswerOptions answer_options;
     answer_options.peer_id = peer.peer_id;
     answer_options.local_codec = peer.codec;
@@ -79,8 +79,8 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     const std::string local_ice_pwd = BuildLocalIcePassword(peer_.peer_id);
 
     WebrtcTransportStartOptions transport_options;
-    transport_options.net_io = context.net_io;
-    transport_options.net_loop = context.net_loop;
+    transport_options.socket_io = context.socket_io;
+    transport_options.socket_loop = context.socket_loop;
     transport_options.udp_callbacks = context.udp_callbacks;
     transport_options.peer_id = peer_.peer_id;
     transport_options.local_port_base = context.options.local_port_base;
@@ -94,7 +94,7 @@ bool WebrtcSession::HandleOffer(const std::string &offer_sdp,
     transport_options.on_dtls_timeout = context.on_dtls_timeout;
 
     std::unique_ptr<WebrtcTransport> transport(new WebrtcTransport());
-    NetAddress local_candidate;
+    SocketAddress local_candidate;
     uint32_t next_port_offset = context.next_port_offset;
     if (!transport->Start(transport_options, next_port_offset,
                           local_candidate)) {
@@ -147,7 +147,7 @@ bool WebrtcSession::MatchesSocket(UdpSocketId socket_id) const {
     return transport_ != nullptr && transport_->MatchesSocket(socket_id);
 }
 
-bool WebrtcSession::HandleIcePacket(NetAddress peer, const uint8_t *data,
+bool WebrtcSession::HandleIcePacket(SocketAddress peer, const uint8_t *data,
                                     size_t size, bool &connected_now) {
     return transport_ != nullptr &&
            transport_->HandleIcePacket(std::move(peer), data, size,

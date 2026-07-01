@@ -11,22 +11,22 @@
 namespace live_stream {
 namespace {
 
-event::Loop *RequireNetLoop(INetIo *net_io,
+event::Loop *RequireSocketLoop(ISocketIo *socket_io,
                             const char *owner_protocol) {
     const char *protocol =
         owner_protocol != nullptr ? owner_protocol : "unknown";
-    if (net_io == nullptr) {
-        Error("app", "Pick net loop failed protocol=%s", protocol);
+    if (socket_io == nullptr) {
+        Error("app", "Pick socket loop failed protocol=%s", protocol);
         return nullptr;
     }
 
-    event::Loop *loop = net_io->PickLoop();
+    event::Loop *loop = socket_io->PickLoop();
     if (loop != nullptr) {
         return loop;
     }
-    loop = net_io->DefaultLoop();
+    loop = socket_io->DefaultLoop();
     if (loop == nullptr) {
-        Error("app", "Pick net loop failed protocol=%s", protocol);
+        Error("app", "Pick socket loop failed protocol=%s", protocol);
     }
     return loop;
 }
@@ -50,35 +50,35 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     refs.device = device_refs;
     refs.media = media_refs;
 
-    if (!net_callback_loop_) {
-        net_callback_loop_.reset(new event::Loop());
+    if (!socket_callback_loop_) {
+        socket_callback_loop_.reset(new event::Loop());
     }
     const event::LoopOptions callback_loop_options =
-        BuildNetCallbackOptions();
-    if (!net_callback_loop_->Start(callback_loop_options)) {
-        Error("app", "Start net callback loop failed");
+        BuildSocketCallbackOptions();
+    if (!socket_callback_loop_->Start(callback_loop_options)) {
+        Error("app", "Start socket callback loop failed");
         Stop();
         return false;
     }
 
-    const NetIoOptions net_options =
-        BuildNetIoOptions(net_callback_loop_.get());
-    net_io_ = CreateNetIo(net_options);
-    if (!net_io_ || !net_io_->Start()) {
-        Error("app", "Start net io failed");
+    const SocketIoOptions socket_options =
+        BuildSocketIoOptions(socket_callback_loop_.get());
+    socket_io_ = CreateSocketIo(socket_options);
+    if (!socket_io_ || !socket_io_->Start()) {
+        Error("app", "Start socket io failed");
         Stop();
         return false;
     }
-    if (!Runtime::InstallNetIo(net_io_.get())) {
-        Error("app", "Install runtime net io failed");
+    if (!Runtime::InstallSocketIo(socket_io_.get())) {
+        Error("app", "Install runtime socket io failed");
         Stop();
         return false;
     }
-    refs.net_io = net_io_.get();
-    refs.rtsp_loop = RequireNetLoop(refs.net_io, "rtsp");
-    refs.webrtc_loop = RequireNetLoop(refs.net_io, "webrtc");
-    refs.onvif_loop = RequireNetLoop(refs.net_io, "onvif");
-    refs.http_loop = RequireNetLoop(refs.net_io, "http");
+    refs.socket_io = socket_io_.get();
+    refs.rtsp_loop = RequireSocketLoop(refs.socket_io, "rtsp");
+    refs.webrtc_loop = RequireSocketLoop(refs.socket_io, "webrtc");
+    refs.onvif_loop = RequireSocketLoop(refs.socket_io, "onvif");
+    refs.http_loop = RequireSocketLoop(refs.socket_io, "http");
     if (refs.rtsp_loop == nullptr ||
         refs.webrtc_loop == nullptr ||
         refs.onvif_loop == nullptr ||
@@ -232,13 +232,13 @@ void ProtocolSubsystem::Stop() {
     if (rtsp_) {
         rtsp_->Stop();
     }
-    if (net_io_) {
-        net_io_->Stop();
-        Runtime::ClearNetIo(net_io_.get());
-        net_io_.reset();
+    if (socket_io_) {
+        socket_io_->Stop();
+        Runtime::ClearSocketIo(socket_io_.get());
+        socket_io_.reset();
     }
-    if (net_callback_loop_) {
-        net_callback_loop_->Stop(event::StopMode::kDiscard);
+    if (socket_callback_loop_) {
+        socket_callback_loop_->Stop(event::StopMode::kDiscard);
     }
     http_.reset();
     net_stat_.reset();

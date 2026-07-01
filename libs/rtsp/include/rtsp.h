@@ -13,7 +13,7 @@
 namespace live_stream {
 
 class IAuth;
-class INetIo;
+class ISocketIo;
 
 enum class RtspTransportMode {
     kTcpInterleaved = 0,
@@ -126,7 +126,7 @@ public:
 
 std::unique_ptr<IRtsp> CreateRtsp(
     const RtspOptions& options,
-    event::Loop* net_loop);
+    event::Loop* socket_loop);
 
 class Rtsp {
 public:

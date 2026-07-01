@@ -39,7 +39,7 @@ const char *StaticStatusText(StaticFileStatus status) {
 }  // namespace
 
 HttpImpl::HttpImpl(const HttpOptions &options,
-                   event::Loop *net_loop,
+                   event::Loop *socket_loop,
                    INetwork *network,
                    ITime *time,
                    IAlarm *alarm,
@@ -51,7 +51,7 @@ HttpImpl::HttpImpl(const HttpOptions &options,
     : options_(options),
       server_(new HttpServer(
           options,
-          HttpServerRefs{Runtime::NetIo(), net_loop},
+          HttpServerRefs{Runtime::SocketIo(), socket_loop},
           this)) {
     InitializeHandlers(network, time, alarm, upgrade, system, ai, device,
                        webrtc);
@@ -446,7 +446,7 @@ HttpResponse HttpImpl::HandleStaticFile(const HttpRequest &request) {
 
 std::unique_ptr<IHttp>
 CreateHttp(const HttpOptions &options,
-           event::Loop *net_loop,
+           event::Loop *socket_loop,
            INetwork *network,
            ITime *time,
            IAlarm *alarm,
@@ -456,7 +456,7 @@ CreateHttp(const HttpOptions &options,
            DeviceMedia *device,
            IWebrtc *webrtc) {
     std::unique_ptr<HttpImpl> service(
-        new HttpImpl(options, net_loop, network, time, alarm, upgrade,
+        new HttpImpl(options, socket_loop, network, time, alarm, upgrade,
                      system, ai, device, webrtc));
     return std::unique_ptr<IHttp>(service.release());
 }

@@ -2,7 +2,7 @@
 
 #include "auth.h"
 #include "config.h"
-#include "net.h"
+#include "socket_io.h"
 #include "runtime.h"
 
 #include <arpa/inet.h>
@@ -148,11 +148,11 @@ size_t Count(const std::string& value, const std::string& needle) {
 }  // namespace
 
 int main() {
-    auto net_io = live_stream::CreateNetIo(live_stream::NetIoOptions{});
-    if (!net_io) {
+    auto socket_io = live_stream::CreateSocketIo(live_stream::SocketIoOptions{});
+    if (!socket_io) {
         return 1;
     }
-    if (!net_io->Start()) {
+    if (!socket_io->Start()) {
         return 1;
     }
 
@@ -168,11 +168,11 @@ int main() {
     options.control_executor_workers = 1;
 
     live_stream::Runtime::Clear();
-    (void)live_stream::Runtime::InstallNetIo(net_io.get());
+    (void)live_stream::Runtime::InstallSocketIo(socket_io.get());
     (void)live_stream::Runtime::InstallAuth(&auth);
     (void)live_stream::Runtime::InstallConfig(&config);
     auto http = live_stream::CreateHttp(
-        options, net_io->DefaultLoop(), nullptr, nullptr, nullptr,
+        options, socket_io->DefaultLoop(), nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr);
     if (!http || !http->Start()) {
         return 2;
@@ -206,7 +206,7 @@ int main() {
     const std::string response = ReadUntilClose(fd);
     close(fd);
     http->Stop();
-    net_io->Stop();
+    socket_io->Stop();
     live_stream::Runtime::Clear();
 
     if (Count(response, "HTTP/1.1 200 OK") != 2 ||

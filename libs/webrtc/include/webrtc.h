@@ -152,7 +152,7 @@ public:
 
 std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
-             event::Loop *net_loop);
+             event::Loop *socket_loop);
 
 class Webrtc {
 public:

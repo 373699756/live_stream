@@ -160,7 +160,7 @@ void AddAttribute(std::vector<uint8_t> *data, uint16_t type,
     }
 }
 
-void AddXorMappedAddress(std::vector<uint8_t> *data, const NetAddress &peer) {
+void AddXorMappedAddress(std::vector<uint8_t> *data, const SocketAddress &peer) {
     uint32_t parts[4] = {0, 0, 0, 0};
     size_t part_index = 0;
     size_t start = 0;
@@ -312,7 +312,7 @@ StunParseResult ParseStunBindingRequest(const uint8_t *data, size_t size,
 
 std::vector<uint8_t> BuildStunBindingSuccessResponse(
     const StunBindingRequest &request, const std::string &local_password,
-    const NetAddress &peer) {
+    const SocketAddress &peer) {
     std::vector<uint8_t> response;
     response.reserve(kStunHeaderSize + 40);
     Write16(&response, kBindingSuccessResponseType);

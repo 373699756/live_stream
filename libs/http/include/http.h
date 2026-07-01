@@ -154,7 +154,7 @@ public:
 
 std::unique_ptr<IHttp> CreateHttp(
     const HttpOptions &options,
-    event::Loop *net_loop,
+    event::Loop *socket_loop,
     INetwork *network,
     ITime *time,
     IAlarm *alarm,

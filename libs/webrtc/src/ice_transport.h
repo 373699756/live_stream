@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_SRC_ICE_TRANSPORT_H_
 #define LIVE_STREAM_WEBRTC_SRC_ICE_TRANSPORT_H_
 
-#include "net.h"
+#include "socket_io.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,8 +11,8 @@ namespace live_stream {
 namespace webrtc_internal {
 
 struct IceSelectedPair {
-    NetAddress local;
-    NetAddress remote;
+    SocketAddress local;
+    SocketAddress remote;
     uint32_t priority = 0;
     bool nominated = false;
 };
@@ -25,29 +25,29 @@ public:
     IceTransport(const IceTransport &) = delete;
     IceTransport &operator=(const IceTransport &) = delete;
 
-    bool Start(INetIo *net_io, event::Loop *net_loop,
+    bool Start(ISocketIo *socket_io, event::Loop *socket_loop,
                const UdpCallbacks &callbacks, const std::string &listen_ip,
                uint16_t port,
                std::string local_ufrag, std::string local_password);
     void Stop();
 
-    bool HandleUdpPacket(NetAddress peer, const uint8_t *data, size_t size,
+    bool HandleUdpPacket(SocketAddress peer, const uint8_t *data, size_t size,
                          bool &connected_now);
     bool SendToSelected(const uint8_t *data, size_t size);
 
     bool started() const { return socket_id_ != 0; }
     bool connected() const { return selected_pair_.remote.port != 0; }
     UdpSocketId socket_id() const { return socket_id_; }
-    NetAddress local_address() const { return local_address_; }
+    SocketAddress local_address() const { return local_address_; }
     const std::string &local_ufrag() const { return local_ufrag_; }
     const std::string &local_password() const { return local_password_; }
     bool selected_pair(IceSelectedPair *pair) const;
 
 private:
     std::string peer_id_;
-    INetIo *net_io_ = nullptr;
+    ISocketIo *socket_io_ = nullptr;
     UdpSocketId socket_id_ = 0;
-    NetAddress local_address_;
+    SocketAddress local_address_;
     std::string local_ufrag_;
     std::string local_password_;
     IceSelectedPair selected_pair_;

@@ -6,7 +6,7 @@ INFRA_LIB := $(BUILD_DIR)/lib/libinfra.a
 EVENT_LIB := $(BUILD_DIR)/lib/libevent.a
 RUNTIME_LIB := $(BUILD_DIR)/lib/libruntime.a
 AUTH_LIB := $(BUILD_DIR)/lib/libauth.a
-NET_LIB := $(BUILD_DIR)/lib/libnet.a
+SOCKET_IO_LIB := $(BUILD_DIR)/lib/libsocket_io.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice.a
 MEDIA_STREAMS_LIB := $(BUILD_DIR)/lib/libmedia.a
 MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
@@ -23,7 +23,7 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/hisi_vendor/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/socket_io/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/onvif/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/rtsp/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/system/include
@@ -34,11 +34,11 @@ CXXFLAGS += -Isrc
 WEBRTC_LIB := $(BUILD_DIR)/lib/libwebrtc.a
 
 EXTRA_TEST_DEPS := $(EVENT_LIB) $(RUNTIME_LIB) $(INFRA_LIB) \
-	$(AUTH_LIB) $(NET_LIB) \
+	$(AUTH_LIB) $(SOCKET_IO_LIB) \
 	$(MEDIA_LIB) $(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
 	$(SYSTEM_LIB) \
 	$(WEBRTC_LIB) $(HTTP_MEDIA_LIB) $(ONVIF_LIB)
-EXTRA_TEST_LIBS := $(EVENT_LIB) $(RUNTIME_LIB) $(AUTH_LIB) $(NET_LIB) $(WEBRTC_LIB) \
+EXTRA_TEST_LIBS := $(EVENT_LIB) $(RUNTIME_LIB) $(AUTH_LIB) $(SOCKET_IO_LIB) $(WEBRTC_LIB) \
 	$(HTTP_MEDIA_LIB) $(MEDIA_STREAMS_LIB) \
 	$(SYSTEM_LIB) $(ONVIF_LIB) \
 	$(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(INFRA_LIB)
@@ -55,8 +55,8 @@ $(RUNTIME_LIB):
 $(AUTH_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../auth all
 
-$(NET_LIB): $(INFRA_LIB)
-	$(MAKE) -C ../net all
+$(SOCKET_IO_LIB): $(INFRA_LIB)
+	$(MAKE) -C ../socket_io all
 
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../device all
@@ -70,10 +70,10 @@ $(MEDIA_CODEC_LIB): $(INFRA_LIB)
 $(SYSTEM_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../system all
 
-$(ONVIF_LIB): $(INFRA_LIB) $(NET_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB)
+$(ONVIF_LIB): $(INFRA_LIB) $(SOCKET_IO_LIB) $(MEDIA_LIB) $(MEDIA_CODEC_LIB) $(SYSTEM_LIB)
 	$(MAKE) -C ../onvif all
 
-$(WEBRTC_LIB): $(MEDIA_LIB) $(NET_LIB)
+$(WEBRTC_LIB): $(MEDIA_LIB) $(SOCKET_IO_LIB)
 	$(MAKE) -C ../webrtc all
 
 $(HTTP_MEDIA_LIB): $(MEDIA_STREAMS_LIB) $(WEBRTC_LIB)

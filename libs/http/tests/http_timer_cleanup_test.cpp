@@ -1,6 +1,6 @@
 #include "http_server.h"
 
-#include "net.h"
+#include "socket_io.h"
 
 #include <cstdint>
 #include <string>
@@ -30,7 +30,7 @@ public:
     }
 };
 
-class FakeNetIo : public live_stream::INetIo {
+class FakeSocketIo : public live_stream::ISocketIo {
 public:
     struct Timer {
         live_stream::event::TimerId id = 0;
@@ -40,7 +40,7 @@ public:
 
     class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeLoop(FakeNetIo* engine) : engine_(engine) {}
+        explicit FakeLoop(FakeSocketIo* engine) : engine_(engine) {}
 
         live_stream::event::EventStatus Post(
             live_stream::event::Task task) override {
@@ -76,10 +76,10 @@ public:
         bool IsCurrentThread() const override { return true; }
 
     private:
-        FakeNetIo* engine_ = nullptr;
+        FakeSocketIo* engine_ = nullptr;
     };
 
-    FakeNetIo() : loop_(this) {}
+    FakeSocketIo() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
@@ -131,14 +131,14 @@ public:
     }
 
     bool SendTo(live_stream::UdpSocketId,
-                live_stream::NetAddress,
+                live_stream::SocketAddress,
                 const uint8_t*,
                 size_t) override {
         return true;
     }
 
     bool SetUdpPeer(live_stream::UdpSocketId,
-                    live_stream::NetAddress) override {
+                    live_stream::SocketAddress) override {
         return true;
     }
 
@@ -176,34 +176,34 @@ public:
         return false;
     }
 
-    live_stream::NetAddress TcpLocalAddress(
+    live_stream::SocketAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 8080};
+        return live_stream::SocketAddress{"127.0.0.1", 8080};
     }
 
-    live_stream::NetAddress UdpLocalAddress(
+    live_stream::SocketAddress UdpLocalAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 3702};
+        return live_stream::SocketAddress{"127.0.0.1", 3702};
     }
 
-    live_stream::NetAddress UdpPeerAddress(
+    live_stream::SocketAddress UdpPeerAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 40000};
+        return live_stream::SocketAddress{"127.0.0.1", 40000};
     }
 
     uint32_t PendingBytes(live_stream::ConnectionId) const override {
         return 0;
     }
 
-    live_stream::NetStats GetStats() const override {
-        return live_stream::NetStats();
+    live_stream::SocketIoStats GetStats() const override {
+        return live_stream::SocketIoStats();
     }
 
     void FireAccept(live_stream::ConnectionId connection_id) {
         if (callbacks_.on_accept == nullptr) {
             return;
         }
-        live_stream::NetAddress peer;
+        live_stream::SocketAddress peer;
         peer.ip = "192.0.2.10";
         peer.port = 12345;
         callbacks_.on_accept(callbacks_.user, connection_id, peer);
@@ -258,7 +258,7 @@ bool ContainsTimerId(const std::vector<live_stream::event::TimerId>& values,
 }  // namespace
 
 int main() {
-    FakeNetIo net_io;
+    FakeSocketIo socket_io;
     FakeRequestHandler handler;
     live_stream::HttpOptions options;
     options.listen_ip = "127.0.0.1";
@@ -270,40 +270,40 @@ int main() {
     options.control_executor_workers = 1;
 
     live_stream::HttpServerRefs refs;
-    refs.net_io = &net_io;
-    refs.net_loop = net_io.DefaultLoop();
+    refs.socket_io = &socket_io;
+    refs.net_loop = socket_io.DefaultLoop();
     live_stream::HttpServer server(options, refs, &handler);
     if (!server.Start()) {
         return 1;
     }
 
-    net_io.FireAccept(100);
-    if (net_io.timers.size() != 1 ||
-        net_io.timers[0].id != 1 ||
-        net_io.last_delay_ms != options.request_timeout_ms) {
+    socket_io.FireAccept(100);
+    if (socket_io.timers.size() != 1 ||
+        socket_io.timers[0].id != 1 ||
+        socket_io.last_delay_ms != options.request_timeout_ms) {
         return 2;
     }
 
-    net_io.FireRead(100, "GET /api/");
-    if (net_io.timers.size() != 2 ||
-        !ContainsTimerId(net_io.cancelled_timer_ids, 1)) {
+    socket_io.FireRead(100, "GET /api/");
+    if (socket_io.timers.size() != 2 ||
+        !ContainsTimerId(socket_io.cancelled_timer_ids, 1)) {
         return 3;
     }
 
     server.Stop();
-    if (net_io.close_tcp_count != 1 ||
-        net_io.last_closed_server != 7 ||
-        net_io.close_count != 1 ||
-        net_io.last_closed_connection != 100 ||
-        !ContainsTimerId(net_io.cancelled_timer_ids, 2)) {
+    if (socket_io.close_tcp_count != 1 ||
+        socket_io.last_closed_server != 7 ||
+        socket_io.close_count != 1 ||
+        socket_io.last_closed_connection != 100 ||
+        !ContainsTimerId(socket_io.cancelled_timer_ids, 2)) {
         return 4;
     }
 
-    const int close_count_after_stop = net_io.close_count;
-    if (!net_io.RunTimer(2)) {
+    const int close_count_after_stop = socket_io.close_count;
+    if (!socket_io.RunTimer(2)) {
         return 5;
     }
-    if (net_io.close_count != close_count_after_stop) {
+    if (socket_io.close_count != close_count_after_stop) {
         return 6;
     }
     return 0;

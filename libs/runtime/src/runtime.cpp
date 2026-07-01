@@ -10,7 +10,7 @@ ILogger *g_logger = nullptr;
 IConfig *g_config = nullptr;
 IAuth *g_auth = nullptr;
 event::EventCenter *g_event_center = nullptr;
-INetIo *g_net_io = nullptr;
+ISocketIo *g_socket_io = nullptr;
 
 template <typename T>
 bool InstallPointer(T *next, T **slot) {
@@ -43,8 +43,8 @@ bool Runtime::InstallEventCenter(event::EventCenter *event_center) {
     return InstallPointer(event_center, &g_event_center);
 }
 
-bool Runtime::InstallNetIo(INetIo *net_io) {
-    return InstallPointer(net_io, &g_net_io);
+bool Runtime::InstallSocketIo(ISocketIo *socket_io) {
+    return InstallPointer(socket_io, &g_socket_io);
 }
 
 ILogger *Runtime::Logger() {
@@ -67,21 +67,21 @@ event::EventCenter *Runtime::EventCenter() {
     return g_event_center;
 }
 
-INetIo *Runtime::NetIo() {
+ISocketIo *Runtime::SocketIo() {
     std::lock_guard<std::mutex> guard(g_runtime_mutex);
-    return g_net_io;
+    return g_socket_io;
 }
 
-void Runtime::ClearNetIo(INetIo *net_io) {
+void Runtime::ClearSocketIo(ISocketIo *socket_io) {
     std::lock_guard<std::mutex> guard(g_runtime_mutex);
-    if (g_net_io == net_io) {
-        g_net_io = nullptr;
+    if (g_socket_io == socket_io) {
+        g_socket_io = nullptr;
     }
 }
 
 void Runtime::Clear() {
     std::lock_guard<std::mutex> guard(g_runtime_mutex);
-    g_net_io = nullptr;
+    g_socket_io = nullptr;
     g_event_center = nullptr;
     g_auth = nullptr;
     g_config = nullptr;

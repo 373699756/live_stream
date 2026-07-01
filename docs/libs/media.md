@@ -68,7 +68,7 @@ codec 切换、stream stop 和 timestamp reset 会清理 GOP、HLS、FLV、MJPEG
 `Slice()` 读取。需要填充或扩容 payload 的代码使用 `MediaBufferBuilder`，完成后
 调用 `Finish()` 得到只读 `MediaBufferRef`。手动 `AddRef/Release` 和裸 owner 不进入
 public API；HTTP/RTSP 发送队列需要跨线程保活媒体 payload 时，直接把
-`MediaBufferRef` 值对象随 `NetBufferSlice` 入队。
+`MediaBufferRef` 值对象随 `SocketWriteSlice` 入队。
 
 `SubscriptionStart::track_ready` 表示订阅起播数据已具备协议输出条件，
 不要用设备运行态替代该判断。

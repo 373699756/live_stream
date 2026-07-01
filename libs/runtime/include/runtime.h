@@ -6,7 +6,7 @@ namespace live_stream {
 class IAuth;
 class IConfig;
 class ILogger;
-class INetIo;
+class ISocketIo;
 
 namespace event {
 class EventCenter;
@@ -18,15 +18,15 @@ public:
     static bool InstallConfig(IConfig *config);
     static bool InstallAuth(IAuth *auth);
     static bool InstallEventCenter(event::EventCenter *event_center);
-    static bool InstallNetIo(INetIo *net_io);
+    static bool InstallSocketIo(ISocketIo *socket_io);
 
     static ILogger *Logger();
     static IConfig *Config();
     static IAuth *Auth();
     static event::EventCenter *EventCenter();
-    static INetIo *NetIo();
+    static ISocketIo *SocketIo();
 
-    static void ClearNetIo(INetIo *net_io);
+    static void ClearSocketIo(ISocketIo *socket_io);
     static void Clear();
 };
 

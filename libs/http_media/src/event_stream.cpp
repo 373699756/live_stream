@@ -14,8 +14,8 @@ const char *EventTypeName(event::EventType type) {
             return "stream_started";
         case event::EventType::kStreamStopped:
             return "stream_stopped";
-        case event::EventType::kNetPressureChanged:
-            return "net_pressure_changed";
+        case event::EventType::kNetQueueChanged:
+            return "net_queue_changed";
         case event::EventType::kAlarmOn:
             return "alarm_on";
         case event::EventType::kAlarmOff:

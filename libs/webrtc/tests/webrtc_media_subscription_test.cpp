@@ -2,7 +2,7 @@
 
 #include "fake_media_streams.h"
 #include "runtime.h"
-#include "net.h"
+#include "socket_io.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,11 +10,11 @@
 
 namespace {
 
-class FakeNetIo : public live_stream::INetIo {
+class FakeSocketIo : public live_stream::ISocketIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
-        explicit FakeLoop(FakeNetIo *engine) : engine_(engine) {}
+        explicit FakeLoop(FakeSocketIo *engine) : engine_(engine) {}
 
         live_stream::event::EventStatus Post(
             live_stream::event::Task task) override {
@@ -52,10 +52,10 @@ public:
         bool IsCurrentThread() const override { return true; }
 
     private:
-        FakeNetIo *engine_ = nullptr;
+        FakeSocketIo *engine_ = nullptr;
     };
 
-    FakeNetIo() : loop_(this) {}
+    FakeSocketIo() : loop_(this) {}
 
     bool Start() override { return true; }
     void Stop() override {}
@@ -98,13 +98,13 @@ public:
     bool Close(live_stream::ConnectionId) override { return true; }
     bool CloseAfterSend(live_stream::ConnectionId) override { return true; }
 
-    bool SendTo(live_stream::UdpSocketId, live_stream::NetAddress,
+    bool SendTo(live_stream::UdpSocketId, live_stream::SocketAddress,
                 const uint8_t *, size_t) override {
         ++send_to_count;
         return true;
     }
 
-    bool SetUdpPeer(live_stream::UdpSocketId, live_stream::NetAddress) override {
+    bool SetUdpPeer(live_stream::UdpSocketId, live_stream::SocketAddress) override {
         return true;
     }
 
@@ -112,34 +112,34 @@ public:
         return true;
     }
 
-    live_stream::NetAddress TcpLocalAddress(
+    live_stream::SocketAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 8000};
+        return live_stream::SocketAddress{"127.0.0.1", 8000};
     }
 
-    live_stream::NetAddress UdpLocalAddress(
+    live_stream::SocketAddress UdpLocalAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", last_udp_bind.port};
+        return live_stream::SocketAddress{"127.0.0.1", last_udp_bind.port};
     }
 
-    live_stream::NetAddress UdpPeerAddress(
+    live_stream::SocketAddress UdpPeerAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 40000};
+        return live_stream::SocketAddress{"127.0.0.1", 40000};
     }
 
     uint32_t PendingBytes(live_stream::ConnectionId) const override {
         return 0;
     }
 
-    live_stream::NetStats GetStats() const override {
-        return live_stream::NetStats();
+    live_stream::SocketIoStats GetStats() const override {
+        return live_stream::SocketIoStats();
     }
 
     int bind_udp_count = 0;
     int close_udp_count = 0;
     int send_to_count = 0;
     int periodic_timer_count = 0;
-    live_stream::NetAddress last_udp_bind;
+    live_stream::SocketAddress last_udp_bind;
 
 private:
     FakeLoop loop_;
@@ -169,15 +169,15 @@ std::string ValidOfferSdp() {
 
 int main() {
     live_stream::test::FakeMediaStreams media_streams;
-    FakeNetIo net_io;
-    (void)live_stream::Runtime::InstallNetIo(&net_io);
+    FakeSocketIo socket_io;
+    (void)live_stream::Runtime::InstallSocketIo(&socket_io);
 
     live_stream::WebrtcOptions options;
     options.local_port_base = 16000;
     options.public_ip = "127.0.0.1";
 
     std::unique_ptr<live_stream::IWebrtc> service =
-        live_stream::CreateWebrtc(options, net_io.DefaultLoop());
+        live_stream::CreateWebrtc(options, socket_io.DefaultLoop());
     if (!service || !service->Start()) {
         return 1;
     }
@@ -205,8 +205,8 @@ int main() {
     offer.peer_id = peer.peer_id;
     offer.sdp = ValidOfferSdp();
     live_stream::WebrtcAnswer answer = service->HandleOffer(offer);
-    if (answer.sdp.empty() || net_io.bind_udp_count != 1 ||
-        net_io.last_udp_bind.port != 16000) {
+    if (answer.sdp.empty() || socket_io.bind_udp_count != 1 ||
+        socket_io.last_udp_bind.port != 16000) {
         return 5;
     }
 
@@ -228,7 +228,7 @@ int main() {
     }
 
     service->Stop();
-    if (net_io.close_udp_count == 0) {
+    if (socket_io.close_udp_count == 0) {
         return 9;
     }
     live_stream::Runtime::Clear();

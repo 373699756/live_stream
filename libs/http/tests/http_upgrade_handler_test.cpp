@@ -4,7 +4,7 @@
 #include "config.h"
 #include "infra/fs.h"
 #include "logger.h"
-#include "net.h"
+#include "socket_io.h"
 #include "runtime.h"
 #include "system/upgrade.h"
 
@@ -161,7 +161,7 @@ public:
     bool confirm_reboot_ok = true;
 };
 
-class FakeNetIo : public live_stream::INetIo {
+class FakeSocketIo : public live_stream::ISocketIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -261,7 +261,7 @@ public:
     }
 
     bool SendTo(live_stream::UdpSocketId id,
-                live_stream::NetAddress address,
+                live_stream::SocketAddress address,
                 const uint8_t* data,
                 size_t size) override {
         (void)id;
@@ -272,7 +272,7 @@ public:
     }
 
     bool SetUdpPeer(live_stream::UdpSocketId id,
-                    live_stream::NetAddress peer) override {
+                    live_stream::SocketAddress peer) override {
         (void)id;
         (void)peer;
         return true;
@@ -287,28 +287,28 @@ public:
         return true;
     }
 
-    live_stream::NetAddress TcpLocalAddress(
+    live_stream::SocketAddress TcpLocalAddress(
         live_stream::TcpServerId id) const override {
         (void)id;
-        live_stream::NetAddress address;
+        live_stream::SocketAddress address;
         address.ip = "127.0.0.1";
         address.port = 80;
         return address;
     }
 
-    live_stream::NetAddress UdpLocalAddress(
+    live_stream::SocketAddress UdpLocalAddress(
         live_stream::UdpSocketId id) const override {
         (void)id;
-        live_stream::NetAddress address;
+        live_stream::SocketAddress address;
         address.ip = "127.0.0.1";
         address.port = 80;
         return address;
     }
 
-    live_stream::NetAddress UdpPeerAddress(
+    live_stream::SocketAddress UdpPeerAddress(
         live_stream::UdpSocketId id) const override {
         (void)id;
-        live_stream::NetAddress address;
+        live_stream::SocketAddress address;
         address.ip = "127.0.0.1";
         address.port = 40000;
         return address;
@@ -319,8 +319,8 @@ public:
         return 0;
     }
 
-    live_stream::NetStats GetStats() const override {
-        return live_stream::NetStats();
+    live_stream::SocketIoStats GetStats() const override {
+        return live_stream::SocketIoStats();
     }
 
 private:
@@ -350,14 +350,14 @@ bool Contains(const std::string& haystack, const std::string& needle) {
 }
 
 std::unique_ptr<live_stream::IHttp> MakeHttp(
-    FakeNetIo* net_io,
+    FakeSocketIo* socket_io,
     FakeAuth* auth,
     FakeLogger* logger,
     FakeUpgrade* upgrade) {
     live_stream::HttpOptions options;
     live_stream::Runtime::Clear();
-    if (net_io != nullptr) {
-        (void)live_stream::Runtime::InstallNetIo(net_io);
+    if (socket_io != nullptr) {
+        (void)live_stream::Runtime::InstallSocketIo(socket_io);
     }
     if (auth != nullptr) {
         (void)live_stream::Runtime::InstallAuth(auth);
@@ -366,18 +366,18 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
         (void)live_stream::Runtime::InstallLogger(logger);
     }
     return live_stream::CreateHttp(
-        options, net_io == nullptr ? nullptr : net_io->DefaultLoop(),
+        options, socket_io == nullptr ? nullptr : socket_io->DefaultLoop(),
         nullptr, nullptr, nullptr, upgrade, nullptr, nullptr, nullptr,
         nullptr);
 }
 
 int TestUpgradeUploadAndStart() {
-    FakeNetIo net_io;
+    FakeSocketIo socket_io;
     FakeAuth auth;
     FakeLogger logger;
     FakeUpgrade upgrade;
     std::unique_ptr<live_stream::IHttp> http =
-        MakeHttp(&net_io, &auth, &logger, &upgrade);
+        MakeHttp(&socket_io, &auth, &logger, &upgrade);
     if (!http || !http->Start()) {
         return 1;
     }
@@ -427,7 +427,7 @@ int TestUpgradeUploadAndStart() {
 }
 
 int TestUpgradeInfoValidateCancelAndReboot() {
-    FakeNetIo net_io;
+    FakeSocketIo socket_io;
     FakeAuth auth;
     FakeLogger logger;
     FakeUpgrade upgrade;
@@ -436,7 +436,7 @@ int TestUpgradeInfoValidateCancelAndReboot() {
     upgrade.status.current_stage = "waiting_reboot";
     upgrade.status.target_version = "2.0.0";
     std::unique_ptr<live_stream::IHttp> http =
-        MakeHttp(&net_io, &auth, &logger, &upgrade);
+        MakeHttp(&socket_io, &auth, &logger, &upgrade);
     if (!http || !http->Start()) {
         return 1;
     }

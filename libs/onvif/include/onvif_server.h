@@ -60,7 +60,7 @@ public:
 class OnvifServer : public IOnvifReader {
 public:
     OnvifServer(const OnvifServerOptions &options,
-                event::Loop *net_loop,
+                event::Loop *socket_loop,
                 ISystem *system,
                 ITime *time,
                 DeviceMedia *device);
@@ -84,7 +84,7 @@ private:
 
 std::unique_ptr<OnvifServer> CreateOnvifServer(
     const OnvifServerOptions &options,
-    event::Loop *net_loop,
+    event::Loop *socket_loop,
     ISystem *system,
     ITime *time,
     DeviceMedia *device);

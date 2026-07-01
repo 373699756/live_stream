@@ -15,7 +15,7 @@ SOAP/XML/HTTP 响应和 ONVIF 认证。它不拥有 RTSP session 内部状态，
 ```mermaid
 flowchart LR
   Client[ONVIF client/NVR] --> ONVIF[OnvifServer]
-  ONVIF --> Net[net]
+  ONVIF --> SocketIo[socket_io]
   ONVIF --> Auth[auth]
   ONVIF --> System[system]
   ONVIF --> Time[time]
@@ -48,7 +48,7 @@ config attachment 拒绝，必须重启后生效。
 
 `CreateOnvifServer()` 不接收 `*Dependencies` 依赖包；基础服务从 `Runtime`
 读取，RTSP 只读入口从 `ServiceRegistry::Rtsp()` 读取，组合根只显式传入
-net loop、`ISystem`、`ITime` 和 `DeviceMedia`。ONVIF media service 只调用
+socket_io loop、`ISystem`、`ITime` 和 `DeviceMedia`。ONVIF media service 只调用
 `IRtspSessionReader::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；
 RTSP path 和 URL 拼接规则归 `rtsp` 模块所有。
 

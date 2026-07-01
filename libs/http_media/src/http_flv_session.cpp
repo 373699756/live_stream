@@ -5,7 +5,7 @@
 #include "http_media_stream_id_json.h"
 
 #include "infra/log.h"
-#include "net.h"
+#include "socket_io.h"
 
 #include <cstdint>
 #include <cstring>
@@ -83,7 +83,7 @@ bool EnqueueFlvTagWithTimestamp(HttpMediaWriter *writer,
 
     MediaOutSlice slices[2];
     // data 指向 start/sequence 这类 session 内字符串或栈上 header，未带 owner；
-    // HTTP/net 入队时会复制这些小块。
+    // HTTP/socket_io 入队时会复制这些小块。
     slices[0].data = header;
     slices[0].size = sizeof(header);
     slices[1].data = data + sizeof(header);
@@ -105,9 +105,9 @@ bool EnqueueFlvVideoTagSlices(HttpMediaWriter *writer,
     // 由 MediaOutSlice.buffer 保证异步发送期间 payload 存活。
     size_t index = 0;
     while (index < tag.slice_size) {
-        MediaOutSlice slices[kMaxNetBufferSlices];
+        MediaOutSlice slices[kMaxSocketWriteSlices];
         size_t slice_size = 0;
-        while (index < tag.slice_size && slice_size < kMaxNetBufferSlices) {
+        while (index < tag.slice_size && slice_size < kMaxSocketWriteSlices) {
             const MediaFlvVideoTagSlice &source = tag.slices[index];
             if (source.data == nullptr || source.size == 0) {
                 return false;
@@ -147,9 +147,9 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
     // 输出，只在第一个 header slice 上替换 rebased timestamp。
     size_t index = 0;
     while (index < tag.slice_size) {
-        MediaOutSlice slices[kMaxNetBufferSlices];
+        MediaOutSlice slices[kMaxSocketWriteSlices];
         size_t slice_size = 0;
-        while (index < tag.slice_size && slice_size < kMaxNetBufferSlices) {
+        while (index < tag.slice_size && slice_size < kMaxSocketWriteSlices) {
             const MediaFlvCachedVideoTagSlice &source = tag.slices[index];
             if (source.size == 0) {
                 return false;
@@ -168,7 +168,7 @@ bool EnqueueCachedFlvVideoTagSlices(HttpMediaWriter *writer,
                     return false;
                 }
                 // cached GOP 的媒体 payload 仍在 tag.frame.payload 中；owner 让
-                // net send queue 在异步写 socket 期间持有该 MediaBuffer。
+                // socket_io send queue 在异步写 socket 期间持有该 MediaBuffer。
                 slices[slice_size].buffer = tag.frame.payload;
             }
             ++slice_size;
@@ -301,7 +301,7 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
     const uint32_t rebased_ms = RebaseTimestamp(tag.timestamp_ms, true);
 
     // live video tag 的第一个 slice 必须是 FLV header，后续 slice 可以引用媒体帧。
-    // header 放栈上即可，因为 net 对无 owner slice 会复制。
+    // header 放栈上即可，因为 socket_io 对无 owner slice 会复制。
     uint8_t header[kMaxMediaFlvHeaderSliceBytes] = {};
     if (tag.slices[0].data == nullptr ||
         tag.slices[0].size > sizeof(header)) {
@@ -310,7 +310,7 @@ bool HttpFlvSession::OnFlvVideoTag(const MediaFlvVideoTagView &tag,
     std::memcpy(header, tag.slices[0].data, tag.slices[0].size);
     WriteFlvTimestampMs(rebased_ms, header);
 
-    // header 是本函数栈内小数组，net 会复制；后续 media_payload slice
+    // header 是本函数栈内小数组，socket_io 会复制；后续 media_payload slice
     // 通过 frame.payload owner 零拷贝排入发送队列。
     return EnqueueFlvVideoTagSlices(writer_, connection_id_, tag, frame,
                                     header);

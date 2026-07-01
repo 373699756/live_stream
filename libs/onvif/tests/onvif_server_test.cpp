@@ -3,7 +3,7 @@
 #include "auth.h"
 #include "event.h"
 #include "device.h"
-#include "net.h"
+#include "socket_io.h"
 #include "rtsp.h"
 #include "runtime.h"
 #include "service_registry.h"
@@ -18,7 +18,7 @@
 
 namespace {
 
-class FakeNetIo : public live_stream::INetIo {
+class FakeSocketIo : public live_stream::ISocketIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -111,7 +111,7 @@ public:
     }
 
     bool SendTo(live_stream::UdpSocketId,
-                live_stream::NetAddress address,
+                live_stream::SocketAddress address,
                 const uint8_t* data,
                 size_t size) override {
         last_udp_peer = address;
@@ -121,7 +121,7 @@ public:
     }
 
     bool SetUdpPeer(live_stream::UdpSocketId,
-                    live_stream::NetAddress peer) override {
+                    live_stream::SocketAddress peer) override {
         last_udp_peer = peer;
         return true;
     }
@@ -134,25 +134,25 @@ public:
         return true;
     }
 
-    live_stream::NetAddress TcpLocalAddress(
+    live_stream::SocketAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 8000};
+        return live_stream::SocketAddress{"127.0.0.1", 8000};
     }
 
-    live_stream::NetAddress UdpLocalAddress(
+    live_stream::SocketAddress UdpLocalAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 3702};
+        return live_stream::SocketAddress{"127.0.0.1", 3702};
     }
 
-    live_stream::NetAddress UdpPeerAddress(
+    live_stream::SocketAddress UdpPeerAddress(
         live_stream::UdpSocketId) const override {
         return last_udp_peer;
     }
 
     uint32_t PendingBytes(live_stream::ConnectionId) const override { return 0; }
 
-    live_stream::NetStats GetStats() const override {
-        return live_stream::NetStats();
+    live_stream::SocketIoStats GetStats() const override {
+        return live_stream::SocketIoStats();
     }
 
     void DeliverTcp(const std::string& request) {
@@ -162,7 +162,7 @@ public:
     }
 
     void DeliverUdp(const std::string& request) {
-        live_stream::NetAddress peer{"192.0.2.44", 3702};
+        live_stream::SocketAddress peer{"192.0.2.44", 3702};
         udp_callbacks.on_read(udp_callbacks.user, 20, peer,
                               reinterpret_cast<const uint8_t*>(request.data()),
                               request.size());
@@ -170,7 +170,7 @@ public:
 
     live_stream::TcpCallbacks tcp_callbacks;
     live_stream::UdpCallbacks udp_callbacks;
-    live_stream::NetAddress last_udp_peer;
+    live_stream::SocketAddress last_udp_peer;
     std::string last_tcp_send;
     std::string last_udp_send;
     bool listen_tcp_ok = true;
@@ -412,7 +412,7 @@ std::string SoapPost(const std::string& body,
 }
 
 std::unique_ptr<live_stream::OnvifServer> CreateStarted(
-    FakeNetIo* net_io,
+    FakeSocketIo* socket_io,
     FakeEvent* event,
     FakeSystem* system,
     FakeTime* time,
@@ -422,8 +422,8 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     options.enable_auth = auth != nullptr;
     live_stream::Runtime::Clear();
     live_stream::ServiceRegistry::Clear();
-    if (net_io != nullptr) {
-        (void)live_stream::Runtime::InstallNetIo(net_io);
+    if (socket_io != nullptr) {
+        (void)live_stream::Runtime::InstallSocketIo(socket_io);
     }
     if (event != nullptr) {
         (void)live_stream::Runtime::InstallEvent(event);
@@ -436,7 +436,7 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     std::unique_ptr<live_stream::OnvifServer> service =
         live_stream::CreateOnvifServer(
             options,
-            net_io == nullptr ? nullptr : net_io->DefaultLoop(),
+            socket_io == nullptr ? nullptr : socket_io->DefaultLoop(),
             system, time, device);
     if (!service || !service->Start() || !service->IsStarted()) {
         return nullptr;
@@ -459,9 +459,9 @@ int main() {
         return 2;
     }
 
-    FakeNetIo cleanup_net;
+    FakeSocketIo cleanup_net;
     live_stream::Runtime::Clear();
-    (void)live_stream::Runtime::InstallNetIo(&cleanup_net);
+    (void)live_stream::Runtime::InstallSocketIo(&cleanup_net);
     cleanup_net.bind_udp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> cleanup_server =
         live_stream::CreateOnvifServer(
@@ -470,9 +470,9 @@ int main() {
         return 3;
     }
 
-    FakeNetIo start_fail_net;
+    FakeSocketIo start_fail_net;
     live_stream::Runtime::Clear();
-    (void)live_stream::Runtime::InstallNetIo(&start_fail_net);
+    (void)live_stream::Runtime::InstallSocketIo(&start_fail_net);
     start_fail_net.listen_tcp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> start_fail_server =
         live_stream::CreateOnvifServer(
@@ -482,7 +482,7 @@ int main() {
         return 4;
     }
 
-    FakeNetIo net_io;
+    FakeSocketIo socket_io;
     FakeEvent event;
     FakeSystem system;
     FakeTime time;
@@ -491,24 +491,24 @@ int main() {
     time.status.timezone = "UTC";
 
     std::unique_ptr<live_stream::OnvifServer> service =
-        CreateStarted(&net_io, &event, &system,
+        CreateStarted(&socket_io, &event, &system,
                       &time, &device);
     if (!service) {
         return 5;
     }
 
-    net_io.DeliverTcp(SoapPost("<GetDeviceInformation/>"));
-    if (net_io.last_tcp_send.find("serial-1") == std::string::npos ||
+    socket_io.DeliverTcp(SoapPost("<GetDeviceInformation/>"));
+    if (socket_io.last_tcp_send.find("serial-1") == std::string::npos ||
         event.last_event.message != "GetDeviceInformation") {
         return 6;
     }
 
-    net_io.DeliverTcp(SoapPost("<GetSystemDateAndTime/>"));
-    if (net_io.last_tcp_send.find("123456") == std::string::npos) {
+    socket_io.DeliverTcp(SoapPost("<GetSystemDateAndTime/>"));
+    if (socket_io.last_tcp_send.find("123456") == std::string::npos) {
         return 7;
     }
 
-    net_io.DeliverTcp(SoapPost(
+    socket_io.DeliverTcp(SoapPost(
         "<SetSystemDateAndTime><tt:UnixTimeMs>2222</tt:UnixTimeMs>"
         "</SetSystemDateAndTime>"));
     if (time.last_set_time_ms != 2222 ||
@@ -516,45 +516,45 @@ int main() {
         return 8;
     }
 
-    net_io.DeliverTcp(SoapPost(
+    socket_io.DeliverTcp(SoapPost(
         "<GetStreamUri><ProfileToken>profile_sub</ProfileToken>"
         "</GetStreamUri>"));
-    if (net_io.last_tcp_send.find("rtsp://") == std::string::npos ||
-        net_io.last_tcp_send.find("profile_sub") == std::string::npos ||
+    if (socket_io.last_tcp_send.find("rtsp://") == std::string::npos ||
+        socket_io.last_tcp_send.find("profile_sub") == std::string::npos ||
         service->GetStats().stream_uri_requests != 1) {
         return 9;
     }
 
-    net_io.DeliverTcp(SoapPost(
+    socket_io.DeliverTcp(SoapPost(
         "<GetSnapshotUri><ProfileToken>bad</ProfileToken></GetSnapshotUri>"));
-    if (net_io.last_tcp_send.find("400 Bad Request") == std::string::npos ||
+    if (socket_io.last_tcp_send.find("400 Bad Request") == std::string::npos ||
         service->GetStats().parse_failures == 0) {
         return 10;
     }
 
-    net_io.DeliverUdp("<Probe/>");
-    if (net_io.last_udp_send.find("ProbeMatches") == std::string::npos ||
-        net_io.last_udp_send.find("EndpointReference") ==
+    socket_io.DeliverUdp("<Probe/>");
+    if (socket_io.last_udp_send.find("ProbeMatches") == std::string::npos ||
+        socket_io.last_udp_send.find("EndpointReference") ==
             std::string::npos ||
-        net_io.last_udp_send.find("NetworkVideoTransmitter") ==
+        socket_io.last_udp_send.find("NetworkVideoTransmitter") ==
             std::string::npos ||
-        net_io.last_udp_send.find("XAddrs") == std::string::npos ||
+        socket_io.last_udp_send.find("XAddrs") == std::string::npos ||
         service->GetStats().discovery_requests != 1) {
         return 11;
     }
 
-    net_io.DeliverUdp("<Hello/>");
+    socket_io.DeliverUdp("<Hello/>");
     if (service->GetStats().parse_failures < 2) {
         return 12;
     }
 
     service->Stop();
-    if (net_io.close_tcp_count != 1 || net_io.close_udp_count != 1 ||
+    if (socket_io.close_tcp_count != 1 || socket_io.close_udp_count != 1 ||
         service->IsStarted()) {
         return 13;
     }
 
-    FakeNetIo missing_time_net;
+    FakeSocketIo missing_time_net;
     FakeEvent missing_time_event;
     std::unique_ptr<live_stream::OnvifServer> missing_time_server =
         CreateStarted(&missing_time_net, &missing_time_event,
@@ -570,7 +570,7 @@ int main() {
         return 15;
     }
 
-    FakeNetIo auth_net;
+    FakeSocketIo auth_net;
     FakeEvent auth_event;
     FakeAuth auth;
     std::unique_ptr<live_stream::OnvifServer> auth_onvif =

@@ -8,19 +8,19 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/runtime/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/socket_io/include
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libruntime.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libdevice.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libmedia.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libmedia_codec.a
-EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libnet.a
+EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libsocket_io.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libevent.a
 EXTRA_TEST_DEPS += $(BUILD_DIR)/lib/libinfra.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libruntime.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libdevice.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libmedia_codec.a
-EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libnet.a
+EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libsocket_io.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libevent.a
 EXTRA_TEST_LIBS += $(BUILD_DIR)/lib/libinfra.a
 include ../module_rules.mk
@@ -37,8 +37,8 @@ $(BUILD_DIR)/lib/libmedia.a: $(BUILD_DIR)/lib/libmedia_codec.a
 $(BUILD_DIR)/lib/libmedia_codec.a: $(BUILD_DIR)/lib/libinfra.a
 	$(MAKE) -C ../media_codec all
 
-$(BUILD_DIR)/lib/libnet.a:
-	$(MAKE) -C ../net all
+$(BUILD_DIR)/lib/libsocket_io.a:
+	$(MAKE) -C ../socket_io all
 
 $(BUILD_DIR)/lib/libevent.a:
 	$(MAKE) -C ../event all

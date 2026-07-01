@@ -5,7 +5,7 @@
 #include "ice_transport.h"
 #include "media/media_frame.h"
 #include "rtp.h"
-#include "net.h"
+#include "socket_io.h"
 #include "srtp_session.h"
 #include "webrtc.h"
 
@@ -22,8 +22,8 @@ using WebrtcTransportTimerFn = void (*)(void *user,
                                         const std::string &peer_id);
 
 struct WebrtcTransportStartOptions {
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
+    ISocketIo *socket_io = nullptr;
+    event::Loop *socket_loop = nullptr;
     UdpCallbacks udp_callbacks;
     std::string peer_id;
     uint16_t local_port_base = 0;
@@ -68,10 +68,10 @@ public:
 
     bool Start(const WebrtcTransportStartOptions &options,
                uint32_t &next_port_offset,
-               NetAddress &local_candidate);
+               SocketAddress &local_candidate);
     void Close();
 
-    bool HandleIcePacket(NetAddress peer, const uint8_t *data, size_t size,
+    bool HandleIcePacket(SocketAddress peer, const uint8_t *data, size_t size,
                          bool &connected_now);
     bool ProcessDtlsPacket(const uint8_t *data, size_t size,
                            WebrtcDtlsOutput &result);
@@ -86,7 +86,7 @@ public:
     bool ice_connected() const;
     bool srtp_ready() const;
     UdpSocketId socket_id() const;
-    NetAddress local_address() const;
+    SocketAddress local_address() const;
     WebrtcTransportInfo GetInfo() const;
     void FillStats(WebrtcStats &stats) const;
 
@@ -106,7 +106,7 @@ private:
     void RecordRtcpFeedback(const RtcpFeedbackStats &feedback_stats);
 
     std::string peer_id_;
-    INetIo *net_io_ = nullptr;
+    ISocketIo *socket_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     void *timer_user_ = nullptr;
     WebrtcTransportTimerFn on_dtls_timeout_ = nullptr;

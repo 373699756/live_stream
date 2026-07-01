@@ -122,7 +122,7 @@ bool RtspRtpSender::SendRtpPacketView(
     RtspRtpRoute route;
     {
         std::lock_guard<std::mutex> lock(context.mutex);
-        // 发送前复制 transport 快照，避免持锁调用 net。SETUP/TEARDOWN 同时发生时，
+        // 发送前复制 transport 快照，避免持锁调用 socket_io。SETUP/TEARDOWN 同时发生时，
         // 发送失败会走统一关闭路径。
         route.mode = session.transport;
         route.connection_id = session.connection_id;
@@ -136,7 +136,7 @@ bool RtspRtpSender::SendRtpPacketView(
         return false;
     }
     const bool sent = RtspTransport::SendRtpPacket(
-        context.net_io, route, frame, packet);
+        context.socket_io, route, frame, packet);
     if (!sent) {
         // 发送失败通常表示 TCP 队列满、连接关闭或 UDP socket 不可用。这里按慢客户端
         // 处理并关闭控制连接，让 CloseSessionResources 释放 subscription/UDP socket。
@@ -149,17 +149,17 @@ bool RtspRtpSender::SendRtpPacketView(
             std::lock_guard<std::mutex> lock(context.mutex);
             ++context.service_stats.slow_client_closes;
         }
-        (void)context.net_io.Close(route.connection_id);
+        (void)context.socket_io.Close(route.connection_id);
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(context.mutex);
-        // pending_bytes 只对 TCP interleaved 有意义；UDP 下 net 返回 0 或当前诊断值。
+        // pending_bytes 只对 TCP interleaved 有意义；UDP 下 socket_io 返回 0 或当前诊断值。
         ++session.stats.sent_rtp_packets;
         session.stats.sent_rtp_bytes += packet_size;
         session.stats.pending_bytes =
-            context.net_io.PendingBytes(route.connection_id);
+            context.socket_io.PendingBytes(route.connection_id);
         ++context.service_stats.sent_rtp_packets;
         context.service_stats.sent_rtp_bytes += packet_size;
     }

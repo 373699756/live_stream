@@ -14,7 +14,7 @@
 flowchart LR
   HTTP[http router/auth/session] --> MediaHTTP[http_media handlers]
   MediaHTTP --> Writer[HttpMediaWriter]
-  Writer --> Net[net TCP session]
+  Writer --> SocketIo[socket_io TCP session]
   MediaHTTP --> Media[media]
   MediaHTTP --> Device[device restarting/status]
   MediaHTTP --> WebRTC[webrtc signaling]
@@ -43,14 +43,14 @@ flowchart LR
 - 依赖 `http` 的路由、认证边界、`IHttpHandler` 和 `HttpMediaWriter`。
 - 依赖 `media` 的 HLS segment/playlist、HTTP-FLV start data/client、MJPEG client
   和 subscription/client size。
-- 间接依赖 `net` 的 session、send queue、buffer limit 和 close callback；socket 生命周期
+- 间接依赖 `socket_io` 的 session、send queue、buffer limit 和 close callback；socket 生命周期
   仍由 `http` server 持有。
 - 依赖 `webrtc` 的 native signaling/session public API，但不持有 transport 状态。
 
 媒体正文输出统一使用 slice/owner 模型表达 header、payload 和可选 `MediaBuffer`
 owner。HLS segment 通过 `HttpResponse.body_slices` 作为普通短响应返回；HTTP-FLV
 cached GOP 和 MJPEG frame 通过 `HttpMediaWriter` 提交流式 `MediaOutSlice`。跨线程或异步
-TCP 发送期间的 payload 生命周期由 HTTP writer/net send queue 按 owner 引用保持。
+TCP 发送期间的 payload 生命周期由 HTTP writer/socket_io send queue 按 owner 引用保持。
 HTTP-FLV/MJPEG attach 成功后会把 `HttpMediaClientHandle` 绑定到 HTTP session，
 包含 client type、client id 和 stream id；TCP close path 统一 detach media client，
 `/api/media/sessions` 也通过这个绑定关系展示 HTTP-FLV/MJPEG 的连接级背压诊断。

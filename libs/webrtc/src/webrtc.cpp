@@ -3,7 +3,7 @@
 #include "infra/log.h"
 #include "media/media_source_registry.h"
 #include "media/media_streams.h"
-#include "net.h"
+#include "socket_io.h"
 #include "runtime.h"
 #include "webrtc_callback_guard.h"
 #include "webrtc_peer_host.h"
@@ -68,11 +68,11 @@ WebrtcPeerInfo CreatePeerError(const std::string &last_error) {
 class WebrtcImpl : public IWebrtc {
 public:
     WebrtcImpl(WebrtcOptions options,
-               event::Loop *net_loop)
+               event::Loop *socket_loop)
         : options_(std::move(options)),
           media_streams_(MediaSourceRegistry::Streams()),
-          net_io_(Runtime::NetIo()),
-          net_loop_(net_loop),
+          socket_io_(Runtime::SocketIo()),
+          net_loop_(socket_loop),
           event_(Runtime::EventCenter()),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
@@ -424,7 +424,7 @@ private:
         if (!IsValidOptions(options_)) {
             return false;
         }
-        if (net_io_ == nullptr || net_loop_ == nullptr ||
+        if (socket_io_ == nullptr || net_loop_ == nullptr ||
             media_streams_ == nullptr) {
             return false;
         }
@@ -434,7 +434,7 @@ private:
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcPeerHost> peer_host =
-            webrtc_internal::CreateWebrtcPeerHost(net_io_, net_loop_);
+            webrtc_internal::CreateWebrtcPeerHost(socket_io_, net_loop_);
         webrtc_internal::WebrtcPeerHostCallbacks callbacks;
         callbacks.user = callback_guard_.get();
         callbacks.OnPeerStateChanged =
@@ -997,7 +997,7 @@ private:
 
     WebrtcOptions options_;
     MediaStreams *media_streams_ = nullptr;
-    INetIo *net_io_ = nullptr;
+    ISocketIo *socket_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     event::EventCenter *event_ = nullptr;
     WebrtcPhase phase_ = WebrtcPhase::kCreated;
@@ -1013,9 +1013,9 @@ private:
 
 std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
-             event::Loop *net_loop) {
+             event::Loop *socket_loop) {
     return std::unique_ptr<IWebrtc>(
-        new WebrtcImpl(options, net_loop));
+        new WebrtcImpl(options, socket_loop));
 }
 
 const char *Webrtc::Name() { return "webrtc"; }

@@ -10,10 +10,10 @@ CXXFLAGS += -I$(ROOT_DIR)/libs/hisi_vendor/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/runtime/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/device/include
-CXXFLAGS += -I$(ROOT_DIR)/libs/net/include
+CXXFLAGS += -I$(ROOT_DIR)/libs/socket_io/include
 CXXFLAGS += -I$(ROOT_DIR)/libs/media_codec/include
 CXXFLAGS += -I$(ROOT_DIR)/3rdparty/open_src/openssl-1.1.1w/include
-NET_LIB := $(BUILD_DIR)/lib/libnet.a
+SOCKET_IO_LIB := $(BUILD_DIR)/lib/libsocket_io.a
 RUNTIME_LIB := $(BUILD_DIR)/lib/libruntime.a
 MEDIA_LIB := $(BUILD_DIR)/lib/libdevice.a
 MEDIA_STREAMS_LIB := $(BUILD_DIR)/lib/libmedia.a
@@ -21,11 +21,11 @@ MEDIA_CODEC_LIB := $(BUILD_DIR)/lib/libmedia_codec.a
 WEBRTC_THIRDPARTY_LIBS := $(ROOT_DIR)/3rdparty/install/lib/libsrtp2.a \
 	$(ROOT_DIR)/3rdparty/install/lib/libssl.a \
 	$(ROOT_DIR)/3rdparty/install/lib/libcrypto.a
-EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(RUNTIME_LIB) $(NET_LIB) $(MEDIA_LIB) \
+EXTRA_TEST_DEPS := $(EVENT_LIB) $(INFRA_LIB) $(RUNTIME_LIB) $(SOCKET_IO_LIB) $(MEDIA_LIB) \
 	$(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
 	$(WEBRTC_THIRDPARTY_LIBS)
 EXTRA_TEST_LIBS := $(RUNTIME_LIB) $(MEDIA_STREAMS_LIB) $(MEDIA_CODEC_LIB) \
-	$(MEDIA_LIB) $(NET_LIB) \
+	$(MEDIA_LIB) $(SOCKET_IO_LIB) \
 	$(EVENT_LIB) $(INFRA_LIB) $(WEBRTC_THIRDPARTY_LIBS) -pthread -lm -ldl
 
 $(INFRA_LIB):
@@ -37,8 +37,8 @@ $(EVENT_LIB):
 $(RUNTIME_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../runtime all
 
-$(NET_LIB): $(INFRA_LIB) $(EVENT_LIB)
-	$(MAKE) -C ../net all
+$(SOCKET_IO_LIB): $(INFRA_LIB) $(EVENT_LIB)
+	$(MAKE) -C ../socket_io all
 
 $(MEDIA_LIB): $(INFRA_LIB)
 	$(MAKE) -C ../device all

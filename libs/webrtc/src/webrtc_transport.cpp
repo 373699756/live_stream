@@ -50,8 +50,8 @@ WebrtcTransport::~WebrtcTransport() {
 
 bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
                             uint32_t &next_port_offset,
-                            NetAddress &local_candidate) {
-    if (options.net_io == nullptr || options.net_loop == nullptr ||
+                            SocketAddress &local_candidate) {
+    if (options.socket_io == nullptr || options.socket_loop == nullptr ||
         options.peer_id.empty() || options.local_ice_ufrag.empty() ||
         options.local_ice_password.empty()) {
         return false;
@@ -72,8 +72,8 @@ bool WebrtcTransport::Start(const WebrtcTransportStartOptions &options,
     }
 
     peer_id_ = options.peer_id;
-    net_io_ = options.net_io;
-    net_loop_ = options.net_loop;
+    socket_io_ = options.socket_io;
+    net_loop_ = options.socket_loop;
     timer_user_ = options.timer_user;
     on_dtls_timeout_ = options.on_dtls_timeout;
     ice_ = std::move(ice);
@@ -96,7 +96,7 @@ void WebrtcTransport::Close() {
     dtls_.reset();
     ice_.reset();
     peer_id_.clear();
-    net_io_ = nullptr;
+    socket_io_ = nullptr;
     net_loop_ = nullptr;
     timer_user_ = nullptr;
     on_dtls_timeout_ = nullptr;
@@ -115,7 +115,7 @@ void WebrtcTransport::Close() {
     dtls_connected_ = false;
 }
 
-bool WebrtcTransport::HandleIcePacket(NetAddress peer, const uint8_t *data,
+bool WebrtcTransport::HandleIcePacket(SocketAddress peer, const uint8_t *data,
                                       size_t size, bool &connected_now) {
     connected_now = false;
     if (ice_ == nullptr) {
@@ -235,8 +235,8 @@ UdpSocketId WebrtcTransport::socket_id() const {
     return ice_ == nullptr ? 0 : ice_->socket_id();
 }
 
-NetAddress WebrtcTransport::local_address() const {
-    return ice_ == nullptr ? NetAddress() : ice_->local_address();
+SocketAddress WebrtcTransport::local_address() const {
+    return ice_ == nullptr ? SocketAddress() : ice_->local_address();
 }
 
 WebrtcTransportInfo WebrtcTransport::GetInfo() const {
@@ -287,7 +287,7 @@ bool WebrtcTransport::StartIceTransport(
     const WebrtcTransportStartOptions &options,
     uint32_t &next_port_offset,
     std::unique_ptr<IceTransport> &ice) {
-    if (options.net_io == nullptr || options.net_loop == nullptr) {
+    if (options.socket_io == nullptr || options.socket_loop == nullptr) {
         return false;
     }
 
@@ -301,13 +301,13 @@ bool WebrtcTransport::StartIceTransport(
         }
         std::unique_ptr<IceTransport> candidate(
             new IceTransport(options.peer_id));
-        if (!candidate->Start(options.net_io, options.net_loop,
+        if (!candidate->Start(options.socket_io, options.socket_loop,
                               options.udp_callbacks,
                               "0.0.0.0", port, options.local_ice_ufrag,
                               options.local_ice_password)) {
             continue;
         }
-        const NetAddress local_address = candidate->local_address();
+        const SocketAddress local_address = candidate->local_address();
         if (local_address.port == 0) {
             candidate->Stop();
             continue;

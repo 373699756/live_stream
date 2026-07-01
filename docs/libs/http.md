@@ -51,7 +51,7 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 | `/api/media/capabilities` | `device` |
 | `/api/media/streams/{stream}` | `media` / `device` |
 | `/api/media/streams/{stream}/urls` | `http` URL helper + `http_media` / `rtsp` / `device snapshot` |
-| `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`net` info |
+| `/api/media/sessions` | `http_media`、`rtsp`、`webrtc`、`socket_io` info |
 | `/api/status/image-strategy` | `device` |
 | `/api/ai/status` | `ai` |
 | `/api/ai/capabilities` | `ai` |
@@ -115,7 +115,7 @@ info。HTTP-FLV/MJPEG 是持续 TCP streaming，会输出 `protocol`、
 表示 HTTP session 已经被流式请求接管但还没有绑定媒体 client id，`attached`
 表示已经绑定 FLV/MJPEG client，`closing` 表示 HTTP 层已经触发关闭但 TCP close
 回调尚未完成。`pending_bytes`、`send_queue_length` 和
-`last_write_at_ms` 来自 `net` connection info，用于定位慢客户端、发送队列
+`last_write_at_ms` 来自 `socket_io` connection info，用于定位慢客户端、发送队列
 积压和媒体 attach 卡住的连接。HTTP-FLV/MJPEG 条目还会补充同一路 stream 的
 `media_running`、`media_track_ready`、`media_codec`、`media_codec_generation`、
 `media_http_flv_ready`、`media_mjpeg_ready`、`media_last_dts` 和
@@ -140,7 +140,7 @@ HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许
 `CreateHttp()` 不接收 public `*Dependencies` 依赖包；基础服务从 `Runtime`
 读取，RTSP/ONVIF/WebRTC 只读诊断入口从 `ServiceRegistry` 读取，媒体源从
 `MediaSourceRegistry` 读取。app 只显式传入 HTTP 需要访问的设备控制面对象和
-`net_loop`。
+`socket_loop`。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
 
 HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body

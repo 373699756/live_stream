@@ -59,7 +59,7 @@ class HttpImpl : public IHttp,
                  public HttpRequestHandler {
 public:
     HttpImpl(const HttpOptions &options,
-             event::Loop *net_loop,
+             event::Loop *socket_loop,
              INetwork *network,
              ITime *time,
              IAlarm *alarm,

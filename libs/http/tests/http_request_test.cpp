@@ -4,7 +4,7 @@
 #include "config.h"
 #include "logger.h"
 #include "device.h"
-#include "net.h"
+#include "socket_io.h"
 #include "runtime.h"
 
 #include <cstring>
@@ -109,7 +109,7 @@ public:
     std::vector<live_stream::OperationRecord> records;
 };
 
-class FakeNetIo : public live_stream::INetIo {
+class FakeSocketIo : public live_stream::ISocketIo {
 public:
     class FakeLoop : public live_stream::event::Loop {
     public:
@@ -185,13 +185,13 @@ public:
 
     bool Close(live_stream::ConnectionId) override { return true; }
     bool CloseAfterSend(live_stream::ConnectionId) override { return true; }
-    bool SendTo(live_stream::UdpSocketId, live_stream::NetAddress,
+    bool SendTo(live_stream::UdpSocketId, live_stream::SocketAddress,
                 const uint8_t*, size_t) override {
         return true;
     }
 
     bool SetUdpPeer(live_stream::UdpSocketId,
-                    live_stream::NetAddress) override {
+                    live_stream::SocketAddress) override {
         return true;
     }
 
@@ -200,25 +200,25 @@ public:
         return true;
     }
 
-    live_stream::NetAddress TcpLocalAddress(
+    live_stream::SocketAddress TcpLocalAddress(
         live_stream::TcpServerId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 8080};
+        return live_stream::SocketAddress{"127.0.0.1", 8080};
     }
 
-    live_stream::NetAddress UdpLocalAddress(
+    live_stream::SocketAddress UdpLocalAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 3702};
+        return live_stream::SocketAddress{"127.0.0.1", 3702};
     }
 
-    live_stream::NetAddress UdpPeerAddress(
+    live_stream::SocketAddress UdpPeerAddress(
         live_stream::UdpSocketId) const override {
-        return live_stream::NetAddress{"127.0.0.1", 40000};
+        return live_stream::SocketAddress{"127.0.0.1", 40000};
     }
 
     uint32_t PendingBytes(live_stream::ConnectionId) const override { return 0; }
 
-    live_stream::NetStats GetStats() const override {
-        return live_stream::NetStats();
+    live_stream::SocketIoStats GetStats() const override {
+        return live_stream::SocketIoStats();
     }
 
 private:
@@ -304,7 +304,7 @@ int main() {
     FakeConfig config;
     FakeLogger logger;
     FakeDeviceMedia media;
-    FakeNetIo net_io;
+    FakeSocketIo socket_io;
 
     live_stream::HttpOptions options;
     live_stream::Runtime::Clear();
@@ -319,12 +319,12 @@ int main() {
     }
 
     live_stream::Runtime::Clear();
-    (void)live_stream::Runtime::InstallNetIo(&net_io);
+    (void)live_stream::Runtime::InstallSocketIo(&socket_io);
     (void)live_stream::Runtime::InstallAuth(&auth);
     (void)live_stream::Runtime::InstallLogger(&logger);
     (void)live_stream::Runtime::InstallConfig(&config);
     std::unique_ptr<live_stream::IHttp> console =
-        live_stream::CreateHttp(options, net_io.DefaultLoop(), nullptr,
+        live_stream::CreateHttp(options, socket_io.DefaultLoop(), nullptr,
                                 nullptr, nullptr, nullptr, nullptr,
                                 nullptr, &media, nullptr);
     if (!console || !console->Start()) {

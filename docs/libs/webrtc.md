@@ -22,7 +22,7 @@ flowchart LR
   Transport --> SRTP[srtp_session]
   Session --> Sender[webrtc_rtp_sender]
   Sender --> Source[media_streams FrameSubscription]
-  ICE --> Net[net udp endpoint]
+  ICE --> SocketIo[socket_io udp endpoint]
 ```
 
 ## 核心职责
@@ -39,7 +39,7 @@ flowchart LR
 public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
 HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
 和 frame subscription 生命周期仍归 `media_streams`；基础服务从 `Runtime`
-获取，`CreateWebrtc()` 只额外接收明确的 net loop。冻结后的 signaling 路径为：
+获取，`CreateWebrtc()` 只额外接收明确的 socket_io loop。冻结后的 signaling 路径为：
 
 | API | 语义 |
 | --- | --- |
@@ -124,7 +124,7 @@ USERNAME、MESSAGE-INTEGRITY、FINGERPRINT、PRIORITY 和 USE-CANDIDATE；
 
 UDP 收包先由 STUN/ICE 建立 selected pair，随后 DTLS packet 进入
 `webrtc_transport` 持有的 `DtlsTransport`，outgoing handshake packet 通过 selected
-pair 发回；握手 timeout 由 `net` timer 重传驱动。DTLS connected 后
+pair 发回；握手 timeout 由 `socket_io` timer 重传驱动。DTLS connected 后
 `webrtc_transport` 建立 outbound/inbound SRTP context。
 
 10.3 已接入 SDP 层：native engine 可解析浏览器 video offer，并按本地 stream codec

@@ -8,7 +8,7 @@
 
 `rtsp` 负责 RTSP protocol、session、认证和通过 `MediaStreams`
 subscription 拉取视频帧。媒体源从 `MediaSourceRegistry` 获取，基础服务从
-`Runtime` 获取，`CreateRtsp()` 只额外接收明确的 net loop。它不拥有 WebRTC
+`Runtime` 获取，`CreateRtsp()` 只额外接收明确的 socket_io loop。它不拥有 WebRTC
 signaling、HTTP API 路由或 ONVIF metadata。
 
 ## 总体框架图
@@ -16,7 +16,7 @@ signaling、HTTP API 路由或 ONVIF metadata。
 ```mermaid
 flowchart LR
   Client[RTSP client] --> RTSP[rtsp]
-  RTSP --> Net[net]
+  RTSP --> SocketIo[socket_io]
   RTSP --> Auth[auth]
   RTSP --> Events[event]
   RTSP --> Subscription[FrameSubscription]
@@ -70,7 +70,7 @@ RTSP session 拥有控制连接、RTP/RTCP 传输状态、认证上下文、
 RTP 分片统一使用 `rtp::RtpPacketizer`。发送层只负责把
 `RtpPacketView` 转成 TCP interleaved 或 UDP datagram。TCP interleaved 提交
 interleaved header slice 和 RTP packet view，media payload slice 异步发送时由
-`net` 队列保存 `MediaBufferRef` 保留底层 `MediaBuffer` 引用；UDP 使用同步
+`socket_io` 队列保存 `MediaBufferRef` 保留底层 `MediaBuffer` 引用；UDP 使用同步
 `sendmsg` 发送 packet view，不保留 payload 引用。
 
 `RtspSessionInfo` 字段冻结为：
@@ -92,10 +92,10 @@ interleaved header slice 和 RTP packet view，media payload slice 异步发送�
 | `rtp_packets` / `rtp_bytes` | 已发送 RTP 统计 |
 | `rtcp_packets` / `rtcp_bytes` | 已收到 RTCP 统计 |
 | `last_rtcp_ms` | 最近一次收到 RTCP 的 monotonic ms，未收到时为 0 |
-| `close_reason` | 来自 `net` 或 RTSP close path 的关闭原因 |
+| `close_reason` | 来自 `socket_io` 或 RTSP close path 的关闭原因 |
 
 `IRtsp::ListSessionInfo()` 输出当前 RTSP sessions 的上述字段；pending
-bytes 和 close reason 优先读取 `net` 的 connection info。这些字段由
+bytes 和 close reason 优先读取 `socket_io` 的 connection info。这些字段由
 `/api/media/sessions` 聚合给 Web；RTSP 模块只提供协议信息，不提供
 HLS/FLV/MJPEG/WebRTC ready 状态。
 
@@ -110,7 +110,7 @@ HLS/FLV/MJPEG/WebRTC ready 状态。
   GOP cache，不直接订阅 device 或 HiSilicon SDK。
 - TEARDOWN、控制连接断开、SETUP 切换 transport、send queue 失败和服务停止都必须 detach
   subscription，并让 `MediaStreams` subscription size 回落。
-- RTP packetizer 只输出 packet view；TCP interleaved 由 `net` 队列 owner 保活 payload，
+- RTP packetizer 只输出 packet view；TCP interleaved 由 `socket_io` 队列 owner 保活 payload，
   UDP 同步发送 datagram，不长期保存原始帧指针。
 - RTCP receiver report 和丢包信息只进入诊断；首版不在 RTSP 内做码率控制、降帧率或
   自动切子码流。

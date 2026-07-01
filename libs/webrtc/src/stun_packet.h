@@ -1,7 +1,7 @@
 #ifndef LIVE_STREAM_WEBRTC_SRC_STUN_PACKET_H_
 #define LIVE_STREAM_WEBRTC_SRC_STUN_PACKET_H_
 
-#include "net.h"
+#include "socket_io.h"
 
 #include <array>
 #include <cstddef>
@@ -38,7 +38,7 @@ StunParseResult ParseStunBindingRequest(const uint8_t *data, size_t size,
                                         StunBindingRequest *request);
 std::vector<uint8_t> BuildStunBindingSuccessResponse(
     const StunBindingRequest &request, const std::string &local_password,
-    const NetAddress &peer);
+    const SocketAddress &peer);
 const char *StunParseResultName(StunParseResult result);
 
 }  // namespace webrtc_internal

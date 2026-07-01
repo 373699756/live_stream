@@ -151,7 +151,7 @@ ConfigCode ProtocolSubsystem::ApplyWebrtcConfigChange(
     }
     ProtocolStartupRefs refs;
     refs.device.network = network_;
-    refs.net_io = net_io_.get();
+    refs.socket_io = socket_io_.get();
     refs.rtsp = rtsp_.get();
     refs.onvif = onvif_.get();
     refs.webrtc = webrtc_.get();

@@ -47,7 +47,7 @@ CXXFLAGS += -Ilibs/event/include
 CXXFLAGS += -Ilibs/system/include
 CXXFLAGS += -Ilibs/media/include
 CXXFLAGS += -Ilibs/media_codec/include
-CXXFLAGS += -Ilibs/net/include
+CXXFLAGS += -Ilibs/socket_io/include
 CXXFLAGS += -Ilibs/ai/include
 CXXFLAGS += -Ilibs/device/include
 CXXFLAGS += -Ilibs/hisi_vendor/include
@@ -65,7 +65,7 @@ CXXFLAGS += -pthread
 MODULES := \
 	infra \
 	runtime \
-	net \
+	socket_io \
 	event \
 	auth \
 	system \

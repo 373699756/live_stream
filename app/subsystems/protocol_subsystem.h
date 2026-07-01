@@ -6,7 +6,7 @@
 
 #include "config/app_config.h"
 #include "http.h"
-#include "net.h"
+#include "socket_io.h"
 #include "net_stat.h"
 #include "onvif_server.h"
 #include "rtsp.h"
@@ -37,7 +37,7 @@ public:
                const MediaRefs &media_refs);
     void Stop();
     ProtocolRefs refs() const;
-    INetIo *net_io() const { return net_io_.get(); }
+    ISocketIo *socket_io() const { return socket_io_.get(); }
 
 private:
     ProtocolSubsystem() = default;
@@ -65,8 +65,8 @@ private:
                             const Json &value,
                             AppConfig &next_config) const;
 
-    std::unique_ptr<event::Loop> net_callback_loop_;
-    std::unique_ptr<INetIo> net_io_;
+    std::unique_ptr<event::Loop> socket_callback_loop_;
+    std::unique_ptr<ISocketIo> socket_io_;
     std::unique_ptr<IRtsp> rtsp_;
     std::unique_ptr<IWebrtc> webrtc_;
     std::unique_ptr<OnvifServer> onvif_;

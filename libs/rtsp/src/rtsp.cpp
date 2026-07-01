@@ -6,7 +6,7 @@
 #include "media/media_source_registry.h"
 #include "media/media_streams.h"
 #include "rtp.h"
-#include "net.h"
+#include "socket_io.h"
 #include "rtsp_auth.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
@@ -35,7 +35,7 @@ enum class RtspPhase {
     kDeinitialized,
 };
 
-std::string AddressText(const NetAddress& address) {
+std::string AddressText(const SocketAddress& address) {
     if (address.ip.empty() || address.port == 0) {
         return std::string();
     }
@@ -76,10 +76,10 @@ class RtspImpl : public IRtsp,
                  public IRtspRequestHandlerDelegate,
                  public IRtspAuthResponder {
 public:
-    RtspImpl(RtspOptions options, event::Loop *net_loop)
+    RtspImpl(RtspOptions options, event::Loop *socket_loop)
         : options_(std::move(options)),
-          net_io_(Runtime::NetIo()),
-          net_loop_(net_loop),
+          socket_io_(Runtime::SocketIo()),
+          net_loop_(socket_loop),
           auth_(Runtime::Auth()),
           event_(Runtime::EventCenter()),
           media_streams_(MediaSourceRegistry::Streams()),
@@ -97,7 +97,7 @@ public:
             phase_ == RtspPhase::kStopped) {
             return true;
         }
-        if (net_io_ == nullptr ||
+        if (socket_io_ == nullptr ||
             net_loop_ == nullptr ||
             media_streams_ == nullptr ||
             options_.max_sessions == 0 || options_.rtp_mtu_bytes < 64 ||
@@ -137,14 +137,14 @@ public:
         tcp_callbacks.on_accept = &RtspImpl::HandleAccept;
         tcp_callbacks.on_read = &RtspImpl::HandleRead;
         tcp_callbacks.on_close = &RtspImpl::HandleClose;
-        TcpServerId server_result = net_io_->ListenTcp(
+        TcpServerId server_result = socket_io_->ListenTcp(
             net_loop_, tcp_config, tcp_callbacks);
         if (server_result == 0) {
             return false;
         }
         server_id_ = server_result;
 
-        NetAddress local_result = net_io_->TcpLocalAddress(server_id_);
+        SocketAddress local_result = socket_io_->TcpLocalAddress(server_id_);
         local_address_ = {options_.listen_ip,
                           local_result.port != 0 ? local_result.port
                                                  : options_.listen_port};
@@ -176,7 +176,7 @@ private:
         std::vector<std::shared_ptr<RtspSession>> sessions;
         std::vector<ConnectionId> connection_ids;
         if (server_id_ != 0) {
-            (void)net_io_->CloseTcp(server_id_);
+            (void)socket_io_->CloseTcp(server_id_);
             server_id_ = 0;
         }
         {
@@ -190,7 +190,7 @@ private:
             CloseSessionResources(*session, SubscriptionClose::kStreamStopped);
         }
         for (ConnectionId connection_id : connection_ids) {
-            (void)net_io_->Close(connection_id);
+            (void)socket_io_->Close(connection_id);
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -275,8 +275,8 @@ public:
                 item.last_rtcp_ms = session->stats.last_rtcp_ms;
                 item.close_reason = TcpCloseReasonName(session->close_reason);
             }
-            const NetConnectionInfo connection_info =
-                net_io_->GetConnectionInfo(session->connection_id);
+            const SocketConnectionInfo connection_info =
+                socket_io_->GetConnectionInfo(session->connection_id);
             const bool has_connection_info =
                 connection_info.connection_id == session->connection_id;
             if (has_connection_info &&
@@ -321,7 +321,7 @@ public:
     }
 
 private:
-    static void HandleAccept(void* user, ConnectionId id, NetAddress peer) {
+    static void HandleAccept(void* user, ConnectionId id, SocketAddress peer) {
         RtspImpl* self = static_cast<RtspImpl*>(user);
         if (self != nullptr) {
             self->OnConnection(id, std::move(peer));
@@ -349,7 +349,7 @@ private:
 
     static void HandleUdpRead(void* user,
                               UdpSocketId socket_id,
-                              NetAddress peer,
+                              SocketAddress peer,
                               const uint8_t* data,
                               size_t size) {
         RtspImpl* self = static_cast<RtspImpl*>(user);
@@ -358,7 +358,7 @@ private:
         }
     }
 
-    void OnConnection(ConnectionId connection_id, NetAddress peer) {
+    void OnConnection(ConnectionId connection_id, SocketAddress peer) {
         std::shared_ptr<RtspSession> session;
         bool accepted = false;
         {
@@ -370,7 +370,7 @@ private:
             }
         }
         if (!accepted) {
-            (void)net_io_->Close(connection_id);
+            (void)socket_io_->Close(connection_id);
             return;
         }
         Info("rtsp", "RTSP client connected conn=%llu peer=%s:%u",
@@ -407,7 +407,7 @@ private:
     }
 
     void OnUdpPacket(UdpSocketId socket_id,
-                     NetAddress peer,
+                     SocketAddress peer,
                      const uint8_t* data,
                      size_t size) {
         (void)data;
@@ -448,7 +448,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session = session_table_.Find(connection_id);
             if (!session) {
-                (void)net_io_->Close(connection_id);
+                (void)socket_io_->Close(connection_id);
                 return;
             }
             if (!session->AppendBytes(data, size)) {
@@ -460,7 +460,7 @@ private:
         if (split.status == RtspSplitterStatus::kPayloadTooLarge) {
             AddParseFailure();
             // request 超过上限时不尝试返回部分响应，直接断开控制连接。
-            (void)net_io_->Close(connection_id);
+            (void)socket_io_->Close(connection_id);
             return;
         }
 
@@ -474,7 +474,7 @@ private:
                 // 解析失败仍带一个兜底 CSeq，方便部分客户端把错误归到当前请求；
                 // 响应排队后关闭，避免继续处理错乱的控制连接。
                 SendResponse(connection_id, 400, "1", {}, "");
-                (void)net_io_->CloseAfterSend(connection_id);
+                (void)socket_io_->CloseAfterSend(connection_id);
                 return;
             }
             request_handler_.HandleRequest(session, request);
@@ -553,8 +553,8 @@ private:
             CloseSessionResources(session, SubscriptionClose::kUnsubscribed);
             UdpSocketId rtp_socket_id = 0;
             UdpSocketId rtcp_socket_id = 0;
-            NetAddress server_rtp;
-            NetAddress server_rtcp;
+            SocketAddress server_rtp;
+            SocketAddress server_rtcp;
             if (!BindSessionUdpSockets(rtp_socket_id, rtcp_socket_id,
                                        server_rtp, server_rtcp)) {
                 Error("rtsp", "RTSP setup UDP bind failed");
@@ -595,29 +595,29 @@ private:
 
     bool BindSessionUdpSockets(UdpSocketId &rtp_socket_id,
                                UdpSocketId &rtcp_socket_id,
-                               NetAddress &server_rtp,
-                               NetAddress &server_rtcp) {
+                               SocketAddress &server_rtp,
+                               SocketAddress &server_rtcp) {
         UdpBindOptions udp_config;
         udp_config.address = {options_.listen_ip, 0};
         UdpCallbacks udp_callbacks;
         udp_callbacks.user = this;
         udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
-        const UdpSocketId rtp_result = net_io_->BindUdp(
+        const UdpSocketId rtp_result = socket_io_->BindUdp(
             net_loop_, udp_config, udp_callbacks);
         if (rtp_result == 0) {
             return false;
         }
-        const UdpSocketId rtcp_result = net_io_->BindUdp(
+        const UdpSocketId rtcp_result = socket_io_->BindUdp(
             net_loop_, udp_config, udp_callbacks);
         if (rtcp_result == 0) {
-            (void)net_io_->CloseUdp(rtp_result);
+            (void)socket_io_->CloseUdp(rtp_result);
             return false;
         }
-        server_rtp = net_io_->UdpLocalAddress(rtp_result);
-        server_rtcp = net_io_->UdpLocalAddress(rtcp_result);
+        server_rtp = socket_io_->UdpLocalAddress(rtp_result);
+        server_rtcp = socket_io_->UdpLocalAddress(rtcp_result);
         if (server_rtp.port == 0 || server_rtcp.port == 0) {
-            (void)net_io_->CloseUdp(rtp_result);
-            (void)net_io_->CloseUdp(rtcp_result);
+            (void)socket_io_->CloseUdp(rtp_result);
+            (void)socket_io_->CloseUdp(rtcp_result);
             return false;
         }
         rtp_socket_id = rtp_result;
@@ -630,7 +630,7 @@ private:
         const std::map<std::string, std::string>& headers,
         const std::string& body) override {
         const std::string response = BuildRtspResponse(status, cseq, headers, body);
-        (void)net_io_->Send(
+        (void)socket_io_->Send(
             connection_id, reinterpret_cast<const uint8_t*>(response.data()),
             response.size());
     }
@@ -722,7 +722,7 @@ private:
         if (session != nullptr) {
             CloseSessionResources(*session, SubscriptionClose::kUnsubscribed);
         }
-        (void)net_io_->CloseAfterSend(connection_id);
+        (void)socket_io_->CloseAfterSend(connection_id);
     }
 
     RtspListenAddress RtspLocalAddress() const override {
@@ -747,7 +747,7 @@ private:
     }
 
     void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
-        // drain timer 运行在 net IO loop 上，周期性从 media_streams subscription 拉帧；
+        // drain timer 运行在 socket_io loop 上，周期性从 media_streams subscription 拉帧；
         // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
         event::TimerId timer_id = 0;
         const event::EventStatus timer_status = net_loop_->RunEvery(
@@ -852,13 +852,13 @@ private:
             session.rtp_socket_id = 0;
             session.rtcp_socket_id = 0;
         }
-        // socket id 清零后再关闭 net endpoint，避免关闭回调里再次找到同一 session
+        // socket id 清零后再关闭 socket_io endpoint，避免关闭回调里再次找到同一 session
         // 并重复关闭相同 UDP socket。
         if (rtp_socket_id != 0) {
-            (void)net_io_->CloseUdp(rtp_socket_id);
+            (void)socket_io_->CloseUdp(rtp_socket_id);
         }
         if (rtcp_socket_id != 0) {
-            (void)net_io_->CloseUdp(rtcp_socket_id);
+            (void)socket_io_->CloseUdp(rtcp_socket_id);
         }
     }
 
@@ -884,11 +884,11 @@ private:
     }
 
     RtspRtpSenderContext RtpSenderContext() {
-        return RtspRtpSenderContext{*net_io_, mutex_, stats_};
+        return RtspRtpSenderContext{*socket_io_, mutex_, stats_};
     }
 
     RtspOptions options_;
-    INetIo* net_io_ = nullptr;
+    ISocketIo* socket_io_ = nullptr;
     event::Loop* net_loop_ = nullptr;
     IAuth* auth_ = nullptr;
     event::EventCenter* event_ = nullptr;
@@ -906,9 +906,9 @@ private:
 
 std::unique_ptr<IRtsp> CreateRtsp(
     const RtspOptions& options,
-    event::Loop* net_loop) {
+    event::Loop* socket_loop) {
     return std::unique_ptr<IRtsp>(
-        new RtspImpl(options, net_loop));
+        new RtspImpl(options, socket_loop));
 }
 
 const char* Rtsp::Name() {

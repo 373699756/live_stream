@@ -2,7 +2,7 @@
 #define LIVE_STREAM_RTSP_SRC_RTSP_RTP_SENDER_H_
 
 #include "media/media_frame.h"
-#include "net.h"
+#include "socket_io.h"
 #include "rtsp.h"
 #include "rtsp_session.h"
 #include "rtp.h"
@@ -15,7 +15,7 @@ namespace live_stream {
 class RtspRtpPacketSink;
 
 struct RtspRtpSenderContext {
-    INetIo &net_io;
+    ISocketIo &socket_io;
     std::mutex &mutex;
     RtspStats &service_stats;
 };

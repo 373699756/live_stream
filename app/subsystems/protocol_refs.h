@@ -5,7 +5,7 @@
 #include "subsystems/media_subsystem.h"
 
 #include "http.h"
-#include "net.h"
+#include "socket_io.h"
 #include "onvif_server.h"
 #include "rtsp.h"
 #include "webrtc.h"
@@ -15,7 +15,7 @@ namespace live_stream {
 struct ProtocolStartupRefs {
     DeviceRefs device;
     MediaRefs media;
-    INetIo *net_io = nullptr;
+    ISocketIo *socket_io = nullptr;
     event::Loop *rtsp_loop = nullptr;
     event::Loop *webrtc_loop = nullptr;
     event::Loop *onvif_loop = nullptr;

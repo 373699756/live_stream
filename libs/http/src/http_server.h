@@ -16,7 +16,7 @@
 
 namespace live_stream {
 
-class INetIo;
+class ISocketIo;
 namespace event {
 class Loop;
 class Executor;
@@ -35,8 +35,8 @@ public:
 // HTTP server 内核只负责连接和 HTTP/1.1 生命周期。业务路由在 HttpImpl，
 // HLS/FLV/MJPEG/SSE 等长连接通过 HttpMediaWriter 回调进来。
 struct HttpServerRefs {
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
+    ISocketIo *socket_io = nullptr;
+    event::Loop *socket_loop = nullptr;
 };
 
 class HttpServer : public HttpMediaWriter {
@@ -78,7 +78,7 @@ public:
     void CloseConnection(ConnectionId connection_id) override;
 
 private:
-    static void HandleAccept(void *user, ConnectionId id, NetAddress peer);
+    static void HandleAccept(void *user, ConnectionId id, SocketAddress peer);
     static void HandleRead(void *user, ConnectionId id, const uint8_t *data,
                            size_t size);
     static void HandleClose(void *user, ConnectionId id,
@@ -86,7 +86,7 @@ private:
     static HttpResponse ParseFailureResponse(HttpSessionParseFailure failure);
     static HttpStreamSessionInfo BuildStreamSessionInfo(
         const HttpSessionStreamingInfo &session,
-        const NetConnectionInfo &connection);
+        const SocketConnectionInfo &connection);
 
     event::Executor *ExecutorForRequestLocked(
         const HttpRequest &request) const;
@@ -99,7 +99,7 @@ private:
     bool HandleStreamingRequestResult(ConnectionId connection_id,
                                       const HttpRequest &request,
                                       HttpStreamingRequestResult result);
-    void OnConnection(ConnectionId connection_id, NetAddress peer);
+    void OnConnection(ConnectionId connection_id, SocketAddress peer);
     void OnClose(ConnectionId connection_id, TcpCloseReason reason);
     void OnMessage(ConnectionId connection_id, const uint8_t *data,
                    uint32_t size);
@@ -111,7 +111,7 @@ private:
 
     HttpOptions options_;
     HttpResponseSender response_sender_;
-    INetIo *net_io_ = nullptr;
+    ISocketIo *socket_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     // request_handler_ 非 owning，由 HttpImpl 持有；HttpServer 停止前不会释放它。
     HttpRequestHandler *request_handler_ = nullptr;

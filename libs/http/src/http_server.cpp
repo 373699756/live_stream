@@ -40,8 +40,8 @@ HttpServer::HttpServer(const HttpOptions &options,
                        HttpRequestHandler *request_handler)
     : options_(options),
       response_sender_(options.send_buffer_limit_bytes),
-      net_io_(refs.net_io),
-      net_loop_(refs.net_loop),
+      socket_io_(refs.socket_io),
+      net_loop_(refs.socket_loop),
       request_handler_(request_handler) {}
 
 HttpServer::~HttpServer() {
@@ -54,7 +54,7 @@ bool HttpServer::Prepare() {
     if (initialized_) {
         return true;
     }
-    if (net_io_ == nullptr || request_handler_ == nullptr) {
+    if (socket_io_ == nullptr || request_handler_ == nullptr) {
         return false;
     }
     if (net_loop_ == nullptr) {
@@ -126,7 +126,7 @@ bool HttpServer::Start() {
     callbacks.on_accept = &HttpServer::HandleAccept;
     callbacks.on_read = &HttpServer::HandleRead;
     callbacks.on_close = &HttpServer::HandleClose;
-    TcpServerId server = net_io_->ListenTcp(net_loop_, server_config,
+    TcpServerId server = socket_io_->ListenTcp(net_loop_, server_config,
                                             callbacks);
     if (server == 0) {
         Error(kHttpModuleName, "HTTP listen tcp failed");
@@ -159,8 +159,8 @@ bool HttpServer::Start() {
 
 void HttpServer::Stop() {
     TcpServerId server_id = 0;
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
+    ISocketIo *socket_io = nullptr;
+    event::Loop *socket_loop = nullptr;
     event::Executor *stream_executor = nullptr;
     event::Executor *control_executor = nullptr;
     std::vector<HttpMediaClientHandle> media_clients;
@@ -174,8 +174,8 @@ void HttpServer::Stop() {
         started_ = false;
         server_id = tcp_server_id_;
         tcp_server_id_ = 0;
-        net_io = net_io_;
-        net_loop = net_loop_;
+        socket_io = socket_io_;
+        socket_loop = net_loop_;
         // Stop() 先摘出 session 状态，再在锁外通知媒体模块 detach client。
         // close callback 可能回到 media/event，不能拿着 HTTP 锁跨模块调用。
         for (const auto &item : sessions_) {
@@ -200,15 +200,15 @@ void HttpServer::Stop() {
          media_clients.size());
     NotifyStreamsClosed(media_clients);
     for (event::TimerId timer_id : timer_ids) {
-        CancelNetTimer(net_loop, timer_id);
+        CancelNetTimer(socket_loop, timer_id);
     }
     if (server_id != 0) {
-        (void)net_io->CloseTcp(server_id);
+        (void)socket_io->CloseTcp(server_id);
     }
-    // 主动关闭所有连接可以触发 net close path，但 sessions_ 已经在上面摘除，
+    // 主动关闭所有连接可以触发 socket_io close path，但 sessions_ 已经在上面摘除，
     // 所以 OnClose() 不会重复 detach media client。
     for (ConnectionId connection_id : connection_ids) {
-        (void)net_io->Close(connection_id);
+        (void)socket_io->Close(connection_id);
     }
     StopExecutor(control_executor);
     StopExecutor(stream_executor);
@@ -229,7 +229,7 @@ HttpListenAddress HttpServer::LocalAddress() const {
     if (tcp_server_id_ == 0) {
         return HttpListenAddress{};
     }
-    NetAddress address = net_io_->TcpLocalAddress(tcp_server_id_);
+    SocketAddress address = socket_io_->TcpLocalAddress(tcp_server_id_);
     HttpListenAddress result;
     result.ip = address.ip;
     result.port = address.port;
@@ -243,11 +243,11 @@ HttpStats HttpServer::GetStats() const {
 
 std::vector<HttpStreamSessionInfo>
 HttpServer::ListStreamSessionInfo() const {
-    INetIo *net_io = nullptr;
+    ISocketIo *socket_io = nullptr;
     std::vector<HttpSessionStreamingInfo> sessions;
     {
         std::lock_guard<std::mutex> guard(mutex_);
-        net_io = net_io_;
+        socket_io = socket_io_;
         sessions.reserve(sessions_.size());
         for (const auto &item : sessions_) {
             if (item.second->is_streaming()) {
@@ -264,7 +264,7 @@ HttpServer::ListStreamSessionInfo() const {
     for (const HttpSessionStreamingInfo &session : sessions) {
         session_info.push_back(BuildStreamSessionInfo(
             session,
-            net_io->GetConnectionInfo(session.connection_id)));
+            socket_io->GetConnectionInfo(session.connection_id)));
     }
     return session_info;
 }
@@ -298,7 +298,7 @@ void HttpServer::SendResponse(ConnectionId connection_id,
                               const HttpResponse &response,
                               bool close_after_response) {
     const bool sent = response_sender_.SendResponse(
-        net_io_, connection_id, response, close_after_response);
+        socket_io_, connection_id, response, close_after_response);
     if (sent && !close_after_response) {
         CompleteKeepAliveRequest(connection_id);
     }
@@ -339,7 +339,7 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
         }
     }
     const bool enqueued = response_sender_.EnqueueStreamingChunk(
-        net_io_, connection_id, data, size);
+        socket_io_, connection_id, data, size);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
     }
@@ -360,7 +360,7 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         }
     }
     const bool enqueued = response_sender_.EnqueueStreamingSlices(
-        net_io_, connection_id, slices, slice_size);
+        socket_io_, connection_id, slices, slice_size);
     if (!enqueued) {
         (void)MarkStreamingClosing(connection_id);
     }
@@ -378,19 +378,19 @@ void HttpServer::CloseConnection(ConnectionId connection_id) {
 
 void HttpServer::CloseConnectionWithReason(ConnectionId connection_id,
                                            TcpCloseReason reason) {
-    INetIo *net_io = nullptr;
+    ISocketIo *socket_io = nullptr;
     {
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter != sessions_.end()) {
             (void)iter->second->MarkStreamClosing();
         }
-        net_io = net_io_;
+        socket_io = socket_io_;
     }
-    response_sender_.CloseConnection(net_io, connection_id, reason);
+    response_sender_.CloseConnection(socket_io, connection_id, reason);
 }
 
-void HttpServer::HandleAccept(void *user, ConnectionId id, NetAddress peer) {
+void HttpServer::HandleAccept(void *user, ConnectionId id, SocketAddress peer) {
     HttpServer *self = static_cast<HttpServer *>(user);
     if (self != nullptr) {
         self->OnConnection(id, std::move(peer));
@@ -482,7 +482,7 @@ bool HttpServer::HandleStreamingRequestResult(
     return true;
 }
 
-void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
+void HttpServer::OnConnection(ConnectionId connection_id, SocketAddress peer) {
     {
         std::lock_guard<std::mutex> guard(mutex_);
         sessions_[connection_id].reset(
@@ -495,7 +495,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, NetAddress peer) {
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
     (void)reason;
     ClosedHttpSessionInfo closed;
-    event::Loop *net_loop = nullptr;
+    event::Loop *socket_loop = nullptr;
     event::TimerId timer_id = 0;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -509,11 +509,11 @@ void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
         if (stats_.active_connections > 0) {
             --stats_.active_connections;
         }
-        net_loop = net_loop_;
+        socket_loop = net_loop_;
     }
     // TCP close 是所有媒体长连接的最终回收点；无论是浏览器断开、超时还是队列满，
     // 都必须在这里通知 http_media 解除 FLV/MJPEG/SSE 订阅。
-    CancelNetTimer(net_loop, timer_id);
+    CancelNetTimer(socket_loop, timer_id);
     NotifyStreamClosed(closed.media_client);
 }
 
@@ -538,8 +538,8 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
         parsed = iter->second->ParsePendingRequests(
             parse_options, &request_logs);
     }
-    if (send_continue && net_io_ != nullptr) {
-        (void)net_io_->Send(
+    if (send_continue && socket_io_ != nullptr) {
+        (void)socket_io_->Send(
             connection_id,
             reinterpret_cast<const uint8_t *>(kHttpContinueResponse),
             sizeof(kHttpContinueResponse) - 1);
@@ -636,7 +636,7 @@ HttpResponse HttpServer::ParseFailureResponse(
 
 HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
     const HttpSessionStreamingInfo &session,
-    const NetConnectionInfo &connection) {
+    const SocketConnectionInfo &connection) {
     HttpStreamSessionInfo info;
     info.connection_id = session.connection_id;
     info.protocol = HttpMediaClientTypeName(session.media_type);
@@ -669,7 +669,7 @@ HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
 
 void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                                     uint32_t delay_ms) {
-    event::Loop *net_loop = nullptr;
+    event::Loop *socket_loop = nullptr;
     RenewedHttpSessionTimeout timeout;
     {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -678,15 +678,15 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
             return;
         }
         timeout = iter->second->RenewTimeout();
-        net_loop = net_loop_;
+        socket_loop = net_loop_;
     }
     // timeout_generation_ 用来淘汰旧 timer：请求推进或进入 streaming 后，
     // 旧 timer 即使晚到也不会误关新状态下的连接。
-    CancelNetTimer(net_loop, timeout.replaced_timer_id);
+    CancelNetTimer(socket_loop, timeout.replaced_timer_id);
     event::TimerId timer_id = 0;
-    const event::EventStatus timer_status = net_loop->RunAfter(
+    const event::EventStatus timer_status = socket_loop->RunAfter(
         delay_ms, [this, connection_id, generation = timeout.generation]() {
-            INetIo *net_io = nullptr;
+            ISocketIo *socket_io = nullptr;
             bool should_close = false;
             {
                 std::lock_guard<std::mutex> guard(mutex_);
@@ -694,10 +694,10 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                 should_close =
                     iter != sessions_.end() &&
                     iter->second->ExpireTimeout(generation);
-                net_io = net_io_;
+                socket_io = socket_io_;
             }
             if (should_close) {
-                (void)net_io->Close(connection_id);
+                (void)socket_io->Close(connection_id);
             }
         },
         &timer_id);
@@ -712,7 +712,7 @@ void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
                  iter->second->InstallTimeout(timeout.generation, timer_id);
     }
     if (!stored) {
-        CancelNetTimer(net_loop, timer_id);
+        CancelNetTimer(socket_loop, timer_id);
     }
 }
 

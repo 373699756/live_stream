@@ -3,7 +3,7 @@
 
 #include "dtls_transport.h"
 #include "media/media_frame.h"
-#include "net.h"
+#include "socket_io.h"
 #include "webrtc.h"
 #include "webrtc_peer_host.h"
 #include "webrtc_sdp.h"
@@ -19,8 +19,8 @@ namespace webrtc_internal {
 struct WebrtcSessionOfferContext {
     WebrtcOptions options;
     DtlsFingerprint local_fingerprint;
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
+    ISocketIo *socket_io = nullptr;
+    event::Loop *socket_loop = nullptr;
     UdpCallbacks udp_callbacks;
     uint32_t next_port_offset = 0;
     void *timer_user = nullptr;
@@ -47,7 +47,7 @@ public:
     void Close();
 
     bool MatchesSocket(UdpSocketId socket_id) const;
-    bool HandleIcePacket(NetAddress peer, const uint8_t *data, size_t size,
+    bool HandleIcePacket(SocketAddress peer, const uint8_t *data, size_t size,
                          bool &connected_now);
     bool ProcessDtlsPacket(const uint8_t *data, size_t size,
                            WebrtcDtlsOutput &result);

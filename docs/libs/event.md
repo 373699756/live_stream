@@ -32,7 +32,7 @@ flowchart LR
   `Publish`、`Post` 和 `GetStats`。
 - 提供 `EventBus` 组合 `Loop + EventCenter`，用于异步发布事件。
 - 提供 `Executor` 执行普通后台任务，供 AI、升级等低频后台流程复用。
-- 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 net 和协议模块
+- 提供 `Loop::Post`、`RunAfter`、`RunEvery` 和 `CancelTimer`，供 socket_io 和协议模块
   绑定任务/timer 生命周期。
 - 提供 `MultiReaderQueue` 这种无 payload 语义的基础容器，供拥有模块实现
   “一次写入、多读者按各自位置读取”的内存结构。
@@ -63,7 +63,7 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 | `kSnapshotCreated` | `device` | stream | 输出摘要 | 字节数或 0 |
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |
 | `kNetworkChanged` | `system.network` | interface 或 port | 变更摘要 | 保留为 0 |
-| `kNetPressureChanged` | `net_stat` | `connections` | 压力等级摘要 | tracked target 数 |
+| `kNetQueueChanged` | `net_stat` | `connections` | 队列等级摘要 | tracked target 数 |
 | `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
 | `kSystemInfoChanged` | `system` | info key | 信息摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |

@@ -30,7 +30,7 @@
 | `libs/hisi_vendor` | HiSilicon MPP/VENC/ISP/REGION/SNAPSHOT/IVE/VGS/NNIE SDK 封装 | 业务状态、HTTP API、媒体订阅策略 |
 | `libs/media` | 通用媒体帧、GOP/起播缓存、订阅、HLS/FLV/MJPEG 缓存、统计 | 设备配置、socket、HTTP request 解析 |
 | `libs/media_codec` | H.264/H.265 AnnexB、AVCC/HVCC、RTP packet view、时间戳、payload 切片 | RTP session、协议连接生命周期、WebRTC transport |
-| `libs/net` | EventLoop、Timer、TcpServer、TcpConnection、TcpClient、SocketUtil、send queue、背压观测 | HTTP、鉴权、媒体业务、配置逻辑 |
+| `libs/socket_io` | EventLoop、Timer、TcpServer、TcpConnection、TcpClient、SocketUtil、send queue、背压观测 | HTTP、鉴权、媒体业务、配置逻辑 |
 | `libs/http` | 控制 API、鉴权、短响应、统一错误 envelope、系统/配置/状态 API | HLS/FLV/MJPEG 长连接输出 |
 | `libs/http_media` | HLS、HTTP-FLV、MJPEG、WebRTC signaling/WHEP | 控制 API、设备 SDK 配置、socket 队列管理 |
 | `libs/rtsp` | RTSP session、SDP、SETUP/PLAY、RTP over TCP/UDP、RTCP | HTTP API、设备配置、媒体帧缓存所有权 |
@@ -65,7 +65,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - 旧 `media_service`、`stream_hub_service` 和 `EncodedFrame` 主路径已迁到 `libs/media`、`MediaFrame`、`MediaBufferRef`。
 - FLV start、subscription frame、HLS segment ref 等主路径已由 RAII 值对象管理。
 - `MediaStreams` 已拆出 stream state、frame ring、preview clients、GOP cache、HLS maker、FLV muxer 等职责对象。
-- net send queue、send buffer limit、pending bytes、closed connection 限制已有基础。
+- socket_io send queue、send buffer limit、pending bytes、closed connection 限制已有基础。
 - HTTP handler 创建已从旧 `CreateHttpHandler(kind, deps)` 分发改为按业务入口构造。
 - HTTP public `HttpDependencies` 已删除，基础服务、协议只读诊断和媒体源分别从
   `Runtime`、`ServiceRegistry`、`MediaSourceRegistry` 获取。
@@ -77,8 +77,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 仍需处理：
 
-- `net` callback 仍使用 `void* user` C 风格边界；HTTP router/handler 已使用
-  `std::function` 注册，是否调整 net callback 契约需单独评估。
+- `socket_io` callback 仍使用 `void* user` C 风格边界；HTTP router/handler 已使用
+  `std::function` 注册，是否调整 socket_io callback 契约需单独评估。
 - `media` 资源预算和锁边界还不够显式。
 - `app` 仍有全局单例式入口和硬编码生命周期。
 - 配置校验错误结构、metrics 聚合视图、回调契约仍需统一。
@@ -135,7 +135,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 1. `hisi_vendor/device`：先确认 MPP 创建/销毁、锁顺序、抓图/overlay/AI 抓帧与重建互斥。
 2. `media/media_codec`：再确认帧进入项目内存后的引用模型、缓存上限、NAL/parameter set
    解析和 timestamp reset。
-3. `rtsp/webrtc/http_media/net`：然后确认订阅、RTP packet view、socket 背压和关闭路径。
+3. `rtsp/webrtc/http_media/socket_io`：然后确认订阅、RTP packet view、socket 背压和关闭路径。
 4. `http/www`：最后确认 API 错误、播放 URL、状态字段和页面提示都来自后端权威状态。
 
 ## 5. 重构阶段
@@ -174,7 +174,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 任务：
 
 - 继续减少 HTTP 内部宽构造参数，避免系统状态入口变成新的上帝视图。
-- 如需继续收敛低层 callback 风格，优先在 `net` 契约层单独评估，不在 HTTP handler
+- 如需继续收敛低层 callback 风格，优先在 `socket_io` 契约层单独评估，不在 HTTP handler
   内新增适配层。
 - HTTP 对 RTSP/WebRTC/ONVIF 的依赖收敛为只读诊断/会话视图接口。
 - 统一 API envelope、错误码、参数校验和 URL helper。
@@ -282,7 +282,7 @@ VDS 可选路线：
 - 各模块 `Verify/Apply` 保持归属模块内，但错误码和日志格式一致。
 - metrics 先新增内部聚合视图，不替换现有 `Stats/Info` DTO。
 - `RequestKeyframeFn`、`MediaFrameCallback` 后续改为窄接口或 callback 对象。
-- net/http 低层 `void* user` 可暂留事件边界，业务 handler 不再直接暴露 thunk。
+- socket_io/http 低层 `void* user` 可暂留事件边界，业务 handler 不再直接暴露 thunk。
 
 验收：配置热更新失败能定位 scope/field/reason；Web status 和 media sessions 能展示关键指标。
 
@@ -303,7 +303,7 @@ VDS 可选路线：
 ## 6. 热路径资源和内存模型
 
 本节合并原热路径内存专项的跨模块结论。具体实现仍归拥有模块：
-`device`、`hisi_vendor`、`media`、`media_codec`、`net`、`http_media`、`rtsp` 和
+`device`、`hisi_vendor`、`media`、`media_codec`、`socket_io`、`http_media`、`rtsp` 和
 `webrtc`。
 
 ### 6.1 视频热路径链路
@@ -318,7 +318,7 @@ VENC stream
   -> device wraps MediaFrame and pushes FrameSink
   -> media normalizes timestamp, parses NAL views, updates GOP/HLS/FLV/MJPEG/subscription caches
   -> http_media / rtsp / webrtc consume slices, segment refs or frame subscriptions
-  -> net send queue / UDP endpoint
+  -> socket_io send queue / UDP endpoint
   -> clients
 ```
 
@@ -343,19 +343,19 @@ FLV timestamp rebase 等小块复制不计入。
 | `device` 分发 | 0 | `MediaFrame` 值拷贝只增加底层 `MediaBuffer` 引用。 |
 | `media` ingest / parse / cache | 0 | NAL parser、GOP cache、subscription queue、FLV cache 共享 payload。 |
 | HLS 封装 | 1 | TS segment 必须自包含，PES/TS header 和 NAL payload 写入独立 segment body。 |
-| HLS HTTP 发送 | 0 | TS segment 由 owner 保活后进入 net queue。 |
+| HLS HTTP 发送 | 0 | TS segment 由 owner 保活后进入 socket_io queue。 |
 | HTTP-FLV live/cache | 0 | tag 小头部复制，视频 payload slice 指向原 `MediaBuffer`。 |
 | RTSP RTP packetize | 0 | RTP/FU header 是小 slice，payload 仍指向原帧；TCP interleaved 用 owner 保活。 |
 | WebRTC RTP packetize | 0 | RTP packet view 不复制媒体 payload。 |
 | WebRTC SRTP protect | 1/packet | libsrtp 需要连续可写 buffer；每个 RTP packet 复制后原地加密。 |
-| `net` TCP send queue | 0 或小块复制 | 带 `MediaBufferRef` 的媒体 slice 不复制；无 owner 的栈上 header 会复制。 |
+| `socket_io` TCP send queue | 0 或小块复制 | 带 `MediaBufferRef` 的媒体 slice 不复制；无 owner 的栈上 header 会复制。 |
 
 设计取舍：
 
 - HLS segment 是独立 HTTP 对象，必须保存完整 TS body，不能引用原始 frame payload。
 - FLV 和 RTP 是流式发送格式，优先用 header slice + payload slice。
 - WebRTC 的 SRTP 拷贝是加密边界要求，不长期保存原始 `MediaFrame` 指针。
-- 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，不是协议模块各自堆 socket buffer。
+- 慢客户端、pending bytes、send queue 上限和关闭策略归 `socket_io/http`，不是协议模块各自堆 socket buffer。
 
 ### 6.3 协议缓存和封装边界
 
@@ -407,8 +407,8 @@ WebRTC / SRTP：
 | FLV cached tag / GOP 数量 | 新客户端起播缓存是否收敛 | `media` |
 | Shared live frame cache | 触顶后慢客户端是否等待关键帧恢复 | `media` |
 | 活跃 FLV/MJPEG/frame subscription 数 | 是否受 client/subscription 上限限制 | `media` |
-| TCP active connections / pending bytes | 慢 socket 是否触顶后断开 | `net` |
-| TCP slow closes / close reason | 队列满、send stall、读写 timeout 是否可区分 | `net` |
+| TCP active connections / pending bytes | 慢 socket 是否触顶后断开 | `socket_io` |
+| TCP slow closes / close reason | 队列满、send stall、读写 timeout 是否可区分 | `socket_io` |
 | WebRTC peer 数和帧 fanout | peer 增加时是否线性放大持帧时间 | `webrtc` |
 
 `MediaStreamStats::cached_bytes` 继续作为 media 内 GOP、HLS segment 和 FLV GOP cache 的
@@ -418,7 +418,7 @@ WebRTC / SRTP：
 
 - 单路主码流 + 子码流预览时，HLS/FLV/MJPEG/WebRTC 任一模式启停后资源应回落到稳定值。
 - 客户端达到上限时，新连接失败必须可解释，不能突破 registry 或 HTTP connection 上限。
-- 慢客户端断开后，`net` send queue、stream executor backlog 和媒体缓存引用必须释放。
+- 慢客户端断开后，`socket_io` send queue、stream executor backlog 和媒体缓存引用必须释放。
 - codec 在 H.264/H.265/MJPEG 间切换后，旧 parameter set、GOP cache 和 segment cache
   不得继续服务新客户端。
 - 时间戳回退或大跳变后，GOP、HLS、FLV、MJPEG latest frame 和 subscription live queue
@@ -432,7 +432,7 @@ WebRTC / SRTP：
 - `media`：下游 client registry 和 frame subscription 数量上限。
 - `media`：HLS/FLV 封装输出减少临时大 buffer。
 - `media_codec`：RTSP/WebRTC RTP packet view 避免复制 media payload。
-- `net`：慢客户端断连、TCP pending bytes、send queue 和 UDP endpoint 生命周期。
+- `socket_io`：慢客户端断连、TCP pending bytes、send queue 和 UDP endpoint 生命周期。
 - `http_media`：stream executor 队列和 HTTP streaming session 释放。
 - `webrtc`：peer fanout 和 frame dispatch 内存峰值。
 
@@ -470,7 +470,7 @@ WebRTC / SRTP：
 可以并行：
 
 - `media/device` 核心收敛。
-- `net` 背压和连接生命周期。
+- `socket_io` 背压和连接生命周期。
 - `media_codec` RTP 工具层。
 - `http_media`、`rtsp`、`webrtc` 在接口冻结后并行。
 - `http` 控制 API 和 `www` 在 schema 稳定后并行。
@@ -495,7 +495,7 @@ make host-test
 make -C libs/media
 make -C libs/device
 make -C libs/hisi_vendor
-make -C libs/net
+make -C libs/socket_io
 make -C libs/http
 make -C libs/http_media
 make -C libs/rtsp

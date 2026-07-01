@@ -4,7 +4,7 @@
 
 namespace live_stream {
 
-bool RtspSessionTable::Add(ConnectionId connection_id, NetAddress peer,
+bool RtspSessionTable::Add(ConnectionId connection_id, SocketAddress peer,
                            uint32_t max_sessions,
                            std::shared_ptr<RtspSession> &session) {
     if (sessions_.size() >= max_sessions) {

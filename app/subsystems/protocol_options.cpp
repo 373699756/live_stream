@@ -9,8 +9,8 @@
 namespace live_stream {
 namespace {
 
-constexpr uint32_t kNetIoThreads = 2;
-constexpr uint32_t kNetCallbackQueueCapacity = 4096;
+constexpr uint32_t kSocketIoThreads = 2;
+constexpr uint32_t kSocketCallbackQueueCapacity = 4096;
 constexpr uint32_t kHttpStreamWorkers = 4;
 constexpr uint32_t kHttpStreamQueueCapacity = 256;
 constexpr uint32_t kHttpControlWorkers = 1;
@@ -117,16 +117,16 @@ std::string ResolveWebrtcPublicIp(
 
 }  // namespace
 
-event::LoopOptions BuildNetCallbackOptions() {
+event::LoopOptions BuildSocketCallbackOptions() {
     event::LoopOptions options;
-    options.name = "net-callback";
-    options.queue_capacity = kNetCallbackQueueCapacity;
+    options.name = "socket-callback";
+    options.queue_capacity = kSocketCallbackQueueCapacity;
     return options;
 }
 
-NetIoOptions BuildNetIoOptions(event::Loop *callback_loop) {
-    NetIoOptions options;
-    options.io_threads = kNetIoThreads;
+SocketIoOptions BuildSocketIoOptions(event::Loop *callback_loop) {
+    SocketIoOptions options;
+    options.io_threads = kSocketIoThreads;
     options.enable_thread_affinity = false;
     options.callback_mode = CallbackMode::kPostToLoop;
     options.callback_loop = callback_loop;

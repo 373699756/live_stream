@@ -14,7 +14,7 @@
 
 namespace live_stream {
 
-class INetIo;
+class ISocketIo;
 
 namespace webrtc_internal {
 
@@ -64,8 +64,8 @@ public:
 };
 
 std::unique_ptr<IWebrtcPeerHost> CreateWebrtcPeerHost(
-    INetIo *net_io,
-    event::Loop *net_loop);
+    ISocketIo *socket_io,
+    event::Loop *socket_loop);
 
 }  // namespace webrtc_internal
 }  // namespace live_stream
