@@ -230,6 +230,10 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - `Application` 持有 subsystem 实例，Start 失败按已启动项反序回滚。
 - Stop 可重复调用。
 - 信号处理只做 async-signal-safe 标记，正常退出由主循环触发 Stop。
+- app 组合根和 subsystem 启停路径已核查：`FoundationSubsystem`、`DeviceSubsystem`、
+  `MediaSubsystem`、`ProtocolSubsystem` 的 Start 失败都会调用本 subsystem 的 Stop；
+  `Application::Stop()` 按 protocol、media、device、foundation 反序停止，Runtime、
+  MediaSourceRegistry 和 ServiceRegistry 均在 Stop 路径清理。当前不需要重写组合根。
 
 验收：正常启动停止、启动中途失败、重复 Stop、SIGINT/SIGTERM 都能按预期处理。
 
