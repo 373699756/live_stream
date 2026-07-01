@@ -1,5 +1,7 @@
 #include "region_overlay.h"
 
+#include "infra/log.h"
+
 #include <cstdio>
 #include <utility>
 
@@ -499,16 +501,23 @@ bool RegionOverlay::ApplyConfig(const Json &value) {
         ++stats.config_apply_failures;
         return false;
     }
-    active_config = parsed;
     if (state != RegionOverlayState::kStarted || !media_bound) {
+        active_config = parsed;
         ++stats.config_applies;
         return true;
     }
     if (!ApplyTextOverlay(parsed) ||
         !ApplyPrivacyMasks(parsed.privacy_masks)) {
         ++stats.config_apply_failures;
+        const ParsedOverlayConfig previous_config = active_config;
+        if (!ApplyTextOverlay(previous_config) ||
+            !ApplyPrivacyMasks(previous_config.privacy_masks)) {
+            Error("region", "restore overlay config failed after apply error");
+        }
+        stats.region_size = static_cast<uint32_t>(regions.size());
         return false;
     }
+    active_config = parsed;
     ++stats.config_applies;
     stats.region_size = static_cast<uint32_t>(regions.size());
     return true;
