@@ -164,6 +164,22 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
              static_cast<unsigned>(app_config.onvif_discovery_port));
     }
 
+    const NetStatOptions net_stat_options =
+        BuildNetStatOptions();
+    net_stat_ =
+        CreateNetStat(net_stat_options, socket_io_.get(),
+                      Runtime::EventCenter());
+    if (!net_stat_ || !net_stat_->Start()) {
+        Error("app", "Start net_stat failed");
+        Stop();
+        return false;
+    }
+    if (!ServiceRegistry::RegisterNetStat(net_stat_.get())) {
+        Error("app", "Register net_stat readonly service failed");
+        Stop();
+        return false;
+    }
+
     const HttpOptions http_options = BuildHttpOptions(app_config);
     http_ = CreateHttp(http_options, refs.http_loop, refs.device.network,
                        refs.device.time, refs.device.alarm,
@@ -188,17 +204,6 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
          static_cast<unsigned>(http_address.port),
          app_config.static_root.c_str());
 
-    const NetStatOptions net_stat_options =
-        BuildNetStatOptions();
-    net_stat_ =
-        CreateNetStat(net_stat_options, socket_io_.get(),
-                      Runtime::EventCenter());
-    if (!net_stat_ || !net_stat_->Start()) {
-        Error("app", "Start net_stat failed");
-        Stop();
-        return false;
-    }
-
     config_ = foundation_subsystem.config();
     network_ = device_refs.network;
     app_config_ = app_config;
@@ -218,6 +223,7 @@ void ProtocolSubsystem::Stop() {
     ServiceRegistry::UnregisterOnvif(onvif_.get());
     ServiceRegistry::UnregisterWebrtc(webrtc_.get());
     ServiceRegistry::UnregisterRtsp(rtsp_.get());
+    ServiceRegistry::UnregisterNetStat(net_stat_.get());
     if (net_stat_) {
         net_stat_->Stop();
     }

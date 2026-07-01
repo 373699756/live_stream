@@ -87,6 +87,13 @@ function totalActiveSessions(sessionSummary: MediaSessionSummary) {
     );
 }
 
+function netQueueStatusText(sessionSummary: MediaSessionSummary) {
+    const level = sessionSummary.net_queue_level || 'normal';
+    const slowClients = sessionSummary.net_slow_clients ?? 0;
+    const tracked = sessionSummary.net_queue_tracked ?? 0;
+    return `队列 ${level} / 慢 ${slowClients} / 跟踪 ${tracked}`;
+}
+
 export function StreamSessionPanel({
     sessions,
     sessionSummary,
@@ -102,6 +109,7 @@ export function StreamSessionPanel({
                 </div>
                 <span className="stream-session-total">
                     活动 <strong>{totalActiveSessions(sessionSummary)}</strong>
+                    <em>{netQueueStatusText(sessionSummary)}</em>
                 </span>
             </div>
             <div className="stream-session-groups">

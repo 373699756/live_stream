@@ -125,6 +125,13 @@ RTSP/WebRTC 会额外输出对应 `media` frame subscription 的 `subscription_o
 `subscription_pending_frames`、`subscription_waiting_keyframe`、
 `subscription_slow` 和 `subscription_close_reason` 字段，用于定位协议会话与
 subscription/ring 分发之间的状态。
+响应根对象还会输出 `NetStat` 聚合的发送队列诊断字段：
+`net_stat_enabled`、`net_stat_checks`、`net_queue_level`、
+`net_queue_checked_connections`、`net_queue_tracked`、`net_queue_warning`、
+`net_queue_recovering`、`net_queue_critical`、
+`net_queue_critical_connections`、`net_slow_clients`、
+`net_slow_client_history` 和 `webrtc_open_peers`。这些字段只表达网络发送侧
+只读状态，不提供关闭客户端或调整阈值的控制入口。
 
 `/api/system/time/status` 返回设备时间、时区、NTP 配置、`manual_sync_allowed`、
 `browser_sync_on_login`、最近同步来源和最近同步结果。`PUT /api/system/time/config`
@@ -138,8 +145,8 @@ subscription/ring 分发之间的状态。
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
 `CreateHttp()` 不接收 public `*Dependencies` 依赖包；基础服务从 `Runtime`
-读取，RTSP/ONVIF/WebRTC 只读诊断入口从 `ServiceRegistry` 读取，媒体源从
-`MediaSourceRegistry` 读取。app 只显式传入 HTTP 需要访问的设备控制面对象和
+读取，RTSP/ONVIF/WebRTC/NetStat 只读诊断入口从 `ServiceRegistry` 读取，媒体源
+从 `MediaSourceRegistry` 读取。app 只显式传入 HTTP 需要访问的设备控制面对象和
 `socket_loop`。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
 

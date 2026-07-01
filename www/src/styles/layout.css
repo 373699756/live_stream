@@ -717,6 +717,11 @@
     color: #243044;
 }
 
+.stream-session-total em {
+    font-style: normal;
+    color: #5b6b82;
+}
+
 .stream-session-group {
     padding: 10px;
     border: 1px solid #e2e7ef;

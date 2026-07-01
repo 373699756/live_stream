@@ -141,6 +141,9 @@ also include same-stream media fields such as `media_running`,
 `media_track_ready`, `media_codec`, protocol ready flags, last DTS, and reset
 reason. RTSP/WebRTC sessions also include media frame subscription diagnostics such as
 pending frames, waiting keyframe, slow reader, and reader close reason.
+The `/api/media/sessions` root summary also includes NetStat send-queue
+diagnostics such as `net_queue_level`, tracked/warning/critical queue counts,
+current slow-client count, slow-client history size, and `webrtc_open_peers`.
 HLS playlist/segment requests are short HTTP responses and are diagnosed
 through stream readiness and HTTP error logs rather than persistent sessions.
 `WebrtcPeerInfo` mirrors backend peer state, stream, ICE

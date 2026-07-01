@@ -24,6 +24,7 @@ class EventCenter;
 }  // namespace event
 
 class IRtspSessionReader;
+class INetStat;
 class IWebrtcReader;
 
 struct HttpControlRefs {
@@ -45,6 +46,7 @@ struct HttpMediaRefs {
     MediaStreams *media_streams = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
     IWebrtcReader *webrtc_reader = nullptr;
+    INetStat *net_stat = nullptr;
     IWebrtc *webrtc = nullptr;
 };
 

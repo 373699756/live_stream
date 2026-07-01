@@ -10,6 +10,7 @@
 #include "json_reader.h"
 #include "device.h"
 #include "infra/log.h"
+#include "net_stat.h"
 #include "rtsp.h"
 #include "webrtc.h"
 
@@ -640,6 +641,44 @@ void AddWebrtcStatsToJson(Json *root, const WebrtcStats &stats) {
     (*root)["webrtc_selected_ice_pairs"] = stats.selected_ice_pairs;
 }
 
+const char *NetQueueLevelToJsonString(NetQueueLevel level) {
+    switch (level) {
+        case NetQueueLevel::kNormal:
+            return "normal";
+        case NetQueueLevel::kWarning:
+            return "warning";
+        case NetQueueLevel::kCritical:
+            return "critical";
+    }
+    return "unknown";
+}
+
+void AddNetStatToJson(Json *root, INetStat *net_stat) {
+    if (root == nullptr || net_stat == nullptr) {
+        return;
+    }
+    const NetStatSnapshot snapshot = net_stat->GetSnapshot();
+    (*root)["net_stat_enabled"] = snapshot.enabled;
+    (*root)["net_stat_checks"] = snapshot.checks;
+    (*root)["net_queue_level"] = NetQueueLevelToJsonString(snapshot.level);
+    (*root)["net_queue_level_value"] =
+        static_cast<uint32_t>(snapshot.level);
+    (*root)["net_queue_checked_connections"] =
+        snapshot.checked_connections;
+    (*root)["net_queue_tracked"] = snapshot.tracked_connection_queues;
+    (*root)["net_queue_warning"] = snapshot.warning_connection_queues;
+    (*root)["net_queue_recovering"] =
+        snapshot.recovering_connection_queues;
+    (*root)["net_queue_critical"] = snapshot.critical_connection_queues;
+    (*root)["net_queue_critical_connections"] =
+        snapshot.critical_connections;
+    (*root)["net_slow_clients"] =
+        static_cast<uint32_t>(net_stat->GetSlowClients().size());
+    (*root)["net_slow_client_history"] =
+        static_cast<uint32_t>(net_stat->GetSlowClientHistory().size());
+    (*root)["webrtc_open_peers"] = snapshot.open_webrtc_peers;
+}
+
 }  // namespace
 
 class MediaHttpHandler : public IHttpHandler {
@@ -651,6 +690,7 @@ public:
           media_streams_(refs.media_streams),
           rtsp_session_reader_(refs.rtsp_session_reader),
           webrtc_reader_(refs.webrtc_reader),
+          net_stat_(refs.net_stat),
           http_(refs.http) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
@@ -772,6 +812,7 @@ private:
             }
         }
         AddWebrtcStatsToJson(&root, webrtc_stats);
+        AddNetStatToJson(&root, net_stat_);
         MediaStreamStats media_stats;
         if (media_streams_ != nullptr) {
             media_stats = media_streams_->GetStreamStats();
@@ -792,6 +833,7 @@ private:
     MediaStreams *media_streams_ = nullptr;
     IRtspSessionReader *rtsp_session_reader_ = nullptr;
     IWebrtcReader *webrtc_reader_ = nullptr;
+    INetStat *net_stat_ = nullptr;
     IHttp *http_ = nullptr;
 };
 

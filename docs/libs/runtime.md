@@ -10,8 +10,8 @@ non-owning 指针。
 
 - `Runtime` 保存基础服务入口：`ILogger`、`IConfig`、`IAuth`、
   `event::EventCenter` 和 `ISocketIo`。
-- `ServiceRegistry` 保存协议只读视图：RTSP、WebRTC、ONVIF 和 HTTP streaming
-  session reader。
+- `ServiceRegistry` 保存只读诊断视图：RTSP、WebRTC、ONVIF、HTTP streaming
+  session reader 和 `INetStat`。
 - 提供显式 `Install/Register` 和 `Clear/Unregister`，由 app 启停流程按生命周期调用。
 
 ## 边界
@@ -19,8 +19,8 @@ non-owning 指针。
 - `Runtime` 不注册 `DeviceMedia`、`MediaStreams`、`IRtsp`、`IWebrtc`、`IHttp`
   或 ONVIF 完整 service；当前媒体源入口归 `media` 模块的
   `MediaSourceRegistry`。
-- `ServiceRegistry` 只允许只读 reader 接口，不允许注册带 `Start`、`Stop`、
-  `ApplyOptions`、`ClosePeer` 等业务控制能力的完整 service。
+- `ServiceRegistry` 只允许只读 reader/diagnostic 接口，不允许注册带 `Start`、
+  `Stop`、`ApplyOptions`、`ClosePeer` 等业务控制能力的完整 service。
 - 媒体帧、配置 `verify/apply/save` 和 MPP/VENC 生命周期不经过本模块。
 
 ## 状态与资源模型

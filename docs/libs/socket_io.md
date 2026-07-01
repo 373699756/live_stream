@@ -95,7 +95,8 @@ flowchart LR
 `NetStatOptions`、非 owning `ISocketIo*` 和可选 `event::EventCenter*`。
 组合根负责保证这两个入口的生命周期覆盖 `INetStat::Stop()` 和对象销毁；
 `net_stat` 不从 `Runtime` 反向查找服务，也不直接依赖 `rtsp`、`webrtc` 或
-`media`。
+`media`。组合根通过 `ServiceRegistry::RegisterNetStat()` 暴露只读诊断入口，
+供 HTTP 聚合 `/api/media/sessions` summary；registry 不提供慢客户端控制能力。
 
 等级和指标：
 

@@ -100,6 +100,18 @@ export interface MediaSessionsResponse {
     items: MediaSessionInfo[];
     http_flv_active_clients?: number;
     mjpeg_active_clients?: number;
+    net_queue_checked_connections?: number;
+    net_queue_critical?: number;
+    net_queue_critical_connections?: number;
+    net_queue_level?: string;
+    net_queue_level_value?: number;
+    net_queue_recovering?: number;
+    net_queue_tracked?: number;
+    net_queue_warning?: number;
+    net_slow_client_history?: number;
+    net_slow_clients?: number;
+    net_stat_checks?: number;
+    net_stat_enabled?: boolean;
     rtsp_active_sessions?: number;
     webrtc_active_peers?: number;
     webrtc_dtls_ready?: boolean;
@@ -108,6 +120,7 @@ export interface MediaSessionsResponse {
     webrtc_ice_servers?: number;
     webrtc_local_port_base?: number;
     webrtc_max_peers?: number;
+    webrtc_open_peers?: number;
     webrtc_public_ip?: string;
     webrtc_selected_ice_pairs?: number;
     webrtc_signaling_ready?: boolean;

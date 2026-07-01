@@ -18,6 +18,7 @@ class ITime;
 class IUpgrade;
 class ISystem;
 class IRtspSessionReader;
+class INetStat;
 class DeviceMedia;
 class IAiReader;
 class IWebrtc;
@@ -77,6 +78,7 @@ struct MediaHandlerRefs {
     MediaStreams *media_streams = nullptr;
     IRtspSessionReader *rtsp_session_reader = nullptr;
     IWebrtcReader *webrtc_reader = nullptr;
+    INetStat *net_stat = nullptr;
     IHttp *http = nullptr;
 };
 

@@ -233,6 +233,7 @@ void HttpImpl::InitializeHandlers(INetwork *network,
         media_streams,
         ServiceRegistry::Rtsp(),
         ServiceRegistry::Webrtc(),
+        ServiceRegistry::NetStat(),
         webrtc,
     };
     const HttpStreamingRefs streaming_refs = {
@@ -292,7 +293,7 @@ void HttpImpl::InitializeMediaHandlers(
         MakeMediaHandler({this, refs.config, refs.device,
                           refs.media_streams,
                           refs.rtsp_session_reader,
-                          refs.webrtc_reader, this}));
+                          refs.webrtc_reader, refs.net_stat, this}));
     const HttpMediaHandlerRefs http_media_handler_refs = {
         this, refs.device, refs.media_streams, refs.webrtc};
     const HttpMediaHandlerKind media_handlers[] = {

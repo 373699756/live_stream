@@ -10,6 +10,7 @@ IRtspSessionReader *g_rtsp_reader = nullptr;
 IWebrtcReader *g_webrtc_reader = nullptr;
 IOnvifReader *g_onvif_reader = nullptr;
 IHttpStreamSessionReader *g_http_reader = nullptr;
+INetStat *g_net_stat_reader = nullptr;
 
 template <typename T>
 bool RegisterReader(T *next, T **slot) {
@@ -50,6 +51,10 @@ bool ServiceRegistry::RegisterHttp(IHttpStreamSessionReader *reader) {
     return RegisterReader(reader, &g_http_reader);
 }
 
+bool ServiceRegistry::RegisterNetStat(INetStat *reader) {
+    return RegisterReader(reader, &g_net_stat_reader);
+}
+
 void ServiceRegistry::UnregisterRtsp(IRtspSessionReader *reader) {
     UnregisterReader(reader, &g_rtsp_reader);
 }
@@ -64,6 +69,10 @@ void ServiceRegistry::UnregisterOnvif(IOnvifReader *reader) {
 
 void ServiceRegistry::UnregisterHttp(IHttpStreamSessionReader *reader) {
     UnregisterReader(reader, &g_http_reader);
+}
+
+void ServiceRegistry::UnregisterNetStat(INetStat *reader) {
+    UnregisterReader(reader, &g_net_stat_reader);
 }
 
 IRtspSessionReader *ServiceRegistry::Rtsp() {
@@ -86,8 +95,14 @@ IHttpStreamSessionReader *ServiceRegistry::Http() {
     return g_http_reader;
 }
 
+INetStat *ServiceRegistry::NetStat() {
+    std::lock_guard<std::mutex> guard(g_service_registry_mutex);
+    return g_net_stat_reader;
+}
+
 void ServiceRegistry::Clear() {
     std::lock_guard<std::mutex> guard(g_service_registry_mutex);
+    g_net_stat_reader = nullptr;
     g_http_reader = nullptr;
     g_onvif_reader = nullptr;
     g_webrtc_reader = nullptr;

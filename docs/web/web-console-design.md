@@ -46,7 +46,7 @@ flowchart LR
 - 页面必须区分“当前已生效状态”“用户正在编辑的待提交值”“提交中状态”和“提交失败原因”；
   旧错误在用户修改输入、切换目标或重新提交时清理。
 - 调试项默认下沉到诊断区域，例如 RTSP URL、媒体 session、pending bytes、WebRTC peer、
-  keyframe 时间和最近 reset reason。
+  keyframe 时间、网络发送队列等级、慢客户端数量和最近 reset reason。
 - 播放状态按后端字段呈现：设备是否 running、track 是否 ready、协议是否 ready、浏览器播放器
   是否已经首帧；Web 不用单个 loading 或 success 覆盖这些不同阶段。
 - mock fallback 只服务 UI 开发，不成为 schema 或设备状态的权威来源。

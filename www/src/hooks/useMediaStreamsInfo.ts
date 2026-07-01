@@ -36,6 +36,18 @@ const defaultStatusTimeoutMs = 1800;
 const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
     http_flv_active_clients: 0,
     mjpeg_active_clients: 0,
+    net_queue_checked_connections: 0,
+    net_queue_critical: 0,
+    net_queue_critical_connections: 0,
+    net_queue_level: 'normal',
+    net_queue_level_value: 0,
+    net_queue_recovering: 0,
+    net_queue_tracked: 0,
+    net_queue_warning: 0,
+    net_slow_client_history: 0,
+    net_slow_clients: 0,
+    net_stat_checks: 0,
+    net_stat_enabled: false,
     rtsp_active_sessions: 0,
     webrtc_active_peers: 0,
     webrtc_dtls_ready: false,
@@ -44,6 +56,7 @@ const emptySessionSummary: Omit<MediaSessionsResponse, 'items'> = {
     webrtc_ice_servers: 0,
     webrtc_local_port_base: 0,
     webrtc_max_peers: 0,
+    webrtc_open_peers: 0,
     webrtc_public_ip: '',
     webrtc_selected_ice_pairs: 0,
     webrtc_signaling_ready: false,
@@ -356,6 +369,9 @@ export function useMediaStreamsInfo({
                     (readyChanged || firstFrame)
                 ) {
                     refreshStreamsInfo();
+                }
+                if (event.type === 'net_queue_changed') {
+                    refreshIntervalStreamsInfo();
                 }
             });
             eventSource.onerror = () => {
