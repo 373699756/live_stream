@@ -32,6 +32,7 @@ enum class NetSlowClientType {
 };
 
 struct NetStatOptions {
+    // 采样和判级阈值只影响诊断输出，不直接关闭连接；慢客户端动作由上层决定。
     bool enabled = true;
     uint32_t check_interval_ms = 1000;
     uint32_t pending_bytes_warning = 256 * 1024;
@@ -45,6 +46,7 @@ struct NetStatOptions {
 };
 
 struct NetSlowClient {
+    // 当前采样周期内达到 critical 且满足连续次数/冷却条件的连接摘要。
     NetSlowClientType type = NetSlowClientType::kNone;
     NetQueueLevel level = NetQueueLevel::kNormal;
     std::string protocol;
@@ -61,6 +63,7 @@ struct NetSlowClient {
 };
 
 struct NetStatSnapshot {
+    // 面向 HTTP/Web 的轻量汇总；连接级细节使用 GetConnectionQueues() 查询。
     bool enabled = false;
     NetQueueLevel level = NetQueueLevel::kNormal;
     uint32_t checked_connections = 0;
@@ -75,6 +78,8 @@ struct NetStatSnapshot {
 };
 
 struct NetConnectionQueue {
+    // 单个连接、单个指标维度的队列状态。一个连接可能同时有 pending bytes
+    // 和 send queue 两条记录，调用方按 level/metric 判断主要瓶颈。
     NetQueueLevel level = NetQueueLevel::kNormal;
     std::string protocol;
     std::string remote_endpoint;

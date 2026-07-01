@@ -174,6 +174,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         Stop();
         return false;
     }
+    // HTTP media sessions 在构造 handler 时读取 NetStat 只读入口，所以 NetStat 必须
+    // 先于 HTTP 注册；Stop 时先从 registry 摘除，再停止采样线程。
     if (!ServiceRegistry::RegisterNetStat(net_stat_.get())) {
         Error("app", "Register net_stat readonly service failed");
         Stop();

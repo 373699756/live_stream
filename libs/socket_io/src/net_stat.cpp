@@ -20,6 +20,7 @@ namespace {
 
 constexpr const char *kModuleName = "net_stat";
 constexpr size_t kMaxSlowClients = 16;
+// EWMA 用 3/4 历史值 + 1/4 当前值，避免单次短抖动直接触发慢客户端处理。
 constexpr uint32_t kEwmaNumerator = 3;
 constexpr uint32_t kEwmaDenominator = 4;
 constexpr int64_t kQueueRecordExpireMs = 30000;
@@ -66,6 +67,8 @@ uint32_t DecrementedMetric(uint32_t value) {
 uint32_t EventClientCount(const event::Event &event,
                           uint32_t current_count,
                           bool connected_event) {
+    // 协议事件优先携带权威活跃数；value 为 0 时可能是旧/缺省事件，
+    // 此时按连接/断开方向做本地兜底，避免默认 0 把统计直接清空。
     if (event.value > 0) {
         return static_cast<uint32_t>(event.value);
     }
@@ -76,6 +79,8 @@ uint32_t EventClientCount(const event::Event &event,
 }
 
 struct ConnectionQueueRecord {
+    // 同一连接会同时跟踪 pending bytes 和 send queue length，两者用不同 key。
+    // 对外输出时取等级更高的一条，便于判断慢客户端主要卡在内核发送还是应用队列。
     std::string key;
     std::string protocol;
     std::string remote_endpoint;
@@ -173,6 +178,8 @@ private:
         if (event_ == nullptr) {
             return true;
         }
+        // NetStat 不直接依赖 RTSP/WebRTC 对象，只通过轻量事件获得协议活跃数；
+        // socket 发送压力仍以 ISocketIo::ListConnectionInfo() 为唯一来源。
         const std::vector<event::EventType> event_types = {
             event::EventType::kRtspClientConnected,
             event::EventType::kRtspClientDisconnected,
@@ -279,6 +286,7 @@ private:
         const int64_t now_ms = infra::Time::MonotonicMillis();
         next_stats.enabled = options_.enabled;
 
+        // 先在锁外读取 socket 快照，避免 NetStat 自己的状态锁阻塞 socket_io 热路径。
         CheckConnections(now_ms, next_stats, next_slow_clients);
 
         bool publish_queue_event = false;
@@ -296,6 +304,8 @@ private:
             stats_ = next_stats;
             slow_clients_ = next_slow_clients;
             AppendSlowClientHistory(next_slow_clients);
+            // 只在整体等级发生变化时发布事件，SSE 前端收到后刷新诊断；
+            // 常规采样不发事件，避免高频状态抖动变成事件风暴。
             publish_queue_event =
                 BuildQueueChangeEvent(previous_level, stats_,
                                          queue_event);
@@ -321,6 +331,7 @@ private:
             if (ShouldSkipSocketConnection(connection)) {
                 continue;
             }
+            // 每个连接单独更新记录，锁粒度控制在状态表修改阶段。
             std::lock_guard<std::mutex> lock(mutex_);
             ConnectionQueueRecord &state =
                 UpdateConnectionQueue(connection, now_ms);
@@ -340,6 +351,7 @@ private:
         if (connection.owner_protocol.empty()) {
             return true;
         }
+        // ONVIF 多为低频控制/发现流量，不按直播慢客户端策略处理。
         return connection.owner_protocol == "onvif";
     }
 
@@ -347,6 +359,8 @@ private:
         const SocketConnectionInfo &connection,
         int64_t now_ms) {
         const std::string remote_endpoint = ConnectionEndpoint(connection);
+        // pending bytes 反映 socket/内核写侧堆积，send queue length 反映应用层队列堆积；
+        // 二者任一升高都可能拖住媒体 payload 引用，所以按更严重等级输出。
         ConnectionQueueRecord &pending_state =
             UpdateQueueRecord("socket_io", connection.owner_protocol,
                               remote_endpoint,
@@ -416,6 +430,7 @@ private:
         const uint32_t warning_threshold = WarningThreshold(metric);
         const uint32_t critical_threshold = CriticalThreshold(metric);
         const NetQueueLevel previous_level = state.level;
+        // 判级使用平滑值和连续次数阈值，避免瞬时突刺导致误报；恢复也要求连续正常。
         if (critical_threshold != 0 &&
             state.smoothed_metric_value >= critical_threshold) {
             state.level = NetQueueLevel::kCritical;
@@ -525,6 +540,7 @@ private:
         if (!enough_critical) {
             return;
         }
+        // 同一连接的慢客户端输出有冷却时间，避免每个采样周期都刷同一条诊断。
         if (state.last_slow_client_ms != 0 &&
             now_ms - state.last_slow_client_ms <
                 static_cast<int64_t>(options_.slow_client_cooldown_ms)) {
@@ -567,6 +583,7 @@ private:
     }
 
     void ExpireIdleQueueRecords(int64_t now_ms) {
+        // ListConnectionInfo 只保证当前活跃和短期关闭诊断；这里清理长期未采样的残留 key。
         for (auto it = connection_queues_.begin();
              it != connection_queues_.end();) {
             if (now_ms - it->second.last_checked_ms > kQueueRecordExpireMs) {

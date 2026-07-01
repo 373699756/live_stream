@@ -657,6 +657,8 @@ void AddNetStatToJson(Json *root, INetStat *net_stat) {
     if (root == nullptr || net_stat == nullptr) {
         return;
     }
+    // /api/media/sessions 是给 Web 频繁刷新的诊断接口，只输出 NetStat 聚合摘要；
+    // 慢客户端详情仍留在 INetStat 查询接口，避免会话列表携带大历史对象。
     const NetStatSnapshot snapshot = net_stat->GetSnapshot();
     (*root)["net_stat_enabled"] = snapshot.enabled;
     (*root)["net_stat_checks"] = snapshot.checks;
@@ -785,6 +787,8 @@ private:
         }
         Json root = Json::object();
         Json items = Json::array();
+        // 统一会话视图：协议模块负责自己的业务会话，socket_io/NetStat 只补网络发送诊断。
+        // HTTP handler 不反向控制 RTSP/WebRTC/NetStat，避免诊断接口变成跨模块控制面。
         if (rtsp_session_reader_ != nullptr) {
             const std::vector<RtspSessionInfo> sessions =
                 rtsp_session_reader_->ListSessionInfo();

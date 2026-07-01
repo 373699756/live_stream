@@ -138,6 +138,8 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             auto bucket_iter = listeners_.find(event_to_publish.type);
             if (bucket_iter != listeners_.end()) {
+                // 只快照当前 EventType 的 handler，随后在锁外执行回调；
+                // 这样 handler 内部再订阅/取消/发布事件时不会和 EventCenter 自锁死。
                 handlers.reserve(bucket_iter->second.size());
                 for (const Listener &listener : bucket_iter->second) {
                     handlers.push_back(listener.handler);

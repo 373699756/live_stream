@@ -18,6 +18,8 @@ bool RegisterReader(T *next, T **slot) {
         return false;
     }
     std::lock_guard<std::mutex> guard(g_service_registry_mutex);
+    // registry 只保存组合根安装的 non-owning 只读入口；不同实例重复注册直接失败，
+    // 防止运行期静默覆盖导致 HTTP 读到悬空或错模块指针。
     if (*slot != nullptr && *slot != next) {
         return false;
     }
@@ -28,6 +30,7 @@ bool RegisterReader(T *next, T **slot) {
 template <typename T>
 void UnregisterReader(T *reader, T **slot) {
     std::lock_guard<std::mutex> guard(g_service_registry_mutex);
+    // 只允许拥有者卸载自己注册的指针，避免 stop 乱序时误清掉新实例。
     if (slot != nullptr && *slot == reader) {
         *slot = nullptr;
     }
