@@ -210,10 +210,13 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 - 保持 `hisi_vendor` 窄接口：system、pipeline、venc stream、region、snapshot、image、AI runtime。
 - `DeviceMedia` 只编排设备业务，不暴露 SDK 内部资源。
-- 视频配置热应用失败必须回滚，Web 保存状态和硬件运行态保持一致。
+- 视频配置热应用失败必须返回失败并保持硬件运行态可解释；能恢复旧运行态则恢复，
+  恢复失败必须进入 failed/stopped 等明确状态。
 - 抓图、overlay、AI 抓帧在 pipeline 重建期间必须被 device 生命周期挡住。
 - 梳理 SDK 锁顺序，避免抓图锁、控制锁、VENC 取流线程、ISP 线程死锁。
 - MPP cleanup 失败必须 fail fast，不伪装成已清理。
+- `hisi_vendor` active config 状态已核查并修正：`InitSystem` 和 `StartVenc`
+  只在对应资源真正成功后更新 active config，失败路径不再留下假活动配置。
 
 验收：抓图、OSD、隐私遮挡、图像配置、VENC stream 启停正常；配置失败恢复路径可解释。
 

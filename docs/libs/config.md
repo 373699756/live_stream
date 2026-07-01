@@ -30,7 +30,8 @@ flowchart LR
 - 启动时加载默认配置和业务配置。
 - 为每个 scope 提供 `Get`、`Set`、`Default`、`Reset` 和 `ResetAll`。
 - 通过 `ConfigScope` 先 `verify(now)` 再 `apply(prev, now)`，失败时拒绝配置变更。
-- `Set` 保存文件失败时会调用 `apply(now, prev)` 回滚运行态，并恢复内存中的旧值。
+- `Set` 保存文件失败时返回 `ConfigCode::kSave`；已经 `apply` 的运行态不回滚，
+  内存配置保持新值并继续标记为 dirty，便于后续重试保存。
 - 认证用户持久化由 `auth` 的 `CreateAuthUsers()` 读取 `configs/auth_users.json`。
 
 ## 接口归属

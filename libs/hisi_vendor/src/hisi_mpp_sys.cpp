@@ -47,9 +47,6 @@ bool ConfigureViVpssMode(const MediaPipelineConfig& config) {
 // ====================================================================
 bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
     std::lock_guard<std::mutex> lock(impl_->control_mutex_);
-    impl_->active_config_ = config;
-    impl_->has_active_config_ = true;
-
     if (impl_->system_cleanup_failed_) {
         Error("hisi_vendor",
               "HISI MPP cleanup is still failed; refusing InitSystem");
@@ -89,6 +86,8 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
         return false;
     }
 
+    impl_->active_config_ = config;
+    impl_->has_active_config_ = true;
     impl_->system_initialized_ = true;
     impl_->system_cleanup_failed_ = false;
     Info("hisi_vendor",

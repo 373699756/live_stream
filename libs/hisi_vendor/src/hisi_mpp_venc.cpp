@@ -48,9 +48,6 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
         VencChannelControl::Destroy(impl_->main_venc_);
     }
 
-    impl_->active_config_ = config;
-    impl_->has_active_config_ = true;
-
     VencChannelControl::Init(impl_->main_venc_, StreamId::kMain,
                              config.venc_channel, config.vpss_group,
                              config.vpss_channel, config.main_stream.codec);
@@ -96,6 +93,8 @@ bool MppHisiSdk::StartVenc(const MediaPipelineConfig& config) {
         VencChannelControl::Reset(impl_->sub_venc_);
     }
 
+    impl_->active_config_ = config;
+    impl_->has_active_config_ = true;
     return true;
 }
 

@@ -130,7 +130,8 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 - 启动阶段只编排设备业务和 SDK 窄接口，不把 RTSP、HTTP-FLV、WebRTC 或 Web DTO 引入
   `device`。
 - 视频、图像、抓图和 overlay 配置保存必须表示本模块已经 verify/apply 成功；失败时
-  保留旧运行态并返回明确 scope/field/reason。
+  返回明确 scope/field/reason。视频 pipeline 热应用失败应尽量恢复旧运行态；恢复失败
+  必须进入 failed/stopped 等明确状态，不能报告为已应用。
 - pipeline 重建期间，抓图、overlay 热应用、AI 抓帧和关键帧请求必须看到明确的
   device phase，不能继续访问正在释放或重建的 MPP 资源。
 - 抓图失败、AI 抓帧失败或 overlay 应用失败只影响对应能力；实时预览主链路不能因此被
@@ -146,7 +147,7 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 ## 风险与优化方向
 
 - 帧路径避免多余拷贝、频繁分配和日志。
-- 配置热应用失败必须回滚或明确报告错误，避免 Web 保存状态和硬件运行态不一致。
+- 配置热应用失败必须保留可解释状态，避免 Web 保存状态和硬件运行态不一致。
 - MPP/VENC/ISP 结构转换留在 `hisi_vendor`，不要扩散到 HTTP 或 Web。
 - snapshot/overlay 不再有独立模块边界，不新增 `snapshot.h`、`region.h` 或 `osd.h`
   public header。
