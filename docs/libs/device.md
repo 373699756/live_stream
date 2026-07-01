@@ -91,7 +91,7 @@ H.264/H.265 生效，JPEG/MJPEG 配置 ROI 会被拒绝。
 
 字段新增或枚举变化必须同步 `http` DTO、`www/src/api/types.ts` 和
 `www/README.md`。保存成功不能只代表 JSON 写入成功，还必须代表配置已经通过本模块
-validate/apply。
+verify/apply。
 
 ## 状态与资源模型
 
@@ -129,7 +129,7 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 
 - 启动阶段只编排设备业务和 SDK 窄接口，不把 RTSP、HTTP-FLV、WebRTC 或 Web DTO 引入
   `device`。
-- 视频、图像、抓图和 overlay 配置保存必须表示本模块已经 validate/apply 成功；失败时
+- 视频、图像、抓图和 overlay 配置保存必须表示本模块已经 verify/apply 成功；失败时
   保留旧运行态并返回明确 scope/field/reason。
 - pipeline 重建期间，抓图、overlay 热应用、AI 抓帧和关键帧请求必须看到明确的
   device phase，不能继续访问正在释放或重建的 MPP 资源。

@@ -102,7 +102,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - 启动失败和停止必须按资源创建反序回滚。原型项目里 media、RTSP、HTTP 的顺序启动、
   反序停止适合作为组合根基线；`live_stream` 要进一步做到中途失败按已启动项逐项回滚，
   `Stop()` 可重复调用。
-- 配置保存语义必须是 validate/apply/save，而不是只写 JSON。`my_video` 的配置回调方向
+- 配置保存语义必须是 verify/apply/save，而不是只写 JSON。`my_video` 的配置回调方向
   正确，但全局 `ConfigManager` 和回调散落会放大耦合；本项目按拥有模块校验和应用，
   再由 HTTP/Web 展示明确错误。
 - 热路径要用固定上限、引用保活和慢客户端策略。原型里的固定队列、旧帧覆盖、RTSP
