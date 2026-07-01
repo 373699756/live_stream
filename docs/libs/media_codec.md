@@ -76,6 +76,20 @@ RTP packetizer 输出的 `RtpPacketView` 只在 `IRtpPacketSink::OnRtpPacket()`
 生命周期。RTSP TCP interleaved 和 WebRTC SRTP 负责各自 transport 发送或加密，
 `media_codec` 不保存 peer/session/socket 状态。
 
+## 参考项目检查点
+
+`my_video` 的 H.264 AnnexB parser 说明，码流解析应作为独立热路径工具，而不是散落在
+RTSP、WebRTC、FLV 或 HLS 各自实现中。`media_codec` 后续修改按以下检查点执行：
+
+- AnnexB 遍历只处理输入 span，不拥有媒体 buffer，也不保存跨回调指针。
+- H.264/H.265 NAL list 使用固定容量结构，overflow 必须被上层视为解析风险。
+- 参数集提取用于 SDP、FLV sequence header、HLS track 初始化等低频 metadata；不得在
+  每个 RTP packet 或每个 HTTP tag 重复提取。
+- RTSP 和 WebRTC 必须共享 RTP packetizer、timestamp 和 FU 分片逻辑，避免协议间 payload
+  切片规则漂移。
+- 解析失败只能返回失败状态，由拥有模块决定 reset、等待关键帧或关闭连接；本模块不写
+  常驻日志，也不触发 keyframe request。
+
 ## 第二阶段冻结契约
 
 - 生产命名空间已从旧 `stream_codec` 收敛为 `media_codec`。

@@ -85,7 +85,52 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - 全量 Metrics 框架。
 - 配置 generation 无断连热切换。
 
-## 4. 重构阶段
+## 4. 参考项目经验同步
+
+本节只记录可迁移到 `live_stream` 的工程经验和教训，不作为引入旧代码、旧接口、
+旧路由或旧第三方后端的依据。`ipc_camera` 主要作为架构边界参考，`my_video` 主要作为
+板端 bring-up 和协议可跑路径参考；具体契约仍以本项目模块文档为准。
+
+可吸收经验：
+
+- HISI SDK 必须隔离在平台边界。`ipc_camera` 的 platform/media 分层证明，上层模块只消费
+  产品 DTO 和窄接口后，HTTP、WebRTC、ONVIF、AI 都能独立演进；`live_stream` 中该经验
+  落到 `hisi_vendor -> device -> media -> protocol` 链路。
+- MPP bring-up 仍以海思 sample 顺序为真相来源。`my_video` 的 SYS/VB、VI/ISP、
+  VPSS、VI->VPSS、VENC、取流线程路径可作为板端排障检查表，但不能把 sample 控制流
+  直接暴露给 Web/API。
+- 启动失败和停止必须按资源创建反序回滚。原型项目里 media、RTSP、HTTP 的顺序启动、
+  反序停止适合作为组合根基线；`live_stream` 要进一步做到中途失败按已启动项逐项回滚，
+  `Stop()` 可重复调用。
+- 配置保存语义必须是 validate/apply/save，而不是只写 JSON。`my_video` 的配置回调方向
+  正确，但全局 `ConfigManager` 和回调散落会放大耦合；本项目按拥有模块校验和应用，
+  再由 HTTP/Web 展示明确错误。
+- 热路径要用固定上限、引用保活和慢客户端策略。原型里的固定队列、旧帧覆盖、RTSP
+  TCP interleaved 和 H.264 AnnexB 解析说明这些问题必须在媒体核心解决；本项目不再让
+  协议模块各自维护私有 GOP cache 或无界 socket buffer。
+- Web 页面应按 IPC 设备页组织信息。首屏预览、设备摘要、业务分组、调试项下沉、
+  区分已生效和待生效状态，比研发调试页式堆参数更利于现场排障。
+
+明确不迁移的教训：
+
+- 不迁移 `my_video` 的全局 `g_media`、`g_rtsp`、单例配置中心、HTTP 直接 include
+  media internal 的形态；这些做法适合原型跑通，不适合作为长期边界。
+- 不恢复 `ipc_camera` 早期 active/reference 横切文档体系；长期契约继续写入
+  `docs/libs/<module>.md`，跨模块阶段计划写入本文。
+- 不保留 metaRTC/Yang 后端名、旧 WebRTC signaling alias、旧 `/api/hls`、`/api/flv`
+  或 `/api/mjpeg` 兼容路径。
+- 不为旧命名或旧目录新增 wrapper、adapter、legacy bridge；需要收敛时同步改调用方、
+  文档、配置样例和 Web 类型。
+
+落地检查顺序：
+
+1. `hisi_vendor/device`：先确认 MPP 创建/销毁、锁顺序、抓图/overlay/AI 抓帧与重建互斥。
+2. `media/media_codec`：再确认帧进入项目内存后的引用模型、缓存上限、NAL/parameter set
+   解析和 timestamp reset。
+3. `rtsp/webrtc/http_media/net`：然后确认订阅、RTP packet view、socket 背压和关闭路径。
+4. `http/www`：最后确认 API 错误、播放 URL、状态字段和页面提示都来自后端权威状态。
+
+## 5. 重构阶段
 
 ### P0：冻结契约和基线
 
@@ -232,13 +277,13 @@ VDS 可选路线：
 
 验收：旧名扫描不再出现目标架构外的历史命名；文档入口不再冲突。
 
-## 5. 热路径资源和内存模型
+## 6. 热路径资源和内存模型
 
 本节合并原热路径内存专项的跨模块结论。具体实现仍归拥有模块：
 `device`、`hisi_vendor`、`media`、`media_codec`、`net`、`http_media`、`rtsp` 和
 `webrtc`。
 
-### 5.1 视频热路径链路
+### 6.1 视频热路径链路
 
 主码流和子码流走同一套热路径，只是 `StreamId`、VENC channel、缓存状态和
 client/subscription 计数分开维护。下游协议不能直接订阅 HiSilicon SDK，必须通过
@@ -264,7 +309,7 @@ VENC stream
 - codec 切换、stream stop、时间戳回退或大跳变必须重建参数集、GOP、HLS、FLV、MJPEG
   latest frame 和 subscription live queue。
 
-### 5.2 Payload 拷贝模型
+### 6.2 Payload 拷贝模型
 
 只统计视频 payload 大块拷贝；协议 header、NAL length、HTTP header、RTP/FU header、
 FLV timestamp rebase 等小块复制不计入。
@@ -289,7 +334,7 @@ FLV timestamp rebase 等小块复制不计入。
 - WebRTC 的 SRTP 拷贝是加密边界要求，不长期保存原始 `MediaFrame` 指针。
 - 慢客户端、pending bytes、send queue 上限和关闭策略归 `net/http`，不是协议模块各自堆 socket buffer。
 
-### 5.3 协议缓存和封装边界
+### 6.3 协议缓存和封装边界
 
 HLS：
 
@@ -317,7 +362,7 @@ WebRTC / SRTP：
 - peer 未见关键帧时丢弃非关键帧，subscription 溢出后等待下一个关键帧恢复。
 - SRTP protect 后通过 ICE selected pair 的 UDP socket 发送。
 
-### 5.4 资源上限和观测指标
+### 6.4 资源上限和观测指标
 
 新增缓存或队列必须先定义上限，再补拥有模块文档。
 
@@ -346,7 +391,7 @@ WebRTC / SRTP：
 `MediaStreamStats::cached_bytes` 继续作为 media 内 GOP、HLS segment 和 FLV GOP cache 的
 当前字节近似汇总；细分字段用于定位触顶来源。
 
-### 5.5 热路径验收口径
+### 6.5 热路径验收口径
 
 - 单路主码流 + 子码流预览时，HLS/FLV/MJPEG/WebRTC 任一模式启停后资源应回落到稳定值。
 - 客户端达到上限时，新连接失败必须可解释，不能突破 registry 或 HTTP connection 上限。
@@ -357,7 +402,7 @@ WebRTC / SRTP：
   必须按 reset reason 回落，后续客户端从新的可解码点开始。
 - 优化前后必须做聚焦构建和板端预览验证，不能只降低分配却破坏可播放性。
 
-### 5.6 当前热路径重点
+### 6.6 当前热路径重点
 
 - `media`：HLS segment retain、FLV cached tags、GOP cache、MJPEG latest frame、
   shared live frame 和 `MediaFrame` 引用释放。
@@ -368,7 +413,7 @@ WebRTC / SRTP：
 - `http_media`：stream executor 队列和 HTTP streaming session 释放。
 - `webrtc`：peer fanout 和 frame dispatch 内存峰值。
 
-## 6. 后续功能路线
+## 7. 后续功能路线
 
 这些功能不是基础重构前置条件，但应借重构成果逐步落地。
 
@@ -390,7 +435,7 @@ WebRTC / SRTP：
 - 低照策略只调整图像参数，不改变编码协议和输出分辨率，必须节流和可回退。
 - 码流质量自适应初期只作用于子码流，必须通过 video 配置应用路径。
 
-## 7. 执行顺序和并行规则
+## 8. 执行顺序和并行规则
 
 必须串行：
 
@@ -417,7 +462,7 @@ WebRTC / SRTP：
 - 不把板端验证、协议兼容修复和大范围命名重构混成一个提交。
 - 不刷新质量基线来掩盖新增问题。
 
-## 8. 验收计划
+## 9. 验收计划
 
 本地构建：
 

@@ -122,6 +122,22 @@ MPP channel。抓图失败返回空 `SnapshotFrame`，不影响实时预览主�
 配置热应用、MPP 重建和失败恢复。设备运行阶段使用 `DevicePhase`，不在门面类中继续
 堆叠 snapshot、overlay、配置注册、图像调节和 pipeline 回滚状态。
 
+## 参考项目检查点
+
+`my_video` 证明配置、抓图、OSD、预览切换和协议输出叠加后，风险会从 sample 初始化转移到
+运行期生命周期。`device` 后续优化按以下检查点收敛：
+
+- 启动阶段只编排设备业务和 SDK 窄接口，不把 RTSP、HTTP-FLV、WebRTC 或 Web DTO 引入
+  `device`。
+- 视频、图像、抓图和 overlay 配置保存必须表示本模块已经 validate/apply 成功；失败时
+  保留旧运行态并返回明确 scope/field/reason。
+- pipeline 重建期间，抓图、overlay 热应用、AI 抓帧和关键帧请求必须看到明确的
+  device phase，不能继续访问正在释放或重建的 MPP 资源。
+- 抓图失败、AI 抓帧失败或 overlay 应用失败只影响对应能力；实时预览主链路不能因此被
+  错误停止，除非底层 pipeline 本身已经失败。
+- Web 所展示的“已生效”和“待生效”状态必须来自后端字段；`device` 不能依赖前端重推导
+  SDK 状态来补偿后端状态不清。
+
 ## 音视频专项边界
 
 产品只支持视频。旧配置文件中的音频字段只做升级兼容忽略；不启动音频采集、编码、

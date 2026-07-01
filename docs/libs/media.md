@@ -70,6 +70,21 @@ public API；HTTP/RTSP 发送队列需要跨线程保活媒体 payload 时，直
 `FramePayload`、NAL 解析结果和时间戳修正器只属于 `media` 内部实现，不进入 public
 header；设备侧只需要实现 `FrameSink::PushFrame()`。
 
+## 参考项目检查点
+
+`my_video` 中固定帧队列、旧帧覆盖和 H.264 AnnexB 解析的经验说明，媒体热路径必须在
+核心层统一处理资源边界，而不是让每个协议各自兜底。`media` 后续优化按以下口径执行：
+
+- VENC payload 进入 `MediaBufferRef` 后，协议模块只能共享引用和 slice；除 HLS segment
+  自包含输出、WebRTC SRTP 加密等明确边界外，不新增整帧深拷贝。
+- GOP、subscription start、shared live frame、HLS segment、FLV cache 和 MJPEG latest
+  frame 都必须有 frame/bytes 上限；新增缓存前先更新本模块文档。
+- 慢 subscription 读到覆盖边界时只影响该订阅并等待下一个关键帧，不清空其它客户端状态。
+- codec 切换、stream stop、timestamp reset 或参数集变化必须一次性清理所有可播放缓存，
+  后续从新的关键帧和参数集重新建立 ready。
+- H.264/H.265 参数集提取只用于低频 metadata 输出，热路径不得为每个协议包重复解析并复制
+  大 payload。
+
 ## 非目标
 
 - 不直接调用 HiSilicon SDK。

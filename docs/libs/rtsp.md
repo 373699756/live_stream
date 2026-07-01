@@ -98,6 +98,22 @@ bytes 和 close reason 优先读取 `net` 的 connection info。这些字段由
 `/api/media/sessions` 聚合给 Web；RTSP 模块只提供协议信息，不提供
 HLS/FLV/MJPEG/WebRTC ready 状态。
 
+## 参考项目检查点
+
+`my_video` 的 RTSP 路径优先证明 RTP over RTSP(TCP interleaved) 对 VLC/ffplay 的可用性。
+`live_stream` 保留该验证目标，但不保留原型中的全局帧队列和跨模块直接 fanout：
+
+- DESCRIBE、SETUP、PLAY、TEARDOWN 的 wire 行为优先用 VLC/ffplay TCP interleaved 验证，
+  UDP 再补充验证 RTP/RTCP socket 生命周期。
+- PLAY 后只通过 keyframe-first subscription 获取启动 GOP 和 live frame；RTSP 不维护私有
+  GOP cache，不直接订阅 device 或 HiSilicon SDK。
+- TEARDOWN、控制连接断开、SETUP 切换 transport、send queue 失败和服务停止都必须 detach
+  subscription，并让 `MediaStreams` subscription size 回落。
+- RTP packetizer 只输出 packet view；TCP interleaved 由 `net` 队列 owner 保活 payload，
+  UDP 同步发送 datagram，不长期保存原始帧指针。
+- RTCP receiver report 和丢包信息只进入诊断；首版不在 RTSP 内做码率控制、降帧率或
+  自动切子码流。
+
 ## 非目标
 
 - 不拥有 HLS/FLV/MJPEG/WebRTC 浏览器预览状态。

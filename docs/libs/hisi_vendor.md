@@ -85,6 +85,21 @@ channel，再按 `GetStream/ReleaseStream` 成对读取编码结果。抓图控�
 库的抓图请求和状态边界，但不引入 Capture 的 task、Binder 或共享内存通信模型；
 抓图必须串行执行，不能复用主/子码流 VENC channel，也不能破坏实时预览码流。
 
+## 参考项目检查点
+
+`my_video` 的有效经验是先按海思 sample 顺序跑通基础链路，再排查封装层新增的并发
+和生命周期。`hisi_vendor` 做板端问题定位时，优先按以下顺序确认：
+
+- SYS/VB 初始化、sensor/VI 配置、ISP 线程、VPSS group、VI->VPSS 绑定、VENC channel
+  创建和取流线程顺序必须与 sample 路径一致。
+- 任一步失败都只回滚已经创建的资源，回滚顺序必须是创建顺序的反向路径；不能继续向上报告
+  已启动或已清理。
+- `GetStream` / `ReleaseStream` 必须成对出现；VENC pack 在 release 后不得被上层或协议
+  继续引用。
+- 配置热应用涉及 VENC、VPSS、ISP 或 region 时，必须先确认当前资源 owner 和锁顺序，
+  不用简单 sleep 掩盖抓图、取流线程或控制调用之间的竞态。
+- `ipc_camera` 的平台边界经验只吸收 SDK 隔离原则，不吸收其旧文档层级或可选后端命名。
+
 ## 非目标
 
 - 不拥有 HTTP DTO。

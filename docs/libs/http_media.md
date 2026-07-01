@@ -105,3 +105,19 @@ WebRTC 核心状态机；非空 `candidate` 必须带有效 `sdp_mline_index`，
 
 WHEP 成功时返回 `201 Created`、`Content-Type: application/sdp` 和 `Location`；
 `Location` 指向对应 DELETE URL。WHEP 失败不返回 JSON envelope。
+
+## 参考项目检查点
+
+参考项目的 Web 预览路径说明，浏览器媒体入口最容易把播放 URL、信令、socket 长连接和设备状态
+混在一起。`http_media` 后续实现和 review 按以下检查点执行：
+
+- 播放 URL 只由后端生成并返回给 Web；本模块不保留旧 `/api/hls`、`/api/flv`、
+  `/api/mjpeg` 或旧 WebRTC signaling alias。
+- HLS 保持短响应模型，HTTP-FLV/MJPEG/SSE 才进入 streaming session；不能把短响应和长连接
+  释放路径混用。
+- HTTP-FLV/MJPEG attach 成功前后必须能在 session 诊断中区分 `opening`、`attached`、
+  `closing`，便于定位卡在 header、GOP、sink attach 还是 socket 发送。
+- TCP close、发送失败、HTTP 主动关闭和服务停止都必须走统一 detach 路径，确保 media client
+  计数和 buffer 引用回落。
+- WebRTC handler 只做 JSON DTO、鉴权和 service 调用，不缓存 ICE/DTLS/SRTP 状态，也不替
+  `webrtc` 维护 peer 生命周期。

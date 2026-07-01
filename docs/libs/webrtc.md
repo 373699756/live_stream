@@ -186,6 +186,21 @@ WebRTC 只通过 `kWebRtcClientConnected` / `kWebRtcClientDisconnected`
 发布轻量 peer 活跃事件；`net_stat` 不轮询 WebRTC stats，也不替代
 PLI/FIR/NACK/TWCC 这类协议反馈。
 
+## 参考项目检查点
+
+`my_video` 的 metaRTC 接入证明 WebRTC 低延迟预览需要清晰的会话、ICE 和 H.264 推流路径；
+`live_stream` 只吸收协议经验，不恢复 metaRTC/Yang 后端名或兼容字段：
+
+- peer 创建、offer、candidate、DELETE close 必须只通过 `http_media` DTO 进入本模块；
+  WebRTC 不读取 HTTP request，也不让 Web 推导 public IP 或 codec ready。
+- peer connected 后才创建 keyframe-first subscription；关闭、失败、setup timeout 或 service stop
+  必须统一走 peer close path，先停止 drain，再 unsubscribe，再释放 RTP sender、SRTP/DTLS/ICE。
+- RTP sender 复用 `media_codec` packetizer；H.264/H.265 payload type、SSRC 和 clock rate
+  只来自 SDP 协商后的 peer 运行态。
+- PLI/FIR 只触发 `media_streams.RequestKeyframe()`，NACK/TWCC 首版只统计和暴露诊断。
+- WebRTC 自动 public IP 解析失败只关闭 WebRTC 能力，不影响 RTSP、HLS、HTTP-FLV、MJPEG
+  或抓图。
+
 ## 非目标
 
 - 不维护 HLS/FLV/MJPEG ready 或缓存。
