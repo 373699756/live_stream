@@ -27,11 +27,11 @@ public:
                            uint32_t rtp_mtu_bytes);
 
     int StartMediaStream(RtspSession &session);
-    void ArmMediaStream(const std::shared_ptr<RtspSession> &session);
+    void StartMediaSend(const std::shared_ptr<RtspSession> &session);
     void CloseSubscription(RtspSession &session, SubscriptionClose reason);
 
 private:
-    void ArmSessionTimer(const std::shared_ptr<RtspSession> &session);
+    void StartSessionSendTimer(const std::shared_ptr<RtspSession> &session);
     void SendSessionFrames(const std::shared_ptr<RtspSession> &session);
     bool SendSessionStartFrames(const std::shared_ptr<RtspSession> &session,
                                 uint32_t *sent_frames);

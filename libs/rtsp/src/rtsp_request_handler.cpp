@@ -124,7 +124,7 @@ void RtspRequestHandler::HandlePlay(
         return;
     }
     // StartRtspMediaStream 会 attach keyframe_first subscription 并准备启动 GOP；
-    // 200 响应发出后才 arm drain timer，避免客户端未收到 PLAY 成功就收到 RTP。
+    // 200 响应发出后才启动发送 timer，避免客户端未收到 PLAY 成功就收到 RTP。
     const int stream_status = delegate_.StartRtspMediaStream(*session);
     if (stream_status != 200) {
         SendResponse(session->connection_id, stream_status, request, {}, "");
@@ -142,7 +142,7 @@ void RtspRequestHandler::HandlePlay(
                   {"Range", "npt=0.000-"},
                   {"RTP-Info", BuildRtpInfo(session, request)}},
                  "");
-    delegate_.ArmRtspMediaStream(session);
+    delegate_.StartRtspMediaSend(session);
 }
 
 void RtspRequestHandler::HandleTeardown(

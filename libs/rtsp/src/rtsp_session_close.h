@@ -17,7 +17,7 @@ public:
                      std::mutex *mutex,
                      RtspSessionVideoSender *video_sender);
 
-    void CloseSessionResources(RtspSession &session,
+    void CloseSessionVideoSend(RtspSession &session,
                                SubscriptionClose reason);
 
 private:

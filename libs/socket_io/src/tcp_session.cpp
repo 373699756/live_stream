@@ -91,7 +91,7 @@ bool TcpSession::Start() {
         })) {
         return false;
     }
-    ArmTimeoutTimer();
+    StartTimeoutTimer();
     return true;
 }
 
@@ -430,7 +430,7 @@ void TcpSession::CloseInLoop(TcpCloseReason reason) {
     socket_io_->OnConnectionClosed(id_, callbacks_, reason, info);
 }
 
-void TcpSession::ArmTimeoutTimer() {
+void TcpSession::StartTimeoutTimer() {
     const uint32_t tick_ms = TimeoutCheckIntervalMs();
     if (tick_ms == 0) {
         return;

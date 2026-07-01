@@ -180,7 +180,7 @@ private:
         // 停服务时先停 listener，再关闭每个 session 的 subscription/timer/UDP socket，
         // 最后关闭 TCP 控制连接，防止 media_streams 继续给已关闭 transport 推帧。
         for (const auto& session : sessions) {
-            session_close_.CloseSessionResources(
+            session_close_.CloseSessionVideoSend(
                 *session, SubscriptionClose::kStreamStopped);
         }
         for (ConnectionId connection_id : connection_ids) {
@@ -388,7 +388,7 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session->MarkCloseReason(reason);
         }
-        session_close_.CloseSessionResources(
+        session_close_.CloseSessionVideoSend(
             *session, SubscriptionClose::kUnsubscribed);
         Info("rtsp",
              "RTSP client disconnected conn=%llu reason=%d "
@@ -527,7 +527,7 @@ private:
             ContainsNoCase(transport, "interleaved")) {
             // 重新 SETUP 会切换 transport，必须先清掉旧 subscription 和 UDP socket，
             // 否则旧 transport 仍可能收到发送 timer 推送。
-            session_close_.CloseSessionResources(
+            session_close_.CloseSessionVideoSend(
                 session, SubscriptionClose::kUnsubscribed);
             session.SetupTcp(stream_id, 0);
             response_transport =
@@ -546,7 +546,7 @@ private:
             }
             // UDP 每个 session 独立绑定本地 RTP/RTCP 端口，响应里的 server_port
             // 必须来自实际 bind 结果，不能用配置端口推导。
-            session_close_.CloseSessionResources(
+            session_close_.CloseSessionVideoSend(
                 session, SubscriptionClose::kUnsubscribed);
             UdpSocketId rtp_socket_id = 0;
             UdpSocketId rtcp_socket_id = 0;
@@ -674,9 +674,9 @@ private:
         return session_video_sender_.StartMediaStream(session);
     }
 
-    void ArmRtspMediaStream(
+    void StartRtspMediaSend(
         const std::shared_ptr<RtspSession>& session) override {
-        session_video_sender_.ArmMediaStream(session);
+        session_video_sender_.StartMediaSend(session);
     }
 
     void CloseRtspConnectionAfterSend(ConnectionId connection_id) override {
@@ -686,7 +686,7 @@ private:
             session = session_table_.Find(connection_id);
         }
         if (session != nullptr) {
-            session_close_.CloseSessionResources(
+            session_close_.CloseSessionVideoSend(
                 *session, SubscriptionClose::kUnsubscribed);
         }
         (void)socket_io_->CloseAfterSend(connection_id);

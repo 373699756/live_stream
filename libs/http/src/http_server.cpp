@@ -489,7 +489,7 @@ void HttpServer::OnConnection(ConnectionId connection_id, SocketAddress peer) {
             new HttpSession(connection_id, std::move(peer.ip)));
         ++stats_.active_connections;
     }
-    ArmConnectionTimer(connection_id, options_.request_timeout_ms);
+    StartConnectionTimer(connection_id, options_.request_timeout_ms);
 }
 
 void HttpServer::OnClose(ConnectionId connection_id, TcpCloseReason reason) {
@@ -551,7 +551,7 @@ void HttpServer::OnMessage(ConnectionId connection_id, const uint8_t *data,
                      true);
         return;
     }
-    ArmConnectionTimer(connection_id, options_.request_timeout_ms);
+    StartConnectionTimer(connection_id, options_.request_timeout_ms);
     TryPostNextRequest(connection_id);
 }
 
@@ -612,7 +612,7 @@ void HttpServer::CompleteKeepAliveRequest(ConnectionId connection_id) {
         TryPostNextRequest(connection_id);
         return;
     }
-    ArmConnectionTimer(connection_id, options_.connection_idle_timeout_ms);
+    StartConnectionTimer(connection_id, options_.connection_idle_timeout_ms);
 }
 
 HttpSessionParseOptions HttpServer::MakeConnectionParseOptions() const {
@@ -667,8 +667,8 @@ HttpStreamSessionInfo HttpServer::BuildStreamSessionInfo(
     return info;
 }
 
-void HttpServer::ArmConnectionTimer(ConnectionId connection_id,
-                                    uint32_t delay_ms) {
+void HttpServer::StartConnectionTimer(ConnectionId connection_id,
+                                      uint32_t delay_ms) {
     event::Loop *socket_loop = nullptr;
     RenewedHttpSessionTimeout timeout;
     {

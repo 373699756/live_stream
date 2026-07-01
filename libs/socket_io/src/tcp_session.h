@@ -71,7 +71,7 @@ private:
     void EnableWrite();
     void DisableWrite();
     void CloseInLoop(TcpCloseReason reason);
-    void ArmTimeoutTimer();
+    void StartTimeoutTimer();
     void CheckTimeouts();
     bool IsReadTimedOutLocked(int64_t now_ms) const;
     bool IsWriteTimedOutLocked(int64_t now_ms) const;

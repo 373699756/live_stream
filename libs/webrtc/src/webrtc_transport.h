@@ -101,7 +101,7 @@ private:
     bool ApplyDtlsResult(const DtlsProcessOutput &dtls_result,
                          WebrtcDtlsOutput &result);
     bool StartSrtp(const DtlsSrtpKeys &keys);
-    bool ArmDtlsTimer();
+    bool StartDtlsTimer();
     void CancelDtlsTimer();
     void RecordRtcpFeedback(const RtcpFeedbackStats &feedback_stats);
 

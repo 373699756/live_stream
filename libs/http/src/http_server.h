@@ -106,7 +106,7 @@ private:
     void TryPostNextRequest(ConnectionId connection_id);
     void CompleteKeepAliveRequest(ConnectionId connection_id);
     HttpSessionParseOptions MakeConnectionParseOptions() const;
-    void ArmConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
+    void StartConnectionTimer(ConnectionId connection_id, uint32_t delay_ms);
     static void CancelNetTimer(event::Loop *loop, event::TimerId timer_id);
 
     HttpOptions options_;

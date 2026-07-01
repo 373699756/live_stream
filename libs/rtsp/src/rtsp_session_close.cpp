@@ -12,7 +12,7 @@ RtspSessionClose::RtspSessionClose(ISocketIo *socket_io,
       mutex_(mutex),
       video_sender_(video_sender) {}
 
-void RtspSessionClose::CloseSessionResources(RtspSession &session,
+void RtspSessionClose::CloseSessionVideoSend(RtspSession &session,
                                              SubscriptionClose reason) {
     if (video_sender_ != nullptr) {
         video_sender_->CloseSubscription(session, reason);

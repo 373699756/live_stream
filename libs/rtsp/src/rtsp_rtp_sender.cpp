@@ -139,7 +139,7 @@ bool RtspRtpSender::SendRtpPacketView(
         context.socket_io, route, frame, packet);
     if (!sent) {
         // 发送失败通常表示 TCP 队列满、连接关闭或 UDP socket 不可用。这里按慢客户端
-        // 处理并关闭控制连接，让 CloseSessionResources 释放 subscription/UDP socket。
+        // 处理并关闭控制连接，让 CloseSessionVideoSend 释放 subscription/UDP socket。
         {
             std::lock_guard<std::mutex> lock(context.mutex);
             ++session.stats.dropped_frames;

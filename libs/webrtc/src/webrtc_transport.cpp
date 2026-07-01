@@ -333,7 +333,7 @@ bool WebrtcTransport::ApplyDtlsResult(
         CancelDtlsTimer();
         result.connected_now = true;
     } else if (dtls_result.state == DtlsState::kConnecting) {
-        if (!ArmDtlsTimer()) {
+        if (!StartDtlsTimer()) {
             result.failed = true;
             result.error = "dtls_timer_failed";
             return false;
@@ -365,7 +365,7 @@ bool WebrtcTransport::StartSrtp(const DtlsSrtpKeys &keys) {
     return true;
 }
 
-bool WebrtcTransport::ArmDtlsTimer() {
+bool WebrtcTransport::StartDtlsTimer() {
     if (net_loop_ == nullptr || dtls_ == nullptr ||
         dtls_->state() != DtlsState::kConnecting ||
         on_dtls_timeout_ == nullptr) {

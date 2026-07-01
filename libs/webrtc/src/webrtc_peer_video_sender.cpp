@@ -91,7 +91,7 @@ bool WebrtcPeerVideoSender::OpenPeerVideo(const std::string &peer_id) {
         return false;
     }
 
-    ArmPeerSendTimer(peer_id);
+    StartPeerSendTimer(peer_id);
     SendPeerFrames(peer_id);
     return true;
 }
@@ -185,7 +185,7 @@ void WebrtcPeerVideoSender::DispatchPeerVideoSend(
     LeaveWebrtcCallback(guard);
 }
 
-void WebrtcPeerVideoSender::ArmPeerSendTimer(
+void WebrtcPeerVideoSender::StartPeerSendTimer(
     const std::string &peer_id) {
     std::shared_ptr<WebrtcCallbackGuard> callback_guard = callback_guard_;
     event::TimerId timer_id = 0;

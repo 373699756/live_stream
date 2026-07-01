@@ -63,7 +63,7 @@ private:
         WebrtcPeerVideoSender *sender,
         const std::string &peer_id);
 
-    void ArmPeerSendTimer(const std::string &peer_id);
+    void StartPeerSendTimer(const std::string &peer_id);
     void SendPeerFrames(const std::string &peer_id);
     bool BeginPeerSend(const std::string &peer_id);
     void EndPeerSend(const std::string &peer_id);

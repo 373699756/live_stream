@@ -26,7 +26,7 @@ public:
                                     const rtsp_internal::RtspRequest &request,
                                     StreamId stream_id) = 0;
     virtual int StartRtspMediaStream(RtspSession &session) = 0;
-    virtual void ArmRtspMediaStream(
+    virtual void StartRtspMediaSend(
         const std::shared_ptr<RtspSession> &session) = 0;
     virtual void CloseRtspConnectionAfterSend(ConnectionId connection_id) = 0;
     virtual void SendRtspResponse(

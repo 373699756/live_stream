@@ -77,9 +77,9 @@ int RtspSessionVideoSender::StartMediaStream(RtspSession &session) {
     return 200;
 }
 
-void RtspSessionVideoSender::ArmMediaStream(
+void RtspSessionVideoSender::StartMediaSend(
     const std::shared_ptr<RtspSession> &session) {
-    ArmSessionTimer(session);
+    StartSessionSendTimer(session);
 }
 
 void RtspSessionVideoSender::CloseSubscription(RtspSession &session,
@@ -104,7 +104,7 @@ void RtspSessionVideoSender::CloseSubscription(RtspSession &session,
     }
 }
 
-void RtspSessionVideoSender::ArmSessionTimer(
+void RtspSessionVideoSender::StartSessionSendTimer(
     const std::shared_ptr<RtspSession> &session) {
     // 发送 timer 运行在 socket_io loop 上，周期性从 media_streams subscription 拉帧；
     // 每次发送有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
