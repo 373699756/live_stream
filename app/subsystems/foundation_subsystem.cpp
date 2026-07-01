@@ -109,6 +109,11 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         Stop();
         return false;
     }
+    if (!Runtime::InstallConfig(config_.get())) {
+        Error("app", "Install runtime config failed");
+        Stop();
+        return false;
+    }
     event_.reset(new event::Bus());
     if (!event_ || !event_->Start()) {
         Error("app", "Start event failed");
@@ -119,12 +124,10 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
     AuthOptions auth_options;
     auth_options.token_ttl_seconds = 30 * 60;
     auth_options.max_sessions = 16;
-    AuthDependencies auth_dependencies;
-    auth_dependencies.config = config_.get();
     AuthUsersOptions auth_users_options;
     auth_users_options.kind = AuthUsersKind::kConfig;
     auth_users_options.config_path = paths.auth_users_path;
-    auth_ = CreateAuth(auth_options, auth_dependencies,
+    auth_ = CreateAuth(auth_options,
                        CreateAuthUsers(auth_users_options),
                        CreatePasswordVerifier(PasswordVerifierKind::kPbkdf2));
     if (!auth_) {
@@ -142,7 +145,6 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         return false;
     }
     if (!Runtime::InstallLogger(logger_.get()) ||
-        !Runtime::InstallConfig(config_.get()) ||
         !Runtime::InstallEvent(event_->dispatcher()) ||
         !Runtime::InstallAuth(auth_.get())) {
         Error("app", "Install runtime foundation services failed");

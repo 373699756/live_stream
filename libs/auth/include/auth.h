@@ -159,10 +159,6 @@ struct AuthOptions {
     bool password_require_symbol = false;
 };
 
-struct AuthDependencies {
-    IConfig* config = nullptr;
-};
-
 struct AuthStats {
     uint64_t login_success = 0;
     uint64_t login_failed = 0;
@@ -271,12 +267,6 @@ std::unique_ptr<IPasswordVerifier> CreatePasswordVerifier(
  */
 std::unique_ptr<IAuth> CreateAuth(
     const AuthOptions& options,
-    std::unique_ptr<IAuthUsers> auth_users,
-    std::unique_ptr<IPasswordVerifier> password_verifier);
-
-std::unique_ptr<IAuth> CreateAuth(
-    const AuthOptions& options,
-    const AuthDependencies& dependencies,
     std::unique_ptr<IAuthUsers> auth_users,
     std::unique_ptr<IPasswordVerifier> password_verifier,
     IAuthTokenGenerator* token_generator = nullptr);

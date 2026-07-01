@@ -14,6 +14,7 @@
 #include "config.h"
 #include "infra/time.h"
 #include "json_reader.h"
+#include "runtime.h"
 
 namespace live_stream {
 namespace {
@@ -172,12 +173,11 @@ bool ParseUserConfig(const Json &value,
 class AuthImpl : public IAuth {
 public:
     AuthImpl(const AuthOptions &options,
-             const AuthDependencies &dependencies,
              std::unique_ptr<IAuthUsers> auth_users,
              std::unique_ptr<IPasswordVerifier> password_verifier,
              IAuthTokenGenerator *token_generator)
         : options_(options),
-          config_(dependencies.config),
+          config_(Runtime::Config()),
           auth_users_(std::move(auth_users)),
           password_verifier_(std::move(password_verifier)),
           token_generator_(token_generator) {}
@@ -779,20 +779,10 @@ private:
 std::unique_ptr<IAuth>
 CreateAuth(const AuthOptions &options,
            std::unique_ptr<IAuthUsers> auth_users,
-           std::unique_ptr<IPasswordVerifier> password_verifier) {
-    return CreateAuth(options, AuthDependencies{},
-                      std::move(auth_users), std::move(password_verifier),
-                      nullptr);
-}
-
-std::unique_ptr<IAuth>
-CreateAuth(const AuthOptions &options,
-           const AuthDependencies &dependencies,
-           std::unique_ptr<IAuthUsers> auth_users,
            std::unique_ptr<IPasswordVerifier> password_verifier,
            IAuthTokenGenerator *token_generator) {
     return std::unique_ptr<IAuth>(
-        new AuthImpl(options, dependencies, std::move(auth_users),
+        new AuthImpl(options, std::move(auth_users),
                      std::move(password_verifier), token_generator));
 }
 

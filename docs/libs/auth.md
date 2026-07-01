@@ -33,6 +33,9 @@ flowchart LR
 
 public API 在 `auth.h`。HTTP 路由归 `http`，Web 认证状态归
 `www/AuthContext`。
+`CreateAuth()` 只接收 `AuthOptions`、用户源、密码校验器和可选 token
+generator；业务配置入口由组合根先安装到 `Runtime`，auth 启动时从
+`Runtime::Config()` 读取并注册 `user` 配置 scope。
 
 ## 初始密码策略
 

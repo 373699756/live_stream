@@ -62,7 +62,7 @@ std::unique_ptr<live_stream::IAuth> CreateStarted(
 
     std::unique_ptr<live_stream::IAuth> service =
         live_stream::CreateAuth(
-            options, live_stream::AuthDependencies(),
+            options,
             live_stream::CreateAuthUsers(auth_users_options),
             live_stream::CreatePasswordVerifier(
                 live_stream::PasswordVerifierKind::kPlainText),
