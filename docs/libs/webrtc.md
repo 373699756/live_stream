@@ -30,14 +30,16 @@ flowchart LR
 - 创建和关闭 peer。
 - 解析 offer、生成 answer、处理 ICE candidate。
 - 管理 ICE、DTLS、SRTP、RTCP 和 selected candidate pair。
-- 从 `media_streams` 的 FrameSubscription 获取关键帧优先的视频帧，经 RTP sender 输出 SRTP。
+- 从 `MediaSourceRegistry` 当前 `MediaStreams` 的 FrameSubscription 获取关键帧优先的视频帧，
+  经 RTP sender 输出 SRTP。
 - 暴露状态给 `http_media` signaling handlers。
 
 ## 接口归属
 
 public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
 HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
-和 frame subscription 生命周期仍归 `media_streams`。冻结后的 signaling 路径为：
+和 frame subscription 生命周期仍归 `media_streams`；`WebrtcDependencies`
+不直接携带 `MediaStreams*`。冻结后的 signaling 路径为：
 
 | API | 语义 |
 | --- | --- |

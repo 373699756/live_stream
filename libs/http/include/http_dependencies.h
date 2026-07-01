@@ -3,7 +3,6 @@
 
 #include "event.h"
 #include "http.h"
-#include "media/media_streams.h"
 
 namespace live_stream {
 
@@ -22,6 +21,7 @@ class IWebrtc;
 class IWebrtcReader;
 class DeviceMedia;
 class IAiReader;
+class MediaStreams;
 
 struct HttpDependencies {
     INetIo *net_io = nullptr;
@@ -40,7 +40,6 @@ struct HttpDependencies {
     DeviceMedia *device = nullptr;
     IWebrtc *webrtc = nullptr;
     IWebrtcReader *webrtc_reader = nullptr;
-    MediaStreams *media_streams = nullptr;
     event::Dispatcher *event = nullptr;
 };
 

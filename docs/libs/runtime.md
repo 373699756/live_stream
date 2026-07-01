@@ -17,7 +17,8 @@ non-owning 指针。
 ## 边界
 
 - `Runtime` 不注册 `DeviceMedia`、`MediaStreams`、`IRtsp`、`IWebrtc`、`IHttp`
-  或 ONVIF 完整 service。
+  或 ONVIF 完整 service；当前媒体源入口归 `media` 模块的
+  `MediaSourceRegistry`。
 - `ServiceRegistry` 只允许只读 reader 接口，不允许注册带 `Start`、`Stop`、
   `ApplyOptions`、`ClosePeer` 等业务控制能力的完整 service。
 - 媒体帧、配置 `verify/apply/save` 和 MPP/VENC 生命周期不经过本模块。
@@ -27,4 +28,3 @@ non-owning 指针。
 所有指针均为 non-owning。重复安装相同指针视为幂等；重复安装不同指针失败，
 避免静默覆盖。组合根停止时必须先停止依赖这些入口的协议和媒体模块，再清理
 registry/runtime，防止留下悬空指针。
-

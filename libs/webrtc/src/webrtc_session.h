@@ -2,6 +2,7 @@
 #define LIVE_STREAM_WEBRTC_SRC_WEBRTC_SESSION_H_
 
 #include "dtls_transport.h"
+#include "media/media_frame.h"
 #include "net.h"
 #include "webrtc.h"
 #include "webrtc_peer_host.h"

@@ -2,7 +2,6 @@
 #define LIVE_STREAM_WEBRTC_WEBRTC_H_
 
 #include "event.h"
-#include "media/media_streams.h"
 #include "media/stream_types.h"
 
 #include <cstdint>
@@ -43,7 +42,6 @@ struct WebrtcOptions {
 };
 
 struct WebrtcDependencies {
-    MediaStreams *media_streams = nullptr;
     INetIo *net_io = nullptr;
     event::Loop *net_loop = nullptr;
     event::Dispatcher *event = nullptr;

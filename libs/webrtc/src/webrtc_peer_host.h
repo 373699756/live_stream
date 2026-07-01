@@ -3,6 +3,7 @@
 
 #include "webrtc.h"
 
+#include "media/media_frame.h"
 #include "rtp.h"
 
 #include <cstddef>

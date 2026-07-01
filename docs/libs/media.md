@@ -17,6 +17,9 @@
   `media` 自身不直接依赖设备模块。
 - 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamStats`、
   `FrameSubscription` 相关接口。
+- 通过 `MediaSourceRegistry` 暴露当前 `MediaStreams` 入口；组合根负责在
+  `MediaStreams` 启动成功后注册、停止前清理，协议模块不再通过自身
+  `*Dependencies` 保存 app 传入的媒体源字段。
 - 帧订阅起播 GOP 和 live frame 直接返回带引用计数 payload 的 `MediaFrame`；
   参数集、codec generation 和 90kHz clock rate 等播放元信息收敛在
   `MediaStreamInfo`。
@@ -26,6 +29,9 @@
 `MediaStreams` 拥有码流缓存和帧客户端共享缓存。输入帧使用 RAII `MediaBufferRef`
 保活，协议订阅和 FLV GOP cache 只增加底层 buffer 引用，不复制整帧
 payload；HLS segment 是独立转封装后的 TS buffer。
+`MediaSourceRegistry` 只保存 non-owning `MediaStreams*`，不代理帧操作、
+不控制媒体生命周期，也不新增缓存。它的作用是消除协议构造 DTO 对
+`MediaStreams*` 的直接字段依赖。
 
 `MediaStreamsOptions::cache_limits` 定义 media 自己拥有的缓存运行期上限：
 subscription 起播 GOP frame/bytes、共享 live frame/bytes、

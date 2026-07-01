@@ -36,7 +36,6 @@ int main() {
         "stun:stun.example.com:3478", "", ""});
 
     live_stream::test::FakeMediaStreams media_streams;
-    dependencies.media_streams = &media_streams;
 
     std::unique_ptr<live_stream::IWebrtc> service =
         live_stream::CreateWebrtc(options, dependencies);

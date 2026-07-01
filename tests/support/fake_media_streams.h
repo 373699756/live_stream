@@ -1,6 +1,7 @@
 #ifndef LIVE_STREAM_TESTS_SUPPORT_FAKE_MEDIA_STREAMS_H_
 #define LIVE_STREAM_TESTS_SUPPORT_FAKE_MEDIA_STREAMS_H_
 
+#include "media/media_source_registry.h"
 #include "media/media_streams.h"
 
 namespace live_stream {
@@ -15,12 +16,16 @@ public:
                        Codec::kH264);
         SetStreamState(StreamId::kSub, MediaStreamState::kRunning,
                        Codec::kH264);
+        MediaSourceRegistry::Register(this);
     }
 
-    ~FakeMediaStreams() { Stop(); }
+    ~FakeMediaStreams() {
+        MediaSourceRegistry::Clear(this);
+        Stop();
+    }
 
-    bool DeliverFrame(const EncodedFrame &encoded_frame) {
-        return PushFrame(encoded_frame);
+    bool DeliverFrame(const MediaFrame &frame) {
+        return PushFrame(frame);
     }
 
     uint32_t ActiveSubscriptionCount() const {

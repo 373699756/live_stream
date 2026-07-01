@@ -152,7 +152,6 @@ RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs,
     dependencies.net_loop = refs.rtsp_loop;
     dependencies.auth = foundation.auth();
     dependencies.event = foundation.event();
-    dependencies.media_streams = refs.media.media_streams;
     return dependencies;
 }
 
@@ -180,7 +179,6 @@ WebrtcDependencies BuildWebrtcDependencies(
     WebrtcDependencies dependencies;
     dependencies.net_io = refs.net_io;
     dependencies.net_loop = refs.webrtc_loop;
-    dependencies.media_streams = refs.media.media_streams;
     dependencies.event = foundation.event();
     return dependencies;
 }
@@ -254,7 +252,6 @@ HttpDependencies BuildHttpDependencies(
     dependencies.device = refs.media.device;
     dependencies.webrtc = refs.webrtc;
     dependencies.webrtc_reader = refs.webrtc;
-    dependencies.media_streams = refs.media.media_streams;
     dependencies.event = foundation.event();
     return dependencies;
 }

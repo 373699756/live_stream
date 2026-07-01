@@ -175,7 +175,6 @@ int main() {
     options.public_ip = "127.0.0.1";
 
     live_stream::WebrtcDependencies dependencies;
-    dependencies.media_streams = &media_streams;
     dependencies.net_io = &net_io;
     dependencies.net_loop = net_io.DefaultLoop();
 

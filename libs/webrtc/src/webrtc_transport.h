@@ -3,6 +3,7 @@
 
 #include "dtls_transport.h"
 #include "ice_transport.h"
+#include "media/media_frame.h"
 #include "rtp.h"
 #include "net.h"
 #include "srtp_session.h"

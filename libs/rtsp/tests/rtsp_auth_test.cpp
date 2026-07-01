@@ -137,7 +137,6 @@ int main() {
     deps.net_io = net_io.get();
     deps.net_loop = net_io->DefaultLoop();
     deps.auth = &auth;
-    deps.media_streams = &media_streams;
     auto rtsp = live_stream::CreateRtsp(options, deps);
     if (!rtsp || !rtsp->Start()) {
         return 2;

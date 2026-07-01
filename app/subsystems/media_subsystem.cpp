@@ -2,6 +2,7 @@
 
 #include "infra/log.h"
 #include "hisi_vendor/mpp_sdk.h"
+#include "media/media_source_registry.h"
 #include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 
@@ -69,6 +70,11 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
         Stop();
         return false;
     }
+    if (!MediaSourceRegistry::Register(media_streams_.get())) {
+        Error("app", "Register media source failed");
+        Stop();
+        return false;
+    }
 
     if (!device_->Start()) {
         Error("app", "Start device failed");
@@ -107,6 +113,7 @@ void MediaSubsystem::Stop() {
         (void)device_->SetFrameSink(nullptr);
     }
     if (media_streams_) {
+        MediaSourceRegistry::Clear(media_streams_.get());
         media_streams_->SetStreamState(StreamId::kMain,
                                        MediaStreamState::kClosed,
                                        Codec::kH264);

@@ -3,7 +3,6 @@
 
 #include "event.h"
 #include "media/media_frame.h"
-#include "media/media_streams.h"
 #include "media/stream_types.h"
 
 #include <cstdint>
@@ -111,7 +110,6 @@ struct RtspDependencies {
     event::Loop* net_loop = nullptr;
     IAuth* auth = nullptr;
     event::Dispatcher* event = nullptr;
-    MediaStreams* media_streams = nullptr;
 };
 
 class IRtspSessionReader {

@@ -3,6 +3,8 @@
 #include "event.h"
 #include "infra/log.h"
 #include "infra/time.h"
+#include "media/media_source_registry.h"
+#include "media/media_streams.h"
 #include "rtp.h"
 #include "net.h"
 #include "rtsp_auth.h"
@@ -79,7 +81,7 @@ public:
           net_loop_(dependencies.net_loop),
           auth_(dependencies.auth),
           event_(dependencies.event),
-          media_streams_(dependencies.media_streams),
+          media_streams_(MediaSourceRegistry::Streams()),
           rtp_sender_(options_.rtp_mtu_bytes),
           rtsp_auth_(auth_, *this),
           request_handler_(*this) {}

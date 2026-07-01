@@ -138,7 +138,8 @@ subscription/ring 分发之间的状态。
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
 `CreateHttp()` 通过 `HttpDependencies` 命名字段接收 app 组合根注入，
-避免认证、设备、协议和媒体依赖靠长参数位置传递。
+避免认证、设备和协议依赖靠长参数位置传递；媒体源由 `HttpImpl`
+从 `MediaSourceRegistry` 读取，不进入 public `HttpDependencies`。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
 
 HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body

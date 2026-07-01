@@ -12,6 +12,7 @@
 #include "infra/log.h"
 #include "infra/time.h"
 #include "logger.h"
+#include "media/media_source_registry.h"
 
 #include <memory>
 #include <mutex>
@@ -196,6 +197,7 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
     streaming_handler_.reset();
     auth_ = dependencies.auth;
     logger_ = dependencies.logger;
+    MediaStreams *media_streams = MediaSourceRegistry::Streams();
     const HttpControlDependencies control_dependencies = {
         dependencies.auth,
         dependencies.logger,
@@ -210,19 +212,19 @@ void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
         dependencies.ai,
         dependencies.device,
         dependencies.webrtc_reader,
-        dependencies.media_streams,
+        media_streams,
     };
     const HttpMediaDependencies media_dependencies = {
         dependencies.config,
         dependencies.device,
-        dependencies.media_streams,
+        media_streams,
         dependencies.rtsp_session_reader,
         dependencies.webrtc_reader,
         dependencies.webrtc,
     };
     const HttpStreamingDependencies streaming_dependencies = {
         dependencies.device,
-        dependencies.media_streams,
+        media_streams,
         dependencies.event,
     };
     ConfigureCloseCallback(control_dependencies.media_streams);

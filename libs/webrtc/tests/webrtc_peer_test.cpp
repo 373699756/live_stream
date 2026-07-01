@@ -11,7 +11,6 @@ int main() {
     disabled_options.enabled = false;
 
     live_stream::WebrtcDependencies dependencies;
-    dependencies.media_streams = &media_streams;
 
     std::unique_ptr<live_stream::IWebrtc> disabled =
         live_stream::CreateWebrtc(disabled_options, dependencies);
