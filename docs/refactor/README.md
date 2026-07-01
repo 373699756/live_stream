@@ -54,8 +54,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - `http` 聚合控制和只读状态，但不能绕过拥有模块修改内部状态。
 - AI 每次抓帧从 `DeviceMedia` 查询当前 channel；设备未 started 或正在重建时跳过。
 - Web 状态来自后端明确字段，不重新推导设备 SDK 状态。
-- `*Dependencies` DTO 逐步删除：基础服务通过 `Runtime`，直播源通过
-  `MediaSourceRegistry`，协议只读状态通过 `ServiceRegistry`。registry 只能暴露
+- `*Dependencies` DTO 已从 app/libs 生产代码删除：基础服务通过 `Runtime`，
+  直播源通过 `MediaSourceRegistry`，协议只读状态通过 `ServiceRegistry`。registry 只能暴露
   基础服务、媒体订阅边界或只读诊断视图，不允许变成跨模块业务控制入口。
 
 ## 3. 当前基线

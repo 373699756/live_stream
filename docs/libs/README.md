@@ -5,7 +5,7 @@ HTTP API、配置 scope、事件 payload、AI、升级、质量优化等内容�
 
 ## Cross-Module Rules
 
-- `app/` 是组合根。重构期逐步从 `*Dependencies` DTO 收敛到 `runtime` 提供的
+- `app/` 是组合根。跨模块 `*Dependencies` DTO 已收敛到 `runtime` 提供的
   进程级基础服务入口和只读 registry；registry 只暴露基础服务、直播源或只读状态，
   不作为跨模块业务控制入口。
 - 状态由最接近真实资源的模块拥有；上层只消费状态，不重复推导。
@@ -22,9 +22,9 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 - 目录和静态库使用业务域名，不再默认使用 `_service` 后缀。
 - public header 使用目标模块名，例如 `http.h`、`rtsp.h`、`webrtc.h`、
   `media.h`。
-- public interface 从 `I*Bus` 收敛到 `I*`；options/dependencies/stats 同步去掉
+- public interface 从 `I*Bus` 收敛到 `I*`；options/stats 同步去掉
   多余 `Bus`。
-- 工厂函数统一为 `Create<Module>()`；变量和 dependency 字段使用目标模块名。
+- 工厂函数统一为 `Create<Module>()`；变量和字段使用目标模块名。
 - HTTP REST 路径、配置 JSON schema、Web DTO 可以按完全重构要求同步迁移。
 - 旧 `stream_hub_service`、`stream_codec`、`stream_mux`、`MetaRtc*`、`Yang*`、
   `BackendName()` 和只转调旧接口的 wrapper 按 `docs/refactor/README.md` 的删除边界清理。

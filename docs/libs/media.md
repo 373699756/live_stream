@@ -19,7 +19,7 @@
   `FrameSubscription` 相关接口。
 - 通过 `MediaSourceRegistry` 暴露当前 `MediaStreams` 入口；组合根负责在
   `MediaStreams` 启动成功后注册、停止前清理，协议模块不再通过自身
-  `*Dependencies` 保存 app 传入的媒体源字段。
+  构造参数保存 app 传入的媒体源字段。
 - 帧订阅起播 GOP 和 live frame 直接返回带引用计数 payload 的 `MediaFrame`；
   参数集、codec generation 和 90kHz clock rate 等播放元信息收敛在
   `MediaStreamInfo`。
