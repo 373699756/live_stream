@@ -179,21 +179,6 @@ OnvifServerOptions BuildOnvifOptions(
     return options;
 }
 
-OnvifServerDependencies BuildOnvifDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation) {
-    OnvifServerDependencies dependencies;
-    dependencies.net_io = refs.net_io;
-    dependencies.net_loop = refs.onvif_loop;
-    dependencies.auth = foundation.auth();
-    dependencies.event = foundation.event();
-    dependencies.system = refs.device.system;
-    dependencies.time = refs.device.time;
-    dependencies.device = refs.media.device;
-    dependencies.rtsp = refs.rtsp;
-    return dependencies;
-}
-
 HttpOptions BuildHttpOptions(const AppConfig &app_config) {
     HttpOptions options;
     options.listen_ip = app_config.listen_ip;

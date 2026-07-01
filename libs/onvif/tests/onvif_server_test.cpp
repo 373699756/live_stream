@@ -4,6 +4,9 @@
 #include "event.h"
 #include "device.h"
 #include "net.h"
+#include "rtsp.h"
+#include "runtime.h"
+#include "service_registry.h"
 #include "system.h"
 #include "system/time.h"
 
@@ -11,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -384,6 +388,22 @@ public:
     int logout_count = 0;
 };
 
+class FakeRtspReader : public live_stream::IRtspSessionReader {
+public:
+    live_stream::RtspListenAddress LocalAddress() const override {
+        return live_stream::RtspListenAddress{"127.0.0.1", 554};
+    }
+
+    live_stream::RtspStats GetStats() const override {
+        return live_stream::RtspStats{};
+    }
+
+    std::vector<live_stream::RtspSessionInfo> ListSessionInfo()
+        const override {
+        return std::vector<live_stream::RtspSessionInfo>{};
+    }
+};
+
 std::string SoapPost(const std::string& body,
                      const std::string& extra_headers = "") {
     return "POST /onvif/device_service HTTP/1.1\r\n" + extra_headers +
@@ -400,17 +420,24 @@ std::unique_ptr<live_stream::OnvifServer> CreateStarted(
     FakeAuth* auth = nullptr) {
     live_stream::OnvifServerOptions options;
     options.enable_auth = auth != nullptr;
-    live_stream::OnvifServerDependencies deps;
-    deps.net_io = net_io;
-    deps.net_loop =
-        net_io == nullptr ? nullptr : net_io->DefaultLoop();
-    deps.event = event;
-    deps.system = system;
-    deps.time = time;
-    deps.device = device;
-    deps.auth = auth;
+    live_stream::Runtime::Clear();
+    live_stream::ServiceRegistry::Clear();
+    if (net_io != nullptr) {
+        (void)live_stream::Runtime::InstallNetIo(net_io);
+    }
+    if (event != nullptr) {
+        (void)live_stream::Runtime::InstallEvent(event);
+    }
+    if (auth != nullptr) {
+        (void)live_stream::Runtime::InstallAuth(auth);
+    }
+    static FakeRtspReader rtsp_reader;
+    (void)live_stream::ServiceRegistry::RegisterRtsp(&rtsp_reader);
     std::unique_ptr<live_stream::OnvifServer> service =
-        live_stream::CreateOnvifServer(options, deps);
+        live_stream::CreateOnvifServer(
+            options,
+            net_io == nullptr ? nullptr : net_io->DefaultLoop(),
+            system, time, device);
     if (!service || !service->Start() || !service->IsStarted()) {
         return nullptr;
     }
@@ -425,27 +452,31 @@ int main() {
     }
 
     live_stream::OnvifServerOptions options;
-    live_stream::OnvifServerDependencies deps;
-    if (live_stream::CreateOnvifServer(options, deps)->Start()) {
+    live_stream::Runtime::Clear();
+    live_stream::ServiceRegistry::Clear();
+    if (live_stream::CreateOnvifServer(
+            options, nullptr, nullptr, nullptr, nullptr)->Start()) {
         return 2;
     }
 
     FakeNetIo cleanup_net;
-    deps.net_io = &cleanup_net;
-    deps.net_loop = cleanup_net.DefaultLoop();
+    live_stream::Runtime::Clear();
+    (void)live_stream::Runtime::InstallNetIo(&cleanup_net);
     cleanup_net.bind_udp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> cleanup_server =
-        live_stream::CreateOnvifServer(options, deps);
+        live_stream::CreateOnvifServer(
+            options, cleanup_net.DefaultLoop(), nullptr, nullptr, nullptr);
     if (cleanup_server->Start() || cleanup_net.close_tcp_count != 1) {
         return 3;
     }
 
     FakeNetIo start_fail_net;
-    deps.net_io = &start_fail_net;
-    deps.net_loop = start_fail_net.DefaultLoop();
+    live_stream::Runtime::Clear();
+    (void)live_stream::Runtime::InstallNetIo(&start_fail_net);
     start_fail_net.listen_tcp_ok = false;
     std::unique_ptr<live_stream::OnvifServer> start_fail_server =
-        live_stream::CreateOnvifServer(options, deps);
+        live_stream::CreateOnvifServer(
+            options, start_fail_net.DefaultLoop(), nullptr, nullptr, nullptr);
     if (start_fail_server->Start() || start_fail_net.close_tcp_count != 0 ||
         start_fail_net.close_udp_count != 0) {
         return 4;
@@ -571,5 +602,8 @@ int main() {
     }
 
     auth_onvif->Stop();
-    return auth_onvif->IsStarted() ? 20 : 0;
+    const bool auth_onvif_still_started = auth_onvif->IsStarted();
+    live_stream::Runtime::Clear();
+    live_stream::ServiceRegistry::Clear();
+    return auth_onvif_still_started ? 20 : 0;
 }

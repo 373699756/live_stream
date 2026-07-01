@@ -46,9 +46,11 @@ firmware version 等运行参数由 app 加载后传入。
 request size 上限涉及 TCP/UDP listener 或 parser 边界，运行时修改会被 app 的
 config attachment 拒绝，必须重启后生效。
 
-`OnvifServerDependencies::rtsp` 指向已启动的 `IRtsp`。ONVIF media service 只调用
-`IRtsp::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；RTSP path 和 URL 拼接规则
-归 `rtsp` 模块所有。
+`CreateOnvifServer()` 不接收 `*Dependencies` 依赖包；基础服务从 `Runtime`
+读取，RTSP 只读入口从 `ServiceRegistry::Rtsp()` 读取，组合根只显式传入
+net loop、`ISystem`、`ITime` 和 `DeviceMedia`。ONVIF media service 只调用
+`IRtspSessionReader::LocalAddress()` 和 `rtsp.h` 中的 RTSP URL helper；
+RTSP path 和 URL 拼接规则归 `rtsp` 模块所有。
 
 内部实现按职责拆分为 `OnvifServer`、`onvif_discovery`、`onvif_device`、
 `onvif_media`、`onvif_http`、`onvif_soap` 和 `onvif_auth`。ONVIF 规范里的

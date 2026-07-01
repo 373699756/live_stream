@@ -20,10 +20,7 @@ namespace live_stream {
 #define LIVE_STREAM_RELEASE_VERSION "0.1.0"
 #endif
 
-class IAuth;
 class DeviceMedia;
-class IRtsp;
-class INetIo;
 class ISystem;
 class ITime;
 
@@ -52,17 +49,6 @@ struct OnvifServerStats {
     uint64_t snapshot_uri_requests = 0;
 };
 
-struct OnvifServerDependencies {
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
-    IAuth *auth = nullptr;
-    event::Dispatcher *event = nullptr;
-    ISystem *system = nullptr;
-    ITime *time = nullptr;
-    DeviceMedia *device = nullptr;
-    IRtsp *rtsp = nullptr;
-};
-
 class IOnvifReader {
 public:
     virtual ~IOnvifReader() = default;
@@ -74,7 +60,10 @@ public:
 class OnvifServer : public IOnvifReader {
 public:
     OnvifServer(const OnvifServerOptions &options,
-                const OnvifServerDependencies &dependencies);
+                event::Loop *net_loop,
+                ISystem *system,
+                ITime *time,
+                DeviceMedia *device);
     ~OnvifServer();
 
     OnvifServer(const OnvifServer &) = delete;
@@ -95,7 +84,10 @@ private:
 
 std::unique_ptr<OnvifServer> CreateOnvifServer(
     const OnvifServerOptions &options,
-    const OnvifServerDependencies &dependencies);
+    event::Loop *net_loop,
+    ISystem *system,
+    ITime *time,
+    DeviceMedia *device);
 
 }  // namespace live_stream
 

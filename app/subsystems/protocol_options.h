@@ -25,9 +25,6 @@ WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
 
 OnvifServerOptions BuildOnvifOptions(
     const AppConfig &app_config);
-OnvifServerDependencies BuildOnvifDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation);
 
 HttpOptions BuildHttpOptions(const AppConfig &app_config);
 HttpDependencies BuildHttpDependencies(const ProtocolStartupRefs &refs,

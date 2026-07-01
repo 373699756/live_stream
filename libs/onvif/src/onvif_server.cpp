@@ -9,6 +9,8 @@
 #include "onvif_media.h"
 #include "onvif_soap.h"
 #include "onvif_types.h"
+#include "runtime.h"
+#include "service_registry.h"
 
 #include <mutex>
 #include <string>
@@ -23,16 +25,19 @@ constexpr const char *kOnvifServerName = "onvif";
 class OnvifServer::Impl {
 public:
     Impl(const OnvifServerOptions &options,
-         const OnvifServerDependencies &dependencies)
+         event::Loop *net_loop,
+         ISystem *system,
+         ITime *time,
+         DeviceMedia *device)
         : options_(options),
-          net_io_(dependencies.net_io),
-          net_loop_(dependencies.net_loop),
-          auth_(dependencies.auth),
-          event_(dependencies.event),
-          system_(dependencies.system),
-          time_(dependencies.time),
-          device_(dependencies.device),
-          rtsp_(dependencies.rtsp) {}
+          net_io_(Runtime::NetIo()),
+          net_loop_(net_loop),
+          auth_(Runtime::Auth()),
+          event_(Runtime::Event()),
+          system_(system),
+          time_(time),
+          device_(device),
+          rtsp_(ServiceRegistry::Rtsp()) {}
 
     ~Impl() {
         Stop();
@@ -399,7 +404,7 @@ private:
     ISystem *system_ = nullptr;
     ITime *time_ = nullptr;
     DeviceMedia *device_ = nullptr;
-    IRtsp *rtsp_ = nullptr;
+    IRtspSessionReader *rtsp_ = nullptr;
     TcpServerId tcp_server_id_ = 0;
     UdpSocketId udp_socket_id_ = 0;
     mutable std::mutex mutex_;
@@ -409,8 +414,11 @@ private:
 };
 
 OnvifServer::OnvifServer(const OnvifServerOptions &options,
-                         const OnvifServerDependencies &dependencies)
-    : impl_(new Impl(options, dependencies)) {}
+                         event::Loop *net_loop,
+                         ISystem *system,
+                         ITime *time,
+                         DeviceMedia *device)
+    : impl_(new Impl(options, net_loop, system, time, device)) {}
 
 OnvifServer::~OnvifServer() = default;
 
@@ -440,9 +448,12 @@ const char *OnvifServer::Name() {
 
 std::unique_ptr<OnvifServer> CreateOnvifServer(
     const OnvifServerOptions &options,
-    const OnvifServerDependencies &dependencies) {
+    event::Loop *net_loop,
+    ISystem *system,
+    ITime *time,
+    DeviceMedia *device) {
     return std::unique_ptr<OnvifServer>(
-        new OnvifServer(options, dependencies));
+        new OnvifServer(options, net_loop, system, time, device));
 }
 
 }  // namespace live_stream

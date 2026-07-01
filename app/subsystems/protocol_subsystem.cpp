@@ -139,9 +139,9 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const OnvifServerOptions onvif_options = BuildOnvifOptions(app_config);
-    const OnvifServerDependencies onvif_dependencies =
-        BuildOnvifDependencies(refs, foundation_subsystem);
-    onvif_ = CreateOnvifServer(onvif_options, onvif_dependencies);
+    onvif_ = CreateOnvifServer(onvif_options, refs.onvif_loop,
+                               refs.device.system, refs.device.time,
+                               refs.media.device);
     if (!onvif_ || !onvif_->Start()) {
         Error("app",
               "Start onvif failed, continue without ONVIF: "

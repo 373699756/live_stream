@@ -17,7 +17,7 @@ bool StreamAvailable(DeviceMedia *device, StreamId stream_id) {
            device->IsStreamStarted(stream_id);
 }
 
-std::string BuildStreamUri(IRtsp *rtsp,
+std::string BuildStreamUri(IRtspSessionReader *rtsp,
                            StreamId stream_id,
                            const std::string &advertise_ip) {
     if (rtsp == nullptr) {
@@ -74,7 +74,7 @@ const std::string &SnapshotUriForId(const OnvifMediaUris &media_uris,
 
 OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
                                    DeviceMedia *device,
-                                   IRtsp *rtsp,
+                                   IRtspSessionReader *rtsp,
                                    const std::string &advertise_ip) {
     OnvifMediaUris media_uris;
     // 只有设备侧认为 stream 已启动时才发布 RTSP URI；snapshot URI 使用 HTTP

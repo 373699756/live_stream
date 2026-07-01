@@ -8,6 +8,9 @@
 #include <string>
 
 namespace live_stream {
+
+class IRtspSessionReader;
+
 namespace onvif {
 
 struct OnvifMediaUris {
@@ -19,7 +22,7 @@ struct OnvifMediaUris {
 
 OnvifMediaUris BuildOnvifMediaUris(const OnvifServerOptions &options,
                                    DeviceMedia *device,
-                                   IRtsp *rtsp,
+                                   IRtspSessionReader *rtsp,
                                    const std::string &advertise_ip);
 bool ParseProfileToken(const std::string &body, StreamId *stream_id);
 std::string BuildProfilesBody(const OnvifMediaUris &media_uris);
