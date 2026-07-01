@@ -77,7 +77,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 仍需处理：
 
-- HTTP router/handler 仍存在静态 thunk + `void* user` 的低层风格。
+- `net` callback 仍使用 `void* user` C 风格边界；HTTP router/handler 已使用
+  `std::function` 注册，是否调整 net callback 契约需单独评估。
 - `media` 资源预算和锁边界还不够显式。
 - `app` 仍有全局单例式入口和硬编码生命周期。
 - 配置校验错误结构、metrics 聚合视图、回调契约仍需统一。
@@ -172,7 +173,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 任务：
 
 - 继续减少 HTTP 内部宽构造参数，避免系统状态入口变成新的上帝视图。
-- 减少业务 handler 直接暴露静态 thunk + `void* user`。
+- 如需继续收敛低层 callback 风格，优先在 `net` 契约层单独评估，不在 HTTP handler
+  内新增适配层。
 - HTTP 对 RTSP/WebRTC/ONVIF 的依赖收敛为只读诊断/会话视图接口。
 - 统一 API envelope、错误码、参数校验和 URL helper。
 
