@@ -757,7 +757,8 @@ private:
         if (!BeginPeerDrain(peer_id)) {
             return;
         }
-        if (!FlushPeerStartFrames(peer_id)) {
+        uint32_t sent_frames = 0;
+        if (!FlushPeerStartFrames(peer_id, &sent_frames)) {
             EndPeerDrain(peer_id);
             return;
         }
@@ -777,13 +778,14 @@ private:
             return;
         }
 
-        for (uint32_t i = 0; i < kWebrtcMaxFramesPerDrain; ++i) {
+        while (sent_frames < kWebrtcMaxFramesPerDrain) {
             SubscriptionFrame subscription_frame;
             if (!media_streams_->PullFrame(subscription_id,
                                            &subscription_frame)) {
                 break;
             }
             SendPeerMediaFrame(peer_id, subscription_frame.frame);
+            ++sent_frames;
         }
 
         const SubscriptionInfo subscription_info =
@@ -820,8 +822,12 @@ private:
         subscription_condition_.notify_all();
     }
 
-    bool FlushPeerStartFrames(const std::string &peer_id) {
-        while (true) {
+    bool FlushPeerStartFrames(const std::string &peer_id,
+                              uint32_t *sent_frames) {
+        if (sent_frames == nullptr) {
+            return false;
+        }
+        while (*sent_frames < kWebrtcMaxFramesPerDrain) {
             MediaFrame frame;
             bool has_frame = false;
             {
@@ -842,7 +848,14 @@ private:
                 return true;
             }
             SendPeerMediaFrame(peer_id, frame);
+            ++(*sent_frames);
         }
+        std::lock_guard<std::mutex> guard(mutex_);
+        auto iter = peer_subscriptions_.find(peer_id);
+        return phase_ == WebrtcPhase::kStarted &&
+               iter != peer_subscriptions_.end() &&
+               !iter->second.closing &&
+               iter->second.start_frames.empty();
     }
 
     void SendPeerMediaFrame(const std::string &peer_id,

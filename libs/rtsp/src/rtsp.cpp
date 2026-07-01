@@ -772,7 +772,8 @@ private:
     }
 
     void DrainSessionFrames(const std::shared_ptr<RtspSession>& session) {
-        if (!FlushSessionStartFrames(session)) {
+        uint32_t sent_frames = 0;
+        if (!FlushSessionStartFrames(session, &sent_frames)) {
             return;
         }
         FrameSubscriptionId subscription_id = 0;
@@ -784,7 +785,7 @@ private:
             }
             subscription_id = session->subscription_id;
         }
-        for (uint32_t i = 0; i < kRtspMaxFramesPerDrain; ++i) {
+        while (sent_frames < kRtspMaxFramesPerDrain) {
             SubscriptionFrame subscribed_frame;
             if (!media_streams_->PullFrame(subscription_id,
                                            &subscribed_frame)) {
@@ -792,11 +793,16 @@ private:
             }
             // Pull 出来的 frame 带引用，发送路径只在本次调用内使用。
             SendMediaFrame(session, subscribed_frame.frame);
+            ++sent_frames;
         }
     }
 
-    bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session) {
-        while (true) {
+    bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session,
+                                 uint32_t *sent_frames) {
+        if (sent_frames == nullptr) {
+            return false;
+        }
+        while (*sent_frames < kRtspMaxFramesPerDrain) {
             MediaFrame frame;
             bool has_frame = false;
             {
@@ -816,7 +822,11 @@ private:
                 return true;
             }
             SendMediaFrame(session, frame);
+            ++(*sent_frames);
         }
+        std::lock_guard<std::mutex> lock(mutex_);
+        return session->state == RtspSessionState::kPlaying &&
+               session->start_frames.empty();
     }
 
     void SendMediaFrame(const std::shared_ptr<RtspSession>& session,
