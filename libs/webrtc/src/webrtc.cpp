@@ -131,10 +131,14 @@ public:
             for (const std::string &peer_id : peer_ids) {
                 (void)peer_host->ClosePeer(peer_id);
             }
+            peer_host->Stop();
         }
 
         std::lock_guard<std::mutex> guard(mutex_);
         peer_table_.Clear();
+        if (peer_host_ == peer_host) {
+            peer_host_.reset();
+        }
     }
 
     bool ApplyOptions(const WebrtcOptions &options) override {
@@ -429,8 +433,7 @@ private:
             return false;
         }
         if (phase_ == WebrtcPhase::kInitialized ||
-            phase_ == WebrtcPhase::kStarted ||
-            phase_ == WebrtcPhase::kStopped) {
+            phase_ == WebrtcPhase::kStarted) {
             return true;
         }
         std::unique_ptr<webrtc_internal::IWebrtcPeerHost> peer_host =

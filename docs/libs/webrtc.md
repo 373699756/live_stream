@@ -182,6 +182,8 @@ unsubscribe subscription、停止 RTP sender、释放 SRTP/DTLS/ICE 和 timer，
 
 关闭入口统一为 peer close path：SRTP 初始化失败、DTLS failed、setup timeout、
 HTTP DELETE、WHEP DELETE、ICE 异常和 service stop 都不得各自释放一半资源。
+service stop 必须在 `socket_io` 仍然存活时停止并释放 peer host；析构只做兜底 release，
+不能把 UDP endpoint、DTLS timer 或 socket close 留到组合根销毁 socket_io 之后。
 `PLI`/`FIR` 必须调用 `media_streams.RequestKeyframe()`；`NACK`/`TWCC` 只识别和记录，
 首版不实现重传或拥塞控制。
 WebRTC 只通过 `kWebRtcClientConnected` / `kWebRtcClientDisconnected`
