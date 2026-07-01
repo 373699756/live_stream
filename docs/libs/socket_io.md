@@ -93,8 +93,9 @@ flowchart LR
 
 `net_stat.h` 随 `socket_io` 模块构建，不是独立模块。`CreateNetStat()` 接收
 `NetStatOptions`、非 owning `ISocketIo*` 和可选 `event::EventCenter*`。
-组合根负责传入这两个运行态入口，`net_stat` 不从 `Runtime` 反向查找服务，
-也不直接依赖 `rtsp`、`webrtc` 或 `media`。
+组合根负责保证这两个入口的生命周期覆盖 `INetStat::Stop()` 和对象销毁；
+`net_stat` 不从 `Runtime` 反向查找服务，也不直接依赖 `rtsp`、`webrtc` 或
+`media`。
 
 等级和指标：
 
@@ -105,6 +106,10 @@ flowchart LR
 | `NetQueueLevel::kCritical` | 达到慢客户端处理线 |
 | `NetMetric::kTcpPendingBytes` | TCP pending bytes 触发 |
 | `NetMetric::kSendQueue` | TCP send queue length 触发 |
+
+`NetStatSnapshot::active_rtsp_sessions` 来自 RTSP client 事件携带的当前 session
+数；`NetStatSnapshot::open_webrtc_peers` 来自 WebRTC client 事件携带的当前 open
+peer 数，包含 setup/connecting/connected，不能等同为已完成连接的 peer 数。
 
 `NetStatOptions` 默认阈值：
 

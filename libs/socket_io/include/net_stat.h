@@ -70,7 +70,7 @@ struct NetStatSnapshot {
     uint32_t critical_connections = 0;
     uint32_t critical_connection_queues = 0;
     uint32_t active_rtsp_sessions = 0;
-    uint32_t active_webrtc_peers = 0;
+    uint32_t open_webrtc_peers = 0;
     uint64_t checks = 0;
 };
 
@@ -107,6 +107,8 @@ public:
     GetConnectionQueues() const = 0;
 };
 
+// socket_io and event_center are non-owning. The composition root must keep
+// them alive until the returned INetStat is stopped and destroyed.
 std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options,
                                         ISocketIo *socket_io,
                                         event::EventCenter *event_center);

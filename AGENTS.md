@@ -93,7 +93,7 @@ npm run build
 - 配置文件中的字段语义应保持向后兼容；确需变更时，要同步更新调用方和文档。
 - 重构方向是逐步删除 `*Dependencies` DTO：基础服务通过 `Runtime` 安装和查询，
   直播源通过 `MediaSourceRegistry` 查询，协议只读状态通过 `ServiceRegistry` 查询。
-  `Runtime` 只放 logger/config/auth/event/net_io 这类基础服务，registry 不允许暴露
+  `Runtime` 只放 logger/config/auth/event/socket_io 这类基础服务，registry 不允许暴露
   跨模块业务控制能力。
 
 ## 前端约定

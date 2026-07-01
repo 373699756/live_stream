@@ -63,12 +63,16 @@ uint32_t DecrementedMetric(uint32_t value) {
     return value - 1;
 }
 
-uint32_t EventActiveValue(const event::Event &event,
-                          uint32_t fallback_value) {
-    if (event.value >= 0) {
+uint32_t EventClientCount(const event::Event &event,
+                          uint32_t current_count,
+                          bool connected_event) {
+    if (event.value > 0) {
         return static_cast<uint32_t>(event.value);
     }
-    return fallback_value;
+    if (connected_event) {
+        return IncrementedMetric(current_count);
+    }
+    return DecrementedMetric(current_count);
 }
 
 struct ConnectionQueueRecord {
@@ -92,7 +96,7 @@ struct ConnectionQueueRecord {
 
 struct ProtocolClientActivity {
     uint32_t active_rtsp_sessions = 0;
-    uint32_t active_webrtc_peers = 0;
+    uint32_t open_webrtc_peers = 0;
 };
 
 }  // namespace
@@ -227,31 +231,27 @@ private:
         switch (event.type) {
             case event::EventType::kRtspClientConnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveValue(
+                    EventClientCount(
                         event,
-                        IncrementedMetric(
-                            protocol_activity_.active_rtsp_sessions));
+                        protocol_activity_.active_rtsp_sessions, true);
                 break;
             case event::EventType::kRtspClientDisconnected:
                 protocol_activity_.active_rtsp_sessions =
-                    EventActiveValue(
+                    EventClientCount(
                         event,
-                        DecrementedMetric(
-                            protocol_activity_.active_rtsp_sessions));
+                        protocol_activity_.active_rtsp_sessions, false);
                 break;
             case event::EventType::kWebRtcClientConnected:
-                protocol_activity_.active_webrtc_peers =
-                    EventActiveValue(
-                        event,
-                        IncrementedMetric(
-                            protocol_activity_.active_webrtc_peers));
+                protocol_activity_.open_webrtc_peers =
+                    EventClientCount(event,
+                                     protocol_activity_.open_webrtc_peers,
+                                     true);
                 break;
             case event::EventType::kWebRtcClientDisconnected:
-                protocol_activity_.active_webrtc_peers =
-                    EventActiveValue(
-                        event,
-                        DecrementedMetric(
-                            protocol_activity_.active_webrtc_peers));
+                protocol_activity_.open_webrtc_peers =
+                    EventClientCount(event,
+                                     protocol_activity_.open_webrtc_peers,
+                                     false);
                 break;
             default:
                 break;
@@ -287,8 +287,8 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             next_stats.active_rtsp_sessions =
                 protocol_activity_.active_rtsp_sessions;
-            next_stats.active_webrtc_peers =
-                protocol_activity_.active_webrtc_peers;
+            next_stats.open_webrtc_peers =
+                protocol_activity_.open_webrtc_peers;
             ExpireIdleQueueRecords(now_ms);
             FillQueueStats(next_stats);
             next_stats.checks = stats_.checks + 1;
@@ -354,14 +354,14 @@ private:
                               connection.pending_bytes,
                               connection.pending_bytes, now_ms);
         if (connection.send_queue_length == 0) {
-            MaybeClearQueueRecord("net_queue",
+            MaybeClearQueueRecord("send_queue",
                                   connection.owner_protocol, remote_endpoint,
                                   QueueMetric::kSendQueue,
                                   connection.pending_bytes, now_ms);
             return pending_state;
         }
         ConnectionQueueRecord &queue_state =
-            UpdateQueueRecord("net_queue", connection.owner_protocol,
+            UpdateQueueRecord("send_queue", connection.owner_protocol,
                               remote_endpoint, QueueMetric::kSendQueue,
                               connection.send_queue_length,
                               connection.pending_bytes, now_ms);

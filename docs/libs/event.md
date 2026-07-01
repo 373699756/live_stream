@@ -57,8 +57,8 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 | `kMediaPipelineError` | `device` | stream 或 pipeline | 错误原因 | 错误码或 0 |
 | `kMediaStatusChanged` | `media` | `{main,sub}.ready/frame` | `changed` / `first` | ready 状态位或保留为 1 |
 | `kStreamStarted` / `kStreamStopped` | 码流拥有模块 | `main` / `sub` | 状态说明 | 保留为 0 |
-| `kRtspClientConnected` / `kRtspClientDisconnected` | `rtsp` | session/client id | 客户端地址或原因 | 活跃数或 0 |
-| `kWebRtcClientConnected` / `kWebRtcClientDisconnected` | `webrtc` | peer id | 状态说明 | 活跃数或 0 |
+| `kRtspClientConnected` / `kRtspClientDisconnected` | `rtsp` | session/client id | 客户端地址或原因 | 当前 session 数 |
+| `kWebRtcClientConnected` / `kWebRtcClientDisconnected` | `webrtc` | peer id | 状态说明 | 当前 open peer 数 |
 | `kOnvifRequestReceived` | `onvif` | action/path | 请求摘要 | 保留为 0 |
 | `kSnapshotCreated` | `device` | stream | 输出摘要 | 字节数或 0 |
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |

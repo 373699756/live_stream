@@ -12,7 +12,7 @@ namespace live_stream {
 namespace {
 
 event::Loop *RequireSocketLoop(ISocketIo *socket_io,
-                            const char *owner_protocol) {
+                               const char *owner_protocol) {
     const char *protocol =
         owner_protocol != nullptr ? owner_protocol : "unknown";
     if (socket_io == nullptr) {
