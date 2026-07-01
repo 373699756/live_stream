@@ -30,6 +30,7 @@ enum class EventType {
     kTimeChanged,
     kNetworkChanged,
     kNetQueueChanged,
+    kMediaSubscriptionChanged,
     kAlarmOn,
     kAlarmOff,
     kSystemInfoChanged,

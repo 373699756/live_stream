@@ -1,8 +1,10 @@
 #include "media_streams_impl.h"
 
+#include "event.h"
 #include "infra/log.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -146,6 +148,13 @@ SubscriptionClose MediaStreams::Impl::CloseReasonFromReset(
             return SubscriptionClose::kNone;
     }
     return SubscriptionClose::kStreamStopped;
+}
+
+uint8_t MediaStreams::Impl::SubscriptionEventLevel(const char *msg) {
+    if (msg != nullptr && std::strcmp(msg, "slow") == 0) {
+        return 2;
+    }
+    return 0;
 }
 
 bool MediaStreams::Impl::Start() {
@@ -422,6 +431,11 @@ bool MediaStreams::Impl::RequestKeyframe(StreamId stream_id,
              "Request keyframe failed: stream=%s source=%s reason=callback",
              StreamIdName(stream_id), KeyframeRequestSourceName(source));
     }
+    if (requested && source != KeyframeRequestSource::kPacketLoss) {
+        const MediaStreamStats stats = GetStreamStats();
+        PublishSubscriptionEvent(stream_id, "keyframe_requested",
+                                 stats.active_subscriptions);
+    }
     return requested;
 }
 
@@ -557,6 +571,7 @@ FrameSubscriptionId MediaStreams::Impl::SubscribeFrames(
     }
 
     FrameSubscriptionId subscription_id = 0;
+    uint32_t active_subscriptions = 0;
     {
         std::unique_lock<std::shared_mutex> guard(mutex_);
         if (!IsRunningLocked()) {
@@ -583,7 +598,11 @@ FrameSubscriptionId MediaStreams::Impl::SubscribeFrames(
                  StreamIdName(options.stream_id));
             return 0;
         }
+        active_subscriptions =
+            static_cast<uint32_t>(frame_subscribers_.SubscriberSize());
     }
+    PublishSubscriptionEvent(options.stream_id, "created",
+                             active_subscriptions);
     if (options.keyframe_first) {
         (void)RequestKeyframe(options.stream_id,
                               KeyframeRequestSource::kNewClient);
@@ -595,7 +614,20 @@ bool MediaStreams::Impl::UnsubscribeFrames(
     FrameSubscriptionId subscription_id,
     SubscriptionClose reason) {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    return frame_subscribers_.UnsubscribeFrames(subscription_id, reason);
+    const SubscriptionInfo info =
+        frame_subscribers_.GetSubscriptionInfo(subscription_id);
+    if (!info.open) {
+        return false;
+    }
+    const StreamId stream_id = info.stream_id;
+    if (!frame_subscribers_.UnsubscribeFrames(subscription_id, reason)) {
+        return false;
+    }
+    const uint32_t active_subscriptions =
+        static_cast<uint32_t>(frame_subscribers_.SubscriberSize());
+    guard.unlock();
+    PublishSubscriptionEvent(stream_id, "closed", active_subscriptions);
+    return true;
 }
 
 SubscriptionInfo MediaStreams::Impl::GetSubscriptionInfo(
@@ -623,7 +655,20 @@ bool MediaStreams::Impl::PullFrame(
     FrameSubscriptionId subscription_id,
     SubscriptionFrame *frame) {
     std::unique_lock<std::shared_mutex> guard(mutex_);
-    return frame_subscribers_.PullFrame(subscription_id, frame);
+    const SubscriptionInfo before =
+        frame_subscribers_.GetSubscriptionInfo(subscription_id);
+    const bool pulled = frame_subscribers_.PullFrame(subscription_id, frame);
+    const SubscriptionInfo after =
+        frame_subscribers_.GetSubscriptionInfo(subscription_id);
+    if (before.open && after.open && before.slow != after.slow) {
+        const char *msg = after.slow ? "slow" : "recovered";
+        const StreamId stream_id = after.stream_id;
+        const uint32_t active_subscriptions =
+            static_cast<uint32_t>(frame_subscribers_.SubscriberSize());
+        guard.unlock();
+        PublishSubscriptionEvent(stream_id, msg, active_subscriptions);
+    }
+    return pulled;
 }
 
 bool MediaStreams::Impl::ValidateOptions() const {
@@ -911,6 +956,23 @@ void MediaStreams::Impl::PackageMjpegFrame(
     if (write_mjpeg) {
         preview_clients_.WriteMjpeg(frame.stream_id, frame);
     }
+}
+
+void MediaStreams::Impl::PublishSubscriptionEvent(
+    StreamId stream_id,
+    const char *msg,
+    uint32_t active_subscriptions) const {
+    if (options_.event_center == nullptr || msg == nullptr) {
+        return;
+    }
+    event::Event event;
+    event.type = event::EventType::kMediaSubscriptionChanged;
+    event.source = "media";
+    event.target = std::string(StreamIdName(stream_id)) + ".subscription";
+    event.msg = msg;
+    event.value = static_cast<int32_t>(active_subscriptions);
+    event.level = SubscriptionEventLevel(msg);
+    (void)options_.event_center->Publish(event);
 }
 
 const media_internal::StreamTrack *MediaStreams::Impl::FindStream(

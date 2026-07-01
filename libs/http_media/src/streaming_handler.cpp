@@ -221,6 +221,7 @@ private:
             event::EventType::kStreamStarted,
             event::EventType::kStreamStopped,
             event::EventType::kNetQueueChanged,
+            event::EventType::kMediaSubscriptionChanged,
             event::EventType::kAlarmOn,
             event::EventType::kAlarmOff,
         };

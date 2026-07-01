@@ -299,6 +299,7 @@ bool IsKnownEventType(EventType type) {
         case EventType::kTimeChanged:
         case EventType::kNetworkChanged:
         case EventType::kNetQueueChanged:
+        case EventType::kMediaSubscriptionChanged:
         case EventType::kAlarmOn:
         case EventType::kAlarmOff:
         case EventType::kSystemInfoChanged:

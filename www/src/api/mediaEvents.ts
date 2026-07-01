@@ -24,6 +24,7 @@ export function openMediaEvents(
     source.addEventListener('stream_started', handleMsg);
     source.addEventListener('stream_stopped', handleMsg);
     source.addEventListener('net_queue_changed', handleMsg);
+    source.addEventListener('media_subscription_changed', handleMsg);
     source.addEventListener('alarm_on', handleMsg);
     source.addEventListener('alarm_off', handleMsg);
     source.onmessage = handleMsg;

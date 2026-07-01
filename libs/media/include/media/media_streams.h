@@ -12,6 +12,10 @@
 
 namespace live_stream {
 
+namespace event {
+class EventCenter;
+}  // namespace event
+
 constexpr size_t kMaxMediaFlvVideoTagSlices = 130;
 constexpr size_t kMaxMediaFlvHeaderSliceBytes = 24;
 constexpr size_t kMaxMediaFlvCachedVideoTags = 128;
@@ -42,6 +46,7 @@ struct MediaStreamsOptions {
     MediaCacheLimits cache_limits;
     RequestKeyframeFn request_keyframe = nullptr;
     void *request_keyframe_user = nullptr;
+    event::EventCenter *event_center = nullptr;
 };
 
 struct MediaFlvVideoTagSlice {

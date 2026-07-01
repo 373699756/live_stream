@@ -63,6 +63,7 @@ bool MediaSubsystem::Start(FoundationSubsystem &foundation_subsystem,
     MediaStreamsOptions media_streams_options;
     media_streams_options.request_keyframe = RequestDeviceKeyframe;
     media_streams_options.request_keyframe_user = device_.get();
+    media_streams_options.event_center = foundation_subsystem.event();
     media_streams_.reset(new MediaStreams(media_streams_options));
     if (!media_streams_ || !media_streams_->Start() ||
         !device_->SetFrameSink(media_streams_.get())) {

@@ -93,6 +93,7 @@ private:
         KeyframeRequestSource source);
     static SubscriptionClose CloseReasonFromReset(
         MediaStreamResetReason reason);
+    static uint8_t SubscriptionEventLevel(const char *msg);
 
     bool ValidateOptions() const;
     bool ValidateCacheLimits() const;
@@ -117,6 +118,8 @@ private:
         bool has_payload);
     void PackageMjpegFrame(
         const media_internal::ParsedFramePayload &parsed_payload);
+    void PublishSubscriptionEvent(StreamId stream_id, const char *msg,
+                                  uint32_t active_subscriptions) const;
 
     const media_internal::StreamTrack *FindStream(
         StreamId stream_id) const;

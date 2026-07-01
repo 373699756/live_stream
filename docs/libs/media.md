@@ -15,6 +15,8 @@
   帧订阅 live queue。
 - 通过 `RequestKeyframeFn` 把协议侧新订阅、恢复等关键帧请求回调给设备层；
   `media` 自身不直接依赖设备模块。
+- 可选接入 `event::EventCenter` 发布 frame subscription 的轻量状态事件，
+  事件只带 `source/target/msg/value/level` 元数据，不承载媒体帧。
 - 对协议模块暴露 `MediaStreams`、`MediaStreamInfo`、`MediaStreamStats`、
   `FrameSubscription` 相关接口。
 - 通过 `MediaSourceRegistry` 暴露当前 `MediaStreams` 入口；组合根负责在
@@ -45,6 +47,11 @@ HTTP-FLV cached tag/bytes、HLS segment 数量、单 segment bytes 和 HLS cache
 live frame、HLS segment 和 FLV GOP cache 的总量近似值；`main_*`、`sub_*` 字段分别给出 GOP/HLS/FLV
 字节和 cache drop、client frame drop 计数。慢 subscription 落后到共享帧缓存覆盖边界后会
 等待下一个关键帧恢复，避免从 P/B 帧继续输出。
+media 同时发布 `kMediaSubscriptionChanged`，`msg` 使用
+`created`、`closed`、`slow`、`recovered` 或 `keyframe_requested`，`value`
+为当前 frame subscription 数；HTTP SSE 和 Web Console 只用该事件触发状态刷新，
+其中 Web Console 对 `keyframe_requested` 不触发会话刷新，详细会话数据仍通过拥有模块
+查询接口读取。
 
 `MediaStreams` 只做协调：`MediaStreamTracks` 持有主/子码流的 codec、参数集、
 HLS/FLV/MJPEG 缓存和 reset 规则；`FrameSubscribers` 持有协议帧订阅和共享 live frame；

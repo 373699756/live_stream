@@ -373,6 +373,12 @@ export function useMediaStreamsInfo({
                 if (event.type === 'net_queue_changed') {
                     refreshIntervalStreamsInfo();
                 }
+                if (
+                    event.type === 'media_subscription_changed' &&
+                    event.msg !== 'keyframe_requested'
+                ) {
+                    refreshStreamsInfo();
+                }
             });
             eventSource.onerror = () => {
                 refreshStreamsInfo();

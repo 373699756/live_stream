@@ -64,6 +64,7 @@ public API 在 `libs/event/include/`。事件 dispatch 入口是 `event.h`，任
 | `kTimeChanged` | `time` | timezone/ntp/manual | 变更摘要 | 保留为 0 |
 | `kNetworkChanged` | `system.network` | interface 或 port | 变更摘要 | 保留为 0 |
 | `kNetQueueChanged` | `net_stat` | `connections` | 队列等级摘要 | tracked target 数 |
+| `kMediaSubscriptionChanged` | `media` | `{main,sub}.subscription` | `created` / `closed` / `slow` / `recovered` / `keyframe_requested` | 当前 frame subscription 数 |
 | `kAlarmOn` / `kAlarmOff` | `alarm` | alarm type | 告警摘要 | 告警值或 0 |
 | `kSystemInfoChanged` | `system` | info key | 信息摘要 | 状态码或 0 |
 | `kUpgradeProgressChanged` | `upgrade` | upgrade job/stage | 阶段或错误说明 | 进度百分比或 0 |
