@@ -15,8 +15,8 @@ namespace live_stream {
 class NetworkHttpHandler : public IHttpHandler {
 public:
     explicit NetworkHttpHandler(
-        const NetworkHandlerDependencies &dependencies)
-        : access_(dependencies.access), network_(dependencies.network) {}
+        const NetworkHandlerRefs &refs)
+        : access_(refs.access), network_(refs.network) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (network_ == nullptr) {
@@ -119,9 +119,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeNetworkHandler(
-    const NetworkHandlerDependencies &dependencies) {
+    const NetworkHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new NetworkHttpHandler(dependencies));
+        new NetworkHttpHandler(refs));
 }
 
 }  // namespace live_stream

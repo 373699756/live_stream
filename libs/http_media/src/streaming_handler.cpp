@@ -591,12 +591,12 @@ private:
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    const StreamingHttpHandlerDependencies &dependencies) {
+    const StreamingHttpHandlerRefs &refs) {
     return std::unique_ptr<IStreamingHttpHandler>(
         new StreamingHttpHandler(
-            dependencies.access, dependencies.writer,
-            dependencies.device, dependencies.media_streams,
-            dependencies.event));
+            refs.access, refs.writer,
+            refs.device, refs.media_streams,
+            refs.event));
 }
 
 }  // namespace live_stream

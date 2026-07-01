@@ -27,7 +27,7 @@ enum class HttpMediaHandlerKind {
     kWebrtc,
 };
 
-struct HttpMediaHandlerDependencies {
+struct HttpMediaHandlerRefs {
     HttpAccess *access = nullptr;
     DeviceMedia *device = nullptr;
     MediaStreams *media_streams = nullptr;
@@ -36,9 +36,9 @@ struct HttpMediaHandlerDependencies {
 
 std::unique_ptr<IHttpHandler> CreateHttpHandler(
     HttpMediaHandlerKind kind,
-    const HttpMediaHandlerDependencies &dependencies);
+    const HttpMediaHandlerRefs &refs);
 
-struct StreamingHttpHandlerDependencies {
+struct StreamingHttpHandlerRefs {
     HttpAccess *access = nullptr;
     HttpMediaWriter *writer = nullptr;
     DeviceMedia *device = nullptr;
@@ -47,7 +47,7 @@ struct StreamingHttpHandlerDependencies {
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    const StreamingHttpHandlerDependencies &dependencies);
+    const StreamingHttpHandlerRefs &refs);
 
 }  // namespace live_stream
 

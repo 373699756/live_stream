@@ -27,10 +27,10 @@ Json SystemCapabilitiesToJson(const SystemCapabilities &capabilities) {
 
 class SystemHttpHandler : public IHttpHandler {
 public:
-    explicit SystemHttpHandler(const SystemHandlerDependencies &dependencies)
-        : access_(dependencies.access),
-          system_(dependencies.system),
-          overview_(dependencies.overview) {}
+    explicit SystemHttpHandler(const SystemHandlerRefs &refs)
+        : access_(refs.access),
+          system_(refs.system),
+          overview_(refs.overview) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddExactRoute(HttpMethod::kGet, "/api/system/status",
@@ -116,9 +116,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
-    const SystemHandlerDependencies &dependencies) {
+    const SystemHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new SystemHttpHandler(dependencies));
+        new SystemHttpHandler(refs));
 }
 
 }  // namespace live_stream

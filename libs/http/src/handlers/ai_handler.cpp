@@ -320,11 +320,11 @@ Json ImageInfoToJson(const ImageInfo &info) {
 
 class AiHttpHandler : public IHttpHandler {
 public:
-    explicit AiHttpHandler(const AiHandlerDependencies &dependencies)
-        : access_(dependencies.access),
-          config_(dependencies.config),
-          ai_(dependencies.ai),
-          device_(dependencies.device) {}
+    explicit AiHttpHandler(const AiHandlerRefs &refs)
+        : access_(refs.access),
+          config_(refs.config),
+          ai_(refs.ai),
+          device_(refs.device) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddExactRoute(HttpMethod::kGet,
@@ -451,9 +451,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeAiHandler(
-    const AiHandlerDependencies &dependencies) {
+    const AiHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new AiHttpHandler(dependencies));
+        new AiHttpHandler(refs));
 }
 
 }  // namespace live_stream

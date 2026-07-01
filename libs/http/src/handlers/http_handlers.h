@@ -25,37 +25,37 @@ class IWebrtc;
 class IWebrtcReader;
 class IHttp;
 
-struct AuthHandlerDependencies {
+struct AuthHandlerRefs {
     HttpAccess *access = nullptr;
     IAuth *auth = nullptr;
 };
 
-struct ConfigHandlerDependencies {
+struct ConfigHandlerRefs {
     HttpAccess *access = nullptr;
     IConfig *config = nullptr;
 };
 
-struct OperationsHandlerDependencies {
+struct OperationsHandlerRefs {
     HttpAccess *access = nullptr;
     ILogger *logger = nullptr;
 };
 
-struct NetworkHandlerDependencies {
+struct NetworkHandlerRefs {
     HttpAccess *access = nullptr;
     INetwork *network = nullptr;
 };
 
-struct TimeHandlerDependencies {
+struct TimeHandlerRefs {
     HttpAccess *access = nullptr;
     ITime *time = nullptr;
 };
 
-struct UpgradeHandlerDependencies {
+struct UpgradeHandlerRefs {
     HttpAccess *access = nullptr;
     IUpgrade *upgrade = nullptr;
 };
 
-struct AlarmHandlerDependencies {
+struct AlarmHandlerRefs {
     HttpAccess *access = nullptr;
     IAlarm *alarm = nullptr;
 };
@@ -76,13 +76,13 @@ struct SystemOverviewSources {
     MediaStreams *media_streams = nullptr;
 };
 
-struct SystemHandlerDependencies {
+struct SystemHandlerRefs {
     HttpAccess *access = nullptr;
     ISystem *system = nullptr;
     SystemOverviewSources overview;
 };
 
-struct MediaHandlerDependencies {
+struct MediaHandlerRefs {
     HttpAccess *access = nullptr;
     IConfig *config = nullptr;
     DeviceMedia *device = nullptr;
@@ -92,40 +92,40 @@ struct MediaHandlerDependencies {
     IHttp *http = nullptr;
 };
 
-struct AiHandlerDependencies {
+struct AiHandlerRefs {
     HttpAccess *access = nullptr;
     IConfig *config = nullptr;
     IAiReader *ai = nullptr;
     DeviceMedia *device = nullptr;
 };
 
-struct SnapshotHandlerDependencies {
+struct SnapshotHandlerRefs {
     HttpAccess *access = nullptr;
     DeviceMedia *device = nullptr;
 };
 
 std::unique_ptr<IHttpHandler> MakeAuthHandler(
-    const AuthHandlerDependencies &dependencies);
+    const AuthHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeConfigHandler(
-    const ConfigHandlerDependencies &dependencies);
+    const ConfigHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeOperationsHandler(
-    const OperationsHandlerDependencies &dependencies);
+    const OperationsHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeNetworkHandler(
-    const NetworkHandlerDependencies &dependencies);
+    const NetworkHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeTimeHandler(
-    const TimeHandlerDependencies &dependencies);
+    const TimeHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
-    const UpgradeHandlerDependencies &dependencies);
+    const UpgradeHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
-    const SystemHandlerDependencies &dependencies);
+    const SystemHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeAlarmHandler(
-    const AlarmHandlerDependencies &dependencies);
+    const AlarmHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
-    const MediaHandlerDependencies &dependencies);
+    const MediaHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeAiHandler(
-    const AiHandlerDependencies &dependencies);
+    const AiHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
-    const SnapshotHandlerDependencies &dependencies);
+    const SnapshotHandlerRefs &refs);
 
 }  // namespace live_stream
 

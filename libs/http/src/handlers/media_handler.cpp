@@ -644,14 +644,14 @@ void AddWebrtcStatsToJson(Json *root, const WebrtcStats &stats) {
 
 class MediaHttpHandler : public IHttpHandler {
 public:
-    explicit MediaHttpHandler(const MediaHandlerDependencies &dependencies)
-        : access_(dependencies.access),
-          config_(dependencies.config),
-          device_(dependencies.device),
-          media_streams_(dependencies.media_streams),
-          rtsp_session_reader_(dependencies.rtsp_session_reader),
-          webrtc_reader_(dependencies.webrtc_reader),
-          http_(dependencies.http) {}
+    explicit MediaHttpHandler(const MediaHandlerRefs &refs)
+        : access_(refs.access),
+          config_(refs.config),
+          device_(refs.device),
+          media_streams_(refs.media_streams),
+          rtsp_session_reader_(refs.rtsp_session_reader),
+          webrtc_reader_(refs.webrtc_reader),
+          http_(refs.http) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddExactRoute(HttpMethod::kGet, "/api/media/streams",
@@ -796,9 +796,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
-    const MediaHandlerDependencies &dependencies) {
+    const MediaHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new MediaHttpHandler(dependencies));
+        new MediaHttpHandler(refs));
 }
 
 }  // namespace live_stream

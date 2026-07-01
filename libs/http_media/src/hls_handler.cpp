@@ -194,10 +194,10 @@ HttpResponse HandleSegment(MediaStreams &media_streams, StreamId stream_id,
 class HlsHttpHandler : public IHttpHandler {
 public:
     explicit HlsHttpHandler(
-        const HttpMediaHandlerDependencies &dependencies)
-        : access_(dependencies.access),
-          device_(dependencies.device),
-          media_streams_(dependencies.media_streams) {}
+        const HttpMediaHandlerRefs &refs)
+        : access_(refs.access),
+          device_(refs.device),
+          media_streams_(refs.media_streams) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddPrefixRoute(HttpMethod::kGet, "/live/",
@@ -292,9 +292,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
-    const HttpMediaHandlerDependencies &dependencies) {
+    const HttpMediaHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new HlsHttpHandler(dependencies));
+        new HlsHttpHandler(refs));
 }
 
 }  // namespace live_stream

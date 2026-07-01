@@ -269,10 +269,10 @@ int main() {
     options.stream_executor_workers = 1;
     options.control_executor_workers = 1;
 
-    live_stream::HttpServerDependencies dependencies;
-    dependencies.net_io = &net_io;
-    dependencies.net_loop = net_io.DefaultLoop();
-    live_stream::HttpServer server(options, dependencies, &handler);
+    live_stream::HttpServerRefs refs;
+    refs.net_io = &net_io;
+    refs.net_loop = net_io.DefaultLoop();
+    live_stream::HttpServer server(options, refs, &handler);
     if (!server.Start()) {
         return 1;
     }

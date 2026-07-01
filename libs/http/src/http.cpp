@@ -51,7 +51,7 @@ HttpImpl::HttpImpl(const HttpOptions &options,
     : options_(options),
       server_(new HttpServer(
           options,
-          HttpServerDependencies{Runtime::NetIo(), net_loop},
+          HttpServerRefs{Runtime::NetIo(), net_loop},
           this)) {
     InitializeHandlers(network, time, alarm, upgrade, system, ai, device,
                        webrtc);
@@ -310,7 +310,7 @@ void HttpImpl::InitializeMediaHandlers(
                           refs.media_streams,
                           refs.rtsp_session_reader,
                           refs.webrtc_reader, this}));
-    const HttpMediaHandlerDependencies http_media_handler_dependencies = {
+    const HttpMediaHandlerRefs http_media_handler_refs = {
         this, refs.device, refs.media_streams, refs.webrtc};
     const HttpMediaHandlerKind media_handlers[] = {
         HttpMediaHandlerKind::kHls,
@@ -318,7 +318,7 @@ void HttpImpl::InitializeMediaHandlers(
     };
     for (HttpMediaHandlerKind kind : media_handlers) {
         handlers_.push_back(
-            CreateHttpHandler(kind, http_media_handler_dependencies));
+            CreateHttpHandler(kind, http_media_handler_refs));
     }
 }
 

@@ -36,12 +36,12 @@ void StopExecutor(event::Executor *executor) {
 }  // namespace
 
 HttpServer::HttpServer(const HttpOptions &options,
-                       const HttpServerDependencies &dependencies,
+                       const HttpServerRefs &refs,
                        HttpRequestHandler *request_handler)
     : options_(options),
       response_sender_(options.send_buffer_limit_bytes),
-      net_io_(dependencies.net_io),
-      net_loop_(dependencies.net_loop),
+      net_io_(refs.net_io),
+      net_loop_(refs.net_loop),
       request_handler_(request_handler) {}
 
 HttpServer::~HttpServer() {

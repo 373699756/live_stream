@@ -3,18 +3,18 @@
 namespace live_stream {
 
 std::unique_ptr<IHttpHandler> MakeHlsHandler(
-    const HttpMediaHandlerDependencies &dependencies);
+    const HttpMediaHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
-    const HttpMediaHandlerDependencies &dependencies);
+    const HttpMediaHandlerRefs &refs);
 
 std::unique_ptr<IHttpHandler> CreateHttpHandler(
     HttpMediaHandlerKind kind,
-    const HttpMediaHandlerDependencies &dependencies) {
+    const HttpMediaHandlerRefs &refs) {
     switch (kind) {
         case HttpMediaHandlerKind::kHls:
-            return MakeHlsHandler(dependencies);
+            return MakeHlsHandler(refs);
         case HttpMediaHandlerKind::kWebrtc:
-            return MakeWebrtcHandler(dependencies);
+            return MakeWebrtcHandler(refs);
     }
     return nullptr;
 }

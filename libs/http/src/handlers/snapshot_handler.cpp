@@ -33,8 +33,8 @@ bool LooksLikeJpeg(const SnapshotFrame &frame) {
 class SnapshotHttpHandler : public IHttpHandler {
 public:
     explicit SnapshotHttpHandler(
-        const SnapshotHandlerDependencies &dependencies)
-        : access_(dependencies.access), device_(dependencies.device) {}
+        const SnapshotHandlerRefs &refs)
+        : access_(refs.access), device_(refs.device) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddPrefixRoute(HttpMethod::kGet, "/snapshot/",
@@ -87,9 +87,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
-    const SnapshotHandlerDependencies &dependencies) {
+    const SnapshotHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new SnapshotHttpHandler(dependencies));
+        new SnapshotHttpHandler(refs));
 }
 
 }  // namespace live_stream

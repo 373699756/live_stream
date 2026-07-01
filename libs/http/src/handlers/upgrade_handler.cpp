@@ -185,8 +185,8 @@ std::string UpgradeActionError(IUpgrade *upgrade,
 class UpgradeHttpHandler : public IHttpHandler {
 public:
     explicit UpgradeHttpHandler(
-        const UpgradeHandlerDependencies &dependencies)
-        : access_(dependencies.access), upgrade_(dependencies.upgrade) {}
+        const UpgradeHandlerRefs &refs)
+        : access_(refs.access), upgrade_(refs.upgrade) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (upgrade_ == nullptr) {
@@ -555,9 +555,9 @@ private:
 };
 
 std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
-    const UpgradeHandlerDependencies &dependencies) {
+    const UpgradeHandlerRefs &refs) {
     return std::unique_ptr<IHttpHandler>(
-        new UpgradeHttpHandler(dependencies));
+        new UpgradeHttpHandler(refs));
 }
 
 }  // namespace live_stream
