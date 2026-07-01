@@ -2,6 +2,7 @@
 
 #include "fake_media_streams.h"
 #include "net.h"
+#include "runtime.h"
 
 int main() {
     std::unique_ptr<live_stream::INetIo> net_io =
@@ -9,17 +10,14 @@ int main() {
     if (!net_io || !net_io->Start()) {
         return 1;
     }
+    (void)live_stream::Runtime::InstallNetIo(net_io.get());
 
     live_stream::test::FakeMediaStreams media_streams;
     live_stream::RtspOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
 
-    live_stream::RtspDependencies deps;
-    deps.net_io = net_io.get();
-    deps.net_loop = net_io->DefaultLoop();
-
-    auto rtsp = live_stream::CreateRtsp(options, deps);
+    auto rtsp = live_stream::CreateRtsp(options, net_io->DefaultLoop());
     if (!rtsp || !rtsp->Start()) {
         return 2;
     }
@@ -31,5 +29,6 @@ int main() {
         return 4;
     }
     net_io->Stop();
+    live_stream::Runtime::Clear();
     return 0;
 }

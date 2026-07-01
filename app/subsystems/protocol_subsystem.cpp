@@ -89,9 +89,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const RtspOptions rtsp_options = BuildRtspOptions(app_config);
-    const RtspDependencies rtsp_dependencies =
-        BuildRtspDependencies(refs, foundation_subsystem);
-    rtsp_ = CreateRtsp(rtsp_options, rtsp_dependencies);
+    rtsp_ = CreateRtsp(rtsp_options, refs.rtsp_loop);
     if (!rtsp_ || !rtsp_->Start()) {
         Error("app",
               "Start rtsp failed, continue without RTSP: "
@@ -118,9 +116,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 
     const WebrtcOptions webrtc_options =
         BuildWebrtcOptions(app_config, refs);
-    const WebrtcDependencies webrtc_dependencies =
-        BuildWebrtcDependencies(refs, foundation_subsystem);
-    webrtc_ = CreateWebrtc(webrtc_options, webrtc_dependencies);
+    webrtc_ = CreateWebrtc(webrtc_options, refs.webrtc_loop);
     if (!webrtc_ || !webrtc_->Start()) {
         Error(
             "app",

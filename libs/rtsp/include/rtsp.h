@@ -105,13 +105,6 @@ struct RtspStats {
     uint64_t slow_client_closes = 0;
 };
 
-struct RtspDependencies {
-    INetIo* net_io = nullptr;
-    event::Loop* net_loop = nullptr;
-    IAuth* auth = nullptr;
-    event::Dispatcher* event = nullptr;
-};
-
 class IRtspSessionReader {
 public:
     virtual ~IRtspSessionReader() = default;
@@ -133,7 +126,7 @@ public:
 
 std::unique_ptr<IRtsp> CreateRtsp(
     const RtspOptions& options,
-    const RtspDependencies& dependencies);
+    event::Loop* net_loop);
 
 class Rtsp {
 public:

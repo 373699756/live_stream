@@ -12,6 +12,7 @@
 #include "rtsp_request_handler.h"
 #include "rtsp_rtp_sender.h"
 #include "rtsp_session_table.h"
+#include "runtime.h"
 
 #include <iomanip>
 #include <mutex>
@@ -75,12 +76,12 @@ class RtspImpl : public IRtsp,
                  public IRtspRequestHandlerDelegate,
                  public IRtspAuthResponder {
 public:
-    RtspImpl(RtspOptions options, RtspDependencies dependencies)
+    RtspImpl(RtspOptions options, event::Loop *net_loop)
         : options_(std::move(options)),
-          net_io_(dependencies.net_io),
-          net_loop_(dependencies.net_loop),
-          auth_(dependencies.auth),
-          event_(dependencies.event),
+          net_io_(Runtime::NetIo()),
+          net_loop_(net_loop),
+          auth_(Runtime::Auth()),
+          event_(Runtime::Event()),
           media_streams_(MediaSourceRegistry::Streams()),
           rtp_sender_(options_.rtp_mtu_bytes),
           rtsp_auth_(auth_, *this),
@@ -905,9 +906,9 @@ private:
 
 std::unique_ptr<IRtsp> CreateRtsp(
     const RtspOptions& options,
-    const RtspDependencies& dependencies) {
+    event::Loop* net_loop) {
     return std::unique_ptr<IRtsp>(
-        new RtspImpl(options, dependencies));
+        new RtspImpl(options, net_loop));
 }
 
 const char* Rtsp::Name() {

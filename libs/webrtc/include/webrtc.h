@@ -11,8 +11,6 @@
 
 namespace live_stream {
 
-class INetIo;
-
 enum class WebrtcPeerState {
     kCreated = 0,
     kOfferReceived,
@@ -39,12 +37,6 @@ struct WebrtcOptions {
     bool prefer_tcp = false;
     std::string public_ip;
     std::vector<WebrtcIceServer> ice_servers;
-};
-
-struct WebrtcDependencies {
-    INetIo *net_io = nullptr;
-    event::Loop *net_loop = nullptr;
-    event::Dispatcher *event = nullptr;
 };
 
 struct WebrtcCreatePeerRequest {
@@ -160,7 +152,7 @@ public:
 
 std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
-             const WebrtcDependencies &dependencies);
+             event::Loop *net_loop);
 
 class Webrtc {
 public:

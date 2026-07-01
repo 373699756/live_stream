@@ -20,9 +20,8 @@ int main() {
 
     live_stream::WebrtcOptions invalid_options;
     invalid_options.max_peers = 0;
-    live_stream::WebrtcDependencies dependencies;
     std::unique_ptr<live_stream::IWebrtc> invalid_webrtc =
-        live_stream::CreateWebrtc(invalid_options, dependencies);
+        live_stream::CreateWebrtc(invalid_options, nullptr);
     if (Expect(!invalid_webrtc->Start())) {
         return 1;
     }
@@ -38,7 +37,7 @@ int main() {
     live_stream::test::FakeMediaStreams media_streams;
 
     std::unique_ptr<live_stream::IWebrtc> service =
-        live_stream::CreateWebrtc(options, dependencies);
+        live_stream::CreateWebrtc(options, nullptr);
     if (Expect(!service->Start())) {
         return 1;
     }

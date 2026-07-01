@@ -10,10 +10,8 @@ int main() {
     live_stream::WebrtcOptions disabled_options;
     disabled_options.enabled = false;
 
-    live_stream::WebrtcDependencies dependencies;
-
     std::unique_ptr<live_stream::IWebrtc> disabled =
-        live_stream::CreateWebrtc(disabled_options, dependencies);
+        live_stream::CreateWebrtc(disabled_options, nullptr);
     if (!disabled || !disabled->Start()) {
         return 1;
     }
@@ -27,9 +25,8 @@ int main() {
 
     live_stream::WebrtcOptions options;
     options.max_peers = 1;
-    dependencies.net_io = nullptr;
     std::unique_ptr<live_stream::IWebrtc> service =
-        live_stream::CreateWebrtc(options, dependencies);
+        live_stream::CreateWebrtc(options, nullptr);
     if (!service || !service->Start()) {
         return 3;
     }

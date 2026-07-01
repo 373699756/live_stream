@@ -3,6 +3,7 @@
 #include "fake_media_streams.h"
 #include "media/media_buffer.h"
 #include "net.h"
+#include "runtime.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -111,14 +112,12 @@ int main() {
         close(udp_fd);
         return 2;
     }
+    (void)live_stream::Runtime::InstallNetIo(net_io.get());
     live_stream::test::FakeMediaStreams media_streams;
     live_stream::RtspOptions options;
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
-    live_stream::RtspDependencies deps;
-    deps.net_io = net_io.get();
-    deps.net_loop = net_io->DefaultLoop();
-    auto rtsp = live_stream::CreateRtsp(options, deps);
+    auto rtsp = live_stream::CreateRtsp(options, net_io->DefaultLoop());
     if (!rtsp || !rtsp->Start()) {
         close(udp_fd);
         return 3;
@@ -181,5 +180,6 @@ int main() {
     close(udp_fd);
     rtsp->Stop();
     net_io->Stop();
+    live_stream::Runtime::Clear();
     return 0;
 }

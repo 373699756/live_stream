@@ -4,6 +4,7 @@
 #include "media/media_source_registry.h"
 #include "media/media_streams.h"
 #include "net.h"
+#include "runtime.h"
 #include "webrtc_callback_guard.h"
 #include "webrtc_peer_host.h"
 #include "webrtc_peer_table.h"
@@ -67,12 +68,12 @@ WebrtcPeerInfo CreatePeerError(const std::string &last_error) {
 class WebrtcImpl : public IWebrtc {
 public:
     WebrtcImpl(WebrtcOptions options,
-               WebrtcDependencies dependencies)
+               event::Loop *net_loop)
         : options_(std::move(options)),
           media_streams_(MediaSourceRegistry::Streams()),
-          net_io_(dependencies.net_io),
-          net_loop_(dependencies.net_loop),
-          event_(dependencies.event),
+          net_io_(Runtime::NetIo()),
+          net_loop_(net_loop),
+          event_(Runtime::Event()),
           callback_guard_(new WebrtcCallbackGuard()),
           rtp_sender_(kWebrtcRtpMtuBytes) {
         {
@@ -1012,9 +1013,9 @@ private:
 
 std::unique_ptr<IWebrtc>
 CreateWebrtc(const WebrtcOptions &options,
-             const WebrtcDependencies &dependencies) {
+             event::Loop *net_loop) {
     return std::unique_ptr<IWebrtc>(
-        new WebrtcImpl(options, dependencies));
+        new WebrtcImpl(options, net_loop));
 }
 
 const char *Webrtc::Name() { return "webrtc"; }

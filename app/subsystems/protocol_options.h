@@ -19,13 +19,9 @@ event::LoopOptions BuildNetCallbackOptions();
 NetIoOptions BuildNetIoOptions(event::Loop *callback_loop);
 
 RtspOptions BuildRtspOptions(const AppConfig &app_config);
-RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs,
-                                       FoundationSubsystem &foundation);
 
 WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
                                  const ProtocolStartupRefs &refs);
-WebrtcDependencies BuildWebrtcDependencies(const ProtocolStartupRefs &refs,
-                                           FoundationSubsystem &foundation);
 
 OnvifServerOptions BuildOnvifOptions(
     const AppConfig &app_config);

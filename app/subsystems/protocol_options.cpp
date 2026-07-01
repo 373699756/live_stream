@@ -145,16 +145,6 @@ RtspOptions BuildRtspOptions(const AppConfig &app_config) {
     return options;
 }
 
-RtspDependencies BuildRtspDependencies(const ProtocolStartupRefs &refs,
-                                       FoundationSubsystem &foundation) {
-    RtspDependencies dependencies;
-    dependencies.net_io = refs.net_io;
-    dependencies.net_loop = refs.rtsp_loop;
-    dependencies.auth = foundation.auth();
-    dependencies.event = foundation.event();
-    return dependencies;
-}
-
 WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
                                  const ProtocolStartupRefs &refs) {
     WebrtcOptions options;
@@ -171,16 +161,6 @@ WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
     }
     options.ice_servers = app_config.webrtc_ice_servers;
     return options;
-}
-
-WebrtcDependencies BuildWebrtcDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation) {
-    WebrtcDependencies dependencies;
-    dependencies.net_io = refs.net_io;
-    dependencies.net_loop = refs.webrtc_loop;
-    dependencies.event = foundation.event();
-    return dependencies;
 }
 
 OnvifServerOptions BuildOnvifOptions(

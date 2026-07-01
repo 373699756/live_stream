@@ -1,6 +1,7 @@
 #include "webrtc.h"
 
 #include "fake_media_streams.h"
+#include "runtime.h"
 #include "net.h"
 
 #include <cstddef>
@@ -169,17 +170,14 @@ std::string ValidOfferSdp() {
 int main() {
     live_stream::test::FakeMediaStreams media_streams;
     FakeNetIo net_io;
+    (void)live_stream::Runtime::InstallNetIo(&net_io);
 
     live_stream::WebrtcOptions options;
     options.local_port_base = 16000;
     options.public_ip = "127.0.0.1";
 
-    live_stream::WebrtcDependencies dependencies;
-    dependencies.net_io = &net_io;
-    dependencies.net_loop = net_io.DefaultLoop();
-
     std::unique_ptr<live_stream::IWebrtc> service =
-        live_stream::CreateWebrtc(options, dependencies);
+        live_stream::CreateWebrtc(options, net_io.DefaultLoop());
     if (!service || !service->Start()) {
         return 1;
     }
@@ -233,5 +231,6 @@ int main() {
     if (net_io.close_udp_count == 0) {
         return 9;
     }
+    live_stream::Runtime::Clear();
     return 0;
 }

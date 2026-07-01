@@ -38,8 +38,8 @@ flowchart LR
 
 public API 在 `webrtc.h`，对外接口名为 `IWebrtc`，工厂函数为 `CreateWebrtc()`。
 HTTP signaling 路由和 DTO 归 `http_media`，Web 播放状态归 `www`，媒体 ready
-和 frame subscription 生命周期仍归 `media_streams`；`WebrtcDependencies`
-不直接携带 `MediaStreams*`。冻结后的 signaling 路径为：
+和 frame subscription 生命周期仍归 `media_streams`；基础服务从 `Runtime`
+获取，`CreateWebrtc()` 只额外接收明确的 net loop。冻结后的 signaling 路径为：
 
 | API | 语义 |
 | --- | --- |

@@ -7,9 +7,9 @@
 ## 模块定位
 
 `rtsp` 负责 RTSP protocol、session、认证和通过 `MediaStreams`
-subscription 拉取视频帧。媒体源从 `MediaSourceRegistry` 获取，不再由
-`RtspDependencies` 直接注入。它不拥有 WebRTC signaling、HTTP API 路由或 ONVIF
-metadata。
+subscription 拉取视频帧。媒体源从 `MediaSourceRegistry` 获取，基础服务从
+`Runtime` 获取，`CreateRtsp()` 只额外接收明确的 net loop。它不拥有 WebRTC
+signaling、HTTP API 路由或 ONVIF metadata。
 
 ## 总体框架图
 
