@@ -191,7 +191,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     const NetStatOptions net_stat_options =
         BuildNetStatOptions();
     net_stat_ =
-        CreateNetStat(net_stat_options);
+        CreateNetStat(net_stat_options, socket_io_.get(),
+                      Runtime::EventCenter());
     if (!net_stat_ || !net_stat_->Start()) {
         Error("app", "Start net_stat failed");
         Stop();

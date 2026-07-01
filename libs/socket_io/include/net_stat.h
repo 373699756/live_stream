@@ -8,6 +8,12 @@
 
 namespace live_stream {
 
+class ISocketIo;
+
+namespace event {
+class EventCenter;
+}
+
 enum class NetQueueLevel {
     kNormal = 0,
     kWarning,
@@ -101,7 +107,9 @@ public:
     GetConnectionQueues() const = 0;
 };
 
-std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options);
+std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options,
+                                        ISocketIo *socket_io,
+                                        event::EventCenter *event_center);
 
 class NetStat {
 public:

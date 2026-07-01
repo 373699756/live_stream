@@ -91,9 +91,10 @@ flowchart LR
 
 ## NetStat 契约
 
-`net_stat.h` 随 `socket_io` 模块构建，不是独立模块。`CreateNetStat()` 只接收
-`NetStatOptions`；运行时从 `Runtime` 读取 `ISocketIo*` 和可选
-`event::EventCenter*`。它不直接依赖 `rtsp`、`webrtc` 或 `media`。
+`net_stat.h` 随 `socket_io` 模块构建，不是独立模块。`CreateNetStat()` 接收
+`NetStatOptions`、非 owning `ISocketIo*` 和可选 `event::EventCenter*`。
+组合根负责传入这两个运行态入口，`net_stat` 不从 `Runtime` 反向查找服务，
+也不直接依赖 `rtsp`、`webrtc` 或 `media`。
 
 等级和指标：
 

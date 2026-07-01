@@ -4,7 +4,6 @@
 #include "infra/log.h"
 #include "infra/time.h"
 #include "socket_io.h"
-#include "runtime.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -100,10 +99,12 @@ struct ProtocolClientActivity {
 
 class NetStatImpl final : public INetStat {
 public:
-    explicit NetStatImpl(NetStatOptions options)
+    NetStatImpl(NetStatOptions options,
+                ISocketIo *socket_io,
+                event::EventCenter *event_center)
         : options_(std::move(options)),
-          socket_io_(Runtime::SocketIo()),
-          event_(Runtime::EventCenter()) {}
+          socket_io_(socket_io),
+          event_(event_center) {}
 
     ~NetStatImpl() override { StopInternal(); }
 
@@ -664,8 +665,12 @@ private:
     std::vector<NetSlowClient> slow_client_history_;
 };
 
-std::unique_ptr<INetStat> CreateNetStat(const NetStatOptions &options) {
-    return std::unique_ptr<INetStat>(new NetStatImpl(options));
+std::unique_ptr<INetStat> CreateNetStat(
+    const NetStatOptions &options,
+    ISocketIo *socket_io,
+    event::EventCenter *event_center) {
+    return std::unique_ptr<INetStat>(
+        new NetStatImpl(options, socket_io, event_center));
 }
 
 const char *NetStat::Name() { return kModuleName; }
