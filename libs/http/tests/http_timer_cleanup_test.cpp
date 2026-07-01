@@ -266,10 +266,10 @@ int main() {
     options.enable_static_files = false;
     options.request_timeout_ms = 25;
     options.connection_idle_timeout_ms = 50;
-    options.stream_executor_worker_count = 1;
-    options.control_executor_worker_count = 1;
+    options.stream_executor_workers = 1;
+    options.control_executor_workers = 1;
 
-    live_stream::HttpDependencies dependencies;
+    live_stream::HttpServerDependencies dependencies;
     dependencies.net_io = &net_io;
     dependencies.net_loop = net_io.DefaultLoop();
     live_stream::HttpServer server(options, dependencies, &handler);

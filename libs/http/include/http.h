@@ -14,7 +14,18 @@
 
 namespace live_stream {
 
-struct HttpDependencies;
+class IAlarm;
+class IAiReader;
+class INetwork;
+class ISystem;
+class ITime;
+class IUpgrade;
+class IWebrtc;
+class DeviceMedia;
+
+namespace event {
+class Loop;
+}  // namespace event
 
 enum class HttpMethod {
     kGet,
@@ -143,7 +154,15 @@ public:
 
 std::unique_ptr<IHttp> CreateHttp(
     const HttpOptions &options,
-    const HttpDependencies &dependencies);
+    event::Loop *net_loop,
+    INetwork *network,
+    ITime *time,
+    IAlarm *alarm,
+    IUpgrade *upgrade,
+    ISystem *system,
+    IAiReader *ai,
+    DeviceMedia *device,
+    IWebrtc *webrtc);
 
 }  // namespace live_stream
 

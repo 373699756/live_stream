@@ -67,14 +67,15 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - `MediaStreams` 已拆出 stream state、frame ring、preview clients、GOP cache、HLS maker、FLV muxer 等职责对象。
 - net send queue、send buffer limit、pending bytes、closed connection 限制已有基础。
 - HTTP handler 创建已从旧 `CreateHttpHandler(kind, deps)` 分发改为按业务入口构造。
+- HTTP public `HttpDependencies` 已删除，基础服务、协议只读诊断和媒体源分别从
+  `Runtime`、`ServiceRegistry`、`MediaSourceRegistry` 获取。
 - `hisi_vendor` 已拥有 SDK 契约和生产实现入口，`device` 只消费窄接口。
 - Web 预览 URL、preview readiness、AI badge、HTTP 媒体 helper 已完成多轮命名收敛。
 - Debug 打包不再复制配置文件；release 配置默认从 `/config/*.json` 获取。
 
 仍需处理：
 
-- `HttpDependencies`、`SystemOverviewSources` 等依赖包仍偏宽；`runtime` 模块已提供
-  `Runtime` 和 `ServiceRegistry` 作为删除依赖包的承接点。
+- `SystemOverviewSources` 等 HTTP 内部只读聚合参数仍偏宽。
 - HTTP router/handler 仍存在静态 thunk + `void* user` 的低层风格。
 - `media` 资源预算和锁边界还不够显式。
 - `app` 仍有全局单例式入口和硬编码生命周期。
@@ -169,8 +170,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 任务：
 
-- 删除 `HttpDependencies`，基础服务改从 `Runtime` 获取，协议会话诊断改从
-  `ServiceRegistry` 获取，媒体播放入口后续改从 `MediaSourceRegistry` 获取。
+- 收敛 HTTP 内部只读聚合参数，避免系统概览入口变成新的上帝视图。
 - 将 `SystemOverviewSources` 收敛为系统概览专用只读视图。
 - 减少业务 handler 直接暴露静态 thunk + `void* user`。
 - HTTP 对 RTSP/WebRTC/ONVIF 的依赖收敛为只读诊断/会话视图接口。

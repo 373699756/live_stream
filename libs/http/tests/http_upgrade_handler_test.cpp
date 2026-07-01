@@ -1,10 +1,11 @@
-#include "http_dependencies.h"
+#include "http.h"
 
 #include "auth.h"
 #include "config.h"
 #include "infra/fs.h"
 #include "logger.h"
 #include "net.h"
+#include "runtime.h"
 #include "system/upgrade.h"
 
 #include <cstring>
@@ -354,14 +355,20 @@ std::unique_ptr<live_stream::IHttp> MakeHttp(
     FakeLogger* logger,
     FakeUpgrade* upgrade) {
     live_stream::HttpOptions options;
-    live_stream::HttpDependencies dependencies;
-    dependencies.net_io = net_io;
-    dependencies.net_loop =
-        net_io == nullptr ? nullptr : net_io->DefaultLoop();
-    dependencies.auth = auth;
-    dependencies.logger = logger;
-    dependencies.upgrade = upgrade;
-    return live_stream::CreateHttp(options, dependencies);
+    live_stream::Runtime::Clear();
+    if (net_io != nullptr) {
+        (void)live_stream::Runtime::InstallNetIo(net_io);
+    }
+    if (auth != nullptr) {
+        (void)live_stream::Runtime::InstallAuth(auth);
+    }
+    if (logger != nullptr) {
+        (void)live_stream::Runtime::InstallLogger(logger);
+    }
+    return live_stream::CreateHttp(
+        options, net_io == nullptr ? nullptr : net_io->DefaultLoop(),
+        nullptr, nullptr, nullptr, upgrade, nullptr, nullptr, nullptr,
+        nullptr);
 }
 
 int TestUpgradeUploadAndStart() {

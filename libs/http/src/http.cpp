@@ -13,6 +13,8 @@
 #include "infra/time.h"
 #include "logger.h"
 #include "media/media_source_registry.h"
+#include "runtime.h"
+#include "service_registry.h"
 
 #include <memory>
 #include <mutex>
@@ -36,15 +38,23 @@ const char *StaticStatusText(StaticFileStatus status) {
 
 }  // namespace
 
-HttpImpl::HttpImpl(
-    const HttpOptions &options,
-    const HttpDependencies &dependencies)
+HttpImpl::HttpImpl(const HttpOptions &options,
+                   event::Loop *net_loop,
+                   INetwork *network,
+                   ITime *time,
+                   IAlarm *alarm,
+                   IUpgrade *upgrade,
+                   ISystem *system,
+                   IAiReader *ai,
+                   DeviceMedia *device,
+                   IWebrtc *webrtc)
     : options_(options),
       server_(new HttpServer(
           options,
-          HttpServerDependencies{dependencies.net_io, dependencies.net_loop},
+          HttpServerDependencies{Runtime::NetIo(), net_loop},
           this)) {
-    InitializeHandlers(dependencies);
+    InitializeHandlers(network, time, alarm, upgrade, system, ai, device,
+                       webrtc);
 }
 
 HttpImpl::~HttpImpl() {
@@ -189,48 +199,55 @@ HttpListenAddress HttpImpl::LocalAddress() const {
     return server_->LocalAddress();
 }
 
-void HttpImpl::InitializeHandlers(const HttpDependencies &dependencies) {
+void HttpImpl::InitializeHandlers(INetwork *network,
+                                  ITime *time,
+                                  IAlarm *alarm,
+                                  IUpgrade *upgrade,
+                                  ISystem *system,
+                                  IAiReader *ai,
+                                  DeviceMedia *device,
+                                  IWebrtc *webrtc) {
     // handler/router 只在构造期初始化。运行期不重建路由，避免请求线程读 router
     // 时和热重配同时修改 handler 容器。
     router_.Clear();
     handlers_.clear();
     streaming_handler_.reset();
-    auth_ = dependencies.auth;
-    logger_ = dependencies.logger;
+    auth_ = Runtime::Auth();
+    logger_ = Runtime::Logger();
     MediaStreams *media_streams = MediaSourceRegistry::Streams();
-    const HttpControlDependencies control_dependencies = {
-        dependencies.auth,
-        dependencies.logger,
-        dependencies.config,
-        dependencies.network,
-        dependencies.time,
-        dependencies.alarm,
-        dependencies.upgrade,
-        dependencies.system,
-        dependencies.rtsp_session_reader,
-        dependencies.onvif_reader,
-        dependencies.ai,
-        dependencies.device,
-        dependencies.webrtc_reader,
+    const HttpControlRefs control_refs = {
+        Runtime::Auth(),
+        Runtime::Logger(),
+        Runtime::Config(),
+        network,
+        time,
+        alarm,
+        upgrade,
+        system,
+        ServiceRegistry::Rtsp(),
+        ServiceRegistry::Onvif(),
+        ai,
+        device,
+        ServiceRegistry::Webrtc(),
         media_streams,
     };
-    const HttpMediaDependencies media_dependencies = {
-        dependencies.config,
-        dependencies.device,
+    const HttpMediaRefs media_refs = {
+        Runtime::Config(),
+        device,
         media_streams,
-        dependencies.rtsp_session_reader,
-        dependencies.webrtc_reader,
-        dependencies.webrtc,
+        ServiceRegistry::Rtsp(),
+        ServiceRegistry::Webrtc(),
+        webrtc,
     };
-    const HttpStreamingDependencies streaming_dependencies = {
-        dependencies.device,
+    const HttpStreamingRefs streaming_refs = {
+        device,
         media_streams,
-        dependencies.event,
+        Runtime::Event(),
     };
-    ConfigureCloseCallback(control_dependencies.media_streams);
-    InitializeControlHandlers(control_dependencies);
-    InitializeMediaHandlers(media_dependencies);
-    InitializeStreamingHandler(streaming_dependencies);
+    ConfigureCloseCallback(control_refs.media_streams);
+    InitializeControlHandlers(control_refs);
+    InitializeMediaHandlers(media_refs);
+    InitializeStreamingHandler(streaming_refs);
     RegisterRoutes();
 }
 
@@ -252,51 +269,49 @@ void HttpImpl::ConfigureCloseCallback(MediaStreams *media_streams) {
 }
 
 void HttpImpl::InitializeControlHandlers(
-    const HttpControlDependencies &dependencies) {
+    const HttpControlRefs &refs) {
     handlers_.push_back(
-        MakeAuthHandler({this, dependencies.auth}));
+        MakeAuthHandler({this, refs.auth}));
     handlers_.push_back(
-        MakeConfigHandler({this, dependencies.config}));
+        MakeConfigHandler({this, refs.config}));
     handlers_.push_back(
-        MakeOperationsHandler({this, dependencies.logger}));
+        MakeOperationsHandler({this, refs.logger}));
     handlers_.push_back(
-        MakeNetworkHandler({this, dependencies.network}));
-    handlers_.push_back(MakeTimeHandler({this, dependencies.time}));
-    handlers_.push_back(MakeUpgradeHandler({this, dependencies.upgrade}));
+        MakeNetworkHandler({this, refs.network}));
+    handlers_.push_back(MakeTimeHandler({this, refs.time}));
+    handlers_.push_back(MakeUpgradeHandler({this, refs.upgrade}));
     handlers_.push_back(MakeSystemHandler(
         {this,
-         dependencies.system,
-         {dependencies.logger,
-          dependencies.config,
-          dependencies.auth,
-          dependencies.time,
-          dependencies.network,
-          dependencies.alarm,
-          dependencies.upgrade,
-          dependencies.rtsp_session_reader,
-          dependencies.onvif_reader,
-          dependencies.device,
-          dependencies.ai,
-          dependencies.webrtc_reader,
-          dependencies.media_streams}}));
-    handlers_.push_back(MakeAlarmHandler({this, dependencies.alarm}));
+         refs.system,
+         {refs.logger,
+          refs.config,
+          refs.auth,
+          refs.time,
+          refs.network,
+          refs.alarm,
+          refs.upgrade,
+          refs.rtsp_session_reader,
+          refs.onvif_reader,
+          refs.device,
+          refs.ai,
+          refs.webrtc_reader,
+          refs.media_streams}}));
+    handlers_.push_back(MakeAlarmHandler({this, refs.alarm}));
     handlers_.push_back(
-        MakeAiHandler({this, dependencies.config, dependencies.ai,
-                       dependencies.device}));
+        MakeAiHandler({this, refs.config, refs.ai, refs.device}));
     handlers_.push_back(
-        MakeSnapshotHandler({this, dependencies.device}));
+        MakeSnapshotHandler({this, refs.device}));
 }
 
 void HttpImpl::InitializeMediaHandlers(
-    const HttpMediaDependencies &dependencies) {
+    const HttpMediaRefs &refs) {
     handlers_.push_back(
-        MakeMediaHandler({this, dependencies.config, dependencies.device,
-                          dependencies.media_streams,
-                          dependencies.rtsp_session_reader,
-                          dependencies.webrtc_reader, this}));
+        MakeMediaHandler({this, refs.config, refs.device,
+                          refs.media_streams,
+                          refs.rtsp_session_reader,
+                          refs.webrtc_reader, this}));
     const HttpMediaHandlerDependencies http_media_handler_dependencies = {
-        this, dependencies.device, dependencies.media_streams,
-        dependencies.webrtc};
+        this, refs.device, refs.media_streams, refs.webrtc};
     const HttpMediaHandlerKind media_handlers[] = {
         HttpMediaHandlerKind::kHls,
         HttpMediaHandlerKind::kWebrtc,
@@ -308,10 +323,10 @@ void HttpImpl::InitializeMediaHandlers(
 }
 
 void HttpImpl::InitializeStreamingHandler(
-    const HttpStreamingDependencies &dependencies) {
+    const HttpStreamingRefs &refs) {
     streaming_handler_ = CreateStreamingHttpHandler(
-        {this, server_.get(), dependencies.device, dependencies.media_streams,
-         dependencies.event});
+        {this, server_.get(), refs.device, refs.media_streams,
+         refs.event});
 }
 
 void HttpImpl::RegisterRoutes() {
@@ -448,9 +463,18 @@ HttpResponse HttpImpl::HandleStaticFile(const HttpRequest &request) {
 
 std::unique_ptr<IHttp>
 CreateHttp(const HttpOptions &options,
-           const HttpDependencies &dependencies) {
+           event::Loop *net_loop,
+           INetwork *network,
+           ITime *time,
+           IAlarm *alarm,
+           IUpgrade *upgrade,
+           ISystem *system,
+           IAiReader *ai,
+           DeviceMedia *device,
+           IWebrtc *webrtc) {
     std::unique_ptr<HttpImpl> service(
-        new HttpImpl(options, dependencies));
+        new HttpImpl(options, net_loop, network, time, alarm, upgrade,
+                     system, ai, device, webrtc));
     return std::unique_ptr<IHttp>(service.release());
 }
 

@@ -1,9 +1,9 @@
 #include "http.h"
-#include "http_dependencies.h"
 
 #include "auth.h"
 #include "config.h"
 #include "net.h"
+#include "runtime.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -156,12 +156,13 @@ int main() {
     options.listen_ip = "127.0.0.1";
     options.listen_port = 0;
 
-    live_stream::HttpDependencies http_dependencies;
-    http_dependencies.net_io = net_io.get();
-    http_dependencies.net_loop = net_io->DefaultLoop();
-    http_dependencies.auth = &auth;
-    http_dependencies.config = &config;
-    auto http = live_stream::CreateHttp(options, http_dependencies);
+    live_stream::Runtime::Clear();
+    (void)live_stream::Runtime::InstallNetIo(net_io.get());
+    (void)live_stream::Runtime::InstallAuth(&auth);
+    (void)live_stream::Runtime::InstallConfig(&config);
+    auto http = live_stream::CreateHttp(
+        options, net_io->DefaultLoop(), nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr);
     if (!http || !http->Start()) {
         return 2;
     }
@@ -192,6 +193,7 @@ int main() {
     close(fd);
     http->Stop();
     net_io->Stop();
+    live_stream::Runtime::Clear();
 
     if (!Contains(response, "HTTP/1.1 200 OK") ||
         !Contains(response, "live_stream_token=admin-token") ||

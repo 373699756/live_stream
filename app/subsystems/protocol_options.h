@@ -27,8 +27,6 @@ OnvifServerOptions BuildOnvifOptions(
     const AppConfig &app_config);
 
 HttpOptions BuildHttpOptions(const AppConfig &app_config);
-HttpDependencies BuildHttpDependencies(const ProtocolStartupRefs &refs,
-                                       FoundationSubsystem &foundation);
 
 NetStatOptions BuildNetStatOptions();
 

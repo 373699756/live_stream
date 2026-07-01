@@ -4,7 +4,6 @@
 #include "http_access.h"
 #include "http_router.h"
 #include "http_server.h"
-#include "http_dependencies.h"
 #include "http_media.h"
 #include "handlers/http_handlers.h"
 
@@ -20,12 +19,56 @@ class Executor;
 
 namespace live_stream {
 
+namespace event {
+class Dispatcher;
+}  // namespace event
+
+struct HttpControlRefs {
+    IAuth *auth = nullptr;
+    ILogger *logger = nullptr;
+    IConfig *config = nullptr;
+    INetwork *network = nullptr;
+    ITime *time = nullptr;
+    IAlarm *alarm = nullptr;
+    IUpgrade *upgrade = nullptr;
+    ISystem *system = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IOnvifReader *onvif_reader = nullptr;
+    IAiReader *ai = nullptr;
+    DeviceMedia *device = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
+    MediaStreams *media_streams = nullptr;
+};
+
+struct HttpMediaRefs {
+    IConfig *config = nullptr;
+    DeviceMedia *device = nullptr;
+    MediaStreams *media_streams = nullptr;
+    IRtspSessionReader *rtsp_session_reader = nullptr;
+    IWebrtcReader *webrtc_reader = nullptr;
+    IWebrtc *webrtc = nullptr;
+};
+
+struct HttpStreamingRefs {
+    DeviceMedia *device = nullptr;
+    MediaStreams *media_streams = nullptr;
+    event::Dispatcher *event = nullptr;
+};
+
 class HttpImpl : public IHttp,
                  public HttpAccess,
                  public HttpRequestHandler {
 public:
     HttpImpl(const HttpOptions &options,
-             const HttpDependencies &dependencies);
+             event::Loop *net_loop,
+             INetwork *network,
+             ITime *time,
+             IAlarm *alarm,
+             IUpgrade *upgrade,
+             ISystem *system,
+             IAiReader *ai,
+             DeviceMedia *device,
+             IWebrtc *webrtc);
     ~HttpImpl() override;
 
     bool Prepare();
@@ -60,13 +103,18 @@ private:
     void IncrementAuthFailures() override;
     void IncrementPermissionDenied() override;
 
-    void InitializeHandlers(const HttpDependencies &dependencies);
+    void InitializeHandlers(INetwork *network,
+                            ITime *time,
+                            IAlarm *alarm,
+                            IUpgrade *upgrade,
+                            ISystem *system,
+                            IAiReader *ai,
+                            DeviceMedia *device,
+                            IWebrtc *webrtc);
     void ConfigureCloseCallback(MediaStreams *media_streams);
-    void InitializeControlHandlers(
-        const HttpControlDependencies &dependencies);
-    void InitializeMediaHandlers(const HttpMediaDependencies &dependencies);
-    void InitializeStreamingHandler(
-        const HttpStreamingDependencies &dependencies);
+    void InitializeControlHandlers(const HttpControlRefs &refs);
+    void InitializeMediaHandlers(const HttpMediaRefs &refs);
+    void InitializeStreamingHandler(const HttpStreamingRefs &refs);
     void RegisterRoutes();
     void StopInternal();
     void ReleaseInternal();

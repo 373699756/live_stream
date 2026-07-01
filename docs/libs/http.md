@@ -137,9 +137,10 @@ subscription/ring 分发之间的状态。
 
 HTTP 是较宽依赖模块。宽依赖只允许停留在 HTTP 边界，不允许业务模块反向依赖 HTTP
 或 Web。媒体长连接使用 stream/control executor 分流，避免控制 API 被直播写阻塞。
-`CreateHttp()` 通过 `HttpDependencies` 命名字段接收 app 组合根注入，
-避免认证、设备和协议依赖靠长参数位置传递；媒体源由 `HttpImpl`
-从 `MediaSourceRegistry` 读取，不进入 public `HttpDependencies`。
+`CreateHttp()` 不接收 public `*Dependencies` 依赖包；基础服务从 `Runtime`
+读取，RTSP/ONVIF/WebRTC 只读诊断入口从 `ServiceRegistry` 读取，媒体源从
+`MediaSourceRegistry` 读取。app 只显式传入 HTTP 需要访问的设备控制面对象和
+`net_loop`。
 handler 和 router 注册只在 `HttpImpl` 构造期内部完成，不提供运行期重配入口。
 
 HTTP 框架借鉴 ZLMediaKit 的 request splitter、session 生命周期、response/body
@@ -178,6 +179,6 @@ executor、静态文件句柄、认证中间态和 `HttpMediaWriter` 会话句�
 
 ## 风险与优化方向
 
-- `HttpDependencies` 较宽，后续可把控制 handlers 变成独立构造的 handler 类。
+- 内部 handler 构造参数仍较多，后续只在能减少重复或拆清控制面职责时继续收敛。
 - `HttpMediaWriter` 必须处理慢客户端和断连，不能持有媒体内部锁长时间写 socket。
 - DTO 字段变更必须同步 Web API 类型和拥有模块文档。

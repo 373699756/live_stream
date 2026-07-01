@@ -1,11 +1,11 @@
 #include "http.h"
-#include "http_dependencies.h"
 
 #include "auth.h"
 #include "config.h"
 #include "logger.h"
 #include "device.h"
 #include "net.h"
+#include "runtime.h"
 
 #include <cstring>
 #include <memory>
@@ -307,26 +307,26 @@ int main() {
     FakeNetIo net_io;
 
     live_stream::HttpOptions options;
-    live_stream::HttpDependencies deps;
-    deps.net_io = nullptr;
+    live_stream::Runtime::Clear();
 
     std::unique_ptr<live_stream::IHttp> base =
-        live_stream::CreateHttp(options, deps);
+        live_stream::CreateHttp(options, nullptr, nullptr, nullptr, nullptr,
+                                nullptr, nullptr, nullptr, nullptr, nullptr);
     if (!base || base->HandleRequest(Request(live_stream::HttpMethod::kGet,
                                              "bad", "", ""))
                          .status_code != 500) {
         return 1;
     }
 
-    live_stream::HttpDependencies http_dependencies;
-    http_dependencies.net_io = &net_io;
-    http_dependencies.net_loop = net_io.DefaultLoop();
-    http_dependencies.auth = &auth;
-    http_dependencies.logger = &logger;
-    http_dependencies.config = &config;
-    http_dependencies.device = &media;
+    live_stream::Runtime::Clear();
+    (void)live_stream::Runtime::InstallNetIo(&net_io);
+    (void)live_stream::Runtime::InstallAuth(&auth);
+    (void)live_stream::Runtime::InstallLogger(&logger);
+    (void)live_stream::Runtime::InstallConfig(&config);
     std::unique_ptr<live_stream::IHttp> console =
-        live_stream::CreateHttp(options, http_dependencies);
+        live_stream::CreateHttp(options, net_io.DefaultLoop(), nullptr,
+                                nullptr, nullptr, nullptr, nullptr,
+                                nullptr, &media, nullptr);
     if (!console || !console->Start()) {
         return 2;
     }

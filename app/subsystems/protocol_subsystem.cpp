@@ -1,6 +1,5 @@
 #include "subsystems/protocol_subsystem.h"
 
-#include "http_dependencies.h"
 #include "infra/log.h"
 #include "runtime.h"
 #include "service_registry.h"
@@ -166,9 +165,10 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const HttpOptions http_options = BuildHttpOptions(app_config);
-    const HttpDependencies http_dependencies =
-        BuildHttpDependencies(refs, foundation_subsystem);
-    http_ = CreateHttp(http_options, http_dependencies);
+    http_ = CreateHttp(http_options, refs.http_loop, refs.device.network,
+                       refs.device.time, refs.device.alarm,
+                       refs.device.upgrade, refs.device.system,
+                       refs.media.ai, refs.media.device, refs.webrtc);
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
               app_config.listen_ip.c_str(),

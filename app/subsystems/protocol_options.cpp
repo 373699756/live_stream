@@ -1,6 +1,5 @@
 #include "subsystems/protocol_options.h"
 
-#include "http_dependencies.h"
 #include "infra/log.h"
 #include "subsystems/foundation_subsystem.h"
 
@@ -195,30 +194,6 @@ HttpOptions BuildHttpOptions(const AppConfig &app_config) {
     options.request_timeout_ms = kHttpRequestTimeoutMs;
     options.connection_idle_timeout_ms = kHttpConnectionIdleTimeoutMs;
     return options;
-}
-
-HttpDependencies BuildHttpDependencies(
-    const ProtocolStartupRefs &refs,
-    FoundationSubsystem &foundation) {
-    HttpDependencies dependencies;
-    dependencies.net_io = refs.net_io;
-    dependencies.net_loop = refs.http_loop;
-    dependencies.auth = foundation.auth();
-    dependencies.logger = foundation.logger();
-    dependencies.config = foundation.config();
-    dependencies.network = refs.device.network;
-    dependencies.time = refs.device.time;
-    dependencies.alarm = refs.device.alarm;
-    dependencies.upgrade = refs.device.upgrade;
-    dependencies.system = refs.device.system;
-    dependencies.rtsp_session_reader = refs.rtsp;
-    dependencies.onvif_reader = refs.onvif;
-    dependencies.ai = refs.media.ai;
-    dependencies.device = refs.media.device;
-    dependencies.webrtc = refs.webrtc;
-    dependencies.webrtc_reader = refs.webrtc;
-    dependencies.event = foundation.event();
-    return dependencies;
 }
 
 NetStatOptions BuildNetStatOptions() {
