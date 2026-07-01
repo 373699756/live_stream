@@ -6,13 +6,12 @@
 #include "socket_io.h"
 #include "runtime.h"
 #include "webrtc_callback_guard.h"
+#include "webrtc_peer_event.h"
 #include "webrtc_peer_host.h"
 #include "webrtc_peer_table.h"
-#include "webrtc_rtp_sender.h"
+#include "webrtc_peer_video_sender.h"
 #include "webrtc_sdp.h"
 
-#include <deque>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -23,9 +22,6 @@ namespace live_stream {
 namespace {
 
 constexpr int64_t kPeerSetupTimeoutMs = 10000;
-constexpr uint32_t kWebrtcDrainIntervalMs = 10;
-constexpr uint32_t kWebrtcMaxFramesPerDrain = 8;
-constexpr uint32_t kWebrtcRtpMtuBytes = 1200;
 
 enum class WebrtcPhase {
     kCreated = 0,
@@ -75,7 +71,9 @@ public:
           net_loop_(socket_loop),
           event_(Runtime::EventCenter()),
           callback_guard_(new WebrtcCallbackGuard()),
-          rtp_sender_(kWebrtcRtpMtuBytes) {
+          peer_video_sender_(media_streams_, net_loop_, callback_guard_,
+                             &mutex_, &peer_table_, &peer_host_, &stats_),
+          peer_event_(event_, &mutex_, &peer_table_) {
         {
             std::lock_guard<std::mutex> guard(callback_guard_->mutex);
             callback_guard_->service = this;
@@ -108,7 +106,7 @@ public:
 
     void Stop() override {
         std::vector<std::string> peer_ids;
-        std::vector<ClosingSubscription> closing_subscriptions;
+        std::vector<WebrtcPeerVideoSender::ClosedVideo> closed_video;
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
         {
             std::unique_lock<std::mutex> guard(mutex_);
@@ -117,16 +115,12 @@ public:
             }
             phase_ = WebrtcPhase::kStopped;
             peer_ids = peer_table_.MarkAllClosing();
-            MarkSubscriptionsClosingLocked();
-            subscription_condition_.wait(guard, [this]() {
-                return NoDrainingSubscriptionsLocked();
-            });
-            closing_subscriptions = TakeClosingSubscriptionsLocked();
             peer_host = peer_host_;
         }
 
-        ReleasePeerSubscriptions(closing_subscriptions,
-                                 SubscriptionClose::kStreamStopped);
+        closed_video = peer_video_sender_.CloseAllPeerVideo();
+        peer_video_sender_.ReleaseClosedPeerVideo(
+            &closed_video, SubscriptionClose::kStreamStopped);
         if (peer_host) {
             for (const std::string &peer_id : peer_ids) {
                 (void)peer_host->ClosePeer(peer_id);
@@ -216,7 +210,8 @@ public:
         }
 
         for (const std::string &peer_id : replaced_peer_ids) {
-            ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
+            peer_video_sender_.ClosePeerVideo(
+                peer_id, SubscriptionClose::kUnsubscribed);
             (void)peer_host->ClosePeer(peer_id);
         }
 
@@ -352,7 +347,7 @@ public:
             if (peer_host) {
                 (void)peer_host->FillPeerInfo(peer.peer_id, peer);
             }
-            FillPeerSubscriptionInfo(peer);
+            peer_video_sender_.FillPeerVideoInfo(&peer);
         }
         return peers;
     }
@@ -380,18 +375,6 @@ public:
     }
 
 private:
-    static void DispatchPeerDrain(
-        const std::shared_ptr<WebrtcCallbackGuard> &callback_guard,
-        const std::string &peer_id) {
-        WebrtcCallbackGuard *guard = callback_guard.get();
-        WebrtcImpl *service = EnterWebrtcCallback(guard);
-        if (service == nullptr) {
-            return;
-        }
-        service->DrainPeerFrames(peer_id);
-        LeaveWebrtcCallback(guard);
-    }
-
     static void OnPeerHostPeerStateChanged(void *user, const char *peer_id,
                                            WebrtcPeerState state,
                                            const char *last_error) {
@@ -457,19 +440,19 @@ private:
         CloseCallbacks();
         WaitCallbacks();
         std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
-        std::vector<ClosingSubscription> closing_subscriptions;
+        std::vector<WebrtcPeerVideoSender::ClosedVideo> closed_video;
         {
             std::lock_guard<std::mutex> guard(mutex_);
             if (phase_ == WebrtcPhase::kCreated) {
                 return;
             }
             phase_ = WebrtcPhase::kDeinitialized;
-            closing_subscriptions = TakeClosingSubscriptionsLocked();
             peer_table_.Clear();
             peer_host = std::move(peer_host_);
         }
-        ReleasePeerSubscriptions(closing_subscriptions,
-                                 SubscriptionClose::kStreamStopped);
+        closed_video = peer_video_sender_.CloseAllPeerVideo();
+        peer_video_sender_.ReleaseClosedPeerVideo(
+            &closed_video, SubscriptionClose::kStreamStopped);
         if (peer_host) {
             peer_host->Stop();
         }
@@ -496,7 +479,7 @@ private:
         }
 
         if (state == WebrtcPeerState::kConnected) {
-            if (!OpenPeerSubscription(peer_id)) {
+            if (!peer_video_sender_.OpenPeerVideo(peer_id)) {
                 ClosePeerByService(peer_id, "media_subscription_open_failed",
                                    true);
                 return;
@@ -504,13 +487,14 @@ private:
         } else if (state == WebrtcPeerState::kClosing ||
                    state == WebrtcPeerState::kClosed ||
                    state == WebrtcPeerState::kFailed) {
-            ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
+            peer_video_sender_.ClosePeerVideo(
+                peer_id, SubscriptionClose::kUnsubscribed);
         }
 
         if (update.need_keyframe) {
             RequestKeyframe(update.stream_id, KeyframeRequestSource::kRecovery);
         }
-        PublishPeerEvent(peer_before, state, last_error);
+        peer_event_.Publish(peer_before, state, last_error);
     }
 
     void HandlePeerKeyframeRequest(const std::string &peer_id) {
@@ -570,7 +554,8 @@ private:
             }
         }
 
-        ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
+        peer_video_sender_.ClosePeerVideo(
+            peer_id, SubscriptionClose::kUnsubscribed);
         if (peer_host) {
             (void)peer_host->ClosePeer(peer_id);
         }
@@ -582,7 +567,7 @@ private:
             (void)peer_table_.ApplyPeerHostState(peer_id, final_state,
                                                  last_error);
         }
-        PublishPeerEvent(peer, final_state, last_error);
+        peer_event_.Publish(peer, final_state, last_error);
         return true;
     }
 
@@ -597,39 +582,8 @@ private:
         if (!peer.peer_id.empty() && peer_host) {
             (void)peer_host->FillPeerInfo(peer_id, peer);
         }
-        FillPeerSubscriptionInfo(peer);
+        peer_video_sender_.FillPeerVideoInfo(&peer);
         return peer;
-    }
-
-    void FillPeerSubscriptionInfo(WebrtcPeerInfo &peer) const {
-        if (peer.peer_id.empty()) {
-            return;
-        }
-        FrameSubscriptionId subscription_id = 0;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            const auto iter = peer_subscriptions_.find(peer.peer_id);
-            if (iter != peer_subscriptions_.end()) {
-                subscription_id = iter->second.subscription_id;
-            }
-        }
-        peer.subscription_id = subscription_id;
-        if (subscription_id == 0) {
-            return;
-        }
-        const SubscriptionInfo subscription_info =
-            media_streams_->GetSubscriptionInfo(subscription_id);
-        peer.subscription_open = subscription_info.open;
-        if (!subscription_info.open) {
-            return;
-        }
-        peer.subscription_generation = subscription_info.generation;
-        peer.subscription_pending_frames = subscription_info.pending_frames;
-        peer.subscription_waiting_keyframe =
-            subscription_info.wait_keyframe;
-        peer.subscription_slow = subscription_info.slow;
-        peer.subscription_close_reason =
-            SubscriptionCloseName(subscription_info.close_reason);
     }
 
     bool IsStreamAvailableLocked(StreamId stream_id) const {
@@ -640,391 +594,19 @@ private:
         (void)media_streams_->RequestKeyframe(stream_id, source);
     }
 
-    struct PeerSubscription {
-        FrameSubscriptionId subscription_id = 0;
-        uint64_t generation = 0;
-        MediaStreamInfo track;
-        std::deque<MediaFrame> start_frames;
-        event::TimerId drain_timer_id = 0;
-        bool draining = false;
-        bool closing = false;
-    };
-
-    struct ClosingSubscription {
-        FrameSubscriptionId subscription_id = 0;
-        event::TimerId drain_timer_id = 0;
-        std::deque<MediaFrame> start_frames;
-    };
-
-    bool OpenPeerSubscription(const std::string &peer_id) {
-        WebrtcPeerInfo peer;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            peer = peer_table_.GetPeer(peer_id);
-            if (phase_ != WebrtcPhase::kStarted || peer.peer_id.empty() ||
-                peer.state != WebrtcPeerState::kConnected) {
-                return false;
-            }
-            if (peer_subscriptions_.find(peer_id) != peer_subscriptions_.end()) {
-                return true;
-            }
-        }
-
-        SubscriptionOptions subscription_options;
-        subscription_options.stream_id = peer.stream_id;
-        subscription_options.keyframe_first = true;
-        const FrameSubscriptionId subscription_id =
-            media_streams_->SubscribeFrames(subscription_options);
-        if (subscription_id == 0) {
-            return false;
-        }
-
-        SubscriptionStart start_data =
-            media_streams_->GetSubscriptionStart(subscription_id);
-        if (!start_data.track_ready ||
-            start_data.stream_info.codec != peer.codec) {
-            (void)media_streams_->UnsubscribeFrames(
-                subscription_id, SubscriptionClose::kUnsubscribed);
-            return false;
-        }
-
-        PeerSubscription subscription;
-        subscription.subscription_id = subscription_id;
-        subscription.generation = start_data.generation;
-        subscription.track = start_data.stream_info;
-        for (MediaFrame &frame : start_data.gop_frames) {
-            subscription.start_frames.push_back(std::move(frame));
-        }
-
-        bool subscription_opened = false;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            const WebrtcPeerInfo current_peer = peer_table_.GetPeer(peer_id);
-            if (phase_ == WebrtcPhase::kStarted &&
-                current_peer.state == WebrtcPeerState::kConnected &&
-                current_peer.stream_id == peer.stream_id &&
-                current_peer.codec == peer.codec &&
-                peer_subscriptions_.find(peer_id) == peer_subscriptions_.end()) {
-                peer_subscriptions_[peer_id] = std::move(subscription);
-                rtp_sender_.AddPeer(current_peer);
-                subscription_opened = true;
-            }
-        }
-
-        if (!subscription_opened) {
-            (void)media_streams_->UnsubscribeFrames(
-                subscription_id, SubscriptionClose::kUnsubscribed);
-            return false;
-        }
-
-        ArmPeerDrainTimer(peer_id);
-        DrainPeerFrames(peer_id);
-        return true;
-    }
-
-    void ArmPeerDrainTimer(const std::string &peer_id) {
-        std::shared_ptr<WebrtcCallbackGuard> callback_guard =
-            callback_guard_;
-        event::TimerId timer_id = 0;
-        const event::EventStatus timer_status = net_loop_->RunEvery(
-            kWebrtcDrainIntervalMs, [callback_guard, peer_id]() {
-                WebrtcImpl::DispatchPeerDrain(callback_guard, peer_id);
-            },
-            &timer_id);
-        if (timer_status != event::EventStatus::kOk || timer_id == 0) {
-            ClosePeerSubscription(peer_id, SubscriptionClose::kUnsubscribed);
-            return;
-        }
-
-        bool keep_timer = false;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = peer_subscriptions_.find(peer_id);
-            if (phase_ == WebrtcPhase::kStarted &&
-                iter != peer_subscriptions_.end() &&
-                !iter->second.closing &&
-                iter->second.drain_timer_id == 0) {
-                iter->second.drain_timer_id = timer_id;
-                keep_timer = true;
-            }
-        }
-        if (!keep_timer) {
-            (void)net_loop_->CancelTimer(timer_id);
-        }
-    }
-
-    void DrainPeerFrames(const std::string &peer_id) {
-        if (!BeginPeerDrain(peer_id)) {
-            return;
-        }
-        uint32_t sent_frames = 0;
-        if (!FlushPeerStartFrames(peer_id, &sent_frames)) {
-            EndPeerDrain(peer_id);
-            return;
-        }
-
-        FrameSubscriptionId subscription_id = 0;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            auto iter = peer_subscriptions_.find(peer_id);
-            if (phase_ == WebrtcPhase::kStarted &&
-                iter != peer_subscriptions_.end() &&
-                !iter->second.closing) {
-                subscription_id = iter->second.subscription_id;
-            }
-        }
-        if (subscription_id == 0) {
-            EndPeerDrain(peer_id);
-            return;
-        }
-
-        while (sent_frames < kWebrtcMaxFramesPerDrain) {
-            SubscriptionFrame subscription_frame;
-            if (!media_streams_->PullFrame(subscription_id,
-                                           &subscription_frame)) {
-                break;
-            }
-            SendPeerMediaFrame(peer_id, subscription_frame.frame);
-            ++sent_frames;
-        }
-
-        const SubscriptionInfo subscription_info =
-            media_streams_->GetSubscriptionInfo(subscription_id);
-        if (subscription_info.open && subscription_info.slow) {
-            std::lock_guard<std::mutex> guard(mutex_);
-            ++stats_.dropped_frames;
-        }
-        EndPeerDrain(peer_id);
-    }
-
-    bool BeginPeerDrain(const std::string &peer_id) {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = peer_subscriptions_.find(peer_id);
-        if (phase_ != WebrtcPhase::kStarted ||
-            iter == peer_subscriptions_.end() || iter->second.draining ||
-            iter->second.closing) {
-            return false;
-        }
-        const WebrtcPeerInfo peer = peer_table_.GetPeer(peer_id);
-        if (peer.state != WebrtcPeerState::kConnected) {
-            return false;
-        }
-        iter->second.draining = true;
-        return true;
-    }
-
-    void EndPeerDrain(const std::string &peer_id) {
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = peer_subscriptions_.find(peer_id);
-        if (iter != peer_subscriptions_.end()) {
-            iter->second.draining = false;
-        }
-        subscription_condition_.notify_all();
-    }
-
-    bool FlushPeerStartFrames(const std::string &peer_id,
-                              uint32_t *sent_frames) {
-        if (sent_frames == nullptr) {
-            return false;
-        }
-        while (*sent_frames < kWebrtcMaxFramesPerDrain) {
-            MediaFrame frame;
-            bool has_frame = false;
-            {
-                std::lock_guard<std::mutex> guard(mutex_);
-                auto iter = peer_subscriptions_.find(peer_id);
-                if (phase_ != WebrtcPhase::kStarted ||
-                    iter == peer_subscriptions_.end() ||
-                    iter->second.closing) {
-                    return false;
-                }
-                if (!iter->second.start_frames.empty()) {
-                    frame = std::move(iter->second.start_frames.front());
-                    iter->second.start_frames.pop_front();
-                    has_frame = true;
-                }
-            }
-            if (!has_frame) {
-                return true;
-            }
-            SendPeerMediaFrame(peer_id, frame);
-            ++(*sent_frames);
-        }
-        std::lock_guard<std::mutex> guard(mutex_);
-        auto iter = peer_subscriptions_.find(peer_id);
-        return phase_ == WebrtcPhase::kStarted &&
-               iter != peer_subscriptions_.end() &&
-               !iter->second.closing &&
-               iter->second.start_frames.empty();
-    }
-
-    void SendPeerMediaFrame(const std::string &peer_id,
-                            const MediaFrame &frame) {
-        WebrtcPeerInfo peer;
-        std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            const auto subscription_iter = peer_subscriptions_.find(peer_id);
-            if (phase_ != WebrtcPhase::kStarted || peer_host_ == nullptr ||
-                subscription_iter == peer_subscriptions_.end() ||
-                subscription_iter->second.closing) {
-                ++stats_.dropped_frames;
-                return;
-            }
-            peer = peer_table_.GetPeer(peer_id);
-            if (peer.state != WebrtcPeerState::kConnected ||
-                frame.stream_id != peer.stream_id || frame.codec != peer.codec) {
-                ++stats_.dropped_frames;
-                return;
-            }
-            peer_host = peer_host_;
-        }
-
-        webrtc_internal::WebrtcRtpSenderContext context{
-            *peer_host, mutex_, stats_};
-        (void)rtp_sender_.SendFrame(peer, frame, context);
-    }
-
-    ClosingSubscription TakePeerSubscription(const std::string &peer_id) {
-        ClosingSubscription closing_subscription;
-        std::unique_lock<std::mutex> guard(mutex_);
-        auto iter = peer_subscriptions_.find(peer_id);
-        if (iter == peer_subscriptions_.end()) {
-            return closing_subscription;
-        }
-        iter->second.closing = true;
-        subscription_condition_.wait(guard, [this, &peer_id]() {
-            auto subscription_iter = peer_subscriptions_.find(peer_id);
-            return subscription_iter == peer_subscriptions_.end() ||
-                   !subscription_iter->second.draining;
-        });
-        return TakePeerSubscriptionLocked(peer_id);
-    }
-
-    ClosingSubscription TakePeerSubscriptionLocked(const std::string &peer_id) {
-        ClosingSubscription closing_subscription;
-        auto iter = peer_subscriptions_.find(peer_id);
-        if (iter == peer_subscriptions_.end()) {
-            return closing_subscription;
-        }
-        closing_subscription.subscription_id = iter->second.subscription_id;
-        closing_subscription.drain_timer_id = iter->second.drain_timer_id;
-        closing_subscription.start_frames.swap(iter->second.start_frames);
-        peer_subscriptions_.erase(iter);
-        rtp_sender_.RemovePeer(peer_id);
-        return closing_subscription;
-    }
-
-    void MarkSubscriptionsClosingLocked() {
-        for (auto &item : peer_subscriptions_) {
-            item.second.closing = true;
-        }
-    }
-
-    bool NoDrainingSubscriptionsLocked() const {
-        for (const auto &item : peer_subscriptions_) {
-            if (item.second.draining) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    std::vector<ClosingSubscription> TakeClosingSubscriptionsLocked() {
-        std::vector<ClosingSubscription> closing_subscriptions;
-        for (auto &item : peer_subscriptions_) {
-            ClosingSubscription closing_subscription;
-            closing_subscription.subscription_id =
-                item.second.subscription_id;
-            closing_subscription.drain_timer_id = item.second.drain_timer_id;
-            closing_subscription.start_frames.swap(item.second.start_frames);
-            closing_subscriptions.push_back(std::move(closing_subscription));
-        }
-        peer_subscriptions_.clear();
-        rtp_sender_.Clear();
-        return closing_subscriptions;
-    }
-
-    void ClosePeerSubscription(const std::string &peer_id,
-                               SubscriptionClose reason) {
-        ClosingSubscription closing_subscription =
-            TakePeerSubscription(peer_id);
-        ReleasePeerSubscription(closing_subscription, reason);
-    }
-
-    void ReleasePeerSubscriptions(
-        std::vector<ClosingSubscription> &closing_subscriptions,
-        SubscriptionClose reason) {
-        for (ClosingSubscription &closing_subscription :
-             closing_subscriptions) {
-            ReleasePeerSubscription(closing_subscription, reason);
-        }
-        closing_subscriptions.clear();
-    }
-
-    void ReleasePeerSubscription(ClosingSubscription &closing_subscription,
-                                 SubscriptionClose reason) {
-        if (closing_subscription.drain_timer_id != 0) {
-            (void)net_loop_->CancelTimer(
-                closing_subscription.drain_timer_id);
-        }
-        if (closing_subscription.subscription_id != 0) {
-            (void)media_streams_->UnsubscribeFrames(
-                closing_subscription.subscription_id, reason);
-        }
-        ClearMediaFrames(closing_subscription.start_frames);
-        closing_subscription.subscription_id = 0;
-        closing_subscription.drain_timer_id = 0;
-    }
-
-    void PublishPeerEvent(const WebrtcPeerInfo &peer,
-                          WebrtcPeerState next_state,
-                          const std::string &msg) {
-        if (event_ == nullptr || peer.peer_id.empty()) {
-            return;
-        }
-        event::Event webrtc_event;
-        webrtc_event.source = Webrtc::Name();
-        webrtc_event.target = peer.peer_id;
-        webrtc_event.msg = msg;
-        {
-            std::lock_guard<std::mutex> guard(mutex_);
-            webrtc_event.value =
-                static_cast<int32_t>(peer_table_.ActivePeers());
-        }
-        if (next_state == WebrtcPeerState::kConnected &&
-            peer.state != WebrtcPeerState::kConnected) {
-            webrtc_event.type = event::EventType::kWebRtcClientConnected;
-            static_cast<void>(event_->Publish(webrtc_event));
-            return;
-        }
-        if ((next_state == WebrtcPeerState::kClosing ||
-             next_state == WebrtcPeerState::kClosed ||
-             next_state == WebrtcPeerState::kFailed) &&
-            peer.state == WebrtcPeerState::kConnected) {
-            webrtc_event.type = event::EventType::kWebRtcClientDisconnected;
-            static_cast<void>(event_->Publish(webrtc_event));
-        }
-    }
-
-    static void ClearMediaFrames(std::deque<MediaFrame> &frames) {
-        frames.clear();
-    }
-
     WebrtcOptions options_;
     MediaStreams *media_streams_ = nullptr;
     ISocketIo *socket_io_ = nullptr;
     event::Loop *net_loop_ = nullptr;
     event::EventCenter *event_ = nullptr;
-    WebrtcPhase phase_ = WebrtcPhase::kCreated;
     std::shared_ptr<webrtc_internal::IWebrtcPeerHost> peer_host_;
     std::shared_ptr<WebrtcCallbackGuard> callback_guard_;
     mutable std::mutex mutex_;
-    std::condition_variable subscription_condition_;
     webrtc_internal::WebrtcPeerTable peer_table_;
-    std::map<std::string, PeerSubscription> peer_subscriptions_;
-    webrtc_internal::WebrtcRtpSender rtp_sender_;
     WebrtcStats stats_{};
+    WebrtcPeerVideoSender peer_video_sender_;
+    WebrtcPeerEvent peer_event_;
+    WebrtcPhase phase_ = WebrtcPhase::kCreated;
 };
 
 std::unique_ptr<IWebrtc>
