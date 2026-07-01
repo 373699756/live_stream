@@ -91,9 +91,10 @@ npm run build
   等整个项目功能完成后再统一处理，除非任务明确要求。
 - 不随意修改 public API、配置 JSON schema 或 HTTP API 契约，除非任务明确要求。
 - 配置文件中的字段语义应保持向后兼容；确需变更时，要同步更新调用方和文档。
-- `*Dependencies` struct 只作为组合根构造注入 DTO，不作为实现类长期保存的依赖包；
-  实现类应解包为语义明确的非 owning 成员指针。业务 service、net、media、auth
-  不做全局单例或 ServiceLocator。
+- 重构方向是逐步删除 `*Dependencies` DTO：基础服务通过 `Runtime` 安装和查询，
+  直播源通过 `MediaSourceRegistry` 查询，协议只读状态通过 `ServiceRegistry` 查询。
+  `Runtime` 只放 logger/config/auth/event/net_io 这类基础服务，registry 不允许暴露
+  跨模块业务控制能力。
 
 ## 前端约定
 
@@ -165,8 +166,9 @@ npm run build
 
 - 一轮任务只碰一个主模块，最多带一个相邻接口模块；不要把 bugfix、rename、cleanup、
   refactor 混在一起。
-- `*Dependencies` 只能作为组合根注入 DTO。实现类收到后要解包为语义明确的非 owning
-  成员指针，不把上帝依赖包长期保存进业务对象。
+- 不新增新的 `*Dependencies` DTO 或变相依赖包。迁移旧依赖时按 `Runtime`、
+  `MediaSourceRegistry`、`ServiceRegistry` 三条路径收敛，不用 Context、Bundle、
+  Sources 之类名字重新包装一遍。
 - HTTP/Web API 表达产品能力，不暴露内部模块结构。URL 生成、协议状态、错误 envelope
   由后端统一提供，Web 不拼设备 SDK 或协议内部细节。
 - 配置保存成功必须表示配置已通过拥有模块 verify/apply；不能只表示 JSON 写入成功。

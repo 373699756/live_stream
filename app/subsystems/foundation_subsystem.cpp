@@ -1,6 +1,7 @@
 #include "subsystems/foundation_subsystem.h"
 
 #include "infra/log.h"
+#include "runtime.h"
 
 #include <cstdint>
 #include <string>
@@ -140,12 +141,21 @@ bool FoundationSubsystem::Start(const StartupPaths& paths) {
         Stop();
         return false;
     }
+    if (!Runtime::InstallLogger(logger_.get()) ||
+        !Runtime::InstallConfig(config_.get()) ||
+        !Runtime::InstallEvent(event_->dispatcher()) ||
+        !Runtime::InstallAuth(auth_.get())) {
+        Error("app", "Install runtime foundation services failed");
+        Stop();
+        return false;
+    }
 
     started_ = true;
     return true;
 }
 
 void FoundationSubsystem::Stop() {
+    Runtime::Clear();
     if (auth_) {
         auth_->Stop();
         auth_.reset();

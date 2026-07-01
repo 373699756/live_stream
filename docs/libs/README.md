@@ -5,8 +5,9 @@ HTTP API、配置 scope、事件 payload、AI、升级、质量优化等内容�
 
 ## Cross-Module Rules
 
-- `app/` 是组合根。模块之间通过窄接口、Options、Dependencies 或构造参数协作，
-  不通过全局单例互相发现。
+- `app/` 是组合根。重构期逐步从 `*Dependencies` DTO 收敛到 `runtime` 提供的
+  进程级基础服务入口和只读 registry；registry 只暴露基础服务、直播源或只读状态，
+  不作为跨模块业务控制入口。
 - 状态由最接近真实资源的模块拥有；上层只消费状态，不重复推导。
 - 查询 API 返回具体业务类型；动作型 C++ 函数返回 `bool`。
 - 不新增音频、录像、存储回放、录制 UI/API。
@@ -34,6 +35,7 @@ header、接口类、工厂函数、变量名和构建库名不得各自发明�
 ### Foundation And Infrastructure
 
 - `infra.md`
+- `runtime.md`
 - `auth.md`
 - `event.md`
 

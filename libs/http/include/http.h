@@ -120,7 +120,15 @@ public:
     virtual void RegisterRoutes(IHttpRouter &router) = 0;
 };
 
-class IHttp {
+class IHttpStreamSessionReader {
+public:
+    virtual ~IHttpStreamSessionReader() = default;
+
+    virtual std::vector<HttpStreamSessionInfo>
+    ListStreamSessionInfo() const = 0;
+};
+
+class IHttp : public IHttpStreamSessionReader {
 public:
     virtual ~IHttp() = default;
 
@@ -130,7 +138,7 @@ public:
     virtual HttpListenAddress LocalAddress() const = 0;
     virtual HttpStats GetStats() const = 0;
     virtual std::vector<HttpStreamSessionInfo>
-    ListStreamSessionInfo() const = 0;
+    ListStreamSessionInfo() const override = 0;
 };
 
 std::unique_ptr<IHttp> CreateHttp(

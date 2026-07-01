@@ -2,6 +2,8 @@
 
 #include "http_dependencies.h"
 #include "infra/log.h"
+#include "runtime.h"
+#include "service_registry.h"
 #include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 #include "subsystems/media_subsystem.h"
@@ -68,6 +70,11 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         Stop();
         return false;
     }
+    if (!Runtime::InstallNetIo(net_io_.get())) {
+        Error("app", "Install runtime net io failed");
+        Stop();
+        return false;
+    }
     refs.net_io = net_io_.get();
     refs.rtsp_loop = RequireNetLoop(refs.net_io, "rtsp");
     refs.webrtc_loop = RequireNetLoop(refs.net_io, "webrtc");
@@ -98,6 +105,11 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         refs.rtsp = nullptr;
     } else {
         refs.rtsp = rtsp_.get();
+        if (!ServiceRegistry::RegisterRtsp(rtsp_.get())) {
+            Error("app", "Register RTSP readonly service failed");
+            Stop();
+            return false;
+        }
         const RtspListenAddress rtsp_address = rtsp_->LocalAddress();
         Info("app", "RTSP listening %s:%u",
              rtsp_address.ip.c_str(),
@@ -123,6 +135,11 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         refs.webrtc = nullptr;
     } else {
         refs.webrtc = webrtc_.get();
+        if (!ServiceRegistry::RegisterWebrtc(webrtc_.get())) {
+            Error("app", "Register WebRTC readonly service failed");
+            Stop();
+            return false;
+        }
     }
 
     const OnvifServerOptions onvif_options = BuildOnvifOptions(app_config);
@@ -141,6 +158,11 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         refs.onvif = nullptr;
     } else {
         refs.onvif = onvif_.get();
+        if (!ServiceRegistry::RegisterOnvif(onvif_.get())) {
+            Error("app", "Register ONVIF readonly service failed");
+            Stop();
+            return false;
+        }
         Info("app", "ONVIF started listen=%s:%u discovery=%u",
              app_config.listen_ip.c_str(),
              static_cast<unsigned>(app_config.onvif_device_port),
@@ -160,6 +182,11 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         return false;
     }
     const HttpListenAddress http_address = http_->LocalAddress();
+    if (!ServiceRegistry::RegisterHttp(http_.get())) {
+        Error("app", "Register HTTP readonly service failed");
+        Stop();
+        return false;
+    }
     Info("app", "HTTP listening %s:%u root=%s",
          http_address.ip.c_str(),
          static_cast<unsigned>(http_address.port),
@@ -192,6 +219,10 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
 
 void ProtocolSubsystem::Stop() {
     RemoveConfigUpdateScopes();
+    ServiceRegistry::UnregisterHttp(http_.get());
+    ServiceRegistry::UnregisterOnvif(onvif_.get());
+    ServiceRegistry::UnregisterWebrtc(webrtc_.get());
+    ServiceRegistry::UnregisterRtsp(rtsp_.get());
     if (net_stat_) {
         net_stat_->Stop();
     }
@@ -209,6 +240,7 @@ void ProtocolSubsystem::Stop() {
     }
     if (net_io_) {
         net_io_->Stop();
+        Runtime::ClearNetIo(net_io_.get());
         net_io_.reset();
     }
     if (net_callback_loop_) {
@@ -219,6 +251,7 @@ void ProtocolSubsystem::Stop() {
     onvif_.reset();
     webrtc_.reset();
     rtsp_.reset();
+    ServiceRegistry::Clear();
     started_ = false;
 }
 

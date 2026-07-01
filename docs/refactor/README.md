@@ -54,6 +54,9 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - `http` 聚合控制和只读状态，但不能绕过拥有模块修改内部状态。
 - AI 每次抓帧从 `DeviceMedia` 查询当前 channel；设备未 started 或正在重建时跳过。
 - Web 状态来自后端明确字段，不重新推导设备 SDK 状态。
+- `*Dependencies` DTO 逐步删除：基础服务通过 `Runtime`，直播源通过
+  `MediaSourceRegistry`，协议只读状态通过 `ServiceRegistry`。registry 只能暴露
+  基础服务、媒体订阅边界或只读诊断视图，不允许变成跨模块业务控制入口。
 
 ## 3. 当前基线
 
@@ -70,7 +73,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 仍需处理：
 
-- `HttpDependencies`、`SystemOverviewSources` 等依赖包仍偏宽。
+- `HttpDependencies`、`SystemOverviewSources` 等依赖包仍偏宽；`runtime` 模块已提供
+  `Runtime` 和 `ServiceRegistry` 作为删除依赖包的承接点。
 - HTTP router/handler 仍存在静态 thunk + `void* user` 的低层风格。
 - `media` 资源预算和锁边界还不够显式。
 - `app` 仍有全局单例式入口和硬编码生命周期。
@@ -165,7 +169,8 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 
 任务：
 
-- 继续拆 `HttpDependencies`，在组合期解包成控制、媒体、streaming 三类依赖。
+- 删除 `HttpDependencies`，基础服务改从 `Runtime` 获取，协议会话诊断改从
+  `ServiceRegistry` 获取，媒体播放入口后续改从 `MediaSourceRegistry` 获取。
 - 将 `SystemOverviewSources` 收敛为系统概览专用只读视图。
 - 减少业务 handler 直接暴露静态 thunk + `void* user`。
 - HTTP 对 RTSP/WebRTC/ONVIF 的依赖收敛为只读诊断/会话视图接口。
