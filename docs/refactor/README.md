@@ -195,6 +195,10 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
   transport、发送失败和服务停止都会 detach subscription/timer/UDP；WebRTC connected
   后创建 keyframe-first subscription，关闭、失败、setup timeout、禁用和 stop 都释放
   subscription，并在新 peer 或恢复请求时重新请求关键帧。当前不需要为该路径强行改实现。
+- media 缓存上限和慢客户端回落已核查：GOP start cache、共享 live frame、FLV GOP
+  cache、HLS segment/cache、FLV/MJPEG client 和 frame subscription 都有显式上限；
+  慢 subscription 只影响自身并等待下一关键帧恢复，FLV/MJPEG sink 失败会 detach，
+  Stop/reset 会清空 clients、subscriptions 和 tracks。当前不需要为该路径强行改实现。
 
 验收：多客户端同拉时内存可解释；频繁连接断开后 RSS、fd、client、subscription、cache 回落。
 
