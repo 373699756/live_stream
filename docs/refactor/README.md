@@ -106,9 +106,10 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - MPP bring-up 仍以海思 sample 顺序为真相来源。`my_video` 的 SYS/VB、VI/ISP、
   VPSS、VI->VPSS、VENC、取流线程路径可作为板端排障检查表，但不能把 sample 控制流
   直接暴露给 Web/API。
-- 启动失败和停止必须按资源创建反序回滚。原型项目里 media、RTSP、HTTP 的顺序启动、
-  反序停止适合作为组合根基线；`live_stream` 要进一步做到中途失败按已启动项逐项回滚，
-  `Stop()` 可重复调用。
+- 启停和失败路径必须按资源所有权清理。原型项目里 media、RTSP、HTTP 的顺序启动、
+  反序停止适合作为组合根基线；`live_stream` 要进一步做到中途失败只清理已创建资源，
+  `Stop()` 可重复调用。配置路径例外：`save` 失败只返回失败并保留已 `apply`
+  的运行态，不再回滚到旧配置。
 - 配置保存语义必须是 verify/apply/save，而不是只写 JSON。`my_video` 的配置回调方向
   正确，但全局 `ConfigManager` 和回调散落会放大耦合；本项目按拥有模块校验和应用，
   再由 HTTP/Web 展示明确错误。
@@ -190,6 +191,10 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - `FrameRing`、`GopCache`、`HlsMaker`、`PreviewClients` 从硬编码常量迁到预算参数。
 - 继续收窄主/子码流、HLS、FLV、MJPEG、订阅统计的锁边界。
 - 慢客户端触顶后主动断开，保证 reader/client/subscription/cache 计数回落。
+- RTSP/WebRTC 断开重连路径已核查：RTSP 控制连接断开、TEARDOWN、SETUP 切换
+  transport、发送失败和服务停止都会 detach subscription/timer/UDP；WebRTC connected
+  后创建 keyframe-first subscription，关闭、失败、setup timeout、禁用和 stop 都释放
+  subscription，并在新 peer 或恢复请求时重新请求关键帧。当前不需要为该路径强行改实现。
 
 验收：多客户端同拉时内存可解释；频繁连接断开后 RSS、fd、client、subscription、cache 回落。
 
