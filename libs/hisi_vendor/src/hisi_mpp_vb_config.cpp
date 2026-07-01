@@ -1,8 +1,8 @@
 #include "hisi_mpp_vb_config.h"
 
-#include "hisi_mpp_resource_recovery.h"
 #include "hisi_mpp_sensor.h"
 #include "hisi_mpp_sdk.h"
+#include "hisi_mpp_system_cleanup.h"
 
 #include "infra/log.h"
 
@@ -59,9 +59,9 @@ void MarkCleanupFailure(bool* cleanup_failed) {
 }
 
 bool CleanupConfiguredFrameBuffer(bool* cleanup_failed) {
-    if (mpp_resource_recovery::ExitMppSystem(
-            true, mpp_resource_recovery::kMppExitRetryLimit,
-            mpp_resource_recovery::MppExitBusyLog::kWarn)) {
+    if (mpp_system_cleanup::ExitMppSystem(
+            true, mpp_system_cleanup::kMppExitRetryLimit,
+            mpp_system_cleanup::MppExitBusyLog::kWarn)) {
         return true;
     }
     MarkCleanupFailure(cleanup_failed);
@@ -95,19 +95,19 @@ bool ConfigureFrameBuffer(const MediaPipelineConfig& config,
     }
     const VB_CONFIG_S vb_conf = BuildFrameBufferConfig(config);
 
-    (void)mpp_resource_recovery::ExitMppSystem(
-        false, 1, mpp_resource_recovery::MppExitBusyLog::kSilent);
+    (void)mpp_system_cleanup::ExitMppSystem(
+        false, 1, mpp_system_cleanup::MppExitBusyLog::kSilent);
 
     HI_S32 status = HI_MPI_VB_SetConfig(&vb_conf);
     if (status == HI_ERR_VB_BUSY) {
         Info("hisi_vendor",
              "HISI VB is busy before configuration, trying recovery");
-        mpp_resource_recovery::ForceCleanupPipelineResources(config, false);
-        if (!mpp_resource_recovery::ExitMppSystem(
-                true, mpp_resource_recovery::kMppExitRetryLimit,
-                mpp_resource_recovery::MppExitBusyLog::kInfo)) {
+        mpp_system_cleanup::ForceCleanupPipelineChannels(config, false);
+        if (!mpp_system_cleanup::ExitMppSystem(
+                true, mpp_system_cleanup::kMppExitRetryLimit,
+                mpp_system_cleanup::MppExitBusyLog::kInfo)) {
             Error("hisi_vendor",
-                  "HISI MPP resource recovery failed before VB_SetConfig");
+                  "HISI MPP cleanup failed before VB_SetConfig");
             MarkCleanupFailure(cleanup_failed);
             return false;
         }

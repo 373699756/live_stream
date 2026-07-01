@@ -1,6 +1,6 @@
 #include "hisi_vendor/mpp_sdk.h"
-#include "hisi_mpp_resource_recovery.h"
 #include "hisi_mpp_sdk.h"
+#include "hisi_mpp_system_cleanup.h"
 #include "hisi_mpp_vb_config.h"
 #include "mpp_hisi_sdk_impl.h"
 
@@ -63,13 +63,13 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
               version_status);
         return false;
     }
-    bool resource_recovery_failed = false;
+    bool mpp_cleanup_failed = false;
     if (!mpp_vb_config::ConfigureFrameBuffer(
-            config, &resource_recovery_failed)) {
-        if (resource_recovery_failed) {
+            config, &mpp_cleanup_failed)) {
+        if (mpp_cleanup_failed) {
             impl_->system_cleanup_failed_ = true;
             Error("hisi_vendor",
-                  "ConfigureFrameBuffer failed after HISI MPP recovery");
+                  "ConfigureFrameBuffer failed after HISI MPP cleanup");
         } else {
             Error("hisi_vendor", "ConfigureFrameBuffer failed");
         }
@@ -78,9 +78,9 @@ bool MppHisiSdk::InitSystem(const MediaPipelineConfig& config) {
 
     if (!ConfigureViVpssMode(config)) {
         Error("hisi_vendor", "ConfigureViVpssMode failed");
-        if (!mpp_resource_recovery::ExitMppSystem(
-                true, mpp_resource_recovery::kMppExitRetryLimit,
-                mpp_resource_recovery::MppExitBusyLog::kWarn)) {
+        if (!mpp_system_cleanup::ExitMppSystem(
+                true, mpp_system_cleanup::kMppExitRetryLimit,
+                mpp_system_cleanup::MppExitBusyLog::kWarn)) {
             impl_->system_cleanup_failed_ = true;
         }
         return false;
@@ -111,14 +111,14 @@ bool MppHisiSdk::DeinitSystem() {
     StopVpssGroup(*impl_, config);
     StopViInput(*impl_, config);
 
-    bool cleanup_ok = mpp_resource_recovery::ExitMppSystem(
-        true, mpp_resource_recovery::kMppExitRetryLimit,
-        mpp_resource_recovery::MppExitBusyLog::kWarn);
+    bool cleanup_ok = mpp_system_cleanup::ExitMppSystem(
+        true, mpp_system_cleanup::kMppExitRetryLimit,
+        mpp_system_cleanup::MppExitBusyLog::kWarn);
     if (!cleanup_ok) {
-        mpp_resource_recovery::ForceCleanupPipelineResources(config, true);
-        cleanup_ok = mpp_resource_recovery::ExitMppSystem(
-            true, mpp_resource_recovery::kMppExitRetryLimit,
-            mpp_resource_recovery::MppExitBusyLog::kWarn);
+        mpp_system_cleanup::ForceCleanupPipelineChannels(config, true);
+        cleanup_ok = mpp_system_cleanup::ExitMppSystem(
+            true, mpp_system_cleanup::kMppExitRetryLimit,
+            mpp_system_cleanup::MppExitBusyLog::kWarn);
     }
     if (!cleanup_ok) {
         Error("hisi_vendor",

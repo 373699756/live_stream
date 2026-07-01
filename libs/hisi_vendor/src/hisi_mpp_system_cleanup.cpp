@@ -1,4 +1,4 @@
-#include "hisi_mpp_resource_recovery.h"
+#include "hisi_mpp_system_cleanup.h"
 
 #include <unistd.h>
 
@@ -8,7 +8,7 @@
 
 namespace live_stream {
 namespace hisisdk {
-namespace mpp_resource_recovery {
+namespace mpp_system_cleanup {
 namespace {
 
 constexpr useconds_t kMppExitRetryDelayUs = 100 * 1000;
@@ -140,8 +140,8 @@ bool ExitMppSystem(bool log_errors, int retry_limit,
     return false;
 }
 
-void ForceCleanupPipelineResources(const MediaPipelineConfig& config,
-                                   bool warn) {
+void ForceCleanupPipelineChannels(const MediaPipelineConfig& config,
+                                  bool warn) {
     if (warn) {
         Warn("hisi_vendor",
              "stale HISI MPP resources detected, force cleanup known channels");
@@ -202,6 +202,6 @@ void ForceCleanupPipelineResources(const MediaPipelineConfig& config,
     usleep(kMppExitRetryDelayUs);
 }
 
-}  // namespace mpp_resource_recovery
+}  // namespace mpp_system_cleanup
 }  // namespace hisisdk
 }  // namespace live_stream
