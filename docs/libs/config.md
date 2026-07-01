@@ -74,8 +74,9 @@ loop 或连接上限的字段在运行时直接拒绝保存并要求重启，不
 
 运行配置来自 `configs/default_config.json` 和 `configs/business_config.json`，认证用户
 来自 `configs/auth_users.json`。`Set` 成功必须代表 verify、apply 和保存都成功；
-失败时调用方不能把 Web 保存状态当作硬件运行态。配置服务不缓存 SDK 句柄，也不直接
-启动或停止业务资源。
+保存失败时返回 `ConfigCode::kSave`，已经 apply 的运行态不回滚，内存配置保持新值并
+继续标记为 dirty。失败时调用方不能把 Web 保存状态当作已持久化配置。配置服务不缓存
+SDK 句柄，也不直接启动或停止业务资源。
 
 ## 风险与优化方向
 

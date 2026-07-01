@@ -314,8 +314,6 @@ private:
         ConfigScope config_scope;
         bool has_config_scope = false;
         Json prev;
-        bool previous_changed = false;
-        bool had_prev = false;
         {
             std::lock_guard<std::mutex> g(mutex_);
             if (!initialized_ || !started_) {
@@ -333,11 +331,9 @@ private:
             }
             if (current_it != current_.end()) {
                 prev = current_it.value();
-                had_prev = true;
             } else if (default_it != defaults_.end()) {
                 prev = default_it.value();
             }
-            previous_changed = changed_;
             auto scope_it = scopes_.find(scope);
             if (scope_it != scopes_.end()) {
                 config_scope = scope_it->second;
@@ -368,19 +364,6 @@ private:
         if (SaveCurrentFile()) {
             return ConfigCode::kOk;
         }
-
-        ConfigError rollback_error;
-        if (has_config_scope && config_scope.apply) {
-            (void)config_scope.apply(now, prev, &rollback_error);
-        }
-
-        std::lock_guard<std::mutex> g(mutex_);
-        if (had_prev) {
-            current_[scope] = prev;
-        } else {
-            current_.erase(scope);
-        }
-        changed_ = previous_changed;
         return Reject(ConfigCode::kSave, scope, "",
                       "save config file failed", error);
     }

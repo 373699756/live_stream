@@ -104,8 +104,9 @@ handler 必须轻量。需要耗时业务时，handler 应投递到自己的任�
 `EventStats` 使用 `published`、`handled`、`rejected` 和 `subscriptions` 描述事件库负载。
 
 运行配置来自 `configs/default_config.json` 和 `configs/business_config.json`。
-`IConfig::Set` 成功必须代表 verify、apply 和保存都成功；保存失败会调用
-`apply(now, prev)` 回滚运行态，并恢复内存中的旧值。
+`IConfig::Set` 成功必须代表 verify、apply 和保存都成功。保存失败时返回
+`ConfigCode::kSave`；已经 apply 的运行态不回滚，内存配置保持新值并继续标记为 dirty，
+后续停止或下一次保存可重试落盘。
 
 告警状态是轻量内存状态，不是录像索引或长期存储。AI 启用时只注入
 `AlarmSource::kAiDetection`，不启用录像、回放或长期保存。AI 告警规则未启用时，
