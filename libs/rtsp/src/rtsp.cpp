@@ -5,13 +5,14 @@
 #include "infra/time.h"
 #include "media/media_source_registry.h"
 #include "media/media_streams.h"
-#include "rtp.h"
 #include "socket_io.h"
 #include "rtsp_auth.h"
 #include "rtsp_protocol.h"
 #include "rtsp_request_handler.h"
-#include "rtsp_rtp_sender.h"
+#include "rtsp_session_close.h"
+#include "rtsp_session_event.h"
 #include "rtsp_session_table.h"
+#include "rtsp_session_video_sender.h"
 #include "runtime.h"
 
 #include <iomanip>
@@ -25,8 +26,6 @@ namespace live_stream {
 namespace {
 
 constexpr const char* kProtocolName = "rtsp";
-constexpr uint32_t kRtspDrainIntervalMs = 10;
-constexpr uint32_t kRtspMaxFramesPerDrain = 8;
 enum class RtspPhase {
     kCreated = 0,
     kInitialized,
@@ -47,15 +46,6 @@ std::string Hex32(uint32_t value) {
     output << std::hex << std::nouppercase << std::setw(8)
            << std::setfill('0') << value;
     return output.str();
-}
-
-uint32_t FirstStartFrameRtpTimestamp(
-    const SubscriptionStart& start_data) {
-    if (start_data.gop_frames.empty()) {
-        return 0;
-    }
-    return rtp::RtpTimestampFromPtsUs(
-        start_data.gop_frames.front().pts_us);
 }
 
 }  // namespace
@@ -83,7 +73,10 @@ public:
           auth_(Runtime::Auth()),
           event_(Runtime::EventCenter()),
           media_streams_(MediaSourceRegistry::Streams()),
-          rtp_sender_(options_.rtp_mtu_bytes),
+          session_video_sender_(media_streams_, net_loop_, socket_io_,
+                                &mutex_, &stats_, options_.rtp_mtu_bytes),
+          session_close_(socket_io_, &mutex_, &session_video_sender_),
+          session_event_(event_, &mutex_, &session_table_, kProtocolName),
           rtsp_auth_(auth_, *this),
           request_handler_(*this) {}
 
@@ -187,7 +180,8 @@ private:
         // 停服务时先停 listener，再关闭每个 session 的 subscription/timer/UDP socket，
         // 最后关闭 TCP 控制连接，防止 media_streams 继续给已关闭 transport 推帧。
         for (const auto& session : sessions) {
-            CloseSessionResources(*session, SubscriptionClose::kStreamStopped);
+            session_close_.CloseSessionResources(
+                *session, SubscriptionClose::kStreamStopped);
         }
         for (ConnectionId connection_id : connection_ids) {
             (void)socket_io_->Close(connection_id);
@@ -377,8 +371,8 @@ private:
              static_cast<unsigned long long>(connection_id),
              session->peer.ip.c_str(),
              static_cast<unsigned>(session->peer.port));
-        PublishEvent(event::EventType::kRtspClientConnected,
-                     session->peer.ip);
+        session_event_.Publish(event::EventType::kRtspClientConnected,
+                               session->peer.ip);
     }
 
     void OnConnectionClosed(ConnectionId id, TcpCloseReason reason) {
@@ -394,7 +388,8 @@ private:
             std::lock_guard<std::mutex> lock(mutex_);
             session->MarkCloseReason(reason);
         }
-        CloseSessionResources(*session, SubscriptionClose::kUnsubscribed);
+        session_close_.CloseSessionResources(
+            *session, SubscriptionClose::kUnsubscribed);
         Info("rtsp",
              "RTSP client disconnected conn=%llu reason=%d "
              "peer=%s:%u",
@@ -402,8 +397,8 @@ private:
              static_cast<int>(reason),
              session->peer.ip.c_str(),
              static_cast<unsigned>(session->peer.port));
-        PublishEvent(event::EventType::kRtspClientDisconnected,
-                     session->peer.ip);
+        session_event_.Publish(event::EventType::kRtspClientDisconnected,
+                               session->peer.ip);
     }
 
     void OnUdpPacket(UdpSocketId socket_id,
@@ -531,8 +526,9 @@ private:
         if (ContainsNoCase(transport, "RTP/AVP/TCP") ||
             ContainsNoCase(transport, "interleaved")) {
             // 重新 SETUP 会切换 transport，必须先清掉旧 subscription 和 UDP socket，
-            // 否则旧 transport 仍可能收到 drain timer 推送。
-            CloseSessionResources(session, SubscriptionClose::kUnsubscribed);
+            // 否则旧 transport 仍可能收到发送 timer 推送。
+            session_close_.CloseSessionResources(
+                session, SubscriptionClose::kUnsubscribed);
             session.SetupTcp(stream_id, 0);
             response_transport =
                 "RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=" +
@@ -550,7 +546,8 @@ private:
             }
             // UDP 每个 session 独立绑定本地 RTP/RTCP 端口，响应里的 server_port
             // 必须来自实际 bind 结果，不能用配置端口推导。
-            CloseSessionResources(session, SubscriptionClose::kUnsubscribed);
+            session_close_.CloseSessionResources(
+                session, SubscriptionClose::kUnsubscribed);
             UdpSocketId rtp_socket_id = 0;
             UdpSocketId rtcp_socket_id = 0;
             SocketAddress server_rtp;
@@ -674,43 +671,12 @@ private:
         if (!media_streams_->IsStreamAvailable(session.stream_id)) {
             return 404;
         }
-        CloseSubscription(session, SubscriptionClose::kUnsubscribed);
-        // PLAY 才创建长期 subscription，keyframe_first 让媒体链路优先给关键帧，
-        // 并把当前 GOP 作为 start frames 返回给本 session。
-        SubscriptionOptions subscription_options;
-        subscription_options.stream_id = session.stream_id;
-        subscription_options.keyframe_first = true;
-        const FrameSubscriptionId subscription_id =
-            media_streams_->SubscribeFrames(subscription_options);
-        if (subscription_id == 0) {
-            return 455;
-        }
-        SubscriptionStart start_data =
-            media_streams_->GetSubscriptionStart(subscription_id);
-        if (!start_data.stream_info.track_ready) {
-            // subscription 创建成功但启动数据不可用，必须立刻 unsubscribe，
-            // 避免空 subscription 长期占用 media_streams。
-            media_streams_->UnsubscribeFrames(
-                subscription_id, SubscriptionClose::kUnsubscribed);
-            return 455;
-        }
-        const uint32_t play_rtp_timestamp =
-            FirstStartFrameRtpTimestamp(start_data);
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            session.StartPlaying();
-            session.SetSubscription(subscription_id,
-                                    start_data.generation,
-                                    start_data.stream_info);
-            session.SetPlayRtpTimestamp(play_rtp_timestamp);
-            session.SetStartFrames(&start_data.gop_frames);
-        }
-        return 200;
+        return session_video_sender_.StartMediaStream(session);
     }
 
     void ArmRtspMediaStream(
         const std::shared_ptr<RtspSession>& session) override {
-        ArmSessionDrainTimer(session);
+        session_video_sender_.ArmMediaStream(session);
     }
 
     void CloseRtspConnectionAfterSend(ConnectionId connection_id) override {
@@ -720,7 +686,8 @@ private:
             session = session_table_.Find(connection_id);
         }
         if (session != nullptr) {
-            CloseSessionResources(*session, SubscriptionClose::kUnsubscribed);
+            session_close_.CloseSessionResources(
+                *session, SubscriptionClose::kUnsubscribed);
         }
         (void)socket_io_->CloseAfterSend(connection_id);
     }
@@ -729,189 +696,23 @@ private:
         return local_address_;
     }
 
-    void PublishEvent(event::EventType type, const std::string& target) {
-        if (event_ == nullptr) {
-            return;
-        }
-        size_t active_sessions = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            active_sessions = session_table_.Size();
-        }
-        event::Event rtsp_event;
-        rtsp_event.type = type;
-        rtsp_event.source = kProtocolName;
-        rtsp_event.target = target;
-        rtsp_event.value = static_cast<int32_t>(active_sessions);
-        (void)event_->Publish(rtsp_event);
-    }
-
-    void ArmSessionDrainTimer(const std::shared_ptr<RtspSession>& session) {
-        // drain timer 运行在 socket_io loop 上，周期性从 media_streams subscription 拉帧；
-        // 每次 drain 有帧数上限，避免单个 RTSP 客户端长期占住 IO 线程。
-        event::TimerId timer_id = 0;
-        const event::EventStatus timer_status = net_loop_->RunEvery(
-            kRtspDrainIntervalMs, [this, session]() {
-                DrainSessionFrames(session);
-            },
-            &timer_id);
-        if (timer_status != event::EventStatus::kOk || timer_id == 0) {
-            FrameSubscriptionId subscription_id = 0;
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                subscription_id = session->subscription_id;
-                session->ClearSubscription();
-            }
-            // timer 创建失败时不能继续保留 subscription，否则没有 drain 消费帧队列。
-            (void)media_streams_->UnsubscribeFrames(
-                subscription_id, SubscriptionClose::kUnsubscribed);
-            return;
-        }
-        std::lock_guard<std::mutex> lock(mutex_);
-        session->SetDrainTimer(timer_id);
-    }
-
-    void DrainSessionFrames(const std::shared_ptr<RtspSession>& session) {
-        uint32_t sent_frames = 0;
-        if (!FlushSessionStartFrames(session, &sent_frames)) {
-            return;
-        }
-        FrameSubscriptionId subscription_id = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (session->state != RtspSessionState::kPlaying ||
-                !session->IsSubscribed()) {
-                return;
-            }
-            subscription_id = session->subscription_id;
-        }
-        while (sent_frames < kRtspMaxFramesPerDrain) {
-            SubscriptionFrame subscribed_frame;
-            if (!media_streams_->PullFrame(subscription_id,
-                                           &subscribed_frame)) {
-                break;
-            }
-            // Pull 出来的 frame 带引用，发送路径只在本次调用内使用。
-            SendMediaFrame(session, subscribed_frame.frame);
-            ++sent_frames;
-        }
-    }
-
-    bool FlushSessionStartFrames(const std::shared_ptr<RtspSession>& session,
-                                 uint32_t *sent_frames) {
-        if (sent_frames == nullptr) {
-            return false;
-        }
-        while (*sent_frames < kRtspMaxFramesPerDrain) {
-            MediaFrame frame;
-            bool has_frame = false;
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                if (session->state != RtspSessionState::kPlaying) {
-                    return false;
-                }
-                if (!session->start_frames.empty()) {
-                    // Move 后锁外发送可以缩短 RTSP mutex
-                    // 持有时间，避免发送慢客户端时阻塞其它控制请求。
-                    frame = std::move(session->start_frames.front());
-                    session->start_frames.pop_front();
-                    has_frame = true;
-                }
-            }
-            if (!has_frame) {
-                return true;
-            }
-            SendMediaFrame(session, frame);
-            ++(*sent_frames);
-        }
-        std::lock_guard<std::mutex> lock(mutex_);
-        return session->state == RtspSessionState::kPlaying &&
-               session->start_frames.empty();
-    }
-
-    void SendMediaFrame(const std::shared_ptr<RtspSession>& session,
-                        const MediaFrame& frame) {
-        bool should_send = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            should_send = session->state == RtspSessionState::kPlaying &&
-                          session->IsSubscribed() &&
-                          frame.stream_id == session->stream_id &&
-                          frame.codec == session->stream_info.codec;
-        }
-        if (should_send) {
-            // SendFrame 内部会再次读取 transport 和统计字段；这里先过滤 stream/codec，
-            // 防止旧 subscription 或错误码流的数据进入当前 session。
-            rtp_sender_.SendFrame(*session, frame,
-                                  RtpSenderContext());
-        }
-    }
-
-    void CloseSessionResources(RtspSession& session, SubscriptionClose reason) {
-        CloseSubscription(session, reason);
-        CloseSessionUdp(session);
-    }
-
-    void CloseSessionUdp(RtspSession& session) {
-        UdpSocketId rtp_socket_id = 0;
-        UdpSocketId rtcp_socket_id = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            rtp_socket_id = session.rtp_socket_id;
-            rtcp_socket_id = session.rtcp_socket_id;
-            session.rtp_socket_id = 0;
-            session.rtcp_socket_id = 0;
-        }
-        // socket id 清零后再关闭 socket_io endpoint，避免关闭回调里再次找到同一 session
-        // 并重复关闭相同 UDP socket。
-        if (rtp_socket_id != 0) {
-            (void)socket_io_->CloseUdp(rtp_socket_id);
-        }
-        if (rtcp_socket_id != 0) {
-            (void)socket_io_->CloseUdp(rtcp_socket_id);
-        }
-    }
-
-    void CloseSubscription(RtspSession& session, SubscriptionClose reason) {
-        FrameSubscriptionId subscription_id = 0;
-        event::TimerId drain_timer_id = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            subscription_id = session.subscription_id;
-            drain_timer_id = session.drain_timer_id;
-            session.ClearSubscription();
-            session.ClearDrainTimer();
-        }
-        // 先取消 drain timer，再 unsubscribe subscription。timer 若已在执行，
-        // EventLoop 的 cancelled 标记会阻止下一次触发；subscription_id 清零后
-        // 本次执行也会快速退出。
-        if (drain_timer_id != 0) {
-            (void)net_loop_->CancelTimer(drain_timer_id);
-        }
-        if (subscription_id != 0) {
-            (void)media_streams_->UnsubscribeFrames(subscription_id, reason);
-        }
-    }
-
-    RtspRtpSenderContext RtpSenderContext() {
-        return RtspRtpSenderContext{*socket_io_, mutex_, stats_};
-    }
-
     RtspOptions options_;
     ISocketIo* socket_io_ = nullptr;
     event::Loop* net_loop_ = nullptr;
     IAuth* auth_ = nullptr;
     event::EventCenter* event_ = nullptr;
     MediaStreams* media_streams_ = nullptr;
-    RtspRtpSender rtp_sender_;
+    mutable std::mutex mutex_;
+    RtspSessionTable session_table_;
+    RtspStats stats_;
+    RtspSessionVideoSender session_video_sender_;
+    RtspSessionClose session_close_;
+    RtspSessionEvent session_event_;
     RtspAuth rtsp_auth_;
     RtspRequestHandler request_handler_;
-    mutable std::mutex mutex_;
     RtspPhase phase_ = RtspPhase::kCreated;
     TcpServerId server_id_ = 0;
     RtspListenAddress local_address_;
-    RtspSessionTable session_table_;
-    RtspStats stats_;
 };
 
 std::unique_ptr<IRtsp> CreateRtsp(
