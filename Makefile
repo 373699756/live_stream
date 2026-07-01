@@ -100,7 +100,6 @@ APP_SRCS := \
 	app/platform/linux/hisi_version.cpp \
 	app/platform/linux/linux_text.cpp \
 	app/platform/linux/linux_time_platform.cpp \
-	app/platform/linux/platform_factory.cpp \
 	app/platform/linux/upgrade_platform.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))

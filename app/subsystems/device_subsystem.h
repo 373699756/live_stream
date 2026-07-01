@@ -2,10 +2,10 @@
 #define LIVE_STREAM_APP_SUBSYSTEMS_DEVICE_SUBSYSTEM_H_
 
 #include <memory>
+#include <string>
 
 #include "alarm.h"
 #include "system/network.h"
-#include "subsystems/device_platform_dependencies.h"
 #include "system.h"
 #include "system/time.h"
 #include "system/upgrade.h"
@@ -27,7 +27,11 @@ public:
     static DeviceSubsystem &Get();
 
     bool Start(FoundationSubsystem &foundation_subsystem,
-               DevicePlatformDependencies dependencies);
+               std::unique_ptr<ISystemPlatform> system_platform,
+               std::unique_ptr<ITimePlatform> time_platform,
+               std::unique_ptr<INetPlatform> network_platform,
+               std::unique_ptr<IUpgradePlatform> upgrade_platform,
+               const std::string &network_ifname);
     void Stop();
     DeviceRefs refs() const;
 

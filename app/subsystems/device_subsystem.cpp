@@ -11,12 +11,16 @@ DeviceSubsystem &DeviceSubsystem::Get() {
 }
 
 bool DeviceSubsystem::Start(FoundationSubsystem &foundation_subsystem,
-                            DevicePlatformDependencies dependencies) {
+                            std::unique_ptr<ISystemPlatform> system_platform,
+                            std::unique_ptr<ITimePlatform> time_platform,
+                            std::unique_ptr<INetPlatform> network_platform,
+                            std::unique_ptr<IUpgradePlatform> upgrade_platform,
+                            const std::string &network_ifname) {
     if (started_) {
         return true;
     }
 
-    system_platform_ = std::move(dependencies.system_platform);
+    system_platform_ = std::move(system_platform);
     SystemOptions system_options;
     system_options.config = foundation_subsystem.config();
     system_options.event = foundation_subsystem.event();
@@ -29,7 +33,7 @@ bool DeviceSubsystem::Start(FoundationSubsystem &foundation_subsystem,
         return false;
     }
 
-    time_platform_ = std::move(dependencies.time_platform);
+    time_platform_ = std::move(time_platform);
     TimeOptions time_options;
     time_options.config = foundation_subsystem.config();
     time_options.event = foundation_subsystem.event();
@@ -43,12 +47,12 @@ bool DeviceSubsystem::Start(FoundationSubsystem &foundation_subsystem,
         return false;
     }
 
-    network_platform_ = std::move(dependencies.network_platform);
+    network_platform_ = std::move(network_platform);
     NetOptions network_options;
     network_options.config = foundation_subsystem.config();
     network_options.event = foundation_subsystem.event();
     network_options.logger = foundation_subsystem.logger();
-    network_options.default_ifname = dependencies.network_ifname;
+    network_options.default_ifname = network_ifname;
     network_options.platform = network_platform_.get();
     network_ = CreateNetwork(network_options);
     if (!network_ || !network_->Start()) {
@@ -73,7 +77,7 @@ bool DeviceSubsystem::Start(FoundationSubsystem &foundation_subsystem,
     upgrade_options.config = foundation_subsystem.config();
     upgrade_options.event = foundation_subsystem.event();
     upgrade_options.logger = foundation_subsystem.logger();
-    upgrade_platform_ = std::move(dependencies.upgrade_platform);
+    upgrade_platform_ = std::move(upgrade_platform);
     upgrade_options.platform = upgrade_platform_.get();
     upgrade_ = CreateUpgrade(upgrade_options);
     if (!upgrade_ || !upgrade_->Start()) {

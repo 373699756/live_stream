@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "infra/log.h"
-#include "platform/linux/platform_factory.h"
+#include "platform/linux/device_platforms.h"
 #include "subsystems/foundation_subsystem.h"
 #include "subsystems/device_subsystem.h"
 #include "subsystems/media_subsystem.h"
@@ -126,8 +126,11 @@ bool Application::Start(const StartupPaths &paths,
 
     if (!device_subsystem.Start(
             foundation_subsystem,
-            CreateLinuxDevicePlatformDependencies(
-                app_config_.network_ifname))) {
+            CreateSystemPlatform(),
+            CreateTimePlatform(),
+            CreateNetworkPlatform(app_config_.network_ifname),
+            CreateUpgradePlatform(),
+            app_config_.network_ifname)) {
         Error("app", "Start device subsystem failed");
         Stop();
         return false;
