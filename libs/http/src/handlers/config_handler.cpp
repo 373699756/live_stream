@@ -93,8 +93,8 @@ bool IsUnsupportedConfigScope(const std::string &name) {
 
 class ConfigHttpHandler : public IHttpHandler {
 public:
-    explicit ConfigHttpHandler(const ConfigHandlerRefs &refs)
-        : access_(refs.access), config_(refs.config) {}
+    ConfigHttpHandler(HttpAccess *access, IConfig *config)
+        : access_(access), config_(config) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (config_ == nullptr) {
@@ -178,10 +178,10 @@ private:
     IConfig *config_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeConfigHandler(
-    const ConfigHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> MakeConfigHandler(HttpAccess *access,
+                                                IConfig *config) {
     return std::unique_ptr<IHttpHandler>(
-        new ConfigHttpHandler(refs));
+        new ConfigHttpHandler(access, config));
 }
 
 }  // namespace live_stream

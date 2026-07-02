@@ -25,41 +25,6 @@ class IWebrtc;
 class IWebrtcReader;
 class IHttp;
 
-struct AuthHandlerRefs {
-    HttpAccess *access = nullptr;
-    IAuth *auth = nullptr;
-};
-
-struct ConfigHandlerRefs {
-    HttpAccess *access = nullptr;
-    IConfig *config = nullptr;
-};
-
-struct OperationsHandlerRefs {
-    HttpAccess *access = nullptr;
-    ILogger *logger = nullptr;
-};
-
-struct NetworkHandlerRefs {
-    HttpAccess *access = nullptr;
-    INetwork *network = nullptr;
-};
-
-struct TimeHandlerRefs {
-    HttpAccess *access = nullptr;
-    ITime *time = nullptr;
-};
-
-struct UpgradeHandlerRefs {
-    HttpAccess *access = nullptr;
-    IUpgrade *upgrade = nullptr;
-};
-
-struct AlarmHandlerRefs {
-    HttpAccess *access = nullptr;
-    IAlarm *alarm = nullptr;
-};
-
 struct SystemHandlerRefs {
     HttpAccess *access = nullptr;
     ISystem *system = nullptr;
@@ -89,33 +54,28 @@ struct AiHandlerRefs {
     DeviceMedia *device = nullptr;
 };
 
-struct SnapshotHandlerRefs {
-    HttpAccess *access = nullptr;
-    DeviceMedia *device = nullptr;
-};
-
-std::unique_ptr<IHttpHandler> MakeAuthHandler(
-    const AuthHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeConfigHandler(
-    const ConfigHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeOperationsHandler(
-    const OperationsHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeNetworkHandler(
-    const NetworkHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeTimeHandler(
-    const TimeHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeUpgradeHandler(
-    const UpgradeHandlerRefs &refs);
+std::unique_ptr<IHttpHandler> MakeAuthHandler(HttpAccess *access,
+                                              IAuth *auth);
+std::unique_ptr<IHttpHandler> MakeConfigHandler(HttpAccess *access,
+                                                IConfig *config);
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(HttpAccess *access,
+                                                    ILogger *logger);
+std::unique_ptr<IHttpHandler> MakeNetworkHandler(HttpAccess *access,
+                                                 INetwork *network);
+std::unique_ptr<IHttpHandler> MakeTimeHandler(HttpAccess *access,
+                                              ITime *time);
+std::unique_ptr<IHttpHandler> MakeUpgradeHandler(HttpAccess *access,
+                                                 IUpgrade *upgrade);
 std::unique_ptr<IHttpHandler> MakeSystemHandler(
     const SystemHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeAlarmHandler(
-    const AlarmHandlerRefs &refs);
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(HttpAccess *access,
+                                               IAlarm *alarm);
 std::unique_ptr<IHttpHandler> MakeMediaHandler(
     const MediaHandlerRefs &refs);
 std::unique_ptr<IHttpHandler> MakeAiHandler(
     const AiHandlerRefs &refs);
-std::unique_ptr<IHttpHandler> MakeSnapshotHandler(
-    const SnapshotHandlerRefs &refs);
+std::unique_ptr<IHttpHandler> MakeSnapshotHandler(HttpAccess *access,
+                                                  DeviceMedia *device);
 
 }  // namespace live_stream
 

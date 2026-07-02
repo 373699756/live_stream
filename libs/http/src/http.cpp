@@ -247,23 +247,18 @@ void HttpImpl::InitializeControlHandlers(INetwork *network,
                                          ISystem *system,
                                          IAiReader *ai,
                                          DeviceMedia *device) {
-    handlers_.push_back(
-        MakeAuthHandler({this, Runtime::Auth()}));
-    handlers_.push_back(
-        MakeConfigHandler({this, Runtime::Config()}));
-    handlers_.push_back(
-        MakeOperationsHandler({this, Runtime::Logger()}));
-    handlers_.push_back(
-        MakeNetworkHandler({this, network}));
-    handlers_.push_back(MakeTimeHandler({this, time}));
-    handlers_.push_back(MakeUpgradeHandler({this, upgrade}));
+    handlers_.push_back(MakeAuthHandler(this, Runtime::Auth()));
+    handlers_.push_back(MakeConfigHandler(this, Runtime::Config()));
+    handlers_.push_back(MakeOperationsHandler(this, Runtime::Logger()));
+    handlers_.push_back(MakeNetworkHandler(this, network));
+    handlers_.push_back(MakeTimeHandler(this, time));
+    handlers_.push_back(MakeUpgradeHandler(this, upgrade));
     handlers_.push_back(MakeSystemHandler(
         {this, system, time, network, alarm, upgrade, ai, device}));
-    handlers_.push_back(MakeAlarmHandler({this, alarm}));
+    handlers_.push_back(MakeAlarmHandler(this, alarm));
     handlers_.push_back(
         MakeAiHandler({this, Runtime::Config(), ai, device}));
-    handlers_.push_back(
-        MakeSnapshotHandler({this, device}));
+    handlers_.push_back(MakeSnapshotHandler(this, device));
 }
 
 void HttpImpl::InitializeMediaHandlers(DeviceMedia *device,

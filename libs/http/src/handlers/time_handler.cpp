@@ -83,8 +83,8 @@ Json TimeInfoToJson(const TimeInfo &time_info) {
 
 class TimeHttpHandler : public IHttpHandler {
 public:
-    explicit TimeHttpHandler(const TimeHandlerRefs &refs)
-        : access_(refs.access), time_(refs.time) {}
+    TimeHttpHandler(HttpAccess *access, ITime *time)
+        : access_(access), time_(time) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (time_ == nullptr) {
@@ -282,10 +282,10 @@ private:
     ITime *time_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeTimeHandler(
-    const TimeHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> MakeTimeHandler(HttpAccess *access,
+                                              ITime *time) {
     return std::unique_ptr<IHttpHandler>(
-        new TimeHttpHandler(refs));
+        new TimeHttpHandler(access, time));
 }
 
 }  // namespace live_stream

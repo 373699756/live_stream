@@ -84,9 +84,8 @@ void AppendCsvRow(const OperationRecord &record, std::string *body) {
 
 class OperationsHttpHandler : public IHttpHandler {
 public:
-    explicit OperationsHttpHandler(
-        const OperationsHandlerRefs &refs)
-        : access_(refs.access), logger_(refs.logger) {}
+    OperationsHttpHandler(HttpAccess *access, ILogger *logger)
+        : access_(access), logger_(logger) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (logger_ == nullptr) {
@@ -153,10 +152,10 @@ private:
     ILogger *logger_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeOperationsHandler(
-    const OperationsHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> MakeOperationsHandler(HttpAccess *access,
+                                                    ILogger *logger) {
     return std::unique_ptr<IHttpHandler>(
-        new OperationsHttpHandler(refs));
+        new OperationsHttpHandler(access, logger));
 }
 
 }  // namespace live_stream

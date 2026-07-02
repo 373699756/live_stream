@@ -42,8 +42,8 @@ Json AlarmInfoToJson(const AlarmInfo &alarm_info) {
 
 class AlarmHttpHandler : public IHttpHandler {
 public:
-    explicit AlarmHttpHandler(const AlarmHandlerRefs &refs)
-        : access_(refs.access), alarm_(refs.alarm) {}
+    AlarmHttpHandler(HttpAccess *access, IAlarm *alarm)
+        : access_(access), alarm_(alarm) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (alarm_ == nullptr) {
@@ -71,10 +71,10 @@ private:
     IAlarm *alarm_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeAlarmHandler(
-    const AlarmHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> MakeAlarmHandler(HttpAccess *access,
+                                               IAlarm *alarm) {
     return std::unique_ptr<IHttpHandler>(
-        new AlarmHttpHandler(refs));
+        new AlarmHttpHandler(access, alarm));
 }
 
 }  // namespace live_stream

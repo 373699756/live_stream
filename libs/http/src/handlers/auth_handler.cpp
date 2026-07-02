@@ -24,8 +24,8 @@ Json PrincipalToJson(const AuthPrincipal &principal) {
 
 class AuthHttpHandler : public IHttpHandler {
 public:
-    explicit AuthHttpHandler(const AuthHandlerRefs &refs)
-        : access_(refs.access), auth_(refs.auth) {}
+    AuthHttpHandler(HttpAccess *access, IAuth *auth)
+        : access_(access), auth_(auth) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         router.AddExactRoute(HttpMethod::kPost, "/api/auth/login", this,
@@ -129,10 +129,10 @@ private:
     IAuth *auth_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeAuthHandler(
-    const AuthHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> MakeAuthHandler(HttpAccess *access,
+                                              IAuth *auth) {
     return std::unique_ptr<IHttpHandler>(
-        new AuthHttpHandler(refs));
+        new AuthHttpHandler(access, auth));
 }
 
 }  // namespace live_stream
