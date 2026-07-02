@@ -3,7 +3,9 @@
 #include "infra/clamp.h"
 #include "json_reader.h"
 
+#include <array>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace live_stream {
@@ -12,6 +14,16 @@ namespace {
 
 constexpr int32_t kControlMin = 0;
 constexpr int32_t kControlMax = 100;
+constexpr int32_t kImageStrategyTierMin = 0;
+constexpr int32_t kImageStrategyTierMax = 3;
+constexpr uint32_t kImageStrategyMinTierSample = 1;
+constexpr uint32_t kImageStrategyMaxTierSample = 10;
+constexpr char kFieldFallbackExposureTimeDivisor[] =
+    "fallback_exposure_time_divisor";
+constexpr char kFieldGainBase[] = "gain_base";
+constexpr char kFieldIsoTierThresholds[] = "iso_tier_thresholds";
+constexpr char kFieldLowNoiseDenoise3dMax[] = "low_noise_denoise_3d_max";
+constexpr char kFieldTierStabilitySamples[] = "tier_stability_samples";
 
 struct ImageStrategyControls {
     int32_t saturation = 52;
@@ -21,20 +33,80 @@ struct ImageStrategyControls {
     int32_t gamma = 50;
 };
 
-int IsoTier(uint32_t iso) {
-    if (iso <= 400) {
+template <size_t kSize, typename T>
+bool ParseIntegerArray(const Json &value, std::array<T, kSize> &out,
+                      int64_t min_value, int64_t max_value) {
+    if (!value.is_array() || value.size() != kSize) {
+        return false;
+    }
+    std::array<T, kSize> parsed = {};
+    for (size_t i = 0; i < kSize; ++i) {
+        const Json &item = value.at(i);
+        if (!item.is_number_integer() && !item.is_number_unsigned()) {
+            return false;
+        }
+        int64_t converted = item.is_number_unsigned()
+                                ? static_cast<int64_t>(item.get<uint64_t>())
+                                : item.get<int64_t>();
+        if (converted < min_value || converted > max_value) {
+            return false;
+        }
+        parsed[i] = static_cast<T>(converted);
+    }
+    out = parsed;
+    return true;
+}
+
+int ClampImageStrategyTier(int tier) {
+    return infra::Clamp(tier, kImageStrategyTierMin, kImageStrategyTierMax);
+}
+
+int TierFromIso(uint32_t iso, const ImageStrategySettings &settings) {
+    if (iso <= settings.iso_tier_thresholds[0]) {
         return 0;
     }
-    if (iso <= 1600) {
+    if (iso <= settings.iso_tier_thresholds[1]) {
         return 1;
     }
-    if (iso <= 6400) {
+    if (iso <= settings.iso_tier_thresholds[2]) {
         return 2;
     }
     return 3;
 }
 
-const char *IsoTierName(int tier) {
+int DetermineImageStrategyTierWithSettings(
+    const hisisdk::ExposureInfo &exposure,
+    const ImageStrategySettings &settings) {
+    if (exposure.iso != 0) {
+        return TierFromIso(exposure.iso, settings);
+    }
+
+    uint64_t metric = exposure.exposure_time_us;
+    if (metric == 0) {
+        return kImageStrategyTierMin;
+    }
+    metric /= std::max<uint32_t>(1, settings.fallback_exposure_time_divisor);
+
+    const uint32_t gain_base =
+        std::max<uint32_t>(1, settings.gain_base);
+    const uint64_t analog_gain =
+        exposure.analog_gain == 0 ? gain_base : exposure.analog_gain;
+    const uint64_t digital_gain =
+        exposure.digital_gain == 0 ? gain_base : exposure.digital_gain;
+    const uint64_t isp_digital_gain =
+        exposure.isp_digital_gain == 0 ? gain_base
+                                       : exposure.isp_digital_gain;
+    metric = metric * analog_gain / gain_base;
+    metric = metric * digital_gain / gain_base;
+    metric = metric * isp_digital_gain / gain_base;
+
+    return TierFromIso(
+        std::min<uint64_t>(metric,
+                           static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())),
+                       settings);
+}
+
+const char *TierName(int tier) {
     switch (tier) {
         case 0:
             return "day";
@@ -52,9 +124,12 @@ int32_t ClampImageControl(int32_t value) {
     return infra::Clamp(value, kControlMin, kControlMax);
 }
 
-int32_t ClampDenoise3dForLowNoise(int32_t value, int tier) {
-    constexpr int32_t kLowNoiseDenoise3dMax[] = {56, 66, 84, 88};
-    return infra::Clamp(value, kControlMin, kLowNoiseDenoise3dMax[tier]);
+int32_t ClampDenoise3dForLowNoise(
+    int32_t value, int tier,
+    const std::array<int32_t, 4> &low_noise_denoise_3d_max) {
+    return infra::Clamp(
+        value, kControlMin,
+        low_noise_denoise_3d_max[ClampImageStrategyTier(tier)]);
 }
 
 ImageStrategyControls LoadImageStrategyControls(
@@ -77,8 +152,9 @@ ImageStrategyControls LoadImageStrategyControls(
     return controls;
 }
 
-ImageStrategyControls ControlsForIsoTier(
-    const ImageStrategyControls &base, const std::string &mode, int tier) {
+ImageStrategyControls ControlsForTier(const ImageStrategyControls &base,
+                                     const std::string &mode, int tier,
+                                     const std::array<int32_t, 4> &low_noise_denoise_3d_max) {
     int32_t saturation_delta[] = {0, 0, -6, -14};
     int32_t sharpness_delta[] = {0, -6, -14, -24};
     int32_t denoise_2d_delta[] = {0, 8, 18, 30};
@@ -138,11 +214,11 @@ ImageStrategyControls ControlsForIsoTier(
         ClampImageControl(base.denoise_2d + denoise_2d_delta[tier]);
     controls.denoise_3d =
         ClampImageControl(base.denoise_3d + denoise_3d_delta[tier]);
-    if (low_noise_mode) {
-        controls.denoise_3d =
-            ClampDenoise3dForLowNoise(controls.denoise_3d, tier);
-    }
     controls.gamma = ClampImageControl(base.gamma + gamma_delta[tier]);
+    if (low_noise_mode) {
+        controls.denoise_3d = ClampDenoise3dForLowNoise(
+            controls.denoise_3d, tier, low_noise_denoise_3d_max);
+    }
     return controls;
 }
 
@@ -166,11 +242,13 @@ ImageStrategyControls SmoothImageStrategyControls(
 }
 
 ImageStrategyControls ClampFinalControlsForMode(
-    const ImageStrategyControls &controls, const std::string &mode, int tier) {
+    const ImageStrategyControls &controls, const std::string &mode, int tier,
+    const std::array<int32_t, 4> &low_noise_denoise_3d_max) {
     ImageStrategyControls clamped = controls;
     if (mode == "low_noise") {
         clamped.denoise_3d =
-            ClampDenoise3dForLowNoise(clamped.denoise_3d, tier);
+            ClampDenoise3dForLowNoise(clamped.denoise_3d, tier,
+                                      low_noise_denoise_3d_max);
     }
     return clamped;
 }
@@ -193,23 +271,92 @@ bool IsImageStrategyEnabled(const Json &image_config) {
     return strategy->value("enabled", true);
 }
 
+ImageStrategySettings LoadImageStrategySettings(const Json &image_config) {
+    ImageStrategySettings settings;
+    if (!image_config.is_object()) {
+        return settings;
+    }
+
+    const auto strategy = image_config.find("strategy");
+    if (strategy == image_config.end() || !strategy->is_object()) {
+        return settings;
+    }
+
+    const Json &strategy_json = *strategy;
+
+    uint32_t fallback_exposure_time_divisor = settings.fallback_exposure_time_divisor;
+    if (json_reader::ReadField(strategy_json, kFieldFallbackExposureTimeDivisor,
+                              &fallback_exposure_time_divisor)) {
+        settings.fallback_exposure_time_divisor =
+            std::max<uint32_t>(1, fallback_exposure_time_divisor);
+    }
+
+    uint32_t gain_base = settings.gain_base;
+    if (json_reader::ReadField(strategy_json, kFieldGainBase, &gain_base)) {
+        settings.gain_base = std::max<uint32_t>(1, gain_base);
+    }
+    const auto iso_tier_thresholds =
+        strategy_json.find(kFieldIsoTierThresholds);
+    if (iso_tier_thresholds != strategy_json.end()) {
+        std::array<uint32_t, 3> thresholds;
+        if (ParseIntegerArray(*iso_tier_thresholds, thresholds, 1,
+                              std::numeric_limits<uint32_t>::max()) &&
+            thresholds[0] <= thresholds[1] &&
+            thresholds[1] <= thresholds[2]) {
+            settings.iso_tier_thresholds = thresholds;
+        }
+    }
+
+    const auto low_noise_denoise_3d_max =
+        strategy_json.find(kFieldLowNoiseDenoise3dMax);
+    if (low_noise_denoise_3d_max != strategy_json.end()) {
+        std::array<int32_t, 4> limits;
+        if (ParseIntegerArray(*low_noise_denoise_3d_max, limits, kControlMin,
+                              kControlMax)) {
+            settings.low_noise_denoise_3d_max = limits;
+        }
+    }
+
+    int32_t tier_stability_samples = settings.tier_stability_samples;
+    if (json_reader::ReadField(strategy_json, kFieldTierStabilitySamples,
+                              &tier_stability_samples)) {
+        settings.tier_stability_samples = infra::Clamp(
+            tier_stability_samples, static_cast<int32_t>(kImageStrategyMinTierSample),
+            static_cast<int32_t>(kImageStrategyMaxTierSample));
+    }
+    return settings;
+}
+
+int DetermineImageStrategyTier(const hisisdk::ExposureInfo &exposure) {
+    return DetermineImageStrategyTier(exposure, ImageStrategySettings{});
+}
+
+int DetermineImageStrategyTier(const hisisdk::ExposureInfo &exposure,
+                              const ImageStrategySettings &settings) {
+    return DetermineImageStrategyTierWithSettings(exposure, settings);
+}
+
 Json BuildImageStrategyConfig(
     const Json &image_config,
     const ImageInfo &current_info,
+    int strategy_tier,
     const hisisdk::ExposureInfo &exposure,
-    ImageInfo &next_info) {
+    ImageInfo &next_info,
+    const ImageStrategySettings &settings) {
     Json adjusted = image_config;
     if (!adjusted.is_object()) {
         return adjusted;
     }
 
-    const int tier = IsoTier(exposure.iso);
+    const int tier = ClampImageStrategyTier(strategy_tier);
     const std::string strategy_mode = ImageStrategyMode(image_config);
-    const ImageStrategyControls target = ControlsForIsoTier(
-        LoadImageStrategyControls(image_config), strategy_mode, tier);
-    const ImageStrategyControls controls = ClampFinalControlsForMode(
-        SmoothImageStrategyControls(target, current_info), strategy_mode,
-        tier);
+    const ImageStrategyControls target =
+        ControlsForTier(LoadImageStrategyControls(image_config), strategy_mode,
+                        tier, settings.low_noise_denoise_3d_max);
+    const ImageStrategyControls controls =
+        ClampFinalControlsForMode(
+            SmoothImageStrategyControls(target, current_info), strategy_mode,
+            tier, settings.low_noise_denoise_3d_max);
 
     adjusted["basic"]["saturation"] = controls.saturation;
     adjusted["basic"]["sharpness"] = controls.sharpness;
@@ -227,7 +374,7 @@ Json BuildImageStrategyConfig(
     next_info.digital_gain = exposure.digital_gain;
     next_info.isp_digital_gain = exposure.isp_digital_gain;
     next_info.mode = strategy_mode;
-    next_info.tier = IsoTierName(tier);
+    next_info.tier = TierName(tier);
     next_info.saturation = controls.saturation;
     next_info.sharpness = controls.sharpness;
     next_info.denoise_2d = controls.denoise_2d;

@@ -152,7 +152,12 @@
     },
     "strategy": {
       "enabled": true,
-      "mode": "low_noise"
+      "mode": "low_noise",
+      "fallback_exposure_time_divisor": 100,
+      "gain_base": 1024,
+      "iso_tier_thresholds": [400, 1600, 6400],
+      "low_noise_denoise_3d_max": [56, 66, 84, 88],
+      "tier_stability_samples": 2
     }
   },
   "rtsp": {

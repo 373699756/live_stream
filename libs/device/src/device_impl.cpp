@@ -56,8 +56,12 @@ public:
         pipeline_change_.reset(new PipelineChange(pipeline_, *features_));
         image_tuner_.reset(new ImageTuner(
             [this]() { return pipeline_.QueryExposureInfo(); },
-            [this](const Json &image_config) {
+            [this](const Json &image_config, uint64_t config_generation) {
                 std::lock_guard<std::mutex> op_guard(pipeline_op_mutex_);
+                if (!image_tuner_->IsConfigGenerationCurrent(
+                        config_generation)) {
+                    return false;
+                }
                 return pipeline_.ApplyImageConfig(image_config);
             }));
     }

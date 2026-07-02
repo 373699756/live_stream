@@ -74,6 +74,24 @@ HTTP `/api/config/video`、`/api/config/image`、`/api/config/snapshot` 和
 默认图像策略为 `low_noise`，按 IMX290 的低照特性使用较低
 锐度、温和 2D/3D 降噪和 3DNR 上限，避免 ISP 手动锐化放大点状噪声或过度发蜡。
 
+`image.strategy` 默认启用，支持可选调参与无停机联调：
+
+- `enabled`: `boolean`，策略开关。
+- `mode`: `balanced|low_noise|detail`。
+- `fallback_exposure_time_divisor`: `uint32`，曝光时间兜底估算因子，默认 `100`。
+- `gain_base`: `uint32`，用于增益归一化分母，默认 `1024`（`0x400`）。
+- `iso_tier_thresholds`: 长度为 3 的 `uint32[]`，用于分档阈值，默认 `[400, 1600, 6400]`。
+- `low_noise_denoise_3d_max`: 长度为 4 的 `uint32[]`，`low_noise` 档位 0~3 的 3D 降噪上限。
+- `tier_stability_samples`: `int32`，档位切换所需连续采样次数（1~10），默认 `2`。
+
+`ImageInfo` 运行态会返回策略抖动观测值：
+
+- `requested_tier`：当前曝光下最近一次计算的目标档位（`day` / `indoor` / `low_light` /
+  `very_low_light`）。
+- `pending_tier`：若目标档位与当前稳定档位不一致，正在等待确认中的候选档位；否则为空。
+- `pending_tier_hits`：当前候选档位已连续观测到的次数。
+- `tier_stability_samples`：当前 `strategy.tier_stability_samples` 生效值。
+
 Hi3516DV300 VENC 支持 H.264、H.265、MJPEG 和 JPEG。`video.streams.<main/sub>.codec`
 用于实时主/子码流，暴露 H.264、H.265 和 MJPEG；JPEG 只用于 snapshot 抓图输出。
 

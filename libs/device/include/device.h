@@ -138,6 +138,10 @@ struct ImageInfo {
     uint32_t isp_digital_gain = 0;
     std::string mode;
     std::string tier;
+    std::string requested_tier;
+    std::string pending_tier;
+    int32_t pending_tier_hits = 0;
+    int32_t tier_stability_samples = 0;
     int32_t saturation = 0;
     int32_t sharpness = 0;
     int32_t denoise_2d = 0;

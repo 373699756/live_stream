@@ -308,6 +308,10 @@ Json ImageInfoToJson(const ImageInfo &info) {
     root["isp_digital_gain"] = info.isp_digital_gain;
     root["mode"] = info.mode;
     root["tier"] = info.tier;
+    root["requested_tier"] = info.requested_tier;
+    root["pending_tier"] = info.pending_tier;
+    root["pending_tier_hits"] = info.pending_tier_hits;
+    root["tier_stability_samples"] = info.tier_stability_samples;
     root["saturation"] = info.saturation;
     root["sharpness"] = info.sharpness;
     root["denoise_2d"] = info.denoise_2d;
