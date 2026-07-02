@@ -212,10 +212,9 @@ void AddNetStatToResponse(Json *root, INetStat *net_stat) {
     (*root)["net_queue_critical"] = snapshot.critical_connection_queues;
     (*root)["net_queue_critical_connections"] =
         snapshot.critical_connections;
-    (*root)["net_slow_clients"] =
-        static_cast<uint32_t>(net_stat->GetSlowClients().size());
+    (*root)["net_slow_clients"] = snapshot.slow_clients;
     (*root)["net_slow_client_history"] =
-        static_cast<uint32_t>(net_stat->GetSlowClientHistory().size());
+        snapshot.slow_client_history_entries;
     (*root)["webrtc_open_peers"] = snapshot.open_webrtc_peers;
 }
 

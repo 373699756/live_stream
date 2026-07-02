@@ -111,6 +111,8 @@ flowchart LR
 `NetStatSnapshot::active_rtsp_sessions` 来自 RTSP client 事件携带的当前 session
 数；`NetStatSnapshot::open_webrtc_peers` 来自 WebRTC client 事件携带的当前 open
 peer 数，包含 setup/connecting/connected，不能等同为已完成连接的 peer 数。
+`NetStatSnapshot::slow_clients` 和 `slow_client_history_entries` 是当前慢客户端
+输出和慢客户端历史条目数量，HTTP summary 只读取数量，不复制连接级历史对象。
 
 `NetStatOptions` 默认阈值：
 

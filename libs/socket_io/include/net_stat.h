@@ -74,6 +74,8 @@ struct NetStatSnapshot {
     uint32_t critical_connection_queues = 0;
     uint32_t active_rtsp_sessions = 0;
     uint32_t open_webrtc_peers = 0;
+    uint32_t slow_clients = 0;
+    uint32_t slow_client_history_entries = 0;
     uint64_t checks = 0;
 };
 

@@ -149,7 +149,12 @@ public:
 
     NetStatSnapshot GetSnapshot() const override {
         std::lock_guard<std::mutex> lock(mutex_);
-        return stats_;
+        NetStatSnapshot snapshot = stats_;
+        snapshot.slow_clients =
+            static_cast<uint32_t>(slow_clients_.size());
+        snapshot.slow_client_history_entries =
+            static_cast<uint32_t>(slow_client_history_.size());
+        return snapshot;
     }
 
     std::vector<NetSlowClient> GetSlowClients() const override {
