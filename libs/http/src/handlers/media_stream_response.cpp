@@ -329,6 +329,7 @@ Json BuildMediaStreamResponse(StreamId stream_id,
     root["track_ready"] = stream_info.track_ready;
     root["hls_supported"] = stream_info.hls_supported;
     root["hls_ready"] = stream_info.hls_ready;
+    root["hls_codec"] = stream_info.hls_codec;
     root["http_flv_supported"] = stream_info.flv_supported;
     root["http_flv_ready"] = stream_info.flv_ready;
     root["mjpeg_supported"] = stream_info.mjpeg_supported;

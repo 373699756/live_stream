@@ -35,6 +35,33 @@ function playerErrorDetails(args: unknown[]): string {
         .join(' ');
 }
 
+function hlsErrorDetails(args: unknown[]): string {
+    const details = args
+        .map((item) => {
+            if (typeof item !== 'object' || item === null) {
+                return '';
+            }
+            const data = item as {
+                details?: unknown;
+                error?: unknown;
+                reason?: unknown;
+                type?: unknown;
+            };
+            return [
+                data.type,
+                data.details,
+                data.reason,
+                data.error instanceof Error ? data.error.message : data.error,
+            ]
+                .filter(Boolean)
+                .map(String)
+                .join(' ');
+        })
+        .filter(Boolean)
+        .join(' ');
+    return details || playerErrorDetails(args);
+}
+
 function hlsPlaylistHasSegment(playlist: string): boolean {
     return playlist.split('\n').some((line) => {
         const trimmed = line.trim();
@@ -203,7 +230,7 @@ export function startHlsPreview({
                     liveDurationInfinity: true,
                     liveMaxLatencyDurationCount: 2,
                     liveSyncDurationCount: 1,
-                    lowLatencyMode: true,
+                    lowLatencyMode: false,
                     maxLiveSyncPlaybackRate: 1.5,
                 });
                 setHlsPlayer(player);
@@ -217,10 +244,15 @@ export function startHlsPreview({
                             if (!hlsErrorIsFatal(args)) {
                                 return;
                             }
+                            const detail = hlsErrorDetails(args);
                             player.recoverMediaError?.();
                             player.startLoad?.();
                             if (!autoFallback.isSessionConnected()) {
-                                controls.setPreviewState('HLS 播放恢复中');
+                                controls.setPreviewState(
+                                    detail
+                                        ? `HLS 播放恢复中：${detail}`
+                                        : 'HLS 播放恢复中',
+                                );
                             }
                         }
                     });

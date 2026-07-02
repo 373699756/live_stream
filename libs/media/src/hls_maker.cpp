@@ -24,8 +24,8 @@ constexpr uint16_t kVideoPid = 0x0100;
 constexpr uint8_t kTsPacketSize = 188;
 constexpr uint8_t kTsStreamTypeH264 = 0x1b;
 constexpr size_t kMaxTsMediaSlices = 192;
-constexpr int64_t kNoKeyframeSegmentDurationMultiplier = 4;
-constexpr int64_t kNoKeyframeSegmentDurationFloorUs = 8000000;
+constexpr int64_t kNoKeyframeSegmentDurationMultiplier = 2;
+constexpr int64_t kNoKeyframeSegmentDurationFloorUs = 4000000;
 
 using byte_writer::AppendU16;
 using byte_writer::AppendU24;
@@ -766,6 +766,8 @@ uint32_t HlsMaker::CachedBytes() const { return cached_bytes_; }
 
 uint64_t HlsMaker::DropSize() const { return drop_size_; }
 
+const std::string &HlsMaker::CodecString() const { return codec_string_; }
+
 MediaHlsPlaylist HlsMaker::BuildPlaylist(
     uint32_t hls_segment_duration_ms, uint32_t hls_playlist_depth) const {
     MediaHlsPlaylist playlist;
@@ -964,12 +966,14 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
     if (frame.codec == Codec::kH265) {
         if (!init_segment_.Valid()) {
             std::string hvcc_record;
+            std::string h265_codec_string;
             if (!media_codec::BuildH265HvccRecord(vps, sps, pps,
-                                                  &hvcc_record)) {
+                                                  &hvcc_record,
+                                                  &h265_codec_string)) {
                 return false;
             }
             init_segment_ = MediaBufferFromString(BuildInitSegment(hvcc_record));
-            codec_string_ = "hvc1.1.6.L93.B0";
+            codec_string_ = h265_codec_string;
             if (!init_segment_.Valid()) {
                 return false;
             }
@@ -1042,8 +1046,9 @@ bool HlsMaker::BuildFinalizedFmp4Segment(const SegmentState &segment,
     std::string moof = BuildFmp4Moof(segment.sequence,
                                      segment.base_decode_time_90k,
                                      segment.samples, 0);
-    const uint32_t data_offset =
-        static_cast<uint32_t>(styp.size() + moof.size() + 8U);
+    // tfhd uses default-base-is-moof, so trun.data_offset is relative to the
+    // moof box. A preceding styp box must not be included here.
+    const uint32_t data_offset = static_cast<uint32_t>(moof.size() + 8U);
     moof = BuildFmp4Moof(segment.sequence, segment.base_decode_time_90k,
                          segment.samples, data_offset);
     body = MediaBufferFromString(styp + moof + mdat);

@@ -4,11 +4,141 @@
 
 #include <cstdint>
 #include <limits>
+#include <cstdio>
 #include <string>
 
 namespace live_stream {
 namespace media_codec {
 namespace {
+
+struct H265ProfileTierLevel {
+    uint8_t profile_byte = 0x01;
+    std::string compatibility_flags;
+    std::string constraint_flags;
+    uint8_t level_idc = 0x1e;
+    uint8_t max_sub_layers_minus1 = 0;
+    bool temporal_id_nested = true;
+};
+
+std::string H265NalRbsp(const std::string &nal_unit) {
+    std::string rbsp;
+    if (nal_unit.size() <= 2) {
+        return rbsp;
+    }
+    rbsp.reserve(nal_unit.size() - 2);
+    uint8_t zero_count = 0;
+    for (size_t i = 2; i < nal_unit.size(); ++i) {
+        const uint8_t byte = static_cast<uint8_t>(nal_unit[i]);
+        if (zero_count >= 2 && byte == 0x03) {
+            zero_count = 0;
+            continue;
+        }
+        rbsp.push_back(static_cast<char>(byte));
+        if (byte == 0) {
+            ++zero_count;
+        } else {
+            zero_count = 0;
+        }
+    }
+    return rbsp;
+}
+
+bool ExtractH265ProfileFromVps(const std::string &vps,
+                               H265ProfileTierLevel *profile) {
+    if (profile == nullptr) {
+        return false;
+    }
+    const std::string rbsp = H265NalRbsp(vps);
+    if (rbsp.size() < 16) {
+        return false;
+    }
+    profile->max_sub_layers_minus1 =
+        static_cast<uint8_t>((static_cast<uint8_t>(rbsp[1]) >> 1) & 0x07);
+    profile->temporal_id_nested =
+        (static_cast<uint8_t>(rbsp[1]) & 0x01) != 0;
+    profile->profile_byte = static_cast<uint8_t>(rbsp[4]);
+    profile->compatibility_flags.assign(rbsp.data() + 5, 4);
+    profile->constraint_flags.assign(rbsp.data() + 9, 6);
+    profile->level_idc = static_cast<uint8_t>(rbsp[15]);
+    return true;
+}
+
+void AppendH265ProfileTierLevel(const H265ProfileTierLevel &profile,
+                                std::string *record) {
+    byte_writer::AppendU8(record, profile.profile_byte);
+    record->append(profile.compatibility_flags);
+    record->append(profile.constraint_flags);
+    byte_writer::AppendU8(record, profile.level_idc);
+}
+
+uint8_t H265HvccTemporalByte(const H265ProfileTierLevel &profile) {
+    const uint8_t temporal_layers =
+        static_cast<uint8_t>(profile.max_sub_layers_minus1 + 1U);
+    return static_cast<uint8_t>(
+        ((temporal_layers & 0x07) << 3) |
+        (profile.temporal_id_nested ? 0x04 : 0x00) |
+        0x03);
+}
+
+uint32_t ReadU32(const std::string &data) {
+    if (data.size() < 4) {
+        return 0;
+    }
+    return (static_cast<uint32_t>(static_cast<uint8_t>(data[0])) << 24) |
+           (static_cast<uint32_t>(static_cast<uint8_t>(data[1])) << 16) |
+           (static_cast<uint32_t>(static_cast<uint8_t>(data[2])) << 8) |
+           static_cast<uint32_t>(static_cast<uint8_t>(data[3]));
+}
+
+uint32_t ReverseBits32(uint32_t value) {
+    uint32_t reversed = 0;
+    for (int i = 0; i < 32; ++i) {
+        reversed |= ((value >> i) & 1U) << (31 - i);
+    }
+    return reversed;
+}
+
+std::string HexNoLeadingZero(uint32_t value) {
+    char text[16] = {};
+    std::snprintf(text, sizeof(text), "%X", value);
+    return text;
+}
+
+std::string H265CodecString(const H265ProfileTierLevel &profile) {
+    const uint8_t profile_space =
+        static_cast<uint8_t>((profile.profile_byte >> 6) & 0x03);
+    const uint8_t profile_idc =
+        static_cast<uint8_t>(profile.profile_byte & 0x1f);
+    const bool tier_high = (profile.profile_byte & 0x20) != 0;
+    std::string codec = "hvc1.";
+    if (profile_space == 1) {
+        codec += "A";
+    } else if (profile_space == 2) {
+        codec += "B";
+    } else if (profile_space == 3) {
+        codec += "C";
+    }
+    codec += std::to_string(profile_idc);
+    codec += ".";
+    codec += HexNoLeadingZero(
+        ReverseBits32(ReadU32(profile.compatibility_flags)));
+    codec += ".";
+    codec += tier_high ? "H" : "L";
+    codec += std::to_string(profile.level_idc);
+    int last_constraint_index =
+        static_cast<int>(profile.constraint_flags.size()) - 1;
+    while (last_constraint_index >= 0 &&
+           static_cast<uint8_t>(
+               profile.constraint_flags[last_constraint_index]) == 0) {
+        --last_constraint_index;
+    }
+    for (int i = 0; i <= last_constraint_index; ++i) {
+        codec += ".";
+        codec += HexNoLeadingZero(
+            static_cast<uint8_t>(profile.constraint_flags[i]));
+    }
+    return codec;
+}
 
 void AppendHvccArray(std::string *record,
                      uint8_t nal_type,
@@ -87,7 +217,8 @@ bool BuildH264AvccRecord(const std::string &sps,
 bool BuildH265HvccRecord(const std::string &vps,
                          const std::string &sps,
                          const std::string &pps,
-                         std::string *record) {
+                         std::string *record,
+                         std::string *codec_string) {
     if (record == nullptr || vps.empty() || sps.empty() || pps.empty() ||
         vps.size() > std::numeric_limits<uint16_t>::max() ||
         sps.size() > std::numeric_limits<uint16_t>::max() ||
@@ -96,21 +227,13 @@ bool BuildH265HvccRecord(const std::string &vps,
     }
     record->clear();
     byte_writer::AppendU8(record, 1);
-    if (sps.size() >= 15) {
-        // hvcC 的 profile/tier/level 等字段从 SPS 复制；VPS/SPS/PPS
-        // 则在后面的 array 中按 NAL type 分组写出。
-        byte_writer::AppendU8(record, static_cast<uint8_t>(sps[3]));
-        record->append(sps.data() + 4, 4);
-        record->append(sps.data() + 8, 6);
-        byte_writer::AppendU8(record, static_cast<uint8_t>(sps[14]));
-    } else {
-        byte_writer::AppendU8(record, 0x01);
-        byte_writer::AppendU32(record, 0x60000000);
-        static constexpr uint8_t kConstraintFlags[] = {
-            0x90, 0x00, 0x00, 0x00, 0x00, 0x00};
-        record->append(reinterpret_cast<const char *>(kConstraintFlags),
-                       sizeof(kConstraintFlags));
-        byte_writer::AppendU8(record, 0x1e);
+    H265ProfileTierLevel profile;
+    if (!ExtractH265ProfileFromVps(vps, &profile)) {
+        return false;
+    }
+    AppendH265ProfileTierLevel(profile, record);
+    if (codec_string != nullptr) {
+        *codec_string = H265CodecString(profile);
     }
     byte_writer::AppendU16(record, 0xf000);
     byte_writer::AppendU8(record, 0xfc);
@@ -118,7 +241,7 @@ bool BuildH265HvccRecord(const std::string &vps,
     byte_writer::AppendU8(record, 0xf8);
     byte_writer::AppendU8(record, 0xf8);
     byte_writer::AppendU16(record, 0);
-    byte_writer::AppendU8(record, 0x0f);
+    byte_writer::AppendU8(record, H265HvccTemporalByte(profile));
 
     byte_writer::AppendU8(record, 3);
     // 每个 array 只保存一条当前生效的参数集，调用方在 codec 切换或参数集

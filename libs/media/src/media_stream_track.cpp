@@ -247,6 +247,7 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream) {
     info.vps = stream.vps;
     info.sps = stream.sps;
     info.pps = stream.pps;
+    info.hls_codec = stream.hls_maker.CodecString();
     info.hls_segment_size =
         static_cast<uint32_t>(stream.hls_maker.SegmentSize());
     info.hls_first_segment_sequence = stream.hls_maker.FirstSegmentSequence();

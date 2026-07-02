@@ -9,6 +9,7 @@ export interface MediaStreamInfo {
     track_ready?: boolean;
     hls_supported?: boolean;
     hls_ready?: boolean;
+    hls_codec?: string;
     http_flv_supported?: boolean;
     http_flv_ready?: boolean;
     mjpeg_supported?: boolean;

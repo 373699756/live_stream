@@ -60,6 +60,7 @@ public:
     uint32_t CurrentSegmentSize() const;
     uint32_t CachedBytes() const;
     uint64_t DropSize() const;
+    const std::string &CodecString() const;
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;
     MediaSegmentRef FindSegmentRef(uint64_t sequence) const;

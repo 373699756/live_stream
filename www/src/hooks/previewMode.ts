@@ -10,26 +10,34 @@ export const previewModeLabels: Record<PreviewMode, string> = {
 };
 
 let hevcPlayable: boolean | null = null;
+const genericHevcCodecs = [
+    'hvc1.1.6.L93.B0',
+    'hev1.1.6.L93.B0',
+];
 
-function browserCanPlayHevc() {
+function mediaSourceCanPlayMp4Codec(codec: string) {
+    return (
+        typeof MediaSource !== 'undefined' &&
+        Boolean(MediaSource.isTypeSupported?.(
+            `video/mp4; codecs="${codec}"`,
+        ))
+    );
+}
+
+function browserCanPlayHevc(codec?: string) {
+    if (codec) {
+        return mediaSourceCanPlayMp4Codec(codec);
+    }
     if (hevcPlayable !== null) {
         return hevcPlayable;
     }
-    if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported) {
-        return false;
-    }
-    hevcPlayable = [
-        'video/mp4; codecs="hvc1.1.6.L93.B0"',
-        'video/mp4; codecs="hev1.1.6.L93.B0"',
-    ].some((mimeType) =>
-        MediaSource.isTypeSupported(mimeType),
-    );
+    hevcPlayable = genericHevcCodecs.some(mediaSourceCanPlayMp4Codec);
     return hevcPlayable;
 }
 
-function browserCanPreviewHlsCodec(codec?: string) {
+function browserCanPreviewHlsCodec(codec?: string, hlsCodec?: string) {
     if (codec === 'h265') {
-        return browserCanPlayHevc();
+        return browserCanPlayHevc(hlsCodec);
     }
     return codec === 'h264';
 }
@@ -74,7 +82,7 @@ export function buildPreviewReadiness(
     const hlsSupported = Boolean(
         active?.hls_supported &&
             previewUrls?.hls &&
-            browserCanPreviewHlsCodec(active?.codec),
+            browserCanPreviewHlsCodec(active?.codec, active?.hls_codec),
     );
     const flvSupported = Boolean(
         active?.http_flv_supported &&

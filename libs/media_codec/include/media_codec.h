@@ -169,7 +169,8 @@ bool BuildH264AvccRecord(const std::string &sps,
 bool BuildH265HvccRecord(const std::string &vps,
                          const std::string &sps,
                          const std::string &pps,
-                         std::string *record);
+                         std::string *record,
+                         std::string *codec_string = nullptr);
 
 }  // namespace media_codec
 }  // namespace live_stream

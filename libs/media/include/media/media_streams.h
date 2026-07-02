@@ -167,6 +167,7 @@ struct MediaStreamInfo {
     std::string vps;
     std::string sps;
     std::string pps;
+    std::string hls_codec;
     uint32_t hls_segment_size = 0;
     uint64_t hls_first_segment_sequence = 0;
     uint64_t hls_last_segment_sequence = 0;
